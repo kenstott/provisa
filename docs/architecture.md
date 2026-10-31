@@ -2,9 +2,9 @@
 
 ## Overview
 
-Provisa is a config-driven data virtualization platform: federation, metrics, ontology and governance from a single model, for small teams and large enterprises alike. It provides a unified API over heterogeneous data sources with governance, security, and performance optimization. Clients query via SQL, GraphQL, or Cypher; all three get identical governance.
+Provisa is a config-driven data virtualization platform that gives small teams and large enterprises alike federation, metrics, ontology and governance from a single model. It puts one API over heterogeneous data sources, with governance, security and performance optimization. Clients query via SQL, GraphQL or Cypher, and all three get identical governance.
 
-The model is the only place meaning is added. To add to it, you register new data sources or aggregates in the data virtualization layer. That keeps a clean separation, since nothing can add semantics outside the platform, and it's what makes real data governance possible. The compiler enforces it: the approved relationship catalog is the source of truth, whichever query language is used.
+The model is the only place meaning is added. To add to it, you register new data sources or aggregates in the data virtualization layer. Nothing can add semantics outside the platform, and that separation is what makes data governance possible. The compiler enforces it, with the approved relationship catalog as the source of truth whichever query language is used.
 
 One platform serves operational and analytical reads. A query that touches one source goes straight to that source over its native driver, typically back in under 100 ms, and a query that joins sources runs in the federation engine you chose for analytical scale.
 
@@ -72,15 +72,15 @@ and receive Arrow RecordBatches streamed lazily. When the Zaychik Flight SQL pro
 Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik ←(JDBC)← Federation Engine
 ```
 
-The full result is never held in Provisa's memory: batches are passed on as they arrive. That makes Arrow Flight an unbounded path, fit for results of any size.
+The full result is never held in Provisa's memory, because batches are passed on as they arrive. That makes Arrow Flight an unbounded path, fit for results of any size.
 
 ### Protobuf gRPC (port 50051)
 
-Auto-generated `.proto` from the data schema, generated per role. Streaming queries (one message per row), unary mutations. Server reflection enabled; it describes each caller the service of its own role. Role via `x-provisa-role` metadata key.
+Provisa generates a `.proto` from the data schema for each role. Queries stream one message per row, and mutations are unary. Server reflection is enabled and describes each caller the service of its own role. The role comes from the `x-provisa-role` metadata key.
 
 ### PostgreSQL wire protocol / pgwire (configurable port)
 
-Implements the PostgreSQL frontend/backend wire protocol using the `buenavista` library. Any PostgreSQL-compatible client (`psql`, DBeaver, SQLAlchemy with `psycopg2`, JDBC) can connect without modification. Accepts SQL only. The full governance pipeline (RLS, masking, domain permissions) applies identically to pgwire connections. Enabled by setting `PROVISA_PGWIRE_PORT` to a non-zero port.
+Provisa implements the PostgreSQL frontend/backend wire protocol using the `buenavista` library. Any PostgreSQL-compatible client (`psql`, DBeaver, SQLAlchemy with `psycopg2`, JDBC) can connect without modification. It accepts SQL only. The full governance pipeline (RLS, masking, domain permissions) applies identically to pgwire connections. Enabled by setting `PROVISA_PGWIRE_PORT` to a non-zero port.
 
 ## Request Pipeline
 
@@ -148,7 +148,7 @@ GraphQL queries with multiple root fields (e.g., `{ orders { id } customers { na
 
 ## Query Pipeline
 
-Every read passes through five stages. GraphQL, Cypher, SPARQL, gRPC and SQL are entry points, not stages — each compiles or lowers to semantic SQL before the pipeline begins.
+Every read passes through five stages. GraphQL, Cypher, SPARQL, gRPC and SQL are entry points outside those stages, and each compiles or lowers to semantic SQL before the pipeline begins.
 
 ```mermaid
 flowchart TD
@@ -372,7 +372,7 @@ Results exceeding a row threshold are redirected to S3-compatible storage (MinIO
 | **CTAS** (Parquet, ORC) | Federation engine writes directly to S3 via `CREATE TABLE AS SELECT` | No |
 | **Provisa upload** (JSON, NDJSON, CSV, Arrow IPC) | Provisa serializes and uploads via boto3 | Yes |
 
-For CTAS-native formats, Provisa never touches the data: the federation engine writes files straight to MinIO/S3. This is the path to prefer for large analytical exports.
+For CTAS-native formats, Provisa never touches the data, because the federation engine writes files straight to MinIO/S3. This is the path to prefer for large analytical exports.
 
 ### With no object store
 
@@ -449,9 +449,9 @@ On source registration, Provisa runs `ANALYZE catalog.schema.table` for every pu
 
 The optimizer uses these to estimate selectivity for filtered queries. Without statistics, it falls back to fixed defaults (e.g., 10% selectivity for equality predicates) which produce poor join plans on skewed or high-cardinality data. With statistics, estimates are accurate enough to make correct broadcast vs. partitioned join decisions for most workloads.
 
-**Coverage**: statistics support depends on the connector. PostgreSQL, MySQL, Hive, Iceberg and Delta Lake fully support `ANALYZE`; MongoDB and Cassandra have partial support or none. A catalog whose connector collects no statistics is skipped, and an `ANALYZE` that fails is logged and passed over, so registration is never blocked.
+**Coverage.** Statistics support depends on the connector. PostgreSQL, MySQL, Hive, Iceberg and Delta Lake fully support `ANALYZE`; MongoDB and Cassandra have partial support or none. A catalog whose connector collects no statistics is skipped, and an `ANALYZE` that fails is logged and passed over, so registration is never blocked.
 
-**Selectivity limits**: statistics provide per-column estimates. For correlated predicates (`WHERE region = 'US' AND city = 'Seattle'`), the optimizer assumes column independence, which may underestimate row counts. This is a known limitation of column-level statistics in all cost-based optimizers.
+**Selectivity limits.** Statistics provide per-column estimates. For correlated predicates (`WHERE region = 'US' AND city = 'Seattle'`), the optimizer assumes column independence, which may underestimate row counts. This is a known limitation of column-level statistics in all cost-based optimizers.
 
 **API sources**: `api_cache_{table_name}` tables in PostgreSQL are analyzed automatically after each cache refresh cycle, so the optimizer has current row estimates when joining API-backed sources with relational sources.
 
@@ -468,7 +468,7 @@ mutation {
 }
 ```
 
-Useful when a source has received significant new data since registration.
+Use it when a source has received significant new data since registration.
 
 ## Materialized Views
 
@@ -482,7 +482,7 @@ For **cross-source relationships** this happens automatically at startup: every 
 
 A **junction-backed relationship** materializes its whole traversal. The associative table is a third leg, so the pattern carries the source hop, the junction hop and the discriminator that pins the rows to one edge type, with the junction's own columns landing in the view next to the target's. Because the junction counts as a leg, an edge whose junction sits in a different source from the two tables it links is cross-source even when those two share a source. The rewriter matches the two hops as a chain, where the second must start from the alias the first introduced. So a query that reaches the same two tables without going through the junction reads the base tables, and a view built for one discriminator value never answers a traversal filtered to another.
 
-The practical consequence: stewards who approve a relationship are implicitly deciding whether the join is a good candidate for materialization. The governance act and the optimization hint are the same declaration.
+In practice, stewards who approve a relationship are also deciding whether the join is a good candidate for materialization.
 
 ### Modes
 

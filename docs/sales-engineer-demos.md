@@ -126,7 +126,7 @@ See [Add one toy source](#add-one-toy-source-with-source).
 ### Stop and reset
 
 - **Stop Provisa:** press `Ctrl+C` in the terminal that runs the launcher. It stops the backend, the UI and the demo servers. The embedded PostgreSQL stays up for the next start.
-- **Other keys:** `Ctrl+R` restarts the backend, `Ctrl+U` clears the UI cache and restarts the UI, and `Ctrl+E` stops the servers and leaves Docker running.
+- **Other keys.** `Ctrl+R` restarts the backend, `Ctrl+U` clears the UI cache and restarts the UI, and `Ctrl+E` stops the servers and leaves Docker running.
 - **Reset the Provisa side:** just start again. Every `--demo` start drops and rebuilds the demo model store.
 - **Reset a named demo's data:** just start again. A named demo reseeds from empty by default. Pass `--keep-data` to reuse the data from the last seeding instead.
 - **Stop a named demo's data stack.** `Ctrl+C` does not stop it. Run:
@@ -428,7 +428,7 @@ Rules that bite:
 
 - **Declare `tables:` for every source.** A bare `sources:` entry never produces tables in the SQL catalog. The export already names each table, its schema, and each column with its type and who may see it.
 - **`visible_to` names roles.** The standard config's `analyst` role may only open the pet-store domains. A new domain is visible to `org_admin`, which the demo's requests act as. Add another role under `roles:` with its own `domain_access`, as `perf` does for `org_admin_unguarded`.
-- **Connection values are environment variables with defaults:** `${env:NAME:-default}`. The compose file and the generator read the same names.
+- **Connection values are environment variables with defaults.** `${env:NAME:-default}`. The compose file and the generator read the same names.
 - **Everything is synthetic.** Describe it that way in the descriptions.
 
 #### Pro tip: a fragment instead of a whole config

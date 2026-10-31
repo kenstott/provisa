@@ -22,7 +22,7 @@ A wrapper file containing only `includes:` is valid. `load_control_plane` reads 
 - A scalar or mapping key the including file does not set is taken from the fragment.
 - A key both files set to different values is a conflict; the load fails, naming the key.
 - Identical values in both files are not a conflict.
-- Includes nest. A file that includes itself — directly or through another fragment — is refused.
+- Includes nest. A file that includes itself, directly or through another fragment, is refused.
 - `includes` is consumed at load time and never appears in the validated config.
 
 ## Sources
@@ -170,7 +170,7 @@ The `ref` and `geo` schemas are always included as linker schemas. They can't be
 
 #### Kafka
 
-The `kafka` row in `sources:` only registers the source. Its connector's `details()` returns `{}`; the real configuration lives in the top-level `kafka_sources[]` block. Kafka is always a VIRTUAL_SOURCE: it routes through the engine and has no direct pool.
+The `kafka` row in `sources:` only registers the source. Its connector's `details()` returns `{}`; the real configuration lives in the top-level `kafka_sources[]` block. Kafka is always a VIRTUAL_SOURCE, so it routes through the engine and has no direct pool.
 
 ```yaml
 kafka_sources:
@@ -475,7 +475,7 @@ sources:
       timeout_seconds: 30
 ```
 
-**airport.** `base_url` is the Arrow Flight server location. DuckDB airport extension.
+**airport.** `base_url` is the Arrow Flight server location, read through the DuckDB airport extension.
 
 ```yaml
 sources:
@@ -560,7 +560,7 @@ sources:
 
 Each results table carries `dq_contract`, the Soda contract YAML or Great Expectations suite JSON word for word. Columns, watermark and promotions are derived from it; see [Data Quality Checkers](sources.md#data-quality-checkers) for how.
 
-**Install-time selection.** The checker isn't linked in: the scan runs in a child interpreter, and the library is installed only when an operator names it. Every installer path (`install.sh`, `packaging/linux/first-launch.sh`, and the macOS wizard through `PROVISA_DQ_CHECKER`) writes the choice to `~/.provisa/config.yaml`:
+**Install-time selection.** The checker isn't linked in. The scan runs in a child interpreter, and the library is installed only when an operator names it. Every installer path (`install.sh`, `packaging/linux/first-launch.sh`, and the macOS wizard through `PROVISA_DQ_CHECKER`) writes the choice to `~/.provisa/config.yaml`:
 
 ```yaml
 dq_checker: none        # none | soda | gx
@@ -578,7 +578,7 @@ Installing the demo dataset raises `none` to `gx` and says so, because the demo 
 
 If you reach the demo through pip instead of an installer, you skip that wizard step, so the `demo` extra carries the same checker: `provisa run --demo` needs `pip install 'provisa[embedded,demo]'` for its scan to run. Without it the scan reports `data-quality checker 'great_expectations' is not installed` and names the install command.
 
-Any other value stops the launcher, so it never starts without the checker the operator asked for. The `soda` extra pulls in `soda-postgres`, and `gx` pulls in `great-expectations[postgresql]`. Soda Core is under the Elastic License 2.0: `config/capabilities.yaml` marks the option `cloud_eligible: false`, and the hosted plane refuses it.
+Any other value stops the launcher, so it never starts without the checker the operator asked for. The `soda` extra pulls in `soda-postgres`, and `gx` pulls in `great-expectations[postgresql]`. Soda Core is under the Elastic License 2.0, so `config/capabilities.yaml` marks the option `cloud_eligible: false` and the hosted plane refuses it.
 
 ## Domains
 
@@ -717,7 +717,7 @@ In the admin UI, a table's **Writes** section lists the grants and edits them to
 
 ### Aliases
 
-Table and column aliases override the default GraphQL name. Useful for:
+Table and column aliases override the default GraphQL name. Use them for:
 
 - Renaming cryptic database names (e.g., `tbl_cust_seg` → `customer_segments`)
 - Avoiding abbreviations in the API layer
@@ -748,7 +748,7 @@ columns:
 
 The path format is `source_column.key1.key2...`. The compiler generates `json_extract_scalar(source_column, '$.key1.key2')` in the SQL.
 
-**Routing impact:** Path columns use PostgreSQL JSON operators (`->>`), which are natively supported by direct PG routing. For non-PostgreSQL sources (MySQL, SQL Server, etc.), queries with path columns are automatically routed through the federation engine. Mutations are unaffected since path columns are read-only computed fields.
+**Routing impact.** Path columns use PostgreSQL JSON operators (`->>`), which are natively supported by direct PG routing. For non-PostgreSQL sources (MySQL, SQL Server, etc.), queries with path columns are automatically routed through the federation engine. Mutations are unaffected since path columns are read-only computed fields.
 
 ### Masking Types
 
@@ -902,7 +902,7 @@ views:
 
 ### Materialized vs Live
 
-- **`materialize: true`**: Provisa creates a table via CTAS and refreshes it on a schedule. Faster queries but data may be stale by up to `refresh_interval` seconds.
+- **`materialize: true`**: Provisa creates a table via CTAS and refreshes it on a schedule. Queries are faster, but data may be stale by up to `refresh_interval` seconds.
 - **`materialize: false`**: Provisa creates a federated view. Queries always return live data but may be slower for complex aggregations.
 
 Views go through the same governance pipeline as tables: RLS, masking, sampling and role-based visibility. That way nothing can add new semantics to the platform without a steward's oversight.
@@ -935,7 +935,7 @@ views:
 
 Each one names a column the table or view has. A view that declares them sets `materialize: true`, and Provisa picks how it stores the versions. An entry under `tables:` takes the same three keys.
 
-The two times have other names elsewhere: recorded time, called transaction time in the temporal-database literature and system time in SQL:2011; valid time, called application time in SQL:2011 or effective date.
+The two times have other names elsewhere. Recorded time is called transaction time in the temporal-database literature and system time in SQL:2011. Valid time is called application time in SQL:2011, or effective date.
 
 The two can differ for the same version:
 
@@ -1225,7 +1225,7 @@ auth:
 | `oauth` | Generic OIDC (Okta, Azure AD, Auth0, PingFederate). | JWKS from discovery URL |
 | `basic` | Self-contained deployments. Accounts live in Provisa's own store. | bcrypt password, or SCRAM-SHA-256 on pgwire |
 
-Superuser credentials (`superuser` block) work with any provider and always resolve to admin role with all capabilities. Used for initial setup before external auth is configured.
+Superuser credentials (`superuser` block) work with any provider and always resolve to admin role with all capabilities. Use them for initial setup before external auth is configured.
 
 ### SCRAM-SHA-256 (`auth.scram`)
 
@@ -1235,7 +1235,7 @@ auth:
   scram: true
 ```
 
-Makes pgwire advertise SASL with `SCRAM-SHA-256`, so a password is proved and never sent in cleartext. It applies only to the `basic` provider, since no other provider holds the RFC 5802 verifiers SCRAM needs, and channel binding isn't offered.
+This makes pgwire advertise SASL with `SCRAM-SHA-256`, so a password is proved and never sent in cleartext. It applies only to the `basic` provider, since no other provider holds the RFC 5802 verifiers SCRAM needs, and channel binding isn't offered.
 
 Verifiers cannot be derived from existing bcrypt hashes. One is written whenever a password passes through in plaintext, so each user's first SCRAM connection follows their next signup, login, password change or admin reset. Until then that user's connections fall back to the cleartext exchange over TLS; the wire does not reveal who has migrated.
 
@@ -1249,7 +1249,7 @@ auth:
     lockout_seconds: 900 # how long a locked-out subject is refused
 ```
 
-On by default with the values shown; the block only tunes them. The counter sits at the credential-validation layer, so failures over HTTP, pgwire and Bolt accumulate against the same subject and a lockout holds on every surface. It is per process: several API workers each allow up to `max_attempts`.
+Throttling is on by default with the values shown, and the block only tunes them. The counter sits at the credential-validation layer, so failures over HTTP, pgwire and Bolt accumulate against the same subject and a lockout holds on every surface. It is per process: several API workers each allow up to `max_attempts`.
 
 ### Personal access tokens
 
@@ -1269,7 +1269,7 @@ Each one takes a per-protocol override, named the same way as the TLS settings. 
 
 ### Addressing an org over TLS
 
-Nothing to configure. On a multi-org deployment, pgwire and Bolt read the org from the hostname the client dialed, carried in the TLS ClientHello, exactly as HTTP reads it from the `Host` header. A client connecting to `acme.provisa.dev` requests org `acme`; the request is refused unless the authenticated principal is a member. Connecting by IP address requests no org, which is every connection on a single-org deployment.
+There's nothing to configure. On a multi-org deployment, pgwire and Bolt read the org from the hostname the client dialed, carried in the TLS ClientHello, exactly as HTTP reads it from the `Host` header. A client connecting to `acme.provisa.dev` requests org `acme`; the request is refused unless the authenticated principal is a member. Connecting by IP address requests no org, which is every connection on a single-org deployment.
 
 ### Full Auth Config Example (commented out)
 
@@ -1410,7 +1410,7 @@ Each parent must be an existing role, named once, not the role itself, and may n
 
 ## Scheduled Triggers
 
-Cron-based triggers that call a webhook URL on schedule. Uses APScheduler.
+Cron-based triggers call a webhook URL on a schedule, through APScheduler.
 
 ```yaml
 scheduled_triggers:
@@ -1532,7 +1532,7 @@ Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. URLs starti
 
 ## Federation Engine
 
-Configuring a federation engine is optional. The default is `duckdb`: zero-config, in-process, with no external service. Choose another engine when you need MPP scale or want to reuse a warehouse you already have.
+Configuring a federation engine is optional. The default is `duckdb`, which needs no configuration and runs in process with no external service. Choose another engine when you need MPP scale or want to reuse a warehouse you already have.
 
 Precedence: `PROVISA_ENGINE` env var → persisted admin-UI `federation_engine` config field → `duckdb`. Changes take effect on service restart.
 
@@ -1589,7 +1589,7 @@ Materialization store defaults to `TENANT_DATABASE_URL` (PostgreSQL).
 
 #### pg
 
-Federates via postgres_fdw (SQL/MED) and pg_duckdb extensions. Single-node; no MPP. Best when your data already lives in PostgreSQL and you want to join in a few remote sources.
+This engine federates via the postgres_fdw (SQL/MED) and pg_duckdb extensions. It runs on a single node with no MPP. It works best when your data already lives in PostgreSQL and you want to join in a few remote sources.
 
 ```bash
 PROVISA_ENGINE=pg
@@ -1600,7 +1600,7 @@ Materialization store defaults to `TENANT_DATABASE_URL`.
 
 #### duckdb
 
-In-process; no external service. The default engine. `PROVISA_DATA_DIR` controls where the embedded store lives (`~/.provisa` by default).
+The default engine runs in process with no external service. `PROVISA_DATA_DIR` controls where the embedded store lives (`~/.provisa` by default).
 
 ```bash
 PROVISA_ENGINE=duckdb   # or omit — this is the default
@@ -1622,7 +1622,7 @@ Materialization store defaults to `TENANT_DATABASE_URL`.
 
 #### snowflake
 
-Engine-as-warehouse: Snowflake runs the queries; Provisa pushes source data through external stages.
+The warehouse is the engine. Snowflake runs the queries, and Provisa pushes source data through external stages.
 
 ```bash
 PROVISA_ENGINE=snowflake
@@ -1644,7 +1644,7 @@ Materialization store defaults to `TENANT_DATABASE_URL`.
 
 #### bigquery
 
-BigQuery external and BigLake tables. Project comes from the URL or `GOOGLE_CLOUD_PROJECT`; auth via service-account key.
+Provisa uses BigQuery external and BigLake tables. The project comes from the URL or `GOOGLE_CLOUD_PROJECT`, and auth is by service-account key.
 
 ```bash
 PROVISA_ENGINE=bigquery

@@ -12,7 +12,7 @@ The three packages map directly to the three docker-compose layers: (REQ-630)
 | **Observability (Obs)** | otlp2parquet, otel-collector, prometheus, tempo, grafana | `docker-compose.observability.yml` |
 | **Demo** | petstore-mock, graphql-demo | `docker-compose.demo.yml` |
 
-**Dependency chain**: Core ← Obs ← Demo (demo requires obs; obs requires core). (REQ-631)
+**Dependency chain.** Core ← Obs ← Demo (demo requires obs; obs requires core). (REQ-631)
 
 ---
 

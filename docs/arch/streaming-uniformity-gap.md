@@ -25,7 +25,7 @@ fall short of it.
 - **Streaming (drain the one terminal to the wire):** pgwire, Flight SQL, native gRPC, **airport**.
   Airport is NOT exempt: it must stream (see Defect 5). The **native** gRPC query RPC already
   streams (REQ-1215); the GraphQL-over-gRPC proxy is a GraphQL transport (buffered, below).
-- **Buffered → CTAS (never Provisa-RAM):** JSON:API, GraphQL, Bolt. These land a CTAS handle above
+- **Buffered → CTAS (never Provisa-RAM).** JSON:API, GraphQL, Bolt. These land a CTAS handle above
   the threshold and inline the body below it.
 - **Genuinely bounded (small by construction, materialize freely):** metadata / admin /
   registered-function output.

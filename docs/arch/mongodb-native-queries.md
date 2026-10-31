@@ -57,7 +57,7 @@ No new table and no new column on `registered_tables`.
 - `inputCollection` is required. A database-level pipeline (`db.aggregate`, e.g. `$documents`) is out of scope for Shape A.
 - `_QUERY_API_TYPES` and `QUERY_API_TYPES` gain `mongodb`. On MongoDB, `query_template` is **optional**: without it the table is a collection table, as today. With it the table is a pipeline table. The neo4j and sparql rule ("required") is unchanged.
 
-**Arguments**: one parameter column per argument.
+**Arguments.** One parameter column per argument.
 - Name `_nf_<arg>`.
 - `native_filter_type = "query_arg"`.
 - `native_filter_required` set per argument (true or false, never None, for this type).

@@ -35,7 +35,7 @@ A landing never waits for indexes. The replica is read from the moment it is swa
 Each landing records the indexes it asked for, the ones built, and the ones that failed, by name, on the replica's record in the model store (`replica_state.index_state`).
 
 - **A failed index never fails the landing.** It is logged with its cause and asked for again by the next landing. The log line reads `replica of <source>.<schema>.<table>: index <name> on (<columns>) failed: <cause>`.
-- **Rows that repeat a declared key are their own failure**, code `replica.index_duplicate_key`, naming the key's columns. The source holds duplicates of a column set the model declares unique. A retry does not fix that: correct the data at the source, or correct the declared key.
+- **Rows that repeat a declared key are their own failure**, code `replica.index_duplicate_key`, naming the key's columns. The source holds duplicates of a column set the model declares unique. A retry does not fix that. Correct the data at the source, or correct the declared key.
 - **A landing that replaces the table mid-build** leaves the earlier builds behind; they stop and record nothing, and the new table gets its own. On a PostgreSQL store the swap cancels a build still running on the table it replaces.
 - **The plan follows the model at each landing.** A relationship added later gets its index at the replica's next landing.
 
@@ -92,7 +92,7 @@ The store is one lever among several, and they overlap. Settle the others first;
 
 Relationship materialization and indexed joins answer the same need in two ways. On a columnar or warehouse store (the DuckDB file, ClickHouse, Snowflake, BigQuery, Databricks, Fabric, Synapse) no join index is built, so a pre-joined view is how a frequent join gets cheap. On a relational store the join columns are indexed already, and the same joins can run fast without materializing them.
 
-What still depends on the store: ad-hoc scans and joins over large tables that no materialized view covers and no hot table serves. Those run on the store's indexes in a relational database, or on its scan speed in a columnar one.
+Ad-hoc scans and joins over large tables that no materialized view covers and no hot table serves still depend on the store. Those run on the store's indexes in a relational database, or on its scan speed in a columnar one.
 
 Results vary by workload. Measure before and after a change with the [sizing tool](sizing.md); its [live-or-replica runs](sizing.md#live-or-replica-reads-and-the-ttl) give a replica read's cost against a live read's on your deployment.
 

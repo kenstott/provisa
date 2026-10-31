@@ -16,7 +16,7 @@ the valid-time and recorded-time columns you name.
 
 A **fact** is a join to entity keys, reduced to a declared grain, with aggregated measures. Provisa writes an aggregate-MV query (`GROUP BY` grain + FK columns) and registers a relationship for each declared dimension link. A fact with no measures is a pure key set, which is the Data Vault link pattern.
 
-Both constructs are IR. The generated definitions move across engines without remodeling: materialized in Oracle or Databricks, or left virtual over an MPP engine.
+Both constructs are IR. The generated definitions move across engines without remodeling, whether materialized in Oracle or Databricks or left virtual over an MPP engine.
 
 ## History modes
 
@@ -267,7 +267,7 @@ The grain is the lowest level of detail the fact answers. `order_id` gives one r
 
 #### Register the dimensions
 
-**Customer** (SCD Type 2 — tier changes must be preserved):
+**Customer** (SCD Type 2, because tier changes must be preserved):
 
 ```graphql
 mutation {
@@ -291,7 +291,7 @@ SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"
 -- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
-**Product** (SCD Type 1 — current catalog, no version history needed):
+**Product** (SCD Type 1, because only the current catalog is needed):
 
 ```graphql
 mutation {
@@ -312,7 +312,7 @@ Generates an ordinary MV rebuilt on refresh:
 SELECT "product_id", "name", "category", "list_price" FROM "raw"."products"
 ```
 
-**DateDim** (no history — a date is immutable):
+**DateDim** (no history, because a date is immutable):
 
 ```graphql
 mutation {
@@ -335,7 +335,7 @@ SELECT "date_key", "year", "quarter", "month" FROM "raw"."date_spine"
 
 #### Register the Sales fact across three dimensions
 
-Grain: `order_id`. Three dimension references, with one FK column each. Both measures are additive sums.
+The grain is `order_id`, with three dimension references of one FK column each. Both measures are additive sums.
 
 ```graphql
 mutation {
@@ -558,7 +558,7 @@ split remain the modeler's decisions. Provisa executes them.
 
 ## Metrics
 
-A **metric** is a named, governed aggregate definition with no grain of its own. The grain, meaning the dimensions the aggregate is broken out by, is bound by the caller at query time instead of at definition time. That's what sets a metric apart from a view: a view fixes the grain when it's created, and a metric stays open until it's queried.
+A **metric** is a named, governed aggregate definition with no grain of its own. The grain, meaning the dimensions the aggregate is broken out by, is bound by the caller at query time instead of at definition time. That's what sets a metric apart from a view. A view fixes the grain when it's created, and a metric stays open until it's queried.
 
 ### The Metric object
 

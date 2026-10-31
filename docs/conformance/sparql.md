@@ -1,8 +1,8 @@
 # SPARQL 1.1 Conformance
 
-**Suite:** W3C SPARQL 1.1 test suite (query, update, result formats). TBD: version recorded from CI.
+**Suite.** W3C SPARQL 1.1 test suite (query, update, result formats). TBD: version recorded from CI.
 
-**Pass rate:** TBD: generated from CI.
+**Pass rate.** TBD: generated from CI.
 
 ## Deliberate differences
 

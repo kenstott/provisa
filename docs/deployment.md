@@ -23,13 +23,13 @@ Choose Kubernetes only if your team already runs a K8s cluster and wants Provisa
 
 Every production path needs the Provisa artifacts before any deployment can run. "Air-gapped" describes what happens at install time on the target machine, so you get the artifacts first.
 
-**macOS and Windows installers:** Download them from the [GitHub releases page](https://github.com/provisa/provisa/releases). They're fully bundled and need no internet after download. They're meant for development and evaluation, so no image scanning gate is expected.
+**macOS and Windows installers.** Download them from the [GitHub releases page](https://github.com/provisa/provisa/releases). They're fully bundled and need no internet after download. They're meant for development and evaluation, so no image scanning gate is expected.
 
-**AppImage path:** Download it from the [GitHub releases page](https://github.com/provisa/provisa/releases) and copy it to the target machine. The AppImage bundles every component image as a tarball inside a squashfs filesystem, which most registry scanners can't inspect in place. Ask your Provisa account team for the component image digests so you can check them against your scanner yourself.
+**AppImage path.** Download it from the [GitHub releases page](https://github.com/provisa/provisa/releases) and copy it to the target machine. The AppImage bundles every component image as a tarball inside a squashfs filesystem, which most registry scanners can't inspect in place. Ask your Provisa account team for the component image digests so you can check them against your scanner yourself.
 
-**Terraform path:** Upload the AppImage to S3 before running `terraform/deploy.sh`. EC2 nodes download it at boot through their IAM role, so they need outbound access to S3, directly or through a VPC gateway endpoint. Apply the same scanning policy as for the AppImage path.
+**Terraform path.** Upload the AppImage to S3 before running `terraform/deploy.sh`. EC2 nodes download it at boot through their IAM role, so they need outbound access to S3, directly or through a VPC gateway endpoint. Apply the same scanning policy as for the AppImage path.
 
-**Helm / Kubernetes path:** Push the individual images to a registry the cluster can reach. This path works best with registry-based scanning (Prisma Cloud, Aqua, Trivy, AWS Inspector), because the images are objects scanners already understand. For an air-gapped cluster, mirror the images to an internal registry and override the references in `values.yaml`.
+**Helm / Kubernetes path.** Push the individual images to a registry the cluster can reach. This path works best with registry-based scanning (Prisma Cloud, Aqua, Trivy, AWS Inspector), because the images are objects scanners already understand. For an air-gapped cluster, mirror the images to an internal registry and override the references in `values.yaml`.
 
 ---
 
@@ -39,7 +39,7 @@ Every production path needs the Provisa artifacts before any deployment can run.
 
 This is the easiest way to run Provisa from source. One command starts all infrastructure, the backend API and the UI dev server, and Ctrl+C shuts everything down cleanly.
 
-**Prerequisites:** Docker Desktop, Node.js, Python virtualenv at `.venv/`
+**Prerequisites.** Docker Desktop, Node.js, Python virtualenv at `.venv/`
 
 ```bash
 ./start-ui.sh

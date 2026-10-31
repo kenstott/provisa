@@ -175,7 +175,7 @@ cross-source queries go to the federation engine.
 
 ## A remote source's write operation
 
-An OpenAPI, remote GraphQL or gRPC source offers write operations. Registering one as a command makes it callable, governed, and audited from every surface. Adding the source registers none of them; you register the ones you want, one at a time, the way you register tables. The registration is the curation.
+An OpenAPI, remote GraphQL or gRPC source offers write operations. Registering one as a command makes it callable, governed, and audited from every surface. Adding the source registers none of them; you register the ones you want, one at a time, the way you register tables.
 
 What a source offers:
 
@@ -288,9 +288,9 @@ Because every command declares its input and output columns, column-level lineag
 the opaque command boundary**. The lineage engine applies a taint closure: each declared output
 column derives from every declared input column.
 
-**The actionable consequence:** the width of your input contract sets the precision of that closure. A narrow input, holding only the columns the command needs, produces a tight, readable lineage cone. Declaring every column of the source relation fans in widely across every output. That's still sound, since no lineage is lost, but it blurs traceability.
+The width of your input contract sets the precision of that closure. A narrow input, holding only the columns the command needs, produces a tight, readable lineage cone. Declaring every column of the source relation fans in widely across every output. That's still sound, since no lineage is lost, but it blurs traceability.
 
-**Rule of thumb:** pass the minimum projection the command needs, and return only derived columns. Inputs echoed through unchanged widen the taint cone, so leave them out.
+As a rule of thumb, pass the minimum projection the command needs, and return only derived columns. Inputs echoed through unchanged widen the taint cone, so leave them out.
 
 See [Lineage](lineage.md) for how command nodes appear in the DAG and how to read them.
 
@@ -463,7 +463,7 @@ functions:
       - {name: score, type: double}
 ```
 
-**Another runtime.** When a procedure is embedded in another system — for example, a graph traversal written as a Neo4j extension in Java — the straightforward path is to register that system as a Provisa source and query it in place. Provisa federates the results with the rest of your model without copying data.
+**Another runtime.** When a procedure is embedded in another system, such as a graph traversal written as a Neo4j extension in Java, the straightforward path is to register that system as a Provisa source and query it in place. Provisa federates the results with the rest of your model without copying data.
 
 ### Governance
 

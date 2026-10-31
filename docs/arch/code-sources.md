@@ -44,7 +44,7 @@ One long-running process per code source per Provisa process, in its runtime, st
 
 - **Transport:** a Unix domain socket in a private directory (mode 0700). Provisa listens; the host connects. A socket, not the process's stdout, so anything the code prints never reaches the protocol.
 - **Frames:** a 4-byte big-endian length, then UTF-8 JSON.
-- **Values:** JSON, with a timestamp as `{"$date": iso}`, a big integer as `{"$bigint": digits}`, a decimal as `{"$decimal": digits}`, a calendar date as `{"$day": iso}`, a missing value as null.
+- **Values.** JSON, with a timestamp as `{"$date": iso}`, a big integer as `{"$bigint": digits}`, a decimal as `{"$decimal": digits}`, a calendar date as `{"$day": iso}`, a missing value as null.
 - **Messages:**
 
   | From | Message | Meaning |
@@ -80,7 +80,7 @@ The maintainer's ruling for Node applies to Python (REQ-1993): no file access be
       - seccomp: `socket()` only for TCP over IPv4 or IPv6; `socketpair()` allowed (an unnamed connected pair reaches nothing; asyncio's event loop wakes itself through one, so a Python host cannot start without it); no io_uring (it opens sockets without `socket()`), no x32 calls on x86_64. So there is no UDP (no DNS around the proxy) and no Unix socket: Landlock does not mediate a Unix socket's connect, and a host's Docker or Postgres socket would otherwise be a path away.
       - The worker's socket is therefore handed to the host already connected, as an inherited descriptor (`fd:N`); the host reads and writes it with `node:fs`, because Bun's `net.Socket` does not take a descriptor.
     - Windows: no sandbox; a code source is refused there by name (S2).
-  - **Proven by:** `.github/workflows/sandbox-probe.yml` runs the launcher's `--probe` on the runner, under Docker's default seccomp and under containerd's default profile (what `RuntimeDefault` applies); `tests/integration/test_node_worker.py` runs Node, Bun and Deno sandboxed (reads outside the code refused, the allow-list reached through the proxy and nothing else).
+  - **Proven by.** `.github/workflows/sandbox-probe.yml` runs the launcher's `--probe` on the runner, under Docker's default seccomp and under containerd's default profile (what `RuntimeDefault` applies); `tests/integration/test_node_worker.py` runs Node, Bun and Deno sandboxed (reads outside the code refused, the allow-list reached through the proxy and nothing else).
     - Run 38307119574 on main (2026-10-12): kernel 6.17.0-1022-azure, Landlock ABI 7. On the runner, under `docker run` (Docker's default seccomp) and under `ctr run --seccomp` (containerd's default, what Kubernetes' `RuntimeDefault` applies), every check held: reading `/etc/passwd` refused and the sandbox's own code read; writing `/tmp` refused; a TCP bind refused; TCP to another port refused and to the proxy's port allowed; UDP and Unix sockets refused (that run also refused `socketpair`; it is allowed since alpha.481's suite showed the Python host's event loop needs it).
     - The cloud's nodes boot `ubuntu-2204-lts`, whose GCP kernel is 6.8 (Landlock ABI 4 or later); a node's running kernel is the one its own upgrades installed.
   - **Missing sandbox:** a host where the mechanism is not available (no `sandbox-exec`; a kernel without Landlock ABI 4; a container profile that refuses `landlock_*` or `seccomp`) refuses to start a code source's worker, naming what is missing. It never starts one unsandboxed.
@@ -129,7 +129,7 @@ def churn_risk(account_id: str, as_of: datetime | None = None) -> list[RiskRow]:
 - **Parameters:** a parameter without a default is required by the source; one with a default is not. `*args` and `**kwargs` are refused by name.
 - **Rows:** a `@table` returns a collection: `list[T]`, `Iterable[T]`, `Iterator[T]`, `Generator[T, ...]`, `AsyncIterable[T]`, `AsyncIterator[T]`, `AsyncGenerator[T, ...]`, or an `async def` returning one of those. A `@stream` is a generator or an async generator (REQ-1993).
 - **Named types:** a `dataclass`, `TypedDict`, `NamedTuple` or annotated class *(REQ-1993 names dataclass, TypedDict and annotated class; NamedTuple is proposed)*. Fields come from the annotations; `X | None` and `Optional[X]` are nullable; a TypedDict field that is `NotRequired` is optional.
-- **Scalars:** `str` → text; `int` → bigint; `float` → double; `bool` → boolean; `Decimal` → numeric; `datetime` → timestamp; `date` → date *(proposed: the IR has date)*; `Literal["a", "b"]` → enum; `enum.Enum` with string values → enum; `dict[str, X]` → json; `Any` → json; `list[X]` → a list.
+- **Scalars.** `str` → text; `int` → bigint; `float` → double; `bool` → boolean; `Decimal` → numeric; `datetime` → timestamp; `date` → date *(proposed: the IR has date)*; `Literal["a", "b"]` → enum; `enum.Enum` with string values → enum; `dict[str, X]` → json; `Any` → json; `list[X]` → a list.
 
 ### 6.2 The reader
 
@@ -174,7 +174,7 @@ A package is fetched as its **wheel** for the pinned Python (`py3`/`cp312` tags,
 
 REQ-1993 asks for the organisation's package indexes, "like REQ-1984's registries". Built as a third kind, `pypi`, of the same table and admin page:
 - **PyPI index:** a simple-index URL and a credential; one may be the default index every Python install goes through in place of the public PyPI. The mirror is per kind: one npm mirror and one default index per organisation.
-- **No scope:** Python packages have none; a scope on a PyPI index is refused.
+- **No scope.** Python packages have none; a scope on a PyPI index is refused.
 - **Same rules:** every field is kept as entered and resolved at use.
 - **The page** "Package registries" has three lists: npm registries, PyPI indexes, Git hosts (13 locales; rendered at 1280 and 1900).
 

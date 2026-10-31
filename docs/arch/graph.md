@@ -231,7 +231,7 @@ Grouping controls belong in the **frame header actions bar** inside `gf-header`.
 - `gf-attr-select` dropdown: populates from discovered groupable attributes for the current frame
 - `GroupLegend`: shows each group value as a colored swatch; each swatch has a collapse toggle (Phase 3)
 
-**Inspector read-only display:** The Inspector panel shows the selected node's group membership as additional read-only fields alongside its other properties (e.g. `domain: Finance`, `cluster: 3`). No controls here.
+**Inspector read-only display.** The Inspector panel shows the selected node's group membership as additional read-only fields alongside its other properties (e.g. `domain: Finance`, `cluster: 3`). No controls here.
 
 ---
 

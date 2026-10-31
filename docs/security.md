@@ -10,7 +10,7 @@ The checks run in order. A request has to pass each one before the next is looke
 
 ### Layer 0 — Introspection filtering
 
-A role is shown only the tables its `domain_access` reaches and the columns its `visible_to` rules allow. Anything else doesn't exist as far as that role can tell: it can't be queried, autocompleted or guessed at. The GraphQL schema, the SQL catalog and the query editor's schema browser all show the same narrowed view.
+A role is shown only the tables its `domain_access` reaches and the columns its `visible_to` rules allow. Anything else doesn't exist as far as that role can tell. It can't be queried, autocompleted or guessed at. The GraphQL schema, the SQL catalog and the query editor's schema browser all show the same narrowed view.
 
 See [Schema Visibility](#schema-visibility).
 
@@ -38,7 +38,7 @@ See [Column Permission Model](#column-permission-model) and [Column-Level Maskin
 
 ### Layer 5 — Predicate guard
 
-You can't filter on a masked column: `WHERE` and `HAVING` refuse it when the query is parsed. Otherwise a caller could recover the real value by binary search, one filter at a time, even though every result it saw was masked.
+You can't filter on a masked column. `WHERE` and `HAVING` refuse it when the query is parsed. Otherwise a caller could recover the real value by binary search, one filter at a time, even though every result it saw was masked.
 
 ### Relationship governance (V002)
 
@@ -53,7 +53,7 @@ The second needs two things at once:
 
 Either one on its own does nothing.
 
-**High-security mode pins the guard.** Under `security.mode: high` neither way works. `ignore_relationships` and `relationship_guard: false` are both ignored, and every join must be in the approved catalog. The redundancy is on purpose: a production role given the capability by mistake still can't step outside the model.
+**High-security mode pins the guard.** Under `security.mode: high` neither way works. `ignore_relationships` and `relationship_guard: false` are both ignored, and every join must be in the approved catalog. The redundancy is on purpose, so a production role given the capability by mistake still can't step outside the model.
 
 **GraphQL** skips V002. Its relationships come from the model, so they're approved already.
 
@@ -105,7 +105,7 @@ Every 15 minutes each organization's sweep deletes the expired and unused grants
 
 A derived role comes from a user's attributes. The org declares which attributes become roles (`derived_roles`), each with a description. For each declared attribute `a` whose value `v` the user's attributes supply, the user holds the parent role `a` and its value role `a__v`: `region = eu` gives `region` and `region__eu`. No value means neither role.
 
-Attribute resolution matters. The org's own record of a member wins over what the identity provider supplies: both name the same attribute, the org's value is used, the provider's is marked overridden.
+The org's own record of a member wins over what the identity provider supplies. When both name the same attribute, the org's value is used and the provider's is marked overridden.
 
 Derived roles carry no rights and are never assigned by hand. A grant list, a mask or a row rule names them exactly as it names a granted role; a request names them in `X-Provisa-Role` and acts as them.
 
@@ -153,7 +153,7 @@ An agent asks which role it acts as with the MCP tool `describe_role`. The answe
 
 `+` appears in two places with different meanings in each.
 
-**In a grant entry.** `analyst+region__eu` in a `visible_to` or `to` list means the reader holds all of them: `analyst` AND `region__eu` at once. An entry that is not a composite is a single role. Across a list's entries the rule is any one: a reader holds the grant if it holds any entry. AND-within, OR-across.
+**In a grant entry.** `analyst+region__eu` in a `visible_to` or `to` list means the reader holds all of them: `analyst` AND `region__eu` at once. An entry that is not a composite is a single role. Across a list's entries the rule is any one: a reader holds the grant if it holds any entry.
 
 **In a meta-role id.** `meta:analyst+engineer` is the server's identifier for the meta-role of the set {analyst, engineer}. Its rights are the union of both. A client never names the meta-role id directly; it names the roles it holds, and the server builds the meta-role.
 
@@ -161,7 +161,7 @@ An agent asks which role it acts as with the MCP tool `describe_role`. The answe
 
 An attribute-based policy asks: "can this user, with these attributes, see this column?" RBAC asks: "which roles can see this column?" Composite grants and derived roles make them the same question.
 
-"Unmask this email only for an analyst in the EU" is a mask entry `{to: [analyst+region__eu], mask: null}`. Any reader holding both the `analyst` role and the `region__eu` derived role reads the column unmasked. No policy language. No role per combination.
+"Unmask this email only for an analyst in the EU" is a mask entry `{to: [analyst+region__eu], mask: null}`. Any reader holding both the `analyst` role and the `region__eu` derived role reads the column unmasked, with no policy language and no role per combination.
 
 The trade-off is computation over enumeration. A small role catalogue keeps maintenance low, but "who can see this EU email?" becomes a computed answer: composite entries are evaluated against each user's assignments and claims. Provisa can answer that in both directions because the model is one definition. The column editor's Check access (`POST /admin/masks/check`) runs that evaluation for a chosen set of roles.
 
@@ -280,7 +280,7 @@ In this example:
 
 A registered mutation (remote GraphQL, OpenAPI, gRPC, Hasura) passes two checks. The role must hold the global `write` capability, and the command must be assigned to it by `visible_to`; an empty list assigns it to every role. A command has no `writable_by` list, and the configuration refuses one by name.
 
-Whether something is a write is decided by its contract, not by what the caller says. A `SELECT` that calls a mutation-kind function is treated as a write and goes through the same two checks, so you can't run a mutation by dressing it up as a read. Marking a mutation read-safe takes the `access_config` capability and is recorded as a governance decision. No request can opt out.
+Whether something is a write is decided by its contract, not by what the caller says. A `SELECT` that calls a mutation-kind function is treated as a write and goes through the same two checks, so you can't run a mutation by disguising it as a read. Marking a mutation read-safe takes the `access_config` capability and is recorded as a governance decision. No request can opt out.
 
 ## Schema Visibility
 
@@ -317,7 +317,7 @@ A rule only narrows. The role's R or RW on the model is the ceiling, and RW incl
 
 Semantic objects are models too. The model tables of the meta domain and the ontology domain's `_terms` take `U` and `D` rules, and the model store applies them to every write of one, whatever route it came by: GraphQL, REST or MCP. The write is refused by name when a row it touches is outside the rule, and it writes nothing. A contract belongs to its product, so saving one is held to the rule on `data_products`. A rule's columns are the model's, and a column only its `*_meta` or `*_ontology` view holds is read from the view. Only a person is narrowed: a config load, a rebuild, a deployment and the scheduler have no acting person, and no rule holds them.
 
-A data product is edited by an org admin, who holds `data_product_rw` with no `U` or `D` rule, or by its owner. Nobody writes a rule to own a product. Naming a role in a product's Owner field gives that role `data_product_rw` with `U` and `D` rules reading `owner_role IN (current_setting('provisa.acting_roles'))`, and a child of the role takes the same. These are worked out from the Owner fields, not stored, so Security doesn't show or edit them and the Owner field is how they change. A role that owns no product any more holds no grant. That's the default, not a limit: an org admin can give a role of its own `data_product_rw` with no rules, or with a rule on `domain_id`. A role holding `data_product_rw` that way keeps its grant and its own rules when it's named as an owner.
+A data product is edited by an org admin, who holds `data_product_rw` with no `U` or `D` rule, or by its owner. Nobody writes a rule to own a product. Naming a role in a product's Owner field gives that role `data_product_rw` with `U` and `D` rules reading `owner_role IN (current_setting('provisa.acting_roles'))`, and a child of the role takes the same. These are worked out from the Owner fields, not stored, so Security doesn't show or edit them and the Owner field is how they change. A role that owns no product any more holds no grant. That's only the default. An org admin can give a role of its own `data_product_rw` with no rules, or with a rule on `domain_id`. A role holding `data_product_rw` that way keeps its grant and its own rules when it's named as an owner.
 
 A filter reads the request through `current_setting('provisa.<name>')`. The request binds `user_id` from the signed-in identity, `role` from the acting role, `acting_roles` with the roles it acts as, and every scalar claim in the token, lower-cased with dashes turned into underscores. `provisa.user_id` is always the signed-in identity, and no claim can replace it.
 
@@ -349,7 +349,7 @@ The mask expression is pushed into the SQL SELECT projection. The database retur
 
 **An entry no reader can reach is refused.** A save of a mask list holding one is refused with `You have defined a mask that is not reachable: ` followed by the unreachable entries, each named by its roles. This holds for the admin UI, the admin API and a config load.
 
-**Deny by order.** An earlier entry wins even when the reader also holds a later, more permissive one. To ensure contractors always see a masked salary regardless of their other roles, put the contractor entry before the unmasked entry. A granted role never loses what its parent grants through inheritance, but a mask entry placed earlier in the list applies first. That is how restriction works here.
+**Deny by order.** An earlier entry wins even when the reader also holds a later, more permissive one. To ensure contractors always see a masked salary regardless of their other roles, put the contractor entry before the unmasked entry. A granted role never loses what its parent grants through inheritance, but a mask entry placed earlier in the list applies first.
 
 **Meta-roles.** A meta-role's chain includes every member's roles, their ancestors, and any named derived roles. An entry granted to any member reaches the meta-role. An entry before it, held by another member, still applies first.
 
@@ -377,7 +377,7 @@ Three rules apply, in the same order as for a table:
 - **Column visibility.** A contract column that declares `visible_to` is dropped for any role the list leaves out. A column that declares none is part of the action's public shape and stays.
 - **Masks.** A contract column carries `masks`, the same ordered list a table column carries.
 
-Role inheritance resolves the chain for all three. If a response returns a column outside its declared contract, the call fails with a 502 rather than passing it through ungoverned. An action that declares no columns returns a scalar, which has nothing to bind, and comes back as it is. The admin test-invoke reports which filters, exclusions and masks applied, and the governed statement goes to the query audit log.
+Role inheritance resolves the chain for all three. If a response returns a column outside its declared contract, the call fails with a 502, so nothing passes through ungoverned. An action that declares no columns returns a scalar, which has nothing to bind, and comes back as it is. The admin test-invoke reports which filters, exclusions and masks applied, and the governed statement goes to the query audit log.
 
 ## Sampling
 
@@ -385,7 +385,7 @@ Every role gets a sample of the results, 100 rows by default, unless it holds th
 
 ## Audit Logging
 
-Every query that touches a domain asset is written to `query_audit_log`. The log belongs to the org, not the platform: the platform's own registry of orgs, users and invitations holds no audit records. Each org's log is a table in that org's schema, in the store the org names for its record in each region it selects. An org that declares no regions keeps it in the deployment's control-plane database, beside its model.
+Every query that touches a domain asset is written to `query_audit_log`. The log belongs to the org. The platform's own registry of orgs, users and invitations holds no audit records. Each org's log is a table in that org's schema, in the store the org names for its record in each region it selects. An org that declares no regions keeps it in the deployment's control-plane database, beside its model.
 
 A row records `tenant_id` (the org), `user_id`, `role_id`, a SHA-256 hash of the query text, the query text itself (encrypted), `table_ids` and `table_names`, `source`, `status_code`, `duration_ms`, the route and row count, what was enforced on the statement, and `logged_at`. The text is encrypted with the org's key if the org has set one, and with the deployment's key otherwise. A deployment with no encryption provider stores it unencrypted. Either way it never appears in the queryable ops tables, and it's decrypted only for authorized admin reads.
 
@@ -423,7 +423,7 @@ A federated source keeps its own logs, which Provisa does not write and cannot r
 
 ## Statistics over MCP
 
-The MCP statistics tools (`describe`, `correlate`, `regress`, `compare`, `forecast`) run the SQL an agent defines through the governed pipeline as the agent's role, so row rules, masks and redaction apply to what they analyze. Stats tools return only results, so the rows behind an analysis never enter the model's context: data minimization by default.
+The MCP statistics tools (`describe`, `correlate`, `regress`, `compare`, `forecast`) run the SQL an agent defines through the governed pipeline as the agent's role, so row rules, masks and redaction apply to what they analyze. Stats tools return only results, so the rows behind an analysis never enter the model's context. That is data minimization by default.
 
 Access control is what limits what an agent can learn. To keep identities out of an agent's reach, grant its role only the columns that identify no one; a role that can read a column can aggregate it, and aggregates over small groups can still identify individuals.
 
@@ -447,7 +447,7 @@ The review runs every hour for each organization, at the end of each profile run
 | Undecided | a sensitive column has no fake, or a column was added to a table that has a sensitive tag or a fake |
 | Worth a look | a source credential is stored as a value, not a reference; a Test environment's source reads prod's connection; no authentication is configured; the bootstrap administrator is unclaimed; a listener serves without TLS; a role or source reaches every domain; an expired tag assignment is still in force |
 
-The last category is observed, not enforced: nothing in the review refuses anything. `GET /admin/judgments/findings` lists the open findings a caller may see; a finding on a sensitive column needs `sensitive_data`, and any other needs `view_governance`. *Reaffirm* (`POST /admin/judgments/findings/{id}/reaffirm`) records the judgment again with today's evidence and needs the right that edits the decision. A posture finding is dismissed with a note (`.../dismiss`, `access_config`). A finding the review no longer sees is cleared. For audit evidence, the `judgment_review` view in the ops domain joins every finding to its judgment's why and is queried under role and domain access.
+The last category is only observed. Nothing in the review refuses anything. `GET /admin/judgments/findings` lists the open findings a caller may see; a finding on a sensitive column needs `sensitive_data`, and any other needs `view_governance`. *Reaffirm* (`POST /admin/judgments/findings/{id}/reaffirm`) records the judgment again with today's evidence and needs the right that edits the decision. A posture finding is dismissed with a note (`.../dismiss`, `access_config`). A finding the review no longer sees is cleared. For audit evidence, the `judgment_review` view in the ops domain joins every finding to its judgment's why and is queried under role and domain access.
 
 ## Rate Limiting
 
@@ -535,7 +535,7 @@ SCRAM needs an RFC 5802 verifier, which cannot be derived from a bcrypt hash. A 
 
 ### Mutual TLS
 
-Client-certificate verification moves the first check to the TLS handshake: a caller without a certificate signed by the deployment's CA never reaches the credential layer. It is available on pgwire, Bolt, gRPC and Arrow Flight: the four transports that terminate their own TLS.
+Client-certificate verification moves the first check to the TLS handshake, so a caller without a certificate signed by the deployment's CA never reaches the credential layer. It is available on pgwire, Bolt, gRPC and Arrow Flight, the four transports that terminate their own TLS.
 
 | Variable | Meaning |
 | ---------- | --------- |
@@ -551,7 +551,7 @@ Every listener Provisa terminates (the HTTP API and UI, pgwire, Bolt, MCP, gRPC 
 
 ### Login throttling
 
-Password guessing is protocol-independent: the same account can be hammered over HTTP, pgwire and Bolt. The counter therefore lives at the credential-validation layer, not on any one surface, so a lockout earned anywhere is enforced everywhere.
+Password guessing is protocol-independent, because the same account can be hammered over HTTP, pgwire and Bolt. The counter therefore lives at the credential-validation layer, so a lockout earned anywhere is enforced everywhere.
 
 It is on by default (five failures in five minutes locks the subject out for fifteen minutes) and is tuned under `auth.login_throttle`. A locked-out subject is refused before the credential is checked at all, and a successful authentication clears that subject's history.
 
@@ -656,7 +656,7 @@ The desktop and native tiers run PostgreSQL embedded. On macOS and Linux it list
 
 ### The federation engine (Trino)
 
-- **Between nodes.** A coordinator and its workers authenticate each other with the deployment's generated shared secret (`internal-communication.shared-secret`). Encrypting their traffic is an operator option, off by default: off, it stays inside the deployment's private network or cluster. Turn it on where a compliance or zero-trust requirement asks for encryption inside the deployment. Trino documents it as slowing shuffle-heavy queries (distributed joins, aggregations, window functions) by 10% to over 100%. On a compose deployment it is the setting `engine.trino_internal_tls` (Deployment settings → Engine), with the engine network and the coordinator's pinned address beside it, and it applies at the next start. Under the Helm chart it is the value `trino.internalTls`; the chart generates the CA and certificate the nodes use, keeps them across upgrades, and addresses each node by its pod DNS name. The hosted platform's engines are single-node coordinators, with no traffic between nodes, and refuse it.
+- **Between nodes.** A coordinator and its workers authenticate each other with the deployment's generated shared secret (`internal-communication.shared-secret`). Encrypting their traffic is an operator option, off by default. While it's off, that traffic stays inside the deployment's private network or cluster. Turn it on where a compliance or zero-trust requirement asks for encryption inside the deployment. Trino documents it as slowing shuffle-heavy queries (distributed joins, aggregations, window functions) by 10% to over 100%. On a compose deployment it is the setting `engine.trino_internal_tls` (Deployment settings → Engine), with the engine network and the coordinator's pinned address beside it, and it applies at the next start. Under the Helm chart it is the value `trino.internalTls`; the chart generates the CA and certificate the nodes use, keeps them across upgrades, and addresses each node by its pod DNS name. The hosted platform's engines are single-node coordinators, with no traffic between nodes, and refuse it.
 - **Spooled data.** Fault-tolerant execution encrypts the exchange data it spools with a key generated for each query and discarded when it ends (`fault-tolerant-execution.exchange-encryption-enabled=true`, set explicitly). Legacy spill to disk is not used.
 - **Organizations on one engine.** Each organization's catalogs are its own, named for the organization, and each organization's statements run in its own resource group.
 - **Catalogs, and the credentials in them, live only in the engine's memory.** Provisa creates every Trino catalog at runtime, and each holds its source's connection properties, passwords included. Every engine Provisa runs keeps them in memory (`catalog.store=memory`): no catalog is written to the engine's disk, and none is mounted from a file. A coordinator that restarts comes back with no catalogs; each Provisa process notices on its next query, and the engine watcher within a minute, and recreates the catalogs it serves. A Kafka source with SASL credentials needs one file: Trino's Kafka connector reads its client settings only from a file, so Provisa writes them, password included, to `kafka-client/<catalog>.properties`. The file is readable by Trino alone. Where Provisa runs as root, as in the container stack, it is Trino's user's (mode 0600 in a 0700 directory). Where Provisa runs as another user beside Trino's container, as a native install does, it is given to Trino's group instead (mode 0640 in a 0750 directory): the group is `PROVISA_ENGINE_FILES_GID`, 1000 by default, Provisa's user must be a member of it, and a write by a user outside it is refused by name. A code host's client key is written the same way, and its certificates, which are public, are readable by anyone (mode 0644). In the container stack the directory is a memory-backed volume the API and the engine share. On the hosted platform's engines it is the engine's own Kubernetes Secret, held in the node's memory and readable by Trino's group alone (mode 0440). Either way the file never reaches a disk. On the hosted engines a Kafka source must name a schema registry: one whose topics' columns only the model declares is refused by name when it is saved or applied, since its table descriptions would need a directory the running engine cannot be given. Starting the stack removes the catalog and Kafka client files earlier releases left on disk.
@@ -683,7 +683,7 @@ On a self-hosted deployment, which typically runs one organization on its own en
 
 ### Shared and dedicated hosted platforms
 
-The shared hosted platform isolates organizations logically. One deployment serves them all, and each organization's data stays its own through governance, its own schemas, catalogs and resource groups on the engine, its own keys, per-query keys for spooled engine data, and the refusal of its sources at the platform's private addresses. It is recommended for experimentation and small businesses. A dedicated hosted platform is physically separated: its own machines, network and stores, serving one customer. For highly sensitive or regulated workloads, self-host Provisa inside your own boundary, where your own operators hold every key and every host. The hosted platforms do not carry a SOC 2 report. If you require SOC 2, we recommend self-hosting.
+The shared hosted platform isolates organizations logically. One deployment serves them all, and each organization's data stays its own through governance, its own schemas, catalogs and resource groups on the engine, its own keys, per-query keys for spooled engine data, and the refusal of its sources at the platform's private addresses. It is recommended for experimentation and small businesses. A dedicated hosted platform is physically separated, with its own machines, network and stores serving one customer. For highly sensitive or regulated workloads, self-host Provisa inside your own boundary, where your own operators hold every key and every host. The hosted platforms do not carry a SOC 2 report. If you require SOC 2, we recommend self-hosting.
 
 ### Python in the browser
 
@@ -705,7 +705,7 @@ Explore's Python and Notebook tabs run Python in the visitor's browser. Every re
 
 ## ABAC Approval Hook
 
-An optional external policy hook that fires before query execution. When configured, Provisa calls out to your policy engine with the user identity, roles, tables, columns, and operation. The response determines whether the query proceeds. A command registered with **Requires approval** is put to the same hook before each call; see [Command calls](#command-calls).
+This optional external policy hook fires before query execution. When configured, Provisa calls out to your policy engine with the user identity, roles, tables, columns, and operation. The response determines whether the query proceeds. A command registered with **Requires approval** is put to the same hook before each call; see [Command calls](#command-calls).
 
 ### Scoping
 
@@ -751,7 +751,7 @@ message ApprovalResponse {
 }
 ```
 
-The gRPC channel is persistent: one channel per Provisa instance, reused across all calls to that hook endpoint.
+The gRPC channel is persistent, with one channel per Provisa instance reused across all calls to that hook endpoint.
 
 ### Request / Response
 

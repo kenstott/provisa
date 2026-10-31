@@ -1,6 +1,6 @@
 # DRY-Cross plan — `provisa/federation` runtime family
 
-**Scope:** `provisa/federation` (25 modules, 4626 LOC).
+**Scope.** `provisa/federation` (25 modules, 4626 LOC).
 **Verdict:** one real cross-file duplication cluster — the four `*FederationRuntime`
 classes. Backend family (`*_backend.py`) is already correctly factored; no action.
 **Mechanism:** shared **free-function helpers** (+ one optional behavioral mixin) —
@@ -34,7 +34,7 @@ Four standalone classes conform to the same runtime protocol but share **no base
 ## Base/concrete trigger analysis (why NOT a base class)
 
 - **Count:** 4 concretes → count trigger satisfied.
-- **State + lifecycle:** FAILS. Each holds a different connection object
+- **State + lifecycle.** FAILS. Each holds a different connection object
   (SA raw_connection, psycopg2 conn, duckdb conn, `_CHBackend`), different
   constructor signatures, no shared instance fields.
 - **Varying axes diverge:** attach model (in-place FDW vs LAND vs self-only no-op),

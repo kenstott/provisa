@@ -891,7 +891,7 @@ Register any HTTP endpoint as a queryable table.
 
 API responses are fetched, cached in PostgreSQL (configurable TTL), and exposed as GraphQL types. Cached tables participate in federated queries like any other source.
 
-**JSONB rules**: Complex columns (objects, arrays) stored as JSONB are not filterable. Sub-field access uses `->>` extraction in SQL. Relationships are declared between tables using scalar FK columns. JSONB blob columns are not join targets. Use JSONB promotion to convert nested fields into native scalar columns when filtering or joining on them is needed.
+**JSONB rules.** Complex columns (objects, arrays) stored as JSONB are not filterable. Sub-field access uses `->>` extraction in SQL. Relationships are declared between tables using scalar FK columns. JSONB blob columns are not join targets. Use JSONB promotion to convert nested fields into native scalar columns when filtering or joining on them is needed.
 
 #### GitHub and GitLab
 

@@ -109,7 +109,7 @@ wheel to the base's PG major. Bundled native deps (libsqlite3, Arrow, DuckDB) mu
   `SQLITE_INCLUDE=/prefix/include SQLITE_LIB=/prefix/lib`.
 - Read/write (INSERT/UPDATE/DELETE, TRUNCATE→DELETE); pushdown of WHERE, ORDER BY, aggregates,
   GROUP BY/HAVING, JOIN, LIMIT/OFFSET; IMPORT FOREIGN SCHEMA supported; `force_readonly` (v2.5.0).
-- **Gotcha:** SQLite type affinity. Mismatched column types silently return wrong results.
+- **Gotcha.** SQLite type affinity. Mismatched column types silently return wrong results.
   Use the `column_type` option (e.g. epoch timestamps as `INT`, UUID as TEXT/BLOB). Numeric
   limited to SQLite ~15-digit float precision; NaN read as NULL.
 

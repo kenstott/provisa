@@ -8,7 +8,7 @@ You make a view bitemporal by mapping three of its columns:
 - **Valid time**: the column holding the date your business gives the record, such as when it was agreed, booked or took effect.
 - **Recorded time**: the column holding when this version was entered or changed, such as `updated_at`.
 
-Recorded time, called transaction time in the temporal-database literature and system time in SQL:2011; valid time, called application time in SQL:2011 or effective date.
+Recorded time is called transaction time in the temporal-database literature and system time in SQL:2011. Valid time is called application time in SQL:2011, or effective date.
 
 The three values map columns your source already has. Provisa decides how the versions are kept; there is no storage mode to choose.
 

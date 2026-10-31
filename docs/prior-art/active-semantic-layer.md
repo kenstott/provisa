@@ -2,8 +2,8 @@
 
 **Author:** Kenneth Stott
 **First published:** 2026-08-17
-**Status:** Public technical disclosure. Published to establish prior art.
-**Scope:** Design disclosure. A reference implementation exists, but nothing here depends on it —
+**Status.** Public technical disclosure. Published to establish prior art.
+**Scope.** Design disclosure. A reference implementation exists, but nothing here depends on it —
 each mechanism is described so that a person skilled in query compilation and distributed data
 systems can implement it from this document alone.
 

@@ -14,7 +14,7 @@ Subscriptions target a **registered table**:
 
 ### PostgreSQL trigger auto-installation
 
-Provisa automatically installs `AFTER INSERT OR UPDATE OR DELETE` triggers on all **pre-approved** PostgreSQL tables at startup. These triggers call `pg_notify('provisa_{table}', ...)` so that raw DML (not just Provisa mutations) is picked up by subscriptions.
+Provisa automatically installs `AFTER INSERT OR UPDATE OR DELETE` triggers on all **pre-approved** PostgreSQL tables at startup. These triggers call `pg_notify('provisa_{table}', ...)` so that subscriptions pick up raw DML as well as Provisa mutations.
 
 If trigger installation fails (e.g. insufficient privilege, because the database role must own the table), Provisa falls back to watermark polling for that table, provided a `watermark_column` is configured. A warning is logged.
 
@@ -67,7 +67,7 @@ Delivery is selected by `live.strategy` on the table config:
 
 ### LISTEN/NOTIFY
 
-Provisa issues `LISTEN <channel>` on a persistent PG connection. Provisa mutations fire `NOTIFY` automatically. External writers must call `NOTIFY <channel>, '<payload>'` after writes. No additional infrastructure required.
+Provisa issues `LISTEN <channel>` on a persistent PG connection. Provisa mutations fire `NOTIFY` automatically. External writers must call `NOTIFY <channel>, '<payload>'` after writes. This needs no additional infrastructure.
 
 ### Polling
 
@@ -89,7 +89,7 @@ tables:
 
 ### Debezium CDC
 
-Requires a running Debezium connector writing to Kafka. Provisa consumes the Kafka topic and forwards change events to connected SSE clients.
+This needs a running Debezium connector writing to Kafka. Provisa consumes the Kafka topic and forwards change events to connected SSE clients.
 
 CDC transport is configured once per source in a `cdc` block; topics are derived as `{topic_prefix}.{schema}.{table}` and never repeated per table. Each table then selects `strategy: debezium`:
 
