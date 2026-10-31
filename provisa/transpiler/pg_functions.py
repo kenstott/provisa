@@ -30,7 +30,7 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.errors import ParseError
 
-from provisa.transpiler import function_macros, pg_xml
+from provisa.transpiler import function_macros, pg_forms_json, pg_xml
 from provisa.transpiler.pg_literals import postgres_literals
 
 _REGEXP_MATCHES = "provisa_regexp_matches"
@@ -74,6 +74,8 @@ _CALLED = re.compile(
                 *_SIZED_CALLS,
                 *(n for n, _ in _UDF_CALLS),
                 *(n for n, _, _ in function_macros.OVERLOADS),
+                *pg_forms_json.CALLS,
+                *pg_forms_json.TABLE_FUNCTIONS,
             }
         )
     )
@@ -512,6 +514,9 @@ def _call(node: exp.Expr) -> exp.Expr:
     xml = pg_xml.rewritten(node, _sql)
     if xml is not None:
         return xml
+    if isinstance(node, exp.Table):
+        table = pg_forms_json.table_form(node, _sql)
+        return node if table is None else table
     named = _named(node)
     if named is None:
         return node
@@ -527,7 +532,8 @@ def _call(node: exp.Expr) -> exp.Expr:
         written = f"{chosen}({', '.join(_sql(a) for a in args)})"
         return sqlglot.parse_one(written, read="postgres")
     written = (
-        _type_call(name, args)
+        pg_forms_json.call(name, args, _sql)
+        or _type_call(name, args)
         or _numeric_call(name, args)
         or _bytea_call(name, args)
         or _bit_call(name, args)
@@ -585,7 +591,7 @@ def readable(pg_sql: str) -> str:
 
 def typed_calls(pg_sql: str) -> str:
     """``pg_sql`` with each call of an overload DuckDB's function does not take rewritten."""
-    pg_sql = readable(pg_sql)
+    pg_sql = pg_forms_json.spelled(readable(pg_sql))
     if (
         _CALLED.search(pg_sql) is None
         and _SPECIAL_LITERAL.search(pg_sql) is None

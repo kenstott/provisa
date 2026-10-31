@@ -44,7 +44,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import raising
-from provisa.transpiler import pg_forms
+from provisa.transpiler import pg_forms, pg_forms_json
 
 NATIVE = frozenset({"postgres"})
 """The dialects that have every function of the table themselves."""
@@ -813,6 +813,7 @@ _ROWS: tuple[Macro, ...] = (
     *_XML,
     *_MONEY,
     *VALUE_FUNCTIONS_OF_THE_SERVER,
+    *(_macro(name, params, form) for name, params, form in pg_forms_json.ROWS),
 )
 
 #: A call's name and argument count -> its overload: the one table.
@@ -844,7 +845,7 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
     },
 }
 #: An overload's row -> the function a statement called, which names its column.
-_CALLED = {row: name for (name, _, _), row in OVERLOADS.items()}
+_CALLED = {row: name for (name, _, _), row in OVERLOADS.items()} | pg_forms_json.CALLED
 _NAMES = frozenset(name for name, _ in MACROS) | {name for name, _, _ in OVERLOADS}
 _MENTIONED = re.compile(r"\b(" + "|".join(sorted(_NAMES)) + r")\"?\s*\(", re.IGNORECASE)
 #: The names provisa.pgwire.catalog answers where a statement reads no table.
