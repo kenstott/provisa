@@ -91480,7 +91480,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     to the domain''s data product owners and data stewards, with an email notification. A steward builds
     a product from it, adds the table to an existing product, or declines with a reason; the suggester sees
     the outcome. Suggestions are counted per table, so a domain sees which listed tables are most wanted.
-    Listed means "it exists, ask us"; a product means "we commit to this".'
+    Listed means "it exists, ask us"; a product means "we commit to this". (Amended 2026-10-29, A REQUEST
+    NAMES ROLES AND COLUMNS:) Maintainer 2026-10-31: a person who sees a listed column asks for it directly:
+    an access request names a list of roles and a set of columns, for example from the listed metadata,
+    and needs no data product. Approval writes ordinary grants for those roles on those columns (REQ-2154),
+    so what was granted is visible as any grant is. A product request is the same request with the product''s
+    member columns.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
