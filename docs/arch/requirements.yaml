@@ -90451,7 +90451,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     refuses for its context, each proved against PostgreSQL; a function refused only for this server''s
     state or configuration (standby, wal_level) stays failed, about 558 in all. Index functions holds index
     support and maintenance functions that are not general: a hash function a client calls directly stays
-    failed. This corrects the 571 of THE GOAL IS 571.'
+    failed. This corrects the 571 of THE GOAL IS 571. (Amended 2026-10-29, WHAT GUARANTEED MEANS:) Maintainer
+    2026-10-31: a function whose value cannot be compared (volatile, or session) is validated by its return
+    type and, where it is a string, its canonical form, against PostgreSQL''s own output. The guaranteed
+    list holds functions with answers compared or form checked on every engine; a function only called is
+    reported as called only.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails

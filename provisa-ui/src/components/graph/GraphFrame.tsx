@@ -49,14 +49,15 @@ import type { CanvasHighlight } from "./canvas/canvas-types";
 import { GraphStatsPanel } from "./GraphStatsModal";
 import { Inspector } from "./Inspector";
 import { TableView, JsonCopyButton } from "./TableView";
-import { useLocalStorage, type GraphLanguage } from "./graph-persistence";
+import { settingKey, useLocalStorage, type GraphLanguage } from "./graph-persistence";
 import { useOverlayNavigation } from "./frame/use-overlay-navigation";
 import { useFrameDerivedData } from "./frame/use-frame-derived-data";
 import { frameMetaText } from "./frame/frame-meta";
 import { useAutoImpute } from "./frame/use-auto-impute";
 import { useSparqlExpansion } from "./frame/use-sparql-expansion";
 import { useSparqlNodeProperties } from "./frame/use-sparql-node-properties";
-import { groupableAttributes } from "./frame/frame-meta";
+import { useSparqlStyledProperties } from "./frame/use-sparql-styled-properties";
+import { groupOptions, type ClassProperties } from "./frame/frame-meta";
 import {
   GraphViewIcon,
   TableViewIcon,
@@ -125,6 +126,10 @@ interface GraphFrameProps {
   onExpandResource?: (frameId: string, iri: string, toggle: boolean) => void;
   /** Ask the model, once, for the properties of a SPARQL node that was selected and holds none. */
   onDescribeResource?: (frameId: string, iri: string) => void;
+  /** Ask the model, once each, for the properties of SPARQL nodes a caption or a size reads. */
+  onDescribeResources?: (frameId: string, iris: string[]) => void;
+  /** What each SPARQL class has, by its nodes' label: offered to group by before they are read. */
+  classProperties?: Record<string, ClassProperties>;
 }
 
 export function GraphFrame({
@@ -159,6 +164,8 @@ export function GraphFrame({
   sparqlPrefixes,
   onExpandResource,
   onDescribeResource,
+  onDescribeResources,
+  classProperties,
 }: GraphFrameProps) {
   const { t } = useTranslation();
   const sparqlDraw = useSparqlDraw(answered, sparqlPrefixes);
@@ -230,7 +237,10 @@ export function GraphFrame({
     "none",
   );
   const canvasView = useRequestedView(requestedView, setClusterLevel);
-  const [tableWrap, setTableWrap] = useState(false);
+  const [tableWrap, setTableWrap] = useLocalStorage<boolean>(
+    settingKey(language, "tableWrap"),
+    false,
+  );
   const [tableColWidths, setTableColWidths] = useColumnWidths(frame.columns);
   const canvasCyRef = useRef<CyInstance | null>(null);
   const canvasHullSvgRef = useRef<SVGSVGElement | null>(null);
@@ -339,11 +349,25 @@ export function GraphFrame({
     selected,
     onDescribeResource,
   );
+  useSparqlStyledProperties(
+    frame.id,
+    frame.sparqlDescribed,
+    augmentedNodes,
+    labelProperty,
+    sizeByProperty,
+    onDescribeResources,
+    clusterLevel,
+    classProperties,
+  );
   const { expandedNodes, expandNode } = useSparqlExpansion(frame, augmentedNodes, onExpandResource);
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
 
-  const groupableAttrs = useMemo(() => groupableAttributes(augmentedNodes), [augmentedNodes]);
+  const groups = useMemo(
+    () => groupOptions(augmentedNodes, classProperties),
+    [augmentedNodes, classProperties],
+  );
+  const groupableAttrs = useMemo(() => groups.map((g) => g.value), [groups]);
   const activeView: "graph" | "table" | "json" | "graphstats" | "code" = hasGraph
     ? view
     : view === "json"
@@ -568,7 +592,7 @@ export function GraphFrame({
                 placeholder={t("graphFrame.groupPlaceholder")}
                 value={groupableAttrs.includes(clusterLevel) ? clusterLevel : null}
                 onChange={(val) => setClusterLevel((val ?? "none") as ClusterLevel)}
-                data={groupableAttrs.map((a) => ({ value: a, label: a }))}
+                data={groups}
                 clearable
                 comboboxProps={{ withinPortal: true }}
                 data-testid="graph-frame-group-select"

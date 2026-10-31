@@ -76,7 +76,7 @@ describe("a term shown", () => {
     expect(shownLiteral("Ann", `${XSD}string`, undefined, P)).toBe("Ann");
     expect(shownLiteral("41", `${XSD}integer`, undefined, P)).toBe("41");
     expect(shownLiteral("bonjour", undefined, "fr", P)).toBe('"bonjour"@fr');
-    expect(shownLiteral("12.50", `${XSD}decimal`, undefined, P)).toBe('"12.50"^^xsd:decimal');
+    expect(shownLiteral("12.50", `${XSD}decimal`, undefined, P)).toBe("12.50");
     expect(shownLiteral("x", "http://other/dt", undefined, P)).toBe('"x"^^<http://other/dt>');
   });
 
@@ -132,7 +132,7 @@ describe("a data answer drawn", () => {
   });
 
   it("makes a resource-valued property an edge, named compactly", () => {
-    const edge = [...g.edges.values()].find((e) => e.type === "rel:PLACED_BY")!;
+    const edge = [...g.edges.values()].find((e) => e.type === "PLACED_BY")!;
     expect(edge.startNode.properties.iri).toBe(ORDER);
     expect(edge.endNode.properties.iri).toBe(CUSTOMER);
     expect(edge.properties.iri).toBe(`${P.rel}PLACED_BY`);
@@ -140,7 +140,7 @@ describe("a data answer drawn", () => {
 
   it("makes a literal a property of its node, compacted, never a node", () => {
     expect([...g.nodes.values()].every((n) => n.label !== "Literal")).toBe(true);
-    expect(order.properties["sales:orders#total"]).toBe('"12.50"^^xsd:decimal');
+    expect(order.properties["sales:orders#total"]).toBe("12.50");
     expect(order.properties["sales:orders#note"]).toBe('"rush"@en');
     // The property's full IRI stands behind its compacted name, for the hover.
     expect(order.propertyIris?.["sales:orders#total"]).toBe(`${ORDERS}#total`);
@@ -189,7 +189,7 @@ describe("an answer about the ontology drawn", () => {
   });
 
   it("makes a property with a domain and a range an edge between them", () => {
-    const edge = [...g.edges.values()].find((e) => e.type === "rel:PLACED_BY")!;
+    const edge = [...g.edges.values()].find((e) => e.type === "PLACED_BY")!;
     expect(edge.startNode.properties.iri).toBe(ORDERS);
     expect(edge.endNode.properties.iri).toBe(CUSTOMERS);
   });

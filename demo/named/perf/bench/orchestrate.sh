@@ -283,6 +283,19 @@ stop_steal_logging() {
   fi
 }
 
+# A saturation ramp is meant to reach the breaking point. There, failed expectations make Artillery
+# exit 21 with its report written, which is a result and must not end the sweep under set -e.
+run_artillery_ramp() {
+  local report="$1" script="$2" code=0
+  ( cd "$SCRIPT_DIR" && PROVISA_HTTP_BASE_URL="$HTTP_BASE_URL" \
+      npx --yes artillery@2.0.21 run --output "$report" "$script" ) || code=$?
+  if [ "$code" -eq 21 ]; then
+    echo "$script: failed expectations (exit 21), see $report"
+    return 0
+  fi
+  return "$code"
+}
+
 # set -e means a failure in any step below (run_benchmark.py, artillery) aborts the script
 # immediately, before the explicit stop_provisa call at the bottom of the loop would run — this
 # trap guarantees Provisa still gets stopped (not left orphaned in the background) no matter how
@@ -325,9 +338,7 @@ for engine in "${ENGINES[@]}"; do
       --http-base-url "$HTTP_BASE_URL" )
 
   echo "Running Artillery saturation test..."
-  ( cd "$SCRIPT_DIR" && PROVISA_HTTP_BASE_URL="$HTTP_BASE_URL" \
-      npx --yes artillery@2.0.21 run --output "results/$engine/artillery-saturation.json" \
-      artillery-concurrency-ramp.yml )
+  run_artillery_ramp "results/$engine/artillery-saturation.json" artillery-concurrency-ramp.yml
 
   stop_steal_logging
 
@@ -374,9 +385,7 @@ if [ "${OPTIMISTIC:-1}" = "1" ]; then
   done
   mkdir -p "$SCRIPT_DIR/results/optimistic"
   start_steal_logging "$SCRIPT_DIR/results/optimistic"
-  ( cd "$SCRIPT_DIR" && PROVISA_HTTP_BASE_URL="$HTTP_BASE_URL" \
-      npx --yes artillery@2.0.21 run --output "results/optimistic/artillery-optimistic-tx.json" \
-      artillery-optimistic-tx.yml )
+  run_artillery_ramp "results/optimistic/artillery-optimistic-tx.json" artillery-optimistic-tx.yml
   # The same most-optimistic request on EVERY transport (queries.OPTIMISTIC), closed-loop from
   # several client processes: results/optimistic/<transport>.json, one summary line per transport
   # here, and the server CPU per request at concurrency 1 — the per-transport overhead ranking.
