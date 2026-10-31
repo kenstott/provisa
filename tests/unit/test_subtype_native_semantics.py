@@ -115,7 +115,6 @@ def test_a_spatial_predicate_gives_the_column_and_its_wkt_the_native_type():
     ("where", "order", "dialect", "subtype", "operation"),
     [
         ("h.ip = '10.0.0.1'", "", "clickhouse", "inet", "="),
-        ("TRUE", " ORDER BY h.span", "duckdb", "int4range", "ORDER BY"),
         ("ST_Contains(h.area, 'POINT(1 1)')", "", "clickhouse", "geometry", "ST_CONTAINS"),
         ("h.words @@ to_tsquery('a')", "", "duckdb", "tsvector", "@@"),
     ],
@@ -127,6 +126,14 @@ def test_an_operation_the_dialect_cannot_answer_natively_is_refused_by_name(
         transpile(_marked(where, order), dialect)
     assert refused.value.code == "query.subtype_operation_unsupported"
     assert refused.value.params == {"subtype": subtype, "operation": operation, "dialect": dialect}
+
+
+def test_a_range_is_refused_on_no_dialect():
+    """REQ-2171, RANGES ARE EMULATED ON EVERY ENGINE; tests/unit/test_pg_ranges.py proves the
+    emulation."""
+    for dialect in ("duckdb", "trino", "clickhouse", "tsql", "mysql", "bigquery"):
+        written = transpile(_marked("TRUE", " ORDER BY h.span"), dialect)
+        assert "nullif(h.span, 'empty')" in written.lower()
 
 
 # --- each emulation answers as the native type does ----------------------------------------------
@@ -279,29 +286,42 @@ def _landing_table(*columns):
     )
 
 
-_HOSTS_TABLE = (("id", "integer", None), ("ip", "text", "inet"), ("span", "text", "int4range"))
+_HOSTS_TABLE = (("id", "integer", None), ("ip", "text", "inet"), ("area", "text", "geography"))
 
 
 def test_a_column_no_reader_can_land_in_its_own_form_is_left_out_and_named():
     from provisa.federation.data_replicator import COLUMN_NOT_LANDED, not_landed_notes
     from provisa.federation.residency import resolve_landing_args
 
-    # A PostgreSQL source on the DuckDB engine: the engine has a form for inet, not for a range.
+    # A PostgreSQL source on the DuckDB engine: the engine has a form for inet, not for geography.
     args = resolve_landing_args(
         _landing_source("postgres"), _landing_table(*_HOSTS_TABLE), platform="duckdb"
     )
     assert args.columns == [("id", "integer"), ("ip", "text")]
-    assert args.not_landed == (("span", "int4range", "duckdb"),)
+    assert args.not_landed == (("area", "geography", "duckdb"),)
     (note,) = not_landed_notes(args.not_landed)
     assert (note.code, note.params) == (
         COLUMN_NOT_LANDED,
-        {"column": "span", "subtype": "int4range", "reader": "duckdb"},
+        {"column": "area", "subtype": "geography", "reader": "duckdb"},
     )
     # On the PostgreSQL engine every reader has a form: every column lands.
     whole = resolve_landing_args(
         _landing_source("postgres"), _landing_table(*_HOSTS_TABLE), platform="postgres"
     )
-    assert [n for n, _ in whole.columns] == ["id", "ip", "span"] and whole.not_landed == ()
+    assert [n for n, _ in whole.columns] == ["id", "ip", "area"] and whole.not_landed == ()
+
+
+@pytest.mark.parametrize(
+    "subtype", ["int4range", "tstzrange", "daterange", "int4multirange", "datemultirange"]
+)
+def test_a_range_column_lands_on_the_duckdb_engine_as_its_text(subtype):
+    from provisa.federation.residency import resolve_landing_args
+    from provisa.transpiler.native_json import source_projection
+
+    table = _landing_table(("id", "integer", None), ("span", "text", subtype))
+    args = resolve_landing_args(_landing_source("postgres"), table, platform="duckdb")
+    assert args.columns == [("id", "integer"), ("span", "text")] and args.not_landed == ()
+    assert source_projection(table.columns, "duckdb") == '"id", CAST("span" AS VARCHAR) AS "span"'
 
 
 def test_the_landing_reads_each_subtyped_column_in_its_own_form():
@@ -316,6 +336,10 @@ def test_the_landing_reads_each_subtyped_column_in_its_own_form():
     assert source_projection(table.columns, "postgres") == (
         '"id", CAST("ip" AS TEXT) AS "ip", ST_AsText("area") AS "area", '
         'CAST("span" AS TEXT) AS "span"'
+    )
+    assert source_projection(table.columns, "duckdb") == (
+        '"id", CAST("ip" AS VARCHAR) AS "ip", ST_AsText("area") AS "area", '
+        'CAST("span" AS VARCHAR) AS "span"'
     )
     # Never hex WKB as a geometry: a column left out is not read at all.
     assert source_projection(table.columns, "duckdb", frozenset({"span"})) == (

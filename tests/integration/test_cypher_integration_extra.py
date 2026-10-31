@@ -56,6 +56,9 @@ class _ResilientClient:
                 time.sleep(2 * (attempt + 1))
         raise last  # type: ignore[misc]
 
+    def delete(self, *args, **kwargs):
+        return self._inner.delete(*args, **kwargs)
+
 
 @pytest.fixture(scope="module")
 def client():
@@ -838,12 +841,18 @@ def test_req775_merge_returns_existing_node(client):
     # REQ-775
     Verify MERGE on existing node returns existing node with properties.
     """
-    resp = client.post(
-        "/data/cypher",
-        json={"query": "MERGE (n:TestNode {id: 999}) RETURN n"},
-    )
-    assert resp.status_code == 400
-    # MERGE is a write operation and should be rejected
+    statement = {"query": "MERGE (n:TestNode {id: 999}) RETURN n"}
+    try:
+        made = client.post("/data/cypher", json=statement)
+        assert made.status_code == 200, made.text
+        assert made.json()["counters"]["nodes-created"] == 1
+        # REQ-2176: the graph session keeps it, so the second MERGE matches what the first made.
+        again = client.post("/data/cypher", json=statement)
+        assert again.status_code == 200, again.text
+        assert "nodes-created" not in again.json()["counters"]
+        assert again.json()["rows"] == made.json()["rows"]
+    finally:
+        assert client.delete("/data/cypher/session").status_code == 200
 
 
 # REQ-776: Cypher OPTIONAL MATCH chains → LEFT JOIN

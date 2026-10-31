@@ -31,6 +31,7 @@ from typing import Any
 from dateutil.relativedelta import relativedelta
 
 from provisa.core.native_types import PG_CHARACTER_TYPES, NativeType, parse_native_type
+from provisa.core.pg_range import RANGE_TYPES
 
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import (
@@ -139,12 +140,16 @@ class Subtype:  # REQ-2171
 # REQ-2171: the subtypes, each declared once: one per distinct PostgreSQL type the IR's base
 # types would hide. A subtype's name is its PostgreSQL type name; its values are held in
 # PostgreSQL's own text form on a text base.
-_RANGE = frozenset({"duckdb", "trino"})  # the dialects a range's bounds are emulated on
 _EVERY_DIALECT = frozenset({"*"})
 
 
 def _range(name: str, oid: int) -> Subtype:
-    return Subtype("text", oid, "range", {"postgres": name.upper()}, _RANGE)
+    """A range is emulated on every dialect (provisa.transpiler.pg_ranges)."""
+    return Subtype("text", oid, "range", {"postgres": name.upper()}, _EVERY_DIALECT)
+
+
+def _multirange(name: str, oid: int) -> Subtype:
+    return Subtype("text", oid, "multirange", {"postgres": name.upper()}, _EVERY_DIALECT)
 
 
 def _shape(name: str, oid: int) -> Subtype:
@@ -163,8 +168,10 @@ SUBTYPES: dict[str, Subtype] = {
     "xml": Subtype("text", 142),
     "oid": Subtype("bigint", 26),
     # Sized so every source's money is held exactly: PostgreSQL's (int64 cents, 17 integer
-    # digits) and SQL Server's (int64 ten-thousandths, 4 decimals).
-    "money": Subtype("numeric(21,4)", 790),
+    # digits) and SQL Server's (int64 ten-thousandths, 4 decimals). Its operators are computed
+    # on that base, in cents as PostgreSQL computes them, on every dialect but PostgreSQL's own
+    # (transpiler.pg_money).
+    "money": Subtype("numeric(21,4)", 790, "money", {"postgres": "MONEY"}, _EVERY_DIALECT),
     # PostgreSQL's built-in shapes.
     "point": _shape("point", 600),
     "line": _shape("line", 628),
@@ -203,6 +210,8 @@ SUBTYPES: dict[str, Subtype] = {
     "tsrange": _range("tsrange", 3908),
     "tstzrange": _range("tstzrange", 3910),
     "daterange": _range("daterange", 3912),
+    # The multirange types, in PostgreSQL's multirange text form ("{[1,3),[5,7)}").
+    **{r.multirange: _multirange(r.multirange, r.multirange_oid) for r in RANGE_TYPES.values()},
     # Bit strings, in PostgreSQL's text form ("0101"): ordered as text orders them.
     "bit": Subtype("text", 1560),
     "varbit": Subtype("text", 1562),
@@ -213,6 +222,12 @@ SUBTYPES: dict[str, Subtype] = {
 # subtype to its base, a PostGIS one through ST_AsText). Never a form other than the subtype's own
 # (no hex WKB for a geometry): a reader not named here cannot land the column.
 _LANDING: dict[str, dict[str, str]] = {
+    # A range or multirange reads as its PostgreSQL text.
+    **{
+        name: {"duckdb": "CAST({col} AS VARCHAR)", "trino": "CAST({col} AS VARCHAR)"}
+        for r in RANGE_TYPES.values()
+        for name in (r.name, r.multirange)
+    },
     "inet": {
         "duckdb": "CAST({col} AS VARCHAR)",
         "trino": "CAST({col} AS VARCHAR)",
@@ -592,7 +607,7 @@ def infinite_timestamp(sign: int, *, aware: bool) -> datetime:
     return value
 
 
-def infinity_of(value: object) -> int:
+def infinity_of(value: object) -> int:  # object-ok: any value a result row holds
     """1 for an infinite date or timestamp, -1 for a negatively infinite one, else 0."""
     return getattr(value, "pg_infinity", 0)
 

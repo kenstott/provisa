@@ -49,6 +49,10 @@ async def client():
         async with app.router.lifespan_context(app):
             transport = ASGITransport(app=app)
             async with AsyncClient(transport=transport, base_url="http://test") as c:
+                # REQ-2176: an earlier module's statements leave the principal's graph session
+                # holding objects, and a read of a session keeps its nodes' graph identities.
+                resp = await c.delete("/data/cypher/session")
+                assert resp.status_code == 200, resp.text
                 yield c
     finally:
         if _prev_config is None:
@@ -62,7 +66,7 @@ def _engine_catalogs() -> str:
     needs the control plane attached as provisa_admin (native_backend's registry walk)."""
     from provisa.api.app import state
 
-    backend = state.federation_engine
+    backend = state.federation_engine._backend  # the EngineRuntime's concrete engine
     runtime = getattr(backend, "_runtime", None)
     if runtime is None or not hasattr(runtime, "_con"):
         return f"engine {type(backend).__name__}: no native runtime"
@@ -391,10 +395,13 @@ class TestCypherErrorPaths:
         assert resp.status_code == 410
         assert resp.json()["code"] == "cypher.query_id_removed"
 
-    async def test_merge_write_rejected(self, client):
+    async def test_merge_of_a_label_the_model_lacks_is_a_session_write(self, client):
+        # REQ-2176: MERGE is MATCH then CREATE, here of the graph session's own node.
         resp = await _cypher(client, "MERGE (n:TestNode {id: 999})")
-        assert resp.status_code == 400
-        assert resp.json()["code"] == "cypher.refused"
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["counters"]["nodes-created"] == 1
+        cleared = await client.delete("/data/cypher/session")
+        assert cleared.status_code == 200, cleared.text
 
 
 # --------------------------------------------------------------------------- #

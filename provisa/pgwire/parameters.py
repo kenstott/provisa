@@ -32,10 +32,13 @@ _CAST_OID = {
 }
 #: A placeholder the statement casts nowhere: a bigint.
 _UNCAST_OID = 20
+#: A string literal: a ``$1`` in one ('$10'::money) is its text, no placeholder.
+_LITERAL = re.compile(r"'(?:[^']|'')*'")
 
 
 def placeholder_oids(sql: str) -> list[int]:
     """The type oid of each placeholder ``$1`` .. ``$n`` of ``sql`` (none when it has none)."""
+    sql = _LITERAL.sub("''", sql)
     indices = {int(m) for m in re.findall(r"\$(\d+)", sql)}
     if not indices:
         return []
