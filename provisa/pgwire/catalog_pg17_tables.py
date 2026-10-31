@@ -189,7 +189,7 @@ def populate_client_relations(db) -> None:  # REQ-2167
     )
 
 
-# What each PostgreSQL 17 relation no client queries holds (REQ-2167, tier 4), where Provisa has
+# What each other PostgreSQL 17 relation holds (REQ-2167, tier 4), where Provisa has
 # something to list in it: the rows derived, as PostgreSQL derives them, from relations the catalog
 # already serves. Any other is empty.
 _DERIVED_ROWS: dict[str, str] = {

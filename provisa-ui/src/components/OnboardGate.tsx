@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { Box, Button, Group, Stack, Text, Title } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { fetchBootstrapStatus } from "../api/admin";
+import { visitorActive } from "../lib/browserStorage";
 import { clearSessionState } from "../lib/session";
 import { storedToken } from "../lib/sessionToken";
 import { PageLoading } from "./PageLoading";
@@ -85,10 +86,13 @@ export function OnboardGate({
   // deployment that has no administrator at all. Drop the credential and send them back through
   // sign-in, where they are told what claiming means before they pick a provider and claim it.
   // null = the answer is still in flight; nothing may be decided on it yet.
+  // REQ-2006: a live demo's visitor holds no account to drop and claims nothing, so the slot is no
+  // question of theirs. A refused visitor token still ends the visit, above.
+  const slotApplies = authEnabled && !!userId && !visitorActive();
   const [slotUnclaimed, setSlotUnclaimed] = useState<boolean | null>(null);
   const [slotError, setSlotError] = useState<string | null>(null);
   useEffect(() => {
-    if (!authEnabled || !userId) return;
+    if (!slotApplies) return;
     let cancelled = false;
     fetchBootstrapStatus()
       .then((unclaimed) => {
@@ -100,8 +104,8 @@ export function OnboardGate({
     return () => {
       cancelled = true;
     };
-  }, [authEnabled, userId]);
-  const firstLoginPending = authEnabled && !!userId && slotUnclaimed === true;
+  }, [slotApplies]);
+  const firstLoginPending = slotApplies && slotUnclaimed === true;
   useEffect(() => {
     if (!firstLoginPending) return;
     // REQ-1326: same as above — an unclaimed admin slot invalidates the whole session, not just
@@ -162,7 +166,7 @@ export function OnboardGate({
       </div>
     );
   }
-  if (authEnabled && userId && slotUnclaimed === null) {
+  if (slotApplies && slotUnclaimed === null) {
     // The admin-slot answer decides which screen this is; do not guess it.
     return (
       <div className="page">

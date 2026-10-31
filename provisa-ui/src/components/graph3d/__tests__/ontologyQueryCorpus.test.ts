@@ -153,9 +153,9 @@ describe("the Ontology View's and the product graph's queries, as the GraphQL co
     const columns = ontologyQuery(m, scope(["columns"]));
     expect(data).not.toEqual(columns);
     expect(data).not.toContain("data_products");
-    const refs = data!.slice(data!.indexOf("refs: refs"));
-    expect(refs).toContain("table: registeredTable");
-    expect(refs).toContain("product: product");
+    const refs = data!.slice(data!.indexOf("refs {"));
+    expect(refs).toContain("registeredTable {");
+    expect(refs).toContain("product {");
     expect(refs).not.toContain("source_relationships");
     expect(refs).not.toContain("_meta");
   });

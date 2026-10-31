@@ -22,6 +22,7 @@ import {
 import {
   flatTerms,
   ontologyCountQuery,
+  ontologyGraph,
   ontologyQuery,
   termEdges,
   type TermRow,
@@ -142,22 +143,22 @@ describe("the Ontology View's query", () => {
     expect(q.startsWith("query Ontology {")).toBe(true);
     expect(q).toContain("_terms: on_terms {");
     expect(q).toContain(
-      "edges_out: edgesOut { id: id from_term_id: fromTermId to_term_id: toTermId rel_type: relType target_term: targetTerm { id: id } }",
+      "edgesOut { id fromTermId toTermId relType targetTerm { id } }",
     );
     // One root: the edges are the terms', not a root of their own.
     expect(q).not.toContain("on_termEdges");
     expect(q.match(/\b(?:m__|on_)\w+/g)).toEqual(["on_terms"]);
     expect(squash(ontologyQuery(reader(), scope(["columns"])))).not.toContain("edgesOut {");
-    expect(q).toContain("domains: domains { domain_id: domainId }");
-    expect(q).toContain("refs: refs {");
+    expect(q).toContain("domains { domainId }");
+    expect(q).toContain("refs {");
     // Data off: a column's product is read for its look alone, and no products are read.
-    expect(q).toContain("product: product { id: id }");
+    expect(q).toContain("product { id }");
     expect(q).not.toContain("data_products");
   });
 
   it("reads whether each term's tables are all declared one entity", () => {
     const q = squash(ontologyQuery(reader(), scope(["ontology"])));
-    expect(q).toContain("identity_gap: identityGap");
+    expect(q).toContain("identityGap");
   });
 
   it("selects only what its layers draw", () => {
@@ -167,7 +168,7 @@ describe("the Ontology View's query", () => {
     // REQ-2130 (amended 2026-10-29): Data names the product of each table a term reaches -- a
     // column's, and a class term's -- and reads no product, table or column apart.
     const data = squash(ontologyQuery(reader(), scope(["ontology", "data", "columns"])));
-    expect(data.match(/product: product \{ id: id name: name domain_id: domainId \}/g)).toHaveLength(2);
+    expect(data.match(/product \{ id name domainId \}/g)).toHaveLength(2);
     expect(data).not.toContain("data_products");
     expect(data).not.toContain("glossary_ref");
     // No relationship between tables is read: those are the ERD's.
@@ -195,15 +196,15 @@ describe("the Ontology View's query", () => {
     expect(q).toContain(
       'on_terms(where: { _or: [{ termDomains: { like: "%|sales|%" } }, { termDomains: { like: "%|*|%" } }] })',
     );
-    expect(q).toContain('domains: domains(where: { domainId: { in: ["sales","*"] } })');
-    expect(q).toContain('refs: refs(where: { domainId: { in: ["sales"] } })');
+    expect(q).toContain('domains(where: { domainId: { in: ["sales","*"] } })');
+    expect(q).toContain('refs(where: { domainId: { in: ["sales"] } })');
   });
 
   it("keeps the chosen edge types in its where, of the term edges", () => {
     const q = squash(
       ontologyQuery(reader(), scope(["ontology", "columns"], { edgeTypes: ["KIND_OF", "PART_OF"] })),
     );
-    expect(q).toContain('edges_out: edgesOut(where: { relType: { in: ["KIND_OF","PART_OF"] } })');
+    expect(q).toContain('edgesOut(where: { relType: { in: ["KIND_OF","PART_OF"] } })');
     expect(q).not.toContain("sourceRelationships");
   });
 
@@ -243,7 +244,7 @@ describe("the Ontology View's query", () => {
   it("reads the tables a class term grounds with the ontology, in the domains kept", () => {
     const q = squash(ontologyQuery(reader(), scope(["ontology"], { domains: ["sales"] })));
     expect(q).toContain(
-      'tables: tables(where: { domainId: { in: ["sales"] } }) { id: id table_name: tableName domain_id: domainId }',
+      'tables(where: { domainId: { in: ["sales"] } }) { id tableName domainId }',
     );
     expect(squash(ontologyQuery(reader(), scope(["domains"])))).not.toContain("tables:");
     // A class term is no orphan: its table is a relationship drawn.
@@ -282,23 +283,58 @@ describe("REQ-2143: the Ontology View's query under a search", () => {
     const q = searched(["cust"]);
     // A match and the terms a hop from it (by an edge leaving it or one reaching it) are read with
     // what they touch; the terms two hops off with their edges' ends alone.
-    expect(q.match(/refs: refs/g)).toHaveLength(3);
-    expect(q.match(/domains: domains/g)).toHaveLength(3);
-    expect(q).toContain("edges_in: edgesIn");
-    expect(q).toContain("source_term: sourceTerm");
+    expect(q.match(/refs \{/g)).toHaveLength(3);
+    expect(q.match(/domains \{/g)).toHaveLength(3);
+    expect(q).toContain("edgesIn");
+    expect(q).toContain("sourceTerm");
     // The deepest level: an edge's end by its id.
-    expect(q).toContain("target_term: targetTerm { id: id }");
+    expect(q).toContain("targetTerm { id }");
     // Without a search: one level, the edges' ends by id, and no edges read the other way.
     const flat = squash(ontologyQuery(reader(), scope(["ontology", "domains", "columns"])));
-    expect(flat.match(/refs: refs/g)).toHaveLength(1);
-    expect(flat).not.toContain("edges_in: edgesIn");
+    expect(flat.match(/refs \{/g)).toHaveLength(1);
+    expect(flat).not.toContain("edgesIn");
   });
 
   it("counts what its root would read, by id with each term's domains", () => {
     const q = squash(ontologyCountQuery(reader(), scope(["ontology"], { search: ["cust"] })));
     expect(q).toContain("query OntologyCount");
     expect(q).toContain('{ name: { ilike: "%cust%" } }');
-    expect(q).toContain("{ id: id domains: domains { domain_id: domainId } }");
+    expect(q).toContain("{ id domains { domainId } }");
+  });
+});
+
+describe("REQ-416: the query's answer keeps GraphQL's names", () => {
+  it("selects each field under the schema's own name, and the graph reads its answer by it", () => {
+    const q = ontologyQuery(reader(), scope(["ontology", "domains", "columns"])) as string;
+    const selections = q.split("\n").slice(1, -1);
+    // Only the root field is answered under a name of its own: its name carries its domain's alias.
+    expect(selections.filter((l) => /^\s*\w+: \w+/.test(l))).toEqual(["  _terms: on_terms {"]);
+    expect(q).toContain("identityGap");
+    expect(q).toContain("fromTermId");
+    expect(q).not.toMatch(/\b(identity_gap|from_term_id): /);
+
+    const answer = (id: number, over: Partial<TermRow>): TermRow => ({
+      id,
+      name: `t${id}`,
+      definition: null,
+      refCount: 0,
+      deprecated: false,
+      retired: false,
+      status: "approved",
+      grounding: "grounded",
+      ...over,
+    });
+    const g = ontologyGraph({
+      _terms: [
+        answer(1, {
+          domains: [{ domainId: "sales" }],
+          edgesOut: [{ id: 5, fromTermId: 1, toTermId: 2, relType: "KIND_OF", targetTerm: { id: 2 } }],
+        }),
+        answer(2, {}),
+      ],
+    });
+    expect(g.nodes.map((n) => n.id)).toEqual(["d:sales", "term:1", "term:2"]);
+    expect(g.edges.map((e) => e.id)).toContain("term_edge:term:1>term:2:KIND_OF");
   });
 });
 
@@ -307,7 +343,7 @@ describe("REQ-2143: a nested read, flattened", () => {
     id,
     name: `t${id}`,
     definition: null,
-    ref_count: 0,
+    refCount: 0,
     deprecated: false,
     retired: false,
     status: "approved",
@@ -319,18 +355,18 @@ describe("REQ-2143: a nested read, flattened", () => {
     // 1 matched; 2 a hop off (read in full); 3 two hops off (its edge's end alone at 2's level).
     const two = term(2, {
       refs: [],
-      edges_out: [
-        { id: 9, from_term_id: 2, to_term_id: 3, rel_type: "KIND_OF", target_term: term(3) },
+      edgesOut: [
+        { id: 9, fromTermId: 2, toTermId: 3, relType: "KIND_OF", targetTerm: term(3) },
       ],
     });
     const rows = [
       term(1, {
         refs: [],
-        edges_out: [
-          { id: 8, from_term_id: 1, to_term_id: 2, rel_type: "PART_OF", target_term: two },
+        edgesOut: [
+          { id: 8, fromTermId: 1, toTermId: 2, relType: "PART_OF", targetTerm: two },
         ],
-        edges_in: [
-          { id: 8, from_term_id: 1, to_term_id: 2, rel_type: "PART_OF", source_term: { id: 1 } },
+        edgesIn: [
+          { id: 8, fromTermId: 1, toTermId: 2, relType: "PART_OF", sourceTerm: { id: 1 } },
         ],
       }),
       // 2 read again at the root (a match too), with less.
