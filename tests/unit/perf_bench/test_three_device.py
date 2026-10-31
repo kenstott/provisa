@@ -59,6 +59,8 @@ def test_host_facts_are_read_off_the_machine() -> None:
     meta = {
         "machine-type": "projects/123/machineTypes/c4d-standard-32",
         "zone": "projects/123/zones/us-east1-b",
+        "cpu-platform": "AMD Turin",
+        "id": "4242",
     }
     facts = host_agent.host_facts(
         {"telemetry": "off"},
@@ -68,6 +70,7 @@ def test_host_facts_are_read_off_the_machine() -> None:
     )
     assert facts["machine_type"] == "c4d-standard-32"
     assert facts["zone"] == "us-east1-b"
+    assert facts["cpu_platform"] == "AMD Turin" and facts["instance_id"] == "4242"
     assert facts["cpu"]["physical_cores"] == 16
     assert facts["nic_drivers"] == {"ens4": "gve"}
     assert facts["facts"] == {"telemetry": "off"}
@@ -303,7 +306,9 @@ def _step(c: int, rps: float, *, errors: int = 0, limited: bool = False, cpu: fl
     }
 
 
-def _run(root: Path, name: str, telemetry: str, peak: float, cpu: float) -> None:
+def _run(
+    root: Path, name: str, telemetry: str, peak: float, cpu: float, transport: str = "graphql"
+) -> None:
     out = root / name / "optimistic"
     out.mkdir(parents=True)
     steps = [
@@ -312,9 +317,21 @@ def _run(root: Path, name: str, telemetry: str, peak: float, cpu: float) -> None
         _step(256, peak * 1.5, errors=3, cpu=cpu),  # faster, with errors: not the point
         _step(512, peak * 1.2, limited=True, cpu=cpu),  # client-limited: not the point
     ]
-    (out / "graphql.json").write_text(json.dumps({"transport": "graphql", "steps": steps}))
-    devices = {"server": {"facts": {"telemetry": telemetry}}, "network": {}, "client": {}}
-    (out / "devices.json").write_text(json.dumps(devices))
+    (out / f"{transport}.json").write_text(json.dumps({"transport": transport, "steps": steps}))
+    (out / "devices.json").write_text(json.dumps(_devices(telemetry)))
+
+
+def _vm(instance: str = "1", platform: str = "AMD Turin") -> dict[str, str]:
+    return {"instance_id": instance, "cpu_platform": platform}
+
+
+def _devices(telemetry: str, *, server: str = "1", commit: str = "abc") -> dict[str, Any]:
+    return {
+        "server": {**_vm(server), "facts": {"telemetry": telemetry, "commit": commit}},
+        "client": _vm("2"),
+        "backends": _vm("3"),
+        "network": {},
+    }
 
 
 def test_the_published_point_is_telemetry_off_over_the_repetitions(tmp_path: Path) -> None:
@@ -358,6 +375,78 @@ def test_a_run_with_no_clean_step_is_refused(tmp_path: Path) -> None:
     (out / "devices.json").write_text(json.dumps({"server": {"facts": {"telemetry": "off"}}}))
     with pytest.raises(ValueError, match="1-off/graphql.json: no step without errors"):
         td.build(tmp_path)
+
+
+def test_repetitions_from_two_vms_are_refused(tmp_path: Path) -> None:
+    _run(tmp_path, "1-off", "off", 2000, 1.0)
+    _run(tmp_path, "2-off", "off", 2000, 1.0)
+    second = tmp_path / "2-off" / "optimistic" / "devices.json"
+    second.write_text(json.dumps(_devices("off", server="9")))
+    with pytest.raises(td.bench_sanity.CrossVmComparison, match="1-off server ran on 1"):
+        td.build(tmp_path)
+
+
+def test_repetitions_from_two_commits_are_refused(tmp_path: Path) -> None:
+    _run(tmp_path, "1-off", "off", 2000, 1.0)
+    _run(tmp_path, "2-off", "off", 2000, 1.0)
+    second = tmp_path / "2-off" / "optimistic" / "devices.json"
+    second.write_text(json.dumps(_devices("off", commit="def")))
+    with pytest.raises(ValueError, match="2-off served def, 1-off served abc"):
+        td.build(tmp_path)
+
+
+def test_the_published_file_states_its_version_and_captions_and_only_the_published_pairs(
+    tmp_path: Path,
+) -> None:
+    _run(tmp_path, "1-off", "off", 2000, 1.0)
+    out = tmp_path / "1-off" / "optimistic"
+    report = json.loads((out / "graphql.json").read_text())
+    (out / "sparql.json").write_text(json.dumps({**report, "transport": "sparql"}))
+    published, internal = td.build(tmp_path)
+    assert published["version"] == "abc"
+    assert set(published["transports"]) == {"graphql"}
+    assert published["transport_captions"]["graphql"].startswith("GraphQL over HTTP")
+    assert "sparql" in internal["telemetry_off"]
+
+
+def test_pgwire_uncached_is_reported_beside_cached(tmp_path: Path) -> None:
+    _run(tmp_path, "1-off", "off", 2000, 1.0, transport="pgwire")
+    _run(tmp_path, "1-uncached-off", "off", 900, 1.0, transport="pgwire")
+    published, _internal = td.build(tmp_path)
+    assert published["transports"]["pgwire"]["req_per_s"]["median"] == 2000
+    assert published["transports"]["pgwire_uncached"]["req_per_s"]["median"] == 900
+    assert "cache off" in published["transport_captions"]["pgwire_uncached"]
+
+
+def test_a_profile_run_stays_out_of_the_report(tmp_path: Path) -> None:
+    _run(tmp_path, "1-off", "off", 2000, 1.0)
+    (tmp_path / "profile-grpc-off").mkdir()
+    published, _internal = td.build(tmp_path)
+    assert published["transports"]["graphql"]["repetitions"] == 1
+
+
+def test_one_transport_can_run_alone_uncached() -> None:
+    text = yaml.safe_dump(
+        {
+            "transports": {"pgwire": {}, "bolt": {}},
+            "knobs": {"cache": {"probability": 1.0}},
+            "load": {"steps": [1, 16], "window_s": 30, "warmup_s": 60},
+        }
+    )
+    c = yaml.safe_load(
+        td.narrowed_contract(
+            text, only="pgwire", uncached=True, steps=None, window_s=None, warmup_s=None
+        )
+    )
+    assert c["transports"] == {"pgwire": {}} and c["knobs"]["cache"]["probability"] == 0.0
+    assert c["load"]["steps"] == [1, 16]
+
+
+def test_the_engine_may_sit_beside_provisa_on_device_1() -> None:
+    env = _env(engine="pg", engine_host="10.0.0.2")
+    assert env["PROVISA_ENGINE_URL"] == "postgresql://provisa:provisa@10.0.0.2:25633/provisa_engine"
+    assert env["PG_HOST"] == "10.0.0.4"
+    assert _env(engine="trino", engine_host="10.0.0.2")["TRINO_HOST"] == "10.0.0.2"
 
 
 # --- the contract's warm-up --------------------------------------------------------------------
@@ -1241,6 +1330,7 @@ def test_the_seed_job_device_seeds(tmp_path: Path) -> None:
 
 def _run_fixtures(state: Path) -> None:
     _run(state / "fixture", "1-off", "off", 2000, 1.0)
+    _run(state / "fixture", "1-uncached-off", "off", 900, 1.0, transport="pgwire")
     _run(state / "fixture", "1-on", "on", 1800, 1.2)
 
 
@@ -1263,7 +1353,12 @@ def test_a_preempted_device_is_restarted_and_only_the_runs_not_done_are_repeated
     done = _full_run(tmp_path, commit)
     assert done.returncode == 0, done.stdout + done.stderr
     # 1-off checkpointed before the preemption, so the rerun skips it
-    assert (state / "benchmarks").read_text().splitlines() == ["1-off", "1-on", "1-on"]
+    assert (state / "benchmarks").read_text().splitlines() == [
+        "1-off",
+        "1-uncached-off",
+        "1-on",
+        "1-on",
+    ]
     assert "already checkpointed in gs://" in done.stdout and " 1-off " in done.stdout
     assert "=== run 1-off: checkpointed already, skipped ===" in done.stdout
     calls = _calls(tmp_path)
@@ -1272,10 +1367,10 @@ def test_a_preempted_device_is_restarted_and_only_the_runs_not_done_are_repeated
     assert len([c for c in calls if c.startswith("terraform ") and " apply " in c]) == 1
     (run,) = (tmp_path / "runs").iterdir()
     bucket = f"provisa-perf-{run.name.lower()}-p"
-    for name in ("1-off", "1-on"):
+    for name in ("1-off", "1-uncached-off", "1-on"):
         assert (state / "gcs" / bucket / run.name / name / "DONE").read_text() == name
         # copied into the run directory before destroy
-        assert (run / "checkpoints" / name / "optimistic" / "graphql.json").exists()
+        assert (run / "checkpoints" / name / "optimistic" / "devices.json").exists()
     assert (run / "results-report" / "published.json").exists()
     rsync = next(i for i, c in enumerate(calls) if c.startswith("gsutil rsync -r "))
     destroy = next(
@@ -1323,7 +1418,12 @@ def test_a_device_that_does_not_start_is_replaced_from_its_image(tmp_path: Path)
     assert [" destroy " in c for c in tf] == [False, True, False, True]
     assert "-target=google_compute_instance.device" in tf[1]
     assert "-target" not in tf[3]
-    assert (state / "benchmarks").read_text().splitlines() == ["1-off", "1-on", "1-on"]
+    assert (state / "benchmarks").read_text().splitlines() == [
+        "1-off",
+        "1-uncached-off",
+        "1-on",
+        "1-on",
+    ]
 
 
 def test_a_failure_with_every_device_running_is_not_retried(tmp_path: Path) -> None:
@@ -1359,7 +1459,7 @@ def test_the_dry_run_says_how_each_run_is_checkpointed() -> None:
         text=True,
         check=True,
     ).stdout
-    for name in ("1-off", "1-on"):
+    for name in ("1-off", "1-uncached-off", "1-on"):
         assert f"gsutil -m cp -r /runs/x/results/{name} gs://bkt/run1/" in out
         assert f"gsutil cp - gs://bkt/run1/{name}/DONE" in out
     # the run never seeds: the seeder is scaled to nothing, an unseeded device refused
