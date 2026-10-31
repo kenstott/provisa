@@ -26,6 +26,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from tests.integration.conftest import no_replica_routes
+from tests.unit.test_bolt_show_databases import _held_in_memory
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -71,6 +72,9 @@ def _make_session(roles: list[str], bolt_version: tuple[int, int] = (5, 4)):
     session = BoltSession(writer, bolt_version)  # type: ignore[arg-type]
     session.roles = list(roles)
     session.role_id = roles[0] if roles else None
+    # REQ-2176: each RUN is bound to the principal's graph session, whose row this in-process
+    # session has no control plane to hold: it is held in memory.
+    session._graph_session = _held_in_memory()  # type: ignore[method-assign]
     return session, writer
 
 

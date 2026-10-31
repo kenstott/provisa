@@ -70,6 +70,12 @@ _PG_TYPE_ROWS = [
     (3908, "tsrange", 11, -1, "r", "R", False, 0, False, "d", "x"),
     (3910, "tstzrange", 11, -1, "r", "R", False, 0, False, "d", "x"),
     (3912, "daterange", 11, -1, "r", "R", False, 0, False, "i", "x"),
+    (4451, "int4multirange", 11, -1, "m", "R", False, 0, False, "i", "x"),
+    (4536, "int8multirange", 11, -1, "m", "R", False, 0, False, "d", "x"),
+    (4532, "nummultirange", 11, -1, "m", "R", False, 0, False, "i", "x"),
+    (4533, "tsmultirange", 11, -1, "m", "R", False, 0, False, "d", "x"),
+    (4534, "tstzmultirange", 11, -1, "m", "R", False, 0, False, "d", "x"),
+    (4535, "datemultirange", 11, -1, "m", "R", False, 0, False, "i", "x"),
     (1560, "bit", 11, -1, "b", "V", False, 0, False, "i", "x"),
     (1562, "varbit", 11, -1, "b", "V", False, 0, False, "i", "x"),
     (3614, "tsvector", 11, -1, "b", "U", False, 0, False, "i", "x"),
@@ -119,6 +125,12 @@ _PG_OID_ATTR_META: dict[int, tuple[int, bool, str, str]] = {
     3908: (-1, False, "d", "x"),  # tsrange
     3910: (-1, False, "d", "x"),  # tstzrange
     3912: (-1, False, "i", "x"),  # daterange
+    4451: (-1, False, "i", "x"),  # int4multirange
+    4536: (-1, False, "d", "x"),  # int8multirange
+    4532: (-1, False, "i", "x"),  # nummultirange
+    4533: (-1, False, "d", "x"),  # tsmultirange
+    4534: (-1, False, "d", "x"),  # tstzmultirange
+    4535: (-1, False, "i", "x"),  # datemultirange
     1560: (-1, False, "i", "x"),  # bit
     1562: (-1, False, "i", "x"),  # varbit
     3614: (-1, False, "i", "x"),  # tsvector
@@ -206,6 +218,12 @@ _TYPEINFO: dict[int, tuple] = {
     3908: ("pg_catalog", "tsrange", "r", None, None, None, 1114),
     3910: ("pg_catalog", "tstzrange", "r", None, None, None, 1184),
     3912: ("pg_catalog", "daterange", "r", None, None, None, 1082),
+    4451: ("pg_catalog", "int4multirange", "m", None, None, None, None),
+    4536: ("pg_catalog", "int8multirange", "m", None, None, None, None),
+    4532: ("pg_catalog", "nummultirange", "m", None, None, None, None),
+    4533: ("pg_catalog", "tsmultirange", "m", None, None, None, None),
+    4534: ("pg_catalog", "tstzmultirange", "m", None, None, None, None),
+    4535: ("pg_catalog", "datemultirange", "m", None, None, None, None),
     1560: ("pg_catalog", "bit", "b", None, None, None, None),
     1562: ("pg_catalog", "varbit", "b", None, None, None, None),
     3614: ("pg_catalog", "tsvector", "b", None, None, None, None),
