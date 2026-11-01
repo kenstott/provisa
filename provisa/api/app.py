@@ -24,7 +24,7 @@ import os
 import time
 import uuid
 from collections import deque
-from collections.abc import MutableMapping
+from collections.abc import Collection, MutableMapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -201,6 +201,8 @@ class AppState:
     mcp_catalog_index: Any = None
     _mv_refresh_task: LongLived | None = None
     _grpc_server: Any | None = None
+    # The names in system_health.HTTP_SURFACES mounted on the app; set when it starts.
+    http_surfaces: Collection[str] = frozenset()
     _flight_server: Any | None = None  # ProvisaFlightServer
     _flight_relay: Any | None = None  # FlightRelay: the advertised Flight port (REQ-1900)
     # The other listeners this app starts and, at shutdown, stops (what an app starts, it stops).
@@ -3786,6 +3788,9 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     await _start_servers(_log)
     _log_http_surfaces(_app, _log)
+    from provisa.api.admin.system_health import serving_http_surfaces
+
+    state.http_surfaces = serving_http_surfaces(_app)
 
     # Prime the lazy per-request paths in the background and flip /ready when warm. Background (not
     # awaited) so /health and /live serve immediately; a readiness-gated launcher waits on /ready.
