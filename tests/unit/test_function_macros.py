@@ -339,6 +339,17 @@ def test_clickhouses_like_has_no_escape_clause():
         ("SELECT substr(c, 1) AS v FROM (VALUES ('\\xbeef'::bytea)) AS t(c)", "trino", "substring"),
         ("SELECT date_add('2000-01-01'::date, '1 day'::interval) AS v", "clickhouse", "date_add"),
         ('SELECT pg_catalog."gcd"(1, 2) AS v', "trino", "gcd"),
+        ("SELECT timestamp('2024-06-15'::date, '12:30:45'::time) AS v", "clickhouse", "timestamp"),
+        (
+            "SELECT pg_catalog.\"datetime_pl\"('2024-06-15'::date, '12:30:45'::time) AS v",
+            "clickhouse",
+            "datetime_pl",
+        ),
+        (
+            'SELECT pg_catalog."overlaps"(NULL::time, NULL::time, NULL::time, NULL::time) AS v',
+            "clickhouse",
+            "overlaps",
+        ),
     ],
 )
 def test_what_a_replay_refused_is_refused_by_name(sql: str, dialect: str, function: str):

@@ -34,6 +34,7 @@ _JSON = frozenset({"jsonb", "json"})
 _BYTES = frozenset({"bytea"})
 _CLOCKS = frozenset({"date", "time", "timetz", "timestamp", "timestamptz", "interval"})
 _REALS = frozenset({"real", "float"})
+_TIME = frozenset({"time"})
 
 _NOT_ANY = frozenset({"interval", "bit", "bit varying", "varbit", "oid", "tid", "aclitem", "xml"})
 #: No value of these types reaches a call: the engine has no type to hold it, and sqlglot's nearest
@@ -162,6 +163,7 @@ _NAMED = {
     "timestamp_from_parts": "make_timestamp",
     "timestamp_trunc": "date_trunc",
     "variance_pop": "var_pop",
+    "overlaps_timestamp": "overlaps",
 }
 _ON: dict[str, dict[str, frozenset[str] | None]] = {
     _T: {"gcd": _ANY, "lcm": _ANY},
@@ -177,6 +179,12 @@ _ON: dict[str, dict[str, frozenset[str] | None]] = {
         "length": _BYTES,
         "translate": _ANY,
         "concat_ws": _NUMBERS,
+        # A time of day beside a date: toTime64 is no function of the server replayed, only of the
+        # embedded engine, so these would reach it to fail.
+        "datetime_pl": _TIME,
+        "timedate_pl": _TIME,
+        "timestamp": _TIME,
+        "overlaps_timestamp": _TIME,
         # An aggregate of a real answers a real there, and PostgreSQL a double precision.
         "stddev": _REALS,
         "stddev_pop": _REALS,
