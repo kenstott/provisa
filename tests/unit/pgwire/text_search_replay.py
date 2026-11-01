@@ -16,6 +16,7 @@ is PostgreSQL 17's, or PostgreSQL's own error, or a refusal by name. Nothing els
 from __future__ import annotations
 
 import re
+import struct
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
@@ -46,6 +47,16 @@ def _item(value: Any) -> str:
     return text
 
 
+def _float4(value: float) -> str:
+    """float4out: the fewest digits that read back as the same float4."""
+    held = struct.unpack("f", struct.pack("f", value))[0]
+    for digits in range(1, 10):
+        written = f"{held:.{digits}g}"
+        if struct.unpack("f", struct.pack("f", float(written)))[0] == held:
+            return written
+    return f"{held:.9g}"
+
+
 def _text(value: Any, oid: int) -> str | None:
     """A value as the wire writes one of the type ``oid``."""
     if value is None:
@@ -55,7 +66,7 @@ def _text(value: Any, oid: int) -> str | None:
     if isinstance(value, (list, tuple)):
         return "{" + ",".join(_item(v) for v in value) + "}"
     if oid == _FLOAT4:
-        return f"{float(value):.9g}"
+        return _float4(float(value))
     return str(value)
 
 

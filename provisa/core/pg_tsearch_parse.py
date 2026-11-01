@@ -20,10 +20,14 @@ them, where the machine's reading turns on more than these shapes say."""
 
 from __future__ import annotations
 
+import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
+from decimal import Decimal
 
 from provisa.core import pg_tsearch
+from provisa.core.pg_error import PostgresError
 from provisa.core.pg_tsearch import Node
 from provisa.core.pg_tsearch_english import lexize as english
 
@@ -221,10 +225,141 @@ def websearch_to_tsquery(config: str, text: str) -> Node | None:
     return query
 
 
-def lexize(dictionary: str, text: str) -> list[str] | None:
-    """ts_lexize: an array, NULL where the dictionary does not know the word."""
+def lexize(dictionary: str, text: str) -> list[str]:
+    """ts_lexize."""
     if dictionary == "simple":
         return [text.lower()]
-    if dictionary == "english_stop":
-        return None
     return english(text)
+
+
+def dictionary_of(config: str, token: Token) -> str:
+    return "english_stem" if config == "english" and token.kind in _STEMMED else "simple"
+
+
+def json_filter(text: str) -> frozenset[str]:
+    """json_to_tsvector's filter: a word, or an array of them."""
+    value = json.loads(text)
+    if isinstance(value, dict):
+        raise PostgresError("22023", "wrong flag type, only arrays and scalars are allowed")
+    names = value if isinstance(value, list) else [value]
+    for name in names:
+        if not isinstance(name, str):
+            raise PostgresError("22023", "flag array element is not a string")
+        if name not in ("all", "key", "string", "numeric", "boolean"):
+            raise PostgresError("22023", f'wrong flag in flag array: "{name}"')
+    if "all" in names:
+        return frozenset({"key", "string", "numeric", "boolean"})
+    return frozenset(names)
+
+
+def _leaves(value: object, wanted: frozenset[str], binary: bool) -> list[str]:
+    """The texts of a document, in the order iterate_json_values gives them."""
+    if isinstance(value, dict):
+        keys = sorted(value, key=lambda k: (len(k.encode()), k.encode())) if binary else list(value)
+        found: list[str] = []
+        for key in keys:
+            if "key" in wanted:
+                found.append(key)
+            found.extend(_leaves(value[key], wanted, binary))
+        return found
+    if isinstance(value, list):
+        return [text for item in value for text in _leaves(item, wanted, binary)]
+    if isinstance(value, str):
+        return [value] if "string" in wanted else []
+    if isinstance(value, bool):
+        return [str(value).lower()] if "boolean" in wanted else []
+    return [str(value)] if value is not None and "numeric" in wanted else []
+
+
+def json_to_tsvector(
+    config: str, document: str, binary: bool, wanted: frozenset[str]
+) -> dict[str, list[tuple[int, int]]]:
+    """Each text's lexemes, a text's start one past the last position of the one before it."""
+    parsed = json.loads(document, parse_float=Decimal, parse_int=Decimal)
+    entries: dict[str, list[tuple[int, int]]] = {}
+    start = 0
+    for text in _leaves(parsed, wanted, binary):
+        start += 1 if entries else 0
+        indexed = 0
+        for token in tokens(text):
+            found = lexemes(config, token)
+            if found is None:
+                continue
+            indexed += 1
+            for lexeme in found:
+                entries.setdefault(lexeme, []).append((start + indexed, 0))
+        start += indexed
+    return entries
+
+
+#: Words of a document a headline shows all of, where its options say no fewer.
+_MIN_WORDS = 15
+_OPTION = re.compile(r"\s*(\w+)\s*=\s*([^,]*?)\s*(?:,|$)")
+_COMPOUND = frozenset({ASCIIHWORD, URL})
+
+
+def headline(config: str, document: str, query: Node | None, options: str = "") -> str | None:
+    """prsd_headline of a document short enough to be shown whole, each word of a satisfied query
+    between its marks; None for anything else, which turns on the fragment search."""
+    start, stop = "<b>", "</b>"
+    for name, value in _OPTION.findall(options):
+        key = name.lower()
+        if key == "startsel":
+            start = value
+        elif key == "stopsel":
+            stop = value
+        elif key != "shortword":
+            return None
+    read = tokens(document)
+    if sum(1 for t in read if t.kind not in _NOT_INDEXED | _COMPOUND) > _MIN_WORDS:
+        return None
+    if any(t.kind == TAG for t in read):
+        return None
+    entries = to_tsvector(config, document)
+    try:
+        satisfied = pg_tsearch.matches(entries, query)
+    except ValueError:
+        return None
+    wanted = pg_tsearch.operands(query) if satisfied else []
+    out: list[str] = []
+    for token in read:
+        if token.kind in _COMPOUND:
+            continue
+        found = lexemes(config, token) or []
+        hit = any(
+            lexeme == w.lexeme or (w.prefix and lexeme.startswith(w.lexeme))
+            for lexeme in found
+            for w in wanted
+        )
+        out.append(f"{start}{token.text}{stop}" if hit else token.text)
+    return "".join(out)
+
+
+def _with_headlines(value: object, mark: Callable[[str], str | None]) -> object:
+    if isinstance(value, dict):
+        return {k: _with_headlines(v, mark) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_with_headlines(v, mark) for v in value]
+    if isinstance(value, str):
+        written = mark(value)
+        if written is None:
+            raise Unread(value)
+        return written
+    return value
+
+
+def json_headline(document: str, mark: Callable[[str], str | None]) -> str:
+    """A document with each string a headline, written as json_out writes a transformed one."""
+    parsed = json.loads(document, parse_float=Decimal, parse_int=Decimal)
+    return _json_text(_with_headlines(parsed, mark))
+
+
+def _json_text(value: object) -> str:
+    if isinstance(value, dict):
+        members = (f"{json.dumps(k, ensure_ascii=False)}:{_json_text(v)}" for k, v in value.items())
+        return "{" + ",".join(members) + "}"
+    if isinstance(value, list):
+        return "[" + ",".join(_json_text(v) for v in value) + "]"
+    if isinstance(value, Decimal):
+        return str(value)
+    return json.dumps(value, ensure_ascii=False)

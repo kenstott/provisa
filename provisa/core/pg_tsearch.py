@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import re
 import zlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from functools import cmp_to_key
 
 from provisa.core.pg_error import PostgresError
 
@@ -390,7 +391,7 @@ def _node_compare(a: Node, b: Node) -> int:
         return -1 if _OPERATOR_NUMBER[a.op] > _OPERATOR_NUMBER[b.op] else 1
     if len(a.children) != len(b.children):
         return -1 if len(a.children) > len(b.children) else 1
-    for x, y in zip(a.children, b.children):
+    for x, y in zip(reversed(a.children), reversed(b.children)):  # right operand first
         order = _node_compare(x, y)
         if order:
             return order
@@ -408,3 +409,180 @@ def contains(query: Node | None, wanted: Node | None) -> bool:
     """tsq_mcontains: every operand of ``wanted``'s among the query's."""
     held = {_legacy_crc(o.lexeme) for o in operands(query)}
     return all(_legacy_crc(o.lexeme) in held for o in operands(wanted))
+
+
+@dataclass
+class _Tree:
+    """tsquery_util.c's QTNode: ``children`` right operand first, as QT2QTN reads the polish form."""
+
+    op: str
+    children: list["_Tree"]
+    distance: int = 1
+    leaf: Node | None = None
+    fixed: bool = False  # QTN_NOCHANGE
+
+
+def _tree(node: Node) -> _Tree:
+    if not node.op:
+        return _Tree("", [], leaf=node)
+    return _Tree(node.op, [_tree(c) for c in reversed(node.children)], node.distance)
+
+
+def _flattened(tree: _Tree) -> None:
+    """QTNTernary: AND and OR hold their own kind's children directly."""
+    if tree.fixed:
+        return
+    for child in tree.children:
+        _flattened(child)
+    if tree.op not in (_AND, _OR):
+        return
+    held: list[_Tree] = []
+    for child in tree.children:
+        held.extend(child.children if child.op == tree.op else [child])
+    tree.children = held
+
+
+def _tree_compare(a: _Tree, b: _Tree) -> int:
+    """QTNodeCompare."""
+    if bool(a.op) != bool(b.op):
+        return -1 if not b.op else 1
+    if not a.op:
+        assert a.leaf is not None and b.leaf is not None
+        return _node_compare(a.leaf, b.leaf)
+    if a.op != b.op:
+        return -1 if _OPERATOR_NUMBER[a.op] > _OPERATOR_NUMBER[b.op] else 1
+    if len(a.children) != len(b.children):
+        return -1 if len(a.children) > len(b.children) else 1
+    for x, y in zip(a.children, b.children):
+        order = _tree_compare(x, y)
+        if order:
+            return order
+    if a.distance != b.distance:
+        return -1 if a.distance > b.distance else 1
+    return 0
+
+
+def _sorted_tree(tree: _Tree) -> None:
+    """QTNSort."""
+    if tree.fixed:
+        return
+    for child in tree.children:
+        _sorted_tree(child)
+    if len(tree.children) > 1 and tree.op != _PHRASE:
+        tree.children.sort(key=cmp_to_key(_tree_compare))
+
+
+def _replaced(node: _Tree, target: _Tree, by: _Tree | None) -> _Tree | None:
+    """findeq: ``node`` with ``target`` replaced, in whole or among an AND's or OR's children."""
+    if node.fixed:
+        return node
+    if not node.op or len(node.children) == len(target.children):
+        if _tree_compare(node, target) != 0:
+            return node
+        return None if by is None else replace(by, fixed=True)
+    if node.op != target.op or not target.children or len(node.children) < len(target.children):
+        return node
+    if node.op not in (_AND, _OR):
+        return node
+    wanted = list(target.children)
+    kept: list[_Tree] = []
+    for child in node.children:
+        if wanted and _tree_compare(child, wanted[0]) == 0:
+            wanted.pop(0)
+        else:
+            kept.append(child)
+    if wanted:
+        return node
+    if by is not None:
+        kept.append(replace(by, fixed=True))
+    if not kept:
+        return None
+    if len(kept) == 1:
+        return kept[0]
+    node.children = kept
+    return node
+
+
+def _found(node: _Tree | None, target: _Tree, by: _Tree | None) -> _Tree | None:
+    """dofindsubquery, and dropvoidsubtree: what lost a child loses it."""
+    if node is None:
+        return None
+    node = _replaced(node, target, by)
+    if node is None or node.fixed or not node.op:
+        return node
+    held = [_found(child, target, by) for child in node.children]
+    kept = [child for child in held if child is not None]
+    if len(kept) == len(held):
+        node.children = kept
+        return node
+    if node.op == _NOT or not kept:
+        return None
+    if len(kept) == 1:
+        return kept[0]
+    node.children = kept
+    return node
+
+
+def _binary(tree: _Tree) -> Node:
+    """QTNBinary, then QTN2QT: an operator of more than two children folds from its first two, the
+    last moved into the second's place."""
+    if not tree.op:
+        assert tree.leaf is not None
+        return tree.leaf
+    children = list(tree.children)
+    if tree.op == _NOT:
+        return Node(_NOT, (_binary(children[0]),))
+    while len(children) > 2:
+        folded = _Tree(tree.op, children[:2], tree.distance)
+        children = [folded, children[-1], *children[2:-1]]
+    right, left = (_binary(child) for child in children)
+    return Node(tree.op, (left, right), tree.distance)
+
+
+def rewrite(query: Node | None, target: Node | None, by: Node | None) -> Node | None:
+    """ts_rewrite: the query in QTNSort's order, each ``target`` replaced by ``by``."""
+    if query is None:
+        return None
+    tree, wanted = _tree(query), None if target is None else _tree(target)
+    _flattened(tree)
+    _sorted_tree(tree)
+    if wanted is None:
+        return _binary(tree)
+    _flattened(wanted)
+    _sorted_tree(wanted)
+    replacement = None if by is None else _tree(by)
+    found = _found(tree, wanted, replacement)
+    if found is None:
+        return None
+    _flattened(found)
+    _sorted_tree(found)
+    return _binary(found)
+
+
+def matches(entries: dict[str, list[tuple[int, int]]], query: Node | None) -> bool:
+    """Whether a document's entries hold ``query``, of what a headline's document can: its words have
+    positions and its weights are all D."""
+    if query is None:
+        return False
+    if query.op == _NOT:
+        return not matches(entries, query.children[0])
+    if query.op == _AND:
+        return all(matches(entries, c) for c in query.children)
+    if query.op == _OR:
+        return any(matches(entries, c) for c in query.children)
+    if query.op == _PHRASE:
+        return bool(_phrase_positions(entries, query))
+    return bool(_phrase_positions(entries, query))
+
+
+def _phrase_positions(entries: dict[str, list[tuple[int, int]]], node: Node) -> set[int]:
+    if node.op == _PHRASE:
+        left, right = (_phrase_positions(entries, c) for c in node.children)
+        return {p for p in right if p - node.distance in left}
+    if node.op:
+        raise ValueError(node.op)
+    found: set[int] = set()
+    for lexeme, marks in entries.items():
+        if lexeme == node.lexeme or (node.prefix and lexeme.startswith(node.lexeme)):
+            found.update(p for p, _ in marks)
+    return found
