@@ -82,9 +82,14 @@ def _check(run: Callable[[str], Any], dialect: str) -> None:
             if (want or "").startswith("ERROR"):
                 state = (want or "").split()[1]
                 got = want if f"{state}:" in got else got
-        text = None if got is None else str(got).replace("True", "t").replace("False", "f")
-        if text != want:
-            wrong[sql] = (text or "")[:200]
+        if isinstance(got, float) and want is not None and not want.startswith("ERROR"):
+            same = got == float(want)
+        elif isinstance(got, bool):
+            same = ("t" if got else "f") == want
+        else:
+            same = (None if got is None else str(got)) == want
+        if not same:
+            wrong[sql] = str(got)[:200]
     assert not wrong, f"{len(wrong)} of {len(RECORDED)} {list(wrong.items())[:12]}"
 
 

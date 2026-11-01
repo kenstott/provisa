@@ -25,10 +25,13 @@ from tests.unit.pgwire.geometric_corpus import statements
 from tests.unit.pgwire.pg17_geometric_answers import RECORDED
 
 
-def _text(value: Any) -> str | None:
-    if isinstance(value, bool):
-        return "t" if value else "f"
-    return None if value is None else str(value)
+def _same(got: Any, want: str | None) -> bool:
+    """An engine's value against PostgreSQL's text: a double compares as its number."""
+    if isinstance(got, bool):
+        return ("t" if got else "f") == want
+    if isinstance(got, float):
+        return want is not None and got == float(want)
+    return (None if got is None else str(got)) == want
 
 
 def test_the_corpus_is_what_was_recorded():
@@ -40,11 +43,11 @@ def test_duckdb_answers_as_postgresql_17_answered():
     wrong = {}
     for sql, (_, want) in RECORDED.items():
         try:
-            got = _text(connection.execute(transpile(sql, "duckdb")).fetchone()[0])
+            got = connection.execute(transpile(sql, "duckdb")).fetchone()[0]
         except duckdb.Error as raised:
             state = (want or "ERROR ?").split()[-1]
             got = want if f"{state}:" in str(raised) else f"ERROR {raised}"[:120]
-        if got != want:
+        if not _same(got, want):
             wrong[sql] = (got, want)
     assert not wrong, f"{len(wrong)} of {len(RECORDED)} {list(wrong.items())[:10]}"
 
@@ -54,6 +57,8 @@ def test_duckdb_answers_as_postgresql_17_answered():
     [
         ("SELECT point_add('(1,2)'::point, '(0.1,0.2)'::point)", "(1.1,2.2)"),
         ("SELECT point(1.5::double precision, 2::double precision)", "(1.5,2)"),
+        ("SELECT slope('(1,1)'::point, '(1,2)'::point)", float("inf")),
+        ("SELECT slope('(1,2)'::point, '(1,2)'::point)", float("inf")),
         ("SELECT point_eq(NULL::point, '(1,1)'::point)", None),
     ],
 )

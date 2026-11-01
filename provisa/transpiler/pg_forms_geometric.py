@@ -28,7 +28,6 @@ from provisa.core.pg_error import MARK
 from provisa.transpiler.pg_forms_types import REFUSED
 
 _FUZZ = "1e-06"  # geo_decls.h's EPSILON
-_MAX = "1.7976931348623157e308"  # DBL_MAX, point_sl's slope of a vertical line
 _NUMBER = r"[-+]?(?:[0-9]+[.]?[0-9]*|[.][0-9]+)(?:[eE][-+]?[0-9]+)?"
 _NOT_FINITE = "[a-df-zA-DF-Z]"  # inf, nan: a shape's text has no other letter but e
 
@@ -56,6 +55,7 @@ class Engine:
     rtrim: str
     length: str
     finite: str
+    infinity: str
     min_of: str
     max_of: str
     sum_of: str
@@ -84,6 +84,7 @@ DUCKDB = Engine(
     rtrim="rtrim({}, '0')",
     length="length({})",
     finite="isfinite({})",
+    infinity="CAST('Infinity' AS DOUBLE)",
     min_of="list_min({})",
     max_of="list_max({})",
     sum_of="list_sum({})",
@@ -109,6 +110,7 @@ TRINO = Engine(
     rtrim="rtrim({}, '0')",
     length="length({})",
     finite="is_finite({})",
+    infinity="infinity()",
     min_of="array_min({})",
     max_of="array_max({})",
     sum_of="reduce({}, DOUBLE '0', (_s, _x) -> _s + _x, _s -> _s)",
@@ -135,6 +137,7 @@ CLICKHOUSE = Engine(
     rtrim="trimRight({}, '0')",
     length="toInt64(length({}))",
     finite="isFinite({})",
+    infinity="toFloat64('inf')",
     min_of="arrayMin({})",
     max_of="arrayMax({})",
     sum_of="arraySum({})",
@@ -335,11 +338,12 @@ def _poly_center(e: Engine, name: str) -> tuple[str, str]:
     )
 
 
-def _slope(a: tuple[str, str], b: tuple[str, str]) -> str:
-    return (
-        f"CASE WHEN {_fp_eq(a[0], b[0])} THEN {_MAX} WHEN {_fp_eq(a[1], b[1])} THEN 0.0 "
-        f"ELSE ({a[1]} - {b[1]}) / ({a[0]} - {b[0]}) END"
+def _slope(e: Engine, a: tuple[str, str], b: tuple[str, str], f: str) -> str:
+    """point_sl: a vertical line's slope is infinite, and so is that of a point and itself."""
+    finite = (
+        f"CASE WHEN {_fp_eq(a[1], b[1])} THEN 0.0 ELSE ({a[1]} - {b[1]}) / ({a[0]} - {b[0]}) END"
     )
+    return f"CASE WHEN {_fp_eq(a[0], b[0])} THEN {e.infinity} ELSE {_double(e, finite, f)} END"
 
 
 def _rows() -> list[Row]:
@@ -363,7 +367,7 @@ def _rows() -> list[Row]:
     on_two("point_vert", "point", lambda e: _fp_eq(p[0], q[0]))
     on_two("point_horiz", "point", lambda e: _fp_eq(p[1], q[1]))
     add("point_distance", "a:point, b:point", 2, lambda e, f: _double(e, _dist(e, p, q), f))
-    add("slope", "a:point, b:point", 2, lambda e, f: _double(e, _slope(p, q), f))
+    add("slope", "a:point, b:point", 2, lambda e, f: _slope(e, p, q, f))
     for verb, (move, divides) in _MOVES.items():
 
         def moved(e: Engine, f: str, move: Callable = move, divides: bool = divides) -> str:
