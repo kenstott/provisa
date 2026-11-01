@@ -5306,7 +5306,7 @@ Every destructive or consequential action requires explicit confirmation with co
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
-Test endpoint execution shows RLS filters applied, columns excluded, schema scope enforced in result metadata.
+Test endpoint execution shows RLS filters applied, columns excluded, schema scope enforced in result metadata. (Amended 2026-10-29, SEE IT IN:) Maintainer 2026-11-01: "as a peer yyou might have a 'See it in gRPC', 'See it in JSON:API', etc.", "go ahead with the See it in links", "Its guaranteed by construction." The GraphQL explorer's plan panel offers See it in gRPC, See it in JSON:API and See it in OpenAPI beside Semantic SQL and Cypher, for every query. Each opens that surface's page with this same query translated and run under the current role. A GraphQL query is representable on all three by construction, so a query with no link or with different rows is a defect.
 
 **Use case:** Test endpoint metadata display lets developers see exactly which security rules applied to their query result.
 
