@@ -86,7 +86,9 @@ echo "seeding for seed hash $SEED_HASH (image $SEED_IMAGE)"
 destroy() {
   copy_journals
   echo "=== terraform destroy ==="
-  "${TF[@]}" destroy -input=false -auto-approve "${VARS[@]}"
+  # GCE keeps an instance whose create failed in use for a moment after it is gone.
+  "${TF[@]}" destroy -input=false -auto-approve "${VARS[@]}" \
+    || { sleep 60; "${TF[@]}" destroy -input=false -auto-approve "${VARS[@]}"; }
 }
 trap destroy EXIT
 
