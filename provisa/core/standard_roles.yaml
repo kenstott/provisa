@@ -14,7 +14,8 @@
 # them, init_schema writes every one as this file defines it on each run
 # (provisa.core.db.assert_standard_roles), and the admin surfaces refuse to edit or delete one; an
 # organisation extends a standard role only with a child role, so a right Provisa adds here reaches
-# every role built on it. Each states its own reach (domain_access, never inherited): every domain,
+# every role built on it. Each states its own reach (domain_access, never inherited, data domains
+# only: a system domain is held as a capability, REQ-1132): every domain,
 # but platform_admin, which belongs to the control plane alone (REQ-1327/REQ-1337), reaches none
 # and holds its two platform rights and nothing else.
 # platform_settings is not org_admin's here: tenancy decides it (db.apply_tenancy_role_grants).
@@ -25,7 +26,7 @@ viewer:
   description: "The base every role builds on: reads the catalog it is granted, the glossary and the data products."
   parents: []
   domain_access: ["*"]
-  capabilities: [glossary_read, data_product_read]  # REQ-1590, REQ-1634
+  capabilities: [catalog_read, glossary_read, data_product_read]  # REQ-1132, REQ-1590, REQ-1634
 
 analyst:
   description: "Reads and queries the governed data it is granted. What an invitation gives when it names no role."

@@ -266,3 +266,62 @@ def test_an_error_with_no_org_has_nothing_rewritten_and_its_excerpt_dropped(org)
     plain = 'Table "pet_store_sqlite"."pet_store"."pets" is gone'
     assert engine_error_names.model_named(plain, None) == plain
     assert engine_error_names.model_named(plain, _ORG) == 'Table "pet_store"."pets" is gone'
+
+
+#: The schema of a demo's template org, as the engine quotes it to a statement run in a sandbox.
+_TEMPLATE = "org_sbxtplprofiling"
+
+
+def _catalog_error(table: str) -> str:
+    """DuckDB's own answer to a table missing from the wrong environment's search path."""
+    con = duckdb.connect()
+    con.execute(f"CREATE SCHEMA {_TEMPLATE}")
+    con.execute(f"CREATE TABLE {_TEMPLATE}.customers_266_profile_runs (id INTEGER)")
+    with pytest.raises(duckdb.Error) as raised:
+        con.execute(f"SELECT * FROM {table}")
+    return str(raised.value)
+
+
+@pytest.mark.parametrize("org_id", [None, _ORG, "sbx0a1b2c3d4e5f"])
+def test_a_template_s_schema_never_reaches_a_client_and_the_table_does(org_id):
+    told = engine_error_names.client_text(_catalog_error("customers_267_profile_runs"), org_id)
+    assert _TEMPLATE not in told
+    assert "customers_267_profile_runs" in told
+    assert 'Did you mean "customers_266_profile_runs"?' in told
+
+
+def test_a_missing_internal_schema_is_not_named_either():
+    told = engine_error_names.client_text(_catalog_error("org_sbxabc.runs"), None)
+    assert "org_sbxabc" not in told
+    assert 'Table with name "runs" does not exist because schema' in told
+
+
+@pytest.mark.parametrize(
+    "said, told",
+    [
+        (f'"{_TEMPLATE}"."runs" is gone', '"runs" is gone'),
+        (f'\\"{_TEMPLATE}\\".\\"runs\\" is gone', '\\"runs\\" is gone'),
+        (f'Did you mean \\"{_TEMPLATE}.runs\\"?', 'Did you mean \\"runs\\"?'),
+        (f"Table 'cat.{_TEMPLATE}.runs' does not exist", "Table 'cat.runs' does not exist"),
+        (f"{_TEMPLATE}_replicas.runs is gone", "runs is gone"),
+        (f"{_TEMPLATE}_env_dev_mv_cache.runs is gone", "runs is gone"),
+        (f"{_TEMPLATE}__pg.public.runs is gone", "public.runs is gone"),
+        ("org_sbx0a1b2c3d4e5f.runs is gone", "runs is gone"),
+        (f"schema {_TEMPLATE} does not exist", "schema [internal schema] does not exist"),
+    ],
+)
+def test_every_spelling_of_an_internal_schema_is_taken_out(said, told):
+    assert engine_error_names.client_text(said) == told
+
+
+def test_the_acting_org_s_schema_is_taken_out_in_every_environment():
+    said = "org_acme.runs and org_acme_env_dev.runs and org_acme_rg_eu_replicas.runs"
+    assert engine_error_names.client_text(said, _ORG) == "runs and runs and runs"
+
+
+@pytest.mark.parametrize(
+    "said",
+    ['column "org_id" does not exist', "org_unit.name not found", "org_acmeeu.runs is gone"],
+)
+def test_a_model_s_own_name_beginning_org_stays(said):
+    assert engine_error_names.client_text(said, _ORG) == said

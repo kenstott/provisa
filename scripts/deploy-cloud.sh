@@ -91,7 +91,7 @@ ENGINE_PIN="trino"
 preflight_engine() {
   echo "== engine preflight"
   local env_dump running missing=""
-  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^(PROVISA_ENGINE|PROVISA_ZAYCHIK)' || true" | tr -d '\r')"
+  env_dump="$(ssh_node "sudo docker inspect $API_CONTAINER --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E '^(PROVISA_ENGINE|PROVISA_ZAYCHIK)' || true" | tr -d '\r')"
   running="$(printf '%s\n' "$env_dump" | sed -n 's/^PROVISA_ENGINE=//p')"
   if [ "$running" != "$ENGINE_PIN" ]; then
     echo "$API_CONTAINER runs PROVISA_ENGINE='${running:-<unset>}', expected '$ENGINE_PIN'." >&2
@@ -210,7 +210,7 @@ build_api() {
   # provisa/_graph_render is a checkout's symlink to provisa-ui/graph-render (gitignored); the image
   # carries the built renderer there as a directory, which a pushed symlink cannot replace.
   tar czf "$STAGE/api.tgz" -C "$REPO" --exclude='__pycache__' --exclude='*.pyc' \
-    --exclude='provisa/_graph_render' provisa
+    --exclude='provisa/_graph_render' provisa -C "$REPO/vendor/buenavista" buenavista
 }
 
 push_api() {
@@ -420,6 +420,7 @@ services:
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/buenavista:/app/buenavista
       - ${OVERLAY_DIR}/config:/app/config
       # A huggingface embedding model is fetched into the hub cache at its first use; on the host,
       # a recreate does not fetch it again.
@@ -429,6 +430,7 @@ services:
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/buenavista:/app/buenavista
       - ${OVERLAY_DIR}/config:/app/config
   # REQ-2006: the sandbox tier runs the same app; without the tree it ran the image's own code
   # beside an API on the deployed one.
@@ -436,6 +438,7 @@ services:
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/buenavista:/app/buenavista
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
@@ -464,6 +467,7 @@ services:
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/buenavista:/app/buenavista
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
@@ -1149,6 +1153,7 @@ deploy_sandbox_vm() {
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
+      - ${OVERLAY_DIR}/buenavista:/app/buenavista
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps"
