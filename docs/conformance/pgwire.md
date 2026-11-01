@@ -44,16 +44,15 @@ Provisa intercepts the scalar catalog functions tools call to introspect schemas
 
 Each function is answered in the catalog intercept layer alongside `pg_catalog` and `information_schema` tables; none reaches a backend engine. A call with arguments Provisa cannot resolve returns `NULL`, matching PostgreSQL's own behavior for missing objects.
 
-Every overload of every `pg_catalog` function is a conformance case, and each case is passed, skipped by design or failed. The suite calls each overload the way PostgreSQL requires it, with the `VARIADIC` form, `WITHIN GROUP`, `OVER`, or a real argument where PostgreSQL refuses a `NULL`.
+Every overload of every `pg_catalog` function is called the way PostgreSQL requires it, with the `VARIADIC` form, `WITHIN GROUP`, `OVER`, or a real argument where PostgreSQL refuses a `NULL`. Each overload then has a result on each engine, because what an engine can answer is that engine's own. A function refused by name on an engine is that engine's result, and a wrong answer on any engine is a defect.
 
-| Outcome | Which functions |
-|---|---|
-| Passed | Served, with the result type PostgreSQL gives the same call. |
-| Skipped by design: Internal functions | PostgreSQL itself cannot call them. Each takes an `internal` argument, or PostgreSQL refuses the call whatever the server's state: a trigger function, a binary upgrade function, a pseudo-type's input or output function. Each case records its proof. |
-| Skipped by design: Index functions | Index access method support and index maintenance functions (btree, GiST, GIN, SP-GiST, BRIN support, `brin_summarize_range` and its kin) that are not served. Indexes belong to the source database. Index metadata is unaffected, and `pg_index`, `pg_get_indexdef` and the like stay served. |
-| Failed | Every other function: one not served, including the hash functions such as `hashtext`, which a client can call directly, one whose result type differs from PostgreSQL's, and one PostgreSQL refuses only for the state of the server the suite ran on, such as a recovery function on a server not in recovery. |
+One group is skipped by design and listed under the pass rate. Internal functions cannot be called by PostgreSQL itself: each takes an `internal` argument, or PostgreSQL refuses the call whatever the server's state. Index access method support and index maintenance functions a client can call, such as `brin_summarize_range`, are ordinary functions with a result on each engine.
 
-The skipped and failed cases are listed by group and by family under the pass rate.
+<!-- function-results:begin -->
+### Function results by engine
+
+TBD: generated from CI.
+<!-- function-results:end -->
 
 ### Advisory locks
 

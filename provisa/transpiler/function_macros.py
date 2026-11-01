@@ -1864,6 +1864,8 @@ _DIFFERS_ON: dict[str, frozenset[str]] = {
     # Two timestamps differ by seconds there, and by Trino's own text of an interval.
     "timestamp_mi": _CLICKHOUSE | _TRINO,
     "timestamptz_mi": _CLICKHOUSE | _TRINO,
+    # T-SQL has no array, and reads a form's a[1] as a name in brackets.
+    **dict.fromkeys(pg_forms_aggregate.ARRAY_INPUT, frozenset({"tsql"})),
 }
 #: A dialect's form where the generated one's arithmetic does not hold: Int64 wraps as the sum does.
 _WRAPPING_SUM = Pg(
@@ -1888,6 +1890,7 @@ REFUSED_ROWS = frozenset(
         ("exact_avg_interval", 1),
         ("regexp_replace_at", 5),
         ("current_query", 0),
+        *((name, len(params.split(", "))) for name, params in pg_forms_hash.COMPOSITES),
     }
 )
 

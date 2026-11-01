@@ -35,8 +35,9 @@ _BYTES = frozenset({"bytea"})
 _CLOCKS = frozenset({"date", "time", "timetz", "timestamp", "timestamptz", "interval"})
 _REALS = frozenset({"real", "float"})
 _TIME = frozenset({"time"})
+_OID = frozenset({"oid"})
 
-_NOT_ANY = frozenset({"interval", "bit", "bit varying", "varbit", "oid", "tid", "aclitem", "xml"})
+_NOT_ANY = frozenset({"interval", "bit", "bit varying", "varbit", "tid", "aclitem", "xml"})
 #: No value of these types reaches a call: the engine has no type to hold it, and sqlglot's nearest
 #: (BOOLEAN of a bit, for one) answers something else.
 _NOT_HELD: dict[str, frozenset[str]] = {
@@ -46,6 +47,9 @@ _NOT_HELD: dict[str, frozenset[str]] = {
 
 #: What both engines refuse: its name, and the said types of the overloads refused (None for all).
 _ON_BOTH: dict[str, frozenset[str] | None] = {
+    # An oid is held as a bigint (provisa.transpiler.pg_held_types); this call of one, and int8's
+    # below, were replayed refused, and stay so.
+    "nameconcatoid": _OID,
     # numeric's exact digits, which an engine's double or 38-digit decimal does not reach; and
     # the scale of the value it picked, or a time's digits, which an engine's type evens out.
     "max": _NUMERIC | {"time"},
@@ -123,7 +127,7 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "bit": _ANY,
     "int2": _JSON,
     "int4": _JSON,
-    "int8": _JSON,
+    "int8": _JSON | _OID,
     "float4": _JSON,
     "float8": _JSON,
     # bytes, which the engine's own string function reads as text.
