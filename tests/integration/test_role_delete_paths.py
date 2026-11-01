@@ -84,7 +84,7 @@ def _create_graphql(c: httpx.Client, role_id: str, parent: str | None = None) ->
     made = _gql(
         c,
         f"""mutation {{ createRole(input: {{ description: "Test role.",
-            id: "{role_id}", capabilities: ["query_development"], domainAccess: ["*"]{parent_arg}
+            id: "{role_id}", capabilities: ["catalog_read"], domainAccess: ["*"]{parent_arg}
         }}) {{ success message }} }}""",
     )["createRole"]
     assert made["success"] is True, made
@@ -96,7 +96,7 @@ def _create_rest(c: httpx.Client, role_id: str, parent: str | None = None) -> No
         json={
             "id": role_id,
             "description": "Test role.",
-            "capabilities": ["query_development"],
+            "capabilities": ["catalog_read"],
             "domain_access": ["*"],
             "parents": [parent] if parent else [],
         },

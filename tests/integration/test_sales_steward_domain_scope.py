@@ -212,8 +212,10 @@ async def test_a_sales_steward_governs_sales_and_is_refused_finance(plane):
         )
 
     product = DataProductInput(id="sales_kpis", domain_id="sales", name="Sales KPIs")
-    assert (await m.create_data_product(steward, product)).success
-    with pytest.raises(PermissionError, match="'finance'"):
+    # REQ-2188: a steward holds no RW on data products, in any domain: that is a role's of its own.
+    with pytest.raises(PermissionError, match="data_product_rw"):
+        await m.create_data_product(steward, product)
+    with pytest.raises(PermissionError, match="data_product_rw"):
         await m.create_data_product(
             steward, DataProductInput(id="ledger", domain_id="finance", name="Ledger")
         )
