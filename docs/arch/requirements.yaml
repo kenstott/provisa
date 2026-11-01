@@ -35929,7 +35929,11 @@
     2026-10-31: list applies to SQL, that is the pgwire catalog and meta. The gRPC proto, JSON:API, GraphQL,
     Cypher, SPARQL and OpenAPI describe what a role can read or write, so a list-only table does not appear
     on them. This narrows THE SAME ON EVERY CATALOG SURFACE, and scoping to domain grants still holds on
-    all of them.'
+    all of them. (Amended 2026-10-29, VIEWER HOLDS NO CATALOG_READ:) Maintainer 2026-11-01: "removing catalog_read
+    from viewer - do it". Viewer no longer holds catalog_read, so a role built on Viewer holds no grant
+    on the meta domain from that parent. Every role still has the default tier: core metadata for the non-system
+    tables it can read, write or list. catalog_read, the meta grant, is held only by a role that names it.
+    This replaces the statement that viewer holds meta; viewer still holds ontology through glossary_read.'
   use_case: Enables governed discovery over the reachable neighborhood without exposing data. Separates
     catalog structure knowledge (CORE) from governance configuration (GOVERNANCE), allowing each tier
     explicit control.
