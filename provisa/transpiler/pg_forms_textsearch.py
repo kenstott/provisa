@@ -120,7 +120,7 @@ DUCKDB = Engine(
 )
 TRINO = Engine(
     find_all="regexp_extract_all({}, {})",
-    find="regexp_extract({}, {}, 1)",
+    find="coalesce(regexp_extract({}, {}, 1), '')",  # NULL where it finds nothing, unlike the others
     matches="regexp_like({}, {})",
     replace_all="regexp_replace({}, {}, {})",
     group="$1",
