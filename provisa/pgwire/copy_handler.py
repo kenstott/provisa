@@ -31,6 +31,7 @@ import struct
 from typing import TYPE_CHECKING, Any, Protocol
 
 from provisa.compiler.definitions import NotAvailableHere
+from provisa.pgwire.session_zone import refuse_other_zone
 from provisa.pgwire.copy_binary import (
     _arrow_binary_tag,
     _rows_to_copy_binary,
@@ -342,7 +343,9 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         m_query = _PARSE_QUERY_TO_RE.match(sql)
         if m_query:
             fmt = (m_query.group("fmt") or "text").lower()
-            return self._handle_copy_to_query(ctx, m_query.group("query").strip(), fmt, role_id)
+            query = m_query.group("query").strip()
+            refuse_other_zone(query, ctx.session.zone.current)  # type: ignore[attr-defined]  # REQ-2171
+            return self._handle_copy_to_query(ctx, query, fmt, role_id)
 
         m_to = _PARSE_TO_RE.match(sql)
         if m_to:

@@ -16,6 +16,7 @@ the same statements in tests/integration/test_type_io_on_engines.py."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import duckdb
@@ -23,6 +24,7 @@ import pytest
 
 from provisa.core.pg_error import PostgresError, from_engine
 from provisa.pgwire.cast_types import result_casts
+from provisa.pgwire.copy_handler import CopyHandler
 from provisa.pgwire.server import ProvisaSession, _sqlstate_of, startup_time_zone
 from provisa.pgwire.session_zone import UNKNOWN_ZONE, SessionZone, refuse_other_zone
 from provisa.transpiler.function_macros import MACROS, outcome
@@ -188,6 +190,24 @@ def _zone_after(*statements: str, started: str | None = None) -> str | None:
 )
 def test_the_session_knows_its_zone(statements: list[str], want: str | None):
     assert _zone_after(*statements) == want
+
+
+def test_copy_of_such_a_form_is_refused_in_another_zone():
+    session = SimpleNamespace(role_id="analyst", zone=SessionZone("Asia/Tokyo"))
+    sql = "COPY (SELECT timestamptz_out(t) FROM events) TO STDOUT"
+    with pytest.raises(PostgresError, match="^timestamptz_out does not read this value"):
+        CopyHandler(SimpleNamespace()).handle(SimpleNamespace(session=session), sql)
+
+
+@pytest.mark.parametrize("set_zone", ["SET TimeZone TO 'Asia/Tokyo'", "SET TIME ZONE 'Asia/Tokyo'"])
+def test_a_set_of_the_session_reaches_the_refusal(set_zone: str):
+    session = ProvisaSession()
+    session.role_id = "analyst"
+    session.user_id = "analyst"
+    session._execute_sql_bound(set_zone)
+    assert session.zone.current == "Asia/Tokyo"
+    with pytest.raises(PostgresError, match="^timestamptz_out does not read this value"):
+        session._execute_sql_bound(_ZONED_CALLS["timestamptz_out"])
 
 
 def test_reset_returns_to_the_zone_the_connection_started_on():
