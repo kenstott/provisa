@@ -91,7 +91,11 @@ def meta():
             for name, cols in _COLUMNS.items()
         },
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
+        role={
+            "id": "admin",
+            "capabilities": ["query_development"],
+            "domain_access": ["*", "meta", "ontology", "ops"],
+        },
         domains=[{"id": "ontology", "description": "Ontology"}],
     )
     con = duckdb.connect()

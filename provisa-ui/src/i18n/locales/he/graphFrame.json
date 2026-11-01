@@ -52,10 +52,11 @@
     "sparqlDropNoPath": "ל-{{name}} אין קשר אל {{classes}}. לא נוסף דבר.",
     "sparqlDropTooFar": "{{name}} רחוק {{hops}} קשרים מ-{{classes}}, מעבר ל-{{most}} ששחרור עובר: אין נתיב קצר. לא נוסף דבר.",
     "sparqlDropNoEnd": "אף אחד מהקצוות של {{name}} לא נמצא בתוצאה הזו. לא נוסף דבר.",
+    "sparqlDropParameterized": "נתיב לא יכול לעבור דרך {{name}}: קריאה שלו דורשת ארגומנטים. לא נוסף דבר.",
+    "sparqlDropEdgeParameterized": "{{name}} מוביל לטבלה שקריאתה דורשת ארגומנטים, ונתיב לא יכול לעבור דרכה. לא נוסף דבר.",
     "sparqlDropNoProperty": "לאף מחלקה בתוצאה הזו אין את {{name}}. לא נוסף דבר.",
     "sparqlDropLeftOut": "נוספו {{shown}} מתוך {{total}} נתיבים קצרים באותה מידה; השאר הושמטו.",
     "sparqlDropCut": "התוצאה הגיעה ל-LIMIT של {{limit}}: שורות מעבר לו הושמטו.",
-    "cypherDropTooFar": "{{name}} רחוק {{hops}} קשרים מהתוצאה הזו, מעבר ל-{{most}} ששחרור עובר: אין נתיב קצר.",
     "cypherPathNoKey": "הנתיבים בין {{from}} ל-{{to}} דורשים מפתח לכל צומת, ולאחד מהם אין."
   }
 }

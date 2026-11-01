@@ -52,10 +52,11 @@
     "sparqlDropNoPath": "{{name}} は {{classes}} とのリレーションシップがありません。何も追加されていません。",
     "sparqlDropTooFar": "{{name}} は {{classes}} から {{hops}} リレーションシップ離れており、ドロップがたどる {{most}} を超えています。短いパスはありません。何も追加されていません。",
     "sparqlDropNoEnd": "{{name}} のどちらの端もこの結果にありません。何も追加されていません。",
+    "sparqlDropParameterized": "パスは {{name}} を通れません。読み取りに引数が必要です。何も追加されませんでした。",
+    "sparqlDropEdgeParameterized": "{{name}} は読み取りに引数が必要なテーブルにつながっており、パスはそこを通れません。何も追加されませんでした。",
     "sparqlDropNoProperty": "この結果のクラスに {{name}} を持つものはありません。何も追加されていません。",
     "sparqlDropLeftOut": "同じ長さのパス {{total}} 件のうち {{shown}} 件を追加し、残りは省略しました。",
     "sparqlDropCut": "結果が LIMIT {{limit}} に達しました。それ以降の行は省略されています。",
-    "cypherDropTooFar": "{{name}} はこの結果から {{hops}} リレーションシップ離れており、ドロップがたどる {{most}} を超えています。短いパスはありません。",
     "cypherPathNoKey": "{{from}} と {{to}} の間のパスには各ノードのキーが必要ですが、一方にはありません。"
   }
 }

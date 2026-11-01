@@ -19,6 +19,7 @@ share one definition of what Provisa knows (REQ-1069).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -499,15 +500,18 @@ class GlossaryAxiom:  # REQ-2163
 
 @dataclass(frozen=True)
 class ServingEndpoints:  # REQ-2118
-    """Where a consumer reads the org's data products: the host its pgwire and Flight SQL
-    listeners are reached at (each port None when that listener is off), and the HTTP origin
-    its GraphQL and REST endpoints are under. A contract names them as its servers."""
+    """Where a consumer reads the org's data products: the host its pgwire, Flight SQL and gRPC
+    listeners are reached at (each port None when that listener is off), the HTTP origin, and
+    the path of each query surface mounted under it (system_health.HTTP_SURFACES). A contract
+    names them as its servers."""
 
     hostname: str
     database: str
     http_origin: str
     pgwire_port: int | None = None
     flight_port: int | None = None
+    grpc_port: int | None = None
+    http_paths: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass

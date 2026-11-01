@@ -296,10 +296,11 @@ async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "Metada
 def serving_endpoints(
     state: Any, org_id: str, base_url: str | None
 ) -> "ServingEndpoints | None":  # REQ-2118
-    """Where a consumer reads the org's products: its pgwire and Flight SQL listeners at the
-    server's hostname (a port of 0 is a listener not started), and its GraphQL and REST
-    endpoints under the deployment's base URL. None without a base URL: the deployment names no
-    origin a consumer reaches it at."""
+    """Where a consumer reads the org's products: its pgwire, Flight SQL and gRPC listeners at
+    the server's hostname (a port of 0 is a listener not started, as is a gRPC server that never
+    started), and the query surfaces mounted on the app under the deployment's base URL. None
+    without a base URL: the deployment names no origin a consumer reaches it at."""
+    from provisa.api.admin.system_health import HTTP_SURFACES
     from provisa.api.metadata_export.model import ServingEndpoints
     from provisa.api.org_resolve import DEFAULT_DATABASE
     from provisa.core import settings_registry
@@ -307,13 +308,18 @@ def serving_endpoints(
     if not base_url:
         return None
     pgwire = settings_registry.value("server.pgwire_port")
+    grpc = settings_registry.value("server.grpc_port") if state._grpc_server is not None else None
     return ServingEndpoints(
         hostname=settings_registry.value("server.hostname"),
         # The database a pgwire client names (catalog_populate.served_database_name).
         database=org_id if getattr(state, "multitenancy", False) else DEFAULT_DATABASE,
         http_origin=base_url.rstrip("/"),
         pgwire_port=pgwire or None,
-        flight_port=settings_registry.value("server.flight_port"),
+        flight_port=settings_registry.value("server.flight_port") or None,
+        grpc_port=grpc or None,
+        http_paths={
+            name: path for name, path in HTTP_SURFACES.items() if name in state.http_surfaces
+        },
     )
 
 

@@ -12,11 +12,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
+from unittest.mock import MagicMock
 
 import graphql
 import pytest
@@ -175,3 +178,43 @@ def test_bolt_gives_each_thread_its_own_session_and_closes_them_all() -> None:
     assert len(sessions) == 4
     t.close()
     assert all(s.closed for s in sessions)
+
+
+class _Stream:
+    """A gRPC response stream: remembers the metadata of the call it was given."""
+
+    def __init__(self) -> None:
+        self.metadata: list[tuple[str, str]] = []
+
+    def __call__(self, _request: Any, metadata: list[tuple[str, str]]) -> list[Any]:
+        self.metadata = metadata
+        return []
+
+
+def _grpc_transport(stream: _Stream) -> rb.GrpcTransport:
+    transport = rb.GrpcTransport.__new__(rb.GrpcTransport)
+    transport._role = "org_admin"
+    transport._channel = SimpleNamespace(unary_stream=lambda *_a, **_k: stream)
+    transport._resolve_message_class = lambda _name: MagicMock()
+    return transport
+
+
+SPEC = {"mode": "scan", "type_name": "PbOrders"}
+
+
+def test_the_cache_pass_opts_grpc_in_by_metadata() -> None:
+    stream = _Stream()
+    _grpc_transport(stream).run_grpc(SPEC, {}, "c", no_cache=False)
+    assert ("x-provisa-cache", "true") in stream.metadata
+
+
+def test_the_nocache_pass_sends_grpc_no_opt_in() -> None:
+    stream = _Stream()
+    _grpc_transport(stream).run_grpc(SPEC, {}, "c", no_cache=True)
+    assert [key for key, _ in stream.metadata] == ["x-provisa-role"]
+
+
+def test_the_pgwire_pool_resets_nothing_inside_the_timed_region() -> None:
+    conn = MagicMock()
+    assert asyncio.run(rb._no_reset(conn)) is None
+    assert conn.mock_calls == []

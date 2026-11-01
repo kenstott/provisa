@@ -102,6 +102,8 @@ class EdgePredicate:
     rel_type: str
     source: str
     target: str
+    #: What it joins: the same for a join declared from both ends (RelationshipMapping.join).
+    join: str = field(compare=False)
 
 
 @dataclass(frozen=True)
@@ -126,6 +128,8 @@ class Vocabulary:
     columns_of: dict[str, list[tuple[str, ColumnPredicate]]]
     edges_of: dict[str, list[tuple[str, EdgePredicate]]]
     prefixes: dict[str, str]
+    #: the labels whose tables are read by arguments, which no path includes (REQ-2135)
+    parameterized: frozenset[str]
 
     def labels_of_class(self, iri: str) -> list[str]:
         return self.classes.get(iri, [])
@@ -196,7 +200,7 @@ def build_vocabulary(
     for rel in all_rels:
         if rel.source_label not in classes_of or rel.target_label not in classes_of:
             continue
-        ep = EdgePredicate(rel.rel_type, rel.source_label, rel.target_label)
+        ep = EdgePredicate(rel.rel_type, rel.source_label, rel.target_label, rel.join)
         iri = edge_iri(base, rel.rel_type)
         if ep not in edges[iri]:
             edges[iri].append(ep)
@@ -212,6 +216,9 @@ def build_vocabulary(
         columns_of=dict(columns_of),
         edges_of=dict(edges_of),
         prefixes=prefixes,
+        parameterized=frozenset(
+            label for label, nm in lm.nodes.items() if label in classes_of and nm.parameterized
+        ),
     )
 
 
@@ -303,10 +310,12 @@ def vocabulary_document(
     is a KIND_OF (:func:`superclasses_of`); each predicate: a column's own once per column, with
     its label, property and datatype, and a Property term once, with ``classes``, its rdfs:domain
     per class whose column binds it, each that class's IRI with its label, property and datatype
-    (REQ-2163); each edge type with its source and target; and the live Concept terms
-    (:func:`concepts_of`). A Class or Property term, and a Concept, carries its ``domains``
-    (:func:`term_domains_of`); a term with none is in no domain, and a client shows it under every
-    selection (REQ-1723, REQ-2163)."""
+    (REQ-2163); each edge type with its source, its target and its ``join``, the same for a join
+    declared from both ends; and the live Concept terms (:func:`concepts_of`). A class says it is
+    ``parameterized`` when every label it types is read by arguments, and ``parameterized_labels``
+    names those it types that are, which no path includes (REQ-2135). A Class or Property term, and
+    a Concept, carries its ``domains`` (:func:`term_domains_of`); a term with none is in no domain,
+    and a client shows it under every selection (REQ-1723, REQ-2163)."""
     term_root = f"{vocab.base}/vocab/term/"
 
     def kind(iri: str, own: str) -> str:
@@ -346,6 +355,8 @@ def vocabulary_document(
                 "iri": iri,
                 "kind": kind(iri, "table"),
                 "labels": list(labels),
+                "parameterized": all(label in vocab.parameterized for label in labels),
+                "parameterized_labels": [x for x in labels if x in vocab.parameterized],
                 "superclasses": list(superclasses.get(iri, [])),
                 **terms_part(iri),
             }
@@ -355,7 +366,13 @@ def vocabulary_document(
             entry for iri, cps in vocab.columns.items() for entry in predicate(iri, cps)
         ],
         "edges": [
-            {"iri": iri, "type": ep.rel_type, "source": ep.source, "target": ep.target}
+            {
+                "iri": iri,
+                "type": ep.rel_type,
+                "source": ep.source,
+                "target": ep.target,
+                "join": ep.join,
+            }
             for iri, eps in vocab.edges.items()
             for ep in eps
         ],

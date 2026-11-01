@@ -103,17 +103,21 @@ const VOCABULARY = {
   // a table's own class, or a Class term's ("term"), with the labels it types and the terms it is
   // a KIND_OF.
   classes: [
-    { iri: `${BASE}/vocab/sales/orders`, kind: "table", labels: ["orders"], superclasses: [] },
+    { iri: `${BASE}/vocab/sales/orders`, kind: "table", labels: ["orders"], parameterized: false, parameterized_labels: [], superclasses: [] },
     {
       iri: `${BASE}/vocab/sales/customers`,
       kind: "table",
       labels: ["customers"],
+      parameterized: false,
+      parameterized_labels: [],
       superclasses: [],
     },
     {
       iri: `${BASE}/vocab/term/Customer`,
       kind: "term",
       labels: ["customers"],
+      parameterized: false,
+      parameterized_labels: [],
       superclasses: [`${BASE}/vocab/term/Party`],
     },
   ],
@@ -141,6 +145,7 @@ const VOCABULARY = {
       type: "PLACED_BY",
       source: "orders",
       target: "customers",
+      join: "PLACED_BY",
     },
   ],
   concepts: [{ iri: `${BASE}/vocab/term/Revenue`, name: "Revenue", definition: "Money in" }],

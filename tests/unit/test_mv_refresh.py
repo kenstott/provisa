@@ -161,7 +161,7 @@ def _register_the_joined_tables(monkeypatch, *, customers: list[str] | None) -> 
         raising=False,
     )
 
-    async def _tables(_state):
+    async def _tables(_state, *, catalog=False):
         if customers is None:
             return []
         return [

@@ -10,7 +10,8 @@
 """The three-device optimistic benchmark (REQ-1911, demo/named/perf/METHODOLOGY.md).
 
 ``serve-env``: on device 1, the environment Provisa is started with (``orchestrate.sh serve``):
-every backend on device 3, the engine (pg by default), the workers, and telemetry off or on. With
+every backend on device 3, the engine (pg by default) beside Provisa on device 1, the workers, and
+telemetry off or on. With
 telemetry off no exporter is named and the sample rate is 0, so no span is recorded; with it on,
 spans are exported to the collector on device 3. It writes the config the server reads (the perf
 config with its observability block set for the run) and prints ``export`` lines.
@@ -37,12 +38,34 @@ from typing import Any
 
 import yaml
 
+import bench_sanity
 import governance_variants
 
 ENGINES = ("pg", "duckdb", "trino")
 TELEMETRY = ("off", "on")
 CAPTION = "single source, direct read; Telemetry OFF"
 LABEL_INTERNAL = "internal: not for publication"
+# Run directories apart from the repetitions: pgwire with no response cache (<rep>-uncached-off,
+# reported beside the cached row) and a py-spy profile (profile-<transport>-off, internal).
+UNCACHED_RUN = "-uncached-off"
+PROFILE_RUN = "profile-"
+PGWIRE_UNCACHED = "pgwire_uncached"
+# The published pairs, each with what its row in a results table means: a transport name alone
+# conflates the wire with the language it carries. Every other transport stays internal.
+PUBLISHED = {
+    "pgwire": "SQL over the PostgreSQL wire protocol, response cache on",
+    PGWIRE_UNCACHED: "SQL over the PostgreSQL wire protocol, response cache off",
+    "flight_sql": "SQL text in an Arrow Flight ticket. Flight carries SQL here, never Cypher",
+    "graphql": "GraphQL over HTTP, POST /data/graphql",
+    "bolt": "Cypher over Bolt",
+    "grpc": "A typed per-table RPC over gRPC, no query language",
+    "rest": "REST over HTTP, GET /data/rest, JSON",
+    "jsonapi": "JSON:API over HTTP, GET /data/jsonapi",
+}
+TABLE_CAPTION = (
+    "Each row names a language and the wire that carried it. HTTP appears under several rows: "
+    "they share a wire and differ in encoding."
+)
 
 # Where each backend listens on device 3 (demo/named/perf/docker-compose.yml, its defaults).
 PORTS = {
@@ -57,6 +80,7 @@ PORTS = {
     "neo4j_http": 27974,
 }
 API_PORT = 8001
+PUBLIC_URL = "https://bench.provisa.example"  # orchestrate.sh's, and local_proof.py's
 # Every listener the contract reaches on device 1 (setups/three-device.yaml). Bolt does not
 # start unless its port is set (server.bolt_port defaults to 0); on one host a .env sets it.
 BOLT_PORT = 17687
@@ -87,18 +111,23 @@ def server_env(
     workers: int,
     config_path: str,
     request_threads: int | None = None,
+    engine_host: str | None = None,
 ) -> dict[str, str]:
-    """The environment of Provisa on device 1: everything it reaches is on device 3."""
+    """The environment of Provisa on device 1: everything it reaches is on device 3 but the
+    engine, which is on ``engine_host`` (device 1's own address; unset, device 3)."""
     if engine not in ENGINES:
         raise ValueError(f"engine must be one of {', '.join(ENGINES)}, got {engine!r}")
     if telemetry not in TELEMETRY:
         raise ValueError(f"telemetry must be one of {', '.join(TELEMETRY)}, got {telemetry!r}")
     h = backends_host
+    engine_at = engine_host or h
     cp = f"postgresql+psycopg://provisa:provisa@{h}:{PORTS['control_plane']}/provisa"
     env = {
         "PROVISA_CONFIG": config_path,
         "PROVISA_CONFIG_REPLACE": "true",
         "PROVISA_DEMO": "true",
+        # The SPARQL vocabulary's subjects start with it, and the run's lookup reads that vocabulary.
+        "PROVISA_PUBLIC_URL": PUBLIC_URL,
         "PROVISA_WORKERS": str(workers),
         "PROVISA_LAUNCH_ID": str(uuid.uuid4()),
         "PROVISA_PGWIRE_PORT": "5439",
@@ -125,10 +154,10 @@ def server_env(
     }
     if engine == "pg":
         env["PROVISA_ENGINE_URL"] = (
-            f"postgresql://provisa:provisa@{h}:{PORTS['engine']}/provisa_engine"
+            f"postgresql://provisa:provisa@{engine_at}:{PORTS['engine']}/provisa_engine"
         )
     elif engine == "trino":
-        env["TRINO_HOST"] = h
+        env["TRINO_HOST"] = engine_at
         env["TRINO_PORT"] = str(PORTS["trino"])
     if telemetry == "on":
         env["OTEL_EXPORTER_OTLP_ENDPOINT"] = collector_url(h)
@@ -223,6 +252,8 @@ def _runs(root: Path) -> dict[str, list[Path]]:
     """Run directories by telemetry setting: ``<root>/<rep>-<telemetry>/``."""
     out: dict[str, list[Path]] = {t: [] for t in TELEMETRY}
     for d in sorted(p for p in root.iterdir() if p.is_dir()):
+        if d.name.endswith(UNCACHED_RUN) or d.name.startswith(PROFILE_RUN):
+            continue
         telemetry = d.name.rsplit("-", 1)[-1]
         if telemetry not in TELEMETRY:
             raise ValueError(f"{d.name}: a run directory is <rep>-<off|on>")
@@ -230,10 +261,48 @@ def _runs(root: Path) -> dict[str, list[Path]]:
     return out
 
 
-def _devices_telemetry(run: Path) -> str:
-    return json.loads((run / "optimistic" / "devices.json").read_text())["server"]["facts"][
-        "telemetry"
-    ]
+def _uncached_runs(root: Path) -> list[Path]:
+    return sorted(d for d in root.iterdir() if d.is_dir() and d.name.endswith(UNCACHED_RUN))
+
+
+def _transport_steps(run: Path) -> dict[str, Mapping[str, Any]]:
+    """The published step of each transport a run measured."""
+    steps: dict[str, Mapping[str, Any]] = {}
+    for path in sorted((run / "optimistic").glob("*.json")):
+        if path.name in ("devices.json", "idle.json", "resolved-names.json"):
+            continue
+        report = json.loads(path.read_text())
+        if "transport" not in report:
+            continue
+        step = published_step(report)
+        if step is None:
+            raise ValueError(f"{run.name}/{path.name}: no step without errors")
+        steps[report["transport"]] = step
+    return steps
+
+
+def _devices(run: Path) -> dict[str, Any]:
+    return json.loads((run / "optimistic" / "devices.json").read_text())
+
+
+def one_build(runs: Sequence[Path]) -> tuple[dict[str, Any], str | None]:
+    """The devices of the first of ``runs`` and the commit they all served: a report over runs
+    from two VMs, or two commits, is refused."""
+    first = _devices(runs[0])
+    commit = first["server"]["facts"].get("commit")
+    for run in runs[1:]:
+        devices = _devices(run)
+        for name in ("server", "client", "backends"):
+            if name in first or name in devices:
+                bench_sanity.refuse_cross_vm(
+                    first.get(name) or {},
+                    devices.get(name) or {},
+                    labels=(f"{runs[0].name} {name}", f"{run.name} {name}"),
+                )
+        stated = devices["server"]["facts"].get("commit")
+        if stated != commit:
+            raise ValueError(f"{run.name} served {stated}, {runs[0].name} served {commit}")
+    return first, commit
 
 
 def build(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -243,26 +312,28 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         raise ValueError("no telemetry-off run: nothing to publish")
     for telemetry, dirs in runs.items():
         for d in dirs:
-            stated = _devices_telemetry(d)
+            stated = _devices(d)["server"]["facts"]["telemetry"]
             if stated != telemetry:
                 raise ValueError(f"{d.name}: the server says telemetry {stated}, not {telemetry}")
     by: dict[str, dict[str, Any]] = {}
     for telemetry, dirs in runs.items():
         steps: dict[str, list[Mapping[str, Any]]] = {}
         for d in dirs:
-            for path in sorted((d / "optimistic").glob("*.json")):
-                if path.name in ("devices.json", "idle.json", "resolved-names.json"):
-                    continue
-                report = json.loads(path.read_text())
-                if "transport" not in report:
-                    continue
-                step = published_step(report)
-                if step is None:
-                    raise ValueError(f"{d.name}/{path.name}: no step without errors")
-                steps.setdefault(report["transport"], []).append(step)
+            for transport, step in _transport_steps(d).items():
+                steps.setdefault(transport, []).append(step)
         by[telemetry] = {t: summarize(s) for t, s in steps.items()}
-    devices = json.loads((runs["off"][0] / "optimistic" / "devices.json").read_text())
-    published = {"caption": CAPTION, "devices": devices, "transports": by["off"]}
+    uncached = _uncached_runs(root)
+    if uncached:
+        by["off"][PGWIRE_UNCACHED] = summarize([_transport_steps(d)["pgwire"] for d in uncached])
+    devices, commit = one_build([*(d for dirs in runs.values() for d in dirs), *uncached])
+    published = {
+        "version": commit,
+        "caption": CAPTION,
+        "table_caption": TABLE_CAPTION,
+        "transport_captions": {t: PUBLISHED[t] for t in by["off"] if t in PUBLISHED},
+        "devices": devices,
+        "transports": {t: s for t, s in by["off"].items() if t in PUBLISHED},
+    }
     impact = {
         t: {
             f: by["on"][t][f]["median"] - by["off"][t][f]["median"]
@@ -273,6 +344,7 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     }
     internal = {
         "label": LABEL_INTERNAL,
+        "version": commit,
         "devices": devices,
         "telemetry_off": by["off"],
         "telemetry_on": by.get("on", {}),
@@ -291,6 +363,25 @@ def run_contract(contract_text: str, *, telemetry: str) -> str:
     return yaml.safe_dump(contract, sort_keys=False)
 
 
+def narrowed_contract(
+    contract_text: str,
+    *,
+    only: str,
+    uncached: bool,
+    steps: Sequence[int] | None,
+    window_s: float | None,
+    warmup_s: int | None,
+) -> str:
+    """The contract with one transport, for the pgwire uncached run and a py-spy profile."""
+    contract = yaml.safe_load(contract_text)
+    contract["transports"] = {only: contract["transports"][only]}
+    if uncached:
+        contract["knobs"]["cache"] = {"probability": 0.0}
+    if steps is not None:
+        contract["load"].update(steps=list(steps), window_s=window_s, warmup_s=warmup_s)
+    return yaml.safe_dump(contract, sort_keys=False)
+
+
 def variant_contract(
     contract_text: str,
     *,
@@ -303,7 +394,9 @@ def variant_contract(
 ) -> str:
     """The contract as one run of a governance pass states it (REQ-2092): the variant's
     governance (governance_variants.py), the cache setting, the pass's load, and every request
-    reading every column of the Postgres orders table, so a masked column is in it."""
+    reading every listed column of the Postgres orders table, so a masked column is in it. The
+    contract narrows to that table, as local_pass.py's does: governance is set up on every contract
+    table, and a table no request reads only makes the pass's admin calls longer."""
     if variant not in governance_variants.VARIANTS:
         raise ValueError(f"variant must be one of {', '.join(governance_variants.VARIANTS)}")
     if cache not in governance_variants.CACHE:
@@ -312,9 +405,14 @@ def variant_contract(
     knobs = contract["knobs"]
     knobs["governance"] = governance_variants.governance(variant, telemetry=telemetry == "on")
     knobs["cache"] = {"probability": governance_variants.CACHE[cache]}
-    orders = next(
-        t for t in contract["sources"]["bench-postgresql"]["tables"] if t["table"] == "orders"
-    )
+    source = contract["sources"]["bench-postgresql"]
+    orders = next(t for t in source["tables"] if t["table"] == "orders")
+    source["tables"] = [orders]
+    source["joins"] = []
+    contract["sources"] = {"bench-postgresql": source}
+    contract["cross_source_joins"] = []
+    knobs["source_weights"] = {"bench-postgresql": 1.0}
+    knobs["route"] = {"bench-postgresql": knobs["route"]["bench-postgresql"]}
     knobs["fields"] = {
         "probability": 1.0,
         "distribution": {"kind": "constant", "value": len(orders["columns"])},
@@ -347,6 +445,7 @@ def main() -> int:
     serve.add_argument("--engine", choices=ENGINES, default="pg")
     serve.add_argument("--telemetry", choices=TELEMETRY, required=True)
     serve.add_argument("--backends-host", required=True, help="device 3's private address")
+    serve.add_argument("--engine-host", help="where the engine listens; default device 3")
     serve.add_argument("--workers", type=int, required=True)
     serve.add_argument("--request-threads", type=int)
     serve.add_argument("--base-config", default=str(Path(__file__).parent.parent / "config.yaml"))
@@ -361,6 +460,9 @@ def main() -> int:
     con.add_argument("--steps", help="comma-separated concurrencies")
     con.add_argument("--window-s", type=float)
     con.add_argument("--warmup-s", type=int)
+    # one transport (the pgwire uncached run, a profile), with or without that load
+    con.add_argument("--only", help="the one transport to run")
+    con.add_argument("--uncached", action="store_true")
     vrep = sub.add_parser("variant-report", help="a governance pass's table, internal only")
     vrep.add_argument("--root", required=True)
     vrep.add_argument("--out", required=True)
@@ -371,6 +473,19 @@ def main() -> int:
     if args.command == "contract":
         out = Path(args.out).expanduser()
         text = Path(args.setup).read_text()
+        steps = [int(c) for c in args.steps.split(",")] if args.steps else None
+        if args.only:
+            out.write_text(
+                narrowed_contract(
+                    run_contract(text, telemetry=args.telemetry),
+                    only=args.only,
+                    uncached=args.uncached,
+                    steps=steps,
+                    window_s=args.window_s,
+                    warmup_s=args.warmup_s,
+                )
+            )
+            return 0
         pass_args = (args.variant, args.cache, args.steps, args.window_s, args.warmup_s)
         if all(a is None for a in pass_args):
             out.write_text(run_contract(text, telemetry=args.telemetry))
@@ -383,7 +498,7 @@ def main() -> int:
                 telemetry=args.telemetry,
                 variant=args.variant,
                 cache=args.cache,
-                steps=[int(c) for c in args.steps.split(",")],
+                steps=steps,
                 window_s=args.window_s,
                 warmup_s=args.warmup_s,
             )
@@ -427,6 +542,7 @@ def main() -> int:
             workers=args.workers,
             config_path=str(out),
             request_threads=args.request_threads,
+            engine_host=args.engine_host,
         )
         for k, v in env.items():
             print(f"export {k}={shlex.quote(v)}")

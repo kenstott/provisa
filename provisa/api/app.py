@@ -24,7 +24,7 @@ import os
 import time
 import uuid
 from collections import deque
-from collections.abc import MutableMapping
+from collections.abc import Collection, MutableMapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -201,6 +201,8 @@ class AppState:
     mcp_catalog_index: Any = None
     _mv_refresh_task: LongLived | None = None
     _grpc_server: Any | None = None
+    # The names in system_health.HTTP_SURFACES mounted on the app; set when it starts.
+    http_surfaces: Collection[str] = frozenset()
     _flight_server: Any | None = None  # ProvisaFlightServer
     _flight_relay: Any | None = None  # FlightRelay: the advertised Flight port (REQ-1900)
     # The other listeners this app starts and, at shutdown, stops (what an app starts, it stops).
@@ -3786,6 +3788,9 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     await _start_servers(_log)
     _log_http_surfaces(_app, _log)
+    from provisa.api.admin.system_health import serving_http_surfaces
+
+    state.http_surfaces = serving_http_surfaces(_app)
 
     # Prime the lazy per-request paths in the background and flip /ready when warm. Background (not
     # awaited) so /health and /live serve immediately; a readiness-gated launcher waits on /ready.
@@ -4399,6 +4404,20 @@ def create_app() -> FastAPI:
                 "detail": str(exc),
                 "code": "data.table_is_draft",
                 "params": {"table": exc.table},
+            },
+        )
+
+    from provisa.security.rights import MissingDomainCapability as _MissingDomainCapability
+
+    @app.exception_handler(_MissingDomainCapability)
+    async def _missing_domain_capability_handler(_req: _Request, exc: _MissingDomainCapability):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1132: a system domain is held as a capability, and the refusal names it.
+        return _JSONResponse(
+            status_code=403,
+            content={
+                "detail": str(exc),
+                "code": "data.capability_required",
+                "params": {"capability": exc.capability, "domain": exc.domain_id},
             },
         )
 

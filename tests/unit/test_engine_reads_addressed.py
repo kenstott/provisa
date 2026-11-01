@@ -387,7 +387,7 @@ def _model(monkeypatch, *tables: tuple[str, str, str]) -> SimpleNamespace:
         raising=False,
     )
 
-    async def _registered(_state):
+    async def _registered(_state, *, catalog=False):
         return [
             SimpleNamespace(
                 source_id=source,

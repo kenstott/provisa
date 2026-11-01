@@ -316,14 +316,14 @@ async def test_the_compiled_stage_keeps_a_plan_per_temporary_table_session(pipel
     try:
         await _compiled(pipeline)
         await _compiled(pipeline)
-        assert pipeline.calls["context"] == 1, "a repeat in one session was governed again"
+        assert pipeline.calls["govern"] == 1, "a repeat in one session was governed again"
         temp_tables.unbind(token)
         token = temp_tables.bind(second)
         await _compiled(pipeline)
-        assert pipeline.calls["context"] == 2, "another session was served the first's plan"
+        assert pipeline.calls["govern"] == 2, "another session was served the first's plan"
         second.generation += 1  # its tables changed
         await _compiled(pipeline)
-        assert pipeline.calls["context"] == 3, "a session's changed tables were served its old plan"
+        assert pipeline.calls["govern"] == 3, "a session's changed tables were served its old plan"
     finally:
         temp_tables.unbind(token)
 
@@ -471,7 +471,7 @@ async def test_a_plans_shape_is_the_description_pgwire_already_made(pipeline, mo
 async def test_the_two_stages_never_share_a_plan_for_the_same_text(pipeline):
     await pipeline.mod._govern_and_route(_SQL, "analyst")
     await _compiled(pipeline)
-    assert pipeline.calls["context"] == 2
+    assert pipeline.calls["govern"] == 2
 
 
 def test_a_cache_key_parses_a_statement_text_once(monkeypatch):
@@ -793,7 +793,7 @@ async def test_a_statement_governed_for_one_person_is_the_same_plan_for_another(
         with audit_identity_scope("carol", "test"):
             carol = await _compiled(pipeline)
         assert "'US'" in carol.sql and "'EU'" not in carol.sql
-        assert pipeline.calls["context"] == 2
+        assert pipeline.calls["govern"] == 2
     finally:
         current_session_vars.reset(token)
 
