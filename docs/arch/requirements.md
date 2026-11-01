@@ -26813,3 +26813,15 @@ Maintainer 2026-11-01: a source type called Generic SQL (generic_sql), so a data
 **Code:** —
 
 **Tests:** —
+
+### REQ-2192 · Source Connectors {#REQ-2192}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-01: a generic OData connector, source type odata, based on the OpenAPI connector and using OData semantics. The source form takes a service URL. Provisa reads the service's $metadata and generates an OpenAPI spec from it, used internally and never published, and registers that spec through the OpenAPI path. Entity sets become tables with typed columns, actions and functions become commands, and POST, PATCH and DELETE on an entity set become writes. Keys and navigation properties, which OpenAPI has no field for, are carried as Provisa extensions in the generated spec and become primary keys and relationships. $top, $skip and nextLink are the table's paging. OData V2 and V4 are both served: the generated spec states each response shape. SQL filters reach the service as $filter on the columns the service declares filterable, and $select and $orderby reach it likewise; what cannot be pushed runs on the engine. A service that needs a CSRF token for a write, as SAP's does, gets one.
+
+**Use case:** An architect registers an S/4HANA or Dynamics 365 OData service by its URL, with nothing installed inside that system, and joins its sales orders to a warehouse table, following the relationships the service declares.
+
+**Code:** —
+
+**Tests:** —

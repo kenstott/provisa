@@ -92405,3 +92405,56 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-550
   stakeholders:
   - data-engineer
+- id: REQ-2192
+  value: A generic OData source reaches any OData service from its service URL, as tables, relationships
+    and commands.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-relational-and-warehouses
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-01: a generic OData connector, source type odata, based on the OpenAPI
+    connector and using OData semantics. The source form takes a service URL. Provisa reads the service''s
+    $metadata and generates an OpenAPI spec from it, used internally and never published, and registers
+    that spec through the OpenAPI path. Entity sets become tables with typed columns, actions and functions
+    become commands, and POST, PATCH and DELETE on an entity set become writes. Keys and navigation properties,
+    which OpenAPI has no field for, are carried as Provisa extensions in the generated spec and become
+    primary keys and relationships. $top, $skip and nextLink are the table''s paging. OData V2 and V4
+    are both served: the generated spec states each response shape. SQL filters reach the service as $filter
+    on the columns the service declares filterable, and $select and $orderby reach it likewise; what cannot
+    be pushed runs on the engine. A service that needs a CSRF token for a write, as SAP''s does, gets
+    one.'
+  use_case: An architect registers an S/4HANA or Dynamics 365 OData service by its URL, with nothing installed
+    inside that system, and joins its sales orders to a warehouse table, following the relationships the
+    service declares.
+  scenario: 'Given an OData V4 service with entity sets Orders and Customers and a navigation property
+    from Orders to Customers
+
+    When a steward registers the source by its service URL
+
+    Then Orders and Customers are tables with typed columns and keys, and a relationship joins them
+
+    When a query filters Orders on a filterable column with a limit
+
+    Then the request carries $filter and $top and only those rows are read
+
+    When a read spans several pages
+
+    Then every row comes back through the service''s own paging
+
+    Given the same service on OData V2
+
+    Then the same tables and the same rows come back
+
+    When a command bound to an action runs
+
+    Then the service''s action is called'
+  related_reqs:
+  - REQ-314
+  - REQ-315
+  - REQ-318
+  - REQ-2191
+  stakeholders:
+  - data-engineer
