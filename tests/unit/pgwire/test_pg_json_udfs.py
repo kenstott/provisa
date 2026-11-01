@@ -203,6 +203,22 @@ def test_a_timestamp_answers_the_same_at_any_depth(db: Any, literal: str):
     assert json.loads(text)["k"] == _convert_value(top)
 
 
+@pytest.mark.parametrize(
+    ("value", "reads"),
+    [
+        ("to_json(ARRAY[t])", lambda v: v),
+        ("json_build_object('k', ARRAY[t])", lambda v: v["k"]),
+        ("json_agg(ARRAY[t])", lambda v: v[0]),
+    ],
+)
+def test_a_list_of_timestamps_stays_a_json_array(db: Any, value: str, reads: Any):
+    import json
+
+    written = transpile_to_duckdb(f"SELECT {value} FROM (SELECT {_WHEN} AS t) AS s")
+    answer = reads(json.loads(db.execute(written).fetchall()[0][0]))
+    assert isinstance(answer, list) and len(answer) == 1
+
+
 def test_a_json_value_keeps_its_type_beside_a_timestamp(db: Any):
     import json
 

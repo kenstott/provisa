@@ -404,7 +404,8 @@ def _duckdb(sql: str, **nodes: exp.Expr) -> exp.Expr:
 
 #: DuckDB writes a timestamp as its text; PostgreSQL's json has the T, and an offset's minutes.
 _TO_JSON = (
-    "CASE WHEN typeof(_v) LIKE 'TIMESTAMP%' THEN to_json(regexp_replace("
+    "CASE WHEN typeof(_v) IN ('TIMESTAMP', 'TIMESTAMP WITH TIME ZONE', 'TIMESTAMP_S', "
+    "'TIMESTAMP_MS', 'TIMESTAMP_NS') THEN to_json(regexp_replace("
     "replace(CAST(_v AS VARCHAR), ' ', 'T'), '([+-][0-9][0-9])$', '\\1:00')) "
     "ELSE to_json(_v) END"
 )
