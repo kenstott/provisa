@@ -270,6 +270,10 @@
       "classification_decision_not_found": "אין החלטה לגבי {{column}} כ-{{kind}}",
       "classification_pii_refused": "לא ניתן היה לסמן את העמודה כ-PII"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} היא תצוגת קטלוג של תחום meta ולא ניתן לקרוא אותה בהוראה אחת יחד עם טבלה של מקור נתונים: קראו אותן בשתי הוראות.",
+      "function_unsupported": "ל-{{function}}() אין מקבילה ב-{{dialect}}."
+    },
     "replication": {
       "answer_not_json": "התשובה שנקראה עבור הרפליקה של {{table}} אינה JSON תקין: [{{content_type}}] {{cause}} (ב-{{kib}} KiB שלפני בית {{before_byte}} בתשובה).",
       "no_whole_copy": "לטבלה {{schema}}.{{table}} של המקור {{source}} אין עותק שלם לבנות: היא משוכפלת שורה אחר שורה, או שיש לה עמודת פרמטר.",

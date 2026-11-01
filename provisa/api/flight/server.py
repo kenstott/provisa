@@ -1275,7 +1275,7 @@ class ProvisaFlightServer(
         """A session's options until it sets them: as pgwire answers current_database() and
         current_schema()."""
         from provisa.pgwire.catalog import CURRENT_SCHEMA
-        from provisa.pgwire.catalog_populate import served_database_name
+        from provisa.pgwire.catalog_data import served_database_name
 
         return {"catalog": served_database_name(self._state), "schema": CURRENT_SCHEMA}
 

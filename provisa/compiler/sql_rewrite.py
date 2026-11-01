@@ -916,6 +916,7 @@ def propagate_literal_join_predicates(  # REQ-1880
     column_types: dict[tuple[str, str, str], str] | None = None,
     *,
     allow_params: bool = False,
+    read_once: bool = False,
 ) -> str:
     """Propagate a literal WHERE predicate across an INNER equi-join onto the far table's own join
     column, so a connector whose pushdown is limited to literal predicates (no join-pushdown --
@@ -938,6 +939,9 @@ def propagate_literal_join_predicates(  # REQ-1880
     column is left alone). Only a genuine INNER (or unqualified, same thing) equi-join on exactly
     two plain columns is propagated across -- see ``_equi_join_columns`` for why LEFT/RIGHT/FULL
     OUTER must not be.
+
+    ``read_once``: an engine that runs a correlated subquery once per outer row also has a nested
+    read whose key set is closed read once, see ``_read_once``.
     """
     if not eligible_targets:
         return sql
@@ -1000,9 +1004,102 @@ def propagate_literal_join_predicates(  # REQ-1880
                 combined = exp.and_(combined, pred, copy=False)
             where.set("this", combined)
             changed = True
-    if _propagate_into_correlated_subqueries(tree, eligible_targets, column_types, allow_params):
+    if _propagate_into_correlated_subqueries(
+        tree, eligible_targets, column_types, allow_params, read_once
+    ):
         changed = True
     return tree.sql(dialect=dialect) if changed else sql
+
+
+def _closed_key_set(preds: list[exp.Expr]) -> bool:
+    """Whether ``preds``, literal conjuncts on one column, name a closed set of its values: an
+    open range bounds nothing a root LIMIT would not, so reading all of it can cost far more than
+    one read per row."""
+    if any(isinstance(p, (exp.EQ, exp.In, exp.Between)) for p in preds):
+        return True
+    return any(isinstance(p, (exp.GT, exp.GTE)) for p in preds) and any(
+        isinstance(p, (exp.LT, exp.LTE)) for p in preds
+    )
+
+
+def _reads_only_itself(sub: exp.Select) -> bool:
+    """Whether every qualified column in ``sub`` is of a relation inside it, so it can leave the
+    outer row's scope. A column of the statement around it is a correlation it cannot lose."""
+    local = {t.alias_or_name.lower() for t in sub.find_all(exp.Table)}
+    local |= {s.alias.lower() for s in sub.find_all(exp.Subquery) if s.alias}
+    return all(c.table.lower() in local for c in sub.find_all(exp.Column) if c.table)
+
+
+def _read_once(
+    outer: exp.Select,
+    projection: exp.Expr,
+    sub: exp.Select,
+    correlation: exp.EQ,
+    inner_col: exp.Column,
+    outer_col: exp.Column,
+) -> bool:
+    """A nested relationship's correlated read, bounded to a closed key set, as one grouped read
+    joined by key. PostgreSQL has no decorrelation: the subquery's foreign scan is one remote query
+    per outer row (P10: 10 s over 1000 rows). The value stays one JSON per outer row, so no list
+    element collapses and the outer rows do not repeat. No match reads NULL, as the subquery did:
+    only ``json_agg`` and ``json_object`` qualify, an aggregate that answers no rows otherwise
+    (``count``) does not. The governed WHERE moves with the read. Returns whether it moved."""
+    if (
+        not isinstance(projection, exp.Alias)
+        or outer.args.get("group")
+        or outer.args.get("distinct")
+    ):
+        return False
+    value = projection.this
+    subquery = value.this if isinstance(value, exp.Coalesce) else value
+    if not isinstance(subquery, exp.Subquery) or subquery.this is not sub:
+        return False
+    if any(
+        sub.args.get(arg)
+        for arg in ("joins", "group", "having", "order", "offset", "distinct", "with_")
+    ):
+        return False
+    [read] = sub.expressions if len(sub.expressions) == 1 else [None]
+    limit = sub.args.get("limit")
+    if isinstance(read, exp.JSONObject):
+        # A to-one field: the head of its matched rows, as LIMIT 1 took.
+        if limit is None or limit.expression.sql() != "1":
+            return False
+    elif limit is not None or not (
+        isinstance(read, exp.JSONArrayAgg)
+        or (isinstance(read, exp.Anonymous) and read.name.upper() == "JSON_AGG")
+    ):
+        return False
+    rest = [c for c in _split_and(sub.args["where"].this) if c is not correlation]
+    sub.args["where"].set("this", exp.and_(*rest, copy=False))
+    if not _reads_only_itself(sub):
+        sub.args["where"].set("this", exp.and_(sub.args["where"].this, correlation, copy=False))
+        return False
+    if isinstance(read, exp.JSONObject):
+        sub.set("limit", None)
+        sub.set("distinct", exp.Distinct(on=exp.Tuple(expressions=[inner_col.copy()])))
+    else:
+        sub.set("group", exp.Group(expressions=[inner_col.copy()]))
+    alias = f"_read_{len(outer.args.get('joins') or [])}"
+    sub.set(
+        "expressions",
+        [
+            exp.alias_(inner_col.copy(), "_key", quoted=True),
+            exp.alias_(read, "_value", quoted=True),
+        ],
+    )
+    subquery.replace(exp.column("_value", table=alias, quoted=True))
+    outer.append(
+        "joins",
+        exp.Join(
+            this=exp.Subquery(this=sub, alias=exp.TableAlias(this=exp.to_identifier(alias, True))),
+            side="LEFT",
+            on=exp.EQ(
+                this=exp.column("_key", table=alias, quoted=True), expression=outer_col.copy()
+            ),
+        ),
+    )
+    return True
 
 
 def _propagate_into_correlated_subqueries(
@@ -1010,6 +1107,7 @@ def _propagate_into_correlated_subqueries(
     eligible_targets: set[tuple[str, str]],
     column_types: dict[tuple[str, str, str], str],
     allow_params: bool,
+    read_once: bool = False,
 ) -> bool:
     """REQ-1880 (amended): the same literal propagation into a CORRELATED scalar subquery in a
     SELECT list -- the shape a GraphQL nested relationship compiles to (``(SELECT ... FROM docs t2
@@ -1040,12 +1138,13 @@ def _propagate_into_correlated_subqueries(
         if not literal_preds:
             continue
         for projection in outer.expressions:
-            for sub in projection.find_all(exp.Select):
+            for sub in list(projection.find_all(exp.Select)):
                 sub_where = sub.args.get("where")
                 if sub_where is None:
                     continue
                 sub_aliases = _collect_table_aliases(sub)
                 additions: list[exp.Expr] = []
+                key: tuple[exp.EQ, exp.Column, exp.Column] | None = None
                 for conjunct in _split_and(sub_where.this):
                     if not isinstance(conjunct, exp.EQ):
                         continue
@@ -1092,12 +1191,16 @@ def _propagate_into_correlated_subqueries(
                                     col.set("table", inner_col.args["table"].copy())
                                     col.set("this", inner_col.args["this"].copy())
                             additions.append(propagated)
+                        if _closed_key_set(preds):
+                            key = (conjunct, inner_col, outer_col)
                 if additions:
                     combined = sub_where.this
                     for pred in additions:
                         combined = exp.and_(combined, pred, copy=False)
                     sub_where.set("this", combined)
                     changed = True
+                    if read_once and key is not None:
+                        _read_once(outer, projection, sub, *key)
     return changed
 
 
