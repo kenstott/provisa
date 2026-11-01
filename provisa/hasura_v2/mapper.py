@@ -167,11 +167,19 @@ def _map_remote_schema(rs: HasuraRemoteSchema) -> Source:  # REQ-417
 # query_development right; one with an insert/update/delete permission may also write. Hasura's
 # implicit admin reads every column; in Provisa the standard data_steward is named for that read
 # (org_admin and the sandbox inherit it, REQ-2155), which is why every imported column names it.
-_READ_CAPS = [Capability.QUERY_DEVELOPMENT.value]
+# REQ-2155: a role holds what it is given of what its parents hold, so what viewer holds is given too.
+_READ_CAPS = [
+    Capability.CATALOG_READ.value,
+    Capability.GLOSSARY_READ.value,
+    Capability.DATA_PRODUCT_READ.value,
+    Capability.QUERY_DEVELOPMENT.value,
+]
 #: REQ-2155: the standard role a grant names for what Hasura's admin reads.
 _ADMIN_READER = "data_steward"
-#: REQ-2155: what an imported role builds on when Hasura names no role it inherits.
-_BASE_ROLE = "viewer"
+#: REQ-2155: what an imported role builds on when Hasura names no role it inherits, or when the one
+#: it names does not hold what it was given: the standard role holding those capabilities.
+_BASE_ROLE = "analyst"
+_WRITE_BASE_ROLE = "developer"
 
 
 def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ-040, REQ-1684
@@ -232,11 +240,6 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
                         domain_access=["*"],
                     )
 
-    # REQ-2155: every imported role builds on viewer, unless Hasura names the one it inherits.
-    for role in roles.values():
-        if not role.parents:
-            role.parents = [_BASE_ROLE]
-
     # Upgrade capabilities based on permission types
     for source in metadata.sources:
         for table in source.tables:
@@ -249,6 +252,14 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
             for p in table.delete_permissions:
                 if p.role in roles and "write" not in roles[p.role].capabilities:
                     roles[p.role].capabilities.append("write")
+
+    # REQ-2155: every imported role builds on a standard role holding what it was given, beside
+    # the role Hasura names as the one it inherits when that role does not hold it all.
+    for role in roles.values():
+        writes = "write" in role.capabilities
+        held = {c for p in role.parents for c in roles[p].capabilities}
+        if not role.parents or not set(role.capabilities) <= held:
+            role.parents = [*role.parents, _WRITE_BASE_ROLE if writes else _BASE_ROLE]
 
     # REQ-1174: apply api_limits.yaml (rate + query-complexity) to each collected role.
     for role_id, role in roles.items():

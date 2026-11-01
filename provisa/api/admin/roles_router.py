@@ -20,7 +20,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import insert, or_, select, update
 
-from provisa.api.admin._platform_guard import role_definition_problem
+from provisa.api.admin._platform_guard import role_definition_problem, role_narrowing_problem
 from provisa.api.admin.capabilities import (
     require_capability_request,
     require_reach_of_added_domains_request,
@@ -166,7 +166,13 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
         _refuse_standard(body.id)  # REQ-2155
         await _check_parents(conn, body.id, body.parents)  # REQ-2155
         await _check_definition(
-            conn, request, body.id, body.capabilities, body.domain_access, body.parents
+            conn,
+            request,
+            body.id,
+            body.capabilities,
+            body.domain_access,
+            body.parents,
+            body.residency_values,
         )
         # REQ-1531: a role hands out reach; its creator must hold every domain it lists.
         require_reach_of_added_domains_request(request, None, body.domain_access)
@@ -212,17 +218,27 @@ async def _check_definition(  # REQ-042, REQ-1337, REQ-1530
     capabilities: list[str],
     domain_access: list[str],
     parents: list[str],
+    residency_values: list[str],
 ) -> None:
-    """Refuse a definition that lists no domain, names an unknown capability, or carries a
-    platform right the caller may not define -- its own values or the ones its ancestors hand down
-    (REQ-2155 folds every ancestor's capabilities into the role; its reach is its own). See
-    ``role_definition_problem``."""
+    """Refuse a definition that lists no domain, names an unknown capability, carries a platform
+    right the caller may not define, or gives a right no parent holds (REQ-2155). See
+    ``role_definition_problem`` and ``role_narrowing_problem``."""
+    from provisa.core.repositories import domain as domain_repo
+    from provisa.security import domain_tree
     from provisa.security.inheritance import effective_capabilities
 
     rows = await role_repo.list_all(conn)
     inherited = sorted({c for p in parents for c in effective_capabilities(p, rows)})
     problem = role_definition_problem(
         request, capabilities, inherited, role_id=role_id, domain_access=domain_access
+    ) or role_narrowing_problem(
+        role_id,
+        parents,
+        capabilities,
+        domain_access,
+        residency_values,
+        rows,
+        domain_tree.parent_map(await domain_repo.list_all(conn)),
     )
     if problem is not None:
         raise problem
@@ -296,7 +312,9 @@ async def update_role(
         await role_repo.require_residency_grant_saved(conn, role_id, new_caps, new_values)
         if new_parents != existing["parents"]:
             await _check_parents(conn, role_id, new_parents)  # REQ-2155
-        await _check_definition(conn, request, role_id, new_caps, new_domains, new_parents)
+        await _check_definition(
+            conn, request, role_id, new_caps, new_domains, new_parents, new_values
+        )
         require_reach_of_added_domains_request(  # REQ-1531
             request, existing["domain_access"], new_domains
         )

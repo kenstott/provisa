@@ -113,8 +113,9 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # AI generation endpoints that persist. A curator is granted both; granting RW alone leaves the
     # surface unreachable, because the page itself is gated on READ.
     GLOSSARY_READ = "glossary_read"
-    # REQ-1132: read the meta domain, the model's structure. Held by viewer, so every role built on
-    # viewer has it; a role with no viewer ancestor does not.
+    # REQ-1132: read the meta domain, the model's structure. Held by viewer; a role holds it when
+    # it is given it and a parent holds it (REQ-2155), and a column granted to viewer in meta is
+    # the holder's too (inheritance.expand_meta_grants).
     CATALOG_READ = "catalog_read"
     GLOSSARY_RW = "glossary_rw"
     # REQ-1592: curate ANY term in the org, whatever its domains and whoever authored it. The
@@ -173,6 +174,20 @@ class MissingDomainCapability(PermissionError):
         super().__init__(missing_capability_message(role_id, domain_id))
 
 
+class ListedOnly(PermissionError):
+    """A read of a table a role can only list: its metadata is the role's, its data never is
+    (REQ-1132, REQ-2153)."""
+
+    def __init__(self, role_id: str, table: str) -> None:
+        self.role_id = role_id
+        self.table = table
+        super().__init__(listed_only_message(role_id, table))
+
+
+def listed_only_message(role_id: str, table: str) -> str:
+    return f"Role {role_id!r} can only list {table!r}: its metadata can be read, its data cannot"
+
+
 def missing_capability_message(role_id: str, domain_id: str) -> str:
     capability = SYSTEM_DOMAIN_CAPABILITIES[domain_id]
     return (
@@ -197,6 +212,8 @@ PLATFORM_ADMIN_ROLE = "platform_admin"
 ORG_ADMIN_ROLE = "org_admin"
 DEVELOPER_ROLE = "developer"
 ANALYST_ROLE = "analyst"
+#: The standard role every role builds on (provisa/core/standard_roles.yaml).
+VIEWER_ROLE = "viewer"
 SYSTEM_ROLE_IDS: frozenset[str] = frozenset(
     {PLATFORM_ADMIN_ROLE, ORG_ADMIN_ROLE, DEVELOPER_ROLE, ANALYST_ROLE}
 )
@@ -407,7 +424,7 @@ def reaches_command_domain(domain_access: Iterable[str] | None, domain_id: str) 
 
 # --- which columns a role is served (REQ-039, REQ-1133, REQ-1959) --------------------------------
 
-from provisa.core.column_scope import SCOPE_PUBLIC  # noqa: E402
+from provisa.core.column_scope import SCOPE_LISTED, SCOPE_PUBLIC  # noqa: E402
 
 # A column's ``scope`` (core/column_scope.py): ``domain`` and ``listed`` are served within the
 # domains a role reaches, ``public`` also outside them. ``listed`` adds only names in the catalog.
@@ -501,8 +518,9 @@ def role_domain_problem(  # REQ-039, REQ-1530
     refused where the role is defined rather than discovered when the role is used. Both
     arguments are the role's EFFECTIVE values (its own plus what its parent chain hands down).
 
-    The one exception is a role whose capabilities are platform rights and nothing else
-    (:func:`is_control_plane_definition`): it holds no data right, so it lists no domain.
+    The exceptions hold no data right, so they list no domain: a role whose capabilities are
+    platform rights and nothing else (:func:`is_control_plane_definition`), and a role with no
+    capabilities (REQ-2155): a name, session values, a command's assignee or a building block.
     """
     listed = set(domain_access or ())
     if listed & SYSTEM_DOMAINS:
@@ -512,7 +530,7 @@ def role_domain_problem(  # REQ-039, REQ-1530
         )
     if listed:
         return None
-    if is_control_plane_definition(capabilities):
+    if is_control_plane_definition(capabilities) or not set(capabilities or ()):
         return None
     return f'Role {role_id!r} must list at least one domain, or "*" for all domains'
 
@@ -706,6 +724,13 @@ META_CATALOG_ROW_SCOPES = CATALOG_ROW_SCOPES
 
 #: REQ-2153: the meta view of listed names; a reader sees those of domains it does not reach.
 LISTED_NAMES_VIEW = "listed_names"
+#: REQ-1132: the meta tables a role reads with no meta grant, their rows scoped to the tables it can
+#: read, write or list (compute_meta_row_scope) and their core columns served by
+#: inheritance.expand_meta_grants: the tables naming no more than that, and what a SQL client's
+#: catalog is made of. What it reads of meta beyond them is catalog_read's.
+DEFAULT_TIER_META_TABLES: frozenset[str] = frozenset(
+    {*META_ROW_SCOPED_VIEWS, *CATALOG_VIEW_NAMES, *NEUTRAL_VIEW_NAMES, LISTED_NAMES_VIEW}
+)
 
 # REQ-1593, REQ-2163: the ontology schema's definition views, each with the columns holding the
 # domains (as |a|b|) of the terms its row is about. A row is read only when each of those terms is
@@ -736,37 +761,65 @@ SQL_CATALOG_TABLES: frozenset[tuple[str, str]] = frozenset(
 SQL_ONLY_TABLES |= SQL_CATALOG_TABLES
 
 
+def lists_table(table: dict) -> bool:
+    """Whether every role of the org lists ``table``: it holds a listed column (REQ-2153), in a
+    data domain."""
+    if table.get("domain_id") in SYSTEM_DOMAINS or table.get("draft"):
+        return False
+    return any(c.get("scope") == SCOPE_LISTED for c in table.get("columns") or [])
+
+
+def writes_table(role: dict, table: dict) -> bool:
+    """Whether ``role`` holds a write grant on ``table``, in a domain it reaches."""
+    if not reaches_domain(role["domain_access"], cast("str", table.get("domain_id"))):
+        return False
+    return any(g["role"] == role["id"] for g in table.get("write_grants") or [])
+
+
 def compute_meta_row_scope(
     role: dict[str, object],
     tables: list[dict],
     relationships: list[dict] | None,
 ) -> set[int] | None:
     """REQ-1132: the set of DESCRIBED table ids whose meta rows a role may see, or ``None`` when
-    NO row filter applies (all rows visible).
+    NO row filter applies (all rows visible). The pgwire catalog and every catalog function read
+    meta, so this is their scope too.
 
     ``None`` (unfiltered) is returned for the tier that sees the whole catalog: a role reaching
-    every data domain. Holding catalog_read, as every role built on viewer does, opens the domain
-    and not its rows. An empty ``domain_access`` is no domains, so such a role sees
-    no meta rows at all; the role itself is required — a missing role is not a tier. Every other
-    (DEFAULT-tier) role is confined to its own tables — those it is served at least one column of
-    (:func:`serves_table`) — PLUS 1-hop neighbours over user-defined/semantic relationships (the ``relationships``
-    registry holds only user relationships; auto-derived FK/catalog edges are never stored there, so
-    they are excluded by construction). Discovery is bidirectional, EXCEPT a relationship flagged
-    ``hide_target_meta`` suppresses the TARGET from discovery via that edge (the source stays
-    discoverable from the target side). Computed (function-target) relationships have no concrete
-    target table and contribute no neighbour.
+    every data domain and holding every system domain. A table of a system domain is described only
+    to a role holding that domain. Short of that a role reaching every data domain sees them all.
+    Holding catalog_read opens the domain and not its rows. An empty ``domain_access`` is no
+    domains, so such a role sees no meta rows but the listed; the role itself is required -- a
+    missing role is not a tier. Every other (DEFAULT-tier) role is confined to the tables it can
+    read (:func:`serves_table`), write (:func:`writes_table`) or list (:func:`lists_table`), PLUS
+    1-hop neighbours of the first two over user-defined/semantic relationships (the
+    ``relationships`` registry holds only user relationships; auto-derived FK/catalog edges are
+    never stored there, so they are excluded by construction). Discovery is bidirectional, EXCEPT a
+    relationship flagged ``hide_target_meta`` suppresses the TARGET from discovery via that edge
+    (the source stays discoverable from the target side). Computed (function-target) relationships
+    have no concrete target table and contribute no neighbour.
     """
     accessible = cast("list[str]", role["domain_access"])
+
+    def described(table: dict) -> bool:
+        domain_id = table.get("domain_id")
+        return domain_id not in SYSTEM_DOMAINS or domain_id in accessible
+
     if reaches_all_domains(accessible):
-        return None  # "*" → the whole catalog
+        if SYSTEM_DOMAINS <= set(accessible):
+            return None  # the whole catalog
+        return {t["id"] for t in tables if described(t)}
     # An EMPTY list falls through: no domain is directly reachable, so no meta row is either.
 
-    # Its own tables: exactly those it is served a column of, by the one column rule — in a
-    # domain it reaches or published to it across domains (REQ-1959). Reaching a table's domain
-    # is not enough: a table every column of which is granted to other roles is not described
-    # to this one.
-    directly = {t["id"] for t in tables if serves_table(role, t)}
+    # Its own tables: exactly those it is served a column of, by the one column rule -- in a domain
+    # it reaches or published to it across domains (REQ-1959) -- or holds a write grant on. Reaching
+    # a table's domain is not enough: a table every column of which is granted to other roles is not
+    # described to this one.
+    directly = {
+        t["id"] for t in tables if described(t) and (serves_table(role, t) or writes_table(role, t))
+    }
     visible = set(directly)
+    system = {t["id"] for t in tables if not described(t)}
     for rel in relationships or []:
         sid = rel.get("source_table_id")
         tid = rel.get("target_table_id")
@@ -776,4 +829,16 @@ def compute_meta_row_scope(
             visible.add(tid)
         if tid in directly:
             visible.add(sid)
-    return visible
+    return (visible - system) | {t["id"] for t in tables if lists_table(t)}
+
+
+def unlisted_columns(role: dict, tables: list[dict]) -> set[tuple[int, str]]:
+    """The (table id, column) of each table ``role`` only lists whose column is not listed: the
+    catalog names a listed table's listed columns to it and no others (REQ-2153)."""
+    return {
+        (t["id"], c["column_name"])
+        for t in tables
+        if lists_table(t) and not serves_table(role, t) and not writes_table(role, t)
+        for c in t.get("columns") or []
+        if c.get("scope") != SCOPE_LISTED
+    }

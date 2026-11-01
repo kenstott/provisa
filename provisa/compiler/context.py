@@ -30,7 +30,16 @@ from provisa.compiler.native_subtype import SubtypeColumns
 from provisa.compiler.sql_rewrite import _sql_str_literal, semantic_table_name
 from provisa.compiler.sql_where import META_QUERY_NAME
 from provisa.core.ir_types import Subtype
-from provisa.security.rights import META_DOMAIN_ID, OPS_DOMAIN_ID, SYSTEM_DOMAINS, reaches_domain
+from provisa.security.rights import (
+    META_DOMAIN_ID,
+    OPS_DOMAIN_ID,
+    SYSTEM_DOMAINS,
+    lists_table,
+    reaches_domain,
+    served_across_domains,
+    serves_table,
+    writes_table,
+)
 from provisa.compiler.sql_types import (
     CompilationContext,
     JoinMeta,
@@ -676,6 +685,7 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     ctx.columns_outside_relation = si.columns_outside_relation
     _register_draft_names(si, ctx, domain_alias_map)
     _register_missing_capabilities(si, ctx, domain_alias_map)
+    _register_listed_only(si, ctx, domain_alias_map)
 
     return ctx
 
@@ -722,8 +732,27 @@ def _register_missing_capabilities(  # REQ-1132
             continue
         if domain == META_DOMAIN_ID:
             ctx.missing_capability["_meta"] = domain
+        if served_across_domains(si.role, row):
+            continue  # REQ-1132: meta's default tier, read with no meta grant
         for said in _names_of_table(si, row, domain_alias_map):
             ctx.missing_capability[said] = domain
+
+
+def _register_listed_only(  # REQ-1132, REQ-2153
+    si: object,  # object-ok: SchemaInput, imported inside build_context (circular boundary)
+    ctx: CompilationContext,
+    domain_alias_map: dict[str, str],
+) -> None:
+    """Every name a statement could give a table this role can only list: it is in no schema of
+    the role, so a statement naming one is refused as listed, not as unknown."""
+    from provisa.compiler.schema_gen import SchemaInput
+
+    assert isinstance(si, SchemaInput)
+    for row in si.tables:
+        if not lists_table(row) or serves_table(si.role, row) or writes_table(si.role, row):
+            continue
+        for said in _names_of_table(si, row, domain_alias_map):
+            ctx.listed_only[said] = f"{row['domain_id']}.{row['table_name']}"
 
 
 def _names_of_table(

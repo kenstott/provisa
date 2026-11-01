@@ -53,6 +53,7 @@ from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import GovernanceContext, approved_join_key, registered_name
 from provisa.security.rights import (
     TRAVERSABLE_DOMAINS,
+    listed_only_message,
     missing_capability_message,
     reaches_domain,
 )
@@ -196,6 +197,13 @@ def _check_registered_relations(  # REQ-001, REQ-266
                     ValidationViolation(
                         "V001", missing_capability_message(ctx.role_id or "", system_domain)
                     )
+                )
+                continue
+            listed = ctx.listed_only.get(ref)
+            if listed is not None:
+                # REQ-1132: list is metadata only, and said so.
+                violations.append(
+                    ValidationViolation("V001", listed_only_message(ctx.role_id or "", listed))
                 )
                 continue
             violations.append(
