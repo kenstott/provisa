@@ -395,3 +395,99 @@ def test_a_propagated_bind_parameter_returns_the_same_rows(_db) -> None:
         return sorted(_db.execute(duck, params).fetchall(), key=repr)
 
     assert run(out) == run(_PARAM_CORR)
+
+
+# --- P10: a key-bounded nested read on an engine with no decorrelation is read once ---
+
+_LIST = (
+    'SELECT "t0"."order_id", COALESCE((SELECT json_agg(json_object(KEY \'status\' VALUE '
+    '"t2"."status")) FROM "perf_bench"."order_docs" "t2" WHERE "t2"."order_id" = "t0"."order_id"), '
+    'CAST(\'[]\' AS JSON)) AS "d" FROM "perf_bench"."orders" "t0" '
+    'WHERE "t0"."order_id" >= 1 AND "t0"."order_id" <= 1000'
+)
+
+
+def _once(sql: str) -> str:
+    return propagate_literal_join_predicates(sql, "postgres", _ELIGIBLE, _TYPES, read_once=True)
+
+
+def test_a_key_bounded_list_is_one_grouped_read_joined_by_key() -> None:
+    assert _once(_LIST) == _norm(
+        'SELECT "t0"."order_id", COALESCE("_read_0"."_value", CAST(\'[]\' AS JSON)) AS "d" '
+        'FROM "perf_bench"."orders" "t0" LEFT JOIN (SELECT "t2"."order_id" AS "_key", '
+        'json_agg(json_object(KEY \'status\' VALUE "t2"."status")) AS "_value" '
+        'FROM "perf_bench"."order_docs" "t2" '
+        'WHERE "t2"."order_id" >= 1 AND "t2"."order_id" <= 1000 GROUP BY "t2"."order_id") '
+        'AS "_read_0" ON "_read_0"."_key" = "t0"."order_id" '
+        'WHERE "t0"."order_id" >= 1 AND "t0"."order_id" <= 1000'
+    )
+
+
+def test_a_key_bounded_to_one_takes_the_head_of_each_key() -> None:
+    out = _once(_CORR)
+    tree = sqlglot.parse_one(out, read="postgres")
+    assert 'SELECT DISTINCT ON ("t2"."order_id") "t2"."order_id" AS "_key"' in out
+    assert tree.find(sqlglot.exp.Limit) is None
+    assert tree.expressions[1].sql(dialect="postgres") == '"_read_0"."_value" AS "d"'
+
+
+def test_a_read_is_left_correlated_unless_asked() -> None:
+    assert "LEFT JOIN" not in propagate_literal_join_predicates(
+        _LIST, "postgres", _ELIGIBLE, _TYPES
+    )
+
+
+def test_a_governed_condition_moves_with_the_read() -> None:
+    sql = _LIST.replace(
+        'WHERE "t2"."order_id" = "t0"."order_id"',
+        'WHERE "t2"."status" = \'open\' AND "t2"."order_id" = "t0"."order_id"',
+    )
+    derived = next(
+        s
+        for s in sqlglot.parse_one(_once(sql), read="postgres").find_all(sqlglot.exp.Subquery)
+        if s.alias == "_read_0"
+    )
+    assert '"t2"."status" = \'open\'' in derived.sql(dialect="postgres")
+
+
+def test_an_open_range_stays_correlated() -> None:
+    sql = _LIST.replace(' AND "t0"."order_id" <= 1000', "")
+    assert "LEFT JOIN" not in _once(sql)
+
+
+def test_a_read_with_another_outer_reference_stays_correlated() -> None:
+    sql = _LIST.replace(
+        'WHERE "t2"."order_id" = "t0"."order_id"',
+        'WHERE "t2"."order_id" = "t0"."order_id" AND "t2"."status" = "t0"."state"',
+    )
+    out = _once(sql)
+    assert "LEFT JOIN" not in out
+    # Refused, it keeps every condition it came with.
+    assert '"t2"."order_id" = "t0"."order_id"' in out
+
+
+def test_a_per_parent_limit_stays_correlated() -> None:
+    sql = (
+        'SELECT "t0"."order_id", COALESCE((SELECT json_agg(_t) FROM (SELECT json_object(KEY '
+        '\'status\' VALUE "t2"."status") AS _t FROM "perf_bench"."order_docs" "t2" '
+        'WHERE "t2"."order_id" = "t0"."order_id" LIMIT 5) _sub), CAST(\'[]\' AS JSON)) AS "d" '
+        'FROM "perf_bench"."orders" "t0" WHERE "t0"."order_id" = 1'
+    )
+    assert "LEFT JOIN" not in _once(sql)
+
+
+def test_a_count_keeps_its_zero() -> None:
+    sql = (
+        'SELECT "t0"."order_id", (SELECT count(*) FROM "perf_bench"."order_docs" "t2" '
+        'WHERE "t2"."order_id" = "t0"."order_id") AS "d" FROM "perf_bench"."orders" "t0" '
+        'WHERE "t0"."order_id" = 1'
+    )
+    assert "LEFT JOIN" not in _once(sql)
+
+
+def test_a_bind_parameter_bound_reads_once_where_the_engine_binds_by_number() -> None:
+    sql = _LIST.replace(">= 1", ">= $1").replace("<= 1000", "<= $2")
+    out = propagate_literal_join_predicates(
+        sql, "postgres", _ELIGIBLE, _TYPES, allow_params=True, read_once=True
+    )
+    assert '"t2"."order_id" >= $1' in out and "LEFT JOIN (" in out
