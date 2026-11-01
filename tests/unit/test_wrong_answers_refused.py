@@ -37,10 +37,10 @@ def _on_duckdb(sql: str):
 @pytest.mark.parametrize(
     ("sql", "kept"),
     [
-        ("SELECT 2.5::numeric", "CAST(2.5 AS DECIMAL(2, 1))"),
-        ("SELECT (-7.125)::numeric", "CAST((-7.125) AS DECIMAL(4, 3))"),
-        ("SELECT 1000::numeric", "CAST(1000 AS DECIMAL(4, 0))"),
-        ("SELECT CAST('12.50' AS numeric)", "CAST('12.50' AS DECIMAL(4, 2))"),
+        ("SELECT 2.5::numeric", "CAST(2.5 AS DECIMAL(20, 1))"),
+        ("SELECT (-7.125)::numeric", "CAST((-7.125) AS DECIMAL(22, 3))"),
+        ("SELECT 1000::numeric", "CAST(1000 AS DECIMAL(22, 0))"),
+        ("SELECT CAST('12.50' AS numeric)", "CAST('12.50' AS DECIMAL(22, 2))"),
         ("SELECT 'abc'::character", "CAST('a' AS CHAR)"),
         ("SELECT 'abcd'::char(2)", "CAST('ab' AS CHAR(2))"),
     ],
@@ -57,7 +57,7 @@ def test_a_statement_with_nothing_to_read_is_left_as_written():
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
 def test_a_numeric_literal_keeps_its_scale(dialect):
     written = transpile("SELECT 2.5::numeric AS v", dialect)
-    assert "DECIMAL(2, 1)" in written.replace("Decimal", "DECIMAL")
+    assert "DECIMAL(20, 1)" in written.replace("Decimal", "DECIMAL")
 
 
 @pytest.mark.parametrize(
@@ -114,6 +114,25 @@ def test_a_scale_only_a_row_knows_is_refused():
 def test_an_exact_answer_no_form_writes_is_refused_by_name(sql, dialect):
     with pytest.raises(FunctionRefused):
         transpile(sql, dialect)
+
+
+@pytest.mark.parametrize(
+    "sql", ["SELECT sqrt(NULL::numeric) AS v", "SELECT stddev(NULL::integer) AS v"]
+)
+def test_a_null_has_no_digits_to_differ_in(sql):
+    assert transpile(sql, "duckdb")
+
+
+def test_a_size_is_refused_for_the_values_that_differ():
+    assert _on_duckdb("SELECT pg_size_pretty(1024::numeric) AS v") == "1024 bytes"
+    with pytest.raises(duckdb.Error, match="does not read this value"):
+        _on_duckdb("SELECT pg_size_pretty(1536.5::numeric) AS v")
+
+
+def test_one_value_has_no_order():
+    assert _on_duckdb("SELECT min('a'::character) AS v") == "a"
+    with pytest.raises(FunctionRefused, match="max"):
+        transpile("SELECT max(c1) FROM (VALUES ('a'::text)) AS t(c1)", "duckdb")
 
 
 def test_an_average_of_floats_is_the_engines_own():

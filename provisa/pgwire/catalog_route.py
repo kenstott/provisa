@@ -557,8 +557,6 @@ def _session_call(name: str, args: list[exp.Expr], request: CatalogRequest) -> e
         return exp.cast(exp.null() if said is None else exp.Literal.string(said), "TEXT")
     if name == "timeofday":
         return exp.cast(exp.Literal.string(_time_of_day(request)), "TEXT")
-    if name == "current_query":
-        return exp.cast(exp.Literal.string(request.session["query"]), "TEXT")
     if name == "pg_is_in_recovery":
         return exp.false()
     if name in ("txid_current", "pg_current_xact_id"):

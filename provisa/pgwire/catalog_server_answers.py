@@ -1156,7 +1156,6 @@ ANSWERED = frozenset(
 REWRITTEN = frozenset(
     {
         "convert",
-        "current_query",
         "getpgusername",
         "json_each",
         "json_object",

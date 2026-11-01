@@ -36,6 +36,8 @@ import sqlglot.expressions as exp
 
 #: DuckDB's widest decimal.
 _MAX_PRECISION = 38
+#: The digits a literal's decimal has beside its own.
+_ROOM = 18
 
 
 class _NotAnArrayLiteral(ValueError):
@@ -138,8 +140,10 @@ def _exact_numeric(literal: exp.Literal) -> exp.DataType | None:
     precision = max(len(digits), scale)
     if precision > _MAX_PRECISION:
         return None  # wider than any engine decimal: left to the engine's own cast
-    # No wider than its digits: an engine cannot widen a list of DECIMAL(38,1) and DECIMAL(38,3).
-    return exp.DataType.build(f"DECIMAL({max(precision, 1)}, {scale})", dialect="postgres")
+    # Room to compute in, and not the widest: an engine cannot widen a list of DECIMAL(38,1) and
+    # DECIMAL(38,3), and DuckDB refuses a product of a width that is too narrow.
+    width = min(_MAX_PRECISION, precision + _ROOM)
+    return exp.DataType.build(f"DECIMAL({width}, {scale})", dialect="postgres")
 
 
 def _number_of(node: exp.Expr) -> exp.Literal | None:

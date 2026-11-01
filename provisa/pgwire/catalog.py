@@ -594,9 +594,7 @@ def _catalog_request(
         else catalog_facts(role_id, {}),
         settings=_KNOWN_SETTINGS,
         pid=session.pid if session is not None else 0,
-        session={**connection, "query": sql}
-        if "pg_stat_activity" in sql.lower() or "current_query" in sql.lower()
-        else connection,
+        session={**connection, "query": sql} if "pg_stat_activity" in sql.lower() else connection,
         reltuples=row_counts(role_id, state) if "reltuples" in sql.lower() else {},
     )
 

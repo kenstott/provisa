@@ -987,6 +987,7 @@ def _operator(form: pg_forms_types.Form) -> Macro:
     )
 
 
+_SIZE_REFUSED = f"'pg_size_pretty {pg_forms_types.REFUSED}'"
 #: PostgreSQL's substr counts positions before the first: a start at or below 0 takes fewer.
 _SUBSTR_START = "GREATEST(start, 1)"
 #: inet's text always says its mask; the engine's value says it only where it is not the widest.
@@ -1013,6 +1014,13 @@ _ROWS: tuple[Macro, ...] = (
     Macro("max_collated", ("value",), {_EVERY: Pg("MAX(value)")}),
     Macro("min_collated", ("value",), {_EVERY: Pg("MIN(value)")}),
     Macro("to_number", ("value", "format")),
+    Macro("current_query", ()),  # the engine's is the statement as Provisa wrote it
+    _macro(
+        "pg_size_pretty_numeric",
+        "x",
+        f"CASE WHEN x <> trunc(x) THEN {pg_forms_types.refused('0A000', _SIZE_REFUSED)} "
+        "ELSE pg_size_pretty(CAST(x AS BIGINT)) END",
+    ),
     _macro("to_hex", "value", f"format('{{:x}}', {_TWOS_COMPLEMENT})"),
     _macro("netmask", "value", "host(netmask(value))"),
     _macro(
@@ -1319,7 +1327,6 @@ _EXACT_ROWS: tuple[Macro, ...] = (
             ("pow", 2),
             ("sqrt", 1),
             ("div", 2),
-            ("pg_size_pretty", 1),
         )
     ),
     # A float's digits as numeric, which its text does not write (100.0 for 100).
@@ -1339,7 +1346,6 @@ _EXACT_NUMERIC_ONLY = {
     ("pow", 2),
     ("sqrt", 1),
     ("div", 2),
-    ("pg_size_pretty", 1),
 }
 
 #: A row replay found another answer of, by the dialects it is refused on.
@@ -1390,6 +1396,7 @@ REFUSED_ROWS = frozenset(
     {
         *((m.name, len(m.params)) for m in _EXACT_ROWS),
         ("to_number", 2),
+        ("current_query", 0),
         ("mul_d_interval", 2),
         ("max_collated", 1),
         ("min_collated", 1),
@@ -1443,9 +1450,14 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
         (m.name.removeprefix("exact_"), len(m.params), said): m.name
         for m in _EXACT_ROWS
         for said in _EXACT_TYPES
-        if said == "decimal"
-        or (m.name.removeprefix("exact_"), len(m.params)) not in _EXACT_NUMERIC_ONLY
+        if m.name.startswith("exact_")
+        and m.name != "exact_numeric"
+        and (
+            said == "decimal"
+            or (m.name.removeprefix("exact_"), len(m.params)) not in _EXACT_NUMERIC_ONLY
+        )
     },
+    ("pg_size_pretty", 1, "decimal"): "pg_size_pretty_numeric",
     ("avg", 1, "interval"): "exact_avg",
     ("numeric", 1, "double precision"): "exact_numeric",
     ("numeric", 1, "real"): "exact_numeric",
@@ -1510,13 +1522,23 @@ def said_type(node: exp.Expr) -> str | None:
     return node.to.sql(dialect="postgres").lower() if isinstance(node, exp.Cast) else None
 
 
+#: The rows of a type whose NULL answers NULL, whatever digits the function would give a value.
+_ANSWERED_BY_A_NULL = frozenset(m.name for m in _EXACT_ROWS)
+_COLLATED = frozenset({"max_collated", "min_collated"})
+
+
 def overload(name: str, args: list[exp.Expr]) -> str:
     """The row a call reads: the overload of the type its first argument is said to be, else the
     row of its own name."""
     said = said_type(args[0]) if args else None
     if said is None:
         return name
-    return OVERLOADS.get((name, len(args), said.split("(")[0]), name)
+    row = OVERLOADS.get((name, len(args), said.split("(")[0]), name)
+    if row in _ANSWERED_BY_A_NULL and isinstance(args[0].unnest().this, exp.Null):
+        return name
+    if row in _COLLATED and args[0].find(exp.Column) is None:
+        return name  # one value, which no order changes
+    return row
 
 
 def outcome(name: str, arity: int, dialect: str) -> str:
@@ -1664,6 +1686,8 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return node.name.lower(), list(node.expressions)
     if type(node) in _READ_AS:
         return _READ_AS[type(node)], [node.this]
+    if isinstance(node, exp.Hex) and said_type(node.this) in ("bytea", "text"):
+        return None  # a hex a form wrote, of its bytes
     if isinstance(node, exp.ToNumber):
         return "to_number", [node.this, node.args["format"]]
     if isinstance(node, exp.Length):  # an overload of a type: length(text) has no row
