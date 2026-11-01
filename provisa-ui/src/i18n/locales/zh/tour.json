@@ -86,9 +86,9 @@
         "description": "一个选择器按类别列出所有类型：<strong>订阅、RDBMS、云数据仓库、分析、数据湖、NoSQL、代码解析器、图、文件、API、流式、企业、数据质量、其他</strong>。可以按名称或别名搜索，也可以用类别标签缩小范围。每种类型都有徽标和可达性图标：⚡ 表示就地实时读取，复制图标表示 Provisa 读取已刷新的副本。<p>选一个，填写连接，保存。</p>"
       },
       "stepBuildSource": {
-        "title": "现场添加一个数据源",
-        "description": "数据源就是这样添加的：选择器打开并显示完整列表，选中 <strong>Parquet File</strong>，填入文件地址（<code>supplies.parquet</code>），然后点击保存创建。新的 <strong>supplies</strong> 数据源直接在原处读取该文件。",
-        "acting": "正在添加数据源"
+        "title": "填好一个数据源的表单",
+        "description": "选择器打开并显示完整列表，选择了 <strong>Parquet File</strong>，表单中填入了文件地址（<code>supplies.parquet</code>）。文件数据源只需要这些。这里只是看一看表单：下一步会按下<strong>取消</strong>，不保存任何内容。",
+        "acting": "正在填写数据源"
       },
       "step4": {
         "title": "一切都会变成表",
@@ -872,13 +872,9 @@
         "title": "数据集市的列来自哪里",
         "description": "数据集市各列的血缘：每一列都经由时点视图和卫星表追溯到其来源字段。"
       },
-      "datavaultAnalyst": {
-        "title": "分析师的视角",
-        "description": "接下来，SQL 浏览器以欧洲分析师的身份运行。个人数据存放在卫星中，所以治理也在那里进行。"
-      },
       "datavaultMasked": {
         "title": "在个人数据所在处脱敏",
-        "description": "以分析师身份查看时，CRM 卫星只显示欧洲客户。他们的联系人被隐去，电子邮件中的姓名和电话号码中的数字也被隐藏。中心表和链接仍然可读，因此分析师仍能在它们上面做连接。"
+        "description": "SQL 浏览器现在以欧洲分析师的身份运行。个人数据存放在卫星中，所以治理也在那里进行。以分析师身份查看时，CRM 卫星只显示欧洲客户。他们的联系人被隐去，电子邮件中的姓名和电话号码中的数字也被隐藏。中心表和链接仍然可读，因此分析师仍能在它们上面做连接。"
       },
       "datavaultRecap": {
         "title": "你看到了什么",
@@ -972,13 +968,9 @@
         "title": "回到所有角色",
         "description": "接下来，角色选择器切回 <strong>All</strong>。"
       },
-      "retailAsMarketing": {
-        "title": "以 EU 营销身份",
-        "description": "接下来，SQL 浏览器以 marketing_eu 的身份运行。"
-      },
       "retailAudience": {
         "title": "只有同意的客户",
-        "description": "EU 营销读取同意接收营销的 EU 客户，且仅限这些客户。该视图在 EU 中由 EU 的行构建。"
+        "description": "SQL 浏览器现在以 <strong>marketing_eu</strong> 的身份运行。EU 营销读取同意接收营销的 EU 客户，且仅限这些客户。该视图在 EU 中由 EU 的行构建。"
       },
       "retailAsDpo": {
         "title": "以数据保护官身份",
@@ -1140,13 +1132,9 @@
         "title": "关系，只声明一次",
         "description": "<strong>OF_PRODUCT</strong> 将 PostgreSQL 中的订单明细与 MongoDB 中的商品连接起来。连同 PLACED_BY、HAS_ITEM 和 SHIPPED_AS，这四个关系只声明一次，应用和 BI 工具都通过它们读取。"
       },
-      "storefrontAsCustomer": {
-        "title": "以顾客身份登录",
-        "description": "应用以 <strong>customer</strong> 角色发送查询，该角色的行过滤会把每个答案限制在已登录客户自己的订单内。接下来，角色选择器会切换到 <strong>customer</strong>，让下面的查询完全按应用的方式运行。"
-      },
       "storefrontScreen": {
         "title": "应用的唯一一个查询",
-        "description": "订单历史页面发送这唯一一个嵌套 GraphQL 查询：每个订单及其明细、每条明细在目录中的商品，以及订单在配送服务中的配送。以 <strong>customer</strong> 身份运行时，它返回七个订单，全部属于已登录的顾客。"
+        "description": "应用以 <strong>customer</strong> 角色发送查询，该角色的行过滤会把每个答案限制在已登录客户自己的订单内。角色选择器现在是 <strong>customer</strong>。订单历史页面发送这唯一一个嵌套 GraphQL 查询：每个订单及其明细、每条明细在目录中的商品，以及订单在配送服务中的配送。以 <strong>customer</strong> 身份运行时，它返回七个订单，全部属于已登录的顾客。"
       },
       "storefrontApp": {
         "title": "它所支撑的页面",
@@ -1156,13 +1144,9 @@
         "title": "通过 JSON:API 读取同样的订单",
         "description": "偏好 JSON:API 的客户端仍以顾客身份请求同样的订单，并包含其明细和配送。每个订单都链接到它所包含的明细和配送，而明细的 id 是它的复合键。"
       },
-      "storefrontAnalyst": {
-        "title": "现在以分析师身份",
-        "description": "BI 端以 <strong>analyst</strong> 身份读取：能看到所有订单，但看不到任何客户的电子邮件。接下来，运行身份选择器会切换到 <strong>analyst</strong>。"
-      },
       "storefrontAnalystSql": {
         "title": "分析师的 SQL",
-        "description": "按地区和承运商统计的延迟配送，基于同样的表和关系。<strong>a_customer</strong> 显示分析师读取到的邮箱：已脱敏。"
+        "description": "BI 端以 <strong>analyst</strong> 身份读取：能看到所有订单，但看不到任何客户的电子邮件。SQL 浏览器现在以 <strong>analyst</strong> 的身份运行。按地区和承运商统计的延迟配送，基于同样的表和关系。<strong>a_customer</strong> 显示分析师读取到的邮箱：已脱敏。"
       },
       "storefrontBi": {
         "title": "BI 仪表板",
@@ -1188,13 +1172,9 @@
         "title": "应用所认识的表",
         "description": "四张表带着应用使用的名称过来了。<strong>customers</strong> 保留了 Hasura 的自定义名称 <strong>givenName</strong> 和 <strong>familyName</strong>，商品表保留其根名称 <strong>catalog</strong>，每一列都带有可读取它的角色，来自 select 权限。"
       },
-      "hasuramigrationAsAna": {
-        "title": "以 Ana 身份登录",
-        "description": "Ana 是一位客户。她的令牌带有 <strong>x-hasura-user-id: 1</strong>，Provisa 把这个声明读作会话值 <strong>hasura_user_id</strong>，导入的行规则就拿它来比较。接下来，角色选择器会切换到 <strong>ana</strong>，让下面的查询完全按店面为她运行的方式运行。"
-      },
       "hasuramigrationMyOrders": {
         "title": "重塑后的订单历史",
-        "description": "商店的订单历史查询为 Provisa 重塑了一次：根字段带有其域，列名遵循 Provisa 的约定，order_by 是一个列表。关系 <strong>items</strong> 和 <strong>product</strong> 保留了它们的 Hasura 名称。以 Ana 身份运行，它返回她的四张订单，不包含任何其他人的订单。"
+        "description": "Ana 是一位客户。她的令牌带有 <strong>x-hasura-user-id: 1</strong>，Provisa 把这个声明读作会话值 <strong>hasura_user_id</strong>，导入的行规则就拿它来比较。角色选择器现在是 <strong>ana</strong>。商店的订单历史查询为 Provisa 重塑了一次：根字段带有其域，列名遵循 Provisa 的约定，order_by 是一个列表。关系 <strong>items</strong> 和 <strong>product</strong> 保留了它们的 Hasura 名称。以 Ana 身份运行，它返回她的四张订单，不包含任何其他人的订单。"
       },
       "hasuramigrationProfile": {
         "title": "按键读取",
@@ -1208,21 +1188,13 @@
         "title": "再加一个关系",
         "description": "<strong>BUYS_FOR</strong> 将客户连接到其 Salesforce 账户，与导入带来的关系一样获得批准。从这里起，在每个界面、每个角色的规则之下，账户与每个客户都只隔一个字段。"
       },
-      "hasuramigrationAsSupport": {
-        "title": "客服台",
-        "description": "支持人员可以读取所有订单和所有客户，与他们原来的 Hasura 权限一致。接下来，角色选择器会切换到 <strong>support</strong>，支持台的订单页面会按他们的方式运行。"
-      },
       "hasuramigrationSupportScreen": {
         "title": "订单及其账户",
-        "description": "客服台的订单界面经过重塑，并加入了新内容：在每个订单的客户旁边，在同一个请求中显示来自 Salesforce 的账户及其行业和城市。没有账户的客户则不显示。"
-      },
-      "hasuramigrationAnalyst": {
-        "title": "分析师",
-        "description": "分析师可以读取订单总额和账户链接，但看不到姓名或电子邮件，也永远看不到已取消的订单。这就是导入带过来的行规则和列列表。接下来，角色选择器会切换到 <strong>analyst</strong>。"
+        "description": "支持人员可以读取所有订单和所有客户，与他们原来的 Hasura 权限一致。角色选择器现在是 <strong>support</strong>。客服台的订单界面经过重塑，并加入了新内容：在每个订单的客户旁边，在同一个请求中显示来自 Salesforce 的账户及其行业和城市。没有账户的客户则不显示。"
       },
       "hasuramigrationByIndustry": {
         "title": "按行业统计的收入",
-        "description": "一条横跨商店和 Salesforce 的 SQL 语句：按每个订单背后账户的行业统计收入。分析师的规则与在 GraphQL 中一样适用：已取消的订单被排除，也不会读取姓名或电子邮件。"
+        "description": "分析师可以读取订单总额和账户链接，但看不到姓名或电子邮件，也永远看不到已取消的订单。这就是导入带过来的行规则和列列表。SQL 浏览器现在以 <strong>analyst</strong> 的身份运行。一条横跨商店和 Salesforce 的 SQL 语句：按每个订单背后账户的行业统计收入。分析师的规则与在 GraphQL 中一样适用：已取消的订单被排除，也不会读取姓名或电子邮件。"
       },
       "hasuramigrationRecap": {
         "title": "你所看到的",
@@ -1332,13 +1304,9 @@
         "title": "分析师看到什么",
         "description": "登录后，竞买方 A 的分析师能看到授予 bidder_a 的内容：聚合视图、概要、脱敏样本，以及不含任何客户身份的卖方记录。这里读不到任何客户姓名，也读不到 CRM 中的企业名称或交易名称。"
       },
-      "dataroomBidder": {
-        "title": "现在以竞买方 A 的身份",
-        "description": "接下来的语句以 <strong>bidder_a</strong> 的身份运行，与分析师完全一致。"
-      },
       "dataroomProfile": {
         "title": "发票概要",
-        "description": "发票表的每一列，按分析器发现的样子呈现：行数、空值、不同值和取值范围。竞买方无需读取任何一条记录，就能了解记录的完整程度。这里有些发票从未被支付。"
+        "description": "这些语句以 <strong>bidder_a</strong> 的身份运行，与分析师完全一致。发票表的每一列，按分析器发现的样子呈现：行数、空值、不同值和取值范围。竞买方无需读取任何一条记录，就能了解记录的完整程度。这里有些发票从未被支付。"
       },
       "dataroomCounts": {
         "title": "客户数量",
@@ -1676,21 +1644,13 @@
         "title": "每次日终时构建",
         "description": "日终汇总是按银行日历在仓库中物化的视图，日历在伦敦时间 18:00 日终。视图是对总账唯一一张表的一个 GROUP BY，因此构建整体在总账中运行，只有分组后的行返回。它继承总账的版本，不需要自己的历史设置。每一天都在自己的日终时记录。10 月 1 日和 2 日在更正到达时又被记录了一次。"
       },
-      "bankingAsOps": {
-        "title": "以运营身份",
-        "description": "下一个查询以运营身份运行，运营按总账自己的规则下钻到记账。他们看不到员工账户的记账，所有交易对手都被隐藏。"
-      },
       "bankingDashboard": {
         "title": "仪表板，通过 GraphQL",
-        "description": "伦敦 10 月 1 日的汇总，每个汇总里嵌套着背后的记账。一个请求从仓库读取汇总、从总账读取记账，并沿着刚才看到的关系连接起来。"
-      },
-      "bankingAsAnalyst": {
-        "title": "以报表分析师身份",
-        "description": "下面的 SQL 以银行报表分析师的身份运行。他们读取日终合计，以及构成这些合计的五个分类账列：业务日期、分行、产品、币种和金额。他们从不会看到账户、交易对手或持有人。"
+        "description": "这个查询以运营身份运行，运营按总账自己的规则下钻到记账。他们看不到员工账户的记账，所有交易对手都被隐藏。伦敦 10 月 1 日的汇总，每个汇总里嵌套着背后的记账。一个请求从仓库读取汇总、从总账读取记账，并沿着刚才看到的关系连接起来。"
       },
       "bankingDay": {
         "title": "一天的汇总",
-        "description": "10 月 1 日现在的样子。按分行、产品和币种，可以看到流入、流出和净额。通过 pgwire 连接的 BI 工具运行的正是这条 SQL。"
+        "description": "这段 SQL 以银行报表分析师的身份运行。他们读取日终合计，以及构成这些合计的五个分类账列：业务日期、分行、产品、币种和金额。他们从不会看到账户、交易对手或持有人。10 月 1 日现在的样子。按分行、产品和币种，可以看到流入、流出和净额。通过 pgwire 连接的 BI 工具运行的正是这条 SQL。"
       },
       "bankingReported": {
         "title": "当时报送了什么",
@@ -1772,13 +1732,9 @@
         "title": "谁能看到哪些客户",
         "description": "规则在客户表上:West 区的客服只能读取 West 的客户及其订单,电子邮件地址被脱敏,看不到价格。BI 分析师可读取所有区域和订单金额,但看不到任何电子邮件地址。"
       },
-      "agentdataSupportRole": {
-        "title": "以 West 区客服身份操作",
-        "description": "智能体以页眉中的角色身份操作。下一步会选择 West 区客服,因此智能体的每次工具调用都以该角色运行。"
-      },
       "agentdataSupportAsks": {
         "title": "客服的问题",
-        "description": "智能体查找表、编写 SQL 并通过 MCP 工具运行,工具在运行时显示。只返回 West 的客户,其电子邮件地址以脱敏形式到达:该角色只能得到这些。"
+        "description": "智能体以页眉中的角色身份操作，现在是 West 区客服，因此它的每次工具调用都以该角色运行。智能体查找表、编写 SQL 并通过 MCP 工具运行,工具在运行时显示。只返回 West 的客户,其电子邮件地址以脱敏形式到达:该角色只能得到这些。"
       },
       "agentdataExplain": {
         "title": "实际运行了什么",

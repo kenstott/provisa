@@ -107,7 +107,9 @@ export interface DemoTourStepDef {
   term?: string;
   /** A data product, by id: opened on the Data Products page, its members and lineage shown. */
   product?: string;
-  /** A role (or "all"): shown in the SQL explorer's run-as picker, picked on Next. */
+  /** A role (or "all"): shown in its picker (the SQL explorer's run-as on /sql, else the header's)
+   *  and picked on Next. Beside `example`, `sql` or `mcp`, picked as the step opens, and what the
+   *  step names runs as it. */
   role?: string;
   /** REQ-2083: a time taken from the answer of an earlier `sql` step of the tour, row `row`
    *  (0-based) and column `column`, when this step runs -- a recording time Provisa stamped, which
@@ -195,10 +197,30 @@ export function demoTourSteps(
       def.relationship !== undefined && def.route === undefined && onPage === RELATIONSHIPS_PAGE
         ? { ...def, route: onPage, capability: pageCapability }
         : def;
-    const step = demoTourStep(own, examples, notebook, steps[steps.length - 1], onPage, ran);
+    const shown = demoTourStep(own, examples, notebook, steps[steps.length - 1], onPage, ran);
+    const step = runsAsItsRole(def) ? { ...shown, chooseFirst: rolePicker(def, onPage) } : shown;
     steps.push(def.demo !== undefined ? { ...step, demo: def.demo } : step);
   }
   return steps;
+}
+
+/** The step names a role and something to run: the role is picked as the step opens. */
+function runsAsItsRole(def: DemoTourStepDef): boolean {
+  return (
+    def.role !== undefined &&
+    (def.example !== undefined || def.sql !== undefined || def.mcp !== undefined)
+  );
+}
+
+/** The picker `def.role` is chosen in: the SQL explorer's own run-as on its page, the header's
+ *  role picker (what every other page's requests run as) anywhere else. */
+function rolePicker(
+  def: DemoTourStepDef,
+  onPage: string | undefined,
+): NonNullable<TourStep["chooseOnNext"]> {
+  return onPage === "/sql"
+    ? { open: RUN_AS, option: `[data-sql-role-option="${def.role}"]` }
+    : { open: APP_ROLE, option: `[data-role-option="${def.role}"]` };
 }
 
 /** A tour statement as the SQL explorer ran it: its text and run-as role. */
@@ -413,20 +435,10 @@ function demoTourStep(
       element: RUN_AS,
     };
   }
-  if (def.role !== undefined && onPage !== "/sql") {
-    // Anywhere but the SQL explorer, the role every request of the app runs as: the header's.
-    return {
-      ...page,
-      element: APP_ROLE,
-      chooseOnNext: { open: APP_ROLE, option: `[data-role-option="${def.role}"]` },
-    };
-  }
   if (def.role !== undefined) {
-    return {
-      ...page,
-      element: RUN_AS,
-      chooseOnNext: { open: RUN_AS, option: `[data-sql-role-option="${def.role}"]` },
-    };
+    // Anywhere but the SQL explorer, the role every request of the app runs as: the header's.
+    const picker = rolePicker(def, onPage);
+    return { ...page, element: picker.open, chooseOnNext: picker };
   }
   if (def.as_recorded_from !== undefined) {
     const { step, row, column } = def.as_recorded_from;
