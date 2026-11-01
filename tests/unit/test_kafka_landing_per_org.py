@@ -293,7 +293,7 @@ async def test_two_orgs_each_land_the_topic_into_their_own_table(monkeypatch):
         ("globex", None, "kafka_src/s.orders"),
     }
     assert not any(handle.done() for handle in state.push_listener_handles.values())
-    assert groups == ["provisa-acme-kafka_src", "provisa-globex-kafka_src"]
+    assert groups == [f"provisa-{org}-kafka_src/s.orders" for org in ("acme", "globex")]
     await shutdown_push_listeners(state)
 
 
@@ -347,5 +347,5 @@ async def test_a_wire_bound_to_prod_finds_the_listener_a_wire_with_no_environmen
 
     assert len(first) == 1 and again == []
     assert len(state.push_listener_disconnects) == 1
-    assert groups == ["provisa-acme-kafka_src"]
+    assert groups == ["provisa-acme-kafka_src/s.orders"]
     await shutdown_push_listeners(state)

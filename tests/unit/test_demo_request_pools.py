@@ -137,3 +137,11 @@ def test_opens_and_warm_ups_filling_their_pools_leave_a_query_its_thread():
         return [*served, *await asyncio.gather(*held)]
 
     assert asyncio.run(_run()) == [200, 200, 200, 200]
+
+
+def test_the_limits_need_no_identity():
+    """REQ-2006: they are the page's public text, the same on every node: a credential of another
+    node's sandbox is no reason to refuse them."""
+    from provisa.auth.middleware import _SKIP_PATHS
+
+    assert "/sandboxes/limits" in _SKIP_PATHS

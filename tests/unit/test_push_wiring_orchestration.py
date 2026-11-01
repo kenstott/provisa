@@ -288,7 +288,7 @@ async def test_a_debezium_captured_table_lands_its_topic_into_its_replica(
     assert provider._build_topic(kwargs["watch_target"]) == "shopdb.sales.orders"
     # The operator's group, made the bound org's own: each org reads the whole topic.
     org, _env, _ = _key("")
-    assert provider._consumer_group_id == f"provisa-debezium-{org}"
+    assert provider._consumer_group_id == f"provisa-debezium-{org}-{kwargs['node']}"
     assert kwargs["pk_columns"] == ["id"]
 
 
@@ -340,15 +340,18 @@ async def test_a_kafka_signal_table_of_a_database_lands_its_delta_topic():
 
     assert len(tasks) == 1
     assert run.call_args.kwargs["watch_target"] == "orders.deltas"
-    assert built == {
-        "kind": "kafka",
-        "bootstrap_servers": "broker:9092",
-        "group_id": f"provisa-debezium-{_key('')[0]}",  # the operator's group, the org's own
-        "registry": None,  # the source's CDC block names no schema registry
-        # REQ-1733: its first start reads from where the table's landing stopped.
-        "landed": f"provisa-landed-{_key('')[0]}-{_captured_source().id}",
-        "field_mapping": {},
-    }
+    assert (
+        built
+        == {
+            "kind": "kafka",
+            "bootstrap_servers": "broker:9092",
+            "group_id": f"provisa-debezium-{_key('')[0]}-{run.call_args.kwargs['node']}",  # the operator's group, the org's own
+            "registry": None,  # the source's CDC block names no schema registry
+            # REQ-1733: its first start reads from where the table's landing stopped.
+            "landed": f"provisa-landed-{_key('')[0]}-{_captured_source().id}",
+            "field_mapping": {},
+        }
+    )
 
 
 @pytest.mark.unbound
