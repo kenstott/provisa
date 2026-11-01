@@ -144,7 +144,7 @@ def governed_config() -> ProvisaConfig:
                 parents=["analyst"],
                 domain_access=["*"],
             ),
-            Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
+            Role(id="admin", description="Test role.", capabilities=["usage"], domain_access=["*"]),
         ],
         rls_rules=[
             RLSRule(
