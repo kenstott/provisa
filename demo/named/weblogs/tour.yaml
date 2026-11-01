@@ -33,8 +33,11 @@
 #   term          a glossary term of config.yaml, by name: opened on the Glossary page
 #   product       a data product of config.yaml, by id: opened on the Data Products page, its
 #                 members and lineage shown
-#   role          a role of config.yaml (or "all"): picked in the SQL explorer's run-as picker on
-#                 Next, so a step with it is on the SQL explorer
+#   role          a role of config.yaml (or "all"): picked on Next, in the SQL explorer's run-as
+#                 picker on /sql and in the header's role picker on any other page. Beside an
+#                 example, sql or mcp the step is one target: the role is picked first and what
+#                 it names runs as that role, so its popover explains the switch and the answer
+#                 together, and no step announces a role over an empty editor
 #   env           prod or an environment the demo's setup.yaml makes: picked in the header's
 #                 environment switcher on Next, so the steps after it read that environment
 #   notebook      true: the demo's notebook.ipynb, its cells added to the Notebook tab's open notebook
