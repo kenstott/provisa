@@ -54,6 +54,32 @@ Two groups are skipped by design and listed under the pass rate. Internal functi
 TBD: generated from CI.
 <!-- function-results:end -->
 
+### Text search
+
+On DuckDB, Trino and ClickHouse these functions are served for constants only. A column argument is refused by name:
+
+- `to_tsvector`
+- `json_to_tsvector`
+- `jsonb_to_tsvector`
+- `to_tsquery`
+- `plainto_tsquery`
+- `phraseto_tsquery`
+- `websearch_to_tsquery`
+- `ts_headline`
+- `ts_lexize`
+- `ts_match_tt`
+- `ts_match_tq`
+- `ts_parse`
+- `ts_debug`
+- `ts_stat`
+- `ts_rewrite`
+
+Every `tsquery` argument, of any function, is held to the same rule. A `tsquery` constant is a literal such as `'a & b'::tsquery`, so `ts_rank(v, to_tsquery('english', 'a'))` is refused as well.
+
+Column forms of these functions are not built. Functions that read a `tsvector`, such as `ts_delete`, `setweight` and `ts_rank`, take a column for the vector.
+
+The `@@` operator has no form on these engines. It is not refused by name: the statement reaches the engine and fails there. `ts_match_vq` is the spelling that works.
+
 ### Advisory locks
 
 `pg_advisory_lock` and its shared, transaction-level and `try` variants work as they do in PostgreSQL among the sessions of one Provisa process. The lock table lives in that process's memory. Two Provisa processes, such as two replicas behind a load balancer, do not see each other's locks, so a lock taken on one does not make a session on the other wait. Clients that use advisory locks to serialize work across processes must connect to one Provisa process.
