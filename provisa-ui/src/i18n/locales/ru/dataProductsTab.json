@@ -221,7 +221,7 @@
         "quality": "Качество",
         "sla": "SLA",
         "support": "Поддержка и команда",
-        "servers": "Серверы",
+        "howToUse": "Как использовать",
         "pricing": "Цены",
         "custom": "Пользовательские свойства и теги"
       },
@@ -259,6 +259,46 @@
         "versions": "Версии и изменения",
         "roles": "Роли",
         "history": "История версий"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "Интерфейс",
+          "address": "Адрес",
+          "how": "Как использовать",
+          "link": "Пример"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "Любой клиент PostgreSQL, например psql или DBeaver. База данных {{database}}, схема {{schema}}.",
+          "flight-sql": "Любой клиент Arrow Flight SQL, например драйвер ADBC. База данных {{database}}, схема {{schema}}.",
+          "grpc": "Любой клиент gRPC, для сервиса {{service}}, с метаданными authorization: Bearer <token>.",
+          "graphql": "Любой клиент GraphQL: отправьте запрос к этой таблице методом POST с заголовком Authorization: Bearer <token>.",
+          "rest": "Любой HTTP-клиент: GET по этому адресу с заголовком Authorization: Bearer <token>.",
+          "openapi": "Описание только этой таблицы: загрузите его в Swagger UI, Postman или генератор клиентов.",
+          "jsonapi": "Любой клиент JSON:API: GET по этому адресу с заголовком Authorization: Bearer <token>.",
+          "sparql": "Любой клиент SPARQL 1.1: отправьте запрос к классу этой таблицы методом POST с заголовком Authorization: Bearer <token>."
+        },
+        "access": {
+          "granted": "Работает только после предоставления доступа: его выдаёт {{approvers}}.",
+          "noApprover": "Работает только после предоставления доступа: его выдаёт обладатель {{roles}}. В этом контракте утверждающий не указан.",
+          "undeclared": "Работает только после предоставления доступа. В этом контракте не указаны ни роль, ни утверждающий."
+        },
+        "ask": {
+          "approvers": "Запросить доступ у {{approvers}}",
+          "roles": "Запросить доступ у обладателя {{roles}}",
+          "nobody": "В этом контракте не указано, к кому обратиться"
+        },
+        "open": "Открыть пример",
+        "openAria": "Открыть пример {{surface}} для {{table}}"
       }
     }
   }

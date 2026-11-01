@@ -119,7 +119,7 @@ async def test_a_delayed_task_does_not_hold_a_worker_during_its_delay():
     started = time.monotonic()
     spawn_after(1.0, _delayed(), name="delayed-drop")
     await asyncio.wrap_future(spawn_background(_immediate(), name="immediate"))
-    assert time.monotonic() - started < 0.5  # ran at once — the delay pinned no worker
+    assert not done.is_set()  # ran before the delay ended — the delay pinned no worker
     assert await asyncio.to_thread(done.wait, 5)
     assert order == ["immediate", "delayed"]
     assert time.monotonic() - started >= 1.0

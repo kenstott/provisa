@@ -122,7 +122,8 @@ def test_every_form_is_proved_with_a_value_and_a_null():
 @pytest.mark.parametrize("form", _FORMS, ids=lambda form: form.name)
 def test_a_form_is_postgresql_syntax(form: Any):
     macro = MACROS[(form.name, len(form.params.split(", ")))]
-    _, written = macro.resolved("trino" if form not in ARRAY_OPERATORS else "duckdb")
+    native = form in ARRAY_OPERATORS or "trino" in macro.differs_on
+    _, written = macro.resolved("duckdb" if native else "trino")
     assert isinstance(written, Pg)
     tree = sqlglot.parse_one(written, read="postgres")
     assert not list(tree.find_all(exp.Lambda))
@@ -281,4 +282,7 @@ def test_an_overflow_that_could_answer_a_wrong_value_is_refused_by_name(dialect:
 @pytest.mark.parametrize("dialect", _CHECKED_CAST)
 def test_a_row_that_must_raise_has_a_form_where_a_cast_raises(dialect: str):
     for form in OPERATORS:
-        assert outcome(form.name, len(form.params.split(", ")), dialect) == "emulated", form.name
+        arity = len(form.params.split(", "))
+        if dialect in MACROS[(form.name, arity)].differs_on:
+            continue  # REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED: replay decided it there
+        assert outcome(form.name, arity, dialect) == "emulated", form.name

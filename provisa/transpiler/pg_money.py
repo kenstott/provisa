@@ -388,7 +388,9 @@ def _integer_quotient(cents: exp.Expr, divisor: exp.Expr, dialect: str) -> exp.E
     is the integers' own."""
     if dialect == "duckdb":
         return exp.Anonymous(this="divide", expressions=[cents, divisor])
-    return exp.Div(this=cents, expression=divisor)
+    if dialect == "clickhouse":
+        return exp.IntDiv(this=cents, expression=divisor)  # its ``/`` of two integers is a double
+    return exp.Div(this=cents, expression=divisor, typed=True)
 
 
 def _multiply(value: exp.Expr, number: exp.Expr, dialect: str) -> exp.Expr:
@@ -665,7 +667,7 @@ class _Lowering:
         if name == "cash_in" and len(args) == 1:
             return self._to_money(args[0])
         if name == "cash_out" and len(args) == 1:
-            return _money_text(_operand(args[0]), dialect)
+            return _as(_money_text(_operand(args[0]), dialect), "TEXT")
         if name == "cash_send" and len(args) == 1:
             return _money_bytes(_operand(args[0]), dialect)
         if name == "cash_words" and len(args) == 1:
