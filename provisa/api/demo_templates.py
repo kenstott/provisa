@@ -716,6 +716,31 @@ async def _build_one_ahead(pool, name: str) -> None:
     await note_in_use(name)
 
 
+def retire_templates_without_stores() -> list[str]:
+    """Retire the runtime of each template whose stores the node has taken down; those retired. A
+    template is built from its stores and they are let go after it, and its runtime kept running
+    its views, polls, listeners and replicas against stores no longer there: failing every few
+    seconds (PoolTimeout on the provisioning demo's warehouse), and on the one worker a visitor's
+    open needs. An open asks for the stores again and builds the runtime it needs."""
+    import logging
+
+    from provisa.api.app import state
+    from provisa.scheduler.jobs import unschedule_org
+
+    retired = []
+    for demo in published_demos().values():
+        org_id = demo.template_org
+        if demo.stores_ready or not state.org_registry.env_keys(org_id):
+            continue
+        unschedule_org(getattr(state, "_scheduler", None), org_id)
+        state.org_registry.invalidate_org(org_id)
+        logging.getLogger(__name__).warning(
+            "demo template %s: its stores are down; its runtime is retired", demo.name
+        )
+        retired.append(demo.name)
+    return retired
+
+
 async def queue_late_templates(pool) -> list[str]:
     """Queue the template of each published demo this process has not been asked to build -- a
     bundled demo the node marked ready after the tier started (its ``ready`` file, read by
@@ -724,6 +749,7 @@ async def queue_late_templates(pool) -> list[str]:
     demos queued."""
     if not _startup_queued.is_set():
         return []
+    retire_templates_without_stores()
     queued = []
     for demo in published_demos().values():
         lock = _following.setdefault(demo.name, CrossLoopLock())

@@ -87,7 +87,11 @@ async def test_a_consumer_the_broker_dropped_keeps_landing(caplog):
             async with asyncio.timeout(60):
                 while not landed:
                     await asyncio.sleep(0.2)
-            assert "read again" in caplog.text, "the broker did not drop the consumer"
+            # The batch's commit follows its landing, on the listener's own turn of the loop.
+            async with asyncio.timeout(30):
+                while "read again" not in caplog.text:
+                    assert not listener.done(), listener
+                    await asyncio.sleep(0.2)
             await _publish(bootstrap, topic, "second")
             async with asyncio.timeout(60):
                 while "second" not in landed:

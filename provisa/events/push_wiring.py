@@ -113,7 +113,7 @@ def _captured_by_cdc(src: Any, tbl: dict) -> bool:
     )
 
 
-def _cdc_provider(state: Any, src: Any, tbl: dict, *, node: str) -> tuple[Any, str]:
+def _cdc_provider(state: Any, src: Any, tbl: dict) -> tuple[Any, str]:
     """The consumer of one captured table on its source's CDC transport, with Provisa's
     consumer group for it (REQ-931: the source's own, else the Provisa-level default): the
     Debezium topic its connector writes the table to, or the delta topic the table names."""
@@ -124,8 +124,7 @@ def _cdc_provider(state: Any, src: Any, tbl: dict, *, node: str) -> tuple[Any, s
     from provisa.kafka.landed_offsets import landed_group
 
     cdc = src.cdc
-    # One group per listener: consumers of several topics in one group rebalance each other.
-    group = f"{_consumer_group(cdc.consumer_group_id or state.config.cdc_consumer_group_id)}-{node}"
+    group = _consumer_group(cdc.consumer_group_id or state.config.cdc_consumer_group_id)
     # REQ-1733: its first start reads from where the table's landing stopped on the topic.
     landed = landed_group(src.id)
     if _effective_signal(src, tbl) == "kafka":
@@ -227,11 +226,9 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
         bootstrap_servers = f"{host}:{src.port}" if src.port else host
         # Each org (and each of its environments) lands the topic into its own table, so each
         # reads every message: its own consumer group. One shared by every org would split the
-        # topic's messages among them. And each listener its own: several of a source's tables in
-        # one group rebalanced each other on every start and stop, and their commits were refused.
-        # A group new to a topic starts where the table's landing stopped (``landed``).
+        # topic's messages among them.
         org, env, _ = _listener_key(node)
-        group = f"provisa-{org}-{node}" if env is None else f"provisa-{org}-{env}-{node}"
+        group = f"provisa-{org}-{src.id}" if env is None else f"provisa-{org}-{env}-{src.id}"
         provider = get_provider(
             "kafka",
             {
@@ -381,11 +378,7 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
             )
             continue
 
-        built = (
-            _cdc_provider(state, src, tbl, node=node)
-            if captured
-            else _build_provider(src, tbl, node=node)
-        )
+        built = _cdc_provider(state, src, tbl) if captured else _build_provider(src, tbl, node=node)
         if built is None:
             continue  # _build_provider already logged why
         provider, watch_target = built

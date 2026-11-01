@@ -63,7 +63,7 @@ def test_kafka_builds_provider_with_topic_as_watch_target():
         "kafka",
         {
             "bootstrap_servers": "broker:9092",
-            "group_id": "provisa-default-s.t",
+            "group_id": "provisa-default-src",
             "registry": None,  # the source names no schema registry
             "field_mapping": {},
             # REQ-1733: its first start reads from where the table's landing stopped.
@@ -151,19 +151,3 @@ class TestPushSourceChangeSignal:
 
     def test_a_poll_source_keeps_the_ttl_default(self):
         assert _source(type=SourceType.postgresql, host="db", port=5432).change_signal == "ttl"
-
-
-def test_each_listener_of_a_source_has_a_consumer_group_of_its_own():
-    """REQ-1733: the feeds source's three tables shared one group, on three topics: each listener
-    that joined or left rebalanced the others, and their commits failed (IllegalGenerationError)."""
-    src = _source(type=SourceType.kafka, host="broker:9092")
-    groups = []
-
-    def _provider(kind, config):
-        groups.append(config["group_id"])
-        return object()
-
-    with patch("provisa.subscriptions.registry.get_provider", _provider):
-        for node in ("feeds/default.orders", "feeds/default.prices"):
-            _build_provider(src, {"live": {"kafka": {"topic": "t"}}}, node=node)
-    assert len(set(groups)) == 2

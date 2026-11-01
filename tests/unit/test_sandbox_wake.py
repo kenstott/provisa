@@ -298,3 +298,29 @@ def test_a_vm_building_ahead_is_not_stopped(monkeypatch):
     monkeypatch.setattr(demo_templates, "building_ahead", lambda: False)
     asyncio.run(jobs.stop_idle_sandbox_vm(since=since))
     assert stopped == [INSTANCE]
+
+
+def test_a_template_whose_stores_went_down_is_retired(monkeypatch):
+    """REQ-2006: the provisioning template polled its warehouse for hours after the node took it
+    down (1032 PoolTimeouts in a morning), on the worker visitors' opens run on."""
+    from types import SimpleNamespace
+
+    from provisa.api import app, demo_templates
+    from provisa.scheduler import jobs
+
+    gone: list[str] = []
+    unscheduled: list[str] = []
+    held = {"sbxtplup": ["sbxtplup"], "sbxtpldown": ["sbxtpldown"], "sbxtplcold": []}
+    demos = {
+        name: SimpleNamespace(name=name, template_org=f"sbxtpl{name}", stores_ready=name == "up")
+        for name in ("up", "down", "cold")
+    }
+    monkeypatch.setattr(demo_templates, "published_demos", lambda: demos)
+    monkeypatch.setattr(
+        app.state,
+        "org_registry",
+        SimpleNamespace(env_keys=lambda org: held[org], invalidate_org=gone.append),
+    )
+    monkeypatch.setattr(jobs, "unschedule_org", lambda sched, org: unscheduled.append(org))
+    assert demo_templates.retire_templates_without_stores() == ["down"]
+    assert gone == ["sbxtpldown"] and unscheduled == ["sbxtpldown"]

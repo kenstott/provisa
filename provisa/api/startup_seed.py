@@ -340,25 +340,26 @@ async def _register_admin_view(
             _table_columns_t.c.column_name.not_in(list(col_names)),
         )
     )
-    for col in cols:
-        await conn.upsert(
-            _table_columns_t,
-            {
-                "table_id": table_id,
-                "domain_id": domain_id,
-                "column_name": col["column_name"],
-                # REQ-2154: the catalog is read by every role built on Viewer.
-                "visible_to": [VIEWER_ROLE],
-                "data_type": col["data_type"],
-                "is_primary_key": col["column_name"] in pk_cols,
-                "description": _COL_DESC[tbl].get(col["column_name"]),
-            },
-            index_elements=["table_id", "column_name"],
-            update_columns=[],
-            set_extra=_keep_edited_description(
-                _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
-            ),
-        )
+    async with conn.transaction():  # one commit, not one a column
+        for col in cols:
+            await conn.upsert(
+                _table_columns_t,
+                {
+                    "table_id": table_id,
+                    "domain_id": domain_id,
+                    "column_name": col["column_name"],
+                    # REQ-2154: the catalog is read by every role built on Viewer.
+                    "visible_to": [VIEWER_ROLE],
+                    "data_type": col["data_type"],
+                    "is_primary_key": col["column_name"] in pk_cols,
+                    "description": _COL_DESC[tbl].get(col["column_name"]),
+                },
+                index_elements=["table_id", "column_name"],
+                update_columns=[],
+                set_extra=_keep_edited_description(
+                    _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
+                ),
+            )
 
 
 async def _seed_ontology_domain(
@@ -501,25 +502,26 @@ async def _seed_ops_domain(
                 _table_columns_t.c.column_name.not_in(list(col_names)),
             )
         )
-        for col in cols:
-            await conn.upsert(
-                _table_columns_t,
-                {
-                    "table_id": table_id,
-                    "domain_id": "ops",
-                    "column_name": col["column_name"],
-                    # org_admin stewards ops (below), and reads it by this grant (REQ-1386).
-                    "visible_to": ["org_admin"],
-                    "data_type": col["data_type"],
-                    "is_primary_key": col["column_name"] in pk_cols,
-                    "description": _COL_DESC[tbl].get(col["column_name"]),
-                },
-                index_elements=["table_id", "column_name"],
-                update_columns=[],
-                set_extra=_keep_edited_description(
-                    _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
-                ),
-            )
+        async with conn.transaction():  # one commit, not one a column
+            for col in cols:
+                await conn.upsert(
+                    _table_columns_t,
+                    {
+                        "table_id": table_id,
+                        "domain_id": "ops",
+                        "column_name": col["column_name"],
+                        # org_admin stewards ops (below), and reads it by this grant (REQ-1386).
+                        "visible_to": ["org_admin"],
+                        "data_type": col["data_type"],
+                        "is_primary_key": col["column_name"] in pk_cols,
+                        "description": _COL_DESC[tbl].get(col["column_name"]),
+                    },
+                    index_elements=["table_id", "column_name"],
+                    update_columns=[],
+                    set_extra=_keep_edited_description(
+                        _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
+                    ),
+                )
 
     # REQ-1386: management report views. The unnest spine first (the report views
     # reference it), then each report view, registered like any ops table. Every
@@ -551,25 +553,26 @@ async def _seed_ops_domain(
                 _table_columns_t.c.column_name.not_in(list(col_names)),
             )
         )
-        for col in cols:
-            await conn.upsert(
-                _table_columns_t,
-                {
-                    "table_id": table_id,
-                    "domain_id": "ops",
-                    "column_name": col["column_name"],
-                    # org_admin stewards ops (below), and reads it by this grant (REQ-1386).
-                    "visible_to": ["org_admin"],
-                    "data_type": col["data_type"],
-                    "is_primary_key": col["column_name"] == "id",
-                    "description": _COL_DESC[view_name].get(col["column_name"]),
-                },
-                index_elements=["table_id", "column_name"],
-                set_extra=_keep_edited_description(
-                    _table_columns_t.c.description, _COL_DESC[view_name].get(col["column_name"])
-                ),
-                update_columns=[],
-            )
+        async with conn.transaction():  # one commit, not one a column
+            for col in cols:
+                await conn.upsert(
+                    _table_columns_t,
+                    {
+                        "table_id": table_id,
+                        "domain_id": "ops",
+                        "column_name": col["column_name"],
+                        # org_admin stewards ops (below), and reads it by this grant (REQ-1386).
+                        "visible_to": ["org_admin"],
+                        "data_type": col["data_type"],
+                        "is_primary_key": col["column_name"] == "id",
+                        "description": _COL_DESC[view_name].get(col["column_name"]),
+                    },
+                    index_elements=["table_id", "column_name"],
+                    set_extra=_keep_edited_description(
+                        _table_columns_t.c.description, _COL_DESC[view_name].get(col["column_name"])
+                    ),
+                    update_columns=[],
+                )
 
     # REQ-1386: org_admin stewards the ops domain (REQ-609 — never PENDING).
     await conn.execute_core(
@@ -1122,27 +1125,28 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
             ),
         )
         cols = await conn.reflect_columns(VIEW_NAME, schema=schema_name)
-        for col in cols:
-            await conn.upsert(
-                _table_columns_t,
-                {
-                    "table_id": table_id,
-                    "domain_id": "meta",
-                    "column_name": col["column_name"],
-                    # REQ-2154: the catalog is read by every role built on Viewer.
-                    "visible_to": [VIEWER_ROLE],
-                    "data_type": col["data_type"],
-                    # A view over the registry has no key of its own — one org appears once per
-                    # org_admin — so nothing here is a primary key.
-                    "is_primary_key": False,
-                    "description": _COL_DESC[VIEW_NAME][col["column_name"]],
-                },
-                index_elements=["table_id", "column_name"],
-                update_columns=["data_type"],
-                set_extra=_keep_edited_description(
-                    _table_columns_t.c.description, _COL_DESC[VIEW_NAME][col["column_name"]]
-                ),
-            )
+        async with conn.transaction():  # one commit, not one a column
+            for col in cols:
+                await conn.upsert(
+                    _table_columns_t,
+                    {
+                        "table_id": table_id,
+                        "domain_id": "meta",
+                        "column_name": col["column_name"],
+                        # REQ-2154: the catalog is read by every role built on Viewer.
+                        "visible_to": [VIEWER_ROLE],
+                        "data_type": col["data_type"],
+                        # A view over the registry has no key of its own — one org appears once per
+                        # org_admin — so nothing here is a primary key.
+                        "is_primary_key": False,
+                        "description": _COL_DESC[VIEW_NAME][col["column_name"]],
+                    },
+                    index_elements=["table_id", "column_name"],
+                    update_columns=["data_type"],
+                    set_extra=_keep_edited_description(
+                        _table_columns_t.c.description, _COL_DESC[VIEW_NAME][col["column_name"]]
+                    ),
+                )
     return True
 
 

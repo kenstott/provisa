@@ -111,3 +111,48 @@ def test_the_catalog_clients_role_stays_one_at_a_time(monkeypatch):
     asyncio.run(startup_seed._seed_catalog_client(_Client(held), "org_other"))
     assert len(held) == 2 and held[0] == held[1]
     assert sum("CREATE ROLE" in sql for sql in sent) == 2
+
+
+def test_one_schema_bootstraps_under_one_key_and_two_under_two():
+    from provisa.core.db import schema_lock_key
+
+    assert schema_lock_key("org_acme") == schema_lock_key("org_acme")
+    assert schema_lock_key("org_acme") != schema_lock_key("org_other")
+    assert schema_lock_key("org_acme") < 2**63, "a PostgreSQL bigint"
+
+
+async def test_a_seeded_tables_columns_are_written_in_one_commit(monkeypatch):
+    """REQ-2006: a sandbox's build seeds about 270 system tables, and each of their columns
+    committed alone, to a control plane on another machine: the silent two minutes of an open."""
+    commits = {"open": 0, "columns": 0, "outside": 0}
+
+    class _Writer:
+        async def upsert_returning(self, *args, **kwargs):
+            return 7
+
+        async def reflect_columns(self, table, schema=None):
+            return [
+                {"column_name": name, "data_type": "text", "is_primary_key": False}
+                for name in ("a", "b", "c")
+            ]
+
+        async def execute_core(self, stmt):
+            return None
+
+        async def upsert(self, table, row, **kwargs):
+            commits["columns"] += 1
+            commits["outside"] += 0 if commits["open"] else 1
+
+        @asynccontextmanager
+        async def transaction(self):
+            commits["open"] += 1
+            yield
+            commits["open"] -= 1
+
+    monkeypatch.setitem(startup_seed._TBL_DESC, "t", "a table")
+    monkeypatch.setitem(startup_seed._COL_DESC, "t", {})
+    await startup_seed._register_admin_view(
+        _Writer(), "meta", "org_acme", "t", base_table=None, view_name="t"
+    )
+    assert commits["columns"] == 3
+    assert commits["outside"] == 0
