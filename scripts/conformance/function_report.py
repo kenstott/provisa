@@ -23,7 +23,11 @@ Every overload has one result on each engine:
 
 ``not_callable`` (PostgreSQL itself answers no call) and ``not_reached`` (the leg did not get there)
 are no result: nothing was compared. ``RESULT_KEYS`` are the keys of each engine's counts in the
-merged JSON, which are what a landing floor may read: they do not change without saying so."""
+merged JSON, which are what a landing floor may read: they do not change without saying so.
+
+Beside them, ``COLUMN_KEYS`` say which passes hold on a column too (``column_results``): an overload
+that passes on literals and whose column call fails passes on literals only. No result, floor or
+guaranteed list reads them."""
 
 # Requirements: REQ-2171
 
@@ -56,6 +60,17 @@ RESULT_KEYS = (
     "not_callable",
     "not_reached",
     "total",
+)
+
+#: The keys of ``by_engine.<engine>`` beside ``RESULT_KEYS``: of an engine's passes, those that pass
+#: on a column too and those that pass on literals only, each a count and its overloads, and those
+#: with no column call to tell.
+COLUMN_KEYS = (
+    "pass_literal_and_column",
+    "pass_literal_only",
+    "pass_no_column_call",
+    "pass_literal_and_column_overloads",
+    "pass_literal_only_overloads",
 )
 
 
@@ -156,6 +171,25 @@ def result_counts(outcomes: Iterable[dict[str, Any]]) -> dict[str, int]:
         tally["differs_engine_error"] += entry["outcome"] == "error"
         tally["total"] += 1
     return {key: tally.get(key, 0) for key in RESULT_KEYS}
+
+
+def _named(function: dict[str, Any]) -> str:
+    return f"{function['function']}({function['overload']})"
+
+
+def column_results(functions: list[dict[str, Any]], engine: str) -> dict[str, Any]:
+    """``COLUMN_KEYS`` of ``engine``: its passes by what their column call did."""
+    passes = [f for f in functions if f["outcomes"][engine]["outcome"] == "pass"]
+    called = [f for f in passes if f["outcomes"][engine].get("column")]
+    both = [f for f in called if f["outcomes"][engine]["column"]["outcome"] == "pass"]
+    literal_only = [f for f in called if f["outcomes"][engine]["column"]["outcome"] != "pass"]
+    return {
+        "pass_literal_and_column": len(both),
+        "pass_literal_only": len(literal_only),
+        "pass_no_column_call": len(passes) - len(called),
+        "pass_literal_and_column_overloads": sorted(map(_named, both)),
+        "pass_literal_only_overloads": sorted(map(_named, literal_only)),
+    }
 
 
 def _served(function: dict[str, Any]) -> bool:
@@ -266,6 +300,60 @@ def engine_table(doc: dict[str, Any]) -> list[str]:
             f"| {c['differs_wrong_answer']} | {c['differs_engine_error']} |"
         )
     return lines
+
+
+def column_table(doc: dict[str, Any]) -> list[str]:
+    """One row per engine: its passes, by whether they hold on a column."""
+    lines = [
+        "| Engine | Literals and columns | Literals only | No column call |",
+        "| --- | ---: | ---: | ---: |",
+    ]
+    for engine in _ordered(doc):
+        c = doc["by_engine"][engine]
+        lines.append(
+            f"| {_label(engine)} | {c['pass_literal_and_column']} | {c['pass_literal_only']} "
+            f"| {c['pass_no_column_call']} |"
+        )
+    return lines
+
+
+def _column_failure(column: dict[str, Any]) -> str:
+    detail = column["detail"]
+    said = " ".join((detail.get("error") or detail["difference"]).split())
+    return said.replace("|", "\\|")[:200]
+
+
+def literal_only_lists(doc: dict[str, Any]) -> list[str]:
+    """Every overload that passes on literals only, by engine, with what its column call did."""
+    lines: list[str] = []
+    for engine in _ordered(doc):
+        named = set(doc["by_engine"][engine]["pass_literal_only_overloads"])
+        rows = [f for f in doc["functions"] if _named(f) in named]
+        if not rows:
+            continue
+        lines += [
+            f"<details><summary>{_label(engine)} ({len(rows)})</summary>",
+            "",
+            "| Overload | Column call |",
+            "| --- | --- |",
+        ]
+        for f in rows:
+            said = _column_failure(f["outcomes"][engine]["column"])
+            lines.append(f"| {_signature(f)} | {said} |")
+        lines += ["", "</details>", ""]
+    return lines[:-1] or ["None."]
+
+
+def _column_section(doc: dict[str, Any]) -> list[str]:
+    return [
+        "Of each engine's passes, these also pass reading the same value from a column of a "
+        "registered table. An overload that passes on literals only keeps its result above. No "
+        "column call means PostgreSQL answered none, or the overload takes no value.",
+        "",
+        *column_table(doc),
+        "",
+        *literal_only_lists(doc),
+    ]
 
 
 def family_table(doc: dict[str, Any]) -> list[str]:
@@ -387,6 +475,8 @@ def overview_block(doc: dict[str, Any]) -> str:
             f"{doc['postgres_version']}, one row per engine. Each result is that engine's own, "
             "and the rows do not add up to a product result. The footnotes for each equivalent "
             "result are on the [pgwire page](pgwire.md#function-results-by-engine).",
+            "",
+            *_column_section(doc),
         ]
     )
 
@@ -416,6 +506,10 @@ def pgwire_block(doc: dict[str, Any]) -> str:
             "An exact result marked *form only* could not be compared by value, so its form was "
             "checked. One marked *call only* was called with `NULL`, which proves its result type "
             "and nothing about its answer. `n/a` means PostgreSQL itself refuses every call.",
+            "",
+            "### Literals and columns",
+            "",
+            *_column_section(doc),
             "",
             "### Equivalence rules",
             "",
@@ -448,6 +542,10 @@ def summary_block(doc: dict[str, Any]) -> str:
         [
             *_incomplete(doc),
             *engine_table(doc),
+            "",
+            "### Literals and columns",
+            "",
+            *_column_section(doc),
             "",
             "### Equivalence rules",
             "",

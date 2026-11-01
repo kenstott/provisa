@@ -1,6 +1,10 @@
 {
   "demoOpenPage": {
     "title": "デモサンドボックスを開いています",
+    "titleMaking": "デモサンドボックスを作っています",
+    "titleCooking": "デモサンドボックスを調理しています",
+    "titleGrowing": "デモサンドボックスを育てています",
+    "titleComposing": "デモサンドボックスを作曲しています",
     "opening": "デモのコピーを準備しています。数秒かかります。",
     "starting": "このデモを起動しています…",
     "retry": "もう一度試す",

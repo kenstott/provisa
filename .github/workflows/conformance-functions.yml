@@ -5,6 +5,9 @@ name: Conformance (functions)
 # Each overload has a result on each engine: exact, equivalent under a written rule, refused by name
 # or differs. Nothing adds the engines up. Measurement only: it writes no function form, and nothing
 # it finds fails a gate. Separate from Conformance (pgwire), whose land gate reads its own report.
+# Each overload with a sample value is called once more reading it from a column of
+# conformance.function_columns, which this workflow alone seeds and registers: a pass whose column
+# call fails passes on literals only, reported beside its result and changing none.
 #
 # One leg per free engine that boots on a runner, each the instance every conformance job tests
 # (.github/actions/conformance-instance) on that engine, measured against the same real PostgreSQL
@@ -122,10 +125,17 @@ jobs:
             echo "PROVISA_ENGINE_LAKEHOUSE_METASTORE_PORT=9083"
           } >> "$GITHUB_ENV"
 
+      - name: Seed the table column calls read
+        run: |
+          .venv/bin/python scripts/conformance/function_support.py seed-columns \
+            --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD" \
+            --out "$RUNNER_TEMP/function-columns.yaml"
+
       - name: Start the Provisa instance
         id: start
         uses: ./.github/actions/conformance-instance
         with:
+          extra-tables: ${{ runner.temp }}/function-columns.yaml
           control-plane-url: ${{ matrix.control-plane-url }}
           boot-attempts: ${{ matrix.boot-attempts || '90' }}
 

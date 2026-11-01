@@ -13,6 +13,10 @@
 A JSON:API filter or a GraphQL argument reaches the plan as a $N placeholder and its value in
 exec_params, as on every other route. The admin terminal ran the text alone, and PostgreSQL
 refused it: "bind message supplies 0 parameters, but prepared statement requires 2".
+
+The statement runs as the client role (REQ-2190), which holds what the boot's seed grants it: the
+terminal's relations, here the view a governed read of meta.data_products names, and no base table
+a meta view restates. Without that grant the org schema is not on the role's search path at all.
 """
 
 from __future__ import annotations
@@ -26,6 +30,14 @@ import pytest
 async def test_the_meta_terminal_binds_the_plans_parameters(control_plane):
     from sqlalchemy import insert
 
+    from provisa.api._meta_views import (
+        _META_TABLE_VIEWS,
+        _OPS_LOG_TABLE_VIEWS,
+        _OPS_REPORT_VIEWS,
+        _ops_table_usage_ddl,
+    )
+    from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
+    from provisa.api.startup_seed import _seed_catalog_client, _seed_view
     from provisa.core.schema_org import data_products, domains
     from provisa.pgwire._pipeline import _Plan, _run_plan_terminal
     from provisa.transpiler.router import Route
@@ -38,9 +50,18 @@ async def test_the_meta_terminal_binds_the_plans_parameters(control_plane):
                 await conn.execute_core(
                     insert(data_products).values(id=pid, domain_id="sales", name=pid)
                 )
+            for ddl in (
+                *_META_TABLE_VIEWS.values(),
+                *ONTOLOGY_TABLE_VIEWS.values(),
+                *_OPS_LOG_TABLE_VIEWS.values(),
+                _ops_table_usage_ddl(),
+                *_OPS_REPORT_VIEWS.values(),
+            ):
+                await _seed_view(conn, ddl)
+            await _seed_catalog_client(conn, db.search_path)
         plan = _Plan(
             route=Route.DIRECT,
-            sql='SELECT "id" FROM "data_products" WHERE "id" = $1 LIMIT $2',
+            sql='SELECT "id" FROM "data_products_meta" WHERE "id" = $1 LIMIT $2',
             source_id="provisa-admin",
             dialect="postgres",
             exec_params=["customer_360", 10],

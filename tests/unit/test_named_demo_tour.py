@@ -52,6 +52,8 @@ _TARGETS = (
     "mcp_explain",
     "mcp_connect",
 )
+# What a step runs that a role may stand beside: the role is picked as the step opens (demoTour.ts).
+_RUN_AS_ITS_ROLE = {"example", "sql", "mcp"}
 # The query parameters a table's REST endpoint declares (provisa/api/rest/openapi_spec.py).
 _REST_PARAMS = {
     "limit",
@@ -257,6 +259,9 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
         page = step.get("route", page)
         previous, before = before, step
         named = [k for k in _TARGETS if k in step]
+        if "role" in step and len(named) == 2 and set(named) - {"role"} <= _RUN_AS_ITS_ROLE:
+            assert "," not in step["role"], f"{step['key']}: a set of roles is its own step"
+            named = [k for k in named if k != "role"]
         assert len(named) == 1, f"{step['key']}: names {named}, not one target"
         assert set(step) <= {"key", "route", "capability", "open", "graph", "demo", *_TARGETS}, step
         if "route" in step:
@@ -498,6 +503,94 @@ def test_a_notebook_step_needs_the_demo_to_ship_one():
                 }
             ],
         )
+
+
+@pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])
+def test_no_step_announces_a_role_over_a_page_that_has_run_nothing(path):
+    """The hasuramigration tour's role steps showed an empty editor: a step that picks a role on
+    Next, on a page the tour has run nothing on yet, the query it was for on the step after. Such
+    a step names the query too, so that the role changes and the query runs on the step that
+    explains them. churn and retail keep theirs: the role is the header's, and it holds across
+    several pages, where the next step's own picker would hold it for one."""
+    steps = yaml.safe_load(path.read_text())["steps"]
+    page = None
+    pages = []
+    for step in steps:
+        page = step.get("route", page)
+        pages.append(page)
+    runs = _RUN_AS_ITS_ROLE | {"api", "jsonapi", "grpc", "cypher"}
+    for i, step in enumerate(steps[:-1]):
+        after = steps[i + 1]
+        if "role" not in step or runs & set(step) or not runs & set(after):
+            continue
+        if "route" in after and after["route"] != pages[i]:
+            continue
+        ran_here = any(
+            runs & set(steps[j]) for j in range(i) if all(p == pages[i] for p in pages[j : i + 1])
+        )
+        routed = "route" in step  # a page opened afresh shows none of what ran there before
+        assert ran_here and not routed, f"{step['key']}: announces a role over an empty page"
+
+
+def test_a_step_runs_what_it_names_as_the_role_beside_it():
+    _check_steps(
+        _WEBLOGS,
+        [{**_VERSIONS, "role": "all"}, {**_MCP_ASK, "role": "all"}],
+    )
+
+
+@pytest.mark.parametrize(
+    "extra", [{"api": "GET /data/rest/shop/view_slowest_pages"}, {"role": "a,b"}]
+)
+def test_a_role_stands_beside_only_a_statement_and_alone(extra):
+    with pytest.raises(AssertionError):
+        _check_steps(_WEBLOGS, [{**_VERSIONS, "role": "all", **extra}])
+
+
+def test_the_agentdata_question_can_be_finished_by_both_roles():
+    """ "...and how do I reach them?" got "I can't" from the agent: the role's emails are masked and
+    it read that as no way to reach anyone. The question asks for what each role is served, and
+    it is asked as both, so the two answers can be compared."""
+    steps = yaml.safe_load((_NAMED / "agentdata" / "tour.yaml").read_text())["steps"]
+    asked = {s["key"]: s["mcp"] for s in steps if "mcp" in s}
+    question = asked["agentdataSupportAsks"]
+    assert asked["agentdataAnalystAsks"] == question
+    assert "reach" not in question
+    assert "more than once" in question and "email" in question
+    roles = [s["role"] for s in steps if "role" in s]
+    assert roles == ["support_west", "shop_analyst"]
+
+
+def _published_agent_demos() -> list[Path]:
+    """Each published demo whose tour has an agent in it: a Polly or an MCP explorer step."""
+    out = []
+    for path in TOURS:
+        spec = yaml.safe_load((path.parent / "demo.yaml").read_text())
+        steps = yaml.safe_load(path.read_text())["steps"]
+        if spec.get("published") is True and any("polly" in s or "mcp" in s for s in steps):
+            out.append(path.parent)
+    return out
+
+
+def test_the_agents_demos_are_found():
+    assert {"agentdata", "cloudpolicy", "insider"} <= {d.name for d in _published_agent_demos()}
+
+
+@pytest.mark.parametrize("home", _published_agent_demos(), ids=lambda d: d.name)
+def test_an_agent_in_a_demo_can_search_its_catalog(home):
+    """With no enabled embedding model search_catalog refuses, and the agent told the visitor
+    catalog search was unavailable. A local model is loaded at the tier's boot (demo_templates
+    .embedding_models) and needs the vector extra."""
+    config = yaml.safe_load((home / "config.yaml").read_text())
+    assert config["vector_models"] == [
+        {
+            "id": "sentence-transformers/all-MiniLM-L6-v2",
+            "provider": "huggingface",
+            "dimensions": 384,
+            "enabled": True,
+        }
+    ]
+    assert "vector" in yaml.safe_load((home / "demo.yaml").read_text())["extras"]
 
 
 @pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])
