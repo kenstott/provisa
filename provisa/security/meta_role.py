@@ -120,6 +120,8 @@ def meta_description(members: list[dict]) -> str:  # REQ-2080
 
 
 def _role(members: list[dict], meta_id: str) -> dict:
+    from provisa.security.rights import normalized_reach
+
     caps: set[str] = set()
     domains: set[str] = set()
     for m in members:
@@ -129,7 +131,7 @@ def _role(members: list[dict], meta_id: str) -> dict:
         "id": meta_id,
         "description": meta_description(members),  # REQ-2080
         "capabilities": sorted(caps),
-        "domain_access": ["*"] if "*" in domains else sorted(domains),
+        "domain_access": normalized_reach(domains),
         "max_rows": _least_restrictive([m.get("max_rows") for m in members]),
         "rate_limit": _least_restrictive([m.get("rate_limit") for m in members]),
         # Each member's constants are inlined into its own filter term (_inlined), not merged here.

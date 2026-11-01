@@ -101,14 +101,14 @@ class TestFlattenRoles:
     def test_flatten_roles_produces_merged_context(self):
         """flatten_roles() merges the parent's capabilities; reach is the role's own (REQ-2155)."""
         parent = _role("parent", caps=["read"], domains=["sales"])
-        child = _role("child", caps=["export"], domains=["ops"], parent="parent")
+        child = _role("child", caps=["export"], domains=["support"], parent="parent")
 
         result = flatten_roles([parent, child])
         by_id = {r.id: r for r in result}
 
         assert "read" in by_id["child"].capabilities
         assert "export" in by_id["child"].capabilities
-        assert by_id["child"].domain_access == ["ops"]
+        assert by_id["child"].domain_access == ["support"]
 
     def test_child_retains_own_capabilities(self):
         """Child-only capabilities are preserved after flattening."""
@@ -198,7 +198,7 @@ class TestInheritedRolesRLS:
     def test_grandchild_inherits_two_levels(self):
         """Three-level chain: grandchild receives grandparent + parent + own rules."""
         grandparent = _role("gp", caps=["read"], domains=["sales"])
-        parent = _role("parent", caps=["aggregate"], domains=["ops"], parent="gp")
+        parent = _role("parent", caps=["aggregate"], domains=["support"], parent="gp")
         child = _role("child", caps=["export"], domains=["finance"], parent="parent")
 
         result = flatten_roles([grandparent, parent, child])

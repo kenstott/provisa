@@ -982,6 +982,14 @@ def pulled(items: Iterator[Any], depth: int = _QUEUED) -> Iterator[Any]:
     in the request it belongs to. Closing this ends the call (its generator is closed)."""
     import contextvars
 
+    # Here, not in the generator: its body starts at the first pull, on the reader's thread, which
+    # is in no request.
+    return _pull_in(contextvars.copy_context(), items, depth)
+
+
+def _pull_in(
+    context: Any, items: Iterator[Any], depth: int
+) -> Iterator[Any]:  # a contextvars.Context
     handed: queue.Queue = queue.Queue(maxsize=depth)
     stop = threading.Event()
 
@@ -1005,7 +1013,6 @@ def pulled(items: Iterator[Any], depth: int = _QUEUED) -> Iterator[Any]:
                 close()
         handed.put(_PULLED_DONE)
 
-    context = contextvars.copy_context()
     threading.Thread(target=context.run, args=(pull,), name="code-call-pull", daemon=True).start()
     try:
         while (item := handed.get()) is not _PULLED_DONE:

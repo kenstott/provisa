@@ -56,8 +56,20 @@ ROOT_OF = {SALES: "orders", FINANCE: "ledger", META: "registeredTablesMeta", OPS
 
 CASES = [
     pytest.param([], set(), id="empty-reaches-nothing"),
-    pytest.param(["*"], {"sales", "finance", META_DOMAIN_ID, "ops"}, id="wildcard-reaches-all"),
+    # "*" is every data domain; a system domain is listed where flattening adds it for its
+    # capability (test_system_domains_reach.py).
+    pytest.param(["*"], {"sales", "finance"}, id="wildcard-reaches-every-data-domain"),
+    pytest.param(
+        ["*", META_DOMAIN_ID, "ops"],
+        {"sales", "finance", META_DOMAIN_ID, "ops"},
+        id="wildcard-holding-the-capabilities-reaches-all",
+    ),
     pytest.param(["sales"], {"sales"}, id="listed-reaches-only-itself"),
+    pytest.param(
+        ["sales", META_DOMAIN_ID],
+        {"sales", META_DOMAIN_ID},
+        id="listed-holding-catalog-read-reaches-the-catalog",
+    ),
 ]
 
 
@@ -148,9 +160,7 @@ def single_domain(monkeypatch):
 @pytest.mark.parametrize("held,reached", CASES)
 def test_the_roles_schema_holds_only_the_domains_it_lists(multi_domain, held, reached):
     domains = {t.domain_id for t in _build_visible_tables(_schema_input(_role(held)))}
-    # meta is an implicit TRAVERSAL domain: its tables stay in a schema as targets, never as
-    # roots (asserted on the root fields below), so it is set aside here.
-    assert domains - {META_DOMAIN_ID} == reached - {META_DOMAIN_ID}
+    assert domains == reached
 
 
 @pytest.mark.parametrize("held,reached", CASES)
@@ -174,8 +184,9 @@ def test_the_roles_root_fields_are_only_the_domains_it_lists(multi_domain, held,
 
 
 def test_single_domain_mode_shows_every_table_whatever_the_list(single_domain):
+    # Every data table: a system domain is its capability's in this mode too (REQ-1132).
     domains = {t.domain_id for t in _build_visible_tables(_schema_input(_role([])))}
-    assert domains == set(DOMAIN_OF.values())
+    assert domains == {"sales", "finance"}
 
 
 def test_a_columns_grant_decides_who_within_reach(multi_domain):
@@ -228,7 +239,8 @@ def test_v001_is_not_a_gate_in_single_domain_mode(single_domain):
     [
         pytest.param([], set(), id="empty-sees-no-catalog-rows"),
         pytest.param(["*"], None, id="wildcard-sees-the-whole-catalog"),
-        pytest.param([META_DOMAIN_ID], None, id="meta-grant-sees-the-whole-catalog"),
+        pytest.param(["*", META_DOMAIN_ID], None, id="wildcard-holding-catalog-read"),
+        pytest.param(["sales", META_DOMAIN_ID], {SALES, META}, id="catalog-read-opens-no-rows"),
         pytest.param(["sales"], {SALES}, id="listed-sees-its-own-tables"),
     ],
 )
@@ -273,7 +285,12 @@ def test_visible_tables_follow_the_roles_list(multi_domain, held, reached):
 
 @pytest.mark.parametrize(
     "held,meta_is_a_root",
-    [(["sales"], False), (["sales", META_DOMAIN_ID], True), (["*"], True)],
+    [
+        (["sales"], False),
+        (["sales", META_DOMAIN_ID], True),
+        (["*"], False),
+        (["*", META_DOMAIN_ID], True),
+    ],
 )
 def test_the_proto_query_message_roots_follow_the_roles_list(multi_domain, held, meta_is_a_root):
     from provisa.grpc.proto_gen import generate_proto
@@ -297,7 +314,13 @@ def test_a_role_listing_no_domain_has_no_proto_roots(multi_domain):
 
 @pytest.mark.parametrize(
     "held,meta_is_a_match_root",
-    [([], False), (["sales"], False), ([META_DOMAIN_ID], True), (["*"], True)],
+    [
+        ([], False),
+        (["sales"], False),
+        ([META_DOMAIN_ID], True),
+        (["*"], False),
+        (["*", META_DOMAIN_ID], True),
+    ],
 )
 def test_the_catalog_is_a_match_root_only_for_a_role_that_reaches_it(
     multi_domain, held, meta_is_a_match_root

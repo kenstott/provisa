@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from graphql import graphql_sync, print_schema
 
 from provisa.api.errors import ApiError
+from provisa.security.rights import SYSTEM_DOMAINS
 
 router = APIRouter()
 
@@ -57,7 +58,7 @@ def _reachable_table_ids(domain_id: str, tables: list[dict], relationships: list
     return reachable
 
 
-_ALWAYS_VISIBLE_DOMAINS = {"meta", "ops", "ontology"}
+_ALWAYS_VISIBLE_DOMAINS = SYSTEM_DOMAINS
 
 
 def require_reached_domains(role_id: str, role: dict, domain_ids: list[str]) -> None:  # REQ-039
@@ -149,7 +150,8 @@ async def get_domains(  # REQ-471
     x_provisa_role: str = Header(None, alias="X-Provisa-Role"),
     x_role: str = Header(None, alias="X-Role"),
 ):
-    """Return domain IDs accessible to the requesting role."""
+    """Return domain IDs the requesting role reaches: its data domains and, by capability, the
+    system domains (its flattened domain_access)."""
     from provisa.api.acting_role import header_role
     from provisa.api.app import state
 
@@ -162,12 +164,10 @@ async def get_domains(  # REQ-471
     all_domains = [
         d["id"] for d in (state.schema_build_cache.get("domains") or []) if d["id"] != ""
     ]
-    from provisa.security.rights import reaches_all_domains
+    from provisa.security.rights import reaches_domain
 
     access = role["domain_access"]
-    if reaches_all_domains(access):
-        return JSONResponse(all_domains)
-    return JSONResponse([d for d in all_domains if d in set(access)])
+    return JSONResponse([d for d in all_domains if reaches_domain(access, d)])
 
 
 @router.get("/data/sdl", response_class=PlainTextResponse)

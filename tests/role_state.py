@@ -52,6 +52,9 @@ class RoleState(SimpleNamespace):
         attrs.setdefault("meta_roles", {})
         # As the real state bound to no org: no control plane (AppState.model_db).
         attrs.setdefault("model_db", None)
+        # As the real state before startup: no gRPC server started and no HTTP surface mounted.
+        attrs.setdefault("_grpc_server", None)
+        attrs.setdefault("http_surfaces", frozenset())
         # As the real state: each role it serves a surface for is a stored role (here, with no
         # limits of its own).
         attrs.setdefault("roles", {r: {"id": r} for r in parts.get("contexts") or {}})
