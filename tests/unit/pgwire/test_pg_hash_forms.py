@@ -133,3 +133,41 @@ def test_each_form_parses_as_its_engine_writes_it(dialect: str):
 def test_hashes_on_every_engine_are_one_definition():
     written = {dialect: forms(engine) for dialect, engine in ENGINES}
     assert written["duckdb"].keys() == written["trino"].keys() == written["clickhouse"].keys()
+
+
+#: A value of a type the engine has none of, where the function has a form that reads it as held.
+_HELD_VALUES = [
+    "SELECT hashtid('(0,1)'::tid) AS v",
+    "SELECT hashtid(NULL::tid) AS v",
+    "SELECT pg_catalog.\"hashtid\"('(0,1)'::tid) AS v",
+    "SELECT hashtidextended('(0,1)'::tid, 1::bigint) AS v",
+    "SELECT bttidcmp('(0,1)'::tid, '(1,0)'::tid) AS v",
+    "SELECT hash_aclitem(NULL::aclitem) AS v",
+    "SELECT hash_aclitem_extended(NULL::aclitem, 1::bigint) AS v",
+]
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+@pytest.mark.parametrize("sql", _HELD_VALUES)
+def test_a_form_of_a_held_value_reaches_the_engine(sql: str, dialect: str):
+    assert transpile(sql, dialect)
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+@pytest.mark.parametrize(
+    ("sql", "called"),
+    [
+        ("SELECT tideq('(0,1)'::tid, '(0,1)'::tid) AS v", "tideq"),
+        ("SELECT length('(0,1)'::tid) AS v", "length"),
+        ("SELECT aclitemeq('=r/postgres'::aclitem, '=r/postgres'::aclitem) AS v", "aclitemeq"),
+    ],
+)
+def test_a_held_value_stays_refused_where_no_form_reads_it(sql: str, called: str, dialect: str):
+    with pytest.raises(FunctionRefused, match=called):
+        transpile(sql, dialect)
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+def test_an_aclitem_past_a_null_is_refused_by_its_form(dialect: str):
+    written = transpile("SELECT hash_aclitem('=r/postgres'::aclitem) AS v", dialect)
+    assert "hash_aclitem does not read this value" in written

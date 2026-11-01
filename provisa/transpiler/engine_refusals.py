@@ -44,6 +44,16 @@ _NOT_HELD: dict[str, frozenset[str]] = {
     _T: _NOT_ANY | {"timetz"},
     _C: _NOT_ANY | {"timetz", "timestamptz"},  # no zoned time of day, and no zoned instant
 }
+#: What of those a function's form reads from the text the engine holds, replayed against
+#: postgres:17 in tests/integration/test_hashes_on_engines.py. An aclitem's hash is refused by its
+#: form past a NULL (pg_forms_hash.REFUSED_VALUES).
+_READ_AS_HELD: dict[str, frozenset[str]] = {
+    "hashtid": frozenset({"tid"}),
+    "hashtidextended": frozenset({"tid"}),
+    "bttidcmp": frozenset({"tid"}),
+    "hash_aclitem": frozenset({"aclitem"}),
+    "hash_aclitem_extended": frozenset({"aclitem"}),
+}
 
 #: What both engines refuse: its name, and the said types of the overloads refused (None for all).
 _ON_BOTH: dict[str, frozenset[str] | None] = {
@@ -261,7 +271,7 @@ def refused_call(
         return name
     types = [table[name] for table in (_ON[engine], _ON_BOTH) if name in table]
     if (
-        said & _NOT_HELD[engine]
+        said & _NOT_HELD[engine] - _READ_AS_HELD.get(name, frozenset())
         or None in types
         or any(said & of for of in types if of is not None)
         or len(args) > _MOST_ARGUMENTS.get(name, len(args))
