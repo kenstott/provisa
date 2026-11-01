@@ -622,7 +622,7 @@ def _rows() -> tuple[Row, ...]:
             add(d, f"setweight_{weight.lower()}", "v", one)
             some = _read(e, "setweight", _setweight(e, weight, "x"), "v")
             add(d, f"setweight_some_{weight.lower()}", "v, x", some)
-        add(d, "ts_filter", "v, w", _read(e, "ts_filter", _filtered(e, "w"), "v"))
+        add(d, "ts_filter_weights", "v, w", _read(e, "ts_filter", _filtered(e, "w"), "v"))
         add(d, "tsvector_cmp", "a, b", _read(e, "tsvector_cmp", _compare(e, True), "a", "b"))
         add(d, "tsvector_order", "a, b", _read(e, "tsvector_cmp", _compare(e, False), "a", "b"))
         add(d, "tsvector_concat", "a, b", _read(e, "tsvector_concat", _concat(e), "a", "b"))
@@ -1320,6 +1320,7 @@ def _on_vector(name: str, args: list[exp.Expr]) -> exp.Expr:
             called = "ts_delete_array"
             written[1] = _without_nulls(_array(args[1], name))
     elif name == "ts_filter":
+        called = "ts_filter_weights"
         written.append(_weights(args[1], name))
     elif len(args) > 1:
         written.append(_vector(args[1]))

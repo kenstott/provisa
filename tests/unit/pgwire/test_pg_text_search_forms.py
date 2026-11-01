@@ -21,6 +21,7 @@ import pytest
 from provisa.core import pg_tsearch
 from provisa.core.pg_error import PostgresError
 from provisa.core.pg_tsearch_english import lexize
+from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.pg17_text_search_answers import RECORDED
 from tests.unit.pgwire.text_search_corpus import OVERLOADS, null_call, statements
@@ -63,6 +64,21 @@ def test_a_text_of_no_form_of_postgresql_is_refused_by_name():
     written = transpile("SELECT ts_delete(CAST(s AS tsvector), 'a') AS v FROM t", "duckdb")
     with pytest.raises(duckdb.Error, match="ts_delete does not read this value"):
         connection.execute(written).fetchall()
+
+
+def test_weights_that_are_not_constants_are_refused_by_name():
+    with pytest.raises(FunctionRefused, match="ts_filter"):
+        transpile("SELECT ts_filter(CAST(s AS tsvector), w) AS v FROM t", "duckdb")
+
+
+def test_a_query_that_is_not_a_constant_is_refused_by_name():
+    with pytest.raises(FunctionRefused, match="ts_match_vq"):
+        transpile("SELECT ts_match_vq(CAST(s AS tsvector), q) AS v FROM t", "duckdb")
+
+
+def test_a_document_that_is_not_a_constant_is_refused_by_name():
+    with pytest.raises(FunctionRefused, match="to_tsvector"):
+        transpile("SELECT to_tsvector(s) AS v FROM t", "duckdb")
 
 
 def test_a_syntax_error_is_postgresqls_own():
