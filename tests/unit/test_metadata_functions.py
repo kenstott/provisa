@@ -54,6 +54,7 @@ from provisa.transpiler.metadata_functions import (
     READS_THE_SERVER,
     RELATION_FORMS,
     VALUE_FORMS,
+    _IN_THE_MACRO_TABLE,
     MetadataFunctionRefused,
     expand,
     listed_type_sql,
@@ -206,10 +207,17 @@ def test_a_statement_calling_none_gets_no_facts():
 
 
 def test_a_function_on_the_server_with_no_form_is_refused_by_name():
-    for name in sorted(READS_THE_SERVER):
+    for name in sorted(READS_THE_SERVER - _IN_THE_MACRO_TABLE):
         with pytest.raises(MetadataFunctionRefused, match=name) as refused:
             _expanded(f"SELECT {name}(1)")
         assert refused.value.code == "query.function_unsupported"
+
+
+@pytest.mark.parametrize("name", sorted(READS_THE_SERVER & _IN_THE_MACRO_TABLE))
+def test_a_sequence_function_is_the_engines_alone_with_no_table(name):
+    assert name in _expanded(f"SELECT {name}(1)")
+    with pytest.raises(MetadataFunctionRefused, match=name):
+        _expanded(f"SELECT {name}(1) FROM meta.tables")
 
 
 def test_no_function_is_both_answered_and_refused():

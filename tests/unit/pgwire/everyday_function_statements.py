@@ -134,7 +134,7 @@ AGGREGATE = [
     f"SELECT mode() WITHIN GROUP (ORDER BY x) AS v FROM {_ROWS}",
     "SELECT mode() WITHIN GROUP (ORDER BY x) AS v FROM (VALUES (2),(2),(1),(1),(3)) t(x)",
     "SELECT mode() WITHIN GROUP (ORDER BY x DESC) AS v FROM (VALUES (2),(2),(1),(1),(3)) t(x)",
-    f"SELECT ntile(2) OVER (ORDER BY x) AS v FROM {_ROWS}",
+    f"SELECT ntile(2) OVER (ORDER BY x) AS v FROM {_ROWS} ORDER BY x NULLS LAST",
     f"SELECT percentile_disc(ARRAY[0.25,0.75]::float8[]) WITHIN GROUP (ORDER BY x) AS v "
     f"FROM {_ROWS}",
 ]
@@ -198,11 +198,36 @@ RANGE = [
     "SELECT range_union(NULL::int4range, NULL::int4range) AS v",
 ]
 
+_E = "conformance.probe_enum"
+_A, _B, _C = (f"'{label}'::{_E}" for label in "abc")
+ENUM = [
+    *(
+        f"SELECT enum_{name}({a}, {b}) AS v"
+        for name in ("eq", "ne", "lt", "le", "gt", "ge", "cmp", "larger", "smaller")
+        for a, b in ((_A, _B), (_C, _B), (_B, _B), (f"NULL::{_E}", _B), (_A, f"NULL::{_E}"))
+    ),
+    f"SELECT enum_first(NULL::{_E}) AS v",
+    f"SELECT enum_last(NULL::{_E}) AS v",
+    f"SELECT enum_first({_B}) AS v",
+    f"SELECT enum_range(NULL::{_E}) AS v",
+    f"SELECT enum_range({_B}) AS v",
+    f"SELECT enum_range({_A}, {_B}) AS v",
+    f"SELECT enum_range({_B}, NULL::{_E}) AS v",
+    f"SELECT enum_range(NULL::{_E}, {_B}) AS v",
+    f"SELECT enum_range(NULL::{_E}, NULL::{_E}) AS v",
+    f"SELECT enum_range({_C}, {_A}) AS v",
+]
+
 #: What a statement needs of the database, run first on PostgreSQL.
-SETUP: list[str] = []
+SETUP = [
+    "CREATE SCHEMA IF NOT EXISTS conformance",
+    f"DROP TYPE IF EXISTS {_E}",
+    f"CREATE TYPE {_E} AS ENUM ('a', 'b', 'c')",
+]
 
 STATEMENTS: dict[str, list[str]] = {
     "Array": ARRAY,
+    "Enum": ENUM,
     "Range": RANGE,
     "String": STRING,
     "Other": OTHER,
@@ -215,6 +240,18 @@ STATEMENTS: dict[str, list[str]] = {
 #: The conformance probe's own statements (scripts/conformance/pgwire_function_probe.py), on the
 #: default engine alone: what a client's literal of an array reads as is not a function's.
 PROBES: dict[str, list[str]] = {
+    "Enum": [
+        f"SELECT max({_B}) AS v",
+        f"SELECT min(NULL::{_E}) AS v",
+        f"SELECT {_A} < {_B} AS v",
+        *(
+            f'SELECT pg_catalog."enum_{name}"(NULL::{_E}, NULL::{_E}) AS v'
+            for name in ("cmp", "eq", "ge", "gt", "larger", "le", "lt", "ne", "smaller", "range")
+        ),
+        f'SELECT pg_catalog."enum_first"(NULL::{_E}) AS v',
+        f'SELECT pg_catalog."enum_last"(NULL::{_E}) AS v',
+        f'SELECT pg_catalog."enum_range"(NULL::{_E}) AS v',
+    ],
     "Range": [
         'SELECT pg_catalog."datemultirange"(VARIADIC NULL::daterange[]) AS v',
         'SELECT pg_catalog."int4multirange"(VARIADIC NULL::int4range[]) AS v',
@@ -241,6 +278,8 @@ PROBES: dict[str, list[str]] = {
         'SELECT pg_catalog."trim_array"(NULL::integer[], NULL::integer) AS v',
     ],
     "Aggregate and window": [
+        f'SELECT pg_catalog."max"(NULL::{_E}) AS v',
+        f'SELECT pg_catalog."min"(NULL::{_E}) AS v',
         'SELECT pg_catalog."cume_dist"(NULL::integer) WITHIN GROUP (ORDER BY NULL::integer) AS v',
         'SELECT pg_catalog."dense_rank"(NULL::integer) WITHIN GROUP (ORDER BY NULL::integer) AS v',
         'SELECT pg_catalog."mode"() WITHIN GROUP (ORDER BY NULL::integer) AS v',

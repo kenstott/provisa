@@ -27,6 +27,11 @@ from tests.unit.pgwire.pg17_everyday_function_answers import RECORDED
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 
 
+#: PostgreSQL's FirstNormalObjectId. A type of that number or past it is the database's own, and
+#: its number that database's: a value of an enum is its label, sent as text, here.
+_FIRST_NORMAL_OID = 16384
+
+
 def _rows(res: Any) -> list[Any]:
     return [None if (v := res.get_value(i, 0)) is None else v.decode() for i in range(res.ntuples)]
 
@@ -48,13 +53,27 @@ def _problem(conn: Any, sql: str) -> str | None:
         return None if said == (first, second) else f"{said}, PostgreSQL {first} {second}"
     if failed:
         return (res.error_message or b"").decode()[:300]
-    if res.ftype(0) != first:
+    if res.ftype(0) != first and first < _FIRST_NORMAL_OID:
         return f"type {res.ftype(0)} rows {_rows(res)}, PostgreSQL {first} {second}"
     return None if _rows(res) == second else f"{_rows(res)}, PostgreSQL {second}"
 
 
+def _source_enum() -> None:
+    """The enum a source declares, in the catalog DuckDB attaches the source under."""
+    from provisa.api.app import state
+
+    runtime = state.federation_engine._rt
+    connection = runtime._con
+    connection.execute("ATTACH IF NOT EXISTS ':memory:' AS \"_src_probe\"")
+    connection.execute('CREATE SCHEMA IF NOT EXISTS "_src_probe".conformance')
+    connection.execute(
+        "CREATE TYPE IF NOT EXISTS \"_src_probe\".conformance.probe_enum AS ENUM ('a', 'b', 'c')"
+    )
+
+
 @pytest.mark.parametrize("family", STATEMENTS)
 def test_every_statement_answers_as_postgresql_17_answered(conn: Any, family: str):
+    _source_enum()
     problems = {}
     for sql in (*STATEMENTS[family], *PROBES[family]):
         problem = _problem(conn, sql)

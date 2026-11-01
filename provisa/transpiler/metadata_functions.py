@@ -592,8 +592,6 @@ READS_THE_SERVER = frozenset(
         "pg_event_trigger_table_rewrite_reason",
         "pg_get_publication_tables",
         "pg_get_wal_replay_pause_state",
-        "pg_index_column_has_property",
-        "pg_index_has_property",
         "pg_is_wal_replay_paused",
         "pg_last_committed_xact",
         "pg_logical_slot_get_binary_changes",
