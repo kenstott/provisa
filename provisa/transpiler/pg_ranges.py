@@ -1901,6 +1901,8 @@ class _Rewrite:
             items = exp.Array(
                 expressions=[_string(pg_range.range_text(r)) for r in value.literal.ranges]
             )
+            if not value.literal.ranges:  # an empty list says no type of its own
+                items = exp.cast(items, exp.DataType.build("TEXT[]", dialect="postgres"))
         elif self.dialect in _REGEX_LIST:
             items = self.writer._ranges_list(value.text)
         else:

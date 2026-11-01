@@ -37833,7 +37833,14 @@
     stays beside them. Usage is kept per org and role as per-minute buckets (an hour), per-hour buckets
     (a week) and per-day buckets (31 days), every window a sum over them. The counters live in the control-plane
     PostgreSQL, so budgets hold on every deployment, with or without Redis. The role''s page shows each
-    window''s use and when room frees up. This replaces the daily-or-monthly period stated above.'
+    window''s use and when room frees up. This replaces the daily-or-monthly period stated above. (Amended
+    2026-10-29, USAGE BY PRINCIPAL:) Maintainer 2026-11-01: "an interesting feature would be to track stats
+    by principal (basic stats like data volumes, total queries, etc.)", "this could be used by say a company
+    that was in the business of provisioning data, like reuters, so billing", "add that feature". Provisa
+    records usage by principal, data product and surface: queries, rows and bytes, as a governed table in
+    the ops domain, with an export for a billing system. Provisa meters and exports; it does not invoice.
+    This does not change how quotas are held; the statement that there is no per-user metering stays true
+    of quotas only.'
   use_case: Query complexity limits prevent resource exhaustion from complex or malicious queries, complementing
     request-rate limiting. Provides Hasura api_limits parity.
   code:
@@ -82798,7 +82805,13 @@
     starting state and states the stage; a tier or template that cannot start is named as failed, never
     left starting. (Amended 2026-10-29, A DEMO NEEDS ITS STORES HEALTHY:) An open refuses a demo whose stores
     are not reachable, or whose Elasticsearch index is red, naming it failed. The sandbox VM keeps only
-    the bundle and engine versions in use.'
+    the bundle and engine versions in use. (Amended 2026-10-29, TRADE AFFIRMATION DEMO:) Maintainer 2026-11-01:
+    "add that demo", of "a python code table as the matching engine, and maybe a command that will log the
+    match when found", "we use polly surface to drive it", "polly can use the explore surface to drive queries
+    as well". A named demo of post-trade matching and affirmation at an asset manager: trades split across
+    order, execution, broker and custodian systems; a Python code table matches them and names each break;
+    a command logs the affirmation; Polly drives the tour and puts its queries in Explore. Each break shows
+    the time to the cutoff and the penalty a failed settlement would accrue.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true

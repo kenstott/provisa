@@ -37,6 +37,7 @@ import threading
 import time
 from dataclasses import dataclass
 from dataclasses import field as _dc_field
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Tuple, cast
 
 from provisa.federation.execution_auth import plan_authorization
@@ -133,6 +134,12 @@ _REDIRECT_SET_RE = re.compile(
 # REQ-2110: a session's time travel, the default every statement it runs reads at where a
 # reference says no time of its own (REQ-1163): SET provisa.as_of / provisa.as_recorded, RESET
 # either, or SET either TO DEFAULT.
+#: REQ-2171: SET TimeZone, or SET TIME ZONE, and its RESET: what timeofday writes in.
+_TIME_ZONE_SET_RE = re.compile(
+    r"^\s*(?:SET\s+(?:SESSION\s+)?(?:TIME\s*ZONE)\s*(?:TO|=)?\s*'?(?P<zone>[^';\s]+)'?"
+    r"|RESET\s+TIME\s*ZONE)\s*;?\s*$",
+    re.IGNORECASE,
+)
 _TIME_TRAVEL_SET_RE = re.compile(
     r"^\s*(?:SET\s+(?:SESSION\s+)?(?P<key>provisa\.as_(?:of|recorded))\s*(?:=|\s+TO\s+)\s*"
     r"(?P<value>.+?)|RESET\s+(?P<reset>provisa\.as_(?:of|recorded)))\s*;?\s*$",
@@ -1028,23 +1035,50 @@ _SHAPE_COERCERS: dict[BVType, Callable[[Any], Any]] = {
 }
 
 
+_CURRENT_QUERY = re.compile(r'(?:pg_catalog\.)?"?\bcurrent_query"?\s*\(\s*\)', re.IGNORECASE)
+
+
+def _current_query_said(sql: str) -> str:  # REQ-2171
+    """``sql`` with each current_query() the statement the client wrote: what an engine's own would
+    answer is the statement as Provisa wrote it for that engine."""
+    said = "'" + sql.replace("'", "''") + "'::text"
+    return _CURRENT_QUERY.sub(lambda _: said, sql)
+
+
+def _null_alone(value: Any) -> Any:  # REQ-2171
+    """A column of no engine type holds NULL alone, which a coercer is not called with."""
+    raise TypeError(f"a value of no type the statement says: {value!r}")
+
+
+#: What an engine calls a column of a bare NULL, which has no type of its own to compare: Trino's
+#: ``unknown``, and the binary a ClickHouse Nothing reaches Arrow as.
+_UNTYPED_RESULTS = frozenset({"UNKNOWN", "BLOB"})
+
+
 def _describe_casts(
     sql: str,
     types: list[BVType],
     oids: list[int | None],
     typmods: list[int],
     coerce: list[Tuple[int, Callable[[Any], Any]]],
+    served: Sequence[str | None] = (),
 ) -> None:  # REQ-2167
     """A result column that is a cast to a PostgreSQL type is described with the cast's OID and
-    typmod where its value has that type's wire form (cast_types), its value brought to it."""
+    typmod where its value has that type's wire form (cast_types), its value brought to it. A
+    column the engine could not type (``served``, its own type names) has none to differ."""
     from provisa.pgwire.cast_types import result_casts
 
     casts = result_casts(sql) if sql else None
     if casts is None or len(casts) != len(types):
         return
     for i, cast_type in enumerate(casts):
-        if cast_type is None or types[i] not in cast_type.served_as:
+        if cast_type is None:
             continue
+        untyped = i < len(served) and str(served[i]).upper() in _UNTYPED_RESULTS
+        if types[i] not in cast_type.served_as:
+            if not untyped:
+                continue
+            coerce.append((i, _null_alone))
         types[i], oids[i], typmods[i] = cast_type.bvtype, cast_type.oid, cast_type.typmod
         if cast_type.coerce is not None:
             coerce.append((i, cast_type.coerce))
@@ -1254,7 +1288,9 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
             value_of = _ENGINE_VALUES.get(str(served).upper())
             if value_of is not None:
                 self._coerce.append((i, value_of))
-        _describe_casts(original_sql, self._types, self._type_oids, self._typmods, self._coerce)
+        _describe_casts(
+            original_sql, self._types, self._type_oids, self._typmods, self._coerce, ctypes or ()
+        )
         # REQ-2190: a type PostgreSQL named that the wire has no form of its own for.
         for i, oid in enumerate(getattr(engine_result, "column_type_oids", None) or ()):
             if oid is not None:
@@ -1630,6 +1666,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # user_id. Set wherever role_id is set (trust mode: the startup packet's user; secured
         # modes: the validated identity), so an authenticated session always has both.
         self.user_id: str | None = None
+        # REQ-2171: what system_user answers, the method and the name the session authenticated
+        # by; None in trust mode, as PostgreSQL's is.
+        self.system_user: str | None = None
+        # REQ-2171: the zone the session's SET TimeZone named; None for the server's.
+        self.time_zone: str | None = None
         # REQ-1266: the org this session is bound to, set when it is admitted. None until then: a
         # session not yet admitted is served no org's runtime.
         self.org_id: str | None = None
@@ -1680,6 +1721,14 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         from provisa.mv.bitemporal import request_as_of
 
         return request_as_of(self.as_of_setting, self.as_recorded_setting)
+
+    def _note_time_zone(self, sql: str) -> None:
+        """The zone a ``SET TimeZone`` of this statement names; the statement itself is answered
+        as any SET is."""
+        m = _TIME_ZONE_SET_RE.match(sql)
+        if m is not None:
+            zone = m.group("zone")
+            self.time_zone = None if (zone or "").upper() in ("", "DEFAULT", "LOCAL") else zone
 
     def _set_time_travel(self, sql: str) -> bool:
         """Apply ``SET provisa.as_of|as_recorded ...`` / ``RESET`` either; False when ``sql`` is
@@ -2027,7 +2076,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         server_function = _SERVER_FUNCTION_RE.match(stripped)
         if server_function is not None:
             return ProvisaQueryResult(self._server_function(server_function), stripped)
+        stripped = _current_query_said(stripped)
         # REQ-1194: SET / RESET provisa.redirect*; REQ-2110: provisa.as_of / provisa.as_recorded
+        self._note_time_zone(stripped)
         if self._set_redirect(stripped) or self._set_time_travel(stripped):
             from provisa.executor.result import QueryResult
 
@@ -2045,7 +2096,13 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 stripped,
                 self.role_id or "",
                 state,
-                session=CatalogSession(self.process_id, self.application_name, self.backend_start),
+                session=CatalogSession(
+                    self.process_id,
+                    self.application_name,
+                    self.backend_start,
+                    self.system_user,
+                    self.time_zone,
+                ),
                 run=self._catalog_read,
             )
             log.debug(
@@ -3019,6 +3076,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             )
             return
         login_throttle().record_success(subject_key(username, ""))
+        ctx.session.system_user = f"scram-sha-256:{username}"  # type: ignore[attr-defined]
         self._complete_auth(ctx, identity, auth_config)
 
     def _requested_org(self) -> str | None:  # REQ-1234

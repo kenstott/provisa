@@ -22,6 +22,7 @@ pads it."""
 
 from __future__ import annotations
 
+import datetime
 import decimal
 import functools
 import re
@@ -116,6 +117,10 @@ def _cast_type(data_type: Any) -> CastType | None:  # noqa: PLR0911 -- one retur
         return CastType(1700, typmod, BVType.DECIMAL, frozenset({BVType.DECIMAL}))
     if kind == t.FLOAT:
         return CastType(700, -1, BVType.REAL, frozenset({BVType.REAL, BVType.FLOAT}))
+    if kind == t.TIMESTAMP:
+        return _RETURNED["timestamp without time zone"]
+    if kind == t.TIME:
+        return _RETURNED["time without time zone"]
     if kind == t.JSONB:
         return _RETURNED["jsonb"]
     if kind == t.XML:  # REQ-2171: held as its text; xml_out writes its declaration
@@ -154,6 +159,20 @@ _NUMBERS = _INTEGERS | {BVType.REAL, BVType.FLOAT, BVType.DECIMAL}
 
 #: A predicate: a boolean, whose value an engine with no boolean computes as 1 or 0.
 _BOOLEAN = CastType(16, -1, BVType.BOOL, _INTEGERS | {BVType.BOOL}, _to_bool)
+
+
+def _of_no_zone(value: Any) -> Any:
+    """A timestamp an engine holds in a zone (ClickHouse's are in UTC) as its wall clock."""
+    aware = isinstance(value, datetime.datetime) and value.tzinfo is not None
+    return value.replace(tzinfo=None) if aware else value
+
+
+def _clock_of(value: Any) -> Any:
+    """A time: ClickHouse's Time64 reaches Arrow as the bytes of its count of microseconds."""
+    if not isinstance(value, bytes):
+        return value
+    count = int.from_bytes(value, "little", signed=True)
+    return (datetime.datetime.min + datetime.timedelta(microseconds=count)).time()
 
 
 def _record_field(value: Any) -> str:
@@ -222,6 +241,18 @@ _RETURNED: dict[str, CastType] = {
     "xml": CastType(142, -1, BVType.XML, _XML_FORMS, xml_out),
     "xml[]": CastType(143, -1, XML_ARRAY, frozenset({BVType.STRINGARRAY, XML_ARRAY})),
     "cstring": CastType(2275, -1, BVType.TEXT, _TEXT_FORMS),
+    "bytea": CastType(17, -1, BVType.BYTES, frozenset({BVType.BYTES})),
+    "integer[]": CastType(1007, -1, BVType.INTEGERARRAY, frozenset({BVType.INTEGERARRAY})),
+    "time without time zone": CastType(
+        1083, -1, BVType.TIME, frozenset({BVType.TIME, BVType.BYTES}), _clock_of
+    ),
+    "interval": CastType(1186, -1, BVType.INTERVAL, frozenset({BVType.INTERVAL})),
+    "timestamp without time zone": CastType(
+        1114, -1, BVType.TIMESTAMP, frozenset({BVType.TIMESTAMP}), _of_no_zone
+    ),
+    "timestamp with time zone": CastType(
+        1184, -1, BVType.TIMESTAMPTZ, frozenset({BVType.TIMESTAMP, BVType.TIMESTAMPTZ})
+    ),
     # The engine holds money as its base; its encoder sends the value as money.
     "money": CastType(790, -1, BVType.MONEY, _NUMBERS | {BVType.TEXT, BVType.MONEY}),
     "money[]": CastType(

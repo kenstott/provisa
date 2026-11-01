@@ -20,10 +20,11 @@ import re
 
 import sqlglot
 
+from provisa.core.pg_error import MARK
 from provisa.transpiler import function_macros, pg_functions, pg_held_types, pg_money
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
-from provisa.transpiler.pg_literals import postgres_literals
+from provisa.transpiler.pg_literals import exact_inputs, postgres_literals
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.transpile_correlated import (
     rewrite_correlated_subqueries_for_trino,
@@ -1172,6 +1173,8 @@ def transpile(
     """
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
         pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
+    if target_dialect != "postgres":
+        pg_sql = exact_inputs(pg_sql)  # REQ-2171
     pg_sql = pg_money.lowered(pg_sql, target_dialect)  # REQ-2171
     # REQ-1730: an identifier UNQUOTED in the source SQL (the common case for a raw/direct query —
     # governed GraphQL/Cypher-compiled queries already force `quoted=True`, see stage2.py's
@@ -1246,6 +1249,11 @@ def transpile(
         lowered = pg_held_types.held(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
+    if target_dialect == "clickhouse":
+        # REQ-2171: its instants and its refusals as PostgreSQL's, whatever wrote them.
+        lowered = clickhouse_semantics(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
     if target_dialect == "exasol":
         result = _exasol_stored_case(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
@@ -1281,6 +1289,56 @@ def transpile(
 
     trace_stage(f"transpile.{target_dialect}", result)
     return result
+
+
+#: A timestamp on ClickHouse: its DateTime has no fraction, and Arrow reads it as a count of seconds.
+_CLICKHOUSE_INSTANT = "Nullable(DateTime64(6, 'UTC'))"
+
+
+def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
+    """``tree`` with what ClickHouse would read otherwise said for it. A timestamp keeps its
+    microseconds and reads as one, a time is read by toTime64 (its Time reads PostgreSQL's text as
+    NULL), and a hex has no leading zeros, as to_hex has none. A refusal (pg_forms_types.refused), the cast of a text that is no
+    number, raises: sqlglot writes a cast as Nullable, which reads such a text as NULL. Its argument
+    is materialized so the refusal is not folded in a branch the statement does not take."""
+
+    def said(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.CurrentTimestamp):
+            return exp.Anonymous(
+                this="now64", expressions=[exp.Literal.number(6), exp.Literal.string("UTC")]
+            )
+        if isinstance(node, exp.DataType) and node.this in (
+            exp.DataType.Type.TIMESTAMP,
+            exp.DataType.Type.TIMESTAMPTZ,
+        ):
+            return exp.DataType.build(_CLICKHOUSE_INSTANT, dialect="clickhouse")
+        if isinstance(node, exp.Cast) and node.to.is_type(exp.DataType.Type.TIME):
+            value = node.this
+            while isinstance(value, exp.Cast) and value.to.is_type(exp.DataType.Type.TIME):
+                value = value.this
+            # Its OrNull reads what the literal's own refuses, and a NULL it cannot.
+            reader = "toTime64" if isinstance(value, exp.Literal) else "toTime64OrNull"
+            return exp.Anonymous(this=reader, expressions=[value, exp.Literal.number(6)])
+        if isinstance(node, exp.Hex):
+            return exp.Anonymous(
+                this="replaceRegexpOne",
+                expressions=[node, exp.Literal.string("^0+(.)"), exp.Literal.string("\\1")],
+            )
+        if (
+            isinstance(node, exp.Cast)
+            and node.to.is_type(exp.DataType.Type.INT)
+            and any(MARK in part.this for part in node.this.find_all(exp.Literal))
+        ):
+            return exp.Anonymous(
+                this="accurateCast",
+                expressions=[
+                    exp.Anonymous(this="materialize", expressions=[node.this.copy()]),
+                    exp.Literal.string("Int32"),
+                ],
+            )
+        return node
+
+    return tree.transform(said)
 
 
 def _lower_universal_regex(pg_sql: str, target_dialect: str) -> exp.Expr | None:  # REQ-2142
