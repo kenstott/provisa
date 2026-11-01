@@ -29,11 +29,11 @@ import httpx
 import psycopg
 import yaml
 
-# Each generator's rule: orders // 8 customers, 3 events an order, one document an order.
+# Each generator's rule: orders // 8 customers, one document an order, a mean of 3 events an order.
 CUSTOMER_DIVISOR = 8
 EVENTS_PER_ORDER = 3
-# Items per order are drawn from 1..2n-1 per order, so their mean is n, not every order's count.
-ITEMS_TOLERANCE = 0.02
+# Items and events per order are drawn from 1..2n-1, so n is their mean, not each order's count.
+PER_ORDER_TOLERANCE = 0.02
 
 
 def _default(value: str) -> int:
@@ -56,7 +56,6 @@ def differences(scale: Mapping[str, int], counts: Mapping[str, Any]) -> list[str
     orders, neo4j_orders = scale["orders"], scale["neo4j_orders"]
     exact = {
         "postgres_orders": orders,
-        "clickhouse_events": orders * EVENTS_PER_ORDER,
         "mongo_documents": orders,
         "neo4j_orders": neo4j_orders,
         "neo4j_customers": neo4j_orders // CUSTOMER_DIVISOR,
@@ -71,9 +70,14 @@ def differences(scale: Mapping[str, int], counts: Mapping[str, Any]) -> list[str
             f"postgres_max_customer: {counts['postgres_max_customer']}, "
             f"stated at most {orders // CUSTOMER_DIVISOR}"
         )
-    per_order = counts["postgres_items"] / counts["postgres_orders"]
-    if abs(per_order - scale["items_per_order"]) > scale["items_per_order"] * ITEMS_TOLERANCE:
-        out.append(f"items per order: {per_order:.3f}, stated {scale['items_per_order']}")
+    means = (
+        ("items", counts["postgres_items"], scale["items_per_order"]),
+        ("events", counts["clickhouse_events"], EVENTS_PER_ORDER),
+    )
+    for name, total, want in means:
+        per_order = total / counts["postgres_orders"]
+        if abs(per_order - want) > want * PER_ORDER_TOLERANCE:
+            out.append(f"{name} per order: {per_order:.3f}, stated {want}")
     return out
 
 
