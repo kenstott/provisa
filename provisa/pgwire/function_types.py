@@ -85,6 +85,8 @@ _SPELLINGS: dict[type, tuple[str, ...]] = {
     exp.StrPosition: ("strpos", "position"),
     exp.Explode: ("unnest",),
     exp.Unnest: ("unnest",),
+    exp.JSONBObjectAgg: ("jsonb_object_agg",),
+    exp.JSONObjectAgg: ("json_object_agg",),
 }
 
 
@@ -147,13 +149,23 @@ def _call(expression: exp.Expr) -> tuple[list[str], list[exp.Expr]] | None:
     return None
 
 
+def json_operator_type(expression: exp.Expr) -> str | None:
+    """ "jsonb" for a json operator whose left operand is one; None for any other expression."""
+    if isinstance(expression, exp.Paren):
+        return json_operator_type(expression.this)
+    if not isinstance(expression, (exp.JSONExtract, exp.JSONBExtract)):
+        return None
+    left = json_operator_type(expression.this) or _arg_type(expression.this, None, True)
+    return left if left == "jsonb" else None
+
+
 def _fits(argument: str | None, parameter: str) -> bool:
     """A string argument fits a character varying parameter as it fits a text one, any argument a
     parameter of pseudo-type "any", and a range or multirange the pseudo-type of its kind."""
     return (
         argument is None
         or argument == parameter
-        or parameter == '"any"'
+        or parameter in ('"any"', "anyelement")
         or (argument == "text" and parameter == "character varying")
         or (parameter == "anyarray" and argument.endswith("[]"))
         or (parameter == "anyrange" and argument in RANGE_TYPES)
@@ -190,6 +202,10 @@ def call_result_type(expression: exp.Expr) -> str | None:
         return "xml"
     if names[0] in MULTIRANGE_TYPES:
         return names[0]  # a multirange's constructor is variadic: any number of ranges
+    overloads = FUNCTION_OVERLOADS.get(names[0], ())
+    returned = {returns for _, returns in overloads}
+    if len(returned) == 1 and all(len(params) != len(args) for params, _ in overloads):
+        return returned.pop()  # a VARIADIC overload: every one returns this type
     # An unknown-type literal fits any overload; where that leaves the call ambiguous, it is text,
     # as PostgreSQL prefers a string category type for one. A number's own type is tried first.
     for literal, numbers in ((None, True), ("text", True), (None, False), ("text", False)):
