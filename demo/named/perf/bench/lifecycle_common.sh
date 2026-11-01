@@ -57,6 +57,15 @@ wait_ready() {
   for device in $DEVICES; do
     until [ "$(gcloud compute ssh "provisa-perf-$device" --zone "$ZONE" --project "$PROJECT" --quiet \
         --command "$READY_POLL" 2>/dev/null)" = "$COMMIT" ]; do
+      # A device that is gone or stopped never writes its marker. A reclaimed Spot device says so
+      # now, not at the deadline.
+      case "$(gcloud compute instances describe "provisa-perf-$device" --zone "$ZONE" \
+          --project "$PROJECT" --format='value(status)' 2>&1)" in
+        *"was not found"*|STOPPED|TERMINATED|STOPPING|SUSPENDED)
+          echo "device provisa-perf-$device is gone or stopped: reclaimed, or its self-destruct"
+          exit 1
+          ;;
+      esac
       if [ "$(date +%s)" -ge "$deadline" ]; then
         echo "device provisa-perf-$device was not ready at $COMMIT within ${READY_TIMEOUT}s;" \
           "its setup log is copied to $RUN_DIR/startup-$device.log before destroy"

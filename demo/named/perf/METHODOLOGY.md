@@ -6,31 +6,32 @@ The optimistic benchmark measures Provisa's own ceiling per transport: one row, 
 
 | Device | Runs | Nothing else |
 |---|---|---|
-| 1, server | Provisa: its worker processes, every listener (HTTP, pgwire, Flight, Bolt, gRPC); DuckDB when it is the engine (in-process); `host_agent.py` | No database, no collector, no load generator |
+| 1, server | Provisa: its worker processes, every listener (HTTP, pgwire, Flight, Bolt, gRPC); the federation engine: Postgres or Trino in its own container, DuckDB in-process; `host_agent.py` | No source, no collector, no load generator |
 | 2, client | `run_benchmark.py --optimistic` (the load generator) | No Provisa, no source |
-| 3, backends | The Postgres source (`orders`); the federation engine when it is a server (Postgres, or Trino), in its own container; the control-plane Postgres; Redis (the shared response cache); the OTel collector, otlp2sql and its ops Postgres; `host_agent.py` | No Provisa, no load generator |
+| 3, backends | The Postgres source (`orders`); the control-plane Postgres; Redis (the shared response cache); the OTel collector, otlp2sql and its ops Postgres; `host_agent.py` | No Provisa, no load generator |
 
 Each device has 16 physical cores. On GCP that is a 32-vCPU type; `c4d-standard-32` is the default.
 
 Redis is on device 3: a server Provisa reaches over the network, as in production.
 
-The standard engine is Postgres (`PROVISA_ENGINE=pg`). It runs on device 3 in its own container, apart from the source's Postgres, so its CPU is reported on its own. Trino, when a run names it, is also its own container on device 3. DuckDB runs inside Provisa on device 1, so its time is part of Provisa's CPU. A request that reaches the engine (a knob run's federated read) shows its engine time there; the optimistic request does not reach it.
+The engine runs on device 1, beside Provisa. The standard engine is Postgres (`PROVISA_ENGINE=pg`), in its own container, so its CPU is reported on its own as `engine_cpu_cores`. Trino, when a run names it, is also its own container on device 1. DuckDB runs inside Provisa, so its time is part of Provisa's CPU. A request that reaches the engine (a knob run's federated read) shows its engine time there; the optimistic request does not reach it.
 
 All three are in one zone, under one compact placement policy, so the round trip is short and stays the same from run to run.
 
 ## Provisioning
 
-`terraform/perf` creates the three instances from variables (machine type per device, zone, image), the compact placement policy, a firewall rule that lets only the three devices reach each other, and one for the operator's SSH from the addresses given. The maintainer applies it. The repository is checked out at the commit under test on all three, at the same path, with its virtual environment.
+`terraform/perf` creates the three instances from variables (machine type per device, zone, image), and with `--second-server` a fourth, `server2`, the second node of the kill-a-node check. It also creates the compact placement policy, a firewall rule that lets only the three devices reach each other, and one for the operator's SSH from the addresses given. The maintainer applies it. The repository is checked out at the commit under test on all three, at the same path, with its virtual environment.
 
 One command runs a session from the operator's machine, and nothing outlives it, so nothing bills between sessions:
 
 ```bash
 demo/named/perf/bench/bench_lifecycle.sh --project P --zone us-east1-b --commit <sha on GitHub> \
   --ssh-cidr <operator address>/32 [--provisioning-model ON_DEMAND] \
-  [--backends-provisioning-model ON_DEMAND] [--reps 5] [--keep] [--dry-run]
+  [--backends-provisioning-model ON_DEMAND] [--reps 5] [--max-run-hours 24] [--second-server] \
+  [--resume <run id> --fix "..."] [--abandon <run id> --fix "..."] [--keep] [--dry-run]
 ```
 
-It applies `terraform/perf` (its state in a run directory of its own under `~/.provisa-bench/runs`), waits until every device's ready marker names the commit (its startup script has finished), refusing by name a device not ready within `--ready-timeout` (7200 s), runs the repetitions, copies the results back into the run directory, and destroys every device. Destroy runs on failure and on interrupt too, unless `--keep` is given. `--dry-run` prints the terraform plan and every command of the run, and creates nothing.
+It applies `terraform/perf` (its state in a run directory of its own under `~/.provisa-bench/runs`), waits until every device's ready marker names the commit (its startup script has finished), refusing by name a device not ready within `--ready-timeout` (7200 s), runs the units, copies the results back into the run directory, and destroys every device. Destroy runs on failure and on interrupt too, unless `--keep` is given. The exception is a run that stops on its own, an invalid unit or a failed step: it stops its devices and keeps them for `--resume` (`bench/METHODOLOGY.md`, Stops). `--max-run-hours` sets every device's self-destruct, and GCE deletes the device and its disk that long after it starts. `--dry-run` prints the terraform plan and every command of the run, and creates nothing.
 
 ### The seed job and the seed image
 
@@ -49,16 +50,20 @@ It applies `terraform/perf` with device 3 alone (`devices = ["backends"]`, `seed
 
 ### Checkpoints and recovery
 
-Each run (one repetition at one telemetry setting, or one variant of a governance pass) is copied back as soon as it finishes and checkpointed to the run's bucket, `gs://<bucket>/<run id>/<run>/`, with a `DONE` object written last. The bucket is a `terraform/perf` resource (`results_bucket`, named after the run id, deleted with what it holds on destroy); before destroy, `bench_lifecycle.sh` copies it into `checkpoints/` in the run directory. `three_device_run.sh` lists the bucket first and skips every run already done there, saying which.
+Each unit (one transport, one repetition) is copied back as soon as it finishes, rechecked by `bench_units.py check`, and checkpointed to the run's bucket, `gs://<bucket>/<run id>/<unit>/`, with a `DONE` object written last. An invalid unit is discarded and not checkpointed. The bucket is a `terraform/perf` resource (`results_bucket`, named after the run id, deleted with what it holds on destroy); before destroy, `bench_lifecycle.sh` copies it into `checkpoints/` in the run directory. `three_device_run.sh` lists the bucket first and skips every unit already done there, saying which.
 
-When the run fails and a device is stopped or terminated (a reclaimed Spot device), `bench_lifecycle.sh` starts the stopped devices again. If they do not start, it replaces the devices (a targeted destroy of the instances, then apply, device 3 again from the seed image), keeping the bucket. It then waits for every device to be ready and reruns `three_device_run.sh` with the same run id, which repeats only the runs not done. It recovers at most 3 times, then stops and destroys. A failure with every device running is a real failure and is not retried.
+When the run fails and a device is stopped or terminated, `bench_lifecycle.sh` starts the stopped devices again. If they do not start, it replaces the devices (a targeted destroy of the instances, then apply, device 3 again from the seed image), keeping the bucket. It then waits for every device to be ready and reruns `three_device_run.sh` with the same run id, which repeats only the units not done. It recovers at most 3 times, then stops and destroys. A replaced device fails the next unit's check, because a replaced machine is a new run.
+
+With a self-destruct set, GCE deletes a reclaimed Spot device rather than stopping it, because it takes one action for both. A device that is gone ends the run, and the restart is the maintainer's decision. A failure with every device running is a real failure: it is not retried, and the run stops for a resume.
 
 Within a session, `demo/named/perf/bench/three_device_run.sh` does the run over `gcloud compute ssh`:
 
-- **Device 3, once:** `docker compose --profile three-device up -d --scale seeder=0` in `demo/named/perf` (adding `--profile three-device-trino` for a Trino run), with `PROVISA_BENCH_BIND` set to device 3's private address, refusing a device without the seed. That brings up the source, the engine Postgres, the control-plane Postgres, Redis, the collector, otlp2sql and its ops Postgres. Then it starts `host_agent.py`.
-- **Device 1, each run:** `orchestrate.sh serve --telemetry off|on --engine pg` (`serve_three_device.sh`). It starts Provisa only, every backend address pointing at device 3, and waits until every worker serves. Then it starts `host_agent.py` with Provisa's pid, the run's facts (telemetry, engine, workers) and a round-trip target on device 3.
-- **Device 2, each run:** `run_benchmark.py --optimistic` with a contract whose endpoints name device 1's private address. It reads Provisa's CPU from device 1's agent (`--server-cpu-url`) and the containers' CPU from device 3's (`--source-cpu-url`, `--backend-container`). It writes every device's facts and the round trips to `devices.json` (`--device`).
-- **Device 1, after each run:** Provisa is stopped, so the next run starts it fresh. The run's results are copied back and checkpointed.
+- **Device 3, once:** `docker compose --profile three-device up -d --scale seeder=0` in `demo/named/perf`, with `PROVISA_BENCH_BIND` set to device 3's private address, refusing a device without the seed. That brings up the sources, the control-plane Postgres, Redis, the collector, otlp2sql and its ops Postgres. Then it starts `host_agent.py`.
+- **Device 1, once:** the engine's container, out of the same compose file.
+- **Device 1, each repetition and telemetry setting:** `orchestrate.sh serve --telemetry off|on --engine pg` (`serve_three_device.sh`). It starts Provisa, every backend address pointing at device 3 and the engine's at device 1, and waits until every worker serves. Then it starts `host_agent.py` with Provisa's pid, the run's facts (telemetry, engine, workers) and a round-trip target on device 3.
+- **Device 2, each unit:** `run_benchmark.py --optimistic` with a contract, narrowed to the unit's transport, whose endpoints name device 1's private address. It reads Provisa's CPU from device 1's agent (`--server-cpu-url`) and the containers' CPU from device 3's (`--source-cpu-url`, `--backend-container`). It writes every device's facts and the round trips to `devices.json` (`--device`).
+- **Operator, after each unit:** its results are copied back, rechecked and checkpointed.
+- **Device 1, after each repetition and telemetry setting:** Provisa is stopped, so the next one starts it fresh.
 
 The results are reported by `three_device.py report`.
 
@@ -85,7 +90,8 @@ CPU per step, each from its own device:
 
 - device 1: Provisa's CPU per request and in cores;
 - device 2: the load generator's CPU in cores and `client_limited`. A client-limited step is a measurement of the client and is never published;
-- device 3: the CPU of each container (the source's Postgres, the engine, the control-plane Postgres, Redis, the collector, otlp2sql, the ops Postgres), so a backend bottleneck shows.
+- device 1: the engine's container, as `engine_cpu_cores`;
+- device 3: the CPU of each container (the source's Postgres, the control-plane Postgres, Redis, the collector, otlp2sql, the ops Postgres), so a backend bottleneck shows.
 
 ## Telemetry off and on
 
@@ -100,7 +106,7 @@ Each point is measured with telemetry off and with telemetry on, on the same thr
 
 - **Warm-up:** once every worker serves, one step at the highest concurrency, per transport, discarded (`load.warmup_s: 60` in the contract). It warms the plan cache, the response cache, connection pools and the source's buffers.
 - **Ramp:** the contract's steps (1, 16, 64, 256 connections), 30 s each.
-- **Repetitions:** 5 per point, with off and on alternating (off, on, off, on, ...) so drift over the session falls on both alike. Provisa is restarted for every run, because the sample rate is fixed at start.
+- **Repetitions:** 5 per point, with off and on alternating (off, on, off, on, ...) so drift over the session falls on both alike. Provisa is restarted for every telemetry setting, because the sample rate is fixed at start.
 - **Spread:** each figure is the median of the 5, with the minimum and maximum beside it.
 
 ## The published point

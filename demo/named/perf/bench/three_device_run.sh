@@ -9,28 +9,37 @@
 # permission from the copyright holder.
 #
 # The three-device optimistic benchmark (../METHODOLOGY.md), driven from the operator's machine over
-# `gcloud compute ssh`: device 3 brought up once, then each repetition runs telemetry off and on in
-# turn (off, on, off, on, ...), Provisa restarted on device 1 for every run, the load generated on
-# device 2. Each run's results are copied back as soon as it finishes and checkpointed to the run's
-# bucket (gs://PERF_BUCKET/PERF_RUN_ID/<run>/, its DONE object written last); at the end they are
-# reported (three_device.py report).
+# `gcloud compute ssh`: device 3 brought up once, then the plan's units, least risky first
+# (bench_units.py plan). A unit is one transport, one repetition. Provisa is restarted on device 1
+# for each repetition and telemetry setting, the load generated on device 2. Each unit's results
+# are copied back as soon as it finishes and rechecked (bench_units.py check). A valid one is
+# checkpointed to the run's bucket (gs://PERF_BUCKET/PERF_RUN_ID/<unit>/, its DONE object written
+# last). An invalid one is discarded with its reason and the run stops, with exit code 3, as it does
+# for a sanity flag no note explains. At the end the units are reported (three_device.py report).
 #
-# A rerun with the same bucket and run id (bench_lifecycle.sh, after a preempted device is
-# recovered) skips every run whose DONE object is there, so only the runs not done are repeated.
+# A rerun with the same bucket and run id resumes: every unit whose DONE object is there is skipped,
+# so only the units not done are run, and only their servers are started.
 #
 # The devices are the ones terraform/perf creates. The repository is checked out at the commit
 # under test on all three, at the same path.
 #
-# Usage: three_device_run.sh [--reps 5] [--engine pg] [--profile] [--dry-run]
+# Usage: three_device_run.sh [--reps 5] [--engine pg] [--profile] [--dry-run] [--transports a,b]
+#        [--baseline-ledger FILE | --smoke]
 #        [--variants zero,row_rules_2,... --caches cached,uncached --telemetry off
 #         --steps 1,16 --window-s 15 --warmup-s 15]
+#        [--stop-after UNIT]
 #   --dry-run prints every command it would run on each device, and runs none.
+#   --transports the units' transports (default all ten); the pgwire uncached unit runs regardless.
 #   --profile ends the repetitions with one py-spy profile per published transport, at the step
 #   they saturate; its runs stay out of the report.
 #   --variants runs a governance pass (REQ-2092) instead: per repetition, every variant
-#   (governance_variants.py) at every cache setting and telemetry setting, each its own run
-#   (<rep>-<variant>-<cache>-<telemetry>), at the load the last four flags give; the report is
-#   three_device.py variant-report. All six go together.
+#   (governance_variants.py) at every cache setting and telemetry setting, one unit per transport
+#   (<rep>-<variant>-<cache>-<transport>-<telemetry>), at the load the last four flags give; the
+#   report is three_device.py variant-report. All six go together. A pass needs the baseline passed:
+#   --baseline-ledger names that run's ledger. --smoke runs it without one, for a run whose numbers
+#   are not published, and says so in its report.
+#   --stop-after stops the run with exit code 3 once UNIT is checkpointed: a deliberate abort, for
+#   proving a resume.
 # Needs:
 #   PERF_ZONE                    the devices' zone
 #   PERF_REPO                    the repository's path on every device
@@ -46,6 +55,7 @@ REPS=5
 ENGINE=pg
 DRY_RUN=""
 VARIANTS="" CACHES="" TELEMETRIES="" STEPS="" WINDOW_S="" WARMUP_S=""
+TRANSPORTS="" BASELINE_LEDGER="" SMOKE="" STOP_AFTER=""
 PROFILE="" PROFILE_STEP=64 PROFILE_S=30 PROFILE_WARM_S=20 PY_SPY_VERSION=0.4.0
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -59,6 +69,10 @@ while [ "$#" -gt 0 ]; do
     --steps) STEPS="$2"; shift 2 ;;
     --window-s) WINDOW_S="$2"; shift 2 ;;
     --warmup-s) WARMUP_S="$2"; shift 2 ;;
+    --transports) TRANSPORTS="$2"; shift 2 ;;
+    --baseline-ledger) BASELINE_LEDGER="$2"; shift 2 ;;
+    --smoke) SMOKE=1; shift ;;
+    --stop-after) STOP_AFTER="$2"; shift 2 ;;
     *) echo "Unknown option: $1"; exit 2 ;;
   esac
 done
@@ -81,7 +95,25 @@ PY="$PERF_REPO/.venv/bin/python3"
 OUT="results/three-device"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 LOCAL_OUT="${PERF_LOCAL_OUT:-$(cd "$(dirname "$0")" && pwd)/results/three-device-$STAMP}"
+LEDGER="$LOCAL_OUT-ledger.json"
 CHECKPOINTS="gs://$PERF_BUCKET/$PERF_RUN_ID"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+LOCAL_PY="$HERE/../../../../.venv/bin/python3"
+units() { "$LOCAL_PY" "$HERE/bench_units.py" "$@"; }
+
+# Baseline before features: a pass starts only on a baseline that passed, or as a smoke.
+if [ -n "$PASS" ] && [ -z "$SMOKE$DRY_RUN" ]; then
+  [ -n "$BASELINE_LEDGER" ] || { echo "a governance pass needs --baseline-ledger or --smoke"; exit 2; }
+  units gate --ledger "$BASELINE_LEDGER"
+fi
+
+# The plan, every unit in order. Read whole before anything runs: `on` reads stdin.
+PLAN_ARGS=(--reps "$REPS")
+[ -z "$TRANSPORTS" ] || PLAN_ARGS+=(--transports "$TRANSPORTS")
+[ -z "$PASS" ] || PLAN_ARGS+=(--variants "$VARIANTS" --caches "$CACHES" --telemetry "$TELEMETRIES")
+[ -z "$PROFILE" ] || PLAN_ARGS+=(--profile)
+PLAN=()
+while IFS= read -r line; do PLAN+=("$line"); done < <(units plan "${PLAN_ARGS[@]}")
 
 on() {  # on <instance> <command>
   if [ -n "$DRY_RUN" ]; then
@@ -157,33 +189,47 @@ if [ -n "$ENGINE_CONTAINER" ]; then
       up -d --build --no-deps $_engine_service"
 fi
 
-run_one() {  # run_one <rep> <telemetry> [<variant> <cache> | uncached | profile <transport>]
-  local name="$1-$2" contract_args="" spy=""
-  if [ "$#" -eq 4 ] && [ "$3" = profile ]; then
-    name="profile-$4-$2" spy="$4"
-    contract_args="--only $4 --steps $PROFILE_STEP --window-s $PROFILE_S --warmup-s $PROFILE_WARM_S"
-  elif [ "$#" -eq 4 ]; then
-    name="$1-$3-$4-$2"
-    contract_args="--variant $3 --cache $4 --steps $STEPS --window-s $WINDOW_S --warmup-s $WARMUP_S"
-  elif [ "$#" -eq 3 ]; then
-    name="$1-uncached-$2"
-    contract_args="--only pgwire --uncached"
-  fi
-  if [[ "$DONE_RUNS" == *" $name "* ]]; then
-    echo "=== run $name: checkpointed already, skipped ==="
-    return 0
-  fi
-  echo "=== run $name (engine $ENGINE) ==="
+[ -z "$PROFILE" ] || on "$SERVER" "uv tool install py-spy==$PY_SPY_VERSION"
+
+start_server() {  # start_server <group> <telemetry>
+  echo "=== server for $1 (engine $ENGINE) ==="
   on "$SERVER" "export PROVISA_BENCH_BACKENDS_HOST=$PERF_BACKENDS_IP \
     PROVISA_BENCH_AGENT_LISTEN=$PERF_SERVER_IP:$AGENT_PORT \
     PROVISA_BENCH_ENGINE_HOST=$PERF_SERVER_IP; \
     nohup setsid env --default-signal=INT \
-      $BENCH/orchestrate.sh serve --telemetry $2 --engine $ENGINE > ~/serve-$name.log 2>&1 < /dev/null &"
+      $BENCH/orchestrate.sh serve --telemetry $2 --engine $ENGINE > ~/serve-$1.log 2>&1 < /dev/null &"
   # serving once the server's agent answers: serve_three_device.sh starts it after every worker
   # is ready
   on "$CLIENT" "for i in \$(seq 1 210); do curl -sf http://$PERF_SERVER_IP:$AGENT_PORT/host >/dev/null && exit 0; sleep 2; done; exit 1"
-  # the contract as this run states it: its telemetry the server's (REQ-2092)
-  on "$CLIENT" "cd $BENCH && rm -rf $OUT/$name && mkdir -p $OUT/$name && $PY three_device.py contract --setup $PERF_CONTRACT --telemetry $2 \
+}
+
+# '[s]erve...': the pattern does not match the remote shell running this command, whose own
+# command line names the script.
+# A job a non-interactive shell starts in the background begins with SIGINT ignored, and bash
+# can neither trap nor reset a signal ignored on entry: the serve is started with SIGINT at its
+# default (env --default-signal=INT above), so it stops on SIGINT as a server does. A stop that
+# does not end in 60 s says what is still running and what the serve last wrote.
+stop_server() {  # stop_server <group>
+  on "$SERVER" "pkill -INT -f '[s]erve_three_device.sh'; for i in \$(seq 1 60); do pgrep -f '[s]erve_three_device.sh' >/dev/null || exit 0; sleep 1; done; \
+    echo 'the serve did not stop within 60 s of SIGINT; still running:'; \
+    ps -o pid,ppid,etime,stat,cmd -p \$(pgrep -d, -f '[s]erve_three_device.sh|[u]vicorn main:app|[h]ost_agent.py') | cut -c1-200; \
+    echo '--- ~/serve-$1.log (tail)'; tail -40 ~/serve-$1.log; exit 1"
+}
+
+run_unit() {  # run_unit <stage> <unit> <telemetry> <transport> <variant> <cache>
+  local stage="$1" name="$2" telemetry="$3" transport="$4" variant="$5" cache="$6" spy=""
+  local contract_args="--only $transport"
+  if [ "$stage" = profile ]; then
+    spy="$transport"
+    contract_args+=" --steps $PROFILE_STEP --window-s $PROFILE_S --warmup-s $PROFILE_WARM_S"
+  elif [ "$variant" != - ]; then
+    contract_args="--variant $variant --cache $cache --steps $STEPS --window-s $WINDOW_S --warmup-s $WARMUP_S $contract_args"
+  elif [ "$cache" = uncached ]; then
+    contract_args+=" --uncached"
+  fi
+  echo "=== run $name (engine $ENGINE) ==="
+  # the contract as this unit states it: its telemetry the server's (REQ-2092)
+  on "$CLIENT" "cd $BENCH && rm -rf $OUT/$name && mkdir -p $OUT/$name && $PY three_device.py contract --setup $PERF_CONTRACT --telemetry $telemetry \
     $contract_args --out $OUT/$name/setup.yaml"
   # A profile slows what it watches, so it runs apart from the repetitions, at the step they
   # saturate, after that step's warm-up.
@@ -200,69 +246,110 @@ run_one() {  # run_one <rep> <telemetry> [<variant> <cache> | uncached | profile
     --device server=http://$PERF_SERVER_IP:$AGENT_PORT \
     --device backends=http://$PERF_BACKENDS_IP:$AGENT_PORT \
     --output-dir $OUT/$name"
-  # '[s]erve...': the pattern does not match the remote shell running this command, whose own
-  # command line names the script.
-  # A job a non-interactive shell starts in the background begins with SIGINT ignored, and bash
-  # can neither trap nor reset a signal ignored on entry: the serve is started with SIGINT at its
-  # default (env --default-signal=INT above), so it stops on SIGINT as a server does. A stop that
-  # does not end in 60 s says what is still running and what the serve last wrote.
-  on "$SERVER" "pkill -INT -f '[s]erve_three_device.sh'; for i in \$(seq 1 60); do pgrep -f '[s]erve_three_device.sh' >/dev/null || exit 0; sleep 1; done; \
-    echo 'the serve did not stop within 60 s of SIGINT; still running:'; \
-    ps -o pid,ppid,etime,stat,cmd -p \$(pgrep -d, -f '[s]erve_three_device.sh|[u]vicorn main:app|[h]ost_agent.py') | cut -c1-200; \
-    echo '--- ~/serve-$name.log (tail)'; tail -40 ~/serve-$name.log; exit 1"
   if [ -n "$spy" ] && [ -z "$DRY_RUN" ]; then
     mkdir -p "$LOCAL_OUT/$name"
     gcloud compute scp --zone "$PERF_ZONE" "$SERVER:spy-$spy.txt" "$LOCAL_OUT/$name/"
   fi
-  checkpoint "$name"
 }
 
-# The run's results copied back, then to the bucket, then its DONE object: a run is done only
-# once all of it is in the bucket, so a preemption mid-copy repeats the run.
-checkpoint() {  # checkpoint <run>
+# The unit's results copied back.
+copy_back() {  # copy_back <unit>
   local copy=(gcloud compute scp --recurse --zone "$PERF_ZONE" "$CLIENT:$BENCH/$OUT/$1" "$LOCAL_OUT/")
-  local upload=(gsutil -m cp -r "$LOCAL_OUT/$1" "$CHECKPOINTS/")
   if [ -n "$DRY_RUN" ]; then
-    printf '\n[operator]\n%s\n%s\nprintf %%s %s | gsutil cp - %s\n' \
-      "${copy[*]}" "${upload[*]}" "$1" "$CHECKPOINTS/$1/DONE"
+    printf '\n[operator]\n%s\n' "${copy[*]}"
     return 0
   fi
   mkdir -p "$LOCAL_OUT"
   rm -rf "${LOCAL_OUT:?}/$1"
   "${copy[@]}"
+}
+
+# The unit to the bucket, then its DONE object: a unit is done only once all of it is in the
+# bucket, so a preemption mid-copy repeats the unit. The ledger goes with it. One process: gsutil -m
+# deadlocks on macOS.
+checkpoint() {  # checkpoint <unit>
+  local upload=(gsutil cp -r "$LOCAL_OUT/$1" "$CHECKPOINTS/")
+  if [ -n "$DRY_RUN" ]; then
+    printf '\n[operator]\n%s\nprintf %%s %s | gsutil cp - %s\n' \
+      "${upload[*]}" "$1" "$CHECKPOINTS/$1/DONE"
+    return 0
+  fi
   "${upload[@]}"
+  [ ! -f "$LEDGER" ] || gsutil cp "$LEDGER" "$CHECKPOINTS/ledger.json"
   printf %s "$1" | gsutil cp - "$CHECKPOINTS/$1/DONE"
 }
 
-for rep in $(seq 1 "$REPS"); do
-  if [ -n "$PASS" ]; then
-    for variant in ${VARIANTS//,/ }; do
-      for cache in ${CACHES//,/ }; do
-        for telemetry in ${TELEMETRIES//,/ }; do
-          run_one "$rep" "$telemetry" "$variant" "$cache"
-        done
-      done
-    done
-  else
-    run_one "$rep" off
-    run_one "$rep" off uncached
-    run_one "$rep" on
+# The recheck after a unit (bench_units.py check). An invalid unit is discarded and not
+# checkpointed; a flag no note explains keeps the unit and stops the run all the same.
+recheck() {  # recheck <stage> <unit>; sets STOPPING
+  [ "$1" != profile ] || return 0
+  if [ -n "$DRY_RUN" ]; then
+    printf '\n[operator]\nbench_units.py check --ledger %s --results %s --unit %s\n' "$LEDGER" "$LOCAL_OUT" "$2"
+    return 0
+  fi
+  local rc=0
+  units check --ledger "$LEDGER" --results "$LOCAL_OUT" --unit "$2" || rc=$?
+  case "$rc" in
+    0) ;;
+    3) STOPPING="invalid"; return 3 ;;
+    4) STOPPING="flag" ;;
+    *) echo "the check of $2 failed with $rc"; exit "$rc" ;;
+  esac
+}
+
+SERVING="" STOPPING="" LAST_STAGE=""
+stage_passed() {  # stage_passed <stage>
+  [ -z "$DRY_RUN" ] || return 0
+  units stage-passed --ledger "$LEDGER" --stage "$1"
+  gsutil cp "$LEDGER" "$CHECKPOINTS/ledger.json"
+}
+for entry in ${PLAN[@]+"${PLAN[@]}"}; do
+  IFS=$'\t' read -r stage group name rep telemetry transport variant cache <<< "$entry"
+  if [ -n "$LAST_STAGE" ] && [ "$stage" != "$LAST_STAGE" ]; then
+    [ -z "$SERVING" ] || { stop_server "$SERVING"; SERVING=""; }
+    stage_passed "$LAST_STAGE"
+  fi
+  LAST_STAGE="$stage"
+  if [[ "$DONE_RUNS" == *" $name "* ]]; then
+    echo "=== run $name: checkpointed already, skipped ==="
+    continue
+  fi
+  if [ "$group" != "$SERVING" ]; then
+    [ -z "$SERVING" ] || stop_server "$SERVING"
+    start_server "$group" "$telemetry"
+    SERVING="$group"
+  fi
+  run_unit "$stage" "$name" "$telemetry" "$transport" "$variant" "$cache"
+  copy_back "$name"
+  if ! recheck "$stage" "$name"; then
+    stop_server "$SERVING"
+    echo "run stopped at $name: invalid, nothing checkpointed for it. See $LEDGER."
+    exit 3
+  fi
+  checkpoint "$name"
+  if [ "$name" = "$STOP_AFTER" ] && [ -z "$DRY_RUN" ]; then
+    units stop --ledger "$LEDGER" --unit "$name" --reason "deliberate abort, --stop-after"
+    STOPPING="deliberate"
+  fi
+  if [ -n "$STOPPING" ]; then
+    stop_server "$SERVING"
+    echo "run stopped after $name: $STOPPING. See $LEDGER."
+    exit 3
   fi
 done
-if [ -z "$PASS" ] && [ -n "$PROFILE" ]; then
-  on "$SERVER" "uv tool install py-spy==$PY_SPY_VERSION"
-  for t in pgwire flight_sql graphql bolt grpc rest jsonapi; do run_one 0 off profile "$t"; done
-fi
-REPORT=(report --root "$LOCAL_OUT" --out "$LOCAL_OUT-report")
-[ -n "$PASS" ] && REPORT=(variant-report --root "$LOCAL_OUT" --out "$LOCAL_OUT-report")
+[ -z "$SERVING" ] || stop_server "$SERVING"
+[ -z "$LAST_STAGE" ] || stage_passed "$LAST_STAGE"
+
+REPORT=(report --root "$LOCAL_OUT" --out "$LOCAL_OUT-report" --ledger "$LEDGER")
+[ -n "$PASS" ] && REPORT=(variant-report --root "$LOCAL_OUT" --out "$LOCAL_OUT-report" --ledger "$LEDGER")
 
 if [ -n "$DRY_RUN" ]; then
   printf '\n[operator]\nthree_device.py %s\n' "${REPORT[*]}"
   exit 0
 fi
-"$(cd "$(dirname "$0")/../../../.." && pwd)/.venv/bin/python3" "$(dirname "$0")/three_device.py" \
-  "${REPORT[@]}"
+"$LOCAL_PY" "$HERE/three_device.py" "${REPORT[@]}"
 if [ -n "$PASS" ]; then
+  [ -z "$SMOKE" ] || echo "a smoke: its numbers are not published"
   echo "governance pass (internal): $LOCAL_OUT-report/variants.json"
 else
   echo "published: $LOCAL_OUT-report/published.json (telemetry off); internal: $LOCAL_OUT-report/internal.json"

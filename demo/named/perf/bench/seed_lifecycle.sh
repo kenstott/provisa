@@ -21,10 +21,12 @@
 # Usage:
 #   seed_lifecycle.sh --project P --zone Z --commit SHA --ssh-cidr CIDR
 #                     [--backends-provisioning-model SPOT|ON_DEMAND] [--machine-type TYPE]
-#                     [--disk-gb GB] [--ready-timeout 7200]
+#                     [--disk-gb GB] [--ready-timeout 7200] [--max-run-hours 6]
 #   --machine-type  the backends device's (terraform/perf's default otherwise).
 #   --disk-gb       its boot disk, GB (terraform/perf's default otherwise): the image is this size,
 #                   so a run's devices take at least this.
+#   --max-run-hours  the device's self-destruct: GCE deletes it, disk and all, this long after it
+#                   starts. Long enough for the seed.
 #   --backends-provisioning-model  the device's provisioning (terraform/perf's provisioning_model
 #                   otherwise, Spot).
 #
@@ -37,7 +39,7 @@ MODULE="$REPO_ROOT/terraform/perf"
 REPO_DIR=/opt/provisa  # terraform/perf's repo_dir default: where the device keeps the repository
 
 PROJECT="" ZONE="" COMMIT="" SSH_CIDR="" BACKENDS_MODEL="" MACHINE_TYPE="" DISK_GB=""
-READY_TIMEOUT=7200
+READY_TIMEOUT=7200 MAX_RUN_HOURS=6
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --project) PROJECT="$2"; shift 2 ;;
@@ -48,6 +50,7 @@ while [ "$#" -gt 0 ]; do
     --machine-type) MACHINE_TYPE="$2"; shift 2 ;;
     --disk-gb) DISK_GB="$2"; shift 2 ;;
     --ready-timeout) READY_TIMEOUT="$2"; shift 2 ;;
+    --max-run-hours) MAX_RUN_HOURS="$2"; shift 2 ;;
     *) echo "Unknown option: $1"; exit 2 ;;
   esac
 done
@@ -71,7 +74,8 @@ mkdir -p "$RUN_DIR/tf"
 cp "$MODULE"/*.tf "$MODULE"/*.tftpl "$RUN_DIR/tf/"
 TF=(terraform -chdir="$RUN_DIR/tf")
 VARS=(-var "project=$PROJECT" -var "region=$REGION" -var "zone=$ZONE" -var "commit=$COMMIT"
-  -var "operator_ssh_cidrs=[\"$SSH_CIDR\"]" -var 'devices=["backends"]' -var "seed_mode=seed")
+  -var "operator_ssh_cidrs=[\"$SSH_CIDR\"]" -var 'devices=["backends"]' -var "seed_mode=seed"
+  -var "max_run_hours=$MAX_RUN_HOURS")
 [ -z "$BACKENDS_MODEL" ] || VARS+=(-var "backends_provisioning_model=$BACKENDS_MODEL")
 [ -z "$MACHINE_TYPE" ] || VARS+=(-var "backends_machine_type=$MACHINE_TYPE")
 [ -z "$DISK_GB" ] || VARS+=(-var "disk_gb=$DISK_GB")
@@ -88,7 +92,9 @@ trap destroy EXIT
 
 echo "=== terraform apply (backends device alone) ==="
 "${TF[@]}" apply -input=false -auto-approve "${VARS[@]}"
+SEED_T0="$(date +%s)"
 wait_ready
+echo "seed: the device was ready $(( $(date +%s) - SEED_T0 )) s after the apply finished"
 
 # The image is taken from a stopped device whose stores were stopped cleanly first, so every
 # store's files are at rest on its disk.

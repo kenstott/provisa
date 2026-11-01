@@ -386,13 +386,26 @@ def test_repetitions_from_two_vms_are_refused(tmp_path: Path) -> None:
         td.build(tmp_path)
 
 
-def test_repetitions_from_two_commits_are_refused(tmp_path: Path) -> None:
+def test_repetitions_from_two_commits_are_stated_with_the_caveat(tmp_path: Path) -> None:
     _run(tmp_path, "1-off", "off", 2000, 1.0)
     _run(tmp_path, "2-off", "off", 2000, 1.0)
     second = tmp_path / "2-off" / "optimistic" / "devices.json"
     second.write_text(json.dumps(_devices("off", commit="def")))
-    with pytest.raises(ValueError, match="2-off served def, 1-off served abc"):
-        td.build(tmp_path)
+    ledger = {"stops": [{"fix": "a typo", "decision": "resumed"}], "discarded": []}
+    published, internal = td.build(tmp_path, ledger)
+    for report in (published, internal):
+        assert report["version"] == ["abc", "def"]
+        assert report["commits"] == ["abc", "def"]
+        assert report["commits_by_run"] == {"1-off": "abc", "2-off": "def"}
+        assert "not judged consequential" in report["commit_caveat"]
+        assert report["stops"] == ledger["stops"]
+
+
+def test_one_commit_carries_no_caveat_and_still_states_each_run(tmp_path: Path) -> None:
+    _run(tmp_path, "1-off", "off", 2000, 1.0)
+    published, _ = td.build(tmp_path)
+    assert published["version"] == "abc" and published["commits_by_run"] == {"1-off": "abc"}
+    assert "commit_caveat" not in published and "stops" not in published
 
 
 def test_the_published_file_states_its_version_and_captions_and_only_the_published_pairs(
@@ -672,6 +685,8 @@ def test_the_pass_dry_run_runs_every_variant_and_cache_and_reports_the_pass() ->
             str(BENCH / "three_device_run.sh"),
             "--reps",
             "1",
+            "--transports",
+            "graphql",
             "--variants",
             "zero,all",
             "--caches",
@@ -703,12 +718,13 @@ def test_the_pass_dry_run_runs_every_variant_and_cache_and_reports_the_pass() ->
     ).stdout
     runs = [line.split()[2] for line in out.splitlines() if line.startswith("=== run ")]
     assert runs == [
-        "1-zero-cached-off",
-        "1-zero-uncached-off",
-        "1-all-cached-off",
-        "1-all-uncached-off",
+        "1-zero-cached-graphql-off",
+        "1-zero-uncached-graphql-off",
+        "1-all-cached-graphql-off",
+        "1-all-uncached-graphql-off",
     ]
     assert "--variant all --cache uncached --steps 1,16 --window-s 15 --warmup-s 15" in out
+    assert "--only graphql" in out and "bench_units.py check" in out
     assert "--telemetry on" not in out
     assert "three_device.py variant-report --root /runs/x/results" in out
 
@@ -780,7 +796,11 @@ if verb == ["compute", "images", "create"]:
     write(f"images/{args[3]}", " ".join(args))
     sys.exit(0)
 if verb == ["compute", "instances", "describe"]:
-    print(read(f"status/{args[3]}", "RUNNING"))
+    status = read(f"status/{args[3]}", "RUNNING")
+    if status == "GONE":
+        sys.stderr.write(f"ERROR: The resource 'instances/{args[3]}' was not found\n")
+        sys.exit(1)
+    print(status)
     sys.exit(0)
 if verb == ["compute", "instances", "start"]:
     if (S / "start_fails").exists():
@@ -814,7 +834,7 @@ if args[:2] == ["compute", "ssh"]:
         left = int(read(f"preempt/{name}", "0"))
         if left:
             write(f"preempt/{name}", str(left - 1))
-            write("status/provisa-perf-client", "STOPPED")
+            write("status/provisa-perf-client", read("preempted_to", "STOPPED"))
             sys.exit(255)
         if (S / "fail_runs").exists():
             sys.exit(1)
@@ -851,6 +871,9 @@ elif args[:2] == ["cp", "-"]:
 elif args[:2] == ["cp", "-r"]:
     src = Path(args[2])
     shutil.copytree(src, local(args[3].rstrip("/")) / src.name, dirs_exist_ok=True)
+elif args[0] == "cp":
+    local(args[2]).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(args[1], local(args[2]))
 elif args[:2] == ["rsync", "-r"]:
     if not local(args[2]).exists():
         sys.exit(1)
@@ -1342,17 +1365,27 @@ def test_the_seed_job_device_seeds(tmp_path: Path) -> None:
     ]
 
 
+def _unit(root: Path, name: str, telemetry: str, rps: float, transport: str) -> None:
+    """A unit every check passes."""
+    out = root / name / "optimistic"
+    out.mkdir(parents=True)
+    step = _step(1, rps)
+    step["paging"] = {"server": {**step["paging"]["server"], "pswpout": 0}}
+    (out / f"{transport}.json").write_text(json.dumps({"transport": transport, "steps": [step]}))
+    (out / "devices.json").write_text(json.dumps(_devices(telemetry)))
+
+
 def _run_fixtures(state: Path) -> None:
-    _run(state / "fixture", "1-off", "off", 2000, 1.0)
-    _run(state / "fixture", "1-uncached-off", "off", 900, 1.0, transport="pgwire")
-    _run(state / "fixture", "1-on", "on", 1800, 1.2)
+    _unit(state / "fixture", "1-graphql-off", "off", 2000, "graphql")
+    _unit(state / "fixture", "1-uncached-off", "off", 900, "pgwire")
+    _unit(state / "fixture", "1-graphql-on", "on", 1800, "graphql")
 
 
 def _full_run(tmp_path: Path, commit: str) -> Any:
     return _lifecycle(
         tmp_path,
         *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
-        *("--ssh-cidr", "203.0.113.10/32", "--reps", "1"),
+        *("--ssh-cidr", "203.0.113.10/32", "--reps", "1", "--transports", "graphql"),
     )
 
 
@@ -1363,25 +1396,25 @@ def test_a_preempted_device_is_restarted_and_only_the_runs_not_done_are_repeated
     state = _fake_cloud(tmp_path, commit)
     _run_fixtures(state)
     (state / "preempt").mkdir()
-    (state / "preempt" / "1-on").write_text("1")
+    (state / "preempt" / "1-graphql-on").write_text("1")
     done = _full_run(tmp_path, commit)
     assert done.returncode == 0, done.stdout + done.stderr
-    # 1-off checkpointed before the preemption, so the rerun skips it
+    # 1-graphql-off checkpointed before the preemption, so the rerun skips it
     assert (state / "benchmarks").read_text().splitlines() == [
-        "1-off",
+        "1-graphql-off",
         "1-uncached-off",
-        "1-on",
-        "1-on",
+        "1-graphql-on",
+        "1-graphql-on",
     ]
-    assert "already checkpointed in gs://" in done.stdout and " 1-off " in done.stdout
-    assert "=== run 1-off: checkpointed already, skipped ===" in done.stdout
+    assert "already checkpointed in gs://" in done.stdout and " 1-graphql-off " in done.stdout
+    assert "=== run 1-graphql-off: checkpointed already, skipped ===" in done.stdout
     calls = _calls(tmp_path)
     starts = [c for c in calls if "[instances] [start]" in c]
     assert len(starts) == 1 and "[provisa-perf-client]" in starts[0]
     assert len([c for c in calls if c.startswith("terraform ") and " apply " in c]) == 1
     (run,) = (tmp_path / "runs").iterdir()
     bucket = f"provisa-perf-{run.name.lower()}-p"
-    for name in ("1-off", "1-uncached-off", "1-on"):
+    for name in ("1-graphql-off", "1-uncached-off", "1-graphql-on"):
         assert (state / "gcs" / bucket / run.name / name / "DONE").read_text() == name
         # copied into the run directory before destroy
         assert (run / "checkpoints" / name / "optimistic" / "devices.json").exists()
@@ -1398,11 +1431,11 @@ def test_recovery_is_bounded_at_three(tmp_path: Path) -> None:
     state = _fake_cloud(tmp_path, commit)
     _run_fixtures(state)
     (state / "preempt").mkdir()
-    (state / "preempt" / "1-off").write_text("99")
+    (state / "preempt" / "1-graphql-off").write_text("99")
     done = _full_run(tmp_path, commit)
     assert done.returncode == 1
     assert "the run failed again after 3 recoveries" in done.stdout
-    assert (state / "benchmarks").read_text().splitlines() == ["1-off"] * 4
+    assert (state / "benchmarks").read_text().splitlines() == ["1-graphql-off"] * 4
     calls = _calls(tmp_path)
     assert len([c for c in calls if "[instances] [start]" in c]) == 3
     assert any(c.startswith("terraform ") and " destroy " in c for c in calls)
@@ -1413,7 +1446,7 @@ def test_a_device_that_does_not_start_is_replaced_from_its_image(tmp_path: Path)
     state = _fake_cloud(tmp_path, commit)
     _run_fixtures(state)
     (state / "preempt").mkdir()
-    (state / "preempt" / "1-on").write_text("1")
+    (state / "preempt" / "1-graphql-on").write_text("1")
     (state / "start_fails").write_text("")
     # the replaced device comes up running
     (tmp_path / "bin" / "terraform").write_text(
@@ -1433,10 +1466,10 @@ def test_a_device_that_does_not_start_is_replaced_from_its_image(tmp_path: Path)
     assert "-target=google_compute_instance.device" in tf[1]
     assert "-target" not in tf[3]
     assert (state / "benchmarks").read_text().splitlines() == [
-        "1-off",
+        "1-graphql-off",
         "1-uncached-off",
-        "1-on",
-        "1-on",
+        "1-graphql-on",
+        "1-graphql-on",
     ]
 
 
@@ -1448,8 +1481,194 @@ def test_a_failure_with_every_device_running_is_not_retried(tmp_path: Path) -> N
     done = _full_run(tmp_path, commit)
     assert done.returncode == 1
     assert "the run failed with every device running: not a preemption" in done.stdout
-    assert (state / "benchmarks").read_text().splitlines() == ["1-off"]
+    assert (state / "benchmarks").read_text().splitlines() == ["1-graphql-off"]
+    calls = _calls(tmp_path)
+    assert not [c for c in calls if "[instances] [start]" in c]
+    # stopped for a resume, not destroyed: the ledger says so
+    assert len([c for c in calls if "[instances] [stop]" in c]) == 3
+    assert not [c for c in calls if c.startswith("terraform ") and " destroy " in c]
+    (run,) = (tmp_path / "runs").iterdir()
+    ledger = json.loads((run / "results-ledger.json").read_text())
+    assert ledger["stops"][0]["reasons"] == ["a step failed with every device running"]
+
+
+def _ledger(tmp_path: Path) -> dict[str, Any]:
+    (run,) = (tmp_path / "runs").iterdir()
+    return json.loads((run / "results-ledger.json").read_text())
+
+
+def _invalid(state: Path, name: str, transport: str = "graphql") -> None:
+    report = state / "fixture" / name / "optimistic" / f"{transport}.json"
+    body = json.loads(report.read_text())
+    body["steps"][0]["errors"] = 5
+    report.write_text(json.dumps(body))
+
+
+def test_an_invalid_unit_stops_the_run_keeps_the_machines_and_a_resume_finishes_it(
+    tmp_path: Path,
+) -> None:
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit)
+    _run_fixtures(state)
+    _invalid(state, "1-uncached-off", "pgwire")
+    done = _full_run(tmp_path, commit)
+    assert done.returncode == 3, done.stdout + done.stderr
+    assert "1-uncached-off: invalid, discarded" in done.stdout
+    assert "pgwire: 5 errors at its peak" in done.stdout
+    calls = _calls(tmp_path)
+    assert not [c for c in calls if c.startswith("terraform ") and " destroy " in c]
+    assert len([c for c in calls if "[instances] [stop]" in c]) == 3
+    assert (state / "benchmarks").read_text().splitlines() == ["1-graphql-off", "1-uncached-off"]
+    ledger = _ledger(tmp_path)
+    assert ledger["discarded"][0]["unit"] == "1-uncached-off"
+    assert ledger["stops"][0]["decision"] is None
+    (run,) = (tmp_path / "runs").iterdir()
+    assert (run / "results-discarded" / "1-uncached-off-1").is_dir()
+    assert f"--resume {run.name} --fix" in done.stdout
+
+    # The fix: the unit is good now, on a new commit's server. The finished unit stays.
+    _unit(state / "fixture2", "1-uncached-off", "off", 900, "pgwire")
+    import shutil
+
+    shutil.rmtree(state / "fixture" / "1-uncached-off")
+    shutil.copytree(state / "fixture2" / "1-uncached-off", state / "fixture" / "1-uncached-off")
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32", "--reps", "1", "--transports", "graphql"),
+        *("--resume", run.name, "--fix", "the pool was too small"),
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "=== run 1-graphql-off: checkpointed already, skipped ===" in done.stdout
+    assert (state / "benchmarks").read_text().splitlines() == [
+        "1-graphql-off",
+        "1-uncached-off",
+        "1-uncached-off",
+        "1-graphql-on",
+    ]
+    stop = _ledger(tmp_path)["stops"][0]
+    assert (stop["fix"], stop["decision"]) == ("the pool was too small", "resumed")
+    assert stop["commit"] == commit
+    published = json.loads((run / "results-report" / "published.json").read_text())
+    assert published["stops"][0]["decision"] == "resumed"
+    assert published["discarded"][0]["unit"] == "1-uncached-off"
+    # the baseline passed, in the ledger the features' gate reads
+    assert _ledger(tmp_path)["stages"]["baseline"] == "passed"
+
+
+def test_a_deliberate_abort_stops_after_its_unit_and_keeps_it(tmp_path: Path) -> None:
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit)
+    _run_fixtures(state)
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32", "--reps", "1", "--transports", "graphql"),
+        *("--stop-after", "1-uncached-off"),
+    )
+    assert done.returncode == 3, done.stdout + done.stderr
+    assert "run stopped after 1-uncached-off: deliberate" in done.stdout
+    (run,) = (tmp_path / "runs").iterdir()
+    assert (
+        state / "gcs" / f"provisa-perf-{run.name.lower()}-p" / run.name / "1-uncached-off"
+    ).is_dir()
+    assert _ledger(tmp_path)["stops"][0]["reasons"] == ["deliberate abort, --stop-after"]
+
+
+def test_a_stopped_run_can_be_abandoned_for_a_restart(tmp_path: Path) -> None:
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit)
+    _run_fixtures(state)
+    _invalid(state, "1-graphql-off")
+    assert _full_run(tmp_path, commit).returncode == 3
+    (run,) = (tmp_path / "runs").iterdir()
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32", "--abandon", run.name, "--fix", "the seed was wrong"),
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert _ledger(tmp_path)["stops"][0]["decision"] == "restarted"
+    assert [c for c in _calls(tmp_path) if c.startswith("terraform ") and " destroy " in c]
+
+
+def test_a_resume_needs_its_fix_stated_and_the_same_seed(tmp_path: Path) -> None:
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit)
+    _run_fixtures(state)
+    _invalid(state, "1-graphql-off")
+    args = ("--project", "p", "--zone", "us-east1-b", "--commit", commit)
+    args += ("--ssh-cidr", "203.0.113.10/32")
+    assert _full_run(tmp_path, commit).returncode == 3
+    (run,) = (tmp_path / "runs").iterdir()
+    done = _lifecycle(tmp_path, *args, "--resume", run.name)
+    assert done.returncode == 2 and "need --fix" in done.stdout
+    (run / "seed-image").write_text("provisa-perf-seed-other")
+    done = _lifecycle(tmp_path, *args, "--resume", run.name, "--fix", "x")
+    assert done.returncode == 1 and "a restart from the beginning, not a resume" in done.stdout
+
+
+def test_a_device_that_is_gone_ends_the_run_for_the_maintainer(tmp_path: Path) -> None:
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit)
+    _run_fixtures(state)
+    (state / "preempt").mkdir()
+    (state / "preempt" / "1-graphql-on").write_text("1")
+    (state / "preempted_to").write_text("GONE")
+    done = _full_run(tmp_path, commit)
+    assert done.returncode == 1
+    assert "a replaced machine is a new run" in done.stdout
+    assert "device gone" in _ledger(tmp_path)["stops"][0]["reasons"][0]
     assert not [c for c in _calls(tmp_path) if "[instances] [start]" in c]
+
+
+def test_a_device_reclaimed_while_waiting_is_said_at_once(tmp_path: Path) -> None:
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit)
+    (state / "never_ready").write_text("provisa-perf-server")
+    (state / "status").mkdir()
+    (state / "status" / "provisa-perf-server").write_text("GONE")
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32"),
+    )
+    assert done.returncode == 1
+    assert "provisa-perf-server is gone or stopped" in done.stdout
+
+
+def test_a_pass_refuses_to_start_before_the_baseline(tmp_path: Path) -> None:
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit)
+    _run_fixtures(state)
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32", "--reps", "1", "--transports", "graphql"),
+        *("--variants", "zero", "--caches", "cached", "--telemetry", "off"),
+        *("--steps", "1", "--window-s", "1", "--warmup-s", "1"),
+    )
+    assert done.returncode != 0
+    assert "a governance pass needs --baseline-ledger or --smoke" in done.stdout
+    assert not (state / "benchmarks").exists()
+
+
+def test_every_device_has_a_self_destruct_and_the_second_node_is_a_device(tmp_path: Path) -> None:
+    commit = _head()
+    _fake_cloud(tmp_path, commit)
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32", "--max-run-hours", "3", "--second-server", "--dry-run"),
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    (plan,) = [c for c in _calls(tmp_path) if c.startswith("terraform ") and " plan " in c]
+    assert "-var max_run_hours=3" in plan and '"server2"' in plan
+    main = (_TF / "main.tf").read_text()
+    assert 'var.max_run_hours != null ? "DELETE"' in main and "max_run_duration" in main
+    assert "server2 = var.second_server_machine_type" in main
+    variables = (_TF / "variables.tf").read_text()
+    assert '"server2"], d)' in variables
 
 
 def test_the_dry_run_says_how_each_run_is_checkpointed() -> None:
@@ -1473,8 +1692,8 @@ def test_the_dry_run_says_how_each_run_is_checkpointed() -> None:
         text=True,
         check=True,
     ).stdout
-    for name in ("1-off", "1-uncached-off", "1-on"):
-        assert f"gsutil -m cp -r /runs/x/results/{name} gs://bkt/run1/" in out
+    for name in ("1-graphql-off", "1-uncached-off", "1-graphql-on"):
+        assert f"gsutil cp -r /runs/x/results/{name} gs://bkt/run1/" in out
         assert f"gsutil cp - gs://bkt/run1/{name}/DONE" in out
     # the run never seeds: the seeder is scaled to nothing, an unseeded device refused
     assert "--scale seeder=0" in out and "docker compose up seeder" not in out

@@ -1,0 +1,3 @@
+# Explanations of sanity flags (bench_units.py, METHODOLOGY.md). A flag whose text matches a note's
+# glob is recorded with that explanation; a flag with no note stops the run until one is written.
+notes: []
