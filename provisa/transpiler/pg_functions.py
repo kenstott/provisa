@@ -779,10 +779,26 @@ def _encode_escape(value: str) -> str:
     )
 
 
+_TO_JSON = "to_json"
+
+
+def _instant_to_json(value: str) -> str:
+    """to_json(value): an instant as PostgreSQL's JSON writes it, the ISO form with a whole offset
+    (2026-07-01T08:00:00.5-04:00), where DuckDB's is its text (REQ-2171). Which it is is the
+    value's type, which DuckDB knows and the statement's text does not say."""
+    written = f"CAST(to_json({value}) AS VARCHAR)"
+    iso = rf"""regexp_replace({written}, '^"(\d+-\d\d-\d\d) ', '"\1T')"""
+    return (
+        f"CASE WHEN typeof({value}) = 'TIMESTAMP WITH TIME ZONE' "
+        rf"""THEN CAST(regexp_replace({iso}, '([+-]\d\d)"$', '\1:00"') AS JSON) """
+        f"ELSE to_json({value}) END"
+    )
+
+
 def after(sql: str) -> str:
     """The DuckDB statement with each placeholder ``before`` left written out."""
     lowered = sql.lower()
-    placeholders = (_REGEXP_MATCHES, _ENCODE_ESCAPE, _REGEXP_GROUP, _DATE_PART)
+    placeholders = (_REGEXP_MATCHES, _ENCODE_ESCAPE, _REGEXP_GROUP, _DATE_PART, _TO_JSON)
     if not any(name in lowered for name in placeholders):
         return sql
 
@@ -799,6 +815,12 @@ def after(sql: str) -> str:
             if name == _ENCODE_ESCAPE:
                 value = node.expressions[0].transform(_written).sql(dialect="duckdb")
                 return sqlglot.parse_one(_encode_escape(value), read="duckdb")
+            if name == _TO_JSON and len(node.expressions) == 1:
+                value = node.expressions[0]
+                if value.find(exp.AggFunc, exp.Window) is None:  # written twice: never an aggregate
+                    return sqlglot.parse_one(
+                        _instant_to_json(value.sql(dialect="duckdb")), read="duckdb"
+                    )
         return node
 
     return sqlglot.parse_one(sql, read="duckdb").transform(_written).sql(dialect="duckdb")

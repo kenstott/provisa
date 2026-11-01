@@ -23,6 +23,7 @@ import time
 
 import trino
 from provisa.core import request_deadline
+from provisa.core.session_time_zone import StatementZone, told_as
 from provisa.executor.result import QueryResult  # re-export: neutral result type (REQ-028)
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -127,6 +128,18 @@ def _instants_in_utc(rows: list, column_types: list[str]) -> list:
     return out
 
 
+def _trino_zone(zone: StatementZone) -> str | None:
+    return zone.name or zone.offset
+
+
+def _engine_conn_kwargs(given: dict | None) -> dict:
+    if given is not None:
+        return given
+    from provisa.api.app import state
+
+    return state.engine_conn_kwargs
+
+
 def _close_quietly(conn: trino.dbapi.Connection | None) -> None:
     """Best-effort close of a connection execute_trino owns (opened from conn_kwargs)."""
     if conn is None:
@@ -149,6 +162,13 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
     span_name = "provisa.query.trino" if span_attrs else "trino.execute"
     with _stage(_tracer, span_name, name="execute") as span:
         _owned_conn = None
+        # REQ-2171: a zone goes on a connection of this statement's: the shared one's client session
+        # is every request's, and X-Trino-Time-Zone is read from it.
+        zone = told_as(sql, _trino_zone, "Trino")
+        zoned_kwargs = (
+            None if zone is None else {**_engine_conn_kwargs(conn_kwargs), "timezone": zone}
+        )
+        conn_kwargs = conn_kwargs if zoned_kwargs is None else zoned_kwargs
         if conn_kwargs is not None:
             conn = trino.dbapi.connect(**conn_kwargs)
             _owned_conn = conn  # execute_trino owns a conn it creates from kwargs; close it on exit
@@ -212,10 +232,15 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
                     )
                     time.sleep(delay)
                     try:
-                        from provisa.api.app import state as _retry_state
+                        if zoned_kwargs is not None:
+                            # Not the shared connection: this one carries this statement's zone.
+                            _close_quietly(_owned_conn)
+                            _owned_conn = conn = trino.dbapi.connect(**zoned_kwargs)
+                        else:
+                            from provisa.api.app import state as _retry_state
 
-                        conn = trino.dbapi.connect(**_retry_state.engine_conn_kwargs)
-                        _retry_state.engine_conn = conn
+                            conn = trino.dbapi.connect(**_retry_state.engine_conn_kwargs)
+                            _retry_state.engine_conn = conn
                     except Exception as reconnect_exc:
                         last_exc = ConnectionError(
                             f"Trino reconnect on retry {attempt}: {reconnect_exc}"

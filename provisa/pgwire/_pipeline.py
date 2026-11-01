@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any, cast
 from provisa.federation.execution_auth import plan_authorization
 
 from provisa.audit.pipeline import PendingAudit
+from provisa.core.session_time_zone import zone_cache_key
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -132,6 +133,8 @@ class _Plan:
     # REQ-1163: the request-level as-of this plan was built for — part of the entry's identity
     # (a statement over a bitemporal view reads different rows at each as-of).
     cache_as_of: str | None = field(default=None)
+    # REQ-2171: the TimeZone the plan answers in, None on UTC: part of its cache entry's identity.
+    cache_zone: str | None = field(default=None)
     # The entry the planner read before routing, on a Route.CACHE plan: the client's pgwire
     # result format codes for a ``pg_datarows`` entry (None for a decoded one) and the store's
     # record. The terminal serves it; nothing was lowered, optimized or routed.
@@ -2911,6 +2914,7 @@ async def route_governed(
             cache_sql=_travel.cache_sql(governed_semantic),
             cache_params=_cache_params,
             cache_as_of=_travel.single(),
+            cache_zone=zone_cache_key(),  # REQ-2171: held, as the entry is written after the drain
             cache_missed=_cache_missed,
             writes_tables=_is_mutation,  # REQ-1897
             written_table_id=_written_table_id,
@@ -3007,6 +3011,7 @@ async def route_governed(
             cache_sql=_travel.cache_sql(governed_semantic),
             cache_params=_cache_params,
             cache_as_of=_travel.single(),
+            cache_zone=zone_cache_key(),  # REQ-2171: held, as the entry is written after the drain
             cache_missed=_cache_missed,
             writes_tables=_is_mutation,  # REQ-1897
             written_table_id=_written_table_id,
@@ -3927,7 +3932,9 @@ def _response_cache_key(plan: _Plan, *, wire_formats: list[int] | None) -> str |
         sql, params = plan.cache_sql, plan.cache_params or []
     else:
         sql, params = plan.sql, plan.exec_params or []
-    return _raw_cache_key(sql, params, plan.role_id, wire_formats, plan.cache_as_of)
+    return _raw_cache_key(
+        sql, params, plan.role_id, wire_formats, plan.cache_as_of, plan.cache_zone
+    )
 
 
 def _raw_cache_key(
@@ -3936,9 +3943,10 @@ def _raw_cache_key(
     role_id: str,
     wire_formats: list[int] | None,
     as_of: str | None = None,
+    zone: str | None = None,
 ) -> str | None:
-    """The raw-SQL namespace key for governed ``sql``, its bound values and the request's as-of,
-    or None when the text depends on unresolved session state (REQ-866)."""
+    """The raw-SQL namespace key for governed ``sql``, its bound values, the request's as-of and
+    the zone it is answered in (REQ-2171), or None when the text depends on unresolved session state (REQ-866)."""
     from provisa.cache.key import is_cacheable, raw_sql_cache_key
 
     cacheable, _ = is_cacheable(sql)
@@ -3956,6 +3964,7 @@ def _raw_cache_key(
         wire_formats=wire_formats,
         as_of=as_of,
         session=temp_tables.slot_key(),
+        zone=zone,
     )
 
 
@@ -3989,7 +3998,7 @@ async def _cached_before_routing(
     org_id = _response_cache_org_id(state)
     missed: list[tuple[int, ...] | None] = []
     for formats in [wire_formats, None] if wire_formats is not None else [None]:
-        key = _raw_cache_key(sql, params or [], role_id, formats, as_of)
+        key = _raw_cache_key(sql, params or [], role_id, formats, as_of, zone_cache_key())
         if key is None:
             return None, ()
         cached = await check_cache(store, key, org_id)
@@ -4041,6 +4050,7 @@ def _cached_plan(
         cache_sql=governed_sql,
         cache_params=list(params or []),
         cache_as_of=as_of,
+        cache_zone=zone_cache_key(),  # REQ-2171: held, as the entry is written after the drain
         cache_hit=hit,
     )
 

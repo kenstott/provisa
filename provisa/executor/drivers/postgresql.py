@@ -54,6 +54,7 @@ from psycopg_pool import ConnectionPool
 
 from provisa.core import request_deadline
 from provisa.core.ir_types import interval_value
+from provisa.core.session_time_zone import current_zone, told_as
 from provisa.executor.drivers.base import DirectDriver, DirectResultStream
 from provisa.executor.result import QueryResult
 
@@ -142,6 +143,27 @@ _TRAILING_LIMIT = re.compile(
 # The one server-side cursor a pooled connection holds at a time. A fixed name, so DECLARE / FETCH
 # / CLOSE are the same text for every stream on the connection and are prepared once.
 _CURSOR = '"provisa_direct"'
+
+
+def _tell_zone(conn: psycopg.Connection[Any], sql: str) -> None:
+    """Put ``conn``'s open transaction on the session's zone (REQ-2171). ``set_config(..., true)``
+    is SET LOCAL: it ends with the transaction, so a pooled connection goes back on its own zone."""
+    zone = told_as(sql, lambda z: z.posix, "PostgreSQL")
+    if zone is not None:
+        conn.execute(_q("SELECT set_config('TimeZone', %s, true)"), (zone,))
+
+
+@contextmanager
+def _in_session_zone(conn: psycopg.Connection[Any], sql: str) -> Generator[None]:
+    """``sql`` on ``conn``, autocommit as ever, or in a transaction that holds the session's zone."""
+    if current_zone.get() is None:
+        yield
+        return
+    with conn.transaction():
+        _tell_zone(conn, sql)
+        yield
+
+
 # Rows converted per fetch of a materialized result, between two looks at the request's deadline.
 _FETCH_CHUNK_ROWS = 50_000
 
@@ -196,7 +218,7 @@ class _PgDirectStream(DirectResultStream):  # REQ-1190
 
     def _open_bounded(self) -> None:
         sql, args = _exec_args(self._sql, self._params)
-        with self._driver._borrow() as conn:
+        with self._driver._borrow() as conn, _in_session_zone(conn, sql):
             with conn.cursor() as cur:
                 with request_deadline.cancel_on_deadline(conn.cancel):
                     cur.execute(_q(sql), args)
@@ -216,6 +238,7 @@ class _PgDirectStream(DirectResultStream):  # REQ-1190
             # A server-side cursor lives inside a transaction; the connection is autocommit, so the
             # transaction is opened explicitly and committed in close().
             conn.execute(_q("BEGIN"))
+            _tell_zone(conn, self._sql)
             sql, args = _exec_args(
                 f"DECLARE {_CURSOR} NO SCROLL CURSOR FOR {self._sql}", self._params
             )
@@ -455,7 +478,7 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
     # Async only for the DirectDriver awaitable contract; executes synchronously in-thread.
     async def execute(self, sql: str, params: list | None = None) -> QueryResult:
         exec_sql, args = _exec_args(sql, params)
-        with self._borrow() as conn:
+        with self._borrow() as conn, _in_session_zone(conn, exec_sql):
             with conn.cursor() as cur:
                 with request_deadline.cancel_on_deadline(conn.cancel):
                     cur.execute(_q(exec_sql), args)

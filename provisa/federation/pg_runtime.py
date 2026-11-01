@@ -33,6 +33,7 @@ import psycopg2.pool
 
 from provisa.core import request_deadline
 from provisa.core.pg_range import RANGE_TYPES
+from provisa.core.session_time_zone import carrying_zone, told_as
 from provisa.federation.land_guard import LandGuard
 from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
 from provisa.federation.engine import build_pg_engine
@@ -181,6 +182,15 @@ def _pg_type_names(con: Any, oids: list[int]) -> list[str]:
 _RANGE_OIDS = tuple(oid for r in RANGE_TYPES.values() for oid in (r.oid, r.multirange_oid))
 _RANGES_AS_TEXT = psycopg2.extensions.new_type(_RANGE_OIDS, "PG_RANGE_TEXT", lambda text, _: text)
 _XML_ARRAY = psycopg2.extensions.new_array_type((143,), "XML_ARRAY", psycopg2.STRING)
+
+
+def _tell_zone(con: Any, sql: str) -> None:
+    """Put ``con``'s open transaction on the session's zone (REQ-2171). ``set_config(..., true)`` is
+    SET LOCAL: it ends with the transaction, so a pooled connection goes back on its own zone."""
+    zone = told_as(sql, lambda z: z.posix, "PostgreSQL")
+    if zone is not None:
+        with con.cursor() as cur:
+            cur.execute("SELECT set_config('TimeZone', %s, true)", (zone,))
 
 
 def _read_as_postgresql_writes(cur: Any) -> None:
@@ -1161,6 +1171,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             con = self._read_pool.getconn()
         discard = True
         try:
+            _tell_zone(con, sql)
             cur = con.cursor()
             query = cur.mogrify(*_psycopg2_exec_args(sql, params)).decode()
             with open(path, "wb") as out, request_deadline.cancel_on_deadline(con.cancel):
@@ -1201,6 +1212,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             shield.settle()
             read_con = self._read_pool.getconn()
         try:
+            _tell_zone(read_con, sql)
             cur = read_con.cursor(name="provisa_stream")  # named ⇒ server-side portal
             cur.itersize = _STREAM_BATCH_ROWS
             _read_as_postgresql_writes(cur)
@@ -1374,6 +1386,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 shield.settle()
                 con = self._read_pool.getconn()
             try:
+                _tell_zone(con, sql)
                 cur = con.cursor()
                 _read_as_postgresql_writes(cur)
                 with request_deadline.cancel_on_deadline(con.cancel):
@@ -1398,7 +1411,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 rows=rows, column_names=cols, column_types=types, column_type_oids=oids
             )
 
-        return await loop.run_in_executor(None, _run)
+        return await loop.run_in_executor(None, carrying_zone(_run))
 
     def close(self) -> None:
         self._con.close()
