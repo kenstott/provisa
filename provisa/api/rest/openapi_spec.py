@@ -106,9 +106,16 @@ def _arg_type_to_openapi(arg_type: str) -> dict[str, Any]:
 
 
 def generate_rest_openapi_spec(
-    state: Any, role_id: str, domains: list[str] | None = None
+    state: Any,
+    role_id: str,
+    domains: list[str] | None = None,
+    tables: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Generate an OpenAPI 3.1 spec with per-table paths for /data/rest."""
+    """Generate an OpenAPI 3.1 spec with per-table paths for /data/rest.
+
+    ``domains`` and ``tables`` narrow what the role is served; they never widen it. A description
+    narrowed to tables holds those tables alone, so it holds no commands (REQ-2158).
+    """
     surface = role_surface(state, role_id)  # one snapshot: the schema and its path map
     if surface is None:
         return _empty_spec()
@@ -120,6 +127,7 @@ def generate_rest_openapi_spec(
 
     path_map: dict[str, dict] = surface.table_path_map
     domain_filter = set(domains) if domains else None
+    table_filter = set(tables) if tables else None
 
     paths: dict[str, Any] = {}
     domain_tag_descriptions: dict[str, str | None] = {}
@@ -146,6 +154,8 @@ def generate_rest_openapi_spec(
         if meta is None:
             continue
         if domain_filter is not None and meta["domain_id"] not in domain_filter:
+            continue
+        if table_filter is not None and meta["table_name"] not in table_filter:
             continue
 
         domain_id = meta["domain_id"]
@@ -425,10 +435,11 @@ def generate_rest_openapi_spec(
 
     _seen_cmd: set[str] = set()
     # Functions AND webhooks are governed commands (REQ-872 / REQ-1155): both appear as POST paths.
-    for fn in [
+    commands = [
         *(getattr(state, "tracked_functions", {}) or {}).values(),
         *(getattr(state, "tracked_webhooks", {}) or {}).values(),
-    ]:
+    ]
+    for fn in [] if table_filter is not None else commands:
         if not fn.get("name") or fn["name"] in _seen_cmd:
             continue
         # REQ-2168: the path is the command's REST command binding; none when excluded.
