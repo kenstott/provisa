@@ -136,7 +136,8 @@
       "graphql_body_not_json": "O corpo da requisição não é JSON: {{error}}",
       "graphql_request_not_object": "Uma requisição GraphQL é um objeto JSON com uma consulta.",
       "graphql_parameter_type": "O parâmetro {{parameter}} da requisição GraphQL deve ser {{expected}}.",
-      "graphql_mutation_over_get": "Uma mutação é enviada com POST, nunca com GET."
+      "graphql_mutation_over_get": "Uma mutação é enviada com POST, nunca com GET.",
+      "listed_only": "A função {{role}} só pode listar {{table}}: os metadados podem ser lidos, os dados não"
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
@@ -293,7 +294,8 @@
       "not_found": "Função não encontrada",
       "org_selection_required": "Seleção de organização necessária",
       "already_exists": "A função '{{role}}' já existe",
-      "description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade"
+      "description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade",
+      "right_not_in_parents": "A função {{role}} não pode deter {{right}}: nenhum pai o detém"
     },
     "schema": {
       "allowed_domains_updated": "Domínios permitidos atualizados para a fonte '{{source}}'",

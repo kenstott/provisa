@@ -100,6 +100,8 @@ class UpdateRoleBody(BaseModel):
 @router.get("/")
 async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
     from provisa.core.repositories import data_product as data_product_repo
+    from provisa.core.repositories import domain as domain_repo
+    from provisa.security import domain_tree
 
     org_id = _active_org(request)
     pool = _pool(request)
@@ -121,22 +123,25 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
             .order_by(roles.c.id)
         )
         rows = result.fetchall()
+        tree = domain_tree.parent_map(await domain_repo.list_all(conn))
         owners = await data_product_repo.owner_roles(conn)
     identity = getattr(request.state, "identity", None)
     full = role_definitions_visible(request, getattr(identity, "roles", []))
     from provisa.core.db import STANDARD_ROLES
-    from provisa.security.inheritance import effective_capabilities
+    from provisa.security.inheritance import held_by_role
     from provisa.security.row_filters import with_owner_grant
 
     # REQ-2188: what it holds includes what an Owner field gives it, which it does not store.
-    listed = with_owner_grant([dict(r._mapping) for r in rows], owners)
+    held = held_by_role(with_owner_grant([dict(r._mapping) for r in rows], owners), tree)
     # REQ-2155: a standard role is Provisa's and locked; the client offers no edit for one. A shown
-    # role carries what it holds with its ancestors folded in (``effectiveCapabilities``).
+    # role carries what it holds, by the one rule (``effective*``).
     return [
         {
             **dict(r._mapping),
             "standard": r.id in STANDARD_ROLES,
-            "effectiveCapabilities": effective_capabilities(r.id, listed),
+            "effectiveCapabilities": held[r.id]["capabilities"],
+            "effectiveDomains": held[r.id]["domains"],
+            "effectiveResidencyValues": held[r.id]["regions"],
         }
         if full(r.id)
         else {"id": r.id, "description": r.description, "standard": r.id in STANDARD_ROLES}
@@ -398,9 +403,9 @@ async def effective_rights(role_id: str, request: Request):  # REQ-2161
     pool = _pool(request)
     async with pool.acquire() as conn:
         result = await conn.execute_core(
-            select(roles.c.id, roles.c.capabilities, roles.c.parents).where(
-                or_(roles.c.org_id.is_(None), roles.c.org_id == org_id)
-            )
+            select(
+                roles.c.id, roles.c.capabilities, roles.c.parents, roles.c.residency_values
+            ).where(or_(roles.c.org_id.is_(None), roles.c.org_id == org_id))
         )
         rows = [dict(r._mapping) for r in result.fetchall()]
     known = {r["id"] for r in rows}

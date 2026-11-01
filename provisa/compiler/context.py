@@ -36,7 +36,6 @@ from provisa.security.rights import (
     SYSTEM_DOMAINS,
     lists_table,
     reaches_domain,
-    served_across_domains,
     serves_table,
     writes_table,
 )
@@ -654,7 +653,7 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     from provisa.compiler.naming import domain_alias_map as _domain_alias_map
 
     domain_alias_map = _domain_alias_map(si.domains)
-    tables = _build_visible_tables(si)
+    tables = _build_visible_tables(si, for_sql=True)
     if not tables:
         _register_draft_names(si, ctx, domain_alias_map)  # REQ-1921: drafts are named still
         _register_missing_capabilities(si, ctx, domain_alias_map)  # REQ-1132
@@ -732,8 +731,6 @@ def _register_missing_capabilities(  # REQ-1132
             continue
         if domain == META_DOMAIN_ID:
             ctx.missing_capability["_meta"] = domain
-        if served_across_domains(si.role, row):
-            continue  # REQ-1132: meta's default tier, read with no meta grant
         for said in _names_of_table(si, row, domain_alias_map):
             ctx.missing_capability[said] = domain
 

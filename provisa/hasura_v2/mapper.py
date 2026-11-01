@@ -176,10 +176,6 @@ _READ_CAPS = [
 ]
 #: REQ-2155: the standard role a grant names for what Hasura's admin reads.
 _ADMIN_READER = "data_steward"
-#: REQ-2155: what an imported role builds on when Hasura names no role it inherits, or when the one
-#: it names does not hold what it was given: the standard role holding those capabilities.
-_BASE_ROLE = "analyst"
-_WRITE_BASE_ROLE = "developer"
 
 
 def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ-040, REQ-1684
@@ -253,13 +249,15 @@ def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:  # REQ-041, REQ
                 if p.role in roles and "write" not in roles[p.role].capabilities:
                     roles[p.role].capabilities.append("write")
 
-    # REQ-2155: every imported role builds on a standard role holding what it was given, beside
-    # the role Hasura names as the one it inherits when that role does not hold it all.
+    # REQ-2155: a role holds what it is given of what its parents hold. An imported role builds on
+    # no standard role, so that it reads what Hasura gave it and no standard role's grants; what
+    # it is given stands. A role Hasura inherits from must hold what the child was given, so a
+    # child's write reaches the parent Hasura named.
     for role in roles.values():
-        writes = "write" in role.capabilities
-        held = {c for p in role.parents for c in roles[p].capabilities}
-        if not role.parents or not set(role.capabilities) <= held:
-            role.parents = [*role.parents, _WRITE_BASE_ROLE if writes else _BASE_ROLE]
+        for parent in role.parents:
+            for capability in role.capabilities:
+                if capability not in roles[parent].capabilities:
+                    roles[parent].capabilities.append(capability)
 
     # REQ-1174: apply api_limits.yaml (rate + query-complexity) to each collected role.
     for role_id, role in roles.items():

@@ -40,18 +40,16 @@ roles:
 # The signed-in customer of the order-history screen: their own orders and nothing else (the row
 # filters below name customer 42, the demo's signed-in customer).
 - id: customer
-  parents: [viewer]
+  parents: [analyst]
   description: "The signed-in customer of the order-history screen: their own orders and nothing else."
-  capabilities:
-  - query_development
+  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
   domain_access:
   - shop
 # The BI analyst: every order, and no customer's email.
 - id: shop_analyst
   parents: [analyst]
   description: "The BI analyst: every order, and no customer's email."
-  capabilities:
-  - query_development
+  capabilities: [catalog_read, data_product_read, glossary_read, query_development, usage]
   domain_access:
   - shop
 server:

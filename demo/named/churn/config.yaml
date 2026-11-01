@@ -36,8 +36,7 @@ roles:
 - id: churn_analyst
   parents: [analyst]
   description: "The data scientist: reads the customers and their usage, with email addresses masked."
-  capabilities:
-  - query_development
+  capabilities: [catalog_read, data_product_read, glossary_read, query_development, usage]
   domain_access:
   - churn
 server:

@@ -37,8 +37,7 @@ roles:
 - id: harbor_analyst
   parents: [analyst]
   description: "Queries the harbor domain's data."
-  capabilities:
-  - query_development
+  capabilities: [catalog_read, data_product_read, glossary_read, query_development, usage]
   domain_access:
   - harbor
 server:

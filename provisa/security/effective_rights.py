@@ -24,8 +24,16 @@ from __future__ import annotations
 from collections.abc import Callable, Collection, Iterable, Mapping
 from typing import Any
 
-from provisa.security.inheritance import held_capabilities, parent_map, role_chain
+from provisa.security.inheritance import (
+    effective_rights,
+    held_capabilities,
+    parent_map,
+    role_chain,
+)
 from provisa.security.meta_role import META_PREFIX, is_meta_role_id
+from provisa.security.rights import Capability
+
+DATA_RESIDENCY = Capability.DATA_RESIDENCY.value
 
 
 def capabilities_view(role_id: str, rows: Iterable[dict], *, standard: Collection[str]) -> dict:
@@ -45,6 +53,9 @@ def capabilities_view(role_id: str, rows: Iterable[dict], *, standard: Collectio
         rid: sorted(held[rid] - {c for p in parents.get(rid, []) for c in held[p]}) for rid in chain
     }
     rights = sorted(held[role_id])
+    regions = effective_rights(
+        role_id, by_id, lambda r: r.get("residency_values") or [], adds=additive
+    )
     return {
         "role": role_id,
         "standard": role_id in standard,
@@ -56,6 +67,8 @@ def capabilities_view(role_id: str, rows: Iterable[dict], *, standard: Collectio
             {"right": right, "from": [rid for rid in chain if right in adds[rid]]}
             for right in rights
         ],
+        # REQ-1921: data_residency's value, shown with the capability.
+        "regions": sorted(regions) if DATA_RESIDENCY in held[role_id] else [],
     }
 
 

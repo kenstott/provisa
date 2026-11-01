@@ -45,26 +45,26 @@ naming:
 roles:
 # The control room: the watch list and every case.
 - id: control_room
-  parents: [viewer]
+  parents: [analyst]
   description: "The control room: the watch list and every case."
-  capabilities: [query_development]
+  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
   domain_access: [bank]
 # First-level reviewers: their own desks' cases, the deal withheld; never the watch list.
 - id: reviewer_ana
-  parents: [viewer]
+  parents: [analyst]
   description: "A first-level reviewer: the cases of the desks Ana reviews, the deal withheld, never the watch list."
-  capabilities: [query_development]
+  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
   domain_access: [bank]
 - id: reviewer_ben
-  parents: [viewer]
+  parents: [analyst]
   description: "A first-level reviewer: the cases of the desks Ben reviews, the deal withheld, never the watch list."
-  capabilities: [query_development]
+  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
   domain_access: [bank]
 # A deal team: its own deal's rows of the watch list and of the queue.
 - id: deal_team_falcon
-  parents: [viewer]
+  parents: [analyst]
   description: "The Falcon deal team: its own deal's rows of the watch list and of the review queue."
-  capabilities: [query_development]
+  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
   domain_access: [bank]
 server:
   limits:

@@ -91,7 +91,7 @@ Three kinds of role work together in Provisa's access model. The Roles page list
 
 ### Granted roles
 
-A granted role is assigned directly to a user. It holds rights: capabilities, domain access, masking entries, row filters. Inheritance gives the child every ancestor's capabilities and grants. Rights only add; there is no subtraction. To restrict a reader, grant to a composite that names both the role and a condition, or place a mask entry before the permissive one.
+A granted role is assigned directly to a user. It holds rights: capabilities, domain access, masking entries, row filters. A role with parents holds what it is given of what they hold, so a child narrows its parents: a right they hold that it is not given is not its own. Grants are not narrowed: the child reads every ancestor's column grants, and mask entries are read against the role and its ancestors, the first entry it holds deciding. To restrict one reader on a column, grant to a composite that names both the role and a condition, or place a mask entry before the permissive one. A role with no capabilities can do nothing. It may carry a name or session values, run a command that names it, or be a parent holding only grants.
 
 ### Expiring and unused grants
 

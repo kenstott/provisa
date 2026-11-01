@@ -1,0 +1,139 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 90c4e2a6-1b7f-43d8-a5e6-7c3d1f8b02e9
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
+// REQ-2155: what the role form offers a role with parents, and what each capability allows.
+
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { render, screen, within } from "../../../test-utils/render";
+import { FormLayout } from "../../../components/form/FormLayout";
+import { ResidencyGrant } from "../../../components/admin/ResidencyGrant";
+import { CapabilityNames } from "../CapabilityNames";
+import { CapabilityGrid } from "../RoleFormParts";
+import type { Capability } from "../../../types/auth";
+
+const box = (capability: string) =>
+  within(screen.getByTestId(`capability-tick-${capability}`)).getByRole("checkbox");
+
+function grid(value: Capability[], held: ReadonlySet<string> | null, onToggle = vi.fn()) {
+  render(
+    <FormLayout>
+      <CapabilityGrid value={value} held={held} onToggle={onToggle} label="Capabilities" />
+    </FormLayout>,
+  );
+  return onToggle;
+}
+
+describe("the capability grid", () => {
+  it("shows what a parent holds selected, to unselect", async () => {
+    const onToggle = grid(["usage"], new Set(["usage"]));
+    expect(box("usage")).toBeChecked();
+    await userEvent.click(box("usage"));
+    expect(onToggle).toHaveBeenCalledWith("usage");
+  });
+
+  it("disables a capability no parent holds", () => {
+    grid([], new Set(["usage"]));
+    expect(box("write")).toBeDisabled();
+    expect(box("usage")).toBeEnabled();
+  });
+
+  it("disables nothing for a role with no parents", () => {
+    grid([], null);
+    expect(box("write")).toBeEnabled();
+  });
+
+  it("says why a capability is disabled", async () => {
+    grid([], new Set(["usage"]));
+    await userEvent.hover(screen.getByTestId("capability-tick-write"));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "No parent of this role holds this capability.",
+    );
+  });
+
+  it("says what a capability allows", async () => {
+    grid([], null);
+    await userEvent.hover(screen.getByTestId("capability-tick-write"));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Write data, where the role has a write grant.",
+    );
+  });
+});
+
+describe("the capability catalog", () => {
+  const locales = join(__dirname, "../../../i18n/locales");
+  const catalog = (lng: string) =>
+    JSON.parse(readFileSync(join(locales, lng, "capabilityHelp.json"), "utf8")).capabilityHelp;
+
+  it("defines every capability the type names", () => {
+    const declared = readFileSync(join(__dirname, "../../../types/auth.ts"), "utf8")
+      .split("export type Capability =")[1]
+      .split(";")[0];
+    const names = [...declared.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
+    expect(names.length).toBeGreaterThan(30);
+    for (const name of names) expect(catalog("en")[name], name).toBeTruthy();
+  });
+
+  it("is in every locale with the same keys", () => {
+    const keys = Object.keys(catalog("en")).sort();
+    const lngs = readdirSync(locales, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+    expect(lngs.length).toBeGreaterThanOrEqual(13);
+    for (const lng of lngs) expect(Object.keys(catalog(lng)).sort(), lng).toEqual(keys);
+  });
+});
+
+describe("a list of capabilities", () => {
+  it("shows data_residency's regions as its value", () => {
+    render(<CapabilityNames capabilities={["data_residency", "usage"]} regions={["eu", "us"]} />);
+    expect(screen.getByTestId("capability-name-data_residency")).toHaveTextContent(
+      "data_residency: eu, us",
+    );
+    expect(screen.getByTestId("capability-name-usage")).toHaveTextContent(/^usage$/);
+  });
+
+  it("gives each capability its definition as a hint", async () => {
+    render(<CapabilityNames capabilities={["catalog_read"]} />);
+    await userEvent.hover(screen.getByTestId("capability-name-catalog_read"));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Read the meta domain.");
+  });
+});
+
+describe("data_residency's control", () => {
+  function grant(held: boolean, parents: Parameters<typeof ResidencyGrant>[0]["parents"]) {
+    render(
+      <FormLayout>
+        <ResidencyGrant
+          held={held}
+          values={[]}
+          regions={["eu", "us"]}
+          parents={parents}
+          onHeld={vi.fn()}
+          onValues={vi.fn()}
+        />
+      </FormLayout>,
+    );
+  }
+
+  it("is disabled when no parent holds the capability", () => {
+    grant(false, { capabilities: new Set(["usage"]), regions: new Set() });
+    expect(screen.getByTestId("residency-grant-checkbox")).toBeDisabled();
+  });
+
+  it("opens the region control under the tick, offering what parents cover", async () => {
+    grant(true, { capabilities: new Set(["data_residency"]), regions: new Set(["eu"]) });
+    await userEvent.click(screen.getByRole("textbox", { name: "Region values covered" }));
+    expect(await screen.findByRole("option", { name: "eu" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "us" })).toBeNull();
+  });
+});

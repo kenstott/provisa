@@ -47,10 +47,9 @@ naming:
 roles:
 # The bank's credit risk team: every facility, the bank's capital and the groups.
 - id: risk
-  parents: [viewer]
+  parents: [analyst]
   description: "The bank's credit risk team: every facility, the bank's capital and the groups its borrowers belong to."
-  capabilities:
-  - query_development
+  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
   domain_access:
   - groupexposure
 server:

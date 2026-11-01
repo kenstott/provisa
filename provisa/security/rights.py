@@ -466,7 +466,8 @@ def served_roles(  # REQ-2152
     return frozenset(
         role_id
         for role_id, definition in roles.items()
-        if column_served(
+        if definition["capabilities"]  # REQ-2155: a role with no capabilities reads nothing
+        and column_served(
             {"id": role_id},
             domain_id,
             granted,

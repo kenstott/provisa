@@ -47,7 +47,9 @@ import { llmBudgetForm, llmBudgetInput } from "../lib/llmBudget";
 import { RoleCapabilities } from "./security/RoleCapabilities";
 import { RoleDataAccess } from "./security/RoleDataAccess";
 import { SessionValuesField } from "./security/SessionValuesField";
+import { CapabilityNames } from "./security/CapabilityNames";
 import { CapabilityGrid, DomainsNote, SubtreeNote } from "./security/RoleFormParts";
+import { parentRights, reachable, withParents } from "./security/roleParents";
 import { useRegionChoices } from "../hooks/useRegionQueries";
 import { ListTable, ListHead, ListRow, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
@@ -58,9 +60,9 @@ import { DerivedRoleDetail, DerivedRoleNewForm, DerivedRoleRows } from "./securi
 import { useDerivedRoles, type DerivedPick } from "../hooks/useDerivedRoles";
 import { matchesQuery } from "../lib/searchItems";
 
-/** A role may be saved once it lists a domain of its own: reach is never inherited (REQ-2155). */
-function listsADomain(form: { domainAccess: string[] }): boolean {
-  return form.domainAccess.length > 0;
+/** A role may be saved once it lists a domain, or holds no capability to apply in one (REQ-2155). */
+function listsADomain(form: { domainAccess: string[]; capabilities: Capability[] }): boolean {
+  return form.domainAccess.length > 0 || form.capabilities.length === 0;
 }
 
 const EMPTY_ROLE = {
@@ -241,11 +243,14 @@ export function SecurityRolesPage() {
     }));
   };
 
+  // REQ-2155: the form offers what the parents hold; the rest is shown disabled.
+  const held = parentRights(roleForm.parents, roles);
   const domainOptions = [
     { id: "*", label: t("securityPage.allDomains") },
     // REQ-1132: a system domain is held as a capability, never listed on a role.
     ...assignableDomainIds(domains.map((d) => d.id)).map((id) => ({ id, label: id })),
-  ];
+  ].map((option) => ({ ...option, disabled: !reachable(option.id, held) }));
+  const chooseParents = (parents: string[]) => setRoleForm((f) => withParents(f, parents, roles));
 
   // REQ-1940: sort and group are the shared list mechanism.
   const filteredRoles = roles.filter((r) => matchesQuery([r.id, r.description], roleSearch));
@@ -325,6 +330,7 @@ export function SecurityRolesPage() {
           label={t("securityPage.domainAccess")}
           placeholder={t("securityPage.chooseDomains")}
           options={domainOptions}
+          disabledHint={t("capabilityHelp.domainNotHeldByParent")}
           value={roleForm.domainAccess}
           onChange={(selected) => setRoleForm({ ...roleForm, domainAccess: selected })}
         />
@@ -335,7 +341,7 @@ export function SecurityRolesPage() {
           <DomainsNote savedWithNone={false} />
         </FormField>
       )}
-      {/* REQ-2155: several parents; capabilities are the union over every ancestor. */}
+      {/* REQ-2155: several parents; the role holds what it is given of what they hold. */}
       <FormField help={t("securityPage.parentRoleHelp")} size="long">
         <div data-testid="role-parent-select">
           <MultiSelect
@@ -345,7 +351,7 @@ export function SecurityRolesPage() {
               .filter((r) => r.id !== roleForm.id)
               .map((r) => ({ id: r.id, label: r.id }))}
             value={roleForm.parents}
-            onChange={(selected) => setRoleForm({ ...roleForm, parents: selected })}
+            onChange={chooseParents}
           />
         </div>
       </FormField>
@@ -448,6 +454,7 @@ export function SecurityRolesPage() {
             </FormField>
             <CapabilityGrid
               value={roleForm.capabilities}
+              held={held && held.capabilities}
               onToggle={toggleCapability}
               label={t("securityPage.capabilities")}
             />
@@ -455,6 +462,7 @@ export function SecurityRolesPage() {
               held={roleForm.capabilities.includes("data_residency")}
               values={roleForm.residencyValues}
               regions={regionChoices.regions}
+              parents={held}
               onHeld={() => toggleCapability("data_residency")}
               onValues={(residencyValues) => setRoleForm({ ...roleForm, residencyValues })}
             />
@@ -463,6 +471,7 @@ export function SecurityRolesPage() {
                 label={t("securityPage.domainAccess")}
                 placeholder={t("securityPage.chooseDomains")}
                 options={domainOptions}
+                disabledHint={t("capabilityHelp.domainNotHeldByParent")}
                 value={roleForm.domainAccess}
                 onChange={(selected) => setRoleForm({ ...roleForm, domainAccess: selected })}
               />
@@ -482,7 +491,7 @@ export function SecurityRolesPage() {
                     .filter((x) => x.id !== r.id)
                     .map((x) => ({ id: x.id, label: x.id }))}
                   value={roleForm.parents}
-                  onChange={(selected) => setRoleForm({ ...roleForm, parents: selected })}
+                  onChange={chooseParents}
                 />
               </div>
             </FormField>
@@ -700,7 +709,12 @@ export function SecurityRolesPage() {
                         </Table.Td>
                       ) : (
                         <>
-                          <Table.Td>{r.capabilities.join(", ")}</Table.Td>
+                          <Table.Td>
+                            <CapabilityNames
+                              capabilities={r.capabilities}
+                              regions={r.residencyValues}
+                            />
+                          </Table.Td>
                           <Table.Td data-testid={`role-domains-${r.id}`}>
                             {r.domain_access.join(", ") || t("securityPage.noDomains")}
                           </Table.Td>

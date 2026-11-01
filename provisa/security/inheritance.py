@@ -198,9 +198,30 @@ def _data_domains(row: dict) -> set[str]:
     return set(row.get("domain_access") or []) - SYSTEM_DOMAINS
 
 
-def _with_own_standing(rows: Mapping[str, dict], standard: Collection[str]) -> dict[str, dict]:
-    """``rows`` with a standard role's parents dropped: its reach and regions are its own."""
-    return {rid: {**r, "parents": []} if rid in standard else r for rid, r in rows.items()}
+def held_rights(
+    role_ids: Iterable[str], rows: Mapping[str, dict]
+) -> tuple[dict[str, set[str]], dict[str, set[str]], dict[str, set[str]]]:
+    """Each of ``role_ids``' capabilities, data domains and regions (:func:`effective_rights`), and
+    its ancestors'. A standard role's capabilities add to its parents' and its reach is its own. A
+    role holding no capability holds no domain, and one without data_residency no region."""
+    standard = _standard_ids()
+    ids = list(role_ids)
+    capabilities = held_capabilities(ids, rows, standard)
+    own_standing = {rid: {**r, "parents": []} if rid in standard else r for rid, r in rows.items()}
+
+    def domains(row: dict) -> set[str]:
+        return _data_domains(row) if capabilities[row["id"]] else set()
+
+    def regions(row: dict) -> list[str]:
+        holds = Capability.DATA_RESIDENCY.value in capabilities[row["id"]]
+        return (row.get("residency_values") or []) if holds else []
+
+    held_domains: dict[str, set[str]] = {}
+    held_regions: dict[str, set[str]] = {}
+    for rid in ids:
+        effective_rights(rid, own_standing, domains, memo=held_domains)
+        effective_rights(rid, own_standing, regions, memo=held_regions)
+    return capabilities, held_domains, held_regions
 
 
 def flatten_role_dicts(roles: list[dict]) -> list[dict]:
@@ -214,20 +235,10 @@ def flatten_role_dicts(roles: list[dict]) -> list[dict]:
     business unit holds the domains under it. Input dicts are not modified."""
     by_id = {r["id"]: r for r in roles}
     chains = role_chains(roles)
-    standard = _standard_ids()
-    own_standing = _with_own_standing(by_id, standard)
-    held_caps = held_capabilities(by_id, by_id, standard)
-    held_domains: dict[str, set[str]] = {}
-    held_regions: dict[str, set[str]] = {}
-
-    def regions(row: dict) -> list[str]:
-        holds = Capability.DATA_RESIDENCY.value in held_caps[row["id"]]
-        return (row.get("residency_values") or []) if holds else []
-
+    held_caps, held_domains, held_regions = held_rights(by_id, by_id)
     out: list[dict] = []
     for r in roles:
         caps = held_caps[r["id"]]
-        domains = effective_rights(r["id"], own_standing, _data_domains, memo=held_domains)
         rate_limit = r.get("rate_limit")
         max_rows = r.get("max_rows")
         session_vars: dict[str, str] = {}
@@ -244,7 +255,7 @@ def flatten_role_dicts(roles: list[dict]) -> list[dict]:
             **r,
             "capabilities": sorted(caps),
             "domain_access": normalized_reach(
-                (domains if caps else set())
+                held_domains[r["id"]]
                 | {d for d, cap in SYSTEM_DOMAIN_CAPABILITIES.items() if cap in caps}
             ),
             "rate_limit": rate_limit,
@@ -254,9 +265,7 @@ def flatten_role_dicts(roles: list[dict]) -> list[dict]:
         if "session_vars" in r:
             flattened["session_vars"] = session_vars
         if "residency_values" in r:
-            flattened["residency_values"] = sorted(
-                effective_rights(r["id"], own_standing, regions, memo=held_regions)
-            )
+            flattened["residency_values"] = sorted(held_regions[r["id"]])
         out.append(flattened)
     return out
 
@@ -267,6 +276,24 @@ def effective_capabilities(role_id: str, roles: Iterable[dict]) -> list[str]:
     role (or a parent) the rows do not contain."""
     by_id = {r["id"]: r for r in roles}
     return sorted(held_capabilities([role_id], by_id, _standard_ids())[role_id])
+
+
+def held_by_role(
+    rows: Iterable[dict], domain_parents: dict[str, str | None]
+) -> dict[str, dict[str, list[str]]]:
+    """role id -> what it holds: its ``capabilities``, its data ``domains`` down the domain tree and
+    its ``regions`` -- what the form offers a role's children, by the one rule."""
+    from provisa.security import domain_tree
+
+    flat = flatten_role_dicts(domain_tree.flatten_role_domains(list(rows), domain_parents))
+    return {
+        r["id"]: {
+            "capabilities": r["capabilities"],
+            "domains": sorted(set(r["domain_access"]) - SYSTEM_DOMAINS),
+            "regions": r.get("residency_values") or [],
+        }
+        for r in flat
+    }
 
 
 def right_not_in_parents(
@@ -290,33 +317,19 @@ def right_not_in_parents(
         r["id"]: {**r, "domain_access": domain_tree.expand(_data_domains(r), domain_parents)}
         for r in roles
     }
-    standard = _standard_ids()
-    own_standing = _with_own_standing(rows, standard)
-    held_caps = held_capabilities(parents, rows, standard)
-    held_domains: dict[str, set[str]] = {}
-    held_regions: dict[str, set[str]] = {}
+    held_caps, held_domains, held_regions = held_rights(parents, rows)
 
-    def regions(row: dict) -> list[str]:
-        holds = Capability.DATA_RESIDENCY.value in held_caps[row["id"]]
-        return (row.get("residency_values") or []) if holds else []
-
-    def held_by_parents(read: Callable[[str], set[str]]) -> set[str]:
-        return set().union(*(read(p) for p in parents))
+    def by_parents(held: dict[str, set[str]]) -> set[str]:
+        return set().union(*(held[p] for p in parents))
 
     named = ", ".join(parents)
-    caps = held_by_parents(held_caps.__getitem__)
-    for capability in sorted(set(capabilities) - caps):
+    for capability in sorted(set(capabilities) - by_parents(held_caps)):
         return ("capability", capability, f"no parent holds it ({named})")
-    domains = held_by_parents(
-        lambda p: effective_rights(p, own_standing, _data_domains, memo=held_domains)
-    )
-    if ALL_DOMAINS not in domains:
-        for domain in sorted((set(domain_access) - SYSTEM_DOMAINS) - domains):
+    reached = by_parents(held_domains)
+    if ALL_DOMAINS not in reached:
+        for domain in sorted((set(domain_access) - SYSTEM_DOMAINS) - reached):
             return ("domain", domain, f"no parent reaches it ({named})")
-    covered = held_by_parents(
-        lambda p: effective_rights(p, own_standing, regions, memo=held_regions)
-    )
-    for region in sorted(set(residency_values) - covered):
+    for region in sorted(set(residency_values) - by_parents(held_regions)):
         return ("region", region, f"no parent covers it ({named})")
     return None
 

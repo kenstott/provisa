@@ -71,7 +71,10 @@ export type Capability =
   // REQ-2155: data quality's own rights -- reading check definitions and results, and managing
   // checks, expectations and promises -- so managing checks needs no table registration.
   | "dq_read"
-  | "dq_rw";
+  | "dq_rw"
+  | "ignore_relationships"
+  | "write"
+  | "no_aggregations";
 
 /** REQ-1174: an LLM spend limit, in tokens or in USD at the model price list. */
 export interface LlmLimit {
@@ -105,9 +108,12 @@ export interface Role {
    *  definition is withheld: it explains, it grants nothing. */
   description: string;
   capabilities: Capability[];
-  /** REQ-2155: what the role holds -- its own capabilities and every ancestor's. A caller's rights
+  /** REQ-2155: what the role holds: what it is given of what its parents hold. A caller's rights
    *  are the union of this over the roles it acts as. */
   effectiveCapabilities: Capability[];
+  /** REQ-2155: the data domains and regions it holds, what its children may be given. */
+  effectiveDomains?: string[];
+  effectiveResidencyValues?: string[];
   /**
    * REQ-1602: rights the role does NOT hold, whose surfaces it is shown anyway -- disabled and
    * badged as belonging to the production system. A role defined by subtraction (the sandbox,
@@ -117,7 +123,8 @@ export interface Role {
   demonstrated: Capability[];
   domain_access: string[];
   rateLimit?: RoleRateLimit | null; // REQ-1174: per-role rate + query-complexity limits
-  /** REQ-2155: the roles this one inherits from, in order; its capabilities are their union. */
+  /** REQ-2155: the roles this one inherits from, in order; it holds what it is given of what they
+   *  hold. */
   parents?: string[];
   /** REQ-2155: a standard role is Provisa's and locked -- extended with child roles, never edited. */
   standard?: boolean;
