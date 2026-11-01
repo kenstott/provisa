@@ -123,6 +123,31 @@ def test_each_probed_function_reaches_an_answer(db: Any, call: str):
     db.execute(written).fetchall()
 
 
+@pytest.mark.parametrize(
+    ("aggregate", "want"),
+    [
+        ("json_agg(x)", [1, 3]),
+        ("jsonb_agg(x)", [1, 3]),
+        ("json_agg(x ORDER BY x DESC)", [3, 1]),
+        ("jsonb_agg(x ORDER BY x DESC)", [3, 1]),
+        ("json_agg_strict(y)", [1]),
+        ("jsonb_agg_strict(y)", [1]),
+        ("json_object_agg(k, x)", {"a": 1, "c": 3}),
+        ("jsonb_object_agg(k, x)", {"a": 1, "c": 3}),
+        ("json_object_agg_strict(k, y)", {"a": 1}),
+        ("json_object_agg_unique(k, x)", {"a": 1, "c": 3}),
+    ],
+)
+def test_a_filter_keeps_out_of_a_json_aggregate_what_it_excludes(
+    db: Any, aggregate: str, want: Any
+):
+    import json
+
+    rows = "(VALUES ('a', 1, 1), ('b', 2, 2), ('c', 3, NULL)) t(k, x, y)"
+    written = transpile_to_duckdb(f"SELECT {aggregate} FILTER (WHERE x <> 2) FROM {rows}")
+    assert json.loads(db.execute(written).fetchall()[0][0]) == want
+
+
 @pytest.mark.parametrize("table", ("json_to_recordset", "jsonb_to_recordset"))
 def test_a_definition_list_gives_the_columns_of_no_rows(db: Any, table: str):
     written = transpile_to_duckdb(f"""SELECT * FROM pg_catalog."{table}"('[]') AS t(v integer)""")

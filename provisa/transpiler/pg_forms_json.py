@@ -554,29 +554,49 @@ def _set_returning(name: str, args: list[exp.Expr], inner: Callable) -> exp.Expr
     return _row_of(exp.Anonymous(this=udf, expressions=[_text(args[0], inner), called]), name)
 
 
+def _under_filter(node: exp.Func, aggregate: exp.Expr, inner: Callable) -> exp.Expr:
+    """``aggregate`` with the FILTER of the call it answers: DuckDB filters an aggregate, and a
+    call's form here is a scalar over one."""
+    over = node.parent
+    if not isinstance(over, exp.Filter):
+        return aggregate
+    return exp.Filter(this=aggregate, expression=over.expression.transform(inner))
+
+
 def _aggregate(node: exp.Func, name: str, args: list[exp.Expr], inner: Callable) -> exp.Expr | None:
-    """An aggregate DuckDB's json_group_array macro does not take."""
+    """An aggregate DuckDB's json_group_array and json_group_object macros do not take."""
+    filtered = isinstance(node.parent, exp.Filter)
+
+    def rows(value: exp.Expr) -> exp.Expr:
+        listed = exp.Anonymous(this="list", expressions=[value.transform(inner)])
+        return _under_filter(node, listed, inner)
+
     if name in _AGG_STRICT:
-        rows = exp.Anonymous(this="list", expressions=[args[0].transform(inner)])
-        return _duckdb("to_json(list_filter(_rows, _v -> _v IS NOT NULL))", _rows=rows)
-    if name in _OBJECT_AGGS:
-        strict, unique = _OBJECT_AGGS[name]
+        return _duckdb("to_json(list_filter(_rows, _v -> _v IS NOT NULL))", _rows=rows(args[0]))
+    if name in _OBJECT_AGGS or (filtered and name in ("json_object_agg", "jsonb_object_agg")):
+        strict, unique = _OBJECT_AGGS.get(name, (False, False))
         pairs = _duckdb(
-            "list(struct_pack(k := CAST(_k AS VARCHAR), v := CAST(to_json(_x) AS VARCHAR)))",
+            "struct_pack(k := CAST(_k AS VARCHAR), v := CAST(to_json(_x) AS VARCHAR))",
             _k=args[0].transform(inner),
             _x=args[1].transform(inner),
         )
         flags = [exp.Boolean(this=strict), exp.Boolean(this=unique), exp.Literal.string(name)]
-        call = exp.Anonymous(this="provisa_json_object_agg", expressions=[pairs, *flags])
+        call = exp.Anonymous(this="provisa_json_object_agg", expressions=[rows(pairs), *flags])
         return exp.cast(call, "JSON")
     ordered = isinstance(args[0], (exp.Order, exp.Distinct)) if args else False
     array_agg = isinstance(node, exp.JSONArrayAgg) or name in ("json_agg", "jsonb_agg")
-    if array_agg and (ordered or isinstance(node.parent, exp.Filter)):
-        return _duckdb(
-            "to_json(_rows)",
-            _rows=exp.Anonymous(this="list", expressions=[args[0].transform(inner)]),
-        )
+    if array_agg and (ordered or filtered):
+        return _duckdb("to_json(_rows)", _rows=rows(args[0]))
     return None
+
+
+def _filtered(node: exp.Filter, inner: Callable) -> exp.Expr | None:
+    """A filtered aggregate whose form holds the FILTER itself; None for one that takes it as it
+    stands."""
+    call = node.this
+    if not isinstance(call, exp.Func):
+        return None
+    return _aggregate(call, _called(call), _arguments(call), inner)
 
 
 def _is_null(value: exp.Expr) -> bool:
@@ -744,10 +764,15 @@ def _duckdb_table(table: exp.Table, name: str, inner: Callable) -> exp.Expr | No
     return None
 
 
+def _called(node: exp.Func) -> str:
+    """The function a call names, whatever sqlglot parsed the call into."""
+    name = node.name.lower() if isinstance(node, exp.Anonymous) else node.sql_name().lower()
+    return _AGGREGATES.get(type(node), name)
+
+
 def _call(node: exp.Func, dialect: str, inner: Callable[[exp.Expr], exp.Expr]) -> exp.Expr:
     """A call the table's rows do not take as they stand."""
-    name = node.name.lower() if isinstance(node, exp.Anonymous) else node.sql_name().lower()
-    name = _AGGREGATES.get(type(node), name)
+    name = _called(node)
     if dialect in _OF[_D]:
         answer = _on_duckdb(node, name, inner)
         if answer is not None:
@@ -827,6 +852,10 @@ def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
                     raise NoForm("jsonb_out")
             elif json_is_text and node.is_type("json", "jsonb"):
                 return _cast(node, dialect)
+        if on_duckdb and isinstance(node, exp.Filter):
+            answered = _filtered(node, rewrite)
+            if answered is not None:
+                return answered
         if isinstance(node, exp.Table) and isinstance(node.this, exp.Anonymous):
             name = node.this.name.lower()
             answered = _duckdb_table(node, name, rewrite) if on_duckdb else None
