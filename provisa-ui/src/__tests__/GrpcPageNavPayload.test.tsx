@@ -146,10 +146,13 @@ describe("GrpcPage — a body handed with the method", () => {
     act(() => screen.getByText("first").click());
     await waitFor(() => expect(sent).toEqual([first]));
 
-    const read = await readScreen(1000);
-    if (typeof read === "string") throw new Error(read);
-    expect(read.inputs).toMatchObject({ method: "QueryCustomers", status: "answered" });
-    expect(JSON.parse(String(read.inputs?.body))).toEqual(first);
+    // The fake answers after it records the body, so the page may still be running at this point.
+    await waitFor(async () => {
+      const read = await readScreen(1000);
+      if (typeof read === "string") throw new Error(read);
+      expect(read.inputs).toMatchObject({ method: "QueryCustomers", status: "answered" });
+      expect(JSON.parse(String(read.inputs?.body))).toEqual(first);
+    });
   });
 
   it("runs a second body handed for the method already selected, not the one on screen", async () => {

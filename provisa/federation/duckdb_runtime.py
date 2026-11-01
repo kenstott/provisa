@@ -204,6 +204,12 @@ def _typed_back(schema: Any) -> str:
     )
 
 
+#: The target of a cast naming a schema and no catalog.
+_CAST_TO_A_SCHEMAS_TYPE = re.compile(
+    r"""\bAS\s+(?P<schema>"[^"]+"|\w+)\.(?P<name>"[^"]+"|\w+)(?=\))"""
+)
+
+
 class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def __init__(
         self, *, materialize_dsn: str | None = None, store_engine: Any | None = None
@@ -551,7 +557,29 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         (REQ-1901). A source set aside as unreachable is attached again first."""
         self._bring_back(duck_sql)
         self._refresh_databricks_relations(duck_sql)
-        return self._refresh_store_relations(duck_sql)
+        return self._refresh_store_relations(self._source_types_qualified(duck_sql))
+
+    def _source_types_qualified(self, duck_sql: str) -> str:
+        """A cast to ``schema.type``, a type of an attached source's (an enum, REQ-2171), with the
+        catalog DuckDB holds it in: a statement names the source's schema, and DuckDB resolves a
+        type only in the default catalog. A name two sources hold is left, for DuckDB to refuse."""
+
+        def qualified(match: re.Match[str]) -> str:
+            schema, name = match["schema"].strip('"'), match["name"].strip('"')
+            cur = self._con.cursor()
+            try:
+                catalogs = cur.execute(
+                    "SELECT DISTINCT database_name FROM duckdb_types() "
+                    "WHERE schema_name = ? AND type_name = ?",
+                    [schema, name],
+                ).fetchall()
+            finally:
+                close_cursor(cur)
+            if len(catalogs) != 1:
+                return match[0]
+            return f'AS "{catalogs[0][0]}"."{schema}"."{name}"'
+
+        return _CAST_TO_A_SCHEMAS_TYPE.sub(qualified, duck_sql)
 
     def _attach_clickhouse(self, source: Any, details: dict) -> None:
         """REQ-899: register a ClickHouse table for the query-time HTTP read. Loads httpfs, creates

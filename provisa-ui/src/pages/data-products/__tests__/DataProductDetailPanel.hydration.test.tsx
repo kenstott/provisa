@@ -30,11 +30,13 @@ vi.mock("../../../components/graph3d/GraphPanel", () => ({
 
 /** Each panel input, by where it comes from. */
 const META = ["p", "core", "coreError", "reader"]; // the meta domain: the product, its core, its schema
-// Capabilities, the reader's standing (REQ-2160: whether it acts as the owner), and callbacks.
+// Capabilities, the reader's standing (REQ-2160: whether it acts as the owner; REQ-2158: the roles
+// it holds, which a contract's How to use reads), and callbacks.
 const NOT_DATA = [
   "canEdit",
   "canDelete",
   "owner",
+  "viewer",
   "onEdit",
   "onDelete",
   "onStatusChanged",
