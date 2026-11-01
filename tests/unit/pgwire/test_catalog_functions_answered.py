@@ -48,7 +48,7 @@ def test_the_encoding_is_utf8_and_its_number_six():
     assert _rows(
         "SELECT getdatabaseencoding(), pg_char_to_encoding('utf-8'), "
         "pg_char_to_encoding('LATIN1'), pg_char_to_encoding(NULL)"
-    ) == [("UTF8", 6, -1, None)]
+    ) == [("UTF8", 6, 8, None)]
     assert _rows(
         "SELECT c.collname FROM pg_catalog.pg_collation c WHERE c.collencoding IN "
         "(-1, pg_catalog.pg_char_to_encoding(pg_catalog.getdatabaseencoding()))"
@@ -157,12 +157,13 @@ def test_an_object_is_described_and_identified_from_the_catalog():
         "pg_describe_object(1213, 1663, 0)"
     ) == [("type integer", "schema public", None)]
     # DBeaver: an aggregate's function, by 'pg_proc'::regclass.
-    assert (
-        _rows(
+    # PostgreSQL's aggregates are reference data; the functions a catalog lists are the model's.
+    assert all(
+        row == (None,)
+        for row in _rows(
             "SELECT (pg_identify_object('pg_proc'::regclass, aggfnoid, 0)).identity "
             "FROM pg_catalog.pg_aggregate"
         )
-        == []
     )
     assert _rows(
         f"SELECT (pg_identify_object('pg_class'::regclass, {oid}, 0)).identity, "

@@ -4184,6 +4184,23 @@ def create_app() -> FastAPI:
             content={"detail": str(exc), "code": exc.code, "params": exc.params},
         )
 
+    from provisa.transpiler.metadata_functions import (
+        MetadataFunctionRefused as _MetadataFunctionRefused,
+    )
+    from provisa.transpiler.metadata_settings import CatalogViewRefused as _CatalogViewRefused
+
+    @app.exception_handler(_CatalogViewRefused)
+    @app.exception_handler(_MetadataFunctionRefused)
+    async def _catalog_read_refused_handler(  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        _req: _Request, exc: _CatalogViewRefused | _MetadataFunctionRefused
+    ):
+        """REQ-2190: a catalog view off the admin terminal, or a function that would read the
+        control plane itself: refused by name, on HTTP as on pgwire."""
+        return _JSONResponse(
+            status_code=422,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
     from provisa.core.sandbox_limits import SandboxDiskFull as _SandboxDiskFull
     from provisa.federation.duckdb_runtime import WriteConflict as _WriteConflict
 

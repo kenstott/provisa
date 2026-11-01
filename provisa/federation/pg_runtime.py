@@ -35,6 +35,7 @@ from provisa.federation.land_guard import LandGuard
 from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
 from provisa.federation.engine import build_pg_engine
 from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
+from provisa.transpiler.metadata_server_forms import RAISE_FUNCTION_SQL, SERVER_FORM_RAISE
 
 _log = logging.getLogger(__name__)
 
@@ -273,6 +274,26 @@ def _install_fake_functions(con: Any) -> bool:
     return True
 
 
+def _install_raise_function(con: Any) -> None:
+    """Create provisa_raise (REQ-2190: a catalog form, in a statement with no table). A role that
+    may not does not stop the engine: only such a form needs it, PostgreSQL then refuses that
+    statement by the function's name, and the reason is logged here. One already there, from another
+    role or an engine starting beside this one, is the function."""
+    cur = con.cursor()
+    try:
+        cur.execute(RAISE_FUNCTION_SQL)
+    except psycopg2.Error as exc:
+        cur.execute(f"SELECT to_regprocedure('{SERVER_FORM_RAISE}(text, text)')")
+        if cur.fetchone()[0] is None:
+            _log.warning(
+                "the pg engine cannot answer a catalog form's error, %s does not exist: %s",
+                SERVER_FORM_RAISE,
+                str(exc).strip().splitlines()[0],
+            )
+    finally:
+        cur.close()
+
+
 class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
     # Class-level default so _get_adbc_pool's `self._adbc_pool is None` check is well-defined even
     # for an instance built via __new__ without __init__ running (the Arrow-transport unit tests
@@ -317,6 +338,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         # functions importing provisa. Where it cannot (no plpython3u, no superuser, a managed
         # Postgres), a statement reading a faked column is refused by the column's name.
         self.computes_fakes = _install_fake_functions(self._con)
+        _install_raise_function(self._con)
 
     # -- source exposure -------------------------------------------------------
 

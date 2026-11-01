@@ -39,6 +39,8 @@ interface ResultsPanelProps {
   resultColumns: string[];
   /** REQ-1937: the rows held are only part of the result, so a filter applies to those loaded. */
   rowsPartial?: boolean;
+  /** The tab's statement has been run: no rows held is then its answer, not a tab yet to run. */
+  answered?: boolean;
   /** A batch's results, one per statement; the result* props are the one shown. */
   statements: StatementResult[];
   statementIndex: number;
@@ -62,6 +64,7 @@ export function ResultsPanel({
   resultRedirect = null,
   resultRows,
   rowsPartial = false,
+  answered = false,
   statements,
   statementIndex,
   onStatement,
@@ -193,6 +196,7 @@ export function ResultsPanel({
           ) : resultRows.length === 0 ? (
             <div
               data-testid="sql-results-empty"
+              data-answered={answered ? "" : undefined}
               style={{
                 padding: "1.5rem",
                 textAlign: "center",

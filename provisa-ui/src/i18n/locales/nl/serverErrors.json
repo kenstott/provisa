@@ -270,6 +270,10 @@
       "classification_decision_not_found": "Geen beslissing over {{column}} als {{kind}}",
       "classification_pii_refused": "De kolom kon niet als PII worden gemarkeerd"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} is een catalogusview van het meta-domein en kan niet in één instructie samen met een tabel van een databron worden gelezen: lees ze in twee instructies.",
+      "function_unsupported": "{{function}}() heeft geen equivalent op {{dialect}}."
+    },
     "replication": {
       "answer_not_json": "Het antwoord dat voor de replica van {{table}} is gelezen, is geen geldige JSON: [{{content_type}}] {{cause}} (in de {{kib}} KiB vóór byte {{before_byte}} van het antwoord).",
       "no_whole_copy": "Tabel {{schema}}.{{table}} van bron {{source}} heeft geen volledige kopie om te bouwen: ze wordt rij voor rij gerepliceerd of heeft een parameterkolom.",
