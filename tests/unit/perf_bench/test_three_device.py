@@ -1700,6 +1700,8 @@ def test_the_dry_run_says_how_each_run_is_checkpointed() -> None:
     bring_up = next(line for line in out.splitlines() if " up -d --build " in line)
     assert "postgresql" in bring_up and "seeder" not in bring_up
     assert "docker compose up seeder" not in out
+    # the engine's image is built by the postgresql service, on the device that runs it
+    assert out.index("docker compose build postgresql") < out.index(" engine-postgresql\n")
     assert "test -f data/.seeded" in out
 
 

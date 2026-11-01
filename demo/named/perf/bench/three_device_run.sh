@@ -193,8 +193,12 @@ if [ -n "$ENGINE_CONTAINER" ]; then
   echo "=== device 1: engine ==="
   _engine_service=engine-postgresql
   [ "$ENGINE" = trino ] && _engine_service=trino
+  # The postgresql service builds the image the pg engine runs, so device 1 builds it too: device 3's
+  # build is on device 3.
+  _engine_build=""
+  [ "$ENGINE" = pg ] && _engine_build="sudo -E docker compose build postgresql &&"
   on "$SERVER" "cd $PERF_REPO/demo/named/perf && export PROVISA_BENCH_BIND=$PERF_SERVER_IP \
-    && sudo -E docker compose --profile three-device --profile three-device-trino \
+    && $_engine_build sudo -E docker compose --profile three-device --profile three-device-trino \
       up -d --build --no-deps $_engine_service"
 fi
 
