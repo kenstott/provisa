@@ -26799,3 +26799,17 @@ Maintainer 2026-10-30: all metadata pgwire presents lives in the meta domain. pg
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2191 · Source Connectors {#REQ-2191}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-01: a source type called Generic SQL (generic_sql), so a database with no named source type can be registered and behave similar to something. It takes a connection URL and a SQL dialect. The URL's scheme names the SQLAlchemy dialect and driver, and a scheme Provisa does not ship is an error naming the missing package. The SQL dialect is the flavor Provisa writes, chosen from SQLGlot's dialects plus generic ANSI; it says nothing about the connection, so the two may differ. Which attach an engine can try follows from the URL scheme: postgresql the Postgres attach, mysql the MySQL attach, any other none. CAPABILITIES ARE SETTINGS: live attach and predicate, join, aggregate and key-range pushdown are settings on the source, all off to start, kept in the model and edited on the source form. Function pushdown is not offered. A setting that depends on the engine's attach is held per engine, so after an engine swap it is off on the new engine until set there. A capability that is off costs speed and not answers: the engine does that work itself. A capability an admin turned on wrongly fails with the source's own error. DETECT: a button on the form runs read-only checks against the real connection on the active engine, written in the source's SQL dialect the way real queries are, ticks the settings that passed and shows why the others failed. Nothing is saved until the form is saved. Checks run only from the button, never on connect. Changing the dialect means pressing it again. An admin may untick what passed or tick what the checks cannot see. THE FLOOR: with every capability off a source still reads, in simple SQL, the way an API table reads: a steward marks columns required, a query must supply them or is refused by name, the read is a column list with equality filters, the rows land per argument set, and a row limit is met by reading the cursor in batches and stopping. A small table may instead replicate whole by the table's existing replicate setting. Such rows join like any landed table.
+
+**Use case:** A team runs a database Provisa has no source type for. An admin registers it with its URL and the SQL dialect closest to it, presses Detect, and gets whatever it can do: live attach and pushdown where it passes, and otherwise a governed source read by key.
+
+**Code:** —
+
+**Tests:** —
