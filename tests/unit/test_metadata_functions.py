@@ -215,7 +215,7 @@ def test_a_function_on_the_server_with_no_form_is_refused_by_name():
 
 @pytest.mark.parametrize("name", sorted(READS_THE_SERVER & _IN_THE_MACRO_TABLE))
 def test_a_sequence_function_is_the_engines_alone_with_no_table(name):
-    assert name in _expanded(f"SELECT {name}(1)")
+    assert name in _expanded(f"SELECT {name}(1)").lower()
     with pytest.raises(MetadataFunctionRefused, match=name):
         _expanded(f"SELECT {name}(1) FROM meta.tables")
 
