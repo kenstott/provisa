@@ -2893,6 +2893,7 @@ async def _build_org_runtime(
 # REQ-1882 (amended 2026-09-29): an org runtime built on first access from a pgwire/Bolt/Flight
 # connection thread rebuilds on that thread's own loop, so the serialization holds across loops.
 _rebuild_schemas_lock = CrossLoopLock()
+_SLOW_REBUILD_S = 2.0
 
 
 async def _rebuild_schemas(raw_config: dict | None = None, *, announce: bool = True) -> None:
@@ -2907,9 +2908,20 @@ async def _rebuild_schemas(raw_config: dict | None = None, *, announce: bool = T
     # ``announce=False`` (REQ-1914) is a reload: another worker made the change and announced it.
     #
     # REQ-2188: a rebuild's writes are the system's, whoever's request ran it: no row rule holds them.
+    asked = time.monotonic()
     async with _rebuild_schemas_lock:
+        began = time.monotonic()
         with model_row_rules.unnarrowed():
             await _rebuild_schemas_impl(raw_config, announce=announce)
+    # At WARNING: a hosted tier logs at WARNING. One line per slow rebuild is how its operator sees
+    # what a slow save or open spent, and whether it was waiting for another org's (REQ-2006).
+    if time.monotonic() - asked >= _SLOW_REBUILD_S:
+        logging.getLogger(__name__).warning(
+            "schema rebuild of %s: waited %.1fs for its turn, took %.1fs",
+            state._active_runtime().org_id,
+            began - asked,
+            time.monotonic() - began,
+        )
 
 
 async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: bool = True) -> None:
