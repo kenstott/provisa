@@ -41,7 +41,7 @@ def replica_runner_wired(monkeypatch):
 @pytest.fixture(autouse=True)
 def _patch_fetch_tables(monkeypatch):
     # wire_event_loop drives off the REGISTERED tables (control plane); the fake conn carries them.
-    async def _fetch(conn):
+    async def _fetch(conn, **_kw):
         return getattr(conn, "registered", [])
 
     # REQ-1919: the sources it drives off are the store's rows too, never the config's.

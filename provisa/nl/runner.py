@@ -588,24 +588,16 @@ async def _generate_sql_from_nl(
         _run_sql_generation_loop,
     )
     from provisa.compiler.naming import domain_to_sql_name
-    from provisa.compiler.stage2 import build_governance_context
+    from provisa.pgwire.governed_plan import role_governance
 
     surface = role_surface(app_state, role)  # one snapshot: context and row filters of one build
     if surface is None:
         return None, f"No schema context for role: {role}"
     ctx = surface.context
-    rls = surface.rls
     from provisa.security.rights import require_role
 
     role_obj = require_role(app_state.roles, role)
-    gov_ctx = build_governance_context(
-        role,
-        rls,
-        getattr(app_state, "masking_rules", {}),
-        ctx,
-        getattr(app_state, "tables", []),
-        role=role_obj,
-    )
+    gov_ctx = role_governance(app_state, surface, role)
     raw_tables = getattr(app_state, "tables", [])
 
     all_tables, user_nodes, table_name_to_type, lm = _collect_nl_user_tables(

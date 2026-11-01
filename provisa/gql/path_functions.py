@@ -111,13 +111,36 @@ def _filter_allowed_rels(
     intermediate hops in a variable-length path without producing impossible
     contradictory join conditions.  Exclude them unless the caller explicitly
     names them.
+
+    A parameterized table has no rows to walk, named or not (REQ-2135): no relationship touching
+    one is taken.
     """
     return [
         r
         for r in lm.relationships.values()
         if (rel_types is None or r.rel_type in rel_types)
         and (rel_types is not None or not r.constant_source)
+        and not lm.touches_parameterized(r)
     ]
+
+
+def _one_per_join(rels: list[RelationshipMapping]) -> list[RelationshipMapping]:
+    """``rels`` with each join once (REQ-2135): an undirected walk takes a relationship either way,
+    so a join declared from both ends (SUBMITTED and SUBMITTED_BY) is one edge, not a tie."""
+    first: dict[str, RelationshipMapping] = {}
+    for r in rels:
+        first.setdefault(r.join, r)
+    return list(first.values())
+
+
+def _refuse_parameterized_end(nm: NodeMapping, error: type[Exception]) -> None:
+    """A path named to start or end on a parameterized table (REQ-2135): said by name, since a
+    search has no way to give it arguments."""
+    if nm.parameterized:
+        raise error(
+            f"a path cannot include {nm.label}: its table is read by arguments, which a path "
+            "search has no way to give"
+        )
 
 
 def _rels_between(
@@ -359,6 +382,8 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         src_type, tgt_type, src_nm, tgt_nm = self._resolve_path_node_types(
             src_node, tgt_node, CypherTranslateError
         )
+        _refuse_parameterized_end(src_nm, CypherTranslateError)
+        _refuse_parameterized_end(tgt_nm, CypherTranslateError)
         src_var = src_node.variable
         tgt_var = tgt_node.variable
         _register_path_vars(self._var_table, src_var, tgt_var, src_nm, tgt_nm)
@@ -367,8 +392,11 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             _extract_rel_attrs(rel)
         )
         allowed_rels = _filter_allowed_rels(self._lm, rel_types)
-        if not is_undirected:
-            allowed_rels = _rels_between(allowed_rels, src_type, tgt_type)
+        allowed_rels = (
+            _one_per_join(allowed_rels)
+            if is_undirected
+            else _rels_between(allowed_rels, src_type, tgt_type)
+        )
         needs_recursive = _needs_recursive_cte(
             variable_length, is_undirected, src_type, tgt_type, allowed_rels
         )
@@ -467,11 +495,13 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
                 "shortestPath/allShortestPaths require type-labeled (not domain-only) nodes"
             )
         anchor_nm = self._lm.nodes[anchor_type]
+        _refuse_parameterized_end(anchor_nm, CypherTranslateError)
         _register_path_vars(self._var_table, anchor.variable, None, anchor_nm, anchor_nm)
 
         rels = _filter_allowed_rels(self._lm, rel_types)
         backward: list[RelationshipMapping] = []
         if is_undirected:
+            rels = _one_per_join(rels)
             backward = [_reversed(r) for r in rels if not r.constant_source]
             rels = [*rels, *backward]
         elif reverse:
@@ -482,6 +512,8 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
         labels = [k for k in dict.fromkeys(reached) if k in self._lm.nodes]
         if far.labels:
             far_type, far_domain = self._resolve_node_type(far.labels)  # type: ignore[attr-defined]
+            if far_type:
+                _refuse_parameterized_end(self._lm.nodes[far_type], CypherTranslateError)
             admitted = {far_type} if far_type else set(union_labels(self._lm, far_domain or ""))
             labels = [k for k in labels if k in admitted]
         # An anonymous end its labels place is read all the same, to keep only those nodes.
@@ -626,6 +658,11 @@ class PathFunctionsMixin:  # REQ-345, REQ-348, REQ-349, REQ-350, REQ-351
             )
             if len(p) >= min_hops
         ]
+        if is_undirected:
+            one_each: dict[tuple[str, ...], list[RelationshipMapping]] = {}
+            for p in all_paths:
+                one_each.setdefault(tuple(r.join for r in p), p)
+            all_paths = list(one_each.values())
         if by_limit and any(
             len(p) > max_hops
             for p in self._lm.find_paths(

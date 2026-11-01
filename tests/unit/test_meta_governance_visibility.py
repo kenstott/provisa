@@ -249,14 +249,15 @@ class TestREQ1132RowScope:
         )
         assert str(_FIN_HIDDEN) not in gov.rls_rules[_RT_META_TID]
 
-    def test_meta_domain_grant_sees_all_rows(self):
-        # REQ-1132 — a meta domain grant lifts the row filter entirely (no predicate injected).
+    def test_reaching_every_data_domain_sees_all_rows(self):
+        # REQ-1132 — "*" lifts the row filter entirely (no predicate injected); catalog_read opens
+        # the domain, not its rows.
         gov = _row_gov(
             {
                 "id": "cataloger",
                 "description": "Test role.",
                 "capabilities": [],
-                "domain_access": ["sales", META_DOMAIN_ID],
+                "domain_access": ["*", META_DOMAIN_ID],
             }
         )
         assert _RT_META_TID not in gov.rls_rules

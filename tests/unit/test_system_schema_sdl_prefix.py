@@ -60,7 +60,11 @@ def _schema_input(domain_prefix: bool, tables=_TABLES):
             for i in range(1, len(tables) + 1)
         },
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
+        role={
+            "id": "admin",
+            "capabilities": ["query_development"],
+            "domain_access": ["*", "meta", "ontology", "ops"],
+        },
         domains=[{"id": d} for d in ("ontology", "ops", "meta", "sales")],
         domain_prefix=domain_prefix,
     )
@@ -142,7 +146,7 @@ def test_the_semantic_sql_name_and_the_bare_label_are_unprefixed(domain_prefix, 
     by_field = {m.field_name: m for m in ctx.tables.values()}
     assert semantic_table_name(by_field["on_terms"]) == "terms"
     assert semantic_table_name(by_field["op_queries"]) == "queries"
-    lm = CypherLabelMap.from_schema(ctx, domain_access=["*"])
+    lm = CypherLabelMap.from_schema(ctx, domain_access=["*", "meta", "ontology", "ops"])
     labels = {nm.type_name: nm.label for nm in lm.nodes.values()}
     assert labels["OP_Queries"] == "Ops:Queries"
 
@@ -193,7 +197,7 @@ def test_the_bare_label_person_is_the_model_table_not_the_ontology_class(
     schema.tables[0]["id"] = -1
     schema.column_types[-1] = schema.column_types.pop(1)
     ctx = build_context(schema)
-    lm = CypherLabelMap.from_schema(ctx, domain_access=["*"])
+    lm = CypherLabelMap.from_schema(ctx, domain_access=["*", "meta", "ontology", "ops"])
     model = next(m for m in ctx.tables.values() if m.domain_id == "sales")
     (type_name,) = lm.nodes_by_table["Person"]
     assert lm.nodes[type_name].table_id == model.table_id

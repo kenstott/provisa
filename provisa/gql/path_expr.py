@@ -210,6 +210,11 @@ class PathExprMixin:  # REQ-2135
     def _step_relation(self, path: PathExpr, mode: PathMode) -> exp.Select | exp.Union:
         if isinstance(path, EdgeStep | NegatedEdges):
             rels = self._rels_of(path)
+            if isinstance(path, EdgeStep) and self._only_parameterized(path):
+                raise CypherTranslateError(
+                    f"a path cannot include {path.rel_type}: it reaches a table read by "
+                    "arguments, which a path search has no way to give"
+                )
             if not rels:
                 raise CypherTranslateError(
                     f"No relationship of type {path.rel_type!r}"
@@ -218,7 +223,8 @@ class PathExprMixin:  # REQ-2135
                 )
             return self._hops(rels, path.inverse)
         if isinstance(path, AltPath):
-            return _union_all([self._as_select(self._step_relation(o, mode)) for o in path.options])
+            ways = [o for o in path.options if not self._only_parameterized(o)] or path.options
+            return _union_all([self._as_select(self._step_relation(o, mode)) for o in ways])
         if isinstance(path, SeqPath):
             return self._sequence([self._step_relation(p, mode) for p in path.parts])
         return self._repeat(path, mode)
@@ -358,11 +364,22 @@ class PathExprMixin:  # REQ-2135
             parts = (path.body,)
         return set().union(*(self._end_labels(p) for p in parts))
 
+    def _only_parameterized(self, path: PathExpr) -> bool:
+        """Whether ``path`` is an edge whose every relationship touches a parameterized table."""
+        return (
+            isinstance(path, EdgeStep)
+            and not self._rels_of(path)
+            and any(r.rel_type == path.rel_type for r in self._lm.relationships.values())
+        )
+
     def _rels_of(self, path: EdgeStep | NegatedEdges) -> list[RelationshipMapping]:
         if isinstance(path, EdgeStep):
-            return [r for r in self._lm.relationships.values() if r.rel_type == path.rel_type]
-        return [
-            r
-            for r in self._lm.relationships.values()
-            if r.rel_type not in path.rel_types and not r.constant_source
-        ]
+            rels = [r for r in self._lm.relationships.values() if r.rel_type == path.rel_type]
+        else:
+            rels = [
+                r
+                for r in self._lm.relationships.values()
+                if r.rel_type not in path.rel_types and not r.constant_source
+            ]
+        # REQ-2135: a path never goes through a parameterized table.
+        return [r for r in rels if not self._lm.touches_parameterized(r)]

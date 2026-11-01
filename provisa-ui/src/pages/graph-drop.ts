@@ -16,6 +16,9 @@
  * backs several types at once (its discriminator column names each edge), which is exactly the case
  * where answering with the first type found would draw one kind of edge and hide the rest.
  *
+ * A drop that no path can join says so by name and changes nothing, as a SPARQL frame's does
+ * (REQ-2135): a parameterized table is never what a path adds.
+ *
  * Kept out of the page component so the pattern it writes can be read back in a test.
  */
 import type { DropNotice, GNode } from "../components/graph/graph-model";
@@ -33,6 +36,11 @@ export interface DropExpansion {
   targetVars: string[];
   /** What the drop says on its frame: the tied paths it left out. */
   notices: DropNotice[];
+}
+
+/** A drop that changes nothing, and why. */
+export interface DropRefused {
+  refused: DropNotice;
 }
 
 /**
@@ -64,13 +72,14 @@ export function buildDropExpansion(
   query: string,
   compoundLabel: string,
   schemaRels: SchemaRel[],
-): DropExpansion {
+  parameterized: ReadonlySet<string>,
+): DropExpansion | DropRefused {
   // Map each label the query declares, as written (a compound label whole), to every variable bound
   // to it, by parsing the MATCH clauses. Use the QUERY (not result nodes): an OPTIONAL MATCH branch
   // that returned no rows still declares its label and must remain matchable. A label bound twice
   // anchors from both variables.
   const varsByLabel: Record<string, string[]> = {};
-  for (const m of query.matchAll(/\(\s*(\w+)\s*:([\w:]+)\s*\)/g)) {
+  for (const m of query.matchAll(/\(\s*(\w+)\s*:([\w:]+)\s*(?:\{[^}]*\}\s*)?\)/g)) {
     const [, varName, labels] = m;
     const vars = (varsByLabel[labels] ??= []);
     if (!vars.includes(varName)) vars.push(varName);
@@ -87,7 +96,25 @@ export function buildDropExpansion(
   // to be reached from all of them and hide every row that is not. The graph merges the nodes
   // several paths reach by identity. A label no relationship touches is reached by the shortest
   // paths through others (REQ-2135), the ties among them capped; a hop's ties stay whole.
-  const { paths, hops } = shortestSchemaPaths(schemaRels, Object.keys(varsByLabel), [compoundLabel]);
+  if (parameterized.has(compoundLabel))
+    return {
+      refused: { key: "graphFrame.sparqlDropParameterized", values: { name: compoundLabel } },
+    };
+  const held = Object.keys(varsByLabel);
+  if (held.length === 0) return { refused: { key: "graphFrame.sparqlDropNoClass" } };
+  const { paths, hops } = shortestSchemaPaths(schemaRels, held, [compoundLabel], parameterized);
+  if (paths.length === 0) {
+    const classes = held.join(", ");
+    return {
+      refused:
+        hops === null
+          ? { key: "graphFrame.sparqlDropNoPath", values: { name: compoundLabel, classes } }
+          : {
+              key: "graphFrame.sparqlDropTooFar",
+              values: { name: compoundLabel, classes, hops, most: MAX_SCHEMA_HOPS },
+            },
+    };
+  }
   const seen = new Set<string>();
   const routes = paths.flatMap((steps) =>
     varsByLabel[steps[0].from].flatMap((anchor) => {
@@ -104,13 +131,6 @@ export function buildDropExpansion(
       key: "graphFrame.sparqlDropLeftOut",
       values: { shown: kept.length, total: routes.length },
     });
-  if (hops !== null && hops > MAX_SCHEMA_HOPS)
-    notices.push({
-      key: "graphFrame.cypherDropTooFar",
-      values: { name: compoundLabel, hops, most: MAX_SCHEMA_HOPS },
-    });
-  // No known relationship: the dropped label alone, beside the query's first MATCH variable.
-  const firstVar = query.match(/\bMATCH\s*\(\s*(\w+)/i)?.[1] ?? "n";
 
   const trimmed = query.trim();
   const taken = (v: string) =>
@@ -143,20 +163,16 @@ export function buildDropExpansion(
   };
   const written = kept.map(({ anchor, steps }) => {
     const walked = steps.map((s) => ({ ...freshPair(s.to), type: s.edge.type, label: s.to }));
-    const chain = walked.map((w) => `-[${w.relVar}:${w.type}]-(${w.targetVar}:${w.label})`).join("");
+    const chain = walked
+      .map((w) => `-[${w.relVar}:${w.type}]-(${w.targetVar}:${w.label})`)
+      .join("");
     return { anchor, pattern: `(${anchor})${chain}`, walked };
   });
-  const alone = written.length === 0 ? freshPair(compoundLabel) : null;
-  const optMatchPatterns = alone
-    ? [`(${alone.targetVar}:${compoundLabel})`]
-    : written.map((w) => w.pattern);
-  const extraReturn = alone
-    ? `, ${alone.targetVar}`
-    : written
-        .flatMap((w) => w.walked.map((x) => `, ${x.relVar}, ${x.targetVar}`))
-        .join("");
-  const anchors = alone ? [firstVar] : [...new Set(written.map((w) => w.anchor))];
-  const optMatchBlock = optMatchPatterns.map((p) => `OPTIONAL MATCH ${p}`).join("\n");
+  const extraReturn = written
+    .flatMap((w) => w.walked.map((x) => `, ${x.relVar}, ${x.targetVar}`))
+    .join("");
+  const anchors = [...new Set(written.map((w) => w.anchor))];
+  const optMatchBlock = written.map((w) => `OPTIONAL MATCH ${w.pattern}`).join("\n");
   const newQueryBase = withExpansion(
     trimmed,
     optMatchBlock,
@@ -165,9 +181,7 @@ export function buildDropExpansion(
   );
   return {
     query: newQueryBase,
-    targetVars: alone
-      ? [alone.targetVar]
-      : written.map((w) => w.walked[w.walked.length - 1].targetVar),
+    targetVars: written.map((w) => w.walked[w.walked.length - 1].targetVar),
     notices,
   };
 }
@@ -190,7 +204,9 @@ export function nodePathQuery(
     const value = column === undefined ? undefined : node.properties[column];
     if (value === undefined || value === null) return null;
     const literal =
-      typeof value === "number" ? value : `'${String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+      typeof value === "number"
+        ? value
+        : `'${String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
     return `${variable}.${column} = ${literal}`;
   };
   const a = keyed(["a", from]);

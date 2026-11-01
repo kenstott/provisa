@@ -24,8 +24,8 @@ const vocabulary: SparqlVocabulary = {
   base: BASE,
   prefixes: { hr: `${BASE}/hr/`, term: `${BASE}/vocab/term/`, rel: `${BASE}/vocab/rel/` },
   classes: [
-    { iri: `${BASE}/hr/employees`, kind: "table", labels: ["Employees"], superclasses: [] },
-    { iri: `${BASE}/hr/contractors`, kind: "table", labels: ["Contractors"], superclasses: [] },
+    { iri: `${BASE}/hr/employees`, kind: "table", labels: ["Employees"], parameterized: false, parameterized_labels: [], superclasses: [] },
+    { iri: `${BASE}/hr/contractors`, kind: "table", labels: ["Contractors"], parameterized: false, parameterized_labels: [], superclasses: [] },
   ],
   predicates: [
     {
@@ -38,8 +38,8 @@ const vocabulary: SparqlVocabulary = {
     { iri: HIRE_DATE, kind: "term", label: "Contractors", property: "start", datatype: "xsd:date" },
   ],
   edges: [
-    { iri: `${BASE}/vocab/rel/WORKS_IN`, type: "WORKS_IN", source: "Employees", target: "Sites" },
-    { iri: `${BASE}/vocab/rel/WORKS_IN`, type: "WORKS_IN", source: "Contractors", target: "Sites" },
+    { iri: `${BASE}/vocab/rel/WORKS_IN`, type: "WORKS_IN", source: "Employees", target: "Sites", join: "WORKS_IN" },
+    { iri: `${BASE}/vocab/rel/WORKS_IN`, type: "WORKS_IN", source: "Contractors", target: "Sites", join: "WORKS_IN" },
   ],
   concepts: [],
 };
@@ -69,11 +69,11 @@ const two: SparqlVocabulary = {
   base: BASE,
   prefixes: { hr: `${BASE}/hr/`, ops: `${BASE}/ops/`, rel: `${BASE}/vocab/rel/` },
   classes: [
-    { iri: `${BASE}/hr/employees`, kind: "table", labels: ["Employees"], superclasses: [] },
-    { iri: `${BASE}/ops/shifts`, kind: "table", labels: ["Shifts"], superclasses: [] },
+    { iri: `${BASE}/hr/employees`, kind: "table", labels: ["Employees"], parameterized: false, parameterized_labels: [], superclasses: [] },
+    { iri: `${BASE}/ops/shifts`, kind: "table", labels: ["Shifts"], parameterized: false, parameterized_labels: [], superclasses: [] },
   ],
   predicates: [],
-  edges: [{ iri: `${BASE}/vocab/rel/WORKS`, type: "WORKS", source: "Employees", target: "Shifts" }],
+  edges: [{ iri: `${BASE}/vocab/rel/WORKS`, type: "WORKS", source: "Employees", target: "Shifts", join: "WORKS" }],
   concepts: [],
 };
 const panel = (checked: string[], colors: Record<string, string> = {}) =>
@@ -129,8 +129,8 @@ const shop: SparqlVocabulary = {
   base: BASE,
   prefixes: { hr: `${BASE}/hr/`, term: `${BASE}/vocab/term/` },
   classes: [
-    { iri: `${BASE}/hr/pets`, kind: "table", labels: ["PS__Pets"], superclasses: [] },
-    { iri: `${BASE}/hr/owners`, kind: "table", labels: ["PS__Owners"], superclasses: [] },
+    { iri: `${BASE}/hr/pets`, kind: "table", labels: ["PS__Pets"], parameterized: false, parameterized_labels: [], superclasses: [] },
+    { iri: `${BASE}/hr/owners`, kind: "table", labels: ["PS__Owners"], parameterized: false, parameterized_labels: [], superclasses: [] },
   ],
   predicates: [
     {
@@ -272,11 +272,13 @@ const termed: SparqlVocabulary = {
   base: BASE,
   prefixes: { hr: `${BASE}/hr/`, ops: `${BASE}/ops/`, term: `${BASE}/vocab/term/` },
   classes: [
-    { iri: `${BASE}/hr/employees`, kind: "table", labels: ["Employees"], superclasses: [] },
+    { iri: `${BASE}/hr/employees`, kind: "table", labels: ["Employees"], parameterized: false, parameterized_labels: [], superclasses: [] },
     {
       iri: `${BASE}/vocab/term/Staff`,
       kind: "term",
       labels: [],
+      parameterized: false,
+      parameterized_labels: [],
       superclasses: [],
       domains: ["hr"],
     },
@@ -284,6 +286,8 @@ const termed: SparqlVocabulary = {
       iri: `${BASE}/vocab/term/Shift`,
       kind: "term",
       labels: [],
+      parameterized: false,
+      parameterized_labels: [],
       superclasses: [],
       domains: ["ops"],
     },
@@ -291,10 +295,12 @@ const termed: SparqlVocabulary = {
       iri: `${BASE}/vocab/term/Both`,
       kind: "term",
       labels: [],
+      parameterized: false,
+      parameterized_labels: [],
       superclasses: [],
       domains: ["hr", "ops"],
     },
-    { iri: `${BASE}/vocab/term/Loose`, kind: "term", labels: [], superclasses: [], domains: [] },
+    { iri: `${BASE}/vocab/term/Loose`, kind: "term", labels: [], parameterized: false, parameterized_labels: [], superclasses: [], domains: [] },
   ],
   predicates: [
     {

@@ -75,7 +75,7 @@ def test_the_descriptor_is_the_union_of_every_roles_surface():
     wire = loaders.split("_wire_role = {")[1].split("state.wire_proto")[0]
 
     assert "for r in roles" in wire, "the wire descriptor no longer unions every role"
-    assert '"domain_access": ["*"]' in wire
+    assert '"domain_access": ["*", *SYSTEM_DOMAINS]' in wire
 
 
 def test_governance_is_not_expressed_by_the_descriptor():
