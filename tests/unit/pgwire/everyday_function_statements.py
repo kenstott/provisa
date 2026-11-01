@@ -167,11 +167,43 @@ SYSTEM = [
     "SELECT option_value FROM pg_options_to_table(ARRAY['fillfactor=70']) WHERE option_name = 'fillfactor'",
 ]
 
+_RANGE_TYPES = {
+    "int4": ("[1,2)", "[3,4)"),
+    "int8": ("[1,2)", "[3,4)"),
+    "num": ("[1.5,2.5)", "[3.5,4.5)"),
+    "date": ("[2020-01-01,2020-02-01)", "[2020-03-01,2020-04-01)"),
+    "ts": (
+        '["2020-01-01 00:00:00","2020-02-01 00:00:00")',
+        '["2020-03-01 00:00:00","2020-04-01 00:00:00")',
+    ),
+}
+RANGE = [
+    *(
+        f"SELECT {kind}multirange(VARIADIC ARRAY['{a}'::{kind}range,'{b}'::{kind}range])::text AS v"
+        for kind, (a, b) in _RANGE_TYPES.items()
+    ),
+    *(
+        f"SELECT {kind}multirange(VARIADIC NULL::{kind}range[]) AS v"
+        for kind in (*_RANGE_TYPES, "tstz")
+    ),
+    "SELECT int4multirange(VARIADIC ARRAY[]::int4range[])::text AS v",
+    "SELECT multirange_cmp('{[1,2)}'::int4multirange, '{[1,3)}'::int4multirange) AS v",
+    "SELECT multirange_cmp('{[1,3)}'::int4multirange, '{[1,3)}'::int4multirange) AS v",
+    "SELECT multirange_cmp('{[1,3),[5,6)}'::int4multirange, '{[1,3)}'::int4multirange) AS v",
+    "SELECT multirange_cmp(NULL::int4multirange, '{[1,3)}'::int4multirange) AS v",
+    "SELECT range_union(int4range(1,3), int4range(2,5))::text AS v",
+    "SELECT range_union(int4range(1,3), int4range(3,5))::text AS v",
+    "SELECT range_union(int4range(1,3), int4range(7,9))::text AS v",
+    "SELECT range_union(int4range(1,3), NULL::int4range) AS v",
+    "SELECT range_union(NULL::int4range, NULL::int4range) AS v",
+]
+
 #: What a statement needs of the database, run first on PostgreSQL.
 SETUP: list[str] = []
 
 STATEMENTS: dict[str, list[str]] = {
     "Array": ARRAY,
+    "Range": RANGE,
     "String": STRING,
     "Other": OTHER,
     "Aggregate and window": AGGREGATE,
@@ -183,6 +215,16 @@ STATEMENTS: dict[str, list[str]] = {
 #: The conformance probe's own statements (scripts/conformance/pgwire_function_probe.py), on the
 #: default engine alone: what a client's literal of an array reads as is not a function's.
 PROBES: dict[str, list[str]] = {
+    "Range": [
+        'SELECT pg_catalog."datemultirange"(VARIADIC NULL::daterange[]) AS v',
+        'SELECT pg_catalog."int4multirange"(VARIADIC NULL::int4range[]) AS v',
+        'SELECT pg_catalog."int8multirange"(VARIADIC NULL::int8range[]) AS v',
+        'SELECT pg_catalog."multirange_cmp"(NULL::int4multirange, NULL::int4multirange) AS v',
+        'SELECT pg_catalog."nummultirange"(VARIADIC NULL::numrange[]) AS v',
+        'SELECT pg_catalog."range_union"(NULL::int4range, NULL::int4range) AS v',
+        'SELECT pg_catalog."tsmultirange"(VARIADIC NULL::tsrange[]) AS v',
+        'SELECT pg_catalog."tstzmultirange"(VARIADIC NULL::tstzrange[]) AS v',
+    ],
     "String": [
         "SELECT anytextcat(1.50, 'a') AS v",
         'SELECT pg_catalog."anytextcat"(NULL::integer, NULL::text) AS v',
