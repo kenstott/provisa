@@ -789,6 +789,11 @@ def _numeric_conversions() -> tuple[Macro, ...]:
             )
             for name, sql_type in floats
         ),
+        _macro(
+            "jsonb_numeric",
+            "value",
+            strict("value", "VARCHAR", pg_forms.jsonb_number(digits, "numeric")),
+        ),
         *(
             _macro(f"jsonb_{name}", "value", strict("value", sql_type, as_integer(sql_type)))
             for name, sql_type in integers
@@ -1274,7 +1279,7 @@ _ROWS: tuple[Macro, ...] = (
     _pg(
         "nameconcatoid",
         "name, oid",
-        "LEFT(name, 63 - LENGTH('_' || CAST(oid AS TEXT))) || '_' || CAST(oid AS TEXT)",
+        "CAST(LEFT(name, 63 - LENGTH('_' || CAST(oid AS TEXT))) || '_' || CAST(oid AS TEXT) AS TEXT)",
     ),
     _macro("pg_typeof", "value", _PG_TYPEOF),
     *_SHAPES,
