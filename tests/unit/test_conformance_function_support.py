@@ -27,9 +27,11 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "conformance"))
 
+import fill_docs  # noqa: E402
+import function_report as report  # noqa: E402
 import function_support as support  # noqa: E402
 import pgwire_catalog_types as catalog  # noqa: E402
-from pgwire_function_probe import Function, call  # noqa: E402
+from pgwire_function_probe import Function, call, refused_by_name  # noqa: E402
 
 ABS = Function("abs", "integer", argtypes=("integer",), volatility="i", rettype="integer")
 
@@ -323,8 +325,12 @@ def test_a_read_of_json_as_text_compares_as_json_but_for_a_string(
 
 
 def test_a_read_cast_to_another_type_is_that_type():
+    # numeric's rule, by value and so equivalent, never JSON's: its scale is still not exact.
     a, b = _ok("1.50", oid=1700), _ok("1.5", oid=1700)
-    assert support.difference(a, b, values=True, sql="SELECT (d ->> 0)::numeric") is not None
+    compared = support.compare(a, b, values=True, sql="SELECT (d ->> 0)::numeric")
+    assert (compared.difference, set(compared.rules)) == (None, {report.NUMBER_VALUE})
+    other = _ok("1.6", oid=1700)
+    assert support.difference(a, other, values=True, sql="SELECT (d ->> 0)::numeric") is not None
 
 
 @pytest.mark.parametrize("oid", [114, 3802])
@@ -701,7 +707,7 @@ def test_the_guaranteed_list_is_answers_checked_and_form_checked_on_every_engine
     assert doc["guaranteed"]["functions"] == ["abs", "now"]
     assert doc["counts"]["a"]["pass_form_checked"] == 1
     text = support.merged_markdown(doc)
-    assert "| a | 3 | 1 | 1 | 1 | 0 | 0 | 0 | 0 |" in text
+    assert "| a | 3 | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 |" in text
     assert "| Numeric | 3 | 1 + 1 + 1 of 3 | 1 + 1 + 1 of 3 | 3 |" in text
     assert "**Guaranteed list:** 1 overloads with answers compared and 1 form checked" in text
     assert "1 more only called" in text
@@ -763,8 +769,8 @@ def test_the_summary_gives_every_engine_and_every_family():
         }
     )
     text = support.merged_markdown(doc)
-    assert "| a | 2 | 1 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
-    assert "| b | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert "| a | 2 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
+    assert "| b | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
     assert "| Numeric | 1 | 1 + 0 + 0 of 1 | 1 + 0 + 0 of 1 | 1 |" in text
     assert "| String | 1 | 0 + 0 + 0 of 1 | 1 + 0 + 0 of 1 | 0 |" in text
     assert "1 overloads with answers compared" in text
@@ -848,3 +854,622 @@ def test_the_instance_keeps_its_embedded_control_plane_unless_it_is_given_one():
     )
     assert action["inputs"]["control-plane-url"]["default"] == ""
     assert action["inputs"]["boot-attempts"]["default"] == "90"
+
+
+# --- results by engine (REQ-2171, EXACT OR EQUIVALENT and RESULTS ARE BY ENGINE) --------------
+
+
+def _compare(want: dict[str, Any], got: dict[str, Any], sql: str = "SELECT 1", **given: Any) -> Any:
+    return support.compare(want, got, values=True, sql=sql, **given)
+
+
+def _rules_of(
+    want: dict[str, Any], got: dict[str, Any], sql: str = "SELECT 1", **given: Any
+) -> Any:
+    compared = _compare(want, got, sql, **given)
+    assert compared.difference is None
+    return set(compared.rules)
+
+
+def test_the_same_text_is_exact_under_no_rule():
+    assert _rules_of(_ok("1", "2"), _ok("1", "2")) == set()
+
+
+@pytest.mark.parametrize(
+    ("want", "got", "oid", "rule"),
+    [
+        ('{"a": 1}', '{"a":1}', 3802, report.JSON_SPACING),
+        ('(b,"[1, 2]")', '(b,"[1,2]")', 2249, report.JSON_SPACING),
+        ('{"a": 1.50}', '{"a": 1.5}', 3802, report.NUMBER_VALUE),
+        ("2.50", "2.5", 1700, report.NUMBER_VALUE),
+        ("{1.50,2}", "{1.5,2.0}", 1231, report.NUMBER_VALUE),
+        ("100", "100.0", 701, report.NUMBER_VALUE),
+        ("0.1", "0.10000000000000001", 701, report.NUMBER_VALUE),
+        ("1.00000000000000012", "1.00000000000000011", 1700, None),
+        ("6.9077552789821371", "6.907755278982137", 1700, None),
+        ("3.141592653589793", "3.1415926535897936", 701, report.FLOAT_CLOSE),
+        ('{"a": 1, "b": 2}', '{"b": 2, "a": 1}', 3802, report.JSON_KEY_ORDER),
+    ],
+)
+def test_a_rule_names_what_made_two_texts_the_same(want, got, oid, rule):
+    if rule is None:
+        assert _compare(_ok(want, oid=oid), _ok(got, oid=oid)).difference is not None
+    else:
+        assert rule in _rules_of(_ok(want, oid=oid), _ok(got, oid=oid))
+
+
+def test_an_aggregate_s_array_with_no_order_by_compares_in_any_order():
+    sql = "SELECT json_agg(c1) FROM t"
+    rules = _rules_of(_ok("[1, 2]", oid=114), _ok("[2,1]", oid=114), sql)
+    assert report.ARRAY_ORDER in rules and report.JSON_SPACING in rules
+    ordered = "SELECT json_agg(c1 ORDER BY c1) FROM t"
+    assert _compare(_ok("[1,2]", oid=114), _ok("[2,1]", oid=114), ordered).difference is not None
+
+
+def test_rows_in_another_order_are_equivalent_and_only_then():
+    assert _rules_of(_ok("1", "2"), _ok("2", "1")) == {report.ROW_ORDER}
+    assert _compare(_ok("1", "2"), _ok("1", "3")).difference == "'3', PostgreSQL '2'"
+
+
+def test_an_enum_label_sent_as_text_is_equivalent_and_no_other_type_is():
+    enums = frozenset({16400, 16399})
+    want, got = _ok("red", oid=16400), _ok("red", oid=25)
+    assert _rules_of(want, got, enums=enums) == {report.ENUM_LABEL}
+    assert _rules_of(_ok("{a,b}", oid=16399), _ok("{a,b}", oid=1009), enums=enums) == {
+        report.ENUM_LABEL
+    }
+    # The label must still match, and the oid must be an enum's.
+    assert _compare(want, _ok("blue", oid=25), enums=enums).difference is not None
+    assert _compare(_ok("7", oid=23), _ok("7", oid=25), enums=enums).difference is not None
+    assert _compare(want, _ok("red", oid=23), enums=enums).difference is not None
+
+
+def test_an_answer_about_the_database_is_equivalent_for_those_functions_only():
+    schema = "<xsd:schema>{}</xsd:schema>"
+    want, got = _ok(schema.format("pg"), oid=142), _ok(schema.format("model"), oid=142)
+    rules = _rules_of(want, got, function="database_to_xmlschema")
+    assert rules == {report.MODEL_ANSWER}
+    assert _compare(want, got, function="xmlcomment").difference is not None
+    garbled = _ok("not xml", oid=142)
+    assert _compare(want, garbled, function="database_to_xmlschema").difference is not None
+
+
+def test_a_record_compares_json_only_in_its_json_fields():
+    assert _compare(_ok('(a,"[1]")', oid=2249), _ok('(b,"[1]")', oid=2249)).difference
+    assert _compare(_ok('(a,"[1,2]")', oid=2249), _ok('(a,"[1,3]")', oid=2249)).difference
+    # A text field holding digits is text.
+    assert _compare(_ok("(a,1.50)", oid=2249), _ok("(a,1.5)", oid=2249)).difference
+    quoted = _ok('(a,"{""k"": ""x,y""}")', oid=2249), _ok('(a,"{""k"":""x,y""}")', oid=2249)
+    assert _rules_of(*quoted) == {report.JSON_SPACING}
+
+
+def test_a_number_that_differs_in_value_stays_a_wrong_answer():
+    assert _compare(_ok("2.5", oid=1700), _ok("2", oid=1700)).difference == "'2', PostgreSQL '2.5'"
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        lambda: __import__("provisa.transpiler.function_macros", fromlist=["x"]).FunctionRefused(
+            "int4", "trino"
+        ),
+        lambda: __import__(
+            "provisa.transpiler.metadata_functions", fromlist=["x"]
+        ).MetadataFunctionRefused("nextval"),
+        lambda: __import__("provisa.transpiler.pg_xml", fromlist=["x"]).XmlFunctionRefused(
+            "xpath", "clickhouse"
+        ),
+        lambda: __import__(
+            "provisa.transpiler.native_subtype", fromlist=["x"]
+        ).SubtypeOperationRefused("money", "cast to text", "clickhouse"),
+        lambda: __import__(
+            "provisa.transpiler.metadata_settings", fromlist=["x"]
+        ).CatalogViewRefused("pg_settings"),
+    ],
+)
+def test_each_refusal_the_product_raises_is_refused_by_name(refusal):
+    assert refused_by_name(f"ERROR:  {refusal()}")
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "ERROR:  to_char: a format that is not a literal is not supported; each of its elements",
+        "ERROR:  to_char: the format element 'Q' is not supported; it is not answered by a guess",
+        "ERROR:  encode: a format that is not a literal is not supported; it is chosen where",
+        "ERROR:  inetmi does not read this value",
+        'ERROR:  [V006] Table function "JSON_TO_RECORDSET" is not a governed relation',
+    ],
+)
+def test_the_refusals_written_as_text_are_refused_by_name(error):
+    assert refused_by_name(error)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "ERROR:  Code: 50. DB::Exception: Unknown data type family: CSTRING.",
+        "ERROR:  Catalog Error: Scalar Function with name ts_headline does not exist!",
+        "ERROR:  Expected TYPE after CAST. Line 1, Col: 38.",
+        "ERROR:  FederationError(type=USER_ERROR, name=NOT_SUPPORTED, message='x', query_id=q)",
+        "ERROR:  'NoneType' object has no attribute 'name'",
+        "no answer in 30s",
+        "connection: consuming input failed",
+    ],
+)
+def test_an_engine_s_own_error_is_no_refusal(error):
+    assert not refused_by_name(error)
+
+
+def test_measure_keeps_a_named_refusal_apart_from_an_engine_error():
+    named = {"ok": False, "error": "ERROR:  abs() has no form on trino"}
+    entry = _both(ABS, "Numeric", _ok("3"), named)
+    assert entry["outcome"] == "refused"
+    assert entry["detail"]["error"].endswith("has no form on trino")
+    raw = {"ok": False, "error": "ERROR:  Code: 46. DB::Exception: no function"}
+    assert _both(ABS, "Numeric", _ok("3"), raw)["outcome"] == "error"
+
+
+def test_a_wrong_answer_on_one_call_outranks_a_refusal_on_another():
+    calls_ = [c.sql for c in support.calls(ABS, "Numeric")]
+    got = {
+        calls_[0]: {"ok": False, "error": "ERROR:  abs() has no form on trino"},
+        **{sql: _ok("9") for sql in calls_[1:]},
+    }
+    want = {sql: _ok("3") for sql in calls_}
+    entry = support.measure_overload(ABS, "Numeric", Fake(want), Fake(got), _route)
+    assert entry["outcome"] == "wrong_answer"
+
+
+def test_a_pass_keeps_the_rules_it_took():
+    entry = _both(ABS, "Numeric", _ok("2.50", oid=1700), _ok("2.5", oid=1700))
+    assert (entry["outcome"], entry["rules"]) == ("pass", [report.NUMBER_VALUE])
+
+
+def _results(*by_engine: tuple[str, str, list[str]]) -> dict[str, Any]:
+    """The engines' one overload of abs, each an outcome and its rules."""
+    entries = {
+        engine: {**_entry("abs", outcome), "rules": rules, "detail": {"difference": "x"}}
+        for engine, outcome, rules in by_engine
+    }
+    return support.merged(
+        {engine: _report(engine, entry) for engine, entry in entries.items()},
+    )
+
+
+def test_each_overload_has_a_result_per_engine():
+    doc = _results(
+        ("pg", "pass", []),
+        ("duckdb", "pass", [report.ROW_ORDER]),
+        ("trino", "refused", []),
+        ("clickhouse", "wrong_answer", []),
+    )
+    outcomes = doc["functions"][0]["outcomes"]
+    assert {e: o["result"] for e, o in outcomes.items()} == {
+        "pg": "exact",
+        "duckdb": "equivalent",
+        "trino": "refused",
+        "clickhouse": "differs",
+    }
+    assert outcomes["duckdb"]["rules"] == [report.ROW_ORDER]
+    assert outcomes["pg"]["check"] == "answers"
+
+
+def test_the_counts_are_per_engine_in_stable_keys_and_nothing_adds_the_engines():
+    doc = _results(("pg", "pass", []), ("duckdb", "error", []))
+    assert set(doc["by_engine"]) == {"pg", "duckdb"}
+    assert tuple(doc["by_engine"]["pg"]) == report.RESULT_KEYS + report.COLUMN_KEYS
+    assert doc["by_engine"]["pg"]["exact"] == 1
+    assert doc["by_engine"]["duckdb"]["differs"] == 1
+    assert doc["by_engine"]["duckdb"]["differs_engine_error"] == 1
+    assert doc["by_engine"]["duckdb"]["differs_wrong_answer"] == 0
+    assert "failed" not in doc and "total" not in doc
+
+
+def test_an_engine_that_left_no_result_has_none_for_each_overload():
+    doc = support.merged({"pg": _report("pg", _entry("abs", "pass")), "trino": None})
+    assert doc["functions"][0]["outcomes"]["trino"]["result"] == "not_reached"
+    assert doc["by_engine"]["trino"]["not_reached"] == 1
+    assert "**Incomplete engines:** Trino." in report.pgwire_block(doc)
+
+
+def test_what_no_engine_serves_is_counted_by_family():
+    both = {"a": ("sqrt", "refused"), "b": ("sqrt", "wrong_answer")}
+    doc = support.merged(
+        {
+            engine: _report(
+                engine,
+                _entry("abs", "pass" if engine == "a" else "refused"),
+                _entry(*both[engine]),
+                {**_entry("lo_in", "not_callable"), "family": "Other"},
+            )
+            for engine in ("a", "b")
+        }
+    )
+    assert doc["no_engine"] == {
+        "overloads": 1,
+        "functions": 1,
+        "by_family": {"Numeric": {"overloads": 1, "functions": 1}},
+    }
+
+
+def test_a_rule_is_a_footnote_linked_from_every_test_it_covers():
+    doc = _results(("pg", "pass", []), ("duckdb", "pass", [report.ROW_ORDER, report.NUMBER_VALUE]))
+    page = report.pgwire_block(doc)
+    number = next(r["footnote"] for r in doc["rules"] if r["key"] == report.ROW_ORDER)
+    assert f"[{number}](#rule-row-order)" in page
+    assert '<a id="rule-row-order"></a>' in page
+    assert "| `abs(integer)` | exact | equivalent " in page
+    covered = next(r for r in doc["rules"] if r["key"] == report.ROW_ORDER)["overloads"]
+    assert covered == {"duckdb": 1, "pg": 0}
+    assert "Overloads covered: Postgres 0, DuckDB 1." in page
+
+
+def test_the_rules_are_the_ones_the_requirement_and_the_brief_name():
+    assert [rule.key for rule in report.RULES] == [
+        report.JSON_SPACING,
+        report.ENUM_LABEL,
+        report.ROW_ORDER,
+        report.NUMBER_VALUE,
+        report.MODEL_ANSWER,
+        report.FLOAT_CLOSE,
+        report.JSON_KEY_ORDER,
+        report.ARRAY_ORDER,
+    ]
+
+
+def test_the_report_has_no_overall_failed_count_and_keeps_a_wrong_answer_in_view():
+    doc = _results(("pg", "wrong_answer", []), ("duckdb", "refused", []))
+    for text in (
+        report.pgwire_block(doc),
+        report.overview_block(doc),
+        support.merged_markdown(doc),
+    ):
+        assert "failed" not in text.lower()
+    assert "| `abs(integer)` | x |" in report.pgwire_block(doc)
+
+
+def test_a_cell_says_what_was_checked_of_an_exact_result():
+    assert report.cell({"outcome": "pass", "check": "answers"}) == "exact"
+    assert report.cell({"outcome": "pass", "check": "form"}) == "exact (form only)"
+    assert report.cell({"outcome": "pass", "check": "call"}) == "exact (call only)"
+    assert report.cell({"outcome": "error"}) == "differs (error)"
+    assert report.cell({"outcome": "not_callable"}) == "n/a"
+
+
+def test_both_pages_are_filled_from_the_results_between_their_markers(tmp_path):
+    doc = _results(("pg", "pass", []), ("duckdb", "refused", []))
+    begin, end = fill_docs.FUNCTIONS_BEGIN, fill_docs.FUNCTIONS_END
+    for name in ("pgwire.md", "overview.md"):
+        (tmp_path / name).write_text(f"# Page\n\n{begin}\nstale text\n{end}\n\nAfter.\n")
+    fill_docs.fill_function_pages(doc, tmp_path)
+    for name in ("pgwire.md", "overview.md"):
+        text = (tmp_path / name).read_text()
+        assert "stale text" not in text and "After." in text
+        assert "| Postgres | 1 | 0 | 0 | 0 | 0 |" in text
+        assert "| DuckDB | 0 | 0 | 1 | 0 | 0 |" in text
+
+
+def test_a_page_without_markers_is_refused():
+    with pytest.raises(ValueError, match="no function-results markers"):
+        fill_docs.fill_functions("# Page\n", "x")
+
+
+def test_the_published_pages_have_the_markers():
+    for name in ("pgwire.md", "overview.md"):
+        text = (fill_docs.DOCS / name).read_text()
+        assert fill_docs.FUNCTIONS_BEGIN in text and fill_docs.FUNCTIONS_END in text
+
+
+def test_the_merge_job_regenerates_the_pages_and_uploads_them():
+    merge = _workflow()["jobs"]["merge"]
+    merged_step = next(s for s in merge["steps"] if s.get("name") == "Merge the legs")
+    assert "fill_docs.py scripts/conformance/function_support.json" in merged_step["run"]
+    upload = next(s for s in merge["steps"] if "pages" in s.get("name", ""))
+    assert "docs/conformance/pgwire.md" in upload["with"]["path"]
+    assert "docs/conformance/overview.md" in upload["with"]["path"]
+
+
+# --- literals and columns -------------------------------------------------------------------------
+
+TO_TSVECTOR = Function(
+    "to_tsvector", "text", argtypes=("text",), volatility="s", rettype="tsvector"
+)
+REFUSED_ON_COLUMN = "ERROR:  to_tsvector() has no form on duckdb"
+
+
+class Served(Fake):
+    """A server answering every value call ``answer``, and a column call as ``column`` says."""
+
+    def __init__(self, answer: dict[str, Any], column: dict[str, Any]) -> None:
+        super().__init__({})
+        self.literal, self.column = answer, column
+
+    def answer(self, sql: str) -> dict[str, Any]:
+        reads_a_column = " FROM " in sql
+        return self.column if reads_a_column else self.literal
+
+
+def _measured(column: dict[str, Any]) -> dict[str, Any]:
+    pg = Served(_ok("cat", oid=3614), _ok("cat", oid=3614))
+    provisa = Served(_ok("cat", oid=3614), column)
+    return support.measure_overload(TO_TSVECTOR, "Text search", pg, provisa, _route)
+
+
+def _doc(entry: dict[str, Any]) -> dict[str, Any]:
+    return support.merged({"duckdb": _report("duckdb", entry)})
+
+
+def test_a_sampled_argument_reads_its_column_row_by_row():
+    assert [c.sql for c in support.column_calls(ABS, "Numeric")] == [
+        'SELECT pg_catalog."abs"(c_integer) AS v FROM conformance.function_columns WHERE id = 1',
+        'SELECT pg_catalog."abs"(c_integer) AS v FROM conformance.function_columns WHERE id = 2',
+        'SELECT pg_catalog."abs"(c_integer) AS v FROM conformance.function_columns WHERE id = 3',
+    ]
+
+
+def test_every_sample_has_a_column_of_its_own():
+    columns = [support.sample_column(t) for t in support.SAMPLES]
+    assert len(set(columns)) == len(columns)
+    assert all(c.replace("_", "").isalnum() for c in columns)
+    assert support.sample_column("integer[]") == "c_integer_array"
+    assert support.sample_column('"char"') == "c_char"
+    assert support.sample_column("character") == "c_character"
+
+
+def test_a_literal_a_function_needs_stays_a_literal():
+    fn = Function(
+        "date_trunc",
+        "text, date",
+        argtypes=("text", "date"),
+        volatility="i",
+    )
+    assert support.column_calls(fn, "Date")[0].sql == (
+        "SELECT pg_catalog.\"date_trunc\"('day'::text, c_date) AS v "
+        "FROM conformance.function_columns WHERE id = 1"
+    )
+
+
+def test_an_overload_of_given_literals_alone_reads_its_first_from_values_of_that_row():
+    fn = Function(
+        "to_timestamp",
+        "double precision",
+        argtypes=("double precision",),
+        volatility="i",
+    )
+    assert [c.sql for c in support.column_calls(fn, "Date")][2] == (
+        'SELECT pg_catalog."to_timestamp"(c1) AS v '
+        "FROM (VALUES (3, '1999'::double precision)) AS t(id, c1) WHERE id = 3"
+    )
+
+
+def test_a_variadic_array_column_is_passed_as_variadic():
+    fn = Function(
+        "concat_ws",
+        "text, VARIADIC text[]",
+        argtypes=("text", "text[]"),
+        variadic=True,
+        volatility="s",
+    )
+    assert "(c_text, VARIADIC c_text_array)" in support.column_calls(fn, "String")[0].sql
+
+
+def test_an_aggregate_reads_every_row_of_its_column_in_a_stated_order():
+    fn = Function("string_agg", "text, text", kind="a", argtypes=("text", "text"), volatility="i")
+    assert [c.sql for c in support.column_calls(fn, "String")] == [
+        'SELECT pg_catalog."string_agg"(c_text, c_text ORDER BY id) AS v '
+        "FROM conformance.function_columns"
+    ]
+
+
+def test_an_ordered_set_aggregate_keeps_its_direct_argument_a_literal():
+    fn = Function(
+        "percentile_disc",
+        "double precision ORDER BY anyelement",
+        kind="a",
+        aggkind="o",
+        direct=1,
+        argtypes=("double precision", "anyelement"),
+        volatility="i",
+    )
+    assert support.column_calls(fn, "Aggregate and window")[0].sql == (
+        'SELECT pg_catalog."percentile_disc"(0.25::double precision) '
+        "WITHIN GROUP (ORDER BY c_integer) AS v FROM conformance.function_columns"
+    )
+
+
+def test_a_hypothetical_set_aggregate_orders_by_the_column_it_ranks_a_literal_in():
+    fn = Function(
+        "rank",
+        'VARIADIC "any" ORDER BY VARIADIC "any"',
+        kind="a",
+        aggkind="h",
+        direct=1,
+        argtypes=('"any"',),
+        volatility="i",
+    )
+    assert support.column_calls(fn, "Aggregate and window")[0].sql == (
+        'SELECT pg_catalog."rank"(3::integer) WITHIN GROUP (ORDER BY c_integer) AS v '
+        "FROM conformance.function_columns"
+    )
+
+
+def test_a_window_function_reads_its_column_over_a_stated_order():
+    fn = Function("lag", "anyelement", kind="w", argtypes=("anyelement",), volatility="i")
+    assert support.column_calls(fn, "Aggregate and window")[0].sql == (
+        'SELECT pg_catalog."lag"(c_integer) OVER (ORDER BY id) AS v '
+        "FROM conformance.function_columns"
+    )
+
+
+@pytest.mark.parametrize(
+    "fn",
+    [
+        Function("pi", "", volatility="i"),
+        Function("setval", "text", argtypes=("text",), volatility="v"),
+        Function("int4in", "cstring", argtypes=("cstring",), volatility="i"),
+    ],
+)
+def test_an_overload_with_no_sample_value_has_no_column_call(fn):
+    assert support.column_calls(fn, "Numeric") == []
+
+
+def test_a_form_that_serves_literals_and_refuses_columns_is_reported_literal_only():
+    entry = _measured({"ok": False, "error": REFUSED_ON_COLUMN})
+    assert entry["outcome"] == "pass"
+    assert entry["column"]["outcome"] == "refused"
+    doc = _doc(entry)
+    engine = doc["by_engine"]["duckdb"]
+    assert engine["pass_literal_only"] == 1
+    assert engine["pass_literal_only_overloads"] == ["to_tsvector(text)"]
+    assert engine["pass_literal_and_column"] == 0
+    assert engine["pass_literal_and_column_overloads"] == []
+    assert engine["exact"] == 1 and engine["refused_by_name"] == 0
+    assert doc["functions"][0]["outcomes"]["duckdb"]["result"] == report.EXACT
+    assert doc["guaranteed"]["answers_checked"] == ["to_tsvector(text)"]
+
+
+def test_a_form_that_serves_both_passes_on_literals_and_columns():
+    doc = _doc(_measured(_ok("cat", oid=3614)))
+    engine = doc["by_engine"]["duckdb"]
+    assert engine["pass_literal_and_column"] == 1
+    assert engine["pass_literal_and_column_overloads"] == ["to_tsvector(text)"]
+    assert engine["pass_literal_only"] == 0
+
+
+@pytest.mark.parametrize(
+    ("column", "outcome"),
+    [
+        ({"ok": False, "error": "ERROR:  Binder Error: no such thing"}, "error"),
+        (_ok("dog", oid=3614), "wrong_answer"),
+        (_ok("cat", oid=25), "wrong_answer"),
+    ],
+)
+def test_any_column_call_that_fails_is_literal_only(column, outcome):
+    entry = _measured(column)
+    assert (entry["outcome"], entry["column"]["outcome"]) == ("pass", outcome)
+    assert _doc(entry)["by_engine"]["duckdb"]["pass_literal_only"] == 1
+
+
+def test_a_column_rule_is_the_columns_own_and_leaves_the_result_exact():
+    pg = Served(_ok("cat", oid=1700), _ok("2.50", oid=1700))
+    provisa = Served(_ok("cat", oid=1700), _ok("2.5", oid=1700))
+    entry = support.measure_overload(TO_TSVECTOR, "Text search", pg, provisa, _route)
+    assert entry["rules"] == []
+    assert entry["column"] == {"outcome": "pass", "rules": [report.NUMBER_VALUE]}
+    assert _doc(entry)["by_engine"]["duckdb"]["exact"] == 1
+
+
+def test_a_failing_overload_is_on_neither_list_whatever_its_column_does():
+    pg = Served(_ok("cat", oid=3614), _ok("cat", oid=3614))
+    provisa = Served({"ok": False, "error": REFUSED_ON_COLUMN}, _ok("cat", oid=3614))
+    entry = support.measure_overload(TO_TSVECTOR, "Text search", pg, provisa, _route)
+    assert entry["outcome"] == "refused"
+    engine = _doc(entry)["by_engine"]["duckdb"]
+    assert engine["refused_by_name"] == 1
+    assert engine["pass_literal_and_column"] == engine["pass_literal_only"] == 0
+
+
+def test_the_column_call_compared_is_the_first_postgresql_answers():
+    planned = [c.sql for c in support.column_calls(ABS, "Numeric")]
+    pg = Fake({planned[0]: {"ok": False, "error": "ERROR:  out of range"}, planned[1]: _ok("7")})
+    provisa = Fake({planned[1]: _ok("7")})
+    assert support.measure_column(ABS, "Numeric", pg, provisa) == {"outcome": "pass", "rules": []}
+
+
+def test_a_column_call_postgresql_refuses_leaves_no_column_result():
+    assert support.measure_column(ABS, "Numeric", Fake({}), Fake({})) is None
+    doc = _doc({**_entry("abs", "pass"), "rules": []})
+    assert doc["by_engine"]["duckdb"]["pass_no_column_call"] == 1
+    assert doc["by_engine"]["duckdb"]["pass_literal_only"] == 0
+
+
+def test_a_leg_whose_model_lacks_the_table_stops_rather_than_lists_every_overload():
+    with pytest.raises(SystemExit, match="function_columns is not served"):
+        support.require_column_table(Fake({}))
+    rows = _ok(1, 2, 3)
+    support.require_column_table(Fake({f"SELECT id FROM {support.COLUMN_RELATION}": rows}))
+
+
+def test_the_results_a_floor_reads_keep_their_keys():
+    assert report.RESULT_KEYS == (
+        "exact",
+        "equivalent",
+        "refused_by_name",
+        "differs",
+        "differs_wrong_answer",
+        "differs_engine_error",
+        "not_callable",
+        "not_reached",
+        "total",
+    )
+    assert not set(report.RESULT_KEYS) & set(report.COLUMN_KEYS)
+
+
+def test_the_overview_and_the_summary_count_and_list_literal_only_by_engine():
+    doc = support.merged(
+        {
+            "duckdb": _report("duckdb", _measured({"ok": False, "error": REFUSED_ON_COLUMN})),
+            "pg": _report("pg", _measured(_ok("cat", oid=3614))),
+        }
+    )
+    assert "| Engine | Literals and columns | Literals only | No column call |" in (
+        report.overview_block(doc)
+    )
+    for block in (report.overview_block(doc), report.summary_block(doc), report.pgwire_block(doc)):
+        assert "| DuckDB | 0 | 1 | 0 |" in block
+        assert "| Postgres | 1 | 0 | 0 |" in block
+        assert "<details><summary>DuckDB (1)</summary>" in block
+        assert "| `to_tsvector(text)` | ERROR: to_tsvector() has no form on duckdb |" in block
+        assert "<summary>Postgres" not in block.split("Every overload")[0]
+
+
+def test_a_leg_s_summary_says_how_many_pass_on_literals_only():
+    leg = _report("duckdb", _measured({"ok": False, "error": REFUSED_ON_COLUMN}))
+    leg["postgres_version"] = "17.11"
+    assert "On literals only: 1." in support.engine_markdown(leg)
+
+
+def test_the_column_table_seeds_each_sample_and_registers_as_registration_types(
+    tmp_path, monkeypatch
+):
+    statements: list[str] = []
+
+    class Conn:
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *_: Any) -> None:
+            return None
+
+        def execute(self, sql: str) -> None:
+            statements.append(sql)
+
+    monkeypatch.setattr(support.psycopg, "connect", lambda *_a, **_k: Conn())
+    monkeypatch.setattr(catalog, "_sized_numeric", lambda *_a: {"data_type": "numeric(38,3)"})
+    out = tmp_path / "tables.yaml"
+    support.seed_columns("dsn", out)
+    inserts = [s for s in statements if s.startswith("INSERT")]
+    assert len(inserts) == support.VALUE_ROWS
+    assert inserts[0].startswith("INSERT INTO conformance.function_columns VALUES (1, 3::smallint")
+    assert "'cat:1 fat:2'::tsvector" in inserts[0] and "'rat:3A'::tsvector" in inserts[2]
+    [table] = yaml.safe_load(out.read_text())
+    assert table["table"] == "function_columns" and table["source_id"] == "conformance-pg"
+    columns = {c["name"]: c for c in table["columns"]}
+    assert set(columns) == {"id", *map(support.sample_column, support.SAMPLES)}
+    assert columns["c_tsvector"]["data_type"] == "tsvector"
+    assert columns["c_numeric"]["data_type"] == "numeric(38,3)"
+    assert all(c["visible_to"] == ["org_admin"] for c in table["columns"])
+
+
+def test_a_leg_seeds_the_column_table_and_gives_it_to_the_instance_after_the_engine_is_up():
+    steps = _workflow()["jobs"]["probe"]["steps"]
+    names = [s.get("name") for s in steps]
+    assert names.index("Start the Trino stack") < names.index("Seed the table column calls read")
+    assert names.index("Seed the table column calls read") < names.index(
+        "Start the Provisa instance"
+    )
+    seed = steps[names.index("Seed the table column calls read")]["run"]
+    assert "seed-columns" in seed and '"$RUNNER_TEMP/function-columns.yaml"' in seed
+    instance = steps[names.index("Start the Provisa instance")]["with"]
+    assert instance["extra-tables"] == "${{ runner.temp }}/function-columns.yaml"

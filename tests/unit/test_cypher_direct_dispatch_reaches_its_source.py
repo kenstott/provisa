@@ -42,6 +42,13 @@ class _ControlPlane:
         store = self
 
         class _Conn:
+            @asynccontextmanager
+            async def transaction(self):
+                yield
+
+            async def execute(self, sql):
+                pass
+
             async def fetch_with_columns(self, sql, *args, bind_as_given=False):
                 store.ran.append(sql)
                 return ["id"], [(1,)]
