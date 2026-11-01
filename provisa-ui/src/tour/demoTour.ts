@@ -166,6 +166,9 @@ const SQL_RESULT_ROW = '.sql-results-table tbody tr:not([data-testid="results-gr
 // A statement refused, as the explorer shows it: the provisioning close read outside its view's
 // load window is refused by design, and its step shows the refusal rather than ending the tour.
 const SQL_RESULT_ERROR = '[data-testid="sql-results-error"]';
+// A statement run and answered with no rows: the page's "No results." of a tab not yet run is not
+// this. A demo's statements answer rows, so the step stops, saying so (REQ-2052).
+const SQL_RESULT_EMPTY = '[data-testid="sql-results-empty"][data-answered]';
 
 const RELATIONSHIPS_PAGE = "/relationships";
 
@@ -286,6 +289,7 @@ function demoTourStep(
       readySelector: `${SQL_RESULT_ROW}, ${SQL_RESULT_ERROR}`,
       element: `.sql-results-table, ${SQL_RESULT_ERROR}`,
       waitMs: RESULT_WAIT_MS,
+      absent: SQL_RESULT_EMPTY,
     };
   }
   // Each runs on its page and is awaited as the SQL statement is: by a mark the page shows only

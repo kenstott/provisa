@@ -8957,5 +8957,13 @@
   "it/serverErrors.json::serverErrors.sandbox.failed_to_start": "The demo server could not be started. Try again later.",
   "it/jsonApiPage.json::jsonApiPage.removeHandedParam": "Remove {{param}}",
   "it/graphFrame.json::graphFrame.sparqlDropParameterized": "A path can't go through {{name}}: it takes arguments to read. Nothing was added.",
-  "it/graphFrame.json::graphFrame.sparqlDropEdgeParameterized": "{{name}} leads to a table that takes arguments to read, and a path can't go through one. Nothing was added."
+  "it/graphFrame.json::graphFrame.sparqlDropEdgeParameterized": "{{name}} leads to a table that takes arguments to read, and a path can't go through one. Nothing was added.",
+  "it/dataProductsTab.json::dataProductsTab.contract.notDeclaredList": "Not declared: {{names}}",
+  "it/dataProductsTab.json::dataProductsTab.contract.versionSaved": "Saved",
+  "it/dataProductsTab.json::dataProductsTab.contract.versionChanges": "Changes",
+  "it/dataProductsTab.json::dataProductsTab.contract.card.roles": "Roles",
+  "it/dataProductsTab.json::dataProductsTab.contract.card.history": "Version history",
+  "it/dataProductsTab.json::dataProductsTab.contract.constraints": "Constraints",
+  "it/serverErrors.json::serverErrors.query.catalog_view_refused": "{{view}} is a catalog view of the meta domain and cannot be read in one statement with a table of a data source: read them in two statements.",
+  "it/serverErrors.json::serverErrors.query.function_unsupported": "{{function}}() has no form on {{dialect}}."
 }

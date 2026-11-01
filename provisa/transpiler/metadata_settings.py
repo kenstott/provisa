@@ -18,7 +18,7 @@ terminal is refused (:func:`refuse_client_settings`)."""
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -36,15 +36,50 @@ NAMES = (
     "application_name",
     "backend_start",
     "query",
+    "scope",
+    "asked",
 )
 _PREFIX = "provisa.catalog"
 _WRITES_SETTINGS = re.compile(r"\bset_config\b", re.IGNORECASE)
+
+
+#: The role a client's SQL runs as on the control plane: it may read the views and call what
+#: PostgreSQL gives every role, and it is no member of pg_read_server_files, pg_read_all_stats or
+#: anything else. Its schema grants are written with the views' (provisa.api.startup_seed).
+CLIENT_ROLE = "provisa_catalog_client"
+
+
+def enter_client_role() -> str:
+    """The statement that makes the rest of this transaction's SQL the client role's."""
+    return f"SET LOCAL ROLE {CLIENT_ROLE}"
 
 
 def setting(name: str) -> str:
     """SQL reading setting ``name``: NULL or empty on a statement that was not given it."""
     assert name in NAMES, name
     return f"NULLIF(CURRENT_SETTING('{_PREFIX}.{name}', TRUE), '')"
+
+
+def scope_ids_sql() -> str:
+    """The table ids a role's meta rows are scoped to, told once by the statement's settings: a
+    list written into the statement would be parsed, governed and planned for each view it
+    reads. A statement that was not told them reads none."""
+    return f"SELECT UNNEST(CAST({setting('scope')} AS INTEGER[]))"
+
+
+def asked_sql(*names: str) -> str:
+    """Whether a row with any of ``names`` (SQL) is one the statement asks about: the relation
+    names a statement's pin tells its views (provisa.pgwire.catalog_pin), all of them where none
+    was told."""
+    asked = f"CAST({setting('asked')} AS TEXT[])"
+    matches = " OR ".join(f"{name} = ANY({asked})" for name in names)
+    return f"({setting('asked')} IS NULL OR {matches})"
+
+
+def relation_names_literal(names: Iterable[str]) -> str:
+    """``names`` as the array literal :func:`asked_sql` reads."""
+    written = (name.replace("\\", "\\\\").replace('"', '\\"') for name in sorted(names))
+    return "{" + ",".join(f'"{name}"' for name in written) + "}"
 
 
 def set_statement(values: Mapping[str, str]) -> tuple[str, tuple[str, ...]]:
@@ -63,10 +98,11 @@ def statement_settings(
     domain_prefix: bool,
     *,
     session: Mapping[str, str] | None = None,
+    scope: str | None = None,
 ) -> dict[str, str]:
     """What a statement's catalog views are told: who asks, what database it is on, the naming in
-    force, and, where a connection asks, that connection (pid, application_name, backend_start,
-    query)."""
+    force, where a connection asks, that connection (pid, application_name, backend_start,
+    query), and where the role's meta rows are scoped, to which tables."""
     from provisa.compiler.naming import active_gql_convention, active_sql_form
 
     return {
@@ -77,6 +113,7 @@ def statement_settings(
         "gql_convention": active_gql_convention(),
         "domain_prefix": "true" if domain_prefix else "false",
         **(session or {}),
+        **({"scope": scope} if scope is not None else {}),
     }
 
 
@@ -88,6 +125,21 @@ class ClientSettingRefused(PermissionError):
     def __init__(self) -> None:
         self.params = {"function": "set_config", "dialect": "meta"}
         super().__init__("set_config() is not available on a statement reading the meta domain")
+
+
+class CatalogViewRefused(ValueError):
+    """A catalog view on a route other than the admin terminal: only that terminal tells a statement
+    who asks, and its row scope and the views read that, so no other route can answer it."""
+
+    code = "query.catalog_view_refused"
+    sqlstate = "0A000"  # feature_not_supported
+
+    def __init__(self, view: str) -> None:
+        self.params = {"view": view}
+        super().__init__(
+            f"{view} is a catalog view of the meta domain and cannot be read in one statement with "
+            "a table of a data source: read them in two statements"
+        )
 
 
 def refuse_client_settings(sql: str) -> None:

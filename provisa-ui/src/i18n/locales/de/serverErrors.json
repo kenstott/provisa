@@ -270,6 +270,10 @@
       "classification_decision_not_found": "Keine Entscheidung zu {{column}} als {{kind}}",
       "classification_pii_refused": "Die Spalte konnte nicht als PII markiert werden"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} ist eine Katalogsicht der Meta-Domäne und kann nicht in einer Anweisung zusammen mit einer Tabelle einer Datenquelle gelesen werden: Lesen Sie sie in zwei Anweisungen.",
+      "function_unsupported": "{{function}}() hat auf {{dialect}} keine Entsprechung."
+    },
     "replication": {
       "answer_not_json": "Die für das Replikat von {{table}} gelesene Antwort ist kein gültiges JSON: [{{content_type}}] {{cause}} (in den {{kib}} KiB vor Byte {{before_byte}} der Antwort).",
       "no_whole_copy": "Für die Tabelle {{schema}}.{{table}} der Quelle {{source}} gibt es keine vollständige Kopie zu bauen: Sie wird zeilenweise repliziert oder hat eine Parameterspalte.",

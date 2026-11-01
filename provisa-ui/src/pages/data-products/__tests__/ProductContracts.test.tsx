@@ -386,7 +386,7 @@ describe("a product's contracts list (REQ-2158)", () => {
     fireEvent.click(screen.getByTestId("data-contract-item-1-toggle"));
     await screen.findByTestId("data-contract-1");
     expect(fetchContractVersions).toHaveBeenCalledWith("pet_health", "pg.public.pets");
-    const card = screen.getByTestId("data-contract-1-versions");
+    const card = screen.getByTestId("data-contract-1-history");
     const shown = [...card.querySelectorAll("[data-testid$='-saved']")].map((e) => e.textContent);
     const when = new Date("2026-10-20T10:00:00Z").toLocaleString("en");
     expect(shown).toEqual([
@@ -403,7 +403,7 @@ describe("a product's contracts list (REQ-2158)", () => {
     expect(screen.queryByTestId("data-contract-version-row-1-1.0.0-breaking")).toBeNull();
   });
 
-  it("shows a version's differences, the newest open and the others on opening", async () => {
+  it("shows every version's differences in its row", async () => {
     fetchContractVersions.mockResolvedValue([
       saved("0.1.0", "active"),
       saved("1.0.0", "active", [ADDED]),
@@ -414,16 +414,11 @@ describe("a product's contracts list (REQ-2158)", () => {
     expect(
       await screen.findByTestId("data-contract-version-row-1-2.0.0-changes"),
     ).toHaveTextContent("Field note removed, was TEXT");
-    expect(screen.queryByTestId("data-contract-version-row-1-1.0.0-changes")).toBeNull();
-
-    fireEvent.click(screen.getByTestId("data-contract-version-row-1-1.0.0-toggle"));
-    expect(
-      await screen.findByTestId("data-contract-version-row-1-1.0.0-changes"),
-    ).toHaveTextContent("Field age added, INTEGER");
-
-    fireEvent.click(screen.getByTestId("data-contract-version-row-1-0.1.0-toggle"));
-    expect(
-      await screen.findByTestId("data-contract-version-row-1-0.1.0-no-changes"),
-    ).toHaveTextContent("First version");
+    expect(screen.getByTestId("data-contract-version-row-1-1.0.0-changes")).toHaveTextContent(
+      "Field age added, INTEGER",
+    );
+    expect(screen.getByTestId("data-contract-version-row-1-0.1.0-no-changes")).toHaveTextContent(
+      "First version",
+    );
   });
 });

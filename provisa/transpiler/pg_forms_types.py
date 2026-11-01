@@ -162,6 +162,30 @@ def _lsn_key(value: str) -> str:
     return f"LPAD(UPPER({_before(text, '/')}), 8, '0') || LPAD(UPPER({_after(text, '/')}), 8, '0')"
 
 
+def _lsn_number(value: str) -> str:
+    """A pg_lsn's position: its digits' values, of any dialect's arithmetic."""
+    digits = _lsn_key(value)
+    terms = " + ".join(
+        f"(STRPOS('0123456789ABCDEF', SUBSTR(_k, {i + 1}, 1)) - 1) * "
+        f"CAST({16 ** (15 - i)} AS DECIMAL(38, 0))"
+        for i in range(16)
+    )
+    return _bound(digits, f"CAST({terms} AS DECIMAL(38, 0))", "_k")
+
+
+def _lsn_text(number: str) -> str:
+    """A position, rounded, as pg_lsn_out writes it, or the refusal of one past pg_lsn's range."""
+    low = "(_n % 4294967296)"
+    high = f"CAST((_n - {low}) / 4294967296 AS BIGINT)"
+    return _bound(
+        f"ROUND({number})",
+        f"CASE WHEN _n < 0 OR _n >= 18446744073709551616 "
+        f"THEN {_fails('22023', 'pg_lsn out of range', 'TEXT')} "
+        f"ELSE UPPER(HEX({high})) || '/' || UPPER(HEX(CAST({low} AS BIGINT))) END",
+        "_n",
+    )
+
+
 def _tid_part(value: str, part: int) -> str:
     pair = f"TRIM(BOTH '()' FROM CAST({value} AS TEXT))"
     return f"CAST({_before(pair, ',') if part == 1 else _after(pair, ',')} AS BIGINT)"
@@ -194,7 +218,7 @@ _ORDERED: tuple[_Ordered, ...] = (
     _Ordered("uuid_", _UUID, cmp=True),
     _Ordered("macaddr_", _hex_of("{}"), cmp=True),
     _Ordered("macaddr8_", _hex_of("{}"), cmp=True),
-    _Ordered("pg_lsn_", _lsn_key("{}"), cmp=True, picks=True, shown=_TEXT),
+    _Ordered("pg_lsn_", _lsn_key("{}"), cmp=True, picks=True, shown=_lsn_text(_lsn_number("{}"))),
     _Ordered("tid", _tid_key("{}"), picks=True, shown=_TEXT),
     _Ordered("name", _NAME),
     _Ordered("array_", "{}", picks=True),
@@ -519,30 +543,6 @@ _BITS: tuple[Form, ...] = (
     ),
     Form("bitnot", "a", f"CAST(~{_BIT_A} AS TEXT)"),
 )
-
-
-def _lsn_number(value: str) -> str:
-    """A pg_lsn's position: its digits' values, of any dialect's arithmetic."""
-    digits = _lsn_key(value)
-    terms = " + ".join(
-        f"(STRPOS('0123456789ABCDEF', SUBSTR(_k, {i + 1}, 1)) - 1) * "
-        f"CAST({16 ** (15 - i)} AS DECIMAL(38, 0))"
-        for i in range(16)
-    )
-    return _bound(digits, f"CAST({terms} AS DECIMAL(38, 0))", "_k")
-
-
-def _lsn_text(number: str) -> str:
-    """A position, rounded, as pg_lsn_out writes it, or the refusal of one past pg_lsn's range."""
-    low = "(_n % 4294967296)"
-    high = f"CAST((_n - {low}) / 4294967296 AS BIGINT)"
-    return _bound(
-        f"ROUND({number})",
-        f"CASE WHEN _n < 0 OR _n >= 18446744073709551616 "
-        f"THEN {_fails('22023', 'pg_lsn out of range', 'TEXT')} "
-        f"ELSE UPPER(HEX({high})) || '/' || UPPER(HEX(CAST({low} AS BIGINT))) END",
-        "_n",
-    )
 
 
 _LSNS: tuple[Form, ...] = (

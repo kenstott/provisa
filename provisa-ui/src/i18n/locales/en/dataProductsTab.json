@@ -187,6 +187,10 @@
       "slaRemove": "Remove service level",
       "slaAdd": "Add service level",
       "notDeclared": "Not declared",
+      "notDeclaredList": "Not declared: {{names}}",
+      "versionSaved": "Saved",
+      "versionChanges": "Changes",
+      "constraints": "Constraints",
       "breakingWarning": "Breaking change in v{{version}}, not yet in force",
       "breaking": "Breaking",
       "savedBy": "Saved {{when}} by {{who}}",
@@ -252,7 +256,9 @@
         "sla": "SLAs & freshness",
         "quality": "Promises",
         "consumers": "Consumers",
-        "versions": "Versions & changes"
+        "versions": "Versions & changes",
+        "roles": "Roles",
+        "history": "Version history"
       }
     }
   }
