@@ -90074,7 +90074,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     matching Explore page, using the handlers Access Patterns uses. A surface with no page of its own opens
     the page that speaks its language: Flight SQL opens SQL. When the viewing role cannot read the table,
     who to ask replaces the link, from the contract''s roles and first-level approvers. An exported contract
-    carries the standard servers field and no instructions.'
+    carries the standard servers field and no instructions. (Amended 2026-10-29, HOW TO USE NEEDS ACCESS:)
+    Maintainer 2026-11-01: "they won''t work until access is granted. so instructions should say that as
+    well." How to use says on every surface that it works only once access is granted, and names who grants
+    it, from the contract''s roles and first-level approvers.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
