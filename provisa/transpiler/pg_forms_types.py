@@ -65,6 +65,14 @@ def _not_served(function: str, sql_type: str) -> str:
     return _fails("0A000", f"{function} {REFUSED}", sql_type)
 
 
+#: float8's rint, half to even: ROUND is half away from zero on most dialects.
+FLOAT_RINT = (
+    "CASE WHEN CAST(x AS DOUBLE PRECISION) - FLOOR(CAST(x AS DOUBLE PRECISION)) = 0.5 "
+    "THEN 2 * ROUND(CAST(x AS DOUBLE PRECISION) / 2) "
+    "ELSE ROUND(CAST(x AS DOUBLE PRECISION)) END"
+)
+
+
 def _bound(value: str, answer: str, name: str) -> str:
     """``answer`` with ``name`` holding ``value``: a form that needs a value twice."""
     return f"(SELECT {answer} FROM (SELECT {value} AS {name}) AS b{name})"
@@ -963,6 +971,8 @@ OPERATORS: tuple[Form, ...] = (
 
 
 #: PostgreSQL's array operators, in the dialect sqlglot writes them for: any other refuses them.
+FORMS_BY_NAME = {form.name: form for form in OPERATORS}
+
 ARRAY_OPERATORS: tuple[Form, ...] = (
     # A NULL element is equal to nothing, so an array holding one is contained in no other.
     Form("arraycontains", "a, b", "a @> b AND ARRAY_POSITION(b, NULL) IS NULL"),

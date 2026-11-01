@@ -290,3 +290,14 @@ def test_a_call_by_pg_catalog_is_the_call_of_the_function(dialect: str, want: st
 def test_a_qualified_call_inside_a_qualified_call_is_read_too():
     written = transpile('SELECT pg_catalog."abs"(pg_catalog."sign"(x)) FROM t', "trino")
     assert "pg_catalog" not in written.lower()
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+def test_a_numeric_literal_keeps_its_digits(dialect: str):
+    assert "DECIMAL(38, 2)" in transpile("SELECT (-2.25)::numeric AS v", dialect).upper()
+
+
+def test_a_numeric_of_a_column_stays_as_said():
+    assert transpile("SELECT x::numeric AS v FROM t", "trino") == (
+        "SELECT CAST(x AS DECIMAL) AS v FROM t"
+    )

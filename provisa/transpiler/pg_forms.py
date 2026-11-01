@@ -439,52 +439,6 @@ def in_range(value: str, sql_type: str) -> str:
     )
 
 
-def integer_arithmetic(operator: str, left: str, right: str, result: str) -> str:
-    """int24pl and its kin: the integers widened past their result, which is then range-checked.
-    ``//`` truncates toward zero, as int4div does."""
-    wide = "HUGEINT" if result == "BIGINT" else "BIGINT"
-    a, b = f"CAST(CAST(a AS {left}) AS {wide})", f"CAST(CAST(b AS {right}) AS {wide})"
-    answer = in_range(f"{a} {operator} {b}", result)
-    return (
-        f"CASE WHEN {b} = 0 THEN {_DIVISION_BY_ZERO} ELSE {answer} END"
-        if operator == "//"
-        else answer
-    )
-
-
-def _float_operands(left: str, right: str) -> tuple[str, str]:
-    return f"CAST(CAST(a AS {left}) AS DOUBLE)", f"CAST(CAST(b AS {right}) AS DOUBLE)"
-
-
-def float_comparison(operator: str, left: str, right: str) -> str:
-    """float48eq and its kin: the real widened, and the engine's NaN equal to itself and above
-    every number, as PostgreSQL's is."""
-    a, b = _float_operands(left, right)
-    return f"{a} {operator} {b}"
-
-
-def float_arithmetic(operator: str, left: str, right: str) -> str:
-    """float8_pl, float8_mi, float8_mul and float8_div (utils/float.h): an infinity or a zero the
-    operands do not explain is refused."""
-    a, b = _float_operands(left, right)
-    checks = {
-        "+": f"isinf(_r) AND NOT isinf({a}) AND NOT isinf({b}) THEN {_OVERFLOW}",
-        "-": f"isinf(_r) AND NOT isinf({a}) AND NOT isinf({b}) THEN {_OVERFLOW}",
-        "*": (
-            f"isinf(_r) AND NOT isinf({a}) AND NOT isinf({b}) THEN {_OVERFLOW} "
-            f"WHEN _r = 0 AND {a} <> 0 AND {b} <> 0 THEN {_UNDERFLOW}"
-        ),
-        "/": (
-            f"isinf(_r) AND NOT isinf({a}) THEN {_OVERFLOW} "
-            f"WHEN _r = 0 AND {a} <> 0 AND NOT isinf({b}) THEN {_UNDERFLOW}"
-        ),
-    }
-    answer = bound("_r", f"{a} {operator} {b}", f"CASE WHEN {checks[operator]} ELSE _r END")
-    if operator == "/":
-        return f"CASE WHEN {b} = 0 THEN CASE WHEN isnan({a}) THEN {a} ELSE {_DIVISION_BY_ZERO} END ELSE {answer} END"
-    return answer
-
-
 _X = "CAST(x AS DOUBLE)"
 _Y = "CAST(y AS DOUBLE)"
 

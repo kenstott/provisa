@@ -31,10 +31,24 @@ writes. A PostgreSQL target writes its own (``transpile.postgres_array_filters``
 from __future__ import annotations
 
 from sqlglot import exp
+from sqlglot.dialects.bigquery import BigQuery
 from sqlglot.dialects.postgres import Postgres
+from sqlglot.dialects.presto import Presto
+from sqlglot.dialects.spark import Spark
+from sqlglot.dialects.trino import Trino
 from sqlglot.generator import Generator
 
 Postgres.Generator.TRANSFORMS[exp.TryCast] = Generator.trycast_sql
+
+
+def _flagged_regex(self: Generator, expression: exp.RegexpILike) -> str:
+    """~* where the dialect has no case-insensitive match: sqlglot writes a function none has."""
+    flagged = exp.DPipe(this=exp.Literal.string("(?i)"), expression=expression.expression.copy())
+    return self.sql(exp.RegexpLike(this=expression.this.copy(), expression=flagged))
+
+
+for _dialect in (Trino, Presto, Spark, BigQuery):
+    _dialect.Generator.TRANSFORMS[exp.RegexpILike] = _flagged_regex
 
 
 def _root_read_back(name: str) -> None:

@@ -1224,6 +1224,10 @@ def transpile(
         lowered = _OWN_TRY_CASTS[target_dialect](
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
+    if target_dialect not in ("postgres", "duckdb") and _NUMERIC_NAMED.search(pg_sql):
+        lowered = sized_numeric_literals(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
     if function_macros.mentioned(pg_sql, target_dialect):
         # REQ-2167: each function the target does not have, in its form there, or refused by name.
         lowered = function_macros.inline(
@@ -1271,6 +1275,23 @@ def transpile(
 
     trace_stage(f"transpile.{target_dialect}", result)
     return result
+
+
+_NUMERIC_NAMED = re.compile(r"\b(numeric|decimal)\b", re.IGNORECASE)
+
+
+def sized_numeric_literals(tree: exp.Expr) -> exp.Expr:  # REQ-2171
+    """A numeric literal keeps its digits: a bare DECIMAL has no fraction on an engine with no
+    unconstrained numeric, so 2.5::numeric would answer 3 on Trino and 2 on ClickHouse."""
+    for cast in tree.find_all(exp.Cast):
+        value = cast.this.unnest()
+        value = value.this if isinstance(value, exp.Neg) else value
+        if not cast.to.is_type("decimal") or cast.to.expressions:
+            continue
+        if isinstance(value, exp.Literal) and not value.is_string:
+            scale = len(value.this.partition(".")[2])
+            cast.set("to", exp.DataType.build(f"DECIMAL(38, {scale})"))
+    return tree
 
 
 def _lower_universal_regex(pg_sql: str, target_dialect: str) -> exp.Expr | None:  # REQ-2142
