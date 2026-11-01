@@ -90965,7 +90965,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     (?s) where an engine needs it and $ allowed per engine where replay proves it, and refuses the rest
     by name. LIKE with a bound or non-literal pattern is served; a backslash before an ordinary letter is
     a named exception. simple to_tsvector, to_tsquery and @@ are an expansion, matching without ranking.
-    Compiled SPARQL, Cypher and internal forms never pass the check.'
+    Compiled SPARQL, Cypher and internal forms never pass the check. (Amended 2026-10-29, EXACT OR EQUIVALENT:)
+    Maintainer 2026-11-01: "perhaps should have a functionally equivalent response vs exact response", "the
+    \"equivalence\" notes could be footnotes in the report - connected to relevant tests." A function''s
+    comparison reports exact, equivalent or differs. Equivalent passes under a written rule, and each rule
+    is a footnote in the conformance report, linked from every test it covers. (Amended 2026-10-29, RESULTS
+    ARE BY ENGINE:) Maintainer 2026-11-01: "yes those are everyday functions but also a bit off the mainstream
+    for JSON. So its true that these can be engine dependent.", "and there is NO fail outright. Its by engine."
+    The conformance report gives each function a result per engine: exact, equivalent, refused by name or
+    differs. It states no overall failed count. A function refused by name on an engine is that engine''s
+    result. A wrong answer on any engine remains a defect.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
