@@ -79,9 +79,13 @@ def _collated(name: str) -> Form:
 
 
 def _of_no_client(name: str, params: str, sql_type: str) -> Form:
-    """A value no client can make: NULL, or refused by name."""
-    message = refused("0A000", f"'{name} {REFUSED}'", sql_type)
-    return Form(name, params, _strict(params, sql_type, message))
+    """A value no client can make: NULL, or refused by name, in a test since a refusal is no
+    value of every type."""
+    message = refused("0A000", f"'{name} {REFUSED}'", "INTEGER")
+    values = " AND ".join(f"{p} IS NOT NULL" for p in params.split(", "))
+    return Form(
+        name, params, f"CASE WHEN {values} AND {message} = 0 THEN CAST(NULL AS {sql_type}) END"
+    )
 
 
 def _input(name: str, type_name: str) -> Form:
@@ -156,7 +160,8 @@ def _tid_cmp(e: Engine) -> str:
         return e.big.format(e.part.format(inner, "','", which))
 
     return (
-        f"CASE WHEN {part('a', 1)} <> {part('b', 1)} THEN {_compare(part('a', 1), part('b', 1))} "
+        "CASE WHEN a IS NULL OR b IS NULL THEN NULL "
+        f"WHEN {part('a', 1)} <> {part('b', 1)} THEN {_compare(part('a', 1), part('b', 1))} "
         f"ELSE {_compare(part('a', 2), part('b', 2))} END"
     )
 
@@ -261,6 +266,15 @@ def _polygon_box(e: Engine, lists: _Lists) -> str:
         "VARCHAR",
         e.let.format("_n", tokens, f"CASE WHEN {every} THEN {box} ELSE {message} END"),
     )
+
+
+#: The forms written per engine, strict, and what a NULL argument answers as.
+PER_ENGINE_RESULTS = {
+    "btoidvectorcmp": "INT",
+    "bttidcmp": "INT",
+    "btcharcmp": "INT",
+    "spg_poly_quad_compress": "TEXT",
+}
 
 
 def per_engine() -> dict[tuple[str, str], dict[str, str]]:

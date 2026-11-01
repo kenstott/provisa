@@ -1393,10 +1393,13 @@ def _parsed(name: str, arity: int, dialect: str) -> exp.Expr:
 
 def _thrown(node: exp.Expr) -> exp.Expr:
     """A refusal on ClickHouse: it reads a bad text cast to a Nullable as NULL, and folds a cast
-    of a constant in every branch of a CASE, where throwIf is left to the branch that runs."""
+    of a constant in every branch of a CASE, where throwIf is left to the branch that runs. It has
+    no NULL of an array either, and a column of one is never NULL."""
     if not isinstance(node, exp.Cast):
         return node
     text = node.this
+    if isinstance(text, exp.Null) and node.to.is_type("array"):
+        return exp.Cast(this=exp.Array(expressions=[]), to=node.to)
     if not isinstance(text, exp.Cast) or not text.is_type(*exp.DataType.INTEGER_TYPES):
         return node
     if MARK not in text.this.sql():
@@ -1623,6 +1626,16 @@ _ARRAY_INPUT = (
 )
 
 
+def _strict_null(name: str, arity: int, dialect: str) -> exp.Expr | None:
+    """A statement's NULL of a strict function whose form reads its bytes, or on ClickHouse, which
+    has no NULL of an array, of one over an array. None where the form answers it."""
+    if name in pg_forms_hash.ROWS:
+        return exp.cast(exp.null(), "BIGINT" if arity > 1 else "INT")
+    if name in pg_forms_index.PER_ENGINE_RESULTS:
+        return exp.cast(exp.null(), pg_forms_index.PER_ENGINE_RESULTS[name])
+    return exp.null() if dialect == "clickhouse" and name in _ARRAY_INPUT else None
+
+
 def _is_null(value: exp.Expr) -> bool:
     """Whether an argument is a NULL, of any type the statement says: a hash is strict."""
     node = value.unnest()
@@ -1680,10 +1693,11 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             args = [_array_elements_as_written(a) for a in args]
         if name in pg_forms_hash.TEXT_ARRAY_ROWS:
             args = [_array_as_text(args[0]), *args[1:]]
-        if name in pg_forms_hash.ROWS and any(_is_null(a) for a in args):
-            answer = exp.cast(exp.null(), "BIGINT" if len(args) > 1 else "INT")
-            in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
-            return exp.alias_(answer, called) if in_select else answer
+        if any(_is_null(a) for a in args):
+            answer = _strict_null(name, len(args), dialect)
+            if answer is not None:
+                in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
+                return exp.alias_(answer, called) if in_select else answer
         # transform does not revisit what a replaced node holds: a call in an argument.
         written = _written(macro, [a.transform(rewrite) for a in args], dialect, node)
         if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":

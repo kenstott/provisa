@@ -34,9 +34,20 @@ pytestmark = [pytest.mark.integration]
 RECORDABLE = frozenset((*statements(), *index_statements()))
 
 
-def _check_hashes(run: Callable[[str], Any], dialect: str) -> None:
+def _function(sql: str) -> str:
+    return sql.split("(")[0].removeprefix("SELECT ").strip('"').removeprefix('pg_catalog."')
+
+
+#: The statements of each function, since one engine takes minutes over all of them.
+_BY_FUNCTION: dict[str, list[str]] = {}
+for _sql in HASHES:
+    _BY_FUNCTION.setdefault(_function(_sql), []).append(_sql)
+
+
+def _check_hashes(run: Callable[[str], Any], dialect: str, function: str) -> None:
     wrong = {}
-    for sql, (_, want) in HASHES.items():
+    for sql in _BY_FUNCTION[function]:
+        want = HASHES[sql][1]
         try:
             got = run(transpile(sql, dialect))
         except Exception as raised:  # noqa: BLE001 -- every statement is reported, not the first
@@ -68,13 +79,14 @@ def _check_states(run: Callable[[str], Any], dialect: str) -> None:
 
 
 @pytest.mark.requires_trino
-def test_hashes_on_trino(trino_conn):
+@pytest.mark.parametrize("function", sorted(_BY_FUNCTION))
+def test_hashes_on_trino(trino_conn, function: str):
     def run(sql: str) -> Any:
         cursor = trino_conn.cursor()
         cursor.execute(sql)
         return cursor.fetchall()[0][0]
 
-    _check_hashes(run, "trino")
+    _check_hashes(run, "trino", function)
 
 
 @pytest.mark.requires_trino
@@ -101,8 +113,9 @@ def _clickhouse() -> Callable[[str], Any]:
 
 
 @pytest.mark.requires_clickhouse
-def test_hashes_on_clickhouse():
-    _check_hashes(_clickhouse(), "clickhouse")
+@pytest.mark.parametrize("function", sorted(_BY_FUNCTION))
+def test_hashes_on_clickhouse(function: str):
+    _check_hashes(_clickhouse(), "clickhouse", function)
 
 
 @pytest.mark.requires_clickhouse
