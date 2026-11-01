@@ -87,6 +87,11 @@ def _rows(name: str, params: str, form: Callable[[str, str], str]) -> list[Row]:
     ]
 
 
+_EACH = (
+    f"unnest(list_transform(json_keys(CAST({_guard(_D, 'v', 'object', 'json_each')} AS JSON)), "
+    """_k -> struct_pack(key := _k, value := json_extract(v, '$."' || """
+    """replace(_k, '"', '\\"') || '"'))))"""
+)
 #: A row: name, parameters, each dialect's form.
 ROWS: tuple[Row, ...] = (
     *_rows("object_field", "v, k", lambda d, _: _read(_READ, _KEY, d)),
@@ -100,6 +105,8 @@ ROWS: tuple[Row, ...] = (
     ("to_jsonb", ("v",), {_OF[_D]: "to_json(v)", _OF[_T]: "CAST(v AS JSON)"}),
     ("array_to_json", ("v",), {_OF[_D]: "to_json(v)"}),
     ("row_to_json", ("v",), {_OF[_D]: "to_json(v)"}),
+    # In a select list a record each key, on DuckDB alone; in a FROM, _table's rows.
+    ("json_each", ("v",), {_OF[_D]: _EACH}),
 )
 _ON_JSON = frozenset(row[0] for row in ROWS) - {"to_jsonb", "array_to_json", "row_to_json"}
 #: What no engine has a form of.
@@ -281,7 +288,9 @@ def _call(node: exp.Func, dialect: str, inner: Callable[[exp.Expr], exp.Expr]) -
     lacking = name in REFUSED or (dialect in _OF[_C] and name in _NOT_ON_CLICKHOUSE)
     lacking = lacking or (dialect not in _OF[_D] and name in _ONLY_ON_DUCKDB)
     second = name in ("row_to_json", "array_to_json") and len(node.expressions) > 1
-    if lacking or second or name in TABLES:  # a Table's call never reaches here: _table has it
+    # A Table's call never reaches here: _table has it.
+    listed = name in TABLES and not (name == "json_each" and dialect in _OF[_D])
+    if lacking or second or listed:
         raise NoForm(name)
     if node.find(exp.Variadic) and name.startswith("json"):
         raise NoForm(name)

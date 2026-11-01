@@ -169,6 +169,28 @@ def test_jsonpath_stays_refused():
 
 
 @pytest.mark.parametrize(
+    ("sql", "message"),
+    [
+        ("SELECT json_each('[1]'::json) AS v", "cannot call json_each"),
+        ("""SELECT numeric('"a"'::jsonb) AS v""", "cannot cast jsonb string to type numeric"),
+    ],
+)
+def test_a_value_of_the_wrong_kind_is_postgresqls_error_not_an_answer(
+    conn: Any, sql: str, message: str
+):
+    res = conn.conn.pgconn.exec_params(sql.encode(), [], result_format=0)
+    assert res.status == pq.ExecStatus.FATAL_ERROR
+    assert res.error_field(pq.DiagnosticField.SQLSTATE) == b"22023"
+    assert message.encode() in res.error_message
+
+
+@pytest.mark.parametrize("dialect", ("trino", "clickhouse"))
+def test_json_each_in_a_select_list_is_duckdbs_alone(dialect: str):
+    with pytest.raises(FunctionRefused, match="json_each"):
+        _write("SELECT json_each(a) FROM t", dialect)
+
+
+@pytest.mark.parametrize(
     ("text", "want"),
     [
         ('{"b": 1, "a": 2, "b": 3}', '{"a": 2, "b": 3}'),
