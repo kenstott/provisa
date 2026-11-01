@@ -222,6 +222,7 @@ def _process_kafka_sources(
         if not ks.get("bootstrap_servers"):
             raise ValueError(f"Kafka source {source_id!r} names no bootstrap_servers")
         state.kafka_bootstrap[source_id] = resolve_secrets(ks["bootstrap_servers"])
+        state.kafka_declared[source_id] = ks
         # REQ-250/147: register the Kafka source as an engine catalog (the engine writes catalog files
         # + CREATE CATALOG so it loads regardless of start order; native engines no-op).
         if register_catalogs:

@@ -1572,6 +1572,23 @@ def make_mongodb_keyed_loader() -> AdapterKeyedLoader:
     return _load
 
 
+def _kafka_connection(source: Any) -> Any:
+    """The source's brokers and its TLS and SASL settings (REQ-147), resolved at use."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.kafka.fetch import KafkaConnection
+    from provisa.kafka.security import KafkaSecurity
+
+    return KafkaConnection.build(
+        resolve_secrets(getattr(source, "host", "") or "localhost"),
+        getattr(source, "port", None),
+        KafkaSecurity.of_settings(
+            username=getattr(source, "username", None),
+            password=getattr(source, "password", None),
+            hints=getattr(source, "federation_hints", None),
+        ),
+    )
+
+
 def make_kafka_loader() -> AdapterLoader:
     """Build the Kafka row-fetch (REQ-1730): every message currently on the topic, drained via
     aiokafka and landed like any other fetched source. Wired only on an engine with no live Kafka
@@ -1581,14 +1598,10 @@ def make_kafka_loader() -> AdapterLoader:
     Elasticsearch/Redis/Cassandra/MongoDB — every self-only warehouse engine and DuckDB itself had
     no live Kafka reach at all. ``kafka.fetch``'s own module doc explains the "current rows of an
     unbounded log" semantics this loader relies on."""
-    from provisa.core.secrets import resolve_secrets
-    from provisa.kafka.fetch import KafkaConnection, fetch_rows
+    from provisa.kafka.fetch import fetch_rows
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        conn = KafkaConnection.build(
-            resolve_secrets(getattr(source, "host", "") or "localhost"),
-            getattr(source, "port", None),
-        )
+        conn = _kafka_connection(source)
         names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
         if not names:
             return []
@@ -1599,10 +1612,7 @@ def make_kafka_loader() -> AdapterLoader:
         from provisa.kafka import landed_offsets
         from provisa.kafka.fetch import iter_row_batches
 
-        conn = KafkaConnection.build(
-            resolve_secrets(getattr(source, "host", "") or "localhost"),
-            getattr(source, "port", None),
-        )
+        conn = _kafka_connection(source)
         names = [name for name, _ in columns]
         # REQ-1733: a build lands the table; it records where it stopped, and the table's
         # listener (or pipeline) starts there. A read that lands nothing records nothing.
@@ -1623,18 +1633,14 @@ def make_kafka_keyed_loader() -> AdapterKeyedLoader:
     :func:`make_kafka_loader` already has to drain the whole topic every whole-table call. Filters
     client-side after that same drain: correct (never reads the self-referential landed replica the
     absence of a keyed loader used to force), no worse than the whole-table load it replaces."""
-    from provisa.core.secrets import resolve_secrets
-    from provisa.kafka.fetch import KafkaConnection, fetch_rows
+    from provisa.kafka.fetch import fetch_rows
 
     async def _load(
         source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
     ) -> list[dict]:
         if not keys:
             return []
-        conn = KafkaConnection.build(
-            resolve_secrets(getattr(source, "host", "") or "localhost"),
-            getattr(source, "port", None),
-        )
+        conn = _kafka_connection(source)
         names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
         if not names:
             return []

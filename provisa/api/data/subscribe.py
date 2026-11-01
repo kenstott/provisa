@@ -79,6 +79,19 @@ def _build_kafka_config(state, source_id: str) -> dict:
     return {"bootstrap_servers": bootstrap}
 
 
+async def _kafka_security(state, source_id: str):  # REQ-147
+    """The TLS and SASL settings of a declared Kafka source, read under the org's vault: its
+    password may be a ``${secret:...}``. A plain cluster names none and asks nothing of the vault."""
+    from provisa.core.secrets_store import bound_to_request_org
+    from provisa.kafka.security import PLAINTEXT, declared_settings, of_declared
+
+    declared = state.kafka_declared[source_id]
+    if not declared_settings(declared)["hints"]:
+        return PLAINTEXT
+    async with bound_to_request_org():
+        return of_declared(declared)
+
+
 def _build_ingest_config(state, source_id: str) -> dict:
     ingest_engine = state.ingest_engines.get(source_id) if state.ingest_engines else None
     return {"engine": ingest_engine}
@@ -295,6 +308,8 @@ async def _provider_sse_generator(  # REQ-258, REQ-260
 
     provider_type = _resolve_provider_type(source_type, source_id, tbl_meta, state)  # REQ-814
     provider_config = _build_provider_config(provider_type, source_id, table, tbl_meta, state)
+    if provider_type == "kafka":
+        provider_config["security"] = await _kafka_security(state, source_id)
 
     if supports_polling_fallback(provider_type) and "watermark_column" not in provider_config:
         # REQ-260: without an explicit watermark_column, poll subscriptions are unavailable

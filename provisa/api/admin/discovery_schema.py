@@ -496,6 +496,8 @@ async def _call_discover(
         # actual shape, rather than querying a registry. bootstrap_servers comes from a hint
         # override, else the source's own host:port (provisa/events/push_wiring.py's own
         # `f"{src.host}:{src.port}" if src.port else src.host` convention for this source type).
+        from provisa.core.secrets_store import bound_to_request_org
+        from provisa.kafka.security import KafkaSecurity
         from provisa.kafka.source import infer_columns_from_records, sample_topic_records
 
         bootstrap_servers = hints.bootstrap_servers or (
@@ -508,9 +510,16 @@ async def _call_discover(
                 "Kafka sample-mode discovery requires a reachable broker — pass a "
                 "bootstrap_servers hint or set host/port on the source.",
             )
+        # REQ-147: the source's password may be a ${secret:...} into the org's vault.
+        async with bound_to_request_org():
+            security = KafkaSecurity.of_settings(
+                username=row.get("username"),
+                password=row.get("password_ref"),
+                hints=row.get("federation_hints"),
+            )
         try:
             records = await sample_topic_records(
-                bootstrap_servers, topic, max_records=hints.sample_limit
+                bootstrap_servers, topic, max_records=hints.sample_limit, security=security
             )
         except TimeoutError:
             raise  # the request's own deadline: answered as the request timeout, not a 502

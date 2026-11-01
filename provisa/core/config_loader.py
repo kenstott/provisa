@@ -160,6 +160,8 @@ def kafka_topics_as_tables(raw: dict) -> dict:  # REQ-147, REQ-1919
     kafka = raw.get("kafka_sources") or []
     if not kafka:
         return raw
+    from provisa.kafka.security import declared_settings
+
     out = dict(raw)
     sources = list(out.get("sources") or [])
     tables = list(out.get("tables") or [])
@@ -175,8 +177,17 @@ def kafka_topics_as_tables(raw: dict) -> dict:  # REQ-147, REQ-1919
     for ks in kafka:
         source_id = ks["id"]
         if source_id not in held_sources:
+            # REQ-147: as the source reads the topics (a landing, a listener), so it reaches them.
+            settings = declared_settings(ks)
             sources.append(
-                {"id": source_id, "type": "kafka", "host": ks.get("bootstrap_servers", "")}
+                {
+                    "id": source_id,
+                    "type": "kafka",
+                    "host": ks.get("bootstrap_servers", ""),
+                    "username": settings["username"],
+                    "password": settings["password"],
+                    "federation_hints": settings["hints"],
+                }
             )
             held_sources.add(source_id)
         for topic in ks.get("topics", []):
