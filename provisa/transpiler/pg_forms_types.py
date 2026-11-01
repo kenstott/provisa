@@ -63,9 +63,12 @@ _fails = fails
 REFUSED = "does not read this value"
 
 
-def _not_served(function: str, sql_type: str) -> str:
+def not_served(function: str, sql_type: str) -> str:
     """A value this form cannot answer as PostgreSQL does: refused by name, not answered."""
     return _fails("0A000", f"{function} {REFUSED}", sql_type)
+
+
+_not_served = not_served
 
 
 def rint(value: str) -> str:

@@ -82,6 +82,9 @@ def _split_part(self: Generator, expression: exp.SplitPart) -> str:
 
 
 ClickHouse.Generator.TRANSFORMS[exp.SplitPart] = _split_part
+# Its LIKE has no ESCAPE clause: a backslash escapes there already, and it is the only escape the
+# forms write.
+ClickHouse.Generator.TRANSFORMS[exp.Escape] = lambda self, expression: self.sql(expression.this)
 
 
 def _root_read_back(name: str) -> None:

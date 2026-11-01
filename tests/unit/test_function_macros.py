@@ -301,3 +301,73 @@ def test_a_numeric_of_a_column_stays_as_said():
     assert transpile("SELECT x::numeric AS v FROM t", "trino") == (
         "SELECT CAST(x AS DECIMAL) AS v FROM t"
     )
+
+
+@pytest.mark.parametrize(
+    ("dialect", "want"),
+    [
+        ("trino", "REGEXP_LIKE(a, '(?i)' || b)"),
+        ("clickhouse", "match(a, CONCAT('(?i)', b))"),
+        ("duckdb", "REGEXP_MATCHES(a, b, 'i')"),
+    ],
+)
+def test_the_case_insensitive_match_is_one_form_on_any_engine(dialect: str, want: str):
+    assert want in transpile("SELECT texticregexne(a, b) AS v FROM t", dialect)
+
+
+def test_clickhouses_like_has_no_escape_clause():
+    assert "ESCAPE" not in transpile("SELECT textlike(a, b) AS v FROM t", "clickhouse")
+
+
+@pytest.mark.parametrize(
+    ("sql", "dialect", "function"),
+    [
+        ("SELECT exp(2.5::numeric) AS v", "trino", "exp"),
+        ("SELECT avg(c) AS v FROM (VALUES (1.5::numeric)) AS t(c)", "clickhouse", "avg"),
+        ("SELECT overlay(a PLACING b FROM 1) AS v FROM t", "trino", "overlay"),
+        ("SELECT regexp_count(a, b, 2) AS v FROM t", "trino", "regexp_count"),
+        ("SELECT substr(c, 1) AS v FROM (VALUES ('\\xbeef'::bytea)) AS t(c)", "trino", "substring"),
+        ("SELECT date_add('2000-01-01'::date, '1 day'::interval) AS v", "clickhouse", "date_add"),
+        ('SELECT pg_catalog."gcd"(1, 2) AS v', "trino", "gcd"),
+    ],
+)
+def test_what_a_replay_refused_is_refused_by_name(sql: str, dialect: str, function: str):
+    with pytest.raises(FunctionRefused) as refused:
+        transpile(sql, dialect)
+    assert refused.value.params == {"function": function, "dialect": dialect}
+
+
+def test_a_column_of_no_said_type_is_the_engines_to_read():
+    assert transpile("SELECT avg(x) AS v FROM t", "trino") == "SELECT AVG(x) AS v FROM t"
+
+
+@pytest.mark.parametrize(
+    ("dialect", "want"),
+    [
+        ("trino", "(?s)^(?<before>.*?)(?:o)(?<after>.*)$"),
+        ("clickhouse", "replaceRegexpOne("),
+    ],
+)
+def test_regexp_replace_with_no_flag_is_the_first_match(dialect: str, want: str):
+    assert want in transpile("SELECT regexp_replace(a, 'o', 'X') AS v FROM t", dialect)
+
+
+def test_regexp_replace_with_the_g_flag_is_every_match():
+    written = transpile("SELECT regexp_replace(a, 'o', 'X', 'g') AS v FROM t", "trino")
+    assert written == "SELECT REGEXP_REPLACE(a, 'o', 'X') AS v FROM t"
+
+
+@pytest.mark.parametrize(
+    ("sql", "want"),
+    [
+        ("SELECT '\\xdead'::bytea AS v", "FROM_HEX('dead')"),
+        ("SELECT 'abc'::character AS v", "CAST('a' AS CHAR)"),
+        ("SELECT (-2.25)::numeric AS v", "DECIMAL(38, 2)"),
+    ],
+)
+def test_a_literal_keeps_what_its_cast_says(sql: str, want: str):
+    assert want in transpile(sql, "trino")
+
+
+def test_a_call_named_for_the_engines_own_spelling_is_written_so():
+    assert transpile("SELECT cbrt(x) AS v FROM t", "clickhouse") == "SELECT cbrt(x) AS v FROM t"

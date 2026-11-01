@@ -736,7 +736,7 @@ _LIKE_ESCAPE_WRITTEN = frozenset({"duckdb", "trino"})
 
 # A source whose datetime literal takes no UTC offset: an instant is written as its UTC wall time,
 # which the connection's UTC session reads as that instant (REQ-2050, executor/drivers/mysql.py).
-_INSTANT_AS_UTC_WALL_TIME = frozenset({"mysql"})
+_INSTANT_AS_UTC_WALL_TIME = frozenset({"clickhouse", "mysql"})
 
 
 def _instants_as_utc(pg_sql: str, target_dialect: str) -> str:
@@ -1162,6 +1162,8 @@ def transpile(
     """
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
         pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
+        pg_sql = _OVERLAPS_BY_NAME.sub("overlaps_timestamp(", pg_sql)  # sqlglot reads no such call
+        pg_sql = _REGEXP_REPLACE_BY_NAME.sub("regexp_replace(", pg_sql)  # its flag is read below
     pg_sql = pg_money.lowered(pg_sql, target_dialect)  # REQ-2171
     # REQ-1730: an identifier UNQUOTED in the source SQL (the common case for a raw/direct query —
     # governed GraphQL/Cypher-compiled queries already force `quoted=True`, see stage2.py's
@@ -1224,15 +1226,15 @@ def transpile(
         lowered = _OWN_TRY_CASTS[target_dialect](
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
-    if target_dialect not in ("postgres", "duckdb") and _NUMERIC_NAMED.search(pg_sql):
-        lowered = sized_numeric_literals(
-            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
-        )
     if function_macros.mentioned(pg_sql, target_dialect):
         # REQ-2167: each function the target does not have, in its form there, or refused by name.
         lowered = function_macros.inline(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
             target_dialect,
+        )
+    if target_dialect not in ("postgres", "duckdb") and _CAST_LITERAL_NAMED.search(pg_sql):
+        lowered = literals_as_said(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if target_dialect != "postgres" and pg_held_types.mentioned(pg_sql):
         # REQ-2171: a value of a type only PostgreSQL has, as what the target holds it as. After
@@ -1277,20 +1279,40 @@ def transpile(
     return result
 
 
-_NUMERIC_NAMED = re.compile(r"\b(numeric|decimal)\b", re.IGNORECASE)
+_OVERLAPS_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?overlaps"?\s*\(', re.IGNORECASE)
+_REGEXP_REPLACE_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?regexp_replace"?\s*\(', re.IGNORECASE)
+_CAST_LITERAL_NAMED = re.compile(
+    r"\b(numeric|decimal|bytea|character|char|bpchar)\b", re.IGNORECASE
+)
+_BYTEA_ESCAPES = re.compile(r"\\\\|\\[0-3][0-7]{2}")
 
 
-def sized_numeric_literals(tree: exp.Expr) -> exp.Expr:  # REQ-2171
-    """A numeric literal keeps its digits: a bare DECIMAL has no fraction on an engine with no
-    unconstrained numeric, so 2.5::numeric would answer 3 on Trino and 2 on ClickHouse."""
-    for cast in tree.find_all(exp.Cast):
+def _bytea_literal(text: str) -> exp.Expr | None:
+    """byteain's reading of a hex literal; None for the escape form, which the engine's own text
+    cast reads wrong and no form can."""
+    if not text.startswith("\\x") or len(text) % 2:
+        return None
+    return exp.Unhex(this=exp.Literal.string(text[2:]))
+
+
+def literals_as_said(tree: exp.Expr) -> exp.Expr:  # REQ-2171
+    """A literal keeps what its cast says: a bare DECIMAL has no fraction on an engine with no
+    unconstrained numeric (2.5::numeric would answer 3 on Trino and 2 on ClickHouse), a bare
+    character is one character, and a bytea is its bytes, not its text."""
+    for cast in list(tree.find_all(exp.Cast)):
         value = cast.this.unnest()
         value = value.this if isinstance(value, exp.Neg) else value
-        if not cast.to.is_type("decimal") or cast.to.expressions:
+        if not isinstance(value, exp.Literal):
             continue
-        if isinstance(value, exp.Literal) and not value.is_string:
+        if cast.to.is_type("decimal") and not cast.to.expressions and not value.is_string:
             scale = len(value.this.partition(".")[2])
             cast.set("to", exp.DataType.build(f"DECIMAL(38, {scale})"))
+        elif cast.to.is_type("char") and not cast.to.expressions and value.is_string:
+            value.replace(exp.Literal.string(value.this[:1]))
+        elif cast.to.is_type("varbinary", "binary") and value.is_string:
+            read = _bytea_literal(value.this)
+            if read is not None:
+                cast.replace(read)
     return tree
 
 
@@ -1353,6 +1375,7 @@ def _regex_found(value: exp.Expr, pattern: str, target_dialect: str) -> exp.Expr
 # else its three-argument form already replaces every match, and a fourth argument is something
 # other than flags (Trino's is a function, Snowflake's and MySQL's a position).
 _REGEXP_FLAGS_KEPT = frozenset({"postgres", "duckdb"})
+_FIRST_MATCH_WRITTEN = frozenset({"trino", "presto", "athena", "clickhouse"})
 
 
 def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
@@ -1361,16 +1384,22 @@ def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
     if target_dialect in _REGEXP_FLAGS_KEPT or "REGEXP_REPLACE" not in pg_sql.upper():
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
+    replaces = list(tree.find_all(exp.RegexpReplace))
     flagged = [
         node
-        for node in tree.find_all(exp.RegexpReplace)
+        for node in replaces
         if isinstance(node.args.get("modifiers"), exp.Literal)
         and node.args["modifiers"].this == "g"
     ]
-    if not flagged:
+    first_only = target_dialect in _FIRST_MATCH_WRITTEN
+    if not flagged and not first_only:
         return pg_sql
     for node in flagged:
         node.set("modifiers", None)
+    if first_only:  # PostgreSQL replaces the first match unless the 'g' flag says every one
+        for node in replaces:
+            if node not in flagged and node.args.get("modifiers") is None:
+                node.set("modifiers", exp.Literal.string(function_macros.FIRST_MATCH))
     return tree.sql(dialect="postgres")
 
 

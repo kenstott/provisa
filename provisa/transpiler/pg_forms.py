@@ -22,7 +22,7 @@ import re
 from collections.abc import Sequence
 
 from provisa.core.pg_error import raising
-from provisa.transpiler.pg_forms_types import fails
+from provisa.transpiler.pg_forms_types import fails, not_served
 
 _FUZZ = "1e-06"  # geo_decls.h's EPSILON: PostgreSQL's geometric comparisons allow it
 _NUMBER = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
@@ -925,16 +925,16 @@ def _endpoints(start: str, end: str) -> tuple[str, str]:
 _ANSWER_UNKNOWN = "CAST(NULL AS BOOLEAN)"
 #: overlaps_timestamp, overlaps_time and overlaps_timetz: SQL's OVERLAPS, whose three-valued answer
 #: a NULL end leaves open, not a strict function.
-OVERLAPS = bound(
+OVERLAPS = held(
     "_a",
     _endpoints("s1", "e1")[0],
-    bound(
+    held(
         "_b",
         _endpoints("s1", "e1")[1],
-        bound(
+        held(
             "_c",
             _endpoints("s2", "e2")[0],
-            bound(
+            held(
                 "_d",
                 _endpoints("s2", "e2")[1],
                 f"CASE WHEN _a IS NULL OR _c IS NULL THEN {_ANSWER_UNKNOWN} "
@@ -989,7 +989,7 @@ def _time_of(micros: str) -> str:
 
 
 def _time_scaled(time: str) -> str:
-    rounded = bound("_r", _rounded_micros(f"epoch_us({time})", "n"), _time_of("_r"))
+    rounded = held("_r", _rounded_micros(f"epoch_us({time})", "n"), _time_of("_r"))
     return f"CASE WHEN n < 0 OR n > 6 THEN {time} ELSE {rounded} END"
 
 
@@ -1033,7 +1033,7 @@ INTERVAL_SCALE = (
     + raising("22023", f"'interval(' || {_PRECISION} || ') precision must be between 0 and 6'")
     + " ELSE "
     + _interval_parts(
-        bound(
+        held(
             "_u",
             _FIELDS_TIME,
             _interval(
@@ -1063,7 +1063,7 @@ def _zoned_time(clock: str, offset: str) -> str:
 TIMETZ_SCALE = _zoned_time(_time_scaled(_TIMETZ_CLOCK), _OFFSET)
 #: time_timetz: the session's offset today, which the engine's cast leaves at zero.
 TIME_TIMETZ = _zoned_time("value", "date_part('timezone', now())")
-INTERVAL_TIME = bound(
+INTERVAL_TIME = held(
     "_t",
     f"{_micros('value')} % {_USECS_PER_DAY}",
     f"{_MIDNIGHT} + to_microseconds(CASE WHEN _t < 0 THEN _t + {_USECS_PER_DAY} ELSE _t END)",
@@ -1123,3 +1123,47 @@ HYPERBOLICS = {
     ),
 }
 COT = f"1.0 / TAN({_X})"
+
+
+#: The parts of a date every dialect's EXTRACT answers as PostgreSQL does, a second's fraction
+#: excepted, which is refused by name.
+_DATE_PARTS = ("year", "quarter", "month", "day", "hour", "minute")
+
+
+def _date_part_of(called: str, extras: str) -> str:
+    named = " ".join(
+        f"WHEN LOWER(part) = '{name}' THEN EXTRACT({name.upper()} FROM value)"
+        for name in _DATE_PARTS
+    )
+    return (
+        f"CASE WHEN part IS NULL OR value IS NULL THEN NULL {named} {extras} "
+        f"ELSE {not_served(called, 'BIGINT')} END"
+    )
+
+
+def date_part_form(called: str) -> str:
+    extras = (
+        "WHEN LOWER(part) = 'dow' THEN EXTRACT(DOW FROM value) % 7 "
+        "WHEN LOWER(part) = 'doy' THEN EXTRACT(DOY FROM value)"
+    )
+    return _date_part_of(called, extras)
+
+
+def clickhouse_date_part(called: str) -> str:
+    extras = (
+        "WHEN LOWER(part) = 'dow' THEN toDayOfWeek(value) % 7 "
+        "WHEN LOWER(part) = 'doy' THEN toDayOfYear(value)"
+    )
+    return _date_part_of(called, extras)
+
+
+DATE_AND_TIME = "CAST(CAST(d AS TEXT) || ' ' || CAST(t AS TEXT) AS TIMESTAMP)"
+_TWO_DIGITS = "LPAD(CAST({} AS TEXT), 2, '0')"
+#: make_timestamp through its text, which reads the same on any dialect.
+MAKE_TIMESTAMP = (
+    "CAST(CAST(y AS TEXT) || '-' || "
+    + " || '-' || ".join(_TWO_DIGITS.format(part) for part in ("m", "d"))
+    + " || ' ' || "
+    + " || ':' || ".join(_TWO_DIGITS.format(part) for part in ("h", "n"))
+    + " || ':' || CASE WHEN s < 10 THEN '0' ELSE '' END || CAST(s AS TEXT) AS TIMESTAMP)"
+)

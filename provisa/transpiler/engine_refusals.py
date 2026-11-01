@@ -29,13 +29,28 @@ _ENGINES = {"trino": _T, "presto": _T, "athena": _T, "clickhouse": _C}
 _ANY = None
 _NUMBERS = frozenset({"decimal", "double precision", "real", "float", "bigint", "int", "smallint"})
 _NUMERIC = frozenset({"decimal"})
+_JSON = frozenset({"jsonb", "json"})
+_BYTES = frozenset({"bytea"})
 
 #: No value of these types reaches a call: the engine has no type to hold it, and sqlglot's nearest
 #: (BOOLEAN of a bit, for one) answers something else.
 _NOT_HELD: dict[str, frozenset[str]] = {
-    _T: frozenset({"interval", "bit", "bit varying", "varbit", "oid", "tid", "aclitem", "xml"}),
-    _C: frozenset(
+    _T: frozenset(
         {"interval", "bit", "bit varying", "varbit", "oid", "tid", "aclitem", "xml", "timetz"}
+    ),
+    _C: frozenset(
+        {
+            "interval",
+            "bit",
+            "bit varying",
+            "varbit",
+            "oid",
+            "tid",
+            "aclitem",
+            "xml",
+            "timetz",
+            "time",
+        }
     ),
 }
 
@@ -67,13 +82,74 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "pg_size_pretty": _ANY,
     "pg_sleep": _ANY,
     "setseed": _ANY,
+    "pg_replication_origin_xact_setup": _ANY,
+    "pg_sleep_for": _ANY,
+    "pg_sleep_until": _ANY,
+    # An interval is no value of these engines.
+    "age": _ANY,
+    "make_interval": _ANY,
+    "time_from_parts": _ANY,
+    "make_timestamptz": _ANY,
+    "timezone": _ANY,
+    # A set of rows, a bit string, or a function of the server.
+    "regexp_matches": _ANY,
+    "regexp_split_to_table": _ANY,
+    "regexp_instr": _ANY,
+    "bit_count": _ANY,
+    "get_bit": _ANY,
+    "getbit": _ANY,
+    "set_bit": _ANY,
+    "overlay": _ANY,
+    "like_escape": _ANY,
+    "format": _ANY,
+    "normalize": _ANY,
+    "to_number": _ANY,
+    "to_timestamp": frozenset({"text"}),
+    "str_to_time": frozenset({"text"}),
+    "convert": _ANY,
+    "makeaclitem": _ANY,
+    "currtid2": _ANY,
+    "ts_token_type": _ANY,
+    "row_security_active": _ANY,
+    "set_config": _ANY,
+    "regclass": _ANY,
+    "varchar": _ANY,
+    "bit": _ANY,
+    "chr": frozenset({"text"}),
+    "char": frozenset({"text"}),
+    "int2": _JSON,
+    "int4": _JSON,
+    "int8": _JSON,
+    "float4": _JSON,
+    "float8": _JSON,
+    # bytes, which the engine's own string function reads as text.
+    "substr": _BYTES,
+    "substring": _BYTES,
+    "btrim": _BYTES,
+    "ltrim": _BYTES,
+    "rtrim": _BYTES,
+    "trim": _BYTES,
+    "byteacat": _BYTES,
+    "like": _BYTES,
+    "notlike": _BYTES,
+}
+#: The most arguments of an overload a replay served: past it the engine's own takes none.
+_MOST_ARGUMENTS = {"bpchar": 1, "regexp_count": 2, "regexp_replace": 4, "regexp_like": 2}
+#: sqlglot's name of a call, and the name a statement gave it.
+_NAMED = {
+    "exploding_generate_series": "generate_series",
+    "rand": "random",
+    "str_to_time": "to_timestamp",
+    "time_to_str": "to_char",
+    "time_from_parts": "make_time",
+    "variance_pop": "var_pop",
 }
 _ON: dict[str, dict[str, frozenset[str] | None]] = {
     _T: {"gcd": _ANY, "lcm": _ANY},
-    _C: {"gcd": _NUMERIC, "lcm": _NUMERIC, "to_timestamp": _NUMBERS},
+    _C: {"gcd": _NUMERIC, "lcm": _NUMERIC, "to_timestamp": _NUMBERS, "unix_to_time": _NUMBERS},
 }
 
-NAMES = frozenset({*_ON_BOTH, *_ON[_T], *_ON[_C]})
+NAMES = frozenset({*_ON_BOTH, *_ON[_T], *_ON[_C], *_MOST_ARGUMENTS})
 
 
 def _called(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
@@ -99,8 +175,13 @@ def refused_call(
         return None
     name, args = call
     said = {type_name.split("(")[0] for type_name in map(said_type, args) if type_name}
-    if said & _NOT_HELD[engine]:
-        return name
     table = _ON[engine]
     types = table[name] if name in table else _ON_BOTH.get(name, frozenset())
-    return name if types is None or said & types else None
+    if (
+        said & _NOT_HELD[engine]
+        or types is None
+        or said & types
+        or len(args) > _MOST_ARGUMENTS.get(name, len(args))
+    ):
+        return _NAMED.get(name, name)
+    return None
