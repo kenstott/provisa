@@ -67,13 +67,13 @@ def _one(con, sql: str):
 
 def test_no_function_is_left_a_macro_on_the_engine(con):
     macros = {
-        row[0]
+        (row[0], len(row[1]))
         for row in con.execute(
-            "SELECT DISTINCT function_name FROM duckdb_functions() "
+            "SELECT DISTINCT function_name, parameters FROM duckdb_functions() "
             "WHERE function_type = 'macro' AND schema_name = 'main'"
         ).fetchall()
     }
-    assert not macros & {name for name, _ in MACROS}
+    assert not macros & set(MACROS)
 
 
 @pytest.mark.parametrize(("name", "arity"), sorted(MACROS))

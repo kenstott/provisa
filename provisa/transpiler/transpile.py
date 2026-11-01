@@ -618,6 +618,16 @@ def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167
     tree = sqlglot.parse_one(pg_sql, read="postgres")
 
     def _call(node: exp.Expr) -> exp.Expr:
+        if (
+            isinstance(node, exp.Column)
+            and isinstance(node.this, exp.WithinGroup)
+            and node.table.lower() == "pg_catalog"
+        ):
+            # sqlglot reads the qualifier of an ordered-set aggregate as a column's table.
+            ordered = node.this
+            args = ", ".join(a.sql(dialect="postgres") for a in ordered.this.expressions)
+            called = sqlglot.parse_one(f"{ordered.this.name}({args})", read="postgres")
+            return exp.WithinGroup(this=called, expression=ordered.expression)
         if not (
             isinstance(node, exp.Dot)
             and isinstance(node.this, exp.Identifier)
