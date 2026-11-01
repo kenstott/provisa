@@ -71585,37 +71585,41 @@
   priority: SHOULD
   type: behavioral
   since: 2026-09
-  description: 'On the ENGINE route, after governance/routing/view-expansion have fully run and before
-    catalog-fold/transpile hand off to the physical engine, a literal/constant WHERE predicate [SUPERSEDED
-    by REQ-1880, 2026-09-30 -- the operator set now also includes <, <=, >, >= and, on engines that bind
-    parameters by number, $N bind parameters; see the amendment below. Kept here for history; do not implement
-    against it.] (=, IN (...), BETWEEN, or a top-level-AND combination of these) [END SUPERSEDED BLOCK]
-    on a driving table''s join column is propagated as an additional, equivalent literal predicate onto
-    the SAME column of any INNER-equi-joined table whose connector has predicate_pushdown=True and join_pushdown=False.
-    Never applied across LEFT/RIGHT/FULL OUTER joins (would incorrectly filter out preserved-side NULL-extended
-    rows), never for a predicate reached only via an OR, a correlated/non-literal comparison (another
-    column, a function call, a subquery), or a driving/target column pair whose engine types are unknown or incompatible. A missed propagation is always safe, an incorrect one is not, so any ambiguous
-    shape is left alone by design, never guessed. (Amended 2026-09-30, correlated subqueries, ranges,
-    bind parameters, every surface:) (1) The same propagation applies into a correlated scalar subquery in a SELECT list, the shape a GraphQL nested relationship compiles to, `(SELECT ... FROM docs t2
-    WHERE t2.k = t0.k)`, which has no JOIN: an outer top-level-AND literal conjunct on t0.k plus a top-level
-    inner t2.k = t0.k conjunct adds the same predicate on t2.k to the subquery''s own WHERE (safe: a select-list
-    subquery is evaluated only for outer rows that passed the outer WHERE). Same eligibility (target connector
-    predicate_pushdown and not join_pushdown), same type check, never across an OR. (2) Range comparisons
-    <, <=, >, >= against a literal propagate like =, IN and BETWEEN (a = b and a >= 1 imply b >= 1; the
-    GraphQL compiler emits a range as separate >= / <= conjuncts). (3) A numbered bind parameter ($N)
-    is carried like a literal only on an engine whose runtime binds parameters BY NUMBER -- the duckdb
-    engine (native $N) and the postgres engine (psycopg2 named %(pN)s slots) -- keyed on the engine name,
-    not its dialect; every positional binder (Trino/ClickHouse/warehouse drivers, the SQLAlchemy engine)
-    is left alone, since a reused $1 would shift every later parameter. (4) One shared helper, pgwire._pipeline.propagate_literal_predicates,
-    computes eligibility from the registry and connector capability and is applied on every ENGINE-route
-    surface before catalog-fold/ transpile: the raw-SQL path (_govern_and_route_planned), the compiled
-    path (_govern_and_route_compiled_planned: Cypher/Flight/gRPC/JSON:API) and the GraphQL engine terminal
-    (endpoint_executors._execute_engine_standard), which does not pass through the compiled path. Live
-    on the perf bench (DuckDB engine, MongoDB attached via MONGO_SCAN): before, GraphQL federated_join''s
-    nested orderDoc made MONGO_SCAN read the whole ~2.9M-document collection (~30s per call); after, EXPLAIN
-    shows MONGO_SCAN order_id>=1 AND order_id<=1000 and the equivalent correlated query runs in 0.22s.
-    Result preservation is verified by running each original and propagated statement against real data
-    (tests/unit/test_sql_rewrite_propagate.py).'
+  description: 'On the ENGINE route, after governance/routing/view-expansion have fully run and before catalog-fold/transpile
+    hand off to the physical engine, a literal/constant WHERE predicate [SUPERSEDED by REQ-1880, 2026-09-30
+    -- the operator set now also includes <, <=, >, >= and, on engines that bind parameters by number, $N
+    bind parameters; see the amendment below. Kept here for history; do not implement against it.] (=, IN
+    (...), BETWEEN, or a top-level-AND combination of these) [END SUPERSEDED BLOCK] on a driving table''s
+    join column is propagated as an additional, equivalent literal predicate onto the SAME column of any
+    INNER-equi-joined table whose connector has predicate_pushdown=True and join_pushdown=False. Never applied
+    across LEFT/RIGHT/FULL OUTER joins (would incorrectly filter out preserved-side NULL-extended rows),
+    never for a predicate reached only via an OR, a correlated/non-literal comparison (another column, a
+    function call, a subquery), or a driving/target column pair whose engine types are unknown or incompatible.
+    A missed propagation is always safe, an incorrect one is not, so any ambiguous shape is left alone by
+    design, never guessed. (Amended 2026-09-30, correlated subqueries, ranges, bind parameters, every surface:)
+    (1) The same propagation applies into a correlated scalar subquery in a SELECT list, the shape a GraphQL
+    nested relationship compiles to, `(SELECT ... FROM docs t2 WHERE t2.k = t0.k)`, which has no JOIN: an
+    outer top-level-AND literal conjunct on t0.k plus a top-level inner t2.k = t0.k conjunct adds the same
+    predicate on t2.k to the subquery''s own WHERE (safe: a select-list subquery is evaluated only for outer
+    rows that passed the outer WHERE). Same eligibility (target connector predicate_pushdown and not join_pushdown),
+    same type check, never across an OR. (2) Range comparisons <, <=, >, >= against a literal propagate
+    like =, IN and BETWEEN (a = b and a >= 1 imply b >= 1; the GraphQL compiler emits a range as separate
+    >= / <= conjuncts). (3) A numbered bind parameter ($N) is carried like a literal only on an engine whose
+    runtime binds parameters BY NUMBER -- the duckdb engine (native $N) and the postgres engine (psycopg2
+    named %(pN)s slots) -- keyed on the engine name, not its dialect; every positional binder (Trino/ClickHouse/warehouse
+    drivers, the SQLAlchemy engine) is left alone, since a reused $1 would shift every later parameter.
+    (4) One shared helper, pgwire._pipeline.propagate_literal_predicates, computes eligibility from the
+    registry and connector capability and is applied on every ENGINE-route surface before catalog-fold/
+    transpile: the raw-SQL path (_govern_and_route_planned), the compiled path (_govern_and_route_compiled_planned:
+    Cypher/Flight/gRPC/JSON:API) and the GraphQL engine terminal (endpoint_executors._execute_engine_standard),
+    which does not pass through the compiled path. Live on the perf bench (DuckDB engine, MongoDB attached
+    via MONGO_SCAN): before, GraphQL federated_join''s nested orderDoc made MONGO_SCAN read the whole ~2.9M-document
+    collection (~30s per call); after, EXPLAIN shows MONGO_SCAN order_id>=1 AND order_id<=1000 and the equivalent
+    correlated query runs in 0.22s. Result preservation is verified by running each original and propagated
+    statement against real data (tests/unit/test_sql_rewrite_propagate.py). (Amended 2026-10-29, READ ONCE
+    ON POSTGRES:) On the postgres engine, a correlated json_agg or json_object subquery on an eligible target,
+    bounded to a closed key set, is read once as a LEFT JOIN on a grouped read. An open key range stays
+    per row.'
   use_case: 'Originating context REQ-1871: live-verified via EXPLAIN that PgWrappersMongoDbConnector (the
     live-ATTACHed MongoDB FDW) pushes a literal predicate stated directly on its own table down to MongoDB,
     but never sees a join-derived one (no GetForeignPaths parameterized-path support). This was confirmed on both join orders. Without this rewrite, a query joining a small, cheaply-filtered table against a
