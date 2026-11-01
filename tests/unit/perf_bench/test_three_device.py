@@ -595,6 +595,10 @@ def test_a_device_is_ready_only_when_every_setup_step_passed() -> None:
     assert script.rstrip().endswith('echo "${commit}" > "$READY"')
 
 
+def test_the_login_the_server_runs_as_can_read_the_commit_of_roots_clone() -> None:
+    assert 'safe.directory "$REPO_DIR"' in _STARTUP.read_text()
+
+
 def test_the_results_go_where_the_lifecycle_says() -> None:
     import os
     import subprocess
