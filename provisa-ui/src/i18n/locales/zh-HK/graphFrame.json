@@ -52,10 +52,11 @@
     "sparqlDropNoPath": "{{name}} 與 {{classes}} 沒有關係。未有加入任何內容。",
     "sparqlDropTooFar": "{{name}} 距 {{classes}} 有 {{hops}} 個關係，超過拖放遍歷的 {{most}} 個：沒有短路徑。未有加入任何內容。",
     "sparqlDropNoEnd": "{{name}} 的兩端都不在此結果中。未有加入任何內容。",
+    "sparqlDropParameterized": "路徑無法經過 {{name}}：讀取它需要參數。未有新增任何內容。",
+    "sparqlDropEdgeParameterized": "{{name}} 通往一個讀取時需要參數的資料表，路徑無法經過這樣的資料表。未有新增任何內容。",
     "sparqlDropNoProperty": "此結果中沒有類別具有 {{name}}。未有加入任何內容。",
     "sparqlDropLeftOut": "已加入 {{total}} 條等長路徑中的 {{shown}} 條；其餘已省略。",
     "sparqlDropCut": "結果已達到 LIMIT {{limit}}：之後的列已省略。",
-    "cypherDropTooFar": "{{name}} 距此結果有 {{hops}} 個關係，超過拖放遍歷的 {{most}} 個：沒有短路徑。",
     "cypherPathNoKey": "{{from}} 與 {{to}} 之間的路徑需要每個節點的鍵，而其中一個沒有。"
   }
 }

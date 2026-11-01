@@ -52,10 +52,11 @@
     "sparqlDropNoPath": "{{name}} no tiene ninguna relación con {{classes}}. No se añadió nada.",
     "sparqlDropTooFar": "{{name}} está a {{hops}} relaciones de {{classes}}, más de las {{most}} que recorre un arrastre: no hay ruta corta. No se añadió nada.",
     "sparqlDropNoEnd": "Ningún extremo de {{name}} está en este resultado. No se añadió nada.",
+    "sparqlDropParameterized": "Una ruta no puede pasar por {{name}}: necesita argumentos para leerse. No se ha añadido nada.",
+    "sparqlDropEdgeParameterized": "{{name}} lleva a una tabla que necesita argumentos para leerse, y una ruta no puede pasar por ella. No se ha añadido nada.",
     "sparqlDropNoProperty": "Ninguna clase de este resultado tiene {{name}}. No se añadió nada.",
     "sparqlDropLeftOut": "Se añadieron {{shown}} de {{total}} rutas igual de cortas; las demás se omitieron.",
     "sparqlDropCut": "El resultado alcanzó su LIMIT de {{limit}}: las filas posteriores se omiten.",
-    "cypherDropTooFar": "{{name}} está a {{hops}} relaciones de este resultado, más de las {{most}} que recorre un arrastre: no hay ruta corta.",
     "cypherPathNoKey": "Las rutas entre {{from}} y {{to}} necesitan la clave de cada nodo, y uno de ellos no tiene."
   }
 }

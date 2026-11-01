@@ -21,6 +21,8 @@ const cls = (domain: string, name: string): SparqlVocabulary["classes"][number] 
   iri: `${B}/${domain}/${name}`,
   kind: "table",
   labels: [name],
+  parameterized: false,
+  parameterized_labels: [],
   superclasses: [],
 });
 const edge = (type: string, source: string, target: string) => ({
@@ -28,10 +30,16 @@ const edge = (type: string, source: string, target: string) => ({
   type,
   source,
   target,
+  join: `${type} ${source} ${target}`,
 });
 const vocabulary: SparqlVocabulary = {
   base: "https://x.example",
-  prefixes: { rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#", rel: `${B}/rel/`, ps: `${B}/ps/`, hr: `${B}/hr/` },
+  prefixes: {
+    rdf: "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    rel: `${B}/rel/`,
+    ps: `${B}/ps/`,
+    hr: `${B}/hr/`,
+  },
   classes: [
     cls("ps", "pets"),
     cls("ps", "inquiries"),
@@ -151,8 +159,12 @@ describe("a class dropped on a frame", () => {
         iri: iri("vets"),
       }),
     );
-    expect(q).toMatch(/CONSTRUCT \{ \?s \?p \?x \.\n {2}\?s rel:TREATED_BY \?vets \. \?vets a ps:vets \.\n\}/);
-    expect(q).toMatch(/OPTIONAL \{ \?s rel:TREATED_BY \?vets \. \?vets a ps:vets \. \}\n\} LIMIT 250/);
+    expect(q).toMatch(
+      /CONSTRUCT \{ \?s \?p \?x \.\n {2}\?s rel:TREATED_BY \?vets \. \?vets a ps:vets \.\n\}/,
+    );
+    expect(q).toMatch(
+      /OPTIONAL \{ \?s rel:TREATED_BY \?vets \. \?vets a ps:vets \. \}\n\} LIMIT 250/,
+    );
   });
 
   it("writes out the short CONSTRUCT, whose pattern can hold no OPTIONAL", () => {
@@ -165,7 +177,10 @@ describe("a class dropped on a frame", () => {
 
   it("reads classes from the frame's other triples too", () => {
     const q = queryOf(
-      drop(`SELECT * WHERE { ?a <${B}/rel/TREATED_BY> ?b }`, { kind: "class", iri: `${B}/hr/staff` }),
+      drop(`SELECT * WHERE { ?a <${B}/rel/TREATED_BY> ?b }`, {
+        kind: "class",
+        iri: `${B}/hr/staff`,
+      }),
     );
     expect(q).toContain("OPTIONAL { ?b rel:EMPLOYS ?staff");
   });
@@ -198,7 +213,9 @@ describe("a class dropped on a frame", () => {
 
   it("says when the result names no class to join to", () => {
     expect(
-      refusal(drop("SELECT * WHERE { ?s ?p ?o } LIMIT 25", { kind: "class", iri: iri("vets") }))?.key,
+      refusal(
+        drop("SELECT * WHERE { <urn:x> ?p ?o } LIMIT 25", { kind: "class", iri: iri("vets") }),
+      )?.key,
     ).toBe("graphFrame.sparqlDropNoClass");
   });
 });
@@ -217,10 +234,12 @@ describe("the shapes a drop refuses", () => {
 
   it("does not read a word in a string for a clause", () => {
     expect(
-      refusal(drop(`SELECT * WHERE { ?s a ps:pets FILTER(?s != "GROUP BY UNION") }`, {
-        kind: "class",
-        iri: iri("vets"),
-      })),
+      refusal(
+        drop(`SELECT * WHERE { ?s a ps:pets FILTER(?s != "GROUP BY UNION") }`, {
+          kind: "class",
+          iri: iri("vets"),
+        }),
+      ),
     ).toBeNull();
   });
 });
@@ -299,5 +318,93 @@ describe("the node at a point of a drawing", () => {
   it("finds what a dragged node was let go on, never itself", () => {
     expect(nodeUnder(cy, a)?.label).toBe("b");
     expect(nodeUnder(cy, far)).toBeNull();
+  });
+});
+
+describe("REQ-2135 a parameterized table on a SPARQL frame", () => {
+  const taken = (name: string) => ({
+    ...cls("ps", name),
+    parameterized: true,
+    parameterized_labels: [name],
+  });
+  const withTaken: SparqlVocabulary = {
+    ...vocabulary,
+    classes: [...vocabulary.classes, taken("by_status")],
+    edges: [
+      edge("VIA", "pets", "by_status"),
+      edge("BACK", "by_status", "staff"),
+      ...vocabulary.edges,
+    ],
+  };
+  const on = (what: SparqlDrop) => droppedQuery(FRAME, what, withTaken, null, []);
+
+  it("is no way through: the path goes round it", () => {
+    const q = queryOf(on({ kind: "class", iri: `${B}/hr/staff` }));
+    expect(q).not.toContain("by_status");
+    expect(q).toContain("rel:TREATED_BY");
+    expect(q).toContain("rel:EMPLOYS");
+  });
+
+  it("is refused by name when dropped", () => {
+    expect(refusal(on({ kind: "class", iri: iri("by_status") }))).toEqual({
+      key: "graphFrame.sparqlDropParameterized",
+      values: { name: "ps:by_status" },
+    });
+  });
+
+  it("is refused by name as a domain of nothing else", () => {
+    const v: SparqlVocabulary = {
+      ...withTaken,
+      prefixes: { ...withTaken.prefixes, only: `${B}/only/` },
+      classes: [...withTaken.classes, { ...taken("x"), iri: `${B}/only/x` }],
+    };
+    const d = droppedQuery(FRAME, { kind: "domain", prefix: "only" }, v, null, []);
+    expect(refusal(d)).toMatchObject({ key: "graphFrame.sparqlDropParameterized" });
+  });
+
+  it("is left out of a domain's classes", () => {
+    const q = queryOf(on({ kind: "domain", prefix: "ps" }));
+    expect(q).not.toContain("by_status");
+  });
+
+  it("is never what a relationship pill adds", () => {
+    expect(refusal(on({ kind: "edge", iri: `${B}/rel/VIA` }))).toEqual({
+      key: "graphFrame.sparqlDropEdgeParameterized",
+      values: { name: "rel:VIA" },
+    });
+  });
+});
+
+describe("REQ-2135 a join declared from both ends on a SPARQL frame", () => {
+  it("adds one path, with no left-out notice", () => {
+    const v: SparqlVocabulary = {
+      ...vocabulary,
+      edges: vocabulary.edges.map((e) =>
+        e.type === "SUBMITTED" || e.type === "SUBMITTED_BY" ? { ...e, join: "one join" } : e,
+      ),
+    };
+    const d = droppedQuery(FRAME, { kind: "class", iri: iri("users") }, v, null, []);
+    const q = queryOf(d);
+    expect(q.match(/OPTIONAL/g)).toHaveLength(1);
+    expect("notices" in d && d.notices).toEqual([]);
+  });
+});
+
+describe("REQ-2135 a pill dropped on ?s ?p ?o", () => {
+  const OPEN = "SELECT * WHERE {\n  ?s ?p ?o\n}\nLIMIT 25";
+
+  it.each<[string, SparqlDrop]>([
+    ["class", { kind: "class", iri: iri("users") }],
+    ["relationship", { kind: "edge", iri: `${B}/rel/TREATED_BY` }],
+    ["property", { kind: "predicate", iri: `${B}/ps/users#email` }],
+  ])("stays refused for a %s: it names no class to start from", (_, what) => {
+    expect(refusal(drop(OPEN, what))).toEqual({ key: "graphFrame.sparqlDropNoClass" });
+  });
+
+  it("joins once a variable has a class", () => {
+    const typed = `PREFIX ps: <${B}/ps/>\nSELECT * WHERE { ?s ?p ?o . ?s a ps:pets } LIMIT 25`;
+    expect(queryOf(drop(typed, { kind: "class", iri: iri("inquiries") }))).toContain(
+      "rel:HAS_INQUIRY",
+    );
   });
 });

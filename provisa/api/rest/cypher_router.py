@@ -1170,6 +1170,8 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     # FK/PK-backed edge, which is how a client tells the two apart.
                     "junction_table_name": r.via.table_name if r.via else None,
                     "properties": sorted(r.properties.keys()),
+                    # REQ-2135: what it joins, the same for a join declared from both ends.
+                    "join": r.join,
                 }
                 for r in label_map.relationships.values()
             ],
