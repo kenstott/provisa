@@ -1035,6 +1035,16 @@ _SHAPE_COERCERS: dict[BVType, Callable[[Any], Any]] = {
 }
 
 
+_CURRENT_QUERY = re.compile(r'(?:pg_catalog\.)?"?\bcurrent_query"?\s*\(\s*\)', re.IGNORECASE)
+
+
+def _current_query_said(sql: str) -> str:  # REQ-2171
+    """``sql`` with each current_query() the statement the client wrote: what an engine's own would
+    answer is the statement as Provisa wrote it for that engine."""
+    said = "'" + sql.replace("'", "''") + "'::text"
+    return _CURRENT_QUERY.sub(lambda _: said, sql)
+
+
 def _null_alone(value: Any) -> Any:  # REQ-2171
     """A column of no engine type holds NULL alone, which a coercer is not called with."""
     raise TypeError(f"a value of no type the statement says: {value!r}")
@@ -2066,6 +2076,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         server_function = _SERVER_FUNCTION_RE.match(stripped)
         if server_function is not None:
             return ProvisaQueryResult(self._server_function(server_function), stripped)
+        stripped = _current_query_said(stripped)
         # REQ-1194: SET / RESET provisa.redirect*; REQ-2110: provisa.as_of / provisa.as_recorded
         self._note_time_zone(stripped)
         if self._set_redirect(stripped) or self._set_time_travel(stripped):

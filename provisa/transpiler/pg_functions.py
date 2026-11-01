@@ -678,6 +678,8 @@ def _call(node: exp.Expr) -> exp.Expr:
 _UNPARSED_CALLS = re.compile(r"\b(convert|json_object)\s*\(", re.IGNORECASE)
 _BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
 _JSON_OBJECT_OF_ARRAYS = re.compile(r"\bjson_object\s*\(\s*(?='\{|ARRAY\[)", re.IGNORECASE)
+#: sqlglot reads to_hex as DuckDB's HEX of any value; a form's HEX of its bytes is written the same.
+_TO_HEX = re.compile(r"\"?\bto_hex\"?\s*\(", re.IGNORECASE)
 _SPECIAL_LITERAL = re.compile(r"\bB'[01]*'|\bU&'", re.IGNORECASE)
 
 
@@ -686,6 +688,7 @@ def readable(pg_sql: str) -> str:
     statement that parses is left as it is. ``bit varying``, which sqlglot reads as a bit and an
     alias, is the bit string the engine holds it as."""
     pg_sql = _JSON_OBJECT_OF_ARRAYS.sub("pg_json_object(", _BIT_VARYING.sub("::bit", pg_sql))
+    pg_sql = _TO_HEX.sub("pg_to_hex(", pg_sql)
     if _UNPARSED_CALLS.search(pg_sql) is None:
         return pg_sql
     try:

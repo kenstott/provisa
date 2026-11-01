@@ -27,6 +27,15 @@ from decimal import Decimal
 from typing import Any
 
 from provisa.core.pg_error import END, MARK
+from provisa.federation.duckdb_pg_numeric import (
+    en_us_key,
+    numeric_binary,
+    numeric_of_float,
+    numeric_quotient,
+    numeric_spread,
+    numeric_unary,
+    to_number,
+)
 
 _BACKSLASH = "\\"
 
@@ -662,6 +671,12 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_to_ascii", to_ascii, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_parse_ident", parse_ident, ["VARCHAR", "BOOLEAN"], "VARCHAR[]"),
     ("provisa_size_bytes", size_bytes, ["VARCHAR"], "BIGINT"),
+    ("provisa_numeric_unary", numeric_unary, ["VARCHAR"] * 2, "VARCHAR"),
+    ("provisa_numeric_binary", numeric_binary, ["VARCHAR"] * 3, "VARCHAR"),
+    ("provisa_numeric_quotient", numeric_quotient, ["VARCHAR"] * 2, "VARCHAR"),
+    ("provisa_numeric_of_float", numeric_of_float, ["DOUBLE", "INTEGER"], "VARCHAR"),
+    ("provisa_to_number", to_number, ["VARCHAR"] * 2, "VARCHAR"),
+    ("provisa_en_us_key", en_us_key, ["VARCHAR"], "VARCHAR"),
     ("provisa_numeric_gcd", numeric_gcd, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_numeric_lcm", numeric_lcm, ["VARCHAR", "VARCHAR"], "VARCHAR"),
     ("provisa_factorial", numeric_factorial, ["BIGINT"], "VARCHAR"),
@@ -672,6 +687,12 @@ _UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
 #: Strict UDFs that answer NULL themselves.
 _NULL_ANSWERING_UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
     ("provisa_regexp_match", regexp_match, ["VARCHAR"] * 3, "VARCHAR[]"),
+    (
+        "provisa_numeric_spread",
+        numeric_spread,
+        ["VARCHAR", "BIGINT", "VARCHAR", "VARCHAR"],
+        "VARCHAR",
+    ),
     (
         "provisa_regexp_substr",
         regexp_substr,

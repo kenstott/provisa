@@ -161,7 +161,8 @@ _BOOLEAN = CastType(16, -1, BVType.BOOL, _INTEGERS | {BVType.BOOL}, _to_bool)
 
 def _of_no_zone(value: Any) -> Any:
     """A timestamp an engine holds in a zone (ClickHouse's are in UTC) as its wall clock."""
-    return value.replace(tzinfo=None) if isinstance(value, datetime.datetime) else value
+    aware = isinstance(value, datetime.datetime) and value.tzinfo is not None
+    return value.replace(tzinfo=None) if aware else value
 
 
 def _record_field(value: Any) -> str:

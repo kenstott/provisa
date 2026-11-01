@@ -1287,7 +1287,8 @@ _CLICKHOUSE_INSTANT = "Nullable(DateTime64(6, 'UTC'))"
 
 def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
     """``tree`` with what ClickHouse would read otherwise said for it. A timestamp keeps its
-    microseconds and reads as one. A refusal (pg_forms_types.refused), the cast of a text that is no
+    microseconds and reads as one, a time is read by toTime64 (its Time reads PostgreSQL's text as
+    NULL), and a hex has no leading zeros, as to_hex has none. A refusal (pg_forms_types.refused), the cast of a text that is no
     number, raises: sqlglot writes a cast as Nullable, which reads such a text as NULL. Its argument
     is materialized so the refusal is not folded in a branch the statement does not take."""
 
@@ -1301,6 +1302,13 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
             exp.DataType.Type.TIMESTAMPTZ,
         ):
             return exp.DataType.build(_CLICKHOUSE_INSTANT, dialect="clickhouse")
+        if isinstance(node, exp.Cast) and node.to.is_type(exp.DataType.Type.TIME):
+            return exp.Anonymous(this="toTime64", expressions=[node.this, exp.Literal.number(6)])
+        if isinstance(node, exp.Hex):
+            return exp.Anonymous(
+                this="replaceRegexpOne",
+                expressions=[node, exp.Literal.string("^0+(.)"), exp.Literal.string("\\1")],
+            )
         if (
             isinstance(node, exp.Cast)
             and node.to.is_type(exp.DataType.Type.INT)

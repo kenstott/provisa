@@ -65,8 +65,10 @@ ANSWERS: dict[str, tuple[int, list[str | None]]] = {
     'SELECT pg_catalog."abs"(NULL::numeric) AS v': (NUMERIC, [None]),
     "SELECT abs(-1.5) AS v": (NUMERIC, ["1.5"]),
     "SELECT round(1.26, 1) AS v": (NUMERIC, ["1.3"]),
+    "SELECT sqrt(4::numeric) AS v": (NUMERIC, ["2.000000000000000"]),
     "SELECT sign(-2.5) AS v": (NUMERIC, ["-1"]),
     "SELECT sign(NULL::float8) AS v": (FLOAT8, [None]),
+    "SELECT avg(2::integer) AS v": (NUMERIC, ["2.0000000000000000"]),
     "SELECT sum(2::bigint) AS v": (NUMERIC, ["2"]),
     "SELECT sum(1.5::real) AS v": (FLOAT4, ["1.5"]),
     "SELECT stddev(NULL::integer) AS v": (NUMERIC, [None]),
@@ -150,16 +152,6 @@ ANSWERS: dict[str, tuple[int, list[str | None]]] = {
 def test_a_function_is_answered_as_postgresql_answers_it(conn: Any, sql: str):
     res = _exec(conn, sql)
     assert (res.ftype(0), _rows(res)) == ANSWERS[sql]
-
-
-@pytest.mark.parametrize(
-    "sql",
-    # PostgreSQL's 2.000000000000000 and 2.0000000000000000: DuckDB answers 2.0.
-    ["SELECT sqrt(4::numeric) AS v", "SELECT avg(2::integer) AS v"],
-)
-def test_an_exact_answer_the_engine_cannot_write_is_refused_by_name(conn: Any, sql: str):
-    res = conn.conn.pgconn.exec_params(sql.encode(), [], result_format=0)
-    assert b"has no form on duckdb" in (res.error_message or b"")
 
 
 def test_random_stays_between_its_bounds(conn: Any):

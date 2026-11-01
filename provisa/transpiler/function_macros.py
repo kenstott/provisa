@@ -987,7 +987,6 @@ def _operator(form: pg_forms_types.Form) -> Macro:
     )
 
 
-_SIZE_REFUSED = f"'pg_size_pretty {pg_forms_types.REFUSED}'"
 #: PostgreSQL's substr counts positions before the first: a start at or below 0 takes fewer.
 _SUBSTR_START = "GREATEST(start, 1)"
 #: inet's text always says its mask; the engine's value says it only where it is not the widest.
@@ -1011,17 +1010,13 @@ _ROWS: tuple[Macro, ...] = (
     Macro("round_numeric", ("x", "n"), {_EVERY: Pg("ROUND(x, n)")}),
     Macro("trunc_numeric", ("x", "n"), {_EVERY: Pg("TRUNC(x, n)")}),
     Macro("inet_text", ("value",), {_EVERY: Pg(strict("value", "TEXT", _INET_TEXT))}),
-    Macro("max_collated", ("value",), {_EVERY: Pg("MAX(value)")}),
-    Macro("min_collated", ("value",), {_EVERY: Pg("MIN(value)")}),
-    Macro("to_number", ("value", "format")),
+    # The session's collation, en_US.UTF-8 as pg_database says: DuckDB compares bytes.
+    _macro("max_collated", "value", "arg_max(value, provisa_en_us_key(value))"),
+    _macro("min_collated", "value", "arg_min(value, provisa_en_us_key(value))"),
+    _macro("to_number", "value, format", "provisa_to_number(value, format)"),
     Macro("current_query", ()),  # the engine's is the statement as Provisa wrote it
-    _macro(
-        "pg_size_pretty_numeric",
-        "x",
-        f"CASE WHEN x <> trunc(x) THEN {pg_forms_types.refused('0A000', _SIZE_REFUSED)} "
-        "ELSE pg_size_pretty(CAST(x AS BIGINT)) END",
-    ),
     _macro("to_hex", "value", f"format('{{:x}}', {_TWOS_COMPLEMENT})"),
+    _macro("pg_to_hex", "value", f"format('{{:x}}', {_TWOS_COMPLEMENT})"),  # as readable writes it
     _macro("netmask", "value", "host(netmask(value))"),
     _macro(
         "uuid_extract_version",
@@ -1217,10 +1212,10 @@ _ROWS: tuple[Macro, ...] = (
     _macro("pg_typeof", "value", _PG_TYPEOF),
     *_SHAPES,
     *_TSVECTOR,
-    _macro(
-        "mul_d_interval",
-        "d, i",
-        "to_microseconds(CAST(round(epoch(i) * 1000000 * d) AS BIGINT))",
+    *(
+        Macro("mul_d_interval", ("b", "a"), operators={_DUCKDB: Pg(form.sql)})
+        for form in pg_forms_types.OPERATORS
+        if form.name == "interval_mul"
     ),
     _macro(
         "oidvectorsend",
@@ -1305,101 +1300,113 @@ _ROWS: tuple[Macro, ...] = (
 )
 
 #: Where an engine's own function, given these, answers in other digits or another type than
-#: PostgreSQL's exact numeric (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED): each is a row of no
-#: form, chosen through OVERLOADS by the type the statement says.
+#: PostgreSQL's exact numeric (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED): DuckDB's forms read
+#: the value's digits (provisa.federation.duckdb_pg_numeric), and no other dialect has a form.
+_NUMERIC_TEXT = "CAST(a0 AS VARCHAR)"
+_SECOND_NUMERIC = "CAST(a1 AS VARCHAR)"
+_AVG = "provisa_numeric_quotient(CAST(sum(a0) AS VARCHAR), CAST(count(a0) AS VARCHAR))"
+_WHOLE_SQUARES = "sum(CAST(a0 AS HUGEINT) * CAST(a0 AS HUGEINT))"
+
+
+def _exact_unary(function: str) -> str:
+    return f"provisa_numeric_unary('{function}', {_NUMERIC_TEXT})"
+
+
+def _exact_binary(function: str) -> str:
+    return f"provisa_numeric_binary('{function}', {_NUMERIC_TEXT}, {_SECOND_NUMERIC})"
+
+
+def _spread(function: str, squares: str) -> str:
+    return (
+        f"provisa_numeric_spread('{function}', count(a0), CAST(sum(a0) AS VARCHAR), "
+        f"CAST({squares} AS VARCHAR))"
+    )
+
+
+_SPREADS = ("stddev", "stddev_pop", "stddev_samp", "variance", "var_pop", "var_samp")
 _EXACT_ROWS: tuple[Macro, ...] = (
+    Macro("exact_avg", ("a0",), {_DUCKDB: _AVG}),
+    *(Macro(f"exact_{n}", ("a0",), {_DUCKDB: _spread(n, _WHOLE_SQUARES)}) for n in _SPREADS),
     *(
-        Macro(f"exact_{name}", tuple(f"a{i}" for i in range(arity)))
-        for name, arity in (
-            ("avg", 1),
-            ("stddev", 1),
-            ("stddev_pop", 1),
-            ("stddev_samp", 1),
-            ("variance", 1),
-            ("var_pop", 1),
-            ("var_samp", 1),
-            ("exp", 1),
-            ("ln", 1),
-            ("log", 1),
-            ("log", 2),
-            ("log10", 1),
-            ("power", 2),
-            ("pow", 2),
-            ("sqrt", 1),
-            ("div", 2),
-        )
+        Macro(f"exact_{n}_numeric", ("a0",), {_DUCKDB: _spread(n, "sum(a0 * a0)")})
+        for n in _SPREADS
     ),
-    # A float's digits as numeric, which its text does not write (100.0 for 100).
-    Macro("exact_numeric", ("a0",)),
-    # sqlglot reads the start of these as the regexp's flags.
-    Macro("regexp_replace_at", ("value", "pattern", "replacement", "start")),
+    *(
+        Macro(f"exact_{n}", ("a0",), {_DUCKDB: _exact_unary(n)})
+        for n in ("exp", "ln", "log10", "sqrt")
+    ),
+    Macro("exact_log", ("a0",), {_DUCKDB: _exact_unary("log10")}),
+    Macro("exact_log", ("a0", "a1"), {_DUCKDB: _exact_binary("log")}),
+    Macro("exact_power", ("a0", "a1"), {_DUCKDB: _exact_binary("power")}),
+    Macro("exact_pow", ("a0", "a1"), {_DUCKDB: _exact_binary("power")}),
+    Macro("exact_div", ("a0", "a1"), {_DUCKDB: _exact_binary("div")}),
+    Macro("exact_float8_numeric", ("a0",), {_DUCKDB: "provisa_numeric_of_float(a0, 15)"}),
+    Macro("exact_float4_numeric", ("a0",), {_DUCKDB: "provisa_numeric_of_float(a0, 6)"}),
+    Macro("exact_pg_size_pretty", ("a0",), {_DUCKDB: _exact_unary("pg_size_pretty")}),
+    # interval_avg cascades a month's remainder, and DuckDB has no sum of an interval.
+    Macro("exact_avg_interval", ("a0",)),
+    # What regexp_replace's Nth match is takes the engine's own search.
     Macro("regexp_replace_at", ("value", "pattern", "replacement", "start", "n")),
+    Macro(
+        "regexp_replace_at",
+        ("value", "pattern", "replacement", "start"),
+        {
+            _DUCKDB: "CASE WHEN contains(pattern, '^') OR start < 1 THEN "
+            + pg_forms_types.refused(
+                "0A000", f"'regexp_replace {pg_forms_types.REFUSED}'", "VARCHAR"
+            )
+            + " ELSE left(value, start - 1) || "
+            "regexp_replace(substring(value, start), pattern, replacement) END"
+        },
+    ),
 )
-_EXACT_TYPES = ("smallint", "int", "bigint", "decimal")
-_EXACT_NUMERIC_ONLY = {
-    ("exp", 1),
-    ("ln", 1),
-    ("log", 1),
-    ("log", 2),
-    ("log10", 1),
-    ("power", 2),
-    ("pow", 2),
-    ("sqrt", 1),
-    ("div", 2),
+#: The overloads of the exact rows, by what the statement says of their first argument.
+_EXACT_OVERLOADS: dict[tuple[str, int, str], str] = {
+    **{("avg", 1, of): "exact_avg" for of in ("smallint", "int", "bigint", "decimal")},
+    ("avg", 1, "interval"): "exact_avg_interval",
+    **{(n, 1, of): f"exact_{n}" for n in _SPREADS for of in ("smallint", "int", "bigint")},
+    **{(n, 1, "decimal"): f"exact_{n}_numeric" for n in _SPREADS},
+    **{(n, 1, "decimal"): f"exact_{n}" for n in ("exp", "ln", "log10", "sqrt", "log")},
+    **{(n, 2, "decimal"): f"exact_{n}" for n in ("log", "power", "pow", "div")},
+    ("numeric", 1, "double precision"): "exact_float8_numeric",
+    ("numeric", 1, "real"): "exact_float4_numeric",
+    ("pg_size_pretty", 1, "decimal"): "exact_pg_size_pretty",
 }
 
 #: A row replay found another answer of, by the dialects it is refused on.
 _CLICKHOUSE = frozenset({"clickhouse"})
 _DIFFERS_ON: dict[str, frozenset[str]] = {
-    **{
-        name: _CLICKHOUSE
-        for name in (
-            # ClickHouse's Time reads PostgreSQL's text as NULL.
-            "time_cmp",
-            "time_eq",
-            "time_ge",
-            "time_gt",
-            "time_larger",
-            "time_le",
-            "time_lt",
-            "time_mi_time",
-            "time_ne",
-            "time_smaller",
-            # Its hex keeps leading zeros and its decimals overflow on the forms' moduli.
-            "int2_sum",
-            "int4_sum",
-            "numeric_pl_pg_lsn",
-            "pg_lsn_larger",
-            "pg_lsn_mii",
-            "pg_lsn_pli",
-            "pg_lsn_smaller",
-        )
-    },
+    # Its decimals overflow on the form's modulus and its digits of a pg_lsn are not read back.
+    "numeric_pl_pg_lsn": _CLICKHOUSE,
+    "pg_lsn_mii": _CLICKHOUSE,
+    "pg_lsn_pli": _CLICKHOUSE,
     # Two timestamps differ by seconds there, and by Trino's own text of an interval.
     "timestamp_mi": _CLICKHOUSE | _TRINO,
     "timestamptz_mi": _CLICKHOUSE | _TRINO,
-    # A month's fraction: its intervals are not cascaded as timestamp.c does.
-    "mul_d_interval": _DUCKDB,
-    # The session's collation, en_US.UTF-8 as pg_database says: DuckDB compares bytes.
-    "max_collated": _DUCKDB,
-    "min_collated": _DUCKDB,
+}
+#: A dialect's form where the generated one's arithmetic does not hold: Int64 wraps as the sum does.
+_WRAPPING_SUM = Pg(
+    "CASE WHEN a IS NULL THEN CAST(b AS BIGINT) WHEN b IS NULL THEN CAST(a AS BIGINT) "
+    "ELSE CAST(a AS BIGINT) + CAST(b AS BIGINT) END"
+)
+_ENGINE_FORMS: dict[str, Forms] = {
+    "int2_sum": {_CLICKHOUSE: _WRAPPING_SUM},
+    "int4_sum": {_CLICKHOUSE: _WRAPPING_SUM},
 }
 
 
 def _with_replay(macro: Macro) -> Macro:
-    differs = _DIFFERS_ON.get(macro.name)
-    return macro if differs is None else replace(macro, differs_on=differs)
+    differs = _DIFFERS_ON.get(macro.name, macro.differs_on)
+    forms = {**_ENGINE_FORMS.get(macro.name, {}), **macro.operators}
+    return replace(macro, differs_on=differs, operators=forms)
 
 
 #: The rows of no form: what a dialect's answer differs in and no form writes.
 REFUSED_ROWS = frozenset(
     {
-        *((m.name, len(m.params)) for m in _EXACT_ROWS),
-        ("to_number", 2),
+        ("exact_avg_interval", 1),
+        ("regexp_replace_at", 5),
         ("current_query", 0),
-        ("mul_d_interval", 2),
-        ("max_collated", 1),
-        ("min_collated", 1),
     }
 )
 
@@ -1446,21 +1453,7 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
     ("timetz", 1, "time"): "time_timetz",
     ("interval", 1, "time"): "time_interval",
     ("interval", 2, "interval"): "interval_scale",
-    **{
-        (m.name.removeprefix("exact_"), len(m.params), said): m.name
-        for m in _EXACT_ROWS
-        for said in _EXACT_TYPES
-        if m.name.startswith("exact_")
-        and m.name != "exact_numeric"
-        and (
-            said == "decimal"
-            or (m.name.removeprefix("exact_"), len(m.params)) not in _EXACT_NUMERIC_ONLY
-        )
-    },
-    ("pg_size_pretty", 1, "decimal"): "pg_size_pretty_numeric",
-    ("avg", 1, "interval"): "exact_avg",
-    ("numeric", 1, "double precision"): "exact_numeric",
-    ("numeric", 1, "real"): "exact_numeric",
+    **_EXACT_OVERLOADS,
     ("round", 1, "double precision"): "dround",
     ("round", 1, "real"): "dround",
     ("round", 2, "decimal"): "round_numeric",
@@ -1487,9 +1480,10 @@ _CALLED = {
     **{row: name for (name, _, _), row in OVERLOADS.items()},
     **{row: "encode" for row in ("encode_hex", "encode_base64", "encode_escape")},
     "regexp_replace_at": "regexp_replace",
+    "pg_to_hex": "to_hex",
 }
 #: How a statement already written through sqlglot spells a row's call.
-_SPELLED = {"encode", "hex", "substring", "regexp_replace", "array_concat", "to_number"}
+_SPELLED = {"encode", "substring", "regexp_replace", "array_concat", "to_number"}
 _NAMES = frozenset(name for name, _ in MACROS) | {name for name, _, _ in OVERLOADS} | _SPELLED
 _MENTIONED = re.compile(
     r"\b(" + "|".join(sorted(_NAMES)) + r")\"?\s*\(|" + pg_forms_json.OPERATORS, re.IGNORECASE
@@ -1664,7 +1658,6 @@ _READ_AS: dict[type[exp.Expr], str] = {
     exp.Max: "max",
     exp.Min: "min",
     exp.Exp: "exp",
-    exp.Hex: "to_hex",
     exp.Ln: "ln",
     exp.Sqrt: "sqrt",
     exp.Stddev: "stddev",
@@ -1686,8 +1679,6 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return node.name.lower(), list(node.expressions)
     if type(node) in _READ_AS:
         return _READ_AS[type(node)], [node.this]
-    if isinstance(node, exp.Hex) and said_type(node.this) in ("bytea", "text"):
-        return None  # a hex a form wrote, of its bytes
     if isinstance(node, exp.ToNumber):
         return "to_number", [node.this, node.args["format"]]
     if isinstance(node, exp.Length):  # an overload of a type: length(text) has no row
@@ -1711,6 +1702,8 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         at = ("this", "expression", "replacement", "position", "occurrence")
         if node.args.get("modifiers") is None:
             return "regexp_replace_at", [node.args[k] for k in at if node.args.get(k) is not None]
+    if isinstance(node, exp.Log) and node.this == exp.Literal.number(10):  # sqlglot's log10
+        return "log10", [node.expression]
     if isinstance(node, (exp.Log, exp.Pow)):
         called = "log" if isinstance(node, exp.Log) else "power"
         return called, [a for a in (node.this, node.expression) if a is not None]

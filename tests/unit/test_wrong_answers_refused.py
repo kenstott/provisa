@@ -21,6 +21,7 @@ import pytest
 import sqlglot
 from sqlglot import exp
 
+from provisa.federation.duckdb_pg_scalars import register
 from provisa.pgwire.cast_types import result_casts
 from provisa.pgwire.function_types import call_result_type
 from provisa.transpiler.function_macros import FunctionRefused
@@ -30,8 +31,12 @@ from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 ENGINES = ("trino", "clickhouse", "duckdb")
 
 
+_CON = duckdb.connect()
+register(_CON)
+
+
 def _on_duckdb(sql: str):
-    return duckdb.sql(transpile_to_duckdb(sql)).fetchall()[0][0]
+    return _CON.execute(transpile_to_duckdb(sql)).fetchall()[0][0]
 
 
 @pytest.mark.parametrize(
@@ -98,22 +103,51 @@ def test_a_scale_only_a_row_knows_is_refused():
         transpile("SELECT round(2.5::numeric, n) AS v FROM t", "duckdb")
 
 
-@pytest.mark.parametrize("dialect", ENGINES)
 @pytest.mark.parametrize(
-    "sql",
+    ("sql", "text"),
     [
-        "SELECT ln(1000::numeric) AS v",
-        "SELECT log(2.5::numeric, 2.5::numeric) AS v",
-        "SELECT power(2.5::numeric, 2.5::numeric) AS v",
-        "SELECT sqrt(2.5::numeric) AS v",
-        "SELECT avg(c1) AS v FROM (VALUES (3::bigint)) AS t(c1)",
-        "SELECT stddev(c1) AS v FROM (VALUES (2.5::numeric)) AS t(c1)",
-        "SELECT regexp_replace('abc'::text, 'b'::text, 'x'::text, 3::integer) AS v",
+        ("SELECT ln(1000::numeric) AS v", "6.9077552789821371"),
+        ("SELECT log(2.5::numeric, 2.5::numeric) AS v", "1.0000000000000000"),
+        ("SELECT log10(1000::numeric) AS v", "3.0000000000000000"),
+        ("SELECT power(2.5::numeric, 2.5::numeric) AS v", "9.8821176880261854"),
+        ("SELECT sqrt(2.5::numeric) AS v", "1.581138830084190"),
+        ("SELECT exp((-7.125)::numeric) AS v", "0.0008047330101246133"),
+        ("SELECT div(2.5::numeric, 2.5::numeric) AS v", "1"),
+        ("SELECT pg_size_pretty(2.5::numeric) AS v", "2.5 bytes"),
+        ('SELECT "numeric"(100::double precision) AS v', "100"),
+        ("SELECT to_number('-7', 'S9') AS v", "-7"),
+        ("SELECT regexp_replace('abc'::text, 'b'::text, 'x'::text, 3::integer) AS v", "abc"),
+        (
+            "SELECT avg(c1) AS v FROM (VALUES (3::bigint), (4::bigint)) AS t(c1)",
+            "3.5000000000000000",
+        ),
+        (
+            "SELECT var_samp(c1) AS v FROM (VALUES (1::integer), (2::integer), (4::integer)) AS t(c1)",
+            "2.3333333333333333",
+        ),
+        (
+            "SELECT stddev(c1) AS v FROM (VALUES (2.5::numeric), ((-7.125)::numeric)) AS t(c1)",
+            "6.8059027689205199",
+        ),
+        (
+            "SELECT max(c1) AS v FROM (VALUES ('abc'::text), ('Hello'::text), ('12'::text)) AS t(c1)",
+            "Hello",
+        ),
     ],
 )
-def test_an_exact_answer_no_form_writes_is_refused_by_name(sql, dialect):
-    with pytest.raises(FunctionRefused):
-        transpile(sql, dialect)
+def test_an_exact_answer_on_duckdb_has_postgresqls_digits(sql, text):
+    assert _on_duckdb(sql) == text
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+def test_a_dialect_with_no_exact_digits_refuses_by_name(dialect):
+    with pytest.raises(FunctionRefused, match="sqrt"):
+        transpile("SELECT sqrt(2.5::numeric) AS v", dialect)
+
+
+def test_an_order_the_key_cannot_say_is_refused_for_that_value():
+    with pytest.raises(duckdb.Error, match="does not read this value"):
+        _on_duckdb("SELECT max(c1) AS v FROM (VALUES ('a b'::text)) AS t(c1)")
 
 
 @pytest.mark.parametrize(
@@ -123,27 +157,16 @@ def test_a_null_has_no_digits_to_differ_in(sql):
     assert transpile(sql, "duckdb")
 
 
-def test_a_size_is_refused_for_the_values_that_differ():
-    assert _on_duckdb("SELECT pg_size_pretty(1024::numeric) AS v") == "1024 bytes"
-    with pytest.raises(duckdb.Error, match="does not read this value"):
-        _on_duckdb("SELECT pg_size_pretty(1536.5::numeric) AS v")
-
-
 def test_one_value_has_no_order():
     assert _on_duckdb("SELECT min('a'::character) AS v") == "a"
-    with pytest.raises(FunctionRefused, match="max"):
-        transpile("SELECT max(c1) FROM (VALUES ('a'::text)) AS t(c1)", "duckdb")
 
 
 def test_an_average_of_floats_is_the_engines_own():
     assert "AVG" in transpile("SELECT avg(c1) FROM (VALUES (1.5::float8)) AS t(c1)", "duckdb")
 
 
-@pytest.mark.parametrize(
-    "function",
-    ["time_eq('1:00'::time, '1:00'::time)", "pg_lsn_larger('0/1'::pg_lsn, '0/2'::pg_lsn)"],
-)
-def test_a_row_replay_found_another_answer_of_is_refused_there(function):
+def test_a_row_replay_found_another_answer_of_is_refused_there():
+    function = "pg_lsn_pli('0/1'::pg_lsn, 2.5::numeric)"
     with pytest.raises(FunctionRefused):
         transpile(f"SELECT {function} AS v", "clickhouse")
     assert transpile(f"SELECT {function} AS v", "trino")
