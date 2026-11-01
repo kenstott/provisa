@@ -91,9 +91,20 @@ export function reportStorageFailure(
 
 let bound: StorageScope | null = null;
 
+/** When each control plane was last bound in this browser: what "oldest" means to `evict`. */
+const CONTROL_PLANES_USED = "provisa_control_planes_used";
+type ControlPlanesUsed = Record<string, number>;
+
+function controlPlanesUsed(): ControlPlanesUsed {
+  return getStoredJson<ControlPlanesUsed>(CONTROL_PLANES_USED, { global: true }) ?? {};
+}
+
 /** The scope the pages now save under; `null` unbinds it (no page is mounted then). */
 export function bindStorageScope(scope: StorageScope | null): void {
   bound = scope;
+  if (scope === null) return;
+  const used = { ...controlPlanesUsed(), [scope.controlPlaneId]: Date.now() };
+  setStored(CONTROL_PLANES_USED, JSON.stringify(used), { global: true });
 }
 
 export function storageScope(): StorageScope | null {
@@ -215,10 +226,15 @@ function scopedName(entry: string): string | null {
   return parts.length < 3 ? null : parts.slice(2).join(":");
 }
 
+/** Whether `entry` is shaped as a scoped key by a library's own key, never one of ours. */
+function isForeign(entry: string): boolean {
+  return entry.startsWith("firebase:");
+}
+
 /** The tier a stored entry is evicted in, or `null` when it is never evicted. */
 export function evictionTier(entry: string): number | null {
   const name = scopedName(entry);
-  if (name === null || entry.startsWith("firebase:")) return null;
+  if (name === null || isForeign(entry)) return null;
   const tier = EVICTION_TIERS.findIndex((names) =>
     names.some((n) => (n.endsWith(".") ? name.startsWith(n) : name === n)),
   );
@@ -230,23 +246,47 @@ export function isQuotaError(e: unknown): boolean {
   return name === "QuotaExceededError" || name === "NS_ERROR_DOM_QUOTA_REACHED";
 }
 
-/** Throw away disposable entries of `store` until `needed` characters are free, or none are left. */
-function evict(store: Storage, needed: number, keep: string): void {
+/**
+ * Save a value `store` refused, throwing away one entry at a time until it fits: the disposable
+ * ones, then what other control planes left behind (an old demo's settings), the one used longest
+ * ago first. The bound control plane's settings stay, and with none bound any control plane may
+ * be the current one, so all of theirs do. Throws the last refusal when nothing more can go.
+ */
+function saveByEviction(store: Storage, keep: string, value: string): void {
   const disposable: { at: string; tier: number; size: number }[] = [];
+  const left: { at: string; controlPlane: string; size: number }[] = [];
   for (let i = 0; i < store.length; i++) {
     const at = store.key(i);
     if (at === null || at === keep) continue;
     const tier = evictionTier(at);
-    if (tier !== null) disposable.push({ at, tier, size: store.getItem(at)?.length ?? 0 });
+    const size = store.getItem(at)?.length ?? 0;
+    if (tier !== null) disposable.push({ at, tier, size });
+    else if (bound !== null && scopedName(at) !== null && !isForeign(at)) {
+      const controlPlane = at.slice(0, at.indexOf(":"));
+      if (controlPlane !== bound.controlPlaneId) left.push({ at, controlPlane, size });
+    }
   }
   disposable.sort((a, b) => a.tier - b.tier || b.size - a.size);
-  let freed = 0;
-  for (const { at, size } of disposable) {
-    if (freed >= needed) return;
+  const used = controlPlanesUsed();
+  // A control plane with no mark was last used before the marks began: it is the oldest.
+  const usedAt = (controlPlane: string) => used[controlPlane] ?? 0;
+  left.sort(
+    (a, b) =>
+      usedAt(a.controlPlane) - usedAt(b.controlPlane) ||
+      a.controlPlane.localeCompare(b.controlPlane) ||
+      b.size - a.size,
+  );
+  for (const { at, size } of [...disposable, ...left]) {
     store.removeItem(at);
-    freed += size;
     console.error(`Browser storage: evicted "${at}" (${size} characters) to make room`);
+    try {
+      store.setItem(keep, value);
+      return;
+    } catch (e) {
+      if (!isQuotaError(e)) throw e;
+    }
   }
+  store.setItem(keep, value);
 }
 
 /** The value as saved, or `null` when there is none or it is not JSON: the caller's defaults. */
@@ -281,8 +321,7 @@ export function setStored(key: string, value: string, options?: StoredKeyOptions
       store.setItem(at, value);
     } catch (e) {
       if (!isQuotaError(e)) throw e;
-      evict(store, value.length, at);
-      store.setItem(at, value); // the one retry
+      saveByEviction(store, at, value);
     }
   } catch (e) {
     if (isIdentity(key, options)) {
