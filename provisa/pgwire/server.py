@@ -61,6 +61,7 @@ from provisa.core import request_deadline
 from provisa.core.egress import CountingWriter
 from provisa.core.pg_error import MARK
 from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
+from provisa.pgwire.session_zone import UNKNOWN_ZONE, SessionZone, refuse_other_zone
 from provisa.transpiler.transpile import DIVISION_BY_ZERO  # REQ-2167: its SQLSTATE
 from provisa.otel_compat import annotate_request as _annotate_request
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -98,7 +99,17 @@ def requested_role(params: dict) -> str | None:  # REQ-1620
     return named.pop() if named else None
 
 
-def _startup_setting(params: dict, key_named: str) -> set[str]:
+def startup_time_zone(params: dict) -> str | None:
+    """The TimeZone a startup packet names, which pgjdbc always does and libpq does for PGTZ. A
+    setting's name is read in any case, and the startup parameter is applied after ``options``."""
+    keys = {key.lower(): value for key, value in params.items()}
+    named = _startup_setting(keys, "timezone", any_case=True)
+    if len(named) > 1 and not keys.get("timezone"):
+        return UNKNOWN_ZONE  # two in options: a set of them has no last
+    return keys.get("timezone") or next(iter(named), None)
+
+
+def _startup_setting(params: dict, key_named: str, *, any_case: bool = False) -> set[str]:
     """The values a connection's startup packet gives ``key_named``: as a startup parameter of that
     name, or set in ``options`` (``-c key=value``)."""
     import shlex
@@ -117,7 +128,8 @@ def _startup_setting(params: dict, key_named: str) -> set[str]:
         else:
             continue
         key, sep, value = setting.partition("=")
-        if sep and key.strip() == key_named and value.strip():
+        said = key.strip().lower() if any_case else key.strip()
+        if sep and said == key_named and value.strip():
             named.add(value.strip())
     return named
 
@@ -134,12 +146,6 @@ _REDIRECT_SET_RE = re.compile(
 # REQ-2110: a session's time travel, the default every statement it runs reads at where a
 # reference says no time of its own (REQ-1163): SET provisa.as_of / provisa.as_recorded, RESET
 # either, or SET either TO DEFAULT.
-#: REQ-2171: SET TimeZone, or SET TIME ZONE, and its RESET: what timeofday writes in.
-_TIME_ZONE_SET_RE = re.compile(
-    r"^\s*(?:SET\s+(?:SESSION\s+)?(?:TIME\s*ZONE)\s*(?:TO|=)?\s*'?(?P<zone>[^';\s]+)'?"
-    r"|RESET\s+TIME\s*ZONE)\s*;?\s*$",
-    re.IGNORECASE,
-)
 _TIME_TRAVEL_SET_RE = re.compile(
     r"^\s*(?:SET\s+(?:SESSION\s+)?(?P<key>provisa\.as_(?:of|recorded))\s*(?:=|\s+TO\s+)\s*"
     r"(?P<value>.+?)|RESET\s+(?P<reset>provisa\.as_(?:of|recorded)))\s*;?\s*$",
@@ -1669,8 +1675,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-2171: what system_user answers, the method and the name the session authenticated
         # by; None in trust mode, as PostgreSQL's is.
         self.system_user: str | None = None
-        # REQ-2171: the zone the session's SET TimeZone named; None for the server's.
-        self.time_zone: str | None = None
+        # REQ-2171: the zone the session is on; startup replaces it with the one it names.
+        self.zone = SessionZone()
         # REQ-1266: the org this session is bound to, set when it is admitted. None until then: a
         # session not yet admitted is served no org's runtime.
         self.org_id: str | None = None
@@ -1721,14 +1727,6 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         from provisa.mv.bitemporal import request_as_of
 
         return request_as_of(self.as_of_setting, self.as_recorded_setting)
-
-    def _note_time_zone(self, sql: str) -> None:
-        """The zone a ``SET TimeZone`` of this statement names; the statement itself is answered
-        as any SET is."""
-        m = _TIME_ZONE_SET_RE.match(sql)
-        if m is not None:
-            zone = m.group("zone")
-            self.time_zone = None if (zone or "").upper() in ("", "DEFAULT", "LOCAL") else zone
 
     def _set_time_travel(self, sql: str) -> bool:
         """Apply ``SET provisa.as_of|as_recorded ...`` / ``RESET`` either; False when ``sql`` is
@@ -2070,6 +2068,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             return result
         bound = list(params) if params else None
         refuse_server_function(stripped)  # REQ-2167
+        refuse_other_zone(stripped, self.zone.current)  # REQ-2171
         advisory = _advisory_call(stripped)
         if advisory is not None:
             return self._advisory_answer(advisory, stripped, params)
@@ -2078,13 +2077,13 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             return ProvisaQueryResult(self._server_function(server_function), stripped)
         stripped = _current_query_said(stripped)
         # REQ-1194: SET / RESET provisa.redirect*; REQ-2110: provisa.as_of / provisa.as_recorded
-        self._note_time_zone(stripped)
         if self._set_redirect(stripped) or self._set_time_travel(stripped):
             from provisa.executor.result import QueryResult
 
             return ProvisaQueryResult(QueryResult(rows=[], column_names=[]), stripped)
         was_open = self.transaction_open
         self.transaction_open = _transaction_open(stripped, was_open)
+        self.zone.note(stripped, was_open, self.transaction_open)  # REQ-2171
         if was_open and not self.transaction_open:
             advisory_locks.LOCKS.end_transaction(self)  # REQ-2167
         disposition = classify(stripped)
@@ -2101,7 +2100,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     self.application_name,
                     self.backend_start,
                     self.system_user,
-                    self.time_zone,
+                    self.zone.current,
                 ),
                 run=self._catalog_read,
             )
@@ -2786,6 +2785,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             ctx = BVContext(conn.create_session(), None, params)
             self._session = ctx.session  # type: ignore[assignment]
             ctx.session.application_name = params.get("application_name", "")  # type: ignore[attr-defined]
+            ctx.session.zone = SessionZone(startup_time_zone(params))  # type: ignore[attr-defined]
             ctx.session.client_end = self.client_address  # type: ignore[attr-defined]
             ctx.session.server_end = self.request.getsockname()  # type: ignore[attr-defined]
             try:

@@ -1490,14 +1490,36 @@ _BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
 _CALLED = re.compile(r"\b(" + "|".join(sorted(RESULTS)) + r")\"?\s*\(", re.IGNORECASE)
 
 
+#: What these forms write in UTC, or read a session's zone into: only a session on UTC is answered.
+ZONED = frozenset({"timestamptz_in", "timestamptz_out", "timestamptz_send"})
+_ZONED_CALLED = re.compile(r"\b(" + "|".join(sorted(ZONED)) + r")\"?\s*\(", re.IGNORECASE)
+
+
+def _spelled(sql: str) -> str:
+    return _BIT_VARYING.sub("::varbit", _ARRAY_OF_CSTRING.sub("::_cstring", sql))
+
+
+def zoned_call(sql: str) -> str | None:
+    """The function of ``ZONED`` that ``sql`` calls. A text sqlglot cannot read is taken to call
+    what it names: the cost of being wrong is a refusal, not a wrong answer."""
+    named = _ZONED_CALLED.search(sql)
+    if named is None:
+        return None
+    try:
+        tree = sqlglot.parse_one(_spelled(sql), read="postgres")
+    except SqlglotError:
+        return named.group(1).lower()
+    calls = (call.name.lower() for call in tree.find_all(exp.Anonymous))
+    return next((name for name in calls if name in ZONED), None)
+
+
 def readable(sql: str) -> str:
     """``sql`` with each call of these functions as its row reads it. sqlglot takes ``::cstring[]``
     for a subscript and ``::bit varying`` for a bit and an alias, and reads PostgreSQL's other
     spelling of each. A text it cannot parse is left, for the engine to say so."""
     if _CALLED.search(sql) is None:
         return sql
-    spelled = _BIT_VARYING.sub("::varbit", _ARRAY_OF_CSTRING.sub("::_cstring", sql))
     try:
-        return _lowered(sqlglot.parse_one(spelled, read="postgres")).sql(dialect="postgres")
+        return _lowered(sqlglot.parse_one(_spelled(sql), read="postgres")).sql(dialect="postgres")
     except SqlglotError:
         return sql

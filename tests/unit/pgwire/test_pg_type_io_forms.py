@@ -21,10 +21,12 @@ from typing import Any
 import duckdb
 import pytest
 
-from provisa.core.pg_error import from_engine
+from provisa.core.pg_error import PostgresError, from_engine
 from provisa.pgwire.cast_types import result_casts
+from provisa.pgwire.server import ProvisaSession, _sqlstate_of, startup_time_zone
+from provisa.pgwire.session_zone import UNKNOWN_ZONE, SessionZone, refuse_other_zone
 from provisa.transpiler.function_macros import MACROS, outcome
-from provisa.transpiler.pg_forms_type_io import ROWS, readable
+from provisa.transpiler.pg_forms_type_io import ROWS, ZONED, readable, zoned_call
 from provisa.transpiler.transpile import transpile_to_duckdb
 from tests.unit.pgwire.pg17_type_io_answers import RECORDED
 from tests.unit.pgwire.type_io_corpus import (
@@ -97,3 +99,124 @@ def test_a_call_keeps_the_name_of_its_column():
 def test_the_wire_says_the_type_postgresql_says(sql: str):
     casts = result_casts(sql)
     assert casts is not None and casts[0] is not None and casts[0].oid == RECORDED[sql][0]
+
+
+_ZONED_CALLS = {
+    "timestamptz_in": "SELECT timestamptz_in('2024-06-15 12:30:45+00', 1184, -1)",
+    "timestamptz_out": "SELECT pg_catalog.\"timestamptz_out\"('2024-06-15 12:30:45+00'::timestamptz)",
+    "timestamptz_send": "SELECT timestamptz_send(t) FROM events",
+}
+
+
+@pytest.mark.parametrize("function", sorted(ZONED))
+@pytest.mark.parametrize("zone", ["America/New_York", "Asia/Kolkata", "-5", UNKNOWN_ZONE])
+def test_a_form_bound_to_utc_is_refused_by_name_in_another_zone(function: str, zone: str):
+    session = ProvisaSession()
+    session.role_id = "analyst"
+    session.zone = SessionZone(zone)
+    with pytest.raises(PostgresError) as raised:
+        session._execute_sql_bound(_ZONED_CALLS[function])
+    assert _sqlstate_of(raised.value) == "0A000"
+    assert str(raised.value).startswith(f"{function} does not read this value")
+    assert zone in str(raised.value)
+
+
+@pytest.mark.parametrize("function", sorted(ZONED))
+@pytest.mark.parametrize("zone", [None, "UTC", "utc", "Etc/UTC", "GMT"])
+def test_a_session_on_utc_is_answered(function: str, zone: str | None):
+    refuse_other_zone(_ZONED_CALLS[function], zone)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT 1",
+        "SELECT 'timestamptz_out(' AS said",
+        "SELECT timestamp_out('2024-06-15 12:30:45'::timestamp)",
+    ],
+)
+def test_a_statement_that_calls_no_such_form_is_not_refused(sql: str):
+    assert zoned_call(sql) is None
+    refuse_other_zone(sql, "America/New_York")
+
+
+def test_a_call_in_a_text_sqlglot_cannot_read_is_taken_for_a_call():
+    assert zoned_call("SELECT ¿ timestamptz_out(x) FROM (") == "timestamptz_out"
+
+
+def _zone_after(*statements: str, started: str | None = None) -> str | None:
+    zone = SessionZone(started)
+    in_block = False
+    for sql in statements:
+        word = sql.split()[0].upper()
+        opens = word == "BEGIN" or (in_block and word not in ("COMMIT", "ROLLBACK", "ABORT"))
+        to_savepoint = sql.upper().startswith("ROLLBACK TO")
+        zone.note(sql, in_block, opens or to_savepoint)
+        in_block = opens or to_savepoint
+    return zone.current
+
+
+@pytest.mark.parametrize(
+    "statements, want",
+    [
+        (["SET TimeZone TO 'Asia/Tokyo'"], "Asia/Tokyo"),
+        (["SET timezone = 'Asia/Tokyo';"], "Asia/Tokyo"),
+        (["SET TIME ZONE 'Asia/Tokyo'"], "Asia/Tokyo"),
+        (["SET SESSION TIME ZONE 'Asia/Tokyo'"], "Asia/Tokyo"),
+        (["SET TIME ZONE -5"], "-5"),
+        (["SET TIME ZONE INTERVAL '-08:00' HOUR TO MINUTE"], "INTERVAL '-08:00' HOUR TO MINUTE"),
+        (["SET TimeZone TO 'Asia/Tokyo'", "SET TimeZone TO DEFAULT"], None),
+        (["SET TimeZone TO 'Asia/Tokyo'", "SET TIME ZONE LOCAL"], None),
+        (["SET TimeZone TO 'Asia/Tokyo'", "RESET TimeZone"], None),
+        (["SET TimeZone TO 'Asia/Tokyo'", "RESET ALL"], None),
+        (["SET TimeZone TO 'Asia/Tokyo'", "DISCARD ALL"], None),
+        (["SET TimeZone TO 'Asia/Tokyo'", "SET TimeZone TO ''"], "Asia/Tokyo"),
+        (["SET LOCAL TimeZone TO 'Asia/Tokyo'"], None),
+        (["BEGIN", "SET LOCAL TimeZone TO 'Asia/Tokyo'"], "Asia/Tokyo"),
+        (["BEGIN", "SET LOCAL TimeZone TO 'Asia/Tokyo'", "COMMIT"], None),
+        (["BEGIN", "SET TimeZone TO 'Asia/Tokyo'", "COMMIT"], "Asia/Tokyo"),
+        (["BEGIN", "SET TimeZone TO 'Asia/Tokyo'", "ROLLBACK"], None),
+        (["SET TimeZone TO 'Asia/Tokyo'", "BEGIN", "SET TimeZone TO 'UTC'", "ABORT"], "Asia/Tokyo"),
+        (["BEGIN", "SET TimeZone TO 'Asia/Tokyo'", "ROLLBACK TO s"], UNKNOWN_ZONE),
+        (["SELECT set_config('TimeZone', 'Asia/Tokyo', false)"], "Asia/Tokyo"),
+        (["SELECT pg_catalog.set_config('timezone', 'Asia/Tokyo'::text, false)"], "Asia/Tokyo"),
+        (["SELECT set_config('TimeZone', 'Asia/Tokyo', true)"], None),
+        (["SELECT set_config('search_path', 'a', false)"], None),
+        (["SELECT set_config($1, $2, false)"], UNKNOWN_ZONE),
+        (["SELECT set_config('TimeZone', $1, false)"], UNKNOWN_ZONE),
+    ],
+)
+def test_the_session_knows_its_zone(statements: list[str], want: str | None):
+    assert _zone_after(*statements) == want
+
+
+def test_reset_returns_to_the_zone_the_connection_started_on():
+    assert (
+        _zone_after("SET TimeZone TO 'UTC'", "RESET TimeZone", started="Asia/Tokyo") == "Asia/Tokyo"
+    )
+    assert _zone_after("SET TimeZone TO DEFAULT", started="Asia/Tokyo") == "Asia/Tokyo"
+
+
+@pytest.mark.parametrize(
+    "params, want",
+    [
+        ({}, None),
+        ({"TimeZone": "America/New_York"}, "America/New_York"),  # pgjdbc
+        ({"timezone": "America/New_York"}, "America/New_York"),  # libpq, for PGTZ
+        ({"options": "-c TimeZone=America/New_York"}, "America/New_York"),
+        ({"options": "--timezone=America/New_York"}, "America/New_York"),
+        ({"TimeZone": "Asia/Tokyo", "options": "-c TimeZone=UTC"}, "Asia/Tokyo"),
+        ({"options": "-c TimeZone=UTC -c TimeZone=Asia/Tokyo"}, UNKNOWN_ZONE),
+    ],
+)
+def test_a_connection_can_start_on_a_zone(params: dict[str, str], want: str | None):
+    assert startup_time_zone(params) == want
+
+
+@pytest.mark.parametrize("function", ["timestamptz_out", "timestamptz_send"])
+def test_the_engines_own_zone_does_not_change_an_answer(function: str):
+    connection = duckdb.connect()
+    connection.execute("SET TimeZone='America/New_York'")
+    found = {sql: _difference(connection, sql) for sql in _FUNCTIONS[function]}
+    assert {s: why for s, why in found.items() if why not in (None, REFUSED)} == {}
+    assert sum(why == REFUSED for why in found.values()) <= REFUSALS.get(function, 0)
