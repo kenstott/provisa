@@ -252,6 +252,8 @@ class _Group:
     #: OPTIONALs with a variable predicate that did not match: this group holds where none of
     #: their predicates does.
     absent: list["_Group"] = field(default_factory=list)
+    #: FILTER EXISTS patterns: this group holds where each of them does.
+    present: list["_Group"] = field(default_factory=list)
 
     def joined(self, other: "_Group") -> "_Group":
         return _Group(
@@ -260,7 +262,35 @@ class _Group:
             [*self.binds, *other.binds],
             [*self.optionals, *other.optionals],
             [*self.absent, *other.absent],
+            [*self.present, *other.present],
         )
+
+
+def _one_pattern(p: CompValue, what: str) -> _Group:
+    groups = _alternatives(p)
+    if len(groups) != 1:
+        raise SparqlRefused(f"A {what} holding a UNION is not supported")
+    return groups[0]
+
+
+def _pattern_vars(group: _Group) -> set[str]:
+    return {str(t) for triple in group.triples for t in triple if _is_var(t)}
+
+
+def _opened_objects(group: _Group) -> _Group:
+    """``group`` with the constant object of each variable predicate read as a fresh variable
+    equal to it, so ``?s ?p "x"`` is each predicate in turn, as ``?s ?p ?o`` is."""
+    triples = []
+    for i, (s, p, o) in enumerate(group.triples):
+        if _is_var(p) and not _is_var(o) and not isinstance(o, BNode):
+            fresh = RdfVariable(f"_object{i}")
+            group.filters.append(
+                CompValue("RelationalExpression", expr=fresh, op="=", other=o, _vars={fresh})
+            )
+            o = fresh
+        triples.append((s, p, o))
+    group.triples = triples
+    return group
 
 
 def _values_rows(p: CompValue) -> list[dict[Any, Any]] | None:
@@ -290,14 +320,14 @@ def _with_row(group: _Group, row: dict[Any, Any]) -> _Group | None:
     if any(isinstance(s, RdfLiteral) for s, _, _ in placed.triples):
         return None
     placed.binds = [*((str(k), v) for k, v in row.items()), *placed.binds]
-    return placed
+    return _opened_objects(placed)
 
 
 def _alternatives(p: CompValue) -> list[_Group]:
     """``p`` as the groups whose solutions together are its own (a UNION's sides apart)."""
     name = p.name
     if name == "BGP":
-        return [_Group(triples=list(p.triples))]
+        return [_opened_objects(_Group(triples=list(p.triples)))]
     if name == "Join":
         for table, rest in ((p.p2, p.p1), (p.p1, p.p2)):
             rows = _values_rows(table)
@@ -313,8 +343,21 @@ def _alternatives(p: CompValue) -> list[_Group]:
         return [*_alternatives(p.p1), *_alternatives(p.p2)]
     if name == "Filter":
         groups = _alternatives(p.p)
+        kind = getattr(p.expr, "name", None)
         for g in groups:
-            g.filters.append(p.expr)
+            if kind in ("Builtin_EXISTS", "Builtin_NOTEXISTS"):
+                inner = _one_pattern(p.expr.graph, kind.removeprefix("Builtin_"))
+                (g.present if kind == "Builtin_EXISTS" else g.absent).append(inner)
+            else:
+                g.filters.append(p.expr)
+        return groups
+    if name == "Minus":
+        # SPARQL 18.5: a solution sharing no variable with the right side is never removed.
+        groups = _alternatives(p.p1)
+        inner = _one_pattern(p.p2, "MINUS")
+        for g in groups:
+            if _pattern_vars(g) & _pattern_vars(inner):
+                g.absent.append(inner)
         return groups
     if name == "Extend":
         groups = _alternatives(p.p)
@@ -1165,6 +1208,21 @@ class _Lowering:
             raise _NoSolution
         return [Binary("=", value, bound[0])]
 
+    def _exists(
+        self,
+        wanted: _Group,
+        labels: dict[str, str],
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+    ) -> CypherExpr:
+        """That some predicate of the pattern ``wanted`` matches the row."""
+        cases = self._presences(wanted, labels, bindings)
+        if not cases:
+            raise _NoSolution
+        out = cases[0]
+        for c in cases[1:]:
+            out = Binary("OR", out, c)
+        return out
+
     def _absent(
         self,
         opt: _Group,
@@ -1173,6 +1231,19 @@ class _Lowering:
     ) -> list[CypherExpr]:
         """The conditions that no predicate of the OPTIONAL ``opt`` matches the row, each read
         where its own column or edge is. Raises where one always does."""
+        return [
+            Case(None, [(present, Literal(False, "boolean"))], Literal(True, "boolean"))
+            for present in self._presences(opt, labels, bindings)
+        ]
+
+    def _presences(
+        self,
+        opt: _Group,
+        labels: dict[str, str],
+        bindings: dict[str, tuple[CypherExpr, str | None]],
+    ) -> list[CypherExpr]:
+        """That the pattern ``opt`` matches the row, one condition per predicate it may read.
+        Raises where one always holds with nothing to read."""
         opt_labels = {**labels, **self._optional_labels(opt, labels)}
         self._opened |= _opened_vars(opt)
         fixed = {v: b[0].iri for v, b in bindings.items() if isinstance(b[0], IriConst)}
@@ -1194,12 +1265,11 @@ class _Lowering:
                 self._placed = placed
             where = step.where.expression if step.where is not None else None
             if step.matches:
-                present: CypherExpr = SubqueryExpr("EXISTS", _exists_body(step.matches, where))
+                out.append(SubqueryExpr("EXISTS", _exists_body(step.matches, where)))
             elif where is not None:
-                present = where
+                out.append(where)
             else:
                 raise _NoSolution  # holds of every row: the OPTIONAL always matches
-            out.append(Case(None, [(present, Literal(False, "boolean"))], Literal(True, "boolean")))
         return out
 
     # -- the ontology's axioms (REQ-2163) -------------------------------------------------
@@ -2029,6 +2099,8 @@ class _Lowering:
                 _holds_somewhere(conditions[-1])
         for opt in group.absent:
             conditions.extend(self._absent(opt, labels, bindings))
+        for wanted in group.present:
+            conditions.append(self._exists(wanted, labels, bindings))
         first = steps[0]
         if first.where is not None:
             conditions.insert(0, first.where.expression)
@@ -2089,6 +2161,12 @@ class _Lowering:
             return [Literal(2, "number"), FunctionCall("toFloat", [value]), no_text]
         return [Literal(3, "number"), no_number, FunctionCall("toString", [value])]
 
+    def _order_value(self, e: Any, bindings, labels) -> CypherExpr:
+        """What ORDER BY sorts on: a subject by its key, which is what its IRI differs by."""
+        if isinstance(e, RdfVariable) and str(e) in labels and str(e) not in bindings:
+            return FunctionCall("toString", [self._key_of(str(e), labels)])
+        return self.expr(e, bindings, labels)
+
     def statement(
         self,
         group: _Group,
@@ -2142,7 +2220,9 @@ class _Lowering:
                     items.append(ReturnItem(lane, f"{_ORDER_PREFIX}{i}{suffix}", name=""))
                 continue
             items.append(
-                ReturnItem(self.expr(cond.expr, bindings, labels), f"{_ORDER_PREFIX}{i}", name="")
+                ReturnItem(
+                    self._order_value(cond.expr, bindings, labels), f"{_ORDER_PREFIX}{i}", name=""
+                )
             )
         ast.return_clause = ReturnClause(
             items, distinct=bool(mods.get("distinct")), group_by=group_keys, having=having

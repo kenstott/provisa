@@ -881,3 +881,43 @@ def test_a_literal_values_gives_a_subject_has_no_solution(con):
 def test_construct_where_takes_its_pattern_as_its_template(con):
     rows = _answer(con, f"CONSTRUCT WHERE {{ <{ann()}> p:name ?n }}")
     assert [r["o"] for r in rows] == ["Ann"] and rows[0]["s"] == ann()
+
+
+# --- what the W3C suite's groups read (REQ-2167) ---------------------------------------------------
+
+
+def test_order_by_a_subject_sorts_by_its_key(con):
+    rows = _answer(con, "SELECT ?s WHERE { ?s p:name ?n } ORDER BY DESC(?s)")
+    assert rows[-1]["s"] == ann() and len(rows) == 4
+
+
+def test_not_exists_keeps_the_rows_with_no_match(con):
+    rows = _answer(con, "SELECT ?n WHERE { ?s p:name ?n FILTER NOT EXISTS { ?s p:age ?a } }")
+    assert [r["n"] for r in rows] == ["Di"]
+
+
+def test_exists_keeps_the_rows_with_a_match(con):
+    rows = _answer(
+        con, "SELECT ?n WHERE { ?s p:name ?n FILTER EXISTS { ?s p:age ?a FILTER(?a > 40) } }"
+    )
+    assert [r["n"] for r in rows] == ["Ann"]
+
+
+def test_exists_over_an_edge_reads_the_outer_subject(con):
+    rows = _answer(con, "SELECT ?n WHERE { ?s p:name ?n FILTER EXISTS { ?s rel:KNOWS ?o } }")
+    assert sorted(r["n"] for r in rows) == ["Ann", "Bo"]
+
+
+def test_minus_removes_the_solutions_sharing_a_binding(con):
+    rows = _answer(con, "SELECT ?n WHERE { ?s p:name ?n MINUS { ?s p:age ?a } }")
+    assert [r["n"] for r in rows] == ["Di"]
+
+
+def test_minus_sharing_no_variable_removes_nothing(con):
+    rows = _answer(con, "SELECT ?n WHERE { ?s p:name ?n MINUS { ?x p:age ?a } }")
+    assert len(rows) == 4
+
+
+def test_a_variable_predicate_with_a_constant_object_finds_the_predicates(con):
+    rows = _answer(con, 'SELECT ?p WHERE { ?s ?p "Ann" }')
+    assert [r["p"] for r in rows] == [NAME]
