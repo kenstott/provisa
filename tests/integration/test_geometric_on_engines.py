@@ -23,6 +23,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import duckdb
 import psycopg
 import pytest
 
@@ -91,6 +92,11 @@ def _check(run: Callable[[str], Any], dialect: str) -> None:
         if not same:
             wrong[sql] = str(got)[:200]
     assert not wrong, f"{len(wrong)} of {len(RECORDED)} {list(wrong.items())[:12]}"
+
+
+def test_geometric_forms_on_duckdb():
+    connection = duckdb.connect()
+    _check(lambda sql: connection.execute(sql).fetchone()[0], "duckdb")
 
 
 @pytest.mark.requires_trino

@@ -36,6 +36,37 @@ VALUES: dict[str, tuple[str, ...]] = {
     "integer": ("2", "3", "7"),
 }
 _TYPES = {"point", "lseg", "box", "path", "polygon", "circle", "line"}
+#: Every pair of these, for containment: inside, outside, crossing, a notch, shared edges, vertices on
+#: an edge, and a polygon holding a vertex on the other's edge.
+CONTAINED = (
+    "((0,0),(4,0),(4,4),(0,4))",
+    "((1,1),(2,3),(3,1))",
+    "((0,0),(2,0),(2,2),(0,2))",
+    "((2,0),(4,2),(2,4),(0,2))",
+    "((0,0),(4,0),(4,4),(2,2),(0,4))",
+    "((1,2.5),(3,2.5),(3,3.5),(1,3.5))",
+    "((3,3),(5,3),(5,5),(3,5))",
+    "((0,4),(6,4),(3,2),(6,0),(0,0))",
+    "((2,1),(2,3),(3,3),(3,1))",
+)
+#: The branches a sample of the values can miss: what PostgreSQL refuses, and a line's three shapes.
+BRANCHES = (
+    "SELECT point_div('(1,2)'::point, '(0,0)'::point) AS v",
+    "SELECT box_div('(3,4),(0,0)'::box, '(0,0)'::point) AS v",
+    "SELECT circle_div_pt('<(1,2),3>'::circle, '(0,0)'::point) AS v",
+    "SELECT path_div_pt('[(0,1),(0.5,3),(7,1)]'::path, '(0,0)'::point) AS v",
+    "SELECT line('(1,2)'::point, '(1,2)'::point) AS v",
+    "SELECT line('(1,1)'::point, '(1,5)'::point) AS v",
+    "SELECT line('(1,1)'::point, '(4,1)'::point) AS v",
+    "SELECT line('(0,0)'::point, '(1,1)'::point) AS v",
+    "SELECT polygon(1::integer, '<(1,2),3>'::circle) AS v",
+    "SELECT polygon(1::integer, '<(10,10),0>'::circle) AS v",
+    "SELECT polygon('<(10,10),0>'::circle) AS v",
+    "SELECT polygon('[(0,0),(2,2)]'::path) AS v",
+    "SELECT path_add('[(0,0),(2,2)]'::path, '[(0,1),(0.5,3),(7,1)]'::path) AS v",
+    "SELECT path_add('((0,0),(1,0),(1,1))'::path, '[(0,0),(2,2)]'::path) AS v",
+    "SELECT circle('(1,2)'::point, -2::double precision) AS v",
+)
 
 
 def _overloads(name: str) -> list[tuple[str, ...]]:
@@ -62,10 +93,13 @@ def statements() -> list[str]:
         for types in _overloads(name):
             if any(t not in VALUES for t in types):
                 continue
-            calls = list(product(*(VALUES[t] for t in types)))
-            for values in calls[:: max(1, len(calls) // 8)]:
+            pairs = name in ("poly_contain", "poly_contained")
+            calls = list(
+                product(CONTAINED, CONTAINED) if pairs else product(*map(VALUES.get, types))
+            )
+            for values in calls if pairs else calls[:: max(1, len(calls) // 8)]:
                 args = ", ".join(_literal(t, v) for t, v in zip(types, values))
                 seen.append(f"SELECT {name}({args}) AS v")
             nulls = ", ".join(f"NULL::{t}" for t in types)
             seen.append(f"SELECT {name}({nulls}) AS v")
-    return list(dict.fromkeys(seen))
+    return list(dict.fromkeys((*seen, *BRANCHES)))
