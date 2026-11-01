@@ -1301,6 +1301,7 @@ _CALLED = {
 }
 _NAMES = frozenset(name for name, _ in MACROS) | {name for name, _, _ in OVERLOADS} | {"encode"}
 _MENTIONED = re.compile(r"\b(" + "|".join(sorted(_NAMES)) + r")\"?\s*\(", re.IGNORECASE)
+_QUALIFIED = re.compile(r"\bpg_catalog\s*\.\s*\"?\w+\"?\s*\(", re.IGNORECASE)
 #: The names provisa.pgwire.catalog answers where a statement reads no table.
 SERVER_VALUE_NAMES = frozenset(m.name for m in VALUE_FUNCTIONS_OF_THE_SERVER)
 
@@ -1346,9 +1347,11 @@ def outcome(name: str, arity: int, dialect: str) -> str:
 
 
 def mentioned(sql: str, dialect: str) -> bool:
-    """Whether ``sql`` may call a function of the table that ``dialect`` does not have itself; a
-    statement that calls none is not parsed."""
-    return dialect not in NATIVE and _MENTIONED.search(sql) is not None
+    """Whether ``sql`` may call a function of the table that ``dialect`` does not have itself, or
+    names one by pg_catalog; a statement that does neither is not parsed."""
+    if dialect in NATIVE:
+        return False
+    return _MENTIONED.search(sql) is not None or _QUALIFIED.search(sql) is not None
 
 
 @functools.lru_cache(maxsize=2048)
@@ -1514,12 +1517,29 @@ def _bytea_input(value: exp.Expr, called: str, dialect: str) -> exp.Expr:
     return exp.Unhex(this=exp.Literal.string(digits))
 
 
+def _unqualified(tree: exp.Expr) -> exp.Expr:
+    """``tree`` with each pg_catalog.f(...) the call of f, as sqlglot reads it: no engine but
+    PostgreSQL and DuckDB has that schema, and sqlglot writes a qualified call as it stands."""
+    for dot in reversed(list(tree.find_all(exp.Dot))):
+        call = dot.expression
+        if not isinstance(dot.this, exp.Identifier) or dot.this.name.lower() != "pg_catalog":
+            continue
+        if isinstance(call, exp.Anonymous):
+            call = exp.func(call.name, *call.expressions, dialect="postgres")
+        if isinstance(call, exp.Func):
+            replaced = dot.replace(call)
+            tree = replaced if dot is tree else tree
+    return tree
+
+
 def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
     """``tree`` with each call of a function of the table written in its form for ``dialect``.
     Raises :class:`FunctionRefused` for a call of one it has no form of. A call with no overload
     of its argument count is left, for the engine to say so."""
     if dialect in NATIVE:
         return tree
+    if dialect not in _DUCKDB:
+        tree = _unqualified(tree)
 
     def rewrite(node: exp.Expr) -> exp.Expr:
         target = node

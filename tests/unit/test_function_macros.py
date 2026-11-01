@@ -274,3 +274,19 @@ def test_a_byte_out_of_range_is_postgresqls_error(con):
 def test_a_bit_string_of_an_integer_is_its_low_bits(con):
     assert _one(con, "SELECT bit(5, 8)::text") == [("101",)]
     assert _one(con, "SELECT bit(-1, 4)::text") == [("1111",)]
+
+
+@pytest.mark.parametrize(
+    ("dialect", "want"),
+    [
+        ("trino", "SELECT ABS(CAST(NULL AS DOUBLE)) AS v"),
+        ("clickhouse", "SELECT ABS(CAST(NULL AS Nullable(Float64))) AS v"),
+    ],
+)
+def test_a_call_by_pg_catalog_is_the_call_of_the_function(dialect: str, want: str):
+    assert transpile('SELECT pg_catalog."abs"(NULL::double precision) AS v', dialect) == want
+
+
+def test_a_qualified_call_inside_a_qualified_call_is_read_too():
+    written = transpile('SELECT pg_catalog."abs"(pg_catalog."sign"(x)) FROM t', "trino")
+    assert "pg_catalog" not in written.lower()
