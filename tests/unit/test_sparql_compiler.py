@@ -361,7 +361,7 @@ def test_a_predicate_the_vocabulary_lacks_matches_nothing(con):
         ),
         ("SELECT (SAMPLE(?s) AS ?x) WHERE { ?s p:name ?n }", "COUNT it"),
         ("CONSTRUCT { ?s ?s ?s } WHERE { ?s p:name ?n } GROUP BY ?s", "CONSTRUCT"),
-        ("SELECT ?s WHERE { VALUES ?s { 1 } }", "VALUES"),
+        ("SELECT ?n WHERE { { SELECT ?n WHERE { ?s p:name ?n } } }", "Sub-SELECT"),
         ("DESCRIBE ?s WHERE { ?s p:name ?n }", "DESCRIBE|Describe"),
         ('SELECT ?n WHERE { ?s p:name ?n FILTER(MD5(?n) = "x") }', "MD5"),
         ('SELECT ?x WHERE { ?s p:name ?n BIND(REPLACE(?n, "a", "b", "i") AS ?x) }', "flags i"),
@@ -835,3 +835,44 @@ def test_without_a_plain_limit_the_plain_union_limit_applies(monkeypatch, query)
     monkeypatch.setenv("PROVISA_GRAPH_UNION_LIMIT", "8")
     with pytest.raises(SparqlRefused, match=r"past the graph union limit of 8;"):
         _wide(query)
+
+
+# --- VALUES (W3C SPARQL 1.1: bindings) -----------------------------------------------------------
+
+
+def test_values_keeps_the_solutions_its_rows_name(con):
+    rows = _answer(
+        con,
+        'SELECT ?n ?a WHERE { ?s p:name ?n ; p:age ?a VALUES ?n { "Ann" "Cy" "Nobody" } }',
+    )
+    assert sorted((r["n"], r["a"]) for r in rows) == [("Ann", 41), ("Cy", 29)]
+
+
+def test_values_names_a_subject_by_its_iri_and_answers_it(con):
+    rows = _answer(con, f"SELECT ?s ?n WHERE {{ VALUES ?s {{ <{ann()}> }} ?s p:name ?n }}")
+    assert rows == [{"s": ann(), "n": "Ann"}]
+
+
+def test_undef_in_a_row_leaves_that_variable_to_the_pattern(con):
+    rows = _answer(
+        con,
+        'SELECT ?n ?a WHERE { ?s p:name ?n ; p:age ?a } VALUES (?n ?a) { ("Ann" UNDEF) (UNDEF 29) }',
+    )
+    assert sorted((r["n"], r["a"]) for r in rows) == [("Ann", 41), ("Cy", 29)]
+
+
+def test_a_filter_reads_a_variable_values_binds(con):
+    rows = _answer(
+        con,
+        "SELECT ?n WHERE { ?s p:name ?n ; p:age ?a VALUES ?m { 30 } FILTER(?a > ?m) } ORDER BY ?n",
+    )
+    assert [r["n"] for r in rows] == ["Ann", "Bo"]
+
+
+def test_values_alone_answers_its_rows(con):
+    rows = _answer(con, 'SELECT ?x WHERE { VALUES ?x { "a" "b" } }')
+    assert sorted(r["x"] for r in rows) == ["a", "b"]
+
+
+def test_a_literal_values_gives_a_subject_has_no_solution(con):
+    assert _answer(con, 'SELECT ?n WHERE { VALUES ?s { "a" } ?s p:name ?n }') == []

@@ -263,12 +263,51 @@ class _Group:
         )
 
 
+def _values_rows(p: CompValue) -> list[dict[Any, Any]] | None:
+    """The rows of a VALUES block, each without its UNDEFs; None for anything else."""
+    if p.name != "ToMultiSet" or getattr(p.p, "name", None) != "values":
+        return None
+    return [{k: v for k, v in row.items() if v != "UNDEF"} for row in p.p.res]
+
+
+def _substituted(group: _Group, row: dict[Any, Any]) -> _Group:
+    def put(term: Any) -> Any:
+        return row.get(term, term)
+
+    return dataclasses.replace(
+        group,
+        triples=[(put(s), put(p), put(o)) for s, p, o in group.triples],
+        optionals=[_substituted(o, row) for o in group.optionals],
+        absent=[_substituted(a, row) for a in group.absent],
+    )
+
+
+def _with_row(group: _Group, row: dict[Any, Any]) -> _Group | None:
+    """``group`` holding one VALUES row: each variable the row binds is its term in the triples,
+    so the term constrains them as a constant does, and bound to it for the rest of the query.
+    None when the row puts a literal where a subject stands: that row has no solution."""
+    placed = _substituted(group, row)
+    if any(isinstance(s, RdfLiteral) for s, _, _ in placed.triples):
+        return None
+    placed.binds = [*((str(k), v) for k, v in row.items()), *placed.binds]
+    return placed
+
+
 def _alternatives(p: CompValue) -> list[_Group]:
     """``p`` as the groups whose solutions together are its own (a UNION's sides apart)."""
     name = p.name
     if name == "BGP":
         return [_Group(triples=list(p.triples))]
     if name == "Join":
+        for table, rest in ((p.p2, p.p1), (p.p1, p.p2)):
+            rows = _values_rows(table)
+            if rows is not None:
+                return [
+                    group
+                    for a in _alternatives(rest)
+                    for row in rows
+                    if (group := _with_row(a, row)) is not None
+                ]
         return [a.joined(b) for a in _alternatives(p.p1) for b in _alternatives(p.p2)]
     if name == "Union":
         return [*_alternatives(p.p1), *_alternatives(p.p2)]
@@ -292,8 +331,11 @@ def _alternatives(p: CompValue) -> list[_Group]:
         for g in groups:
             g.optionals.append(optional[0])
         return groups
+    rows = _values_rows(p)
+    if rows is not None:
+        return [_Group(binds=[(str(k), v) for k, v in row.items()]) for row in rows]
     if name in ("ToMultiSet", "values"):
-        raise SparqlRefused("VALUES and sub-SELECTs are not supported")
+        raise SparqlRefused("Sub-SELECTs are not supported")
     if name in ("Group", "AggregateJoin"):
         raise SparqlRefused("GROUP BY and aggregates are supported only at the top of a query")
     raise SparqlRefused(f"The SPARQL operator {name} is not supported")
