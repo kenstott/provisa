@@ -90077,7 +90077,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     carries the standard servers field and no instructions. (Amended 2026-10-29, HOW TO USE NEEDS ACCESS:)
     Maintainer 2026-11-01: "they won''t work until access is granted. so instructions should say that as
     well." How to use says on every surface that it works only once access is granted, and names who grants
-    it, from the contract''s roles and first-level approvers.'
+    it, from the contract''s roles and first-level approvers. (Amended 2026-10-29, THE ADDRESS IS THE MOST
+    SPECIFIC ONE:) Maintainer 2026-11-01: "if there is a URI that points specifically to the requested data
+    set (like openapi for example) that might provide a little more vvalue." The Address column of How to
+    use shows the most specific URI each surface has for the table: the table''s own URI on REST and JSON:API,
+    the OpenAPI description narrowed as far as it can be, and a connection URI with the schema for pgwire
+    and Flight SQL. A surface with one endpoint per server shows that endpoint, and its link carries the
+    table.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
