@@ -26825,3 +26825,17 @@ Maintainer 2026-11-01: a generic OData connector, source type odata, based on th
 **Code:** —
 
 **Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-2193 · OData {#REQ-2193}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-01: a Provisa OData service, the easier lift with more commercial benefit, a very clean mapping of the model. A table is an entity set, a column a property, a primary key a key, a relationship a navigation property with its referential constraint, and a command an action. $metadata is generated per role, so a role sees only its own tables and columns. A request's $filter, $select, $orderby, $top, $skip, $count and $expand become one statement through the one governed pipeline, with masks, row rules and audit as on every transport. Excel Power Query and Power BI are the clients it is built for, and it has its own conformance suite. It comes before the OData source of [REQ-2192](#REQ-2192).
+
+**Use case:** An analyst pastes a Provisa OData URL into Excel, signs in, and gets a governed table with what their role may see, with no driver installed.
+
+**Code:** —
+
+**Tests:** —

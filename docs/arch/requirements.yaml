@@ -92520,3 +92520,39 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2191
   stakeholders:
   - data-engineer
+- id: REQ-2193
+  value: Provisa serves OData, so a governed table opens in Excel or Power BI from a URL with no driver.
+  status: proposed
+  target: 2026-Q4
+  group: 8. Client Access & Protocols
+  category: OData
+  feature: postgres-wire-protocol-client-drivers
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-01: a Provisa OData service, the easier lift with more commercial benefit,
+    a very clean mapping of the model. A table is an entity set, a column a property, a primary key a
+    key, a relationship a navigation property with its referential constraint, and a command an action.
+    $metadata is generated per role, so a role sees only its own tables and columns. A request''s $filter,
+    $select, $orderby, $top, $skip, $count and $expand become one statement through the one governed pipeline,
+    with masks, row rules and audit as on every transport. Excel Power Query and Power BI are the clients
+    it is built for, and it has its own conformance suite. It comes before the OData source of REQ-2192.'
+  use_case: An analyst pastes a Provisa OData URL into Excel, signs in, and gets a governed table with
+    what their role may see, with no driver installed.
+  scenario: 'Given a role that sees orders with one column masked
+
+    When a client reads $metadata
+
+    Then orders is an entity set with its key, and a table the role cannot see is absent
+
+    When a client reads orders with $filter, $select, $orderby and $top
+
+    Then one governed statement answers, the mask is applied, and the read is audited
+
+    When a client follows a relationship with $expand
+
+    Then the related rows come back nested under the role''s rules for that table'
+  related_reqs:
+  - REQ-2192
+  - REQ-062
+  stakeholders:
+  - data-engineer
