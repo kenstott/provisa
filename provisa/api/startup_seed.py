@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 import zlib
 from pathlib import Path
 from typing import Any
@@ -90,12 +91,29 @@ _SEED_DOMAIN_ADVISORY_LOCK_KEY = 0x50524F5649534131
 _SEED_CATALOG_ROLE_ADVISORY_LOCK_KEY = 0x50524F5649534132
 
 
+class _SeedClock:
+    """Each slow step of a seed, at WARNING as a hosted tier logs (REQ-2006)."""
+
+    def __init__(self, org_id: str) -> None:
+        self._org_id = org_id
+        self._since = time.monotonic()
+
+    def mark(self, step: str) -> None:
+        now = time.monotonic()
+        if now - self._since >= 2.0:  # noqa: PLR2004 - seconds: a step worth a line
+            logging.getLogger(__name__).warning(
+                "seed of %s: %s took %.1fs", self._org_id, step, now - self._since
+            )
+        self._since = now
+
+
 def _seed_lock_key(org_id: str, env: str | None) -> int:
     """REQ-1900, REQ-2006: the seed's lock for one schema. What it protects is one schema's views
     between one worker's DDL and its reflect, so workers building that schema take it in turn.
     One key for every schema queued every org's build behind every other's, on every process of
     the control plane: both sandbox tiers' opens and template builds, in one line."""
     return _SEED_DOMAIN_ADVISORY_LOCK_KEY ^ zlib.crc32(org_schema(org_id, env).encode())
+
 
 # The ops views over the signals (ops_schema.OPS_SIGNAL_VIEWS), each engine with the signals
 # defining them in otel.signals.
@@ -1028,13 +1046,18 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         # The lock is held on a session of its own on the server (Connection.advisory_lock), so it
         # spans these autocommitting statements even behind a transaction-pooling PgBouncer.
         async with _conn.advisory_lock(_seed_lock_key(org_id, env)):
+            clock = _SeedClock(org_id)
             await _seed_tag_param_values(_conn)  # REQ-1467
             await _seed_meta_domain(_conn, org_id=org_id, env=env)
+            clock.mark("meta domain")
             await _seed_ontology_domain(_conn, org_id=org_id, env=env)  # REQ-2163
+            clock.mark("ontology domain")
             await _seed_ops_pg(_conn)
             await _seed_ops_domain(_conn, org_id=org_id, env=env)  # REQ-884
+            clock.mark("ops domain")
             await _ensure_ops_steward_grant(_conn)  # REQ-1386
             await _seed_meta_relationships(_conn)
+            clock.mark("relationships")
         needs_clusters = (
             await _conn.execute_core(
                 select(_sa_func.count())

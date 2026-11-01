@@ -112,9 +112,9 @@ def bound_params(travel: dict[str, Any], answers: dict[str, list[dict]]) -> list
 
 
 def _is_subscription(query: str) -> bool:
-    """A subscription's answer is a stream that runs until the request timeout ends it: there is
-    nothing for a warm-up to wait for, and it held the requests after it back for that long. Its
-    first answer is the query the tour's other steps have already warmed."""
+    """A subscription's answer is a stream that runs until its subscriber leaves: there is nothing
+    for a warm-up to wait for, and it would hold the requests after it back. Its first answer is the
+    query the tour's other steps have already warmed."""
     from graphql import OperationDefinitionNode, OperationType, parse
 
     return any(
