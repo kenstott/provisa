@@ -42,6 +42,7 @@ from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, TYPES
 from provisa.transpiler.metadata_facts import PRIVILEGES, UNSERVED, CatalogFacts, relation
 from provisa.transpiler.metadata_oids import FIRST_METRIC_OID, KEY_OID_BASE, key_id_sql
 from provisa.transpiler.metadata_server_forms import SCALAR_FORMS, TABLE_FORMS
+from provisa.transpiler.pg_forms_system import SERVER_STATE
 
 #: The search path a definition names a table against (catalog_data's search_path).
 _ON_THE_PATH = "('public', 'pg_catalog')"
@@ -645,7 +646,7 @@ _OF_A_USER = frozenset(
 
 #: A form only PostgreSQL can run, of a function of its argument: a statement with no table is the
 #: engine's, which reads the function's row of function_macros' table instead.
-_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name", "currval", "nextval"})
+_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name", "currval", "nextval"}) | SERVER_STATE
 
 
 class MetadataFunctionRefused(ValueError):

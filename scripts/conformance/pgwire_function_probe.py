@@ -18,7 +18,7 @@ GROUP, OVER, a column definition list, and a real argument where PostgreSQL refu
 overload taking ``internal`` has no statement: no SQL expression has that type, so ``call`` returns
 None. That overload, and one PostgreSQL refuses in a way no server state changes
 (``proves_internal``), is an internal function (amended 2026-10-29, INTERNAL FUNCTIONS). One
-PostgreSQL refuses for this server's state is no such proof: it is failed.
+PostgreSQL refuses for this server's state is no such proof: Provisa must refuse it the same way.
 
 ``family`` names the family a function belongs to (function_families.yaml), so the failures can be
 taken one family at a time."""

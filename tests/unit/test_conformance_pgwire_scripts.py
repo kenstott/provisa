@@ -373,8 +373,10 @@ class _Probe:
         functions: list[tuple[str, str]],
         refused: dict[str, str],
         oids: dict[str, int] | None = None,
+        sqlstate: str = "55000",
     ) -> None:
         self._functions = functions
+        self._sqlstate = sqlstate
         self._refused = refused
         self._oids = oids or {}
 
@@ -387,7 +389,13 @@ class _Probe:
     def run(self, sql: str, result_format: int = 0) -> dict:
         name = sql.split('pg_catalog."', 1)[1].split('"', 1)[0]
         if name in self._refused:
-            return {"ok": False, "error": self._refused[name]}
+            said = self._refused[name]
+            return {
+                "ok": False,
+                "error": said,
+                "sqlstate": self._sqlstate,
+                "primary": said.split("\n", 1)[0],
+            }
         return {"ok": True, "fields": [{"type_oid": self._oids.get(name, 23)}]}
 
 
@@ -493,6 +501,32 @@ def test_a_refusal_of_this_server_s_state_proves_nothing_and_stays_failed(monkey
     (failure,) = report["failures"]
     assert failure["reason"].startswith("PostgreSQL refuses the call: ERROR:  recovery")
     assert report["failures_by_family"]["System"]["functions"] == ["pg_wal_replay_pause()"]
+
+
+def _state_refusal(monkeypatch, provisa_sqlstate: str) -> dict:
+    """A refusal of the server's state, which Provisa answers with ``provisa_sqlstate``."""
+    m = _load("pgwire_catalog_types")
+    functions = [("pg_wal_replay_pause", "", ())]
+    return m.catalog_functions(
+        _Probe(functions, refused={"pg_wal_replay_pause": RECOVERY_REFUSAL}),
+        _Probe(
+            functions,
+            refused={"pg_wal_replay_pause": RECOVERY_REFUSAL},
+            sqlstate=provisa_sqlstate,
+        ),
+        {23: "int4", 25: "text"},
+    )
+
+
+def test_a_refusal_of_the_servers_state_passes_when_provisa_refuses_it_the_same(monkeypatch):
+    report = _state_refusal(monkeypatch, "55000")
+    assert (report["passed"], report["failed"]) == (1, 0)
+    assert report["refused_here"] == {}
+
+
+def test_a_refusal_with_another_sqlstate_stays_failed(monkeypatch):
+    report = _state_refusal(monkeypatch, "0A000")
+    assert (report["passed"], report["failed"]) == (0, 1)
 
 
 @pytest.mark.parametrize(

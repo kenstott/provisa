@@ -45,7 +45,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import END, MARK, PostgresError, raising
-from provisa.transpiler import pg_forms, pg_forms_json, pg_forms_types
+from provisa.transpiler import pg_forms, pg_forms_json, pg_forms_system, pg_forms_types
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 from provisa.transpiler.pg_literals import values_cast
 
@@ -1610,6 +1610,7 @@ _ROWS: tuple[Macro, ...] = (
     *_DATES,
     *_ARRAYS,
     *_ENUMS,
+    *(Macro(name, params, forms) for name, params, forms in pg_forms_system.ROWS),
     *_OTHERS,
     *_XML,
     *_MONEY,
@@ -1671,7 +1672,6 @@ _EXACT_ROWS: tuple[Macro, ...] = (
     # interval_avg cascades a month's remainder, and DuckDB has no sum of an interval.
     Macro("exact_avg_interval", ("a0",)),
     # What regexp_replace's Nth match is takes the engine's own search.
-    Macro("regexp_replace_at", ("value", "pattern", "replacement", "start", "n")),
     Macro(
         "regexp_replace_at",
         ("value", "pattern", "replacement", "start"),
@@ -1732,7 +1732,6 @@ def _with_replay(macro: Macro) -> Macro:
 REFUSED_ROWS = frozenset(
     {
         ("exact_avg_interval", 1),
-        ("regexp_replace_at", 5),
         ("current_query", 0),
     }
 )
@@ -1745,6 +1744,7 @@ MACROS: dict[tuple[str, int], Macro] = {
 #: (function, argument count, the type the statement says of its first argument) -> its row:
 #: PostgreSQL's own name for the overload. The operation is chosen by the type, not the engine's.
 OVERLOADS: dict[tuple[str, int, str], str] = {
+    **pg_forms_system.OVERLOADS,
     ("area", 1, "box"): "box_area",
     ("area", 1, "path"): "path_area",
     ("area", 1, "circle"): "circle_area",
@@ -1837,6 +1837,8 @@ _TOLD_ONLY_BY_THE_STATEMENT = {"set_masklen": frozenset({"inet", "cidr"})}
 def _is_told(name: str, args: list[exp.Expr]) -> bool:
     """Whether a call says which overload it means; a column of cidr does not, and the inet row
     would keep what its mask clears (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED)."""
+    if name in pg_forms_system.OF_A_STORED_VALUE:
+        return args[0].find(exp.Column) is None
     types = _TOLD_ONLY_BY_THE_STATEMENT.get(name)
     if types is None:
         return True
