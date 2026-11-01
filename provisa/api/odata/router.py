@@ -14,7 +14,8 @@ A read is GraphQL text synthesized from its options, as on REST and JSON:API, co
 to the one governed pipeline (``_govern_and_route_compiled``): row rules, column grants, masks, the
 role's row ceiling and the audit record are that pipeline's, and nothing here applies any of them.
 
-A ``$filter`` is added to the compiled statement (``filter_sql``) before it goes to that pipeline.
+A ``$filter`` is added to the compiled statement (``filter_sql``) before it goes to that pipeline,
+and a ``$expand`` is a relationship field of the same text (``expand``).
 
 Pages are read in one order (the client's, then ``model._ordering``), one row past the page: that
 row says a next page exists, and is not returned.
@@ -25,8 +26,8 @@ row says a next page exists, and is not returned.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
-from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse, Response
@@ -37,12 +38,24 @@ from provisa.api.errors import timeout_error
 from provisa.api.generated_plan import compile_generated_graphql
 from provisa.api.json_response import OrjsonResponse
 from provisa.api.odata.csdl import metadata_document, service_document
-from provisa.api.odata.edm import edm_value
-from provisa.api.odata.expression import Node
+from provisa.api.odata.expand import (
+    Plan,
+    context_selection,
+    ordered_by,
+    page_link,
+    page_of,
+    plans_of,
+    read_fields,
+    selected,
+    with_expansions,
+    write,
+)
+from provisa.api.odata.expression import Comparison, Logical, Name, Node, parse_key
 from provisa.api.odata.filter_sql import with_filter
 from provisa.api.odata.headers import SERVICE_ROOT
 from provisa.api.odata.model import EntitySet, entity_set, entity_sets
 from provisa.api.odata.query import (
+    Expansion,
     QueryOptionRefused,
     QueryOptions,
     check_format,
@@ -56,12 +69,14 @@ from provisa.compiler.parser import GraphQLValidationError
 from provisa.compiler.sql_types import CompiledQuery
 from provisa.core.read_refusal import ReadRefused
 from provisa.federation.pgwire_replica import SourceStillStartingError
+from provisa.security.masking import MaskType
 
 log = logging.getLogger(__name__)
 
 SERVER_PAGE_SIZE = 5000
 _JSON = "application/json;odata.metadata=minimal"
 _XML = "application/xml"
+_ADDRESS = re.compile(r"([^()/]+)\((.*)\)", re.DOTALL)
 
 
 class _Refused(Exception):
@@ -94,7 +109,7 @@ def _caller(state: Any, request: Request) -> tuple[str, RoleSurface]:  # noqa: A
 
 
 def _served_set(surface: RoleSurface, name: str) -> EntitySet:
-    entity = entity_set(surface, name)
+    entity = entity_set(surface, name, navigations=True)
     if entity is None:
         # The same answer for a table the role cannot see and one that does not exist.
         raise _Refused(404, "not_found", f"no entity set {name!r}")
@@ -175,45 +190,47 @@ async def _count(
     return int(next(iter(result.rows))[0])
 
 
-def _selected(entity: EntitySet, options: QueryOptions) -> list[str]:
-    if options.select is None:
-        return [p.name for p in entity.properties]
-    for name in options.select:
-        if entity.property(name) is None:
-            # A column the role cannot see is unknown, as one that does not exist is.
-            raise _Refused(400, "invalid_query_option", f"no property {name!r} of {entity.name}")
-    return list(options.select)
+def _addressing(state: Any, role_id: str) -> Any:  # noqa: ANN401 — AppState; an Addressing
+    """The key a role addresses a set's rows by. A filter on a masked key is refused (REQ-531) and
+    a row shows its mask, so such a key addresses nothing; a fake is the value a filter compares."""
+
+    def key_of(entity: EntitySet) -> tuple[str, ...]:
+        rules = state.masking_rules.get((entity.table_id, role_id), {})
+        for name in entity.key:
+            found = entity.property(name)
+            assert found is not None
+            if found.column in rules and rules[found.column][0].mask_type != MaskType.fake:
+                return ()
+        return entity.key
+
+    return key_of
 
 
-def _order_by(entity: EntitySet, options: QueryOptions) -> list[dict[str, str]]:
-    """The client's order, then the read's own, so a page boundary between rows equal in the
-    client's keys loses none. OData sorts a null first ascending and last descending."""
-    for key in options.order_by:
-        if entity.property(key.name) is None:
-            # A column the role cannot see is unknown, as one that does not exist is.
-            raise _Refused(
-                400, "invalid_query_option", f"no property {key.name!r} of {entity.name}"
-            )
-    asked = [
-        {"field": key.name, "dir": "desc_nulls_last" if key.descending else "asc_nulls_first"}
-        for key in options.order_by
-    ]
-    named = {key.name for key in options.order_by}
-    return asked + [{"field": n, "dir": "asc"} for n in entity.ordering if n not in named]
+def _landed(result: Any) -> None:  # noqa: ANN401 — an engine's result
+    if result.redirect is not None:
+        raise _Refused(500, "landed_result", "the result was landed, which OData cannot answer")
 
 
-def _next_link(request: Request, name: str, options: QueryOptions, taken: int) -> str:
-    query = [(k, v) for k, v in request.query_params.multi_items() if k not in ("$top", "$skip")]
-    if options.top is not None:
-        query.append(("$top", str(options.top - taken)))
-    query.append(("$skip", str(options.skip + taken)))
-    return f"{_service_root(request)}/{name}?{urlencode(query, safe='$,*')}"
+def _column_names(compiled: CompiledQuery) -> list[str]:
+    return [c.field_name for c in compiled.columns]
 
 
-def _entities(rows: list[tuple], compiled: CompiledQuery, entity: EntitySet) -> list[dict]:
-    types = {p.name: p.type for p in entity.properties}
-    typed = [(c.field_name, types[c.field_name]) for c in compiled.columns]
-    return [{name: edm_value(value, edm) for (name, edm), value in zip(typed, row)} for row in rows]
+def _entities(
+    rows: list[tuple],
+    compiled: CompiledQuery,
+    entity: EntitySet,
+    fields: tuple[str, ...],
+    plans: tuple[Plan, ...],
+    root: str,
+) -> list[dict]:
+    names = _column_names(compiled)
+    return [write(dict(zip(names, row)), entity, fields, plans, root) for row in rows]
+
+
+def _context(request: Request, name: str, options: QueryOptions) -> str:
+    selection = context_selection(options)
+    suffix = f"({selection})" if selection else ""
+    return f"{_service_root(request)}/$metadata#{name}{suffix}"
 
 
 async def _read(
@@ -224,34 +241,116 @@ async def _read(
     options: QueryOptions,
     request: Request,
 ) -> Response:
-    fields = _selected(entity, options)
-    context = f"{_service_root(request)}/$metadata#{entity.name}"
-    if options.select is not None:
-        context += f"({','.join(options.select)})"
-    document: dict[str, Any] = {"@odata.context": context}
+    fields = selected(entity, options)
+    plans = plans_of(surface, entity, options.expand, _addressing(state, role_id))
+    document: dict[str, Any] = {"@odata.context": _context(request, entity.name, options)}
     if options.count:
         document["@odata.count"] = await _count(
             state, role_id, surface, entity, options.filter, request
         )
 
-    page = SERVER_PAGE_SIZE if options.top is None else min(options.top, SERVER_PAGE_SIZE)
+    page, probe = page_of(options.top, SERVER_PAGE_SIZE)
     if page == 0:  # $top=0 asks for no row: nothing to read
         document["value"] = []
         return OrjsonResponse(content=document, media_type=_JSON)
 
-    probe = 1 if options.top is None or options.top > page else 0
     gql_query = build_graphql_query(
-        entity.name, fields, NO_VARIABLES, _order_by(entity, options), page + probe, options.skip
+        entity.name,
+        read_fields(fields, plans),
+        NO_VARIABLES,
+        ordered_by(entity, options),
+        page + probe,
+        options.skip,
     )
     compiled = with_filter(_compiled(state, role_id, surface, gql_query), entity, options.filter)
+    compiled = with_expansions(compiled, plans)
     result = await _run(state, role_id, compiled.sql, compiled.params, request)
-    if result.redirect is not None:
-        raise _Refused(500, "landed_result", "the result was landed, which OData cannot answer")
+    _landed(result)
 
     rows = list(result.rows)
-    document["value"] = _entities(rows[:page], compiled, entity)
+    root = _service_root(request)
+    document["value"] = _entities(rows[:page], compiled, entity, fields, plans, root)
     if len(rows) > page:
-        document["@odata.nextLink"] = _next_link(request, entity.name, options, page)
+        document["@odata.nextLink"] = page_link(
+            f"{root}/{entity.name}", tuple(request.query_params.multi_items()), options, page
+        )
+    return OrjsonResponse(
+        content=document, media_type=_JSON, headers=build_cache_headers(result.cache_entry)
+    )
+
+
+def _key_condition(entity: EntitySet, predicate: str) -> Node:
+    """The key predicate of ``set(predicate)`` as a filter of the set, typed as any filter is. A
+    set with no key has no address: as for a row that does not exist."""
+    pairs = parse_key(predicate)
+    if not entity.key:
+        raise _Refused(404, "not_found", f"{entity.name} has no key")
+    named = (
+        {entity.key[0]: pairs[0][1]}
+        if len(pairs) == 1 and pairs[0][0] is None
+        else {name: value for name, value in pairs if name is not None}
+    )
+    if len(pairs) != len(entity.key) or set(named) != set(entity.key):
+        raise _Refused(
+            400,
+            "invalid_key",
+            f"the key of {entity.name} is {', '.join(entity.key)}: {predicate!r}",
+        )
+    terms: list[Node] = [Comparison("eq", Name(k), named[k]) for k in entity.key]
+    return terms[0] if len(terms) == 1 else Logical("and", tuple(terms))
+
+
+def _parsed_address(surface: RoleSurface, address: str) -> tuple[EntitySet, Node]:
+    match = _ADDRESS.fullmatch(address)
+    if match is None:
+        raise _Refused(404, "not_found", f"no entity set {address!r}")
+    entity = _served_set(surface, match.group(1))
+    return entity, _key_condition(entity, match.group(2))
+
+
+async def _navigate(
+    state: Any,  # noqa: ANN401 — AppState
+    role_id: str,
+    surface: RoleSurface,
+    address: str,
+    name: str,
+    options: QueryOptions,
+    request: Request,
+) -> Response:
+    """``set(key)/navigation``: the parent's one row expanded, its list the page. Where a nested
+    list's nextLink leads, and so the same statement, row rules and masks as the list it follows."""
+    entity, condition = _parsed_address(surface, address)
+    navigation = entity.navigation(name)
+    if navigation is None:
+        raise _Refused(404, "not_found", f"no navigation property {name!r} of {entity.name}")
+    if not navigation.collection:
+        raise _Refused(501, "not_implemented", f"reading the single-valued {name} is not served")
+    if options.count:
+        raise _Refused(501, "not_implemented", "$count on a navigation property is not served")
+
+    items = tuple(request.query_params.multi_items())
+    expansion = Expansion(name, options, items)
+    plans = plans_of(surface, entity, (expansion,), _addressing(state, role_id))
+    gql_query = build_graphql_query(
+        entity.name, read_fields(entity.key, plans), NO_VARIABLES, [], 1, None
+    )
+    compiled = with_filter(_compiled(state, role_id, surface, gql_query), entity, condition)
+    compiled = with_expansions(compiled, plans)
+    result = await _run(state, role_id, compiled.sql, compiled.params, request)
+    _landed(result)
+    rows = list(result.rows)
+    if not rows:
+        raise _Refused(404, "not_found", f"no row {address!r}")
+
+    root = _service_root(request)
+    (parent,) = _entities(rows[:1], compiled, entity, entity.key, plans, root)
+    document = {
+        "@odata.context": _context(request, navigation.target_set, options),
+        "value": parent[name],
+    }
+    link = parent.get(f"{name}@odata.nextLink")
+    if link is not None:
+        document["@odata.nextLink"] = link
     return OrjsonResponse(
         content=document, media_type=_JSON, headers=build_cache_headers(result.cache_entry)
     )
@@ -289,10 +388,17 @@ def create_odata_router(state: Any) -> APIRouter:  # noqa: ANN401 — AppState  
 
     async def _collection_count(request: Request, name: str) -> Response:
         options = parse_query_options(request.query_params.multi_items())
+        if options.expand:
+            raise _Refused(400, "invalid_query_option", "$count takes no $expand")
         role_id, surface = _caller(state, request)
         entity = _served_set(surface, name)
         count = await _count(state, role_id, surface, entity, options.filter, request)
         return PlainTextResponse(str(count))
+
+    async def _navigation(request: Request, address: str, name: str) -> Response:
+        options = parse_query_options(request.query_params.multi_items())
+        role_id, surface = _caller(state, request)
+        return await _navigate(state, role_id, surface, address, name, options, request)
 
     @router.get("", include_in_schema=False)
     @router.get("/", include_in_schema=False)
@@ -308,6 +414,13 @@ def create_odata_router(state: Any) -> APIRouter:  # noqa: ANN401 — AppState  
         request: Request, entity_set_name: str
     ):
         return await _answered(_collection_count(request, entity_set_name))
+
+    # A path: a string key may hold a slash.
+    @router.get("/{address:path}/{navigation}", include_in_schema=False)
+    async def odata_navigation(  # pyright: ignore[reportUnusedFunction]
+        request: Request, address: str, navigation: str
+    ):
+        return await _answered(_navigation(request, address, navigation))
 
     @router.get("/{entity_set_name}", include_in_schema=False)
     async def odata_entity_set(  # pyright: ignore[reportUnusedFunction]

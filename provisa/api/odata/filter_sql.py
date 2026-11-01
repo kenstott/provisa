@@ -281,13 +281,19 @@ class _Condition:
         return self._boolean(node)
 
 
+def filter_condition(entity: EntitySet, tree: Node, first: int) -> tuple[exp.Expr, list[object]]:
+    """``tree`` as a condition on one read of ``entity``, and what it binds from placeholder
+    ``first``. A column is named alone: the select it joins reads that table first."""
+    condition = _Condition(entity, first)
+    return condition.condition(tree), condition.bound
+
+
 def with_filter(compiled: CompiledQuery, entity: EntitySet, tree: Node | None) -> CompiledQuery:
     """``compiled`` with ``tree`` as its WHERE. The statement reads one table, named by its columns
     alone, so a column of the condition is named as they are."""
     if tree is None:
         return compiled
-    condition = _Condition(entity, len(compiled.params) + 1)
-    where = condition.condition(tree)
+    where, bound = filter_condition(entity, tree, len(compiled.params) + 1)
     statement = sqlglot.parse_one(compiled.sql, read="postgres")
     if not isinstance(statement, exp.Select):
         raise QueryOptionRefused(
@@ -297,5 +303,5 @@ def with_filter(compiled: CompiledQuery, entity: EntitySet, tree: Node | None) -
     return replace(
         compiled,
         sql=filtered.sql(dialect="postgres"),
-        params=[*compiled.params, *condition.bound],
+        params=[*compiled.params, *bound],
     )

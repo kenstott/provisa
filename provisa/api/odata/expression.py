@@ -117,7 +117,7 @@ _TOKENS = re.compile(
     | (?P<special>-?INF(?!\w)|NaN(?!\w))
     | (?P<number>-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?(?![\w.]))
     | (?P<name>[A-Za-z_][\w.]*)
-    | (?P<symbol>[(),/:])
+    | (?P<symbol>[(),/:=])
     """,
     re.VERBOSE,
 )
@@ -323,6 +323,34 @@ class _Parser:
             )
         return Call(token.text, tuple(args))
 
+    def _key_literal(self) -> Literal:
+        token = self._next()
+        if token.type == "name" and token.text in ("true", "false"):
+            return Literal("boolean", token.text == "true")
+        if token.type in ("symbol", "name", _END):
+            raise self._unexpected(token, "expected a value")
+        return _literal(self.option, token)
+
+    def key_values(self) -> tuple[tuple[str | None, Literal], ...]:
+        if self._peek().type != "name" or self._is_word("true", "false"):
+            pairs: list[tuple[str | None, Literal]] = [(None, self._key_literal())]
+        else:
+            pairs = [self._key_pair()]
+            while self._is_symbol(","):
+                self._next()
+                pairs.append(self._key_pair())
+        token = self._peek()
+        if token.type != _END:
+            raise self._unexpected(token)
+        return tuple(pairs)
+
+    def _key_pair(self) -> tuple[str | None, Literal]:
+        token = self._next()
+        if token.type != "name":
+            raise self._unexpected(token, "expected a key property")
+        self._expect("=")
+        return token.text, self._key_literal()
+
     def order_keys(self) -> tuple[OrderKey, ...]:
         keys = [self._order_key()]
         while self._is_symbol(","):
@@ -345,6 +373,11 @@ class _Parser:
         if descending or self._is_word("asc"):
             self._next()
         return OrderKey(token.text, descending)
+
+
+def parse_key(text: str) -> tuple[tuple[str | None, Literal], ...]:
+    """The key predicate inside ``set(...)``: one literal, or ``name=literal`` pairs."""
+    return _Parser("key", text).key_values()
 
 
 def parse_filter(text: str) -> Node:

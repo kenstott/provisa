@@ -54,6 +54,7 @@ class Navigation:
 @dataclass(frozen=True)
 class EntitySet:
     name: str
+    table_id: int
     type_name: str
     key: tuple[str, ...]
     properties: tuple[Property, ...]
@@ -62,6 +63,9 @@ class EntitySet:
 
     def property(self, name: str) -> Property | None:
         return next((p for p in self.properties if p.name == name), None)
+
+    def navigation(self, name: str) -> Navigation | None:
+        return next((n for n in self.navigations if n.name == name), None)
 
 
 def _unwrapped(gql_type: Any) -> Any:  # noqa: ANN401 — a graphql-core type
@@ -155,6 +159,7 @@ def entity_set(surface: RoleSurface, name: str, *, navigations: bool = False) ->
     key = key if all(k in served for k in key) else ()
     return EntitySet(
         name,
+        meta.table_id,
         meta.type_name,
         key,
         properties,

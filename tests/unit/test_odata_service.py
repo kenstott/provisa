@@ -34,6 +34,7 @@ import sqlglot
 from fastapi import FastAPI, Request
 from starlette.responses import JSONResponse
 
+from provisa.api.odata import expand as odata_expand
 from provisa.api.odata.csdl import metadata_document
 from provisa.api.odata.edm import EdmType, edm_type, edm_value
 from provisa.api.odata.expression import (
@@ -46,6 +47,7 @@ from provisa.api.odata.expression import (
     Not,
     OrderKey,
     parse_filter,
+    parse_key,
     parse_orderby,
 )
 from provisa.api.odata.headers import ODataResponseHeaders
@@ -152,6 +154,16 @@ RELATIONSHIPS = [
         "target_column": "customer_id",
         "cardinality": "one-to-many",
         "alias": "orders",
+    },
+    {
+        "id": "customer-orders-again",
+        "source_table_id": 2,
+        "target_table_id": 1,
+        "source_column": "id",
+        "target_column": "customer_id",
+        "cardinality": "one-to-many",
+        "alias": "ordersAgain",
+        "graphql_alias": "ordersAgain",
     },
     {
         "id": "order-salary",
@@ -620,10 +632,19 @@ async def test_a_read_is_minimal_metadata_json(service):
     assert resp.json()["@odata.context"].endswith("$metadata#orders")
 
 
-@pytest.mark.parametrize("option", ["$expand", "$search", "$apply", "$compute", "$levels"])
-async def test_an_option_not_served_is_refused_never_ignored(service, option):
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [
+        ("$expand", "*"),
+        ("$search", "id"),
+        ("$apply", "id"),
+        ("$compute", "id"),
+        ("$levels", "id"),
+    ],
+)
+async def test_an_option_not_served_is_refused_never_ignored(service, option, value):
     resp = await service.client.get(
-        "/data/odata/orders", params={option: "id"}, headers=_as("analyst")
+        "/data/odata/orders", params={option: value}, headers=_as("analyst")
     )
     assert resp.status_code == 501
     assert service.pipeline.statements == []
@@ -1390,6 +1411,544 @@ def test_nan_is_a_number():
     parsed = parse_filter("a eq NaN")
     assert isinstance(parsed, Comparison)
     assert isinstance(parsed.right, Literal) and math.isnan(parsed.right.value)
+
+
+# -- $expand ---------------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def expanding(service):
+    """Customers 0, 1 and 2, whose orders are the ids with that remainder of 3; customer 9 has
+    none; customer 2's name is masked for the clerk, whose row rule keeps customer 1's orders."""
+    con = service.pipeline.con
+    con.execute("CREATE MACRO json_arrayagg(x) AS to_json(list(x))")
+    con.execute(
+        "INSERT INTO pg.public.customers VALUES (0, 'zero'), (1, 'one'), (2, 'two'), (9, 'none')"
+    )
+    con.execute("INSERT INTO pg.public.salaries VALUES (1, 100)")
+    return service
+
+
+async def _expand(service, role: str = "analyst", path: str = "customers", **options: str) -> dict:
+    params = {f"${name}": value for name, value in options.items()}
+    resp = await service.client.get(f"/data/odata/{path}", params=params, headers=_as(role))
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+async def _expand_refused(service, expansion: str, role: str = "analyst", path: str = "customers"):
+    return await service.client.get(
+        f"/data/odata/{path}", params={"$expand": expansion}, headers=_as(role)
+    )
+
+
+async def test_a_to_many_expand_nests_each_parents_rows(expanding):
+    body = await _expand(expanding, expand="orders($select=id)", select="id,name", orderby="id")
+    by_id = {r["id"]: r for r in body["value"]}
+    assert [o["id"] for o in by_id[1]["orders"]] == [1, 4, 7, 10]
+    assert [o["id"] for o in by_id[2]["orders"]] == [2, 5, 8, 11]
+    assert by_id[1]["name"] == "one"
+    assert by_id[9]["orders"] == []
+    assert set(by_id[1]) == {"id", "name", "orders"}
+
+
+async def test_a_to_one_expand_nests_one_object_or_null(expanding):
+    expanding.pipeline.con.execute("UPDATE pg.public.orders SET customer_id = NULL WHERE id = 3")
+    body = await _expand(expanding, path="orders", expand="customer", select="id", filter="id lt 5")
+    by_id = {r["id"]: r["customer"] for r in body["value"]}
+    assert by_id[1] == {"id": 1, "name": "one"}
+    assert by_id[3] is None
+
+
+async def test_expanded_values_are_written_as_their_types(expanding):
+    body = await _expand(expanding, expand="orders($top=1;$select=amount,placedAt,margin)")
+    (order,) = next(r for r in body["value"] if r["id"] == 1)["orders"]
+    assert order["amount"] == 1.25
+    assert order["placedAt"] == "2026-01-02T00:00:00Z"
+    assert order["margin"] == 0.5
+
+
+def test_a_decimal_in_an_expansion_stays_exact():
+    assert odata_expand._decoded('{"a": 12345678901234567.25}') == {
+        "a": Decimal("12345678901234567.25")
+    }
+
+
+async def test_a_nested_select_writes_only_what_it_names(expanding):
+    body = await _expand(expanding, expand="orders($select=amount;$top=1)", filter="id eq 1")
+    assert list(body["value"][0]["orders"][0]) == ["amount"]
+
+
+async def test_the_context_states_a_nested_select(expanding):
+    narrowed = await _expand(expanding, expand="orders($select=id)", select="name")
+    assert narrowed["@odata.context"].endswith("$metadata#customers(name,orders(id))")
+    whole = await _expand(expanding, expand="orders($select=id)")
+    assert whole["@odata.context"].endswith("$metadata#customers(*,orders(id))")
+    plain = await _expand(expanding, expand="orders")
+    assert plain["@odata.context"].endswith("$metadata#customers")
+
+
+async def test_a_nested_filter_order_and_top_are_applied_per_parent(expanding):
+    body = await _expand(
+        expanding,
+        expand="orders($filter=id gt 2 and contains(email, '@real');$orderby=id desc;"
+        "$top=2;$select=id)",
+        filter="id le 2",
+    )
+    by_id = {r["id"]: [o["id"] for o in r["orders"]] for r in body["value"]}
+    assert by_id == {0: [12, 9], 1: [10, 7], 2: [11, 8]}
+
+
+async def test_an_expansion_is_one_statement_and_its_filter_is_bound(expanding):
+    await _expand(expanding, expand="orders($filter=email eq 'marker-value')")
+    assert len(expanding.pipeline.statements) == 1
+    assert "marker" not in expanding.pipeline.statements[0]
+    assert expanding.pipeline.bound[0][-1] == "marker-value"
+
+
+async def test_a_quote_or_semicolon_in_a_nested_string_is_the_value(expanding):
+    con = expanding.pipeline.con
+    con.execute("UPDATE pg.public.orders SET email = 'a;b''c(' WHERE id = 1")
+    body = await _expand(
+        expanding, expand="orders($filter=email eq 'a;b''c(';$select=id)", filter="id eq 1"
+    )
+    assert body["value"][0]["orders"] == [{"id": 1}]
+
+
+async def test_an_or_in_a_nested_filter_cannot_widen_to_another_parent(expanding):
+    body = await _expand(expanding, expand="orders($filter=id gt 0 or id lt 0;$select=id)")
+    assert [o["id"] for o in next(r for r in body["value"] if r["id"] == 1)["orders"]] == [
+        1,
+        4,
+        7,
+        10,
+    ]
+
+
+async def test_two_to_many_siblings_do_not_multiply(expanding):
+    """Each is its own subquery of the parent's one row: joined, each row of one would repeat
+    every row of the other."""
+    body = await _expand(
+        expanding,
+        expand="orders($select=id;$top=3),ordersAgain($select=id;$orderby=id desc)",
+        select="id",
+    )
+    assert len(body["value"]) == 4
+    first = next(r for r in body["value"] if r["id"] == 1)
+    assert [o["id"] for o in first["orders"]] == [1, 4, 7]
+    assert [o["id"] for o in first["ordersAgain"]] == [10, 7, 4, 1]
+
+
+async def test_a_to_one_and_a_to_many_nest_together(expanding):
+    body = await _expand(
+        expanding, path="orders", expand="customer($expand=orders($select=id)),salary"
+    )
+    assert len(body["value"]) == _ORDERS
+    first = next(r for r in body["value"] if r["id"] == 1)
+    assert first["salary"] == {"id": 1, "pay": 100}
+    assert [o["id"] for o in first["customer"]["orders"]] == [1, 4, 7, 10]
+
+
+async def test_an_expansion_nests_at_depth(expanding):
+    body = await _expand(
+        expanding,
+        expand="orders($select=id;$top=1;$expand=customer($select=name;"
+        "$expand=orders($select=id;$orderby=id desc;$top=1)))",
+        filter="id eq 1",
+    )
+    assert body["value"][0]["orders"] == [
+        {"id": 1, "customer": {"name": "one", "orders": [{"id": 10}]}}
+    ]
+
+
+async def test_expansions_past_the_depth_are_refused(expanding):
+    deep = "customer"
+    for navigation in ("orders", "customer", "orders", "customer"):
+        deep = f"{navigation}($expand={deep})"
+    resp = await _expand_refused(expanding, deep)
+    assert resp.status_code == 400
+    assert expanding.pipeline.statements == []
+
+
+async def test_expand_with_root_filter_order_and_paging(expanding, monkeypatch):
+    monkeypatch.setattr(odata_router, "SERVER_PAGE_SIZE", 2)
+    body = await _expand(
+        expanding, expand="orders($select=id;$top=1)", filter="id lt 9", orderby="id desc"
+    )
+    assert [r["id"] for r in body["value"]] == [2, 1]
+    following = await expanding.client.get(body["@odata.nextLink"], headers=_as("analyst"))
+    assert [(r["id"], r["orders"]) for r in following.json()["value"]] == [(0, [{"id": 3}])]
+
+
+async def test_a_masked_column_of_the_related_table_stays_masked(expanding):
+    body = await _expand(
+        expanding, role="clerk", expand="orders($select=id,email)", filter="id eq 1"
+    )
+    assert {o["email"] for o in body["value"][0]["orders"]} == {"***"}
+    assert "real.example" not in str(body)
+
+
+async def test_the_related_tables_row_rule_holds(expanding):
+    """The clerk's rule on orders keeps customer 1's: another customer's list is empty."""
+    body = await _expand(expanding, role="clerk", expand="orders($select=id)")
+    by_id = {r["id"]: [o["id"] for o in r["orders"]] for r in body["value"]}
+    assert by_id[1] == [1, 4, 7, 10]
+    assert by_id[2] == []
+
+
+async def test_an_or_in_a_nested_filter_cannot_widen_past_the_row_rule(expanding):
+    body = await _expand(
+        expanding, role="clerk", expand="orders($filter=true or id eq 2;$select=id)"
+    )
+    assert next(r for r in body["value"] if r["id"] == 2)["orders"] == []
+
+
+async def test_a_masked_key_still_joins_and_stays_masked(expanding):
+    """REQ-603: the join reads the real key; what the role reads of it is its mask."""
+    expanding.pipeline.masks[(2, "clerk")] = {
+        "id": (MaskingRule(mask_type=MaskType.constant, value=0), "integer")
+    }
+    body = await _expand(
+        expanding, role="clerk", path="orders", expand="customer", filter="id eq 1"
+    )
+    assert body["value"][0]["customer"] == {"id": 0, "name": "one"}
+
+
+async def test_a_nested_filter_on_a_masked_column_is_refused_and_runs_nothing(expanding):
+    resp = await _expand_refused(expanding, "orders($filter=email eq 'x')", role="clerk")
+    assert resp.status_code == 403, resp.text
+    assert "email" in resp.json()["error"]["message"]
+    assert expanding.pipeline.statements == []
+
+
+async def test_a_nested_order_on_a_masked_column_sorts_what_the_role_is_shown(expanding):
+    body = await _expand(
+        expanding, role="clerk", expand="orders($orderby=email desc;$select=id)", filter="id eq 1"
+    )
+    assert [o["id"] for o in body["value"][0]["orders"]] == [1, 4, 7, 10]
+
+
+async def test_a_filter_on_a_faked_column_of_the_related_table_reads_the_fake(
+    expanding, monkeypatch
+):
+    monkeypatch.setattr(digest_mod, "_key", b"k" * 32)
+    register(expanding.pipeline.con)
+    rule = MaskingRule(MaskType.fake, fake="email()")
+    expanding.pipeline.masks[(1, "clerk")] = {"email": (rule, "varchar(200)")}
+    body = await _expand(
+        expanding, role="clerk", expand="orders($select=id,email;$top=1)", filter="id eq 1"
+    )
+    (shown,) = body["value"][0]["orders"]
+    assert shown["email"] != f"user{shown['id']}@real.example"
+    hit = await _expand(
+        expanding,
+        role="clerk",
+        expand=f"orders($filter=email eq '{shown['email']}';$select=id)",
+        filter="id eq 1",
+    )
+    assert hit["value"][0]["orders"] == [{"id": shown["id"]}]
+
+
+@pytest.mark.parametrize(
+    "expansion",
+    ["nothing", "salary", "orders($select=margin)", "orders($orderby=margin)"],
+)
+async def test_expanding_what_the_role_cannot_see_is_as_for_no_name(expanding, expansion):
+    """Salary is of orders and hidden from the clerk; margin is a column hidden from it."""
+    path = "orders" if expansion == "salary" else "customers"
+    resp = await _expand_refused(expanding, expansion, role="clerk", path=path)
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["error"]["code"] == "invalid_query_option"
+    assert expanding.pipeline.statements == []
+
+
+async def test_a_nested_filter_on_a_hidden_column_is_as_for_no_column(expanding):
+    resp = await _expand_refused(expanding, "orders($filter=margin gt 0)", role="clerk")
+    assert resp.status_code == 400, resp.text
+    assert expanding.pipeline.statements == []
+
+
+@pytest.mark.parametrize(
+    "expansion",
+    ["customer($top=1)", "customer($filter=id eq 1)", "customer($orderby=id)", "customer($skip=1)"],
+)
+async def test_a_single_valued_expansion_takes_no_collection_option(expanding, expansion):
+    resp = await _expand_refused(expanding, expansion, path="orders")
+    assert resp.status_code == 400, resp.text
+
+
+@pytest.mark.parametrize(
+    ("expansion", "status"),
+    [
+        ("", 400),
+        ("orders(", 400),
+        ("orders)", 400),
+        ("orders()", 400),
+        ("orders($top)", 400),
+        ("orders($top=x)", 400),
+        ("orders($bogus=1)", 400),
+        ("orders($format=json)", 400),
+        ("orders(top=1)", 400),
+        ("orders($top=1;$top=2)", 400),
+        ("orders,orders", 400),
+        ("orders($select=id)x", 400),
+        ("orders($filter=email eq 'x)", 400),
+        ("orders($filter=id eq)", 400),
+        ("orders($filter=bogus(id))", 501),
+        ("orders($count=true)", 501),
+        ("orders($levels=2)", 501),
+        ("orders($search=x)", 501),
+        ("orders/$ref", 501),
+        ("orders/$count", 501),
+        ("customer/orders", 501),
+        ("*", 501),
+    ],
+)
+async def test_an_expand_it_cannot_read_is_refused(expanding, expansion, status):
+    resp = await _expand_refused(expanding, expansion)
+    assert resp.status_code == status, resp.text
+    assert expanding.pipeline.statements == []
+
+
+async def test_top_zero_in_an_expansion_reads_no_row_of_it(expanding):
+    body = await _expand(expanding, expand="orders($top=0)", filter="id eq 1", select="id")
+    assert body["value"] == [{"id": 1, "orders": []}]
+    assert "@odata.nextLink" not in str(body)
+    assert "orders" not in expanding.pipeline.statements[0].replace("customers", "")
+
+
+async def test_a_count_takes_no_expand(expanding):
+    resp = await expanding.client.get(
+        "/data/odata/customers/$count", params={"$expand": "orders"}, headers=_as("analyst")
+    )
+    assert resp.status_code == 400
+
+
+async def test_a_row_replicated_table_is_refused_by_name(expanding):
+    expanding.pipeline.surfaces["analyst"].context.row_level_tables = frozenset({2})
+    resp = await _expand_refused(expanding, "customer", path="orders")
+    assert resp.status_code == 501, resp.text
+    assert "row by row" in resp.json()["error"]["message"]
+    assert expanding.pipeline.statements == []
+
+
+# -- a bounded to-many expand ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def bounded(expanding, monkeypatch):
+    monkeypatch.setattr(odata_expand, "EXPAND_PAGE_SIZE", 3)
+    return expanding
+
+
+async def test_a_to_many_expand_is_bounded_and_links_the_rest(bounded):
+    body = await _expand(
+        bounded, expand="orders($select=id;$filter=id gt 0;$orderby=id desc)", filter="id eq 1"
+    )
+    (row,) = body["value"]
+    assert [o["id"] for o in row["orders"]] == [10, 7, 4]
+    parts = urlsplit(row["orders@odata.nextLink"])
+    assert parts.path == "/data/odata/customers(1)/orders"
+    assert parse_qs(parts.query) == {
+        "$select": ["id"],
+        "$filter": ["id gt 0"],
+        "$orderby": ["id desc"],
+        "$skip": ["3"],
+    }
+
+
+async def test_a_list_that_fits_has_no_link(bounded):
+    body = await _expand(bounded, expand="orders($filter=id lt 8)", filter="id eq 1")
+    assert [o["id"] for o in body["value"][0]["orders"]] == [1, 4, 7]
+    assert "orders@odata.nextLink" not in body["value"][0]
+
+
+async def test_following_a_nested_link_reads_every_row_once(expanding, monkeypatch):
+    monkeypatch.setattr(odata_expand, "EXPAND_PAGE_SIZE", 2)
+    first = (await _expand(expanding, expand="orders($select=id)", filter="id eq 1"))["value"][0]
+    seen = [o["id"] for o in first["orders"]]
+    url, pages = first["orders@odata.nextLink"], 1
+    while url:
+        page = (await expanding.client.get(url, headers=_as("analyst"))).json()
+        assert page["@odata.context"].endswith("$metadata#orders(id)")
+        seen += [o["id"] for o in page["value"]]
+        url = page.get("@odata.nextLink")
+        pages += 1
+    assert seen == [1, 4, 7, 10]
+    assert pages == 2
+
+
+async def test_a_nested_link_carries_what_remains_of_top(bounded):
+    body = await _expand(bounded, expand="orders($select=id;$top=4)", filter="id eq 1")
+    (row,) = body["value"]
+    assert [o["id"] for o in row["orders"]] == [1, 4, 7]
+    assert parse_qs(urlsplit(row["orders@odata.nextLink"]).query)["$top"] == ["1"]
+    following = await bounded.client.get(row["orders@odata.nextLink"], headers=_as("analyst"))
+    assert [o["id"] for o in following.json()["value"]] == [10]
+    assert "@odata.nextLink" not in following.json()
+
+
+async def test_a_link_under_a_nested_list_addresses_its_own_parent(bounded):
+    body = await _expand(
+        bounded,
+        path="orders",
+        expand="customer($select=name;$expand=orders($select=id))",
+        filter="id eq 1",
+    )
+    customer = body["value"][0]["customer"]
+    assert set(customer) == {"name", "orders", "orders@odata.nextLink"}  # the key is only read
+    assert "/customers(1)/orders?" in customer["orders@odata.nextLink"]
+
+
+async def test_a_nested_link_holds_the_row_rule_and_the_mask(bounded, monkeypatch):
+    monkeypatch.setattr(odata_expand, "EXPAND_PAGE_SIZE", 2)
+    body = await _expand(bounded, role="clerk", expand="orders($select=id,email)", filter="id eq 1")
+    link = body["value"][0]["orders@odata.nextLink"]
+    page = (await bounded.client.get(link, headers=_as("clerk"))).json()
+    assert page["value"] == [{"id": 7, "email": "***"}, {"id": 10, "email": "***"}]
+
+
+async def test_a_list_past_its_bound_with_no_address_is_refused(bounded):
+    """A parent with no key could not say where the rest of its list is."""
+    bounded.pipeline.surfaces["analyst"].context.pk_columns.pop(2)
+    resp = await _expand_refused(bounded, "orders")
+    assert resp.status_code == 501, resp.text
+    assert "no key" in resp.json()["error"]["message"]
+
+
+async def test_a_list_past_its_bound_under_a_masked_key_is_refused(bounded):
+    bounded.pipeline.masks[(2, "clerk")] = {
+        "id": (MaskingRule(mask_type=MaskType.constant, value=0), "integer")
+    }
+    resp = await _expand_refused(bounded, "orders", role="clerk")
+    assert resp.status_code == 501, resp.text
+
+
+async def test_a_list_within_its_bound_with_no_address_is_served(bounded):
+    bounded.pipeline.surfaces["analyst"].context.pk_columns.pop(2)
+    body = await _expand(bounded, expand="orders($top=2;$select=id)", filter="id eq 1")
+    assert "orders" in body["value"][0]
+
+
+async def test_a_ceiling_below_the_page_ends_the_list(bounded, monkeypatch):
+    """The role's ceiling holds the list as it holds a read: the probe row is not read, so the
+    list ends there with no link."""
+    monkeypatch.setitem(_ROLES["analyst"], "max_rows", 2)
+    body = await _expand(bounded, expand="orders($select=id;$orderby=id desc)", filter="id eq 1")
+    (row,) = body["value"]
+    assert [o["id"] for o in row["orders"]] == [10, 7]
+    assert "orders@odata.nextLink" not in row
+
+
+# -- set(key)/navigation ---------------------------------------------------------------------------
+
+
+async def test_a_navigation_read_takes_a_collections_options(expanding):
+    body = await _expand(
+        expanding,
+        path="customers(1)/orders",
+        select="id,amount",
+        filter="id gt 1",
+        orderby="id desc",
+        top="2",
+    )
+    assert body["@odata.context"].endswith("$metadata#orders(id,amount)")
+    assert [o["id"] for o in body["value"]] == [10, 7]
+    assert len(expanding.pipeline.statements) == 1
+
+
+async def test_a_navigation_read_expands(expanding):
+    body = await _expand(
+        expanding, path="customers(1)/orders", expand="customer($select=name)", top="1"
+    )
+    assert body["value"][0]["customer"] == {"name": "one"}
+
+
+@pytest.mark.parametrize(
+    ("path", "status"),
+    [
+        ("customers(77)/orders", 404),
+        ("customers(1)/nothing", 404),
+        ("customers/orders", 404),
+        ("nothing(1)/orders", 404),
+        ("salaries(1)/orders", 404),
+        ("orders(1)/customer", 501),
+        ("customers('x')/orders", 400),
+        ("customers(a=1)/orders", 400),
+        ("customers(id=1,id=2)/orders", 400),
+        ("customers(1,2)/orders", 400),
+        ("customers()/orders", 400),
+    ],
+)
+async def test_a_navigation_it_cannot_read_is_refused(expanding, path, status):
+    resp = await expanding.client.get(f"/data/odata/{path}", headers=_as("clerk"))
+    assert resp.status_code == status, resp.text
+
+
+async def test_a_navigation_takes_no_count(expanding):
+    resp = await expanding.client.get(
+        "/data/odata/customers(1)/orders", params={"$count": "true"}, headers=_as("analyst")
+    )
+    assert resp.status_code == 501
+
+
+async def test_a_navigation_from_a_row_the_rule_hides_is_not_found(expanding):
+    expanding.pipeline.rls["clerk"][2] = '"id" = 1'
+    hidden = await expanding.client.get("/data/odata/customers(2)/orders", headers=_as("clerk"))
+    assert hidden.status_code == 404
+
+
+async def test_a_navigation_by_a_masked_key_is_refused(expanding):
+    expanding.pipeline.masks[(2, "clerk")] = {
+        "id": (MaskingRule(mask_type=MaskType.constant, value=0), "integer")
+    }
+    resp = await expanding.client.get("/data/odata/customers(1)/orders", headers=_as("clerk"))
+    assert resp.status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("value", "edm", "literal"),
+    [
+        (1, EdmType("Edm.Int32"), "1"),
+        (Decimal("1.50"), EdmType("Edm.Decimal"), "1.50"),
+        ("o'brien/x", EdmType("Edm.String"), "'o''brien/x'"),
+        (True, EdmType("Edm.Boolean"), "true"),
+        ("2026-01-02", EdmType("Edm.Date"), "2026-01-02"),
+        (datetime(2026, 1, 2, 3), EdmType("Edm.DateTimeOffset"), "2026-01-02T03:00:00Z"),
+    ],
+)
+def test_a_key_is_written_as_the_parser_reads_it(value, edm, literal):
+    written = odata_expand._key_literal(value, edm)
+    assert written == literal
+    ((name, read),) = parse_key(written)
+    assert name is None and read.value is not None
+
+
+def test_a_string_key_with_a_slash_or_quote_keeps_its_address():
+    ((_, read),) = parse_key("'o''brien/x'")
+    assert read == Literal("string", "o'brien/x")
+
+
+def test_a_composite_key_is_named():
+    assert parse_key("a=1,b='x'") == (
+        ("a", Literal("number", 1)),
+        ("b", Literal("string", "x")),
+    )
+
+
+@pytest.mark.parametrize("text", ["", "a", "a=", "=1", "a=1,", "1,2", "null", "a=b"])
+def test_text_that_is_no_key_is_a_400(text):
+    with pytest.raises(QueryOptionRefused) as refused:
+        parse_key(text)
+    assert refused.value.status == 400
+
+
+def test_the_options_of_an_expansion_are_kept_as_sent():
+    (expansion,) = parse_query_options([("$expand", "a($top= 2 ;$select=b,c)")]).expand
+    assert expansion.name == "a"
+    assert expansion.options.top == 2
+    assert expansion.options.select == ("b", "c")
+    assert expansion.raw == (("$top", "2"), ("$select", "b,c"))
 
 
 def test_the_app_times_the_service_by_its_own_transport():
