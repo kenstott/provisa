@@ -267,6 +267,7 @@ class LivePermits:
             column_names=list(stream.column_names),
             column_types=stream.column_types,
             on_release=_release,
+            column_type_oids=stream.column_type_oids,
         )
         self._output_cap = cap
         return self._capped(wrapped)

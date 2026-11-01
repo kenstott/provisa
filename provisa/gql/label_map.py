@@ -16,6 +16,7 @@ No separate config. TableMeta.type_name → node label; JoinMeta → relationshi
 from __future__ import annotations
 from provisa.compiler.sql_literals import sql_literal
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -103,6 +104,12 @@ class NodeMapping:
         return self.physical_table_name or self.table_name
 
     @property
+    def parameterized(self) -> bool:
+        """Whether its table is read by arguments (REQ-1986): a function of them, with no rows of
+        its own for a path to walk (REQ-2135)."""
+        return bool(self.native_filter_columns)
+
+    @property
     def role_label(self) -> str | None:  # REQ-1320
         """Additional node label for the table's star-schema role: Fact / Dimension."""
         return _ROLE_LABELS.get(self.modeling_role or "")
@@ -178,6 +185,31 @@ class RelationshipMapping:
     def properties(self) -> dict[str, str]:
         """REQ-1586: the relationship's attributes. Empty unless it is junction-backed."""
         return self.via.attributes if self.via else {}
+
+    @property
+    def join(self) -> str:
+        """What this relationship joins, the same from either end (REQ-2135): two relationships
+        with one join (SUBMITTED and SUBMITTED_BY) are one edge declared twice, so a path that
+        walks either way takes one of them. A junction's types are a join each."""
+        via = self.via
+        source = [
+            self.source_label,
+            self.join_source_column,
+            self.source_expr,
+            self.source_constant,
+            via.source_columns if via else None,
+        ]
+        target = [
+            self.target_label,
+            self.join_target_column,
+            self.target_expr,
+            None,
+            via.target_columns if via else None,
+        ]
+        table = [via.catalog_name, via.schema_name, via.table_name] if via else None
+        type_of = [via.type_column, via.type_value] if via else None
+        ends = sorted(json.dumps(end, default=str) for end in (source, target))
+        return json.dumps([ends, table, type_of])
 
     @property
     def constant_source(self) -> bool:
@@ -459,6 +491,12 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
                             )
                         queue.append((rel.source_label, path + [rev], used_rel_keys | {key}))
         return results
+
+    def touches_parameterized(self, rel: RelationshipMapping) -> bool:
+        """Whether either end of ``rel`` is a parameterized table, which no path includes
+        (REQ-2135)."""
+        ends = (self.nodes.get(rel.source_label), self.nodes.get(rel.target_label))
+        return any(nm is not None and nm.parameterized for nm in ends)
 
     def relationships_for(  # REQ-572
         self, source_label: str, target_label: str | None = None

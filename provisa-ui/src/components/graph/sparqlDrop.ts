@@ -12,7 +12,9 @@
 // always says what is on screen. A class or a domain is reached by the shortest paths through the
 // role's relationships from the classes the query holds, a relationship or a property from the
 // variables whose class has it. What is added sits in OPTIONAL groups, one per path, so what the
-// frame held stays. A drop that cannot join the result says so and changes nothing.
+// frame held stays. A drop that cannot join the result says so and changes nothing, and a
+// parameterized table, which only arguments read, is never what a path adds. ?s ?p ?o names no
+// class to start from, so a drop on it is refused until a variable has one.
 
 import type { DropNotice } from "./graph-model";
 import { MAX_SCHEMA_HOPS, MAX_SCHEMA_PATHS, shortestSchemaPaths } from "./schemaPath";
@@ -109,6 +111,10 @@ function shapeRefusal(tokens: Token[]): DropNotice | null {
   return null;
 }
 
+/** The labels no path includes: their tables are read by arguments. */
+const parameterizedLabels = (vocabulary: SparqlVocabulary): Set<string> =>
+  new Set(vocabulary.classes.flatMap((c) => c.parameterized_labels));
+
 /** The labels each variable of ``query`` can be: those its triples allow, intersected, as the
  * compiler reads them. */
 function variableLabels(
@@ -177,7 +183,8 @@ function withTemplate(query: string, triples: string[]): string {
   const end = tokens[close].at;
   const before = query.slice(0, end).trimEnd();
   const added = `\n  ${triples.join(" . ")} .\n`;
-  if (!isWord(tokens[form + 1], "WHERE")) return `${closeTriple(before)}${added}${query.slice(end)}`;
+  if (!isWord(tokens[form + 1], "WHERE"))
+    return `${closeTriple(before)}${added}${query.slice(end)}`;
   const template = query.slice(tokens[open].at + 1, end).trim();
   const head = query.slice(0, tokens[form + 1].at);
   return `${head}{\n  ${closeTriple(template)}${added}} WHERE {\n  ${template}\n${query.slice(end)}`;
@@ -249,6 +256,7 @@ export function droppedQuery(
   const term = (iri: string) => compactIri(iri, namespaces);
   const shown = (iri: string) => shownIri(iri, namespaces);
   const all = variableLabels(query, vocabulary, namespaces);
+  const parameterized = parameterizedLabels(vocabulary);
 
   /** The variables the drop may start from: those of the node it was dropped on, else all. */
   const holders = ((): Map<string, string[]> => {
@@ -323,16 +331,23 @@ export function droppedQuery(
   if (drop.kind === "edge") {
     const edges = vocabulary.edges.filter((e) => e.iri === drop.iri);
     if (edges.length === 0) throw new Error(`the vocabulary has no relationship ${drop.iri}`);
+    const ways = (edge: Edge, from: string, to: string) =>
+      holding(from).map((v) => () => pathFrom(v, [{ edge, from, to }], null));
     const candidates = edges.flatMap((edge) => [
-      ...holding(edge.source).map(
-        (v) => () => pathFrom(v, [{ edge, from: edge.source, to: edge.target }], null),
-      ),
-      ...(edge.source === edge.target ? [] : holding(edge.target)).map(
-        (v) => () => pathFrom(v, [{ edge, from: edge.target, to: edge.source }], null),
-      ),
+      ...(parameterized.has(edge.target) ? [] : ways(edge, edge.source, edge.target)),
+      ...(edge.source === edge.target || parameterized.has(edge.source)
+        ? []
+        : ways(edge, edge.target, edge.source)),
     ]);
-    if (candidates.length === 0)
-      return { refused: { key: "graphFrame.sparqlDropNoEnd", values: { name: shown(drop.iri) } } };
+    if (candidates.length === 0) {
+      const held = edges.some((e) => holding(e.source).length + holding(e.target).length > 0);
+      return {
+        refused: {
+          key: held ? "graphFrame.sparqlDropEdgeParameterized" : "graphFrame.sparqlDropNoEnd",
+          values: { name: shown(drop.iri) },
+        },
+      };
+    }
     return added(candidates);
   }
 
@@ -347,7 +362,8 @@ export function droppedQuery(
       return {
         refused: { key: "graphFrame.sparqlDropNoProperty", values: { name: shown(drop.iri) } },
       };
-    const name = entries[0].property ?? termName(drop.iri, vocabulary.prefixes) ?? iriLocal(drop.iri);
+    const name =
+      entries[0].property ?? termName(drop.iri, vocabulary.prefixes) ?? iriLocal(drop.iri);
     return added(
       variables.map((v) => () => {
         const value = fresh(name);
@@ -373,7 +389,16 @@ export function droppedQuery(
             .flatMap((c) => c.labels)
             .filter((l) => !heldLabels.includes(l)),
         };
-  const { paths, hops } = shortestSchemaPaths(vocabulary.edges, heldLabels, target.labels);
+  if (target.labels.length > 0 && target.labels.every((l) => parameterized.has(l)))
+    return {
+      refused: { key: "graphFrame.sparqlDropParameterized", values: { name: target.name } },
+    };
+  const { paths, hops } = shortestSchemaPaths(
+    vocabulary.edges,
+    heldLabels,
+    target.labels,
+    parameterized,
+  );
   if (paths.length === 0) {
     const classes = [...new Set(heldLabels.map((l) => shown(classOf(l))))].join(", ");
     return {

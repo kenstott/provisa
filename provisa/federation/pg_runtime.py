@@ -28,9 +28,11 @@ import time
 from typing import Any
 
 import psycopg2
+import psycopg2.extensions
 import psycopg2.pool
 
 from provisa.core import request_deadline
+from provisa.core.pg_range import RANGE_TYPES
 from provisa.federation.land_guard import LandGuard
 from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
 from provisa.federation.engine import build_pg_engine
@@ -172,6 +174,19 @@ def _pg_type_names(con: Any, oids: list[int]) -> list[str]:
         with _PG_TYPE_NAMES_LOCK:
             _PG_TYPE_NAMES.update(found)
     return [_PG_TYPE_NAMES[o] for o in oids]
+
+
+#: REQ-2171: the types psycopg2 reads into an object whose str() is not PostgreSQL's text form: a
+#: range (its Range's bounds in Python's repr), and xml[], which it leaves as the array's text.
+_RANGE_OIDS = tuple(oid for r in RANGE_TYPES.values() for oid in (r.oid, r.multirange_oid))
+_RANGES_AS_TEXT = psycopg2.extensions.new_type(_RANGE_OIDS, "PG_RANGE_TEXT", lambda text, _: text)
+_XML_ARRAY = psycopg2.extensions.new_array_type((143,), "XML_ARRAY", psycopg2.STRING)
+
+
+def _read_as_postgresql_writes(cur: Any) -> None:
+    """``cur`` reading a value as PostgreSQL's own text of it, where psycopg2 would not."""
+    psycopg2.extensions.register_type(_RANGES_AS_TEXT, cur)
+    psycopg2.extensions.register_type(_XML_ARRAY, cur)
 
 
 class _AdbcConnectionPool:
@@ -1188,6 +1203,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         try:
             cur = read_con.cursor(name="provisa_stream")  # named ⇒ server-side portal
             cur.itersize = _STREAM_BATCH_ROWS
+            _read_as_postgresql_writes(cur)
             with request_deadline.cancel_on_deadline(read_con.cancel):
                 cur.execute(*_psycopg2_exec_args(sql, params))
                 # psycopg2 populates a NAMED cursor's ``.description`` only after the first FETCH,
@@ -1220,7 +1236,8 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         cols = [d[0] for d in cur.description]
         # The description's type_code is the column's pg_type OID, known even for a zero-row
         # result — the pgwire Describe reports it without running the full statement (REQ-589).
-        types = _pg_type_names(read_con, [d[1] for d in cur.description])
+        oids = [d[1] for d in cur.description]
+        types = _pg_type_names(read_con, oids)
 
         def _batches() -> Any:
             if first:
@@ -1232,7 +1249,11 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 yield chunk
 
         return StreamingQueryResult(
-            _batches(), column_names=cols, column_types=types, on_close=_close
+            _batches(),
+            column_names=cols,
+            column_types=types,
+            on_close=_close,
+            column_type_oids=oids,
         )
 
     def describe_sync(self, sql: str, params: list | None = None) -> ResultStream:
@@ -1354,17 +1375,15 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 con = self._read_pool.getconn()
             try:
                 cur = con.cursor()
+                _read_as_postgresql_writes(cur)
                 with request_deadline.cancel_on_deadline(con.cancel):
                     cur.execute(*_psycopg2_exec_args(sql, params))
                     cols = [d[0] for d in cur.description] if cur.description else []
                     rows = list(cur.fetchall()) if cur.description else []
                 # Each column's type, as the streamed read reports it (run_sync): known even for
                 # a zero-row result, which is how a view's output columns are learned (REQ-846).
-                types = (
-                    _pg_type_names(con, [d[1] for d in cur.description])
-                    if cur.description
-                    else None
-                )
+                oids = [d[1] for d in cur.description] if cur.description else None
+                types = _pg_type_names(con, oids) if oids else None
                 con.commit()
                 cur.close()
             except BaseException:
@@ -1375,7 +1394,9 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             with shield.lock:
                 shield.settle()
                 self._read_pool.putconn(con)
-            return QueryResult(rows=rows, column_names=cols, column_types=types)
+            return QueryResult(
+                rows=rows, column_names=cols, column_types=types, column_type_oids=oids
+            )
 
         return await loop.run_in_executor(None, _run)
 

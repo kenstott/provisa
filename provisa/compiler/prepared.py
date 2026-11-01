@@ -18,7 +18,7 @@ its schema, compiled once at boot). This module caches exactly that gap and noth
 SCOPE, deliberately narrow: this cache covers ONLY the localize-check (REQ-1159) and
 metric-expansion (REQ-1317) structural work `_govern_and_route_planned`
 (provisa/pgwire/_pipeline.py) does before it ever calls into governance. It does NOT touch, cache,
-or shortcut `build_governance_context`/`validate_sql`/`apply_governance`/`decide_route` (masking,
+or shortcut `role_governance`/`validate_sql`/`apply_governance`/`decide_route` (masking,
 RLS, relationship-guard, or routing) — those already run once per call for every surface,
 including GraphQL, and are confirmed cheap (GraphQL's own ~17ms total includes them); there is no
 performance case for touching them, only risk. They keep running in full, on every call,

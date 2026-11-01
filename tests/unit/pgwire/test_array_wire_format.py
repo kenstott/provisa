@@ -59,5 +59,24 @@ def test_text_array_binary_marks_nulls():
     )
 
 
-def test_a_nested_array_stays_json():
-    assert _sql_type_to_bvtype("INT[][]") is BVType.JSON
+def test_a_nested_array_is_the_array_type_of_its_element():
+    assert _sql_type_to_bvtype("INT[][]") is BVType.INTEGERARRAY
+
+
+def test_an_array_of_an_element_with_no_array_type_stays_json():
+    assert _sql_type_to_bvtype("STRUCT(a INT)[][]") is BVType.JSON
+
+
+def test_a_nested_array_is_written_as_postgresql_writes_it():
+    _, to_text, to_binary = BVTYPE_TO_PGTYPE[_sql_type_to_bvtype("INT[][]")]
+    assert to_text([[1, None], [3, 4]]) == "{{1,NULL},{3,4}}"
+    assert to_binary([[1, 2], [3, 4]]) == (
+        struct.pack("!iiiiiii", 2, 0, 23, 2, 1, 2, 1)
+        + b"".join(struct.pack("!ii", 4, v) for v in (1, 2, 3, 4))
+    )
+
+
+def test_a_list_of_unequal_lists_has_no_array_to_send():
+    _, _, to_binary = BVTYPE_TO_PGTYPE[_sql_type_to_bvtype("INT[][]")]
+    with pytest.raises(ValueError, match="unequal sublists"):
+        to_binary([[1], [2, 3]])
