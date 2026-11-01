@@ -674,7 +674,7 @@ def _servers(
     snapshot: "MetadataSnapshot", product: "DataProductAsset", table: "TableAsset"
 ) -> list[dict[str, Any]]:
     """The endpoints a consumer reads the member through: pgwire, Flight SQL, gRPC, GraphQL, REST
-    and its OpenAPI description, JSON:API and SPARQL. A listener not started or a surface not
+    and its OpenAPI description narrowed to the member, JSON:API and SPARQL. A listener not started or a surface not
     mounted is no server, and neither is a surface that does not serve the table: a table SQL
     alone serves has only the SQL listeners (REQ-2163), and a declared junction, an edge of the
     graph, is no class of the SPARQL vocabulary (REQ-1586)."""
@@ -733,7 +733,7 @@ def _servers(
             _api_server(
                 "openapi",
                 "OpenAPI description of the REST endpoints",
-                f"{origin}{path}/openapi.json?domains={product.domain_id}",
+                f"{origin}{path}/openapi.json?domains={product.domain_id}&tables={table.name}",
             )
         )
     if path := paths.get("JSON:API"):
