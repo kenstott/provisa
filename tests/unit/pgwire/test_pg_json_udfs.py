@@ -148,6 +148,88 @@ def test_a_filter_keeps_out_of_a_json_aggregate_what_it_excludes(
     assert json.loads(db.execute(written).fetchall()[0][0]) == want
 
 
+_WHEN = "TIMESTAMP '1996-07-01 09:00:00'"
+_SPELLED = "1996-07-01T09:00:00"
+
+
+@pytest.mark.parametrize(
+    ("value", "reads"),
+    [
+        ("to_json(t)", lambda v: v),
+        ("json_build_object('k', t)", lambda v: v["k"]),
+        ("jsonb_build_object('k', t)", lambda v: v["k"]),
+        ("json_object(KEY 'k' VALUE t)", lambda v: v["k"]),
+        ("json_build_array(t)", lambda v: v[0]),
+        ("json_agg(t)", lambda v: v[0]),
+        ("jsonb_agg(t)", lambda v: v[0]),
+        ("json_agg(t ORDER BY t)", lambda v: v[0]),
+        ("json_agg(DISTINCT t)", lambda v: v[0]),
+        ("json_agg(t) FILTER (WHERE t IS NOT NULL)", lambda v: v[0]),
+        ("json_agg_strict(t)", lambda v: v[0]),
+        ("json_object_agg('k', t)", lambda v: v["k"]),
+        ("json_object_agg_strict('k', t)", lambda v: v["k"]),
+        (
+            "json_agg(json_object(KEY 'a' VALUE json_build_object('k', t)))",
+            lambda v: v[0]["a"]["k"],
+        ),
+    ],
+)
+def test_a_timestamp_in_json_is_written_alike_by_each_constructor(db: Any, value: str, reads: Any):
+    import json
+
+    written = transpile_to_duckdb(f"SELECT {value} FROM (SELECT {_WHEN} AS t) AS s")
+    assert reads(json.loads(db.execute(written).fetchall()[0][0])) == _SPELLED
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        "TIMESTAMP '1996-07-01 09:00:00'",
+        "TIMESTAMP '1996-07-01 09:00:00.5'",
+        "TIMESTAMP '1996-07-01 09:00:00.123456'",
+        "TIMESTAMPTZ '1996-07-01 09:00:00+00'",
+        "TIMESTAMPTZ '1996-07-01 09:00:00.25+00'",
+    ],
+)
+def test_a_timestamp_answers_the_same_at_any_depth(db: Any, literal: str):
+    import json
+
+    from provisa.executor.serialize import _convert_value
+
+    nested = transpile_to_duckdb(
+        f"SELECT json_build_object('k', t), t FROM (SELECT {literal} AS t) s"
+    )
+    text, top = db.execute(nested).fetchall()[0]
+    assert json.loads(text)["k"] == _convert_value(top)
+
+
+def test_a_json_value_keeps_its_type_beside_a_timestamp(db: Any):
+    import json
+
+    written = transpile_to_duckdb(
+        "SELECT json_build_object('n', 1.50, 's', s, 'j', '{\"a\": 1}'::json, 'x', NULL, 'b', true)"
+        " FROM (SELECT '{\"a\": 1}' AS s) AS v"
+    )
+    assert json.loads(db.execute(written).fetchall()[0][0]) == {
+        "n": 1.5,
+        "s": '{"a": 1}',
+        "j": {"a": 1},
+        "x": None,
+        "b": True,
+    }
+
+
+def test_nesting_does_not_multiply_the_statement():
+    def nested(depth: int) -> str:
+        inner = "json_build_object('k', c)"
+        for _ in range(depth):
+            inner = f"json_build_object('k', c, 'n', (SELECT json_agg({inner}) FROM t))"
+        return transpile_to_duckdb(f"SELECT {inner} FROM t")
+
+    one, two, three = len(nested(1)), len(nested(2)), len(nested(3))
+    assert three - two == two - one
+
+
 @pytest.mark.parametrize("table", ("json_to_recordset", "jsonb_to_recordset"))
 def test_a_definition_list_gives_the_columns_of_no_rows(db: Any, table: str):
     written = transpile_to_duckdb(f"""SELECT * FROM pg_catalog."{table}"('[]') AS t(v integer)""")

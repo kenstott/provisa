@@ -157,9 +157,9 @@ def test_a_capped_list_s_filter_is_its_aggregate_s_on_each_engine():
     assert "ARRAY_AGG(JSON_PARSE(" in transpile_to_trino(capped)
     assert "FILTER(WHERE t.__list_rn <= 2) AS JSON)" in transpile_to_trino(capped)
     # DuckDB's json_group_array is a macro: its own aggregate (list, ARRAY_AGG) is filtered.
-    assert "TO_JSON(ARRAY_AGG(JSON_OBJECT('id', \"id\")) FILTER(WHERE t.__list_rn <= 2))" in (
-        transpile_to_duckdb(capped)
-    )
+    written = transpile_to_duckdb(capped)
+    assert "TO_JSON(ARRAY_AGG(JSON_OBJECT('id', " in written
+    assert ")) FILTER(WHERE t.__list_rn <= 2)) FROM" in written
 
 
 # --- Cypher's lists: collect() and COLLECT { } ----------------------------------------------------

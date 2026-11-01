@@ -24,6 +24,7 @@ from provisa.core.pg_error import MARK
 from provisa.transpiler import function_macros, pg_functions, pg_held_types, pg_money
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
+from provisa.transpiler.pg_forms_json import json_member
 from provisa.transpiler.pg_literals import exact_inputs, postgres_literals
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.transpile_correlated import (
@@ -965,7 +966,9 @@ def _rewrite_json_agg_for_duckdb(sql: str) -> str:
             # json_group_array is a macro, which takes no FILTER: a filtered list is the
             # aggregate it expands to, to_json(list(x)), filtered (REQ-005's list cap).
             filtered = exp.Filter(
-                this=exp.Anonymous(this="list", expressions=[listed.transform(_transform)]),
+                this=exp.Anonymous(
+                    this="list", expressions=[json_member(listed.transform(_transform))]
+                ),
                 expression=node.expression.transform(_transform),
             )
             return exp.Anonymous(this="to_json", expressions=[filtered])
@@ -981,16 +984,30 @@ def _rewrite_json_agg_for_duckdb(sql: str) -> str:
         if inner is not None:
             # Recurse: transform is pre-order and skips a replaced node's children, so a
             # nested aggregate (a one-to-many inside a one-to-many) would survive unrewritten.
-            return exp.Anonymous(this="json_group_array", expressions=[inner.transform(_transform)])
+            return exp.Anonymous(
+                this="json_group_array", expressions=[json_member(inner.transform(_transform))]
+            )
         if isinstance(node, exp.Anonymous) and node.name.upper() in (
             "JSON_BUILD_OBJECT",
             "JSONB_BUILD_OBJECT",
         ):
             # PostgreSQL's constructors (JSONB_ over its binary JSON type) are DuckDB's json_object,
             # which takes the same flat key, value, ... arguments; DuckDB registers neither name.
+            pairs = [e.transform(_transform) for e in node.expressions]
             return exp.Anonymous(
-                this="json_object", expressions=[e.transform(_transform) for e in node.expressions]
+                this="json_object",
+                expressions=[json_member(e) if i % 2 else e for i, e in enumerate(pairs)],
             )
+        # Each value a statement puts in JSON, as PostgreSQL writes it at any depth. A value is
+        # set in place, so transform goes on into it for the JSON it holds.
+        if isinstance(node, exp.JSONObject):
+            for pair in node.expressions:
+                if isinstance(pair, exp.JSONKeyValue):
+                    pair.set("expression", json_member(pair.expression))
+        elif isinstance(node, exp.JSONArray):
+            node.set("expressions", [json_member(e) for e in node.expressions])
+        elif isinstance(node, exp.Anonymous) and node.name.upper() == "JSON_GROUP_OBJECT":
+            node.set("expressions", [node.expressions[0], json_member(node.expressions[1])])
         return node
 
     return tree.transform(_transform).sql(dialect="duckdb")

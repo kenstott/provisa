@@ -729,10 +729,12 @@ def _compared(value: Any) -> Any:
     import datetime
     import decimal
 
+    from provisa.executor.serialize import temporal_text
+
     if isinstance(value, decimal.Decimal):
         return float(value)
-    if isinstance(value, datetime.datetime) and value.tzinfo is None:
-        return value.isoformat()
+    if isinstance(value, datetime.datetime):
+        return temporal_text(value)
     if isinstance(value, (list, tuple)):
         return [_compared(v) for v in value]
     if isinstance(value, dict):

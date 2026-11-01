@@ -20,7 +20,8 @@ Null propagation for nullable relationships.
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+import re
+from datetime import date, timedelta
 
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal
@@ -46,6 +47,15 @@ def _recursive_json_convert(
     return val
 
 
+_FRACTION_ZEROS = re.compile(r"(\.\d*?[1-9])0+(?=$|[+-])")
+
+
+def temporal_text(value: date) -> str:
+    """A date, time or timestamp as JSON writes it at any depth: PostgreSQL's json, which has the T
+    and no trailing zeros in a fraction."""
+    return _FRACTION_ZEROS.sub(r"\1", value.isoformat())
+
+
 def _convert_value(
     val: object,  # object-ok: arbitrary SQL column value — Decimal | date | str | int | dict | list | None
 ) -> object:
@@ -63,7 +73,7 @@ def _convert_value(
         from datetime import date as _date
         from typing import cast as _cast
 
-        return _cast(_date, val).isoformat()  # guarded by hasattr — any date/datetime-like type
+        return temporal_text(_cast(_date, val))  # guarded by hasattr — any date/datetime-like type
     # the engine returns JSON columns as strings; parse so object sub-fields resolve correctly.
     # Recursively convert nested values so json_format(...)-wrapped arrays unpack correctly.
     if isinstance(val, str) and len(val) > 1 and val[0] in ("{", "["):

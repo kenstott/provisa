@@ -402,6 +402,50 @@ def _duckdb(sql: str, **nodes: exp.Expr) -> exp.Expr:
     return sqlglot.parse_one(sql, read=_D).transform(filled)
 
 
+#: DuckDB writes a timestamp as its text; PostgreSQL's json has the T, and an offset's minutes.
+_TO_JSON = (
+    "CASE WHEN typeof(_v) LIKE 'TIMESTAMP%' THEN to_json(regexp_replace("
+    "replace(CAST(_v AS VARCHAR), ' ', 'T'), '([+-][0-9][0-9])$', '\\1:00')) "
+    "ELSE to_json(_v) END"
+)
+#: What already is JSON, or holds a value that was written on its way in.
+_JSON_NODES = (exp.JSONObject, exp.JSONArray, exp.JSONArrayAgg)
+_JSON_CALLS = frozenset(
+    {
+        "json_group_array",
+        "json_group_object",
+        "json_arrayagg",
+        "json_agg",
+        "jsonb_agg",
+        "json_object",
+        "json_build_object",
+        "jsonb_build_object",
+        "to_json",
+    }
+)
+
+
+def _is_json_call(node: exp.Expr) -> bool:
+    return isinstance(node, exp.Anonymous) and node.name.lower() in _JSON_CALLS
+
+
+def json_encoded(value: exp.Expr) -> exp.Expr:
+    """``value`` as its JSON value on DuckDB, whatever its type: one form for every JSON a
+    statement builds, so a timestamp reads alike at any depth."""
+    return _duckdb(_TO_JSON, _v=value)
+
+
+def json_member(value: exp.Expr) -> exp.Expr:
+    """A value going into a JSON object or array on DuckDB. A literal has no timestamp to write,
+    and one holding JSON has had its own members written: wrapped again, a statement's text would
+    multiply at each level of nesting."""
+    if isinstance(value, (exp.Literal, exp.Null, exp.Boolean)):
+        return value
+    if value.find(*_JSON_NODES) or any(_is_json_call(n) for n in value.find_all(exp.Anonymous)):
+        return value
+    return json_encoded(value)
+
+
 def _text(value: exp.Expr, inner: Callable[[exp.Expr], exp.Expr]) -> exp.Expr:
     return exp.cast(value.transform(inner), "VARCHAR")
 
@@ -567,18 +611,30 @@ def _aggregate(node: exp.Func, name: str, args: list[exp.Expr], inner: Callable)
     """An aggregate DuckDB's json_group_array and json_group_object macros do not take."""
     filtered = isinstance(node.parent, exp.Filter)
 
-    def rows(value: exp.Expr) -> exp.Expr:
-        listed = exp.Anonymous(this="list", expressions=[value.transform(inner)])
+    def rows(member: exp.Expr) -> exp.Expr:
+        listed = exp.Anonymous(this="list", expressions=[member])
         return _under_filter(node, listed, inner)
 
+    def member(value: exp.Expr) -> exp.Expr:
+        written = value.transform(inner)
+        if isinstance(written, exp.Order):
+            written.set("this", json_member(written.this))
+            return written
+        if isinstance(written, exp.Distinct):
+            written.set("expressions", [json_member(e) for e in written.expressions])
+            return written
+        return json_member(written)
+
     if name in _AGG_STRICT:
-        return _duckdb("to_json(list_filter(_rows, _v -> _v IS NOT NULL))", _rows=rows(args[0]))
+        return _duckdb(
+            "to_json(list_filter(_rows, _v -> _v IS NOT NULL))", _rows=rows(member(args[0]))
+        )
     if name in _OBJECT_AGGS or (filtered and name in ("json_object_agg", "jsonb_object_agg")):
         strict, unique = _OBJECT_AGGS.get(name, (False, False))
         pairs = _duckdb(
-            "struct_pack(k := CAST(_k AS VARCHAR), v := CAST(to_json(_x) AS VARCHAR))",
+            "struct_pack(k := CAST(_k AS VARCHAR), v := CAST(_x AS VARCHAR))",
             _k=args[0].transform(inner),
-            _x=args[1].transform(inner),
+            _x=json_encoded(args[1].transform(inner)),
         )
         flags = [exp.Boolean(this=strict), exp.Boolean(this=unique), exp.Literal.string(name)]
         call = exp.Anonymous(this="provisa_json_object_agg", expressions=[rows(pairs), *flags])
@@ -586,7 +642,7 @@ def _aggregate(node: exp.Func, name: str, args: list[exp.Expr], inner: Callable)
     ordered = isinstance(args[0], (exp.Order, exp.Distinct)) if args else False
     array_agg = isinstance(node, exp.JSONArrayAgg) or name in ("json_agg", "jsonb_agg")
     if array_agg and (ordered or filtered):
-        return _duckdb("to_json(_rows)", _rows=rows(args[0]))
+        return _duckdb("to_json(_rows)", _rows=rows(member(args[0])))
     return None
 
 
@@ -624,13 +680,6 @@ def _not_a_row_type(name: str, value: exp.Expr, inner: Callable) -> exp.Expr:
     return _duckdb(
         "CASE WHEN _v IS NULL THEN NULL ELSE _fail END", _v=_text(value, inner), _fail=fail
     )
-
-
-#: DuckDB writes a timestamp as its text; PostgreSQL's json has the T.
-_TO_JSON = (
-    "CASE WHEN typeof(_v) = 'TIMESTAMP' THEN to_json(replace(CAST(_v AS VARCHAR), ' ', 'T')) "
-    "ELSE to_json(_v) END"
-)
 
 
 def _on_duckdb(node: exp.Func, name: str, inner: Callable) -> exp.Expr | None:
