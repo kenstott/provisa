@@ -24,6 +24,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 CONFORMANCE = REPO / "scripts" / "conformance"
+sys.path.insert(0, str(CONFORMANCE))  # the scripts' sibling imports
 
 
 def _load(name: str, path: Path):
