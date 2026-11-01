@@ -196,9 +196,6 @@ class AppState:
     # narrow it; the routed `response_cache_default_ttl` property below resolves the org's value
     # over this one. Assigned by _load_and_build, never read directly by the query path.
     deployment_cache_default_ttl: int = 300
-    # REQ-1008: server-lifetime MCP catalog search index (DuckDB VSS HNSW), built lazily on first
-    # search_catalog and invalidated (set None) on catalog reload. Any so the mcp package owns the type.
-    mcp_catalog_index: Any = None
     _mv_refresh_task: LongLived | None = None
     _grpc_server: Any | None = None
     # The names in system_health.HTTP_SURFACES mounted on the app; set when it starts.
@@ -953,6 +950,15 @@ class AppState:
     @schemas.setter
     def schemas(self, value: dict[str, graphql.GraphQLSchema]) -> None:
         self._active_runtime().schemas = value
+
+    @property
+    def mcp_catalog_index(self) -> Any:
+        """REQ-1008: the bound org's MCP catalog search index; see OrgRuntime."""
+        return self._active_runtime().mcp_catalog_index
+
+    @mcp_catalog_index.setter
+    def mcp_catalog_index(self, value: Any) -> None:
+        self._active_runtime().mcp_catalog_index = value
 
     @property
     def contexts(self) -> MutableMapping[str, CompilationContext]:
@@ -2971,8 +2977,8 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # REQ-1914: the masking rules are NOT cleared here. Requests run on their own threads while
     # this build reads the control plane, and one that found the rules empty would be answered
     # unmasked; _load_masking_rules builds the new set aside and publishes it in one assignment.
-    # Invalidate the MCP catalog search index (REQ-1008) — the catalog is changing, so the
-    # server-lifetime HNSW index is stale; next search_catalog rebuilds it from the new catalog.
+    # Invalidate this org's MCP catalog search index (REQ-1008) — its catalog is changing, so the
+    # HNSW index is stale; its next search_catalog rebuilds it from the new catalog.
     state.mcp_catalog_index = None
 
     # REQ-1685: a graphql_remote source registered since boot (an applied import, the Sources
