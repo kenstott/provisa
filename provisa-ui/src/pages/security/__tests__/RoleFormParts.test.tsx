@@ -75,10 +75,10 @@ describe("the capability catalog", () => {
     JSON.parse(readFileSync(join(locales, lng, "capabilityHelp.json"), "utf8")).capabilityHelp;
 
   it("defines every capability the type names", () => {
-    const declared = readFileSync(join(__dirname, "../../../types/auth.ts"), "utf8")
-      .split("export type Capability =")[1]
-      .split(";")[0];
-    const names = [...declared.matchAll(/"([a-z_]+)"/g)].map((m) => m[1]);
+    const declared = readFileSync(join(__dirname, "../../../types/auth.ts"), "utf8").split(
+      "export type Capability =",
+    )[1];
+    const names = [...declared.matchAll(/^ {2}\| "([a-z_]+)"/gm)].map((m) => m[1]);
     expect(names.length).toBeGreaterThan(30);
     for (const name of names) expect(catalog("en")[name], name).toBeTruthy();
   });
@@ -133,7 +133,7 @@ describe("data_residency's control", () => {
   it("opens the region control under the tick, offering what parents cover", async () => {
     grant(true, { capabilities: new Set(["data_residency"]), regions: new Set(["eu"]) });
     await userEvent.click(screen.getByRole("textbox", { name: "Region values covered" }));
-    expect(await screen.findByRole("option", { name: "eu" })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "us" })).toBeNull();
+    expect(await screen.findByRole("option", { name: "eu", hidden: true })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "us", hidden: true })).toBeNull();
   });
 });

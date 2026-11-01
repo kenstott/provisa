@@ -32,10 +32,17 @@ pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
 
 _ORG = "catalog_restricted_role"
 _REPO_ROOT = Path(__file__).parents[2]
-_CAPABILITIES = ["query_development", "full_results", "usage"]
+_CAPABILITIES = [
+    "catalog_read",
+    "data_product_read",
+    "glossary_read",
+    "query_development",
+    "usage",
+    "full_results",
+]
 _RESTRICTED = "catalog_restricted"
 _EVERYTHING = "catalog_everything"
-_CATALOG_READER = "viewer"  # REQ-2154: the catalog is read by every role built on Viewer
+_CATALOG_READER = "developer"  # REQ-2155: a parent holding what the role is given
 _ITS_DOMAIN = "sales-analytics"
 _WITHHELD_COLUMN = ("customers", "email")
 

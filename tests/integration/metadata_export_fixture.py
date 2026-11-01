@@ -140,7 +140,13 @@ def governed_config() -> ProvisaConfig:
             Role(
                 id="itest_analyst",
                 description="Test role.",
-                capabilities=[],
+                capabilities=[
+                    "catalog_read",
+                    "data_product_read",
+                    "glossary_read",
+                    "query_development",
+                    "usage",
+                ],
                 parents=["analyst"],
                 domain_access=["*"],
             ),

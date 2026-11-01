@@ -27,6 +27,8 @@ import types
 from typing import Any
 
 import pytest
+
+from provisa.core.db import STANDARD_ROLE_RIGHTS
 from sqlalchemy import insert, select
 
 import provisa.api.app as appmod
@@ -99,7 +101,7 @@ async def plane(monkeypatch):
         await conn.execute_core(
             insert(roles).values(
                 id="sales_steward",
-                capabilities=[],
+                capabilities=sorted(STANDARD_ROLE_RIGHTS["data_steward"]),
                 parents=["data_steward"],
                 domain_access=["sales"],
             )

@@ -120,6 +120,8 @@ export function CapabilityGrid({
                 <span data-testid={`capability-tick-${cap}`}>
                   <Checkbox
                     label={cap}
+                    // The group reads a box's state off its value.
+                    value={cap}
                     checked={value.includes(cap)}
                     disabled={!offered}
                     onChange={() => onToggle(cap)}

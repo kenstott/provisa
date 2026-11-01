@@ -68,7 +68,13 @@ def server():
                     "id": "keyed_reader",
                     "description": "Test role.",
                     "parents": ["analyst"],
-                    "capabilities": [],
+                    "capabilities": [
+                        "catalog_read",
+                        "data_product_read",
+                        "glossary_read",
+                        "query_development",
+                        "usage",
+                    ],
                     "domain_access": ["*"],
                 }
             ],

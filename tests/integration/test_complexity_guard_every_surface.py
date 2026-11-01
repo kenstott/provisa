@@ -52,7 +52,13 @@ def server():
             "id": _LIMITED,
             "description": "Test role.",
             "parents": ["analyst"],
-            "capabilities": [],
+            "capabilities": [
+                "catalog_read",
+                "data_product_read",
+                "glossary_read",
+                "query_development",
+                "usage",
+            ],
             "domain_access": ["*"],
             "rate_limit": {"max_query_complexity": _LIMIT},
         }

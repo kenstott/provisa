@@ -23,6 +23,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from provisa.api.admin._platform_guard import role_narrowing_problem
 from provisa.core.db import STANDARD_ROLE_RIGHTS, standard_role_dicts
 from provisa.core.models import ProvisaConfig
 from provisa.security import domain_tree
@@ -39,6 +40,7 @@ from provisa.security.inheritance import (
 )
 from provisa.security.mutation_authz import admit_command, command_reachable
 from provisa.security.rights import role_domain_problem, served_roles
+from provisa.security.row_filters import with_owner_grant
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -211,6 +213,35 @@ def _config(*roles: dict, domains=("a",)) -> dict:
         "roles": [{"description": "A role.", **r} for r in roles],
         "rls_rules": [],
     }
+
+
+class TestSaveRefusal:
+    def test_the_refusal_names_the_role_the_kind_and_the_right(self):
+        problem = role_narrowing_problem(
+            "c", ["analyst"], ["write"], ["a"], [], _rows(_role("c", ["write"], ["a"])), {}
+        )
+        assert problem is not None and problem.code == "roles.right_not_in_parents"
+        assert problem.params == {"role": "c", "kind": "capability", "right": "write"}
+        assert "Role 'c' cannot hold capability 'write'" in str(problem.detail)
+
+    def test_a_subset_is_saved(self):
+        assert (
+            role_narrowing_problem(
+                "c", ["analyst"], ["usage"], ["a"], [], _rows(_role("c", ["usage"], ["a"])), {}
+            )
+            is None
+        )
+
+
+class TestAnOwnerFieldStands:
+    def test_rw_from_an_owner_field_is_held_though_no_parent_holds_it(self):
+        rows = with_owner_grant(_rows(_role("team", ["usage"], ["a"], ["analyst"])), {"team"})
+        assert "data_product_rw" in _flat(rows)["team"]["capabilities"]
+        assert "data_product_rw" in effective_capabilities("team", rows)
+
+    def test_a_role_it_does_not_name_gains_nothing(self):
+        rows = with_owner_grant(_rows(_role("other", ["usage"], ["a"], ["analyst"])), {"team"})
+        assert _flat(rows)["other"]["capabilities"] == ["usage"]
 
 
 class TestConfigLoad:

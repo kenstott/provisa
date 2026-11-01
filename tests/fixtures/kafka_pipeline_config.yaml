@@ -18,8 +18,7 @@ roles:
   - id: kafka_e2e_analyst
     parents: [analyst]
     description: "Queries the Kafka pipeline's tables."
-    capabilities:
-      - query_development
+    capabilities: [catalog_read, data_product_read, glossary_read, query_development, usage]
     domain_access:
       - kafka_e2e
 
