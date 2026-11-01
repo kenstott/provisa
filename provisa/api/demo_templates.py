@@ -656,6 +656,12 @@ def start_building_ahead(pool) -> bool:
     return True
 
 
+def building_ahead() -> bool:
+    """Whether the tier is at work on templates: a pass of :func:`build_ahead`, or a template
+    waiting or being built."""
+    return _ahead_running.locked() or template_builds.at_work()
+
+
 async def build_ahead(pool) -> None:
     """REQ-2006: build the template of every published demo that has none for the version served,
     so no visitor waits on it: the node starts a demo's stores only when asked, and a template is
@@ -812,6 +818,11 @@ class TemplateBuilds:
             if name in self._building:
                 return "building"
             return self._finished.get(name, "unknown")
+
+    def at_work(self) -> bool:
+        """Whether a template is waiting or being built."""
+        with self._lock:
+            return bool(self._waiting or self._building)
 
     def record(self, name: str, ready: bool) -> None:
         """A template built (or replaced) outside the queue: its outcome (``follow_latest``)."""

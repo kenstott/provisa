@@ -248,3 +248,53 @@ def test_a_refusal_long_after_the_last_starts_a_new_count(monkeypatch, compute, 
     client.post("/public/demos/retail")
     now["t"] += sandbox_wake.REFUSAL_GAP_S + 1
     assert client.post("/public/demos/retail").json()["code"] == "sandbox.starting"
+
+
+def test_a_vm_building_ahead_is_not_stopped(monkeypatch):
+    """REQ-2006: the tier builds its templates ahead only while it is up, and its VM stopped once
+    no sandbox had been used, whatever was still being built: of 28 demos, 17 had never been
+    reached. The window is counted from when the last build ended."""
+    from datetime import UTC, datetime, timedelta
+
+    from provisa.api import demo_templates
+    from provisa.scheduler import jobs
+
+    stopped: list[str] = []
+
+    async def _stop(instance):
+        stopped.append(instance)
+
+    class _Rows:
+        def scalar_one(self):
+            return datetime.now(UTC) - timedelta(hours=5)
+
+    class _Conn:
+        async def execute_core(self, stmt):
+            return _Rows()
+
+    class _Pool:
+        def acquire(self):
+            class _Held:
+                async def __aenter__(self):
+                    return _Conn()
+
+                async def __aexit__(self, *exc):
+                    return False
+
+            return _Held()
+
+    from provisa.api.admin import orgs_router
+
+    monkeypatch.setattr(orgs_router, "_admin_pool", lambda: _Pool())
+    monkeypatch.setattr(sandbox_wake, "SANDBOX_INSTANCE", INSTANCE)
+    monkeypatch.setattr(sandbox_wake, "stop", _stop)
+    monkeypatch.setenv("PROVISA_SANDBOX_IDLE_STOP_SECONDS", "1800")
+    since = datetime.now(UTC) - timedelta(hours=5)
+
+    monkeypatch.setattr(demo_templates, "building_ahead", lambda: True)
+    asyncio.run(jobs.stop_idle_sandbox_vm(since=since))
+    assert stopped == []
+
+    monkeypatch.setattr(demo_templates, "building_ahead", lambda: False)
+    asyncio.run(jobs.stop_idle_sandbox_vm(since=since))
+    assert stopped == [INSTANCE]

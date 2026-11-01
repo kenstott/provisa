@@ -1070,15 +1070,16 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
         )
         await conn.execute_core(_delete(demo_sandboxes).where(demo_sandboxes.c.org_id == org_id))
         await conn.execute_core(_delete(orgs).where(orgs.c.id == org_id))
+    # Evict the cached runtime once the registry rows are gone, so an in-flight request cannot
+    # rebuild it from one, and before its schemas go: a runtime still listed has the config watcher
+    # and the org's background reads asking for tables just dropped (REQ-2006).
+    # REQ-1488: the org's environments go with it — each holds its own runtime under its own key.
+    _app_state.org_registry.invalidate_org(org_id)
     # Every environment's schemas on the control plane, then the org's own (prod, role, ACL).
     for env in envs:
         if env != PROD:
             await deprovision_org(_pool(), org_id, env=env)
     await deprovision_org(_pool(), org_id, redis_url=_redis_url())
-    # Evict the cached runtime last: an in-flight request must not rebuild it from a registry row
-    # that still exists.
-    # REQ-1488: the org's environments go with it — each holds its own runtime under its own key.
-    _app_state.org_registry.invalidate_org(org_id)
     # What this process holds for it, kept by its id, its schemas or its users (REQ-2006).
     from provisa.core.org_forget import forget_org
 

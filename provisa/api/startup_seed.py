@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import re
+import zlib
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +86,16 @@ from provisa.core.models import DERIVED_SOURCE_ID
 # (see the lock's own call site for why). Any distinct bigint works; this one is just
 # "PROVISA1" packed as ASCII bytes, chosen so it reads as clearly app-specific in pg_locks output.
 _SEED_DOMAIN_ADVISORY_LOCK_KEY = 0x50524F5649534131
+# REQ-1900: and the one role every schema's seed shares, the cluster's rather than a schema's.
+_SEED_CATALOG_ROLE_ADVISORY_LOCK_KEY = 0x50524F5649534132
+
+
+def _seed_lock_key(org_id: str, env: str | None) -> int:
+    """REQ-1900, REQ-2006: the seed's lock for one schema. What it protects is one schema's views
+    between one worker's DDL and its reflect, so workers building that schema take it in turn.
+    One key for every schema queued every org's build behind every other's, on every process of
+    the control plane: both sandbox tiers' opens and template builds, in one line."""
+    return _SEED_DOMAIN_ADVISORY_LOCK_KEY ^ zlib.crc32(org_schema(org_id, env).encode())
 
 # The ops views over the signals (ops_schema.OPS_SIGNAL_VIEWS), each engine with the signals
 # defining them in otel.signals.
@@ -253,11 +264,12 @@ async def _seed_catalog_client(conn: Any, schema_name: str) -> None:
     nothing else of this schema, and holds no predefined role: PostgreSQL then refuses it a
     server file and hides other connections from it. A view reads as its owner, so a role needs
     no grant on what a view reads. provisa_raise is how a form answers PostgreSQL's own error."""
-    await conn.execute(
-        f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
-        "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
-    )
-    await conn.execute(f"GRANT {CLIENT_ROLE} TO CURRENT_USER")
+    async with conn.advisory_lock(_SEED_CATALOG_ROLE_ADVISORY_LOCK_KEY):
+        await conn.execute(
+            f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
+            "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+        )
+        await conn.execute(f"GRANT {CLIENT_ROLE} TO CURRENT_USER")
     await conn.execute(f'GRANT USAGE ON SCHEMA "{schema_name}" TO {CLIENT_ROLE}')
     await conn.execute(f"GRANT SELECT ON {', '.join(sorted(_META_TABLE_VIEWS))} TO {CLIENT_ROLE}")
     await conn.execute(RAISE_FUNCTION_SQL)
@@ -1005,8 +1017,8 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         # visibility is a property of the OTHER session's DDL, not this session's ordering.
         # Confirmed live under `--workers 8`: `sqlalchemy.exc.NoSuchTableError` on
         # `org_default.usage_ranking`/`org_default.pii_access` from exactly this reflect step.
-        # A session advisory lock serializes the whole phase across every worker regardless of
-        # the exact interleaving — only one worker's pass ever runs at a time, so by the time any
+        # A session advisory lock, one per schema (_seed_lock_key), serializes the whole phase
+        # across every worker regardless of the exact interleaving — only one worker's pass ever runs at a time, so by the time any
         # OTHER worker's turn starts, every view this phase creates is fully committed and stable;
         # every worker's own pass is already idempotent (CREATE OR REPLACE VIEW, upserts), so a
         # later worker's now-serialized pass is just a fast no-op confirmation. Session-scoped
@@ -1015,7 +1027,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         # Sqlite (the embedded demo tier) has no multi-worker story and no advisory-lock function.
         # The lock is held on a session of its own on the server (Connection.advisory_lock), so it
         # spans these autocommitting statements even behind a transaction-pooling PgBouncer.
-        async with _conn.advisory_lock(_SEED_DOMAIN_ADVISORY_LOCK_KEY):
+        async with _conn.advisory_lock(_seed_lock_key(org_id, env)):
             await _seed_tag_param_values(_conn)  # REQ-1467
             await _seed_meta_domain(_conn, org_id=org_id, env=env)
             await _seed_ontology_domain(_conn, org_id=org_id, env=env)  # REQ-2163
