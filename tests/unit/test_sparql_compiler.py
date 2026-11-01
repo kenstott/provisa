@@ -876,3 +876,8 @@ def test_values_alone_answers_its_rows(con):
 
 def test_a_literal_values_gives_a_subject_has_no_solution(con):
     assert _answer(con, 'SELECT ?n WHERE { VALUES ?s { "a" } ?s p:name ?n }') == []
+
+
+def test_construct_where_takes_its_pattern_as_its_template(con):
+    rows = _answer(con, f"CONSTRUCT WHERE {{ <{ann()}> p:name ?n }}")
+    assert [r["o"] for r in rows] == ["Ann"] and rows[0]["s"] == ann()

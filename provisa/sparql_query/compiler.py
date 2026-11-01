@@ -2369,6 +2369,10 @@ def update_refusal(text: str) -> tuple[str, str]:
     )
 
 
+def _template_of(pattern: CompValue) -> list[tuple[Any, Any, Any]]:
+    return [t for group in _alternatives(pattern) for t in group.triples]
+
+
 def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
     """``text``, a SPARQL SELECT, ASK, CONSTRUCT or DESCRIBE of a resource, as the graph IR, read
     against ``vocab`` (built from the label map ``lm``)."""
@@ -2392,7 +2396,10 @@ def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:
         raise SparqlRefused(f"GROUP BY and aggregates in a {form} are not supported")
     if form == "SELECT" and "project" not in mods:
         mods["project"] = [str(v) for v in algebra.PV]
-    template = list(algebra.template) if form == "CONSTRUCT" else None
+    template = None
+    if form == "CONSTRUCT":
+        # CONSTRUCT WHERE has no template of its own: its pattern is its template.
+        template = list(algebra.template or _template_of(pattern))
 
     limit, allowed = union_allowance(
         mods.get("limit") is not None

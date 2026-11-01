@@ -99,12 +99,21 @@ def _refusal(status: int, body: bytes) -> str:
     return f"{status}: {' '.join(text.split())[:400]}"
 
 
+def adapted_query(text: str, uri: str, fixture: fixtures.Fixture) -> str:
+    """The case's query as it runs on the fixture: its constants mapped, its open patterns
+    guarded."""
+    mapped = results.map_query(text, uri, fixture.term_map())
+    return results.guard_open_patterns(
+        mapped, fixture.key_columns(), fixture.untyped_classes(), typed=bool(fixture.classes)
+    )
+
+
 def run_query(case: manifest.Case, fixture: fixtures.Fixture, root: Path, base: str) -> str | None:
     """None when the case's query answers its expected result, else why not."""
     assert case.result is not None
     text = case.action.read_text(encoding="utf-8")
     uri = fixtures.data_uri(case.action, root)
-    query = results.map_query(text, uri, fixture.term_map())
+    query = adapted_query(text, uri, fixture)
     accept = results.accept_of(case.result)
     expected = results.expected_of(case.result, fixtures.data_uri(case.result, root))
     if expected[0] == "boolean":

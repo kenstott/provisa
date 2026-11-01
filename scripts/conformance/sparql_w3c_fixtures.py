@@ -30,7 +30,10 @@ A dataset becomes, in schema ``conformance``:
 
 Subjects, predicates and classes then have the model's IRIs (provisa.gql.iri, vocabulary), so
 :func:`Fixture.term_map` maps the query's constant IRIs onto them and the answer's back; a blank
-node's row maps back to a blank node.
+node's row maps back to a blank node. A table adds two things the dataset does not state, both read
+by an open pattern: its key column as a predicate, and, for an untyped subject, its table class as
+``rdf:type``. The runner keeps a variable predicate from them
+(sparql_w3c_results.guard_open_patterns).
 
 A dataset the model cannot state faithfully is never approximated: :attr:`Fixture.refusal` names
 what stops it, and its cases fail with that reason. Which are those:
@@ -150,16 +153,22 @@ class Fixture:
         iris = {str(k): v for k, v in self.subjects.items() if isinstance(k, URIRef)}
         return {**iris, **self.classes, **self.predicates}
 
-    def scaffolding(self) -> tuple[str, ...]:
-        """The IRI prefixes of what the fixture adds to the dataset: each table's key column and
-        each junction table, read by an open pattern. A solution holding one is no solution of
-        the dataset (sparql_w3c_results.read_rows)."""
+    def key_columns(self) -> tuple[str, ...]:
+        """Each table's key column as a predicate: the fixture's, not the dataset's."""
         vocab = f"{BASE}/vocab/{_seg(self.domain)}"
-        return (
-            *(f"{vocab}/{_seg(t.name)}#id" for t in self.tables),
-            *(f"{vocab}/{_seg(e.via)}" for e in self.edges),
-            *(f"{BASE}/id/{_seg(self.domain)}/{_seg(e.via)}/" for e in self.edges),
-        )
+        return tuple(f"{vocab}/{_seg(t.name)}#id" for t in self.tables)
+
+    def untyped_classes(self) -> tuple[str, ...]:
+        """The table class of each table of untyped subjects, an ``rdf:type`` only the fixture
+        states."""
+        vocab = f"{BASE}/vocab/{_seg(self.domain)}"
+        classed = set(self.classes.values())
+        names = (f"{vocab}/{_seg(t.name)}" for t in self.tables)
+        return tuple(n for n in names if n not in classed)
+
+    def scaffolding(self) -> frozenset[str]:
+        """The IRIs of what the fixture adds to the dataset, which no answer of it holds."""
+        return frozenset((*self.key_columns(), *self.untyped_classes()))
 
     def reverse_map(self) -> dict[str, Any]:
         """Every model IRI to the source term it stands for: an answer's terms, read back."""

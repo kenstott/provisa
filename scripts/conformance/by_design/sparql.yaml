@@ -20,6 +20,7 @@
   became: >-
     the test's data file is declared in the fixture model, a table per class with a column per
     literal predicate and a relationship per resource predicate, in a domain and role of its own.
-    The query's constant IRIs are mapped onto the model's and the answer's back; nothing else of
-    the query changes.
+    The query's constant IRIs are mapped onto the model's and the answer's back, and a variable
+    predicate is kept by a FILTER from what the tables add (the key column, an untyped table's
+    class); nothing else of the query changes.
   case: "^(?!syntax-|add::|copy::|move::|clear::|drop::|basic-update::|delete|update-silent::)"

@@ -6,7 +6,7 @@
 
 ## How the suite runs
 
-Provisa has no triple store, so each test's data file is declared as fixture tables before the run: a table per class, a column per literal predicate, a relationship per resource predicate. The test's own query then runs against them. Its constant IRIs are mapped to the fixture's and the answer's mapped back; nothing else of the query changes. Solutions compare as multisets, with blank nodes matched one to one and numbers compared by value. A dataset the tables cannot state faithfully counts its tests as failed, with the reason.
+Provisa has no triple store, so each test's data file is declared as fixture tables before the run: a table per class, a column per literal predicate, a relationship per resource predicate. The test's own query then runs against them. Its constant IRIs are mapped to the fixture's and the answer's mapped back. A variable predicate gets one `FILTER`, keeping it from the key column and class every table adds. Nothing else of the query changes. Solutions compare as multisets, with blank nodes matched one to one and numbers compared by value. A dataset the tables cannot state faithfully counts its tests as failed, with the reason.
 
 ## Deliberate differences
 

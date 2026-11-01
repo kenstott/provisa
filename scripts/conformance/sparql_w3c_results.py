@@ -9,8 +9,9 @@
 # permission from the copyright holder.
 
 """What the W3C SPARQL runner does to a query and an answer (REQ-2167): the query's constant IRIs
-mapped onto the fixture's, the answer's mapped back, and the answer compared with the suite's
-expected result. Nothing else of a query changes, so what runs is the suite's own query.
+mapped onto the fixture's, a FILTER keeping a variable predicate from what the fixture added, the
+answer's terms mapped back, and the answer compared with the suite's expected result. Nothing else
+of a query changes, so what runs is the suite's own query.
 
 Solutions compare as multisets: blank nodes by a one-to-one mapping, numbers, booleans and dates
 of one datatype by value, every other term exactly. ORDER BY is not compared, since the suite's
@@ -25,10 +26,13 @@ import json
 import re
 from pathlib import Path
 from typing import Any
+from collections import defaultdict
 from urllib.parse import urljoin
 
-from rdflib import BNode, Graph, Literal, URIRef, XSD
+from rdflib import RDF, BNode, Graph, Literal, URIRef, Variable, XSD
 from rdflib.compare import isomorphic
+from rdflib.plugins.sparql.algebra import translateQuery
+from rdflib.plugins.sparql.parser import parseQuery
 from rdflib.query import Result
 
 _TOKEN = re.compile(
@@ -44,6 +48,30 @@ _TOKEN = re.compile(
     """,
     re.VERBOSE,
 )
+
+
+_ABSOLUTE = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*:")
+#: What moves the guard's position: brackets, and a variable or the CONSTRUCT keyword.
+_BRACKET = re.compile(
+    r"""
+    (?P<skip>\#[^\n]*
+        |\"\"\"(?:[^"\\]|\\.|"(?!""))*\"\"\"
+        |'''(?:[^'\\]|\\.|'(?!''))*'''
+        |"(?:[^"\\\n]|\\.)*"
+        |'(?:[^'\\\n]|\\.)*'
+        |<[^<>"{}|^`\\\s]*>)
+    |[{}()]
+    |[?$]\w+
+    |(?i:\bCONSTRUCT\b)
+    """,
+    re.VERBOSE,
+)
+
+
+def _resolved(base: str, iri: str) -> str:
+    """``iri`` against ``base``. An absolute IRI stands as written: urljoin drops an empty
+    fragment, the ``#`` that ends a namespace."""
+    return iri if _ABSOLUTE.match(iri) else urljoin(base, iri)
 
 
 def map_query(text: str, base: str, terms: dict[str, str]) -> str:
@@ -77,7 +105,7 @@ def map_query(text: str, base: str, terms: dict[str, str]) -> str:
                     if name in terms:
                         replacement = f"<{terms[name]}>" + "." * trailing
         elif kind == "iri":
-            iri = urljoin(base, m.group()[1:-1])
+            iri = _resolved(base, m.group()[1:-1])
             if pending == "PREFIX-IRI":
                 prefixes[prefix_name] = iri
                 pending = None
@@ -92,6 +120,94 @@ def map_query(text: str, base: str, terms: dict[str, str]) -> str:
             at = m.end()
     out.append(text[at:])
     return "".join(out)
+
+
+def _variable_predicates(text: str) -> dict[str, str | None]:
+    """Each variable a triple of ``text`` has as its predicate, with its object variable. A query
+    this parser refuses has none here: the endpoint refuses it by name."""
+    found: dict[str, str | None] = {}
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            if node.get("triples") is not None and getattr(node, "name", "") == "BGP":
+                for _s, p, o in node["triples"]:
+                    if isinstance(p, Variable):
+                        found[str(p)] = str(o) if isinstance(o, Variable) else None
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, (list, tuple)):
+            for value in node:
+                visit(value)
+
+    try:
+        visit(translateQuery(parseQuery(text)).algebra)
+    except Exception:  # noqa: BLE001 -- rdflib raises pyparsing's and its own errors alike
+        return {}
+    return found
+
+
+def guard_open_patterns(
+    text: str, keys: tuple[str, ...], untyped: tuple[str, ...], *, typed: bool
+) -> str:
+    """``text`` with a FILTER in each group reading a variable predicate, keeping it from what the
+    fixture adds to the dataset: each table's key column, read as a predicate, and the table class
+    of an untyped subject, read as its ``rdf:type``. Filtering the answer afterwards cannot serve
+    an aggregate over such a pattern. A dataset with no classes has no ``rdf:type`` at all; one
+    with classes keeps its own. A CONSTRUCT WHERE takes no FILTER, and its answer's triples are
+    left out by read_rows."""
+    open_vars = _variable_predicates(text)
+    if not open_vars or re.search(r"\bCONSTRUCT\s+WHERE\b", text, re.I):
+        return text
+    stack: list[int] = []  # the groups open at this point, by their number
+    closes: dict[int, int] = {}  # a group's number -> where it closes
+    wanted: dict[int, set[str]] = defaultdict(set)
+    parens = 0
+    groups = 0
+    template_next = False
+    template_depth: int | None = None
+    for m in _BRACKET.finditer(text):
+        token = m.group()
+        if m.group("skip") is not None:
+            continue
+        if token.upper() == "CONSTRUCT":
+            template_next = True
+        elif token == "{":
+            groups += 1
+            stack.append(groups)
+            if template_next:
+                template_depth, template_next = len(stack), False
+        elif token == "}":
+            number = stack.pop()
+            closes[number] = m.start()
+            if template_depth == len(stack) + 1:
+                template_depth = None
+        elif token == "(":
+            parens += 1
+        elif token == ")":
+            parens -= 1
+        elif token[1:] in open_vars and stack and not parens and template_depth is None:
+            wanted[stack[-1]].add(token[1:])
+    out = text
+    for number in sorted(wanted, key=lambda n: closes[n], reverse=True):
+        guards = "".join(
+            _guards(v, open_vars[v], keys, untyped, typed) for v in sorted(wanted[number])
+        )
+        at = closes[number]
+        out = f"{out[:at]}{guards} {out[at:]}"
+    return out
+
+
+def _guards(
+    var: str, obj: str | None, keys: tuple[str, ...], untyped: tuple[str, ...], typed: bool
+) -> str:
+    left_out = [f"<{k}>" for k in keys]
+    if not typed:
+        left_out.append(f"<{RDF.type}>")
+    said = f" FILTER(?{var} NOT IN ({', '.join(left_out)}))" if left_out else ""
+    if typed and untyped and obj is not None:
+        classes = ", ".join(f"<{c}>" for c in untyped)
+        said += f" FILTER(?{var} != <{RDF.type}> || ?{obj} NOT IN ({classes}))"
+    return said
 
 
 def read_back(term: Any, reverse: dict[str, Any]) -> Any:
@@ -202,17 +318,17 @@ def read_rows(
     rows: list[dict], reverse: dict[str, Any], scaffolding: tuple[str, ...]
 ) -> list[dict]:
     """Solutions as the dataset's: each term mapped back, and a solution holding what the fixture
-    added (a key column read as a predicate, a junction row) left out, since the dataset has no
-    such triple."""
+    added (a key column read as a predicate, an untyped table's class) left out, since the dataset
+    has no such triple."""
     return [
         {k: read_back(v, reverse) for k, v in row.items()}
         for row in rows
-        if not any(str(v).startswith(scaffolding) for v in row.values())
+        if not any(str(v) in scaffolding for v in row.values())
     ]
 
 
 def answer(
-    body: bytes, media: str, reverse: dict[str, Any], scaffolding: tuple[str, ...]
+    body: bytes, media: str, reverse: dict[str, Any], scaffolding: frozenset[str]
 ) -> tuple[str, Any]:
     """The endpoint's body read as (form, value), its terms mapped back to the dataset's."""
     kind = media.split(";")[0].strip().lower()

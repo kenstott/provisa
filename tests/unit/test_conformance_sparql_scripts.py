@@ -188,7 +188,7 @@ def test_an_answers_terms_read_back_and_scaffolding_leaves():
             {"s": URIRef("http://m/id/2"), "p": URIRef(f"{EX}p")},
         ],
         reverse,
-        ("http://m/t#id",),
+        frozenset({"http://m/t#id"}),
     )
     assert rows == [{"s": BNode("b"), "p": URIRef(f"{EX}p")}]
 
@@ -265,3 +265,42 @@ def test_a_manifest_entry_of_an_unknown_type_is_refused(tmp_path):
     (group / "manifest.ttl").write_text(MANIFEST.replace("mf:NegativeSyntaxTest11", "mf:NewTest"))
     with pytest.raises(ValueError, match="NewTest"):
         manifest.cases_of(group / "manifest.ttl")
+
+
+def test_a_hash_namespace_keeps_its_hash():
+    """urljoin drops an empty fragment, which would leave every such prefix unmapped."""
+    terms = {"http://example.org/ns#price": "http://m/price"}
+    query = "PREFIX ns: <http://example.org/ns#> SELECT * { ?s ns:price ?o }"
+    assert "?s <http://m/price> ?o" in results.map_query(query, "http://file/q.rq", terms)
+
+
+KEY = "http://m/t0#id"
+UNTYPED = "http://m/t0"
+
+
+def test_a_variable_predicate_is_kept_from_what_the_fixture_added():
+    out = results.guard_open_patterns("SELECT * { ?s ?p ?o }", (KEY,), (UNTYPED,), typed=False)
+    assert f"FILTER(?p NOT IN (<{KEY}>, <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>))" in out
+
+
+def test_a_dataset_with_classes_keeps_its_own_types():
+    out = results.guard_open_patterns("SELECT * { ?s ?p ?o }", (KEY,), (UNTYPED,), typed=True)
+    assert f"FILTER(?p NOT IN (<{KEY}>))" in out
+    assert "?p != <http://www.w3.org/1999/02/22-rdf-syntax-ns#type>" in out
+    assert f"?o NOT IN (<{UNTYPED}>)" in out
+
+
+def test_the_guard_stands_in_the_group_of_the_pattern():
+    query = "SELECT * { ?s <urn:a> ?x OPTIONAL { ?s ?p ?o } }"
+    out = results.guard_open_patterns(query, (KEY,), (), typed=False)
+    assert out.index("FILTER") > out.index("OPTIONAL") and out.rstrip().endswith("} }")
+
+
+def test_a_named_predicate_and_a_construct_template_take_no_guard():
+    named = "SELECT * { ?s <urn:p> ?o }"
+    assert results.guard_open_patterns(named, (KEY,), (), typed=False) == named
+    built = "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
+    out = results.guard_open_patterns(built, (KEY,), (), typed=False)
+    assert out.startswith("CONSTRUCT { ?s ?p ?o } WHERE {") and out.count("FILTER") == 1
+    bare = "CONSTRUCT WHERE { ?s ?p ?o }"
+    assert results.guard_open_patterns(bare, (KEY,), (), typed=False) == bare
