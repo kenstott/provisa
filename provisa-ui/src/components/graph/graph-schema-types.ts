@@ -29,6 +29,8 @@ export interface SchemaRel {
   source: string;
   target: string;
   properties: string[];
+  /** What it joins, the same for a join declared from both ends (REQ-2135). */
+  join: string;
 }
 
 export interface CypherSchema {

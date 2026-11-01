@@ -54,7 +54,7 @@ async def _built_sql(monkeypatch, mv: MVDefinition, columns: dict[str, list[str]
         state, "view_context", SimpleNamespace(tables={t: _meta(t) for t in columns}), raising=False
     )
 
-    async def _tables(_state):
+    async def _tables(_state, *, catalog=False):
         return [
             SimpleNamespace(
                 source_id="src",

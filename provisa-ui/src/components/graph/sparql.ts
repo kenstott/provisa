@@ -28,6 +28,10 @@ export interface SparqlVocabulary {
     iri: string;
     kind: "table" | "term";
     labels: string[];
+    /** Every label it types is a table read by arguments. */
+    parameterized: boolean;
+    /** The labels it types that are, which no path includes (REQ-2135). */
+    parameterized_labels: string[];
     superclasses: string[];
     /** A Class term's domains (REQ-1723); none for a table's own class. */
     domains?: string[];
@@ -46,8 +50,9 @@ export interface SparqlVocabulary {
     /** A Property term's domains (REQ-1723); none for a column's own predicate. */
     domains?: string[];
   }[];
-  /** An edge type's predicate, from its source label's class to its target's. */
-  edges: { iri: string; type: string; source: string; target: string }[];
+  /** An edge type's predicate, from its source label's class to its target's, and what it joins:
+   * the same for a join declared from both ends (REQ-2135). */
+  edges: { iri: string; type: string; source: string; target: string; join: string }[];
   /** The live Concept terms (the SKOS vocabulary). */
   concepts: { iri: string; name: string; definition: string | null; domains: string[] }[];
 }

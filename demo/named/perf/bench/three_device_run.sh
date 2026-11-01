@@ -21,10 +21,12 @@
 # The devices are the ones terraform/perf creates. The repository is checked out at the commit
 # under test on all three, at the same path.
 #
-# Usage: three_device_run.sh [--reps 5] [--engine pg] [--dry-run]
+# Usage: three_device_run.sh [--reps 5] [--engine pg] [--profile] [--dry-run]
 #        [--variants zero,row_rules_2,... --caches cached,uncached --telemetry off
 #         --steps 1,16 --window-s 15 --warmup-s 15]
 #   --dry-run prints every command it would run on each device, and runs none.
+#   --profile ends the repetitions with one py-spy profile per published transport, at the step
+#   they saturate; its runs stay out of the report.
 #   --variants runs a governance pass (REQ-2092) instead: per repetition, every variant
 #   (governance_variants.py) at every cache setting and telemetry setting, each its own run
 #   (<rep>-<variant>-<cache>-<telemetry>), at the load the last four flags give; the report is
@@ -44,11 +46,13 @@ REPS=5
 ENGINE=pg
 DRY_RUN=""
 VARIANTS="" CACHES="" TELEMETRIES="" STEPS="" WINDOW_S="" WARMUP_S=""
+PROFILE="" PROFILE_STEP=64 PROFILE_S=30 PROFILE_WARM_S=20 PY_SPY_VERSION=0.4.0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --reps) REPS="$2"; shift 2 ;;
     --engine) ENGINE="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --profile) PROFILE=1; shift ;;
     --variants) VARIANTS="$2"; shift 2 ;;
     --caches) CACHES="$2"; shift 2 ;;
     --telemetry) TELEMETRIES="$2"; shift 2 ;;
@@ -87,12 +91,18 @@ on() {  # on <instance> <command>
   gcloud compute ssh "$1" --zone "$PERF_ZONE" --quiet --command "$2"
 }
 
-# The containers whose CPU each step reports beside the source's (compose project "perf").
-BACKEND_CONTAINERS=(perf-engine-postgresql-1 perf-control-plane-1 perf-redis-1
+# The containers whose CPU each step reports beside the source's (compose project "perf"): device
+# 3's, and the engine's on device 1.
+BACKEND_CONTAINERS=(perf-control-plane-1 perf-redis-1
   perf-otel-collector-1 perf-otlp2sql-1 perf-ops-postgresql-1)
-[ "$ENGINE" = trino ] && BACKEND_CONTAINERS+=(perf-trino-1)
 _containers=""
 for c in "${BACKEND_CONTAINERS[@]}"; do _containers+=" --backend-container $c"; done
+ENGINE_CONTAINER=""
+[ "$ENGINE" = pg ] && ENGINE_CONTAINER=perf-engine-postgresql-1
+[ "$ENGINE" = trino ] && ENGINE_CONTAINER=perf-trino-1
+_engine_cpu=""
+[ -n "$ENGINE_CONTAINER" ] && _engine_cpu="--engine-container $ENGINE_CONTAINER \
+    --engine-cpu-url http://$PERF_SERVER_IP:$AGENT_PORT/docker-stats"
 
 # The runs already checkpointed: a run is done when its DONE object is in the bucket. An empty
 # prefix is the one listing failure that means none is done; any other is an error.
@@ -110,6 +120,11 @@ if [ -z "$DRY_RUN" ]; then
   fi
 fi
 
+# Device 3's services: all of the profile but the engine, which is on device 1.
+three_device_services() {
+  echo postgresql mongodb clickhouse neo4j redis control-plane otel-collector otlp2sql ops-postgresql
+}
+
 # Each device powers off after 30 idle minutes (vm_idle_shutdown.sh). Device 3 only serves its
 # containers during a run, which the idle check does not count, so every device is held up for
 # the run and released after it, also when the run fails.
@@ -120,7 +135,6 @@ trap release EXIT
 
 echo "=== device 3: backends ==="
 _profiles="--profile three-device"
-[ "$ENGINE" = trino ] && _profiles+=" --profile three-device-trino"
 # The device booted from the stored seed image and its startup script brought the stack up; this
 # is a no-op then, and adds Trino when a run names it. The seeder never runs in a run: a device
 # without seed.py's done-marker is refused. Docker and the agent's docker stats need root. Whether the agent runs is
@@ -128,15 +142,32 @@ _profiles="--profile three-device"
 # whose own command line names the agent, and never start it.
 on "$BACKENDS" "cd $PERF_REPO/demo/named/perf && export PROVISA_BENCH_BIND=$PERF_BACKENDS_IP \
   && { test -f data/.seeded || { echo 'data/.seeded is absent: this device is not seeded'; exit 1; }; } \
-  && sudo -E docker compose $_profiles up -d --build --scale seeder=0 \
+  && sudo -E docker compose $_profiles up -d --build --scale seeder=0 $(three_device_services) \
+  && { sudo -E docker compose $_profiles stop engine-postgresql || true; } \
   && ( { curl -sf http://$PERF_BACKENDS_IP:$AGENT_PORT/host >/dev/null || sudo nohup setsid $PY $BENCH/host_agent.py \
       --listen $PERF_BACKENDS_IP:$AGENT_PORT --fact device=backends > ~/host-agent.log 2>&1; } >/dev/null 2>&1 </dev/null & )"
 
-run_one() {  # run_one <rep> <telemetry> [<variant> <cache>]
-  local name="$1-$2" contract_args=""
-  if [ "$#" -eq 4 ]; then
+# The engine runs beside Provisa on device 1, out of the same compose file.
+if [ -n "$ENGINE_CONTAINER" ]; then
+  echo "=== device 1: engine ==="
+  _engine_service=engine-postgresql
+  [ "$ENGINE" = trino ] && _engine_service=trino
+  on "$SERVER" "cd $PERF_REPO/demo/named/perf && export PROVISA_BENCH_BIND=$PERF_SERVER_IP \
+    && sudo -E docker compose --profile three-device --profile three-device-trino \
+      up -d --build --no-deps $_engine_service"
+fi
+
+run_one() {  # run_one <rep> <telemetry> [<variant> <cache> | uncached | profile <transport>]
+  local name="$1-$2" contract_args="" spy=""
+  if [ "$#" -eq 4 ] && [ "$3" = profile ]; then
+    name="profile-$4-$2" spy="$4"
+    contract_args="--only $4 --steps $PROFILE_STEP --window-s $PROFILE_S --warmup-s $PROFILE_WARM_S"
+  elif [ "$#" -eq 4 ]; then
     name="$1-$3-$4-$2"
     contract_args="--variant $3 --cache $4 --steps $STEPS --window-s $WINDOW_S --warmup-s $WARMUP_S"
+  elif [ "$#" -eq 3 ]; then
+    name="$1-uncached-$2"
+    contract_args="--only pgwire --uncached"
   fi
   if [[ "$DONE_RUNS" == *" $name "* ]]; then
     echo "=== run $name: checkpointed already, skipped ==="
@@ -144,7 +175,8 @@ run_one() {  # run_one <rep> <telemetry> [<variant> <cache>]
   fi
   echo "=== run $name (engine $ENGINE) ==="
   on "$SERVER" "export PROVISA_BENCH_BACKENDS_HOST=$PERF_BACKENDS_IP \
-    PROVISA_BENCH_AGENT_LISTEN=$PERF_SERVER_IP:$AGENT_PORT; \
+    PROVISA_BENCH_AGENT_LISTEN=$PERF_SERVER_IP:$AGENT_PORT \
+    PROVISA_BENCH_ENGINE_HOST=$PERF_SERVER_IP; \
     nohup setsid env --default-signal=INT \
       $BENCH/orchestrate.sh serve --telemetry $2 --engine $ENGINE > ~/serve-$name.log 2>&1 < /dev/null &"
   # serving once the server's agent answers: serve_three_device.sh starts it after every worker
@@ -153,12 +185,18 @@ run_one() {  # run_one <rep> <telemetry> [<variant> <cache>]
   # the contract as this run states it: its telemetry the server's (REQ-2092)
   on "$CLIENT" "cd $BENCH && rm -rf $OUT/$name && mkdir -p $OUT/$name && $PY three_device.py contract --setup $PERF_CONTRACT --telemetry $2 \
     $contract_args --out $OUT/$name/setup.yaml"
+  # A profile slows what it watches, so it runs apart from the repetitions, at the step they
+  # saturate, after that step's warm-up.
+  if [ -n "$spy" ]; then
+    on "$SERVER" "nohup setsid bash -c 'sleep $PROFILE_WARM_S; sudo ~/.local/bin/py-spy record -d $PROFILE_S -r 100 -f raw -t \
+      --subprocesses -o ~/spy-$spy.txt --pid \$(pgrep -o -f \"uvicorn main:app\")' > ~/spy-$spy.log 2>&1 < /dev/null &"
+  fi
   on "$CLIENT" "cd $BENCH && PROVISA_BENCH_SERVER_HOST=$PERF_SERVER_IP \
     PROVISA_HTTP_BASE_URL=http://$PERF_SERVER_IP:8001 \
     $PY run_benchmark.py --engine $ENGINE --optimistic \
     --setup $OUT/$name/setup.yaml \
     --server-cpu-url http://$PERF_SERVER_IP:$AGENT_PORT/cpu \
-    --source-cpu-url http://$PERF_BACKENDS_IP:$AGENT_PORT/docker-stats $_containers \
+    --source-cpu-url http://$PERF_BACKENDS_IP:$AGENT_PORT/docker-stats $_containers $_engine_cpu \
     --device server=http://$PERF_SERVER_IP:$AGENT_PORT \
     --device backends=http://$PERF_BACKENDS_IP:$AGENT_PORT \
     --output-dir $OUT/$name"
@@ -172,6 +210,10 @@ run_one() {  # run_one <rep> <telemetry> [<variant> <cache>]
     echo 'the serve did not stop within 60 s of SIGINT; still running:'; \
     ps -o pid,ppid,etime,stat,cmd -p \$(pgrep -d, -f '[s]erve_three_device.sh|[u]vicorn main:app|[h]ost_agent.py') | cut -c1-200; \
     echo '--- ~/serve-$name.log (tail)'; tail -40 ~/serve-$name.log; exit 1"
+  if [ -n "$spy" ] && [ -z "$DRY_RUN" ]; then
+    mkdir -p "$LOCAL_OUT/$name"
+    gcloud compute scp --zone "$PERF_ZONE" "$SERVER:spy-$spy.txt" "$LOCAL_OUT/$name/"
+  fi
   checkpoint "$name"
 }
 
@@ -203,9 +245,14 @@ for rep in $(seq 1 "$REPS"); do
     done
   else
     run_one "$rep" off
+    run_one "$rep" off uncached
     run_one "$rep" on
   fi
 done
+if [ -z "$PASS" ] && [ -n "$PROFILE" ]; then
+  on "$SERVER" "uv tool install py-spy==$PY_SPY_VERSION"
+  for t in pgwire flight_sql graphql bolt grpc rest jsonapi; do run_one 0 off profile "$t"; done
+fi
 REPORT=(report --root "$LOCAL_OUT" --out "$LOCAL_OUT-report")
 [ -n "$PASS" ] && REPORT=(variant-report --root "$LOCAL_OUT" --out "$LOCAL_OUT-report")
 

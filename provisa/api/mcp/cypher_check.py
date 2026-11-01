@@ -63,7 +63,6 @@ async def check_graph_read(state: Any, role_id: str, query: str) -> GraphRead:
     from provisa.api.role_surface import role_surface
     from provisa.compiler.sql_rewrite import make_semantic_sql
     from provisa.compiler.sql_validator import validate_sql
-    from provisa.compiler.stage2 import build_governance_context
     from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.cypher.parser import CypherParseError, parse_cypher
     from provisa.gql.translator import cypher_to_sql
@@ -73,6 +72,7 @@ async def check_graph_read(state: Any, role_id: str, query: str) -> GraphRead:
         UnregisteredRelationshipType,
     )
     from provisa.pgwire._pipeline import relationship_guard_bypassed
+    from provisa.pgwire.governed_plan import role_governance
     from provisa.security.rights import effective_domain_access_role
 
     surface = role_surface(state, role_id)
@@ -95,15 +95,7 @@ async def check_graph_read(state: Any, role_id: str, query: str) -> GraphRead:
     violations = validate_sql(
         make_semantic_sql(sql_ast.sql(dialect="postgres"), surface.context),
         surface.context,
-        build_governance_context(
-            role_id,
-            surface.rls,
-            state.masking_rules,
-            surface.context,
-            getattr(state, "tables", []),
-            role=role,
-            relationships=getattr(state, "relationships", None),
-        ),
+        role_governance(state, surface, role_id),
         role,
         getattr(state, "tables", []),
         bypass_relationship_guard=relationship_guard_bypassed(

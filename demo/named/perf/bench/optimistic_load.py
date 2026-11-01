@@ -118,6 +118,9 @@ class Endpoints:
     # reports beside the sources' (the engine, control plane, Redis, collector).
     docker_stats_url: str | None = None
     backend_containers: tuple[str, ...] = ()
+    # The engine's container on device 1, and that device's agent's docker stats.
+    engine_container: str | None = None
+    engine_cpu_url: str | None = None
     # Each benchmark device's host_agent (name, URL): its paging is read at both ends of a step.
     devices: tuple[tuple[str, str], ...] = ()
     # The trace receiver's stage tally (noop_otlp_receiver.py --tally, ``GET /stages``): each step
@@ -1116,15 +1119,18 @@ def run_step(
     stages0 = _stage_totals(ep.stage_tally_url)
     monitored = {sid: s.container for sid, s in ep.setup.sources.items() if s.container}
     sampler = _sampler(ep, monitored) if monitored or ep.backend_containers else None
-    if sampler is not None:
-        sampler.start()
+    engine_sampler = _engine_sampler(ep)
+    for s in (sampler, engine_sampler):
+        if s is not None:
+            s.start()
     go.set()
     results = [out.get(timeout=window_s + 120) for _ in procs]
     server_cpu1 = _server_cpu_seconds(server_pid)
     paging1 = _paging_snapshots(server_pid, ep.devices)
     stages1 = _stage_totals(ep.stage_tally_url)
-    if sampler is not None:
-        sampler.stop()
+    for s in (sampler, engine_sampler):
+        if s is not None:
+            s.stop()
     for p in procs:
         p.join(30)
     all_records = [x for r in results for x in r["records"]]
@@ -1168,6 +1174,10 @@ def run_step(
                 c: sampled.cores[_BACKEND + c] for c in ep.backend_containers
             }
             step["backend_cpu_error"] = sampled.error
+    if engine_sampler is not None:
+        sampled_engine = engine_sampler.result()
+        step["engine_cpu_cores"] = sampled_engine.cores
+        step["engine_cpu_error"] = sampled_engine.error
     if ep.setup.load.mode == "open_loop":
         assert ep.setup.load.rate_per_s is not None
         step.update(
@@ -1192,6 +1202,16 @@ def _sampler(ep: Endpoints, sources: Mapping[str, str]) -> measurements.DockerSt
         return measurements.DockerStatsSampler(containers)
     return measurements.DockerStatsSampler(
         containers, run=measurements.remote_docker_stats(ep.docker_stats_url)
+    )
+
+
+def _engine_sampler(ep: Endpoints) -> measurements.DockerStatsSampler | None:
+    """The engine's container, on device 1 beside Provisa: its agent's docker stats."""
+    if ep.engine_container is None or ep.engine_cpu_url is None:
+        return None
+    return measurements.DockerStatsSampler(
+        {ep.engine_container: ep.engine_container},
+        run=measurements.remote_docker_stats(ep.engine_cpu_url),
     )
 
 
@@ -1467,6 +1487,14 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "(and --backend-container's) are sampled there, not on this host.",
     )
     parser.add_argument(
+        "--engine-container",
+        help="The engine's container, on device 1 beside Provisa: each step reports its CPU",
+    )
+    parser.add_argument(
+        "--engine-cpu-url",
+        help="The URL of device 1's agent's /docker-stats, where --engine-container is read",
+    )
+    parser.add_argument(
         "--backend-container",
         action="append",
         default=[],
@@ -1628,6 +1656,8 @@ def run_from_args(
         endpoints_from_setup(setup),
         docker_stats_url=args.source_cpu_url,
         backend_containers=tuple(args.backend_container),
+        engine_container=getattr(args, "engine_container", None),
+        engine_cpu_url=getattr(args, "engine_cpu_url", None),
         devices=tuple(_device(d) for d in args.device),
         stage_tally_url=args.stage_tally_url,
     )
