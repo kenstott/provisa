@@ -24,6 +24,7 @@ import contextvars
 import datetime
 import itertools
 import re
+import zoneinfo
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
@@ -522,6 +523,12 @@ _NEVER_RESET = frozenset(
 )
 
 
+def _time_of_day(request: CatalogRequest) -> str:
+    """timeofday: the wall clock in the session's zone, which no engine is told."""
+    zone = zoneinfo.ZoneInfo(request.session.get("time_zone", "UTC"))
+    return datetime.datetime.now(zone).strftime("%a %b %d %H:%M:%S.%f %Y %Z")
+
+
 def _set_config(args: list[exp.Expr]) -> exp.Expr:
     """set_config answers the value it set. Nothing is set: what a client sets is the session's,
     and what the catalog views read of a statement is the terminal's alone."""
@@ -548,6 +555,10 @@ def _session_call(name: str, args: list[exp.Expr], request: CatalogRequest) -> e
     if name == "system_user":
         said = request.session.get("system_user")
         return exp.cast(exp.null() if said is None else exp.Literal.string(said), "TEXT")
+    if name == "timeofday":
+        return exp.cast(exp.Literal.string(_time_of_day(request)), "TEXT")
+    if name == "current_query":
+        return exp.cast(exp.Literal.string(request.session["query"]), "TEXT")
     if name == "pg_is_in_recovery":
         return exp.false()
     if name in ("txid_current", "pg_current_xact_id"):

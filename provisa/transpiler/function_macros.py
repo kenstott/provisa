@@ -39,7 +39,7 @@ import functools
 import re
 import string
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -47,6 +47,7 @@ import sqlglot.expressions as exp
 from provisa.core.pg_error import MARK, raising
 from provisa.transpiler import pg_forms, pg_forms_types
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
+from provisa.transpiler.pg_literals import values_cast
 
 NATIVE = frozenset({"postgres"})
 """The dialects that have every function of the table themselves."""
@@ -102,11 +103,15 @@ class Macro:
     forms: Forms = field(default_factory=dict)
     own: Forms = field(default_factory=dict)
     operators: Forms = field(default_factory=dict)
+    #: The dialects replay found another answer on (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED).
+    differs_on: frozenset[str] = frozenset()
 
     def resolved(self, dialect: str) -> tuple[Step, str | None]:
         """The rule: the first step with a form on ``dialect``, and that form."""
         if dialect in NATIVE:
             return Step.OWN, MAPPED
+        if dialect in self.differs_on:
+            return Step.REFUSED, None
         steps = (
             (Step.OWN, self.own),
             (Step.FUNCTIONS, self.forms),
@@ -387,7 +392,11 @@ VALUE_FUNCTIONS_OF_THE_SERVER = (
     _macro(
         "pg_encoding_max_length",
         "e",
-        strict("e", "INTEGER", f"[{', '.join(map(str, _ENCODING_MAX_LENGTHS))}][e + 1]"),
+        strict(
+            "e",
+            "INTEGER",
+            f"CASE WHEN e >= 0 THEN [{', '.join(map(str, _ENCODING_MAX_LENGTHS))}][e + 1] END",
+        ),
     ),
     _macro("aclitemeq", "a, b", strict("a, b", "BOOLEAN", "a = b")),
     _macro("aclcontains", "acl, item", strict("acl, item", "BOOLEAN", "list_contains(acl, item)")),
@@ -523,12 +532,30 @@ _SHAPES: tuple[Macro, ...] = (
     _macro("box_area", "value", pg_forms.BOX_AREA, own={_TRINO: pg_forms.TRINO_BOX_AREA}),
     _macro("path_area", "value", pg_forms.PATH_AREA, own={_TRINO: pg_forms.TRINO_PATH_AREA}),
     _macro("circle_area", "value", pg_forms.CIRCLE_AREA, {_TRINO: pg_forms.CIRCLE_AREA}),
-    _macro("center", "value", pg_forms.CENTER, own={_TRINO: pg_forms.TRINO_CENTER}),
-    _macro("box_center", "value", pg_forms.BOX_CENTER, own={_TRINO: pg_forms.TRINO_BOX_CENTER}),
     _macro(
-        "circle_center", "value", pg_forms.CIRCLE_CENTER, {_TRINO: pg_forms.TRINO_CIRCLE_CENTER}
+        "center",
+        "value",
+        pg_forms.CENTER,
+        own={_TRINO: strict("value", "VARCHAR", pg_forms.TRINO_CENTER)},
     ),
-    _macro("diagonal", "value", pg_forms.BOX_DIAGONAL, own={_TRINO: pg_forms.TRINO_BOX_DIAGONAL}),
+    _macro(
+        "box_center",
+        "value",
+        pg_forms.BOX_CENTER,
+        own={_TRINO: strict("value", "VARCHAR", pg_forms.TRINO_BOX_CENTER)},
+    ),
+    _macro(
+        "circle_center",
+        "value",
+        pg_forms.CIRCLE_CENTER,
+        {_TRINO: strict("value", "VARCHAR", pg_forms.TRINO_CIRCLE_CENTER)},
+    ),
+    _macro(
+        "diagonal",
+        "value",
+        pg_forms.BOX_DIAGONAL,
+        own={_TRINO: strict("value", "VARCHAR", pg_forms.TRINO_BOX_DIAGONAL)},
+    ),
     _macro("lseg_length", "value", pg_forms.LSEG_LENGTH, own={_TRINO: pg_forms.TRINO_LSEG_LENGTH}),
     _macro("path_length", "value", pg_forms.PATH_LENGTH, own={_TRINO: pg_forms.TRINO_PATH_LENGTH}),
     _macro(
@@ -955,8 +982,49 @@ def _operator(form: pg_forms_types.Form) -> Macro:
     )
 
 
+#: PostgreSQL's substr counts positions before the first: a start at or below 0 takes fewer.
+_SUBSTR_START = "GREATEST(start, 1)"
+#: inet's text always says its mask; the engine's value says it only where it is not the widest.
+_INET_TEXT = (
+    "CASE WHEN STRPOS(value, '/') > 0 THEN value WHEN STRPOS(value, ':') > 0 "
+    "THEN value || '/128' ELSE value || '/32' END"
+)
+
 _ROWS: tuple[Macro, ...] = (
     *_text_matches(),
+    Macro("substr", ("value", "start"), {_EVERY: Pg(f"SUBSTRING(value, {_SUBSTR_START})")}),
+    Macro(
+        "substr",
+        ("value", "start", "n"),
+        {
+            _EVERY: Pg(
+                f"SUBSTRING(value, {_SUBSTR_START}, GREATEST(start + n - {_SUBSTR_START}, 0))"
+            )
+        },
+    ),
+    Macro("round_numeric", ("x", "n"), {_EVERY: Pg("ROUND(x, n)")}),
+    Macro("trunc_numeric", ("x", "n"), {_EVERY: Pg("TRUNC(x, n)")}),
+    Macro("inet_text", ("value",), {_EVERY: Pg(strict("value", "TEXT", _INET_TEXT))}),
+    Macro("max_collated", ("value",), {_EVERY: Pg("MAX(value)")}),
+    Macro("min_collated", ("value",), {_EVERY: Pg("MIN(value)")}),
+    Macro("to_number", ("value", "format")),
+    _macro("to_hex", "value", f"format('{{:x}}', {_TWOS_COMPLEMENT})"),
+    _macro("netmask", "value", "host(netmask(value))"),
+    _macro(
+        "uuid_extract_version",
+        "value",
+        "CASE WHEN substr(CAST(value AS VARCHAR), 20, 1) IN ('8', '9', 'a', 'b') "
+        "THEN uuid_extract_version(value) END",
+    ),
+    _macro(
+        "array_cat", "a, b", "CASE WHEN a IS NOT NULL OR b IS NOT NULL THEN list_concat(a, b) END"
+    ),
+    _macro("array_remove", "a, v", "list_filter(a, _x -> _x IS DISTINCT FROM v)"),
+    _macro(
+        "array_position",
+        "a, v, start",
+        "list_position(a[greatest(start, 1):], v) + greatest(start, 1) - 1",
+    ),
     _operators("like", "a, b", _LIKE, {_LIKES: Pg(_LIKE)}),
     _operators("notlike", "a, b", f"NOT {_LIKE}", {_LIKES: Pg(f"NOT {_LIKE}")}),
     _macro("textcat", "a, b", "CAST(a || b AS VARCHAR)", {_CONCATS: Pg("CAST(a || b AS TEXT)")}),
@@ -1115,7 +1183,7 @@ _ROWS: tuple[Macro, ...] = (
     _macro("is_normalized", "value, form", "provisa_is_normalized(value, form)"),
     _macro("unicode_assigned", "value", "provisa_unicode_assigned(value)"),
     Macro("unicode_version", (), {_EVERY: Pg("'15.1'")}),
-    Macro("icu_unicode_version", (), {_EVERY: Pg("CAST(NULL AS TEXT)")}),
+    Macro("icu_unicode_version", (), {_EVERY: Pg("'16.0'")}),  # postgres:17's ICU
     _macro("unistr", "value", "provisa_unistr(value)"),
     # The database's encoding is UTF8, which to_ascii refuses; a named single-byte one it strips.
     _macro("to_ascii", "value", "provisa_to_ascii(value, 'UTF8')"),
@@ -1244,8 +1312,111 @@ _ROWS: tuple[Macro, ...] = (
     ),
 )
 
+#: Where an engine's own function, given these, answers in other digits or another type than
+#: PostgreSQL's exact numeric (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED): each is a row of no
+#: form, chosen through OVERLOADS by the type the statement says.
+_EXACT_ROWS: tuple[Macro, ...] = (
+    *(
+        Macro(f"exact_{name}", tuple(f"a{i}" for i in range(arity)))
+        for name, arity in (
+            ("avg", 1),
+            ("stddev", 1),
+            ("stddev_pop", 1),
+            ("stddev_samp", 1),
+            ("variance", 1),
+            ("var_pop", 1),
+            ("var_samp", 1),
+            ("exp", 1),
+            ("ln", 1),
+            ("log", 1),
+            ("log", 2),
+            ("log10", 1),
+            ("power", 2),
+            ("pow", 2),
+            ("sqrt", 1),
+            ("div", 2),
+            ("pg_size_pretty", 1),
+        )
+    ),
+    # A float's digits as numeric, which its text does not write (100.0 for 100).
+    Macro("exact_numeric", ("a0",)),
+    # sqlglot reads the start of these as the regexp's flags.
+    Macro("regexp_replace_at", ("value", "pattern", "replacement", "start")),
+    Macro("regexp_replace_at", ("value", "pattern", "replacement", "start", "n")),
+)
+_EXACT_TYPES = ("smallint", "int", "bigint", "decimal")
+_EXACT_NUMERIC_ONLY = {
+    ("exp", 1),
+    ("ln", 1),
+    ("log", 1),
+    ("log", 2),
+    ("log10", 1),
+    ("power", 2),
+    ("pow", 2),
+    ("sqrt", 1),
+    ("div", 2),
+    ("pg_size_pretty", 1),
+}
+
+#: A row replay found another answer of, by the dialects it is refused on.
+_CLICKHOUSE = frozenset({"clickhouse"})
+_DIFFERS_ON: dict[str, frozenset[str]] = {
+    **{
+        name: _CLICKHOUSE
+        for name in (
+            # ClickHouse's Time reads PostgreSQL's text as NULL.
+            "time_cmp",
+            "time_eq",
+            "time_ge",
+            "time_gt",
+            "time_larger",
+            "time_le",
+            "time_lt",
+            "time_mi_time",
+            "time_ne",
+            "time_smaller",
+            # Its hex keeps leading zeros and its decimals overflow on the forms' moduli.
+            "int2_sum",
+            "int4_sum",
+            "numeric_pl_pg_lsn",
+            "pg_lsn_larger",
+            "pg_lsn_mii",
+            "pg_lsn_pli",
+            "pg_lsn_smaller",
+        )
+    },
+    # Two timestamps differ by seconds there, and by Trino's own text of an interval.
+    "timestamp_mi": _CLICKHOUSE | _TRINO,
+    "timestamptz_mi": _CLICKHOUSE | _TRINO,
+    # A month's fraction: its intervals are not cascaded as timestamp.c does.
+    "mul_d_interval": _DUCKDB,
+    # The session's collation, en_US.UTF-8 as pg_database says: DuckDB compares bytes.
+    "max_collated": _DUCKDB,
+    "min_collated": _DUCKDB,
+}
+
+
+def _with_replay(macro: Macro) -> Macro:
+    differs = _DIFFERS_ON.get(macro.name)
+    return macro if differs is None else replace(macro, differs_on=differs)
+
+
+#: The rows of no form: what a dialect's answer differs in and no form writes.
+REFUSED_ROWS = frozenset(
+    {
+        *((m.name, len(m.params)) for m in _EXACT_ROWS),
+        ("to_number", 2),
+        ("mul_d_interval", 2),
+        ("max_collated", 1),
+        ("min_collated", 1),
+    }
+)
+
+
 #: A call's name and argument count -> its overload: the one table.
-MACROS: dict[tuple[str, int], Macro] = {(m.name, len(m.params)): m for m in _ROWS}
+MACROS: dict[tuple[str, int], Macro] = {
+    (m.name, len(m.params)): _with_replay(m) for m in (*_ROWS, *_EXACT_ROWS)
+}
 #: (function, argument count, the type the statement says of its first argument) -> its row:
 #: PostgreSQL's own name for the overload. The operation is chosen by the type, not the engine's.
 OVERLOADS: dict[tuple[str, int, str], str] = {
@@ -1284,6 +1455,26 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
     ("interval", 1, "time"): "time_interval",
     ("interval", 2, "interval"): "interval_scale",
     **{
+        (m.name.removeprefix("exact_"), len(m.params), said): m.name
+        for m in _EXACT_ROWS
+        for said in _EXACT_TYPES
+        if said == "decimal"
+        or (m.name.removeprefix("exact_"), len(m.params)) not in _EXACT_NUMERIC_ONLY
+    },
+    ("avg", 1, "interval"): "exact_avg",
+    ("numeric", 1, "double precision"): "exact_numeric",
+    ("numeric", 1, "real"): "exact_numeric",
+    ("round", 1, "double precision"): "dround",
+    ("round", 1, "real"): "dround",
+    ("round", 2, "decimal"): "round_numeric",
+    ("trunc", 2, "decimal"): "trunc_numeric",
+    ("text", 1, "inet"): "inet_text",
+    **{
+        (name, 1, of): f"{name}_collated"
+        for name in ("max", "min")
+        for of in ("text", "char", "bpchar", "varchar")
+    },
+    **{
         (name, arity, of): f"{of}_{suffix}"
         for of in ("lseg", "line")
         for name, arity, suffix in (
@@ -1298,8 +1489,11 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
 _CALLED = {
     **{row: name for (name, _, _), row in OVERLOADS.items()},
     **{row: "encode" for row in ("encode_hex", "encode_base64", "encode_escape")},
+    "regexp_replace_at": "regexp_replace",
 }
-_NAMES = frozenset(name for name, _ in MACROS) | {name for name, _, _ in OVERLOADS} | {"encode"}
+#: How a statement already written through sqlglot spells a row's call.
+_SPELLED = {"encode", "hex", "substring", "regexp_replace", "array_concat", "to_number"}
+_NAMES = frozenset(name for name, _ in MACROS) | {name for name, _, _ in OVERLOADS} | _SPELLED
 _MENTIONED = re.compile(r"\b(" + "|".join(sorted(_NAMES)) + r")\"?\s*\(", re.IGNORECASE)
 #: The names provisa.pgwire.catalog answers where a statement reads no table.
 SERVER_VALUE_NAMES = frozenset(m.name for m in VALUE_FUNCTIONS_OF_THE_SERVER)
@@ -1323,6 +1517,9 @@ def said_type(node: exp.Expr) -> str | None:
     """The PostgreSQL type the statement says an argument is; None where it does not."""
     if isinstance(node, exp.Paren):
         return said_type(node.this)
+    if isinstance(node, exp.Column):
+        said = values_cast(node)
+        return None if said is None else said_type(said)
     return node.to.sql(dialect="postgres").lower() if isinstance(node, exp.Cast) else None
 
 
@@ -1454,7 +1651,24 @@ _READ_AS: dict[type[exp.Expr], str] = {
     exp.JustifyHours: "justify_hours",
     exp.JustifyInterval: "justify_interval",
     exp.MD5: "md5",
+    exp.Avg: "avg",
+    exp.Max: "max",
+    exp.Min: "min",
+    exp.Exp: "exp",
+    exp.Hex: "to_hex",
+    exp.Ln: "ln",
+    exp.Sqrt: "sqrt",
+    exp.Stddev: "stddev",
+    exp.StddevPop: "stddev_pop",
+    exp.StddevSamp: "stddev_samp",
+    exp.Variance: "variance",
+    exp.VariancePop: "var_pop",
 }
+
+
+def _counts_from_the_first(start: exp.Expr | None) -> bool:
+    """Whether a substring's start is a position no dialect counts otherwise: 1 or more."""
+    return isinstance(start, exp.Literal) and start.is_int and int(start.this) >= 1
 
 
 def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
@@ -1463,8 +1677,32 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return node.name.lower(), list(node.expressions)
     if type(node) in _READ_AS:
         return _READ_AS[type(node)], [node.this]
+    if isinstance(node, exp.ToNumber):
+        return "to_number", [node.this, node.args["format"]]
     if isinstance(node, exp.Length):  # an overload of a type: length(text) has no row
         return "length", [node.this]
+    if isinstance(node, exp.Cast) and isinstance(node.this, exp.IntDiv):  # sqlglot's reading of div
+        return "div", [node.this.this, node.this.expression]
+    if isinstance(node, (exp.Round, exp.Trunc)):
+        called = "round" if isinstance(node, exp.Round) else "trunc"
+        return called, [a for a in (node.this, node.args.get("decimals")) if a is not None]
+    if isinstance(node, exp.ArrayConcat) and len(node.expressions) == 1:
+        return "array_cat", [node.this, node.expressions[0]]
+    if isinstance(node, exp.ArrayRemove):
+        return "array_remove", [node.this, node.expression]
+    if isinstance(node, exp.ArrayPosition) and isinstance(node.args.get("zero_based"), exp.Expr):
+        if not isinstance(node.args["zero_based"], exp.Boolean):  # sqlglot's reading of its start
+            return "array_position", [node.this, node.expression, node.args["zero_based"]]
+    if isinstance(node, exp.Substring) and not _counts_from_the_first(node.args.get("start")):
+        length = node.args.get("length")
+        return "substr", [node.this, node.args["start"], *([] if length is None else [length])]
+    if isinstance(node, exp.RegexpReplace) and node.args.get("position") is not None:
+        at = ("this", "expression", "replacement", "position", "occurrence")
+        if node.args.get("modifiers") is None:
+            return "regexp_replace_at", [node.args[k] for k in at if node.args.get(k) is not None]
+    if isinstance(node, (exp.Log, exp.Pow)):
+        called = "log" if isinstance(node, exp.Log) else "power"
+        return called, [a for a in (node.this, node.expression) if a is not None]
     if isinstance(node, exp.Time):  # what sqlglot reads as a zone is an overload's second argument
         return "time", [a for a in (node.this, node.args.get("zone")) if a is not None]
     if isinstance(node, exp.SHA2):  # sqlglot's reading of sha256, sha384 and sha512
@@ -1514,6 +1752,25 @@ def _bytea_input(value: exp.Expr, called: str, dialect: str) -> exp.Expr:
     return exp.Unhex(this=exp.Literal.string(digits))
 
 
+#: The rows whose result has the scale their second argument says.
+_OF_A_SAID_SCALE = frozenset({"round_numeric", "trunc_numeric"})
+
+
+def _scaled(written: exp.Expr, scale: exp.Expr, called: str, dialect: str) -> exp.Expr:
+    """``written`` of the scale PostgreSQL's numeric answers with, 0 for one below it. A dialect's
+    decimal keeps its argument's scale, and a scale only a row knows cannot be a type."""
+    said = scale.unnest()
+    if isinstance(said, exp.Cast):
+        said = said.this.unnest()
+    negative = isinstance(said, exp.Neg)
+    if not isinstance(said, exp.Literal) and not (negative and isinstance(said.this, exp.Literal)):
+        raise FunctionRefused(called, dialect)
+    digits = 0 if negative else said.to_py()
+    return exp.Cast(
+        this=written, to=exp.DataType.build(f"DECIMAL(38, {digits})", dialect="postgres")
+    )
+
+
 def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
     """``tree`` with each call of a function of the table written in its form for ``dialect``.
     Raises :class:`FunctionRefused` for a call of one it has no form of. A call with no overload
@@ -1548,6 +1805,8 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             args = [_bytea_input(a, called, dialect) for a in args]
         # transform does not revisit what a replaced node holds: a call in an argument.
         written = _written(macro, [a.transform(rewrite) for a in args], dialect, node)
+        if name in _OF_A_SAID_SCALE:
+            written = _scaled(written, args[1], called, dialect)
         if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":
             return exp.alias_(written, called)  # named for the function
         return written

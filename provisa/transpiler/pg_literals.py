@@ -18,16 +18,18 @@ PostgreSQL reads with that type's input function. DuckDB reads some of those str
 - a bytea's hex form, ``'\\xdeadbeef'::bytea`` (byteain), which DuckDB reads as one escaped byte
   and six characters: the literal is written as the bytes its hex digits name;
 - an exact number cast to a numeric of no precision, ``'12345.6789'::numeric``, which DuckDB
-  rounds to its default DECIMAL(18,3): the literal is cast to a decimal holding all its digits;
+  rounds to its default DECIMAL(18,3): the literal is cast to a decimal holding all its digits
+  (``exact_inputs``, as on every other target);
 
 and an untyped NULL a statement's own result column gives is text, as PostgreSQL resolves an
 unknown-typed output column (DuckDB types it INTEGER)."""
 
-# Requirements: REQ-2167
+# Requirements: REQ-2167, REQ-2171
 
 from __future__ import annotations
 
 import decimal
+import re
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -136,7 +138,73 @@ def _exact_numeric(literal: exp.Literal) -> exp.DataType | None:
     precision = max(len(digits), scale)
     if precision > _MAX_PRECISION:
         return None  # wider than any engine decimal: left to the engine's own cast
-    return exp.DataType.build(f"DECIMAL({_MAX_PRECISION}, {scale})", dialect="postgres")
+    # No wider than its digits: an engine cannot widen a list of DECIMAL(38,1) and DECIMAL(38,3).
+    return exp.DataType.build(f"DECIMAL({max(precision, 1)}, {scale})", dialect="postgres")
+
+
+def _number_of(node: exp.Expr) -> exp.Literal | None:
+    """The literal of a number written with its sign or in parentheses, as ``(-7.125)::numeric``."""
+    while isinstance(node, (exp.Paren, exp.Neg)):
+        node = node.this
+    return node if isinstance(node, exp.Literal) else None
+
+
+def _fixed_length(to: exp.DataType) -> int | None:
+    """The length a cast to character says: bpchar's input cuts a longer text to it, and character
+    with no length is character(1). None for a type of no length."""
+    if not to.is_type(exp.DataType.Type.CHAR):
+        return None
+    return int(to.expressions[0].this.this) if to.expressions else 1
+
+
+def _exact_input(node: exp.Expr) -> exp.Expr:
+    """A literal cast as PostgreSQL's input function reads it, where a target's cast would change
+    it: a numeric of no precision keeps every digit (DECIMAL is DECIMAL(38,0) on Trino, (18,3) on
+    DuckDB and (10,0) on ClickHouse), and a character(n) keeps n characters."""
+    if not isinstance(node, exp.Cast):
+        return node
+    to = node.to
+    number = _number_of(node.this)
+    if number is not None and to.is_type(exp.DataType.Type.DECIMAL) and not to.expressions:
+        exact = _exact_numeric(number)
+        return node if exact is None else exp.Cast(this=node.this, to=exact)
+    length = _fixed_length(to)
+    if length is not None and isinstance(node.this, exp.Literal) and node.this.is_string:
+        kept = exp.Literal.string(node.this.this[:length])
+        return exp.Cast(this=kept, to=to)
+    return node
+
+
+#: Whether a statement may cast a literal to a type whose input ``_exact_input`` reads.
+_SIZED_CAST = re.compile(r"(::|\bas)\s*\"?(numeric|decimal|char|character)\b", re.IGNORECASE)
+
+
+def exact_inputs(pg_sql: str) -> str:
+    """``pg_sql`` with each literal cast as PostgreSQL's input function reads it (REQ-2171, AN
+    ANSWER THAT DIFFERS IS REFUSED). The text of a statement with none is returned as it is."""
+    if _SIZED_CAST.search(pg_sql) is None:
+        return pg_sql
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    written = tree.transform(_exact_input)
+    return pg_sql if written == tree else written.sql(dialect="postgres")
+
+
+def values_cast(column: exp.Column) -> exp.Cast | None:
+    """The cast the statement says of a column of a VALUES list it reads, by the list's first row:
+    the row PostgreSQL resolves its type from, every other row fitting it."""
+    select = column.find_ancestor(exp.Select)
+    if select is None or select.args.get("joins"):
+        return None
+    source = select.args.get("from_")
+    values = source.this if source is not None else None
+    if not isinstance(values, exp.Values):
+        return None
+    alias = values.args.get("alias")
+    names = [c.name for c in alias.columns] if alias is not None else []
+    if column.name not in names:
+        return None
+    value = values.expressions[0].expressions[names.index(column.name)]
+    return value if isinstance(value, exp.Cast) else None
 
 
 def _literal_input(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]

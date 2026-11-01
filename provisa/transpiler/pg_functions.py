@@ -399,13 +399,15 @@ def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
             return f"CAST(CAST({_sql(args[0])} AS {sized}) AS TEXT)"
     if name in _SIZED_CALLS and len(args) == 3:  # noqa: PLR2004 -- value, typmod, explicit
         value, typmod = _sql(args[0]), _sql(args[1])
-        return f"CASE WHEN ({typmod}) < 0 THEN {value} ELSE LEFT({value}, ({typmod}) - 4) END"
+        # A typmod below the header says no length; a character(n) is padded to it.
+        sized = "RPAD({v}, ({t}) - 4, ' ')" if name == "bpchar" else "LEFT({v}, ({t}) - 4)"
+        return f"CASE WHEN ({typmod}) < 4 THEN {value} ELSE {sized.format(v=value, t=typmod)} END"
     if name == "bit" and len(args) == 3 and _is_null(args[1]):  # noqa: PLR2004
         return "CAST(NULL AS BIT)"
     if name == "bit" and len(args) == 2:  # noqa: PLR2004 -- an integer, as so many bits
         value, width = _sql(args[0]), _sql(args[1])
         bits = f"CAST({value} AS HUGEINT) & ((CAST(1 AS HUGEINT) << ({width})) - 1)"
-        return f"CAST(FORMAT('{{:b}}', {bits}) AS BIT)"
+        return f"CAST(LPAD(FORMAT('{{:b}}', {bits}), {width}, '0') AS BIT)"
     return None
 
 

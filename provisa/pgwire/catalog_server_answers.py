@@ -1156,6 +1156,7 @@ ANSWERED = frozenset(
 REWRITTEN = frozenset(
     {
         "convert",
+        "current_query",
         "getpgusername",
         "json_each",
         "json_object",
@@ -1164,6 +1165,7 @@ REWRITTEN = frozenset(
         "pg_input_error_info",
         "pg_input_is_valid",
         "system_user",
+        "timeofday",
     }
 )
 
