@@ -86,11 +86,17 @@ def test_a_column_is_refused_by_name_for_its_storage_is_its_sources(sql: str, di
 
 @pytest.mark.parametrize(
     ("pattern", "replacement"),
-    [("^a", "x"), (r"\yb", "x"), ("b*", "x"), ("b", r"\&"), ("b", r"\\")],
+    [("^a", "x"), (r"\bb", "x"), ("b*", "x"), ("b", r"\&"), ("b", r"\\")],
 )
 def test_what_a_search_keeps_of_its_place_is_refused_by_name(pattern: str, replacement: str):
     sql = f"SELECT regexp_replace('abc', '{pattern}', '{replacement}', 1, 1) AS v"
     with pytest.raises(duckdb.Error, match=rf"{MARK} 0A000: regexp_replace does not read"):
+        duckdb.connect().execute(transpile(sql, "duckdb")).fetchall()
+
+
+def test_an_anchor_duckdb_cannot_read_is_its_own_error_never_an_answer():
+    sql = r"SELECT regexp_replace('abc', '\yb', 'x', 1, 1) AS v"
+    with pytest.raises(duckdb.Error, match="invalid escape sequence"):
         duckdb.connect().execute(transpile(sql, "duckdb")).fetchall()
 
 
