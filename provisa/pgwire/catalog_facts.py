@@ -59,14 +59,16 @@ def role_facts(role_id: str, state: Any) -> CatalogFacts:
         return catalog_facts(role_id, {})
     raw_tables: list[dict] = state.schema_build_cache.get("tables") or []
     role = state.roles.get(role_id)
-    held = role["domain_access"] if role is not None else ()
     # REQ-1132: a catalog function answers for a role's non-system grants, and for a system domain
     # only where the role holds it: meta's default tier is read, and is not among its tables.
     served = {
         tm.table_id
         for tm in ctx.tables.values()
         if (tm.domain_id, tm.original_table_name or tm.table_name) not in SQL_CATALOG_TABLES
-        and (tm.domain_id not in SYSTEM_DOMAINS or reaches_domain(held, tm.domain_id))
+        and (
+            tm.domain_id not in SYSTEM_DOMAINS
+            or reaches_domain(role["domain_access"], tm.domain_id)
+        )
     }
     write_grants = {
         table["id"]: {

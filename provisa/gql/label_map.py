@@ -612,11 +612,15 @@ class CypherLabelMap:  # REQ-351, REQ-392, REQ-574
 
         # REQ-1132: and so is meta's default tier, which a role with no meta grant reads on SQL.
         no_meta = domain_access is not None and not reaches_domain(domain_access, META_DOMAIN_ID)
+        sql_only_domains = {domain for domain, _table in SQL_ONLY_TABLES}
         sql_only_tables = {
             (tm.domain_id, tm.original_table_name or tm.table_name): tm.type_name
             for tm in ctx_typed.tables.values()
-            if (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_ONLY_TABLES
-            or (no_meta and tm.domain_id == META_DOMAIN_ID)
+            if (no_meta and tm.domain_id == META_DOMAIN_ID)
+            or (
+                tm.domain_id in sql_only_domains
+                and (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_ONLY_TABLES
+            )
         }
         sql_only_types = set(sql_only_tables.values())
         sql_only = {t: nodes.pop(t) for t in list(nodes) if t in sql_only_types}
