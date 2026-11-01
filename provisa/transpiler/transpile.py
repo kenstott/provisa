@@ -1177,7 +1177,7 @@ def transpile(
     Returns:
         SQL string in target dialect.
     """
-    pg_sql = pg_forms_type_io.readable(pg_sql)  # REQ-2171
+    pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
         pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
     if target_dialect != "postgres":
