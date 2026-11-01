@@ -877,26 +877,47 @@ def _array_text_element(text: str) -> str:
     return text
 
 
+def _array_shape(values: list) -> tuple[list[int], list]:
+    """A rectangular array's length in each dimension and its elements in order. PostgreSQL holds
+    no other shape, so a list of unequal lists has no array to send."""
+    dimensions, level = [], values
+    while isinstance(level, list):
+        dimensions.append(len(level))
+        level = level[0] if level else None
+    flat = values
+    for _ in dimensions[1:]:
+        flat = [v for row in flat for v in row]
+    if len(flat) != math.prod(dimensions):
+        raise ValueError(f"multidimensional array has unequal sublists: {values}")
+    return dimensions, flat
+
+
 def _array_entry(element: BVType, array_oid: int, element_text=None, element_oid=None):
-    """The (OID, text, binary) entry of a one-dimensional array of ``element``: text as
-    ``{a,b,NULL}``, binary as PostgreSQL's array_send (dimensions, null flag, element OID, then
-    each element length-prefixed, -1 for NULL). ``element_oid`` names an element type sent in
-    ``element``'s form (a "char" as text)."""
+    """The (OID, text, binary) entry of an array of ``element``, of any dimensions: text as
+    ``{{a,b},{NULL,c}}``, binary as PostgreSQL's array_send (dimensions, null flag, element OID,
+    each dimension's length and lower bound, then each element length-prefixed, -1 for NULL).
+    ``element_oid`` names an element type sent in ``element``'s form (a "char" as text)."""
     elem_oid, elem_text, elem_binary = BVTYPE_TO_PGTYPE[element]
     elem_oid = elem_oid if element_oid is None else element_oid
     text_of = element_text or elem_text
 
     def text(values):
-        return (
-            "{"
-            + ",".join("NULL" if v is None else _array_text_element(text_of(v)) for v in values)
-            + "}"
+        written = (
+            "NULL"
+            if v is None
+            else text(v)
+            if isinstance(v, list)
+            else _array_text_element(text_of(v))
+            for v in values
         )
+        return "{" + ",".join(written) + "}"
 
     def binary(values):
-        has_null = any(v is None for v in values)
-        out = [struct.pack("!iiiii", 1, 1 if has_null else 0, elem_oid, len(values), 1)]
-        for v in values:
+        dimensions, flat = _array_shape(values)
+        has_null = any(v is None for v in flat)
+        out = [struct.pack("!iii", len(dimensions), 1 if has_null else 0, elem_oid)]
+        out.extend(struct.pack("!ii", length, 1) for length in dimensions)
+        for v in flat:
             if v is None:
                 out.append(struct.pack("!i", -1))
             else:
@@ -920,6 +941,7 @@ BVTYPE_TO_PGTYPE.update(
         BVType.STRINGARRAY: _array_entry(BVType.TEXT, 1009),
         BVType.OIDARRAY: _array_entry(BVType.OID, 1028),
         BVType.MONEYARRAY: _array_entry(BVType.MONEY, 791),
+        BVType.INTERVALARRAY: _array_entry(BVType.INTERVAL, 1187),
     }
 )
 

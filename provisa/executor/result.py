@@ -57,6 +57,7 @@ class ResultStream(Protocol):  # REQ-028
 
     column_names: list[str]
     column_types: list[str] | None
+    column_type_oids: list[int] | None
     stats: StreamStats
 
     def batches(self) -> Iterator[list[tuple]]:
@@ -137,6 +138,7 @@ class StreamingQueryResult:  # REQ-028
     __slots__ = (
         "column_names",
         "column_types",
+        "column_type_oids",
         "stats",
         "_batches",
         "_consumed",
@@ -154,9 +156,12 @@ class StreamingQueryResult:  # REQ-028
         *,
         on_close: Callable[[StreamStats], None] | None = None,
         on_release: Callable[[], None] | None = None,
+        column_type_oids: list[int] | None = None,
     ) -> None:
         self.column_names = column_names
         self.column_types = column_types
+        # REQ-2171: the type oid PostgreSQL gave each column, where it ran the statement itself.
+        self.column_type_oids = column_type_oids
         self.stats = StreamStats()
         self._batches: Iterator[list[tuple]] | None = iter(batches)
         self._consumed = False
