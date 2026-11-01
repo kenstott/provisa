@@ -45,8 +45,16 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import MARK, raising
-from provisa.transpiler import pg_forms, pg_forms_types
+from provisa.core.pg_range import (
+    MULTIRANGE_TYPES,
+    RANGE_TYPES,
+    parse_multirange,
+    parse_range,
+    range_text,
+)
+from provisa.transpiler import pg_forms, pg_forms_aggregate, pg_forms_hash, pg_forms_types
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
+from provisa.transpiler.pg_literals import literal_input as postgres_literal
 
 NATIVE = frozenset({"postgres"})
 """The dialects that have every function of the table themselves."""
@@ -955,6 +963,17 @@ def _operator(form: pg_forms_types.Form) -> Macro:
     )
 
 
+def _hashes() -> tuple[Macro, ...]:
+    """Each hash function on each engine with a fold; on any other its call is refused by name."""
+    forms: dict[tuple[str, str], dict[frozenset[str], str]] = {}
+    for dialect, engine in pg_forms_hash.ENGINES:
+        for key, form in pg_forms_hash.forms(engine).items():
+            forms.setdefault(key, {})[frozenset({dialect})] = form
+    return tuple(
+        Macro(name, tuple(params.split(", ")), written) for (name, params), written in forms.items()
+    )
+
+
 _ROWS: tuple[Macro, ...] = (
     *_text_matches(),
     _operators("like", "a, b", _LIKE, {_LIKES: Pg(_LIKE)}),
@@ -1245,6 +1264,7 @@ _ROWS: tuple[Macro, ...] = (
 )
 
 #: A call's name and argument count -> its overload: the one table.
+_ROWS += _hashes() + tuple(_operator(form) for form in pg_forms_aggregate.STATE_FUNCTIONS)
 MACROS: dict[tuple[str, int], Macro] = {(m.name, len(m.params)): m for m in _ROWS}
 #: (function, argument count, the type the statement says of its first argument) -> its row:
 #: PostgreSQL's own name for the overload. The operation is chosen by the type, not the engine's.
@@ -1268,6 +1288,7 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
         for of, of_row in (("decimal", "numeric"), ("jsonb", "jsonb"))
     },
     ("md5", 1, "bytea"): "md5_bytea",
+    **pg_forms_hash.OVERLOADS,
     ("int4", 1, "bit"): "bittoint4",
     ("int8", 1, "bit"): "bittoint8",
     ("int4", 1, '"char"'): "chartoi4",
@@ -1355,7 +1376,24 @@ def mentioned(sql: str, dialect: str) -> bool:
 def _parsed(name: str, arity: int, dialect: str) -> exp.Expr:
     _, form = MACROS[(name, arity)].resolved(dialect)
     assert isinstance(form, str)
-    return sqlglot.parse_one(form, read="postgres" if isinstance(form, Pg) else dialect)
+    parsed = sqlglot.parse_one(form, read="postgres" if isinstance(form, Pg) else dialect)
+    return parsed.transform(_thrown) if dialect == "clickhouse" else parsed
+
+
+def _thrown(node: exp.Expr) -> exp.Expr:
+    """A refusal on ClickHouse: it reads a bad text cast to a Nullable as NULL, and folds a cast
+    of a constant in every branch of a CASE, where throwIf is left to the branch that runs."""
+    if not isinstance(node, exp.Cast):
+        return node
+    text = node.this
+    if not isinstance(text, exp.Cast) or not text.is_type(*exp.DataType.INTEGER_TYPES):
+        return node
+    if MARK not in text.this.sql():
+        return node
+    return exp.Cast(
+        this=exp.Anonymous(this="throwIf", expressions=[exp.Literal.number(1), text.this]),
+        to=node.to,
+    )
 
 
 #: An argument that needs no parentheses wherever a form writes it.
@@ -1384,8 +1422,9 @@ def _argument(value: exp.Expr, held: bool = False) -> exp.Expr:
 def _padded_to(value: exp.Expr) -> exp.Expr | None:
     """The length a cast to character(n) says."""
     node = value.unnest()
-    if isinstance(node, exp.Cast) and node.to.is_type("char") and node.to.expressions:
-        return node.to.expressions[0].this
+    if isinstance(node, exp.Cast) and node.to.is_type("char"):
+        # character alone is character(1).
+        return node.to.expressions[0].this if node.to.expressions else exp.Literal.number(1)
     return None
 
 
@@ -1425,7 +1464,7 @@ def _written(macro: Macro, args: list[exp.Expr], dialect: str, node: exp.Expr) -
     AFTER ROUTING). A row of arguments naming no column is the same row for every row of a FROM,
     so that call is refused by name rather than answered with one value for all of them."""
     form = _parsed(macro.name, len(args), dialect).copy()
-    held = macro.name in pg_forms_types.HELD
+    held = macro.name in pg_forms_types.HELD or macro.name in pg_forms_hash.HELD
     if _repeats_volatile(form, macro.params, args):
         select = node.find_ancestor(exp.Select)
         reads_rows = select is not None and select.args.get("from_") is not None
@@ -1514,6 +1553,68 @@ def _bytea_input(value: exp.Expr, called: str, dialect: str) -> exp.Expr:
     return exp.Unhex(this=exp.Literal.string(digits))
 
 
+def _digits_as_written(value: exp.Expr) -> exp.Expr:
+    """A numeric literal as the text the statement wrote: an engine's float would lose digits."""
+    node = value.unnest()
+    if isinstance(node, exp.Cast):
+        node = node.this.unnest()
+    negated = isinstance(node, exp.Neg)
+    number = node.this.unnest() if negated else node
+    if not isinstance(number, exp.Literal) or number.is_string:
+        return value
+    return exp.Literal.string(f"{'-' if negated else ''}{number.this}")
+
+
+def _range_as_written(value: exp.Expr) -> exp.Expr:
+    """A range literal as range_out writes it: a column's text is that already."""
+    node = value.unnest()
+    if not isinstance(node, exp.Cast):
+        return value
+    literal, said = node.this.unnest(), node.to.sql(dialect="postgres").lower()
+    if isinstance(literal, exp.Null):
+        return literal
+    if not isinstance(literal, exp.Literal) or not literal.is_string:
+        return node.this
+    if said in RANGE_TYPES:
+        return exp.Literal.string(range_text(parse_range(RANGE_TYPES[said], literal.this)))
+    rtype = MULTIRANGE_TYPES[said]
+    ranges = parse_multirange(rtype, literal.this).ranges
+    return exp.Literal.string("{" + ",".join(range_text(r) for r in ranges) + "}")
+
+
+def range_rows_chosen(tree: exp.Expr) -> exp.Expr:
+    """Each hash of a range in the row of the type its statement says: the pass that reads ranges
+    runs first, and leaves no cast to say it."""
+
+    def chosen(node: exp.Expr) -> exp.Expr:
+        dotted = isinstance(node, exp.Dot) and isinstance(node.this, exp.Identifier)
+        target = node.expression if dotted and node.this.name.lower() == "pg_catalog" else node
+        call = _call(target)
+        if call is None:
+            return node
+        name = overload(call[0], call[1])
+        if name not in pg_forms_hash.RANGE_ROWS:
+            return node
+        args = call[1]
+        return exp.Anonymous(this=name, expressions=[_range_as_written(args[0]), *args[1:]])
+
+    return tree.transform(chosen)
+
+
+def _array_elements_as_written(value: exp.Expr) -> exp.Expr:
+    """An array literal as its elements: an array_in text is read by no engine's cast."""
+    node = value.unnest()
+    return postgres_literal(node) if isinstance(node, exp.Cast) else value
+
+
+def _numeric_array_as_text(value: exp.Expr) -> exp.Expr:
+    """A numeric array literal as its elements' text: no engine's decimal holds NaN or every digit."""
+    node = value.unnest()
+    if isinstance(node, exp.Cast) and isinstance(node.this, exp.Array):
+        return exp.Cast(this=node.this, to=exp.DataType.build("TEXT[]", dialect="postgres"))
+    return value
+
+
 def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
     """``tree`` with each call of a function of the table written in its form for ``dialect``.
     Raises :class:`FunctionRefused` for a call of one it has no form of. A call with no overload
@@ -1546,6 +1647,12 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             return target
         if name in _BYTEA_INPUT:
             args = [_bytea_input(a, called, dialect) for a in args]
+        if name in pg_forms_hash.NUMERIC_INPUT:
+            args = [_digits_as_written(args[0]), *args[1:]]
+        if name in pg_forms_hash.ARRAY_ROWS or name in pg_forms_aggregate.ARRAY_INPUT:
+            args = [_array_elements_as_written(a) for a in args]
+        if name in pg_forms_hash.NUMERIC_ARRAY_ROWS:
+            args = [_numeric_array_as_text(args[0]), *args[1:]]
         # transform does not revisit what a replaced node holds: a call in an argument.
         written = _written(macro, [a.transform(rewrite) for a in args], dialect, node)
         if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":

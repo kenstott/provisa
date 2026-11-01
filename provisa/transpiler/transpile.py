@@ -1210,7 +1210,9 @@ def transpile(
         from provisa.transpiler import pg_ranges
 
         lowered = pg_ranges.rewrite(
-            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
+            function_macros.range_rows_chosen(
+                lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+            ),
             target_dialect,
         )
     if _SUBTYPE_MARKER in pg_sql.lower():

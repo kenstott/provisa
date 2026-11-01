@@ -139,7 +139,7 @@ def _exact_numeric(literal: exp.Literal) -> exp.DataType | None:
     return exp.DataType.build(f"DECIMAL({_MAX_PRECISION}, {scale})", dialect="postgres")
 
 
-def _literal_input(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+def literal_input(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
     if not isinstance(node, exp.Cast) or not isinstance(node.this, exp.Literal):
         return node
     literal, to = node.this, node.to
@@ -172,7 +172,7 @@ def postgres_literals(pg_sql: str) -> str:
     if "::" not in pg_sql and "cast" not in lowered and "null" not in lowered:
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
-    tree = tree.transform(_literal_input)
+    tree = tree.transform(literal_input)
     if isinstance(tree, exp.Select):
         for select in tree.selects:
             target = select.this if isinstance(select, exp.Alias) else select
