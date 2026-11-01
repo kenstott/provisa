@@ -588,6 +588,10 @@ async def _ensure_ops_steward_grant(conn: "Connection") -> None:  # REQ-1386, RE
         )
 
 
+#: Relationship ids only the seed writes: every other id is a modeller's.
+_SEEDED_ID_PREFIXES = ("meta", "ontology")
+
+
 async def _seed_meta_relationships(conn: "Connection") -> None:
     """Seed the meta/ops relationship rows (idempotent, runs after both seeds).
 
@@ -609,10 +613,20 @@ async def _seed_meta_relationships(conn: "Connection") -> None:
             )
         ).scalar()
 
+    _rows = meta_relationship_seed_rows()
+    # A seeded edge the code no longer declares is removed: left behind, its field name collides
+    # with the edge that replaced it, and the model cannot be served.
+    _declared = [_cols["id"] for *_, _cols in _rows]
+    await conn.execute_core(
+        _delete(_relationships_t).where(
+            _sa_or(*(_relationships_t.c.id.like(f"{_p}:%") for _p in _SEEDED_ID_PREFIXES)),
+            _relationships_t.c.id.not_in(_declared),
+        )
+    )
     for (_src_source, _src_table), (
         _tgt_source,
         _tgt_table,
-    ), _via_table, _cols in meta_relationship_seed_rows():
+    ), _via_table, _cols in _rows:
         _src_id = await _table_id(_src_source, _src_table)
         _tgt_id = await _table_id(_tgt_source, _tgt_table)
         # The junction lives in the same control-plane source as the endpoints it joins.
