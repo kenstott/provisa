@@ -231,3 +231,17 @@ def test_a_statement_after_a_failed_one_has_its_own_answer():
     with pytest.raises(RuntimeError):
         runtime.run_sync("SELECT throwIf(1, 'refused')")
     assert runtime.run_sync("SELECT 'a' AS v").rows == [("a",)]
+
+
+def test_a_clickhouse_time_is_read_as_its_text_says():
+    from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
+
+    runtime = ClickHouseFederationRuntime.embedded()
+    equal = "SELECT time_eq('23:59:59.5'::time, '23:59:59.5'::time) AS v"
+    assert runtime.run_sync(transpile(equal, "clickhouse")).rows == [(1,)]
+    missing = "SELECT time_eq(NULL::time, NULL::time) AS v"
+    assert runtime.run_sync(transpile(missing, "clickhouse")).rows == [(None,)]
+
+
+def test_a_null_scale_answers_null():
+    assert _on_duckdb("SELECT round(NULL::numeric, NULL::integer) AS v") is None

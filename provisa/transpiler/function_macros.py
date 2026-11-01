@@ -1376,6 +1376,8 @@ _EXACT_OVERLOADS: dict[tuple[str, int, str], str] = {
 #: A row replay found another answer of, by the dialects it is refused on.
 _CLICKHOUSE = frozenset({"clickhouse"})
 _DIFFERS_ON: dict[str, frozenset[str]] = {
+    # Two of its times differ by seconds, not an interval.
+    "time_mi_time": _CLICKHOUSE,
     # Its decimals overflow on the form's modulus and its digits of a pg_lsn are not read back.
     "numeric_pl_pg_lsn": _CLICKHOUSE,
     "pg_lsn_mii": _CLICKHOUSE,
@@ -1766,6 +1768,8 @@ def _scaled(written: exp.Expr, scale: exp.Expr, called: str, dialect: str) -> ex
     said = scale.unnest()
     if isinstance(said, exp.Cast):
         said = said.this.unnest()
+    if isinstance(said, exp.Null):
+        return written
     negative = isinstance(said, exp.Neg)
     if not isinstance(said, exp.Literal) and not (negative and isinstance(said.this, exp.Literal)):
         raise FunctionRefused(called, dialect)

@@ -1303,7 +1303,12 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
         ):
             return exp.DataType.build(_CLICKHOUSE_INSTANT, dialect="clickhouse")
         if isinstance(node, exp.Cast) and node.to.is_type(exp.DataType.Type.TIME):
-            return exp.Anonymous(this="toTime64", expressions=[node.this, exp.Literal.number(6)])
+            value = node.this
+            while isinstance(value, exp.Cast) and value.to.is_type(exp.DataType.Type.TIME):
+                value = value.this
+            # Its OrNull reads what the literal's own refuses, and a NULL it cannot.
+            reader = "toTime64" if isinstance(value, exp.Literal) else "toTime64OrNull"
+            return exp.Anonymous(this=reader, expressions=[value, exp.Literal.number(6)])
         if isinstance(node, exp.Hex):
             return exp.Anonymous(
                 this="replaceRegexpOne",
