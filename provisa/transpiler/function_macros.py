@@ -37,15 +37,16 @@ from __future__ import annotations
 import enum
 import functools
 import re
+import string
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.core.pg_error import raising
+from provisa.core.pg_error import MARK, raising
 from provisa.transpiler import pg_forms, pg_forms_types
-from provisa.transpiler.metadata_functions import VALUE_FORMS
+from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 
 NATIVE = frozenset({"postgres"})
 """The dialects that have every function of the table themselves."""
@@ -303,6 +304,15 @@ def wal_file(value: str) -> str:
 
 
 #: Each encoding's longest character in bytes, by its number (common/wchar.c's pg_wchar_table).
+_BUILT_IN_ACCESS_METHODS = (403, 405, 783, 2742, 3580, 4000)
+#: What each built-in index access method declares of itself (its IndexAmRoutine).
+_INDEXAM_PROPERTIES = {
+    "can_order": (403,),
+    "can_unique": (403,),
+    "can_multi_col": (403, 783, 2742, 3580),
+    "can_exclude": (403, 405, 783, 4000),
+    "can_include": (403, 783, 4000),
+}
 _ENCODING_MAX_LENGTHS = (1, 3, 3, 3, 4, 3, 4, 4, *(1,) * 27, 2, 2, 2, 2, 4, 3, 2)
 
 _XIP = (
@@ -381,6 +391,69 @@ VALUE_FUNCTIONS_OF_THE_SERVER = (
     ),
     _macro("aclitemeq", "a, b", strict("a, b", "BOOLEAN", "a = b")),
     _macro("aclcontains", "acl, item", strict("acl, item", "BOOLEAN", "list_contains(acl, item)")),
+    # REQ-2190: functions of a value, the engine's since a statement with no table is.
+    _macro(
+        "pg_walfile_name_offset",
+        "lsn",
+        strict(
+            "lsn",
+            "STRUCT(file_name VARCHAR, file_offset INTEGER)",
+            f"struct_pack(file_name := {wal_file('lsn')}, "
+            f"file_offset := CAST({lsn_number('lsn')} % {WAL_SEGMENT} AS INTEGER))",
+        ),
+    ),
+    _macro(
+        "pg_split_walfile_name",
+        "f",
+        strict(
+            "f",
+            "STRUCT(segment_number DECIMAL(38,0), timeline_id BIGINT)",
+            "CASE WHEN regexp_full_match(f, '[0-9A-F]{24}') THEN struct_pack(segment_number := "
+            "CAST((CAST('0x' || substr(f, 9, 8) AS BIGINT) * 256) + "
+            "CAST('0x' || substr(f, 17, 8) AS BIGINT) AS DECIMAL(38,0)), "
+            "timeline_id := CAST('0x' || substr(f, 1, 8) AS BIGINT)) ELSE "
+            + raising("22023", "'invalid WAL file name \"' || f || '\"'")
+            + " END",
+        ),
+    ),
+    _macro(
+        "pg_timezone_names",
+        "",
+        "unnest((SELECT list(_z) FROM pg_timezone_names() _z))",
+    ),
+    _macro(
+        "pg_timezone_abbrevs",
+        "",
+        "unnest((SELECT list(_z) FROM (SELECT DISTINCT COLUMNS(_c -> _c <> 'name') "
+        "FROM pg_timezone_names()) _z))",
+    ),
+    _macro(
+        "pg_indexam_has_property",
+        "am, prop",
+        f"CASE WHEN am IN ({', '.join(map(str, _BUILT_IN_ACCESS_METHODS))}) THEN CASE "
+        + " ".join(
+            f"WHEN prop = '{name}' THEN am IN ({', '.join(map(str, methods))})"
+            for name, methods in _INDEXAM_PROPERTIES.items()
+        )
+        + " END END",
+    ),
+    _macro(
+        "provisa_xid_age",
+        "x",
+        strict(
+            "x",
+            "INTEGER",
+            "CASE WHEN x < 3 THEN 2147483647 ELSE CAST(txid_current() - x AS INTEGER) END",
+        ),
+    ),
+    # REQ-2190: a catalog form's PostgreSQL error, where its statement reads no table. The control
+    # plane's own provisa_raise is a function of that database (provisa.api.startup_seed).
+    _macro(
+        "provisa_raise",
+        "sqlstate, message",
+        f"error('{MARK} ' || sqlstate || ': ' || message)",
+        others={_TRINO: f"fail('{MARK} ' || sqlstate || ': ' || message)"},
+    ),
 )
 
 #: An XML value's escaped text, as an element's content or an attribute's value reads it.
@@ -805,6 +878,69 @@ _DATES: tuple[Macro, ...] = (
     _macro("timetz", "value", "CAST(value AS TIMETZ)"),
 )
 
+#: md5 and the SHA-2 digests (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED). A dialect is listed
+#: where replaying postgres:17's answers on its engine matched (Trino 481, Spark 3.5.1, ClickHouse
+#: 24.3, MariaDB 11.8, SQL Server 2022, DuckDB); a dialect replay has not reached is refused, as
+#: Oracle (its empty string is NULL, so a digest of nothing is NULL) and SQLite (no digest) are.
+#: sqlglot's own writing is not an answer: it writes sha384 and sha512 as SHA256 on DuckDB and
+#: sha384 as HASH_SHA512 on Exasol, a digest as its hex text on Trino, and HASHBYTES('SHA2_384'),
+#: which is NULL, on SQL Server. Athena and Databricks stand with the engines they run.
+_TRINOS = frozenset({"trino", "athena"})
+_MD5S = _SPARK | {"duckdb", "mysql", "clickhouse"}
+#: md5(text) hashes what the dialect holds of the text; SQL Server's nvarchar holds UTF-16, so only
+#: a value the statement says is a bytea has PostgreSQL's digest there.
+_MD5_FORMS: Forms = {
+    _MD5S: Pg("md5(value)"),
+    _TRINOS: "lower(to_hex(md5(CAST(value AS VARBINARY))))",
+}
+#: SHA2 answers the digest's hex text here; PostgreSQL's digest is its bytes.
+_SHA2_HEX = _SPARK | {"mysql"}
+
+
+def _sha(bits: int) -> Macro:
+    """sha<bits>, of a bytea: PostgreSQL has no overload of text."""
+    extension = f"crypto_hash('sha2-{bits}', CAST(value AS BLOB))"
+    forms: dict[frozenset[str], str] = {
+        _DUCKDB: "unhex(sha256(CAST(value AS BLOB)))" if bits == 256 else extension,
+        _SHA2_HEX: f"unhex(sha2(value, {bits}))",
+        frozenset({"clickhouse"}): f"SHA{bits}(value)",
+    }
+    if bits in (256, 512):  # the digests Trino and SQL Server have
+        forms[_TRINOS] = f"sha{bits}(value)"
+        forms[frozenset({"tsql"})] = Pg(f"sha{bits}(value)")
+    return Macro(f"sha{bits}", ("value",), forms)
+
+
+_DIGESTS: tuple[Macro, ...] = (
+    Macro("md5", ("value",), _MD5_FORMS),
+    Macro(
+        "md5_bytea",
+        ("value",),
+        {
+            **_MD5_FORMS,
+            frozenset({"tsql"}): "LOWER(CONVERT(VARCHAR(32), HASHBYTES('MD5', value), 2))",
+        },
+    ),
+    *(_sha(bits) for bits in (224, 256, 384, 512)),
+    # encode's formats: sqlglot reads the format as a charset, which it writes as TO_UTF8 on Trino.
+    Macro(
+        "encode_hex",
+        ("value",),
+        {
+            _DUCKDB: "lower(hex(value))",
+            _TRINOS: "lower(to_hex(value))",
+            _SPARK | {"mysql", "clickhouse"}: "lower(hex(value))",
+            frozenset({"tsql"}): "LOWER(CONVERT(VARCHAR(MAX), value, 2))",
+        },
+    ),
+    Macro("encode_base64", ("value",), {_DUCKDB: "to_base64(value)"}),
+    Macro("encode_escape", ("value",), {_DUCKDB: "provisa_encode_escape(value)"}),
+)
+#: The rows whose argument is a bytea: a literal there is bytea's input, not text.
+_BYTEA_INPUT = frozenset({"md5_bytea", "sha224", "sha256", "sha384", "sha512"})
+#: What a statement says of a value PostgreSQL has no bytea overload for.
+_TEXT_TYPES = frozenset({"text", "varchar", "character varying", "bpchar", "char", "character"})
+
 
 def _operator(form: pg_forms_types.Form) -> Macro:
     """A row of the generated rule: a form that raises on the dialects that can raise it (REQ-2171,
@@ -1016,9 +1152,10 @@ _ROWS: tuple[Macro, ...] = (
     _macro(
         "oidvectorsend",
         "v",
-        "CASE WHEN v IS NOT NULL THEN unhex("
-        "printf('%08x%08x%08x%08x%08x', 1, 0, 26, len(v), 0) || "
-        "array_to_string(list_transform(v, _o -> printf('00000004%08x', _o)), '')) END",
+        "(SELECT CASE WHEN v IS NOT NULL THEN unhex("
+        "printf('%08x%08x%08x%08x%08x', 1, 0, 26, len(_v), 0) || "
+        "array_to_string(list_transform(_v, _o -> printf('00000004%08x', CAST(_o AS BIGINT))), "
+        "'')) END FROM (SELECT list_filter(string_split(v, ' '), _o -> _o <> '') AS _v))",
     ),
     _macro(
         "numrange",
@@ -1074,12 +1211,16 @@ _ROWS: tuple[Macro, ...] = (
     ),
     # A character value of a "char".
     _macro("bpchar", "value", "CAST(value AS VARCHAR)", {_STRINGS: Pg("CAST(value AS TEXT)")}),
-    # An encoding's number: UTF8 is 6, a name naming none -1.
+    # An encoding's number, its name compared as PostgreSQL's does; a name naming none -1.
     _macro(
         "pg_char_to_encoding",
         "name",
-        "CASE WHEN lower(regexp_replace(name, '[^A-Za-z0-9]', '', 'g')) IN ('utf8', 'unicode') "
-        "THEN 6 WHEN name IS NOT NULL THEN -1 END",
+        "CASE lower(regexp_replace(name, '[^A-Za-z0-9]', '', 'g')) WHEN 'unicode' THEN 6 "
+        + " ".join(
+            f"WHEN '{encoding.lower().replace('_', '')}' THEN {number}"
+            for number, encoding in enumerate(ENCODINGS)
+        )
+        + " ELSE CASE WHEN name IS NOT NULL THEN -1 END END",
     ),
     # Strict; on a value PostgreSQL refuses this form: a record needs a column definition list.
     _macro(
@@ -1095,6 +1236,7 @@ _ROWS: tuple[Macro, ...] = (
     *_MONEY,
     *VALUE_FUNCTIONS_OF_THE_SERVER,
     *(Macro(name, params, {_EVERY: Pg(form)}) for name, params, form in VALUE_FORMS),  # REQ-2190
+    *_DIGESTS,
     *map(_operator, pg_forms_types.OPERATORS),
     *(
         Macro(form.name, tuple(form.params.split(", ")), operators={_DUCKDB: Pg(form.sql)})
@@ -1125,6 +1267,7 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
         for name in ("int2", "int4", "int8", "float4", "float8")
         for of, of_row in (("decimal", "numeric"), ("jsonb", "jsonb"))
     },
+    ("md5", 1, "bytea"): "md5_bytea",
     ("int4", 1, "bit"): "bittoint4",
     ("int8", 1, "bit"): "bittoint8",
     ("int4", 1, '"char"'): "chartoi4",
@@ -1152,8 +1295,11 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
     },
 }
 #: An overload's row -> the function a statement called, which names its column.
-_CALLED = {row: name for (name, _, _), row in OVERLOADS.items()}
-_NAMES = frozenset(name for name, _ in MACROS) | {name for name, _, _ in OVERLOADS}
+_CALLED = {
+    **{row: name for (name, _, _), row in OVERLOADS.items()},
+    **{row: "encode" for row in ("encode_hex", "encode_base64", "encode_escape")},
+}
+_NAMES = frozenset(name for name, _ in MACROS) | {name for name, _, _ in OVERLOADS} | {"encode"}
 _MENTIONED = re.compile(r"\b(" + "|".join(sorted(_NAMES)) + r")\"?\s*\(", re.IGNORECASE)
 #: The names provisa.pgwire.catalog answers where a statement reads no table.
 SERVER_VALUE_NAMES = frozenset(m.name for m in VALUE_FUNCTIONS_OF_THE_SERVER)
@@ -1298,11 +1444,16 @@ def _written(macro: Macro, args: list[exp.Expr], dialect: str, node: exp.Expr) -
     return form.transform(bound)
 
 
+#: byteain's escapes: a doubled backslash, or a byte in three octal digits.
+_BYTEA_ESCAPE = re.compile(r"\\\\|\\([0-3][0-7]{2})")
+
+
 #: A class sqlglot reads a call of a function of the table as.
 _READ_AS: dict[type[exp.Expr], str] = {
     exp.JustifyDays: "justify_days",
     exp.JustifyHours: "justify_hours",
     exp.JustifyInterval: "justify_interval",
+    exp.MD5: "md5",
 }
 
 
@@ -1316,10 +1467,51 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return "length", [node.this]
     if isinstance(node, exp.Time):  # what sqlglot reads as a zone is an overload's second argument
         return "time", [a for a in (node.this, node.args.get("zone")) if a is not None]
+    if isinstance(node, exp.SHA2):  # sqlglot's reading of sha256, sha384 and sha512
+        length = node.args.get("length")
+        return f"sha{length.this if isinstance(length, exp.Literal) else 256}", [node.this]
+    if isinstance(node, exp.Encode) and isinstance(node.args.get("charset"), exp.Literal):
+        return f"encode_{node.args['charset'].this.lower()}", [node.this]
     if isinstance(node, exp.RegexpSubstr):
         keys = ("this", "expression", "position", "occurrence", "parameters", "group")
         return "regexp_substr", [node.args[k] for k in keys if node.args.get(k) is not None]
     return None
+
+
+def _bytea_digits(text: str) -> str | None:
+    """The hex digits of byteain's reading of ``text``; None for what it refuses."""
+    if text.startswith("\\x"):
+        digits = text[2:]
+        valid = len(digits) % 2 == 0 and all(c in string.hexdigits for c in digits)
+        return digits if valid else None
+    found = b""
+    position = 0
+    for escape in _BYTEA_ESCAPE.finditer(text):
+        found += text[position : escape.start()].encode()
+        code = escape.group(1)
+        found += b"\\" if code is None else bytes([int(code, 8)])
+        position = escape.end()
+    rest = text[position:]
+    return None if "\\" in rest else (found + rest.encode()).hex()
+
+
+def _bytea_input(value: exp.Expr, called: str, dialect: str) -> exp.Expr:
+    """A literal that is a bytea as those bytes, on any dialect: PostgreSQL reads the literal of
+    sha256('\\x6162') as byteain does, where a dialect would hash its text."""
+    said = said_type(value)
+    if said is not None and said.split("(")[0] in _TEXT_TYPES:
+        raise FunctionRefused(called, dialect)  # function sha256(text) does not exist
+    literal = value.this if said == "bytea" else value
+    if isinstance(literal, exp.Null) and dialect == "mysql":  # it has no CAST AS VARBINARY
+        return literal
+    if not isinstance(literal, exp.Literal) or not literal.is_string:
+        return value
+    digits = _bytea_digits(literal.this)
+    if digits is None:
+        raise FunctionRefused(called, dialect)  # invalid input syntax for type bytea
+    if dialect == "tsql":  # it has no UNHEX
+        return exp.HexString(this=digits)
+    return exp.Unhex(this=exp.Literal.string(digits))
 
 
 def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
@@ -1346,14 +1538,18 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         if macro is None:
             return node
         step, form = macro.resolved(dialect)
-        if step is Step.REFUSED or not _is_told(called, args):
+        told = _is_told(called, args)  # by the name as written: a row's own name says its overload
+        called = _CALLED.get(name, called)
+        if step is Step.REFUSED or not told:
             raise FunctionRefused(called, dialect)
         if form is MAPPED:
             return target
+        if name in _BYTEA_INPUT:
+            args = [_bytea_input(a, called, dialect) for a in args]
         # transform does not revisit what a replaced node holds: a call in an argument.
         written = _written(macro, [a.transform(rewrite) for a in args], dialect, node)
         if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":
-            return exp.alias_(written, _CALLED.get(name, called))  # named for the function
+            return exp.alias_(written, called)  # named for the function
         return written
 
     return tree.transform(rewrite)

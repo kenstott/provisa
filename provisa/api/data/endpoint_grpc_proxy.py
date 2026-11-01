@@ -430,6 +430,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
             _filter_object(body),
             read_mask,
             _params_object(body),
+            offset=body.get("offset"),
         )
     except ReadMaskError as exc:
         raise ApiError(

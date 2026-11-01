@@ -25,6 +25,7 @@ import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
 from provisa.core.pg_error import PostgresError, raising
+from provisa.transpiler.pg_held_types import HELD_AS
 from provisa.transpiler.function_macros import (
     SERVER_VALUE_NAMES,
     WAL_SEGMENT,
@@ -33,25 +34,12 @@ from provisa.transpiler.function_macros import (
     wal_file,
 )
 
-#: PostgreSQL's types the catalog DB has no type for, each what its values are held as there.
-_HELD_AS = {
-    "VARCHAR": (
-        "pg_lsn", "pg_snapshot", "txid_snapshot", "aclitem", "macaddr", "macaddr8", "cidr",
-        "tsvector", "pg_mcv_list", "pg_ndistinct", "pg_dependencies", "pg_node_tree",
-        "box", "circle", "line", "lseg", "path", "polygon", "point", "xml", "varbit",
-    ),
-    "UBIGINT": ("xid8",),
-    "BIGINT": (
-        "regcollation", "regconfig", "regdictionary", "regoper", "regoperator", "regprocedure",
-        "regrole",
-    ),
-}  # fmt: skip
 #: The aliases that let a statement name them in a cast.
 PG_ONLY_TYPES = tuple(
-    f"CREATE TYPE {name} AS {held}" for held, names in _HELD_AS.items() for name in names
+    f"CREATE TYPE {name} AS {held}" for held, names in HELD_AS.items() for name in names
 )
 #: Their names, as a cast to one is written.
-PG_ONLY_TYPE_NAMES = frozenset(name for names in _HELD_AS.values() for name in names)
+PG_ONLY_TYPE_NAMES = frozenset(name for names in HELD_AS.values() for name in names)
 
 _NO_FILE = "No such file or directory"
 _FILE_REFUSALS = (

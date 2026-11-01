@@ -342,6 +342,7 @@ def grpc_table_to_graphql(
     filter_msg: Any | None = None,
     read_mask: ReadMask | None = None,
     params_msg: Any | None = None,
+    offset: int | None = None,
 ) -> tuple[str, dict[str, Any]] | None:
     """GraphQL query text for ``Query{Type}`` and its variables — ``(text, variables)`` — or None
     if no table matches ``type_name``. A gRPC row read lowers to GraphQL, as its aggregate and
@@ -357,9 +358,9 @@ def grpc_table_to_graphql(
     ``{Type}Params`` (or the proxy's ``body["params"]``): the table's parameters
     (``_checked_params``; raises :class:`ParameterError`) fill the root field's parameter
     arguments (REQ-1986). The filter and the parameters travel as variables, and a positive
-    ``limit`` as a literal the compiler binds, so requests that differ only in their values share
-    one kept plan (REQ-1877, ``api.generated_plan``). A value the field's types refuse raises the
-    error of the filter field or parameter that carries it."""
+    ``limit`` and a set ``offset`` as literals the compiler binds, so requests that differ only in
+    their values share one kept plan (REQ-1877, ``api.generated_plan``). A value the field's types
+    refuse raises the error of the filter field or parameter that carries it."""
     from provisa.api._query_helpers import RequestRefused, request_variables
 
     meta = _find_table_meta(ctx, type_name)
@@ -396,6 +397,8 @@ def grpc_table_to_graphql(
                 raise ParameterError(name, type_name, str(exc)) from exc
         raise refused
     arguments = [f"limit: {int(limit)}"] if limit and limit > 0 else []
+    if offset:
+        arguments.append(f"offset: {int(offset)}")
     arguments += variables.arguments
     args = f"({', '.join(arguments)})" if arguments else ""
     fields = " ".join(c if _gql(c) == c else f"{c}: {_gql(c)}" for c in selected)

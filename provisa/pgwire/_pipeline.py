@@ -42,6 +42,8 @@ from provisa.audit.pipeline import PendingAudit
 from provisa.executor.result import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
+from provisa.pgwire.catalog_route import CLIENT_TABLE_FUNCTIONS
+from provisa.pgwire.catalog_route import current_request as current_catalog_request
 
 if TYPE_CHECKING:
     from provisa.compiler.directives import CacheHint
@@ -384,7 +386,7 @@ async def _optimize_and_route(
     from provisa.cache.values_cte import build_values_ctes_sql
     from provisa.compiler.stage2 import extract_sources, reduce_sources_for_routing
     from provisa.fakes.read_sql import reads_fakes
-    from provisa.transpiler.router import Route, decide_route
+    from provisa.transpiler.router import Route, RouteDecision, decide_route
 
     # REQ-1942: a table a Test (synthetic) environment holds no generated copy of is refused as
     # that, first -- before the API stage, which would ask its source (a synthetic environment
@@ -491,6 +493,19 @@ async def _optimize_and_route(
         else _forced_engine(routed, _view, _rewrites, ctx, state, table_ids),
         **({} if is_mutation else await _proxy_plan(routed, governed_sql, ctx, state, table_ids)),
     )
+    if routed == {"provisa-admin"} and current_catalog_request.get() is not None:
+        # REQ-2190: a catalog statement reads the meta domain, and the store that holds meta answers
+        # it, under the role such statements run as. One that reads no table is the engine's.
+        decision = RouteDecision(
+            route=Route.DIRECT,
+            source_id="provisa-admin",
+            dialect=state.source_dialects.get("provisa-admin", "postgres"),
+            reason="a catalog statement reads the control plane",
+        )
+    if "provisa-admin" in routed and (
+        decision.route != Route.DIRECT or decision.source_id != "provisa-admin"
+    ):
+        _refuse_catalog_views_off_the_admin_terminal(ctx, table_ids)
     from provisa.api.region_ops_views import reads_region_views
 
     if (
@@ -738,29 +753,60 @@ def _kept_probe_bounds(memo: dict[str, Any], governed_sql: str) -> bool:
     return bounds
 
 
+def _catalog_views_read(ctx: Any, table_ids: Any) -> list[str]:
+    """REQ-2190: the catalog views of the meta domain among ``table_ids``, as a client names them."""
+    from provisa.security.rights import SQL_CATALOG_TABLES
+
+    read = set(table_ids)
+    return sorted(
+        {
+            f"{tm.domain_id}.{tm.table_name}"
+            for tm in ctx.tables.values()
+            if tm.table_id in read
+            and (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_CATALOG_TABLES
+        }
+    )
+
+
+def _refuse_catalog_views_off_the_admin_terminal(ctx: Any, table_ids: Any) -> None:
+    """REQ-2190: what a catalog view and its row scope read of a statement, the admin terminal alone
+    tells it. On any other route they would read a setting nothing gave them, so the statement is
+    refused by name, whatever an engine would make of CURRENT_SETTING."""
+    from provisa.transpiler.metadata_settings import CatalogViewRefused
+
+    read = _catalog_views_read(ctx, table_ids)
+    if read:
+        raise CatalogViewRefused(read[0])
+
+
 def _catalog_settings(
     gov_ctx: Any, ctx: Any, state: Any, source_id: str, table_ids: Any
 ) -> dict[str, str] | None:
     """REQ-2190: what a statement reading a catalog view of the meta domain is told of the
     request; None for any other, which pays no round trip."""
-    from provisa.pgwire.catalog_populate import served_database_name
-    from provisa.security.rights import SQL_CATALOG_TABLES
+    from provisa.pgwire.catalog_data import served_database_name
     from provisa.transpiler.metadata_settings import statement_settings
 
     if source_id != "provisa-admin":
         return None
-    read = set(table_ids)
-    if not any(
-        tm.table_id in read
-        and (tm.domain_id, tm.original_table_name or tm.table_name) in SQL_CATALOG_TABLES
-        for tm in ctx.tables.values()
-    ):
+    request = current_catalog_request.get()
+    if request is not None:
+        return statement_settings(
+            gov_ctx.role_id,
+            gov_ctx.can_write,
+            request.database,
+            bool(state.schema_build_cache.get("domain_prefix", False)),
+            session=request.session,
+            scope=gov_ctx.meta_scope,
+        )
+    if not _catalog_views_read(ctx, table_ids):
         return None
     return statement_settings(
         gov_ctx.role_id,
         gov_ctx.can_write,
         served_database_name(state),
         bool(state.schema_build_cache.get("domain_prefix", False)),
+        scope=gov_ctx.meta_scope,
     )
 
 
@@ -859,8 +905,11 @@ async def _optimize_and_route_cached(
 
     # A request's route hint is the request's own: its decision is not the shape's to keep. A
     # statement a view answers depends on the view being fresh now: never the shape's to keep.
+    # REQ-2190: nor is a catalog statement's: a form can read as a client's own statement does
+    # (CAST(NULL AS TIMESTAMPTZ)), which must not inherit the control plane as its route.
     if (
         steward_hint is not None
+        or current_catalog_request.get() is not None
         or would_materialize_optimize(exec_sql, state, table_ids=table_ids)
         or _view_answering(exec_sql, ctx, state, is_mutation=is_mutation, building=building)
         is not None
@@ -1271,8 +1320,15 @@ async def propagate_literal_predicates(sql: str, state: Any) -> str:  # REQ-1880
     # as do Trino/ClickHouse/warehouse drivers (compiler.params.substitute_positional_placeholders),
     # where a reused $1 would shift every later parameter.
     by_number = state.federation_engine.engine.name in _BINDS_PARAMS_BY_NUMBER
+    # PostgreSQL alone runs a correlated subquery once per outer row: DuckDB decorrelates its own,
+    # and Trino's are lifted at transpile.
     return propagate_literal_join_predicates(
-        sql, "postgres", eligible, column_types, allow_params=by_number
+        sql,
+        "postgres",
+        eligible,
+        column_types,
+        allow_params=by_number,
+        read_once=state.federation_engine.engine.name == "postgres",
     )
 
 
@@ -1712,6 +1768,8 @@ async def govern_statement(
             *temp_tables.slot_key(),
             # A statement governed as the product's is never the one kept for a role's same words.
             *([("provisa.product_statement", "1")] if product_statement else []),
+            # Nor is a catalog statement, whose guard is its own (REQ-2190).
+            *([("provisa.catalog", "1")] if current_catalog_request.get() is not None else []),
             # A request-level as-of decides which bitemporal views keep their reference.
             *([("provisa.as_of", as_of)] if as_of else []),
         ],
@@ -1794,8 +1852,12 @@ async def govern_statement(
         _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
     await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
-    _bypass_guard = product_statement or relationship_guard_bypassed(
-        role, state, statement_opts_out=sql_opts_out
+    # REQ-2190: a client's join on oids is no registered relationship; row scope and column rules
+    # hold on a catalog statement as on any.
+    _bypass_guard = (
+        product_statement
+        or current_catalog_request.get() is not None
+        or relationship_guard_bypassed(role, state, statement_opts_out=sql_opts_out)
     )
 
     # REQ-1877: in-memory, TTL-evicted cache of the validate_sql + domain-access outcome — see
@@ -1818,6 +1880,11 @@ async def govern_statement(
         state.schema_version,
         _bypass_guard,
     )
+    from provisa.security.rights import IMPLICIT_DOMAINS
+
+    _table_functions = (
+        CLIENT_TABLE_FUNCTIONS if current_catalog_request.get() is not None else frozenset()
+    )
     if state.compiled_query_cache.get(_cq_key) is None:
         violations = validate_sql(
             _validated_sql,
@@ -1827,6 +1894,9 @@ async def govern_statement(
             getattr(state, "tables", []),
             bypass_relationship_guard=_bypass_guard,
             bypass_uncovered_relationships=True,
+            table_functions=_table_functions,
+            # REQ-127: every role lists what meta's rights show it, and its row scope holds.
+            also_reaches=IMPLICIT_DOMAINS if _table_functions else frozenset(),
         )
 
         _role_domain_access = role["domain_access"]
@@ -1836,9 +1906,17 @@ async def govern_statement(
                 parsed_tree = await _off_loop(
                     lambda: sqlglot.parse_one(_validated_sql, read="postgres")
                 )
+                _statement_ctes = (
+                    {c.alias for c in parsed_tree.find_all(exp.CTE)} if _table_functions else set()
+                )
                 for tbl in parsed_tree.find_all(exp.Table):
                     if isinstance(tbl.this, exp.XMLTable):
                         continue  # REQ-2167: no relation; what it reads is the statement's own
+                    if (
+                        isinstance(tbl.this, exp.Anonymous)
+                        and tbl.this.name.lower() in _table_functions
+                    ) or (not tbl.db and tbl.name in _statement_ctes):
+                        continue
                     tbl_name = tbl.name
                     tbl_db = tbl.db
                     full_key = f"{tbl_db}.{tbl_name}" if tbl_db else tbl_name
@@ -4452,9 +4530,16 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         # Admin-owned tables (meta.*) are views over the org's model (REQ-1919): its model store.
         # That store serves this source and no other: a statement for any other source reaching
         # it would be read from, or written into, the control plane.
-        from provisa.transpiler.metadata_settings import refuse_client_settings, set_statement
+        from provisa.transpiler.metadata_settings import (
+            enter_client_role,
+            refuse_client_settings,
+            set_statement,
+        )
+
+        from provisa.transpiler.metadata_functions import refuse_server_reads
 
         refuse_client_settings(plan.sql)  # REQ-2190: what a catalog view trusts is this terminal's
+        refuse_server_reads(plan.sql)  # REQ-2190: only named metadata reads the control plane
         tenant_db = state.model_db
         if tenant_db is None:
             raise RuntimeError("Admin model_db not available")
@@ -4471,21 +4556,24 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
                 # Column names come from the result itself, so an empty result still has them.
                 # The statement's bound values, as the client gave them: its ANY($2) list is an
                 # array, not the control plane's jsonb. exec_params is None when it has none.
+                col_oids: list[int] | None = None
                 if plan.catalog_settings is None:
                     col_names, _rows = await _conn.fetch_with_columns(
                         plan.sql, *(plan.exec_params or ()), bind_as_given=True
                     )
                 else:
-                    # REQ-2190: the settings last as long as the statement's transaction.
+                    # REQ-2190: the settings last as long as the statement's transaction, and the
+                    # client's SQL runs as the role that reaches no more than a client may.
                     _setting, _values = set_statement(plan.catalog_settings)
                     async with _conn.transaction():
                         await _conn.fetch(_setting, *_values)
-                        col_names, _rows = await _conn.fetch_with_columns(
+                        await _conn.execute(enter_client_role())
+                        col_names, col_oids, _rows = await _conn.fetch_described(
                             plan.sql, *(plan.exec_params or ()), bind_as_given=True
                         )
                 rows = [tuple(r) for r in _rows]
             _span.set_attribute("db.row_count", len(rows))
-        result = QueryResult(rows=rows, column_names=col_names)
+        result = QueryResult(rows=rows, column_names=col_names, column_type_oids=col_oids)
     elif not state.source_pools.has(plan.source_id):
         # A DIRECT plan names a source this process holds no driver for. Nothing here can run it,
         # and it is refused by name rather than handed to some other connection.
@@ -5846,6 +5934,17 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
         as_of=as_of,
     )
     return plan
+
+
+async def govern_catalog_plan(sql: str, role_id: str, request: Any) -> _Plan:  # REQ-2190
+    """Govern a client's catalog statement, already addressed to the meta domain, as any read of
+    it: row scope and column rules hold, the relationship guard does not (a client's join on oids
+    is no registered relationship), and its terminal is told who asks."""
+    token = current_catalog_request.set(request)
+    try:
+        return await _govern_and_route(sql, role_id)
+    finally:
+        current_catalog_request.reset(token)
 
 
 @dataclass

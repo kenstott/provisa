@@ -8962,5 +8962,7 @@
   "es/dataProductsTab.json::dataProductsTab.contract.versionChanges": "Changes",
   "es/dataProductsTab.json::dataProductsTab.contract.card.roles": "Roles",
   "es/dataProductsTab.json::dataProductsTab.contract.card.history": "Version history",
-  "es/dataProductsTab.json::dataProductsTab.contract.constraints": "Constraints"
+  "es/dataProductsTab.json::dataProductsTab.contract.constraints": "Constraints",
+  "es/serverErrors.json::serverErrors.query.catalog_view_refused": "{{view}} is a catalog view of the meta domain and cannot be read in one statement with a table of a data source: read them in two statements.",
+  "es/serverErrors.json::serverErrors.query.function_unsupported": "{{function}}() has no form on {{dialect}}."
 }

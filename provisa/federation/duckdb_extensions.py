@@ -144,6 +144,19 @@ def install_and_load(
         con.execute(statement)
 
 
+def load_staged(con: duckdb.DuckDBPyConnection, extension: str) -> bool:
+    """LOAD ``extension`` from the extension directory, never INSTALLing it, so the connection does
+    not reach the network (REQ-2171). False where it is not staged: the caller refuses by name."""
+    directory = extension_directory()
+    if directory:
+        con.execute(f"SET extension_directory = '{directory}'")
+    try:
+        con.execute(f"LOAD {extension}")
+    except duckdb.IOException:
+        return False
+    return True
+
+
 def _fetch(con: duckdb.DuckDBPyConnection):
     """An async-shaped ``fetch(sql) -> list[dict]`` adapter over a DuckDB connection (REQ-904 probe API).
 

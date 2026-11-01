@@ -186,6 +186,45 @@ class TestHandleQuery:
             mock_execute_plan.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_the_requests_offset_reaches_the_lowering(self):
+        pb2, _ = _make_pb2_module("Orders", ["id", "amount"])
+        servicer = ProvisaServicer(_make_state(), pb2)
+        context = AsyncMock(spec=grpc.aio.ServicerContext)
+        context.invocation_metadata.return_value = [("x-provisa-role", "admin")]
+        request = MagicMock()
+        request.limit = 10
+        request.offset = 30
+
+        from provisa.transpiler.router import Route
+
+        fake_plan = SimpleNamespace(
+            route=Route.CACHE, source_id=None, cache_hit=None, warnings=[], materialize=None
+        )
+        with (
+            patch(
+                "provisa.grpc.query_ir.grpc_table_to_graphql",
+                return_value=("{ orders { id amount } }", {}),
+            ) as lowering,
+            patch(
+                "provisa.api.generated_plan.compile_generated_graphql",
+                return_value=[SimpleNamespace(sql="SELECT id, amount FROM orders", params=[])],
+            ),
+            patch(
+                "provisa.pgwire._pipeline._govern_and_route_compiled",
+                new_callable=AsyncMock,
+                return_value=fake_plan,
+            ),
+            patch(
+                "provisa.pgwire._pipeline._execute_plan",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(column_names=["id", "amount"], rows=[]),
+            ),
+        ):
+            _ = [m async for m in servicer._handle_query(request, context, "Orders", "orders")]
+
+        assert lowering.call_args.kwargs["offset"] == 30
+
+    @pytest.mark.asyncio
     async def test_query_batch_groups_rows_into_batch_messages(self):
         """REQ-1899: Query{Type}Batch streams {Type}Batch messages (repeated rows), grouping up
         to _GRPC_BATCH_ROWS rows per message, instead of one message per row."""
