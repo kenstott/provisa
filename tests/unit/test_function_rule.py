@@ -143,6 +143,11 @@ def test_a_type_trino_holds_as_text_reaches_it_with_no_cast_to_the_type(sql):
     assert not {c.to.sql(dialect="trino").lower() for c in tree.find_all(exp.Cast)} & held
 
 
+@pytest.mark.parametrize("dialect", ["duckdb", "trino"])
+def test_the_cast_a_statement_says_chooses_the_overload_before_the_type_is_held(dialect):
+    assert "PI()" in transpile("SELECT area('<(0,0),1>'::circle) AS v", dialect).upper()
+
+
 def test_an_unaliased_overload_keeps_the_column_postgresql_names():
     assert transpile("SELECT area('(1,1),(0,0)'::box)", "trino").endswith(" AS area")
 

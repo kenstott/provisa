@@ -30,8 +30,11 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
+
 from provisa.cache.values_cte import InlineRows
 from provisa.core.connection_loop import spawn_background
+from provisa.core.read_refusal import SourceUnavailable
 
 
 log = logging.getLogger(__name__)
@@ -437,6 +440,20 @@ async def mat_live_part(
     )
 
 
+def _naming_the_source(source_id: str, answer):
+    """``answer``, whose failure over HTTP is refused naming the source and logged: httpx's text
+    is the source's internal URL."""
+
+    async def reading():
+        try:
+            return await answer()
+        except httpx.HTTPError as failed:
+            log.warning("source %s failed a read: %s", source_id, failed)
+            raise SourceUnavailable(source_id) from failed
+
+    return reading
+
+
 async def _land_per_statement(
     tn: str,
     table: dict,
@@ -469,6 +486,7 @@ async def _land_per_statement(
     source_id = table["source_id"]
     engine = state.federation_engine
     ttl = landing_ttl(table, state)
+    answer = _naming_the_source(source_id, answer)
     cache_loc = cache_location(source_id, resolved_cache_catalog(engine), org_cache_schema(state))
     if ttl == 0:
         await _answer_live(tn, state, cache_loc, cache_rewrites, values_cte_entries, answer)
@@ -950,6 +968,9 @@ async def _mat_gql_remote_table(
             return await _fetch_gql_remote_rows(
                 gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows
             )
+        except httpx.HTTPError as failed:
+            log.warning("source %s failed a read: %s", gql_reg["source_id"], failed)
+            raise SourceUnavailable(gql_reg["source_id"]) from failed
         except Exception as fetch_exc:
             raise RuntimeError(f"GQL remote fetch failed for {tn!r}: {fetch_exc}") from fetch_exc
 

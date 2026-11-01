@@ -5385,6 +5385,7 @@
   "nl/serverErrors.json::serverErrors.data.signal_source_not_found": "Source '{{source}}' not found.",
   "nl/serverErrors.json::serverErrors.data.signal_table_not_found": "Source '{{source}}' has no registered table '{{table}}'.",
   "nl/serverErrors.json::serverErrors.data.source_starting": "The source {{source}} is still starting. Try again in a moment.",
+  "nl/serverErrors.json::serverErrors.data.source_unavailable": "The source {{source}} could not answer. Try again shortly.",
   "nl/serverErrors.json::serverErrors.data.source_unbound": "Source '{{source}}' has no connection in environment '{{env}}': bind it, or re-copy it from the parent",
   "nl/serverErrors.json::serverErrors.data.sql_generation_failed": "Could not generate valid SQL after 3 attempts: {{error}}",
   "nl/serverErrors.json::serverErrors.data.sql_parameters_do_not_fit": "The parameter values do not fit the statement: {{reason}}",
@@ -8953,5 +8954,14 @@
   "nl/demoOpenPage.json::demoOpenPage.coldStart": "A demo that has been idle takes about five minutes to start.",
   "nl/demoOpenPage.json::demoOpenPage.gaveUp": "The demo did not open in {{minutes}} minutes. Try again later.",
   "nl/serverErrors.json::serverErrors.sandbox.demo_failed": "This demo could not be prepared. Try again in a few minutes.",
-  "nl/serverErrors.json::serverErrors.sandbox.failed_to_start": "The demo server could not be started. Try again later."
+  "nl/serverErrors.json::serverErrors.sandbox.failed_to_start": "The demo server could not be started. Try again later.",
+  "nl/jsonApiPage.json::jsonApiPage.removeHandedParam": "Remove {{param}}",
+  "nl/dataProductsTab.json::dataProductsTab.contract.notDeclaredList": "Not declared: {{names}}",
+  "nl/dataProductsTab.json::dataProductsTab.contract.versionSaved": "Saved",
+  "nl/dataProductsTab.json::dataProductsTab.contract.versionChanges": "Changes",
+  "nl/dataProductsTab.json::dataProductsTab.contract.card.roles": "Roles",
+  "nl/dataProductsTab.json::dataProductsTab.contract.card.history": "Version history",
+  "nl/dataProductsTab.json::dataProductsTab.contract.constraints": "Constraints",
+  "nl/serverErrors.json::serverErrors.query.catalog_view_refused": "{{view}} is a catalog view of the meta domain and cannot be read in one statement with a table of a data source: read them in two statements.",
+  "nl/serverErrors.json::serverErrors.query.function_unsupported": "{{function}}() has no form on {{dialect}}."
 }

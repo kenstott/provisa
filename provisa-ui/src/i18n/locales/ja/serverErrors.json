@@ -130,6 +130,7 @@
       "address_not_found": "解決する対象がありません: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve は 1 つの操作で他のルートフィールドと組み合わせることはできません",
       "source_starting": "ソース {{source}} はまだ起動中です。しばらくしてからもう一度お試しください。",
+      "source_unavailable": "ソース {{source}} は応答できませんでした。しばらくしてからもう一度お試しください。",
       "view_outside_load_window": "ビュー {{view}} は読み取り時間帯の間だけ読み取れます。次に開くのは {{opens_at}} です。",
       "graphql_body_missing": "リクエストに本文がありません。GraphQL リクエストはクエリを含む JSON オブジェクトです。",
       "graphql_body_not_json": "リクエスト本文が JSON ではありません: {{error}}",
@@ -268,6 +269,10 @@
       "classification_status_invalid": "分類の決定は承認または却下のどちらかで、{{status}} ではありません",
       "classification_decision_not_found": "{{column}} の {{kind}} としての決定はありません",
       "classification_pii_refused": "列を PII としてマークできませんでした"
+    },
+    "query": {
+      "catalog_view_refused": "{{view}} は meta ドメインのカタログビューであり、データソースのテーブルと同じ 1 つのステートメントでは読み取れません。2 つのステートメントに分けて読み取ってください。",
+      "function_unsupported": "{{function}}() には {{dialect}} での対応する形式がありません。"
     },
     "replication": {
       "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: [{{content_type}}] {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",

@@ -185,9 +185,6 @@ def compose_file(ports: dict[str, int], tmp: Path, engines: list[str], pg_image:
     services = doc["services"]
     if "pg" in engines:
         put_engine_postgres_on_host(services["postgresql"], ports["bench-postgresql"], pg_image)
-        # P5: the pg engine's ClickHouse attach dials the native port's default whatever the source
-        # declares. Published so the cells behind that attach run; goes with the fix (J306).
-        services["clickhouse"]["ports"].append("127.0.0.1:9000:9000")
     if "trino" in engines:
         services["trino"] = trino_service(ports["trino"], tmp)
         services["minio"] = minio_service(ports)
@@ -211,10 +208,9 @@ def create_otel_bucket(ports: dict[str, int]) -> None:
 
 def engine_env(engine: str, ports: dict[str, int]) -> dict[str, str]:
     if engine == "pg":
-        # orchestrate.sh's engine_env: the pg engine federates through the source's own Postgres,
-        # and row-level replicas land there, where it reads them
+        # orchestrate.sh's engine_env: the pg engine federates through the source's own Postgres
         url = f"postgresql://provisa:provisa@localhost:{ports['bench-postgresql']}/provisa_bench"
-        return {"PROVISA_ENGINE_URL": url, "PROVISA_MATERIALIZE_URL": url}
+        return {"PROVISA_ENGINE_URL": url}
     if engine == "trino":
         return {
             "TRINO_HOST": "127.0.0.1",

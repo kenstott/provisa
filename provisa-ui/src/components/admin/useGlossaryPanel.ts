@@ -15,6 +15,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getStored, setStored } from "../../lib/browserStorage";
+import { useNavPayload } from "../../hooks/useNavPayload";
+import { useScreenInputsReader } from "../../mcp/screenState";
+import {
+  ONTOLOGY_SETTINGS,
+  savedGraphSettings,
+  writeGraphSettings,
+} from "../../pages/tables/profile3d/graphSettings";
 
 // Per-viewer list-filter preferences; never reachable from other viewers or the server.
 export function readStoredBool(key: string, fallback: boolean): boolean {
@@ -84,6 +91,50 @@ export function useGlossaryPanel(canEdit: boolean) {
     writeStoredBool("glossary.editing", on);
   }, []);
 
+  // A link (?panel=graph, ?panel=terms, ?term=) decides the page again whenever it changes while
+  // the page stays open, as it does when the page opens on it.
+  const panelParam = searchParams.get("panel");
+  const [seededPanel, setSeededPanel] = useState<string | null>(null);
+  if (panelParam !== seededPanel) {
+    setSeededPanel(panelParam);
+    if (panelParam !== null) setOntologyState(panelParam === "graph");
+  }
+  const termParam = searchParams.get("term");
+  const [seededTerm, setSeededTerm] = useState(termParam);
+  if (termParam !== seededTerm) {
+    setSeededTerm(termParam);
+    if (termParam !== null && Number.isFinite(Number(termParam))) {
+      setSelectedIdState(Number(termParam));
+      setOntologyState(false);
+    }
+  }
+
+  // Polly's navigate: which panel, which term, and the graph's own controls.
+  useNavPayload<{ panel?: "graph" | "terms"; term?: number; graph?: Record<string, unknown> }>(
+    (payload) => {
+      if (payload.graph) writeGraphSettings(ONTOLOGY_SETTINGS, payload.graph);
+      if (payload.panel) setOntologyState(payload.panel === "graph");
+      if (payload.term !== undefined) {
+        setSelectedIdState(payload.term);
+        setOntologyState(false);
+      }
+    },
+  );
+
+  // REQ-2115: Polly's read_screen reads the page's main panel, and the graph's controls as they
+  // are remembered, from here.
+  const readInputs = useCallback(() => {
+    const { flat, layout, preset, layers, domains, edgeTypes } =
+      savedGraphSettings(ONTOLOGY_SETTINGS);
+    return {
+      panel: ontology ? "graph" : "terms",
+      term: selectedId,
+      editing,
+      graph: { flat, layout, preset, layers, domains, edgeTypes },
+    };
+  }, [ontology, selectedId, editing]);
+  useScreenInputsReader("/admin/ontology", readInputs);
+
   // Each term opens read, not in the form the previous term was left in; the term the page opened
   // on keeps its remembered form. Deferred for the same set-state-in-effect rule as the list
   // refresh in GlossaryTab.
@@ -102,6 +153,7 @@ export function useGlossaryPanel(canEdit: boolean) {
         // Under the graph a term is not in the URL: reloading opens what was left, the graph.
         if (selectedId === null || ontology) next.delete("term");
         else next.set("term", String(selectedId));
+        next.delete("panel");
         return next;
       },
       { replace: true },

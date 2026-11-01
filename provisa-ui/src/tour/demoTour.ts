@@ -166,6 +166,11 @@ const SQL_RESULT_ROW = '.sql-results-table tbody tr:not([data-testid="results-gr
 // A statement refused, as the explorer shows it: the provisioning close read outside its view's
 // load window is refused by design, and its step shows the refusal rather than ending the tour.
 const SQL_RESULT_ERROR = '[data-testid="sql-results-error"]';
+// A statement run and answered with no rows: the page's "No results." of a tab not yet run is not
+// this. A demo's statements answer rows, so the step stops, saying so (REQ-2052).
+const SQL_RESULT_EMPTY = '[data-testid="sql-results-empty"][data-answered]';
+
+const RELATIONSHIPS_PAGE = "/relationships";
 
 export function demoTourSteps(
   defs: readonly DemoTourStepDef[],
@@ -174,15 +179,23 @@ export function demoTourSteps(
 ): TourStep[] {
   const steps: TourStep[] = [];
   let onPage: string | undefined;
+  let pageCapability: Capability | undefined;
   // What each `sql` step ran as: the SQL explorer's role and time travel set by the steps before
   // it (REQ-2083), so a later step can run its statement again as it ran then.
   const ran = new Map<string, StatementRun>();
   const context: Omit<StatementRun, "sql"> = {};
   for (const def of defs) {
     onPage = def.route ?? onPage;
+    pageCapability = def.route !== undefined ? def.capability : pageCapability;
     if (def.role !== undefined && onPage === "/sql") context.role = def.role;
     if (def.sql !== undefined) ran.set(def.key, { sql: def.sql, ...context });
-    const step = demoTourStep(def, examples, notebook, steps[steps.length - 1], onPage, ran);
+    // A relationship step continuing on the Relationships page opens it again with its own search:
+    // the route it would inherit searches for the step before's alias, which filters its row away.
+    const own =
+      def.relationship !== undefined && def.route === undefined && onPage === RELATIONSHIPS_PAGE
+        ? { ...def, route: onPage, capability: pageCapability }
+        : def;
+    const step = demoTourStep(own, examples, notebook, steps[steps.length - 1], onPage, ran);
     steps.push(def.demo !== undefined ? { ...step, demo: def.demo } : step);
   }
   return steps;
@@ -276,6 +289,7 @@ function demoTourStep(
       readySelector: `${SQL_RESULT_ROW}, ${SQL_RESULT_ERROR}`,
       element: `.sql-results-table, ${SQL_RESULT_ERROR}`,
       waitMs: RESULT_WAIT_MS,
+      absent: SQL_RESULT_EMPTY,
     };
   }
   // Each runs on its page and is awaited as the SQL statement is: by a mark the page shows only

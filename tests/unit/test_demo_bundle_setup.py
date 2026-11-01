@@ -649,6 +649,7 @@ def _sync(
     stores_fail: str | None = None,
     check_fail: str | None = None,
     failed_before: str | None = None,
+    prune_engines: bool = False,
 ):
     """scripts/demo_stores_sync.sh for the weblogs demo, its pull and scripts/demo_stores.py fakes
     that record what they were asked."""
@@ -685,7 +686,8 @@ def _sync(
     )
     # The pull records what it was asked for (tmp_path/pulls), one line per pull.
     (fake / "pull").write_text(
-        f'#!/usr/bin/env bash\necho "$2" >> {tmp_path}/pulls\n{ask}echo {bundles}/"${{2%%@*}}"/{_VERSION}\n'
+        f'#!/usr/bin/env bash\n[ "$1" = pull ] || {{ echo "$1" >> {tmp_path}/other; exit 0; }}\n'
+        f'echo "$2" >> {tmp_path}/pulls\n{ask}echo {bundles}/"${{2%%@*}}"/{_VERSION}\n'
     )
     (fake / "pull").chmod(0o755)
     # stores_fail: the stores cannot be brought up, and demo_stores.py says why on stderr.
@@ -711,6 +713,7 @@ def _sync(
         "DEMO_STORES_SHARED": "/shared.yml",
         "DEMO_STORES_PROJECT": "provisa-demo-stores",
         "DEMO_STORES_KAFKA_PORT": "29092",
+        **({"DEMO_PRUNE_ENGINES": "true"} if prune_engines else {}),
     }
     run = subprocess.run(
         ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh"), *args],
@@ -831,6 +834,60 @@ def test_an_older_version_never_brought_up_has_its_bundle_deleted_and_the_served
     assert (demo / "202601020000-inuse02").is_dir()
     assert (demo / _VERSION / "docker-compose.run.yml").is_file()
     assert {p.name for p in demo.iterdir() if p.is_file()} >= {"pulled", "ready", "in-use"}
+
+
+def test_a_demo_not_asked_for_keeps_only_the_versions_read(tmp_path):
+    """Its older versions went only when it was asked for: on cloud-dev's sandbox VM, 2026-10-31,
+    19 of its 28 demos held versions beside the one offered, one holding 4. Nothing is started for it."""
+    bundles = tmp_path / "bundles" / "weblogs"
+    for old in ("202601010000-never01", "202601020000-inuse02"):
+        (bundles / old).mkdir(parents=True)
+    run, demo, asked = _sync(tmp_path, in_use="202601020000-inuse02")
+    assert run.returncode == 0, run.stderr
+    assert asked == []
+    assert not (demo / "202601010000-never01").exists()
+    assert (demo / "202601020000-inuse02").is_dir()
+    assert (demo / _VERSION).is_dir()
+
+
+def test_a_demo_not_asked_for_keeps_a_version_with_data_in_the_shared_stores(tmp_path):
+    """The shared stores may be down, so its data could not be dropped from them: it is dropped
+    at the next run that has them up, the demo's next open."""
+    bundles = tmp_path / "bundles" / "weblogs"
+    old = "202601010000-wasup01"
+    (bundles / old).mkdir(parents=True)
+    (bundles / old / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
+    run, demo, asked = _sync(tmp_path)
+    assert run.returncode == 0, run.stderr
+    assert asked == []
+    assert (demo / old / "stores.env").exists()
+
+
+def test_a_lingered_out_demo_keeps_only_the_versions_read(tmp_path):
+    bundles = tmp_path / "bundles" / "weblogs"
+    (bundles / "202601010000-never01").mkdir(parents=True)
+    run, demo, _ = _sync(tmp_path, lingering_until=1)
+    assert run.returncode == 0, run.stderr
+    assert not (demo / "202601010000-never01").exists()
+    assert (demo / _VERSION).is_dir()
+
+
+def test_the_run_prunes_the_engine_releases_where_the_node_says_to(tmp_path):
+    run, _, _ = _sync(tmp_path, prune_engines=True)
+    assert run.returncode == 0, run.stderr
+    assert (tmp_path / "other").read_text().split() == ["prune-engines"]
+
+
+def test_a_run_elsewhere_prunes_no_engine_release(tmp_path):
+    """A developer's cache is shared by every worktree, each at a release of its own."""
+    run, _, _ = _sync(tmp_path)
+    assert run.returncode == 0, run.stderr
+    assert not (tmp_path / "other").exists()
+
+
+def test_the_sandbox_vm_prunes_its_engine_releases():
+    settings = (_REPO / "packaging/linux/demo-stores/sandbox-vm.env.tpl").read_text()
+    assert "DEMO_PRUNE_ENGINES=true" in settings.splitlines()
 
 
 def test_a_demo_lingered_out_has_its_stores_taken_down_and_its_bundle_kept(tmp_path):

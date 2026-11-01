@@ -35,6 +35,8 @@ export function useErdView() {
   return {
     on: params.get("view") === "erd",
     focus,
+    /** The domains a link asks to collapse, "all" for every one; null when it asks nothing. */
+    collapsed: params.get("collapsed"),
     /** The icon: the view on, or off and back to the list without its focus. */
     setOn: (on: boolean) =>
       write((next) => {
@@ -43,6 +45,7 @@ export function useErdView() {
           return;
         }
         next.delete("view");
+        next.delete("collapsed");
         writeErdFocus(next, { domains: [], objects: [] });
       }),
     setFocus: (changed: ErdFocus) => write((next) => writeErdFocus(next, changed)),

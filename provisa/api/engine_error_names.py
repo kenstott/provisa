@@ -15,19 +15,34 @@ its table -- and its error quotes them: DuckDB's Binder Error carries a ``LINE n
 physical SQL. A physical address is source configuration, and the caller wrote model names, so
 :func:`client_text` -- the one text every transport answers a client's error with (the HTTP error
 middleware, pgwire, Flight, MCP, gRPC) -- writes each as the model names it and drops the excerpt.
-Logs, traces and the audit record keep the physical names: they are the operator's.
+Where a source lives is source configuration too: httpx's own wording of a failed request, and
+any internal address in a message, are written without it (:func:`no_internal_address`), whichever
+path brought the text here. Logs, traces and the audit record keep the physical names: they are
+the operator's.
 """
 
 # Requirements: REQ-2087, REQ-2152
 
 from __future__ import annotations
 
+import ipaddress
 import re
+from urllib.parse import urlsplit
 
 #: An engine's excerpt of the statement it ran: ``LINE n: ...`` and the caret line under it.
 _EXCERPT = re.compile(r"\n+LINE \d+:[^\n]*(?:\n[ \t]*\^)?")
 #: The same inside a JSON string: newlines escaped, and the string ending at an unescaped quote.
 _EXCERPT_JSON = re.compile(r"(?:\\n)+LINE \d+:.*?(?:\\n[ \t]*\^|(?=(?<!\\)\"))")
+#: httpx.Response.raise_for_status's message, with the URL it failed on.
+_HTTPX_STATUS = re.compile(
+    r"(?:Informational response|Redirect response|Client error|Server error|Invalid status code)"
+    r" '(\d{3}) ?([^']*)' for url '[^']*'"
+    r"(?:(?:\n|\\n)Redirect location: '[^']*')?"
+    r"(?:(?:\n|\\n)For more information check: [^\s\"']+)?"
+)
+_URL = re.compile(r"https?://[^\s'\"<>()\[\]]+", re.IGNORECASE)
+_INTERNAL_ADDRESS = "[internal address]"
+_INTERNAL_DOMAINS = (".internal", ".local", ".localdomain")
 
 
 def client_text(text: str, org_id: str | None = None) -> str:
@@ -37,7 +52,32 @@ def client_text(text: str, org_id: str | None = None) -> str:
     from provisa.core.request_context import current_org
     from provisa.security.redaction import redact
 
-    return redact(model_named(text, org_id if org_id is not None else current_org.get()))
+    org = org_id if org_id is not None else current_org.get()
+    return redact(model_named(no_internal_address(text), org))
+
+
+def no_internal_address(text: str) -> str:
+    """``text`` without httpx's wording of a failed request and without any URL of a host inside
+    the deployment's network. A public URL stays: an error's link to documentation."""
+    said = _HTTPX_STATUS.sub(
+        lambda m: f"a source answered {m.group(1)} {m.group(2)}".rstrip(), text
+    )
+    return _URL.sub(lambda m: _INTERNAL_ADDRESS if _is_internal(m.group(0)) else m.group(0), said)
+
+
+def _is_internal(url: str) -> bool:
+    """Whether ``url``'s host is one only the deployment's network resolves: a name with no dot
+    (a container's, a service's), one in an internal domain, or a private address."""
+    try:
+        host = urlsplit(url).hostname
+    except ValueError:
+        return True  # not parsed: nothing shows it names a public host
+    if host is None:
+        return False
+    try:
+        return not ipaddress.ip_address(host).is_global
+    except ValueError:
+        return "." not in host or host.endswith(_INTERNAL_DOMAINS)
 
 
 def model_named(text: str, org_id: str | None) -> str:

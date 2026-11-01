@@ -32,3 +32,14 @@ class ReadRefused(RuntimeError):
 
     code: str = "query.read_refused"
     params: dict[str, str]
+
+
+class SourceUnavailable(ReadRefused):
+    """A source failed a read of it. The caller is told which source; what it answered, and
+    where it is, are the operator's, logged where the read failed."""
+
+    code = "data.source_unavailable"
+
+    def __init__(self, source: str) -> None:
+        super().__init__(f"The source {source} could not answer. Try again shortly.")
+        self.params = {"source": source}

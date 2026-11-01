@@ -21,7 +21,7 @@ vi.mock("../pages/sql/ResultsGrid", () => ({
 
 const grid = { profile: [], handleDownloadProfile: vi.fn() } as unknown as ResultsGridState;
 
-function renderResults(rows: Record<string, unknown>[]) {
+function renderResults(rows: Record<string, unknown>[], answered = false) {
   return render(
     <ResultsPanel
       resultTab="results"
@@ -29,6 +29,7 @@ function renderResults(rows: Record<string, unknown>[]) {
       running={false}
       resultError=""
       resultRows={rows}
+      answered={answered}
       statements={[]}
       statementIndex={0}
       onStatement={vi.fn()}
@@ -55,6 +56,15 @@ describe("SQL explorer results expand", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog.querySelector('[data-testid="results-grid"]')).not.toBeNull();
     expect(screen.getByText("Results", { selector: "h2" })).toBeTruthy();
+  });
+
+  // What a tour's statement step tells a run with no rows by (demoTour.SQL_RESULT_EMPTY): the same
+  // words are on a tab not yet run.
+  it("marks an empty result as answered only once its statement has run", () => {
+    renderResults([]);
+    expect(screen.getByTestId("sql-results-empty")).not.toHaveAttribute("data-answered");
+    renderResults([], true);
+    expect(screen.getAllByTestId("sql-results-empty")[1]).toHaveAttribute("data-answered");
   });
 
   it("offers no expand control when there is nothing to show", () => {

@@ -187,6 +187,10 @@
       "slaRemove": "Serviceniveau verwijderen",
       "slaAdd": "Serviceniveau toevoegen",
       "notDeclared": "Niet gedeclareerd",
+      "notDeclaredList": "Niet gedeclareerd: {{names}}",
+      "versionSaved": "Opgeslagen",
+      "versionChanges": "Wijzigingen",
+      "constraints": "Beperkingen",
       "breakingWarning": "Incompatibele wijziging in v{{version}}, nog niet van kracht",
       "breaking": "Incompatibel",
       "savedBy": "Opgeslagen {{when}} door {{who}}",
@@ -252,7 +256,9 @@
         "sla": "SLA's & actualiteit",
         "quality": "Beloften",
         "consumers": "Afnemers",
-        "versions": "Versies & wijzigingen"
+        "versions": "Versies & wijzigingen",
+        "roles": "Rollen",
+        "history": "Versiegeschiedenis"
       }
     }
   }

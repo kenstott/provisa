@@ -130,6 +130,7 @@
       "address_not_found": "Rien à résoudre : {{reason}}",
       "mixed_resolve_and_other_fields": "resolve ne peut pas être combiné avec d'autres champs racine dans une même opération",
       "source_starting": "La source {{source}} est encore en cours de démarrage. Réessayez dans un instant.",
+      "source_unavailable": "La source {{source}} n'a pas pu répondre. Réessayez sous peu.",
       "view_outside_load_window": "La vue {{view}} ne peut être lue que pendant sa fenêtre de lecture. Elle rouvre à {{opens_at}}.",
       "graphql_body_missing": "La requête n'a pas de corps : une requête GraphQL est un objet JSON contenant une requête.",
       "graphql_body_not_json": "Le corps de la requête n'est pas du JSON : {{error}}",
@@ -268,6 +269,10 @@
       "classification_status_invalid": "Une décision de classification est acceptée ou rejetée, pas {{status}}",
       "classification_decision_not_found": "Aucune décision sur {{column}} en tant que {{kind}}",
       "classification_pii_refused": "La colonne n'a pas pu être marquée PII"
+    },
+    "query": {
+      "catalog_view_refused": "{{view}} est une vue de catalogue du domaine meta et ne peut pas être lue dans une même instruction avec une table d'une source de données : lisez-les en deux instructions.",
+      "function_unsupported": "{{function}}() n'a pas d'équivalent sur {{dialect}}."
     },
     "replication": {
       "answer_not_json": "La réponse lue pour la réplique de {{table}} n'est pas du JSON valide : [{{content_type}}] {{cause}} (dans les {{kib}} Kio précédant l'octet {{before_byte}} de la réponse).",

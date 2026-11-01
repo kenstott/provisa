@@ -11,6 +11,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useNavPayload } from "../hooks/useNavPayload";
+import { useScreenInputs } from "../mcp/screenState";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
@@ -23,6 +24,7 @@ import {
   Group,
   MultiSelect,
   NumberInput,
+  Pill,
   Select,
   Tabs,
   Text,
@@ -45,6 +47,7 @@ import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAllRelationships, useDomains, useTables } from "../hooks/useAdminQueries";
 import { requestFailed, serverMessage } from "../i18n/serverMessage";
+import { parseHandedUrl } from "./jsonapi/handedUrl";
 import { IncludeTree } from "./jsonapi/IncludeTree";
 import { SummaryView } from "./jsonapi/SummaryView";
 import {
@@ -75,12 +78,14 @@ export function JsonApiPage() {
   // opened or already open. Each hand-off has its own sequence number: its pickers are seeded once
   // and it is run once.
   const [parsedDoc, setParsedDoc] = useState<JsonApiDocument | null>(null);
+  const [activeUrl, setActiveUrl] = useState<string>("");
   const [nav, setNav] = useState<{ url: string; autoRun: boolean; seq: number } | null>(null);
   useNavPayload<{ jsonapiUrl?: string; autoRun?: boolean }>((payload) => {
     if (!payload.jsonapiUrl) return;
     const handed = payload.jsonapiUrl;
     // The answer on screen is the last request's; this one's replaces it once it is in.
     setParsedDoc(null);
+    setActiveUrl("");
     setNav((prev) => ({
       url: handed,
       autoRun: payload.autoRun === true,
@@ -97,36 +102,7 @@ export function JsonApiPage() {
     [domains],
   );
 
-  const parsedNav = useMemo(() => {
-    if (!navUrl) return null;
-    const match = navUrl.match(/^\/data\/jsonapi\/([^/]+)\/([^?]+)/);
-    if (!match) return null;
-    const qs = navUrl.includes("?") ? navUrl.split("?")[1] : "";
-    const params = new URLSearchParams(qs);
-    const aggregateParam = params.get("aggregate");
-    return {
-      domainId: match[1],
-      tableName: match[2],
-      pageSize: params.get("page[size]") ?? "20",
-      // REQ-1359/REQ-1361: NL "Open in JSON:API" carries ?groupBy=...&aggregate=... for
-      // aggregate/group-by queries. `aggregate` is either "true" (every function — the SQL
-      // branch matched no specific agg call) or a comma-separated func list (REQ-1361).
-      aggregate: aggregateParam !== null,
-      funcs:
-        aggregateParam && aggregateParam !== "true"
-          ? aggregateParam.split(",").filter(Boolean)
-          : [],
-      groupBy: params.get("groupBy") ?? "",
-      // REQ-1359: NL forwards includeNodes=true for group-by queries whose plan carries a nodes
-      // array (see runner.py::_generate_jsonapi_query) — must survive the round-trip or the
-      // replicated JSON:API call silently drops the nodes.
-      includeNodes: params.get("includeNodes") === "true" || params.get("includeNodes") === "1",
-      // REQ-1408: ?include= carries the nodes projection as relationship names and "rel.col"
-      // dot-paths (runner.py::_generate_jsonapi_query). Without seeding the picker from it the
-      // page rebuilt the URL without the projection and the related columns vanished.
-      include: (params.get("include") ?? "").split(",").filter(Boolean),
-    };
-  }, [navUrl]);
+  const parsedNav = useMemo(() => (navUrl ? parseHandedUrl(navUrl, FILTER_OPS) : null), [navUrl]);
 
   // Persisted explorer settings (survive across sessions). Table selection is restored after the
   // table list loads (below); page size is stable so it initializes directly.
@@ -143,12 +119,13 @@ export function JsonApiPage() {
   const [filterValue, setFilterValue] = useState<string>("");
   const [sortField, setSortField] = useState<string>("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // A handed URL's parameters no picker holds (see handedUrl.ts).
+  const [handedParams, setHandedParams] = useState<[string, string][]>([]);
   const [groupByCols, setGroupByCols] = useState<string[]>([]);
   const [selectedFuncs, setSelectedFuncs] = useState<string[]>([]);
   const [includeNodes, setIncludeNodes] = useState(false);
   const [fetchedGroupByColumns, setFetchedGroupByColumns] = useState<string[]>([]);
   const [pageSize, setPageSize] = useState<string>(savedSettings.pageSize ?? "20");
-  const [activeUrl, setActiveUrl] = useState<string>("");
   const [viewTab, setViewTab] = useState<"summary" | "raw">("summary");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string>("");
@@ -276,21 +253,20 @@ export function JsonApiPage() {
     return { total, count, rangeStart, rangeEnd };
   }, [parsedDoc, activeUrl]);
 
-  // When table changes, reset all dependent state. Skipped once for the nav-driven table
-  // selection (REQ-1361) so it doesn't wipe the aggregate picker the nav-init effect just seeded
-  // — that effect's setSelectedTable is what triggers this effect to re-run in the first place.
+  // When table changes, reset all dependent state. The pickers are skipped once for the nav-driven
+  // table selection (REQ-1361) so it doesn't wipe what the nav-init effect just seeded — that
+  // effect's setSelectedTable is what triggers this effect to re-run in the first place.
   const skipNextResetRef = useRef(false);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- cascade reset of per-table interactive state (checked fields, filters, sort, results) when selected table changes; these are user-controlled inputs that cannot be derived from render
-    setCheckedFields(new Set());
-    setFilterField("");
-    setSortField("");
+    setViewTab("summary");
     if (skipNextResetRef.current) {
       skipNextResetRef.current = false;
     } else {
-      // The include selection belongs to the aggregate picker's nodes projection, so it is
-      // preserved by the same skip — clearing it unconditionally wiped the ?include= dot-paths
-      // the nav-init effect had just seeded, and "Open in JSON:API" ran a narrower query.
+      setCheckedFields(new Set());
+      setFilterField("");
+      setSortField("");
+      setHandedParams([]);
       setCheckedIncludes(new Set());
       setGroupByCols([]);
       setSelectedFuncs([]);
@@ -298,7 +274,6 @@ export function JsonApiPage() {
     setParsedDoc(null);
     setActiveUrl("");
     setError("");
-    setViewTab("summary");
     setFieldsOpen(false);
     setIncludeOpen(false);
   }, [selectedTable]);
@@ -341,19 +316,29 @@ export function JsonApiPage() {
     if (!match) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- seeds the pickers from a handed URL once the tables list has loaded, once per hand-off; cannot synchronize before tables are available
     setNavInitSeq(nav.seq);
-    setSelectedTable(`${match.domainId}/${match.tableName}`);
+    const table = `${match.domainId}/${match.tableName}`;
+    // A hand-off of the table already selected changes no table, so no reset is there to skip.
+    skipNextResetRef.current = table !== selectedTable;
+    setSelectedTable(table);
     setPageSize(parsedNav.pageSize);
-    // REQ-1361: seed the aggregate picker from the nav URL so it's the single source of truth
-    // for the fetch URL (avoids the gRPC-page race where a second effect corrected the body too
-    // late for the auto-run to see it) and so the sidebar reflects the incoming query.
-    if (parsedNav.aggregate) {
-      skipNextResetRef.current = true;
-      setGroupByCols(parsedNav.groupBy ? parsedNav.groupBy.split(",").filter(Boolean) : []);
-      setSelectedFuncs(parsedNav.funcs.length > 0 ? parsedNav.funcs : [...AGG_FUNCS]);
-      setIncludeNodes(parsedNav.includeNodes);
-      setCheckedIncludes(new Set(parsedNav.include));
-    }
-  }, [tables, parsedNav, nav, navInitSeq]);
+    // REQ-1361: seed the pickers from the nav URL so they're the single source of truth for the
+    // fetch URL (avoids the gRPC-page race where a second effect corrected the body too late for
+    // the auto-run to see it) and so the sidebar reflects the incoming query. Every picker takes
+    // the URL's value, empty when it has none: what the last request chose is not this one's.
+    setGroupByCols(parsedNav.groupBy ? parsedNav.groupBy.split(",").filter(Boolean) : []);
+    setSelectedFuncs(
+      !parsedNav.aggregate ? [] : parsedNav.funcs.length > 0 ? parsedNav.funcs : [...AGG_FUNCS],
+    );
+    setIncludeNodes(parsedNav.includeNodes);
+    setCheckedIncludes(new Set(parsedNav.include));
+    setCheckedFields(new Set(parsedNav.fields));
+    setFilterField(parsedNav.filter?.field ?? "");
+    setFilterOp(parsedNav.filter?.op ?? "eq");
+    setFilterValue(parsedNav.filter?.value ?? "");
+    setSortField(parsedNav.sort?.field ?? "");
+    setSortDir(parsedNav.sort?.dir ?? "asc");
+    setHandedParams(parsedNav.handedParams);
+  }, [tables, parsedNav, nav, navInitSeq, selectedTable]);
 
   // Restore the persisted table selection once the table list has loaded (nav-from-NL wins). Gating
   // on tables avoids the "reset selected table if not in list" effect wiping it before load.
@@ -428,7 +413,7 @@ export function JsonApiPage() {
     // single source of truth for the fetch URL — no separate nav-only branch, so there's no
     // stale-vs-corrected race between two sources.
     if (selectedFuncs.length > 0) {
-      const aggParams = new URLSearchParams();
+      const aggParams = new URLSearchParams(handedParams);
       if (roleId) aggParams.set("role", roleId);
       if (paramsParam) aggParams.set("params", paramsParam);
       aggParams.set("aggregate", selectedFuncs.join(","));
@@ -441,7 +426,7 @@ export function JsonApiPage() {
       }
       return `/data/jsonapi/${selectedDomainId}/${selectedTableName}?${aggParams.toString()}`;
     }
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(handedParams);
     if (roleId) params.set("role", roleId);
     if (paramsParam) params.set("params", paramsParam);
     if (filterField && filterValue) {
@@ -477,6 +462,7 @@ export function JsonApiPage() {
     selectedFuncs,
     groupByCols,
     includeNodes,
+    handedParams,
   ]);
 
   const specUrl = useMemo(() => {
@@ -582,6 +568,23 @@ export function JsonApiPage() {
   );
 
   const displayUrl = activeUrl || url;
+
+  // REQ-2115: Polly's read_screen reads the request on screen from here, never the rows.
+  useScreenInputs("/jsonapi", {
+    url,
+    table: effectiveSelectedTable || null,
+    fields: [...checkedFields],
+    include: [...checkedIncludes],
+    filter: filterField ? { field: filterField, op: filterOp, value: filterValue } : null,
+    sort: sortField ? { field: sortField, dir: sortDir } : null,
+    pageSize,
+    groupBy: groupByCols,
+    aggregate: selectedFuncs,
+    status: error ? "failed" : running ? "running" : parsedDoc ? "answered" : "idle",
+    error: error || null,
+    rows: resultMeta?.count ?? null,
+    total: resultMeta?.total ?? null,
+  });
 
   const fieldsSummary =
     checkedFields.size === 0 || checkedFields.size === columnNames.length
@@ -752,6 +755,24 @@ export function JsonApiPage() {
                 disabled={!filterField}
                 data-testid="jsonapi-filter-value-input"
               />
+              {handedParams.length > 0 && (
+                <Group gap={4} mt={4} data-testid="jsonapi-handed-params">
+                  {handedParams.map(([key, value]) => (
+                    <Pill
+                      key={key}
+                      withRemoveButton
+                      removeButtonProps={{
+                        "aria-label": t("jsonApiPage.removeHandedParam", { param: key }),
+                      }}
+                      onRemove={() =>
+                        setHandedParams((prev) => prev.filter(([other]) => other !== key))
+                      }
+                    >
+                      {`${key}=${value}`}
+                    </Pill>
+                  ))}
+                </Group>
+              )}
 
               <div className="jsonapi-section-divider">
                 {t("jsonApiPage.sortSectionTitle")}{" "}
