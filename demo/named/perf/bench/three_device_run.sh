@@ -168,13 +168,13 @@ trap release EXIT
 echo "=== device 3: backends ==="
 _profiles="--profile three-device"
 # The device booted from the stored seed image and its startup script brought the stack up; this
-# is a no-op then, and adds Trino when a run names it. The seeder never runs in a run: a device
-# without seed.py's done-marker is refused. Docker and the agent's docker stats need root. Whether the agent runs is
+# is a no-op then, and adds Trino when a run names it. The seeder never runs in a run: the services
+# are named and it is not one of them, and a device without seed.py's done-marker is refused. Docker and the agent's docker stats need root. Whether the agent runs is
 # asked of the agent itself: a process match would find the remote shell running this command,
 # whose own command line names the agent, and never start it.
 on "$BACKENDS" "cd $PERF_REPO/demo/named/perf && export PROVISA_BENCH_BIND=$PERF_BACKENDS_IP \
   && { test -f data/.seeded || { echo 'data/.seeded is absent: this device is not seeded'; exit 1; }; } \
-  && sudo -E docker compose $_profiles up -d --build --scale seeder=0 $(three_device_services) \
+  && sudo -E docker compose $_profiles up -d --build $(three_device_services) \
   && { sudo -E docker compose $_profiles stop engine-postgresql || true; } \
   && ( { curl -sf http://$PERF_BACKENDS_IP:$AGENT_PORT/host >/dev/null || sudo nohup setsid $PY $BENCH/host_agent.py \
       --listen $PERF_BACKENDS_IP:$AGENT_PORT --fact device=backends > ~/host-agent.log 2>&1; } >/dev/null 2>&1 </dev/null & )"

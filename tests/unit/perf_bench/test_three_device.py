@@ -1695,8 +1695,11 @@ def test_the_dry_run_says_how_each_run_is_checkpointed() -> None:
     for name in ("1-graphql-off", "1-uncached-off", "1-graphql-on"):
         assert f"gsutil cp -r /runs/x/results/{name} gs://bkt/run1/" in out
         assert f"gsutil cp - gs://bkt/run1/{name}/DONE" in out
-    # the run never seeds: the seeder is scaled to nothing, an unseeded device refused
-    assert "--scale seeder=0" in out and "docker compose up seeder" not in out
+    # the run never seeds: the services are named and the seeder is not one (compose refuses
+    # --scale of a service it was not asked for), an unseeded device refused
+    bring_up = next(line for line in out.splitlines() if " up -d --build " in line)
+    assert "postgresql" in bring_up and "seeder" not in bring_up
+    assert "docker compose up seeder" not in out
     assert "test -f data/.seeded" in out
 
 
