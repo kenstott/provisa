@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import types
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import sqlglot
@@ -526,6 +527,45 @@ def test_sql_refuses_the_catalog_naming_the_missing_capability():
     violations = validate_sql(f"SELECT id FROM {CATALOG_NAME}", ctx, gov, role, _tables())
     assert [v.code for v in violations] == ["V001"]
     assert "catalog_read" in violations[0].message
+
+
+class _Routed(Exception):
+    """Raised by the routing stand-in: the statement cleared governance."""
+
+
+async def _govern_catalog_statement(monkeypatch, role: dict) -> None:
+    """A client's catalog statement through the pipeline's top, as ``govern_catalog_plan`` runs it."""
+    import provisa.api.app as app_mod
+    from provisa.pgwire import _pipeline
+    from provisa.pgwire.catalog_route import current_request
+    from tests.unit.test_governed_sql_engine_internals import _state
+
+    _, ctx = _built(role)
+    state = _state(role["domain_access"])
+    state.contexts = {role["id"]: ctx}
+    state.rls_contexts = {role["id"]: RLSContext.empty()}
+    state.roles = {role["id"]: role}
+    state.tables = _tables()
+    monkeypatch.setattr(app_mod, "state", state, raising=False)
+    monkeypatch.setattr("provisa.audit.pipeline.write_audit", AsyncMock(return_value=None))
+    token = current_request.set(types.SimpleNamespace())
+    try:
+        with patch.object(_pipeline, "_optimize_and_route", new=AsyncMock(side_effect=_Routed)):
+            await _pipeline._govern_and_route(f"SELECT id FROM {CATALOG_NAME}", role["id"])
+    finally:
+        current_request.reset(token)
+
+
+async def test_a_catalog_statement_reads_meta_by_the_capability(monkeypatch):
+    with pytest.raises(_Routed):
+        await _govern_catalog_statement(monkeypatch, _flat())
+
+
+async def test_a_catalog_statement_without_the_capability_is_refused_naming_it(monkeypatch):
+    from provisa.compiler.sql_validator import GovernanceRefused
+
+    with pytest.raises(GovernanceRefused, match="catalog_read"):
+        await _govern_catalog_statement(monkeypatch, _flat(LONER))
 
 
 # --- the rest of the one rule ---------------------------------------------------------------------

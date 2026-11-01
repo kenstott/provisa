@@ -87,7 +87,6 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     bypass_relationship_guard: bool = False,
     bypass_uncovered_relationships: bool = False,
     table_functions: frozenset[str] = frozenset(),
-    also_reaches: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
     """Validate SQL against role-scoped GraphQL-equivalent access rules."""
     try:
@@ -107,7 +106,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     domain_access: list[str] = role["domain_access"]
 
     violations += _check_domain_access(
-        tree, gov_ctx, table_id_to_meta, [*domain_access, *also_reaches], cte_names_set
+        tree, gov_ctx, table_id_to_meta, domain_access, cte_names_set
     )
     if not bypass_relationship_guard:
         valid_joins = approved_joins(ctx)
