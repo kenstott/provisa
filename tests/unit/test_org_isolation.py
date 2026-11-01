@@ -529,11 +529,19 @@ async def _transaction():
     yield
 
 
+@asynccontextmanager
+async def _advisory_lock(key: int):
+    del key
+    yield
+
+
 def _seeding_conn() -> AsyncMock:
-    """A connection double the seed runs against: its transaction() is a context, as a real
-    connection's is (each view is created inside one)."""
+    """A connection double the seed runs against: its transaction() and advisory_lock(key) are
+    contexts, as a real connection's are (each view is created inside the one, and the catalog
+    client role inside the other)."""
     conn = AsyncMock()
     conn.transaction = _transaction
+    conn.advisory_lock = _advisory_lock
     return conn
 
 
