@@ -1611,6 +1611,7 @@ _ROWS: tuple[Macro, ...] = (
     *_ARRAYS,
     *_ENUMS,
     *(Macro(name, params, forms) for name, params, forms in pg_forms_system.ROWS),
+    Macro("repeat", ("value", "n"), {_TRINO: pg_forms_system.TRINO_REPEAT, _EVERY: MAPPED}),
     *_OTHERS,
     *_XML,
     *_MONEY,
@@ -2242,6 +2243,8 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return called, [a for a in (node.this, node.args.get("decimals")) if a is not None]
     if isinstance(node, exp.ArrayConcat) and len(node.expressions) == 1:
         return "array_cat", [node.this, node.expressions[0]]
+    if isinstance(node, exp.Repeat):
+        return "repeat", [node.this, node.args["times"]]
     if isinstance(node, exp.ArrayRemove):
         return "array_remove", [node.this, node.expression]
     if isinstance(node, exp.ArrayPosition) and isinstance(node.args.get("zero_based"), exp.Expr):

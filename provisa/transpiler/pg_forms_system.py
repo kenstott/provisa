@@ -255,28 +255,38 @@ _TRINO_REPLACED = (
     f"regexp_replace({_TRINO_FOUND}, pattern, {_TRINO_REPLACEMENT}) || "
     f"substr({_TRINO_TAIL}, {_TRINO_AT} + length({_TRINO_FOUND})) END"
 )
-_CLICKHOUSE_PATTERN = "assumeNotNull(pattern)"
+# Every branch here is compiled whatever the value: no array may be Nullable, so nothing it is made
+# from is, and a NULL or empty pattern, which the checks answer, is one the engine will compile.
+_CLICKHOUSE_PATTERN = "if(assumeNotNull(pattern) = '', '.', assumeNotNull(pattern))"
 _CLICKHOUSE_RESULT = "assumeNotNull(replacement)"
-_CLICKHOUSE_TAIL = "substringUTF8(assumeNotNull(value), start)"
+_CLICKHOUSE_START = "assumeNotNull(start)"
+_CLICKHOUSE_N = "assumeNotNull(n)"
+_CLICKHOUSE_TAIL = f"substringUTF8(assumeNotNull(value), {_CLICKHOUSE_START})"
 _CLICKHOUSE_FOUND = f"extractAll({_CLICKHOUSE_TAIL}, concat('(', {_CLICKHOUSE_PATTERN}, ')'))"
 _CLICKHOUSE_HEAD = (
     "arraySum(arrayMap(_p -> length(_p), "
-    f"arraySlice(splitByRegexp({_CLICKHOUSE_PATTERN}, {_CLICKHOUSE_TAIL}), 1, n))) + "
-    f"arraySum(arrayMap(_m -> length(_m), arraySlice({_CLICKHOUSE_FOUND}, 1, n - 1)))"
+    f"arraySlice(splitByRegexp({_CLICKHOUSE_PATTERN}, {_CLICKHOUSE_TAIL}), 1, {_CLICKHOUSE_N}))) + "
+    f"arraySum(arrayMap(_m -> length(_m), "
+    f"arraySlice({_CLICKHOUSE_FOUND}, 1, {_CLICKHOUSE_N} - 1)))"
 )
+_CLICKHOUSE_NTH = f"arrayElement({_CLICKHOUSE_FOUND}, {_CLICKHOUSE_N})"
 _CLICKHOUSE_REPLACED = (
-    f"if(n = 0, replaceRegexpAll({_CLICKHOUSE_TAIL}, {_CLICKHOUSE_PATTERN}, {_CLICKHOUSE_RESULT}), "
-    f"if(n > length({_CLICKHOUSE_FOUND}), {_CLICKHOUSE_TAIL}, concat("
+    f"if({_CLICKHOUSE_N} = 0, "
+    f"replaceRegexpAll({_CLICKHOUSE_TAIL}, {_CLICKHOUSE_PATTERN}, {_CLICKHOUSE_RESULT}), "
+    f"if({_CLICKHOUSE_N} > length({_CLICKHOUSE_FOUND}), {_CLICKHOUSE_TAIL}, concat("
     f"substring({_CLICKHOUSE_TAIL}, 1, {_CLICKHOUSE_HEAD}), "
-    f"replaceRegexpOne(arrayElement({_CLICKHOUSE_FOUND}, n), {_CLICKHOUSE_PATTERN}, "
+    f"replaceRegexpOne({_CLICKHOUSE_NTH}, {_CLICKHOUSE_PATTERN}, "
     f"{_CLICKHOUSE_RESULT}), "
     f"substring({_CLICKHOUSE_TAIL}, {_CLICKHOUSE_HEAD} + "
-    f"length(arrayElement({_CLICKHOUSE_FOUND}, n)) + 1))))"
+    f"length({_CLICKHOUSE_NTH}) + 1))))"
 )
 _REPLACED = {
     id(_DUCKDB_ENGINE): ("left(value, start - 1)", _DUCKDB_REPLACED),
     id(_TRINO_ENGINE): ("substr(value, 1, start - 1)", _TRINO_REPLACED),
-    id(_CLICKHOUSE_ENGINE): ("leftUTF8(assumeNotNull(value), start - 1)", _CLICKHOUSE_REPLACED),
+    id(_CLICKHOUSE_ENGINE): (
+        f"leftUTF8(assumeNotNull(value), {_CLICKHOUSE_START} - 1)",
+        _CLICKHOUSE_REPLACED,
+    ),
 }
 
 
@@ -289,7 +299,8 @@ def _regexp_replace_nth(engine: _Engine) -> str:
         answer = f"concat({before}, {replaced})"
         return (
             f"if({nulls}, NULL, if("
-            f"throwIf(coalesce(start < 1 OR n < 0 OR {_regexp_refused(engine)}, 0), "
+            f"throwIf(coalesce(NOT ({nulls}) AND "
+            f"(start < 1 OR n < 0 OR {_regexp_refused(engine)}), 0), "
             f"{_marked('0A000', f'regexp_replace {REFUSED}')}) = 0, "
             f"{answer}, NULL))"
         )
@@ -307,6 +318,14 @@ def _regexp_replace_nth(engine: _Engine) -> str:
 
 
 _REGEXP_PARAMS = ("value", "pattern", "replacement", "start", "n")
+
+#: repeat on Trino, whose own builds an array: strict, and nothing for a count below one. rpad takes
+#: the length in characters and refuses an empty padding.
+TRINO_REPEAT = (
+    "CASE WHEN value IS NULL OR n IS NULL THEN CAST(NULL AS VARCHAR) "
+    "WHEN n < 1 OR value = '' THEN '' "
+    "ELSE rpad('', n * length(value), value) END"
+)
 
 
 def _rows() -> tuple[tuple[str, tuple[str, ...], dict[frozenset[str], str]], ...]:
