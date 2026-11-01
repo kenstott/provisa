@@ -144,7 +144,7 @@ async def test_sources_cache_and_tables_cache_never_collide_on_same_state(monkey
     async def _list_all(conn):
         return [_ROW]
 
-    async def _fetch_tables(conn):
+    async def _fetch_tables(conn, **_kw):
         return []
 
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _list_all)

@@ -96,6 +96,7 @@ def _state() -> SimpleNamespace:
         schema_boot_id="boot",
         schema_version=1,
         compiled_query_cache=CompiledQueryCache(),
+        source_types={},
         cypher_label_maps={},
         model_db=None,
         tenant_db=None,
@@ -363,7 +364,7 @@ async def test_a_repeated_http_statement_is_translated_once(monkeypatch, builds)
 
     state = _state()
     pipe = _Pipeline(monkeypatch, state)
-    monkeypatch.setattr("provisa.compiler.stage2.build_governance_context", MagicMock())
+    monkeypatch.setattr("provisa.pgwire.governed_plan.role_governance", MagicMock())
     validate = MagicMock(return_value=[])
     monkeypatch.setattr("provisa.compiler.sql_validator.validate_sql", validate)
     request = MagicMock()
@@ -455,7 +456,7 @@ async def test_data_cypher_reports_hit_on_a_hit_and_miss_on_a_miss(monkeypatch):
     from provisa.api.rest.cypher_router import CypherRequest, cypher_query
 
     _Pipeline(monkeypatch, _state())
-    monkeypatch.setattr("provisa.compiler.stage2.build_governance_context", MagicMock())
+    monkeypatch.setattr("provisa.pgwire.governed_plan.role_governance", MagicMock())
     monkeypatch.setattr("provisa.compiler.sql_validator.validate_sql", MagicMock(return_value=[]))
     request = MagicMock()
     request.state.role = "analyst"
@@ -515,7 +516,7 @@ async def test_data_cypher_forces_a_redirect_named_by_its_headers_and_answers_th
     state = _state()
     state.settings_overrides = {}  # the operator's redirect settings: the defaults
     pipe = _Pipeline(monkeypatch, state)
-    monkeypatch.setattr("provisa.compiler.stage2.build_governance_context", MagicMock())
+    monkeypatch.setattr("provisa.pgwire.governed_plan.role_governance", MagicMock())
     monkeypatch.setattr("provisa.compiler.sql_validator.validate_sql", MagicMock(return_value=[]))
     handle = {"sink": "object-store", "redirect_url": "https://x/r", "row_count": 3}
     pipe.terminal.return_value = QueryResult(rows=[], column_names=[], redirect=handle)
@@ -541,7 +542,7 @@ async def test_data_cypher_without_the_header_forces_nothing(monkeypatch):
     from provisa.api.rest.cypher_router import CypherRequest, cypher_query
 
     pipe = _Pipeline(monkeypatch, _state())
-    monkeypatch.setattr("provisa.compiler.stage2.build_governance_context", MagicMock())
+    monkeypatch.setattr("provisa.pgwire.governed_plan.role_governance", MagicMock())
     monkeypatch.setattr("provisa.compiler.sql_validator.validate_sql", MagicMock(return_value=[]))
     request = MagicMock()
     request.state.role = "analyst"

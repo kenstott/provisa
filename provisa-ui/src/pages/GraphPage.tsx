@@ -333,12 +333,21 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
             seenRel.add(key);
             return true;
           })
-          .map((r: { type: string; source: string; target: string; properties?: string[] }) => ({
-            type: r.type,
-            source: r.source ?? "",
-            target: r.target ?? "",
-            properties: r.properties ?? [],
-          }));
+          .map(
+            (r: {
+              type: string;
+              source: string;
+              target: string;
+              properties?: string[];
+              join: string;
+            }) => ({
+              type: r.type,
+              source: r.source ?? "",
+              target: r.target ?? "",
+              properties: r.properties ?? [],
+              join: r.join,
+            }),
+          );
         const seen = new Set<string>();
         const uniqueNodeLabels = nodeLabels.filter((n) => {
           const key = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
@@ -653,38 +662,20 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
       const frame = framesRef.current.find((fr) => fr.id === frameId);
       if (!frame) return;
 
-      const {
-        query: newQueryBase,
-        targetVars,
-        notices,
-      } = buildDropExpansion(frame.query, compoundLabel, schemaRels);
-
-      const droppedNode = schemaNodeLabels.find((n) => {
-        const cl = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
-        return cl === compoundLabel;
-      });
-      if (droppedNode && droppedNode.nativeFilterColumns.length > 0) {
-        // Every hop lands on its own copy of the same parameterized node, so the arguments the
-        // steward supplies once have to bind on each of them — an unbound copy is not a filter
-        // that matched nothing, it is a pattern the binder cannot satisfy.
-        const tvs = targetVars;
-        const nfc = droppedNode.nativeFilterColumns;
-        setNfModal({
-          label: droppedNode.tableLabel,
-          filterColumns: nfc,
-          onConfirm: (params) => {
-            setNfModal(null);
-            const clauses = tvs.flatMap((tv) => nativeFilterClauses(tv, nfc, params));
-            const whereStr = clauses.length > 0 ? `\nWHERE ${clauses.join(" AND ")}` : "";
-            const finalQuery = newQueryBase.replace(/(\nRETURN )/, `${whereStr}$1`);
-            rerunFrame(frameId, finalQuery, { notices });
-          },
-        });
-      } else {
-        rerunFrame(frameId, newQueryBase, { notices });
+      const parameterized = new Set(
+        schemaNodeLabels
+          .filter((n) => n.nativeFilterColumns.length > 0)
+          .map((n) => (n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel)),
+      );
+      const done = buildDropExpansion(frame.query, compoundLabel, schemaRels, parameterized);
+      if ("refused" in done) {
+        const { refused } = done;
+        changeFrame(frameId, () => ({ dropNotices: [refused], dropLimit: undefined }));
+        return;
       }
+      rerunFrame(frameId, done.query, { notices: done.notices });
     },
-    [rerunFrame, schemaRels, schemaNodeLabels],
+    [changeFrame, rerunFrame, schemaRels, schemaNodeLabels],
   );
 
   const { onSparqlDrop, onNodePath } = useFramePaths({

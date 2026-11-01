@@ -666,11 +666,21 @@ def _roles(product: "DataProductAsset", table: "TableAsset") -> list[dict[str, A
     ]
 
 
+def _api_server(server: str, description: str, location: str) -> dict[str, Any]:
+    return {"server": server, "type": "api", "description": description, "location": location}
+
+
 def _servers(
     snapshot: "MetadataSnapshot", product: "DataProductAsset", table: "TableAsset"
 ) -> list[dict[str, Any]]:
-    """The endpoints a consumer reads the member through: pgwire, Flight SQL, GraphQL, REST."""
+    """The endpoints a consumer reads the member through: pgwire, Flight SQL, gRPC, GraphQL, REST
+    and its OpenAPI description narrowed to the member, JSON:API and SPARQL. A listener not started or a surface not
+    mounted is no server, and neither is a surface that does not serve the table: a table SQL
+    alone serves has only the SQL listeners (REQ-2163), and a declared junction, an edge of the
+    graph, is no class of the SPARQL vocabulary (REQ-1586)."""
     from provisa.compiler.naming import domain_to_sql_name
+    from provisa.grpc.descriptor import SERVICE_NAME
+    from provisa.security.rights import SQL_ONLY_TABLES
 
     endpoints = snapshot.endpoints
     if endpoints is None:
@@ -700,20 +710,40 @@ def _servers(
                 "schema": domain_to_sql_name(product.domain_id),
             }
         )
-    servers += [
-        {
-            "server": "graphql",
-            "type": "api",
-            "description": "GraphQL",
-            "location": f"{endpoints.http_origin}/data/graphql",
-        },
-        {
-            "server": "rest",
-            "type": "api",
-            "description": "REST",
-            "location": f"{endpoints.http_origin}/data/rest/{product.domain_id}/{table.name}",
-        },
-    ]
+    if (product.domain_id, table.name) in SQL_ONLY_TABLES:
+        return servers
+    if endpoints.grpc_port is not None:
+        servers.append(
+            {
+                "server": "grpc",
+                "type": "custom",
+                "description": "gRPC",
+                "host": endpoints.hostname,
+                "port": endpoints.grpc_port,
+                "serviceName": SERVICE_NAME,
+            }
+        )
+    origin, paths = endpoints.http_origin, endpoints.http_paths
+    member = f"{product.domain_id}/{table.name}"
+    if path := paths.get("GraphQL"):
+        servers.append(_api_server("graphql", "GraphQL", f"{origin}{path}"))
+    if path := paths.get("REST"):
+        servers.append(_api_server("rest", "REST", f"{origin}{path}/{member}"))
+        servers.append(
+            _api_server(
+                "openapi",
+                "OpenAPI description of the REST endpoints",
+                f"{origin}{path}/openapi.json?domains={product.domain_id}&tables={table.name}",
+            )
+        )
+    if path := paths.get("JSON:API"):
+        servers.append(_api_server("jsonapi", "JSON:API", f"{origin}{path}/{member}"))
+    junction = any(
+        edge.via is not None and edge.via.table.parts == table.ref.parts
+        for edge in snapshot.relationships
+    )
+    if (path := paths.get("SPARQL")) and not junction:
+        servers.append(_api_server("sparql", "SPARQL 1.1 Protocol", f"{origin}{path}"))
     return servers
 
 

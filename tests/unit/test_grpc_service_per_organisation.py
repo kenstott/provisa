@@ -562,7 +562,12 @@ def meta_reach(monkeypatch):
                 "capabilities": ["usage"],
                 "domain_access": ["sales"],
             },
-            {"id": "cataloguer", "capabilities": ["usage"], "domain_access": ["sales", "meta"]},
+            # REQ-1132: as flattening writes a role holding catalog_read.
+            {
+                "id": "cataloguer",
+                "capabilities": ["usage", "catalog_read"],
+                "domain_access": ["sales", "meta"],
+            },
         ],
     )
 
@@ -574,15 +579,14 @@ def _rpcs(proto: str) -> set[str]:
 
 
 def test_a_table_only_traversed_to_has_no_rpc_as_it_has_no_root_field(meta_reach):
-    """Every role's surface holds the catalog tables, to be read through each type's ``_meta``.
-    A role that does not reach the catalog domain has no root field for them in its GraphQL
+    """A role holding no catalog_read has no root field for the catalog tables in its GraphQL
     Query type -- and no RPC for them in its service, whose Query message already says so."""
     state = meta_reach
     without, with_reach = state.proto_files["sales_reader"], state.proto_files["cataloguer"]
     assert _table_fields(state.schemas["sales_reader"]) == ["orders"]
     assert {r for r in _rpcs(without) if "Meta" in r} == set()
     assert {"QueryOrders", "QueryOrdersBatch"} <= _rpcs(without)
-    assert "message RegisteredTablesMeta {" in without, "its message stays: it is traversed to"
+    assert "message RegisteredTablesMeta {" not in without, "the capability opens the domain"
 
     roots = sorted(state.schemas["cataloguer"].query_type.fields)
     assert "registeredTablesMeta" in roots and "orders" in roots

@@ -18,9 +18,12 @@ type with its source and target; and the live Concept terms."""
 
 from __future__ import annotations
 
+import dataclasses
+
 from provisa.sparql_query.vocabulary import (
     RDF,
     XSD,
+    Grounding,
     build_vocabulary,
     concepts_of,
     superclasses_of,
@@ -68,12 +71,16 @@ def test_each_class_is_a_tables_own_or_a_class_term_with_the_labels_it_types():
         "iri": PERSON,
         "kind": "table",
         "labels": ["Person"],
+        "parameterized": False,
+        "parameterized_labels": [],
         "superclasses": [],
     }
     assert classes[COMPANY] == {
         "iri": COMPANY,
         "kind": "table",
         "labels": ["Company"],
+        "parameterized": False,
+        "parameterized_labels": [],
         "superclasses": [],
     }
     # A Class term with no KIND_OF edge has no superclass.
@@ -81,6 +88,8 @@ def test_each_class_is_a_tables_own_or_a_class_term_with_the_labels_it_types():
         "iri": EMPLOYEE,
         "kind": "term",
         "labels": ["Person"],
+        "parameterized": False,
+        "parameterized_labels": [],
         "superclasses": [],
         "domains": [],
     }
@@ -107,7 +116,7 @@ def test_each_predicate_is_a_columns_own_or_a_property_term_with_its_datatype():
 
 
 def test_each_edge_type_with_its_source_and_target():
-    edges = _doc()["edges"]
+    edges = [{k: e[k] for k in ("iri", "type", "source", "target")} for e in _doc()["edges"]]
     assert {"iri": KNOWS, "type": "KNOWS", "source": "Person", "target": "Person"} in edges
     assert {"iri": WORKS_AT, "type": "WORKS_AT", "source": "Person", "target": "Company"} in edges
 
@@ -175,3 +184,39 @@ def test_a_term_carries_its_domains_and_a_tables_own_class_does_not():
     predicates = {p["iri"]: p for p in doc["predicates"]}
     assert predicates[FULL_NAME]["domains"] == []
     assert all("domains" not in p for p in doc["predicates"] if p["kind"] == "column")
+
+
+def _parameterized_doc() -> dict:
+    lm = _model()
+    person = lm.nodes["Person"]
+    lm.nodes["Person"] = dataclasses.replace(person, native_filter_columns={"_nf_age": "integer"})
+    vocab = build_vocabulary(lm, BASE, _TYPES, _GROUNDING)
+    return vocabulary_document(vocab, [], {}, {})
+
+
+def test_a_class_says_it_is_parameterized_and_which_labels_are():
+    classes = {c["iri"]: c for c in _parameterized_doc()["classes"]}
+    assert classes[PERSON]["parameterized"] is True
+    assert classes[PERSON]["parameterized_labels"] == ["Person"]
+    assert classes[COMPANY]["parameterized"] is False
+    assert classes[COMPANY]["parameterized_labels"] == []
+    # A class term of the parameterized table's label says so too.
+    assert classes[EMPLOYEE]["parameterized"] is True
+
+
+def test_a_class_term_of_tables_some_parameterized_is_not_parameterized_itself():
+    lm = _model()
+    person = lm.nodes["Person"]
+    lm.nodes["Person"] = dataclasses.replace(person, native_filter_columns={"_nf_age": "integer"})
+    grounding = Grounding(class_terms={"Person": "Staff", "Company": "Staff"})
+    vocab = build_vocabulary(lm, BASE, _TYPES, grounding)
+    doc = vocabulary_document(vocab, [], {}, {})
+    staff = next(c for c in doc["classes"] if c["iri"] == term_iri(BASE, "Staff"))
+    assert staff["parameterized"] is False
+    assert staff["parameterized_labels"] == ["Person"]
+
+
+def test_an_edge_says_what_it_joins():
+    edges = {e["type"]: e for e in _doc()["edges"]}
+    assert edges["KNOWS"]["join"] == _model().relationships["KNOWS"].join
+    assert edges["KNOWS"]["join"] != edges["WORKS_AT"]["join"]

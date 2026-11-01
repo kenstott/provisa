@@ -22,7 +22,13 @@ import sqlglot
 
 from provisa.federation.duckdb_pg_functions import register
 from provisa.transpiler import function_macros
-from provisa.transpiler.function_macros import MACROS, FunctionRefused, inline, outcome
+from provisa.transpiler.function_macros import (
+    MACROS,
+    REFUSED_ROWS,
+    FunctionRefused,
+    inline,
+    outcome,
+)
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb, transpile_to_trino
 
 _DIALECTS = (
@@ -61,19 +67,22 @@ def _one(con, sql: str):
 
 def test_no_function_is_left_a_macro_on_the_engine(con):
     macros = {
-        row[0]
+        (row[0], len(row[1]))
         for row in con.execute(
-            "SELECT DISTINCT function_name FROM duckdb_functions() "
+            "SELECT DISTINCT function_name, parameters FROM duckdb_functions() "
             "WHERE function_type = 'macro' AND schema_name = 'main'"
         ).fetchall()
     }
-    assert not macros & {name for name, _ in MACROS}
+    assert not macros & set(MACROS)
 
 
 @pytest.mark.parametrize(("name", "arity"), sorted(MACROS))
 def test_every_overload_is_native_on_postgresql_and_has_a_form_on_duckdb(name, arity):
     assert outcome(name, arity, "postgres") == "native"
-    assert outcome(name, arity, "duckdb") == "emulated"
+    # REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED: replay found no form answering as PostgreSQL does.
+    assert outcome(name, arity, "duckdb") == (
+        "refused" if (name, arity) in REFUSED_ROWS else "emulated"
+    )
 
 
 @pytest.mark.parametrize("dialect", _DIALECTS)
@@ -84,6 +93,7 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         args = [f"p{i}" for i in range(arity)]
         # A column of no said type is refused by name: only the statement tells inet from cidr.
         said = ["p0::inet", *args[1:]] if name == "set_masklen" else args
+        said = [args[0], "2"] if name in ("round_numeric", "trunc_numeric") else said
         out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect)
         columns = {
             c.name for c in sqlglot.parse_one(out, read=dialect).find_all(sqlglot.exp.Column)
@@ -141,7 +151,7 @@ def test_a_form_survives_the_engines_own_rewrites():
         ("SELECT sind(x) FROM t", "trino", "sind"),
         ("SELECT regexp_match(a, b) FROM t", "snowflake", "regexp_match"),
         ("SELECT center(a) FROM t", "bigquery", "center"),
-        ("SELECT a FROM t WHERE jsonb_typeof(a) = 'object'", "clickhouse", "jsonb_typeof"),
+        ("SELECT a FROM t WHERE jsonb_pretty(a) = 'object'", "clickhouse", "jsonb_pretty"),
         ("SELECT textlike(a, b) FROM t", "mysql", "textlike"),
         ("SELECT regexp_substr(a, b) FROM t", "clickhouse", "regexp_substr"),
         ("SELECT time(a) FROM t", "trino", "time"),
@@ -272,5 +282,5 @@ def test_a_byte_out_of_range_is_postgresqls_error(con):
 
 
 def test_a_bit_string_of_an_integer_is_its_low_bits(con):
-    assert _one(con, "SELECT bit(5, 8)::text") == [("101",)]
-    assert _one(con, "SELECT bit(-1, 4)::text") == [("1111",)]
+    assert _one(con, 'SELECT "bit"(5, 8)::text') == [("00000101",)]
+    assert _one(con, 'SELECT "bit"(-1, 4)::text') == [("1111",)]

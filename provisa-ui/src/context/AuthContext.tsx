@@ -83,6 +83,7 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "environment_owned_management", // REQ-2155: inherited from developer
     "environment_data", // REQ-1942
     "sensitive_data", // REQ-1943
+    "catalog_read", // REQ-1132
     "glossary_read", // REQ-1590
     "glossary_rw", // REQ-1590
     "org_glossary_rw", // REQ-1592

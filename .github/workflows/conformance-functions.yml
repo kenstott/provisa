@@ -1,16 +1,18 @@
 name: Conformance (functions)
 
-# REQ-2167 (THE GOAL IS THE GUARANTEED LIST), REQ-2171 (AN ANSWER THAT DIFFERS IS REFUSED): which
-# pg_catalog functions work today, per federation engine. Measurement only: it writes no function
-# form, and nothing it finds fails a gate. Separate from Conformance (pgwire), whose land gate reads
-# its own report.
+# REQ-2167 (THE GOAL IS THE GUARANTEED LIST), REQ-2171 (AN ANSWER THAT DIFFERS IS REFUSED, EXACT OR
+# EQUIVALENT, RESULTS ARE BY ENGINE): which pg_catalog functions work today, per federation engine.
+# Each overload has a result on each engine: exact, equivalent under a written rule, refused by name
+# or differs. Nothing adds the engines up. Measurement only: it writes no function form, and nothing
+# it finds fails a gate. Separate from Conformance (pgwire), whose land gate reads its own report.
 #
 # One leg per free engine that boots on a runner, each the instance every conformance job tests
 # (.github/actions/conformance-instance) on that engine, measured against the same real PostgreSQL
 # by scripts/conformance/function_support.py, whose docstring says exactly what is compared. A leg
 # is failed only when it left the measurement unfinished, never by a wrong answer. A last job
-# merges the legs into scripts/conformance/function_support.json, with the guaranteed list, and is
-# failed when any leg left no complete result: such a list guarantees nothing.
+# merges the legs into scripts/conformance/function_support.json, with the guaranteed list, fills
+# the per-engine sections of docs/conformance/pgwire.md and overview.md from it, and uploads all
+# three. It is failed when any leg left no complete result: such a list guarantees nothing.
 #
 # Engines left out: the paid warehouses (snowflake, databricks, bigquery, fabric, synapse,
 # motherduck) need credentials; clickhouse-server is the clickhouse leg's runtime on a server of
@@ -163,7 +165,7 @@ jobs:
           if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi
 
   merge:
-    name: guaranteed list
+    name: results by engine
     needs: probe
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -192,12 +194,16 @@ jobs:
             --out scripts/conformance/function_support.json \
             --out-md "$RUNNER_TEMP/function-support.md" || status=$?
           cat "$RUNNER_TEMP/function-support.md" >> "$GITHUB_STEP_SUMMARY"
+          .venv/bin/python scripts/conformance/fill_docs.py scripts/conformance/function_support.json
           exit "$status"
 
-      - name: Upload the data file
+      - name: Upload the data file and the pages
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: function-support
-          path: scripts/conformance/function_support.json
+          path: |
+            scripts/conformance/function_support.json
+            docs/conformance/pgwire.md
+            docs/conformance/overview.md
           if-no-files-found: error

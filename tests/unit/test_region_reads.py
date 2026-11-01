@@ -196,7 +196,7 @@ async def test_a_table_kept_in_another_region_is_read_where_that_region_reads_it
         }
     ]
 
-    async def _fetch_tables(_conn):
+    async def _fetch_tables(_conn, **_kw):
         return registered
 
     engine = build_engine("trino")

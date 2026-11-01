@@ -52,9 +52,20 @@ class RoleState(SimpleNamespace):
         attrs.setdefault("meta_roles", {})
         # As the real state bound to no org: no control plane (AppState.model_db).
         attrs.setdefault("model_db", None)
+        # As the real state before startup: no gRPC server started and no HTTP surface mounted.
+        attrs.setdefault("_grpc_server", None)
+        attrs.setdefault("http_surfaces", frozenset())
         # As the real state: each role it serves a surface for is a stored role (here, with no
         # limits of its own).
         attrs.setdefault("roles", {r: {"id": r} for r in parts.get("contexts") or {}})
+        # As the real state: a generation, its plan store and the sources' types (no source here).
+        attrs.setdefault("schema_boot_id", "boot")
+        attrs.setdefault("schema_version", 1)
+        attrs.setdefault("source_types", {})
+        if "compiled_query_cache" not in attrs:
+            from provisa.compiler.compiled_query_cache import CompiledQueryCache
+
+            attrs["compiled_query_cache"] = CompiledQueryCache(ttl_seconds=0.0, expires=False)
         if "org_registry" not in attrs:
             # As the real state: it always holds a registry, empty until an org's runtime is built.
             from provisa.api.org_runtime import OrgRegistry

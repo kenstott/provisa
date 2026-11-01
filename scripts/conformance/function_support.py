@@ -18,13 +18,18 @@ and the guaranteed list.
 
 Each overload gets one outcome per engine:
 
-  pass          every call PostgreSQL answered, Provisa answered the same
+  pass          every call PostgreSQL answered, Provisa answered the same, or the same under a
+                written rule, which the overload's ``rules`` name (function_report.RULES)
   wrong_answer  a call compares unequal: its result type, its rows, their values or their form
-  error         PostgreSQL answered a call and Provisa did not (the engine's message is kept)
+  error         PostgreSQL answered a call and the engine failed with no named refusal (its
+                message is kept)
+  refused       PostgreSQL answered a call and Provisa refused it by name
   not_callable  PostgreSQL itself answers no call of it
   not_reached   the leg ended, or its server went away, before this overload
 
-A wrong answer outranks an error, which outranks a pass: the overload is as bad as its worst call.
+A wrong answer outranks an error, which outranks a refusal, which outranks a pass: the overload is
+as bad as its worst call. function_report.py says what each outcome is on the report (exact,
+equivalent, refused by name or differs); there is no overall count, only one per engine.
 
 The calls of an overload are the NULL call of pgwire_function_probe.py and, where ``value_calls``
 can write them, up to three calls with real values. How far values go, exactly:
@@ -51,10 +56,12 @@ set Provisa leaves empty, is no form to check. The rest are ``only called`` and 
 a strict function proves the call was served and its type, not its answer. Three literals, not a
 domain: a function that differs only on values no sample reaches passes here.
 
-The result is text format under one set of session settings. Rows compare as a multiset (no call
-has an ORDER BY of its own to hold them to); values exactly, except float4 and float8, and their
-arrays, within one part in 10^14 (REQ-2171). The NULL call of a stable or volatile function
-compares its type alone.
+The result is text format under one set of session settings. ``compare`` says whether an answer is
+the same, and under which rules when its text is not: rows as a multiset (no call has an ORDER BY of
+its own to hold them to), float4 and float8 and their arrays within one part in 10^14, numerics by
+value, JSON by ``json_rules``, a JSON value in a record, an enum label as text, and a listed
+function's answer about its own database. The NULL call of a stable or volatile function compares
+its type alone.
 
 The session is UTC, and so are a runner and its PostgreSQL service: an engine that ignores the
 session's TimeZone answers the same here and is not told apart. Run off UTC, the pg engine's
@@ -67,6 +74,7 @@ UTC, under ``ZONE``, where the zone is in the text they write.
 from __future__ import annotations
 
 import argparse
+import decimal
 import json
 import math
 import re
@@ -74,7 +82,7 @@ import select
 import sys
 import time
 from collections import Counter
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -82,8 +90,19 @@ from typing import Any
 import psycopg
 from psycopg import pq
 
+import function_report
 import pgwire_catalog_types as catalog
 import pgwire_function_probe as function_probe
+from function_report import (
+    ARRAY_ORDER,
+    ENUM_LABEL,
+    FLOAT_CLOSE,
+    JSON_KEY_ORDER,
+    JSON_SPACING,
+    MODEL_ANSWER,
+    NUMBER_VALUE,
+    ROW_ORDER,
+)
 from pgwire_function_probe import Function
 
 #: The session settings both servers compare under.
@@ -105,6 +124,15 @@ VALUE_ROWS = 3
 
 #: Floats compare within one part in this (REQ-2171).
 FLOAT_TOLERANCE = 1e-14
+
+#: json and jsonb: they compare as parsed JSON (REQ-2171).
+JSON_OIDS = frozenset({114, 3802})
+#: A read of json that answers text, which for a number or a container is JSON still.
+_JSON_TEXT_READ = re.compile(r'->>|#>>|jsonb?_\w*_text"?\(')
+_JSON_NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+#: What leaves an array's order open, and what closes it (REQ-2171, ARRAY ORDER NEEDS AN ORDER BY).
+_ARRAY_AGGREGATE = re.compile(r"\b(?:jsonb?_agg|array_agg|json_arrayagg)", re.IGNORECASE)
+_ORDER_BY = re.compile(r"\bORDER\s+BY\b", re.IGNORECASE)
 
 #: The families whose stable functions depend on the session settings alone. Stable functions
 #: elsewhere (System above all) read the catalog or the session.
@@ -131,8 +159,26 @@ CLOCK_FUNCTIONS = frozenset({"age", "now", "transaction_timestamp", "statement_t
 ZONED_FUNCTIONS = frozenset({"timeofday"})
 ZONE = "Asia/Tokyo"
 
+#: Answers about the database they run on, whose contents are that database's: XML either way
+#: (function_report.MODEL_ANSWER).
+MODEL_FUNCTIONS = frozenset(
+    {
+        "database_to_xml",
+        "database_to_xml_and_xmlschema",
+        "database_to_xmlschema",
+        "schema_to_xml",
+        "schema_to_xml_and_xmlschema",
+        "schema_to_xmlschema",
+    }
+)
+
 _FLOAT_OIDS = frozenset({700, 701})
 _FLOAT_ARRAY_OIDS = frozenset({1021, 1022})
+_NUMERIC_OID = 1700
+_NUMERIC_ARRAY_OID = 1231
+_TEXT_OIDS = frozenset({25, 1009})
+_ANYENUM_OID = 3500
+_TEXT_OID = 25
 _VOID_OID = 2278
 _RECORD_OID = 2249
 
@@ -580,6 +626,13 @@ def _result(res: Any) -> dict[str, Any]:
 # --- comparison -------------------------------------------------------------------------------
 
 
+#: What a comparison answers: None if the two differ, else the rules that made them the same, none
+#: when their text is.
+Rules = frozenset[str] | None
+
+_SAME: frozenset[str] = frozenset()
+
+
 def _floats_equal(a: str, b: str) -> bool:
     try:
         x, y = float(a), float(b)
@@ -590,54 +643,277 @@ def _floats_equal(a: str, b: str) -> bool:
     return abs(x - y) <= FLOAT_TOLERANCE * max(abs(x), abs(y))
 
 
-def _value_equal(want: str | None, got: str | None, oid: int) -> bool:
-    if want == got:
-        return True
-    if want is None or got is None:
-        return False
-    if oid in _FLOAT_OIDS:
-        return _floats_equal(want, got)
-    if oid in _FLOAT_ARRAY_OIDS:
-        a, b = want.strip("{}").split(","), got.strip("{}").split(",")
-        return len(a) == len(b) and all(
-            x == y or _floats_equal(x, y) for x, y in zip(a, b, strict=True)
-        )
-    return False
-
-
-def _order(row: tuple, fields: list[int]) -> tuple:
-    """A float sorts by its value, so a last-digit difference does not misalign two multisets."""
-    key: list[tuple[int, float, str]] = []
-    for value, oid in zip(row, fields, strict=True):
-        if value is None:
-            key.append((1, 0.0, ""))
-        elif oid in _FLOAT_OIDS:
-            try:
-                key.append((0, float(value), ""))
-            except ValueError:
-                key.append((0, 0.0, value))
-        else:
-            key.append((0, 0.0, value))
-    return tuple(key)
-
-
-def difference(want: dict[str, Any], got: dict[str, Any], *, values: bool) -> str | None:
-    """How Provisa's answer differs from PostgreSQL's; None if it does not. ``values`` False
-    compares the result types alone."""
-    if want["fields"] != got["fields"]:
-        return f"result type oids {got['fields']}, PostgreSQL {want['fields']}"
-    if not values:
+def _float_rules(want: str, got: str) -> Rules:
+    if not _floats_equal(want, got):
         return None
-    fields = want["fields"]
-    a = sorted(want["rows"], key=lambda r: _order(r, fields))
-    b = sorted(got["rows"], key=lambda r: _order(r, fields))
+    return frozenset({NUMBER_VALUE if float(want) == float(got) else FLOAT_CLOSE})
+
+
+def _numeric_rules(want: str, got: str) -> Rules:
+    try:
+        return frozenset({NUMBER_VALUE}) if decimal.Decimal(want) == decimal.Decimal(got) else None
+    except decimal.InvalidOperation:
+        return None
+
+
+def _array_rules(want: str, got: str, element: Callable[[str, str], Rules]) -> Rules:
+    """An array of numbers, element by element."""
+    a, b = want.strip("{}").split(","), got.strip("{}").split(",")
     if len(a) != len(b):
-        return f"{len(b)} rows, PostgreSQL {len(a)}"
+        return None
+    found = [_SAME if x == y else element(x, y) for x, y in zip(a, b, strict=True)]
+    return None if None in found else frozenset().union(*found)
+
+
+def _unmatched(want: Iterable, got: Iterable, same: Callable) -> tuple[list, list]:
+    """What is left of each multiset once every item of ``want`` has taken its ``same`` in ``got``."""
+    missing, left = [], list(got)
+    for item in want:
+        match = next((i for i, other in enumerate(left) if same(item, other)), None)
+        if match is None:
+            missing.append(item)
+        else:
+            del left[match]
+    return missing, left
+
+
+def _json_number(value: Any) -> bool:
+    return isinstance(value, int | float | decimal.Decimal) and not isinstance(value, bool)
+
+
+def _parsed_rules(a: Any, b: Any) -> Rules:
+    """Two parsed JSON values: objects by key, numbers by value, arrays in order."""
+    if _json_number(a) and _json_number(b):
+        if str(a) == str(b):
+            return _SAME
+        if isinstance(a, int) and isinstance(b, int):
+            return None
+        if decimal.Decimal(a) == decimal.Decimal(b):
+            return frozenset({NUMBER_VALUE})
+        return frozenset({FLOAT_CLOSE}) if _floats_equal(str(a), str(b)) else None
+    if type(a) is not type(b):
+        return None
+    if isinstance(a, dict):
+        if a.keys() != b.keys():
+            return None
+        found = [_parsed_rules(a[key], b[key]) for key in a]
+        if None in found:
+            return None
+        return frozenset().union(*found, {JSON_KEY_ORDER} if list(a) != list(b) else ())
+    if isinstance(a, list):
+        if len(a) != len(b):
+            return None
+        found = list(map(_parsed_rules, a, b))
+        return None if None in found else frozenset().union(*found)
+    return _SAME if a == b else None
+
+
+def _array_in_any_order(a: list, b: list) -> Rules:
+    """An aggregate's array: its elements as a multiset, what let each match kept."""
+    found: set[str] = {ARRAY_ORDER}
+
+    def same(x: Any, y: Any) -> bool:
+        rules = _parsed_rules(x, y)
+        if rules is None:
+            return False
+        found.update(rules)
+        return True
+
+    return None if any(_unmatched(a, b, same)) else frozenset(found)
+
+
+def _spacing(text: str) -> int:
+    """How much whitespace ``text``, which is JSON, has between its tokens."""
+    return sum(ch.isspace() for ch in re.sub(r'"(?:[^"\\]|\\.)*"', '""', text))
+
+
+def json_rules(want: str, got: str, sql: str) -> Rules:
+    """Whether two answers of ``sql`` are the same JSON (REQ-2171), and under which rules. The array
+    an aggregate answers with, in a statement with no ORDER BY, has no order to hold it to. A side
+    that does not parse compares as text."""
+    try:
+        a = json.loads(want, parse_float=decimal.Decimal)
+        b = json.loads(got, parse_float=decimal.Decimal)
+    except ValueError:
+        return _SAME if want == got else None
+    rules = _parsed_rules(a, b)
+    aggregate = _ARRAY_AGGREGATE.search(sql) and not _ORDER_BY.search(sql)
+    if rules is None and type(a) is type(b) is list and aggregate:
+        rules = _array_in_any_order(a, b)
+    if rules is None:
+        return None
+    if want != got and (not rules or _spacing(want) != _spacing(got)):
+        return rules | {JSON_SPACING}
+    return rules
+
+
+def _record_fields(text: str) -> list[str] | None:
+    """The fields of a record's text, unquoted; None if ``text`` is no record."""
+    if len(text) < 2 or text[0] != "(" or text[-1] != ")":
+        return None
+    fields, field, quoted, i = [], "", False, 1
+    body = text[:-1]
+    while i < len(body):
+        ch = body[i]
+        pair = body[i : i + 2]
+        if quoted and pair in ('""', "\\\\"):
+            field += ch
+            i += 1
+        elif ch == '"':
+            quoted = not quoted
+        elif ch == "," and not quoted:
+            fields.append(field)
+            field = ""
+        else:
+            field += ch
+        i += 1
+    return [*fields, field]
+
+
+def _record_rules(want: str, got: str, sql: str) -> Rules:
+    """A record whose fields are the same, a JSON container comparing as JSON."""
+    a, b = _record_fields(want), _record_fields(got)
+    if a is None or b is None or len(a) != len(b):
+        return None
+    found: set[str] = set()
     for x, y in zip(a, b, strict=True):
-        for wv, gv, oid in zip(x, y, fields, strict=True):
-            if not _value_equal(wv, gv, oid):
-                return f"{gv!r}, PostgreSQL {wv!r}"
+        rules = json_rules(x, y, sql) if x[:1] in ("{", "[") else (_SAME if x == y else None)
+        if rules is None:
+            return None
+        found |= rules
+    return frozenset(found)
+
+
+def _json_read(sql: str, oid: int, want: str) -> bool:
+    """Whether ``want`` is the text a read of json gives for a number or a container. A json string
+    stays a string: the statement's literal has it in quotes."""
+    if oid != _TEXT_OID or _JSON_TEXT_READ.search(sql) is None or f'"{want}"' in sql:
+        return False
+    return want[:1] in ("{", "[") or _JSON_NUMBER.fullmatch(want) is not None
+
+
+def _value_rules(want: str | None, got: str | None, oid: int, sql: str) -> Rules:
+    if want == got:
+        return _SAME
+    if want is None or got is None:
+        return None
+    if oid in _FLOAT_OIDS:
+        return _float_rules(want, got)
+    if oid == _NUMERIC_OID:
+        return _numeric_rules(want, got)
+    if oid in _FLOAT_ARRAY_OIDS:
+        return _array_rules(want, got, _float_rules)
+    if oid == _NUMERIC_ARRAY_OID:
+        return _array_rules(want, got, _numeric_rules)
+    if oid in JSON_OIDS or _json_read(sql, oid, want):
+        return json_rules(want, got, sql)
+    if oid == _RECORD_OID:
+        return _record_rules(want, got, sql)
     return None
+
+
+def _model_answer(function: str, want: str | None, got: str | None) -> bool:
+    """An answer about the database it ran on, which is XML on both sides."""
+    if function not in MODEL_FUNCTIONS or not want or not got:
+        return False
+    return all(text.startswith("<") and text.endswith(">") for text in (want.strip(), got.strip()))
+
+
+def _field_rules(want: list[int], got: list[int], enums: frozenset[int]) -> Rules:
+    """The result types: the same, or an enum's on PostgreSQL, sent as text."""
+    if len(want) != len(got):
+        return None
+    labels = enums | {_ANYENUM_OID}
+    found: set[str] = set()
+    for w, g in zip(want, got, strict=True):
+        if w == g:
+            continue
+        if w not in labels or g not in _TEXT_OIDS:
+            return None
+        found.add(ENUM_LABEL)
+    return frozenset(found)
+
+
+def _pair_rows(
+    want: list[tuple], got: list[tuple], rules_of: Callable[[tuple, tuple], Rules]
+) -> tuple[set[str], list[tuple], list[tuple]]:
+    """Each of ``want`` with the row of ``got`` it equals, an identical one before any other: the
+    rules used, and the rows of each left over."""
+    left = dict(enumerate(got))
+    used: set[str] = set()
+    missing: list[tuple] = []
+    for at, row in enumerate(want):
+        match, rules = next(((i, _SAME) for i, other in left.items() if other == row), (None, None))
+        if match is None:
+            pairs = ((i, rules_of(row, other)) for i, other in left.items())
+            match, rules = next(((i, r) for i, r in pairs if r is not None), (None, None))
+        if match is None or rules is None:
+            missing.append(row)
+            continue
+        used |= rules
+        if match != at:
+            used.add(ROW_ORDER)
+        del left[match]
+    return used, missing, list(left.values())
+
+
+@dataclass(frozen=True)
+class Compared:
+    """``difference``: how an answer differs, None if it does not. ``rules``: what it took."""
+
+    difference: str | None = None
+    rules: frozenset[str] = _SAME
+
+
+def compare(
+    want: dict[str, Any],
+    got: dict[str, Any],
+    *,
+    values: bool,
+    sql: str,
+    function: str = "",
+    enums: frozenset[int] = frozenset(),
+) -> Compared:
+    """Provisa's answer to ``sql``, a call of ``function``, against PostgreSQL's. ``values`` False
+    compares the result types alone. ``enums``: the oids of PostgreSQL's enum types and arrays."""
+    typed = _field_rules(want["fields"], got["fields"], enums)
+    if typed is None:
+        return Compared(f"result type oids {got['fields']}, PostgreSQL {want['fields']}")
+    if not values:
+        return Compared(rules=typed)
+    fields = want["fields"]
+    a, b = want["rows"], got["rows"]
+    if len(a) != len(b):
+        return Compared(f"{len(b)} rows, PostgreSQL {len(a)}")
+
+    def value(wv: str | None, gv: str | None, oid: int) -> Rules:
+        rules = _value_rules(wv, gv, oid, sql)
+        if rules is None and _model_answer(function, wv, gv):
+            return frozenset({MODEL_ANSWER})
+        return rules
+
+    def row_rules(x: tuple, y: tuple) -> Rules:
+        found = [value(wv, gv, oid) for wv, gv, oid in zip(x, y, fields, strict=True)]
+        return None if None in found else frozenset().union(*found)
+
+    def order(row: tuple) -> list[tuple[bool, str]]:
+        return [(value_ is None, value_ or "") for value_ in row]
+
+    used, missing, left = _pair_rows(a, b, row_rules)
+    if not missing:
+        return Compared(rules=typed | used)
+    missing, left = sorted(missing, key=order), sorted(left, key=order)
+    wv, gv = next(
+        (wv, gv)
+        for wv, gv, oid in zip(missing[0], left[0], fields, strict=True)
+        if value(wv, gv, oid) is None
+    )
+    return Compared(f"{gv!r}, PostgreSQL {wv!r}")
+
+
+def difference(want: dict[str, Any], got: dict[str, Any], *, values: bool, sql: str) -> str | None:
+    """How Provisa's answer to ``sql`` differs from PostgreSQL's; None if it does not."""
+    return compare(want, got, values=values, sql=sql).difference
 
 
 def _shape(sample: str) -> str:
@@ -693,7 +969,12 @@ def _answer(server: Session, call_: Call) -> dict[str, Any]:
 
 
 def measure_overload(
-    fn: Function, family: str, pg: Session, provisa: Session, classify: Any
+    fn: Function,
+    family: str,
+    pg: Session,
+    provisa: Session,
+    classify: Any,
+    enums: frozenset[int] = frozenset(),
 ) -> dict[str, Any]:
     """Every call of ``fn`` on both servers, as this engine's one outcome of it."""
     planned = calls(fn, family)
@@ -707,8 +988,10 @@ def measure_overload(
     accepted = answered = formed = 0
     wrong: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
+    named: list[dict[str, str]] = []
     refused: list[str] = []
     routes: set[str] = set()
+    rules: set[str] = set()
     lost = False
     for call_ in planned:
         want = _answer(pg, call_)
@@ -720,10 +1003,15 @@ def measure_overload(
         routes.add("catalog" if classify(call_.sql) == "INTERCEPT" else "engine")
         got = _answer(provisa, call_)
         if not got["ok"]:
-            errors.append({"statement": call_.sql, "error": got["error"]})
+            said = {"statement": call_.sql, "error": got["error"]}
+            (named if function_probe.refused_by_name(got["error"]) else errors).append(said)
             lost = lost or got.get("lost", False)
             continue
-        differs = difference(want, got, values=call_.values)
+        compared = compare(
+            want, got, values=call_.values, sql=call_.sql, function=fn.name, enums=enums
+        )
+        differs = compared.difference
+        rules |= compared.rules
         if differs is None and call_.form:
             checked, differs = form_check(fn.name, want, got)
             formed += checked
@@ -752,8 +1040,13 @@ def measure_overload(
         entry["outcome"] = "error"
         entry["detail"] = errors[0]
         entry["error_calls"] = len(errors)
+    elif named:
+        entry["outcome"] = "refused"
+        entry["detail"] = named[0]
+        entry["refused_calls"] = len(named)
     else:
         entry["outcome"] = "pass"
+        entry["rules"] = sorted(rules)
     return entry
 
 
@@ -769,6 +1062,11 @@ def measure(
     """One leg. Written whatever the leg reaches: what it did not reach is ``not_reached``."""
     pg = Session(pg_dsn)
     fns = catalog.pg_functions(pg)
+    enums = frozenset(
+        oid
+        for row in pg.rows("SELECT oid, typarray FROM pg_catalog.pg_type WHERE typtype = 'e'")
+        for oid in map(int, row)
+    )
     if limit is not None:
         fns = fns[:: max(1, len(fns) // limit)]
     declared = function_probe.families()
@@ -784,7 +1082,7 @@ def measure(
             print(f"::error::{server_gone}")
         if server_gone is None:
             try:
-                overloads.append(measure_overload(fn, family, pg, provisa, classify))
+                overloads.append(measure_overload(fn, family, pg, provisa, classify, enums))
             except psycopg.OperationalError as exc:
                 server_gone = f"Provisa stopped answering at {fn.signature}: {exc}".strip()
                 print(f"::error::{server_gone}")
@@ -818,7 +1116,7 @@ def measure(
 
 # --- counts and the merged data file ----------------------------------------------------------
 
-OUTCOMES = ("pass", "wrong_answer", "error", "not_callable", "not_reached")
+OUTCOMES = ("pass", "wrong_answer", "error", "refused", "not_callable", "not_reached")
 
 
 def counts(overloads: list[dict[str, Any]]) -> dict[str, int]:
@@ -843,15 +1141,15 @@ def counts(overloads: list[dict[str, Any]]) -> dict[str, int]:
 def _row(label: str, c: dict[str, int]) -> str:
     return (
         f"| {label} | {c['total']} | {c['pass_answers_checked']} | {c['pass_form_checked']} "
-        f"| {c['pass_only_called']} "
+        f"| {c['pass_only_called']} | {c['refused']} "
         f"| {c['wrong_answer']} | {c['error']} | {c['not_callable']} | {c['not_reached']} |"
     )
 
 
 _HEADER = (
     "| | overloads | pass, answers checked | pass, form checked | pass, only called "
-    "| wrong answer | error | not callable | not reached |",
-    "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+    "| refused by name | wrong answer | engine error | not callable | not reached |",
+    "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
 )
 
 
@@ -880,11 +1178,23 @@ def engine_markdown(report: dict[str, Any]) -> str:
 def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
     """An overload's outcome on one engine, as the data file keeps it."""
     if entry is None:
-        return {"outcome": "not_reached", "detail": "the engine's leg left no result"}
-    kept: dict[str, Any] = {"outcome": entry["outcome"]}
+        return {
+            "outcome": "not_reached",
+            "result": function_report.NOT_REACHED,
+            "detail": "the engine's leg left no result",
+        }
+    kept: dict[str, Any] = {
+        "outcome": entry["outcome"],
+        "result": function_report.result_of(entry["outcome"], entry.get("rules", ())),
+    }
     for key in ("detail", "served_by"):
         if entry.get(key) is not None:
             kept[key] = entry[key]
+    if entry.get("rules"):
+        kept["rules"] = entry["rules"]
+    if entry["outcome"] == "pass":
+        answers = entry.get("answers_checked")
+        kept["check"] = "answers" if answers else "form" if entry.get("form_checked") else "call"
     return kept
 
 
@@ -945,15 +1255,25 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
         engine: counts([by_engine[engine].get(key) or _absent() for key in keys])
         for engine in reports
     }
+    engines = sorted(reports)
     return {
         "postgres_version": next((r["postgres_version"] for r in reports.values() if r), None),
-        "engines": sorted(reports),
+        "engines": engines,
         "engines_without_a_result": missing,
         "engines_incomplete": incomplete,
         "comparison": (
-            "text format under one TimeZone, DateStyle and IntervalStyle; rows as a multiset; "
-            f"floats within one part in {1 / FLOAT_TOLERANCE:.0e}"
+            "text format under one TimeZone, DateStyle and IntervalStyle; exact where the text is "
+            "the same, equivalent under the numbered rules"
         ),
+        # function_report.RESULT_KEYS per engine: what a floor reads (REQ-2171, RESULTS ARE BY
+        # ENGINE). No key adds the engines up.
+        "by_engine": {
+            engine: function_report.result_counts(f["outcomes"][engine] for f in functions)
+            for engine in engines
+        },
+        "by_family": function_report.by_family(functions, engines),
+        "no_engine": function_report.no_engine(functions),
+        "rules": function_report.rule_coverage(functions, engines),
         "counts": per_engine,
         "guaranteed": {
             **{
@@ -993,6 +1313,10 @@ def merged_markdown(doc: dict[str, Any]) -> str:
     lines = [
         f"## pg_catalog functions per engine (PostgreSQL {doc['postgres_version']})",
         "",
+        function_report.summary_block(doc),
+        "",
+        "### What each engine's pass checked",
+        "",
         *_HEADER,
         *(_row(engine, doc["counts"][engine]) for engine in engines),
         "",
@@ -1002,7 +1326,8 @@ def merged_markdown(doc: dict[str, Any]) -> str:
         f"not on it. {len(guaranteed['functions'])} functions have every callable overload on "
         "the list.",
         "",
-        "Comparison: " + doc["comparison"] + ". A pass counts as answers checked when a call with "
+        "Comparison: " + doc["comparison"] + ". A pass, exact or equivalent, counts as answers "
+        "checked when a call with "
         "real values was compared, as form checked when a value that cannot be compared has the "
         "type and the form of PostgreSQL's, and as only called otherwise: such a pass proves the "
         "call is served and its type, not its answer.",

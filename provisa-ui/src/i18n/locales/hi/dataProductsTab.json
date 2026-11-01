@@ -221,7 +221,7 @@
         "quality": "गुणवत्ता",
         "sla": "SLA",
         "support": "सहायता और टीम",
-        "servers": "सर्वर",
+        "howToUse": "उपयोग कैसे करें",
         "pricing": "मूल्य निर्धारण",
         "custom": "कस्टम गुण और टैग"
       },
@@ -259,6 +259,46 @@
         "versions": "संस्करण और परिवर्तन",
         "roles": "भूमिकाएँ",
         "history": "संस्करण इतिहास"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "सतह",
+          "address": "पता",
+          "how": "उपयोग कैसे करें",
+          "link": "उदाहरण"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "कोई भी PostgreSQL क्लाइंट, जैसे psql या DBeaver। डेटाबेस {{database}}, स्कीमा {{schema}}।",
+          "flight-sql": "कोई भी Arrow Flight SQL क्लाइंट, जैसे ADBC ड्राइवर। डेटाबेस {{database}}, स्कीमा {{schema}}।",
+          "grpc": "कोई भी gRPC क्लाइंट, सेवा {{service}} पर, मेटाडेटा authorization: Bearer <token> के साथ।",
+          "graphql": "कोई भी GraphQL क्लाइंट: इस तालिका पर क्वेरी POST करें, हेडर Authorization: Bearer <token> के साथ।",
+          "rest": "कोई भी HTTP क्लाइंट: इस पते पर GET करें, हेडर Authorization: Bearer <token> के साथ।",
+          "openapi": "केवल इस तालिका का विवरण: इसे Swagger UI, Postman या क्लाइंट जनरेटर में लोड करें।",
+          "jsonapi": "कोई भी JSON:API क्लाइंट: इस पते पर GET करें, हेडर Authorization: Bearer <token> के साथ।",
+          "sparql": "कोई भी SPARQL 1.1 क्लाइंट: इस तालिका की क्लास पर क्वेरी POST करें, हेडर Authorization: Bearer <token> के साथ।"
+        },
+        "access": {
+          "granted": "केवल तब काम करता है जब {{approvers}} द्वारा पहुँच प्रदान कर दी जाए।",
+          "noApprover": "केवल तब काम करता है जब {{roles}} के धारक द्वारा पहुँच प्रदान कर दी जाए। यह अनुबंध किसी अनुमोदक का नाम नहीं देता।",
+          "undeclared": "केवल तब काम करता है जब पहुँच प्रदान कर दी जाए। यह अनुबंध किसी भूमिका या अनुमोदक का नाम नहीं देता।"
+        },
+        "ask": {
+          "approvers": "{{approvers}} से पहुँच माँगें",
+          "roles": "{{roles}} के धारक से पहुँच माँगें",
+          "nobody": "यह अनुबंध किसी ऐसे व्यक्ति का नाम नहीं देता जिससे पूछा जाए"
+        },
+        "open": "उदाहरण खोलें",
+        "openAria": "{{table}} के लिए {{surface}} उदाहरण खोलें"
       }
     }
   }

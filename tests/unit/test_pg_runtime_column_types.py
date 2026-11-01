@@ -50,3 +50,22 @@ async def test_a_read_reports_the_same_types_as_the_streamed_read(runtime):
     finally:
         streamed.close()
     assert (await runtime.run(_READ)).column_types == expected
+
+
+async def test_a_range_is_postgresqls_own_text(runtime):
+    result = await runtime.run("SELECT int4range(NULL, NULL) AS a, '[1,5)'::int4range AS b")
+    assert result.rows == [("(,)", "[1,5)")]
+
+
+def test_a_streamed_range_is_postgresqls_own_text(runtime):
+    assert runtime.run_sync("SELECT daterange(NULL, NULL) AS a").rows == [("(,)",)]
+
+
+def test_an_empty_xml_array_is_no_elements(runtime):
+    assert runtime.run_sync("SELECT '{}'::xml[] AS a").rows == [([],)]
+
+
+async def test_a_read_names_each_columns_own_type(runtime):
+    read = "SELECT 'a'::char(1) AS c FROM (VALUES (1)) AS t(n)"
+    assert (await runtime.run(read)).column_type_oids[0] == 1042
+    assert runtime.run_sync(read).column_type_oids[0] == 1042

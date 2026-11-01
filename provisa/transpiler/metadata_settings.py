@@ -35,6 +35,8 @@ NAMES = (
     "pid",
     "application_name",
     "backend_start",
+    "system_user",
+    "time_zone",
     "query",
     "scope",
     "asked",

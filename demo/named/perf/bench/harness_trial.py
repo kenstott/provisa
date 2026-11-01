@@ -35,11 +35,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 from collections import defaultdict
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import yaml
@@ -49,6 +53,8 @@ REPO = HERE.parents[3]
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(REPO))
 
+import bench_sanity  # noqa: E402
+import chaos_check  # noqa: E402
 import local_proof as lp  # noqa: E402
 
 # The smallest data at which every query in queries.QUERIES has rows: point_lookup reads order
@@ -224,7 +230,7 @@ def engine_env(engine: str, ports: dict[str, int]) -> dict[str, str]:
     return {}
 
 
-def start_server(engine: str, ports: dict[str, int]) -> Any:
+def start_server(engine: str, ports: dict[str, int], etc_dir: Path) -> Any:
     server = lp._proof_server_class()(  # noqa: SLF001
         f"benchtrial{os.getpid()}{engine}",
         engine=engine,
@@ -238,6 +244,9 @@ def start_server(engine: str, ports: dict[str, int]) -> Any:
             **lp._server_env(ports),  # noqa: SLF001
             **lp._mcp_env(ports),  # noqa: SLF001
             **engine_env(engine, ports),
+            # The server renders Trino's config into this tree (a run's launch-settings.env among
+            # it); the default is the checkout's own, which a run must leave clean.
+            "PROVISA_TRINO_ETC_DIR": str(etc_dir),
         },
     )
     server.start(timeout=600)
@@ -378,6 +387,108 @@ def read_verdict(out: Path, engine: str, optimistic: bool, before: set[Path]) ->
     return matrix_verdict(json.loads(written[-1].read_text()))
 
 
+def start_second_node(first: Any, engine: str, ports: dict[str, int], etc_dir: Path) -> Any:
+    """Another instance of ``first``'s deployment: one control plane, one org, ports of its own."""
+    server = lp._proof_server_class()(  # noqa: SLF001
+        first.org_id,
+        engine=engine,
+        control_plane="postgres",
+        enable_pgwire=True,
+        enable_bolt=True,
+        await_flight=True,
+        await_grpc=True,
+        config=str(lp.PERF / "config.yaml"),
+        env={
+            **lp._server_env(ports),  # noqa: SLF001
+            **lp._mcp_env(ports),  # noqa: SLF001
+            **engine_env(engine, ports),
+            "PROVISA_TRINO_ETC_DIR": str(etc_dir),
+            "TENANT_DATABASE_URL": first.plane.url,
+            "PLATFORM_DATABASE_URL": first.plane.url,
+            "PROVISA_REDIS_EMBEDDED": "1",
+        },
+    )
+    server.start(timeout=600)
+    return server
+
+
+def _node(name: str, server: Any) -> chaos_check.Node:
+    return chaos_check.Node(
+        name,
+        "127.0.0.1",
+        {
+            "http": server.http_port,
+            "pgwire": server.pgwire_port,
+            "bolt": server.bolt_port,
+            "flight": server.flight_port,
+            "grpc": server.grpc_port,
+        },
+    )
+
+
+def kill_tree(pid: int) -> None:
+    """SIGKILL the server and whatever it started, so nothing of the node keeps listening."""
+    subprocess.run(["pkill", "-9", "-P", str(pid)], check=False)
+    os.kill(pid, signal.SIGKILL)
+
+
+def run_chaos(
+    engine: str, ports: dict[str, int], front: dict[str, int], out: Path, etc_dir: Path
+) -> dict[str, Any]:
+    """chaos_check.py on two local nodes behind HAProxy: one killed mid-run. Two processes on one
+    host prove the check and the failover path; the split setup's check is on two machines."""
+    first = start_server(engine, ports, etc_dir)
+    second, stop_balancer = None, None
+    try:
+        second = start_second_node(first, engine, ports, etc_dir)
+        config = out / "haproxy.cfg"
+        nodes = [_node("a", first), _node("b", second)]
+        config.write_text(chaos_check.haproxy_config(nodes, front))
+        stop_balancer = chaos_check.start_balancer(config.resolve(), f"benchtrial-lb-{os.getpid()}")
+        time.sleep(3)  # its first health checks
+        through = SimpleNamespace(
+            pgwire_port=front["pgwire"],
+            bolt_port=front["bolt"],
+            flight_port=front["flight"],
+            grpc_port=front["grpc"],
+            base_url=f"http://127.0.0.1:{front['http']}",
+        )
+        contract = lp.proof_contract(
+            through, f"provisa-benchtrial-{os.getpid()}", mcp_port=ports["mcp"]
+        )
+        path = out / "chaos-contract.yaml"
+        path.write_text(yaml.safe_dump(contract, sort_keys=False))
+        ep = chaos_check.endpoints(path, out / "chaos")
+        result = chaos_check.run_check(ep, lambda: kill_tree(first._proc.pid))  # noqa: SLF001
+        (out / "chaos.json").write_text(json.dumps(result, indent=2))
+        return result
+    finally:
+        if stop_balancer is not None:
+            stop_balancer()
+        for name, server in (("b", second), ("a", first)):
+            if server is not None:
+                (out / f"chaos-{name}-server.stderr").write_text(server.dump_stderr_debug())
+                server.stop_process()
+
+
+def sanity_report(
+    out: Path, engine: str, before: set[Path], baseline: str | None
+) -> dict[str, Any]:
+    """The timing sanity report of this run (bench_sanity.py), written beside the summary. Its
+    flags are for a person to explain; they fail no engine. The cells' own failures do that."""
+    current = max(set((out / engine).glob("*.json")) - before, default=None)
+    if current is None:
+        return {"flags": [], "comparison": "refused: this run wrote no report"}
+    previous = (
+        Path(baseline)
+        if baseline
+        else max(before & set((out / engine).glob("*.json")), default=None)
+    )
+    report = bench_sanity.report_files(current, previous)
+    (out / f"{engine}-sanity.json").write_text(json.dumps(report, indent=2))
+    return {"flags": len(report["flags"]), "comparison": report["comparison"]}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the query matrix on a small isolated stack")
     parser.add_argument("--engine", action="append", choices=ENGINES, required=True)
@@ -394,6 +505,16 @@ def main() -> int:
         help="The Postgres image of --engine pg. postgres:16 has none of the engine's extensions: "
         "the trial must then report the engine failed",
     )
+    parser.add_argument(
+        "--chaos",
+        action="store_true",
+        help="Run the kill-a-node check on two local nodes in place of the query matrix",
+    )
+    parser.add_argument(
+        "--baseline",
+        help="A report to compare each engine's timings with (bench_sanity.py); default: the "
+        "newest report already in <output-dir>/<engine>",
+    )
     args = parser.parse_args()
     if args.orders < MIN_ORDERS:
         parser.error(f"--orders below {MIN_ORDERS} leaves queries with no rows to compare")
@@ -404,6 +525,7 @@ def main() -> int:
 
     from tests.port_lease import lease_ports
 
+    fronts = dict(zip(chaos_check.LISTENERS, lease_ports(len(chaos_check.LISTENERS))))
     names = (
         "bench-postgresql",
         "bench-clickhouse",
@@ -430,6 +552,7 @@ def main() -> int:
         str(compose_file(ports, tmp, args.engine, args.pg_image)),
     ]
     verdicts: dict[str, dict[str, Any]] = {}
+    shutil.copytree(REPO / "trino", tmp / "trino-etc")
     try:
         services = ["postgresql", "mongodb", "clickhouse", "neo4j"]
         if with_trino:
@@ -447,18 +570,27 @@ def main() -> int:
             )
             verdict: dict[str, Any] = {}
             try:
-                server = start_server(engine, ports)
+                if args.chaos:
+                    result = run_chaos(engine, ports, fronts, out, tmp / "trino-etc")
+                    verdicts[engine] = {"chaos": result["passed"], "exit_code": 0}
+                    if not result["passed"]:
+                        verdicts[engine]["exit_code"] = 1
+                        lp.log(f"{engine} chaos: {result['problems']}")
+                    continue
+                server = start_server(engine, ports, tmp / "trino-etc")
                 if args.optimistic:
                     code = run_optimistic(server, engine, out, ports)
                 else:
                     code = run_matrix(server, engine, out)
                 verdict = read_verdict(out, engine, args.optimistic, before)
                 verdict["exit_code"] = code
+                if not args.optimistic:
+                    verdict["sanity"] = sanity_report(out, engine, before, args.baseline)
             except Exception as exc:  # noqa: BLE001 - one engine's failure is reported, not fatal
                 lp.log(f"{engine}: {exc}")
                 verdict = {"exception": str(exc)}
             finally:
-                verdicts[engine] = verdict
+                verdicts.setdefault(engine, verdict)
                 if server is not None:
                     (out / f"{engine}-server.stderr").write_text(server.dump_stderr_debug())
                     server.stop_process()
@@ -467,7 +599,9 @@ def main() -> int:
     failed = [
         engine
         for engine, verdict in verdicts.items()
-        if "exception" in verdict or verdict["exit_code"] != 0 or engine_failed(verdict)
+        if "exception" in verdict
+        or verdict["exit_code"] != 0
+        or ("chaos" not in verdict and engine_failed(verdict))
     ]
     (out / "trial-summary.json").write_text(
         json.dumps({"failed_engines": failed, "engines": verdicts}, indent=2, default=str)

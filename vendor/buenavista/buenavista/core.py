@@ -98,6 +98,7 @@ class BVType(enum.Enum):
     TSTZMULTIRANGE = 70
     DATEMULTIRANGE = 71
     MONEYARRAY = 72
+    INTERVALARRAY = 99
     # PostgreSQL's other built-in types (REQ-2171), each held as its text and sent as its type.
     CHAR = 73
     NAME = 74
