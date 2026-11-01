@@ -1,0 +1,64 @@
+# REQ-2135: what a drop writes on a frame, run on each engine. users SUBMITTED inquiries ABOUT pets,
+# so a user reaches a pet in two hops through a class between; a stray inquiry ties nothing.
+federation_engine: duckdb
+auth:
+  provider: none
+  assignments_source: provisa
+  default_assignments:
+    - domain_id: '*'
+      role_id: org_admin
+naming:
+  domain_prefix: false
+  rules: []
+cache:
+  enabled: false
+domains:
+  - id: paths
+    description: Node paths
+sources:
+  - id: paths-pg
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: ${env:PG_DATABASE}
+    username: ${env:PG_USER}
+    password: ${env:PG_PASSWORD}
+tables:
+  - source_id: paths-pg
+    table: pets
+    schema: node_paths_e2e
+    domain_id: paths
+    columns:
+      - {name: id, data_type: integer, visible_to: [org_admin]}
+      - {name: name, data_type: varchar, visible_to: [org_admin]}
+  - source_id: paths-pg
+    table: users
+    schema: node_paths_e2e
+    domain_id: paths
+    columns:
+      - {name: id, data_type: integer, visible_to: [org_admin]}
+      - {name: name, data_type: varchar, visible_to: [org_admin]}
+  - source_id: paths-pg
+    table: inquiries
+    schema: node_paths_e2e
+    domain_id: paths
+    columns:
+      - {name: id, data_type: integer, visible_to: [org_admin]}
+      - {name: pet_id, data_type: integer, visible_to: [org_admin]}
+      - {name: user_id, data_type: integer, visible_to: [org_admin]}
+relationships:
+  - id: inquiry-about-pet
+    source_table_id: inquiries
+    target_table_id: pets
+    source_column: pet_id
+    target_column: id
+    alias: ABOUT
+    cardinality: many-to-one
+  - id: inquiry-by-user
+    source_table_id: inquiries
+    target_table_id: users
+    source_column: user_id
+    target_column: id
+    alias: SUBMITTED_BY
+    cardinality: many-to-one
+roles: []

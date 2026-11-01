@@ -62,6 +62,26 @@ export function FrameStatementTabs({
   );
 }
 
+/** What the last drop on the frame said, and whether its result reached the LIMIT the drop gave it. */
+export function FrameDropNotices({ frame }: { frame: FrameData }) {
+  const { t } = useTranslation();
+  const notices = frame.dropNotices ?? [];
+  const cut =
+    frame.status === "done" &&
+    frame.sparqlForm === "rows" &&
+    frame.dropLimit !== undefined &&
+    frame.rows.length >= frame.dropLimit;
+  if (notices.length === 0 && !cut) return null;
+  return (
+    <div className="gf-drop-notices" role="status" data-testid="graph-frame-drop-notice">
+      {notices.map((n) => (
+        <div key={n.key}>{t(n.key, n.values)}</div>
+      ))}
+      {cut && <div>{t("graphFrame.sparqlDropCut", { limit: frame.dropLimit })}</div>}
+    </div>
+  );
+}
+
 /** A refused statement: its reason, each access violation listed under it, copyable whole. */
 export function FrameError({ frame }: { frame: FrameData }) {
   const { t } = useTranslation();

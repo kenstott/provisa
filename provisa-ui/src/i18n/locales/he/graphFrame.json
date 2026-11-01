@@ -41,6 +41,21 @@
     "expandedDialogLabel": "תצוגת גרף מורחבת",
     "firstNodesShown": "מוצגים {{count}} הצמתים הראשונים; יש עוד. הגדילו את המגבלה בתפריט הצד.",
     "deleteFrame": "מחיקת תוצאה זו",
-    "sparqlNothingMore": "אין מידע נוסף על {{resource}}."
+    "sparqlNothingMore": "אין מידע נוסף על {{resource}}.",
+    "sparqlDropForm": "אי אפשר לשחרר תג על תוצאת {{form}}: רק SELECT או CONSTRUCT מקבלים תג. לא נוסף דבר.",
+    "sparqlDropUnion": "אי אפשר לשחרר תג על שאילתת UNION: לא ברור לאיזה צד לחבר. לא נוסף דבר.",
+    "sparqlDropGroupBy": "אי אפשר לשחרר תג על שאילתת GROUP BY: השורות שלה הן קבוצות, לא משאבים. לא נוסף דבר.",
+    "sparqlDropAggregate": "אי אפשר לשחרר תג על שאילתת אגרגציה: השורות שלה הן סיכומים, לא משאבים. לא נוסף דבר.",
+    "sparqlDropSubquery": "אי אפשר לשחרר תג על שאילתה עם SELECT פנימי. לא נוסף דבר.",
+    "sparqlDropNoClass": "התוצאה הזו לא מציינת מחלקה להתחבר אליה: הגדירו מחלקה למשתנה ושחררו שוב. לא נוסף דבר.",
+    "sparqlDropNode": "הצומת הזה אינו משתנה של השאילתה, ולכן אין למה לחבר אותו. לא נוסף דבר.",
+    "sparqlDropNoPath": "ל-{{name}} אין קשר אל {{classes}}. לא נוסף דבר.",
+    "sparqlDropTooFar": "{{name}} רחוק {{hops}} קשרים מ-{{classes}}, מעבר ל-{{most}} ששחרור עובר: אין נתיב קצר. לא נוסף דבר.",
+    "sparqlDropNoEnd": "אף אחד מהקצוות של {{name}} לא נמצא בתוצאה הזו. לא נוסף דבר.",
+    "sparqlDropNoProperty": "לאף מחלקה בתוצאה הזו אין את {{name}}. לא נוסף דבר.",
+    "sparqlDropLeftOut": "נוספו {{shown}} מתוך {{total}} נתיבים קצרים באותה מידה; השאר הושמטו.",
+    "sparqlDropCut": "התוצאה הגיעה ל-LIMIT של {{limit}}: שורות מעבר לו הושמטו.",
+    "cypherDropTooFar": "{{name}} רחוק {{hops}} קשרים מהתוצאה הזו, מעבר ל-{{most}} ששחרור עובר: אין נתיב קצר.",
+    "cypherPathNoKey": "הנתיבים בין {{from}} ל-{{to}} דורשים מפתח לכל צומת, ולאחד מהם אין."
   }
 }

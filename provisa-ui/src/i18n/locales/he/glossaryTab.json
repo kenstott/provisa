@@ -175,6 +175,7 @@
     "groundingValue_not_grounded": "לא מעוגן",
     "pendingOn": "אישור {{terms}} מעגן אותו.",
     "filterStatus": "סטטוס",
+    "filterStatusHint": "הצג רק סטטוסים אלה",
     "filterGrounding": "עיגון",
     "approve": "אישור",
     "approveHint": "אשרו מונח זה: סוכנים וקטלוגים מוצאים ומצטטים נתונים דרך מונחים מאושרים ומעוגנים.",

@@ -187,6 +187,10 @@
       "slaRemove": "移除服務級別",
       "slaAdd": "新增服務級別",
       "notDeclared": "未聲明",
+      "notDeclaredList": "未聲明：{{names}}",
+      "versionSaved": "儲存",
+      "versionChanges": "變更",
+      "constraints": "約束",
       "breakingWarning": "v{{version}} 中有破壞性變更，尚未生效",
       "breaking": "破壞性",
       "savedBy": "由 {{who}} 於 {{when}} 儲存",
@@ -252,7 +256,9 @@
         "sla": "SLA 與新鮮度",
         "quality": "承諾",
         "consumers": "消費方",
-        "versions": "版本與變更"
+        "versions": "版本與變更",
+        "roles": "角色",
+        "history": "版本歷史"
       }
     }
   }

@@ -206,9 +206,9 @@ def _build_fk_constraint_rows(
     separate joins with no shared constraint identifier. Grouping data cannot be
     threaded through without a migration (forbidden in V1), so composite FKs are
     reconstructed here from the FK→PK invariant: joins between the same table pair
-    whose target columns together form the target's composite PK are one FK. Any
+    whose target columns together cover the target's composite PK are one FK. Any
     other joins (single-column FKs, partial coverage, independent multi-FKs to the
-    same table) fall through to one single-column row each — the prior behavior.
+    same table) fall through to one single-column row each.
     """
     from provisa.compiler.sql_rewrite import semantic_table_name
     from provisa.compiler.naming import apply_sql_name
@@ -272,18 +272,19 @@ def _build_fk_constraint_rows(
         ns_oid_fk = idx.ns_map.get(idx.toid_to_table[src_toid][1], 2200)
         tgt_table_id = entries[0]["tgt_table_id"]
         pk_cols = ctx.pk_columns.get(tgt_table_id, [])
-        tgt_cols = [e["tgt_col_sql"] for e in entries]
-        is_composite = (
-            len(pk_cols) >= _MIN_COMPOSITE_KEY_COLS
-            and len(entries) == len(pk_cols)
-            and len(set(tgt_cols)) == len(entries)
-            and set(tgt_cols) == set(pk_cols)
-        )
+        # REQ-2190: the joins covering the target's composite key are one foreign key, as
+        # meta.table_keys has them, whatever else joins the same two tables: the rest fall through
+        # to one row each. The first join on a key column is the key's.
+        by_tgt: dict[str, dict] = {}
+        for e in entries:
+            by_tgt.setdefault(e["tgt_col_sql"], e)
+        is_composite = len(pk_cols) >= _MIN_COMPOSITE_KEY_COLS and set(pk_cols) <= set(by_tgt)
+        remaining = entries
         if is_composite:
             # Order both key arrays by the target PK column order so conkey[i]
             # pairs with confkey[i].
-            by_tgt = {e["tgt_col_sql"]: e for e in entries}
             ordered = [by_tgt[c] for c in pk_cols]
+            remaining = [e for e in entries if not any(e is k for k in ordered)]
             src_sem_name = semantic_table_name(entries[0]["src_tm"])
             tgt_sem_name = semantic_table_name(entries[0]["tgt"])
             base_name = f"fk_{src_sem_name}__{tgt_sem_name}"
@@ -301,8 +302,7 @@ def _build_fk_constraint_rows(
                 )
             )
             con_oid += 1
-            continue
-        for e in entries:
+        for e in remaining:
             src_sem_name = semantic_table_name(e["src_tm"])
             tgt_sem_name = semantic_table_name(e["tgt"])
             base_name = f"fk_{src_sem_name}__{e['col_label']}"

@@ -130,6 +130,7 @@
       "address_not_found": "אין מה לפענח: {{reason}}",
       "mixed_resolve_and_other_fields": "לא ניתן לשלב את resolve עם שדות שורש אחרים באותה פעולה",
       "source_starting": "המקור {{source}} עדיין מופעל. נסה שוב בעוד רגע.",
+      "source_unavailable": "המקור {{source}} לא הצליח להשיב. נסה שוב בקרוב.",
       "view_outside_load_window": "ניתן לקרוא את ה-view ‏{{view}} רק בתוך חלון הקריאה שלו. הוא נפתח שוב ב-{{opens_at}}.",
       "graphql_body_missing": "לבקשה אין גוף: בקשת GraphQL היא אובייקט JSON עם שאילתה.",
       "graphql_body_not_json": "גוף הבקשה אינו JSON: {{error}}",
@@ -156,7 +157,7 @@
       "in_use": "{{count}} פריטים עדיין מפנים אל {{env}}. יש להסיר או לשנות כל אחד מהם ואז למחוק שוב."
     },
     "front_door": {
-      "coordinator_waking": "הסביבה מופעלת. היא תהיה מוכנה בעוד כשתי דקות.",
+      "coordinator_waking": "הסביבה מופעלת. היא תהיה מוכנה בעוד כחמש דקות.",
       "coordinator_updating": "הסביבה מתעדכנת. היא תחזור בקרוב."
     },
     "functions": {
@@ -268,6 +269,10 @@
       "classification_status_invalid": "החלטת סיווג היא התקבל או נדחה, לא {{status}}",
       "classification_decision_not_found": "אין החלטה לגבי {{column}} כ-{{kind}}",
       "classification_pii_refused": "לא ניתן היה לסמן את העמודה כ-PII"
+    },
+    "query": {
+      "catalog_view_refused": "{{view}} היא תצוגת קטלוג של תחום meta ולא ניתן לקרוא אותה בהוראה אחת יחד עם טבלה של מקור נתונים: קראו אותן בשתי הוראות.",
+      "function_unsupported": "ל-{{function}}() אין מקבילה ב-{{dialect}}."
     },
     "replication": {
       "answer_not_json": "התשובה שנקראה עבור הרפליקה של {{table}} אינה JSON תקין: [{{content_type}}] {{cause}} (ב-{{kib}} KiB שלפני בית {{before_byte}} בתשובה).",
@@ -664,6 +669,8 @@
       "unknown_demo": "אין הדגמה שפורסמה בשם {{demo}}.",
       "demo_not_ready": "ההדגמה הזו עדיין בהכנה. נסו שוב בעוד רגע.",
       "demo_stores_failed": "לא ניתן היה להפעיל את ההדגמה הזו. נסו שוב בעוד כמה דקות.",
+      "demo_failed": "לא ניתן היה להכין את ההדגמה הזו. נסו שוב בעוד כמה דקות.",
+      "failed_to_start": "לא ניתן היה להפעיל את שרת ההדגמה. נסו שוב מאוחר יותר.",
       "at_capacity": "כל ארגזי החול של ההדגמה בשימוש. נסו שוב בעוד רגע.",
       "starting": "שרת ההדגמה מופעל. נסו שוב בעוד דקה או שתיים.",
       "disk_full": "ארגז החול הזה ניצל את מגבלת הדיסק שלו, {{limit}} בתים; אי אפשר לכתוב אליו עוד.",

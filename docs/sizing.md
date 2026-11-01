@@ -131,7 +131,7 @@ workload:
 
 The contract format is defined by `setup_contract.py` and `contract_parse.py`; an invalid contract is refused with a message that names the field. The `workload` weights must sum to 1, and each transport they name must be one the contract runs.
 
-Describe the requests as they really are. The guide sizes exactly the requests this contract generates: the sizing draws them from the same seeded generator a run uses.
+Describe the requests as they really are. The guide sizes exactly the requests this contract generates, because the sizing draws them from the same seeded generator a run uses.
 
 ## Run it
 
@@ -148,7 +148,7 @@ Run the baseline contract once. The run asks the deployment what each transport 
 
 ### Measuring the server's CPU from another host
 
-Run the load generator on its own machine when you can: then it takes no cores from the server. To measure the server's CPU from there, start `server_cpu_agent.py` on the server's host and give the run its URL instead of `--server-pid`:
+Run the load generator on its own machine when you can, so that it takes no cores from the server. To measure the server's CPU from there, start `server_cpu_agent.py` on the server's host and give the run its URL instead of `--server-pid`:
 
 ```bash
 # on the server's host, from demo/named/perf/bench
@@ -161,7 +161,7 @@ Run the load generator on its own machine when you can: then it takes no cores f
 
 The agent answers one figure, the same one `--server-pid` reads: `GET /` returns `{"pid": ..., "cpu_seconds": ...}`, the cumulative CPU seconds of the server process and its workers. Every other path answers 404, and every other method is refused. Give a run one of `--server-pid` or `--server-cpu-url`, never both.
 
-`--listen` is required: the agent has no default address. Bind it to a private address that only the load generator can reach, never a public interface, and stop it (Ctrl+C) when the runs are done.
+`--listen` is required, because the agent has no default address. Bind it to a private address that only the load generator can reach, never a public interface, and stop it (Ctrl+C) when the runs are done.
 
 ### 2. Plan the runs
 
@@ -196,11 +196,11 @@ Each manifest entry names its contract file. Run each one into `results/sizing/r
   --server-pid "$PROVISA_PID" --output-dir results/sizing/results/graphql.sales-pg.filters.1
 ```
 
-From another host, use `--server-cpu-url` in place of `--server-pid`. A worker run restarts the server, so its process id changes: restart the agent with the new `--pid` too.
+From another host, use `--server-cpu-url` in place of `--server-pid`. A worker run restarts the server, so its process id changes. Restart the agent with the new `--pid` too.
 
 Add `--apply-replication` to every run whose manifest entry has `"apply_replication": true` (the replication runs and the cross-source join runs). It sets the replication the run's contract declares and restores it afterwards.
 
-Every run carries a `server_env` in the manifest: the server must be running with it. A knob run's is its engine, `{"PROVISA_ENGINE": "duckdb"}`; run all of one engine's runs, then restart the server with the next. A worker run's adds its workers and in-flight bound, for example `{"PROVISA_WORKERS": "16", "PROVISA_REQUEST_THREADS": "2", "PROVISA_ENGINE": "pg"}`: `PROVISA_WORKERS` is the number of worker processes and `PROVISA_REQUEST_THREADS` sets `concurrency.request_threads`, the in-flight requests each worker runs at once. Wait until every worker is serving (`/health` reports `workers.ready` of `workers.expected`) before you start the run.
+Every run carries a `server_env` in the manifest, and the server must be running with it. A knob run's is its engine, `{"PROVISA_ENGINE": "duckdb"}`; run all of one engine's runs, then restart the server with the next. A worker run's adds its workers and in-flight bound, for example `{"PROVISA_WORKERS": "16", "PROVISA_REQUEST_THREADS": "2", "PROVISA_ENGINE": "pg"}`. `PROVISA_WORKERS` is the number of worker processes and `PROVISA_REQUEST_THREADS` sets `concurrency.request_threads`, the in-flight requests each worker runs at once. Wait until every worker is serving (`/health` reports `workers.ready` of `workers.expected`) before you start the run.
 
 ### 4. Build the report
 
@@ -245,7 +245,7 @@ The capacity factor is the requests per second one physical core delivers, times
 
 ### What a request costs
 
-For each engine, transport and source, side by side: the base cost of an uncached request, the cost each field, filter, row and join adds, and how well the model fits the measurements (R², 1 is a perfect fit). A cross-source join has three costs, by how its two ends are read: both live, both from replicas, or one of each. A dash means the runs did not vary that knob. Where the engine runs as a server of its own, a second table gives the engine's CPU the same way: a request the engine serves, such as a cross-source join, shows its engine time there. Use these figures to see what a change in your requests would cost before you make it: two more fields on every request add twice the per-field cost.
+For each engine, transport and source, side by side: the base cost of an uncached request, the cost each field, filter, row and join adds, and how well the model fits the measurements (R², 1 is a perfect fit). A cross-source join has three costs, by how its two ends are read: both live, both from replicas, or one of each. A dash means the runs did not vary that knob. Where the engine runs as a server of its own, a second table gives the engine's CPU the same way, so a request the engine serves, such as a cross-source join, shows its engine time there. Use these figures to see what a change in your requests would cost before you make it. Two more fields on every request, for example, add twice the per-field cost.
 
 ### The response-cache opt-in
 

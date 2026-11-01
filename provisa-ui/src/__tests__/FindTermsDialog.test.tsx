@@ -26,6 +26,7 @@ const api = vi.hoisted(() => ({
   mergeDraft: vi.fn(),
   rejectDraft: vi.fn(),
   bulkAccept: vi.fn(),
+  cancelScan: vi.fn(),
 }));
 vi.mock("../api/termFinding", () => api);
 const glossary = vi.hoisted(() => ({ generateGlossaryRelationships: vi.fn() }));
@@ -71,7 +72,23 @@ const SCAN = {
   started_by: "ada",
   started_at: "2026-10-29T09:00:00Z",
   finished_at: "2026-10-29T09:01:00Z",
+  model: "anthropic:claude-haiku-4-5",
+  step: "merging",
+  batch: 0,
+  batches: 0,
+  budget_limit: null,
   counts: { draft: 2 },
+};
+
+const RUNNING = {
+  ...SCAN,
+  status: "running",
+  summary: null,
+  finished_at: null,
+  step: "reading",
+  batch: 3,
+  batches: 12,
+  counts: {},
 };
 
 const cite = (section: string, quote: string, role: string, mention: number) => ({
@@ -236,6 +253,82 @@ describe("FindTermsDialog", () => {
     fireEvent.click(await screen.findByTestId("find-terms-open-7"));
     fireEvent.click(await screen.findByTestId("find-terms-propose-relationships"));
     await waitFor(() => expect(glossary.generateGlossaryRelationships).toHaveBeenCalled());
+  });
+
+  it("shows a running scan's batch and model, then the merging step", async () => {
+    api.fetchScans.mockResolvedValue([RUNNING]);
+    api.fetchScan.mockResolvedValue({ scan: RUNNING, drafts: [] });
+    open();
+    expect(await screen.findByTestId("find-terms-progress-7")).toHaveTextContent(
+      "Reading part 3 of 12...",
+    );
+    fireEvent.click(screen.getByTestId("find-terms-open-7"));
+    expect(await screen.findByTestId("find-terms-progress")).toHaveTextContent(
+      "Reading part 3 of 12...",
+    );
+    expect(screen.getByTestId("find-terms-model")).toHaveTextContent(
+      "Model: anthropic:claude-haiku-4-5",
+    );
+    api.fetchScan.mockResolvedValue({
+      scan: { ...RUNNING, step: "merging", batch: 0, batches: 0 },
+      drafts: [],
+    });
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("find-terms-progress")).toHaveTextContent(
+          "Merging what was found into candidate terms...",
+        ),
+      { timeout: 4000 },
+    );
+  });
+
+  it("keeps the list current while a scan in it runs", async () => {
+    api.fetchScans.mockResolvedValueOnce([RUNNING]);
+    api.fetchScans.mockResolvedValue([
+      { ...RUNNING, status: "failed", error: "anthropic:m gave no answer within 300 seconds" },
+    ]);
+    open();
+    await screen.findByTestId("find-terms-progress-7");
+    expect(
+      await screen.findByTestId("find-terms-stopped-7", {}, { timeout: 4000 }),
+    ).toHaveTextContent("anthropic:m gave no answer within 300 seconds");
+    expect(screen.queryByTestId("find-terms-progress-7")).toBeNull();
+  });
+
+  it("cancels a running scan and shows that it stopped", async () => {
+    api.fetchScans.mockResolvedValue([RUNNING]);
+    api.fetchScan.mockResolvedValue({ scan: RUNNING, drafts: [] });
+    api.cancelScan.mockResolvedValue({
+      scan: { ...RUNNING, status: "failed", error: "cancelled by ada" },
+    });
+    open();
+    fireEvent.click(await screen.findByTestId("find-terms-open-7"));
+    fireEvent.click(await screen.findByTestId("find-terms-cancel"));
+    await waitFor(() => expect(api.cancelScan).toHaveBeenCalledWith(7));
+    expect(await screen.findByTestId("find-terms-failed")).toHaveTextContent(
+      "The scan stopped: cancelled by ada",
+    );
+    expect(screen.queryByTestId("find-terms-cancel")).toBeNull();
+  });
+
+  it("shows what the role's budget did to a scan", async () => {
+    api.fetchScan.mockResolvedValue({
+      scan: {
+        ...RUNNING,
+        status: "failed",
+        error: "role 'steward' has spent its LLM budget for the hour: 900 tokens of 900 tokens",
+        budget_limit: 500,
+      },
+      drafts: [],
+    });
+    open();
+    fireEvent.click(await screen.findByTestId("find-terms-open-7"));
+    expect(await screen.findByTestId("find-terms-failed")).toHaveTextContent(
+      "has spent its LLM budget for the hour",
+    );
+    expect(screen.getByTestId("find-terms-budget-limited")).toHaveTextContent(
+      "held a call to 500 output tokens",
+    );
   });
 
   it("names why a scan stopped", async () => {

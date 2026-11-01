@@ -6,7 +6,7 @@
     "signInTitle": "Sign In",
     "firstLoginHeading": "Set up this deployment",
     "firstLoginTitle": "This is the first login",
-    "firstLoginBody": "Nobody administers this deployment yet. Whoever signs in first becomes the platform administrator — with full control over organizations, users, and data sources. Choose a sign-in method below to claim it.",
+    "firstLoginBody": "Nobody administers this deployment yet. Whoever signs in first becomes the platform administrator, with full control over organizations, users, and data sources. Choose a sign-in method below to claim it.",
     "signInWithGoogle": "Sign in with Google",
     "signInWithGithub": "Sign in with GitHub",
     "signInWithMicrosoft": "Sign in with Microsoft",
@@ -36,9 +36,9 @@
     "signInWithSso": "Sign in with single sign-on",
     "samlSignInFailed": "Single sign-on did not complete. Try again, or ask your administrator.",
     "sandboxBuildingTitle": "Building your sandbox…",
-    "sandboxBuildingBody": "Setting up a private copy of the sample data just for you — this can take a couple of minutes.",
+    "sandboxBuildingBody": "Setting up a private copy of the sample data for you. This can take a couple of minutes.",
     "sandboxTryTitle": "Try Provisa Free",
-    "sandboxTryBody": "Explore the full platform with sample data — no credit card required. Your sandbox is temporary: it disappears when you log out.",
+    "sandboxTryBody": "Explore the full platform with sample data. No credit card required. Your sandbox is temporary and disappears when you log out.",
     "sandboxHeading": "Try Provisa"
   }
 }

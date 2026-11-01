@@ -82,6 +82,7 @@ def _request(limit: int, order_id: int | None = None):
     )
     return SimpleNamespace(
         limit=limit,
+        offset=0,
         read_mask=SimpleNamespace(paths=[]),
         filter=filter_msg,
         HasField=lambda name: name == "filter" and bool(set_fields),

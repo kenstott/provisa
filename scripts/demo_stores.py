@@ -35,7 +35,8 @@ a version's data is dropped by its suffix, so another demo's, or another version
 Usage (scripts/demo_stores_sync.sh runs it):
     demo_stores.py up <name> <version> <bundle dir>    start, load, write <bundle dir>/stores.env
     demo_stores.py check <name> <version> <bundle dir> fail unless every index its search
-                                                       stores restore is in the shared instance
+                                                       stores restore is in the shared instance,
+                                                       and none is red
     demo_stores.py drop <name> <version>               drop the version's data and own services,
                                                        and the images no other container uses
     demo_stores.py stop <name> <version>               the same, its images kept: a demo whose
@@ -523,6 +524,15 @@ def es_missing(shared: Shared, name: str, version: str, store: Store, suffix: st
     )
 
 
+def es_not_red(shared: Shared, suffix: str) -> None:
+    """Refuse a version with a red index. Waited for: a store just restarted is red until its
+    shards recover. A wait that runs out is answered 408, which ``_es`` fails on."""
+    try:
+        _es(shared, "GET", f"/_cluster/health/*{suffix}?wait_for_status=yellow&timeout=30s")
+    except StoreError as red:
+        raise StoreError(f"Elasticsearch: red indices under *{suffix}: {red}") from red
+
+
 def es_load(shared: Shared, name: str, version: str, store: Store, suffix: str) -> None:
     ns = suffix.lstrip("_")
     marked = shared.exec(
@@ -844,6 +854,8 @@ class Demo:
             raise StoreError(
                 f"demo {self.name} {self.version}: Elasticsearch holds no {', '.join(missing)}"
             )
+        if any(store.kind == "elasticsearch" for store in self.stores()):
+            es_not_red(self.shared, self.suffix)
 
     def drop(self, shared_kinds: set[str], *, keep_images: bool = False) -> None:
         """Remove the version: its data from each shared instance running, its own services, and

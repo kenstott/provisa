@@ -25,7 +25,9 @@ checks both ends of the request:
 - the request's ``filter`` reaches the source as a WHERE on both surfaces, and a filter on a
   field the role cannot read is rejected by name on both;
 - no mask returns every field;
-- two different masks sent back-to-back each get their own fields (they never share a kept plan).
+- two different masks sent back-to-back each get their own fields (they never share a kept plan);
+- the request's ``offset`` skips rows at the source on both surfaces, as a bound value, and two
+  offsets never share an answer, kept plan or cached.
 """
 
 # Requirements: REQ-803
@@ -196,20 +198,27 @@ class _Server:
         finally:
             channel.close()
 
-    def request(self, limit: int, paths: list[str], filter_: dict | None = None):
-        request = self.req_cls(limit=limit)
+    def request(self, limit: int, paths: list[str], filter_: dict | None = None, offset: int = 0):
+        request = self.req_cls(limit=limit, offset=offset)
         request.read_mask.paths.extend(paths)
         for name, value in (filter_ or {}).items():
             setattr(request.filter, name, value)
         return request
 
     def rows(
-        self, limit: int, paths: list[str], role: str = _ROLE, filter_: dict | None = None
+        self,
+        limit: int,
+        paths: list[str],
+        role: str = _ROLE,
+        filter_: dict | None = None,
+        offset: int = 0,
     ) -> list:
-        return self._rpc(self.query, self.row_cls, self.request(limit, paths, filter_), role)
+        request = self.request(limit, paths, filter_, offset)
+        return self._rpc(self.query, self.row_cls, request, role)
 
-    def batched_rows(self, limit: int, paths: list[str]) -> list:
-        batches = self._rpc(self.batch, self.batch_cls, self.request(limit, paths), _ROLE)
+    def batched_rows(self, limit: int, paths: list[str], offset: int = 0) -> list:
+        request = self.request(limit, paths, offset=offset)
+        batches = self._rpc(self.batch, self.batch_cls, request, _ROLE)
         return [row for batch in batches for row in batch.rows]
 
     def group_by_counts(self, by: str, filter_: dict, role: str = _ROLE) -> dict[str, int]:
@@ -248,8 +257,9 @@ class _Server:
         role: str = _ROLE,
         filter_: dict | None = None,
         cache: bool = False,
+        offset: int = 0,
     ) -> httpx.Response:
-        body: dict = {"limit": limit, "read_mask": {"paths": paths}}
+        body: dict = {"limit": limit, "offset": offset, "read_mask": {"paths": paths}}
         if filter_ is not None:
             body["filter"] = filter_
         headers = {"x-provisa-role": role}
@@ -435,6 +445,42 @@ def test_http_proxy_applies_the_mask_to_the_query(server):
     assert len(rows) == len(_ROWS)
     assert all(set(r) == {"order_id", "region"} for r in rows)
     _assert_selects_only(_read_statements(server, seen, 7417), {"order_id", "region"})
+
+
+def _assert_offset_bound(bound: list[tuple[str, list[str]]], offset: int) -> None:
+    assert bound, "no statement for this request reached a source driver or the engine"
+    for sql, params in bound:
+        assert re.search(r"\bOFFSET\b", sql), sql
+        assert repr(offset) in params, (sql, params)
+
+
+def test_offset_skips_rows_at_the_source(server):
+    """A row read has no order of its own, so the proof is how many rows are left, not which."""
+    seen = len(server.statements())
+    assert len(server.rows(7461, ["order_id"], offset=2)) == len(_ROWS) - 2
+    _assert_offset_bound(server.bound(seen, 7461), 2)
+
+    assert len(server.rows(7462, ["order_id"], offset=4)) == len(_ROWS) - 4  # the kept plan
+    assert server.rows(7463, ["order_id"], offset=len(_ROWS)) == []
+
+
+def test_batch_rpc_honors_the_offset(server):
+    assert len(server.batched_rows(7464, ["order_id"], offset=2)) == len(_ROWS) - 2
+
+
+def test_http_proxy_offset_skips_rows_at_the_source(server):
+    seen = len(server.statements())
+    response = server.proxy(7465, ["order_id"], offset=2)
+
+    assert response.status_code == 200, response.text
+    assert len(response.json()) == len(_ROWS) - 2
+    _assert_offset_bound(server.bound(seen, 7465), 2)
+
+
+def test_http_proxy_offset_is_part_of_the_cached_request(server):
+    paths = ["order_id"]
+    assert len(server.proxy(7466, paths, cache=True, offset=1).json()) == len(_ROWS) - 1
+    assert len(server.proxy(7466, paths, cache=True, offset=3).json()) == len(_ROWS) - 3
 
 
 def test_http_proxy_unknown_path_is_a_400_naming_the_path(server):

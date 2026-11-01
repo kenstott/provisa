@@ -175,6 +175,7 @@
     "groundingValue_not_grounded": "Non ancré",
     "pendingOn": "Approuver {{terms}} l'ancre.",
     "filterStatus": "Statut",
+    "filterStatusHint": "Afficher uniquement ces statuts",
     "filterGrounding": "Ancrage",
     "approve": "Approuver",
     "approveHint": "Approuver ce terme : les agents et les catalogues trouvent et citent les données au moyen des termes approuvés et ancrés.",

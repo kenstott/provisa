@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>How it works — Provisa</title>
-  <meta name="description" content="Provisa is a data kernel: a small set of semantic primitives compiled into one governed query plan and executed by the engine you choose. Here is the mechanism." />
+  <meta name="description" content="Provisa is a data kernel: a small set of semantic primitives compiled into one governed query plan and executed by the engine you choose." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -61,7 +61,7 @@
           Connect Postgres, Snowflake and Salesforce. Query with SQL, GraphQL or your AI agent. In 5 minutes.
         </p>
         <p>
-          The claim is literal. Point Provisa at your sources, describe how they fit together, and you have a governed API across every source. The five minutes are real: the <a href="/demos">Start here demo</a> walks through it on a sample dataset, start to finish.
+          We mean that literally. Point Provisa at your sources, describe how they fit together, and you have a governed API across every source. The <a href="/demos">Start here demo</a> walks through all five minutes on a sample dataset.
         </p>
 
         <h2 id="mechanism">The mechanism</h2>
@@ -75,23 +75,23 @@
           Every language compiles to one IR. Governance is applied there and pushed down into the native query your engine runs. A GraphQL query, a SQL statement and a Cypher traversal all pass through the same governance point before anything reaches your data.
         </p>
         <p>
-          Provisa compiles each request and hands it to your engine. Results stream back. It scales horizontally and vertically to support your workloads, and the heavy compute is offloaded to your engine.
+          Provisa compiles each request and hands it to your engine. Results stream back. It scales horizontally and vertically, and your engine does the heavy compute.
         </p>
         <p>
-          It is built the way an operating system is built&#8202;&mdash;&#8202;the same philosophy as an OS kernel and its drivers. Source drivers, engine drivers and secrets drivers plug in and swap without reinstalling. Command bindings are the compatibility layer that answers other tools&#8217; calls: APOC for Neo4j tools, catalog functions for SQL clients, fields in GraphQL, tools in MCP. BI tools, notebooks, agents and apps are clients connecting over standard protocols. Provisa drives your systems; it does not run on them and never becomes their engine.
+          It is built the way an operating system is built, on the same philosophy as an OS kernel and its drivers. Source drivers, engine drivers and secrets drivers plug in and swap without reinstalling. Command bindings are the compatibility layer that answers other tools&#8217; calls: APOC for Neo4j tools, catalog functions for SQL clients, fields in GraphQL, tools in MCP. BI tools, notebooks, agents and apps are clients connecting over standard protocols. Provisa drives your systems; it does not run on them and never becomes their engine.
         </p>
 
         <h2 id="lineage">Where the design comes from</h2>
         <p>
-          Provisa's design comes from two heritages. Devops supplied the method. Data disciplines and regulated industries supplied the problems to solve and the bar the answer has to clear.
+          Provisa's design comes from two places. Devops supplied the method, and data disciplines and regulated industries supplied the problems to solve and the bar the answer has to clear.
         </p>
         <p>
-          Both point at one goal: the smallest possible set of primitives with which you can define, secure and operate a data estate.
+          Both aim at the smallest possible set of primitives with which you can define, secure and operate a data estate.
         </p>
 
         <h3 id="lineage-devops">The method, from devops</h3>
         <p>
-          Operating systems, virtual machines, Kubernetes, Terraform and Helm share a habit. Faced with a problem, they first ask which primitives would let the solution be assembled instead of written. Code stays valuable. It keeps its place behind contracts, for the work the primitives can't express.
+          Operating systems, virtual machines, Kubernetes, Terraform and Helm share a habit. Faced with a problem, they first ask which primitives would let the solution be assembled instead of written. Code stays valuable, behind contracts, for the work the primitives can't express.
         </p>
         <p>
           Infrastructure has already made this move. Servers used to be built by hand and kept alive by scripts; today you declare them, and a controller reconciles what runs with what you declared. Data is where infrastructure stood before Kubernetes and Terraform. Each of those tools gave Provisa one idea, and so did a compiler toolkit, LLVM.
@@ -139,25 +139,22 @@
         </p>
         <p>
           Building a compiler front end has also become cheap: parser generators like ANTLR
-          and mature open-source parsers for SQL, GraphQL and SPARQL do most of the work, so a
-          new language is a translation into the IR, not a new system. Each request is
+          and mature open-source parsers for SQL, GraphQL and SPARQL do most of the work, so adding a language means writing a translation into the IR instead of a new system. Each request is
           compiled when it arrives into one IR, governed there, handed to your engine as
           native SQL, and shaped on the way out for the transport that asked.
         </p>
         <p>
-          Where languages or protocols differ at the edges, their public conformance suites
-          settle it: Provisa runs them and publishes the results.
+          Where languages or protocols differ at the edges, their public conformance suites settle it. Provisa runs them and publishes the results.
         </p>
         <p>
           It also means the pace of change isn't a constraint. New query languages, protocols,
           engines and sources keep arriving; for most stacks each one is a migration. Here, a
-          new language or transport is a front end or a shaper, and a new engine or source is a
-          driver: additions to the edges, with the model and its governance unchanged.
+          new language or transport is a front end or a shaper, and a new engine or source is a driver. Those are additions at the edges, and the model and its governance don't change.
         </p>
 
         <h2 id="command-bindings">Command bindings</h2>
         <p>
-          Does Provisa support the library or tool you already use? It can: create its command bindings. A command is written once, and every language can call it, each under the name that language's callers expect. That's <code>apoc.meta.data</code> for a Cypher tool, a catalog function for a SQL client, a field in GraphQL, a tool in MCP.
+          If Provisa doesn't support a library or tool you already use, you can create its command bindings. A command is written once, and every language can call it, each under the name that language's callers expect. That's <code>apoc.meta.data</code> for a Cypher tool, a catalog function for a SQL client, a field in GraphQL, a tool in MCP.
         </p>
         <p>
           Every command is offered in every language by default. Renaming it or leaving it out of a language is an explicit choice, and SQL is always there because everything compiles to it. Where a language expects a different result shape, that variant is its own command. Each one runs governed, so a mimicked tool call never sees more than the role may read.
@@ -178,15 +175,15 @@
 
         <h3 id="not-a-database">Is Provisa a database, or does it replace my warehouse?</h3>
         <p>
-          Neither. Provisa is a semantic and governance layer that runs on an engine you choose: Trino, DuckDB, ClickHouse, Postgres, Snowflake, Databricks, BigQuery, or the embedded DuckDB engine in the box. Your warehouse becomes a replaceable execution engine, not the place your semantics live.
+          Neither. Provisa is a semantic and governance layer that runs on an engine you choose: Trino, DuckDB, ClickHouse, Postgres, Snowflake, Databricks, BigQuery, or the embedded DuckDB engine in the box. Your warehouse becomes a replaceable execution engine, and your semantics live in the model.
         </p>
         <p>
-          <a href="/why/no-lock-in">Why that matters.</a>
+          <a href="/why/no-lock-in">Why the engine should be replaceable.</a>
         </p>
 
         <h3 id="vs-starburst">How is this different from Starburst or Denodo?</h3>
         <p>
-          Starburst is a query engine; Provisa sits above one and can use Starburst as its engine. Denodo is the closest comparison, in the same category: Provisa adds GraphQL and Cypher as peers to SQL, nine wire protocols including pgwire and Bolt, engine choice, and a deployment that starts at one <code>pip install</code>.
+          Starburst is a query engine; Provisa sits above one and can use Starburst as its engine. Denodo is the closest comparison, in the same category. Provisa adds GraphQL and Cypher as peers to SQL, nine wire protocols including pgwire and Bolt, engine choice, and a deployment that starts at one <code>pip install</code>.
         </p>
         <p>
           <a href="/vs/starburst">Provisa and Starburst.</a>
@@ -196,8 +193,8 @@
       </div>
 
       <div class="doc-next">
-        <a class="more" href="/demos">Live demos — see it running</a>
-        <a class="more" href="/why/governance">Governance, in its complete sense</a>
+        <a class="more" href="/demos">See it running in the live demos</a>
+        <a class="more" href="/why/governance">What governance covers</a>
         <a class="more" href="/why/no-lock-in">Engine choice and portability</a>
       </div>
     </div>
@@ -217,7 +214,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>

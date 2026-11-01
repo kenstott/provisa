@@ -187,6 +187,10 @@
       "slaRemove": "サービスレベルを削除",
       "slaAdd": "サービスレベルを追加",
       "notDeclared": "未宣言",
+      "notDeclaredList": "未宣言: {{names}}",
+      "versionSaved": "保存",
+      "versionChanges": "変更",
+      "constraints": "制約",
       "breakingWarning": "v{{version}} に破壊的変更があります (まだ有効ではありません)",
       "breaking": "破壊的",
       "savedBy": "{{when}} に {{who}} が保存",
@@ -252,7 +256,9 @@
         "sla": "SLA と鮮度",
         "quality": "約束",
         "consumers": "コンシューマー",
-        "versions": "バージョンと変更"
+        "versions": "バージョンと変更",
+        "roles": "ロール",
+        "history": "バージョン履歴"
       }
     }
   }

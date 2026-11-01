@@ -69,7 +69,7 @@ New leadership, a new strategy, a new regulation or an industry shift is invisib
 A judgment can therefore cite **bases**: shared, named entries such as "GDPR", "Data retention
 policy v3" or "EU expansion strategy". They are kept in a short list, never free text.
 
-- **Table:** `judgment_bases` in the org model, with columns `id`, `name`, `description`,
+- **Table.** `judgment_bases` in the org model, with columns `id`, `name`, `description`,
   `owner`, `changed_at`, `changed_by` and `change_note`. It lives beside the glossary but stays
   separate from it: a basis is a policy or position, and it carries a change history that
   glossary terms do not.
@@ -98,7 +98,7 @@ and `evidence` move, or the column it concerned is gone.
 
 ### 4. Findings and where the checks run
 
-- **Table:** `judgment_findings` in the org model, one row per (object, judgment, finding kind).
+- **Table.** `judgment_findings` in the org model, one row per (object, judgment, finding kind)
   Its columns are `object_type`, `object_key`, `judgment` (tag, fake, mask, row_rule,
   write_grant, posture), `category` (`wrong`, `dated_by_data`, `dated_by_context`, `undecided`,
   `worth_a_look`), `finding`, `observed` (JSON: what changed, then and now), `first_seen`,
@@ -187,7 +187,7 @@ observe today:
    applies to each listener's TLS settings.
 6. **Unbounded domain access.** A role with `*` or with empty `allowed_domains`
    (`security/rights.py:141-163,284`).
-7. **Expired tag assignments still in force:** `expires_on` has passed, and nothing acts on it.
+7. **Expired tag assignments still in force.** `expires_on` has passed, and nothing acts on it.
 
 ## Phases
 

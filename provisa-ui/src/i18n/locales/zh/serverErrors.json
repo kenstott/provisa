@@ -130,6 +130,7 @@
       "address_not_found": "没有可解析的内容：{{reason}}",
       "mixed_resolve_and_other_fields": "resolve 不能在同一操作中与其他根字段组合使用",
       "source_starting": "源 {{source}} 仍在启动。请稍后重试。",
+      "source_unavailable": "源 {{source}} 无法响应。请稍后重试。",
       "view_outside_load_window": "视图 {{view}} 只能在其读取时段内读取。下次开放时间为 {{opens_at}}。",
       "graphql_body_missing": "请求没有正文:GraphQL 请求是包含查询的 JSON 对象。",
       "graphql_body_not_json": "请求正文不是 JSON:{{error}}",
@@ -156,7 +157,7 @@
       "in_use": "仍有 {{count}} 项引用 {{env}}。请移除或更改每一项，然后再次删除。"
     },
     "front_door": {
-      "coordinator_waking": "环境正在启动，大约两分钟后就绪。",
+      "coordinator_waking": "环境正在启动，大约五分钟后就绪。",
       "coordinator_updating": "环境正在更新，很快就会恢复。"
     },
     "functions": {
@@ -268,6 +269,10 @@
       "classification_status_invalid": "分类决定只能是已接受或已拒绝，而不是 {{status}}",
       "classification_decision_not_found": "没有关于 {{column}} 作为 {{kind}} 的决定",
       "classification_pii_refused": "无法将该列标记为 PII"
+    },
+    "query": {
+      "catalog_view_refused": "{{view}} 是 meta 域的目录视图,不能与数据源的表在同一条语句中读取:请用两条语句分别读取。",
+      "function_unsupported": "{{function}}() 在 {{dialect}} 上没有对应形式。"
     },
     "replication": {
       "answer_not_json": "为 {{table}} 的副本读取的响应不是有效的 JSON：[{{content_type}}] {{cause}}（位于响应第 {{before_byte}} 字节之前的 {{kib}} KiB 内）。",
@@ -664,6 +669,8 @@
       "unknown_demo": "没有名为 {{demo}} 的已发布演示。",
       "demo_not_ready": "此演示仍在准备中。请稍后再试。",
       "demo_stores_failed": "无法启动此演示。请过几分钟再试。",
+      "demo_failed": "无法准备此演示。请过几分钟再试。",
+      "failed_to_start": "无法启动演示服务器。请稍后再试。",
       "at_capacity": "所有演示沙盒都在使用中。请稍后再试。",
       "starting": "演示服务器正在启动。请一两分钟后重试。",
       "disk_full": "此沙盒已用完 {{limit}} 字节的磁盘上限；无法再写入任何内容。",

@@ -130,6 +130,7 @@
       "address_not_found": "沒有可解析的內容：{{reason}}",
       "mixed_resolve_and_other_fields": "resolve 不能在同一操作中與其他根欄位組合使用",
       "source_starting": "來源 {{source}} 仍在啟動。請稍後再試。",
+      "source_unavailable": "來源 {{source}} 無法回應。請稍後再試。",
       "view_outside_load_window": "視圖 {{view}} 只能在其讀取時段內讀取。下次開放時間為 {{opens_at}}。",
       "graphql_body_missing": "請求沒有正文:GraphQL 請求是包含查詢的 JSON 物件。",
       "graphql_body_not_json": "請求正文不是 JSON:{{error}}",
@@ -156,7 +157,7 @@
       "in_use": "仍有 {{count}} 項引用 {{env}}。請移除或更改每一項，然後再次刪除。"
     },
     "front_door": {
-      "coordinator_waking": "環境正在啟動，大約兩分鐘後就緒。",
+      "coordinator_waking": "環境正在啟動，大約五分鐘後就緒。",
       "coordinator_updating": "環境正在更新，很快就會恢復。"
     },
     "functions": {
@@ -268,6 +269,10 @@
       "classification_status_invalid": "分類決定只可以是已接受或已拒絕，而不是 {{status}}",
       "classification_decision_not_found": "沒有關於 {{column}} 作為 {{kind}} 的決定",
       "classification_pii_refused": "無法將該欄位標記為 PII"
+    },
+    "query": {
+      "catalog_view_refused": "{{view}} 是 meta 網域的目錄檢視,不能與數據來源的表在同一條陳述式中讀取:請用兩條陳述式分別讀取。",
+      "function_unsupported": "{{function}}() 在 {{dialect}} 上沒有對應形式。"
     },
     "replication": {
       "answer_not_json": "為 {{table}} 的複本讀取的回應不是有效的 JSON：[{{content_type}}] {{cause}}（位於回應第 {{before_byte}} 位元組之前的 {{kib}} KiB 內）。",
@@ -664,6 +669,8 @@
       "unknown_demo": "沒有名為 {{demo}} 的已發佈示範。",
       "demo_not_ready": "此示範仍在準備中。請稍後再試。",
       "demo_stores_failed": "無法啟動此示範。請過幾分鐘再試。",
+      "demo_failed": "無法準備此示範。請過幾分鐘再試。",
+      "failed_to_start": "無法啟動示範伺服器。請稍後再試。",
       "at_capacity": "所有示範沙盒都在使用中。請稍後再試。",
       "starting": "示範伺服器正在啟動。請一兩分鐘後再試。",
       "disk_full": "此沙盒已用完 {{limit}} 位元組的磁碟上限；無法再寫入任何內容。",

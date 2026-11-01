@@ -18,13 +18,21 @@
  *
  * Kept out of the page component so the pattern it writes can be read back in a test.
  */
+import type { DropNotice, GNode } from "../components/graph/graph-model";
 import type { SchemaRel } from "../components/graph/graph-schema-types";
+import {
+  MAX_SCHEMA_HOPS,
+  MAX_SCHEMA_PATHS,
+  shortestSchemaPaths,
+} from "../components/graph/schemaPath";
 
 export interface DropExpansion {
   /** The rewritten query, before any native-filter WHERE clause is spliced in. */
   query: string;
-  /** Every variable bound to the dropped label, one per hop. */
+  /** Every variable bound to the dropped label, one per path. */
   targetVars: string[];
+  /** What the drop says on its frame: the tied paths it left out. */
+  notices: DropNotice[];
 }
 
 /**
@@ -57,9 +65,6 @@ export function buildDropExpansion(
   compoundLabel: string,
   schemaRels: SchemaRel[],
 ): DropExpansion {
-  // The table part of the dropped label (Shelter:Assignments -> Assignments), for variable names.
-  const droppedTableName = compoundLabel.split(":").pop() ?? compoundLabel;
-
   // Map each label the query declares, as written (a compound label whole), to every variable bound
   // to it, by parsing the MATCH clauses. Use the QUERY (not result nodes): an OPTIONAL MATCH branch
   // that returned no rows still declares its label and must remain matchable. A label bound twice
@@ -72,39 +77,54 @@ export function buildDropExpansion(
   }
 
   // The relationship types are the server's, from the acting role's label map
-  // (/data/graph-schema, the sidebar's Relationship Types): only a type it registers between the
-  // dropped label and one the query declares is written, so the translator never meets a type it
-  // does not know (REQ-1586). EVERY type that reaches the dropped label, from EVERY variable the
+  // (/data/graph-schema, the sidebar's Relationship Types): only a type it registers on the way from
+  // a label the query declares to the dropped one is written, so the translator never meets a type
+  // it does not know (REQ-1586). EVERY type that reaches the dropped label, from EVERY variable the
   // query binds to the other end's label -- not the first type, nor the first variable. One
   // junction table backs several types at once, and a query can reach the dropped label from
-  // several of its nodes (a domain and its products). Each (anchor, type) is its own hop, with its
+  // several of its nodes (a domain and its products). Each (anchor, types) is its own path, with its
   // own relationship and target variables: a target shared across anchors would require one node
   // to be reached from all of them and hide every row that is not. The graph merges the nodes
-  // several hops reach by identity.
-  const hops: { anchor: string; relType: string }[] = [];
-  for (const r of schemaRels) {
-    // The dropped node is the relationship's target (the query's node its source), or its source.
-    const anchors = [
-      ...(r.target === compoundLabel ? (varsByLabel[r.source] ?? []) : []),
-      ...(r.source === compoundLabel ? (varsByLabel[r.target] ?? []) : []),
-    ];
-    for (const anchor of anchors)
-      if (!hops.some((h) => h.anchor === anchor && h.relType === r.type))
-        hops.push({ anchor, relType: r.type });
-  }
+  // several paths reach by identity. A label no relationship touches is reached by the shortest
+  // paths through others (REQ-2135), the ties among them capped; a hop's ties stay whole.
+  const { paths, hops } = shortestSchemaPaths(schemaRels, Object.keys(varsByLabel), [compoundLabel]);
+  const seen = new Set<string>();
+  const routes = paths.flatMap((steps) =>
+    varsByLabel[steps[0].from].flatMap((anchor) => {
+      const key = [anchor, ...steps.map((s) => `${s.edge.type} ${s.to}`)].join(" ");
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ anchor, steps }];
+    }),
+  );
+  const kept = hops === 1 ? routes : routes.slice(0, MAX_SCHEMA_PATHS);
+  const notices: DropNotice[] = [];
+  if (kept.length < routes.length)
+    notices.push({
+      key: "graphFrame.sparqlDropLeftOut",
+      values: { shown: kept.length, total: routes.length },
+    });
+  if (hops !== null && hops > MAX_SCHEMA_HOPS)
+    notices.push({
+      key: "graphFrame.cypherDropTooFar",
+      values: { name: compoundLabel, hops, most: MAX_SCHEMA_HOPS },
+    });
   // No known relationship: the dropped label alone, beside the query's first MATCH variable.
   const firstVar = query.match(/\bMATCH\s*\(\s*(\w+)/i)?.[1] ?? "n";
 
-  const suffix = droppedTableName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
   const trimmed = query.trim();
   const taken = (v: string) =>
     trimmed.includes(`[${v}`) || trimmed.includes(` ${v}`) || trimmed.includes(`(${v}`);
-  // One free (rel, target) variable pair per hop. Each hop gets its own OPTIONAL MATCH: a
+  const nameOf = (label: string) =>
+    (label.split(":").pop() ?? label).replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
+  // One free (rel, target) variable pair per step. Each path gets its own OPTIONAL MATCH: a
   // single-hop pattern resolves one relationship mapping, so alternation is not a spelling the
   // translator accepts.
   const pairs: { relVar: string; targetVar: string }[] = [];
-  let counter = 1;
-  for (let k = 0; k < Math.max(hops.length, 1); k++) {
+  const counters = new Map<string, number>();
+  const freshPair = (label: string) => {
+    const suffix = nameOf(label);
+    let counter = counters.get(suffix) ?? 1;
     let relVar = `r${suffix}`;
     let targetVar = `m${suffix}`;
     while (
@@ -116,20 +136,26 @@ export function buildDropExpansion(
       relVar = `r${suffix}${counter}`;
       targetVar = `m${suffix}${counter}`;
     }
-    pairs.push({ relVar, targetVar });
-  }
-  const optMatchPatterns =
-    hops.length > 0
-      ? hops.map(
-          (h, k) =>
-            `(${h.anchor})-[${pairs[k].relVar}:${h.relType}]-(${pairs[k].targetVar}:${compoundLabel})`,
-        )
-      : [`(${pairs[0].targetVar}:${compoundLabel})`];
-  const extraReturn =
-    hops.length > 0
-      ? hops.map((_, k) => `, ${pairs[k].relVar}, ${pairs[k].targetVar}`).join("")
-      : `, ${pairs[0].targetVar}`;
-  const anchors = hops.length > 0 ? [...new Set(hops.map((h) => h.anchor))] : [firstVar];
+    counters.set(suffix, counter);
+    const pair = { relVar, targetVar };
+    pairs.push(pair);
+    return pair;
+  };
+  const written = kept.map(({ anchor, steps }) => {
+    const walked = steps.map((s) => ({ ...freshPair(s.to), type: s.edge.type, label: s.to }));
+    const chain = walked.map((w) => `-[${w.relVar}:${w.type}]-(${w.targetVar}:${w.label})`).join("");
+    return { anchor, pattern: `(${anchor})${chain}`, walked };
+  });
+  const alone = written.length === 0 ? freshPair(compoundLabel) : null;
+  const optMatchPatterns = alone
+    ? [`(${alone.targetVar}:${compoundLabel})`]
+    : written.map((w) => w.pattern);
+  const extraReturn = alone
+    ? `, ${alone.targetVar}`
+    : written
+        .flatMap((w) => w.walked.map((x) => `, ${x.relVar}, ${x.targetVar}`))
+        .join("");
+  const anchors = alone ? [firstVar] : [...new Set(written.map((w) => w.anchor))];
   const optMatchBlock = optMatchPatterns.map((p) => `OPTIONAL MATCH ${p}`).join("\n");
   const newQueryBase = withExpansion(
     trimmed,
@@ -137,7 +163,45 @@ export function buildDropExpansion(
     extraReturn,
     `${anchors.join(", ")}${extraReturn}`,
   );
-  return { query: newQueryBase, targetVars: pairs.map((p) => p.targetVar) };
+  return {
+    query: newQueryBase,
+    targetVars: alone
+      ? [alone.targetVar]
+      : written.map((w) => w.walked[w.walked.length - 1].targetVar),
+    notices,
+  };
+}
+
+/** The most rows the paths between two dropped nodes are read to. */
+const NODE_PATH_ROWS = 25;
+
+/**
+ * The query a node dragged onto another runs (REQ-2135): every shortest path of the data between the
+ * two, within MAX_SCHEMA_HOPS, through any relationship. Null where a node's key is not known, which
+ * is what names it: ``key`` is a label's key column.
+ */
+export function nodePathQuery(
+  from: GNode,
+  to: GNode,
+  key: (label: string) => string | undefined,
+): string | null {
+  const keyed = ([variable, node]: [string, GNode]) => {
+    const column = key(node.label);
+    const value = column === undefined ? undefined : node.properties[column];
+    if (value === undefined || value === null) return null;
+    const literal =
+      typeof value === "number" ? value : `'${String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+    return `${variable}.${column} = ${literal}`;
+  };
+  const a = keyed(["a", from]);
+  const b = keyed(["b", to]);
+  if (a === null || b === null) return null;
+  return [
+    `MATCH p = allShortestPaths((a:${from.label})-[*..${MAX_SCHEMA_HOPS}]-(b:${to.label}))`,
+    `WHERE ${a} AND ${b}`,
+    "RETURN p",
+    `LIMIT ${NODE_PATH_ROWS}`,
+  ].join("\n");
 }
 
 const NUMERIC_TYPES = new Set([

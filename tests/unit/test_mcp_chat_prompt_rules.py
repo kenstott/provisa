@@ -203,3 +203,61 @@ class TestOneFileOrMany:  # REQ-2113
         s = _flat(chat_mod._SYSTEM)
         assert "sets download_from and leaves path out" in s
         assert "register_table_draft with table_domain_id" in s
+
+
+class TestExploreSurfaces:
+    """Polly's Explore surfaces: every one named with its state key, and what gRPC carries."""
+
+    def test_sparql_is_a_surface_with_its_state_key(self):
+        system = _flat(chat_mod._SYSTEM)
+        assert "TEN query surfaces" in system
+        assert "SPARQL /sparql (state.query)" in system
+        tool = _flat(_navigate_tool()["description"])
+        assert "/sparql (SPARQL)" in tool
+        state = _flat(_navigate_tool()["input_schema"]["properties"]["state"]["description"])
+        assert '/sparql -> {"query": "SELECT ..."}' in state
+
+    def test_sparql_says_where_its_vocabulary_comes_from(self):
+        assert "admin_request GET /data/sparql/vocabulary" in _flat(chat_mod._SYSTEM)
+
+    def test_a_grpc_request_body_can_be_handed_over(self):
+        system = _flat(chat_mod._SYSTEM)
+        state = _navigate_tool()["input_schema"]["properties"]["state"]["description"]
+        assert "gRPC /grpc (state.grpcMethod, state.grpcBody)" in system
+        assert "grpcBody" in state
+
+    def test_grpc_read_mask_filter_limit_and_offset_are_taught(self):
+        system = _flat(chat_mod._SYSTEM)
+        assert 'read_mask {"paths": [...]} the fields to return' in system
+        assert 'filter {"column": value} equality on columns only' in system
+        assert "limit the row count (100 when absent)" in system
+        assert "a row read does not apply it" in system
+
+    def test_a_graphql_query_shown_in_grpc_carries_its_fields(self):
+        system = _flat(chat_mod._SYSTEM)
+        assert "A GraphQL query shown in gRPC carries its fields" in system
+        assert "read_mask.paths set to the query's fields" in system
+        assert "rather than dropping it silently" in system
+
+    def test_jsonapi_and_openapi_urls_carry_fields_and_filters(self):
+        system = _flat(chat_mod._SYSTEM)
+        assert "add fields[<table>]=a,b" in system
+        assert 'filter=[{"field":"col","comparator":"eq","value":"x"}]' in system
+        assert "state.openApiBody" in system
+
+    def test_read_screen_reports_the_inputs_of_a_page_with_no_editor(self):
+        tool = next(t for t in chat_mod._CLIENT_TOOLS if t["name"] == "read_screen")
+        text = _flat(tool["description"])
+        assert "gRPC: method, body" in text
+        assert "JSON:API: url, table, fields" in text
+        assert "OpenAPI: operation, parameters, body" in text
+
+
+class TestReadBack:
+    def test_a_page_is_said_to_be_opened_only_from_what_the_screen_shows(self):
+        system = _flat(chat_mod._SYSTEM)
+        assert "A navigate with state reads the screen back before it answers" in system
+        assert "never 'Done'" in system
+        assert "Say a page was opened with something only from that result" in _flat(
+            _navigate_tool()["description"]
+        )

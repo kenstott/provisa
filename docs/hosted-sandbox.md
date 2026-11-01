@@ -1,7 +1,7 @@
 # The hosted demo sandbox
 
 The live demos page on provisa.dev opens each published demo in a sandbox on cloud.provisa.dev.
-No account is needed. The sandbox is your own copy of the demo: its model, and its data landed
+No account is needed. The sandbox is your own copy of the demo, with its model and its data landed
 ahead of time, so the first query answers at once. Anything you add or change stays in your copy.
 
 A "Try it Out" invitation opens the same kind of sandbox for a signed-in person. That sandbox is
@@ -9,7 +9,7 @@ yours from every device you sign in on, and nobody else can be admitted to it.
 
 ## What the sandbox is
 
-It is a lightweight version of Provisa. The same product, with these limits:
+It is a lightweight version of Provisa, the same product with these limits:
 
 <!-- The values below are the settings' shipped defaults; tests/unit/test_hosted_sandbox_doc.py
      fails when this table and provisa/core/settings_catalog_sandbox.py disagree. A deployment

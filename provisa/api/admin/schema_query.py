@@ -2102,7 +2102,7 @@ class Query:  # REQ-021, REQ-042
         require_capability(info, "observability")
         from provisa.api.admin.system_health import collect_system_health
 
-        return await collect_system_health()
+        return await collect_system_health(info.context["request"].app)
 
     # ── Admin: Scheduled Tasks ──
 

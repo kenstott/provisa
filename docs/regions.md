@@ -90,7 +90,7 @@ Regions used only for performance declare no cross-region rules. The tables, rol
 - **Recency.** A table homed where it changes is refreshed there, close to its source.
 - **Engine fit.** Each region runs its own engine, so you can match an engine to a place: the data center it sits in, the storage it reads, and the CPU and memory it has.
 
-**Example: two identical regions.** Declare `east` and `west` in two data centers, each with the same engine kind and the same kinds of store, and home no tables. Each region serves the readers nearest it: it builds its own copies of what they read and caches their responses. The two can sit behind one load balancer and share the load. There is one refresh schedule, the model's, and both regions start refreshing their copies on it, but their engines may not finish in the same time. So at a given moment the two are not guaranteed to be in the same state, and a reader moved from one region to the other may see data of a different freshness. Provisa does not move a client to the other region when one stops; where a client is sent is the load balancer's decision.
+**Example: two identical regions.** Declare `east` and `west` in two data centers, each with the same engine kind and the same kinds of store, and home no tables. Each region serves the readers nearest it. It builds its own copies of what they read and caches their responses. The two can sit behind one load balancer and share the load. There is one refresh schedule, the model's, and both regions start refreshing their copies on it, but their engines may not finish in the same time. So at a given moment the two are not guaranteed to be in the same state, and a reader moved from one region to the other may see data of a different freshness. Provisa does not move a client to the other region when one stops; where a client is sent is the load balancer's decision.
 
 ### Cost
 
@@ -102,7 +102,7 @@ Cost regions declare no cross-region rules either. They put work where it is che
 
 ### Sovereignty
 
-Regions used for sovereignty do declare cross-region rules, whether the reason is the law or the organization: a subsidiary that homes its tables in its own region keeps them processed and stored on its own infrastructure, and decides through these rules what the rest of the group reads. They are ordinary row and column rules, written on attributes that say where the reader, or the node doing the work, is:
+Regions used for sovereignty do declare cross-region rules, whether the reason is the law or the organization. A subsidiary that homes its tables in its own region keeps them processed and stored on its own infrastructure, and decides through these rules what the rest of the group reads. They are ordinary row and column rules, written on attributes that say where the reader, or the node doing the work, is:
 
 - `current_setting('provisa.region')` is the region of the node answering the request, when the platform declares regions. A row filter written on it keeps a region's rows in that region.
 - A member's `region` attribute makes them hold the derived roles `region` and `region__<value>`, so a mask or grant entry can name `analyst+region__eu`. A node's own background work carries its region the same way. See [Roles: granted, derived and meta](security.md#roles-granted-derived-and-meta).
@@ -115,6 +115,6 @@ Setting, changing or removing the region of a table, a source or a materialized 
 
 The right exists only when the platform declares regions. Domain ownership still decides who may edit everything else about the object. A region confers no right of its own, so an organization that wants a region's tables run by that region's people gives them domains of their own.
 
-You can also set a table or view to **draft**. A draft is out of service, and no reader is offered it. A table registered through the admin starts as a draft. Its steward can preview it only on the nodes of the region it names, or, when it names none, wherever the steward is. The copy that preview lands stays in that region, ready for the table's release. Any copy another region holds from before the table's region was set or changed is retired and dropped, as for a published table. Draft also gives a move between regions a clean gap, with the table served nowhere in between: the first region's side sets it to draft, and the second region's holder claims it by setting their region.
+You can also set a table or view to **draft**. A draft is out of service, and no reader is offered it. A table registered through the admin starts as a draft. Its steward can preview it only on the nodes of the region it names, or, when it names none, wherever the steward is. The copy that preview lands stays in that region, ready for the table's release. Any copy another region holds from before the table's region was set or changed is retired and dropped, as for a published table. Draft also gives a move between regions a clean gap, with the table served nowhere in between. The first region's side sets it to draft, and the second region's holder claims it by setting their region.
 
 See also the [two-region demo](regions-demo.md).

@@ -74,7 +74,10 @@ const VOCABULARY = {
     rel: `${BASE}/vocab/rel/`,
     "pet-store": `${BASE}/vocab/pet-store/`,
   },
-  classes: [{ iri: PETS, kind: "table", labels: ["pets"], superclasses: [] }],
+  classes: [
+    { iri: PETS, kind: "table", labels: ["pets"], superclasses: [] },
+    { iri: `${BASE}/vocab/pet-store/vets`, kind: "table", labels: ["vets"], superclasses: [] },
+  ],
   predicates: [
     {
       iri: `${PETS}#breedName`,
@@ -91,7 +94,7 @@ const VOCABULARY = {
       datatype: `${XSD}decimal`,
     },
   ],
-  edges: [],
+  edges: [{ iri: `${BASE}/vocab/rel/TREATED_BY`, type: "TREATED_BY", source: "pets", target: "vets" }],
   concepts: [],
 };
 const LABEL = "pet-store:pets";
@@ -298,5 +301,29 @@ describe("the SPARQL panel's first look", () => {
       "aria-expanded",
       "false",
     );
+  });
+
+  it("opens a domain's menu, its numeric properties those of its classes", async () => {
+    page();
+    fireEvent.click(await screen.findByTestId("sparql-vocab-domains-toggle"));
+    fireEvent.contextMenu(await screen.findByTestId("sparql-domain-pet-store"), {
+      clientX: 40,
+      clientY: 80,
+    });
+    const menu = (await screen.findByText("pet-store", { selector: ".node-ctx-title" })).closest(
+      ".node-ctx-menu",
+    ) as HTMLElement;
+    expect(menu).toBeInTheDocument();
+    expect((await optionsOf("Size by")).getByRole("option", { name: "price", hidden: true })).toBeTruthy();
+  });
+
+  it("opens a relationship's menu, kept by the name its edges are drawn with", async () => {
+    page();
+    fireEvent.click(await screen.findByTestId("sparql-vocab-relationships-toggle"));
+    fireEvent.contextMenu(await screen.findByTestId("sparql-edge-rel:TREATED_BY"), {
+      clientX: 40,
+      clientY: 80,
+    });
+    expect(await screen.findByText("TREATED_BY", { selector: ".node-ctx-title" })).toBeInTheDocument();
   });
 });

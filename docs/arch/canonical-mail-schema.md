@@ -12,18 +12,18 @@ same column names, types, order and meaning, so `UNION ALL` of the two needs no 
 3. One fact, one column. No `gmail_x` beside `exchange_x`.
 4. Ids are `text`, as the provider gives them. Microsoft ids are asked for as immutable ids
    (`Prefer: IdType="ImmutableId"`).
-5. Both sources land their tables through the replica write face as (name, IR type) columns:
+5. Both sources land their tables through the replica write face as (name, IR type) columns.
    `CursorSource` (`provisa/federation/replica_source.py:126`) builds its Arrow schema from
    them (`provisa/core/ir_arrow.py:67-71`). Neither goes through `api_endpoints`, whose five
    column types (`provisa/api_source/models.py:40-45`) have no timestamp or date.
 6. Types are IR types, and these are the only ones used: `text` (Arrow string,
    `ir_arrow.py:39`), `bigint` (int64, `:38`), `boolean` (`:40`), `date` (date32, `:44`),
    `timestamp` (Arrow timestamp in microseconds, `:45`, `:62-63`), `json` (`:50`).
-7. `*_at` is `timestamp`, the value in UTC. The IR has one timestamp: `timestamptz` is an alias
+7. `*_at` is `timestamp`, the value in UTC. The IR has one timestamp. `timestamptz` is an alias
    of it (`provisa/core/ir_types.py:93`) and a value with a zone is converted to UTC and landed
    without one (`ir_arrow.py:91-95`). `*_date` is `date`. Where the provider states a zone it
    sits beside the value as `*_time_zone` (`text`, as the provider names it; not translated).
-8. A list is `json`: a JSON array held as text (`ir_arrow.py:50`, `:81-82`). The IR has no array
+8. A list is `json`, a JSON array held as text (`ir_arrow.py:50`, `:81-82`). The IR has no array
    type; an array or list in a store's own vocabulary is collapsed to `text`
    (`ir_types.py:116`, `:151`). Where rows are needed for a join, a child table carries the
    same fact as rows (`message_folders`, `message_recipients`, `event_attendees`).
@@ -336,7 +336,7 @@ Rows: single events, series masters and exceptions. Not every expanded occurrenc
 One value set for each enumeration, and each provider's table from its own values to them
 (`provisa.core.canonical_mail.ENUMS`, read through `translate`). A value a provider's table
 does not list fails the build of the table by name. The folder role is the one exception, by
-the maintainer's ruling: both vendors' sets of system folders are open, so a value neither
+the maintainer's ruling. Both vendors' sets of system folders are open, so a value neither
 table lists is `other`. "derived" marks a value the provider has no field for, which its
 loader works out as stated. Microsoft values are those of the Graph v1.0 description read on
 2026-10-09; Google values those of the discovery documents and labels guide read the same day.

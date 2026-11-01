@@ -99,7 +99,7 @@ describe("tour opens Polly", () => {
   });
 
   it("opens Polly on the steps that show its panel, and on no other", () => {
-    // An explicit flag: a step whose words only name Polly ("Just ask" sends the visitor to it)
+    // An explicit flag: a step whose words only name Polly ("Ask in plain English" sends the visitor to it)
     // leaves the panel shut.
     expect(TOUR_STEPS.filter((s) => s.pollyOpen).map((s) => s.key)).toEqual([
       "stepPolly",

@@ -130,6 +130,7 @@
       "address_not_found": "Rien à résoudre : {{reason}}",
       "mixed_resolve_and_other_fields": "resolve ne peut pas être combiné avec d'autres champs racine dans une même opération",
       "source_starting": "La source {{source}} est encore en cours de démarrage. Réessayez dans un instant.",
+      "source_unavailable": "La source {{source}} n'a pas pu répondre. Réessayez sous peu.",
       "view_outside_load_window": "La vue {{view}} ne peut être lue que pendant sa fenêtre de lecture. Elle rouvre à {{opens_at}}.",
       "graphql_body_missing": "La requête n'a pas de corps : une requête GraphQL est un objet JSON contenant une requête.",
       "graphql_body_not_json": "Le corps de la requête n'est pas du JSON : {{error}}",
@@ -156,7 +157,7 @@
       "in_use": "{{env}} est encore référencé par {{count}} élément(s). Retirez ou modifiez chacun, puis supprimez de nouveau."
     },
     "front_door": {
-      "coordinator_waking": "L'environnement démarre. Il sera prêt dans environ deux minutes.",
+      "coordinator_waking": "L'environnement démarre. Il sera prêt dans environ cinq minutes.",
       "coordinator_updating": "L'environnement est en cours de mise à jour. Il sera de retour sous peu."
     },
     "functions": {
@@ -268,6 +269,10 @@
       "classification_status_invalid": "Une décision de classification est acceptée ou rejetée, pas {{status}}",
       "classification_decision_not_found": "Aucune décision sur {{column}} en tant que {{kind}}",
       "classification_pii_refused": "La colonne n'a pas pu être marquée PII"
+    },
+    "query": {
+      "catalog_view_refused": "{{view}} est une vue de catalogue du domaine meta et ne peut pas être lue dans une même instruction avec une table d'une source de données : lisez-les en deux instructions.",
+      "function_unsupported": "{{function}}() n'a pas d'équivalent sur {{dialect}}."
     },
     "replication": {
       "answer_not_json": "La réponse lue pour la réplique de {{table}} n'est pas du JSON valide : [{{content_type}}] {{cause}} (dans les {{kib}} Kio précédant l'octet {{before_byte}} de la réponse).",
@@ -664,6 +669,8 @@
       "unknown_demo": "Aucune démo publiée ne s'appelle {{demo}}.",
       "demo_not_ready": "Cette démo est encore en préparation. Réessayez sous peu.",
       "demo_stores_failed": "Cette démo n'a pas pu être démarrée. Réessayez dans quelques minutes.",
+      "demo_failed": "Cette démo n'a pas pu être préparée. Réessayez dans quelques minutes.",
+      "failed_to_start": "Le serveur de démonstration n'a pas pu être démarré. Réessayez plus tard.",
       "at_capacity": "Tous les bacs à sable de démo sont utilisés. Réessayez sous peu.",
       "starting": "Le serveur de démonstration démarre. Réessayez dans une ou deux minutes.",
       "disk_full": "Ce bac à sable a atteint sa limite de disque de {{limit}} octets ; plus rien ne peut y être écrit.",

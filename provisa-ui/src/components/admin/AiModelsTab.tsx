@@ -52,6 +52,7 @@ const ROLE_KEYS: (keyof AiModelAssignments)[] = [
   "sql_generation",
   "table_selection",
   "mcp_chat",
+  "glossary_term_finding",
 ];
 
 const PROVIDER_OPTIONS = [

@@ -19,11 +19,15 @@ independently of the HTTP app, so each is probed with a short TCP connect:
 port ``None`` = the protocol was never started (disabled); otherwise the probe
 distinguishes "running" from "down". gRPC/Flight report started via their server
 handle on ``AppState``; pgwire/bolt are env-port gated.
+
+The HTTP query surfaces share the listener answering this very request, so there is nothing to
+probe: a surface is "running" when its routes are mounted on the app, "disabled" when they are not.
 """
 
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from redis.exceptions import RedisError
 
@@ -39,6 +43,25 @@ def _port(key: str) -> int | None:
 
 
 _PROBE_TIMEOUT_S = 0.5
+
+#: The client query surfaces on the HTTP listener, each with the path it is served at.
+HTTP_SURFACES = {
+    "SPARQL": "/data/sparql",
+    "GraphQL": "/data/graphql",
+    "Cypher over HTTP": "/data/cypher",
+    "REST": "/data/rest",
+    "JSON:API": "/data/jsonapi",
+}
+
+
+def serving_http_surfaces(app: Any) -> set[str]:
+    """The names in ``HTTP_SURFACES`` with a route mounted on ``app``."""
+    mounted = [getattr(route, "path", "") for route in app.routes]
+    return {
+        name
+        for name, path in HTTP_SURFACES.items()
+        if any(m == path or m.startswith(f"{path}/") for m in mounted)
+    }
 
 
 async def _probe_tcp(port: int | None) -> str:
@@ -56,8 +79,8 @@ async def _probe_tcp(port: int | None) -> str:
         return "down"
 
 
-async def collect_system_health() -> SystemHealthType:
-    """Assemble the current system health snapshot."""
+async def collect_system_health(app: Any) -> SystemHealthType:
+    """Assemble the current system health snapshot of the HTTP ``app`` answering."""
     from provisa.api.app import state
     from provisa.cache.store import RedisCacheStore
 
@@ -102,6 +125,13 @@ async def collect_system_health() -> SystemHealthType:
     protocols = [
         ProtocolHealthType(name=name, status=status, port=port)
         for (name, port), status in zip(ports.items(), statuses)
+    ]
+    serving = serving_http_surfaces(app)
+    protocols += [
+        ProtocolHealthType(
+            name=name, status="running" if name in serving else "disabled", port=None, path=path
+        )
+        for name, path in HTTP_SURFACES.items()
     ]
 
     return SystemHealthType(

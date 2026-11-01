@@ -13,7 +13,10 @@
 from __future__ import annotations
 
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import graphql
 import pytest
@@ -24,6 +27,7 @@ sys.path.insert(0, str(BENCH))
 import run_benchmark as rb  # noqa: E402
 from queries import QUERIES  # noqa: E402
 
+from provisa.compiler.directives import cache_hint_for  # noqa: E402
 from provisa.compiler.naming import rel_field_name  # noqa: E402
 
 
@@ -102,3 +106,72 @@ def test_federated_join_is_one_nested_selection_under_the_orders_root_field() ->
     assert [f.name.value for f in root_fields] == ["pb__orders"]
     nested = {f.name.value for f in root_fields[0].selection_set.selections}
     assert {"orderEvents", "orderDoc"} <= nested
+
+
+class _RecordingCypher(rb.Transport):
+    name = "cypher"
+
+    def __init__(self) -> None:
+        self.texts: list[str] = []
+
+    def run_cypher(self, text, params):
+        self.texts.append(text)
+        return 1, 10, 0.0
+
+
+@pytest.mark.parametrize(
+    ("no_cache", "hinted"), [(True, False), (False, True)], ids=["nocache", "cache"]
+)
+def test_cypher_opts_in_only_on_the_cache_pass(no_cache: bool, hinted: bool) -> None:
+    t = _RecordingCypher()
+    rb._run_sequential(t, _query(), "cypher", "MATCH (n) RETURN n", no_cache=no_cache)
+    assert t.texts
+    for text in t.texts:
+        assert text.endswith("MATCH (n) RETURN n")
+        assert cache_hint_for("cypher", text).opt_in is hinted
+
+
+def test_bolt_has_a_saturation_mix() -> None:
+    mix = rb._saturation_mix("cypher")
+    assert [weight for weight, *_ in mix] == [0.7, 0.3]
+    assert "sum(o.amount)" in mix[1][1]
+
+
+class _FakeSession:
+    def __init__(self, sessions: list) -> None:
+        self.closed = False
+        self.owner = threading.get_ident()
+        sessions.append(self)
+
+    def run(self, cypher, params):
+        assert threading.get_ident() == self.owner, "a session crossed threads"
+        return [{"n": 1}]
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _bolt(sessions: list) -> rb.BoltTransport:
+    t = rb.BoltTransport.__new__(rb.BoltTransport)
+    t._driver = SimpleNamespace(session=lambda: _FakeSession(sessions), close=lambda: None)
+    t._thread = threading.local()
+    t._sessions = []
+    t._sessions_lock = threading.Lock()
+    return t
+
+
+def test_bolt_gives_each_thread_its_own_session_and_closes_them_all() -> None:
+    sessions: list = []
+    t = _bolt(sessions)
+    barrier = threading.Barrier(4)
+
+    def _two_calls() -> tuple[int, int]:
+        barrier.wait()
+        return t.run_cypher("RETURN 1", {})[0], t.run_cypher("RETURN 1", {})[0]
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        answers = [f.result() for f in [pool.submit(_two_calls) for _ in range(4)]]
+    assert answers == [(1, 1)] * 4
+    assert len(sessions) == 4
+    t.close()
+    assert all(s.closed for s in sessions)

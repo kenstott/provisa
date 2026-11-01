@@ -12,7 +12,7 @@ The three packages map directly to the three docker-compose layers: (REQ-630)
 | **Observability (Obs)** | otlp2parquet, otel-collector, prometheus, tempo, grafana | `docker-compose.observability.yml` |
 | **Demo** | petstore-mock, graphql-demo | `docker-compose.demo.yml` |
 
-**Dependency chain**: Core ← Obs ← Demo (demo requires obs; obs requires core). (REQ-631)
+**Dependency chain.** Core ← Obs ← Demo (demo requires obs; obs requires core). (REQ-631)
 
 ---
 
@@ -82,12 +82,12 @@ no separate Runtime DMG; the interpreter and images ship inside this DMG.
 
 **Contents of DMG**:
 
-- `Provisa.app` — signed + notarized SwiftUI launcher (ProvisaLauncher) (REQ-227)
-- `python-base/` — a bare python-build-standalone CPython (macOS arm64), NOT
+- `Provisa.app`: signed + notarized SwiftUI launcher (ProvisaLauncher) (REQ-227)
+- `python-base/`: a bare python-build-standalone CPython (macOS arm64), NOT
   pip-installed; first-launch builds `~/.provisa/venv` from it (native tier)
-- `wheels/` — macOS arm64 wheelhouse (`provisa[embedded]` + uvicorn + mcp-proxy +
+- `wheels/`: macOS arm64 wheelhouse (`provisa[embedded]` + uvicorn + mcp-proxy +
   deps) for the airgapped `pip install --no-index` path
-- `images/` — service image tarballs for the Docker tier (hidden from Finder),
+- `images/`: service image tarballs for the Docker tier (hidden from Finder),
   `docker load`ed at first-launch:
   - `postgres-16.tar.gz`
   - `pgbouncer-latest.tar.gz`
@@ -120,7 +120,7 @@ no separate Runtime DMG; the interpreter and images ship inside this DMG.
 
 **Contents**:
 
-- `install-obs.sh` — installer script (no `.app`, just a shell script run via
+- `install-obs.sh`: installer script (no `.app`, just a shell script run via
   a minimal DMG or a signed pkg)
 - `images/` (hidden):
   - `otlp2parquet-latest.tar.gz`
