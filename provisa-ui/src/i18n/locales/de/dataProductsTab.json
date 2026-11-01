@@ -187,6 +187,10 @@
       "slaRemove": "Service-Level entfernen",
       "slaAdd": "Service-Level hinzufügen",
       "notDeclared": "Nicht deklariert",
+      "notDeclaredList": "Nicht deklariert: {{names}}",
+      "versionSaved": "Gespeichert",
+      "versionChanges": "Änderungen",
+      "constraints": "Einschränkungen",
       "breakingWarning": "Inkompatible Änderung in v{{version}}, noch nicht in Kraft",
       "breaking": "Inkompatibel",
       "savedBy": "Gespeichert {{when}} von {{who}}",
@@ -252,7 +256,9 @@
         "sla": "SLAs & Aktualität",
         "quality": "Zusagen",
         "consumers": "Verbraucher",
-        "versions": "Versionen & Änderungen"
+        "versions": "Versionen & Änderungen",
+        "roles": "Rollen",
+        "history": "Versionsverlauf"
       }
     }
   }

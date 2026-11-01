@@ -130,6 +130,7 @@
       "address_not_found": "Нечего разрешать: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve нельзя сочетать с другими корневыми полями в одной операции",
       "source_starting": "Источник {{source}} ещё запускается. Повторите попытку через минуту.",
+      "source_unavailable": "Источник {{source}} не смог ответить. Повторите попытку чуть позже.",
       "view_outside_load_window": "Представление {{view}} можно читать только в его окне чтения. Оно снова откроется в {{opens_at}}.",
       "graphql_body_missing": "У запроса нет тела: запрос GraphQL — это объект JSON с запросом.",
       "graphql_body_not_json": "Тело запроса не является JSON: {{error}}",
@@ -268,6 +269,10 @@
       "classification_status_invalid": "Решение по классификации — принято или отклонено, а не {{status}}",
       "classification_decision_not_found": "Нет решения по {{column}} как {{kind}}",
       "classification_pii_refused": "Не удалось пометить столбец как PII"
+    },
+    "query": {
+      "catalog_view_refused": "{{view}} — это представление каталога домена meta, и его нельзя прочитать в одной инструкции с таблицей источника данных: прочитайте их двумя инструкциями.",
+      "function_unsupported": "У {{function}}() нет эквивалента в {{dialect}}."
     },
     "replication": {
       "answer_not_json": "Ответ, прочитанный для реплики {{table}}, не является корректным JSON: [{{content_type}}] {{cause}} (в {{kib}} КиБ перед байтом {{before_byte}} ответа).",

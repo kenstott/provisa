@@ -119,6 +119,11 @@ resource "google_compute_instance" "sandbox" {
   # It stops itself and the coordinator starts it; terraform must not undo either.
   desired_status = null
 
+  lifecycle {
+    # The provider forces a new VM for any change of this size: sandbox_disk_gb (variables.tf).
+    ignore_changes = [boot_disk[0].initialize_params[0].size]
+  }
+
   metadata = merge(local.metadata_ssh, {
     startup-script = <<-SHELL
       ${local.base_startup}

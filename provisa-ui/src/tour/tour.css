@@ -303,6 +303,10 @@ body.tour-acting .driver-overlay,
 body.tour-acting .driver-popover {
   display: none !important;
 }
+/* A step waiting or stuck: its status card stands alone, not over the step before's popover. */
+body.tour-step-pending .driver-popover {
+  display: none !important;
+}
 body.tour-acting.driver-active * {
   pointer-events: auto;
 }

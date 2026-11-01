@@ -192,12 +192,31 @@ def _refuse_failed_template(demo: PublishedDemo) -> None:
     from provisa.api.demo_templates import template_builds
 
     if template_builds.state_of(demo.name) == "failed":
-        raise ApiError(
-            503,
-            "sandbox.demo_failed",
-            f"{demo.title} could not be prepared; try again in a few minutes",
-            demo=demo.name,
-        )
+        raise _demo_failed(demo)
+
+
+def _demo_failed(demo: PublishedDemo) -> ApiError:
+    return ApiError(
+        503,
+        "sandbox.demo_failed",
+        f"{demo.title} could not be prepared; try again in a few minutes",
+        demo=demo.name,
+    )
+
+
+def _refuse_unhealthy_stores(demo: PublishedDemo) -> None:
+    """A bundled demo whose store is down or red now is refused at its open: marked ready, it
+    would fail partway through its tour (the reviews index red past Elasticsearch's disk
+    watermark, 2026-10-31). What is wrong is the operator's, logged. A demo served from its
+    directory runs its stores itself."""
+    from provisa.core.demo_bundles import bundled_demos, unhealthy_stores
+
+    if not bundled_demos():
+        return
+    wrong = unhealthy_stores(demo.directory)
+    if wrong:
+        log.error("demo %s: its stores are not healthy: %s", demo.name, "; ".join(wrong))
+        raise _demo_failed(demo)
 
 
 async def _ready_demo(name: str) -> PublishedDemo:
@@ -213,6 +232,7 @@ async def _ready_demo(name: str) -> PublishedDemo:
             await follow_latest(name)
             demo = published_demo(name)
             await _template_ready(demo)
+            await asyncio.to_thread(_refuse_unhealthy_stores, demo)
             return demo
         except ApiError as refused:
             if refused.code != "sandbox.demo_not_ready":

@@ -52,6 +52,8 @@ export interface CanvasProps {
   describable?: boolean;
   /** A node the viewer moved (a SPARQL frame merges what is said of it). */
   onNodeDragged?: (nodeKey: string) => void;
+  /** A node let go on top of another. */
+  onNodeDroppedOnNode?: (dragged: GNode, under: GNode) => void;
   /** A new drawing keeps the nodes it shares with the last where they were, and lays out only the
    *  new ones around them (a SPARQL frame's drawing grows as triples merge into it). */
   keepPositions?: boolean;

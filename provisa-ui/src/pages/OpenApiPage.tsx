@@ -15,6 +15,16 @@ import { useTranslation } from "react-i18next";
 import { useComputedColorScheme } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { useScreenInputsReader } from "../mcp/screenState";
+import {
+  bodyInput,
+  findOperation,
+  hasParam,
+  parseCall,
+  setParam,
+  shownOperation,
+  typeInto,
+} from "./openapi/swaggerDocs";
 import "./OpenApiPage.css";
 
 // How long a driven call's response may take: a query on a loaded demo answers in seconds.
@@ -45,16 +55,26 @@ export function OpenApiPage() {
 
   // A call handed to the page (NL "Open in OpenAPI", Polly), whether the page was just opened or
   // already open. Each hand-off has its own sequence number and is driven in the docs once, as soon
-  // as the docs frame has loaded.
-  const [handoff, setHandoff] = useState<{ url: string; seq: number } | null>(null);
+  // as the docs frame has loaded: opened and filled in, and executed when autoRun asks.
+  const [handoff, setHandoff] = useState<{
+    url: string;
+    body: unknown;
+    autoRun: boolean;
+    seq: number;
+  } | null>(null);
   // The last hand-off's response is on screen (REQ-2010: a demo tour step waits for it; the
   // response itself is inside the docs frame, out of the page's reach).
   const [answered, setAnswered] = useState(false);
-  useNavPayload<{ openApiUrl?: string; autoRun?: boolean }>((payload) => {
-    if (!payload.openApiUrl || payload.autoRun !== true) return;
+  // Why the last hand-off could not be carried out; null while none has failed.
+  const [driveError, setDriveError] = useState<string | null>(null);
+  useNavPayload<{ openApiUrl?: string; openApiBody?: unknown; autoRun?: boolean }>((payload) => {
+    if (!payload.openApiUrl) return;
     const url = payload.openApiUrl;
-    setHandoff((prev) => ({ url, seq: (prev?.seq ?? 0) + 1 }));
+    const body = payload.openApiBody;
+    const autoRun = payload.autoRun === true;
+    setHandoff((prev) => ({ url, body, autoRun, seq: (prev?.seq ?? 0) + 1 }));
     setAnswered(false);
+    setDriveError(null);
   });
   // The document the frame has loaded (its key), so a hand-off waits for the current frame.
   const [frameLoaded, setFrameLoaded] = useState<string | null>(null);
@@ -123,30 +143,25 @@ export function OpenApiPage() {
   );
 
   const drive = useCallback(
-    (openApiUrl: string) => {
-      const parts = openApiUrl.trim().split(/\s+/);
-      if (parts.length < 2) return;
-      const method = parts[0].toLowerCase();
-      const [fullPath, fullQuery = ""] = parts[1].split("?");
-      const navParams = new URLSearchParams(fullQuery);
+    (openApiUrl: string, body: unknown, autoRun: boolean) => {
+      const call = parseCall(openApiUrl);
+      if (!call) {
+        setDriveError(`"${openApiUrl}" is not a METHOD and a path`);
+        return;
+      }
+      const { method, path, params: navParams } = call;
+      const named = `${method.toUpperCase()} ${path}`;
 
       void (async () => {
         const doc = iframeRef.current?.contentDocument;
         if (!doc) return;
 
-        // data-path is relative to the server base (e.g. /pet-store/inquiries),
-        // but NL gives the full path (/data/rest/pet-store/inquiries) — use endsWith.
-        // REQ-1359: fullPath must have its querystring stripped first, or it never matches.
-        const findBlock = () =>
-          Array.from(doc.querySelectorAll(".opblock")).find((b) => {
-            const m = b.querySelector(".opblock-summary-method")?.textContent?.toLowerCase();
-            const dataPath = b.querySelector("[data-path]")?.getAttribute("data-path") ?? "";
-            return m === method && fullPath.endsWith(dataPath);
-          }) as HTMLElement | undefined;
-
-        await waitFor(() => !!findBlock(), DOCS_WAIT_MS);
-        const block = findBlock();
-        if (!block) return;
+        await waitFor(() => !!findOperation(doc, method, path), DOCS_WAIT_MS);
+        const block = findOperation(doc, method, path);
+        if (!block) {
+          setDriveError(`the docs have no operation ${named}`);
+          return;
+        }
 
         block.scrollIntoView({ behavior: "smooth", block: "start" });
 
@@ -156,41 +171,29 @@ export function OpenApiPage() {
         }
 
         const paramKeys = [...navParams.keys()];
-        await waitFor(() =>
-          paramKeys.every(
-            (key) =>
-              !!block.querySelector(
-                `tr[data-param-name="${key}"] input, tr[data-param-name="${key}"] select, tr[data-param-name="${key}"] textarea`,
-              ),
-          ),
-        );
+        await waitFor(() => paramKeys.every((key) => hasParam(block, key)));
+        // A parameter the operation does not take is refused here: left out, the call would run
+        // wider than the one handed over.
+        const unknown = paramKeys.filter((key) => !hasParam(block, key));
+        if (unknown.length > 0) {
+          setDriveError(`${named} has no parameter ${unknown.join(", ")}`);
+          return;
+        }
 
         // REQ-1359: populate the try-it-out param inputs (e.g. aggregate/groupBy) from the
         // NL-forwarded querystring before executing, so the replicated call matches the NL query.
-        navParams.forEach((value, key) => {
-          const row = block.querySelector(`tr[data-param-name="${key}"]`);
-          const input = row?.querySelector("input, select, textarea") as
-            | HTMLInputElement
-            | HTMLSelectElement
-            | HTMLTextAreaElement
-            | null;
-          if (!input) return;
-          // The value setter of the element's own kind, from the docs frame's own window: a
-          // table's parameters are one JSON object, typed in a textarea, which the input setter
-          // refuses ("Illegal invocation").
-          const view = (input.ownerDocument.defaultView ?? window) as typeof window;
-          const setter = Object.getOwnPropertyDescriptor(
-            input.tagName === "SELECT"
-              ? view.HTMLSelectElement.prototype
-              : input.tagName === "TEXTAREA"
-                ? view.HTMLTextAreaElement.prototype
-                : view.HTMLInputElement.prototype,
-            "value",
-          )?.set;
-          setter?.call(input, value);
-          input.dispatchEvent(new Event("input", { bubbles: true }));
-          input.dispatchEvent(new Event("change", { bubbles: true }));
-        });
+        for (const [key, value] of navParams) await setParam(block, key, value, waitFor);
+
+        if (body !== undefined) {
+          await waitFor(() => !!bodyInput(block));
+          const input = bodyInput(block);
+          if (!input) {
+            setDriveError(`${named} takes no request body`);
+            return;
+          }
+          typeInto(input, JSON.stringify(body, null, 2));
+        }
+        if (!autoRun) return;
 
         // The native-setter + dispatchEvent hack updates the DOM input immediately, but the actual
         // request Swagger UI builds on execute is driven by its own Redux store, which only picks
@@ -216,6 +219,7 @@ export function OpenApiPage() {
           RESPONSE_WAIT_MS,
         );
         setAnswered(responded);
+        if (!responded) setDriveError(`no response within ${RESPONSE_WAIT_MS / 1000}s`);
         (block.querySelector(".responses-wrapper") as HTMLElement | null)?.scrollIntoView({
           behavior: "smooth",
           block: "start",
@@ -225,11 +229,22 @@ export function OpenApiPage() {
     [waitFor],
   );
 
+  // REQ-2115: Polly's read_screen reads the call on screen from the docs frame, never the rows.
+  const readInputs = useCallback(
+    () => ({
+      ...shownOperation(iframeRef.current?.contentDocument),
+      status: driveError ? "failed" : answered ? "answered" : "idle",
+      error: driveError ?? loadError,
+    }),
+    [answered, driveError, loadError],
+  );
+  useScreenInputsReader("/openapi", readInputs);
+
   const frameKey = `${roleId}:${domainsParam}:${theme}`;
   useEffect(() => {
     if (!handoff || frameLoaded !== frameKey || drivenSeqRef.current === handoff.seq) return;
     drivenSeqRef.current = handoff.seq;
-    drive(handoff.url);
+    drive(handoff.url, handoff.body, handoff.autoRun);
   }, [handoff, frameLoaded, frameKey, drive]);
 
   return (

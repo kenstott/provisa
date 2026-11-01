@@ -14,6 +14,11 @@ import { executeClientTool, type ClientToolContext } from "../mcp/clientTools";
 // REQ-1846: navigate passes an optional `state` payload straight through as react-router's
 // navigate(route, { state }), the same mechanism an in-app link to /query already uses.
 
+// The read-back has its own tests (clientTools.readBack.test.tsx); no page is mounted here.
+vi.mock("../mcp/readBack", () => ({
+  readBack: async () => ({ shown: true, screen: null }),
+}));
+
 function ctx(): ClientToolContext {
   return {
     navigate: vi.fn(),

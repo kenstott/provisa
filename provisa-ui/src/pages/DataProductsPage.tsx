@@ -11,6 +11,7 @@
 import { PageTitle } from "../components/PageTitle";
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useScreenInputs } from "../mcp/screenState";
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Checkbox, Group, Modal, Paper, Table, Text, Title } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
@@ -169,6 +170,23 @@ export function DataProductsPage() {
     } catch {
       return null;
     }
+  });
+  // A link decides the page again whenever it changes while the page stays open.
+  const productParam = searchParams.get("product");
+  const [seededProduct, setSeededProduct] = useState(productParam);
+  if (productParam !== seededProduct) {
+    setSeededProduct(productParam);
+    if (productParam !== null) setExpandedState(productParam);
+  }
+  // REQ-2115: Polly's read_screen reads the page's main state from here. A product is named only
+  // once the list holds it, so a link to one that does not exist reads as no product.
+  useScreenInputs("/data-products", {
+    product: dataProducts.some((p) => p.id === expanded) ? expanded : null,
+    contract: searchParams.get("contract"),
+    search,
+    toReviewOnly,
+    creating,
+    editing: editingId,
   });
   const setExpanded = (id: string | null) => {
     setExpandedState(id);

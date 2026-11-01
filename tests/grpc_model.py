@@ -87,12 +87,13 @@ def compiled_read(
     filter_msg: Any | None = None,
     read_mask: Any | None = None,
     params_msg: Any | None = None,
+    offset: int | None = None,
 ) -> tuple[str, list] | None:
     """The request lowered to GraphQL and compiled: ``(sql, bound values)``, or None when no
     table matches ``type_name``."""
     schema, ctx = model
     lowered = grpc_table_to_graphql(
-        ctx, schema, type_name, limit, filter_msg, read_mask, params_msg
+        ctx, schema, type_name, limit, filter_msg, read_mask, params_msg, offset
     )
     if lowered is None:
         return None

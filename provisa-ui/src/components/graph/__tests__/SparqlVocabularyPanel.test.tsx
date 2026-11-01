@@ -407,3 +407,33 @@ describe("the SPARQL vocabulary's terms follow the checked domains", () => {
     );
   });
 });
+
+describe("a pill dragged to a frame", () => {
+  const dragged = (testId: string) => {
+    const setData = vi.fn();
+    fireEvent.dragStart(screen.getByTestId(testId), { dataTransfer: { setData } });
+    return setData.mock.calls[0];
+  };
+
+  it("carries each kind under its own type", () => {
+    render(
+      <SparqlVocabularyPanel
+        vocabulary={vocabulary}
+        error={null}
+        onPick={vi.fn()}
+        colorOverrides={{}}
+        checkedDomains={new Set()}
+      />,
+    );
+    for (const section of ["domains", "properties", "relationships"])
+      fireEvent.click(screen.getByTestId(`sparql-vocab-${section}-toggle`));
+    fireEvent.click(screen.getByTestId("sparql-property-terms-toggle"));
+    expect(dragged("sparql-domain-hr")).toEqual(["text/x-provisa-domain", "hr"]);
+    expect(dragged("sparql-edge-rel:WORKS_IN")).toEqual([
+      "text/x-provisa-edge",
+      `${BASE}/vocab/rel/WORKS_IN`,
+    ]);
+    const term = document.querySelector('[data-testid^="sparql-predicate-"]') as HTMLElement;
+    expect(dragged(term.dataset.testid as string)).toEqual(["text/x-provisa-property", HIRE_DATE]);
+  });
+});

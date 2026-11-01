@@ -86,3 +86,49 @@ export function groupOptions(
     })),
   ].sort((a, b) => a.label.localeCompare(b.label));
 }
+
+/** A frame's Code view: its query, what it answered, the SQL it ran and how long each part took. */
+export function frameCode(frame: FrameData): Record<string, unknown> {
+  type SourceEntry = {
+    field?: string;
+    source?: string;
+    strategy?: string;
+    elapsed_ms?: number;
+    rows?: number;
+    physical_sql?: string;
+    cache_hit?: boolean;
+  };
+  const stats = frame.queryStats as
+    | { total_elapsed_ms?: number; sources?: SourceEntry[]; mermaid?: string }
+    | undefined;
+  const sqlQueries = (stats?.sources ?? [])
+    .filter((s) => s.physical_sql)
+    .map((s) => ({
+      field: s.field,
+      source: s.source,
+      strategy: s.strategy,
+      elapsed_ms: s.elapsed_ms,
+      rows: s.rows,
+      ...(s.cache_hit ? { cache_hit: true } : {}),
+      sql: s.physical_sql,
+    }));
+  return {
+    query: frame.query,
+    summary: {
+      nodes: frame.nodes.size,
+      relationships: frame.edges.size,
+      rows: frame.rows.length,
+      columns: frame.columns,
+      ...(frame.elapsed !== undefined ? { elapsed_ms: frame.elapsed } : {}),
+    },
+    ...(sqlQueries.length > 0 ? { sql: sqlQueries } : {}),
+    ...(stats
+      ? {
+          stats: {
+            total_elapsed_ms: stats.total_elapsed_ms,
+            sources: (stats.sources ?? []).map(({ physical_sql: _, ...rest }) => rest),
+          },
+        }
+      : {}),
+  };
+}

@@ -173,9 +173,9 @@ def test_a_named_pg_image_is_not_built(tmp_path: Path) -> None:
     assert "shared_preload_libraries=pg_duckdb" not in pg["command"]
 
 
-def test_pg_publishes_clickhouses_native_port(tmp_path: Path) -> None:
-    assert "127.0.0.1:9000:9000" in _stack(tmp_path, "pg")["clickhouse"]["ports"]
-    assert "127.0.0.1:9000:9000" not in _stack(tmp_path, "trino")["clickhouse"]["ports"]
+def test_clickhouses_native_port_stays_on_its_leased_port(tmp_path: Path) -> None:
+    for engine in ("pg", "trino"):
+        assert "127.0.0.1:9000:9000" not in _stack(tmp_path, engine)["clickhouse"]["ports"]
 
 
 def test_trino_brings_everything_its_boot_needs(tmp_path: Path) -> None:
@@ -202,9 +202,22 @@ def test_the_trino_server_has_the_store_and_proxy_names() -> None:
     assert not any("host.docker.internal" in v for v in env.values())
 
 
-def test_the_pg_server_lands_replicas_where_the_engine_reads() -> None:
+def test_the_pg_server_names_only_the_engine() -> None:
     env = ht.engine_env("pg", PORTS)
-    assert env["PROVISA_MATERIALIZE_URL"] == env["PROVISA_ENGINE_URL"]
+    assert set(env) == {"PROVISA_ENGINE_URL"}
+
+
+def test_orchestrate_leaves_the_store_to_the_product() -> None:
+    assert "PROVISA_MATERIALIZE_URL" not in (ht.HERE / "orchestrate.sh").read_text()
+
+
+def test_orchestrate_runs_both_artillery_ramps_through_the_exit_21_handler() -> None:
+    text = (ht.HERE / "orchestrate.sh").read_text()
+    for ramp in ("artillery-concurrency-ramp.yml", "artillery-graphql-ramp.yml"):
+        assert any(
+            line.strip().startswith("run_artillery_ramp ") and line.strip().endswith(ramp)
+            for line in text.splitlines()
+        )
 
 
 @pytest.mark.parametrize("engine", ["pg", "trino"])

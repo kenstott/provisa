@@ -420,8 +420,8 @@ export interface FrameData {
   sparqlTriples?: Triple[];
   /** A SELECT whose rows hold triples, and can be drawn as a graph. */
   sparqlPairing?: SelectPairing;
-  /** What expanding, dragging or dropping onto the frame merged into it, by the resource or class
-   *  each was asked of. Kept apart from the answer, so an expansion can be taken back. */
+  /** What expanding or dragging a node merged into the frame, by the resource each was asked of.
+   *  Kept apart from the answer, so an expansion can be taken back. */
   sparqlExpansions?: Record<string, Triple[]>;
   /** What was asked of a resource by selecting its node, or by captioning or sizing its class by a
    *  property (a DESCRIBE), by the resource: its literal triples, which the drawn node holds as
@@ -429,6 +429,18 @@ export interface FrameData {
   sparqlDescribed?: Record<string, SparqlDescribed>;
   /** What the last merge said: why it was refused, or the resource it found nothing more of. */
   sparqlMerge?: { error?: string; nothingMore?: string };
+  /** The query on screen is a drop's edit of the one before (REQ-2135): a drawing stays a drawing. */
+  dropped?: boolean;
+  /** What the last drop said: why it changed nothing, or what it left out. */
+  dropNotices?: DropNotice[];
+  /** The LIMIT the last drop gave a SPARQL query, which a result that reaches it was cut at. */
+  dropLimit?: number;
+}
+
+/** What a drop says on its frame: a message of the catalog and its values. */
+export interface DropNotice {
+  key: string;
+  values?: Record<string, string | number>;
 }
 
 /** What a DESCRIBE of a selected node answered: the triples whose object is a literal, or why not. */

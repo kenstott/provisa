@@ -41,6 +41,21 @@
     "expandedDialogLabel": "展开的图视图",
     "firstNodesShown": "显示前 {{count}} 个节点；还有更多。请在侧边菜单中提高上限。",
     "deleteFrame": "删除此结果",
-    "sparqlNothingMore": "没有关于 {{resource}} 的更多信息。"
+    "sparqlNothingMore": "没有关于 {{resource}} 的更多信息。",
+    "sparqlDropForm": "不能将标签拖放到 {{form}} 结果上：仅支持 SELECT 或 CONSTRUCT。未添加任何内容。",
+    "sparqlDropUnion": "不能将标签拖放到 UNION 查询上：无法确定连接哪一侧。未添加任何内容。",
+    "sparqlDropGroupBy": "不能将标签拖放到 GROUP BY 查询上：其行是分组，不是资源。未添加任何内容。",
+    "sparqlDropAggregate": "不能将标签拖放到聚合查询上：其行是合计，不是资源。未添加任何内容。",
+    "sparqlDropSubquery": "不能将标签拖放到含子 SELECT 的查询上。未添加任何内容。",
+    "sparqlDropNoClass": "此结果没有可连接的类：请先为变量指定类，再重新拖放。未添加任何内容。",
+    "sparqlDropNode": "该节点不是此查询的变量，因此没有可连接的对象。未添加任何内容。",
+    "sparqlDropNoPath": "{{name}} 与 {{classes}} 没有关系。未添加任何内容。",
+    "sparqlDropTooFar": "{{name}} 距 {{classes}} 有 {{hops}} 个关系，超过拖放遍历的 {{most}} 个：没有短路径。未添加任何内容。",
+    "sparqlDropNoEnd": "{{name}} 的两端都不在此结果中。未添加任何内容。",
+    "sparqlDropNoProperty": "此结果中没有类具有 {{name}}。未添加任何内容。",
+    "sparqlDropLeftOut": "已添加 {{total}} 条等长路径中的 {{shown}} 条；其余已省略。",
+    "sparqlDropCut": "结果已达到 LIMIT {{limit}}：之后的行已省略。",
+    "cypherDropTooFar": "{{name}} 距此结果有 {{hops}} 个关系，超过拖放遍历的 {{most}} 个：没有短路径。",
+    "cypherPathNoKey": "{{from}} 与 {{to}} 之间的路径需要每个节点的键，而其中一个没有。"
   }
 }

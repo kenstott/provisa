@@ -82776,7 +82776,9 @@
     for it. An open waits up to 120 seconds for its template and stores rather than refusing. The front
     door wakes the sandbox VM with the coordinator on demo paths only. The demo page waits across every
     starting state and states the stage; a tier or template that cannot start is named as failed, never
-    left starting.'
+    left starting. (Amended 2026-10-29, A DEMO NEEDS ITS STORES HEALTHY:) An open refuses a demo whose stores
+    are not reachable, or whose Elasticsearch index is red, naming it failed. The sandbox VM keeps only
+    the bundle and engine versions in use.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true
@@ -86346,7 +86348,25 @@ And a constant naming a secret that does not exist fails the query, naming the c
   feature: encryption-and-secrets-secrets
   priority: SHOULD
   type: behavioral
-  description: "Central redaction: one list of rules is applied to text before it leaves Provisa. The list holds the built-in patterns (a starter set: card numbers passing the Luhn check, US SSNs, bearer tokens, Provisa access tokens, AWS, GCP, Azure, GitHub and Slack keys, private keys), the deployment's rules (platform_settings), each org's own rules (org_settings), and an automatic rule over the org's secrets: the values Provisa's vault holds for the org, every ${secret:NAME} the org's stored model and settings name on any backend, and each ${secret:} or ${user:} value as it resolves. A rule is a named regular expression or a named ${secret:NAME} / ${env:NAME} reference resolved at load; a reference that does not resolve is logged at ERROR by name and shown unresolved, and the other rules stand. Matched text becomes [REDACTED:<rule>]. It applies to every exported span (one redacted copy handed to every channel) and the recent-spans view, to the OTel log pipeline and every logging handler (stdout included), to audit query text before it is hashed and encrypted, to the admin trail's detail, and to error messages sent on HTTP (bodies of status 400 and above, up to 1 MiB), pgwire, gRPC, Flight and MCP. Telemetry and errors, which carry no org, are redacted by every org's rules together. Rules reload on start, when an org's runtime is built, on a model or settings reload, and when an org secret is stored or removed. The Secrets page shows and edits the rules; the automatic rule's secrets are shown by name only, never a value. Redaction is best effort: the org adds patterns for its own sensitive formats, and a source's own logs are out of Provisa's reach. docs/security.md and the page say so."
+  description: 'Central redaction: one list of rules is applied to text before it leaves Provisa. The list
+    holds the built-in patterns (a starter set: card numbers passing the Luhn check, US SSNs, bearer tokens,
+    Provisa access tokens, AWS, GCP, Azure, GitHub and Slack keys, private keys), the deployment''s rules
+    (platform_settings), each org''s own rules (org_settings), and an automatic rule over the org''s secrets:
+    the values Provisa''s vault holds for the org, every ${secret:NAME} the org''s stored model and settings
+    name on any backend, and each ${secret:} or ${user:} value as it resolves. A rule is a named regular
+    expression or a named ${secret:NAME} / ${env:NAME} reference resolved at load; a reference that does
+    not resolve is logged at ERROR by name and shown unresolved, and the other rules stand. Matched text
+    becomes [REDACTED:<rule>]. It applies to every exported span (one redacted copy handed to every channel)
+    and the recent-spans view, to the OTel log pipeline and every logging handler (stdout included), to
+    audit query text before it is hashed and encrypted, to the admin trail''s detail, and to error messages
+    sent on HTTP (bodies of status 400 and above, up to 1 MiB), pgwire, gRPC, Flight and MCP. Telemetry
+    and errors, which carry no org, are redacted by every org''s rules together. Rules reload on start,
+    when an org''s runtime is built, on a model or settings reload, and when an org secret is stored or
+    removed. The Secrets page shows and edits the rules; the automatic rule''s secrets are shown by name
+    only, never a value. Redaction is best effort: the org adds patterns for its own sensitive formats,
+    and a source''s own logs are out of Provisa''s reach. docs/security.md and the page say so. (Amended
+    2026-10-29, NO INTERNAL ADDRESSES:) The text a client is given never holds an internal host or URL;
+    a source that fails is named instead, and the detail is logged.'
   use_case: "A warehouse password reaches a connection error; the error the client receives, the span exported to the collector and the container log all read [REDACTED:auto:warehouse_pw] instead of the password."
   scenario: "Given the org's vault holds warehouse_pw and the org adds a rule employee_id with pattern EMP-\\d{6}
 
@@ -88757,7 +88777,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     ?s ?p ?o answers what naming each predicate answers, one union part per predicate, and edges go through
     their registered relationship. A table whose whole registered key the role cannot read is left out of
     an open subject, with the edges into it. Naming such a table and asking for its subject is refused by
-    the table''s name, without naming the column; reading its columns without its subject is still answered.'
+    the table''s name, without naming the column; reading its columns without its subject is still answered.
+    (Amended 2026-10-29, PATHS SKIP PARAMETERIZED TABLES:) Maintainer 2026-10-31: shortestPath and any path
+    cannot include a parameterized table, one whose read needs arguments. A path search does not pass through
+    one, and a drop never proposes one.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -89738,7 +89761,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     grants are unchanged. (Amended 2026-10-29, NO FLOOR:) Maintainer 2026-10-31: there is no floor. viewer
     holds catalog_read, glossary_read and data_product_read, and a child may unselect any of them; such
     a role has no catalog, glossary or data products. This replaces the floor in the VIEWER IS THE FLOOR
-    amendment; what viewer holds stands.'
+    amendment; what viewer holds stands. (Amended 2026-10-29, THE FORM SHOWS WHAT PARENTS HOLD:) Maintainer
+    2026-10-31: on a role with parents, a capability or domain no parent holds is disabled in the form,
+    not selectable. (Amended 2026-10-29, NO CAPABILITIES, NOTHING ALLOWED:) Maintainer 2026-10-31: a role
+    with no capabilities can do nothing, reads included; such a role may still carry a name or session values
+    for row rules, an unusual use. A hand-coded config is held to the same rules as the form. (Amended 2026-10-29,
+    A ROLE JUST TO RUN A COMMAND:) Maintainer 2026-10-31: a role may exist only to execute a command. The
+    command''s own list of roles (visible_to) is that grant, so a role with no capabilities that a command
+    names can run that command and do nothing else. (Amended 2026-10-29, A ROLE AS A BUILDING BLOCK:) Maintainer
+    2026-10-31: a role with no capabilities may be a piece included in other roles, holding only grants.
+    Alone it can do nothing; a role that includes it gets its grants, and takes capabilities from its other
+    parents.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -90005,7 +90038,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     consuming product and appear on its input ports in ODPS. An output''s dependence on its inputs is carried
     by ODPS outputPorts inputContracts. (Amended 2026-10-29, THE CONTRACT''S SECTIONS ARE PEERS:) Maintainer
     2026-10-30: Support and team, Servers, Pricing, and Custom properties and tags are cards at the same
-    level as Details, Versions, Columns and SLAs, not panels inside Details.'
+    level as Details, Versions, Columns and SLAs, not panels inside Details. (Amended 2026-10-29, THREE
+    TIERS:) Maintainer 2026-10-31: a contract reads in three tiers: small key-value panels in a grid; medium
+    tables in a two-column flow; large tables, Servers and Columns, full width at the bottom. Fields not
+    declared fold into one quiet line per panel, in place of a row each.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
@@ -90838,7 +90874,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     a difference in JSON, which guarantees neither. A json or jsonb answer is compared as parsed JSON, with
     numbers by value. (Amended 2026-10-29, ARRAY ORDER NEEDS AN ORDER BY:) Maintainer 2026-10-31: the order
     of an array an aggregate builds is guaranteed only by an ORDER BY in the statement. Without one its
-    elements compare in any order; an array stated as a value keeps its order.'
+    elements compare in any order; an array stated as a value keeps its order. (Amended 2026-10-29, SIMPLE
+    TEXT SEARCH:) Maintainer 2026-10-31: on DuckDB, Trino and ClickHouse a regex runs on the engine as written
+    with its flags kept; a check at client SQL entry allows syntax the engines read alike, with . given
+    (?s) where an engine needs it and $ allowed per engine where replay proves it, and refuses the rest
+    by name. LIKE with a bound or non-literal pattern is served; a backslash before an ordinary letter is
+    a named exception. simple to_tsvector, to_tsquery and @@ are an expansion, matching without ranking.
+    Compiled SPARQL, Cypher and internal forms never pass the check.'
   scenario: 'Given a Postgres source table with an inet column ip
 
     When it is registered
@@ -91555,7 +91597,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the request. glossary_term_finding has no default model: a scan is refused at start, saying where to
     set one, until an org names it. Each model call has 300 seconds; a scan with no progress for 660 seconds,
     or from an earlier launch, fails with the reason. The scan shows its model and step, a person can cancel
-    it, and a cancelled scan is stored failed with who cancelled it.'
+    it, and a cancelled scan is stored failed with who cancelled it. (Amended 2026-10-29, A CUT-OFF ANSWER
+    SPLITS:) A reading the model cut off at its limit splits its batch in half, down to one passage, then
+    names that passage. A resolve cut off fails by name. An answer that is not JSON is asked once more,
+    then named.'
   scenario: 'Given a policy document that defines "Client" in its definitions section and also calls clients "customers"
     and "CX" elsewhere
     When a steward runs From a document

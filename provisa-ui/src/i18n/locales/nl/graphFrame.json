@@ -41,6 +41,21 @@
     "expandedDialogLabel": "Uitgevouwen graafweergave",
     "firstNodesShown": "De eerste {{count}} knooppunten worden getoond; er zijn er meer. Verhoog de limiet in het zijmenu.",
     "deleteFrame": "Dit resultaat verwijderen",
-    "sparqlNothingMore": "Over {{resource}} wordt verder niets gezegd."
+    "sparqlNothingMore": "Over {{resource}} wordt verder niets gezegd.",
+    "sparqlDropForm": "Een pil kan niet op een {{form}}-resultaat worden neergezet: alleen SELECT en CONSTRUCT kunnen dat. Er is niets toegevoegd.",
+    "sparqlDropUnion": "Een pil kan niet op een UNION-query worden neergezet: het is niet duidelijk welke kant moet worden gekoppeld. Er is niets toegevoegd.",
+    "sparqlDropGroupBy": "Een pil kan niet op een GROUP BY-query worden neergezet: de rijen zijn groepen, geen resources. Er is niets toegevoegd.",
+    "sparqlDropAggregate": "Een pil kan niet op een aggregatiequery worden neergezet: de rijen zijn totalen, geen resources. Er is niets toegevoegd.",
+    "sparqlDropSubquery": "Een pil kan niet op een query met een sub-SELECT worden neergezet. Er is niets toegevoegd.",
+    "sparqlDropNoClass": "Dit resultaat noemt geen klasse om aan te koppelen: geef een variabele een klasse en zet opnieuw neer. Er is niets toegevoegd.",
+    "sparqlDropNode": "Dat knooppunt is geen variabele van deze query, dus er is niets om aan te koppelen. Er is niets toegevoegd.",
+    "sparqlDropNoPath": "{{name}} heeft geen relatie met {{classes}}. Er is niets toegevoegd.",
+    "sparqlDropTooFar": "{{name}} ligt {{hops}} relaties van {{classes}}, voorbij de {{most}} die een neerzetting doorloopt: geen kort pad. Er is niets toegevoegd.",
+    "sparqlDropNoEnd": "Geen van beide uiteinden van {{name}} zit in dit resultaat. Er is niets toegevoegd.",
+    "sparqlDropNoProperty": "Geen enkele klasse in dit resultaat heeft {{name}}. Er is niets toegevoegd.",
+    "sparqlDropLeftOut": "{{shown}} van {{total}} even korte paden toegevoegd; de andere zijn weggelaten.",
+    "sparqlDropCut": "Het resultaat heeft zijn LIMIT van {{limit}} bereikt: rijen daarna zijn weggelaten.",
+    "cypherDropTooFar": "{{name}} ligt {{hops}} relaties van dit resultaat, voorbij de {{most}} die een neerzetting doorloopt: geen kort pad.",
+    "cypherPathNoKey": "De paden tussen {{from}} en {{to}} hebben de sleutel van elk knooppunt nodig, en een van beide heeft er geen."
   }
 }
