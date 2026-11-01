@@ -37833,7 +37833,14 @@
     stays beside them. Usage is kept per org and role as per-minute buckets (an hour), per-hour buckets
     (a week) and per-day buckets (31 days), every window a sum over them. The counters live in the control-plane
     PostgreSQL, so budgets hold on every deployment, with or without Redis. The role''s page shows each
-    window''s use and when room frees up. This replaces the daily-or-monthly period stated above.'
+    window''s use and when room frees up. This replaces the daily-or-monthly period stated above. (Amended
+    2026-10-29, USAGE BY PRINCIPAL:) Maintainer 2026-11-01: "an interesting feature would be to track stats
+    by principal (basic stats like data volumes, total queries, etc.)", "this could be used by say a company
+    that was in the business of provisioning data, like reuters, so billing", "add that feature". Provisa
+    records usage by principal, data product and surface: queries, rows and bytes, as a governed table in
+    the ops domain, with an export for a billing system. Provisa meters and exports; it does not invoice.
+    This does not change how quotas are held; the statement that there is no per-user metering stays true
+    of quotas only.'
   use_case: Query complexity limits prevent resource exhaustion from complex or malicious queries, complementing
     request-rate limiting. Provides Hasura api_limits parity.
   code:
@@ -74544,96 +74551,88 @@
   description: '[SUPERSEDED by REQ-1905 (amendment A STREAM OVER THE LIMIT WAITS), 2026-10-01 -- the limit
     is no longer a Redis gauge that rejects; it is a per-worker set of slots a stream waits for, and its
     default is divided among the launch''s workers. The configuration names and the ordering before the
-    per-role gate still hold. Kept here for history; do not implement against it.] A server-wide (not
-    per-role) concurrency ceiling on Arrow Flight query execution, enforced via the same Redis-backed
-    rate_limiter admission-control primitive as REQ-369 but under a fixed key (`rl:flight:global`) instead
-    of a per-role key. Configurable via `FLIGHT_MAX_CONCURRENT_STREAMS` env var or `server_cfg["flight_max_concurrent_streams"]`,
-    defaulting to one-third of the shared asyncio default executor''s size (`min(32, cpu_count()+4)`,
-    floor 2). Checked and acquired before, and released after, the existing per-role `max_flight_streams`
-    gate in `do_get` (provisa/api/flight/server.py). [END SUPERSEDED BLOCK]
-
-    (Amended 2026-09-29, per-connection-thread execution, REQ-1882:) Flight RPCs no longer run on the
-    shared asyncio default executor: each RPC runs on its own handler thread and loop, whose default executor
-    runs inline on that thread. The ceiling therefore now bounds concurrent Flight executions against
-    the engine and sources the other transports share with Flight, not a shared executor; its configuration
-    and default formula are unchanged.
-
-    (Amended 2026-10-01, A STREAM OVER THE LIMIT WAITS:) the limit rejected the moment it was reached,
-    so any client concurrency above it became errors instead of queueing (perf VM, Flight SQL: 237 req/s
-    at 1 client, then 3,118 / 8,892 / 5,933 errors at 16 / 64 / 256 clients; local single process, limit
-    5: 20,134 errors at 16 clients and 28,014 at 64, none after this change with 1,367 req/s and 822 req/s
-    served). A query stream over the limit now WAITS for a slot, the same model as the other bounded pools (`_WaitingThreadedPool`): the limit is a semaphore (`provisa/api/flight/stream_slots.py`), the
-    wait is bounded by the request''s remaining deadline (`provisa/core/request_deadline.py`), or by the
-    server''s `request_timeout` when the caller has bound none, and only when no slot frees in that time
-    is the stream refused, with an error that names the limit (`max concurrent Arrow Flight streams reached
-    (server-wide): all N stream slots of this worker (flight_max_concurrent_streams=N) stayed busy for
-    the Ts this request could wait`). [SUPERSEDED by REQ-1905 (amendment THE SLOT IS TAKEN AT THE ENGINE
-    AND HELD FOR THE STREAM), 2026-10-01 -- the slot is no longer taken at the top of do_get nor released
-    when do_get returns. Kept here for history; do not implement against it.] The slot is held for the
-    execution window, as before, and is taken before the per-role `max_flight_streams` gate (REQ-369),
-    which is unchanged and still rejects. [END SUPERSEDED BLOCK]
-
-    The limit is PER WORKER PROCESS. What it protects is the capacity the other transports share with
-    Flight inside one process, and since every worker serves the advertised Flight port (REQ-1900) a deployment-wide
-    count would need a shared-store round trip per stream and could not be waited on without polling.
-    `FLIGHT_MAX_CONCURRENT_STREAMS` / `flight_max_concurrent_streams` therefore name one worker''s slots;
-    a deployment of N workers runs up to N times that. The DEFAULT is the host''s budget — one-third of
-    `min(32, cpu_count()+4)`, the figure a single process has always defaulted to — divided among the
-    launch''s workers (`PROVISA_WORKERS`), floor 2 per worker: 6 for one process on a 16-core host, 2
-    per worker (32 in all) for 16 workers on it. The limit is no longer kept in Redis and no `rl:flight:global`
-    key exists.
-
-    (Amended 2026-10-01, ONE DEADLINE FOR THE WHOLE TICKET:) a Flight query ticket had no request deadline:
-    only its wait for a slot was bounded, and its execution and its stream then ran for as long as they
-    took, so a ticket that waited 50 s of a 60 s budget still ran in full. The wait, the execution and
-    the stream now share ONE deadline, bound around the whole `do_get` with the existing mechanism (`provisa/core/request_deadline.py`,
+    per-role gate still hold. Kept here for history; do not implement against it.] A server-wide (not per-role)
+    concurrency ceiling on Arrow Flight query execution, enforced via the same Redis-backed rate_limiter
+    admission-control primitive as REQ-369 but under a fixed key (`rl:flight:global`) instead of a per-role
+    key. Configurable via `FLIGHT_MAX_CONCURRENT_STREAMS` env var or `server_cfg["flight_max_concurrent_streams"]`,
+    defaulting to one-third of the shared asyncio default executor''s size (`min(32, cpu_count()+4)`, floor
+    2). Checked and acquired before, and released after, the existing per-role `max_flight_streams` gate
+    in `do_get` (provisa/api/flight/server.py). [END SUPERSEDED BLOCK] (Amended 2026-09-29, per-connection-thread
+    execution, REQ-1882:) Flight RPCs no longer run on the shared asyncio default executor: each RPC runs
+    on its own handler thread and loop, whose default executor runs inline on that thread. The ceiling therefore
+    now bounds concurrent Flight executions against the engine and sources the other transports share with
+    Flight, not a shared executor; its configuration and default formula are unchanged. (Amended 2026-10-01,
+    A STREAM OVER THE LIMIT WAITS:) the limit rejected the moment it was reached, so any client concurrency
+    above it became errors instead of queueing (perf VM, Flight SQL: 237 req/s at 1 client, then 3,118 /
+    8,892 / 5,933 errors at 16 / 64 / 256 clients; local single process, limit 5: 20,134 errors at 16 clients
+    and 28,014 at 64, none after this change with 1,367 req/s and 822 req/s served). A query stream over
+    the limit now WAITS for a slot, the same model as the other bounded pools (`_WaitingThreadedPool`):
+    the limit is a semaphore (`provisa/api/flight/stream_slots.py`), the wait is bounded by the request''s
+    remaining deadline (`provisa/core/request_deadline.py`), or by the server''s `request_timeout` when
+    the caller has bound none, and only when no slot frees in that time is the stream refused, with an error
+    that names the limit (`max concurrent Arrow Flight streams reached (server-wide): all N stream slots
+    of this worker (flight_max_concurrent_streams=N) stayed busy for the Ts this request could wait`). [SUPERSEDED
+    by REQ-1905 (amendment THE SLOT IS TAKEN AT THE ENGINE AND HELD FOR THE STREAM), 2026-10-01 -- the slot
+    is no longer taken at the top of do_get nor released when do_get returns. Kept here for history; do
+    not implement against it.] The slot is held for the execution window, as before, and is taken before
+    the per-role `max_flight_streams` gate (REQ-369), which is unchanged and still rejects. [END SUPERSEDED
+    BLOCK] The limit is PER WORKER PROCESS. What it protects is the capacity the other transports share
+    with Flight inside one process, and since every worker serves the advertised Flight port (REQ-1900)
+    a deployment-wide count would need a shared-store round trip per stream and could not be waited on without
+    polling. `FLIGHT_MAX_CONCURRENT_STREAMS` / `flight_max_concurrent_streams` therefore name one worker''s
+    slots; a deployment of N workers runs up to N times that. The DEFAULT is the host''s budget — one-third
+    of `min(32, cpu_count()+4)`, the figure a single process has always defaulted to — divided among the
+    launch''s workers (`PROVISA_WORKERS`), floor 2 per worker: 6 for one process on a 16-core host, 2 per
+    worker (32 in all) for 16 workers on it. The limit is no longer kept in Redis and no `rl:flight:global`
+    key exists. (Amended 2026-10-01, ONE DEADLINE FOR THE WHOLE TICKET:) a Flight query ticket had no request
+    deadline: only its wait for a slot was bounded, and its execution and its stream then ran for as long
+    as they took, so a ticket that waited 50 s of a 60 s budget still ran in full. The wait, the execution
+    and the stream now share ONE deadline, bound around the whole `do_get` with the existing mechanism (`provisa/core/request_deadline.py`,
     its statement-cancel registration included; `provisa/api/flight/deadline.py`): `server.limits.request_timeout`
-    (`PROVISA_REQUEST_TIMEOUT`, default 60 s), the same budget a request on every other transport has,
-    or a tighter deadline the caller already bound. A result is often a lazy stream pyarrow pulls after
-    `do_get` returns, so the deadline is carried through the pull: it is rebound around each batch and,
-    once passed, the stream ends with `Arrow Flight request exceeded its Ns request deadline (server.limits.request_timeout)`.
-    Every lazy stream `do_get` returns is under it (the SQL engine and direct-source streams, and the
-    GraphQL engine stream). CONSEQUENCE: a legitimate extract that streams for longer than `request_timeout`
-    is now cut off; the config offers no Flight-specific timeout (`engine_query_timeout` bounds the engine''s
-    own statement, not the request), so the only way to allow it is to raise `request_timeout`, which
-    raises it for every transport.
-
-    (Amended 2026-10-01, THE PER-ROLE LIMIT STILL REJECTS, DELIBERATELY:) `max_flight_streams` (REQ-369)
-    is a QUOTA on a role, not a capacity limit: a role over its quota is refused at once, by design, and
-    does not queue behind its own streams. Only the server-wide limit waits.
-
-    (Amended 2026-10-01, THE SLOT IS TAKEN AT THE ENGINE AND HELD FOR THE STREAM:) the slot was taken
-    at the top of `do_get` and given back when `do_get` returned. Two things followed: a response-cache
-    HIT, which never reaches the engine, took a slot; and a lazy Arrow stream — which pyarrow pulls AFTER
-    `do_get` returns — held its slot for none of the time it actually occupied the engine, so the limit
-    bounded nothing for the scans it exists to bound. The slot is now taken where a ticket reaches the
-    engine or a source (`_acquire_stream_slot`): after the response-cache check on the engine stream,
-    when the direct-source cursor is opened, in the direct buffered read the cache runs only on a miss,
-    and around the Cypher engine read. A lazy stream HOLDS its slot until it is drained, fails, or is
-    dropped by the client (`stream_slots.SlotHeldBatches`). The role quota is checked first, at the top
-    of `do_get`. Two places take the slot before a cache lookup they cannot see into: the Cypher pipeline
-    terminal (the lookup is inside the shared pipeline call) holds one for that call, and residency preparation
-    of a materialized source runs before the slot, in the same loop dispatch as the cache check.
-
-    (Amended 2026-10-01, THE REQUEST TIMEOUT IS SET PER TRANSPORT:) Different transports carry different
-    workloads, and which workloads a deployment allows is the customer''s decision (one customer allows
-    large GraphQL queries, another does not), so the request timeout is an operator setting per transport.
-    `server.limits.request_timeout` stays as the default, and `server.limits.request_timeouts` holds an
-    optional value per transport: graphql, rest, jsonapi, sql_http, cypher_http, pgwire, flight, bolt,
-    grpc, mcp, and scheduler, a scheduled trigger''s run (REQ-2001). A transport with no value of its own uses the default, with two exceptions shipped in the
-    product: Flight is expected to carry large data transfers, so its shipped value is 3600 seconds, and
-    pgwire carries a lot of BI workloads (dashboards and ad-hoc analytical SQL, mixed medium to small),
-    so its shipped value is 300 seconds; every other transport ships on the 60-second default. An operator
-    can change or clear either like any other. The deadline bound around a request (REQ-1882) is the one
-    of the transport the request arrived on. For Flight it covers the whole ticket as described above,
-    so a deployment that serves long extracts raises the Flight value alone and no longer has to raise
-    it for every transport. A per-request timeout hint may only shorten the deadline of its transport,
-    never lengthen it. The values reach every worker and instance like any other operator setting, and
-    the error a timed-out request gets names the transport and the setting. Like every operator setting,
-    these have a UI surface: the admin settings page shows the default and one value per transport next
-    to the other server limits, reads and saves them through the settings API (`limits.request_timeout`,
-    `limits.request_timeouts`), shows which transports are using the default, and refuses a value that
-    is not a positive number.'
+    (`PROVISA_REQUEST_TIMEOUT`, default 60 s), the same budget a request on every other transport has, or
+    a tighter deadline the caller already bound. A result is often a lazy stream pyarrow pulls after `do_get`
+    returns, so the deadline is carried through the pull: it is rebound around each batch and, once passed,
+    the stream ends with `Arrow Flight request exceeded its Ns request deadline (server.limits.request_timeout)`.
+    Every lazy stream `do_get` returns is under it (the SQL engine and direct-source streams, and the GraphQL
+    engine stream). CONSEQUENCE: a legitimate extract that streams for longer than `request_timeout` is
+    now cut off; the config offers no Flight-specific timeout (`engine_query_timeout` bounds the engine''s
+    own statement, not the request), so the only way to allow it is to raise `request_timeout`, which raises
+    it for every transport. (Amended 2026-10-01, THE PER-ROLE LIMIT STILL REJECTS, DELIBERATELY:) `max_flight_streams`
+    (REQ-369) is a QUOTA on a role, not a capacity limit: a role over its quota is refused at once, by design,
+    and does not queue behind its own streams. Only the server-wide limit waits. (Amended 2026-10-01, THE
+    SLOT IS TAKEN AT THE ENGINE AND HELD FOR THE STREAM:) the slot was taken at the top of `do_get` and
+    given back when `do_get` returned. Two things followed: a response-cache HIT, which never reaches the
+    engine, took a slot; and a lazy Arrow stream — which pyarrow pulls AFTER `do_get` returns — held its
+    slot for none of the time it actually occupied the engine, so the limit bounded nothing for the scans
+    it exists to bound. The slot is now taken where a ticket reaches the engine or a source (`_acquire_stream_slot`):
+    after the response-cache check on the engine stream, when the direct-source cursor is opened, in the
+    direct buffered read the cache runs only on a miss, and around the Cypher engine read. A lazy stream
+    HOLDS its slot until it is drained, fails, or is dropped by the client (`stream_slots.SlotHeldBatches`).
+    The role quota is checked first, at the top of `do_get`. Two places take the slot before a cache lookup
+    they cannot see into: the Cypher pipeline terminal (the lookup is inside the shared pipeline call) holds
+    one for that call, and residency preparation of a materialized source runs before the slot, in the same
+    loop dispatch as the cache check. (Amended 2026-10-01, THE REQUEST TIMEOUT IS SET PER TRANSPORT:) Different
+    transports carry different workloads, and which workloads a deployment allows is the customer''s decision
+    (one customer allows large GraphQL queries, another does not), so the request timeout is an operator
+    setting per transport. `server.limits.request_timeout` stays as the default, and `server.limits.request_timeouts`
+    holds an optional value per transport: graphql, rest, jsonapi, sql_http, cypher_http, pgwire, flight,
+    bolt, grpc, mcp, and scheduler, a scheduled trigger''s run (REQ-2001). A transport with no value of
+    its own uses the default, with two exceptions shipped in the product: Flight is expected to carry large
+    data transfers, so its shipped value is 3600 seconds, and pgwire carries a lot of BI workloads (dashboards
+    and ad-hoc analytical SQL, mixed medium to small), so its shipped value is 300 seconds; every other
+    transport ships on the 60-second default. An operator can change or clear either like any other. The
+    deadline bound around a request (REQ-1882) is the one of the transport the request arrived on. For Flight
+    it covers the whole ticket as described above, so a deployment that serves long extracts raises the
+    Flight value alone and no longer has to raise it for every transport. A per-request timeout hint may
+    only shorten the deadline of its transport, never lengthen it. The values reach every worker and instance
+    like any other operator setting, and the error a timed-out request gets names the transport and the
+    setting. Like every operator setting, these have a UI surface: the admin settings page shows the default
+    and one value per transport next to the other server limits, reads and saves them through the settings
+    API (`limits.request_timeout`, `limits.request_timeouts`), shows which transports are using the default,
+    and refuses a value that is not a positive number. (Amended 2026-10-29, A SUBSCRIPTION OUTLIVES THE
+    DEADLINE:) Recorded by the lead 2026-11-01, on the maintainer''s report that a subscription stopped
+    updating. A GraphQL subscription and /data/subscribe are bounded by their subscriber leaving, not by
+    the request deadline, which ended them after about a minute. The deadline still bounds every other request.'
   use_case: Arrow Flight scans are long-running bulk/streaming operations that hold a shared-executor
     thread for tens of seconds, while pgwire/Bolt/gRPC/GraphQL are short request/response transports sharing
     that same bounded thread pool (via provisa/federation/pg_runtime.py's run()/run_sync()). Without a
@@ -82798,7 +82797,13 @@
     starting state and states the stage; a tier or template that cannot start is named as failed, never
     left starting. (Amended 2026-10-29, A DEMO NEEDS ITS STORES HEALTHY:) An open refuses a demo whose stores
     are not reachable, or whose Elasticsearch index is red, naming it failed. The sandbox VM keeps only
-    the bundle and engine versions in use.'
+    the bundle and engine versions in use. (Amended 2026-10-29, TRADE AFFIRMATION DEMO:) Maintainer 2026-11-01:
+    "add that demo", of "a python code table as the matching engine, and maybe a command that will log the
+    match when found", "we use polly surface to drive it", "polly can use the explore surface to drive queries
+    as well". A named demo of post-trade matching and affirmation at an asset manager: trades split across
+    order, execution, broker and custodian systems; a Python code table matches them and names each break;
+    a command logs the affirmation; Polly drives the tour and puts its queries in Explore. Each break shows
+    the time to the cutoff and the penalty a failed settlement would accrue.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true

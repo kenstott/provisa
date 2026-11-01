@@ -213,6 +213,46 @@
         "description_changed": "Description changed",
         "terms_changed": "Terms changed: {{subject}}"
       },
+      "howToUse": {
+        "column": {
+          "surface": "Surface",
+          "address": "Address",
+          "how": "How it is used",
+          "link": "Example"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "Any PostgreSQL client, such as psql or DBeaver. Database {{database}}, schema {{schema}}.",
+          "flight-sql": "Any Arrow Flight SQL client, such as the ADBC driver. Database {{database}}, schema {{schema}}.",
+          "grpc": "Any gRPC client, on service {{service}}, with the metadata authorization: Bearer <token>.",
+          "graphql": "Any GraphQL client: POST a query on this table, with the header Authorization: Bearer <token>.",
+          "rest": "Any HTTP client: GET this address, with the header Authorization: Bearer <token>.",
+          "openapi": "The description of this table alone: load it into Swagger UI, Postman or a client generator.",
+          "jsonapi": "Any JSON:API client: GET this address, with the header Authorization: Bearer <token>.",
+          "sparql": "Any SPARQL 1.1 client: POST a query on this table's class, with the header Authorization: Bearer <token>."
+        },
+        "access": {
+          "granted": "Works only once access is granted, by {{approvers}}.",
+          "noApprover": "Works only once access is granted, by a holder of {{roles}}. This contract names no approver.",
+          "undeclared": "Works only once access is granted. This contract names no role or approver."
+        },
+        "ask": {
+          "approvers": "Ask {{approvers}} for access",
+          "roles": "Ask a holder of {{roles}} for access",
+          "nobody": "This contract names no one to ask"
+        },
+        "open": "Open example",
+        "openAria": "Open the {{surface}} example for {{table}}"
+      },
       "loadError": "Could not read the contracts: {{error}}",
       "notExported": "{{member}} has no exported contract",
       "section": {
@@ -221,7 +261,7 @@
         "quality": "Quality",
         "sla": "SLA",
         "support": "Support and team",
-        "servers": "Servers",
+        "howToUse": "How to use",
         "pricing": "Pricing",
         "custom": "Custom properties and tags"
       },

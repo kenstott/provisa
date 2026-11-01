@@ -221,7 +221,7 @@
         "quality": "质量",
         "sla": "SLA",
         "support": "支持与团队",
-        "servers": "服务器",
+        "howToUse": "使用方式",
         "pricing": "定价",
         "custom": "自定义属性和标签"
       },
@@ -259,6 +259,46 @@
         "versions": "版本与变更",
         "roles": "角色",
         "history": "版本历史"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "接口",
+          "address": "地址",
+          "how": "使用方式",
+          "link": "示例"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "任意 PostgreSQL 客户端，例如 psql 或 DBeaver。数据库 {{database}}，模式 {{schema}}。",
+          "flight-sql": "任意 Arrow Flight SQL 客户端，例如 ADBC 驱动。数据库 {{database}}，模式 {{schema}}。",
+          "grpc": "任意 gRPC 客户端，调用服务 {{service}}，并带上元数据 authorization: Bearer <token>。",
+          "graphql": "任意 GraphQL 客户端：对此表 POST 一个查询，并带上请求头 Authorization: Bearer <token>。",
+          "rest": "任意 HTTP 客户端：GET 此地址，并带上请求头 Authorization: Bearer <token>。",
+          "openapi": "仅包含此表的描述：可加载到 Swagger UI、Postman 或客户端生成器中。",
+          "jsonapi": "任意 JSON:API 客户端：GET 此地址，并带上请求头 Authorization: Bearer <token>。",
+          "sparql": "任意 SPARQL 1.1 客户端：对此表的类 POST 一个查询，并带上请求头 Authorization: Bearer <token>。"
+        },
+        "access": {
+          "granted": "须由 {{approvers}} 授予访问权限后才能使用。",
+          "noApprover": "须由 {{roles}} 的持有者授予访问权限后才能使用。此合约未指定审批人。",
+          "undeclared": "须授予访问权限后才能使用。此合约未指定角色或审批人。"
+        },
+        "ask": {
+          "approvers": "向 {{approvers}} 申请访问权限",
+          "roles": "向 {{roles}} 的持有者申请访问权限",
+          "nobody": "此合约未指定可联系的人"
+        },
+        "open": "打开示例",
+        "openAria": "打开 {{table}} 的 {{surface}} 示例"
       }
     }
   }
