@@ -22,7 +22,13 @@ import sqlglot
 
 from provisa.federation.duckdb_pg_functions import register
 from provisa.transpiler import function_macros
-from provisa.transpiler.function_macros import MACROS, FunctionRefused, inline, outcome
+from provisa.transpiler.function_macros import (
+    MACROS,
+    REFUSED_ROWS,
+    FunctionRefused,
+    inline,
+    outcome,
+)
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb, transpile_to_trino
 
 _DIALECTS = (
@@ -61,19 +67,22 @@ def _one(con, sql: str):
 
 def test_no_function_is_left_a_macro_on_the_engine(con):
     macros = {
-        row[0]
+        (row[0], len(row[1]))
         for row in con.execute(
-            "SELECT DISTINCT function_name FROM duckdb_functions() "
+            "SELECT DISTINCT function_name, parameters FROM duckdb_functions() "
             "WHERE function_type = 'macro' AND schema_name = 'main'"
         ).fetchall()
     }
-    assert not macros & {name for name, _ in MACROS}
+    assert not macros & set(MACROS)
 
 
 @pytest.mark.parametrize(("name", "arity"), sorted(MACROS))
 def test_every_overload_is_native_on_postgresql_and_has_a_form_on_duckdb(name, arity):
     assert outcome(name, arity, "postgres") == "native"
-    assert outcome(name, arity, "duckdb") == "emulated"
+    # REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED: replay found no form answering as PostgreSQL does.
+    assert outcome(name, arity, "duckdb") == (
+        "refused" if (name, arity) in REFUSED_ROWS else "emulated"
+    )
 
 
 @pytest.mark.parametrize("dialect", _DIALECTS)
@@ -84,6 +93,7 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         args = [f"p{i}" for i in range(arity)]
         # A column of no said type is refused by name: only the statement tells inet from cidr.
         said = ["p0::inet", *args[1:]] if name == "set_masklen" else args
+        said = [args[0], "2"] if name in ("round_numeric", "trunc_numeric") else said
         out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect)
         columns = {
             c.name for c in sqlglot.parse_one(out, read=dialect).find_all(sqlglot.exp.Column)
@@ -272,8 +282,8 @@ def test_a_byte_out_of_range_is_postgresqls_error(con):
 
 
 def test_a_bit_string_of_an_integer_is_its_low_bits(con):
-    assert _one(con, "SELECT bit(5, 8)::text") == [("101",)]
-    assert _one(con, "SELECT bit(-1, 4)::text") == [("1111",)]
+    assert _one(con, 'SELECT "bit"(5, 8)::text') == [("00000101",)]
+    assert _one(con, 'SELECT "bit"(-1, 4)::text') == [("1111",)]
 
 
 @pytest.mark.parametrize(
@@ -294,7 +304,7 @@ def test_a_qualified_call_inside_a_qualified_call_is_read_too():
 
 @pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
 def test_a_numeric_literal_keeps_its_digits(dialect: str):
-    assert "DECIMAL(38, 2)" in transpile("SELECT (-2.25)::numeric AS v", dialect).upper()
+    assert "DECIMAL(21, 2)" in transpile("SELECT (-2.25)::numeric AS v", dialect).upper()
 
 
 def test_a_numeric_of_a_column_stays_as_said():
@@ -362,7 +372,7 @@ def test_regexp_replace_with_the_g_flag_is_every_match():
     [
         ("SELECT '\\xdead'::bytea AS v", "FROM_HEX('dead')"),
         ("SELECT 'abc'::character AS v", "CAST('a' AS CHAR)"),
-        ("SELECT (-2.25)::numeric AS v", "DECIMAL(38, 2)"),
+        ("SELECT (-2.25)::numeric AS v", "DECIMAL(21, 2)"),
     ],
 )
 def test_a_literal_keeps_what_its_cast_says(sql: str, want: str):

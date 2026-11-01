@@ -27,6 +27,7 @@ import sqlglot.expressions as exp
 
 from provisa.core.pg_range import MULTIRANGE_TYPES, RANGE_TYPES
 from provisa.pgwire.catalog_pg17_overloads import FUNCTION_OVERLOADS
+from provisa.transpiler.pg_literals import values_cast
 from provisa.transpiler.xml_syntax import RETURNS_XML, XML_VALUES
 
 #: sqlglot's type of an argument -> PostgreSQL's format_type name of it. A varchar is text to
@@ -105,13 +106,17 @@ def _arg_type(arg: exp.Expr, literal: str | None, numbers: bool) -> str | None:
         return "numeric" if any(c in arg.this for c in ".eE") else "integer"
     if isinstance(arg, exp.Boolean):
         return "boolean"
+    if isinstance(arg, exp.Column):
+        said = values_cast(arg)
+        return None if said is None else _arg_type(said, literal, numbers)
     if isinstance(arg, exp.Cast):
         to = arg.to
         if isinstance(to, exp.ObjectIdentifier) or to.this == exp.DataType.Type.USERDEFINED:
             spelled = to.sql(dialect="postgres").lower().removeprefix("pg_catalog.")
             return "bit varying" if spelled == "varbit" else spelled
         if to.this == exp.DataType.Type.ARRAY:
-            return None
+            element = _PG_NAMES.get(to.expressions[0].this) if to.expressions else None
+            return None if element is None else f"{element}[]"
         return _PG_NAMES.get(to.this)
     call = _call(arg)
     if call is not None:
@@ -149,6 +154,12 @@ def _call(expression: exp.Expr) -> tuple[list[str], list[exp.Expr]] | None:
     return None
 
 
+#: The parameters of a function of any number of arguments of any type.
+_VARIADIC_ANY = ('"any"',)
+#: The pseudo-types a value of any type is.
+_OF_ANY_TYPE = frozenset({'"any"', "anyelement", "anycompatible"})
+
+
 def json_operator_type(expression: exp.Expr) -> str | None:
     """ "jsonb" for a json operator whose left operand is one; None for any other expression."""
     if isinstance(expression, exp.Paren):
@@ -161,11 +172,12 @@ def json_operator_type(expression: exp.Expr) -> str | None:
 
 def _fits(argument: str | None, parameter: str) -> bool:
     """A string argument fits a character varying parameter as it fits a text one, any argument a
-    parameter of pseudo-type "any", and a range or multirange the pseudo-type of its kind."""
+    polymorphic parameter of no kind, and a range or multirange the pseudo-type of its kind."""
     return (
         argument is None
         or argument == parameter
-        or parameter in ('"any"', "anyelement")
+        or parameter in _OF_ANY_TYPE
+        or (parameter == "anynonarray" and not argument.endswith("[]"))
         or (argument == "text" and parameter == "character varying")
         or (parameter == "anyarray" and argument.endswith("[]"))
         or (parameter == "anyrange" and argument in RANGE_TYPES)
@@ -174,7 +186,9 @@ def _fits(argument: str | None, parameter: str) -> bool:
 
 
 def _resolved(returns: str, arg_types: list[str | None]) -> str:
-    """A polymorphic result as the range or multirange among the arguments makes it."""
+    """A polymorphic result as the array, range or multirange among the arguments makes it."""
+    if returns == "anyarray":
+        return next((a for a in arg_types if a is not None and a.endswith("[]")), returns)
     if returns not in ("anyelement", "anyrange", "anymultirange"):
         return returns
     for argument in arg_types:
@@ -192,12 +206,16 @@ def call_result_type(expression: exp.Expr) -> str | None:
     expression is not such a call or its overload is not known from the statement."""
     if isinstance(expression, exp.Dot):
         expression = expression.expression
+    if isinstance(expression, exp.Window):
+        expression = expression.this
     if isinstance(expression, XML_VALUES):
         return "xml"  # PostgreSQL's grammar has these, and pg_proc none
     call = _call(expression)
     if call is None:
         return None
     names, args = call
+    if names[0] == "ntile":
+        return "integer"  # a window function: pg_proc's list of overloads does not hold it
     if names[0] in RETURNS_XML and names[0] not in FUNCTION_OVERLOADS:
         return "xml"
     if names[0] in MULTIRANGE_TYPES:
@@ -214,7 +232,7 @@ def call_result_type(expression: exp.Expr) -> str | None:
             candidates = {
                 _resolved(returns, arg_types)
                 for params, returns in FUNCTION_OVERLOADS.get(name, ())
-                if len(params) == len(arg_types)
+                if (len(params) == len(arg_types) or params == _VARIADIC_ANY)
                 and all(_fits(t, p) for t, p in zip(arg_types, params))
             }
             if len(candidates) == 1:

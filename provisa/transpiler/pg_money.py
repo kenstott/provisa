@@ -667,7 +667,7 @@ class _Lowering:
         if name == "cash_in" and len(args) == 1:
             return self._to_money(args[0])
         if name == "cash_out" and len(args) == 1:
-            return _money_text(_operand(args[0]), dialect)
+            return _as(_money_text(_operand(args[0]), dialect), "TEXT")
         if name == "cash_send" and len(args) == 1:
             return _money_bytes(_operand(args[0]), dialect)
         if name == "cash_words" and len(args) == 1:

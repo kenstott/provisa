@@ -27,6 +27,7 @@ import {
 } from "../../api/dataProductContracts";
 import type { ContractVersion } from "../../types/admin";
 import type { ProductLineage } from "../../api/lineage";
+import type { MetaReader } from "../../api/metaGraph";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import { Tip } from "../../components/Tip";
 import { NEVER_EXPIRES } from "../../components/form/cacheTtl";
@@ -38,7 +39,7 @@ import {
   type CoreTable,
   type ProductCore,
 } from "./productCore";
-import { ContractView } from "./ContractView";
+import { ContractView, type ContractViewer } from "./ContractView";
 import { Empty } from "./DetailCard";
 
 /** A port's address, as the contracts endpoint names it: source.schema.table. */
@@ -157,12 +158,18 @@ function OpenContract({
   version,
   tableId,
   lineage,
+  table,
+  reader,
+  viewer,
 }: {
   productId: string;
   member: string;
   version: number;
   tableId: number;
   lineage: ProductLineage | null;
+  table: CoreTable;
+  reader: MetaReader | null;
+  viewer: ContractViewer;
 }) {
   const { t } = useTranslation();
   const [read, setRead] = useState<{
@@ -201,6 +208,9 @@ function OpenContract({
       versions={read.versions as ContractVersion[]}
       tableId={tableId}
       promises={lineage ? lineage.dq.promises.filter((c) => c.checked_table_id === tableId) : null}
+      table={table}
+      reader={reader}
+      viewer={viewer}
     />
   );
 }
@@ -210,11 +220,15 @@ export function ProductContracts({
   core,
   lineage,
   version,
+  reader,
+  viewer,
 }: {
   productId: string;
   core: ProductCore;
   lineage: ProductLineage | null;
   version: number;
+  reader: MetaReader | null;
+  viewer: ContractViewer;
 }) {
   const { t } = useTranslation();
   const [params] = useSearchParams();
@@ -269,6 +283,9 @@ export function ProductContracts({
                     version={version}
                     tableId={c.tableId}
                     lineage={lineage}
+                    table={port}
+                    reader={reader}
+                    viewer={viewer}
                   />
                 </CollapsibleItem>
               );

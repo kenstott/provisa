@@ -40,7 +40,7 @@ _NOT_ANY = frozenset({"interval", "bit", "bit varying", "varbit", "oid", "tid", 
 #: (BOOLEAN of a bit, for one) answers something else.
 _NOT_HELD: dict[str, frozenset[str]] = {
     _T: _NOT_ANY | {"timetz"},
-    _C: _NOT_ANY | {"timetz", "time", "timestamptz"},  # no time of day, and no zoned instant
+    _C: _NOT_ANY | {"timetz", "timestamptz"},  # no zoned time of day, and no zoned instant
 }
 
 #: What both engines refuse: its name, and the said types of the overloads refused (None for all).
@@ -69,8 +69,6 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "generate_series": _NUMERIC,
     "rand": _NUMERIC,
     # No form, and nothing the engine has answers as PostgreSQL does.
-    "percentile_cont": _ANY,
-    "percentile_disc": _ANY,
     "pg_size_pretty": _ANY,
     "pg_sleep": _ANY,
     "setseed": _ANY,

@@ -328,3 +328,26 @@ def test_a_refused_catalog_read_keeps_its_name_on_http_sql():
 
     for refused in (CatalogViewRefused("meta.catalog_pg_class"), MetadataFunctionRefused("f")):
         assert _sql_error(refused) is refused
+
+
+def test_system_user_is_how_the_session_authenticated():
+    request = CatalogRequest(
+        role_id="reader",
+        database="sales_db",
+        facts=catalog_facts("reader", {1: {"SELECT"}}),
+        settings={},
+        session={"system_user": "scram-sha-256:alice"},
+    )
+    assert "scram-sha-256:alice" in _addressed("SELECT system_user()", request)
+
+
+def test_system_user_is_null_where_nothing_authenticated():
+    assert "scram" not in _addressed("SELECT system_user()").lower()
+
+
+@pytest.mark.parametrize(
+    "function", ["pg_stat_get_bgwriter_stat_reset_time", "pg_stat_get_checkpointer_stat_reset_time"]
+)
+def test_the_servers_statistics_began_when_it_did(function):
+    addressed = _addressed(f"SELECT {function}()")
+    assert "NULL" not in addressed.upper()

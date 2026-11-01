@@ -1164,6 +1164,7 @@ REWRITTEN = frozenset(
         "pg_input_error_info",
         "pg_input_is_valid",
         "system_user",
+        "timeofday",
     }
 )
 

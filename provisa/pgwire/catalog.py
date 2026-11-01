@@ -407,7 +407,7 @@ def _handle_txid(sql: str):
 
 
 _SET_CONFIG_VALUE_RE = re.compile(
-    r"set_config\s*\(\s*'(?:[^']|'')*'\s*,\s*'((?:[^']|'')*)'", re.IGNORECASE
+    r"set_config\"?\s*\(\s*'(?:[^']|'')*'(?:::\w+)?\s*,\s*'((?:[^']|'')*)'", re.IGNORECASE
 )
 
 
@@ -452,20 +452,27 @@ def _handle_current_setting(sql: str):
 _NAMED_VALUES = frozenset({"regclass", "regnamespace"})
 
 
+def _pg_types(sql: str, names: list[str]) -> list[str]:
+    """Each column's type as PostgreSQL 17 declares it, by position or else by name; "" for one it
+    does not."""
+    from provisa.pgwire.catalog_types import result_types
+
+    declared = result_types(sql)
+    if len(declared) == len(names):
+        return [pg_type for _, pg_type in declared]
+    by_name = dict(reversed(declared))
+    return [by_name.get(name, "") for name in names]
+
+
 def _declared_types(sql: str, names: list[str], served: list[str]) -> list[str]:  # REQ-2167
     """Each column's type as PostgreSQL 17 declares it where the served value has that type's
     wire form (a catalog column served as text that PostgreSQL declares name keeps its text, sent
     as name); otherwise the type it is served with. Columns pair up by position, or by name where
     the served relation's columns are not PostgreSQL's."""
-    from provisa.pgwire.catalog_types import CATALOG_TYPE_OIDS, result_types
+    from provisa.pgwire.catalog_types import CATALOG_TYPE_OIDS
     from provisa.pgwire.server import same_wire_form
 
-    declared = result_types(sql)
-    if len(declared) == len(served):
-        pg_types = [pg_type for _, pg_type in declared]
-    else:
-        by_name = dict(reversed(declared))
-        pg_types = [by_name.get(name, "") for name in names]
+    pg_types = _pg_types(sql, names)
     return [
         pg_type
         if pg_type
@@ -535,6 +542,8 @@ class CatalogSession:
     pid: int
     application_name: str = ""
     backend_start: datetime.datetime | None = None
+    system_user: str | None = None
+    time_zone: str | None = None
 
 
 def _list_session(cur, role_id: str, session: CatalogSession, sql: str) -> None:
@@ -573,6 +582,8 @@ def _catalog_request(
             "pid": str(session.pid),
             "application_name": session.application_name,
             "backend_start": session.backend_start.isoformat() if session.backend_start else "",
+            **({"system_user": session.system_user} if session.system_user else {}),
+            **({"time_zone": session.time_zone} if session.time_zone else {}),
         }
     return CatalogRequest(
         role_id=role_id,
@@ -606,6 +617,9 @@ def _as_declared(sql: str, result):
     if len(served) != len(result.column_names):
         served = ["text"] * len(result.column_names)
     col_types = _declared_types(sql, result.column_names, served)
+    if not result.rows or all(v is None for row in result.rows for v in row):
+        # REQ-2171: a NULL has no form of its own, so it is what PostgreSQL declares it.
+        col_types = [d or c for d, c in zip(_pg_types(sql, result.column_names), col_types)]
     oids = result.column_type_oids or ()
     vectors = [i for i, oid in enumerate(oids) if oid in _VECTOR_OIDS]
     procs = [i for i, oid in enumerate(oids) if oid == _REGPROC_OID]
