@@ -52,7 +52,13 @@ from provisa.core.pg_range import (
     parse_range,
     range_text,
 )
-from provisa.transpiler import pg_forms, pg_forms_aggregate, pg_forms_hash, pg_forms_types
+from provisa.transpiler import (
+    pg_forms,
+    pg_forms_aggregate,
+    pg_forms_hash,
+    pg_forms_index,
+    pg_forms_types,
+)
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 from provisa.transpiler.pg_literals import literal_input as postgres_literal
 
@@ -460,7 +466,12 @@ VALUE_FUNCTIONS_OF_THE_SERVER = (
         "provisa_raise",
         "sqlstate, message",
         f"error('{MARK} ' || sqlstate || ': ' || message)",
-        others={_TRINO: f"fail('{MARK} ' || sqlstate || ': ' || message)"},
+        others={
+            _TRINO: f"fail('{MARK} ' || sqlstate || ': ' || message)",
+            frozenset({"clickhouse"}): (
+                f"toString(throwIf(1, '{MARK} ' || sqlstate || ': ' || message))"
+            ),
+        },
     ),
 )
 
@@ -1264,7 +1275,15 @@ _ROWS: tuple[Macro, ...] = (
 )
 
 #: A call's name and argument count -> its overload: the one table.
-_ROWS += _hashes() + tuple(_operator(form) for form in pg_forms_aggregate.STATE_FUNCTIONS)
+_ROWS += (
+    *_hashes(),
+    *(_operator(form) for form in pg_forms_aggregate.STATE_FUNCTIONS),
+    *(_operator(form) for form in pg_forms_index.SUPPORT_FUNCTIONS),
+    *(
+        Macro(name, tuple(params.split(", ")), {frozenset({d}): sql for d, sql in forms.items()})
+        for (name, params), forms in pg_forms_index.per_engine().items()
+    ),
+)
 MACROS: dict[tuple[str, int], Macro] = {(m.name, len(m.params)): m for m in _ROWS}
 #: (function, argument count, the type the statement says of its first argument) -> its row:
 #: PostgreSQL's own name for the overload. The operation is chosen by the type, not the engine's.
@@ -1464,7 +1483,7 @@ def _written(macro: Macro, args: list[exp.Expr], dialect: str, node: exp.Expr) -
     AFTER ROUTING). A row of arguments naming no column is the same row for every row of a FROM,
     so that call is refused by name rather than answered with one value for all of them."""
     form = _parsed(macro.name, len(args), dialect).copy()
-    held = macro.name in pg_forms_types.HELD or macro.name in pg_forms_hash.HELD
+    held = macro.name in pg_forms_types.HELD | pg_forms_hash.HELD | pg_forms_index.HELD
     if _repeats_volatile(form, macro.params, args):
         select = node.find_ancestor(exp.Select)
         reads_rows = select is not None and select.args.get("from_") is not None
@@ -1607,6 +1626,11 @@ def _array_elements_as_written(value: exp.Expr) -> exp.Expr:
     return postgres_literal(node) if isinstance(node, exp.Cast) else value
 
 
+_ARRAY_INPUT = (
+    pg_forms_hash.ARRAY_ROWS | pg_forms_aggregate.ARRAY_INPUT | pg_forms_index.ARRAY_INPUT
+)
+
+
 def _numeric_array_as_text(value: exp.Expr) -> exp.Expr:
     """A numeric array literal as its elements' text: no engine's decimal holds NaN or every digit."""
     node = value.unnest()
@@ -1649,7 +1673,7 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             args = [_bytea_input(a, called, dialect) for a in args]
         if name in pg_forms_hash.NUMERIC_INPUT:
             args = [_digits_as_written(args[0]), *args[1:]]
-        if name in pg_forms_hash.ARRAY_ROWS or name in pg_forms_aggregate.ARRAY_INPUT:
+        if name in _ARRAY_INPUT:
             args = [_array_elements_as_written(a) for a in args]
         if name in pg_forms_hash.NUMERIC_ARRAY_ROWS:
             args = [_numeric_array_as_text(args[0]), *args[1:]]

@@ -216,8 +216,14 @@ def _close(a: float | None, b: float | None) -> bool:
     return a == b or abs(a - b) <= abs(b) * 1e-14
 
 
-def same_answer(got: Any, want: tuple[str, Any]) -> bool:
-    """Whether an engine's value or raised error is PostgreSQL's, floats within one part in 1e14."""
+def _sign(value: Any) -> int:
+    number = int(value)
+    return (number > 0) - (number < 0)
+
+
+def same_answer(sql: str, got: Any, want: tuple[str, Any]) -> bool:
+    """Whether an engine's value or raised error is PostgreSQL's, floats within one part in 1e14.
+    A cmp function of text promises its sign: the magnitude is strncmp's and strcoll's."""
     kind, value = want
     if kind == "err":
         return isinstance(got, Exception) and value in str(got)
@@ -236,4 +242,6 @@ def same_answer(got: Any, want: tuple[str, Any]) -> bool:
         return value == ("t" if got else "f")
     if value in ("t", "f"):
         return value == ("t" if got else "f")
+    if "cmp" in sql or "compare" in sql:
+        return _sign(got) == _sign(value)
     return str(got) == value

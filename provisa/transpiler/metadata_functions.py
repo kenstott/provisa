@@ -555,11 +555,6 @@ RELATION_FORMS: dict[tuple[str, int], Form] = {
 READS_THE_SERVER = frozenset(
     {
         "binary_upgrade_create_empty_extension",
-        "binary_upgrade_set_next_multirange_array_pg_type_oid",
-        "binary_upgrade_set_next_multirange_pg_type_oid",
-        "brin_desummarize_range",
-        "brin_summarize_new_values",
-        "brin_summarize_range",
         "currval",
         "current_query",
         "cursor_to_xml",
@@ -568,7 +563,6 @@ READS_THE_SERVER = frozenset(
         "database_to_xml_and_xmlschema",
         "database_to_xmlschema",
         "dblink",
-        "gin_clean_pending_list",
         "inet_client_addr",
         "inet_client_port",
         "inet_server_addr",

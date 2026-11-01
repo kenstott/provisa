@@ -27,7 +27,7 @@ from provisa.core.pg_error import MARK
 from provisa.transpiler.function_macros import MACROS, FunctionRefused, outcome
 from provisa.transpiler.pg_forms_hash import ENGINES, forms
 from provisa.transpiler.transpile import transpile
-from tests.unit.pgwire.hash_corpus import VALUES, statements
+from tests.unit.pgwire.hash_corpus import ENUM, VALUES, statements
 from tests.unit.pgwire.pg17_hash_answers import RECORDED
 
 _ON_ENGINES = tuple(name for name, _ in ENGINES)
@@ -63,7 +63,7 @@ def test_a_hash_reads_a_column_row_by_row():
     connection.execute("CREATE TABLE t AS SELECT * FROM (VALUES ('abc'), ('雪'), (NULL)) v(s)")
     rows = connection.execute(transpile("SELECT hashtext(s) AS v FROM t", "duckdb")).fetchall()
     assert [row[0] for row in rows] == [
-        RECORDED["SELECT hashtext('abc'::text) AS v"][1] and -785388649,
+        int(RECORDED["SELECT hashtext('abc'::text) AS v"][1]),
         int(RECORDED["SELECT hashtext('雪'::text) AS v"][1]),
         None,
     ]
@@ -85,7 +85,7 @@ def test_a_hash_of_a_hash_reads_the_inner_call():
         (f"SELECT hashname('{'é' * 40}'::name) AS v", "hashname"),
         ("SELECT hash_record('(1,2)'::record) AS v", "hash_record"),
         ("SELECT hash_aclitem('a=r/b'::aclitem) AS v", "hash_aclitem"),
-        ("SELECT hashenum(1::oid) AS v", "hashenum"),
+        (f"SELECT hashenum('a'::{ENUM}) AS v", "hashenum"),
     ],
 )
 def test_a_value_no_form_can_answer_is_refused_by_name(sql: str, function: str):
@@ -108,6 +108,7 @@ def test_a_composite_of_no_said_type_is_refused_by_name(sql: str):
 
 
 def _named(plain: str) -> list[tuple[str, int]]:
+    """Each row of a function, and its rows by said type."""
     return [key for key in MACROS if key[0].startswith(plain)]
 
 
@@ -126,3 +127,13 @@ def test_each_form_parses_as_its_engine_writes_it(dialect: str):
         tree = sqlglot.parse_one(sql, read=dialect)
         assert isinstance(tree, exp.Expr), name
         assert "provisa_" not in sql, name
+
+
+@pytest.mark.parametrize("name", ["hash_array", "hash_range", "hash_multirange"])
+def test_a_composite_row_exists_only_for_a_said_type(name: str):
+    assert outcome(name, 1, "duckdb") == "refused"
+
+
+def test_hashes_on_every_engine_are_one_definition():
+    written = {dialect: forms(engine) for dialect, engine in ENGINES}
+    assert written["duckdb"].keys() == written["trino"].keys() == written["clickhouse"].keys()

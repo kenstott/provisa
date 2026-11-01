@@ -47,7 +47,7 @@ def _check_states(run: Callable[[str], Any], dialect: str) -> None:
             got = run(transpile(sql, dialect))
         except Exception as raised:  # noqa: BLE001 -- the engine's refusal is the answer compared
             got = raised
-        if not same_answer(got, want):
+        if not same_answer(sql, got, want):
             wrong[sql] = got
     assert not wrong
 

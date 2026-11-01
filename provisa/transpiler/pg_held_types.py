@@ -36,6 +36,7 @@ _ON_THE_ENGINE = {
     **{name: held for held, names in HELD_AS.items() for name in names},
     "name": "VARCHAR",
     "tid": "VARCHAR",
+    "oid": "BIGINT",
     "oidvector": "VARCHAR",
     "int2vector": "VARCHAR",
     "regproc": "BIGINT",
