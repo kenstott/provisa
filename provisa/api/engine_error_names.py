@@ -95,6 +95,8 @@ def no_internal_schema(text: str, org_id: str | None) -> str:
     (a statement in a sandbox can be told of its template's), nor of ``org_id``, in any of their
     environments, regions and stores: a table's qualifier goes and the table stays. Another word
     beginning ``org_`` is a name in the model and stays."""
+    if "org_" not in text:
+        return text
     owners = [re.escape(SANDBOX_PREFIX) + "[a-z0-9]*"]
     if org_id is not None:
         owners.append(re.escape(org_id))
