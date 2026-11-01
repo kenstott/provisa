@@ -14,7 +14,9 @@
 - The clients accept a referential constraint on single-valued navigation properties only.
 - The clients accept every non-key property as nullable.
 - The clients accept a timestamp with no offset as UTC in `Edm.DateTimeOffset`.
-- The clients accept a 501 for `$expand` until it is served, and for a `$filter` function or an `$orderby` expression the service does not serve.
+- The clients accept a 501 for a `$filter` function or an `$orderby` expression the service does not serve, and for `$expand=*`.
+- The clients expand with `$expand` and follow `@odata.nextLink` in a nested collection.
+- The clients accept a 501 for a list past its bound whose parent has no key the role can address.
 - The clients send the date and time literals OData defines, and do not compare a date or timestamp with a string.
 - The clients accept a 403 for a filter on a masked column.
 - The clients accept a page of 5000 rows, and do not need `Prefer: odata.maxpagesize` honoured.
@@ -30,6 +32,7 @@ The service is at `/data/odata` on the HTTP port, so it has no port or startup l
 | `GET /data/odata/$metadata` | The role's CSDL |
 | `GET /data/odata/{set}` | A page of the entity set |
 | `GET /data/odata/{set}/$count` | The role's row count, as plain text, of the rows a `$filter` meets when it has one |
+| `GET /data/odata/{set}({key})/{navigation}` | A page of one row's to-many navigation property |
 
 ## The model
 
@@ -68,13 +71,13 @@ An interval is a string because `Edm.Duration` cannot hold months.
 
 ## Reads
 
-A read accepts `$filter`, `$orderby`, `$select`, `$top`, `$skip`, `$count` and `$format=json`. It becomes one statement through the governed pipeline, so row rules, masks, column grants, the role's row ceiling and the audit record apply as on every transport. `$count=true` runs a second statement through the same pipeline, and counts the rows `$filter` meets.
+A read accepts `$filter`, `$orderby`, `$select`, `$expand`, `$top`, `$skip`, `$count` and `$format=json`. It becomes one statement through the governed pipeline, so row rules, masks, column grants, the role's row ceiling and the audit record apply as on every transport. `$count=true` runs a second statement through the same pipeline, and counts the rows `$filter` meets.
 
 Rows are read in `$orderby` order, then in key order, or with no key in the order of every sortable property, so pages do not overlap. A page holds at most 5000 rows, and `@odata.nextLink` leads to the next one. A role's row ceiling ends the feed: the last page has no link, and no row past the ceiling is served.
 
 `@odata.nextLink` keeps `$filter` and `$orderby` as the client sent them.
 
-`$expand`, `$search`, `$apply`, `$compute` and `$levels` are answered 501 rather than ignored. Any other `$` option is answered 400, and a `$format` other than JSON is answered 406.
+`$search`, `$apply`, `$compute` and `$levels` are answered 501 rather than ignored. Any other `$` option is answered 400, and a `$format` other than JSON is answered 406.
 
 A request runs under `limits.request_timeouts.odata`, or `limits.request_timeout` when that has no value.
 
@@ -126,3 +129,31 @@ A faked column is the exception, also as on every transport. Its table is read t
 `$orderby` takes properties, each with `asc` or `desc`, and sorts asc by default. A null sorts first ascending and last descending, as OData says. A property named twice is answered 400, and a function or a path is answered 501.
 
 A masked column sorts by the value the role is shown, so the real values' order does not show through. A column the role cannot see is answered 400.
+
+## Expanding
+
+`$expand` nests a row's related rows under its navigation property, in the read's one statement. The related rows are compiled as GraphQL compiles a relationship, as a subquery per field, so a parent stays one row whatever it expands. The subquery is read by `validate_sql` and `apply_governance` as any SELECT, so the related table's row rules, masks and column grants hold in it. A relationship into a table the role cannot see is answered 400, as for a name that does not exist.
+
+| Option in an expansion | To-many | To-one |
+|---|---|---|
+| `$select` | Served | Served |
+| `$expand` | Served | Served |
+| `$filter` | Served, as at the root | 400 |
+| `$orderby` | Served, as at the root | 400 |
+| `$top`, `$skip` | Served | 400 |
+| `$count` | 501 | 501 |
+| `$levels`, `$search`, `$apply`, `$compute` | 501 | 501 |
+
+`$format` in an expansion is answered 400. Options are separated by `;`, as in `orders($filter=id gt 1;$select=id;$top=5)`. Expansions nest 4 levels. `*`, a path such as `customer/orders`, and `/$ref` or `/$count` are answered 501.
+
+A filter on a masked column of the related table is refused as at the root, with 403 and nothing run. An order on one sorts by the value the role is shown.
+
+A to-one property with no related row is `null`. A to-many property with none is `[]`. A table replicated row by row is joined rather than aggregated, so expanding a to-one property into one is answered 501.
+
+### Bounded lists
+
+An expanded list holds at most 1000 rows per parent. A longer one carries `orders@odata.nextLink` beside it, leading to `{set}({key})/orders` with the expansion's own options. That read is the same statement for one parent, so its row rules and masks are the same, and it pages and nests as an expansion does. It takes no `$count`. A single-valued navigation property is not read by path, and is answered 501.
+
+A role's row ceiling holds a list as it holds a read: a ceiling below the bound ends the list with no link.
+
+A nextLink needs the parent's key. A list past its bound under a parent with no key, or whose key the role reads masked, is answered 501 naming it, rather than cut short with nothing to say so. A list within its bound is served under any parent. Ordering within a list is the database's: it is exact on PostgreSQL, where the list is built from sorted rows, and an engine that does not keep that order keeps a page's rows but not their order in it.

@@ -39,6 +39,7 @@ from provisa.api.generated_plan import compile_generated_graphql
 from provisa.api.json_response import OrjsonResponse
 from provisa.api.odata.csdl import metadata_document, service_document
 from provisa.api.odata.expand import (
+    Addressing,
     Plan,
     context_selection,
     ordered_by,
@@ -190,7 +191,7 @@ async def _count(
     return int(next(iter(result.rows))[0])
 
 
-def _addressing(state: Any, role_id: str) -> Any:  # noqa: ANN401 — AppState; an Addressing
+def _addressing(state: Any, role_id: str) -> Addressing:  # noqa: ANN401 — AppState
     """The key a role addresses a set's rows by. A filter on a masked key is refused (REQ-531) and
     a row shows its mask, so such a key addresses nothing; a fake is the value a filter compares."""
 
