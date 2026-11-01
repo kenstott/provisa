@@ -1843,6 +1843,8 @@ def _fractions(argument: exp.Expr) -> list[float | None]:
         return [None]
     if isinstance(node, exp.Neg):
         return [None if v is None else -v for v in _fractions(node.this)]
+    if not isinstance(node, exp.Literal):  # a bound parameter: the engine checks its value
+        return []
     return [float(node.sql(dialect="postgres"))]
 
 
@@ -1945,6 +1947,13 @@ def _percentile(node: exp.WithinGroup, dialect: str) -> exp.Expr:
         isinstance(argument.unnest(), exp.Cast) and argument.unnest().is_type("array")
     )
     fractions = _fractions(argument)
+    if not fractions and not array:  # bound: DuckDB's own percentile checks the value it is given
+        if dialect in _DUCKDB:
+            return node
+        raise FunctionRefused(
+            "percentile_cont" if isinstance(node.this, exp.PercentileCont) else "percentile_disc",
+            dialect,
+        )
     for fraction in fractions:
         if fraction is not None and not 0 <= fraction <= 1:
             raise PostgresError("22003", f"percentile value {fraction:g} is not between 0 and 1")
