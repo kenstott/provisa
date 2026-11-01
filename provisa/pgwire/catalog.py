@@ -407,7 +407,7 @@ def _handle_txid(sql: str):
 
 
 _SET_CONFIG_VALUE_RE = re.compile(
-    r"set_config\s*\(\s*'(?:[^']|'')*'\s*,\s*'((?:[^']|'')*)'", re.IGNORECASE
+    r"set_config\"?\s*\(\s*'(?:[^']|'')*'(?:::\w+)?\s*,\s*'((?:[^']|'')*)'", re.IGNORECASE
 )
 
 
@@ -535,6 +535,7 @@ class CatalogSession:
     pid: int
     application_name: str = ""
     backend_start: datetime.datetime | None = None
+    system_user: str | None = None
 
 
 def _list_session(cur, role_id: str, session: CatalogSession, sql: str) -> None:
@@ -573,6 +574,7 @@ def _catalog_request(
             "pid": str(session.pid),
             "application_name": session.application_name,
             "backend_start": session.backend_start.isoformat() if session.backend_start else "",
+            **({"system_user": session.system_user} if session.system_user else {}),
         }
     return CatalogRequest(
         role_id=role_id,

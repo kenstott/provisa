@@ -1629,6 +1629,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # user_id. Set wherever role_id is set (trust mode: the startup packet's user; secured
         # modes: the validated identity), so an authenticated session always has both.
         self.user_id: str | None = None
+        # REQ-2171: what system_user answers, the method and the name the session authenticated
+        # by; None in trust mode, as PostgreSQL's is.
+        self.system_user: str | None = None
         # REQ-1266: the org this session is bound to, set when it is admitted. None until then: a
         # session not yet admitted is served no org's runtime.
         self.org_id: str | None = None
@@ -2044,7 +2047,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 stripped,
                 self.role_id or "",
                 state,
-                session=CatalogSession(self.process_id, self.application_name, self.backend_start),
+                session=CatalogSession(
+                    self.process_id, self.application_name, self.backend_start, self.system_user
+                ),
                 run=self._catalog_read,
             )
             log.debug(
@@ -3018,6 +3023,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             )
             return
         login_throttle().record_success(subject_key(username, ""))
+        ctx.session.system_user = f"scram-sha-256:{username}"  # type: ignore[attr-defined]
         self._complete_auth(ctx, identity, auth_config)
 
     def _requested_org(self) -> str | None:  # REQ-1234

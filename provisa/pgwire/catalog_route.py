@@ -21,6 +21,7 @@ governed as any read of it."""
 from __future__ import annotations
 
 import contextvars
+import datetime
 import itertools
 import re
 from collections.abc import Callable, Mapping
@@ -513,6 +514,14 @@ def _current_setting(args: list[exp.Expr], settings: Mapping[str, str]) -> exp.E
     return _parsed(f"CASE LOWER({name.sql(dialect='postgres')}) {cases} ELSE '' END")
 
 
+#: When this server's statistics began, which nothing resets: what the two functions of the server's
+#: own statistics answer (REQ-2171).
+_STARTED = datetime.datetime.now(datetime.timezone.utc).isoformat()
+_NEVER_RESET = frozenset(
+    {"pg_stat_get_bgwriter_stat_reset_time", "pg_stat_get_checkpointer_stat_reset_time"}
+)
+
+
 def _set_config(args: list[exp.Expr]) -> exp.Expr:
     """set_config answers the value it set. Nothing is set: what a client sets is the session's,
     and what the catalog views read of a statement is the terminal's alone."""
@@ -537,13 +546,16 @@ def _session_call(name: str, args: list[exp.Expr], request: CatalogRequest) -> e
     if name == "pg_backend_pid":
         return exp.cast(exp.Literal.number(request.pid), "INTEGER")
     if name == "system_user":
-        return exp.cast(exp.null(), "TEXT")  # no authenticated identity to name
+        said = request.session.get("system_user")
+        return exp.cast(exp.null() if said is None else exp.Literal.string(said), "TEXT")
     if name == "pg_is_in_recovery":
         return exp.false()
     if name in ("txid_current", "pg_current_xact_id"):
         return exp.cast(exp.Literal.number(next_txid()), "BIGINT")
     if name in ("pg_postmaster_start_time", "pg_conf_load_time"):
         return exp.cast(exp.null(), "TIMESTAMPTZ")
+    if name in _NEVER_RESET:
+        return exp.cast(exp.Literal.string(_STARTED), "TIMESTAMPTZ")
     return None
 
 
