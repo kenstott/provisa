@@ -178,8 +178,6 @@ WEIGHTS = ("a", "B", "c", "d", "A", "1", "x")
 
 def literal(value: str, type_name: str) -> str:
     """``value`` as the argument of a call: the same spelling as function_support's."""
-    if type_name == "integer" or value.startswith("("):
-        return f"{value}::{type_name}"
     if type_name in _NUMBERS:
         return f"{value}::{type_name}"
     return "'" + value.replace("'", "''") + f"'::{type_name}"
