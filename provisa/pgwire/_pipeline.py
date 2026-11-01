@@ -1320,8 +1320,15 @@ async def propagate_literal_predicates(sql: str, state: Any) -> str:  # REQ-1880
     # as do Trino/ClickHouse/warehouse drivers (compiler.params.substitute_positional_placeholders),
     # where a reused $1 would shift every later parameter.
     by_number = state.federation_engine.engine.name in _BINDS_PARAMS_BY_NUMBER
+    # PostgreSQL alone runs a correlated subquery once per outer row: DuckDB decorrelates its own,
+    # and Trino's are lifted at transpile.
     return propagate_literal_join_predicates(
-        sql, "postgres", eligible, column_types, allow_params=by_number
+        sql,
+        "postgres",
+        eligible,
+        column_types,
+        allow_params=by_number,
+        read_once=state.federation_engine.engine.name == "postgres",
     )
 
 
