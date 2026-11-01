@@ -45,7 +45,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import END, MARK, PostgresError, raising
-from provisa.transpiler import pg_forms, pg_forms_json, pg_forms_types
+from provisa.transpiler import pg_forms, pg_forms_geometric, pg_forms_json, pg_forms_types
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 from provisa.transpiler.pg_literals import values_cast
 
@@ -1738,9 +1738,26 @@ REFUSED_ROWS = frozenset(
 )
 
 
+def _geometric() -> tuple[Macro, ...]:
+    """Each geometric row, and its plain name, on each engine of pg_forms_geometric."""
+    rows: dict[tuple[str, str], dict[frozenset[str], str]] = {}
+    for engine in pg_forms_geometric.ENGINES:
+        for key, form in pg_forms_geometric.forms(engine).items():
+            rows.setdefault(key, {})[frozenset({engine.name})] = form
+    plain = {
+        alias: rows[next(key for key in rows if key[0] == row)]
+        for alias, row in pg_forms_geometric.ALIASES.items()
+    }
+    bare = (Macro(n, (p,)) for n, p in pg_forms_geometric.BARE)
+    return (
+        *bare,
+        *(Macro(n, tuple(p.split(", ")), f) for (n, p), f in {**rows, **plain}.items()),
+    )
+
+
 #: A call's name and argument count -> its overload: the one table.
 MACROS: dict[tuple[str, int], Macro] = {
-    (m.name, len(m.params)): _with_replay(m) for m in (*_ROWS, *_EXACT_ROWS)
+    (m.name, len(m.params)): _with_replay(m) for m in (*_ROWS, *_EXACT_ROWS, *_geometric())
 }
 #: (function, argument count, the type the statement says of its first argument) -> its row:
 #: PostgreSQL's own name for the overload. The operation is chosen by the type, not the engine's.
@@ -1765,6 +1782,7 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
     },
     ("numeric", 1, "jsonb"): "jsonb_numeric",
     ("md5", 1, "bytea"): "md5_bytea",
+    **pg_forms_geometric.OVERLOADS,
     ("int4", 1, "bit"): "bittoint4",
     ("int8", 1, "bit"): "bittoint8",
     ("int4", 1, '"char"'): "chartoi4",
