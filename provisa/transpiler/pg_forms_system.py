@@ -132,6 +132,7 @@ _REFUSALS: dict[str, tuple[tuple[int, ...], tuple[str, str]]] = {
         (0,),
         ("55000", "replication slots can only be synchronized to a standby server"),
     ),
+    "lastval": ((0,), ("55000", "lastval is not yet defined in this session")),
     "pg_ls_logdir": ((0,), ("58P01", 'could not open directory "log": No such file or directory')),
     **{
         f"pg_logical_slot_{verb}": (tuple(_SLOT_ARITIES), _LOGICAL)

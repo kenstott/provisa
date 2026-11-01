@@ -45,7 +45,13 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import END, MARK, PostgresError, raising
-from provisa.transpiler import pg_forms, pg_forms_json, pg_forms_system, pg_forms_types
+from provisa.transpiler import (
+    pg_forms,
+    pg_forms_enum,
+    pg_forms_json,
+    pg_forms_system,
+    pg_forms_types,
+)
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 from provisa.transpiler.pg_literals import values_cast
 
@@ -1611,6 +1617,7 @@ _ROWS: tuple[Macro, ...] = (
     *_ARRAYS,
     *_ENUMS,
     *(Macro(name, params, forms) for name, params, forms in pg_forms_system.ROWS),
+    *(Macro(name, params, forms) for name, params, forms in pg_forms_enum.ROWS),
     Macro("repeat", ("value", "n"), {_TRINO: pg_forms_system.TRINO_REPEAT, _EVERY: MAPPED}),
     *_OTHERS,
     *_XML,

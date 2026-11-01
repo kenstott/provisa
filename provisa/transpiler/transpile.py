@@ -21,7 +21,7 @@ import re
 import sqlglot
 
 from provisa.core.pg_error import MARK
-from provisa.transpiler import function_macros, pg_functions, pg_held_types, pg_money
+from provisa.transpiler import function_macros, pg_forms_enum, pg_functions, pg_held_types, pg_money
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_literals import exact_inputs, postgres_literals
@@ -583,7 +583,7 @@ def _duckdb_form(pg_sql: str) -> str:
     """``pg_sql`` in DuckDB's SQL, derived once: every step is a function of the text alone, and
     the steps parse it about six times. A statement a client repeats reaches here on each run, its
     plan kept or not. A refusal raises and is not kept."""
-    pg_sql = pg_money.lowered(pg_sql, "duckdb")  # REQ-2171
+    pg_sql = pg_forms_enum.lowered(pg_money.lowered(pg_sql, "duckdb"), "duckdb")  # REQ-2171
     return pg_functions.after(
         _postgres_semantics_for_duckdb(
             _lengths_for_duckdb(
@@ -1175,7 +1175,7 @@ def transpile(
         pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
     if target_dialect != "postgres":
         pg_sql = exact_inputs(pg_sql)  # REQ-2171
-    pg_sql = pg_money.lowered(pg_sql, target_dialect)  # REQ-2171
+    pg_sql = pg_forms_enum.lowered(pg_money.lowered(pg_sql, target_dialect), target_dialect)
     # REQ-1730: an identifier UNQUOTED in the source SQL (the common case for a raw/direct query —
     # governed GraphQL/Cypher-compiled queries already force `quoted=True`, see stage2.py's
     # `_expand_star`) stays unquoted through the transpile by default, which is harmless for every

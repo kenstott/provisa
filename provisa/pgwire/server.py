@@ -1820,9 +1820,32 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         Execute is."""
         return self._with_org(lambda: self._describe_bound(sql, params))
 
+    def _with_source_enums(self, sql: str) -> str:
+        """``sql`` with its enum functions written over what the source declares (REQ-2171)."""
+        from provisa.transpiler.pg_forms_enum import with_source_enums
+
+        from provisa.api.app import state
+
+        return with_source_enums(sql, state.pg_source_enums, self._registered_native)
+
+    def _registered_native(self, table: Any, name: str) -> str | None:
+        """The type the source gives a registered table's column."""
+        from provisa.api.app import state
+
+        ctx = state.contexts.get(self.role_id) if self.role_id is not None else None
+        wanted = {table.name.lower()}
+        for meta in ctx.tables.values() if ctx is not None else ():
+            if not wanted & {meta.table_name.lower(), meta.field_name.lower()}:
+                continue
+            for column in state.schema_build_cache["column_types"].get(meta.table_id, ()):
+                if column.column_name.lower() == name.lower():
+                    return column.native_type
+        return None
+
     def _describe_bound(self, sql: str, params) -> BVQueryResult:
         from provisa.pgwire.catalog import classify
 
+        sql = self._with_source_enums(sql)
         stripped = sql.strip()
         refuse_server_function(stripped)  # REQ-2167
         if xml_mapping.calls_one(stripped):
@@ -2059,6 +2082,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # every value shares one SQL text (server-side prepares, SQL-text-keyed caches) and a value
         # can never change the governed shape. Only the INTERCEPT catalog emulation (not a governed
         # query) reads the values inline.
+        sql = self._with_source_enums(sql)
         stripped = sql.strip()
         if xml_mapping.calls_one(stripped):
             # REQ-2167: each read the call makes is a statement of this session, governed here,

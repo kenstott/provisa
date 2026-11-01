@@ -163,6 +163,6 @@ def test_clickhouse_answers_null_before_it_refuses_a_value(call: str):
 def test_clickhouse_builds_no_array_from_a_nullable():
     """Its 24.3 refuses Nullable(Array) when it reads the statement, whatever the values, which
     chdb's own version allows. So past the checks each operand is taken out of Nullable."""
-    written = transpile("SELECT regexp_replace(a, b, c, d, e) FROM t", "clickhouse")
+    written = transpile("SELECT regexp_replace(a, 'p', c, d, e) FROM t", "clickhouse")
     answer = written[written.index(" THEN CONCAT(") :].removesuffix(" FROM t")
-    assert re.findall(r"\b[a-e]\b", re.sub(r"assumeNotNull\([a-e]\)", "", answer)) == []
+    assert re.findall(r"\b[acde]\b", re.sub(r"assumeNotNull\([acde]\)", "", answer)) == []
