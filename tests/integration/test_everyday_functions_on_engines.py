@@ -24,7 +24,7 @@ from typing import Any
 
 import pytest
 
-from provisa.core.pg_error import from_engine
+from provisa.core.pg_error import PostgresError, from_engine
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.pg_forms_types import REFUSED
 from provisa.transpiler.transpile import transpile
@@ -47,6 +47,8 @@ def _text(value: Any) -> str | None:
         return "{" + ",".join("NULL" if v is None else str(_text(v)) for v in value) + "}"
     if isinstance(value, Decimal):
         return format(value.normalize(), "f")
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
     return str(value)
 
 
@@ -56,6 +58,9 @@ def _problem(run: Callable[[str], list[Any]], dialect: str, sql: str) -> str | N
         written = transpile(sql, dialect)
     except FunctionRefused:
         return "refused"
+    except PostgresError as error:
+        said = (error.sqlstate, str(error))
+        return None if kind == "err" and said == RECORDED[sql][1:] else f"{said}"
     try:
         rows = run(written)
     except Exception as error:

@@ -453,6 +453,8 @@ _NOTHING_KEPT: tuple[tuple[str, tuple[int, ...], str], ...] = (
     ("pg_get_statisticsobjdef_columns", (1,), "TEXT"),
     ("pg_get_triggerdef", (1, 2), "TEXT"),
     ("pg_get_viewdef", (1, 2), "TEXT"),
+    ("pg_index_column_has_property", (3,), "BOOLEAN"),
+    ("pg_index_has_property", (2,), "BOOLEAN"),
     ("pg_tablespace_location", (1,), "TEXT"),
     ("shobj_description", (2,), "TEXT"),
     # Provisa reports no storage: a size is unknown, never a made-up 0.
@@ -645,7 +647,7 @@ _OF_A_USER = frozenset(
 
 #: A form only PostgreSQL can run, of a function of its argument: a statement with no table is the
 #: engine's, which reads the function's row of function_macros' table instead.
-_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name"})
+_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name", "currval", "nextval"})
 
 
 class MetadataFunctionRefused(ValueError):

@@ -296,7 +296,7 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
         return _cast_type(expression.to)
     if isinstance(expression, XmlSerialize):
         return _cast_type(expression.args["to"])
-    if isinstance(expression, exp.Paren):
+    if isinstance(expression, (exp.Paren, exp.Window)):
         return _result_type(expression.this, columns)
     if isinstance(expression, exp.Array):
         elements = [_result_type(element, columns) for element in expression.expressions]

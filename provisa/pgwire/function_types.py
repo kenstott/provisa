@@ -154,6 +154,7 @@ def _fits(argument: str | None, parameter: str) -> bool:
         argument is None
         or argument == parameter
         or parameter == '"any"'
+        or (parameter == "anynonarray" and not argument.endswith("[]"))
         or (argument == "text" and parameter == "character varying")
         or (parameter == "anyarray" and argument.endswith("[]"))
         or (parameter == "anyrange" and argument in RANGE_TYPES)

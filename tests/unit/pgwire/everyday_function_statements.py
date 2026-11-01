@@ -78,14 +78,152 @@ ARRAY = [
     "SELECT generate_subscripts(NULL::integer[], NULL::integer, NULL::boolean) AS v",
 ]
 
+STRING = [
+    "SELECT anytextcat(1, 'a') AS v",
+    "SELECT anytextcat(true, 'a') AS v",
+    "SELECT anytextcat(NULL::integer, 'a') AS v",
+    "SELECT anytextcat(1, NULL::text) AS v",
+    "SELECT textanycat('a', 2) AS v",
+    "SELECT textanycat('a', false) AS v",
+    "SELECT textanycat(NULL::text, 2) AS v",
+    "SELECT textanycat('a', NULL::integer) AS v",
+]
+
+_ANY = ("1", "2", "NULL::integer")
+OTHER = [
+    "SELECT num_nulls(1, NULL, 2) AS v",
+    "SELECT num_nonnulls(1, NULL, 2) AS v",
+    "SELECT num_nulls(NULL::integer) AS v",
+    "SELECT num_nonnulls(NULL::integer) AS v",
+    "SELECT num_nulls(1, 'a', NULL::date) AS v",
+    "SELECT num_nulls(VARIADIC ARRAY[1,NULL,3]) AS v",
+    "SELECT num_nonnulls(VARIADIC ARRAY[1,NULL,3]) AS v",
+    "SELECT num_nulls(VARIADIC NULL::integer[]) AS v",
+    "SELECT num_nonnulls(VARIADIC ARRAY[]::integer[]) AS v",
+    *(
+        f"SELECT {name}({a}, {b}) AS v"
+        for name in ("int8inc_any", "int8dec_any")
+        for a, b in (
+            ("1::bigint", "2"),
+            ("1::bigint", "NULL::integer"),
+            ("NULL::bigint", "2"),
+            ("NULL::bigint", "NULL::integer"),
+        )
+    ),
+    "SELECT int8inc_any(9223372036854775807::bigint, 1) AS v",
+    "SELECT int8dec_any((-9223372036854775807 - 1)::bigint, 1) AS v",
+    "SELECT currval(NULL::regclass) AS v",
+    "SELECT nextval(NULL::regclass) AS v",
+    "SELECT satisfies_hash_partition(NULL::oid, NULL::integer, NULL::integer, NULL::integer) AS v",
+]
+
+_ROWS = "(VALUES (1),(2),(2),(3),(NULL::integer)) t(x)"
+_NUMBERS = "(VALUES (1.0::float8),(2.0::float8),(4.0::float8),(NULL::float8)) t(x)"
+_SPANS = "(VALUES ('1 hour'::interval),('3 hours'::interval)) t(x)"
+AGGREGATE = [
+    *(
+        f"SELECT {name}({a}) WITHIN GROUP (ORDER BY x{order}) AS v FROM {_ROWS}"
+        for name in ("rank", "dense_rank", "percent_rank", "cume_dist")
+        for a in ("2", "0", "9", "NULL::integer")
+        for order in ("", " DESC", " NULLS FIRST", " DESC NULLS LAST")
+    ),
+    *(
+        f"SELECT {name}(1) WITHIN GROUP (ORDER BY x) AS v FROM {_ROWS} WHERE x > 100"
+        for name in ("rank", "dense_rank", "percent_rank", "cume_dist")
+    ),
+    f"SELECT mode() WITHIN GROUP (ORDER BY x) AS v FROM {_ROWS}",
+    "SELECT mode() WITHIN GROUP (ORDER BY x) AS v FROM (VALUES (2),(2),(1),(1),(3)) t(x)",
+    "SELECT mode() WITHIN GROUP (ORDER BY x DESC) AS v FROM (VALUES (2),(2),(1),(1),(3)) t(x)",
+    f"SELECT ntile(2) OVER (ORDER BY x) AS v FROM {_ROWS}",
+    f"SELECT percentile_disc(ARRAY[0.25,0.75]::float8[]) WITHIN GROUP (ORDER BY x) AS v "
+    f"FROM {_ROWS}",
+]
+
+NUMERIC = [
+    f"SELECT percentile_cont(0.5::float8) WITHIN GROUP (ORDER BY x) AS v FROM {_NUMBERS}",
+    f"SELECT percentile_cont(0.25::float8) WITHIN GROUP (ORDER BY x DESC) AS v FROM {_NUMBERS}",
+    f"SELECT percentile_cont(ARRAY[0.25,0.75]::float8[]) WITHIN GROUP (ORDER BY x) AS v "
+    f"FROM {_NUMBERS}",
+    f"SELECT percentile_cont(NULL::float8) WITHIN GROUP (ORDER BY x) AS v FROM {_NUMBERS}",
+    f"SELECT percentile_cont(2::float8) WITHIN GROUP (ORDER BY x) AS v FROM {_NUMBERS}",
+    f"SELECT percentile_disc(0.5::float8) WITHIN GROUP (ORDER BY x) AS v FROM {_ROWS}",
+    f"SELECT percentile_disc(0::float8) WITHIN GROUP (ORDER BY x DESC) AS v FROM {_ROWS}",
+    f"SELECT percentile_disc(NULL::float8) WITHIN GROUP (ORDER BY x) AS v FROM {_ROWS}",
+    f"SELECT percentile_disc(-1::float8) WITHIN GROUP (ORDER BY x) AS v FROM {_ROWS}",
+]
+
+DATE = [
+    f"SELECT percentile_cont(0.5::float8) WITHIN GROUP (ORDER BY x::interval) AS v FROM {_SPANS}",
+    f"SELECT percentile_cont(ARRAY[0.5]::float8[]) WITHIN GROUP (ORDER BY x::interval) AS v "
+    f"FROM {_SPANS}",
+    f"SELECT percentile_cont(NULL::float8) WITHIN GROUP (ORDER BY x::interval) AS v FROM {_SPANS}",
+]
+
+SYSTEM = [
+    "SELECT aclexplode(NULL::aclitem[]) AS v",
+    "SELECT pg_options_to_table(ARRAY['fillfactor=70','autovacuum_enabled=off']) AS v",
+    "SELECT * FROM pg_options_to_table(ARRAY['fillfactor=70','a=b=c','bare'])",
+    "SELECT * FROM pg_options_to_table(NULL::text[])",
+    "SELECT option_value FROM pg_options_to_table(ARRAY['fillfactor=70']) WHERE option_name = 'fillfactor'",
+]
+
 #: What a statement needs of the database, run first on PostgreSQL.
 SETUP: list[str] = []
 
-STATEMENTS: dict[str, list[str]] = {"Array": ARRAY}
+STATEMENTS: dict[str, list[str]] = {
+    "Array": ARRAY,
+    "String": STRING,
+    "Other": OTHER,
+    "Aggregate and window": AGGREGATE,
+    "Numeric": NUMERIC,
+    "Date": DATE,
+    "System": SYSTEM,
+}
 
 #: The conformance probe's own statements (scripts/conformance/pgwire_function_probe.py), on the
 #: default engine alone: what a client's literal of an array reads as is not a function's.
 PROBES: dict[str, list[str]] = {
+    "String": [
+        "SELECT anytextcat(1.50, 'a') AS v",
+        'SELECT pg_catalog."anytextcat"(NULL::integer, NULL::text) AS v',
+        'SELECT pg_catalog."textanycat"(NULL::text, NULL::integer) AS v',
+    ],
+    "Other": [
+        'SELECT pg_catalog."currval"(NULL::regclass) AS v',
+        'SELECT pg_catalog."int8dec_any"(NULL::bigint, NULL::integer) AS v',
+        'SELECT pg_catalog."int8inc_any"(NULL::bigint, NULL::integer) AS v',
+        'SELECT pg_catalog."nextval"(NULL::regclass) AS v',
+        'SELECT pg_catalog."num_nonnulls"(NULL::integer) AS v',
+        'SELECT pg_catalog."num_nulls"(NULL::integer) AS v',
+        'SELECT pg_catalog."satisfies_hash_partition"(NULL::oid, NULL::integer, NULL::integer, NULL::integer) AS v',
+        'SELECT pg_catalog."trim_array"(NULL::integer[], NULL::integer) AS v',
+    ],
+    "Aggregate and window": [
+        'SELECT pg_catalog."cume_dist"(NULL::integer) WITHIN GROUP (ORDER BY NULL::integer) AS v',
+        'SELECT pg_catalog."dense_rank"(NULL::integer) WITHIN GROUP (ORDER BY NULL::integer) AS v',
+        'SELECT pg_catalog."mode"() WITHIN GROUP (ORDER BY NULL::integer) AS v',
+        'SELECT pg_catalog."ntile"(NULL::integer) OVER () AS v',
+        'SELECT pg_catalog."percent_rank"(NULL::integer) WITHIN GROUP (ORDER BY NULL::integer) AS v',
+        'SELECT pg_catalog."percentile_disc"(NULL::double precision[]) WITHIN GROUP (ORDER BY NULL::integer) AS v',
+        'SELECT pg_catalog."rank"(NULL::integer) WITHIN GROUP (ORDER BY NULL::integer) AS v',
+    ],
+    "Numeric": [
+        'SELECT pg_catalog."percentile_cont"(NULL::double precision) WITHIN GROUP (ORDER BY NULL::double precision) AS v',
+        'SELECT pg_catalog."percentile_cont"(NULL::double precision[]) WITHIN GROUP (ORDER BY NULL::double precision) AS v',
+        'SELECT pg_catalog."percentile_disc"(NULL::double precision) WITHIN GROUP (ORDER BY NULL::integer) AS v',
+    ],
+    "Date": [
+        'SELECT pg_catalog."percentile_cont"(NULL::double precision) WITHIN GROUP (ORDER BY NULL::interval) AS v',
+        'SELECT pg_catalog."percentile_cont"(NULL::double precision[]) WITHIN GROUP (ORDER BY NULL::interval) AS v',
+    ],
+    "System": [
+        "SELECT pg_index_has_property(0::regclass, 'clusterable') AS v",
+        "SELECT pg_index_column_has_property(0::regclass, 1, 'asc') AS v",
+        'SELECT pg_catalog."aclexplode"(NULL::aclitem[]) AS v',
+        'SELECT pg_catalog."pg_index_column_has_property"(NULL::regclass, NULL::integer, NULL::text) AS v',
+        'SELECT pg_catalog."pg_index_has_property"(NULL::regclass, NULL::text) AS v',
+        'SELECT pg_catalog."pg_options_to_table"(NULL::text[]) AS v',
+    ],
     "Array": [
         "SELECT pg_catalog.\"array_agg\"('{1}'::integer[]) AS v",
         'SELECT pg_catalog."array_dims"(NULL::integer[]) AS v',

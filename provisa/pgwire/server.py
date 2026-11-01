@@ -541,6 +541,7 @@ _ARRAY_OF: dict[BVType, BVType] = {
     BVType.REGTYPE: BVType.REGTYPEARRAY,
     BVType.XML: XML_ARRAY,
     BVType.MONEY: BVType.MONEYARRAY,
+    BVType.INTERVAL: BVType.INTERVALARRAY,
 }
 
 _TYPE_TO_BVTYPE: dict[str, BVType] = {

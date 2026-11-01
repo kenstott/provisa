@@ -941,6 +941,7 @@ BVTYPE_TO_PGTYPE.update(
         BVType.STRINGARRAY: _array_entry(BVType.TEXT, 1009),
         BVType.OIDARRAY: _array_entry(BVType.OID, 1028),
         BVType.MONEYARRAY: _array_entry(BVType.MONEY, 791),
+        BVType.INTERVALARRAY: _array_entry(BVType.INTERVAL, 1187),
     }
 )
 
