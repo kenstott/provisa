@@ -234,9 +234,10 @@ def test_a_null_key_is_skipped():
 
 
 def test_a_deeply_nested_call_is_rewritten_once():
+    """25 levels: a rewrite of each call's arguments twice is 2**25, and sqlglot's parser stops
+    near 40."""
     nested = "x"
-    for _ in range(40):
+    for _ in range(25):
         nested = f"abs({nested})"
-    assert (
-        transpile_to_duckdb(f"SELECT jsonb_typeof(a), {nested} FROM t").upper().count("ABS(") == 40
-    )
+    written = transpile_to_duckdb(f"SELECT jsonb_typeof(a), {nested} FROM t")
+    assert written.upper().count("ABS(") == 25
