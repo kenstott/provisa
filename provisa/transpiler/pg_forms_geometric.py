@@ -1263,9 +1263,16 @@ def _bucket_float(e: Engine, when: str) -> str:
 
     rising = fraction((x, lo), (hi, lo), f"{hi} - {lo}")
     falling = fraction((lo, x), (lo, hi), f"{lo} - {hi}")
+    # Equal bounds or a NaN divide to no number, and ClickHouse runs this path before its refusal,
+    # where converting that to an integer raises an error of its own instead.
+    fraction_of = e.let.format(
+        "_w",
+        f"CASE WHEN {up} THEN {rising} ELSE {falling} END",
+        f"CASE WHEN {e.finite.format('_w')} THEN _w ELSE {_NIL} END",
+    )
     bucket = e.let.format(
         "_c",
-        e.bigint.format(f"floor(_n * (CASE WHEN {up} THEN {rising} ELSE {falling} END))"),
+        e.bigint.format(f"floor(_n * ({fraction_of}))"),
         "least(_c, _n - 1) + 1",
     )
     below = f"({up} AND {x} < {lo}) OR (NOT ({up}) AND {x} > {lo})"
