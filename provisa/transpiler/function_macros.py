@@ -37,13 +37,13 @@ from __future__ import annotations
 import enum
 import functools
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.core.pg_error import MARK, raising
+from provisa.core.pg_error import END, MARK, raising
 from provisa.transpiler import pg_forms, pg_forms_types
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 
@@ -825,6 +825,241 @@ _NUMBERS: tuple[Macro, ...] = (
     ),
 )
 
+#: A list's dimensions, of its type: PostgreSQL's empty array has none.
+_ARRAY_NDIMS = (
+    "CAST(CASE WHEN len(a) > 0 THEN length(regexp_extract(typeof(a), '(\\[\\])+$')) // 2 END "
+    "AS INTEGER)"
+)
+_TRINO_NDIMS = (
+    "CAST(CASE WHEN cardinality(a) > 0 "
+    "THEN length(regexp_extract(typeof(a), '^(array\\()+')) / 6 END AS INTEGER)"
+)
+_CLICKHOUSE_NDIMS = (
+    "CAST(CASE WHEN length(a) > 0 THEN countSubstrings(toTypeName(a), 'Array(') END "
+    "AS Nullable(Int32))"
+)
+#: PostgreSQL's MAXDIM.
+_MAX_DIMENSIONS = 6
+_NO_DIMENSIONS = "'dimension array or low bound array cannot be null'"
+
+
+def _dimension_length(dimension: str) -> str:
+    """The length of one dimension of a rectangular list, from 0: each sublist is as long."""
+    return f"json_array_length(to_json(a), '$' || repeat('[0]', CAST({dimension} AS INTEGER)))"
+
+
+def _trino_dimension_length(depth: int) -> str:
+    first = "CAST(a AS JSON)"
+    for _ in range(depth):
+        first = f"json_extract({first}, '$[0]')"
+    return f"json_array_length({first})"
+
+
+def _clickhouse_dimension_length(depth: int) -> str:
+    return f"JSONLength({', '.join(('toJSONString(a)', *('1',) * depth))})"
+
+
+def _each_dimension(length: Callable[[int], str]) -> str:
+    whens = (f"WHEN {i + 1} THEN {length(i)}" for i in range(_MAX_DIMENSIONS))
+    return f"CASE d {' '.join(whens)} END"
+
+
+def _in_dimensions(answer: str, ndims: str = _ARRAY_NDIMS, as_type: str = "INTEGER") -> str:
+    return f"CAST(CASE WHEN d BETWEEN 1 AND {ndims} THEN {answer} END AS {as_type})"
+
+
+_ARRAY_UPPER = _in_dimensions(_dimension_length("d - 1"))
+_TRINO_UPPER = _in_dimensions(_each_dimension(_trino_dimension_length), _TRINO_NDIMS)
+_CLICKHOUSE_UPPER = _in_dimensions(
+    _each_dimension(_clickhouse_dimension_length), _CLICKHOUSE_NDIMS, "Nullable(Int32)"
+)
+
+
+def _trino_raising(sqlstate: str, message_sql: str) -> str:
+    return f"fail('{MARK} {sqlstate}: ' || {message_sql} || ' {END}')"
+
+
+def _clickhouse_refused(condition: str, function: str) -> str:
+    """0 unless ``condition``, where it raises: throwIf's message is a constant, so a message
+    PostgreSQL writes from the value is refused by name, as an answer that differs."""
+    return f"throwIf({condition}, '{MARK} 0A000: {function} {pg_forms_types.REFUSED} {END}')"
+
+
+def _filled(*rest: str) -> str:
+    """array_fill of one dimension, from 1: a list has no other shape to hold what it asks for."""
+    ones = "".join(f" AND list_filter({r}, _b -> _b <> 1) = []" for r in rest)
+    missing = " OR ".join(f"{r} IS NULL" for r in ("dims", *rest))
+    return (
+        f"CASE WHEN {missing} THEN {raising('22004', _NO_DIMENSIONS)} "
+        f"WHEN len(dims) = 1{ones} THEN list_transform(range(dims[1]), _i -> v) "
+        f"ELSE {raising('0A000', f"'array_fill {pg_forms_types.REFUSED}'")} END"
+    )
+
+
+def _trino_filled(*rest: str) -> str:
+    ones = "".join(f" AND all_match({r}, _b -> _b = 1)" for r in rest)
+    missing = " OR ".join(f"{r} IS NULL" for r in ("dims", *rest))
+    return (
+        f"CASE WHEN {missing} THEN {_trino_raising('22004', _NO_DIMENSIONS)} "
+        f"WHEN cardinality(dims) = 1{ones} THEN repeat(v, dims[1]) "
+        f"ELSE {_trino_raising('0A000', f"'array_fill {pg_forms_types.REFUSED}'")} END"
+    )
+
+
+def _clickhouse_filled(*rest: str) -> str:
+    ones = "".join(f" OR NOT arrayAll(_b -> _b = 1, {r})" for r in rest)
+    wrong = _clickhouse_refused(f"length(dims) <> 1{ones}", "array_fill")
+    return f"arrayWithConstant({wrong} + assumeNotNull(dims[1]), v)"
+
+
+def _trimmed(limit: str, sqlstate: str, message: str, answer: str, length: str = "len(a)") -> str:
+    return (
+        f"CASE WHEN a IS NULL OR n IS NULL THEN NULL WHEN n < 0 OR n > {length} THEN "
+        f"{limit.format(raising=raising(sqlstate, f"'{message} ' || {length}"))} ELSE {answer} END"
+    )
+
+
+_SHUFFLED = (
+    "list_transform(list_sort(list_transform(a, _x -> {'k': random(), 'v': _x})), _e -> _e.v)"
+)
+_TRINO_SORTED_OUT = (
+    "CASE WHEN a IS NULL OR n IS NULL THEN NULL WHEN n < 0 OR n > cardinality(a) THEN "
+    "{raises} ELSE {answer} END"
+)
+_TRINO_POSITIONS = (
+    "CASE WHEN cardinality(a) = 0 THEN CAST(ARRAY[] AS ARRAY(INTEGER)) ELSE "
+    "CAST(filter(sequence(1, cardinality(a)), _i -> a[_i] IS NOT DISTINCT FROM v) "
+    "AS ARRAY(INTEGER)) END"
+)
+_CLICKHOUSE_SAME = "((_x IS NULL AND v IS NULL) OR _x = v)"
+_CLICKHOUSE = frozenset({"clickhouse"})
+
+
+def _trino_out_of(sqlstate: str, message: str, answer: str) -> str:
+    raises = _trino_raising(sqlstate, f"'{message} ' || CAST(cardinality(a) AS VARCHAR)")
+    return _TRINO_SORTED_OUT.format(raises=raises, answer=answer)
+
+
+def _clickhouse_out_of(function: str, answer: str) -> str:
+    return answer.format(wrong=_clickhouse_refused("n IS NULL OR n < 0 OR n > length(a)", function))
+
+
+_ARRAYS: tuple[Macro, ...] = (
+    _macro(
+        "array_ndims",
+        "a",
+        _ARRAY_NDIMS,
+        {_TRINO: _TRINO_NDIMS, _CLICKHOUSE: _CLICKHOUSE_NDIMS},
+    ),
+    _macro(
+        "array_dims",
+        "a",
+        f"array_to_string(list_transform(range({_ARRAY_NDIMS}), "
+        f"_d -> '[1:' || {_dimension_length('_d')} || ']'), '')",
+        {
+            _TRINO: f"array_join(transform(sequence(1, {_TRINO_NDIMS}), d -> '[1:' || "
+            f"CAST({_each_dimension(_trino_dimension_length)} AS VARCHAR) || ']'), '')",
+            _CLICKHOUSE: f"CASE WHEN length(a) > 0 THEN arrayStringConcat(arrayMap(d -> "
+            f"concat('[1:', toString({_each_dimension(_clickhouse_dimension_length)}), ']'), "
+            f"range(1, assumeNotNull({_CLICKHOUSE_NDIMS}) + 1)), '') END",
+        },
+    ),
+    _macro(
+        "array_lower",
+        "a, d",
+        _in_dimensions("1"),
+        {
+            _TRINO: _in_dimensions("1", _TRINO_NDIMS),
+            _CLICKHOUSE: _in_dimensions("1", _CLICKHOUSE_NDIMS, "Nullable(Int32)"),
+        },
+    ),
+    _macro(
+        "array_upper",
+        "a, d",
+        _ARRAY_UPPER,
+        {_TRINO: _TRINO_UPPER, _CLICKHOUSE: _CLICKHOUSE_UPPER},
+    ),
+    _macro(
+        "array_fill",
+        "v, dims",
+        _filled(),
+        {_TRINO: _trino_filled(), _CLICKHOUSE: _clickhouse_filled()},
+    ),
+    _macro(
+        "array_fill",
+        "v, dims, lower_bounds",
+        _filled("lower_bounds"),
+        {
+            _TRINO: _trino_filled("lower_bounds"),
+            _CLICKHOUSE: _clickhouse_filled("lower_bounds"),
+        },
+    ),
+    _macro(
+        "array_positions",
+        "a, v",
+        "CAST(list_filter(range(1, len(a) + 1), _i -> a[_i] IS NOT DISTINCT FROM v) AS INTEGER[])",
+        {
+            _TRINO: _TRINO_POSITIONS,
+            _CLICKHOUSE: "arrayMap(_p -> toInt32(_p.2), arrayFilter(_p -> "
+            f"{_CLICKHOUSE_SAME.replace('_x', '_p.1')}, arrayZip(a, arrayEnumerate(a))))",
+        },
+    ),
+    _macro(
+        "array_replace",
+        "a, v, w",
+        "list_transform(a, _x -> CASE WHEN _x IS NOT DISTINCT FROM v THEN w ELSE _x END)",
+        {
+            _TRINO: "transform(a, _x -> CASE WHEN _x IS NOT DISTINCT FROM v THEN w ELSE _x END)",
+            _CLICKHOUSE: f"arrayMap(_x -> CASE WHEN {_CLICKHOUSE_SAME} THEN w ELSE _x END, a)",
+        },
+    ),
+    _macro(
+        "array_sample",
+        "a, n",
+        _trimmed("{raising}", "22023", "sample size must be between 0 and", f"{_SHUFFLED}[1:n]"),
+        {
+            _TRINO: _trino_out_of(
+                "22023", "sample size must be between 0 and", "slice(shuffle(a), 1, n)"
+            ),
+            _CLICKHOUSE: _clickhouse_out_of(
+                "array_sample", "arraySlice(arrayShuffle(a), 1 + {wrong}, n)"
+            ),
+        },
+    ),
+    _macro(
+        "array_shuffle",
+        "a",
+        _SHUFFLED,
+        own={_TRINO: "shuffle(a)", _CLICKHOUSE: "arrayShuffle(a)"},
+    ),
+    _macro(
+        "trim_array",
+        "a, n",
+        _trimmed(
+            "{raising}",
+            "2202E",
+            "number of elements to trim must be between 0 and",
+            "a[1:len(a) - n]",
+        ),
+        {
+            _TRINO: _trino_out_of(
+                "2202E",
+                "number of elements to trim must be between 0 and",
+                "slice(a, 1, cardinality(a) - n)",
+            ),
+            _CLICKHOUSE: _clickhouse_out_of(
+                "trim_array", "arraySlice(a, 1 + {wrong}, length(a) - n)"
+            ),
+        },
+    ),
+    _macro(
+        "generate_subscripts",
+        "a, d, reverse",
+        f"unnest(CASE WHEN reverse THEN range({_ARRAY_UPPER}, 0, -1) "
+        f"ELSE range(1, {_ARRAY_UPPER} + 1) END)",
+    ),
+)
+
 _BIGQUERY_HAS_IT: Forms = {frozenset({"bigquery"}): MAPPED}
 _MAKE_INTERVAL_PARAMS = "years, months, weeks, days, hours, mins, secs"
 _DATES: tuple[Macro, ...] = (
@@ -1168,6 +1403,7 @@ _ROWS: tuple[Macro, ...] = (
     ),
     *_NUMBERS,
     *_DATES,
+    *_ARRAYS,
     *_XML,
     *_MONEY,
     *VALUE_FUNCTIONS_OF_THE_SERVER,
