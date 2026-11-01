@@ -92420,12 +92420,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     $metadata and generates an OpenAPI spec from it, used internally and never published, and registers
     that spec through the OpenAPI path. Entity sets become tables with typed columns, actions and functions
     become commands, and POST, PATCH and DELETE on an entity set become writes. Keys and navigation properties,
-    which OpenAPI has no field for, are carried as Provisa extensions in the generated spec and become
-    primary keys and relationships. $top, $skip and nextLink are the table''s paging. OData V2 and V4
-    are both served: the generated spec states each response shape. SQL filters reach the service as $filter
-    on the columns the service declares filterable, and $select and $orderby reach it likewise; what cannot
-    be pushed runs on the engine. A service that needs a CSRF token for a write, as SAP''s does, gets
-    one.'
+    which OpenAPI has no field for, are carried as Provisa extensions in the generated spec and become primary
+    keys and relationships. $top, $skip and nextLink are the table''s paging. OData V2 and V4 are both served:
+    the generated spec states each response shape. SQL filters reach the service as $filter on the columns
+    the service declares filterable, and $select and $orderby reach it likewise; what cannot be pushed runs
+    on the engine. A service that needs a CSRF token for a write, as SAP''s does, gets one. (Amended 2026-10-29,
+    BRANDED OVER ODATA:) Maintainer 2026-11-01: branded connectors are built on the generic OData connector
+    where it is useful as a base, as branded sources are built on the OpenAPI and GraphQL connectors (REQ-1923).
+    A brand names the service, fills in its URL shape and declares its auth (no default credential), and
+    takes everything else from the generic connector.'
   use_case: An architect registers an S/4HANA or Dynamics 365 OData service by its URL, with nothing installed
     inside that system, and joins its sales orders to a warehouse table, following the relationships the
     service declares.
