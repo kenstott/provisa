@@ -489,6 +489,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         request: Request,
         role: str | None = Query(None),
         domains: str | None = Query(None),
+        tables: str | None = Query(None),
     ):
         from provisa.api.rest.openapi_spec import generate_rest_openapi_spec
 
@@ -499,7 +500,8 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         if not role_id:
             raise HTTPException(status_code=401, detail="role required")
         domain_list = [d for d in domains.split(",") if d] if domains else None
-        spec = generate_rest_openapi_spec(state, role_id, domains=domain_list)
+        table_list = [t for t in tables.split(",") if t] if tables else None
+        spec = generate_rest_openapi_spec(state, role_id, domains=domain_list, tables=table_list)
         download = request.query_params.get("download")
         headers = {"Content-Disposition": "attachment; filename=openapi.json"} if download else {}
         return OrjsonResponse(content=spec, headers=headers)

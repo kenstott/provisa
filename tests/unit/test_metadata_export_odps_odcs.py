@@ -563,7 +563,7 @@ def test_servers_are_the_endpoints_a_consumer_reads_it_through():
         "server": "openapi",
         "type": "api",
         "description": "OpenAPI description of the REST endpoints",
-        "location": "https://data.example.com/data/rest/openapi.json?domains=sales",
+        "location": "https://data.example.com/data/rest/openapi.json?domains=sales&tables=orders",
     }
     assert servers["sparql"] == {
         "server": "sparql",

@@ -105,7 +105,7 @@ describe("a product's contracts", () => {
     expect(screen.getByTestId("data-contract-version-7")).toHaveTextContent("v2.0.0");
     expect(screen.getByTestId("data-contract-status-7")).toHaveTextContent("Active");
     const cards = ["details", "fields", "sla", "quality", "versions"];
-    for (const card of [...cards, "support", "servers", "pricing", "custom"]) {
+    for (const card of [...cards, "support", "howToUse", "pricing", "custom"]) {
       expect(screen.getByTestId(`data-contract-7-${card}`)).toBeInTheDocument();
     }
     // A record is a table row, never a line of its fields.
@@ -118,9 +118,9 @@ describe("a product's contracts", () => {
       ["analyst", "read"],
       ["finance", "write"],
     ]);
-    expect(rowTexts("data-contract-servers-7")).toEqual([
-      ["pgwire", "postgres"],
-      ["rest", "api"],
+    expect(rowTexts("data-contract-how-to-use-7").map((row) => row[0])).toEqual([
+      "PostgreSQL",
+      "REST",
     ]);
     // Nothing declared in a panel: its one line, alone.
     expect(screen.getByTestId("data-contract-7-pricing-not-declared")).toHaveTextContent(

@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // REQ-2158: a contract's panels in three tiers -- key-value panels in a grid, tables in two flowing
-// columns, then Servers, Columns and Promises across the full width. Who consumes a port is the
+// columns, then How to use, Columns and Promises across the full width. Who consumes a port is the
 // owner's, not the contract's (REQ-2160). jsdom lays nothing out, so this proves the structure and
 // the stylesheet's rules that make the layout.
 
@@ -43,6 +43,12 @@ const PROMISES = [
   promise(6, "owners", "pass"),
 ];
 
+const PORT = {
+  table: { domainId: "pet-store", tableName: "pets", alias: null },
+  reader: null,
+  viewer: { held: new Set<string>(), acting: "analyst" },
+};
+
 function renderView() {
   render(
     <ContractView
@@ -50,6 +56,7 @@ function renderView() {
       versions={[]}
       tableId={7}
       promises={PROMISES}
+      {...PORT}
     />,
   );
 }
@@ -58,7 +65,7 @@ describe("a contract's card layout", () => {
   it("lays the panels out in their tiers, top to bottom", () => {
     renderView();
     const root = screen.getByTestId("data-contract-7");
-    const [small, medium, servers, columns, promises] = Array.from(root.children) as HTMLElement[];
+    const [small, medium, howToUse, columns, promises] = Array.from(root.children) as HTMLElement[];
     const keys = (tier: HTMLElement) =>
       Array.from(tier.children).map((c) => c.getAttribute("data-testid"));
     expect(small).toHaveClass("contract-tier--small");
@@ -69,10 +76,10 @@ describe("a contract's card layout", () => {
     expect(keys(medium)).toEqual(
       ["roles", "sla", "support", "history"].map((k) => `data-contract-7-${k}`),
     );
-    expect(servers).toBe(screen.getByTestId("data-contract-7-servers"));
+    expect(howToUse).toBe(screen.getByTestId("data-contract-7-howToUse"));
     expect(columns).toBe(screen.getByTestId("data-contract-7-fields"));
     expect(promises).toBe(screen.getByTestId("data-contract-7-quality"));
-    for (const wide of [servers, columns, promises]) {
+    for (const wide of [howToUse, columns, promises]) {
       expect(wide.style.marginTop).toBe("var(--mantine-spacing-sm)");
     }
   });
@@ -102,56 +109,9 @@ describe("a contract's card layout", () => {
     expect(screen.getByTestId("data-contract-7-pricing-not-declared")).toHaveTextContent(
       "Not declared: priceAmount, priceCurrency, priceUnit",
     );
-    expect(screen.getByTestId("data-contract-7-servers-not-declared")).toHaveTextContent(
+    expect(screen.getByTestId("data-contract-7-howToUse-not-declared")).toHaveTextContent(
       "Not declared: servers",
     );
-  });
-
-  it("draws servers as rows, each located by host and port or by URL", () => {
-    render(
-      <ContractView
-        contract={{
-          ...CONTRACT,
-          servers: [
-            {
-              server: "pgwire",
-              type: "postgres",
-              description: "PostgreSQL wire protocol",
-              host: "localhost",
-              port: 5439,
-              database: "provisa",
-              schema: "pet_store",
-            },
-            {
-              server: "rest",
-              type: "api",
-              description: "REST",
-              location: "https://data.example.com/data/rest/pet-store/pets",
-            },
-          ],
-        }}
-        versions={[]}
-        tableId={7}
-        promises={[]}
-      />,
-    );
-    const table = screen.getByTestId("data-contract-servers-7");
-    expect(Array.from(table.querySelectorAll("th")).map((h) => h.textContent)).toEqual([
-      "server",
-      "type",
-      "location",
-      "database",
-      "schema",
-      "description",
-    ]);
-    expect(
-      Array.from(table.querySelectorAll("tbody tr")).map((row) =>
-        Array.from(row.querySelectorAll("td")).map((cell) => cell.textContent),
-      ),
-    ).toEqual([
-      ["pgwire", "postgres", "localhost:5439", "provisa", "pet_store", "PostgreSQL wire protocol"],
-      ["rest", "api", "https://data.example.com/data/rest/pet-store/pets", "—", "—", "REST"],
-    ]);
   });
 
   it("has no Consumers card", () => {
@@ -166,7 +126,7 @@ describe("a contract's card layout", () => {
     const details = screen.getByTestId("data-contract-7-details");
     const labels = {
       support: "Support and team",
-      servers: "Servers",
+      howToUse: "How to use",
       pricing: "Pricing",
       custom: "Custom properties and tags",
     };
