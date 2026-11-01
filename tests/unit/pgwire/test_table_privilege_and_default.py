@@ -201,6 +201,8 @@ def test_a_column_with_no_default_has_no_attrdef_and_a_null_expression(writer):
         ("owner", True, "current_setting('app.user')"),
         ("created", True, "now()"),
         ("legs", True, "4"),
+        ("_name_", False, None),
+        ("_domain_", False, None),
     ]
 
 

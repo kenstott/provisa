@@ -43,3 +43,16 @@ def from_engine(error: Exception) -> PostgresError | None:
     """The PostgreSQL error a ``raising`` call raised; None for any other engine error."""
     marked = _MARKED.search(str(error))
     return None if marked is None else PostgresError(marked["sqlstate"], marked["message"].strip())
+
+
+def postgres_error(error: Exception) -> PostgresError | None:
+    """PostgreSQL's own error, as a statement it ran raised it; None for anything else."""
+    cause: BaseException | None = error
+    while cause is not None:
+        sqlstate = getattr(cause, "sqlstate", None)
+        if isinstance(sqlstate, str) and len(sqlstate) == 5:
+            detail = getattr(cause, "diag", None)
+            message = getattr(detail, "message_primary", None) or str(cause)
+            return PostgresError(sqlstate, message)
+        cause = cause.__cause__ or cause.__context__
+    return None

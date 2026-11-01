@@ -30,16 +30,18 @@ never sent to the control plane to answer about itself."""
 
 from __future__ import annotations
 
-import functools
+import re
 from dataclasses import dataclass
+from typing import cast
 
 import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.ir_types import SUBTYPES
-from provisa.pgwire.catalog_pg17 import TYPES
+from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, TYPES
 from provisa.transpiler.metadata_facts import PRIVILEGES, UNSERVED, CatalogFacts, relation
-from provisa.transpiler.metadata_oids import key_id_sql
+from provisa.transpiler.metadata_oids import FIRST_METRIC_OID, KEY_OID_BASE, key_id_sql
+from provisa.transpiler.metadata_server_forms import SCALAR_FORMS, TABLE_FORMS
 
 #: The search path a definition names a table against (catalog_data's search_path).
 _ON_THE_PATH = "('public', 'pg_catalog')"
@@ -156,7 +158,7 @@ def _format_type() -> str:
 
 
 #: pg_encoding_to_char's names, by encoding number (common/encnames.c's pg_enc2name_tbl).
-_ENCODINGS = (
+ENCODINGS = (
     "SQL_ASCII", "EUC_JP", "EUC_CN", "EUC_KR", "EUC_TW", "EUC_JIS_2004", "UTF8", "MULE_INTERNAL",
     "LATIN1", "LATIN2", "LATIN3", "LATIN4", "LATIN5", "LATIN6", "LATIN7", "LATIN8", "LATIN9",
     "LATIN10", "WIN1256", "WIN1258", "WIN866", "WIN874", "KOI8R", "WIN1251", "WIN1252",
@@ -167,7 +169,7 @@ _ENCODINGS = (
 
 
 def _encoding_to_char() -> str:
-    names = " ".join(f"WHEN {n} THEN '{name}'" for n, name in enumerate(_ENCODINGS))
+    names = " ".join(f"WHEN {n} THEN '{name}'" for n, name in enumerate(ENCODINGS))
     return f"CASE WHEN encoding IS NULL THEN CAST(NULL AS TEXT) ELSE CASE encoding {names} ELSE '' END END"
 
 
@@ -262,12 +264,14 @@ def pg_typmod_sql(spelling: str) -> str:
 
 @dataclass(frozen=True)
 class Form:
-    """One overload of a function on a catalog: its parameters, its form, the facts it reads."""
+    """One overload of a function on a catalog: its parameters, its form, the facts it reads, and
+    the type each argument is read as where it is not written in as it is."""
 
     name: str
     params: tuple[str, ...]
     sql: str
     facts: frozenset[str] = frozenset()
+    reads_as: tuple[str, ...] = ()
 
 
 def _named(schema: str, table: str) -> str:
@@ -280,64 +284,118 @@ _KEY_COLUMNS = "STRING_AGG(QUOTE_IDENT(k.column_sql_name), ', ' ORDER BY k.posit
 _REFERENCED_COLUMNS = (
     "STRING_AGG(QUOTE_IDENT(k.referenced_column_sql_name), ', ' ORDER BY k.position)"
 )
+_REFERENCED_TABLE = _named("MIN(k.referenced_schema_name)", "MIN(k.referenced_table_name)")
 
 
-def _constraint_definition(key: str) -> str:
-    target = _named("MIN(k.referenced_schema_name)", "MIN(k.referenced_table_name)")
+def _entries(entry: str, value: str, source: str) -> str:
+    """The one row a statement reads a form's answers from, the answers by their key in a jsonb
+    object: a client asks of a catalog once for each row, and a lookup there costs no view."""
     return (
-        f"(SELECT CASE MIN(k.kind) WHEN 'p' THEN 'PRIMARY KEY (' || {_KEY_COLUMNS} || ')' "
+        "SELECT JSONB_OBJECT_AGG(_e.entry, _e.answer) AS entries "
+        f"FROM (SELECT CAST({entry} AS TEXT) AS entry, {value} AS answer {source}) _e"
+    )
+
+
+def _answer(relation: str, entry: str) -> str:
+    return f"(SELECT _m.entries ->> CAST({entry} AS TEXT) FROM {relation} _m)"
+
+
+#: A key's definition, as pg_get_constraintdef writes it.
+KEY_DEFINITIONS = "_provisa_key_definitions"
+#: A unique key's index, as pg_get_indexdef writes it: PostgreSQL always names the table's schema.
+INDEX_DEFINITIONS = "_provisa_index_definitions"
+#: The columns of a unique key's index, by the key and the column's place.
+INDEX_COLUMNS = "_provisa_index_columns"
+#: A relation's comment, and a comment by what it is on.
+OBJECT_COMMENTS = "_provisa_object_comments"
+COMMENTS = "_provisa_comments"
+#: The relations a role lists, read once by a statement however many rows ask: a client calls
+#: pg_table_is_visible for each row of pg_class. Its indexes apart: only a call about one reads
+#: them, which is the keys.
+LISTED_RELATIONS = "_provisa_listed_relations"
+LISTED_INDEXES = "_provisa_listed_indexes"
+PUBLISHABLE = "_provisa_publishable_relations"
+
+#: What a form reads once, by the relation a statement holds it in. A statement reads only those
+#: its forms name, each as a role reads the view: what it does not list has no answer here.
+_READ_ONCE: dict[str, str] = {
+    KEY_DEFINITIONS: _entries(
+        "k.key_id",
+        f"CASE MIN(k.kind) WHEN 'p' THEN 'PRIMARY KEY (' || {_KEY_COLUMNS} || ')' "
         f"WHEN 'u' THEN 'UNIQUE (' || {_KEY_COLUMNS} || ')' "
-        f"ELSE 'FOREIGN KEY (' || {_KEY_COLUMNS} || ') REFERENCES ' || {target} "
-        f"|| '(' || {_REFERENCED_COLUMNS} || ')' END "
-        f"FROM meta.table_keys k WHERE k.key_id = {key_id_sql(key)} GROUP BY k.key_id)"
-    )
-
-
-def _index_definition(key: str) -> str:
-    """As pg_get_indexdef writes a key's index: PostgreSQL always names the table's schema."""
-    return (
-        "(SELECT 'CREATE UNIQUE INDEX ' || QUOTE_IDENT(COALESCE(MIN(k.key_name), 'pk_' || "
+        f"ELSE 'FOREIGN KEY (' || {_KEY_COLUMNS} || ') REFERENCES ' || {_REFERENCED_TABLE} "
+        f"|| '(' || {_REFERENCED_COLUMNS} || ')' END",
+        "FROM meta.table_keys k GROUP BY k.key_id",
+    ),
+    INDEX_DEFINITIONS: _entries(
+        "k.key_id",
+        "'CREATE UNIQUE INDEX ' || QUOTE_IDENT(COALESCE(MIN(k.key_name), 'pk_' || "
         "MIN(k.table_name))) || ' ON ' || QUOTE_IDENT(MIN(k.schema_name)) || '.' || "
-        f"QUOTE_IDENT(MIN(k.table_name)) || ' USING btree (' || {_KEY_COLUMNS} || ')' "
-        f"FROM meta.table_keys k WHERE k.key_id = {key_id_sql(key)} AND k.kind IN ('p', 'u') "
-        "GROUP BY k.key_id)"
-    )
+        f"QUOTE_IDENT(MIN(k.table_name)) || ' USING btree (' || {_KEY_COLUMNS} || ')'",
+        "FROM meta.table_keys k WHERE k.kind IN ('p', 'u') GROUP BY k.key_id",
+    ),
+    INDEX_COLUMNS: _entries(
+        "CAST(k.key_id AS TEXT) || ':' || CAST(k.position AS TEXT)",
+        "QUOTE_IDENT(k.column_sql_name)",
+        "FROM meta.table_keys k WHERE k.kind IN ('p', 'u')",
+    ),
+    OBJECT_COMMENTS: _entries(
+        "_d.objoid",
+        "MIN(_d.description)",
+        "FROM meta.catalog_pg_description _d WHERE _d.objsubid = 0 GROUP BY _d.objoid",
+    ),
+    COMMENTS: _entries(
+        "CAST(_d.objoid AS TEXT) || ':' || CAST(_d.classoid AS TEXT) || ':' "
+        "|| CAST(_d.objsubid AS TEXT)",
+        "_d.description",
+        "FROM meta.catalog_pg_description _d",
+    ),
+    LISTED_RELATIONS: "SELECT _l.oid FROM meta.catalog_pg_class _l WHERE _l.relkind <> 'i'",
+    LISTED_INDEXES: "SELECT _l.oid FROM meta.catalog_pg_class _l WHERE _l.relkind = 'i'",
+    PUBLISHABLE: (
+        "SELECT _c.oid FROM meta.catalog_pg_class _c WHERE _c.relkind IN ('r', 'p') "
+        "AND _c.relnamespace NOT IN (11, 12)"
+    ),
+}
 
 
 def _index_column(key: str, position: str) -> str:
     """pg_get_indexdef(index, column, pretty) of a key column: that column's name."""
-    return (
-        "(SELECT QUOTE_IDENT(k.column_sql_name) FROM meta.table_keys k "
-        f"WHERE k.key_id = {key_id_sql(key)} AND k.kind IN ('p', 'u') AND k.position = {position})"
-    )
+    entry = f"CAST({key_id_sql(key)} AS TEXT) || ':' || CAST({position} AS TEXT)"
+    return _answer(INDEX_COLUMNS, entry)
 
 
-_OBJECT_COMMENT = (
-    "(SELECT MIN(_d.description) FROM meta.catalog_pg_description _d "
-    "WHERE _d.objoid = object_oid AND _d.objsubid = 0)"
-)
+_OBJECT_COMMENT = _answer(OBJECT_COMMENTS, "object_oid")
 #: PostgreSQL's oid of the catalog obj_description is asked about, by the name it is asked with.
-_COMMENT_IN_CATALOG = (
-    "(SELECT _d.description FROM meta.catalog_pg_description _d WHERE _d.objoid = object_oid "
-    "AND _d.objsubid = 0 AND _d.classoid = CASE catalog WHEN 'pg_class' THEN 1259 "
-    "WHEN 'pg_namespace' THEN 2615 END)"
+_COMMENT_IN_CATALOG = _answer(
+    COMMENTS,
+    "CAST(object_oid AS TEXT) || ':' || CAST(CASE catalog WHEN 'pg_class' THEN 1259 "
+    "WHEN 'pg_namespace' THEN 2615 END AS TEXT) || ':0'",
 )
-_COLUMN_COMMENT = (
-    "(SELECT _d.description FROM meta.catalog_pg_description _d WHERE _d.objoid = relation_oid "
-    "AND _d.classoid = 1259 AND _d.objsubid = attnum)"
-)
-
-_LISTED = "(SELECT TRUE FROM meta.catalog_pg_class _c WHERE _c.oid = relation_oid)"
-_PUBLISHABLE = (
-    "COALESCE((SELECT _c.relkind IN ('r', 'p') AND _c.relnamespace NOT IN (11, 12) "
-    "FROM meta.catalog_pg_class _c WHERE _c.oid = relation_oid), FALSE)"
+_COLUMN_COMMENT = _answer(
+    COMMENTS, "CAST(relation_oid AS TEXT) || ':1259:' || CAST(attnum AS TEXT)"
 )
 
+_KEY_DEFINITION = _answer(KEY_DEFINITIONS, key_id_sql("conoid"))
+_INDEX_DEFINITION = _answer(INDEX_DEFINITIONS, key_id_sql("indexoid"))
+_LISTED = (
+    f"CASE WHEN CAST(relation_oid AS BIGINT) >= {KEY_OID_BASE} "
+    f"AND CAST(relation_oid AS BIGINT) < {FIRST_METRIC_OID} "
+    f"THEN CASE WHEN relation_oid IN (SELECT _c.oid FROM {LISTED_INDEXES} _c) THEN TRUE END "
+    f"WHEN relation_oid IN (SELECT _c.oid FROM {LISTED_RELATIONS} _c) THEN TRUE END"
+)
+_PUBLISHABLE = f"COALESCE(relation_oid IN (SELECT _c.oid FROM {PUBLISHABLE} _c), FALSE)"
+
+#: A relation's name as written: a quoted one as it is, an unquoted one folded to lower case.
+_WRITTEN_NAME = (
+    "CASE WHEN POSITION('\"' IN CAST(tbl AS TEXT)) > 0 "
+    "THEN REPLACE(CAST(tbl AS TEXT), '\"', '') ELSE LOWER(CAST(tbl AS TEXT)) END"
+)
 #: The relation ``tbl`` names, an oid or a name as regclass reads one, on the search path or by
 #: its schema; the path's first where both hold the name.
 _NAMED_RELATION = (
     "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace "
-    "WHERE REPLACE(CAST(tbl AS TEXT), '\"', '') IN (CAST(_c.oid AS TEXT), "
+    f"WHERE {_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
     "_n.nspname || '.' || _c.relname, "
     f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END)"
 )
@@ -363,7 +421,7 @@ _COLUMN_PRIVILEGE = (
     "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace "
     "JOIN meta.catalog_pg_attribute _a ON _a.attrelid = _c.oid "
     "AND CAST(col AS TEXT) IN (_a.attname, CAST(_a.attnum AS TEXT)) "
-    "WHERE REPLACE(CAST(tbl AS TEXT), '\"', '') IN (CAST(_c.oid AS TEXT), "
+    f"WHERE {_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
     "_n.nspname || '.' || _c.relname, "
     f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END){_PATH_FIRST})"
 )
@@ -404,12 +462,16 @@ _NOTHING_KEPT: tuple[tuple[str, tuple[int, ...], str], ...] = (
     ("pg_table_size", (1,), "BIGINT"),
     ("pg_database_size", (1,), "BIGINT"),
     ("pg_tablespace_size", (1,), "BIGINT"),
+    ("pg_column_size", (1,), "INTEGER"),
 )
 #: Every object a catalog holds is on the search path, and every role holds every role.
 _ALWAYS = (
+    ("pg_collation_is_visible", 1),
+    ("pg_conversion_is_visible", 1),
     ("pg_function_is_visible", 1),
     ("pg_opclass_is_visible", 1),
     ("pg_operator_is_visible", 1),
+    ("pg_opfamily_is_visible", 1),
     ("pg_ts_config_is_visible", 1),
     ("pg_ts_dict_is_visible", 1),
     ("pg_ts_parser_is_visible", 1),
@@ -433,22 +495,28 @@ _FORMS: tuple[Form, ...] = (
     # A catalog keeps a default's expression as its text.
     _form("pg_get_expr", "expression, relation", "CAST(expression AS TEXT)"),
     _form("pg_get_expr", "expression, relation, pretty", "CAST(expression AS TEXT)"),
-    _form("pg_get_constraintdef", "conoid", _constraint_definition("conoid")),
-    _form("pg_get_constraintdef", "conoid, pretty", _constraint_definition("conoid")),
-    _form("pg_get_indexdef", "indexoid", _index_definition("indexoid")),
+    _form("pg_get_constraintdef", "conoid", _KEY_DEFINITION, KEY_DEFINITIONS),
+    _form("pg_get_constraintdef", "conoid, pretty", _KEY_DEFINITION, KEY_DEFINITIONS),
+    _form("pg_get_indexdef", "indexoid", _INDEX_DEFINITION, INDEX_DEFINITIONS),
     _form(
         "pg_get_indexdef",
         "indexoid, position, pretty",
-        f"CASE WHEN position = 0 THEN {_index_definition('indexoid')} "
+        f"CASE WHEN position = 0 THEN {_INDEX_DEFINITION} "
         f"ELSE {_index_column('indexoid', 'position')} END",
+        INDEX_DEFINITIONS,
+        INDEX_COLUMNS,
     ),
-    _form("obj_description", "object_oid", _OBJECT_COMMENT),
-    _form("obj_description", "object_oid, catalog", _COMMENT_IN_CATALOG),
-    _form("col_description", "relation_oid, attnum", _COLUMN_COMMENT),
+    _form("obj_description", "object_oid", _OBJECT_COMMENT, OBJECT_COMMENTS),
+    _form("obj_description", "object_oid, catalog", _COMMENT_IN_CATALOG, COMMENTS),
+    _form("col_description", "relation_oid, attnum", _COLUMN_COMMENT, COMMENTS),
     # Every table has one owner, the role a client is shown as owning it (pg_class.relowner).
-    _form("pg_get_userbyid", "role_oid", "CASE WHEN role_oid IS NOT NULL THEN 'provisa' END"),
-    _form("pg_table_is_visible", "relation_oid", _LISTED),
-    _form("pg_relation_is_publishable", "relation_oid", _PUBLISHABLE),
+    _form(
+        "pg_get_userbyid",
+        "role_oid",
+        "CAST(CASE WHEN role_oid IS NOT NULL THEN 'provisa' END AS NAME)",
+    ),
+    _form("pg_table_is_visible", "relation_oid", _LISTED, LISTED_RELATIONS, LISTED_INDEXES),
+    _form("pg_relation_is_publishable", "relation_oid", _PUBLISHABLE, PUBLISHABLE),
     _form("pg_is_other_temp_schema", "schema_oid", "FALSE"),
     _form("has_table_privilege", "tbl, priv", _TABLE_PRIVILEGE, PRIVILEGES),
     _form("has_any_column_privilege", "tbl, priv", _TABLE_PRIVILEGE, PRIVILEGES),
@@ -461,45 +529,108 @@ _FORMS: tuple[Form, ...] = (
     *(_form(name, _unused_params(arity), "TRUE") for name, arity in _ALWAYS),
 )
 
-FORMS: dict[tuple[str, int], Form] = {(f.name, len(f.params)): f for f in _FORMS}
+FORMS: dict[tuple[str, int], Form] = {
+    **{
+        (name, arity): Form(
+            name, tuple(p for p, _ in params), sql, reads_as=tuple(t for _, t in params)
+        )
+        for (name, arity), (params, sql) in SCALAR_FORMS.items()
+    },
+    **{(f.name, len(f.params)): f for f in _FORMS},
+}
+#: The forms of a function called in FROM, where it has columns of its own.
+RELATION_FORMS: dict[tuple[str, int], Form] = {
+    (name, arity): Form(
+        name, tuple(p for p, _ in params), sql, reads_as=tuple(t for _, t in params)
+    )
+    for (name, arity), (params, sql) in TABLE_FORMS.items()
+}
 
-#: A function that reads a server's catalog with no form yet: refused, never run on the control
-#: plane (it would answer about the control plane's own objects).
+#: A function that would read the server, with no form: refused by name, never run on the control
+#: plane. These run SQL they are given, or read what a server keeps, on the connection that calls
+#: them: the role a client's SQL runs as (metadata_settings.CLIENT_ROLE) would otherwise take a
+#: statement past governance. Beside a view of meta they would answer about the control plane
+#: (REQ-2190, ONLY NAMED METADATA READS THE CONTROL PLANE): the list is PostgreSQL's non-immutable
+#: functions that read or change a server's own state and have no form here.
 READS_THE_SERVER = frozenset(
     {
-        "has_database_privilege",
-        "has_foreign_data_wrapper_privilege",
-        "has_function_privilege",
-        "has_language_privilege",
-        "has_schema_privilege",
-        "has_sequence_privilege",
-        "has_server_privilege",
-        "has_tablespace_privilege",
-        "has_type_privilege",
-        "oidvectortypes",
-        "pg_describe_object",
-        "pg_get_object_address",
-        "pg_identify_object",
-        "pg_identify_object_as_address",
-        "pg_partition_ancestors",
-        "pg_partition_root",
-        "pg_partition_tree",
-        "pg_relation_filenode",
-        "pg_relation_filepath",
-        "pg_sequence_last_value",
-        "pg_sequence_parameters",
-        "to_regclass",
-        "to_regcollation",
-        "to_regnamespace",
-        "to_regoper",
-        "to_regoperator",
-        "to_regproc",
-        "to_regprocedure",
-        "to_regrole",
-        "to_regtype",
-        "to_regtypemod",
+        "binary_upgrade_create_empty_extension",
+        "binary_upgrade_set_next_multirange_array_pg_type_oid",
+        "binary_upgrade_set_next_multirange_pg_type_oid",
+        "brin_desummarize_range",
+        "brin_summarize_new_values",
+        "brin_summarize_range",
+        "currval",
+        "current_query",
+        "cursor_to_xml",
+        "cursor_to_xmlschema",
+        "database_to_xml",
+        "database_to_xml_and_xmlschema",
+        "database_to_xmlschema",
+        "dblink",
+        "gin_clean_pending_list",
+        "inet_client_addr",
+        "inet_client_port",
+        "inet_server_addr",
+        "inet_server_port",
+        "lastval",
+        "nextval",
+        "pg_advisory_lock",
+        "pg_advisory_lock_shared",
+        "pg_advisory_unlock",
+        "pg_advisory_unlock_all",
+        "pg_advisory_unlock_shared",
+        "pg_advisory_xact_lock",
+        "pg_advisory_xact_lock_shared",
+        "pg_cancel_backend",
+        "pg_column_compression",
+        "pg_event_trigger_ddl_commands",
+        "pg_event_trigger_dropped_objects",
+        "pg_event_trigger_table_rewrite_oid",
+        "pg_event_trigger_table_rewrite_reason",
+        "pg_get_publication_tables",
+        "pg_get_wal_replay_pause_state",
+        "pg_index_column_has_property",
+        "pg_index_has_property",
+        "pg_is_wal_replay_paused",
+        "pg_last_committed_xact",
+        "pg_logical_slot_get_binary_changes",
+        "pg_logical_slot_get_changes",
+        "pg_logical_slot_peek_binary_changes",
+        "pg_logical_slot_peek_changes",
+        "pg_ls_logdir",
+        "pg_my_temp_schema",
+        "pg_notify",
+        "pg_read_file_old",
+        "pg_replication_origin_session_reset",
+        "pg_rotate_logfile_old",
+        "pg_sleep",
+        "pg_sleep_for",
+        "pg_sleep_until",
+        "pg_stop_making_pinned_objects",
+        "pg_terminate_backend",
+        "pg_try_advisory_lock",
+        "pg_try_advisory_lock_shared",
+        "pg_try_advisory_xact_lock",
+        "pg_try_advisory_xact_lock_shared",
+        "pg_wal_replay_pause",
+        "pg_wal_replay_resume",
+        "query_to_xml",
+        "query_to_xml_and_xmlschema",
+        "query_to_xmlschema",
+        "schema_to_xml",
+        "schema_to_xml_and_xmlschema",
+        "schema_to_xmlschema",
+        "table_to_xml",
+        "table_to_xml_and_xmlschema",
+        "table_to_xmlschema",
+        "ts_rewrite",
+        "ts_stat",
     }
 )
+#: The statistics of a server: a count is 0 and anything else NULL, as where nothing has happened.
+#: Answered by prefix, which covers each function PostgreSQL adds under it.
+STATISTICS_PREFIXES = ("pg_stat_get_", "pg_statio_")
 
 
 #: The overloads naming a user first, each answered for the session role alone.
@@ -512,6 +643,11 @@ _OF_A_USER = frozenset(
 )
 
 
+#: A form only PostgreSQL can run, of a function of its argument: a statement with no table is the
+#: engine's, which reads the function's row of function_macros' table instead.
+_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name"})
+
+
 class MetadataFunctionRefused(ValueError):
     """A function on a catalog that has no form: refused by name (query.function_unsupported)."""
 
@@ -522,16 +658,44 @@ class MetadataFunctionRefused(ValueError):
         super().__init__(f"{function}() has no form over the meta domain")
 
 
-@functools.lru_cache(maxsize=None)
-def _parsed(name: str, arity: int) -> exp.Expr:
-    return sqlglot.parse_one(FORMS[(name, arity)].sql, read="postgres")
+#: What the admin terminal refuses, once forms are written: a form calls none of these, so a statement
+#: still naming one came from a surface that writes no forms (HTTP SQL over meta) and would run it.
+_REFUSED_ON_THE_PLANE = frozenset(
+    {*READS_THE_SERVER, *(name for name, _ in (*SCALAR_FORMS, *TABLE_FORMS))}
+)
+_NAMES_A_SERVER_READ = re.compile(
+    r"\b(" + "|".join(sorted(_REFUSED_ON_THE_PLANE)) + r")\b", re.IGNORECASE
+)
+
+
+def refuse_server_reads(sql: str) -> None:
+    """Raise :class:`MetadataFunctionRefused` for a statement on the control plane calling a
+    function that would read the server: the admin terminal's own check, whichever surface the
+    statement came from. A statement that merely holds the word, in a string, is not refused."""
+    if _NAMES_A_SERVER_READ.search(sql) is None:
+        return
+    tree = sqlglot.parse_one(sql, read="postgres")
+    for call in tree.find_all(exp.Anonymous):
+        if call.name.lower() in _REFUSED_ON_THE_PLANE:
+            raise MetadataFunctionRefused(call.name.lower())
 
 
 #: An argument that needs no parentheses wherever a form writes it.
 _ATOMIC = (exp.Column, exp.Literal, exp.Func, exp.Cast, exp.Paren, exp.Null, exp.Boolean)
 
 
-def _argument(value: exp.Expr) -> exp.Expr:
+def _argument(value: exp.Expr, reads_as: str = "") -> exp.Expr:
+    if reads_as == "text":
+        return exp.cast(value, "TEXT")
+    if reads_as:
+        # An argument of any type, as the form reads it: a value of a type no form operates on
+        # (xid8, pg_lsn) still has its text.
+        return exp.Paren(
+            this=exp.Cast(
+                this=exp.cast(value, "TEXT"),
+                to=exp.DataType.build(reads_as, dialect="postgres", udt=True),
+            )
+        )
     if isinstance(value, exp.Cast) and value.to.sql(dialect="postgres").lower() == "pg_node_tree":
         value = value.this  # the cast names pg_get_expr's argument type; a catalog keeps text
     return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
@@ -540,13 +704,14 @@ def _argument(value: exp.Expr) -> exp.Expr:
 def _written(form: Form, args: list[exp.Expr]) -> exp.Expr:
     """The form with each parameter its argument, which is evaluated wherever the form names it."""
     values = dict(zip(form.params, args))
+    reads_as = dict(zip(form.params, form.reads_as))
 
     def bound(node: exp.Expr) -> exp.Expr:
         if isinstance(node, exp.Column) and not node.table and node.name in values:
-            return _argument(values[node.name]).copy()
+            return _argument(values[node.name], reads_as.get(node.name, "")).copy()
         return node
 
-    return _parsed(form.name, len(args)).copy().transform(bound)
+    return sqlglot.parse_one(form.sql, read="postgres").transform(bound)
 
 
 def _call(node: exp.Expr) -> exp.Anonymous | None:
@@ -567,12 +732,20 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
     is the session role's where the user is, and NULL for any other: a catalog holds one role's
     grants."""
     needed: set[str] = set()
+    on_the_engine = tree.find(exp.Table) is None
 
     def rewrite(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Table) and isinstance(node.this, exp.Anonymous):
+            return _relation_form(node, rewrite)
+        field_of = _field_of_call(node, rewrite)
+        if field_of is not None:
+            return field_of
         call = _call(node)
         if call is None:
             return node
         name, args = call.name.lower(), list(call.expressions)
+        if on_the_engine and name in _IN_THE_MACRO_TABLE:
+            return node
         if (name, len(args)) in _OF_A_USER:
             user, *args = args
             written = _of_session_role(
@@ -582,9 +755,13 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
             if (name, len(args)) not in FORMS:
                 if name in READS_THE_SERVER:
                     raise MetadataFunctionRefused(name)
+                if name.startswith(STATISTICS_PREFIXES):
+                    return (
+                        exp.alias_(_statistic(name), name) if _is_column(node) else _statistic(name)
+                    )
                 return node
             written = _expanded_form(name, args, rewrite, needed)
-        if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":
+        if _is_column(node):
             return exp.alias_(written, name)  # the column is named for the function
         return written
 
@@ -592,8 +769,74 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
     if not isinstance(out, exp.Query):
         return out
     for name in sorted(needed):
-        out = out.with_(name, as_=relation(name, facts.rows(name)), append=True, copy=False)
+        if name in _READ_ONCE:
+            out = out.with_(name, as_=_READ_ONCE[name], append=True, copy=False, materialized=True)
+        else:
+            out = out.with_(name, as_=relation(name, facts.rows(name)), append=True, copy=False)
+    if needed:
+        # Before a client's own: a form in one of those reads these.
+        written = out.args["with_"]
+        written.set("expressions", sorted(written.expressions, key=lambda c: c.alias not in needed))
     return out
+
+
+def _is_column(node: exp.Expr) -> bool:
+    return isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
+
+
+#: The types a statistic is 0 of; of any other it is NULL.
+_COUNTS = frozenset({"bigint", "integer", "smallint", "oid", "double precision", "real"})
+
+
+def _statistic(name: str) -> exp.Expr:
+    returns = FUNCTION_RETURNS.get(name, "text")
+    if returns == "record":
+        return exp.cast(exp.null(), "TEXT")
+    return exp.Cast(
+        this=exp.Literal.number(0) if returns in _COUNTS else exp.null(),
+        to=exp.DataType.build(returns, dialect="postgres", udt=True),
+    )
+
+
+def _field_of_call(node: exp.Expr, rewrite) -> exp.Expr | None:
+    """``(f(...)).field``: a field of a function a form answers as a text record is read from its
+    form in FROM, which has columns."""
+    if not (isinstance(node, exp.Dot) and isinstance(node.this, exp.Paren)):
+        return None
+    call = _call(node.this.this)
+    if call is None:
+        return None
+    form = RELATION_FORMS.get((call.name.lower(), len(call.expressions)))
+    if form is None:
+        return None
+    select = _written(form, [a.transform(rewrite) for a in call.expressions])
+    return exp.Subquery(
+        this=exp.select(exp.column(node.expression.name, table="_f")).from_(
+            exp.Subquery(this=select, alias=exp.TableAlias(this=exp.to_identifier("_f")))
+        )
+    )
+
+
+def _relation_form(table: exp.Table, rewrite) -> exp.Expr:
+    """A function in FROM: its rows, under the name the statement gives them, a form of one column
+    taking that name for its column as PostgreSQL's does."""
+    call = table.this
+    name, args = call.name.lower(), list(call.expressions)
+    form = RELATION_FORMS.get((name, len(args)))
+    alias = table.args.get("alias") or exp.TableAlias(this=exp.to_identifier(name))
+    if form is None:
+        if name in READS_THE_SERVER:
+            raise MetadataFunctionRefused(name)
+        value = FORMS.get((name, len(args)))
+        if value is None:
+            return table
+        # A function of a value, as FROM reads one: a row of it.
+        select = exp.select(exp.alias_(_written(value, [a.transform(rewrite) for a in args]), name))
+    else:
+        select = cast(exp.Select, _written(form, [a.transform(rewrite) for a in args]))
+    if not alias.columns and len(select.selects) == 1 and not select.is_star:
+        alias = exp.TableAlias(this=alias.this.copy(), columns=[exp.to_identifier(alias.name)])
+    return exp.Subquery(this=select, alias=alias)
 
 
 def _expanded_form(name, args, rewrite, needed: set[str]) -> exp.Expr:
