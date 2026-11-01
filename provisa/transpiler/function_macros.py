@@ -964,11 +964,6 @@ _DATES: tuple[Macro, ...] = (
     ),
     _pg("timestamp", "value", "CAST(value AS TIMESTAMP)"),
     _pg("timestamptz_timestamp", "value", "CAST(value AT TIME ZONE 'UTC' AS TIMESTAMP)"),
-    _pg(
-        "make_timestamp",
-        "y, m, d, h, n, s",
-        strict("y, m, d, h, n, s", "TIMESTAMP", pg_forms.MAKE_TIMESTAMP),
-    ),
     *(
         Macro(
             name,
@@ -1004,7 +999,7 @@ _DATES: tuple[Macro, ...] = (
         "timestamptz_time",
         "value",
         strict("value", "TIME", pg_forms.TIMESTAMPTZ_TIME),
-        {_EVERY: Pg("CAST(value AS TIME)")},
+        {_EVERY: Pg("CAST(value AT TIME ZONE 'UTC' AS TIME)")},
         refused=_CLICKHOUSE,
     ),
     _pg("timetz_time", "value", "CAST(value AS TIME)"),
@@ -1014,6 +1009,7 @@ _DATES: tuple[Macro, ...] = (
         "value",
         strict("value", "TIMESTAMPTZ", pg_forms.TIMESTAMPTZ_OF),
         {_EVERY: Pg("CAST(value AS TIMESTAMPTZ)")},
+        refused=_CLICKHOUSE,  # it has no zoned value
     ),
     _macro(
         "timestamptz",
@@ -1080,7 +1076,15 @@ _DIGESTS: tuple[Macro, ...] = (
             frozenset({"tsql"}): "LOWER(CONVERT(VARCHAR(MAX), value, 2))",
         },
     ),
-    Macro("encode_base64", ("value",), {_DUCKDB: "to_base64(value)"}),
+    Macro(
+        "encode_base64",
+        ("value",),
+        {
+            _DUCKDB: "to_base64(value)",
+            _TRINOS: "to_base64(value)",
+            frozenset({"clickhouse"}): "base64Encode(value)",
+        },
+    ),
     Macro("encode_escape", ("value",), {_DUCKDB: "provisa_encode_escape(value)"}),
 )
 #: The rows whose argument is a bytea: a literal there is bytea's input, not text.
@@ -1124,6 +1128,9 @@ _ROWS: tuple[Macro, ...] = (
         "substr(hex(value), n * 2 + 3)) END",
     ),
     _pg("quote_ident", "value", _QUOTED_IDENTIFIER),
+    _pg(
+        "repeat", "value, n", "CASE WHEN n > 0 THEN REPEAT(value, n) WHEN n IS NOT NULL THEN '' END"
+    ),
     _pg("textanycat", "a, b", "CAST(a AS TEXT) || CAST(b AS TEXT)"),
     _pg("anytextcat", "a, b", "CAST(a AS TEXT) || CAST(b AS TEXT)"),
     _pg("text", "value", "CAST(value AS TEXT)"),
@@ -1147,24 +1154,6 @@ _ROWS: tuple[Macro, ...] = (
         ("value",),
         {_EVERY: Pg("8 * OCTET_LENGTH(value)")},
         own={_TRINO: "8 * length(to_utf8(value))", _CLICKHOUSE: "8 * length(value)"},
-    ),
-    Macro(
-        "string_to_array",
-        ("value", "delimiter"),
-        {_DUCKDB: Pg("STRING_TO_ARRAY(value, delimiter)")},
-        own={
-            _TRINO: "split(value, delimiter)",
-            _CLICKHOUSE: "splitByString(delimiter, assumeNotNull(value))",
-        },
-    ),
-    Macro(
-        "regexp_split_to_array",
-        ("value", "pattern"),
-        {_DUCKDB: Pg("REGEXP_SPLIT_TO_ARRAY(value, pattern)")},
-        own={
-            _TRINO: "regexp_split(value, pattern)",
-            _CLICKHOUSE: "splitByRegexp(pattern, assumeNotNull(value))",
-        },
     ),
     _pg("quote_literal", "value", _PG_QUOTED_LITERAL),
     _pg(
@@ -1444,7 +1433,7 @@ _NAMES = (
     | {name for name, _, _ in OVERLOADS}
     | {"encode"}
     | engine_refusals.NAMES
-    | {"regexp_replace", "date_trunc"}
+    | {"regexp_replace", "date_trunc", "substr", "substring", "left", "right"}
 )
 _MENTIONED = re.compile(
     r"\b(" + "|".join(sorted(_NAMES)) + r")\"?\s*\(|" + pg_forms_json.OPERATORS, re.IGNORECASE
@@ -1655,9 +1644,6 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return _REGRESSIONS_READ[type(node)], [node.this, node.expression]
     if isinstance(node, exp.Timestamp):
         return "timestamp", [a for a in (node.this, node.args.get("zone")) if a is not None]
-    if isinstance(node, exp.TimestampFromParts):
-        keys = ("year", "month", "day", "hour", "min", "sec")
-        return "make_timestamp", [node.args[k] for k in keys if node.args.get(k) is not None]
     if isinstance(node, exp.Log):  # sqlglot reads log10(x) as log(10, x)
         base, value = node.this, node.expression
         if value is None:
@@ -1717,7 +1703,7 @@ def _bytea_input(value: exp.Expr, called: str, dialect: str) -> exp.Expr:
 
 
 #: The names sqlglot would read as something else: a row of the table, by its own name.
-_KEPT_BY_NAME = frozenset(name for name, _ in MACROS)
+_KEPT_BY_NAME = frozenset(name for name, _ in MACROS) | {"char"}
 
 
 def _said_text_read(value: exp.Expr) -> exp.Expr:
@@ -1733,18 +1719,25 @@ FIRST_MATCH = "provisa_first_match"
 _BACKREFERENCE = re.compile(r"\\\d")
 
 
+def _is_null(value: exp.Expr) -> bool:
+    value = value.unnest()
+    return isinstance(value.this if isinstance(value, exp.Cast) else value, exp.Null)
+
+
 def _first_match(node: exp.RegexpReplace, dialect: str) -> exp.Expr:
     """regexp_replace of the first match, or a refusal of what neither engine's can write."""
     value = node.this
+    if any(_is_null(part) for part in (value, node.expression, node.args["replacement"])):
+        return exp.Cast(this=exp.Null(), to=exp.DataType.build("TEXT"))
     pattern, replacement = (
         _said_text_read(node.expression),
         _said_text_read(node.args["replacement"]),
     )
     node.set("modifiers", None)
-    if dialect == "clickhouse":
-        return exp.Anonymous(this="replaceRegexpOne", expressions=[value, pattern, replacement])
     if not (isinstance(pattern, exp.Literal) and isinstance(replacement, exp.Literal)):
         raise FunctionRefused("regexp_replace", dialect)
+    if dialect == "clickhouse":
+        return exp.Anonymous(this="replaceRegexpOne", expressions=[value, pattern, replacement])
     if _BACKREFERENCE.search(replacement.this):
         raise FunctionRefused("regexp_replace", dialect)
     written = replacement.this.replace("$", "\\$")
@@ -1755,7 +1748,7 @@ def _first_match(node: exp.RegexpReplace, dialect: str) -> exp.Expr:
     )
 
 
-def _digits_kept(node: exp.Round | exp.Trunc) -> exp.Expr | None:
+def _digits_kept(node: exp.Round | exp.Trunc, dialect: str) -> exp.Expr | None:
     """round(numeric, n) and trunc(numeric, n): PostgreSQL's answer has n digits past the point
     where the engine's keeps its own."""
     digits = node.args.get("decimals")
@@ -1771,10 +1764,69 @@ def _digits_kept(node: exp.Round | exp.Trunc) -> exp.Expr | None:
     if not isinstance(value, (str, exp.Literal)):
         return None
     scale = int(value if isinstance(value, str) else value.this)
-    if scale > _MOST_SCALE:
-        raise FunctionRefused(node.sql_name().lower(), "this dialect")
+    if not 0 <= scale <= _MOST_SCALE:
+        raise FunctionRefused(node.sql_name().lower(), dialect)
     node.set("decimals", exp.Literal.number(scale))
-    return exp.Cast(this=node.copy(), to=exp.DataType.build(f"DECIMAL(38, {max(scale, 0)})"))
+    return exp.Cast(this=node.copy(), to=exp.DataType.build(f"DECIMAL(38, {scale})"))
+
+
+#: PostgreSQL's reading of a position before the value, or a negative length, which these engines
+#: read from its end.
+_FROM_THE_END = frozenset({"trino", "presto", "athena", "clickhouse"})
+_EDGE_FORMS: dict[tuple[type[exp.Expr], bool], str] = {
+    (exp.Substring, False): "SUBSTRING(v, GREATEST(s, 1))",
+    (exp.Substring, True): "SUBSTRING(v, GREATEST(s, 1), GREATEST(s + n - GREATEST(s, 1), 0))",
+    (exp.Left, True): (
+        "CASE WHEN n < 0 THEN SUBSTRING(v, 1, GREATEST(LENGTH(v) + n, 0)) ELSE LEFT(v, n) END"
+    ),
+    (exp.Right, True): (
+        "CASE WHEN n < 0 THEN SUBSTRING(v, LEAST(1 - n, LENGTH(v) + 1)) ELSE RIGHT(v, n) END"
+    ),
+}
+
+
+def _constant(node: exp.Expr | None) -> int | None:
+    """The whole number ``node`` always is; None for anything a row decides."""
+    node = node.unnest() if node is not None else None
+    if isinstance(node, exp.Neg):
+        inner = _constant(node.this)
+        return None if inner is None else -inner
+    if isinstance(node, exp.Add):
+        left, right = _constant(node.this), _constant(node.expression)
+        return None if left is None or right is None else left + right
+    if isinstance(node, exp.Literal) and node.is_int:
+        return int(node.this)
+    return None
+
+
+def _past_the_edge(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """substring, left or right as PostgreSQL reads their position, where a row decides it or a
+    constant is one the engine would read from the end; a safe constant stays the engine's own."""
+    if isinstance(node, exp.Substring):
+        start, length = node.args.get("start"), node.args.get("length")
+        if start is not None and (start.unnest().is_string or said_type(start) == "text"):
+            raise FunctionRefused("substring", dialect)  # substring(text, pattern)
+        safe = (_constant(start) or 0) >= 1
+        values = {"v": node.this, "s": start, "n": length}
+        key = (exp.Substring, length is not None)
+        if start is None:
+            return None
+    else:
+        count = node.expression
+        constant = _constant(count)
+        safe = constant is not None and constant >= 0
+        values = {"v": node.this, "n": count}
+        key = (type(node), True)
+    present = [value for value in values.values() if value is not None]
+    if safe or any(_is_volatile(value) for value in present):
+        return None
+
+    def bound(part: exp.Expr) -> exp.Expr:
+        if isinstance(part, exp.Column) and part.name in values:
+            return _argument(values[part.name]).copy()
+        return part
+
+    return sqlglot.parse_one(_EDGE_FORMS[key], read="postgres").transform(bound)
 
 
 #: The most digits past the point a decimal of 38 holds and leaves room for a whole part.
@@ -1821,8 +1873,12 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             flagged = node.args.get("modifiers")
             if isinstance(flagged, exp.Literal) and flagged.this == FIRST_MATCH:
                 return _first_match(node, dialect)
+        if isinstance(node, (exp.Substring, exp.Left, exp.Right)) and dialect in _FROM_THE_END:
+            edged = _past_the_edge(node, dialect)
+            if edged is not None:
+                return edged
         if isinstance(node, (exp.Round, exp.Trunc)) and dialect not in _DUCKDB:
-            kept = _digits_kept(node)
+            kept = _digits_kept(node, dialect)
             if kept is not None:
                 return kept
         target = node

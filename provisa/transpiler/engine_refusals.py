@@ -20,6 +20,7 @@ engine's to read."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 
 import sqlglot.expressions as exp
@@ -31,27 +32,15 @@ _NUMBERS = frozenset({"decimal", "double precision", "real", "float", "bigint", 
 _NUMERIC = frozenset({"decimal"})
 _JSON = frozenset({"jsonb", "json"})
 _BYTES = frozenset({"bytea"})
+_CLOCKS = frozenset({"date", "time", "timetz", "timestamp", "timestamptz", "interval"})
+_REALS = frozenset({"real", "float"})
 
+_NOT_ANY = frozenset({"interval", "bit", "bit varying", "varbit", "oid", "tid", "aclitem", "xml"})
 #: No value of these types reaches a call: the engine has no type to hold it, and sqlglot's nearest
 #: (BOOLEAN of a bit, for one) answers something else.
 _NOT_HELD: dict[str, frozenset[str]] = {
-    _T: frozenset(
-        {"interval", "bit", "bit varying", "varbit", "oid", "tid", "aclitem", "xml", "timetz"}
-    ),
-    _C: frozenset(
-        {
-            "interval",
-            "bit",
-            "bit varying",
-            "varbit",
-            "oid",
-            "tid",
-            "aclitem",
-            "xml",
-            "timetz",
-            "time",
-        }
-    ),
+    _T: _NOT_ANY | {"timetz"},
+    _C: _NOT_ANY | {"timetz", "time", "timestamptz"},  # no time of day, and no zoned instant
 }
 
 #: What both engines refuse: its name, and the said types of the overloads refused (None for all).
@@ -104,8 +93,22 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "format": _ANY,
     "normalize": _ANY,
     "to_number": _ANY,
-    "to_timestamp": frozenset({"text"}),
-    "str_to_time": frozenset({"text"}),
+    "str_to_time": _ANY,
+    "str_to_date": _ANY,
+    "to_date": _ANY,
+    "decode": _ANY,
+    "char": _ANY,
+    "make_timestamp": _ANY,
+    "timestamp_from_parts": _ANY,
+    "string_to_array": _ANY,
+    "regexp_split_to_array": _ANY,
+    "in_range": _CLOCKS,
+    "date_part": frozenset({"time"}),
+    "extract": frozenset({"time"}),
+    "bit_length": _BYTES,
+    "octet_length": _BYTES,
+    "position": _BYTES,
+    "strpos": _BYTES,
     "convert": _ANY,
     "makeaclitem": _ANY,
     "currtid2": _ANY,
@@ -115,8 +118,6 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "regclass": _ANY,
     "varchar": _ANY,
     "bit": _ANY,
-    "chr": frozenset({"text"}),
-    "char": frozenset({"text"}),
     "int2": _JSON,
     "int4": _JSON,
     "int8": _JSON,
@@ -134,19 +135,48 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "notlike": _BYTES,
 }
 #: The most arguments of an overload a replay served: past it the engine's own takes none.
-_MOST_ARGUMENTS = {"bpchar": 1, "regexp_count": 2, "regexp_replace": 4, "regexp_like": 2}
+_MOST_ARGUMENTS = {
+    "bpchar": 1,
+    "length": 1,
+    "regexp_count": 2,
+    "regexp_replace": 4,
+    "regexp_like": 2,
+    "timestamp_trunc": 2,
+    "date_trunc": 2,
+}
+#: A ClickHouse pattern of nothing is its error; PostgreSQL's answer is the value.
+_NOT_EMPTY = frozenset({"replace", "trim", "btrim", "ltrim", "rtrim"})
+#: The formats whose every element a dialect's own format writes as PostgreSQL's does.
+_PLAIN_FORMAT = re.compile(r"(?:%[YmdHiMSs]|[-/: T])+")
 #: sqlglot's name of a call, and the name a statement gave it.
 _NAMED = {
     "exploding_generate_series": "generate_series",
     "rand": "random",
     "str_to_time": "to_timestamp",
     "time_to_str": "to_char",
+    "str_to_date": "to_date",
     "time_from_parts": "make_time",
+    "timestamp_from_parts": "make_timestamp",
+    "timestamp_trunc": "date_trunc",
     "variance_pop": "var_pop",
 }
 _ON: dict[str, dict[str, frozenset[str] | None]] = {
     _T: {"gcd": _ANY, "lcm": _ANY},
-    _C: {"gcd": _NUMERIC, "lcm": _NUMERIC, "to_timestamp": _NUMBERS, "unix_to_time": _NUMBERS},
+    _C: {
+        "gcd": _NUMERIC,
+        "lcm": _NUMERIC,
+        "to_timestamp": _NUMBERS,
+        "unix_to_time": _NUMBERS,
+        "length": _BYTES,
+        "translate": _ANY,
+        "concat_ws": _NUMBERS,
+        # An aggregate of a real answers a real there, and PostgreSQL a double precision.
+        "stddev": _REALS,
+        "stddev_pop": _REALS,
+        "stddev_samp": _REALS,
+        "variance": _REALS,
+        "variance_pop": _REALS,
+    },
 }
 
 NAMES = frozenset({*_ON_BOTH, *_ON[_T], *_ON[_C], *_MOST_ARGUMENTS})
@@ -163,6 +193,17 @@ def _called(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     return node.sql_name().lower(), args
 
 
+def _is_empty(value: exp.Expr) -> bool:
+    value = value.unnest()
+    literal = value.this if isinstance(value, exp.Cast) else value
+    return isinstance(literal, exp.Literal) and literal.is_string and literal.this == ""
+
+
+def _plain_format(node: exp.TimeToStr) -> bool:
+    written = node.args.get("format")
+    return isinstance(written, exp.Literal) and _PLAIN_FORMAT.fullmatch(written.this) is not None
+
+
 def refused_call(
     node: exp.Expr, dialect: str, said_type: Callable[[exp.Expr], str | None]
 ) -> str | None:
@@ -175,6 +216,10 @@ def refused_call(
         return None
     name, args = call
     said = {type_name.split("(")[0] for type_name in map(said_type, args) if type_name}
+    if engine == _C and name in _NOT_EMPTY and any(_is_empty(arg) for arg in args[1:]):
+        return name
+    if isinstance(node, exp.TimeToStr) and not _plain_format(node):
+        return "to_char"
     table = _ON[engine]
     types = table[name] if name in table else _ON_BOTH.get(name, frozenset())
     if (

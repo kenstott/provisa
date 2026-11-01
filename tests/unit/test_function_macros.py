@@ -371,3 +371,28 @@ def test_a_literal_keeps_what_its_cast_says(sql: str, want: str):
 
 def test_a_call_named_for_the_engines_own_spelling_is_written_so():
     assert transpile("SELECT cbrt(x) AS v FROM t", "clickhouse") == "SELECT cbrt(x) AS v FROM t"
+
+
+@pytest.mark.parametrize(
+    "call", ["substr(a, 1 + 1, 3)", "substr(a, 2)", "left(a, 2)", "right(a, 2)"]
+)
+def test_a_safe_position_stays_the_engines_own(call: str):
+    assert "GREATEST" not in transpile(f"SELECT {call} AS v FROM t", "trino")
+    assert "CASE" not in transpile(f"SELECT {call} AS v FROM t", "trino")
+
+
+@pytest.mark.parametrize(
+    ("call", "want"),
+    [
+        ("substr('Hello World', -7)", "Hello World"),
+        ("substr('Hello', -1, 3)", "H"),
+        ("substr('Hello', 2, 2)", "el"),
+        ("left('Hello', -1)", "Hell"),
+        ("right('Hello', -1)", "ello"),
+    ],
+)
+def test_a_position_before_the_value_reads_as_postgresql_reads_it(call: str, want: str):
+    written = sqlglot.transpile(
+        transpile(f"SELECT {call} AS v", "trino"), read="trino", write="duckdb"
+    )[0]
+    assert duckdb.connect().execute(written).fetchone()[0] == want

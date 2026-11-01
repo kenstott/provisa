@@ -46,9 +46,19 @@ SUPPORTED_DIALECTS: set[str] = {
 }
 
 
+_BIT_VARYING_SAID = re.compile(r"::\s*bit\s+varying\b", re.IGNORECASE)
+_OVERLAPS_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?overlaps"?\s*\(', re.IGNORECASE)
+
+
+def _spelled_for_sqlglot(pg_sql: str) -> str:
+    """``pg_sql`` as sqlglot can read it: it takes ``bit varying`` for a bit and an alias, and has
+    no call of a function named overlaps."""
+    return _OVERLAPS_BY_NAME.sub("overlaps_timestamp(", _BIT_VARYING_SAID.sub("::varbit", pg_sql))
+
+
 def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to Trino SQL."""
-    pg_sql = rewrite_correlated_subqueries_for_trino(pg_sql)
+    pg_sql = rewrite_correlated_subqueries_for_trino(_spelled_for_sqlglot(pg_sql))
     result = transpile(pg_sql, "trino")
     result = _rewrite_epoch_of_timestamp_for_trino(result)
     result = _rewrite_json_build_object_for_trino(result)
@@ -1162,7 +1172,7 @@ def transpile(
     """
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
         pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
-        pg_sql = _OVERLAPS_BY_NAME.sub("overlaps_timestamp(", pg_sql)  # sqlglot reads no such call
+        pg_sql = _spelled_for_sqlglot(pg_sql)
         pg_sql = _REGEXP_REPLACE_BY_NAME.sub("regexp_replace(", pg_sql)  # its flag is read below
     pg_sql = pg_money.lowered(pg_sql, target_dialect)  # REQ-2171
     # REQ-1730: an identifier UNQUOTED in the source SQL (the common case for a raw/direct query —
@@ -1279,7 +1289,6 @@ def transpile(
     return result
 
 
-_OVERLAPS_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?overlaps"?\s*\(', re.IGNORECASE)
 _REGEXP_REPLACE_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?regexp_replace"?\s*\(', re.IGNORECASE)
 _CAST_LITERAL_NAMED = re.compile(
     r"\b(numeric|decimal|bytea|character|char|bpchar)\b", re.IGNORECASE

@@ -27,11 +27,16 @@ import pytest
 
 from provisa.pgwire.cast_types import result_casts
 from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.pg_xml import XmlFunctionRefused
 from provisa.transpiler.transpile import transpile, transpile_to_trino
 from tests.unit.pgwire.pg17_forms_answers import RECORDED
 from tests.unit.pgwire.pg17_forms_matrix import DIFFERS, ERROR, MATRIX, REFUSED, compared, text_of
 
 pytestmark = [pytest.mark.integration]
+
+
+#: What each statement that is not served answered, for a failure to say.
+_SAID: dict[str, str] = {}
 
 
 def _served(sql: str, rows: list[Any], oids: list[int]) -> list[tuple]:
@@ -49,16 +54,20 @@ def _served(sql: str, rows: list[Any], oids: list[int]) -> list[tuple]:
 def replayed(written: Callable[[str], str], run: Callable[[str], list[Any]]) -> dict[str, str]:
     """Each statement's outcome, where it is not the answer PostgreSQL gave."""
     found: dict[str, str] = {}
+    _SAID.clear()
     for sql, (oids, want, values) in RECORDED.items():
         try:
             rows = run(written(sql))
-        except FunctionRefused:
+        except (FunctionRefused, XmlFunctionRefused):
             found[sql] = REFUSED
-        except Exception:  # noqa: BLE001 -- any error of the engine's is this statement's outcome
+        except Exception as error:  # noqa: BLE001 -- any error of the engine's is its outcome
             found[sql] = ERROR
+            _SAID[sql] = str(error)[:200]
         else:
-            if not compared(oids, want, _served(sql, rows, oids), values, sql):
+            served = _served(sql, rows, oids)
+            if not compared(oids, want, served, values, sql):
                 found[sql] = DIFFERS
+                _SAID[sql] = f"{served[:2]}, PostgreSQL {want[:2]}"
     return found
 
 
@@ -81,7 +90,7 @@ def clickhouse_replay(client: Any) -> dict[str, str]:
 @pytest.mark.requires_trino
 def test_forms_on_trino(trino_conn):
     found = trino_replay(trino_conn)
-    assert found == MATRIX["trino"], json.dumps({"trino": found})
+    assert found == MATRIX["trino"], json.dumps({"trino": found, "said": _SAID})
 
 
 @pytest.mark.requires_clickhouse
@@ -95,4 +104,4 @@ def test_forms_on_clickhouse():
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
     found = clickhouse_replay(client)
-    assert found == MATRIX["clickhouse"], json.dumps({"clickhouse": found})
+    assert found == MATRIX["clickhouse"], json.dumps({"clickhouse": found, "said": _SAID})

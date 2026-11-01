@@ -1128,11 +1128,13 @@ COT = f"1.0 / TAN({_X})"
 #: The parts of a date every dialect's EXTRACT answers as PostgreSQL does, a second's fraction
 #: excepted, which is refused by name.
 _DATE_PARTS = ("year", "quarter", "month", "day", "hour", "minute")
+#: A date has no hour to an engine's type check, so every part reads the instant.
+_INSTANT = "CAST(value AS TIMESTAMP)"
 
 
 def _date_part_of(called: str, extras: str) -> str:
     named = " ".join(
-        f"WHEN LOWER(part) = '{name}' THEN EXTRACT({name.upper()} FROM value)"
+        f"WHEN LOWER(part) = '{name}' THEN EXTRACT({name.upper()} FROM {_INSTANT})"
         for name in _DATE_PARTS
     )
     return (
@@ -1143,27 +1145,18 @@ def _date_part_of(called: str, extras: str) -> str:
 
 def date_part_form(called: str) -> str:
     extras = (
-        "WHEN LOWER(part) = 'dow' THEN EXTRACT(DOW FROM value) % 7 "
-        "WHEN LOWER(part) = 'doy' THEN EXTRACT(DOY FROM value)"
+        f"WHEN LOWER(part) = 'dow' THEN EXTRACT(DOW FROM {_INSTANT}) % 7 "
+        f"WHEN LOWER(part) = 'doy' THEN EXTRACT(DOY FROM {_INSTANT})"
     )
     return _date_part_of(called, extras)
 
 
 def clickhouse_date_part(called: str) -> str:
     extras = (
-        "WHEN LOWER(part) = 'dow' THEN toDayOfWeek(value) % 7 "
-        "WHEN LOWER(part) = 'doy' THEN toDayOfYear(value)"
+        f"WHEN LOWER(part) = 'dow' THEN toDayOfWeek({_INSTANT}) % 7 "
+        f"WHEN LOWER(part) = 'doy' THEN toDayOfYear({_INSTANT})"
     )
     return _date_part_of(called, extras)
 
 
 DATE_AND_TIME = "CAST(CAST(d AS TEXT) || ' ' || CAST(t AS TEXT) AS TIMESTAMP)"
-_TWO_DIGITS = "LPAD(CAST({} AS TEXT), 2, '0')"
-#: make_timestamp through its text, which reads the same on any dialect.
-MAKE_TIMESTAMP = (
-    "CAST(CAST(y AS TEXT) || '-' || "
-    + " || '-' || ".join(_TWO_DIGITS.format(part) for part in ("m", "d"))
-    + " || ' ' || "
-    + " || ':' || ".join(_TWO_DIGITS.format(part) for part in ("h", "n"))
-    + " || ':' || CASE WHEN s < 10 THEN '0' ELSE '' END || CAST(s AS TEXT) AS TIMESTAMP)"
-)
