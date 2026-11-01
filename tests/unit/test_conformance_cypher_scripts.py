@@ -23,6 +23,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "scripts" / "conformance"))  # the scripts' sibling imports
 
 
 def _load(name: str):
