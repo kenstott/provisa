@@ -112,7 +112,7 @@ _ON_JSON = frozenset(row[0] for row in ROWS) - {"to_jsonb", "array_to_json", "ro
 #: What no engine has a form of.
 REFUSED = frozenset(
     """
-    jsonb_pretty jsonb_hash jsonb_hash_extended json_send jsonb_send jsonpath_send jsonb_cmp
+    jsonb_pretty jsonb_hash jsonb_hash_extended jsonb_cmp
     jsonb_eq jsonb_ne jsonb_lt jsonb_le jsonb_gt jsonb_ge jsonb_concat json_strip_nulls
     jsonb_strip_nulls jsonb_set jsonb_set_lax jsonb_insert jsonb_delete jsonb_delete_path
     jsonb_object json_to_record jsonb_to_record json_to_recordset jsonb_to_recordset

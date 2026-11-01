@@ -113,7 +113,7 @@ def _arg_type(arg: exp.Expr, literal: str | None, numbers: bool) -> str | None:
         to = arg.to
         if isinstance(to, exp.ObjectIdentifier) or to.this == exp.DataType.Type.USERDEFINED:
             spelled = to.sql(dialect="postgres").lower().removeprefix("pg_catalog.")
-            return "bit varying" if spelled == "varbit" else spelled
+            return {"varbit": "bit varying", "_cstring": "cstring[]"}.get(spelled, spelled)
         if to.this == exp.DataType.Type.ARRAY:
             element = _PG_NAMES.get(to.expressions[0].this) if to.expressions else None
             return None if element is None else f"{element}[]"
@@ -178,10 +178,14 @@ def _fits(argument: str | None, parameter: str) -> bool:
         or argument == parameter
         or parameter in _OF_ANY_TYPE
         or (parameter == "anynonarray" and not argument.endswith("[]"))
+        or parameter == "anyenum"  # a statement's enum, which only the server's catalog names
         or (argument == "text" and parameter == "character varying")
-        or (parameter == "anyarray" and argument.endswith("[]"))
-        or (parameter == "anyrange" and argument in RANGE_TYPES)
-        or (parameter == "anymultirange" and argument in MULTIRANGE_TYPES)
+        or (parameter in ("anyarray", "anycompatiblearray") and argument.endswith("[]"))
+        or (parameter in ("anyrange", "anycompatiblerange") and argument in RANGE_TYPES)
+        or (
+            parameter in ("anymultirange", "anycompatiblemultirange")
+            and argument in MULTIRANGE_TYPES
+        )
     )
 
 

@@ -17,8 +17,15 @@ is recorded from postgres:17.11 by tests/integration/test_pg17_type_io_recording
 
 from __future__ import annotations
 
+import re
+import struct
+from collections.abc import Iterable
 from dataclasses import dataclass
+from decimal import Decimal
+from typing import Any
 
+BOOLEAN, REAL, DOUBLE, NUMERIC = 16, 700, 701, 1700
+CLOCKS = frozenset({1083, 1114, 1184, 1266})
 ENUM = "type_io_enum"
 SESSION = (
     "SET TimeZone TO 'UTC'",
@@ -193,7 +200,7 @@ TYPES: tuple[Type, ...] = (
         "{|x",
     ),
     _u("jsonpath", "jsonpath", "$.a|$[0]|$|$.a ? (@ > 1)|$.a[*]|lax $.b", "x y|$."),
-    _u("xml", "xml", "<a/>|<a>b</a>|text|<a  b='c'/>", "<a|<a></b>"),
+    _of("xml_in", "xml_out", None, "xml", "<a/>|<a>b</a>|text|<a  b='c'/>", "<a|<a></b>"),
     _u(
         "inet",
         "inet",
@@ -518,3 +525,211 @@ def statements() -> list[str]:
     for name, arguments in _CALLS:
         written.extend(called(name, a) for a in arguments)
     return list(dict.fromkeys(written))
+
+
+#: Statements of each function refused by name, on the engine that refuses the most: a value a form
+#: cannot read as PostgreSQL does. A slice may lower a number, never raise it.
+REFUSALS: dict[str, int] = {
+    "aclitemin": 3,
+    "aclitemout": 2,
+    "array_in": 11,
+    "bit_in": 1,
+    "box_in": 5,
+    "box_out": 4,
+    "box_send": 4,
+    "byteain": 5,
+    "byteaout": 2,
+    "byteasend": 2,
+    "charin": 1,
+    "charout": 1,
+    "charsend": 1,
+    "cidr_in": 5,
+    "cidr_out": 3,
+    "circle_in": 4,
+    "circle_out": 2,
+    "circle_send": 2,
+    "date_in": 12,
+    "date_out": 9,
+    "date_send": 9,
+    "domain_in": 2,
+    "enum_in": 2,
+    "float4out": 1,
+    "float8in": 1,
+    "float8out": 1,
+    "float8send": 1,
+    "inet_in": 6,
+    "inet_merge": 3,
+    "inet_out": 4,
+    "int2vectorin": 1,
+    "int4in": 4,
+    "int4out": 4,
+    "int4send": 4,
+    "int8_avg": 3,
+    "int8inc_float8_float8": 1,
+    "interval_hash": 3,
+    "interval_hash_extended": 2,
+    "interval_in": 2,
+    "jsonpath_in": 8,
+    "jsonpath_out": 6,
+    "jsonpath_send": 6,
+    "line_in": 6,
+    "line_out": 4,
+    "line_send": 4,
+    "lseg_in": 3,
+    "lseg_out": 2,
+    "lseg_send": 2,
+    "macaddr8_in": 2,
+    "macaddr8_out": 1,
+    "macaddr8_send": 1,
+    "macaddr_in": 5,
+    "macaddr_out": 3,
+    "macaddr_send": 3,
+    "multirange_in": 4,
+    "namein": 1,
+    "nameout": 1,
+    "namesend": 1,
+    "numeric_div": 5,
+    "numeric_div_trunc": 3,
+    "numeric_exp": 4,
+    "numeric_in": 6,
+    "numeric_ln": 4,
+    "numeric_log": 3,
+    "numeric_power": 4,
+    "numeric_sqrt": 5,
+    "oidvectorin": 1,
+    "path_in": 2,
+    "path_out": 1,
+    "path_send": 1,
+    "pg_lsn_hash": 2,
+    "pg_lsn_hash_extended": 2,
+    "pg_lsn_in": 2,
+    "pg_snapshot_in": 4,
+    "pg_snapshot_out": 2,
+    "point_in": 5,
+    "point_out": 3,
+    "point_send": 3,
+    "poly_in": 2,
+    "poly_out": 1,
+    "poly_send": 1,
+    "range_in": 11,
+    "record_send": 4,
+    "regclassin": 5,
+    "regclassout": 4,
+    "regcollationin": 4,
+    "regcollationout": 3,
+    "regconfigin": 4,
+    "regconfigout": 3,
+    "regdictionaryin": 3,
+    "regdictionaryout": 2,
+    "regnamespacein": 5,
+    "regnamespaceout": 4,
+    "regoperatorin": 3,
+    "regoperatorout": 2,
+    "regoperin": 4,
+    "regoperout": 3,
+    "regprocedurein": 4,
+    "regprocedureout": 3,
+    "regprocin": 4,
+    "regprocout": 3,
+    "regrolein": 4,
+    "regroleout": 3,
+    "regtypein": 6,
+    "regtypeout": 5,
+    "tidin": 3,
+    "time_hash": 2,
+    "time_hash_extended": 2,
+    "time_in": 9,
+    "time_out": 6,
+    "time_send": 6,
+    "timestamp_hash": 3,
+    "timestamp_hash_extended": 2,
+    "timestamp_in": 12,
+    "timestamp_out": 9,
+    "timestamp_send": 9,
+    "timestamptz_in": 9,
+    "timestamptz_out": 7,
+    "timestamptz_send": 7,
+    "timetz_hash": 2,
+    "timetz_hash_extended": 2,
+    "timetz_in": 8,
+    "timetz_out": 5,
+    "timetz_send": 5,
+    "tsqueryin": 9,
+    "tsqueryout": 7,
+    "tsquerysend": 7,
+    "txid_snapshot_in": 3,
+    "txid_snapshot_out": 2,
+    "uuid_hash": 2,
+    "uuid_hash_extended": 2,
+    "uuid_in": 8,
+    "uuid_out": 6,
+    "uuid_send": 6,
+    "varbit_in": 1,
+    "xid8in": 3,
+    "xid8out": 3,
+    "xml_in": 6,
+    "xml_out": 4,
+}
+NAME_OF_THE_REFUSAL = "does not read this value"
+REFUSED = "refused by name"
+
+
+def verdict(
+    sql: str, want: tuple[int | None, str | None], got: Any, said: str | None
+) -> str | None:
+    """How an engine's answer differs from PostgreSQL's: ``got``, or ``said``, what it raised as
+    "SQLSTATE: message". REFUSED for a refusal by name; None where it does not differ."""
+    oid, text = want
+    if said is not None:
+        if oid is None and said == text:
+            return None
+        if NAME_OF_THE_REFUSAL in said:
+            return REFUSED
+        return f"raised {said}, PostgreSQL {text!r}"
+    if oid is None:
+        return f"answered {got!r}, PostgreSQL refused: {text}"
+    return None if same_answer(got, oid, text) else f"{got!r}, PostgreSQL {text!r}"
+
+
+def function_of(sql: str) -> str:
+    """The function a statement calls."""
+    return sql.split('"')[1]
+
+
+def by_function(sqls: Iterable[str]) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {}
+    for sql in sqls:
+        grouped.setdefault(function_of(sql), []).append(sql)
+    return grouped
+
+
+def _clock(text: str) -> str:
+    """A time's or timestamp's text as an engine's: no zone of UTC, no zeros after its seconds."""
+    bare = text.removesuffix("+00:00").removesuffix("+00").removesuffix(" UTC")
+    return re.sub(r"\.?0+$", "", bare) if "." in bare else bare
+
+
+def _as_text(got: Any) -> str:
+    if isinstance(got, (bytes, bytearray, memoryview)):
+        return "\\x" + bytes(got).hex()
+    if isinstance(got, bool):
+        return "t" if got else "f"
+    return str(got)
+
+
+def same_answer(got: Any, oid: int, want: str | None) -> bool:
+    """Whether an engine's value is PostgreSQL's, read as the type's text. A float compares as its
+    width's bits, a numeric by value: the wire writes each."""
+    if want is None or got is None:
+        return want is got
+    text = _as_text(got)
+    if oid == BOOLEAN:
+        return text.lower().startswith(want)
+    if oid == REAL or oid == DOUBLE:
+        pack = "f" if oid == REAL else "d"
+        return struct.pack(pack, float(text)) == struct.pack(pack, float(want))
+    if oid == NUMERIC:
+        return Decimal(text) == Decimal(want)
+    if oid in CLOCKS:
+        return _clock(text) == _clock(want)
+    return text == want
