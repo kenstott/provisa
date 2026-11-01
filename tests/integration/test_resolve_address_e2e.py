@@ -279,6 +279,11 @@ def test_a_resolve_is_audited_with_the_pipelines_provenance(server):
                     "WHERE role_id = 'keyed_reader' ORDER BY id DESC LIMIT 5"
                 )
             ).fetchall()
-            assert _rows() == before + 1, recorded
+            held = [
+                line
+                for line in server.log_text().splitlines()
+                if "audit" in line.lower() or "Error" in line or "Traceback" in line
+            ]
+            assert _rows() == before + 1, (recorded, held[-30:])
     finally:
         engine.dispose()
