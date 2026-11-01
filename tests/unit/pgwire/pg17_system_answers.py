@@ -256,4 +256,40 @@ RECORDED: dict[str, tuple[Any, Any, Any]] = {'SELECT pg_catalog."pg_get_wal_repl
                                                                                                                'for '
                                                                                                                'parameter '
                                                                                                                '"n": '
-                                                                                                               '-1')}
+                                                                                                               '-1'),
+ 'SELECT pg_catalog."lastval"() AS v': ('err',
+                                        '55000',
+                                        'lastval is not yet defined in this session'),
+ 'SELECT lastval() AS v': ('err', '55000', 'lastval is not yet defined in this session'),
+ 'SELECT pg_catalog."pg_get_publication_tables"(VARIADIC NULL::text[]) AS v': ('ok', 2249, []),
+ 'SELECT pg_catalog."pg_get_publication_tables"(VARIADIC \'{}\'::text[]) AS v': ('ok', 2249, []),
+ 'SELECT pg_catalog."pg_get_publication_tables"(VARIADIC ARRAY[]::text[]) AS v': ('ok', 2249, []),
+ 'SELECT pg_catalog."pg_get_publication_tables"(\'p\') AS v': ('err',
+                                                               '42704',
+                                                               'publication "p" does not exist'),
+ 'SELECT pg_catalog."pg_get_publication_tables"(\'p\', \'q\') AS v': ('err',
+                                                                      '42704',
+                                                                      'publication "p" does not '
+                                                                      'exist'),
+ 'SELECT pg_catalog."pg_get_publication_tables"(VARIADIC ARRAY[\'p\']) AS v': ('err',
+                                                                               '42704',
+                                                                               'publication "p" '
+                                                                               'does not exist'),
+ 'SELECT pg_catalog."pg_get_publication_tables"(VARIADIC \'{p}\'::text[]) AS v': ('err',
+                                                                                  '42704',
+                                                                                  'publication "p" '
+                                                                                  'does not exist'),
+ 'SELECT pg_get_publication_tables(VARIADIC NULL::text[]) AS v': ('ok', 2249, []),
+ "SELECT pg_get_publication_tables(VARIADIC '{}'::text[]) AS v": ('ok', 2249, []),
+ 'SELECT pg_get_publication_tables(VARIADIC ARRAY[]::text[]) AS v': ('ok', 2249, []),
+ "SELECT pg_get_publication_tables('p') AS v": ('err', '42704', 'publication "p" does not exist'),
+ "SELECT pg_get_publication_tables('p', 'q') AS v": ('err',
+                                                     '42704',
+                                                     'publication "p" does not exist'),
+ "SELECT pg_get_publication_tables(VARIADIC ARRAY['p']) AS v": ('err',
+                                                                '42704',
+                                                                'publication "p" does not exist'),
+ "SELECT pg_get_publication_tables(VARIADIC '{p}'::text[]) AS v": ('err',
+                                                                   '42704',
+                                                                   'publication "p" does not '
+                                                                   'exist')}
