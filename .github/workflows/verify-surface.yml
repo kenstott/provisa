@@ -97,6 +97,10 @@ jobs:
     needs: plan
     if: contains(needs.plan.outputs.suites, ',conformance-pgwire,')
     uses: ./.github/workflows/conformance-pgwire.yml
+  conformance-sparql:
+    needs: plan
+    if: contains(needs.plan.outputs.suites, ',conformance-sparql,')
+    uses: ./.github/workflows/conformance-sparql.yml
 
   ui-unit:
     needs: plan
@@ -153,6 +157,7 @@ jobs:
       - conformance-flight-sql
       - conformance-graphql
       - conformance-pgwire
+      - conformance-sparql
       - ui-unit
       - ui-e2e-core
       - ui-swap

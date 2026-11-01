@@ -32,7 +32,7 @@ Each tool entry gives the tool version and the date it was verified, plus how it
 
 | Surface | Suite | Page |
 | --- | --- | --- |
-| SPARQL 1.1 | W3C SPARQL 1.1 test suite | [sparql.md](sparql.md) |
+| SPARQL 1.1 | W3C SPARQL 1.1 test suite (query, update, result formats) | [sparql.md](sparql.md) |
 | RDF 1.1 syntax | W3C rdf-tests | [rdf-syntax.md](rdf-syntax.md) |
 | Cypher | openCypher TCK | [cypher.md](cypher.md) |
 | Bolt | Neo4j driver test kit | [bolt.md](bolt.md) |

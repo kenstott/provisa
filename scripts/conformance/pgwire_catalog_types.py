@@ -424,7 +424,9 @@ def write_config(
     registered beside ``types_fixture``, the relationships between them (``extra_relationships``,
     a YAML list of model relationship entries, e.g. scripts/conformance/bolt/fixtures.py), and the
     domains, roles and role mapping rules its user acts by (``extra_access``, a YAML mapping of
-    ``domains``, ``roles`` and ``role_mapping``, e.g. scripts/conformance/bolt/fixtures.py)."""
+    ``domains``, ``roles`` and ``role_mapping``, e.g. scripts/conformance/bolt/fixtures.py, and
+    optionally ``default_assignments`` and ``glossary_terms``, e.g.
+    scripts/conformance/sparql_w3c_fixtures.py)."""
     import yaml
 
     config = provisa_config(pg_port, pg_dsn)
@@ -435,13 +437,18 @@ def write_config(
     if extra_access is not None:
         access = yaml.safe_load(extra_access.read_text())
         fields = {"domains", "roles", "role_mapping"}
-        if set(access) != fields:
+        if set(access) - {"default_assignments", "glossary_terms"} != fields:
             raise SystemExit(
                 f"{extra_access}: has {sorted(access)}, where a job's access is {sorted(fields)}"
             )
         config["domains"].extend(access["domains"])
         config["roles"].extend(access["roles"])
         config["auth"]["role_mapping"].extend(access["role_mapping"])
+        # The roles the job user holds beside org_admin, each named per request (the SPARQL job's,
+        # one a dataset: an HTTP identity's roles are its assignments, not the mapping rules).
+        config["auth"]["default_assignments"].extend(access.get("default_assignments", []))
+        if access.get("glossary_terms"):
+            config["glossary_terms"] = access["glossary_terms"]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(config, sort_keys=False))
     print(f"wrote {path}")

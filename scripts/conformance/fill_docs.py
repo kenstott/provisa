@@ -101,6 +101,11 @@ def read(artifact: dict) -> tuple[str, str, str, str]:
     # client or suite group -- and its cases with their reasons; adapted cases marked with what
     # their setup became -- on the surfaces that have any.
     sections = [_designed(artifact["by_design_groups"])]
+    if "groups" in artifact:  # a suite that reports its counts per test group
+        sections.insert(
+            0,
+            "\n".join(["## Results by test group", "", *by_design.group_table(artifact["groups"])]),
+        )
     if "adapted" in artifact:
         sections.append(
             "\n".join(["## Adapted cases", "", *by_design.adapted_lines(artifact["adapted"])])

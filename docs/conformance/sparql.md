@@ -4,11 +4,15 @@
 
 **Pass rate:** TBD: generated from CI.
 
+## How the suite runs
+
+Provisa has no triple store, so each test's data file is declared as fixture tables before the run: a table per class, a column per literal predicate, a relationship per resource predicate. The test's own query then runs against them. Its constant IRIs are mapped to the fixture's and the answer's mapped back; nothing else of the query changes. Solutions compare as multisets, with blank nodes matched one to one and numbers compared by value. A dataset the tables cannot state faithfully counts its tests as failed, with the reason.
+
 ## Deliberate differences
 
 ### Writes
 
-SPARQL Update is supported where the update maps onto the model through governed table writes. An update needing structure the model lacks is refused with a message naming what is missing.
+This endpoint answers queries. Rows are written through governed table writes, so SPARQL Update is refused by name. An update acting on a named graph (`ADD`, `COPY`, `MOVE`, `CLEAR`, `DROP`, `CREATE`) needs structure the model lacks: the model holds tables, not graphs. Move the rows with a governed write instead.
 
 ### Vocabulary fixed by the model
 

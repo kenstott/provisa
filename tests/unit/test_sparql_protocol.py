@@ -203,3 +203,31 @@ def test_a_sparql_query_opts_into_the_response_cache_in_a_comment():
     assert hint.opt_in is True
     assert cache_hint_for("sparql", "# @provisa cache_ttl=60\nASK {}").ttl == 60
     assert cache_hint_for("sparql", "SELECT ?n WHERE { ?s <https://x/y#n> ?n }").opt_in is False
+
+
+def _refused(body: bytes, content_type: str) -> dict:
+    answer = _text(_request("POST", body=body, content_type=content_type))
+    assert answer.status_code == 400
+    return json.loads(answer.body)
+
+
+def test_an_update_on_a_named_graph_is_refused_naming_what_the_model_lacks():
+    doc = _refused(b"CLEAR GRAPH <http://example.org/g>", "application/sparql-update")
+    assert "acts on a named graph" in json.dumps(doc)
+    assert "CLEAR" in json.dumps(doc)
+
+
+def test_an_insert_is_refused_by_name_and_not_as_a_named_graph():
+    doc = _refused(b"INSERT DATA { <urn:a> <urn:b> <urn:c> }", "application/sparql-update")
+    assert "acts on a named graph" not in json.dumps(doc)
+    assert "not served" in json.dumps(doc)
+
+
+def test_an_update_form_field_is_an_update():
+    doc = _refused(b"update=DROP+ALL", "application/x-www-form-urlencoded")
+    assert "acts on a named graph" in json.dumps(doc)
+
+
+def test_text_that_is_no_update_is_refused_as_not_sparql():
+    doc = _refused(b"INSERT NONSENSE", "application/sparql-update")
+    assert "is not SPARQL this endpoint reads" in json.dumps(doc)

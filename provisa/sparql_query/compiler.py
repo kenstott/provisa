@@ -62,7 +62,7 @@ from rdflib import BNode, Literal as RdfLiteral, URIRef, Variable as RdfVariable
 from rdflib.paths import AlternativePath, InvPath, MulPath, NegatedPath, Path, SequencePath
 from rdflib.plugins.sparql.algebra import translateQuery
 from rdflib.plugins.sparql import parser as _rdf_parser
-from rdflib.plugins.sparql.parser import parseQuery
+from rdflib.plugins.sparql.parser import parseQuery, parseUpdate
 from rdflib.plugins.sparql.parserutils import Comp, CompValue, Param
 
 from provisa.gql.expr_ast import (
@@ -2300,6 +2300,31 @@ def _describe_construct(algebra: Any) -> str:
     triples = [f"{r.n3()} ?p{i} ?o{i}" for i, r in enumerate(resources)]
     where = " UNION ".join(f"{{ {t} }}" for t in triples)
     return f"CONSTRUCT {{ {' . '.join(triples)} }} WHERE {{ {where} }}"
+
+
+#: The update operations whose whole subject is a graph (rdflib's parse names).
+_GRAPH_MANAGEMENT = {"Load", "Clear", "Drop", "Create", "Add", "Move", "Copy"}
+
+
+def update_refusal(text: str) -> tuple[str, str]:
+    """(error code, what is said) refusing the SPARQL Update ``text`` by what it needs."""
+    try:
+        parsed = parseUpdate(text)
+    except Exception as exc:  # rdflib raises pyparsing's and its own errors alike
+        return "sparql.refused", f"The update is not SPARQL this endpoint reads: {exc}"
+    names = [getattr(op, "name", "") for op in parsed.request]
+    managed = sorted({n for n in names if n in _GRAPH_MANAGEMENT})
+    if managed:
+        return (
+            "sparql.update_refused",
+            f"{', '.join(n.upper() for n in managed)} acts on a named graph, and the model has "
+            "tables, not graphs; write to the tables instead",
+        )
+    return (
+        "sparql.update_refused",
+        f"{', '.join(n for n in names)} is not served: this endpoint answers queries, and rows "
+        "are written through the governed table writes",
+    )
 
 
 def compile_sparql(text: str, vocab: Vocabulary, lm: Any) -> CompiledSparql:

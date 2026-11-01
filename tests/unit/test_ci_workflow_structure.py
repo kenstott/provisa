@@ -505,7 +505,7 @@ def test_reusable_workflows_nest_no_deeper_than_github_allows():
 _VERIFY = "verify-surface.yml"
 _VERIFY_SUITES = {
     "conformance-bolt", "conformance-cypher", "conformance-flight-sql", "conformance-graphql",
-    "conformance-pgwire", "ui-unit", "ui-e2e-core", "ui-swap",
+    "conformance-pgwire", "conformance-sparql", "ui-unit", "ui-e2e-core", "ui-swap",
 }  # fmt: skip
 
 
@@ -541,6 +541,7 @@ def test_verification_calls_every_suite_and_copies_none():
         "conformance-flight-sql": "./.github/workflows/conformance-flight-sql.yml",
         "conformance-graphql": "./.github/workflows/conformance-graphql.yml",
         "conformance-pgwire": "./.github/workflows/conformance-pgwire.yml",
+        "conformance-sparql": "./.github/workflows/conformance-sparql.yml",
         "ui-unit": "./.github/workflows/ui-unit-tests.yml",
         "ui-e2e-core": "./.github/workflows/ui-e2e-core.yml",
         "ui-swap": "./.github/workflows/ui-e2e-swap-amd64.yml",

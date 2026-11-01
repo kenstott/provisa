@@ -40,6 +40,7 @@ CONFORMANCE = (
     "conformance-flight-sql",
     "conformance-graphql",
     "conformance-pgwire",
+    "conformance-sparql",
 )
 #: The container lanes a verification may run. Live lanes never: they are not in run_lane.SUITE, and
 #: no job here passes them credentials. On-demand lanes run only when named by hand.

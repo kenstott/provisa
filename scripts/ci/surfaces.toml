@@ -222,11 +222,13 @@ tests = [
     "tests/integration/test_sse_subscriptions.py",
 ]
 
-# No conformance suite exists yet for the next four: their own suite is their mapped tests.
 [surfaces.sparql]
 wider = "compiler"
+suites = ["conformance-sparql"]
 paths = ["provisa/sparql/*", "provisa/sparql_query/*"]
 tests = ["tests/integration/test_sparql_*.py"]
+
+# No conformance suite exists yet for the next three: their own suite is their mapped tests.
 
 [surfaces.grpc]
 wider = "compiler"

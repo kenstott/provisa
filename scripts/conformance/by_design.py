@@ -381,6 +381,18 @@ def table(excluded: list[dict], requirement: bool = False) -> list[str]:
     ]
 
 
+def group_table(groups: list[dict]) -> list[str]:
+    """The three counts per test group, as a Markdown table with their sum (a suite that reports
+    by group: ``groups`` of the result document)."""
+    total = {k: sum(g[k] for g in groups) for k in ("passed", "by_design", "failed")}
+    rows = [*groups, {"group": "**Total**", **total}]
+    return [
+        "| Test group | Passed | Skipped by design | Failed |",
+        "| --- | ---: | ---: | ---: |",
+        *(f"| {r['group']} | {r['passed']} | {r['by_design']} | {r['failed']} |" for r in rows),
+    ]
+
+
 def adapted_lines(marks: list[dict]) -> list[str]:
     """The adapted groups as Markdown: what each setup became, and each case with its outcome."""
     if not marks:

@@ -44,6 +44,7 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 _SPARQL_QUERY = "application/sparql-query"
+_SPARQL_UPDATE = "application/sparql-update"
 
 
 async def _query_text(request: Request) -> str | Response:
@@ -61,8 +62,13 @@ async def _query_text(request: Request) -> str | Response:
         content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
         if content_type == _SPARQL_QUERY:
             query = (await request.body()).decode("utf-8")
+        elif content_type == _SPARQL_UPDATE:
+            return refuse_update((await request.body()).decode("utf-8"))
         elif content_type == "application/x-www-form-urlencoded":
             form = await request.form()
+            update = form.get("update")
+            if isinstance(update, str):
+                return refuse_update(update)
             if "default-graph-uri" in form or "named-graph-uri" in form:
                 return cypher_error(
                     400,
@@ -81,6 +87,15 @@ async def _query_text(request: Request) -> str | Response:
     if not query:
         return cypher_error(400, "sparql.no_query", "The request carries no query")
     return query
+
+
+def refuse_update(text: str) -> Response:
+    """The refusal of an update (REQ-2167): by name, with what the update needs. No form of SPARQL
+    Update is served; a text that is not one is refused as any statement that is not SPARQL."""
+    from provisa.sparql_query.compiler import update_refusal
+
+    code, said = update_refusal(text)
+    return cypher_error(400, code, said, reason=said)
 
 
 async def vocabulary_for(state: Any, role_id: str, ctx: Any, label_map: Any) -> Any:

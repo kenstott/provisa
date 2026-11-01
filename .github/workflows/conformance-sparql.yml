@@ -1,0 +1,164 @@
+name: Conformance (SPARQL)
+
+# REQ-2167: Provisa's SPARQL over HTTP against the W3C SPARQL 1.1 test suite (github.com/w3c/rdf-tests,
+# sparql/sparql11: query, update and result formats), fetched at a pinned commit by git, never
+# vendored, and run by scripts/conformance/sparql_w3c.py against POST /data/sparql.
+#
+# Each test's data file is setup, so it is adapted (REQ-2167, "setup that creates objects is
+# adapted, not excluded"): scripts/conformance/sparql_w3c_fixtures.py seeds each dataset into the
+# PostgreSQL service and declares it in the fixture model, in a domain and role of its own. The job
+# user holds every dataset's role and names one per request.
+#
+# A failing test is data, written to the job summary and to the artifact conformance-sparql.json
+# (read by scripts/conformance/fill_docs.py into docs/conformance/sparql.md), never a job failure.
+# Each test is passed, skipped by design (a group of by_design/sparql.yaml citing its requirement
+# and decision) or failed. The job fails only when the Provisa instance did not start or the suite
+# did not run, until SPARQL is at its baseline (scripts/conformance/by_design.py AT_BASELINE,
+# REQ-2167): then also on a failed test.
+#
+# The optional groups input (comma-separated test group globs, e.g. "bind,property-path") runs only
+# the matching groups, so a fix can be iterated in minutes; empty runs the whole suite. A filter
+# that matches no group fails the run.
+run-name: ${{ inputs.groups && format('Conformance (SPARQL) [{0}]', inputs.groups) || 'Conformance (SPARQL)' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit or branch to test (default: the dispatched one)"
+        required: false
+        default: ""
+      groups:
+        description: "Test group globs, comma-separated (e.g. bind,property-path); empty runs all"
+        required: false
+        default: ""
+  # verification calls it (verify-surface.yml), on the run's own commit.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conformance-sparql-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sparql:
+    name: SPARQL conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      SUITE_REPO: https://github.com/w3c/rdf-tests.git
+      # w3c/rdf-tests publishes no release tag for the suite: the commit is its version.
+      SUITE_VERSION: d01b141c65ddf8e5b615256f264111118bdb2134
+      PROVISA_PUBLIC_URL: http://provisa.conformance.test
+      PROVISA_API_PORT: "8901"
+      PROVISA_PGWIRE_PORT: "8906"
+      CONFORMANCE_PG_HOST: 127.0.0.1
+      CONFORMANCE_PG_PORT: "55432"
+      CONFORMANCE_PG_DATABASE: conformance
+      CONFORMANCE_PG_USER: postgres
+      CONFORMANCE_PG_PASSWORD: conformance
+      # pgwire's password auth (basic provider, SCRAM-SHA-256): the break-glass account the
+      # instance boots with, the job user it creates, and the session signing key. Ephemeral, on
+      # a throwaway instance: not secrets.
+      PROVISA_SUPERUSER_USERNAME: conformance-su
+      PROVISA_SUPERUSER_PASSWORD: conformance-su-password
+      CONFORMANCE_USER: conformance
+      CONFORMANCE_PASSWORD: conformance-password
+      CONFORMANCE_JWT_SECRET: conformance-jwt-signing-key-not-a-secret-0000
+    services:
+      postgres:
+        image: postgres:16.4
+        env:
+          POSTGRES_PASSWORD: conformance
+          POSTGRES_DB: conformance
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      - name: Fetch the W3C SPARQL test suite
+        run: |
+          mkdir -p "$RUNNER_TEMP/rdf-tests"
+          cd "$RUNNER_TEMP/rdf-tests"
+          git init --quiet .
+          git remote add origin "$SUITE_REPO"
+          git sparse-checkout set sparql/sparql11
+          git fetch --quiet --depth 1 origin "$SUITE_VERSION"
+          git checkout --quiet FETCH_HEAD
+          head -n 3 LICENSE.md
+          grep -q "W3C" LICENSE.md
+          find sparql/sparql11 -name manifest.ttl | wc -l
+
+      # REQ-2167 (setup that creates objects is adapted, not excluded): each test's data file,
+      # seeded into the PostgreSQL service and declared in the model
+      # (scripts/conformance/sparql_w3c_fixtures.py). The instance's fixture schema is its own to
+      # create; the seed makes it first and the instance's seeds leave what they do not own.
+      - name: Seed the datasets
+        run: |
+          .venv/bin/python scripts/conformance/sparql_w3c_fixtures.py seed \
+            --suite "$RUNNER_TEMP/rdf-tests/sparql/sparql11" \
+            --tables "$RUNNER_TEMP/sparql-tables.yaml" --relationships "$RUNNER_TEMP/sparql-relationships.yaml" \
+            --access "$RUNNER_TEMP/sparql-access.yaml" \
+            --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD"
+
+      # The instance (.github/actions/conformance-instance): fixture, model, server, job user and
+      # its token in CONFORMANCE_AUTHORIZATION.
+      - name: Start the Provisa instance
+        id: start
+        uses: ./.github/actions/conformance-instance
+        with:
+          extra-tables: ${{ runner.temp }}/sparql-tables.yaml
+          extra-relationships: ${{ runner.temp }}/sparql-relationships.yaml
+          extra-access: ${{ runner.temp }}/sparql-access.yaml
+
+      - name: Run the suite
+        timeout-minutes: 40
+        env:
+          CONFORMANCE_GROUPS: ${{ inputs.groups }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          .venv/bin/python scripts/conformance/sparql_w3c.py \
+            "$RUNNER_TEMP/rdf-tests/sparql/sparql11" "$SUITE_VERSION" \
+            "http://127.0.0.1:$PROVISA_API_PORT" \
+            "$RUNNER_TEMP/report/conformance-sparql.json" "$RUNNER_TEMP/report/conformance-sparql.md" || ran=$?
+          cat "$RUNNER_TEMP/report/conformance-sparql.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "${ran:-0}"
+
+      - name: Upload results
+        if: ${{ !cancelled() }}
+        run: cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/" || true
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: conformance-sparql
+          path: ${{ runner.temp }}/report/
+          if-no-files-found: warn
+
+      - name: Server log on failure
+        if: ${{ failure() }}
+        run: tail -n 400 "$RUNNER_TEMP/provisa/server.log" || true
+
+      - name: Stop the Provisa instance
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
+          if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi
