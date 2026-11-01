@@ -181,7 +181,7 @@ Three machines with their disks cost $4.51 an hour. The estimate assumes traffic
 
 | Stage | Machines | Hours | Cost |
 |---|---|---|---|
-| Seed job, once per seed hash | 1 | 2.0, estimated | $3.00 |
+| Seed job, for this seed hash | | | $0, the image exists |
 | Boot, engine image build, warm start, for each of two sessions | 3 | 1.5 | $6.80 |
 | Baseline: 10 runs of 10 transports at 33 min each | 3 | 5.5 | $24.80 |
 | pgwire uncached: 5 runs at 6 min each | 3 | 0.5 | $2.30 |
@@ -190,7 +190,7 @@ Three machines with their disks cost $4.51 an hour. The estimate assumes traffic
 | Kill a node, with a second node | 4 | 0.5 | $3.00 |
 | Seed image storage for one month | | | $3.00 |
 
-That comes to **about $85** and 19 session hours. Allow **$120**, which covers one rerun of the baseline if a validity rule fails. The seed time is the softest number here, because 20 million orders has not been timed on this machine type. Dropping the three internal transports from the baseline saves about $7. Features at two repetitions saves about $13.
+That comes to **about $82** and 19 session hours. Allow **$120**, which covers one rerun of the baseline if a validity rule fails. The seed image `provisa-perf-seed-28585781de16` exists for this seed hash, so the seed line is $0. If the seed hash changes, allow about $3.00 for a seed job, estimated at 2 hours on one machine, because 20 million orders has not been timed on this machine type. Dropping the three internal transports from the baseline saves about $7. Features at two repetitions saves about $13.
 
 Sources: [Cloud Billing Catalog API](https://cloud.google.com/billing/docs/reference/rest/v1/services.skus/list), Compute Engine service `6F81-5844-456A`, SKUs "C4D Instance Core running in Americas", "C4D Instance Ram running in Americas", "Spot Preemptible C4D Instance Core running in Americas", "Spot Preemptible C4D Instance Ram running in Americas", "Hyperdisk Balanced Capacity in South Carolina" and "Storage Image"; [VM instance pricing](https://cloud.google.com/compute/vm-instance-pricing); [Network pricing](https://cloud.google.com/vpc/network-pricing); machine size from `gcloud compute machine-types describe c4d-standard-32 --zone us-east1-b`.
 

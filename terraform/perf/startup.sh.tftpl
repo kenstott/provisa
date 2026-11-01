@@ -49,8 +49,8 @@ git -C "$REPO_DIR" fetch --quiet origin
 git -C "$REPO_DIR" checkout --quiet --detach "${commit}"
 (cd "$REPO_DIR" && UV_PYTHON_INSTALL_DIR=/opt/uv-python /usr/local/bin/uv sync --frozen --extra dev)
 # The operator's commands run as their own login over SSH: they read the repository and write
-# results under it.
-chmod -R a+rwX "$REPO_DIR"
+# results under it. Not the seeded stores' data: Postgres refuses a data directory others can read.
+find "$REPO_DIR" -path "$REPO_DIR/demo/named/perf/data" -prune -o -exec chmod a+rwX {} +
 
 "$REPO_DIR/demo/named/perf/bench/vm_idle_shutdown.sh" install
 

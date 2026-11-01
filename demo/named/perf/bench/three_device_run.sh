@@ -179,6 +179,15 @@ on "$BACKENDS" "cd $PERF_REPO/demo/named/perf && export PROVISA_BENCH_BIND=$PERF
   && ( { curl -sf http://$PERF_BACKENDS_IP:$AGENT_PORT/host >/dev/null || sudo nohup setsid $PY $BENCH/host_agent.py \
       --listen $PERF_BACKENDS_IP:$AGENT_PORT --fact device=backends > ~/host-agent.log 2>&1; } >/dev/null 2>&1 </dev/null & )"
 
+# The stores against what the compose states, before any unit: the seed hash says which inputs made
+# the image, the counts say the image holds what they make. Once per run id.
+SEED_COUNTS="$LOCAL_OUT-seed-counts.txt"
+if [ ! -f "$SEED_COUNTS" ]; then
+  on "$BACKENDS" "$PY $BENCH/seed_counts.py --compose $PERF_REPO/demo/named/perf/docker-compose.yml \
+    --host $PERF_BACKENDS_IP --out ~/seed-counts.json"
+  [ -n "$DRY_RUN" ] || echo "counted" > "$SEED_COUNTS"
+fi
+
 # The engine runs beside Provisa on device 1, out of the same compose file.
 if [ -n "$ENGINE_CONTAINER" ]; then
   echo "=== device 1: engine ==="

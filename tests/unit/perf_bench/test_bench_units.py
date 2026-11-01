@@ -330,3 +330,47 @@ def test_the_plan_prints_one_line_per_unit() -> None:
         "1-uncached-off",
         "1-rest-on",
     ]
+
+
+# --- what a seed image holds -------------------------------------------------------------------
+
+_SCALE = {"orders": 20_000_000, "neo4j_orders": 2_000_000, "items_per_order": 4}
+_COUNTS = {
+    "postgres_orders": 20_000_000,
+    "postgres_max_customer": 2_500_000,
+    "postgres_items": 80_000_123,
+    "clickhouse_events": 60_000_000,
+    "mongo_documents": 20_000_000,
+    "neo4j_orders": 2_000_000,
+    "neo4j_customers": 250_000,
+}
+
+
+def test_the_stated_scale_is_the_composes_defaults() -> None:
+    import seed_counts
+
+    compose = (BENCH.parent / "docker-compose.yml").read_text()
+    assert seed_counts.stated(compose) == _SCALE
+
+
+def test_a_seed_that_holds_what_is_stated_has_no_differences() -> None:
+    import seed_counts
+
+    assert seed_counts.differences(_SCALE, _COUNTS) == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected"),
+    [
+        ("postgres_orders", 1_000_000, "postgres_orders: 1000000, stated 20000000"),
+        ("neo4j_orders", 40_000, "neo4j_orders: 40000, stated 2000000"),
+        ("mongo_documents", 3, "mongo_documents: 3"),
+        ("clickhouse_events", 3, "clickhouse_events: 3"),
+        ("postgres_items", 20_000_000, "items per order: 1.000, stated 4"),
+        ("postgres_max_customer", 3_000_000, "postgres_max_customer: 3000000"),
+    ],
+)
+def test_a_seed_that_differs_is_named(field: str, value: int, expected: str) -> None:
+    import seed_counts
+
+    assert expected in "; ".join(seed_counts.differences(_SCALE, {**_COUNTS, field: value}))
