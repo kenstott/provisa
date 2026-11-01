@@ -85,6 +85,28 @@ INTERNAL_REFUSAL = re.compile(
     )
 )
 
+#: How Provisa says it refuses a call, on any engine: each is the product's own wording of a refusal
+#: that names what it refuses (FunctionRefused, MetadataFunctionRefused, XmlFunctionRefused,
+#: SubtypeOperationRefused, CatalogViewRefused, the forms that fail for a value they cannot answer,
+#: the literal-only forms, a table function that is no governed relation). An engine's own error
+#: matches none, and is no result of this kind (REQ-2171, RESULTS ARE BY ENGINE). test_conformance_
+#: function_support.py raises each and holds this to them.
+REFUSAL = re.compile(
+    r"(?:ERROR:\s+)?(?:"
+    + "|".join(
+        (
+            r"\S+\(\) has no form (?:on \S+|over the meta domain)",
+            r"\S+ needs XML, which \S+ has no SQL for",
+            r".+ on a \w+ column needs \w+'s own semantics, which",
+            r"\S+ does not read this value",
+            r"\S+ is a catalog view of the meta domain",
+            r"\w+: (?:a|the) [\w ']+ is not supported; ",
+            r"\[V006\] Table function \S+ is not a governed relation",
+        )
+    )
+    + r")"
+)
+
 #: A row type both servers have, for the functions whose first argument PostgreSQL refuses to take
 #: as anything else.
 ROW_TYPE = "pg_catalog.pg_namespace"
@@ -214,6 +236,11 @@ def statement(fn: Function, args: list[str]) -> str:
     if fn.kind == "w":
         return f"SELECT {named}({', '.join(args)}) OVER () AS v"
     return f"SELECT {named}({', '.join(args)}) AS v"
+
+
+def refused_by_name(error: str) -> bool:
+    """Whether ``error`` is Provisa's named refusal of a call, an engine's error being none."""
+    return REFUSAL.match(error) is not None
 
 
 def proves_internal(error: str) -> bool:
