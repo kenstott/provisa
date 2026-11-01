@@ -53,7 +53,7 @@ def test_duckdb_answers_as_postgresql_17_answered():
     "sql, want",
     [
         ("SELECT point_add('(1,2)'::point, '(0.1,0.2)'::point)", "(1.1,2.2)"),
-        ("SELECT npoints('((0,0),(1,0),(1,1))'::polygon)", 3),
+        ("SELECT point(1.5::double precision, 2::double precision)", "(1.5,2)"),
         ("SELECT point_eq(NULL::point, '(1,1)'::point)", None),
     ],
 )

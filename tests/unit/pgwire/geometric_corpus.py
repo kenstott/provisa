@@ -40,7 +40,8 @@ _TYPES = {"point", "lseg", "box", "path", "polygon", "circle", "line"}
 
 def _overloads(name: str) -> list[tuple[str, ...]]:
     """The argument types of each overload of ``name`` that takes a shape."""
-    return [args for args, _ in FUNCTION_OVERLOADS.get(name, ()) if _TYPES & set(args)]
+    overloads = FUNCTION_OVERLOADS.get(name, ())
+    return [args for args, _ in overloads if name == "point" or _TYPES & set(args)]
 
 
 def _literal(kind: str, text: str) -> str:

@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""PostgreSQL's geometric functions as forms (REQ-2167, REQ-2171), ported from geo_ops.c so a form
+"""PostgreSQL's point and box functions as forms (REQ-2167, REQ-2171), ported from geo_ops.c so a form
 does the same floating-point steps in the same order and writes float8out's text.
 
 A shape is its text on the engine (provisa.transpiler.pg_held_types). A form reads that text into
@@ -246,10 +246,6 @@ def _read(e: Engine, param: str, kind: str) -> str:
     return e.let.format("_q", doubles, _list(e, *high, *low))
 
 
-def _is_open(e: Engine, param: str) -> str:
-    return f"substr(ltrim({e.text.format(param)}), 1, 1) = '['"
-
-
 def _checked(e: Engine, values: str, answer: str, function: str) -> str:
     """``answer`` of ``_r``, the doubles ``values``; refused by name if one is not finite."""
     finite = e.filter.format("_r", "_x", f"NOT {e.finite.format('_x')}")
@@ -314,8 +310,6 @@ _MOVES: dict[str, tuple[Callable, bool]] = {
 }
 _POINT = ("", "")
 _BOX = ("", "")
-_CLOSED = ("(", ")")
-_LSEG = ("[", "]")
 
 
 @dataclass(frozen=True)
@@ -341,277 +335,11 @@ def _poly_center(e: Engine, name: str) -> tuple[str, str]:
     )
 
 
-def _circle_text(e: Engine, values: str, f: str) -> str:
-    x, y, r = (_float_text(e, f"_r[{i}]") for i in (1, 2, 3))
-    return _checked(e, values, f"'<(' || {x} || ',' || {y} || '),' || {r} || '>'", f)
-
-
-def _line_text(e: Engine, values: str, f: str) -> str:
-    a, b, c = (_float_text(e, f"_r[{i}]") for i in (1, 2, 3))
-    return _checked(e, values, f"'{{' || {a} || ',' || {b} || ',' || {c} || '}}'", f)
-
-
 def _slope(a: tuple[str, str], b: tuple[str, str]) -> str:
     return (
         f"CASE WHEN {_fp_eq(a[0], b[0])} THEN {_MAX} WHEN {_fp_eq(a[1], b[1])} THEN 0.0 "
         f"ELSE ({a[1]} - {b[1]}) / ({a[0]} - {b[0]}) END"
     )
-
-
-def _line_through(e: Engine, f: str) -> str:
-    """line_construct_pp of the points ``_a`` and ``_b``."""
-    p, q = _xy("_a"), _xy("_b")
-    same = f"{_fp_eq(p[0], q[0])} AND {_fp_eq(p[1], q[1])}"
-    c = "_m * " + p[0]
-    line = e.let.format(
-        "_m",
-        _slope(p, q),
-        f"CASE WHEN _m = {_MAX} THEN {_list(e, '-1.0', '0.0', p[0])} "
-        f"WHEN _m = 0 THEN {_list(e, '0.0', '-1.0', p[1])} "
-        f"ELSE {_list(e, '_m', '-1.0', f'CASE WHEN {p[1]} - {c} = 0 THEN 0.0 ELSE {p[1]} - {c} END')} END",
-    )
-    return e.raises.format(
-        same,
-        "22P02: invalid line specification: must be two distinct points",
-        _line_text(e, line, f),
-    )
-
-
-def _circles(add: Callable) -> None:
-    ax, ay, ar = "_a[1]", "_a[2]", "_a[3]"
-    bx, by, br = "_b[1]", "_b[2]", "_b[3]"
-    centers = lambda e: _dist(e, (ax, ay), (bx, by))  # noqa: E731
-    area_a, area_b = f"({ar} * {ar} * pi())", f"({br} * {br} * pi())"
-
-    def on_two(name: str, test: Callable[[Engine], str]) -> None:
-        add(f"circle_{name}", "a:circle, b:circle", 1, lambda e, _: test(e))
-
-    for name, fuzzy in _FUZZY.items():
-        on_two(name, lambda e, fuzzy=fuzzy: fuzzy(area_a, area_b))
-    on_two("ne", lambda e: f"(NOT {_fp_eq(area_a, area_b)})")
-    on_two("same", lambda e: f"{_fp_eq(ar, br)} AND {_fp_eq(ax, bx)} AND {_fp_eq(ay, by)}")
-    on_two("overlap", lambda e: _fp_le(centers(e), f"({ar} + {br})"))
-    on_two("contain", lambda e: _fp_le(centers(e), f"({ar} - {br})"))
-    on_two("contained", lambda e: _fp_le(centers(e), f"({br} - {ar})"))
-    on_two("left", lambda e: _fp_lt(f"({ax} + {ar})", f"({bx} - {br})"))
-    on_two("overleft", lambda e: _fp_le(f"({ax} + {ar})", f"({bx} + {br})"))
-    on_two("right", lambda e: _fp_gt(f"({ax} - {ar})", f"({bx} + {br})"))
-    on_two("overright", lambda e: _fp_ge(f"({ax} - {ar})", f"({bx} - {br})"))
-    on_two("below", lambda e: _fp_lt(f"({ay} + {ar})", f"({by} - {br})"))
-    on_two("overbelow", lambda e: _fp_le(f"({ay} + {ar})", f"({by} + {br})"))
-    on_two("above", lambda e: _fp_gt(f"({ay} - {ar})", f"({by} + {br})"))
-    on_two("overabove", lambda e: _fp_ge(f"({ay} - {ar})", f"({by} - {br})"))
-    q = _xy("_b")
-    out = lambda e: _dist(e, (ax, ay), q) + f" - {ar}"  # noqa: E731
-
-    def clear(e: Engine, gap: str, f: str) -> str:
-        return _double(e, e.let.format("_g", gap, "CASE WHEN _g < 0 THEN 0.0 ELSE _g END"), f)
-
-    add(
-        "circle_distance",
-        "a:circle, b:circle",
-        2,
-        lambda e, f: clear(e, f"{centers(e)} - ({ar} + {br})", f),
-    )
-    add("dist_cpoint", "a:circle, b:point", 2, lambda e, f: clear(e, out(e), f))
-    add("dist_pc", "b:point, a:circle", 2, lambda e, f: clear(e, out(e), f))
-    add(
-        "circle_contain_pt", "a:circle, b:point", 1, lambda e, _: f"{_dist(e, (ax, ay), q)} <= {ar}"
-    )
-    add("diameter", "a:circle", 2, lambda e, f: _double(e, f"{ar} * 2.0", f))
-    add(
-        "circle_of",
-        "a:point, r:double",
-        0,
-        lambda e, f: _circle_text(e, _list(e, "_a[1]", "_a[2]", e.double.format("r")), f),
-    )
-    size = lambda e: _hypot(e, q[0], q[1])  # noqa: E731
-    for verb, radius in (
-        ("add", "{r}"),
-        ("sub", "{r}"),
-        ("mul", "{r} * {s}"),
-        ("div", "{r} / {s}"),
-    ):
-
-        def moved(e: Engine, f: str, verb: str = verb, radius: str = radius) -> str:
-            center = _MOVES[verb][0]((ax, ay), q)
-            text = _circle_text(e, _list(e, *center, radius.format(r=ar, s=size(e))), f)
-            return (
-                _division(e, f"{q[0]} * {q[0]} + {q[1]} * {q[1]}", text) if verb == "div" else text
-            )
-
-        add(f"circle_{verb}_pt", "a:circle, b:point", 0, moved)
-    add(
-        "circle_box",
-        "a:circle",
-        0,
-        lambda e, f: e.let.format(
-            "_w",
-            f"{ar} / sqrt(2.0)",
-            _shape(e, _list(e, f"{ax} + _w", f"{ay} + _w", f"{ax} - _w", f"{ay} - _w"), *_BOX, f),
-        ),
-    )
-
-
-def _circle_poly(e: Engine, f: str, n: str = "n") -> str:
-    """circle_poly: ``n`` points of the circle ``_a``, as doubles."""
-    step = f"2.0 * pi() / {n}"
-    points = e.map.format(
-        e.upto.format(n),
-        "_i",
-        _list(
-            e,
-            f"_a[1] - _a[3] * cos(({step}) * _i)",
-            f"_a[2] + _a[3] * sin(({step}) * _i)",
-        ),
-    )
-    text = e.join.format(
-        e.map.format(
-            points,
-            "_c",
-            f"'(' || {_float_text(e, '_c[1]')} || ',' || {_float_text(e, '_c[2]')} || ')'",
-        ),
-        "','",
-    )
-    return e.raises.format(
-        f"abs(_a[3]) <= {_FUZZ}",
-        "0A000: cannot convert circle with radius zero to polygon",
-        e.raises.format(
-            f"{n} < 2", "22023: must request at least 2 points", f"'(' || {text} || ')'"
-        ),
-    )
-
-
-def _lists(add: Callable) -> None:
-    """lseg's comparisons, and what path and polygon answer from their points alone."""
-    p0, p1 = _xy("_a"), _xy("_a", 3)
-    q0, q1 = _xy("_b"), _xy("_b", 3)
-    same = " AND ".join(_fp_eq(f"_a[{i}]", f"_b[{i}]") for i in (1, 2, 3, 4))
-    add("lseg_eq", "a:lseg, b:lseg", 1, lambda e, _: same)
-    add("lseg_ne", "a:lseg, b:lseg", 1, lambda e, _: f"NOT ({same})")
-    for name, fuzzy in _FUZZY.items():
-        if name != "eq":
-            add(
-                f"lseg_{name}",
-                "a:lseg, b:lseg",
-                1,
-                lambda e, _, fuzzy=fuzzy: fuzzy(_dist(e, p0, p1), _dist(e, q0, q1)),
-            )
-    box = lambda e, name: _bounds(e, name)  # noqa: E731
-    count = lambda e, name: _half(e, e.size.format(name))  # noqa: E731
-    for name, test in (
-        ("left", "_x[1] < _y[3]"),
-        ("overleft", "_x[1] <= _y[1]"),
-        ("right", "_x[3] > _y[1]"),
-        ("overright", "_x[3] >= _y[3]"),
-        ("below", "_x[2] < _y[4]"),
-        ("overbelow", "_x[2] <= _y[2]"),
-        ("above", "_x[4] > _y[2]"),
-        ("overabove", "_x[4] >= _y[4]"),
-    ):
-        add(
-            f"poly_{name}",
-            "a:polygon, b:polygon",
-            1,
-            lambda e, _, test=test: e.let.format(
-                "_x", box(e, "_a"), e.let.format("_y", box(e, "_b"), test)
-            ),
-        )
-    add("poly_box", "a:polygon", 0, lambda e, f: _shape(e, box(e, "_a"), *_BOX, f))
-    add(
-        "poly_center",
-        "a:polygon",
-        0,
-        lambda e, f: _shape(e, _list(e, *_poly_center(e, "_a")), *_POINT, f),
-    )
-    add(
-        "poly_circle",
-        "a:polygon",
-        0,
-        lambda e, f: e.let.format(
-            "_c",
-            _list(e, *_poly_center(e, "_a")),
-            _circle_text(
-                e,
-                _list(
-                    e,
-                    "_c[1]",
-                    "_c[2]",
-                    _sum_by(e, "_a", _dist(e, ("_a[2 * _i + 1]", "_a[2 * _i + 2]"), _xy("_c")))
-                    + f" / {count(e, '_a')}",
-                ),
-                f,
-            ),
-        ),
-    )
-    add("poly_npoints", "a:polygon", 3, lambda e, _: count(e, "_a"))
-    add("path_npoints", "a:path", 3, lambda e, _: count(e, "_a"))
-    for name, op in (("lt", "<"), ("le", "<="), ("eq", "="), ("ge", ">="), ("gt", ">")):
-        add(
-            f"path_n_{name}",
-            "a:path, b:path",
-            1,
-            lambda e, _, op=op: f"{count(e, '_a')} {op} {count(e, '_b')}",
-        )
-    add("poly_path", "a:polygon", 0, lambda e, f: _shape(e, "_a", *_CLOSED, f))
-    add("pclose", "a:path", 0, lambda e, f: _shape(e, "_a", *_CLOSED, f))
-    add("popen", "a:path", 0, lambda e, f: _shape(e, "_a", *_LSEG, f))
-    add(
-        "path_poly",
-        "a:path",
-        0,
-        lambda e, f: e.raises.format(
-            _is_open(e, "a"),
-            "22023: open path cannot be converted to polygon",
-            _shape(e, "_a", *_CLOSED, f),
-        ),
-    )
-    add("circle_poly", "n:integer, a:circle", 0, _circle_poly)
-    add("circle_poly12", "a:circle", 0, lambda e, f: _circle_poly(e, f, "12"))
-    for verb, (move, divides) in _MOVES.items():
-
-        def moved(e: Engine, f: str, move: Callable = move, divides: bool = divides) -> str:
-            at = ("_a[2 * _i + 1]", "_a[2 * _i + 2]")
-            x, y = move(at, _xy("_b"))
-            pairs = e.upto.format(count(e, "_a"))
-            joined = e.map.format(pairs, "_i", _list(e, x, y))
-            flat = {
-                "duckdb": f"flatten({joined})",
-                "trino": f"flatten({joined})",
-                "clickhouse": f"arrayFlatten({joined})",
-            }[e.name]
-            text = _kept_open(e, flat, f)
-            b = _xy("_b")
-            return _division(e, f"{b[0]} * {b[0]} + {b[1]} * {b[1]}", text) if divides else text
-
-        add(f"path_{verb}_pt", "a:path, b:point", 0, moved)
-    add(
-        "path_add",
-        "a:path, b:path",
-        0,
-        lambda e, f: (
-            f"CASE WHEN NOT ({_is_open(e, 'a')} AND {_is_open(e, 'b')}) THEN NULL ELSE "
-            + _shape(
-                e,
-                {
-                    "duckdb": "list_concat(_a, _b)",
-                    "trino": "concat(_a, _b)",
-                    "clickhouse": "arrayConcat(_a, _b)",
-                }[e.name],
-                *_LSEG,
-                f,
-            )
-            + " END"
-        ),
-    )
-
-
-def _kept_open(e: Engine, values: str, f: str) -> str:
-    """A path's new points, open or closed as the path ``a`` was."""
-    joined = e.join.format(_points(e, "_r"), "','")
-    opens = f"CASE WHEN {_is_open(e, 'a')} THEN '[' ELSE '(' END"
-    closes = f"CASE WHEN {_is_open(e, 'a')} THEN ']' ELSE ')' END"
-    return _checked(e, values, f"{opens} || {joined} || {closes}", f)
 
 
 def _rows() -> list[Row]:
@@ -737,28 +465,35 @@ def _rows() -> list[Row]:
     add("points_box", "a:point, b:point", 0, lambda e, f: _shape(e, _box_of(e, p, q), *_BOX, f))
     add("box_center", "a:box", 0, lambda e, f: _shape(e, _list(e, *_center("_a")), *_POINT, f))
     add("lseg_center", "a:lseg", 0, lambda e, f: _shape(e, _list(e, *_center("_a")), *_POINT, f))
-    add("box_diagonal", "a:box", 0, lambda e, f: _shape(e, "_a", *_LSEG, f))
-    add("lseg_of", "a:point, b:point", 0, lambda e, f: _shape(e, _list(e, *p, *q), *_LSEG, f))
-    add("line_through", "a:point, b:point", 0, _line_through)
+    add("point_of_circle", "a:circle", 0, lambda e, f: _shape(e, _list(e, *p), *_POINT, f))
     add(
-        "box_poly",
-        "a:box",
+        "point_of",
+        "x:double, y:double",
         0,
-        lambda e, f: _shape(e, _list(e, lx, ly, lx, hy, hx, hy, hx, ly), *_CLOSED, f),
+        lambda e, f: _shape(e, _list(e, e.double.format("x"), e.double.format("y")), *_POINT, f),
+    )
+    add("poly_box", "a:polygon", 0, lambda e, f: _shape(e, _bounds(e, "_a"), *_BOX, f))
+    add(
+        "poly_center",
+        "a:polygon",
+        0,
+        lambda e, f: _shape(e, _list(e, *_poly_center(e, "_a")), *_POINT, f),
     )
     add(
-        "box_circle",
-        "a:box",
+        "circle_box",
+        "a:circle",
         0,
         lambda e, f: e.let.format(
-            "_c",
-            _list(e, *_center("_a")),
-            _circle_text(e, _list(e, "_c[1]", "_c[2]", _dist(e, _xy("_c"), p)), f),
+            "_w",
+            "_a[3] / sqrt(2.0)",
+            _shape(
+                e,
+                _list(e, "_a[1] + _w", "_a[2] + _w", "_a[1] - _w", "_a[2] - _w"),
+                *_BOX,
+                f,
+            ),
         ),
     )
-    add("point_of_circle", "a:circle", 0, lambda e, f: _shape(e, _list(e, p[0], p[1]), *_POINT, f))
-    _circles(add)
-    _lists(add)
     return rows
 
 
@@ -768,29 +503,14 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
     ("box", 1, "point"): "point_box",
     ("box", 1, "circle"): "circle_box",
     ("box", 1, "polygon"): "poly_box",
-    ("circle", 1, "box"): "box_circle",
-    ("circle", 1, "polygon"): "poly_circle",
     ("point", 1, "box"): "box_center",
     ("point", 1, "circle"): "point_of_circle",
     ("point", 1, "lseg"): "lseg_center",
     ("point", 1, "polygon"): "poly_center",
-    ("polygon", 1, "box"): "box_poly",
-    ("polygon", 1, "circle"): "circle_poly12",
-    ("polygon", 1, "path"): "path_poly",
-    ("npoints", 1, "path"): "path_npoints",
-    ("npoints", 1, "polygon"): "poly_npoints",
-    ("path", 1, "polygon"): "poly_path",
-    ("lseg", 1, "box"): "box_diagonal",
 }
 #: A name whose form is its only overload of that many arguments.
-ALIASES = {
-    ("box", "a, b"): "points_box",
-    ("lseg", "a, b"): "lseg_of",
-    ("line", "a, b"): "line_through",
-    ("circle", "a, r"): "circle_of",
-    ("polygon", "n, a"): "circle_poly",
-}
-BARE = (("box", "a"), ("circle", "a"), ("point", "a"), ("polygon", "a"), ("npoints", "a"))
+ALIASES = {("box", "a, b"): "points_box", ("point", "x, y"): "point_of"}
+BARE = (("box", "a"), ("point", "a"))
 
 
 def _form(e: Engine, row: Row) -> str:
@@ -802,7 +522,7 @@ def _form(e: Engine, row: Row) -> str:
     letters = " OR ".join(e.matches.format(e.text.format(p), _NOT_FINITE) for p, _ in shapes)
     nulls = " OR ".join(f"{p} IS NULL" for p, _ in kinds)
     sql_type = e.types[row.answers]
-    refused = e.raises.format(letters, f"0A000: {row.name} {REFUSED}", body)
+    refused = e.raises.format(letters, f"0A000: {row.name} {REFUSED}", body) if shapes else body
     return f"CASE WHEN {nulls} THEN CAST(NULL AS {sql_type}) ELSE {refused} END"
 
 
