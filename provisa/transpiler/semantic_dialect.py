@@ -84,6 +84,15 @@ def _split_part(self: Generator, expression: exp.SplitPart) -> str:
 ClickHouse.Generator.TRANSFORMS[exp.SplitPart] = _split_part
 # Its LIKE has no ESCAPE clause: a backslash escapes there already, and it is the only escape the
 # forms write.
+
+
+def _truncated(self: Generator, expression: exp.TimestampTrunc) -> str:
+    """A truncated timestamp, where ClickHouse's dateTrunc answers a date for a month or a year."""
+    unit = exp.Literal.string(expression.text("unit").lower())
+    return f"toDateTime({self.func('dateTrunc', unit, expression.this)})"
+
+
+ClickHouse.Generator.TRANSFORMS[exp.TimestampTrunc] = _truncated
 ClickHouse.Generator.TRANSFORMS[exp.Escape] = lambda self, expression: self.sql(expression.this)
 
 

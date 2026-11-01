@@ -969,7 +969,7 @@ _DATES: tuple[Macro, ...] = (
             name,
             ("part", "value"),
             {_DUCKDB: Pg("DATE_PART(part, value)"), _EVERY: Pg(pg_forms.date_part_form(name))},
-            own={_CLICKHOUSE: pg_forms.clickhouse_date_part(name)},
+            own={_CLICKHOUSE: pg_forms.clickhouse_date_part()},
         )
         for name in ("date_part", "extract")
     ),
@@ -1076,15 +1076,8 @@ _DIGESTS: tuple[Macro, ...] = (
             frozenset({"tsql"}): "LOWER(CONVERT(VARCHAR(MAX), value, 2))",
         },
     ),
-    Macro(
-        "encode_base64",
-        ("value",),
-        {
-            _DUCKDB: "to_base64(value)",
-            _TRINOS: "to_base64(value)",
-            frozenset({"clickhouse"}): "base64Encode(value)",
-        },
-    ),
+    # base64: PostgreSQL wraps a line at 76 characters, which no engine's own does.
+    Macro("encode_base64", ("value",), {_DUCKDB: "to_base64(value)"}),
     Macro("encode_escape", ("value",), {_DUCKDB: "provisa_encode_escape(value)"}),
 )
 #: The rows whose argument is a bytea: a literal there is bytea's input, not text.
@@ -1128,8 +1121,14 @@ _ROWS: tuple[Macro, ...] = (
         "substr(hex(value), n * 2 + 3)) END",
     ),
     _pg("quote_ident", "value", _QUOTED_IDENTIFIER),
-    _pg(
-        "repeat", "value, n", "CASE WHEN n > 0 THEN REPEAT(value, n) WHEN n IS NOT NULL THEN '' END"
+    Macro(
+        "repeat",
+        ("value", "n"),
+        {_EVERY: Pg("CASE WHEN n > 0 THEN REPEAT(value, n) WHEN n IS NOT NULL THEN '' END")},
+        own={
+            _TRINO: "CASE WHEN n > 0 THEN array_join(repeat(value, n), '') "
+            "WHEN n IS NOT NULL THEN '' END"
+        },
     ),
     _pg("textanycat", "a, b", "CAST(a AS TEXT) || CAST(b AS TEXT)"),
     _pg("anytextcat", "a, b", "CAST(a AS TEXT) || CAST(b AS TEXT)"),
@@ -1727,8 +1726,6 @@ def _is_null(value: exp.Expr) -> bool:
 def _first_match(node: exp.RegexpReplace, dialect: str) -> exp.Expr:
     """regexp_replace of the first match, or a refusal of what neither engine's can write."""
     value = node.this
-    if any(_is_null(part) for part in (value, node.expression, node.args["replacement"])):
-        return exp.Cast(this=exp.Null(), to=exp.DataType.build("TEXT"))
     pattern, replacement = (
         _said_text_read(node.expression),
         _said_text_read(node.args["replacement"]),
@@ -1758,12 +1755,9 @@ def _digits_kept(node: exp.Round | exp.Trunc, dialect: str) -> exp.Expr | None:
         and not (type_of(node.this) or "").startswith("decimal")
     ):
         return None
-    if not isinstance(digits, exp.Literal) and not said_type(digits):
+    scale = _constant(digits.this if isinstance(digits, exp.Cast) else digits)
+    if scale is None:
         return None
-    value = digits.this if isinstance(digits, exp.Literal) else digits.unnest().this
-    if not isinstance(value, (str, exp.Literal)):
-        return None
-    scale = int(value if isinstance(value, str) else value.this)
     if not 0 <= scale <= _MOST_SCALE:
         raise FunctionRefused(node.sql_name().lower(), dialect)
     node.set("decimals", exp.Literal.number(scale))
@@ -1780,7 +1774,8 @@ _EDGE_FORMS: dict[tuple[type[exp.Expr], bool], str] = {
         "CASE WHEN n < 0 THEN SUBSTRING(v, 1, GREATEST(LENGTH(v) + n, 0)) ELSE LEFT(v, n) END"
     ),
     (exp.Right, True): (
-        "CASE WHEN n < 0 THEN SUBSTRING(v, LEAST(1 - n, LENGTH(v) + 1)) ELSE RIGHT(v, n) END"
+        "CASE WHEN n < 0 THEN SUBSTRING(v, LEAST(1 - n, LENGTH(v) + 1)) "
+        "ELSE SUBSTRING(v, GREATEST(LENGTH(v) - n + 1, 1)) END"
     ),
 }
 
@@ -1814,7 +1809,7 @@ def _past_the_edge(node: exp.Expr, dialect: str) -> exp.Expr | None:
     else:
         count = node.expression
         constant = _constant(count)
-        safe = constant is not None and constant >= 0
+        safe = isinstance(node, exp.Left) and constant is not None and constant >= 0
         values = {"v": node.this, "n": count}
         key = (type(node), True)
     present = [value for value in values.values() if value is not None]
@@ -1831,6 +1826,15 @@ def _past_the_edge(node: exp.Expr, dialect: str) -> exp.Expr | None:
 
 #: The most digits past the point a decimal of 38 holds and leaves room for a whole part.
 _MOST_SCALE = 18
+
+
+def refuse_named(tree: exp.Expr, dialect: str) -> None:
+    """A statement a later rewrite would take for something else, read for what a replay refused:
+    in_range names no range, and pg_ranges reads it as one."""
+    for node in _unqualified(tree.copy()).walk():
+        name = engine_refusals.refused_call(node, dialect, type_of)
+        if name is not None:
+            raise FunctionRefused(name, dialect)
 
 
 def _unqualified(tree: exp.Expr) -> exp.Expr:
@@ -1869,7 +1873,10 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         raise FunctionRefused(refused.called, dialect) from refused
 
     def rewrite(node: exp.Expr) -> exp.Expr:
-        if isinstance(node, exp.RegexpReplace):
+        if isinstance(node, exp.RegexpReplace) and dialect in _FROM_THE_END:
+            parts = (node.this, node.expression, node.args["replacement"])
+            if any(_is_null(part) for part in parts):
+                return exp.Cast(this=exp.Null(), to=exp.DataType.build("TEXT"))
             flagged = node.args.get("modifiers")
             if isinstance(flagged, exp.Literal) and flagged.this == FIRST_MATCH:
                 return _first_match(node, dialect)

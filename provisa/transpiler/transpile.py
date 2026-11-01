@@ -746,7 +746,7 @@ _LIKE_ESCAPE_WRITTEN = frozenset({"duckdb", "trino"})
 
 # A source whose datetime literal takes no UTC offset: an instant is written as its UTC wall time,
 # which the connection's UTC session reads as that instant (REQ-2050, executor/drivers/mysql.py).
-_INSTANT_AS_UTC_WALL_TIME = frozenset({"clickhouse", "mysql"})
+_INSTANT_AS_UTC_WALL_TIME = frozenset({"clickhouse", "mysql", "trino", "presto", "athena"})
 
 
 def _instants_as_utc(pg_sql: str, target_dialect: str) -> str:
@@ -1217,6 +1217,8 @@ def transpile(
         )
     from provisa.transpiler.native_subtype import MARKER as _SUBTYPE_MARKER, resolve_subtypes
 
+    if target_dialect != "duckdb" and target_dialect != "postgres" and "in_range" in pg_sql.lower():
+        function_macros.refuse_named(sqlglot.parse_one(pg_sql, read="postgres"), target_dialect)
     if target_dialect != "postgres" and "range" in pg_sql.lower():
         # REQ-2171: ranges and multiranges, which only PostgreSQL has, as text and its parts.
         from provisa.transpiler import pg_ranges

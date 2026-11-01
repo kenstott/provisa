@@ -1132,15 +1132,12 @@ _DATE_PARTS = ("year", "quarter", "month", "day", "hour", "minute")
 _INSTANT = "CAST(value AS TIMESTAMP)"
 
 
-def _date_part_of(called: str, extras: str) -> str:
+def _date_part_of(extras: str, otherwise: str) -> str:
     named = " ".join(
         f"WHEN LOWER(part) = '{name}' THEN EXTRACT({name.upper()} FROM {_INSTANT})"
         for name in _DATE_PARTS
     )
-    return (
-        f"CASE WHEN part IS NULL OR value IS NULL THEN NULL {named} {extras} "
-        f"ELSE {not_served(called, 'BIGINT')} END"
-    )
+    return f"CASE WHEN part IS NULL OR value IS NULL THEN NULL {named} {extras} {otherwise} END"
 
 
 def date_part_form(called: str) -> str:
@@ -1148,15 +1145,17 @@ def date_part_form(called: str) -> str:
         f"WHEN LOWER(part) = 'dow' THEN EXTRACT(DOW FROM {_INSTANT}) % 7 "
         f"WHEN LOWER(part) = 'doy' THEN EXTRACT(DOY FROM {_INSTANT})"
     )
-    return _date_part_of(called, extras)
+    return _date_part_of(extras, f"ELSE {not_served(called, 'BIGINT')}")
 
 
-def clickhouse_date_part(called: str) -> str:
+#: A part that is no constant is refused by name (engine_refusals), as a refusal here would be
+#: evaluated for a part that is one.
+def clickhouse_date_part() -> str:
     extras = (
         f"WHEN LOWER(part) = 'dow' THEN toDayOfWeek({_INSTANT}) % 7 "
         f"WHEN LOWER(part) = 'doy' THEN toDayOfYear({_INSTANT})"
     )
-    return _date_part_of(called, extras)
+    return _date_part_of(extras, "")
 
 
 DATE_AND_TIME = "CAST(CAST(d AS TEXT) || ' ' || CAST(t AS TEXT) AS TIMESTAMP)"

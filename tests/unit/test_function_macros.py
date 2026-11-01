@@ -369,6 +369,19 @@ def test_a_literal_keeps_what_its_cast_says(sql: str, want: str):
     assert want in transpile(sql, "trino")
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT date_part('century'::text, x::timestamp) AS v FROM t",
+        "SELECT ln(x) AS v FROM t",
+        'SELECT pg_catalog."in_range"(a::time, b::time, c::interval, true, false) AS v FROM t',
+    ],
+)
+def test_clickhouse_refuses_what_it_cannot_evaluate_or_answers_differently(sql: str):
+    with pytest.raises(FunctionRefused):
+        transpile(sql, "clickhouse")
+
+
 def test_a_call_named_for_the_engines_own_spelling_is_written_so():
     assert transpile("SELECT cbrt(x) AS v FROM t", "clickhouse") == "SELECT cbrt(x) AS v FROM t"
 

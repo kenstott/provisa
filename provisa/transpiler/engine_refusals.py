@@ -105,6 +105,7 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "in_range": _CLOCKS,
     "date_part": frozenset({"time"}),
     "extract": frozenset({"time"}),
+    "encode": frozenset({"text"}),  # a format no literal says
     "bit_length": _BYTES,
     "octet_length": _BYTES,
     "position": _BYTES,
@@ -146,6 +147,7 @@ _MOST_ARGUMENTS = {
 }
 #: A ClickHouse pattern of nothing is its error; PostgreSQL's answer is the value.
 _NOT_EMPTY = frozenset({"replace", "trim", "btrim", "ltrim", "rtrim"})
+PLAIN_PARTS = frozenset({"year", "quarter", "month", "day", "hour", "minute", "dow", "doy"})
 #: The formats whose every element a dialect's own format writes as PostgreSQL's does.
 _PLAIN_FORMAT = re.compile(r"(?:%[YmdHiMSs]|[-/: T])+")
 #: sqlglot's name of a call, and the name a statement gave it.
@@ -165,6 +167,12 @@ _ON: dict[str, dict[str, frozenset[str] | None]] = {
     _C: {
         "gcd": _NUMERIC,
         "lcm": _NUMERIC,
+        # Its double precision differs from libm's past the tenth digit.
+        "exp": _ANY,
+        "ln": _ANY,
+        "tanh": _ANY,
+        "dexp": _ANY,
+        "dlog1": _ANY,
         "to_timestamp": _NUMBERS,
         "unix_to_time": _NUMBERS,
         "length": _BYTES,
@@ -196,12 +204,30 @@ def _called(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
 def _is_empty(value: exp.Expr) -> bool:
     value = value.unnest()
     literal = value.this if isinstance(value, exp.Cast) else value
-    return isinstance(literal, exp.Literal) and literal.is_string and literal.this == ""
+    return isinstance(literal, exp.Null) or (
+        isinstance(literal, exp.Literal) and literal.is_string and literal.this == ""
+    )
 
 
-def _plain_format(node: exp.TimeToStr) -> bool:
+def _plain_format(node: exp.TimeToStr, engine: str) -> bool:
     written = node.args.get("format")
-    return isinstance(written, exp.Literal) and _PLAIN_FORMAT.fullmatch(written.this) is not None
+    if not isinstance(written, exp.Literal):
+        return False
+    if engine == _C and "%M" in written.this:  # a month's name there, and a minute here
+        return False
+    return _PLAIN_FORMAT.fullmatch(written.this) is not None
+
+
+def _plain_part(part: exp.Expr, engine: str) -> bool:
+    """Whether a part is a NULL or one a form reads; ClickHouse evaluates a refusal of a constant,
+    so what it cannot read is refused here."""
+    part = part.unnest()
+    literal = part.this if isinstance(part, exp.Cast) else part
+    if isinstance(literal, exp.Null):
+        return True
+    if isinstance(literal, exp.Literal):
+        return literal.this.lower() in PLAIN_PARTS
+    return engine != _C
 
 
 def refused_call(
@@ -218,14 +244,15 @@ def refused_call(
     said = {type_name.split("(")[0] for type_name in map(said_type, args) if type_name}
     if engine == _C and name in _NOT_EMPTY and any(_is_empty(arg) for arg in args[1:]):
         return name
-    if isinstance(node, exp.TimeToStr) and not _plain_format(node):
+    if isinstance(node, exp.TimeToStr) and not _plain_format(node, engine):
         return "to_char"
-    table = _ON[engine]
-    types = table[name] if name in table else _ON_BOTH.get(name, frozenset())
+    if name in ("date_part", "extract") and not _plain_part(args[0], engine):
+        return name
+    types = [table[name] for table in (_ON[engine], _ON_BOTH) if name in table]
     if (
         said & _NOT_HELD[engine]
-        or types is None
-        or said & types
+        or None in types
+        or any(said & of for of in types if of is not None)
         or len(args) > _MOST_ARGUMENTS.get(name, len(args))
     ):
         return _NAMED.get(name, name)
