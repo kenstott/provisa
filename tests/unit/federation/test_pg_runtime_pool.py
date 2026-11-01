@@ -90,6 +90,8 @@ def fake_psycopg2(monkeypatch):
     import provisa.federation.pg_runtime as pg_runtime_mod
 
     monkeypatch.setattr(pg_runtime_mod.psycopg2, "connect", _connect)
+    # A fake cursor is no psycopg2 cursor, which is all register_type accepts.
+    monkeypatch.setattr(pg_runtime_mod, "_read_as_postgresql_writes", lambda _cur: None)
     monkeypatch.setattr(pg_runtime_mod.psycopg2.pool.AbstractConnectionPool, "_connect", None)
     # psycopg2.pool.AbstractConnectionPool._connect calls the real psycopg2.connect internally
     # (module-level, not through our patched attribute lookup on psycopg2), so patch it directly
