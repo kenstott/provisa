@@ -104,7 +104,7 @@ def _state(
 ) -> SimpleNamespace:
     """An org's state as the routes are published from it: the registry holds ``registered``."""
 
-    async def _fetch_tables(_conn):
+    async def _fetch_tables(_conn, **_kw):
         return registered
 
     async def _source_rows(_conn):
