@@ -92343,24 +92343,26 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     has no direct attach ("the no-drivers have a shot at direct attach, but jdbc does not"), so the attach
     setting does not appear for one, and its rows land per argument set or as a replica. A customer''s jar
     is the customer''s code in Provisa''s JVM, so this option is for self-hosted installs only; on cloud
-    it is refused by name.
+    it is refused by name. Given a Generic SQL source with a jdbc: URL, a driver jar and a class name on
+    a self-hosted install When an admin presses Detect Then the checks run through that driver in the source''s
+    SQL dialect, and no attach setting is offered When a query reads a table Then the read goes through
+    the driver and the rows land Given the same source on cloud When it is saved Then it is refused by name
+    (Amended 2026-10-29, THE ONLY FILE URL:) Maintainer 2026-11-01, on the customer scratch files area:
+    "that''s the only file:// you are allowed". On cloud a Generic SQL URL that names a file must name one
+    in the org''s own files area, written with the {files} or {org} token of REQ-1997, and a path that resolves
+    outside the org''s folder is refused, naming the path, by the same check REQ-1997 applies. No other
+    file URL is allowed on cloud.
 
 
-    Given a Generic SQL source with a jdbc: URL, a driver jar and a class name on a self-hosted install
+    Given a Generic SQL source on cloud
 
-    When an admin presses Detect
+    When its URL is a SQLite file under {files}
 
-    Then the checks run through that driver in the source''s SQL dialect, and no attach setting is offered
+    Then the source reads that file
 
-    When a query reads a table
+    When its URL names a file anywhere else, or a path that resolves outside the org''s folder
 
-    Then the read goes through the driver and the rows land
-
-    Given the same source on cloud
-
-    When it is saved
-
-    Then it is refused by name'
+    Then it is refused, naming the path'
   use_case: 'A team runs a database Provisa has no source type for. An admin registers it with its URL
     and the SQL dialect closest to it, presses Detect, and gets whatever it can do: live attach and pushdown
     where it passes, and otherwise a governed source read by key.'
