@@ -1880,8 +1880,6 @@ async def govern_statement(
         state.schema_version,
         _bypass_guard,
     )
-    from provisa.security.rights import IMPLICIT_DOMAINS
-
     _table_functions = (
         CLIENT_TABLE_FUNCTIONS if current_catalog_request.get() is not None else frozenset()
     )
@@ -1895,8 +1893,6 @@ async def govern_statement(
             bypass_relationship_guard=_bypass_guard,
             bypass_uncovered_relationships=True,
             table_functions=_table_functions,
-            # REQ-127: every role lists what meta's rights show it, and its row scope holds.
-            also_reaches=IMPLICIT_DOMAINS if _table_functions else frozenset(),
         )
 
         _role_domain_access = role["domain_access"]

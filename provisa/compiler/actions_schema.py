@@ -149,10 +149,7 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
     held_by: dict[tuple[str, str], str] = {}
 
     role_id = si.role["id"]
-    from provisa.security.rights import reaches_all_domains
-
-    accessible = set(si.role["domain_access"])
-    all_access = reaches_all_domains(si.role["domain_access"])
+    from provisa.security.rights import acts_in_domain
 
     def _gql_scalar(type_str: str):
         if type_str == _IR_JSON:
@@ -200,7 +197,7 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             # REQ-1531: a command sits in a domain, and a role is shown the commands of the
             # domains it reaches. One that names no domain — saving it is refused; a stored row
             # can still carry none — is in no domain any role reaches, so no role is shown it.
-            if not domain_id or (not all_access and domain_id not in accessible):
+            if not domain_id or not acts_in_domain(si.role["domain_access"], domain_id):
                 continue
             # A per-domain schema offers only the commands of the domains it was asked for.
             if not offers_domain(si, domain_id):

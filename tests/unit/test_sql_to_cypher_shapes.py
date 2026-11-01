@@ -96,7 +96,11 @@ def _cypher_rows(con, cypher: str, lm: CypherLabelMap, ctx) -> list[str]:
 @pytest.fixture
 def model():
     schema, ctx = _build_schema_and_ctx(relationships=RELATIONSHIPS)
-    return schema, ctx, CypherLabelMap.from_schema(ctx, domain_access=["*"])
+    return (
+        schema,
+        ctx,
+        CypherLabelMap.from_schema(ctx, domain_access=["*", "meta", "ontology", "ops"]),
+    )
 
 
 @pytest.fixture
@@ -413,7 +417,11 @@ def meta():
             for name, cols in _META_COLUMNS.items()
         },
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
+        role={
+            "id": "admin",
+            "capabilities": ["query_development"],
+            "domain_access": ["*", "meta", "ontology", "ops"],
+        },
         domains=[
             {"id": "meta", "description": "Meta"},
             {"id": "ontology", "description": "Ontology", "graphql_alias": "ont"},
@@ -453,7 +461,11 @@ def meta():
             f"CREATE VIEW provisa_admin.public.{_VIEW_OF.get(name, f'{name}_meta')} AS "
             f"SELECT * FROM memory.{_SEMANTIC[name]}"
         )
-    return (generate_schema(si), ctx, CypherLabelMap.from_schema(ctx, domain_access=["*"])), c
+    return (
+        generate_schema(si),
+        ctx,
+        CypherLabelMap.from_schema(ctx, domain_access=["*", "meta", "ontology", "ops"]),
+    ), c
 
 
 _KEPT = 'relType: { in: ["KIND_OF", "PART_OF"] }'

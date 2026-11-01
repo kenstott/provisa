@@ -36,6 +36,7 @@ META_DOMAIN_ID = "meta"
 # REQ-2163: the ontology system schema -- the glossary's definitions (and the Class tables
 # generated from them), as meta holds the model's structure.
 ONTOLOGY_DOMAIN_ID = "ontology"
+OPS_DOMAIN_ID = "ops"
 GOVERNANCE_META_COLUMNS: frozenset[str] = frozenset(
     {
         "visible_to",
@@ -112,6 +113,9 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # AI generation endpoints that persist. A curator is granted both; granting RW alone leaves the
     # surface unreachable, because the page itself is gated on READ.
     GLOSSARY_READ = "glossary_read"
+    # REQ-1132: read the meta domain, the model's structure. Held by viewer, so every role built on
+    # viewer has it; a role with no viewer ancestor does not.
+    CATALOG_READ = "catalog_read"
     GLOSSARY_RW = "glossary_rw"
     # REQ-1592: curate ANY term in the org, whatever its domains and whoever authored it. The
     # override the two narrower rules need to stay safe: an enterprise-wide term (domains ``["*"]``)
@@ -141,6 +145,46 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # beside the domain ownership the edit needs anyway. Exists only when the platform declares
     # regions; region is never an access dimension.
     DATA_RESIDENCY = "data_residency"
+
+
+# REQ-1132: the system domains and the capability that holds each, THE list every other reads.
+# Access to one is a capability, inherited as any capability is; inheritance.flatten_role_dicts adds
+# the domains a role's capabilities open to its domain_access. A role's stored domain_access names
+# data domains only, and "*" means every data domain.
+SYSTEM_DOMAIN_CAPABILITIES: dict[str, str] = {
+    META_DOMAIN_ID: Capability.CATALOG_READ.value,
+    ONTOLOGY_DOMAIN_ID: Capability.GLOSSARY_READ.value,
+    OPS_DOMAIN_ID: Capability.OBSERVABILITY.value,
+}
+SYSTEM_DOMAINS: frozenset[str] = frozenset(SYSTEM_DOMAIN_CAPABILITIES)
+# The system domains a statement may join to with no registered relationship (REQ-1132, REQ-2163).
+# Ops rows are data about the org's activity: a join to them is a relationship like any other.
+TRAVERSABLE_DOMAINS: frozenset[str] = SYSTEM_DOMAINS - {OPS_DOMAIN_ID}
+
+
+class MissingDomainCapability(PermissionError):
+    """A read of a system domain by a role without its capability, refused naming the capability on
+    every surface: to that role the table is in no schema, which would otherwise read as unknown."""
+
+    def __init__(self, role_id: str, domain_id: str) -> None:
+        self.role_id = role_id
+        self.domain_id = domain_id
+        self.capability = SYSTEM_DOMAIN_CAPABILITIES[domain_id]
+        super().__init__(missing_capability_message(role_id, domain_id))
+
+
+def missing_capability_message(role_id: str, domain_id: str) -> str:
+    capability = SYSTEM_DOMAIN_CAPABILITIES[domain_id]
+    return (
+        f"Role {role_id!r} lacks the {capability!r} capability, which reads the {domain_id} domain"
+    )
+
+
+def normalized_reach(domains: Iterable[str]) -> list[str]:
+    """A flattened ``domain_access``: ``"*"`` stands for every data domain, so it stands alone
+    among them, and the system domains a role holds stay beside it."""
+    listed = set(domains)
+    return sorted({ALL_DOMAINS} | (listed & SYSTEM_DOMAINS) if ALL_DOMAINS in listed else listed)
 
 
 # REQ-1297: the four system role ids are the whole role vocabulary — every org schema seeds
@@ -305,7 +349,7 @@ ALL_DOMAINS = "*"
 
 
 def reaches_all_domains(domain_access: Iterable[str] | None) -> bool:  # REQ-039, REQ-471, REQ-1530
-    """Whether a ROLE's ``domain_access`` reaches every domain — THE one place that is decided.
+    """Whether a ROLE's ``domain_access`` reaches every DATA domain — THE one place that is decided.
 
     A role reaches the domains it lists and no others. ``"*"`` is the only way to say all: an
     EMPTY list is no domains, never "unrestricted". (A column's or action's ``visible_to=[]`` is a
@@ -328,22 +372,37 @@ def reaches_all_domains(domain_access: Iterable[str] | None) -> bool:  # REQ-039
     return domain_policy.single_domain() or ALL_DOMAINS in domain_access
 
 
-# The catalog every role reaches implicitly, whatever its list: the schema build includes its tables
-# for traversal from any domain (REQ-1132), and its commands (the APOC set, REQ-2168) are admitted
-# by their grants alone. Data governance does not read it: direct SQL over the catalog still needs
-# it listed (reaches_domain).
-IMPLICIT_DOMAINS: frozenset[str] = frozenset({META_DOMAIN_ID})
-
-
 def reaches_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
-    """Whether a role's ``domain_access`` reaches ``domain_id`` (see :func:`reaches_all_domains`)."""
+    """Whether a role's ``domain_access`` reaches ``domain_id`` (see :func:`reaches_all_domains`).
+
+    ``"*"`` is every DATA domain: a system domain is reached only when it is listed, which
+    ``inheritance.flatten_role_dicts`` does for the role holding its capability (REQ-1132)."""
+    if domain_id in SYSTEM_DOMAIN_CAPABILITIES:
+        return domain_id in (domain_access or ())
     return reaches_all_domains(domain_access) or domain_id in (domain_access or ())
 
 
-def reaches_implicitly(domain_access: Iterable[str] | None, domain_id: str) -> bool:
-    """:func:`reaches_domain`, or ``domain_id`` is one every role reaches (IMPLICIT_DOMAINS): the
-    reach the schema build and command admission read."""
-    return domain_id in IMPLICIT_DOMAINS or reaches_domain(domain_access, domain_id)
+def lists_data_domain(domain_access: Iterable[str] | None) -> bool:
+    """Whether ``domain_access`` names a data domain or ``"*"``: what a system domain added for its
+    capability does not make a role that lists no domain a role with a data surface."""
+    return bool(set(domain_access or ()) - SYSTEM_DOMAINS)
+
+
+def acts_in_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
+    """Whether a role may WRITE or run a command in ``domain_id``: it reaches it, and a system
+    domain only as a role reaching every domain. A capability opens a system domain to read; it
+    brings no write and no command (REQ-1132)."""
+    if not reaches_domain(domain_access, domain_id):
+        return False
+    return domain_id not in SYSTEM_DOMAINS or reaches_all_domains(domain_access)
+
+
+def reaches_command_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
+    """Command admission's reach: :func:`acts_in_domain`, or meta for a role holding catalog_read,
+    whose commands (the APOC set, REQ-2168) read the catalog and are admitted by their grants."""
+    if domain_id == META_DOMAIN_ID:
+        return reaches_domain(domain_access, domain_id)
+    return acts_in_domain(domain_access, domain_id)
 
 
 # --- which columns a role is served (REQ-039, REQ-1133, REQ-1959) --------------------------------
@@ -359,7 +418,7 @@ def column_served(role: dict, domain_id: str | None, column: dict, *, reaches: b
     schema build, SQL governance, the direct-read (V001) check and the catalog's row scope.
 
     ``reaches``: whether the role reaches the table's domain, as the caller decides it (a domain
-    it lists, ``*``, or the catalog domain every role may traverse).
+    it lists, ``*``, or a system domain whose capability it holds).
 
     The column's own grant comes first, and it is the only thing that says who: ``visible_to``
     names the role (a grant to an ancestor is folded down to its descendants when roles load,
@@ -445,7 +504,13 @@ def role_domain_problem(  # REQ-039, REQ-1530
     The one exception is a role whose capabilities are platform rights and nothing else
     (:func:`is_control_plane_definition`): it holds no data right, so it lists no domain.
     """
-    if list(domain_access or ()):
+    listed = set(domain_access or ())
+    if listed & SYSTEM_DOMAINS:
+        return (
+            f"Role {role_id!r} lists {sorted(listed & SYSTEM_DOMAINS)}: a system domain is held as "
+            "a capability, not listed"
+        )
+    if listed:
         return None
     if is_control_plane_definition(capabilities):
         return None
@@ -679,8 +744,9 @@ def compute_meta_row_scope(
     """REQ-1132: the set of DESCRIBED table ids whose meta rows a role may see, or ``None`` when
     NO row filter applies (all rows visible).
 
-    ``None`` (unfiltered) is returned for the tier that sees the whole catalog: a role holding
-    the meta DOMAIN GRANT or ``*``. An empty ``domain_access`` is no domains, so such a role sees
+    ``None`` (unfiltered) is returned for the tier that sees the whole catalog: a role reaching
+    every data domain. Holding catalog_read, as every role built on viewer does, opens the domain
+    and not its rows. An empty ``domain_access`` is no domains, so such a role sees
     no meta rows at all; the role itself is required — a missing role is not a tier. Every other
     (DEFAULT-tier) role is confined to its own tables — those it is served at least one column of
     (:func:`serves_table`) — PLUS 1-hop neighbours over user-defined/semantic relationships (the ``relationships``
@@ -691,8 +757,8 @@ def compute_meta_row_scope(
     target table and contribute no neighbour.
     """
     accessible = cast("list[str]", role["domain_access"])
-    if reaches_all_domains(accessible) or META_DOMAIN_ID in accessible:
-        return None  # meta domain grant / "*" → the whole catalog
+    if reaches_all_domains(accessible):
+        return None  # "*" → the whole catalog
     # An EMPTY list falls through: no domain is directly reachable, so no meta row is either.
 
     # Its own tables: exactly those it is served a column of, by the one column rule — in a
