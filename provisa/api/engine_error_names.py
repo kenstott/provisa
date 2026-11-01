@@ -17,7 +17,9 @@ physical SQL. A physical address is source configuration, and the caller wrote m
 middleware, pgwire, Flight, MCP, gRPC) -- writes each as the model names it and drops the excerpt.
 Where a source lives is source configuration too: httpx's own wording of a failed request, and
 any internal address in a message, are written without it (:func:`no_internal_address`), whichever
-path brought the text here. Logs, traces and the audit record keep the physical names: they are
+path brought the text here. An org's own schemas are the platform's, and the engine's "Did you
+mean" quotes them, a demo template's among them: a client is told the table, never the schema
+(:func:`no_internal_schema`). Logs, traces and the audit record keep the physical names: they are
 the operator's.
 """
 
@@ -28,6 +30,9 @@ from __future__ import annotations
 import ipaddress
 import re
 from urllib.parse import urlsplit
+
+from provisa.core.environments import SCHEMA_SUFFIXES
+from provisa.core.org_ids import SANDBOX_PREFIX
 
 #: An engine's excerpt of the statement it ran: ``LINE n: ...`` and the caret line under it.
 _EXCERPT = re.compile(r"\n+LINE \d+:[^\n]*(?:\n[ \t]*\^)?")
@@ -43,17 +48,22 @@ _HTTPX_STATUS = re.compile(
 _URL = re.compile(r"https?://[^\s'\"<>()\[\]]+", re.IGNORECASE)
 _INTERNAL_ADDRESS = "[internal address]"
 _INTERNAL_DOMAINS = (".internal", ".local", ".localdomain")
+_INTERNAL_SCHEMA = "[internal schema]"
+#: What environments.org_schema adds to an org's schema, and naming.py to its catalogs.
+_SCHEMA_TAIL = (
+    r"(?:_(?:env|rg)_\w+|__\w+|" + "|".join(re.escape(s) for s in SCHEMA_SUFFIXES if s) + r")?"
+)
 
 
 def client_text(text: str, org_id: str | None = None) -> str:
-    """``text`` as a client is told it: in the model's names (:func:`model_named`), then
-    redacted. ``org_id`` is the org the request acted in; when the transport does not say, the
-    org bound now."""
+    """``text`` as a client is told it: in the model's names (:func:`model_named`), without an
+    internal schema (:func:`no_internal_schema`), then redacted. ``org_id`` is the org the request
+    acted in; when the transport does not say, the org bound now."""
     from provisa.core.request_context import current_org
     from provisa.security.redaction import redact
 
     org = org_id if org_id is not None else current_org.get()
-    return redact(model_named(no_internal_address(text), org))
+    return redact(no_internal_schema(model_named(no_internal_address(text), org), org))
 
 
 def no_internal_address(text: str) -> str:
@@ -78,6 +88,19 @@ def _is_internal(url: str) -> bool:
         return not ipaddress.ip_address(host).is_global
     except ValueError:
         return "." not in host or host.endswith(_INTERNAL_DOMAINS)
+
+
+def no_internal_schema(text: str, org_id: str | None) -> str:
+    """``text`` without the schemas of the sandbox tier's orgs, whose prefix no other org may take
+    (a statement in a sandbox can be told of its template's), nor of ``org_id``, in any of their
+    environments, regions and stores: a table's qualifier goes and the table stays. Another word
+    beginning ``org_`` is a name in the model and stays."""
+    owners = [re.escape(SANDBOX_PREFIX) + "[a-z0-9]*"]
+    if org_id is not None:
+        owners.append(re.escape(org_id))
+    schema = rf"org_(?:{'|'.join(owners)}){_SCHEMA_TAIL}(?!\w)"
+    unqualified = re.sub(rf'(\\?"){schema}\1\.|(?<!\w){schema}\.', "", text)
+    return re.sub(rf"(?<!\w){schema}", _INTERNAL_SCHEMA, unqualified)
 
 
 def model_named(text: str, org_id: str | None) -> str:
