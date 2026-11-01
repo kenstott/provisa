@@ -24,6 +24,7 @@ from __future__ import annotations
 import ast
 import copy
 from collections import defaultdict
+from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -36,7 +37,7 @@ from provisa.audit.provenance import enforced_for_request
 from provisa.compiler import stage2
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.compiler.rls import RLSContext
-from provisa.compiler.stage2 import apply_governance
+from provisa.compiler.stage2 import GovernanceContext, apply_governance
 from provisa.fakes.measurement import MEASURING
 from provisa.federation import registry_view
 from provisa.pgwire import governed_plan
@@ -261,10 +262,84 @@ def test_governing_a_statement_leaves_the_shared_context_as_it_was():
     state = _state()
     state.rls_contexts["analyst"] = RLSContext(rules={1: "region = 'east'"})
     shared = _governance(state)
-    before = copy.deepcopy(vars(shared))
+    before = dict(vars(shared))  # its fields are read-only: this holds them as they are now
     apply_governance("SELECT region FROM public.orders", _governance(state))
     after = vars(_governance(state))
     assert {k: after[k] for k in before} == before
+
+
+def _populated_state() -> RoleState:
+    state = _state()
+    state.rls_contexts["analyst"] = RLSContext(rules={1: "region = 'east'"})
+    state.tables[0]["write_grants"] = [
+        {"role": "analyst", "operation": "insert", "columns": ["id"], "presets": []}
+    ]
+    return state
+
+
+def _writable_in(value: object) -> list[object]:
+    """Every dict, set and list reachable through ``value``'s containers."""
+    if isinstance(value, (dict, set, list)):
+        return [value]
+    if isinstance(value, Mapping):
+        return [w for v in value.values() for w in _writable_in(v)]
+    if isinstance(value, tuple):
+        return [w for v in value for w in _writable_in(v)]
+    return []
+
+
+def test_nothing_a_read_context_holds_can_be_written_through():
+    governance = _governance(_populated_state())
+    assert governance.rls_rules and governance.write_grants[1] and governance.all_columns[1]
+    assert {k: _writable_in(v) for k, v in vars(governance).items() if _writable_in(v)} == {}
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda g: g.rls_rules.__setitem__(1, "TRUE"),
+        lambda g: g.rls_rules.pop(1),
+        lambda g: g.rls_rules.clear(),
+        lambda g: g.visible_columns.__setitem__(1, None),
+        lambda g: g.table_map.__setitem__("public.other", 1),
+        lambda g: g.masking_rules.__setitem__((1, "region"), None),
+        lambda g: g.table_ceilings.update({1: 1}),
+        lambda g: g.write_grants.__setitem__(2, {}),
+        lambda g: g.write_grants[1].__setitem__("delete", {}),
+        lambda g: g.write_grants[1]["insert"].__setitem__("rows", "TRUE"),
+        lambda g: g.write_grants[1]["insert"]["columns"].append("region"),
+        lambda g: g.all_columns[1].append(("secret", "varchar")),
+        lambda g: g.join_keys.add((1, 1, "id", "id")),
+    ],
+)
+def test_writing_through_a_read_context_fails_and_the_shared_one_is_as_it_was(mutate):
+    """A statement's copy shares the kept context's contents: a write there would reach every
+    later request of the role. It is an error at the write, not a silent change of rights."""
+    state = _populated_state()
+    before = dict(vars(_governance(state)))
+    with pytest.raises((TypeError, AttributeError)):
+        mutate(_governance(state))
+    assert vars(_governance(state)) == before
+
+
+def test_a_context_read_while_a_rebuild_runs_is_read_only_too(monkeypatch):
+    state = _populated_state()
+    monkeypatch.setattr(governed_plan, "_rebuild_in_progress", lambda: True)
+    with pytest.raises(TypeError):
+        _governance(state).rls_rules[1] = "TRUE"
+
+
+def test_a_statement_still_assigns_its_own_fields_on_its_copy():
+    governance = _governance(_populated_state())
+    governance.embedding_dims = {"m": 3}
+    assert governance.embedding_dims == {"m": 3}
+
+
+def test_a_context_built_for_one_action_or_region_stays_the_callers_to_fill():
+    """action_governance and region_rows build a GovernanceContext of their own, for one read."""
+    governance = GovernanceContext()
+    governance.rls_rules[1] = "TRUE"
+    assert governance.rls_rules == {1: "TRUE"}
 
 
 def test_the_graph_surfaces_check_and_the_pipeline_read_one_context(builds, monkeypatch):
@@ -318,6 +393,51 @@ def test_the_audit_summary_shares_the_context_and_reads_a_change(builds):
     assert not enforced_for_request(state, "analyst", ctx)((1,))["table_caps"]
 
 
+def _context_builders(source: str) -> list[ast.AST]:
+    """Each reference to ``build_governance_context`` in ``source``, called or passed on: by its
+    name, as a module's attribute, or by the alias an import gives it."""
+    tree = ast.parse(source)
+    names = {"build_governance_context"} | {
+        a.asname
+        for n in ast.walk(tree)
+        if isinstance(n, ast.ImportFrom)
+        for a in n.names
+        if a.name == "build_governance_context" and a.asname
+    }
+    return [
+        n
+        for n in ast.walk(tree)
+        if (isinstance(n, ast.Name) and n.id in names)
+        or (isinstance(n, ast.Attribute) and n.attr == "build_governance_context")
+    ]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "build_governance_context(a)",
+        "stage2.build_governance_context(a)",
+        "provisa.compiler.stage2.build_governance_context(a)",
+        "from provisa.compiler.stage2 import build_governance_context as build\nbuild(a)",
+        "build = stage2.build_governance_context\nbuild(a)",
+        "run(stage2.build_governance_context)",
+    ],
+)
+def test_the_scan_finds_the_builder_however_it_is_named(source):
+    assert _context_builders(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "role_governance(a)",
+        "from provisa.compiler.stage2 import GovernanceContext as build\nbuild(a)",
+    ],
+)
+def test_the_scan_leaves_everything_else(source):
+    assert not _context_builders(source)
+
+
 @pytest.mark.parametrize("path", sorted(str(p) for p in Path("provisa").rglob("*.py")))
 def test_no_module_builds_a_context_of_its_own(path):
     """REQ-1911: one context per role and model version. Every surface reads role_governance; the
@@ -327,13 +447,9 @@ def test_no_module_builds_a_context_of_its_own(path):
         str(Path(governed_plan.__file__).relative_to(Path.cwd())),
     ):
         return
-    tree = ast.parse(Path(path).read_text())
-    calls = [
-        n
-        for n in ast.walk(tree)
-        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "build_governance_context"
-    ]
-    assert not calls, f"{path} builds a governance context of its own"
+    assert not _context_builders(Path(path).read_text()), (
+        f"{path} builds a governance context of its own"
+    )
 
 
 # -- a SQL catalog's views ------------------------------------------------------------------------
