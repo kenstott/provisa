@@ -17,21 +17,14 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-# Options a later job serves. Answered 501, never ignored: a read that ignores $filter answers
-# rows the client asked not to see, as though it had applied it.
-NOT_IMPLEMENTED = frozenset(
-    {"$filter", "$orderby", "$expand", "$search", "$apply", "$compute", "$levels"}
-)
+from provisa.api.odata.errors import QueryOptionRefused
+from provisa.api.odata.expression import Node, OrderKey, parse_filter, parse_orderby
+
+# Options a later job serves. Answered 501, never ignored: a read that ignores $expand answers
+# rows without what the client asked to see, as though it had applied it.
+NOT_IMPLEMENTED = frozenset({"$expand", "$search", "$apply", "$compute", "$levels"})
+_SERVED = ("$select", "$top", "$skip", "$count", "$format", "$filter", "$orderby")
 _JSON_FORMATS = ("json", "application/json")
-
-
-class QueryOptionRefused(ValueError):
-    """A system query option the service does not take; ``status`` is the answer."""
-
-    def __init__(self, status: int, code: str, message: str) -> None:
-        super().__init__(message)
-        self.status = status
-        self.code = code
 
 
 @dataclass(frozen=True)
@@ -40,6 +33,8 @@ class QueryOptions:
     top: int | None = None
     skip: int = 0
     count: bool = False
+    filter: Node | None = None
+    order_by: tuple[OrderKey, ...] = ()
 
 
 def _count_of_rows(name: str, value: str) -> int:
@@ -84,7 +79,7 @@ def parse_query_options(items: Iterable[tuple[str, str]]) -> QueryOptions:
     for name in options:
         if name in NOT_IMPLEMENTED:
             raise QueryOptionRefused(501, "not_implemented", f"{name} is not served yet")
-        if name not in ("$select", "$top", "$skip", "$count", "$format"):
+        if name not in _SERVED:
             raise QueryOptionRefused(400, "invalid_query_option", f"unknown option {name}")
     check_format(options.get("$format"), *_JSON_FORMATS)
     return QueryOptions(
@@ -92,4 +87,6 @@ def parse_query_options(items: Iterable[tuple[str, str]]) -> QueryOptions:
         top=_count_of_rows("$top", options["$top"]) if "$top" in options else None,
         skip=_count_of_rows("$skip", options["$skip"]) if "$skip" in options else 0,
         count=_boolean("$count", options["$count"]) if "$count" in options else False,
+        filter=parse_filter(options["$filter"]) if "$filter" in options else None,
+        order_by=parse_orderby(options["$orderby"]) if "$orderby" in options else (),
     )

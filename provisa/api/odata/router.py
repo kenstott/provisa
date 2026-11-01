@@ -14,8 +14,10 @@ A read is GraphQL text synthesized from its options, as on REST and JSON:API, co
 to the one governed pipeline (``_govern_and_route_compiled``): row rules, column grants, masks, the
 role's row ceiling and the audit record are that pipeline's, and nothing here applies any of them.
 
-Pages are read in one order (``model._ordering``), one row past the page: that row says a next
-page exists, and is not returned.
+A ``$filter`` is added to the compiled statement (``filter_sql``) before it goes to that pipeline.
+
+Pages are read in one order (the client's, then ``model._ordering``), one row past the page: that
+row says a next page exists, and is not returned.
 """
 
 # Requirements: REQ-2193
@@ -36,6 +38,8 @@ from provisa.api.generated_plan import compile_generated_graphql
 from provisa.api.json_response import OrjsonResponse
 from provisa.api.odata.csdl import metadata_document, service_document
 from provisa.api.odata.edm import edm_value
+from provisa.api.odata.expression import Node
+from provisa.api.odata.filter_sql import with_filter
 from provisa.api.odata.headers import SERVICE_ROOT
 from provisa.api.odata.model import EntitySet, entity_set, entity_sets
 from provisa.api.odata.query import (
@@ -148,15 +152,23 @@ async def _count(
     role_id: str,
     surface: RoleSurface,
     entity: EntitySet,
+    condition: Node | None,
     request: Request,
 ) -> int:
-    """The rows the role reads of ``entity``: its row rules bind to the inner statement, so the
-    count is of what it may see, and only the count crosses the wire (REQ-028)."""
-    inner = _compiled(
-        state,
-        role_id,
-        surface,
-        build_graphql_query(entity.name, [entity.properties[0].name], NO_VARIABLES, [], None, None),
+    """The rows the role reads of ``entity`` that meet ``condition``: its row rules bind to the
+    inner statement, so the count is of what it may see, and only the count crosses the wire
+    (REQ-028)."""
+    inner = with_filter(
+        _compiled(
+            state,
+            role_id,
+            surface,
+            build_graphql_query(
+                entity.name, [entity.properties[0].name], NO_VARIABLES, [], None, None
+            ),
+        ),
+        entity,
+        condition,
     )
     sql = f"SELECT COUNT(*) AS total FROM ({inner.sql}) AS _provisa_count"
     result = await _run(state, role_id, sql, inner.params, request)
@@ -171,6 +183,23 @@ def _selected(entity: EntitySet, options: QueryOptions) -> list[str]:
             # A column the role cannot see is unknown, as one that does not exist is.
             raise _Refused(400, "invalid_query_option", f"no property {name!r} of {entity.name}")
     return list(options.select)
+
+
+def _order_by(entity: EntitySet, options: QueryOptions) -> list[dict[str, str]]:
+    """The client's order, then the read's own, so a page boundary between rows equal in the
+    client's keys loses none. OData sorts a null first ascending and last descending."""
+    for key in options.order_by:
+        if entity.property(key.name) is None:
+            # A column the role cannot see is unknown, as one that does not exist is.
+            raise _Refused(
+                400, "invalid_query_option", f"no property {key.name!r} of {entity.name}"
+            )
+    asked = [
+        {"field": key.name, "dir": "desc_nulls_last" if key.descending else "asc_nulls_first"}
+        for key in options.order_by
+    ]
+    named = {key.name for key in options.order_by}
+    return asked + [{"field": n, "dir": "asc"} for n in entity.ordering if n not in named]
 
 
 def _next_link(request: Request, name: str, options: QueryOptions, taken: int) -> str:
@@ -201,7 +230,9 @@ async def _read(
         context += f"({','.join(options.select)})"
     document: dict[str, Any] = {"@odata.context": context}
     if options.count:
-        document["@odata.count"] = await _count(state, role_id, surface, entity, request)
+        document["@odata.count"] = await _count(
+            state, role_id, surface, entity, options.filter, request
+        )
 
     page = SERVER_PAGE_SIZE if options.top is None else min(options.top, SERVER_PAGE_SIZE)
     if page == 0:  # $top=0 asks for no row: nothing to read
@@ -209,11 +240,10 @@ async def _read(
         return OrjsonResponse(content=document, media_type=_JSON)
 
     probe = 1 if options.top is None or options.top > page else 0
-    order_by = [{"field": name, "dir": "asc"} for name in entity.ordering]
     gql_query = build_graphql_query(
-        entity.name, fields, NO_VARIABLES, order_by, page + probe, options.skip
+        entity.name, fields, NO_VARIABLES, _order_by(entity, options), page + probe, options.skip
     )
-    compiled = _compiled(state, role_id, surface, gql_query)
+    compiled = with_filter(_compiled(state, role_id, surface, gql_query), entity, options.filter)
     result = await _run(state, role_id, compiled.sql, compiled.params, request)
     if result.redirect is not None:
         raise _Refused(500, "landed_result", "the result was landed, which OData cannot answer")
@@ -258,9 +288,10 @@ def create_odata_router(state: Any) -> APIRouter:  # noqa: ANN401 — AppState  
         return await _read(state, role_id, surface, entity, options, request)
 
     async def _collection_count(request: Request, name: str) -> Response:
+        options = parse_query_options(request.query_params.multi_items())
         role_id, surface = _caller(state, request)
         entity = _served_set(surface, name)
-        count = await _count(state, role_id, surface, entity, request)
+        count = await _count(state, role_id, surface, entity, options.filter, request)
         return PlainTextResponse(str(count))
 
     @router.get("", include_in_schema=False)

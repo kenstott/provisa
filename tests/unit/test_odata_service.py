@@ -19,6 +19,7 @@ the statement returned under the role's masks and row rules.
 
 from __future__ import annotations
 
+import math
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -35,6 +36,18 @@ from starlette.responses import JSONResponse
 
 from provisa.api.odata.csdl import metadata_document
 from provisa.api.odata.edm import EdmType, edm_type, edm_value
+from provisa.api.odata.expression import (
+    Call,
+    Comparison,
+    In,
+    Literal,
+    Logical,
+    Name,
+    Not,
+    OrderKey,
+    parse_filter,
+    parse_orderby,
+)
 from provisa.api.odata.headers import ODataResponseHeaders
 from provisa.api.odata.model import entity_sets
 from provisa.api.odata.query import QueryOptionRefused, parse_query_options
@@ -49,6 +62,9 @@ from provisa.compiler.schema_gen import SchemaInput, build_table_path_map, gener
 from provisa.compiler.sql_rewrite import lower_to_catalog_physical
 from provisa.compiler.sql_validator import validate_sql
 from provisa.compiler.stage2 import apply_governance, build_governance_context
+from provisa.core.limits import http_transport_for_path
+from provisa.fakes import digest as digest_mod
+from provisa.fakes.duckdb_functions import register
 from provisa.pgwire import governed_plan
 from provisa.security.masking import MaskingRule, MaskType
 from tests.role_state import RoleState
@@ -104,6 +120,19 @@ TABLES = [
     _table(2, "customers", [_column("id", _BOTH, key=True), _column("name", _BOTH)]),
     _table(3, "salaries", [_column("id", ("analyst",), key=True), _column("pay", ("analyst",))]),
     _table(4, "events", [_column("kind", _BOTH), _column("note", _BOTH)]),
+    _table(
+        5,
+        "stamps",
+        [
+            _column("id", ("analyst",), key=True),
+            _column("ref", ("analyst",)),
+            _column("on_day", ("analyst",)),
+            _column("at_time", ("analyst",)),
+            _column("at_tz", ("analyst",)),
+            _column("flag", ("analyst",)),
+            _column("doc", ("analyst",)),
+        ],
+    ),
 ]
 RELATIONSHIPS = [
     {
@@ -155,6 +184,15 @@ COLUMN_TYPES = {
         ColumnMetadata(column_name="kind", data_type="varchar", is_nullable=True),
         ColumnMetadata(column_name="note", data_type="varchar", is_nullable=True),
     ],
+    5: [
+        ColumnMetadata(column_name="id", data_type="integer", is_nullable=False),
+        ColumnMetadata(column_name="ref", data_type="uuid", is_nullable=True),
+        ColumnMetadata(column_name="on_day", data_type="date", is_nullable=True),
+        ColumnMetadata(column_name="at_time", data_type="time", is_nullable=True),
+        ColumnMetadata(column_name="at_tz", data_type="timestamptz", is_nullable=True),
+        ColumnMetadata(column_name="flag", data_type="boolean", is_nullable=True),
+        ColumnMetadata(column_name="doc", data_type="jsonb", is_nullable=True),
+    ],
 }
 
 
@@ -190,6 +228,7 @@ class _Pipeline:
         self.masks = masks
         self.rls = rls
         self.statements: list[str] = []
+        self.bound: list[list] = []
         self.con = duckdb.connect()
         self.con.execute("ATTACH ':memory:' AS pg")
         self.con.execute("CREATE SCHEMA pg.public")
@@ -213,6 +252,16 @@ class _Pipeline:
                 ],
             )
         self.con.execute("INSERT INTO pg.public.events VALUES ('a', 'x'), ('a', 'x'), ('b', 'y')")
+        self.con.execute("SET TimeZone = 'UTC'")
+        self.con.execute(
+            "CREATE TABLE pg.public.stamps (id INTEGER, ref UUID, on_day DATE, at_time TIME, "
+            "at_tz TIMESTAMPTZ, flag BOOLEAN, doc VARCHAR)"
+        )
+        self.con.execute(
+            "INSERT INTO pg.public.stamps VALUES (1, '12345678-1234-1234-1234-123456789abc', "
+            "'2026-03-04', '10:30:00', '2026-03-04 10:30:00+00', TRUE, '{}'), "
+            "(2, NULL, NULL, NULL, NULL, FALSE, NULL)"
+        )
 
     async def govern(self, sql, role_id, *, exec_params=None, state=None, **_kwargs):
         ctx = self.surfaces[role_id].context
@@ -232,6 +281,7 @@ class _Pipeline:
             raise PermissionError("; ".join(v.message for v in violations))
         lowered = lower_to_catalog_physical(apply_governance(sql, gov), ctx)
         self.statements.append(lowered)
+        self.bound.append(list(exec_params or []))
         native = sqlglot.transpile(lowered, read="postgres", write="duckdb")[0]
         return SimpleNamespace(sql=native, params=list(exec_params or []))
 
@@ -570,7 +620,7 @@ async def test_a_read_is_minimal_metadata_json(service):
     assert resp.json()["@odata.context"].endswith("$metadata#orders")
 
 
-@pytest.mark.parametrize("option", ["$filter", "$orderby", "$expand", "$search"])
+@pytest.mark.parametrize("option", ["$expand", "$search", "$apply", "$compute", "$levels"])
 async def test_an_option_not_served_is_refused_never_ignored(service, option):
     resp = await service.client.get(
         "/data/odata/orders", params={option: "id"}, headers=_as("analyst")
@@ -735,3 +785,612 @@ def test_the_app_mounts_the_service_with_its_headers_outside_auth(monkeypatch, t
     # first.
     order = [m.cls.__name__ for m in app.user_middleware]
     assert order.index("ODataResponseHeaders") < order.index("AuthMiddleware")
+
+
+# -- $filter ---------------------------------------------------------------------------------------
+
+
+async def _ids(service, expression: str, role: str = "analyst", **options: str) -> list[int]:
+    params = {"$filter": expression, "$select": "id", **options}
+    resp = await service.client.get("/data/odata/orders", params=params, headers=_as(role))
+    assert resp.status_code == 200, resp.text
+    return [r["id"] for r in resp.json()["value"]]
+
+
+async def _refused(service, expression: str, role: str = "analyst") -> httpx.Response:
+    return await service.client.get(
+        "/data/odata/orders", params={"$filter": expression}, headers=_as(role)
+    )
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("id eq 3", [3]),
+        ("id ne 3", [i for i in range(1, _ORDERS + 1) if i != 3]),
+        ("id gt 10", [11, 12]),
+        ("id ge 11", [11, 12]),
+        ("id lt 2", [1]),
+        ("id le 2", [1, 2]),
+        ("3 eq id", [3]),
+        ("10 lt id", [11, 12]),
+        ("id gt 2 and id lt 5", [3, 4]),
+        ("id eq 1 or id eq 12", [1, 12]),
+        ("not (id gt 2)", [1, 2]),
+        ("not id gt 2", [1, 2]),
+        ("id eq 1 or id eq 2 and id eq 3", [1]),  # and binds tighter than or
+        ("(id eq 1 or id eq 2) and id eq 2", [2]),
+        ("((id eq 1))", [1]),
+        ("not not id eq 1", [1]),
+        ("id in (2, 4)", [2, 4]),
+        ("email in ('user1@real.example', 'nobody')", [1]),
+        ("amount eq 1.25", [1]),
+        ("amount gt 11.25", [12]),
+        ("amount lt 1.5e0", [1]),
+        ("margin eq 0.5", [1]),
+        ("email eq 'user3@real.example'", [3]),
+        ("contains(email, 'r12')", [12]),
+        ("startswith(email, 'user12')", [12]),
+        ("endswith(email, '12@real.example')", [12]),
+        ("tolower(email) eq 'user2@real.example'", [2]),
+        ("toupper(email) eq 'USER2@REAL.EXAMPLE'", [2]),
+        ("contains(toupper(email), 'R9@')", [9]),
+        ("length(email) eq 18 and id eq 1", [1]),
+        ("length(email) gt 18 and id lt 11", [10]),
+        ("year(placedAt) eq 2027", []),
+        ("year(placedAt) eq 2026 and id eq 1", [1]),
+        ("month(placedAt) eq 1 and id eq 1", [1]),
+        ("day(placedAt) eq 2 and id eq 1", [1]),
+        ("placedAt eq 2026-01-02T00:00:00Z and id eq 1", [1]),
+        ("placedAt eq 2026-01-02 and id eq 1", [1]),
+        ("placedAt lt 2026-01-02T00:00:00Z", []),
+        ("placedAt lt 2026-01-02T00:30:00+01:00", []),  # an offset moves the instant
+        ("placedAt eq 2026-01-02T01:00:00+01:00 and id eq 1", [1]),
+    ],
+)
+async def test_each_operator_of_a_filter(service, expression, expected):
+    assert await _ids(service, expression) == expected
+
+
+async def _with_nulls(service) -> None:
+    service.pipeline.con.execute(
+        "UPDATE pg.public.orders SET email = NULL, customer_id = NULL WHERE id = 1"
+    )
+
+
+async def test_null_is_compared_by_eq_and_ne(service):
+    await _with_nulls(service)
+    assert await _ids(service, "email eq null") == [1]
+    assert await _ids(service, "null eq email") == [1]
+    assert await _ids(service, "email ne null and id le 2") == [2]
+
+
+async def test_a_null_is_not_equal_to_a_value(service):
+    await _with_nulls(service)
+    assert await _ids(service, "email ne 'user2@real.example' and id le 2") == [1]
+    assert await _ids(service, "not (email eq 'user2@real.example') and id le 2") == [1]
+
+
+async def test_two_null_columns_are_equal(service):
+    await _with_nulls(service)
+    assert await _ids(service, "email eq email and id le 2") == [1, 2]
+
+
+async def test_in_holds_for_null_when_it_lists_null(service):
+    await _with_nulls(service)
+    assert await _ids(service, "email in ('user2@real.example', null)") == [1, 2]
+    assert await _ids(service, "email in (null)") == [1]
+
+
+async def _stamp_ids(service, expression: str) -> list[int]:
+    resp = await service.client.get(
+        "/data/odata/stamps", params={"$filter": expression}, headers=_as("analyst")
+    )
+    assert resp.status_code == 200, resp.text
+    return [r["id"] for r in resp.json()["value"]]
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("ref eq 12345678-1234-1234-1234-123456789abc", [1]),
+        ("ref ne 12345678-1234-1234-1234-123456789ABC", [2]),
+        ("onDay eq 2026-03-04", [1]),
+        ("onDay gt 2026-03-03", [1]),
+        ("onDay lt 2026-03-03", []),
+        ("year(onDay) eq 2026", [1]),
+        ("month(onDay) eq 3", [1]),
+        ("day(onDay) eq 4", [1]),
+        ("atTime eq 10:30:00", [1]),
+        ("atTime lt 11:00", [1]),
+        ("atTz eq 2026-03-04T10:30:00Z", [1]),
+        ("atTz eq 2026-03-04T12:30:00+02:00", [1]),
+        ("atTz gt 2026-03-04T12:30:00+02:00", []),
+        ("flag", [1]),
+        ("not flag", [2]),
+        ("flag eq true", [1]),
+        ("flag eq false", [2]),
+        ("flag and id eq 1", [1]),
+        ("true", [1, 2]),
+        ("false", []),
+        ("id eq 1 and true", [1]),
+        ("ref eq null", [2]),
+        ("doc eq null", [2]),
+    ],
+)
+async def test_a_typed_literal_compares_as_its_type(service, expression, expected):
+    assert await _stamp_ids(service, expression) == expected
+
+
+@pytest.mark.parametrize(
+    "expression",
+    ["ref eq 'x'", "onDay eq 2026-03-04T10:30:00Z", "atTime eq 2026-03-04", "flag eq 1"],
+)
+async def test_a_literal_of_another_type_is_a_400(service, expression):
+    resp = await service.client.get(
+        "/data/odata/stamps", params={"$filter": expression}, headers=_as("analyst")
+    )
+    assert resp.status_code == 400, resp.text
+
+
+async def test_filtering_on_a_type_with_no_edm_primitive_is_a_501_naming_it(service):
+    """A JSON column is served as a string but is no string to the engine that holds it."""
+    resp = await service.client.get(
+        "/data/odata/stamps", params={"$filter": "doc eq '{}'"}, headers=_as("analyst")
+    )
+    assert resp.status_code == 501
+    assert "doc" in resp.json()["error"]["message"]
+
+
+async def test_a_doubled_quote_is_one_quote_in_the_value(service):
+    service.pipeline.con.execute("UPDATE pg.public.orders SET email = 'o''brien' WHERE id = 1")
+    assert await _ids(service, "email eq 'o''brien'") == [1]
+    assert await _ids(service, "contains(email, '''b')") == [1]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "x' OR '1'='1",
+        "'; DROP TABLE orders; --",
+        "' UNION SELECT margin FROM orders --",
+        "$1",
+        "\\",
+    ],
+)
+async def test_an_injection_in_a_string_literal_stays_a_value(service, payload):
+    written = payload.replace("'", "''")
+    for expression in (
+        f"email eq '{written}'",
+        f"contains(email, '{written}')",
+        f"startswith(email, '{written}')",
+        f"endswith(email, '{written}')",
+        f"tolower(email) eq '{written}'",
+        f"email in ('{written}')",
+    ):
+        assert await _ids(service, expression) == []
+        statement = service.pipeline.statements[-1]
+        assert "DROP" not in statement and "UNION" not in statement
+        assert "1'='1" not in statement
+
+
+async def test_a_value_is_bound_never_in_the_statements_text(service):
+    await _ids(service, "email eq 'marker-value' and contains(email, 'other-marker')")
+    assert "marker" not in service.pipeline.statements[-1]
+    assert sorted(service.pipeline.bound[-1][-2:]) == ["%other-marker%", "marker-value"]
+
+
+async def test_a_wildcard_in_a_search_is_the_character(service):
+    assert await _ids(service, "contains(email, '%')") == []
+    assert await _ids(service, "contains(email, '_')") == []
+    assert await _ids(service, "startswith(email, 'user_')") == []
+    service.pipeline.con.execute("UPDATE pg.public.orders SET email = '50%_!off' WHERE id = 1")
+    assert await _ids(service, "contains(email, '0%_!o')") == [1]
+
+
+@pytest.mark.parametrize(
+    ("expression", "named"),
+    [
+        ("substring(email, 1) eq 'x'", "substring"),
+        ("indexof(email, 'x') eq 1", "indexof"),
+        ("concat(email, 'x') eq 'x'", "concat"),
+        ("trim(email) eq 'x'", "trim"),
+        ("hour(placedAt) eq 1", "hour"),
+        ("round(amount) eq 1", "round"),
+        ("now() gt placedAt", "now"),
+        ("isof(id, Edm.Int32)", "isof"),
+        ("bogus(id)", "bogus"),
+        ("not bogus(id)", "bogus"),
+        ("id eq 1 and (bogus(id) or id eq 2)", "bogus"),
+        ("tolower(bogus(email)) eq 'x'", "bogus"),
+    ],
+)
+async def test_a_function_not_served_is_a_501_naming_it(service, expression, named):
+    resp = await _refused(service, expression)
+    assert resp.status_code == 501, resp.text
+    assert resp.json()["error"]["code"] == "not_implemented"
+    assert named in resp.json()["error"]["message"]
+    assert service.pipeline.statements == []
+
+
+async def test_a_search_for_anything_but_a_literal_is_a_501_naming_it(service):
+    resp = await _refused(service, "contains(email, email)")
+    assert resp.status_code == 501
+    assert "contains" in resp.json()["error"]["message"]
+
+
+@pytest.mark.parametrize(
+    ("expression", "named"),
+    [
+        ("id add 1 eq 2", "add"),
+        ("(id mul 2) eq 2", "mul"),
+        ("id mod 2 eq 0", "mod"),
+        ("customer/name eq 'x'", "customer"),
+        ("orders/any(o: o/id eq 1)", "orders"),
+        ("email eq duration'P1D'", "duration"),
+        ("Provisa.fn(id)", "Provisa.fn"),
+    ],
+)
+async def test_a_construct_not_served_is_a_501_naming_it(service, expression, named):
+    resp = await _refused(service, expression)
+    assert resp.status_code == 501, resp.text
+    assert named in resp.json()["error"]["message"]
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "",
+        "id",
+        "id eq",
+        "eq 1",
+        "id == 1",
+        "id eq 1 and",
+        "(id eq 1",
+        "id eq 1)",
+        "id eq 'unterminated",
+        "ID eq 1",
+        "id eq 1 AND id eq 2",
+        "id eq 2026-13-45",
+        "placedAt eq 2026-01-02T25:00:00Z",
+        "id in ()",
+        "id in 1",
+        "contains(email)",
+        "tolower(email, 'x') eq 'x'",
+        "id eq 'x'",
+        "email eq 1",
+        "email gt 2026-01-02",
+        "placedAt eq 'x'",
+        "contains(id, 'x')",
+        "year(email) eq 1",
+        "length(id) eq 1",
+        "tolower(id) eq 'x'",
+        "id gt null",
+        "id : 1",
+        "id and email",
+        "1",
+        "'a'",
+    ],
+)
+async def test_text_that_is_no_filter_is_a_400(service, expression):
+    resp = await _refused(service, expression)
+    assert resp.status_code == 400, resp.text
+    assert resp.json()["error"]["code"] == "invalid_query_option"
+    assert service.pipeline.statements == []
+
+
+async def test_a_bound_on_nesting_and_on_length(service):
+    assert (await _refused(service, "(" * 200 + "id eq 1" + ")" * 200)).status_code == 400
+    assert (await _refused(service, "not " * 200 + "id eq 1")).status_code == 400
+    assert (await _refused(service, " or ".join(["id eq 1"] * 1500))).status_code == 400
+
+
+async def test_the_deepest_and_longest_filter_served_is_answered(service):
+    assert await _ids(service, "(" * 60 + "id eq 1" + ")" * 60) == [1]
+    assert await _ids(service, " or ".join(f"id eq {i % 2 + 1}" for i in range(900))) == [1, 2]
+
+
+async def test_filtering_on_a_column_the_role_cannot_see_is_as_for_no_column(service):
+    hidden = await _refused(service, "margin gt 0", role="clerk")
+    missing = await _refused(service, "nothing gt 0", role="clerk")
+    assert hidden.status_code == missing.status_code == 400
+    assert hidden.json()["error"]["code"] == missing.json()["error"]["code"]
+    assert service.pipeline.statements == []
+    assert await _ids(service, "margin gt 5.5") == [12]
+
+
+async def test_a_filter_keeps_to_the_row_rule(service):
+    """The clerk's rule is customer_id = 1: ids 1, 4, 7, 10."""
+    assert await _ids(service, "id le 4", role="clerk") == [1, 4]
+    assert await _ids(service, "id eq 2", role="clerk") == []
+
+
+async def test_an_or_cannot_widen_past_the_row_rule(service):
+    assert await _ids(service, "id gt 0 or id lt 0", role="clerk") == [1, 4, 7, 10]
+    assert await _ids(service, "true or id eq 2", role="clerk") == [1, 4, 7, 10]
+
+
+async def test_a_filter_is_one_statement(service):
+    await _ids(service, "id gt 1")
+    assert len(service.pipeline.statements) == 1
+    assert "WHERE" in service.pipeline.statements[0]
+
+
+# -- a masked column in a filter: what REST and GraphQL do, V005 on the compiled path (REQ-531) -----
+
+
+async def test_a_filter_on_a_masked_column_is_refused_and_runs_nothing(service):
+    """A filter on the real value would recover it one comparison at a time; the shown value is
+    not what the clause reads, so the statement is refused before it runs."""
+    for expression in (
+        "email eq 'user1@real.example'",
+        "email eq '***'",
+        "contains(email, 'user')",
+        "tolower(email) eq 'x'",
+        "not (email eq 'x')",
+        "id gt 0 or email eq 'x'",
+    ):
+        resp = await _refused(service, expression, role="clerk")
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["error"]["code"] == "forbidden"
+        assert "email" in resp.json()["error"]["message"]
+    assert service.pipeline.statements == []
+
+
+async def test_the_same_filter_reads_for_a_role_with_no_mask(service):
+    assert await _ids(service, "email eq 'user1@real.example'") == [1]
+
+
+async def test_a_count_with_a_filter_on_a_masked_column_is_refused(service):
+    resp = await service.client.get(
+        "/data/odata/orders/$count",
+        params={"$filter": "email eq 'x'"},
+        headers=_as("clerk"),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.fixture
+def faked(service, monkeypatch):
+    """The clerk reads email through a fake: its filter is on the fake the role is shown."""
+    monkeypatch.setattr(digest_mod, "_key", b"k" * 32)
+    register(service.pipeline.con)
+    rule = MaskingRule(MaskType.fake, fake="email()")
+    service.pipeline.masks[(1, "clerk")] = {"email": (rule, "varchar(200)")}
+    return service
+
+
+async def test_a_filter_on_a_faked_column_compares_what_the_role_is_shown(faked):
+    shown = await faked.client.get(
+        "/data/odata/orders", params={"$select": "id,email"}, headers=_as("clerk")
+    )
+    assert shown.status_code == 200, shown.text
+    row = shown.json()["value"][0]
+    assert row["email"] != f"user{row['id']}@real.example"
+
+    assert await _ids(faked, f"email eq '{row['email']}'", role="clerk") == [row["id"]]
+    assert await _ids(faked, f"email eq 'user{row['id']}@real.example'", role="clerk") == []
+
+
+# -- $orderby --------------------------------------------------------------------------------------
+
+
+async def _ordered(service, order: str, role: str = "analyst", **options: str) -> list[int]:
+    params = {"$orderby": order, "$select": "id", **options}
+    resp = await service.client.get("/data/odata/orders", params=params, headers=_as(role))
+    assert resp.status_code == 200, resp.text
+    return [r["id"] for r in resp.json()["value"]]
+
+
+async def test_orderby_ascending_and_descending(service):
+    assert await _ordered(service, "id desc") == list(range(_ORDERS, 0, -1))
+    assert await _ordered(service, "id asc") == list(range(1, _ORDERS + 1))
+    assert await _ordered(service, "id") == list(range(1, _ORDERS + 1))
+
+
+async def test_orderby_many_keys_in_the_order_given(service):
+    ids = await _ordered(service, "customerId desc,id desc")
+    expected = sorted(range(1, _ORDERS + 1), key=lambda i: (-(i % 3), -i))
+    assert ids == expected
+
+
+async def test_orderby_a_tie_is_broken_by_the_key_so_pages_hold(service):
+    assert await _ordered(service, "placedAt desc") == list(range(1, _ORDERS + 1))
+
+
+async def test_orderby_a_null_is_first_ascending_and_last_descending(service):
+    await _with_nulls(service)
+    assert (await _ordered(service, "customerId"))[0] == 1
+    assert (await _ordered(service, "customerId desc"))[-1] == 1
+
+
+async def test_orderby_on_a_masked_column_sorts_what_the_role_is_shown(service):
+    """The email mask is one constant, so no order of the real values shows through."""
+    assert await _ordered(service, "email desc", role="clerk") == [1, 4, 7, 10]
+    real = await _ordered(service, "email desc")
+    assert real != list(range(1, _ORDERS + 1))
+
+
+async def test_orderby_a_column_the_role_cannot_see_is_as_for_no_column(service):
+    for name in ("margin", "nothing"):
+        resp = await service.client.get(
+            "/data/odata/orders", params={"$orderby": name}, headers=_as("clerk")
+        )
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == "invalid_query_option"
+    assert service.pipeline.statements == []
+
+
+@pytest.mark.parametrize(
+    ("text", "status", "named"),
+    [
+        ("", 400, ""),
+        ("id sideways", 400, ""),
+        ("id,", 400, ""),
+        ("id id", 400, ""),
+        ("id desc,id asc", 400, "id"),
+        ("1", 400, ""),
+        ("tolower(email) desc", 501, "tolower"),
+        ("customer/name", 501, "customer"),
+    ],
+)
+async def test_an_orderby_it_cannot_read_is_refused(service, text, status, named):
+    resp = await service.client.get(
+        "/data/odata/orders", params={"$orderby": text}, headers=_as("analyst")
+    )
+    assert resp.status_code == status, resp.text
+    assert named in resp.json()["error"]["message"]
+    assert service.pipeline.statements == []
+
+
+# -- paging and counting with a filter -------------------------------------------------------------
+
+
+async def test_a_count_is_of_the_filtered_rows(service):
+    resp = await service.client.get(
+        "/data/odata/orders",
+        params={"$filter": "id gt 4", "$count": "true", "$top": "2", "$select": "id"},
+        headers=_as("analyst"),
+    )
+    assert resp.json()["@odata.count"] == _ORDERS - 4
+    assert [r["id"] for r in resp.json()["value"]] == [5, 6]
+    assert len(service.pipeline.statements) == 2
+
+
+async def test_the_count_path_takes_a_filter(service):
+    resp = await service.client.get(
+        "/data/odata/orders/$count", params={"$filter": "id gt 4"}, headers=_as("analyst")
+    )
+    assert resp.text == str(_ORDERS - 4)
+
+
+async def test_a_count_with_a_filter_keeps_to_the_row_rule(service):
+    resp = await service.client.get(
+        "/data/odata/orders/$count", params={"$filter": "id gt 4"}, headers=_as("clerk")
+    )
+    assert resp.text == "2"
+
+
+async def test_following_next_links_keeps_the_filter_and_the_order(service, monkeypatch):
+    monkeypatch.setattr(odata_router, "SERVER_PAGE_SIZE", 2)
+    expression = "contains(email, '@real') and (id gt 3 or email eq 'o''brien & co+1')"
+    resp = await service.client.get(
+        "/data/odata/orders",
+        params={
+            "$filter": expression,
+            "$orderby": "id desc",
+            "$select": "id",
+            "$count": "true",
+        },
+        headers=_as("analyst"),
+    )
+    body = resp.json()
+    parts = urlsplit(body["@odata.nextLink"])
+    query = parse_qs(parts.query)
+    assert query["$filter"] == [expression]
+    assert query["$orderby"] == ["id desc"]
+    assert query["$skip"] == ["2"]
+
+    seen, pages = [r["id"] for r in body["value"]], 1
+    url = body["@odata.nextLink"]
+    while url:
+        body = (await service.client.get(url, headers=_as("analyst"))).json()
+        assert body["@odata.count"] == _ORDERS - 3
+        seen += [r["id"] for r in body["value"]]
+        url = body.get("@odata.nextLink")
+        pages += 1
+    assert seen == list(range(_ORDERS, 3, -1))
+    assert pages == 5
+
+
+async def test_a_filtered_page_that_ends_the_rows_has_no_next_link(service, monkeypatch):
+    monkeypatch.setattr(odata_router, "SERVER_PAGE_SIZE", 2)
+    body = (
+        await service.client.get(
+            "/data/odata/orders", params={"$filter": "id gt 10"}, headers=_as("analyst")
+        )
+    ).json()
+    assert [r["id"] for r in body["value"]] == [11, 12]
+    assert "@odata.nextLink" not in body
+
+
+async def test_a_next_link_under_a_row_rule_holds_the_filter(service, monkeypatch):
+    monkeypatch.setattr(odata_router, "SERVER_PAGE_SIZE", 1)
+    url = "/data/odata/orders?$filter=id%20gt%201&$select=id"
+    seen = []
+    while url:
+        body = (await service.client.get(url, headers=_as("clerk"))).json()
+        seen += [r["id"] for r in body["value"]]
+        url = body.get("@odata.nextLink")
+    assert seen == [4, 7, 10]
+
+
+async def test_top_with_a_filter_carries_what_remains(service, monkeypatch):
+    monkeypatch.setattr(odata_router, "SERVER_PAGE_SIZE", 2)
+    body = (
+        await service.client.get(
+            "/data/odata/orders",
+            params={"$filter": "id gt 2", "$top": "3", "$select": "id"},
+            headers=_as("analyst"),
+        )
+    ).json()
+    assert [r["id"] for r in body["value"]] == [3, 4]
+    following = await service.client.get(body["@odata.nextLink"], headers=_as("analyst"))
+    assert [r["id"] for r in following.json()["value"]] == [5]
+    assert "@odata.nextLink" not in following.json()
+
+
+# -- parsing ---------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "tree"),
+    [
+        ("a eq 1", Comparison("eq", Name("a"), Literal("number", 1))),
+        ("a eq -1", Comparison("eq", Name("a"), Literal("number", -1))),
+        ("a eq 1.50", Comparison("eq", Name("a"), Literal("number", Decimal("1.50")))),
+        ("a eq 1e3", Comparison("eq", Name("a"), Literal("number", 1000.0))),
+        ("a eq INF", Comparison("eq", Name("a"), Literal("number", float("inf")))),
+        ("a eq -INF", Comparison("eq", Name("a"), Literal("number", float("-inf")))),
+        ("a eq 'it''s'", Comparison("eq", Name("a"), Literal("string", "it's"))),
+        ("a eq ''", Comparison("eq", Name("a"), Literal("string", ""))),
+        ("a eq 2026-01-02", Comparison("eq", Name("a"), Literal("date", date(2026, 1, 2)))),
+        ("a eq null", Comparison("eq", Name("a"), Literal("null", None))),
+        ("a eq true", Comparison("eq", Name("a"), Literal("boolean", True))),
+        (
+            "a eq 2026-01-02T03:04:05.1234567Z",
+            Comparison(
+                "eq",
+                Name("a"),
+                Literal("datetime", datetime(2026, 1, 2, 3, 4, 5, 123456, tzinfo=timezone.utc)),
+            ),
+        ),
+        ("a or b and c", Logical("or", (Name("a"), Logical("and", (Name("b"), Name("c")))))),
+        ("a or b or c", Logical("or", (Name("a"), Name("b"), Name("c")))),
+        ("(a or b) and c", Logical("and", (Logical("or", (Name("a"), Name("b"))), Name("c")))),
+        ("not a and b", Logical("and", (Not(Name("a")), Name("b")))),
+        ("a in (1)", In(Name("a"), (Literal("number", 1),))),
+        ("tolower(a)", Call("tolower", (Name("a"),))),
+        ("  a   eq\t1 ", Comparison("eq", Name("a"), Literal("number", 1))),
+    ],
+)
+def test_the_tree_of_an_expression(text, tree):
+    assert parse_filter(text) == tree
+
+
+def test_the_keys_of_an_orderby():
+    assert parse_orderby("a, b desc ,c asc") == (
+        OrderKey("a"),
+        OrderKey("b", True),
+        OrderKey("c"),
+    )
+
+
+def test_nan_is_a_number():
+    parsed = parse_filter("a eq NaN")
+    assert isinstance(parsed, Comparison)
+    assert isinstance(parsed.right, Literal) and math.isnan(parsed.right.value)
+
+
+def test_the_app_times_the_service_by_its_own_transport():
+    assert http_transport_for_path("/data/odata/orders") == "odata"

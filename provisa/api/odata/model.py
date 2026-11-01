@@ -38,6 +38,8 @@ _CATALOG_JOIN = "_meta"
 class Property:
     name: str
     type: EdmType
+    column: str  # the physical name a statement reads it by
+    data_type: str  # as registered
 
 
 @dataclass(frozen=True)
@@ -138,7 +140,9 @@ def entity_set(surface: RoleSurface, name: str, *, navigations: bool = False) ->
     meta = ctx.tables[name]
     scalars = set(get_scalar_fields(surface.schema, name))
     properties = tuple(
-        Property(ctx.physical_to_gql[(meta.table_id, column)], edm_type(data_type))
+        Property(
+            ctx.physical_to_gql[(meta.table_id, column)], edm_type(data_type), column, data_type
+        )
         for column, data_type in ctx.aggregate_columns.get(meta.table_id, [])
         if ctx.physical_to_gql[(meta.table_id, column)] in scalars
     )
