@@ -46,7 +46,15 @@ On the VM, the data stack in `demo/named/perf/docker-compose.yml` is brought up 
 demo/named/perf/bench/orchestrate.sh duckdb pg trino
 ```
 
-For each engine, `orchestrate.sh` starts Provisa with `start-ui-install.sh --demo perf`, runs `run_benchmark.py` and the Artillery ramps, then stops Provisa. Results land in `demo/named/perf/bench/results/<engine>/`. `METHODOLOGY.md` one directory up describes the three-device layout and what each number means.
+For each engine, `orchestrate.sh` starts Provisa with `start-ui-install.sh --demo perf`, runs `run_benchmark.py` and the Artillery ramps, then stops Provisa. Results land in `demo/named/perf/bench/results/<engine>/`. `METHODOLOGY.md` one directory up describes the three-device mechanics and what each number means.
+
+The publishable run's design, what makes a result valid and its cost are in `METHODOLOGY.md` in this directory. A run names its VM and CPU platform in its report, and timings from two VMs are never compared.
+
+## Sanity and chaos
+
+`bench_sanity.py` flags cells that moved 2x or more against the last run on the same VM, and relationships that went the wrong way within a run. `harness_trial.py` writes its report as `<engine>-sanity.json`. A flag needs an explanation and fails nothing by itself.
+
+`harness_trial.py --engine duckdb --chaos` runs the kill-a-node check on two local nodes behind HAProxy (`chaos_check.py`). It needs a Linux host with Docker.
 
 ## Reading the report
 

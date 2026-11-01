@@ -385,6 +385,86 @@ class TestDomainFilter:
         assert "/catalog/products" not in spec["paths"]
 
 
+def _two_table_state() -> RoleState:
+    """``analyst`` is served orders without its amount, and no customers; ``admin`` is served both."""
+
+    def meta(table: str) -> dict:
+        return {
+            "schema_name": "public",
+            "table_name": table,
+            "domain_id": "sales",
+            "table_description": None,
+            "domain_description": None,
+            "write_ops": [],
+            "write_returns_rows": False,
+            "write_refused_forms": [],
+        }
+
+    def schema(order_fields: dict, *customers: str) -> GraphQLSchema:
+        fields = {
+            "orders": GraphQLField(GraphQLList(GraphQLObjectType("Order", order_fields))),  # type: ignore[arg-type]
+        }
+        if customers:
+            customer = GraphQLObjectType("Customer", {"id": GraphQLField(GraphQLInt)})  # type: ignore[arg-type]
+            fields["customers"] = GraphQLField(GraphQLList(customer))  # type: ignore[arg-type]
+        return GraphQLSchema(query=GraphQLObjectType("Query", fields))  # type: ignore[arg-type]
+
+    return RoleState(
+        schemas={
+            "admin": schema(
+                {"id": GraphQLField(GraphQLInt), "amount": GraphQLField(GraphQLFloat)},  # type: ignore[arg-type]
+                "customers",
+            ),
+            "analyst": schema({"id": GraphQLField(GraphQLInt)}),  # type: ignore[arg-type]
+        },
+        table_path_maps={
+            "admin": {"orders": meta("orders"), "customers": meta("customers")},
+            "analyst": {"orders": meta("orders")},
+        },
+    )
+
+
+class TestTableFilter:
+    """REQ-2158: a contract's address is the description narrowed to its one table."""
+
+    def test_the_description_holds_only_the_named_table(self):
+        spec = generate_rest_openapi_spec(_two_table_state(), "admin", tables=["orders"])
+        assert list(spec["paths"]) == ["/sales/orders"]
+        assert "Customer" not in spec["components"]["schemas"]
+        assert "Order" in spec["components"]["schemas"]
+
+    def test_it_narrows_within_the_named_domain(self):
+        state = _two_table_state()
+        narrowed = generate_rest_openapi_spec(state, "admin", domains=["sales"], tables=["orders"])
+        assert list(narrowed["paths"]) == ["/sales/orders"]
+        assert (
+            generate_rest_openapi_spec(state, "admin", domains=["hr"], tables=["orders"])["paths"]
+            == {}
+        )
+
+    def test_a_table_the_role_is_not_served_is_not_described(self):
+        spec = generate_rest_openapi_spec(_two_table_state(), "analyst", tables=["customers"])
+        assert spec["paths"] == {}
+        assert "Customer" not in spec["components"]["schemas"]
+
+    def test_the_named_table_keeps_the_rights_of_the_whole_description(self):
+        state = _two_table_state()
+        whole = generate_rest_openapi_spec(state, "analyst")
+        narrowed = generate_rest_openapi_spec(state, "analyst", tables=["orders"])
+        assert narrowed["paths"] == whole["paths"]
+        assert narrowed["components"]["schemas"]["Order"] == whole["components"]["schemas"]["Order"]
+        assert "amount" not in narrowed["components"]["schemas"]["Order"]["properties"]
+
+    def test_a_named_table_leaves_the_commands_out(self):
+        state = _two_table_state()
+        state.tracked_functions = {
+            "add": {"name": "add", "domain_id": "sales", "visible_to": ["admin"], "arguments": []}
+        }
+        assert "/sales/commands/add" in generate_rest_openapi_spec(state, "admin")["paths"]
+        narrowed = generate_rest_openapi_spec(state, "admin", tables=["orders"])
+        assert list(narrowed["paths"]) == ["/sales/orders"]
+
+
 class TestSwaggerUiTheme:
     """REQ-1434: the docs page carries the app's colour scheme in its markup.
 

@@ -573,7 +573,36 @@ def pg_functions(pg: Server) -> list[function_probe.Function]:
     ]
 
 
-def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dict[str, Any]:
+def _engine_counts(
+    failures: list[dict[str, Any]],
+    matching: int,
+    by_design_cases: int,
+    differing: dict[str, str],
+    not_served: dict[str, str],
+) -> dict[str, int]:
+    """One engine's functions, in the keys a floor reads (REQ-2171, RESULTS ARE BY ENGINE). The
+    run compares result types: an overload that matches is ``same_type``, a refusal by name its own
+    count, and ``differs`` the rest: ``differs_type`` a result type, ``differs_engine_error`` an
+    error that names no refusal. ``not_compared`` is a failure PostgreSQL refused itself, here."""
+    scenarios = [f["scenario"] for f in failures]
+    errors = [not_served[s] for s in scenarios if s in not_served]
+    refused = sum(1 for error in errors if function_probe.refused_by_name(error))
+    differs_type = sum(1 for s in scenarios if s in differing)
+    differs_error = len(errors) - refused
+    return {
+        "same_type": matching,
+        "refused_by_name": refused,
+        "differs": differs_type + differs_error,
+        "differs_type": differs_type,
+        "differs_engine_error": differs_error,
+        "by_design": by_design_cases,
+        "not_compared": len(scenarios) - len(errors) - differs_type,
+    }
+
+
+def catalog_functions(
+    pg: Server, provisa: Server, names: dict[int, str], engine: str = "duckdb"
+) -> dict[str, Any]:
     """Each overload is a case: passed when it is served with PostgreSQL's result type; skipped by
     design in Internal functions when PostgreSQL itself proves it cannot call it, or in Index
     functions when it is of that family and not served (REQ-2167, amended 2026-10-29, INTERNAL
@@ -634,8 +663,15 @@ def catalog_functions(pg: Server, provisa: Server, names: dict[int, str]) -> dic
     by_family: dict[str, list[str]] = {}
     for failure in failures:
         by_family.setdefault(failure["family"], []).append(failure["scenario"])
+    outcomes = by_design.outcomes(len(matching), excluded, failures)
     return {
-        **by_design.outcomes(len(matching), excluded, failures),
+        **outcomes,
+        "engine": engine,
+        "by_engine": {
+            engine: _engine_counts(
+                failures, len(matching), outcomes["by_design"], differing, not_served
+            )
+        },
         "postgres_functions": len(fns),
         "served": len(matching) + len(differing),
         "matching": len(matching),
@@ -771,6 +807,7 @@ def markdown(report: dict[str, Any]) -> str:
     rel = report["catalog_relations"]
     fn = report["catalog_functions"]
     ty = report["type_conversions"]
+    engine, on_engine = next(iter(fn["by_engine"].items()))
     out = [
         f"## pgwire catalog and types (PostgreSQL {report['postgres_version']})",
         "",
@@ -783,13 +820,24 @@ def markdown(report: dict[str, Any]) -> str:
             + " |"
             for label, part in (
                 ("catalog relations", rel),
-                ("catalog functions", fn),
                 ("type conversions", ty),
             )
         ),
         "",
-        "Pass rate: passed over passed and failed. A relation or function failed differs from "
-        "PostgreSQL's, is not served, or is one this PostgreSQL refuses for its own state.",
+        "Pass rate: passed over passed and failed. A relation failed differs from PostgreSQL's "
+        "or is not served.",
+        "",
+        f"## Catalog functions on {engine} (PostgreSQL {report['postgres_version']})",
+        "",
+        "| engine | same result type | refused by name | differs: result type "
+        "| differs: engine error | skipped by design | not compared |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+        f"| {engine} | {on_engine['same_type']} | {on_engine['refused_by_name']} "
+        f"| {on_engine['differs_type']} | {on_engine['differs_engine_error']} "
+        f"| {on_engine['by_design']} | {on_engine['not_compared']} |",
+        "",
+        "This run compares result types on one engine, and its counts are that engine's. "
+        "Conformance (functions) gives every overload's result on each engine.",
         "",
         f"## pgwire catalog shape (PostgreSQL {report['postgres_version']})",
         "",
@@ -831,9 +879,9 @@ def markdown(report: dict[str, Any]) -> str:
         _md_list(fn["refused_here"]),
     )
     out += _details(
-        f"Functions failed, by family ({fn['failed']})",
+        f"Functions refused or differing on {engine}, by family",
         [
-            "| Family | Failed |",
+            "| Family | Overloads |",
             "| --- | ---: |",
             *(f"| {k} | {v['count']} |" for k, v in fn["failures_by_family"].items()),
         ],
@@ -872,7 +920,9 @@ def markdown(report: dict[str, Any]) -> str:
     return "\n".join(out)
 
 
-def probe(pg_dsn: str, provisa_dsn: str, out_json: Path, out_md: Path) -> None:
+def probe(
+    pg_dsn: str, provisa_dsn: str, out_json: Path, out_md: Path, engine: str = "duckdb"
+) -> None:
     pg = Server(pg_dsn)
     provisa = Server(provisa_dsn)
     names = _type_names(pg)
@@ -880,7 +930,7 @@ def probe(pg_dsn: str, provisa_dsn: str, out_json: Path, out_md: Path) -> None:
     report: dict[str, Any] = {
         "postgres_version": pg.rows("SHOW server_version")[0][0],
         "catalog_relations": catalog_relations(pg, provisa, names),
-        "catalog_functions": catalog_functions(pg, provisa, names),
+        "catalog_functions": catalog_functions(pg, provisa, names, engine),
         "type_conversions": type_conversions(pg, provisa, names),
     }
     report["seconds"] = round(time.monotonic() - started, 1)
@@ -891,6 +941,15 @@ def probe(pg_dsn: str, provisa_dsn: str, out_json: Path, out_md: Path) -> None:
 
 #: The parts of the pgwire run, each a set of cases with its own three counts.
 PARTS = ("pgspec", "catalog_relations", "catalog_functions", "type_conversions")
+
+
+FUNCTIONS = "catalog_functions"
+
+
+def _totals(parts: list[dict[str, Any]]) -> dict[str, Any]:
+    groups = [g for part in parts for g in part["by_design_groups"]]
+    failures = [f for part in parts for f in part["failures"]]
+    return by_design.outcomes(sum(part["passed"] for part in parts), groups, failures)
 
 
 def combined(pgspec: dict, catalog: dict | None) -> dict[str, Any]:
@@ -905,13 +964,19 @@ def combined(pgspec: dict, catalog: dict | None) -> dict[str, Any]:
         "postgres_version": (catalog or {}).get("postgres_version"),
     }
     parts = [doc[part] for part in PARTS if doc[part] is not None]
-    groups = [g for part in parts for g in part["by_design_groups"]]
-    failures = [f for part in parts for f in part["failures"]]
-    totals = by_design.outcomes(sum(part["passed"] for part in parts), groups, failures)
-    # The groups and failures stay in their parts; the top gives the counts.
+    keys = ("total", "passed", "by_design", "failed", "ran", "pass_rate")
+    totals = _totals(parts)
+    others = _totals([doc[part] for part in PARTS if part != FUNCTIONS and doc[part] is not None])
+    functions = doc[FUNCTIONS] or {}
+    # The groups and failures stay in their parts; the top gives the counts. Functions have no
+    # overall count (REQ-2171, RESULTS ARE BY ENGINE): ``outside_functions`` is the run without
+    # them, what the page reports, and ``functions_by_engine`` is theirs. The top's own six keys
+    # still sum every part because the landing floor reads ``failed``: they go when it moves.
     return {
         "surface": "pgwire",
-        **{k: totals[k] for k in ("total", "passed", "by_design", "failed", "ran", "pass_rate")},
+        **{k: totals[k] for k in keys},
+        "outside_functions": {k: others[k] for k in keys},
+        "functions_by_engine": functions.get("by_engine", {}),
         **{k: v for k, v in doc.items() if k != "surface"},
     }
 
@@ -935,6 +1000,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--provisa", required=True)
     p.add_argument("--out-json", required=True, type=Path)
     p.add_argument("--out-md", required=True, type=Path)
+    p.add_argument("--engine", default="duckdb", help="the engine the instance serves")
     m = sub.add_parser("combine")
     m.add_argument("--pgspec", required=True, type=Path)
     m.add_argument("--catalog", type=Path, help="the probe's JSON; absent if it did not complete")
@@ -957,9 +1023,9 @@ def main(argv: list[str]) -> int:
         )
         doc = combined(json.loads(args.pgspec.read_text()), catalog)
         args.out.write_text(json.dumps(doc, indent=2, default=str) + "\n")
-        print(f"pgwire: {by_design.counts_line(doc)}")
+        print(f"pgwire: {by_design.counts_line(doc['outside_functions'])}")
     else:
-        probe(args.pg, args.provisa, args.out_json, args.out_md)
+        probe(args.pg, args.provisa, args.out_json, args.out_md, args.engine)
     return 0
 
 

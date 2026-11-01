@@ -11,13 +11,14 @@
 // REQ-2158: a product member's contract, its output port, as its open row in the product's contracts
 // list shows it: every ODCS 3.1 element, declared or derived (REQ-2118), in the shared contract
 // layout (ContractLayout) -- details, versions and changes, pricing, custom properties and tags;
-// roles, SLAs and freshness, support and team, version history; servers, columns, quality promises.
+// roles, SLAs and freshness, support and team, version history; how to use, columns, quality promises.
 // A contract is what a product's user reads, so it never says who consumes the port: that is the
 // owner's, on the product (REQ-2160). Elements are named by their ODCS names, the standard's own
 // vocabulary, and what nothing provides is named as not declared.
 
 import { useTranslation } from "react-i18next";
-import { Badge, Group, Stack, Text } from "@mantine/core";
+import { Anchor, Badge, Group, Stack, Text } from "@mantine/core";
+import { Link } from "react-router-dom";
 import type { OdcsContract, OdcsRecord } from "../../api/dataProductContracts";
 import type { ContractVersion } from "../../types/admin";
 import type { ProductDqEntry } from "../../api/lineage";
@@ -28,21 +29,21 @@ import {
   type PanelColumn,
   type PanelTable,
 } from "./ContractLayout";
+import { canRead, contractGrant, surfaceAddress, type Grant } from "./howToUse";
 import { PromisesTable } from "./PromisesTable";
+import {
+  graphqlExample,
+  grpcExample,
+  jsonApiExample,
+  restExample,
+  sqlExample,
+  type ExampleLink,
+  type TableRef,
+} from "./tableExamples";
+import { useSparqlExample } from "./useSparqlExample";
+import type { MetaReader } from "../../api/metaGraph";
 
 const columns = (...names: string[]): PanelColumn[] => names.map((name) => ({ name }));
-
-/** Where a server is read: its host and port, or the location (a URL) an API server gives instead. */
-function serverLocation(server: OdcsRecord): unknown {
-  return server.host ? [server.host, server.port].filter(Boolean).join(":") : server.location;
-}
-
-const SERVER_COLUMNS: PanelColumn[] = [
-  { name: "server", whole: true },
-  { name: "type" },
-  { name: "location", reads: ["location", "host", "port"], value: serverLocation, whole: true },
-  ...columns("database", "schema", "description"),
-];
 
 /** What a property promises of its values, in one column so a wide schema fits its panel. */
 function propertyConstraints(p: OdcsRecord): string[] {
@@ -140,6 +141,153 @@ function useVersionsTable(versions: ContractVersion[], tableId: number): PanelTa
   };
 }
 
+/** Who reads a contract: the roles it holds, and its acting roles as a request names them. */
+export interface ContractViewer {
+  held: ReadonlySet<string>;
+  acting: string | null;
+}
+
+/** Each surface's example of a table; a surface with none has no link. Flight SQL has no page of
+ * its own and opens SQL, the language it speaks. */
+function useExamples(
+  tableId: number,
+  table: TableRef,
+  reader: MetaReader | null,
+  acting: string | null,
+  sparql: boolean,
+): Record<string, ExampleLink | null> {
+  const sparqlLink = useSparqlExample(tableId, acting, sparql);
+  const sql = sqlExample(table);
+  const rest = restExample(reader, table);
+  return {
+    pgwire: sql,
+    "flight-sql": sql,
+    grpc: grpcExample(reader, table),
+    graphql: graphqlExample(reader, table),
+    rest,
+    openapi: rest,
+    jsonapi: jsonApiExample(table),
+    sparql: sparqlLink,
+  };
+}
+
+/** The sentence every surface carries: it works once access is granted, and who grants it. */
+function useAccessSentence({ roles, approvers }: Grant): string {
+  const { t } = useTranslation();
+  const key = "dataProductsTab.contract.howToUse.access";
+  const named = { roles: roles.join(", "), approvers: approvers.join(", ") };
+  if (roles.length === 0) return t(`${key}.undeclared`);
+  return t(`${key}.${approvers.length > 0 ? "granted" : "noApprover"}`, named);
+}
+
+/** Who a viewer who cannot read the table asks, in place of the link. */
+function AskForAccess({ grant, testId }: { grant: Grant; testId: string }) {
+  const { t } = useTranslation();
+  const key = "dataProductsTab.contract.howToUse.ask";
+  const { roles, approvers } = grant;
+  return (
+    <Text size="sm" data-testid={testId}>
+      {approvers.length > 0
+        ? t(`${key}.approvers`, { approvers: approvers.join(", ") })
+        : roles.length > 0
+          ? t(`${key}.roles`, { roles: roles.join(", ") })
+          : t(`${key}.nobody`)}
+    </Text>
+  );
+}
+
+/** How to use: each surface's address for this table, how it is used, and its example. */
+function useHowToUseTable(
+  contract: OdcsContract,
+  tableId: number,
+  table: TableRef,
+  reader: MetaReader | null,
+  viewer: ContractViewer,
+): PanelTable {
+  const { t } = useTranslation();
+  const key = "dataProductsTab.contract.howToUse";
+  const servers = contract.servers ?? [];
+  const grant = contractGrant(contract);
+  const readable = canRead(grant, viewer.held);
+  const access = useAccessSentence(grant);
+  const examples = useExamples(
+    tableId,
+    table,
+    reader,
+    viewer.acting,
+    readable && servers.some((s) => s.server === "sparql"),
+  );
+  const rowId = (row: OdcsRecord) => `data-contract-how-to-use-${tableId}-${String(row.server)}`;
+  const surface = (row: OdcsRecord) => t(`${key}.surface.${String(row.server)}`);
+  return {
+    name: "servers",
+    testId: `data-contract-how-to-use-${tableId}`,
+    rowTestId: rowId,
+    rows: servers,
+    columns: [
+      {
+        name: "surface",
+        label: t(`${key}.column.surface`),
+        // The server's own fields are what this table is drawn from, never further columns.
+        reads: [...new Set(servers.flatMap((server) => Object.keys(server)))],
+        value: surface,
+        whole: true,
+      },
+      {
+        name: "address",
+        label: t(`${key}.column.address`),
+        reads: [],
+        value: surfaceAddress,
+        whole: true,
+      },
+      {
+        name: "how",
+        label: t(`${key}.column.how`),
+        reads: [],
+        value: () => true,
+        cell: (row) => (
+          <Stack gap={2}>
+            <Text size="sm">
+              {t(`${key}.how.${String(row.server)}`, {
+                database: row.database,
+                schema: row.schema,
+                service: row.serviceName,
+              })}
+            </Text>
+            <Text size="xs" c="dimmed" data-testid={`${rowId(row)}-access`}>
+              {access}
+            </Text>
+          </Stack>
+        ),
+      },
+      {
+        name: "link",
+        label: t(`${key}.column.link`),
+        reads: [],
+        value: () => true,
+        cell: (row) => {
+          if (!readable) return <AskForAccess grant={grant} testId={`${rowId(row)}-ask`} />;
+          const example = examples[String(row.server)];
+          if (!example) return t("detailFields.empty");
+          return (
+            <Anchor
+              component={Link}
+              size="sm"
+              to={example.to}
+              state={example.state}
+              aria-label={t(`${key}.openAria`, { surface: surface(row), table: table.tableName })}
+              data-testid={`${rowId(row)}-link`}
+              style={{ whiteSpace: "nowrap" }}
+            >
+              {t(`${key}.open`)}
+            </Anchor>
+          );
+        },
+      },
+    ],
+  };
+}
+
 function VersionChanges({ id, row }: { id: string; row: OdcsRecord }) {
   const { t } = useTranslation();
   const changes = row.changes as ContractVersion["changes"];
@@ -182,6 +330,9 @@ export function ContractView({
   versions,
   tableId,
   promises,
+  table,
+  reader,
+  viewer,
 }: {
   contract: OdcsContract;
   /** Its saved versions, oldest first (REQ-2158). */
@@ -189,9 +340,15 @@ export function ContractView({
   tableId: number;
   /** The product's promises on this port (REQ-2132); null while the product's lineage is read. */
   promises: ProductDqEntry[] | null;
+  /** The port's table, which its examples name. */
+  table: TableRef;
+  /** The acting role's schema and root fields; null while they are read. */
+  reader: MetaReader | null;
+  viewer: ContractViewer;
 }) {
   const { t } = useTranslation();
   const history = useVersionsTable(versions, tableId);
+  const howToUse = useHowToUseTable(contract, tableId, table, reader, viewer);
   const status = t(`dataProductsTab.contract.status.${contract.status}`);
   const object = contract.schema?.[0];
   const price = contract.price;
@@ -298,18 +455,7 @@ export function ContractView({
       }
       large={
         <>
-          <ContractPanel
-            {...panel("servers", "section.servers")}
-            wide
-            tables={[
-              {
-                name: "servers",
-                rows: contract.servers ?? [],
-                columns: SERVER_COLUMNS,
-                testId: `data-contract-servers-${tableId}`,
-              },
-            ]}
-          />
+          <ContractPanel {...panel("howToUse", "section.howToUse")} wide tables={[howToUse]} />
           <ContractPanel
             {...panel("fields")}
             wide

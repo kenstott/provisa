@@ -819,6 +819,8 @@ class _Writer:
         )
 
     def union(self, a: _R, b: _R) -> _R:
+        if _is_true(a.null) or _is_true(b.null):
+            return self.null_range(a.rtype)  # DuckDB would raise the constant refusal as it plans
         apart = _and(_both(a, b), _not(_or(_overlaps(a, b), _adjacent(a, b))))
         merged = self.merge(a, b)
         merged.null = self.refusal(
@@ -1500,8 +1502,10 @@ class _Rewrite:
             raise PostgresError(
                 "42883", f"function {rtype.multirange}({rtype.name}[]) does not exist"
             )
-        if len(args) == 1:
-            args = _variadic_items(args[0]) or args
+        if len(args) == 1 and _variadic_null(args[0]):
+            return _M(rtype, exp.true(), _null())  # VARIADIC NULL: strict, of no array at all
+        if len(args) == 1 and isinstance(_variadic_array(args[0]), exp.Array):
+            args = _variadic_items(args[0])
         parts = [self._as(a, rtype) for a in args]
         if not parts:
             return self.writer.literal_multirange(Multirange(rtype))
@@ -1841,6 +1845,8 @@ class _Rewrite:
             a, b = self._pair(args[0], args[1])
             if isinstance(a, _R) and isinstance(b, _R):
                 return _case([(_or(a.null, b.null), _null())], _sign(a, b))
+            if isinstance(a, _M) and isinstance(b, _M):
+                return self._multirange_cmp(a, b)
             return None
         if operator in _BOOLEAN_FUNCTIONS and len(args) == 2:  # noqa: PLR2004
             verb = _BOOLEAN_FUNCTIONS[operator]
@@ -1858,6 +1864,15 @@ class _Rewrite:
                 return None
             return self._boolean_value(self._boolean(verb, name, a, b), node)
         return None
+
+    def _multirange_cmp(self, a: _M, b: _M) -> exp.Expr:
+        """multirange_cmp where the statement holds both values or a NULL: SQL here compares a
+        multirange's ranges in turn nowhere, so any other is refused by name."""
+        if _is_true(a.null) or _is_true(b.null):
+            return exp.cast(_null(), "INT")
+        if a.literal is None or b.literal is None:
+            raise SubtypeOperationRefused(a.rtype.multirange, "multirange_cmp", self.dialect)
+        return _int(pg_range.mr_cmp(a.literal, b.literal))
 
     def _aggregate(self, name: str, argument: exp.Expr) -> exp.Expr:
         value = self.value(argument)
@@ -1886,6 +1901,8 @@ class _Rewrite:
             items = exp.Array(
                 expressions=[_string(pg_range.range_text(r)) for r in value.literal.ranges]
             )
+            if not value.literal.ranges:  # an empty list says no type of its own
+                items = exp.cast(items, exp.DataType.build("TEXT[]", dialect="postgres"))
         elif self.dialect in _REGEX_LIST:
             items = self.writer._ranges_list(value.text)
         else:
@@ -1950,11 +1967,22 @@ def _is_array(node: exp.Expr) -> bool:
     )
 
 
-def _variadic_items(node: exp.Expr) -> list[exp.Expr]:
+def _variadic_array(node: exp.Expr) -> exp.Expr | None:
     inner = _unwrapped(node)
-    if isinstance(inner, exp.Variadic) and isinstance(_unwrapped(inner.this), exp.Array):
-        return list(_unwrapped(inner.this).expressions)
-    return []
+    if not isinstance(inner, exp.Variadic):
+        return None
+    array = _unwrapped(inner.this)
+    return array.this if isinstance(array, exp.Cast) and _is_array(array.this) else array
+
+
+def _variadic_items(node: exp.Expr) -> list[exp.Expr]:
+    array = _variadic_array(node)
+    return list(array.expressions) if isinstance(array, exp.Array) else []
+
+
+def _variadic_null(node: exp.Expr) -> bool:
+    array = _variadic_array(node)
+    return array is not None and _null_value(array)
 
 
 def _is_boolean(node: exp.Expr) -> bool:

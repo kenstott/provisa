@@ -60,7 +60,7 @@ def _model(monkeypatch):
         appmod.state, "model_db", types.SimpleNamespace(acquire=lambda: _Conn()), raising=False
     )
 
-    async def _tables(conn):
+    async def _tables(conn, **_kw):
         return [dict(_TABLE, columns=list(_TABLE["columns"]))]
 
     async def _relationships(conn):
