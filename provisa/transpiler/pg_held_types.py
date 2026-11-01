@@ -23,7 +23,7 @@ HELD_AS: dict[str, tuple[str, ...]] = {
     "VARCHAR": (
         "pg_lsn", "pg_snapshot", "txid_snapshot", "aclitem", "macaddr", "macaddr8", "cidr",
         "tsvector", "pg_mcv_list", "pg_ndistinct", "pg_dependencies", "pg_node_tree",
-        "box", "circle", "line", "lseg", "path", "polygon", "point", "xml", "varbit",
+        "box", "circle", "line", "lseg", "path", "polygon", "point", "xml", "varbit", "cstring",
     ),
     "UBIGINT": ("xid8",),
     "BIGINT": (

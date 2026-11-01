@@ -45,7 +45,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import END, MARK, PostgresError, raising
-from provisa.transpiler import pg_forms, pg_forms_json, pg_forms_types
+from provisa.transpiler import pg_forms, pg_forms_json, pg_forms_type_io, pg_forms_types
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 from provisa.transpiler.pg_literals import values_cast
 
@@ -1616,6 +1616,7 @@ _ROWS: tuple[Macro, ...] = (
     *VALUE_FUNCTIONS_OF_THE_SERVER,
     *(Macro(name, params, {_EVERY: Pg(form)}) for name, params, form in VALUE_FORMS),  # REQ-2190
     *(Macro(name, params, forms) for name, params, forms in pg_forms_json.ROWS),
+    *(Macro(name, params, forms) for name, params, forms in pg_forms_type_io.ROWS),
     *_DIGESTS,
     *map(_operator, pg_forms_types.OPERATORS),
     *(
@@ -1904,7 +1905,7 @@ _ATOMIC = (exp.Column, exp.Literal, exp.Func, exp.Cast, exp.Paren, exp.Null, exp
 _HELD_AS_TEXT = frozenset(
     {
         "point", "line", "lseg", "box", "path", "polygon", "circle", "tsvector", "inet", "cidr",
-        "macaddr", "macaddr8", "pg_lsn", "cid", "record",
+        "macaddr", "macaddr8", "pg_lsn", "cid", "record", "cstring",
     }
 )  # fmt: skip
 
