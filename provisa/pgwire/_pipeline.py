@@ -783,7 +783,7 @@ def _catalog_settings(
     gov_ctx: Any, ctx: Any, state: Any, source_id: str, table_ids: Any
 ) -> dict[str, str] | None:
     """REQ-2190: what a statement reading a catalog view of the meta domain is told of the
-    request; None for any other, which pays no round trip."""
+    request; None for any other, which pays no round trip for settings."""
     from provisa.pgwire.catalog_data import served_database_name
     from provisa.transpiler.metadata_settings import statement_settings
 
@@ -4539,7 +4539,9 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         from provisa.transpiler.metadata_functions import refuse_server_reads
 
         refuse_client_settings(plan.sql)  # REQ-2190: what a catalog view trusts is this terminal's
-        refuse_server_reads(plan.sql)  # REQ-2190: only named metadata reads the control plane
+        # REQ-2190: a clear refusal by name. What holds is the client role, below: the database
+        # refuses a function no list names.
+        refuse_server_reads(plan.sql)
         tenant_db = state.model_db
         if tenant_db is None:
             raise RuntimeError("Admin model_db not available")
@@ -4557,17 +4559,18 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
                 # The statement's bound values, as the client gave them: its ANY($2) list is an
                 # array, not the control plane's jsonb. exec_params is None when it has none.
                 col_oids: list[int] | None = None
-                if plan.catalog_settings is None:
-                    col_names, _rows = await _conn.fetch_with_columns(
-                        plan.sql, *(plan.exec_params or ()), bind_as_given=True
-                    )
-                else:
-                    # REQ-2190: the settings last as long as the statement's transaction, and the
-                    # client's SQL runs as the role that reaches no more than a client may.
-                    _setting, _values = set_statement(plan.catalog_settings)
-                    async with _conn.transaction():
+                # REQ-2190: every client statement here runs as the role that reaches no more than
+                # a client may, whatever it reads, and any settings last as long as its transaction.
+                async with _conn.transaction():
+                    if plan.catalog_settings is not None:
+                        _setting, _values = set_statement(plan.catalog_settings)
                         await _conn.fetch(_setting, *_values)
-                        await _conn.execute(enter_client_role())
+                    await _conn.execute(enter_client_role())
+                    if plan.catalog_settings is None:
+                        col_names, _rows = await _conn.fetch_with_columns(
+                            plan.sql, *(plan.exec_params or ()), bind_as_given=True
+                        )
+                    else:
                         col_names, col_oids, _rows = await _conn.fetch_described(
                             plan.sql, *(plan.exec_params or ()), bind_as_given=True
                         )
