@@ -992,6 +992,7 @@ query SystemHealth {
       name
       status
       port
+      path
     }
     mvRefreshLoopRunning
   }

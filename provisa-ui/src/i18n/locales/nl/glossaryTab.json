@@ -175,6 +175,7 @@
     "groundingValue_not_grounded": "Niet verankerd",
     "pendingOn": "Goedkeuring van {{terms}} verankert hem.",
     "filterStatus": "Status",
+    "filterStatusHint": "Alleen deze statussen tonen",
     "filterGrounding": "Verankering",
     "approve": "Goedkeuren",
     "approveHint": "Keur deze term goed: agents en catalogi vinden en citeren data via goedgekeurde, verankerde termen.",

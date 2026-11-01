@@ -36,17 +36,11 @@ import {
   Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import {
-  ArrowLeft,
-  Check,
-  GitMerge,
-  Pencil,
-  Share2,
-  X,
-} from "lucide-react";
+import { ArrowLeft, Check, GitMerge, Pencil, Share2, X } from "lucide-react";
 import {
   acceptDraft,
   bulkAccept,
+  cancelScan,
   editDraft,
   fetchScan,
   mergeDraft,
@@ -58,6 +52,7 @@ import {
 } from "../../api/termFinding";
 import { generateGlossaryRelationships, type GlossaryTermSummary } from "../../api/glossary";
 import { Tip } from "../Tip";
+import { useScanProgress } from "./useScanProgress";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 
@@ -518,6 +513,7 @@ export function TermReviewQueue({
   onGlossaryChanged: () => void;
 }) {
   const { t } = useTranslation();
+  const progress = useScanProgress();
   const [scan, setScan] = useState<Scan | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [filter, setFilter] = useState<"review" | "all">("review");
@@ -555,6 +551,18 @@ export function TermReviewQueue({
     if (message) notifications.show({ color: "green", message });
     await load();
     onGlossaryChanged();
+  };
+
+  const cancel = async () => {
+    setProblem("");
+    setBusy(true);
+    try {
+      setScan((await cancelScan(scanId)).scan);
+    } catch (e) {
+      setProblem(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const acceptSelected = async () => {
@@ -625,10 +633,37 @@ export function TermReviewQueue({
       </Group>
 
       {scan.status === "running" && (
-        <Group gap="xs" data-testid="find-terms-running">
-          <Loader size="xs" />
-          <Text size="sm">{t("findTerms.scanning")}</Text>
+        <Group justify="space-between" wrap="nowrap" data-testid="find-terms-running">
+          <Group gap="xs" wrap="nowrap">
+            <Loader size="xs" />
+            <Stack gap={0}>
+              <Text size="sm" data-testid="find-terms-progress">
+                {progress(scan)}
+              </Text>
+              {scan.model && (
+                <Text size="xs" c="dimmed" data-testid="find-terms-model">
+                  {t("findTerms.progressModel", { model: scan.model })}
+                </Text>
+              )}
+            </Stack>
+          </Group>
+          <Button
+            size="xs"
+            variant="light"
+            color="red"
+            leftSection={<X size={12} />}
+            loading={busy}
+            onClick={() => void cancel()}
+            data-testid="find-terms-cancel"
+          >
+            {t("findTerms.cancel")}
+          </Button>
         </Group>
+      )}
+      {scan.budget_limit !== null && (
+        <Alert color="yellow" data-testid="find-terms-budget-limited">
+          {t("findTerms.budgetLimited", { tokens: scan.budget_limit })}
+        </Alert>
       )}
       {scan.status === "failed" && (
         <Alert color="red" data-testid="find-terms-failed">

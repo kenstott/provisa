@@ -198,6 +198,12 @@ QUERIES: list[Query] = [
         # earlier asymmetry did not reproduce and looks like a run-condition artifact (process/
         # connection state at the time), not an architectural defect — flag if it recurs.
         sql="SELECT region, sum(amount) AS revenue, count(*) AS n FROM perf_bench.orders GROUP BY region",
+        # The 70/30 saturation mix takes its heavy half from here, so without this text Bolt never
+        # ramps. Same rollup as the SQL: Cypher groups on the non-aggregated return item.
+        cypher="""
+            MATCH (o:PerfBench:Orders)
+            RETURN o.region AS region, sum(o.amount) AS revenue, count(o) AS n
+        """,
         # ordersGroupBy: schema_gen.py's _build_group_by_query_field (gated by config.yaml's
         # orders.enable_group_by: true). aggregate.sum.amount == revenue, aggregate.count == n —
         # sum's sub-field is the raw column name "amount" (aggregate_gen.py keys AggregateFields

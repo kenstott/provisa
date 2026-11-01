@@ -63,6 +63,11 @@ _TOKEN_NAME = "Demo sandbox"
 # request runs on a thread and event loop of its own, so an asyncio lock (bound to one loop) cannot
 # serialize them; the control plane's advisory lock does, across threads and processes alike.
 _OPENING_LOCK_KEY = 7351
+#: How long an open waits for its demo's stores and template, in place of refusing it (33 s for a
+#: demo's stores, measured 2026-10-31); past it the visitor is told it is still being prepared, and
+#: the page keeps waiting. Under the UI server's proxy timeout (ui.proxy_timeout, REQ-1448).
+OPEN_WAIT_S = 120.0
+_OPEN_POLL_S = 2.0
 
 
 @contextlib.asynccontextmanager
@@ -113,6 +118,7 @@ async def _template_ready(demo: PublishedDemo) -> None:
     from provisa.api.app import ensure_org_runtime
     from provisa.api.demo_templates import template_builds
 
+    _refuse_failed_template(demo)
     building = template_builds.state_of(demo.name)
     if building == "ready":
         # Built and landed (or served as built at this start, demo_templates.warm_ready): its
@@ -122,9 +128,7 @@ async def _template_ready(demo: PublishedDemo) -> None:
     # Still being prepared here: its preparation (its profile runs among it, REQ-2052) is what a
     # sandbox is cloned from. A demo with no replica read as ready from its provisioning alone,
     # and its first sandbox was cloned before the template had profiled anything.
-    # One whose preparation failed (TemplateBuilds.run) is refused too: its Test (synthetic)
-    # environments or profile runs are not there to copy, and opening it failed on the copy.
-    ready = building not in ("queued", "building", "failed")
+    ready = building not in ("queued", "building")
     async with _admin_pool().acquire() as conn:
         row = (
             await conn.execute_core(
@@ -180,24 +184,96 @@ def _refuse_failed_stores(demo: PublishedDemo) -> None:
     )
 
 
+def _refuse_failed_template(demo: PublishedDemo) -> None:
+    """A demo whose template's preparation failed (TemplateBuilds.run) is refused by name: its Test
+    (synthetic) environments or profile runs are not there to copy, opening it failed on the copy,
+    and a visitor told it was being prepared would wait on nothing. Trying again, an open, builds
+    it again (follow_latest)."""
+    from provisa.api.demo_templates import template_builds
+
+    if template_builds.state_of(demo.name) == "failed":
+        raise _demo_failed(demo)
+
+
+def _demo_failed(demo: PublishedDemo) -> ApiError:
+    return ApiError(
+        503,
+        "sandbox.demo_failed",
+        f"{demo.title} could not be prepared; try again in a few minutes",
+        demo=demo.name,
+    )
+
+
+def _refuse_unhealthy_stores(demo: PublishedDemo) -> None:
+    """A bundled demo whose store is down or red now is refused at its open: marked ready, it
+    would fail partway through its tour (the reviews index red past Elasticsearch's disk
+    watermark, 2026-10-31). What is wrong is the operator's, logged. A demo served from its
+    directory runs its stores itself."""
+    from provisa.core.demo_bundles import bundled_demos, unhealthy_stores
+
+    if not bundled_demos():
+        return
+    wrong = unhealthy_stores(demo.directory)
+    if wrong:
+        log.error("demo %s: its stores are not healthy: %s", demo.name, "; ".join(wrong))
+        raise _demo_failed(demo)
+
+
+async def _ready_demo(name: str) -> PublishedDemo:
+    """Published demo ``name``, its stores up and its template ready: an open waits for them
+    (``OPEN_WAIT_S``) in place of being refused while the node brings them up. One that cannot be
+    readied is refused by name at once."""
+    from provisa.api.demo_templates import template_builds
+
+    deadline = time.monotonic() + OPEN_WAIT_S
+    while True:
+        try:
+            # REQ-2049: a demo published since is served first, its template rebuilt from it.
+            await follow_latest(name)
+            demo = published_demo(name)
+            await _template_ready(demo)
+            await asyncio.to_thread(_refuse_unhealthy_stores, demo)
+            return demo
+        except ApiError as refused:
+            if refused.code != "sandbox.demo_not_ready":
+                raise
+            while True:
+                demo = published_demo(name)
+                _refuse_failed_stores(demo)
+                _refuse_failed_template(demo)
+                settled = demo.stores_ready and template_builds.state_of(name) not in (
+                    "queued",
+                    "building",
+                )
+                if settled:
+                    break
+                if time.monotonic() >= deadline:
+                    raise
+                await asyncio.sleep(_OPEN_POLL_S)
+            if time.monotonic() >= deadline:
+                raise
+
+
 async def demo_status(name: str) -> dict:
     """Whether published demo ``name`` can be opened now, and how many places are free (REQ-2006):
     its template's place in the tier's builds (demo_templates.TemplateBuilds.state_of) and the cap
     less the sandboxes open. Read only: it opens nothing, builds nothing, follows no newer version
-    and marks no sandbox in use. An unknown or unpublished demo is refused by name."""
+    and marks no sandbox in use. An unknown or unpublished demo, and one that failed, is refused by
+    name."""
     from provisa.api.admin.orgs_router import _admin_pool
     from provisa.api.demo_templates import template_builds
 
     demo = published_demo(name)
     _refuse_failed_stores(demo)
+    _refuse_failed_template(demo)
     state = template_builds.state_of(demo.name)
     cap = int(settings_registry.value("sandbox.max_concurrent"))
     async with _admin_pool().acquire() as conn:
         open_now = await _open_count(conn)
     return {
         "demo": demo.name,
-        # Opened at once only with its stores up too: the node starts a demo's at its first open.
-        "ready": state == "ready" and demo.stores_ready,
+        # An open of a built template waits for its stores, if they are not up (_ready_demo).
+        "ready": state == "ready",
         "state": state,
         "places_free": max(cap - open_now, 0),
     }
@@ -244,10 +320,7 @@ async def open_sandbox(name: str, *, kind: str, user_id: str | None = None) -> O
         raise ValueError("a named sandbox is opened for a signed-in user, a visitor's for none")
     org_id = new_sandbox_org_id()
     async with _stage(org_id, name, "its demo's readiness"):
-        # REQ-2049: a demo published since is served first, its template rebuilt from it.
-        await follow_latest(name)
-        demo = published_demo(name)
-        await _template_ready(demo)
+        demo = await _ready_demo(name)
     admin = _admin_pool()
     person = user_id if user_id is not None else visitor_user_id(org_id)
     async with _stage(org_id, demo.name, "a place"), admin.acquire() as conn:

@@ -9,7 +9,8 @@
 // stopped at the first type found would draw one kind of edge and silently hide the others.
 
 import { describe, it, expect } from "vitest";
-import { buildDropExpansion } from "../pages/graph-drop";
+import { buildDropExpansion, nodePathQuery } from "../pages/graph-drop";
+import type { GNode } from "../components/graph/graph-model";
 import type { SchemaRel } from "../components/graph/graph-schema-types";
 
 /** A relationship type as /data/graph-schema answers it for the acting role (its label map). */
@@ -169,5 +170,67 @@ describe("buildDropExpansion anchors on every variable the query binds", () => {
     const out = buildDropExpansion("MATCH (a:Meta:Domains) RETURN a", DROPPED, []);
     expect(out.query).toContain(`OPTIONAL MATCH (mRegisteredTa:${DROPPED})`);
     expect(out.targetVars).toEqual(["mRegisteredTa"]);
+  });
+});
+
+describe("REQ-2135 a dropped label a relationship does not touch", () => {
+  const rels = [rt("A_B", "A", "B"), rt("B_C", "B", "C")];
+
+  it("is reached by its schema path, each hop bound and returned", () => {
+    const out = buildDropExpansion("MATCH (a:A) RETURN a", "C", rels);
+    expect(out.query).toContain("OPTIONAL MATCH (a)-[rB:A_B]-(mB:B)-[rC:B_C]-(mC:C)");
+    expect(out.query).toContain("RETURN a, rB, mB, rC, mC");
+    expect(out.targetVars).toEqual(["mC"]);
+  });
+
+  it("adds at most five tied paths and says what it left out", () => {
+    const ties = [1, 2, 3, 4, 5, 6].flatMap((n) => [rt(`X${n}`, "A", "B")]);
+    const out = buildDropExpansion("MATCH (a:A) RETURN a", "C", [...ties, rt("B_C", "B", "C")]);
+    expect(out.query.match(/OPTIONAL MATCH/g)).toHaveLength(5);
+    expect(out.notices).toEqual([
+      { key: "graphFrame.sparqlDropLeftOut", values: { shown: 5, total: 6 } },
+    ]);
+  });
+
+  it("keeps a hop's ties whole: a junction's types are not cut", () => {
+    const ties = [1, 2, 3, 4, 5, 6, 7].map((n) => rt(`X${n}`, "A", "C"));
+    const out = buildDropExpansion("MATCH (a:A) RETURN a", "C", ties);
+    expect(out.query.match(/OPTIONAL MATCH/g)).toHaveLength(7);
+    expect(out.notices).toEqual([]);
+  });
+
+  it("says when the path is past the cap", () => {
+    const labels = ["A", "B", "C", "D", "E", "F"];
+    const chain = labels.slice(1).map((x, i) => rt(`R${i}`, labels[i], x));
+    const out = buildDropExpansion("MATCH (a:A) RETURN a", "F", chain);
+    expect(out.notices).toEqual([
+      { key: "graphFrame.cypherDropTooFar", values: { name: "F", hops: 5, most: 4 } },
+    ]);
+  });
+});
+
+describe("REQ-2135 a node dropped on a node", () => {
+  const node = (label: string, properties: Record<string, unknown>): GNode => ({
+    id: 1,
+    label,
+    tableLabel: label,
+    properties,
+  });
+  const key = (label: string) => ({ A: "id", B: "code" })[label];
+
+  it("asks every shortest path between the two, with a hop limit and a row cap", () => {
+    expect(nodePathQuery(node("A", { id: 1 }), node("B", { code: "x'1" }), key)).toBe(
+      [
+        "MATCH p = allShortestPaths((a:A)-[*..4]-(b:B))",
+        "WHERE a.id = 1 AND b.code = 'x\\'1'",
+        "RETURN p",
+        "LIMIT 25",
+      ].join("\n"),
+    );
+  });
+
+  it("answers null for a node whose key is not known", () => {
+    expect(nodePathQuery(node("Z", {}), node("B", { code: "x" }), key)).toBeNull();
+    expect(nodePathQuery(node("A", {}), node("B", { code: "x" }), key)).toBeNull();
   });
 });

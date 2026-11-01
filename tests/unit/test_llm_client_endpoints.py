@@ -11,7 +11,9 @@ Source: provisa/llm/client.py — ProvisaLLMClient._complete_sync
 
 from __future__ import annotations
 
+import asyncio
 import os
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -136,3 +138,64 @@ class TestEmptyContent:
         with patch.dict("sys.modules", {"aisuite": stub}):
             with pytest.raises(LLMEmptyResponseError, match="finish_reason='length'"):
                 client.complete_sync("hello", max_tokens=16)
+
+
+def _detailed(*, content, finish_reason, completion_tokens, max_tokens=16):
+    """``complete_detailed`` of a real client over a vendor that answers as told."""
+
+    class _Answering:
+        def __init__(self, config=None):
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(
+                    create=lambda **kwargs: SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                message=SimpleNamespace(content=content),
+                                finish_reason=finish_reason,
+                            )
+                        ],
+                        usage=SimpleNamespace(completion_tokens=completion_tokens),
+                    )
+                )
+            )
+
+    client = ProvisaLLMClient(
+        "x", config={"ai_models": {"x": {"vendor": "anthropic", "model": "m"}}}
+    )
+    stub = MagicMock()
+    stub.Client = _Answering
+    with patch.dict("sys.modules", {"aisuite": stub}):
+        return asyncio.run(client.complete_detailed("p", max_tokens=max_tokens))
+
+
+class TestCutOff:
+    @pytest.mark.parametrize(
+        ("finish_reason", "completion_tokens", "cut_off"),
+        [
+            ("stop", 5, False),
+            (None, 5, False),
+            ("length", 5, True),
+            ("max_tokens", 5, True),
+            # aisuite drops finish_reason for the OpenAI-shaped vendors it converts: usage shows it.
+            (None, 16, True),
+        ],
+    )
+    def test_the_answer_says_whether_it_stopped_at_the_limit(
+        self, finish_reason, completion_tokens, cut_off
+    ):
+        answered = _detailed(
+            content="[", finish_reason=finish_reason, completion_tokens=completion_tokens
+        )
+        assert answered.cut_off is cut_off
+
+    def test_no_text_at_the_limit_carries_the_cut_off_answer(self):
+        with pytest.raises(LLMEmptyResponseError) as empty:
+            _detailed(content=None, finish_reason="length", completion_tokens=16)
+        assert empty.value.answer.cut_off is True
+        assert empty.value.answer.usage.completion_tokens == 16
+        assert empty.value.answer.text == ""
+
+    def test_no_text_short_of_the_limit_is_not_cut_off(self):
+        with pytest.raises(LLMEmptyResponseError) as empty:
+            _detailed(content=None, finish_reason="stop", completion_tokens=0)
+        assert empty.value.answer.cut_off is False

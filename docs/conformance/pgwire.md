@@ -26,7 +26,7 @@ A `geometry` or `geography` column is reported with its PostGIS type name and is
 
 ### Types whose text does not give their binary form
 
-A column of `aclitem`, `gtsvector`, `tsquery`, `regprocedure`, `regoper`, `regoperator`, `regrole`, `regconfig`, `regdictionary`, `regcollation`, `pg_ndistinct`, `pg_dependencies`, `pg_mcv_list`, `pg_brin_bloom_summary` or `pg_brin_minmax_multi_summary` is held as PostgreSQL's canonical text and sent in text format only: its binary form holds what only PostgreSQL can derive. A client that asks for one in binary gets an error naming the type.
+A column of `aclitem`, `gtsvector`, `tsquery`, `regprocedure`, `regoper`, `regoperator`, `regrole`, `regconfig`, `regdictionary`, `regcollation`, `pg_ndistinct`, `pg_dependencies`, `pg_mcv_list`, `pg_brin_bloom_summary` or `pg_brin_minmax_multi_summary` is held as PostgreSQL's canonical text and sent in text format only, because its binary form holds what only PostgreSQL can derive. A client that asks for one in binary gets an error naming the type.
 
 ### Catalog functions
 
@@ -36,7 +36,7 @@ Provisa intercepts the scalar catalog functions tools call to introspect schemas
 |---|---|
 | `format_type(typid, typmod)` | Returns the type name tools display in schema panels. Subtypes report by their subtype name (`inet`, `macaddr`, `money`), not the base type. |
 | `col_description(relid, colnum)` | Returns the column's description from the model. Columns with no description return `NULL`. |
-| `pg_get_constraintdef(oid)` | Returns a text rendering of the constraint — `PRIMARY KEY (col)`, `FOREIGN KEY (col) REFERENCES other(col)`, or `UNIQUE (col)` — derived from the model's declared keys and joins. |
+| `pg_get_constraintdef(oid)` | Returns a text rendering of the constraint (`PRIMARY KEY (col)`, `FOREIGN KEY (col) REFERENCES other(col)`, or `UNIQUE (col)`) derived from the model's declared keys and joins. |
 | `pg_get_expr(expr, relid)` | Returns the default expression of a column read from `pg_attrdef.adbin`, such as `now()`, `current_setting('app.user')` or `'new'::character varying`. A default is the value your role's insert grant presets on the column. A column with no preset, and any other expression column, returns `NULL`. |
 | `has_table_privilege([user,] table, privilege)` | Answers for your role. `SELECT` is held on every table you are served. `INSERT`, `UPDATE` and `DELETE` are held where your role has the `write` right and a write grant for that operation on a table whose source takes it. A list such as `'INSERT, UPDATE'` is true when any item is held. `REFERENCES`, `TRIGGER`, `TRUNCATE` and any `WITH GRANT OPTION` are false. The table is an oid or a name, and the user must be your own role. A table that does not exist, or another user, returns `NULL`. |
 | `current_schema()` | Returns `'public'`. |
@@ -50,7 +50,7 @@ Every overload of every `pg_catalog` function is a conformance case, and each ca
 |---|---|
 | Passed | Served, with the result type PostgreSQL gives the same call. |
 | Skipped by design: Internal functions | PostgreSQL itself cannot call them. Each takes an `internal` argument, or PostgreSQL refuses the call whatever the server's state: a trigger function, a binary upgrade function, a pseudo-type's input or output function. Each case records its proof. |
-| Skipped by design: Index functions | Index access method support and index maintenance functions (btree, GiST, GIN, SP-GiST, BRIN support, `brin_summarize_range` and its kin) that are not served. Indexes belong to the source database. Index metadata is unaffected: `pg_index`, `pg_get_indexdef` and the like stay served. |
+| Skipped by design: Index functions | Index access method support and index maintenance functions (btree, GiST, GIN, SP-GiST, BRIN support, `brin_summarize_range` and its kin) that are not served. Indexes belong to the source database. Index metadata is unaffected, and `pg_index`, `pg_get_indexdef` and the like stay served. |
 | Failed | Every other function: one not served, including the hash functions such as `hashtext`, which a client can call directly, one whose result type differs from PostgreSQL's, and one PostgreSQL refuses only for the state of the server the suite ran on, such as a recovery function on a server not in recovery. |
 
 The skipped and failed cases are listed by group and by family under the pass rate.

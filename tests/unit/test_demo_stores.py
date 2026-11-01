@@ -554,6 +554,20 @@ def test_a_version_missing_a_search_index_fails_its_check_naming_it(monkeypatch,
         _demo(monkeypatch, tmp_path, runner, _SEARCH).check()
 
 
+def test_a_version_whose_search_index_stays_red_fails_its_check_naming_it(monkeypatch, tmp_path):
+    """Waited for, as a store just restarted is red until its shards recover. Elasticsearch
+    answers the wait that runs out with a 408, which curl -f fails on."""
+    suffix = ds.namespace("reviews", "v1")
+    held = [f"reviews{suffix}", f"authors{suffix}"]
+    runner = FakeRunner(
+        _es_answers(suffix.lstrip("_"), suffix, held, "200", []),
+        fail={"_cluster/health"},
+    )
+    with pytest.raises(ds.StoreError, match=f"red.*\\*{suffix}"):
+        _demo(monkeypatch, tmp_path, runner, _SEARCH).check()
+    assert any("wait_for_status=yellow" in line for line in runner.lines())
+
+
 def test_a_version_brought_up_says_where_each_store_is_and_the_names_of_its_shared_data(
     monkeypatch, tmp_path
 ):

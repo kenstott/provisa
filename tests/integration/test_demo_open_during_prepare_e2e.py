@@ -11,8 +11,7 @@
 """A sandbox opened while its demo's template is being prepared waits for it (REQ-2006, REQ-2049).
 
 A tier started with no template of its bundled demo prepares one. Visitors opening the demo
-meanwhile are told it is being prepared (503 ``sandbox.demo_not_ready``) until it is ready, then
-served. An open never takes the template being prepared for a stale one: it used to replace it --
+meanwhile are held until it is ready, then served, none of them refused. An open never takes the template being prepared for a stale one: it used to replace it --
 the template org dropped under its own build, the build failing on its missing tables and the
 open on a deadlock (500)."""
 
@@ -79,16 +78,14 @@ def test_visitors_opening_a_demo_while_its_template_is_prepared_wait_for_it(
     tier.start(timeout=240)
     try:
         # At once after the start, while its template is still being prepared.
+        before = httpx.get(f"{tier.base_url}/public/demos/alpha/status", timeout=30).json()
+        assert before["ready"] is False, before
         with ThreadPoolExecutor(_OPENERS) as pool:
             visitors = list(pool.map(lambda _i: _open_until_served(tier), range(_OPENERS)))
         log = tier.dump_stderr_debug()
         for answers in visitors:
             assert answers[-1][0] == 200, (answers, log[-6000:])
-            assert all(
-                status == 200 or (status == 503 and code == "sandbox.demo_not_ready")
-                for status, code in answers
-            ), (answers, log[-6000:])
-        assert any(len(answers) > 1 for answers in visitors), "no open arrived during the prepare"
+            assert len(answers) == 1, (answers, log[-6000:])  # waited for, not refused
         # The template being prepared is the one served: never taken for a stale one and removed.
         assert "demo template sbxtplalpha removed" not in log, log[-6000:]
     finally:

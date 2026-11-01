@@ -393,10 +393,10 @@ def _call(name: str, args: list[exp.Expr], sql: Callable[[exp.Expr], str]) -> st
 def _typeof(value: exp.Expr) -> str | None:
     """pg_typeof of an xml value: the engine holds it as text, and would say so."""
     if is_xml(value):
-        return "CAST('xml' AS REGTYPE)"
+        return "'xml'"
     called = value.expression if isinstance(value, exp.Dot) else value
     is_array = isinstance(called, exp.Anonymous) and called.name.lower() == "xpath"
-    return "CAST('xml[]' AS REGTYPE)" if is_array else None
+    return "'xml[]'" if is_array else None
 
 
 def _refused_aggregate(node: exp.Expr) -> None:

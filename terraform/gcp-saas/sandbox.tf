@@ -6,9 +6,10 @@
 # coordinator's UI server reaches the tier at this VM's.
 #
 # The VM stops itself once no sandbox has been used for sandbox_idle_stop_minutes
-# (provisa.scheduler.jobs.stop_idle_sandbox_vm), and the UI server starts it when a request for
-# the tier finds it down (provisa/sandbox_wake.py), both through the Compute API as the node
-# service account, on this instance only.
+# (provisa.scheduler.jobs.stop_idle_sandbox_vm). The front door starts it beside the coordinator
+# when a request for a demo wakes that (front-door/proxy.py), and the UI server when a request for
+# the tier finds it down (provisa/sandbox_wake.py), both through the Compute API, the UI server as
+# the node service account, on this instance only.
 
 locals {
   sandbox_instance_name = "provisa-saas-sandbox"
@@ -22,7 +23,7 @@ locals {
   coordinator_sandbox_vm_exports = <<-SHELL
     export COMPOSE_PROFILES=control
     export PROVISA_SANDBOX_API_URL="https://${var.sandbox_internal_ip}:8000"
-    export PROVISA_SANDBOX_REGIONS_NODES="us=https://${var.sandbox_internal_ip}:8100"
+    export PROVISA_SANDBOX_REGIONS_NODES="us=https://${var.sandbox_internal_ip}:8100,warehouse=https://${var.sandbox_internal_ip}:8101"
     export PROVISA_SANDBOX_INSTANCE="${local.sandbox_instance_path}"
   SHELL
 
@@ -117,6 +118,11 @@ resource "google_compute_instance" "sandbox" {
 
   # It stops itself and the coordinator starts it; terraform must not undo either.
   desired_status = null
+
+  lifecycle {
+    # The provider forces a new VM for any change of this size: sandbox_disk_gb (variables.tf).
+    ignore_changes = [boot_disk[0].initialize_params[0].size]
+  }
 
   metadata = merge(local.metadata_ssh, {
     startup-script = <<-SHELL

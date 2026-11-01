@@ -43,8 +43,8 @@ Provisa running:
 
 **What it starts:**
 
-- Docker Compose core services (`docker-compose.core.yml`) — PostgreSQL, PgBouncer, Trino, Redis
-- Docker Compose dev overlay (`docker-compose.dev.yml`) — MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium, Schema Registry
+- Docker Compose core services (`docker-compose.core.yml`): PostgreSQL, PgBouncer, Trino and Redis
+- Docker Compose dev overlay (`docker-compose.dev.yml`): MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium and Schema Registry
 - Backend API on port 8001 (hot-reload on changes to `provisa/` and `config/`)
 - Vite UI dev server on port 3000 (HMR)
 - OpenTelemetry tracing and Grafana at `http://localhost:3100`. The observability stack (OTel Collector, Prometheus, Tempo, Grafana) is an opt-in docker-compose `observability` profile and is off by default for the platform; `start-ui.sh` turns it on for convenience in development unless you pass `--no-observability`.
@@ -55,17 +55,17 @@ Provisa running:
 
 ### Options
 
-`--no-observability` — Disables distributed tracing. By default, `start-ui.sh` downloads the OpenTelemetry Java agent if not already present, patches Trino's `jvm.config` to load it, and starts the OTel collector, Prometheus, Tempo, and Grafana. Pass `--no-observability` to skip all of that. The `jvm.config` patch is reverted on Ctrl+C.
+`--no-observability` disables distributed tracing. By default, `start-ui.sh` downloads the OpenTelemetry Java agent if not already present, patches Trino's `jvm.config` to load it, and starts the OTel collector, Prometheus, Tempo, and Grafana. Pass `--no-observability` to skip all of that. The `jvm.config` patch is reverted on Ctrl+C.
 
-`--seed-data` — Seeds Kafka with demo data after Docker services are healthy. Not run by default.
+`--seed-data` seeds Kafka with demo data after Docker services are healthy. It doesn't run by default.
 
-`--keep-docker` — Leaves Docker Compose services running after Ctrl+C instead of calling `docker compose down`.
+`--keep-docker` leaves Docker Compose services running after Ctrl+C instead of calling `docker compose down`.
 
-`--reset-volumes` — Wipes all Docker volumes and restarts with a clean state. Useful for Docker crash recovery.
+`--reset-volumes` wipes all Docker volumes and restarts with a clean state, which helps after a Docker crash.
 
-`--demo` — Starts additional demo data sources (PostgreSQL pet-store schema, OpenAPI petstore mock, SQLite, and a GraphQL remote). Seeds petstore users and orders automatically.
+`--demo` starts additional demo data sources (PostgreSQL pet-store schema, OpenAPI petstore mock, SQLite, and a GraphQL remote). Seeds petstore users and orders automatically.
 
-`--source=<name>` (`start-ui-install.sh` only, repeatable) — Provisions an optional data source alongside `--demo`. Each name maps to `demo/sources/<name>/`. The start calls `demo/sources/provision.py up`, which starts the source's `compose.yml` as its own Docker Compose project (`provisa-demo-<name>`), waits for its health check, and runs `prime.py` when the source has one to seed data. The start then writes a wrapper config at `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml` that includes the base config plus each source's `fragment.yaml`, and boots from it.
+`--source=<name>` (`start-ui-install.sh` only, repeatable) provisions an optional data source alongside `--demo`. Each name maps to `demo/sources/<name>/`. The start calls `demo/sources/provision.py up`, which starts the source's `compose.yml` as its own Docker Compose project (`provisa-demo-<name>`), waits for its health check, and runs `prime.py` when the source has one to seed data. The start then writes a wrapper config at `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml` that includes the base config plus each source's `fragment.yaml`, and boots from it.
 
 The same `provision.py` is what the UI end-to-end suite calls to stand up these sources (under the `provisa-e2e-<name>` project prefix on its own ports), so the seed data a demo shows and the rows the suite asserts on are defined once.
 
@@ -85,7 +85,7 @@ Shipped sources:
 | `splunk` | mgmt 8089, HEC 8088 | Source registered with token auth and `disable_ssl_validation` (the container's certificate is self-signed); an index, seven shelter-alert events and the `shelter_alerts` Data Model seeded by `prime.py`, which also mints the API token the fragment reads as `PROVISA_DEMO_SPLUNK_TOKEN`. Data Models register as tables through Register Table: on Trino through the `splunk` catalog, and on every other engine through the Splunk driver's pgwire endpoint, which the engine attaches |
 | `chinook` | 25433 | Postgres holding the snake_case Chinook subset Hasura's metadata sample tracks, seeded by `prime.py` from `tests/fixtures/hasura_v2_t1_seed.sql`; source registered from the fragment, and the source a Hasura v2 import of `tests/fixtures/hasura_v2_t1_metadata.json` lands on |
 
-`--idp=basic|firebase` — Enables an identity provider for auth. Without this flag, the backend runs with no auth provider and all requests are treated as `admin`.
+`--idp=basic|firebase` enables an identity provider for auth. Without this flag, the backend runs with no auth provider and all requests are treated as `admin`.
 
 ---
 
@@ -146,10 +146,10 @@ Open `http://localhost:3000` in a browser.
 
 The nav bar has four top-level menus:
 
-- **Explore** — Schema Explorer (`/schema`), GraphQL editor (`/query`), Cypher editor (`/graph`), SQL editor (`/sql`)
-- **Model** — Views and Commands
-- **Security** — Row-level security and column masking policies
-- **Admin** — Overview, domains, cache, scheduled tasks, system health, observability, users, orgs, roles
+- **Explore.** Schema Explorer (`/schema`), GraphQL editor (`/query`), Cypher editor (`/graph`), SQL editor (`/sql`)
+- **Model.** Views and Commands.
+- **Security.** Row-level security and column masking policies.
+- **Admin.** Overview, domains, cache, scheduled tasks, system health, observability, users, orgs, roles.
 
 The admin GraphQL API is at `http://localhost:8001/admin/graphql`.
 
@@ -157,13 +157,13 @@ The admin GraphQL API is at `http://localhost:8001/admin/graphql`.
 
 ## Troubleshooting
 
-**Backend won't start** — check `.logs/server.log`. Most common cause is a missing env var or a port conflict on 8001.
+**Backend won't start.** Check `.logs/server.log`. The most common cause is a missing env var or a port conflict on 8001.
 
-**Docker services not healthy** — run `docker compose -f docker-compose.core.yml -f docker-compose.dev.yml ps` to see which service is stuck. The federation engine takes ~30 seconds on first start.
+**Docker services not healthy.** Run `docker compose -f docker-compose.core.yml -f docker-compose.dev.yml ps` to see which service is stuck. The federation engine takes ~30 seconds on first start.
 
-**Port conflict on 3000 or 8001** — `start-ui.sh` kills stale processes on those ports before starting. If something else owns the port, stop it manually first.
+**Port conflict on 3000 or 8001.** `start-ui.sh` kills stale processes on those ports before starting. If something else owns the port, stop it manually first.
 
-**Fresh start** — stop the script, then run `./start-ui.sh --reset-volumes` to wipe all volumes and restart.
+**Fresh start.** Stop the script, then run `./start-ui.sh --reset-volumes` to wipe all volumes and restart.
 
 ---
 

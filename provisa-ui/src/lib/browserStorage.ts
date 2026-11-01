@@ -123,7 +123,8 @@ function area(options?: StoredKeyOptions): Storage {
  * identity -- its bearer, org and role -- is the visitor's own: read and written in that tab's
  * session storage, under its own names, so the signed-in session's keys are neither read nor
  * changed. Closing the tab, or signing out of the demo, ends the visit and the browser's own
- * session is as it was.
+ * session is as it was. The environment picked is the visit's own the same way: one a tour left
+ * picked is not the next visit's, which opens as its demo does.
  */
 const VISITOR_FLAG = "provisa_visitor";
 const IDENTITY_KEYS: ReadonlySet<string> = new Set([
@@ -132,6 +133,9 @@ const IDENTITY_KEYS: ReadonlySet<string> = new Set([
   "provisa_org",
   "provisa_role",
 ]);
+
+/** What a visit holds of its own: its identity and the environment picked. */
+const VISIT_KEYS: ReadonlySet<string> = new Set([...IDENTITY_KEYS, "provisa_env"]);
 
 function readVisitorFlag(): boolean {
   return window.sessionStorage.getItem(VISITOR_FLAG) === "true";
@@ -160,7 +164,7 @@ function changeVisit(change: (store: Storage) => void): void {
 /** Make this tab a live demo's visitor, with no identity of its own yet. */
 export function startVisit(): void {
   changeVisit((store) => {
-    for (const key of IDENTITY_KEYS) store.removeItem(`visitor:${key}`);
+    for (const key of VISIT_KEYS) store.removeItem(`visitor:${key}`);
     store.setItem(VISITOR_FLAG, "true");
   });
 }
@@ -168,7 +172,7 @@ export function startVisit(): void {
 /** End this tab's visit: the visitor's identity goes, and the browser's own session is back. */
 export function endVisit(): void {
   changeVisit((store) => {
-    for (const key of IDENTITY_KEYS) store.removeItem(`visitor:${key}`);
+    for (const key of VISIT_KEYS) store.removeItem(`visitor:${key}`);
     store.removeItem(VISITOR_FLAG);
   });
 }
@@ -180,7 +184,7 @@ function isIdentity(key: string, options?: StoredKeyOptions): boolean {
 
 /** The storage and key a value is held under: the visitor's own, for its identity. */
 function where(key: string, options?: StoredKeyOptions): [Storage, string] {
-  if (isIdentity(key, options) && readVisitorFlag()) {
+  if (options?.global && !options.session && VISIT_KEYS.has(key) && readVisitorFlag()) {
     return [window.sessionStorage, `visitor:${key}`];
   }
   return [area(options), storageKey(key, options)];

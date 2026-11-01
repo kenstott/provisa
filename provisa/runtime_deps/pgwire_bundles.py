@@ -184,6 +184,21 @@ def default_cache_root() -> Path:
     return Path.home() / ".cache" / "provisa" / "runtime_deps"
 
 
+def prune_releases(cache_root: Path | None = None) -> list[str]:
+    """Delete from the cache each engine release no connector here is pinned to, and return their
+    names. Each RELEASE_TAG bump caches beside the last: six releases held 13 GB of the sandbox
+    VM's 49 GB disk (2026-10-31). Only a deployment with one Provisa on its cache runs this: a
+    developer's is shared by worktrees at other releases."""
+    root = cache_root if cache_root is not None else default_cache_root()
+    if not root.is_dir():
+        return []
+    kept = {RELEASE_TAG, *CONNECTOR_RELEASE.values()}
+    gone = sorted(p for p in root.glob("engine-v*") if p.is_dir() and p.name not in kept)
+    for release in gone:
+        shutil.rmtree(release)
+    return [release.name for release in gone]
+
+
 # Fetch a bundle's release asset and lay it out under ``dest``. Injected at the resolver so tests
 # never touch the network; the default is the real GitHub download.
 Downloader = Callable[[BundleSpec, Path], None]

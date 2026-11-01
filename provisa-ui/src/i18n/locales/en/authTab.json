@@ -9,12 +9,12 @@
     "assignmentsSourceClaims": "Token claims",
     "assignmentsSourceProvisa": "Provisa (local assignments)",
     "trustUpstream": "Trust upstream proxy identity headers",
-    "allowSimpleAuth": "Allow simple auth (production guard — required to enable username/password)",
+    "allowSimpleAuth": "Allow simple auth (production guard, required to enable username/password)",
     "saveButton": "Save auth settings",
     "loading": "Loading…",
     "saved": "Saved.",
     "savedRestartRequired": "Saved. Restart the service to apply.",
-    "secretOnFile": "Stored — leave blank to keep it",
+    "secretOnFile": "Stored. Leave blank to keep it.",
     "secretNotSet": "Not set",
     "allowRegistration": "Let people create their own accounts"
   }

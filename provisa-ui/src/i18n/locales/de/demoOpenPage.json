@@ -3,6 +3,13 @@
     "title": "Ihre Demo-Sandbox wird geöffnet",
     "opening": "Eine Kopie der Demo wird für Sie vorbereitet. Das dauert einige Sekunden.",
     "starting": "Diese Demo wird gestartet …",
-    "retry": "Erneut versuchen"
+    "retry": "Erneut versuchen",
+    "coordinatorWaking": "Der Server wird aktiviert …",
+    "coordinatorUpdating": "Der Server wird aktualisiert. Er ist in Kürze wieder verfügbar …",
+    "serverStarting": "Der Demo-Server wird gestartet …",
+    "connecting": "Verbindung zum Server wird hergestellt …",
+    "elapsed": "Bisher {{time}}",
+    "coldStart": "Eine inaktive Demo braucht etwa fünf Minuten zum Starten.",
+    "gaveUp": "Die Demo wurde nicht innerhalb von {{minutes}} Minuten geöffnet. Versuchen Sie es später erneut."
   }
 }

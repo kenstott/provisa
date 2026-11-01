@@ -40,6 +40,7 @@ import { ERD_ELK_LAYOUT } from "./erd-layout-options";
 import { applyTaxiLanes, clearTaxiLanes } from "./sections/erd-taxi";
 import { getErdPalette } from "./sections/erd-palette";
 import type { TooltipState, ErdPanelProps } from "./sections/erd-types";
+import { useErdCollapseLink } from "./useErdCollapseLink";
 import { Tip } from "../Tip";
 import { getStored, setStored } from "../../lib/browserStorage";
 
@@ -71,6 +72,8 @@ export function ErdPanel({
   highlightTableIds = NO_TABLES,
   search = "",
   page = "tables",
+  collapsed = null,
+  onCollapsed,
   onTableClick,
   onRelationshipClick,
 }: ErdPanelProps) {
@@ -876,6 +879,7 @@ export function ErdPanel({
   const allCollapsed =
     visibleDomainIds.length > 0 && visibleDomainIds.every((id) => collapsedDomains.has(id));
   const toggleAll = () => setCollapsedDomains(allCollapsed ? new Set() : new Set(visibleDomainIds));
+  useErdCollapseLink(collapsed, onCollapsed, visibleDomainIds, collapsedDomains, setCollapsedDomains);
 
   return (
     <div

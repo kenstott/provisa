@@ -8,7 +8,7 @@
     "never": "Live if possible",
     "always": "Always",
     "hot": "Hot-{{threshold}}",
-    "neverWithLoadProtection": "Live if possible cannot be combined with load protection: a load-protected table is never read live.",
+    "neverWithLoadProtection": "Live if possible cannot be combined with load protection, because a load-protected table is never read live.",
     "scheduled": "Always, source read only on schedule",
     "helpScheduled": "Always, source read only on schedule: reads always come from the replica and a query never causes the source to be read; the scheduler refreshes the replica on the off-peak window, the Cache TTL or the change probe, and at least one of the three is required."
   }

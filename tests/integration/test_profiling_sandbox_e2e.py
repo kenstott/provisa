@@ -54,6 +54,10 @@ _ALL_DRIFTING_SQL = (
 )
 
 
+_RUNS_SQL = next(s["sql"] for s in _STEPS if s["key"] == "profilingRuns")
+_AS_THE_BROWSER = "runsAsTheBrowser"
+
+
 @pytest.fixture(scope="module")
 def registry():
     from tests.integration.demo_registry import DemoRegistry
@@ -138,6 +142,25 @@ def _sql(tier, sandbox: dict, sql: str, env: str) -> list[dict[str, Any]]:
     return resp.json()["data"]["sql"]
 
 
+def _as_the_browser(tier, sandbox: dict, sql: str) -> list[list[Any]]:
+    """``sql`` as the SQL explorer sends it: one answer per statement, as the set of roles the
+    visitor acts as under "Role: All", from what /auth/me says of them."""
+    headers = {"Authorization": f"Bearer {sandbox['token']}", "x-org-provisa": sandbox["org_id"]}
+    me = httpx.get(f"{tier.base_url}/auth/me", headers=headers, timeout=60)
+    assert me.status_code == 200, me.text
+    roles = sorted({a["role_id"] for a in me.json()["assignments"]})
+    resp = httpx.post(
+        f"{tier.base_url}/data/sql",
+        json={"sql": sql, "results": "each"},
+        headers={**headers, "X-Provisa-Role": ",".join(roles)},
+        timeout=300,
+    )
+    assert resp.status_code == 200, f"{roles}: HTTP {resp.status_code}: {resp.text}"
+    [answer] = resp.json()["results"]
+    assert "error" not in answer or answer["error"] is None, answer
+    return answer["data"]
+
+
 @pytest.fixture(scope="module")
 def answers(tmp_path_factory, registry) -> dict[str, list[dict[str, Any]]]:
     """The tour's statements, run in a visitor's sandbox as the tour runs them."""
@@ -160,6 +183,7 @@ def answers(tmp_path_factory, registry) -> dict[str, list[dict[str, Any]]]:
                     out[step["key"]] = _sql(tier, sandbox, step["sql"], env)
                 if step["key"] == "profilingDrift":
                     out[_ALL_DRIFTING] = _sql(tier, sandbox, _ALL_DRIFTING_SQL, env)
+            out[_AS_THE_BROWSER] = _as_the_browser(tier, sandbox, _RUNS_SQL)
             return out
         finally:
             _close(sandbox["org_id"])
@@ -171,6 +195,10 @@ def test_a_new_sandbox_shows_the_templates_profile_runs(answers):
     runs = answers["profilingRuns"]
     assert runs, "the sandbox holds no profile run"
     assert all(r["status"] for r in runs), runs
+
+
+def test_a_new_sandbox_shows_the_runs_as_the_browser_asks(answers):
+    assert answers[_AS_THE_BROWSER], "the visitor's roles read no profile run"
 
 
 def test_the_second_run_finds_the_column_setup_changed_drifting(answers):

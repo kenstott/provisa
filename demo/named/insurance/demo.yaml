@@ -13,8 +13,7 @@
 title: Property exposure and hazard risk
 description: >-
   A property insurer's book of policies, in its own database, joined by county to FEMA's National
-  Risk Index, the US Forest Service's wildfire risk and NOAA's storm damage from government data:
-  where is our property exposure concentrated against hazard risk?
+  Risk Index, the US Forest Service's wildfire risk and NOAA's storm damage from government data. Where is our property exposure concentrated against hazard risk?
 screenshot: card.png
 published: true
 group: public-data

@@ -22,7 +22,7 @@
 #      waiting visitor with (and clears when it asks for the demo again);
 #   4. take down every older version nothing reads (<bundles>/<name>/in-use): its data dropped
 #      from the shared stores, its own services removed with the images no other container uses,
-#      its bundle directory deleted.
+#      its bundle directory deleted. A demo not up has the older versions it never ran deleted.
 # Nothing is started at boot: a demo's stores come up the first time it is asked for, and stay
 # up while it is used. When its last sandbox closes, the tier rewrites <bundles>/<name>/requested
 # as "until <epoch seconds>" (sandbox.demo_stores_linger after the close); an open before then
@@ -46,6 +46,9 @@
 #   DEMO_STORES_SHARED     the shared stores' compose file (docker-compose.shared.yml)
 #   DEMO_STORES_PROJECT    the shared stores' compose project
 #   DEMO_STORES_KAFKA_PORT the port the shared Kafka listens, is published and advertised at
+#   DEMO_PRUNE_ENGINES     true: each run deletes the connector engine releases this Provisa does
+#                          not read from the runtime-deps cache, through DEMO_PULL (prune-engines).
+#                          A node's alone: a developer's cache is shared by other worktrees.
 #   DEMO_STORES_NETWORK    the docker network the tier is on: each store joins it and is named by
 #                          its container and container port. Empty: by 127.0.0.1 and its published
 #                          port (a tier on this host, as the test instance runs it).
@@ -88,7 +91,7 @@ linger_out() { # name
 }
 
 sync_demo() { # name
-  local name="$1" pulled version dir keep old asked errors
+  local name="$1" pulled version dir asked errors
   mkdir -p "$DEMO_BUNDLES_DIR/$name"
   pulled="$($DEMO_PULL pull "$name" --into "$DEMO_PULL_INTO")"
   version="$(basename "$pulled")"
@@ -98,6 +101,7 @@ sync_demo() { # name
   write_atomically "$DEMO_BUNDLES_DIR/$name/pulled" "$version"
   if [ ! -f "$DEMO_BUNDLES_DIR/$name/requested" ]; then
     echo "demo $name: $version pulled; not asked for since the node started"
+    prune_versions "$name" "$version"
     return 0
   fi
   asked="$(cat "$DEMO_BUNDLES_DIR/$name/requested")"
@@ -105,6 +109,7 @@ sync_demo() { # name
     "until "*)
       if [ "$(date +%s)" -ge "${asked#until }" ]; then
         linger_out "$name"
+        prune_versions "$name" "$version"
         return 0
       fi
       ;;
@@ -128,7 +133,18 @@ sync_demo() { # name
   rm -f "$DEMO_BUNDLES_DIR/$name/failed"
   write_atomically "$DEMO_BUNDLES_DIR/$name/ready" "$version"
   echo "demo $name: $version ready"
+  prune_versions "$name" "$version" drop
+}
+
+prune_versions() { # name version [drop]
+  # A version pulled is never read once a newer one is, whether or not its demo is ever asked for.
+  # Without drop the demo is not up, and its shared stores may not be: a version with data in them
+  # stays until a run that has them up.
+  local name="$1" version="$2" drop="${3:-}" keep old
   keep=" $version "
+  if [ -f "$DEMO_BUNDLES_DIR/$name/ready" ]; then
+    keep="$keep$(cat "$DEMO_BUNDLES_DIR/$name/ready") "
+  fi
   if [ -f "$DEMO_BUNDLES_DIR/$name/in-use" ]; then
     keep="$keep$(tr '\n' ' ' < "$DEMO_BUNDLES_DIR/$name/in-use") "
   fi
@@ -143,6 +159,7 @@ sync_demo() { # name
     esac
     [[ "$old" < "$version" ]] || continue
     if [ -f "$DEMO_BUNDLES_DIR/$name/$old/stores.env" ]; then
+      [ -n "$drop" ] || continue
       python3 "$DEMO_STORES" drop "$name" "$old"
       rm -f "$DEMO_BUNDLES_DIR/$name/$old/stores.env"
       echo "demo $name: $old taken down"
@@ -188,4 +205,7 @@ while :; do
   [ -e "$signal" ] || break
   echo "demo stores: asked for again during the run; syncing again"
 done
+if [ "${DEMO_PRUNE_ENGINES:-}" = "true" ]; then
+  $DEMO_PULL prune-engines || { echo "demo stores: engine releases not pruned" >&2; failed=1; }
+fi
 exit "$failed"

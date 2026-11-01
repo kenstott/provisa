@@ -8,7 +8,7 @@ You make a view bitemporal by mapping three of its columns:
 - **Valid time**: the column holding the date your business gives the record, such as when it was agreed, booked or took effect.
 - **Recorded time**: the column holding when this version was entered or changed, such as `updated_at`.
 
-Recorded time, called transaction time in the temporal-database literature and system time in SQL:2011; valid time, called application time in SQL:2011 or effective date.
+Recorded time is called transaction time in the temporal-database literature and system time in SQL:2011. Valid time is called application time in SQL:2011, or effective date.
 
 The three values map columns your source already has. Provisa decides how the versions are kept; there is no storage mode to choose.
 
@@ -37,7 +37,7 @@ A view that keeps history is materialized, so its versions are stored.
 
 The three are declared together or not at all. Provisa refuses a view that names only some of them, and says which are missing.
 
-A table takes the same sections when you register it: pick it under **+ Table**, click **Continue**, and its Time Travel section is on **Load and timeliness**. A model takes the section when you create one (**+ Model**). For a model, its key is the business key, so the section asks only for the two times.
+A table takes the same sections when you register it. Pick it under **+ Table**, click **Continue**, and its Time Travel section is on **Load and timeliness**. A model takes the section when you create one (**+ Model**). For a model, its key is the business key, so the section asks only for the two times.
 
 ## A table updated in place
 
@@ -46,7 +46,7 @@ Some tables keep every version as its own row, so a correction adds a row with t
 - Each capture reads the rows recorded since the latest recorded time the log holds, and adds those that changed.
 - The log's allowed lateness widens that window, so a row committed late with an earlier recorded time is still read.
 - A capture cannot see a row the source deleted. **Full capture** reads the whole table again and records each deleted row as gone.
-- The log begins at its first capture: before it, each row has only the version it had then.
+- The log begins at its first capture. Before it, each row has only the version it had then.
 
 The log is listed under **Cache**, on the **Materialized Store** tab, as **Version log of** the table. Its **Settings** set how often it is captured and its allowed lateness; **Full capture** is beside them. A plain read of the table reads the table; a read as of a time, or as recorded at a time, reads its log.
 

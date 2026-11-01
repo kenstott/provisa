@@ -130,6 +130,7 @@
       "address_not_found": "解決する対象がありません: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve は 1 つの操作で他のルートフィールドと組み合わせることはできません",
       "source_starting": "ソース {{source}} はまだ起動中です。しばらくしてからもう一度お試しください。",
+      "source_unavailable": "ソース {{source}} は応答できませんでした。しばらくしてからもう一度お試しください。",
       "view_outside_load_window": "ビュー {{view}} は読み取り時間帯の間だけ読み取れます。次に開くのは {{opens_at}} です。",
       "graphql_body_missing": "リクエストに本文がありません。GraphQL リクエストはクエリを含む JSON オブジェクトです。",
       "graphql_body_not_json": "リクエスト本文が JSON ではありません: {{error}}",
@@ -156,7 +157,7 @@
       "in_use": "{{env}} はまだ {{count}} 件から参照されています。それぞれを削除または変更してから、もう一度削除してください。"
     },
     "front_door": {
-      "coordinator_waking": "環境を起動しています。約 2 分で準備が整います。",
+      "coordinator_waking": "環境を起動しています。約 5 分で準備が整います。",
       "coordinator_updating": "環境を更新しています。まもなく利用できるようになります。"
     },
     "functions": {
@@ -268,6 +269,10 @@
       "classification_status_invalid": "分類の決定は承認または却下のどちらかで、{{status}} ではありません",
       "classification_decision_not_found": "{{column}} の {{kind}} としての決定はありません",
       "classification_pii_refused": "列を PII としてマークできませんでした"
+    },
+    "query": {
+      "catalog_view_refused": "{{view}} は meta ドメインのカタログビューであり、データソースのテーブルと同じ 1 つのステートメントでは読み取れません。2 つのステートメントに分けて読み取ってください。",
+      "function_unsupported": "{{function}}() には {{dialect}} での対応する形式がありません。"
     },
     "replication": {
       "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: [{{content_type}}] {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",
@@ -664,6 +669,8 @@
       "unknown_demo": "{{demo}} という名前の公開デモはありません。",
       "demo_not_ready": "このデモはまだ準備中です。少し後でもう一度お試しください。",
       "demo_stores_failed": "このデモを開始できませんでした。数分後にもう一度お試しください。",
+      "demo_failed": "このデモを準備できませんでした。数分後にもう一度お試しください。",
+      "failed_to_start": "デモサーバーを起動できませんでした。しばらくしてからもう一度お試しください。",
       "at_capacity": "デモサンドボックスはすべて使用中です。少し後でもう一度お試しください。",
       "starting": "デモサーバーを起動しています。1〜2分後にもう一度お試しください。",
       "disk_full": "このサンドボックスはディスク上限の {{limit}} バイトを使い切りました。これ以上書き込めません。",

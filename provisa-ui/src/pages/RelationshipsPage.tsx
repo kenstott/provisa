@@ -21,6 +21,7 @@ import { tagLossTitle } from "../components/admin/tagLoss";
 import { ErdToggle } from "../components/erd/ErdToggle";
 import { ErdView } from "../components/erd/ErdView";
 import { useErdView } from "../components/erd/useErdView";
+import { useScreenInputs } from "../mcp/screenState";
 import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
 import { useDomainFilter } from "../context/DomainFilterContext";
@@ -124,6 +125,15 @@ export function RelationshipsPage() {
   const [reverseForm, setReverseForm] = useState<RelForm | null>(null);
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [relPage, setRelPage] = useState(0);
+  // The link names the filter, also on a page already open: a tour step moving on within the page
+  // searches for its own relationship's alias.
+  const linkedSearch = searchParams.get("search") ?? "";
+  const [seededSearch, setSeededSearch] = useState(linkedSearch);
+  if (linkedSearch !== seededSearch) {
+    setSeededSearch(linkedSearch);
+    setRelSearch(linkedSearch);
+    setRelPage(0);
+  }
   const PAGE_SIZE = 50;
   const [showModelingModal, setShowModelingModal] = useState(false);
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
@@ -557,6 +567,15 @@ export function RelationshipsPage() {
   ];
   const sortGroup = useListSortGroup(filteredRels, relColumns, "relationships", "source");
   const groupBy = sortGroup.groupBy;
+
+  // REQ-2115: Polly's read_screen reads the page's view from here. A relationship is named only
+  // once the list holds it, so a link to one that does not exist reads as none.
+  useScreenInputs("/relationships", {
+    view: erd.on ? "erd" : "list",
+    relationship: allRels.some((r) => String(r.id) === expanded) ? expanded : null,
+    domains: erd.focus.domains,
+    objects: erd.focus.objects,
+  });
 
   if (loading) return <PageLoading message={t("relationshipsPage.loading")} />;
 

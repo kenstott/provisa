@@ -187,6 +187,10 @@
       "slaRemove": "सेवा स्तर हटाएँ",
       "slaAdd": "सेवा स्तर जोड़ें",
       "notDeclared": "घोषित नहीं",
+      "notDeclaredList": "घोषित नहीं: {{names}}",
+      "versionSaved": "सहेजा गया",
+      "versionChanges": "परिवर्तन",
+      "constraints": "बाधाएँ",
       "breakingWarning": "v{{version}} में असंगत परिवर्तन, अभी लागू नहीं",
       "breaking": "असंगत",
       "savedBy": "{{when}} को {{who}} द्वारा सहेजा गया",
@@ -252,7 +256,9 @@
         "sla": "SLA और ताज़गी",
         "quality": "वादे",
         "consumers": "उपभोक्ता",
-        "versions": "संस्करण और परिवर्तन"
+        "versions": "संस्करण और परिवर्तन",
+        "roles": "भूमिकाएँ",
+        "history": "संस्करण इतिहास"
       }
     }
   }

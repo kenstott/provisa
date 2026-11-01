@@ -88,7 +88,7 @@ export async function onRequestGet(context) {
 
   return html(
     successPage(
-      "Registration confirmed! Your license file is on its way to your inbox — apply it with " +
+      "Registration confirmed. Your license file is on its way to your inbox. Apply it with " +
         "<code>provisa license apply &lt;file&gt;</code>."
     )
   );

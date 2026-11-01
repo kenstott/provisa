@@ -37,6 +37,7 @@ import { ErdFocusActions } from "../components/erd/ErdFocusActions";
 import { ErdToggle } from "../components/erd/ErdToggle";
 import { ErdView } from "../components/erd/ErdView";
 import { useErdView } from "../components/erd/useErdView";
+import { useScreenInputs } from "../mcp/screenState";
 import { fetchSettings, profileTable, runSql } from "../api/admin";
 import { downloadModelReport } from "../api/modelReport";
 import type { PlatformSettings } from "../api/admin";
@@ -156,6 +157,14 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { suggestTableAlias } = useSuggestTableAlias();
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
+  // REQ-2115: Polly's read_screen reads the page's view from here. A table is named only once the
+  // list holds it, so a link to one that does not exist reads as none.
+  useScreenInputs(viewsOnly ? "/views" : "/tables", {
+    view: erd.on ? "erd" : "list",
+    table: tables.find((tb) => tb.id === expanded)?.id ?? null,
+    domains: erd.focus.domains,
+    objects: erd.focus.objects,
+  });
   // One request for every row; asked for often only while a build runs or a detail is open.
   const { replicaBuilds } = useReplicaBuilds({ watching: expanded !== null });
   // REQ-1386: table whose governed SELECT * preview modal is open.

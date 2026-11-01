@@ -187,6 +187,10 @@
       "slaRemove": "Quitar nivel de servicio",
       "slaAdd": "Añadir nivel de servicio",
       "notDeclared": "No declarado",
+      "notDeclaredList": "No declarado: {{names}}",
+      "versionSaved": "Guardado",
+      "versionChanges": "Cambios",
+      "constraints": "Restricciones",
       "breakingWarning": "Cambio incompatible en v{{version}}, aún no vigente",
       "breaking": "Incompatible",
       "savedBy": "Guardado {{when}} por {{who}}",
@@ -252,7 +256,9 @@
         "sla": "SLA y actualidad",
         "quality": "Promesas",
         "consumers": "Consumidores",
-        "versions": "Versiones y cambios"
+        "versions": "Versiones y cambios",
+        "roles": "Roles",
+        "history": "Historial de versiones"
       }
     }
   }

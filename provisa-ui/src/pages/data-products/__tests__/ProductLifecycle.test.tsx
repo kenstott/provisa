@@ -212,7 +212,7 @@ describe("a data product's retirement", () => {
     render(<Lifecycle product={products[0]} products={products} status={status} />);
     fireEvent.click(screen.getByTestId("data-product-retire-c360"));
     expect(await screen.findByTestId("data-product-retire-moves")).toHaveTextContent(
-      "It has no members: a successor is optional.",
+      "It has no members, so a successor is optional.",
     );
     fireEvent.change(screen.getByTestId("data-product-retire-reason"), {
       target: { value: "Gone" },

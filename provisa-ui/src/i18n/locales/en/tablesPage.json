@@ -12,7 +12,7 @@
     "model": "+ Model",
     "modelTitle": "Model an entity or fact (star schema / Data Vault)",
     "reportXlsx": "Workbook",
-    "reportXlsxTitle": "Download the model as a spreadsheet for review — sources, tables, columns, relationships, views, metrics, materialized views, ontology, data products, data contracts, data quality and data profiling, one sheet each",
+    "reportXlsxTitle": "Download the model as a spreadsheet for review, with one sheet each for sources, tables, columns, relationships, views, metrics, materialized views, ontology, data products, data contracts, data quality and data profiling",
     "viewErd": "View ERD",
     "colSource": "Source",
     "colDomain": "Domain",
@@ -54,25 +54,25 @@
     "modelingRole": {
       "fact": "fact",
       "dimension": "dimension",
-      "impliedFactTitle": "Implied fact — Enable Aggregates is on for this table",
-      "impliedDimensionTitle": "Implied dimension — Enable Group By is on for this table"
+      "impliedFactTitle": "Implied fact: Enable Aggregates is on for this table",
+      "impliedDimensionTitle": "Implied dimension: Enable Group By is on for this table"
     },
     "derived": "derived",
     "endpointUnread": "Its source's API document could not be read",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
-      "title": "Data-quality checker — this table's rows are the results of running its contract"
+      "title": "Data-quality checker: this table's rows are the results of running its contract"
     },
     "dataProduct": "product",
-    "dataProductTitle": "Data Product — included in provisa metadata export",
+    "dataProductTitle": "Data Product: included in provisa metadata export",
     "purposeTitle": "What registering a table does",
-    "purposeBody": "Registration is what puts a table into the governed model: it fixes the columns, the names they are exposed under, and which roles can see them. Only registered tables can be queried, and everything downstream — relationships, metrics, views, ontology terms — names registered columns.",
-    "purposeAdd": "+ View registers a relation defined by SQL or by metrics instead of by a physical table — and registering it is where it stops being a saved query. The definition also decides how it is served: live, or materialized on a cadence or on a calendar window, with a refresh that replaces, upserts, or appends. Turn on Time Travel and the view keeps its own history, so consumers can read it as of a past point in time; its inputs are tracked as lineage, so a refresh waits on what it depends on.",
+    "purposeBody": "Registering a table puts it in the governed model and fixes its columns, the names they are exposed under, and which roles can see them. Only registered tables can be queried, and relationships, metrics, views and ontology terms all name registered columns.",
+    "purposeAdd": "+ View registers a relation defined by SQL or by metrics. The definition also decides how it is served: live, or materialized on a cadence or a calendar window, with a refresh that replaces, upserts, or appends. Turn on Time Travel and the view keeps its own history, so consumers can read it as of a past point in time. Its inputs are tracked as lineage, so a refresh waits on what it depends on.",
     "purposeAria": "About registered tables",
     "erdHelpTitle": "Entity-relationship diagram",
-    "erdHelpBody": "Draws the registered tables and the relationships declared between them, so the joins that already exist are visible before you write a query. It reads the model rather than editing it: filter by domain and export the diagram as PNG or SVG.",
-    "purposeModel": "+ Model declares an entity or a fact — the two pieces both a star schema and a Data Vault are built from — and lowers it onto those same primitives, registering the materialized view, its Time Travel, and the relationships to the entities it keys on.",
+    "erdHelpBody": "Draws the registered tables and the relationships declared between them, so you can see which joins exist before you write a query. It is read-only: filter by domain and export the diagram as PNG or SVG.",
+    "purposeModel": "+ Model declares an entity or a fact, the building blocks of a star schema and a Data Vault. It registers the materialized view, its Time Travel, and the relationships to the entities it keys on.",
     "empty": "No tables registered yet.",
     "resizeDetail": "Resize the detail panel",
     "detailPanel": "Table details",

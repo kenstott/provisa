@@ -16,6 +16,7 @@
     "role_sql_generation": "SQL-Generierung",
     "role_table_selection": "Tabellenauswahl",
     "role_mcp_chat": "Chat-Assistent",
+    "role_glossary_term_finding": "Begriffe in einem Dokument finden",
     "vendorLabel": "Anbieter",
     "modelLabel": "Modell",
     "nlHeading": "Natürlichsprachliche Abfrage",

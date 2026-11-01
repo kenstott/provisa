@@ -41,6 +41,7 @@ AI_ROLES = (
     "sql_generation",
     "table_selection",
     "mcp_chat",
+    "glossary_term_finding",
 )
 
 

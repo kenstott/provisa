@@ -22,10 +22,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, or_, select, update
 
 from provisa.core.schema_org import glossary_term_drafts as drafts_t
 from provisa.core.schema_org import glossary_term_scans as scans_t
@@ -62,6 +62,11 @@ class ScanRow:
     started_by: str | None
     started_at: datetime
     finished_at: datetime | None
+    model: str | None
+    step: str | None
+    batch: int | None
+    batches: int | None
+    budget_limit: int | None
 
 
 @dataclass(frozen=True)
@@ -96,6 +101,11 @@ _SCAN_COLUMNS = (
     scans_t.c.started_by,
     scans_t.c.started_at,
     scans_t.c.finished_at,
+    scans_t.c.model,
+    scans_t.c.step,
+    scans_t.c.batch,
+    scans_t.c.batches,
+    scans_t.c.budget_limit,
 )
 _DRAFT_COLUMNS = (
     drafts_t.c.id,
@@ -138,6 +148,8 @@ async def start_scan(
     document_source: str,
     domains: Sequence[str],
     started_by: str | None,
+    model: str,
+    launch: str,
 ) -> int:
     result = await conn.execute_core(
         insert(scans_t)
@@ -148,10 +160,38 @@ async def start_scan(
             domains=json.dumps(sorted(domains)),
             status=RUNNING,
             started_by=started_by,
+            model=model,
+            launch=launch,
+            progress_at=datetime.now(UTC),
         )
         .returning(scans_t.c.id)
     )
     return int(result.fetchone()[0])
+
+
+async def record_progress(
+    conn: Connection,
+    scan_id: int,
+    *,
+    step: str,
+    batch: int,
+    batches: int,
+    budget_limit: int | None,
+) -> bool:
+    """The scan has moved on to ``step``. False when it is no longer running."""
+    result = await conn.execute_core(
+        update(scans_t)
+        .where(scans_t.c.id == scan_id, scans_t.c.status == RUNNING)
+        .values(
+            step=step,
+            batch=batch,
+            batches=batches,
+            budget_limit=budget_limit,
+            progress_at=datetime.now(UTC),
+        )
+        .returning(scans_t.c.id)
+    )
+    return result.fetchone() is not None
 
 
 def _payload(c: Candidate) -> str:
@@ -168,8 +208,17 @@ def _payload(c: Candidate) -> str:
 
 async def finish_scan(
     conn: Connection, scan_id: int, candidates: Sequence[Candidate], summary: dict[str, Any]
-) -> None:
-    """The scan done: its candidates queued as drafts, in the order the document mentions them."""
+) -> bool:
+    """The scan done: its candidates queued as drafts, in the order the document mentions them.
+    False, queueing nothing, when it is no longer running."""
+    result = await conn.execute_core(
+        update(scans_t)
+        .where(scans_t.c.id == scan_id, scans_t.c.status == RUNNING)
+        .values(status=DONE, summary=json.dumps(summary), finished_at=func.now())
+        .returning(scans_t.c.id)
+    )
+    if result.fetchone() is None:
+        return False
     if candidates:
         await conn.execute_core_many(
             insert(drafts_t),
@@ -191,19 +240,43 @@ async def finish_scan(
                 for i, c in enumerate(candidates)
             ],
         )
-    await conn.execute_core(
-        update(scans_t)
-        .where(scans_t.c.id == scan_id)
-        .values(status=DONE, summary=json.dumps(summary), finished_at=func.now())
-    )
+    return True
 
 
-async def fail_scan(conn: Connection, scan_id: int, error: str) -> None:
-    await conn.execute_core(
+async def fail_scan(conn: Connection, scan_id: int, error: str) -> bool:
+    """The scan stopped, naming why. False when it had already ended: the first ending stands."""
+    result = await conn.execute_core(
         update(scans_t)
-        .where(scans_t.c.id == scan_id)
+        .where(scans_t.c.id == scan_id, scans_t.c.status == RUNNING)
         .values(status=FAILED, error=error, finished_at=func.now())
+        .returning(scans_t.c.id)
     )
+    return result.fetchone() is not None
+
+
+async def fail_left_behind(conn: Connection, launch: str, error: str) -> int:
+    """Fail the running scans of an earlier launch, whose server is gone; how many."""
+    result = await conn.execute_core(
+        update(scans_t)
+        .where(
+            scans_t.c.status == RUNNING,
+            or_(scans_t.c.launch.is_(None), scans_t.c.launch != launch),
+        )
+        .values(status=FAILED, error=error, finished_at=func.now())
+        .returning(scans_t.c.id)
+    )
+    return len(result.fetchall())
+
+
+async def fail_stalled(conn: Connection, after: timedelta, error: str) -> int:
+    """Fail the running scans that have not moved on for ``after``; how many."""
+    result = await conn.execute_core(
+        update(scans_t)
+        .where(scans_t.c.status == RUNNING, scans_t.c.progress_at < datetime.now(UTC) - after)
+        .values(status=FAILED, error=error, finished_at=func.now())
+        .returning(scans_t.c.id)
+    )
+    return len(result.fetchall())
 
 
 async def scans(conn: Connection, *, document_id: int | None = None) -> list[ScanRow]:
