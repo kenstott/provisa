@@ -26,6 +26,7 @@ import pytest
 
 from provisa.core.pg_error import from_engine
 from provisa.federation.duckdb_pg_functions import register
+from provisa.federation.duckdb_pg_json import exists_all, exists_any
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import transpile_to_duckdb
 
@@ -212,3 +213,21 @@ def test_a_column_is_read_by_the_udfs_row_by_row(db: Any):
         '{"a":9}',
         '{"a":9,"b":2}',
     }
+
+
+@pytest.mark.parametrize(
+    ("call", "want"),
+    [
+        ("""jsonb_concat('{}', '[1]')""", "[{}, 1]"),
+        ("""jsonb_concat('[]', '{"a":1}')""", '[{"a": 1}]'),
+        ("""jsonb_concat('[]', '[1]')""", "[1]"),
+        ("""jsonb_concat('{}', '{"a":1}')""", '{"a":1}'),
+    ],
+)
+def test_an_empty_value_is_dropped_only_beside_one_of_its_kind(db: Any, call: str, want: str):
+    assert _one(db, call) == want
+
+
+def test_a_null_key_is_skipped():
+    assert exists_all('{"a":1}', ["a", None]) is True
+    assert exists_any('{"a":1}', [None]) is False

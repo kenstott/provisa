@@ -269,6 +269,18 @@ def _on_duckdb(db: Any, sql: str) -> list[tuple] | str:
     return [tuple(cell(i, value) for i, value in enumerate(row)) for row in rows]
 
 
+def _sign(rows: list[tuple]) -> list[int]:
+    return [(int(row[0]) > 0) - (int(row[0]) < 0) for row in rows]
+
+
+def _differs(sql: str, want: tuple, got: list[tuple]) -> bool:
+    """Whether ``got`` is not PostgreSQL's answer. jsonb_cmp of two strings is the raw result of
+    the server's strcoll, whose size is libc's: only its sign is defined."""
+    if "jsonb_cmp" in sql:
+        return _sign(want[1]) != _sign(got)
+    return outcome(sql, want, got, False) != SERVED
+
+
 def test_the_udfs_answer_as_postgresql_does(pg_dsn: str):
     db = duckdb.connect()
     register(db)
@@ -280,6 +292,6 @@ def test_the_udfs_answer_as_postgresql_does(pg_dsn: str):
             if want[0] == "ERROR":
                 if got != want[1]:
                     found[sql] = {"postgres": want, "duckdb": got}
-            elif isinstance(got, str) or outcome(sql, want, got, False) != SERVED:
+            elif isinstance(got, str) or _differs(sql, want, got):
                 found[sql] = {"postgres": want, "duckdb": got}
     assert not found, json.dumps(found, indent=1, ensure_ascii=False)

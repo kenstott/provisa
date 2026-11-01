@@ -293,7 +293,7 @@ def exists_any(text: str, keys: list[str | None]) -> bool:
 
 def exists_all(text: str, keys: list[str | None]) -> bool:
     value = _jsonb(text)
-    return all(key is not None and _holds_key(value, key) for key in keys)
+    return all(key is None or _holds_key(value, key) for key in keys)  # a NULL key is skipped
 
 
 def _count(value: Any) -> int:
@@ -447,10 +447,11 @@ def _as_list(value: Any) -> list[Any]:
 def concat(left: str, right: str) -> str:
     """jsonb_concat: the IteratorConcat of two values."""
     one, other = _jsonb(left), _jsonb(right)
-    if _count(one) == 0 and not _is_scalar(other):
-        return right
-    if _count(other) == 0 and not _is_scalar(one):
-        return left
+    if isinstance(one, dict) == isinstance(other, dict):  # an empty one of the same kind
+        if _count(one) == 0 and not _is_scalar(other):
+            return right
+        if _count(other) == 0 and not _is_scalar(one):
+            return left
     if isinstance(one, dict) and isinstance(other, dict):
         merged = {**one, **other}
         return jsonb_written({key: merged[key] for key in stored_keys(merged)})
