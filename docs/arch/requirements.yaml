@@ -89775,7 +89775,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     names can run that command and do nothing else. (Amended 2026-10-29, A ROLE AS A BUILDING BLOCK:) Maintainer
     2026-10-31: a role with no capabilities may be a piece included in other roles, holding only grants.
     Alone it can do nothing; a role that includes it gets its grants, and takes capabilities from its other
-    parents.'
+    parents. (Amended 2026-10-29, REGIONS NARROW LIKE CAPABILITIES:) Maintainer 2026-10-31: data_residency''s
+    regions follow the same narrowing as capabilities and domains: a role with parents covers its stored
+    regions intersected with the union of its parents'' regions, and saving a region no parent covers is
+    refused by name.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
