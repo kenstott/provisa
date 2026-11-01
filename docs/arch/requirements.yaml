@@ -82798,7 +82798,13 @@
     starting state and states the stage; a tier or template that cannot start is named as failed, never
     left starting. (Amended 2026-10-29, A DEMO NEEDS ITS STORES HEALTHY:) An open refuses a demo whose stores
     are not reachable, or whose Elasticsearch index is red, naming it failed. The sandbox VM keeps only
-    the bundle and engine versions in use.'
+    the bundle and engine versions in use. (Amended 2026-10-29, TRADE AFFIRMATION DEMO:) Maintainer 2026-11-01:
+    "add that demo", of "a python code table as the matching engine, and maybe a command that will log the
+    match when found", "we use polly surface to drive it", "polly can use the explore surface to drive queries
+    as well". A named demo of post-trade matching and affirmation at an asset manager: trades split across
+    order, execution, broker and custodian systems; a Python code table matches them and names each break;
+    a command logs the affirmation; Polly drives the tour and puts its queries in Explore. Each break shows
+    the time to the cutoff and the penalty a failed settlement would accrue.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true
