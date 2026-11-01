@@ -9,13 +9,17 @@
 # permission from the copyright holder.
 
 """The geometric forms on DuckDB against what PostgreSQL 17.11 answered (REQ-2171, AN ANSWER THAT
-DIFFERS IS REFUSED). Each engine replays every statement in tests/integration/test_geometric_on_engines.py;
-DuckDB binds a form in about 125ms, so this file replays a quarter of them, each overload still reached."""
+DIFFERS IS REFUSED). Each engine replays every statement in tests/integration/test_geometric_on_engines.py,
+one test to a function; DuckDB binds a form in about 125ms, so this file replays a quarter of them,
+each overload still reached."""
 
 # Requirements: REQ-2167, REQ-2171
 
 from __future__ import annotations
 
+import re
+import sys
+from math import isclose
 from typing import Any
 
 import duckdb
@@ -23,33 +27,45 @@ import pytest
 
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.geometric_corpus import statements
+from tests.unit.pgwire.geometric_replay import BY_FUNCTION, function_of, outcome
 from tests.unit.pgwire.pg17_geometric_answers import RECORDED
 
 
-def _same(got: Any, want: str | None) -> bool:
-    """An engine's value against PostgreSQL's text: a double compares as its number."""
-    if isinstance(got, bool):
-        return ("t" if got else "f") == want
-    if isinstance(got, float):
-        return want is not None and got == float(want)
-    return (None if got is None else str(got)) == want
+#: glibc's cos and sin, PostgreSQL's in postgres:17.11, are correctly rounded for the angles of
+#: polygon(circle); macOS's are a digit off for some. The exact replay is the integration file's,
+#: and Linux here: this slack is a developer's Mac only.
+_LIBM_SLACK = 0.0 if sys.platform == "linux" else 1e-15
+_NUMBERS = re.compile(r"-?[0-9.]+(?:e[-+][0-9]+)?")
+
+
+def _within_libm(sql: str, got: Any, want: str | None) -> bool:
+    """A polygon of a circle, the one form through cos and sin, against PostgreSQL's text."""
+    if "::circle" not in sql or not sql.startswith("SELECT polygon(") or not want:
+        return False
+    numbers = _NUMBERS.findall(str(got)), _NUMBERS.findall(want)
+    return len(numbers[0]) == len(numbers[1]) and all(
+        isclose(float(a), float(b), rel_tol=0.0, abs_tol=_LIBM_SLACK) for a, b in zip(*numbers)
+    )
 
 
 def test_the_corpus_is_what_was_recorded():
     assert list(RECORDED) == statements()
 
 
+def test_each_function_is_replayed():
+    assert sorted(BY_FUNCTION) == sorted({function_of(sql) for sql in statements()})
+    assert sum(map(len, BY_FUNCTION.values())) == len(RECORDED)
+
+
 def test_duckdb_answers_as_postgresql_17_answered():
     connection = duckdb.connect()
+    run = lambda sql: connection.execute(sql).fetchone()[0]  # noqa: E731
     wrong = {}
-    for sql, (_, want) in list(RECORDED.items())[::4]:
-        try:
-            got = connection.execute(transpile(sql, "duckdb")).fetchone()[0]
-        except duckdb.Error as raised:
-            state = (want or "ERROR ?").split()[-1]
-            got = want if f"{state}:" in str(raised) else f"ERROR {raised}"[:120]
-        if not _same(got, want):
-            wrong[sql] = (got, want)
+    for sql in list(RECORDED)[::4]:
+        said = outcome(sql, "duckdb", run)
+        want = RECORDED[sql][1]
+        if said != "ok" and not _within_libm(sql, run(transpile(sql, "duckdb")), want):
+            wrong[sql] = said
     assert not wrong, f"{len(wrong)} of {len(RECORDED)} {list(wrong.items())[:10]}"
 
 

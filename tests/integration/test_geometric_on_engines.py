@@ -10,7 +10,7 @@
 
 """The geometric forms on each engine (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED): first that the
 recording is what postgres:17.11 answers today, then each statement of geometric_corpus as Provisa
-writes it, against that recording."""
+writes it, against that recording, one test to a function."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -27,7 +27,7 @@ import duckdb
 import psycopg
 import pytest
 
-from provisa.transpiler.transpile import transpile
+from tests.unit.pgwire.geometric_replay import BY_FUNCTION, problems
 from tests.unit.pgwire.pg17_geometric_answers import RECORDED
 from tests.unit.pgwire.record_pg17_geometric_answers import recorded, written
 
@@ -73,44 +73,34 @@ def test_the_recording_is_what_postgresql_17_answers():
     assert answers == RECORDED
 
 
-def _check(run: Callable[[str], Any], dialect: str) -> None:
-    wrong: dict[str, Any] = {}
-    for sql, (_, want) in RECORDED.items():
-        try:
-            got = run(transpile(sql, dialect))
-        except Exception as raised:  # noqa: BLE001 -- every statement is reported, not the first
-            got = "ERROR " + str(raised)
-            if (want or "").startswith("ERROR"):
-                state = (want or "").split()[1]
-                got = want if f"{state}:" in got else got
-        if isinstance(got, float) and want is not None and not want.startswith("ERROR"):
-            same = got == float(want)
-        elif isinstance(got, bool):
-            same = ("t" if got else "f") == want
-        else:
-            same = (None if got is None else str(got)) == want
-        if not same:
-            wrong[sql] = str(got)[:200]
-    assert not wrong, f"{len(wrong)} of {len(RECORDED)} {list(wrong.items())[:12]}"
+def _check(function: str, dialect: str, run: Callable[[str], Any]) -> list[str]:
+    wrong, refused = problems(function, dialect, run)
+    print("REFUSED", dialect, function, len(refused))  # noqa: T201 -- the run's record
+    assert not wrong, f"{len(wrong)} differ on {dialect}: " + "\n".join(wrong[:30])
+    return refused
 
 
-def test_geometric_forms_on_duckdb():
+@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
+def test_geometric_forms_on_duckdb(function: str):
     connection = duckdb.connect()
-    _check(lambda sql: connection.execute(sql).fetchone()[0], "duckdb")
+    run = lambda sql: connection.execute(sql).fetchone()[0]  # noqa: E731
+    assert _check(function, "duckdb", run) == []
 
 
 @pytest.mark.requires_trino
-def test_geometric_forms_on_trino(trino_conn):
+@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
+def test_geometric_forms_on_trino(trino_conn, function: str):
     def run(sql: str) -> Any:
         cursor = trino_conn.cursor()
         cursor.execute(sql)
         return cursor.fetchall()[0][0]
 
-    _check(run, "trino")
+    _check(function, "trino", run)
 
 
 @pytest.mark.requires_clickhouse
-def test_geometric_forms_on_clickhouse():
+@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
+def test_geometric_forms_on_clickhouse(function: str):
     import clickhouse_connect
 
     client = clickhouse_connect.get_client(
@@ -119,4 +109,4 @@ def test_geometric_forms_on_clickhouse():
         username=os.environ.get("CLICKHOUSE_USER", "default"),
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
-    _check(lambda sql: client.query(sql).result_rows[0][0], "clickhouse")
+    _check(function, "clickhouse", lambda sql: client.query(sql).result_rows[0][0])
