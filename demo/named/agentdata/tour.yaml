@@ -34,7 +34,7 @@ steps:
   route: /explore
   capability: query_development
   role: support_west
-  mcp: Which of our customers ordered in the last week of September 2026, and which ordered more than once? List each with their name and email.
+  mcp: Which of our customers ordered more than once in the last two weeks of September 2026? List each with their name and email.
 - key: agentdataExplain
   mcp_explain: true
 - key: agentdataOutOfReach
@@ -42,6 +42,6 @@ steps:
 - key: agentdataAnalystRole
   role: shop_analyst
 - key: agentdataAnalystAsks
-  mcp: Which of our customers ordered in the last week of September 2026, and which ordered more than once? List each with their name and email.
+  mcp: Which of our customers ordered more than once in the last two weeks of September 2026? List each with their name and email.
 - key: agentdataConnect
   mcp_connect: true
