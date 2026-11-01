@@ -31,12 +31,12 @@ import pytest
 
 from provisa.core.demo_bundles import store_namespaces
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_vector]
 
 _REPO = Path(__file__).resolve().parents[2]
 _DEMO = _REPO / "demo" / "named" / "agentdata"
-# The support agent's question, as an agent writes it: last week of September's customers, and how
-# to reach them.
+# The support agent's question, as an agent writes it: last week of September's customers, by
+# name and email.
 _RECENT = (
     'SELECT DISTINCT c.name, c.email, c.region FROM "shop"."customers" AS c '
     'JOIN "shop"."orders" AS o ON o.customer_id = c.id '

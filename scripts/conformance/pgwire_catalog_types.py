@@ -49,6 +49,7 @@ import json
 import os
 import sys
 import time
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -285,29 +286,38 @@ class _SourcePool:
             return SimpleNamespace(rows=conn.execute(sql, params or []).fetchall())
 
 
-def _sized_numeric(pg_dsn: str, column: str) -> dict[str, Any]:
+def _sized_numeric(pg_dsn: str, column: str, table: str = FIXTURE_TABLE) -> dict[str, Any]:
     """An unsized numeric column as registration records it: ``numeric(38, s)``, ``s`` read from
-    the fixture's values by registration's own sampling (REQ-2167)."""
+    the table's values by registration's own sampling (REQ-2167)."""
     import asyncio
 
     from provisa.api.admin.introspect import _sized_numeric as sample
 
     typing = asyncio.run(
-        sample(_SourcePool(pg_dsn), "conformance-pg", FIXTURE_SCHEMA, FIXTURE_TABLE, column)
+        sample(_SourcePool(pg_dsn), "conformance-pg", FIXTURE_SCHEMA, table, column)
     )
     return {"data_type": typing.data_type}
 
 
-def registrable_columns(pg_dsn: str) -> list[tuple[str, str, dict[str, Any]]]:
-    """The fixture's columns as ``[(column, pg type, registered column fields)]``. Every column
-    registers (REQ-2171: a type that fits no IR type is text)."""
+def registered_columns(
+    columns: Iterable[tuple[str, str]], sized: Callable[[str], dict[str, Any]]
+) -> list[tuple[str, str, dict[str, Any]]]:
+    """``columns``, each (column, pg type), as ``[(column, pg type, registered column fields)]``,
+    ``sized`` giving an unsized numeric column's. Every column registers (REQ-2171: a type that
+    fits no IR type is text)."""
     registered: list[tuple[str, str, dict[str, Any]]] = []
-    for name, typ, _ in FIXTURE:
+    for name, typ in columns:
         typing = registered_typing(typ)
         if typing["data_type"] == "numeric":
-            typing = _sized_numeric(pg_dsn, name)
+            typing = sized(name)
         registered.append((name, typ, typing))
     return registered
+
+
+def registrable_columns(pg_dsn: str) -> list[tuple[str, str, dict[str, Any]]]:
+    """The fixture's columns as ``registered_columns`` gives them."""
+    columns = [(name, typ) for name, typ, _ in FIXTURE]
+    return registered_columns(columns, lambda column: _sized_numeric(pg_dsn, column))
 
 
 #: The user the Cypher TCK's Bolt sessions sign in as (.github/workflows/conformance-cypher.yml).

@@ -1449,18 +1449,18 @@ async def query_metric(
 def _role_domains(state: Any, role: str) -> set[str]:
     """The schema ids ``role`` may access, or ``{"*"}`` for full access.
 
-    Sourced from the loaded config roles' ``domain_access`` — the same list the SQL
-    pipeline enforces. A search hit outside these domains is dropped, so the agent
-    never sees an entity it could not query.
+    Sourced from the bound org's roles' ``domain_access`` — the same list the SQL pipeline
+    enforces — and not ``state.config``, which holds the deployment org's: another org's role
+    of that name is a different role, and one of no such name would reach nothing. A search
+    hit outside these domains is dropped, so the agent never sees an entity it could not query.
     """
-    config = getattr(state, "config", None)
-    for r in getattr(config, "roles", None) or []:
-        if getattr(r, "id", None) == role:
-            from provisa.security.rights import reaches_all_domains
+    stored = state.roles.get(role)
+    if stored is None:
+        return set()  # an unknown role reaches no domains (domain_access_for_claims)
+    from provisa.security.rights import reaches_all_domains
 
-            access = list(r.domain_access)
-            return {"*"} if reaches_all_domains(access) else set(access)
-    return set()
+    access = stored.get("domain_access")
+    return {"*"} if reaches_all_domains(access) else set(access)
 
 
 async def effective_config(state: Any) -> dict:
@@ -1517,10 +1517,11 @@ async def resolve_embedding_model(state: Any, *, purpose: str = "catalog search"
 
 
 async def build_catalog_index(state: Any, provider: Any = None) -> int:
-    """(Re)build the server-lifetime catalog search index over the full catalog.
+    """(Re)build the bound org's catalog search index over its full catalog.
 
-    Cached on ``state.mcp_catalog_index``. Called at startup / on catalog refresh; a
-    cold build is just the full case. ``provider`` is injectable for tests.
+    Cached on ``state.mcp_catalog_index``, which resolves to the org's runtime: orgs share a
+    process, never an index. Built on the org's first search after a reload; a cold build is
+    just the full case. ``provider`` is injectable for tests.
     """
     from provisa.api.mcp.search import CatalogSearchIndex
 
@@ -1533,7 +1534,7 @@ async def build_catalog_index(state: Any, provider: Any = None) -> int:
 
 
 async def _get_index(state: Any) -> Any:
-    """The catalog index, built lazily on first use if startup did not build it."""
+    """The bound org's catalog index, built lazily on first use."""
     index = getattr(state, "mcp_catalog_index", None)
     if index is None or not getattr(index, "built", False):
         await build_catalog_index(state)
