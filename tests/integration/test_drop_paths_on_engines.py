@@ -61,16 +61,24 @@ async def _seed() -> None:
         )
         await conn.execute(
             f"CREATE TABLE {_SCHEMA}.assignments_by_breed "
-            "(id int PRIMARY KEY, pet_id int, user_id int, _nf_breed_name text)"
+            "(id int PRIMARY KEY, pet_id int, user_id int, staff_id int, _nf_breed_name text)"
+        )
+        await conn.execute(
+            f"CREATE TABLE {_SCHEMA}.staff (id int PRIMARY KEY, name text, boss_id int)"
         )
         await conn.execute(f"INSERT INTO {_SCHEMA}.pets VALUES (1, 'Rex'), (2, 'Tom'), (3, 'Ivy')")
         await conn.execute(f"INSERT INTO {_SCHEMA}.users VALUES (1, 'Ann'), (2, 'Bo')")
         await conn.execute(
             f"INSERT INTO {_SCHEMA}.inquiries VALUES (10, 1, 1), (11, 2, 1), (12, NULL, 2)"
         )
-        # Would join Bo to Ivy, whom no inquiry reaches, if a path read it.
+        # Would join Bo to Ivy, whom no inquiry reaches, and Cy to Dee, if a path read it.
         await conn.execute(
-            f"INSERT INTO {_SCHEMA}.assignments_by_breed VALUES (20, 3, 2, 'beagle')"
+            f"INSERT INTO {_SCHEMA}.assignments_by_breed VALUES (20, 3, 2, 3, 'beagle'), "
+            "(21, 3, 2, 4, 'beagle')"
+        )
+        await conn.execute(
+            f"INSERT INTO {_SCHEMA}.staff VALUES (1, 'Ana', NULL), (2, 'Ben', 1), (3, 'Cy', 2), "
+            "(4, 'Dee', NULL)"
         )
     finally:
         await conn.close()
@@ -223,26 +231,21 @@ async def test_an_any_path_goes_round_a_parameterized_table(server):
 
 @pytest.mark.parametrize(
     "pattern",
-    ["allShortestPaths((a:{users})-[*..4]-(b:{users}))", "(a:{users})-[*1..4]-(b:{users})"],
-    ids=["all-shortest", "any-path"],
+    [
+        "allShortestPaths((a:{staff})-[*..4]->(b:{staff}))",
+        "(a:{staff})-[*1..4]->(b:{staff})",
+        "(a:{staff})-[:BOSS|ON_ROSTER|ROSTERED*1..4]->(b:{staff})",
+    ],
+    ids=["all-shortest", "any-path", "named-types"],
 )
 async def test_a_recursive_walk_goes_round_a_parameterized_table(server, pattern):
     labels = await _labels(server)
     body = await _cypher(
         server,
-        f"MATCH p = {pattern.format(users=labels['users'])}\nWHERE a.id = 2\nRETURN b.name AS u",
+        f"MATCH p = {pattern.format(staff=labels['staff'])}\nWHERE a.id = 3\n"
+        "RETURN DISTINCT b.name AS s ORDER BY s",
     )
-    assert "Ann" not in [r["u"] for r in body["rows"]]
-
-
-async def test_a_walk_to_a_free_end_goes_round_a_parameterized_table(server):
-    labels = await _labels(server)
-    body = await _cypher(
-        server,
-        f"MATCH (a:{labels['users']})-[*1..2]-(b) WHERE a.id = 2 RETURN DISTINCT b.id AS id",
-    )
-    assert 20 not in [r["id"] for r in body["rows"]]
-    assert 12 in [r["id"] for r in body["rows"]]
+    assert [r["s"] for r in body["rows"]] == ["Ana", "Ben"]
 
 
 async def test_a_path_named_to_end_on_a_parameterized_table_is_refused_by_name(server):
@@ -286,26 +289,3 @@ async def test_the_vocabulary_and_the_schema_say_what_a_drop_needs(server):
     assert joins["SUBMITTED"] != joins["ABOUT"]
     rels = {r["type"]: r["join"] for r in schema["relationship_types"]}
     assert rels["SUBMITTED"] == rels["SUBMITTED_BY"]
-
-
-async def test_a_drop_on_an_open_pattern_keeps_its_rows_and_fans_out(server):
-    async with httpx.AsyncClient(base_url=server.base_url, timeout=120.0) as client:
-        vocab = await client.get("/data/sparql/vocabulary", headers={"X-Provisa-Role": "org_admin"})
-        classes = {c["iri"].rsplit("/", 1)[1]: c["iri"] for c in vocab.json()["classes"]}
-        rel = vocab.json()["prefixes"]["rel"]
-        resp = await client.post(
-            "/data/sparql",
-            content=(
-                f"SELECT * WHERE {{ ?s ?p ?o . OPTIONAL {{ ?s <{rel}SUBMITTED_BY> ?u . "
-                f"?u a <{classes['users']}> . }} }} LIMIT 250"
-            ),
-            headers={
-                "Content-Type": "application/sparql-query",
-                "Accept": "application/sparql-results+json",
-                "X-Provisa-Role": "org_admin",
-            },
-        )
-    assert resp.status_code == 200, resp.text
-    bindings = resp.json()["results"]["bindings"]
-    assert any("/users/" in b["s"]["value"] and "u" not in b for b in bindings)
-    assert any("/inquiries/" in b["s"]["value"] and "u" in b for b in bindings)

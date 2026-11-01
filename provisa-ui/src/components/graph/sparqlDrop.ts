@@ -12,9 +12,9 @@
 // always says what is on screen. A class or a domain is reached by the shortest paths through the
 // role's relationships from the classes the query holds, a relationship or a property from the
 // variables whose class has it. What is added sits in OPTIONAL groups, one per path, so what the
-// frame held stays. The subject of a variable predicate (?s ?p ?o) is of every class, so a drop on
-// one fans out over them. A drop that cannot join the result says so and changes nothing, and a
-// parameterized table, which only arguments read, is never what a path adds.
+// frame held stays. A drop that cannot join the result says so and changes nothing, and a
+// parameterized table, which only arguments read, is never what a path adds. ?s ?p ?o names no
+// class to start from, so a drop on it is refused until a variable has one.
 
 import type { DropNotice } from "./graph-model";
 import { MAX_SCHEMA_HOPS, MAX_SCHEMA_PATHS, shortestSchemaPaths } from "./schemaPath";
@@ -115,56 +115,21 @@ function shapeRefusal(tokens: Token[]): DropNotice | null {
 const parameterizedLabels = (vocabulary: SparqlVocabulary): Set<string> =>
   new Set(vocabulary.classes.flatMap((c) => c.parameterized_labels));
 
-/** ``query``'s WHERE without its OPTIONALs: what holds of every row. */
-function requiredPart(query: string): string {
-  const tokens = tokensOf(query);
-  const where = tokens.findIndex((t) => isWord(t, "WHERE"));
-  let at = where === -1 ? 0 : tokens[where].at;
-  let out = "";
-  for (let i = Math.max(where, 0); i < tokens.length; i++) {
-    if (!isWord(tokens[i], "OPTIONAL")) continue;
-    let depth = 0;
-    let close = i + 1;
-    for (; close < tokens.length; close++) {
-      if (tokens[close].text === "{") depth++;
-      if (tokens[close].text === "}" && --depth === 0) break;
-    }
-    out += query.slice(at, tokens[i].at);
-    at = tokens[close].at + 1;
-    i = close;
-  }
-  return out + query.slice(at);
-}
-
-/** The labels each variable of ``text`` can be: those its triples allow, intersected, as the
- * compiler reads them; and the variables only a variable predicate places, which can be of any
- * class a query can read without arguments. */
-function labelsOfPatterns(
-  text: string,
+/** The labels each variable of ``query`` can be: those its triples allow, intersected, as the
+ * compiler reads them. */
+function variableLabels(
+  query: string,
   vocabulary: SparqlVocabulary,
   namespaces: Record<string, string>,
-): { held: Map<string, string[]>; open: Set<string> } {
+): Map<string, string[]> {
   const held = new Map<string, string[]>();
-  const placed = new Set<string>();
-  const parameterized = parameterizedLabels(vocabulary);
-  const everyClass = vocabulary.classes
-    .filter((c) => c.kind === "table")
-    .flatMap((c) => c.labels)
-    .filter((l) => !parameterized.has(l));
-  const intersect = (name: string, labels: string[]) => {
+  const allow = (token: string, labels: string[]) => {
+    if (!/^[?$]\w/.test(token) || labels.length === 0) return;
+    const name = token.slice(1);
     const known = held.get(name);
     held.set(name, known ? known.filter((l) => labels.includes(l)) : labels);
   };
-  const allow = (token: string, labels: string[]) => {
-    if (!/^[?$]\w/.test(token) || labels.length === 0) return;
-    placed.add(token.slice(1));
-    intersect(token.slice(1), labels);
-  };
-  for (const { s, p, o } of writtenPatterns(text)) {
-    if (/^[?$]\w/.test(p)) {
-      if (/^[?$]\w/.test(s)) intersect(s.slice(1), everyClass);
-      continue;
-    }
+  for (const { s, p, o } of writtenPatterns(query)) {
     const predicate = writtenPredicate(p, namespaces);
     if (predicate === null) continue;
     if (predicate === RDF_TYPE) {
@@ -194,20 +159,7 @@ function labelsOfPatterns(
       ),
     );
   }
-  return { held, open: new Set([...held.keys()].filter((name) => !placed.has(name))) };
-}
-
-/** What ``query``'s variables can be (labelsOfPatterns). A subject open where every row holds it
- * stays open whatever an OPTIONAL, or a CONSTRUCT's template, says of it: that holds only there. */
-function variableLabels(
-  query: string,
-  vocabulary: SparqlVocabulary,
-  namespaces: Record<string, string>,
-): { held: Map<string, string[]>; open: Set<string> } {
-  const { held } = labelsOfPatterns(query, vocabulary, namespaces);
-  const required = labelsOfPatterns(requiredPart(query), vocabulary, namespaces);
-  for (const name of required.open) held.set(name, required.held.get(name) as string[]);
-  return { held, open: required.open };
+  return held;
 }
 
 /** ``name`` as a variable's base: letters, digits and underscores, not starting with a digit. */
@@ -303,7 +255,7 @@ export function droppedQuery(
   const namespaces = { ...named, ...queryPrefixes(query) };
   const term = (iri: string) => compactIri(iri, namespaces);
   const shown = (iri: string) => shownIri(iri, namespaces);
-  const { held: all, open } = variableLabels(query, vocabulary, namespaces);
+  const all = variableLabels(query, vocabulary, namespaces);
   const parameterized = parameterizedLabels(vocabulary);
 
   /** The variables the drop may start from: those of the node it was dropped on, else all. */
@@ -315,11 +267,7 @@ export function droppedQuery(
       rows.some((r) => (r[name] as { value?: string } | null | undefined)?.value === on.iri),
     );
     // A CONSTRUCT's rows are its triples, which name no variable: the class says.
-    return new Map(
-      (holding.length > 0 ? holding : of)
-        .slice(0, 1)
-        .map(([name, labels]) => [name, labels.filter((l) => cls?.labels.includes(l))]),
-    );
+    return new Map((holding.length > 0 ? holding : of).slice(0, 1));
   })();
   if (on !== null && holders.size === 0) return { refused: { key: "graphFrame.sparqlDropNode" } };
   if (holders.size === 0) return { refused: { key: "graphFrame.sparqlDropNoClass" } };
@@ -385,12 +333,11 @@ export function droppedQuery(
     if (edges.length === 0) throw new Error(`the vocabulary has no relationship ${drop.iri}`);
     const ways = (edge: Edge, from: string, to: string) =>
       holding(from).map((v) => () => pathFrom(v, [{ edge, from, to }], null));
-    const reachable = (from: string, to: string) => !parameterized.has(to) && holding(from);
     const candidates = edges.flatMap((edge) => [
-      ...(reachable(edge.source, edge.target) ? ways(edge, edge.source, edge.target) : []),
-      ...(edge.source !== edge.target && reachable(edge.target, edge.source)
-        ? ways(edge, edge.target, edge.source)
-        : []),
+      ...(parameterized.has(edge.target) ? [] : ways(edge, edge.source, edge.target)),
+      ...(edge.source === edge.target || parameterized.has(edge.source)
+        ? []
+        : ways(edge, edge.target, edge.source)),
     ]);
     if (candidates.length === 0) {
       const held = edges.some((e) => holding(e.source).length + holding(e.target).length > 0);
@@ -431,8 +378,6 @@ export function droppedQuery(
   }
 
   const heldLabels = [...new Set([...holders.values()].flat())];
-  /** The labels a variable is said to be: an open subject stands for every class, a domain's too. */
-  const namedLabels = [...holders].flatMap(([name, labels]) => (open.has(name) ? [] : labels));
   const target =
     drop.kind === "class"
       ? { name: shown(drop.iri), ending: drop.iri, labels: classLabels(vocabulary, drop.iri) }
@@ -442,7 +387,7 @@ export function droppedQuery(
           labels: vocabulary.classes
             .filter((c) => c.kind === "table" && c.iri.startsWith(vocabulary.prefixes[drop.prefix]))
             .flatMap((c) => c.labels)
-            .filter((l) => !namedLabels.includes(l)),
+            .filter((l) => !heldLabels.includes(l)),
         };
   if (target.labels.length > 0 && target.labels.every((l) => parameterized.has(l)))
     return {
@@ -455,13 +400,7 @@ export function droppedQuery(
     parameterized,
   );
   if (paths.length === 0) {
-    const classes = [
-      ...new Set(
-        [...holders].flatMap(([name, labels]) =>
-          open.has(name) ? [`?${name}`] : labels.map((l) => shown(classOf(l))),
-        ),
-      ),
-    ].join(", ");
+    const classes = [...new Set(heldLabels.map((l) => shown(classOf(l))))].join(", ");
     return {
       refused:
         hops === null

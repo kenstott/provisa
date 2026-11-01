@@ -2254,8 +2254,6 @@ class _Lowering:
                 for s, _, _ in opt.triples
             ):
                 continue  # its subject is a value in this part: a literal has no triples
-            if not self.interpretations(opt, labels):
-                continue  # no node of this part's classes can match it, so it binds nothing
             opt_labels = self._optional_labels(opt, labels)
             steps.append(self.lower_group(opt, {**labels, **opt_labels}, bindings, optional=True))
             labels = self._lower_optionals(opt, {**labels, **opt_labels}, bindings, steps)

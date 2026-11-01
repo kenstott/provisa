@@ -391,68 +391,20 @@ describe("REQ-2135 a join declared from both ends on a SPARQL frame", () => {
 });
 
 describe("REQ-2135 a pill dropped on ?s ?p ?o", () => {
-  const OPEN = `PREFIX ps: <${B}/ps/>
-PREFIX rel: <${B}/rel/>
-SELECT * WHERE {
-  ?s ?p ?o
-}
-LIMIT 25`;
+  const OPEN = "SELECT * WHERE {\n  ?s ?p ?o\n}\nLIMIT 25";
 
-  it("fans a class out over the classes that join it, each in its own OPTIONAL", () => {
-    const q = queryOf(drop(OPEN, { kind: "class", iri: iri("users") }));
-    expect(q).toContain("OPTIONAL { ?users rel:SUBMITTED ?s . ?users a ps:users . }");
-    expect(q.match(/OPTIONAL/g)).toHaveLength(2);
-    expect(q).toContain("LIMIT 250");
+  it.each<[string, SparqlDrop]>([
+    ["class", { kind: "class", iri: iri("users") }],
+    ["relationship", { kind: "edge", iri: `${B}/rel/TREATED_BY` }],
+    ["property", { kind: "predicate", iri: `${B}/ps/users#email` }],
+  ])("stays refused for a %s: it names no class to start from", (_, what) => {
+    expect(refusal(drop(OPEN, what))).toEqual({ key: "graphFrame.sparqlDropNoClass" });
   });
 
-  it("starts a relationship from ?s, from either end", () => {
-    const q = queryOf(drop(OPEN, { kind: "edge", iri: `${B}/rel/TREATED_BY` }));
-    expect(q.match(/OPTIONAL/g)).toHaveLength(2);
-    expect(q).toContain("?s rel:TREATED_BY ?vets");
-    expect(q).toContain("rel:TREATED_BY ?s");
-  });
-
-  it("reads a property from ?s", () => {
-    const q = queryOf(drop(OPEN, { kind: "predicate", iri: `${B}/ps/users#email` }));
-    expect(q).toContain("OPTIONAL { ?s users:email ?email . }");
-  });
-
-  it("names the variable when nothing joins the class", () => {
-    const d = drop(OPEN, { kind: "class", iri: iri("lonely") });
-    expect(refusal(d)).toEqual({
-      key: "graphFrame.sparqlDropNoPath",
-      values: { name: "ps:lonely", classes: "?s" },
-    });
-  });
-
-  it("starts at the node dropped on, of that node's class", () => {
-    const rows = [{ s: { value: `https://x.example/id/ps/pets/1` } }];
-    const node = { iri: `https://x.example/id/ps/pets/1`, label: "ps:pets" };
-    const q = queryOf(
-      droppedQuery(OPEN, { kind: "edge", iri: `${B}/rel/TREATED_BY` }, vocabulary, node, rows),
+  it("joins once a variable has a class", () => {
+    const typed = `PREFIX ps: <${B}/ps/>\nSELECT * WHERE { ?s ?p ?o . ?s a ps:pets } LIMIT 25`;
+    expect(queryOf(drop(typed, { kind: "class", iri: iri("inquiries") }))).toContain(
+      "rel:HAS_INQUIRY",
     );
-    expect(q.match(/OPTIONAL/g)).toHaveLength(1);
-    expect(q).toContain("FILTER(?s = <https://x.example/id/ps/pets/1>)");
-  });
-
-  it("stays open after a drop: what an OPTIONAL says of ?s types it only there", () => {
-    const once = queryOf(drop(OPEN, { kind: "edge", iri: `${B}/rel/HAS_INQUIRY` }));
-    const twice = queryOf(drop(once, { kind: "edge", iri: `${B}/rel/EMPLOYS` }));
-    expect(twice).toContain("rel:EMPLOYS ?staff");
-  });
-
-  it("stays open in a CONSTRUCT, whose template a drop has added to", () => {
-    const construct = `PREFIX rel: <${B}/rel/>
-CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }`;
-    const once = queryOf(drop(construct, { kind: "edge", iri: `${B}/rel/HAS_INQUIRY` }));
-    const twice = queryOf(drop(once, { kind: "edge", iri: `${B}/rel/EMPLOYS` }));
-    expect(twice).toContain("rel:EMPLOYS ?staff");
-  });
-
-  it("leaves a typed subject typed", () => {
-    const typed = OPEN.replace("?s ?p ?o", "?s ?p ?o . ?s a ps:pets");
-    const q = queryOf(drop(typed, { kind: "class", iri: iri("inquiries") }));
-    expect(q.match(/OPTIONAL/g)).toHaveLength(1);
-    expect(q).toContain("rel:HAS_INQUIRY");
   });
 });
