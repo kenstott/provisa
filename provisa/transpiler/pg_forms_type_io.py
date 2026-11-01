@@ -1266,6 +1266,26 @@ def _numeric_typmod(text: str, typmod: int) -> str:
     return f"{rounded:f}"
 
 
+#: Each integer's input: its PostgreSQL name and bounds.
+_INTEGER_RANGES = {
+    "int2in": ("smallint", -32768, 32767),
+    "int4in": ("integer", -2147483648, 2147483647),
+    "int8in": ("bigint", -9223372036854775808, 9223372036854775807),
+}
+_OTHER_BASE = re.compile(r"0[xXoObB]|_")
+
+
+def _other_base(name: str, text: str) -> exp.Expr | None:
+    """An integer's text in another base or with separators, which no engine's cast reads."""
+    number = literals.integer_read(text)
+    if number is None:
+        return None
+    typed, low, high = _INTEGER_RANGES[name]
+    if not low <= number <= high:
+        raise literals.Refused("22003", f'value "{text}" is out of range for type {typed}')
+    return _said_number(number, typed)
+
+
 def _fold_row(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
     """A call of a literal, answered as PostgreSQL answers it; None where the row is to read it."""
     first = arguments[0]
@@ -1315,6 +1335,15 @@ def _fold_row(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
 
 
 def _fold_text(name: str, text: str, arguments: list[exp.Expr]) -> exp.Expr | None:
+    if name in _INTEGER_RANGES and _OTHER_BASE.search(text):
+        return _other_base(name, text)
+    if name == "uuid_in":
+        written = literals.uuid_text(text)
+        if written is not None:
+            return exp.Cast(this=_said_text(written), to=exp.DataType.build("uuid"))
+    if name == "macaddr_in":
+        written = literals.macaddr_text(text)
+        return None if written is None else _said_text(written)
     if name in ("numeric_out", "numeric_send"):
         written = literals.numeric_text(text)
         if name == "numeric_out":

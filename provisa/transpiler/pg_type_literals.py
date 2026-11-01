@@ -686,3 +686,49 @@ def record_text(values: list[str | None]) -> str:
         return word
 
     return "(" + ",".join(written(v) for v in values) + ")"
+
+
+_INTEGER_BASES = (
+    (re.compile(r"\s*([+-]?)0[xX]_?([0-9a-fA-F]+(?:_[0-9a-fA-F]+)*)\s*"), 16),
+    (re.compile(r"\s*([+-]?)0[oO]_?([0-7]+(?:_[0-7]+)*)\s*"), 8),
+    (re.compile(r"\s*([+-]?)0[bB]_?([01]+(?:_[01]+)*)\s*"), 2),
+    (re.compile(r"\s*([+-]?)(\d+(?:_\d+)*)\s*"), 10),
+)
+
+
+def integer_read(text: str) -> int | None:
+    """An integer's text in any base PostgreSQL 16's input takes; None for one it is not."""
+    for pattern, base in _INTEGER_BASES:
+        matched = pattern.fullmatch(text)
+        if matched is not None:
+            number = int(matched[2].replace("_", ""), base)
+            return -number if matched[1] == "-" else number
+    return None
+
+
+_UUID_DIGITS = re.compile(r"[0-9a-f]{32}")
+
+
+def uuid_text(text: str) -> str | None:
+    """uuid_in's spellings: braces, and hyphens after any fourth digit."""
+    bare = text.lower()
+    if bare.startswith("{") and bare.endswith("}"):
+        bare = bare[1:-1]
+    digits = bare.replace("-", "")
+    if _UUID_DIGITS.fullmatch(digits) is None or "--" in bare or bare.startswith("-"):
+        return None
+    return f"{digits[:8]}-{digits[8:12]}-{digits[12:16]}-{digits[16:20]}-{digits[20:]}"
+
+
+_MAC_SPELLINGS = re.compile(
+    r"[0-9a-f]{2}([:-]?[0-9a-f]{2}){5}|[0-9a-f]{4}[.-][0-9a-f]{4}[.-][0-9a-f]{4}"
+)
+
+
+def macaddr_text(text: str) -> str | None:
+    """macaddr_in's spellings, as macaddr_out writes them."""
+    lowered = text.strip().lower()
+    if _MAC_SPELLINGS.fullmatch(lowered) is None:
+        return None
+    digits = re.sub(r"[:.-]", "", lowered)
+    return ":".join(digits[i : i + 2] for i in range(0, 12, 2))
