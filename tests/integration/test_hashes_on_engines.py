@@ -23,15 +23,26 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+import sqlglot
 
+from provisa.transpiler.metadata_facts import CatalogFacts
+from provisa.transpiler.metadata_functions import expand
 from provisa.transpiler.transpile import transpile
-from tests.unit.pgwire.aggregate_corpus import index_statements, same_answer, statements
+from tests.unit.pgwire.aggregate_corpus import same_answer, server_statements
 from tests.unit.pgwire.pg17_aggregate_answers import RECORDED as STATES
 from tests.unit.pgwire.pg17_hash_answers import RECORDED as HASHES
 
 pytestmark = [pytest.mark.integration]
 
-RECORDABLE = frozenset((*statements(), *index_statements()))
+_SERVER = frozenset(server_statements())
+_FACTS = CatalogFacts("analyst")
+
+
+def _written(sql: str, dialect: str) -> str:
+    """A statement as Provisa hands it to the engine: a server's function through its form."""
+    if sql in _SERVER:
+        sql = expand(sqlglot.parse_one(sql, read="postgres"), _FACTS).sql("postgres")
+    return transpile(sql, dialect)
 
 
 def _function(sql: str) -> str:
@@ -67,10 +78,8 @@ def _report(wrong: dict[str, Any]) -> str:
 def _check_states(run: Callable[[str], Any], dialect: str) -> None:
     wrong = {}
     for sql, want in STATES.items():
-        if sql not in RECORDABLE:
-            continue
         try:
-            got = run(transpile(sql, dialect))
+            got = run(_written(sql, dialect))
         except Exception as raised:  # noqa: BLE001 -- the engine's refusal is the answer compared
             got = raised
         if not same_answer(sql, got, want):

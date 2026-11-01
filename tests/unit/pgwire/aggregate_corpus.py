@@ -243,8 +243,13 @@ _BINARY_UPGRADES = (
 )
 
 
+#: What would make a large object: a server with none answers these as a read-only one does, and
+#: every other statement as a server does whose objects are missing, which changes nothing.
+READ_ONLY = ("lo_creat", "lo_create", "lo_from_bytea")
+
+
 def server_statements() -> list[str]:
-    """Large objects and binary upgrade, answered as a read-only server with none answers them."""
+    """Large objects and binary upgrade, answered as a server with none answers them."""
     out: list[str] = ["SELECT amvalidate(NULL::oid) AS v", "SELECT amvalidate(0::oid) AS v"]
     for function, types, values in _LARGE_OBJECTS:
         out.append(_call(function, *(f"NULL::{t}" for t in types)))

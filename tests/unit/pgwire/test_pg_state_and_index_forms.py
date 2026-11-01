@@ -44,7 +44,7 @@ CORPUS = [*statements(), *index_statements()]
 
 
 def test_the_corpus_is_what_was_recorded():
-    assert list(RECORDED)[: len(CORPUS)] == CORPUS
+    assert list(RECORDED) == [*CORPUS, *server_statements()]
 
 
 @pytest.fixture(scope="module")
@@ -96,3 +96,12 @@ def test_a_server_form_is_sql_the_engine_reads(sql: str, dialect: str):
     tree = sqlglot.parse_one(written, read=dialect)
     assert not [c for c in tree.find_all(exp.DataType) if c.sql("postgres").upper() == "OID"]
     assert "provisa_raise" not in written
+
+
+@pytest.mark.parametrize("sql", server_statements())
+def test_a_server_form_answers_as_postgresql_17_answered(connection: Any, sql: str):
+    try:
+        got: Any = connection.execute(_served(sql, "duckdb")).fetchone()[0]
+    except duckdb.Error as raised:
+        got = raised
+    assert same_answer(sql, got, RECORDED[sql])
