@@ -59,9 +59,15 @@ from buenavista.postgres import (
 
 from provisa.core import request_deadline
 from provisa.core.egress import CountingWriter
-from provisa.core.pg_error import MARK
+from provisa.core.pg_error import MARK, PostgresError
 from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
-from provisa.pgwire.session_zone import UNKNOWN_ZONE, SessionZone, refuse_other_zone
+from provisa.pgwire.session_zone import (
+    UNKNOWN_ZONE,
+    SessionZone,
+    in_session_zone,
+    raw_row_formats,
+    refuse_other_zone,
+)
 from provisa.transpiler.transpile import DIVISION_BY_ZERO  # REQ-2167: its SQLSTATE
 from provisa.otel_compat import annotate_request as _annotate_request
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -2101,6 +2107,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     self.backend_start,
                     self.system_user,
                     self.zone.current,
+                    self.zone,
                 ),
                 run=self._catalog_read,
             )
@@ -2140,6 +2147,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # read up in the response cache BEFORE routing; a hit comes back as a Route.CACHE plan and
         # is served by the _execute_plan branch below (decoded rows, or the raw DataRow replay
         # written for these codes).
+        result_fmt = raw_row_formats(result_fmt, self.zone.current)  # REQ-2171
         _formats = list(result_fmt) if result_fmt else None
         # REQ-1194/REQ-1224 (amended 2026-10-04): a forced redirect is the session's setting; this
         # streaming transport is never delivered automatically.
@@ -2484,6 +2492,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     _sasl: "ScramExchange | None" = None
     # The session this connection's startup created (REQ-1882: closed on this thread).
     _session: "ProvisaSession | None" = None
+    # REQ-2171: the TimeZone the client was last told, so a change is reported once.
+    _reported_zone: str | None = None
     # REQ-1910: the request span of the statement cycle in flight — one simple Query, or one
     # extended-protocol cycle from its first Parse/Bind/Describe/Execute to the Sync that ends it.
     # Held, not a block: the cycle's messages are dispatched one by one by the vendor's loop.
@@ -2606,9 +2616,29 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             return
         super().handle_close(ctx, payload)
 
+    def send_parameter_status(self, params: dict[str, str]) -> None:
+        # REQ-2171: the zone the session is on, never the server's. Where it cannot be told nothing
+        # is reported of it.
+        if "TimeZone" in params and self._session is not None:
+            self._reported_zone = self._session.zone.shown()
+            del params["TimeZone"]
+            if self._reported_zone is not None:
+                params["TimeZone"] = self._reported_zone
+        super().send_parameter_status(params)
+
+    def _report_zone(self) -> None:
+        """As PostgreSQL's GUC_REPORT: a TimeZone that changed is reported ahead of ReadyForQuery."""
+        session = self._session
+        if session is None:
+            return
+        shown = session.zone.shown()
+        if shown is not None and shown != self._reported_zone:
+            self.send_parameter_status({"TimeZone": shown})
+
     def send_ready_for_query(self, ctx: Optional[BVContext]) -> None:
         # ReadyForQuery ends the cycle: the Sync of an extended-protocol cycle, or a Query's end.
         try:
+            self._report_zone()
             super().send_ready_for_query(ctx)
         finally:
             with self._shield.lock:  # entered without a Python frame: see _close_request
@@ -2639,7 +2669,11 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             query_result.warnings = ()  # a later Execute of the same portal says it once
         # REQ-1910: rows are pulled from the result and encoded onto the socket here.
         with _stage(_tracer, "pgwire.encode", name="encode"):
-            sent = super().send_data_rows(query_result, limit)
+            session = self._session
+            sent = super().send_data_rows(
+                query_result if session is None else in_session_zone(query_result, session.zone),
+                limit,
+            )
             _annotate_request(db__row_count=sent)
         # REQ-1949: what the rows themselves showed -- the answer was cut at a row limit -- is
         # known when the drain ends, and goes as a NOTICE after the last row, ahead of the
@@ -2786,6 +2820,11 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             self._session = ctx.session  # type: ignore[assignment]
             ctx.session.application_name = params.get("application_name", "")  # type: ignore[attr-defined]
             ctx.session.zone = SessionZone(startup_time_zone(params))  # type: ignore[attr-defined]
+            try:
+                ctx.session.zone.shown()  # type: ignore[attr-defined]
+            except PostgresError as exc:
+                self._send_pg_error("FATAL", exc.sqlstate, str(exc))
+                return None
             ctx.session.client_end = self.client_address  # type: ignore[attr-defined]
             ctx.session.server_end = self.request.getsockname()  # type: ignore[attr-defined]
             try:
@@ -3368,6 +3407,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 raise
             self._send_request_timeout(timed_out)
             ctx.mark_error()
+        except PostgresError as exc:  # REQ-2171: rows that cannot be written in the session's zone
+            self.send_error(exc, ctx)
 
     def handle_query(self, ctx: BVContext, payload: bytes) -> None:
         self._open_request()
@@ -3401,6 +3442,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             if timed_out is None:
                 raise
             self._send_request_timeout(timed_out)
+            self.send_ready_for_query(ctx)
+        except PostgresError as exc:  # REQ-2171: rows that cannot be written in the session's zone
+            self.send_error(exc, ctx)
             self.send_ready_for_query(ctx)
         finally:
             if _org_token is not None:
