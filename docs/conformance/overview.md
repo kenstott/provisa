@@ -8,6 +8,14 @@ After every green build, CI provisions a fresh test instance and runs the confor
 
 Provisa fixes failures or lists them. No failure is left unnamed.
 
+## Function results by engine
+
+Each `pg_catalog` function overload has a result on each engine: exact, equivalent under a numbered rule, refused by name, or differs. An engine that refuses a function by name has given that engine's result. A wrong answer on any engine is a defect.
+
+<!-- function-results:begin -->
+TBD: generated from CI.
+<!-- function-results:end -->
+
 ## Why differences exist
 
 Deliberate differences group by cause, which also indicates the workaround.
