@@ -19,6 +19,9 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+import sqlglot
+import sqlglot.expressions as exp
+
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.pg_forms_types import REFUSED
 from provisa.transpiler.transpile import transpile
@@ -72,3 +75,40 @@ def problems(function: str, dialect: str, run: Callable[[str], Any]) -> tuple[li
         [s for s in said.values() if s not in ("ok", "refused")],
         [sql for sql, s in said.items() if s == "refused"],
     )
+
+
+def _as_rows(sql: str) -> tuple[str, list[str], list[str]] | None:
+    """The function, each argument's type and each literal of a statement all of cast values."""
+    call = sqlglot.parse_one(sql, read="postgres").expressions[0].unalias()
+    args = list(call.expressions) if isinstance(call, exp.Anonymous) else []
+    if not args or not all(
+        isinstance(a, exp.Cast) and isinstance(a.this, exp.Literal) for a in args
+    ):
+        return None
+    types = [a.to.sql(dialect="postgres").lower() for a in args]
+    return call.name.lower(), types, [a.this.sql(dialect="postgres") for a in args]
+
+
+def column_statement(function: str) -> tuple[str, list[str | None]] | None:
+    """A statement of ``function`` over the columns of two rows, and PostgreSQL's answer of each: a
+    form must read a column as it reads a literal, each row its own. The rows are two of the
+    function's statements that PostgreSQL answered differently, where it did."""
+    rows = [
+        (found, sql)
+        for sql in BY_FUNCTION[function]
+        if not (RECORDED[sql][1] or "").startswith("ERROR ") and (found := _as_rows(sql))
+    ]
+    if len(rows) < 2:
+        return None
+    first = rows[0]
+    second = next((r for r in rows[1:] if RECORDED[r[1]][1] != RECORDED[first[1]][1]), rows[1])
+    if first[0][1] != second[0][1]:
+        return None
+    (name, types, values), (_, _, others) = first[0], second[0]
+    named = [f"c{i}" for i in range(len(types))]
+    call = ", ".join(f"{c}::{t}" for c, t in zip(named, types))
+    one = ", ".join(f"{v} AS {c}" for v, c in zip(values, named))
+    two = ", ".join(others)
+    source = f"SELECT 1 AS i, {one} UNION ALL SELECT 2, {two}"
+    sql = f"SELECT {name}({call}) AS v FROM ({source}) AS t ORDER BY i"
+    return sql, [RECORDED[first[1]][1], RECORDED[second[1]][1]]

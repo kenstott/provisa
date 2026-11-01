@@ -27,7 +27,13 @@ import duckdb
 import psycopg
 import pytest
 
-from tests.unit.pgwire.geometric_replay import BY_FUNCTION, problems
+from provisa.transpiler.transpile import transpile
+from tests.unit.pgwire.geometric_replay import (
+    BY_FUNCTION,
+    column_statement,
+    problems,
+    same,
+)
 from tests.unit.pgwire.pg17_geometric_answers import RECORDED
 from tests.unit.pgwire.record_pg17_geometric_answers import recorded, written
 
@@ -110,3 +116,44 @@ def test_geometric_forms_on_clickhouse(function: str):
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
     _check(function, "clickhouse", lambda sql: client.query(sql).result_rows[0][0])
+
+
+def _on_columns(function: str, dialect: str, rows: Callable[[str], list[Any]]) -> None:
+    """A form over a column: two rows, each PostgreSQL's answer for its own values."""
+    statement = column_statement(function)
+    if statement is None:  # every recorded statement of the function is an error or holds a NULL
+        return
+    sql, wants = statement
+    got = rows(transpile(sql, dialect))
+    assert len(got) == len(wants) and all(map(same, got, wants)), f"{sql}: {got}, {wants}"
+
+
+@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
+def test_geometric_columns_on_duckdb(function: str):
+    connection = duckdb.connect()
+    _on_columns(function, "duckdb", lambda sql: [r[0] for r in connection.execute(sql).fetchall()])
+
+
+@pytest.mark.requires_trino
+@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
+def test_geometric_columns_on_trino(trino_conn, function: str):
+    def rows(sql: str) -> list[Any]:
+        cursor = trino_conn.cursor()
+        cursor.execute(sql)
+        return [r[0] for r in cursor.fetchall()]
+
+    _on_columns(function, "trino", rows)
+
+
+@pytest.mark.requires_clickhouse
+@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
+def test_geometric_columns_on_clickhouse(function: str):
+    import clickhouse_connect
+
+    client = clickhouse_connect.get_client(
+        host=os.environ.get("CLICKHOUSE_HOST", "localhost"),
+        port=int(os.environ.get("CLICKHOUSE_PORT", "8123")),
+        username=os.environ.get("CLICKHOUSE_USER", "default"),
+        password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
+    )
+    _on_columns(function, "clickhouse", lambda sql: [r[0] for r in client.query(sql).result_rows])

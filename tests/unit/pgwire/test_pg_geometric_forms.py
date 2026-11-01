@@ -27,7 +27,13 @@ import pytest
 
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.geometric_corpus import statements
-from tests.unit.pgwire.geometric_replay import BY_FUNCTION, function_of, outcome
+from tests.unit.pgwire.geometric_replay import (
+    BY_FUNCTION,
+    column_statement,
+    function_of,
+    outcome,
+    same,
+)
 from tests.unit.pgwire.pg17_geometric_answers import RECORDED
 
 
@@ -48,6 +54,13 @@ def _within_libm(sql: str, got: Any, want: str | None) -> bool:
     )
 
 
+def _sample() -> list[str]:
+    """Each function's first statement, and a share of the rest: DuckDB binds the longest forms
+    in about 300ms, and this file keeps to a minute."""
+    first = [sqls[0] for sqls in BY_FUNCTION.values()]
+    return list(dict.fromkeys((*first, *list(RECORDED)[::24])))
+
+
 def test_the_corpus_is_what_was_recorded():
     assert list(RECORDED) == statements()
 
@@ -61,7 +74,7 @@ def test_duckdb_answers_as_postgresql_17_answered():
     connection = duckdb.connect()
     run = lambda sql: connection.execute(sql).fetchone()[0]  # noqa: E731
     wrong = {}
-    for sql in list(RECORDED)[::4]:
+    for sql in _sample():
         said = outcome(sql, "duckdb", run)
         want = RECORDED[sql][1]
         if said != "ok" and not _within_libm(sql, run(transpile(sql, "duckdb")), want):
@@ -162,3 +175,205 @@ def test_a_shape_with_an_infinity_is_refused_by_name():
         duckdb.connect().execute(
             transpile("SELECT point_add('(inf,1)'::point, '(1,1)'::point)", "duckdb")
         )
+
+
+@pytest.mark.parametrize(
+    "sql, want",
+    [
+        # Read from geometry.out and geo_ops.c: a line's three shapes, and what meets and does not.
+        ("SELECT dist_pl('(1,0)'::point, '{1,-1,0}'::line)", 0.7071067811865476),
+        ("SELECT dist_lp('{0,-1,2}'::line, '(5,0)'::point)", 2.0),
+        ("SELECT close_pl('(1,0)'::point, '{0,-1,2}'::line)", "(1,2)"),
+        ("SELECT dist_ps('(0,1)'::point, '[(0,0),(4,0)]'::lseg)", 1.0),
+        ("SELECT close_ps('(9,1)'::point, '[(0,0),(4,0)]'::lseg)", "(4,0)"),
+        ("SELECT dist_pb('(5,0)'::point, '(3,4),(0,0)'::box)", 2.0),
+        ("SELECT dist_pb('(1,1)'::point, '(3,4),(0,0)'::box)", 0.0),
+        ("SELECT close_pb('(5,1)'::point, '(3,4),(0,0)'::box)", "(3,1)"),
+        ("SELECT line_eq('{1,-1,0}'::line, '{2,-2,0}'::line)", True),
+        ("SELECT line_eq('{1,-1,0}'::line, '{1,-1,1}'::line)", False),
+        ("SELECT line_eq('[(0,0),(1,1)]'::line, '{1,-1,0}'::line)", True),
+        ("SELECT line_interpt('{1,-1,0}'::line, '{0,-1,2}'::line)", "(2,2)"),
+        ("SELECT line_interpt('{1,-1,0}'::line, '{2,-2,0}'::line)", None),
+        ("SELECT line_interpt('{1,-1,0}'::line, '{1,-1,-5}'::line)", None),
+        ("SELECT line_intersect('{1,-1,0}'::line, '{1,-1,-5}'::line)", False),
+        ("SELECT line_distance('{0,-1,0}'::line, '{0,-1,3}'::line)", 3.0),
+        ("SELECT line_distance('{1,-1,0}'::line, '{0,-1,2}'::line)", 0.0),
+        ("SELECT lseg_interpt('[(0,0),(2,2)]'::lseg, '[(0,2),(2,0)]'::lseg)", "(1,1)"),
+        ("SELECT lseg_interpt('[(0,0),(1,1)]'::lseg, '[(2,2),(3,3)]'::lseg)", None),
+        ("SELECT lseg_intersect('[(0,0),(2,2)]'::lseg, '[(0,2),(2,0)]'::lseg)", True),
+        ("SELECT lseg_distance('[(0,0),(1,0)]'::lseg, '[(0,3),(1,3)]'::lseg)", 3.0),
+        ("SELECT close_lseg('[(0,0),(1,0)]'::lseg, '[(0,3),(1,3)]'::lseg)", None),
+        ("SELECT on_pl('(1,1)'::point, '{1,-1,0}'::line)", True),
+        ("SELECT on_ps('(1,1)'::point, '[(0,0),(2,2)]'::lseg)", True),
+        ("SELECT on_sl('[(0,0),(1,1)]'::lseg, '{1,-1,0}'::line)", True),
+        ("SELECT on_sb('[(1,1),(2,2)]'::lseg, '(3,4),(0,0)'::box)", True),
+        ("SELECT on_ppath('(1,1)'::point, '[(0,0),(2,2)]'::path)", True),
+        ("SELECT on_ppath('(1,0.5)'::point, '((0,0),(4,0),(4,4))'::path)", True),
+        ("SELECT path_contain_pt('[(0,0),(2,2)]'::path, '(3,3)'::point)", False),
+        ("SELECT inter_sl('[(0,0),(2,2)]'::lseg, '{0,-1,1}'::line)", True),
+        ("SELECT inter_sb('[(-1,1),(5,1)]'::lseg, '(3,4),(0,0)'::box)", True),
+        ("SELECT inter_lb('{1,-1,0}'::line, '(10,1),(8,0)'::box)", False),
+        ("SELECT dist_ppath('(0,0)'::point, '[(9,9)]'::path)", 0.0),
+        ("SELECT dist_ppoly('(5,0)'::point, '((0,0),(4,0),(4,4),(0,4))'::polygon)", 1.0),
+        ("SELECT dist_ppoly('(1,1)'::point, '((0,0),(4,0),(4,4),(0,4))'::polygon)", 0.0),
+        ("SELECT dist_cpoly('<(5,0),0.5>'::circle, '((0,0),(4,0),(4,4))'::polygon)", 0.5),
+        ("SELECT poly_contain_pt('((0,0),(4,0),(4,4),(0,4))'::polygon, '(4,2)'::point)", True),
+        ("SELECT poly_same('((0,0),(1,0),(1,1))'::polygon, '((1,1),(0,0),(1,0))'::polygon)", True),
+        ("SELECT poly_same('((0,0),(1,0),(1,1))'::polygon, '((1,0),(0,0),(1,1))'::polygon)", True),
+        ("SELECT poly_same('((0,0),(1,0),(1,1))'::polygon, '((0,0),(1,0))'::polygon)", False),
+        (
+            "SELECT poly_overlap('((0,0),(4,0),(4,4))'::polygon, '((1,1),(2,1),(2,1.5))'::polygon)",
+            True,
+        ),
+        (
+            "SELECT poly_distance('((0,0),(1,0),(1,1))'::polygon, '((4,0),(5,0),(5,1))'::polygon)",
+            3.0,
+        ),
+        ("SELECT path_distance('[(9,9)]'::path, '[(0,0),(1,1)]'::path)", None),
+        ("SELECT path_distance('[(0,0),(1,0)]'::path, '[(0,2),(1,2)]'::path)", 2.0),
+        ("SELECT path_inter('[(0,0),(2,2)]'::path, '[(0,2),(2,0)]'::path)", True),
+        ("SELECT path_inter('[(0,0),(1,1)]'::path, '[(5,5),(6,6)]'::path)", False),
+    ],
+)
+def test_the_forms_of_two_shapes(sql: str, want: Any):
+    assert duckdb.connect().execute(transpile(sql, "duckdb")).fetchone()[0] == want
+
+
+@pytest.mark.parametrize(
+    "sql, want",
+    [
+        # numeric.out and arrays.out, and the float8 and numeric answers of one value that differ.
+        ("SELECT width_bucket(5.35, 0.024, 10.06, 5)", 3),
+        ("SELECT width_bucket(5.35::double precision, 0.024::double precision, 10::float8, 5)", 3),
+        ("SELECT width_bucket(5.35::numeric, 0.024::numeric, 10.06::numeric, 5)", 3),
+        ("SELECT width_bucket(0.3, 0, 0.9, 3)", 2),
+        ("SELECT width_bucket(-1, 0, 10, 5)", 0),
+        ("SELECT width_bucket(10, 0, 10, 5)", 6),
+        ("SELECT width_bucket(11, 10, 0, 5)", 0),
+        ("SELECT width_bucket(0, 10, 0, 5)", 6),
+        ("SELECT width_bucket(0.99999999999::numeric, 0::numeric, 1::numeric, 1)", 1),
+        ("SELECT width_bucket(NULL::numeric, 0::numeric, 1::numeric, 4)", None),
+        ("SELECT width_bucket(5, ARRAY[1, 3, 4, 6])", 3),
+        ("SELECT width_bucket(5, ARRAY[9, 1, 7, 2, 3])", 2),
+        ("SELECT width_bucket(5, ARRAY[3])", 1),
+        ("SELECT width_bucket(5, ARRAY[]::integer[])", 0),
+        ("SELECT width_bucket('b'::text, ARRAY['a', 'c', 'e'])", 1),
+        ("SELECT width_bucket(5, NULL::integer[])", None),
+    ],
+)
+def test_width_bucket(sql: str, want: Any):
+    assert duckdb.connect().execute(transpile(sql, "duckdb")).fetchone()[0] == want
+
+
+@pytest.mark.parametrize(
+    "sql, raised",
+    [
+        ("SELECT width_bucket(1::float8, 0::float8, 1::float8, 0)", "2201G: count must"),
+        ("SELECT width_bucket(1::numeric, 0::numeric, 1::numeric, -1)", "2201G: count must"),
+        ("SELECT width_bucket(1::float8, 2::float8, 2::float8, 4)", "2201G: lower bound"),
+        ("SELECT width_bucket(1::numeric, 1::numeric, 1::numeric, 4)", "2201G: lower bound"),
+        ("SELECT width_bucket(1::float8, 0::float8, 1::float8, 2147483647)", "22003: integer"),
+        ("SELECT width_bucket(1::numeric, 0::numeric, 1::numeric, 2147483647)", "22003: integer"),
+        ("SELECT width_bucket(5, ARRAY[3, 4, NULL])", "22004: thresholds array"),
+        ("SELECT width_bucket(5, ARRAY[ARRAY[1, 2], ARRAY[3, 4]])", "2202E: thresholds must"),
+        ("SELECT line_eq('{0,0,1}'::line, '{1,-1,0}'::line)", "22P02: invalid line"),
+        ("SELECT line_eq('[(1,1),(1,1)]'::line, '{1,-1,0}'::line)", "22P02: invalid line"),
+    ],
+)
+def test_postgresql_refuses_width_bucket_and_line_as_it_does(sql: str, raised: str):
+    with pytest.raises(duckdb.Error, match=raised):
+        duckdb.connect().execute(transpile(sql, "duckdb"))
+
+
+@pytest.mark.parametrize(
+    "name, sql",
+    [
+        ("width_bucket", "width_bucket('NaN'::float8, 0::float8, 1::float8, 4)"),
+        ("width_bucket", "width_bucket(0::float8, 'Infinity'::float8, 1::float8, 4)"),
+        ("width_bucket", "width_bucket('NaN'::numeric, 0::numeric, 1::numeric, 4)"),
+        ("width_bucket", "width_bucket('NaN'::float8, ARRAY[1.5]::float8[])"),
+        ("width_bucket", "width_bucket(1.5::float8, ARRAY['NaN'::float8])"),
+        (
+            "width_bucket",
+            "width_bucket(1234567890123456789012.1234567::numeric, 0::numeric, 1::numeric, 4)",
+        ),
+        ("width_bucket", "width_bucket(0.9999999999999999999::numeric, 0::numeric, 3::numeric, 3)"),
+        ("width_bucket", "width_bucket('B'::text, ARRAY['a', 'c'])"),
+        ("dist_pl", "dist_pl('(nan,0)'::point, '{1,-1,0}'::line)"),
+        ("line_eq", "line_eq('{inf,1,0}'::line, '{1,-1,0}'::line)"),
+        ("close_ls", "close_ls('{1,-1,0}'::line, '[(inf,0),(1,1)]'::lseg)"),
+        ("poly_same", "poly_same('((nan,0),(1,1))'::polygon, '((0,0),(1,1))'::polygon)"),
+        ("path_inter", "path_inter('[(0,0),(inf,1)]'::path, '[(0,0),(1,1)]'::path)"),
+    ],
+)
+def test_what_no_engine_answers_is_refused_by_name(name: str, sql: str):
+    with pytest.raises(duckdb.Error, match=f"{name} does not read this value"):
+        duckdb.connect().execute(transpile(f"SELECT {sql}", "duckdb"))
+
+
+COLUMNS = (
+    "SELECT i, a, b, s, x, p, q, c FROM (VALUES "
+    "(1, '(1,0)', '{1,-1,0}', '[(0,0),(4,0)]', '(3,4),(0,0)', '[(0,0),(2,2)]', "
+    "'((0,0),(4,0),(4,4))', '<(5,0),0.5>'), "
+    "(2, '(9,1)', '{0,-1,2}', '[(0,3),(1,3)]', '(10,10),(8,8)', '((0,0),(1,0),(1,1))', "
+    "'((1,1),(2,3),(3,1))', '<(0,0),1>'), "
+    "(3, NULL, NULL, NULL, NULL, NULL, NULL, NULL)) AS t(i, a, b, s, x, p, q, c)"
+)
+_TYPES_OF = {
+    "a": "point",
+    "b": "line",
+    "s": "lseg",
+    "x": "box",
+    "p": "path",
+    "q": "polygon",
+    "c": "circle",
+}
+
+
+@pytest.mark.parametrize(
+    "call, want",
+    [
+        ("dist_pl(a, b)", [0.7071067811865476, 1.0, None]),
+        ("close_pl(a, b)", ["(0.5,0.5)", "(9,2)", None]),
+        ("dist_ps(a, s)", [0.0, 8.246211251235321, None]),
+        ("on_pl(a, b)", [False, False, None]),
+        ("line_eq(b, b)", [True, True, None]),
+        ("dist_pb(a, x)", [0.0, 7.0, None]),
+        ("dist_sb(s, x)", [0.0, 8.602325267042627, None]),
+        ("inter_sb(s, x)", [True, False, None]),
+        ("dist_ppoly(a, q)", [0.0, 6.0, None]),
+        ("dist_cpoly(c, q)", [0.5, 0.41421356237309515, None]),
+        ("poly_same(q, q)", [True, True, None]),
+        ("path_distance(p, p)", [0.0, 0.0, None]),
+        ("on_ppath(a, p)", [False, False, None]),
+    ],
+)
+def test_a_form_reads_a_column_as_it_reads_a_literal(call: str, want: list[Any]):
+    """Each row its own answer, its NULL a NULL: a form that folded a literal would not."""
+    typed = re.sub(r"\b([abspqxc])\b", lambda m: f"{m[1]}::{_TYPES_OF[m[1]]}", call)
+    sql = f"SELECT {typed} FROM ({COLUMNS}) t ORDER BY i"
+    got = [row[0] for row in duckdb.connect().execute(transpile(sql, "duckdb")).fetchall()]
+    assert got == want, sql
+
+
+def test_width_bucket_reads_the_type_of_a_column():
+    """No statement says a column's type: the engine's decides float8's rounding or numeric's."""
+    doubles = (
+        "SELECT width_bucket(x, lo, hi, n) FROM (VALUES (5.35::float8, 0.024::float8, 10.06::float8"
+        ", 5), (1.0::float8, 2.0::float8, 3.0::float8, 2)) AS t(x, lo, hi, n)"
+    )
+    decimals = (
+        "SELECT width_bucket(x, lo, hi, n) FROM (VALUES (CAST(0.3 AS DECIMAL(10,3)), "
+        "CAST(0 AS DECIMAL(10,3)), CAST(0.9 AS DECIMAL(10,3)), 3)) AS t(x, lo, hi, n)"
+    )
+    connection = duckdb.connect()
+    assert connection.execute(transpile(doubles, "duckdb")).fetchall() == [(3,), (0,)]
+    assert connection.execute(transpile(decimals, "duckdb")).fetchall() == [(2,)]
+
+
+def test_a_recorded_function_reads_columns_on_each_row():
+    statement = column_statement("point_add")
+    assert statement is not None
+    sql, wants = statement
+    got = [r[0] for r in duckdb.connect().execute(transpile(sql, "duckdb")).fetchall()]
+    assert list(map(same, got, wants)) == [True, True], (sql, got, wants)

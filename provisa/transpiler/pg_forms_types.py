@@ -981,7 +981,9 @@ DUCKDB_TWEAKS = {
 }
 #: The forms that read an argument's text: a statement's cast to their type says nothing more, and
 #: a cast to character(n) says how far it pads.
-HELD = frozenset(form.name for form in OPERATORS if form.name.startswith(("tid", "bpchar")))
+HELD = frozenset(form.name for form in OPERATORS if form.name.startswith(("tid", "bpchar"))) | {
+    "width_bucket_numeric"
+}
 #: The forms whose overflow only the engine's own arithmetic raises: they check no range themselves.
 #: date_subtract's AT TIME ZONE is also what sqlglot drops for MySQL.
 OVERFLOW_UNCHECKED = frozenset(form.name for form in (*_numeric_forms(), *_DATED_ARITHMETIC))

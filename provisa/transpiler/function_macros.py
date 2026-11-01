@@ -1876,9 +1876,43 @@ _ANSWERED_BY_A_NULL = frozenset(m.name for m in _EXACT_ROWS)
 _COLLATED = frozenset({"max_collated", "min_collated"})
 
 
+def _bucket_said(value: exp.Expr) -> str | None:
+    """What width_bucket's resolution reads of an argument; an untyped number's literal says it."""
+    node = value.unnest()
+    node = node.this if isinstance(node, exp.Neg) else node
+    written = isinstance(node, exp.Literal) and not node.is_string and not node.is_int
+    return said_type(value) or ("decimal" if written else None)
+
+
+def _bucket_row(args: list[exp.Expr]) -> str:
+    """width_bucket's row: PostgreSQL picks numeric or float8 from all three values, and float8 of
+    integers. What no statement says of a column, the engine's type answers in the row of the name."""
+    if len(args) == 2:
+        nested = isinstance(args[1].unnest(), exp.Array) and any(
+            isinstance(item, exp.Array) for item in args[1].unnest().expressions
+        )
+        return (
+            pg_forms_geometric.OVERLOADS[("width_bucket", 2, pg_forms_geometric.NESTED)]
+            if (nested)
+            else "width_bucket"
+        )
+    said = {_bucket_said(a) for a in args[:3]}
+    if said & {"double precision", "real"}:
+        return "width_bucket_float8"
+    if any(s and s.startswith("decimal") for s in said if s):
+        told = all(a.find(exp.Column) is None for a in args[:3]) or any(
+            (said_type(a) or "").startswith("decimal") for a in args[:3]
+        )
+        if told:
+            return "width_bucket_numeric"
+    return "width_bucket" if any(a.find(exp.Column) for a in args[:3]) else "width_bucket_float8"
+
+
 def overload(name: str, args: list[exp.Expr]) -> str:
     """The row a call reads: the overload of the type its first argument is said to be, else the
     row of its own name."""
+    if name == "width_bucket" and len(args) in (2, 4):
+        return _bucket_row(args)
     said = said_type(args[0]) if args else None
     if said is None:
         return name
@@ -2249,6 +2283,9 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return _READ_AS[type(node)], [node.this]
     if isinstance(node, exp.ToNumber):
         return "to_number", [node.this, node.args["format"]]
+    if isinstance(node, exp.WidthBucket):
+        at = ("this", "min_value", "max_value", "num_buckets", "threshold")
+        return "width_bucket", [node.args[k] for k in at if node.args.get(k) is not None]
     if isinstance(node, exp.Length):  # an overload of a type: length(text) has no row
         return "length", [node.this]
     if isinstance(node, exp.Cast) and isinstance(node.this, exp.IntDiv):  # sqlglot's reading of div
