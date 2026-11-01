@@ -52,10 +52,11 @@
     "sparqlDropNoPath": "{{name}} n’a aucune relation avec {{classes}}. Rien n’a été ajouté.",
     "sparqlDropTooFar": "{{name}} est à {{hops}} relations de {{classes}}, au-delà des {{most}} parcourues par un dépôt : pas de chemin court. Rien n’a été ajouté.",
     "sparqlDropNoEnd": "Aucune extrémité de {{name}} ne figure dans ce résultat. Rien n’a été ajouté.",
+    "sparqlDropParameterized": "Un chemin ne peut pas passer par {{name}} : sa lecture demande des arguments. Rien n'a été ajouté.",
+    "sparqlDropEdgeParameterized": "{{name}} mène à une table dont la lecture demande des arguments, et un chemin ne peut pas y passer. Rien n'a été ajouté.",
     "sparqlDropNoProperty": "Aucune classe de ce résultat n’a {{name}}. Rien n’a été ajouté.",
     "sparqlDropLeftOut": "{{shown}} chemins sur {{total}} de même longueur ajoutés ; les autres ont été omis.",
     "sparqlDropCut": "Le résultat a atteint son LIMIT de {{limit}} : les lignes au-delà sont omises.",
-    "cypherDropTooFar": "{{name}} est à {{hops}} relations de ce résultat, au-delà des {{most}} parcourues par un dépôt : pas de chemin court.",
     "cypherPathNoKey": "Les chemins entre {{from}} et {{to}} nécessitent la clé de chaque nœud, et l’un d’eux n’en a pas."
   }
 }

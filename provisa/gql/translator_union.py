@@ -327,6 +327,11 @@ class _UnionMixin:  # mixin for _Translator
                     continue
                 if tgt_type_set is not None and far not in tgt_type_set:
                     continue
+                # REQ-2135: an open hop never reads a parameterized table a label did not name.
+                if self._lm.nodes[near].parameterized and near != src_type:
+                    continue
+                if self._lm.nodes[far].parameterized and far != tgt_type:
+                    continue
                 if src_type is not None and near != src_type:
                     continue
                 if tgt_type is not None and far != tgt_type:

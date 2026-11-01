@@ -35929,7 +35929,11 @@
     2026-10-31: list applies to SQL, that is the pgwire catalog and meta. The gRPC proto, JSON:API, GraphQL,
     Cypher, SPARQL and OpenAPI describe what a role can read or write, so a list-only table does not appear
     on them. This narrows THE SAME ON EVERY CATALOG SURFACE, and scoping to domain grants still holds on
-    all of them.'
+    all of them. (Amended 2026-10-29, VIEWER HOLDS NO CATALOG_READ:) Maintainer 2026-11-01: "removing catalog_read
+    from viewer - do it". Viewer no longer holds catalog_read, so a role built on Viewer holds no grant
+    on the meta domain from that parent. Every role still has the default tier: core metadata for the non-system
+    tables it can read, write or list. catalog_read, the meta grant, is held only by a role that names it.
+    This replaces the statement that viewer holds meta; viewer still holds ontology through glossary_read.'
   use_case: Enables governed discovery over the reachable neighborhood without exposing data. Separates
     catalog structure knowledge (CORE) from governance configuration (GOVERNANCE), allowing each tier
     explicit control.
@@ -90055,7 +90059,35 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     level as Details, Versions, Columns and SLAs, not panels inside Details. (Amended 2026-10-29, THREE
     TIERS:) Maintainer 2026-10-31: a contract reads in three tiers: small key-value panels in a grid; medium
     tables in a two-column flow; large tables, Servers and Columns, full width at the bottom. Fields not
-    declared fold into one quiet line per panel, in place of a row each.'
+    declared fold into one quiet line per panel, in place of a row each. (Amended 2026-10-29, HOW TO USE:)
+    Maintainer 2026-11-01, on the contract''s servers section: "do this". The contract view''s Servers section
+    becomes How to use, with three columns: Surface, Address and Try it. Try it is a complete URI where
+    one is enough (REST, JSON:API, the OpenAPI description) and a runnable statement using the table''s
+    real names otherwise (pgwire, Flight SQL, GraphQL, gRPC, SPARQL). When the viewing role cannot read
+    the table, Try it shows who to ask, from the contract''s roles and first-level approvers, instead of
+    a query. The instructions are generated in the contract builder so exported contracts carry them; the
+    standard servers field stays as it is, and a token appears only as a placeholder. (Amended 2026-10-29,
+    HOW TO USE, BY LINK:) Maintainer 2026-11-01: "they could be hyperlinks to show an example on the related
+    provisa ui explore", "just a bit more expanded explanation then the access patterns". This replaces
+    the How to use amendment''s runnable statements and its generation in the contract builder. How to use
+    has Surface, Address, a sentence on how the surface is used, and a link that opens the example in the
+    matching Explore page, using the handlers Access Patterns uses. A surface with no page of its own opens
+    the page that speaks its language: Flight SQL opens SQL. When the viewing role cannot read the table,
+    who to ask replaces the link, from the contract''s roles and first-level approvers. An exported contract
+    carries the standard servers field and no instructions. (Amended 2026-10-29, HOW TO USE NEEDS ACCESS:)
+    Maintainer 2026-11-01: "they won''t work until access is granted. so instructions should say that as
+    well." How to use says on every surface that it works only once access is granted, and names who grants
+    it, from the contract''s roles and first-level approvers. (Amended 2026-10-29, THE ADDRESS IS THE MOST
+    SPECIFIC ONE:) Maintainer 2026-11-01: "if there is a URI that points specifically to the requested data
+    set (like openapi for example) that might provide a little more vvalue." The Address column of How to
+    use shows the most specific URI each surface has for the table: the table''s own URI on REST and JSON:API,
+    the OpenAPI description narrowed as far as it can be, and a connection URI with the schema for pgwire
+    and Flight SQL. A surface with one endpoint per server shows that endpoint, and its link carries the
+    table. (Amended 2026-10-29, OPENAPI NARROWS TO THE TABLE:) Maintainer 2026-11-01: "if you couldn''t
+    narrow to a table what exactly would the point be". This replaces "as far as it can be" in the most
+    specific address amendment: the OpenAPI description in How to use is narrowed to the one table. The
+    generated description takes a table filter beside role and domains, and the contract''s address uses
+    it.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 

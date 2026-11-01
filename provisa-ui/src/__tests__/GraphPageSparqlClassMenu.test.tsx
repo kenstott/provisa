@@ -75,8 +75,8 @@ const VOCABULARY = {
     "pet-store": `${BASE}/vocab/pet-store/`,
   },
   classes: [
-    { iri: PETS, kind: "table", labels: ["pets"], superclasses: [] },
-    { iri: `${BASE}/vocab/pet-store/vets`, kind: "table", labels: ["vets"], superclasses: [] },
+    { iri: PETS, kind: "table", labels: ["pets"], parameterized: false, parameterized_labels: [], superclasses: [] },
+    { iri: `${BASE}/vocab/pet-store/vets`, kind: "table", labels: ["vets"], parameterized: false, parameterized_labels: [], superclasses: [] },
   ],
   predicates: [
     {
@@ -94,7 +94,7 @@ const VOCABULARY = {
       datatype: `${XSD}decimal`,
     },
   ],
-  edges: [{ iri: `${BASE}/vocab/rel/TREATED_BY`, type: "TREATED_BY", source: "pets", target: "vets" }],
+  edges: [{ iri: `${BASE}/vocab/rel/TREATED_BY`, type: "TREATED_BY", source: "pets", target: "vets", join: "TREATED_BY" }],
   concepts: [],
 };
 const LABEL = "pet-store:pets";
