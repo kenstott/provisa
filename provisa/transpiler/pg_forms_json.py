@@ -515,20 +515,21 @@ def _key_text(key: exp.Expr) -> exp.Expr:
 
 def _built(node: exp.Func, args: list[exp.Expr], name: str, inner: Callable) -> exp.Expr | None:
     """json_build_array and json_build_object."""
+    is_array = name in ("json_build_array", "jsonb_build_array")
+    if not is_array and name not in ("json_build_object", "jsonb_build_object"):
+        return None  # before any transform: every call of a statement passes here
     written = [a.transform(inner) for a in args]
-    if name in ("json_build_array", "jsonb_build_array"):
+    if is_array:
         if len(written) == 1 and isinstance(written[0], exp.Variadic):
             return exp.Anonymous(this="to_json", expressions=[written[0].this])
         return exp.Anonymous(this="json_array", expressions=written)
-    if name in ("json_build_object", "jsonb_build_object"):
-        if any(isinstance(a, exp.Variadic) for a in written):
-            raise NoForm(name)
-        if len(written) % 2:
-            odd = exp.Literal.string("argument list must have even number of elements")
-            return _duckdb(raising("22023", "_says"), _says=odd)
-        pairs = [_key_text(a) if i % 2 == 0 else a for i, a in enumerate(written)]
-        return exp.Anonymous(this=node.name, expressions=pairs)
-    return None
+    if any(isinstance(a, exp.Variadic) for a in written):
+        raise NoForm(name)
+    if len(written) % 2:
+        odd = exp.Literal.string("argument list must have even number of elements")
+        return _duckdb(raising("22023", "_says"), _says=odd)
+    pairs = [_key_text(a) if i % 2 == 0 else a for i, a in enumerate(written)]
+    return exp.Anonymous(this=node.name, expressions=pairs)
 
 
 def _row_of(call: exp.Expr, called: str) -> exp.Expr:

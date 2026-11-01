@@ -231,3 +231,12 @@ def test_an_empty_value_is_dropped_only_beside_one_of_its_kind(db: Any, call: st
 def test_a_null_key_is_skipped():
     assert exists_all('{"a":1}', ["a", None]) is True
     assert exists_any('{"a":1}', [None]) is False
+
+
+def test_a_deeply_nested_call_is_rewritten_once():
+    nested = "x"
+    for _ in range(40):
+        nested = f"abs({nested})"
+    assert (
+        transpile_to_duckdb(f"SELECT jsonb_typeof(a), {nested} FROM t").upper().count("ABS(") == 40
+    )
