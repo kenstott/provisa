@@ -4797,6 +4797,13 @@ def create_app() -> FastAPI:
     except ImportError:
         pass
 
+    # REQ-2193: the OData service. Its headers wrap the auth middleware, whose 401 carries none.
+    from provisa.api.odata.headers import ODataResponseHeaders
+    from provisa.api.odata.router import create_odata_router
+
+    app.include_router(create_odata_router(state))
+    app.add_middleware(ODataResponseHeaders)
+
     # Admin GraphQL API (Strawberry) at /admin/graphql
     async def _admin_graphql_context(request: HTTPConnection):
         # HTTPConnection, not Request: FastAPI supplies it to a WebSocket too, which the router
