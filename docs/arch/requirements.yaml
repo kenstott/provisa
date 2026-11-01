@@ -90066,7 +90066,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     real names otherwise (pgwire, Flight SQL, GraphQL, gRPC, SPARQL). When the viewing role cannot read
     the table, Try it shows who to ask, from the contract''s roles and first-level approvers, instead of
     a query. The instructions are generated in the contract builder so exported contracts carry them; the
-    standard servers field stays as it is, and a token appears only as a placeholder.'
+    standard servers field stays as it is, and a token appears only as a placeholder. (Amended 2026-10-29,
+    HOW TO USE, BY LINK:) Maintainer 2026-11-01: "they could be hyperlinks to show an example on the related
+    provisa ui explore", "just a bit more expanded explanation then the access patterns". This replaces
+    the How to use amendment''s runnable statements and its generation in the contract builder. How to use
+    has Surface, Address, a sentence on how the surface is used, and a link that opens the example in the
+    matching Explore page, using the handlers Access Patterns uses. A surface with no page of its own opens
+    the page that speaks its language: Flight SQL opens SQL. When the viewing role cannot read the table,
+    who to ask replaces the link, from the contract''s roles and first-level approvers. An exported contract
+    carries the standard servers field and no instructions.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
