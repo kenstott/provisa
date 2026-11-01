@@ -202,6 +202,61 @@ def index_statements() -> list[str]:
     return out
 
 
+_LARGE_OBJECTS = (
+    ("lo_close", ("integer",), ("0",)),
+    ("lo_tell", ("integer",), ("0",)),
+    ("lo_tell64", ("integer",), ("0",)),
+    ("lo_lseek", ("integer", "integer", "integer"), ("0", "0", "0")),
+    ("lo_lseek64", ("integer", "bigint", "integer"), ("0", "0", "0")),
+    ("lo_truncate", ("integer", "integer"), ("0", "0")),
+    ("lo_truncate64", ("integer", "bigint"), ("0", "0")),
+    ("loread", ("integer", "integer"), ("0", "1")),
+    ("lowrite", ("integer", "bytea"), ("0", "'x'")),
+    ("lo_open", ("oid", "integer"), ("1", "262144")),
+    ("lo_get", ("oid",), ("1",)),
+    ("lo_get", ("oid", "bigint", "integer"), ("1", "0", "1")),
+    ("lo_put", ("oid", "bigint", "bytea"), ("1", "0", "'x'")),
+    ("lo_unlink", ("oid",), ("1",)),
+    ("lo_export", ("oid", "text"), ("1", "'/tmp/x'")),
+    ("lo_creat", ("integer",), ("0",)),
+    ("lo_create", ("oid",), ("1",)),
+    ("lo_from_bytea", ("oid", "bytea"), ("1", "'x'")),
+    ("lo_import", ("text",), ("'/no/such/file'",)),
+    ("lo_import", ("text", "oid"), ("'/no/such/file'", "1")),
+)
+_BINARY_UPGRADES = (
+    ("binary_upgrade_set_next_pg_type_oid", "oid"),
+    ("binary_upgrade_set_next_array_pg_type_oid", "oid"),
+    ("binary_upgrade_set_next_multirange_pg_type_oid", "oid"),
+    ("binary_upgrade_set_next_multirange_array_pg_type_oid", "oid"),
+    ("binary_upgrade_set_next_heap_pg_class_oid", "oid"),
+    ("binary_upgrade_set_next_heap_relfilenode", "oid"),
+    ("binary_upgrade_set_next_index_pg_class_oid", "oid"),
+    ("binary_upgrade_set_next_index_relfilenode", "oid"),
+    ("binary_upgrade_set_next_toast_pg_class_oid", "oid"),
+    ("binary_upgrade_set_next_toast_relfilenode", "oid"),
+    ("binary_upgrade_set_next_pg_authid_oid", "oid"),
+    ("binary_upgrade_set_next_pg_enum_oid", "oid"),
+    ("binary_upgrade_set_next_pg_tablespace_oid", "oid"),
+    ("binary_upgrade_set_record_init_privs", "boolean"),
+    ("binary_upgrade_logical_slot_has_caught_up", "name"),
+)
+
+
+def server_statements() -> list[str]:
+    """Large objects and binary upgrade, answered as a read-only server with none answers them."""
+    out: list[str] = ["SELECT amvalidate(NULL::oid) AS v", "SELECT amvalidate(0::oid) AS v"]
+    for function, types, values in _LARGE_OBJECTS:
+        out.append(_call(function, *(f"NULL::{t}" for t in types)))
+        out.append(_call(function, *(f"{v}::{t}" for v, t in zip(values, types))))
+    for function, type_name in _BINARY_UPGRADES:
+        out.append(_call(function, f"NULL::{type_name}"))
+    out.append(_call("binary_upgrade_set_next_pg_type_oid", "1::oid"))
+    out.append(_call("binary_upgrade_set_record_init_privs", "true::boolean"))
+    out.append(_call("binary_upgrade_set_missing_value", "NULL::oid", "NULL::text", "NULL::text"))
+    return out
+
+
 def _float_list(value: str) -> list[float | None] | None:
     if not value.startswith("{"):
         return None

@@ -980,7 +980,11 @@ def _hashes() -> tuple[Macro, ...]:
     for dialect, engine in pg_forms_hash.ENGINES:
         for key, form in pg_forms_hash.forms(engine).items():
             forms.setdefault(key, {})[frozenset({dialect})] = form
-    return tuple(
+    # A composite of no said type has no row of its element's: it is refused by name.
+    bare = tuple(
+        Macro(name, tuple(params.split(", "))) for name, params in pg_forms_hash.COMPOSITES
+    )
+    return bare + tuple(
         Macro(name, tuple(params.split(", ")), written) for (name, params), written in forms.items()
     )
 
@@ -1631,8 +1635,15 @@ _ARRAY_INPUT = (
 )
 
 
-def _numeric_array_as_text(value: exp.Expr) -> exp.Expr:
-    """A numeric array literal as its elements' text: no engine's decimal holds NaN or every digit."""
+def _is_null(value: exp.Expr) -> bool:
+    """Whether an argument is a NULL, of any type the statement says: a hash is strict."""
+    node = value.unnest()
+    return isinstance(node.this.unnest() if isinstance(node, exp.Cast) else node, exp.Null)
+
+
+def _array_as_text(value: exp.Expr) -> exp.Expr:
+    """An array literal as its elements' text: no engine's decimal holds NaN or every digit, and
+    no engine's date holds infinity."""
     node = value.unnest()
     if isinstance(node, exp.Cast) and isinstance(node.this, exp.Array):
         return exp.Cast(this=node.this, to=exp.DataType.build("TEXT[]", dialect="postgres"))
@@ -1675,8 +1686,12 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             args = [_digits_as_written(args[0]), *args[1:]]
         if name in _ARRAY_INPUT:
             args = [_array_elements_as_written(a) for a in args]
-        if name in pg_forms_hash.NUMERIC_ARRAY_ROWS:
-            args = [_numeric_array_as_text(args[0]), *args[1:]]
+        if name in pg_forms_hash.TEXT_ARRAY_ROWS:
+            args = [_array_as_text(args[0]), *args[1:]]
+        if name in pg_forms_hash.ROWS and any(_is_null(a) for a in args):
+            answer = exp.cast(exp.null(), "BIGINT" if len(args) > 1 else "INT")
+            in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
+            return exp.alias_(answer, called) if in_select else answer
         # transform does not revisit what a replaced node holds: a call in an argument.
         written = _written(macro, [a.transform(rewrite) for a in args], dialect, node)
         if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":

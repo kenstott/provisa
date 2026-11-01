@@ -18,38 +18,53 @@ answers. tests/unit/pgwire/test_pg_hash_forms.py proves the same on DuckDB."""
 from __future__ import annotations
 
 import os
+from collections import Counter
 from collections.abc import Callable
 from typing import Any
 
 import pytest
 
 from provisa.transpiler.transpile import transpile
-from tests.unit.pgwire.aggregate_corpus import same_answer
+from tests.unit.pgwire.aggregate_corpus import index_statements, same_answer, statements
 from tests.unit.pgwire.pg17_aggregate_answers import RECORDED as STATES
 from tests.unit.pgwire.pg17_hash_answers import RECORDED as HASHES
 
 pytestmark = [pytest.mark.integration]
 
+RECORDABLE = frozenset((*statements(), *index_statements()))
+
 
 def _check_hashes(run: Callable[[str], Any], dialect: str) -> None:
     wrong = {}
     for sql, (_, want) in HASHES.items():
-        got = run(transpile(sql, dialect))
+        try:
+            got = run(transpile(sql, dialect))
+        except Exception as raised:  # noqa: BLE001 -- every statement is reported, not the first
+            wrong[sql] = str(raised)[:300]
+            continue
         if (None if got is None else str(got)) != want:
             wrong[sql] = got
-    assert not wrong
+    assert not wrong, _report(wrong)
+
+
+def _report(wrong: dict[str, Any]) -> str:
+    """How many statements of each function differ, and the first of them."""
+    functions = Counter(sql.split("(")[0] for sql in wrong)
+    return f"{len(wrong)} wrong {functions.most_common()} {list(wrong.items())[:8]}"
 
 
 def _check_states(run: Callable[[str], Any], dialect: str) -> None:
     wrong = {}
     for sql, want in STATES.items():
+        if sql not in RECORDABLE:
+            continue
         try:
             got = run(transpile(sql, dialect))
         except Exception as raised:  # noqa: BLE001 -- the engine's refusal is the answer compared
             got = raised
         if not same_answer(sql, got, want):
-            wrong[sql] = got
-    assert not wrong
+            wrong[sql] = str(got)[:300]
+    assert not wrong, _report(wrong)
 
 
 @pytest.mark.requires_trino
@@ -60,11 +75,19 @@ def test_hashes_on_trino(trino_conn):
         return cursor.fetchall()[0][0]
 
     _check_hashes(run, "trino")
+
+
+@pytest.mark.requires_trino
+def test_state_and_index_functions_on_trino(trino_conn):
+    def run(sql: str) -> Any:
+        cursor = trino_conn.cursor()
+        cursor.execute(sql)
+        return cursor.fetchall()[0][0]
+
     _check_states(run, "trino")
 
 
-@pytest.mark.requires_clickhouse
-def test_hashes_on_clickhouse():
+def _clickhouse() -> Callable[[str], Any]:
     import clickhouse_connect
 
     client = clickhouse_connect.get_client(
@@ -74,8 +97,14 @@ def test_hashes_on_clickhouse():
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
 
-    def run(sql: str) -> Any:
-        return client.query(sql).result_rows[0][0]
+    return lambda sql: client.query(sql).result_rows[0][0]
 
-    _check_hashes(run, "clickhouse")
-    _check_states(run, "clickhouse")
+
+@pytest.mark.requires_clickhouse
+def test_hashes_on_clickhouse():
+    _check_hashes(_clickhouse(), "clickhouse")
+
+
+@pytest.mark.requires_clickhouse
+def test_state_and_index_functions_on_clickhouse():
+    _check_states(_clickhouse(), "clickhouse")

@@ -80,7 +80,8 @@ def test_a_hash_of_a_hash_reads_the_inner_call():
 @pytest.mark.parametrize(
     ("sql", "function"),
     [
-        ("SELECT hashchar('\\xe9'::\"char\") AS v", "hashchar"),
+        ("SELECT hashchar('é'::\"char\") AS v", "hashchar"),
+        ("SELECT hashchar('\\351'::\"char\") AS v", "hashchar"),
         ("SELECT hash_numeric('1e3'::numeric) AS v", "hash_numeric"),
         (f"SELECT hashname('{'é' * 40}'::name) AS v", "hashname"),
         ("SELECT hash_record('(1,2)'::record) AS v", "hash_record"),
@@ -127,11 +128,6 @@ def test_each_form_parses_as_its_engine_writes_it(dialect: str):
         tree = sqlglot.parse_one(sql, read=dialect)
         assert isinstance(tree, exp.Expr), name
         assert "provisa_" not in sql, name
-
-
-@pytest.mark.parametrize("name", ["hash_array", "hash_range", "hash_multirange"])
-def test_a_composite_row_exists_only_for_a_said_type(name: str):
-    assert outcome(name, 1, "duckdb") == "refused"
 
 
 def test_hashes_on_every_engine_are_one_definition():

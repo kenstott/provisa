@@ -50,6 +50,25 @@ _NAME_BYTES = 63
 _ZERO = "'0'"
 
 
+def _atomic(operand: object) -> bool:
+    """Whether an operand holds no operator outside its parentheses."""
+    text, depth = str(operand), 0
+    for char in text:
+        depth += (char == "(") - (char == ")")
+        if char == " " and depth == 0:
+            return False
+    return True
+
+
+class _Infix(str):
+    """An operator, which parenthesizes only what needs it: a form cannot nest without limit."""
+
+    __slots__ = ()
+
+    def format(self, *operands: object, **_: object) -> str:
+        return str.format(self, *(o if _atomic(o) else f"({o})" for o in operands))
+
+
 @dataclass(frozen=True)
 class Engine:
     """An engine's spelling of what a form needs: ``{}`` for each operand."""
@@ -73,6 +92,7 @@ class Engine:
     text_hex: str  # a text's UTF-8 bytes in hexadecimal
     text: str  # a value's text
     length: str  # a text's length in bytes
+    chars: str  # a text's length in characters
     part: str  # text, separator, which
     split: str  # text, separator: a list of texts
     join: str  # a list of texts, into one
@@ -90,6 +110,7 @@ class Engine:
     int8_type: str = "BIGINT"
     number: str = "CAST({} AS BIGINT)"  # a text's number, once a CASE has chosen to read it
     empty_texts: str = "CAST([] AS VARCHAR[])"
+    backslash: str = "'\\'"
     big_list: str = "{}"  # a list, of BIGINT
     value: str = "value"  # the argument, once a CASE has answered its NULL
     seed: str = "CAST(seed AS BIGINT)"
@@ -113,10 +134,10 @@ _DUCKDB_FLOAT = (
 
 DUCKDB = Engine(
     xor="xor({}, {})",
-    both="(({}) & ({}))",
-    left="(({}) << ({}))",
-    right="(({}) >> ({}))",
-    quotient="(({}) // ({}))",
+    both=_Infix("({} & {})"),
+    left=_Infix("({} << {})"),
+    right=_Infix("({} >> {})"),
+    quotient=_Infix("({} // {})"),
     array="[{}]",
     size="len({})",
     concat="list_concat({}, {})",
@@ -132,6 +153,7 @@ DUCKDB = Engine(
     text_hex="hex(encode({}))",
     text="CAST({} AS VARCHAR)",
     length="strlen({})",
+    chars="length({})",
     part="split_part({}, {}, {})",
     split="string_split({}, {})",
     join="array_to_string({}, '')",
@@ -152,7 +174,7 @@ TRINO = Engine(
     both="bitwise_and({}, {})",
     left="bitwise_left_shift({}, {})",
     right="bitwise_right_shift({}, {})",
-    quotient="(({}) / ({}))",
+    quotient=_Infix("({} / {})"),
     array="ARRAY[{}]",
     size="cardinality({})",
     concat="concat({}, {})",
@@ -167,6 +189,7 @@ TRINO = Engine(
     text_hex="to_hex(to_utf8({}))",
     text="CAST({} AS VARCHAR)",
     length="length({})",
+    chars="length({})",
     part="coalesce(split_part({}, {}, {}), '')",
     split="split({}, {})",
     join="array_join({}, '')",
@@ -204,6 +227,7 @@ CLICKHOUSE = Engine(
     text_hex="hex({})",
     text="toString({})",
     length="length({})",
+    chars="lengthUTF8({})",
     part="splitByString({1}, {0})[{2}]",
     split="splitByString({1}, {0})",
     join="arrayStringConcat({})",
@@ -218,6 +242,7 @@ CLICKHOUSE = Engine(
     has="has({}, {})",
     ascii="reinterpretAsUInt8({})",
     empty_texts="emptyArrayString()",
+    backslash="'\\\\'",
     int4_type="Nullable(Int32)",
     int8_type="Nullable(Int64)",
     # The form's CASE has answered a NULL, and ClickHouse keeps no bytes of a Nullable.
@@ -281,7 +306,8 @@ def _signed(e: Engine, word: str) -> str:
 
 def _hashed(e: Engine, words: str, length: str, seed: str | None, *then: str) -> str:
     """hash_bytes of ``words`` (BIGINT[], three to a block, the last the tail), ``length`` bytes
-    long: its BIGINT, signed, xor each of ``then``. With ``seed``, hash_bytes_extended's."""
+    long: its BIGINT, signed, xor each of ``then``. With ``seed``, hash_bytes_extended's. The
+    fold's last step is the answer, since a form cannot nest as deep as a name for it would."""
     if seed is not None:
         block = e.array.format(
             f"{_masked(e, e.right.format(seed, 32))}, {_masked(e, seed)}, {e.big.format(0)}"
@@ -289,14 +315,17 @@ def _hashed(e: Engine, words: str, length: str, seed: str | None, *then: str) ->
         words = f"CASE WHEN {seed} = 0 THEN {words} ELSE {e.concat.format(block, words)} END"
     blocks = f"({e.quotient.format(e.size.format('_w'), 3)} - 1)"
     start = _masked(e, f"{_START} + {length}")
-    steps = e.item.format(e.zero_to.format(f"7 * {blocks} + 8"))
-    state = e.array.format(f"{start}, {start}, {start}")
-    fold = e.fold.format(steps, "_s", "_i", _step(e, e.item_of.format("_i"), blocks), state)
     # Seven lines leave the roles rotated once: the state is b, c, a.
-    answer = _signed(e, "_r[2]") if seed is None else f"{_signed(e, '_r[1]')} * {_TWO32} + _r[2]"
+    answer = _signed(e, "_s[2]") if seed is None else f"{_signed(e, '_s[1]')} * {_TWO32} + _s[2]"
     for value in then:
         answer = e.xor.format(answer, value)
-    return e.let.format("_w", words, e.let.format("_r", fold, answer))
+    i = e.item_of.format("_i")
+    done = e.array.format(f"{e.big.format(answer)}, {e.big.format(0)}, {e.big.format(0)}")
+    step = f"CASE WHEN {i} = 7 * {blocks} + 8 THEN {done} ELSE {_step(e, i, blocks)} END"
+    steps = e.item.format(e.zero_to.format(f"7 * {blocks} + 9"))
+    state = e.array.format(f"{start}, {start}, {start}")
+    fold = e.fold.format(steps, "_s", "_i", step, state)
+    return e.let.format("_w", words, f"{fold}[1]")
 
 
 def _of_word(e: Engine, word: str, seed: str | None) -> str:
@@ -309,13 +338,13 @@ def _of_hex(e: Engine, digits: str, seed: str | None, *then: str) -> str:
     """hash_any: bytes in hexadecimal. A tail's third word starts at its second byte."""
     size = e.length.format("_h")
     last = e.quotient.format(size, 24)
-    padded = e.rpad.format("_h", f"24 * ({last} + 1)", "'0'")
-    chunk = " || ".join(f"substr(_p, 8 * _j + {at}, 2)" for at in (7, 5, 3, 1))
+    padded = e.rpad.format("_h", f"24 * ({last} + 1)", _ZERO)
+    chunk = " || ".join(f"substr({padded}, 8 * _j + {at}, 2)" for at in (7, 5, 3, 1))
     word = e.hex_word.format(chunk)
     tailed = f"CASE WHEN _j = 3 * {last} + 2 THEN {word} * 256 ELSE {word} END"
     words = e.map.format(e.zero_to.format(f"3 * ({last} + 1)"), "_j", e.big.format(tailed))
     body = _hashed(e, words, e.big.format(e.quotient.format(size, 2)), seed, *then)
-    return e.let.format("_h", digits, e.let.format("_p", padded, body))
+    return e.let.format("_h", digits, body)
 
 
 def _little(e: Engine, number: str, size: int) -> str:
@@ -343,7 +372,7 @@ def _name(e: Engine) -> str:
 def _name_cut_inside_a_character(e: Engine) -> str:
     """name's input cuts between characters, which a form of bytes cannot see."""
     size = e.length.format(e.text_hex.format(e.value))
-    return f"{size} > {2 * _NAME_BYTES} AND {size} <> 2 * {e.length.format(_text(e))}"
+    return f"{size} > {2 * _NAME_BYTES} AND {size} <> 2 * {e.chars.format(_text(e))}"
 
 
 def _word_of_int8(e: Engine) -> str:
@@ -360,8 +389,10 @@ def _word_of_char(e: Engine) -> str:
 
 
 def _char_of_no_platform(e: Engine) -> str:
-    """A "char" above 127 is signed on one platform and not on another."""
-    return f"{_word_of_char(e)} > 127"
+    """A "char" above 127 is signed on one platform and not on another, and its octal escape
+    says one."""
+    text = _text(e)
+    return f"{_word_of_char(e)} > 127 OR (substr({text}, 1, 1) = {e.backslash} AND {e.chars.format(text)} > 1)"
 
 
 def _float(e: Engine, seed: str | None) -> str:
@@ -600,11 +631,8 @@ def _summed(e: Engine, hashes: str, seed: str | None) -> str:
     return e.let.format("_q", fold, _pair(e, "_q[1]", "_q[2]", seed))
 
 
-def _date_days(e: Engine, text: str) -> str:
-    """A date's days since 2000-01-01, from its text: days_from_civil, in whole numbers."""
-    year = e.number.format(f"substr({text}, 1, 4)")
-    month = e.number.format(f"substr({text}, 6, 2)")
-    day = e.number.format(f"substr({text}, 9, 2)")
+def _days(e: Engine, year: str, month: str, day: str) -> str:
+    """A date's days since 2000-01-01: days_from_civil, in whole numbers."""
     shifted = f"({year} - CASE WHEN {month} <= 2 THEN 1 ELSE 0 END)"
     leaps = (
         f"{e.quotient.format(shifted, 4)} - {e.quotient.format(shifted, 100)} "
@@ -614,25 +642,43 @@ def _date_days(e: Engine, text: str) -> str:
     return f"(365 * {shifted} + {leaps} + {of_year} + {day} - 730426)"
 
 
+def _date_days(e: Engine, text: str) -> str:
+    parts = ", ".join(
+        e.number.format(f"substr({text}, {at}, {size})") for at, size in ((1, 4), (6, 2), (9, 2))
+    )
+    return e.let.format("_c", e.array.format(parts), _days(e, "_c[1]", "_c[2]", "_c[3]"))
+
+
 def _timestamp_micros(e: Engine, text: str, zoned: bool) -> str:
     """A timestamp's microseconds since 2000-01-01, from its text."""
     clock = f"substr({text}, 12)"
-    zone = f"CASE WHEN strpos({clock}, '+') > 0 THEN strpos({clock}, '+') ELSE strpos({clock}, '-') END"
+    zone = (
+        f"CASE WHEN strpos({clock}, '+') > 0 THEN strpos({clock}, '+') "
+        f"ELSE strpos({clock}, '-') END"
+    )
     held = f"substr({clock}, 1, {zone} - 1)" if zoned else clock
-    hours = e.number.format(f"substr({clock}, 1, 2)")
-    minutes = e.number.format(f"substr({clock}, 4, 2)")
-    seconds = e.number.format(f"substr({clock}, 7, 2)")
-    micros = e.number.format(e.rpad.format(f"replace(substr({held}, 10), '.', '')", 6, _ZERO))
-    total = f"({_date_days(e, text)} * 86400 + {hours} * 3600 + {minutes} * 60 + {seconds}) * 1000000 + {micros}"
-    if not zoned:
-        return f"({total})"
-    sign = f"CASE WHEN substr({clock}, {zone}, 1) = '-' THEN -1 ELSE 1 END"
     offset = f"substr({clock}, {zone} + 1)"
     east = (
-        f"{e.number.format(f'substr({offset}, 1, 2)')} * 3600 + "
-        f"{e.number.format(e.rpad.format(f'substr({offset}, 4, 2)', 2, _ZERO))} * 60"
+        f"CASE WHEN substr({clock}, {zone}, 1) = '-' THEN -1 ELSE 1 END * "
+        f"({e.number.format(f'substr({offset}, 1, 2)')} * 3600 + "
+        f"{e.number.format(e.rpad.format(f'substr({offset}, 4, 2)', 2, _ZERO))} * 60)"
     )
-    return f"({total} - {sign} * ({east}) * 1000000)"
+    parts = ", ".join(
+        (
+            *(
+                e.number.format(f"substr({text}, {at}, {size})")
+                for at, size in ((1, 4), (6, 2), (9, 2))
+            ),
+            *(e.number.format(f"substr({clock}, {at}, 2)") for at in (1, 4, 7)),
+            e.number.format(e.rpad.format(f"replace(substr({held}, 10), '.', '')", 6, _ZERO)),
+            east if zoned else e.big.format(0),
+        )
+    )
+    total = (
+        f"({_days(e, '_c[1]', '_c[2]', '_c[3]')} * 86400 + _c[4] * 3600 + _c[5] * 60 + _c[6] "
+        f"- _c[8]) * 1000000 + _c[7]"
+    )
+    return e.let.format("_c", e.array.format(parts), total)
 
 
 def _infinite(text: str, positive: str, negative: str, finite: str) -> str:
@@ -668,7 +714,8 @@ def _element_hash(e: Engine, kind: str, seed: str | None) -> str:
     micros = _infinite(
         text, _MAX_BIGINT, _MIN_BIGINT, _timestamp_micros(e, text, kind == "timestamptz")
     )
-    return _of_word(e, _word_of_int8(replace(of, value=micros)), seed)
+    word = _of_word(e, _word_of_int8(replace(of, value="_m")), seed)
+    return e.let.format("_m", e.big.format(micros), word)
 
 
 def _array(e: Engine, kind: str, seed: str | None) -> str:
@@ -778,12 +825,19 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
         )
     },
 }
+COMPOSITES = tuple(
+    (name, params)
+    for function in ("hash_array", "hash_range", "hash_multirange")
+    for name, params in ((function, "value"), (f"{function}_extended", "value, seed"))
+)
 #: The rows that read their argument as the text of a range or multirange, canonical.
 RANGE_ROWS = frozenset(
     name for (function, _, _), name in OVERLOADS.items() if not function.startswith("hash_array")
 )
 ARRAY_ROWS = frozenset(OVERLOADS.values()) - RANGE_ROWS
-NUMERIC_ARRAY_ROWS = frozenset(row for row in ARRAY_ROWS if row.endswith("_numeric"))
+TEXT_ARRAY_ROWS = frozenset(
+    row for row in ARRAY_ROWS if row.endswith(("_numeric", "_date", "_timestamp", "_timestamptz"))
+)
 
 
 #: What each function refuses by name, of the values that reach it.
@@ -795,6 +849,21 @@ _REFUSES: dict[str, Callable[[Engine], str]] = {
     "hash_numeric": _numeric_exponent,
     "hash_numeric_extended": _numeric_exponent,
 }
+
+
+#: Every row of a hash, which is strict: a statement's NULL needs none of its form.
+ROWS = frozenset(
+    {
+        *(name for names in (*_BYTES, *_WORDS, *REFUSED_VALUES) for name in names),
+        "hashfloat4",
+        "hashfloat4extended",
+        "hashfloat8",
+        "hashfloat8extended",
+        "hash_numeric",
+        "hash_numeric_extended",
+        *OVERLOADS.values(),
+    }
+)
 
 
 def forms(e: Engine) -> dict[tuple[str, str], str]:

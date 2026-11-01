@@ -27,7 +27,7 @@ from typing import Any
 import psycopg
 from psycopg import pq
 
-from tests.unit.pgwire.aggregate_corpus import index_statements, statements
+from tests.unit.pgwire.aggregate_corpus import index_statements, server_statements, statements
 
 _ANSWERS = Path(__file__).with_name("pg17_aggregate_answers.py")
 _HEADER = '''# Copyright (c) 2026 Kenneth Stott
@@ -58,7 +58,8 @@ def main(dsn: str) -> None:
     answers: dict[str, tuple[str, Any]] = {}
     with psycopg.connect(dsn, autocommit=True) as conn:
         conn.execute("SET extra_float_digits TO 1")
-        for sql in (*statements(), *index_statements()):
+        conn.execute("SET default_transaction_read_only TO on")
+        for sql in (*statements(), *index_statements(), *server_statements()):
             res = conn.pgconn.exec_params(sql.encode(), [], result_format=0)
             if res.status != pq.ExecStatus.TUPLES_OK:
                 field = res.error_field(pq.DiagnosticField.MESSAGE_PRIMARY)

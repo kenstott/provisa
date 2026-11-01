@@ -25,15 +25,26 @@ from sqlglot import exp
 
 from provisa.core.pg_error import MARK, from_engine
 from provisa.transpiler.function_macros import MACROS, Pg
+from provisa.transpiler.metadata_facts import CatalogFacts
+from provisa.transpiler.metadata_functions import expand
 from provisa.transpiler.pg_forms_aggregate import STATE_FUNCTIONS
 from provisa.transpiler.pg_forms_index import SUPPORT_FUNCTIONS
 from provisa.transpiler.transpile import transpile
-from tests.unit.pgwire.aggregate_corpus import index_statements, same_answer, statements
+from tests.unit.pgwire.aggregate_corpus import (
+    index_statements,
+    same_answer,
+    server_statements,
+    statements,
+)
 from tests.unit.pgwire.pg17_aggregate_answers import RECORDED
 
 
+FACTS = CatalogFacts("analyst")
+CORPUS = [*statements(), *index_statements()]
+
+
 def test_the_corpus_is_what_was_recorded():
-    assert list(RECORDED) == [*statements(), *index_statements()]
+    assert list(RECORDED)[: len(CORPUS)] == CORPUS
 
 
 @pytest.fixture(scope="module")
@@ -41,7 +52,7 @@ def connection():
     return duckdb.connect()
 
 
-@pytest.mark.parametrize("sql", list(RECORDED))
+@pytest.mark.parametrize("sql", CORPUS)
 def test_duckdb_answers_as_postgresql_17_answered(connection: Any, sql: str):
     try:
         got: Any = connection.execute(transpile(sql, "duckdb")).fetchone()[0]
@@ -69,3 +80,19 @@ def test_an_engine_error_reads_back_as_postgresqls():
     raised = RuntimeError(f"Code: 395. DB::Exception: {MARK} 22003: integer out of range")
     error = from_engine(raised)
     assert error is not None and error.sqlstate == "22003"
+
+
+def _served(sql: str, dialect: str) -> str:
+    """A statement of a server form as a catalog route hands it to an engine."""
+    return transpile(
+        expand(sqlglot.parse_one(sql, read="postgres"), FACTS).sql("postgres"), dialect
+    )
+
+
+@pytest.mark.parametrize("sql", server_statements())
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+def test_a_server_form_is_sql_the_engine_reads(sql: str, dialect: str):
+    written = _served(sql, dialect)
+    tree = sqlglot.parse_one(written, read=dialect)
+    assert not [c for c in tree.find_all(exp.DataType) if c.sql("postgres").upper() == "OID"]
+    assert "provisa_raise" not in written
