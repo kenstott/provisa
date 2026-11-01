@@ -276,7 +276,8 @@ async def _join_semantic_sql(state: Any, mv: "MVDefinition") -> str:
 
     bound = dict(zip(mv.source_tables, mv.inputs, strict=True))
     registered = {
-        (t.source_id, t.schema_name, t.table_name): t for t in await registered_tables(state)
+        (t.source_id, t.schema_name, t.table_name): t
+        for t in await registered_tables(state, catalog=True)
     }
     metas = {
         (m.source_id, m.schema_name, m.original_table_name or m.table_name): m

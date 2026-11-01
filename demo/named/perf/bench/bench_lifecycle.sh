@@ -28,7 +28,7 @@
 #                      [--ready-timeout 7200] [--keep] [--dry-run] [--machine-type TYPE]
 #                      [--backends-machine-type TYPE] [--disk-gb GB]
 #                      [--variants ... --caches ... --telemetry ... --steps ... --window-s ...
-#                       --warmup-s ...]
+#                       --warmup-s ...] [--profile]
 #   --machine-type  every device's machine type (terraform/perf's default otherwise); a cheap
 #                   stage uses a small one.
 #   --backends-machine-type  the backends device's machine type alone (after --machine-type):
@@ -39,6 +39,7 @@
 #   --backends-provisioning-model  the backends device's alone (the others' otherwise): an
 #                   on-demand backends device beside Spot server and client.
 #   --variants ...  a governance pass (three_device_run.sh), the six flags together.
+#   --profile   ends with a py-spy profile per published transport (three_device_run.sh).
 #   --dry-run   terraform plan and the run's commands (three_device_run.sh --dry-run); nothing
 #               is created.
 #   --keep      leave the devices up afterwards (their state stays in the run directory; destroy
@@ -72,6 +73,7 @@ while [ "$#" -gt 0 ]; do
     --backends-machine-type) BACKENDS_MACHINE_TYPE="$2"; shift 2 ;;
     --disk-gb) DISK_GB="$2"; shift 2 ;;
     --variants|--caches|--telemetry|--steps|--window-s|--warmup-s) PASS_ARGS+=("$1" "$2"); shift 2 ;;
+    --profile) PASS_ARGS+=("$1"); shift ;;
     *) echo "Unknown option: $1"; exit 2 ;;
   esac
 done

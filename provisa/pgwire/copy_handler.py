@@ -525,24 +525,16 @@ class CopyHandler:  # REQ-038, REQ-040, REQ-129, REQ-266, REQ-272
         # (compiler/write_admission.py): the write right and the role's insert grant and its
         # columns here, before any data is asked for; the grant's check over each row below,
         # before any row is written.
-        from provisa.compiler.stage2 import build_governance_context
         from provisa.compiler.write_admission import admit_rows
         from provisa.core.request_context import session_vars_for
+        from provisa.pgwire.governed_plan import role_governance
         from provisa.security.rights import require_role
 
         _role = require_role(_state.roles, role_id)
         from provisa.api.role_surface import built_surface
 
         _surface = built_surface(_state.surfaces[role_id])  # one snapshot: parts of one build
-        _gov = build_governance_context(
-            role_id,
-            _surface.rls,
-            _state.masking_rules,
-            _surface.context,
-            getattr(_state, "tables", []),
-            role=_role,
-            relationships=getattr(_state, "relationships", None),
-        )
+        _gov = role_governance(_state, _surface, role_id)
         admit_rows(_gov, tm.table_id, table, use_cols)
 
         self._send_copy_in_response(fmt)
