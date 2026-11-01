@@ -168,16 +168,18 @@ def _role_definitions(config: ProvisaConfig):
     roles too (a grant or mask entry reaching a role through a standard ancestor is that role's,
     REQ-1677), and every role that reaches a domain (a role reaching none, a control-plane role,
     is no data audience, REQ-1327)."""
-    from provisa.core.db import STANDARD_ROLES, standard_role_dicts
-    from provisa.security.inheritance import role_chains
+    from provisa.core.db import standard_role_dicts
+    from provisa.security.inheritance import flatten_role_dicts, role_chains
+    from provisa.security.rights import lists_data_domain
 
-    standard = {
-        r["id"]: {**r, "domain_access": list(STANDARD_ROLES[r["id"]].domain_access)}
-        for r in standard_role_dicts()
-    }
-    definitions = {**standard, **{role.id: role.model_dump() for role in config.roles}}
-    all_roles = tuple(sorted(r for r, d in definitions.items() if d["domain_access"]))
-    return definitions, role_chains(definitions.values()), all_roles
+    stored = {r["id"]: r for r in standard_role_dicts()}
+    stored.update({role.id: role.model_dump() for role in config.roles})
+    # REQ-2155: what each role holds, which is what reads the columns.
+    definitions = {r["id"]: r for r in flatten_role_dicts(list(stored.values()))}
+    all_roles = tuple(
+        sorted(r for r, d in definitions.items() if lists_data_domain(d["domain_access"]))
+    )
+    return definitions, role_chains(stored.values()), all_roles
 
 
 def _served(definitions, chains, table, column) -> frozenset[str]:

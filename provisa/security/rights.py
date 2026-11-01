@@ -787,8 +787,8 @@ def compute_meta_row_scope(
     meta, so this is their scope too.
 
     ``None`` (unfiltered) is returned for the tier that sees the whole catalog: a role reaching
-    every data domain and holding every system domain. A table of a system domain is described only
-    to a role holding that domain. Short of that a role reaching every data domain sees them all.
+    every data domain and every system domain the model has a table of. A table of a system domain
+    is described only to a role holding that domain, or served one of its columns.
     Holding catalog_read opens the domain and not its rows. An empty ``domain_access`` is no
     domains, so such a role sees no meta rows but the listed; the role itself is required -- a
     missing role is not a tier. Every other (DEFAULT-tier) role is confined to the tables it can
@@ -804,10 +804,13 @@ def compute_meta_row_scope(
 
     def described(table: dict) -> bool:
         domain_id = table.get("domain_id")
-        return domain_id not in SYSTEM_DOMAINS or domain_id in accessible
+        if domain_id not in SYSTEM_DOMAINS or domain_id in accessible:
+            return True
+        # Meta's default tier is read, and is none of the tables the role holds a grant to.
+        return domain_id != META_DOMAIN_ID and serves_table(role, table)
 
     if reaches_all_domains(accessible):
-        if SYSTEM_DOMAINS <= set(accessible):
+        if all(described(t) for t in tables):
             return None  # the whole catalog
         return {t["id"] for t in tables if described(t)}
     # An EMPTY list falls through: no domain is directly reachable, so no meta row is either.

@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { render, screen, within } from "../../../test-utils/render";
 import { FormLayout } from "../../../components/form/FormLayout";
+import { MultiSelect } from "../../../components/MultiSelect";
 import { ResidencyGrant } from "../../../components/admin/ResidencyGrant";
 import { CapabilityNames } from "../CapabilityNames";
 import { CapabilityGrid } from "../RoleFormParts";
@@ -106,6 +107,31 @@ describe("a list of capabilities", () => {
     render(<CapabilityNames capabilities={["catalog_read"]} />);
     await userEvent.hover(screen.getByTestId("capability-name-catalog_read"));
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Read the meta domain.");
+  });
+});
+
+describe("a domain no parent reaches", () => {
+  it("is shown, cannot be picked, and says why", async () => {
+    const onChange = vi.fn();
+    render(
+      <MultiSelect
+        label="Domain Access"
+        options={[
+          { id: "sales", label: "sales" },
+          { id: "finance", label: "finance", disabled: true },
+        ]}
+        disabledHint="No parent of this role reaches this domain."
+        value={[]}
+        onChange={onChange}
+      />,
+    );
+    await userEvent.click(screen.getByRole("textbox", { name: "Domain Access" }));
+    const held = await screen.findByTestId("option-not-held-finance");
+    await userEvent.hover(held);
+    expect(await screen.findByRole("tooltip", { hidden: true })).toHaveTextContent(
+      "No parent of this role reaches this domain.",
+    );
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
 
