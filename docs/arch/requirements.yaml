@@ -90059,7 +90059,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     level as Details, Versions, Columns and SLAs, not panels inside Details. (Amended 2026-10-29, THREE
     TIERS:) Maintainer 2026-10-31: a contract reads in three tiers: small key-value panels in a grid; medium
     tables in a two-column flow; large tables, Servers and Columns, full width at the bottom. Fields not
-    declared fold into one quiet line per panel, in place of a row each.'
+    declared fold into one quiet line per panel, in place of a row each. (Amended 2026-10-29, HOW TO USE:)
+    Maintainer 2026-11-01, on the contract''s servers section: "do this". The contract view''s Servers section
+    becomes How to use, with three columns: Surface, Address and Try it. Try it is a complete URI where
+    one is enough (REST, JSON:API, the OpenAPI description) and a runnable statement using the table''s
+    real names otherwise (pgwire, Flight SQL, GraphQL, gRPC, SPARQL). When the viewing role cannot read
+    the table, Try it shows who to ask, from the contract''s roles and first-level approvers, instead of
+    a query. The instructions are generated in the contract builder so exported contracts carry them; the
+    standard servers field stays as it is, and a token appears only as a placeholder.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
