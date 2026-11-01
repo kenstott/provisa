@@ -88,8 +88,10 @@ ClickHouse.Generator.TRANSFORMS[exp.SplitPart] = _split_part
 
 def _truncated(self: Generator, expression: exp.TimestampTrunc) -> str:
     """A truncated timestamp, where ClickHouse's dateTrunc answers a date for a month or a year."""
-    unit = exp.Literal.string(expression.text("unit").lower())
-    return f"toDateTime({self.func('dateTrunc', unit, expression.this)})"
+    unit = expression.text("unit").lower()
+    if not unit:  # a NULL part, which dateTrunc takes for no part at all
+        return "CAST(NULL AS Nullable(DateTime))"
+    return f"toDateTime({self.func('dateTrunc', exp.Literal.string(unit), expression.this)})"
 
 
 ClickHouse.Generator.TRANSFORMS[exp.TimestampTrunc] = _truncated

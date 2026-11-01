@@ -753,7 +753,9 @@ def _instants_as_utc(pg_sql: str, target_dialect: str) -> str:
     """``pg_sql`` with each string literal cast to timestamptz that carries an offset written as
     the same instant in UTC, its offset gone. MariaDB reads ``TIMESTAMP('2024-01-01
     20:04:05-05:00')`` as 20:04:05, five hours early (REQ-2050)."""
-    if target_dialect not in _INSTANT_AS_UTC_WALL_TIME or "TIMESTAMPTZ" not in pg_sql.upper():
+    said = pg_sql.upper()
+    zoned = "TIMESTAMPTZ" in said or "TIMESTAMP WITH TIME ZONE" in said
+    if target_dialect not in _INSTANT_AS_UTC_WALL_TIME or not zoned:
         return pg_sql
     from datetime import datetime, timezone
 

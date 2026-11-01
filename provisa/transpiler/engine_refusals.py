@@ -45,7 +45,10 @@ _NOT_HELD: dict[str, frozenset[str]] = {
 
 #: What both engines refuse: its name, and the said types of the overloads refused (None for all).
 _ON_BOTH: dict[str, frozenset[str] | None] = {
-    # numeric's exact digits, which an engine's double or 38-digit decimal does not reach.
+    # numeric's exact digits, which an engine's double or 38-digit decimal does not reach; and
+    # the scale of the value it picked, or a time's digits, which an engine's type evens out.
+    "max": _NUMERIC | {"time"},
+    "min": _NUMERIC | {"time"},
     "avg": _NUMERIC,
     "exp": _NUMERIC,
     "ln": _NUMERIC,
@@ -171,8 +174,6 @@ _ON: dict[str, dict[str, frozenset[str] | None]] = {
         "exp": _ANY,
         "ln": _ANY,
         "tanh": _ANY,
-        "dexp": _ANY,
-        "dlog1": _ANY,
         "to_timestamp": _NUMBERS,
         "unix_to_time": _NUMBERS,
         "length": _BYTES,

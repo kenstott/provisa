@@ -844,8 +844,8 @@ _NUMBERS: tuple[Macro, ...] = (
     *_integer_pairs(),
     *_float_pairs(),
     *_numeric_conversions(),
-    _pg("dexp", "x", strict("x", "DOUBLE", pg_forms.DEXP)),
-    _pg("dlog1", "x", strict("x", "DOUBLE", pg_forms.DLOG1)),
+    _pg("dexp", "x", strict("x", "DOUBLE", pg_forms.DEXP), _CLICKHOUSE),  # engine_refusals: exp
+    _pg("dlog1", "x", strict("x", "DOUBLE", pg_forms.DLOG1), _CLICKHOUSE),  # and ln
     _pg("dlog10", "x", strict("x", "DOUBLE", pg_forms.DLOG10)),
     _pg("dsqrt", "x", strict("x", "DOUBLE", pg_forms.DSQRT)),
     _pg("dpow", "x, y", strict("x, y", "DOUBLE", pg_forms.DPOW)),
@@ -1880,6 +1880,13 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             flagged = node.args.get("modifiers")
             if isinstance(flagged, exp.Literal) and flagged.this == FIRST_MATCH:
                 return _first_match(node, dialect)
+        if (
+            isinstance(node, exp.Anonymous)
+            and node.name.lower() in ("date_part", "extract")
+            and dialect in _FROM_THE_END
+            and any(_is_null(part) for part in node.expressions)
+        ):  # strict, and an engine's own part of a NULL is its error
+            return exp.Cast(this=exp.Null(), to=exp.DataType.build("DOUBLE"))
         if isinstance(node, (exp.Substring, exp.Left, exp.Right)) and dialect in _FROM_THE_END:
             edged = _past_the_edge(node, dialect)
             if edged is not None:
