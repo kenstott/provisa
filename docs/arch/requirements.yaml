@@ -90083,7 +90083,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     use shows the most specific URI each surface has for the table: the table''s own URI on REST and JSON:API,
     the OpenAPI description narrowed as far as it can be, and a connection URI with the schema for pgwire
     and Flight SQL. A surface with one endpoint per server shows that endpoint, and its link carries the
-    table.'
+    table. (Amended 2026-10-29, OPENAPI NARROWS TO THE TABLE:) Maintainer 2026-11-01: "if you couldn''t
+    narrow to a table what exactly would the point be". This replaces "as far as it can be" in the most
+    specific address amendment: the OpenAPI description in How to use is narrowed to the one table. The
+    generated description takes a table filter beside role and domains, and the contract''s address uses
+    it.'
   scenario: 'Given product revenue with member daily_revenue and input orders, an output port of product
     fulfilment
 
