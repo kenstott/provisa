@@ -1074,6 +1074,7 @@ export function SqlPage() {
               resultRows={resultRows}
               resultColumns={resultColumns}
               rowsPartial={resultPartial}
+              answered={execMs !== null}
               statements={statements}
               statementIndex={statementIndex}
               // A batch's statements are held only after a run or a restore, each of which keeps

@@ -447,6 +447,10 @@ const WAITING_HINT_MS = 1200;
 // actions open (a modal, a form) is seen whole.
 const ACTION_PACE_MS = 700;
 const ACTING_CLASS = "tour-acting";
+// The body class while a step waits or is stuck: the popover still up is the step before's, and a
+// status card over it reads as that step's trouble (tour.css hides it). The step's own popover is
+// shown once its anchor is in, the status cleared first.
+const PENDING_CLASS = "tour-step-pending";
 
 export function TourProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
@@ -460,6 +464,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // Bumped by Retry so the runner effect re-enters the same step index.
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState<TourStatus>(null);
+  useEffect(() => {
+    const pending = status?.kind === "waiting" || status?.kind === "stuck";
+    document.body.classList.toggle(PENDING_CLASS, pending);
+    return () => document.body.classList.remove(PENDING_CLASS);
+  }, [status]);
   // Which tour (the core tour or one Deep Dives topic) activeStep belongs to, and whether the
   // Deep Dives menu is open (REQ-1945).
   const [activeScope, setActiveScope] = useState<RunScope | null>(null);

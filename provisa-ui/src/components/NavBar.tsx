@@ -236,8 +236,8 @@ export function NavBar() {
             {t("navBar.docs")}
           </NavLink>
         </div>
+        <OrgSwitcher />
         <div className="navbar-role">
-          <OrgSwitcher />
           {domainsEnabled && onDomainFilteredPage && domains.length > 0 && (
             <div className="navbar-domain-wrapper">
               <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
