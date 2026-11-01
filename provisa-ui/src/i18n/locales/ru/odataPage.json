@@ -1,0 +1,11 @@
+{
+  "odataPage": {
+    "title": "OData",
+    "description": "Откройте таблицы, доступные вашей роли, в Excel, Power BI или любом клиенте OData без установки драйвера.",
+    "serviceRoot": "Корень службы",
+    "serviceRootHelp": "В Excel или Power BI выберите «Канал OData» и вставьте этот адрес. Войдите с помощью Basic или токена носителя.",
+    "metadata": "Документ метаданных",
+    "metadataHelp": "Таблицы, столбцы и связи, доступные вашей роли, в формате OData CSDL.",
+    "copyUrl": "Копировать URL"
+  }
+}

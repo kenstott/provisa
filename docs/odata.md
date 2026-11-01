@@ -24,7 +24,7 @@
 
 ## The service
 
-The service is at `/data/odata` on the HTTP port, so it has no port or startup line of its own.
+The service is at `/data/odata` on the HTTP port, so it has no port of its own. It has its line in the startup log and its row on the admin System health table, as the other HTTP surfaces do, and the OData page under Explore gives its address to copy.
 
 | Request | Answer |
 |---|---|

@@ -28,6 +28,7 @@
     "port": "порт {{port}}",
     "cypherOverHttp": "Cypher через HTTP",
     "mvRefreshLoop": "Цикл обновления материализованных представлений",
-    "stopped": "Остановлено"
+    "stopped": "Остановлено",
+    "copyUrl": "Копировать URL"
   }
 }

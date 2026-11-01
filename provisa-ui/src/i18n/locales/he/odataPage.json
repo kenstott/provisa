@@ -1,0 +1,11 @@
+{
+  "odataPage": {
+    "title": "OData",
+    "description": "פתחו את הטבלאות שהתפקיד שלכם רשאי לראות ב-Excel, ב-Power BI או בכל לקוח OData, ללא התקנת מנהל התקן.",
+    "serviceRoot": "שורש השירות",
+    "serviceRootHelp": "ב-Excel או ב-Power BI בחרו הזנת OData והדביקו את הכתובת הזו. היכנסו באמצעות Basic או אסימון Bearer.",
+    "metadata": "מסמך מטא-נתונים",
+    "metadataHelp": "הטבלאות, העמודות והקשרים שהתפקיד שלכם רשאי לראות, בפורמט OData CSDL.",
+    "copyUrl": "העתקת כתובת URL"
+  }
+}

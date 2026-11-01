@@ -12,6 +12,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Box, Group, Table, Text } from "@mantine/core";
 import { useSystemHealth } from "../../hooks/useAdminOpsQueries";
+import { CopyButton } from "../CopyButton";
 import { ListTable, ListRow } from "../list/ListTable";
 
 // The one protocol name with words to translate; the others are product names.
@@ -143,7 +144,19 @@ export function SystemHealth() {
                 </Group>
               </Table.Td>
               <Table.Td>
-                {p.path ?? (p.port != null ? t("systemHealth.port", { port: p.port }) : "")}
+                {p.path != null ? (
+                  <Group gap={4} wrap="nowrap" my={-6}>
+                    {p.path}
+                    <CopyButton
+                      text={`${window.location.origin}${p.path}`}
+                      title={t("systemHealth.copyUrl")}
+                    />
+                  </Group>
+                ) : p.port != null ? (
+                  t("systemHealth.port", { port: p.port })
+                ) : (
+                  ""
+                )}
               </Table.Td>
             </ListRow>
           ))}
