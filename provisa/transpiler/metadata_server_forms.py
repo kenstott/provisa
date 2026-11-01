@@ -190,7 +190,7 @@ _RESET_TARGETS = (
 _LO_WRITES = (
     ("lo_creat", "mode", "BIGINT"),
     ("lo_create", "lobj", "BIGINT"),
-    ("lo_from_bytea", "lobj, data", "BIGINT"),
+    ("lo_from_bytea", "lobj, data:bytea", "BIGINT"),
 )
 
 
@@ -671,14 +671,14 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
         ("lo_truncate", "fd, len", "INTEGER"),
         ("lo_truncate64", "fd, len", "INTEGER"),
         ("loread", "fd, len", "BYTEA"),
-        ("lowrite", "fd, data", "INTEGER"),
+        ("lowrite", "fd, data:bytea", "INTEGER"),
     ):
         a.strict(name, params, sql_type, bad_descriptor)
     for name, params, sql_type in (
         ("lo_open", "lobj, mode", "INTEGER"),
         ("lo_get", "lobj", "BYTEA"),
         ("lo_get", "lobj, off, len", "BYTEA"),
-        ("lo_put", "lobj, off, data", "VARCHAR"),
+        ("lo_put", "lobj, off, data:bytea", "VARCHAR"),
         ("lo_unlink", "lobj", "INTEGER"),
         ("lo_export", "lobj, f", "INTEGER"),
     ):
