@@ -24,7 +24,7 @@ from provisa.core.pg_tsearch_english import lexize
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.pg17_text_search_answers import RECORDED
 from tests.unit.pgwire.text_search_corpus import OVERLOADS, null_call, statements
-from tests.unit.pgwire.text_search_replay import problems
+from tests.unit.pgwire.text_search_replay import BY_FUNCTION, outcome, problems
 
 
 def test_the_corpus_is_what_was_recorded():
@@ -36,10 +36,18 @@ def test_every_overload_is_in_the_corpus():
     assert all(null_call(name, types) in RECORDED for name, types in OVERLOADS)
 
 
-def test_duckdb_answers_what_postgresql_17_answered():
+@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
+def test_duckdb_answers_what_postgresql_17_answered(function: str):
     connection = duckdb.connect()
-    wrong, _ = problems("duckdb", lambda sql: connection.execute(sql).fetchall())
+    wrong, _ = problems(function, "duckdb", lambda sql: connection.execute(sql).fetchall())
     assert not wrong, f"{len(wrong)} differ: " + "\n".join(wrong[:20])
+
+
+def test_the_calls_the_conformance_run_makes_are_answered_or_are_postgresqls_errors():
+    connection = duckdb.connect()
+    run = lambda sql: connection.execute(sql).fetchall()  # noqa: E731
+    named = [s for n, t in OVERLOADS for s in (null_call(n, t),)]
+    assert [s for s in named if outcome(s, "duckdb", run) != "ok"] == []
 
 
 def test_a_form_reads_a_column_row_by_row():

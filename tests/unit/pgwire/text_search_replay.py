@@ -93,17 +93,15 @@ def outcome(sql: str, dialect: str, run: Callable[[str], Iterable[Sequence[Any]]
     return "ok" if got == want else f"{sql}: {got[:3]}, PostgreSQL {want[:3]}"
 
 
+#: The statements of each function: one engine takes minutes over all of them.
+BY_FUNCTION: dict[str, list[str]] = {}
+for _sql in RECORDED:
+    BY_FUNCTION.setdefault(function_of(_sql), []).append(_sql)
+
+
 def problems(
-    dialect: str, run: Callable[[str], Iterable[Sequence[Any]]]
-) -> tuple[list[str], dict[str, int]]:
-    """What differs, and how many statements of each function were refused."""
-    wrong: list[str] = []
-    refused: dict[str, int] = {}
-    for sql in RECORDED:
-        said = outcome(sql, dialect, run)
-        if said == "refused":
-            name = function_of(sql)
-            refused[name] = refused.get(name, 0) + 1
-        elif said != "ok":
-            wrong.append(said)
-    return wrong, refused
+    function: str, dialect: str, run: Callable[[str], Iterable[Sequence[Any]]]
+) -> tuple[list[str], int]:
+    """What differs among a function's statements, and how many of them were refused."""
+    said = [outcome(sql, dialect, run) for sql in BY_FUNCTION[function]]
+    return [s for s in said if s not in ("ok", "refused")], said.count("refused")

@@ -21,29 +21,31 @@ from typing import Any
 
 import pytest
 
-from tests.unit.pgwire.text_search_replay import problems
+from tests.unit.pgwire.text_search_replay import BY_FUNCTION, problems
 
 pytestmark = [pytest.mark.integration]
 
 
-def _check(dialect: str, run: Any) -> None:
-    wrong, refused = problems(dialect, run)
-    print("REFUSED", dialect, sorted(refused.items()))  # noqa: T201 -- the run's record
+def _check(function: str, dialect: str, run: Any) -> None:
+    wrong, refused = problems(function, dialect, run)
+    print("REFUSED", dialect, function, refused)  # noqa: T201 -- the run's record
     assert not wrong, f"{len(wrong)} differ on {dialect}: " + "\n".join(wrong[:30])
 
 
 @pytest.mark.requires_trino
-def test_text_search_on_trino(trino_conn):
+@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
+def test_text_search_on_trino(trino_conn, function: str):
     def run(sql: str) -> list[Any]:
         cursor = trino_conn.cursor()
         cursor.execute(sql)
         return cursor.fetchall()
 
-    _check("trino", run)
+    _check(function, "trino", run)
 
 
 @pytest.mark.requires_clickhouse
-def test_text_search_on_clickhouse():
+@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
+def test_text_search_on_clickhouse(function: str):
     import clickhouse_connect
 
     client = clickhouse_connect.get_client(
@@ -52,4 +54,4 @@ def test_text_search_on_clickhouse():
         username=os.environ.get("CLICKHOUSE_USER", "default"),
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
-    _check("clickhouse", lambda sql: list(client.query(sql).result_rows))
+    _check(function, "clickhouse", lambda sql: list(client.query(sql).result_rows))
