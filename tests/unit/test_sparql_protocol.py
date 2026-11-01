@@ -231,3 +231,17 @@ def test_an_update_form_field_is_an_update():
 def test_text_that_is_no_update_is_refused_as_not_sparql():
     doc = _refused(b"INSERT NONSENSE", "application/sparql-update")
     assert "is not SPARQL this endpoint reads" in json.dumps(doc)
+
+
+def test_a_select_is_written_as_tsv_with_each_term_in_turtle_form():
+    rows = [
+        {"s": NODE, "n": {"literal": 'a"b\tc', "datatype": f"{XSD}string"}},
+        {"s": NODE, "n": {"literal": 41, "datatype": f"{XSD}integer"}},
+        {"s": NODE},
+    ]
+    lines = write_select(["s", "n"], rows, BASE, "tsv").decode().split("\n")
+    iri = f"<{BASE}/id/hr/persons/a%2Fb%20c>"
+    assert lines[0] == "?s\t?n"
+    assert lines[1] == f'{iri}\t"a\\"b\\tc"'
+    assert lines[2] == f'{iri}\t"41"^^<{XSD}integer>'  # the abbreviated 41 is optional in TSV
+    assert lines[3] == f"{iri}\t"

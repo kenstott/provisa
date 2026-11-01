@@ -266,6 +266,13 @@ class _Group:
         )
 
 
+def _conjuncts(e: Any) -> list[Any]:
+    """A FILTER's conditions: rdflib joins a group's FILTERs into one conjunction."""
+    if getattr(e, "name", None) == "ConditionalAndExpression":
+        return [*_conjuncts(e.expr), *(c for other in e.other or [] for c in _conjuncts(other))]
+    return [e]
+
+
 def _one_pattern(p: CompValue, what: str) -> _Group:
     groups = _alternatives(p)
     if len(groups) != 1:
@@ -343,13 +350,14 @@ def _alternatives(p: CompValue) -> list[_Group]:
         return [*_alternatives(p.p1), *_alternatives(p.p2)]
     if name == "Filter":
         groups = _alternatives(p.p)
-        kind = getattr(p.expr, "name", None)
-        for g in groups:
-            if kind in ("Builtin_EXISTS", "Builtin_NOTEXISTS"):
-                inner = _one_pattern(p.expr.graph, kind.removeprefix("Builtin_"))
-                (g.present if kind == "Builtin_EXISTS" else g.absent).append(inner)
-            else:
-                g.filters.append(p.expr)
+        for condition in _conjuncts(p.expr):
+            kind = getattr(condition, "name", None)
+            for g in groups:
+                if kind in ("Builtin_EXISTS", "Builtin_NOTEXISTS"):
+                    inner = _one_pattern(condition.graph, kind.removeprefix("Builtin_"))
+                    (g.present if kind == "Builtin_EXISTS" else g.absent).append(inner)
+                else:
+                    g.filters.append(condition)
         return groups
     if name == "Minus":
         # SPARQL 18.5: a solution sharing no variable with the right side is never removed.

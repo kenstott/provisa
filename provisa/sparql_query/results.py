@@ -24,12 +24,13 @@ from __future__ import annotations
 import io
 from typing import Any
 
-from rdflib import Graph, Literal, URIRef, Variable
+from rdflib import XSD, Graph, Literal, URIRef, Variable
 from rdflib.query import Result
 
 from provisa.gql.iri import subject_iri
 from provisa.sparql_query.vocabulary import term_iri
 
+XSD_STRING = XSD.string
 #: (media type, rdflib format), the first the form's default.
 RESULT_FORMATS = (
     ("application/sparql-results+json", "json"),
@@ -100,7 +101,25 @@ def rdf_term(value: dict | None, base: str) -> Any:
     )
 
 
+def _tsv_cell(term: Any) -> str:
+    """One RDF term in SPARQL 1.1 TSV: as Turtle writes it, its tabs and newlines escaped."""
+    if term is None:
+        return ""
+    if isinstance(term, Literal) and term.datatype == XSD_STRING:
+        term = Literal(str(term))
+    return term.n3().replace("\t", "\\t").replace("\n", "\\n").replace("\r", "\\r")
+
+
+def _write_tsv(variables: list[str], rows: list[dict], base: str) -> bytes:
+    """rdflib parses this format and has no serializer for it."""
+    lines = ["\t".join(f"?{v}" for v in variables)]
+    lines += ["\t".join(_tsv_cell(rdf_term(row.get(v), base)) for v in variables) for row in rows]
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
 def write_select(variables: list[str], rows: list[dict], base: str, fmt: str) -> bytes:
+    if fmt == "tsv":
+        return _write_tsv(variables, rows, base)
     result = Result("SELECT")
     result.vars = [Variable(v) for v in variables]
     result.bindings = [

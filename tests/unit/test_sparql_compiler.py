@@ -921,3 +921,17 @@ def test_minus_sharing_no_variable_removes_nothing(con):
 def test_a_variable_predicate_with_a_constant_object_finds_the_predicates(con):
     rows = _answer(con, 'SELECT ?p WHERE { ?s ?p "Ann" }')
     assert [r["p"] for r in rows] == [NAME]
+
+
+def test_exists_beside_another_filter_is_read_as_well(con):
+    rows = _answer(
+        con,
+        "SELECT ?n WHERE { ?s p:name ?n ; p:age ?g FILTER(?g > 30) "
+        "FILTER NOT EXISTS { ?s rel:KNOWS ?o } }",
+    )
+    assert rows == []
+    rows = _answer(
+        con,
+        'SELECT ?n WHERE { ?s p:name ?n FILTER(?n != "Ann") FILTER EXISTS { ?s rel:KNOWS ?o } }',
+    )
+    assert [r["n"] for r in rows] == ["Bo"]
