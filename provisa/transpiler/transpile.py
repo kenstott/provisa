@@ -529,8 +529,8 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
     """Replace JSON_ARRAYAGG(x) with json_format(CAST(ARRAY_AGG(JSON_PARSE(x)) AS JSON)).
 
     JSONB_AGG is the same aggregate over Postgres' binary JSON type — sqlglot leaves it anonymous
-    (json_agg maps to JSON_ARRAYAGG, jsonb_agg does not) and Trino registers neither, so both
-    spellings rewrite identically.
+    (json_agg maps to JSON_ARRAYAGG, jsonb_agg does not) and Trino registers neither. A statement's
+    own jsonb_agg is refused before this (REQ-2171): json's text is not the spacing of jsonb's.
 
     Trino 480 does not register json_arrayagg. The json_format wrapper produces
     VARCHAR so the result is safe to embed as a VALUE in JSON_OBJECT (Trino cannot
