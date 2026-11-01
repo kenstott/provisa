@@ -19,7 +19,12 @@ statement, before anything reads it, and everything after is a function of the t
 below order a value by its place among the labels, on a column as on a literal, and
 ``pg_typed_value`` or ``pg_typed_array`` around a result says the type a client is told
 (provisa.pgwire.cast_types). A call on a value no statement or registration says is a source's enum
-is left as it stands, where the engine's own enum answers or the call is refused by name."""
+is left as it stands, where the engine's own enum answers or the call is refused by name.
+
+A cast to a source's enum that no form consumed names a type only the source and what attaches it
+hold. Routing, which comes later, decides whether the statement reaches them:
+:func:`marked_source_casts` says which casts those are, and :func:`lowered`, which knows the dialect,
+writes each back for PostgreSQL and DuckDB and refuses it by the type's name on any other."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -38,6 +43,7 @@ from provisa.core.pg_error import PostgresError
 
 TYPED_VALUE = "pg_typed_value"
 TYPED_ARRAY = "pg_typed_array"
+SOURCE_CAST = "pg_source_cast"
 _D, _T, _C, _P = "duckdb", "trino", "clickhouse", "postgres"
 _OF = {
     _D: frozenset({_D}),
@@ -117,6 +123,15 @@ def _no_table(_table: exp.Table, _name: str) -> str | None:
     return None
 
 
+def _of_type(enums: SourceEnums, data_type: exp.DataType) -> SourceEnum | None:
+    kind = data_type.args.get("kind")
+    if data_type.this != exp.DataType.Type.USERDEFINED or kind is None:
+        return None
+    if isinstance(kind, exp.Dot):
+        return named(enums, kind.this.name, kind.expression.name)
+    return named(enums, None, kind.name)
+
+
 class _Statement:
     """What a statement says of its enums: through a cast, a typed call, or a column."""
 
@@ -126,14 +141,6 @@ class _Statement:
             self.scopes = {id(scope.expression): scope for scope in traverse_scope(tree)}
         except OptimizeError:
             self.scopes = {}  # no scopes to follow: a column says nothing
-
-    def _of_type(self, data_type: exp.DataType) -> SourceEnum | None:
-        kind = data_type.args.get("kind")
-        if data_type.this != exp.DataType.Type.USERDEFINED or kind is None:
-            return None
-        if isinstance(kind, exp.Dot):
-            return named(self.enums, kind.this.name, kind.expression.name)
-        return named(self.enums, None, kind.name)
 
     def _of_column(self, column: exp.Column) -> SourceEnum | None:
         scope = self.scopes.get(id(column.find_ancestor(exp.Select)))
@@ -148,7 +155,10 @@ class _Statement:
         source = selected[1]
         if isinstance(source, exp.Table):
             spelled = self.table_type(source, column.name)
-            return named(self.enums, None, spelled.rsplit(".", 1)[-1]) if spelled else None
+            if not spelled:
+                return None
+            schema, _, name = spelled.rpartition(".")
+            return named(self.enums, schema or None, name)
         if isinstance(source, Scope) and isinstance(source.expression, exp.Select):
             for select in source.expression.selects:
                 if select.alias_or_name == column.name:
@@ -160,7 +170,7 @@ class _Statement:
         if isinstance(value, exp.Paren):
             return self.of(value.this)
         if isinstance(value, exp.Cast):
-            return self._of_type(value.to)
+            return _of_type(self.enums, value.to)
         if isinstance(value, exp.Column):
             return self._of_column(value)
         if isinstance(value, exp.Anonymous) and value.name.lower() == TYPED_VALUE:
@@ -249,8 +259,76 @@ def with_source_enums(sql: str, enums: SourceEnums, table_type: TableType = _no_
     return tree.sql(dialect="postgres") if changed else sql
 
 
+def marked_source_casts(sql: str, enums: SourceEnums) -> str:
+    """``sql`` with each cast to a source's enum, or to an array of one, written as a call of
+    SOURCE_CAST that names the type. A read alone: a write's casts are for its source."""
+    if not isinstance(enums, Mapping) or not any(name in sql for _, name in enums):
+        return sql
+    try:
+        tree = sqlglot.parse_one(sql, read="postgres")
+    except ParseError:
+        return sql  # not PostgreSQL's grammar: nothing here reads it
+    if not isinstance(tree, exp.Query):
+        return sql
+    casts = [
+        cast
+        for cast in reversed(list(tree.find_all(exp.Cast)))
+        if any(_of_type(enums, held) for held in cast.to.find_all(exp.DataType))
+    ]
+    for cast in casts:
+        shown = exp.Literal.string(cast.to.sql(dialect="postgres"))
+        cast.replace(exp.Anonymous(this=SOURCE_CAST, expressions=[cast.this.copy(), shown]))
+    return tree.sql(dialect="postgres") if casts else sql
+
+
+_POSTGRES_FORMS = {name: (params, forms[_OF[_P]]) for name, params, forms in ROWS}
+
+
+def _written_for_postgres(call: exp.Anonymous) -> exp.Expr:
+    """A marker or a form, as the source that holds the type reads it."""
+    if call.name.lower() == SOURCE_CAST:
+        value, shown = call.expressions
+        cast = sqlglot.parse_one(f"CAST(NULL AS {shown.this})", read="postgres")
+        cast.this.replace(value.copy())
+        return cast
+    params, form = _POSTGRES_FORMS[call.name.lower()]
+    values = dict(zip(params, call.expressions))
+
+    def bound(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Column) and not node.table and node.name in values:
+            return values[node.name].copy()
+        return node
+
+    return sqlglot.parse_one(form, read="postgres").transform(bound)
+
+
+def _settled_for_the_source(tree: exp.Expr, dialect: str) -> bool:
+    """Each form and marker of this module that the macro table does not settle. The table leaves
+    PostgreSQL its own functions and these are none of its, so its forms are written here, and a
+    cast is written back where the type is held: at the source, and on the DuckDB that attaches it.
+    Elsewhere the cast is refused by the type's name, ``type(value)`` being the function PostgreSQL
+    reads it as."""
+    from provisa.transpiler.function_macros import FunctionRefused
+
+    marks = [
+        call
+        for call in reversed(list(tree.find_all(exp.Anonymous)))
+        if call.name.lower() == SOURCE_CAST or call.name.lower() in _POSTGRES_FORMS
+    ]
+    if dialect != _P:
+        marks = [mark for mark in marks if mark.name.lower() == SOURCE_CAST]
+    if marks and dialect not in (_P, _D):
+        raise FunctionRefused(marks[0].expressions[1].this, dialect)
+    for mark in marks:  # innermost first: each holds what it reads as already written
+        mark.replace(_written_for_postgres(mark))
+    return bool(marks)
+
+
 _TABLES = "pg_get_publication_tables"
-_ANSWERED_BY_ITS_SHAPE = re.compile(rf"\b(lastval|{_TABLES}|regexp_replace)\b", re.I)
+_ANSWERED_BY_ITS_SHAPE = re.compile(
+    rf"\b(lastval|{_TABLES}|regexp_replace|pg_typed_(value|array)|pg_enum_\w+|{SOURCE_CAST})\b",
+    re.I,
+)
 _ADVANCES_A_SEQUENCE = frozenset({"nextval", "setval"})
 
 
@@ -325,7 +403,8 @@ def lowered(sql: str, dialect: str) -> str:
         raise FunctionRefused("lastval", dialect)
     if dialect == _C:
         _refuse_a_pattern_that_varies(tree, dialect)
+    settled = _settled_for_the_source(tree, dialect)
     if _TABLES not in called:
-        return sql
+        return tree.sql(dialect="postgres") if settled else sql
     _publications(tree, dialect)
     return tree.sql(dialect="postgres")

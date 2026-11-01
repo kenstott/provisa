@@ -25,7 +25,7 @@ import pytest
 import sqlglot
 from sqlglot import exp
 
-from provisa.core.pg_error import MARK, from_engine
+from provisa.core.pg_error import MARK, PostgresError, from_engine
 from provisa.pgwire.cast_types import result_casts
 from provisa.transpiler.function_macros import MACROS, FunctionRefused, outcome
 from provisa.transpiler.metadata_facts import CatalogFacts
@@ -57,6 +57,9 @@ def test_duckdb_answers_as_postgresql_17_answered(connection: Any, sql: str):
     want = RECORDED[sql]
     try:
         rows = connection.execute(transpile(_on_the_engine(sql), "duckdb")).fetchall()
+    except PostgresError as raised:  # settled by the statement's shape, before any engine
+        assert ("err", raised.sqlstate, str(raised)) == want
+        return
     except duckdb.Error as raised:
         error = from_engine(raised)
         assert error is not None, raised

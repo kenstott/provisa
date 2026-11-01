@@ -140,7 +140,11 @@ _REFUSALS: dict[str, tuple[tuple[int, ...], tuple[str, str]]] = {
     },
 }
 #: What a statement may call on an engine though it would read a server (metadata_functions).
-SERVER_STATE = frozenset(_REFUSALS) | {"pg_notify", "pg_column_compression"}
+SERVER_STATE = frozenset(_REFUSALS) | {
+    "pg_notify",
+    "pg_column_compression",
+    "pg_get_publication_tables",
+}
 
 
 def _notify(engine: _Engine) -> str:

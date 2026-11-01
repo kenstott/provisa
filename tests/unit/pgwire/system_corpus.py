@@ -76,6 +76,15 @@ _REPLACED = (
     "'abc'::text, 'b'::text, 'x'::text, 0::integer, 1::integer",
     "'abc'::text, 'b'::text, 'x'::text, 1::integer, -1::integer",
 )
+_PUBLICATIONS = (
+    "VARIADIC NULL::text[]",
+    "VARIADIC '{}'::text[]",
+    "VARIADIC ARRAY[]::text[]",
+    "'p'",
+    "'p', 'q'",
+    "VARIADIC ARRAY['p']",
+    "VARIADIC '{p}'::text[]",
+)
 
 
 def statements() -> list[str]:
@@ -89,4 +98,8 @@ def statements() -> list[str]:
         *(f'SELECT pg_catalog."pg_column_compression"({call}) AS v' for call in _STORED),
         *(f'SELECT pg_catalog."pg_column_toast_chunk_id"({call}) AS v' for call in _STORED),
         *(f'SELECT pg_catalog."regexp_replace"({call}) AS v' for call in _REPLACED),
+        'SELECT pg_catalog."lastval"() AS v',
+        "SELECT lastval() AS v",
+        *(f'SELECT pg_catalog."pg_get_publication_tables"({call}) AS v' for call in _PUBLICATIONS),
+        *(f"SELECT pg_get_publication_tables({call}) AS v" for call in _PUBLICATIONS),
     ]

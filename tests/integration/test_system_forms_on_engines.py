@@ -22,7 +22,7 @@ from typing import Any
 
 import pytest
 
-from provisa.core.pg_error import from_engine
+from provisa.core.pg_error import PostgresError, from_engine
 from provisa.transpiler.pg_forms_types import REFUSED
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.pg17_system_answers import RECORDED
@@ -32,12 +32,12 @@ pytestmark = [pytest.mark.integration]
 
 def _agrees(got: Any, want: tuple[Any, Any, Any], function_refused: bool) -> bool:
     if isinstance(got, Exception):
-        error = from_engine(got)
+        error = got if isinstance(got, PostgresError) else from_engine(got)
         if error is None:
             return False
         said = want[0] == "err" and (error.sqlstate, str(error)) == (want[1], want[2])
         return said or (function_refused and str(error).endswith(REFUSED))
-    return want[0] == "ok" and want[2] == [None if got is None else str(got)]
+    return want[0] == "ok" and want[2] == [None if cell is None else str(cell) for cell in got]
 
 
 def _check(run: Callable[[str], Any], dialect: str, written_from_a_value: bool) -> None:
@@ -58,7 +58,7 @@ def test_system_forms_on_trino(trino_conn):
     def run(sql: str) -> Any:
         cursor = trino_conn.cursor()
         cursor.execute(sql)
-        return cursor.fetchall()[0][0]
+        return [row[0] for row in cursor.fetchall()]
 
     _check(run, "trino", False)
 
@@ -74,4 +74,4 @@ def test_system_forms_on_clickhouse():
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
     # A value PostgreSQL's message is written from is refused there: throwIf's is a constant.
-    _check(lambda sql: client.query(sql).result_rows[0][0], "clickhouse", True)
+    _check(lambda sql: [row[0] for row in client.query(sql).result_rows], "clickhouse", True)

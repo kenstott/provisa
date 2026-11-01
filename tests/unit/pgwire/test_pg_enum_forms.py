@@ -17,19 +17,28 @@ tests/integration/test_enum_forms_on_engines.py."""
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import re
+from collections.abc import Iterator
+from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import chdb
 import duckdb
 import pytest
+import sqlglot
 from chdb.session import Session
 
+from provisa.audit.context import current_audit_identity, with_audit_identity
 from provisa.core.pg_enum import SourceEnum, array_text
 from provisa.core.pg_error import PostgresError
 from provisa.pgwire.cast_types import result_casts
 from provisa.transpiler.function_macros import FunctionRefused
-from provisa.transpiler.pg_forms_enum import with_source_enums
+from provisa.transpiler.metadata_facts import CatalogFacts
+from provisa.transpiler.metadata_functions import MetadataFunctionRefused, expand
+from provisa.transpiler.pg_forms_enum import marked_source_casts, with_source_enums
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 from tests.unit.pgwire.everyday_function_statements import PROBES, STATEMENTS
 from tests.unit.pgwire.pg17_everyday_function_answers import RECORDED
@@ -235,6 +244,19 @@ def test_a_publication_named_does_not_exist(call: str):
     assert held.value.sqlstate == "42704"
 
 
+@pytest.mark.parametrize("dialect", ["duckdb", "trino", "clickhouse"])
+def test_no_publication_gets_past_the_catalogs_forms_to_the_engine(dialect: str):
+    sql = "SELECT pg_get_publication_tables(VARIADIC NULL::text[]) AS v"
+    tree = expand(sqlglot.parse_one(sql, read="postgres"), CatalogFacts("analyst"))
+    assert "WHERE FALSE" in transpile(tree.sql("postgres"), dialect).upper()
+
+
+def test_a_publication_beside_a_table_reads_a_server_and_stays_refused():
+    sql = "SELECT pg_get_publication_tables('p') AS v FROM meta.t"
+    with pytest.raises(MetadataFunctionRefused, match="pg_get_publication_tables"):
+        expand(sqlglot.parse_one(sql, read="postgres"), CatalogFacts("analyst"))
+
+
 def test_publications_a_column_names_are_refused_by_name():
     with pytest.raises(FunctionRefused, match="pg_get_publication_tables"):
         transpile("SELECT pg_get_publication_tables(c) AS v FROM t", "trino")
@@ -275,3 +297,257 @@ def test_repeat_under_pg_catalog_answers_on_clickhouse(call: str, want: bytes):
     written = transpile(f'SELECT pg_catalog."repeat"({call}) AS v', "clickhouse")
     assert "pg_catalog" not in written
     assert chdb.query(written, "TabSeparated").bytes() == want
+
+
+# --- a cast no form consumed: its type is held by the source alone --------------------------------
+
+
+_DERIVED = f"SELECT enum_first(v) AS x FROM (SELECT 'a'::{_NAME} AS v) s"
+
+
+def _marked(sql: str) -> str:
+    return marked_source_casts(with_source_enums(sql, ENUMS), ENUMS)
+
+
+@pytest.mark.parametrize("dialect", ["trino", "athena", "clickhouse"])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        _DERIVED,
+        f"SELECT v FROM (SELECT 'a'::{_NAME} AS v) s",
+        f"WITH c AS (SELECT 'a'::{_NAME} AS v) SELECT enum_last(v) AS x FROM c",
+        f"SELECT v FROM (SELECT ARRAY['a']::{_NAME}[] AS v) s",
+        f"SELECT 'a'::{_NAME} AS v",
+        f"SELECT max('b'::{_NAME}) OVER () AS v",
+    ],
+)
+def test_a_cast_to_a_source_enum_is_refused_by_the_types_name(dialect: str, sql: str):
+    with pytest.raises(FunctionRefused, match=rf"{_NAME}(\[\])?\(\) has no form on {dialect}"):
+        transpile(_marked(sql), dialect)
+
+
+def test_a_cast_to_a_source_enum_reaches_the_duckdb_that_attaches_it():
+    assert f"CAST('a' AS {_NAME})" in transpile_to_duckdb(_marked(_DERIVED))
+
+
+def test_a_cast_to_a_source_enum_reaches_the_postgresql_that_holds_it():
+    sql = f"SELECT v FROM (SELECT 'a'::{_NAME} AS v, ARRAY['b']::{_NAME}[] AS w) s"
+    assert transpile(_marked(sql), "postgres") == (
+        f"SELECT v FROM (SELECT CAST('a' AS {_NAME}) AS v, CAST(ARRAY['b'] AS {_NAME}[]) AS w) AS s"
+    )
+
+
+def test_a_cast_a_form_consumed_is_no_cast_left_to_refuse():
+    sql = f"SELECT enum_first('a'::{_NAME}) AS v"
+    assert transpile(_marked(sql), "trino") == "SELECT 'a' AS v"
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT 1 AS v",
+        "SELECT 'a'::text AS v",
+        "SELECT 'a'::other.probe_enum AS v",  # the name, of a type no source declares
+        f"INSERT INTO t VALUES ('a'::{_NAME})",  # a write's cast is for its source
+    ],
+)
+def test_nothing_else_is_marked(sql: str):
+    assert marked_source_casts(sql, ENUMS) == sql
+
+
+def test_no_enum_declared_marks_nothing():
+    sql = f"SELECT 'a'::{_NAME} AS v"
+    assert marked_source_casts(sql, {}) == sql
+
+
+@pytest.mark.parametrize("sql", [s for s in ENUM_STATEMENTS if "OVER" not in s.upper()])
+def test_no_form_or_marker_reaches_a_postgresql_source(sql: str):
+    written = transpile(with_source_enums(sql, ENUMS), "postgres")
+    assert not re.search(r"pg_typed_|pg_enum_|pg_source_cast", written, re.I), written
+
+
+def test_an_extreme_on_a_postgresql_source_is_read_over_the_labels():
+    written = transpile(with_source_enums("SELECT max(c0) AS v FROM t", ENUMS, _native), "postgres")
+    assert written == (
+        "SELECT (ARRAY['a', 'b', 'c'])[MAX(ARRAY_POSITION(ARRAY['a', 'b', 'c'], CAST(c0 AS TEXT)))] "
+        "AS v FROM t"
+    )
+
+
+# --- the column a table of a schema holds ---------------------------------------------------------
+
+
+def _session_of_two_tables() -> Any:
+    """Two registered tables named orders, in the domains east and west."""
+    from provisa.compiler.sql_gen import CompilationContext, TableMeta
+    from provisa.pgwire.server import ProvisaSession
+
+    def meta(table_id: int, domain: str) -> TableMeta:
+        return TableMeta(
+            table_id=table_id,
+            field_name=f"{domain}__orders",
+            type_name="Orders",
+            source_id="pg",
+            catalog_name="pg",
+            schema_name=domain,
+            table_name="orders",
+            domain_id=domain,
+        )
+
+    context = CompilationContext(tables={"e": meta(1, "east"), "w": meta(2, "west")})
+    column = SimpleNamespace
+    state = SimpleNamespace(
+        contexts={"analyst": context},
+        schema_build_cache={
+            "column_types": {
+                1: [column(column_name="status", native_type="east.status")],
+                2: [column(column_name="status", native_type="west.status")],
+            }
+        },
+    )
+    session = ProvisaSession.__new__(ProvisaSession)
+    session.role_id = "analyst"
+    return session, state
+
+
+def _table(name: str) -> sqlglot.exp.Table:
+    return sqlglot.exp.to_table(name)
+
+
+@pytest.mark.parametrize(
+    ("name", "want"),
+    [
+        ("east.orders", "east.status"),
+        ("west.orders", "west.status"),
+        ("EAST.ORDERS", "east.status"),
+        ("pg.west.orders", "west.status"),
+    ],
+)
+def test_a_tables_schema_says_which_of_two_of_one_name(name: str, want: str):
+    session, state = _session_of_two_tables()
+    with patch("provisa.api.app.state", state):
+        assert session._registered_native(_table(name), "status") == want
+
+
+def test_a_table_no_name_resolves_has_no_registered_type():
+    session, state = _session_of_two_tables()
+    with patch("provisa.api.app.state", state):
+        assert session._registered_native(_table("north.orders"), "status") is None
+
+
+def test_two_enums_of_one_name_are_told_apart_by_the_columns_schema():
+    enums = {
+        ("east", "status"): SourceEnum("east", "status", 1, 2, ("low", "high")),
+        ("west", "status"): SourceEnum("west", "status", 3, 4, ("high", "low")),
+    }
+
+    def native(table: Any, _name: str) -> str:
+        return f"{table.db}.status"
+
+    east = with_source_enums("SELECT enum_first(c) AS v FROM east.t", enums, native)
+    west = with_source_enums("SELECT enum_first(c) AS v FROM west.t", enums, native)
+    assert ("'low'" in east, "'high'" in west) == (True, True)
+
+
+# --- what a client sent is what is recorded -------------------------------------------------------
+
+
+class _Refused(Exception):
+    pass
+
+
+@pytest.fixture
+def session(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[Any, list[Any]]]:
+    """A session on a registered enum, whose governing notes who it runs for and stops."""
+    from provisa.core.connection_loop import connection_loop
+    from provisa.pgwire import _pipeline
+    from provisa.pgwire.server import ProvisaSession
+
+    seen: list[Any] = []
+
+    async def govern(sql: str, *_args: Any, **_kwargs: Any) -> Any:
+        seen.append((sql, current_audit_identity()))
+        raise _Refused("stopped here")
+
+    async def describe(sql: str, *_args: Any, **_kwargs: Any) -> Any:
+        seen.append((sql, current_audit_identity()))
+        raise _Refused("stopped here")
+
+    monkeypatch.setattr(_pipeline, "govern_pgwire_plan", govern)
+    monkeypatch.setattr(_pipeline, "describe_pgwire_statement", describe)
+    state = MagicMock()
+    state.multitenancy = False
+    state.pg_source_enums = ENUMS
+    monkeypatch.setattr("provisa.api.app.state", state)
+    with connection_loop():
+        held = ProvisaSession()
+        held.role_id = "alice"
+        held.user_id = "alice"
+        yield held, seen
+        held.close()
+
+
+_SENT = f"SELECT enum_first(c0::{_NAME}) AS v FROM t"
+
+
+@pytest.mark.parametrize("run", ["execute_sql", "describe_sql"])
+def test_the_statement_the_client_sent_is_what_audit_records(
+    session: tuple[Any, list[Any]], run: str
+):
+    held, seen = session
+    with pytest.raises(RuntimeError, match="stopped here"):
+        getattr(held, run)(f"  {_SENT}  ")
+    governed, identity = seen[0]
+    assert "PG_TYPED_VALUE" in governed.upper()  # the engine's text is the written one
+    assert identity.statement == _SENT
+
+
+@pytest.mark.parametrize("run", ["execute_sql", "describe_sql"])
+def test_a_failed_statement_is_logged_as_the_client_sent_it(
+    session: tuple[Any, list[Any]], run: str, caplog: pytest.LogCaptureFixture
+):
+    held, _ = session
+    with caplog.at_level(logging.INFO, logger="provisa.pgwire.server"):
+        with pytest.raises(RuntimeError):
+            getattr(held, run)(_SENT)
+    logged = caplog.text.upper()
+    assert _SENT.upper() in logged and "PG_TYPED_VALUE" not in logged
+
+
+def test_current_query_answers_the_statement_the_client_sent(session: tuple[Any, list[Any]]):
+    held, seen = session
+    sent = f"SELECT current_query() AS q, enum_first(c0::{_NAME}) AS v FROM t"
+    with pytest.raises(RuntimeError):
+        held.execute_sql(sent)
+    assert "enum_first(c0::conformance.probe_enum)" in seen[0][0]
+
+
+def test_begin_audit_and_a_denial_take_the_text_the_surface_bound():
+    from provisa.audit import pipeline
+
+    async def run() -> Any:
+        tree = sqlglot.parse_one("SELECT 1")
+        with patch.object(pipeline, "write_audit", AsyncMock()) as written:
+            gov = MagicMock(table_map={}, rls_rules={}, masking_rules={})
+            pending = pipeline.begin_audit("written", "analyst", tree, gov, 1)
+            await pipeline.write_denial("written", "analyst", None, None, MagicMock())
+        return pending.query_text, written.call_args.args[0].query_text
+
+    async def bound() -> Any:
+        return await with_audit_identity("alice", "pgwire", run(), statement="sent")
+
+    assert asyncio.run(bound()) == ("sent", "sent")
+
+
+def test_a_surface_that_binds_no_text_keeps_the_statement_governed():
+    from provisa.audit import pipeline
+
+    async def run() -> str:
+        tree = sqlglot.parse_one("SELECT 1")
+        gov = MagicMock(table_map={}, rls_rules={}, masking_rules={})
+        return pipeline.begin_audit("governed", "analyst", tree, gov, 1).query_text
+
+    async def bound() -> str:
+        return await with_audit_identity("alice", "http", run())
+
+    assert asyncio.run(bound()) == "governed"
