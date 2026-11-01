@@ -533,8 +533,8 @@ def _tag_from_sql(sql: str) -> str:
     return ""
 
 
-# A one-dimensional array's element type → the array type it is sent as (its array OID, and
-# PostgreSQL's array text and binary forms). Any other array is sent as JSON.
+# An array's element type → the array type it is sent as (its array OID, and PostgreSQL's array
+# text and binary forms). Any other array is sent as JSON.
 _ARRAY_OF: dict[BVType, BVType] = {
     BVType.INTEGER: BVType.INTEGERARRAY,
     BVType.BIGINT: BVType.BIGINTARRAY,
@@ -548,6 +548,7 @@ _ARRAY_OF: dict[BVType, BVType] = {
     BVType.REGTYPE: BVType.REGTYPEARRAY,
     BVType.XML: XML_ARRAY,
     BVType.MONEY: BVType.MONEYARRAY,
+    BVType.INTERVAL: BVType.INTERVALARRAY,
 }
 
 _TYPE_TO_BVTYPE: dict[str, BVType] = {
@@ -654,8 +655,8 @@ def _sql_type_to_bvtype(type_str: str) -> BVType:
         # PostgreSQL's own name for an array type (_int4, _text), as a source driver reports it.
         type_str = f"{type_str[1:]}[]"
     if type_str.endswith("[]"):
-        element = type_str[:-2]
-        array = None if element.endswith("[]") else _ARRAY_OF.get(_sql_type_to_bvtype(element))
+        # PostgreSQL has one array type of an element, whatever its dimensions.
+        array = _ARRAY_OF.get(_sql_type_to_bvtype(type_str.rstrip("[]")))
         return array or BVType.JSON  # any other list type: its Python list value encodes as JSON
     return BVType.TEXT
 

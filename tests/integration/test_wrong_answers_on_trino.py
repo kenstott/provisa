@@ -65,7 +65,7 @@ def _answer(trino_conn: Any, sql: str) -> Any:
 def test_it_answers_as_postgresql_does(trino_conn, sql):
     got = _answer(trino_conn, sql)
     want = ANSWERS[sql]
-    assert got == want and (not isinstance(want, Decimal) or str(got) == str(want))
+    assert str(got) == str(want) if isinstance(want, Decimal) else got == want
 
 
 @pytest.mark.parametrize("sql", MONEY)
