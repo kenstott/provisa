@@ -626,7 +626,17 @@ def test_a_pass_run_states_its_variant_cache_and_load() -> None:
     )
     assert c["knobs"]["governance"] == {**gv.ZERO, **gv.VARIANTS["all"], "telemetry": False}
     assert c["knobs"]["cache"] == {"probability": 0.0}
-    assert c["knobs"]["fields"]["distribution"] == {"kind": "constant", "value": 5}
+    assert c["knobs"]["fields"]["distribution"] == {"kind": "constant", "value": 10}
+    assert list(c["sources"]) == ["bench-postgresql"] and c["cross_source_joins"] == []
+    assert [t["table"] for t in c["sources"]["bench-postgresql"]["tables"]] == ["orders"]
+    # a quarter of the registered table's 26 columns: the contract must list that many to mask
+    orders = c["sources"]["bench-postgresql"]["tables"][0]
+    unfiltered = [
+        col["name"]
+        for col in orders["columns"]
+        if "domain" not in col and col["name"] != orders["base_column"]
+    ]
+    assert len(unfiltered) >= round(0.25 * 26)
     assert (c["load"]["steps"], c["load"]["window_s"], c["load"]["warmup_s"]) == ([1, 16], 15, 15)
     with pytest.raises(ValueError, match="variant must be one of"):
         td.variant_contract(

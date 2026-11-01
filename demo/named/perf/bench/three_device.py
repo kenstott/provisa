@@ -394,7 +394,9 @@ def variant_contract(
 ) -> str:
     """The contract as one run of a governance pass states it (REQ-2092): the variant's
     governance (governance_variants.py), the cache setting, the pass's load, and every request
-    reading every column of the Postgres orders table, so a masked column is in it."""
+    reading every listed column of the Postgres orders table, so a masked column is in it. The
+    contract narrows to that table, as local_pass.py's does: governance is set up on every contract
+    table, and a table no request reads only makes the pass's admin calls longer."""
     if variant not in governance_variants.VARIANTS:
         raise ValueError(f"variant must be one of {', '.join(governance_variants.VARIANTS)}")
     if cache not in governance_variants.CACHE:
@@ -403,9 +405,14 @@ def variant_contract(
     knobs = contract["knobs"]
     knobs["governance"] = governance_variants.governance(variant, telemetry=telemetry == "on")
     knobs["cache"] = {"probability": governance_variants.CACHE[cache]}
-    orders = next(
-        t for t in contract["sources"]["bench-postgresql"]["tables"] if t["table"] == "orders"
-    )
+    source = contract["sources"]["bench-postgresql"]
+    orders = next(t for t in source["tables"] if t["table"] == "orders")
+    source["tables"] = [orders]
+    source["joins"] = []
+    contract["sources"] = {"bench-postgresql": source}
+    contract["cross_source_joins"] = []
+    knobs["source_weights"] = {"bench-postgresql": 1.0}
+    knobs["route"] = {"bench-postgresql": knobs["route"]["bench-postgresql"]}
     knobs["fields"] = {
         "probability": 1.0,
         "distribution": {"kind": "constant", "value": len(orders["columns"])},

@@ -50,7 +50,7 @@ SQL over HTTP, Cypher over HTTP and SPARQL run in the same pass and stay in `int
 
 ### Features on
 
-The same request, reading every column of `orders`, one knob at a time against the zero run: row rules, masked columns, central redaction, role depth, derived roles, then all of them together, then zero again to show drift. Each variant runs cached and uncached, so the response cache has a cost and a saving of its own. The role mix comes from the role depth and derived-role variants. A different mix of weighted roles is not part of this pass.
+The same request, reading ten columns of `orders`, one knob at a time against the zero run: row rules, masked columns, central redaction, role depth, derived roles, then all of them together, then zero again to show drift. Each variant runs cached and uncached, so the response cache has a cost and a saving of its own. The role mix comes from the role depth and derived-role variants. A different mix of weighted roles is not part of this pass.
 
 The difference from zero, in server CPU per request, is that feature's cost. Three repetitions, ramp 1 and 16, 15 s each, after a 15 s warm-up, telemetry off.
 
