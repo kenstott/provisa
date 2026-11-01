@@ -69,9 +69,9 @@ _ADMIN = {
 _QUERY = (
     """
 {
-  orders(where: {order_id: {gte: 1, lte: %d}}) {
-    order_id
-    events { event_type }
+  orders(where: {orderId: {gte: 1, lte: %d}}) {
+    orderId
+    events { eventType }
     status { state }
   }
 }
@@ -173,6 +173,7 @@ def _table(table_id: int, schema: str, name: str, columns: tuple[str, ...]) -> d
 def _relationship(rel: str, target: int, cardinality: str) -> dict:
     return {
         "id": rel,
+        "graphql_alias": rel,
         "source_table_id": 1,
         "target_table_id": target,
         "source_column": "order_id",
@@ -204,6 +205,8 @@ def _statement(attached: str) -> tuple[str, list]:
         },
         naming_rules=[],
         role=_ADMIN,
+        domains=[{"id": "sales", "description": "Sales."}],
+        source_types={"s1": "postgresql", "s2": "clickhouse", "s3": "clickhouse"},
     )
     schema = generate_schema(si)
     ctx = build_context(si)
@@ -276,5 +279,5 @@ def test_a_nested_read_reaches_clickhouse_once_and_answers_the_same(engine, clic
     assert _answer(after) == _answer(before)
     answer = _answer(after)
     # Equal elements of a list stay, the row rule still holds, and no match is still [].
-    assert answer[1] == ([{"event_type": "placed"}, {"event_type": "placed"}], {"state": "open"})
+    assert answer[1] == ([{"eventType": "placed"}, {"eventType": "placed"}], {"state": "open"})
     assert answer[_ORDERS] == ([], {"state": "open"})
