@@ -49,10 +49,13 @@ import sqlglot.expressions as exp
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.compiler import temp_tables
 from provisa.compiler.cte_utils import cte_names, names_a_cte_in_scope
-from provisa.compiler.schema_gen import _IMPLICIT_TRAVERSAL_DOMAINS
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import GovernanceContext, approved_join_key, registered_name
-from provisa.security.rights import reaches_all_domains
+from provisa.security.rights import (
+    TRAVERSABLE_DOMAINS,
+    missing_capability_message,
+    reaches_domain,
+)
 from provisa.transpiler.xml_syntax import MAPPINGS
 
 
@@ -84,7 +87,6 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     bypass_relationship_guard: bool = False,
     bypass_uncovered_relationships: bool = False,
     table_functions: frozenset[str] = frozenset(),
-    also_reaches: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
     """Validate SQL against role-scoped GraphQL-equivalent access rules."""
     try:
@@ -104,7 +106,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     domain_access: list[str] = role["domain_access"]
 
     violations += _check_domain_access(
-        tree, gov_ctx, table_id_to_meta, [*domain_access, *also_reaches], cte_names_set
+        tree, gov_ctx, table_id_to_meta, domain_access, cte_names_set
     )
     if not bypass_relationship_guard:
         valid_joins = approved_joins(ctx)
@@ -187,6 +189,15 @@ def _check_registered_relations(  # REQ-001, REQ-266
 
                 violations.append(ValidationViolation("V020", f"{draft!r} {DRAFT_REASON}"))
                 continue
+            system_domain = ctx.missing_capability.get(ref)
+            if system_domain is not None:
+                # REQ-1132: in no schema of this role for want of a capability, and said so.
+                violations.append(
+                    ValidationViolation(
+                        "V001", missing_capability_message(ctx.role_id or "", system_domain)
+                    )
+                )
+                continue
             violations.append(
                 ValidationViolation("V006", f"Relation {ref!r} is not a registered table")
             )
@@ -234,12 +245,9 @@ def _check_domain_access(  # REQ-039, REQ-263
     domain_access: list[str],
     cte_names_set: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
-    # A role reaches the domains it lists; "*" is all; an EMPTY list is none, so every table
-    # with a domain is a V001 for it (rights.reaches_all_domains decides, single-domain mode
-    # included).
-    if reaches_all_domains(domain_access):
-        return []
-
+    # A role reaches the domains it lists; "*" is every data domain, a system domain is reached by
+    # its capability; an EMPTY list is none, so every table with a domain is a V001 for it
+    # (rights.reaches_domain decides, single-domain mode included).
     violations = []
     for select in tree.find_all(exp.Select):
         for tbl in _from_tables(select, cte_names_set):
@@ -254,7 +262,7 @@ def _check_domain_access(  # REQ-039, REQ-263
             # columns the role may read is the column check's (V003).
             if tid in gov_ctx.public_tables:
                 continue
-            if meta.domain_id and meta.domain_id not in domain_access:
+            if meta.domain_id and not reaches_domain(domain_access, meta.domain_id):
                 ref = f"{tbl.db}.{tbl.name}" if tbl.db else tbl.name
                 violations.append(
                     ValidationViolation(
@@ -444,9 +452,9 @@ def tables_outside_relationships(  # REQ-603
     covered_pairs = {(s, t) for s, t, _, _ in valid_joins}
 
     def exempt(table_id: int) -> bool:
-        # meta/ops tables are implicitly traversable — no registered relationship required
+        # the system domains are implicitly traversable — no registered relationship required
         meta = table_id_to_meta.get(table_id)
-        return meta is not None and meta.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS
+        return meta is not None and meta.domain_id in TRAVERSABLE_DOMAINS
 
     def same_remote_source(a: int, b: int) -> bool:
         # Remote schemas own their relationship model: two tables of one remote source with no

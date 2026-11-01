@@ -33,6 +33,7 @@ from buenavista.core import BVType
 from provisa.core.pg_range import RANGE_TYPES
 from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.pgwire.catalog_pg17 import TYPES
+from provisa.transpiler.pg_forms_json import jsonb_out
 from provisa.transpiler.pg_held_types import HELD_AS
 from provisa.transpiler.xml_syntax import XmlSerialize
 
@@ -116,7 +117,7 @@ def _cast_type(data_type: Any) -> CastType | None:  # noqa: PLR0911 -- one retur
     if kind == t.FLOAT:
         return CastType(700, -1, BVType.REAL, frozenset({BVType.REAL, BVType.FLOAT}))
     if kind == t.JSONB:
-        return CastType(3802, -1, BVType.JSONB, frozenset({BVType.JSON, BVType.JSONB}))
+        return _RETURNED["jsonb"]
     if kind == t.XML:  # REQ-2171: held as its text; xml_out writes its declaration
         return CastType(142, -1, BVType.XML, _XML_FORMS, xml_out)
     if kind == t.ARRAY and data_type.expressions and data_type.expressions[0].this == t.XML:
@@ -209,7 +210,7 @@ _RETURNED: dict[str, CastType] = {
     "bit varying": CastType(1562, -1, BVType.VARBIT, frozenset({BVType.BIT, BVType.TEXT})),
     **_RANGE_TYPES,
     "tsvector": CastType(3614, -1, BVType.TSVECTOR, _TEXT_FORMS),
-    "jsonb": CastType(3802, -1, BVType.JSONB, frozenset({BVType.JSON, BVType.JSONB})),
+    "jsonb": CastType(3802, -1, BVType.JSONB, frozenset({BVType.JSON, BVType.JSONB}), jsonb_out),
     "name[]": CastType(1003, -1, BVType.NAMEARRAY, frozenset({BVType.STRINGARRAY})),
     "inet": CastType(869, -1, BVType.INET, frozenset({BVType.INET, BVType.TEXT})),
     "cidr": CastType(650, -1, BVType.CIDR, frozenset({BVType.INET, BVType.TEXT})),
@@ -283,7 +284,7 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
     returns; None for any other column."""
     import sqlglot.expressions as exp
 
-    from provisa.pgwire.function_types import call_result_type
+    from provisa.pgwire.function_types import call_result_type, json_operator_type
     from provisa.transpiler.pg_money import money_type
 
     # A column of a table only the plan's shape types: a part of the expression is not known here.
@@ -298,6 +299,8 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
         return _cast_type(expression.args["to"])
     if isinstance(expression, exp.Paren):
         return _result_type(expression.this, columns)
+    if json_operator_type(expression) is not None:
+        return _RETURNED["jsonb"]
     if isinstance(expression, exp.Array):
         elements = [_result_type(element, columns) for element in expression.expressions]
         xml_elements = elements and all(e is not None and e.oid == 142 for e in elements)
@@ -340,10 +343,31 @@ def _derived_xml(tree: Any, name: str) -> CastType | None:
     return None
 
 
+def _jsonb_columns(tree: Any) -> dict[str, CastType | None]:
+    """The columns a jsonb set-returning function in a statement's FROM gives it, by name."""
+    import sqlglot.expressions as exp
+
+    found: dict[str, CastType | None] = {}
+    for table in tree.find_all(exp.Table):
+        call = table.this.name.lower() if isinstance(table.this, exp.Anonymous) else ""
+        names = {"jsonb_array_elements": ("value",), "jsonb_each": ("key", "value")}.get(call)
+        if names is None or table.find_ancestor(exp.Select) is not tree:
+            continue
+        alias = table.args.get("alias")
+        renamed = [c.name for c in alias.columns] if alias is not None else []
+        for index, name in enumerate(names):
+            kind = _RETURNED["jsonb"] if name == "value" else None
+            found[renamed[index] if index < len(renamed) else name] = kind
+    return found
+
+
 def _column_type(tree: Any, expression: Any, columns: Any) -> CastType | None:
     import sqlglot.expressions as exp
 
     if isinstance(expression, exp.Column):
+        jsonb = _jsonb_columns(tree).get(expression.name)
+        if jsonb is not None:
+            return jsonb
         xml = _xmltable_columns(tree).get(expression.name) or _derived_xml(tree, expression.name)
         if xml is not None:
             return xml
@@ -389,7 +413,7 @@ def result_casts(sql: str) -> tuple[CastType | None, ...] | None:
         return None
     columns = statement_columns(tree) if names_money(sql) else None
     out: list[CastType | None] = []
-    xmltable = _xmltable_columns(tree)
+    xmltable = _xmltable_columns(tree) or _jsonb_columns(tree)
     for select in tree.selects:
         expression = select.unalias()
         if isinstance(expression, exp.Star):

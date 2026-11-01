@@ -128,7 +128,7 @@ class TestDeepInheritanceChain:
         """Calling flatten_roles twice must yield the same effective permissions."""
         roles = [
             _role("base", caps=["read"], domains=["sales"]),
-            _role("mid", caps=["aggregate"], domains=["ops"], parent="base"),
+            _role("mid", caps=["aggregate"], domains=["support"], parent="base"),
             _role("leaf", caps=["export"], domains=["finance"], parent="mid"),
         ]
         first_pass = flatten_roles(roles)
@@ -155,7 +155,7 @@ class TestConflictResolution:
     def test_duplicate_capability_deduplicated(self):
         """When both parent and child list the same capability it appears only once."""
         parent = _role("p", caps=["read", "shared"], domains=["sales"])
-        child = _role("c", caps=["shared", "write"], domains=["ops"], parent="p")
+        child = _role("c", caps=["shared", "write"], domains=["support"], parent="p")
 
         result = flatten_roles([parent, child])
         by_id = {r.id: r for r in result}
@@ -167,18 +167,18 @@ class TestConflictResolution:
     def test_reach_is_the_childs_own(self):
         """REQ-2155: a role's domain_access is its own; its parent's domains are not added."""
         parent = _role("p", caps=["read"], domains=["finance", "hr"])
-        child = _role("c", caps=["write"], domains=["ops"], parent="p")
+        child = _role("c", caps=["write"], domains=["support"], parent="p")
 
         result = flatten_roles([parent, child])
         by_id = {r.id: r for r in result}
 
-        assert by_id["c"].domain_access == ["ops"]
+        assert by_id["c"].domain_access == ["support"]
 
     def test_sibling_roles_do_not_share_caps(self):
         """Two children of the same parent must not gain each other's capabilities."""
         parent = _role("base", caps=["read"], domains=["*"])
         child_a = _role("child-a", caps=["export"], domains=["sales"], parent="base")
-        child_b = _role("child-b", caps=["aggregate"], domains=["ops"], parent="base")
+        child_b = _role("child-b", caps=["aggregate"], domains=["support"], parent="base")
 
         result = flatten_roles([parent, child_a, child_b])
         by_id = {r.id: r for r in result}

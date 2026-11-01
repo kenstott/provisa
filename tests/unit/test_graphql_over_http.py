@@ -66,6 +66,7 @@ def client(monkeypatch):
     monkeypatch.setattr("provisa.security.rights.require_role", lambda roles, rid: roles[rid])
     # The schema here has no tables: a field that fails validation names none to refuse by.
     monkeypatch.setattr(parser, "_refuse_draft_fields", lambda document, ctx: None)
+    monkeypatch.setattr(parser, "_refuse_missing_capability", lambda document, ctx: None)
     monkeypatch.setattr(parser, "_refuse_unoffered_writes", lambda document, schema, ctx: None)
 
     class _NoPlan:

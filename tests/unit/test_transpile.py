@@ -13,6 +13,7 @@
 import pytest
 from sqlglot.errors import ParseError
 
+from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import (
     transpile,
     transpile_to_trino,
@@ -61,14 +62,24 @@ class TestTranspileToTrino:
         assert "jsonb_build_object" not in out
         assert "json_object(" in out
 
-    def test_jsonb_agg_is_rewritten(self):
+    def test_jsonb_agg_is_refused_by_name(self):
+        # REQ-2171: Trino's aggregate writes json's text, not the spacing of PostgreSQL's jsonb.
         pg = (
             "SELECT (SELECT JSONB_AGG(JSONB_BUILD_OBJECT('a', pets.id)) FROM "
             '"pet_store"."pets" AS pets WHERE pets.user_id = users.id) AS d '
             'FROM "pet_store"."users" AS users'
         )
+        with pytest.raises(FunctionRefused, match=r"jsonb_agg\(\) has no form on trino"):
+            transpile_to_trino(pg)
+
+    def test_json_agg_is_rewritten(self):
+        pg = (
+            "SELECT (SELECT JSON_AGG(JSONB_BUILD_OBJECT('a', pets.id)) FROM "
+            '"pet_store"."pets" AS pets WHERE pets.user_id = users.id) AS d '
+            'FROM "pet_store"."users" AS users'
+        )
         out = transpile_to_trino(pg).lower()
-        assert "jsonb_agg" not in out
+        assert "json_agg" not in out
         assert "jsonb_build_object" not in out
         assert "array_agg(json_parse(" in out
 
