@@ -245,3 +245,9 @@ def test_a_clickhouse_time_is_read_as_its_text_says():
 
 def test_a_null_scale_answers_null():
     assert _on_duckdb("SELECT round(NULL::numeric, NULL::integer) AS v") is None
+
+
+def test_a_clickhouse_time_is_a_time_on_the_wire():
+    casts = result_casts("SELECT time_larger('12:30:45'::time, '12:30:45'::time) AS v")
+    assert casts is not None and casts[0] is not None and casts[0].coerce is not None
+    assert str(casts[0].coerce((45045500000).to_bytes(8, "little"))) == "12:30:45.500000"

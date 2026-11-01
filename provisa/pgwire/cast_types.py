@@ -119,6 +119,8 @@ def _cast_type(data_type: Any) -> CastType | None:  # noqa: PLR0911 -- one retur
         return CastType(700, -1, BVType.REAL, frozenset({BVType.REAL, BVType.FLOAT}))
     if kind == t.TIMESTAMP:
         return _RETURNED["timestamp without time zone"]
+    if kind == t.TIME:
+        return _RETURNED["time without time zone"]
     if kind == t.JSONB:
         return _RETURNED["jsonb"]
     if kind == t.XML:  # REQ-2171: held as its text; xml_out writes its declaration
@@ -163,6 +165,14 @@ def _of_no_zone(value: Any) -> Any:
     """A timestamp an engine holds in a zone (ClickHouse's are in UTC) as its wall clock."""
     aware = isinstance(value, datetime.datetime) and value.tzinfo is not None
     return value.replace(tzinfo=None) if aware else value
+
+
+def _clock_of(value: Any) -> Any:
+    """A time: ClickHouse's Time64 reaches Arrow as the bytes of its count of microseconds."""
+    if not isinstance(value, bytes):
+        return value
+    count = int.from_bytes(value, "little", signed=True)
+    return (datetime.datetime.min + datetime.timedelta(microseconds=count)).time()
 
 
 def _record_field(value: Any) -> str:
@@ -233,7 +243,9 @@ _RETURNED: dict[str, CastType] = {
     "cstring": CastType(2275, -1, BVType.TEXT, _TEXT_FORMS),
     "bytea": CastType(17, -1, BVType.BYTES, frozenset({BVType.BYTES})),
     "integer[]": CastType(1007, -1, BVType.INTEGERARRAY, frozenset({BVType.INTEGERARRAY})),
-    "time without time zone": CastType(1083, -1, BVType.TIME, frozenset({BVType.TIME})),
+    "time without time zone": CastType(
+        1083, -1, BVType.TIME, frozenset({BVType.TIME, BVType.BYTES}), _clock_of
+    ),
     "interval": CastType(1186, -1, BVType.INTERVAL, frozenset({BVType.INTERVAL})),
     "timestamp without time zone": CastType(
         1114, -1, BVType.TIMESTAMP, frozenset({BVType.TIMESTAMP}), _of_no_zone
