@@ -72,7 +72,7 @@ Each device sets itself up at boot (`terraform/perf/startup.sh.tftpl`): Docker a
 
 The devices are Spot by default (`provisioning_model = "SPOT"`) while the harness is made to work; the final measured run sets `provisioning_model = "ON_DEMAND"`. A reclaimed Spot device stops, keeping its disk. `--backends-provisioning-model ON_DEMAND` (`backends_provisioning_model`, unset meaning the same as the others) keeps device 3 on-demand while devices 1 and 2 stay on Spot; `seed_lifecycle.sh` takes the same option for its one device.
 
-Before the first apply: the project's quota must allow three 32-vCPU devices (96 vCPUs, all regions); `--ssh-cidr` names the operator's own address; and `--commit` names a commit on GitHub, which every device clones.
+Before the first apply: the project's quota must allow three 32-vCPU devices: `CPUS_PER_VM_FAMILY` of at least 96 for C4D in the region, and `CPUS_ALL_REGIONS` of at least 96 plus whatever else the project runs. `HDB_TOTAL_GB` must cover the three disks: at the project's 500 GB limit, `--disk-gb 160` fits and the 200 GB default does not. The seed image needs at least 150 GB; `--ssh-cidr` names the operator's own address; and `--commit` names a commit on GitHub, which every device clones.
 
 `three_device_run.sh --dry-run` prints every command it would run on each device, and runs none.
 

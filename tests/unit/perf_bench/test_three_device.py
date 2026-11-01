@@ -862,7 +862,14 @@ def local(url: str) -> Path:
     return S / url.removeprefix("gs://")
 
 
-if args[0] == "ls":
+if args[0] == "-o":
+    # the single-process rsync: its options, then rsync
+    assert args.count("-o") == 2 and "GSUtil:parallel_process_count=1" in args
+    args = args[args.index("rsync") :]
+    if not local(args[2]).exists():
+        sys.exit(1)
+    shutil.copytree(local(args[2]), args[3], dirs_exist_ok=True)
+elif args[0] == "ls":
     hits = sorted(glob.glob(str(local(args[1]))))
     if not hits:
         sys.stderr.write("CommandException: One or more URLs matched no objects.\n")
@@ -878,10 +885,6 @@ elif args[:2] == ["cp", "-r"]:
 elif args[0] == "cp":
     local(args[2]).parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(args[1], local(args[2]))
-elif args[:2] == ["rsync", "-r"]:
-    if not local(args[2]).exists():
-        sys.exit(1)
-    shutil.copytree(local(args[2]), args[3], dirs_exist_ok=True)
 else:
     sys.exit(f"fake gsutil: {args}")
 """
@@ -1423,7 +1426,7 @@ def test_a_preempted_device_is_restarted_and_only_the_runs_not_done_are_repeated
         # copied into the run directory before destroy
         assert (run / "checkpoints" / name / "optimistic" / "devices.json").exists()
     assert (run / "results-report" / "published.json").exists()
-    rsync = next(i for i, c in enumerate(calls) if c.startswith("gsutil rsync -r "))
+    rsync = next(i for i, c in enumerate(calls) if c.startswith("gsutil -o") and " rsync -r " in c)
     destroy = next(
         i for i, c in enumerate(calls) if c.startswith("terraform ") and " destroy " in c
     )

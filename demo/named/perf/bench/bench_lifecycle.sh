@@ -172,10 +172,12 @@ if [ -n "$DRY_RUN" ]; then
 fi
 
 # The bucket's checkpoints (every finished run's results) are copied into the run directory
-# before destroy, which deletes the bucket. One process: gsutil -m deadlocks on macOS.
+# before destroy, which deletes the bucket. One process: rsync is parallel by default, as -m is,
+# and either deadlocks on macOS, which leaves the devices billing behind a copy that never ends.
 copy_checkpoints() {
   mkdir -p "$RUN_DIR/checkpoints"
-  gsutil rsync -r "gs://$BUCKET/$RUN_ID" "$RUN_DIR/checkpoints" \
+  gsutil -o GSUtil:parallel_process_count=1 -o GSUtil:parallel_thread_count=1 \
+    rsync -r "gs://$BUCKET/$RUN_ID" "$RUN_DIR/checkpoints" \
     || echo "the checkpoints in gs://$BUCKET/$RUN_ID were not copied into $RUN_DIR/checkpoints"
 }
 
