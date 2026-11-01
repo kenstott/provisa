@@ -184,17 +184,24 @@ def pair(
     with conn:
         der = conn.getpeercert(binary_form=True)
         assert der is not None  # _dial checked it against the fingerprint
-        conn.sendall(
-            _frame(
-                {
-                    "op": "pair",
-                    "secret": secret,
-                    "certificate": identity.certificate,
-                    "duckdb": duckdb,
-                }
+        try:
+            conn.sendall(
+                _frame(
+                    {
+                        "op": "pair",
+                        "secret": secret,
+                        "certificate": identity.certificate,
+                        "duckdb": duckdb,
+                    }
+                )
             )
-        )
-        answer = _read_frame(conn)
+            answer = _read_frame(conn)
+        except OSError as exc:
+            # A paired host drops a connection with no certificate unread, which the kernel turns
+            # into a reset: the same refusal as a clean close, and which one comes is timing.
+            raise PairingRefused(
+                f"remote host {address}:{port} refused the pairing: the connection failed: {exc}"
+            ) from exc
     if answer is None or answer.get("op") != "paired":
         said = (answer or {}).get("message", "it closed the connection")
         raise PairingRefused(f"remote host {address}:{port} refused the pairing: {said}")
