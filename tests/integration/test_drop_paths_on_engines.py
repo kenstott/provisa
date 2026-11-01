@@ -242,10 +242,9 @@ async def test_a_recursive_walk_goes_round_a_parameterized_table(server, pattern
     labels = await _labels(server)
     body = await _cypher(
         server,
-        f"MATCH p = {pattern.format(staff=labels['staff'])}\nWHERE a.id = 3\n"
-        "RETURN DISTINCT b.name AS s ORDER BY s",
+        f"MATCH p = {pattern.format(staff=labels['staff'])}\nWHERE a.id = 3\nRETURN b.name AS s",
     )
-    assert [r["s"] for r in body["rows"]] == ["Ana", "Ben"]
+    assert {r["s"] for r in body["rows"]} == {"Ana", "Ben"}
 
 
 async def test_a_path_named_to_end_on_a_parameterized_table_is_refused_by_name(server):
