@@ -221,7 +221,7 @@
         "quality": "品質",
         "sla": "SLA",
         "support": "サポートとチーム",
-        "servers": "サーバー",
+        "howToUse": "使い方",
         "pricing": "価格",
         "custom": "カスタムプロパティとタグ"
       },
@@ -259,6 +259,46 @@
         "versions": "バージョンと変更",
         "roles": "ロール",
         "history": "バージョン履歴"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "インターフェース",
+          "address": "アドレス",
+          "how": "使い方",
+          "link": "例"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "psql や DBeaver などの PostgreSQL クライアントなら何でも使えます。データベース {{database}}、スキーマ {{schema}}。",
+          "flight-sql": "ADBC ドライバーなどの Arrow Flight SQL クライアントなら何でも使えます。データベース {{database}}、スキーマ {{schema}}。",
+          "grpc": "gRPC クライアントなら何でも使えます。サービス {{service}} に対し、メタデータ authorization: Bearer <token> を付けます。",
+          "graphql": "GraphQL クライアントなら何でも使えます。このテーブルに対するクエリを POST し、ヘッダー Authorization: Bearer <token> を付けます。",
+          "rest": "HTTP クライアントなら何でも使えます。このアドレスに GET し、ヘッダー Authorization: Bearer <token> を付けます。",
+          "openapi": "このテーブルだけの記述です。Swagger UI、Postman、またはクライアントジェネレーターに読み込んでください。",
+          "jsonapi": "JSON:API クライアントなら何でも使えます。このアドレスに GET し、ヘッダー Authorization: Bearer <token> を付けます。",
+          "sparql": "SPARQL 1.1 クライアントなら何でも使えます。このテーブルのクラスに対するクエリを POST し、ヘッダー Authorization: Bearer <token> を付けます。"
+        },
+        "access": {
+          "granted": "{{approvers}} がアクセスを許可して初めて使用できます。",
+          "noApprover": "{{roles}} の保持者がアクセスを許可して初めて使用できます。この契約には承認者が指定されていません。",
+          "undeclared": "アクセスが許可されて初めて使用できます。この契約にはロールも承認者も指定されていません。"
+        },
+        "ask": {
+          "approvers": "{{approvers}} にアクセスを依頼",
+          "roles": "{{roles}} の保持者にアクセスを依頼",
+          "nobody": "この契約には依頼先が指定されていません"
+        },
+        "open": "例を開く",
+        "openAria": "{{table}} の {{surface}} の例を開く"
       }
     }
   }

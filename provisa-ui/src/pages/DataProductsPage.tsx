@@ -113,11 +113,12 @@ export function DataProductsPage() {
   // REQ-1634: New/Edit/Delete and the table picker require the write right; a
   // data_product_read-only caller sees the list and detail view only.
   const canEdit = useCapability("data_product_rw");
-  const { selectedRoles, availableRoles } = useAuth();
+  const { selectedRoles, availableRoles, actingRoles } = useAuth();
   const held = useMemo(
     () => heldRoles(selectedRoles, availableRoles),
     [selectedRoles, availableRoles],
   );
+  const viewer = useMemo(() => ({ held, acting: actingRoles }), [held, actingRoles]);
   // REQ-2188: a holder of data_product_rw sees the owner's view of every product, its read rights
   // capping what is in it (REQ-2152). REQ-2160: and so does a reader holding the owner or team role.
   const ownsProduct = (p: DataProduct) =>
@@ -674,6 +675,7 @@ export function DataProductsPage() {
                                 core={core.data}
                                 coreError={core.error}
                                 reader={reader}
+                                viewer={viewer}
                                 canEdit={mayEdit(p)}
                                 canDelete={mayEdit(p)}
                                 owner={ownsProduct(p)}

@@ -453,6 +453,8 @@ _NOTHING_KEPT: tuple[tuple[str, tuple[int, ...], str], ...] = (
     ("pg_get_statisticsobjdef_columns", (1,), "TEXT"),
     ("pg_get_triggerdef", (1, 2), "TEXT"),
     ("pg_get_viewdef", (1, 2), "TEXT"),
+    ("pg_index_column_has_property", (3,), "BOOLEAN"),
+    ("pg_index_has_property", (2,), "BOOLEAN"),
     ("pg_tablespace_location", (1,), "TEXT"),
     ("shobj_description", (2,), "TEXT"),
     # Provisa reports no storage: a size is unknown, never a made-up 0.
@@ -584,8 +586,6 @@ READS_THE_SERVER = frozenset(
         "pg_event_trigger_table_rewrite_reason",
         "pg_get_publication_tables",
         "pg_get_wal_replay_pause_state",
-        "pg_index_column_has_property",
-        "pg_index_has_property",
         "pg_is_wal_replay_paused",
         "pg_last_committed_xact",
         "pg_logical_slot_get_binary_changes",
@@ -639,7 +639,7 @@ _OF_A_USER = frozenset(
 
 #: A form only PostgreSQL can run, of a function of its argument: a statement with no table is the
 #: engine's, which reads the function's row of function_macros' table instead.
-_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name"})
+_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name", "currval", "nextval"})
 
 
 class MetadataFunctionRefused(ValueError):

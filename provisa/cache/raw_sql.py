@@ -256,6 +256,7 @@ class ResponseCacheTee:
             column_names=column_names,
             column_types=stream.column_types,
             on_release=_releaser(stream),
+            column_type_oids=stream.column_type_oids,
         )
 
     def datarows(self, stream: ResultStream, wire_formats: list[int]) -> ResultStream:
@@ -283,6 +284,7 @@ class ResponseCacheTee:
             column_names=column_names,
             column_types=column_types,
             on_release=_releaser(stream),
+            column_type_oids=stream.column_type_oids,
         )
 
     def arrow(self, schema: Any, batches: Iterable[Any]) -> Iterator[Any]:

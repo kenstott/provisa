@@ -33,14 +33,23 @@ import {
 import type { DataProduct } from "../../types/admin";
 import { DqRulesModal } from "./DqRulesModal";
 import { OwnerResolutionInline } from "../../components/OwnerResolution";
-import { tableSqlRef } from "../../naming";
 import { Tip } from "../../components/Tip";
 import { LineageDag } from "../../components/lineage/LineageDag";
 import type { DescribeColumn } from "../../components/lineage/column-descriptions";
 import type { ProductDq, ProductDqEntry, ProductLineage } from "../../api/lineage";
-import { rootKey, type MetaReader } from "../../api/metaGraph";
+import type { MetaReader } from "../../api/metaGraph";
 import { GraphPanel } from "../../components/graph3d/GraphPanel";
+import type { ContractViewer } from "./ContractView";
 import { ProductContracts } from "./ProductContracts";
+import {
+  graphqlExample,
+  grpcExample,
+  jsonApiExample,
+  restExample,
+  sqlExample,
+  type ExampleLink,
+  type TableRef,
+} from "./tableExamples";
 import { DetailCard, Empty, Muted } from "./DetailCard";
 import { ClampedDetail } from "./ClampedDetail";
 import { useProductLifecycle } from "./ProductLifecycle";
@@ -60,42 +69,6 @@ import { COLOR, dqStatus } from "./dataProductClaims";
 /** REQ-2157: the data quality section's rows, in order. */
 const DQ_ROWS = ["expectations", "promises", "related"] as const;
 
-interface TableRef {
-  domainId: string;
-  tableName: string;
-  alias: string | null;
-}
-
-const selectAll = (tb: TableRef) => `select * from ${tableSqlRef(tb)}`;
-
-/** A table's root query field in the acting role's schema (from /data/graph-schema). */
-function rootOf(reader: MetaReader | null, tb: TableRef): string | null {
-  return reader?.roots.get(rootKey(tb.domainId, tb.tableName)) ?? null;
-}
-
-// REQ-1634: one example query per member table, by the root field and the columns the role's own
-// schema gives it -- the compiler's names, never re-derived here.
-function graphqlExample(reader: MetaReader, field: string): string | null {
-  const type = reader.schema.rootType(field);
-  const columns = type ? reader.schema.scalars(type) : [];
-  return columns.length > 0 ? `{ ${field} { ${columns.join(" ")} } }` : null;
-}
-
-// Mirrors provisa.compiler.naming.to_type_name + provisa.grpc.proto_gen._to_proto_type_name — both
-// pure functions of the field name alone. sa__userByName -> Sa__UserByName -> SaUserByName.
-function grpcMethod(fieldName: string): string {
-  let typeName: string;
-  if (fieldName.includes("__")) {
-    const [prefix, rest] = fieldName.split("__", 2);
-    const prefixPascal = prefix ? prefix[0].toUpperCase() + prefix.slice(1).toLowerCase() : "";
-    const restPascal = rest ? rest[0].toUpperCase() + rest.slice(1) : "";
-    typeName = prefixPascal + restPascal;
-  } else {
-    typeName = fieldName[0].toUpperCase() + fieldName.slice(1);
-  }
-  return `Query${typeName}()`;
-}
-
 // A zero-width space after "/" gives the browser a break opportunity there — plain "/" doesn't
 // wrap on its own, so a long gqlName/cqlName pair would otherwise overflow its monospace panel.
 function joinAliasPair(names: (string | null | undefined)[]): string {
@@ -109,6 +82,8 @@ interface DataProductDetailPanelProps {
   coreError: string | null;
   /** The acting role's schema and root fields, for the member tables' drill-down queries. */
   reader: MetaReader | null;
+  /** Who reads the panel: what a contract's How to use offers them (REQ-2158). */
+  viewer: ContractViewer;
   // REQ-1634, REQ-2188: gates Edit and Delete: data_product_rw, on the products its rules leave it.
   canEdit: boolean;
   canDelete: boolean;
@@ -177,6 +152,7 @@ export function DataProductDetailPanel({
   core,
   coreError,
   reader,
+  viewer,
   canEdit,
   canDelete,
   owner,
@@ -199,6 +175,7 @@ export function DataProductDetailPanel({
 }: DataProductDetailPanelProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const openExample = (example: ExampleLink) => navigate(example.to, { state: example.state });
   // REQ-1640/REQ-1627: expanded by default, same as statement lineage's initial view — this
   // subgraph (member tables + one relation-hop) is small like a single query's lineage, not
   // federation-scale, so it reads better column-by-column with the real role colours than
@@ -329,7 +306,7 @@ export function DataProductDetailPanel({
         size="sm"
         aria-label={t("dataProductsTab.sqlQueryAria", { table: tb.tableName })}
         data-testid={testId}
-        onClick={() => navigate("/sql", { state: { sql: selectAll(tb), autoRun: true } })}
+        onClick={() => openExample(sqlExample(tb))}
       >
         <TableIcon size={14} />
       </ActionIcon>
@@ -412,8 +389,9 @@ export function DataProductDetailPanel({
   };
 
   const consumerRow = (tb: CoreTable) => {
-    const field = rootOf(reader, tb);
-    const graphql = field && reader ? graphqlExample(reader, field) : null;
+    const graphql = graphqlExample(reader, tb);
+    const rest = restExample(reader, tb);
+    const grpc = grpcExample(reader, tb);
     return (
       <List.Item key={`gql-${tb.id}`} ff="monospace">
         <Group gap={4} wrap="nowrap">
@@ -427,7 +405,7 @@ export function DataProductDetailPanel({
                 size="sm"
                 aria-label={t("dataProductsTab.graphqlQueryAria", { table: tb.tableName })}
                 data-testid={`data-product-detail-graphql-query-${tb.id}`}
-                onClick={() => navigate("/query", { state: { query: graphql, autoRun: true } })}
+                onClick={() => openExample(graphql)}
               >
                 <Braces size={14} />
               </ActionIcon>
@@ -440,45 +418,32 @@ export function DataProductDetailPanel({
               size="sm"
               aria-label={t("dataProductsTab.jsonapiQueryAria", { table: tb.tableName })}
               data-testid={`data-product-detail-jsonapi-query-${tb.id}`}
-              onClick={() =>
-                navigate("/jsonapi", {
-                  state: {
-                    jsonapiUrl: `/data/jsonapi/${tb.domainId}/${tb.tableName}`,
-                    autoRun: true,
-                  },
-                })
-              }
+              onClick={() => openExample(jsonApiExample(tb))}
             >
               <FileJson size={14} />
             </ActionIcon>
           </Tip>
-          {field && (
+          {rest && (
             <Tip text={t("dataProductsTab.openApiQueryAria", { table: tb.tableName })} named>
               <ActionIcon
                 variant="subtle"
                 size="sm"
                 aria-label={t("dataProductsTab.openApiQueryAria", { table: tb.tableName })}
                 data-testid={`data-product-detail-openapi-query-${tb.id}`}
-                onClick={() =>
-                  navigate("/openapi", {
-                    state: { openApiUrl: `GET /data/rest/${field}`, autoRun: true },
-                  })
-                }
+                onClick={() => openExample(rest)}
               >
                 <Globe size={14} />
               </ActionIcon>
             </Tip>
           )}
-          {field && (
+          {grpc && (
             <Tip text={t("dataProductsTab.grpcQueryAria", { table: tb.tableName })} named>
               <ActionIcon
                 variant="subtle"
                 size="sm"
                 aria-label={t("dataProductsTab.grpcQueryAria", { table: tb.tableName })}
                 data-testid={`data-product-detail-grpc-query-${tb.id}`}
-                onClick={() =>
-                  navigate("/grpc", { state: { grpcMethod: grpcMethod(field), autoRun: true } })
-                }
+                onClick={() => openExample(grpc)}
               >
                 <Cable size={14} />
               </ActionIcon>
@@ -973,6 +938,8 @@ export function DataProductDetailPanel({
         core={core}
         lineage={lineageGraph}
         version={contractsVersion}
+        reader={reader}
+        viewer={viewer}
       />
       {lifecycle.dialogs}
       {(canEdit || canDelete) && (
