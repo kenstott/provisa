@@ -248,10 +248,10 @@ def test_a_statement_learns_nothing_of_the_control_plane(server, sql):
 
 
 def test_a_statement_with_no_table_runs_on_the_engine(server):
-    """PostgreSQL's current_query() is the statement as it reached it: POINT is a type the plane has
-    and the engine holds as text, so the engine's statement does not name it."""
-    answered = _answer_or_refusal(server, "SELECT current_query(), NULL::point")
-    assert "POINT" not in answered.upper(), answered
+    """current_query() is the statement the client wrote (pgwire.server._current_query_said,
+    REQ-2171), and the NULL of a type only the plane has comes back from the engine as a NULL."""
+    sql = "SELECT current_query(), NULL::point"
+    assert _answer_or_refusal(server, sql) == repr([(sql, None)])
 
 
 def test_a_function_only_the_plane_has_is_not_answered_for_a_statement_with_no_table(server):
