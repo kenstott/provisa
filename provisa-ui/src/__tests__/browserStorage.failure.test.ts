@@ -32,6 +32,7 @@ afterEach(() => {
   undo.forEach((u) => u());
   undo = [];
   errors.mockRestore();
+  vi.restoreAllMocks();
 });
 
 const install = (name: "localStorage" | "sessionStorage", s: Storage) => {
@@ -40,7 +41,7 @@ const install = (name: "localStorage" | "sessionStorage", s: Storage) => {
 };
 
 describe("a full store", () => {
-  it("makes room from the old result frames, the largest first, and retries once", () => {
+  it("makes room from the old result frames, the largest first, and only as much as it needs", () => {
     const frames = "x".repeat(40);
     const local = install(
       "localStorage",
@@ -115,6 +116,88 @@ describe("a full store", () => {
       storage.SessionStorageError,
     );
     expect(heard).toEqual(["session"]);
+  });
+});
+
+describe("a full store with other control planes' entries in it", () => {
+  const at = (controlPlaneId: string, name: string) => `${controlPlaneId}:org:${name}`;
+  const setting = "x".repeat(40);
+  const useAt = (ms: number, controlPlaneId: string) => {
+    vi.spyOn(Date, "now").mockReturnValue(ms);
+    storage.bindStorageScope({ controlPlaneId, orgId: "org" });
+  };
+
+  it("takes the oldest control plane's first, and only as much as the write needs", () => {
+    const old = at("cp-old", "provisa.grid.toggle");
+    const recent = at("cp-recent", "provisa.grid.toggle");
+    const mine = at("cp", "nl-question");
+    const local = install(
+      "localStorage",
+      fullStorage(260, { [old]: setting, [recent]: setting, [mine]: "kept" }),
+    );
+    useAt(2000, "cp-recent");
+    useAt(1000, "cp-old");
+    useAt(3000, "cp");
+    storage.setStored("provisa.grid.toggle2", "z".repeat(30));
+    expect(local.getItem(at("cp", "provisa.grid.toggle2"))).toBe("z".repeat(30));
+    expect(local.getItem(old)).toBeNull();
+    expect(local.getItem(recent)).toBe(setting);
+    expect(local.getItem(mine)).toBe("kept");
+  });
+
+  it("takes a control plane this browser has no record of before any it has", () => {
+    const unknown = at("cp-before-the-record", "provisa.grid.toggle");
+    const known = at("cp-known", "provisa.grid.toggle");
+    const local = install("localStorage", fullStorage(250, { [unknown]: setting, [known]: setting }));
+    useAt(1000, "cp-known");
+    useAt(2000, "cp");
+    storage.setStored("provisa.grid.toggle", "y".repeat(60));
+    expect(local.getItem(at("cp", "provisa.grid.toggle"))).toBe("y".repeat(60));
+    expect(local.getItem(unknown)).toBeNull();
+    expect(local.getItem(known)).toBe(setting);
+  });
+
+  it("gives up the disposable entries first", () => {
+    const old = at("cp-old", "provisa.grid.toggle");
+    const frames = `${SCOPE}provisa.graph.state`;
+    const local = install(
+      "localStorage",
+      fullStorage(220, { [old]: setting, [frames]: "f".repeat(60) }),
+    );
+    useAt(1000, "cp-old");
+    useAt(2000, "cp");
+    storage.setStored("provisa.grid.toggle", "y".repeat(60));
+    expect(local.getItem(frames)).toBeNull();
+    expect(local.getItem(old)).toBe(setting);
+  });
+
+  it("never takes the current control plane's, in any of its orgs", () => {
+    const mine = "cp:org:provisa.grid.toggle";
+    const otherOrg = "cp:globex:provisa.grid.toggle";
+    const local = install("localStorage", fullStorage(170, { [mine]: setting, [otherOrg]: setting }));
+    useAt(2000, "cp");
+    storage.setStored("provisa_nav_last_item", "y".repeat(60));
+    expect(local.getItem(mine)).toBe(setting);
+    expect(local.getItem(otherOrg)).toBe(setting);
+    expect(local.getItem(`${SCOPE}provisa_nav_last_item`)).toBeNull();
+    expect(errors).toHaveBeenCalled();
+  });
+
+  it("takes nothing while a write is not refused", () => {
+    const old = at("cp-old", "provisa.grid.toggle");
+    const local = install("localStorage", fullStorage(1000, { [old]: setting }));
+    useAt(2000, "cp");
+    storage.setStored("provisa.grid.toggle", "y".repeat(60));
+    expect(local.getItem(old)).toBe(setting);
+  });
+
+  it("takes none with no control plane bound: any of them may be the current one", () => {
+    const entry = at("cp-any", "provisa.grid.toggle");
+    const local = install("localStorage", fullStorage(120, { [entry]: setting }));
+    storage.bindStorageScope(null);
+    storage.setStored("provisa_tour_seen", "y".repeat(80), { global: true });
+    expect(local.getItem(entry)).toBe(setting);
+    expect(local.getItem("provisa_tour_seen")).toBeNull();
   });
 });
 

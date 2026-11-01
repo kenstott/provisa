@@ -151,7 +151,7 @@ def test_a_form_survives_the_engines_own_rewrites():
         ("SELECT sind(x) FROM t", "trino", "sind"),
         ("SELECT regexp_match(a, b) FROM t", "snowflake", "regexp_match"),
         ("SELECT center(a) FROM t", "bigquery", "center"),
-        ("SELECT a FROM t WHERE jsonb_typeof(a) = 'object'", "clickhouse", "jsonb_typeof"),
+        ("SELECT a FROM t WHERE jsonb_pretty(a) = 'object'", "clickhouse", "jsonb_pretty"),
         ("SELECT textlike(a, b) FROM t", "mysql", "textlike"),
         ("SELECT regexp_substr(a, b) FROM t", "clickhouse", "regexp_substr"),
         ("SELECT time(a) FROM t", "trino", "time"),

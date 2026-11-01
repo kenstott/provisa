@@ -53,6 +53,8 @@ export type Capability =
   // page renders read-only without it. A curator is granted both.
   | "glossary_read"
   | "glossary_rw"
+  // REQ-1132: reads the meta domain, as `glossary_read` does ontology and `observability` ops.
+  | "catalog_read"
   // REQ-1921: set, change or remove where data lives, for the region values the grant lists.
   // Exists only when the platform declares regions.
   | "data_residency"

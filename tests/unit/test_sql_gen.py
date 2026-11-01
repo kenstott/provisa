@@ -97,7 +97,11 @@ def _build_schema_and_ctx(
             ],
         }
 
-    role = {"id": role_id, "capabilities": ["query_development"], "domain_access": ["*"]}
+    role = {
+        "id": role_id,
+        "capabilities": ["query_development"],
+        "domain_access": ["*", "meta", "ontology", "ops"],
+    }
     domains = [{"id": "sales", "description": "Sales"}]
 
     si = SchemaInput(
@@ -1124,7 +1128,11 @@ class TestNestedRelationship:
             relationships=rels,
             column_types=col_types,
             naming_rules=[],
-            role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
+            role={
+                "id": "admin",
+                "capabilities": [],
+                "domain_access": ["*", "meta", "ontology", "ops"],
+            },
             domains=[{"id": "d", "description": "D"}],
         )
         ctx = build_context(si)
@@ -1210,7 +1218,11 @@ class TestJoinTypeCast:
             relationships=rels,
             column_types=col_types,
             naming_rules=[],
-            role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
+            role={
+                "id": "admin",
+                "capabilities": [],
+                "domain_access": ["*", "meta", "ontology", "ops"],
+            },
             domains=[{"id": "d", "description": "D"}],
         )
         ctx = build_context(si)
@@ -1269,7 +1281,11 @@ class TestJoinTypeCast:
             relationships=rels,
             column_types=col_types,
             naming_rules=[],
-            role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
+            role={
+                "id": "admin",
+                "capabilities": [],
+                "domain_access": ["*", "meta", "ontology", "ops"],
+            },
             domains=[{"id": "d", "description": "D"}],
         )
         ctx = build_context(si)
@@ -1374,7 +1390,11 @@ class TestRelationshipVisibility:
             relationships=rels,
             column_types=col_types,
             naming_rules=[],
-            role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
+            role={
+                "id": "admin",
+                "capabilities": [],
+                "domain_access": ["*", "meta", "ontology", "ops"],
+            },
             domains=[{"id": "d", "description": "D"}],
         )
         schema_admin = generate_schema(si_admin)
@@ -1388,7 +1408,11 @@ class TestRelationshipVisibility:
             relationships=rels,
             column_types=col_types,
             naming_rules=[],
-            role={"id": "limited", "capabilities": [], "domain_access": ["*"]},
+            role={
+                "id": "limited",
+                "capabilities": [],
+                "domain_access": ["*", "meta", "ontology", "ops"],
+            },
             domains=[{"id": "d", "description": "D"}],
         )
         schema_limited = generate_schema(si_limited)
@@ -1410,7 +1434,11 @@ class TestRelationshipVisibility:
             relationships=rels,
             column_types=col_types,
             naming_rules=[],
-            role={"id": "limited", "capabilities": [], "domain_access": ["*"]},
+            role={
+                "id": "limited",
+                "capabilities": [],
+                "domain_access": ["*", "meta", "ontology", "ops"],
+            },
             domains=[{"id": "d", "description": "D"}],
         )
         assert validate(generate_schema(si_no_target), parse("{ orders { id customer { name } } }"))
@@ -1610,7 +1638,11 @@ class TestGqlJsonBlobExtraction:
             1: [_col("id", "integer"), _col("name")],
             2: [_col("id", "integer"), _col("dept_id", "integer"), _col("employee", "jsonb")],
         }
-        role = {"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]}
+        role = {
+            "id": "admin",
+            "capabilities": ["query_development"],
+            "domain_access": ["*", "meta", "ontology", "ops"],
+        }
         domains = [{"id": "shelter", "description": "Shelter"}]
         from provisa.compiler.schema_gen import SchemaInput, generate_schema
         from provisa.compiler.context import build_context

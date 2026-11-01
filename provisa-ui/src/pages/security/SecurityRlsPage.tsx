@@ -40,6 +40,7 @@ import { baseTagId, type RLSRule, type RuleRight } from "../../types/admin";
 import { useTags, useTagAssignments } from "../../hooks/useTagQueries";
 import { fetchActions } from "../../api/actions";
 import { useDomainFilter } from "../../context/DomainFilterContext";
+import { assignableDomainIds } from "../../lib/internalDomains";
 import { PageLoading } from "../../components/PageLoading";
 import {
   ListTable,
@@ -401,7 +402,10 @@ export function SecurityRlsPage() {
               <Select
                 label={t("securityPage.domain")}
                 placeholder={t("securityPage.selectPlaceholder")}
-                data={domains.map((d) => ({ value: d.id, label: d.id }))}
+                data={assignableDomainIds(domains.map((d) => d.id)).map((id) => ({
+                  value: id,
+                  label: id,
+                }))}
                 value={ruleForm.domainFilter || null}
                 onChange={(v) => setRuleForm({ ...ruleForm, domainFilter: v ?? "", tableId: "" })}
                 data-testid="rule-domain-select"

@@ -45,7 +45,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import MARK, raising
-from provisa.transpiler import pg_forms, pg_forms_types
+from provisa.transpiler import pg_forms, pg_forms_json, pg_forms_types
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 from provisa.transpiler.pg_literals import values_cast
 
@@ -762,6 +762,11 @@ def _numeric_conversions() -> tuple[Macro, ...]:
             )
             for name, sql_type in floats
         ),
+        _macro(
+            "jsonb_numeric",
+            "value",
+            strict("value", "VARCHAR", pg_forms.jsonb_number(digits, "numeric")),
+        ),
         *(
             _macro(
                 f"numeric_{name}",
@@ -1201,14 +1206,6 @@ _ROWS: tuple[Macro, ...] = (
             )
         },
     ),
-    _macro(
-        "jsonb_typeof",
-        "value",
-        "CASE WHEN value IS NULL THEN CAST(NULL AS VARCHAR) "
-        "ELSE CASE json_type(value) WHEN 'OBJECT' THEN 'object' "
-        "WHEN 'ARRAY' THEN 'array' WHEN 'VARCHAR' THEN 'string' WHEN 'BOOLEAN' THEN 'boolean' "
-        "WHEN 'NULL' THEN 'null' ELSE 'number' END END",
-    ),
     _macro("pg_typeof", "value", _PG_TYPEOF),
     *_SHAPES,
     *_TSVECTOR,
@@ -1240,12 +1237,6 @@ _ROWS: tuple[Macro, ...] = (
         "CASE WHEN value IS NOT NULL AND n IS NOT NULL THEN "
         "CAST(CASE WHEN n < 0 THEN CAST(value AS VARCHAR) ELSE left(CAST(value AS VARCHAR), n) END "
         "AS BIT) END",
-    ),
-    _macro(
-        "json_each",
-        "v",
-        "unnest(list_transform(json_keys(v), "
-        "_k -> struct_pack(key := _k, value := json_extract(v, '$.\"' || _k || '\"'))))",
     ),
     *_comparisons("oidvector", "eq", "ne", "lt", "le", "gt", "ge"),
     *_comparisons("xid8", "eq", "ne", "lt", "le", "gt", "ge"),
@@ -1290,20 +1281,13 @@ _ROWS: tuple[Macro, ...] = (
         )
         + " ELSE CASE WHEN name IS NOT NULL THEN -1 END END",
     ),
-    # Strict; on a value PostgreSQL refuses this form: a record needs a column definition list.
-    _macro(
-        "json_to_record",
-        "value",
-        "CASE WHEN value IS NOT NULL THEN "
-        "error('function returning record called in context that cannot accept type record') "
-        "ELSE CAST(NULL AS VARCHAR) END",
-    ),
     *_NUMBERS,
     *_DATES,
     *_XML,
     *_MONEY,
     *VALUE_FUNCTIONS_OF_THE_SERVER,
     *(Macro(name, params, {_EVERY: Pg(form)}) for name, params, form in VALUE_FORMS),  # REQ-2190
+    *(Macro(name, params, forms) for name, params, forms in pg_forms_json.ROWS),
     *_DIGESTS,
     *map(_operator, pg_forms_types.OPERATORS),
     *(
@@ -1438,6 +1422,7 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
         for name in ("int2", "int4", "int8", "float4", "float8")
         for of, of_row in (("decimal", "numeric"), ("jsonb", "jsonb"))
     },
+    ("numeric", 1, "jsonb"): "jsonb_numeric",
     ("md5", 1, "bytea"): "md5_bytea",
     ("int4", 1, "bit"): "bittoint4",
     ("int8", 1, "bit"): "bittoint8",
@@ -1494,7 +1479,9 @@ _CALLED = {
 #: How a statement already written through sqlglot spells a row's call.
 _SPELLED = {"encode", "hex", "substring", "regexp_replace", "array_concat", "to_number"}
 _NAMES = frozenset(name for name, _ in MACROS) | {name for name, _, _ in OVERLOADS} | _SPELLED
-_MENTIONED = re.compile(r"\b(" + "|".join(sorted(_NAMES)) + r")\"?\s*\(", re.IGNORECASE)
+_MENTIONED = re.compile(
+    r"\b(" + "|".join(sorted(_NAMES)) + r")\"?\s*\(|" + pg_forms_json.OPERATORS, re.IGNORECASE
+)
 #: The names provisa.pgwire.catalog answers where a statement reads no table.
 SERVER_VALUE_NAMES = frozenset(m.name for m in VALUE_FUNCTIONS_OF_THE_SERVER)
 
@@ -1777,6 +1764,10 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
     of its argument count is left, for the engine to say so."""
     if dialect in NATIVE:
         return tree
+    try:
+        tree = pg_forms_json.lowered(tree, dialect)
+    except pg_forms_json.NoForm as refused:
+        raise FunctionRefused(refused.called, dialect) from refused
 
     def rewrite(node: exp.Expr) -> exp.Expr:
         target = node
