@@ -18,9 +18,11 @@ SQL over a parameter's name, valid on both dialects."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
 from provisa.core.pg_error import raising
+from provisa.transpiler.pg_forms_types import fails
 
 _FUZZ = "1e-06"  # geo_decls.h's EPSILON: PostgreSQL's geometric comparisons allow it
 _NUMBER = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
@@ -411,14 +413,23 @@ def bound(name: str, value: str, body: str) -> str:
     return f"list_transform([{value}], {name} -> {body})[1]"
 
 
+def held(name: str, value: str, body: str) -> str:
+    """``body`` with ``name`` written as ``value``, which any dialect's SQL can do: a form that
+    reads a value twice names it, and a volatile argument is held whole (function_macros)."""
+    return re.sub(rf"\b{name}\b", f"({value})", body)
+
+
 def _refused(sqlstate: str, message: str) -> str:
     return raising(sqlstate, f"'{message}'")
 
 
-_DIVISION_BY_ZERO = _refused("22012", "division by zero")
-_OVERFLOW = _refused("22003", "value out of range: overflow")
-_UNDERFLOW = _refused("22003", "value out of range: underflow")
-_OUT_OF_DOMAIN = _refused("22003", "input is out of range")
+def _double_refused(sqlstate: str, message: str) -> str:
+    return fails(sqlstate, message, "DOUBLE PRECISION")
+
+
+_OVERFLOW = _double_refused("22003", "value out of range: overflow")
+_UNDERFLOW = _double_refused("22003", "value out of range: underflow")
+_OUT_OF_DOMAIN = _double_refused("22003", "input is out of range")
 #: Each integer type: its name in the engine and PostgreSQL's.
 PG_INTEGERS = {"SMALLINT": "smallint", "INTEGER": "integer", "BIGINT": "bigint"}
 PG_FLOATS = {"FLOAT": "real", "DOUBLE": "double precision"}
@@ -443,48 +454,43 @@ _X = "CAST(x AS DOUBLE)"
 _Y = "CAST(y AS DOUBLE)"
 
 DEXP = (
-    f"CASE WHEN isnan({_X}) OR isinf({_X}) THEN exp({_X}) ELSE "
-    + bound(
-        "_r",
-        f"exp({_X})",
-        f"CASE WHEN isinf(_r) THEN {_OVERFLOW} WHEN _r = 0 THEN {_UNDERFLOW} ELSE _r END",
-    )
-    + " END"
+    f"CASE WHEN IS_NAN({_X}) OR IS_INF({_X}) THEN EXP({_X}) "
+    f"WHEN {_X} > 709.782712893384 THEN {_OVERFLOW} "
+    f"WHEN {_X} < -745.1332191019412 THEN {_UNDERFLOW} ELSE EXP({_X}) END"
 )
 
 
 def _logarithm(function: str) -> str:
     return (
-        f"CASE WHEN {_X} = 0 THEN {_refused('2201E', 'cannot take logarithm of zero')} "
-        f"WHEN {_X} < 0 THEN {_refused('2201E', 'cannot take logarithm of a negative number')} "
+        f"CASE WHEN {_X} = 0 THEN {_double_refused('2201E', 'cannot take logarithm of zero')} "
+        f"WHEN {_X} < 0 THEN {_double_refused('2201E', 'cannot take logarithm of a negative number')} "
         f"ELSE {function}({_X}) END"
     )
 
 
-DLOG1 = _logarithm("ln")
-DLOG10 = _logarithm("log10")
+DLOG1 = _logarithm("LN")
+DLOG10 = _logarithm("LOG10")
 DSQRT = (
-    f"CASE WHEN {_X} < 0 THEN {_refused('2201F', 'cannot take square root of a negative number')} "
-    f"ELSE sqrt({_X}) END"
+    f"CASE WHEN {_X} < 0 THEN "
+    f"{_double_refused('2201F', 'cannot take square root of a negative number')} "
+    f"ELSE SQRT({_X}) END"
+)
+_COMPLEX = _double_refused(
+    "2201F", "a negative number raised to a non-integer power yields a complex result"
 )
 #: dpow: POSIX's pow where an infinity or a NaN is in it, which the engine's follows, and the
 #: errors PostgreSQL gives where one is not.
 DPOW = (
     f"CASE WHEN {_X} = 0 AND {_Y} < 0 THEN "
-    + _refused("2201F", "zero raised to a negative power is undefined")
-    + f" WHEN {_X} < 0 AND NOT isinf({_X}) AND NOT isinf({_Y}) AND floor({_Y}) <> {_Y} THEN "
-    + _refused("2201F", "a negative number raised to a non-integer power yields a complex result")
-    + f" WHEN {_X} < 0 AND isinf({_X}) AND NOT isnan({_Y}) AND NOT isinf({_Y}) "
-    f"AND floor({_Y}) <> {_Y} THEN "
-    + _refused("2201F", "a negative number raised to a non-integer power yields a complex result")
-    + f" WHEN isnan({_X}) OR isnan({_Y}) OR isinf({_X}) OR isinf({_Y}) THEN pow({_X}, {_Y}) ELSE "
-    + bound(
-        "_r",
-        f"pow({_X}, {_Y})",
-        f"CASE WHEN isinf(_r) THEN {_OVERFLOW} WHEN _r = 0 AND {_X} <> 0 THEN {_UNDERFLOW} "
-        "ELSE _r END",
-    )
-    + " END"
+    + _double_refused("2201F", "zero raised to a negative power is undefined")
+    + f" WHEN {_X} < 0 AND NOT IS_INF({_X}) AND NOT IS_INF({_Y}) AND FLOOR({_Y}) <> {_Y} THEN "
+    + _COMPLEX
+    + f" WHEN {_X} < 0 AND IS_INF({_X}) AND NOT IS_NAN({_Y}) AND NOT IS_INF({_Y}) "
+    f"AND FLOOR({_Y}) <> {_Y} THEN "
+    + _COMPLEX
+    + f" WHEN IS_NAN({_X}) OR IS_NAN({_Y}) OR IS_INF({_X}) OR IS_INF({_Y}) THEN POWER({_X}, {_Y}) "
+    f"WHEN IS_INF(POWER({_X}, {_Y})) THEN {_OVERFLOW} "
+    f"WHEN POWER({_X}, {_Y}) = 0 AND {_X} <> 0 THEN {_UNDERFLOW} ELSE POWER({_X}, {_Y}) END"
 )
 
 # float.c's degree functions: each angle is folded into the first quadrant, where a ratio of two
@@ -536,61 +542,41 @@ def _acosd_q1(x: str) -> str:
 
 
 def _finite_angle(answer: str) -> str:
-    return (
-        f"CASE WHEN isnan({_X}) THEN {_X} WHEN isinf({_X}) THEN {_OUT_OF_DOMAIN} ELSE {answer} END"
-    )
+    return f"CASE WHEN IS_NAN({_X}) THEN {_X} WHEN IS_INF({_X}) THEN {_OUT_OF_DOMAIN} ELSE {answer} END"
 
 
-COSD = _finite_angle(
-    bound(
-        "_a",
-        f"abs({_X} % 360.0)",
-        bound(
-            "_b",
-            "CASE WHEN _a > 180.0 THEN 360.0 - _a ELSE _a END",
-            f"CASE WHEN _b > 90.0 THEN -({_cosd_q1('(180.0 - _b)')}) ELSE {_cosd_q1('_b')} END",
-        ),
-    )
+_ANGLE = f"ABS({_X} % 360.0)"
+#: The angle folded to 0..180, and to the first quadrant.
+_HALF = f"CASE WHEN {_ANGLE} > 180.0 THEN 360.0 - {_ANGLE} ELSE {_ANGLE} END"
+_QUADRANT = f"CASE WHEN {_HALF} > 90.0 THEN 180.0 - {_HALF} ELSE {_HALF} END"
+_FIRST_SIGN = (
+    f"(CASE WHEN {_X} % 360.0 < 0 THEN -1.0 ELSE 1.0 END) * "
+    f"(CASE WHEN {_ANGLE} > 180.0 THEN -1.0 ELSE 1.0 END)"
 )
+_SECOND_SIGN = f"(CASE WHEN {_HALF} > 90.0 THEN -1.0 ELSE 1.0 END)"
 _COT_45 = _ratio(f"({_cosd_q1('45.0')})", f"({_sind_q1('45.0')})")
+_TAN_45 = _ratio(f"({_sind_q1('45.0')})", f"({_cosd_q1('45.0')})")
+SIND = _finite_angle(f"({_FIRST_SIGN}) * ({held('_d', _QUADRANT, _sind_q1('_d'))})")
+COSD = _finite_angle(f"({_SECOND_SIGN}) * ({held('_d', _QUADRANT, _cosd_q1('_d'))})")
+TAND = _finite_angle(
+    f"({_FIRST_SIGN}) * {_SECOND_SIGN} * "
+    + held("_d", _QUADRANT, _ratio(_ratio(_sind_q1("_d"), _cosd_q1("_d")), _TAN_45))
+)
 #: dcotd: a minus zero is forced to a plain zero, as the function does.
 COTD = _finite_angle(
-    bound(
-        "_a",
-        f"{_X} % 360.0",
-        bound(
-            "_b",
-            "abs(_a)",
-            bound(
-                "_c",
-                "CASE WHEN _b > 180.0 THEN 360.0 - _b ELSE _b END",
-                bound(
-                    "_d",
-                    "CASE WHEN _c > 90.0 THEN 180.0 - _c ELSE _c END",
-                    bound(
-                        "_r",
-                        "(CASE WHEN _a < 0 THEN -1.0 ELSE 1.0 END) * "
-                        "(CASE WHEN _b > 180.0 THEN -1.0 ELSE 1.0 END) * "
-                        "(CASE WHEN _c > 90.0 THEN -1.0 ELSE 1.0 END) * "
-                        # fmod keeps a dividend's minus sign on a zero, and cos over it is -Infinity.
-                        "(CASE WHEN _d = 0 THEN CAST(CASE WHEN _a = 0 AND atan2(_a, -1.0) < 0 "
-                        "THEN '-Infinity' ELSE 'Infinity' END AS DOUBLE) ELSE "
-                        + _ratio(_ratio(_cosd_q1("_d"), _sind_q1("_d")), _COT_45)
-                        + " END)",
-                        "CASE WHEN _r = 0 THEN 0.0 ELSE _r END",
-                    ),
-                ),
-            ),
-        ),
-    )
+    f"(CASE WHEN {_X} % 360.0 = 0 AND ATAN2({_X} % 360.0, -1.0) < 0 THEN -1.0 ELSE 1.0 END) * "
+    f"({_FIRST_SIGN}) * {_SECOND_SIGN} * "
+    f"CASE WHEN {_QUADRANT} = 0 THEN CAST('Infinity' AS DOUBLE PRECISION) ELSE "
+    + held("_d", _QUADRANT, _ratio(_ratio(_cosd_q1("_d"), _sind_q1("_d")), _COT_45))
+    + " END + 0.0"
 )
 _UNIT_RANGE = f"{_X} < -1.0 OR {_X} > 1.0"
 ASIND = (
-    f"CASE WHEN isnan({_X}) THEN {_X} WHEN {_UNIT_RANGE} THEN {_OUT_OF_DOMAIN} "
+    f"CASE WHEN IS_NAN({_X}) THEN {_X} WHEN {_UNIT_RANGE} THEN {_OUT_OF_DOMAIN} "
     f"WHEN {_X} >= 0 THEN {_asind_q1(_X)} ELSE -({_asind_q1(f'(-{_X})')}) END"
 )
 ACOSD = (
-    f"CASE WHEN isnan({_X}) THEN {_X} WHEN {_UNIT_RANGE} THEN {_OUT_OF_DOMAIN} "
+    f"CASE WHEN IS_NAN({_X}) THEN {_X} WHEN {_UNIT_RANGE} THEN {_OUT_OF_DOMAIN} "
     f"WHEN {_X} >= 0 THEN {_acosd_q1(_X)} ELSE 90.0 + ({_asind_q1(f'(-{_X})')}) END"
 )
 ATAND = _ratio(f"atan({_X})", "atan(1.0)") + " * 45.0"
@@ -685,16 +671,16 @@ AS_REAL = bound(
     "try_cast(value AS FLOAT)",
     f"CASE WHEN _r IS NULL THEN {_OVERFLOW} WHEN _r = 0 AND value <> 0 THEN {_UNDERFLOW} ELSE _r END",
 )
-_TRIMMED = "CASE WHEN contains(_t, '.') THEN rtrim(rtrim(_t, '0'), '.') ELSE _t END"
-_NOT_A_NUMBER = f"{_NAN} OR {_INFINITE}"
+_TRIMMED = "CASE WHEN STRPOS(_t, '.') > 0 THEN RTRIM(RTRIM(_t, '0'), '.') ELSE _t END"
+_DIGITS = "CAST(value AS TEXT)"
+_NOT_A_NUMBER = f"LOWER({_DIGITS}) IN ('nan', 'infinity', '-infinity')"
 #: numeric's text with the zeros that end its fraction gone.
-TRIM_SCALE = bound("_t", _DIGITS_AS_TEXT, _TRIMMED)
+TRIM_SCALE = held("_t", _DIGITS, _TRIMMED)
 #: How many digits of the fraction are left once they are; a NaN or an infinity has no scale.
-MIN_SCALE = bound(
-    "_t",
-    _DIGITS_AS_TEXT,
-    f"CASE WHEN {_NOT_A_NUMBER} THEN CAST(NULL AS INTEGER) ELSE "
-    f"CAST(length(split_part({_TRIMMED}, '.', 2)) AS INTEGER) END",
+MIN_SCALE = (
+    f"CASE WHEN {_NOT_A_NUMBER} THEN CAST(NULL AS INTEGER) "
+    f"WHEN STRPOS({held('_t', _DIGITS, _TRIMMED)}, '.') = 0 THEN 0 "
+    f"ELSE CAST(LENGTH(SPLIT_PART({held('_t', _DIGITS, _TRIMMED)}, '.', 2)) AS INTEGER) END"
 )
 
 # erf and erfc: no engine has them but ClickHouse, and PostgreSQL's are libm's, so these are the
@@ -740,35 +726,35 @@ def _polynomial(variable: str, coefficients: tuple[str, ...]) -> str:
 
 
 #: y of |x| < 0.84375: erf(x) is x + x * y.
-_ERF_NEAR_ZERO = bound("_z", f"{_X} * {_X}", _ratio(_polynomial("_z", _PP), _polynomial("_z", _QQ)))
-_ERF_NEAR_ONE = bound("_s", "_a - 1.0", _ratio(_polynomial("_s", _PA), _polynomial("_s", _QA)))
+_ERF_NEAR_ZERO = held("_z", f"{_X} * {_X}", _ratio(_polynomial("_z", _PP), _polynomial("_z", _QQ)))
+_ERF_NEAR_ONE = held("_s", "_a - 1.0", _ratio(_polynomial("_s", _PA), _polynomial("_s", _QA)))
 #: r / |x|: exp(-x^2) times the tail's ratio, with x^2 split so its exponent keeps every bit.
-_ERF_TAIL = bound(
+_ERF_TAIL = held(
     "_s",
     "1.0 / (_a * _a)",
-    bound(
+    held(
         "_z",
-        "floor(_a * 262144.0) / 262144.0",
-        f"exp(-_z * _z - 0.5625) * exp((_z - _a) * (_z + _a) + CASE WHEN _a < {_SWITCH} "
+        "FLOOR(_a * 262144.0) / 262144.0",
+        f"EXP(-_z * _z - 0.5625) * EXP((_z - _a) * (_z + _a) + CASE WHEN _a < {_SWITCH} "
         f"THEN {_ratio(_polynomial('_s', _RA), _polynomial('_s', _SA))} "
         f"ELSE {_ratio(_polynomial('_s', _RB), _polynomial('_s', _SB))} END) / _a",
     ),
 )
 _SIGN = f"CASE WHEN {_X} < 0 THEN -1.0 ELSE 1.0 END"
-ERF = bound(
+ERF = held(
     "_a",
     f"abs({_X})",
-    f"CASE WHEN isnan({_X}) THEN {_X} "
+    f"CASE WHEN IS_NAN({_X}) THEN {_X} "
     f"WHEN _a < 3.7252902984e-09 THEN {_X} + {_EFX} * {_X} "
     f"WHEN _a < {_SMALL} THEN {_X} + {_X} * ({_ERF_NEAR_ZERO}) "
     f"WHEN _a < {_MIDDLE} THEN ({_SIGN}) * ({_ERX} + {_ERF_NEAR_ONE}) "
     f"WHEN _a >= {_ERF_ONE} THEN {_SIGN} "
     f"ELSE ({_SIGN}) * (1.0 - {_ERF_TAIL}) END",
 )
-ERFC = bound(
+ERFC = held(
     "_a",
     f"abs({_X})",
-    f"CASE WHEN isnan({_X}) THEN {_X} "
+    f"CASE WHEN IS_NAN({_X}) THEN {_X} "
     f"WHEN _a < 1.3877787807814457e-17 THEN 1.0 - {_X} "
     f"WHEN _a < {_SMALL} AND {_X} < 0.25 THEN 1.0 - ({_X} + {_X} * ({_ERF_NEAR_ZERO})) "
     f"WHEN _a < {_SMALL} THEN 0.5 - ({_X} * ({_ERF_NEAR_ZERO}) + ({_X} - 0.5)) "
@@ -1116,3 +1102,24 @@ TIMESTAMPTZ_TIMETZ = "CASE WHEN isfinite(value) THEN CAST(value AS TIMETZ) END"
 #: behind.
 CLOCK_TIMESTAMP = "greatest(now(), uuid_extract_timestamp(uuidv7()))"
 TIMEOFDAY = f"strftime({CLOCK_TIMESTAMP}, '%a %b %d %H:%M:%S.%f %Y %Z')"
+
+
+PG_AS_REAL = (
+    f"CASE WHEN ABS(CAST(value AS DOUBLE PRECISION)) > 3.4028235677973366e38 "
+    f"AND NOT IS_INF(CAST(value AS DOUBLE PRECISION)) THEN {_OVERFLOW} "
+    f"WHEN value <> 0 AND CAST(value AS REAL) = 0 THEN {_UNDERFLOW} "
+    "ELSE CAST(value AS REAL) END"
+)
+#: The dialect has no hyperbolic inverse: their logarithms. asinh keeps the sign of a value, where
+#: its logarithm would lose the digits of one near zero.
+HYPERBOLICS = {
+    "asinh": f"SIGN({_X}) * LN(ABS({_X}) + SQRT({_X} * {_X} + 1.0))",
+    "acosh": (
+        f"CASE WHEN {_X} < 1.0 THEN {_OUT_OF_DOMAIN} ELSE LN({_X} + SQRT({_X} * {_X} - 1.0)) END"
+    ),
+    "atanh": (
+        f"CASE WHEN {_X} < -1.0 OR {_X} > 1.0 THEN {_OUT_OF_DOMAIN} "
+        f"ELSE 0.5 * LN((1.0 + {_X}) / (1.0 - {_X})) END"
+    ),
+}
+COT = f"1.0 / TAN({_X})"

@@ -46,7 +46,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import MARK, raising
-from provisa.transpiler import pg_forms, pg_forms_json, pg_forms_types
+from provisa.transpiler import engine_refusals, pg_forms, pg_forms_json, pg_forms_types
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 
 NATIVE = frozenset({"postgres"})
@@ -60,6 +60,10 @@ _EVERY = frozenset({"*"})
 _NO_CASE_SENSITIVE_LIKE = frozenset({"mysql", "tsql", "oracle", "sqlite"})
 #: No regular expression match, or none sqlglot can write.
 _NO_REGEX = frozenset({"tsql", "sqlite", "oracle", "mysql"})
+_CLICKHOUSE = frozenset({"clickhouse"})
+_NO_SPLIT_PART = frozenset({"tsql"})
+#: A time of day is no type of these engines: a cast to it is refused by name.
+_NO_TIME = frozenset({"trino", "presto", "athena", "clickhouse"})
 #: A regexp_substr(value, pattern, start, occurrence) of the dialect's own, sqlglot's to write.
 _REGEXP_SUBSTRS = frozenset({"snowflake", "oracle", "mysql", "bigquery", "redshift"})
 #: A cast of a text that is no number is an error here, so a form can raise PostgreSQL's refusal.
@@ -202,8 +206,9 @@ def _comparisons(prefix: str, *suffixes: str) -> tuple[Macro, ...]:
 
 def _pg(name: str, params: str, form: str, refused: frozenset[str] = frozenset()) -> Macro:
     """An overload whose form is PostgreSQL's syntax, which sqlglot writes for every dialect."""
+    where = _CASTS_CHECKED if MARK in form else _EVERY
     return Macro(
-        name, tuple(p for p in params.split(", ") if p), {_EVERY: Pg(form)}, refused=refused
+        name, tuple(p for p in params.split(", ") if p), {where: Pg(form)}, refused=refused
     )
 
 
@@ -696,6 +701,11 @@ def _float_pairs() -> tuple[Macro, ...]:
     )
 
 
+def _rounded(integer: str) -> str:
+    """A float's cast to an integer: rint's, and in that type's range."""
+    return pg_forms_types.integer_of(pg_forms_types.rint("value"), integer)
+
+
 def _numeric_conversions() -> tuple[Macro, ...]:
     """A function named for a number type: its own row reads what the engine holds; a numeric, a
     jsonb, a bit and a "char" have rows of their own, as pg_proc's are, chosen by OVERLOADS."""
@@ -714,6 +724,7 @@ def _numeric_conversions() -> tuple[Macro, ...]:
     integers = (("int2", "SMALLINT"), ("int4", "INTEGER"), ("int8", "BIGINT"))
     floats = (("float4", "FLOAT"), ("float8", "DOUBLE"))
     own_floats = {"FLOAT": pg_forms.AS_REAL, "DOUBLE": "CAST(value AS DOUBLE)"}
+    pg_floats = {"float4": pg_forms.PG_AS_REAL, "float8": "CAST(value AS DOUBLE PRECISION)"}
     return (
         *(
             _macro(
@@ -726,8 +737,14 @@ def _numeric_conversions() -> tuple[Macro, ...]:
                         "value", as_integer(sql_type), pg_forms.in_range("value", sql_type)
                     ),
                 ),
+                {_CASTS_CHECKED: Pg(pg_forms_types.integer_of("value", name))},
             )
             for name, sql_type in integers
+        ),
+        *(
+            _pg(f"{of}to{name[3:] and 'i' + name[3:]}", "value", _rounded(name))
+            for of in ("d", "f")
+            for name, _ in integers
         ),
         *(
             _macro(
@@ -738,19 +755,16 @@ def _numeric_conversions() -> tuple[Macro, ...]:
                     sql_type,
                     pg_forms.of_any_number("value", as_float(sql_type), own_floats[sql_type]),
                 ),
+                {_CASTS_CHECKED: Pg(pg_floats[name])},
             )
             for name, sql_type in floats
-        ),
-        _macro(
-            "jsonb_numeric",
-            "value",
-            strict("value", "VARCHAR", pg_forms.jsonb_number(digits, "numeric")),
         ),
         *(
             _macro(
                 f"numeric_{name}",
                 "value",
                 strict("value", sql_type, pg_forms.numeric_as_integer(digits, sql_type)),
+                {_CASTS_CHECKED: Pg(pg_forms_types.integer_of("ROUND(value)", name))},
             )
             for name, sql_type in integers
         ),
@@ -759,6 +773,7 @@ def _numeric_conversions() -> tuple[Macro, ...]:
                 f"numeric_{name}",
                 "value",
                 strict("value", sql_type, pg_forms.numeric_as_float(digits, sql_type)),
+                {_CASTS_CHECKED: Pg(pg_floats[name])},
             )
             for name, sql_type in floats
         ),
@@ -780,37 +795,85 @@ def _numeric_conversions() -> tuple[Macro, ...]:
     )
 
 
+#: The regression aggregates read only the rows where both arguments are not NULL.
+_PAIRED_X = "CASE WHEN y IS NOT NULL THEN x END"
+_PAIRED_Y = "CASE WHEN x IS NOT NULL THEN y END"
+_SLOPE = f"COVAR_POP(y, x) / VAR_POP({_PAIRED_X})"
+
+
+def _regression(name: str, form: str, native: frozenset[str] = frozenset()) -> Macro:
+    native_call = Pg(f"{name.upper()}(y, x)")
+    forms: dict[frozenset[str], str] = {_DUCKDB: native_call, _EVERY: Pg(form)}
+    return Macro(name, ("y", "x"), forms, own={native: MAPPED} if native else {})
+
+
+_REGRESSIONS: tuple[Macro, ...] = (
+    _regression("regr_count", "COUNT(CASE WHEN y IS NOT NULL AND x IS NOT NULL THEN 1 END)"),
+    _regression("regr_avgx", f"AVG({_PAIRED_X})"),
+    _regression("regr_avgy", f"AVG({_PAIRED_Y})"),
+    _regression("regr_sxx", f"VAR_POP({_PAIRED_X}) * COUNT({_PAIRED_X})"),
+    _regression("regr_syy", f"VAR_POP({_PAIRED_Y}) * COUNT({_PAIRED_Y})"),
+    _regression("regr_sxy", f"COVAR_POP(y, x) * COUNT({_PAIRED_X})"),
+    _regression(
+        "regr_r2",
+        f"CASE WHEN VAR_POP({_PAIRED_X}) = 0 THEN NULL WHEN VAR_POP({_PAIRED_Y}) = 0 THEN 1.0 "
+        "ELSE POWER(CORR(y, x), 2) END",
+    ),
+    _regression("regr_slope", f"CASE WHEN VAR_POP({_PAIRED_X}) <> 0 THEN {_SLOPE} END", _TRINO),
+    _regression(
+        "regr_intercept",
+        f"CASE WHEN VAR_POP({_PAIRED_X}) <> 0 "
+        f"THEN AVG({_PAIRED_Y}) - {_SLOPE} * AVG({_PAIRED_X}) END",
+        _TRINO,
+    ),
+)
+
 _NUMBERS: tuple[Macro, ...] = (
     *_integer_pairs(),
     *_float_pairs(),
     *_numeric_conversions(),
-    _macro("dexp", "x", strict("x", "DOUBLE", pg_forms.DEXP)),
-    _macro("dlog1", "x", strict("x", "DOUBLE", pg_forms.DLOG1)),
-    _macro("dlog10", "x", strict("x", "DOUBLE", pg_forms.DLOG10)),
-    _macro("dsqrt", "x", strict("x", "DOUBLE", pg_forms.DSQRT)),
-    _macro("dpow", "x, y", strict("x, y", "DOUBLE", pg_forms.DPOW)),
-    _macro("cosd", "x", strict("x", "DOUBLE", pg_forms.COSD)),
-    _macro("cotd", "x", strict("x", "DOUBLE", pg_forms.COTD)),
-    _macro("asind", "x", strict("x", "DOUBLE", pg_forms.ASIND)),
-    _macro("acosd", "x", strict("x", "DOUBLE", pg_forms.ACOSD)),
+    _pg("dexp", "x", strict("x", "DOUBLE", pg_forms.DEXP)),
+    _pg("dlog1", "x", strict("x", "DOUBLE", pg_forms.DLOG1)),
+    _pg("dlog10", "x", strict("x", "DOUBLE", pg_forms.DLOG10)),
+    _pg("dsqrt", "x", strict("x", "DOUBLE", pg_forms.DSQRT)),
+    _pg("dpow", "x, y", strict("x, y", "DOUBLE", pg_forms.DPOW)),
+    _pg("cosd", "x", strict("x", "DOUBLE", pg_forms.COSD)),
+    _pg("cotd", "x", strict("x", "DOUBLE", pg_forms.COTD)),
+    _pg("asind", "x", strict("x", "DOUBLE", pg_forms.ASIND)),
+    _pg("acosd", "x", strict("x", "DOUBLE", pg_forms.ACOSD)),
     _pg("atand", "x", pg_forms.ATAND),
     _pg("atan2d", "x, y", pg_forms.ATAN2D),
-    _macro(
-        "erf", "x", strict("x", "DOUBLE", pg_forms.ERF), own={frozenset({"clickhouse"}): "erf(x)"}
+    Macro(
+        "erf",
+        ("x",),
+        {_EVERY: Pg(strict("x", "DOUBLE", pg_forms.ERF))},
+        own={_CLICKHOUSE: "erf(x)"},
     ),
-    _macro(
+    Macro(
         "erfc",
-        "x",
-        strict("x", "DOUBLE", pg_forms.ERFC),
-        own={frozenset({"clickhouse"}): "erfc(x)"},
+        ("x",),
+        {_EVERY: Pg(strict("x", "DOUBLE", pg_forms.ERFC))},
+        own={_CLICKHOUSE: "erfc(x)"},
     ),
-    _macro("random_normal", "", pg_forms.RANDOM_NORMAL.format(mean="0.0", stddev="1.0")),
-    _macro(
+    *(
+        Macro(
+            name,
+            ("x",),
+            {_DUCKDB: Pg(f"{name.upper()}(x)"), _EVERY: Pg(form)},
+            own={_CLICKHOUSE: MAPPED},
+        )
+        for name, form in pg_forms.HYPERBOLICS.items()
+    ),
+    Macro("cot", ("x",), {_DUCKDB: Pg("COT(x)"), _EVERY: Pg(pg_forms.COT)}),
+    _pg("log", "x", "LOG10(x)"),
+    _pg("log10", "x", "LOG10(x)"),
+    _pg("random_normal", "", pg_forms.RANDOM_NORMAL.format(mean="0.0", stddev="1.0")),
+    _pg(
         "random_normal",
         "mean",
         strict("mean", "DOUBLE", pg_forms.RANDOM_NORMAL.format(mean="mean", stddev="1.0")),
     ),
-    _macro(
+    _pg(
         "random_normal",
         "mean, stddev",
         strict(
@@ -819,11 +882,23 @@ _NUMBERS: tuple[Macro, ...] = (
             pg_forms.RANDOM_NORMAL.format(mean="mean", stddev="stddev"),
         ),
     ),
-    _macro("trim_scale", "value", strict("value", "VARCHAR", pg_forms.TRIM_SCALE)),
-    _macro("min_scale", "value", strict("value", "INTEGER", pg_forms.MIN_SCALE)),
-    _macro(
-        "int8dec", "x", strict("x", "BIGINT", pg_forms.in_range("CAST(x AS HUGEINT) - 1", "BIGINT"))
+    _pg("trim_scale", "value", strict("value", "TEXT", pg_forms.TRIM_SCALE)),
+    _pg("min_scale", "value", strict("value", "INTEGER", pg_forms.MIN_SCALE), _NO_SPLIT_PART),
+    *_REGRESSIONS,
+    _pg("int8dec", "x", pg_forms_types.integer_of("(CAST(x AS DECIMAL(38, 0)) - 1)", "int8")),
+    *(
+        Macro(
+            f"numeric_{name}",
+            ("x",),
+            {
+                _DUCKDB: Pg(f"{name.upper()}(x)"),
+                _EVERY: Pg(f"CAST({name.upper()}(x) AS DECIMAL(38, 0))"),
+            },
+        )
+        for name in ("ceil", "floor", "round", "trunc")
     ),
+    _pg("bool_int4", "value", "CASE WHEN value THEN 1 WHEN NOT value THEN 0 END"),
+    _pg("float4_avg", "x", "AVG(CAST(x AS DOUBLE PRECISION))"),
     _macro("int2int4_sum", "v", strict("v", "BIGINT", pg_forms.INT2INT4_SUM)),
     _macro("int2vectorsend", "v", strict("v", "BLOB", pg_forms.INT2VECTOR_SEND)),
     _macro(
@@ -838,8 +913,6 @@ _NUMBERS: tuple[Macro, ...] = (
 )
 
 _BIGQUERY_HAS_IT: Forms = {frozenset({"bigquery"}): MAPPED}
-#: A time of day is no type of these engines: a cast to it is refused by name.
-_NO_TIME = frozenset({"trino", "presto", "athena", "clickhouse"})
 _MAKE_INTERVAL_PARAMS = "years, months, weeks, days, hours, mins, secs"
 _DATES: tuple[Macro, ...] = (
     Macro("statement_timestamp", (), {_EVERY: Pg("CURRENT_TIMESTAMP")}),
@@ -1001,18 +1074,20 @@ _ROWS: tuple[Macro, ...] = (
         "dround",
         "x",
         "round_even(CAST(x AS DOUBLE), 0)",
-        {_EVERY: Pg(pg_forms_types.FLOAT_RINT)},
+        {_EVERY: Pg(pg_forms_types.rint("x"))},
     ),
     _pg("dtrunc", "x", "TRUNC(CAST(x AS DOUBLE PRECISION))"),
     _macro(
         "sind",
         "x",
         "CASE WHEN isnan(CAST(x AS DOUBLE)) THEN CAST(x AS DOUBLE) ELSE provisa_sind(x) END",
+        {_CASTS_CHECKED: Pg(strict("x", "DOUBLE", pg_forms.SIND))},
     ),
     _macro(
         "tand",
         "x",
         "CASE WHEN isnan(CAST(x AS DOUBLE)) THEN CAST(x AS DOUBLE) ELSE provisa_tand(x) END",
+        {_CASTS_CHECKED: Pg(strict("x", "DOUBLE", pg_forms.TAND))},
     ),
     _pg("every", "x", "BOOL_AND(x)"),
     _pg(
@@ -1021,7 +1096,7 @@ _ROWS: tuple[Macro, ...] = (
         "CASE WHEN x IS NULL THEN CAST(NULL AS INTEGER) "
         "WHEN STRPOS(CAST(x AS TEXT), '.') > 0 "
         "THEN CAST(LENGTH(SPLIT_PART(CAST(x AS TEXT), '.', 2)) AS INTEGER) ELSE 0 END",
-        frozenset({"tsql"}),  # it has no SPLIT_PART
+        _NO_SPLIT_PART,
     ),
     _macro("to_bin", "value", f"format('{{:b}}', {_TWOS_COMPLEMENT})"),
     _macro("to_oct", "value", f"format('{{:o}}', {_TWOS_COMPLEMENT})"),
@@ -1216,6 +1291,17 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
         for of, of_row in (("decimal", "numeric"), ("jsonb", "jsonb"))
     },
     ("numeric", 1, "jsonb"): "jsonb_numeric",
+    **{
+        (name, 1, of): f"{row}to{'i' + name[3:]}"
+        for name in ("int2", "int4", "int8")
+        for of, row in (("double precision", "d"), ("float", "f"), ("real", "f"))
+    },
+    ("int4", 1, "boolean"): "bool_int4",
+    ("avg", 1, "real"): "float4_avg",
+    ("avg", 1, "float"): "float4_avg",
+    ("round", 1, "double precision"): "dround",
+    ("trunc", 1, "double precision"): "dtrunc",
+    **{(name, 1, "decimal"): f"numeric_{name}" for name in ("ceil", "floor", "round", "trunc")},
     ("md5", 1, "bytea"): "md5_bytea",
     ("int4", 1, "bit"): "bittoint4",
     ("int8", 1, "bit"): "bittoint8",
@@ -1248,7 +1334,12 @@ _CALLED = {
     **{row: name for (name, _, _), row in OVERLOADS.items()},
     **{row: "encode" for row in ("encode_hex", "encode_base64", "encode_escape")},
 }
-_NAMES = frozenset(name for name, _ in MACROS) | {name for name, _, _ in OVERLOADS} | {"encode"}
+_NAMES = (
+    frozenset(name for name, _ in MACROS)
+    | {name for name, _, _ in OVERLOADS}
+    | {"encode"}
+    | engine_refusals.NAMES
+)
 _MENTIONED = re.compile(
     r"\b(" + "|".join(sorted(_NAMES)) + r")\"?\s*\(|" + pg_forms_json.OPERATORS, re.IGNORECASE
 )
@@ -1278,10 +1369,30 @@ def said_type(node: exp.Expr) -> str | None:
     return node.to.sql(dialect="postgres").lower() if isinstance(node, exp.Cast) else None
 
 
+def type_of(node: exp.Expr) -> str | None:
+    """The type a statement says of an argument, or of the column of a VALUES list it reads."""
+    return _said_by_values(node) if isinstance(node, exp.Column) else said_type(node)
+
+
+def _said_by_values(column: exp.Column) -> str | None:
+    """The type the first row of the VALUES list ``column`` reads says of it."""
+    select = column.find_ancestor(exp.Select)
+    source = select.args.get("from_") if select is not None else None
+    values = source.this if source is not None else None
+    if not isinstance(values, exp.Values) or values.args.get("alias") is None:
+        return None
+    names = [c.name for c in values.args["alias"].columns]
+    if column.name not in names or not values.expressions:
+        return None
+    row = values.expressions[0]
+    cells = row.expressions if isinstance(row, exp.Tuple) else [row]
+    return said_type(cells[names.index(column.name)])
+
+
 def overload(name: str, args: list[exp.Expr]) -> str:
     """The row a call reads: the overload of the type its first argument is said to be, else the
     row of its own name."""
-    said = said_type(args[0]) if args else None
+    said = type_of(args[0]) if args else None
     if said is None:
         return name
     return OVERLOADS.get((name, len(args), said.split("(")[0]), name)
@@ -1408,6 +1519,20 @@ _READ_AS: dict[type[exp.Expr], str] = {
     exp.JustifyHours: "justify_hours",
     exp.JustifyInterval: "justify_interval",
     exp.MD5: "md5",
+    exp.Acosh: "acosh",
+    exp.Asinh: "asinh",
+    exp.Atanh: "atanh",
+    exp.Avg: "avg",
+    exp.Ceil: "ceil",
+    exp.Cot: "cot",
+    exp.Floor: "floor",
+}
+
+
+_REGRESSIONS_READ: dict[type[exp.Expr], str] = {
+    getattr(exp, "".join(part.title() for part in macro.name.split("_"))): macro.name
+    for macro in _REGRESSIONS
+    if macro.name not in ("regr_r2", "regr_count")  # sqlglot has no class of these
 }
 
 
@@ -1417,6 +1542,15 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return node.name.lower(), list(node.expressions)
     if type(node) in _READ_AS:
         return _READ_AS[type(node)], [node.this]
+    if type(node) in _REGRESSIONS_READ:
+        return _REGRESSIONS_READ[type(node)], [node.this, node.expression]
+    if isinstance(node, exp.Log):  # sqlglot reads log10(x) as log(10, x)
+        base, value = node.this, node.expression
+        if value is None:
+            return "log", [base]
+        return ("log10", [value]) if base.name == "10" else ("log", [base, value])
+    if isinstance(node, (exp.Round, exp.Trunc)) and node.args.get("decimals") is None:
+        return ("round" if isinstance(node, exp.Round) else "trunc"), [node.this]
     if isinstance(node, exp.Length):  # an overload of a type: length(text) has no row
         return "length", [node.this]
     if isinstance(node, exp.Time):  # what sqlglot reads as a zone is an overload's second argument
@@ -1477,7 +1611,7 @@ def _unqualified(tree: exp.Expr) -> exp.Expr:
             continue
         if isinstance(call, exp.Anonymous):
             call = exp.func(call.name, *call.expressions, dialect="postgres")
-        if isinstance(call, exp.Func):
+        if isinstance(call, (exp.Func, exp.Binary)):  # mod is a binary as sqlglot reads it
             replaced = dot.replace(call)
             tree = replaced if dot is tree else tree
     return tree
@@ -1491,6 +1625,10 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         return tree
     if dialect not in _DUCKDB:
         tree = _unqualified(tree)
+        for node in tree.walk():
+            refused_call = engine_refusals.refused_call(node, dialect, type_of)
+            if refused_call is not None:
+                raise FunctionRefused(refused_call, dialect)
     try:
         tree = pg_forms_json.lowered(tree, dialect)
     except pg_forms_json.NoForm as refused:

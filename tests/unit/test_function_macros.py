@@ -138,7 +138,7 @@ def test_a_form_survives_the_engines_own_rewrites():
     ("sql", "dialect", "function"),
     [
         ("SELECT bytealike(a, b) FROM t", "mysql", "bytealike"),
-        ("SELECT sind(x) FROM t", "trino", "sind"),
+        ("SELECT bytealike(a, b) FROM t", "trino", "bytealike"),
         ("SELECT regexp_match(a, b) FROM t", "snowflake", "regexp_match"),
         ("SELECT center(a) FROM t", "bigquery", "center"),
         ("SELECT a FROM t WHERE jsonb_pretty(a) = 'object'", "clickhouse", "jsonb_pretty"),

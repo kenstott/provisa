@@ -32,6 +32,8 @@ from __future__ import annotations
 
 from sqlglot import exp
 from sqlglot.dialects.bigquery import BigQuery
+from sqlglot.dialects.clickhouse import ClickHouse
+from sqlglot.dialects.dialect import rename_func
 from sqlglot.dialects.postgres import Postgres
 from sqlglot.dialects.presto import Presto
 from sqlglot.dialects.spark import Spark
@@ -49,6 +51,37 @@ def _flagged_regex(self: Generator, expression: exp.RegexpILike) -> str:
 
 for _dialect in (Trino, Presto, Spark, BigQuery):
     _dialect.Generator.TRANSFORMS[exp.RegexpILike] = _flagged_regex
+Trino.Generator.TRANSFORMS[exp.IsInf] = rename_func("IS_INFINITE")
+Trino.Generator.TRANSFORMS[exp.Log] = lambda self, expression: (
+    self.func("LOG", expression.this, expression.expression)
+    if expression.expression
+    else self.func("LOG", exp.Literal.number(10), expression.this)
+)
+#: The names that have one spelling on ClickHouse: its other functions take any case.
+for _function, _name in (
+    (exp.Cbrt, "cbrt"),
+    (exp.Sinh, "sinh"),
+    (exp.Cosh, "cosh"),
+    (exp.Acosh, "acosh"),
+    (exp.Asinh, "asinh"),
+    (exp.Atanh, "atanh"),
+):
+    ClickHouse.Generator.TRANSFORMS[_function] = rename_func(_name)
+
+
+def _split_part(self: Generator, expression: exp.SplitPart) -> str:
+    """ClickHouse's parts are an array's elements: past the last one an empty value, as here."""
+    value = self.sql(expression.this)
+    delimiter = self.sql(expression.args["delimiter"])
+    part = self.sql(expression.args["part_index"])
+    # An Array cannot be Nullable, so the parts are of the value with its NULL taken out first.
+    return (
+        f"if(isNull({value}), NULL, "
+        f"splitByString(assumeNotNull({delimiter}), assumeNotNull({value}))[{part}])"
+    )
+
+
+ClickHouse.Generator.TRANSFORMS[exp.SplitPart] = _split_part
 
 
 def _root_read_back(name: str) -> None:

@@ -51,9 +51,12 @@ def refused(sqlstate: str, message: str, sql_type: str = "INTEGER") -> str:
     return f"CAST(CAST({text} AS INTEGER) AS {sql_type})"
 
 
-def _fails(sqlstate: str, message: str, sql_type: str = "INTEGER") -> str:
+def fails(sqlstate: str, message: str, sql_type: str = "INTEGER") -> str:
     """A refusal whose message is a constant."""
     return refused(sqlstate, _quoted(message), sql_type)
+
+
+_fails = fails
 
 
 #: Ends the refusal of a value a form cannot answer as PostgreSQL does.
@@ -65,12 +68,11 @@ def _not_served(function: str, sql_type: str) -> str:
     return _fails("0A000", f"{function} {REFUSED}", sql_type)
 
 
-#: float8's rint, half to even: ROUND is half away from zero on most dialects.
-FLOAT_RINT = (
-    "CASE WHEN CAST(x AS DOUBLE PRECISION) - FLOOR(CAST(x AS DOUBLE PRECISION)) = 0.5 "
-    "THEN 2 * ROUND(CAST(x AS DOUBLE PRECISION) / 2) "
-    "ELSE ROUND(CAST(x AS DOUBLE PRECISION)) END"
-)
+def rint(value: str) -> str:
+    """float8's rint, half to even: ROUND is half away from zero on most dialects."""
+    x = f"CAST({value} AS DOUBLE PRECISION)"
+    half = f"{x} - FLOOR({x}) = 0.5"
+    return f"CASE WHEN {half} THEN 2 * ROUND({x} / 2) ELSE ROUND({x}) END"
 
 
 def _bound(value: str, answer: str, name: str) -> str:
@@ -311,6 +313,12 @@ def _in_range(value: str, sql_type: str, pg_name: str, bits: int) -> str:
         f"THEN {_fails('22003', f'{pg_name} out of range', sql_type)} "
         f"ELSE CAST({value} AS {sql_type}) END"
     )
+
+
+def integer_of(value: str, stem: str) -> str:
+    """``value`` as the integer type ``stem`` names, or PostgreSQL's refusal of one it does not fit."""
+    _, sql_type, pg_name, _, bits = next(row for row in _INTEGERS if row[0] == stem)
+    return _in_range(value, sql_type, pg_name, bits)
 
 
 def _shifted_left(own: str, sql_type: str, bits: int) -> str:
