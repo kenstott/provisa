@@ -495,7 +495,7 @@ relationships:
   via_target_column: product_id
   via_label_source: fixed
 roles:
-- capabilities: [catalog_read, data_product_read, glossary_read, query_development, usage]
+- capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - pet-store
   - shelter

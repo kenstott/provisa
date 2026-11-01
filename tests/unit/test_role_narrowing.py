@@ -18,6 +18,7 @@ block whose grants others inherit. A role's rows are its own rule AND its parent
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -31,6 +32,7 @@ from provisa.security.effective_rights import capabilities_view, data_view_from_
 from provisa.security.inheritance import (
     effective_capabilities,
     expand_column_grants,
+    expand_meta_grants,
     flatten_role_dicts,
     materialize_rls,
     narrowed,
@@ -39,7 +41,12 @@ from provisa.security.inheritance import (
     role_chains,
 )
 from provisa.security.mutation_authz import admit_command, command_reachable
-from provisa.security.rights import role_domain_problem, served_roles
+from provisa.security.rights import (
+    META_DOMAIN_ID,
+    VIEWER_ROLE,
+    role_domain_problem,
+    served_roles,
+)
 from provisa.security.row_filters import with_owner_grant
 
 REPO = Path(__file__).resolve().parents[2]
@@ -197,7 +204,7 @@ class TestRefusedByName:
         assert self._refused(parent, child, tree={"bu": None, "bu_east": "bu"}) is None
 
     def test_a_subset_is_not_refused(self):
-        child = _role("c", ["usage", "catalog_read"], ["a"], ["analyst"])
+        child = _role("c", ["usage", "glossary_read"], ["a"], ["analyst"])
         assert self._refused(child) is None
 
     def test_a_role_with_no_parents_narrows_nothing(self):
@@ -311,11 +318,97 @@ def test_every_demo_and_config_role_is_a_subset_of_its_parents(path: Path):
         assert refused is None, f"{role['id']}: {refused}"
 
 
-def test_every_demo_role_built_on_analyst_holds_the_catalog():
-    """pet_analyst, the role the maintainer reported: narrowing must not take its catalog away."""
+def test_pet_analyst_holds_what_it_lists():
+    """pet_analyst, the role the maintainer reported: what narrowing leaves it is what it lists."""
     raw = yaml.safe_load((REPO / "config" / "provisa.yaml").read_text())
     pet = next(r for r in raw["roles"] if r["id"] == "pet_analyst")
     assert set(effective_capabilities("pet_analyst", _rows(pet))) == STANDARD_ROLE_RIGHTS["analyst"]
+    assert "catalog_read" not in pet["capabilities"]
+
+
+class TestViewerHoldsNoCatalogRead:
+    """REQ-1132: catalog_read is held only by a role that names it."""
+
+    def test_viewer_and_a_role_built_on_it_do_not_hold_it(self):
+        assert "catalog_read" not in STANDARD_ROLE_RIGHTS["viewer"]
+        assert "catalog_read" not in STANDARD_ROLE_RIGHTS["analyst"]
+
+    @pytest.mark.parametrize("role_id", ["dq_reader", "dq_steward", "data_product_owner"])
+    def test_a_role_whose_job_is_its_own_tables_does_not_hold_it(self, role_id):
+        assert "catalog_read" not in STANDARD_ROLE_RIGHTS[role_id]
+
+    @pytest.mark.parametrize(
+        "role_id",
+        [
+            "developer",
+            "modeler",
+            "source_admin",
+            "security_admin",
+            "data_steward",
+            "org_operator",
+            "org_admin",
+            "sandbox",
+        ],
+    )
+    def test_a_role_working_across_the_model_holds_it(self, role_id):
+        assert "catalog_read" in STANDARD_ROLE_RIGHTS[role_id]
+
+
+class TestDataAccessShowsTheDefaultTierAndNoMore:
+    """dq_reader's Data access tab: no meta table beyond the default tier."""
+
+    def _view(self) -> set[str]:
+        rows = [{**r, "residency_values": [], "max_rows": None} for r in standard_role_dicts()]
+        flat = {r["id"]: r for r in flatten_role_dicts(rows)}
+        chains = role_chains(rows)
+
+        def meta(tid: int, name: str, *columns: str) -> dict:
+            return {
+                "id": tid,
+                "domain_id": META_DOMAIN_ID,
+                "table_name": name,
+                "columns": [
+                    {"column_name": c, "visible_to": [VIEWER_ROLE], "scope": "domain"}
+                    for c in columns
+                ],
+                "write_grants": [],
+            }
+
+        tables = [
+            meta(1, "registered_tables_meta", "id", "visible_to"),
+            meta(2, "table_keys", "table_id"),
+            meta(3, "rls_rules", "id", "filter_expr"),
+            meta(4, "roles", "id", "capabilities"),
+            meta(5, "tracked_webhooks", "name", "url"),
+        ]
+        expand_column_grants(tables, chains)
+        expand_meta_grants(tables, flat.values())
+        state = SimpleNamespace(
+            roles=flat,
+            tables=tables,
+            rls_contexts={},
+            masking_rules={},
+            meta_roles={},
+            role_chains=chains,
+        )
+        return {
+            t["table_name"]: {c["name"] for c in t["columns"]}
+            for t in data_view_from_state(
+                state,
+                "dq_reader",
+                parents=parent_map(rows),
+                stored={},
+                readable=lambda *_: True,
+                governance=True,
+            )
+        }
+
+    def test_nothing_of_meta_beyond_the_default_tier(self):
+        shown = self._view()
+        assert not {"rls_rules", "roles", "tracked_webhooks"} & set(shown)
+
+    def test_the_default_tier_is_there_core_columns_alone(self):
+        assert self._view() == {"registered_tables_meta": {"id"}, "table_keys": {"table_id"}}
 
 
 class TestNoCapabilities:

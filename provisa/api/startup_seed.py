@@ -317,7 +317,7 @@ async def _register_admin_view(
                 "table_id": table_id,
                 "domain_id": domain_id,
                 "column_name": col["column_name"],
-                # REQ-2154: the catalog is read by every role built on Viewer.
+                # REQ-2154: the grant to Viewer the catalog hangs on (inheritance.expand_meta_grants).
                 "visible_to": [VIEWER_ROLE],
                 "data_type": col["data_type"],
                 "is_primary_key": col["column_name"] in pk_cols,
@@ -1094,7 +1094,7 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
                     "table_id": table_id,
                     "domain_id": "meta",
                     "column_name": col["column_name"],
-                    # REQ-2154: the catalog is read by every role built on Viewer.
+                    # REQ-2154: the grant to Viewer the catalog hangs on (inheritance.expand_meta_grants).
                     "visible_to": [VIEWER_ROLE],
                     "data_type": col["data_type"],
                     # A view over the registry has no key of its own — one org appears once per

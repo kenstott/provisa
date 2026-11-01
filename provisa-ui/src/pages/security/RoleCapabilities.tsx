@@ -55,9 +55,9 @@ export function RoleCapabilities({ roleId }: { roleId: string }) {
       <Text size="sm" c="dimmed" mb="xs">
         {t("roleRights.lineageHint")}
       </Text>
-      {/* Its names read at body size (the diagram's 10px rows at 1.4); a lineage wider than the
-          panel shows the role itself, the standard roles reached by panning. */}
-      <LineageDag graph={graph} height={480} allColumns readable minZoom={1.4} overflowAt="end" />
+      {/* The whole lineage fitted to the panel, on every open and for every role: a role is a new
+          diagram, and a tab coming back has an area again, which fits it (LineageDag). */}
+      <LineageDag key={roleId} graph={graph} height={480} allColumns />
       <Table mt="md" data-testid="role-capabilities-list">
         <Table.Thead>
           <Table.Tr>

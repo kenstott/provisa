@@ -14,7 +14,7 @@ Every column has a scope, which says how far beyond its table's domain it reache
 | `listed` | Every role in the organisation sees the table's name and the column's name in the catalog. Nothing else is shown: no description, type, sample, value or count. | As for `domain`. |
 | `public` | Every role in the organisation sees the names and descriptions, and roles of every domain are served the column as their grants allow. Masks, row rules and limits apply as they do inside the domain. | As for `domain`. |
 
-On SQL, a role with no meta grant still sees core metadata for the tables of non-system domains it can read, write or list, on the pgwire catalog and in meta. List means metadata only, and querying a table a role only lists is refused by name. The gRPC proto, JSON:API, GraphQL, Cypher, SPARQL and OpenAPI show what a role can read or write. Every catalog is scoped to a role's data domains, and shows a system domain only to a role holding it.
+Viewer holds no meta grant: `catalog_read` is held by a role that names it. On SQL, a role with no meta grant still sees core metadata for the tables of non-system domains it can read, write or list, on the pgwire catalog and in meta. List means metadata only, and querying a table a role only lists is refused by name. The gRPC proto, JSON:API, GraphQL, Cypher, SPARQL and OpenAPI show what a role can read or write. Every catalog is scoped to a role's data domains, and shows a system domain only to a role holding it.
 
 Use `listed` to make a table discoverable. Someone in another domain can find its keys and ask its owners for a grant, and still reads nothing until a grant is given. A table appears outside its domain only through its listed or public columns.
 

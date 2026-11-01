@@ -41,6 +41,7 @@ _CAPABILITIES = [
     "full_results",
 ]
 _RESTRICTED = "catalog_restricted"
+_NO_META = "catalog_no_meta"
 _EVERYTHING = "catalog_everything"
 _CATALOG_READER = "developer"  # REQ-2155: a parent holding what the role is given
 _ITS_DOMAIN = "sales-analytics"
@@ -67,6 +68,14 @@ def _config(tmp_dir: Path) -> str:
             "capabilities": list(_CAPABILITIES),
             "domain_access": ["*"],
         },
+        {
+            # REQ-1132: no catalog_read: the catalog is still its.
+            "id": _NO_META,
+            "parents": [],
+            "description": "Test role.",
+            "capabilities": ["usage", "query_development"],
+            "domain_access": [_ITS_DOMAIN],
+        },
     ]
     for table in cfg["tables"]:
         for column in table["columns"]:
@@ -75,7 +84,7 @@ def _config(tmp_dir: Path) -> str:
                 table["domain_id"] == _ITS_DOMAIN
                 and (table["table"], column["name"]) != _WITHHELD_COLUMN
             ):
-                column["visible_to"].append(_RESTRICTED)
+                column["visible_to"] += [_RESTRICTED, _NO_META]
     path = tmp_dir / "catalog-restricted-role.yaml"
     path.write_text(yaml.safe_dump(cfg, sort_keys=False))
     return str(path)
@@ -267,3 +276,18 @@ def test_privilege_and_visibility_functions_are_the_catalogs(server):
         "SELECT has_schema_privilege('public', 'usage'), pg_type_is_visible(23), "
         "pg_function_is_visible(1), pg_has_role('x', 'member')",
     ) == [(True, True, True, True)]
+
+
+def test_a_role_with_no_meta_reads_pg_catalog(server):
+    """REQ-1132: the catalog passes metadata along; it is not gated by meta."""
+    assert "orders" in _names(_read(server, _NO_META, _TABLES))
+    assert _read(server, _NO_META, "SELECT typname::text FROM pg_type WHERE oid = 23") == [
+        ("int4",)
+    ]
+
+
+def test_a_role_with_no_meta_reads_information_schema(server):
+    """REQ-1132: the catalog passes metadata along; it is not gated by meta."""
+    listed = _read(server, _NO_META, "SELECT table_name::text FROM information_schema.tables")
+    assert "orders" in _names(listed)
+    assert "products" not in _names(listed)

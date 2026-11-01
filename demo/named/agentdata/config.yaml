@@ -35,13 +35,13 @@ roles:
 - id: support_west
   parents: [analyst]
   description: "A West support agent: the West's customers and their orders, email addresses masked, no prices."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - shop
 - id: shop_analyst
   parents: [analyst]
   description: "The BI analyst: every region's orders and what they came to, no customer's email."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development, usage]
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - shop
 server:

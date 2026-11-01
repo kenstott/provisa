@@ -35,7 +35,7 @@ domains:
     SQLite files federated into one virtual database
   id: pet-store
 roles:
-- capabilities: [catalog_read, data_product_read, glossary_read, query_development, usage]
+- capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - pet-store
   id: pet_analyst

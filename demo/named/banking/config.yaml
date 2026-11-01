@@ -67,12 +67,12 @@ roles:
 - id: banking_analyst
   parents: [analyst]
   description: "The bank's reporting analysts: the end-of-day totals, as reported at each close and as restated since, and the five ledger columns they are built from; never an account, a counterparty or a holder."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development, usage]
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access: [banking]
 - id: ops_analyst
   parents: [analyst]
   description: "Operations: drills from a total into its postings, under the ledger's row rules and masks."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [banking]
 server:
   limits:

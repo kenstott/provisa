@@ -66,25 +66,25 @@ roles:
 - id: group_analyst
   parents: [analyst]
   description: "The group's analysts, in the US: group reporting, where EU customers are pseudonymised."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [retail]
 # EU marketing: reads only the EU customers who agreed to marketing.
 - id: marketing_eu
   parents: [analyst]
   description: "EU marketing: only the EU customers who agreed to marketing."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [retail]
 # The data protection officer: answers data subject requests across both subsidiaries.
 - id: dpo
   parents: [analyst]
   description: "The data protection officer: answers data subject requests across both subsidiaries."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [retail]
 # The group's insider reviewers: the review queue, the sender revealed only to an EU reviewer.
 - id: reviewer
   parents: [analyst]
   description: "The group's insider reviewers: the review queue, the sender shown only to an EU reviewer."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [retail]
 server:
   limits:

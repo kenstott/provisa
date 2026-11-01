@@ -169,7 +169,6 @@ def _map_remote_schema(rs: HasuraRemoteSchema) -> Source:  # REQ-417
 # (org_admin and the sandbox inherit it, REQ-2155), which is why every imported column names it.
 # REQ-2155: a role holds what it is given of what its parents hold, so what viewer holds is given too.
 _READ_CAPS = [
-    Capability.CATALOG_READ.value,
     Capability.GLOSSARY_READ.value,
     Capability.DATA_PRODUCT_READ.value,
     Capability.QUERY_DEVELOPMENT.value,

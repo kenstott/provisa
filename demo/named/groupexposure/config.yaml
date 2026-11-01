@@ -49,7 +49,7 @@ roles:
 - id: risk
   parents: [analyst]
   description: "The bank's credit risk team: every facility, the bank's capital and the groups its borrowers belong to."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - groupexposure
 server:

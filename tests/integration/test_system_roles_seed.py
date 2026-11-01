@@ -121,7 +121,6 @@ async def test_the_tenant_roles_hold_the_authority_the_requirement_names(tenant_
     assert set(seeded["analyst"]) == {
         "usage",
         "query_development",
-        "catalog_read",
         "glossary_read",
         "data_product_read",
     }

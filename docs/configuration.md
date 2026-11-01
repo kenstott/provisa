@@ -800,12 +800,12 @@ roles:
   - id: sales_analyst
     description: Queries the sales analytics domain.
     parents: [analyst]
-    capabilities: [usage, query_development, catalog_read, glossary_read, data_product_read]
+    capabilities: [usage, query_development, glossary_read, data_product_read]
     domain_access: [sales-analytics]
   - id: junior_analyst
     description: A new analyst, who reads the data and does not develop queries.
     parents: [sales_analyst]
-    capabilities: [usage, catalog_read]
+    capabilities: [usage, glossary_read]
     domain_access: [sales-analytics]
 ```
 
@@ -817,7 +817,7 @@ A role with no capabilities can do nothing, reads included. It may carry a name 
 
 | Capability | What it allows |
 | ----------- | ------------- |
-| `catalog_read` | Read the meta domain. Without it, a role sees core metadata only for the tables it can read, write or list, and only over SQL. |
+| `catalog_read` | Read the meta domain. Viewer does not hold it, so a role holds it by naming it under a parent that holds it (`developer`, `source_admin`, `security_admin` or `org_operator`, and the roles built on them). Without it, a role sees core metadata only for the tables it can read, write or list, and only over SQL. |
 | `glossary_read` | Read the business glossary. |
 | `data_product_read` | See data products. |
 | `usage` | Run queries on governed data. |
@@ -1408,12 +1408,12 @@ roles:
   - id: sales_analyst
     description: Queries the sales analytics domain.
     parents: [analyst]
-    capabilities: [usage, query_development, catalog_read, glossary_read, data_product_read]
+    capabilities: [usage, query_development, glossary_read, data_product_read]
     domain_access: [sales-analytics]
   - id: junior_analyst
     description: A new analyst, who reads the data and does not develop queries.
-    parents: [sales_analyst]        # holds usage and catalog_read, and sales_analyst's grants
-    capabilities: [usage, catalog_read]
+    parents: [sales_analyst]        # holds usage and glossary_read, and sales_analyst's grants
+    capabilities: [usage, glossary_read]
     domain_access: [sales-analytics]
   - id: auditor
     description: Reads the sales analytics domain's records for audit.

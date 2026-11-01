@@ -47,24 +47,24 @@ roles:
 - id: control_room
   parents: [analyst]
   description: "The control room: the watch list and every case."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [bank]
 # First-level reviewers: their own desks' cases, the deal withheld; never the watch list.
 - id: reviewer_ana
   parents: [analyst]
   description: "A first-level reviewer: the cases of the desks Ana reviews, the deal withheld, never the watch list."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [bank]
 - id: reviewer_ben
   parents: [analyst]
   description: "A first-level reviewer: the cases of the desks Ben reviews, the deal withheld, never the watch list."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [bank]
 # A deal team: its own deal's rows of the watch list and of the queue.
 - id: deal_team_falcon
   parents: [analyst]
   description: "The Falcon deal team: its own deal's rows of the watch list and of the review queue."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [bank]
 server:
   limits:

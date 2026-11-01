@@ -43,7 +43,7 @@ roles:
 - id: pharma_analyst
   parents: [analyst]
   description: "Queries the pharma domain's data."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development, usage]
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - pharma
 server:

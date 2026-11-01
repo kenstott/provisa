@@ -67,7 +67,7 @@ def server():
                 {
                     "id": "keyed_reader",
                     "description": "Test role.",
-                    "parents": ["analyst"],
+                    "parents": ["developer"],
                     "capabilities": [
                         "catalog_read",
                         "data_product_read",

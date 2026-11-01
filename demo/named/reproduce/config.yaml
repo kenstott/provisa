@@ -36,7 +36,7 @@ roles:
   parents: [analyst]
   description: The regulator's examiner. Reads the exposure report and the trading book it is built
     from, as filed and as it stands now.
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - reproduce
 server:

@@ -42,14 +42,14 @@ roles:
 - id: customer
   parents: [analyst]
   description: "The signed-in customer of the order-history screen: their own orders and nothing else."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - shop
 # The BI analyst: every order, and no customer's email.
 - id: shop_analyst
   parents: [analyst]
   description: "The BI analyst: every order, and no customer's email."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development, usage]
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - shop
 server:

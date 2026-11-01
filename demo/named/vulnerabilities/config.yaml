@@ -43,7 +43,7 @@ roles:
 - id: security_analyst
   parents: [analyst]
   description: "Queries the security domain's findings."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development, usage]
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - security
 server:

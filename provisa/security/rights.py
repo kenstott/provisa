@@ -113,9 +113,9 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # AI generation endpoints that persist. A curator is granted both; granting RW alone leaves the
     # surface unreachable, because the page itself is gated on READ.
     GLOSSARY_READ = "glossary_read"
-    # REQ-1132: read the meta domain, the model's structure. Held by viewer; a role holds it when
-    # it is given it and a parent holds it (REQ-2155), and a column granted to viewer in meta is
-    # the holder's too (inheritance.expand_meta_grants).
+    # REQ-1132: read the meta domain, the model's structure. Viewer does not hold it: a role holds
+    # it by naming it, under a parent holding it (REQ-2155). A column granted to viewer in meta is
+    # the holder's (inheritance.expand_meta_grants); with no grant a role has the default tier.
     CATALOG_READ = "catalog_read"
     GLOSSARY_RW = "glossary_rw"
     # REQ-1592: curate ANY term in the org, whatever its domains and whoever authored it. The

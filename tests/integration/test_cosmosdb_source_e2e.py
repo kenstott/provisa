@@ -141,7 +141,6 @@ def server(emulator, tmp_path_factory):
                 "parents": ["analyst"],
                 "description": "Test role.",
                 "capabilities": [
-                    "catalog_read",
                     "data_product_read",
                     "glossary_read",
                     "query_development",

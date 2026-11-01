@@ -296,7 +296,6 @@ def _config(atlas: _Atlas, engine: str) -> dict:
                 "parents": ["analyst"],
                 "description": "Test role.",
                 "capabilities": [
-                    "catalog_read",
                     "data_product_read",
                     "glossary_read",
                     "query_development",

@@ -103,8 +103,9 @@ LISTED = ["pet-store", "shelter"]
 OWN = [
     {
         "id": ROLE,
-        "capabilities": sorted(STANDARD_ROLE_RIGHTS["analyst"]),
-        "parents": ["analyst"],
+        # REQ-1132: viewer holds no catalog_read, so it names it, under a parent that holds it.
+        "capabilities": sorted({*STANDARD_ROLE_RIGHTS["analyst"], "catalog_read"}),
+        "parents": ["developer"],
         "domain_access": LISTED,
     },
     # No viewer ancestor: it holds a data right and reaches a data domain.
@@ -274,8 +275,9 @@ def test_every_other_module_derives_from_it():
     "role_id,reach",
     [
         pytest.param(ROLE, ["meta", "ontology", "pet-store", "shelter"], id="pet_analyst"),
-        pytest.param("viewer", ["*", "meta", "ontology"], id="viewer"),
-        pytest.param("analyst", ["*", "meta", "ontology"], id="analyst-has-no-ops"),
+        pytest.param("viewer", ["*", "ontology"], id="viewer-holds-no-meta"),
+        pytest.param("analyst", ["*", "ontology"], id="analyst-has-no-meta-or-ops"),
+        pytest.param("developer", ["*", "meta", "ontology"], id="developer-has-no-ops"),
         pytest.param("org_operator", ["*", "meta", "ontology", "ops"], id="org_operator"),
         pytest.param("org_admin", ["*", "meta", "ontology", "ops"], id="org_admin"),
         pytest.param("platform_admin", [], id="platform_admin-reaches-none"),
@@ -309,7 +311,7 @@ def test_a_stored_system_domain_is_no_access_and_the_input_is_not_changed():
 def test_the_domain_tree_and_a_meta_role_keep_the_system_domains():
     assert domain_tree.expand(["*", "meta"], {}) == ["*", "meta"]
     members = [_flat("analyst"), {**_flat("org_operator"), "domain_access": ["ops", "sales"]}]
-    assert meta_role_of(members, "meta:x")["domain_access"] == ["*", "meta", "ontology", "ops"]
+    assert meta_role_of(members, "meta:x")["domain_access"] == ["*", "ontology", "ops"]
 
 
 @pytest.mark.parametrize("listed", [["meta"], ["sales", "ops"], ["ontology", "*"]])
@@ -614,7 +616,7 @@ def test_effective_rights_say_what_is_read_and_no_write_comes_with_it():
         tables=_tables(),
         reach=_flat()["domain_access"],
         chain=_chains()[ROLE],
-        parents={ROLE: ["analyst"]},
+        parents={ROLE: ["developer"]},
         stored={},
         masks={},
         row_rule=lambda _tid, _domain: None,
@@ -663,7 +665,7 @@ def _domains_response(monkeypatch, role: dict) -> list[str]:
     "role_id,shown",
     [
         pytest.param(ROLE, ["meta", "ontology", "pet-store"], id="pet_analyst"),
-        pytest.param("analyst", ["hr", "meta", "ontology", "pet-store"], id="wildcard-no-ops"),
+        pytest.param("analyst", ["hr", "ontology", "pet-store"], id="wildcard-no-ops"),
         pytest.param(
             "org_admin", ["hr", "meta", "ontology", "ops", "pet-store"], id="wildcard-with-ops"
         ),

@@ -42,7 +42,7 @@ roles:
 - id: fan
   parents: [analyst]
   description: Reads the World Cup domain's tables, views and graph.
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - worldcup
 server:

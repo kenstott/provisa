@@ -235,23 +235,23 @@ roles:
 - id: customer
   parents: []
   description: "A shop customer as the app signs one in: their own record, orders and order lines, and the active catalog."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development, write]
+  capabilities: [data_product_read, glossary_read, query_development, write]
   domain_access: ["*"]
 - id: support
   parents: []
   description: "Customer support: reads and updates customers and their orders to resolve requests."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development, write]
+  capabilities: [data_product_read, glossary_read, query_development, write]
   domain_access: ["*"]
 - id: support_lead
   parents: []
   description: "Leads customer support: what support does, for the requests support escalates."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development, write]
+  capabilities: [data_product_read, glossary_read, query_development, write]
   domain_access: ["*"]
 # A customer as the app signs one in: Ana, customer 1. The role's session value stands in for the
 # x-hasura-user-id claim her token would carry, so the tour reads the store as she does.
 - id: ana
   description: "Ana, customer 1, as the app signs her in: the customer role with her user id set."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development, write]
+  capabilities: [data_product_read, glossary_read, query_development, write]
   domain_access: ["*"]
   parents: [customer]
   session_vars: {hasura_user_id: "1"}

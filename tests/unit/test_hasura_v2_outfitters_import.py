@@ -167,11 +167,12 @@ def test_every_imported_role_is_a_subset_of_its_parents(converted):
         )
 
 
-def test_an_imported_role_holds_the_catalog_and_reads_no_standard_roles_grants(converted):
+def test_an_imported_role_holds_what_viewer_does_and_reads_no_standard_roles_grants(converted):
     """REQ-2155: it holds what it is given, and no standard role stands above it."""
     config, _collector = converted
     role = next(r for r in config.roles if not r.parents)
-    assert {"catalog_read", "glossary_read", "data_product_read"} <= set(role.capabilities)
+    assert {"glossary_read", "data_product_read"} <= set(role.capabilities)
+    assert "catalog_read" not in role.capabilities
 
 
 def test_an_inherited_role_of_several_roles_holds_the_union_of_their_rights(converted):

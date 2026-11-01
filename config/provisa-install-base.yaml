@@ -59,7 +59,7 @@ roles:
 - id: pet_analyst
   parents: [analyst]
   description: "Queries the pet store's data. What a member is given to explore it."
-  capabilities: [catalog_read, data_product_read, glossary_read, query_development, usage]
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - pet-store
 cache:
