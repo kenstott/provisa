@@ -52,10 +52,11 @@
     "sparqlDropNoPath": "{{name}} hat keine Beziehung zu {{classes}}. Nichts wurde hinzugefügt.",
     "sparqlDropTooFar": "{{name}} ist {{hops}} Beziehungen von {{classes}} entfernt, mehr als die {{most}}, die ein Ablegen durchläuft: kein kurzer Pfad. Nichts wurde hinzugefügt.",
     "sparqlDropNoEnd": "Keines der Enden von {{name}} ist in diesem Ergebnis. Nichts wurde hinzugefügt.",
+    "sparqlDropParameterized": "Ein Pfad kann nicht über {{name}} führen: Zum Lesen braucht es Argumente. Nichts wurde hinzugefügt.",
+    "sparqlDropEdgeParameterized": "{{name}} führt zu einer Tabelle, die zum Lesen Argumente braucht, und über eine solche kann kein Pfad führen. Nichts wurde hinzugefügt.",
     "sparqlDropNoProperty": "Keine Klasse in diesem Ergebnis hat {{name}}. Nichts wurde hinzugefügt.",
     "sparqlDropLeftOut": "{{shown}} von {{total}} gleich kurzen Pfaden hinzugefügt; die übrigen wurden ausgelassen.",
     "sparqlDropCut": "Das Ergebnis hat sein LIMIT von {{limit}} erreicht: Weitere Zeilen werden ausgelassen.",
-    "cypherDropTooFar": "{{name}} ist {{hops}} Beziehungen von diesem Ergebnis entfernt, mehr als die {{most}}, die ein Ablegen durchläuft: kein kurzer Pfad.",
     "cypherPathNoKey": "Die Pfade zwischen {{from}} und {{to}} brauchen den Schlüssel jedes Knotens, und einer von ihnen hat keinen."
   }
 }

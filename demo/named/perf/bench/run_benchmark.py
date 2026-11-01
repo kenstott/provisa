@@ -71,6 +71,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import host_agent
 from queries import QUERIES, Query
 from server_answer import checked
 
@@ -298,6 +299,13 @@ class Transport:
         pass
 
 
+async def _no_reset(_conn: Any) -> None:
+    """The pool's ``reset``: nothing. asyncpg's default sends one more statement (``SELECT
+    pg_advisory_unlock_all(); CLOSE ALL; UNLISTEN *; RESET ALL``) as each connection is released,
+    inside the timed region, which measured 1.3 to 1.45 ms on a point lookup. The harness leaves
+    no session state to clear: it never sets one."""
+
+
 PGWIRE_POOL_SIZE = 50  # real concurrent connections, independent of saturation's 4000 workers —
 # see run_saturation's docstring: a pool caps actual backend connections at a realistic number
 # (matching how a real client behaves) so saturation tests query throughput, not connection-slot
@@ -361,6 +369,7 @@ class PgwireTransport(Transport):
                     # PgBouncer-transaction-mode guidance (asyncpg's usual advice for poolers).
                     statement_cache_size=0,
                     timeout=10,
+                    reset=_no_reset,
                 )
 
             self._pool = asyncio.run_coroutine_threadsafe(_connect(), self._loop).result(timeout=30)
@@ -922,10 +931,15 @@ class GrpcTransport(Transport):
         self._message_class_cache[full_name] = cls
         return cls
 
-    def run_grpc(self, spec: dict, params: dict, category: str = "") -> tuple[int, int, float]:
+    def run_grpc(
+        self, spec: dict, params: dict, category: str = "", no_cache: bool = True
+    ) -> tuple[int, int, float]:
         assert self._channel is not None
         type_name = spec["type_name"]
         metadata = [("x-provisa-role", self._role)]  # matches every other transport's role
+        if not no_cache:
+            # REQ-544: gRPC opts into the response cache per call, in metadata.
+            metadata.append(("x-provisa-cache", "true"))
         batch: list = []
         estimator = _ByteEstimator()
         # REQ-1899: a large scan-mode query uses the batched-rows RPC (Query{Type}Batch,
@@ -1063,7 +1077,7 @@ def _run_sequential(
             elif method == "graphql":
                 n, byte_count, overhead_s = call(text, q.params, no_cache=no_cache)
             elif method == "grpc":
-                n, byte_count, overhead_s = call(text, q.params, q.category)
+                n, byte_count, overhead_s = call(text, q.params, q.category, no_cache=no_cache)
             else:
                 n, byte_count, overhead_s = call(text, q.params)
             # overhead_s (time spent computing _payload_bytes, and for Flight, Arrow->Python
@@ -1437,11 +1451,13 @@ def main() -> int:
     _prior_pass_results: list[QueryResult] = []
     sources = _describe_sources()
     transports_tested = sorted(name for name, t in transports.items() if t.available())
+    host = host_agent.host_facts({})
 
     def _checkpoint(results_so_far: list[QueryResult]) -> list[dict]:
         summaries = [r.summary() for r in _prior_pass_results + results_so_far]
         report = {
             "engine": args.engine,
+            "host": host,
             "sources": sources,
             "transports_tested": transports_tested,
             "generated_at": datetime.now(timezone.utc).isoformat(),

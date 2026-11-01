@@ -1,5 +1,8 @@
 # REQ-2135: what a drop writes on a frame, run on each engine. users SUBMITTED inquiries ABOUT pets,
 # so a user reaches a pet in two hops through a class between; a stray inquiry ties nothing.
+# SUBMITTED and SUBMITTED_BY are one join declared twice. assignments_by_breed is a parameterized
+# table between users and pets, whose read needs an argument: no path goes through it. staff walk
+# up BOSS, and round through it (ON_ROSTER, ROSTERED), so a recursive walk meets one too.
 federation_engine: duckdb
 auth:
   provider: none
@@ -46,6 +49,28 @@ tables:
       - {name: id, data_type: integer, visible_to: [org_admin]}
       - {name: pet_id, data_type: integer, visible_to: [org_admin]}
       - {name: user_id, data_type: integer, visible_to: [org_admin]}
+  - source_id: paths-pg
+    table: assignments_by_breed
+    schema: node_paths_e2e
+    domain_id: paths
+    columns:
+      - {name: id, data_type: integer, visible_to: [org_admin]}
+      - {name: pet_id, data_type: integer, visible_to: [org_admin]}
+      - {name: user_id, data_type: integer, visible_to: [org_admin]}
+      - {name: staff_id, data_type: integer, visible_to: [org_admin]}
+      - name: _nf_breed_name
+        data_type: varchar
+        visible_to: [org_admin]
+        native_filter_type: query_arg
+        native_filter_required: true
+  - source_id: paths-pg
+    table: staff
+    schema: node_paths_e2e
+    domain_id: paths
+    columns:
+      - {name: id, data_type: integer, visible_to: [org_admin]}
+      - {name: name, data_type: varchar, visible_to: [org_admin]}
+      - {name: boss_id, data_type: integer, visible_to: [org_admin]}
 relationships:
   - id: inquiry-about-pet
     source_table_id: inquiries
@@ -60,5 +85,47 @@ relationships:
     source_column: user_id
     target_column: id
     alias: SUBMITTED_BY
+    cardinality: many-to-one
+  - id: user-submitted-inquiry
+    source_table_id: users
+    target_table_id: inquiries
+    source_column: id
+    target_column: user_id
+    alias: SUBMITTED
+    cardinality: one-to-many
+  - id: assignment-of-user
+    source_table_id: assignments_by_breed
+    target_table_id: users
+    source_column: user_id
+    target_column: id
+    alias: ASSIGNED_TO
+    cardinality: many-to-one
+  - id: assignment-of-pet
+    source_table_id: assignments_by_breed
+    target_table_id: pets
+    source_column: pet_id
+    target_column: id
+    alias: ASSIGNED_PET
+    cardinality: many-to-one
+  - id: staff-boss
+    source_table_id: staff
+    target_table_id: staff
+    source_column: boss_id
+    target_column: id
+    alias: BOSS
+    cardinality: many-to-one
+  - id: staff-on-roster
+    source_table_id: staff
+    target_table_id: assignments_by_breed
+    source_column: id
+    target_column: staff_id
+    alias: ON_ROSTER
+    cardinality: one-to-many
+  - id: roster-of-staff
+    source_table_id: assignments_by_breed
+    target_table_id: staff
+    source_column: staff_id
+    target_column: id
+    alias: ROSTERED
     cardinality: many-to-one
 roles: []

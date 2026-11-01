@@ -53,7 +53,7 @@ const nodeOf = (nt: string): GNode =>
 const VOCABULARY: SparqlVocabulary = {
   base: B,
   prefixes: PREFIXES,
-  classes: [{ iri: PETS, kind: "table", labels: ["pet-store__pets"], superclasses: [] }],
+  classes: [{ iri: PETS, kind: "table", labels: ["pet-store__pets"], parameterized: false, parameterized_labels: [], superclasses: [] }],
   predicates: [
     {
       iri: `${PETS}#breedName`,
@@ -340,6 +340,8 @@ describe("a class's own prefix", () => {
     iri: `${B}/vocab/${domain}/${table}`,
     kind: "table" as const,
     labels: [`${domain}__${table}`],
+    parameterized: false,
+    parameterized_labels: [],
     superclasses: [],
   });
   const v = (classes: SparqlVocabulary["classes"], prefixes = PREFIXES): SparqlVocabulary => ({

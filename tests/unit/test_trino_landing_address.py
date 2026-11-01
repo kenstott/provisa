@@ -87,7 +87,7 @@ class _FakeConn:
 
 
 def _state(cfg, registered, monkeypatch):
-    async def _fetch_tables(_conn):
+    async def _fetch_tables(_conn, **_kw):
         return registered
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
