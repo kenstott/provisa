@@ -204,8 +204,8 @@ def test_no_volatile_function_is_ever_given_a_value():
 
 def test_the_null_call_of_a_function_answering_its_servers_own_compares_its_type_alone():
     now = Function("now", "", volatility="s", rettype="timestamp with time zone")
-    assert [(c.values, c.answers, c.prop) for c in support.calls(now, "Date")] == [
-        (False, False, support.CLOCK)
+    assert [(c.values, c.answers, c.form) for c in support.calls(now, "Date")] == [
+        (False, False, True)
     ]
     stat = Function("pg_stat_get_db_xact_commit", "oid", argtypes=("oid",), volatility="s")
     assert [(c.values, c.answers) for c in support.calls(stat, "System")] == [(False, False)]
@@ -671,10 +671,11 @@ def test_a_null_from_postgresql_leaves_no_form_to_check_and_holds_provisa_to_nul
     assert entry["outcome"] == "wrong_answer"
 
 
-def test_a_void_answer_has_no_form():
+def test_a_void_answer_has_no_form_and_is_tested_by_its_side_effect():
     fn = Function("pg_stat_clear_snapshot", "", volatility="v", rettype="void")
     entry = _both(fn, "System", _ok("", oid=2278), _ok("", oid=2278))
-    assert entry["outcome"] == "not_checked" and not entry["type_and_form_checked"]
+    assert not entry["type_and_form_checked"]
+    assert entry["outcome"] == "by_design" and entry["group"] == support.NOT_TESTABLE
 
 
 def test_null_where_postgresql_answers_a_value_is_a_wrong_answer():
@@ -791,7 +792,7 @@ class Effects:
 
     def answer(self, sql: str) -> dict[str, Any]:
         self.ran.append(sql)
-        return self.answers.get(sql, _ok(""))
+        return self.answers.get(sql, _ok("", oid=2278))
 
 
 SET_CONFIG = Function(
@@ -974,7 +975,12 @@ def test_the_guaranteed_list_is_what_passes_on_every_engine():
     )
     assert doc["guaranteed"]["answers_checked"] == ["abs(integer)"]
     assert doc["guaranteed"]["type_and_form_checked"] == []
-    assert set(doc["guaranteed"]) == {"answers_checked", "type_and_form_checked", "functions"}
+    assert set(doc["guaranteed"]) == {
+        "answers_checked",
+        "type_and_form_checked",
+        "side_effect_checked",
+        "functions",
+    }
     assert doc["guaranteed"]["functions"] == ["abs"]
     by = {f["function"]: f for f in doc["functions"]}
     assert by["sqrt"]["outcomes"]["b"]["outcome"] == "wrong_answer"
@@ -997,9 +1003,15 @@ def test_the_guaranteed_list_is_answers_checked_and_type_and_form_checked_on_eve
     assert doc["counts"]["a"]["not_checked"] == 1
     assert doc["not_checked_reasons"]["a"] == {"volatile": 1}
     text = support.merged_markdown(doc)
-    assert "| a | 3 | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 |" in text
-    assert "| Numeric | 3 | 1 + 1, 1 not checked, of 3 | 1 + 1, 1 not checked, of 3 | 2 |" in text
-    assert "**Guaranteed list:** 1 overloads with answers compared and 1 property checked" in text
+    assert "| a | 3 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert (
+        "| Numeric | 3 | 1 + 1 + 0, 1 not checked, of 3 | 1 + 1 + 0, 1 not checked, of 3 | 2 |"
+        in text
+    )
+    assert (
+        "**Guaranteed list:** 1 overloads with answers compared, 1 with type and form compared"
+        in text
+    )
     assert "| volatile | 1 |" in text
 
 
@@ -1064,10 +1076,16 @@ def test_the_summary_gives_every_engine_and_every_family():
         }
     )
     text = support.merged_markdown(doc)
-    assert "| a | 2 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
-    assert "| b | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
-    assert "| Numeric | 1 | 1 + 0, 0 not checked, of 1 | 1 + 0, 0 not checked, of 1 | 1 |" in text
-    assert "| String | 1 | 0 + 0, 0 not checked, of 1 | 1 + 0, 0 not checked, of 1 | 0 |" in text
+    assert "| a | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
+    assert "| b | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert (
+        "| Numeric | 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 |"
+        in text
+    )
+    assert (
+        "| String | 1 | 0 + 0 + 0, 0 not checked, of 1 | 1 + 0 + 0, 0 not checked, of 1 | 0 |"
+        in text
+    )
     assert "1 overloads with answers compared" in text
 
 
@@ -1444,8 +1462,8 @@ def test_both_pages_are_filled_from_the_results_between_their_markers(tmp_path):
     for name in ("pgwire.md", "overview.md"):
         text = (tmp_path / name).read_text()
         assert "stale text" not in text and "After." in text
-        assert "| Postgres | 1 | 0 | 0 | 0 | 0 | 0 |" in text
-        assert "| DuckDB | 0 | 0 | 0 | 1 | 0 | 0 |" in text
+        assert "| Postgres | 1 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+        assert "| DuckDB | 0 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
 
 
 def test_a_page_without_markers_is_refused():
@@ -1694,6 +1712,7 @@ def test_the_results_a_floor_reads_keep_their_keys():
         "exact",
         "equivalent",
         "not_checked",
+        "by_design",
         "refused_by_name",
         "differs",
         "differs_wrong_answer",

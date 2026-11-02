@@ -560,7 +560,7 @@ def pgwire_block(doc: dict[str, Any]) -> str:
             "and form, or a side effect was compared. |",
             "| Equivalent | The answer passes under a numbered rule below, linked from its row. |",
             "| Not checked | The engine answered with PostgreSQL's result type, but nothing was "
-            "compared. This is no pass, and it counts as failed. |",
+            "compared. A call that ran proves nothing, so this is no pass. |",
             "| Skipped by design | A decision of REQ-2167 skips it: a side-effect function off "
             "the PostgreSQL engine, one whose side effect no client can see, or a refusal by name "
             "a decision makes. |",
