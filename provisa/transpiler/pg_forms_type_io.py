@@ -224,7 +224,7 @@ TRINO = Engine(
     instant=lambda v: (
         "CAST(regexp_replace(regexp_replace("
         f"{v}, '([+-][0-9][0-9])$', '$1:00'), '([+-][0-9:]+)$', ' $1') "
-        "AS TIMESTAMP(6) WITH TIME ZONE)"
+        "AS TIMESTAMP(6) WITH TIME ZONE) AT TIME ZONE 'UTC'"
     ),
     clock=lambda v: f"CAST({v} AS TIME(6))",
     real_text=_trino_float_text("REAL", "1e-40"),

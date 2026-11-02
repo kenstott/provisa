@@ -261,6 +261,12 @@ def test_trino_writes_the_one_digit_java_does_not(sql: str):
     assert "'%.0e'" in transpile(sql, "trino")
 
 
+def test_trino_reads_an_instant_into_utc():
+    """Trino keeps a text's offset, which PostgreSQL does not: 23:59:59+02 is 21:59:59+00."""
+    sql = """SELECT pg_catalog."timestamptz_in"('1999-12-31 23:59:59+02'::cstring, 1184::oid, (-1)::integer) AS v"""
+    assert "AT TIME ZONE 'UTC'" in transpile(sql, "trino")
+
+
 def test_a_null_time_is_text_on_clickhouse():
     sql = """SELECT pg_catalog."time_in"(NULL::cstring, NULL::oid, NULL::integer) AS v"""
     assert "toTime64" not in transpile(sql, "clickhouse")

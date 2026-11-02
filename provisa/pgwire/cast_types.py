@@ -277,7 +277,7 @@ _NAMED_BY_THE_CALL = {
     "regproc": 24, "regprocedure": 2202, "regrole": 4096, "text": 25,
     "time with time zone": 1266, "tsquery": 3615,
 }  # fmt: skip
-_ANY_FORM = _TEXT_FORMS | _INTEGERS | {BVType.JSON, BVType.TIMETZ}
+_ANY_FORM = _TEXT_FORMS | _INTEGERS | {BVType.JSON}
 _RETURNED.update(
     {name: CastType(oid, -1, BVType.TEXT, _ANY_FORM) for name, oid in _NAMED_BY_THE_CALL.items()}
 )
