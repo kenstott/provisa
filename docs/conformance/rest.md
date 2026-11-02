@@ -1,6 +1,6 @@
 # REST / OpenAPI Conformance
 
-TBD: suite to be chosen.
+No public REST conformance suite runs in CI today.
 
 ## Deliberate differences
 
@@ -20,5 +20,5 @@ No standard REST add-ins apply here.
 
 | Tool | Version | Date | Method |
 | --- | --- | --- | --- |
-| Postman | TBD | TBD | TBD: replay or manual |
-| Insomnia | TBD | TBD | TBD: replay or manual |
+| Postman | — | — | Not yet verified |
+| Insomnia | — | — | Not yet verified |
