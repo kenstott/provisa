@@ -53,7 +53,9 @@
           Forty years of advances in data management share a common failure: each one added a
           piece of what an organization needs, and none assembled the pieces into one model that
           fuses governance, meaning, the data itself, and access. The result is estates held
-          together by integration projects that never quite close. <a href="/why/ai">AI has made the gap impossible to ignore.</a> An agent handed data with no fused meaning, ownership or governance shows the seams at once.
+          together by integration projects that never quite close. <a href="/why/ai">AI shows the
+          gap plainly</a>: an agent handed data with no fused meaning, ownership or governance
+          exposes the seams at once.
         </p>
       </div>
 
@@ -62,19 +64,13 @@
         <h2 id="history">Each generation added a piece</h2>
 
         <ul>
-          <li><strong>Data warehouses</strong> (Inmon, Kimball): one integrated copy of the truth, meaning encoded in a carefully designed schema — but access still scattered across tools, and governance bolted on afterwards.</li>
-          <li><strong>Big data and data lakes</strong> (Hadoop, object stores): scale without limits; meaning and governance were left behind, and the lake became a swamp.</li>
-          <li><strong>Data catalogs and governance tools</strong>: meaning documented and policies recorded — but neither bound to the data nor enforced at query time.</li>
-          <li><strong>Semantic layers and metrics stores</strong>: shared metric definitions for BI — but a thin slice of meaning covering only aggregations, with no model of who owns what or what the terms mean.</li>
-          <li><strong>Ontologies and knowledge graphs</strong>: formal meaning, relationships and reasoning — built as an end in themselves, rarely tied to operational records, and valued by assumption rather than measurement.</li>
-          <li><strong>Data mesh</strong>: domain ownership and data as a product, with federated computational governance — but deliberately no runtime, leaving programs to implement governance themselves over every domain's own systems.</li>
-          <li><strong>Palantir Foundry</strong>: the ontology is bound to data and access is controlled, which gets closer than almost anything else.
-            Our reading of their public documentation: Foundry builds applications on top of its own connectors and ontology framework rather than serving consumers over standard protocols. Value scales with the applications specialists build inside the platform, not with the concepts and relationships that people throughout the organization can own.
-            Operations are expressed in TypeScript or Python functions, and applications are built in Workshop, rather than from a small set of declared primitives a domain steward can read and approve.
-            Its governance model is controls-based: Markings, permissions, project roles, and Organizations determine who may see and do what.
-            What we find missing is a stewardship model for meaning: an accountable owner who defines and approves what a term means within a domain hierarchy, and whose approval is recorded with the term.
-            To be clear: this is Provisa's opinion. Foundry's object and link types and its declarative Action rules are genuine contributions to the field.
-          </li>
+          <li><strong>Data warehouses</strong> (Inmon, Kimball): one integrated copy of the truth, meaning encoded in a schema; access still scattered across tools, and governance added afterwards.</li>
+          <li><strong>Big data and data lakes</strong> (Hadoop, object stores): scale without limits; meaning and governance were left behind.</li>
+          <li><strong>Data catalogs and governance tools</strong>: meaning documented, policies recorded; neither bound to the data nor enforced at query time.</li>
+          <li><strong>Semantic layers and metrics stores</strong>: shared metric definitions for BI; a thin slice of meaning covering only aggregations, with no model of who owns what or what the terms mean.</li>
+          <li><strong>Ontologies and knowledge graphs</strong> (the first failure mode): formal meaning, relationships and reasoning, built as an end in themselves; rarely tied to operational records, and valued by assumption rather than measurement.</li>
+          <li><strong>Data mesh</strong>: domain ownership and data as a product, with federated computational governance; deliberately no runtime, leaving each program to implement governance over its own systems.</li>
+          <li><strong>Palantir Foundry</strong> (the second failure mode): the ontology is bound to data and access is controlled, which gets further than any other approach on this list. Our reading: Foundry builds applications on its own connectors and ontology framework; existing tools connect to it rather than through it, so value scales with what platform specialists build rather than with the concepts and relationships that domain owners define; operations are code (TypeScript, Python, Workshop) rather than declared primitives; governance is controls-based (Markings, permissions, project roles), with no stewardship of meaning as a first-class concern. This is Provisa's opinion; Foundry's object and link types and its declarative Action rules are genuine contributions to the field.</li>
         </ul>
 
         <p>
@@ -87,7 +83,7 @@
           - palantir.com/docs/foundry/functions/overview/ confirms: TypeScript and Python as the languages for functions, executed server-side.
           - palantir.com/docs/foundry/security/markings/ confirms: Markings are classification-based access controls (who may see data), not a stewardship-of-meaning workflow.
           - The Ontology Manager docs show branching and review of ontology proposals for technical ontology builders, not a domain stewardship/term approval workflow for business stewards.
-          Claims dropped or unsupported: no explicit evidence was found that Palantir lacks a glossary/definition approval workflow entirely; the claim is narrowed to "no stewardship model for meaning" (accountable owner, term approval, domain hierarchy) as distinguished from access controls. Stated as Provisa's opinion throughout.
+          Claims dropped or unsupported: no explicit evidence was found that Palantir lacks a glossary/definition approval workflow entirely; the claim is narrowed to "no stewardship of meaning as a first-class concern" as distinguished from access controls. Stated as Provisa's opinion throughout.
         -->
 
         <h2 id="opinions">The opinions behind the model</h2>
@@ -103,37 +99,36 @@
 
         <p>
           <strong>The model governs reality; it does not contain it.</strong> Sources stay where
-          they are. Interfaces — not pipelines — are the boundary between the model and the
-          systems it governs. A platform that processes data to govern it creates a copy and a
-          latency; it also fuses the governance with the platform, so replacing the platform
-          means replacing the governance too.
+          they are. Pipelines are not the answer; interfaces are. A platform that processes data
+          to govern it creates a copy and a latency; it also fuses the governance with the
+          platform, so replacing the platform means replacing the governance too.
         </p>
 
         <p>
           <strong>It pays off on day one.</strong> One domain, one steward, one concept, bound
-          to existing records. That is the minimum viable model. It governs one slice of the
-          organization from the first day it is declared, without a rebuild, a migration, or a
-          platform project first. Start there.
+          to existing records. That is enough to govern one slice of the organization from the
+          first day it is declared, without a rebuild, a migration, or a platform project first.
+          Start there.
         </p>
 
         <p>
           <strong>Domain boundaries are hypotheses.</strong> When something breaks, most
-          organizations reach for a new system, a new team, or a new layer. Before that, ask
-          these questions in order and stop at the first yes:
+          organizations reach for a new system, a new team, or a new layer. Before that, stop
+          at the first step that explains it:
         </p>
         <ol>
-          <li>Are the relevant terms clearly defined and grounded in data? If not: refine the meaning.</li>
+          <li>Are the relevant terms clearly defined and grounded? If not: refine the meaning.</li>
           <li>Do the registered relationships explain the gap? If not: refine the relationships.</li>
-          <li>Is ownership clear? If not: realign the boundary or reassign the steward.</li>
+          <li>Does ownership explain it? If not: realign the boundary or reassign the steward.</li>
           <li>Is the relevant reality inside the model at all? If not: expand the boundary.</li>
           <li>Only then: create a new concept or build something new.</li>
         </ol>
 
         <p>
-          <strong>The model compounds.</strong> A second domain can bind concepts to the first
-          domain's terms. A third relationship makes three possible join paths available to
-          every query. Each addition multiplies what earlier additions can express, unlike a
-          pipeline estate where each addition is an independent cost.
+          <strong>The model compounds.</strong> Each new domain binding opens query paths to
+          every relationship that crosses into it. Each new relationship multiplies what those
+          paths can traverse. A pipeline estate adds one capability per pipeline; the model
+          connects existing ones.
         </p>
 
         <p>
@@ -147,17 +142,18 @@
         <h2 id="provisa">Provisa as an attempt</h2>
 
         <p>
-          Each opinion above corresponds to something in the model. <a href="/why/glossary-that-grounds">Grounding is computed from the live model</a> and shown on
-          every term, so a steward can see at a glance whether their concept reaches data.
-          <a href="/why/ontology">The ontology</a> links concepts to columns, to
+          Each opinion above corresponds to something in the model.
+          <a href="/why/glossary-that-grounds">Grounding is computed from the live model</a>
+          and shown on every term, so a steward can see at a glance whether their concept
+          reaches data. <a href="/why/ontology">The ontology</a> links concepts to columns, to
           relationships, and to each other, with domain stewards as the accountable owners.
-          <a href="/why/governance">Access control</a> — row-level security, column masking,
-          role inheritance through the domain hierarchy — is compiled into every query plan,
-          so governance is not a layer applied to a copy but a constraint on the query itself.
-          <a href="/why/interfaces">One model</a> is served over pgwire, JDBC, Flight SQL,
-          GraphQL, REST, gRPC, Cypher/Bolt, SPARQL, and MCP, so existing tools connect without
-          being rebuilt inside the platform. Derived views capture their own lineage. Commands
-          declare write operations over governed tables.
+          <a href="/why/governance">Access control</a> (row-level security, column masking,
+          role inheritance through the domain hierarchy) is compiled into every query plan, so
+          governance is not a layer applied to a copy but a constraint on the query itself.
+          <a href="/why/interfaces">One model</a> is served over pgwire, JDBC, OData, Flight
+          SQL, GraphQL, REST, gRPC, Cypher/Bolt, SPARQL, and MCP, so existing tools connect
+          without being rebuilt inside the platform. Derived views capture their own lineage.
+          Commands declare write operations over governed tables.
         </p>
 
         <p>
@@ -169,11 +165,11 @@
         <h2 id="without-provisa">The model matters more than the tool</h2>
 
         <p>
-          The framework — fuse governance, meaning, data and access into one model, ground
-          concepts to records, govern reality at the boundary rather than inside a platform —
-          can be applied without Provisa. The practices are not ours. If you apply them
-          with the tools you have, you get most of the value. Provisa is an attempt to make the
-          whole thing declarative, so you do not have to implement it yourself.
+          The framework can be applied without Provisa: fuse governance, meaning, data and
+          access into one model, ground concepts to records, and govern reality at the boundary
+          rather than inside a platform. The practices are not ours. If you apply them with the
+          tools you have, you get most of the value. Provisa is an attempt to make the whole
+          thing declarative, so you do not have to implement it yourself.
         </p>
 
       </div>
