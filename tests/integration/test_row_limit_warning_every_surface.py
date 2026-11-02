@@ -16,7 +16,7 @@ three rows -- never the fourth -- and the warning in that surface's own channel;
 ``three`` it gets three rows and no warning; a role with full results gets all four and none.
 """
 
-# Requirements: REQ-1949
+# Requirements: REQ-1949, REQ-2193
 
 from __future__ import annotations
 
@@ -224,12 +224,37 @@ def _grpc(boot, role: str, table: str) -> tuple[int, list[str]]:
         channel.close()
 
 
+def _odata(boot, role: str, table: str) -> tuple[int, list[str]]:
+    """An entity-set read (REQ-2193). The warnings ride the X-Provisa-Warnings header, as on every
+    HTTP surface, and the body's ``@Provisa.warnings`` instance annotation; the two must agree."""
+
+    def get(path: str) -> tuple[dict, list[str]]:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{boot.ports['http']}/data/odata{path}",
+            headers={"Accept": "application/json", "x-provisa-role": role},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                said = json.loads(resp.headers.get("x-provisa-warnings") or "[]")
+                return json.loads(resp.read().decode()), [w["code"] for w in said]
+        except urllib.error.HTTPError as exc:
+            raise AssertionError(f"{exc.code} {exc.read().decode()}") from exc
+
+    service, _ = get("/")
+    (name,) = [s["url"] for s in service["value"] if s["url"].lower().endswith(table)]
+    body, codes = get(f"/{name}")
+    annotated = [w["code"] for w in body.get("@Provisa.warnings", [])]
+    assert annotated == codes, (annotated, codes)
+    return len(body["value"]), codes
+
+
 _SURFACES = {
     "sql_http": _sql_http,
     "cypher_http": _cypher_http,
     "pgwire": _pgwire,
     "flight": _flight,
     "grpc": _grpc,
+    "odata": _odata,
 }
 
 
