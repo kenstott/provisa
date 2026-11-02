@@ -61,6 +61,8 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 | `--no-browser` | off | Skip opening a browser when the UI is ready; still prints the URL |
 | `--reset` | off | Drop and rebuild the embedded control-plane store before starting; use after a Provisa upgrade if startup reports a schema mismatch |
 | `--data-dir` | `~/.provisa/native` | Directory that holds the embedded PostgreSQL cluster and DuckDB extension cache |
+| `--mode` | `every` | Process mode: `every` serves requests and runs background work; `query` serves requests only; `coordinator` runs background work only. See [How to Scale](how-to-scale.md) |
+| `--region` | _(none)_ | The platform region this node serves. Required when the platform declares regions; refused when it declares none. Set via `PROVISA_REGION` |
 
 ### Environment variables
 
@@ -75,6 +77,8 @@ Set them to override the defaults that `load_profile("native", ...)` would other
 | `PROVISA_DEMO` | Set to `1` by `--demo`; marks the session as a demo run |
 | `PROVISA_DEMO_DIR` | Path to the demo's sample-data directory; set by `--demo` |
 | `PROVISA_DUCKDB_EXT_DIR` | Pre-staged DuckDB extension directory; set automatically from the `provisa-duckdb-ext` package if present; absent means DuckDB downloads from the network on first use |
+| `PROVISA_MODE` | Process mode for this node: `every`, `query`, or `coordinator`. Set automatically by `--mode`; set it directly for container or VM launches that bypass the CLI |
+| `PROVISA_REGION` | Platform region for this node. Set automatically by `--region`; mirrors the same rules |
 
 ### Startup sequence
 
@@ -109,6 +113,15 @@ provisa run --reset
 
 # Point at an external Trino cluster instead of the embedded DuckDB engine
 TRINO_HOST=trino.internal TRINO_PORT=8080 provisa run
+
+# Run as a query node in a scaled deployment
+provisa run --mode query
+
+# Run as a coordinator node
+provisa run --mode coordinator
+
+# Query node in a regional deployment
+provisa run --mode query --region us-east-1
 ```
 
 ---
@@ -476,6 +489,9 @@ Maintenance notice: ON
 | `provisa run` | Start the embedded API + UI |
 | `provisa run --demo` | Start with pet-store / shelter sample data |
 | `provisa run --reset` | Rebuild the model store before starting |
+| `provisa run --mode query` | Start as a query-only node (scaled deployment) |
+| `provisa run --mode coordinator` | Start as a background-work-only node (scaled deployment) |
+| `provisa run --mode query --region REGION` | Start as a query node in a named region |
 | `provisa license apply <file>` | Install a license file offline |
 | `provisa license status` | Show machine ID and trial / license state |
 | `provisa metadata export` | Publish the metadata snapshot on demand |
@@ -500,3 +516,4 @@ Maintenance notice: ON
 - [Environments](environments.md): environment model, protected environments, deploy approval lifecycle
 - [Metadata Export](metadata-export.md): catalog providers, configuration, and what the snapshot contains
 - [Deployment](deployment.md): container tier and cloud deployment
+- [How to Scale](how-to-scale.md): process modes, query nodes, coordinators and regions

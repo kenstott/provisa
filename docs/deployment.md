@@ -643,6 +643,14 @@ kubectl rollout restart deployment/provisa --namespace provisa
 
 ---
 
+## Process modes and scaling
+
+A single Provisa process runs in `every` mode by default, serving queries and doing background work together. To scale query throughput, run additional processes in `query` mode behind a load balancer, and run one or more processes in `coordinator` mode for background work.
+
+See [How to Scale](how-to-scale.md) for the full topology, launch commands, Helm configuration, and region assignment.
+
+---
+
 ## High Availability & Recovery
 
 Provisa applies a two-tier recovery model across all deployment modes:
@@ -874,4 +882,4 @@ git pull
 provisa import config.yaml
 ```
 
-See also: [Environments](environments.md) explains how to manage named, schema-isolated copies of your governed model.
+See also: [Environments](environments.md) explains how to manage named, schema-isolated copies of your governed model. [How to Scale](how-to-scale.md) covers process modes, query nodes and coordinators.
