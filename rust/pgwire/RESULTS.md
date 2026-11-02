@@ -1,6 +1,21 @@
 # Rust pgwire DataRow encoder: differential test and benchmark
 
-An experiment, isolated from the product: nothing in `provisa/` or `vendor/` calls this crate.
+**Wired (J492e, REQ-2194).** pgwire's `send_data_rows` writes every result through this crate
+(`provisa._encoders.pgwire`), straight from the engine's Arrow batches; the Python DataRow writers
+it was compared against are gone from the product. They survive only as the differential's frozen
+reference, `tests/unit/pgwire_encoder/oracle.py`, which `pg_reference.pg17()` corrects to
+PostgreSQL 17. The differential (`tests/unit/pgwire_encoder/test_differential.py`) now drives the
+product's wired send path, not the crate alone; `test_row_boundary.py` holds a row engine's driver
+values through the fetch boundary (`ir_arrow.row_batch`, docs/arch/fetch-paths.md) to the same
+answers. The sections below record the experiment (J483, J492a, J492b) as it was run; its file
+names were `experiments/pgwire_encoder_rs/{test_compare,python_ref,pg_reference,bench}.py`.
+
+Since the wiring the encoder also reads DuckDB's lossless Arrow export (opaque `hugeint`,
+`uhugeint`, `varint`, `bit`, `time_tz` from their own bytes), an interval at any depth, a time of
+24:00:00 (which PostgreSQL holds and `datetime.time` cannot), and the enum array coercer
+(`pg_enum.array_text`). Two of the product defects below were corrected on main before the wiring
+(68bdf0150f: `interval_days`, and the 28-digit half of `numeric_binary`); the rest are corrected
+on the wire by the wiring itself.
 
 ## What is compared
 
