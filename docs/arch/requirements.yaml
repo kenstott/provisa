@@ -58686,7 +58686,12 @@
     shows only what the caller is served: a column the caller''s roles are not granted (REQ-2153/2154) is
     absent from the Columns sheet and from every other sheet that names it, a masked column shows its masked
     form wherever a value or statistic would reveal it, profiling figures follow the column''s grant and
-    mask, and a product, contract or term outside the caller''s domains is absent, as for every other sheet.'
+    mask, and a product, contract or term outside the caller''s domains is absent, as for every other sheet.
+    (Amended 2026-10-29, The picker roster in the shared sandbox lists only the caller:) Maintainer 2026-11-02:
+    the author and expert pickers read the org''s roster through a curator''s own right (glossary_rw), not
+    the team page''s user_management. In the shared "Try it Out" sandbox org every visitor is a curator,
+    so there the roster lists only the caller; other visitors'' names and emails are never shown. Real orgs
+    and per-visitor demo sandboxes list the org''s roster.'
   tests:
   - tests/unit/test_model_report_workbook.py
   - tests/integration/test_model_report_download.py
