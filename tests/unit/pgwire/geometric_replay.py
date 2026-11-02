@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from math import isclose, isnan
 from typing import Any
 
 import sqlglot
@@ -36,13 +37,41 @@ def function_of(sql: str) -> str:
     return found.group(1)
 
 
+#: REQ-2171: floats compare within one part in 10^14, since math libraries differ in the last
+#: digits (Trino's sin and cos are Java's, PostgreSQL's glibc's).
+_FLOAT_TOLERANCE = 1e-14
+_NUMBER = re.compile(r"-?(?:[0-9]+[.]?[0-9]*|[.][0-9]+)(?:[eE][-+]?[0-9]+)?")
+
+
+def _near(got: float, want: float) -> bool:
+    if isnan(got) or isnan(want):
+        return isnan(got) and isnan(want)
+    return isclose(got, want, rel_tol=_FLOAT_TOLERANCE, abs_tol=0.0)
+
+
+def _same_text(got: str, want: str) -> bool:
+    """A shape's text against PostgreSQL's: the same text between its numbers, each number within
+    the float tolerance."""
+    if got == want:
+        return True
+    numbers = _NUMBER.findall(got), _NUMBER.findall(want)
+    return (
+        _NUMBER.split(got) == _NUMBER.split(want)
+        and len(numbers[0]) == len(numbers[1])
+        and all(_near(float(a), float(b)) for a, b in zip(*numbers))
+    )
+
+
 def same(got: Any, want: str | None) -> bool:
-    """An engine's value against PostgreSQL's text: a double compares as its number."""
+    """An engine's value against PostgreSQL's text: a double compares as its number, and a text's
+    numbers as numbers, each within the float tolerance."""
     if isinstance(got, bool):
         return ("t" if got else "f") == want
+    if got is None or want is None:
+        return got is None and want is None
     if isinstance(got, float):
-        return want is not None and got == float(want)
-    return (None if got is None else str(got)) == want
+        return _near(got, float(want))
+    return _same_text(str(got), want)
 
 
 def outcome(sql: str, dialect: str, run: Callable[[str], Any]) -> str:

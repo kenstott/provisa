@@ -69,7 +69,11 @@ def _spelled_for_sqlglot(pg_sql: str) -> str:
 def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to Trino SQL."""
     pg_sql = rewrite_correlated_subqueries_for_trino(_spelled_for_sqlglot(pg_sql))
-    result = transpile(pg_sql, "trino")
+    # REQ-2171: the rewrites read the statement; a geometric form's routines are kept as written.
+    return pg_forms_geometric.around(transpile(pg_sql, "trino"), _trino_rewrites)
+
+
+def _trino_rewrites(result: str) -> str:
     result = _rewrite_epoch_of_timestamp_for_trino(result)
     result = _rewrite_json_build_object_for_trino(result)
     result = _rewrite_json_arrayagg_for_trino(result)

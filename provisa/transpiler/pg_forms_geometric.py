@@ -44,6 +44,9 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
+from sqlglot.dialects.trino import Trino
+from sqlglot.tokens import TokenType
+
 from provisa.core.pg_error import MARK
 from provisa.transpiler.pg_forms_types import REFUSED
 
@@ -2027,6 +2030,34 @@ def _defined(sql: str) -> str:
     if not order:
         return sql
     return "WITH " + ", ".join(ROUTINES[name][0] for name in order) + " " + sql
+
+
+#: What begins the statement after its routine definitions: nothing a routine's RETURN writes
+#: outside parentheses.
+_QUERY_STARTS = frozenset({TokenType.SELECT, TokenType.WITH, TokenType.VALUES, TokenType.TABLE})
+_OPENS = frozenset({TokenType.L_PAREN, TokenType.L_BRACKET})
+_CLOSES = frozenset({TokenType.R_PAREN, TokenType.R_BRACKET})
+
+
+def routines_apart(sql: str) -> tuple[str, str]:
+    """A Trino statement's routine definitions (its WITH FUNCTION head, '' where it has none) and
+    the statement after them. A step that has parsed and written the statement again keeps the
+    head, in its own spelling, so the head is found by its tokens."""
+    if not re.match(r"\s*WITH\s+FUNCTION\b", sql, re.IGNORECASE):
+        return "", sql
+    depth = 0
+    for token in Trino().tokenize(sql)[2:]:
+        depth += (token.token_type in _OPENS) - (token.token_type in _CLOSES)
+        if depth == 0 and token.token_type in _QUERY_STARTS:
+            return sql[: token.start], sql[token.start :]
+    raise ValueError(f"no statement after the routines of: {sql[:200]}")
+
+
+def around(sql: str, wrap: Callable[[str], str]) -> str:
+    """``wrap`` of a statement, as Trino takes it: what wraps it in parentheses holds no routine
+    definition, so the statement's head (:func:`routines_apart`) is put back in front."""
+    head, statement = routines_apart(sql)
+    return head + wrap(statement)
 
 
 def planned(sql: str, dialect: str) -> str:
