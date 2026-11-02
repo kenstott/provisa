@@ -1755,6 +1755,94 @@
       "agentdataConnect": {
         "title": "Tu propio agente, el mismo servidor",
         "description": "Este es el servidor que usó el agente del explorador. Pega esta configuración en Claude Desktop, o apunta cualquier cliente MCP a la URL, y tu propio agente obtiene las mismas herramientas gobernadas, sujetas a las mismas reglas."
+      },
+      "auditScenario": {
+        "title": "De qué trata esta demo",
+        "description": "Una firma de auditoría audita nueve organizaciones sin fines de lucro que gastan subvenciones federales. Antes del trabajo de campo, el socio pregunta si las subvenciones federales registradas por cada cliente coinciden con lo que los registros del gobierno muestran haberle pagado. Las relaciones y los registros de subvenciones de los clientes están en la base de datos propia de la firma; las presentaciones del Single Audit y las obligaciones federales son públicas. Los clientes y sus cifras son inventados; los programas, los condados y los datos públicos son reales."
+      },
+      "auditAnswer": {
+        "title": "Los puntos abiertos de cada cliente",
+        "description": "La vista readiness responde la misma pregunta para todos los clientes a la vez y se mantiene almacenada. Pone cada línea de la relación junto a sus registros de subvención y los datos públicos del programa, y enumera los puntos que necesita cada memorando de preparación."
+      },
+      "auditExample": {
+        "title": "Puntos abiertos en GraphQL",
+        "description": "Los puntos del memorando de preparación como una consulta GraphQL, para las herramientas de encargo de la firma."
+      },
+      "auditRecap": {
+        "title": "Lo que ha visto",
+        "description": "Los registros de clientes de la firma y las presentaciones y obligaciones públicas del gobierno, unidos en un solo modelo gobernado. Una vista almacenada responde la pregunta del socio para cada cliente. Cada equipo lee solo sus propios clientes, y cada consulta queda registrada."
+      },
+      "auditGovdata": {
+        "title": "Los datos públicos",
+        "description": "Los datos del gobierno vienen de AskAmerica: cada línea de subvención de los Single Audits de 2023 presentados ante el Federal Audit Clearinghouse en Vermont, New Hampshire y Maine, cada una junto a lo que USAspending obligó al mismo receptor bajo el mismo programa, y las obligaciones de USAspending por condado y programa."
+      },
+      "auditSchedule": {
+        "title": "La relación del cliente",
+        "description": "El borrador de la relación de gastos de subvenciones federales (Schedule of Expenditures of Federal Awards) de cada cliente para 2023: una línea por subvención, con su Assistance Listing, si vino directamente de una agencia federal o a través de una agencia estatal, y lo que el cliente dice haber gastado."
+      },
+      "auditNotices": {
+        "title": "Los registros de subvenciones",
+        "description": "Los registros federales de subvenciones que cada cliente tiene para sus subvenciones directas: una fila por obligación, el año fiscal federal en que se hizo y su importe. Una subvención plurianual puede haberse obligado antes del año en que se gastó."
+      },
+      "auditFiled": {
+        "title": "La misma conciliación, en presentaciones públicas",
+        "description": "Cada línea de subvención que las entidades auditadas de los tres estados presentaron para 2023, junto a lo que USAspending registró como obligado para ellas bajo el mismo programa ese año. Coincide aproximadamente la mitad. No se espera que coincida una línea recibida a través de un intermediario, y una subvención obligada en un año anterior no muestra obligación en el año auditado. Las líneas sin coincidencia se conservan, no se ocultan."
+      },
+      "auditCounty": {
+        "title": "Dinero federal por condado",
+        "description": "Lo que USAspending registró como obligado en el condado de cada cliente en el año fiscal federal 2023, por programa, contado donde se realiza el trabajo. Muestra si un programa que el cliente incluye en su relación paga algo en su condado."
+      },
+      "auditRecordedAs": {
+        "title": "De la relación a los registros",
+        "description": "Esta relación une cada línea de la relación con sus registros de subvención mediante la referencia de subvención de la firma. Una línea sin registro detrás, y un registro sin línea, son lo que busca el auditor."
+      },
+      "auditCountyJoin": {
+        "title": "Clientes y sus condados",
+        "description": "El código de condado de cada cliente lo une a las obligaciones por condado de USAspending, y sus Assistance Listings unen su relación con las presentaciones públicas del mismo programa en su estado."
+      },
+      "auditTerms": {
+        "title": "En palabras de un auditor",
+        "description": "La ontología explica los términos de un Single Audit: la relación, el Assistance Listing, la entidad intermediaria, la obligación, una diferencia temporal, una subvención faltante y el memorando de preparación."
+      },
+      "auditRequest": {
+        "title": "El encargo del socio",
+        "description": "El socio pide al analista que prepare a Brindlewood Community Health para el trabajo de campo. Este es su borrador de relación: cinco programas federales, tres de ellos subvenciones directas. A continuación, el analista resuelve el encargo con Polly."
+      },
+      "auditPollySchedule": {
+        "title": "Qué subvenciones registra",
+        "description": "El analista empieza por lo que registra el cliente. Polly enumera las subvenciones de su relación de 2023 y muestra el SQL que ejecutó. Su respuesta se generó al construir la demo y se guarda con ella."
+      },
+      "auditPollyRecords": {
+        "title": "Qué muestran los registros que se le pagó",
+        "description": "Después, el lado del gobierno: lo que los registros federales de subvención del cliente muestran como obligado para él en el año fiscal federal 2023. Una de las obligaciones es de un programa que la relación no incluye."
+      },
+      "auditPollyDiffer": {
+        "title": "Dónde difieren",
+        "description": "Polly pone la relación junto a los registros de subvención y enumera cada subvención en la que no coinciden, con la consulta que respalda su respuesta."
+      },
+      "auditPollyKinds": {
+        "title": "Temporal o faltante",
+        "description": "Una diferencia temporal es una subvención obligada en un año anterior y gastada este año, que solo necesita una explicación. Una subvención faltante es una línea directa sin registro federal detrás, que necesita una corrección. Polly clasifica las diferencias en los dos tipos."
+      },
+      "auditPollyMemo": {
+        "title": "El memorando de preparación",
+        "description": "Por último, el memorando: cada punto que el cliente debe explicar o corregir antes de que empiece el trabajo de campo, desde las diferencias temporales hasta la subvención que su relación omite."
+      },
+      "auditPublic": {
+        "title": "El patrón en las presentaciones públicas",
+        "description": "La misma conciliación, ejecutada sobre las presentaciones públicas de los tres estados. Estos son los programas cuyas líneas de subvención directa con más frecuencia no tienen obligación de USAspending en el año auditado. Se muestran tal como son, y muestran por qué una línea sin coincidencia es una pregunta para el auditor y no un error."
+      },
+      "auditAsTeam": {
+        "title": "Como el equipo de Maine",
+        "description": "Ejecutada como el equipo del encargo de Maine, la misma vista devuelve solo los tres clientes de ese equipo. Las reglas de fila en cada tabla y en la vista limitan a cada equipo a sus propios encargos. El socio los ve todos."
+      },
+      "auditLineage": {
+        "title": "De dónde sale cada cifra",
+        "description": "El linaje rastrea cada columna de la respuesta a través de la vista hasta las tablas de la firma y los datos públicos, para que un revisor vea de dónde sale cada cifra del memorando."
+      },
+      "auditRest": {
+        "title": "La misma respuesta por REST",
+        "description": "La vista también es un endpoint REST, agrupada por hallazgo y sumada en el servidor, para que una hoja de cálculo de papeles de trabajo la lea por HTTP."
       }
     },
     "status": {
@@ -1879,6 +1967,10 @@
       "agentdata": {
         "title": "Dale tus datos a un agente",
         "summary": "¿Se le pueden dar a un agente de IA los datos de pedidos de un minorista y limitarlo a lo que su usuario puede ver? El explorador MCP muestra al agente como agente de soporte y como analista: otras filas y columnas, correos enmascarados y el SQL gobernado detrás de cada respuesta."
+      },
+      "audit": {
+        "title": "Preparación para el Single Audit",
+        "summary": "¿Coinciden las subvenciones federales que registra un cliente sin fines de lucro con lo que los registros del gobierno muestran haberle pagado? Lo responden las relaciones de clientes de una firma de auditoría, unidas a las presentaciones del Single Audit y a las obligaciones de USAspending."
       }
     }
   }

@@ -160,10 +160,47 @@ CLOUDPOLICY = (
     ),
 )
 
+# The audit demo's questions (REQ-2040): the analyst's series on one client's Single Audit
+# readiness, its schedule set beside its federal award records.
+_BRINDLEWOOD = "'Brindlewood Community Health'"
+_OPEN_ITEMS = "('timing', 'missing', 'unrecorded')"
+AUDIT = (
+    Question(
+        "Which federal awards does Brindlewood Community Health's 2023 schedule record?",
+        'SELECT s.aln AS a FROM "audit"."grant_schedule" AS s '
+        'JOIN "audit"."clients" AS c ON c.client_id = s.client_id '
+        f"WHERE c.client_name = {_BRINDLEWOOD}",
+    ),
+    Question(
+        "What do Brindlewood Community Health's federal award records show obligated to it in "
+        "federal fiscal 2023?",
+        'SELECT n.aln AS a FROM "audit"."award_notices" AS n '
+        'JOIN "audit"."clients" AS c ON c.client_id = n.client_id '
+        f"WHERE c.client_name = {_BRINDLEWOOD} AND n.action_fiscal_year = 2023",
+    ),
+    Question(
+        "Where do Brindlewood Community Health's schedule and its federal award records differ?",
+        'SELECT aln AS a FROM "audit"."view_readiness" '
+        f"WHERE client_name = {_BRINDLEWOOD} AND finding IN {_OPEN_ITEMS}",
+    ),
+    Question(
+        "Which of Brindlewood Community Health's differences are timing differences, and which "
+        "are missing awards?",
+        'SELECT aln AS a FROM "audit"."view_readiness" '
+        f"WHERE client_name = {_BRINDLEWOOD} AND finding IN ('timing', 'missing')",
+    ),
+    Question(
+        "What goes in Brindlewood Community Health's readiness memo?",
+        'SELECT aln AS a FROM "audit"."view_readiness" '
+        f"WHERE client_name = {_BRINDLEWOOD} AND finding IN {_OPEN_ITEMS}",
+    ),
+)
+
 # Each named demo's questions, by its name (its directory under demo/named).
 QUESTIONS: dict[str, tuple[Question, ...]] = {
     "weblogs": WEBLOGS,
     "insider": INSIDER,
     "banking": BANKING,
     "cloudpolicy": CLOUDPOLICY,
+    "audit": AUDIT,
 }
