@@ -75817,7 +75817,10 @@
     can be part of the path. Like an OpenAPI document''s servers list, the operator declares the data addresses
     in the config (each a URL: a load balancer, a pool or a single node). The coordinator gives the UI that
     declared list; the UI''s browser setting picks one of them or an address the user types, defaulting
-    to the UI''s own origin when none is declared.'
+    to the UI''s own origin when none is declared. (Amended 2026-11-02, Declared per region:) Maintainer
+    2026-11-02: the declared data addresses are a list per region: each region declares the addresses of
+    its data nodes (a load balancer, a pool or a single node), and the UI is given the list for the org''s
+    region.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
