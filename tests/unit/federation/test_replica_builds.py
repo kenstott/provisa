@@ -328,8 +328,8 @@ def test_a_process_that_does_background_work_registers_its_build_pass(monkeypatc
         replica_builds.wire_replica_runner(scheduler, state=object(), platform_url=url)
         assert list(scheduler.jobs) == ["replica:builds:org_acme"] and made == [("acme", url)]
         assert scheduler.jobs["replica:builds:org_acme"]["replace_existing"] is True
-        # a process that only answers queries builds nothing (REQ-1916)
-        process_mode.set_mode(process_mode.QUERY)
+        # a data process builds nothing unless a control node commands it (REQ-1916)
+        process_mode.set_mode(process_mode.DATA)
         other = _Scheduler()
         replica_builds.wire_replica_runner(other, state=object(), platform_url=url)
         assert other.jobs == {} and len(made) == 1

@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A coordinator serves no data requests (REQ-1916): on every transport a request is refused by
+"""A control node serves no data requests (REQ-1916): on every transport a request is refused by
 name, at the transport's own boundary, before anything is read."""
 
 # Requirements: REQ-1916
@@ -23,35 +23,35 @@ from provisa.core import process_mode
 
 
 @pytest.fixture
-def coordinator():
+def control():
     was = process_mode.mode()
-    process_mode.set_mode(process_mode.COORDINATOR)
+    process_mode.set_mode(process_mode.CONTROL)
     yield
     process_mode.set_mode(was)
 
 
-_SAID = "this node runs in coordinator mode and serves no data requests"
+_SAID = "this node runs in control mode and serves no data requests"
 
 
 @pytest.mark.parametrize("transport", ["pgwire", "bolt", "grpc", "mcp", "graphql", "sql_http"])
-def test_a_request_on_any_transport_is_refused_naming_it(coordinator, transport):
+def test_a_request_on_any_transport_is_refused_naming_it(control, transport):
     from provisa.core import request_deadline
 
-    with pytest.raises(process_mode.CoordinatorServesNoData) as refused:
+    with pytest.raises(process_mode.ControlServesNoData) as refused:
         request_deadline.open_request(transport)
     assert _SAID in str(refused.value) and transport in str(refused.value)
 
 
-def test_a_flight_request_is_refused(coordinator):
+def test_a_flight_request_is_refused(control):
     from provisa.api.flight.deadline import request_budget
 
-    with pytest.raises(process_mode.CoordinatorServesNoData, match="flight"):
+    with pytest.raises(process_mode.ControlServesNoData, match="flight"):
         with request_budget(30.0):
             pass
 
 
-@pytest.mark.parametrize("mode", [process_mode.EVERY, process_mode.QUERY])
-def test_query_and_every_nodes_serve_requests(mode):
+@pytest.mark.parametrize("mode", [process_mode.EVERY, process_mode.DATA])
+def test_data_and_every_nodes_serve_requests(mode):
     from provisa.core import request_deadline
 
     was = process_mode.mode()
@@ -63,7 +63,7 @@ def test_query_and_every_nodes_serve_requests(mode):
 
 
 def _http(path: str) -> tuple[int, bytes]:
-    from provisa.api.coordinator_gate import CoordinatorDataGate
+    from provisa.api.control_gate import ControlDataGate
 
     sent: list[dict] = []
     reached: list[str] = []
@@ -79,16 +79,16 @@ def _http(path: str) -> tuple[int, bytes]:
     async def send(message):
         sent.append(message)
 
-    gate = CoordinatorDataGate(inner)
+    gate = ControlDataGate(inner)
     asyncio.run(gate({"type": "http", "path": path, "method": "POST"}, receive, send))
     body = b"".join(m.get("body", b"") for m in sent if m["type"] == "http.response.body")
     return sent[0]["status"], body
 
 
-def test_an_http_data_request_is_refused_and_the_admin_is_served(coordinator):
+def test_an_http_data_request_is_refused_and_the_admin_is_served(control):
     status, body = _http("/data/graphql")
     assert status == 503
-    assert b"node.coordinator_serves_no_data" in body and _SAID.encode() in body
+    assert b"node.control_serves_no_data" in body and _SAID.encode() in body
     assert _http("/data/anything/else")[0] == 503
     assert _http("/admin/graphql") == (200, b"ok")
     assert _http("/health") == (200, b"ok")

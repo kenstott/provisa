@@ -432,14 +432,14 @@ async def test_a_refresh_that_is_due_is_claimed_like_a_request(plane, tmp_path):
     assert (await _records(db))[_key(0)].next_refresh_at is None
 
 
-async def test_a_query_process_builds_nothing(plane, tmp_path, monkeypatch):
+async def test_a_data_process_builds_nothing(plane, tmp_path, monkeypatch):
     url, connect = plane
     db = connect()
     await _request(db, _key(0))
-    monkeypatch.setattr(process_mode, "_mode", process_mode.QUERY)
+    monkeypatch.setattr(process_mode, "_mode", process_mode.DATA)
 
     async def build(key, progress):
-        raise AssertionError("a query process runs no build")
+        raise AssertionError("a data process runs no build")
 
     node = _Node("a", url, db, tmp_path, build=build, permits=_Permits())
     assert await node.runner.run_pass() == 0
@@ -449,9 +449,9 @@ async def test_a_query_process_builds_nothing(plane, tmp_path, monkeypatch):
 def test_a_process_is_every_until_its_launch_says_otherwise(monkeypatch):
     assert process_mode.mode() == process_mode.EVERY and process_mode.runs_background_work()
     monkeypatch.setattr(process_mode, "_mode", process_mode.EVERY)
-    process_mode.set_mode(process_mode.COORDINATOR)
+    process_mode.set_mode(process_mode.CONTROL)
     assert process_mode.runs_background_work()
-    process_mode.set_mode(process_mode.QUERY)
+    process_mode.set_mode(process_mode.DATA)
     assert not process_mode.runs_background_work()
     with pytest.raises(ValueError, match="unknown process mode"):
         process_mode.set_mode("both")

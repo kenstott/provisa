@@ -10,13 +10,14 @@
 
 """The mode a process was started in (REQ-1916).
 
-A process starts in one of three modes: ``every`` (the default: it serves requests and does the
-coordinator's background work), ``query`` (requests only) or ``coordinator`` (background work
-only). The mode is chosen when the process is launched and does not change while it runs; it is
-not an operator setting.
+A process starts in one of three modes: ``every`` (the default: one process doing all of it),
+``control`` (it signs users in, governs, compiles and plans, holds the model store, serves the
+admin API and UI and runs the background work; it never touches a row) or ``data`` (it owns the
+client-facing listeners, asks a control node for the signed plan of each request, runs that plan
+and encodes the answer itself, and reports counters back). The mode is chosen when the process is
+launched and does not change while it runs; it is not an operator setting.
 
-The launch entry sets the mode once, before anything asks. Until the launch flag exists every
-process is ``every``.
+The launch entry sets the mode once, before anything asks.
 """
 
 # Requirements: REQ-1916
@@ -24,9 +25,9 @@ process is ``every``.
 from __future__ import annotations
 
 EVERY = "every"
-QUERY = "query"
-COORDINATOR = "coordinator"
-MODES = (EVERY, QUERY, COORDINATOR)
+CONTROL = "control"
+DATA = "data"
+MODES = (EVERY, CONTROL, DATA)
 
 _mode = EVERY
 
@@ -44,28 +45,35 @@ def mode() -> str:
     return _mode
 
 
-class CoordinatorServesNoData(RuntimeError):
-    """A data request reached a coordinator (REQ-1916), which serves none."""
+class ControlServesNoData(RuntimeError):
+    """A data request reached a control node (REQ-1916), which serves none."""
 
-    code = "node.coordinator_serves_no_data"
+    code = "node.control_serves_no_data"
 
     def __init__(self, transport: str) -> None:
         self.transport = transport
         super().__init__(
-            f"this node runs in coordinator mode and serves no data requests ({transport}); "
-            "send them to a node in query or every mode"
+            f"this node runs in control mode and serves no data requests ({transport}); "
+            "send them to a node in data or every mode"
         )
 
 
 def refuse_data_request(transport: str) -> None:
-    """Refuse a data request arriving on ``transport`` when this process is a coordinator. Called
+    """Refuse a data request arriving on ``transport`` when this process is a control node. Called
     at each transport's request boundary (request_deadline.open_request, the Flight request
     budget, the HTTP ``/data`` gate), before anything is read."""
-    if _mode == COORDINATOR:
-        raise CoordinatorServesNoData(transport)
+    if _mode == CONTROL:
+        raise ControlServesNoData(transport)
 
 
 def runs_background_work() -> bool:
-    """Whether this process does the coordinator's background work: replica builds, and the
-    scheduled work a coordinator runs. True for ``every`` and ``coordinator``."""
-    return _mode != QUERY
+    """Whether this process does the background work: replica builds, and the scheduled work.
+    True for ``every`` and ``control``; a data node runs it only as a command a control node sends
+    it."""
+    return _mode != DATA
+
+
+def plans_remotely() -> bool:
+    """Whether this process asks a control node for each request's plan (``data``) instead of
+    governing and routing it in process (``every``, ``control``)."""
+    return _mode == DATA

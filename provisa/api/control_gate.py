@@ -8,9 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The HTTP face of "a coordinator serves no data requests" (REQ-1916).
+"""The HTTP face of "a control node serves no data requests" (REQ-1916).
 
-Every request under ``/data`` is a data request. On a coordinator it is answered 503 with the
+Every request under ``/data`` is a data request. On a control node it is answered 503 with the
 coded refusal before it reaches a route; the admin, health and every other route are served. The
 other transports refuse at their own request boundary (``process_mode.refuse_data_request``)."""
 
@@ -26,8 +26,8 @@ from provisa.core import process_mode
 _DATA_PREFIX = "/data"
 
 
-class CoordinatorDataGate:
-    """ASGI middleware refusing ``/data`` requests on a coordinator, by name."""
+class ControlDataGate:
+    """ASGI middleware refusing ``/data`` requests on a control node, by name."""
 
     def __init__(self, inner: Any) -> None:
         self._inner = inner
@@ -39,7 +39,7 @@ class CoordinatorDataGate:
         ):
             try:
                 process_mode.refuse_data_request("http")
-            except process_mode.CoordinatorServesNoData as refused:
+            except process_mode.ControlServesNoData as refused:
                 # The shape every ApiError is answered with (app._api_error_handler).
                 body = json.dumps(
                     {

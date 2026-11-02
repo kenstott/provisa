@@ -625,10 +625,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     run.add_argument(
         "--mode",
-        choices=("every", "query", "coordinator"),
+        choices=("every", "control", "data"),
         default=None,
-        help="Process mode: every (default) serves requests and does the background "
-        "work; query only serves requests; coordinator only does the background work",
+        help="Process mode: every (default) is one process doing all of it; control governs, "
+        "plans and runs the background work and serves no data; data serves the client "
+        "listeners and asks a control node (--control) for each request's plan",
+    )
+    run.add_argument(
+        "--control",
+        default=None,
+        help="A data node's control node, host:port of its plan listener; required in data mode",
+    )
+    run.add_argument(
+        "--plane-port",
+        type=int,
+        default=None,
+        help="A control node's plan listener port, which data nodes dial; required in control mode",
     )
     run.add_argument(
         "--region",
@@ -751,6 +763,10 @@ def main(argv: list[str] | None = None) -> int:
             os.environ["PROVISA_MODE"] = args.mode
         if args.region is not None:
             os.environ["PROVISA_REGION"] = args.region
+        if args.control is not None:
+            os.environ["PROVISA_CONTROL"] = args.control
+        if args.plane_port is not None:
+            os.environ["PROVISA_PLANE_PORT"] = str(args.plane_port)
     return args.func(args)
 
 

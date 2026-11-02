@@ -11,7 +11,7 @@
 """The region a process runs in, and its launch (REQ-1916, REQ-1922).
 
 A node is launched in a mode (``process_mode``) and — when the platform declares regions — in one
-of them: ``provisa run --mode <every|query|coordinator> --region <id>``, or ``PROVISA_MODE`` /
+of them: ``provisa run --mode <every|control|data> --region <id>``, or ``PROVISA_MODE`` /
 ``PROVISA_REGION`` for a launch that does not go through the command. The launch is checked before
 any store is opened: a platform that declares regions refuses a node without one, listing them;
 a region the platform does not declare is refused; and a platform that declares none refuses a
@@ -72,17 +72,36 @@ def bind_launch(platform: dict[str, Any] | None, *, requested: str | None) -> st
     return requested
 
 
+def bind_mode_from_environment() -> None:
+    """Bind the launch's mode from ``PROVISA_MODE`` (set by ``provisa run --mode``). A control
+    node is launched with its plan listener's port (``--plane-port``, ``PROVISA_PLANE_PORT``) and
+    a data node with its control node (``--control``, ``PROVISA_CONTROL``): either without it is
+    refused, so a data node never plans for itself."""
+    requested_mode = os.environ.get("PROVISA_MODE")
+    if requested_mode is None:
+        return
+    if requested_mode not in process_mode.MODES:
+        raise LaunchRefused(
+            f"unknown process mode {requested_mode!r}; expected one of "
+            f"{', '.join(process_mode.MODES)}"
+        )
+    if requested_mode == process_mode.DATA and not os.environ.get("PROVISA_CONTROL", "").strip():
+        raise LaunchRefused(
+            "a data node is started with --control <host:port>: the control node it asks for "
+            "each request's plan"
+        )
+    if requested_mode == process_mode.CONTROL and not os.environ.get("PROVISA_PLANE_PORT"):
+        raise LaunchRefused(
+            "a control node is started with --plane-port <port>: the port data nodes ask it for "
+            "plans on"
+        )
+    process_mode.set_mode(requested_mode)
+
+
 def bind_from_environment(raw_config: dict[str, Any]) -> None:
     """Bind the launch's mode and region from ``PROVISA_MODE`` / ``PROVISA_REGION`` (set by
     ``provisa run --mode/--region``), checked against the config's ``platform`` key."""
-    requested_mode = os.environ.get("PROVISA_MODE")
-    if requested_mode is not None:
-        if requested_mode not in process_mode.MODES:
-            raise LaunchRefused(
-                f"unknown process mode {requested_mode!r}; expected one of "
-                f"{', '.join(process_mode.MODES)}"
-            )
-        process_mode.set_mode(requested_mode)
+    bind_mode_from_environment()
     bind_launch(raw_config.get("platform"), requested=os.environ.get("PROVISA_REGION") or None)
 
 

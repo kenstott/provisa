@@ -338,6 +338,15 @@ def require_governed_plan(plan: "_Plan") -> None:
         )
 
 
+def adopt_verified_plan(plan: "_Plan") -> "_Plan":  # REQ-1916
+    """Admit a plan a control node governed to this process's terminals: the plan arrived sealed
+    under the deployment key and :func:`provisa.planes.portable.import_plan` verified the seal
+    before calling this, so it is a plan the one pipeline produced -- on another node. It is given
+    this process's stamp, as the top of the pipeline gives the plans it mints here."""
+    plan.stamp = _mint_stamp()
+    return plan
+
+
 # Connector types that don't support the engine fault-tolerant execution (FTE): their
 # splits aren't replayable, so a query routed under retry-policy=TASK blocks
 # forever on the exchange. Queries touching these run with retry_policy=NONE.
@@ -1409,7 +1418,31 @@ async def _govern_and_route(
 
     ``serve_cached`` / ``wire_formats`` / ``route_hint`` / ``building``: see
     :func:`route_governed`.
-    ``product_statement``: see :func:`govern_statement`."""
+    ``product_statement``: see :func:`govern_statement`.
+
+    REQ-1916: this is the plan facade. In ``data`` mode the plan is a control node's, asked for
+    over the plane socket (:mod:`provisa.planes.facade`); in every other mode it is made here."""
+    from provisa.core import process_mode
+
+    if process_mode.plans_remotely():
+        from provisa.planes.facade import plan_remotely
+
+        return await plan_remotely(
+            "govern_and_route",
+            (sql, role_id),
+            {
+                "session_vars": session_vars,
+                "as_of": as_of,
+                "deliver": deliver,
+                "buffered": buffered,
+                "explain": explain,
+                "params": params,
+                "wire_formats": wire_formats,
+                "route_hint": route_hint,
+                "product_statement": product_statement,
+                "building": building,
+            },
+        )
     from provisa.api.app import state
 
     from provisa.core.statement_warnings import collecting
@@ -4897,7 +4930,31 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     states it: ``compiler.directives.cache_hint_for(language, request_text)``, gRPC's
     ``cache_hint_from_grpc_metadata``, or ``NO_CACHE_HINT`` for a surface with no hint syntax.
     ``serve_cached``: the caller's terminal serves a Route.CACHE plan — see
-    :func:`route_governed`."""
+    :func:`route_governed`.
+
+    REQ-1916: the plan facade, as :func:`_govern_and_route` is."""
+    from provisa.core import process_mode
+
+    if process_mode.plans_remotely():
+        from provisa.planes.facade import plan_remotely
+
+        return await plan_remotely(
+            "govern_and_route_compiled",
+            (sql, role_id),
+            {
+                "exec_params": exec_params,
+                "api_args": api_args,
+                "deliver": deliver,
+                "buffered": buffered,
+                "cache_hint": cache_hint,
+                "compiled": compiled,
+                "as_of": as_of,
+                "steward_hint": steward_hint,
+                "session_props": session_props,
+                "extra_selections": extra_selections,
+                "sdl_joins": sdl_joins,
+            },
+        )
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
     from provisa.core.statement_warnings import collecting
@@ -5962,7 +6019,16 @@ async def describe_pgwire_statement(  # REQ-589
 ) -> _Described:
     """Govern *sql* and derive its result columns from registered metadata — nothing is routed,
     executed or sent to a source. The Execute continues from the returned governed statement
-    (:func:`plan_pgwire_statement`), so the statement is governed exactly once."""
+    (:func:`plan_pgwire_statement`), so the statement is governed exactly once.
+
+    REQ-1916: in ``data`` mode a control node describes it (:mod:`provisa.planes.facade`), and the
+    answer holds no governed statement: the Execute asks the control node for its plan."""
+    from provisa.core import process_mode
+
+    if process_mode.plans_remotely():
+        from provisa.planes.facade import describe_remotely
+
+        return await describe_remotely(sql, role_id, as_of=as_of)
     from provisa.api.app import state
     from provisa.pgwire.ext_surfaces import rewrite_surface_operators
     from provisa.pgwire.function_call import detect_sql_function_call

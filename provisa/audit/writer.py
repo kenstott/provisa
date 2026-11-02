@@ -60,6 +60,7 @@ from provisa.core import request_deadline
 if TYPE_CHECKING:
     from provisa.core.connection_loop import LongLived
     from provisa.encryption import EncryptionService
+    from provisa.planes.audit_report import RemoteAuditWriter
 
 log = logging.getLogger(__name__)
 
@@ -591,13 +592,13 @@ class AuditWriter:
 
 
 _writer_lock = threading.Lock()
-_writer: AuditWriter | None = None
+_writer: "AuditWriter | RemoteAuditWriter | None" = None
 _exit_hook_registered = False
 # The budget an interpreter that exits without the application's own shutdown gives the writer.
 _EXIT_BUDGET_S = 5.0
 
 
-def start_audit_writer() -> AuditWriter:
+def start_audit_writer() -> "AuditWriter | RemoteAuditWriter":
     """Start this process's writer (application startup; each worker process has its own).
     Idempotent: a writer already running is returned as it is."""
     global _writer, _exit_hook_registered
@@ -608,7 +609,16 @@ def start_audit_writer() -> AuditWriter:
             _writer.close(0.0)
             _writer = None
         if _writer is None:
-            _writer = AuditWriter().start()
+            from provisa.core import process_mode
+
+            if process_mode.plans_remotely():
+                # REQ-1916: a data node reports its statements' facts to its control node, which
+                # writes the audit rows.
+                from provisa.planes.audit_report import RemoteAuditWriter
+
+                _writer = RemoteAuditWriter().start()
+            else:
+                _writer = AuditWriter().start()
         if not _exit_hook_registered:
             # A process that exits without running the application's shutdown (a test session, a
             # tool) still writes what is queued — bounded, and then it exits.
@@ -617,7 +627,7 @@ def start_audit_writer() -> AuditWriter:
         return _writer
 
 
-def audit_writer() -> AuditWriter:
+def audit_writer() -> "AuditWriter | RemoteAuditWriter":
     """This process's running writer. Raises when the application has not started one: a record
     must not be accepted by a writer nothing will ever drain."""
     writer = _writer

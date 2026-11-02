@@ -669,7 +669,7 @@ def open_request(transport: str) -> Deadline:
     from provisa.core import process_mode
     from provisa.core.limits import request_timeout_for, request_timeout_setting
 
-    # REQ-1916: a coordinator serves no data requests; every transport's request starts here.
+    # REQ-1916: a control node serves no data requests; every transport's request starts here.
     process_mode.refuse_data_request(transport)
     return Deadline(
         request_timeout_for(transport),

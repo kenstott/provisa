@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -109,6 +110,21 @@ class LocalKeychain(MasterKeyProvider):  # REQ-684
             )
         key = base64.b64decode(raw)
         return cls(key)
+
+
+def derived_deployment_key(purpose: str, key_id: str | None = None) -> bytes:  # REQ-684, REQ-1916
+    """A 32-byte key for ``purpose``, derived from the deployment master key every node of the
+    deployment holds (``PROVISA_ENCRYPTION_KEY``, else this host's key store), so two nodes
+    started on one deployment derive the same key and the master key itself is never used for
+    anything but wrapping. Raises when no master key is held: a node that must sign or verify
+    has nothing to do it with."""
+    raw = _master_key_b64(key_id)
+    if not raw:
+        raise RuntimeError(
+            f"no deployment master key found in {_MASTER_KEY_ENV}, the OS keychain or "
+            f"{keystore_path(key_id)}: every node of the deployment must hold the same one"
+        )
+    return hmac.new(base64.b64decode(raw), purpose.encode("utf-8"), hashlib.sha256).digest()
 
 
 def _local_keystore_dir() -> Path:

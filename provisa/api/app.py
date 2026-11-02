@@ -201,6 +201,7 @@ class AppState:
     # The names in system_health.HTTP_SURFACES mounted on the app; set when it starts.
     http_surfaces: Collection[str] = frozenset()
     _flight_server: Any | None = None  # ProvisaFlightServer
+    _plane_server: Any | None = None  # planes.control_server.PlaneServer (REQ-1916, control mode)
     _flight_relay: Any | None = None  # FlightRelay: the advertised Flight port (REQ-1900)
     # The other listeners this app starts and, at shutdown, stops (what an app starts, it stops).
     _pgwire_server: Any | None = None  # ProvisaServer
@@ -3727,7 +3728,10 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
     # REQ-074: the audit writer lives as long as the application — started here, before anything
     # serves a request, and stopped in the shutdown below. A request only enqueues to it.
     from provisa.audit.writer import start_audit_writer
+    from provisa.core import process_region as _launch_region
 
+    # REQ-1916: the mode is bound first -- a data node's audit writer reports to its control node.
+    _launch_region.bind_mode_from_environment()
     start_audit_writer()
     from provisa.api.setup_router import _auto_configure_idp, _idp_override
 
@@ -3840,6 +3844,11 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     await _start_background_tasks(_log)
 
+    # REQ-1916: a control node opens its plan listener for data nodes; a data node does not serve
+    # before its control node answers (no plan is made here in its place).
+    from provisa.planes.launch import start_plane
+
+    state._plane_server = start_plane()
     await _start_servers(_log)
     _log_http_surfaces(_app, _log)
     from provisa.api.admin.system_health import serving_http_surfaces
@@ -3954,6 +3963,9 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
         await asyncio.to_thread(stop_pgwire_server, state._pgwire_server)
         state._pgwire_server = None
 
+    if state._plane_server is not None:
+        state._plane_server.shutdown()
+        state._plane_server = None
     # Stop the Arrow Flight servers: each relay (the advertised port) before the server behind it.
     if state._flight_relay:
         state._flight_relay.close()
@@ -5263,11 +5275,11 @@ def create_app() -> FastAPI:
 
     app.add_middleware(ModelChangeMiddleware)
     app.add_middleware(_RequestTransportMiddleware)
-    # REQ-1916: a coordinator answers every /data request with its refusal, before the request
+    # REQ-1916: a control node answers every /data request with its refusal, before the request
     # transport opens a deadline for it.
-    from provisa.api.coordinator_gate import CoordinatorDataGate
+    from provisa.api.control_gate import ControlDataGate
 
-    app.add_middleware(CoordinatorDataGate)
+    app.add_middleware(ControlDataGate)
 
     from provisa.core.request_thread import RequestThreadMiddleware
 

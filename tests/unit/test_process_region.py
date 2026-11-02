@@ -65,10 +65,11 @@ def test_a_declared_region_is_the_nodes():
 
 
 def test_the_launch_reads_its_mode_and_region_from_the_environment(monkeypatch):
-    monkeypatch.setenv("PROVISA_MODE", "coordinator")
+    monkeypatch.setenv("PROVISA_MODE", "control")
+    monkeypatch.setenv("PROVISA_PLANE_PORT", "8817")
     monkeypatch.setenv("PROVISA_REGION", "us")
     process_region.bind_from_environment({"platform": _PLATFORM})
-    assert process_mode.mode() == process_mode.COORDINATOR
+    assert process_mode.mode() == process_mode.CONTROL
     assert process_region.region() == "us"
 
 
@@ -80,7 +81,8 @@ def test_an_unknown_mode_is_refused(monkeypatch):
 
 
 def test_the_run_command_takes_the_mode_and_region(monkeypatch):
-    """``provisa run --mode query --region eu`` hands both to the process it starts."""
+    """``provisa run --mode data --control host:port --region eu`` hands them to the process it
+    starts."""
     from provisa import cli
 
     seen: dict = {}
@@ -88,14 +90,17 @@ def test_the_run_command_takes_the_mode_and_region(monkeypatch):
     def _run(args):
         import os
 
-        seen["mode"], seen["region"] = (
+        seen["mode"], seen["region"], seen["control"] = (
             os.environ.get("PROVISA_MODE"),
             os.environ.get("PROVISA_REGION"),
+            os.environ.get("PROVISA_CONTROL"),
         )
         return 0
 
     monkeypatch.setattr(cli, "_cmd_run", _run)
     monkeypatch.delenv("PROVISA_MODE", raising=False)
     monkeypatch.delenv("PROVISA_REGION", raising=False)
-    assert cli.main(["run", "--mode", "query", "--region", "eu"]) == 0
-    assert seen == {"mode": "query", "region": "eu"}
+    monkeypatch.delenv("PROVISA_CONTROL", raising=False)
+    argv = ["run", "--mode", "data", "--control", "ctl:8817", "--region", "eu"]
+    assert cli.main(argv) == 0
+    assert seen == {"mode": "data", "region": "eu", "control": "ctl:8817"}

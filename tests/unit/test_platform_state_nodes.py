@@ -40,13 +40,13 @@ def _launch():
 
 
 async def test_a_running_node_is_listed_with_its_mode_and_region(platform):
-    process_mode.set_mode(process_mode.QUERY)
+    process_mode.set_mode(process_mode.DATA)
     process_region.bind_launch(
         {"regions": [{"id": "eu", "address": "https://eu.example.com"}]}, requested="eu"
     )
     await nodes.register(platform)
     (node,) = await nodes.live(platform)
-    assert (node["mode"], node["region"]) == ("query", "eu")
+    assert (node["mode"], node["region"]) == ("data", "eu")
     assert node["node_id"] == nodes.NODE_ID and node["pid"] > 0 and node["host"]
 
 
