@@ -181,12 +181,39 @@ def _pg_type_names(con: Any, oids: list[int]) -> list[str]:
 _RANGE_OIDS = tuple(oid for r in RANGE_TYPES.values() for oid in (r.oid, r.multirange_oid))
 _RANGES_AS_TEXT = psycopg2.extensions.new_type(_RANGE_OIDS, "PG_RANGE_TEXT", lambda text, _: text)
 _XML_ARRAY = psycopg2.extensions.new_array_type((143,), "XML_ARRAY", psycopg2.STRING)
+#: REQ-2167: a json value is the text PostgreSQL wrote, its spacing and key order kept (a jsonb's
+#: are its own, and its encoder writes them); psycopg2 reads it into a dict, whose str() is Python's.
+_JSON_AS_TEXT = psycopg2.extensions.new_type((114,), "PG_JSON_TEXT", lambda text, _: text)
+_JSON_ARRAY = psycopg2.extensions.new_array_type((199,), "PG_JSON_ARRAY_TEXT", _JSON_AS_TEXT)
+
+
+def _bounded(caster: Any) -> Any:
+    """``caster``, an array type's reader, leaving an array whose lower bounds are not 1 as the text
+    PostgreSQL writes of it ("[1:1][2:3]={...}"), which it refuses ("array does not start with
+    '{'") and which no list says."""
+
+    def read(text: str | bytes | None, cur: Any) -> Any:
+        return text if isinstance(text, str) and text.startswith("[") else caster(text, cur)
+
+    return psycopg2.extensions.new_type(caster.values, f"{caster.name}_BOUNDED", read)
+
+
+_BOUNDED_ARRAYS = tuple(
+    _bounded(caster)
+    for caster in {
+        id(c): c for c in psycopg2.extensions.string_types.values() if c.name.endswith("ARRAY")
+    }.values()
+)
 
 
 def _read_as_postgresql_writes(cur: Any) -> None:
     """``cur`` reading a value as PostgreSQL's own text of it, where psycopg2 would not."""
+    for bounded in _BOUNDED_ARRAYS:
+        psycopg2.extensions.register_type(bounded, cur)
     psycopg2.extensions.register_type(_RANGES_AS_TEXT, cur)
     psycopg2.extensions.register_type(_XML_ARRAY, cur)
+    psycopg2.extensions.register_type(_JSON_AS_TEXT, cur)
+    psycopg2.extensions.register_type(_JSON_ARRAY, cur)
 
 
 class _AdbcConnectionPool:

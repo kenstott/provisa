@@ -212,6 +212,9 @@ _BACKENDS: dict[str, _Backend] = {
             "numeric": _sized_decimal(_AS_TEXT),
             "date": _AS_WRITTEN,
             "time": _AS_TEXT,
+            # REQ-2167: interval_out's text, which database_to_xml writes of each element.
+            # Pinned by tests/unit/test_native_json_postgres_finite.py on the embedded server.
+            "interval": _AS_TEXT,
             "uuid": _AS_WRITTEN,
             "timestamp": _timestamp(
                 "to_char({x}, 'YYYY-MM-DD\"T\"HH24:MI:SS.US')",

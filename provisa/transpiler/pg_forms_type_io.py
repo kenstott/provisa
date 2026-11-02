@@ -1296,6 +1296,9 @@ def _bare(value: exp.Expr) -> exp.Expr:
     return node
 
 
+_CHARACTER = re.compile(r"(?:char|bpchar)\((\d+)\)|char")
+
+
 def _read(value: exp.Expr) -> exp.Expr:
     """A literal of a type, as the type's input function reads it, and a text row its text."""
     node = value.unnest()
@@ -1304,11 +1307,12 @@ def _read(value: exp.Expr) -> exp.Expr:
     if not node.this.is_string:
         return value
     typed = _type_said(node)
-    if typed == "char(5)":  # character(n): the row that pads reads it
-        return exp.Anonymous(
-            this="bpcharin",
-            expressions=[node.this.copy(), exp.Literal.number(1042), exp.Literal.number(9)],
-        )
+    sized = _CHARACTER.fullmatch(typed)
+    if sized is not None:
+        # character(n), and character alone character(1): an explicit cast truncates the text to
+        # n characters and pads it with spaces (REQ-2167).
+        length = int(sized.group(1) or 1)
+        return exp.Literal.string(node.this.name[:length].ljust(length))
     reader = _INPUT_OF_TYPE.get(typed)
     if reader is None:
         return node.this.copy()  # its row reads the text

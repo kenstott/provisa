@@ -60,10 +60,57 @@ _BIT_VARYING_SAID = re.compile(r"::\s*bit\s+varying\b", re.IGNORECASE)
 _OVERLAPS_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?overlaps"?\s*\(', re.IGNORECASE)
 
 
+_OVERLAPS_SPELLED = re.compile(r"\boverlaps_timestamp\s*\(", re.IGNORECASE)
+_WITHIN_GROUP = re.compile(r"\bWITHIN\s+GROUP\b", re.IGNORECASE)
+
+
+def _overlaps_restored(sql: str) -> str:
+    """PostgreSQL's own overlaps, which _spelled_for_sqlglot named for sqlglot to read (REQ-2167)."""
+    return _OVERLAPS_SPELLED.sub('pg_catalog."overlaps"(', sql)
+
+
+def _within_group_unqualified(pg_sql: str) -> str:
+    """``pg_sql`` with each pg_catalog.f(...) WITHIN GROUP (...) the unqualified call (REQ-2167):
+    sqlglot reads the qualified one as a column of table pg_catalog and writes its name quoted and
+    upper-cased, pg_catalog."RANK", which names no function. PostgreSQL resolves an unqualified
+    built-in in pg_catalog first, so the call is the same."""
+    if _WITHIN_GROUP.search(pg_sql) is None or "pg_catalog" not in pg_sql.lower():
+        return pg_sql
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    misread = [
+        c
+        for c in tree.find_all(exp.Column)
+        if isinstance(c.this, exp.WithinGroup) and c.table.lower() == "pg_catalog"
+    ]
+    for column in misread:
+        call = column.this
+        if isinstance(call.this, exp.Anonymous):
+            named = call.this
+            call.set("this", exp.Anonymous(this=named.name.lower(), expressions=named.expressions))
+        column.replace(call)
+    return tree.sql(dialect="postgres") if misread else pg_sql
+
+
 def _spelled_for_sqlglot(pg_sql: str) -> str:
     """``pg_sql`` as sqlglot can read it: it takes ``bit varying`` for a bit and an alias, and has
     no call of a function named overlaps."""
-    return _OVERLAPS_BY_NAME.sub("overlaps_timestamp(", _BIT_VARYING_SAID.sub("::varbit", pg_sql))
+    return _overlaps_by_name(_BIT_VARYING_SAID.sub("::varbit", pg_sql))
+
+
+_OVERLAPS_CALL = re.compile(r'\boverlaps"?\s*\(', re.IGNORECASE)
+
+
+def _overlaps_by_name(pg_sql: str) -> str:
+    """Each call of overlaps by its name, pg_catalog's or bare, as overlaps_timestamp: the operator
+    ``(a, b) OVERLAPS (c, d)`` follows a parenthesis, and a call follows none."""
+    pg_sql = _OVERLAPS_BY_NAME.sub("overlaps_timestamp(", pg_sql)
+
+    def named(found: re.Match[str]) -> str:
+        before = pg_sql[: found.start()].rstrip()
+        operator = before.endswith(")") or before.endswith(".")
+        return found.group() if operator else "overlaps_timestamp("
+
+    return _OVERLAPS_CALL.sub(named, pg_sql)
 
 
 def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
@@ -1217,6 +1264,7 @@ def transpile(
         SQL string in target dialect.
     """
     pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
+    pg_sql = _within_group_unqualified(pg_sql)
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
         pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
         pg_sql = _spelled_for_sqlglot(pg_sql)
@@ -1343,6 +1391,8 @@ def transpile(
         result = _lower_similarity(result, target_dialect, pgvector=pgvector)
     # REQ-2171: last, for what a later step parses has no routine definitions at its head.
     result = pg_forms_geometric.planned(result, target_dialect)
+    if target_dialect == "postgres":
+        result = _overlaps_restored(result)
     from provisa.observability.stage_trace import trace_stage
 
     trace_stage(f"transpile.{target_dialect}", result)
