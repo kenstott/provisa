@@ -1065,7 +1065,7 @@ class NativeEngineBackend(EngineBackend):
         # them rather than breaking the shared call site every engine's execute() must match.
         # The ops `queries` report reads spans named provisa.query.* and lifts their provisa.*
         # attributes into the trace table (TRACE_ATTR_COLS). The Trino terminal names its span
-        # that way in execute_trino; a native engine has no such executor, so the terminal names
+        # that way in trino_flight.execute_trino_flight; a native engine has no such executor, so the terminal names
         # it here — otherwise every native-engine org's report is blank.
         span_name = f"provisa.query.{self.dialect}" if span_attrs else f"{self.dialect}.execute"
         with _stage(_tracer, span_name, name="execute") as span:

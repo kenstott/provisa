@@ -31,6 +31,7 @@ import trino
 
 from provisa.executor.errors import FederationError
 from provisa.executor.trino_flight import (
+    CoordinatorRefused,
     TrinoContext,
     create_flight_connection,
     execute_trino_flight,
@@ -215,6 +216,25 @@ def test_the_query_timeout_is_enforced(flight_conn):
             context=context,
         )
     assert raised.value.error_name == "EXCEEDED_TIME_LIMIT"
+
+
+# -- an org's own coordinator -------------------------------------------------------------------
+
+
+def test_a_statement_runs_on_the_coordinator_it_names(flight_conn):
+    """The proxy dials the coordinator a statement names when the deployment declared it; the
+    stack's own (``trino:8080``, the proxy's configured coordinator) always is."""
+    context = TrinoContext(source="provisa/itest", server="http://trino:8080")
+    (row,) = execute_trino_flight(flight_conn, "SELECT 1", context=context).rows
+    assert row == (1,)
+
+
+def test_an_undeclared_coordinator_is_refused_by_name(flight_conn):
+    """A request never chooses where the proxy connects: an address the deployment did not
+    declare is refused before anything is dialed."""
+    context = TrinoContext(source="provisa/itest", server="http://169.254.169.254:80")
+    with pytest.raises(CoordinatorRefused, match="not one this proxy is declared to reach"):
+        execute_trino_flight(flight_conn, "SELECT 1", context=context)
 
 
 # -- errors -------------------------------------------------------------------------------------

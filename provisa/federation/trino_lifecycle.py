@@ -222,8 +222,9 @@ def bind_terminal(state: Any) -> None:
 
     The dedicated coordinator of an isolated-engine org sleeps between sessions (wake-on-traffic,
     same as the shared engine's front door). Binding only the kwargs keeps org provisioning from
-    waking — or failing against — a sleeping cluster; ``execute_trino``'s liveness/reconnect path
-    connects from these kwargs on the first real query."""
+    waking — or failing against — a sleeping cluster; the first real query's read names its
+    session (source, catalog, schema, and the coordinator for an org on its own) from these kwargs
+    through the Zaychik proxy (``executor/trino_flight.py``, REQ-2194)."""
     state.engine_conn_kwargs = terminal_conn_kwargs(state)
 
 

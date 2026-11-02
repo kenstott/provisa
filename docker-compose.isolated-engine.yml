@@ -28,6 +28,13 @@ services:
       PROVISA_ISOLATED_ENGINE_NETWORK: "${PROVISA_ISOLATED_ENGINE_NETWORK:?set to the compose network, e.g. compose_default}"
       PROVISA_ISOLATED_ENGINE_MEMORY: "${PROVISA_ISOLATED_ENGINE_MEMORY:-4g}"
 
+  # REQ-2194: a Trino read goes through the Zaychik proxy, which dials an org's own coordinator only
+  # when the deployment declared it: the isolated-engine host template is that declaration (the
+  # same names isolated_engine_endpoint resolves), plus any the operator declares.
+  zaychik:
+    environment:
+      TF_TRINO_ALLOWED_SERVERS: "http://${PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE:-provisa-trino-{org_id}}:${PROVISA_ISOLATED_ENGINE_PORT:-8080},${PROVISA_ZAYCHIK_ALLOWED_SERVERS:-}"
+
   # The UI process serves the same image and reads the same lane settings, so the engine-lane tab
   # reports what the API can actually do. It never creates containers — no socket here.
   provisa-ui:

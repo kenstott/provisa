@@ -336,6 +336,8 @@ def when_query_executed_via_federation(shared_data: dict) -> None:
     shared_data["query_result"] = result
 
 
+# The step's words come from REQ-277's acceptance text (docs/arch/requirements.yaml): since
+# REQ-2194 the hints are the statement's session properties, not SET SESSION statements.
 @then("Provisa injects the corresponding SET SESSION statements before execution")
 def then_set_session_injected_before_execution(shared_data: dict) -> None:
     executed = shared_data["executed_statements"]
@@ -676,9 +678,6 @@ def then_translate_federation_hints_converts_to_trino_session_props(shared_data:
     assert raw_result == {}, (
         f"raw Trino session-prop key join_distribution_type passed through; got {raw_result!r}"
     )
-
-    # Round-trip: inject the translated properties via execute_trino and verify
-    # SET SESSION statements are emitted for each translated
 
 
 # ---------------------------------------------------------------------------

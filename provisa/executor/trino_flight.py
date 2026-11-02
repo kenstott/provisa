@@ -17,7 +17,8 @@ and how this module reads it:
 
 * **Session** — the statement's Trino ``source`` (the org, REQ-056), catalog, schema and session
   properties (``query_max_execution_time``, the FTE hints) travel in the ``x-provisa-trino-context``
-  call header (:class:`TrinoContext`); every statement is its own Trino session.
+  call header (:class:`TrinoContext`); every statement is its own Trino session. An org on its
+  own coordinator names it there; the proxy dials only a coordinator its deployment declared.
 * **Types** — each Arrow field names its Trino type (``trino.type``, the ``column_types`` a
   result reports), its type signature and its encoding. A type Arrow has no type for arrives as
   Utf8 holding the protocol's text or JSON; :func:`trino_rows` reads it with the Trino client's own
@@ -87,10 +88,16 @@ class TrinoContext:
     catalog: str | None = None
     schema: str | None = None
     properties: dict[str, str] = field(default_factory=dict)
+    #: The coordinator the statement runs on (``scheme://host:port``) when it is not the one the
+    #: proxy is configured with: an org's own engine. The proxy dials it only if the deployment
+    #: declared it (``TF_TRINO_ALLOWED_SERVERS``), else refuses (:class:`CoordinatorRefused`).
+    server: str | None = None
 
     def header(self) -> str:
         """The value of the ``x-provisa-trino-context`` call header: base64 of its JSON."""
         body: dict[str, Any] = {"source": self.source, "properties": dict(self.properties)}
+        if self.server is not None:
+            body["server"] = self.server
         if self.catalog is not None:
             body["catalog"] = self.catalog
         if self.schema is not None:
@@ -117,6 +124,11 @@ class TrinoFlightQueryError(Exception):
         self.error_type = error_type
         self.error_code = error_code
         self.query_id = query_id
+
+
+class CoordinatorRefused(RuntimeError):
+    """The statement named a coordinator the proxy is not declared to reach (its deployment's
+    ``TF_TRINO_ALLOWED_SERVERS``): nothing was dialed. Never retried."""
 
 
 class EngineUnreachable(ConnectionError):
@@ -258,6 +270,8 @@ def engine_error(exc: BaseException) -> BaseException:
                 query_id=details[_QUERY_ID].decode("utf-8"),
             )
         )
+    if kind == "refused":
+        return CoordinatorRefused(message)
     if kind == "connection" or exc.status_code == adbc_driver_manager.AdbcStatusCode.IO:
         # The proxy says the coordinator is unreachable, or the proxy itself is: the gRPC call
         # failed below any statement (UNAVAILABLE, a refused connection), which ADBC reports as IO.

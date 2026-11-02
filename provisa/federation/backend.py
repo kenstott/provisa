@@ -1628,7 +1628,23 @@ class TrinoBackend(EngineBackend):
             catalog=kwargs.get("catalog"),
             schema=kwargs.get("schema"),
             properties={**state.engine_session_hints, **hints},
+            server=self._own_coordinator(state, kwargs),
         )
+
+    @staticmethod
+    def _own_coordinator(state: Any, kwargs: dict) -> str | None:
+        """The coordinator the statement names when the active org's terminal is not the one the
+        proxy is configured with: its own engine (REQ-1412) or its isolated host (REQ-1043). The
+        proxy dials it only if the deployment declared it, else refuses by name. On a
+        provisioning deployment each shard's proxy is a sidecar in front of that shard's own
+        coordinator (REQ-1518), so a statement never names one."""
+        from provisa.federation import k8s_provisioner as k8s
+
+        if k8s.provisioning_available():
+            return None
+        if state.active_engine_endpoint is None and state.active_isolated_org is None:
+            return None
+        return f"{kwargs['http_scheme']}://{kwargs['host']}:{kwargs['port']}"
 
     # -- engine-specific transports (Arrow via Zaychik Flight SQL proxy) --------
 
@@ -1638,15 +1654,6 @@ class TrinoBackend(EngineBackend):
         if k8s.provisioning_available():
             return self._shard_flight_transport(state)
 
-        if state.active_engine_endpoint is not None or state.active_isolated_org is not None:
-            # The one proxy here fronts the deployment's configured coordinator. An org whose
-            # terminal is another coordinator (its own engine, REQ-1412; an isolated host,
-            # REQ-1043) has no proxy in front of it: reading through this one would answer from
-            # the wrong engine.
-            raise RuntimeError(
-                f"engine {self.engine.name!r} has no Arrow Flight transport for the active org's "
-                "own coordinator: the Zaychik proxy fronts the configured coordinator only"
-            )
         client = state.flight_client
         if client is None:
             raise RuntimeError(

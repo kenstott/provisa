@@ -410,6 +410,8 @@ class TestSessionReachesTrino:
         state = SimpleNamespace(
             engine_conn_kwargs={"source": "provisa/org-1", "catalog": "system", "schema": "o1"},
             engine_session_hints={"retry_policy": "TASK", "join_distribution_type": "AUTOMATIC"},
+            active_engine_endpoint=None,
+            active_isolated_org=None,
         )
         context = backend._flight_context(state, {"join_distribution_type": "BROADCAST"}, None)
         assert context == trf.TrinoContext(
@@ -495,6 +497,18 @@ class TestErrorsAreTrinos:
         assert trino_lifecycle.classify_error(raised.value) == "connection"
         assert trino_policy.is_connection_error(raised.value)
         assert str(raised.value) == "Failed to connect to trino:8080"
+
+    def test_an_undeclared_coordinator_is_refused_by_name(self, zaychik):
+        server, conn = zaychik
+        message = "coordinator http://169.254.169.254:80 is not one this proxy is declared to reach"
+        server.failures.append(
+            {"x-trino-error-kind": "refused", "x-trino-error-message-bin": message.encode()}
+        )
+        context = trf.TrinoContext(source="provisa/org-1", server="http://169.254.169.254:80")
+        with pytest.raises(trf.CoordinatorRefused, match="not one this proxy is declared"):
+            trf.execute_trino_flight(conn, "SELECT 1", context=context)
+        assert server.statements == 1  # never retried
+        assert server.calls.contexts[-1]["server"] == "http://169.254.169.254:80"
 
     def test_an_unreachable_proxy_is_a_connection_error(self, zaychik, monkeypatch):
         monkeypatch.setattr(trino_policy, "_retry_budget", lambda: 0.0)
@@ -592,14 +606,42 @@ class TestBackendReadsThroughTheProxy:
             setattr(state, k, v)
         return state
 
-    def test_an_org_on_its_own_coordinator_has_no_transport(self):
+    def test_an_org_on_its_own_coordinator_names_it(self, monkeypatch):
+        monkeypatch.setattr(
+            "provisa.federation.k8s_provisioner.provisioning_available", lambda: False
+        )
         backend = self._backend()
-        with pytest.raises(RuntimeError, match="no Arrow Flight transport"):
-            backend.execute_sync(
-                self._state(active_engine_endpoint=("warehouse", 8080)), "SELECT 1"
+        own = {
+            "source": "provisa/org-9",
+            "catalog": "system",
+            "schema": "org_9",
+            "host": "trino-org-9.internal",
+            "port": 8080,
+            "http_scheme": "http",
+        }
+        for overrides in (
+            {"active_isolated_org": "org-9"},
+            {"active_engine_endpoint": ("trino-org-9.internal", 8080)},
+        ):
+            state = self._state(engine_conn_kwargs=own, **overrides)
+            assert (
+                backend._flight_context(state, None, None).server
+                == "http://trino-org-9.internal:8080"
             )
-        with pytest.raises(RuntimeError, match="no Arrow Flight transport"):
-            backend.execute_sync(self._state(active_isolated_org="org-9"), "SELECT 1")
+        # The shared coordinator is the proxy's own: the statement names none.
+        assert backend._flight_context(self._state(), None, None).server is None
+
+    def test_a_provisioning_deployments_shard_sidecar_is_never_told_a_coordinator(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "provisa.federation.k8s_provisioner.provisioning_available", lambda: True
+        )
+        state = self._state(
+            active_isolated_org="org-9",
+            engine_conn_kwargs={"source": "provisa/org-9", "host": "10.0.0.9", "port": 8080},
+        )
+        assert self._backend()._flight_context(state, None, None).server is None
 
     def test_an_unbound_terminal_is_refused(self):
         backend = self._backend()

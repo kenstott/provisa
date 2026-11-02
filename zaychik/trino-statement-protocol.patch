@@ -24,12 +24,51 @@ index 3b51143..30c54a6 100644
      </dependencies>
  </project>
 \ No newline at end of file
+diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/config/ServerConfiguration.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/config/ServerConfiguration.java
+index bc366e8..3e289e2 100644
+--- a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/config/ServerConfiguration.java
++++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/config/ServerConfiguration.java
+@@ -88,6 +88,7 @@ public final class ServerConfiguration {
+     log.info("trino.host = {}", this.trinoConfiguration.TRINO_HOST);
+     log.info("trino.port = {}", this.trinoConfiguration.TRINO_PORT);
+     log.info("trino.ssl = {}", this.trinoConfiguration.TRINO_SSL);
++    log.info("trino.allowed.servers = {}", this.trinoConfiguration.TRINO_ALLOWED_SERVERS);
+     log.info("trino.version = {}", this.trinoConfiguration.TRINO_VERSION);
+     log.info("trino.driver.version = {}", this.trinoConfiguration.TRINO_DRIVER_VERSION);
+     
+diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/config/TrinoConfiguration.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/config/TrinoConfiguration.java
+index 895348d..d740d8d 100644
+--- a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/config/TrinoConfiguration.java
++++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/config/TrinoConfiguration.java
+@@ -7,6 +7,14 @@ public final class TrinoConfiguration {
+   public final String TRINO_HOST;
+   public final int TRINO_PORT;
+   public final boolean TRINO_SSL;
++
++  /**
++   * The other coordinators a statement may name in its context header ({@code server}), as
++   * {@code scheme://host:port} entries separated by commas or whitespace; a host may hold
++   * {@code {org_id}} for any one org id. Declared by the deployment, never by a request. The
++   * configured coordinator is always allowed.
++   */
++  public final String TRINO_ALLOWED_SERVERS;
+   
+   public final String TRINO_VERSION;
+   public final String TRINO_DRIVER_VERSION;
+@@ -15,6 +23,7 @@ public final class TrinoConfiguration {
+     TRINO_HOST = config.getString("trino.host", "localhost");
+     TRINO_PORT = config.getInt("trino.port", 443);
+     TRINO_SSL = config.getBoolean("trino.ssl", false);
++    TRINO_ALLOWED_SERVERS = config.getString("trino.allowed.servers", "");
+ 
+     TRINO_VERSION = config.getString("trino.version", "452");
+     TRINO_DRIVER_VERSION = config.getString("trino.driver.version", "452");
 diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClients.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClients.java
 new file mode 100644
-index 0000000..3c38735
+index 0000000..19275cb
 --- /dev/null
 +++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClients.java
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,172 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.connection;
 +
 +import io.airlift.units.Duration;
@@ -41,6 +80,10 @@ index 0000000..3c38735
 +import ru.raiffeisen.trino.arrow.flight.sql.config.TrinoConfiguration;
 +
 +import java.net.URI;
++import java.net.URISyntaxException;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.regex.Pattern;
 +import java.time.ZoneId;
 +import java.util.Locale;
 +import java.util.Optional;
@@ -66,23 +109,120 @@ index 0000000..3c38735
 +  private static final String DEFAULT_SOURCE = "trino-jdbc";
 +
 +  private final URI server;
-+  private final boolean ssl;
++  private final List<Pattern> allowedServers;
 +  private final OkHttpClient httpClient;
 +
 +  public TrinoStatementClients(TrinoConfiguration config) {
-+    this.ssl = config.TRINO_SSL;
-+    this.server = URI.create((ssl ? "https" : "http") + "://" + config.TRINO_HOST + ":" + config.TRINO_PORT);
++    this(
++        config.TRINO_SSL ? "https" : "http",
++        config.TRINO_HOST,
++        config.TRINO_PORT,
++        config.TRINO_ALLOWED_SERVERS);
++  }
++
++  TrinoStatementClients(String scheme, String host, int port, String allowedServers) {
++    this.server = URI.create(scheme + "://" + host + ":" + port);
++    this.allowedServers = allowlist(allowedServers);
 +    OkHttpClient.Builder builder = new OkHttpClient.Builder();
 +    OkHttpUtil.setupTimeouts(builder, 60, TimeUnit.SECONDS);
 +    this.httpClient = builder.build();
 +  }
 +
++  /** The deployment's declared coordinators, each a pattern over a normalized server URI. */
++  static List<Pattern> allowlist(String declared) {
++    List<Pattern> patterns = new ArrayList<>();
++    for (String entry : declared.trim().split("[,\\s]+")) {
++      if (entry.isEmpty()) {
++        continue;
++      }
++      String normal = normalize(entry);
++      String[] parts = normal.split(Pattern.quote(ORG_ID), -1);
++      StringBuilder regex = new StringBuilder();
++      for (int i = 0; i < parts.length; i++) {
++        if (i > 0) {
++          regex.append("[a-z0-9_-]+");
++        }
++        regex.append(Pattern.quote(parts[i]));
++      }
++      patterns.add(Pattern.compile(regex.toString()));
++    }
++    return List.copyOf(patterns);
++  }
++
++  private static final String ORG_ID = "{org_id}";
++
++  /** {@code scheme://host:port} in lower case, the port made explicit; anything else refused. */
++  static String normalize(String server) {
++    String lower = server.trim().toLowerCase(Locale.ROOT);
++    String placeholderFree = lower.replace(ORG_ID, "org-id");
++    URI uri;
++    try {
++      uri = new URI(placeholderFree);
++    } catch (URISyntaxException e) {
++      throw new CoordinatorRefused("coordinator " + server + " is not a URI");
++    }
++    if (!("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
++        || uri.getHost() == null
++        || uri.getUserInfo() != null
++        || (uri.getRawPath() != null && !uri.getRawPath().isEmpty() && !"/".equals(uri.getRawPath()))
++        || uri.getRawQuery() != null
++        || uri.getRawFragment() != null) {
++      throw new CoordinatorRefused(
++          "coordinator " + server + " is not scheme://host:port (http or https)");
++    }
++    int port = uri.getPort() != -1 ? uri.getPort() : ("https".equals(uri.getScheme()) ? 443 : 80);
++    String host = lower.contains(ORG_ID) ? hostWithPlaceholder(lower) : uri.getHost();
++    return uri.getScheme() + "://" + host + ":" + port;
++  }
++
++  private static String hostWithPlaceholder(String lower) {
++    String rest = lower.substring(lower.indexOf("://") + 3);
++    int end = rest.length();
++    for (char c : new char[] {':', '/'}) {
++      int at = rest.indexOf(c);
++      if (at >= 0 && at < end) {
++        end = at;
++      }
++    }
++    return rest.substring(0, end);
++  }
++
++  /**
++   * The coordinator a statement runs on: the configured one, or the one its context names when
++   * the deployment declared it. Any other is refused: a request never chooses where this proxy
++   * connects.
++   */
++  URI serverFor(TrinoStatementContext context) {
++    if (context.server().isEmpty()) {
++      return server;
++    }
++    String requested = normalize(context.server().get());
++    if (requested.equals(normalize(server.toString()))) {
++      return server;
++    }
++    for (Pattern allowed : allowedServers) {
++      if (allowed.matcher(requested).matches()) {
++        return URI.create(requested);
++      }
++    }
++    throw new CoordinatorRefused(
++        "coordinator " + context.server().get() + " is not one this proxy is declared to reach");
++  }
++
++  /** A statement named a coordinator the deployment did not declare. */
++  public static final class CoordinatorRefused extends IllegalArgumentException {
++    public CoordinatorRefused(String message) {
++      super(message);
++    }
++  }
++
 +  /** Submits {@code sql} for {@code user} in {@code context}'s session. */
 +  public StatementClient submit(
 +      String user, String password, TrinoStatementContext context, String sql) {
++    URI target = serverFor(context);
 +    ClientSession session =
 +        ClientSession.builder()
-+            .server(server)
++            .server(target)
 +            .user(Optional.of(user))
 +            .source(context.source().orElse(DEFAULT_SOURCE))
 +            .catalog(context.catalog().orElse(null))
@@ -93,7 +233,7 @@ index 0000000..3c38735
 +            .clientRequestTimeout(new Duration(60, TimeUnit.SECONDS))
 +            .build();
 +    OkHttpClient client = httpClient;
-+    if (ssl && !password.isEmpty()) {
++    if ("https".equals(target.getScheme()) && !password.isEmpty()) {
 +      // A password is sent only over TLS, as the Trino clients require.
 +      client = httpClient.newBuilder().addInterceptor(OkHttpUtil.basicAuth(user, password)).build();
 +    }
@@ -103,10 +243,10 @@ index 0000000..3c38735
 +}
 diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContext.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContext.java
 new file mode 100644
-index 0000000..1d916cc
+index 0000000..a2504b8
 --- /dev/null
 +++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContext.java
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,88 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.connection;
 +
 +import com.fasterxml.jackson.databind.JsonNode;
@@ -124,14 +264,18 @@ index 0000000..1d916cc
 + * The Trino session a Flight client asks its statement to run in, sent in the call header
 + * {@value #HEADER}: base64 of a JSON object
 + *
-+ * <pre>{"source": "...", "catalog": "...", "schema": "...", "properties": {"name": "value"}}</pre>
++ * <pre>{"server": "http://host:port", "source": "...", "catalog": "...", "schema": "...",
++ *  "properties": {"name": "value"}}</pre>
 + *
-+ * <p>Every key is optional. {@code properties} are Trino session properties, sent with the
++ * <p>Every key is optional. {@code server} names the coordinator the statement runs on; it is
++ * dialed only when the deployment declared it ({@link TrinoStatementClients}), and without it the
++ * statement runs on the configured coordinator. {@code properties} are Trino session properties, sent with the
 + * statement as the Trino client protocol sends them ({@code X-Trino-Session}); a connection that
 + * opens per statement cannot carry a {@code SET SESSION} from one statement to the next, so this is
 + * how a statement gets them.
 + */
 +public record TrinoStatementContext(
++    Optional<String> server,
 +    Optional<String> source,
 +    Optional<String> catalog,
 +    Optional<String> schema,
@@ -140,7 +284,8 @@ index 0000000..1d916cc
 +  public static final String HEADER = "x-provisa-trino-context";
 +
 +  public static final TrinoStatementContext NONE =
-+      new TrinoStatementContext(Optional.empty(), Optional.empty(), Optional.empty(), Map.of());
++      new TrinoStatementContext(
++          Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Map.of());
 +
 +  private static final ObjectMapper MAPPER = new ObjectMapper();
 +
@@ -175,6 +320,7 @@ index 0000000..1d916cc
 +      }
 +    }
 +    return new TrinoStatementContext(
++        text(root, "server"),
 +        text(root, "source"), text(root, "catalog"), text(root, "schema"), Map.copyOf(properties));
 +  }
 +
@@ -646,7 +792,7 @@ index 0000000..016a0db
 +  }
 +}
 diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoFlightSQLProducer.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoFlightSQLProducer.java
-index 2a2721a..d7257f9 100644
+index 2a2721a..74a96d3 100644
 --- a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoFlightSQLProducer.java
 +++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoFlightSQLProducer.java
 @@ -16,6 +16,8 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -678,7 +824,7 @@ index 2a2721a..d7257f9 100644
      this.rootAllocator = rootAllocator;
      this.sqlInfoBuilder = new SqlInfoBuilder();
      this.helper =
-@@ -179,28 +184,31 @@ public class TrinoFlightSQLProducer implements FlightSqlProducer {
+@@ -179,28 +184,33 @@ public class TrinoFlightSQLProducer implements FlightSqlProducer {
      ImmutablePair<String, String> user = helper.decodePeerIdentity(context.peerIdentity());
      setLogCtx("get_flight_info_statement", user.left);
  
@@ -704,6 +850,8 @@ index 2a2721a..d7257f9 100644
 +            TrinoStatementExecution.start(
 +                trinoStatements.submit(
 +                    user.left, user.right, TrinoContextMiddleware.of(context), query));
++      } catch (TrinoStatementClients.CoordinatorRefused e) {
++        throw TrinoQueryFailure.refused(e);
 +      } catch (RuntimeException e) {
 +        throw TrinoQueryFailure.unreachable(e);
 +      }
@@ -725,7 +873,7 @@ index 2a2721a..d7257f9 100644
      } finally {
        clearLogCtx();
      }
-@@ -246,39 +254,31 @@ public class TrinoFlightSQLProducer implements FlightSqlProducer {
+@@ -246,39 +256,31 @@ public class TrinoFlightSQLProducer implements FlightSqlProducer {
      ImmutablePair<String, String> user = helper.decodePeerIdentity(context.peerIdentity());
      setLogCtx("get_stream_statement", user.left);
      final ByteString handle = ticketStatementQuery.getStatementHandle();
@@ -786,10 +934,10 @@ index 2a2721a..d7257f9 100644
    }
 diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailure.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailure.java
 new file mode 100644
-index 0000000..bcf2f69
+index 0000000..5c5c3a1
 --- /dev/null
 +++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailure.java
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,82 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.producer;
 +
 +import io.trino.client.QueryError;
@@ -836,6 +984,17 @@ index 0000000..bcf2f69
 +    CallStatus status =
 +        statusOf(error.getErrorType()).withDescription(error.getMessage()).withMetadata(metadata);
 +    return new TrinoQueryFailure(error.getMessage(), status.toRuntimeException(), null);
++  }
++
++  /** The statement named a coordinator this proxy is not declared to reach: nothing was dialed. */
++  static TrinoQueryFailure refused(RuntimeException cause) {
++    ErrorFlightMetadata metadata = new ErrorFlightMetadata();
++    metadata.insert(ERROR_KIND, "refused");
++    String message = String.valueOf(cause.getMessage());
++    metadata.insert(ERROR_MESSAGE, message.getBytes(StandardCharsets.UTF_8));
++    CallStatus status =
++        CallStatus.UNAUTHORIZED.withDescription(message).withMetadata(metadata);
++    return new TrinoQueryFailure(message, status.toRuntimeException(), cause);
 +  }
 +
 +  /** The coordinator could not be reached, or stopped answering the statement's protocol. */
@@ -1123,12 +1282,97 @@ index 0000000..f182875
 +  @Override
 +  public void onCallErrored(Throwable err) {}
 +}
+diff --git a/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClientsTest.java b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClientsTest.java
+new file mode 100644
+index 0000000..bd3381a
+--- /dev/null
++++ b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClientsTest.java
+@@ -0,0 +1,79 @@
++package ru.raiffeisen.trino.arrow.flight.sql.connection;
++
++import org.junit.jupiter.api.Test;
++
++import java.net.URI;
++import java.util.List;
++import java.util.Map;
++import java.util.Optional;
++import java.util.regex.Pattern;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertThrows;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/** A statement may name its org's coordinator only when the deployment declared it. */
++class TrinoStatementClientsTest {
++
++  private static TrinoStatementContext naming(String server) {
++    return new TrinoStatementContext(
++        Optional.ofNullable(server), Optional.empty(), Optional.empty(), Optional.empty(), Map.of());
++  }
++
++  private static boolean allowed(String declared, String requested) {
++    String normal = TrinoStatementClients.normalize(requested);
++    List<Pattern> patterns = TrinoStatementClients.allowlist(declared);
++    return patterns.stream().anyMatch(p -> p.matcher(normal).matches());
++  }
++
++  @Test
++  void exactAddressesAreDeclared() {
++    assertTrue(allowed("http://warehouse.example:8080", "HTTP://Warehouse.example:8080"));
++    assertTrue(allowed("https://w.example", "https://w.example:443"));
++    assertTrue(!allowed("http://warehouse.example:8080", "http://warehouse.example:8081"));
++    assertTrue(!allowed("http://warehouse.example:8080", "https://warehouse.example:8080"));
++  }
++
++  @Test
++  void anOrgTemplateMatchesOneOrgIdOnly() {
++    String declared = "http://trino-{org_id}.internal:8080, http://other:9000";
++    assertTrue(allowed(declared, "http://trino-org-7.internal:8080"));
++    assertTrue(allowed(declared, "http://other:9000"));
++    // The placeholder stands for one org id: it cannot widen the host to another domain.
++    assertTrue(!allowed(declared, "http://trino-x.evil.example.internal:8080"));
++    // An empty org id is no host at all: refused before any match.
++    assertThrows(
++        TrinoStatementClients.CoordinatorRefused.class,
++        () -> allowed(declared, "http://trino-.internal:8080"));
++  }
++
++  @Test
++  void anythingButSchemeHostPortIsRefused() {
++    assertThrows(
++        TrinoStatementClients.CoordinatorRefused.class,
++        () -> TrinoStatementClients.normalize("file:///etc/passwd"));
++    assertThrows(
++        TrinoStatementClients.CoordinatorRefused.class,
++        () -> TrinoStatementClients.normalize("http://user:pw@host:8080"));
++    assertThrows(
++        TrinoStatementClients.CoordinatorRefused.class,
++        () -> TrinoStatementClients.normalize("http://host:8080/v1/statement"));
++  }
++
++  @Test
++  void serverForIsTheConfiguredOneTheDeclaredOneOrARefusal() throws Exception {
++    TrinoStatementClients clients =
++        new TrinoStatementClients(
++            "http", "trino", 8080, "http://trino-{org_id}.internal:8080");
++    assertEquals(URI.create("http://trino:8080"), clients.serverFor(naming(null)));
++    assertEquals(URI.create("http://trino:8080"), clients.serverFor(naming("http://trino:8080")));
++    assertEquals(
++        URI.create("http://trino-org-7.internal:8080"),
++        clients.serverFor(naming("http://trino-org-7.internal:8080")));
++    TrinoStatementClients.CoordinatorRefused refused =
++        assertThrows(
++            TrinoStatementClients.CoordinatorRefused.class,
++            () -> clients.serverFor(naming("http://169.254.169.254:80")));
++    assertTrue(refused.getMessage().contains("not one this proxy is declared to reach"));
++  }
++}
 diff --git a/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContextTest.java b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContextTest.java
 new file mode 100644
-index 0000000..882efe2
+index 0000000..a688a53
 --- /dev/null
 +++ b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContextTest.java
-@@ -0,0 +1,46 @@
+@@ -0,0 +1,48 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.connection;
 +
 +import org.junit.jupiter.api.Test;
@@ -1153,8 +1397,10 @@ index 0000000..882efe2
 +    TrinoStatementContext context =
 +        TrinoStatementContext.parse(
 +            header(
-+                "{\"source\":\"provisa/org-1\",\"catalog\":\"system\",\"schema\":\"org_1\","
++                "{\"server\":\"http://trino-org-1.internal:8080\",\"source\":\"provisa/org-1\","
++                    + "\"catalog\":\"system\",\"schema\":\"org_1\","
 +                    + "\"properties\":{\"query_max_execution_time\":\"120s\",\"retry_policy\":\"TASK\"}}"));
++    assertEquals(Optional.of("http://trino-org-1.internal:8080"), context.server());
 +    assertEquals(Optional.of("provisa/org-1"), context.source());
 +    assertEquals(Optional.of("system"), context.catalog());
 +    assertEquals(Optional.of("org_1"), context.schema());
@@ -1400,10 +1646,10 @@ index 0000000..4c79d92
 +}
 diff --git a/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailureTest.java b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailureTest.java
 new file mode 100644
-index 0000000..cc8c9ef
+index 0000000..0676be8
 --- /dev/null
 +++ b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailureTest.java
-@@ -0,0 +1,62 @@
+@@ -0,0 +1,72 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.producer;
 +
 +import io.trino.client.QueryError;
@@ -1463,6 +1709,16 @@ index 0000000..cc8c9ef
 +            .toFlightError();
 +    assertEquals(FlightStatusCode.UNAVAILABLE, flight.status().code());
 +    assertEquals("connection", flight.status().metadata().get(TrinoQueryFailure.ERROR_KIND));
++    assertFalse(flight.status().metadata().containsKey(TrinoQueryFailure.ERROR_NAME));
++  }
++
++  @Test
++  void anUndeclaredCoordinatorIsRefusedByName() {
++    FlightRuntimeException flight =
++        TrinoQueryFailure.refused(new IllegalArgumentException("coordinator x is not declared"))
++            .toFlightError();
++    assertEquals(FlightStatusCode.UNAUTHORIZED, flight.status().code());
++    assertEquals("refused", flight.status().metadata().get(TrinoQueryFailure.ERROR_KIND));
 +    assertFalse(flight.status().metadata().containsKey(TrinoQueryFailure.ERROR_NAME));
 +  }
 +}

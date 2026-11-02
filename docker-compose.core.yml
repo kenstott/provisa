@@ -272,6 +272,11 @@ services:
       TF_FLIGHT_SSL: "false"
       TF_FLIGHT_AUTH_TYPE: trino
       TF_FLIGHT_BATCH_SIZE: 10000
+      # REQ-2194: the coordinators other than `trino` a statement may name (an org's own engine),
+      # declared by the deployment -- never by a request. scheme://host:port, comma separated; a
+      # host may hold {org_id}. Empty: only `trino`. docker-compose.isolated-engine.yml adds the
+      # isolated-engine host template.
+      TF_TRINO_ALLOWED_SERVERS: "${PROVISA_ZAYCHIK_ALLOWED_SERVERS:-}"
     depends_on:
       trino:
         condition: service_healthy

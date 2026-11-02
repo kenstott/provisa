@@ -173,10 +173,14 @@ announces is the stream's, and a statement Trino rejects is answered there. A fa
 rows of a streamed read are being read raises the engine's error at the consumer; it is not
 retried (the materialized `execute` retries the whole read).
 
-An org whose terminal is a coordinator other than the configured one (an external engine,
-REQ-1412; an isolated host on a deployment that does not provision shards, REQ-1043) has no proxy
-in front of it: its read is refused by name rather than answered by the shared coordinator
-(on a provisioning deployment each shard has its own sidecar proxy, REQ-1518).
+An org whose terminal is a coordinator other than the proxy's configured one (an external engine,
+REQ-1412; an isolated host, REQ-1043) names it in the context header (`server`). The proxy dials it
+only if the deployment declared it at start (`TF_TRINO_ALLOWED_SERVERS`: `scheme://host:port`
+entries, a host may hold `{org_id}`; compose fills it from `PROVISA_ZAYCHIK_ALLOWED_SERVERS`, and
+`docker-compose.isolated-engine.yml` adds the isolated host template). Any other address is refused
+by name (`CoordinatorRefused`) with nothing dialed: a request never chooses where the proxy
+connects. On a provisioning deployment each shard's proxy is a sidecar in front of that shard's own
+coordinator (REQ-1518) and no statement names one.
 
 ## 5. Measured: DuckDB, 2,000,000 rows
 
