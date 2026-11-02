@@ -75820,7 +75820,9 @@
     to the UI''s own origin when none is declared. (Amended 2026-11-02, Declared per region:) Maintainer
     2026-11-02: the declared data addresses are a list per region: each region declares the addresses of
     its data nodes (a load balancer, a pool or a single node), and the UI is given the list for the org''s
-    region.'
+    region. (Amended 2026-11-02, An every node''s UI asks for nothing:) Maintainer 2026-11-02: a UI served
+    from an every node does not ask for a data node: it sends data requests to its own origin and does not
+    show the data-address setting. Only a coordinator-served UI offers it.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
