@@ -24,7 +24,10 @@ from typing import Any
 
 import duckdb
 import pytest
+import sqlglot
+import sqlglot.expressions as exp
 
+from provisa.transpiler import pg_forms_geometric as geometric
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.geometric_corpus import statements
 from tests.unit.pgwire.geometric_replay import (
@@ -400,3 +403,55 @@ def test_trino_writes_a_name_read_once_in_place():
     of the names it reads more than once."""
     written = transpile("SELECT box_center('(3,4),(0,0)'::box) AS v", "trino")
     assert written.count("TRANSFORM(ARRAY[") <= 3, written  # 15 when each name was a lambda
+
+
+_CLOSE_SB = "SELECT close_sb('[(1,2),(3,4)]'::lseg, '(5,5),(0,0)'::box) AS v"
+_DEFINED = re.compile(r"FUNCTION (pg_geo_\w+)\(")
+
+
+def _lambda_depth(expression: str) -> int:
+    """How many lambdas the deepest one of ``expression`` is inside, itself counted."""
+
+    def held(node: exp.Expr | None) -> int:
+        return 0 if node is None else isinstance(node, exp.Lambda) + held(node.parent)
+
+    tree = sqlglot.parse_one(f"SELECT {expression}", read="trino")
+    return max((held(lam) for lam in tree.find_all(exp.Lambda)), default=0)
+
+
+def _routines(written: str) -> list[str]:
+    head, _, _ = written.partition(" SELECT CASE WHEN ")
+    return _DEFINED.findall(head)
+
+
+def test_trino_defines_each_helper_once_as_a_routine_of_the_statement():
+    """Trino's analysis of a lambda grows with how deep it is nested: close_sb took 136s as helpers
+    inside helpers. Each is a routine the statement defines once, after the routines it calls."""
+    written = transpile(_CLOSE_SB, "trino")
+    assert written.startswith("WITH FUNCTION pg_geo_"), written[:200]
+    defined = _routines(written)
+    assert len(defined) == len(set(defined)), defined
+    assert {"pg_geo_near_box_seg", "pg_geo_near_seg", "pg_geo_cut", "pg_geo_float_text"} <= set(
+        defined
+    )
+    for at, name in enumerate(defined):
+        definition, calls = geometric.ROUTINES[name]
+        assert written.count(definition) == 1, name
+        assert calls <= set(defined[:at]), (name, calls, defined[:at])
+
+
+def test_no_routine_holds_a_lambda_more_than_six_deep():
+    for name, (definition, _) in geometric.ROUTINES.items():
+        assert _lambda_depth(definition.split(" RETURN ", 1)[1]) <= 6, name
+
+
+def test_trino_defines_only_the_routines_a_statement_calls():
+    written = transpile("SELECT box_center('(3,4),(0,0)'::box) AS v", "trino")
+    assert _routines(written) == ["pg_geo_float_text"], written[:300]
+    assert transpile("SELECT 1 AS v", "trino") == "SELECT 1 AS v"
+
+
+@pytest.mark.parametrize("dialect", ["duckdb", "clickhouse"])
+def test_no_other_engine_calls_a_routine(dialect: str):
+    written = transpile(_CLOSE_SB, dialect)
+    assert "pg_geo_" not in written.lower() and "FUNCTION" not in written

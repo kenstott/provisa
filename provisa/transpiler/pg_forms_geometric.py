@@ -27,7 +27,9 @@ lseg_interpt_line :func:`_cut_line`, lseg_interpt_lseg :func:`_cut`, line_closep
 lseg_closept_line :func:`_near_line`, lseg_closept_point :func:`_near_point`, lseg_closept_lseg
 :func:`_near_seg`, box_closept_lseg :func:`_near_box_seg`. A helper that finds a point answers
 ``[found, x, y]``, one that measures ``[distance, x, y]``, each a list of doubles under names of its
-own, so a helper may read another's answer by position.
+own, so a helper may read another's answer by position. On Trino each helper is a routine the
+statement defines at its head (WITH FUNCTION) and calls, a routine calling the ones it needs: Trino's
+analysis of a lambda grows with how deep it is nested, and a routine's lambdas are its own.
 
 width_bucket is here because PostgreSQL's catalog groups it here. A numeric's digits are read from
 its text into the engine's widest integer, at the scale of the three values, so the bucket is exact;
@@ -2010,6 +2012,8 @@ _CALLED = re.compile(rf"\b({_ROUTINE}\w+)\s*\(", re.IGNORECASE)
 def _defined(sql: str) -> str:
     """A Trino statement calling a form's routines, with each defined at its head (WITH FUNCTION),
     each after the routines it calls."""
+    if not ROUTINES:  # a routine is written as the forms are
+        forms(TRINO)
     order: list[str] = []
 
     def define(name: str) -> None:
