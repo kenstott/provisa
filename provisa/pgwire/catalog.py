@@ -23,6 +23,7 @@ import datetime
 import functools
 import logging
 import re
+from collections.abc import Mapping
 
 from provisa.pgwire.catalog_data import (
     _CATALOG_TABLE_NAMES,
@@ -38,6 +39,7 @@ from provisa.pgwire.catalog_data import (
 )
 from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
 from provisa.pgwire.constant_arguments import is_constant_sql
+from provisa.pgwire.session_zone import SessionZone
 from provisa.pgwire.catalog_server_answers import ANSWERED as _SERVER_ANSWERED
 from provisa.pgwire.catalog_server_answers import REWRITTEN
 from provisa.core.pg_error import PostgresError, from_engine, postgres_error
@@ -53,6 +55,11 @@ log = logging.getLogger(__name__)
 
 _SET_RE = re.compile(r"^\s*SET\b", re.IGNORECASE)
 _SHOW_RE = re.compile(r"^\s*SHOW\b", re.IGNORECASE)
+_SHOW_ZONE_RE = re.compile(r"^\s*SHOW\s+(?:\"?TimeZone\"?|TIME\s+ZONE)\s*$", re.IGNORECASE)
+_READS_ZONE_RE = re.compile(
+    r"^\s*SHOW\s+(?:ALL\b|\"?TimeZone\b|TIME\s+ZONE\b)|current_setting\s*\(\s*'timezone'",
+    re.IGNORECASE,
+)
 _TXN_RE = re.compile(
     r"^\s*(BEGIN|START\s+TRANSACTION|START|COMMIT|END|ROLLBACK|ABORT|DISCARD|RESET|DEALLOCATE|SAVEPOINT|RELEASE)\b",
     re.IGNORECASE,
@@ -337,21 +344,23 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
     return "PASS_THROUGH"
 
 
-def _handle_show(sql: str):
+def _handle_show(sql: str, settings: Mapping[str, str]):
     """Answer SHOW commands without DuckDB."""
     from provisa.executor.result import QueryResult
 
     normalized = sql.strip().rstrip(";")
     if re.match(r"^\s*SHOW\s+TRANSACTION\s+ISOLATION\s+LEVEL\s*$", normalized, re.IGNORECASE):
         return QueryResult(rows=[("read committed",)], column_names=["transaction_isolation"])
+    if _SHOW_ZONE_RE.match(normalized):
+        return QueryResult(rows=[(settings["timezone"],)], column_names=["TimeZone"])
     parts = normalized.split()
     if len(parts) < _SHOW_MIN_PARTS:
         return QueryResult(rows=[], column_names=[])
     setting = parts[1].lower()
     if setting == "all":
-        rows = [(k, v) for k, v in _KNOWN_SETTINGS.items()]
+        rows = [(k, v) for k, v in settings.items()]
         return QueryResult(rows=rows, column_names=["name", "setting"])
-    value = _KNOWN_SETTINGS.get(setting, "")
+    value = settings.get(setting, "")
     return QueryResult(rows=[(value,)], column_names=[setting])
 
 
@@ -407,17 +416,23 @@ def _handle_txid(sql: str):
 
 
 _SET_CONFIG_VALUE_RE = re.compile(
-    r"set_config\"?\s*\(\s*'(?:[^']|'')*'(?:::\w+)?\s*,\s*'((?:[^']|'')*)'", re.IGNORECASE
+    r"set_config\"?\s*\(\s*'(?P<name>(?:[^']|'')*)'(?:::\w+)?\s*,\s*'(?P<value>(?:[^']|'')*)'",
+    re.IGNORECASE,
 )
 
 
-def _set_config_value(sql: str) -> str | None:
-    """What set_config(name, value, is_local) answers: the value it set, as PostgreSQL does."""
+def _set_config_value(sql: str, settings: Mapping[str, str]) -> str | None:
+    """What set_config(name, value, is_local) answers: the value it set, as PostgreSQL does, and of
+    TimeZone the name it read that as."""
     m = _SET_CONFIG_VALUE_RE.search(sql)
-    return m.group(1).replace("''", "'") if m else None
+    if m is None:
+        return None
+    if m.group("name").lower() == "timezone":
+        return settings["timezone"]
+    return m.group("value").replace("''", "'")
 
 
-def _handle_current_setting(sql: str):
+def _handle_current_setting(sql: str, settings: Mapping[str, str]):
     """Answer SELECT current_setting(...) [+ set_config(...)] without DuckDB."""
     from provisa.executor.result import QueryResult
 
@@ -437,14 +452,16 @@ def _handle_current_setting(sql: str):
         col1 = (m1.group(2) or "current_setting") if m1 else "current_setting"
         col2 = (m2.group(1) or "set_config") if m2 else "set_config"
         key = m1.group(1).lower() if m1 else ""
-        val1 = _KNOWN_SETTINGS.get(key, "")
-        return QueryResult(rows=[(val1, _set_config_value(sql))], column_names=[col1, col2])
+        val1 = settings.get(key, "")
+        return QueryResult(
+            rows=[(val1, _set_config_value(sql, settings))], column_names=[col1, col2]
+        )
 
     m = re.search(r"current_setting\s*\(\s*['\"]([^'\"]+)['\"]\s*\)", sql, re.IGNORECASE)
     if not m:
         return None
     key = m.group(1).lower()
-    value = _KNOWN_SETTINGS.get(key, "")
+    value = settings.get(key, "")
     return QueryResult(rows=[(value,)], column_names=["current_setting"])
 
 
@@ -544,6 +561,18 @@ class CatalogSession:
     backend_start: datetime.datetime | None = None
     system_user: str | None = None
     time_zone: str | None = None
+    zone: SessionZone | None = None
+
+
+def _session_settings(sql: str, session: CatalogSession | None) -> Mapping[str, str]:
+    """The settings as this session has them. A statement that reads TimeZone in a session whose
+    zone cannot be told is refused; any other is answered."""
+    zone = None if session is None else session.zone
+    if zone is None:
+        return _KNOWN_SETTINGS
+    if _READS_ZONE_RE.search(sql):
+        return {**_KNOWN_SETTINGS, "timezone": zone.named()}
+    return {**_KNOWN_SETTINGS, "timezone": zone.shown() or _KNOWN_SETTINGS["timezone"]}
 
 
 def _list_session(cur, role_id: str, session: CatalogSession, sql: str) -> None:
@@ -592,7 +621,7 @@ def _catalog_request(
         facts=role_facts(role_id, state)
         if "_privilege" in sql.lower()
         else catalog_facts(role_id, {}),
-        settings=_KNOWN_SETTINGS,
+        settings=_session_settings(sql, session),
         pid=session.pid if session is not None else 0,
         session={**connection, "query": sql} if "pg_stat_activity" in sql.lower() else connection,
         reltuples=row_counts(role_id, state) if "reltuples" in sql.lower() else {},
@@ -715,8 +744,9 @@ def answer(sql: str, role_id: str, state, session: CatalogSession | None = None,
     if _TXN_RE.match(stripped) or _SET_RE.match(stripped):
         return QueryResult(rows=[], column_names=[])
 
+    settings = _session_settings(stripped, session)
     if _SHOW_RE.match(stripped):
-        return _handle_show(stripped)
+        return _handle_show(stripped, settings)
 
     sleep = _PG_SLEEP_RE.match(stripped)
     if sleep:
@@ -734,7 +764,7 @@ def answer(sql: str, role_id: str, state, session: CatalogSession | None = None,
             return result
 
     if "current_setting" in stripped.lower():
-        result = _handle_current_setting(stripped)
+        result = _handle_current_setting(stripped, settings)
         if result is not None:
             return result
 
@@ -742,7 +772,7 @@ def answer(sql: str, role_id: str, state, session: CatalogSession | None = None,
         from provisa.executor.result import QueryResult
 
         return QueryResult(
-            rows=[(_set_config_value(stripped),)],
+            rows=[(_set_config_value(stripped, settings),)],
             column_names=["set_config"],
             column_types=["VARCHAR"],
         )
