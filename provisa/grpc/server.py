@@ -19,7 +19,7 @@ RPC's own :class:`provisa.core.connection_loop.ConnectionLoop` via
 parallel.
 """
 
-# Requirements: REQ-045, REQ-051, REQ-143, REQ-145, REQ-266, REQ-1882
+# Requirements: REQ-045, REQ-051, REQ-143, REQ-145, REQ-266, REQ-1882, REQ-1965
 
 from __future__ import annotations
 
@@ -29,9 +29,12 @@ import functools
 import importlib.util
 import json
 import logging
+import math
 import re
+import struct
 import sys
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING, cast
 
 from dateutil.relativedelta import relativedelta
@@ -55,7 +58,8 @@ from provisa.core.request_context import reset_current_org
 from provisa.grpc.auth import org_bound_for_rpc
 from provisa.grpc.descriptor import SERVICE_NAME, bound_descriptor, role_descriptor
 from provisa.core.read_refusal import ReadRefused
-from provisa.core.ir_types import iso8601_duration
+from provisa.core.ir_types import bytea_hex, infinity_of, iso8601_duration
+from provisa.executor.serialize import temporal_text
 
 log = logging.getLogger(__name__)
 
@@ -97,6 +101,64 @@ def _max_concurrent_rpcs() -> int:
     return settings_registry.value("concurrency.grpc_max_concurrent_rpcs")
 
 
+def _json_value(field, value):
+    """A value inside an array, struct or map as JSON holds it (REQ-1965): a decimal as its exact
+    text, a date or time as PostgreSQL's json writes it, an infinity, an interval and bytes as
+    their text on every surface. Arrow hands a map over as its (key, value) entries."""
+    if isinstance(value, dict):
+        return {str(k): _json_value(field, v) for k, v in value.items()}
+    if (
+        isinstance(value, list)
+        and value
+        and all(isinstance(item, tuple) and len(item) == 2 for item in value)
+    ):
+        return {str(k): _json_value(field, v) for k, v in value}
+    if isinstance(value, (list, tuple)):
+        return [_json_value(field, item) for item in value]
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f'column "{field.name}": {value} is not a number JSON can hold')
+        return value
+    if isinstance(value, Decimal):
+        return str(value)
+    if hasattr(value, "isoformat") and not infinity_of(value):
+        return temporal_text(value)
+    return _text(field, value)
+
+
+def _text(field, value) -> str:
+    """A value as the text a string field carries: an array, struct or map as JSON (REQ-1965),
+    PostgreSQL's infinities as "infinity" / "-infinity" as GraphQL and pgwire write them, an
+    interval as ISO 8601 and bytes as PostgreSQL's hex, as on every surface."""
+    if isinstance(value, str):
+        return value
+    sign = infinity_of(value)
+    if sign:
+        return "infinity" if sign > 0 else "-infinity"
+    if isinstance(value, (timedelta, relativedelta)):
+        return iso8601_duration(value)
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return bytea_hex(value)
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(_json_value(field, value), ensure_ascii=False, separators=(",", ":"))
+    return str(value)
+
+
+def _float32(field, number: float) -> float:
+    """``number`` for a float field, refused by name when it is beyond the field's range, as
+    PostgreSQL refuses a real out of range (protobuf would send it as an infinity)."""
+    if math.isfinite(number):
+        try:
+            struct.pack("<f", number)
+        except OverflowError:
+            raise ValueError(
+                f'column "{field.name}": value {number!r} is out of range for type real'
+            ) from None
+    return number
+
+
 def _proto_value(field, value):
     """Adapt a driver row value to the proto field's wire type.
 
@@ -124,10 +186,10 @@ def _proto_value(field, value):
             return ts
         return value
     if field.type == FieldDescriptor.TYPE_STRING:
-        if isinstance(value, (timedelta, relativedelta)):
-            return iso8601_duration(value)  # an interval's canonical text form, as on every surface
-        return value if isinstance(value, str) else str(value)
-    if field.type in (FieldDescriptor.TYPE_DOUBLE, FieldDescriptor.TYPE_FLOAT):
+        return _text(field, value)
+    if field.type == FieldDescriptor.TYPE_FLOAT:
+        return _float32(field, float(value))
+    if field.type == FieldDescriptor.TYPE_DOUBLE:
         return float(value)
     if field.type in (
         FieldDescriptor.TYPE_INT32,
@@ -139,7 +201,7 @@ def _proto_value(field, value):
     if field.type == FieldDescriptor.TYPE_BOOL:
         return bool(value)
     if field.type == FieldDescriptor.TYPE_BYTES:
-        return value if isinstance(value, bytes) else str(value).encode()
+        return value if isinstance(value, bytes) else _text(field, value).encode()
     return value
 
 
@@ -1626,7 +1688,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             sub_cls = getattr(self._pb2, field.message_type.name, None)
             if sub_cls is None:
                 continue
-            if field.label == field.LABEL_REPEATED:
+            if field.is_repeated:
                 items = val if isinstance(val, list) else [val]
                 getattr(msg, key).extend(
                     self._dict_row_to_message(sub_cls, item)

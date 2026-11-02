@@ -21,6 +21,8 @@ import type { GlossaryTermDetail, GlossaryTermSummary } from "../api/glossary";
 vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
+  // REQ-1592: the author/expert picker's roster.
+  listAttributablePeople: vi.fn(async () => []),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
   generateGlossaryRelationships: vi.fn(),
@@ -48,7 +50,6 @@ vi.mock("../context/AuthContext", () => ({
     actingRoles: "org_admin",
   }),
 }));
-vi.mock("../api/admin", () => ({ fetchOrgMembers: vi.fn(async () => []) }));
 // Single-domain mode: a new term declares no domains.
 const filter = {
   domains: [],

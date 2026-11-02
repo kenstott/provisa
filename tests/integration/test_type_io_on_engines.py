@@ -30,6 +30,7 @@ from tests.unit.pgwire.type_io_corpus import (
     REFUSALS,
     REFUSED,
     by_function,
+    column_statements,
     verdict,
 )
 
@@ -39,15 +40,29 @@ _FUNCTIONS = by_function(RECORDED)
 _BYTEA = 17
 
 
-def _difference(run: Callable[[str, int | None], Any], dialect: str, sql: str) -> str | None:
+def _difference(
+    run: Callable[[str, int | None], Any], dialect: str, sql: str, recorded: str | None = None
+) -> str | None:
+    """How ``sql`` differs from the answer recorded for ``recorded``, by default ``sql`` itself."""
+    recorded = recorded or sql
     try:
-        got = run(transpile(sql, dialect), RECORDED[sql][0])
+        got = run(transpile(sql, dialect), RECORDED[recorded][0])
     except Exception as raised:  # noqa: BLE001 -- every statement is reported, not the first
         refusal = from_engine(raised)
         if refusal is None:
             return f"not raised as PostgreSQL's: {str(raised)[:300]}"
-        return verdict(sql, RECORDED[sql], None, f"{refusal.sqlstate}: {refusal}")
-    return verdict(sql, RECORDED[sql], got, None)
+        return verdict(recorded, RECORDED[recorded], None, f"{refusal.sqlstate}: {refusal}")
+    return verdict(recorded, RECORDED[recorded], got, None)
+
+
+def _column_differences(run: Callable[[str, int | None], Any], dialect: str) -> dict[str, str]:
+    """The statements whose argument is a column, where a literal's call is folded, that differ
+    from the answer the literal's call recorded."""
+    found = {
+        sql: _difference(run, dialect, sql, literal)
+        for sql, literal in column_statements(RECORDED, dialect).items()
+    }
+    return {sql: why for sql, why in found.items() if why is not None}
 
 
 def _differences(
@@ -71,6 +86,16 @@ def test_trino_answers_as_postgresql_17_answered(trino_conn, function: str):
     assert _differences(run, "trino", function) == {}
 
 
+@pytest.mark.requires_trino
+def test_trino_answers_a_column_as_its_literal_was(trino_conn):
+    def run(sql: str, _: int | None) -> Any:
+        cursor = trino_conn.cursor()
+        cursor.execute(sql)
+        return cursor.fetchall()[0][0]
+
+    assert _column_differences(run, "trino") == {}
+
+
 @pytest.mark.requires_clickhouse
 def test_clickhouse_answers_as_postgresql_17_answered():
     """One test, every function: requires_clickhouse starts and removes the service for each test,
@@ -92,4 +117,5 @@ def test_clickhouse_answers_as_postgresql_17_answered():
         return None if digits is None else bytes.fromhex(digits)
 
     found = {function: _differences(run, "clickhouse", function) for function in sorted(_FUNCTIONS)}
+    found["in columns"] = _column_differences(run, "clickhouse")
     assert {function: differ for function, differ in found.items() if differ} == {}

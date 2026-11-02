@@ -21,6 +21,8 @@ import type { GlossaryTermSummary } from "../api/glossary";
 vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
+  // REQ-1592: the author/expert picker's roster.
+  listAttributablePeople: vi.fn(async () => []),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
   // A term with no findings: the findings list names none.
@@ -31,8 +33,6 @@ vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 
 const auth = { capabilities: ["glossary_read", "glossary_rw"], activeOrgId: "acme" };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
-
-vi.mock("../api/admin", () => ({ fetchOrgMembers: vi.fn(async () => []) }));
 
 const filter = {
   domains: [],

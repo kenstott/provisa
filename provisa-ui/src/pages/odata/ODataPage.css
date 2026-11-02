@@ -1,0 +1,32 @@
+/* REQ-2193: the OData explorer. The page fills the height the app gives it; the list of entity
+ * sets and the detail panel beside it each scroll by themselves. */
+.odata-page {
+  padding: 1rem 1.25rem;
+}
+
+.odata-addresses > * {
+  min-width: 0;
+  flex: 1 1 22rem;
+}
+
+/* A read's URL is long: it wraps rather than widening the panel. */
+.odata-url {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.odata-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* The results grid scrolls inside a box of its own; the panel keeps its head and the builder. */
+.odata-grid {
+  height: 26rem;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
