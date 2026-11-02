@@ -641,7 +641,7 @@ _OF_A_USER = frozenset(
 
 #: A form only PostgreSQL can run, of a function of its argument: a statement with no table is the
 #: engine's, which reads the function's row of function_macros' table instead.
-_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name", "currval", "nextval"}) | SERVER_STATE
+_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name"}) | SERVER_STATE
 
 
 class MetadataFunctionRefused(ValueError):
