@@ -1,124 +1,119 @@
 # How to Scale Provisa
 
-A single Provisa process handles both user-facing queries and background work such as replica builds. That single-process topology is the right starting point: it needs no coordination overhead and you can run it anywhere with one command.
-
-When query load grows past what one process handles, you split those two responsibilities across dedicated nodes. This page explains the topology, how to launch each process mode, and how regions fit in.
+The Provisa config is a single declaration of the enterprise data estate, and all Provisa instances coordinate from it. Every process reads the same model from the same control plane.
 
 ---
 
 ## Process modes
 
-Every Provisa process starts in one of three modes. The mode is set at launch and does not change while the process runs.
+Every Provisa process starts in one of three modes, set at launch and fixed for the process's lifetime.
 
 ### `every` (the default)
 
-A process in `every` mode does both jobs: it serves data requests over all transports (HTTP, Arrow Flight, gRPC) and runs the background work a coordinator is responsible for, including replica builds and scheduled tasks.
+A process in `every` mode serves data requests and runs background work — replica builds, view refreshes and scheduled jobs. It serves the admin UI and all non-data HTTP routes too.
 
-Start a process in `every` mode by launching it with no `--mode` flag, or by setting `PROVISA_MODE=every`. A single-node deployment runs exactly one `every` process.
+Start in `every` mode by launching with no `--mode` flag. A single-node deployment runs one `every` process.
 
 ```bash
 provisa run
-# equivalent:
-PROVISA_MODE=every provisa run
+# same as:
+provisa run --mode every
 ```
 
 ### `query`
 
-A process in `query` mode serves data requests only. It never runs replica builds or scheduled work.
+A `query` process serves data requests. It serves the admin UI and all non-data HTTP routes. It does not run background work.
 
 ```bash
 provisa run --mode query
 ```
 
-Use `query` nodes behind a load balancer when you need more query throughput than a single process provides. You can add as many as you need; they are stateless with respect to query routing and scale horizontally without coordination.
-
 ### `coordinator`
 
-A process in `coordinator` mode runs background work only. It refuses all data requests at the transport boundary, before any data is read, and returns an error that names the transport and tells the caller to direct its request to a `query` or `every` node instead.
+A `coordinator` process runs background work. It serves the admin UI and all non-data HTTP routes. Data requests arriving at `/data` or over Arrow Flight are refused with HTTP 503 before reaching a route; the refusal names the transport and tells the caller to use a `query` or `every` node.
 
 ```bash
 provisa run --mode coordinator
 ```
-
-You need at least one `coordinator` node in a scaled deployment so that replica builds and scheduled tasks continue while `query` nodes handle traffic.
 
 ---
 
 ## Scaled topology
 
-Start with one `every` process. When you need more capacity, split into a dedicated coordinator tier and a pool of query nodes:
+Start with one `every` process. When query load grows, split the roles into a coordinator node and a pool of query nodes.
 
 ```
-                 ┌─────────────────┐
-  clients ──────▶│  load balancer  │
-                 └────────┬────────┘
-                          │
-           ┌──────────────┼──────────────┐
-           ▼              ▼              ▼
-      query node     query node     query node
-      (data only)   (data only)    (data only)
+  admin clients ────────────────────────┐
+  data clients  ───► load balancer ─────┼──► query node
+                                        ├──► query node
+                                        └──► query node
+  heavy clients ───────────────────────────► query node (direct)
 
-      coordinator   coordinator
-      (background)  (background)
+  background work ─────────────────────────► coordinator node
 ```
 
-Query nodes receive all user-facing traffic through the load balancer. Coordinators run in the background; clients never dial them directly. Nothing in Provisa requires coordinators to coordinate with each other, so you can run more than one for redundancy without any extra configuration.
+**Coordinator node.** One coordinator handles background work for most deployments; a second gives redundancy. Scale it vertically first. It runs the scheduler and holds background job slots; more CPU and memory let it take on more concurrent work before a second node adds value.
 
-### Launching query nodes
+Background jobs are claimed per-job. Replica builds hold session advisory locks on the control plane, one build per replica per region, with engine and host slot limits. View refreshes run a per-view atomic conditional UPDATE with a lease. Neither mechanism needs a global leader, so two coordinators claim different jobs in parallel with no setup beyond running them. When background load outgrows one coordinator, add a second.
 
-```bash
-provisa run --mode query
-```
+**Query nodes.** Query nodes are CPU-bound. Each node governs and routes a request, compiles it, then encodes result rows in batches as the engine streams them. Results stream in batches, so memory per request stays bounded. Scale query nodes by core count and by the number of nodes. Size the federation engine for memory.
 
-Add as many as you need. Put them behind any HTTP load balancer that health-checks `GET /health`. All query nodes read configuration from the shared PostgreSQL control plane, so no node-specific config is required.
+---
 
-### Launching coordinator nodes
+## Client addressing
 
-```bash
-provisa run --mode coordinator
-```
+Query nodes are identical. The simplest setup is a pool behind a load balancer at one address; all clients use it.
 
-One coordinator is enough for most deployments. Run a second one for redundancy; background work is claimed by exactly one coordinator at a time, so two coordinators do not duplicate work.
+For clients that need a dedicated path — long-running analytical queries that hold connections for minutes, for example — run a query node with its own DNS name and point those clients straight at it. They avoid competing with other traffic for load-balancer connections.
 
-### Kubernetes (Helm)
+Multiple pools each with a distinct address are also an option, each sized for the traffic it carries. Routing clients across pools is a capacity and addressing decision; workload isolation at the engine and data level is a region concern, described next.
 
-Set `PROVISA_MODE` in the pod's environment. The chart's `provisa.env` map is the right place:
+The coordinator node answers HTTP at its own address. Point admin-UI traffic there if you want it off the query pool.
+
+---
+
+## Workload separation: regions
+
+A region is an instance of Provisa with a dedicated engine and its own address, sharing the same model and control plane as every other region. Declaring a region for a workload gives that workload its own engine, sized for the work, at its own hostname.
+
+Regions are declared in `platform.regions` in the config:
 
 ```yaml
-provisa:
-  env:
-    PROVISA_MODE: query
+platform:
+  regions:
+    - id: transactional
+      address: transactional.provisa.example.com
+    - id: bi
+      address: bi.provisa.example.com
+    - id: provisioning
+      address: provisioning.provisa.example.com
 ```
 
-Deploy a separate Deployment for coordinators with `PROVISA_MODE: coordinator` and `replicaCount: 1` (or 2 for redundancy).
+Each region's nodes launch with `--region <id>`:
+
+```bash
+# transactional region: many small, low-latency queries and mutations
+provisa run --mode query --region transactional
+
+# BI region: large analytical scans; size the engine for memory
+provisa run --mode query --region bi
+
+# provisioning region: replica builds and view refreshes as coordinator work
+provisa run --mode coordinator --region provisioning
+```
+
+The org's config selects the regions it uses and gives each a store configuration covering its engine, replica storage, cache, state store and request record. A table may be pinned to a region; a table pinned to none may be replicated in every region.
+
+From a client's perspective, `transactional.provisa.example.com` and `bi.provisa.example.com` are addresses like any other. The deployment names them to match the team's language.
+
+For intra-engine isolation when Trino is the engine, Trino's per-org resource groups apply. See [Deployment](deployment.md#kubernetes--helm) for the configuration.
 
 ---
 
-## Regions
+## Sizing summary
 
-When a platform declares regions, each node is assigned to one at launch. A node refuses to start if the platform declares regions but no `--region` is given, or if a `--region` is given but the platform declares none.
-
-```bash
-provisa run --mode query    --region us-east-1
-provisa run --mode coordinator --region us-east-1
-```
-
-Set the region via environment variable for deployments that bypass the CLI:
-
-```bash
-PROVISA_MODE=query PROVISA_REGION=us-east-1 <launch command>
-```
-
-A platform with no declared regions runs with a single implicit region. In that case, `--region` is an error; omit it.
-
-For a full explanation of how regions map to data and organizations, see [Regions](regions.md).
-
----
-
-## Summary
-
-| Goal | Mode | Notes |
+| Node type | Scale by | Size by |
 |---|---|---|
-| Single-process development or small production | `every` | The default; no flag needed |
-| Horizontal query throughput | `query` | Add nodes behind a load balancer |
-| Background work in a scaled cluster | `coordinator` | One is enough; two gives redundancy |
+| Query node | Core count and number of nodes | CPU |
+| Federation engine | — | Memory |
+| Coordinator node | Number of nodes (jobs are claimed per-job) | Background job volume |
