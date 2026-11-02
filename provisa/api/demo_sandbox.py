@@ -618,9 +618,15 @@ async def expired(now: datetime | None = None) -> list[str]:
 
 
 async def last_active() -> datetime | None:
-    """When a request last reached any open sandbox; None when none is open."""
+    """When the tier was last in use, which is what its VM's idle stop counts from: when a request
+    last reached any open sandbox, None when none is open; now while it is building templates ahead
+    (REQ-2006), which it does only while it is up: stopped at the end of its idle window, a pass over
+    the demos never reached the end of them."""
     from provisa.api.admin.orgs_router import _admin_pool
+    from provisa.api import demo_templates
 
+    if demo_templates.building_ahead():
+        return datetime.now(UTC)
     async with _admin_pool().acquire() as conn:
         return (
             await conn.execute_core(select(func.max(demo_sandboxes.c.last_active_at)))

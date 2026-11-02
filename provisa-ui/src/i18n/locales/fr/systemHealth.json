@@ -28,6 +28,7 @@
     "port": "port {{port}}",
     "cypherOverHttp": "Cypher sur HTTP",
     "mvRefreshLoop": "Boucle de rafraîchissement des MV",
-    "stopped": "Arrêté"
+    "stopped": "Arrêté",
+    "copyUrl": "Copier l'URL"
   }
 }

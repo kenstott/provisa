@@ -189,7 +189,7 @@ jobs:
       - name: CVE scan (gates PyPI publish)
         run: |
           set -o pipefail
-          uvx pip-audit --timeout 60 -r requirements-audit.txt --no-deps -f json \
+          uvx --python 3.12 pip-audit --timeout 60 -r requirements-audit.txt --no-deps -f json \
             | tee sbom/provisa-cve-report.json
 
       - name: Ensure release exists

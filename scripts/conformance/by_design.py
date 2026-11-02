@@ -112,19 +112,13 @@ BY_DESIGN = ("design", "client", "suite")
 #: What a group naming catalog functions says of its cases.
 FUNCTION_CASE = "^catalog function::"
 
-#: REQ-2167 (amended 2026-10-29, INTERNAL FUNCTIONS and INDEXES BELONG TO THE DATABASE): the only
-#: groups that may name catalog functions, in the order a function is tried against them, each
-#: exactly as here. PostgreSQL's own refusal or an internal argument puts a function in the first
-#: (pgwire_catalog_types.py words its reason); the second takes what is left of the family and not
-#: served, so a function served with the wrong result type stays failed. Any other function not
-#: served is failed (PG_CATALOG FUNCTIONS ARE GAPS).
+#: REQ-2167 (amended 2026-10-29, INTERNAL FUNCTIONS): the only group that may name catalog
+#: functions, exactly as here. PostgreSQL's own refusal or an internal argument puts a function in
+#: it (pgwire_catalog_types.py words its reason). Any other function not served is failed
+#: (PG_CATALOG FUNCTIONS ARE GAPS): the index support functions are served or refused by name
+#: (REQ-2171), so they have no group.
 FUNCTION_GROUPS = {
     "Internal functions": {"case": FUNCTION_CASE, "reason": "^no call reaches it: "},
-    "Index functions": {
-        "case": FUNCTION_CASE,
-        "reason": "^not served: ",
-        "family": "Index support",
-    },
 }
 
 

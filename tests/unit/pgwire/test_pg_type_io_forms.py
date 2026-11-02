@@ -16,6 +16,7 @@ the same statements in tests/integration/test_type_io_on_engines.py."""
 
 from __future__ import annotations
 
+import re
 from types import SimpleNamespace
 from typing import Any
 
@@ -28,10 +29,11 @@ from provisa.pgwire.copy_handler import CopyHandler
 from provisa.pgwire.server import ProvisaSession, _sqlstate_of, startup_time_zone
 from provisa.pgwire.session_zone import UNKNOWN_ZONE, SessionZone, refuse_other_zone
 from provisa.transpiler.function_macros import MACROS, outcome
-from provisa.transpiler.pg_forms_type_io import ROWS, ZONED, readable, zoned_call
-from provisa.transpiler.transpile import transpile_to_duckdb
+from provisa.transpiler.pg_forms_type_io import ROWS, TRINO, ZONED, readable, zoned_call
+from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 from tests.unit.pgwire.pg17_type_io_answers import RECORDED
 from tests.unit.pgwire.type_io_corpus import (
+    NAME_OF_THE_REFUSAL,
     REFUSALS,
     REFUSED,
     by_function,
@@ -240,3 +242,58 @@ def test_the_engines_own_zone_does_not_change_an_answer(function: str):
     found = {sql: _difference(connection, sql) for sql in _FUNCTIONS[function]}
     assert {s: why for s, why in found.items() if why not in (None, REFUSED)} == {}
     assert sum(why == REFUSED for why in found.values()) <= REFUSALS.get(function, 0)
+
+
+@pytest.mark.parametrize(("name", "form"), [(r[0], r[2][TRINO.dialects]) for r in ROWS])
+def test_trino_is_handed_nothing_it_refuses_to_analyze(name: str, form: str):
+    assert re.search(r"AS INTEGER\) AS (DATE|TIME|VARBINARY|UUID)", form) is None
+    assert "[[]" not in form and "[]]" not in form
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        """SELECT pg_catalog."float4out"('1.4e-45'::real) AS v""",
+        """SELECT pg_catalog."float8out"('5e-324'::double precision) AS v""",
+    ],
+)
+def test_trino_writes_the_one_digit_java_does_not(sql: str):
+    assert "'%.0e'" in transpile(sql, "trino")
+
+
+def test_trino_does_not_take_a_float4s_digits_from_its_cast():
+    """Trino's cast keeps seven digits: 3.402823E38, where PostgreSQL's nine read back."""
+    sql = """SELECT pg_catalog."float4out"('3.4028235e38'::real) AS v"""
+    written = transpile(sql, "trino")
+    assert "'%.8e'" in written and "CAST(_s AS REAL)" in written
+
+
+def test_trino_reads_an_instant_into_utc():
+    """Trino keeps a text's offset, which PostgreSQL does not: 23:59:59+02 is 21:59:59+00."""
+    sql = """SELECT pg_catalog."timestamptz_in"('1999-12-31 23:59:59+02'::cstring, 1184::oid, (-1)::integer) AS v"""
+    assert "TIME ZONE), 'UTC')" in transpile(sql, "trino")
+
+
+def test_a_null_time_is_text_on_clickhouse():
+    sql = """SELECT pg_catalog."time_in"(NULL::cstring, NULL::oid, NULL::integer) AS v"""
+    assert "toTime64" not in transpile(sql, "clickhouse")
+    assert "TIME" in transpile(sql, "trino")
+
+
+@pytest.mark.parametrize(
+    ("value", "refuses"),
+    [
+        ("'(1,2)'::point", False),
+        ("'1,2'::point", True),
+        ("'[(0,0),(3,4)]'::lseg", False),
+        ("'((0,0),(1,1))'::lseg", True),
+        ("'[(0,0),(1,1)]'::path", False),
+        ("'((0,0),(1,1))'::polygon", False),
+        ("'(0,0),(1,1)'::polygon", True),
+        ("'<(1,2),3>'::circle", False),
+    ],
+)
+def test_a_canonical_geometric_literal_cannot_reach_a_refusal(value: str, refuses: bool):
+    stem = value.split("::")[1].replace("polygon", "poly")
+    sql = f'SELECT pg_catalog."{stem}_send"({value}) AS v'
+    assert (NAME_OF_THE_REFUSAL in transpile(sql, "clickhouse")) is refuses

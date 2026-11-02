@@ -490,7 +490,7 @@ Every query that touches a domain asset is logged in an append-only audit log (q
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-Pluggable auth provider interface: an abstract AuthProvider producing AuthIdentity (user_id, email, roles, claims) mapped to Provisa roles. One provider at a time configured in YAML.
+Pluggable auth provider interface: an abstract AuthProvider producing AuthIdentity (user_id, email, roles, claims) mapped to Provisa roles. One provider at a time configured in YAML. (Amended 2026-10-29, A sign-in acts as a role it holds:) Maintainer 2026-11-01: in claims mode, when no role mapping rule matches and the identity holds roles, the request acts as a role the identity holds. default_role applies only to an identity that holds none. This holds on every transport.
 
 **Use case:** Pluggable auth provider interface lets organizations connect any identity system without code changes.
 

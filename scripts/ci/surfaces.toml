@@ -354,6 +354,7 @@ paths = ["provisa/kafka/*"]
 tests = [
     "tests/integration/test_change_events_kafka_e2e.py",
     "tests/integration/test_kafka_*.py",
+    "tests/integration/test_push_listener_survives_broker.py",
 ]
 
 [sources.mariadb]

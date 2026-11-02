@@ -27,6 +27,7 @@ reaches the other tier is refused by name rather than opening the file a second 
 
 from __future__ import annotations
 
+import re
 import secrets
 
 from provisa.api.errors import ApiError
@@ -68,6 +69,11 @@ def new_sandbox_org_id() -> str:
     return f"{prefix}{secrets.token_hex(SANDBOX_HEX_DIGITS // 2)}"
 
 
+#: The id of a sandbox as it is minted (new_sandbox_org_id), its region's on the regions tier; a tier's
+#: own deployment org (sbxrtier) and a template are named, not minted, and are no node's alone.
+_MINTED = re.compile(r"sbx(r[a-z]+)?[0-9a-f]{12}")
+
+
 def is_this_nodes_sandbox(org_id: str) -> bool:
     """Whether sandbox ``org_id`` is this node's to serve and reap: on the regions sandbox tier,
     one this node's region minted (REQ-2068); on the other tier, any that is not the regions
@@ -95,6 +101,15 @@ def require_this_tier(org_id: str) -> None:
     not serve it -- a sandbox opened here would be its DuckDB file opened by a second process."""
     sandbox = is_sandbox_tier_org(org_id)
     if sandbox == serves_sandboxes():
+        if sandbox and _MINTED.fullmatch(org_id) and not is_this_nodes_sandbox(org_id):
+            # REQ-2068: each sandbox's file and stores are one node's, and the demos each serves
+            # are its own: built elsewhere it failed as an unpublished demo, and answered 500.
+            raise ApiError(
+                421,
+                "sandbox.wrong_tier",
+                f"Demo sandbox {org_id!r} is served by another node of the sandbox tier",
+                org=org_id,
+            )
         return
     raise ApiError(
         421,

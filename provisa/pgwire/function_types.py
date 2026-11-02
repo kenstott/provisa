@@ -26,6 +26,7 @@ from typing import Any
 import sqlglot.expressions as exp
 
 from provisa.core.pg_range import MULTIRANGE_TYPES, RANGE_TYPES
+from provisa.pgwire.catalog_pg17 import TYPES
 from provisa.pgwire.catalog_pg17_overloads import FUNCTION_OVERLOADS
 from provisa.transpiler.pg_literals import values_cast
 from provisa.transpiler.xml_syntax import RETURNS_XML, XML_VALUES
@@ -184,6 +185,10 @@ _RETURNS_ITS_BASE = frozenset(
 )
 
 
+#: Each built-in type, as format_type names it. Any other name a statement casts to may be its enum.
+_BUILT_IN = frozenset(row[-1] for row in TYPES.values())
+
+
 def _fits(argument: str | None, parameter: str) -> bool:
     """A string argument fits a character varying parameter as it fits a text one, any argument a
     polymorphic parameter of no kind, and a range or multirange the pseudo-type of its kind."""
@@ -192,7 +197,9 @@ def _fits(argument: str | None, parameter: str) -> bool:
         or argument == parameter
         or parameter in _OF_ANY_TYPE
         or (parameter == "anynonarray" and not argument.endswith("[]"))
-        or parameter == "anyenum"  # a statement's enum, which only the server's catalog names
+        or (
+            parameter == "anyenum" and argument not in _BUILT_IN
+        )  # only the server's catalog names one
         or (argument == "text" and parameter == "character varying")
         or (parameter in ("anyarray", "anycompatiblearray") and argument.endswith("[]"))
         or (parameter in ("anyrange", "anycompatiblerange") and argument in RANGE_TYPES)

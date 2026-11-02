@@ -574,7 +574,7 @@ def _named(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         exp.ExplodingGenerateSeries: ("generate_series", ("start", "end", "step")),
         exp.GenerateSeries: ("generate_series", ("start", "end", "step")),
         exp.Getbit: ("get_bit", ("this", "expression")),
-        exp.Trunc: ("trunc", ("this",)),
+        exp.Trunc: ("trunc", ("this", "decimals")),
         exp.Explode: ("unnest", ("this",)),
         exp.Unnest: ("unnest", ("expressions",)),
         exp.Overlay: ("overlay", ("this", "expression", "from_", "for_")),

@@ -50,10 +50,14 @@ def _difference(run: Callable[[str, int | None], Any], dialect: str, sql: str) -
     return verdict(sql, RECORDED[sql], got, None)
 
 
-def _check(run: Callable[[str, int | None], Any], dialect: str, function: str) -> None:
+def _differences(
+    run: Callable[[str, int | None], Any], dialect: str, function: str
+) -> dict[str, str]:
+    """The statements of ``function`` that differ, and those it refuses past its allowance."""
     found = {sql: _difference(run, dialect, sql) for sql in _FUNCTIONS[function]}
-    assert {s: why for s, why in found.items() if why not in (None, REFUSED)} == {}
-    assert sum(why == REFUSED for why in found.values()) <= REFUSALS.get(function, 0)
+    differ = {s: why for s, why in found.items() if why not in (None, REFUSED)}
+    refused = {s: why for s, why in found.items() if why == REFUSED}
+    return differ | refused if len(refused) > REFUSALS.get(function, 0) else differ
 
 
 @pytest.mark.requires_trino
@@ -64,12 +68,13 @@ def test_trino_answers_as_postgresql_17_answered(trino_conn, function: str):
         cursor.execute(sql)
         return cursor.fetchall()[0][0]
 
-    _check(run, "trino", function)
+    assert _differences(run, "trino", function) == {}
 
 
 @pytest.mark.requires_clickhouse
-@pytest.mark.parametrize("function", sorted(_FUNCTIONS))
-def test_clickhouse_answers_as_postgresql_17_answered(function: str):
+def test_clickhouse_answers_as_postgresql_17_answered():
+    """One test, every function: requires_clickhouse starts and removes the service for each test,
+    14 seconds that made a replay by function take 69 minutes."""
     import clickhouse_connect
 
     client = clickhouse_connect.get_client(
@@ -86,4 +91,5 @@ def test_clickhouse_answers_as_postgresql_17_answered(function: str):
         digits = client.query(f"SELECT hex(v) FROM ({sql})").result_rows[0][0]
         return None if digits is None else bytes.fromhex(digits)
 
-    _check(run, "clickhouse", function)
+    found = {function: _differences(run, "clickhouse", function) for function in sorted(_FUNCTIONS)}
+    assert {function: differ for function, differ in found.items() if differ} == {}

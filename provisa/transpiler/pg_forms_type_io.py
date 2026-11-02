@@ -91,10 +91,41 @@ class Engine:
     real_of: Callable[[str], str] = lambda v: f"CAST({v} AS REAL)"  # a text's float4
     #: A float4's text, of its shortest digits.
     real_text: Callable[[str], str] = lambda v: f"CAST({v} AS VARCHAR)"
+    #: A float8's text, of its shortest digits.
+    double_text: Callable[[str], str] = lambda v: f"CAST({v} AS VARCHAR)"
 
 
 def _trino_raises(state: str, message: str, sql_type: str) -> str:
-    return refused(state, message, sql_type)
+    """fail(), whose unknown type casts to any: Trino refuses a cast of an integer to a date, a time,
+    a timestamp, bytes or a uuid while analyzing, so ``refused`` fails a statement whose value never
+    reaches it."""
+    return f"CAST(fail('{MARK} {state}: ' || {message} || '{END}') AS {sql_type})"
+
+
+def _trino_pattern(pattern: str) -> str:
+    """``pattern`` for Trino's regular expressions, which take ``[[]`` for a class in a class."""
+    return pattern.replace("[[]", "\\[").replace("[]]", "\\]")
+
+
+def _trino_real_text(v: str) -> str:
+    """A float4's text on Trino. Its cast keeps seven digits, which need not read back: 1.677722E7
+    for 16777216, 3.402823E38 for the largest float4. The first of these that does is the shortest."""
+    written = ", ".join(f"format('%.{n}e', _r)" for n in range(9))
+    return (
+        f"transform(ARRAY[{v}], _r -> CASE WHEN is_finite(_r) THEN "
+        f"filter(ARRAY[{written}], _s -> CAST(_s AS REAL) = _r)[1] "
+        "ELSE CAST(_r AS VARCHAR) END)[1]"
+    )
+
+
+def _trino_double_text(v: str) -> str:
+    """A float8's text on Trino. Java writes two digits at least, 4.9E-324 where one, 5e-324, reads
+    back the same value: such a digit is PostgreSQL's. Only a value this small has one."""
+    one = f"format('%.0e', {v})"
+    return (
+        f"CASE WHEN abs({v}) < 1e-300 AND CAST({one} AS DOUBLE) = {v} THEN {one} "
+        f"ELSE CAST({v} AS VARCHAR) END"
+    )
 
 
 def _clickhouse_raises(state: str, message: str, sql_type: str) -> str:
@@ -167,8 +198,8 @@ TRINO = Engine(
     time="TIME(6)",
     timestamp="TIMESTAMP(6)",
     timestamptz="TIMESTAMP(6) WITH TIME ZONE",
-    full_match=lambda v, p: f"regexp_like({v}, '^(?:{p})$')",
-    sub=lambda v, p, g: f"regexp_replace({v}, '{p}', '{g.replace(chr(92), '$')}')",
+    full_match=lambda v, p: f"regexp_like({v}, '^(?:{_trino_pattern(p)})$')",
+    sub=lambda v, p, g: f"regexp_replace({v}, '{_trino_pattern(p)}', '{g.replace(chr(92), '$')}')",
     as_text=lambda v: f"CAST({v} AS VARCHAR)",
     wide=lambda v: f"TRY_CAST({v} AS DECIMAL(38, 0))",
     word_hex=lambda v, size: (
@@ -200,9 +231,11 @@ TRINO = Engine(
     instant=lambda v: (
         "CAST(regexp_replace(regexp_replace("
         f"{v}, '([+-][0-9][0-9])$', '$1:00'), '([+-][0-9:]+)$', ' $1') "
-        "AS TIMESTAMP(6) WITH TIME ZONE)"
+        "AS TIMESTAMP(6) WITH TIME ZONE) AT TIME ZONE 'UTC'"
     ),
     clock=lambda v: f"CAST({v} AS TIME(6))",
+    real_text=_trino_real_text,
+    double_text=_trino_double_text,
 )
 CLICKHOUSE = Engine(
     dialects=frozenset({"clickhouse"}),
@@ -237,6 +270,7 @@ CLICKHOUSE = Engine(
     left=lambda v, n: f"substringUTF8({v}, 1, {n})",
     tail=lambda v, n: f"substringUTF8({v}, {n})",
     real_of=lambda v: f"CAST(toFloat64({v}) AS Nullable(Float32))",
+    double_text=lambda v: f"toString({v})",
     raises=_clickhouse_raises,
     let=lambda n, v, b: f"arrayMap({n} -> {b}, [{v}])[1]",
     days=lambda v: f"dateDiff('day', toDate32('2000-01-01'), toDate32({v}))",
@@ -849,7 +883,7 @@ def _floats() -> list[Row]:
         _noted(_row("float4in", "v", real, lambda e: _float_in(e, "float4in", "real", e.real, "3.4028235677973366e38")), "real"),
         _noted(_row("float8in", "v", double, lambda e: _float_in(e, "float8in", "double precision", e.double, "1.7976931348623157e308")), "double precision"),
         _noted(_row("float4out", "v", _text, _float4_out), "text"),
-        _noted(_row("float8out", "v", _text, lambda e: _shortest(e, e.as_text("v"), 15)), "text"),
+        _noted(_row("float8out", "v", _text, lambda e: _shortest(e, e.double_text("v"), 15)), "text"),
         _noted(_row("float4send", "v", _binary, lambda e: e.of_hex(e.float_hex("v", 4))), "bytea"),
         _noted(_row("float8send", "v", _binary, lambda e: e.of_hex(e.float_hex("v", 8))), "bytea"),
     ]  # fmt: skip
@@ -1140,6 +1174,14 @@ _INPUT_OF_TYPE: dict[str, tuple[str, int | None]] = {
     "name": ("namein", None), '"char"': ("charin", None),
     "pg_snapshot": ("pg_snapshot_in", None), "txid_snapshot": ("txid_snapshot_in", None),
 }  # fmt: skip
+#: The geometric inputs whose text, where it is canonical, is the value. ClickHouse reaches the
+#: input's refusal in a send's arrayMap whatever the value, so _read writes such a literal as its
+#: text, and leaves the input only what it refuses by name.
+_CANONICAL_LITERAL = {
+    held[0]: re.compile(held[2].replace("[[]", r"\[").replace("[]]", r"\]"))
+    for held in _HELD
+    if held[0] in ("point_in", "lseg_in", "path_in", "poly_in", "circle_in")
+}
 _NOT_STRICT = frozenset({"domain_in", "int8_sum", "unknownin"})
 #: Types a statement names only for a function: what it casts to them is its argument.
 _NO_ENGINE_TYPE = frozenset({"oid", "regtype", "regclass", "regproc"})
@@ -1174,6 +1216,9 @@ def _read(value: exp.Expr) -> exp.Expr:
     if reader is None:
         return node.this.copy()  # its row reads the text
     name, oid = reader
+    canonical = _CANONICAL_LITERAL.get(name)
+    if canonical is not None and canonical.fullmatch(node.this.name):
+        return node.this.copy()
     extra = [] if oid is None else [exp.Literal.number(oid), exp.Literal.number(-1)]
     return exp.Anonymous(this=name, expressions=[node.this.copy(), *extra])
 
@@ -1183,7 +1228,11 @@ def _is_null(value: exp.Expr) -> bool:
     return isinstance(node.this if isinstance(node, exp.Cast) else node, exp.Null)
 
 
-def _null_of(result: str) -> exp.Expr:
+def _null_of(result: str, dialect: str | None = None) -> exp.Expr:
+    """A NULL of ``result``. ClickHouse holds a time as its text (Engine.time): sqlglot would write
+    toTime64OrNull, which ClickHouse 24 does not have."""
+    if dialect == "clickhouse" and result == "time without time zone":
+        result = "text"
     return exp.Cast(this=exp.Null(), to=exp.DataType.build(result, dialect="postgres"))
 
 
@@ -1443,7 +1492,7 @@ def _record_text(arguments: list[exp.Expr]) -> exp.Expr | None:
     return _said_text(literals.record_text(words))
 
 
-def _lowered(tree: exp.Expr) -> exp.Expr:
+def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
     """``tree`` with each call of these functions the call its row reads: a NULL of a strict function
     answers itself, whatever type no engine has it says, and a literal of a type is its input."""
 
@@ -1462,7 +1511,7 @@ def _lowered(tree: exp.Expr) -> exp.Expr:
         in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
         unset = name == "domain_in" and _is_null(arguments[1])
         if unset or (name not in _NOT_STRICT and any(_is_null(a) for a in arguments)):
-            written = _null_of(RESULTS[name])
+            written = _null_of(RESULTS[name], dialect)
             return exp.alias_(written, name) if in_select else written
         if name == "int8_sum":
             return node
@@ -1513,13 +1562,15 @@ def zoned_call(sql: str) -> str | None:
     return next((name for name in calls if name in ZONED), None)
 
 
-def readable(sql: str) -> str:
+def readable(sql: str, dialect: str | None = None) -> str:
     """``sql`` with each call of these functions as its row reads it. sqlglot takes ``::cstring[]``
     for a subscript and ``::bit varying`` for a bit and an alias, and reads PostgreSQL's other
-    spelling of each. A text it cannot parse is left, for the engine to say so."""
+    spelling of each. A text it cannot parse is left, for the engine to say so. ``dialect`` is the
+    engine it is for, where that changes a NULL's type."""
     if _CALLED.search(sql) is None:
         return sql
     try:
-        return _lowered(sqlglot.parse_one(_spelled(sql), read="postgres")).sql(dialect="postgres")
+        tree = sqlglot.parse_one(_spelled(sql), read="postgres")
+        return _lowered(tree, dialect).sql(dialect="postgres")
     except SqlglotError:
         return sql

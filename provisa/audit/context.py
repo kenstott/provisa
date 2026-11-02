@@ -39,14 +39,17 @@ from dataclasses import dataclass, field
 class AuditIdentity:
     """The authenticated caller behind the statements run in this context.
 
-    user_id  the authenticated principal (audit log's ``user_id``)
-    surface  the protocol the statement arrived on — the audit log's ``source``, which
-             ``surface_mix``/``query_health`` group by (e.g. ``http``, ``pgwire``, ``flight``,
-             ``grpc``, ``mcp``, ``bolt``)
+    user_id    the authenticated principal (audit log's ``user_id``)
+    surface    the protocol the statement arrived on — the audit log's ``source``, which
+               ``surface_mix``/``query_health`` group by (e.g. ``http``, ``pgwire``, ``flight``,
+               ``grpc``, ``mcp``, ``bolt``)
+    statement  the text the client sent, where the surface governs a text it wrote from it;
+               None where what is governed is what was sent
     """
 
     user_id: str
     surface: str
+    statement: str | None = None
 
 
 # The principal an unauthenticated deployment's requests are attributed to — the ``anonymous``
@@ -82,7 +85,7 @@ def audit_identity_scope(user_id: str, surface: str):
         _current_identity.reset(token)
 
 
-async def with_audit_identity(user_id: str, surface: str, coro):
+async def with_audit_identity(user_id: str, surface: str, coro, *, statement: str | None = None):
     """Await ``coro`` with the acting principal bound INSIDE it.
 
     Surfaces that govern on the main event loop from a worker thread (pgwire, Flight SQL, gRPC)
@@ -90,7 +93,8 @@ async def with_audit_identity(user_id: str, surface: str, coro):
     boundary — the identity set on the worker thread is invisible to the loop-side coroutine that
     calls :func:`provisa.audit.pipeline.begin_audit`. Wrapping the coroutine binds it where it runs.
     """
-    token = _current_identity.set(AuditIdentity(user_id=user_id, surface=surface))
+    identity = AuditIdentity(user_id=user_id, surface=surface, statement=statement)
+    token = _current_identity.set(identity)
     try:
         return await coro
     finally:
