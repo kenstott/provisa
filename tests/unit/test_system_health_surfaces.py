@@ -113,6 +113,7 @@ async def test_each_surface_has_a_row_with_its_path_and_whether_it_serves(health
         "Cypher over HTTP": "disabled",
         "REST": "running",
         "JSON:API": "disabled",
+        "OData": "disabled",
     }
     assert all(rows[name].port is None for name in HTTP_SURFACES)
 
@@ -141,6 +142,17 @@ def test_the_banner_names_each_surface_being_served(caplog):
 
     for name, path in HTTP_SURFACES.items():
         assert f"{name} endpoint listening at {path} on the HTTP port" in caplog.messages
+
+
+def test_the_banner_names_odata_at_its_service_root(caplog):
+    from provisa.api.app_startup import _log_http_surfaces
+
+    log = logging.getLogger("test_banner")
+    app = SimpleNamespace(routes=[_route("/data/odata/$metadata")])
+    with caplog.at_level(logging.INFO, logger="test_banner"):
+        _log_http_surfaces(app, log)
+
+    assert "OData endpoint listening at /data/odata on the HTTP port" in caplog.messages
 
 
 def test_the_banner_says_a_surface_that_is_not_served_is_not(caplog):

@@ -1,0 +1,11 @@
+{
+  "odataPage": {
+    "title": "OData",
+    "description": "ロールが参照できるテーブルを、ドライバーをインストールせずに Excel、Power BI、または任意の OData クライアントで開きます。",
+    "serviceRoot": "サービス ルート",
+    "serviceRootHelp": "Excel または Power BI で OData フィードを選択し、このアドレスを貼り付けます。Basic またはベアラー トークンでサインインします。",
+    "metadata": "メタデータ ドキュメント",
+    "metadataHelp": "ロールが参照できるテーブル、列、リレーションシップを OData CSDL で示します。",
+    "copyUrl": "URL をコピー"
+  }
+}

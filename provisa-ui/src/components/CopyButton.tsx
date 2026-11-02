@@ -19,11 +19,11 @@ interface CopyButtonProps {
   text: string;
   size?: number;
   className?: string;
-  title?: string;
+  hint?: string;
   children?: React.ReactNode;
 }
 
-export function CopyButton({ text, size = 11, className, title, children }: CopyButtonProps) {
+export function CopyButton({ text, size = 11, className, hint, children }: CopyButtonProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
 
@@ -34,7 +34,7 @@ export function CopyButton({ text, size = 11, className, title, children }: Copy
     });
   }, [text]);
 
-  const label = copied ? t("copyButton.copied") : (title ?? t("copyButton.copy"));
+  const label = copied ? t("copyButton.copied") : (hint ?? t("copyButton.copy"));
 
   return (
     <Tip text={label} named>

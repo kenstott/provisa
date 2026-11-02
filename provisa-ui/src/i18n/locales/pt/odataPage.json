@@ -1,0 +1,11 @@
+{
+  "odataPage": {
+    "title": "OData",
+    "description": "Abra as tabelas que sua função pode ver no Excel, no Power BI ou em qualquer cliente OData, sem instalar driver.",
+    "serviceRoot": "Raiz do serviço",
+    "serviceRootHelp": "No Excel ou no Power BI, escolha Feed OData e cole este endereço. Entre com Basic ou um token de portador.",
+    "metadata": "Documento de metadados",
+    "metadataHelp": "As tabelas, colunas e relacionamentos que sua função pode ver, em OData CSDL.",
+    "copyUrl": "Copiar URL"
+  }
+}

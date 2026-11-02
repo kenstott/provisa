@@ -1,0 +1,11 @@
+{
+  "odataPage": {
+    "title": "OData",
+    "description": "Ouvrez les tables visibles par votre rôle dans Excel, Power BI ou tout client OData, sans pilote à installer.",
+    "serviceRoot": "Racine du service",
+    "serviceRootHelp": "Dans Excel ou Power BI, choisissez Flux OData et collez cette adresse. Connectez-vous avec Basic ou un jeton du porteur.",
+    "metadata": "Document de métadonnées",
+    "metadataHelp": "Les tables, colonnes et relations visibles par votre rôle, au format OData CSDL.",
+    "copyUrl": "Copier l'URL"
+  }
+}

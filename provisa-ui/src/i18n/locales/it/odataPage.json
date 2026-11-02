@@ -1,0 +1,11 @@
+{
+  "odataPage": {
+    "title": "OData",
+    "description": "Apri le tabelle visibili al tuo ruolo in Excel, Power BI o in qualsiasi client OData, senza installare driver.",
+    "serviceRoot": "Radice del servizio",
+    "serviceRootHelp": "In Excel o Power BI, scegli Feed OData e incolla questo indirizzo. Accedi con Basic o un token di connessione.",
+    "metadata": "Documento di metadati",
+    "metadataHelp": "Le tabelle, le colonne e le relazioni visibili al tuo ruolo, in formato OData CSDL.",
+    "copyUrl": "Copia URL"
+  }
+}

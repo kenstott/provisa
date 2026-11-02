@@ -110,6 +110,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/sql", labelKey: "navBar.itemSql", capability: "query_development" },
       { to: "/grpc", labelKey: "navBar.itemGrpc", capability: "query_development" },
       { to: "/jsonapi", labelKey: "navBar.itemJsonApi", capability: "query_development" },
+      { to: "/odata", labelKey: "navBar.itemOData", capability: "query_development" }, // REQ-2193
       { to: "/openapi", labelKey: "navBar.itemOpenApi", capability: "query_development" },
       { to: "/explore", labelKey: "navBar.itemExplore", capability: "query_development" },
       // REQ-2071: Python over the role's governed data, as a script and as a Jupyter notebook.
