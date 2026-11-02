@@ -5268,6 +5268,15 @@ def create_app() -> FastAPI:
     from provisa.api.coordinator_gate import CoordinatorDataGate
 
     app.add_middleware(CoordinatorDataGate)
+    # REQ-1916 (amended 2026-11-02): the mirror -- a query node answers the UI's backend with its
+    # refusal, naming the UI's address (mail.base_url, read per refusal: the config can reload).
+    from provisa.api.query_gate import QueryUiGate, is_ui_path
+
+    app.add_middleware(
+        QueryUiGate,
+        refuses=is_ui_path,
+        ui_address=lambda: state.config.mail.base_url if state.config is not None else None,
+    )
 
     from provisa.core.request_thread import RequestThreadMiddleware
 
