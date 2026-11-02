@@ -55,6 +55,9 @@ in
     gcc14
     gnumake
     unixodbc
+    # REQ-2194: `uv sync` compiles the pgwire encoder crate (experiments/pgwire_encoder_rs).
+    cargo
+    rustc
   ];
 
   # Registers "ODBC Driver 18 for SQL Server" in /etc/odbcinst.ini.

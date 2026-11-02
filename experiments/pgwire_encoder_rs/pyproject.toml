@@ -1,0 +1,30 @@
+# REQ-2194: the Rust DataRow encoder, a package of its own beside provisa (one compiled wheel per
+# platform, while provisa's own wheel stays pure Python) at provisa's version, which provisa pins.
+# The module it installs is the top-level `pgwire_encoder_rs` (src/lib.rs names it).
+[project]
+name = "provisa-pgwire-encoder"
+version = "0.1.0"
+description = "Provisa's pgwire DataRow encoder, compiled from Rust"
+requires-python = ">=3.12,<3.13"
+# The encoder reads Arrow batches through pyarrow's C data interface.
+dependencies = ["pyarrow"]
+
+[build-system]
+requires = ["maturin>=1.15,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+module-name = "pgwire_encoder_rs"
+bindings = "pyo3"
+profile = "release"
+locked = true
+strip = true
+
+# `uv sync` builds this package from the checkout; a change to the Rust source rebuilds it.
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "src/**/*.rs" },
+]

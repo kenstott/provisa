@@ -299,8 +299,17 @@ bundle_native_payload() {
   local notebook_dir="${REPO_ROOT}/dist/notebook"
   rm -rf "$notebook_dir"
   "${REPO_ROOT}/scripts/build-notebook-wheel.sh" "${base}/bin/python3" "$notebook_dir"
+  # REQ-2194: provisa's pinned provisa-pgwire-encoder, a manylinux_2_28 wheel compiled here (the
+  # Dockerfile's encoder stage); in the wheelhouse with the rest for an airgapped first launch.
+  local encoder_dir="${REPO_ROOT}/dist/pgwire-encoder"
+  rm -rf "$encoder_dir"
+  "${REPO_ROOT}/scripts/build-pgwire-encoder-wheel.sh" "${base}/bin/python3" "$encoder_dir"
   "${base}/bin/python3" -m pip download --dest "$wheels" --find-links "$notebook_dir" \
-    "${built_wheel}[embedded]" uvicorn mcp-proxy
+    --find-links "$encoder_dir" "${built_wheel}[embedded]" uvicorn mcp-proxy
+  if ! ls "$wheels"/provisa_pgwire_encoder-*.whl >/dev/null 2>&1; then
+    err "the wheelhouse has no provisa_pgwire_encoder wheel."
+    exit 1
+  fi
   ok "Wheelhouse staged ($(ls "$wheels" | wc -l | tr -d ' ') wheels)."
 
   # ── 3. Built UI (build provisa-ui/dist if not already present) ──

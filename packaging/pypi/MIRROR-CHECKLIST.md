@@ -32,6 +32,18 @@ therefore have **platform-specific** wheels (not pure-Python `-any`).
   pip download --no-deps "provisa-notebook==<provisa version>" -d ./mirror-seed
   ```
 
+- **provisa-pgwire-encoder:** provisa depends on `provisa-pgwire-encoder` at its own version
+  (pgwire's DataRow encoder, compiled from Rust, REQ-2194). It is published to PyPI with each
+  release as one `cp312` wheel per platform: `manylinux_2_28_x86_64`, `manylinux_2_28_aarch64`,
+  `macosx_*_arm64`, `macosx_*_x86_64` and `win_amd64`. There is no pure-Python fallback, so seed
+  the wheel of every operator platform. Like the notebook, the lock resolves it from this
+  repository:
+
+  ```bash
+  pip download --no-deps "provisa-pgwire-encoder==<provisa version>" --only-binary=:all: \
+      --python-version 3.12 --platform manylinux_2_28_x86_64 -d ./mirror-seed
+  ```
+
 ## One-pass mirror seed
 
 Download every wheel named in the lock, for each target platform, then upload

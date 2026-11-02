@@ -109,8 +109,27 @@ Pop-Location
 if ($NotebookBuilt -ne 0) { throw "provisa-notebook assets build failed" }
 & $RuntimePy -m build --wheel (Join-Path $RepoRoot 'provisa-notebook') --outdir $NotebookDir
 if ($LASTEXITCODE -ne 0) { throw "provisa-notebook wheel build failed" }
-& $RuntimePy -m pip install --quiet --find-links $NotebookDir $RepoRoot uvicorn mcp-proxy
+# REQ-2194: provisa's pinned provisa-pgwire-encoder, compiled here by maturin from a throwaway
+# venv (the toolchain and maturin scripts/build-pgwire-encoder-wheel.sh names).
+$EncoderDir = Join-Path $RepoRoot 'dist\pgwire-encoder'
+if (Test-Path $EncoderDir) { Remove-Item -Recurse -Force $EncoderDir }
+$MaturinVenv = Join-Path $ScriptDir 'tmp-maturin'
+if (Test-Path $MaturinVenv) { Remove-Item -Recurse -Force $MaturinVenv }
+& $RuntimePy -m venv $MaturinVenv
+if ($LASTEXITCODE -ne 0) { throw "maturin venv creation failed" }
+& (Join-Path $MaturinVenv 'Scripts\python.exe') -m pip install --quiet 'maturin==1.15.0'
+if ($LASTEXITCODE -ne 0) { throw "pip install maturin failed" }
+$env:RUSTUP_TOOLCHAIN = '1.95.0'
+Push-Location (Join-Path $RepoRoot 'experiments\pgwire_encoder_rs')
+& (Join-Path $MaturinVenv 'Scripts\maturin.exe') build --release --locked -i $RuntimePy --out $EncoderDir
+$EncoderBuilt = $LASTEXITCODE
+Pop-Location
+Remove-Item -Recurse -Force $MaturinVenv
+if ($EncoderBuilt -ne 0) { throw "provisa-pgwire-encoder wheel build failed" }
+& $RuntimePy -m pip install --quiet --find-links $NotebookDir --find-links $EncoderDir $RepoRoot uvicorn mcp-proxy
 if ($LASTEXITCODE -ne 0) { throw "pip install provisa failed" }
+& $RuntimePy -c "import pgwire_encoder_rs" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "pgwire_encoder_rs missing from the bundled native runtime" }
 & $RuntimePy -c "import provisa_notebook; provisa_notebook.pyodide_dir()" 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "provisa-notebook assets missing from the bundled native runtime" }
 & $RuntimePy -c "import mcp_proxy" 2>&1 | Out-Null

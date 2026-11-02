@@ -150,6 +150,8 @@ jobs:
           sed -i 's/^version = .*/version = "${{ needs.metadata.outputs.py_version }}"/' pyproject.toml
           sed -i 's/"provisa-notebook==[^"]*"/"provisa-notebook==${{ needs.metadata.outputs.py_version }}"/' pyproject.toml
           grep -q '"provisa-notebook==${{ needs.metadata.outputs.py_version }}"' pyproject.toml
+          sed -i 's/"provisa-pgwire-encoder==[^"]*"/"provisa-pgwire-encoder==${{ needs.metadata.outputs.py_version }}"/' pyproject.toml
+          grep -q '"provisa-pgwire-encoder==${{ needs.metadata.outputs.py_version }}"' pyproject.toml
           pip install build -q
           scripts/build-wheel.sh --sdist --wheel
 
@@ -278,6 +280,77 @@ jobs:
         with:
           name: provisa-notebook-dist
           path: provisa-notebook/dist/
+          retention-days: 1
+
+  # REQ-2194: pgwire's DataRow encoder, compiled from Rust: one cp312 wheel per platform a
+  # `pip install provisa` runs on, at the release's version, which provisa pins. Each is installed
+  # and imported on its own platform before it is uploaded (the x86_64 Mac wheel by an x86_64
+  # Python under Rosetta). Published with provisa by the orchestrator, after every artifact
+  # exists; the -dist names also attach them to the GitHub release.
+  build-pgwire-encoder:
+    name: Build provisa-pgwire-encoder (${{ matrix.label }})
+    runs-on: ${{ matrix.runner }}
+    needs: [metadata]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: linux-x86_64, runner: ubuntu-latest, arch: x64, tag: manylinux_2_28_x86_64 }
+          - { label: linux-aarch64, runner: ubuntu-24.04-arm, arch: arm64, tag: manylinux_2_28_aarch64 }
+          - { label: macos-arm64, runner: macos-14, arch: arm64, tag: 'macosx_\d+_\d+_arm64' }
+          - { label: macos-x86_64, runner: macos-14, arch: x64, tag: 'macosx_\d+_\d+_x86_64', target: x86_64-apple-darwin }
+          - { label: windows-x64, runner: windows-latest, arch: x64, tag: win_amd64 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        id: python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: ${{ matrix.arch }}
+
+      - name: Stamp the version
+        run: |
+          sed -i.orig 's/^version = .*/version = "${{ needs.metadata.outputs.py_version }}"/' \
+            experiments/pgwire_encoder_rs/pyproject.toml
+          rm experiments/pgwire_encoder_rs/pyproject.toml.orig
+          grep -q '^version = "${{ needs.metadata.outputs.py_version }}"$' experiments/pgwire_encoder_rs/pyproject.toml
+
+      - name: Build the wheel
+        env:
+          PGWIRE_ENCODER_TARGET: ${{ matrix.target }}
+        run: scripts/build-pgwire-encoder-wheel.sh "${{ steps.python.outputs.python-path }}" dist/pgwire-encoder
+
+      - name: Verify the wheel's tag and import it
+        env:
+          VERSION: ${{ needs.metadata.outputs.py_version }}
+          TAG: ${{ matrix.tag }}
+          PY: ${{ steps.python.outputs.python-path }}
+        run: |
+          set -euo pipefail
+          "$PY" - <<'PY'
+          import glob, os, re, sys
+          [wheel] = glob.glob("dist/pgwire-encoder/provisa_pgwire_encoder-*.whl")
+          name = os.path.basename(wheel)
+          want = rf"provisa_pgwire_encoder-{re.escape(os.environ['VERSION'])}-cp312-cp312-{os.environ['TAG']}\.whl"
+          if not re.fullmatch(want, name):
+              print(f"{name} is not {want}"); sys.exit(1)
+          print(f"OK: {name}")
+          PY
+          "$PY" -m pip install --quiet --no-deps dist/pgwire-encoder/provisa_pgwire_encoder-*.whl
+          "$PY" -c "import pgwire_encoder_rs; print(pgwire_encoder_rs.__file__)"
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: pgwire-encoder-wheel-${{ matrix.label }}-dist
+          path: dist/pgwire-encoder/provisa_pgwire_encoder-*.whl
+          if-no-files-found: error
           retention-days: 1
 
   build-jdbc:

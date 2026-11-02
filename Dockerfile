@@ -1,5 +1,37 @@
 # syntax=docker/dockerfile:1
-# Stage 1: install Python deps from pre-built wheels (stays on builder layer only)
+# Stage 1: the pgwire DataRow encoder (REQ-2194), a Rust extension module, built as a
+# manylinux_2_28 wheel. The stage runs on the BUILD machine and cross-compiles for the target
+# (zig links it), so an arm64 image built on an amd64 runner compiles natively, not under QEMU.
+# The pgwire-encoder-wheel stage is that wheel alone: the AppImage, the cloud push and the
+# release export it (docker build --target pgwire-encoder-wheel --output type=local,dest=DIR).
+# Toolchain and maturin are the versions scripts/build-pgwire-encoder-wheel.sh names.
+FROM --platform=$BUILDPLATFORM rust:1.95.0-slim-trixie AS rust-toolchain
+
+FROM --platform=$BUILDPLATFORM python:3.12-slim AS pgwire-encoder
+ARG TARGETARCH
+# A host C compiler for the build scripts of the crate's dependencies.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends gcc libc6-dev \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
+COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo RUSTUP_HOME=/usr/local/rustup PATH=/usr/local/cargo/bin:$PATH
+RUN pip install --no-cache-dir "maturin[zig]==1.15.0"
+COPY experiments/pgwire_encoder_rs/ /src/
+WORKDIR /src
+RUN case "$TARGETARCH" in \
+      amd64) target=x86_64-unknown-linux-gnu ;; \
+      arm64) target=aarch64-unknown-linux-gnu ;; \
+      *) echo "pgwire encoder: no Rust target for $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+ && rustup target add "$target" \
+ && maturin build --release --locked --zig --compatibility manylinux_2_28 --target "$target" \
+      -i python3.12 --out /wheels
+
+FROM scratch AS pgwire-encoder-wheel
+COPY --from=pgwire-encoder /wheels/ /
+
+# Stage 2: install Python deps from pre-built wheels (stays on builder layer only)
 FROM python:3.12-slim AS installer
 WORKDIR /app
 COPY pyproject.toml .
@@ -38,8 +70,14 @@ RUN uv export --frozen --no-dev --no-emit-project --no-hashes --no-annotate --no
  && pip install --no-cache-dir --no-deps ./provisa-notebook \
  && pip install --no-cache-dir --no-deps . \
  && rm -rf /usr/local/bin/uv /tmp/locked.txt /tmp/requirements.txt provisa-notebook provisa-client
+# REQ-2194: the encoder from stage 1 (the lock names it as an editable path, like provisa-notebook,
+# so the export above leaves it out). Imported here so an image without it is never built.
+COPY --from=pgwire-encoder /wheels/ /tmp/pgwire-encoder/
+RUN pip install --no-cache-dir --no-deps /tmp/pgwire-encoder/provisa_pgwire_encoder-*.whl \
+ && python -c "import pgwire_encoder_rs" \
+ && rm -rf /tmp/pgwire-encoder
 
-# Stage 2: render_graph's renderer (REQ-1990) — the UI's own Cytoscape stylesheet and layouts,
+# Stage 3: render_graph's renderer (REQ-1990) — the UI's own Cytoscape stylesheet and layouts,
 # bundled with the packages provisa-ui/graph-render's lockfile pins, drawn by Node into a PNG.
 # npm and the build tools stay in this stage; the runtime takes node, the bundle and the two
 # packages the bundle loads at run time (jsdom, and canvas with its native build for this arch).
@@ -52,7 +90,7 @@ COPY provisa-ui/src/components/graph ./src/components/graph
 COPY provisa-ui/src/components/erd/erd-layout-options.ts ./src/components/erd/
 RUN cd graph-render && npm run build && npm prune --omit=dev
 
-# Stage 3: lean runtime image — no wheels, only app source + installed packages
+# Stage 4: lean runtime image — no wheels, only app source + installed packages
 FROM python:3.12-slim
 WORKDIR /app
 # REQ-1992: an org may keep its file folder encrypted (gocryptfs over FUSE). The container needs

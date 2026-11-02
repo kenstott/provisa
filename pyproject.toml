@@ -191,6 +191,11 @@ dependencies = [
     # PyPI caps a file at 100 MB; it is part of every install, at this release's own version
     # (the release stamps the pin with the version).
     "provisa-notebook==0.1.0",
+    # REQ-2194: pgwire's DataRow encoder, compiled from Rust (experiments/pgwire_encoder_rs). A
+    # package of its own so provisa's wheel stays one pure-Python wheel while this one is built
+    # per platform; part of every install at this release's own version (the release stamps the
+    # pin). There is no Python stand-in: an install without it is a broken install.
+    "provisa-pgwire-encoder==0.1.0",
 ]
 
 [project.scripts]
@@ -320,6 +325,9 @@ build-backend = "setuptools.build_meta"
 # (`python -m provisa_notebook.build`); a release publishes it to PyPI with provisa.
 [tool.uv.sources]
 provisa-notebook = { path = "provisa-notebook", editable = true }
+# REQ-2194: the encoder crate, built in place by maturin (cargo on PATH); a release builds its
+# wheels per platform and publishes them to PyPI with provisa.
+provisa-pgwire-encoder = { path = "experiments/pgwire_encoder_rs", editable = true }
 
 [tool.setuptools.packages.find]
 # The provisa tree plus the vendored buenavista fork, discovered from two roots so both

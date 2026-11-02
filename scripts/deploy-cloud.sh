@@ -209,8 +209,26 @@ build_api() {
   echo "== packaging python package"
   # provisa/_graph_render is a checkout's symlink to provisa-ui/graph-render (gitignored); the image
   # carries the built renderer there as a directory, which a pushed symlink cannot replace.
+  # REQ-2194: pgwire's encoder, compiled from this checkout by the Dockerfile's encoder stage, for
+  # both Linux architectures: each module file is named for its architecture
+  # (pgwire_encoder_rs.cpython-312-<arch>-linux-gnu.so), so one package directory imports on an
+  # amd64 node and an arm64 one alike. Pushed beside buenavista; the image's own copy stays below it.
+  echo "== compiling the pgwire encoder (linux/amd64, linux/arm64)"
+  rm -rf "$STAGE/encoder"
+  local platform
+  for platform in linux/amd64 linux/arm64; do
+    docker build --quiet --platform "$platform" --target pgwire-encoder-wheel \
+      --output "type=local,dest=$STAGE/encoder/wheels" "$REPO" >/dev/null
+  done
+  local wheel
+  for wheel in "$STAGE"/encoder/wheels/provisa_pgwire_encoder-*.whl; do
+    unzip -q -o "$wheel" 'pgwire_encoder_rs/*' -d "$STAGE/encoder/tree"
+  done
+  [ "$(ls "$STAGE"/encoder/tree/pgwire_encoder_rs/*-linux-gnu.so | wc -l)" -eq 2 ] \
+    || { echo "the pgwire encoder did not build for both architectures" >&2; exit 1; }
   tar czf "$STAGE/api.tgz" -C "$REPO" --exclude='__pycache__' --exclude='*.pyc' \
-    --exclude='provisa/_graph_render' provisa -C "$REPO/vendor/buenavista" buenavista
+    --exclude='provisa/_graph_render' provisa -C "$REPO/vendor/buenavista" buenavista \
+    -C "$STAGE/encoder/tree" pgwire_encoder_rs
 }
 
 push_api() {
@@ -421,6 +439,7 @@ services:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
       - ${OVERLAY_DIR}/buenavista:/app/buenavista
+      - ${OVERLAY_DIR}/pgwire_encoder_rs:/app/pgwire_encoder_rs
       - ${OVERLAY_DIR}/config:/app/config
       # A huggingface embedding model is fetched into the hub cache at its first use; on the host,
       # a recreate does not fetch it again.
@@ -431,6 +450,7 @@ services:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
       - ${OVERLAY_DIR}/buenavista:/app/buenavista
+      - ${OVERLAY_DIR}/pgwire_encoder_rs:/app/pgwire_encoder_rs
       - ${OVERLAY_DIR}/config:/app/config
   # REQ-2006: the sandbox tier runs the same app; without the tree it ran the image's own code
   # beside an API on the deployed one.
@@ -439,6 +459,7 @@ services:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
       - ${OVERLAY_DIR}/buenavista:/app/buenavista
+      - ${OVERLAY_DIR}/pgwire_encoder_rs:/app/pgwire_encoder_rs
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
@@ -468,6 +489,7 @@ services:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
       - ${OVERLAY_DIR}/buenavista:/app/buenavista
+      - ${OVERLAY_DIR}/pgwire_encoder_rs:/app/pgwire_encoder_rs
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
@@ -1154,6 +1176,7 @@ deploy_sandbox_vm() {
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
       - ${OVERLAY_DIR}/buenavista:/app/buenavista
+      - ${OVERLAY_DIR}/pgwire_encoder_rs:/app/pgwire_encoder_rs
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps"

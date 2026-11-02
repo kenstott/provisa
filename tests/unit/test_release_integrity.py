@@ -48,9 +48,15 @@ _LEGS = {
 }
 # PyPI's own jobs are the orchestrator's: PyPI trusted publishing does not accept a token issued
 # to a reusable workflow (pypa/gh-action-pypi-publish#166), which every leg is.
-_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi")
-#: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
-_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi"}}
+_PYPI = (
+    "publish-pypi",
+    "publish-notebook-pypi",
+    "publish-pgwire-encoder-pypi",
+    "publish-provisa-pypi",
+)
+#: REQ-2071, REQ-2194: provisa pins provisa-notebook and provisa-pgwire-encoder at its own version,
+#: so provisa waits for both on PyPI.
+_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi", "publish-pgwire-encoder-pypi"}}
 
 
 def _load(name: str) -> dict:
@@ -241,6 +247,7 @@ def test_no_publication_is_reachable_without_every_build():
     assert where == {
         "publish-pypi": "orchestrator",
         "publish-notebook-pypi": "orchestrator",
+        "publish-pgwire-encoder-pypi": "orchestrator",
         "publish-provisa-pypi": "orchestrator",
         "publish-release": "publish",
         "publish-engine-image": "publish",

@@ -188,10 +188,15 @@ jobs:
           docker save --platform linux/arm64 provisa/provisa:local | gzip -9 > images/provisa-local.tar.gz
 
       # REQ-2071: provisa depends on provisa-notebook, which PyPI does not have until the release
-      # publishes it: its wheel is built first and found beside the others.
+      # publishes it: its wheel is built first and found beside the others. REQ-2194: so is
+      # provisa-pgwire-encoder, compiled by the Dockerfile's encoder stage (cross-compiled on this
+      # runner, not under QEMU).
       - name: Build provisa wheels for linux/arm64
         run: |
           mkdir -p provisa-wheels
+          docker build --platform linux/arm64 --target pgwire-encoder-wheel \
+            --output type=local,dest=provisa-wheels .
+          ls provisa-wheels/provisa_pgwire_encoder-*-manylinux_2_28_aarch64.whl
           docker run --rm --platform linux/arm64 \
             -v "$PWD:/src:ro" \
             -v "$PWD/provisa-wheels:/wheels" \

@@ -5,9 +5,9 @@
 # what a release is made of and in what order.
 #
 #   prebuilt ─┬─ macos ───┐
-#             ├─ windows ─┤
-#             └─ linux ───┼─ publish-pypi, publish-notebook-pypi ── publish-provisa-pypi ── publish
-#   packages ─────────────┘
+#             ├─ windows ─┤  publish-pypi,
+#             └─ linux ───┼─ publish-notebook-pypi,  ── publish-provisa-pypi ── publish
+#   packages ─────────────┘  publish-pgwire-encoder-pypi
 #
 # On a tag (v*) the release is built and published as it always was. Run by hand (Actions ->
 # Build Provisa Packages -> Run workflow) it is a DRY RUN: every artifact is built and uploaded
@@ -149,11 +149,36 @@ jobs:
           skip-existing: true
           attestations: true
 
+  # REQ-2194: provisa pins provisa-pgwire-encoder at its own version, so the encoder's wheels (one
+  # per platform) are on PyPI before provisa is, as the notebook package's is.
+  publish-pgwire-encoder-pypi:
+    name: Publish provisa-pgwire-encoder to PyPI
+    # Publishes and does nothing else: not run on a dry run.
+    if: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
+    needs: [prebuilt, packages, macos, windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pgwire-encoder-wheel-*-dist
+          path: dist/
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true
+          attestations: true
+
   publish-provisa-pypi:
     name: Publish provisa server to PyPI
     # Publishes and does nothing else: not run on a dry run.
     if: ${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version) }}
-    needs: [prebuilt, packages, macos, windows, linux, publish-notebook-pypi]
+    needs: [prebuilt, packages, macos, windows, linux, publish-notebook-pypi, publish-pgwire-encoder-pypi]
     runs-on: ubuntu-latest
     # id-token: write is what lets gh-action-pypi-publish request a Sigstore-signed PEP 740
     # attestation for each uploaded file — PyPI removed GPG signature uploads in 2023, so this
@@ -180,7 +205,7 @@ jobs:
   # proves the asset set is whole), and never after a publication that failed or was cancelled.
   publish:
     name: Attach and publish
-    needs: [prebuilt, packages, macos, windows, linux, publish-pypi, publish-notebook-pypi, publish-provisa-pypi]
+    needs: [prebuilt, packages, macos, windows, linux, publish-pypi, publish-notebook-pypi, publish-pgwire-encoder-pypi, publish-provisa-pypi]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     # The union of what the leg's jobs ask for: attach to and undraft the release (contents),
     # Sigstore attestations (id-token), the image pushes (packages).

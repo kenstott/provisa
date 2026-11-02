@@ -1,5 +1,29 @@
 # syntax=docker/dockerfile:1
 # Dev/test image — installs from PyPI (no pre-built wheels required)
+# REQ-2194: the pgwire encoder, compiled by Dockerfile's own stage (one Linux recipe).
+FROM --platform=$BUILDPLATFORM rust:1.95.0-slim-trixie AS rust-toolchain
+
+FROM --platform=$BUILDPLATFORM python:3.12-slim AS pgwire-encoder
+ARG TARGETARCH
+# A host C compiler for the build scripts of the crate's dependencies.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends gcc libc6-dev \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
+COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo RUSTUP_HOME=/usr/local/rustup PATH=/usr/local/cargo/bin:$PATH
+RUN pip install --no-cache-dir "maturin[zig]==1.15.0"
+COPY experiments/pgwire_encoder_rs/ /src/
+WORKDIR /src
+RUN case "$TARGETARCH" in \
+      amd64) target=x86_64-unknown-linux-gnu ;; \
+      arm64) target=aarch64-unknown-linux-gnu ;; \
+      *) echo "pgwire encoder: no Rust target for $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+ && rustup target add "$target" \
+ && maturin build --release --locked --zig --compatibility manylinux_2_28 --target "$target" \
+      -i python3.12 --out /wheels
+
 FROM python:3.12-slim
 WORKDIR /app
 COPY pyproject.toml .
@@ -19,6 +43,10 @@ RUN uv export --frozen --no-dev --no-emit-project --no-hashes --no-annotate --no
  && pip install --no-cache-dir --no-deps ./provisa-notebook \
  && pip install --no-cache-dir --no-deps . \
  && rm -rf /usr/local/bin/uv /tmp/locked.txt /tmp/requirements.txt provisa-notebook provisa-client
+COPY --from=pgwire-encoder /wheels/ /tmp/pgwire-encoder/
+RUN pip install --no-cache-dir --no-deps /tmp/pgwire-encoder/provisa_pgwire_encoder-*.whl \
+ && python -c "import pgwire_encoder_rs" \
+ && rm -rf /tmp/pgwire-encoder
 COPY main.py pyproject.toml ./
 COPY provisa/ ./provisa/
 COPY static/ ./static/
