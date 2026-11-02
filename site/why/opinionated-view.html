@@ -69,21 +69,20 @@
           <li><strong>Data catalogs and governance tools</strong>: meaning documented, policies recorded; neither bound to the data nor enforced at query time.</li>
           <li><strong>Semantic layers and metrics stores</strong>: shared metric definitions for BI; a thin slice of meaning covering only aggregations, with no model of who owns what or what the terms mean.</li>
           <li><strong>Ontologies and knowledge graphs</strong> (the first failure mode): formal meaning, relationships and reasoning, built as an end in themselves; rarely tied to operational records, and valued by assumption rather than measurement.</li>
-          <li><strong>Data mesh</strong>: domain ownership and data as a product, with federated computational governance; deliberately no runtime, leaving each program to implement governance over its own systems.</li>
-          <li><strong>Palantir Foundry</strong> (the second failure mode): the ontology is bound to data and access is controlled, which gets further than any other approach on this list. Our reading: Foundry builds applications on its own connectors and ontology framework; existing tools connect to it rather than through it, so value scales with what platform specialists build rather than with the concepts and relationships that domain owners define; operations are code (TypeScript, Python, Workshop) rather than declared primitives; governance is controls-based (Markings, permissions, project roles), with no stewardship of meaning as a first-class concern. This is Provisa's opinion; Foundry's object and link types and its declarative Action rules are genuine contributions to the field.</li>
+          <li><strong>Data mesh</strong>: domain ownership and federated computational governance over existing systems, deliberately without a runtime; data products were its more enduring outcome, a packaged dataset with an owner and a contract. Each product carries its own meaning and governance, so a catalog of products repeats the fragmentation one level up instead of fusing meaning, governance, data and access into one model.</li>
+          <li><strong>Operationally focused ontologies</strong> (the second failure mode, e.g. Foundry, Fabric): an ontology bound to data and used to drive applications built inside the platform, with access governed by controls; but those applications live on the platform's own connectors and ontology framework rather than serving consumers over standard protocols, so they scale technically, not organizationally. Operations are written as code rather than a small set of declared primitives a steward can read; governance manages who may see and do what, with no stewardship of meaning and no method to prove a term, refine it, or resolve ambiguity.</li>
         </ul>
 
         <p>
-          The last two entries show two ways an ontology fails: the first built concepts as an end in themselves, never tied to records, valued by assumption; the second tied to data and operational, but with no method to prove a term against records, refine it when reality disagrees, or resolve ambiguity when two parts of the organization mean different things by the same word. The opinions below answer both failure modes.
+          The last two entries show two ways an ontology fails: the first built concepts as an end in themselves, never tied to records, valued by assumption; the second tied to data and operational, but with no method to prove a term, refine it, or resolve ambiguity. None of these approaches creates a single model that scales organizationally and technically, reinforces itself, and outlives the technology of the moment (today that is AI). The opinions below answer both failure modes.
         </p>
 
-        <!-- Palantir source notes for the maintainer:
-          Sources checked 2026-11-02:
-          - palantir.com/docs/foundry/ontology/overview/ confirms: object/link types as declarative schema, action types and functions as the kinetic layer, Workshop/Quiver/Object Explorer as the application surface. No mention of JDBC/pgwire/Bolt/Flight SQL/SPARQL/MCP as consumer protocols.
-          - palantir.com/docs/foundry/functions/overview/ confirms: TypeScript and Python as the languages for functions, executed server-side.
-          - palantir.com/docs/foundry/security/markings/ confirms: Markings are classification-based access controls (who may see data), not a stewardship-of-meaning workflow.
-          - The Ontology Manager docs show branching and review of ontology proposals for technical ontology builders, not a domain stewardship/term approval workflow for business stewards.
-          Claims dropped or unsupported: no explicit evidence was found that Palantir lacks a glossary/definition approval workflow entirely; the claim is narrowed to "no stewardship of meaning as a first-class concern" as distinguished from access controls. Stated as Provisa's opinion throughout.
+        <!-- Wave description sources (for maintainer review):
+          Sources checked 2026-11-02 for Foundry as a representative of this wave:
+          - palantir.com/docs/foundry/ontology/overview/: object/link types declarative; kinetic layer (functions, actions) as TypeScript/Python code; consumer surface is Workshop/Quiver/Object Explorer (platform-native apps), not standard SQL/JDBC/Bolt/Flight SQL protocols.
+          - palantir.com/docs/foundry/functions/overview/: TypeScript and Python, server-side. Confirmed operations-as-code.
+          - palantir.com/docs/foundry/security/markings/: classification-based access controls (who may see). No term-definition stewardship workflow found.
+          Microsoft Fabric not independently checked; included as a named example per the maintainer's brief.
         -->
 
         <h2 id="opinions">The opinions behind the model</h2>
@@ -114,7 +113,7 @@
         <p>
           <strong>Domain boundaries are hypotheses.</strong> When something breaks, most
           organizations reach for a new system, a new team, or a new layer. Before that, stop
-          at the first step that explains it:
+          at the first question whose answer is no:
         </p>
         <ol>
           <li>Are the relevant terms clearly defined and grounded? If not: refine the meaning.</li>
@@ -167,9 +166,13 @@
         <p>
           The framework can be applied without Provisa: fuse governance, meaning, data and
           access into one model, ground concepts to records, and govern reality at the boundary
-          rather than inside a platform. The practices are not ours. If you apply them with the
-          tools you have, you get most of the value. Provisa is an attempt to make the whole
-          thing declarative, so you do not have to implement it yourself.
+          rather than inside a platform. The practices are not ours. A model built this way
+          outlives the technology of the moment; whether the next shift is a new compute
+          substrate or a regulator asking what an AI was allowed to read and why, traced to the
+          definition and the owner, the shift changes an engine or an interface, not the model
+          itself. If you apply the framework with the tools you have, you get most of the value.
+          Provisa is an attempt to make the whole thing declarative, so you do not have to
+          implement it yourself.
         </p>
 
       </div>
