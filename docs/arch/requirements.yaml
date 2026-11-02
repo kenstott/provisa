@@ -75765,7 +75765,16 @@
     The provider''s control plane signs users in, holds the model and plans; the customer''s data node acts
     only on plans signed for its org, connects to the customer''s engines, resolves the customer''s secrets
     locally, and its rows never leave the customer''s network. A data pool''s config read is scoped to the
-    orgs it serves; outside SaaS every node may still read the whole config.'
+    orgs it serves; outside SaaS every node may still read the whole config. (Amended 2026-11-02, Data nodes
+    run the whole read path; no plan call:) Maintainer 2026-11-02, superseding every earlier 2026-11-02
+    amendment''s plan call, plan facade, /internal/plan route and signed plans (do not implement them):
+    a data node has the same code and the same config, so it governs, compiles, fetches and encodes each
+    query itself; it never asks a control node for a plan or a config value. A control node serves the UI
+    and makes changes to the config (the model store''s writes), and keeps the background work this requirement
+    already gives the coordinator. The modes are every (default), control (today''s coordinator) and data
+    (today''s query). Node pools in the shared config, the Rust encoders on the read path (REQ-2194), the
+    response cache on data nodes, the existing REQ-1914 propagation, scaling behind load balancers, and
+    the customer-owned SaaS data node that sees only its own org''s config all stand.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
