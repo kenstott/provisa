@@ -83383,7 +83383,13 @@
     newer Provisa"), as an older format is. requires_provisa gates against stamped releases only: a build
     that is not a stamped release (a checkout, an app image) reports 0.1.0, newer than every alpha, so on
     those builds the demo format is what refuses a bundle the runtime cannot run. Raising the demo format
-    refuses every bundle built afterwards on an older runtime.'
+    refuses every bundle built afterwards on an older runtime. (Amended 2026-11-02, A lingered-out demo
+    keeps its data:) Maintainer 2026-11-02: when a demo version''s last sandbox has been closed for the
+    linger time, only that version''s own services are taken down; its data stays loaded in the shared stores
+    (Postgres, MongoDB, Qdrant, Elasticsearch), so the next visitor''s open is a container start and a loaded
+    check, and a version''s data loads once. A superseded version''s data is still dropped. Where the DEMO
+    STORES LINGER text says the data is dropped from the shared stores and the visitor waits while it starts,
+    this replaces it.'
   use_case: The maintainer changes an example query of the weblogs demo and merges it; minutes later the live demos page's
     next sandbox and a solution engineer's next start-ui-install.sh --demo weblogs both have the change, with no release cut.
   scenario: 'Given the weblogs bundle is published
