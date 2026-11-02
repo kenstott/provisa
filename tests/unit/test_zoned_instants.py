@@ -104,6 +104,38 @@ def test_a_column_that_declares_no_zone_is_a_plain_timestamp_on_clickhouse(chdb_
     assert "-04" not in _rows(chdb_session, sql)[0]
 
 
+@pytest.mark.parametrize("set_zone", [_NEW_YORK, "SET TimeZone = 'UTC'"])
+@pytest.mark.parametrize("unit", ["second", "millisecond", "microsecond"])
+@pytest.mark.parametrize("column", ["c", "plain", "plain::timestamp"])
+def test_clickhouse_start_of_a_sub_minute_unit_writes_no_datetrunc(set_zone, unit, column):
+    """ClickHouse 24.3's dateTrunc refuses a millisecond and a microsecond, in a branch not taken
+    too; chDB's does not, so the form is held to writing none."""
+    sql = _in_session(
+        set_zone, lambda: transpile(f"SELECT date_trunc('{unit}', {column}) FROM t", "clickhouse")
+    )
+    assert "datetrunc" not in sql.lower()
+
+
+@pytest.mark.parametrize("set_zone", [_NEW_YORK, "SET TimeZone = 'UTC'"])
+def test_clickhouse_start_of_a_millisecond_of_a_plain_timestamp_keeps_its_fraction(
+    chdb_session, set_zone
+):
+    chdb_session.query(
+        "INSERT INTO default.t SELECT 9, toDateTime64('2026-07-01 12:00:00.567', 6, 'UTC'), "
+        "toDateTime64('2026-07-01 12:00:00.567', 3, 'UTC'), 'text'"
+    )
+    try:
+        sql = _in_session(
+            set_zone,
+            lambda: transpile(
+                "SELECT date_trunc('millisecond', plain) FROM t WHERE i = 9", "clickhouse"
+            ),
+        )
+        assert _rows(chdb_session, sql)[0].microsecond == 567_000
+    finally:
+        chdb_session.query("ALTER TABLE default.t DELETE WHERE i = 9 SETTINGS mutations_sync = 1")
+
+
 def test_clickhouse_text_of_a_text_is_that_text(chdb_session):
     sql = _in_session(_NEW_YORK, lambda: transpile("SELECT s::text FROM t", "clickhouse"))
     assert _rows(chdb_session, sql)[0] == "text"

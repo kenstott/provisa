@@ -135,7 +135,8 @@ def _trino_trunc(v: str, local: str, unit: str, _zone: str) -> str:
 class _Engine:
     """An engine's reading of a value ``v``: whether it is an instant; the instant in a zone; and
     of that local instant its text and date, and of ``v`` the start of a unit in that zone; and
-    whether its own date and start of a unit are written on UTC too."""
+    whether its own date and start of a unit are written on UTC too. ``plain_trunc`` is the start
+    of a unit of a ``v`` that is no instant, None where the engine's own form answers."""
 
     name: str
     spelling: Callable[[StatementZone], str | None]
@@ -144,12 +145,16 @@ class _Engine:
     text: Callable[[str], str]
     day: Callable[[str], str]
     trunc: Callable[[str, str, str, str], str]
+    plain_trunc: Callable[[str, str], str | None]
     own_day_differs: bool
 
 
-#: A unit shorter than a minute, in microseconds: an offset of whole seconds cannot move its start,
-#: so it is the instant's count floored. ClickHouse's dateTrunc and toStartOfSecond, as sqlglot
-#: writes them, are a DateTime, which drops the fraction and reaches Arrow as a count of seconds.
+#: A unit shorter than a minute, in microseconds: its start is the instant's count floored, in any
+#: zone, as no zone's offset has a part shorter than a second (the tz database and ClickHouse hold
+#: offsets in whole seconds), so no offset can move it. ClickHouse's dateTrunc and toStartOfSecond,
+#: as sqlglot writes them, are a DateTime, which drops the fraction and reaches Arrow as a count of
+#: seconds; and ClickHouse 24.3's dateTrunc refuses a millisecond and a microsecond, in a branch not
+#: taken too, as it types every branch.
 _CLICKHOUSE_SUBMINUTE = {
     "SECOND": 1_000_000,
     "MILLISECOND": 1_000,
@@ -159,14 +164,27 @@ _CLICKHOUSE_SUBMINUTE = {
 }
 
 
+def _clickhouse_floor(v: str, unit: str) -> str:
+    """The microseconds since the epoch of the start of sub-minute ``unit`` of DateTime64 ``v``."""
+    micro = f"toUnixTimestamp64Micro({v})"
+    return f"{micro} - positiveModulo({micro}, {_CLICKHOUSE_SUBMINUTE[unit]})"
+
+
 def _clickhouse_trunc(_v: str, local: str, unit: str, zone: str) -> str:
     """The session's start of ``unit`` as Provisa's instant, DateTime64(6, 'UTC'): dateTrunc's own
     is a DateTime, or a Date for a month or a year, which is midnight in ``zone``."""
     if unit in _CLICKHOUSE_SUBMINUTE:
-        micro = f"toUnixTimestamp64Micro({local})"
-        floor = f"{micro} - positiveModulo({micro}, {_CLICKHOUSE_SUBMINUTE[unit]})"
-        return f"fromUnixTimestamp64Micro({floor}, 'UTC')"
+        return f"fromUnixTimestamp64Micro({_clickhouse_floor(local, unit)}, 'UTC')"
     return f"toTimeZone(toDateTime64(dateTrunc('{unit}', {local}), 6, '{zone}'), 'UTC')"
+
+
+def _clickhouse_plain_trunc(v: str, unit: str) -> str | None:
+    """The start of sub-minute ``unit`` of a plain timestamp (or a date), as a DateTime64(6) that
+    declares no zone, as ``v`` declares none: the same count, so the same wall time, its fraction
+    kept. None for a longer unit, whose own dateTrunc answers."""
+    if unit not in _CLICKHOUSE_SUBMINUTE:
+        return None
+    return f"fromUnixTimestamp64Micro({_clickhouse_floor(f'toDateTime64({v}, 6)', unit)})"
 
 
 _ENGINES = {
@@ -180,6 +198,7 @@ _ENGINES = {
         text=_trino_text,
         day=lambda local: f"CAST({local} AS DATE)",
         trunc=_trino_trunc,
+        plain_trunc=lambda _v, _unit: None,
         own_day_differs=False,
     ),
     "clickhouse": _Engine(
@@ -190,6 +209,7 @@ _ENGINES = {
         text=_clickhouse_text,
         day=lambda local: f"toDate32({local})",
         trunc=_clickhouse_trunc,
+        plain_trunc=_clickhouse_plain_trunc,
         own_day_differs=True,
     ),
 }
@@ -252,17 +272,22 @@ def _is_trunc(node: exp.Expr, engine: _Engine) -> bool:
     return engine.own_day_differs or node.text("unit").upper() not in _NOT_ZONED_UNITS
 
 
+def _plain_form(node: exp.Expr, value: exp.Expr, engine: _Engine, dialect: str) -> str | None:
+    """``node``'s answer for a ``value`` that is no instant, None where the engine's own answers."""
+    if not isinstance(node, exp.TimestampTrunc):
+        return None
+    return engine.plain_trunc(value.sql(dialect=dialect), node.text("unit").upper())
+
+
 def _form(node: exp.Expr, engine: _Engine, dialect: str) -> exp.Expr | None:
     value = node.expression if isinstance(node, exp.Extract) else node.this
-    if not _may_be_instant(value):
-        return None
-    instant = _instant_form(node, value, engine, dialect)
+    plain = _plain_form(node, value, engine, dialect)
+    instant = _instant_form(node, value, engine, dialect) if _may_be_instant(value) else None
     if instant is None:
-        return None
+        return None if plain is None else sqlglot.parse_one(plain, read=dialect)
     asked = engine.is_instant(value.sql(dialect=dialect))
-    return sqlglot.parse_one(
-        f"CASE WHEN {asked} THEN {instant} ELSE {node.sql(dialect=dialect)} END", read=dialect
-    )
+    otherwise = node.sql(dialect=dialect) if plain is None else plain
+    return sqlglot.parse_one(f"CASE WHEN {asked} THEN {instant} ELSE {otherwise} END", read=dialect)
 
 
 def _said_instant(value: exp.Expr) -> bool:
