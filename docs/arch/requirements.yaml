@@ -75822,7 +75822,11 @@
     its data nodes (a load balancer, a pool or a single node), and the UI is given the list for the org''s
     region. (Amended 2026-11-02, An every node''s UI asks for nothing:) Maintainer 2026-11-02: a UI served
     from an every node does not ask for a data node: it sends data requests to its own origin and does not
-    show the data-address setting. Only a coordinator-served UI offers it.'
+    show the data-address setting. Only a coordinator-served UI offers it. (Amended 2026-11-02, Registered
+    nodes when none are declared:) Maintainer 2026-11-02: when a region declares no data addresses, the
+    UI''s list is the region''s registered live query and every nodes, each with the client-reachable address
+    it registered; a node that registered no reachable address is not listed. Declared addresses, when present,
+    are the only list.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
