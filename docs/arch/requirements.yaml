@@ -75752,7 +75752,12 @@
     region and peers from the config; with no pools declared a process runs in every mode, as today. The
     address the control plane advertises is the pool''s declared address; liveness is the load balancer''s
     health check. Every node may read the entire config definition (maintainer: no problem with all nodes
-    seeing it); data nodes still never build or hold the governed model and act only on signed plans.'
+    seeing it); data nodes still never build or hold the governed model and act only on signed plans. (Amended
+    2026-11-02, A branch can run the same config on one localhost node:) Maintainer 2026-11-02: because
+    the topology is part of the declared config, a developer can branch a distributed config and change
+    only its pools to one localhost node (or none, so one process runs in every mode) and run it locally.
+    Nothing in the model depends on the topology, so the branch answers the same queries with the same results;
+    only where it runs differs.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
