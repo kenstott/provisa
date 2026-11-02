@@ -13,16 +13,21 @@
 Telling Trino or ClickHouse the zone does not move an instant: a Trino value carries its own zone,
 and ClickHouse's toHour, toDate, dateTrunc and toString go by the column's. So the zone is written
 into each of c::text, c::date, extract and date_trunc as the statement is transpiled, and a transpiled
-form belongs to the zone it was written for (``zone_cache_key``). On UTC only the text is written:
-each engine's own is not PostgreSQL's, and the others already answer as PostgreSQL does.
+form belongs to the zone it was written for (``zone_cache_key``). On UTC only the text is written,
+whose engine form is not PostgreSQL's, and on ClickHouse the date and the start of a unit as well:
+its own are a Date and a DateTime, which reach Arrow as counts of days and seconds.
 
 Which values are instants is the value's type, which the engine knows and the statement's text does
 not say, so each form asks the engine (typeof, toTypeName). A branch not taken must still type
 check, so the instant is reached through its text, which every type has. Each engine reads what it
 holds with no zone as a plain timestamp, written as it is.
 
-to_json is not here: Trino refuses a cast of an instant to JSON while it types the statement, which
-no branch can avoid (execute_trino names the refusal), and ClickHouse has no form of it."""
+to_json of an instant on Trino is written here, where the statement says the value is one (a cast
+to timestamptz, as the compiler states a registered column's type, or the clock): PostgreSQL's
+text of it as a JSON string. Trino refuses a cast of an instant to JSON while it types the
+statement, which no branch can avoid, so an instant the statement does not say is one is refused by
+name there (execute_trino), and one it says is inside an array or a row is refused by name here.
+ClickHouse has no form of to_json."""
 
 # Requirements: REQ-2171
 
@@ -35,6 +40,7 @@ from dataclasses import dataclass
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.core.pg_error import PostgresError
 from provisa.core.session_time_zone import (
     StatementZone,
     clickhouse_spelling,
@@ -60,8 +66,11 @@ _NO_INSTANT = (
     exp.Trim,
     exp.Replace,
 )
-_MENTIONED = re.compile(r"::|\b(?:CAST|EXTRACT|DATE_PART|DATE_TRUNC|DATE)\b", re.IGNORECASE)
+_MENTIONED = re.compile(
+    r"::|\b(?:CAST|EXTRACT|DATE_PART|DATE_TRUNC|DATE|TO_JSONB?)\b", re.IGNORECASE
+)
 _TEXTS = (exp.DataType.Type.TEXT, exp.DataType.Type.VARCHAR)
+_JSON_CALLS = frozenset({"to_json", "to_jsonb"})
 _DAY = (exp.DataType.Type.DATE,)
 #: What a zone cannot move: a count of seconds since the epoch, and a unit no offset is a part of.
 _NOT_ZONED_PARTS = frozenset({"EPOCH"})
@@ -71,8 +80,9 @@ _NOT_ZONED_UNITS = frozenset(
 
 
 def _clickhouse_declared(v: str) -> str:
-    """The zone ``v``'s type declares, empty where it declares none."""
-    return f"extract(toTypeName({v}), '''([^'']+)''')"
+    """The zone ``v``'s type declares, empty where it declares none: its type name's first quoted
+    part. Not ClickHouse's extract(), which the function forms read as PostgreSQL's and refuse."""
+    return f"arrayElement(splitByChar('''', toTypeName({v})), 2)"
 
 
 def _clickhouse_local(v: str, zone: str) -> str:
@@ -89,16 +99,27 @@ def _clickhouse_text(local: str) -> str:
     return f"concat(replaceRegexpOne({wall}, '[.]0+$', ''), replaceRegexpOne({offset}, ':00$', ''))"
 
 
-def _trino_text(local: str) -> str:
+def _trino_wall(local: str) -> str:
+    """The local instant's date and time, its fraction's trailing zeros dropped."""
     wall = (
         f"regexp_replace(CAST(CAST({local} AS TIMESTAMP(6)) AS VARCHAR), "
         "'([.][0-9]*[1-9])0+$', '$1')"
     )
+    return f"regexp_replace({wall}, '[.]0+$', '')"
+
+
+def _trino_text(local: str) -> str:
     offset = rf"regexp_replace(format_datetime({local}, 'ZZ'), '^Z$', '+00')"
-    return f"concat(regexp_replace({wall}, '[.]0+$', ''), regexp_replace({offset}, ':00$', ''))"
+    return f"concat({_trino_wall(local)}, regexp_replace({offset}, ':00$', ''))"
 
 
-def _trino_trunc(v: str, local: str, unit: str) -> str:
+def _trino_json(local: str) -> str:
+    """to_json's text of the instant: the T, and an offset's minutes, as a JSON string."""
+    offset = rf"regexp_replace(format_datetime({local}, 'ZZ'), '^Z$', '+00:00')"
+    return f"json_parse(concat('\"', replace({_trino_wall(local)}, ' ', 'T'), {offset}, '\"'))"
+
+
+def _trino_trunc(v: str, local: str, unit: str, _zone: str) -> str:
     """The session's start of ``unit``, as a value of ``v``'s own type: the other branch has that
     type, and one a date or a timestamp reads must not come back an instant."""
     return (
@@ -110,7 +131,8 @@ def _trino_trunc(v: str, local: str, unit: str) -> str:
 @dataclass(frozen=True)
 class _Engine:
     """An engine's reading of a value ``v``: whether it is an instant; the instant in a zone; and
-    of that local instant its text and date, and of ``v`` the start of a unit."""
+    of that local instant its text and date, and of ``v`` the start of a unit in that zone; and
+    whether its own date and start of a unit are written on UTC too."""
 
     name: str
     spelling: Callable[[StatementZone], str | None]
@@ -118,7 +140,14 @@ class _Engine:
     local: Callable[[str, str], str]
     text: Callable[[str], str]
     day: Callable[[str], str]
-    trunc: Callable[[str, str, str], str]
+    trunc: Callable[[str, str, str, str], str]
+    own_day_differs: bool
+
+
+def _clickhouse_trunc(_v: str, local: str, unit: str, zone: str) -> str:
+    """The session's start of ``unit`` as Provisa's instant, DateTime64(6, 'UTC'): dateTrunc's own
+    is a DateTime, or a Date for a month or a year, which is midnight in ``zone``."""
+    return f"toTimeZone(toDateTime64(dateTrunc('{unit}', {local}), 6, '{zone}'), 'UTC')"
 
 
 _ENGINES = {
@@ -132,6 +161,7 @@ _ENGINES = {
         text=_trino_text,
         day=lambda local: f"CAST({local} AS DATE)",
         trunc=_trino_trunc,
+        own_day_differs=False,
     ),
     "clickhouse": _Engine(
         name="ClickHouse",
@@ -140,7 +170,8 @@ _ENGINES = {
         local=_clickhouse_local,
         text=_clickhouse_text,
         day=lambda local: f"toDate32({local})",
-        trunc=lambda _v, local, unit: f"toTimeZone(dateTrunc('{unit}', {local}), 'UTC')",
+        trunc=_clickhouse_trunc,
+        own_day_differs=True,
     ),
 }
 
@@ -174,7 +205,9 @@ def _instant_form(node: exp.Expr, value: exp.Expr, engine: _Engine, dialect: str
     """``node``'s answer for an instant ``value``; None where the zone cannot move it. A zone the
     engine has no spelling of is refused here, where a form is written in it."""
     is_text = isinstance(node, exp.Cast) and node.to.this in _TEXTS
-    if current_zone.get() is None and not is_text:
+    is_day = isinstance(node, exp.Date) or (isinstance(node, exp.Cast) and node.to.this in _DAY)
+    written_on_utc = is_text or (engine.own_day_differs and (is_day or _is_trunc(node)))
+    if current_zone.get() is None and not written_on_utc:
         return None
     v = value.sql(dialect=dialect)
     if isinstance(node, exp.Cast) and is_text:
@@ -182,14 +215,21 @@ def _instant_form(node: exp.Expr, value: exp.Expr, engine: _Engine, dialect: str
         if node.to.expressions:  # c::varchar(5) is the text, cut
             return f"CAST({written} AS {node.to.sql(dialect=dialect)})"
         return written
-    if isinstance(node, exp.Date) or (isinstance(node, exp.Cast) and node.to.this in _DAY):
+    if is_day:
         return engine.day(engine.local(v, _zone_named(engine)))
     if isinstance(node, exp.Extract) and node.name.upper() not in _NOT_ZONED_PARTS:
         local = sqlglot.parse_one(engine.local(v, _zone_named(engine)), read=dialect)
         return exp.Extract(this=node.this.copy(), expression=local).sql(dialect=dialect)
-    if isinstance(node, exp.TimestampTrunc) and node.text("unit").upper() not in _NOT_ZONED_UNITS:
-        return engine.trunc(v, engine.local(v, _zone_named(engine)), node.text("unit").upper())
+    if _is_trunc(node):
+        zone = _zone_named(engine)
+        return engine.trunc(v, engine.local(v, zone), node.text("unit").upper(), zone)
     return None
+
+
+def _is_trunc(node: exp.Expr) -> bool:
+    return (
+        isinstance(node, exp.TimestampTrunc) and node.text("unit").upper() not in _NOT_ZONED_UNITS
+    )
 
 
 def _form(node: exp.Expr, engine: _Engine, dialect: str) -> exp.Expr | None:
@@ -205,6 +245,45 @@ def _form(node: exp.Expr, engine: _Engine, dialect: str) -> exp.Expr | None:
     )
 
 
+def _said_instant(value: exp.Expr) -> bool:
+    """Whether the statement itself says ``value`` is an instant."""
+    if isinstance(value, exp.Paren):
+        return _said_instant(value.this)
+    if isinstance(value, exp.Cast):
+        return value.to.is_type(exp.DataType.Type.TIMESTAMPTZ)
+    return isinstance(value, exp.CurrentTimestamp)
+
+
+def _holds_said_instant(value: exp.Expr) -> bool:
+    """Whether ``value`` is an array or a row with an instant the statement says is one in it."""
+    if isinstance(value, exp.Paren):
+        return _holds_said_instant(value.this)
+    row = isinstance(value, exp.Anonymous) and value.name.lower() == "row"
+    if not (row or isinstance(value, (exp.Array, exp.Struct, exp.Tuple))):
+        return False
+    return any(_said_instant(m) or _holds_said_instant(m) for m in value.expressions)
+
+
+def _json_of_instant(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """to_json(v) on Trino of an instant ``v`` the statement says is one, as PostgreSQL writes it;
+    None for any other value, which Trino's own cast to JSON answers or refuses."""
+    if not (isinstance(node, exp.Anonymous) and node.name.lower() in _JSON_CALLS):
+        return None
+    if dialect != "trino" or len(node.expressions) != 1:
+        return None
+    value = node.expressions[0]
+    if _holds_said_instant(value):
+        raise PostgresError(
+            "0A000",
+            f"{node.name.lower()} of a timestamptz in an array or a row is not available on Trino",
+        )
+    if not _said_instant(value):
+        return None
+    engine = _ENGINES[dialect]
+    local = engine.local(value.sql(dialect=dialect), _zone_named(engine))
+    return sqlglot.parse_one(_trino_json(local), read=dialect)
+
+
 def written(sql: str, tree: exp.Expr | None, dialect: str) -> exp.Expr | None:
     """``tree`` (the parse of ``sql``, or None for it not yet parsed) with each read of an instant
     in the session's zone, on ``dialect``; ``tree`` as it was where nothing is to be written."""
@@ -218,5 +297,10 @@ def written(sql: str, tree: exp.Expr | None, dialect: str) -> exp.Expr | None:
         form = _form(node, engine, dialect)
         if form is not None:
             node.replace(form)
+            wrote = True
+    for node in list(parsed.find_all(exp.Anonymous)):
+        json = _json_of_instant(node, dialect)
+        if json is not None:
+            node.replace(json)
             wrote = True
     return parsed if wrote else tree
