@@ -86,9 +86,9 @@
         "description": "一個選擇器按類別列出所有類型：<strong>訂閱、RDBMS、雲端數據倉庫、分析、數據湖、NoSQL、代碼解析器、圖、檔案、API、串流、企業、數據質素、其他</strong>。可以按名稱或別名搜尋，也可以用類別標籤收窄範圍。每種類型都有標誌和可達性圖示：⚡ 表示就地即時讀取，複製圖示表示 Provisa 讀取已更新的副本。<p>揀選一個，填寫連線，儲存。</p>"
       },
       "stepBuildSource": {
-        "title": "即場加入一個數據源",
-        "description": "數據源就是這樣加入的：選擇器打開並顯示完整清單，選了 <strong>Parquet File</strong>，填入檔案地址（<code>supplies.parquet</code>），然後按儲存建立。新的 <strong>supplies</strong> 數據源直接在原處讀取該檔案。",
-        "acting": "正在加入數據源"
+        "title": "填好一個數據源的表單",
+        "description": "選擇器開啟並顯示完整清單，選擇了 <strong>Parquet File</strong>，表單中填入了檔案地址（<code>supplies.parquet</code>）。檔案數據源只需要這些。這裡只是看一看表單：下一步會按下<strong>取消</strong>，不儲存任何內容。",
+        "acting": "正在填寫數據源"
       },
       "step4": {
         "title": "一切都會變成一個表格",
@@ -872,13 +872,9 @@
         "title": "數據集市的欄從哪裏來",
         "description": "數據集市各欄的血緣：每一欄都經由時點視圖和衛星表追溯到其來源欄位。"
       },
-      "datavaultAnalyst": {
-        "title": "分析師的視角",
-        "description": "接下來，SQL 瀏覽器以歐洲分析師的身分執行。個人數據存放在衛星中，所以治理亦在那裏進行。"
-      },
       "datavaultMasked": {
         "title": "在個人數據所在處遮罩",
-        "description": "以分析師身分查看時，CRM 衛星只顯示歐洲客戶。他們的聯絡人被隱去，電郵中的姓名及電話號碼中的數字亦被隱藏。中心表及連結仍然可讀，因此分析師仍能在它們上面做連接。"
+        "description": "SQL 瀏覽器現在以歐洲分析師的身分執行。個人數據存放在衛星中，所以治理亦在那裏進行。以分析師身分查看時，CRM 衛星只顯示歐洲客戶。他們的聯絡人被隱去，電郵中的姓名及電話號碼中的數字亦被隱藏。中心表及連結仍然可讀，因此分析師仍能在它們上面做連接。"
       },
       "datavaultRecap": {
         "title": "你看到了甚麼",
@@ -972,13 +968,9 @@
         "title": "回到所有角色",
         "description": "接下來，角色選擇器切回 <strong>All</strong>。"
       },
-      "retailAsMarketing": {
-        "title": "以 EU 市場推廣身份",
-        "description": "接下來，SQL 瀏覽器以 marketing_eu 的身份運行。"
-      },
       "retailAudience": {
         "title": "只有同意的客戶",
-        "description": "EU 市場推廣讀取同意接收推廣的 EU 客戶，而且只限這些客戶。該視圖在 EU 以 EU 的行建立。"
+        "description": "SQL 瀏覽器現在以 <strong>marketing_eu</strong> 的身分執行。EU 市場推廣讀取同意接收推廣的 EU 客戶，而且只限這些客戶。該視圖在 EU 以 EU 的行建立。"
       },
       "retailAsDpo": {
         "title": "以保障資料主任身份",
@@ -1140,13 +1132,9 @@
         "title": "關係，只宣告一次",
         "description": "<strong>OF_PRODUCT</strong> 將 PostgreSQL 中的訂單明細與 MongoDB 中的貨品連接起來。連同 PLACED_BY、HAS_ITEM 和 SHIPPED_AS，這四個關係只宣告一次，應用程式和 BI 工具都透過它們讀取。"
       },
-      "storefrontAsCustomer": {
-        "title": "以顧客身份登入",
-        "description": "應用程式以 <strong>customer</strong> 角色發送查詢，該角色的列過濾會把每個答案限制在已登入客戶自己的訂單內。接下來，角色選擇器會切換到 <strong>customer</strong>，讓下面的查詢完全按應用程式的方式執行。"
-      },
       "storefrontScreen": {
         "title": "應用程式唯一的查詢",
-        "description": "訂單紀錄頁面發送這唯一一個巢狀 GraphQL 查詢：每張訂單及其明細、每項明細在目錄中的貨品，以及訂單在送貨服務中的送貨資料。以 <strong>customer</strong> 身份執行時，它傳回七張訂單，全部屬於已登入的顧客。"
+        "description": "應用程式以 <strong>customer</strong> 角色發送查詢，該角色的列過濾會把每個答案限制在已登入客戶自己的訂單內。角色選擇器現在是 <strong>customer</strong>。訂單紀錄頁面發送這唯一一個巢狀 GraphQL 查詢：每張訂單及其明細、每項明細在目錄中的貨品，以及訂單在送貨服務中的送貨資料。以 <strong>customer</strong> 身份執行時，它傳回七張訂單，全部屬於已登入的顧客。"
       },
       "storefrontApp": {
         "title": "它所支撐的頁面",
@@ -1156,13 +1144,9 @@
         "title": "經由 JSON:API 讀取同樣的訂單",
         "description": "偏好 JSON:API 的用戶端仍以顧客身份要求同樣的訂單，並包含其明細和送貨資料。每張訂單都連結到它所包含的明細和送貨資料，而明細的 id 是它的複合鍵。"
       },
-      "storefrontAnalyst": {
-        "title": "現在以分析師身份",
-        "description": "BI 一方以 <strong>analyst</strong> 身分讀取：看得到所有訂單，但看不到任何客戶的電郵。接下來，執行身分選擇器會切換到 <strong>analyst</strong>。"
-      },
       "storefrontAnalystSql": {
         "title": "分析師的 SQL",
-        "description": "按地區和速遞公司統計的延遲送貨，基於同樣的表和關係。<strong>a_customer</strong> 顯示分析師讀到的電郵：已遮罩。"
+        "description": "BI 一方以 <strong>analyst</strong> 身分讀取：看得到所有訂單，但看不到任何客戶的電郵。SQL 瀏覽器現在以 <strong>analyst</strong> 的身分執行。按地區和速遞公司統計的延遲送貨，基於同樣的表和關係。<strong>a_customer</strong> 顯示分析師讀到的電郵：已遮罩。"
       },
       "storefrontBi": {
         "title": "BI 儀表板",
@@ -1188,13 +1172,9 @@
         "title": "應用程式所認識的表",
         "description": "四張表帶著應用程式使用的名稱過來了。<strong>customers</strong> 保留了 Hasura 的自訂名稱 <strong>givenName</strong> 和 <strong>familyName</strong>，商品表保留其根名稱 <strong>catalog</strong>，每一欄都帶有可讀取它的角色，來自 select 權限。"
       },
-      "hasuramigrationAsAna": {
-        "title": "以 Ana 身分登入",
-        "description": "Ana 是一位客戶。她的權杖帶有 <strong>x-hasura-user-id: 1</strong>，Provisa 把這個聲明讀作工作階段值 <strong>hasura_user_id</strong>，匯入的列規則就以它來比較。接下來，角色選擇器會切換到 <strong>ana</strong>，讓下面的查詢完全按網店為她執行的方式執行。"
-      },
       "hasuramigrationMyOrders": {
         "title": "重塑後的訂單紀錄",
-        "description": "商店的訂單紀錄查詢為 Provisa 重塑了一次：根欄位帶有其網域，欄位名稱遵循 Provisa 的慣例，order_by 是一個清單。關係 <strong>items</strong> 和 <strong>product</strong> 保留了它們的 Hasura 名稱。以 Ana 身分執行，它回傳她的四張訂單，不包含任何其他人的訂單。"
+        "description": "Ana 是一位客戶。她的權杖帶有 <strong>x-hasura-user-id: 1</strong>，Provisa 把這個聲明讀作工作階段值 <strong>hasura_user_id</strong>，匯入的列規則就以它來比較。角色選擇器現在是 <strong>ana</strong>。商店的訂單紀錄查詢為 Provisa 重塑了一次：根欄位帶有其網域，欄位名稱遵循 Provisa 的慣例，order_by 是一個清單。關係 <strong>items</strong> 和 <strong>product</strong> 保留了它們的 Hasura 名稱。以 Ana 身分執行，它回傳她的四張訂單，不包含任何其他人的訂單。"
       },
       "hasuramigrationProfile": {
         "title": "按鍵讀取",
@@ -1208,21 +1188,13 @@
         "title": "再加一個關係",
         "description": "<strong>BUYS_FOR</strong> 將顧客連接到其 Salesforce 帳戶，與匯入帶來的關係一樣獲得批准。從這裡起，在每個介面、每個角色的規則之下，帳戶與每個顧客都只隔一個欄位。"
       },
-      "hasuramigrationAsSupport": {
-        "title": "客戶支援台",
-        "description": "支援人員可以讀取所有訂單及所有客戶，與他們原來的 Hasura 權限一致。接下來，角色選擇器會切換到 <strong>support</strong>，支援台的訂單頁面會按他們的方式執行。"
-      },
       "hasuramigrationSupportScreen": {
         "title": "訂單及其帳戶",
-        "description": "支援台的訂單畫面經過重塑，並加入了新內容：在每張訂單的顧客旁邊，在同一個請求中顯示來自 Salesforce 的帳戶及其行業和城市。沒有帳戶的顧客則不顯示。"
-      },
-      "hasuramigrationAnalyst": {
-        "title": "分析師",
-        "description": "分析師可以讀取訂單總額及帳戶連結，但看不到姓名或電郵，亦永遠看不到已取消的訂單。這就是匯入帶過來的列規則及欄位清單。接下來，角色選擇器會切換到 <strong>analyst</strong>。"
+        "description": "支援人員可以讀取所有訂單及所有客戶，與他們原來的 Hasura 權限一致。角色選擇器現在是 <strong>support</strong>。支援台的訂單畫面經過重塑，並加入了新內容：在每張訂單的顧客旁邊，在同一個請求中顯示來自 Salesforce 的帳戶及其行業和城市。沒有帳戶的顧客則不顯示。"
       },
       "hasuramigrationByIndustry": {
         "title": "按行業統計的收入",
-        "description": "一條橫跨商店和 Salesforce 的 SQL 語句：按每張訂單背後帳戶的行業統計收入。分析師的規則與在 GraphQL 中一樣適用：已取消的訂單被排除，也不會讀取姓名或電郵。"
+        "description": "分析師可以讀取訂單總額及帳戶連結，但看不到姓名或電郵，亦永遠看不到已取消的訂單。這就是匯入帶過來的列規則及欄位清單。SQL 瀏覽器現在以 <strong>analyst</strong> 的身分執行。一條橫跨商店和 Salesforce 的 SQL 語句：按每張訂單背後帳戶的行業統計收入。分析師的規則與在 GraphQL 中一樣適用：已取消的訂單被排除，也不會讀取姓名或電郵。"
       },
       "hasuramigrationRecap": {
         "title": "你所看到的",
@@ -1332,13 +1304,9 @@
         "title": "分析師看到什麼",
         "description": "登入後，競投方 A 的分析師能看到授予 bidder_a 的內容：彙總檢視、設定檔、遮罩樣本，以及不含任何客戶身分的賣方記錄。這裡讀不到任何客戶姓名，也讀不到 CRM 中的企業名稱或交易名稱。"
       },
-      "dataroomBidder": {
-        "title": "現在以競投方 A 的身分",
-        "description": "接下來的陳述式以 <strong>bidder_a</strong> 的身分執行，與分析師完全一致。"
-      },
       "dataroomProfile": {
         "title": "發票的設定檔",
-        "description": "發票資料表的每一欄，按分析器發現的樣子呈現：資料列數、空值、相異值和範圍。競投方無須讀取任何一筆記錄，就能了解記錄的完整程度。這裡有些發票從未被支付。"
+        "description": "這些陳述式以 <strong>bidder_a</strong> 的身分執行，與分析師完全一致。發票資料表的每一欄，按分析器發現的樣子呈現：資料列數、空值、相異值和範圍。競投方無須讀取任何一筆記錄，就能了解記錄的完整程度。這裡有些發票從未被支付。"
       },
       "dataroomCounts": {
         "title": "客戶數量",
@@ -1676,21 +1644,13 @@
         "title": "每次日終時建立",
         "description": "日終總數是按銀行日曆在倉庫中實體化的檢視，日曆在倫敦時間 18:00 日終。檢視是對總賬唯一一張表的一個 GROUP BY，因此建立過程整體在總賬中執行，只有分組後的行會傳回。它承襲總賬的版本，不需要自己的歷史設定。每一天都在自己的日終時記錄。10 月 1 日和 2 日在更正到達時再被記錄一次。"
       },
-      "bankingAsOps": {
-        "title": "以營運身份",
-        "description": "下一個查詢以營運身份執行，營運按總賬本身的規則深入查看過賬。他們看不到員工賬戶的過賬，所有交易對手都會隱藏。"
-      },
       "bankingDashboard": {
         "title": "儀表板，透過 GraphQL",
-        "description": "倫敦 10 月 1 日的總數，每個總數內嵌着背後的過賬。一個請求從倉庫讀取總數、從總賬讀取過賬，並沿着剛才看到的關係連接起來。"
-      },
-      "bankingAsAnalyst": {
-        "title": "以報表分析員身份",
-        "description": "下面的 SQL 以銀行報表分析師的身份執行。他們讀取日終合計，以及構成這些合計的五個分類帳欄位：業務日期、分行、產品、貨幣和金額。他們從不會看到帳戶、交易對手或持有人。"
+        "description": "這個查詢以營運身份執行，營運按總賬本身的規則深入查看過賬。他們看不到員工賬戶的過賬，所有交易對手都會隱藏。倫敦 10 月 1 日的總數，每個總數內嵌着背後的過賬。一個請求從倉庫讀取總數、從總賬讀取過賬，並沿着剛才看到的關係連接起來。"
       },
       "bankingDay": {
         "title": "一天的總數",
-        "description": "10 月 1 日現在的樣子。按分行、產品和貨幣，可以看到流入、流出和淨額。透過 pgwire 連接的 BI 工具執行的正是這條 SQL。"
+        "description": "這段 SQL 以銀行報表分析師的身份執行。他們讀取日終合計，以及構成這些合計的五個分類帳欄位：業務日期、分行、產品、貨幣和金額。他們從不會看到帳戶、交易對手或持有人。10 月 1 日現在的樣子。按分行、產品和貨幣，可以看到流入、流出和淨額。透過 pgwire 連接的 BI 工具執行的正是這條 SQL。"
       },
       "bankingReported": {
         "title": "當時呈報了甚麼",
@@ -1772,13 +1732,9 @@
         "title": "誰能看到哪些客戶",
         "description": "規則在客戶表上:West 區的客服只能讀取 West 的客戶及其訂單,電郵地址被遮罩,看不到價格。BI 分析師可讀取所有區域和訂單金額,但看不到任何電郵地址。"
       },
-      "agentdataSupportRole": {
-        "title": "以 West 區客服身份操作",
-        "description": "智能體以頁首中的角色身份操作。下一步會選擇 West 區客服,因此智能體的每次工具呼叫都以該角色執行。"
-      },
       "agentdataSupportAsks": {
         "title": "客服的問題",
-        "description": "智能體尋找表、編寫 SQL 並透過 MCP 工具執行,工具在執行時顯示。只返回 West 的客戶,其電郵地址以遮罩形式到達:該角色只能得到這些。"
+        "description": "智能體以頁首中的角色身份操作，現在是 West 區客服，因此它的每次工具呼叫都以該角色執行。智能體尋找表、編寫 SQL 並透過 MCP 工具執行,工具在執行時顯示。只返回 West 的客戶,其電郵地址以遮罩形式到達:該角色只能得到這些。"
       },
       "agentdataExplain": {
         "title": "實際執行了甚麼",

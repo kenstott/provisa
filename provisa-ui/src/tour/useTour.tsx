@@ -590,6 +590,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // The visit and attempt whose step's clickBefore was last clicked: once per visit, as a statement
   // is handed once, since the runner re-runs a step (a new `t` or `navigate`) over what it opened.
   const clickedRef = useRef<string | null>(null);
+  // The visit and attempt whose `chooseFirst` has been picked.
+  const chosenRef = useRef<string | null>(null);
   // Mirrors activeStep for handlers (onDestroyed) whose closure predates the current step.
   const activeStepRef = useRef<number | null>(null);
 
@@ -692,6 +694,27 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // its predecessor's page. Stepping forward the inherited route already equals
         // currentPathRef, so the equality guard makes this a no-op exactly as before.
         const route = stepRoute(i, allStepsRef.current);
+        // The role the step explains, picked on its page before what it runs is handed over, once
+        // per visit: the picker toggles, and Retry is a new attempt that picks again.
+        const chooseEntry = `${visitRef.current}:${attempt}`;
+        if (step.chooseFirst && chosenRef.current !== chooseEntry) {
+          if (route && route !== `${window.location.pathname}${window.location.search}`) {
+            currentPathRef.current = route;
+            navigate(route);
+            // The route just taken re-renders the provider, which supersedes this run.
+            await nextPaint();
+            if (cancelled) return;
+          }
+          const picker = await waitForElement(step.chooseFirst.open, undefined, abort.signal);
+          if (cancelled) return;
+          picker.click();
+          const option = await waitForElement(step.chooseFirst.option, undefined, abort.signal);
+          if (cancelled) return;
+          chosenRef.current = chooseEntry;
+          option.click();
+          await nextPaint();
+          if (cancelled) return;
+        }
         if (route && step.openQuery) {
           // REQ-2010: a demo step's own statement, handed to its explorer once per visit to the
           // step: a new tab that runs it. This effect also re-runs within a visit when one of its
@@ -852,9 +875,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
         const isFirst = pos === 0;
         // A step whose Next picks a role (or environment) changes the rights the itinerary follows,
         // so what comes after it is not the current rights' to say: "back to every role" is not the
-        // end because the analyst may open nothing after it. It goes on through the steps counted,
+        // end because the analyst may open nothing after it. A step that picked one as it opened is
+        // the same: the role is already picked. It goes on through the steps counted,
         // and the runner moves past any the picked rights still deny.
-        const onward = step.chooseOnNext ? counted : steps;
+        const onward = step.chooseOnNext || step.chooseFirst ? counted : steps;
         const isLast = onward.indexOf(i) === onward.length - 1;
         // REQ-2010: a named demo's track ends on a choice -- the Deep Dives menu, or the demo's own
         // landing page -- not on a Done that rolls into another tour.

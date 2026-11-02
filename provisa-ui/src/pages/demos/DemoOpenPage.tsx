@@ -26,6 +26,7 @@ import {
   type OpenedSandbox,
 } from "../../api/demoSandbox";
 import { SandboxLoader } from "../../components/SandboxLoader";
+import { loaderTitleKey, pickLoader } from "../../components/sandboxLoaderKind";
 import { orgOrigin } from "../../lib/authHost";
 import { sandboxDestination } from "../../lib/sandboxSession";
 
@@ -93,6 +94,8 @@ export function DemoOpenPage() {
   const [stage, setStage] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [attempt, setAttempt] = useState(0);
+  // Chosen here, once: the title says what the animation under it shows.
+  const [loader] = useState(() => pickLoader());
 
   useEffect(() => {
     let current = true;
@@ -152,6 +155,8 @@ export function DemoOpenPage() {
 
   const slow = stage !== null || seconds >= SLOW_OPEN_S;
   const waiting = t(stage ?? (slow ? NOT_READY : "demoOpenPage.opening"));
+  // Held short of full: past the estimate the page is still only waiting.
+  const progress = Math.min((seconds * 100) / COLD_START_S, 95);
 
   const retry = () => {
     setRefusal(null);
@@ -163,19 +168,24 @@ export function DemoOpenPage() {
   return (
     <Center mih="60vh" p="md">
       <Stack align="center" gap="md" w="100%" maw={520}>
-        <Title order={2}>{t("demoOpenPage.title")}</Title>
+        <Title order={2}>{t(loaderTitleKey(loader))}</Title>
         {refusal === null ? (
           <>
-            <SandboxLoader size={88} label={waiting} testId="demo-open-loading" />
+            <SandboxLoader
+              size={88}
+              label={waiting}
+              testId="demo-open-loading"
+              kind={loader}
+              progress={progress}
+            />
             <Text c="dimmed" ta="center" data-testid={`demo-open-${slow ? "starting" : "opening"}`}>
               {waiting}
             </Text>
             {slow && (
               <>
-                {/* Held short of full: past the estimate the page is still only waiting. */}
                 <Progress
                   w="100%"
-                  value={Math.min((seconds * 100) / COLD_START_S, 95)}
+                  value={progress}
                   aria-label={waiting}
                   data-testid="demo-open-progress"
                 />
