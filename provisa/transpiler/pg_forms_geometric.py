@@ -38,8 +38,9 @@ refused by name, as is a value of more digits than that integer holds."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from provisa.core.pg_error import MARK
 from provisa.transpiler.pg_forms_types import REFUSED
@@ -87,6 +88,25 @@ class Engine:
     type_name: str  # a value's type, in lower case
     array: str = "[{}]"
     types: tuple[str, str, str, str] = ("VARCHAR", "BOOLEAN", "DOUBLE", "INTEGER")
+    inline: bool = False  # a name used once is written in place: Trino plans a lambda in time
+    # that grows with how deep it is nested, minutes for a form of four
+
+
+_INLINE = "inline"  # the let of _float_text where the engine inlines: every use written in place
+
+
+def _let(e: Engine, name: str, value: str, body: str) -> str:
+    """``body`` with ``name`` bound to ``value``. Where ``e`` inlines, a name its body reads once, or
+    every name of _float_text, is written in place, unless the value raises (a let raises whether or
+    not the body reads it) or the body binds the name again."""
+    if e.inline or e.let == _INLINE:
+        used = re.compile(rf"\b{name}\b")
+        uses = len(used.findall(body))
+        rebound = re.search(rf"\b{name}\s*->|\b{name}\b[^()]*\)\s*->", body)
+        once = uses == 1 or (e.let == _INLINE and uses > 0)
+        if once and not rebound and "fail(" not in value.lower():
+            return used.sub(lambda _: f"({value})", body)
+    return (TRINO.let if e.let == _INLINE else e.let).format(name, value, body)
 
 
 DUCKDB = Engine(
@@ -157,6 +177,7 @@ TRINO = Engine(
     quotient="(({0} - {0} % {1}) / {1})",
     type_name="lower(typeof({}))",
     array="ARRAY[{}]",
+    inline=True,
 )
 CLICKHOUSE = Engine(
     name="clickhouse",
@@ -199,7 +220,10 @@ ENGINES = (DUCKDB, TRINO, CLICKHOUSE)
 
 
 def _float_text(e: Engine, value: str) -> str:
-    """float8out: the engine's shortest digits, written with PostgreSQL's exponent rule."""
+    """float8out: the engine's shortest digits, written with PostgreSQL's exponent rule. Where the
+    engine inlines, each of its names is written in place: the text is longer, but no lambda."""
+    if e.inline:
+        e = replace(e, let=_INLINE)
     body = (
         "CASE WHEN _d = '' THEN '0' "
         f"WHEN _p - 1 < -4 OR _p - 1 >= 15 THEN substr(_d, 1, 1) || "
@@ -216,15 +240,16 @@ def _float_text(e: Engine, value: str) -> str:
         f"{e.length.format(whole)} + {e.integer.format(e.part.format('_u', 'e', 2))} "
         f"- ({e.length.format(whole)} + {e.length.format(fraction)} - {e.length.format('_l')})"
     )
-    named = e.let.format("_d", e.rtrim.format("_l"), e.let.format("_p", place, body))
-    unsigned = e.let.format(
+    named = _let(e, "_d", e.rtrim.format("_l"), _let(e, "_p", place, body))
+    unsigned = _let(
+        e,
         "_u",
         "CASE WHEN substr(_t, 1, 1) = '-' THEN substr(_t, 2) ELSE _t END",
-        e.let.format("_m", e.part.format("_u", "e", 1), e.let.format("_l", digits, named)),
+        _let(e, "_m", e.part.format("_u", "e", 1), _let(e, "_l", digits, named)),
     )
     # The first character, so -0 keeps its sign; an exponent's sign is not it.
     sign = "CASE WHEN substr(_t, 1, 1) = '-' THEN '-' ELSE '' END"
-    return e.let.format("_t", f"lower({e.text.format(value)})", f"{sign} || {unsigned}")
+    return _let(e, "_t", f"lower({e.text.format(value)})", f"{sign} || {unsigned}")
 
 
 def _list(e: Engine, *items: str) -> str:
@@ -296,7 +321,7 @@ def _read(e: Engine, param: str, kind: str) -> str:
         return doubles
     high = ("greatest(_q[1], _q[3])", "greatest(_q[2], _q[4])")
     low = ("least(_q[1], _q[3])", "least(_q[2], _q[4])")
-    return e.let.format("_q", doubles, _list(e, *high, *low))
+    return _let(e, "_q", doubles, _list(e, *high, *low))
 
 
 def _is_open(e: Engine, param: str) -> str:
@@ -307,7 +332,7 @@ def _checked(e: Engine, values: str, answer: str, function: str) -> str:
     """``answer`` of ``_r``, the doubles ``values``; refused by name if one is not finite."""
     finite = e.filter.format("_r", "_x", f"NOT {e.finite.format('_x')}")
     bad = f"{e.size.format(finite)} > 0"
-    return e.let.format("_r", values, e.raises.format(bad, f"0A000: {function} {REFUSED}", answer))
+    return _let(e, "_r", values, e.raises.format(bad, f"0A000: {function} {REFUSED}", answer))
 
 
 def _points(e: Engine, name: str) -> str:
@@ -409,7 +434,8 @@ def _line_through(e: Engine, f: str) -> str:
     p, q = _xy("_a"), _xy("_b")
     same = f"{_fp_eq(p[0], q[0])} AND {_fp_eq(p[1], q[1])}"
     c = f"{p[1]} - _m * {p[0]}"
-    sloped = e.let.format(
+    sloped = _let(
+        e,
         "_m",
         f"({p[1]} - {q[1]}) / ({p[0]} - {q[0]})",
         f"CASE WHEN _m = 0 THEN {_list(e, '0.0', '-1.0', p[1])} "
@@ -459,14 +485,16 @@ def _crossing(e: Engine, c: str) -> str:
         "ELSE 0 END"
     )
     z = f"({x} - {prev_x}) * {y} - ({y} - {prev_y}) * {x}"
-    by_z = e.let.format(
+    by_z = _let(
+        e,
         "_z",
         z,
         f"CASE WHEN {zero('_z')} THEN {_ON_POLYGON} "
         f"WHEN (_g < 0 AND {_fp_lt('_z', '0.0')}) OR (_g > 0 AND {_fp_gt('_z', '0.0')}) THEN 0 "
         "ELSE 2 * _g END",
     )
-    off_x_axis = e.let.format(
+    off_x_axis = _let(
+        e,
         "_g",
         f"CASE WHEN {_fp_gt(y, '0.0')} THEN 1 ELSE -1 END",
         f"CASE WHEN {zero(prev_y)} THEN CASE WHEN {_fp_lt(prev_x, '0.0')} THEN 0 ELSE _g END "
@@ -500,12 +528,10 @@ def _inside(e: Engine, poly: str, x: str, y: str) -> str:
     crossings = e.map.format(
         e.upto.format(_half(e, e.size.format(poly))),
         "_v",
-        e.let.format("_c", near, _crossing(e, "_c")),
+        _let(e, "_c", near, _crossing(e, "_c")),
     )
     on_it = e.filter.format("_k", "_o", f"_o = {_ON_POLYGON}")
-    return e.let.format(
-        "_k", crossings, f"({e.size.format(on_it)} > 0 OR {e.sum_of.format('_k')} <> 0)"
-    )
+    return _let(e, "_k", crossings, f"({e.size.format(on_it)} > 0 OR {e.sum_of.format('_k')} <> 0)")
 
 
 def _splits(e: Engine, poly: str) -> str:
@@ -539,7 +565,7 @@ def _splits(e: Engine, poly: str) -> str:
     met = e.map.format(
         e.upto.format(_half(e, e.size.format(poly))),
         "_v",
-        e.let.format("_s", edge, _list(e, crossing, at_vertex)),
+        _let(e, "_s", edge, _list(e, crossing, at_vertex)),
     )
     within = e.filter.format(e.flatten.format(met), "_o", "_o > 0 AND _o < 1")
     ends = _list(e, e.double.format("0"), e.double.format("1"))
@@ -549,23 +575,25 @@ def _splits(e: Engine, poly: str) -> str:
 def _edge_inside(e: Engine, outer: str, inner: str) -> str:
     """The edge of ``inner`` ending at vertex ``_t``: each piece's midpoint is inside ``outer``."""
     pieces = e.upto.format(f"{e.size.format('_u')} - 1")
-    mid = e.let.format(
+    mid = _let(
+        e,
         "_f",
         "(_u[_w + 1] + _u[_w + 2]) / 2.0",
         _inside(e, outer, "(_p[1] + _d[1] * _f)", "(_p[2] + _d[2] * _f)"),
     )
     outside = e.filter.format(pieces, "_w", f"NOT {mid}")
-    test = e.let.format("_u", _splits(e, outer), f"{e.size.format(outside)} = 0")
+    test = _let(e, "_u", _splits(e, outer), f"{e.size.format(outside)} = 0")
     delta = _list(
         e,
         "_q[1] - _p[1]",
         "_q[2] - _p[2]",
         "(_q[1] - _p[1]) * (_q[1] - _p[1]) + (_q[2] - _p[2]) * (_q[2] - _p[2])",
     )
-    return e.let.format(
+    return _let(
+        e,
         "_p",
         _list(e, *_vertex(inner, _before(e, inner, "_t"))),
-        e.let.format("_q", _list(e, *_vertex(inner, "_t")), e.let.format("_d", delta, test)),
+        _let(e, "_q", _list(e, *_vertex(inner, "_t")), _let(e, "_d", delta, test)),
     )
 
 
@@ -573,10 +601,11 @@ def _contains(e: Engine, outer: str, inner: str) -> str:
     """poly_contain_poly: the bounding boxes, then each edge of ``inner``."""
     edges = e.upto.format(_half(e, e.size.format(inner)))
     out = e.filter.format(edges, "_t", f"NOT {_edge_inside(e, outer, inner)}")
-    boxes = e.let.format(
+    boxes = _let(
+        e,
         "_h",
         _bounds(e, outer),
-        e.let.format("_l", _bounds(e, inner), _box_contains("_h", "_l")),
+        _let(e, "_l", _bounds(e, inner), _box_contains("_h", "_l")),
     )
     return f"({boxes} AND {e.size.format(out)} = 0)"
 
@@ -610,7 +639,8 @@ def _sign_free(name: str) -> str:
 def _line_of(e: Engine, x: str, y: str, slope: str) -> str:
     """line_construct: the line through a point at a slope, infinite for a vertical line."""
     fit = f"CASE WHEN {y} - _lm * {x} = 0 THEN {_NIL} ELSE {y} - _lm * {x} END"
-    return e.let.format(
+    return _let(
+        e,
         "_lm",
         slope,
         f"CASE WHEN _lm = {e.infinity} THEN {_list(e, _MINUS, _NIL, x)} "
@@ -655,7 +685,7 @@ def _line_invslope(e: Engine, line: str) -> str:
 def _line_read(e: Engine, doubles: str) -> str:
     """line_in: ``{A,B,C}``, or the two points of an lseg's text."""
     points = _list(e, "_q[1]", "_q[2]", "_q[3]", "_q[4]")
-    through = e.let.format("_qs", points, _line_of(e, "_qs[1]", "_qs[2]", _seg_slope(e, "_qs")))
+    through = _let(e, "_qs", points, _line_of(e, "_qs[1]", "_qs[2]", _seg_slope(e, "_qs")))
     same = f"{_fp_eq('_q[1]', '_q[3]')} AND {_fp_eq('_q[2]', '_q[4]')}"
     as_is = e.raises.format(
         f"{e.size.format('_q')} = 3 AND {_fp_zero('_q[1]')} AND {_fp_zero('_q[2]')}",
@@ -667,8 +697,8 @@ def _line_read(e: Engine, doubles: str) -> str:
         "22P02: invalid line specification: must be two distinct points",
         through,
     )
-    return e.let.format(
-        "_q", doubles, f"CASE WHEN {e.size.format('_q')} = 4 THEN {pair} ELSE {as_is} END"
+    return _let(
+        e, "_q", doubles, f"CASE WHEN {e.size.format('_q')} = 4 THEN {pair} ELSE {as_is} END"
     )
 
 
@@ -682,7 +712,7 @@ def _meet(e: Engine, one: str, other: str) -> str:
         point = _list(e, _ONE, _sign_free("_mx"), f"CASE WHEN {y} = 0 THEN {_NIL} ELSE {y} END")
         return (
             f"CASE WHEN {_fp_eq(d, f'({a} * ({f} / {b}))')} THEN {_not_found(e)} ELSE "
-            + e.let.format("_mx", f"({b} * {g} - {f} * {c}) / ({a} * {f} - {d} * {b})", point)
+            + _let(e, "_mx", f"({b} * {g} - {f} * {c}) / ({a} * {f} - {d} * {b})", point)
             + " END"
         )
 
@@ -713,19 +743,22 @@ def _cut_line(e: Engine, s: str, line: str) -> str:
         f"WHEN {_same_point(_xy(s, 3), found)} THEN {_list(e, _ONE, *_xy(s, 3))} "
         "ELSE _cm END"
     )
-    return e.let.format(
+    return _let(
+        e,
         "_ct",
         _line_of(e, f"{s}[1]", f"{s}[2]", _seg_slope(e, s)),
-        e.let.format("_cm", _meet(e, "_ct", line), answer),
+        _let(e, "_cm", _meet(e, "_ct", line), answer),
     )
 
 
 def _cut(e: Engine, s: str, t: str) -> str:
     """lseg_interpt_lseg: ``[found, x, y]``."""
-    return e.let.format(
+    return _let(
+        e,
         "_st",
         _line_of(e, f"{t}[1]", f"{t}[2]", _seg_slope(e, t)),
-        e.let.format(
+        _let(
+            e,
             "_sm",
             _cut_line(e, s, "_st"),
             f"CASE WHEN _sm[1] = 0 OR NOT {_on_seg(e, t, '_sm[2]', '_sm[3]')} "
@@ -738,10 +771,12 @@ def _foot(e: Engine, line: str, x: str, y: str) -> str:
     """line_closept_point: ``[distance, x, y]``. Two lines drawn perpendicular meet unless a
     coordinate was not finite, which no form reads: the infinite distance is then refused."""
     measured = _dist(e, ("_fm[2]", "_fm[3]"), (x, y))
-    return e.let.format(
+    return _let(
+        e,
         "_ft",
         _line_of(e, x, y, _line_invslope(e, line)),
-        e.let.format(
+        _let(
+            e,
             "_fm",
             _meet(e, "_ft", line),
             f"CASE WHEN _fm[1] = 0 THEN {_list(e, e.infinity, x, y)} "
@@ -758,30 +793,30 @@ def _near_line(e: Engine, s: str, line: str) -> str:
         f"CASE WHEN _nd[1] < _nd[2] THEN {_list(e, '_nd[1]', *_xy(s))} "
         f"ELSE {_list(e, '_nd[2]', *_xy(s, 3))} END"
     )
-    return e.let.format(
+    return _let(
+        e,
         "_nm",
         _cut_line(e, s, line),
         f"CASE WHEN _nm[1] = 1 THEN {_list(e, _NIL, '_nm[2]', '_nm[3]')} "
-        f"ELSE {e.let.format('_nd', each, nearer)} END",
+        f"ELSE {_let(e, '_nd', each, nearer)} END",
     )
 
 
 def _near_point(e: Engine, s: str, x: str, y: str) -> str:
     """lseg_closept_point: ``[distance, x, y]`` of the point of the segment nearest a point."""
     measured = _dist(e, ("_pc[2]", "_pc[3]"), (x, y))
-    return e.let.format(
+    return _let(
+        e,
         "_pt",
         _line_of(e, x, y, _seg_invslope(e, s)),
-        e.let.format("_pc", _near_line(e, s, "_pt"), _list(e, measured, "_pc[2]", "_pc[3]")),
+        _let(e, "_pc", _near_line(e, s, "_pt"), _list(e, measured, "_pc[2]", "_pc[3]")),
     )
 
 
 def _least(e: Engine, candidates: str) -> str:
     """The first of ``[distance, x, y]``s with the smallest distance, as float8_lt keeps it."""
     smallest = e.min_of.format(e.map.format(candidates, "_it", "_it[1]"))
-    return e.let.format(
-        "_lc0", smallest, e.filter.format(candidates, "_it", "_it[1] = _lc0") + "[1]"
-    )
+    return _let(e, "_lc0", smallest, e.filter.format(candidates, "_it", "_it[1] = _lc0") + "[1]")
 
 
 def _near_seg(e: Engine, on: str, to: str) -> str:
@@ -798,11 +833,12 @@ def _near_seg(e: Engine, on: str, to: str) -> str:
     candidates = _list(
         e, "_sr[1]", "_sr[2]", _list(e, "_sr[3][1]", *_xy(on)), _list(e, "_sr[4][1]", *_xy(on, 3))
     )
-    return e.let.format(
+    return _let(
+        e,
         "_sq",
         _cut(e, on, to),
         f"CASE WHEN _sq[1] = 1 THEN {_list(e, _NIL, '_sq[2]', '_sq[3]')} ELSE "
-        + e.let.format("_sr", each, _least(e, candidates))
+        + _let(e, "_sr", each, _least(e, candidates))
         + " END",
     )
 
@@ -830,7 +866,7 @@ def _near_box_point(e: Engine, box: str, x: str, y: str) -> str:
     each = e.map.format(_sides(e, box), "_bs", _near_point(e, "_bs", x, y))
     return (
         f"CASE WHEN {_in_box(box, x, y)} THEN {_list(e, _NIL, x, y)} "
-        f"ELSE {e.let.format('_bq', each, _least(e, '_bq'))} END"
+        f"ELSE {_let(e, '_bq', each, _least(e, '_bq'))} END"
     )
 
 
@@ -846,7 +882,8 @@ def _box_cut(e: Engine, box: str, s: str) -> str:
     """box_interpt_lseg, whether: the segment's box, its ends, then the sides."""
     crossed = e.map.format(_sides(e, box), "_bs", _at(e, _cut(e, "_bs", s), 1))
     ends = f"{_in_box(box, *_xy(s))} OR {_in_box(box, *_xy(s, 3))}"
-    return e.let.format(
+    return _let(
+        e,
         "_lb",
         _bounds(e, s),
         f"({_boxes_meet('_lb', box)} AND ({ends} OR {_any(e, crossed)}))",
@@ -857,18 +894,17 @@ def _near_box_seg(e: Engine, box: str, s: str, point: bool = True) -> str:
     """box_closept_lseg: ``[distance, x, y]`` of the point nearest the box. Where they cross that is
     the segment's point nearest the box's center, at no distance; a form of the distance alone
     leaves that out, for an engine's planning time grows with the square of a form's size."""
-    middle = e.let.format(
+    middle = _let(
+        e,
         "_mc",
         _list(e, *_center(box)),
-        e.let.format(
-            "_mp", _near_point(e, s, "_mc[1]", "_mc[2]"), _list(e, _NIL, "_mp[2]", "_mp[3]")
-        ),
+        _let(e, "_mp", _near_point(e, s, "_mc[1]", "_mc[2]"), _list(e, _NIL, "_mp[2]", "_mp[3]")),
     )
     each = e.map.format(_sides(e, box), "_bs", _near_seg(e, "_bs", s))
     crossing = middle if point else _not_found(e)
     return (
         f"CASE WHEN {_box_cut(e, box, s)} THEN {crossing} "
-        f"ELSE {e.let.format('_bq', each, _least(e, '_bq'))} END"
+        f"ELSE {_let(e, '_bq', each, _least(e, '_bq'))} END"
     )
 
 
@@ -899,15 +935,13 @@ def _pairs(e: Engine, one: str, other: str, body: Callable[[str, str], str]) -> 
     width = e.size.format(other)
     size = f"{e.size.format(one)} * {width}"
     pair = _list(e, f"{one}[{_whole(e, '_pk', width)} + 1]", f"{other}[_pk % {width} + 1]")
-    return e.map.format(
-        e.upto.format(size), "_pk", e.let.format("_pw", pair, body("_pw[1]", "_pw[2]"))
-    )
+    return e.map.format(e.upto.format(size), "_pk", _let(e, "_pw", pair, body("_pw[1]", "_pw[2]")))
 
 
 def _both(e: Engine, one: tuple[str, str], other: tuple[str, str], body: Callable) -> str:
     """``body`` of the segments of two shapes, each its list of doubles and whether it closes."""
     segments = _list(e, _segments(e, *one), _segments(e, *other))
-    return e.let.format("_es", segments, body("_es[1]", "_es[2]"))
+    return _let(e, "_es", segments, body("_es[1]", "_es[2]"))
 
 
 def _some_pair(e: Engine, flags: str, one: str, other: str) -> str:
@@ -949,9 +983,7 @@ def _overlap(e: Engine, a: str, b: str) -> str:
         lambda p, q: _any(e, _pairs(e, p, q, lambda s, t: _at(e, _cut(e, s, t), 1))),
     )
     within = f"{_inside(e, b, f'{a}[1]', f'{a}[2]')} OR {_inside(e, a, f'{b}[1]', f'{b}[2]')}"
-    boxes = e.let.format(
-        "_h", _bounds(e, a), e.let.format("_l", _bounds(e, b), _boxes_meet("_h", "_l"))
-    )
+    boxes = _let(e, "_h", _bounds(e, a), _let(e, "_l", _bounds(e, b), _boxes_meet("_h", "_l")))
     return f"({boxes} AND ({crossed} OR {within}))"
 
 
@@ -983,20 +1015,21 @@ def _lines(add: Callable) -> None:
             f"WHEN NOT {_fp_zero(g)} THEN {c} / {g} ELSE {_ONE} END"
         )
         equal = " AND ".join(_fp_eq(x, f"(_lr * {y})") for x, y in ((a, d), (b, f_), (c, g)))
-        return e.let.format("_lr", ratio, f"({equal})")
+        return _let(e, "_lr", ratio, f"({equal})")
 
     def apart(e: Engine, f: str) -> str:
         ratio = (
             f"CASE WHEN NOT {_fp_zero(a)} AND NOT {_fp_zero(d)} THEN {a} / {d} "
             f"WHEN NOT {_fp_zero(b)} AND NOT {_fp_zero(f_)} THEN {b} / {f_} ELSE {_ONE} END"
         )
-        gap = e.let.format("_lr", ratio, f"abs({c} - _lr * {g}) / {_hypot(e, a, b)}")
-        met = e.let.format("_lm0", _meet(e, "_a", "_b"), "_lm0[1]")
+        gap = _let(e, "_lr", ratio, f"abs({c} - _lr * {g}) / {_hypot(e, a, b)}")
+        met = _let(e, "_lm0", _meet(e, "_a", "_b"), "_lm0[1]")
         return _double(e, f"CASE WHEN {met} = 1 THEN {_NIL} ELSE {gap} END", f)
 
     def found(e: Engine, f: str, values: str) -> str:
         """A helper's point, NULL where it found none."""
-        return e.let.format(
+        return _let(
+            e,
             "_v",
             values,
             "CASE WHEN _v[1] = 0 THEN NULL ELSE "
@@ -1070,14 +1103,15 @@ def _distances(add: Callable) -> None:
 
     def to_circle(e: Engine) -> str:
         gap = f"({_from_polygon(e, '_b', '_a[1]', '_a[2]')}) - _a[3]"
-        return e.let.format("_g0", gap, f"CASE WHEN _g0 < 0 THEN {_NIL} ELSE _g0 END")
+        return _let(e, "_g0", gap, f"CASE WHEN _g0 < 0 THEN {_NIL} ELSE _g0 END")
 
     both("dist_cpoly", "dist_polyc", ("circle", "polygon"), to_circle)
 
     def to_path(e: Engine) -> str:
         """dist_ppath_internal: a path of one open point has no segment and answers 0."""
         each = e.map.format("_sg", "_w", _at(e, _near_point(e, "_w", "_a[1]", "_a[2]"), 1))
-        return e.let.format(
+        return _let(
+            e,
             "_sg",
             _segments(e, "_b", _is_closed(e, "b")),
             f"CASE WHEN {e.size.format('_sg')} = 0 THEN {_NIL} ELSE {e.min_of.format(each)} END",
@@ -1090,13 +1124,14 @@ def _closest(add: Callable) -> None:
     """close_: the point itself. A pair that close_ls and close_lseg call parallel answers NULL."""
 
     def point(e: Engine, values: str, f: str) -> str:
-        return e.let.format("_v", values, _shape(e, _list(e, "_v[2]", "_v[3]"), *_POINT, f))
+        return _let(e, "_v", values, _shape(e, _list(e, "_v[2]", "_v[3]"), *_POINT, f))
 
     def unless_parallel(e: Engine, one: str, other: str, answer: str) -> str:
-        return e.let.format(
+        return _let(
+            e,
             "_k1",
             one,
-            e.let.format("_k2", other, f"CASE WHEN _k1 = _k2 THEN NULL ELSE {answer} END"),
+            _let(e, "_k2", other, f"CASE WHEN _k1 = _k2 THEN NULL ELSE {answer} END"),
         )
 
     add(
@@ -1215,8 +1250,8 @@ def _paths_and_polygons(add: Callable) -> None:
                 e, _pairs(e, p, q, lambda s, t: _at(e, _cut(e, s, t), 1)), p, q
             ),
         )
-        boxes = e.let.format(
-            "_h", _bounds(e, "_a"), e.let.format("_l", _bounds(e, "_b"), _boxes_meet("_h", "_l"))
+        boxes = _let(
+            e, "_h", _bounds(e, "_a"), _let(e, "_l", _bounds(e, "_b"), _boxes_meet("_h", "_l"))
         )
         return f"({boxes} AND {edges})"
 
@@ -1265,12 +1300,14 @@ def _bucket_float(e: Engine, when: str) -> str:
     falling = fraction((lo, x), (lo, hi), f"{lo} - {hi}")
     # Equal bounds or a NaN divide to no number, and ClickHouse runs this path before its refusal,
     # where converting that to an integer raises an error of its own instead.
-    fraction_of = e.let.format(
+    fraction_of = _let(
+        e,
         "_w",
         f"CASE WHEN {up} THEN {rising} ELSE {falling} END",
         f"CASE WHEN {e.finite.format('_w')} THEN _w ELSE {_NIL} END",
     )
-    bucket = e.let.format(
+    bucket = _let(
+        e,
         "_c",
         e.bigint.format(f"floor(_n * ({fraction_of}))"),
         "least(_c, _n - 1) + 1",
@@ -1284,7 +1321,7 @@ def _bucket_float(e: Engine, when: str) -> str:
         e.raises.format(_when(when, f"_n = {_INT_MAX} AND ({above})"), _OUT_OF_RANGE, answer),
     )
     values = _list(e, *(e.double.format(p) for p in ("x", "lo", "hi")))
-    return e.let.format("_b", values, guarded)
+    return _let(e, "_b", values, guarded)
 
 
 def _bucket_numeric(e: Engine, when: str) -> str:
@@ -1324,12 +1361,12 @@ def _bucket_numeric(e: Engine, when: str) -> str:
             e.raises.format(_when(when, rounded), f"0A000: width_bucket {REFUSED}", answer),
         ),
     )
-    worked = e.let.format("_d", span, e.let.format("_m", numerator, guarded))
-    read = e.let.format("_z", _list(e, scaled(1), scaled(2), scaled(3)), worked)
+    worked = _let(e, "_d", span, _let(e, "_m", numerator, guarded))
+    read = _let(e, "_z", _list(e, scaled(1), scaled(2), scaled(3)), worked)
     held = e.raises.format(_when(when, digits), f"0A000: width_bucket {REFUSED}", read)
-    places = e.let.format("_sc", f"greatest({sizes(fraction)})", held)
+    places = _let(e, "_sc", f"greatest({sizes(fraction)})", held)
     texts = _list(e, *(e.text.format(p) for p in ("x", "lo", "hi")))
-    return e.let.format("_t", texts, places)
+    return _let(e, "_t", texts, places)
 
 
 def _bucket_kind(e: Engine) -> str:
@@ -1359,9 +1396,7 @@ def _bucket(e: Engine, kind: str) -> str:
         f"CASE WHEN {numeric} THEN {_bucket_numeric(e, numeric)} "
         f"ELSE {_bucket_float(e, f'NOT {numeric}')} END"
     )
-    counted = e.let.format(
-        "_n", e.bigint.format("n"), e.raises.format("_n <= 0", _NO_COUNT, answer)
-    )
+    counted = _let(e, "_n", e.bigint.format("n"), e.raises.format("_n <= 0", _NO_COUNT, answer))
     refused = f"({finite}) OR (({numeric}) AND ({spelled}))"
     return e.raises.format(refused, f"0A000: width_bucket {REFUSED}", counted)
 
@@ -1449,7 +1484,7 @@ def _circles(add: Callable) -> None:
     out = lambda e: _dist(e, (ax, ay), q) + f" - {ar}"  # noqa: E731
 
     def clear(e: Engine, gap: str, f: str) -> str:
-        return _double(e, e.let.format("_g", gap, "CASE WHEN _g < 0 THEN 0.0 ELSE _g END"), f)
+        return _double(e, _let(e, "_g", gap, "CASE WHEN _g < 0 THEN 0.0 ELSE _g END"), f)
 
     add(
         "circle_distance",
@@ -1547,15 +1582,14 @@ def _lists(add: Callable) -> None:
             f"poly_{name}",
             "a:polygon, b:polygon",
             1,
-            lambda e, _, test=test: e.let.format(
-                "_x", box(e, "_a"), e.let.format("_y", box(e, "_b"), test)
-            ),
+            lambda e, _, test=test: _let(e, "_x", box(e, "_a"), _let(e, "_y", box(e, "_b"), test)),
         )
     add(
         "poly_circle",
         "a:polygon",
         0,
-        lambda e, f: e.let.format(
+        lambda e, f: _let(
+            e,
             "_c",
             _list(e, *_poly_center(e, "_a")),
             _circle_text(
@@ -1771,7 +1805,8 @@ def _rows() -> list[Row]:
         "box_circle",
         "a:box",
         0,
-        lambda e, f: e.let.format(
+        lambda e, f: _let(
+            e,
             "_c",
             _list(e, *_center("_a")),
             _circle_text(e, _list(e, "_c[1]", "_c[2]", _dist(e, _xy("_c"), p)), f),
@@ -1795,7 +1830,8 @@ def _rows() -> list[Row]:
         "circle_box",
         "a:circle",
         0,
-        lambda e, f: e.let.format(
+        lambda e, f: _let(
+            e,
             "_w",
             "_a[3] / sqrt(2.0)",
             _shape(
@@ -1874,7 +1910,7 @@ def _form(e: Engine, row: Row) -> str:
     shapes = [(p, kind) for p, kind in kinds if kind not in _NOT_READ]
     body = row.body(e, row.name)
     for param, kind in reversed(shapes):
-        body = e.let.format(f"_{param}", _read(e, param, kind), body)
+        body = _let(e, f"_{param}", _read(e, param, kind), body)
     letters = " OR ".join(e.matches.format(e.text.format(p), _NOT_FINITE) for p, _ in shapes)
     nulls = " OR ".join(f"{p} IS NULL" for p, _ in kinds)
     sql_type = e.types[row.answers]

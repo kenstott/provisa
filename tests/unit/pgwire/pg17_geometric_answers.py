@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: aacd5eae-6fa4-406a-bd64-9c39498f76d9
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """What PostgreSQL 17 (postgres:17.11, UTC) answered for geometric_corpus: statement -> (type oid,
 the value's text), or (0, "ERROR sqlstate"). Written by record_pg17_geometric_answers.py, never by
 hand."""
