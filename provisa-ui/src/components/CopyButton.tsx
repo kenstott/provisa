@@ -55,11 +55,11 @@ export function CopyButton({ text, size = 11, className, hint, children }: CopyB
 export function CopySymbolButton({
   text,
   className,
-  hint,
+  title,
 }: {
   text: string;
   className?: string;
-  hint?: string;
+  title?: string;
 }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -71,7 +71,7 @@ export function CopySymbolButton({
     });
   }, [text]);
 
-  const label = copied ? t("copyButton.copied") : (hint ?? t("copyButton.copy"));
+  const label = copied ? t("copyButton.copied") : (title ?? t("copyButton.copy"));
 
   return (
     <Tip text={label} named>
