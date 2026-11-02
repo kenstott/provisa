@@ -1583,6 +1583,8 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
     answers itself, whatever type no engine has it says, and a literal of a type is its input."""
 
     def rewrite(node: exp.Expr) -> exp.Expr:
+        if dialect == "clickhouse" and isinstance(node, exp.Cast) and _type_said(node) == "time":
+            return _read(node)  # ClickHouse 24 has no time: a time is its text, as time_in reads it
         target = node
         if (
             isinstance(node, exp.Dot)
