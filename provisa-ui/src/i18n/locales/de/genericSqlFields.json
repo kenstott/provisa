@@ -24,6 +24,9 @@
     "attachUnbuilt": "Live-Anbindung ist noch nicht verfügbar; Zeilen werden repliziert.",
     "detect": "Erkennen",
     "checkPassed": "{{capability}}: bestanden",
-    "checkFailed": "{{capability}}: fehlgeschlagen ({{reason}})"
+    "checkFailed": "{{capability}}: fehlgeschlagen ({{reason}})",
+    "jdbcDriverJar": "JDBC-Treiber-JAR",
+    "jdbcDriverJarHint": "Die JAR-Datei des Treibers. Nur bei selbst gehosteten Installationen.",
+    "jdbcDriverClass": "Treiberklasse"
   }
 }

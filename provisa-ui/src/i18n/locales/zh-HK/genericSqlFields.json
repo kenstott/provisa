@@ -24,6 +24,9 @@
     "attachUnbuilt": "即時掛接尚未可用；資料列會以複本形式複製。",
     "detect": "偵測",
     "checkPassed": "{{capability}}：通過",
-    "checkFailed": "{{capability}}：未通過（{{reason}}）"
+    "checkFailed": "{{capability}}：未通過（{{reason}}）",
+    "jdbcDriverJar": "JDBC 驅動程式 JAR",
+    "jdbcDriverJarHint": "驅動程式的 JAR 檔案。僅限自行託管的安裝。",
+    "jdbcDriverClass": "驅動程式類別"
   }
 }

@@ -25,7 +25,6 @@ Changing the dialect means pressing Detect again.
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -98,25 +97,13 @@ def _plain(value: Any) -> Any:
     return value
 
 
-def _ran(engine: Any, sql: str) -> list[tuple]:
-    from sqlalchemy import text
-
-    with engine.connect() as conn:
-        try:
-            return [tuple(_plain(v) for v in row) for row in conn.execute(text(sql))]
-        finally:
-            conn.rollback()  # read-only: nothing it did is kept
-
-
-def _check(engine: Any, capability: str, sql_dialect: str) -> Check:
+def _check_rows(capability: str, rows: list[tuple] | None, failure: str) -> Check:
+    if rows is None:
+        return Check(capability, False, failure)
     expected = _CHECKS[capability][1]
-    try:
-        sql = statement(capability, sql_dialect)
-        rows = _ran(engine, sql)
-    except Exception as exc:  # noqa: BLE001 -- the source's own error is the reason it failed
-        return Check(capability, False, f"{type(exc).__name__}: {exc}".splitlines()[0])
-    if rows != expected:
-        return Check(capability, False, f"answered {rows!r}, expected {expected!r}")
+    plain = [tuple(_plain(v) for v in row) for row in rows]
+    if plain != expected:
+        return Check(capability, False, f"answered {plain!r}, expected {expected!r}")
     return Check(capability, True, "")
 
 
@@ -126,20 +113,39 @@ def _attach(url: str) -> Check:
     return Check(ATTACH, False, "live attach of a Generic SQL source is not built yet")
 
 
-async def detect(url: str, sql_dialect: str, user: str, password: str) -> list[Check]:
-    """Every capability's check against the source the form describes, in the order the form
-    shows them. The connection is made as the source's would be (url.connection_url): held to
-    the org's folder and its egress rules. A source that cannot be connected to fails every
-    check with why."""
-    from provisa.generic_sql.url import connection_url, create_engine
+async def detect(hints: dict[str, str], user: str, password: str) -> list[Check]:
+    """Every capability's check against the source the form's settings (``hints``) describe, in
+    the order the form shows them, through the driver the source would be read through
+    (``GenericSQLDriver``): its URL held to the org's folder and its egress rules, a jdbc: URL to
+    the customer's driver where this server runs one. A check the source answers with an error
+    fails naming it; a source that cannot be connected to fails every check with why."""
+    from provisa.executor.drivers.generic_sql import GenericSQLDriver
 
-    connected, _shown = connection_url(url, user, password)
-    loop = asyncio.get_running_loop()
-    engine = await loop.run_in_executor(None, create_engine, connected)
+    driver = GenericSQLDriver()
+    driver.configure(hints)
+    settings = driver.settings
+    checks = [_attach(settings.url)]
+    failure = ""
     try:
-        checks = [_attach(url)]
+        await driver.connect("", 0, "", user, password)
+    except Exception as exc:  # noqa: BLE001 -- why it cannot be connected is every check's reason
+        failure = _reason(exc)
+    try:
         for capability in (PREDICATE, JOIN, AGGREGATE, KEY_RANGE):
-            checks.append(await loop.run_in_executor(None, _check, engine, capability, sql_dialect))
+            rows: list[tuple] | None = None
+            reason = failure
+            if not failure:
+                try:
+                    sql = statement(capability, settings.sql_dialect)
+                    rows = (await driver.execute(sql)).rows
+                except Exception as exc:  # noqa: BLE001 -- the source's own error is the reason
+                    reason = _reason(exc)
+            checks.append(_check_rows(capability, rows, reason))
         return checks
     finally:
-        await loop.run_in_executor(None, engine.dispose)
+        if driver.is_connected:
+            await driver.close()
+
+
+def _reason(exc: BaseException) -> str:
+    return f"{type(exc).__name__}: {exc}".splitlines()[0]

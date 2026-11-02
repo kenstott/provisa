@@ -17,6 +17,15 @@ export const ATTACH = "attach";
 
 const URL_KEY = "url";
 const DIALECT_KEY = "sql_dialect";
+// A jdbc: URL's driver (provisa/generic_sql/jdbc.py): self-hosted installs only.
+export const JDBC_JAR_KEY = "jdbc_driver_jar";
+export const JDBC_CLASS_KEY = "jdbc_driver_class";
+const JDBC_KEYS = new Set([JDBC_JAR_KEY, JDBC_CLASS_KEY]);
+
+/** Whether the URL names a customer's JDBC driver. */
+export function isJdbc(url: string): boolean {
+  return url.trim().toLowerCase().startsWith("jdbc:");
+}
 const CAPABILITIES_PREFIX = "capabilities.";
 
 export function capabilitiesKey(engine: string): string {
@@ -60,7 +69,11 @@ export function genericSqlHints(fields: Record<string, string>): Record<string, 
   return Object.fromEntries(
     Object.entries(fields).filter(
       ([k, v]) =>
-        v !== "" && (k === URL_KEY || k === DIALECT_KEY || k.startsWith(CAPABILITIES_PREFIX)),
+        v !== "" &&
+        (k === URL_KEY ||
+          k === DIALECT_KEY ||
+          k.startsWith(CAPABILITIES_PREFIX) ||
+          (JDBC_KEYS.has(k) && isJdbc(fields[URL_KEY] ?? ""))),
     ),
   );
 }

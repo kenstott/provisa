@@ -24,6 +24,9 @@
     "attachUnbuilt": "Live attach is not available yet; rows are replicated.",
     "detect": "Detect",
     "checkPassed": "{{capability}}: passed",
-    "checkFailed": "{{capability}}: failed ({{reason}})"
+    "checkFailed": "{{capability}}: failed ({{reason}})",
+    "jdbcDriverJar": "JDBC driver jar",
+    "jdbcDriverJarHint": "The driver's jar file. Self-hosted installs only.",
+    "jdbcDriverClass": "Driver class"
   }
 }

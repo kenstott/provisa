@@ -94,7 +94,21 @@ A database with no named source type, reached through any SQLAlchemy dialect Pro
 
 A SQLite or DuckDB file is named by its path, written with the organization's tokens: `sqlite:///{files}/shop.db` or `duckdb:///{org}/shop.duckdb`. The file is opened where the token resolves, and a path that leaves the organization's folder is refused, naming the path. On a server of many organizations this is the only file URL allowed. A URL naming any other file is refused, and a DuckDB file is opened with DuckDB's external access off.
 
-A network URL's host is checked like any other source's host (sandbox and multi-organization egress rules), and the connection is made at the address that was checked. Nothing is checked against the database when it connects. Register Table lists the schemas, tables and columns that the source's own SQLAlchemy dialect reports.
+A customer's own JDBC driver is also a Generic SQL source. Give a `jdbc:` URL plus two more settings: `jdbc_driver_jar`, the driver's jar file (a `{files}/...` path works), and `jdbc_driver_class`, the driver's class name. Provisa opens that driver directly in its own JVM through JPype, with no Calcite involved. The SQL dialect, the capability settings and Detect work as they do for a SQLAlchemy URL. A `jdbc:` URL has no engine attach, so the form doesn't offer one. A customer's jar runs as code inside Provisa's JVM, so this option is for self-hosted installs only. A server of many organizations refuses it, naming the reason, and so does a sandbox organization.
+
+For an organization whose sources are held to public addresses (a sandbox, or any organization but the deployment's own on a server of many organizations), the URL may carry only these driver options:
+
+| Dialect | Options allowed |
+| ------- | --------------- |
+| `postgresql` | `sslmode`, `connect_timeout`, `application_name`, `target_session_attrs` |
+| `mysql` | `ssl_mode`, `connect_timeout`, `charset` |
+| `mssql` | `driver`, `Encrypt`, `TrustServerCertificate` |
+
+Any other option is refused by name. That covers options that name another host, a file, a service, an init command or a local file load. A self-hosted server and the deployment's own organization can pass any option their driver accepts.
+
+Detect is a button on the form. It runs read-only checks against the connection the form describes, on the active engine, written in the source's SQL dialect over rows the statement makes itself. It ticks the capabilities that passed and shows the source's own error for those that failed. Nothing is saved until the form is. After changing the URL or the dialect, press Detect again.
+
+A network URL's host is checked like any other source's host (sandbox and multi-organization egress rules), and the connection is made at the address that was checked, a sandbox's included. Nothing is checked against the database when it connects. Register Table lists the schemas, tables and columns that the source's own SQLAlchemy dialect reports.
 
 ### Cloud Data Warehouses
 

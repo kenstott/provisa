@@ -24,6 +24,9 @@
     "attachUnbuilt": "Живое подключение пока недоступно; строки реплицируются.",
     "detect": "Определить",
     "checkPassed": "{{capability}}: пройдено",
-    "checkFailed": "{{capability}}: не пройдено ({{reason}})"
+    "checkFailed": "{{capability}}: не пройдено ({{reason}})",
+    "jdbcDriverJar": "JAR JDBC-драйвера",
+    "jdbcDriverJarHint": "JAR-файл драйвера. Только при самостоятельном размещении.",
+    "jdbcDriverClass": "Класс драйвера"
   }
 }

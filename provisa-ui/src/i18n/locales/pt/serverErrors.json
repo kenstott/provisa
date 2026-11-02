@@ -481,7 +481,8 @@
       "generic_sql_invalid": "Fonte {{source}}: {{error}}",
       "generic_sql_file_refused": "Fonte {{source}}: a URL indica {{path}}, que este servidor não pode abrir para a organização.",
       "generic_sql_attach_unbuilt": "Fonte {{source}}: a conexão ao vivo de uma fonte Generic SQL ainda não está disponível (ativada para {{engines}}); suas linhas são replicadas.",
-      "generic_sql_options_refused": "Fonte {{source}}: a URL desta organização não pode informar a opção de driver {{options}}."
+      "generic_sql_options_refused": "Fonte {{source}}: a URL desta organização não pode informar a opção de driver {{options}}.",
+      "generic_sql_jdbc_refused": "Fonte {{source}}: um driver JDBC do cliente é executado como código na própria JVM do Provisa, o que só uma instalação auto-hospedada permite."
     },
     "secrets": {
       "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",

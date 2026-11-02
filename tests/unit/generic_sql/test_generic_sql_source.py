@@ -293,3 +293,52 @@ def test_connector_pushdown_reads_the_sources_settings_for_the_engine():
     assert not attached.aggregate_pushdown and not attached.write
     # Settings for another engine say nothing about this one.
     assert engine.connector_pushdown(source(trino="attach,predicate,join")) == landed
+
+
+# -- a customer's JDBC driver ----------------------------------------------------------------------
+
+
+def test_a_jdbc_url_needs_its_driver_jar_and_class_and_has_no_attach():
+    from provisa.generic_sql import jdbc
+
+    url = "jdbc:sqlite:{files}/shop.db"
+    with pytest.raises(gs.InvalidGenericSqlSource, match="jdbc_driver_jar and jdbc_driver_class"):
+        gs.parse(_hints(url))
+    hints = {**_hints(url), jdbc.DRIVER_JAR: "{files}/sqlite-jdbc.jar", jdbc.DRIVER_CLASS: "x.D"}
+    assert gs.parse(hints).url == url
+    assert gs.attach_kind(url) is None
+    with pytest.raises(gs.InvalidGenericSqlSource, match="jdbc URL has no engine attach"):
+        gs.parse({**hints, gs.capabilities_key("duckdb"): "attach"})
+
+
+def test_a_jdbc_driver_is_refused_by_name_on_a_server_of_many_organizations(org, monkeypatch):
+    from provisa.api.admin.schema_common import generic_sql_refusal
+    from provisa.generic_sql import jdbc
+
+    hints = {
+        **_hints("jdbc:sqlite:{files}/shop.db"),
+        jdbc.DRIVER_JAR: "{files}/sqlite-jdbc.jar",
+        jdbc.DRIVER_CLASS: "org.sqlite.JDBC",
+    }
+    assert generic_sql_refusal(_input(hints)) is None  # a self-hosted install runs it
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: True)
+    refused = generic_sql_refusal(_input(hints))
+    assert refused is not None and refused.code == "schema.generic_sql_jdbc_refused"
+    assert "self-hosted" in refused.message
+    with pytest.raises(jdbc.JdbcRefused):
+        jdbc.connect("jdbc:sqlite::memory:", "{files}/sqlite-jdbc.jar", "org.sqlite.JDBC", "", "")
+    # Nor for a held org (a sandbox), whose destination a JDBC URL cannot be checked for.
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+    monkeypatch.setattr("provisa.security.sandbox_egress.held", lambda _org: True)
+    with pytest.raises(jdbc.JdbcRefused):
+        jdbc.refuse_where_not_allowed()
+
+
+def test_jdbc_binds_by_position_in_the_order_the_placeholders_appear():
+    from provisa.generic_sql.jdbc import qmark
+
+    assert qmark("a = $2 AND b = $1 OR c = $2", [10, 20]) == (
+        "a = ? AND b = ? OR c = ?",
+        [20, 10, 20],
+    )
+    assert qmark("SELECT 1", None) == ("SELECT 1", [])

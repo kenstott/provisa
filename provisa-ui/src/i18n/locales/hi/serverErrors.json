@@ -481,7 +481,8 @@
       "generic_sql_invalid": "स्रोत {{source}}: {{error}}",
       "generic_sql_file_refused": "स्रोत {{source}}: URL {{path}} बताता है, जिसे यह सर्वर संगठन के लिए नहीं खोल सकता।",
       "generic_sql_attach_unbuilt": "स्रोत {{source}}: Generic SQL स्रोत का लाइव अटैच अभी उपलब्ध नहीं है ({{engines}} के लिए चालू); इसकी पंक्तियाँ रेप्लिकेट की जाती हैं।",
-      "generic_sql_options_refused": "स्रोत {{source}}: इस संगठन का URL ड्राइवर विकल्प {{options}} नहीं दे सकता।"
+      "generic_sql_options_refused": "स्रोत {{source}}: इस संगठन का URL ड्राइवर विकल्प {{options}} नहीं दे सकता।",
+      "generic_sql_jdbc_refused": "स्रोत {{source}}: ग्राहक का JDBC ड्राइवर Provisa के अपने JVM में कोड के रूप में चलता है, जिसकी अनुमति केवल स्व-होस्टेड इंस्टॉल देता है।"
     },
     "secrets": {
       "name_refused": "{{name}} {{service}} में इस संगठन के सीक्रेट्स के भीतर का नाम नहीं है: नाम संगठन के सापेक्ष होता है और उससे बाहर नहीं जा सकता",

@@ -481,7 +481,8 @@
       "generic_sql_invalid": "מקור {{source}}: {{error}}",
       "generic_sql_file_refused": "מקור {{source}}: כתובת ה-URL מציינת את {{path}}, ששרת זה אינו רשאי לפתוח עבור הארגון.",
       "generic_sql_attach_unbuilt": "מקור {{source}}: חיבור חי של מקור Generic SQL עדיין אינו זמין (הופעל עבור {{engines}}); השורות שלו משוכפלות.",
-      "generic_sql_options_refused": "מקור {{source}}: כתובת ה-URL של ארגון זה אינה רשאית לציין את אפשרות מנהל ההתקן {{options}}."
+      "generic_sql_options_refused": "מקור {{source}}: כתובת ה-URL של ארגון זה אינה רשאית לציין את אפשרות מנהל ההתקן {{options}}.",
+      "generic_sql_jdbc_refused": "מקור {{source}}: מנהל התקן JDBC של לקוח רץ כקוד בתוך ה-JVM של Provisa, ורק התקנה באירוח עצמי מתירה זאת."
     },
     "secrets": {
       "name_refused": "{{name}} אינו שם בתוך הסודות של הארגון הזה ב-{{service}}: שם הוא יחסי לארגון ואינו יכול לצאת ממנו",

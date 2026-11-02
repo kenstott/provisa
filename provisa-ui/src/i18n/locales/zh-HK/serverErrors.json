@@ -481,7 +481,8 @@
       "generic_sql_invalid": "資料來源 {{source}}：{{error}}",
       "generic_sql_file_refused": "資料來源 {{source}}：URL 指向 {{path}}，此伺服器不能為該組織開啟它。",
       "generic_sql_attach_unbuilt": "資料來源 {{source}}：Generic SQL 資料來源的即時掛接尚未可用（已為 {{engines}} 開啟）；其資料列會以複本形式複製。",
-      "generic_sql_options_refused": "資料來源 {{source}}：此組織的 URL 不能指定驅動程式選項 {{options}}。"
+      "generic_sql_options_refused": "資料來源 {{source}}：此組織的 URL 不能指定驅動程式選項 {{options}}。",
+      "generic_sql_jdbc_refused": "資料來源 {{source}}：客戶自備的 JDBC 驅動程式會作為程式碼在 Provisa 本身的 JVM 中執行，只有自行託管的安裝才允許這樣做。"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",

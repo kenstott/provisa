@@ -24,6 +24,9 @@
     "attachUnbuilt": "Live koppelen is nog niet beschikbaar; rijen worden gerepliceerd.",
     "detect": "Detecteren",
     "checkPassed": "{{capability}}: geslaagd",
-    "checkFailed": "{{capability}}: mislukt ({{reason}})"
+    "checkFailed": "{{capability}}: mislukt ({{reason}})",
+    "jdbcDriverJar": "JDBC-stuurprogramma-JAR",
+    "jdbcDriverJarHint": "Het JAR-bestand van het stuurprogramma. Alleen bij zelfgehoste installaties.",
+    "jdbcDriverClass": "Stuurprogrammaklasse"
   }
 }

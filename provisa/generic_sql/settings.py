@@ -67,7 +67,10 @@ def sql_dialects() -> tuple[str, ...]:
 
 def backend(url: str) -> str:
     """The dialect a connection URL's scheme names, without its driver
-    (``postgresql+psycopg2://...`` -> ``postgresql``)."""
+    (``postgresql+psycopg2://...`` -> ``postgresql``); ``jdbc`` for a customer's JDBC driver
+    (``provisa.generic_sql.jdbc``)."""
+    if url.strip().lower().startswith("jdbc:"):
+        return "jdbc"
     scheme, sep, _ = url.partition("://")
     if not sep or not scheme:
         raise InvalidGenericSqlSource(f"{url!r} is not a connection URL: it names no scheme")
@@ -118,7 +121,10 @@ def parse(hints: dict[str, str]) -> GenericSqlSettings:
     url = (hints.get(URL) or "").strip()
     if not url:
         raise InvalidGenericSqlSource("a Generic SQL source needs its connection URL")
-    backend(url)
+    if backend(url) == "jdbc":
+        from provisa.generic_sql.jdbc import driver_settings
+
+        driver_settings(hints)
     dialect = (hints.get(SQL_DIALECT) or "").strip()
     if dialect not in sql_dialects():
         raise InvalidGenericSqlSource(

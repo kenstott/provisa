@@ -24,6 +24,9 @@
     "attachUnbuilt": "חיבור חי עדיין אינו זמין; השורות משוכפלות.",
     "detect": "זיהוי",
     "checkPassed": "{{capability}}: עבר",
-    "checkFailed": "{{capability}}: נכשל ({{reason}})"
+    "checkFailed": "{{capability}}: נכשל ({{reason}})",
+    "jdbcDriverJar": "קובץ JAR של מנהל התקן JDBC",
+    "jdbcDriverJarHint": "קובץ ה-JAR של מנהל ההתקן. בהתקנות באירוח עצמי בלבד.",
+    "jdbcDriverClass": "מחלקת מנהל ההתקן"
   }
 }

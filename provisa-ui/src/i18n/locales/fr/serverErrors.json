@@ -481,7 +481,8 @@
       "generic_sql_invalid": "Source {{source}} : {{error}}",
       "generic_sql_file_refused": "Source {{source}} : l'URL désigne {{path}}, que ce serveur ne peut pas ouvrir pour l'organisation.",
       "generic_sql_attach_unbuilt": "Source {{source}} : l'attachement direct d'une source Generic SQL n'est pas encore disponible (activé pour {{engines}}) ; ses lignes sont répliquées.",
-      "generic_sql_options_refused": "Source {{source}} : l'URL de cette organisation ne peut pas indiquer l'option de pilote {{options}}."
+      "generic_sql_options_refused": "Source {{source}} : l'URL de cette organisation ne peut pas indiquer l'option de pilote {{options}}.",
+      "generic_sql_jdbc_refused": "Source {{source}} : un pilote JDBC du client s'exécute comme du code dans la JVM de Provisa, ce que seule une installation auto-hébergée permet."
     },
     "secrets": {
       "name_refused": "{{name}} n'est pas un nom situé dans les secrets de cette organisation dans {{service}} : un nom est relatif à l'organisation et ne peut pas en sortir",

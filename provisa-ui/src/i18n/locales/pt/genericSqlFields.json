@@ -24,6 +24,9 @@
     "attachUnbuilt": "A conexão ao vivo ainda não está disponível; as linhas são replicadas.",
     "detect": "Detectar",
     "checkPassed": "{{capability}}: aprovado",
-    "checkFailed": "{{capability}}: reprovado ({{reason}})"
+    "checkFailed": "{{capability}}: reprovado ({{reason}})",
+    "jdbcDriverJar": "JAR do driver JDBC",
+    "jdbcDriverJarHint": "O arquivo JAR do driver. Somente em instalações auto-hospedadas.",
+    "jdbcDriverClass": "Classe do driver"
   }
 }

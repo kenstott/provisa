@@ -131,6 +131,11 @@ def _file_path(path: str) -> str:
 def check(url: str) -> None:
     """Refuse, by name, a URL that cannot be kept: one that is no URL, carries a password, or
     names a file this server may not open for the org."""
+    if backend(url) == "jdbc":
+        from provisa.generic_sql.jdbc import refuse_where_not_allowed
+
+        refuse_where_not_allowed()
+        return
     parsed = _parsed(url)
     if backend(url) in FILE_BACKENDS:
         _file_path(parsed.database or "")
@@ -149,8 +154,9 @@ def _no_options_when_held(parsed: "URL") -> None:
 
 
 def destination(url: str) -> tuple[str, int | None] | None:
-    """The network host and port ``url`` connects to, or None for a file database."""
-    if backend(url) in FILE_BACKENDS:
+    """The network host and port ``url`` connects to, or None for a file database and for a jdbc:
+    URL, which no held org may give (``provisa.generic_sql.jdbc``)."""
+    if backend(url) in FILE_BACKENDS or backend(url) == "jdbc":
         return None
     parsed = _parsed(url)
     return (parsed.host.lower(), parsed.port) if parsed.host else None

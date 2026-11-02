@@ -24,6 +24,9 @@
     "attachUnbuilt": "L'attachement direct n'est pas encore disponible ; les lignes sont répliquées.",
     "detect": "Détecter",
     "checkPassed": "{{capability}} : réussi",
-    "checkFailed": "{{capability}} : échoué ({{reason}})"
+    "checkFailed": "{{capability}} : échoué ({{reason}})",
+    "jdbcDriverJar": "JAR du pilote JDBC",
+    "jdbcDriverJarHint": "Le fichier JAR du pilote. Installations auto-hébergées uniquement.",
+    "jdbcDriverClass": "Classe du pilote"
   }
 }

@@ -59,6 +59,8 @@ export interface GenericSqlDetectInput {
   sqlDialect: string;
   username: string;
   password: string;
+  jdbcDriverJar: string;
+  jdbcDriverClass: string;
 }
 
 export function useGenericSqlSetup(skip: boolean) {

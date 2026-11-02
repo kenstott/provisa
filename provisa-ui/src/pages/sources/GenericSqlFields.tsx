@@ -22,7 +22,15 @@ import {
   type GenericSqlDetection,
 } from "../../hooks/useGenericSql";
 import type { SourceFormFieldsProps } from "./SourceFormFields";
-import { ATTACH, attachAllowed, capabilitiesOn, withCapabilities } from "./genericSql";
+import {
+  ATTACH,
+  attachAllowed,
+  capabilitiesOn,
+  isJdbc,
+  JDBC_CLASS_KEY,
+  JDBC_JAR_KEY,
+  withCapabilities,
+} from "./genericSql";
 
 export function GenericSqlFields({
   form,
@@ -40,7 +48,8 @@ export function GenericSqlFields({
   const engine = setup?.engine ?? null;
   const on = engine ? capabilitiesOn(authFields, engine) : new Set<string>();
   // A changed URL or dialect is a different source to the checks: press Detect again.
-  const setSetting = (key: "url" | "sql_dialect", value: string) => {
+  const jdbc = isJdbc(url);
+  const setSetting = (key: string, value: string) => {
     setDetection(null);
     setAuthFields({ ...authFields, [key]: value });
   };
@@ -59,6 +68,8 @@ export function GenericSqlFields({
         sqlDialect: dialect,
         username: form.username,
         password: form.password,
+        jdbcDriverJar: jdbc ? (authFields[JDBC_JAR_KEY] ?? "") : "",
+        jdbcDriverClass: jdbc ? (authFields[JDBC_CLASS_KEY] ?? "") : "",
       });
       setDetection(found);
       const next = new Set(capabilitiesOn(authFields, found.engine));
@@ -80,6 +91,30 @@ export function GenericSqlFields({
           data-testid="generic-sql-url-input"
         />
       </FormField>
+      {jdbc && (
+        <FieldGroup>
+          <FormField size="long" hint={t("genericSqlFields.jdbcDriverJarHint")}>
+            <TextInput
+              required
+              label={t("genericSqlFields.jdbcDriverJar")}
+              value={authFields[JDBC_JAR_KEY] ?? ""}
+              onChange={(e) => setSetting(JDBC_JAR_KEY, e.currentTarget.value)}
+              placeholder="{files}/drivers/vendor-jdbc.jar"
+              data-testid="generic-sql-jdbc-jar-input"
+            />
+          </FormField>
+          <FormField size="medium">
+            <TextInput
+              required
+              label={t("genericSqlFields.jdbcDriverClass")}
+              value={authFields[JDBC_CLASS_KEY] ?? ""}
+              onChange={(e) => setSetting(JDBC_CLASS_KEY, e.currentTarget.value)}
+              placeholder="com.vendor.jdbc.Driver"
+              data-testid="generic-sql-jdbc-class-input"
+            />
+          </FormField>
+        </FieldGroup>
+      )}
       <FormField size="medium" help={t("genericSqlFields.dialectHelp")}>
         <Select
           required

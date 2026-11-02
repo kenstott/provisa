@@ -24,6 +24,9 @@
     "attachUnbuilt": "लाइव अटैच अभी उपलब्ध नहीं है; पंक्तियाँ रेप्लिकेट की जाती हैं।",
     "detect": "पता लगाएँ",
     "checkPassed": "{{capability}}: सफल",
-    "checkFailed": "{{capability}}: विफल ({{reason}})"
+    "checkFailed": "{{capability}}: विफल ({{reason}})",
+    "jdbcDriverJar": "JDBC ड्राइवर JAR",
+    "jdbcDriverJarHint": "ड्राइवर की JAR फ़ाइल। केवल स्व-होस्टेड इंस्टॉल में।",
+    "jdbcDriverClass": "ड्राइवर क्लास"
   }
 }

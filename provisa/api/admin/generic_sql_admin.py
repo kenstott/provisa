@@ -35,6 +35,9 @@ class GenericSqlDetectInput:
     username: str = ""
     # As the form holds it: a value, or a secret reference the operator typed.
     password: str = ""
+    # A jdbc: URL's driver (provisa.generic_sql.jdbc); empty for any other URL.
+    jdbc_driver_jar: str = ""
+    jdbc_driver_class: str = ""
 
 
 @strawberry.type
@@ -62,15 +65,21 @@ async def detect(input: GenericSqlDetectInput, engine: str) -> GenericSqlDetecti
     from provisa.core.secrets import resolve_secrets
     from provisa.core.secrets_store import bound_to_request_org
     from provisa.generic_sql import detect as checks
+    from provisa.generic_sql.jdbc import DRIVER_CLASS, DRIVER_JAR
     from provisa.generic_sql.settings import SQL_DIALECT, URL, parse
     from provisa.generic_sql.url import check
 
-    settings = parse({URL: input.url, SQL_DIALECT: input.sql_dialect})
+    hints = {
+        URL: input.url,
+        SQL_DIALECT: input.sql_dialect,
+        **({DRIVER_JAR: input.jdbc_driver_jar} if input.jdbc_driver_jar else {}),
+        **({DRIVER_CLASS: input.jdbc_driver_class} if input.jdbc_driver_class else {}),
+    }
+    settings = parse(hints)
     async with bound_to_request_org():
         check(settings.url)
         found = await checks.detect(
-            settings.url,
-            settings.sql_dialect,
+            hints,
             input.username,
             str(resolve_secrets(input.password)) if input.password else "",
         )

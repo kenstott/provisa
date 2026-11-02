@@ -37,12 +37,16 @@ def org(tmp_path, monkeypatch):
     return folder
 
 
+def _hints(url: str, dialect: str) -> dict[str, str]:
+    return {"url": url, "sql_dialect": dialect}
+
+
 def _by_capability(checks: list[gd.Check]) -> dict[str, gd.Check]:
     return {c.capability: c for c in checks}
 
 
 async def test_a_database_that_answers_every_check_passes_them(org):
-    checks = _by_capability(await gd.detect("sqlite:///{files}/shop.db", "sqlite", "", ""))
+    checks = _by_capability(await gd.detect(_hints("sqlite:///{files}/shop.db", "sqlite"), "", ""))
     assert list(checks) == ["attach", "predicate", "join", "aggregate", "key_range"]
     for capability in ("predicate", "join", "aggregate", "key_range"):
         assert checks[capability].passed, checks[capability].reason
@@ -52,14 +56,14 @@ async def test_a_database_that_answers_every_check_passes_them(org):
 
 async def test_a_check_written_in_a_dialect_the_database_does_not_speak_names_why(org):
     # T-SQL counts with COUNT_BIG, a function SQLite does not have.
-    checks = _by_capability(await gd.detect("sqlite:///{files}/shop.db", "tsql", "", ""))
+    checks = _by_capability(await gd.detect(_hints("sqlite:///{files}/shop.db", "tsql"), "", ""))
     assert not checks["aggregate"].passed
     assert "COUNT_BIG" in checks["aggregate"].reason
     assert checks["predicate"].passed
 
 
 async def test_a_source_that_cannot_be_connected_to_fails_every_check_with_why(org):
-    checks = await gd.detect("postgresql+psycopg2://127.0.0.1:1/none", "postgres", "u", "p")
+    checks = await gd.detect(_hints("postgresql+psycopg2://127.0.0.1:1/none", "postgres"), "u", "p")
     pushdown = [c for c in checks if c.capability != "attach"]
     assert pushdown and all(not c.passed and "OperationalError" in c.reason for c in pushdown)
     attach = _by_capability(checks)["attach"]
@@ -125,5 +129,11 @@ def test_every_locale_says_each_refusal_of_a_generic_sql_source():
     assert len(catalogs) == 13
     for catalog in catalogs:
         said = json.loads(catalog.read_text())["serverErrors"]["schema"]
-        for code in ("invalid", "file_refused", "attach_unbuilt", "options_refused"):
+        for code in (
+            "invalid",
+            "file_refused",
+            "attach_unbuilt",
+            "options_refused",
+            "jdbc_refused",
+        ):
             assert "{{source}}" in said[f"generic_sql_{code}"], (catalog, code)

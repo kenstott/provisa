@@ -24,6 +24,9 @@
     "attachUnbuilt": "Il collegamento live non è ancora disponibile; le righe vengono replicate.",
     "detect": "Rileva",
     "checkPassed": "{{capability}}: superato",
-    "checkFailed": "{{capability}}: non superato ({{reason}})"
+    "checkFailed": "{{capability}}: non superato ({{reason}})",
+    "jdbcDriverJar": "JAR del driver JDBC",
+    "jdbcDriverJarHint": "Il file JAR del driver. Solo installazioni self-hosted.",
+    "jdbcDriverClass": "Classe del driver"
   }
 }

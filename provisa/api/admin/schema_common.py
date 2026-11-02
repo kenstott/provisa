@@ -342,6 +342,7 @@ def generic_sql_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-
 
     from provisa.generic_sql import SOURCE_TYPE
     from provisa.generic_sql.settings import ATTACH, InvalidGenericSqlSource, parse
+    from provisa.generic_sql.jdbc import JdbcRefused
     from provisa.generic_sql.url import DriverOptionsRefused, FileUrlRefused, check
 
     if input.type != SOURCE_TYPE:
@@ -355,6 +356,13 @@ def generic_sql_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-
             message=f"Source {input.id!r}: {exc}",
             code="schema.generic_sql_file_refused",
             params={"source": input.id, "path": exc.path, "error": str(exc)},
+        )
+    except JdbcRefused as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.generic_sql_jdbc_refused",
+            params={"source": input.id},
         )
     except DriverOptionsRefused as exc:
         return MutationResult(

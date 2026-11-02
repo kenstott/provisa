@@ -9101,5 +9101,9 @@
   "he/serverErrors.json::serverErrors.schema.generic_sql_invalid": "Source {{source}}: {{error}}",
   "he/serverErrors.json::serverErrors.schema.generic_sql_file_refused": "Source {{source}}: the URL names {{path}}, which this server may not open for the organization.",
   "he/serverErrors.json::serverErrors.schema.generic_sql_attach_unbuilt": "Source {{source}}: live attach of a Generic SQL source is not available yet (turned on for {{engines}}); its rows are replicated.",
-  "he/serverErrors.json::serverErrors.schema.generic_sql_options_refused": "Source {{source}}: this organization's URL may not give the driver option {{options}}."
+  "he/serverErrors.json::serverErrors.schema.generic_sql_options_refused": "Source {{source}}: this organization's URL may not give the driver option {{options}}.",
+  "he/serverErrors.json::serverErrors.schema.generic_sql_jdbc_refused": "Source {{source}}: a customer's JDBC driver runs as code in Provisa's own JVM, which only a self-hosted install allows.",
+  "he/genericSqlFields.json::genericSqlFields.jdbcDriverJar": "JDBC driver jar",
+  "he/genericSqlFields.json::genericSqlFields.jdbcDriverJarHint": "The driver's jar file. Self-hosted installs only.",
+  "he/genericSqlFields.json::genericSqlFields.jdbcDriverClass": "Driver class"
 }

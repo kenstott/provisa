@@ -24,6 +24,9 @@
     "attachUnbuilt": "实时挂接尚不可用；行将以副本形式复制。",
     "detect": "检测",
     "checkPassed": "{{capability}}：通过",
-    "checkFailed": "{{capability}}：未通过（{{reason}}）"
+    "checkFailed": "{{capability}}：未通过（{{reason}}）",
+    "jdbcDriverJar": "JDBC 驱动程序 JAR",
+    "jdbcDriverJarHint": "驱动程序的 JAR 文件。仅限自托管安装。",
+    "jdbcDriverClass": "驱动程序类"
   }
 }

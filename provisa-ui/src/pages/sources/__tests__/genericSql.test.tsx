@@ -64,12 +64,25 @@ describe("what a Generic SQL source saves", () => {
     expect(withCapabilities(fields, "duckdb", new Set())).toEqual({});
   });
 
+  it("keeps a JDBC driver's jar and class only for a jdbc: URL", () => {
+    const driver = { jdbc_driver_jar: "{files}/d.jar", jdbc_driver_class: "com.v.Driver" };
+    expect(genericSqlHints({ url: "jdbc:vendor://h/db", sql_dialect: "ansi", ...driver })).toEqual({
+      url: "jdbc:vendor://h/db",
+      sql_dialect: "ansi",
+      ...driver,
+    });
+    expect(
+      genericSqlHints({ url: "postgresql://h/db", sql_dialect: "postgres", ...driver }),
+    ).toEqual({ url: "postgresql://h/db", sql_dialect: "postgres" });
+  });
+
   it("offers attach only for a postgresql or mysql URL", () => {
     expect(attachAllowed("postgresql+psycopg2://h/db")).toBe(true);
     expect(attachAllowed("mysql+pymysql://h/db")).toBe(true);
     expect(attachAllowed("mssql+pyodbc://h/db")).toBe(false);
     expect(attachAllowed("sqlite:///{files}/a.db")).toBe(false);
     expect(attachAllowed("postgresql")).toBe(false);
+    expect(attachAllowed("jdbc:postgresql://h/db")).toBe(false);
   });
 });
 
@@ -121,6 +134,8 @@ describe("the Generic SQL fields", () => {
       sqlDialect: "postgres",
       username: "",
       password: "",
+      jdbcDriverJar: "",
+      jdbcDriverClass: "",
     });
     expect(onFields.mock.lastCall?.[0]["capabilities.duckdb"]).toBe(
       "aggregate,key_range,predicate",
@@ -135,5 +150,17 @@ describe("the Generic SQL fields", () => {
       target: { value: "postgresql+psycopg2://db.example.com/other" },
     });
     expect(screen.queryByTestId("generic-sql-detect-results")).toBeNull();
+  });
+
+  it("ask a jdbc: URL's driver jar and class, and offer it no attach", () => {
+    renderInForm(<Harness onFields={vi.fn()} />);
+    expect(screen.queryByTestId("generic-sql-jdbc-jar-input")).toBeNull();
+    fireEvent.change(screen.getByTestId("generic-sql-url-input"), {
+      target: { value: "jdbc:vendor://db.example.com:1521/sales" },
+    });
+    expect(screen.getByTestId("generic-sql-jdbc-jar-input")).toBeTruthy();
+    expect(screen.getByTestId("generic-sql-jdbc-class-input")).toBeTruthy();
+    expect(screen.queryByTestId("generic-sql-capability-attach")).toBeNull();
+    expect(screen.getByTestId("generic-sql-capability-predicate")).toBeTruthy();
   });
 });
