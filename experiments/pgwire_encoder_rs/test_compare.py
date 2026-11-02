@@ -1160,3 +1160,60 @@ def test_named_zone_year_limits(fmt: int) -> None:
             _check(
                 [pa.array([v], pa.timestamp("us", tz=zone))], ["TIMESTAMP WITH TIME ZONE"], [fmt]
             )
+
+
+# float8out / float4out as PostgreSQL 17 writes them (pg_float_check.py holds the encoder to a live
+# server over 300,000 random values of each): NaN, ±Infinity, -0, fixed form for a decimal exponent
+# in [-4, 15) or [-4, 6), else e±dd, and a decimal on the rounding interval's boundary never taken.
+PG_FLOAT8 = [
+    (0.0, "0"),
+    (-0.0, "-0"),
+    (float("nan"), "NaN"),
+    (float("inf"), "Infinity"),
+    (float("-inf"), "-Infinity"),
+    (1.0, "1"),
+    (0.1, "0.1"),
+    (100.0, "100"),
+    (1e14, "100000000000000"),
+    (1e15, "1e+15"),
+    (123456789012345.6, "123456789012345.6"),
+    (1234567890123456.7, "1.2345678901234568e+15"),
+    (1e-4, "0.0001"),
+    (1e-5, "1e-05"),
+    (0.00012345, "0.00012345"),
+    (1 / 3, "0.3333333333333333"),
+    (5e-324, "5e-324"),
+    (2.2250738585072014e-308, "2.2250738585072014e-308"),
+    (1.7976931348623157e308, "1.7976931348623157e+308"),
+    (1e100, "1e+100"),
+    (-738171652909232.25, "-738171652909232.2"),
+    (1.218865206211834e17, "1.2188652062118339e+17"),
+    (-4.079636726800334e16, "-4.0796367268003344e+16"),
+]
+PG_FLOAT4 = [
+    (0.0, "0"),
+    (-0.0, "-0"),
+    (1.0, "1"),
+    (0.1, "0.1"),
+    (1 / 3, "0.33333334"),
+    (100000.0, "100000"),
+    (1e6, "1e+06"),
+    (123456.7, "123456.7"),
+    (1e-4, "0.0001"),
+    (1e-5, "1e-05"),
+    (_f32(1), "1e-45"),
+    (_f32(0x00800000), "1.1754944e-38"),
+    (_f32(0x7F7FFFFF), "3.4028235e+38"),
+    (16777217.0, "1.6777216e+07"),
+]
+
+
+@pytest.mark.parametrize(
+    ("bvtype", "arrow_type", "cases"),
+    [("FLOAT", pa.float64(), PG_FLOAT8), ("REAL", pa.float32(), PG_FLOAT4)],
+    ids=["float8", "float4"],
+)
+def test_postgres_float_text(bvtype: str, arrow_type: pa.DataType, cases: list) -> None:
+    batch = _batch([pa.array([v for v, _ in cases], arrow_type)])
+    rows = _data_rows(pgwire_encoder_rs.encode_batch(batch, [bvtype], [0]))
+    assert [r[0] for r in rows] == [text.encode() for _, text in cases]

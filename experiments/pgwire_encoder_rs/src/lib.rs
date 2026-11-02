@@ -20,7 +20,9 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
 use fmt_num::{decimal_str, float4_text, float8_text, numeric_binary};
-use temporal::{date_text, DAY_US, interval_parts_of_duration, interval_parts_of_mdn, interval_text, timestamp_text, TzSpec};
+use temporal::{
+    date_text, interval_parts_of_duration, interval_parts_of_mdn, interval_text, timestamp_text, TzSpec, DAY_US,
+};
 
 #[derive(Debug)]
 pub enum EncErr {
@@ -45,6 +47,9 @@ pub type R<T> = Result<T, EncErr>;
 
 /// Writes the value at a row index (known non-null) without its length prefix.
 type Enc = Box<dyn Fn(usize, &mut Vec<u8>) -> R<()> + Send + Sync>;
+
+/// An interval column's (months, days, microseconds) at a row index.
+type IntervalParts = Box<dyn Fn(usize) -> R<(i64, i64, i64)> + Send + Sync>;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Elem {
@@ -146,7 +151,10 @@ fn unsupported(kind: Kind, dt: &DataType) -> EncErr {
 
 /// Downcasts `arr` to `T`, owning a clone (Arrow arrays are cheap Arc'd buffers).
 fn typed<T: Array + Clone + 'static>(arr: &ArrayRef) -> T {
-    arr.as_any().downcast_ref::<T>().expect("downcast matches DataType").clone()
+    arr.as_any()
+        .downcast_ref::<T>()
+        .expect("downcast matches DataType")
+        .clone()
 }
 
 /// An integer column's value as i128 (every Arrow integer width fits).
@@ -188,7 +196,10 @@ fn float_getter(arr: &ArrayRef) -> Option<Box<dyn Fn(usize) -> f64 + Send + Sync
     }
 }
 
-fn str_getter(arr: &ArrayRef) -> Option<Box<dyn for<'a> Fn(usize) -> &'static str + Send + Sync>> {
+/// A string column's value at a row index.
+type StrGetter = Box<dyn Fn(usize) -> &'static str + Send + Sync>;
+
+fn str_getter(arr: &ArrayRef) -> Option<StrGetter> {
     // The returned &str borrows the array's buffer, which the closure keeps alive; the
     // 'static is sound only for the duration of one encode call, which owns every closure.
     macro_rules! g {
@@ -302,7 +313,9 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
     }
     match kind {
         Kind::Bool => {
-            let DataType::Boolean = dt else { return Err(unsupported(kind, &dt)) };
+            let DataType::Boolean = dt else {
+                return Err(unsupported(kind, &dt));
+            };
             let a = typed::<BooleanArray>(arr);
             Ok(if binary {
                 Box::new(move |i, out| {
@@ -423,7 +436,9 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
             }))
         }
         Kind::Timestamp | Kind::TimestampTz => {
-            let DataType::Timestamp(unit, tz) = &dt else { return Err(unsupported(kind, &dt)) };
+            let DataType::Timestamp(unit, tz) = &dt else {
+                return Err(unsupported(kind, &dt));
+            };
             let unit = *unit;
             // Only a microsecond column carries the ±infinity markers (column_values).
             let infinity_marked = unit == TimeUnit::Microsecond;
@@ -435,7 +450,11 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
             let tz_required = kind == Kind::TimestampTz;
             Ok(Box::new(move |i, out| {
                 let raw = a.value(i);
-                let inf = if infinity_marked { temporal::timestamp_infinity(raw) } else { 0 };
+                let inf = if infinity_marked {
+                    temporal::timestamp_infinity(raw)
+                } else {
+                    0
+                };
                 let micros = temporal::micros_of(raw, unit)?;
                 if unit == TimeUnit::Nanosecond {
                     temporal::check_ns_local(raw, &tz)?;
@@ -481,7 +500,7 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
                     let a = typed::<Time64NanosecondArray>(arr);
                     Box::new(move |i| {
                         let us = temporal::micros_of(a.value(i), TimeUnit::Nanosecond)?;
-                        Ok(us.rem_euclid(DAY_US as i128) as i64)
+                        Ok(us.rem_euclid(DAY_US) as i64)
                     })
                 }
                 _ => return Err(unsupported(kind, &dt)),
@@ -500,7 +519,7 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
             }))
         }
         Kind::Interval => {
-            let parts: Box<dyn Fn(usize) -> R<(i64, i64, i64)> + Send + Sync> = match &dt {
+            let parts: IntervalParts = match &dt {
                 DataType::Interval(IntervalUnit::MonthDayNano) => {
                     let a = typed::<IntervalMonthDayNanoArray>(arr);
                     Box::new(move |i| {
@@ -510,7 +529,9 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
                 }
                 DataType::Duration(unit) => {
                     let unit = *unit;
-                    let a = typed::<PrimitiveArray<Int64Type>>(&cast(arr, &DataType::Int64).map_err(|e| EncErr::Value(e.to_string()))?);
+                    let a = typed::<PrimitiveArray<Int64Type>>(
+                        &cast(arr, &DataType::Int64).map_err(|e| EncErr::Value(e.to_string()))?,
+                    );
                     Box::new(move |i| interval_parts_of_duration(temporal::micros_of(a.value(i), unit)?))
                 }
                 _ => return Err(unsupported(kind, &dt)),
@@ -586,7 +607,11 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
 /// The digit zero of each run of Unicode decimal digits (Nd) past ASCII, in Unicode 15.0.0 (Python
 /// 3.12's unicodedata): every Nd character is one of these plus 0..9.
 const DECIMAL_ZEROS: [u32; 67] = [
-    0x660, 0x6f0, 0x7c0, 0x966, 0x9e6, 0xa66, 0xae6, 0xb66, 0xbe6, 0xc66, 0xce6, 0xd66, 0xde6, 0xe50, 0xed0, 0xf20, 0x1040, 0x1090, 0x17e0, 0x1810, 0x1946, 0x19d0, 0x1a80, 0x1a90, 0x1b50, 0x1bb0, 0x1c40, 0x1c50, 0xa620, 0xa8d0, 0xa900, 0xa9d0, 0xa9f0, 0xaa50, 0xabf0, 0xff10, 0x104a0, 0x10d30, 0x11066, 0x110f0, 0x11136, 0x111d0, 0x112f0, 0x11450, 0x114d0, 0x11650, 0x116c0, 0x11730, 0x118e0, 0x11950, 0x11c50, 0x11d50, 0x11da0, 0x11f50, 0x16a60, 0x16ac0, 0x16b50, 0x1d7ce, 0x1d7d8, 0x1d7e2, 0x1d7ec, 0x1d7f6, 0x1e140, 0x1e2f0, 0x1e4f0, 0x1e950, 0x1fbf0,
+    0x660, 0x6f0, 0x7c0, 0x966, 0x9e6, 0xa66, 0xae6, 0xb66, 0xbe6, 0xc66, 0xce6, 0xd66, 0xde6, 0xe50, 0xed0, 0xf20,
+    0x1040, 0x1090, 0x17e0, 0x1810, 0x1946, 0x19d0, 0x1a80, 0x1a90, 0x1b50, 0x1bb0, 0x1c40, 0x1c50, 0xa620, 0xa8d0,
+    0xa900, 0xa9d0, 0xa9f0, 0xaa50, 0xabf0, 0xff10, 0x104a0, 0x10d30, 0x11066, 0x110f0, 0x11136, 0x111d0, 0x112f0,
+    0x11450, 0x114d0, 0x11650, 0x116c0, 0x11730, 0x118e0, 0x11950, 0x11c50, 0x11d50, 0x11da0, 0x11f50, 0x16a60,
+    0x16ac0, 0x16b50, 0x1d7ce, 0x1d7d8, 0x1d7e2, 0x1d7ec, 0x1d7f6, 0x1e140, 0x1e2f0, 0x1e4f0, 0x1e950, 0x1fbf0,
 ];
 
 /// The ASCII byte int() reads a character as (_PyUnicode_TransformDecimalAndSpaceToASCII): Unicode
@@ -660,7 +685,8 @@ fn uuid_bytes(s: &str) -> R<[u8; 16]> {
         return Err(bad());
     }
     let ascii: Vec<u8> = s.chars().map(int_ascii).collect();
-    let v = int_hex_128(&ascii).ok_or_else(|| EncErr::Value(format!("invalid literal for int() with base 16: {s:?}")))?;
+    let v =
+        int_hex_128(&ascii).ok_or_else(|| EncErr::Value(format!("invalid literal for int() with base 16: {s:?}")))?;
     Ok(v.to_be_bytes())
 }
 
@@ -676,24 +702,33 @@ fn uuid_text(b: &[u8], out: &mut Vec<u8>) {
     }
 }
 
+/// A list column's (start, end) offsets into its child values at a row index.
+type Offsets = Box<dyn Fn(usize) -> (usize, usize) + Send + Sync>;
+
 /// The list column's child values and per-row offsets, for any list layout.
-fn list_parts(arr: &ArrayRef) -> Option<(ArrayRef, Box<dyn Fn(usize) -> (usize, usize) + Send + Sync>)> {
+fn list_parts(arr: &ArrayRef) -> Option<(ArrayRef, Offsets)> {
     match arr.data_type() {
         DataType::List(_) => {
             let a = typed::<ListArray>(arr);
             let values = a.values().clone();
-            Some((values, Box::new(move |i| {
-                let o = a.value_offsets();
-                (o[i] as usize, o[i + 1] as usize)
-            })))
+            Some((
+                values,
+                Box::new(move |i| {
+                    let o = a.value_offsets();
+                    (o[i] as usize, o[i + 1] as usize)
+                }),
+            ))
         }
         DataType::LargeList(_) => {
             let a = typed::<LargeListArray>(arr);
             let values = a.values().clone();
-            Some((values, Box::new(move |i| {
-                let o = a.value_offsets();
-                (o[i] as usize, o[i + 1] as usize)
-            })))
+            Some((
+                values,
+                Box::new(move |i| {
+                    let o = a.value_offsets();
+                    (o[i] as usize, o[i + 1] as usize)
+                }),
+            ))
         }
         DataType::FixedSizeList(_, n) => {
             let a = typed::<FixedSizeListArray>(arr);
@@ -707,7 +742,7 @@ fn list_parts(arr: &ArrayRef) -> Option<(ArrayRef, Box<dyn Fn(usize) -> (usize, 
 
 /// A nesting level of an array column: a list over the next level, or the element values.
 enum Level {
-    List(ArrayRef, Box<dyn Fn(usize) -> (usize, usize) + Send + Sync>, Box<Level>),
+    List(ArrayRef, Offsets, Box<Level>),
     Leaf(ArrayRef, Enc),
 }
 
@@ -735,7 +770,9 @@ fn quote_element(out: &mut Vec<u8>, start: usize) {
     let text = std::str::from_utf8(&out[start..]).expect("element text is UTF-8");
     let needs = text.is_empty()
         || text.eq_ignore_ascii_case("NULL")
-        || text.chars().any(|c| matches!(c, '{' | '}' | '"' | ',' | '\\') || is_py_space(c));
+        || text
+            .chars()
+            .any(|c| matches!(c, '{' | '}' | '"' | ',' | '\\') || is_py_space(c));
     if !needs {
         return;
     }
@@ -824,7 +861,9 @@ fn level_shape(level: &Level, i: usize, dims: &mut Vec<usize>, flat: &mut Vec<Op
     // A list left where an element is expected goes to the element encoder in Python; not ported.
     let mut list_element = false;
     for (k, lvl) in rows {
-        let Level::List(_, offs, inner) = lvl else { unreachable!() };
+        let Level::List(_, offs, inner) = lvl else {
+            unreachable!()
+        };
         let (s, e) = offs(k);
         for j in s..e {
             match inner.as_ref() {
@@ -903,7 +942,11 @@ fn encode(batch: &RecordBatch, kinds: &[Kind], formats: &[i32], out: &mut Vec<u8
         let arr = batch.column(j).clone();
         // result_format[i] == 1 asks for binary; every ported type has a binary form.
         let binary = formats.get(j).copied().unwrap_or(0) == 1;
-        let enc = if *arr.data_type() == DataType::Null { None } else { Some(scalar_enc(*kind, binary, &arr)?) };
+        let enc = if *arr.data_type() == DataType::Null {
+            None
+        } else {
+            Some(scalar_enc(*kind, binary, &arr)?)
+        };
         cols.push((arr, enc));
     }
     let nrows = batch.num_rows();

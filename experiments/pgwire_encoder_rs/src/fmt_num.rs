@@ -20,10 +20,8 @@ fn push_zeros(out: &mut Vec<u8>, n: i32) {
     }
 }
 
-/// The shortest digits of a finite |x| that read back as x, the closest of those, an exact tie to
-/// the even one, and the decimal exponent of the first digit. These are Ryu's digits, from the
-/// ryu crate: the algorithm PostgreSQL's float8out and float4out run (src/common/d2s.c, f2s.c), and
-/// the digits Python's repr chooses. `formatted` is ryu's output (`1.5e-7`, `0.0001`, `1e16`).
+/// The significant digits and the decimal exponent of the first digit of a Ryu formatting of a
+/// finite |x| (`1.5e-7`, `0.0001`, `1e16`).
 fn ryu_digits(formatted: &str, digits: &mut StackBuf) -> i32 {
     let (mantissa, exp) = match formatted.split_once('e') {
         Some((m, e)) => (m, e.parse::<i32>().unwrap()),
@@ -51,8 +49,19 @@ fn ryu_digits(formatted: &str, digits: &mut StackBuf) -> i32 {
     point - 1 - first + exp
 }
 
-fn digits_f64(a: f64, digits: &mut StackBuf) -> i32 {
+/// repr's digits of a finite |x|: the shortest that read back, the closest of those, an exact tie
+/// to the even one, a decimal on the boundary of the rounding interval taken (David Gay's mode 0;
+/// Ryu with acceptBounds).
+fn repr_digits(a: f64, digits: &mut StackBuf) -> i32 {
     let mut b = ryu::Buffer::new();
+    ryu_digits(b.format_finite(a), digits)
+}
+
+/// PostgreSQL's digits of a finite |x| (float8out): as repr's, except that a decimal on the
+/// boundary of the rounding interval is never taken, so a few values carry one digit more
+/// (`1.2188652062118339e+17`, not `1.218865206211834e+17`).
+fn pg_digits_f64(a: f64, digits: &mut StackBuf) -> i32 {
+    let mut b = ryu_pg::Buffer::new();
     ryu_digits(b.format_finite(a), digits)
 }
 
@@ -110,19 +119,19 @@ fn non_finite(x: f64, out: &mut Vec<u8>) -> bool {
     true
 }
 
-/// float8out (extra_float_digits >= 1, the default): NaN, Infinity, -Infinity, -0, else the
-/// shortest round-trip digits, in fixed form when the decimal exponent is in [-4, 15).
+/// float8out (extra_float_digits >= 1, the default): NaN, Infinity, -Infinity, -0, else
+/// PostgreSQL's round-trip digits, in fixed form when the decimal exponent is in [-4, 15).
 pub fn float8_text(x: f64, out: &mut Vec<u8>) {
     if non_finite(x, out) {
         return;
     }
     let mut digits = StackBuf::new();
-    let exp = digits_f64(x.abs(), &mut digits);
+    let exp = pg_digits_f64(x.abs(), &mut digits);
     shortest_text(&digits.buf[..digits.len], exp, x.is_sign_negative(), 15, out);
 }
 
-/// float4out of the float `x` packs to: as float8out over a float's shortest round-trip digits, in
-/// fixed form when the decimal exponent is in [-4, 6). A finite double past float's range is the
+/// float4out of the float `x` packs to: as float8out over a float's round-trip digits (f2s.c, also
+/// with acceptBounds false), in fixed form when the decimal exponent is in [-4, 6). A finite double past float's range is the
 /// OverflowError struct.pack("!f") raises.
 pub fn float4_text(x: f64, out: &mut Vec<u8>) -> R<()> {
     if non_finite(x, out) {
@@ -132,7 +141,7 @@ pub fn float4_text(x: f64, out: &mut Vec<u8>) -> R<()> {
     if f.is_infinite() {
         return Err(EncErr::Overflow("float too large to pack with f format".into()));
     }
-    let mut b = ryu::Buffer::new();
+    let mut b = ryu_pg::Buffer::new();
     let mut digits = StackBuf::new();
     let exp = ryu_digits(b.format_finite(f), &mut digits);
     shortest_text(&digits.buf[..digits.len], exp, x.is_sign_negative(), 6, out);
@@ -150,7 +159,7 @@ pub fn float_repr(x: f64, out: &mut Vec<u8>) {
         return;
     }
     let mut db = StackBuf::new();
-    let exp = digits_f64(x.abs(), &mut db);
+    let exp = repr_digits(x.abs(), &mut db);
     let digits = &db.buf[..db.len];
     if x.is_sign_negative() {
         out.push(b'-');
@@ -217,7 +226,8 @@ pub fn decimal_str(negative: bool, digits: &[u8], exp: i32, out: &mut Vec<u8>) {
 }
 
 fn groups_of(s: &[u8]) -> impl Iterator<Item = u16> + '_ {
-    s.chunks(4).map(|c| c.iter().fold(0u16, |acc, &d| acc * 10 + (d - b'0') as u16))
+    s.chunks(4)
+        .map(|c| c.iter().fold(0u16, |acc, &d| acc * 10 + (d - b'0') as u16))
 }
 
 /// abs(d) under the default decimal context: a coefficient past 28 digits is rounded to 28, half
@@ -261,7 +271,8 @@ pub fn numeric_binary(negative: bool, digits: &[u8], exp: i32, out: &mut Vec<u8>
     let digits = &rounded[..];
     let sign_flag: u16 = if negative && digits != b"0" { 0x4000 } else { 0 };
     let dscale: i64 = if exp < 0 { -(exp as i64) } else { 0 };
-    let dscale = u16::try_from(dscale).map_err(|_| EncErr::Value("ushort format requires 0 <= number <= 65535".into()))?;
+    let dscale =
+        u16::try_from(dscale).map_err(|_| EncErr::Value("ushort format requires 0 <= number <= 65535".into()))?;
     // format(d_abs, "f") split at the point.
     let mut int_part: Vec<u8> = Vec::with_capacity(digits.len() + 4);
     let mut frac_part: Vec<u8> = Vec::new();
@@ -310,7 +321,8 @@ pub fn numeric_binary(negative: bool, digits: &[u8], exp: i32, out: &mut Vec<u8>
     while groups.last() == Some(&0) {
         groups.pop();
     }
-    let weight = i16::try_from(weight).map_err(|_| EncErr::Value("short format requires -32768 <= number <= 32767".into()))?;
+    let weight =
+        i16::try_from(weight).map_err(|_| EncErr::Value("short format requires -32768 <= number <= 32767".into()))?;
     if groups.is_empty() {
         out.extend_from_slice(&0u16.to_be_bytes());
         out.extend_from_slice(&0i16.to_be_bytes());

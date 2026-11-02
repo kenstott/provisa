@@ -53,7 +53,9 @@ impl Zone {
         if secs >= RULE_FROM {
             return self.rule.offset_at(secs) as i32;
         }
-        let utc = DateTime::from_timestamp(secs, 0).expect("instant within years 1..=9999").naive_utc();
+        let utc = DateTime::from_timestamp(secs, 0)
+            .expect("instant within years 1..=9999")
+            .naive_utc();
         self.tz.offset_from_utc_datetime(&utc).fix().local_minus_utc()
     }
 }
@@ -70,7 +72,11 @@ fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
 }
 
 fn month_days(y: i64, m: u32) -> i64 {
-    let next = if m == 12 { days_from_civil(y + 1, 1, 1) } else { days_from_civil(y, m + 1, 1) };
+    let next = if m == 12 {
+        days_from_civil(y + 1, 1, 1)
+    } else {
+        days_from_civil(y, m + 1, 1)
+    };
     next - days_from_civil(y, m, 1)
 }
 
@@ -89,14 +95,20 @@ impl RuleDay {
 
 impl Posix {
     fn offset_at(&self, secs: i64) -> i64 {
-        let Some((dst, start, end)) = self.dst else { return self.std };
+        let Some((dst, start, end)) = self.dst else {
+            return self.std;
+        };
         let year = crate::temporal::civil(secs.div_euclid(86_400)).0;
         // DST begins at a local standard time and ends at a local daylight time; a southern zone's
         // DST runs from one year's start into the next year's end.
         for y in year - 1..=year + 1 {
             let on = start.local(y) - self.std;
             let off_same = end.local(y) - dst;
-            let off = if on < off_same { off_same } else { end.local(y + 1) - dst };
+            let off = if on < off_same {
+                off_same
+            } else {
+                end.local(y + 1) - dst
+            };
             if on <= secs && secs < off {
                 return dst;
             }
@@ -142,7 +154,15 @@ fn take_rule_day(s: &str) -> Option<(RuleDay, &str)> {
         Some(t) => take_hms(t)?,
         None => (7200, &s[end..]),
     };
-    Some((RuleDay { month, week, weekday, time }, rest))
+    Some((
+        RuleDay {
+            month,
+            week,
+            weekday,
+            time,
+        },
+        rest,
+    ))
 }
 
 /// A TZif footer: std offset [dst [offset] ,start[/time],end[/time]], offsets west of UTC.
@@ -162,5 +182,8 @@ fn parse_posix(s: &str) -> Option<Posix> {
     };
     let (start, s) = take_rule_day(s)?;
     let (end, s) = take_rule_day(s)?;
-    s.is_empty().then_some(Posix { std, dst: Some((dst, start, end)) })
+    s.is_empty().then_some(Posix {
+        std,
+        dst: Some((dst, start, end)),
+    })
 }

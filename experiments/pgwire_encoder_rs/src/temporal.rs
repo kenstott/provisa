@@ -35,7 +35,9 @@ impl TzSpec {
                 return Ok(TzSpec::Fixed(if b[0] == b'-' { -secs } else { secs }));
             }
         }
-        Zone::named(name).map(TzSpec::Named).ok_or_else(|| EncErr::Value(format!("unknown time zone {name:?}")))
+        Zone::named(name)
+            .map(TzSpec::Named)
+            .ok_or_else(|| EncErr::Value(format!("unknown time zone {name:?}")))
     }
 
     /// The offset in seconds east of UTC at `micros` after the epoch (UTC), None for a naive value.

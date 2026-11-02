@@ -39,6 +39,7 @@ import pyarrow as pa
 
 import pgwire_encoder_rs
 from python_ref import python_encode, python_encode_count, query_result, bvtype_names
+from test_compare import _assert_same as assert_same
 
 BATCH_ROWS = 65_536
 MIN_FREE_PCT = 25
@@ -235,12 +236,13 @@ def main() -> None:
     }
     for label, fmt in (("text", 0), ("binary", 1)):
         formats = [fmt] * len(types)
-        # the bytes agree on the first two batches before anything is timed
+        # the first two batches agree before anything is timed: every cell's bytes, a float
+        # cell's value within the differential's tolerance
         py, _ = python_encode(schema, batches[:2], types, formats)
         rs = b"".join(pgwire_encoder_rs.encode_batch(b, bvtypes, formats) for b in batches[:2])
-        assert py == rs, f"{label}: Python and Rust bytes differ on the benchmark data"
+        assert_same(py, rs, bvtypes, formats)
         del py, rs
-        print(f"[{label}] first 2 batches byte-identical; timing...", flush=True)
+        print(f"[{label}] first 2 batches agree; timing...", flush=True)
         rust = timed(lambda: run_rust(batches, bvtypes, formats), args.rs_repeat)
         print(
             f"[{label}] rust   best {rust['wall']:.3f}s wall {rust['cpu']:.3f}s cpu  runs {['%.3f' % w for w in rust['walls']]}",
@@ -251,7 +253,8 @@ def main() -> None:
             f"[{label}] python best {python['wall']:.3f}s wall {python['cpu']:.3f}s cpu  runs {['%.3f' % w for w in python['walls']]}",
             flush=True,
         )
-        assert python["bytes"] == rust["bytes"] and python["rows"] == rust["rows"] == args.rows
+        # float text may differ in length (PostgreSQL's digits, not repr's): rows must agree
+        assert python["rows"] == rust["rows"] == args.rows
         results["formats"][label] = {"python": python, "rust": rust}
 
     to_rows = timed(lambda: run_arrow_to_rows(schema, batches, types), 1)
