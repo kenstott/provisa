@@ -1,622 +1,264 @@
-//! The GraphQL JSON response encoder: a root field's Arrow result to the bytes of
-//! `{"data": {root_field: rows}}`, as `serialize_rows` nests the rows and `OrjsonResponse` encodes
-//! them. An experiment; nothing in the product calls it.
+//! Rust encoders for the JSON surfaces: GraphQL, the REST (OpenAPI) rows endpoint, JSON:API and
+//! OData. Each takes a read's Arrow batches (zero-copy, the GIL released) and the plan its router
+//! compiled, and returns the response body the product's Python path writes for it: the same
+//! nesting (`serialize_rows`, `serialize_aggregate`, OData's `expand.write`), the same values
+//! (REQ-1867: exact decimals, `infinity`, JSON only from json/jsonb columns, integers by type) and
+//! the same envelope. They share one value model (`pyval`), conversion (`convert`) and writer
+//! (`pywrite`).
 
-mod cells;
+mod convert;
 mod fmt;
-mod jtext;
+mod json;
+mod nest;
+mod odata;
+mod printable;
+mod pywrite;
+mod pyval;
+mod surfaces;
+mod text;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use arrow::array::RecordBatch;
 use arrow::pyarrow::PyArrowType;
-use pyo3::exceptions::{PyNotImplementedError, PyValueError};
+use pyo3::create_exception;
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use cells::{Cell, Keyer, Out, Res};
-use jtext::J;
+use convert::Mode;
+use nest::Col;
+use pyval::{Error, Res};
 
-/// orjson refuses a non-empty container nested deeper than this.
-const MAX_DEPTH: usize = 254;
-const RECURSION: &str = "Recursion limit reached";
+create_exception!(graphql_encoder_rs, EncodeError, PyValueError, "The product's path raises for this answer.");
+create_exception!(graphql_encoder_rs, ValueRefused, EncodeError, "JsonValueRefused(field, reason).");
+create_exception!(graphql_encoder_rs, ResponseRefused, EncodeError, "JsonResponseRefused(reason).");
+create_exception!(graphql_encoder_rs, ODataRefused, EncodeError, "QueryOptionRefused(status, code, message).");
 
-// ---------------------------------------------------------------- the selection plan
-
-/// One column of the compiled query: `ColumnRef`'s field_name, nested_in, cardinality, is_agg.
-#[derive(Clone)]
-struct Col {
-    field: String,
-    nested_in: Option<String>,
-    one_to_many: bool,
-    is_agg: bool,
-}
-
-/// A dict built from columns, `{col.field_name: value ...}`: each distinct name at its first
-/// column's position, holding its last column's value.
-type Fields = Vec<(u32, usize)>;
-
-struct Path {
-    /// The path's own names relative to its parent's object, and its leaf last.
-    parts: Vec<u32>,
-    /// The nearest enclosing path (index into `paths`), None for the root object.
-    parent: Option<usize>,
-    cols: Vec<usize>,
-    fields: Fields,
-    one_to_many: bool,
-    /// The full path split on dots (the flat path walks it from the root).
-    full_parts: Vec<u32>,
-}
-
-struct Plan {
-    names: Interner,
-    root_cols: Vec<usize>,
-    root_fields: Fields,
-    /// In first-appearance order (`_group_columns`).
-    paths: Vec<Path>,
-    /// `paths` indices in sorted path order (`_serialize_with_one_to_many`).
-    sorted: Vec<usize>,
-    with_one_to_many: bool,
-}
-
-/// Object keys: each name's JSON bytes, `"name":`, and whether orjson refuses it (a lone surrogate).
-#[derive(Clone)]
-struct Interner {
-    ids: HashMap<Vec<u8>, u32>,
-    names: Vec<Vec<u8>>,
-    bad: Vec<bool>,
-}
-
-impl Interner {
-    fn id(&mut self, s: &str) -> u32 {
-        self.id_bytes(s.as_bytes())
-    }
-    fn id_bytes(&mut self, s: &[u8]) -> u32 {
-        if let Some(&i) = self.ids.get(s) {
-            return i;
-        }
-        let mut k = Vec::new();
-        fmt::write_str(&mut k, s);
-        k.push(b':');
-        self.names.push(k);
-        self.bad.push(jtext::has_surrogate(s));
-        self.ids.insert(s.to_vec(), self.names.len() as u32 - 1);
-        self.names.len() as u32 - 1
+fn py_err(e: Error) -> PyErr {
+    match e {
+        Error::Value(m) => EncodeError::new_err(m),
+        Error::ValueRefused(f, r) => ValueRefused::new_err((f, r)),
+        Error::ResponseRefused(r) => ResponseRefused::new_err((r,)),
+        Error::ODataRefused(s, c, m) => ODataRefused::new_err((s, c, m)),
     }
 }
 
-fn fields_of(cols: &[usize], spec: &[Col], it: &mut Interner) -> Fields {
-    let mut f: Fields = Vec::new();
-    for &c in cols {
-        let id = it.id(&spec[c].field);
-        match f.iter_mut().find(|e| e.0 == id) {
-            Some(e) => e.1 = c,
-            None => f.push((id, c)),
-        }
-    }
-    f
-}
+/// One column: `(field_name, nested_in, cardinality, is_agg, json, json_text, integer)`.
+type ColumnTuple = (String, Option<String>, Option<String>, bool, bool, Vec<String>, bool);
 
-fn plan(spec: &[Col]) -> Plan {
-    let mut it = Interner { ids: HashMap::new(), names: Vec::new(), bad: Vec::new() };
-    let mut root_cols = Vec::new();
-    let mut order: Vec<String> = Vec::new();
-    let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
-    for (i, c) in spec.iter().enumerate() {
-        match &c.nested_in {
-            None => root_cols.push(i),
-            Some(p) => {
-                if !groups.contains_key(p) {
-                    order.push(p.clone());
-                }
-                groups.entry(p.clone()).or_default().push(i);
-            }
-        }
-    }
-    let root_fields = fields_of(&root_cols, spec, &mut it);
-    let index: HashMap<&str, usize> = order.iter().enumerate().map(|(i, p)| (p.as_str(), i)).collect();
-    let mut paths = Vec::new();
-    for p in &order {
-        let cols = groups[p].clone();
-        // _parent_path: the nearest enclosing path placed in this row. Every path is placed in
-        // every row, in sorted order, and a dotted prefix sorts before its extensions, so the
-        // parent is the longest dotted prefix that is itself a path.
-        let segs: Vec<&str> = p.split('.').collect();
-        let mut parent = None;
-        for n in (1..segs.len()).rev() {
-            if let Some(&pi) = index.get(segs[..n].join(".").as_str()) {
-                parent = Some((pi, n));
-                break;
-            }
-        }
-        let rel = match parent {
-            Some((_, n)) => &segs[n..],
-            None => &segs[..],
-        };
-        paths.push(Path {
-            parts: rel.iter().map(|s| it.id(s)).collect(),
-            parent: parent.map(|(pi, _)| pi),
-            fields: fields_of(&cols, spec, &mut it),
-            one_to_many: cols.iter().any(|&c| spec[c].one_to_many),
-            cols,
-            full_parts: segs.iter().map(|s| it.id(s)).collect(),
-        });
-    }
-    let mut sorted: Vec<usize> = (0..order.len()).collect();
-    sorted.sort_by(|&a, &b| order[a].as_bytes().cmp(order[b].as_bytes()));
-    let with_one_to_many = paths.iter().any(|p| p.one_to_many) && !root_cols.is_empty();
-    Plan { names: it, root_cols, root_fields, paths, sorted, with_one_to_many }
-}
-
-// ---------------------------------------------------------------- the response tree
-
-#[derive(Clone, Copy)]
-enum V {
-    Null,
-    /// A scalar's JSON bytes in `Tree::buf`.
-    Leaf { start: u64, len: u32 },
-    Poison(&'static str),
-    Obj(u32),
-    Arr(u32),
-    /// A converted value held as Python holds it (`Tree::jv`): a dict or list becomes an `Obj` or
-    /// `Arr` the moment the serializer reaches into it.
-    Json(u32),
-}
-
-/// Python dicts and lists as the serializer builds them: insertion-ordered objects.
-struct Tree {
-    buf: Vec<u8>,
-    objs: Vec<Vec<(u32, V)>>,
-    arrs: Vec<Vec<V>>,
-    jv: Vec<J>,
-    names: Interner,
-}
-
-impl Tree {
-    fn new(names: &Interner) -> Self {
-        Tree { buf: Vec::new(), objs: Vec::new(), arrs: Vec::new(), jv: Vec::new(), names: names.clone() }
-    }
-    fn clear(&mut self) {
-        self.buf.clear();
-        self.objs.clear();
-        self.arrs.clear();
-        self.jv.clear();
-    }
-    fn obj(&mut self) -> u32 {
-        self.objs.push(Vec::new());
-        self.objs.len() as u32 - 1
-    }
-    fn arr(&mut self) -> u32 {
-        self.arrs.push(Vec::new());
-        self.arrs.len() as u32 - 1
-    }
-    fn json(&mut self, j: J) -> V {
-        self.jv.push(j);
-        V::Json(self.jv.len() as u32 - 1)
-    }
-    /// `d.get(k)`, a JSON dict or list there made a node first (it is the same object).
-    fn get(&mut self, o: u32, k: u32) -> Option<V> {
-        let pos = self.objs[o as usize].iter().position(|e| e.0 == k)?;
-        let v = self.objs[o as usize][pos].1;
-        if let V::Json(i) = v {
-            if matches!(self.jv[i as usize], J::Obj(_) | J::Arr(_)) {
-                let j = std::mem::replace(&mut self.jv[i as usize], J::Null);
-                let node = self.node(j);
-                self.objs[o as usize][pos].1 = node;
-                return Some(node);
-            }
-        }
-        Some(v)
-    }
-    fn node(&mut self, j: J) -> V {
-        match j {
-            J::Obj(entries) => {
-                let o = self.obj();
-                for (k, v) in entries {
-                    let id = self.names.id_bytes(&k);
-                    let v = self.json(v);
-                    self.objs[o as usize].push((id, v));
-                }
-                V::Obj(o)
-            }
-            J::Arr(items) => {
-                let a = self.arr();
-                for v in items {
-                    let v = self.json(v);
-                    self.arrs[a as usize].push(v);
-                }
-                V::Arr(a)
-            }
-            j => self.json(j),
-        }
-    }
-    /// `d[k] = v`: a key already there keeps its position.
-    fn set(&mut self, o: u32, k: u32, v: V) {
-        let entries = &mut self.objs[o as usize];
-        match entries.iter_mut().find(|e| e.0 == k) {
-            Some(e) => e.1 = v,
-            None => entries.push((k, v)),
-        }
-    }
-    fn cell(&mut self, c: &dyn Cell, row: usize, key: Option<&mut Vec<u8>>, k: &mut Keyer) -> Res<V> {
-        let start = self.buf.len();
-        Ok(match c.write(row, &mut self.buf, key, k)? {
-            Out::Null => V::Null,
-            Out::Poison(p) => V::Poison(p),
-            Out::Leaf => V::Leaf { start: start as u64, len: (self.buf.len() - start) as u32 },
-            Out::Json(j) => self.json(j),
-        })
-    }
-
-    fn write_value(&self, v: V, out: &mut Vec<u8>, depth: usize) -> Res<()> {
-        // `depth`: the nesting level of the container holding this value.
-        match v {
-            V::Null => out.extend_from_slice(b"null"),
-            V::Poison(p) => return Err(p.to_string()),
-            V::Leaf { start, len } => {
-                out.extend_from_slice(&self.buf[start as usize..start as usize + len as usize]);
-            }
-            V::Json(i) => {
-                let j = &self.jv[i as usize];
-                if let Some(p) = j.poison() {
-                    return Err(p.to_string());
-                }
-                if depth + j.depth() > MAX_DEPTH {
-                    return Err(RECURSION.into());
-                }
-                j.write(out);
-            }
-            V::Obj(o) => self.write_obj(o, out, depth + 1)?,
-            V::Arr(a) => {
-                if depth + 1 > MAX_DEPTH && !self.arrs[a as usize].is_empty() {
-                    return Err(RECURSION.into());
-                }
-                out.push(b'[');
-                for (i, &e) in self.arrs[a as usize].iter().enumerate() {
-                    if i > 0 {
-                        out.push(b',');
-                    }
-                    self.write_value(e, out, depth + 1)?;
-                }
-                out.push(b']');
-            }
-        }
-        Ok(())
-    }
-
-    fn write_obj(&self, o: u32, out: &mut Vec<u8>, depth: usize) -> Res<()> {
-        if depth > MAX_DEPTH && !self.objs[o as usize].is_empty() {
-            return Err(RECURSION.into());
-        }
-        out.push(b'{');
-        for (i, &(k, v)) in self.objs[o as usize].iter().enumerate() {
-            if i > 0 {
-                out.push(b',');
-            }
-            if self.names.bad[k as usize] {
-                return Err(fmt::SURROGATE.into());
-            }
-            out.extend_from_slice(&self.names.names[k as usize]);
-            self.write_value(v, out, depth)?;
-        }
-        out.push(b'}');
-        Ok(())
-    }
-}
-
-/// The level of a row object in `{"data": {root: [row]}}`.
-const ROW_DEPTH: usize = 4;
-
-type Seen = hashbrown::HashMap<Box<[u8]>, u32>;
-
-fn nesting_error(what: &str) -> String {
-    format!("nesting failed: {what}")
-}
-
-// ---------------------------------------------------------------- the encoder
-
-struct Batch {
-    cells: Vec<Box<dyn Cell>>,
-    rows: usize,
-}
-
-struct Encoder<'p> {
-    p: &'p Plan,
-    spec: &'p [Col],
-    k: Keyer,
-    key: Vec<u8>,
-    scratch: Vec<u8>,
-}
-
-impl<'p> Encoder<'p> {
-    /// `_serialize_flat`: each row whose key is new becomes a result row, built once and never
-    /// changed, so it is written as soon as it is built.
-    fn flat(&mut self, batches: &[Batch], limit: Option<usize>, out: &mut Vec<u8>) -> Res<()> {
-        let p = self.p;
-        let keyed: Vec<usize> = p.root_cols.iter().copied().filter(|&c| !self.spec[c].is_agg).collect();
-        let key_cols: Vec<usize> = if keyed.is_empty() { (0..self.spec.len()).collect() } else { keyed };
-        // root key -> whether `_detect_truncated_paths` fails on that row (a repeat raises)
-        let mut seen: Seen = Seen::default();
-        let mut t = Tree::new(&p.names);
-        let mut written = 0usize;
-        for b in batches {
-            for r in 0..b.rows {
-                self.key.clear();
-                for &c in &key_cols {
-                    b.cells[c].key(r, &mut self.key, &mut self.k, &mut self.scratch)?;
-                }
-                if let Some(&fails) = seen.get(self.key.as_slice()) {
-                    if fails != 0 {
-                        return Err(nesting_error("a repeated row's relationship path is not an object"));
-                    }
-                    continue;
-                }
-                t.clear();
-                let root = t.obj();
-                for &(name, c) in &p.root_fields {
-                    let v = t.cell(b.cells[c].as_ref(), r, None, &mut self.k)?;
-                    t.set(root, name, v);
-                }
-                self.build_nested(&mut t, root, b, r)?;
-                let fails = self.detect_fails(&mut t, root);
-                seen.insert(self.key.as_slice().into(), fails as u32);
-                if limit.is_none_or(|l| written < l) {
-                    if written > 0 {
-                        out.push(b',');
-                    }
-                    t.write_obj(root, out, ROW_DEPTH)?;
-                    written += 1;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// `_build_nested_obj`.
-    fn build_nested(&mut self, t: &mut Tree, root: u32, b: &Batch, r: usize) -> Res<()> {
-        for path in &self.p.paths {
-            let all_none = path.cols.iter().all(|&c| b.cells[c].is_null(r));
-            let mut target = root;
-            let mut skip = false;
-            let (leaf, inner) = path.full_parts.split_last().unwrap();
-            for &part in inner {
-                let next = match t.get(target, part) {
-                    None => {
-                        let o = t.obj();
-                        t.set(target, part, V::Obj(o));
-                        V::Obj(o)
-                    }
-                    Some(v) => v,
-                };
-                match next {
-                    V::Obj(o) => target = o,
-                    V::Null => {
-                        skip = true;
-                        break;
-                    }
-                    _ => return Err(nesting_error("a relationship path runs through a value")),
-                }
-            }
-            if skip {
-                continue;
-            }
-            if all_none {
-                t.set(target, *leaf, V::Null);
+fn spec_of(columns: Vec<ColumnTuple>) -> Vec<Col> {
+    columns
+        .into_iter()
+        .map(|(field, nested_in, card, is_agg, json, json_text, integer)| Col {
+            field,
+            nested_in,
+            one_to_many: card.as_deref() == Some("one-to-many"),
+            is_agg,
+            mode: if json {
+                Mode::Json(Arc::new(json_text.into_iter().map(String::into_bytes).collect::<HashSet<_>>()))
+            } else if integer {
+                Mode::Integer
             } else {
-                let o = t.obj();
-                for &(name, c) in &path.fields {
-                    let v = t.cell(self.cells_of(b, c), r, None, &mut self.k)?;
-                    t.set(o, name, v);
-                }
-                t.set(target, *leaf, V::Obj(o));
-            }
-        }
-        Ok(())
-    }
+                Mode::Convert
+            },
+        })
+        .collect()
+}
 
-    fn cells_of<'b>(&self, b: &'b Batch, c: usize) -> &'b dyn Cell {
-        b.cells[c].as_ref()
-    }
-
-    /// Whether `_detect_truncated_paths` raises on a repeat of this row: it walks each path's
-    /// parents with `[]` and reads its leaf with `.get`.
-    fn detect_fails(&self, t: &mut Tree, root: u32) -> bool {
-        for path in &self.p.paths {
-            let (_, inner) = path.full_parts.split_last().unwrap();
-            let mut target = root;
-            for &part in inner {
-                match t.get(target, part) {
-                    Some(V::Obj(o)) => target = o,
-                    _ => return true,
-                }
-            }
-        }
-        false
-    }
-
-    /// `_serialize_with_one_to_many`: rows merge into the result as they come, so the whole tree is
-    /// kept and written at the end.
-    fn one_to_many(&mut self, batches: &[Batch], limit: Option<usize>, out: &mut Vec<u8>) -> Res<()> {
-        let p = self.p;
-        let mut t = Tree::new(&p.names);
-        let mut seen: Seen = Seen::default();
-        let mut rows: Vec<u32> = Vec::new();
-        let mut elements: Seen = Seen::default();
-        let mut placed: Vec<Option<u32>> = vec![None; p.paths.len()];
-        for b in batches {
-            for r in 0..b.rows {
-                self.key.clear();
-                for &c in &p.root_cols {
-                    b.cells[c].key(r, &mut self.key, &mut self.k, &mut self.scratch)?;
-                }
-                let root = match seen.get(self.key.as_slice()) {
-                    Some(&o) => o,
-                    None => {
-                        let o = t.obj();
-                        for &(name, c) in &p.root_fields {
-                            let v = t.cell(b.cells[c].as_ref(), r, None, &mut self.k)?;
-                            t.set(o, name, v);
-                        }
-                        seen.insert(self.key.as_slice().into(), o);
-                        rows.push(o);
-                        o
-                    }
-                };
-                for &pi in &p.sorted {
-                    let path = &p.paths[pi];
-                    let holder = match path.parent {
-                        None => Some(root),
-                        Some(pp) => placed[pp],
-                    };
-                    let Some(mut holder) = holder else {
-                        placed[pi] = None;
-                        continue;
-                    };
-                    let (&leaf, inner) = path.parts.split_last().unwrap();
-                    for &part in inner {
-                        // holder.setdefault(part, {}), then a dict method on what it returns
-                        match t.get(holder, part) {
-                            None => {
-                                let o = t.obj();
-                                t.set(holder, part, V::Obj(o));
-                                holder = o;
-                            }
-                            Some(V::Obj(o)) => holder = o,
-                            Some(_) => return Err(nesting_error("a relationship path runs through a value")),
-                        }
-                    }
-                    let empty = path.cols.iter().all(|&c| b.cells[c].is_null(r));
-                    if path.one_to_many {
-                        let arr = match t.get(holder, leaf) {
-                            Some(V::Arr(a)) => a,
-                            _ => {
-                                let a = t.arr();
-                                t.set(holder, leaf, V::Arr(a));
-                                a
-                            }
-                        };
-                        if empty {
-                            placed[pi] = None;
-                            continue;
-                        }
-                        self.key.clear();
-                        self.key.extend_from_slice(&arr.to_le_bytes());
-                        for &(_, c) in &path.fields {
-                            b.cells[c].key(r, &mut self.key, &mut self.k, &mut self.scratch)?;
-                        }
-                        let el = match elements.get(self.key.as_slice()) {
-                            Some(&o) => o,
-                            None => {
-                                let o = t.obj();
-                                for &(name, c) in &path.fields {
-                                    let v = t.cell(b.cells[c].as_ref(), r, None, &mut self.k)?;
-                                    t.set(o, name, v);
-                                }
-                                elements.insert(self.key.as_slice().into(), o);
-                                t.arrs[arr as usize].push(V::Obj(o));
-                                o
-                            }
-                        };
-                        placed[pi] = Some(el);
-                    } else {
-                        let current = t.get(holder, leaf);
-                        if empty {
-                            if current.is_none() {
-                                t.set(holder, leaf, V::Null);
-                            }
-                            placed[pi] = None;
-                            continue;
-                        }
-                        let o = match current {
-                            Some(V::Obj(o)) => o,
-                            _ => {
-                                let o = t.obj();
-                                t.set(holder, leaf, V::Obj(o));
-                                o
-                            }
-                        };
-                        for &(name, c) in &path.fields {
-                            let v = t.cell(b.cells[c].as_ref(), r, None, &mut self.k)?;
-                            t.set(o, name, v);
-                        }
-                        placed[pi] = Some(o);
-                    }
-                }
-            }
-        }
-        let n = limit.map_or(rows.len(), |l| l.min(rows.len()));
-        for (i, &o) in rows[..n].iter().enumerate() {
-            if i > 0 {
-                out.push(b',');
-            }
-            t.write_obj(o, out, ROW_DEPTH)?;
-        }
-        Ok(())
+fn run<'py>(py: Python<'py>, f: impl FnOnce() -> Res<Vec<u8>> + Send) -> PyResult<Bound<'py, PyBytes>> {
+    match py.allow_threads(f) {
+        Ok(b) => Ok(PyBytes::new(py, &b)),
+        Err(e) => Err(py_err(e)),
     }
 }
 
-fn encode(batches: &[RecordBatch], spec: &[Col], root_field: &str, limit: Option<usize>) -> Res<Vec<u8>> {
-    let p = plan(spec);
-    let mut prepared = Vec::with_capacity(batches.len());
-    for rb in batches {
-        if rb.num_columns() != spec.len() {
-            return Err(format!("the batch has {} columns, the plan {}", rb.num_columns(), spec.len()));
-        }
-        let mut cells = Vec::with_capacity(spec.len());
-        for (f, a) in rb.schema().fields().iter().zip(rb.columns()) {
-            let c = cells::cell_for(f, a)?;
-            c.validate()?;
-            cells.push(c);
-        }
-        prepared.push(Batch { cells, rows: rb.num_rows() });
-    }
-    let mut out = Vec::new();
-    out.extend_from_slice(b"{\"data\":{");
-    fmt::write_str(&mut out, root_field.as_bytes());
-    out.extend_from_slice(b":[");
-    let mut e = Encoder { p: &p, spec, k: Keyer::new(), key: Vec::new(), scratch: Vec::new() };
-    if p.with_one_to_many {
-        e.one_to_many(&prepared, limit, &mut out)?;
-    } else {
-        e.flat(&prepared, limit, &mut out)?;
-    }
-    out.extend_from_slice(b"]}}");
-    Ok(out)
+fn unwrap(batches: Vec<PyArrowType<RecordBatch>>) -> Vec<RecordBatch> {
+    batches.into_iter().map(|b| b.0).collect()
 }
 
-/// `encode_response(batches, columns, root_field, result_limit=None) -> bytes`: the body
-/// `OrjsonResponse` renders for `{"data": {root_field: serialize_rows(...)}}`. `columns` holds one
-/// `(field_name, nested_in, cardinality, is_agg)` per Arrow column, in order. The GIL is released
-/// while encoding.
+/// `encode_response(batches, columns, root_field, result_limit=None) -> bytes`: GraphQL's
+/// `{"data": {root_field: serialize_rows(...)}}`.
 #[pyfunction]
 #[pyo3(signature = (batches, columns, root_field, result_limit=None))]
 fn encode_response<'py>(
     py: Python<'py>,
     batches: Vec<PyArrowType<RecordBatch>>,
-    columns: Vec<(String, Option<String>, Option<String>, bool)>,
+    columns: Vec<ColumnTuple>,
     root_field: String,
     result_limit: Option<usize>,
 ) -> PyResult<Bound<'py, PyBytes>> {
-    let batches: Vec<RecordBatch> = batches.into_iter().map(|b| b.0).collect();
-    let spec: Vec<Col> = columns
-        .into_iter()
-        .map(|(field, nested_in, card, is_agg)| Col {
-            field,
-            nested_in,
-            one_to_many: card.as_deref() == Some("one-to-many"),
-            is_agg,
-        })
-        .collect();
-    let res = py.allow_threads(|| encode(&batches, &spec, &root_field, result_limit));
-    match res {
-        Ok(b) => Ok(PyBytes::new(py, &b)),
-        Err(e) if e.starts_with("NotImplemented") => Err(PyNotImplementedError::new_err(e)),
-        Err(e) => Err(PyValueError::new_err(e)),
+    let batches = unwrap(batches);
+    let spec = spec_of(columns);
+    run(py, || {
+        let b = nest::prepare(&batches, &spec)?;
+        surfaces::graphql(&b, &spec, &root_field, result_limit)
+    })
+}
+
+/// `encode_rest(batches, columns, aggregate_alias=None) -> bytes`: the REST table endpoint's
+/// `{"data": rows}` (a read or a group-by), or `{"data": aggregate}` for `?aggregate`.
+#[pyfunction]
+#[pyo3(signature = (batches, columns, aggregate_alias=None))]
+fn encode_rest<'py>(
+    py: Python<'py>,
+    batches: Vec<PyArrowType<RecordBatch>>,
+    columns: Vec<ColumnTuple>,
+    aggregate_alias: Option<String>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let batches = unwrap(batches);
+    let spec = spec_of(columns);
+    run(py, || {
+        let b = nest::prepare(&batches, &spec)?;
+        surfaces::rest(&b, &spec, aggregate_alias.as_deref())
+    })
+}
+
+/// `encode_jsonapi(...) -> bytes`: a JSON:API table read's compound document.
+#[pyfunction]
+#[pyo3(signature = (
+    batches, columns, *, resource_type, page_size, page_number, probe, total, id_columns,
+    scalar_names, rel_names, rel_scalar_names, includes, include_keys, base_path, link_params,
+    warnings=None
+))]
+#[allow(clippy::too_many_arguments)]
+fn encode_jsonapi<'py>(
+    py: Python<'py>,
+    batches: Vec<PyArrowType<RecordBatch>>,
+    columns: Vec<ColumnTuple>,
+    resource_type: String,
+    page_size: usize,
+    page_number: usize,
+    probe: bool,
+    total: Option<i64>,
+    id_columns: Vec<String>,
+    scalar_names: HashMap<String, String>,
+    rel_names: Vec<(String, String)>,
+    rel_scalar_names: HashMap<String, HashMap<String, String>>,
+    includes: Vec<String>,
+    include_keys: HashMap<String, Vec<String>>,
+    base_path: String,
+    link_params: Vec<(String, String)>,
+    warnings: Option<Vec<u8>>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let batches = unwrap(batches);
+    let spec = spec_of(columns);
+    let a = surfaces::JsonApi {
+        resource_type,
+        page_size,
+        page_number,
+        probe,
+        total,
+        id_columns,
+        scalar_names,
+        rel_names,
+        rel_scalar_names,
+        includes,
+        include_keys,
+        base_path,
+        link_params,
+        warnings,
+    };
+    run(py, || {
+        let b = nest::prepare(&batches, &spec)?;
+        surfaces::jsonapi(&b, &spec, &a)
+    })
+}
+
+/// `encode_jsonapi_group_by(...) -> bytes`: JSON:API `?groupBy=`.
+#[pyfunction]
+#[pyo3(signature = (batches, columns, *, resource_type, scalar_names, rel_names, rel_scalar_names))]
+fn encode_jsonapi_group_by<'py>(
+    py: Python<'py>,
+    batches: Vec<PyArrowType<RecordBatch>>,
+    columns: Vec<ColumnTuple>,
+    resource_type: String,
+    scalar_names: HashMap<String, String>,
+    rel_names: Vec<(String, String)>,
+    rel_scalar_names: HashMap<String, HashMap<String, String>>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let batches = unwrap(batches);
+    let spec = spec_of(columns);
+    run(py, || {
+        let b = nest::prepare(&batches, &spec)?;
+        surfaces::jsonapi_group_by(&b, &spec, &resource_type, &scalar_names, &rel_names, &rel_scalar_names)
+    })
+}
+
+/// `encode_jsonapi_aggregate(batches, columns, aggregate_alias) -> bytes`: JSON:API `?aggregate`.
+#[pyfunction]
+fn encode_jsonapi_aggregate<'py>(
+    py: Python<'py>,
+    batches: Vec<PyArrowType<RecordBatch>>,
+    columns: Vec<ColumnTuple>,
+    aggregate_alias: String,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let batches = unwrap(batches);
+    let spec = spec_of(columns);
+    run(py, || {
+        let b = nest::prepare(&batches, &spec)?;
+        surfaces::jsonapi_aggregate(&b, &spec, &aggregate_alias)
+    })
+}
+
+/// An OData entity level: `(set name, {property: edm name}, fields, [navigation])`; a
+/// navigation: `(name, collection, page, parent_key, link_query, target entity)`.
+
+fn entity_of(t: &Bound<'_, PyAny>) -> PyResult<odata::Entity> {
+    let (name, types, fields, plans): (String, HashMap<String, String>, Vec<String>, Vec<Bound<'_, PyAny>>) = t.extract()?;
+    let mut tm = HashMap::new();
+    for (k, v) in types {
+        tm.insert(k, odata::Edm::parse(&v).map_err(py_err)?);
     }
+    let mut navs = Vec::new();
+    for p in plans {
+        let (n, collection, page, parent_key, link_query, target): (String, bool, usize, Vec<String>, String, Bound<'_, PyAny>) = p.extract()?;
+        navs.push(odata::Nav { name: n, collection, page, parent_key, link_query, target: entity_of(&target)? });
+    }
+    Ok(odata::Entity { name, types: tm, fields, plans: navs })
+}
+
+/// `encode_odata(batches, names, entity, *, context, count, warnings, page, next_link, root)`:
+/// an entity set read's document.
+#[pyfunction]
+#[pyo3(signature = (batches, names, entity, *, context, count, page, next_link, root, warnings=None))]
+#[allow(clippy::too_many_arguments)]
+fn encode_odata<'py>(
+    py: Python<'py>,
+    batches: Vec<PyArrowType<RecordBatch>>,
+    names: Vec<String>,
+    entity: Bound<'py, PyAny>,
+    context: String,
+    count: Option<i64>,
+    page: usize,
+    next_link: String,
+    root: String,
+    warnings: Option<Vec<u8>>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let batches = unwrap(batches);
+    let r = odata::Read { context, count, warnings, page, next_link, root, entity: entity_of(&entity)? };
+    let spec: Vec<Col> = names
+        .iter()
+        .map(|n| Col { field: n.clone(), nested_in: None, one_to_many: false, is_agg: false, mode: Mode::Convert })
+        .collect();
+    run(py, || {
+        let b = nest::prepare(&batches, &spec)?;
+        odata::read(&b, &names, &r)
+    })
 }
 
 #[pymodule]
 fn graphql_encoder_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(encode_response, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_rest, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_jsonapi, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_jsonapi_group_by, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_jsonapi_aggregate, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_odata, m)?)?;
+    m.add("EncodeError", m.py().get_type::<EncodeError>())?;
+    m.add("ValueRefused", m.py().get_type::<ValueRefused>())?;
+    m.add("ResponseRefused", m.py().get_type::<ResponseRefused>())?;
+    m.add("ODataRefused", m.py().get_type::<ODataRefused>())?;
     Ok(())
 }
