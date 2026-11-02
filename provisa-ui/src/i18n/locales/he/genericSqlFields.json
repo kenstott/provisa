@@ -1,0 +1,29 @@
+{
+  "genericSqlFields": {
+    "url": "כתובת URL לחיבור",
+    "urlHint": "כתובת URL של SQLAlchemy; הסכמה שלה מציינת את מנהל ההתקן. אל תכלול בה סיסמה.",
+    "dialect": "ניב SQL",
+    "dialectHelp": "סוג ה-SQL ש-Provisa כותב עבור מקור זה. הוא אינו חייב להתאים למנהל ההתקן: בחר את הקרוב ביותר למסד הנתונים, או ANSI.",
+    "ansi": "ANSI (SQL כללי)",
+    "username": "שם משתמש",
+    "password": "סיסמה",
+    "capability": {
+      "attach": "חיבור חי ב-{{engine}}",
+      "predicate": "Pushdown של מסננים ב-{{engine}}",
+      "join": "Pushdown של צירופים ב-{{engine}}",
+      "aggregate": "Pushdown של צבירות ב-{{engine}}",
+      "key_range": "Pushdown של טווחי מפתח ב-{{engine}}"
+    },
+    "capabilityName": {
+      "attach": "חיבור חי",
+      "predicate": "Pushdown של מסננים",
+      "join": "Pushdown של צירופים",
+      "aggregate": "Pushdown של צבירות",
+      "key_range": "Pushdown של טווחי מפתח"
+    },
+    "attachUnbuilt": "חיבור חי עדיין אינו זמין; השורות משוכפלות.",
+    "detect": "זיהוי",
+    "checkPassed": "{{capability}}: עבר",
+    "checkFailed": "{{capability}}: נכשל ({{reason}})"
+  }
+}

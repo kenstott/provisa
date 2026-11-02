@@ -20,6 +20,10 @@ from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
 
+from provisa.api.admin.generic_sql_admin import (
+    GenericSqlDetectInput,
+    GenericSqlDetectionType,
+)
 import strawberry
 from sqlalchemy import select, update
 from strawberry.types.info import Info as StrawberryInfo
@@ -2192,6 +2196,19 @@ async def _register_draft_table(
 
 @strawberry.type
 class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
+    @strawberry.mutation
+    async def detect_generic_sql(
+        self, info: StrawberryInfo, input: GenericSqlDetectInput
+    ) -> GenericSqlDetectionType:  # REQ-2191
+        """Detect, from a Generic SQL source's form: read-only checks against the connection the
+        form describes, on the active engine. Nothing is saved."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.api.admin.generic_sql_admin import detect
+        from provisa.api.app import state
+
+        require_capability(info, "source_registration")
+        return await detect(input, state.federation_engine.name)
+
     @strawberry.mutation
     async def set_servicenow_api(
         self, info: StrawberryInfo, source_id: str, namespace: str, name: str, added: bool

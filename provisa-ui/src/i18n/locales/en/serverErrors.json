@@ -477,7 +477,11 @@
       "relationship_same_entity_cardinality": "Relationship '{{relationship}}' cannot be marked same entity: it is {{cardinality}}, and the same entity is one row to one row",
       "relationship_same_entity_not_grounded": "Relationship '{{relationship}}' cannot be marked same entity: {{source}} and {{target}} are not grounded in the same term",
       "relationship_same_entity_not_keys": "Relationship '{{relationship}}' cannot be marked same entity: {{columns}} is not the primary key or a unique key of {{table}}",
-      "kaggle_token_missing": "Kaggle dataset {{owner}}/{{ref}}: the source holds no Kaggle API token. Add it on the Sources form, where its token is entered."
+      "kaggle_token_missing": "Kaggle dataset {{owner}}/{{ref}}: the source holds no Kaggle API token. Add it on the Sources form, where its token is entered.",
+      "generic_sql_invalid": "Source {{source}}: {{error}}",
+      "generic_sql_file_refused": "Source {{source}}: the URL names {{path}}, which this server may not open for the organization.",
+      "generic_sql_attach_unbuilt": "Source {{source}}: live attach of a Generic SQL source is not available yet (turned on for {{engines}}); its rows are replicated.",
+      "generic_sql_options_refused": "Source {{source}}: this organization's URL may not give the driver option {{options}}."
     },
     "secrets": {
       "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",

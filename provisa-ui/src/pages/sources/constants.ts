@@ -85,6 +85,8 @@ export const SOURCE_TYPES = [
   // `hive`/`hive_s3` (Trino-scanned lake storage). Read-then-land like any other RDB-shaped
   // source; SIMPLE_RDBMS's host/port/database/username/password shape matches exactly.
   { value: "hiveserver2", label: "HiveServer2", category: "RDBMS", defaultPort: 10000 },
+  // REQ-2191: a database with no named type, at its own SQLAlchemy URL (GenericSqlFields).
+  { value: "generic_sql", label: "Generic SQL", category: "RDBMS", defaultPort: 0 },
   // Cloud DW
   { value: "snowflake", label: "Snowflake", category: "Cloud DW", defaultPort: 443 },
   { value: "bigquery", label: "BigQuery", category: "Cloud DW", defaultPort: 443 },

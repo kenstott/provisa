@@ -477,7 +477,11 @@
       "relationship_same_entity_cardinality": "关系 '{{relationship}}' 不能标记为同一实体：它是 {{cardinality}}，而同一实体是一行对一行",
       "relationship_same_entity_not_grounded": "关系 '{{relationship}}' 不能标记为同一实体：{{source}} 和 {{target}} 未关联到同一术语",
       "relationship_same_entity_not_keys": "关系 '{{relationship}}' 不能标记为同一实体：{{columns}} 不是 {{table}} 的主键或唯一键",
-      "kaggle_token_missing": "Kaggle 数据集 {{owner}}/{{ref}}：数据源中没有 Kaggle API 令牌。请在数据源表单中添加，令牌在那里输入。"
+      "kaggle_token_missing": "Kaggle 数据集 {{owner}}/{{ref}}：数据源中没有 Kaggle API 令牌。请在数据源表单中添加，令牌在那里输入。",
+      "generic_sql_invalid": "数据源 {{source}}：{{error}}",
+      "generic_sql_file_refused": "数据源 {{source}}：URL 指向 {{path}}，此服务器不能为该组织打开它。",
+      "generic_sql_attach_unbuilt": "数据源 {{source}}：Generic SQL 数据源的实时挂接尚不可用（已为 {{engines}} 开启）；其行将以副本形式复制。",
+      "generic_sql_options_refused": "数据源 {{source}}：此组织的 URL 不能指定驱动程序选项 {{options}}。"
     },
     "secrets": {
       "name_refused": "{{name}} 不是 {{service}} 中本组织密钥范围内的名称：名称相对于组织，不能超出组织范围",

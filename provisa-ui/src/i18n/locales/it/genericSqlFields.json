@@ -1,0 +1,29 @@
+{
+  "genericSqlFields": {
+    "url": "URL di connessione",
+    "urlHint": "Un URL SQLAlchemy; il suo schema indica il driver. Non inserirvi la password.",
+    "dialect": "Dialetto SQL",
+    "dialectHelp": "La variante di SQL che Provisa scrive per questa sorgente. Non deve corrispondere al driver: scegli la più vicina al database, oppure ANSI.",
+    "ansi": "ANSI (SQL generico)",
+    "username": "Nome utente",
+    "password": "Password",
+    "capability": {
+      "attach": "Collegamento live su {{engine}}",
+      "predicate": "Pushdown dei filtri su {{engine}}",
+      "join": "Pushdown dei join su {{engine}}",
+      "aggregate": "Pushdown delle aggregazioni su {{engine}}",
+      "key_range": "Pushdown degli intervalli di chiave su {{engine}}"
+    },
+    "capabilityName": {
+      "attach": "Collegamento live",
+      "predicate": "Pushdown dei filtri",
+      "join": "Pushdown dei join",
+      "aggregate": "Pushdown delle aggregazioni",
+      "key_range": "Pushdown degli intervalli di chiave"
+    },
+    "attachUnbuilt": "Il collegamento live non è ancora disponibile; le righe vengono replicate.",
+    "detect": "Rileva",
+    "checkPassed": "{{capability}}: superato",
+    "checkFailed": "{{capability}}: non superato ({{reason}})"
+  }
+}

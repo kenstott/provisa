@@ -477,7 +477,11 @@
       "relationship_same_entity_cardinality": "La relación '{{relationship}}' no se puede marcar como la misma entidad: es {{cardinality}}, y la misma entidad es una fila con una fila",
       "relationship_same_entity_not_grounded": "La relación '{{relationship}}' no se puede marcar como la misma entidad: {{source}} y {{target}} no están fundamentadas en el mismo término",
       "relationship_same_entity_not_keys": "La relación '{{relationship}}' no se puede marcar como la misma entidad: {{columns}} no es la clave primaria ni una clave única de {{table}}",
-      "kaggle_token_missing": "Conjunto de datos de Kaggle {{owner}}/{{ref}}: el origen de datos no tiene ningún token de API de Kaggle. Añádelo en el formulario de Orígenes de datos, donde se introduce su token."
+      "kaggle_token_missing": "Conjunto de datos de Kaggle {{owner}}/{{ref}}: el origen de datos no tiene ningún token de API de Kaggle. Añádelo en el formulario de Orígenes de datos, donde se introduce su token.",
+      "generic_sql_invalid": "Fuente {{source}}: {{error}}",
+      "generic_sql_file_refused": "Fuente {{source}}: la URL nombra {{path}}, que este servidor no puede abrir para la organización.",
+      "generic_sql_attach_unbuilt": "Fuente {{source}}: la conexión en vivo de una fuente Generic SQL aún no está disponible (activada para {{engines}}); sus filas se replican.",
+      "generic_sql_options_refused": "Fuente {{source}}: la URL de esta organización no puede indicar la opción de controlador {{options}}."
     },
     "secrets": {
       "name_refused": "{{name}} no es un nombre dentro de los secretos de esta organización en {{service}}: un nombre es relativo a la organización y no puede salir de ella",

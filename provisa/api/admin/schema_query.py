@@ -20,6 +20,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.catalog_scope import CatalogScope, catalog_scope
+from provisa.api.admin.generic_sql_admin import GenericSqlSetupType
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
 
 import strawberry
@@ -2078,6 +2079,16 @@ class Query:  # REQ-021, REQ-042
             convergence_error=failure["cause"] if failure else None,
             convergence_error_at=failure["at"].isoformat() if failure else None,
         )
+
+    @strawberry.field
+    async def generic_sql_setup(self, info: StrawberryInfo) -> GenericSqlSetupType:  # REQ-2191
+        """What a Generic SQL source's form offers: the engine its capabilities are set for, the
+        SQL dialects it may be written in, and the capabilities."""
+        require_capability(info, "source_registration")
+        from provisa.api.admin.generic_sql_admin import setup
+        from provisa.api.app import state
+
+        return setup(state.federation_engine.name)
 
     @strawberry.field
     async def materialize_store_info(self, info: StrawberryInfo) -> MaterializeStoreInfoType:
