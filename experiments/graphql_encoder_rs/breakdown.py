@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8ce2a64a-012a-4861-91e8-dcf16ebe7d10
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Where the Python GraphQL path serializes and deserializes, and what each costs, on the benchmark
 dataset (bench.py). Every step that turns the engine's result into Python objects, or Python
 objects into text and back, is timed on its own with the values and the call counts the product's
