@@ -52,11 +52,11 @@
         <p class="lead">
           Forty years of advances in data management share a common failure: each one added a
           piece of what an organization needs, and none assembled the pieces into one model that
-          fuses governance, meaning, the data itself, and access. The approach here is a
-          methodology: semantics drives every decision about data management. The result is estates held
+          fuses governance, meaning, the data itself, and access. The result is estates held
           together by integration projects that never quite close. <a href="/why/ai">AI shows the
           gap plainly</a>: an agent handed data with no fused meaning, ownership or governance
-          exposes the seams at once.
+          exposes the seams at once. The approach here is a methodology: semantics drives every
+          decision about data management.
         </p>
       </div>
 
@@ -65,13 +65,13 @@
         <h2 id="history">Each generation added a piece</h2>
 
         <ul>
-          <li><strong>Data warehouses</strong> (Inmon, Kimball): one integrated copy of the truth, meaning encoded in a schema; access still scattered across tools, and governance added afterwards.</li>
+          <li><strong>Data warehouses</strong> (Inmon, Kimball): one integrated store with meaning encoded in a schema; access still scattered across tools, and governance added afterwards.</li>
           <li><strong>Big data and data lakes</strong> (Hadoop, object stores): scale without limits; meaning and governance were left behind.</li>
           <li><strong>Data catalogs and governance tools</strong>: meaning documented, policies recorded; neither bound to the data nor enforced at query time.</li>
           <li><strong>Semantic layers and metrics stores</strong>: shared metric definitions for BI; a thin slice of meaning covering only aggregations, with no model of who owns what or what the terms mean.</li>
           <li><strong>Ontologies and knowledge graphs</strong> (the first failure mode): formal meaning, relationships and reasoning, built as an end in themselves; rarely tied to operational records, and valued by assumption rather than measurement.</li>
           <li><strong>Data mesh</strong>: domain ownership and federated computational governance over existing systems, deliberately without a runtime; data products were its more enduring outcome, a packaged dataset with an owner and a contract. Each product carries its own meaning and governance, so a catalog of products repeats the fragmentation one level up instead of fusing meaning, governance, data and access into one model.</li>
-          <li><strong>Operationally focused ontologies</strong> (the second failure mode, e.g. Foundry, Fabric): an ontology bound to data and used to drive applications built inside the platform, with access governed by controls; but those applications live on the platform's own connectors and ontology framework rather than serving consumers over standard protocols, so they scale technically, not organizationally. Operations are written as code rather than a small set of declared primitives a steward can read; governance manages who may see and do what, with no stewardship of meaning and no method to prove a term, refine it, or resolve ambiguity.</li>
+          <li><strong>Operationally focused ontologies</strong> (the second failure mode, e.g. Foundry, Fabric): an ontology bound to data, driving applications inside the platform over its own connectors rather than standard protocols; scales technically, not organizationally. Operations as code, not declared primitives; controls without stewardship of meaning, and no method to prove, refine or resolve ambiguity.</li>
         </ul>
 
         <p>
@@ -126,7 +126,7 @@
 
         <p>
           <strong>The model compounds.</strong> Each new domain binding opens query paths to
-          every relationship that crosses into it. Each new relationship multiplies what those
+          every relationship that crosses into it; each new relationship multiplies what those
           paths can traverse. A pipeline estate adds one capability per pipeline; the model
           connects existing ones.
         </p>
@@ -156,18 +156,13 @@
           Commands declare write operations over governed tables.
         </p>
 
-        <p>
-          What is not yet built is worth stating. Grounding status is tracked and surfaced.
-          Which terms appear in queries that actually run is not yet tracked as a first-class
-          metric; that is a gap in the measurement practice described above.
-        </p>
 
         <h2 id="without-provisa">The model matters more than the tool</h2>
 
         <p>
           The framework can be applied without Provisa: fuse governance, meaning, data and
           access into one model, ground concepts to records, and govern reality at the boundary
-          rather than inside a platform. The practices are not ours. A model built this way absorbs new paradigms predictably and rapidly, in small steps
+          rather than inside a platform. A model built this way absorbs new paradigms predictably and rapidly, in small steps
           or large ones; quantum computing and heavy AI regulation are two examples on the
           horizon. If you apply the framework with the tools you have, you get most of the value.
           Provisa is an attempt to make the whole thing declarative, so you do not have to
