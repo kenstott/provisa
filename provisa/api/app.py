@@ -2421,6 +2421,25 @@ def _shares_an_embedded_store(org_id: str, storage_url: str | None) -> bool:
     return configured_materialize_url() is None
 
 
+class _BuildClock:
+    """Each step of a runtime's build that was slow, at WARNING as a hosted tier logs: an open is
+    told apart by its "its runtime" stage alone, and that is its longest (REQ-2006)."""
+
+    _SLOW_S = 2.0
+
+    def __init__(self, key: str) -> None:
+        self._key = key
+        self._since = time.monotonic()
+
+    def mark(self, step: str) -> None:
+        now = time.monotonic()
+        if now - self._since >= self._SLOW_S:
+            logging.getLogger(__name__).warning(
+                "runtime of %s: %s took %.1fs", self._key, step, now - self._since
+            )
+        self._since = now
+
+
 async def _build_org_runtime(
     org_id: str,
     *,
@@ -2459,6 +2478,7 @@ async def _build_org_runtime(
     # REQ-2006: a demo sandbox's runtime opens its DuckDB file, so it is built by the sandbox tier
     # alone, and an ordinary org's never by the sandbox tier.
     require_this_tier(org_id)
+    clock = _BuildClock(runtime_key(org_id, env))
     from provisa.security.sandbox_egress import confined
 
     if confined(org_id):
@@ -2682,6 +2702,7 @@ async def _build_org_runtime(
             state.model_db, org_id, multitenancy=state.multitenancy, env=env
         )
         await init_audit_schema(state.model_db, org_id=org_id, env=env)
+        clock.mark("its schema")
 
         # REQ-1349: this org's settings rows, read once here and refreshed by the settings router
         # when the org writes one. The query path (response-cache TTL, large-result redirect)
@@ -2697,6 +2718,7 @@ async def _build_org_runtime(
         await _seed_built_in_sources(
             host or "", port, database, username or "", org_id=org_id, env=env
         )
+        clock.mark("its built-in sources")
         state.source_dsns["provisa-admin"] = colocation_key(
             host or "", port, database, username or "", _pw or ""
         )
@@ -2787,6 +2809,7 @@ async def _build_org_runtime(
                 )
             )
             await _resolve_pk_from_sources()
+        clock.mark("its sources")
 
         await _require_org_serves_here(org_id)  # REQ-1922
         await _bind_region_stores(org_id, env, initialise=True)
@@ -2811,6 +2834,7 @@ async def _build_org_runtime(
             )
 
         await _rebuild_schemas()
+        clock.mark("its schemas")
         from provisa.api.sandbox_tier import is_template_org
 
         if is_template_org(org_id) and env == PROD:
@@ -2899,6 +2923,7 @@ async def _build_org_runtime(
 # REQ-1882 (amended 2026-09-29): an org runtime built on first access from a pgwire/Bolt/Flight
 # connection thread rebuilds on that thread's own loop, so the serialization holds across loops.
 _rebuild_schemas_lock = CrossLoopLock()
+_SLOW_REBUILD_S = 2.0
 
 
 async def _rebuild_schemas(raw_config: dict | None = None, *, announce: bool = True) -> None:
@@ -2913,9 +2938,20 @@ async def _rebuild_schemas(raw_config: dict | None = None, *, announce: bool = T
     # ``announce=False`` (REQ-1914) is a reload: another worker made the change and announced it.
     #
     # REQ-2188: a rebuild's writes are the system's, whoever's request ran it: no row rule holds them.
+    asked = time.monotonic()
     async with _rebuild_schemas_lock:
+        began = time.monotonic()
         with model_row_rules.unnarrowed():
             await _rebuild_schemas_impl(raw_config, announce=announce)
+    # At WARNING: a hosted tier logs at WARNING. One line per slow rebuild is how its operator sees
+    # what a slow save or open spent, and whether it was waiting for another org's (REQ-2006).
+    if time.monotonic() - asked >= _SLOW_REBUILD_S:
+        logging.getLogger(__name__).warning(
+            "schema rebuild of %s: waited %.1fs for its turn, took %.1fs",
+            state._active_runtime().org_id,
+            began - asked,
+            time.monotonic() - began,
+        )
 
 
 async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: bool = True) -> None:
