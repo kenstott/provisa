@@ -94,6 +94,18 @@ def test_the_table_is_what_postgresql_17_answers(postgres_17, set_zone, name, wa
     assert tuple(result.get_value(i, 0).decode() for i in range(result.ntuples)) == want
 
 
+#: to_json of an instant the statement says is one, as the compiler says a registered column is.
+_STATED_JSON = "SELECT to_json(CAST(c AS timestamptz)) AS v FROM t ORDER BY i"
+
+
+@pytest.mark.parametrize("set_zone", list(_SESSIONS))
+def test_saying_an_instant_is_one_changes_no_answer_of_postgresql_17(postgres_17, set_zone):
+    postgres_17.execute(set_zone)
+    result = postgres_17.pgconn.exec_(_STATED_JSON.encode())
+    got = tuple(result.get_value(i, 0).decode() for i in range(result.ntuples))
+    assert got == ANSWERS[set_zone]["json"]
+
+
 def test_postgresql_17_is_the_table_for_every_zone_in_it(postgres_17):
     assert set(ANSWERS) == set(_SESSIONS)
 
@@ -129,7 +141,11 @@ def _trino_kwargs() -> dict[str, Any]:
 
 
 def _on_trino(trino_conn: Any, name: str) -> Any:
-    sql = transpile_to_trino(statement(name)).replace(
+    return _run_on_trino(trino_conn, statement(name))
+
+
+def _run_on_trino(trino_conn: Any, pg_sql: str) -> Any:
+    sql = transpile_to_trino(pg_sql).replace(
         "FROM t ORDER", f"FROM (VALUES {_TRINO_ROWS}) AS t(i, c) ORDER"
     )
     # A statement bound to no zone would run on trino_conn; a zone takes conn_kwargs' connection.
@@ -139,10 +155,17 @@ def _on_trino(trino_conn: Any, name: str) -> Any:
 @pytest.mark.requires_trino
 @pytest.mark.parametrize(
     "set_zone, name, want", [case for case in CASES if case[1] != "json"]
-)  # to_json has no form of an instant on Trino: refused by name, below
+)  # to_json of a value not said to be an instant: refused by name, below
 def test_trino_answers_as_postgresql_17_answered(trino_conn, set_zone, name, want):
     result = _in_zone(set_zone, lambda: _on_trino(trino_conn, name))
     assert tuple(_sent(set_zone, row[0]) for row in result.rows) == want
+
+
+@pytest.mark.requires_trino
+@pytest.mark.parametrize("set_zone", list(_SESSIONS))
+def test_trino_answers_to_json_of_a_stated_instant_as_postgresql_17(trino_conn, set_zone):
+    result = _in_zone(set_zone, lambda: _run_on_trino(trino_conn, _STATED_JSON))
+    assert tuple(str(row[0]) for row in result.rows) == ANSWERS[set_zone]["json"]
 
 
 @pytest.mark.requires_trino

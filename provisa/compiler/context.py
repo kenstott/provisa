@@ -627,6 +627,41 @@ def _columns_of_subtypes(
     return out
 
 
+def _instant_columns(
+    si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
+    physical_map: dict[str, str],
+) -> SubtypeColumns:
+    """REQ-2171: every registered column whose type is timestamptz, keyed like
+    ``_columns_of_subtypes``, for to_json to be told what it reads (compiler.json_instants)."""
+    import sqlglot.expressions as exp
+    from sqlglot.errors import SqlglotError
+
+    from provisa.compiler.json_instants import INSTANT
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.compiler.schema_gen import SchemaInput
+
+    assert isinstance(si, SchemaInput)
+    out: SubtypeColumns = {}
+    for td in si.tables:
+        typed = {m.column_name.lower(): m.data_type for m in si.column_types.get(td["id"]) or []}
+        for col in td.get("columns") or []:
+            phys = col["column_name"]
+            try:
+                kind = exp.DataType.build(typed.get(phys.lower()) or "", dialect="postgres")
+            except (SqlglotError, ValueError):
+                continue
+            if not kind.is_type(exp.DataType.Type.TIMESTAMPTZ):
+                continue
+            key = (
+                td["schema_name"].lower(),
+                (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
+            )
+            names = out.setdefault(key, {})
+            names[phys.lower()] = INSTANT
+            names[(col.get("alias") or apply_sql_name(phys)).lower()] = INSTANT
+    return out
+
+
 def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
 ) -> (
@@ -665,6 +700,7 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     ctx.nested_columns = _nested_columns(si, physical_map)
     ctx.subtype_columns = _columns_of_subtypes(si, physical_map, lambda s: s.semantics is not None)
     ctx.read_columns = _columns_of_subtypes(si, physical_map, lambda s: s.base == "text")
+    ctx.instant_columns = _instant_columns(si, physical_map)
 
     _register_relationship_joins(si, ctx, table_lookup, physical_map)
 

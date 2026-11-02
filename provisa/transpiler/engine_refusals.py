@@ -246,8 +246,10 @@ def _plain_part(part: exp.Expr, engine: str) -> bool:
     literal = part.this if isinstance(part, exp.Cast) else part
     if isinstance(literal, exp.Null):
         return True
-    if isinstance(literal, (exp.Literal, exp.Var)):  # date_part('hour', c), extract(hour from c)
-        return literal.name.lower() in PLAIN_PARTS
+    if isinstance(literal, exp.Literal):
+        return literal.this.lower() in PLAIN_PARTS
+    if isinstance(literal, exp.Var) and literal.name.lower() in PLAIN_PARTS:
+        return True  # extract(hour from c): its part a keyword, not a text
     return engine != _C
 
 

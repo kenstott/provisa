@@ -166,6 +166,8 @@ class CompilationContext:
     subtype_columns: "SubtypeColumns" = field(default_factory=dict)
     # REQ-2171: the registered columns of a subtype held as text, read through its read form.
     read_columns: "SubtypeColumns" = field(default_factory=dict)
+    # REQ-2171: the registered timestamptz columns, which to_json is told it reads.
+    instant_columns: "SubtypeColumns" = field(default_factory=dict)
     # REQ-1915: the tables replicated row by row on the bound engine (flagged, and the engine
     # cannot attach their source). A to-one relationship into one compiles to a JOIN.
     row_level_tables: frozenset[int] = frozenset()

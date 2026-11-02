@@ -27,7 +27,7 @@ import pytest
 import trino
 
 from provisa.core.pg_error import PostgresError
-from provisa.core.session_time_zone import StatementZone, bind_zone, reset_zone
+from provisa.core.session_time_zone import StatementZone, bind_zone, reset_zone, trino_spelling
 from provisa.executor import trino as trino_exec
 from provisa.pgwire._pipeline import _kept_engine_form
 from provisa.pgwire.session_zone import SessionZone
@@ -120,11 +120,24 @@ def test_trino_text_is_postgresqls_on_utc_too():
     assert _TIMESTAMP_ZONE in transpile_to_trino(statement("text"))
 
 
-@pytest.mark.parametrize("name", ["date", "hour", "trunc"])
-@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+@pytest.mark.parametrize(
+    "name, dialect",
+    [("date", "trino"), ("hour", "trino"), ("trunc", "trino"), ("hour", "clickhouse")],
+)
 def test_on_utc_what_already_answers_is_left_as_it_was(name, dialect):
     assert "toTimeZone" not in transpile(statement(name), dialect)
     assert "typeof" not in transpile(statement(name), dialect).lower()
+
+
+@pytest.mark.parametrize(
+    "name, typed", [("date", pa.types.is_date), ("trunc", pa.types.is_timestamp)]
+)
+def test_on_utc_clickhouse_answers_a_date_and_an_instant_not_a_count(chdb_session, name, typed):
+    """Its own Date and DateTime reach Arrow as counts of days and seconds, which pgwire would send
+    as numbers: on UTC too, the date is a Date32 and the start of a unit a DateTime64."""
+    sql = transpile(statement(name), "clickhouse")
+    raw = chdb_session.query(re.sub(r" FROM t\b", " FROM default.t", sql), "ArrowStream").bytes()
+    assert typed(pa.ipc.open_stream(raw).schema.field(0).type)
 
 
 @pytest.mark.parametrize(
@@ -183,6 +196,48 @@ def test_an_engine_form_is_derived_again_in_another_zone():
     assert _in_session(_NEW_YORK, lambda: asyncio.run(kept())) == "in new york"
     in_kolkata = _in_session("SET TimeZone = 'Asia/Kolkata'", lambda: asyncio.run(kept()))
     assert in_kolkata == "in kolkata"
+
+
+_STATED_JSON = "SELECT to_json(CAST(c AS timestamptz)) AS v FROM t ORDER BY i"
+
+
+@pytest.mark.parametrize("set_zone", list(_SESSIONS))
+def test_trino_writes_to_json_of_a_stated_instant_in_the_session_zone(set_zone):
+    sql = _in_session(set_zone, lambda: transpile_to_trino(_STATED_JSON))
+    assert "CAST(c AS JSON)" not in sql
+    assert "JSON_PARSE(CONCAT('\"'" in sql
+    zone = SessionZone(_SESSIONS[set_zone]).statement_zone()
+    assert f"'{trino_spelling(zone) if zone is not None else 'UTC'}'" in sql
+
+
+@pytest.mark.parametrize("call", ["to_json", "to_jsonb"])
+@pytest.mark.parametrize("value", ["CAST(c AS timestamptz)", "now()", "(c::timestamptz)"])
+def test_trino_writes_each_to_json_of_a_stated_instant(call, value):
+    sql = _in_session(_NEW_YORK, lambda: transpile_to_trino(f"SELECT {call}({value}) FROM t"))
+    assert "JSON_PARSE(" in sql
+    assert "'America/New_York'" in sql
+
+
+@pytest.mark.parametrize(
+    "value", ["ARRAY[CAST(c AS timestamptz)]", "ROW(1, c::timestamptz)", "ARRAY[ARRAY[now()]]"]
+)
+def test_trino_refuses_to_json_of_a_stated_instant_in_an_array_or_a_row_by_name(value):
+    with pytest.raises(PostgresError, match="to_json of a timestamptz in an array") as refused:
+        transpile_to_trino(f"SELECT to_json({value}) FROM t")
+    assert refused.value.sqlstate == "0A000"
+
+
+def test_trino_leaves_to_json_of_a_value_not_said_to_be_an_instant_to_its_own_cast():
+    assert "CAST(c AS JSON)" in _in_session(
+        _NEW_YORK, lambda: transpile_to_trino("SELECT to_json(c) FROM t")
+    )
+
+
+def test_trino_json_text_of_an_instant_is_postgresqls():
+    """The form's text, its JSON string marks aside, read as PostgreSQL's to_json writes it."""
+    sql = _in_session(_NEW_YORK, lambda: transpile_to_trino(_STATED_JSON))
+    assert "'T')" in sql  # the date and the time joined by a T
+    assert "'+00:00'" in sql  # UTC's offset, which format_datetime writes Z
 
 
 def test_to_json_of_an_instant_on_trino_is_refused_by_name():
