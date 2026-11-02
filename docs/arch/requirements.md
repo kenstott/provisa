@@ -26854,7 +26854,7 @@ Maintainer 2026-11-02: the Rust DataRow encoder (experiment J483: 14.5x text, 40
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Maintainer 2026-11-02: transport (HTTP, pgwire, Flight, gRPC, Bolt...), query language (SQL, GraphQL, Cypher, SPARQL...) and encoder (pgwire rows, GraphQL JSON, gRPC protobuf, Arrow...) are independent. Every language compiles to one governed statement and every encoder reads the engine result directly ([REQ-2194](#REQ-2194)), so any combination works, even one that makes little sense, such as a GraphQL query answered with the gRPC encoder. A new language, transport or encoder is an addition at one edge and changes neither the others nor the model.
+Maintainer 2026-11-02: transport (HTTP, pgwire, Flight, gRPC, Bolt...), query language (SQL, GraphQL, Cypher, SPARQL...) and encoder (pgwire rows, GraphQL JSON, gRPC protobuf, Arrow...) are independent. Every language compiles to one governed statement and every encoder reads the engine result directly ([REQ-2194](#REQ-2194)), so any combination works, even one that makes little sense, such as a GraphQL query answered with the gRPC encoder. A new language, transport or encoder is an addition at one edge and changes neither the others nor the model. (Amended 2026-10-29, Conceptually possible; practical gaps are listed:) Maintainer 2026-11-02: "i can imagine there maybe practical gaps - but conceptually possible." The separation is a design principle: nothing in the model or compiler ties a language to a transport or an encoder. Where a combination is not offered today, that is a practical gap, listed as such, not a rule.
 
 **Code:** —
 
