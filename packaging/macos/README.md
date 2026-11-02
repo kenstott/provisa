@@ -1,6 +1,12 @@
 # Provisa macOS DMG — Phase AF2a
 
-Airgapped macOS installer that bundles Lima VM + containerd. No Docker required on the end-user machine. No outbound network at install or runtime.
+macOS installer with two tiers and no VM:
+
+- **Native tier (default, `Provisa.dmg`):** a python-build-standalone interpreter with
+  provisa already installed. First launch copies it to `~/.provisa/venv`. No Docker needed.
+- **Docker tier (`Provisa-Container.dmg`, `PROVISA_EDITION=container`):** runs
+  `docker compose` on the user's own Docker (Docker Desktop or colima). Images are
+  `docker load`-ed from the core-images tarball and resolved through `docker-compose.airgap.yml`.
 
 ## What's inside the DMG
 
@@ -9,22 +15,15 @@ Provisa.app/
   Contents/
     Info.plist                   macOS app metadata
     MacOS/
-      provisa-launcher           Entry point (handles first-launch)
-      first-launch.sh            VM setup + image import
-      bin/
-        arm64/  limactl  ctr     Native arm64 binaries
-        x86_64/ limactl  ctr     Native x86_64 binaries
+      ProvisaLauncher            Native Swift launcher (handles first-launch)
+      first-launch.sh            Tier setup (native venv or Docker image load)
     Resources/
       provisa-cli                The provisa start/stop/status/... CLI
-      docker-compose.yml
-      docker-compose.prod.yml
-      config/                    pgbouncer config, etc.
-      db/                        Init SQL + mongo scripts
-      trino/                     Trino catalog + config
-      images/
-        postgres-16.tar
-        mongo-7.tar
-        ... (all service images)
+      VERSION                    Release version stamped into the installed tier
+      docker-compose.*.yml       Container edition only: core, app, airgap, trino TLS
+      config/ db/ trino/         Container edition only
+      observability/             Container edition only
+runtime/                         Hidden DMG content: prebuilt interpreter (core edition)
 ```
 
 ## Building
@@ -65,10 +64,10 @@ Edit `build-dmg.sh` `IMAGES` array to use `image@sha256:...` instead of tags for
 1. User drags `Provisa.app` → `/Applications`, double-clicks.
 2. `provisa-launcher` detects `~/.provisa/.first-launch-complete` is absent.
 3. `first-launch.sh` runs:
-   - Stages image tarballs to `~/.provisa/images/`
-   - Creates + starts a Lima VM named `provisa` (uses Virtualization.framework on Apple Silicon)
-   - Imports all tarballs via `ctr images import` inside the VM
-   - Writes `~/.provisa/config.yaml`
+   - Native tier: copies the bundled runtime to `~/.provisa/venv`
+   - Docker tier: checks Docker is running, stages compose files to `~/.provisa/compose/`,
+     acquires the core-images tarball and loads it with `docker load`
+   - Writes `~/.provisa/config.yaml` (`runtime: native` or `runtime: docker`)
    - Installs `/usr/local/bin/provisa` CLI (prompts for password via osascript if needed)
    - Writes sentinel file `~/.provisa/.first-launch-complete`
 4. Subsequent launches skip setup and delegate directly to the `provisa` CLI.
