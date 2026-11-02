@@ -329,7 +329,7 @@ def _rewrite_json_size_for_trino(sql: str) -> str:
     return tree.transform(_sized).sql(dialect="trino")
 
 
-_BACKREFERENCE = re.compile(r"\\(\d)")
+_BACKREFERENCE = re.compile(r"\\(\\|\d)")
 
 
 def _rewrite_regex_backreferences_for_trino(sql: str) -> str:
@@ -341,7 +341,10 @@ def _rewrite_regex_backreferences_for_trino(sql: str) -> str:
     for node in tree.find_all(exp.RegexpReplace):
         replacement = node.args.get("replacement")
         if isinstance(replacement, exp.Literal) and replacement.is_string:
-            written = _BACKREFERENCE.sub(r"$\1", replacement.this)
+            written = _BACKREFERENCE.sub(
+                lambda said: said.group() if said.group(1) == "\\" else f"${said.group(1)}",
+                replacement.this,
+            )
             node.set("replacement", exp.Literal.string(written))
     return tree.sql(dialect="trino")
 

@@ -2648,6 +2648,29 @@ def _said_text_read(value: exp.Expr) -> exp.Expr:
 #: (transpile._every_match_unflagged).
 FIRST_MATCH = "provisa_first_match"
 _BACKREFERENCE = re.compile(r"\\\d")
+#: What a pattern's text can be: an escape, a bracket expression, or a group it captures by.
+_PATTERN_PART = re.compile(r"\\.|\[\^?\]?(?:\\.|\[:\w+:\]|[^\]])*\]|\((?!\?)", re.DOTALL)
+#: What a replacement says other than its literal text: \\, \N, or a $.
+_REPLACEMENT_PART = re.compile(r"\\(\\|\d)|\$")
+
+
+def _past_the_text_before(replacement: str, pattern: str, dialect: str) -> str:
+    """``replacement`` for the form _first_match writes, where the text before the match is group
+    1: PostgreSQL's \\N is the engine's $N+1, nothing for a group the pattern lacks, and a $ is
+    literal."""
+    groups = sum(part.group() == "(" for part in _PATTERN_PART.finditer(pattern))
+
+    def written(part: re.Match[str]) -> str:
+        said = part.group(1)
+        if said is None:
+            return "\\$"
+        if said == "\\":
+            return part.group()
+        if said == "0":
+            raise FunctionRefused("regexp_replace", dialect)
+        return f"${int(said) + 1}" if int(said) <= groups else ""
+
+    return _REPLACEMENT_PART.sub(written, replacement)
 
 
 def _first_match(node: exp.RegexpReplace, dialect: str) -> exp.Expr:
@@ -2662,9 +2685,9 @@ def _first_match(node: exp.RegexpReplace, dialect: str) -> exp.Expr:
         raise FunctionRefused("regexp_replace", dialect)
     if dialect == "clickhouse":
         return exp.Anonymous(this="replaceRegexpOne", expressions=[value, pattern, replacement])
-    if _BACKREFERENCE.search(replacement.this):
+    if _BACKREFERENCE.search(pattern.this):  # its group numbers move with the text before
         raise FunctionRefused("regexp_replace", dialect)
-    written = replacement.this.replace("$", "\\$")
+    written = _past_the_text_before(replacement.this, pattern.this, dialect)
     return exp.RegexpReplace(
         this=value,
         expression=exp.Literal.string(f"(?s)^(?<before>.*?)(?:{pattern.this})(?<after>.*)$"),
