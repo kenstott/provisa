@@ -61,11 +61,10 @@ steps:
 - key: retailEveryRole
   role: all
 # EU marketing reads only the customers who agreed.
-- key: retailAsMarketing
+- key: retailAudience
   route: /sql
   capability: query_development
   role: marketing_eu
-- key: retailAudience
   sql: >-
     SELECT customer_id, full_name, country, consent_recorded_at
     FROM "retail"."view_eu_marketing_audience" ORDER BY consent_recorded_at DESC LIMIT 20

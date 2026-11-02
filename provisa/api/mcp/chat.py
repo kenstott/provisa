@@ -1265,6 +1265,30 @@ _SYSTEM = (
 )
 
 
+# A demo's visitor reads the answer beside a tour step, in a small panel: it has to be short.
+_DEMO_ANSWERS = (
+    "This is a live product demo, and the answer is read in a small panel. Keep it short: lead "
+    "with the answer, in at most three short sentences. Show rows as one table of at most ten, "
+    "saying how many more there are, with only the columns asked for. Show a masked value as it "
+    "came back and say in one sentence what the role is not served, then answer the rest of the "
+    "question with what it is served. No preamble, no account of the tools you called, no "
+    "summary of what the table shows and no offer of further help."
+)
+
+
+def _in_a_demo() -> bool:
+    """The conversation is a demo's: a visitor's sandbox, or a deployment started as a demo. A
+    template org's stored answers are graded by the bake-off, so they are not held to this."""
+    from provisa.core.demo import is_demo, started_demo_directory
+    from provisa.core.org_ids import is_demo_sandbox
+    from provisa.core.request_context import current_org
+
+    org = current_org.get()
+    return (org is not None and is_demo_sandbox(org)) or (
+        is_demo() and started_demo_directory() is not None
+    )
+
+
 def _system_prompt(current_route: str | None) -> str:
     """_SYSTEM plus the frontend's current route, when it sent one (REQ-1800).
 
@@ -1272,9 +1296,10 @@ def _system_prompt(current_route: str | None) -> str:
     every turn, so the frontend just sends it (ChatPanel.tsx) rather than the model spending a
     tool round-trip to ask for something the caller could hand over for free. Kept OUT of _SYSTEM
     itself since it changes per turn, not per deployment."""
+    system = f"{_SYSTEM}\n\n{_DEMO_ANSWERS}" if _in_a_demo() else _SYSTEM
     if not current_route:
-        return _SYSTEM
-    return f"{_SYSTEM}\n\nThe user is currently viewing the app at route: {current_route!r}."
+        return system
+    return f"{system}\n\nThe user is currently viewing the app at route: {current_route!r}."
 
 
 async def _effective_config(state: Any) -> dict:

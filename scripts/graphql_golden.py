@@ -724,11 +724,17 @@ if __name__ == "__main__":
 
 def _compared(value: Any) -> Any:
     """A cell as the gate compares it: a number as a float, whichever type it had (a decimal sum is
-    a JSON number in a Cypher map), anything else as JSON holds it."""
+    a JSON number in a Cypher map), a timestamp as the endpoint writes it (serialize_rows, and to_json
+    in a Cypher map, with the T), anything else as JSON holds it."""
+    import datetime
     import decimal
+
+    from provisa.executor.serialize import temporal_text
 
     if isinstance(value, decimal.Decimal):
         return float(value)
+    if isinstance(value, datetime.datetime):
+        return temporal_text(value)
     if isinstance(value, (list, tuple)):
         return [_compared(v) for v in value]
     if isinstance(value, dict):
