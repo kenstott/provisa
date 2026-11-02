@@ -117,5 +117,5 @@ def test_clickhouse_answers_as_postgresql_17_answered():
         return None if digits is None else bytes.fromhex(digits)
 
     found = {function: _differences(run, "clickhouse", function) for function in sorted(_FUNCTIONS)}
+    found["in columns"] = _column_differences(run, "clickhouse")
     assert {function: differ for function, differ in found.items() if differ} == {}
-    assert _column_differences(run, "clickhouse") == {}
