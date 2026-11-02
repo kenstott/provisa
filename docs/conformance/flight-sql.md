@@ -198,6 +198,6 @@ An ingest that creates a table that already exists, or whose columns do not matc
 
 | Tool | Version | Date | Method |
 | --- | --- | --- | --- |
-| ADBC Python client | TBD | TBD | Covered by driver |
-| ADBC Java client | TBD | TBD | Covered by driver |
-| DBeaver (Flight SQL) | TBD | TBD | TBD: replay or manual |
+| ADBC Python client | — | — | Covered by driver |
+| ADBC Java client | — | — | Covered by driver |
+| DBeaver (Flight SQL) | — | — | Not yet verified |
