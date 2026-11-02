@@ -86,9 +86,9 @@
         "description": "One picker lists every type, grouped by category: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code Resolvers, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Search by name or alias, or narrow with the category chips. Each type shows its logo and a reach icon: ⚡ read live in place, or a copy icon where Provisa reads a refreshed replica.<p>Pick one, fill the connection, Save.</p>"
       },
       "stepBuildSource": {
-        "title": "A source, added live",
-        "description": "The picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>) and Save created the source. The new <strong>supplies</strong> source reads that file in place.",
-        "acting": "Adding a source"
+        "title": "A source, filled in",
+        "description": "The picker opened with its whole list, <strong>Parquet File</strong> was chosen and the form was filled in with the file's address (<code>supplies.parquet</code>). That is all a file source needs. This is only a look at the form: Next presses <strong>Cancel</strong>, and nothing is saved.",
+        "acting": "Filling in a source"
       },
       "step4": {
         "title": "Everything becomes a table",
@@ -872,13 +872,9 @@
         "title": "Where a mart column comes from",
         "description": "The lineage of the mart's columns traces each one back through the point-in-time view and the satellites to the source field it came from."
       },
-      "datavaultAnalyst": {
-        "title": "An analyst's view",
-        "description": "Next, the SQL explorer runs as the European analyst. Personal data lives in the satellites, so that's where it's governed."
-      },
       "datavaultMasked": {
         "title": "Masked where the personal data is",
-        "description": "As the analyst, the CRM satellite shows only European customers. Their contacts are withheld, and the names in their emails and the digits of their phone numbers are hidden. The hubs and links stay readable, so the analyst can still join on them."
+        "description": "The SQL explorer now runs as the European analyst. Personal data lives in the satellites, so that's where it's governed. As the analyst, the CRM satellite shows only European customers. Their contacts are withheld, and the names in their emails and the digits of their phone numbers are hidden. The hubs and links stay readable, so the analyst can still join on them."
       },
       "datavaultRecap": {
         "title": "What you saw",
@@ -972,13 +968,9 @@
         "title": "Back to every role",
         "description": "Next, the role picker switches back to <strong>All</strong>."
       },
-      "retailAsMarketing": {
-        "title": "As EU marketing",
-        "description": "Next, the SQL explorer runs as marketing_eu."
-      },
       "retailAudience": {
         "title": "Only customers who agreed",
-        "description": "EU marketing reads the EU customers who agreed to marketing, and only them. The view is built in the EU from EU rows."
+        "description": "The SQL explorer now runs as <strong>marketing_eu</strong>. EU marketing reads the EU customers who agreed to marketing, and only them. The view is built in the EU from EU rows."
       },
       "retailAsDpo": {
         "title": "As the data protection officer",
@@ -1140,13 +1132,9 @@
         "title": "Relationships, declared once",
         "description": "<strong>OF_PRODUCT</strong> joins an order line in PostgreSQL to its product in MongoDB. With PLACED_BY, HAS_ITEM and SHIPPED_AS, these four relationships are declared once, and both the app and the BI tool read through them."
       },
-      "storefrontAsCustomer": {
-        "title": "Signed in as the customer",
-        "description": "The app sends its queries as the <strong>customer</strong> role, whose row filters limit every answer to the signed-in customer's own orders. Next, the role picker switches to <strong>customer</strong>, so the query below runs just as the app runs it."
-      },
       "storefrontScreen": {
         "title": "The app's one query",
-        "description": "The order-history screen sends this one nested GraphQL query for each order with its lines, each line's product from the catalog, and the order's shipment from the shipping service. Run as <strong>customer</strong>, it answers seven orders, all the signed-in customer's own."
+        "description": "The app sends its queries as the <strong>customer</strong> role, whose row filters limit every answer to the signed-in customer's own orders. The role picker is now on <strong>customer</strong>. The order-history screen sends this one nested GraphQL query for each order with its lines, each line's product from the catalog, and the order's shipment from the shipping service. Run as <strong>customer</strong>, it answers seven orders, all the signed-in customer's own."
       },
       "storefrontApp": {
         "title": "The screen it feeds",
@@ -1156,13 +1144,9 @@
         "title": "The same orders over JSON:API",
         "description": "A client that prefers JSON:API asks for the same orders, still as the customer, with their lines and shipments included. Each order links the lines and the shipment it includes, and a line's id is its composite key."
       },
-      "storefrontAnalyst": {
-        "title": "Now as the analyst",
-        "description": "The BI side reads as <strong>analyst</strong>: it sees every order, but no customer's email. Next, the run-as picker switches to <strong>analyst</strong>."
-      },
       "storefrontAnalystSql": {
         "title": "The analyst's SQL",
-        "description": "Late shipments by region and carrier, over the same tables and relationships. <strong>a_customer</strong> shows an email masked, as the analyst reads it."
+        "description": "The BI side reads as <strong>analyst</strong>: it sees every order, but no customer's email. The SQL explorer now runs as <strong>analyst</strong>. Late shipments by region and carrier, over the same tables and relationships. <strong>a_customer</strong> shows an email masked, as the analyst reads it."
       },
       "storefrontBi": {
         "title": "The BI dashboard",
@@ -1188,13 +1172,9 @@
         "title": "The tables, as the app knew them",
         "description": "The four tables came over with the names the app uses. <strong>customers</strong> keeps Hasura's custom names <strong>givenName</strong> and <strong>familyName</strong>, the products table keeps its root name <strong>catalog</strong>, and each column carries the roles that may read it, from the select permissions."
       },
-      "hasuramigrationAsAna": {
-        "title": "Signed in as Ana",
-        "description": "Ana is a customer. Her token carried <strong>x-hasura-user-id: 1</strong>, and Provisa reads that claim as the session value <strong>hasura_user_id</strong>, which the imported row rules compare against. Next, the role picker switches to <strong>ana</strong>, so the queries below run just as the storefront runs them for her."
-      },
       "hasuramigrationMyOrders": {
         "title": "The order history, reshaped",
-        "description": "The storefront's order-history query, reshaped once for Provisa. The root field carries its domain, the column names follow Provisa's convention, and order_by is a list. The relationships <strong>items</strong> and <strong>product</strong> kept their Hasura names. Run as Ana, it answers her four orders and no one else's."
+        "description": "Ana is a customer. Her token carried <strong>x-hasura-user-id: 1</strong>, and Provisa reads that claim as the session value <strong>hasura_user_id</strong>, which the imported row rules compare against. The role picker is now on <strong>ana</strong>. The storefront's order-history query, reshaped once for Provisa. The root field carries its domain, the column names follow Provisa's convention, and order_by is a list. The relationships <strong>items</strong> and <strong>product</strong> kept their Hasura names. Run as Ana, it answers her four orders and no one else's."
       },
       "hasuramigrationProfile": {
         "title": "A read by key",
@@ -1208,21 +1188,13 @@
         "title": "One more relationship",
         "description": "<strong>BUYS_FOR</strong> joins a customer to their Salesforce account, approved like the relationships the import carried. From here the account is one field away from every customer, in every interface, under every role's rules."
       },
-      "hasuramigrationAsSupport": {
-        "title": "The support desk",
-        "description": "Support staff can read every order and every customer, as their Hasura permissions allowed. Next, the role picker switches to <strong>support</strong>, and the support desk's order screen runs as they run it."
-      },
       "hasuramigrationSupportScreen": {
         "title": "Orders with their accounts",
-        "description": "The support desk's order screen, reshaped, now shows the Salesforce account beside each order's customer, with its industry and city, in the same request. Customers without an account show none."
-      },
-      "hasuramigrationAnalyst": {
-        "title": "The analyst",
-        "description": "Analysts can read order totals and account links, but no names or emails, and never cancelled orders. Those are the row rule and column lists the import carried over. Next, the role picker switches to <strong>analyst</strong>."
+        "description": "Support staff can read every order and every customer, as their Hasura permissions allowed. The role picker is now on <strong>support</strong>. The support desk's order screen, reshaped, now shows the Salesforce account beside each order's customer, with its industry and city, in the same request. Customers without an account show none."
       },
       "hasuramigrationByIndustry": {
         "title": "Revenue by industry",
-        "description": "One SQL statement over the store and Salesforce gives revenue by the industry of the account behind each order. The analyst's rules apply as they do in GraphQL: cancelled orders are left out, and no name or email is read."
+        "description": "Analysts can read order totals and account links, but no names or emails, and never cancelled orders. Those are the row rule and column lists the import carried over. The SQL explorer now runs as <strong>analyst</strong>. One SQL statement over the store and Salesforce gives revenue by the industry of the account behind each order. The analyst's rules apply as they do in GraphQL: cancelled orders are left out, and no name or email is read."
       },
       "hasuramigrationRecap": {
         "title": "What you saw",
@@ -1332,13 +1304,9 @@
         "title": "What an analyst sees",
         "description": "Signed in, an analyst of bidder A sees what bidder_a is granted: the aggregate views, the profiles, the masked sample and the seller's records without a single customer identity. No customer's name, and no business or deal name from the CRM, is there to read."
       },
-      "dataroomBidder": {
-        "title": "Now as bidder A",
-        "description": "The next statements run as <strong>bidder_a</strong>, exactly as the analysts' do."
-      },
       "dataroomProfile": {
         "title": "The profile of the invoices",
-        "description": "Each column of the invoices table as the profiler found it, with its rows, nulls, distinct values and range. A bidder learns how complete the records are without reading one of them. Here, some invoices have never been paid."
+        "description": "These statements run as <strong>bidder_a</strong>, exactly as the analysts' do. Each column of the invoices table as the profiler found it, with its rows, nulls, distinct values and range. A bidder learns how complete the records are without reading one of them. Here, some invoices have never been paid."
       },
       "dataroomCounts": {
         "title": "Customer counts",
@@ -1676,21 +1644,13 @@
         "title": "Built at each close",
         "description": "The end-of-day totals are a view materialized in the warehouse on the bank's calendar, which closes at 18:00 London time. The view is one GROUP BY over the ledger's one table, so its build runs whole at the ledger and only the grouped rows come back. It inherits the ledger's versions and needs no history settings of its own. Each day was recorded at its own close. 1 and 2 October were recorded again later, when their restatements arrived."
       },
-      "bankingAsOps": {
-        "title": "As operations",
-        "description": "The next query runs as operations, who drill into postings under the ledger's own rules. They see no posting to a staff account, and every counterparty is withheld."
-      },
       "bankingDashboard": {
         "title": "The dashboard, over GraphQL",
-        "description": "London's totals for 1 October, each with the postings behind it nested inside. One request reads the totals from the warehouse and the postings from the ledger, joined along the relationship you just saw."
-      },
-      "bankingAsAnalyst": {
-        "title": "As a reporting analyst",
-        "description": "The SQL that follows runs as the bank's reporting analysts. They read the end-of-day totals and the five ledger columns the totals are built from: business date, branch, product, currency and amount. They never see an account, a counterparty or a holder."
+        "description": "This query runs as operations, who drill into postings under the ledger's own rules. They see no posting to a staff account, and every counterparty is withheld. London's totals for 1 October, each with the postings behind it nested inside. One request reads the totals from the warehouse and the postings from the ledger, joined along the relationship you just saw."
       },
       "bankingDay": {
         "title": "One day's totals",
-        "description": "1 October as it stands now. For each branch, product and currency you see what came in, what went out and the net. A BI tool connected over pgwire runs this same SQL."
+        "description": "This SQL runs as the bank's reporting analysts. They read the end-of-day totals and the five ledger columns the totals are built from: business date, branch, product, currency and amount. They never see an account, a counterparty or a holder. 1 October as it stands now. For each branch, product and currency you see what came in, what went out and the net. A BI tool connected over pgwire runs this same SQL."
       },
       "bankingReported": {
         "title": "What was reported",
@@ -1772,13 +1732,9 @@
         "title": "Who may see which customers",
         "description": "The customers table carries the rules. A West support agent reads only the West's customers and their orders, with email addresses masked and no prices. The BI analyst reads every region and what the orders came to, but no email address at all."
       },
-      "agentdataSupportRole": {
-        "title": "Act as a West support agent",
-        "description": "The agent acts as the role in the header. Next picks the West support agent, so every tool call the agent makes runs as that role."
-      },
       "agentdataSupportAsks": {
         "title": "The support agent's question",
-        "description": "The agent finds the tables, writes SQL and runs it through MCP tools, shown as they run. Only the West's customers come back, and their email addresses arrive masked, which is all the role is served."
+        "description": "The agent acts as the role in the header, now the West support agent, so every tool call it makes runs as that role. The agent finds the tables, writes SQL and runs it through MCP tools, shown as they run. Only the West's customers come back, and their email addresses arrive masked, which is all the role is served."
       },
       "agentdataExplain": {
         "title": "What ran",
