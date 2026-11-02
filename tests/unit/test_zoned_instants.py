@@ -130,7 +130,14 @@ def test_on_utc_what_already_answers_is_left_as_it_was(name, dialect):
 
 
 @pytest.mark.parametrize(
-    "name, typed", [("date", pa.types.is_date), ("trunc", pa.types.is_timestamp)]
+    "name, typed",
+    [
+        ("date", pa.types.is_date),
+        *(
+            (unit, pa.types.is_timestamp)
+            for unit in ("trunc", "second", "millisecond", "microsecond")
+        ),
+    ],
 )
 def test_on_utc_clickhouse_answers_a_date_and_an_instant_not_a_count(chdb_session, name, typed):
     """Its own Date and DateTime reach Arrow as counts of days and seconds, which pgwire would send

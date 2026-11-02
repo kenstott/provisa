@@ -144,9 +144,25 @@ class _Engine:
     own_day_differs: bool
 
 
+#: A unit shorter than a minute, in microseconds: an offset of whole seconds cannot move its start,
+#: so it is the instant's count floored. ClickHouse's dateTrunc and toStartOfSecond, as sqlglot
+#: writes them, are a DateTime, which drops the fraction and reaches Arrow as a count of seconds.
+_CLICKHOUSE_SUBMINUTE = {
+    "SECOND": 1_000_000,
+    "MILLISECOND": 1_000,
+    "MILLISECONDS": 1_000,
+    "MICROSECOND": 1,
+    "MICROSECONDS": 1,
+}
+
+
 def _clickhouse_trunc(_v: str, local: str, unit: str, zone: str) -> str:
     """The session's start of ``unit`` as Provisa's instant, DateTime64(6, 'UTC'): dateTrunc's own
     is a DateTime, or a Date for a month or a year, which is midnight in ``zone``."""
+    if unit in _CLICKHOUSE_SUBMINUTE:
+        micro = f"toUnixTimestamp64Micro({local})"
+        floor = f"{micro} - positiveModulo({micro}, {_CLICKHOUSE_SUBMINUTE[unit]})"
+        return f"fromUnixTimestamp64Micro({floor}, 'UTC')"
     return f"toTimeZone(toDateTime64(dateTrunc('{unit}', {local}), 6, '{zone}'), 'UTC')"
 
 
@@ -206,7 +222,7 @@ def _instant_form(node: exp.Expr, value: exp.Expr, engine: _Engine, dialect: str
     engine has no spelling of is refused here, where a form is written in it."""
     is_text = isinstance(node, exp.Cast) and node.to.this in _TEXTS
     is_day = isinstance(node, exp.Date) or (isinstance(node, exp.Cast) and node.to.this in _DAY)
-    written_on_utc = is_text or (engine.own_day_differs and (is_day or _is_trunc(node)))
+    written_on_utc = is_text or (engine.own_day_differs and (is_day or _is_trunc(node, engine)))
     if current_zone.get() is None and not written_on_utc:
         return None
     v = value.sql(dialect=dialect)
@@ -220,16 +236,17 @@ def _instant_form(node: exp.Expr, value: exp.Expr, engine: _Engine, dialect: str
     if isinstance(node, exp.Extract) and node.name.upper() not in _NOT_ZONED_PARTS:
         local = sqlglot.parse_one(engine.local(v, _zone_named(engine)), read=dialect)
         return exp.Extract(this=node.this.copy(), expression=local).sql(dialect=dialect)
-    if _is_trunc(node):
+    if _is_trunc(node, engine):
         zone = _zone_named(engine)
         return engine.trunc(v, engine.local(v, zone), node.text("unit").upper(), zone)
     return None
 
 
-def _is_trunc(node: exp.Expr) -> bool:
-    return (
-        isinstance(node, exp.TimestampTrunc) and node.text("unit").upper() not in _NOT_ZONED_UNITS
-    )
+def _is_trunc(node: exp.Expr, engine: _Engine) -> bool:
+    """A start of a unit the zone moves, or on an engine whose own is written for its type, any."""
+    if not isinstance(node, exp.TimestampTrunc):
+        return False
+    return engine.own_day_differs or node.text("unit").upper() not in _NOT_ZONED_UNITS
 
 
 def _form(node: exp.Expr, engine: _Engine, dialect: str) -> exp.Expr | None:

@@ -20,6 +20,7 @@ import duckdb
 import pytest
 import sqlglot
 
+from provisa.compiler.native_subtype import mark_subtype_operations
 from provisa.federation.duckdb_pg_functions import register
 from provisa.transpiler import function_macros
 from provisa.transpiler.pg_forms_system import OF_A_STORED_VALUE
@@ -435,3 +436,24 @@ def test_a_position_before_the_value_reads_as_postgresql_reads_it(call: str, wan
         transpile(f"SELECT {call} AS v", "trino"), read="trino", write="duckdb"
     )[0]
     assert duckdb.connect().execute(written).fetchone()[0] == want
+
+
+def test_a_replacement_of_nothing_is_clickhouses_own():
+    """ClickHouse refuses a pattern of nothing; a replacement of nothing is a deletion it writes."""
+    assert "REPLACE(a, '\"', '')" in transpile(
+        "SELECT pg_catalog.replace(a, '\"', '') AS v FROM t", "clickhouse"
+    )
+
+
+@pytest.mark.parametrize("pattern", ["''", "NULL::text"])
+def test_a_pattern_of_nothing_is_refused_on_clickhouse(pattern: str):
+    with pytest.raises(FunctionRefused):
+        transpile(f"SELECT pg_catalog.replace(a, {pattern}, 'x') AS v FROM t", "clickhouse")
+
+
+def test_a_timestamp_range_is_compared_on_clickhouse():
+    """The emulation strips a bound's quotes with replace(…, '"', '')."""
+    marked = mark_subtype_operations(
+        "SELECT a.v @> b.v AS r FROM s.t AS a CROSS JOIN s.t AS b", {("s", "t"): {"v": "tsrange"}}
+    )
+    assert "'\"', '')" in transpile(marked, "clickhouse")
