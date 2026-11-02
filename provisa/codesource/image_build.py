@@ -39,6 +39,7 @@ import platform
 import re
 import shutil
 import tempfile
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -293,6 +294,62 @@ FRONT_PROGRAMS = ("front.py", "residual.py", "duckdb_sql.py", "pgfront.py", "pgc
 #: Provisa's own modules the front end runs with, copied beside its programs: each image path's
 #: source, relative to the provisa package. Every DuckDB the front end opens is capped (REQ-2006).
 FRONT_MODULES = {"engine_memory.py": "core/engine_memory.py"}
+#: REQ-2194: where the Linux provisa wheels are (PROVISA_WHEELHOUSE, else the build cache's
+#: ``wheels``): the front end writes its DataRows and binary COPY with the encoders
+#: (provisa._encoders) compiled into the wheel for the image's architecture.
+WHEELHOUSE_ENV = "PROVISA_WHEELHOUSE"
+_WHEEL_ARCH = {"amd64": "x86_64", "arm64": "aarch64"}
+
+
+def wheelhouse(plan: Plan) -> Path:
+    return Path(os.environ.get(WHEELHOUSE_ENV) or plan.cache_root / "wheels")
+
+
+def _same_version(wheel: Path, version: str) -> bool:
+    from packaging.utils import InvalidWheelFilename, parse_wheel_filename
+    from packaging.version import InvalidVersion, Version
+
+    try:
+        _, found, _, _ = parse_wheel_filename(wheel.name)
+        return found == Version(version)
+    except (InvalidWheelFilename, InvalidVersion):
+        return False
+
+
+def _encoders(plan: Plan, arch: str) -> list[oci.Entry]:
+    """provisa._encoders for ``arch`` as a package of its own in the front end's library: its
+    compiled module, from the Linux provisa wheel of this Provisa's version, and an empty
+    ``provisa/__init__.py`` (the front end runs no other part of provisa). A build for an
+    architecture whose wheel is not there is refused by name; there is no other DataRow writer."""
+    house = wheelhouse(plan)
+    tag = f"manylinux_2_28_{_WHEEL_ARCH[arch]}"
+    found = sorted(house.glob(f"provisa-*-{tag}.whl")) if house.is_dir() else []
+    wheels = [w for w in found if _same_version(w, plan.version)]
+    if not wheels:
+        raise ImageBuildRefused(
+            "image_encoders",
+            f"no provisa {plan.version} wheel for linux/{arch} ({tag}) in {house}: the code "
+            "host's PostgreSQL front end writes its rows with the encoders compiled into it",
+            arch=arch,
+            wheelhouse=str(house),
+        )
+    with zipfile.ZipFile(wheels[-1]) as wheel:
+        modules = [n for n in wheel.namelist() if re.fullmatch(r"provisa/_encoders[^/]*\.so", n)]
+        if len(modules) != 1:
+            raise ImageBuildRefused(
+                "image_encoders",
+                f"{wheels[-1].name} carries {len(modules)} provisa._encoders modules, not one",
+                arch=arch,
+                wheelhouse=str(house),
+            )
+        (module,) = modules
+        compiled = wheel.read(module)
+    lib = f"{ROOT}/frontlib/provisa"
+    return [
+        oci.Entry(lib, directory=True, mode=0o755),
+        oci.Entry(f"{lib}/__init__.py", data=b""),
+        oci.Entry(f"{lib}/{module.rsplit('/', 1)[1]}", data=compiled, mode=0o755),
+    ]
 
 
 def _front(
@@ -331,6 +388,7 @@ def _front(
     layers = [
         *([front_python] if front_python is not None else []),
         oci.tree(lib, f"{ROOT}/frontlib"),
+        _encoders(plan, arch),
         # The PostgreSQL protocol, as provisa/pgwire serves it (REQ-2100, pgfront.py): its
         # modules, never what an interpreter cached beside them.
         _files(

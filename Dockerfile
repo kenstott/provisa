@@ -141,6 +141,11 @@ COPY provisa/ ./provisa/
 # REQ-2194: provisa's compiled encoders and their notices, from provisa's wheel (stage 2).
 COPY --from=installer /encoders/ ./provisa/
 RUN python -c "import provisa._encoders.pgwire"
+# REQ-2194: the wheel itself, kept for the code images this server builds: their PostgreSQL
+# front end writes its rows with the encoders the wheel carries (codesource/image_build.py takes
+# them from the wheel for the image's architecture, and refuses a build it has no wheel for).
+COPY --from=provisa-wheel-build /wheels/ /opt/provisa-wheels/
+ENV PROVISA_WHEELHOUSE=/opt/provisa-wheels
 # render_graph draws with Node (maintainer, 2026-10-12: "add node to the image and render PNG").
 # Labels need a font: fontconfig's sans-serif is DejaVu Sans.
 COPY --from=graph-render /usr/local/bin/node /usr/local/bin/node

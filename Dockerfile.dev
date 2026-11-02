@@ -64,6 +64,9 @@ RUN pip install --no-cache-dir --no-deps /tmp/provisa-wheel/provisa-*.whl \
 COPY main.py pyproject.toml ./
 COPY provisa/ ./provisa/
 RUN cp /encoders/* ./provisa/ && rm -rf /encoders && python -c "import provisa._encoders.pgwire"
+# REQ-2194: the wheel, for the code images this server builds (codesource/image_build.py).
+COPY --from=provisa-wheel-build /wheels/ /opt/provisa-wheels/
+ENV PROVISA_WHEELHOUSE=/opt/provisa-wheels
 COPY static/ ./static/
 RUN mkdir -p ./config && useradd -m -u 1000 appuser && chown -R appuser /app
 USER 1000
