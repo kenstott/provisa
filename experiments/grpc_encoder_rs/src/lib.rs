@@ -80,7 +80,8 @@ enum Reader {
     Bin(BinaryArray),
     LargeBin(LargeBinaryArray),
     FixedBin(FixedSizeBinaryArray),
-    Date32(ScalarBuffer<i32>),
+    /// Date values, and whether they carry the IR infinities (a column's own values only).
+    Date32(ScalarBuffer<i32>, bool),
     /// Timestamp values, microseconds per unit, the offset when aware, and whether the column
     /// carries the IR infinities (µs only: ir_arrow._with_infinities).
     Ts(ScalarBuffer<i64>, i64, Option<i32>, bool),
@@ -126,7 +127,13 @@ fn unit_us(unit: &TimeUnit) -> Option<i64> {
 }
 
 impl Reader {
-    fn of(a: &ArrayRef) -> Reader {
+    /// Inside a struct or a list: only a column's own values carry the IR infinities
+    /// (column_values); there, to_pylist reads the sentinel as the out-of-range value it is.
+    fn nested(a: &ArrayRef) -> Reader {
+        Self::read(a, false)
+    }
+
+    fn read(a: &ArrayRef, top: bool) -> Reader {
         use DataType as D;
         match a.data_type() {
             D::Null => Reader::Null,
@@ -154,7 +161,7 @@ impl Reader {
             D::Binary => Reader::Bin(a.as_binary::<i32>().clone()),
             D::LargeBinary => Reader::LargeBin(a.as_binary::<i64>().clone()),
             D::FixedSizeBinary(_) => Reader::FixedBin(a.as_fixed_size_binary().clone()),
-            D::Date32 => Reader::Date32(a.as_primitive::<Date32Type>().values().clone()),
+            D::Date32 => Reader::Date32(a.as_primitive::<Date32Type>().values().clone(), top),
             D::Timestamp(unit, tz) => {
                 let Some(mult) = unit_us(unit) else {
                     return Reader::Refused("nanosecond timestamps".into());
@@ -171,7 +178,7 @@ impl Reader {
                     TimeUnit::Millisecond => a.as_primitive::<TimestampMillisecondType>().values().clone(),
                     _ => a.as_primitive::<TimestampMicrosecondType>().values().clone(),
                 };
-                Reader::Ts(values, mult, offset, *unit == TimeUnit::Microsecond)
+                Reader::Ts(values, mult, offset, top && *unit == TimeUnit::Microsecond)
             }
             D::Time32(TimeUnit::Second) => {
                 let v = a.as_primitive::<Time32SecondType>().values().clone();
@@ -200,14 +207,14 @@ impl Reader {
             D::Struct(_) => Reader::Struct(a.as_struct().clone()),
             D::List(_) => {
                 let l = a.as_list::<i32>();
-                Reader::List(l.offsets().clone(), Box::new(Reader::of(l.values())), l.values().logical_nulls())
+                Reader::List(l.offsets().clone(), Box::new(Reader::nested(l.values())), l.values().logical_nulls())
             }
             D::LargeList(_) => {
                 let l = a.as_list::<i64>();
-                Reader::LargeList(l.offsets().clone(), Box::new(Reader::of(l.values())), l.values().logical_nulls())
+                Reader::LargeList(l.offsets().clone(), Box::new(Reader::nested(l.values())), l.values().logical_nulls())
             }
             D::Dictionary(_, value_type) => match cast(a, value_type) {
-                Ok(plain) => Reader::of(&plain),
+                Ok(plain) => Reader::read(&plain, top),
                 Err(e) => Reader::Refused(format!("dictionary column: {e}")),
             },
             other => Reader::Refused(format!("Arrow type {other}")),
@@ -228,11 +235,11 @@ impl Reader {
             Reader::Bin(a) => V::Bin(a.value(i)),
             Reader::LargeBin(a) => V::Bin(a.value(i)),
             Reader::FixedBin(a) => V::Bin(a.value(i)),
-            Reader::Date32(v) => {
+            Reader::Date32(v, infinities) => {
                 let d = v[i] as i64;
-                if d == i32::MAX as i64 {
+                if *infinities && d == i32::MAX as i64 {
                     V::Date(MAX_DAYS) // ir_types.infinite_date: date.max
-                } else if d == -(i32::MAX as i64) {
+                } else if *infinities && d == -(i32::MAX as i64) {
                     V::Date(MIN_DAYS)
                 } else if (MIN_DAYS..=MAX_DAYS).contains(&d) {
                     V::Date(d)
@@ -305,7 +312,7 @@ impl Reader {
             Reader::Struct(s) => {
                 for c in s.columns() {
                     if c.is_valid(i) {
-                        Reader::of(c).check(i)?;
+                        Reader::nested(c).check(i)?;
                     }
                 }
                 Ok(())
@@ -596,14 +603,14 @@ struct Plan {
 const TIMESTAMP: &str = "google.protobuf.Timestamp";
 
 impl Plan {
-    fn build(pool: &Pool, msg: &MsgDesc, columns: Vec<(String, ArrayRef)>, mode: Mode) -> R<Plan> {
+    fn build(pool: &Pool, msg: &MsgDesc, columns: Vec<(String, ArrayRef)>, mode: Mode, top: bool) -> R<Plan> {
         let mut seen = std::collections::HashSet::new();
         let mut cols = Vec::with_capacity(columns.len());
         for (name, array) in columns {
             if !seen.insert(name.clone()) {
                 return unsupported(format!("two columns named {name:?}"));
             }
-            let reader = Reader::of(&array);
+            let reader = Reader::read(&array, top);
             let nulls = array.logical_nulls();
             let kind = match (msg.field(&name), mode) {
                 (None, Mode::Row) => Kind::Fails(EncErr::Value(format!(
@@ -648,7 +655,7 @@ impl Plan {
                 .zip(s.columns())
                 .map(|(fl, c)| (fl.name().clone(), c.clone()))
                 .collect();
-            Ok(Box::new(Plan::build(pool, sub, children, Mode::Node)?))
+            Ok(Box::new(Plan::build(pool, sub, children, Mode::Node, false)?))
         };
         Ok(match array.data_type() {
             DataType::Struct(_) => Kind::Message(f.number, struct_plan(array.as_struct())?),
@@ -781,7 +788,7 @@ impl Encoder {
         }
         let columns = self.columns.iter().cloned().zip(batch.columns().iter().cloned()).collect();
         let msg = self.pool.message(&self.message)?;
-        let plan = Plan::build(&self.pool, msg, columns, self.mode)?;
+        let plan = Plan::build(&self.pool, msg, columns, self.mode, true)?;
         for i in 0..batch.num_rows() {
             match self.batch {
                 None => {

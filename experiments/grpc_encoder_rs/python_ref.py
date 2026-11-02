@@ -171,7 +171,10 @@ def _kwargs_for(col_fields: list[tuple[str, Any]], row: tuple) -> dict:
 
 
 class _Servicer:
-    """What ProvisaServicer._dict_row_to_message reads of its servicer: the bound service."""
+    """What ProvisaServicer._dict_row_to_message reads of its servicer: the bound service, and
+    itself (it recurses through ``self``)."""
+
+    _dict_row_to_message = ProvisaServicer._dict_row_to_message
 
     def __init__(self, service: OrgDescriptor) -> None:
         self._pb2 = service
@@ -192,9 +195,7 @@ def row_messages(
         servicer = _Servicer(service)
         for batch in stream.batches():
             for row in batch:
-                yield ProvisaServicer._dict_row_to_message(
-                    servicer, msg_cls, dict(zip(cols, row, strict=True))
-                )
+                yield servicer._dict_row_to_message(msg_cls, dict(zip(cols, row, strict=True)))
         return
     descriptor = msg_cls.DESCRIPTOR
     col_fields = [(col, descriptor.fields_by_name.get(col)) for col in cols]
