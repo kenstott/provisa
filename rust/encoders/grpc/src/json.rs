@@ -342,3 +342,38 @@ pub fn restrict(v: J, mask: &Mask) -> J {
         other => other,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn round_trip(text: &str) -> String {
+        let mut out = Vec::new();
+        dumps(&loads(text).unwrap(), &mut out);
+        String::from_utf8(out).unwrap()
+    }
+
+    #[test]
+    fn dumps_writes_what_python_writes() {
+        assert_eq!(round_trip(r#"{"a":1,"b":[1.0,2e2,-0,"é\u00e9"]}"#), r#"{"a": 1, "b": [1.0, 200.0, 0, "\u00e9\u00e9"]}"#);
+        assert_eq!(round_trip(r#"{"a":1,"a":2,"b":3}"#), r#"{"a": 2, "b": 3}"#);
+        assert_eq!(round_trip(r#"[NaN, Infinity, -Infinity, 1e400]"#), "[NaN, Infinity, -Infinity, Infinity]");
+        assert_eq!(round_trip(r#""\ud83d\ude00\u007f""#), r#""\ud83d\ude00\u007f""#);
+        assert_eq!(round_trip("123456789012345678901234567890"), "123456789012345678901234567890");
+    }
+
+    #[test]
+    fn loads_refuses_what_python_refuses() {
+        for bad in ["", "[1,]", "{\"a\" 1}", "01", "\"\t\"", "[1] x", "\"\\ud800\""] {
+            assert!(loads(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn restrict_keeps_the_selected_keys() {
+        let mask = Mask(vec![("a".into(), None), ("b".into(), Some(Mask(vec![("c".into(), None)])))]);
+        let mut out = Vec::new();
+        dumps(&restrict(loads(r#"[{"a":1,"b":{"c":2,"d":3},"e":4}, 5]"#).unwrap(), &mask), &mut out);
+        assert_eq!(String::from_utf8(out).unwrap(), r#"[{"a": 1, "b": {"c": 2}}, 5]"#);
+    }
+}

@@ -252,3 +252,48 @@ fn parse_iso(text: &str) -> Option<R<(i64, Option<i32>)>> {
     }
     Some(Ok((local, offset)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ints_as_python_reads_them() {
+        assert_eq!(int(" 12 ").unwrap(), 12);
+        assert_eq!(int("-1_000").unwrap(), -1000);
+        assert_eq!(int("+7").unwrap(), 7);
+        for bad in ["", "1_", "_1", "1__0", "1.0", "0x10", "--1"] {
+            assert!(int(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn floats_as_python_reads_them() {
+        assert_eq!(float(" 1.5 ").unwrap(), 1.5);
+        assert_eq!(float("1_0.2_5").unwrap(), 10.25);
+        assert_eq!(float("-Infinity").unwrap(), f64::NEG_INFINITY);
+        assert!(float("nan").unwrap().is_nan());
+        assert_eq!(float("1e400").unwrap(), f64::INFINITY);
+        for bad in ["", "1_", "abc", "1e", "1.2.3"] {
+            assert!(float(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn isoformat_as_python_reads_it() {
+        let day = days_from_civil(2024, 1, 1) * DAY_US;
+        let hour = 3_600_000_000;
+        assert_eq!(isoformat("2024-01-01").unwrap(), (day, None));
+        assert_eq!(isoformat("20240101").unwrap(), (day, None));
+        assert_eq!(isoformat("2024-W01-1").unwrap(), (day, None));
+        assert_eq!(isoformat("2024-01-01T10").unwrap(), (day + 10 * hour, None));
+        assert_eq!(isoformat("2024-01-01 10:00:00,5").unwrap(), (day + 10 * hour + 500_000, None));
+        assert_eq!(isoformat("2024-01-01T10:00:00.1234567").unwrap(), (day + 10 * hour + 123_456, None));
+        assert_eq!(isoformat("2024-01-01T10:00Z").unwrap(), (day + 10 * hour, Some(0)));
+        assert_eq!(isoformat("2024-01-01T10:00:00+0530").unwrap(), (day + 10 * hour, Some(19_800)));
+        assert_eq!(isoformat("2024-01-01T10:00:00.12-05").unwrap(), (day + 10 * hour + 120_000, Some(-18_000)));
+        for bad in ["2024-01-01T24:00", "2024-13-01", "2023-02-29", "2024-01-01T", "x"] {
+            assert!(isoformat(bad).is_err(), "{bad:?}");
+        }
+    }
+}
