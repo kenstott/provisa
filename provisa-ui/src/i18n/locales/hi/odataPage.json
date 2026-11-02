@@ -1,0 +1,11 @@
+{
+  "odataPage": {
+    "title": "OData",
+    "description": "आपकी भूमिका को दिखने वाली तालिकाएँ Excel, Power BI या किसी भी OData क्लाइंट में खोलें, कोई ड्राइवर इंस्टॉल किए बिना।",
+    "serviceRoot": "सेवा रूट",
+    "serviceRootHelp": "Excel या Power BI में OData फ़ीड चुनें और यह पता पेस्ट करें। Basic या bearer टोकन से साइन इन करें।",
+    "metadata": "मेटाडेटा दस्तावेज़",
+    "metadataHelp": "आपकी भूमिका को दिखने वाली तालिकाएँ, कॉलम और संबंध, OData CSDL के रूप में।",
+    "copyUrl": "URL कॉपी करें"
+  }
+}

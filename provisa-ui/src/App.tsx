@@ -114,6 +114,7 @@ const GrpcPage = lazyPage(() => import("./pages/GrpcPage").then((m) => ({ defaul
 const JsonApiPage = lazyPage(() =>
   import("./pages/JsonApiPage").then((m) => ({ default: m.JsonApiPage })),
 );
+const ODataPage = lazyPage(() => import("./pages/ODataPage").then((m) => ({ default: m.ODataPage })));
 const OpenApiPage = lazyPage(() =>
   import("./pages/OpenApiPage").then((m) => ({ default: m.OpenApiPage })),
 );
@@ -497,6 +498,17 @@ function App() {
                                               fallback={<NotAuthorized />}
                                             >
                                               <JsonApiPage />
+                                            </CapabilityGate>
+                                          }
+                                        />
+                                        <Route
+                                          path="/odata"
+                                          element={
+                                            <CapabilityGate
+                                              capability="query_development"
+                                              fallback={<NotAuthorized />}
+                                            >
+                                              <ODataPage />
                                             </CapabilityGate>
                                           }
                                         />
