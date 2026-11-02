@@ -75735,7 +75735,11 @@
     with a key every node shares, so any data node verifies it. The address the control plane advertises
     is the data plane load balancer for the org''s region; long-lived connections (pgwire, Bolt, gRPC, Flight)
     are balanced at TCP level and stay on one data node. Background work is claimed through the shared store
-    so it runs once, not once per control node.'
+    so it runs once, not once per control node. (Amended 2026-11-02, Several control nodes use the existing
+    propagation:) Maintainer 2026-11-02 (correcting the wording above): several control nodes need nothing
+    new to stay in step. A model change reaches every control node through the existing propagation (REQ-1914:
+    the stamp advanced in the same transaction as the change tells every process to reload), as it does
+    for every node today. Data nodes hold no model and reload nothing.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
