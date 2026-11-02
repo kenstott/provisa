@@ -154,6 +154,21 @@ def _setval(*params: str) -> str:
     )
 
 
+def _not_an_index(*params: str) -> str:
+    """brin_summarize_range and its kin: no relation of a Provisa model is an index, since indexes
+    are the source's, so each refuses as PostgreSQL does a relation that is none."""
+    nulls = " OR ".join(f"{_name(p)} IS NULL" for p in params)
+    relation = "(SELECT _sc.relname FROM meta.catalog_pg_class _sc WHERE _sc.oid = rel)"
+    return (
+        f"CASE WHEN {nulls} THEN NULL "
+        f"WHEN {relation} IS NOT NULL THEN "
+        + raising("42809", f"'\"' || {relation} || '\" is not an index'")
+        + " ELSE "
+        + raising("XX000", "'could not open relation with OID ' || rel")
+        + " END"
+    )
+
+
 _VOID = "''"
 _BINARY_UPGRADE = raising(
     "55P02", "'function can only be called when server is in binary upgrade mode'"
@@ -175,7 +190,7 @@ _RESET_TARGETS = (
 _LO_WRITES = (
     ("lo_creat", "mode", "BIGINT"),
     ("lo_create", "lobj", "BIGINT"),
-    ("lo_from_bytea", "lobj, data", "BIGINT"),
+    ("lo_from_bytea", "lobj, data:bytea", "BIGINT"),
 )
 
 
@@ -252,6 +267,8 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
         "set_next_array_pg_type_oid",
         "set_next_heap_pg_class_oid",
         "set_next_heap_relfilenode",
+        "set_next_multirange_array_pg_type_oid",
+        "set_next_multirange_pg_type_oid",
         "set_next_index_pg_class_oid",
         "set_next_index_relfilenode",
         "set_next_pg_authid_oid",
@@ -265,6 +282,10 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
     a.strict("binary_upgrade_set_record_init_privs", "flag", "VARCHAR", _BINARY_UPGRADE)
     a.strict("binary_upgrade_set_missing_value", "a, b, c", "VARCHAR", _BINARY_UPGRADE)
     a.strict("binary_upgrade_logical_slot_has_caught_up", "slot", "BOOLEAN", _BINARY_UPGRADE)
+    a.body("brin_summarize_new_values", "rel:bigint", _not_an_index("rel"), "INTEGER")
+    a.body("brin_summarize_range", "rel:bigint, block", _not_an_index("rel", "block"), "INTEGER")
+    a.body("brin_desummarize_range", "rel:bigint, block", _not_an_index("rel", "block"), "VARCHAR")
+    a.body("gin_clean_pending_list", "rel:bigint", _not_an_index("rel"), "BIGINT")
     # The statistics Provisa does not keep: nothing to reset.
     for name in ("pg_stat_force_next_flush", "pg_stat_clear_snapshot", "pg_stat_reset"):
         a.body(name, "", _VOID)
@@ -650,14 +671,14 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
         ("lo_truncate", "fd, len", "INTEGER"),
         ("lo_truncate64", "fd, len", "INTEGER"),
         ("loread", "fd, len", "BYTEA"),
-        ("lowrite", "fd, data", "INTEGER"),
+        ("lowrite", "fd, data:bytea", "INTEGER"),
     ):
         a.strict(name, params, sql_type, bad_descriptor)
     for name, params, sql_type in (
         ("lo_open", "lobj, mode", "INTEGER"),
         ("lo_get", "lobj", "BYTEA"),
         ("lo_get", "lobj, off, len", "BYTEA"),
-        ("lo_put", "lobj, off, data", "VARCHAR"),
+        ("lo_put", "lobj, off, data:bytea", "VARCHAR"),
         ("lo_unlink", "lobj", "INTEGER"),
         ("lo_export", "lobj, f", "INTEGER"),
     ):

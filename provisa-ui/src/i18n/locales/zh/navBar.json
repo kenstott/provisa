@@ -24,6 +24,7 @@
     "itemSql": "SQL",
     "itemGrpc": "gRPC",
     "itemJsonApi": "JSON:API",
+    "itemOData": "OData",
     "itemOpenApi": "OpenAPI",
     "itemOrgs": "组织",
     "itemDashboard": "仪表板",

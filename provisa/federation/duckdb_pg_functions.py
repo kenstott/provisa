@@ -11,7 +11,7 @@
 """PostgreSQL's functions DuckDB has no equivalent of, on the embedded DuckDB engine and the pgwire
 catalog DB (REQ-2167, PGWIRE'S CATALOG FUNCTIONS): ``provisa_size_pretty``, pg_size_pretty's text
 (DuckDB's of that name writes KiB), and the UDFs of provisa.federation.duckdb_pg_scalars, where a
-value needs PostgreSQL's own algorithm. A function a DuckDB expression carries is no function here:
+value needs PostgreSQL's own algorithm, and provisa.federation.duckdb_pg_json. A function a DuckDB expression carries is no function here:
 it is a rewrite in provisa.transpiler.function_macros, as money's, the shapes', tsvector's and
 abbrev are.
 
@@ -67,11 +67,13 @@ def size_pretty(size: int) -> str:
 def register(con: Any) -> None:
     """Create the functions on DuckDB connection ``con``."""
     from provisa.federation.duckdb_extensions import load_staged
+    from provisa.federation.duckdb_pg_json import register as register_json
     from provisa.federation.duckdb_pg_scalars import register as register_scalars
     from provisa.federation.duckdb_pg_xml import register as register_xml
 
     register_scalars(con)
     register_xml(con)
+    register_json(con)
     con.create_function(
         "provisa_size_pretty", size_pretty, ["HUGEINT"], "VARCHAR", side_effects=False
     )

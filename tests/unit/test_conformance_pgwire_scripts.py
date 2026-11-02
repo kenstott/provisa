@@ -389,8 +389,10 @@ class _Probe:
         functions: list[tuple[str, str]],
         refused: dict[str, str],
         oids: dict[str, int] | None = None,
+        sqlstate: str = "55000",
     ) -> None:
         self._functions = functions
+        self._sqlstate = sqlstate
         self._refused = refused
         self._oids = oids or {}
 
@@ -403,7 +405,13 @@ class _Probe:
     def run(self, sql: str, result_format: int = 0) -> dict:
         name = sql.split('pg_catalog."', 1)[1].split('"', 1)[0]
         if name in self._refused:
-            return {"ok": False, "error": self._refused[name]}
+            said = self._refused[name]
+            return {
+                "ok": False,
+                "error": said,
+                "sqlstate": self._sqlstate,
+                "primary": said.split("\n", 1)[0],
+            }
         return {"ok": True, "fields": [{"type_oid": self._oids.get(name, 23)}]}
 
 
@@ -554,6 +562,32 @@ def test_a_refusal_of_this_server_s_state_proves_nothing_and_stays_failed(monkey
     assert report["failures_by_family"]["System"]["functions"] == ["pg_wal_replay_pause()"]
 
 
+def _state_refusal(monkeypatch, provisa_sqlstate: str) -> dict:
+    """A refusal of the server's state, which Provisa answers with ``provisa_sqlstate``."""
+    m = _load("pgwire_catalog_types")
+    functions = [("pg_wal_replay_pause", "", ())]
+    return m.catalog_functions(
+        _Probe(functions, refused={"pg_wal_replay_pause": RECOVERY_REFUSAL}),
+        _Probe(
+            functions,
+            refused={"pg_wal_replay_pause": RECOVERY_REFUSAL},
+            sqlstate=provisa_sqlstate,
+        ),
+        {23: "int4", 25: "text"},
+    )
+
+
+def test_a_refusal_of_the_servers_state_passes_when_provisa_refuses_it_the_same(monkeypatch):
+    report = _state_refusal(monkeypatch, "55000")
+    assert (report["passed"], report["failed"]) == (1, 0)
+    assert report["refused_here"] == {}
+
+
+def test_a_refusal_with_another_sqlstate_stays_failed(monkeypatch):
+    report = _state_refusal(monkeypatch, "0A000")
+    assert (report["passed"], report["failed"]) == (0, 1)
+
+
 @pytest.mark.parametrize(
     "error",
     [
@@ -592,11 +626,10 @@ def test_a_refusal_of_a_server_s_state_or_of_the_probe_s_statement_proves_nothin
     assert not function_probe.proves_internal(f"PostgreSQL refuses the call: ERROR:  {error}")
 
 
-def test_an_index_function_not_served_is_skipped_by_design_and_nothing_else_of_its_family(
-    monkeypatch,
-):
-    # INDEXES BELONG TO THE DATABASE (REQ-2167): one served stays passed, and one served with the
-    # wrong result type stays failed. A function PostgreSQL cannot call is internal first.
+def test_an_index_function_not_served_is_failed_and_only_an_internal_one_is_skipped(monkeypatch):
+    # The index support functions are served or refused by name (REQ-2171), so no group hides one:
+    # one served stays passed, and one not served or served with the wrong result type is failed.
+    # A function PostgreSQL cannot call is internal.
     functions = [
         ("brin_summarize_range", "regclass, bigint", ("regclass", "bigint")),
         ("btint4cmp", "integer, integer", ("integer", "integer")),
@@ -615,17 +648,15 @@ def test_an_index_function_not_served_is_skipped_by_design_and_nothing_else_of_i
     assert (report["total"], report["passed"], report["by_design"], report["failed"]) == (
         7,
         1,
-        3,
-        3,
+        1,
+        5,
     )
     assert {g["group"]: [c["case"] for c in g["cases"]] for g in report["by_design_groups"]} == {
         "Internal functions": ["catalog function::btint4sortsupport(internal)"],
-        "Index functions": [
-            "catalog function::brin_summarize_range(regclass, bigint)",
-            "catalog function::btint4cmp(integer, integer)",
-        ],
     }
     assert sorted(f["scenario"] for f in report["failures"]) == [
+        "brin_summarize_range(regclass, bigint)",
+        "btint4cmp(integer, integer)",
         "gtsvectorout(gtsvector)",
         "hashtext(text)",
         "pg_get_indexdef(oid)",
@@ -717,15 +748,15 @@ def test_a_declared_group_cannot_skip_a_catalog_function(monkeypatch, tmp_path):
     assert (report["by_design"], report["failed"]) == (0, 1)
 
 
-def test_the_shipped_groups_naming_catalog_functions_are_exactly_the_two_allowed():
+def test_the_shipped_group_naming_catalog_functions_is_exactly_the_one_allowed():
     import by_design
 
     groups = by_design.groups("pgwire")
     assert groups
     named = [g.group for g in groups if g.case and "catalog function" in g.case.pattern]
-    assert named == ["Internal functions", "Index functions"] == list(by_design.FUNCTION_GROUPS)
+    assert named == ["Internal functions"] == list(by_design.FUNCTION_GROUPS)
     assert [g.group for g in by_design.function_groups("pgwire")] == named
-    assert {g.family for g in groups} == {"", "Index support"}
+    assert {g.family for g in groups} == {""}
 
 
 @pytest.mark.parametrize(
@@ -854,7 +885,7 @@ def test_the_page_gives_the_function_groups_and_each_case_s_proof_on_one_line(mo
     assert rate.endswith("Catalog functions are reported by engine")
     assert "## Skipped by design" in cases
     assert "<details><summary>Internal functions (1)</summary>" in cases
-    assert "<details><summary>Index functions (1)</summary>" in cases
+    assert "Index functions" not in cases
     assert (
         "| catalog function::event_trigger_out(event_trigger) | no call reaches it: PostgreSQL "
         "refuses the call: ERROR: cannot accept a value of type event_trigger LINE 1: x |"
@@ -868,7 +899,8 @@ def test_the_pgwire_page_states_a_catalog_function_s_result_is_by_engine():
     page = (_load("fill_docs").DOCS / "pgwire.md").read_text()
     assert "each overload then has a result on each engine" in page.lower()
     assert "Internal functions cannot be called by PostgreSQL itself" in page
-    assert "Index functions are the access method support" in page
+    assert "Index functions" not in page
+    assert "such as `brin_summarize_range`, are ordinary functions" in page
     assert "each case is passed, skipped by design or failed" not in page
     assert "| Failed | Every other function" not in page
     assert "No `pg_catalog` function is skipped by design" not in page

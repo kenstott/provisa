@@ -1,8 +1,8 @@
 # RDF 1.1 Syntax Conformance
 
-**Suite:** W3C rdf-tests (Turtle, N-Triples). TBD: version recorded from CI.
+**Suite:** W3C rdf-tests (Turtle, N-Triples).
 
-**Pass rate:** TBD: generated from CI.
+**Pass rate:** The W3C rdf-tests suite does not run in CI. An in-process run is the current measure.
 
 ## Deliberate differences
 
@@ -22,5 +22,5 @@ No add-ins apply to RDF syntax conformance.
 
 | Tool | Version | Date | Method |
 | --- | --- | --- | --- |
-| Apache Jena (RDF parser) | TBD | TBD | TBD: replay or manual |
-| rdflib (Python) | TBD | TBD | TBD: replay or manual |
+| Apache Jena (RDF parser) | — | — | Not yet verified |
+| rdflib (Python) | — | — | Not yet verified |

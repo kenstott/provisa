@@ -103,3 +103,63 @@ def test_no_mutation_resolver_reaches_through_self():
         }
     )
     assert through_self == []
+
+
+def _publishing(monkeypatch, register):
+    """Publish a new source with ``register`` standing in for its draft table: the rebuilds run."""
+    from provisa.api.admin import schema_mutation
+
+    rebuilds: list[str] = []
+
+    async def _rebuild():
+        rebuilds.append("rebuild")
+
+    monkeypatch.setattr(schema_mutation, "_rebuild_schemas", _rebuild)
+    monkeypatch.setattr(schema_mutation, "_register_draft_table", register)
+    return schema_mutation._publish_new_source, rebuilds
+
+
+async def test_a_source_saved_with_its_draft_table_rebuilds_the_schemas_once(monkeypatch):
+    """REQ-2113, REQ-2006: a rebuild takes 14-20 s on a demo sandbox while the tier builds, and the
+    table's registration ends in one: the source's own before it was paid for twice on every Save
+    (79 s, 2026-11-01). The table is typed from the file, which needs no rebuild."""
+
+    async def _registered(info, input):
+        return None
+
+    publish, rebuilds = _publishing(monkeypatch, _registered)
+    made = SourceInput(id="s", type="parquet", register_table_draft=True, table_domain_id="d")
+    assert await publish(SimpleNamespace(context={}), made) is None
+    assert rebuilds == []  # the registration's own stands for it: stubbed here
+
+
+async def test_a_source_without_a_draft_table_is_rebuilt_for(monkeypatch):
+    async def _never(info, input):
+        raise AssertionError("no draft table was asked for")
+
+    publish, rebuilds = _publishing(monkeypatch, _never)
+    assert await publish(SimpleNamespace(context={}), SourceInput(id="s", type="csv")) is None
+    assert rebuilds == ["rebuild"]
+
+
+async def test_a_source_whose_draft_table_was_not_set_up_is_rebuilt_for(monkeypatch):
+    said = MutationResult(success=True, message="m", code="schema.source_created_without_table")
+
+    async def _without(info, input):
+        return said
+
+    publish, rebuilds = _publishing(monkeypatch, _without)
+    made = SourceInput(id="s", type="csv", register_table_draft=True)
+    assert await publish(SimpleNamespace(context={}), made) is said
+    assert rebuilds == ["rebuild"]
+
+
+async def test_a_draft_table_that_raised_leaves_the_source_rebuilt_for(monkeypatch):
+    async def _raises(info, input):
+        raise RuntimeError("the file could not be read")
+
+    publish, rebuilds = _publishing(monkeypatch, _raises)
+    made = SourceInput(id="s", type="csv", register_table_draft=True, table_domain_id="d")
+    with pytest.raises(RuntimeError):
+        await publish(SimpleNamespace(context={}), made)
+    assert rebuilds == ["rebuild"]

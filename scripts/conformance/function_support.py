@@ -56,6 +56,19 @@ set Provisa leaves empty, is no form to check. The rest are ``only called`` and 
 a strict function proves the call was served and its type, not its answer. Three literals, not a
 domain: a function that differs only on values no sample reaches passes here.
 
+Literals alone do not say a function works on a column: a form that folds a literal at transpile
+time passes while a column of the same type is refused. So an overload given values gets one more
+call (``column_calls``), which reads the same value from a column. ``seed_columns`` seeds and
+registers ``conformance.function_columns``, with a column of each type of ``SAMPLES`` and a row of
+each sample, so the column is a registered one of that type, on the same relation on both servers.
+An argument a function needs a particular literal for (``ARG_VALUES``: a unit, a pattern, a format)
+stays that literal; an overload with no other argument reads its first such argument from a VALUES
+subquery, which has its value where the table does not. A direct argument of an ordered-set
+aggregate stays a literal, because PostgreSQL requires one. The first row PostgreSQL answers is
+compared, and the result is the overload's ``column``, beside its outcome: a pass whose column call
+fails passes on literals only. It changes no outcome and no guaranteed list; function_report.py
+counts and lists it per engine.
+
 The result is text format under one set of session settings. ``compare`` says whether an answer is
 the same, and under which rules when its text is not: rows as a multiset (no call has an ORDER BY of
 its own to hold them to), float4 and float8 and their arrays within one part in 10^14, numerics by
@@ -88,6 +101,7 @@ from pathlib import Path
 from typing import Any
 
 import psycopg
+import yaml
 from psycopg import pq
 
 import function_report
@@ -121,6 +135,11 @@ LEG_BUDGET_S = 6300.0
 
 #: Calls of an overload given values: one aggregate or window statement reads all of them as rows.
 VALUE_ROWS = 3
+
+#: The registered table a column call reads: a column of each type of ``SAMPLES``, a row of each
+#: sample, ``id`` naming the row.
+COLUMN_TABLE = "function_columns"
+COLUMN_RELATION = f"{catalog.FIXTURE_SCHEMA}.{COLUMN_TABLE}"
 
 #: Floats compare within one part in this (REQ-2171).
 FLOAT_TOLERANCE = 1e-14
@@ -446,11 +465,15 @@ def _cast(literal: str, argtype: str) -> str:
     return f"{literal}::{concrete}"
 
 
+def _given(fn: Function) -> dict[int, tuple[str, str, str]]:
+    """The arguments of ``fn`` that take literals of their own, by position (``ARG_VALUES``)."""
+    return ARG_VALUES.get(f"{fn.name}({fn.argtypes[0]})") or ARG_VALUES.get(fn.name) or {}
+
+
 def _sample(fn: Function, position: int, row: int) -> str | None:
     """Row ``row``'s literal of ``fn``'s argument ``position``, cast; None if it has none."""
     argtype = fn.argtypes[position]
-    first = fn.argtypes[0]
-    given = (ARG_VALUES.get(f"{fn.name}({first})") or ARG_VALUES.get(fn.name) or {}).get(position)
+    given = _given(fn).get(position)
     if given is None:
         samples = SAMPLES.get(function_probe.CONCRETE.get(argtype, argtype))
         if samples is None:
@@ -545,6 +568,71 @@ def value_calls(fn: Function, family: str) -> list[Call]:
             row = [*row[:-1], f"VARIADIC {row[-1]}"]
         calls.append(Call(function_probe.statement(fn, row), answers=True))
     return calls
+
+
+def sample_column(sample_type: str) -> str:
+    """The column of ``COLUMN_TABLE`` holding the samples of ``sample_type``."""
+    return "c_" + re.sub(r"\W+", "_", sample_type.replace("[]", " array")).strip("_")
+
+
+def _column_reads(fn: Function, rows: Iterable[int]) -> tuple[dict[int, str], str]:
+    """The arguments of ``fn`` a column call of ``rows`` reads from a column, each position's
+    column, and the relation they are columns of, with its ``id``. A VALUES subquery holds those
+    rows alone: one sample that casts says nothing of another that does not."""
+    given = _given(fn)
+    first = 0 if fn.aggkind == "h" else fn.direct  # the one argument is direct and ordered both
+    reads = {
+        i: sample_column(function_probe.CONCRETE.get(argtype, argtype))
+        for i, argtype in enumerate(fn.argtypes)
+        if i >= first and i not in given
+    }
+    if reads:
+        return reads, COLUMN_RELATION
+    numbered = [[str(row + 1), _sample(fn, first, row) or ""] for row in rows]
+    return {first: "c1"}, f"({_values(numbered)}) AS t(id, c1)"
+
+
+def _column_args(fn: Function, reads: dict[int, str], row: int) -> list[str]:
+    return [reads.get(i) or _sample(fn, i, row) or "" for i in range(len(fn.argtypes))]
+
+
+def _column_aggregate(fn: Function) -> str:
+    reads, relation = _column_reads(fn, range(VALUE_ROWS))
+    named = f'pg_catalog."{fn.name}"'
+    args = _column_args(fn, reads, 0)
+    if fn.aggkind == "h":
+        direct = _sample(fn, 0, 0)
+        return f"SELECT {named}({direct}) WITHIN GROUP (ORDER BY {args[0]}) AS v FROM {relation}"
+    if fn.aggkind == "o":
+        direct = ", ".join(args[: fn.direct])
+        ordered = ", ".join(args[fn.direct :])
+        return f"SELECT {named}({direct}) WITHIN GROUP (ORDER BY {ordered}) AS v FROM {relation}"
+    order = " ORDER BY id" if "_agg" in fn.name else ""
+    return f"SELECT {named}({', '.join(args)}{order}) AS v FROM {relation}"
+
+
+def column_calls(fn: Function, family: str) -> list[Call]:
+    """``fn`` reading the values of ``value_calls`` from columns, in the order to try them: the
+    first PostgreSQL answers is the overload's column call. None without an argument to read."""
+    if unchecked(fn, family) is not None or not fn.argtypes:
+        return []
+    if fn.kind == "a":
+        return [Call(_column_aggregate(fn), answers=True)]
+    if fn.kind == "w":
+        reads, relation = _column_reads(fn, range(VALUE_ROWS))
+        args = ", ".join(_column_args(fn, reads, 0))
+        named = f'pg_catalog."{fn.name}"'
+        sql = f"SELECT {named}({args}) OVER (ORDER BY id) AS v FROM {relation}"
+        return [Call(sql, answers=True)]
+    out = []
+    for row in range(VALUE_ROWS):
+        reads, relation = _column_reads(fn, (row,))
+        args = _column_args(fn, reads, row)
+        if fn.variadic:
+            args = [*args[:-1], f"VARIADIC {args[-1]}"]
+        sql = f"{function_probe.statement(fn, args)} FROM {relation} WHERE id = {row + 1}"
+        out.append(Call(sql, answers=True))
+    return out
 
 
 def calls(fn: Function, family: str) -> list[Call]:
@@ -968,6 +1056,30 @@ def _answer(server: Session, call_: Call) -> dict[str, Any]:
     return answer
 
 
+def measure_column(
+    fn: Function, family: str, pg: Session, provisa: Session, enums: frozenset[int] = frozenset()
+) -> dict[str, Any] | None:
+    """The first of ``column_calls`` PostgreSQL answers, on both servers; None if it answers none.
+    ``outcome`` is function_support's own, of this call alone; a column's rules are its own too."""
+    for call_ in column_calls(fn, family):
+        want = _answer(pg, call_)
+        if not want["ok"] or not want["fields"]:
+            continue
+        got = _answer(provisa, call_)
+        if not got["ok"]:
+            named = function_probe.refused_by_name(got["error"])
+            return {
+                "outcome": "refused" if named else "error",
+                "detail": {"statement": call_.sql, "error": got["error"]},
+            }
+        compared = compare(want, got, values=True, sql=call_.sql, function=fn.name, enums=enums)
+        if compared.difference is not None:
+            detail = {"statement": call_.sql, "difference": compared.difference}
+            return {"outcome": "wrong_answer", "detail": detail}
+        return {"outcome": "pass", "rules": sorted(compared.rules)}
+    return None
+
+
 def measure_overload(
     fn: Function,
     family: str,
@@ -1047,7 +1159,50 @@ def measure_overload(
     else:
         entry["outcome"] = "pass"
         entry["rules"] = sorted(rules)
+    column = measure_column(fn, family, pg, provisa, enums)
+    if column is not None:
+        entry["column"] = column
     return entry
+
+
+def seed_columns(pg_dsn: str, out: Path) -> None:
+    """``COLUMN_TABLE`` in the job's PostgreSQL, and ``out``, its model table entry (the instance's
+    ``extra-tables``). It comes before the instance starts, as any job's own fixture does."""
+    types = list(SAMPLES)
+    columns = [(sample_column(t), t) for t in types]
+    declared = ", ".join(["id integer", *(f"{name} {typ}" for name, typ in columns)])
+    with psycopg.connect(pg_dsn, autocommit=True) as conn:
+        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {catalog.FIXTURE_SCHEMA}")
+        conn.execute(f"DROP TABLE IF EXISTS {COLUMN_RELATION}")
+        conn.execute(f"CREATE TABLE {COLUMN_RELATION} ({declared})")
+        for row in range(VALUE_ROWS):
+            values = [str(row + 1), *(_cast(SAMPLES[t][row], t) for t in types)]
+            conn.execute(f"INSERT INTO {COLUMN_RELATION} VALUES ({', '.join(values)})")
+    registered = catalog.registered_columns(
+        [("id", "integer"), *columns],
+        lambda column: catalog._sized_numeric(pg_dsn, column, COLUMN_TABLE),
+    )
+    entry = {
+        "source_id": "conformance-pg",
+        "schema": catalog.FIXTURE_SCHEMA,
+        "table": COLUMN_TABLE,
+        "alias": COLUMN_TABLE,
+        "domain_id": catalog.FIXTURE_SCHEMA,
+        "columns": [
+            {"name": name, **typing, "visible_to": ["org_admin"]}
+            for name, _typ, typing in registered
+        ],
+    }
+    out.write_text(yaml.safe_dump([entry]))
+    print(f"seeded {COLUMN_RELATION}: {len(columns)} columns, {VALUE_ROWS} rows")
+
+
+def require_column_table(provisa: Session) -> None:
+    """Stops a leg whose model lacks ``COLUMN_TABLE``: every column call would be refused, and
+    every overload would read as passing on literals only."""
+    found = provisa.answer(f"SELECT id FROM {COLUMN_RELATION}")
+    if not found["ok"] or len(found["rows"]) != VALUE_ROWS:
+        raise SystemExit(f"{COLUMN_RELATION} is not served: {found}")
 
 
 def _classifier() -> Any:
@@ -1072,6 +1227,7 @@ def measure(
     declared = function_probe.families()
     classify = _classifier()
     provisa = Session(provisa_dsn)
+    require_column_table(provisa)
     started = time.monotonic()
     overloads: list[dict[str, Any]] = []
     server_gone: str | None = None
@@ -1170,6 +1326,14 @@ def engine_markdown(report: dict[str, Any]) -> str:
         *(_row(family, counts(group)) for family, group in _families(report["overloads"])),
         "",
     ]
+    columns = function_report.column_results(
+        [{**o, "outcomes": {report["engine"]: o}} for o in report["overloads"]], report["engine"]
+    )
+    lines += [
+        f"Passes on literals and columns: {columns['pass_literal_and_column']}. "
+        f"On literals only: {columns['pass_literal_only']}.",
+        "",
+    ]
     if report["server_gone"]:
         lines += [f"**{report['server_gone']}**", ""]
     return "\n".join(lines)
@@ -1187,7 +1351,7 @@ def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
         "outcome": entry["outcome"],
         "result": function_report.result_of(entry["outcome"], entry.get("rules", ())),
     }
-    for key in ("detail", "served_by"):
+    for key in ("detail", "served_by", "column"):
         if entry.get(key) is not None:
             kept[key] = entry[key]
     if entry.get("rules"):
@@ -1268,7 +1432,10 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
         # function_report.RESULT_KEYS per engine: what a floor reads (REQ-2171, RESULTS ARE BY
         # ENGINE). No key adds the engines up.
         "by_engine": {
-            engine: function_report.result_counts(f["outcomes"][engine] for f in functions)
+            engine: {
+                **function_report.result_counts(f["outcomes"][engine] for f in functions),
+                **function_report.column_results(functions, engine),
+            }
             for engine in engines
         },
         "by_family": function_report.by_family(functions, engines),
@@ -1399,6 +1566,9 @@ def main(argv: list[str]) -> int:
     m.add_argument("--out-json", required=True, type=Path)
     m.add_argument("--out-md", required=True, type=Path)
     m.add_argument("--limit", type=int, help="an even sample of about this many overloads")
+    s = sub.add_parser("seed-columns")
+    s.add_argument("--pg", required=True)
+    s.add_argument("--out", required=True, type=Path)
     g = sub.add_parser("merge")
     g.add_argument("--engines", required=True, help="every engine of the run, comma separated")
     g.add_argument("--in", dest="indir", required=True, type=Path)
@@ -1407,6 +1577,9 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv[1:])
     if args.command == "measure":
         return measure(args.engine, args.pg, args.provisa, args.out_json, args.out_md, args.limit)
+    if args.command == "seed-columns":
+        seed_columns(args.pg, args.out)
+        return 0
     return merge(args.engines.split(","), args.indir, args.out, args.out_md)
 
 

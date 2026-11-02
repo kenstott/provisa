@@ -86,9 +86,9 @@
         "description": "Eén kiezer toont elk type, gegroepeerd per categorie: <strong>Abonnementen, RDBMS, Cloud-datawarehouse, Analytics, Data lake, NoSQL, Code-resolvers, Grafen, Bestanden, API, Streaming, Enterprise, Datakwaliteit, Overig</strong>. Zoek op naam of alias, of beperk met de categoriechips. Elk type toont zijn logo en een bereikpictogram: ⚡ ter plekke live gelezen, of een kopiepictogram waar Provisa een ververst replica leest.<p>Kies er een, vul de verbinding in en sla op.</p>"
       },
       "stepBuildSource": {
-        "title": "Een bron, live toegevoegd",
-        "description": "Zo voeg je een bron toe: de kiezer opende met de volledige lijst, <strong>Parquet File</strong> werd gekozen, het adres van het bestand werd ingevuld (<code>supplies.parquet</code>) en Opslaan maakte de bron aan. De nieuwe bron <strong>supplies</strong> leest dat bestand op zijn plek.",
-        "acting": "Bron toevoegen"
+        "title": "Een bron, ingevuld",
+        "description": "De kiezer ging open met zijn hele lijst, <strong>Parquet File</strong> werd gekozen en het formulier werd ingevuld met het adres van het bestand (<code>supplies.parquet</code>). Meer heeft een bestandsbron niet nodig. Dit is alleen een blik op het formulier: Volgende drukt op <strong>Annuleren</strong> en er wordt niets opgeslagen.",
+        "acting": "Bron invullen"
       },
       "step4": {
         "title": "Alles wordt een tabel",
@@ -872,13 +872,9 @@
         "title": "Waar een martkolom vandaan komt",
         "description": "De lineage van de kolommen van de mart: elke kolom teruggevolgd via de point-in-time-view en de satellites naar het bronveld waar hij vandaan komt."
       },
-      "datavaultAnalyst": {
-        "title": "De weergave van een analist",
-        "description": "Vervolgens draait de SQL-verkenner als de Europese analist. Persoonsgegevens staan in de satellieten, dus daar worden ze beheerd."
-      },
       "datavaultMasked": {
         "title": "Gemaskeerd waar de persoonsgegevens zijn",
-        "description": "Als analist toont de CRM-satelliet alleen Europese klanten. Hun contactpersonen worden achtergehouden, en de namen in hun e-mails en de cijfers van hun telefoonnummers zijn verborgen. De hubs en links blijven leesbaar, dus de analist kan er nog steeds op koppelen."
+        "description": "De SQL-verkenner draait nu als de Europese analist. Persoonsgegevens staan in de satellieten, dus daar worden ze beheerd. Als analist toont de CRM-satelliet alleen Europese klanten. Hun contactpersonen worden achtergehouden, en de namen in hun e-mails en de cijfers van hun telefoonnummers zijn verborgen. De hubs en links blijven leesbaar, dus de analist kan er nog steeds op koppelen."
       },
       "datavaultRecap": {
         "title": "Wat u zag",
@@ -972,13 +968,9 @@
         "title": "Terug naar alle rollen",
         "description": "Vervolgens schakelt de rolkiezer terug naar <strong>All</strong>."
       },
-      "retailAsMarketing": {
-        "title": "Als EU-marketing",
-        "description": "Hierna draait de SQL-verkenner als marketing_eu."
-      },
       "retailAudience": {
         "title": "Alleen klanten die toestemming gaven",
-        "description": "EU-marketing leest de EU-klanten die toestemming voor marketing gaven, en alleen hen. De view wordt in de EU gebouwd uit EU-rijen."
+        "description": "De SQL-verkenner draait nu als <strong>marketing_eu</strong>. EU-marketing leest de EU-klanten die toestemming voor marketing gaven, en alleen hen. De view wordt in de EU gebouwd uit EU-rijen."
       },
       "retailAsDpo": {
         "title": "Als functionaris gegevensbescherming",
@@ -1140,13 +1132,9 @@
         "title": "Relaties, één keer gedeclareerd",
         "description": "<strong>OF_PRODUCT</strong> verbindt een bestelregel in PostgreSQL met het product in MongoDB. Samen met PLACED_BY, HAS_ITEM en SHIPPED_AS zijn deze vier relaties één keer gedeclareerd, en de app en de BI-tool lezen er allebei doorheen."
       },
-      "storefrontAsCustomer": {
-        "title": "Aangemeld als klant",
-        "description": "De app stuurt haar queries als de rol <strong>customer</strong>, waarvan de rijfilters elk antwoord beperken tot de eigen bestellingen van de ingelogde klant. Vervolgens schakelt de rolkiezer naar <strong>customer</strong>, zodat de query hieronder precies zo draait als de app hem draait."
-      },
       "storefrontScreen": {
         "title": "De ene query van de app",
-        "description": "Het bestelgeschiedenisscherm stuurt deze ene geneste GraphQL-query: elke bestelling met haar regels, het product van elke regel uit de catalogus en de zending van de bestelling uit de verzendservice. Uitgevoerd als <strong>customer</strong> geeft ze zeven bestellingen, allemaal van de aangemelde klant."
+        "description": "De app stuurt haar queries als de rol <strong>customer</strong>, waarvan de rijfilters elk antwoord beperken tot de eigen bestellingen van de ingelogde klant. De rolkiezer staat nu op <strong>customer</strong>. Het bestelgeschiedenisscherm stuurt deze ene geneste GraphQL-query: elke bestelling met haar regels, het product van elke regel uit de catalogus en de zending van de bestelling uit de verzendservice. Uitgevoerd als <strong>customer</strong> geeft ze zeven bestellingen, allemaal van de aangemelde klant."
       },
       "storefrontApp": {
         "title": "Het scherm dat ze vult",
@@ -1156,13 +1144,9 @@
         "title": "Dezelfde bestellingen via JSON:API",
         "description": "Een client die JSON:API verkiest, vraagt dezelfde bestellingen op, nog steeds als de klant, met hun regels en zendingen erbij. Elke bestelling verwijst naar de regels en de zending die ze bevat, en het id van een regel is de samengestelde sleutel."
       },
-      "storefrontAnalyst": {
-        "title": "Nu als analist",
-        "description": "De BI-kant leest als <strong>analyst</strong>: ze ziet elke bestelling, maar geen e-mail van een klant. Vervolgens schakelt de kiezer voor uitvoeren als naar <strong>analyst</strong>."
-      },
       "storefrontAnalystSql": {
         "title": "De SQL van de analist",
-        "description": "Te late zendingen per regio en vervoerder, over dezelfde tabellen en relaties. <strong>a_customer</strong> toont een e-mailadres zoals de analist het leest: gemaskeerd."
+        "description": "De BI-kant leest als <strong>analyst</strong>: ze ziet elke bestelling, maar geen e-mail van een klant. De SQL-verkenner draait nu als <strong>analyst</strong>. Te late zendingen per regio en vervoerder, over dezelfde tabellen en relaties. <strong>a_customer</strong> toont een e-mailadres zoals de analist het leest: gemaskeerd."
       },
       "storefrontBi": {
         "title": "Het BI-dashboard",
@@ -1188,13 +1172,9 @@
         "title": "De tabellen, zoals de app ze kende",
         "description": "De vier tabellen kwamen over met de namen die de app gebruikt. <strong>customers</strong> behoudt Hasura's aangepaste namen <strong>givenName</strong> en <strong>familyName</strong>, de producttabel behoudt zijn rootnaam <strong>catalog</strong>, en elke kolom draagt de rollen die haar mogen lezen, uit de select-rechten."
       },
-      "hasuramigrationAsAna": {
-        "title": "Aangemeld als Ana",
-        "description": "Ana is klant. Haar token bevatte <strong>x-hasura-user-id: 1</strong>, en Provisa leest die claim als de sessiewaarde <strong>hasura_user_id</strong>, waarmee de geïmporteerde rijregels vergelijken. Vervolgens schakelt de rolkiezer naar <strong>ana</strong>, zodat de queries hieronder precies zo draaien als de webwinkel ze voor haar draait."
-      },
       "hasuramigrationMyOrders": {
         "title": "De bestelgeschiedenis, hervormd",
-        "description": "De bestelgeschiedenis-query van de webwinkel, eenmaal hervormd voor Provisa: het rootveld draagt zijn domein, de kolomnamen volgen de conventie van Provisa en order_by is een lijst. De relaties <strong>items</strong> en <strong>product</strong> behielden hun Hasura-namen. Als Ana uitgevoerd antwoordt hij met haar vier bestellingen en die van niemand anders."
+        "description": "Ana is klant. Haar token bevatte <strong>x-hasura-user-id: 1</strong>, en Provisa leest die claim als de sessiewaarde <strong>hasura_user_id</strong>, waarmee de geïmporteerde rijregels vergelijken. De rolkiezer staat nu op <strong>ana</strong>. De bestelgeschiedenis-query van de webwinkel, eenmaal hervormd voor Provisa: het rootveld draagt zijn domein, de kolomnamen volgen de conventie van Provisa en order_by is een lijst. De relaties <strong>items</strong> en <strong>product</strong> behielden hun Hasura-namen. Als Ana uitgevoerd antwoordt hij met haar vier bestellingen en die van niemand anders."
       },
       "hasuramigrationProfile": {
         "title": "Een lezing op sleutel",
@@ -1208,21 +1188,13 @@
         "title": "Nog één relatie",
         "description": "<strong>BUYS_FOR</strong> koppelt een klant aan zijn Salesforce-account, goedgekeurd zoals de relaties die de import meebracht. Vanaf hier is het account één veld verwijderd van elke klant, in elke interface, onder de regels van elke rol."
       },
-      "hasuramigrationAsSupport": {
-        "title": "De helpdesk",
-        "description": "Supportmedewerkers kunnen elke bestelling en elke klant lezen, zoals hun Hasura-rechten toestonden. Vervolgens schakelt de rolkiezer naar <strong>support</strong>, en het bestelscherm van de supportafdeling draait zoals zij het gebruiken."
-      },
       "hasuramigrationSupportScreen": {
         "title": "Bestellingen met hun accounts",
-        "description": "Het bestelscherm van de helpdesk, hervormd, met iets nieuws: naast de klant van elke bestelling het account uit Salesforce, de branche en de stad, in hetzelfde verzoek. Klanten zonder account tonen er geen."
-      },
-      "hasuramigrationAnalyst": {
-        "title": "De analist",
-        "description": "Analisten kunnen besteltotalen en accountkoppelingen lezen, maar geen namen of e-mails, en nooit geannuleerde bestellingen. Dat zijn de rijregel en de kolomlijsten die de import overnam. Vervolgens schakelt de rolkiezer naar <strong>analyst</strong>."
+        "description": "Supportmedewerkers kunnen elke bestelling en elke klant lezen, zoals hun Hasura-rechten toestonden. De rolkiezer staat nu op <strong>support</strong>. Het bestelscherm van de helpdesk, hervormd, met iets nieuws: naast de klant van elke bestelling het account uit Salesforce, de branche en de stad, in hetzelfde verzoek. Klanten zonder account tonen er geen."
       },
       "hasuramigrationByIndustry": {
         "title": "Omzet per branche",
-        "description": "Eén SQL-statement over de winkel en Salesforce: omzet per branche van het account achter elke bestelling. De regels van de analist gelden zoals in GraphQL: geannuleerde bestellingen blijven buiten beschouwing en er wordt geen naam of e-mailadres gelezen."
+        "description": "Analisten kunnen besteltotalen en accountkoppelingen lezen, maar geen namen of e-mails, en nooit geannuleerde bestellingen. Dat zijn de rijregel en de kolomlijsten die de import overnam. De SQL-verkenner draait nu als <strong>analyst</strong>. Eén SQL-statement over de winkel en Salesforce: omzet per branche van het account achter elke bestelling. De regels van de analist gelden zoals in GraphQL: geannuleerde bestellingen blijven buiten beschouwing en er wordt geen naam of e-mailadres gelezen."
       },
       "hasuramigrationRecap": {
         "title": "Wat je zag",
@@ -1332,13 +1304,9 @@
         "title": "Wat een analist ziet",
         "description": "Eenmaal aangemeld ziet een analist van bieder A wat aan bidder_a is toegekend: de geaggregeerde views, de profielen, de gemaskeerde steekproef en de records van de verkoper zonder één klantidentiteit. Er is geen klantnaam te lezen, en ook geen bedrijfs- of dealnaam uit het CRM."
       },
-      "dataroomBidder": {
-        "title": "Nu als bieder A",
-        "description": "De volgende statements draaien als <strong>bidder_a</strong>, precies zoals die van de analisten."
-      },
       "dataroomProfile": {
         "title": "Het profiel van de facturen",
-        "description": "Elke kolom van de factuurtabel zoals de profiler die aantrof: rijen, nulls, unieke waarden en bereik. Een bieder leert hoe volledig de records zijn zonder er één te lezen. Hier zijn sommige facturen nooit betaald."
+        "description": "Deze statements draaien als <strong>bidder_a</strong>, precies zoals die van de analisten. Elke kolom van de factuurtabel zoals de profiler die aantrof: rijen, nulls, unieke waarden en bereik. Een bieder leert hoe volledig de records zijn zonder er één te lezen. Hier zijn sommige facturen nooit betaald."
       },
       "dataroomCounts": {
         "title": "Klantaantallen",
@@ -1676,21 +1644,13 @@
         "title": "Bij elke afsluiting opgebouwd",
         "description": "De dagafsluitingstotalen zijn een view die in het warehouse wordt gematerialiseerd volgens de kalender van de bank, die om 18:00 Londense tijd sluit. De view is één GROUP BY over de ene tabel van het grootboek, dus de opbouw draait volledig in het grootboek en alleen de gegroepeerde rijen komen terug. Ze erft de versies van het grootboek en heeft geen eigen historie-instellingen nodig. Elke dag is bij zijn eigen afsluiting vastgelegd. 1 en 2 oktober zijn later opnieuw vastgelegd, toen hun correcties binnenkwamen."
       },
-      "bankingAsOps": {
-        "title": "Als operations",
-        "description": "De volgende query draait als operations, dat volgens de eigen regels van het grootboek in boekingen kijkt. Het ziet geen boeking op een personeelsrekening, en elke tegenpartij blijft verborgen."
-      },
       "bankingDashboard": {
         "title": "Het dashboard, via GraphQL",
-        "description": "De totalen van Londen voor 1 oktober, elk met de boekingen erachter genest. Eén verzoek leest de totalen uit het warehouse en de boekingen uit het grootboek, verbonden via de relatie die u net zag."
-      },
-      "bankingAsAnalyst": {
-        "title": "Als rapportageanalist",
-        "description": "De SQL hierna draait als de rapportage-analisten van de bank. Zij lezen de eindedagtotalen en de vijf grootboekkolommen waaruit die totalen worden opgebouwd: boekdatum, filiaal, product, valuta en bedrag. Een rekening, een tegenpartij of een houder zien zij nooit."
+        "description": "Deze query draait als operations, dat volgens de eigen regels van het grootboek in boekingen kijkt. Het ziet geen boeking op een personeelsrekening, en elke tegenpartij blijft verborgen. De totalen van Londen voor 1 oktober, elk met de boekingen erachter genest. Eén verzoek leest de totalen uit het warehouse en de boekingen uit het grootboek, verbonden via de relatie die u net zag."
       },
       "bankingDay": {
         "title": "De totalen van één dag",
-        "description": "1 oktober zoals het er nu voor staat. Per vestiging, product en valuta ziet u wat er binnenkwam, wat er uitging en het saldo. Een BI-tool die via pgwire verbonden is, voert precies deze SQL uit."
+        "description": "Deze SQL draait als de rapportage-analisten van de bank. Zij lezen de eindedagtotalen en de vijf grootboekkolommen waaruit die totalen worden opgebouwd: boekdatum, filiaal, product, valuta en bedrag. Een rekening, een tegenpartij of een houder zien zij nooit. 1 oktober zoals het er nu voor staat. Per vestiging, product en valuta ziet u wat er binnenkwam, wat er uitging en het saldo. Een BI-tool die via pgwire verbonden is, voert precies deze SQL uit."
       },
       "bankingReported": {
         "title": "Wat er gerapporteerd werd",
@@ -1772,13 +1732,9 @@
         "title": "Wie welke klanten mag zien",
         "description": "De klantentabel draagt de regels: een supportmedewerker West leest alleen de klanten in het westen en hun orders, met gemaskeerde e-mailadressen en zonder prijzen. De BI-analist leest elke regio en wat de orders opbrachten, maar geen enkel e-mailadres."
       },
-      "agentdataSupportRole": {
-        "title": "Handelen als supportmedewerker West",
-        "description": "De agent handelt als de rol in de kopregel. Volgende kiest de supportmedewerker West, zodat elke toolaanroep van de agent als die rol draait."
-      },
       "agentdataSupportAsks": {
         "title": "De vraag van de supportmedewerker",
-        "description": "De agent vindt de tabellen, schrijft SQL en voert het uit met MCP-tools, die tijdens het draaien worden getoond. Alleen de klanten in het westen komen terug, en hun e-mailadressen komen gemaskeerd binnen: meer krijgt de rol niet."
+        "description": "De agent handelt als de rol in de kopregel, nu de supportmedewerker West, zodat elke toolaanroep die hij doet als die rol draait. De agent vindt de tabellen, schrijft SQL en voert het uit met MCP-tools, die tijdens het draaien worden getoond. Alleen de klanten in het westen komen terug, en hun e-mailadressen komen gemaskeerd binnen: meer krijgt de rol niet."
       },
       "agentdataExplain": {
         "title": "Wat er echt draaide",

@@ -42,6 +42,7 @@ from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, TYPES
 from provisa.transpiler.metadata_facts import PRIVILEGES, UNSERVED, CatalogFacts, relation
 from provisa.transpiler.metadata_oids import FIRST_METRIC_OID, KEY_OID_BASE, key_id_sql
 from provisa.transpiler.metadata_server_forms import SCALAR_FORMS, TABLE_FORMS
+from provisa.transpiler.pg_forms_system import SERVER_STATE
 
 #: The search path a definition names a table against (catalog_data's search_path).
 _ON_THE_PATH = "('public', 'pg_catalog')"
@@ -557,11 +558,6 @@ RELATION_FORMS: dict[tuple[str, int], Form] = {
 READS_THE_SERVER = frozenset(
     {
         "binary_upgrade_create_empty_extension",
-        "binary_upgrade_set_next_multirange_array_pg_type_oid",
-        "binary_upgrade_set_next_multirange_pg_type_oid",
-        "brin_desummarize_range",
-        "brin_summarize_new_values",
-        "brin_summarize_range",
         "currval",
         "current_query",
         "cursor_to_xml",
@@ -570,7 +566,6 @@ READS_THE_SERVER = frozenset(
         "database_to_xml_and_xmlschema",
         "database_to_xmlschema",
         "dblink",
-        "gin_clean_pending_list",
         "inet_client_addr",
         "inet_client_port",
         "inet_server_addr",
@@ -645,7 +640,7 @@ _OF_A_USER = frozenset(
 
 #: A form only PostgreSQL can run, of a function of its argument: a statement with no table is the
 #: engine's, which reads the function's row of function_macros' table instead.
-_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name", "currval", "nextval"})
+_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name", "currval", "nextval"}) | SERVER_STATE
 
 
 class MetadataFunctionRefused(ValueError):
@@ -687,6 +682,8 @@ _ATOMIC = (exp.Column, exp.Literal, exp.Func, exp.Cast, exp.Paren, exp.Null, exp
 def _argument(value: exp.Expr, reads_as: str = "") -> exp.Expr:
     if reads_as == "text":
         return exp.cast(value, "TEXT")
+    if reads_as == "bytea":  # no engine reads a bytes' text back, and a form reads only its NULL
+        return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
     if reads_as:
         # An argument of any type, as the form reads it: a value of a type no form operates on
         # (xid8, pg_lsn) still has its text.

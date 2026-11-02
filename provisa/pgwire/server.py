@@ -59,8 +59,15 @@ from buenavista.postgres import (
 
 from provisa.core import request_deadline
 from provisa.core.egress import CountingWriter
-from provisa.core.pg_error import MARK
+from provisa.core.pg_error import MARK, PostgresError
 from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
+from provisa.pgwire.session_zone import (
+    UNKNOWN_ZONE,
+    SessionZone,
+    in_session_zone,
+    raw_row_formats,
+    refuse_other_zone,
+)
 from provisa.transpiler.transpile import DIVISION_BY_ZERO  # REQ-2167: its SQLSTATE
 from provisa.otel_compat import annotate_request as _annotate_request
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -98,7 +105,17 @@ def requested_role(params: dict) -> str | None:  # REQ-1620
     return named.pop() if named else None
 
 
-def _startup_setting(params: dict, key_named: str) -> set[str]:
+def startup_time_zone(params: dict) -> str | None:
+    """The TimeZone a startup packet names, which pgjdbc always does and libpq does for PGTZ. A
+    setting's name is read in any case, and the startup parameter is applied after ``options``."""
+    keys = {key.lower(): value for key, value in params.items()}
+    named = _startup_setting(keys, "timezone", any_case=True)
+    if len(named) > 1 and not keys.get("timezone"):
+        return UNKNOWN_ZONE  # two in options: a set of them has no last
+    return keys.get("timezone") or next(iter(named), None)
+
+
+def _startup_setting(params: dict, key_named: str, *, any_case: bool = False) -> set[str]:
     """The values a connection's startup packet gives ``key_named``: as a startup parameter of that
     name, or set in ``options`` (``-c key=value``)."""
     import shlex
@@ -117,7 +134,8 @@ def _startup_setting(params: dict, key_named: str) -> set[str]:
         else:
             continue
         key, sep, value = setting.partition("=")
-        if sep and key.strip() == key_named and value.strip():
+        said = key.strip().lower() if any_case else key.strip()
+        if sep and said == key_named and value.strip():
             named.add(value.strip())
     return named
 
@@ -134,12 +152,6 @@ _REDIRECT_SET_RE = re.compile(
 # REQ-2110: a session's time travel, the default every statement it runs reads at where a
 # reference says no time of its own (REQ-1163): SET provisa.as_of / provisa.as_recorded, RESET
 # either, or SET either TO DEFAULT.
-#: REQ-2171: SET TimeZone, or SET TIME ZONE, and its RESET: what timeofday writes in.
-_TIME_ZONE_SET_RE = re.compile(
-    r"^\s*(?:SET\s+(?:SESSION\s+)?(?:TIME\s*ZONE)\s*(?:TO|=)?\s*'?(?P<zone>[^';\s]+)'?"
-    r"|RESET\s+TIME\s*ZONE)\s*;?\s*$",
-    re.IGNORECASE,
-)
 _TIME_TRAVEL_SET_RE = re.compile(
     r"^\s*(?:SET\s+(?:SESSION\s+)?(?P<key>provisa\.as_(?:of|recorded))\s*(?:=|\s+TO\s+)\s*"
     r"(?P<value>.+?)|RESET\s+(?P<reset>provisa\.as_(?:of|recorded)))\s*;?\s*$",
@@ -1038,10 +1050,10 @@ _SHAPE_COERCERS: dict[BVType, Callable[[Any], Any]] = {
 _CURRENT_QUERY = re.compile(r'(?:pg_catalog\.)?"?\bcurrent_query"?\s*\(\s*\)', re.IGNORECASE)
 
 
-def _current_query_said(sql: str) -> str:  # REQ-2171
+def _current_query_said(sql: str, client_sql: str) -> str:  # REQ-2171
     """``sql`` with each current_query() the statement the client wrote: what an engine's own would
     answer is the statement as Provisa wrote it for that engine."""
-    said = "'" + sql.replace("'", "''") + "'::text"
+    said = "'" + client_sql.replace("'", "''") + "'::text"
     return _CURRENT_QUERY.sub(lambda _: said, sql)
 
 
@@ -1669,8 +1681,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-2171: what system_user answers, the method and the name the session authenticated
         # by; None in trust mode, as PostgreSQL's is.
         self.system_user: str | None = None
-        # REQ-2171: the zone the session's SET TimeZone named; None for the server's.
-        self.time_zone: str | None = None
+        # REQ-2171: the zone the session is on; startup replaces it with the one it names.
+        self.zone = SessionZone()
         # REQ-1266: the org this session is bound to, set when it is admitted. None until then: a
         # session not yet admitted is served no org's runtime.
         self.org_id: str | None = None
@@ -1721,14 +1733,6 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         from provisa.mv.bitemporal import request_as_of
 
         return request_as_of(self.as_of_setting, self.as_recorded_setting)
-
-    def _note_time_zone(self, sql: str) -> None:
-        """The zone a ``SET TimeZone`` of this statement names; the statement itself is answered
-        as any SET is."""
-        m = _TIME_ZONE_SET_RE.match(sql)
-        if m is not None:
-            zone = m.group("zone")
-            self.time_zone = None if (zone or "").upper() in ("", "DEFAULT", "LOCAL") else zone
 
     def _set_time_travel(self, sql: str) -> bool:
         """Apply ``SET provisa.as_of|as_recorded ...`` / ``RESET`` either; False when ``sql`` is
@@ -1820,25 +1824,59 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         Execute is."""
         return self._with_org(lambda: self._describe_bound(sql, params))
 
+    def _with_source_enums(self, sql: str) -> str:
+        """``sql`` with its enum functions written over what the source declares (REQ-2171)."""
+        from provisa.transpiler.pg_forms_enum import marked_source_casts, with_source_enums
+
+        from provisa.api.app import state
+
+        enums = state.pg_source_enums
+        return marked_source_casts(with_source_enums(sql, enums, self._registered_native), enums)
+
+    def _registered_native(self, table: Any, name: str) -> str | None:
+        """The type the source gives a column of the table a statement names, read as governance
+        reads that name: two tables may hold one name, and only its schema tells them apart."""
+        from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
+
+        from provisa.api.app import state
+        from provisa.compiler.naming import table_id_of
+        from provisa.compiler.stage2 import context_table_map
+
+        ctx = state.contexts.get(self.role_id) if self.role_id is not None else None
+        if ctx is None:
+            return None
+        said = normalize_identifiers(table.copy(), dialect="postgres")
+        names = context_table_map(ctx)
+        if said.db:  # a schema no table of that name is in names none of them
+            names = {name: held for name, held in names.items() if "." in name}
+        table_id = table_id_of(said, names)
+        for column in state.schema_build_cache["column_types"].get(table_id, ()):
+            if column.column_name.lower() == name.lower():
+                return column.native_type
+        return None
+
     def _describe_bound(self, sql: str, params) -> BVQueryResult:
         from provisa.pgwire.catalog import classify
 
+        said = sql.strip()  # what the client sent: audit and logs record this, the engine reads sql
+        sql = self._with_source_enums(sql)
         stripped = sql.strip()
         refuse_server_function(stripped)  # REQ-2167
         if xml_mapping.calls_one(stripped):
             # REQ-2167: answered as its Execute is. With a parameter to come it is described with
             # no reads: the result is not held for that Execute.
             if _placeholder_count(stripped):
-                return self._execute_sql_bound(xml_mapping.undescribed(stripped), None, None)
-            return self._execute_sql_bound(stripped, params, None)
+                undescribed = xml_mapping.undescribed(stripped)
+                return self._execute_sql_bound(undescribed, None, None, said=said)
+            return self._execute_sql_bound(stripped, params, None, said=said)
         advisory = _advisory_call(stripped)
         if advisory is not None and _placeholder_count(stripped):
             # Described with example values: the lock is taken by the Execute, with the Bind's.
             return ProvisaQueryResult(self._advisory_shape(advisory), stripped)
         if advisory is not None or _SERVER_FUNCTION_RE.match(stripped):
-            return self._execute_sql_bound(sql, params, None)
+            return self._execute_sql_bound(sql, params, None, said=said)
         if classify(stripped) == "INTERCEPT":
-            return self._execute_sql_bound(sql, params, None)
+            return self._execute_sql_bound(sql, params, None, said=said)
         if self.role_id is None:
             raise RuntimeError("Not authenticated")
         if self.user_id is None:
@@ -1857,6 +1895,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                         self.user_id,
                         "pgwire",
                         describe_pgwire_statement(stripped, self.role_id, as_of=self.time_travel()),
+                        statement=said,
                     ),
                 ),
                 timeout=request_timeout_for("pgwire"),
@@ -1864,7 +1903,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         except PermissionError as exc:
             raise PermissionError(str(exc)) from exc
         except Exception as exc:
-            _log_statement_failure("DESCRIBE", stripped, exc)
+            _log_statement_failure("DESCRIBE", said, exc)
             raise RuntimeError(str(exc)) from exc
         if self.redirect:
             # REQ-1194: a redirected statement answers where its result was delivered, not its
@@ -2050,8 +2089,10 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         )
 
     def _execute_sql_bound(
-        self, sql: str, params=None, result_fmt=None, *, prepared=None, shape=None
+        self, sql: str, params=None, result_fmt=None, *, prepared=None, shape=None, said=None
     ) -> ProvisaQueryResult:
+        """``said`` is the statement as the client sent it, where ``sql`` is one this session wrote
+        from it: what audit, logs and current_query() record, whatever is written for the engine."""
         from provisa.pgwire.catalog import CatalogSession, answer, classify
 
         # REQ-589: the statement keeps its $N placeholders and the client's values stay BOUND all
@@ -2059,32 +2100,35 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # every value shares one SQL text (server-side prepares, SQL-text-keyed caches) and a value
         # can never change the governed shape. Only the INTERCEPT catalog emulation (not a governed
         # query) reads the values inline.
+        said = said or sql.strip()
+        sql = self._with_source_enums(sql)
         stripped = sql.strip()
         if xml_mapping.calls_one(stripped):
             # REQ-2167: each read the call makes is a statement of this session, governed here,
             # and what such a read warns of (rows cut at the limit) the statement warns of.
             reads = _SessionReads(self)
             folded = xml_mapping.fold(stripped, reads, params)
-            result = self._execute_sql_bound(folded, None, result_fmt)
+            result = self._execute_sql_bound(folded, None, result_fmt, said=said)
             result.warnings = (*result.warnings, *reads.warnings)
             return result
         bound = list(params) if params else None
         refuse_server_function(stripped)  # REQ-2167
+        refuse_other_zone(stripped, self.zone.current)  # REQ-2171
         advisory = _advisory_call(stripped)
         if advisory is not None:
             return self._advisory_answer(advisory, stripped, params)
         server_function = _SERVER_FUNCTION_RE.match(stripped)
         if server_function is not None:
             return ProvisaQueryResult(self._server_function(server_function), stripped)
-        stripped = _current_query_said(stripped)
+        stripped = _current_query_said(stripped, said)
         # REQ-1194: SET / RESET provisa.redirect*; REQ-2110: provisa.as_of / provisa.as_recorded
-        self._note_time_zone(stripped)
         if self._set_redirect(stripped) or self._set_time_travel(stripped):
             from provisa.executor.result import QueryResult
 
             return ProvisaQueryResult(QueryResult(rows=[], column_names=[]), stripped)
         was_open = self.transaction_open
         self.transaction_open = _transaction_open(stripped, was_open)
+        self.zone.note(stripped, was_open, self.transaction_open)  # REQ-2171
         if was_open and not self.transaction_open:
             advisory_locks.LOCKS.end_transaction(self)  # REQ-2167
         disposition = classify(stripped)
@@ -2101,7 +2145,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     self.application_name,
                     self.backend_start,
                     self.system_user,
-                    self.time_zone,
+                    self.zone.current,
+                    self.zone,
                 ),
                 run=self._catalog_read,
             )
@@ -2141,6 +2186,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # read up in the response cache BEFORE routing; a hit comes back as a Route.CACHE plan and
         # is served by the _execute_plan branch below (decoded rows, or the raw DataRow replay
         # written for these codes).
+        result_fmt = raw_row_formats(result_fmt, self.zone.current)  # REQ-2171
         _formats = list(result_fmt) if result_fmt else None
         # REQ-1194/REQ-1224 (amended 2026-10-04): a forced redirect is the session's setting; this
         # streaming transport is never delivered automatically.
@@ -2171,14 +2217,14 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 governed = cl.run(
                     _run_with_org(
                         self.org_id,
-                        with_audit_identity(self.user_id, "pgwire", to_plan),
+                        with_audit_identity(self.user_id, "pgwire", to_plan, statement=said),
                     ),
                     timeout=request_timeout_for("pgwire"),
                 )
             except PermissionError as exc:
                 raise PermissionError(str(exc)) from exc
             except Exception as exc:
-                _log_statement_failure("statement", stripped, exc)
+                _log_statement_failure("statement", said, exc)
                 raise RuntimeError(str(exc)) from exc
         # Parse/govern/route timing, isolated from physical execution below, so the pure-Python
         # compile-path cost (parse → govern_pgwire_plan → routing decision) can be measured
@@ -2388,16 +2434,16 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 raise PermissionError(str(exc)) from exc
             except Exception as exc:
                 self._finalize_audit(governed, 500)
-                _log_statement_failure("statement", stripped, exc)
+                _log_statement_failure("statement", said, exc)
                 raise RuntimeError(str(exc)) from exc
         _t_execute1 = time.perf_counter()
         log.debug(
             "[PGWIRE TIMING] govern=%.1fms execute=%.1fms sql=%r",
             (_t_govern1 - _t_govern0) * 1000,
             (_t_execute1 - _t_govern1) * 1000,
-            stripped[:80],
+            said[:80],
         )
-        _annotate_request(db__statement=stripped[:1000])  # recorded in debug detail only
+        _annotate_request(db__statement=said[:1000])  # recorded in debug detail only
 
         # REQ-074/REQ-1386: the ENGINE/DIRECT streaming terminals above never reach _execute_plan,
         # so the audit row is written here. Idempotent — the _execute_plan branch already wrote it.
@@ -2415,7 +2461,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                 read_shape=_undescribed_read_shape(plan, shape),
             )
         except Exception:
-            log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
+            log.warning("[PGWIRE] EXCEPTION sql=%r", said[:300], exc_info=True)
             raise
 
     def _finalize_audit(self, governed, status_code: int, *, defer_to_drain: bool = False) -> None:
@@ -2485,6 +2531,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     _sasl: "ScramExchange | None" = None
     # The session this connection's startup created (REQ-1882: closed on this thread).
     _session: "ProvisaSession | None" = None
+    # REQ-2171: the TimeZone the client was last told, so a change is reported once.
+    _reported_zone: str | None = None
     # REQ-1910: the request span of the statement cycle in flight — one simple Query, or one
     # extended-protocol cycle from its first Parse/Bind/Describe/Execute to the Sync that ends it.
     # Held, not a block: the cycle's messages are dispatched one by one by the vendor's loop.
@@ -2607,9 +2655,29 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             return
         super().handle_close(ctx, payload)
 
+    def send_parameter_status(self, params: dict[str, str]) -> None:
+        # REQ-2171: the zone the session is on, never the server's. Where it cannot be told nothing
+        # is reported of it.
+        if "TimeZone" in params and self._session is not None:
+            self._reported_zone = self._session.zone.shown()
+            del params["TimeZone"]
+            if self._reported_zone is not None:
+                params["TimeZone"] = self._reported_zone
+        super().send_parameter_status(params)
+
+    def _report_zone(self) -> None:
+        """As PostgreSQL's GUC_REPORT: a TimeZone that changed is reported ahead of ReadyForQuery."""
+        session = self._session
+        if session is None:
+            return
+        shown = session.zone.shown()
+        if shown is not None and shown != self._reported_zone:
+            self.send_parameter_status({"TimeZone": shown})
+
     def send_ready_for_query(self, ctx: Optional[BVContext]) -> None:
         # ReadyForQuery ends the cycle: the Sync of an extended-protocol cycle, or a Query's end.
         try:
+            self._report_zone()
             super().send_ready_for_query(ctx)
         finally:
             with self._shield.lock:  # entered without a Python frame: see _close_request
@@ -2640,7 +2708,11 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             query_result.warnings = ()  # a later Execute of the same portal says it once
         # REQ-1910: rows are pulled from the result and encoded onto the socket here.
         with _stage(_tracer, "pgwire.encode", name="encode"):
-            sent = super().send_data_rows(query_result, limit)
+            session = self._session
+            sent = super().send_data_rows(
+                query_result if session is None else in_session_zone(query_result, session.zone),
+                limit,
+            )
             _annotate_request(db__row_count=sent)
         # REQ-1949: what the rows themselves showed -- the answer was cut at a row limit -- is
         # known when the drain ends, and goes as a NOTICE after the last row, ahead of the
@@ -2786,6 +2858,12 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             ctx = BVContext(conn.create_session(), None, params)
             self._session = ctx.session  # type: ignore[assignment]
             ctx.session.application_name = params.get("application_name", "")  # type: ignore[attr-defined]
+            ctx.session.zone = SessionZone(startup_time_zone(params))  # type: ignore[attr-defined]
+            try:
+                ctx.session.zone.shown()  # type: ignore[attr-defined]
+            except PostgresError as exc:
+                self._send_pg_error("FATAL", exc.sqlstate, str(exc))
+                return None
             ctx.session.client_end = self.client_address  # type: ignore[attr-defined]
             ctx.session.server_end = self.request.getsockname()  # type: ignore[attr-defined]
             try:
@@ -3368,6 +3446,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 raise
             self._send_request_timeout(timed_out)
             ctx.mark_error()
+        except PostgresError as exc:  # REQ-2171: rows that cannot be written in the session's zone
+            self.send_error(exc, ctx)
 
     def handle_query(self, ctx: BVContext, payload: bytes) -> None:
         self._open_request()
@@ -3401,6 +3481,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             if timed_out is None:
                 raise
             self._send_request_timeout(timed_out)
+            self.send_ready_for_query(ctx)
+        except PostgresError as exc:  # REQ-2171: rows that cannot be written in the session's zone
+            self.send_error(exc, ctx)
             self.send_ready_for_query(ctx)
         finally:
             if _org_token is not None:

@@ -1,0 +1,11 @@
+{
+  "odataPage": {
+    "title": "OData",
+    "description": "无需安装驱动程序,即可在 Excel、Power BI 或任何 OData 客户端中打开您的角色可见的表。",
+    "serviceRoot": "服务根",
+    "serviceRootHelp": "在 Excel 或 Power BI 中选择 OData 源并粘贴此地址。使用 Basic 或持有者令牌登录。",
+    "metadata": "元数据文档",
+    "metadataHelp": "您的角色可见的表、列和关系,以 OData CSDL 表示。",
+    "copyUrl": "复制 URL"
+  }
+}

@@ -1050,6 +1050,15 @@ async def _run_change_stream(
             deadline -= 0.2
 
 
+#: How long a listener that crashed waits before it starts again, doubling each time to the limit.
+_RESTART_AFTER_S = 5.0
+_RESTART_AT_MOST_S = 60.0
+
+
+def _restart_delay(crashes: int) -> float:
+    return min(_RESTART_AFTER_S * 2 ** min(crashes, 16), _RESTART_AT_MOST_S)
+
+
 async def _run_listener(
     *,
     state: Any,
@@ -1075,6 +1084,9 @@ async def _run_listener(
     ``store_connection()`` held here, which would open a SECOND connection onto an embedded
     single-writer DuckDB store the engine already has ATTACHed and deadlock/error against it).
     Never let an unhandled exception escape (this runs detached — nothing awaits its result).
+    A crash is logged with its cause and the listener starts again, from what it last committed:
+    nothing else would, since its key says it is running, and every subscription on its table
+    would wait on a landing that never comes.
 
     ``row_materialize`` (REQ-1865) routes the batch through the row-materialize CDC branch
     (design doc section 5) instead of the ordinary upsert-every-event land."""
@@ -1158,25 +1170,32 @@ async def _run_listener(
             )
         return counts
 
-    try:
-        await consume_cdc_into_store(
-            provider,
-            _land,
-            schema=land_schema,
-            table=land_table,
-            disconnect=disconnect,
-            watch_target=watch_target,
-            debounce_quiet=debounce_quiet,
-            debounce_max_delay=debounce_max_delay,
-        )
-    except asyncio.CancelledError:
-        raise
-    except RuntimeNotBuilt as gone:
-        # Its runtime was retired between two batches: the batch was not landed and not
-        # acknowledged, so the next build's listener reads it again.
-        left_to_the_next_runtime(gone, f"push listener {node}")
-    except Exception:
-        log.exception("push listener %s crashed", node)
+    crashes = 0
+    while not disconnect.is_set():
+        try:
+            await consume_cdc_into_store(
+                provider,
+                _land,
+                schema=land_schema,
+                table=land_table,
+                disconnect=disconnect,
+                watch_target=watch_target,
+                debounce_quiet=debounce_quiet,
+                debounce_max_delay=debounce_max_delay,
+            )
+            return
+        except asyncio.CancelledError:
+            raise
+        except RuntimeNotBuilt as gone:
+            # Its runtime was retired between two batches: the batch was not landed and not
+            # acknowledged, so the next build's listener reads it again.
+            left_to_the_next_runtime(gone, f"push listener {node}")
+            return
+        except Exception:
+            delay = _restart_delay(crashes)
+            crashes += 1
+            log.exception("push listener %s crashed; starting again in %.0fs", node, delay)
+            await asyncio.sleep(delay)
 
 
 def stop_runtime_listeners(state: Any, org_id: str, env: str) -> None:

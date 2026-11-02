@@ -86,9 +86,9 @@
         "description": "Un sélecteur liste chaque type, groupé par catégorie : <strong>Abonnements, RDBMS, Entrepôt de données cloud, Analytique, Data lake, NoSQL, Resolvers de code, Graphes, Fichiers, API, Streaming, Entreprise, Qualité des données, Autres</strong>. Cherchez par nom ou alias, ou filtrez avec les pastilles de catégorie. Chaque type affiche son logo et une icône de portée : ⚡ lu en direct sur place, ou une icône de copie lorsque Provisa lit une réplique rafraîchie.<p>Choisissez-en un, renseignez la connexion, enregistrez.</p>"
       },
       "stepBuildSource": {
-        "title": "Une source, ajoutée en direct",
-        "description": "Voici comment s'ajoute une source : le sélecteur s'est ouvert sur sa liste complète, <strong>Parquet File</strong> a été choisi, l'adresse du fichier a été saisie (<code>supplies.parquet</code>) et Enregistrer l'a créée. La nouvelle source <strong>supplies</strong> lit ce fichier sur place.",
-        "acting": "Ajout d'une source"
+        "title": "Une source, formulaire rempli",
+        "description": "Le sélecteur s'est ouvert avec toute sa liste, <strong>Parquet File</strong> a été choisi et le formulaire a été rempli avec l'adresse du fichier (<code>supplies.parquet</code>). Une source de fichier n'a besoin de rien d'autre. Ce n'est qu'un aperçu du formulaire : Suivant appuie sur <strong>Annuler</strong>, et rien n'est enregistré.",
+        "acting": "Remplissage d'une source"
       },
       "step4": {
         "title": "Tout devient une table",
@@ -872,13 +872,9 @@
         "title": "D'où vient une colonne du mart",
         "description": "La traçabilité des colonnes du mart : chacune remontée à travers la vue point-in-time et les satellites jusqu'au champ source dont elle provient."
       },
-      "datavaultAnalyst": {
-        "title": "La vue d'un analyste",
-        "description": "Ensuite, l'explorateur SQL s'exécute en tant qu'analyste européen. Les données personnelles se trouvent dans les satellites, et c'est donc là qu'elles sont gouvernées."
-      },
       "datavaultMasked": {
         "title": "Masquées là où se trouvent les données personnelles",
-        "description": "En tant qu'analyste, le satellite du CRM ne montre que les clients européens. Leurs contacts sont retenus, et les noms dans leurs e-mails ainsi que les chiffres de leurs numéros de téléphone sont masqués. Les hubs et les links restent lisibles, si bien que l'analyste peut toujours joindre dessus."
+        "description": "L'explorateur SQL s'exécute maintenant en tant qu'analyste européen. Les données personnelles se trouvent dans les satellites, et c'est donc là qu'elles sont gouvernées. En tant qu'analyste, le satellite du CRM ne montre que les clients européens. Leurs contacts sont retenus, et les noms dans leurs e-mails ainsi que les chiffres de leurs numéros de téléphone sont masqués. Les hubs et les links restent lisibles, si bien que l'analyste peut toujours joindre dessus."
       },
       "datavaultRecap": {
         "title": "Ce que vous avez vu",
@@ -972,13 +968,9 @@
         "title": "Retour à tous les rôles",
         "description": "Ensuite, le sélecteur de rôle revient sur <strong>All</strong>."
       },
-      "retailAsMarketing": {
-        "title": "En tant que marketing EU",
-        "description": "Ensuite, l'explorateur SQL s'exécute en tant que marketing_eu."
-      },
       "retailAudience": {
         "title": "Seulement les clients qui ont accepté",
-        "description": "Le marketing EU lit les clients EU qui ont accepté le marketing, et eux seuls. La vue est construite dans l'EU à partir de lignes EU."
+        "description": "L'explorateur SQL s'exécute maintenant en tant que <strong>marketing_eu</strong>. Le marketing EU lit les clients EU qui ont accepté le marketing, et eux seuls. La vue est construite dans l'EU à partir de lignes EU."
       },
       "retailAsDpo": {
         "title": "En tant que délégué à la protection des données",
@@ -1140,13 +1132,9 @@
         "title": "Des relations, déclarées une fois",
         "description": "<strong>OF_PRODUCT</strong> relie une ligne de commande dans PostgreSQL à son produit dans MongoDB. Avec PLACED_BY, HAS_ITEM et SHIPPED_AS, ces quatre relations sont déclarées une fois, et l'app comme l'outil de BI lisent à travers elles."
       },
-      "storefrontAsCustomer": {
-        "title": "Connecté en tant que client",
-        "description": "L'application envoie ses requêtes sous le rôle <strong>customer</strong>, dont les filtres de lignes limitent chaque réponse aux commandes du client connecté. Ensuite, le sélecteur de rôle passe à <strong>customer</strong>, pour que la requête ci-dessous s'exécute exactement comme l'application l'exécute."
-      },
       "storefrontScreen": {
         "title": "L'unique requête de l'app",
-        "description": "L'écran d'historique des commandes envoie cette unique requête GraphQL imbriquée : chaque commande avec ses lignes, le produit de chaque ligne depuis le catalogue et l'expédition de la commande depuis le service d'expédition. Exécutée en <strong>customer</strong>, elle répond sept commandes, toutes celles du client connecté."
+        "description": "L'application envoie ses requêtes sous le rôle <strong>customer</strong>, dont les filtres de lignes limitent chaque réponse aux commandes du client connecté. Le sélecteur de rôle est maintenant sur <strong>customer</strong>. L'écran d'historique des commandes envoie cette unique requête GraphQL imbriquée : chaque commande avec ses lignes, le produit de chaque ligne depuis le catalogue et l'expédition de la commande depuis le service d'expédition. Exécutée en <strong>customer</strong>, elle répond sept commandes, toutes celles du client connecté."
       },
       "storefrontApp": {
         "title": "L'écran qu'elle alimente",
@@ -1156,13 +1144,9 @@
         "title": "Les mêmes commandes en JSON:API",
         "description": "Un client qui préfère JSON:API demande les mêmes commandes, toujours en tant que client, avec leurs lignes et leurs expéditions incluses. Chaque commande référence les lignes et l'expédition qu'elle inclut, et l'id d'une ligne est sa clé composite."
       },
-      "storefrontAnalyst": {
-        "title": "Maintenant en analyste",
-        "description": "Le côté BI lit sous <strong>analyst</strong> : il voit toutes les commandes, mais aucun e-mail de client. Ensuite, le sélecteur d'exécution passe à <strong>analyst</strong>."
-      },
       "storefrontAnalystSql": {
         "title": "Le SQL de l'analyste",
-        "description": "Les livraisons en retard par région et par transporteur, sur les mêmes tables et relations. <strong>a_customer</strong> montre un e-mail tel que l'analyste le lit : masqué."
+        "description": "Le côté BI lit sous <strong>analyst</strong> : il voit toutes les commandes, mais aucun e-mail de client. L'explorateur SQL s'exécute maintenant en tant que <strong>analyst</strong>. Les livraisons en retard par région et par transporteur, sur les mêmes tables et relations. <strong>a_customer</strong> montre un e-mail tel que l'analyste le lit : masqué."
       },
       "storefrontBi": {
         "title": "Le tableau de bord de BI",
@@ -1188,13 +1172,9 @@
         "title": "Les tables, telles que l'application les connaissait",
         "description": "Les quatre tables sont arrivées avec les noms qu'utilise l'application. <strong>customers</strong> garde les noms personnalisés de Hasura <strong>givenName</strong> et <strong>familyName</strong>, la table des produits garde son nom racine <strong>catalog</strong>, et chaque colonne porte les rôles autorisés à la lire, d'après les permissions select."
       },
-      "hasuramigrationAsAna": {
-        "title": "Connecté en tant qu'Ana",
-        "description": "Ana est cliente. Son jeton portait <strong>x-hasura-user-id: 1</strong>, et Provisa lit ce claim comme la valeur de session <strong>hasura_user_id</strong>, à laquelle se comparent les règles de lignes importées. Ensuite, le sélecteur de rôle passe à <strong>ana</strong>, pour que les requêtes ci-dessous s'exécutent exactement comme la boutique les exécute pour elle."
-      },
       "hasuramigrationMyOrders": {
         "title": "L'historique des commandes, remodelé",
-        "description": "La requête d'historique des commandes de la boutique, remodelée une fois pour Provisa : le champ racine porte son domaine, les noms de colonnes suivent la convention de Provisa et order_by est une liste. Les relations <strong>items</strong> et <strong>product</strong> ont gardé leurs noms Hasura. Exécutée en tant qu'Ana, elle répond avec ses quatre commandes et celles de personne d'autre."
+        "description": "Ana est cliente. Son jeton portait <strong>x-hasura-user-id: 1</strong>, et Provisa lit ce claim comme la valeur de session <strong>hasura_user_id</strong>, à laquelle se comparent les règles de lignes importées. Le sélecteur de rôle est maintenant sur <strong>ana</strong>. La requête d'historique des commandes de la boutique, remodelée une fois pour Provisa : le champ racine porte son domaine, les noms de colonnes suivent la convention de Provisa et order_by est une liste. Les relations <strong>items</strong> et <strong>product</strong> ont gardé leurs noms Hasura. Exécutée en tant qu'Ana, elle répond avec ses quatre commandes et celles de personne d'autre."
       },
       "hasuramigrationProfile": {
         "title": "Une lecture par clé",
@@ -1208,21 +1188,13 @@
         "title": "Une relation de plus",
         "description": "<strong>BUYS_FOR</strong> relie un client à son compte Salesforce, approuvée comme les relations apportées par l'import. Dès lors, le compte est à un champ de chaque client, dans chaque interface, sous les règles de chaque rôle."
       },
-      "hasuramigrationAsSupport": {
-        "title": "Le support",
-        "description": "Le personnel du support peut lire toutes les commandes et tous les clients, comme le permettaient ses droits Hasura. Ensuite, le sélecteur de rôle passe à <strong>support</strong>, et l'écran des commandes du support s'exécute comme ils l'exécutent."
-      },
       "hasuramigrationSupportScreen": {
         "title": "Les commandes avec leurs comptes",
-        "description": "L'écran des commandes du support, remodelé, avec du nouveau : à côté du client de chaque commande, le compte Salesforce, son secteur et sa ville, dans la même requête. Les clients sans compte n'en montrent aucun."
-      },
-      "hasuramigrationAnalyst": {
-        "title": "L'analyste",
-        "description": "Les analystes peuvent lire les totaux de commande et les liens vers les comptes, mais aucun nom ni e-mail, et jamais les commandes annulées. Ce sont la règle de lignes et les listes de colonnes que l'import a reprises. Ensuite, le sélecteur de rôle passe à <strong>analyst</strong>."
+        "description": "Le personnel du support peut lire toutes les commandes et tous les clients, comme le permettaient ses droits Hasura. Le sélecteur de rôle est maintenant sur <strong>support</strong>. L'écran des commandes du support, remodelé, avec du nouveau : à côté du client de chaque commande, le compte Salesforce, son secteur et sa ville, dans la même requête. Les clients sans compte n'en montrent aucun."
       },
       "hasuramigrationByIndustry": {
         "title": "Chiffre d'affaires par secteur",
-        "description": "Une seule instruction SQL sur la boutique et Salesforce : le chiffre d'affaires par secteur du compte derrière chaque commande. Les règles de l'analyste s'appliquent comme en GraphQL : les commandes annulées sont exclues et aucun nom ni e-mail n'est lu."
+        "description": "Les analystes peuvent lire les totaux de commande et les liens vers les comptes, mais aucun nom ni e-mail, et jamais les commandes annulées. Ce sont la règle de lignes et les listes de colonnes que l'import a reprises. L'explorateur SQL s'exécute maintenant en tant que <strong>analyst</strong>. Une seule instruction SQL sur la boutique et Salesforce : le chiffre d'affaires par secteur du compte derrière chaque commande. Les règles de l'analyste s'appliquent comme en GraphQL : les commandes annulées sont exclues et aucun nom ni e-mail n'est lu."
       },
       "hasuramigrationRecap": {
         "title": "Ce que vous avez vu",
@@ -1332,13 +1304,9 @@
         "title": "Ce que voit un analyste",
         "description": "Connecté, un analyste de l'enchérisseur A voit ce que bidder_a a reçu : les vues agrégées, les profils, l'échantillon masqué et les enregistrements du vendeur sans une seule identité de client. Aucun nom de client, ni nom d'entreprise ou d'affaire du CRM, n'est lisible."
       },
-      "dataroomBidder": {
-        "title": "Maintenant en tant qu'enchérisseur A",
-        "description": "Les instructions suivantes s'exécutent en tant que <strong>bidder_a</strong>, exactement comme celles des analystes."
-      },
       "dataroomProfile": {
         "title": "Le profil des factures",
-        "description": "Chaque colonne de la table des factures telle que le profileur l'a trouvée : lignes, valeurs nulles, valeurs distinctes et plage. Un enchérisseur apprend si les enregistrements sont complets sans en lire un seul. Ici, certaines factures n'ont jamais été payées."
+        "description": "Ces instructions s'exécutent en tant que <strong>bidder_a</strong>, exactement comme celles des analystes. Chaque colonne de la table des factures telle que le profileur l'a trouvée : lignes, valeurs nulles, valeurs distinctes et plage. Un enchérisseur apprend si les enregistrements sont complets sans en lire un seul. Ici, certaines factures n'ont jamais été payées."
       },
       "dataroomCounts": {
         "title": "Nombre de clients",
@@ -1676,21 +1644,13 @@
         "title": "Construit à chaque clôture",
         "description": "Les totaux de clôture sont une vue matérialisée dans l'entrepôt selon le calendrier de la banque, qui clôture à 18 h, heure de Londres. La vue est un GROUP BY sur l'unique table du grand livre : sa construction s'exécute donc entièrement dans le grand livre et seules les lignes regroupées reviennent. Elle hérite des versions du grand livre et n'a besoin d'aucun réglage d'historique propre. Chaque jour a été enregistré à sa propre clôture. Les 1er et 2 octobre ont été réenregistrés plus tard, à l'arrivée de leurs corrections."
       },
-      "bankingAsOps": {
-        "title": "En tant qu'opérations",
-        "description": "La requête suivante s'exécute en tant qu'opérations, qui explore les écritures selon les règles propres au grand livre. Elle ne voit aucune écriture sur un compte du personnel, et chaque contrepartie est masquée."
-      },
       "bankingDashboard": {
         "title": "Le tableau de bord, en GraphQL",
-        "description": "Les totaux de Londres du 1er octobre, chacun avec ses écritures imbriquées. Une seule requête lit les totaux dans l'entrepôt et les écritures dans le grand livre, reliés par la relation que vous venez de voir."
-      },
-      "bankingAsAnalyst": {
-        "title": "En tant qu'analyste reporting",
-        "description": "Le SQL qui suit s'exécute en tant qu'analystes de reporting de la banque. Ils lisent les totaux de fin de journée et les cinq colonnes du grand livre dont ils sont calculés : date d'opération, agence, produit, devise et montant. Ils ne voient jamais un compte, une contrepartie ni un titulaire."
+        "description": "Cette requête s'exécute en tant qu'opérations, qui explore les écritures selon les règles propres au grand livre. Elle ne voit aucune écriture sur un compte du personnel, et chaque contrepartie est masquée. Les totaux de Londres du 1er octobre, chacun avec ses écritures imbriquées. Une seule requête lit les totaux dans l'entrepôt et les écritures dans le grand livre, reliés par la relation que vous venez de voir."
       },
       "bankingDay": {
         "title": "Les totaux d'une journée",
-        "description": "Le 1er octobre tel qu'il est aujourd'hui. Pour chaque agence, produit et devise, vous voyez ce qui est entré, ce qui est sorti et le net. Un outil de BI connecté en pgwire exécute ce même SQL."
+        "description": "Ce SQL s'exécute en tant qu'analystes de reporting de la banque. Ils lisent les totaux de fin de journée et les cinq colonnes du grand livre dont ils sont calculés : date d'opération, agence, produit, devise et montant. Ils ne voient jamais un compte, une contrepartie ni un titulaire. Le 1er octobre tel qu'il est aujourd'hui. Pour chaque agence, produit et devise, vous voyez ce qui est entré, ce qui est sorti et le net. Un outil de BI connecté en pgwire exécute ce même SQL."
       },
       "bankingReported": {
         "title": "Ce qui a été déclaré",
@@ -1772,13 +1732,9 @@
         "title": "Qui peut voir quels clients",
         "description": "La table des clients porte les règles : un agent de support Ouest ne lit que les clients de l'Ouest et leurs commandes, adresses e-mail masquées et sans prix. L'analyste BI lit toutes les régions et le montant des commandes, mais aucune adresse e-mail."
       },
-      "agentdataSupportRole": {
-        "title": "Agir en agent de support Ouest",
-        "description": "L'agent agit avec le rôle de l'en-tête. Suivant choisit l'agent de support Ouest : chaque appel d'outil de l'agent s'exécute avec ce rôle."
-      },
       "agentdataSupportAsks": {
         "title": "La question de l'agent de support",
-        "description": "L'agent trouve les tables, écrit du SQL et l'exécute avec des outils MCP, affichés pendant qu'ils tournent. Seuls les clients de l'Ouest reviennent, et leurs adresses e-mail arrivent masquées : c'est tout ce que le rôle reçoit."
+        "description": "L'agent agit avec le rôle de l'en-tête, désormais l'agent de support Ouest : chacun de ses appels d'outil s'exécute avec ce rôle. L'agent trouve les tables, écrit du SQL et l'exécute avec des outils MCP, affichés pendant qu'ils tournent. Seuls les clients de l'Ouest reviennent, et leurs adresses e-mail arrivent masquées : c'est tout ce que le rôle reçoit."
       },
       "agentdataExplain": {
         "title": "Ce qui s'est réellement exécuté",

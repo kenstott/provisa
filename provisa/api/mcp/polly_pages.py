@@ -69,6 +69,10 @@ PAGES: dict[str, PollyPage] = {
         "state.jsonapiUrl",
         "inputs: url, table, fields, include, filter, sort, status, error",
     ),
+    "/odata": PollyPage(
+        "OData: the service root and metadata addresses to paste into Excel, Power BI or any "
+        "OData client"
+    ),
     "/openapi": PollyPage(
         "OpenAPI docs",
         "state.openApiUrl, state.openApiBody",
