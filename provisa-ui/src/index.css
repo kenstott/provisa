@@ -89,3 +89,53 @@ body {
 .mcp-chat-wrap:hover .mcp-input-tools,
 .mcp-input-tools:focus-within { opacity: 1; pointer-events: auto; }
 .mcp-input-tools .mcp-copy { position: static; opacity: 1; }
+
+/* MCP chat in the dark theme: chatscope's stylesheet paints its panel, bubbles and input in fixed
+   light colours, so each surface takes the theme's tokens here. Light keeps chatscope's own. */
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap {
+  color: var(--text);
+}
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-main-container,
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-chat-container,
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-message-list,
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-message-list__scroll-wrapper,
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-message-list__typing-indicator-container,
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-typing-indicator {
+  background-color: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-typing-indicator__text {
+  color: var(--text-muted);
+}
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-typing-indicator__dot {
+  background-color: var(--text-muted);
+}
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-message--incoming .cs-message__content {
+  background-color: var(--surface-alt);
+  color: var(--text);
+}
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-message--outgoing .cs-message__content {
+  background-color: var(--primary-strong);
+  color: #fff;
+}
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-message--outgoing .mcp-copy {
+  color: rgb(255 255 255 / 0.8);
+}
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-message-input {
+  background-color: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-message-input__content-editor-wrapper,
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-message-input__content-editor-container,
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-message-input__content-editor {
+  background-color: var(--surface-alt);
+  color: var(--text);
+}
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-message-input__content-editor[data-placeholder]:empty::before {
+  color: var(--text-muted);
+}
+:root[data-mantine-color-scheme="dark"] .mcp-chat-wrap .cs-button--send {
+  color: var(--primary-hover);
+}

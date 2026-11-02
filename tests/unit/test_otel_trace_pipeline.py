@@ -803,6 +803,13 @@ class TestNonEngineTerminalsAreReported:
                 return iter([1])
 
         class _Conn:
+            @asynccontextmanager
+            async def transaction(self):
+                yield
+
+            async def execute(self, sql):
+                pass
+
             async def fetch_with_columns(self, sql, *args, bind_as_given=False):
                 return ["n"], [_Row()]
 

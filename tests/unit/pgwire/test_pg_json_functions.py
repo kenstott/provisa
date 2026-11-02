@@ -155,17 +155,23 @@ def test_containment_of_ranges_and_arrays_is_not_a_json_operator(dialect: str):
         _write("SELECT a @> b FROM t", dialect)
 
 
-def test_a_refused_name_is_refused_on_every_engine():
+@pytest.mark.parametrize("dialect", ("trino", "clickhouse"))
+def test_a_refused_name_is_refused_on_an_engine_without_its_udf(dialect: str):
     assert "jsonb_pretty" in REFUSED
-    for dialect in _ENGINES:
-        with pytest.raises(FunctionRefused, match="jsonb_pretty"):
-            _write("SELECT jsonb_pretty(a) FROM t", dialect)
+    with pytest.raises(FunctionRefused, match="jsonb_pretty"):
+        _write("SELECT jsonb_pretty(a) FROM t", dialect)
 
 
-def test_jsonpath_stays_refused():
+@pytest.mark.parametrize("dialect", ("trino", "clickhouse"))
+def test_jsonpath_is_refused_on_an_engine_without_its_udf(dialect: str):
     for call in ("jsonb_path_exists(a, '$')", "jsonb_path_query_first(a, '$')", "a @? '$.b'"):
         with pytest.raises(FunctionRefused):
-            _write(f"SELECT {call} FROM t", "duckdb")
+            _write(f"SELECT {call} FROM t", dialect)
+
+
+def test_duckdb_calls_a_udf_for_each_on_a_column():
+    for call in ("jsonb_pretty(a)", "jsonb_path_exists(a, '$')", "a @? '$.b'", "a ? 'k'"):
+        assert "PROVISA_JSON" in _write(f"SELECT {call} FROM t", "duckdb").upper()
 
 
 @pytest.mark.parametrize(
