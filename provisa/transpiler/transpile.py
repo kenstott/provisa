@@ -1329,7 +1329,6 @@ def transpile(
     # REQ-1965: each read of a natively array/struct/map column becomes this backend's own
     # to-JSON expression here, the one place every route's dialect is known.
     result = resolve_native_json(result, target_dialect)
-    result = pg_forms_geometric.planned(result, target_dialect)  # REQ-2171
     # REQ-2171: each subtyped column read as a value, in PostgreSQL's canonical text.
     result = resolve_reads(result, target_dialect)
     from provisa.vector.similarity import lower as _lower_similarity
@@ -1338,6 +1337,8 @@ def transpile(
     # reads the governed call itself and runs the search through Qdrant's API.
     if target_dialect != "qdrant":
         result = _lower_similarity(result, target_dialect, pgvector=pgvector)
+    # REQ-2171: last, for what a later step parses has no routine definitions at its head.
+    result = pg_forms_geometric.planned(result, target_dialect)
     from provisa.observability.stage_trace import trace_stage
 
     trace_stage(f"transpile.{target_dialect}", result)

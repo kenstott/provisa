@@ -90,6 +90,51 @@ class Engine:
     types: tuple[str, str, str, str] = ("VARCHAR", "BOOLEAN", "DOUBLE", "INTEGER")
     inline: bool = False  # a name used once is written in place: Trino plans a lambda in time
     # that grows with how deep it is nested, minutes for a form of four
+    routines: bool = (
+        False  # each helper a routine of the statement, called: no lambda holds another's
+    )
+
+
+#: Each Trino routine a form may call: its name -> its definition, and the routines it calls.
+ROUTINES: dict[str, tuple[str, frozenset[str]]] = {}
+_ROUTINE = "pg_geo_"
+_ARRAY, _NUMBERS = "array(double)", "array(array(double))"
+
+
+def _routine(
+    e: Engine,
+    name: str,
+    params: tuple[tuple[str, str], ...],
+    returns: str,
+    args: tuple[str, ...],
+    body: Callable[..., str],
+) -> str:
+    """``body`` of ``args``; where the engine has routines, a call of the routine ``name``, whose
+    body is written once over its parameters. A routine its body calls is defined first."""
+    if not e.routines:
+        return body(e, *args)
+    called = _ROUTINE + name
+    if called not in ROUTINES:
+        text = body(e, *(p for p, _ in params))
+        calls = frozenset(re.findall(rf"\b{_ROUTINE}\w+", text)) - {called}
+        spec = ", ".join(f"{p} {t}" for p, t in params)
+        ROUTINES[called] = (f"FUNCTION {called}({spec}) RETURNS {returns} RETURN {text}", calls)
+    return f"{called}({', '.join(args)})"
+
+
+def _hoisted(name: str, params: tuple[str, ...], returns: str) -> Callable[[Callable], Callable]:
+    """A helper written as the routine ``name`` where the engine has routines, its parameters of
+    the types ``params``, named g1, g2, ...: no name a form binds."""
+    named = tuple((f"g{i}", t) for i, t in enumerate(params, 1))
+
+    def wrap(body: Callable[..., str]) -> Callable[..., str]:
+        def called(e: Engine, *args: str) -> str:
+            return _routine(e, name, named, returns, args, body)
+
+        called.__doc__ = body.__doc__
+        return called
+
+    return wrap
 
 
 _INLINE = "inline"  # the let of _float_text where the engine inlines: every use written in place
@@ -178,6 +223,7 @@ TRINO = Engine(
     type_name="lower(typeof({}))",
     array="ARRAY[{}]",
     inline=True,
+    routines=True,
 )
 CLICKHOUSE = Engine(
     name="clickhouse",
@@ -219,6 +265,7 @@ CLICKHOUSE = Engine(
 ENGINES = (DUCKDB, TRINO, CLICKHOUSE)
 
 
+@_hoisted("float_text", ("DOUBLE",), "VARCHAR")
 def _float_text(e: Engine, value: str) -> str:
     """float8out: the engine's shortest digits, written with PostgreSQL's exponent rule. Where the
     engine inlines, each of its names is written in place: the text is longer, but no lambda."""
@@ -296,6 +343,7 @@ def _xy(name: str, at: int = 1) -> tuple[str, str]:
     return f"{name}[{at}]", f"{name}[{at + 1}]"
 
 
+@_hoisted("bounds", (_ARRAY,), _ARRAY)
 def _bounds(e: Engine, name: str) -> str:
     """The box of a list of points: high x, high y, low x, low y."""
     pairs = e.upto.format(_half(e, e.size.format(name)))
@@ -471,6 +519,7 @@ def _box_contains(outer: str, inner: str) -> str:
 _ON_POLYGON = "99"  # lseg_crossing's POINT_ON_POLYGON
 
 
+@_hoisted("crossing", (_ARRAY,), "INTEGER")
 def _crossing(e: Engine, c: str) -> str:
     """lseg_crossing of ``c``: x, y, previous x, previous y."""
     x, y, prev_x, prev_y = (f"{c}[{i}]" for i in (1, 2, 3, 4))
@@ -516,6 +565,7 @@ def _before(e: Engine, name: str, at: str) -> str:
     return f"({at} + {count} - 1) % {count}"
 
 
+@_hoisted("inside", (_ARRAY, "DOUBLE", "DOUBLE"), "BOOLEAN")
 def _inside(e: Engine, poly: str, x: str, y: str) -> str:
     """point_inside, not zero: on the boundary is inside."""
     near = _list(
@@ -572,8 +622,9 @@ def _splits(e: Engine, poly: str) -> str:
     return e.sort.format(e.concat.format(ends, within))
 
 
-def _edge_inside(e: Engine, outer: str, inner: str) -> str:
-    """The edge of ``inner`` ending at vertex ``_t``: each piece's midpoint is inside ``outer``."""
+@_hoisted("edge_inside", (_ARRAY, _ARRAY, "BIGINT"), "BOOLEAN")
+def _edge_inside(e: Engine, outer: str, inner: str, at: str) -> str:
+    """The edge of ``inner`` ending at vertex ``at``: each piece's midpoint is inside ``outer``."""
     pieces = e.upto.format(f"{e.size.format('_u')} - 1")
     mid = _let(
         e,
@@ -592,15 +643,16 @@ def _edge_inside(e: Engine, outer: str, inner: str) -> str:
     return _let(
         e,
         "_p",
-        _list(e, *_vertex(inner, _before(e, inner, "_t"))),
-        _let(e, "_q", _list(e, *_vertex(inner, "_t")), _let(e, "_d", delta, test)),
+        _list(e, *_vertex(inner, _before(e, inner, at))),
+        _let(e, "_q", _list(e, *_vertex(inner, at)), _let(e, "_d", delta, test)),
     )
 
 
+@_hoisted("contains", (_ARRAY, _ARRAY), "BOOLEAN")
 def _contains(e: Engine, outer: str, inner: str) -> str:
     """poly_contain_poly: the bounding boxes, then each edge of ``inner``."""
     edges = e.upto.format(_half(e, e.size.format(inner)))
-    out = e.filter.format(edges, "_t", f"NOT {_edge_inside(e, outer, inner)}")
+    out = e.filter.format(edges, "_t", f"NOT {_edge_inside(e, outer, inner, '_t')}")
     boxes = _let(
         e,
         "_h",
@@ -636,6 +688,7 @@ def _sign_free(name: str) -> str:
     return f"CASE WHEN {name} = 0 THEN {_NIL} ELSE {name} END"
 
 
+@_hoisted("line_of", ("DOUBLE", "DOUBLE", "DOUBLE"), _ARRAY)
 def _line_of(e: Engine, x: str, y: str, slope: str) -> str:
     """line_construct: the line through a point at a slope, infinite for a vertical line."""
     fit = f"CASE WHEN {y} - _lm * {x} = 0 THEN {_NIL} ELSE {y} - _lm * {x} END"
@@ -702,6 +755,7 @@ def _line_read(e: Engine, doubles: str) -> str:
     )
 
 
+@_hoisted("meet", (_ARRAY, _ARRAY), _ARRAY)
 def _meet(e: Engine, one: str, other: str) -> str:
     """line_interpt_line: ``[found, x, y]``; lines that are one line do not meet."""
 
@@ -734,6 +788,7 @@ def _same_point(a: tuple[str, str], b: tuple[str, str]) -> str:
     return f"({_fp_eq(a[0], b[0])} AND {_fp_eq(a[1], b[1])})"
 
 
+@_hoisted("cut_line", (_ARRAY, _ARRAY), _ARRAY)
 def _cut_line(e: Engine, s: str, line: str) -> str:
     """lseg_interpt_line: ``[found, x, y]``, an end of the segment where it is one."""
     found = ("_cm[2]", "_cm[3]")
@@ -751,6 +806,7 @@ def _cut_line(e: Engine, s: str, line: str) -> str:
     )
 
 
+@_hoisted("cut", (_ARRAY, _ARRAY), _ARRAY)
 def _cut(e: Engine, s: str, t: str) -> str:
     """lseg_interpt_lseg: ``[found, x, y]``."""
     return _let(
@@ -767,6 +823,7 @@ def _cut(e: Engine, s: str, t: str) -> str:
     )
 
 
+@_hoisted("foot", (_ARRAY, "DOUBLE", "DOUBLE"), _ARRAY)
 def _foot(e: Engine, line: str, x: str, y: str) -> str:
     """line_closept_point: ``[distance, x, y]``. Two lines drawn perpendicular meet unless a
     coordinate was not finite, which no form reads: the infinite distance is then refused."""
@@ -785,6 +842,7 @@ def _foot(e: Engine, line: str, x: str, y: str) -> str:
     )
 
 
+@_hoisted("near_line", (_ARRAY, _ARRAY), _ARRAY)
 def _near_line(e: Engine, s: str, line: str) -> str:
     """lseg_closept_line: ``[distance, x, y]`` of the point of the segment nearest the line."""
     ends = _list(e, _list(e, *_xy(s)), _list(e, *_xy(s, 3)))
@@ -802,6 +860,7 @@ def _near_line(e: Engine, s: str, line: str) -> str:
     )
 
 
+@_hoisted("near_point", (_ARRAY, "DOUBLE", "DOUBLE"), _ARRAY)
 def _near_point(e: Engine, s: str, x: str, y: str) -> str:
     """lseg_closept_point: ``[distance, x, y]`` of the point of the segment nearest a point."""
     measured = _dist(e, ("_pc[2]", "_pc[3]"), (x, y))
@@ -813,12 +872,14 @@ def _near_point(e: Engine, s: str, x: str, y: str) -> str:
     )
 
 
+@_hoisted("least", (_NUMBERS,), _ARRAY)
 def _least(e: Engine, candidates: str) -> str:
     """The first of ``[distance, x, y]``s with the smallest distance, as float8_lt keeps it."""
     smallest = e.min_of.format(e.map.format(candidates, "_it", "_it[1]"))
     return _let(e, "_lc0", smallest, e.filter.format(candidates, "_it", "_it[1] = _lc0") + "[1]")
 
 
+@_hoisted("near_seg", (_ARRAY, _ARRAY), _ARRAY)
 def _near_seg(e: Engine, on: str, to: str) -> str:
     """lseg_closept_lseg: ``[distance, x, y]`` of the point of ``on`` nearest ``to``."""
     pair = lambda seg, point: _list(e, seg, _list(e, *point))  # noqa: E731
@@ -861,6 +922,7 @@ def _sides(e: Engine, box: str) -> str:
     )
 
 
+@_hoisted("near_box_point", (_ARRAY, "DOUBLE", "DOUBLE"), _ARRAY)
 def _near_box_point(e: Engine, box: str, x: str, y: str) -> str:
     """box_closept_point: ``[distance, x, y]``."""
     each = e.map.format(_sides(e, box), "_bs", _near_point(e, "_bs", x, y))
@@ -878,6 +940,7 @@ def _boxes_meet(a: str, b: str) -> str:
     )
 
 
+@_hoisted("box_cut", (_ARRAY, _ARRAY), "BOOLEAN")
 def _box_cut(e: Engine, box: str, s: str) -> str:
     """box_interpt_lseg, whether: the segment's box, its ends, then the sides."""
     crossed = e.map.format(_sides(e, box), "_bs", _at(e, _cut(e, "_bs", s), 1))
@@ -891,6 +954,18 @@ def _box_cut(e: Engine, box: str, s: str) -> str:
 
 
 def _near_box_seg(e: Engine, box: str, s: str, point: bool = True) -> str:
+    """box_closept_lseg, or its distance alone (``point`` false), as :func:`_near_box_seg_of`."""
+    return _routine(
+        e,
+        "near_box_seg" if point else "near_box_seg_apart",
+        (("g1", _ARRAY), ("g2", _ARRAY)),
+        _ARRAY,
+        (box, s),
+        lambda e, box, s: _near_box_seg_of(e, box, s, point),
+    )
+
+
+def _near_box_seg_of(e: Engine, box: str, s: str, point: bool) -> str:
     """box_closept_lseg: ``[distance, x, y]`` of the point nearest the box. Where they cross that is
     the segment's point nearest the box's center, at no distance; a form of the distance alone
     leaves that out, for an engine's planning time grows with the square of a form's size."""
@@ -908,6 +983,7 @@ def _near_box_seg(e: Engine, box: str, s: str, point: bool = True) -> str:
     )
 
 
+@_hoisted("segments", (_ARRAY, "BOOLEAN"), _NUMBERS)
 def _segments(e: Engine, name: str, closed: str) -> str:
     """A path's or polygon's segments, each previous x, y, x, y, index, in geo_ops.c's order: the
     closing segment first, where there is one."""
@@ -953,13 +1029,19 @@ def _some_pair(e: Engine, flags: str, one: str, other: str) -> str:
 
 def _least_pair(e: Engine, one: str, other: str, f: str) -> str:
     """path_distance over two lists of segments: NULL when one has none."""
-    each = _pairs(e, one, other, lambda s, t: _at(e, _near_seg(e, s, t), 1))
     return (
         f"CASE WHEN {e.size.format(one)} * {e.size.format(other)} = 0 THEN NULL "
-        f"ELSE {_double(e, e.min_of.format(each), f)} END"
+        f"ELSE {_double(e, _nearest_pair(e, one, other), f)} END"
     )
 
 
+@_hoisted("nearest_pair", (_NUMBERS, _NUMBERS), "DOUBLE")
+def _nearest_pair(e: Engine, one: str, other: str) -> str:
+    """The least lseg_closept_lseg distance of each segment of ``one`` to each of ``other``."""
+    return e.min_of.format(_pairs(e, one, other, lambda s, t: _at(e, _near_seg(e, s, t), 1)))
+
+
+@_hoisted("from_polygon", (_ARRAY, "DOUBLE", "DOUBLE"), "DOUBLE")
 def _from_polygon(e: Engine, poly: str, x: str, y: str) -> str:
     """dist_ppoly_internal: inside is no distance; its segments are not path's, the first runs from
     the first point to the last."""
@@ -974,6 +1056,7 @@ def _from_polygon(e: Engine, poly: str, x: str, y: str) -> str:
     return f"CASE WHEN {_inside(e, poly, x, y)} THEN {_NIL} ELSE {e.min_of.format(each)} END"
 
 
+@_hoisted("overlap", (_ARRAY, _ARRAY), "BOOLEAN")
 def _overlap(e: Engine, a: str, b: str) -> str:
     """poly_overlap_internal: boxes, then edges, then a vertex of each in the other."""
     crossed = _both(
@@ -987,6 +1070,7 @@ def _overlap(e: Engine, a: str, b: str) -> str:
     return f"({boxes} AND ({crossed} OR {within}))"
 
 
+@_hoisted("same_ring", (_ARRAY, _ARRAY), "BOOLEAN")
 def _same_ring(e: Engine, a: str, b: str) -> str:
     """plist_same: from each point of ``b`` that is ``a``'s first, forwards or backwards."""
     n = _half(e, e.size.format(a))
@@ -1920,10 +2004,35 @@ def _form(e: Engine, row: Row) -> str:
     return f"CASE WHEN {nulls} THEN CAST(NULL AS {sql_type}) ELSE {typed} END"
 
 
+_CALLED = re.compile(rf"\b({_ROUTINE}\w+)\s*\(", re.IGNORECASE)
+
+
+def _defined(sql: str) -> str:
+    """A Trino statement calling a form's routines, with each defined at its head (WITH FUNCTION),
+    each after the routines it calls."""
+    order: list[str] = []
+
+    def define(name: str) -> None:
+        if name not in order:
+            for callee in sorted(ROUTINES[name][1]):
+                define(callee)
+            order.append(name)
+
+    for name in sorted({n.lower() for n in _CALLED.findall(sql)} & ROUTINES.keys()):
+        define(name)
+    if not order:
+        return sql
+    return "WITH " + ", ".join(ROUTINES[name][0] for name in order) + " " + sql
+
+
 def planned(sql: str, dialect: str) -> str:
-    """A ClickHouse statement holding a shape's form, planned by its old analyzer: the new one takes
+    """A statement holding a shape's form, as its engine plans it in seconds. Trino's analysis of a
+    lambda grows with how deep it is nested, minutes for a helper inside a helper: each helper is a
+    routine the statement defines. A ClickHouse one is planned by its old analyzer: the new one takes
     most of a minute over the deepest forms, the old one about a second (24.3: close_sb 45.9s and
     1.3s), with the same answers. A form is known by its check of a shape's letters."""
+    if dialect == "trino":
+        return _defined(sql)
     if dialect != "clickhouse" or f"'{_NOT_FINITE}'" not in sql or "SETTINGS" in sql.upper():
         return sql
     return f"{sql.rstrip().rstrip(';')} SETTINGS allow_experimental_analyzer = 0"
