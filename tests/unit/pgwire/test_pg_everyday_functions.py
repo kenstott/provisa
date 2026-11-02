@@ -21,15 +21,15 @@ from typing import Any
 import pytest
 from psycopg import pq
 
+from provisa.core.pg_enum import SourceEnum
 from provisa.transpiler.pg_forms_types import REFUSED
 from tests.unit.pgwire.everyday_function_statements import PROBES, STATEMENTS
 from tests.unit.pgwire.pg17_everyday_function_answers import RECORDED
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 
 
-#: PostgreSQL's FirstNormalObjectId. A type of that number or past it is the database's own, and
-#: its number that database's: a value of an enum is its label, sent as text, here.
-_FIRST_NORMAL_OID = 16384
+#: The enum of SETUP, under the numbers the recording's database gave it.
+_ENUM = SourceEnum("conformance", "probe_enum", 16412, 16411, ("a", "b", "c"))
 
 
 def _rows(res: Any) -> list[Any]:
@@ -53,7 +53,7 @@ def _problem(conn: Any, sql: str) -> str | None:
         return None if said == (first, second) else f"{said}, PostgreSQL {first} {second}"
     if failed:
         return (res.error_message or b"").decode()[:300]
-    if res.ftype(0) != first and first < _FIRST_NORMAL_OID:
+    if res.ftype(0) != first:
         return f"type {res.ftype(0)} rows {_rows(res)}, PostgreSQL {first} {second}"
     return None if _rows(res) == second else f"{_rows(res)}, PostgreSQL {second}"
 
@@ -62,6 +62,7 @@ def _source_enum() -> None:
     """The enum a source declares, in the catalog DuckDB attaches the source under."""
     from provisa.api.app import state
 
+    state.pg_source_enums = {(_ENUM.schema, _ENUM.name): _ENUM}
     runtime = state.federation_engine._rt
     connection = runtime._con
     connection.execute("ATTACH IF NOT EXISTS ':memory:' AS \"_src_probe\"")

@@ -56,9 +56,11 @@ from provisa.transpiler import (
     engine_refusals,
     pg_forms,
     pg_forms_aggregate,
+    pg_forms_enum,
     pg_forms_hash,
     pg_forms_index,
     pg_forms_json,
+    pg_forms_system,
     pg_forms_textsearch,
     pg_forms_types,
 )
@@ -1543,10 +1545,9 @@ _ROWS: tuple[Macro, ...] = (
     Macro(
         "repeat",
         ("value", "n"),
-        {_EVERY: Pg("CASE WHEN n > 0 THEN REPEAT(value, n) WHEN n IS NOT NULL THEN '' END")},
-        own={
-            _TRINO: "CASE WHEN n > 0 THEN array_join(repeat(value, n), '') "
-            "WHEN n IS NOT NULL THEN '' END"
+        {
+            _TRINO: pg_forms_system.TRINO_REPEAT,
+            _EVERY: Pg("CASE WHEN n > 0 THEN REPEAT(value, n) WHEN n IS NOT NULL THEN '' END"),
         },
     ),
     _pg("textanycat", "a, b", "CAST(CAST(a AS TEXT) || CAST(b AS TEXT) AS TEXT)"),
@@ -1766,6 +1767,8 @@ _ROWS: tuple[Macro, ...] = (
     *_DATES,
     *_ARRAYS,
     *_ENUMS,
+    *(Macro(name, params, forms) for name, params, forms in pg_forms_system.ROWS),
+    *(Macro(name, params, forms) for name, params, forms in pg_forms_enum.ROWS),
     *_OTHERS,
     *_XML,
     *_MONEY,
@@ -1828,7 +1831,6 @@ _EXACT_ROWS: tuple[Macro, ...] = (
     # interval_avg cascades a month's remainder, and DuckDB has no sum of an interval.
     Macro("exact_avg_interval", ("a0",)),
     # What regexp_replace's Nth match is takes the engine's own search.
-    Macro("regexp_replace_at", ("value", "pattern", "replacement", "start", "n")),
     Macro(
         "regexp_replace_at",
         ("value", "pattern", "replacement", "start"),
@@ -1890,7 +1892,6 @@ def _with_replay(macro: Macro) -> Macro:
 REFUSED_ROWS = frozenset(
     {
         ("exact_avg_interval", 1),
-        ("regexp_replace_at", 5),
         ("current_query", 0),
         *((name, len(params.split(", "))) for name, params in pg_forms_hash.COMPOSITES),
     }
@@ -1913,6 +1914,7 @@ MACROS: dict[tuple[str, int], Macro] = {
 #: (function, argument count, the type the statement says of its first argument) -> its row:
 #: PostgreSQL's own name for the overload. The operation is chosen by the type, not the engine's.
 OVERLOADS: dict[tuple[str, int, str], str] = {
+    **pg_forms_system.OVERLOADS,
     ("area", 1, "box"): "box_area",
     ("area", 1, "path"): "path_area",
     ("area", 1, "circle"): "circle_area",
@@ -2028,6 +2030,8 @@ _TOLD_ONLY_BY_THE_STATEMENT = {"set_masklen": frozenset({"inet", "cidr"})}
 def _is_told(name: str, args: list[exp.Expr]) -> bool:
     """Whether a call says which overload it means; a column of cidr does not, and the inet row
     would keep what its mask clears (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED)."""
+    if name in pg_forms_system.OF_A_STORED_VALUE:
+        return args[0].find(exp.Column) is None
     types = _TOLD_ONLY_BY_THE_STATEMENT.get(name)
     if types is None:
         return True
@@ -2473,6 +2477,8 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return called, [a for a in (node.this, node.args.get("decimals")) if a is not None]
     if isinstance(node, exp.ArrayConcat) and len(node.expressions) == 1:
         return "array_cat", [node.this, node.expressions[0]]
+    if isinstance(node, exp.Repeat):
+        return "repeat", [node.this, node.args["times"]]
     if isinstance(node, exp.ArrayRemove):
         return "array_remove", [node.this, node.expression]
     if isinstance(node, exp.ArrayPosition) and isinstance(node.args.get("zero_based"), exp.Expr):

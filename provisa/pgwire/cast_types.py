@@ -428,9 +428,28 @@ def _jsonb_columns(tree: Any) -> dict[str, CastType | None]:
     return found
 
 
+def _typed_call(expression: Any) -> CastType | None:
+    """The type a form's marker says of a value only its source has a type for (pg_forms_enum)."""
+    import sqlglot.expressions as exp
+
+    from provisa.core.pg_enum import array_text
+    from provisa.transpiler.pg_forms_enum import TYPED_ARRAY, TYPED_VALUE
+
+    called = expression.name.lower() if isinstance(expression, exp.Anonymous) else ""
+    if called not in (TYPED_VALUE, TYPED_ARRAY):
+        return None
+    oid = int(expression.expressions[0].this)
+    if called == TYPED_VALUE:
+        return CastType(oid, -1, BVType.TEXT, _TEXT_FORMS)
+    return CastType(oid, -1, BVType.TEXT, _TEXT_FORMS | {BVType.STRINGARRAY}, array_text)
+
+
 def _column_type(tree: Any, expression: Any, columns: Any) -> CastType | None:
     import sqlglot.expressions as exp
 
+    typed = _typed_call(expression)
+    if typed is not None:
+        return typed
     reads_jsonb = isinstance(expression, (exp.JSONExtract, exp.JSONBExtract))
     if reads_jsonb and isinstance(expression.this, exp.Column):
         jsonb = _jsonb_columns(tree).get(expression.this.name)

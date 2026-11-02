@@ -668,6 +668,15 @@ class AppState:
         self._active_runtime().pg_enum_types = value
 
     @property
+    def pg_source_enums(self) -> dict:
+        """REQ-2171: (schema, name) → the PostgreSQL enum a source declares."""
+        return self._active_runtime().pg_source_enums
+
+    @pg_source_enums.setter
+    def pg_source_enums(self, value: dict) -> None:
+        self._active_runtime().pg_source_enums = value
+
+    @property
     def graphql_remote_sources(self) -> dict[str, dict]:
         """Source id → its GraphQL remote registration."""
         return self._active_runtime().graphql_remote_sources

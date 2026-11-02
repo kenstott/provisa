@@ -22,6 +22,7 @@ import sqlglot
 
 from provisa.federation.duckdb_pg_functions import register
 from provisa.transpiler import function_macros
+from provisa.transpiler.pg_forms_system import OF_A_STORED_VALUE
 from provisa.transpiler.function_macros import (
     MACROS,
     REFUSED_ROWS,
@@ -94,6 +95,11 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         # A column of no said type is refused by name: only the statement tells inet from cidr.
         said = ["p0::inet", *args[1:]] if name == "set_masklen" else args
         said = [args[0], "2"] if name in ("round_numeric", "trunc_numeric") else said
+        # A column's storage and collation are its source's: only a value is told.
+        said = ["'x'"] if name in OF_A_STORED_VALUE else said
+        # ClickHouse reads the Nth match's pattern as a constant, and refuses a column's by name.
+        constant = dialect == "clickhouse" and name == "regexp_replace"
+        said = [args[0], "'x'", *args[2:]] if constant else said
         out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect)
         columns = {
             c.name for c in sqlglot.parse_one(out, read=dialect).find_all(sqlglot.exp.Column)
