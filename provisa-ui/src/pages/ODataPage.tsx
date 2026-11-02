@@ -34,7 +34,7 @@ function Address({ testId, label, help, url }: AddressProps) {
       </Text>
       <Group gap="xs" wrap="nowrap">
         <Code data-testid={testId}>{url}</Code>
-        <CopyButton text={url} title={t("odataPage.copyUrl")} />
+        <CopyButton text={url} hint={t("odataPage.copyUrl")} />
       </Group>
       <Text size="sm" c="dimmed">
         {help}

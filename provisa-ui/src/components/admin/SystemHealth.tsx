@@ -149,7 +149,7 @@ export function SystemHealth() {
                     {p.path}
                     <CopyButton
                       text={`${window.location.origin}${p.path}`}
-                      title={t("systemHealth.copyUrl")}
+                      hint={t("systemHealth.copyUrl")}
                     />
                   </Group>
                 ) : p.port != null ? (
