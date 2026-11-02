@@ -196,7 +196,9 @@ def test_the_built_api_refuses_its_ui_backend_on_a_query_node(monkeypatch, in_mo
 
     from provisa.api.app import create_app
 
-    client = TestClient(create_app())
+    # No lifespan runs, so a route reached in every mode has no store and errors: what matters
+    # there is that the gate let it through.
+    client = TestClient(create_app(), raise_server_exceptions=False)
     in_mode(process_mode.QUERY)
     refused = client.post("/admin/graphql", json={"query": "{ __typename }"})
     assert refused.status_code == 503
@@ -204,7 +206,8 @@ def test_the_built_api_refuses_its_ui_backend_on_a_query_node(monkeypatch, in_mo
     assert client.get("/auth/me").json()["code"] == "node.query_serves_no_ui"
     assert client.get("/live").status_code == 200
     in_mode(process_mode.EVERY)
-    assert client.get("/auth/me").json().get("code") != "node.query_serves_no_ui"
+    passed = client.get("/auth/me")
+    assert b"node.query_serves_no_ui" not in passed.content
 
 
 def test_every_mounted_route_is_classified(monkeypatch):
