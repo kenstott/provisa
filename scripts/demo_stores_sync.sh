@@ -91,10 +91,13 @@ linger_out() { # name
 }
 
 sync_demo() { # name
-  local name="$1" pulled version dir asked errors
+  local name="$1" pulled version dir asked errors started
   mkdir -p "$DEMO_BUNDLES_DIR/$name"
+  # Each step is timed in the log: an open that waits names the step it waited on.
+  started=$SECONDS
   pulled="$($DEMO_PULL pull "$name" --into "$DEMO_PULL_INTO")"
   version="$(basename "$pulled")"
+  echo "demo $name: pulled in $((SECONDS - started))s"
   dir="$DEMO_BUNDLES_DIR/$name/$version"
   [ -d "$dir" ] || { echo "demo $name: $pulled is not $dir on this host" >&2; return 1; }
   # Offered from here; its stores are started only once it is asked for.
@@ -118,6 +121,7 @@ sync_demo() { # name
     # Its stores not brought up: why, for the tier to answer the visitor waiting on them with,
     # never a demo left starting with nothing said.
     errors="$DEMO_BUNDLES_DIR/$name/.up-errors"
+    started=$SECONDS
     # Then checked: a version is never marked ready over data its shared stores do not hold.
     if ! python3 "$DEMO_STORES" up "$name" "$version" "$dir" 2>"$errors" \
         || ! python3 "$DEMO_STORES" check "$name" "$version" "$dir" 2>>"$errors"; then
@@ -129,6 +133,7 @@ sync_demo() { # name
     fi
     cat "$errors" >&2
     rm -f "$errors"
+    echo "demo $name: stores up and checked in $((SECONDS - started))s"
   fi
   rm -f "$DEMO_BUNDLES_DIR/$name/failed"
   write_atomically "$DEMO_BUNDLES_DIR/$name/ready" "$version"
@@ -188,9 +193,21 @@ IFS=',' read -r -a demos <<< "$PROVISA_DEMO_BUNDLES"
 signal="$DEMO_BUNDLES_DIR/.wanted"
 while :; do
   rm -f "$signal"
+  # A demo asked for and not up first: a visitor's open is waiting on it. Then the rest, those up
+  # among them, which are brought up again (a shared store stopped since is started). In the
+  # node's order alone, an open of a demo late in the list waited behind every demo up.
+  waiting=()
+  others=()
   for name in "${demos[@]}"; do
     name="$(echo "$name" | tr -d '[:space:]')"
     [ -n "$name" ] || continue
+    if [ -f "$DEMO_BUNDLES_DIR/$name/requested" ] && [ ! -f "$DEMO_BUNDLES_DIR/$name/ready" ]; then
+      waiting+=("$name")
+    else
+      others+=("$name")
+    fi
+  done
+  for name in ${waiting[@]+"${waiting[@]}"} ${others[@]+"${others[@]}"}; do
     # One demo that cannot be synced does not keep the others from theirs; the run still fails.
     # Not `( ... ) || ...`: bash ignores errexit inside a command on the left of ||.
     set +e
