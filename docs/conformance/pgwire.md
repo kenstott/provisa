@@ -15,7 +15,6 @@
 | An unsized source numeric is the numeric(38,s) registration samples | 1 | A registered numeric(p,s) column is described with its typmod (PGWIRE SENDS NUMERIC(P,S)). An unsized source numeric registers as numeric(38,s), s the largest scale among its values at registration, so an engine that cannot hold an unbounded numeric reads it exactly: it is described as that numeric(38,s), where PostgreSQL describes an unsized numeric. |
 | The catalog's bootstrap owner is provisa | 1 | The pgwire catalog's bootstrap role (oid 10) is named provisa, not postgres: pg_get_userbyid(10) and every owner column answer provisa (THE CATALOG'S BOOTSTRAP OWNER IS PROVISA). |
 | Internal functions | 558 | PostgreSQL itself cannot call these from SQL: each takes an internal argument, or runs only from a trigger, an event trigger, binary upgrade or initdb, or is the input or output function of a pseudo-type. They are parts of the server rather than functions a client calls. |
-| Index functions | 44 | Indexes belong to the source database, and Provisa does not handle them: these are the support and maintenance functions of index access methods. Index metadata stays served. |
 
 <details><summary>A source's array column is JSON (3)</summary>
 
@@ -623,57 +622,6 @@
 | catalog function::xid8recv(internal) | no call reaches it: takes an internal argument, which no SQL expression can supply |
 | catalog function::xidrecv(internal) | no call reaches it: takes an internal argument, which no SQL expression can supply |
 | catalog function::xml_recv(internal) | no call reaches it: takes an internal argument, which no SQL expression can supply |
-
-</details>
-
-<details><summary>Index functions (44)</summary>
-
-| Case | Reason |
-| --- | --- |
-| catalog function::brin_bloom_summary_in(cstring) | not served: ERROR: Catalog Error: Scalar Function with name brin_bloom_summary_in does not exist! Did you mean "bin"? |
-| catalog function::brin_bloom_summary_out(pg_brin_bloom_summary) | not served: ERROR: Catalog Error: Scalar Function with name brin_bloom_summary_out does not exist! Did you mean "bin"? |
-| catalog function::brin_bloom_summary_send(pg_brin_bloom_summary) | not served: ERROR: Catalog Error: Scalar Function with name brin_bloom_summary_send does not exist! Did you mean "bin"? |
-| catalog function::brin_desummarize_range(regclass, bigint) | not served: ERROR: brin_desummarize_range() has no form over the meta domain |
-| catalog function::brin_minmax_multi_summary_in(cstring) | not served: ERROR: Catalog Error: Scalar Function with name brin_minmax_multi_summary_in does not exist! Did you mean "bin"? |
-| catalog function::brin_minmax_multi_summary_out(pg_brin_minmax_multi_summary) | not served: ERROR: Catalog Error: Scalar Function with name brin_minmax_multi_summary_out does not exist! Did you mean "bin"? |
-| catalog function::brin_minmax_multi_summary_send(pg_brin_minmax_multi_summary) | not served: ERROR: Catalog Error: Scalar Function with name brin_minmax_multi_summary_send does not exist! Did you mean "bin"? |
-| catalog function::brin_summarize_new_values(regclass) | not served: ERROR: brin_summarize_new_values() has no form over the meta domain |
-| catalog function::brin_summarize_range(regclass, bigint) | not served: ERROR: brin_summarize_range() has no form over the meta domain |
-| catalog function::btarraycmp(anyarray, anyarray) | not served: ERROR: Catalog Error: Scalar Function with name btarraycmp does not exist! Did you mean "bar"? |
-| catalog function::btboolcmp(boolean, boolean) | not served: ERROR: Catalog Error: Scalar Function with name btboolcmp does not exist! Did you mean "bool_or"? |
-| catalog function::btbpchar_pattern_cmp(character, character) | not served: ERROR: Catalog Error: Scalar Function with name btbpchar_pattern_cmp does not exist! Did you mean "bar"? |
-| catalog function::btcharcmp("char", "char") | not served: ERROR: Catalog Error: Scalar Function with name btcharcmp does not exist! Did you mean "bar"? |
-| catalog function::btequalimage(oid) | not served: ERROR: Catalog Error: Scalar Function with name btequalimage does not exist! Did you mean "quantile"? |
-| catalog function::btfloat48cmp(real, double precision) | not served: ERROR: Catalog Error: Scalar Function with name btfloat48cmp does not exist! Did you mean "current_localtime"? |
-| catalog function::btfloat4cmp(real, real) | not served: ERROR: Catalog Error: Scalar Function with name btfloat4cmp does not exist! Did you mean "current_localtime"? |
-| catalog function::btfloat84cmp(double precision, real) | not served: ERROR: Catalog Error: Scalar Function with name btfloat84cmp does not exist! Did you mean "current_localtime"? |
-| catalog function::btfloat8cmp(double precision, double precision) | not served: ERROR: Catalog Error: Scalar Function with name btfloat8cmp does not exist! Did you mean "current_localtime"? |
-| catalog function::btint24cmp(smallint, integer) | not served: ERROR: Catalog Error: Scalar Function with name btint24cmp does not exist! Did you mean "bin"? |
-| catalog function::btint28cmp(smallint, bigint) | not served: ERROR: Catalog Error: Scalar Function with name btint28cmp does not exist! Did you mean "bin"? |
-| catalog function::btint2cmp(smallint, smallint) | not served: ERROR: Catalog Error: Scalar Function with name btint2cmp does not exist! Did you mean "bin"? |
-| catalog function::btint42cmp(integer, smallint) | not served: ERROR: Catalog Error: Scalar Function with name btint42cmp does not exist! Did you mean "bin"? |
-| catalog function::btint48cmp(integer, bigint) | not served: ERROR: Catalog Error: Scalar Function with name btint48cmp does not exist! Did you mean "bin"? |
-| catalog function::btint4cmp(integer, integer) | not served: ERROR: Catalog Error: Scalar Function with name btint4cmp does not exist! Did you mean "bin"? |
-| catalog function::btint82cmp(bigint, smallint) | not served: ERROR: Catalog Error: Scalar Function with name btint82cmp does not exist! Did you mean "bin"? |
-| catalog function::btint84cmp(bigint, integer) | not served: ERROR: Catalog Error: Scalar Function with name btint84cmp does not exist! Did you mean "bin"? |
-| catalog function::btint8cmp(bigint, bigint) | not served: ERROR: Catalog Error: Scalar Function with name btint8cmp does not exist! Did you mean "bin"? |
-| catalog function::btnamecmp(name, name) | not served: ERROR: Catalog Error: Scalar Function with name btnamecmp does not exist! Did you mean "html_escape"? |
-| catalog function::btnametextcmp(name, text) | not served: ERROR: Catalog Error: Scalar Function with name btnametextcmp does not exist! Did you mean "to_timestamp"? |
-| catalog function::btoidcmp(oid, oid) | not served: ERROR: Catalog Error: Scalar Function with name btoidcmp does not exist! Did you mean "trim"? |
-| catalog function::btoidvectorcmp(oidvector, oidvector) | not served: ERROR: Catalog Error: Scalar Function with name btoidvectorcmp does not exist! Did you mean "bit_or"? |
-| catalog function::btrecordcmp(record, record) | not served: ERROR: Catalog Error: Scalar Function with name btrecordcmp does not exist! Did you mean "cbrt"? |
-| catalog function::btrecordimagecmp(record, record) | not served: ERROR: Catalog Error: Scalar Function with name btrecordimagecmp does not exist! Did you mean "trim"? |
-| catalog function::bttext_pattern_cmp(text, text) | not served: ERROR: Catalog Error: Scalar Function with name bttext_pattern_cmp does not exist! Did you mean "exp"? |
-| catalog function::bttextcmp(text, text) | not served: ERROR: Catalog Error: Scalar Function with name bttextcmp does not exist! Did you mean "st_astext"? |
-| catalog function::bttextnamecmp(text, name) | not served: ERROR: Catalog Error: Scalar Function with name bttextnamecmp does not exist! Did you mean "to_timestamp"? |
-| catalog function::bttidcmp(tid, tid) | not served: ERROR: Catalog Error: Scalar Function with name bttidcmp does not exist! Did you mean "trim"? |
-| catalog function::btvarstrequalimage(oid) | not served: ERROR: Catalog Error: Scalar Function with name btvarstrequalimage does not exist! Did you mean "getvariable"? |
-| catalog function::gin_clean_pending_list(regclass) | not served: ERROR: gin_clean_pending_list() has no form over the meta domain |
-| catalog function::gin_cmp_tslexeme(text, text) | not served: ERROR: Catalog Error: Scalar Function with name gin_cmp_tslexeme does not exist! Did you mean "pg_sleep"? |
-| catalog function::gin_compare_jsonb(text, text) | not served: ERROR: Catalog Error: Scalar Function with name gin_compare_jsonb does not exist! Did you mean "provisa_jsonb_insert"? |
-| catalog function::gtsvectorin(cstring) | not served: ERROR: Catalog Error: Scalar Function with name gtsvectorin does not exist! Did you mean "bitstring"? |
-| catalog function::gtsvectorout(gtsvector) | not served: ERROR: Catalog Error: Scalar Function with name gtsvectorout does not exist! Did you mean "second"? |
-| catalog function::spg_poly_quad_compress(polygon) | not served: ERROR: Catalog Error: Scalar Function with name spg_poly_quad_compress does not exist! Did you mean "pg_conf_load_time"? |
 
 </details>
 
