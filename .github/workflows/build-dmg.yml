@@ -161,11 +161,13 @@ jobs:
     permissions:
       id-token: write
     steps:
+      # REQ-2194: one provisa wheel per platform (each carries the compiled encoders), and the sdist.
       - name: Download dist
         uses: actions/download-artifact@v4
         with:
-          name: provisa-wheel-dist
+          pattern: provisa-wheel-*-dist
           path: dist/
+          merge-multiple: true
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

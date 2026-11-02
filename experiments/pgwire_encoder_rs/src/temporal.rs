@@ -1,0 +1,315 @@
+// Dates, timestamps, times and intervals, as provisa's column_values and buenavista's converters
+// write them.
+
+use crate::{EncErr, R};
+
+const DAY_US: i128 = 86_400_000_000;
+/// datetime.date(1, 1, 1) and date(9999, 12, 31) as days since 1970-01-01.
+const MIN_DAY: i64 = -719_162;
+const MAX_DAY: i64 = 2_932_896;
+const TIMEDELTA_MAX_DAYS: i128 = 999_999_999;
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum TzSpec {
+    Naive,
+    /// A fixed UTC offset in seconds (UTC is 0).
+    Fixed(i32),
+}
+
+impl TzSpec {
+    /// The zones whose offset is fixed: UTC and +HH:MM / -HH:MM. A named zone needs the tz database
+    /// pyarrow's own conversion consults; not ported.
+    pub fn parse(name: &str) -> Option<TzSpec> {
+        if name == "UTC" {
+            return Some(TzSpec::Fixed(0));
+        }
+        let b = name.as_bytes();
+        if b.len() == 6 && (b[0] == b'+' || b[0] == b'-') && b[3] == b':' {
+            let h: i32 = name[1..3].parse().ok()?;
+            let m: i32 = name[4..6].parse().ok()?;
+            let secs = h * 3600 + m * 60;
+            return Some(TzSpec::Fixed(if b[0] == b'-' { -secs } else { secs }));
+        }
+        None
+    }
+}
+
+pub fn date_infinity(days: i32) -> i32 {
+    // ir_arrow._DATE_INFINITY: the int32 range's top, and its negation, mark +/-infinity.
+    if days == i32::MAX {
+        1
+    } else if days == -i32::MAX {
+        -1
+    } else {
+        0
+    }
+}
+
+pub fn timestamp_infinity(raw: i64) -> i32 {
+    if raw == i64::MAX {
+        1
+    } else if raw == -i64::MAX {
+        -1
+    } else {
+        0
+    }
+}
+
+pub fn check_date(days: i64) -> R<()> {
+    if !(MIN_DAY..=MAX_DAY).contains(&days) {
+        return Err(EncErr::Value("year is out of range".into()));
+    }
+    Ok(())
+}
+
+/// Civil (year, month, day) of days since 1970-01-01 (Howard Hinnant's days_from_civil inverse).
+fn civil(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+fn push2(out: &mut Vec<u8>, v: u32) {
+    out.push(b'0' + (v / 10) as u8);
+    out.push(b'0' + (v % 10) as u8);
+}
+
+fn push_ymd(days: i64, out: &mut Vec<u8>) {
+    let (y, m, d) = civil(days);
+    let y = y as u32;
+    out.push(b'0' + (y / 1000) as u8);
+    out.push(b'0' + (y / 100 % 10) as u8);
+    push2(out, y % 100);
+    out.push(b'-');
+    push2(out, m);
+    out.push(b'-');
+    push2(out, d);
+}
+
+/// _date_text
+pub fn date_text(days: i32, out: &mut Vec<u8>) -> R<()> {
+    match date_infinity(days) {
+        1 => out.extend_from_slice(b"infinity"),
+        -1 => out.extend_from_slice(b"-infinity"),
+        _ => {
+            check_date(days as i64)?;
+            push_ymd(days as i64, out);
+        }
+    }
+    Ok(())
+}
+
+/// _pg_clock's HH:MM:SS[.fraction] of microseconds since midnight.
+pub fn clock_text(us: i64, out: &mut Vec<u8>) {
+    let secs = us / 1_000_000;
+    let frac = (us % 1_000_000) as u32;
+    push2(out, (secs / 3600) as u32);
+    out.push(b':');
+    push2(out, (secs / 60 % 60) as u32);
+    out.push(b':');
+    push2(out, (secs % 60) as u32);
+    if frac != 0 {
+        let mut f = frac;
+        let mut digits = [b'0'; 6];
+        for k in (0..6).rev() {
+            digits[k] = b'0' + (f % 10) as u8;
+            f /= 10;
+        }
+        let mut n = 6;
+        while digits[n - 1] == b'0' {
+            n -= 1;
+        }
+        out.push(b'.');
+        out.extend_from_slice(&digits[..n]);
+    }
+}
+
+/// _pg_offset
+fn offset_text(seconds: i32, out: &mut Vec<u8>) {
+    out.push(if seconds < 0 { b'-' } else { b'+' });
+    let a = seconds.unsigned_abs();
+    let (h, rest) = (a / 3600, a % 3600);
+    let (m, s) = (rest / 60, rest % 60);
+    if h >= 100 {
+        let mut b = itoa::Buffer::new();
+        out.extend_from_slice(b.format(h).as_bytes());
+    } else {
+        push2(out, h);
+    }
+    if m != 0 || s != 0 {
+        out.push(b':');
+        push2(out, m);
+    }
+    if s != 0 {
+        out.push(b':');
+        push2(out, s);
+    }
+}
+
+fn local_micros(micros: i128, tz: TzSpec) -> i128 {
+    match tz {
+        TzSpec::Naive => micros,
+        TzSpec::Fixed(off) => micros + off as i128 * 1_000_000,
+    }
+}
+
+/// A timestamp to_pylist can hold: its UTC and its local time both within datetime's years.
+pub fn check_timestamp(micros: i128, tz: TzSpec) -> R<()> {
+    let lo = MIN_DAY as i128 * DAY_US;
+    let hi = (MAX_DAY as i128 + 1) * DAY_US;
+    for v in [micros, local_micros(micros, tz)] {
+        if v < lo || v >= hi {
+            return Err(EncErr::Value("year is out of range".into()));
+        }
+    }
+    Ok(())
+}
+
+/// _timestamp_text for a finite value: the local date and clock, and the offset of an aware one.
+pub fn timestamp_text(micros: i128, tz: TzSpec, out: &mut Vec<u8>) -> R<()> {
+    check_timestamp(micros, tz)?;
+    let local = local_micros(micros, tz);
+    let days = local.div_euclid(DAY_US) as i64;
+    let tod = local.rem_euclid(DAY_US) as i64;
+    push_ymd(days, out);
+    out.push(b' ');
+    clock_text(tod, out);
+    if let TzSpec::Fixed(off) = tz {
+        offset_text(off, out);
+    }
+    Ok(())
+}
+
+/// trunc(float(n / d)) for n, d > 0: Python's int true division is correctly rounded, then int()
+/// truncates. The quotient rounds up to the next integer only when it is within half a unit in
+/// the last place of it.
+fn trunc_true_div(n: i128, d: i128) -> i128 {
+    let (q, r) = (n / d, n % d);
+    if r == 0 || q == 0 {
+        return q;
+    }
+    assert!(q < (1i128 << 52), "interval quotient past 2**52 days is not ported");
+    // spacing of doubles in [2**L, 2**(L+1)), L = floor(log2 q): 2**(L-52) = 1 / 2**k
+    let l = 127 - q.leading_zeros() as i32;
+    let k = 52 - l;
+    // round up to q+1 iff (q+1) - n/d <= spacing/2 (a tie goes to q+1, whose last bit is even)
+    if (d - r) << (k + 1) <= d {
+        q + 1
+    } else {
+        q
+    }
+}
+
+/// buenavista _interval_parts of a timedelta of `total` microseconds: days = int(micros / 86400e6).
+fn timedelta_parts(total: i128) -> (i64, i64, i64) {
+    let mag = trunc_true_div(total.abs(), DAY_US);
+    let days = if total < 0 { -mag } else { mag };
+    (0, days as i64, (total - days * DAY_US) as i64)
+}
+
+fn timedelta_in_range(total: i128) -> R<()> {
+    if total.div_euclid(DAY_US).abs() > TIMEDELTA_MAX_DAYS {
+        return Err(EncErr::Overflow("days is out of range".into()));
+    }
+    Ok(())
+}
+
+/// A duration column's value (a timedelta from to_pylist) as buenavista splits it.
+pub fn interval_parts_of_duration(total: i128) -> R<(i64, i64, i64)> {
+    timedelta_in_range(total)?;
+    Ok(timedelta_parts(total))
+}
+
+/// A month-day-nano interval as column_values (ir_types.interval_value) hands it on and buenavista
+/// splits it: a timedelta when it has no months and says the same fields back, else the fields.
+pub fn interval_parts_of_mdn(months: i32, days: i32, nanos: i64) -> R<(i64, i64, i64)> {
+    let micros = nanos.div_euclid(1000) as i128;
+    let (months, days) = (months as i128, days as i128);
+    if months == 0 && days.abs() <= TIMEDELTA_MAX_DAYS {
+        let total = days * DAY_US + micros;
+        timedelta_in_range(total)?;
+        // ir_types.interval_parts of that timedelta
+        let said = if total < 0 {
+            (-((-total) / DAY_US), -((-total) % DAY_US))
+        } else {
+            (total / DAY_US, total % DAY_US)
+        };
+        if said == (days, micros) {
+            return Ok(timedelta_parts(total));
+        }
+    }
+    Ok((months as i64, days as i64, micros as i64))
+}
+
+/// _interval_text (IntervalStyle postgres)
+pub fn interval_text(months: i64, days: i64, micros: i64, out: &mut Vec<u8>) {
+    let years = months / 12;
+    let months = months - years * 12;
+    let mut any = false;
+    let mut after_negative = false;
+    for (n, unit) in [(years, "year"), (months, "mon"), (days, "day")] {
+        if n != 0 {
+            if any {
+                out.push(b' ');
+            }
+            if after_negative && n > 0 {
+                out.push(b'+');
+            }
+            let mut b = itoa::Buffer::new();
+            out.extend_from_slice(b.format(n).as_bytes());
+            out.push(b' ');
+            out.extend_from_slice(unit.as_bytes());
+            if n != 1 {
+                out.push(b's');
+            }
+            any = true;
+            after_negative = n < 0;
+        }
+    }
+    if micros != 0 || !any {
+        if any {
+            out.push(b' ');
+        }
+        let a = micros.unsigned_abs();
+        let hours = a / 3_600_000_000;
+        let rem = a % 3_600_000_000;
+        let minutes = rem / 60_000_000;
+        let rem = rem % 60_000_000;
+        let (secs, frac) = (rem / 1_000_000, rem % 1_000_000);
+        if micros < 0 {
+            out.push(b'-');
+        } else if after_negative {
+            out.push(b'+');
+        }
+        if hours < 10 {
+            out.push(b'0');
+        }
+        let mut b = itoa::Buffer::new();
+        out.extend_from_slice(b.format(hours).as_bytes());
+        out.push(b':');
+        push2(out, minutes as u32);
+        out.push(b':');
+        push2(out, secs as u32);
+        if frac != 0 {
+            let mut digits = [b'0'; 6];
+            let mut f = frac;
+            for k in (0..6).rev() {
+                digits[k] = b'0' + (f % 10) as u8;
+                f /= 10;
+            }
+            let mut n = 6;
+            while digits[n - 1] == b'0' {
+                n -= 1;
+            }
+            out.push(b'.');
+            out.extend_from_slice(&digits[..n]);
+        }
+    }
+}

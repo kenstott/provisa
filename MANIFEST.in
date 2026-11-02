@@ -1,0 +1,6 @@
+# REQ-2194: the sdist carries the Rust source provisa._encoders is compiled from, so a `pip install`
+# from it builds the module (cargo on PATH). rust/encoders' Cargo.lock is the build's lock.
+include rust/encoders/Cargo.toml rust/encoders/Cargo.lock
+recursive-include rust/encoders/src *.rs
+include experiments/pgwire_encoder_rs/Cargo.toml
+recursive-include experiments/pgwire_encoder_rs/src *.rs

@@ -277,8 +277,8 @@ bundle_native_payload() {
 
   # ── 2. Linux x86_64 wheelhouse ──
   info "Building the provisa wheel (Linux)..."
-  # Build with the bundled python-base (the runner's default python may lack `build`;
-  # the provisa wheel is pure-python so the interpreter version doesn't matter).
+  # Build with the bundled python-base (the runner's default python may lack `build`). REQ-2194:
+  # the wheel is a manylinux_2_28 cp312 wheel built by the Dockerfile's provisa-wheel stage.
   "${base}/bin/python3" -m pip install --quiet build
   if [ -x "${REPO_ROOT}/scripts/build-wheel.sh" ]; then
     PROVISA_SKIP_UI_BUILD=1 PYTHON="${base}/bin/python3" "${REPO_ROOT}/scripts/build-wheel.sh" --wheel
@@ -301,6 +301,10 @@ bundle_native_payload() {
   "${REPO_ROOT}/scripts/build-notebook-wheel.sh" "${base}/bin/python3" "$notebook_dir"
   "${base}/bin/python3" -m pip download --dest "$wheels" --find-links "$notebook_dir" \
     "${built_wheel}[embedded]" uvicorn mcp-proxy
+  # REQ-2194: the wheelhouse's provisa is the platform wheel build-wheel.sh built and checked
+  # (manylinux_2_28, with provisa._encoders and its notices); first-launch imports the module.
+  "${base}/bin/python3" "${REPO_ROOT}/scripts/check-provisa-wheel.py" "$wheels"/provisa-*.whl \
+    --tag manylinux_2_28_x86_64 --import
   ok "Wheelhouse staged ($(ls "$wheels" | wc -l | tr -d ' ') wheels)."
 
   # ── 3. Built UI (build provisa-ui/dist if not already present) ──
