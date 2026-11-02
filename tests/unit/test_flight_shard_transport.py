@@ -40,6 +40,9 @@ def _state(registry: dict) -> SimpleNamespace:
         flight_client=None,
         flight_clients={},
         org_registry=SimpleNamespace(get=registry.get),
+        # The terminal the active org reads from: the configured (shared) coordinator.
+        active_engine_endpoint=None,
+        active_isolated_org=None,
     )
 
 

@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import logging
 import time
-from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
@@ -54,7 +53,6 @@ from pytest_bdd import given, parsers, scenarios, then, when
 from provisa.compiler.directives import translate_federation_hints
 from provisa.compiler.hints import extract_graphql_hints, extract_hints
 from provisa.executor.direct import _WRITE_RE
-from provisa.executor.trino import execute_trino
 from provisa.transpiler.router import Route, decide_route
 
 # Reaches a Trino coordinator: the CI side (tests/local_platform.py).
@@ -318,19 +316,13 @@ def given_query_with_session_hints(shared_data: dict) -> None:
 
 @when("the query is executed via the federation engine")
 def when_query_executed_via_federation(shared_data: dict) -> None:
-    # Exercise the real execute_trino code path with a mocked DBAPI connection
-    # so we can observe exactly which statements are issued — and in what order.
-    mock_conn = MagicMock()
-    mock_cursor = MagicMock()
-    mock_cursor.description = [
-        ("id", "bigint", None, None, None, None, None),
-        ("name", "varchar", None, None, None, None, None),
-    ]
-    mock_cursor.fetchall.return_value = [(1, "alice")]
-    mock_conn.cursor.return_value = mock_cursor
+    # Exercise the real engine read (REQ-2194: through the Zaychik proxy) over a stand-in proxy
+    # connection, so we can observe exactly what reaches the engine — and in what order.
+    from tests.zaychik_double import ProxyConnection, backend_state, proxy_table, trino_backend
 
-    result = execute_trino(
-        mock_conn,
+    proxy = ProxyConnection(proxy_table({"id": ("bigint", [1]), "name": ("varchar", ["alice"])}))
+    result = trino_backend().execute_sync(
+        backend_state(proxy),
         shared_data["cleaned_sql"],
         session_hints=shared_data["session_hints"],
     )
@@ -339,8 +331,8 @@ def when_query_executed_via_federation(shared_data: dict) -> None:
     assert result is not None
     assert result.rows == [(1, "alice")]
 
-    executed = [c.args[0] for c in mock_cursor.execute.call_args_list]
-    shared_data["executed_statements"] = executed
+    shared_data["executed_statements"] = proxy.statements
+    shared_data["engine_log"] = proxy.log
     shared_data["query_result"] = result
 
 
@@ -350,40 +342,31 @@ def then_set_session_injected_before_execution(shared_data: dict) -> None:
     session_hints = shared_data["session_hints"]
     cleaned_sql = shared_data["cleaned_sql"]
 
-    set_statements = [s for s in executed if s.upper().startswith("SET SESSION")]
+    # REQ-2194: every statement through the proxy is a Trino session of its own, so the hints
+    # are that session's properties, sent with the statement (x-provisa-trino-context) rather
+    # than as SET SESSION statements ahead of it; no SET SESSION statement is issued at all.
+    log = shared_data["engine_log"]
+    assert not [s for s in executed if s.upper().startswith("SET SESSION")], executed
+    sessions = [entry for kind, entry in log if kind == "session"]
+    assert len(sessions) == 1, f"expected one session for the statement, got {sessions}"
+    properties = sessions[0]["properties"]
 
-    # At least one SET SESSION per configured hint; executor may inject additional
+    # Each configured property must reach the session with its value; the executor may add
     # system hints (e.g. query_max_execution_time) on top of the caller's hints.
-    assert len(set_statements) >= len(session_hints), (
-        f"expected at least {len(session_hints)} SET SESSION statements, "
-        f"got {len(set_statements)}: {set_statements}"
-    )
-
-    # Each configured property must appear in a SET SESSION statement.
     for prop, value in session_hints.items():
-        matching = [s for s in set_statements if prop in s]
-        assert matching, f"no SET SESSION statement for property {prop}"
-        assert str(value) in matching[0], (
-            f"SET SESSION for {prop} did not carry value {value}: {matching[0]}"
+        assert properties.get(prop) == str(value), (
+            f"session property {prop} did not carry value {value}: {properties}"
         )
 
-    # The main query must have actually been executed.
-    main_query_indices = [i for i, s in enumerate(executed) if s == cleaned_sql]
-    assert main_query_indices, "main query was never executed"
-    main_idx = main_query_indices[0]
-
-    # Every SET SESSION must precede the main query — injected *before* execution.
-    set_indices = [i for i, s in enumerate(executed) if s.upper().startswith("SET SESSION")]
-    assert set_indices, "no SET SESSION statements were issued"
-    assert max(set_indices) < main_idx, (
-        "SET SESSION statements must be injected before the main query executes"
+    # The main query must have actually been executed, in the session that carries the hints.
+    assert executed == [cleaned_sql], f"main query was never executed: {executed}"
+    assert [kind for kind, _ in log] == ["session", "statement"], (
+        "the session must be on the statement it is for, set before it executes"
     )
 
-    # SET SESSION is configuration, not a data mutation.
-    for stmt in set_statements:
-        assert _WRITE_RE.match(stmt) is None, (
-            f"SET SESSION must not be treated as a write statement: {stmt}"
-        )
+    # The session is configuration, not a data mutation: what ran is the read alone.
+    for stmt in executed:
+        assert _WRITE_RE.match(stmt) is None, f"a read was treated as a write statement: {stmt}"
 
 
 # ---------------------------------------------------------------------------
@@ -491,40 +474,23 @@ def then_comment_stripped_and_translated_before_forwarding(shared_data: dict) ->
     )
 
     # -----------------------------------------------------------------------
-    # 4. Round-trip verification via the real execute_trino path
-    #    — confirm SET SESSION is injected when the engine receives the query
+    # 4. Round-trip verification via the real engine read (REQ-2194: through the Zaychik
+    #    proxy) — confirm the hint reaches the session the engine runs the query in
     # -----------------------------------------------------------------------
-    mock_conn = MagicMock()
-    mock_cursor = MagicMock()
-    mock_cursor.description = [
-        ("id", "bigint", None, None, None, None, None),
-        ("name", "varchar", None, None, None, None, None),
-    ]
-    mock_cursor.fetchall.return_value = [(42, "bob")]
-    mock_conn.cursor.return_value = mock_cursor
+    from tests.zaychik_double import ProxyConnection, backend_state, proxy_table, trino_backend
 
-    result = execute_trino(
-        mock_conn,
-        cleaned_sql,
-        session_hints=session_hints,
+    proxy = ProxyConnection(proxy_table({"id": ("bigint", [42]), "name": ("varchar", ["bob"])}))
+    result = trino_backend().execute_sync(
+        backend_state(proxy), cleaned_sql, session_hints=session_hints
     )
 
-    assert result is not None, "execute_trino returned None"
-    assert result.rows == [(42, "bob")], f"unexpected rows from execute_trino: {result.rows}"
+    assert result is not None, "the engine read returned None"
+    assert result.rows == [(42, "bob")], f"unexpected rows from the engine read: {result.rows}"
 
-    all_calls = [c.args[0] for c in mock_cursor.execute.call_args_list]
-
-    # The engine must receive at least one SET SESSION for the translated hint.
-    set_session_calls = [c for c in all_calls if c.upper().startswith("SET SESSION")]
-    assert set_session_calls, (
-        "no SET SESSION statement was injected before forwarding to the engine"
-    )
-
-    broadcast_set = [c for c in set_session_calls if "join_distribution_type" in c]
-    assert broadcast_set, "no SET SESSION for join_distribution_type was found in engine calls"
-    assert "BROADCAST" in broadcast_set[0], (
-        f"SET SESSION for join_distribution_type does not carry BROADCAST value: "
-        f"{broadcast_set[0]!r}"
+    all_calls = proxy.statements
+    (session,) = proxy.sessions
+    assert session["properties"].get("join_distribution_type") == "BROADCAST", (
+        f"join_distribution_type=BROADCAST did not reach the engine session: {session}"
     )
 
     # The raw hint comment must not appear anywhere in the statements sent to
@@ -532,12 +498,10 @@ def then_comment_stripped_and_translated_before_forwarding(shared_data: dict) ->
     for stmt in all_calls:
         assert "/*+" not in stmt, f"Provisa hint comment leaked into engine statement: {stmt!r}"
 
-    # SET SESSION must precede the main query (engine sees props before SQL).
-    main_indices = [i for i, s in enumerate(all_calls) if s == cleaned_sql]
-    assert main_indices, "main query was not sent to the engine"
-    set_indices = [i for i, s in enumerate(all_calls) if s.upper().startswith("SET SESSION")]
-    assert max(set_indices) < main_indices[0], (
-        "SET SESSION must precede the main query in the engine call sequence"
+    # The session is set before the main query (engine sees props before SQL).
+    assert all_calls == [cleaned_sql], "main query was not sent to the engine"
+    assert [kind for kind, _ in proxy.log] == ["session", "statement"], (
+        "the session must be set before the main query in the engine call sequence"
     )
 
 

@@ -24,10 +24,10 @@ import os
 from types import SimpleNamespace
 
 import pytest
-import trino
 
-from provisa.executor.trino import execute_trino
+from provisa.executor.trino_flight import create_flight_connection
 from provisa.pgwire._pipeline import _engine_session_hints
+from tests.zaychik_double import trino_backend
 
 pytestmark = [pytest.mark.requires_trino, pytest.mark.integration]
 
@@ -39,32 +39,30 @@ _JOIN = (
 
 @pytest.fixture
 def state():
-    kwargs = dict(
-        host="localhost",
-        port=int(os.environ["TRINO_PORT"]),
-        user="itest",
-        catalog="system",
-        schema="runtime",
-        http_scheme="http",
-    )
-    return SimpleNamespace(
-        engine_conn=trino.dbapi.connect(**kwargs),
-        engine_conn_kwargs=kwargs,
+    # REQ-2194: the engine read goes through the Zaychik proxy in front of the stack's Trino.
+    flight = create_flight_connection(host="localhost", port=int(os.environ["ZAYCHIK_PORT"]))
+    yield SimpleNamespace(
+        engine_conn=None,
+        engine_conn_kwargs={"source": "provisa/itest", "catalog": "system", "schema": "runtime"},
         engine_session_hints={},
+        active_engine_endpoint=None,
+        active_isolated_org=None,
+        flight_client=flight,
         source_types={"mongo": "mongodb"},
     )
+    flight.close()
 
 
 def _run(state, hints: dict[str, str], sql: str = "SELECT 1"):
     state.source_federation_hints = {"mongo": hints}
     plan_hints = _engine_session_hints(state, ("mongo",), None, sql, writes=False)
-    result = execute_trino(state.engine_conn, sql, session_hints=plan_hints)
+    result = trino_backend().execute_sync(state, sql, session_hints=plan_hints).materialize()
     return plan_hints or {}, result
 
 
 def test_a_statement_over_a_source_with_a_connector_setting_answers(state):
     hints, result = _run(state, {"direct_connection": "true"})
-    assert result.rows == [[1]]
+    assert result.rows == [(1,)]
     assert hints == {}
 
 
@@ -79,7 +77,6 @@ def test_a_vocabulary_hint_takes_effect_and_a_raw_key_is_not_sent(state, join, d
     )
     assert hints == {"join_distribution_type": join.upper()}
     assert f"distribution = {distribution}" in result.rows[0][0]
-    cur = state.engine_conn.cursor()
-    cur.execute("SHOW SESSION LIKE 'query_max_run_time'")
-    _, value, default, *_ = cur.fetchall()[0]
+    _, shown = _run(state, {}, "SHOW SESSION LIKE 'query_max_run_time'")
+    _, value, default, *_ = shown.rows[0]
     assert value == default != "3h"

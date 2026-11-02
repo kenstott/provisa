@@ -429,29 +429,30 @@ def test_sqlalchemy_pyodbc_stream_registers_cursor_cancel_before_execute() -> No
 
 
 def test_trino_execute_cancels_its_cursor() -> None:
-    from provisa.executor.trino import execute_trino
+    """REQ-2194: the engine read (through the Zaychik proxy) cancels its ADBC cursor."""
+    import pyarrow as pa
+
+    from provisa.executor.trino_flight import execute_trino_flight
 
     b = _Blocker()
 
     class _Cur:
-        description = None
-
-        def cancel(self) -> None:
+        def adbc_cancel(self) -> None:
             b.cancel()
 
         def execute(self, sql: str, *_: Any) -> None:
             if sql == "SELECT x FROM t":
                 b.block()
 
-        def fetchone(self) -> tuple:
-            return (1,)
+        def fetch_arrow_table(self) -> pa.Table:
+            return pa.table({})
 
-        def fetchall(self) -> list:
-            return []
+        def close(self) -> None:
+            pass
 
     conn = type("_Conn", (), {"cursor": lambda self: _Cur()})()
-    execute_trino(conn, "SELECT warm")  # type: ignore[arg-type]  # first call pays module imports
-    _expect_deadline_cancel(lambda: execute_trino(conn, "SELECT x FROM t"), b)  # type: ignore[arg-type]
+    execute_trino_flight(conn, "SELECT warm")  # first call pays module imports
+    _expect_deadline_cancel(lambda: execute_trino_flight(conn, "SELECT x FROM t"), b)
 
 
 def test_trino_flight_arrow_cancels_its_adbc_cursor() -> None:

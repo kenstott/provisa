@@ -26,10 +26,10 @@ index 3b51143..30c54a6 100644
 \ No newline at end of file
 diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClients.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClients.java
 new file mode 100644
-index 0000000..25270ca
+index 0000000..3c38735
 --- /dev/null
 +++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClients.java
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,71 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.connection;
 +
 +import io.airlift.units.Duration;
@@ -58,7 +58,12 @@ index 0000000..25270ca
 +  private static final Set<String> CLIENT_CAPABILITIES =
 +      Set.of("PARAMETRIC_DATETIME", "SESSION_AUTHORIZATION");
 +
-+  private static final String DEFAULT_SOURCE = "zaychik";
++  /**
++   * The source of a statement whose client names none: the Trino JDBC driver's, which this proxy
++   * sent before it spoke the client protocol, so a coordinator's resource-group selectors that
++   * place the proxy's statements still do.
++   */
++  private static final String DEFAULT_SOURCE = "trino-jdbc";
 +
 +  private final URI server;
 +  private final boolean ssl;

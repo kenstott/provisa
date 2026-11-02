@@ -167,31 +167,33 @@ def test_bind_terminal_stores_kwargs_without_connecting(iso_org, monkeypatch):
 
 
 def test_kwargs_only_terminal_passes_the_execute_guard(iso_org, monkeypatch):
-    """TrinoBackend.execute must NOT reject a bound-but-unconnected terminal: execute_trino
-    lazily connects from state.engine_conn_kwargs (the wake)."""
+    """A bound-but-unconnected terminal (kwargs only) is never dialed by the read: the wake is the
+    pipeline's. REQ-2194: a Trino read goes through the Zaychik proxy, which fronts the configured
+    coordinator only, so an isolated org's read on a deployment with no proxy in front of its own
+    coordinator is refused by name -- never answered by the shared coordinator."""
     from provisa.federation.engine import build_trino_engine
 
     org_id, rt = iso_org
     monkeypatch.setenv("PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE", "trino-{org_id}.internal")
     rt.federation_engine = EngineRuntime(build_trino_engine(), state)
-    woke = {}
+    read = {}
 
-    def _fake_execute_trino(conn, sql, **kw):
-        woke["conn"] = conn
-        woke["sql"] = sql
+    def _fake_execute_trino_flight_sync(transport, sql, params=None, **kw):
+        read["sql"] = sql
         return "ok"
 
-    import provisa.executor.trino as trino_exec
+    import provisa.executor.trino_flight as trino_flight
 
-    monkeypatch.setattr(trino_exec, "execute_trino", _fake_execute_trino)
+    monkeypatch.setattr(trino_flight, "execute_trino_flight_sync", _fake_execute_trino_flight_sync)
     token = set_current_org(org_id)
     try:
         rt.federation_engine.bind_terminal()
-        result = rt.federation_engine.execute_engine_sync("SELECT 1")
+        with pytest.raises(RuntimeError, match="no Arrow Flight transport"):
+            rt.federation_engine.execute_engine_sync("SELECT 1")
     finally:
         reset_current_org(token)
-    assert result == "ok"
-    assert woke["conn"] is None  # handed the unconnected terminal; execute_trino wakes it
+    assert read == {}  # nothing ran on the shared coordinator
+    assert rt.engine_conn is None  # never connected -- the cluster stays asleep
 
 
 # ---- admin-plane persistence (REQ-1043) --------------------------------------

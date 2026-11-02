@@ -45,7 +45,7 @@ An async terminal builds the rows on its executor thread before handing the resu
 |---|---|---|---|---|
 | DuckDB (`duckdb_runtime`) | **this change:** `run`/`run_sync` read `to_arrow_table`/`to_arrow_reader` on a lossless-export cursor | `ArrowResult` / `ArrowStreamResult` | the consumer, via `duckdb_arrow.arrow_rows` | — (done) `[code]` |
 | DuckDB, before | `run_sync`: `stream_from_dbapi` (`fetchmany`) unless an INTERVAL/DATE/TIMESTAMP column; `run`: `fetch_rows` | row stream / `QueryResult` | DuckDB's C++ row fetch | its Arrow reader `[code]` |
-| Trino (`TrinoBackend.execute`/`execute_sync`) | `executor.trino.execute_trino`: trino Python client, `fetchall` | `QueryResult` | the trino client, decoding Trino's JSON pages | Zaychik Flight SQL (`execute_arrow`/`execute_stream` already use it) — **blocked, see §4** `[code]` |
+| Trino (`TrinoBackend.execute`/`execute_sync`) | `executor.trino_flight.execute_trino_flight`/`_sync`: ADBC Flight SQL through the Zaychik proxy | `ArrowResult` / `ArrowStreamResult` | `trino_flight.trino_rows` at the consumer | done (option A, §4) `[code]` |
 | Postgres engine (`pg_runtime`) | `run_sync`: psycopg2 named (server-side) cursor, `fetchmany`; `run`: same, drained | row stream / `QueryResult` | psycopg2 text-protocol decode | ADBC postgresql (already pooled for `run_arrow*`, COPY BINARY under the hood) `[code]` |
 | SQLAlchemy engines (`sqlalchemy_runtime`) | `run_sync`: `stream_results` / DB-API `fetchmany`; `run`: `fetchall` | row stream / `QueryResult` | the dialect's DB-API driver | per dialect, §3 |
 | Snowflake (`snowflake_runtime`) | `run_sync`: `fetch_arrow_batches` → `stream_rows_from_arrow` | row stream | `stream_rows_from_arrow` (`column_values` / `to_pylist`) at the fetch | return `ArrowStreamResult` instead (§3) `[code]` |
@@ -133,47 +133,50 @@ Ordered by what it costs today and how small the change is.
 | Qdrant | its Python client | yes | points arrive as Python objects |
 | Code sources | Python functions | yes | the function produces Python values by definition |
 
-## 4. Trino: why the engine read is not yet switched to Flight
+## 4. Trino: the engine read through Flight (option A)
 
-`execute_arrow`/`execute_stream` already read through the Zaychik Flight SQL proxy
-(`executor/trino_flight.py`). Switching `execute`/`execute_sync` to it as well, with no row path
-left, changes answers today. From the proxy's source at the commit the image builds
-(`zaychik/Dockerfile`, `Raiffeisen-DGTL/zaychik-trino-proxy@17fce97`) `[code]`:
+`execute`/`execute_sync` read through the Zaychik Flight SQL proxy only, as `execute_arrow`/
+`execute_stream` already did. The proxy at the commit the image builds
+(`Raiffeisen-DGTL/zaychik-trino-proxy@17fce97`) answered differently from the trino client in six
+ways; `zaychik/trino-statement-protocol.patch` and `executor/trino_flight.py` close each `[code]`:
 
-1. **Precision**: TIMESTAMP and TIME are mapped to `Timestamp(MILLISECOND)` /
-   `Time(MILLISECOND)` (`FlightSQLProducerHelper.getArrowTypeFromJdbcType`). Trino's
-   `timestamp(6)` loses its microseconds.
-2. **Types that fail**: a column whose JDBC type is outside the mapped list (BOOLEAN, the
-   integers, DECIMAL, REAL/DOUBLE, the character types, DATE, TIME, TIMESTAMP, the binary types,
-   ARRAY, NULL, STRUCT) raises `Unmapped JDBC type`. The Trino JDBC driver reports `map`, `row`,
-   `uuid`, `json`, `ipaddress` and the interval types as `JAVA_OBJECT`/`OTHER` `[doc]`, not run
-   here: such a query would fail where the trino client answers it.
-3. **Session properties**: every statement opens a fresh JDBC connection
-   (`TrinoConnectionFactory.getConnection`), so `SET SESSION` cannot carry over; the
-   `query_max_execution_time` every read sets, and the FTE `retry_policy` hints, would be lost.
-4. **Type names**: the Arrow schema carries no Trino type name; `column_types` (pgwire
-   RowDescription, MV output introspection) would come from Arrow types (every integer a
-   BIGINT).
-5. **Errors**: failures come back as `CallStatus.INTERNAL` with a message; Trino's error name is
-   gone, so `FederationError` classification, the coordinator-loss retry and `refusal_of` stop
-   working.
-6. **Parameters**: `_substitute_params` inlines only strings, None and `str(value)`; a date,
-   timestamp, decimal or bytes parameter is rendered wrongly.
+1. **Precision**: the proxy ran statements through Trino JDBC and mapped TIMESTAMP/TIME to
+   milliseconds. A Flight statement now runs through the Trino client protocol
+   (`StatementClient`, the protocol the Python client speaks) and TIME/TIMESTAMP are microsecond
+   Arrow types; a value with more than six fractional digits is rounded half-to-even, as the
+   Python client rounds it. A date is read from the protocol's text (proleptic Gregorian), not
+   through `java.sql.Date`.
+2. **Types JDBC could not map** (`JAVA_OBJECT`/`OTHER`: map, row, uuid, json, ipaddress, the
+   intervals; also arrays and time with time zone): Utf8 holding the protocol's text (scalars) or
+   JSON (structural), `trino.encoding` saying which. `trino_rows` decodes them with the Trino
+   client's own value mappers (`trino.mapper`), so a nested value is the Python value the client
+   gave (`NamedRowTuple`, `UUID`, `relativedelta`, ...). A REAL is read as the shortest decimal of
+   the float, as the protocol writes it.
+3. **Session**: every Flight statement is a Trino session of its own. Its `source` (the org,
+   REQ-056), catalog, schema and session properties (the FTE hints, the caller's hints,
+   `query_max_execution_time`) travel in the `x-provisa-trino-context` call header and reach
+   Trino as the client protocol sends them. With no header the proxy keeps the JDBC driver's
+   source `trino-jdbc` (the `global.flight` resource group).
+4. **Type names**: every field carries `trino.type` (the coordinator's own type string, what
+   the trino client's `description` gave) and `trino.type_signature`; `column_types` come from it.
+5. **Errors**: a failed statement's Flight error carries Trino's error name, type, code, message
+   and query id as trailers (`x-trino-error-*`); `trino_flight.engine_error` builds the same
+   `FederationError` (and `SystemCatalogUnavailable`) the trino client's `TrinoQueryError` did, so
+   the coordinator-loss retry and the memory-error refusal work by name. A proxy or coordinator
+   that cannot be reached is `EngineUnreachable` (a `ConnectionError`: retried inside the budget,
+   classified `connection`).
+6. **Parameters**: bound as the trino client binds them, `EXECUTE IMMEDIATE '<sql>' USING
+   <literals>`, with the client's own literal rendering (`trino_flight.render_param`).
 
-Options (decision for the maintainer):
+The statement runs at GetFlightInfo until Trino names its columns, so the schema the FlightInfo
+announces is the stream's, and a statement Trino rejects is answered there. A failure while the
+rows of a streamed read are being read raises the engine's error at the consumer; it is not
+retried (the materialized `execute` retries the whole read).
 
-- **A (recommended)**: extend the Zaychik patch set the image already applies: microsecond
-  time/timestamp units; map `JAVA_OBJECT`/`OTHER` to Utf8 (JSON text) and put Trino's type name in
-  each field's metadata; take session properties from a Flight call header into the JDBC
-  `sessionProperties` connection property; return Trino's error name/code in the Flight error
-  detail. Then `execute`/`execute_sync` read Flight only, `column_types` from field metadata,
-  `FederationError` from the error detail, and parameters bound by a typed literal renderer.
-- **B**: keep the trino client for `execute`/`execute_sync` and record Trino in the exceptions
-  table. The requirement allows this only where no columnar endpoint exists, so this needs the
-  requirement amended.
-- **C**: Trino's spooling protocol (Trino 466+) moves results through object storage, but its
-  encodings in Trino 481 are JSON (`json`, `json+zstd`, `json+lz4`) `[doc]`; it saves transfer,
-  not the Python decode. Not a fix on its own.
+An org whose terminal is a coordinator other than the configured one (an external engine,
+REQ-1412; an isolated host on a deployment that does not provision shards, REQ-1043) has no proxy
+in front of it: its read is refused by name rather than answered by the shared coordinator
+(on a provisioning deployment each shard has its own sidecar proxy, REQ-1518).
 
 ## 5. Measured: DuckDB, 2,000,000 rows
 

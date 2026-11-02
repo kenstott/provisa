@@ -11,7 +11,8 @@
 """Unit tests for the OTel trace pipeline.
 
 Covers:
-- execute_trino emits a provisa.query.trino span with provisa.table attribute
+- execute_trino_flight (the Trino read, REQ-2194) emits a provisa.query.trino span with
+  provisa.table attribute
   (skipped when opentelemetry SDK is not installed)
 - _insert_otel_iceberg correctly extracts span_attributes JSON into table_name column
 - _row() builder maps provisa.table → table_name for traces signal
@@ -24,7 +25,6 @@ import importlib.util
 import inspect
 import json
 from datetime import datetime
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -35,31 +35,25 @@ _skip_otel = pytest.mark.skipif(_otel_missing, reason="opentelemetry SDK not ins
 
 
 # ---------------------------------------------------------------------------
-# execute_trino — OTel span emission
+# execute_trino_flight — OTel span emission
 # ---------------------------------------------------------------------------
 
 
 @_skip_otel
 class TestExecuteTrinoSpanEmission:
-    """execute_trino with span_attrs must emit provisa.query.trino span."""
+    """execute_trino_flight with span_attrs must emit provisa.query.trino span."""
 
     def _make_conn(self):
-        cur = MagicMock()
-        cur.description = [
-            ("id", "bigint", None, None, None, None, None),
-            ("name", "varchar", None, None, None, None, None),
-        ]
-        cur.fetchall.return_value = [(1, "a")]
-        conn = MagicMock()
-        conn.cursor.return_value = cur
-        return conn
+        from tests.zaychik_double import ProxyConnection, proxy_table
+
+        return ProxyConnection(proxy_table({"id": ("bigint", [1]), "name": ("varchar", ["a"])}))
 
     def test_span_name_is_provisa_query_trino_when_span_attrs_given(self, otel_spans):
-        from provisa.executor.trino import execute_trino
+        from provisa.executor.trino_flight import execute_trino_flight
         from tests.helpers import assert_span_emitted
 
         conn = self._make_conn()
-        execute_trino(
+        execute_trino_flight(
             conn,
             "SELECT 1",
             span_attrs={
@@ -73,10 +67,10 @@ class TestExecuteTrinoSpanEmission:
         assert_span_emitted(otel_spans, "provisa.query.trino")
 
     def test_span_carries_provisa_table_attribute(self, otel_spans):
-        from provisa.executor.trino import execute_trino
+        from provisa.executor.trino_flight import execute_trino_flight
 
         conn = self._make_conn()
-        execute_trino(
+        execute_trino_flight(
             conn,
             "SELECT 1",
             span_attrs={
@@ -93,10 +87,10 @@ class TestExecuteTrinoSpanEmission:
         assert target.attributes.get("provisa.table") == "pets"
 
     def test_span_carries_provisa_domain_and_role(self, otel_spans):
-        from provisa.executor.trino import execute_trino
+        from provisa.executor.trino_flight import execute_trino_flight
 
         conn = self._make_conn()
-        execute_trino(
+        execute_trino_flight(
             conn,
             "SELECT 1",
             span_attrs={
@@ -112,10 +106,10 @@ class TestExecuteTrinoSpanEmission:
         assert target.attributes.get("provisa.role") == "analyst"
 
     def test_span_name_is_trino_execute_without_span_attrs(self, otel_spans):
-        from provisa.executor.trino import execute_trino
+        from provisa.executor.trino_flight import execute_trino_flight
 
         conn = self._make_conn()
-        execute_trino(conn, "SELECT 1", span_attrs=None)
+        execute_trino_flight(conn, "SELECT 1", span_attrs=None)
         spans = otel_spans.get_finished_spans()
         names = [s.name for s in spans]
         assert any("trino.execute" in n for n in names), (
