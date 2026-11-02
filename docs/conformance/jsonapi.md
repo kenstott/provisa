@@ -1,6 +1,6 @@
 # JSON:API Conformance
 
-TBD: suite to be chosen.
+No public JSON:API conformance suite runs in CI today.
 
 ## Deliberate differences
 
@@ -20,4 +20,4 @@ No standard JSON:API add-ins apply here.
 
 | Tool | Version | Date | Method |
 | --- | --- | --- | --- |
-| Postman | TBD | TBD | TBD: replay or manual |
+| Postman | — | — | Not yet verified |

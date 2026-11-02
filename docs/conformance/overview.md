@@ -15,7 +15,14 @@ Each `pg_catalog` function overload has a result on each engine: exact, equivale
 A literal alone does not show that a function works on a column, because a form can fold a literal at transpile time and still refuse a column of the same type. So each overload with a sample value is also called with that value read from a column of a registered table. An overload that passes on literals but not on the column is listed as literals only. The list does not change its result.
 
 <!-- function-results:begin -->
-TBD: generated from CI.
+| Engine | Exact | Equivalent | Refused by name | Differs: wrong answer | Differs: engine error |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Postgres | 2647 | 14 | 10 | 55 | 22 |
+| DuckDB | 1778 | 13 | 120 | 94 | 743 |
+| Trino | 955 | 4 | 335 | 49 | 1405 |
+| ClickHouse | 717 | 1 | 493 | 155 | 1382 |
+
+Counts are `pg_catalog` overloads against PostgreSQL 17.11 (Debian 17.11-1.pgdg13+2), one row per engine. Each result is that engine's own, and the rows do not add up to a product result. The footnotes for each equivalent result are on the [pgwire page](pgwire.md#function-results-by-engine).
 <!-- function-results:end -->
 
 ## Why differences exist
@@ -47,9 +54,9 @@ Each tool entry gives the tool version and the date it was verified, plus how it
 | Cypher | openCypher TCK | [cypher.md](cypher.md) |
 | Bolt | Neo4j driver test kit | [bolt.md](bolt.md) |
 | GraphQL | graphql-http compliance audit | [graphql.md](graphql.md) |
-| pgwire | Postgres conformance suite + driver suites | [pgwire.md](pgwire.md) |
+| pgwire | pgspec v1.5.11 against PostgreSQL 17.11 | [pgwire.md](pgwire.md) |
 | Arrow Flight SQL | ADBC driver validation suite | [flight-sql.md](flight-sql.md) |
-| REST / OpenAPI | TBD: suite to be chosen | [rest.md](rest.md) |
-| JSON:API | TBD: suite to be chosen | [jsonapi.md](jsonapi.md) |
-| gRPC | TBD: suite to be chosen | [grpc.md](grpc.md) |
-| MCP | TBD: suite to be chosen | [mcp.md](mcp.md) |
+| REST / OpenAPI | No public suite runs today | [rest.md](rest.md) |
+| JSON:API | No public suite runs today | [jsonapi.md](jsonapi.md) |
+| gRPC | No public suite runs today | [grpc.md](grpc.md) |
+| MCP | No public suite runs today | [mcp.md](mcp.md) |
