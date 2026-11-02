@@ -39,7 +39,7 @@ impl TzSpec {
     }
 
     /// The offset in seconds east of UTC at `micros` after the epoch (UTC), None for a naive value.
-    fn offset_at(&self, micros: i128) -> Option<i32> {
+    pub fn offset_at(&self, micros: i128) -> Option<i32> {
         match self {
             TzSpec::Naive => None,
             TzSpec::Fixed(off) => Some(*off),
@@ -195,6 +195,18 @@ fn local_of(micros: i128, tz: &TzSpec) -> R<(i128, Option<i32>)> {
         return Err(EncErr::Value("year is out of range".into()));
     }
     Ok((local, offset))
+}
+
+/// A zoned nanosecond value is a pandas Timestamp, whose local time must also be an int64 of
+/// nanoseconds (from NaT + 1): else OutOfBoundsDatetime.
+pub fn check_ns_local(raw: i64, tz: &TzSpec) -> R<()> {
+    if let Some(off) = tz.offset_at(raw.div_euclid(1000) as i128) {
+        let local = raw as i128 + off as i128 * 1_000_000_000;
+        if local <= i64::MIN as i128 || local > i64::MAX as i128 {
+            return Err(EncErr::Value("OutOfBoundsDatetime".into()));
+        }
+    }
+    Ok(())
 }
 
 pub fn check_timestamp(micros: i128, tz: &TzSpec) -> R<()> {

@@ -18,12 +18,16 @@ Run with the worktree root and vendor/buenavista first on PYTHONPATH, and build/
 from __future__ import annotations
 
 import io
-from collections.abc import Iterable, Iterator
+import re
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
+from datetime import tzinfo
 from typing import Any
 
 import pyarrow as pa
 from buenavista.postgres import BuenaVistaHandler
 
+from provisa.federation import runtime_support
 from provisa.federation.runtime_support import stream_rows_from_arrow
 from provisa.pgwire.server import ProvisaQueryResult
 
@@ -88,3 +92,28 @@ def python_encode_count(
     writer = _CountingWriter()
     rows = BuenaVistaHandler.send_data_rows(_Sink(writer), qr)
     return rows, writer.nbytes
+
+
+_FIXED = re.compile(r"UTC|[+-]\d\d:\d\d")
+
+
+@contextmanager
+def named_zones(zone: Callable[[str], tzinfo]) -> Iterator[None]:
+    """Within: a timestamp column in a named zone takes its local times from ``zone(name)``, where
+    pyarrow's to_pylist takes them from pytz. The product's path is otherwise unchanged: its values
+    are column_values of the column in UTC (infinities and all), each moved into the zone."""
+    original = runtime_support.column_values
+
+    def column_values(column: pa.Array | pa.ChunkedArray) -> list[Any]:
+        t = column.type
+        if not pa.types.is_timestamp(t) or t.tz is None or _FIXED.fullmatch(t.tz):
+            return original(column)
+        z = zone(t.tz)
+        values = original(column.cast(pa.timestamp(t.unit, "UTC")))
+        return [v if v is None or getattr(v, "pg_infinity", 0) else v.astimezone(z) for v in values]
+
+    runtime_support.column_values = column_values  # type: ignore[assignment]
+    try:
+        yield
+    finally:
+        runtime_support.column_values = original  # type: ignore[assignment]

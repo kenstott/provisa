@@ -437,6 +437,9 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
                 let raw = a.value(i);
                 let inf = if infinity_marked { temporal::timestamp_infinity(raw) } else { 0 };
                 let micros = temporal::micros_of(raw, unit)?;
+                if unit == TimeUnit::Nanosecond {
+                    temporal::check_ns_local(raw, &tz)?;
+                }
                 if binary {
                     if inf != 0 {
                         out.extend_from_slice(&(if inf > 0 { i64::MAX } else { i64::MIN }).to_be_bytes());
