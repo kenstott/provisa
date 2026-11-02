@@ -267,6 +267,11 @@ def _org(org_id: str | None) -> str | None:
     return current_org.get(None)
 
 
+def held_here(org_id: str | None = None) -> bool:
+    """Whether the sources of ``org_id`` (the bound org when None) are held (:func:`held`)."""
+    return held(_org(org_id))
+
+
 def require_allowed(host: str, port: int | None, org_id: str | None = None) -> None:
     """Refuse, by name, ``host`` for a held org (:func:`held`) unless its demo declares it or every
     address it resolves to is public. Any other org reaches what it names."""

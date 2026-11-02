@@ -141,6 +141,26 @@ def test_on_a_server_of_many_organizations_only_the_org_files_area_may_be_named(
     gurl.check("sqlite:////data/shop.db")
 
 
+def test_a_held_orgs_url_carries_no_driver_options(monkeypatch):
+    """A driver option can name another address than the URL's host: psycopg2 connects to a
+    ``?host=`` instead of it, past the check the URL's host was given."""
+    from sqlalchemy.dialects.postgresql.psycopg2 import PGDialect_psycopg2
+    from sqlalchemy.engine import make_url
+
+    url = "postgresql+psycopg2://db.example.com/sales?host=10.0.0.5&sslmode=require"
+    _, kwargs = PGDialect_psycopg2().create_connect_args(make_url(url))
+    assert kwargs["host"] == "10.0.0.5"
+    monkeypatch.setattr("provisa.security.sandbox_egress.held", lambda _org: True)
+    with pytest.raises(gurl.DriverOptionsRefused, match="host, sslmode"):
+        gurl.check(url)
+    with pytest.raises(gurl.DriverOptionsRefused):
+        gurl.connection_url(url, "u", "p")
+    gurl.check("postgresql+psycopg2://db.example.com/sales")
+    # An org whose sources are not held gives the options its driver takes.
+    monkeypatch.setattr("provisa.security.sandbox_egress.held", lambda _org: False)
+    gurl.check(url)
+
+
 def test_a_scheme_provisa_does_not_ship_fails_naming_what_is_missing():
     from sqlalchemy.engine import make_url
 
@@ -174,6 +194,10 @@ def test_the_save_refuses_by_name(org, monkeypatch):
     assert leaves.params["path"] == "{files}/../../x.db"
     attach = generic_sql_refusal(_input(_hints("postgresql://h/db", "postgres", duckdb="attach")))
     assert attach is not None and attach.code == "schema.generic_sql_attach_unbuilt"
+    monkeypatch.setattr("provisa.security.sandbox_egress.held", lambda _org: True)
+    options = generic_sql_refusal(_input(_hints("postgresql://h/db?host=10.0.0.5", "postgres")))
+    assert options is not None and options.code == "schema.generic_sql_options_refused"
+    assert options.params["options"] == "host"
 
 
 # -- the driver ------------------------------------------------------------------------------------

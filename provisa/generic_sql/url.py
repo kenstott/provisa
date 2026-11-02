@@ -21,7 +21,10 @@ file:// you are allowed". A DuckDB file is opened there with DuckDB's external a
 statement on it reaches no other file and no network address of the server's.
 
 A network URL's host is checked where every source's is (``provisa.security.sandbox_egress``) and
-connected to at the address checked.
+connected to at the address checked. For an org whose sources are so held, the URL carries no
+query parameters: a driver option can name another address than the URL's host (psycopg2 connects
+to a ``?host=`` instead of it), or a file of the server's own (``sslkey``, ``read_default_file``), so
+until which options such an org may give is decided, it may give none.
 """
 
 # Requirements: REQ-2191, REQ-1997, REQ-2006
@@ -49,6 +52,16 @@ class MissingDialect(RuntimeError):
         )
         self.scheme = scheme
         self.missing = missing
+
+
+class DriverOptionsRefused(PermissionError):
+    """A held org's network URL that carries driver options (module docstring)."""
+
+    def __init__(self, options: list[str]) -> None:
+        super().__init__(
+            f"this org's Generic SQL URL may carry no driver options; it gives {', '.join(options)}"
+        )
+        self.options = options
 
 
 class FileUrlRefused(PermissionError):
@@ -105,6 +118,14 @@ def check(url: str) -> None:
     parsed = _parsed(url)
     if backend(url) in FILE_BACKENDS:
         _file_path(parsed.database or "")
+    _no_options_when_held(parsed)
+
+
+def _no_options_when_held(parsed: "URL") -> None:
+    from provisa.security.sandbox_egress import held_here
+
+    if parsed.query and held_here():
+        raise DriverOptionsRefused(sorted(parsed.query))
 
 
 def destination(url: str) -> tuple[str, int | None] | None:
@@ -120,6 +141,7 @@ def connection_url(url: str, user: str, password: str) -> tuple["URL", str]:
     messages): a file's token resolved, the source's own user and password set, and a network
     host replaced by the address it was checked at (``sandbox_egress.pin_host``)."""
     parsed = _parsed(url)
+    _no_options_when_held(parsed)
     shown = parsed.database or ""
     if backend(url) in FILE_BACKENDS:
         parsed = parsed.set(database=_file_path(shown))
