@@ -75722,7 +75722,13 @@
     or the local." The facade wraps the existing plan half of the one query pipeline (govern and route):
     in every mode the plan call runs in process, in data mode it is a call to a control node over a socket;
     executing the plan and encoding to the client stay on the node that holds the client connection, so
-    rows never enter the control process.'
+    rows never enter the control process. (Amended 2026-11-02, The control plane advertises data plane addresses:)
+    Maintainer 2026-11-02: the control plane advertises the data plane''s addresses. A data node registers
+    with a control node when it starts (its region and its address for each transport) and keeps the registration
+    alive; a node that stops drops out. Everywhere a client is told where to connect (the UI''s connection
+    details, connection strings, the HTTP surface URLs, MCP settings, Flight''s GetFlightInfo endpoints),
+    the control plane gives the data node for the org''s region. In every mode the one process advertises
+    itself.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
