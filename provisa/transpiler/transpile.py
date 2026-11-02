@@ -1507,6 +1507,7 @@ def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
     if target_dialect in _REGEXP_FLAGS_KEPT:
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
+    _flags_beside_n(tree, target_dialect)
     replaces = list(tree.find_all(exp.RegexpReplace))
     flagged = [
         node
@@ -1527,24 +1528,80 @@ def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
     return tree.sql(dialect="postgres")
 
 
-def _flag_past_n(pg_sql: str) -> str:
-    """``pg_sql`` for DuckDB, whose REGEXP_REPLACE sqlglot writes with a flag and without the start
-    and N. PostgreSQL reads 'g' only where N is not given, so that call is the five-argument one;
-    any other flag beside N has no form."""
-    tree = sqlglot.parse_one(pg_sql, read="postgres")
+#: PostgreSQL's regular expression options (parse_re_flags), and those that change nothing beside
+#: N: 'g' is ignored where N is given, and c, s and t are the defaults.
+_REGEXP_OPTIONS = frozenset("bceimnpqstwxg")
+_NO_EFFECT_BESIDE_N = frozenset("cgst")
+
+
+def _invalid_option(node: exp.RegexpReplace, option: str) -> exp.Expr:
+    """PostgreSQL's error for an option it does not know, which it says once the call is strict
+    and its start and N are checked: those the five-argument form checks."""
+    from provisa.transpiler.pg_forms_types import fails
+
+    parts = [node.args[k] for k in ("this", "expression", "replacement", "position", "occurrence")]
+    nulls = exp.or_(*(exp.Is(this=p.copy(), expression=exp.Null()) for p in parts))
+    out_of_range = exp.or_(
+        exp.LT(this=parts[3].copy(), expression=exp.Literal.number(1)),
+        exp.LT(this=parts[4].copy(), expression=exp.Literal.number(0)),
+    )
+    error = sqlglot.parse_one(
+        fails("22023", f'invalid regular expression option: "{option}"', "TEXT"), read="postgres"
+    )
+    return (
+        exp.Case()
+        .when(nulls, exp.Cast(this=exp.Null(), to=exp.DataType.build("TEXT")))
+        .when(out_of_range, node)
+        .else_(error)
+    )
+
+
+def _flags_beside_n(tree: exp.Expr, dialect: str) -> bool:
+    """Each regexp_replace(source, pattern, replacement, start, N, flags) as PostgreSQL 17's
+    textregexreplace_extended answers it (REQ-2167): strict, so a NULL flags is NULL; an option it
+    does not know its error; one of no effect beside N dropped, leaving the five-argument call. A
+    flag that changes what matches -- i in effect (the last of i and c), b, e, m, n, p, q, w, x --
+    and flags no statement says are refused by name. Whether ``tree`` changed."""
+    for quoted in list(tree.find_all(exp.Anonymous)):
+        # pg_catalog."regexp_replace"(...), which sqlglot reads as no call of its own.
+        if quoted.name.lower() == "regexp_replace" and len(quoted.expressions) == 6:
+            keys = ("this", "expression", "replacement", "position", "occurrence", "modifiers")
+            read = exp.RegexpReplace(**dict(zip(keys, quoted.expressions)))
+            parent = quoted.parent
+            dotted = isinstance(parent, exp.Dot) and parent.expression is quoted
+            (parent if dotted and parent is not None else quoted).replace(read)
     both = [
         node
         for node in tree.find_all(exp.RegexpReplace)
         if node.args.get("occurrence") is not None and node.args.get("modifiers") is not None
     ]
-    if not both:
-        return pg_sql
     for node in both:
         said = node.args["modifiers"]
-        if not (isinstance(said, exp.Literal) and said.this == "g"):
-            raise function_macros.FunctionRefused("regexp_replace", "duckdb")
+        bare = said.this if isinstance(said, exp.Cast) else said
+        # pg_catalog.regexp_replace(...): the qualified call is what an answer takes the place of.
+        called = node.parent if isinstance(node.parent, exp.Dot) else node
+        if isinstance(bare, exp.Null):
+            called.replace(exp.Cast(this=exp.Null(), to=exp.DataType.build("TEXT")))
+            continue
+        if not (isinstance(bare, exp.Literal) and bare.is_string):
+            raise function_macros.FunctionRefused("regexp_replace", dialect)
+        flags = bare.this
         node.set("modifiers", None)
-    return tree.sql(dialect="postgres")
+        unknown = next((option for option in flags if option not in _REGEXP_OPTIONS), None)
+        if unknown is not None:
+            called.replace(_invalid_option(node.copy(), unknown))
+            continue
+        insensitive = flags.rfind("i") > flags.rfind("c")
+        if insensitive or set(flags) - _NO_EFFECT_BESIDE_N - {"i"}:
+            raise function_macros.FunctionRefused("regexp_replace", dialect)
+    return bool(both)
+
+
+def _flag_past_n(pg_sql: str) -> str:
+    """``pg_sql`` for DuckDB, whose REGEXP_REPLACE sqlglot writes with a flag and without the start
+    and N: each call with both is the five-argument one, its flags read (_flags_beside_n)."""
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    return tree.sql(dialect="postgres") if _flags_beside_n(tree, "duckdb") else pg_sql
 
 
 # T-SQL fixed database principals: a schema cannot share a principal's name, so `CREATE SCHEMA

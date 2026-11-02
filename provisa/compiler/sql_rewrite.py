@@ -273,7 +273,9 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     quoted_aliases: set[str] = set()
 
     def _rewrite(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
-        if not isinstance(node, exp.Table):
+        if not isinstance(node, exp.Table) or not isinstance(node.this, exp.Identifier):
+            # REQ-2167: a function in FROM (pg_catalog.json_to_recordset(...) AS t(v int)) is
+            # no table reference: it has no name to qualify, and its definition list is its own.
             return node
         name = node.name
         db = node.db  # schema
