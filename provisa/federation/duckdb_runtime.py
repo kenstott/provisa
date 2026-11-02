@@ -40,8 +40,8 @@ import duckdb
 
 from provisa.federation.duckdb_extensions import install_and_load
 from provisa.federation.file_locks import ReadersWriterGate
-from provisa.executor.drivers.duckdb_driver import READ_THROUGH_ARROW, fetch_rows
-from provisa.executor.result import QueryResult, ResultStream
+from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
+from provisa.executor.result import ArrowResult, ArrowStreamResult, QueryResult, ResultStream
 from provisa.federation import store_writer
 from provisa.federation.engine import build_duckdb_engine
 from provisa.core import request_deadline
@@ -52,8 +52,6 @@ from provisa.federation.runtime_support import (
     close_cursor,
     columns_from_describe,
     open_cursor,
-    stream_from_dbapi,
-    stream_rows_from_arrow,
 )
 from provisa.transpiler.transpile import transpile
 
@@ -1482,13 +1480,19 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 # took a cursor for this reason).
                 cur = self._open_cursor(live_http=live_http)
                 try:
+                    cur.execute(LOSSLESS_ARROW)
                     with request_deadline.cancel_on_deadline(cur.interrupt):
                         with named_write_conflict():
                             res = cur.execute(sql, params) if params else cur.execute(sql)
-                        cols = [d[0] for d in res.description] if res.description else []
-                        types = [str(d[1]) for d in res.description] if res.description else []
-                        rows = fetch_rows(res)
-                    return QueryResult(rows=rows, column_names=cols, column_types=types)
+                        if not res.description:
+                            return QueryResult(rows=[], column_names=[], column_types=[])
+                        types = [str(d[1]) for d in res.description]
+                        # REQ-2194: the engine's Arrow, never its DB-API rows
+                        # (duckdb_arrow.arrow_rows builds the rows from it).
+                        table = res.to_arrow_table()
+                    # Rows are built here, on the executor thread: the awaiting consumer must do
+                    # no per-row work on the event loop.
+                    return ArrowResult(table, types, to_rows=arrow_rows).with_rows()
                 finally:
                     close_cursor(cur)
 
@@ -1544,9 +1548,13 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             )
             cur = self._open_cursor(live_http=live_http)
             try:
+                cur.execute(LOSSLESS_ARROW)
                 with request_deadline.cancel_on_deadline(cur.interrupt):
                     with named_write_conflict():
                         cur.execute(duck_sql, params) if params else cur.execute(duck_sql)
+                    reader = (
+                        cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS) if cur.description else None
+                    )
             except BaseException:
                 # No stream will own the cursor: it is closed here (REQ-1905).
                 close_cursor(cur)
@@ -1559,18 +1567,16 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             close_cursor(cur)
             self._catalog_gate.release_read()
 
+        if reader is None:
+            _close()
+            return QueryResult(rows=[], column_names=[])
         # DuckDB's description carries each column's declared DuckDBPyType ("BIGINT",
         # "DECIMAL(18,2)"), even for a zero-row result — the pgwire Describe relies on it.
-        types = [str(d[1]) for d in cur.description] if cur.description else []
-        if READ_THROUGH_ARROW.intersection(types):
-            # DuckDB's own Python rows fold an interval's months into days and read infinity as
-            # the last date Python holds; its Arrow batches keep both (duckdb_driver.fetch_rows).
-            reader = cur.to_arrow_reader(_ARROW_STREAM_BATCH_ROWS)
-            return stream_rows_from_arrow(
-                reader.schema, iter(reader), on_close=_close, column_types=types
-            )
-        return stream_from_dbapi(
-            cur, on_close=_close, type_names=lambda codes: [str(c) for c in codes]
+        types = [str(d[1]) for d in cur.description]
+        # REQ-2194: the engine's Arrow batches, never its DB-API rows. A consumer that reads rows
+        # has each batch turned into them as it pulls it (duckdb_arrow.arrow_rows).
+        return ArrowStreamResult(
+            reader.schema, iter(reader), types, to_rows=arrow_rows, on_close=_close
         )
 
     def describe_sync(self, duck_sql: str, params: list | None = None) -> ResultStream:
