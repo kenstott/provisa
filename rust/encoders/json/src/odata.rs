@@ -394,22 +394,25 @@ fn floating(f: f64) -> P<'static> {
     }
 }
 
-/// Python truthiness.
-fn truthy(p: &P) -> bool {
+/// An Edm.Boolean: a boolean, the integers 0 and 1, or text PostgreSQL's boolin reads (`t`,
+/// `true`, `yes`, `on`, `1` and their false forms, any case, unique prefixes, surrounding space).
+fn boolean(p: &P) -> Res<bool> {
     match p {
-        P::None => false,
-        P::Bool(b) => *b,
-        P::Int(i) => *i != 0,
-        P::BigInt(_) => true,
-        P::Float(f) => *f != 0.0,
-        P::JNum(s) => s.parse::<f64>().unwrap() != 0.0,
-        P::Str(s) | P::Bytes(s) => !s.is_empty(),
-        P::Dec(d) => text::decimal_canon(d).1 != "0",
-        P::Td(us) => *us != 0,
-        P::Iv(m, d, u) => (*m, *d, *u) != (0, 0, 0),
-        P::List(v) | P::Tuple(v) => !v.is_empty(),
-        P::Dict(e) => !e.is_empty(),
-        _ => true,
+        P::Bool(b) => Ok(*b),
+        P::Int(0) => Ok(false),
+        P::Int(1) => Ok(true),
+        P::Str(s) => {
+            let t = String::from_utf8_lossy(s).trim().to_ascii_lowercase();
+            let prefix = |word: &str, min: usize| t.len() >= min && word.starts_with(t.as_str());
+            if t == "1" || prefix("true", 1) || prefix("yes", 1) || prefix("on", 2) {
+                Ok(true)
+            } else if t == "0" || prefix("false", 1) || prefix("no", 1) || prefix("off", 2) {
+                Ok(false)
+            } else {
+                type_error("is no Edm.Boolean", p)
+            }
+        }
+        other => type_error("is no Edm.Boolean", other),
     }
 }
 
@@ -470,26 +473,20 @@ pub fn edm_value(p: &P, edm: Edm) -> Res<P<'static>> {
             };
             P::owned_str(base64url(&b))
         }
-        Edm::Boolean => P::Bool(truthy(p)),
-        Edm::Date => match p {
-            P::Dt(dt) => P::owned_str({
-                let mut t = Vec::new();
-                text::date_iso(&mut t, dt.local_us.div_euclid(86_400_000_000));
-                String::from_utf8(t).unwrap()
-            }),
-            P::InfDt(s, _) => P::owned_str(if *s > 0 { "9999-12-31".into() } else { "0001-01-01".into() }),
-            P::Date(d) => {
-                let mut t = Vec::new();
-                text::date_iso(&mut t, *d as i64);
-                P::Str(Cow::Owned(t))
-            }
-            P::InfDate(s) => {
-                let mut t = Vec::new();
-                text::inf_date_iso(&mut t, *s);
-                P::Str(Cow::Owned(t))
-            }
-            other => other.clone().into_owned(),
-        },
+        Edm::Boolean => P::Bool(boolean(p)?),
+        Edm::Date => {
+            let days = match p {
+                P::Date(d) => *d as i64,
+                P::Dt(dt) => dt.local_us.div_euclid(86_400_000_000),
+                P::InfDate(s) | P::InfDt(s, _) => return Ok(P::owned_str(if *s > 0 { "infinity".into() } else { "-infinity".into() })),
+                // Engine text: a date, or a timestamp's date.
+                P::Str(s) => fromisoformat(s)?.local_us.div_euclid(86_400_000_000),
+                other => return type_error("is no Edm.Date", other),
+            };
+            let mut t = Vec::new();
+            text::date_iso(&mut t, days);
+            P::Str(Cow::Owned(t))
+        }
         Edm::DateTimeOffset => {
             let mut dt = as_datetime(p)?;
             if dt.offset.is_none() {
@@ -529,14 +526,21 @@ pub fn edm_value(p: &P, edm: Edm) -> Res<P<'static>> {
                 P::Str(Cow::Owned(t))
             }
         },
-        Edm::TimeOfDay => match p {
-            P::Time(us) => {
-                let mut t = Vec::new();
-                text::time_iso(&mut t, *us, false);
-                P::Str(Cow::Owned(t))
-            }
-            other => other.clone().into_owned(),
-        },
+        Edm::TimeOfDay => {
+            let us = match p {
+                P::Time(us) => *us,
+                P::Dt(dt) => dt.local_us.rem_euclid(86_400_000_000),
+                // Engine text: a time of day.
+                P::Str(s) => match iso_time(s) {
+                    Some((us, n)) if n == s.len() => us,
+                    _ => return err(format!("Invalid isoformat string: {:?}", String::from_utf8_lossy(s))),
+                },
+                other => return type_error("is no Edm.TimeOfDay", other),
+            };
+            let mut t = Vec::new();
+            text::time_iso(&mut t, us, false);
+            P::Str(Cow::Owned(t))
+        }
     })
 }
 

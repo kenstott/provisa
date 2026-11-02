@@ -28,6 +28,8 @@ pub struct Col {
 type Fields = Vec<(u32, usize)>;
 
 pub struct Path {
+    /// The path as the columns name it (`nested_in`).
+    pub name: String,
     /// The path's own names relative to its parent's object, its leaf last.
     pub parts: Vec<u32>,
     /// The nearest enclosing path (index into `paths`), None for the root object.
@@ -129,6 +131,7 @@ pub fn plan(spec: &[Col]) -> Plan {
             None => &segs[..],
         };
         paths.push(Path {
+            name: p.clone(),
             parts: rel.iter().map(|s| it.id(s)).collect(),
             parent: parent.map(|(pi, _)| pi),
             fields: fields_of(&cols, spec, &mut it),
@@ -492,7 +495,7 @@ impl Cell {
             match f? {
                 Fast::Null => key.push(pywrite::K_NULL),
                 Fast::Int(i) => k.int_atom(key, i),
-                Fast::Bool(b) => k.int_atom(key, b as i128),
+                Fast::Bool(b) => k.bool_atom(key, b),
                 Fast::Float(x) => k.float_atom(key, x),
                 Fast::Text(t) => k.str_atom(key, t),
                 Fast::Scratch => k.str_atom(key, &scratch),
@@ -566,6 +569,9 @@ pub fn prepare(batches: &[RecordBatch], spec: &[Col]) -> Res<Vec<Batch>> {
 pub struct Rows {
     pub tree: Tree,
     pub rows: Vec<u32>,
+    /// The many-to-one paths that matched several rows for one parent, sorted: only the first
+    /// row's object was answered (`to_one_truncated`, REQ-1350).
+    pub truncated: Vec<String>,
 }
 
 /// Where completed rows go.
@@ -616,6 +622,10 @@ impl<'p> Encoder<'p> {
         let mut kept: Vec<u32> = Vec::new();
         // a streamed row's walk verdict, by its index in `fails`
         let mut fails: Vec<bool> = Vec::new();
+        // each result row's to-one objects as keys (`built`), by its index in `fails`
+        let mut objects: Vec<Box<[u8]>> = Vec::new();
+        let mut truncated: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        let mut cur: Vec<u8> = Vec::new();
         for b in batches {
             for r in 0..b.rows {
                 self.key.clear();
@@ -624,16 +634,16 @@ impl<'p> Encoder<'p> {
                 }
                 if let Some(&at) = seen.get(self.key.as_slice()) {
                     // _detect_truncated_paths: this row's to-one objects (their values converted)
-                    // against the first row's, walked from its root.
+                    // against the first row's, by exact typed value.
+                    cur.clear();
                     for path in &p.paths {
-                        if !path.cols.iter().all(|&c| b.cells[c].is_null(r)) {
-                            for &c in &path.cols {
-                                b.cells[c].value(r)?;
-                            }
-                        }
+                        self.object_key(b, r, path, &mut cur)?;
                     }
                     if fails[at as usize] {
                         return Err(nesting_error("a repeated row's relationship path is not an object"));
+                    }
+                    for pi in differing(&objects[at as usize], &cur) {
+                        truncated.insert(pi);
                     }
                     continue;
                 }
@@ -642,8 +652,20 @@ impl<'p> Encoder<'p> {
                     let v = t.cell(&b.cells[c], r, &mut self.k)?;
                     t.set(root, p.col_name[c], v);
                 }
-                self.build_nested(&mut t, root, b, r)?;
+                let skipped = self.build_nested(&mut t, root, b, r)?;
                 fails.push(self.detect_fails(&mut t, root));
+                if !p.paths.is_empty() {
+                    cur.clear();
+                    for (pi, path) in p.paths.iter().enumerate() {
+                        if skipped[pi] {
+                            // A parent this row had null: it built nothing here.
+                            object_atom(&mut cur, &[pywrite::K_NULL]);
+                        } else {
+                            self.object_key(b, r, path, &mut cur)?;
+                        }
+                    }
+                    objects.push(cur.as_slice().into());
+                }
                 seen.insert(self.key.as_slice().into(), fails.len() as u32 - 1);
                 if sink.flat_row(&t, root)? {
                     kept.push(root);
@@ -652,12 +674,32 @@ impl<'p> Encoder<'p> {
                 }
             }
         }
-        Ok(Rows { tree: t, rows: kept })
+        let names = truncated.into_iter().map(|pi| p.paths[pi].name.clone()).collect();
+        Ok(Rows { tree: t, rows: kept, truncated: names })
     }
 
-    /// `_build_nested_obj`.
-    fn build_nested(&mut self, t: &mut Tree, root: u32, b: &Batch, r: usize) -> Res<()> {
-        for path in &self.p.paths {
+    /// The to-one object `path` builds of row `r`, as one length-prefixed key in `out`: null when
+    /// its columns are all null, else `{field: value}` of its own fields.
+    fn object_key(&mut self, b: &Batch, r: usize, path: &Path, out: &mut Vec<u8>) -> Res<()> {
+        let mut key = std::mem::take(&mut self.key);
+        key.clear();
+        if path.cols.iter().all(|&c| b.cells[c].is_null(r)) {
+            key.push(pywrite::K_NULL);
+        } else {
+            for &(name, c) in &path.fields {
+                key.extend_from_slice(&name.to_le_bytes());
+                b.cells[c].key(r, &mut key, &mut self.k)?;
+            }
+        }
+        object_atom(out, &key);
+        self.key = key;
+        Ok(())
+    }
+
+    /// `_build_nested_obj`; for each path, whether a null parent skipped it.
+    fn build_nested(&mut self, t: &mut Tree, root: u32, b: &Batch, r: usize) -> Res<Vec<bool>> {
+        let mut skipped = vec![false; self.p.paths.len()];
+        for (pi, path) in self.p.paths.iter().enumerate() {
             let all_none = path.cols.iter().all(|&c| b.cells[c].is_null(r));
             let mut target = root;
             let mut skip = false;
@@ -681,6 +723,7 @@ impl<'p> Encoder<'p> {
                 }
             }
             if skip {
+                skipped[pi] = true;
                 continue;
             }
             if all_none {
@@ -694,7 +737,7 @@ impl<'p> Encoder<'p> {
                 t.set(target, *leaf, V::Obj(o));
             }
         }
-        Ok(())
+        Ok(skipped)
     }
 
     /// Whether `_detect_truncated_paths` raises on a repeat of this row: it walks each path's
@@ -850,8 +893,28 @@ impl<'p> Encoder<'p> {
                 }
             }
         }
-        Ok(Rows { tree: t, rows })
+        Ok(Rows { tree: t, rows, truncated: Vec::new() })
     }
+}
+
+/// One object's key, length-prefixed, appended to a row's keys.
+fn object_atom(out: &mut Vec<u8>, key: &[u8]) {
+    out.extend_from_slice(&(key.len() as u32).to_le_bytes());
+    out.extend_from_slice(key);
+}
+
+/// The paths (by index) whose object keys differ between two rows' keys.
+fn differing(a: &[u8], b: &[u8]) -> Vec<usize> {
+    fn split(mut s: &[u8]) -> Vec<&[u8]> {
+        let mut v = Vec::new();
+        while !s.is_empty() {
+            let n = u32::from_le_bytes(s[..4].try_into().unwrap()) as usize;
+            v.push(&s[4..4 + n]);
+            s = &s[4 + n..];
+        }
+        v
+    }
+    split(a).into_iter().zip(split(b)).enumerate().filter(|(_, (x, y))| x != y).map(|(i, _)| i).collect()
 }
 
 // ---------------------------------------------------------------- serialize_aggregate
@@ -864,7 +927,8 @@ pub fn aggregate(batches: &[Batch], spec: &[Col], agg_alias: &str) -> Res<(Tree,
     let payload = t.obj();
     t.set(payload, alias, V::Obj(inner));
     let mut k = Keyer::new();
-    if let Some(b) = batches.first() {
+    // `agg_rows[0]`: the first row, which an empty first batch does not hold.
+    if let Some(b) = batches.iter().find(|b| b.rows > 0) {
         let prefix = format!("{agg_alias}.");
         for (i, col) in spec.iter().enumerate() {
             let name = t.names.id(&col.field);

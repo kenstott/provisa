@@ -8,14 +8,16 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Reconstruct nested GraphQL JSON from flat JOIN result rows (REQ-047).
+"""A result value as a Python consumer of rows takes it (REQ-1867): ``column_value`` (a DECIMAL's
+exact digits, PostgreSQL's infinities, JSON parsed only from a json/jsonb column, integers by
+type), ``result_records`` and the Relay connection (REQ-218).
 
-many-to-one  -> single nested object
-one-to-many  -> array of nested objects
-Null propagation for nullable relationships.
+The JSON surfaces (GraphQL, REST, JSON:API, OData) do not come here: their answers are written by
+the Rust encoders from the engine's Arrow batches (executor/json_encoders.py, REQ-2194), the
+nesting of flat JOIN rows (REQ-047) included.
 """
 
-# Requirements: REQ-047, REQ-048, REQ-049, REQ-050, REQ-196, REQ-218
+# Requirements: REQ-047, REQ-218, REQ-1867
 
 from __future__ import annotations
 
@@ -220,289 +222,14 @@ def result_records(result: QueryResult) -> list[dict]:
     ]
 
 
-def _exact_numbers(
-    v: object,  # object-ok: a JSON value — dict | list | scalar
-) -> object:
-    """``v`` with each JsonNumber its exact value: two numbers a float cannot tell apart are two
-    values."""
-    if isinstance(v, JsonNumber):
-        return v.exact()
-    if isinstance(v, dict):
-        return {k: _exact_numbers(x) for k, x in v.items()}
-    if isinstance(v, list):
-        return [_exact_numbers(x) for x in v]
-    return v
-
-
-def _to_hashable(
-    v: object,  # object-ok: arbitrary SQL column value — dict | list | scalar
-) -> object:
-    """Make a value safe to use as a dict key / tuple component."""
-    if isinstance(v, (dict, list)):
-        return json.dumps(_exact_numbers(v), sort_keys=True, default=str)
-    return _exact_numbers(v)
-
-
-def _group_columns(
-    columns: list[ColumnRef],
-) -> tuple[list[tuple[int, ColumnRef]], dict[str, list[tuple[int, ColumnRef]]]]:
-    """Split columns into root-level and nested groups keyed by nest path."""
-    root_cols: list[tuple[int, ColumnRef]] = []
-    nested_groups: dict[str, list[tuple[int, ColumnRef]]] = {}
-    for i, col in enumerate(columns):
-        if col.nested_in is None:
-            root_cols.append((i, col))
-        else:
-            nested_groups.setdefault(col.nested_in, []).append((i, col))
-    return root_cols, nested_groups
-
-
-def _one_to_many_paths(nested_groups: dict[str, list[tuple[int, ColumnRef]]]) -> set[str]:
-    """The nested paths that are lists: a to-many relationship's rows."""
-    return {
-        nest_path
-        for nest_path, nest_cols in nested_groups.items()
-        if any(col.cardinality == "one-to-many" for _, col in nest_cols)
-    }
-
-
-def _navigate_path(
-    obj: dict,
-    parts: list[str],
-) -> tuple[dict, bool]:
-    """Walk obj down parts[:-1], creating intermediate dicts. Returns (target, skip)."""
-    target = obj
-    for part in parts[:-1]:
-        cur = target.get(part)
-        if isinstance(cur, dict):
-            target = cur
-        elif part not in target:
-            target[part] = {}
-            target = target[part]
-        else:
-            return target, True
-    return target, False
-
-
-def _parent_path(path: str, placed: dict[str, dict | None]) -> str:
-    """The nearest enclosing path of ``path`` placed in this row ("" is the root object)."""
-    parts = path.split(".")
-    for i in range(len(parts) - 1, 0, -1):
-        prefix = ".".join(parts[:i])
-        if prefix in placed:
-            return prefix
-    return ""
-
-
-def _serialize_with_one_to_many(
-    rows: list[tuple],
-    root_cols: list[tuple[int, ColumnRef]],
-    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
-    one_to_many_paths: set[str],
-    result_limit: int | None,
-    root_field: str,
-) -> dict:
-    """Serialize rows when at least one one-to-many path exists.
-
-    Each row is placed path by path, parents first: a to-many element is the one its own values
-    name under the element the row placed its parent in, at any depth (#285), and a to-one
-    object is its parent element's. A field built as one JSON value is a value of its element."""
-    seen: dict[tuple, int] = {}
-    result_rows: list[dict] = []
-    #: (the list's place in the response, its values) -> the element. A list's place is its
-    #: parent's place and its path, and the list it is: a list a later row puts in place of an
-    #: earlier one is a new list, whose elements are its own.
-    elements: dict[tuple, dict] = {}
-    #: a list's place (its parent's place, its path) -> (the list, its number at that place)
-    lists: dict[tuple, tuple[list, int]] = {}
-    paths = sorted(nested_groups)
-
-    for row in rows:
-        root_key = tuple(_to_hashable(column_value(row[idx], col)) for idx, col in root_cols)
-        new_root = root_key not in seen
-        if new_root:
-            obj: dict = {col.field_name: column_value(row[idx], col) for idx, col in root_cols}
-            seen[root_key] = len(result_rows)
-            result_rows.append(obj)
-        placed: dict[str, dict | None] = {"": result_rows[seen[root_key]]}
-        fresh: dict[str, bool] = {"": new_root}
-        #: each placed object's place in the response: the root row's key, then each path and
-        #: the element that path names
-        place: dict[str, tuple] = {"": root_key}
-        for path in paths:
-            parent = _parent_path(path, placed)
-            holder = placed[parent]
-            if holder is None:
-                placed[path], fresh[path] = None, False
-                continue
-            parts = (path[len(parent) + 1 :] if parent else path).split(".")
-            for part in parts[:-1]:
-                holder = holder.setdefault(part, {})
-            leaf = parts[-1]
-            cols = nested_groups[path]
-            values = {col.field_name: column_value(row[idx], col) for idx, col in cols}
-            empty = all(row[idx] is None for idx, _ in cols)
-            if path in one_to_many_paths:
-                at = (place[parent], path)
-                arr = holder.get(leaf)
-                known = lists.get(at)
-                if known is None or known[0] is not arr:
-                    if not isinstance(arr, list):
-                        arr = holder[leaf] = []
-                    known = lists[at] = (arr, known[1] + 1 if known else 0)
-                arr = known[0]
-                if empty:
-                    placed[path], fresh[path] = None, False
-                    continue
-                key = (at, known[1], tuple(_to_hashable(v) for v in values.values()))
-                element = elements.get(key)
-                fresh[path] = element is None
-                if element is None:
-                    element = elements[key] = dict(values)
-                    arr.append(element)
-                placed[path] = element
-                place[path] = key
-            else:
-                current = holder.get(leaf)
-                if empty:
-                    holder.setdefault(leaf, None)
-                    placed[path], fresh[path] = None, False
-                    continue
-                if isinstance(current, dict):
-                    current.update(values)
-                    fresh[path] = fresh[parent]
-                else:
-                    current = holder[leaf] = dict(values)
-                    fresh[path] = True
-                placed[path] = current
-                place[path] = (place[parent], path)
-
-    if result_limit is not None:
-        result_rows = result_rows[:result_limit]
-    return {"data": {root_field: result_rows}}
-
-
-def _build_nested_obj(
-    obj: dict,
-    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
-    row: tuple,
-) -> None:
-    """Populate nested relationship fields into obj for flat/many-to-one rows."""
-    for nest_path, nest_cols in nested_groups.items():
-        all_none = all(row[idx] is None for idx, _ in nest_cols)
-        parts = nest_path.split(".")
-        target: dict | None = obj
-        skip = False
-        for part in parts[:-1]:
-            assert target is not None
-            if part not in target:
-                target[part] = {}
-            target = target[part]
-            if target is None:
-                skip = True
-                break
-        if skip:
-            continue
-        assert target is not None
-        leaf = parts[-1]
-        if all_none:
-            target[leaf] = None
-        else:
-            nested_obj: dict = {}
-            for idx, col in nest_cols:
-                nested_obj[col.field_name] = column_value(row[idx], col)
-            target[leaf] = nested_obj
-
-
-def _detect_truncated_paths(
-    result_rows: list[dict],
-    seen_root_keys: dict[tuple, int],
-    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
-    row: tuple,
-    root_key: tuple,
-) -> set[str]:
-    """Return set of nested paths that differ from the already-seen row: the to-one object this
-    row would build (None when its columns are all null) against the one the first row built,
-    by the path's own fields (a nested path's object sits inside it as another key)."""
-    truncated: set[str] = set()
-    prev_obj = result_rows[seen_root_keys[root_key]]
-    for nest_path, nest_cols in nested_groups.items():
-        cur = (
-            None
-            if all(row[idx] is None for idx, _ in nest_cols)
-            else {col.field_name: column_value(row[idx], col) for idx, col in nest_cols}
-        )
-        parts = nest_path.split(".")
-        target: dict | None = prev_obj
-        for part in parts[:-1]:
-            assert target is not None
-            # A missing intermediate key is a structural bug — fail loud, don't mask with {}.
-            target = target[part]
-            if target is None:
-                break  # a parent the first row had null: it built nothing here
-        prev_val = None if target is None else target.get(parts[-1])
-        prev = (
-            {col.field_name: prev_val.get(col.field_name) for _, col in nest_cols}
-            if isinstance(prev_val, dict)
-            else prev_val
-        )
-        if _to_hashable(cur) != _to_hashable(prev):
-            truncated.add(nest_path)
-    return truncated
-
-
-def _serialize_flat(
-    rows: list[tuple],
-    columns: list[ColumnRef],
-    root_cols: list[tuple[int, ColumnRef]],
-    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
-    result_limit: int | None,
-    root_field: str,
-) -> dict:
-    """Serialize rows for flat or many-to-one (no one-to-many) case."""
-    seen_root_keys: dict[tuple, int] = {}
-    result_rows: list[dict] = []
-    truncated_paths: set[str] = set()
-
-    for row in rows:
-        keyed = [idx for idx, col in root_cols if not col.is_agg]
-        if keyed:
-            root_key = tuple(_to_hashable(column_value(row[idx], columns[idx])) for idx in keyed)
-        else:
-            # group_by: every column is nested (groupKey/aggregates) or a group's nodes -- every
-            # row is distinct
-            root_key = tuple(
-                _to_hashable(column_value(v, col)) for v, col in zip(row, columns, strict=True)
-            )
-        if root_key in seen_root_keys:
-            truncated_paths |= _detect_truncated_paths(
-                result_rows, seen_root_keys, nested_groups, row, root_key
-            )
-            continue
-
-        obj: dict = {}
-        for idx, col in root_cols:
-            obj[col.field_name] = column_value(row[idx], col)
-        _build_nested_obj(obj, nested_groups, row)
-        seen_root_keys[root_key] = len(result_rows)
-        result_rows.append(obj)
-
-    if result_limit is not None:
-        result_rows = result_rows[:result_limit]
-
-    result: dict = {"data": {root_field: result_rows}}
-    if truncated_paths:
-        result["extensions"] = {
-            "warnings": [
-                {"message": to_one_truncated(path).message, "path": path}
-                for path in sorted(truncated_paths)
-            ]
-        }
-    return result
-
-
 #: REQ-1350: the code of the warning a to-one relationship that matched several rows raises
 TO_ONE_TRUNCATED = "graphql.to_one_truncated"
+#: Its message, ``{path}`` where the relationship's path goes (the JSON encoders write it too).
+TO_ONE_TRUNCATED_MESSAGE = (
+    "many-to-one relationship '{path}' returned multiple rows "
+    "for the same parent; only the first value was used. "
+    "Check cardinality — this relationship may need to be one-to-many."
+)
 
 
 def to_one_truncated(path: str) -> ServerWarning:
@@ -510,91 +237,9 @@ def to_one_truncated(path: str) -> ServerWarning:
     parent raises: only the first row's object was answered."""
     return ServerWarning(
         code=TO_ONE_TRUNCATED,
-        message=(
-            f"many-to-one relationship '{path}' returned multiple rows "
-            f"for the same parent; only the first value was used. "
-            f"Check cardinality — this relationship may need to be one-to-many."
-        ),
+        message=TO_ONE_TRUNCATED_MESSAGE.format(path=path),
         params={"path": path},
     )
-
-
-def serialize_rows(  # REQ-047, REQ-048, REQ-049, REQ-050
-    rows: list[tuple],
-    columns: list[ColumnRef],
-    root_field: str,
-    result_limit: int | None = None,
-) -> dict:
-    """Serialize flat SQL rows into nested GraphQL JSON.
-
-    Args:
-        rows: Result rows from SQL execution (tuples).
-        columns: Column references from compilation (maps positions to fields).
-        root_field: The GraphQL root field name (e.g., "orders").
-
-    Returns:
-        {"data": {root_field: [...]}}
-    """
-    root_cols, nested_groups = _group_columns(columns)
-    one_to_many_paths = _one_to_many_paths(nested_groups)
-
-    if one_to_many_paths and root_cols:
-        return _serialize_with_one_to_many(
-            rows,
-            root_cols,
-            nested_groups,
-            one_to_many_paths,
-            result_limit,
-            root_field,
-        )
-
-    return _serialize_flat(rows, columns, root_cols, nested_groups, result_limit, root_field)
-
-
-def serialize_aggregate(  # REQ-196, REQ-197
-    agg_rows: list[tuple],
-    agg_columns: list[ColumnRef],
-    root_field: str,
-    agg_alias: str = "aggregate",
-) -> dict:
-    """Serialize an aggregate query's one row into GraphQL JSON: its aggregates, and its nodes
-    (the rows it aggregates, a column of that row) when they were selected.
-
-    Column nested_in paths use agg_alias as prefix (default "aggregate"), e.g.:
-      "aggregate"      → aggregate.count
-      "aggregate.sum"  → aggregate.sum.amount
-    The nodes column is the JSON list at the root (nested_in None, is_agg); any other column
-    with no nested_in is the aggregate's own.
-
-    Returns:
-        {"data": {root_field: {agg_alias: {...}, "nodes": [...]}}}
-    """
-    # Strip the leading agg_alias prefix from each nested_in path, then reconstruct the
-    # sub-structure (sum, avg, min, max).
-    agg_inner: dict = {}
-    payload: dict = {agg_alias: agg_inner}
-    if agg_rows:
-        row = agg_rows[0]
-        for i, col in enumerate(agg_columns):
-            if col.nested_in is None and col.is_agg:
-                payload[col.field_name] = column_value(row[i], col)
-                continue
-            path = col.nested_in or agg_alias
-            if path == agg_alias:
-                sub_path: list[str] = []
-            elif path.startswith(f"{agg_alias}."):
-                sub_path = path[len(f"{agg_alias}.") :].split(".")
-            else:
-                sub_path = path.split(".")
-
-            target = agg_inner
-            for part in sub_path:
-                if part not in target or not isinstance(target[part], dict):
-                    target[part] = {}
-                target = target[part]
-            target[col.field_name] = column_value(row[i], col)
-
-    return {"data": {root_field: payload}}
 
 
 def _cursor_value(

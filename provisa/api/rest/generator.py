@@ -48,7 +48,6 @@ from provisa.api._query_helpers import (
 from provisa.api.generated_plan import compile_generated_graphql
 from provisa.compiler.naming import apply_gql_name
 from provisa.compiler.parser import GraphQLValidationError
-from provisa.executor.serialize import serialize_aggregate, serialize_rows
 from provisa.compiler.complexity import ComplexityLimitExceeded
 from provisa.security.rights import META_DOMAIN_ID
 
@@ -458,6 +457,47 @@ def _build_group_by_graphql_query(
     )
 
 
+def _arrow_file(
+    batches: list[Any],
+    columns: list[Any],
+    accept: str,
+    table_name: str,
+    cache_headers: dict[str, str],
+) -> Any:  # noqa: ANN401 — a Response
+    """REST's Parquet or Arrow IPC answer (REQ-2194): the engine's record batches as they are,
+    with their native types, each column named by the field it answers (``rel.field`` for a
+    relationship's). An answer with no batch is the fields with no rows."""
+    import io
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from fastapi.responses import Response
+
+    names = [
+        c.field_name if c.nested_in is None else f"{c.nested_in}.{c.field_name}" for c in columns
+    ]
+    if batches:
+        table = pa.Table.from_batches(batches).rename_columns(names)
+    else:
+        table = pa.table({name: pa.array([], pa.null()) for name in names})
+    buf = io.BytesIO()
+    if "application/vnd.apache.parquet" in accept:
+        pq.write_table(table, buf)
+        media_type, suffix = "application/vnd.apache.parquet", "parquet"
+    else:
+        with pa.ipc.new_stream(buf, table.schema) as writer:
+            writer.write_table(table)
+        media_type, suffix = "application/vnd.apache.arrow.stream", "arrow"
+    return Response(
+        content=buf.getvalue(),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f"attachment; filename={table_name}.{suffix}",
+            **cache_headers,
+        },
+    )
+
+
 def _variables_or_400(
     schema: GraphQLSchema,
     field_name: str,
@@ -751,100 +791,51 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 headers=cache_headers,
             )
 
-        # REQ-1359: aggregate/group-by results aren't resource rows — reuse the same
-        # serializers the GraphQL/data pipeline uses for _aggregate/_group_by fields, but
-        # flatten to REST's existing flat {"data": ...} shape. REQ-1401: a group's nodes, when
-        # ?includeNodes=true selected them, are a column of its own row.
-        if is_group_by:
-            gb_response = serialize_rows(result.rows, compiled.columns, compiled.root_field)
-            return OrjsonResponse(
-                content={"data": gb_response["data"][compiled.root_field]}, headers=cache_headers
-            )
-        if is_aggregate:
-            agg_response = serialize_aggregate(
-                result.rows, compiled.columns, compiled.root_field, agg_alias=compiled.agg_alias
-            )
-            agg_obj = agg_response["data"][compiled.root_field][compiled.agg_alias]
-            return OrjsonResponse(content={"data": agg_obj}, headers=cache_headers)
+        # REQ-2194: every answer below is the Rust encoders' (or the engine's own Arrow), written
+        # from the result's record batches: no Python row in between.
+        from fastapi.responses import Response
 
-        # Serialize
-        response_data = serialize_rows(result.rows, compiled.columns, table)
-        rows = response_data.get("data", {}).get(table, [])
-        col_names = list(compiled.columns or [])
+        from provisa.core.statement_warnings import warn
+        from provisa.executor.json_encoders import rest as rest_json
+        from provisa.executor.json_encoders import rest_csv, result_batches
+        from provisa.executor.serialize import to_one_truncated
+
+        batches = result_batches(result)
         accept = request.headers.get("accept", "application/json").lower()
 
-        if "text/csv" in accept:
-            import csv
-            import io
-
-            buf = io.StringIO()
-            writer = csv.writer(buf)
-            if rows:
-                writer.writerow(rows[0].keys())
-                for row in rows:
-                    writer.writerow(row.values())
-            from fastapi.responses import Response
-
+        # REQ-1359: aggregate/group-by results aren't resource rows — the same nesting the
+        # GraphQL pipeline gives _aggregate/_group_by fields, in REST's flat {"data": ...} shape.
+        # REQ-1401: a group's nodes, when ?includeNodes=true selected them, are a column of its
+        # own row.
+        if is_group_by or is_aggregate:
+            body, truncated = rest_json(
+                batches, compiled.columns, compiled.agg_alias if is_aggregate else None
+            )
+        elif "text/csv" in accept:
+            body, truncated = rest_csv(batches, compiled.columns)
+            for path in truncated:
+                warn(to_one_truncated(path))
             return Response(
-                content=buf.getvalue(),
+                content=body,
                 media_type="text/csv",
                 headers={
                     "Content-Disposition": f"attachment; filename={table_name}.csv",
                     **cache_headers,
                 },
             )
-
-        if "application/vnd.apache.parquet" in accept:
-            try:
-                import io
-
-                import pyarrow as pa
-                import pyarrow.parquet as pq
-
-                keys = list(rows[0].keys()) if rows else col_names
-                arrays = {k: [row.get(k) for row in rows] for k in keys}
-                table_pa = pa.table(arrays)
-                buf = io.BytesIO()
-                pq.write_table(table_pa, buf)
-                from fastapi.responses import Response
-
-                return Response(
-                    content=buf.getvalue(),
-                    media_type="application/vnd.apache.parquet",
-                    headers={
-                        "Content-Disposition": f"attachment; filename={table_name}.parquet",
-                        **cache_headers,
-                    },
-                )
-            except ImportError:
-                raise HTTPException(status_code=400, detail="parquet format requires pyarrow")
-
-        if "application/vnd.apache.arrow.stream" in accept:
-            try:
-                import io
-
-                import pyarrow as pa
-
-                keys = list(rows[0].keys()) if rows else col_names
-                arrays = {k: [row.get(k) for row in rows] for k in keys}
-                table_pa = pa.table(arrays)
-                buf = io.BytesIO()
-                with pa.ipc.new_stream(buf, table_pa.schema) as writer:
-                    writer.write_table(table_pa)
-                from fastapi.responses import Response
-
-                return Response(
-                    content=buf.getvalue(),
-                    media_type="application/vnd.apache.arrow.stream",
-                    headers={
-                        "Content-Disposition": f"attachment; filename={table_name}.arrow",
-                        **cache_headers,
-                    },
-                )
-            except ImportError:
-                raise HTTPException(status_code=400, detail="arrow format requires pyarrow")
-
-        return OrjsonResponse(content={"data": rows}, headers=cache_headers)
+        elif "application/vnd.apache.parquet" in accept or (
+            "application/vnd.apache.arrow.stream" in accept
+        ):
+            # The engine's batches as they are, with their native types (a DECIMAL a decimal, a
+            # timestamp a timestamp), each column named by its field.
+            return _arrow_file(batches, compiled.columns, accept, table_name, cache_headers)
+        else:
+            body, truncated = rest_json(batches, compiled.columns)
+        # A to-one relationship that matched several rows for one row: the response says so in
+        # its X-Provisa-Warnings header (REQ-1350).
+        for path in truncated:
+            warn(to_one_truncated(path))
+        return Response(content=body, media_type="application/json", headers=cache_headers)
 
     @rest_router.post("/{domain_id}/commands/{command_name}")
     async def rest_command_endpoint(  # pyright: ignore[reportUnusedFunction]  # REQ-1155

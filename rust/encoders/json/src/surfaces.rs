@@ -8,12 +8,53 @@ use crate::fmt;
 use crate::nest::{self, Batch, Col, Encoder, LeafKind, Plan, Sink, Tree, V};
 use crate::pyval::{err, Res};
 
+/// What the rows written said about themselves: how many, each relationship's matched rows (a
+/// to-many's elements, a to-one's objects, by the root key holding it), and the to-one paths that
+/// matched several rows for one parent.
+#[derive(Default)]
+pub struct Written {
+    pub rows: usize,
+    pub joined: Vec<(String, u64)>,
+    pub truncated: Vec<String>,
+}
+
+/// The root keys that hold relationships: each path's first name.
+fn relationship_keys(p: &Plan) -> Vec<u32> {
+    let mut keys = Vec::new();
+    for path in &p.paths {
+        if !keys.contains(&path.full_parts[0]) {
+            keys.push(path.full_parts[0]);
+        }
+    }
+    keys
+}
+
+fn count_joined(t: &Tree, o: u32, keys: &[u32], counts: &mut [u64]) {
+    for (i, k) in keys.iter().enumerate() {
+        if let Some(&(_, v)) = t.objs[o as usize].iter().find(|e| e.0 == *k) {
+            counts[i] += match v {
+                V::Arr(a) => t.arrs[a as usize].len() as u64,
+                V::Obj(_) => 1,
+                V::Json(j) => match &t.jv[j as usize] {
+                    crate::pyval::P::List(l) => l.len() as u64,
+                    crate::pyval::P::None => 0,
+                    _ => 1,
+                },
+                V::Null => 0,
+                _ => 1,
+            };
+        }
+    }
+}
+
 /// Writes each flat row as soon as it is built, up to a limit.
 struct Stream<'o> {
     out: &'o mut Vec<u8>,
     limit: Option<usize>,
     written: usize,
     depth: usize,
+    keys: &'o [u32],
+    counts: Vec<u64>,
 }
 
 impl Sink for Stream<'_> {
@@ -23,6 +64,7 @@ impl Sink for Stream<'_> {
                 self.out.push(b',');
             }
             t.write_obj(row, self.out, self.depth)?;
+            count_joined(t, row, self.keys, &mut self.counts);
             self.written += 1;
         }
         Ok(false)
@@ -31,35 +73,47 @@ impl Sink for Stream<'_> {
 
 /// `serialize_rows`' rows written as a JSON array's items at `depth`, the tree's rows after a
 /// streamed flat answer (none) or the one-to-many answer's (written here).
-fn rows_into(batches: &[Batch], p: &Plan, spec: &[Col], limit: Option<usize>, depth: usize, out: &mut Vec<u8>) -> Res<()> {
+fn rows_into(batches: &[Batch], p: &Plan, spec: &[Col], limit: Option<usize>, depth: usize, out: &mut Vec<u8>) -> Res<Written> {
+    let keys = relationship_keys(p);
     let mut e = Encoder::new(p, spec);
-    let mut s = Stream { out, limit, written: 0, depth };
+    let mut s = Stream { out, limit, written: 0, depth, keys: &keys, counts: vec![0; keys.len()] };
     let rows = e.rows(batches, &mut s)?;
+    let (mut written, mut counts) = (s.written, s.counts);
     let n = limit.map_or(rows.rows.len(), |l| l.min(rows.rows.len()));
     for (i, &o) in rows.rows[..n].iter().enumerate() {
-        if i > 0 {
+        if i > 0 || written > 0 {
             out.push(b',');
         }
         rows.tree.write_obj(o, out, depth)?;
+        count_joined(&rows.tree, o, &keys, &mut counts);
     }
-    Ok(())
+    written += n;
+    let joined = keys.iter().zip(counts).map(|(k, c)| (String::from_utf8_lossy(&p.names.raw[*k as usize]).into_owned(), c)).collect();
+    Ok(Written { rows: written, joined, truncated: rows.truncated })
 }
 
-/// GraphQL: `{"data": {root_field: rows}}`.
-pub fn graphql(batches: &[Batch], spec: &[Col], root_field: &str, limit: Option<usize>) -> Res<Vec<u8>> {
+/// GraphQL: a root field's rows, the JSON array `{"data": {root_field: ...}}` holds.
+pub fn graphql_field(batches: &[Batch], spec: &[Col], limit: Option<usize>) -> Res<(Vec<u8>, Written)> {
     let p = nest::plan(spec);
     let mut out = Vec::new();
-    out.extend_from_slice(b"{\"data\":{");
-    fmt::write_str(&mut out, root_field.as_bytes());
-    out.extend_from_slice(b":[");
-    rows_into(batches, &p, spec, limit, 4, &mut out)?;
-    out.extend_from_slice(b"]}}");
+    out.push(b'[');
+    let w = rows_into(batches, &p, spec, limit, 4, &mut out)?;
+    out.push(b']');
+    Ok((out, w))
+}
+
+/// GraphQL: an aggregate root field's answer, `{agg_alias: {...}, nodes...}`.
+pub fn graphql_aggregate(batches: &[Batch], spec: &[Col], agg_alias: &str) -> Res<Vec<u8>> {
+    let (t, payload, _) = nest::aggregate(batches, spec, agg_alias)?;
+    let mut out = Vec::new();
+    t.write_obj(payload, &mut out, 2)?;
     Ok(out)
 }
 
 /// REST: `{"data": rows}` (rows and group-by), or `{"data": aggregate}`.
-pub fn rest(batches: &[Batch], spec: &[Col], agg_alias: Option<&str>) -> Res<Vec<u8>> {
+pub fn rest(batches: &[Batch], spec: &[Col], agg_alias: Option<&str>) -> Res<(Vec<u8>, Written)> {
     let mut out = Vec::new();
+    let mut w = Written::default();
     out.extend_from_slice(b"{\"data\":");
     match agg_alias {
         Some(alias) => {
@@ -69,24 +123,24 @@ pub fn rest(batches: &[Batch], spec: &[Col], agg_alias: Option<&str>) -> Res<Vec
         None => {
             let p = nest::plan(spec);
             out.push(b'[');
-            rows_into(batches, &p, spec, None, 3, &mut out)?;
+            w = rows_into(batches, &p, spec, None, 3, &mut out)?;
             out.push(b']');
         }
     }
     out.push(b'}');
-    Ok(out)
+    Ok((out, w))
 }
 
 /// REST with `Accept: text/csv`: `csv.writer` (the excel dialect, QUOTE_MINIMAL) over the rows
 /// `serialize_rows` built, the first row's keys as the header, each value as `str()` writes it
 /// (`repr` for a float, nothing for None).
-pub fn rest_csv(batches: &[Batch], spec: &[Col]) -> Res<Vec<u8>> {
+pub fn rest_csv(batches: &[Batch], spec: &[Col]) -> Res<(Vec<u8>, Vec<String>)> {
     let p = nest::plan(spec);
     let mut e = Encoder::new(&p, spec);
     let rows = e.rows(batches, &mut nest::Keep)?;
     let t = &rows.tree;
     let mut out = Vec::new();
-    let Some(&first) = rows.rows.first() else { return Ok(out) };
+    let Some(&first) = rows.rows.first() else { return Ok((out, rows.truncated)) };
     let header: Vec<Vec<u8>> = t.objs[first as usize].iter().map(|(k, _)| t.names.raw[*k as usize].clone()).collect();
     csv_row(&mut out, header.iter().map(|h| Some(h.clone())).collect());
     for &o in &rows.rows {
@@ -103,7 +157,7 @@ pub fn rest_csv(batches: &[Batch], spec: &[Col]) -> Res<Vec<u8>> {
             .collect();
         csv_row(&mut out, fields);
     }
-    Ok(out)
+    Ok((out, rows.truncated))
 }
 
 fn csv_row(out: &mut Vec<u8>, fields: Vec<Option<Vec<u8>>>) {
@@ -150,6 +204,9 @@ pub struct JsonApi {
     pub base_path: String,
     pub link_params: Vec<(String, String)>,
     pub warnings: Option<Vec<u8>>,
+    /// The message of the warning a to-one path that matched several rows for one parent raises,
+    /// `{path}` where its path goes (serialize.TO_ONE_TRUNCATED_MESSAGE), and its code.
+    pub truncation: (String, String),
 }
 
 /// `rename_row_keys` / `_rename_nested`: new objects with keys renamed.
@@ -226,14 +283,27 @@ fn find(t: &Tree, o: u32, name: &str) -> Option<usize> {
     t.objs[o as usize].iter().position(|e| e.0 == id)
 }
 
-/// `resource_id(row, id_columns)`.
+/// A resource id's text of a value: a string as itself, any other value as its JSON (a number's
+/// digits, `true`, a JSON object's text), as the answer writes it.
+fn id_text(t: &Tree, v: V, out: &mut Vec<u8>) -> Res<()> {
+    let mut w = Vec::new();
+    t.write_value(v, &mut w, 0)?;
+    match w.first() {
+        Some(b'"') => nest::unescape(&w[1..w.len() - 1], out),
+        _ => out.extend_from_slice(&w),
+    }
+    Ok(())
+}
+
+/// `resource_id(row, id_columns)`: one key's text, or the keys' texts joined by `:` (each `:` and
+/// `\` in them escaped).
 fn resource_id(t: &Tree, o: u32, cols: &[String]) -> Res<Vec<u8>> {
     let mut out = Vec::new();
     for (i, c) in cols.iter().enumerate() {
         let Some(pos) = find(t, o, c) else { return err(format!("KeyError: '{c}'")) };
         let v = t.objs[o as usize][pos].1;
         let mut s = Vec::new();
-        t.py_str(v, &mut s);
+        id_text(t, v, &mut s)?;
         if cols.len() == 1 {
             return Ok(s);
         }
@@ -360,11 +430,12 @@ fn links(out: &mut Vec<u8>, a: &JsonApi, has_next: bool) {
 /// The JSON:API document of a table read: the rows `serialize_rows` builds, cut to the page,
 /// renamed to physical names, their included resources taken out (`_extract_included`), as
 /// `rows_to_jsonapi` writes them, with the router's meta and links.
-pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<Vec<u8>> {
+pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<(Vec<u8>, Vec<String>)> {
     let p = nest::plan(spec);
     let mut e = Encoder::new(&p, spec);
     let rows = e.rows(batches, &mut nest::Keep)?;
     let mut t = rows.tree;
+    let truncated = rows.truncated;
     let n = rows.rows.len();
     let has_next = if a.probe { n > a.page_size } else { n == a.page_size };
     let page: Vec<u32> = rows.rows[..n.min(a.page_size)].to_vec();
@@ -372,12 +443,19 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<Vec<u8>> {
     let mut ren = Renamer { t: &mut t };
     let page: Vec<u32> = page.into_iter().map(|o| ren.row(o, &a.scalar_names, &a.rel_names, &a.rel_scalar_names)).collect();
 
+    // An include named twice is the one include (`include=a,b,a` is `include=a,b`).
+    let mut includes: Vec<&String> = Vec::new();
+    for inc in &a.includes {
+        if !includes.contains(&inc) {
+            includes.push(inc);
+        }
+    }
     // _extract_included
     let mut buckets: Vec<(String, Vec<V>, std::collections::HashSet<Vec<u8>>)> = Vec::new();
     let mut row_links: Vec<Vec<(Vec<u8>, Vec<u8>)>> = Vec::new();
     for &o in &page {
         let mut rl: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
-        for inc in &a.includes {
+        for &inc in &includes {
             let nested = match find(&t, o, inc) {
                 Some(pos) => Some(t.objs[o as usize].remove(pos).1),
                 None => None,
@@ -438,9 +516,12 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<Vec<u8>> {
         let rid = resource_id(&t, o, &a.id_columns)?;
         let mut attrs: Vec<(u32, V)> = Vec::new();
         let mut rels: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+        // A column named id is the resource's id only when the id is that column; an id built
+        // from other keys leaves it an attribute.
+        let id_is_column = a.id_columns.len() == 1 && a.id_columns[0] == "id";
         for &(k, v) in &t.objs[o as usize] {
             let name = &t.names.raw[k as usize];
-            if name == b"id" {
+            if id_is_column && name == b"id" {
                 continue;
             }
             if let Some((_, rel)) = fks.iter().find(|(fk, _)| fk.as_bytes() == name.as_slice()) {
@@ -450,7 +531,7 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<Vec<u8>> {
                     d.extend_from_slice(b"null");
                 } else {
                     let mut s = Vec::new();
-                    t.py_str(v, &mut s);
+                    id_text(&t, v, &mut s)?;
                     identifier(&mut d, rel.as_bytes(), &s)?;
                     d.push(b'}');
                 }
@@ -480,6 +561,7 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<Vec<u8>> {
         let mut first = true;
         for (inc, items, _) in filled {
             let keys = a.include_keys.get(inc);
+            let id_is_column = keys.is_none_or(|k| k.len() == 1 && k[0] == "id");
             for &item in items {
                 let V::Obj(io) = item else { unreachable!() };
                 let rid = match keys {
@@ -487,12 +569,13 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<Vec<u8>> {
                     None => {
                         let mut s = Vec::new();
                         if let Some(pos) = find(&t, io, "id") {
-                            t.py_str(t.objs[io as usize][pos].1, &mut s);
+                            id_text(&t, t.objs[io as usize][pos].1, &mut s)?;
                         }
                         s
                     }
                 };
-                let attrs: Vec<(u32, V)> = t.objs[io as usize].iter().filter(|(k, _)| t.names.raw[*k as usize] != b"id").copied().collect();
+                let attrs: Vec<(u32, V)> =
+                    t.objs[io as usize].iter().filter(|(k, _)| !(id_is_column && t.names.raw[*k as usize] == b"id")).copied().collect();
                 if !first {
                     out.push(b',');
                 }
@@ -506,8 +589,27 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<Vec<u8>> {
     if let Some(total) = a.total {
         meta.push((b"total", total.to_string().into_bytes()));
     }
-    if let Some(w) = &a.warnings {
-        meta.push((b"warnings", w.clone()));
+    // The request's warnings, then each truncated to-one path's (REQ-1350).
+    let mut entries: Vec<u8> = match &a.warnings {
+        Some(w) if w.len() > 2 => w[..w.len() - 1].to_vec(),
+        _ => b"[".to_vec(),
+    };
+    for path in &truncated {
+        if entries.len() > 1 {
+            entries.push(b',');
+        }
+        let (code, template) = &a.truncation;
+        entries.extend_from_slice(b"{\"code\":");
+        fmt::write_str(&mut entries, code.as_bytes());
+        entries.extend_from_slice(b",\"params\":{\"path\":");
+        crate::pywrite::write_text(&mut entries, path.as_bytes())?;
+        entries.extend_from_slice(b"},\"message\":");
+        crate::pywrite::write_text(&mut entries, template.replace("{path}", path).as_bytes())?;
+        entries.push(b'}');
+    }
+    entries.push(b']');
+    if entries.len() > 2 {
+        meta.push((b"warnings", entries));
     }
     if !meta.is_empty() {
         out.extend_from_slice(b",\"meta\":{");
@@ -524,7 +626,7 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<Vec<u8>> {
     out.extend_from_slice(b",\"links\":");
     links(&mut out, a, has_next);
     out.push(b'}');
-    Ok(out)
+    Ok((out, truncated))
 }
 
 /// JSON:API `?groupBy=`: each group row, its groupKey and nodes renamed, as a resource.
@@ -533,10 +635,30 @@ pub fn jsonapi_group_by(batches: &[Batch], spec: &[Col], resource_type: &str, sc
     let mut e = Encoder::new(&p, spec);
     let rows = e.rows(batches, &mut nest::Keep)?;
     let mut t = rows.tree;
+    // The group key's own fields: a group whose every key is NULL is that key, each field null.
+    let key_fields: Vec<u32> = {
+        let mut f = Vec::new();
+        for c in spec.iter().filter(|c| c.nested_in.as_deref() == Some("groupKey")) {
+            let id = t.names.id(&c.field);
+            if !f.contains(&id) {
+                f.push(id);
+            }
+        }
+        f
+    };
     for &o in &rows.rows {
         if let Some(pos) = find(&t, o, "groupKey") {
-            let v = t.live(t.objs[o as usize][pos].1);
-            let V::Obj(g) = v else { return err("AttributeError: groupKey has no items()") };
+            let v = match t.live(t.objs[o as usize][pos].1) {
+                V::Null => {
+                    let g = t.obj();
+                    for &k in &key_fields {
+                        t.set(g, k, V::Null);
+                    }
+                    V::Obj(g)
+                }
+                v => v,
+            };
+            let V::Obj(g) = v else { return err("groupKey is not an object") };
             let mut ren = Renamer { t: &mut t };
             let n = ren.rename_obj(g, scalars);
             t.objs[o as usize][pos].1 = V::Obj(n);

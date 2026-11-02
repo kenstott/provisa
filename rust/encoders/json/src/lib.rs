@@ -78,27 +78,49 @@ fn unwrap(batches: Vec<PyArrowType<RecordBatch>>) -> Vec<RecordBatch> {
     batches.into_iter().map(|b| b.0).collect()
 }
 
-/// `encode_response(batches, columns, root_field, result_limit=None) -> bytes`: GraphQL's
-/// `{"data": {root_field: serialize_rows(...)}}`.
+/// `(rows, row count, {relationship: matched rows}, [truncated to-one path])`.
+type FieldAnswer<'py> = (Bound<'py, PyBytes>, usize, HashMap<String, u64>, Vec<String>);
+
+/// `graphql.encode_field(batches, columns, result_limit=None)`: a root field's rows, the JSON
+/// array its answer holds (`{"data": {root_field: rows}}`), with what the rows said: how many,
+/// each relationship's matched rows, and the to-one paths that matched several rows for a parent.
 #[pyfunction]
-#[pyo3(signature = (batches, columns, root_field, result_limit=None))]
-fn encode_response<'py>(
+#[pyo3(signature = (batches, columns, result_limit=None))]
+fn encode_field<'py>(
     py: Python<'py>,
     batches: Vec<PyArrowType<RecordBatch>>,
     columns: Vec<ColumnTuple>,
-    root_field: String,
     result_limit: Option<usize>,
+) -> PyResult<FieldAnswer<'py>> {
+    let batches = unwrap(batches);
+    let spec = spec_of(columns);
+    let r = py.allow_threads(|| {
+        let b = nest::prepare(&batches, &spec)?;
+        surfaces::graphql_field(&b, &spec, result_limit)
+    });
+    let (body, w) = r.map_err(py_err)?;
+    Ok((PyBytes::new(py, &body), w.rows, w.joined.into_iter().collect(), w.truncated))
+}
+
+/// `graphql.encode_aggregate(batches, columns, aggregate_alias) -> bytes`: an aggregate root
+/// field's answer, `{aggregate_alias: {...}, "nodes": [...]}`.
+#[pyfunction]
+fn encode_aggregate<'py>(
+    py: Python<'py>,
+    batches: Vec<PyArrowType<RecordBatch>>,
+    columns: Vec<ColumnTuple>,
+    aggregate_alias: String,
 ) -> PyResult<Bound<'py, PyBytes>> {
     let batches = unwrap(batches);
     let spec = spec_of(columns);
     run(py, || {
         let b = nest::prepare(&batches, &spec)?;
-        surfaces::graphql(&b, &spec, &root_field, result_limit)
+        surfaces::graphql_aggregate(&b, &spec, &aggregate_alias)
     })
 }
 
-/// `encode_rest(batches, columns, aggregate_alias=None) -> bytes`: the REST table endpoint's
-/// `{"data": rows}` (a read or a group-by), or `{"data": aggregate}` for `?aggregate`.
+/// `rest.encode(batches, columns, aggregate_alias=None) -> (bytes, [truncated path])`: the REST
+/// table endpoint's `{"data": rows}` (a read or a group-by), or `{"data": aggregate}`.
 #[pyfunction]
 #[pyo3(signature = (batches, columns, aggregate_alias=None))]
 fn encode_rest<'py>(
@@ -106,32 +128,43 @@ fn encode_rest<'py>(
     batches: Vec<PyArrowType<RecordBatch>>,
     columns: Vec<ColumnTuple>,
     aggregate_alias: Option<String>,
-) -> PyResult<Bound<'py, PyBytes>> {
+) -> PyResult<(Bound<'py, PyBytes>, Vec<String>)> {
     let batches = unwrap(batches);
     let spec = spec_of(columns);
-    run(py, || {
+    let r = py.allow_threads(|| {
         let b = nest::prepare(&batches, &spec)?;
         surfaces::rest(&b, &spec, aggregate_alias.as_deref())
-    })
+    });
+    let (body, w) = r.map_err(py_err)?;
+    Ok((PyBytes::new(py, &body), w.truncated))
 }
 
-/// `encode_rest_csv(batches, columns) -> bytes`: the REST table endpoint's `text/csv` answer.
+/// `rest.encode_csv(batches, columns) -> (bytes, [truncated path])`: the REST table endpoint's
+/// `text/csv` answer.
 #[pyfunction]
-fn encode_rest_csv<'py>(py: Python<'py>, batches: Vec<PyArrowType<RecordBatch>>, columns: Vec<ColumnTuple>) -> PyResult<Bound<'py, PyBytes>> {
+fn encode_rest_csv<'py>(
+    py: Python<'py>,
+    batches: Vec<PyArrowType<RecordBatch>>,
+    columns: Vec<ColumnTuple>,
+) -> PyResult<(Bound<'py, PyBytes>, Vec<String>)> {
     let batches = unwrap(batches);
     let spec = spec_of(columns);
-    run(py, || {
+    let r = py.allow_threads(|| {
         let b = nest::prepare(&batches, &spec)?;
         surfaces::rest_csv(&b, &spec)
-    })
+    });
+    let (body, truncated) = r.map_err(py_err)?;
+    Ok((PyBytes::new(py, &body), truncated))
 }
 
-/// `encode_jsonapi(...) -> bytes`: a JSON:API table read's compound document.
+/// `jsonapi.encode(...) -> (bytes, [truncated path])`: a JSON:API table read's compound document;
+/// `truncation` is `(code, message)` of the warning a truncated to-one path raises, `{path}` in
+/// the message where its path goes.
 #[pyfunction]
 #[pyo3(signature = (
     batches, columns, *, resource_type, page_size, page_number, probe, total, id_columns,
     scalar_names, rel_names, rel_scalar_names, includes, include_keys, base_path, link_params,
-    warnings=None
+    truncation, warnings=None
 ))]
 #[allow(clippy::too_many_arguments)]
 fn encode_jsonapi<'py>(
@@ -151,8 +184,9 @@ fn encode_jsonapi<'py>(
     include_keys: HashMap<String, Vec<String>>,
     base_path: String,
     link_params: Vec<(String, String)>,
+    truncation: (String, String),
     warnings: Option<Vec<u8>>,
-) -> PyResult<Bound<'py, PyBytes>> {
+) -> PyResult<(Bound<'py, PyBytes>, Vec<String>)> {
     let batches = unwrap(batches);
     let spec = spec_of(columns);
     let a = surfaces::JsonApi {
@@ -170,14 +204,17 @@ fn encode_jsonapi<'py>(
         base_path,
         link_params,
         warnings,
+        truncation,
     };
-    run(py, || {
+    let r = py.allow_threads(|| {
         let b = nest::prepare(&batches, &spec)?;
         surfaces::jsonapi(&b, &spec, &a)
-    })
+    });
+    let (body, truncated) = r.map_err(py_err)?;
+    Ok((PyBytes::new(py, &body), truncated))
 }
 
-/// `encode_jsonapi_group_by(...) -> bytes`: JSON:API `?groupBy=`.
+/// `jsonapi.encode_group_by(...) -> bytes`: JSON:API `?groupBy=`.
 #[pyfunction]
 #[pyo3(signature = (batches, columns, *, resource_type, scalar_names, rel_names, rel_scalar_names))]
 fn encode_jsonapi_group_by<'py>(
@@ -197,7 +234,7 @@ fn encode_jsonapi_group_by<'py>(
     })
 }
 
-/// `encode_jsonapi_aggregate(batches, columns, aggregate_alias) -> bytes`: JSON:API `?aggregate`.
+/// `jsonapi.encode_aggregate(batches, columns, aggregate_alias) -> bytes`: JSON:API `?aggregate`.
 #[pyfunction]
 fn encode_jsonapi_aggregate<'py>(
     py: Python<'py>,
@@ -230,7 +267,7 @@ fn entity_of(t: &Bound<'_, PyAny>) -> PyResult<odata::Entity> {
     Ok(odata::Entity::new(name, tm, fields, navs))
 }
 
-/// `encode_odata(batches, names, entity, *, context, count, warnings, page, next_link, root)`:
+/// `odata.encode(batches, names, entity, *, context, count, page, next_link, root, warnings=None)`:
 /// an entity set read's document.
 #[pyfunction]
 #[pyo3(signature = (batches, names, entity, *, context, count, page, next_link, root, warnings=None))]
@@ -259,6 +296,11 @@ fn encode_odata<'py>(
     })
 }
 
+/// `f` in `m` as `name`.
+fn add_as<'py>(m: &Bound<'py, PyModule>, f: Bound<'py, pyo3::types::PyCFunction>, name: &str) -> PyResult<()> {
+    m.add(name, f)
+}
+
 /// A submodule of `parent` named `name`, registered in sys.modules under its qualified name: the
 /// only place the import system finds an extension's submodules.
 fn submodule<'py>(parent: &Bound<'py, PyModule>, name: &str) -> PyResult<Bound<'py, PyModule>> {
@@ -283,15 +325,16 @@ pub fn module<'py>(py: Python<'py>, qualified: &str) -> PyResult<Bound<'py, PyMo
     // Registered first, so each submodule's qualified name is the json module's.
     py.import("sys")?.getattr("modules")?.set_item(qualified, &m)?;
     let graphql = submodule(&m, "graphql")?;
-    graphql.add_function(wrap_pyfunction!(encode_response, &graphql)?)?;
+    add_as(&graphql, wrap_pyfunction!(encode_field, &graphql)?, "encode_field")?;
+    add_as(&graphql, wrap_pyfunction!(encode_aggregate, &graphql)?, "encode_aggregate")?;
     let rest = submodule(&m, "rest")?;
-    rest.add_function(wrap_pyfunction!(encode_rest, &rest)?)?;
-    rest.add_function(wrap_pyfunction!(encode_rest_csv, &rest)?)?;
+    add_as(&rest, wrap_pyfunction!(encode_rest, &rest)?, "encode")?;
+    add_as(&rest, wrap_pyfunction!(encode_rest_csv, &rest)?, "encode_csv")?;
     let jsonapi = submodule(&m, "jsonapi")?;
-    jsonapi.add_function(wrap_pyfunction!(encode_jsonapi, &jsonapi)?)?;
-    jsonapi.add_function(wrap_pyfunction!(encode_jsonapi_group_by, &jsonapi)?)?;
-    jsonapi.add_function(wrap_pyfunction!(encode_jsonapi_aggregate, &jsonapi)?)?;
+    add_as(&jsonapi, wrap_pyfunction!(encode_jsonapi, &jsonapi)?, "encode")?;
+    add_as(&jsonapi, wrap_pyfunction!(encode_jsonapi_group_by, &jsonapi)?, "encode_group_by")?;
+    add_as(&jsonapi, wrap_pyfunction!(encode_jsonapi_aggregate, &jsonapi)?, "encode_aggregate")?;
     let odata = submodule(&m, "odata")?;
-    odata.add_function(wrap_pyfunction!(encode_odata, &odata)?)?;
+    add_as(&odata, wrap_pyfunction!(encode_odata, &odata)?, "encode")?;
     Ok(m)
 }

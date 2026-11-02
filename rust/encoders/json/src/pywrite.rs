@@ -310,193 +310,86 @@ fn dt_repr(out: &mut Vec<u8>, dt: &Dt) {
 
 // ---------------------------------------------------------------- the dedup key
 
-/// `json.dumps(_exact_numbers(p), sort_keys=True, default=str)`.
-pub fn dumps(out: &mut Vec<u8>, p: &P) {
-    match p {
-        P::None => out.extend_from_slice(b"null"),
-        P::Bool(b) => out.extend_from_slice(if *b { b"true" } else { b"false" }),
-        P::Int(_) | P::BigInt(_) => py_repr(out, p),
-        P::Float(f) => {
-            if f.is_nan() {
-                out.extend_from_slice(b"NaN");
-            } else if f.is_infinite() {
-                out.extend_from_slice(if *f > 0.0 { b"Infinity" } else { b"-Infinity" });
-            } else {
-                text::float_repr(out, *f);
-            }
-        }
-        P::JNum(s) => {
-            let d = text::decimal_of_number(s);
-            let mut t = Vec::new();
-            text::decimal_str(&mut t, &d);
-            ascii_str(out, &t);
-        }
-        P::Str(s) => ascii_str(out, s),
-        P::List(v) | P::Tuple(v) => {
-            out.push(b'[');
-            for (i, e) in v.iter().enumerate() {
-                if i > 0 {
-                    out.extend_from_slice(b", ");
-                }
-                dumps(out, e);
-            }
-            out.push(b']');
-        }
-        P::Mdn(..) => {
-            let mut t = Vec::new();
-            write(&mut t, p, 0).unwrap();
-            // [m,d,n] with json.dumps' separators
-            let s = String::from_utf8(t).unwrap().replace(',', ", ");
-            out.extend_from_slice(s.as_bytes());
-        }
-        P::Dict(e) => {
-            let mut idx: Vec<usize> = (0..e.len()).collect();
-            idx.sort_by(|&a, &b| e[a].0.cmp(&e[b].0));
-            out.push(b'{');
-            for (i, j) in idx.into_iter().enumerate() {
-                if i > 0 {
-                    out.extend_from_slice(b", ");
-                }
-                ascii_str(out, &e[j].0);
-                out.extend_from_slice(b": ");
-                dumps(out, &e[j].1);
-            }
-            out.push(b'}');
-        }
-        other => {
-            let mut t = Vec::new();
-            py_str(&mut t, other);
-            ascii_str(out, &t);
-        }
-    }
-}
-
-/// A JSON string as `json.dumps` writes it (`ensure_ascii`).
-fn ascii_str(out: &mut Vec<u8>, s: &[u8]) {
-    out.push(b'"');
-    let mut i = 0;
-    while i < s.len() {
-        let (cp, n) = text::wtf8_char(&s[i..]);
-        i += n;
-        match cp {
-            0x22 => out.extend_from_slice(b"\\\""),
-            0x5C => out.extend_from_slice(b"\\\\"),
-            0x0A => out.extend_from_slice(b"\\n"),
-            0x0D => out.extend_from_slice(b"\\r"),
-            0x09 => out.extend_from_slice(b"\\t"),
-            0x08 => out.extend_from_slice(b"\\b"),
-            0x0C => out.extend_from_slice(b"\\f"),
-            c if (0x20..0x7F).contains(&c) => out.push(c as u8),
-            c if c < 0x10000 => out.extend_from_slice(format!("\\u{:04x}", c).as_bytes()),
-            c => {
-                let v = c - 0x10000;
-                out.extend_from_slice(format!("\\u{:04x}\\u{:04x}", 0xD800 + (v >> 10), 0xDC00 + (v & 0x3FF)).as_bytes());
-            }
-        }
-    }
-    out.push(b'"');
-}
-
-/// Key atoms: equal exactly when Python finds the hashable values equal.
+/// Key atoms: two values have one atom exactly when they are the same typed value (REQ-1867): a
+/// string is never a number, `1` is not `1.0` nor `true` (a JSON number keeps its digits), a JSON
+/// array is never the text of one, and NaN is NaN. Rows (and list elements) are one when every
+/// atom of their key is.
 pub const K_NULL: u8 = 0;
 pub const K_STR: u8 = 1;
-pub const K_NUM: u8 = 2;
-pub const K_NAN: u8 = 3;
-pub const K_FLOAT: u8 = 4;
-pub const K_OTHER: u8 = 5;
+pub const K_INT: u8 = 2;
+pub const K_FLOAT: u8 = 3;
+pub const K_BOOL: u8 = 4;
+pub const K_JNUM: u8 = 5;
+pub const K_LIST: u8 = 6;
+pub const K_TUPLE: u8 = 7;
+pub const K_DICT: u8 = 8;
+pub const K_OTHER: u8 = 9;
 
-pub struct Keyer {
-    nan: u64,
-}
-
-impl Default for Keyer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+#[derive(Default)]
+pub struct Keyer;
 
 impl Keyer {
     pub fn new() -> Self {
-        Keyer { nan: 0 }
+        Keyer
+    }
+
+    fn bytes(key: &mut Vec<u8>, tag: u8, b: &[u8]) {
+        key.push(tag);
+        key.extend_from_slice(&(b.len() as u64).to_le_bytes());
+        key.extend_from_slice(b);
     }
 
     pub fn str_atom(&self, key: &mut Vec<u8>, s: &[u8]) {
-        key.push(K_STR);
-        key.extend_from_slice(&(s.len() as u64).to_le_bytes());
-        key.extend_from_slice(s);
-    }
-
-    fn num_atom(&self, key: &mut Vec<u8>, neg: bool, digits: &str, exp: i64) {
-        key.push(K_NUM);
-        key.push(neg as u8);
-        key.extend_from_slice(&exp.to_le_bytes());
-        key.extend_from_slice(&(digits.len() as u64).to_le_bytes());
-        key.extend_from_slice(digits.as_bytes());
+        Self::bytes(key, K_STR, s);
     }
 
     pub fn int_atom(&self, key: &mut Vec<u8>, i: i128) {
         let mut b = itoa::Buffer::new();
-        let s = b.format(i.unsigned_abs());
-        let t = s.trim_end_matches('0');
-        if t.is_empty() {
-            self.num_atom(key, false, "0", 0);
-        } else {
-            self.num_atom(key, i < 0, t, (s.len() - t.len()) as i64);
-        }
+        Self::bytes(key, K_INT, b.format(i).as_bytes());
     }
 
-    pub fn float_atom(&mut self, key: &mut Vec<u8>, f: f64) {
-        if f.is_nan() {
-            // Each NaN is its own object: unequal to every other.
-            self.nan += 1;
-            key.push(K_NAN);
-            key.extend_from_slice(&self.nan.to_le_bytes());
-        } else if f.is_finite() && f.fract() == 0.0 && f.abs() < 1e38 {
-            self.int_atom(key, f as i128);
-        } else {
-            key.push(K_FLOAT);
-            key.extend_from_slice(&f.to_bits().to_le_bytes());
-        }
+    pub fn bool_atom(&self, key: &mut Vec<u8>, b: bool) {
+        key.push(K_BOOL);
+        key.push(b as u8);
     }
 
-    /// `_to_hashable(p)` of a converted value, appended as an atom.
-    pub fn atom(&mut self, key: &mut Vec<u8>, p: &P) {
+    pub fn float_atom(&self, key: &mut Vec<u8>, f: f64) {
+        key.push(K_FLOAT);
+        // Every NaN is the one NaN, as PostgreSQL compares them.
+        let bits = if f.is_nan() { f64::NAN.to_bits() } else { f.to_bits() };
+        key.extend_from_slice(&bits.to_le_bytes());
+    }
+
+    /// The atom of a converted value, appended to `key`.
+    pub fn atom(&self, key: &mut Vec<u8>, p: &P) {
         match p {
             P::None => key.push(K_NULL),
             P::Str(s) => self.str_atom(key, s),
-            P::Bool(b) => self.int_atom(key, *b as i128),
+            P::Bool(b) => self.bool_atom(key, *b),
             P::Int(i) => self.int_atom(key, *i),
-            P::BigInt(s) => {
-                let (neg, d) = match s.strip_prefix('-') {
-                    Some(d) => (true, d),
-                    None => (false, &s[..]),
-                };
-                let t = d.trim_end_matches('0');
-                self.num_atom(key, neg, t, (d.len() - t.len()) as i64);
-            }
+            P::BigInt(s) => Self::bytes(key, K_INT, s.as_bytes()),
             P::Float(f) => self.float_atom(key, *f),
-            P::JNum(s) => {
-                let d = text::decimal_of_number(s);
-                let (neg, digits, exp) = text::decimal_canon(&d);
-                self.num_atom(key, neg, &digits, exp);
+            P::JNum(s) => Self::bytes(key, K_JNUM, s.as_bytes()),
+            P::List(v) | P::Tuple(v) => {
+                key.push(if matches!(p, P::List(_)) { K_LIST } else { K_TUPLE });
+                key.extend_from_slice(&(v.len() as u64).to_le_bytes());
+                for e in v {
+                    self.atom(key, e);
+                }
             }
-            P::Dec(d) => {
-                let (neg, digits, exp) = text::decimal_canon(d);
-                self.num_atom(key, neg, &digits, exp);
-            }
-            P::List(_) | P::Tuple(_) | P::Dict(_) => {
-                let mut t = Vec::new();
-                dumps(&mut t, p);
-                self.str_atom(key, &t);
+            P::Dict(e) => {
+                key.push(K_DICT);
+                key.extend_from_slice(&(e.len() as u64).to_le_bytes());
+                for (k, v) in e {
+                    self.str_atom(key, k);
+                    self.atom(key, v);
+                }
             }
             other => {
-                // A raw value (an integer-typed column's non-integer, a uuid): equal by its kind
-                // and its value as written.
-                key.push(K_OTHER);
+                // Any other value (a decimal, a date, a uuid, ...): its kind and its exact value.
                 let mut t = Vec::new();
                 py_repr(&mut t, other);
-                key.extend_from_slice(&(t.len() as u64).to_le_bytes());
-                key.extend_from_slice(&t);
+                Self::bytes(key, K_OTHER, &t);
             }
         }
     }
