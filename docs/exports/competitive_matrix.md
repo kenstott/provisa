@@ -123,7 +123,7 @@ Legend: **A** = Provisa ahead, **P** = parity, **G** = gap (Provisa behind or in
 
 ### Deployment
 
-**Airgapped single-executable installer.** The macOS DMG, Linux AppImage, and Windows EXE bundle Lima/containerd and all service images as `.tar` archives. No outbound network calls at install or first launch. No Docker, OrbStack, or Colima prerequisite. Hasura requires Docker; Dremio requires a multi-component installation. [tool-verified: REQ-223, REQ-227, REQ-228, REQ-294]
+**Airgapped single-executable installer.** Airgapped native app bundle (a bundled Python runtime, no Docker required; an optional Docker tier loads bundled images) removes the Docker prerequisite that blocks enterprise adoption of Hasura and other container-based platforms. No outbound network calls at install or first launch. Hasura requires Docker; Dremio requires a multi-component installation. [tool-verified: REQ-223, REQ-227, REQ-228, REQ-294]
 
 **Hasura v2 and DDN migration converters.** CLI tools convert Hasura v2 metadata exports and Hasura DDN supergraph projects to valid Pydantic-validated Provisa YAML config, preserving tables, relationships, column visibility, write grants, RLS filters, and auth config. No competitor provides tooling to import Hasura configuration. [tool-verified: REQ-182, REQ-183, REQ-185–193]
 
