@@ -161,13 +161,27 @@ _OF_ANY_TYPE = frozenset({'"any"', "anyelement", "anycompatible"})
 
 
 def json_operator_type(expression: exp.Expr) -> str | None:
-    """ "jsonb" for a json operator whose left operand is one; None for any other expression."""
+    """ "jsonb" for a json operator whose left operand is one, or for ``||`` of either operand;
+    None for any other expression."""
     if isinstance(expression, exp.Paren):
         return json_operator_type(expression.this)
-    if not isinstance(expression, (exp.JSONExtract, exp.JSONBExtract)):
+    readers = (exp.JSONExtract, exp.JSONBExtract, exp.JSONBDeleteAtPath, exp.Sub, exp.DPipe)
+    if not isinstance(expression, readers):
         return None
     left = json_operator_type(expression.this) or _arg_type(expression.this, None, True)
+    if left != "jsonb" and isinstance(expression, exp.DPipe):
+        return json_operator_type(expression.expression) or _said_jsonb(expression.expression)
     return left if left == "jsonb" else None
+
+
+def _said_jsonb(expression: exp.Expr) -> str | None:
+    return "jsonb" if _arg_type(expression, None, True) == "jsonb" else None
+
+
+#: What returns the row type of its first argument, whatever pg_proc's anyelement says.
+_RETURNS_ITS_BASE = frozenset(
+    f"{kind}_populate_{rows}" for kind in ("json", "jsonb") for rows in ("record", "recordset")
+)
 
 
 def _fits(argument: str | None, parameter: str) -> bool:
@@ -218,6 +232,8 @@ def call_result_type(expression: exp.Expr) -> str | None:
     if call is None:
         return None
     names, args = call
+    if names[0] in _RETURNS_ITS_BASE and args:
+        return _arg_type(args[0], None, True)
     if names[0] == "ntile":
         return "integer"  # a window function: pg_proc's list of overloads does not hold it
     if names[0] in RETURNS_XML and names[0] not in FUNCTION_OVERLOADS:
