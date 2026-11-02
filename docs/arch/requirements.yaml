@@ -12181,7 +12181,7 @@
 
     When the query is executed via the federation engine
 
-    Then Provisa injects the corresponding SET SESSION statements before execution
+    Then Provisa sets the corresponding session properties on the statement''s session before execution
 
     '
   integration_test: required
