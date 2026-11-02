@@ -92592,7 +92592,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a direct row cursor:) Maintainer 2026-11-02: this holds for every engine, not only Trino: the encoder
     reads either the engine''s Arrow buffer or a direct row cursor on the engine''s own result, never rows
     a Python client has parsed (for example Trino''s Python client turning JSON pages into Python rows).
-    Each engine''s read path is chosen to give one of the two.'
+    Each engine''s read path is chosen to give one of the two. (Amended 2026-10-29, An engine that cannot
+    is documented:) Maintainer 2026-11-02: where an engine or source offers neither an Arrow buffer nor
+    a direct row cursor, the docs say so for that engine: which read path it uses, that rows pass through
+    Python on the way to the encoder, and what that costs.'
   scenario: 'Given a statement whose result holds every type pgwire serves, including timestamptz in a
     named zone
 
