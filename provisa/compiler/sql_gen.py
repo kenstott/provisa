@@ -393,6 +393,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     nested_in=None,
                     # a path into a JSON column (col_path) is read as text (->>)
                     json=not col_path and (table.table_id, phys_name.lower()) in ctx.json_columns,
+                    integer=not col_path
+                    and (table.table_id, phys_name.lower()) in ctx.integer_columns,
                 )
             )
 
@@ -633,6 +635,7 @@ def _compile_connection_field(  # REQ-218
                 sel_name,
                 None,
                 json=(table.table_id, phys_name.lower()) in ctx.json_columns,
+                integer=(table.table_id, phys_name.lower()) in ctx.integer_columns,
             )
         )
 

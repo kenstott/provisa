@@ -28,7 +28,7 @@ from dateutil.relativedelta import relativedelta
 from decimal import Decimal
 
 from provisa.compiler.cursor import encode_cursor
-from provisa.compiler.sql_types import is_json_type
+from provisa.compiler.sql_types import is_integer_type, is_json_type
 from provisa.core.ir_types import bytea_hex, infinity_of, iso8601_duration
 from provisa.core.json_refusal import JsonValueRefused
 from provisa.core.statement_warnings import ServerWarning
@@ -54,6 +54,37 @@ def decimal_text(value: Decimal) -> str:
     digits past about 17 and cannot hold a value past 2^64. Positional, never an exponent:
     ``Decimal("1E+3")`` is ``"1000"``, ``Decimal("0E-7")`` is ``"0.0000000"``."""
     return format(value, "f")
+
+
+class JsonNumber(float):
+    """A number inside JSON text, carrying the text it was written as (REQ-1867): the response
+    writes that text (``orjson.Fragment``, json_response), so a number past a float's 17 digits
+    keeps them. It is a float everywhere else -- a surface the standard library or pydantic
+    writes still writes a JSON number, the nearest float."""
+
+    text: str
+
+    def __new__(cls, text: str) -> JsonNumber:
+        number = super().__new__(cls, text)
+        number.text = text
+        return number
+
+    def exact(self) -> Decimal:
+        """The number's exact value."""
+        return Decimal(self.text)
+
+
+def integer_value(
+    val: object,  # object-ok: an integer column's value — int | Decimal | None
+    field: str,
+) -> object:
+    """An integer-typed column's value as the JSON number it is (REQ-1867), whatever a reader
+    represented it as: a DuckDB HUGEINT read through Arrow is a ``decimal128(38,0)`` Decimal."""
+    if isinstance(val, Decimal):
+        if val != val.to_integral_value():
+            raise ValueError(f"field {field!r} is typed integer but holds {val}")
+        return int(val)
+    return val
 
 
 def _convert_value(
@@ -114,7 +145,8 @@ def _parse_json_text(text: str, field: str) -> object:
     What JSON cannot carry is refused, naming the field: NaN and Infinity, a lone surrogate,
     nesting deeper than the parser reaches, text that is not JSON."""
     try:
-        parsed = json.loads(text, parse_constant=_refuse_constant(field))
+        # A number keeps its own text (JsonNumber); an integer is Python's, any size.
+        parsed = json.loads(text, parse_float=JsonNumber, parse_constant=_refuse_constant(field))
     except RecursionError:
         raise JsonValueRefused(field, "nests deeper than a JSON response can carry") from None
     except json.JSONDecodeError as exc:
@@ -162,26 +194,44 @@ def column_value(
     val: object,  # object-ok: arbitrary SQL column value
     col: ColumnRef,
 ) -> object:
-    """One result value of ``col`` as JSON writes it: a JSON-typed column's as its JSON, any
-    other as :func:`_convert_value` converts it (REQ-1867)."""
+    """One result value of ``col`` as JSON writes it: a JSON-typed column's as its JSON, an
+    integer-typed column's as its number, any other as :func:`_convert_value` converts it
+    (REQ-1867)."""
     if col.json:
         return json_value(val, col.field_name, col.json_text)
+    if col.integer:
+        return integer_value(val, col.field_name)
     return _convert_value(val)
 
 
 def result_records(result: QueryResult) -> list[dict]:
     """A result's rows as ``{column: value}``, each value as JSON writes it: a column the engine
-    types json or jsonb as its JSON, any other as :func:`_convert_value` converts it."""
+    types json or jsonb as its JSON, one it types an integer as its number (by the engine's type,
+    not its reader's representation), any other as :func:`_convert_value` converts it."""
     names = result.column_names
     types = result.column_types or [None] * len(names)
-    json_at = [is_json_type(t) for t in types]
+    cols = [
+        ColumnRef(None, c, c, None, json=is_json_type(t), integer=is_integer_type(t))
+        for c, t in zip(names, types, strict=True)
+    ]
     return [
-        {
-            c: json_value(v, c) if is_json else _convert_value(v)
-            for c, v, is_json in zip(names, r, json_at, strict=True)
-        }
+        {col.field_name: column_value(v, col) for col, v in zip(cols, r, strict=True)}
         for r in result.rows
     ]
+
+
+def _exact_numbers(
+    v: object,  # object-ok: a JSON value — dict | list | scalar
+) -> object:
+    """``v`` with each JsonNumber its exact value: two numbers a float cannot tell apart are two
+    values."""
+    if isinstance(v, JsonNumber):
+        return v.exact()
+    if isinstance(v, dict):
+        return {k: _exact_numbers(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_exact_numbers(x) for x in v]
+    return v
 
 
 def _to_hashable(
@@ -189,8 +239,8 @@ def _to_hashable(
 ) -> object:
     """Make a value safe to use as a dict key / tuple component."""
     if isinstance(v, (dict, list)):
-        return json.dumps(v, sort_keys=True, default=str)
-    return v
+        return json.dumps(_exact_numbers(v), sort_keys=True, default=str)
+    return _exact_numbers(v)
 
 
 def _group_columns(
@@ -552,11 +602,10 @@ def _cursor_value(
     col: ColumnRef,
 ) -> object:
     """A sort key's value in the opaque cursor, which compiles back into a keyset comparison
-    (cursor.cursor_where_clause): a DECIMAL stays a JSON number there, as the comparison binds
-    it, not the response's string (REQ-218)."""
-    if isinstance(val, Decimal):
-        f = float(val)
-        return int(f) if f == int(f) and "." not in str(val) else f
+    (cursor.cursor_where_clause): a DECIMAL stays the Decimal it is, which the cursor carries by
+    its exact digits and the comparison binds as a decimal (REQ-218, REQ-1867)."""
+    if isinstance(val, Decimal) and not col.integer:
+        return val
     return column_value(val, col)
 
 

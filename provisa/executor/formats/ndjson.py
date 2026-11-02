@@ -12,8 +12,6 @@
 
 from __future__ import annotations
 
-import json
-
 from provisa.compiler.sql_gen import ColumnRef
 
 # Requirements: REQ-048, REQ-1867
@@ -28,6 +26,7 @@ def rows_to_ndjson(  # REQ-048
     Returns flat objects — no nesting. Each row is a dict of column_name → value, each value as
     the JSON answer writes it (serialize.column_value, REQ-1867).
     """
+    from provisa.api.json_response import dumps
     from provisa.executor.serialize import column_value
 
     lines: list[str] = []
@@ -36,5 +35,6 @@ def rows_to_ndjson(  # REQ-048
         for i, col in enumerate(columns):
             key = f"{col.nested_in}.{col.field_name}" if col.nested_in else col.field_name
             obj[key] = column_value(row[i], col)
-        lines.append(json.dumps(obj))
+        # The JSON answer's writer: a number inside JSON text keeps its digits.
+        lines.append(dumps(obj).decode())
     return "\n".join(lines) + ("\n" if lines else "")

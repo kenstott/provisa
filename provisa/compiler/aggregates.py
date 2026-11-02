@@ -126,6 +126,16 @@ def _collect_agg_aliases(
     return agg_key, func_aliases, col_aliases
 
 
+#: REQ-1867: the aggregates whose result over an integer column is an integer (an engine's SUM of
+#: one may be a wider integer, DuckDB's HUGEINT); AVG, STDDEV and VARIANCE are not.
+_INTEGER_OF_INTEGER = frozenset({"sum", "min", "max"})
+
+
+def _integer_result(func_name: str, table_id: int, phys: str, ctx: CompilationContext) -> bool:
+    """Whether ``func_name`` over column ``phys`` is an integer (REQ-1867)."""
+    return func_name in _INTEGER_OF_INTEGER and (table_id, phys.lower()) in ctx.integer_columns
+
+
 def _build_agg_func_parts(
     sql_func: str,
     func_name: str,
@@ -134,14 +144,14 @@ def _build_agg_func_parts(
     func_aliases: dict[str, str],
     col_aliases: dict[str, dict[str, str]],
     table_id: int,
-    exposed_to_physical: dict[tuple[int, str], str],
+    ctx: CompilationContext,
 ) -> tuple[list[str], list[ColumnRef]]:
     """Build SELECT parts and ColumnRefs for one aggregate function (SUM/AVG/MIN/MAX)."""
     select_parts: list[str] = []
     columns: list[ColumnRef] = []
     fn_key = func_aliases.get(func_name, func_name)
     for col_name in cols:
-        phys = exposed_to_physical.get((table_id, col_name), col_name)
+        phys = ctx.exposed_to_physical.get((table_id, col_name), col_name)
         field_name = col_aliases.get(func_name, {}).get(col_name, col_name)
         expr = f"{sql_func}({_q(phys)})"
         if field_name != col_name:
@@ -149,7 +159,11 @@ def _build_agg_func_parts(
         select_parts.append(expr)
         columns.append(
             ColumnRef(
-                alias=None, column=phys, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"
+                alias=None,
+                column=phys,
+                field_name=field_name,
+                nested_in=f"{agg_key}.{fn_key}",
+                integer=_integer_result(func_name, table_id, phys, ctx),
             )
         )
     return select_parts, columns
@@ -479,7 +493,15 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
 
     for col, phys in zip(by_cols, phys_by_cols):
         select_parts.append(_q(phys))
-        columns.append(ColumnRef(alias=None, column=phys, field_name=col, nested_in="groupKey"))
+        columns.append(
+            ColumnRef(
+                alias=None,
+                column=phys,
+                field_name=col,
+                nested_in="groupKey",
+                integer=(table.table_id, phys.lower()) in ctx.integer_columns,
+            )
+        )
 
     if has_count:
         select_parts.append(f"COUNT(*){filter_sql}")
@@ -505,6 +527,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
                     # A selected column's alias names its result, as on the aggregate root.
                     field_name=col_aliases.get(func_name, {}).get(col_name, col_name),
                     nested_in=f"aggregate.{func_name}",
+                    integer=_integer_result(func_name, table.table_id, phys, ctx),
                 )
             )
 
@@ -663,7 +686,7 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
             func_aliases,
             col_aliases,
             table.table_id,
-            ctx.exposed_to_physical,
+            ctx,
         )
         select_parts.extend(sp)
         columns.extend(cr)

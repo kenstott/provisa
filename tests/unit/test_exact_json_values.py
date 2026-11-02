@@ -40,7 +40,16 @@ from provisa.executor.serialize import (
 )
 
 
-def _col(field, nested_in=None, cardinality=None, *, json_=False, json_text=(), is_agg=False):
+def _col(
+    field,
+    nested_in=None,
+    cardinality=None,
+    *,
+    json_=False,
+    json_text=(),
+    is_agg=False,
+    integer=False,
+):
     return ColumnRef(
         alias=None,
         column=field,
@@ -50,6 +59,7 @@ def _col(field, nested_in=None, cardinality=None, *, json_=False, json_text=(), 
         is_agg=is_agg,
         json=json_,
         json_text=frozenset(json_text),
+        integer=integer,
     )
 
 
@@ -221,7 +231,9 @@ class TestJsonEdges:
 # --- The compiler marks which columns are JSON ---------------------------------------------------
 
 
-def _ctx():
+def _ctx(customer_columns=None):
+    """``customer_columns``: the customers table's column entries, in place of its plain ones (a
+    column entry may name a JSON path, as a registration's ``path`` does)."""
     from provisa.compiler import naming as _naming
     from provisa.compiler.context import build_context
     from provisa.compiler.introspect import ColumnMetadata
@@ -237,7 +249,12 @@ def _ctx():
             "domain_id": "sales",
             "schema_name": "public",
             "table_name": name,
-            "columns": [{"column_name": c, "visible_to": ["admin"]} for c in cols],
+            "columns": [
+                {**c, "visible_to": ["admin"]}
+                if isinstance(c, dict)
+                else {"column_name": c, "visible_to": ["admin"]}
+                for c in cols
+            ],
             "write_ops": [],
             "write_returns_rows": True,
             "write_refused_forms": [],
@@ -246,7 +263,11 @@ def _ctx():
     _naming.configure(gql="snake")
     si = SchemaInput(
         tables=[
-            table(1, "customers", ["id", "name", "prefs"]),
+            table(
+                1,
+                "customers",
+                customer_columns or ["id", "name", "prefs", "visits", "balance", "score"],
+            ),
             table(2, "orders", ["id", "customer_id", "note", "meta"]),
         ],
         relationships=[
@@ -268,7 +289,14 @@ def _ctx():
             },
         ],
         column_types={
-            1: [col("id", "integer"), col("name", "text"), col("prefs", "jsonb")],
+            1: [
+                col("id", "integer"),
+                col("name", "text"),
+                col("prefs", "jsonb"),
+                col("visits", "hugeint"),
+                col("balance", "numeric(38,0)"),
+                col("score", "double precision"),
+            ],
             2: [
                 col("id", "integer"),
                 col("customer_id", "integer"),
@@ -588,3 +616,295 @@ async def test_mcp_run_sql_writes_the_values_the_json_answer_writes(monkeypatch)
     assert got["rows"] == [
         {"amount": "1234567890123456.78", "day": "-infinity", "note": '{"a": 1}', "prefs": {"a": 1}}
     ]
+
+
+# --- J497b decision 1: PostgreSQL's json and jsonb are read as the text PostgreSQL wrote ----------
+
+#: jsonb values whose text a re-parse would misread: a bare JSON string reads as the value it
+#: spells ("5" as 5, "[1]" as a list), and a number's digits past a float are lost.
+_PG_JSON_TEXTS = ['"5"', '"[1]"', '"hello"', "[1]", '{"a": 1.10}', "0.12345678901234567890123"]
+
+
+@pytest.fixture
+def pg_cursor(embedded_postgres):
+    import psycopg2
+
+    con = psycopg2.connect(embedded_postgres.dsn())
+    try:
+        yield con.cursor()
+    finally:
+        con.close()
+
+
+class TestPostgresJsonIsText:
+    @pytest.mark.parametrize("pg_type", ["json", "jsonb"])
+    def test_the_pg_engine_reads_json_as_postgresqls_text(self, pg_cursor, pg_type):
+        from provisa.federation.pg_runtime import _read_as_postgresql_writes
+
+        _read_as_postgresql_writes(pg_cursor)
+        literals = ", ".join(f"%s::{pg_type}" for _ in _PG_JSON_TEXTS)
+        pg_cursor.execute(f"SELECT {literals}", _PG_JSON_TEXTS)
+        got = pg_cursor.fetchone()
+        pg_cursor.execute(f"SELECT {literals.replace(pg_type, f'{pg_type}::text')}", _PG_JSON_TEXTS)
+        assert got == pg_cursor.fetchone()  # what PostgreSQL itself writes for each value
+
+    def test_the_pg_engine_reads_a_json_array_as_postgresqls_texts(self, pg_cursor):
+        from provisa.federation.pg_runtime import _read_as_postgresql_writes
+
+        _read_as_postgresql_writes(pg_cursor)
+        pg_cursor.execute("""SELECT ARRAY['"5"'::jsonb, '{"a": 1}'::jsonb]""")
+        assert pg_cursor.fetchone() == (['"5"', '{"a": 1}'],)
+
+    def test_a_root_jsonb_string_read_by_the_pg_engine_answers_as_its_string(self, pg_cursor):
+        from provisa.federation.pg_runtime import _read_as_postgresql_writes
+
+        _read_as_postgresql_writes(pg_cursor)
+        pg_cursor.execute("""SELECT '"5"'::jsonb, '"[1]"'::jsonb, '"hello"'::jsonb""")
+        cols = [_col(c, json_=True) for c in ("a", "b", "c")]
+        assert _body([pg_cursor.fetchone()], cols) == [{"a": "5", "b": "[1]", "c": "hello"}]
+
+    async def test_the_direct_driver_reads_json_as_postgresqls_text(self, embedded_postgres):
+        from provisa.executor.drivers.postgresql import PostgreSQLDriver
+        from tests.embedded_pg import DATABASE, PASSWORD, ROLE
+
+        driver = PostgreSQLDriver()
+        await driver.connect("127.0.0.1", embedded_postgres.port, DATABASE, ROLE, PASSWORD)
+        try:
+            literals = ", ".join("$%d::jsonb" % (i + 1) for i in range(len(_PG_JSON_TEXTS)))
+            result = await driver.execute(f"SELECT {literals}", list(_PG_JSON_TEXTS))
+        finally:
+            await driver.close()
+        assert list(result.rows[0]) == [
+            '"5"',
+            '"[1]"',
+            '"hello"',
+            "[1]",
+            '{"a": 1.10}',
+            "0.12345678901234567890123",
+        ]
+
+    def test_pgwire_writes_the_text_postgresql_sent(self, pg_cursor):
+        from buenavista.core import BVType
+        from buenavista.postgres import BVTYPE_TO_PGTYPE
+
+        from provisa.federation.pg_runtime import _read_as_postgresql_writes
+
+        _read_as_postgresql_writes(pg_cursor)
+        pg_cursor.execute("""SELECT '"5"'::jsonb, '{"a": 1.10}'::json""")
+        jsonb, json_ = pg_cursor.fetchone()
+        assert BVTYPE_TO_PGTYPE[BVType.JSONB][1](jsonb) == '"5"'
+        assert BVTYPE_TO_PGTYPE[BVType.JSON][1](json_) == '{"a": 1.10}'
+
+    def test_flight_sends_the_text_postgresql_sent(self, pg_cursor):
+        from provisa.executor.formats.arrow import rows_to_arrow_table
+        from provisa.federation.pg_runtime import _read_as_postgresql_writes
+
+        _read_as_postgresql_writes(pg_cursor)
+        pg_cursor.execute("""SELECT '"5"'::jsonb UNION ALL SELECT '{"a": 1.10}'::jsonb""")
+        table = rows_to_arrow_table(pg_cursor.fetchall(), [_col("doc")], result_types=["jsonb"])
+        assert table.column(0).to_pylist() == ['"5"', '{"a": 1.10}']
+
+
+# --- J497b decision 2: a number inside JSON text keeps its digits ---------------------------------
+
+
+class TestJsonNumbersAreExact:
+    def test_a_number_past_a_floats_digits_is_written_with_all_of_them(self):
+        body = dumps(
+            serialize_rows([('{"x": 0.12345678901234567890123}',)], [_col("p", json_=True)], "t")
+        )
+        assert b"0.12345678901234567890123" in body
+        got = json.loads(body)["data"]["t"][0]["p"]["x"]
+        assert got == pytest.approx(0.12345678901234567890123, rel=1e-14)
+
+    def test_a_root_json_number_is_written_with_its_digits(self):
+        body = dumps(serialize_rows([("3.14159265358979323846264",)], [_col("p", json_=True)], "t"))
+        assert json.loads(body, parse_float=Decimal)["data"]["t"] == [
+            {"p": Decimal("3.14159265358979323846264")}
+        ]
+
+    def test_a_numbers_own_spelling_is_kept(self):
+        body = dumps(serialize_rows([("[1.10, 1E+5, -0.0, 7]",)], [_col("p", json_=True)], "t"))
+        assert b"[1.10,1E+5,-0.0,7]" in body
+
+    def test_a_number_is_still_a_number_where_json_is_written_by_the_standard_library(self):
+        (record,) = _rows([('{"x": 1.25}',)], [_col("p", json_=True)])
+        again = json.loads(json.dumps(record, default=str))
+        assert again["p"]["x"] == pytest.approx(1.25, rel=1e-14)
+
+    def test_elements_that_differ_past_a_floats_digits_are_two_elements(self):
+        cols = [
+            _col("id"),
+            _col("n", nested_in="items", cardinality="one-to-many", json_=True),
+        ]
+        rows = [(1, "0.10000000000000000001"), (1, "0.10000000000000000002")]
+        body = dumps(serialize_rows(rows, cols, "t"))
+        assert b"0.10000000000000000001" in body and b"0.10000000000000000002" in body
+
+    def test_ndjson_writes_a_json_number_with_its_digits(self):
+        from provisa.executor.formats.ndjson import rows_to_ndjson
+
+        text = rows_to_ndjson([('{"x": 0.12345678901234567890123}',)], [_col("p", json_=True)])
+        assert "0.12345678901234567890123" in text
+
+
+# --- J497b decision 3: an integer column is a JSON number, by its engine type ---------------------
+
+_HUGE = 170141183460469231731687303715884105727  # HUGEINT's largest
+
+
+class TestIntegersAreNumbers:
+    @pytest.mark.parametrize(
+        "engine_type",
+        [
+            "int2",
+            "int4",
+            "int8",
+            "smallint",
+            "integer",
+            "bigint",
+            "TINYINT",
+            "HUGEINT",
+            "UHUGEINT",
+            "UBIGINT",
+        ],
+    )
+    def test_records_write_an_integer_column_as_a_number(self, engine_type):
+        result = QueryResult(
+            rows=[(Decimal(_HUGE),)], column_names=["n"], column_types=[engine_type]
+        )
+        assert json.loads(dumps(result_records(result))) == [{"n": _HUGE}]
+
+    def test_a_decimal_column_with_no_fraction_stays_a_string(self):
+        result = QueryResult(
+            rows=[(Decimal(_HUGE),)], column_names=["n"], column_types=["DECIMAL(38,0)"]
+        )
+        assert json.loads(dumps(result_records(result))) == [{"n": str(_HUGE)}]
+
+    def test_a_duckdb_hugeint_read_through_arrow_is_a_number(self):
+        import duckdb
+
+        from provisa.executor.drivers.duckdb_driver import fetch_rows
+
+        con = duckdb.connect()
+        # The DATE column sends the result through Arrow, where a HUGEINT is decimal128(38,0).
+        res = con.execute(
+            f"SELECT {_HUGE}::HUGEINT AS h, 12::DECIMAL(38,0) AS d, DATE '2020-01-01' AS day"
+        )
+        types = [str(d[1]) for d in res.description]
+        rows = fetch_rows(res)
+        assert isinstance(rows[0][0], Decimal)  # Arrow's representation, not the engine's type
+        result = QueryResult(rows=rows, column_names=["h", "d", "day"], column_types=types)
+        assert json.loads(dumps(result_records(result))) == [
+            {"h": _HUGE, "d": "12", "day": "2020-01-01"}
+        ]
+
+    def test_an_integer_column_in_graphql_is_a_number(self):
+        got = _body([(Decimal(_HUGE), Decimal(_HUGE))], [_col("h", integer=True), _col("d")])
+        assert got == [{"h": _HUGE, "d": str(_HUGE)}]
+
+    def test_the_compiler_marks_integer_columns_by_their_registered_type(self):
+        from graphql import parse
+
+        from provisa.compiler.sql_gen import compile_query
+
+        doc = parse("{ customers { id visits balance score orders { id } } }")
+        (compiled,) = compile_query(doc, _ctx(), None)
+        marks = {c.field_name: c.integer for c in compiled.columns if c.nested_in is None}
+        assert marks == {
+            "id": True,
+            "visits": True,
+            "balance": False,
+            "score": False,
+            "orders": False,
+        }
+
+    def test_an_integer_aggregate_of_an_integer_column_is_a_number(self):
+        from graphql import parse
+
+        from provisa.compiler.sql_gen import compile_query
+
+        doc = parse(
+            "{ customers_aggregate { aggregate { count sum { visits balance } "
+            "max { visits } avg { visits } } } }"
+        )
+        (compiled,) = compile_query(doc, _ctx(), None)
+        marks = {(c.nested_in, c.field_name): c.integer for c in compiled.columns}
+        assert marks[("aggregate.sum", "visits")] is True
+        assert marks[("aggregate.max", "visits")] is True
+        assert marks[("aggregate.sum", "balance")] is False
+        assert marks[("aggregate.avg", "visits")] is False
+        got = json.loads(
+            dumps(
+                serialize_aggregate(
+                    [tuple(Decimal(_HUGE) for _ in compiled.columns)], compiled.columns, "t"
+                )
+            )
+        )["data"]["t"]["aggregate"]
+        assert got["sum"] == {"visits": _HUGE, "balance": str(_HUGE)}
+
+
+# --- J497b decision 4: a ->> leaf is text, as PostgreSQL's ->> returns text -----------------------
+
+
+def test_a_json_path_leaf_is_text_even_when_its_value_is_an_array():
+    from graphql import parse
+
+    from provisa.compiler.sql_gen import compile_query
+
+    ctx = _ctx(customer_columns=["id", {"column_name": "prefs", "alias": "tags", "path": "tags"}])
+    (compiled,) = compile_query(parse("{ customers { id tags } }"), ctx, None)
+    assert "->>'tags'" in compiled.sql
+    tags = next(c for c in compiled.columns if c.field_name == "tags")
+    assert not tags.json
+    # PostgreSQL's ->> of an array-valued key is the array's text
+    got = _body([(1, '["a", "b"]')], compiled.columns)
+    assert got == [{"id": 1, "tags": '["a", "b"]'}]
+
+
+# --- J497b decision 5: a keyset cursor carries a DECIMAL sort key exactly -------------------------
+
+
+class TestDecimalCursor:
+    def _connection(self, value):
+        from provisa.compiler.sql_types import CompiledQuery
+        from provisa.executor.serialize import serialize_connection
+
+        compiled = CompiledQuery(
+            sql="",
+            params=[],
+            root_field="t",
+            columns=[_col("amount"), _col("id")],
+            sources=set(),
+            sort_columns=["amount", "id"],
+            page_size=1,
+        )
+        return serialize_connection([(value, 7)], compiled)["data"]["t"]
+
+    def test_the_cursor_holds_the_decimals_exact_digits(self):
+        from provisa.compiler.cursor import decode_cursor
+
+        page = self._connection(Decimal("12345678901234567.89"))
+        values = decode_cursor(page["edges"][0]["cursor"])
+        assert values == [Decimal("12345678901234567.89"), 7]
+        assert isinstance(values[0], Decimal)
+        assert page["edges"][0]["node"]["amount"] == "12345678901234567.89"
+
+    def test_the_keyset_comparison_binds_the_decimal(self):
+        from provisa.compiler.cursor import apply_cursor_pagination
+        from provisa.compiler.params import ParamCollector
+
+        page = self._connection(Decimal("0.10000000000000000001"))
+        collector = ParamCollector()
+        where, _, _ = apply_cursor_pagination(
+            {"first": 1, "after": page["pageInfo"]["endCursor"]}, ["amount", "id"], collector, None
+        )
+        assert where == '("amount", "id") > ($1, $2)'
+        assert collector.params == [Decimal("0.10000000000000000001"), 7]
+        assert isinstance(collector.params[0], Decimal)
+
+    def test_a_cursor_with_no_decimal_is_the_list_it_was(self):
+        from provisa.compiler.cursor import decode_cursor, encode_cursor
+
+        assert decode_cursor(encode_cursor([42, "x"])) == [42, "x"]
+        assert json.loads(__import__("base64").b64decode(encode_cursor([42, "x"]))) == [42, "x"]

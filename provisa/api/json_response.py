@@ -18,8 +18,8 @@ enums, dataclasses) natively, and hands only the rest -- a Decimal, a timedelta,
 a set -- to ``jsonable_encoder``, so the body is what jsonable_encoder would have produced.
 
 Values are exact (REQ-1867, amended 2026-11-02): a Decimal is the string of its exact digits,
-PostgreSQL's infinite date or timestamp is ``"infinity"`` / ``"-infinity"``, and an integer past
-64 bits is written with all its digits. What JSON cannot carry -- nesting past orjson's depth, a
+PostgreSQL's infinite date or timestamp is ``"infinity"`` / ``"-infinity"``, an integer past
+64 bits is written with all its digits, and a number inside JSON text is written as that text. What JSON cannot carry -- nesting past orjson's depth, a
 lone surrogate -- is refused by name (``JsonResponseRefused``), never a 500.
 """
 
@@ -47,6 +47,12 @@ def _encode_unknown(value: Any) -> Any:  # noqa: ANN401 — whatever orjson cann
     """A value orjson has no encoding for, as jsonable_encoder would give it."""
     from fastapi.encoders import jsonable_encoder
 
+    from provisa.executor.serialize import JsonNumber
+
+    if isinstance(value, JsonNumber):
+        # A number inside JSON text, written as the text it was (serialize.JsonNumber): every
+        # digit, past a float's 17.
+        return orjson.Fragment(value.text)
     # orjson encodes float itself and no subclass of it, and jsonable_encoder hands a float
     # subclass back as it is: JPype's boxed java.lang.Double, in a govdata row.
     if isinstance(value, float):

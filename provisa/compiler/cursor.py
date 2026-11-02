@@ -11,13 +11,17 @@
 """Cursor pagination helpers for Relay-style connections (REQ-218).
 
 Cursor = base64(json([sort_key_values])). Decoding extracts sort key values
-to compile WHERE clauses for keyset pagination.
+to compile WHERE clauses for keyset pagination. A DECIMAL sort key is carried by its exact
+digits (REQ-1867): the cursor is then ``{"values": [...], "decimals": [positions]}``, each
+position's value the string of its digits, and decodes back to the Decimal, which the keyset
+comparison binds as a decimal, never a float.
 """
 
 from __future__ import annotations
 
 import base64
 import json
+from decimal import Decimal
 from typing import Any, Protocol
 
 # Requirements: REQ-218
@@ -36,7 +40,15 @@ def encode_cursor(sort_values: list) -> str:  # REQ-218
     Returns:
         Base64-encoded JSON string.
     """
-    payload = json.dumps(sort_values, default=str)
+    decimals = [i for i, v in enumerate(sort_values) if isinstance(v, Decimal)]
+    if decimals:
+        carried: object = {
+            "values": [format(v, "f") if i in decimals else v for i, v in enumerate(sort_values)],
+            "decimals": decimals,
+        }
+    else:
+        carried = sort_values
+    payload = json.dumps(carried, default=str)
     return base64.b64encode(payload.encode()).decode()
 
 
@@ -54,7 +66,13 @@ def decode_cursor(cursor: str) -> list:  # REQ-218
     """
     try:
         payload = base64.b64decode(cursor.encode()).decode()
-        return json.loads(payload)
+        carried = json.loads(payload)
+        if isinstance(carried, dict):
+            values = list(carried["values"])
+            for i in carried["decimals"]:
+                values[i] = Decimal(values[i])
+            return values
+        return carried
     except Exception as exc:
         raise ValueError(f"Invalid cursor: {cursor!r}") from exc
 

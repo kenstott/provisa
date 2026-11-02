@@ -624,6 +624,7 @@ def _collect_nested_columns(
                     nested_in=nesting_path,
                     cardinality=cardinality,
                     json=(parent_table.table_id, nested_phys.lower()) in ctx.json_columns,
+                    integer=(parent_table.table_id, nested_phys.lower()) in ctx.integer_columns,
                 )
             )
     return alias_counter, has_lateral

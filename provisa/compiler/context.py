@@ -40,6 +40,7 @@ from provisa.security.rights import (
     writes_table,
 )
 from provisa.compiler.sql_types import (
+    is_integer_type,
     is_json_type,
     CompilationContext,
     JoinMeta,
@@ -147,6 +148,8 @@ def _register_table_in_ctx(
             col_info.append((col_name, col_meta.data_type))
             if is_json_type(col_meta.data_type):
                 ctx.json_columns.add((t.table_id, col_name.lower()))
+            if is_integer_type(col_meta.data_type):
+                ctx.integer_columns.add((t.table_id, col_name.lower()))
     ctx.aggregate_columns[t.table_id] = col_info
 
     # REQ-1319: precompile each role-visible single-table metric into its physical inline
