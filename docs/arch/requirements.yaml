@@ -75801,9 +75801,16 @@
     process); a user of a coordinator-served UI sets it to the query pool or a specific query node. Query
     nodes accept the UI''s origin and its sign-in token for those calls. (Amended 2026-11-02, The UI''s
     data addresses come from the config:) Maintainer 2026-11-02: the data addresses are listed in the control
-    plane''s config, like an OpenAPI document listing its servers: the platform regions'' addresses. The
-    UI is given the addresses the org can use, and its browser setting picks one of them, defaulting to
-    the org''s own region address, or the UI''s own origin where no regions are declared.'
+    plane''s config, like an OpenAPI document listing its servers: [SUPERSEDED by REQ-1916, 2026-11-02 --
+    a region is not a data node; the list is the node registry. Kept here for history; do not implement
+    against it.] the platform regions'' addresses. The UI is given the addresses the org can use, and its
+    browser setting picks one of them, defaulting to the org''s own region address, or the UI''s own origin
+    where no regions are declared. [END SUPERSEDED BLOCK] (Amended 2026-11-02, The UI''s servers list is
+    the node registry:) Maintainer 2026-11-02: a region is not a data node; a region can have its own coordinator
+    and its own query nodes. The servers list is the node registry the control plane already keeps (each
+    running node with its mode, region and heartbeat): each node records an address clients can reach, the
+    coordinator gives the UI the live query and every nodes of the org''s region, and the UI''s browser
+    setting picks one, defaulting to the UI''s own origin.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
