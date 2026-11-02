@@ -1,311 +1,220 @@
-# Rust GraphQL response encoder: differential test and benchmark
+# Rust encoders for GraphQL, REST, JSON:API and OData: differential test and benchmark
 
-An experiment, isolated from the product: nothing in `provisa/` or `vendor/` calls this crate. It
-applies the J483 method (the pgwire DataRow encoder, REQ-2194) to the GraphQL JSON answer
-(REQ-1867).
+J504 extends J494's GraphQL encoder (REQ-2194, amended 952c11169) to every JSON surface: the REST
+(OpenAPI) table endpoint, JSON:API and OData, over one Rust value model and one JSON writer, and
+moves all four to the exact-values contract of REQ-1867 (amended bf29fdb17), which the product's
+Python path took in J497 and J497b (b2b50fcb7). It is product code to be wired in; nothing in
+`provisa/` calls it yet.
 
-## What is compared
+## The contract (REQ-1867, amended)
 
-**Python (the product's path, run unmodified; `python_ref.py`):** an ENGINE-routed root field's
-Arrow batches → `stream_rows_from_arrow` (`column_values` per column, rows zipped) and `iter_rows`,
-as `_execute_plan`'s buffered drain collects them → `serialize_rows` (through `_format_response`),
-which nests the flat JOIN rows into GraphQL objects → `_execute_one_field` keeps
-`data[root_field]` → `_handle_query` answers `{"data": {root_field: rows}}` as a
-`TimedJSONResponse`, whose `render` is `json_response.dumps` (orjson, `_encode_unknown` for the
-rest). The stage timer is left out.
+The reference is the product at b2b50fcb7 (`build.sh` extracts its `provisa/` into `build/ref`;
+`check.py` asserts the tests import it and nothing else):
 
-**Rust (`src/`):** `graphql_encoder_rs.encode_response(batches, columns, root_field,
-result_limit=None)` takes the same Arrow batches zero-copy (arrow-rs `pyarrow` feature) and the
-selection plan `serialize_rows` reads, one `(field_name, nested_in, cardinality, is_agg)` per
-column (`python_ref.plan_tuples(compiled.columns)`), and returns the response body. The GIL is
-released while encoding.
+- A DECIMAL is a JSON string of its exact digits, positional (`format(d, "f")`).
+- PostgreSQL's infinite dates and timestamps are `"infinity"` / `"-infinity"`.
+- Only a column the compiler marks `json` (json/jsonb, or a relationship built as one JSON value)
+  becomes an object or array; any other text stays a string, whatever it looks like. A string at one
+  of the column's `json_text` key paths is JSON the engine wrote, parsed again.
+- A number inside JSON keeps its digits (`JsonNumber`, written as an `orjson.Fragment`); an int is
+  written with all its digits, past 64 bits too.
+- An integer-typed column (`integer`) is a JSON number whatever the reader made of it (a DuckDB
+  HUGEINT read through Arrow as `decimal128(38,0)`).
+- What JSON cannot carry is refused by name: `JsonValueRefused(field, reason)` (NaN or Infinity in
+  JSON text, a lone surrogate escape, text in a JSON column that is not JSON, nesting past what the
+  parser reaches) and `JsonResponseRefused(reason)` (a body nested past orjson's 255 levels).
 
-The port follows `serialize_rows` step by step, not just its output on well-formed input:
+## The encoders
 
-- **Root rows are deduplicated by value**, as `_to_hashable` keys them: Python `==` on the converted
-  values, so `-0.0 == 0.0`, a Decimal's int equals the same float, every float NaN is distinct (each
-  is its own object), and a dict or list is keyed by `json.dumps(sort_keys=True)` (where NaN equals
-  NaN, `-0.0` differs from `0.0`, and `1` differs from `1.0` and `true`). `_serialize_flat` keys by
-  the non-aggregate root columns, or by the whole row when every root column is an aggregate;
-  `_serialize_with_one_to_many` keys by every root column.
-- **Flat and many-to-one** (`_serialize_flat`, `_build_nested_obj`): the first row for a key builds
-  the object and later rows are dropped. A to-one path whose parent is null is skipped, and an
-  all-null to-one is `null`. Because a result row never changes after it is built, the Rust encoder
-  writes it immediately and keeps only the keys.
-- **One-to-many** (`_serialize_with_one_to_many`): the paths are placed in sorted order under their
-  nearest enclosing path, list elements are deduplicated per list by their values, a to-one under a
-  list element merges with `update`, and an all-null to-many element leaves `[]`. The whole tree is
-  kept and written at the end, as Python keeps it.
-- **A converted dict or list is a live object.** A parsed JSON text, a struct or a list value is
-  held as Python holds it. When a relationship shares a response key with it, the serializer merges
-  into it (`current.update`), appends elements to it, or walks a path through it, and the port does
-  the same (`Tree::get` turns it into a node the moment it is reached into).
-- **Repeated keys** (`{col.field_name: ...}`): a name keeps its first position and takes its last
-  value. A relationship over a scalar field of the same name replaces it in place.
-- **Errors happen where Python raises them.** `to_pylist` fails eagerly (an out-of-range date,
-  timestamp, duration or interval, or a struct with duplicate field names), even for a row that
-  is later dropped. orjson fails only on what it writes (an int outside 64 bits, a lone surrogate,
-  a non-empty container nested past level 254), so a too-big value in a dropped row is harmless on
-  both paths (`test_poison_in_repeated_row_is_not_written`).
+All take the read's Arrow record batches through the C data interface (zero-copy) and release the
+GIL; no Python object is built for a row or a value. `columns` is one
+`(field_name, nested_in, cardinality, is_agg, json, json_text, integer)` per column
+(`wiring.plan_tuples(compiled.columns)`).
 
-Value conversion (`_convert_value`, then orjson):
+| entry point | answers | product path it replaces |
+|---|---|---|
+| `encode_response(batches, columns, root_field, result_limit=None)` | GraphQL `{"data": {root: rows}}` | `serialize_rows` → `_handle_query` |
+| `encode_rest(batches, columns, aggregate_alias=None)` | REST `{"data": rows}` (a read, a group-by) or `{"data": aggregate}` | `rest_table_endpoint` 754-771, 847 |
+| `encode_rest_csv(batches, columns)` | REST `Accept: text/csv` | `rest_table_endpoint` 776-786 |
+| `encode_jsonapi(batches, columns, *, resource_type, page_size, page_number, probe, total, id_columns, scalar_names, rel_names, rel_scalar_names, includes, include_keys, base_path, link_params, warnings=None)` | JSON:API compound document: `data` (type, id, attributes, relationships), `included`, `meta` (total, warnings), `links` | `_jsonapi_table_endpoint` 1158-1233 |
+| `encode_jsonapi_group_by(batches, columns, *, resource_type, scalar_names, rel_names, rel_scalar_names)` | JSON:API `?groupBy=` | 936-971 |
+| `encode_jsonapi_aggregate(batches, columns, aggregate_alias)` | JSON:API `?aggregate` | 973-988 |
+| `encode_odata(batches, names, entity, *, context, count, page, next_link, root, warnings=None)` | OData `@odata.context`, `@odata.count`, `@Provisa.warnings`, `value`, `@odata.nextLink`, each expansion with its own `name@odata.nextLink` | `odata/router.py` `_read` 249-291 (`expand.write` per row) |
 
-| Arrow type | written as |
-|---|---|
-| bool, int8–64, uint8–64 | JSON bool, int |
-| float32, float64 | orjson's float: shortest round-trip digits, fixed for a decimal exponent in [-5, 16) with at least `.0`, else `d.ddde±x`; NaN and ±Infinity `null` |
-| decimal128, decimal256 | `float(d)`, or `int(float(d))` when `str(d)` has no point and the float is whole (`fmt::decimal_value`) |
-| utf8, large_utf8, utf8_view, dictionary<utf8> (enum) | a string, or, when longer than one character, opening with `{` or `[` and parsing under `json.loads`, the parsed value with every nested string converted again (`jtext.rs`, a port of the strict C scanner: NaN/Infinity, duplicate keys, the 4,300-digit int limit, surrogate pairs) |
-| binary, large_binary, fixed_size_binary | `"\x…"` hex (`bytea_hex`) |
-| fixed_size_binary(16) `arrow.uuid` | the hyphenated UUID |
-| date32 | `isoformat`; ±(2^31−1) as the IR infinity (`9999-12-31`, `0001-01-01`) |
-| timestamp s/ms/µs, naive, UTC or fixed `±HH:MM` | `temporal_text` (isoformat, fraction zeros dropped, offset); µs ±(2^63−1) as the IR infinity |
-| time32 s/ms, time64 µs | `temporal_text` |
-| duration s/ms/µs, interval month_day_nano | `iso8601_duration` (nanoseconds floored to µs, the timedelta range checks) |
-| list, large_list, fixed_size_list, struct | `to_pylist`, each element converted as above |
-| null | `null` |
+A failure raises `graphql_encoder_rs.EncodeError` (a `ValueError`): `ValueRefused(field, reason)`
+where the product raises `JsonValueRefused`, `ResponseRefused(reason)` for `JsonResponseRefused`,
+`ODataRefused(status, code, message)` for `QueryOptionRefused`, and plain `EncodeError` wherever the
+product's path raises anything else (a 500 there).
 
-## Differential test (`test_compare.py`)
+### Shared code (`src/`)
 
-**1,659 passed, 28 skipped, 0 failed. All 1,701 cases that produce a body are byte-identical**, floats
-included. In 255 more, both encoders raise. Both bodies are parsed and compared structurally (key
-order, JSON types, every value; floats within a relative tolerance of 1e-14), and the bytes are
-tallied besides. A case where one encoder raises and the other does not fails, and so does a Rust
-`NotImplementedError`. Covered:
+- `pyval.rs`: an Arrow cell as the Python value the product holds for it: `column_values` at the top
+  level (the IR interval, the IR infinities) and `to_pylist` below it, for every Arrow type pyarrow
+  converts: bool, every int and uint width, float16/32/64, decimal32/64/128/256 (negative scales),
+  utf8/large/view, binary/large/view/fixed, `arrow.uuid`, date32/64, time32/64 (s, ms, µs, ns),
+  timestamp in every unit (ns as a pandas `Timestamp`, i64::MIN as `NaT`) naive or in any zone,
+  duration in every unit (ns as a pandas `Timedelta`), month_day_nano, list/large_list/
+  fixed_size_list/list_view, struct, map (lists of tuples), dictionary of any value type, dense and
+  sparse union, run-end encoded, null. `to_pylist`'s eager errors (a year past 9999, a timedelta past
+  a billion days, a struct with repeated field names, pandas' int64 overflow) fail every row of the
+  column before any is used.
+- `pytz_data.rs` (generated by `tools/gen_pytz.py`): pytz's own transition tables. pyarrow and
+  pandas localize an aware timestamp through pytz, whose tables are zic's 32-bit data: nothing
+  before 1901-12-13 but the zone's first offset, nothing after 2037, offsets rounded to the minute.
+  chrono-tz (full history and rules) disagreed on 250 of 597 zones; these tables agree on all of
+  them. `graphql_encoder_rs.PYTZ_VERSION` names the pytz release they were taken from.
+- `convert.rs`: `column_value` (`_convert_value`, `json_value` with `json_text`, `integer_value`).
+- `json.rs`: `json.loads` as the C scanner reads it, with `JsonNumber` floats (JSON columns) or
+  `Decimal` floats (OData expansions), strings and keys borrowed from the Arrow buffer.
+- `pywrite.rs`: the body as `json_response.dumps` writes it (orjson, `_encode_unknown`, every int's
+  digits, the refusals), the dedup key (`_to_hashable`: Python `==`, or the text of
+  `json.dumps(sort_keys=True, default=str)` for a dict or list), `str()` and `repr()` (JSON:API ids,
+  OData's Edm.String and Edm.Guid, CSV), down to pytz's and pandas' reprs.
+- `text.rs`: Python's text for a value: `str(Decimal)`, `repr(float)`, `isoformat`,
+  `temporal_text`, `str(timedelta)`, pandas' `Timedelta`, dateutil's `relativedelta` repr,
+  `repr(str)` (with Python 3.12's `isprintable` table, `src/printable.rs`, generated by
+  `tools/gen_printable.py`).
+- `nest.rs`: `serialize_rows` (`_serialize_flat`, `_serialize_with_one_to_many` with J497's list
+  places) and `serialize_aggregate` into a tree of Python-like dicts and lists; a flat answer streams
+  each row as it completes.
+- `surfaces.rs`: the GraphQL, REST and JSON:API documents over that tree (`rename_row_keys`,
+  `_extract_included`, `rows_to_jsonapi`, `build_pagination_links` with `urlencode`).
+- `odata.rs`: `edm_value` for every Edm type over every value (Python's `int()`, `float()`,
+  `Decimal()` of text, `bytes.fromhex`, `datetime.fromisoformat`), `expand.write`, `_link`,
+  `_key_literal`, `quote`.
 
-- **72 single-type columns**, each in five shapes: the root field alone (rows deduplicated by it),
-  beside a key, inside a one-to-many element (alone and beside another field), and as a many-to-one
-  object. The types: bool; every int width at its extremes; float64 specials (±0, NaN, ±Infinity,
-  subnormal, max, the orjson notation boundaries) and 100,000 random bit patterns; float32 with
-  100,000 random bit patterns; decimal128 at nine precision/scale pairs (3,000 random values each,
-  scale 0, negative scale, zero at scale 7), tiny values in scientific notation, −0.00, values past
-  2^53, decimal256; 58 texts in utf8, large_utf8 and utf8_view (escapes, control characters, every
-  JSON corner that parses or must not: extra data, trailing commas, leading zeros, NaN, `1e400`,
-  duplicate keys, surrogate pairs, JSON inside JSON strings, a 4,401-digit int); enum;
-  binary/large/fixed; uuid; date32 with infinities; timestamps in s/ms/µs × naive/UTC/+05:30/−03:00
-  with infinities (2,000 random each); time32/64; durations at the timedelta limits;
-  3,000 random intervals; list, large_list and fixed_size_list of ints, floats, strings, decimals,
-  dates, timestamps (UTC, +05:30), uuids and nulls; nested lists; structs with time, duration,
-  binary and lists; the null type.
-- **15 nesting plans × 5 result limits** over an orders table: flat; many-to-one; two-level
-  many-to-one; one-to-many; two-level one-to-many; one-to-many with a many-to-one inside and beside;
-  aliases repeating a name; a field and a relationship sharing a name (to-one and to-many);
-  `is_agg` root columns, all-aggregate roots; only nested columns; a to-one path with no parent
-  path; child path before parent. Each also with zero rows and with zero batches, and one split into
-  1-, 3- and 7/1/13-row batches.
-- **1,500 random plans** over random tables of up to 60 rows (ints, floats with NaN and ±0, decimals
-  with ±0, JSON texts that are equal under different spellings, strings, structs, lists; 15% NULL),
-  up to eight columns placed at random at the root or under five paths of random cardinality, with
-  names that collide, and a random result limit. 28 are skipped: see product behavior 6.
-- **Errors, both raising:** a decimal past 2^64 (and 2^64−1, which rounds to it), a big
-  negative-scale decimal, a JSON int past 64 bits, lone surrogates in a JSON value and key, JSON
-  nesting past orjson's limit on either side of the boundary, out-of-range date, timestamp
-  (including one pushed past 9999 by its offset), duration (the floor-days rule), interval and a
-  struct with duplicate field names; a dropped repeated row that would have failed orjson (both
-  succeed) or `to_pylist` (both raise); the `_detect_truncated_paths` crash (product behavior 5).
+## Differential test
 
-Run from the worktree root:
+`test_compare.py` (GraphQL), `test_surfaces.py` (REST, REST CSV, JSON:API, OData) and
+`test_zones.py` (every pytz zone) run each encoder against the product's path for its surface on
+the same batches (`python_ref.py`: the product's functions unmodified, the router glue between them
+transcribed with its line numbers). `check.compare` parses both bodies and compares them
+structurally: key order, JSON types, every value exactly, floats within a relative tolerance of
+1e-14; it also counts byte identity. When the product raises, Rust must raise the same: a refusal by
+its class and what it names (the field, the reason; for "not JSON" the reason's prefix), an OData
+refusal by status, code and message, anything else as `EncodeError`. A Rust `NotImplementedError`
+does not exist any more.
+
+RESULTS_DIFFERENTIAL
+
+Covered, for every surface unless named:
+
+- **Every type** (`cases.py`, 91 arrays): each at its extremes, NULLs and random values (50,000
+  random float64 and float32 bit patterns, 1,500 random decimals per precision/scale, 1,500
+  timestamps per unit and zone in eight zones, 1,500 random intervals, ...), under each mode its
+  column can have (plain, `json`, `integer`), in five shapes: the root field alone (rows
+  deduplicated by it), beside a key, inside a one-to-many element (alone and beside a field), and as
+  a many-to-one object. JSON:API also takes each type as the resource's id (`str()` of the value),
+  as a foreign key (its relationship's id), and inside an included resource. OData writes each type
+  as its natural Edm types, as Edm.String, Edm.Boolean and Edm.Guid, and 27 texts as every Edm type
+  (Python's `int()`, `float()`, `Decimal()`, `fromisoformat`, `fromhex` rules).
+- **JSON text** (61 texts): escapes, surrogate pairs and lone surrogates, NaN and Infinity, `1e400`,
+  ints past 64 bits and past 4,300 digits, duplicate keys, trailing garbage, scalars; `json_text`
+  paths at depth; nesting at the 255-level boundary for each envelope's own depth.
+- **Nesting** (18 plans × 5 result limits): flat, many-to-one, two levels of each, one-to-many under
+  one-to-many and many-to-one, aliases repeating a name, a field and a relationship sharing a name (a
+  scalar and a JSON value, to-one and to-many), `is_agg` roots, only nested columns, a gap in a
+  path, a child before its parent, a null parent with a nested path; empty results and zero
+  batches; batches split 1, 3 and 7/1/13 rows.
+- **1,500 random plans** (GraphQL; every third for REST and REST CSV, every fifth for JSON:API with
+  random keys, includes and page sizes): up to eight columns of nine kinds (JSON texts equal under
+  different spellings, decimals read as integers, dates with the IR infinity) at random under five
+  paths of random cardinality with colliding names. None is skipped: J497's list places replaced the
+  `id(list)` keys that made J494 skip 28.
+- **REST**: reads, group-by (null group keys), aggregate (no row, one, three); CSV quoting.
+- **JSON:API**: includes none, to-one, to-many, both and repeated; page size 1 and 2, the second
+  page, an exact page, a total (0 and 7), warnings, link parameters needing escapes, composite keys
+  (with `:` and `\` in values); group-by (with nodes and nested relationships) and aggregate;
+  included objects missing their key or holding a JSON scalar.
+- **OData**: pages 0, 1, 2, 5,000; `@odata.count`; `@Provisa.warnings`; to-many and to-one
+  expansions with pages 1, 2, 3 and 1,000 and nextLinks keyed by int, string (quotes, non-ASCII),
+  decimal, date, timestamp, uuid, a composite key, and no key (the 501 refusal); an expansion inside
+  an expansion; `$top=0` on an expansion; malformed and null expansion JSON; 300 random tables
+  written as random Edm types.
+- **Zones**: every one of pytz's 597 zones at 56,524 instants from 1800 to 2100.
+
+Run from `experiments/graphql_encoder_rs`:
 
 ```
-experiments/graphql_encoder_rs/build.sh
-PYTHONPATH=.:experiments/graphql_encoder_rs/build:experiments/graphql_encoder_rs \
-  ~/.provisa-agent/heavy.sh .venv/bin/python -m pytest -p no:cacheprovider -q -s \
-  experiments/graphql_encoder_rs/test_compare.py
+./build.sh
+PYTHONPATH=build/ref:build:. ~/.provisa-agent/heavy.sh ../../.venv/bin/python -m pytest \
+  -p no:cacheprovider -q test_compare.py test_surfaces.py test_zones.py
 ```
 
-### Not ported (Rust raises `NotImplementedError`; Python would encode)
-
-- Timestamps in a named time zone (`America/New_York`): pyarrow converts with pytz, and only UTC
-  and fixed offsets are ported. DuckDB's Arrow `timestamptz` carries the session `TimeZone`, so this
-  matters if that zone is not UTC.
-- Nanosecond timestamps, times and durations (to_pylist yields pandas objects); date64.
-- Map columns (`to_pylist` yields lists of tuples, which `_convert_value` leaves for orjson and
-  `_encode_unknown`); a month_day_nano interval or a dictionary inside a list or struct; any other
-  Arrow type.
-- `serialize_aggregate` (aggregate and group-by roots with nodes), `serialize_connection`, merging
-  several root fields, and the redirect, cache-hit and file-format branches of `_handle_query`.
-
-## Benchmark (`bench.py`)
+## Benchmark (`bench.py`, `run_bench.sh`)
 
 **Machine:** Apple M3 Pro, 12 cores, 18 GiB RAM, macOS 26.7.1. Python 3.12.0, pyarrow 24.0.0,
-orjson 3.11.9, numpy 2.4.6. rustc 1.95.0, arrow-rs 56.2.1, pyo3 0.25.1. Release build with fat
-LTO, `codegen-units=1` and `target-cpu=native`. Single-threaded, run through `heavy.sh`.
+orjson 3.11.9, pandas 2.3.3, pytz 2026.2. rustc 1.95.0, arrow-rs 56.2.1, pyo3 0.25.1. Release build
+with fat LTO and `codegen-units=1`. Single-threaded, one process per surface, through `heavy.sh`.
 
-**Dataset:** an orders query with each order's items, a one-to-many relationship (one level of
-nesting): 2,000,000 flat item rows over 499,709 orders (1 to 7 items each), the order's columns
-repeated on each of its rows as the compiler's LEFT JOIN returns them. 31 batches of 65,536 rows
-(DuckDB's Arrow stream batch size), 333.3 MB of Arrow, generated with numpy from seed 494.
-Root: `id` int64, `customer` int32, `total` float64, `ratio` float32, `amount` decimal128(18,2),
-`name` utf8 (some non-ASCII), `created` timestamp[µs, UTC], `day` date32, `active` bool,
-`payload` utf8 JSON text (`{"k": n, "tag": "x", "w": [1.5, 2]}`), `note` utf8 (30% NULL). Under
-`items`: `item_id` int64, `sku` utf8, `qty` int32, `price` decimal128(10,2), `shipped` date32
-(20% NULL).
+**Dataset:** J494's: an orders query with each order's items (one-to-many), 2,000,000 flat item rows
+over 499,709 orders (1 to 7 items each), the order's columns repeated on each row as the compiler's
+LEFT JOIN returns them, 31 batches of 65,536 rows, 333.3 MB of Arrow, seed 494. Root: `id` int64,
+`customer` int32, `total` float64, `ratio` float32, `amount` decimal128(18,2), `name` utf8,
+`created` timestamp[µs, UTC], `day` date32, `active` bool, `payload` jsonb (now a JSON column:
+REQ-1867 parses only those), `note` utf8 (30% NULL); under `items`: `item_id` int64, `sku` utf8,
+`qty` int32, `price` decimal128(10,2), `shipped` date32 (20% NULL). JSON:API sideloads the items as
+included resources and puts every order on one page (the router caps a page at 1,000 resources;
+this measures the encoder). OData reads the same data as its compiler writes an expansion: 499,709
+order rows, each order's items one JSON array (the correlated subquery's text), every row on one
+page (the router's page is 5,000).
 
-**Method:** each run is end to end, Arrow batches in and the response body out. The full bodies of
-every run hash to the same SHA-256 on both paths (307.3 MB each, identical bytes). Best of 3 runs
-for Python and best of 5 for Rust; CPU time is `process_time`. The process peaked at 2.98 GB
-resident and free memory stayed at 41% or more (the guard aborts under 25%).
+**Method:** end to end, Arrow batches in and the response body out. Best of 3 runs for Python and of
+5 for Rust; CPU time is `process_time`. Every run of both paths writes the same body (SHA-256
+checked, Python against Rust).
 
-| rows (orders) | body | Python wall (cpu) | Rust wall (cpu) | Python | Rust | speedup |
-|---|---|---|---|---|---|---|
-| 2,000,000 (499,709) | 307.3 MB | 49.96 s (49.24 s) | 2.738 s (2.710 s) | 0.040 Mrow/s, 6.2 MB/s | 0.73 Mrow/s, 112.2 MB/s | **18.2×** |
+RESULTS_BENCH
 
-Run-to-run spread: Python 49.96–51.71 s, Rust 2.74–3.20 s. The output is in `bench-2m.log` and
-`bench-2m.json`.
+## Against REQ-2194: no Python between the engine result and the bytes
 
-### Where the Python time goes
+Each encoder reads the engine's Arrow batches directly and writes the body; the plan (column
+tuples, OData's entity levels, JSON:API's name maps and page) is metadata the router already holds,
+handed over once per request. No row, dict, str or Decimal is built in Python, and nothing is
+decoded or re-encoded there: the JSON a json/jsonb column holds and the JSON an OData expansion's
+subquery wrote are parsed in Rust because the answer's contract parses them.
 
-One run split by stage: **Arrow → Python rows 11.76 s (24%)**, **`serialize_rows` 37.52 s (75%)**,
-**orjson 0.74 s (1.5%)**. orjson, the step REQ-1867 sped up, is now a rounding error: the cost is
-building and nesting Python objects.
+## Product defects found (reported, not fixed)
 
-- **Arrow → rows** (`column_values` per column, `zip`): 32M Python objects from `to_pylist`, plus
-  `_with_infinities` on the date and µs-timestamp columns (a cast, two compares, an `or`, an `any`,
-  and a second `to_pylist`, for every batch).
-- **`serialize_rows`.** cProfile over 262,144 rows (the profiler inflates Python time about 2×):
-  `_convert_value` takes 8.1 s of 14.4 s cumulative, over 6.5M calls. Every item row converts all
-  eleven root values to build the root key, although four rows in five belong to an order already
-  seen, and each new root converts them again for the object. The JSON `payload` column costs a
-  `json.loads` per row for the key and another per new order, then a `json.dumps(sort_keys=True)`
-  per row in `_to_hashable`. Dates and timestamps each pay for `isoformat` and a regex `sub`
-  (`temporal_text`), and the `isinstance`/`hasattr` chain runs 35M times.
-- **What is left in Rust.** 2.7 s is about 1.4 µs per row, spread over formatting (float, date,
-  timestamp), the per-row key hash, JSON parsing for new orders, object allocation and the final
-  copy into `bytes`, with no single hotspot. Keys are computed without writing output, and a JSON
-  column's key is cached across the consecutive rows that repeat a parent's text.
+The encoders reproduce each of these; the differential test pins them.
 
-## Against REQ-2194 (amended 50540b536): no Python between the engine result and the bytes
+RESULTS_DEFECTS
 
-The encoder works directly on the engine's Arrow result. `encode_response` takes the record batches
-through the Arrow C data interface (zero-copy: Python touches each batch once, to export it, and
-never a row or a value), and takes the selection plan once per call as metadata. The plan is one
-`(field_name, nested_in, cardinality, is_agg)` per column, compiled into the nesting plan before
-the first row. Everything after that is Rust, with the GIL released: conversion, dedup keys,
-nesting, and writing the body. No Python row, dict or str is built, and nothing is decoded or
-re-encoded in Python. The JSON-text column is parsed in Rust because the answer's contract
-(product behavior 3) parses it, not because a Python decode sits in between.
+## What wiring needs
 
-### Every place the current Python path serializes or deserializes
-
-Measured by `breakdown.py` on the benchmark dataset (2,000,000 item rows, 499,709 orders), each
-step timed on its own with the values and the call counts the product gives it. The share is of
-the same run's three stages, 51.40 s (12.89 + 37.76 + 0.75). Output in `breakdown-2m.log` and
-`breakdown-2m.json`.
-
-| # | where | what it does | seconds | share |
-|---|---|---|---|---|
-| 1 | `ir_arrow.column_values` → `to_pylist` (via `stream_rows_from_arrow`) | Arrow → 32M Python objects | 11.62 | 22.6% |
-|   | of which `created` (timestamp[µs, UTC]) | a pytz-aware `datetime` per value | 4.42 | 8.6% |
-|   | of which `day`, `shipped` (date32) | a `date` per value | 1.76 | 3.4% |
-|   | of which `amount`, `price` (decimal128) | a `Decimal` per value | 1.32 | 2.6% |
-|   | `_with_infinities` (date, µs timestamp) | cast, compares, `any` per batch | under 0.05 per column | – |
-| 2 | `stream_rows_from_arrow` `zip(*cols)`, `iter_rows` | columns → row tuples | 1.27 | 2.5% |
-| 3 | `serialize._convert_value`, all columns | Python value → JSON-safe Python value: 37.5M calls (each item row converts its order's 11 values for the root key, each new order converts them again for its object, and each item's 5 values) | 21.90 | 42.6% |
-|   | of which `payload` (JSON text) | `json.loads` + `_recursive_json_convert`, 2.5M times | 8.10 | 15.8% |
-|   | of which `json.loads` alone | the decode | 3.89 | 7.6% |
-|   | of which `created`, `day`, `shipped` | `isoformat` + regex `sub` (`temporal_text`) | 6.90 | 13.4% |
-|   | of which `amount`, `price` | `float(Decimal)`, `str(Decimal)` | 0.96 | 1.9% |
-| 4 | `serialize._to_hashable` | the root and element keys | 5.72 | 11.1% |
-|   | of which `payload` | `json.dumps(sort_keys=True)` of the parsed dict, 2M times (a re-encode) | 3.09 | 6.0% |
-| 5 | `_serialize_with_one_to_many` itself | key tuples, result dicts and lists, `dict(values)`, hashing, the loop | 10.14 | 19.7% |
-| 6 | `OrjsonResponse.render` → `json_response.dumps` | Python dicts → JSON bytes | 0.75 | 1.5% |
-| 7 | `_encode_unknown` → `jsonable_encoder` | orjson's fallback | 0 calls | 0% |
-
-Before step 1, depending on the engine and route (not in the 51.40 s above):
-
-| where | what it does | measured |
-|---|---|---|
-| DuckDB `run_sync` → `stream_from_dbapi` (`fetchmany`) | the driver hands back Python rows when the result has no interval, date or timestamp column (`READ_THROUGH_ARROW`); otherwise it reads Arrow and does step 1 | 8.65 s for these 2M rows, against 0.16 s to drain DuckDB's Arrow reader |
-| Snowflake, Databricks, BigQuery, ClickHouse, MSSQL warehouse `run_sync` | native Arrow → `stream_rows_from_arrow` → step 1 | (step 1) |
-| `pg_runtime` (psycopg2 named cursor), `sqlalchemy_runtime` (DB-API, pyodbc), DIRECT routes and the admin route (asyncpg `fetch`) | the driver hands back Python rows | not measured here |
-| Response cache, on a miss (`raw_sql` tee `rows_entry` → `codec.encode_cache_payload`) | Python rows → msgpack | 1.65 s per 500k rows (about 6.6 s per 2M) |
-| Response cache, on a hit (`decode_cache_payload` → `entry_as_result`) | msgpack → lists → tuples; or an Arrow IPC entry → `to_pylist` | 1.07 s / 3.05 s per 500k rows (about 4.3 s / 12.2 s per 2M) |
-
-So of 51.40 s, 1.5% is the JSON encode the answer needs. 25.1% turns Arrow into Python rows
-(steps 1–2), and 73.5% shapes those rows in Python (steps 3–5), including a full JSON decode and
-re-encode of the JSON column (steps 3 and 4, 21.8%). The Rust encoder replaces all of it: 2.74 s.
-
-## Product behaviors found (reported, not fixed)
-
-The port reproduces each of these; the differential test pins them.
-
-1. **Every DECIMAL leaves as a float, or as an int made from a float.** `_convert_value` writes
-   `float(d)`, so a `DECIMAL(18,2)` loses digits past about 15 to 17 significant figures
-   (`1234567890123456.78` → `1234567890123456.8`), and a scale-0 decimal (and DuckDB's HUGEINT,
-   which its Arrow export carries as `decimal128(38,0)`) above 2^53 is rounded
-   (`9007199254740993` → `9007199254740992`). From 2^64 up, including 2^64−1 which rounds to it,
-   orjson raises `Integer exceeds 64-bit range` and the whole request fails. The JSON type also
-   follows `str(d)`: `Decimal("0E-7")` (zero at scale above 6) is written `0` beside `0.0` and
-   `1.5` in the same column, and a negative-scale `1E+3` is `1000` while `1.23E+5` is `123000.0`.
-   (REQ-1867's docstring says a Decimal reaches `_encode_unknown`; on this path it never does.)
-2. **PostgreSQL ±infinity dates and timestamps are written as finite dates.** `column_values` reads
-   them as the IR infinities, and `_convert_value` calls `isoformat` on them, giving `"9999-12-31"`,
-   `"0001-01-01"` and `"9999-12-31T23:59:59.999999+00:00"`. pgwire writes `infinity`. These strings
-   are also the texts of real values, so a root row keyed by one dedups against the other.
-3. **Any text that looks like JSON is parsed, at any depth.** Every VARCHAR value, not only JSON
-   columns, longer than one character, opening with `{` or `[` and parsing, is written as an
-   object or array: a product name `[1,2]` becomes an array. A string inside a JSON value is parsed
-   again (`{"a": "[1]"}` → `{"a": [1]}`). `NaN` and `Infinity` in JSON text become `null`. A JSON
-   value with an int past 64 bits, a lone `\uD800` escape, or non-empty nesting deeper than about
-   250 levels fails the whole response in orjson (500).
-4. **The many-to-one truncation warning never reaches the client.** `_serialize_flat` puts it in
-   `extensions.warnings`, and `_execute_one_field` keeps only `data[root_field]`. The check also
-   compares the new row's column tuple with the previous object's `values()`, so a repeated root
-   row whose to-one is null with two or more columns would be warned about falsely.
-5. **`_detect_truncated_paths` crashes on a null parent.** A repeated root row whose to-one parent
-   was null, with a nested to-one path under it (`rel` and `rel.sub`), walks into `None` and raises
-   `AttributeError`, a 500 (`test_detect_truncated_crash`).
-6. **List elements are keyed by `id(list)`.** When a one-to-many list hangs under a name its
-   many-to-one parent re-sets on every row (a parent field and a child relationship sharing a
-   response key), `update` drops the list each row, and a later row's element can match a stale
-   key when CPython reuses the dropped list's address, so the element vanishes. GraphQL validation
-   rejects such a selection (fields with one response key must merge), so this is latent. The
-   random plans that produce it are skipped, since CPython's address reuse cannot be reproduced.
-   The same collisions also merge a relationship into a JSON value of the same name (live-object
-   rule above).
-
-7. **A cache hit can answer differently from a miss.** An Arrow IPC cache entry (written by an
-   Arrow-transport query: the response cache is shared across transports, REQ-1897) is served as
-   rows by `raw_sql.entry_as_result` with plain `to_pylist`, not `column_values`. The same query
-   answered from such an entry writes an interval as `[14,3,5000000000]` where a miss writes
-   `"P1Y2M3DT5S"`, and raises `OverflowError` on an infinite date where a miss reads the IR
-   infinity.
-
-Not a defect, but worth knowing: root rows are deduplicated by the selected values, so a
-selection with no unique column collapses equal rows (`{ orders { status } }` returns one row per
-status). `tests/unit/test_serialize_properties.py` asserts this as intended.
-
-## What wiring it in would need
-
-- **Arrow at the call site.** `_execute_plan`'s buffered drain takes `stream.iter_rows()`, and
-  DuckDB's `run_sync` reads through Arrow only when an interval, date or timestamp column is
-  present (`READ_THROUGH_ARROW`); otherwise it fetches DB-API rows. The encoder needs the
-  engine's Arrow stream (`run_arrow_stream`) with the inline threshold counted on batches. DIRECT
-  and admin routes and the response cache hold Python rows, so they would need Arrow too, or would
-  stay on the Python path by name.
-- **A fragment API.** `_handle_query` merges root fields, and `_execute_one_field` hands
-  `field_rows` to `note_request_rows`, `_record_per_source_stats` and the Mermaid trace. The
-  encoder would return the field's array bytes plus its row count, and the endpoint would splice
-  the fragments into the envelope and answer with a raw `Response` (keeping the stage timer).
-- **The rest of the serializer.** `serialize_aggregate`, `serialize_connection` and every type
-  listed under "Not ported", or a refusal by name for each (no fallbacks).
-- **A decision on the product behaviors above.** The port is identical to them by design. Fixing
-  any of them (exact decimals, `infinity`, parsing only JSON-typed columns) changes the contract
-  for both paths at once and is a requirements decision.
-- **Packaging.** A maturin wheel per platform in place of `build.sh`; pyo3, arrow-rs, ryu, itoa
-  and hashbrown are MIT/Apache-2.0.
+- **Arrow at the call sites**, as J494 found: `_execute_plan`'s buffered drain hands rows today, and
+  DuckDB's `run_sync` reads Arrow only when an interval, date or timestamp column is present. Each
+  router (`_handle_query`/`_execute_one_field`, `rest_table_endpoint`, `_jsonapi_table_endpoint`,
+  OData's `_read`) needs the engine's record batches; DIRECT routes, the admin route and the response
+  cache hold Python rows and need Arrow too (REQ-2194's "the fetch path changes").
+- **The plan handed over** (`wiring.py`): `plan_tuples(compiled.columns)`; OData's
+  `odata_entity(entity, fields, plans)`, whose nested nextLink query is `page_link`'s, computed once
+  per expansion; the top-level `next_link` the router already computes; `warnings_json(as_entries())`
+  for JSON:API's `meta.warnings` and OData's `@Provisa.warnings`; JSON:API's name maps, keys, page
+  and link parameters, all of which the router builds before it serializes.
+- **Errors**: `ValueRefused` and `ResponseRefused` raised as the product's `JsonValueRefused` and
+  `JsonResponseRefused` (answered by name), `ODataRefused` as `QueryOptionRefused`, `EncodeError`
+  where the product answers 500.
+- **pytz**: the zone tables are pytz's; a startup check that `PYTZ_VERSION == pytz.__version__`
+  (or regenerating `src/pytz_data.rs` with the pytz the wheel pins) keeps them the product's.
+- **List views**: arrow-rs 56 cannot import a list view through the C data interface, and pyarrow
+  24's own list-view-to-list cast writes an invalid offsets buffer; `wiring.rust_batches` rebuilds a
+  list view column as the list it holds (numpy index arithmetic and pyarrow's `take`, no Python per
+  value). The product never asks DuckDB for list views (`arrow_output_list_view` is off).
+- **REST's Parquet and Arrow IPC answers** (`Accept: application/vnd.apache.parquet` /
+  `...arrow.stream`) are not JSON and are not ported: they build a pyarrow table from the shaped
+  Python rows (pyarrow infers each column's type from the converted values, so a DECIMAL arrives as a
+  string column). Answering them from the engine's batches directly changes their column types, a
+  contract decision (open question 1).
+- **Packaging**: a maturin build inside the provisa wheel (REQ-2194, amended) in place of
+  `build.sh`; pyo3, arrow-rs, ryu, itoa and hashbrown are MIT/Apache-2.0, and the generated tables
+  are data.
 
 ## Files
 
-- `Cargo.toml`, `Cargo.lock`, `.cargo/config.toml`: the cdylib (pyo3 + arrow-rs); macOS link flags.
-- `src/lib.rs`: the selection plan, the response tree, `_serialize_flat` and
-  `_serialize_with_one_to_many`, the entry point.
-- `src/cells.rs`: one converter per Arrow column type: the value, its key, its eager errors.
-- `src/jtext.rs`: `json.loads` and the nested conversion, orjson's writer, the `_to_hashable` key.
-- `src/fmt.rs`: orjson float and string text, `Decimal` conversion, dates, times, ISO 8601 durations.
-- `build.sh`: `cargo build --release`, then copies the module to `build/`. Nothing is installed
-  into any venv.
-- `breakdown.py`: the per-step timing of the Python path; `breakdown-2m.log` and
-  `breakdown-2m.json` hold its output.
-- `python_ref.py`: the product's path. `test_compare.py`: the differential test. `bench.py`: the
-  benchmark; `bench-2m.log` and `bench-2m.json` hold its output.
+- `Cargo.toml`, `Cargo.lock`, `.cargo/config.toml`, `build.sh`: the cdylib; `build.sh` also
+  extracts the reference product into `build/ref`. Nothing is installed into any venv.
+- `src/`: the crate (above). `tools/gen_pytz.py`, `tools/gen_printable.py`: the generated tables.
+- `wiring.py`: what a router hands the encoders.
+- `python_ref.py`: the product's path per surface. `check.py`: the comparison. `cases.py`: the
+  value corpus. `test_compare.py`, `test_surfaces.py`, `test_zones.py`: the differential tests.
+- `bench.py`, `run_bench.sh`: the benchmark; `bench-2m-<surface>.log` and `.json` hold its output.

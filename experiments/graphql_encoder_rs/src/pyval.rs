@@ -314,8 +314,12 @@ pub enum Reader {
 type OffsetBuffer32 = arrow::buffer::OffsetBuffer<i32>;
 type OffsetBuffer64 = arrow::buffer::OffsetBuffer<i64>;
 
+fn is_ext(f: &Field, name: &str) -> bool {
+    f.metadata().get("ARROW:extension:name").is_some_and(|n| n == name)
+}
+
 fn is_uuid(f: &Field) -> bool {
-    f.metadata().get("ARROW:extension:name").is_some_and(|n| n == "arrow.uuid")
+    is_ext(f, "arrow.uuid")
 }
 
 fn i64s<T: ArrowPrimitiveType>(a: &dyn Array) -> PrimitiveArray<Int64Type>
@@ -339,6 +343,7 @@ impl Reader {
         Ok(match a.data_type() {
             DataType::Null => Reader::Null,
             DataType::Boolean => Reader::Bool(a.as_boolean().clone()),
+            DataType::Int8 if is_ext(field, "arrow.bool8") => Reader::Bool(a.as_primitive::<Int8Type>().iter().map(|v| v.map(|x| x != 0)).collect()),
             DataType::Int8 => Reader::Int(i64s::<Int8Type>(a)),
             DataType::Int16 => Reader::Int(i64s::<Int16Type>(a)),
             DataType::Int32 => Reader::Int(i64s::<Int32Type>(a)),
@@ -439,7 +444,8 @@ impl Reader {
             DataType::Dictionary(_, vt) => {
                 let d = a.as_any_dictionary();
                 let vf = Field::new("", (**vt).clone(), true).with_metadata(field.metadata().clone());
-                Reader::Dict(d.normalized_keys(), d.keys().logical_nulls(), Box::new(Reader::new(&vf, d.values(), top)?))
+                // column_values sees a dictionary, not a date or an interval: plain to_pylist.
+                Reader::Dict(d.normalized_keys(), d.keys().logical_nulls(), Box::new(Reader::new(&vf, d.values(), false)?))
             }
             DataType::Union(fields, mode) => {
                 let u = a.as_any().downcast_ref::<UnionArray>().unwrap();

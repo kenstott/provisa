@@ -50,16 +50,34 @@ def rest(table, columns, agg_alias=None, batches=None):
     )
 
 
+def rest_csv(table, columns):
+    batches = table.to_batches()
+    return compare(
+        "rest_csv",
+        lambda: ref.rest_csv(table.schema, batches, columns, "t"),
+        lambda: rs.encode_rest_csv(rust_batches(batches), ref.plan_tuples(columns)),
+    )
+
+
 @pytest.mark.parametrize("name,arr,mode", SCALAR, ids=IDS)
 def test_rest_scalar(name, arr, mode):
     for table, cols in shapes(arr, mode):
         rest(table, cols)
+        rest_csv(table, cols)
+
+
+def test_rest_csv_quoting():
+    t = pa.table({"v": ["", "a,b", 'q"q', "line\nbreak", "cr\rx", " lead", None, "é"]})
+    for i in range(len(t)):
+        rest_csv(t.slice(i, 1), [C("v")])
+        rest_csv(pa.table({"id": [1], "v": t["v"].slice(i, 1)}), [C("id"), C("v")])
 
 
 @pytest.mark.parametrize("plan", list(NEST_PLANS), ids=list(NEST_PLANS))
 def test_rest_nesting(plan):
     t = project(orders(), NEST_PLANS[plan])
     rest(t, NEST_PLANS[plan])
+    rest_csv(t, NEST_PLANS[plan])
     assert rest(t.slice(0, 0), NEST_PLANS[plan]) == "ok"
     assert rest(t, NEST_PLANS[plan], batches=[]) == "ok"
 
@@ -68,6 +86,7 @@ def test_rest_nesting(plan):
 def test_rest_random(seed):
     _, t, plan = random_plan(seed)
     rest(t, plan)
+    rest_csv(t, plan)
 
 
 AGG_COLS = [
@@ -765,3 +784,21 @@ def test_json_columns_all_surfaces():
 def test_zz_tally():
     print(f"\nTALLY {dict(TALLY)}")
     assert TALLY["odata.cases"] > 0
+
+
+@pytest.mark.parametrize("depth", range(248, 256))
+def test_depth_boundaries(depth):
+    """orjson refuses nesting past 255 levels of the whole body: each envelope sits at its own
+    depth, so the boundary moves with the surface."""
+    for inner in ("", "1"):
+        text = "[" * depth + inner + "]" * depth
+        t = pa.table({"id": [1], "v": [text]})
+        rest(t, [C("id"), C("v", json=True)])
+        jsonapi(t, [C("id"), C("v", json=True)])
+        a = pa.table({"v": [text]})
+        agg = [C("v", "aggregate", json=True)]
+        compare(
+            "rest",
+            lambda a=a: ref.rest(a.schema, a.to_batches(), agg, "t", "aggregate"),
+            lambda a=a: rs.encode_rest(a.to_batches(), ref.plan_tuples(agg), "aggregate"),
+        )

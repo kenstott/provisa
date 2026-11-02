@@ -63,6 +63,12 @@ def encode(
     return body({"data": {root_field: response.get("data", {}).get(root_field, [])}})
 
 
+def shape(rows: list[tuple], columns: list[ColumnRef], root_field: str, result_limit: int | None):
+    """``_execute_one_field``'s field rows for a JSON answer (breakdown.py)."""
+    response = serialize_rows(rows, columns, root_field, result_limit=result_limit)
+    return response.get("data", {}).get(root_field, [])
+
+
 def plan_tuples(columns: list[ColumnRef]) -> list[tuple]:
     """The selection plan the Rust encoders take: what the serializer reads of each ColumnRef."""
     return [
@@ -96,6 +102,24 @@ def rest(
         return body({"data": agg_response["data"][root_field][agg_alias]})
     response_data = serialize_rows(rows, columns, root_field)
     return body({"data": response_data.get("data", {}).get(root_field, [])})
+
+
+def rest_csv(
+    schema: Any, batches: Sequence[Any], columns: list[ColumnRef], root_field: str
+) -> bytes:  # noqa: ANN401
+    """rest_table_endpoint 771-786: ``Accept: text/csv`` (the Response encodes the text as UTF-8)."""
+    import csv
+    import io
+
+    response_data = serialize_rows(arrow_rows(schema, batches), columns, root_field)
+    rows = response_data.get("data", {}).get(root_field, [])
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    if rows:
+        writer.writerow(rows[0].keys())
+        for row in rows:
+            writer.writerow(row.values())
+    return buf.getvalue().encode("utf-8")
 
 
 # ------------------------------------------------------------------ JSON:API

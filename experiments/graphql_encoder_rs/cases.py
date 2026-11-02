@@ -187,6 +187,32 @@ def scalar_cases():
     yield "enum", pa.array(["red", "green", None, "red", "[1]"]).dictionary_encode(), ("convert",)
     yield "dict<int>", pa.array([5, 6, None, 5]).dictionary_encode(), ("convert", "integer")
     yield (
+        "dict<date32>",
+        pa.array([0, 2**31 - 1, None, 0], pa.date32()).dictionary_encode(),
+        ("convert",),
+    )
+    yield (
+        "dict<interval>",
+        pa.DictionaryArray.from_arrays(
+            pa.array([0, 1, None, 0], pa.int8()),
+            pa.array(
+                [pa.MonthDayNano([1, 2, 3]), pa.MonthDayNano([0, 0, 0])],
+                pa.month_day_nano_interval(),
+            ),
+        ),
+        ("convert",),
+    )
+    yield (
+        "bool8",
+        pa.ExtensionArray.from_storage(pa.bool8(), pa.array([0, 1, 2, None], pa.int8())),
+        ("convert",),
+    )
+    yield (
+        "json-extension",
+        pa.ExtensionArray.from_storage(pa.json_(), pa.array(['{"a": 1}', None])),
+        ("convert", "json"),
+    )
+    yield (
         "binary",
         pa.array(
             [b"", b"\x00\xff", None] + [rng.randbytes(rng.randint(0, 40)) for _ in range(100)]

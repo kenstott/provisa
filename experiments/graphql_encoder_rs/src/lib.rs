@@ -116,6 +116,17 @@ fn encode_rest<'py>(
     })
 }
 
+/// `encode_rest_csv(batches, columns) -> bytes`: the REST table endpoint's `text/csv` answer.
+#[pyfunction]
+fn encode_rest_csv<'py>(py: Python<'py>, batches: Vec<PyArrowType<RecordBatch>>, columns: Vec<ColumnTuple>) -> PyResult<Bound<'py, PyBytes>> {
+    let batches = unwrap(batches);
+    let spec = spec_of(columns);
+    run(py, || {
+        let b = nest::prepare(&batches, &spec)?;
+        surfaces::rest_csv(&b, &spec)
+    })
+}
+
 /// `encode_jsonapi(...) -> bytes`: a JSON:API table read's compound document.
 #[pyfunction]
 #[pyo3(signature = (
@@ -253,6 +264,7 @@ fn encode_odata<'py>(
 fn graphql_encoder_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(encode_response, m)?)?;
     m.add_function(wrap_pyfunction!(encode_rest, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_rest_csv, m)?)?;
     m.add_function(wrap_pyfunction!(encode_jsonapi, m)?)?;
     m.add_function(wrap_pyfunction!(encode_jsonapi_group_by, m)?)?;
     m.add_function(wrap_pyfunction!(encode_jsonapi_aggregate, m)?)?;

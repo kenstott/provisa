@@ -99,6 +99,9 @@ def compare(surface: str, python, rust) -> str:
         TALLY[f"{surface}.both_raise"] += 1
         TALLY[f"{surface}.raise.{type(p_err).__name__}"] += 1
         return "raise"
-    same(parse(p), parse(r))
+    if surface.endswith("csv"):
+        assert p == r, f"python {p[:300]!r}; rust {r[:300]!r}"
+    else:
+        same(parse(p), parse(r))
     TALLY[f"{surface}.byte_identical"] += p == r
     return "ok"

@@ -77,6 +77,59 @@ pub fn rest(batches: &[Batch], spec: &[Col], agg_alias: Option<&str>) -> Res<Vec
     Ok(out)
 }
 
+/// REST with `Accept: text/csv`: `csv.writer` (the excel dialect, QUOTE_MINIMAL) over the rows
+/// `serialize_rows` built, the first row's keys as the header, each value as `str()` writes it
+/// (`repr` for a float, nothing for None).
+pub fn rest_csv(batches: &[Batch], spec: &[Col]) -> Res<Vec<u8>> {
+    let p = nest::plan(spec);
+    let mut e = Encoder::new(&p, spec);
+    let rows = e.rows(batches, &mut nest::Keep)?;
+    let t = &rows.tree;
+    let mut out = Vec::new();
+    let Some(&first) = rows.rows.first() else { return Ok(out) };
+    let header: Vec<Vec<u8>> = t.objs[first as usize].iter().map(|(k, _)| t.names.raw[*k as usize].clone()).collect();
+    csv_row(&mut out, header.iter().map(|h| Some(h.clone())).collect());
+    for &o in &rows.rows {
+        let fields = t.objs[o as usize]
+            .iter()
+            .map(|&(_, v)| {
+                if matches!(v, V::Null) {
+                    return None;
+                }
+                let mut s = Vec::new();
+                t.py_str(v, &mut s);
+                Some(s)
+            })
+            .collect();
+        csv_row(&mut out, fields);
+    }
+    Ok(out)
+}
+
+fn csv_row(out: &mut Vec<u8>, fields: Vec<Option<Vec<u8>>>) {
+    let only = fields.len() == 1;
+    for (i, f) in fields.iter().enumerate() {
+        if i > 0 {
+            out.push(b',');
+        }
+        let f = f.as_deref().unwrap_or(b"");
+        let quote = (only && f.is_empty()) || f.iter().any(|&c| matches!(c, b',' | b'"' | b'\r' | b'\n'));
+        if quote {
+            out.push(b'"');
+            for &c in f {
+                if c == b'"' {
+                    out.push(b'"');
+                }
+                out.push(c);
+            }
+            out.push(b'"');
+        } else {
+            out.extend_from_slice(f);
+        }
+    }
+    out.extend_from_slice(b"\r\n");
+}
+
 // ---------------------------------------------------------------- JSON:API
 
 /// What the router hands the document: the names (REQ-1417), the keys, the page.
