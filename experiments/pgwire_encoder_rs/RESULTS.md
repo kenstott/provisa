@@ -8,7 +8,9 @@ An experiment, isolated from the product: nothing in `provisa/` or `vendor/` cal
 `provisa.federation.runtime_support.stream_rows_from_arrow` (`column_values` per column, `zip` into
 row tuples) → `provisa.pgwire.server.ProvisaQueryResult` (column types from the engine's type names)
 → `buenavista.postgres.BuenaVistaHandler.send_data_rows` (the `BVTYPE_TO_PGTYPE` converters, DataRow
-framing, 500-row chunked writes). `python_ref.py` drives it into an in-memory writer.
+framing, 500-row chunked writes). `python_ref.py` drives it into an in-memory writer. The one
+substitution: a timestamp column in a named zone takes its local times from zoneinfo, not pytz
+(`python_ref.named_zones`; see Named time zones).
 
 **Rust (`src/`):** `pgwire_encoder_rs.encode_batch(batch, bvtypes, formats)` takes the same Arrow
 batch zero-copy through the Arrow C data interface (arrow-rs `pyarrow` feature), the BVType
@@ -19,80 +21,158 @@ encoding.
 
 ## Differential test (`test_compare.py`)
 
-**171 passed, 0 byte mismatches.** It covers 77 single-column cases, each run in text and binary
-format, plus the mixed and randomized tests listed below. In every case the bytes are identical, or
-both encoders raise. Covered:
+**1444 passed.** Every cell's bytes are identical, or both encoders raise, except a float4/float8
+cell or array element. That one is compared by its decoded value, within one part in 10^14
+(`REL_TOL`), with NaN equal to NaN and the sign of zero kept. A float4 text cell decodes to the float
+`strtof` reads, correctly rounded as PostgreSQL's `float4in` and JDBC read it. A float4 text cell is
+held to the float the product sends in **binary** for the same value, because the product's own text
+can name another float (product defect 4). The run covers 113 single-column cases in text and binary,
+the mixed and randomized tests listed below, a fixed table of PostgreSQL float forms, and the
+time-zone proof (1194 zone tests and 2 year-limit tests).
 
-- **bool**; **int2/int4/int8/oid** from every Arrow int width, with range overflow in binary
-  (int64 → INTEGER, uint64 → BIGINT, negative → OID).
-- **float8 text**: NaN, ±Infinity, −0, subnormals, max, the 15-digit fixed/exponent boundary, and
-  300,000 random bit patterns.
-- **float4 text**: 300,000 random bit patterns; a float64 column described as REAL; overflow.
-- **numeric**: decimal128 at many scales (80,000 random values), decimal256, negative scale, zero
-  with scale (`0E-10`), and int → numeric.
-- **text**: empty, unicode, NUL, 5,000 chars, every `str.isspace()` code point, large_string,
-  dictionary-encoded, and an all-NULL column.
-- **bytea**: hex in text, raw in binary.
-- **date**: years 1 and 9999, ±infinity sentinels, out of range.
-- **timestamp / timestamptz**: s, ms and µs units; UTC, `+05:30`, `-03:00`; ±infinity; years 1 and
-  9999; 200,000 random values; a naive column described as timestamptz, which raises in binary.
-- **time**: s, ms and µs units.
-- **interval**: month-day-nano (50,000 random), duration (s and µs), sign rules, nanosecond flooring,
-  timedelta range overflow.
-- **json/jsonb**: text passthrough; struct, map and list values through `json.dumps`, with
-  `ensure_ascii` escapes and surrogate pairs, NaN, and float repr.
-- **uuid**: hyphenated, upper-case, braces, `urn:uuid:` and bare spellings; a malformed value.
-- **arrays** (int2/4/8, float4/8, numeric, bool, text): element quoting, NULL elements, empty arrays,
-  large_list, 2-D arrays, and the ragged and NULL-sub-list errors.
-- **mixed batches**: a 10-column batch in default, text, binary and alternating formats, and a split
-  across 1-, 700- and 533-row batches.
+- **bool**; **int2/int4/int8/oid** from every Arrow int width, with range overflow in binary.
+- **float8**: NaN, ±Infinity, −0, subnormals, max, the fixed/exponent boundary, and 300,000 random
+  bit patterns. 60 of those 300,000 text cells differ in bytes from the product's `repr` digits (the
+  boundary and tie cases below), and all 60 are equal in value.
+- **float4**: 300,000 random bit patterns (431 text cells differ in bytes from the product, all
+  equal in value), a float64 column described as REAL (100,000 random values), and overflow.
+- **PostgreSQL float text** (`test_postgres_float_text`): 23 float8 and 14 float4 values against
+  the exact text PostgreSQL writes, including `1.2188652062118339e+17` and `-738171652909232.2`.
+- **JSON floats** (`test_random_json_floats`): 300,005 doubles in `json.dumps`, byte for byte. This
+  is Python `repr`, so it uses the stock ryu crate.
+- **numeric**, **text**, **bytea**, **json/jsonb**, **interval**, **arrays**, **mixed batches**: as
+  before (decimal128/256 at many scales, every `str.isspace()` code point, month-day-nano and
+  duration intervals, 2-D arrays, 1-/700-/533-row batch splits).
+- **date**: date32 with years 1 and 9999, ±infinity, out of range. **date64**: millisecond values
+  floored to the day (as `to_pylist` gives them), years 1 and 9999, before year 1, after 9999, and the
+  date32 infinity marker, which is a plain (out-of-range) day count in a date64.
+- **timestamp / timestamptz**: s, ms, µs and **ns** units. A ns value is a pandas `Timestamp` in
+  `to_pylist`, so its microseconds are floored, NaT (`int64` minimum) raises, and a zoned value whose
+  local time leaves pandas' int64 range raises (`OutOfBoundsDatetime`). Covered: UTC, `+05:30`,
+  `-03:00`, named zones (New York ns, Kolkata ms, Lord Howe s), an unknown zone (both raise), ±infinity,
+  years 1 and 9999, and 200,000 random values.
+- **time**: s, ms, µs and **ns**. A ns time is `pandas.Timestamp(v, unit="ns").time()`: the time of
+  day of that instant, so `86400·10^9` is `00:00:00` and `-1` is `23:59:59.999999`. NaT raises.
+- **interval** from **duration[ns]** (pandas `Timedelta`, floored to µs, NaT raises) and
+  duration[ms], beside the month-day-nano and duration[s/µs] cases.
+- **uuid**: the hyphenated, upper-case, braced, `urn:uuid:` and bare spellings, plus every spelling
+  `int(hex, 16)` takes inside `uuid.UUID`'s 32 characters. These are ASCII and Unicode whitespace
+  around the digits, `+`, `0x`/`0X` followed by one optional `_`, single `_` between digits, and
+  Unicode decimal digits (Arabic-Indic, full-width, mathematical, Adlam). 15 refused spellings each
+  have their own case. Also covered: large_string, an `arrow.uuid` extension column, and plain
+  `fixed_size_binary(16)` (`test_uuid_fixed_size_binary`, product defect 5).
 
-Run from the worktree root:
+### Floats: PostgreSQL's digits
 
-```
-experiments/pgwire_encoder_rs/build.sh
-PYTHONPATH=.:vendor/buenavista:experiments/pgwire_encoder_rs/build:experiments/pgwire_encoder_rs \
-  ~/.provisa-agent/heavy.sh .venv/bin/python -m pytest -p no:cacheprovider -q \
-  experiments/pgwire_encoder_rs/test_compare.py
-```
+`float8_text` and `float4_text` now write PostgreSQL 17's `float8out` and `float4out` with
+`extra_float_digits` at its default of 1, which selects the shortest-exact mode. The source is
+REL_17_STABLE `src/backend/utils/adt/float.c`, `src/common/d2s.c`, `f2s.c` and `ryu_common.h`:
 
-### Product behaviors the port had to reproduce
+- NaN (any sign, any payload) is `NaN`, then `Infinity`, `-Infinity`, and `-0` for negative zero.
+- The digits are Ryu's, but PostgreSQL builds Ryu with `STRICTLY_SHORTEST 0`
+  (`acceptBounds = false`). A decimal lying exactly on the boundary of the rounding interval is never
+  taken, so a few values get one digit more than the shortest: `1.2188652062118339e+17` where
+  `repr` writes `1.218865206211834e+17`. Exact ties round to even. The ryu crate takes boundaries,
+  which matches `repr`. `third_party/ryu-pg` is ryu 1.0.23 with that one flag set as PostgreSQL sets
+  it, in `d2s.rs` and `f2s.rs`. JSON keeps the stock crate.
+- The output is in fixed form when the first digit's decimal exponent is in [-4, 15) for float8 and
+  [-4, 6) for float4. Otherwise it is `d.ddde±XX`, with at least two exponent digits.
 
-Matching byte for byte meant porting these as they are. The first and third are product defects,
-reported here and not fixed (the product is out of scope for this job).
+The nine-candidate float4 search and the float8 tie fix-up are gone. **Live check**
+(`pg_float_check.py`): PostgreSQL 18.4 (Homebrew) on a throwaway cluster, over 300,016 float8 and
+300,011 float4 values (random bit patterns plus edges), gave **0 differences** from the encoder's
+text. PostgreSQL 18's `d2s.c`, `f2s.c`, `ryu_common.h`, `float8out_internal` and `float4out` differ
+from 17's in their copyright lines only. No PostgreSQL 17 binary is installed on this machine.
 
-1. **Binary numeric rounds past 28 significant digits.** `_numeric_to_pg_binary` calls `abs(d)`,
-   which applies the default decimal context (`prec=28`, round half to even). A `DECIMAL(38,s)`
-   value with more than 28 digits is sent in binary format rounded:
-   `1234567890123456789012345678.9999999999` goes out as `1234567890123456789012345679` with
-   dscale 0. Text format (`str(d)`) is exact. The Rust port applies the same rounding
-   (`fmt_num::context_round`); the `decimal_context_rounding*` cases pin it.
-2. **float8 text ties.** `repr` (David Gay's mode 0) breaks an exact tie between two shortest
-   candidates toward the even digit: `-738171652909232.25` is written `...232.2`. Rust's `{:e}`
-   writes `...232.3`. The port takes the correctly rounded form at the shortest length whenever 15
-   or more digits are needed, the only place such a tie can occur. This is not a product defect.
-3. **Interval days are split with float division.** `_interval_parts` computes
-   `int(micros / 86_400_000_000)`, a correctly rounded float quotient. Past about 100,000 days that
-   quotient rounds up across a day boundary. `timedelta(days=500000, microseconds=86399999999)` is
-   written `500001 days -00:00:00.000001`, where PostgreSQL writes `500000 days 23:59:59.999999`.
-   The value is equal, but the text is not PostgreSQL's. The port reproduces it exactly
+### Named time zones
+
+DuckDB's Arrow timestamptz carries the session `TimeZone`, and the encoder now takes any IANA name.
+It looks up the offset at each instant in **chrono-tz 0.10.4**, rebuilt from the IANA release
+vendored in `third_party/chrono-tz/tz` (with `filter-by-regex` and no filter set, the tables are
+generated from those files at build time). chrono-tz expands a zone's rules only for 1800–2099
+(`parse-zoneinfo`). From 2100 on, the encoder applies the zone's POSIX TZ rule (the TZif footer),
+which is what zoneinfo and PostgreSQL apply after a zone's last explicit transition. `src/tz.rs`
+reads `M` rules. `gen_tz_rules.py` writes `src/tz_rules.rs` by running `zic` over the same vendored
+files, and fails on any other rule form. zic's footers from the vendored source equal the tzdata
+package's for all 597 zones. Text offsets keep their seconds (`-04:56:02`), as PostgreSQL writes
+them.
+
+**What pyarrow uses here: pytz, not zoneinfo.** `to_pylist` of a zoned timestamp calls
+`string_to_tzinfo`, which takes pytz when it can import it. pytz 2026.2 is installed (pandas requires
+it). pytz reads only a TZif file's 32-bit data and rounds offsets to whole minutes. Over the
+differential's instants, `tz_pytz_diff.py` finds the product's own path differing from zoneinfo in
+536 of 597 zones:
+
+| instants | cells that differ |
+|---|---|
+| after 2037 (no DST at all: New York in July 2050 is `-05`) | 25,487 |
+| before 1901 (no transitions: LMT stays in force) | 23,390 |
+| 1901–2037 (LMT offsets rounded to the minute: `-04:56`) | 843 |
+
+PostgreSQL 17 agrees with zoneinfo on all three. The differential therefore takes a named zone's
+local time from **zoneinfo**, over the `tzdata` package. `python_ref.named_zones` moves the product's
+own `column_values` of the column in UTC into the zone, so infinities, NULLs and the product's
+formatters are unchanged. Fixed offsets and UTC still go through the unmodified path.
+
+**Proof** (`test_named_zone`, `test_named_zone_year_limits`): every zone in the tzdata package's list
+except `Factory` (597 zones, links included), in text and binary. Each zone is tested on:
+
+- 1 µs either side of, and at, every transition in its TZif file;
+- every transition zoneinfo makes in 2037, 2038, 2050, 2099, 2100, 2101, 2400, 5000, 9998 and 9999
+  (a day scan, then bisection to the second);
+- mid-month instants in years 1, 2, 9998 and 9999;
+- 200 random instants, plus ±infinity and NULL;
+- the same transitions in nanoseconds where they fall in the ns range;
+- each zone alone at the first and last instant of years 1..9999, where both encoders refuse a local
+  time outside those years.
+
+Every case encodes on the Python side (the test asserts it) and agrees. `Factory`, the placeholder
+zone of tzdata's `factory` file, is not among the files chrono-tz builds, so it is not served.
+
+**Pinned version and how it stays in step.** chrono-tz's tables, `tz_rules.rs` and the Python
+reference are all IANA **2026b**. The vendored `tz/` is `tzdata2026b.tar.gz` from data.iana.org,
+sha256 `114543d9f19a6bfeb5bca43686aea173d38755a3db1f2eec112647ae92c6f544`. The signature could not be
+checked: the keyserver was unreachable. pytz 2026.2 and the `tzdata` package (uv.lock) are 2026b too.
+The release's NEWS file labels its top entry "2026a" while its `version` file says 2026b, and
+chrono-tz takes its version from NEWS, so line 3 is corrected to 2026b. `test_tz_version` asserts
+`pgwire_encoder_rs.TZDB_VERSION` (chrono-tz) and `TZ_RULES_VERSION` (`tz_rules.rs`) both equal
+`tzdata.IANA_VERSION`, so a bump of either side fails until the other follows. To bump: replace
+`third_party/chrono-tz/tz` with the new release's files, rerun `gen_tz_rules.py`, and bump `tzdata`
+in uv.lock to the same release. PostgreSQL itself takes zones from its own build's tz data (or the
+system's), which a deployment pins separately.
+
+### Product behaviors the port reproduces
+
+1. **Binary numeric rounds past 28 significant digits** (`abs(d)` under the default decimal
+   context). Ported, as before (`fmt_num::context_round`).
+2. *(Gone.)* The float8 tie rule no longer needs porting: both sides round exact ties to even, and
+   floats compare by value.
+3. **Interval days are split with float division** (`_interval_parts`). Ported, as before
    (`temporal::trunc_true_div`).
+4. **New: float4 text of a double described as REAL can name another float.** `_float4_text`
+   searches the *double's* 1..9-digit roundings. When none reads back, it writes the double's 9 digits,
+   and that text can sit across a float midpoint: `-3.5713408890908175e-09` is sent as
+   `-3.57134089e-09`, which `strtof` reads as a different float from the one the product sends in
+   binary (`-3.5713408e-09`, PostgreSQL's text for that float). This happens for 293 of 100,000
+   random values. The encoder writes the float's own digits.
+5. **New: a plain `fixed_size_binary(16)` UUID column is written as `str(bytes)`** in text
+   (`b'\xa0\xee...'`) and refused in binary. The encoder writes the UUID, as the product does for the
+   same bytes under the `arrow.uuid` extension.
+6. **New: named zones come from pytz** (above). The encoder answers as zoneinfo and PostgreSQL do.
+7. **New, ported: a zoned ns value whose local time leaves pandas' int64 range is refused**
+   (`OutOfBoundsDatetime`, within hours of 1677-09-21 and 2262-04-11). PostgreSQL would write it.
 
 ### Not ported (Rust raises `NotImplementedError`; Python would encode)
 
-- Timestamps in a named time zone (`America/New_York`). pyarrow converts these with pytz; only UTC
-  and fixed `±HH:MM` offsets are ported. DuckDB's Arrow timestamptz carries the session `TimeZone`,
-  so this matters if the engine's session zone is not UTC.
-- Nanosecond timestamps, times and durations (to_pylist yields pandas objects), and date64.
-- UUID spellings that `int(hex, 16)` accepts besides plain hex digits (whitespace, `_`, `0x`), and
-  UUIDs stored as fixed_size_binary(16).
-- A 2-D text array whose first sub-list is empty or NULL. Python's binary path writes `str(list)` for
-  each inner list; the port refuses.
-- Every other BVType: inet, cidr, money, geometric, range, tsvector, xml, the catalog types, and
-  the interval/money/oid arrays.
-- `RawDataRowBytes` passthrough, and the row coercers (`_SHAPE_COERCERS`, `_describe_casts`, `xml_out`,
-  `_duckdb_inet`) that `ProvisaQueryResult` applies to a described statement's rows. The benchmark
-  and test results carry no coercers.
+- A 2-D text array whose first sub-list is empty or NULL (Python's binary path writes `str(list)` for
+  each inner list).
+- Every other BVType: inet, cidr, money, geometric, range, tsvector, xml, the catalog types, and the
+  interval/money/oid arrays.
+- `RawDataRowBytes` passthrough, and the row coercers (`_SHAPE_COERCERS`, `_describe_casts`,
+  `xml_out`, `_duckdb_inet`).
+
+Named zones, ns timestamps/times/durations, date64, the `int()` UUID spellings and
+`fixed_size_binary(16)` UUIDs are ported. None of them raises `NotImplementedError`.
 
 ## Benchmark (`bench.py`)
 
@@ -120,17 +200,31 @@ one job slot).
 | parent_id | int64 | BIGINT | 20% |
 
 **Method:** each run is end to end, Arrow batches in and DataRow bytes out, with the output counted
-and not kept. The bytes of the first two batches were checked identical before timing, and the
-total row and byte counts agree. Best of 3 runs for Python and best of 5 for Rust. CPU time is
-`process_time`. Free memory stayed at about 49% (the guard aborts under 25%).
+and not kept. Before timing, the first two batches are checked to agree as the differential holds
+them: every cell's bytes, and a float cell's value within 10^-14. The row counts agree. So do the
+byte totals on this data (1,022,938,083 text, 793,313,142 binary), although float text may differ in
+length. Best of 3 runs for Python and best of 5 for Rust. CPU time is `process_time`. Free memory
+stayed at about 46% (the guard aborts under 25%).
+
+**After (this job, J492a: PostgreSQL float digits by Ryu, named zones and the new units):**
 
 | format | rows | DataRow bytes | Python wall (cpu) | Rust wall (cpu) | Python | Rust | speedup |
 |---|---|---|---|---|---|---|---|
-| text | 5,000,000 | 1,022.9 MB | 70.25 s (69.98 s) | 4.830 s (4.804 s) | 0.071 Mrow/s, 14.6 MB/s | 1.04 Mrow/s, 211.8 MB/s | **14.5×** |
-| binary | 5,000,000 | 793.3 MB | 51.14 s (50.98 s) | 1.254 s (1.239 s) | 0.098 Mrow/s, 15.5 MB/s | 3.99 Mrow/s, 632.9 MB/s | **40.8×** |
+| text | 5,000,000 | 1,022.9 MB | 69.77 s (69.53 s) | 1.461 s (1.448 s) | 0.072 Mrow/s, 14.7 MB/s | 3.42 Mrow/s, 699.9 MB/s | **47.7×** |
+| binary | 5,000,000 | 793.3 MB | 50.98 s (50.87 s) | 1.242 s (1.229 s) | 0.098 Mrow/s, 15.6 MB/s | 4.03 Mrow/s, 638.6 MB/s | **41.0×** |
 
-Run-to-run spread: Python 70.2–71.6 s (text) and 51.1–52.9 s (binary); Rust 4.83–4.91 s (text)
-and 1.25–1.39 s (binary). The full output is in `bench-5m.log`.
+Run-to-run spread: Python 69.77–70.15 s (text) and 50.98–51.38 s (binary); Rust 1.461–1.512 s
+(text) and 1.242–1.299 s (binary). The full output is in `bench-5m.log`.
+
+**Before (J483, b7b76b854: the nine-candidate float4 search, core's float8 formatter):**
+
+| format | Python wall (cpu) | Rust wall (cpu) | speedup |
+|---|---|---|---|
+| text | 70.25 s (69.98 s) | 4.830 s (4.804 s) | 14.5× |
+| binary | 51.14 s (50.98 s) | 1.254 s (1.239 s) | 40.8× |
+
+Rust text went from 4.830 s to 1.461 s (3.3× faster). Binary is unchanged within the run-to-run
+spread, since binary floats were never formatted. Python's times are the same path, measured again.
 
 ### Where the Python time goes
 
@@ -152,20 +246,27 @@ and 1.25–1.39 s (binary). The full output is in `bench-5m.log`.
   - Binary format: `_numeric_to_pg_binary` costs 3.0 s, by string slicing of `format(d, "f")`.
     `_timestamp_binary` costs 1.3 s (tz `replace` plus datetime subtraction per value). The int
     columns cost about 2.2M `int.to_bytes` calls.
-- **What is left in Rust.** Text costs 4× binary (4.8 s against 1.25 s). Most of that is float text:
-  float4 keeps the product's digit search (up to nine exact formats and parses per value, for
-  byte-identity), and float8 uses core's shortest formatter. A faster float4 (shortest f32 digits,
-  then one confirming parse) is possible but would need its own proof of identity against the
-  double-rounding read-back the product does.
+- **What is left in Rust.** Text now costs 1.18× binary (1.46 s against 1.24 s). The float4 digit
+  search is gone: one Ryu call gives a float's digits, and float8 takes one Ryu call where it used
+  core's formatter plus a second correctly rounded format at 15+ digits.
 
 ## Files
 
-- `Cargo.toml`, `Cargo.lock`, `.cargo/config.toml`: the cdylib (pyo3 + arrow-rs); macOS link flags.
-- `src/lib.rs`: kinds, Arrow access, per-type writers, arrays, DataRow framing, Python entry points.
-- `src/fmt_num.rs`: float8/float4 text, float repr, `Decimal.__str__`, binary numeric.
-- `src/temporal.rs`: date, timestamp, time and interval text and parts.
+- `Cargo.toml`, `Cargo.lock`, `.cargo/config.toml`, `rustfmt.toml`: the cdylib (pyo3 + arrow-rs);
+  macOS link flags; 120-column formatting.
+- `src/lib.rs`: kinds, Arrow access, per-type writers (UUID parsing as `int(hex, 16)` reads it),
+  arrays, DataRow framing, Python entry points, `TZDB_VERSION` and `TZ_RULES_VERSION`.
+- `src/fmt_num.rs`: float8/float4 text (PostgreSQL's digits), float repr, `Decimal.__str__`, binary
+  numeric.
+- `src/temporal.rs`: date, timestamp, time and interval text and parts; time units; zones.
+- `src/tz.rs`: a named zone's offset (chrono-tz, then the POSIX rule from 2100).
+  `src/tz_rules.rs`: each zone's POSIX rule, generated by `gen_tz_rules.py`.
 - `src/json.rs`: `json.dumps` of Arrow nested values.
+- `third_party/chrono-tz`: chrono-tz 0.10.4's source (MIT OR Apache-2.0) with `tz/` replaced by IANA
+  tzdata 2026b. `third_party/ryu-pg`: ryu 1.0.23 (Apache-2.0 OR BSL-1.0) with acceptBounds false.
+  These are path dependencies of this crate only; packaging them is J492d's call.
 - `build.sh`: `cargo build --release`, then copies the module to `build/`. Nothing is installed into
   any venv.
 - `python_ref.py`: drives the product's Python path. `test_compare.py`: the differential test.
-  `bench.py`: the benchmark. `bench-5m.log`: the benchmark's output.
+  `bench.py`: the benchmark. `bench-5m.log`: the benchmark's output. `pg_float_check.py`: the live
+  PostgreSQL float text check. `tz_pytz_diff.py`: the product's pytz path against zoneinfo.
