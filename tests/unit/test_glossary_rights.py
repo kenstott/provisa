@@ -199,3 +199,72 @@ def test_org_admin_alone_owns_the_org_glossary(role_id):
 def test_the_org_owner_also_holds_the_ordinary_rights():
     # It widens what a curator may do; it does not replace the right that opens the surface.
     assert {"glossary_read", "glossary_rw"} <= _db_seed("org_admin")
+
+
+# --- the picker's roster -------------------------------------------------------------------------
+
+
+def test_the_sandbox_curates_without_user_management():
+    # Why the picker has a roster of its own: the role a "Try it Out" visitor holds curates the
+    # glossary, so the page fills an author/expert picker for it, but is withheld user_management
+    # (REQ-1608) -- the right the team page's /orgs/{id}/members answers to. Read from there, the
+    # visitor's term page showed "fetchOrgMembers failed (403)".
+    from provisa.core.db import STANDARD_ROLE_RIGHTS
+
+    assert "glossary_rw" in STANDARD_ROLE_RIGHTS["sandbox"]
+    assert "user_management" not in STANDARD_ROLE_RIGHTS["sandbox"]
+
+
+def test_the_picker_roster_is_gated_on_glossary_rw():
+    assert _endpoint_gates()["GET /people"] == "glossary_rw"
+
+
+@pytest.fixture
+def roster(monkeypatch):
+    import provisa.core.org_membership as membership
+    from provisa.api.app import state
+
+    asked: list[str] = []
+
+    async def _roster(admin_db, org_id):
+        asked.append(org_id)
+        return [
+            {
+                "user_id": "u1",
+                "email": "ada@acme.test",
+                "display_name": "Ada Lovelace",
+                "provider": "google",
+                "created_at": "2026-10-01T00:00:00Z",
+            }
+        ]
+
+    monkeypatch.setattr(membership, "org_roster", _roster)
+    monkeypatch.setattr(state, "admin_db", object())
+    return asked
+
+
+def _curator_request(caps: set[str]):
+    request = _request(caps)
+    request.state.active_org_id = "acme"
+    return request
+
+
+async def test_a_curator_without_user_management_reads_who_is_in_the_org(resolve_caps, roster):
+    from provisa.api.admin.glossary_router import attributable_people
+
+    resolve_caps({"glossary_read", "glossary_rw"})
+    people = await attributable_people(_curator_request({"glossary_read", "glossary_rw"}))
+    assert roster == ["acme"]
+    # Who each person is, and nothing of how they sign in or when they joined: that is the team
+    # page's, under user_management.
+    assert people == [{"user_id": "u1", "email": "ada@acme.test", "display_name": "Ada Lovelace"}]
+
+
+async def test_a_reader_is_refused_the_roster(resolve_caps, roster):
+    from provisa.api.admin.glossary_router import attributable_people
+
+    resolve_caps({"glossary_read"})
+    with pytest.raises(ApiError) as err:
+        await attributable_people(_curator_request({"glossary_read"}))
+    assert err.value.status_code == 403
+    assert roster == []

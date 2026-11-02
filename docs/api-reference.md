@@ -1397,6 +1397,7 @@ All endpoints are under `/admin/glossary` and need a configured org. Reading tak
 | `DELETE` | `/admin/glossary/terms/{term_id}/edges` | Remove an edge (query params: `to_term_id`, `rel_type`) |
 | `POST` | `/admin/glossary/terms/{term_id}/experts` | Tag a user as an expert or author for a term |
 | `DELETE` | `/admin/glossary/terms/{term_id}/experts/{user_id}` | Remove a user's expert/author designation |
+| `GET` | `/admin/glossary/people` | The org's members a term can name as expert or author: `user_id`, `email`, `display_name`. Takes `glossary_rw`, not `user_management` |
 | `POST` | `/admin/glossary/terms/{term_id}/definition/generate` | Draft a definition for one term using the org's AI model; returns text only, and nothing persists until saved |
 | `POST` | `/admin/glossary/definitions/generate` | Generate and persist definitions for every term that has none; never overwrites human-authored text |
 | `POST` | `/admin/glossary/relationships/generate` | Propose and persist typed edges across the whole glossary using the org's AI model |
