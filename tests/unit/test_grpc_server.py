@@ -665,8 +665,7 @@ def _fake_field(name, message_type=None, repeated=False):
         name=name,
         type=FieldDescriptor.TYPE_MESSAGE if message_type else FieldDescriptor.TYPE_STRING,
         message_type=message_type,
-        label=FieldDescriptor.LABEL_REPEATED if repeated else FieldDescriptor.LABEL_OPTIONAL,
-        LABEL_REPEATED=FieldDescriptor.LABEL_REPEATED,
+        is_repeated=repeated,  # protobuf 6.33 deprecates ``label`` for this
     )
 
 
