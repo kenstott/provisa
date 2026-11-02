@@ -5904,7 +5904,7 @@ AF2 is delivered in OS phases. AF2a (immediate): macOS arm64/x86 signed + notari
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** infrastructure
 
-Phase 1 (AF1, complete): Shell script installer with Docker Compose, `provisa` CLI wrapper, state in `~/.provisa/`. Requires Docker/OrbStack/Colima. Phase 2 (AF2): Airgapped native app bundle: Lima + containerd embedded, all service images bundled as `.tar` archives, zero outbound network at install or runtime. AF3 (native OS packages via Homebrew/.deb/.rpm) is superseded by AF2.
+Phase 1 (AF1, complete): Shell script installer with Docker Compose, `provisa` CLI wrapper, state in `~/.provisa/`. Requires Docker/OrbStack/Colima. Phase 2 (AF2): Airgapped native app bundle: [SUPERSEDED by REQ-228, 2026-11-02 -- Lima is no longer used. Kept here for history; do not implement against it.] Lima + containerd embedded, [END SUPERSEDED BLOCK] all service images bundled as `.tar` archives, zero outbound network at install or runtime. AF3 (native OS packages via Homebrew/.deb/.rpm) is superseded by AF2. (Amended 2026-11-02, No Lima:) Maintainer 2026-11-02: Lima is no longer used. On macOS the default native tier is a bundled Python runtime with no Docker and no VM; the optional Docker tier runs on the user's own Docker (Docker Desktop or colima) with images loaded from the core-images tarball through docker-compose.airgap.yml; Windows' container tier is WSL2 + containerd. OVA is retired ([REQ-633](#REQ-633)).
 
 **Use case:** AF2 airgapped bundle removes the Docker prerequisite so enterprise users with no internet access can install.
 
@@ -8702,9 +8702,9 @@ NOT NULL JSON columns in schema_org.py carry server_default values ('[]' for lis
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
 
-Core runtime image set (docker-compose.core.yml + OVA/Lima bundles) must include busybox as a core dependency; no third-party billing mock service is bundled in any compose (dev/core/airgap); python:3.12-slim is build-time only and excluded from packaged/airgapped runtime images.
+Core runtime image set [SUPERSEDED by REQ-854, 2026-11-02 -- OVA and Lima are retired; the core-images tarball is loaded into the user's Docker or WSL2 containerd. Kept here for history; do not implement against it.] (docker-compose.core.yml + OVA/Lima bundles) [END SUPERSEDED BLOCK] must include busybox as a core dependency; no third-party billing mock service is bundled in any compose (dev/core/airgap); python:3.12-slim is build-time only and excluded from packaged/airgapped runtime images. (Amended 2026-11-02, No OVA or Lima:) Maintainer 2026-11-02: Lima is no longer used. On macOS the default native tier is a bundled Python runtime with no Docker and no VM; the optional Docker tier runs on the user's own Docker (Docker Desktop or colima) with images loaded from the core-images tarball through docker-compose.airgap.yml; Windows' container tier is WSL2 + containerd. OVA is retired ([REQ-633](#REQ-633)).
 
-**Use case:** Busybox is required at runtime (trino-exchange-init service uses it to chown /data/provisa/exchange before Trino starts). Lemon Squeezy is called over the public REST API; tests stub it via HTTP fixtures (LEMONSQUEEZY_BASE_URL), not bundled mocks. Python:3.12-slim exists only as a build base for OVA/Lima source builds. This separation ensures airgapped deployments include all runtime dependencies and excludes unnecessary dev/mock components.
+**Use case:** Busybox is required at runtime (trino-exchange-init service uses it to chown /data/provisa/exchange before Trino starts). Lemon Squeezy is called over the public REST API; tests stub it via HTTP fixtures (LEMONSQUEEZY_BASE_URL), not bundled mocks. Python:3.12-slim exists only as a build base for core-images builds. This separation ensures airgapped deployments include all runtime dependencies and excludes unnecessary dev/mock components.
 
 **Code:** `docker-compose.core.yml`, `docker-compose.dev.yml`, `.github/workflows/build-dmg.yml`
 
@@ -10942,7 +10942,7 @@ Documented lift-and-shift portability to Vultr (flat pricing + bundled bandwidth
 
 **Status:** ↪ superseded by [REQ-1331](#REQ-1331) · **Priority:** MUST · **Type:** constraint
 
-[SUPERSEDED by [REQ-1331](#REQ-1331), 2026-10-03 -- The SaaS front door VM, Cloud SQL and the coordinator are provisioned and running at cloud.provisa.dev with no signed customer. Kept here for history; do not implement against it.] No cloud infrastructure is provisioned until a customer is signed; pre-customer sunk cost limited to a domain and a free Firebase project. [END SUPERSEDED BLOCK] Cold-start relies on [REQ-854](#REQ-854) OVA/Lima bundles for sub-hour spin-up.
+[SUPERSEDED by [REQ-1331](#REQ-1331), 2026-10-03 -- The SaaS front door VM, Cloud SQL and the coordinator are provisioned and running at cloud.provisa.dev with no signed customer. Kept here for history; do not implement against it.] No cloud infrastructure is provisioned until a customer is signed; pre-customer sunk cost limited to a domain and a free Firebase project. [END SUPERSEDED BLOCK] [SUPERSEDED by [REQ-854](#REQ-854), 2026-11-02 -- OVA and Lima are retired. Kept here for history; do not implement against it.] Cold-start relies on [REQ-854](#REQ-854) OVA/Lima bundles for sub-hour spin-up. [END SUPERSEDED BLOCK]
 
 **Use case:** Minimizes pre-revenue spending. Defers fixed infrastructure costs until revenue justifies them, reducing financial risk during customer acquisition.
 
