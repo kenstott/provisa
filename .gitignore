@@ -199,3 +199,10 @@ demo/named/*/seeded/
 demo/named/*/dump/
 # What a named demo's stores and seeder write on their bind mounts (docs/named-demos.md).
 demo/named/*/data/
+
+# The encoder crates' cargo output, and the provisa._encoders module an editable install compiles
+# into the checkout (REQ-2194)
+/experiments/pgwire_encoder_rs/target/
+/rust/encoders/target/
+/provisa/_encoders*.so
+/provisa/_encoders*.pyd

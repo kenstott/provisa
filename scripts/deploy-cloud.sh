@@ -209,8 +209,29 @@ build_api() {
   echo "== packaging python package"
   # provisa/_graph_render is a checkout's symlink to provisa-ui/graph-render (gitignored); the image
   # carries the built renderer there as a directory, which a pushed symlink cannot replace.
+  # REQ-2194: provisa's compiled encoders (provisa._encoders), taken from provisa's Linux wheels,
+  # which the Dockerfile's provisa-wheel stage builds from this checkout for both architectures.
+  # Each module file is given its architecture's name (_encoders.cpython-312-<arch>-linux-gnu.so),
+  # so the one pushed tree imports on an amd64 node and an arm64 one alike. A checkout's own
+  # (macOS) module stays out.
+  echo "== compiling provisa's encoders (linux/amd64, linux/arm64)"
+  rm -rf "$STAGE/encoders"
+  local platform arch wheel
+  for platform in linux/amd64 linux/arm64; do
+    arch=x86_64; [ "$platform" = linux/arm64 ] && arch=aarch64
+    docker build --quiet --platform "$platform" --target provisa-wheel \
+      --output "type=local,dest=$STAGE/encoders/$arch" "$REPO" >/dev/null
+    wheel="$(ls "$STAGE/encoders/$arch"/provisa-*-manylinux_2_28_"$arch".whl)"
+    unzip -q -o "$wheel" 'provisa/_encoders*.so' -d "$STAGE/encoders/$arch/tree"
+    mkdir -p "$STAGE/encoders/tree/provisa"
+    mv "$STAGE/encoders/$arch"/tree/provisa/_encoders*.so \
+      "$STAGE/encoders/tree/provisa/_encoders.cpython-312-$arch-linux-gnu.so"
+  done
   tar czf "$STAGE/api.tgz" -C "$REPO" --exclude='__pycache__' --exclude='*.pyc' \
-    --exclude='provisa/_graph_render' provisa -C "$REPO/vendor/buenavista" buenavista
+    --exclude='provisa/_graph_render' --exclude='provisa/_encoders*-darwin.so' provisa \
+    -C "$REPO/vendor/buenavista" buenavista \
+    -C "$STAGE/encoders/tree" provisa/_encoders.cpython-312-x86_64-linux-gnu.so \
+    provisa/_encoders.cpython-312-aarch64-linux-gnu.so
 }
 
 push_api() {
