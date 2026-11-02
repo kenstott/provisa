@@ -165,8 +165,10 @@ def _build_rel_json_kv(
     Nested relationships produce correlated subqueries at value positions.
     Uses SQL-standard json_object syntax so sqlglot transpiles correctly to the engine.
     ``json_text`` collects the key paths (under ``key_prefix``) whose value is JSON an engine
-    may embed as text: a nested relationship, a declared object, a json or jsonb column
-    (REQ-1867, ColumnRef.json_text).
+    may embed as text: a nested relationship, a declared object -- each always an object, an
+    array or null, so a string there is the engine's text of one (REQ-1867, ColumnRef.json_text).
+    A json or jsonb column is not among them: the engine embeds it as the JSON it is, a JSON
+    string included.
     """
     kv_pairs: list[str] = []
     for sel in selections:
@@ -273,10 +275,6 @@ def _build_rel_json_kv(
                 phys_col = ctx.exposed_to_physical.get((table_meta.table_id, name), name)
                 sql_col = ctx.physical_to_sql.get((table_meta.table_id, phys_col), phys_col)
                 kv_pairs.append(f"KEY '{key}' VALUE {_q(table_alias)}.{_q(sql_col)}")
-                if json_text is not None and (table_meta.table_id, phys_col.lower()) in (
-                    ctx.json_columns
-                ):
-                    json_text.add(f"{key_prefix}{key}")
 
     return kv_pairs, alias_counter
 

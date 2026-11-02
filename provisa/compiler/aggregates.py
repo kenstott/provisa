@@ -291,8 +291,6 @@ def _nodes_column(
         else:
             phys = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
             pairs.append(f"KEY '{key}' VALUE {_scalar_sql(phys)}")
-            if (table.table_id, phys.lower()) in ctx.json_columns:
-                json_text.add(key)
     if not pairs:
         return None
     nodes_key = nodes_sel.alias.value if nodes_sel.alias else "nodes"

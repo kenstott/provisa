@@ -237,8 +237,8 @@ class ColumnRef:
     # text is written as the string it is, even when it reads as JSON.
     json: bool = False
     # REQ-1867: the key paths ("items", "items.product") inside a JSON value whose strings are
-    # JSON text the engine wrote: a nested relationship Trino's json_format turns into text, a json
-    # column inside the object. Every other string inside the value is a string.
+    # JSON text the engine wrote: a nested relationship or declared object, which Trino's
+    # json_format turns into text. Every other string inside the value is a string.
     json_text: frozenset[str] = frozenset()
 
 

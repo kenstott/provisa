@@ -13,21 +13,10 @@
 from __future__ import annotations
 
 import json
-from decimal import Decimal
 
 from provisa.compiler.sql_gen import ColumnRef
 
-# Requirements: REQ-048
-
-
-class _Encoder(json.JSONEncoder):
-    def default(self, o):
-        if isinstance(o, Decimal):
-            f = float(o)
-            if f == int(f) and "." not in str(o):
-                return int(f)
-            return f
-        return super().default(o)
+# Requirements: REQ-048, REQ-1867
 
 
 def rows_to_ndjson(  # REQ-048
@@ -36,13 +25,16 @@ def rows_to_ndjson(  # REQ-048
 ) -> str:
     """Serialize rows to NDJSON (one JSON object per line).
 
-    Returns flat objects — no nesting. Each row is a dict of column_name → value.
+    Returns flat objects — no nesting. Each row is a dict of column_name → value, each value as
+    the JSON answer writes it (serialize.column_value, REQ-1867).
     """
+    from provisa.executor.serialize import column_value
+
     lines: list[str] = []
     for row in rows:
         obj: dict = {}
         for i, col in enumerate(columns):
             key = f"{col.nested_in}.{col.field_name}" if col.nested_in else col.field_name
-            obj[key] = row[i]
-        lines.append(json.dumps(obj, cls=_Encoder))
+            obj[key] = column_value(row[i], col)
+        lines.append(json.dumps(obj))
     return "\n".join(lines) + ("\n" if lines else "")
