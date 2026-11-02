@@ -1510,7 +1510,8 @@ def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
         node.set("modifiers", None)
     if first_only:  # PostgreSQL replaces the first match unless the 'g' flag says every one
         for node in replaces:
-            if node not in flagged and node.args.get("modifiers") is None:
+            positioned = node.args.get("position") is not None  # its row reads the start and N
+            if node not in flagged and node.args.get("modifiers") is None and not positioned:
                 node.set("modifiers", exp.Literal.string(function_macros.FIRST_MATCH))
     return tree.sql(dialect="postgres")
 

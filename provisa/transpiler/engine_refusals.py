@@ -156,7 +156,7 @@ _MOST_ARGUMENTS = {
     "bpchar": 1,
     "length": 1,
     "regexp_count": 2,
-    "regexp_replace": 4,
+    "regexp_replace": 5,
     "regexp_like": 2,
     "timestamp_trunc": 2,
     "date_trunc": 2,
