@@ -37,6 +37,12 @@
     "noRows": "Aucune ligne ne correspond.",
     "rowsCutTitle": "Toutes les lignes n'ont pas été renvoyées",
     "warningsTitle": "À propos de cette réponse",
-    "provenanceUrl": "Requête OData"
+    "provenanceUrl": "Requête OData",
+    "handoffNotService": "Ce n'est pas une adresse du service OData : {{url}}",
+    "handoffPath": "L'explorateur lit un jeu d'entités entier ; {{path}} n'en désigne qu'une partie.",
+    "handoffOption": "L'explorateur ne peut pas définir {{option}}={{value}}.",
+    "handoffNumber": "{{option}} doit être un nombre entier, et non {{value}}.",
+    "handoffNoSet": "Il n'existe aucun jeu d'entités {{set}} pour ce rôle.",
+    "handoffMember": "{{set}} n'a pas de {{name}} pour {{option}}."
   }
 }

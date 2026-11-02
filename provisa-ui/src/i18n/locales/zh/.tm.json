@@ -9076,5 +9076,11 @@
   "zh/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh/odataPage.json::odataPage.handoffNotService": "Not an address of the OData service: {{url}}",
+  "zh/odataPage.json::odataPage.handoffPath": "The explorer reads a whole entity set; {{path}} addresses part of one.",
+  "zh/odataPage.json::odataPage.handoffOption": "The explorer cannot set {{option}}={{value}}.",
+  "zh/odataPage.json::odataPage.handoffNumber": "{{option}} must be a whole number, not {{value}}.",
+  "zh/odataPage.json::odataPage.handoffNoSet": "There is no entity set {{set}} for this role.",
+  "zh/odataPage.json::odataPage.handoffMember": "{{set}} has no {{name}} for {{option}}."
 }

@@ -37,6 +37,12 @@
     "noRows": "一致する行はありません。",
     "rowsCutTitle": "すべての行が返されたわけではありません",
     "warningsTitle": "この回答について",
-    "provenanceUrl": "OData 要求"
+    "provenanceUrl": "OData 要求",
+    "handoffNotService": "OData サービスのアドレスではありません: {{url}}",
+    "handoffPath": "エクスプローラーはエンティティセット全体を読み取ります。{{path}} はその一部を指しています。",
+    "handoffOption": "エクスプローラーでは {{option}}={{value}} を設定できません。",
+    "handoffNumber": "{{option}} は整数である必要があります ({{value}} ではありません)。",
+    "handoffNoSet": "このロールにはエンティティセット {{set}} がありません。",
+    "handoffMember": "{{set}} には {{option}} の {{name}} がありません。"
   }
 }

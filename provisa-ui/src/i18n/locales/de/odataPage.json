@@ -37,6 +37,12 @@
     "noRows": "Keine Zeilen gefunden.",
     "rowsCutTitle": "Nicht alle Zeilen wurden zurückgegeben",
     "warningsTitle": "Zu dieser Antwort",
-    "provenanceUrl": "OData-Anforderung"
+    "provenanceUrl": "OData-Anforderung",
+    "handoffNotService": "Keine Adresse des OData-Dienstes: {{url}}",
+    "handoffPath": "Der Explorer liest ein ganzes Entity Set; {{path}} adressiert nur einen Teil davon.",
+    "handoffOption": "Der Explorer kann {{option}}={{value}} nicht setzen.",
+    "handoffNumber": "{{option}} muss eine ganze Zahl sein, nicht {{value}}.",
+    "handoffNoSet": "Für diese Rolle gibt es kein Entity Set {{set}}.",
+    "handoffMember": "{{set}} hat kein {{name}} für {{option}}."
   }
 }

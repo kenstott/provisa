@@ -68,6 +68,7 @@ export const EDITOR_ROUTES: ReadonlySet<string> = new Set([
 export const INPUT_ROUTES: ReadonlySet<string> = new Set([
   "/grpc",
   "/jsonapi",
+  "/odata",
   "/openapi",
   "/tables",
   "/relationships",
