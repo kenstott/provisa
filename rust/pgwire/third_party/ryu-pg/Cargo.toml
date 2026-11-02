@@ -5,7 +5,8 @@ name = "ryu-pg"
 version = "1.0.23"
 edition = "2021"
 license = "Apache-2.0 OR BSL-1.0"
-publish = false
+# Not publish = false: that marks Provisa's own crates, which the licence notices leave out
+# (rust/encoders/about.toml); this one is ryu's, and its notice ships with the module.
 
 [lib]
 name = "ryu_pg"

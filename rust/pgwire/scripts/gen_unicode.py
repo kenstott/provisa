@@ -13,7 +13,7 @@ ranges, from this interpreter's unicodedata. repr() of a str escapes exactly tho
 repr of a value (a list or dict sent as text) needs the same table. Run with the interpreter the
 product runs on (Python 3.12, Unicode 15.0.0):
 
-    .venv/bin/python experiments/pgwire_encoder_rs/gen_unicode.py
+    .venv/bin/python rust/pgwire/scripts/gen_unicode.py
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import sys
 import unicodedata
 from pathlib import Path
 
-OUT = Path(__file__).parent / "src" / "unicode_tables.rs"
+OUT = Path(__file__).resolve().parents[1] / "src" / "unicode_tables.rs"
 
 
 def main() -> None:

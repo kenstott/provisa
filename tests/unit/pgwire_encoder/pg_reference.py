@@ -8,11 +8,12 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The product's encode path with PostgreSQL 17's answer where the product's is not it: the
-reference the Rust encoder is held to. ``pg17()`` replaces, for its duration, each product helper
-listed in ``DEFECTS`` with one that answers as PostgreSQL does; everything else is the product's
-own code. ``pg_types_check.py`` holds these answers to a live server, and ``test_compare.py``
-shows each defect on a witness value (the product and the reference differ there).
+"""The product's former Python writers (``oracle.py``) with PostgreSQL 17's answer where theirs
+was not it: the reference the wired path is held to. ``pg17()`` replaces, for its duration, each
+writer or coercer listed in ``DEFECTS`` with one that answers as PostgreSQL does; everything else
+is the former writers' own code. ``rust/pgwire/scripts/pg_types_check.py`` holds these answers to
+a live server, and ``test_differential.py`` shows each defect on a witness value (the former
+writers and PostgreSQL differ there; the wired path answers as PostgreSQL does).
 """
 
 from __future__ import annotations
@@ -28,11 +29,12 @@ from contextlib import ExitStack, contextmanager
 from decimal import Decimal
 from typing import Any
 
-import buenavista.postgres as bp
 from buenavista.core import BVType
 
 import provisa.pgwire.cast_types as ct
 import provisa.pgwire.server as srv
+from tests.unit.pgwire_encoder import oracle as bp
+from tests.unit.pgwire_encoder import python_ref
 from provisa.core.ir_types import infinite_date, infinite_timestamp
 
 DAY_US = 86_400_000_000
@@ -213,6 +215,8 @@ def inet_text(v: Any) -> str:
         address = pg_address(v.ip)
         full = v.network.prefixlen == v.max_prefixlen
         return address if full else f"{address}/{v.network.prefixlen}"
+    if isinstance(v, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
+        return pg_address(v)  # a bare address (psycopg's inet of a host) is inet_out's too
     return str(v)
 
 
@@ -410,15 +414,13 @@ def pg17() -> Iterator[None]:
         table[t.UUID] = (2950, uuid_text, uuid_binary)
         table.update(_ranges())
         table.update(_arrays())
-        original_coerced = srv.ProvisaQueryResult._coerced
 
-        def coerced(self: Any, row: Any) -> list:
+        def coerced(qr: Any, row: Any) -> list:
             out = list(row)
-            for i, coercer in self._coerce:
+            for i, coercer in qr._coerce:
                 if out[i] is not None:
                     out[i] = COERCERS.get(coercer, coercer)(out[i])
             return out
 
-        _setattr(stack, srv.ProvisaQueryResult, "_coerced", coerced)
-        del original_coerced
+        _setattr(stack, python_ref, "COERCE", coerced)
         yield

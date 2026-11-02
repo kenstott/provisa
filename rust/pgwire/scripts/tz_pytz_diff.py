@@ -10,8 +10,8 @@
 
 """How far the product's own path (pyarrow's to_pylist, which takes a named zone from pytz when
 pytz is installed) is from zoneinfo, over the differential's instants of every zone: the count of
-text cells that differ, by year range. Run like test_compare.py, with the same PYTHONPATH:
-    .venv/bin/python experiments/pgwire_encoder_rs/tz_pytz_diff.py
+text cells that differ, by year range. Run like test_differential.py, with the same PYTHONPATH:
+    .venv/bin/python rust/pgwire/scripts/tz_pytz_diff.py
 """
 
 from __future__ import annotations
@@ -19,8 +19,14 @@ from __future__ import annotations
 from collections import Counter
 
 import pyarrow as pa
-from python_ref import python_encode
-from test_compare import ZONES, _batch, _data_rows, _python, _zone_instants
+from tests.unit.pgwire_encoder.python_ref import python_encode
+from tests.unit.pgwire_encoder.test_differential import (
+    ZONES,
+    _batch,
+    _data_rows,
+    _python,
+    _zone_instants,
+)
 
 TZ = "TIMESTAMP WITH TIME ZONE"
 

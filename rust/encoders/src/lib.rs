@@ -6,12 +6,12 @@ use pyo3::prelude::*;
 use pyo3::types::PyModule;
 
 // Linked for the module init below.
-use pgwire_encoder_rs as _;
+use pgwire_encoder as _;
 
 extern "C" {
     // The init the pgwire source's #[pymodule] exports: its functions are private to it, so the
     // module it builds is the one provisa._encoders.pgwire serves.
-    fn PyInit_pgwire_encoder_rs() -> *mut ffi::PyObject;
+    fn PyInit_pgwire_encoder() -> *mut ffi::PyObject;
 }
 
 /// Adds `module` to `parent` as `name`, also under its qualified name in sys.modules: that is the
@@ -33,7 +33,7 @@ fn add_encoder(parent: &Bound<'_, PyModule>, name: &str, module: Bound<'_, PyMod
 fn encoders(m: &Bound<'_, PyModule>) -> PyResult<()> {
     let py = m.py();
     // SAFETY: a module init returns a new reference, or NULL with the error set.
-    let pgwire = unsafe { Bound::from_owned_ptr_or_err(py, PyInit_pgwire_encoder_rs()) }?;
+    let pgwire = unsafe { Bound::from_owned_ptr_or_err(py, PyInit_pgwire_encoder()) }?;
     add_encoder(m, "pgwire", pgwire.downcast_into::<PyModule>()?)?;
     Ok(())
 }

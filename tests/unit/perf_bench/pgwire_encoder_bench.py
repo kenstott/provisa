@@ -17,8 +17,8 @@ encoders read the same batches. Output is counted, never kept, so a run holds th
 plus one batch of Python rows (the product's own peak). A run aborts if the system's free memory
 drops under 25%.
 
-    PYTHONPATH=.:vendor/buenavista:experiments/pgwire_encoder_rs/build:experiments/pgwire_encoder_rs \
-        ~/.provisa-agent/heavy.sh .venv/bin/python experiments/pgwire_encoder_rs/bench.py --rows 5000000
+    PYTHONPATH=.:vendor/buenavista \
+        ~/.provisa-agent/heavy.sh .venv/bin/python tests/unit/perf_bench/pgwire_encoder_bench.py --rows 5000000
 """
 
 from __future__ import annotations
@@ -37,9 +37,14 @@ from typing import Any
 import numpy as np
 import pyarrow as pa
 
-import pgwire_encoder_rs
-from python_ref import python_encode, python_encode_count, query_result, bvtype_names
-from test_compare import _assert_same as assert_same
+from provisa._encoders import pgwire as pgwire_encoder
+from tests.unit.pgwire_encoder.python_ref import (
+    python_encode,
+    python_encode_count,
+    query_result,
+    bvtype_names,
+)
+from tests.unit.pgwire_encoder.test_differential import _assert_same as assert_same
 
 BATCH_ROWS = 65_536
 MIN_FREE_PCT = 25
@@ -179,7 +184,7 @@ def run_rust(
     def write(b: bytes) -> None:
         total[0] += len(b)
 
-    rows = pgwire_encoder_rs.encode_stream(guarded(batches), bvtypes, write, formats)
+    rows = pgwire_encoder.encode_stream(guarded(batches), bvtypes, write, formats)
     return rows, total[0]
 
 
@@ -239,7 +244,7 @@ def main() -> None:
         # the first two batches agree before anything is timed: every cell's bytes, a float
         # cell's value within the differential's tolerance
         py, _, _ = python_encode(schema, batches[:2], types, formats)
-        rs = b"".join(pgwire_encoder_rs.encode_batch(b, bvtypes, formats) for b in batches[:2])
+        rs = b"".join(pgwire_encoder.encode_batch(b, bvtypes, formats) for b in batches[:2])
         assert_same(py, rs, bvtypes, formats)
         del py, rs
         print(f"[{label}] first 2 batches agree; timing...", flush=True)

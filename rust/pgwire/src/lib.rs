@@ -1,7 +1,7 @@
-// Experimental Rust port of the pgwire DataRow encoder (buenavista send_data_rows over the
-// BVTYPE_TO_PGTYPE converters, fed by provisa's Arrow -> row path). Nothing in the product calls
-// this; experiments/pgwire_encoder_rs/test_compare.py holds it to the Python encoder byte for byte,
-// and to PostgreSQL 17 where the product's answer is not PostgreSQL's.
+// REQ-2194: pgwire's DataRow encoder. provisa._encoders.pgwire (rust/encoders) serves it, and
+// provisa.pgwire.server's send_data_rows writes every result through it, straight from the
+// engine's Arrow batches. tests/unit/pgwire_encoder/test_differential.py holds it to PostgreSQL
+// 17's answers, byte for byte (floats within one part in 10^14).
 
 mod coerce;
 mod fmt_num;
@@ -1235,7 +1235,7 @@ fn register_catalog_names(procs: Vec<(i64, String)>, types: Vec<(i64, String)>) 
 }
 
 #[pymodule]
-fn pgwire_encoder_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn pgwire_encoder(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(encode_batch, m)?)?;
     m.add_function(wrap_pyfunction!(encode_stream, m)?)?;
     m.add_function(wrap_pyfunction!(forward_raw, m)?)?;

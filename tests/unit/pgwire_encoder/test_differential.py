@@ -8,16 +8,20 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Differential test: the Rust DataRow encoder against the product's Python encode path, over every
-type the port covers, NULLs and edge values, in text and binary formats. Every cell's bytes are the
-same, except a float4/float8 cell (or array element), whose decoded value is the same within one part
-in 10^14. A timestamp in a named zone takes its local time from zoneinfo over the tzdata package (the
-release chrono-tz is built from), not from pytz (see RESULTS.md).
+"""Differential test: what pgwire sends -- the product's send path through the Rust encoder,
+straight from the engine's Arrow batches (REQ-2194) -- against PostgreSQL 17's answer, over every
+type pgwire serves, NULLs and edge values, in text and binary formats. The reference is the
+product's former Python writers (oracle.py) with each of their defects corrected to PostgreSQL's
+answer (pg_reference.pg17, held to a live server by rust/pgwire/scripts/pg_types_check.py). Every
+cell's bytes are the same, except a float4/float8 cell (or array element), whose decoded value is
+the same within one part in 10^14. A timestamp in a named zone takes its local time from zoneinfo
+over the tzdata package (the release chrono-tz is built from), not from pytz (see
+rust/pgwire/RESULTS.md).
 
-Lives outside tests/ so the project's suites never collect it. Run (from the worktree root):
-    experiments/pgwire_encoder_rs/build.sh
-    PYTHONPATH=.:vendor/buenavista:experiments/pgwire_encoder_rs/build:experiments/pgwire_encoder_rs \
-        .venv/bin/python -m pytest -p no:cacheprovider experiments/pgwire_encoder_rs/test_compare.py
+Run (from the worktree root):
+    rust/build-local.sh
+    PYTHONPATH=.:vendor/buenavista \
+        .venv/bin/python -m pytest -p no:cacheprovider tests/unit/pgwire_encoder/test_differential.py
 """
 
 from __future__ import annotations
@@ -42,26 +46,24 @@ import pyarrow.compute  # noqa: F401 -- pa.compute
 import pytest
 import tzdata
 
-import pgwire_encoder_rs
+from provisa._encoders import pgwire as pgwire_encoder
 from buenavista.core import BVType
 from buenavista.postgres import BuenaVistaHandler
 
 import provisa.pgwire.cast_types as cast_types
 import provisa.pgwire.server as server
-from pg_reference import DEFECTS, pg17
+from tests.unit.pgwire_encoder.pg_reference import DEFECTS, pg17
 from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.pgwire.cast_types import XML_ARRAY
 from provisa.transpiler.pg_forms_json import jsonb_out
-from python_ref import (
+from tests.unit.pgwire_encoder.python_ref import (
     bvtype_names,
     coercer_names,
     named_zones,
     python_encode,
     query_result,
-    register_catalog_names,
+    wired_encode,
 )
-
-register_catalog_names(pgwire_encoder_rs)
 
 UTF8_SPACES = [chr(c) for c in range(sys.maxunicode + 1) if chr(c).isspace()]
 
@@ -702,10 +704,10 @@ def _python(
             return e, bvtype_names(qr), coercer_names(qr)
 
 
-def _product(
+def _former(
     batch: pa.RecordBatch, types: list[str], formats: list[int] | None, **described: Any
 ) -> Any:
-    """The product's own DataRow bytes (or its raise), with no correction."""
+    """What the product's former Python writers sent (or their raise), with no correction."""
     with named_zones(_zone):
         try:
             return python_encode(batch.schema, [batch], types, formats, **described)[0]
@@ -719,10 +721,28 @@ def _rust(
     formats: list[int] | None,
     coercers: list[list[str]] | None = None,
 ) -> Any:
+    """The encoder module's own bytes (or its raise) for wire types and coercers given outright."""
     try:
-        return pgwire_encoder_rs.encode_batch(batch, bvtypes, formats, coercers)
+        return pgwire_encoder.encode_batch(batch, bvtypes, formats, coercers)
     except Exception as e:  # noqa: BLE001
         return e
+
+
+def _wired(
+    batch: pa.RecordBatch,
+    types: list[str],
+    formats: list[int] | None,
+    bvtypes: list[str] | None = None,
+    **described: Any,
+) -> Any:
+    """What pgwire sends (or its raise): the product's send path through the Rust encoder. With
+    ``bvtypes``, the wire types it chose are checked to be the reference's."""
+    try:
+        out, chosen, _ = wired_encode(batch.schema, [batch], types, formats, **described)
+    except Exception as e:  # noqa: BLE001
+        return e
+    assert bvtypes is None or chosen == bvtypes, (chosen, bvtypes)
+    return out
 
 
 def _batch(arrays: list[Any]) -> pa.RecordBatch:
@@ -733,8 +753,8 @@ def _both(
     arrays: list[Any], types: list[str], formats: list[int] | None, **described: Any
 ) -> tuple[Any, Any, list[str]]:
     batch = _batch(arrays)
-    py, bvtypes, coercers = _python(batch, types, formats, **described)
-    return py, _rust(batch, bvtypes, formats, coercers), bvtypes
+    py, bvtypes, _ = _python(batch, types, formats, **described)
+    return py, _wired(batch, types, formats, bvtypes, **described), bvtypes
 
 
 def _check(
@@ -745,12 +765,13 @@ def _check(
     encodes: bool = False,
     **described: Any,
 ) -> None:
-    """The reference and Rust agree on the batch; with ``encodes``, the reference encodes it (no
-    raise). ``described``: the statement's sql, shape or read_shape (ProvisaQueryResult's)."""
+    """The reference (PostgreSQL 17's answer) and the wired path agree on the batch; with
+    ``encodes``, the reference encodes it (no raise). ``described``: the statement's sql, shape or
+    read_shape (ProvisaQueryResult's)."""
     batch = _batch(arrays)
-    py, bvtypes, coercers = _python(batch, types, formats, **described)
+    py, bvtypes, _ = _python(batch, types, formats, **described)
     assert not (encodes and isinstance(py, Exception)), f"python raised {py!r:.300}"
-    rs = _rust(batch, bvtypes, formats, coercers)
+    rs = _wired(batch, types, formats, bvtypes, **described)
     # A float4 text cell is held to the float the product sends in binary for that value: its text
     # of a double described as REAL can name another float (RESULTS.md, product defect 4).
     real_text = [
@@ -1070,7 +1091,8 @@ def test_many_batches_chunk_boundaries() -> None:
     batches = [batch.slice(0, 1), batch.slice(1, 700), batch.slice(701)]
     with pg17():
         py, bvtypes, _ = python_encode(batch.schema, batches, types, [1] * 10)
-    rs = b"".join(pgwire_encoder_rs.encode_batch(b, bvtypes, [1] * 10) for b in batches)
+    rs, wired_types, _ = wired_encode(batch.schema, batches, types, [1] * 10)
+    assert wired_types == bvtypes
     _assert_same(py, rs, bvtypes, [1] * 10)
 
 
@@ -1084,7 +1106,7 @@ def test_uuid_fixed_size_binary() -> None:
     for fmt in (0, 1):
         py, bvtypes, _ = _python(_batch([extension]), ["UUID"], [fmt])
         for arr in (storage, extension):
-            _assert_same(py, _rust(_batch([arr]), bvtypes, [fmt]), bvtypes, [fmt])
+            _assert_same(py, _wired(_batch([arr]), ["UUID"], [fmt], bvtypes), bvtypes, [fmt])
 
 
 def test_random_json_floats() -> None:
@@ -1117,8 +1139,8 @@ RULE_YEARS = [2037, 2038, 2050, 2099, 2100, 2101, 2400, 5000, 9998, 9999]
 
 def test_tz_version() -> None:
     """chrono-tz's tables, the encoder's POSIX rules and the tzdata package are one IANA release."""
-    assert pgwire_encoder_rs.TZDB_VERSION == tzdata.IANA_VERSION
-    assert pgwire_encoder_rs.TZ_RULES_VERSION == tzdata.IANA_VERSION
+    assert pgwire_encoder.TZDB_VERSION == tzdata.IANA_VERSION
+    assert pgwire_encoder.TZ_RULES_VERSION == tzdata.IANA_VERSION
 
 
 def _tzif_transitions(name: str) -> list[int]:
@@ -1260,7 +1282,7 @@ PG_FLOAT4 = [
 )
 def test_postgres_float_text(bvtype: str, arrow_type: pa.DataType, cases: list) -> None:
     batch = _batch([pa.array([v for v, _ in cases], arrow_type)])
-    rows = _data_rows(pgwire_encoder_rs.encode_batch(batch, [bvtype], [0]))
+    rows = _data_rows(pgwire_encoder.encode_batch(batch, [bvtype], [0]))
     assert [r[0] for r in rows] == [text.encode() for _, text in cases]
 
 
@@ -1738,7 +1760,7 @@ def test_described(case: tuple[str, Any, str, dict[str, Any], list[str]], fmt: i
     if bvtypes == ["TSQUERY"] and fmt == 1:
         # the product refuses a binary tsquery: PostgreSQL's own bytes
         assert isinstance(py, ValueError)
-        rows = _data_rows(_rust(batch, bvtypes, [fmt], said))
+        rows = _data_rows(_wired(batch, [engine_type], [fmt], bvtypes, **described))
         want = [bytes.fromhex(dict(TSQUERY_SEND)[t]) for t in column.to_pylist()]
         assert [r[0] for r in rows] == want
         return
@@ -1778,19 +1800,17 @@ def test_tsquery_binary() -> None:
     """tsquery in binary is tsquerysend of tsquery_in(text): its operators left-associative, each
     stored before its right operand, then its left. The product refuses a binary tsquery."""
     texts = [t for t, _ in TSQUERY_SEND] + ["", "   "]
-    out = pgwire_encoder_rs.encode_batch(_batch([pa.array(texts)]), ["TSQUERY"], [1])
+    out = pgwire_encoder.encode_batch(_batch([pa.array(texts)]), ["TSQUERY"], [1])
     cells = [row[0] for row in _data_rows(out)]
     assert cells == [bytes.fromhex(h) for _, h in TSQUERY_SEND] + [b"\x00\x00\x00\x00"] * 2
-    product = _product(
-        _batch([pa.array(texts[:1])]), ["VARCHAR"], [1], force_types=[BVType.TSQUERY]
-    )
-    assert isinstance(product, ValueError)
+    former = _former(_batch([pa.array(texts[:1])]), ["VARCHAR"], [1], force_types=[BVType.TSQUERY])
+    assert isinstance(former, ValueError)
 
 
 def test_tsquery_malformed() -> None:
     for text in ["'a' &", "( 'a'", "''", "'a' <x> 'b'", "'unterminated"]:
         with pytest.raises(ValueError):
-            pgwire_encoder_rs.encode_batch(_batch([pa.array([text])]), ["TSQUERY"], [1])
+            pgwire_encoder.encode_batch(_batch([pa.array([text])]), ["TSQUERY"], [1])
 
 
 # --- RawDataRowBytes passthrough ---
@@ -1798,10 +1818,11 @@ def test_tsquery_malformed() -> None:
 
 def test_forward_raw() -> None:
     """Rows a PostgreSQL source sent whole are forwarded verbatim, in send_data_rows' chunks of 500
-    rows."""
-    from buenavista.core import RawDataRowBytes
+    rows: the wired path writes what the former writer wrote."""
+    from buenavista.core import RawDataRowBytes, ResultData
 
-    from python_ref import _Sink
+    from tests.unit.pgwire_encoder import oracle
+    from tests.unit.pgwire_encoder.python_ref import _Sink
 
     rows = [
         b"D" + struct.pack("!ih", 4 + 2 + 4 + len(v), 1) + struct.pack("!i", len(v)) + v
@@ -1817,15 +1838,23 @@ def test_forward_raw() -> None:
         def column(self, i: int) -> tuple[str, Any]:
             return ("c", BVType.TEXT)
 
-        def rows(self) -> Any:
-            return iter([RawDataRowBytes(r) for r in rows])
+        def data(self) -> ResultData:
+            return ResultData(iter([[RawDataRowBytes(r) for r in rows]]), raw=True)
+
+        def coercers(self) -> None:
+            return None
 
     py_writes: list[bytes] = []
-    sink = _Sink(type("W", (), {"write": staticmethod(py_writes.append)})())
-    py_count = BuenaVistaHandler.send_data_rows(sink, _Raw())
+    writer = type("W", (), {"write": staticmethod(py_writes.append)})()
+    py_count = oracle.send_data_rows(writer, _Raw(), (RawDataRowBytes(r) for r in rows))
     rs_writes: list[bytes] = []
-    rs_count = pgwire_encoder_rs.forward_raw(iter(rows), rs_writes.append)
-    assert (rs_count, rs_writes) == (py_count, py_writes)
+    rs_count = pgwire_encoder.forward_raw(iter(rows), rs_writes.append)
+    wired: list[bytes] = []
+    wired_count = BuenaVistaHandler.send_data_rows(
+        _Sink(type("W", (), {"write": staticmethod(wired.append)})()),  # type: ignore[arg-type]
+        _Raw(),
+    )
+    assert (rs_count, rs_writes) == (py_count, py_writes) == (wired_count, wired)
     assert [len(w) for w in rs_writes][:2] == [sum(len(r) for r in rows[:500])] * 1 + [
         sum(len(r) for r in rows[500:1000])
     ]
@@ -1836,7 +1865,7 @@ def test_forward_raw() -> None:
         b"D\x00\x00\x00\x0a\x00\x01\x00\x00\x00\x09",
     ]:
         with pytest.raises(ValueError):
-            pgwire_encoder_rs.forward_raw([bad], rs_writes.append)
+            pgwire_encoder.forward_raw([bad], rs_writes.append)
 
 
 def test_encode_stream_coerced() -> None:
@@ -1845,7 +1874,7 @@ def test_encode_stream_coerced() -> None:
     batch = _batch([column])
     py, bvtypes, coercers = _python(batch, ["DOUBLE"], [1], shape=[("c0", "INTEGER")])
     writes: list[bytes] = []
-    n = pgwire_encoder_rs.encode_stream(
+    n = pgwire_encoder.encode_stream(
         [batch, batch.slice(0, 0), batch], bvtypes, writes.append, [1], coercers
     )
     assert n == 6 and b"".join(writes) == py * 2
@@ -1856,8 +1885,9 @@ def test_encode_stream_coerced() -> None:
 
 WITNESSES: dict[str, tuple[list[Any], list[Any], list[int], dict[str, Any]]] = {
     "numeric_text": ([pa.array([Decimal("1E-7")], pa.decimal128(10, 7))], [T.DECIMAL], [0], {}),
+    # main's 68bdf0150f kept every digit past 28 before the wiring; Infinity still raised.
     "numeric_binary": (
-        [pa.array([Decimal("1234567890123456789012345678.9012345678")], pa.decimal128(38, 10))],
+        [pa.array(["1234567890123456789012345678.9012345678", "Infinity", "-Infinity"])],
         [T.DECIMAL],
         [1],
         {},
@@ -1906,36 +1936,46 @@ WITNESSES: dict[str, tuple[list[Any], list[Any], list[int], dict[str, Any]]] = {
 }
 
 
+#: Defects main corrected in the Python writers themselves before they were replaced (68bdf0150f,
+#: the integer interval day split): the witness shows the former writers and PostgreSQL agree.
+FIXED_BEFORE_WIRING = {"interval_days"}
+
+
 @pytest.mark.parametrize("defect", sorted(DEFECTS))
 def test_product_defect(defect: str) -> None:
+    """Each defect of the product's former Python writers, on a witness: what they sent differs
+    from PostgreSQL 17's answer, and pgwire now sends PostgreSQL's (REQ-2194: the wired path is
+    the contract; the former answer is not)."""
     arrays, types, formats, described = WITNESSES[defect]
     batch = _batch(arrays)
-    product = _product(batch, ["VARCHAR"] * len(arrays), formats, force_types=types, **described)
-    reference, bvtypes, coercers = _python(
-        batch, ["VARCHAR"] * len(arrays), formats, force_types=types, **described
-    )
-    rust = _rust(batch, bvtypes, formats, coercers)
+    names = ["VARCHAR"] * len(arrays)
+    former = _former(batch, names, formats, force_types=types, **described)
+    reference, bvtypes, _ = _python(batch, names, formats, force_types=types, **described)
+    wired = _wired(batch, names, formats, bvtypes, force_types=types, **described)
     if defect == "tsquery_binary":
         # no reference writes it: PostgreSQL's own bytes
-        assert isinstance(product, ValueError)
-        assert _data_rows(rust)[0][0] == bytes.fromhex(dict(TSQUERY_SEND)["'a' & 'b'"])
+        assert isinstance(former, ValueError)
+        assert _data_rows(wired)[0][0] == bytes.fromhex(dict(TSQUERY_SEND)["'a' & 'b'"])
         return
     if defect == "inet_text":
-        # the product's text of the address its _duckdb_inet makes (given an int, as DuckDB's own
+        # the former text of the address _duckdb_inet makes (given an int, as DuckDB's own
         # Python rows carry it): Python's hextets
-        import buenavista.postgres as bp
+        from tests.unit.pgwire_encoder import oracle
 
-        assert bp._inet_text(ipaddress.ip_interface("::ffff:1.2.3.4/128")) == "::ffff:102:304"
-        assert _data_rows(rust)[0][0] == b"::ffff:1.2.3.4"
-    assert repr(product) != repr(reference), f"{defect}: the product answers as PostgreSQL does"
-    _assert_same(reference, rust, bvtypes, formats)
+        assert oracle._inet_text(ipaddress.ip_interface("::ffff:1.2.3.4/128")) == "::ffff:102:304"
+        assert _data_rows(wired)[0][0] == b"::ffff:1.2.3.4"
+    if defect in FIXED_BEFORE_WIRING:
+        assert repr(former) == repr(reference), f"{defect}: the former writers differ again"
+    else:
+        assert repr(former) != repr(reference), f"{defect}: the former writers answer as PostgreSQL"
+    _assert_same(reference, wired, bvtypes, formats)
 
 
 def test_unicode_version() -> None:
     """repr's table of printable characters is this interpreter's (gen_unicode.py)."""
     import unicodedata
 
-    assert pgwire_encoder_rs.UNICODE_VERSION == unicodedata.unidata_version
+    assert pgwire_encoder.UNICODE_VERSION == unicodedata.unidata_version
 
 
 def test_no_type_is_unported() -> None:

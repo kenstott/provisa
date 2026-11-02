@@ -463,7 +463,7 @@ class EngineRuntime:  # REQ-825, REQ-840
     def _pg_passthrough_stream(self, pr: Any) -> ResultStream:
         """An opened passthrough's cursor as a lazily-drained :class:`ResultStream` of
         :class:`RawDataRowBytes` batches — shared by the DIRECT and ENGINE passthrough entrypoints."""
-        from provisa.executor.result import StreamingQueryResult
+        from provisa.executor.result import DataRowStreamResult
         from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
         from buenavista.core import RawDataRowBytes
 
@@ -483,7 +483,7 @@ class EngineRuntime:  # REQ-825, REQ-840
             finally:
                 pr.cursor.close()
 
-        return StreamingQueryResult(
+        return DataRowStreamResult(
             _batches(),
             column_names=pr.column_names,
             column_types=pr.column_types,

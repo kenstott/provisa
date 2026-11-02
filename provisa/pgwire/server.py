@@ -36,17 +36,25 @@ import struct
 import threading
 import time
 from dataclasses import dataclass
-from dataclasses import field as _dc_field
 from collections.abc import Sequence
+from itertools import chain
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Optional, Tuple, cast
 
 from provisa.federation.execution_auth import plan_authorization
 
 import jwt
 
-from buenavista.core import BVType, Connection, QueryResult as BVQueryResult, Session
+from buenavista.core import (
+    BVType,
+    Connection,
+    QueryResult as BVQueryResult,
+    ResultData,
+    Session,
+    wire_type_name,
+)
 from buenavista.postgres import (
     BVTYPE_TO_PGTYPE,
+    PG_UNKNOWN,
     _array_entry,
     BVBuffer,
     BVContext,
@@ -796,6 +804,19 @@ def _register_reg_types() -> None:
 _register_reg_types()
 
 
+def _register_catalog_names() -> None:  # REQ-2194
+    """Hands the encoder's reg* writers the catalog's procedure and type names, once."""
+    from provisa._encoders import pgwire as encoder
+    from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
+
+    encoder.register_catalog_names(
+        list(PROC_NAMES.items()), [(oid, entry[-1]) for oid, entry in TYPES.items()]
+    )
+
+
+_register_catalog_names()
+
+
 # REQ-2167 (PGWIRE'S CATALOG FUNCTIONS): a statement that only calls one of the server functions
 # Provisa answers on its own connections.
 _SERVER_FUNCTION_RE = re.compile(
@@ -978,35 +999,47 @@ def _described_oid(type_str: str) -> int:
     return BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(type_str)][0] if oid is None else oid
 
 
-def _infer_bvtype(rows: list[tuple], col_idx: int) -> BVType:
-    for row in rows:
-        v = row[col_idx] if col_idx < len(row) else None
-        if v is None:
-            continue
-        if isinstance(v, bool):
-            return BVType.BOOL
-        if isinstance(v, int):
-            return BVType.BIGINT
-        if isinstance(v, float):
-            return BVType.FLOAT
-        if isinstance(v, decimal.Decimal):
-            return BVType.DECIMAL
-        if isinstance(v, datetime.datetime):
-            return BVType.TIMESTAMP
-        if isinstance(v, datetime.date):
-            return BVType.DATE
-        if isinstance(v, datetime.time):
-            return BVType.TIME
-        if isinstance(v, list):
-            if v and isinstance(v[0], int):
-                return BVType.INTEGERARRAY
-            if v and isinstance(v[0], str):
-                return BVType.STRINGARRAY
-            return BVType.JSON
-        if isinstance(v, dict):
-            return BVType.JSON
-        return BVType.TEXT
+def _infer_bvtype(batch: Any, col_idx: int) -> BVType:
+    """The wire type of a column the engine gave no type for, from its Arrow type (REQ-2194:
+    every result reaches pgwire as Arrow)."""
+    import pyarrow as pa
+
+    kind = batch.schema.field(col_idx).type
+    if pa.types.is_boolean(kind):
+        return BVType.BOOL
+    if pa.types.is_integer(kind):
+        return BVType.BIGINT
+    if pa.types.is_floating(kind):
+        return BVType.FLOAT
+    if pa.types.is_decimal(kind):
+        return BVType.DECIMAL
+    if pa.types.is_timestamp(kind):
+        return BVType.TIMESTAMP
+    if pa.types.is_date(kind):
+        return BVType.DATE
+    if pa.types.is_time(kind):
+        return BVType.TIME
+    if pa.types.is_list(kind) or pa.types.is_large_list(kind):
+        element = kind.value_type
+        if pa.types.is_integer(element):
+            return BVType.INTEGERARRAY
+        if pa.types.is_string(element) or pa.types.is_large_string(element):
+            return BVType.STRINGARRAY
+        return BVType.JSON
+    if pa.types.is_struct(kind) or pa.types.is_map(kind):
+        return BVType.JSON
     return BVType.TEXT
+
+
+def _inferred_bvtypes(head: Any, count: int, raw: bool) -> list[BVType]:
+    """Each column's wire type as the first batch shows it; TEXT where there is none to look at."""
+    if head is None or raw:
+        return [BVType.TEXT] * count
+    return [_infer_bvtype(head, i) for i in range(count)]
+
+
+def _batch_rows(batch: Any) -> int:
+    return batch.num_rows
 
 
 def _to_decimal(v: Any) -> decimal.Decimal:
@@ -1137,6 +1170,53 @@ def _duckdb_inet(value: Any) -> Any:  # REQ-2167
 _ENGINE_VALUES: dict[str, Callable[[Any], Any]] = {"INET": _duckdb_inet}
 
 
+def _coercer_names_by_function() -> dict[Any, str]:
+    from provisa.pgwire import cast_types
+    from provisa.transpiler.pg_forms_json import jsonb_out
+
+    return {
+        int: "int",
+        float: "float",
+        _to_decimal: "decimal",
+        _to_date: "date",
+        _to_timestamp: "timestamp",
+        _to_list: "list",
+        _null_alone: "null_alone",
+        _duckdb_inet: "duckdb_inet",
+        xml_out: "xml_out",
+        jsonb_out: "jsonb_out",
+        cast_types._to_int: "int",
+        cast_types._to_float: "float",
+        cast_types._to_decimal: "decimal",
+        cast_types._to_bool: "bool",
+        cast_types.record_text: "record",
+        cast_types._clock_of: "clock",
+        cast_types._of_no_zone: "no_zone",
+    }
+
+
+def _coercer_name(coercer: Any, names: dict[Any, str]) -> str:
+    name = names.get(coercer)
+    if name is not None:
+        return name
+    if getattr(coercer, "__qualname__", "") == "_padded.<locals>.pad":
+        (length,) = (c.cell_contents for c in coercer.__closure__)
+        return f"pad:{length}"
+    raise ValueError(f"no encoder coercer for {coercer!r}")
+
+
+def coercer_names(
+    coerce: list[Tuple[int, Callable[[Any], Any]]], count: int
+) -> list[list[str]]:  # REQ-2194
+    """Each column's coercers, in the order they apply, by the name the Rust encoder knows each
+    by: the encoder brings each value to the described type as it writes it."""
+    names = _coercer_names_by_function()
+    out: list[list[str]] = [[] for _ in range(count)]
+    for i, coercer in coerce:
+        out[i].append(_coercer_name(coercer, names))
+    return out
+
+
 class _StatementDescription(BVQueryResult):  # REQ-589
     """A Describe(Statement)'s answer: the statement's result columns, derived from registered
     metadata, with no rows — nothing ran. ``statement_shape`` is what every Execute of the statement
@@ -1174,8 +1254,8 @@ class _StatementDescription(BVQueryResult):  # REQ-589
     def column_typmod(self, index: int) -> int:
         return self._typmods[index]
 
-    def rows(self) -> Iterator[list]:
-        return iter(())
+    def data(self) -> ResultData:
+        return ResultData(iter(()))
 
     def status(self) -> str:
         return self._status or "OK"
@@ -1185,11 +1265,13 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
     """Adapts a :class:`ResultStream` (streaming ENGINE terminal, materialized DIRECT/admin
     result, or DuckDB catalog result) to the buenavista QueryResult ABC.
 
-    Rows are pulled lazily: a streaming result's batches are drained only as buenavista emits
-    DataRow messages, so a large user result set never fully materializes. The wire protocol
-    needs column types up front (RowDescription precedes DataRow); when the engine supplies no
-    per-column types, exactly ONE batch is buffered to infer them — a bounded peek, not the
-    whole result."""
+    The result reaches the encoder as the engine's Arrow record batches (REQ-2194: a row engine's
+    rows become Arrow at its fetch boundary, ``ResultStream.arrow_batches``), or as a PostgreSQL
+    source's own DataRow messages (``datarow_batches``, the passthrough). Batches are pulled
+    lazily: a streaming result is drained only as buenavista emits DataRow messages, so a large
+    user result set never fully materializes. The wire protocol needs column types up front
+    (RowDescription precedes DataRow); when the engine supplies no per-column types, exactly ONE
+    batch is buffered to infer them -- a bounded peek, not the whole result."""
 
     def late_warnings(self) -> list[Any]:
         """The warnings the plan gained since the last were said (REQ-1949), each given once."""
@@ -1221,21 +1303,24 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         self._said: list[Any] = list(self.warnings)
         self._cols = engine_result.column_names
         self._status = _status_of(original_sql, engine_result, plan)
-        self._batch_iter: Iterator[list] = engine_result.batches()  # type: ignore[assignment]
+        # REQ-2194: a passthrough's DataRow messages are forwarded as they are; every other
+        # result reaches the encoder as Arrow.
+        self._raw = hasattr(engine_result, "datarow_batches")
+        self._batch_iter: Iterator[Any] = (
+            engine_result.datarow_batches() if self._raw else engine_result.arrow_batches()  # type: ignore[attr-defined]
+        )
         if plan is not None:
             # REQ-074: the statement's audit row is written when this drain ends (audit_on_drain).
             from provisa.pgwire._pipeline import audit_on_drain
 
-            self._batch_iter = audit_on_drain(plan, self._batch_iter)
-        self._head: list | None = None
-        # REQ-1863 large-result fix: a batch pulled from self._batch_iter but only PARTIALLY
-        # forwarded when send_data_rows (vendor/buenavista) stops early at the client's own
-        # Execute limit — see rows()'s own docstring for why that happens on every multi-batch
-        # fetch. Persisted on self (not local to one .rows() call) so the NEXT .rows() call
-        # resumes this exact batch at this exact offset instead of pulling a fresh one and
-        # silently dropping the unforwarded tail.
-        self._pending: list | None = None
-        self._pending_pos: int = 0
+            self._batch_iter = audit_on_drain(
+                plan, self._batch_iter, len if self._raw else _batch_rows
+            )
+        # The batch peeked for column types, handed to the encoder first.
+        self._head: Any = None
+        # REQ-1863: one ResultData for the result's life, so each Execute of a portal read a
+        # limit at a time resumes the batch the last one cut, at the row it stopped.
+        self._data: ResultData | None = None
         ctypes = engine_result.column_types
         self._type_oids: list[int | None] = (
             [_type_oid(t) for t in ctypes] if ctypes else [None] * len(self._cols)
@@ -1271,14 +1356,14 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         # A None entry (or absent types) means the type must be inferred from data, which
         # requires the first batch on hand before RowDescription is sent.
         if not ctypes or any(t is None for t in ctypes):
-            self._head = next(self._batch_iter, [])
+            self._head = next(self._batch_iter, None)
+        inferred = _inferred_bvtypes(self._head, len(self._cols), self._raw)
         if ctypes:
             self._types = [
-                _sql_type_to_bvtype(t) if t else _infer_bvtype(self._head or [], i)
-                for i, t in enumerate(ctypes)
+                _sql_type_to_bvtype(t) if t else inferred[i] for i, t in enumerate(ctypes)
             ]
         else:
-            self._types = [_infer_bvtype(self._head or [], i) for i in range(len(self._cols))]
+            self._types = inferred
         self._typmods = [-1] * len(self._cols)
         if read_shape is not None:
             # REQ-2171: a column the read's shape types as a subtype is sent as its PostgreSQL type.
@@ -1323,52 +1408,17 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
     def column_typmod(self, index: int) -> int:
         return self._typmods[index]
 
-    def rows(self) -> Iterator[list]:
-        # send_data_rows (vendor/buenavista) calls .rows() fresh on EVERY Execute message of a
-        # paginated (portal-suspend) fetch, not once for the whole result — self._head must be
-        # consumed exactly once across all of those calls, or every Execute after the first
-        # re-yields the same peeked head batch before reaching new rows, so a multi-batch fetch
-        # (any client with a row limit under the total result size — e.g. asyncpg's
-        # cursor.fetch(n)) never advances past that first batch. Clearing it here, before the
-        # first row is yielded, makes the peek genuinely one-time.
-        if self._head is not None:
+    def data(self) -> ResultData:
+        if self._data is None:
             head, self._head = self._head, None
-            self._pending, self._pending_pos = head, 0
-        # REQ-1863 large-result fix: send_data_rows stops calling next() on this generator as
-        # soon as it has forwarded `limit` rows for THIS Execute — nearly always mid-batch when
-        # the engine's own internal batch size (e.g. _STREAM_BATCH_ROWS, provisa/federation/
-        # runtime_support.py) doesn't evenly divide the client's own fetch size (e.g. asyncpg
-        # cursor.fetch(n)). This generator is simply abandoned at that point (a fresh one is
-        # created for the NEXT Execute), so `for batch in self._batch_iter: yield from batch`
-        # silently drops whatever of the current `batch` list was never reached — live-confirmed
-        # against a real 2,000,000-row scan: only 310,000 (31 x asyncpg's own 10,000-row
-        # cursor.fetch batch size) rows ever reached the client, with the remaining ~1.69M rows
-        # pulled from the source and discarded without any error. self._pending/_pending_pos
-        # track exactly how far into the current batch this call got, on `self` (not a local
-        # generator frame), so the NEXT .rows() call resumes the SAME batch at the SAME offset
-        # instead of pulling (and partially discarding) a new one.
-        while True:
-            if self._pending is not None:
-                while self._pending_pos < len(self._pending):
-                    row = self._pending[self._pending_pos]
-                    self._pending_pos += 1
-                    yield row
-                self._pending = None
-                self._pending_pos = 0
-                continue
-            batch = next(self._batch_iter, None)
-            if batch is None:
-                return
-            if self._coerce and batch and not isinstance(batch[0], bytes):
-                batch = [self._coerced(row) for row in batch]
-            self._pending, self._pending_pos = batch, 0
+            batches = self._batch_iter if head is None else chain((head,), self._batch_iter)
+            self._data = ResultData(batches, raw=self._raw)
+        return self._data
 
-    def _coerced(self, row: Any) -> list:
-        out = list(row)
-        for i, coercer in self._coerce:
-            if out[i] is not None:
-                out[i] = coercer(out[i])
-        return out
+    def coercers(self) -> list[list[str]] | None:
+        if self._raw or not self._coerce:
+            return None
+        return coercer_names(self._coerce, len(self._cols))
 
     def status(self) -> str:
         return self._status or "OK"
@@ -1392,13 +1442,15 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
 
 
 class _CursorRowsResult(BVQueryResult):  # REQ-1862
-    """Adapts a batch of already-fetched cursor rows to buenavista's QueryResult ABC, for
-    sending a FETCH response's RowDescription/DataRow pair."""
+    """A FETCH's rows, as the batches the cursor's buffer holds them in (REQ-2194: Arrow, or a
+    passthrough's DataRow messages), for sending its RowDescription/DataRow pair."""
 
-    def __init__(self, columns: list[Tuple[str, BVType]], fetched: list[list]):
+    def __init__(self, cursor: "_CursorState", fetched: list[Any]):
         super().__init__()
-        self._columns = columns
-        self._fetched = fetched
+        source = cursor.query_result
+        self._columns = [source.column(i) for i in range(source.column_count())]
+        self._coercers = source.coercers()
+        self._data = ResultData(iter(fetched), raw=cursor.buffer.raw)
 
     def has_results(self) -> bool:
         return True
@@ -1409,8 +1461,11 @@ class _CursorRowsResult(BVQueryResult):  # REQ-1862
     def column(self, index: int) -> Tuple[str, BVType]:
         return self._columns[index]
 
-    def rows(self) -> Iterator[list]:
-        yield from self._fetched
+    def data(self) -> ResultData:
+        return self._data
+
+    def coercers(self) -> list[list[str]] | None:
+        return self._coercers
 
     def status(self) -> str:
         return "OK"
@@ -1422,12 +1477,67 @@ class _CursorNotScrollableError(Exception):
     cursor rather than silently returning wrong (or no) rows."""
 
 
+class _RowBuffer:  # REQ-1862, REQ-2194
+    """A cursor's rows pulled so far, held in the batches they came in (Arrow record batches, or
+    a passthrough's DataRow messages): rows are addressed by position and handed back as slices
+    of those batches, never as Python rows."""
+
+    def __init__(self, raw: bool) -> None:
+        self.raw = raw
+        self._chunks: list[Any] = []
+        self._size = 0
+
+    def __len__(self) -> int:
+        return self._size
+
+    def add(self, chunk: Any) -> None:
+        size = ResultData._size(chunk)
+        if size:
+            self._chunks.append(chunk)
+            self._size += size
+
+    def rows(self, start: int, stop: int) -> list[Any]:
+        """Rows ``start`` to ``stop`` (exclusive), as slices of the batches holding them."""
+        out: list[Any] = []
+        offset = 0
+        for chunk in self._chunks:
+            size = ResultData._size(chunk)
+            lo, hi = max(start - offset, 0), min(stop - offset, size)
+            if lo < hi:
+                out.append(chunk if (lo, hi) == (0, size) else ResultData._cut(chunk, lo, hi - lo))
+            offset += size
+            if offset >= stop:
+                break
+        return out
+
+    def reversed_rows(self, start: int, stop: int) -> list[Any]:
+        """Rows ``stop - 1`` down to ``start``: a BACKWARD fetch's order."""
+        import pyarrow as pa
+
+        out = []
+        for piece in reversed(self.rows(start, stop)):
+            if self.raw:
+                out.append(list(reversed(piece)))
+            else:
+                out.append(piece.take(pa.array(range(piece.num_rows - 1, -1, -1))))
+        return out
+
+    def drop(self, count: int) -> None:
+        """Forget the first ``count`` rows (a NO SCROLL cursor never reads behind it)."""
+        kept = self.rows(count, self._size)
+        self._chunks, self._size = kept, self._size - count
+
+
+def _fetched_rows(fetched: list[Any]) -> int:
+    return sum(ResultData._size(chunk) for chunk in fetched)
+
+
 @dataclass
 class _CursorState:  # REQ-1862
     """A named SQL cursor's live state, owned by the pgwire session that DECLAREd it.
 
-    ``source`` is the DECLARE SELECT's row generator (``ProvisaQueryResult.rows()``), drained
-    forward-only and on demand.
+    ``source`` is the DECLARE SELECT's batches (``ProvisaQueryResult.data()``), drained
+    forward-only and on demand into ``buffer``.
 
     ``scrollable`` reflects whether the cursor was DECLAREd ``SCROLL`` (PostgreSQL's default is
     ``NO SCROLL`` when neither keyword is given — REQ-1862 amendment). A ``SCROLL`` cursor
@@ -1439,16 +1549,16 @@ class _CursorState:  # REQ-1862
     the full result (e.g. an 80M-row FETCH FORWARD scan) — see REQ-1862 amendment 2026-09-25.
 
     ``pos`` is the 0-indexed boundary *within the current buffer*: the last row returned to the
-    client is ``buffer[pos - 1]``. For a NO SCROLL cursor, ``pos`` is reset to 0 whenever consumed
-    rows are trimmed from the front of ``buffer``, so it never grows with the amount already
-    fetched.
+    client is row ``pos - 1`` of ``buffer``. For a NO SCROLL cursor, ``pos`` is reset to 0
+    whenever consumed rows are trimmed from the front of ``buffer``, so it never grows with the
+    amount already fetched.
     """
 
     name: str
     query_result: ProvisaQueryResult
-    source: Iterator[list]
+    source: Iterator[Any]
+    buffer: _RowBuffer
     scrollable: bool = False
-    buffer: list = _dc_field(default_factory=list)
     pos: int = 0
     source_exhausted: bool = False
 
@@ -1458,18 +1568,17 @@ def _cursor_fill(cs: _CursorState, upto) -> None:
 
     ``upto`` may be ``float("inf")`` to fully drain the cursor (FETCH/MOVE ALL, or an ABSOLUTE/
     LAST position counted from the end)."""
-    _sentinel = object()
     while not cs.source_exhausted and len(cs.buffer) < upto:
-        row = next(cs.source, _sentinel)
-        if row is _sentinel:
+        chunk = next(cs.source, None)
+        if chunk is None:
             cs.source_exhausted = True
             break
-        cs.buffer.append(row)
+        cs.buffer.add(chunk)
 
 
-def _cursor_move(cs: _CursorState, direction: str, count: int | None) -> list:
-    """Advance ``cs`` per FETCH/MOVE semantics and return the rows the client should see
-    (already in client-visible order — BACKWARD returns most-recent-first, like real PG).
+def _cursor_move(cs: _CursorState, direction: str, count: int | None) -> list[Any]:
+    """Advance ``cs`` per FETCH/MOVE semantics and return the rows the client should see, as
+    batches (already in client-visible order — BACKWARD returns most-recent-first, like real PG).
 
     A NO SCROLL cursor (``cs.scrollable`` False) only permits forward movement — PRIOR, BACKWARD,
     ABSOLUTE, LAST, and RELATIVE with a negative count raise ``_CursorNotScrollableError``, same as
@@ -1488,17 +1597,17 @@ def _cursor_move(cs: _CursorState, direction: str, count: int | None) -> list:
         else:
             _cursor_fill(cs, cs.pos + count)
             end = min(cs.pos + count, len(cs.buffer))
-        out = cs.buffer[cs.pos : end]
+        out = cs.buffer.rows(cs.pos, end)
         cs.pos = end
         if not cs.scrollable:
             # Forward-only cursor: rows behind pos can never be needed again (BACKWARD/ABSOLUTE
             # are rejected above), so drop them instead of retaining the entire result in memory.
-            del cs.buffer[: cs.pos]
+            cs.buffer.drop(cs.pos)
             cs.pos = 0
         return out
     if direction == "backward":
         start = 0 if count is None else max(0, cs.pos - count)
-        out = list(reversed(cs.buffer[start : cs.pos]))
+        out = cs.buffer.reversed_rows(start, cs.pos)
         cs.pos = start
         return out
     if direction == "absolute":
@@ -1509,7 +1618,7 @@ def _cursor_move(cs: _CursorState, direction: str, count: int | None) -> list:
                 cs.pos = len(cs.buffer)
                 return []
             cs.pos = k
-            return [cs.buffer[k - 1]]
+            return cs.buffer.rows(k - 1, k)
         if k == 0:
             cs.pos = 0
             return []
@@ -1519,7 +1628,7 @@ def _cursor_move(cs: _CursorState, direction: str, count: int | None) -> list:
             cs.pos = 0 if idx < 0 else len(cs.buffer)
             return []
         cs.pos = idx + 1
-        return [cs.buffer[idx]]
+        return cs.buffer.rows(idx, idx + 1)
     if direction == "relative":
         n = count or 0
         return _cursor_move(cs, "forward", n) if n >= 0 else _cursor_move(cs, "backward", -n)
@@ -1596,9 +1705,59 @@ def _columns_of(result: Any) -> list[xml_mapping.Column]:
     columns = []
     for index in range(result.column_count()):
         name, bvtype = result.column(index)
-        oid, text, _ = BVTYPE_TO_PGTYPE[bvtype]
-        columns.append(xml_mapping.Column(name, result.column_type_oid(index) or oid, text))
+        oid = result.column_type_oid(index) or BVTYPE_TO_PGTYPE.get(bvtype, PG_UNKNOWN)[0]
+        columns.append(xml_mapping.Column(name, oid, _text_writer(bvtype)))
     return columns
+
+
+def _text_writer(bvtype: Any) -> Callable[[Any], str]:  # REQ-2194
+    """A value's PostgreSQL text form as the wire's encoder writes it."""
+    from provisa._encoders import pgwire as encoder
+    from provisa.core.ir_arrow import row_batch
+
+    types = [wire_type_name(bvtype)]
+
+    def text(value: Any) -> str:
+        message = encoder.encode_batch(row_batch([(value,)], ["value"]), types, [0])
+        (cell,) = _data_row_cells(message)
+        if cell is None:
+            raise ValueError(f"no text form of {value!r}")
+        return cell.decode("utf-8")
+
+    return text
+
+
+def _data_row_cells(message: bytes) -> list[bytes | None]:
+    """The cells of one DataRow message."""
+    (count,) = struct.unpack_from("!h", message, 5)
+    cells: list[bytes | None] = []
+    at = 7
+    for _ in range(count):
+        (size,) = struct.unpack_from("!i", message, at)
+        at += 4
+        if size < 0:
+            cells.append(None)
+            continue
+        cells.append(message[at : at + size])
+        at += size
+    return cells
+
+
+def _python_rows(result: Any, chunks: Iterator[Any]) -> list[tuple]:
+    """A result's batches as Python rows, each value brought to its described type: what
+    query_to_xml and its kin write an XML document from (they are not the wire's DataRow path)."""
+    from provisa.core.ir_arrow import column_values
+
+    rows: list[tuple] = []
+    coerce = getattr(result, "_coerce", ())
+    for chunk in chunks:
+        if isinstance(chunk, list):
+            raise ValueError("a passthrough's DataRow messages have no values to map to XML")
+        columns = [column_values(column) for column in chunk.columns]
+        for i, coercer in coerce:
+            columns[i] = [None if v is None else coercer(v) for v in columns[i]]
+        rows.extend(zip(*columns, strict=True))
+    return rows
 
 
 class _SessionReads:  # REQ-2167
@@ -1619,7 +1778,7 @@ class _SessionReads:  # REQ-2167
     def rows(self, sql: str) -> tuple[list[xml_mapping.Column], list[Any]]:
         result = self._session._execute_sql_bound(sql, None, None)
         try:
-            read = _columns_of(result), list(result.rows())
+            read = _columns_of(result), _python_rows(result, result.data().take())
             self.warnings.extend((*result.warnings, *result.late_warnings()))
             return read
         finally:
@@ -1636,7 +1795,8 @@ class _SessionReads:  # REQ-2167
 
     def cursor_rows(self, name: str, count: int) -> tuple[list[xml_mapping.Column], list[Any]]:
         cursor = self._cursor(name)
-        return _columns_of(cursor.query_result), _cursor_move(cursor, "forward", count)
+        fetched = _cursor_move(cursor, "forward", count)
+        return _columns_of(cursor.query_result), _python_rows(cursor.query_result, iter(fetched))
 
     def cursor_shape(self, name: str) -> list[xml_mapping.Column]:
         return _columns_of(self._cursor(name).query_result)
@@ -3515,10 +3675,12 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             existing = cursors.pop(name, None)
             if existing is not None:
                 existing.query_result.close()  # re-DECLARE of an open name replaces it
+            data = query_result.data()
             cursors[name] = _CursorState(
                 name=name,
                 query_result=query_result,
-                source=query_result.rows(),
+                source=data.take(),
+                buffer=_RowBuffer(data.raw),
                 scrollable=scrollable,
             )
             self.send_command_complete("DECLARE CURSOR\x00")
@@ -3556,13 +3718,12 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             ctx.mark_error()
             return
         if is_fetch:
-            columns = [cs.query_result.column(i) for i in range(cs.query_result.column_count())]
-            result = _CursorRowsResult(columns, fetched)
+            result = _CursorRowsResult(cs, fetched)
             self.send_row_description(result)
             self.send_data_rows(result)
-            self.send_command_complete(f"FETCH {len(fetched)}\x00")
+            self.send_command_complete(f"FETCH {_fetched_rows(fetched)}\x00")
         else:
-            self.send_command_complete(f"MOVE {len(fetched)}\x00")
+            self.send_command_complete(f"MOVE {_fetched_rows(fetched)}\x00")
 
     def _handle_close_cursor(self, ctx: BVContext, stmt: str) -> None:  # REQ-1862
         """CLOSE cursor | CLOSE ALL — releases the underlying stream(s) and forgets the name(s)."""

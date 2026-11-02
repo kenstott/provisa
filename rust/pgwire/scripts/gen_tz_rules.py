@@ -14,7 +14,7 @@ release vendored in third_party/chrono-tz/tz, the one chrono-tz's tables are bui
 chrono-tz expands a zone's rules for the years 1800..2099 only; the encoder applies the footer from
 2100 on, as zoneinfo and PostgreSQL apply it after a zone's last explicit transition. Rerun after
 replacing the vendored release:
-    .venv/bin/python experiments/pgwire_encoder_rs/gen_tz_rules.py
+    .venv/bin/python rust/pgwire/scripts/gen_tz_rules.py
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
+HERE = Path(__file__).resolve().parents[1]
 TZ = HERE / "third_party" / "chrono-tz" / "tz"
 OUT = HERE / "src" / "tz_rules.rs"
 # The files chrono-tz builds from (parse_zoneinfo::FILES).

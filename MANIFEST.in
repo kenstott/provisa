@@ -2,5 +2,7 @@
 # from it builds the module (cargo on PATH). rust/encoders' Cargo.lock is the build's lock.
 include rust/encoders/Cargo.toml rust/encoders/Cargo.lock
 recursive-include rust/encoders/src *.rs
-include experiments/pgwire_encoder_rs/Cargo.toml
-recursive-include experiments/pgwire_encoder_rs/src *.rs
+include rust/pgwire/Cargo.toml
+recursive-include rust/pgwire/src *.rs
+# The vendored ryu-pg and chrono-tz crates (with chrono-tz's IANA tz source) it builds against.
+graft rust/pgwire/third_party

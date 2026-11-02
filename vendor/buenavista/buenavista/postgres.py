@@ -25,7 +25,7 @@ import socketserver
 import struct
 from typing import Dict, List, Optional
 
-from .core import BVType, Connection, Extension, Session, QueryResult, RawDataRowBytes
+from .core import BVType, Connection, Extension, Session, QueryResult, wire_type_name
 from .rewrite import Rewriter
 
 logger = logging.getLogger(__name__)
@@ -1618,77 +1618,27 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         )
         self.wfile.write(sig + out)
 
-    # Rows accumulated per wfile.write() call: bounded (never the whole result, so a large scan
-    # still streams incrementally as query_result.rows() lazily produces rows — see
-    # ProvisaQueryResult's own streaming docstring), but large enough that per-write Python/BufferedWriter
-    # call overhead is paid once per _DATA_ROW_CHUNK_SIZE rows instead of once per row. Profiled
-    # live (80M-row order_items scan): the previous per-row write() cadence measured 3.29us/row;
-    # this chunking measured 3.06us/row on a 16-column synthetic batch, ~1.4x over the original
-    # per-row-BytesIO implementation this replaced.
-    _DATA_ROW_CHUNK_SIZE = 500
-
     def send_data_rows(self, query_result: QueryResult, limit: int = 0) -> int:
-        cnt = 0
-        converters = []
-        ncols = query_result.column_count()
-        for i in range(ncols):
-            bvtype = query_result.column(i)[1]
-            pgtype = BVTYPE_TO_PGTYPE.get(bvtype, PG_UNKNOWN)
-            use_binary = (
-                query_result.result_format
-                and query_result.result_format[i] == 1
-                and len(pgtype) > 2
-                and pgtype[2] is not None
-            )
-            if use_binary:
-                converters.append((pgtype[2], False))
-            else:
-                converters.append((pgtype[1], True))
-        pack_i32 = _INT32_STRUCT.pack
-        chunk = bytearray()
-        chunk_n = 0
-        for row in query_result.rows():
-            if isinstance(row, RawDataRowBytes):
-                # Already a complete, wire-framed DataRow message (see RawDataRowBytes) — forward
-                # verbatim, skipping the per-column converter loop entirely.
-                chunk += row
-                cnt += 1
-                chunk_n += 1
-                if chunk_n >= self._DATA_ROW_CHUNK_SIZE:
-                    self.wfile.write(bytes(chunk))
-                    chunk.clear()
-                    chunk_n = 0
-                if limit > 0 and cnt >= limit:
-                    break
-                continue
-            # Precompiled struct.Struct + one bytearray per row (not a fresh BVBuffer/BytesIO
-            # object per row, and not one struct.pack call per int32 field) — profiled to cut
-            # server-side row-encoding cost roughly in half on its own.
-            row_buf = bytearray()
-            for j in range(ncols):
-                r = row[j]
-                if r is None:
-                    row_buf += b"\xff\xff\xff\xff"
-                else:
-                    converter, do_encode = converters[j]
-                    v = converter(r)
-                    if do_encode:
-                        v = v.encode("utf-8")
-                    row_buf += pack_i32(len(v))
-                    row_buf += v
-            chunk += struct.pack("!cih", ServerResponse.DATA_ROW, len(row_buf) + 6, ncols)
-            chunk += row_buf
-            cnt += 1
-            chunk_n += 1
-            if chunk_n >= self._DATA_ROW_CHUNK_SIZE:
-                self.wfile.write(bytes(chunk))
-                chunk.clear()
-                chunk_n = 0
-            if limit > 0 and cnt >= limit:
-                break
-        if chunk_n:
-            self.wfile.write(bytes(chunk))
-        return cnt
+        """The result's DataRow messages onto the socket, ``limit`` rows of them (0: all), written
+        by the Rust encoder (REQ-2194): its Arrow batches with each column's wire type, result
+        format and coercers, or a source's own DataRow messages forwarded as they are. No Python
+        row is built."""
+        # Imported here, not with this module: the code host's front end (provisa/codehost) runs
+        # buenavista's modules on their own, and imports them before any result is sent.
+        from provisa._encoders import pgwire as encoder
+
+        data = query_result.data()
+        write = self.wfile.write
+        if data.raw:
+            return encoder.forward_raw((row for batch in data.take(limit) for row in batch), write)
+        count = query_result.column_count()
+        return encoder.encode_stream(
+            data.take(limit),
+            [wire_type_name(query_result.column(i)[1]) for i in range(count)],
+            write,
+            list(query_result.result_format) if query_result.result_format else None,
+            query_result.coercers(),
+        )
 
     def send_error(self, exception, ctx: Optional[BVContext] = None):
         estr = str(exception)

@@ -13,8 +13,8 @@ byte, over random bit patterns and edge values. The server is a throwaway cluste
 directory, on a Unix socket only, stopped at the end. PostgreSQL 18's src/common/d2s.c, f2s.c,
 ryu_common.h and float8out_internal/float4out differ from 17's in their copyright lines only.
 
-    PYTHONPATH=experiments/pgwire_encoder_rs/build:experiments/pgwire_encoder_rs \\
-        .venv/bin/python experiments/pgwire_encoder_rs/pg_float_check.py <pg bin dir> <scratch dir>
+    PYTHONPATH=.:vendor/buenavista \\
+        .venv/bin/python rust/pgwire/scripts/pg_float_check.py <pg bin dir> <scratch dir>
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from pathlib import Path
 
 import pyarrow as pa
 
-import pgwire_encoder_rs
+from provisa._encoders import pgwire as pgwire_encoder
 
 N = 300_000
 EDGES = [0.0, -0.0, float("nan"), float("inf"), float("-inf"), 1.0, 0.1, 1e15, 1e14, 1e-4, 1e-5]
@@ -83,7 +83,7 @@ def main() -> None:
         ):
             pg = _postgres_text(psql, sql_type, values)
             batch = pa.RecordBatch.from_arrays([pa.array(values, arrow_type)], names=["x"])
-            rs = _cells(pgwire_encoder_rs.encode_batch(batch, [bvtype], [0]))
+            rs = _cells(pgwire_encoder.encode_batch(batch, [bvtype], [0]))
             differ = [(v, a, b) for v, a, b in zip(values, pg, rs, strict=True) if a != b]
             print(f"{sql_type}: {len(values)} values, {len(differ)} differ", differ[:5])
             assert not differ

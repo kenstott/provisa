@@ -340,8 +340,9 @@ cache-keys = [
     { file = "rust/encoders/Cargo.toml" },
     { file = "rust/encoders/Cargo.lock" },
     { file = "rust/encoders/src/**/*.rs" },
-    { file = "experiments/pgwire_encoder_rs/Cargo.toml" },
-    { file = "experiments/pgwire_encoder_rs/src/**/*.rs" },
+    { file = "rust/pgwire/Cargo.toml" },
+    { file = "rust/pgwire/src/**/*.rs" },
+    { file = "rust/pgwire/third_party/**/*" },
 ]
 
 [tool.setuptools.packages.find]

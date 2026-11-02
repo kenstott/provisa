@@ -14,8 +14,8 @@ case is a column as the engine hands it over (Arrow) and the PostgreSQL expressi
 Covers each product defect pg_reference corrects. The server is any running PostgreSQL reached by
 psql arguments; PostgreSQL 18's send and output functions for these types are 17's.
 
-    PYTHONPATH=.:vendor/buenavista:experiments/pgwire_encoder_rs/build:experiments/pgwire_encoder_rs \\
-        .venv/bin/python experiments/pgwire_encoder_rs/pg_types_check.py <psql> [psql args...]
+    PYTHONPATH=.:vendor/buenavista \\
+        .venv/bin/python rust/pgwire/scripts/pg_types_check.py <psql> [psql args...]
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from typing import Any
 
 import pyarrow as pa
 
-import pgwire_encoder_rs
+from provisa._encoders import pgwire as pgwire_encoder
 
 _DUCKDB_INET = pa.struct(
     [("ip_type", pa.uint8()), ("address", pa.decimal128(38, 0)), ("mask", pa.uint16())]
@@ -356,13 +356,13 @@ def main() -> None:
     psql = sys.argv[1:] + ["-X", "-q", "-At", "-v", "ON_ERROR_STOP=1"]
     version = subprocess.run(psql + ["-c", "SHOW server_version"], capture_output=True, check=True)
     print("server", version.stdout.decode().strip())
-    pgwire_encoder_rs.register_catalog_names([], [])
+    pgwire_encoder.register_catalog_names([], [])
     checked = differ = 0
     for bvtype, column, coercers, exprs, send in CASES:
         batch = pa.RecordBatch.from_arrays([column], names=["c"])
         cells = {}
         for fmt in (0, 1):
-            out = pgwire_encoder_rs.encode_batch(batch, [bvtype], [fmt], [coercers])
+            out = pgwire_encoder.encode_batch(batch, [bvtype], [fmt], [coercers])
             cells[fmt] = _cells(out)
         for k, expr in enumerate(exprs):
             sql = (
