@@ -148,6 +148,7 @@
       "graphql": "GraphQL",
       "rest": "REST",
       "jsonapi": "JSON:API",
+      "odata": "OData",
       "sql_http": "HTTP पर SQL",
       "cypher_http": "HTTP पर Cypher",
       "pgwire": "PostgreSQL wire",

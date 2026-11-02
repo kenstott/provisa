@@ -1,0 +1,11 @@
+{
+  "odataPage": {
+    "title": "OData",
+    "description": "Open de tabellen die uw rol mag zien in Excel, Power BI of een andere OData-client, zonder een stuurprogramma te installeren.",
+    "serviceRoot": "Hoofdmap van de service",
+    "serviceRootHelp": "Kies in Excel of Power BI OData-feed en plak dit adres. Meld u aan met Basic of een bearer-token.",
+    "metadata": "Metagegevensdocument",
+    "metadataHelp": "De tabellen, kolommen en relaties die uw rol mag zien, als OData CSDL.",
+    "copyUrl": "URL kopiëren"
+  }
+}

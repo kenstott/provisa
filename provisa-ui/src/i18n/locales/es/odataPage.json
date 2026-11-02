@@ -1,0 +1,11 @@
+{
+  "odataPage": {
+    "title": "OData",
+    "description": "Abra las tablas que su rol puede ver en Excel, Power BI o cualquier cliente OData, sin instalar ningún controlador.",
+    "serviceRoot": "Raíz del servicio",
+    "serviceRootHelp": "En Excel o Power BI, elija Fuente OData y pegue esta dirección. Inicie sesión con Basic o un token de portador.",
+    "metadata": "Documento de metadatos",
+    "metadataHelp": "Las tablas, columnas y relaciones que su rol puede ver, en OData CSDL.",
+    "copyUrl": "Copiar URL"
+  }
+}

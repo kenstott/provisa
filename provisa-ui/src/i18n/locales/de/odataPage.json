@@ -1,0 +1,11 @@
+{
+  "odataPage": {
+    "title": "OData",
+    "description": "Öffnen Sie die Tabellen, die Ihre Rolle sehen darf, in Excel, Power BI oder einem anderen OData-Client, ohne einen Treiber zu installieren.",
+    "serviceRoot": "Dienststamm",
+    "serviceRootHelp": "Wählen Sie in Excel oder Power BI „OData-Feed“ und fügen Sie diese Adresse ein. Melden Sie sich mit Basic oder einem Bearer-Token an.",
+    "metadata": "Metadatendokument",
+    "metadataHelp": "Die Tabellen, Spalten und Beziehungen, die Ihre Rolle sehen darf, als OData-CSDL.",
+    "copyUrl": "URL kopieren"
+  }
+}
