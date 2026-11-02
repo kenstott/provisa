@@ -26,7 +26,8 @@ to_json of an instant on Trino is written here, where the statement says the val
 to timestamptz, as the compiler states a registered column's type, or the clock): PostgreSQL's
 text of it as a JSON string. Trino refuses a cast of an instant to JSON while it types the
 statement, which no branch can avoid, so an instant the statement does not say is one is refused by
-name there (execute_trino), and one it says is inside an array or a row is refused by name here.
+name there (execute_trino), and one it says is inside an array or a row is refused by name here,
+as is one json_agg or json_build_object reads: Trino's forms of them cast it to JSON too.
 ClickHouse has no form of to_json."""
 
 # Requirements: REQ-2171
@@ -67,10 +68,12 @@ _NO_INSTANT = (
     exp.Replace,
 )
 _MENTIONED = re.compile(
-    r"::|\b(?:CAST|EXTRACT|DATE_PART|DATE_TRUNC|DATE|TO_JSONB?)\b", re.IGNORECASE
+    r"::|\b(?:CAST|EXTRACT|DATE_PART|DATE_TRUNC|DATE|TO_JSONB?|JSON_AGG|JSONB?_BUILD_OBJECT)\b",
+    re.IGNORECASE,
 )
 _TEXTS = (exp.DataType.Type.TEXT, exp.DataType.Type.VARCHAR)
 _JSON_CALLS = frozenset({"to_json", "to_jsonb"})
+_JSON_OBJECTS = frozenset({"json_build_object", "jsonb_build_object"})
 _DAY = (exp.DataType.Type.DATE,)
 #: What a zone cannot move: a count of seconds since the epoch, and a unit no offset is a part of.
 _NOT_ZONED_PARTS = frozenset({"EPOCH"})
@@ -301,6 +304,23 @@ def _json_of_instant(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return sqlglot.parse_one(_trino_json(local), read=dialect)
 
 
+def _refuse_json_of_said_instant(tree: exp.Expr) -> None:
+    """json_agg and json_build_object on Trino of an instant the statement says is one, refused by
+    name: their forms there (JSON_PARSE, JSON_OBJECT) cast it to JSON, which Trino refuses."""
+    for node in tree.find_all(exp.JSONArrayAgg, exp.Anonymous):
+        if isinstance(node, exp.JSONArrayAgg):
+            name = "json_agg"
+            value = node.this.this if isinstance(node.this, exp.Order) else node.this
+            values = [value]
+        elif node.name.lower() in _JSON_OBJECTS:
+            name = node.name.lower()
+            values = node.expressions[1::2]
+        else:
+            continue
+        if any(_said_instant(v) for v in values):
+            raise PostgresError("0A000", f"{name} of a timestamptz is not available on Trino")
+
+
 def written(sql: str, tree: exp.Expr | None, dialect: str) -> exp.Expr | None:
     """``tree`` (the parse of ``sql``, or None for it not yet parsed) with each read of an instant
     in the session's zone, on ``dialect``; ``tree`` as it was where nothing is to be written."""
@@ -308,6 +328,8 @@ def written(sql: str, tree: exp.Expr | None, dialect: str) -> exp.Expr | None:
     if engine is None or _MENTIONED.search(sql) is None:
         return tree
     parsed = tree if tree is not None else sqlglot.parse_one(sql, read="postgres")
+    if dialect == "trino":
+        _refuse_json_of_said_instant(parsed)
     wrote = False
     nodes = parsed.find_all(exp.Cast, exp.Date, exp.Extract, exp.TimestampTrunc)
     for node in reversed(list(nodes)):  # the deepest first: a form holds its value's form

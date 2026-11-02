@@ -268,3 +268,62 @@ def test_to_json_of_an_instant_on_trino_is_refused_by_name():
 
 def test_the_table_covers_every_session_here():
     assert set(ANSWERS) == set(_SESSIONS)
+
+
+_OFFSET_LITERAL = "SELECT CAST('2024-01-01 07:00:00.5+05' AS timestamptz) AS v"
+
+
+@pytest.mark.parametrize("dialect", ["trino", "presto", "athena"])
+@pytest.mark.parametrize("set_zone", list(_SESSIONS))
+def test_a_literal_with_an_offset_is_its_instant_in_every_session(set_zone, dialect):
+    """REQ-2050 writes it as its UTC wall time; the session's zone is the client's, so the text
+    names UTC, which Trino reads as that instant whatever the session's zone."""
+    sql = _in_session(set_zone, lambda: transpile(_OFFSET_LITERAL, dialect))
+    assert "'2024-01-01 02:00:00.500000 UTC'" in sql
+
+
+@pytest.mark.parametrize("set_zone", list(_SESSIONS))
+def test_a_literal_with_no_offset_is_read_in_the_session_zone(set_zone):
+    sql = _in_session(
+        set_zone, lambda: transpile("SELECT CAST('2024-01-01 07:00:00' AS timestamptz)", "trino")
+    )
+    assert "'2024-01-01 07:00:00'" in sql
+
+
+def test_a_literal_with_an_offset_on_mysql_and_clickhouse_is_their_utc_wall_time():
+    """Their connections' sessions are UTC (executor/drivers/mysql.py) and their literals take no
+    zone."""
+    for dialect in ("mysql", "clickhouse"):
+        sql = transpile(_OFFSET_LITERAL, dialect)
+        assert "'2024-01-01 02:00:00.500000'" in sql
+
+
+@pytest.mark.parametrize(
+    "sql, name",
+    [
+        ("SELECT json_agg(c::timestamptz) FROM t", "json_agg"),
+        ("SELECT json_agg(CAST(c AS timestamptz) ORDER BY i) FROM t", "json_agg"),
+        ("SELECT json_agg(now())", "json_agg"),
+        ("SELECT json_build_object('k', c::timestamptz) FROM t", "json_build_object"),
+        ("SELECT jsonb_build_object('k', (c::timestamptz)) FROM t", "jsonb_build_object"),
+        ("SELECT json_build_object('k', now())", "json_build_object"),
+    ],
+)
+def test_trino_refuses_json_of_a_stated_instant_by_name(sql, name):
+    """Trino's own forms of them cast the instant to JSON, which it refuses while it types the
+    statement."""
+    with pytest.raises(PostgresError, match=f"^{name} of a timestamptz") as refused:
+        _in_session(_NEW_YORK, lambda: transpile_to_trino(sql))
+    assert refused.value.sqlstate == "0A000"
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT json_agg(c) FROM t",
+        "SELECT json_build_object('k', c, 'n', c::text) FROM t",
+        "SELECT json_build_object('k', CAST(c AS timestamp)) FROM t",
+    ],
+)
+def test_trino_leaves_json_of_a_value_not_said_to_be_an_instant(sql):
+    assert _in_session(_NEW_YORK, lambda: transpile_to_trino(sql))

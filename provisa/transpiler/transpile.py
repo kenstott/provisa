@@ -771,12 +771,16 @@ _LIKE_ESCAPE_WRITTEN = frozenset({"duckdb", "trino"})
 # A source whose datetime literal takes no UTC offset: an instant is written as its UTC wall time,
 # which the connection's UTC session reads as that instant (REQ-2050, executor/drivers/mysql.py).
 _INSTANT_AS_UTC_WALL_TIME = frozenset({"clickhouse", "mysql", "trino", "presto", "athena"})
+# The engines whose session is the client's zone (REQ-2171): the wall time is written naming UTC,
+# which they read as that instant in every session.
+_INSTANT_NAMES_UTC = frozenset({"trino", "presto", "athena"})
 
 
 def _instants_as_utc(pg_sql: str, target_dialect: str) -> str:
     """``pg_sql`` with each string literal cast to timestamptz that carries an offset written as
     the same instant in UTC, its offset gone. MariaDB reads ``TIMESTAMP('2024-01-01
-    20:04:05-05:00')`` as 20:04:05, five hours early (REQ-2050)."""
+    20:04:05-05:00')`` as 20:04:05, five hours early (REQ-2050). On Trino, Presto and Athena,
+    whose session is the client's zone, the text names UTC."""
     said = pg_sql.upper()
     zoned = "TIMESTAMPTZ" in said or "TIMESTAMP WITH TIME ZONE" in said
     if target_dialect not in _INSTANT_AS_UTC_WALL_TIME or not zoned:
@@ -796,8 +800,10 @@ def _instants_as_utc(pg_sql: str, target_dialect: str) -> str:
             continue  # not a date and time (the source refuses it as it is)
         if instant.tzinfo is None:
             continue  # no offset: read in the session's zone, UTC, as written
-        utc = instant.astimezone(timezone.utc).replace(tzinfo=None)
-        literal.replace(exp.Literal.string(utc.isoformat(sep=" ")))
+        utc = instant.astimezone(timezone.utc).replace(tzinfo=None).isoformat(sep=" ")
+        if target_dialect in _INSTANT_NAMES_UTC:
+            utc = f"{utc} UTC"
+        literal.replace(exp.Literal.string(utc))
     return tree.sql(dialect="postgres")
 
 
