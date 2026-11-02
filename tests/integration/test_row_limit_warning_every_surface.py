@@ -240,8 +240,12 @@ def _odata(boot, role: str, table: str) -> tuple[int, list[str]]:
         except urllib.error.HTTPError as exc:
             raise AssertionError(f"{exc.code} {exc.read().decode()}") from exc
 
+    # The table's own set, by its exact name: the domain-prefixed root field (naming.domain_prefix).
+    # A keyed table is also grounded in a draft Class term of its name (REQ-2141), which the
+    # ontology schema serves as a set of its own, ``on_<table>`` (REQ-2163) -- a suffix matches both.
+    name = f"sales__{table}"
     service, _ = get("/")
-    (name,) = [s["url"] for s in service["value"] if s["url"].lower().endswith(table)]
+    assert name in [s["url"] for s in service["value"]], service
     body, codes = get(f"/{name}")
     annotated = [w["code"] for w in body.get("@Provisa.warnings", [])]
     assert annotated == codes, (annotated, codes)
