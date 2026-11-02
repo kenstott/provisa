@@ -32,6 +32,8 @@ Arrow results, so a terminal can carry the engine's Arrow to the consumer unchan
 
 Encoders that read `arrow_batches()` get no Python row at all; the row consumers in place today
 (GraphQL, JSON:API, Bolt, pgwire's DataRow loop) keep working, converting at the point they read.
+An async terminal builds the rows on its executor thread before handing the result back
+(`ArrowResult.with_rows()`): the event loop does no per-row work.
 
 ## 2. Map
 
@@ -60,7 +62,7 @@ the row stream into a `QueryResult` on the executor thread: the same `to_pylist`
 | Source | Driver | Python rows built at | Columnar alternative |
 |---|---|---|---|
 | PostgreSQL, pgwire servers | psycopg 3 pool (`drivers/postgresql.py`), server-side cursor for streams | psycopg 3 binary/text loaders | ADBC postgresql; for pgwire, the raw DataRow passthrough is the direct cursor `[code]` |
-| DuckDB / MotherDuck | `drivers/duckdb_driver.py`: `fetchall` / `fetchmany` (`fetch_rows` reads through Arrow only for INTERVAL/DATE/TIMESTAMP) | DuckDB's row fetch | `to_arrow_reader` + `duckdb_arrow.arrow_rows`, as the engine now does `[code]` |
+| DuckDB / MotherDuck | **this change:** `drivers/duckdb_driver.py` reads `to_arrow_table` (an `ArrowResult`) and streams from `to_arrow_reader`; before, `fetchall` / `fetchmany` | `duckdb_arrow.arrow_rows`, in the driver (`execute`) or per fetch (`open_stream`) | — (done) `[code]` |
 | Snowflake | `drivers/snowflake.py`: `fetchall` / `fetchmany` | the connector's row conversion | `fetch_arrow_batches` (the runtime already uses it) or ADBC snowflake (installed, 1.11.0) `[code]` |
 | Databricks | `drivers/databricks.py` via `pooled.py`: `fetchall` / `fetchmany` | the connector | `fetchmany_arrow` / `fetchall_arrow` (the runtime already uses it) `[code]` |
 | BigQuery | `drivers/bigquery.py`: `_JobCursor.fetchmany` over the job's row iterator (REST `tabledata.list`, JSON) | google-cloud-bigquery JSON decode | `RowIterator.to_arrow_iterable(bqstorage_client=...)`, the Storage Read API (installed 2.39.0) `[code]` `[probe]` |
@@ -183,8 +185,7 @@ Options (decision for the maintainer):
 | `run_sync`, terminal gets the result (encoder face, `arrow_batches()`) | n/a (rows only) | 0.06 s |
 | `run_sync`, drained as Python rows | 1.17 s | 0.45 s |
 | `run_sync` with a DATE column, as Python rows | 2.56 s | 1.44 s |
-| `run`, terminal gets the result | 1.23 s (rows built in the fetch) | 0.07 s |
-| `run` + `.rows` | 1.23 s | 0.52 s |
+| `run` + `.rows` (rows built on the executor thread) | 1.23 s | 0.52 s |
 | `run` with a DATE column + `.rows` | 2.76 s | 1.55 s |
 
 Row consumers got faster too: `arrow_rows` reads text, decimals and null-free numbers through

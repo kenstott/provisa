@@ -207,3 +207,29 @@ async def test_run_of_a_statement_that_returns_no_rows_has_none(runtime):
     # DuckDB reports a SET as one 'Success' column with no rows, as its cursor always did.
     res = await runtime.run("set threads = 2")
     assert res.rows == [] and res.column_names == ["Success"]
+
+
+async def test_run_builds_its_rows_off_the_event_loop(runtime, monkeypatch):
+    """Every request runs on its own thread, and its event loop does no per-row work: the async
+    terminal's rows are built on the executor thread before the result is handed back, and a
+    consumer reading them on the loop builds nothing."""
+    import threading
+
+    from provisa.executor.drivers import duckdb_arrow
+    from provisa.federation import duckdb_runtime
+
+    built_on: list[int] = []
+
+    def recording(data):
+        built_on.append(threading.get_ident())
+        return duckdb_arrow.arrow_rows(data)
+
+    monkeypatch.setattr(duckdb_runtime, "arrow_rows", recording)
+    loop_thread = threading.get_ident()
+    res = await runtime.run("select x, x::varchar as s from range(1000) t(x)")
+    assert built_on and loop_thread not in built_on
+    built = len(built_on)
+    assert len(res.rows) == 1000  # read on the loop
+    assert len(list(res.iter_rows())) == 1000
+    assert len(built_on) == built  # nothing more built there
+    assert loop_thread not in built_on

@@ -1487,10 +1487,12 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                         if not res.description:
                             return QueryResult(rows=[], column_names=[], column_types=[])
                         types = [str(d[1]) for d in res.description]
-                        # REQ-2194: the engine's Arrow, never its DB-API rows; a consumer that
-                        # reads rows has them built from it (duckdb_arrow.arrow_rows).
+                        # REQ-2194: the engine's Arrow, never its DB-API rows
+                        # (duckdb_arrow.arrow_rows builds the rows from it).
                         table = res.to_arrow_table()
-                    return ArrowResult(table, types, to_rows=arrow_rows)
+                    # Rows are built here, on the executor thread: the awaiting consumer must do
+                    # no per-row work on the event loop.
+                    return ArrowResult(table, types, to_rows=arrow_rows).with_rows()
                 finally:
                     close_cursor(cur)
 

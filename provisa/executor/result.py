@@ -392,6 +392,14 @@ class ArrowResult(QueryResult):  # REQ-2194
         self._rows = value
         self.table = None
 
+    def with_rows(self) -> ArrowResult:
+        """This result with its rows built now, on the calling thread. An async terminal calls
+        it on its worker thread, so a consumer awaiting the result does no per-row work on the
+        event loop."""
+        if self._rows is None:
+            self._rows = self._to_rows(self.table)
+        return self
+
     def __repr__(self) -> str:
         # The dataclass repr reads ``rows``, which would build every row of the table to log it.
         held = "rows replaced" if self.table is None else f"{self.table.num_rows} rows as Arrow"
