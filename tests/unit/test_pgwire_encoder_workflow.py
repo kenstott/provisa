@@ -10,7 +10,7 @@
 
 """Provisa's Rust encoders are compiled into the provisa package itself (REQ-2194): one extension
 module, provisa._encoders, whose submodules are the encoders (pgwire now). provisa is released as
-five platform wheels, each carrying the module, its licence notices and the UI built once; there
+four platform wheels (macOS arm64, Linux amd64 and arm64, Windows x64), each carrying the module, its licence notices and the UI built once; there
 is no separate PyPI project. Every installer and image builds provisa with the module in it and
 imports it, so an artifact without it is never built."""
 
@@ -37,12 +37,11 @@ PGWIRE = REPO / "experiments" / "pgwire_encoder_rs"
 NOTICES = REPO / "provisa" / "_encoders.THIRD_PARTY_NOTICES"
 #: The Rust toolchain every recipe uses.
 RUST = "1.95.0"
-#: The five platforms of provisa's wheels: label -> (runner, platform tag pattern).
+#: The four platforms of provisa's wheels (no Intel Mac): label -> (runner, platform tag pattern).
 PLATFORMS = {
     "linux-x86_64": ("ubuntu-latest", "manylinux_2_28_x86_64"),
     "linux-aarch64": ("ubuntu-24.04-arm", "manylinux_2_28_aarch64"),
     "macos-arm64": ("macos-14", r"macosx_\d+_\d+_arm64"),
-    "macos-x86_64": ("macos-14", r"macosx_\d+_\d+_x86_64"),
     "windows-x64": ("windows-latest", "win_amd64"),
 }
 
@@ -212,7 +211,6 @@ def test_the_notices_ship_beside_the_module():
         "x86_64-unknown-linux-gnu",
         "aarch64-unknown-linux-gnu",
         "aarch64-apple-darwin",
-        "x86_64-apple-darwin",
         "x86_64-pc-windows-msvc",
     }
     assert about["private"] == {"ignore": True}
@@ -341,19 +339,16 @@ def test_the_release_builds_a_provisa_wheel_for_every_platform_and_imports_each(
     job = _jobs("release-packages.yml")["build-provisa-wheel"]
     rows = {row["label"]: row for row in job["strategy"]["matrix"]["include"]}
     assert {label: (row["runner"], row["tag"]) for label, row in rows.items()} == PLATFORMS
-    # The Intel Mac wheel is compiled for x86_64 by an x86_64 Python (Rosetta).
-    assert rows["macos-x86_64"]["target"] == "x86_64-apple-darwin"
-    assert rows["macos-x86_64"]["arch"] == "x64"
+    # No Intel Mac wheel: every row builds natively, none cross-compiles for another target.
+    assert not [label for label, row in rows.items() if "target" in row]
+    assert rows["macos-arm64"]["arch"] == "arm64"
     assert job["strategy"]["fail-fast"] is False
     steps = _steps(job)
     assert steps["Set up Python"]["with"] == {
         "python-version": "3.12",
         "architecture": "${{ matrix.arch }}",
     }
-    assert (
-        'rustup target add --toolchain 1.95.0 "$TARGET"'
-        in steps["Install the Rust toolchain"]["run"]
-    )
+    assert "rustup target add" not in steps["Install the Rust toolchain"]["run"]
     verify = steps["Verify the wheel's tag and import its encoders"]
     assert (
         'scripts/check-provisa-wheel.py dist/provisa-*.whl --tag "$TAG" --import' in verify["run"]

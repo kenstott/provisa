@@ -1,6 +1,6 @@
 # REQ-2194: cargo-about's settings for the licence notices of every crate linked into
 # provisa._encoders (scripts/rust-third-party-notices.sh writes provisa/_encoders.THIRD_PARTY_NOTICES).
-# The targets are the five platforms provisa's wheels are built for.
+# The targets are the four platforms provisa's wheels are built for.
 accepted = [
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
@@ -18,7 +18,6 @@ targets = [
     "x86_64-unknown-linux-gnu",
     "aarch64-unknown-linux-gnu",
     "aarch64-apple-darwin",
-    "x86_64-apple-darwin",
     "x86_64-pc-windows-msvc",
 ]
 ignore-build-dependencies = true

@@ -34,8 +34,8 @@ therefore have **platform-specific** wheels (not pure-Python `-any`).
 
 - **provisa itself:** provisa carries its Rust encoders compiled in (`provisa._encoders`,
   REQ-2194), so each release publishes one `cp312` wheel per platform —
-  `manylinux_2_28_x86_64`, `manylinux_2_28_aarch64`, `macosx_*_arm64`, `macosx_*_x86_64`
-  and `win_amd64` — plus an sdist that builds only where a Rust toolchain (cargo) is
+  `manylinux_2_28_x86_64`, `manylinux_2_28_aarch64`, `macosx_*_arm64` and `win_amd64`
+  (there is no Intel Mac wheel) — plus an sdist that builds only where a Rust toolchain (cargo) is
   present. Seed the wheel of every operator platform:
 
   ```bash

@@ -86,7 +86,8 @@ if [ "$wheel" = 1 ]; then
       --output "type=local,dest=${REPO_ROOT}/dist" "$REPO_ROOT"
   else
     # A macOS Python is often universal2, but the module is compiled for PYTHON's own architecture
-    # (x86_64 under Rosetta), so the wheel is tagged for that one, at Rust's macOS 11 floor.
+    # (arm64: Intel Macs are not supported), so the wheel is tagged for that one, at Rust's macOS
+    # 11 floor.
     plat=()
     if [ "$(uname -s)" = "Darwin" ]; then
       export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-11.0}"
