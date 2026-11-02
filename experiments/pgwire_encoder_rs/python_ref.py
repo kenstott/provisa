@@ -27,9 +27,14 @@ from typing import Any
 import pyarrow as pa
 from buenavista.postgres import BuenaVistaHandler
 
+import provisa.pgwire.cast_types as cast_types
+import provisa.pgwire.server as server
 from provisa.federation import runtime_support
+from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.federation.runtime_support import stream_rows_from_arrow
+from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
 from provisa.pgwire.server import ProvisaQueryResult
+from provisa.transpiler.pg_forms_json import jsonb_out
 
 
 class _Sink:
@@ -56,16 +61,73 @@ def query_result(
     batches: Iterable[pa.RecordBatch],
     column_types: list[str],
     formats: list[int] | None,
+    *,
+    sql: str = "",
+    shape: list[tuple[str, str]] | None = None,
+    read_shape: list[tuple[str, str]] | None = None,
+    force_types: list[Any] | None = None,
 ) -> ProvisaQueryResult:
+    """``force_types``: each column's BVType set outright, for a type no engine type name reaches
+    (a test of every BVType's writer)."""
     stream = stream_rows_from_arrow(schema, iter(batches), column_types=column_types)
-    qr = ProvisaQueryResult(stream)
+    qr = ProvisaQueryResult(stream, sql, shape=shape, read_shape=read_shape)
+    if force_types is not None:
+        qr._types = list(force_types)
     qr.result_format = formats
     return qr
 
 
 def bvtype_names(qr: ProvisaQueryResult) -> list[str]:
-    """The BVType each column is encoded as, by member name: what the Rust encoder is told."""
-    return [qr.column(i)[1].name for i in range(qr.column_count())]
+    """The BVType each column is encoded as, by member name ("xml[]" for xml's array, which
+    BVType does not list): what the Rust encoder is told."""
+    return [getattr(t, "name", t) for t in (qr.column(i)[1] for i in range(qr.column_count()))]
+
+
+#: The coercers ProvisaQueryResult applies, by the name the Rust encoder knows each by.
+_COERCER_NAMES: dict[Any, str] = {
+    int: "int",
+    float: "float",
+    server._to_decimal: "decimal",
+    server._to_date: "date",
+    server._to_timestamp: "timestamp",
+    server._to_list: "list",
+    server._null_alone: "null_alone",
+    server._duckdb_inet: "duckdb_inet",
+    xml_out: "xml_out",
+    jsonb_out: "jsonb_out",
+    cast_types._to_int: "int",
+    cast_types._to_float: "float",
+    cast_types._to_decimal: "decimal",
+    cast_types._to_bool: "bool",
+    cast_types.record_text: "record",
+    cast_types._clock_of: "clock",
+    cast_types._of_no_zone: "no_zone",
+}
+
+
+def _coercer_name(coercer: Any) -> str:
+    name = _COERCER_NAMES.get(coercer)
+    if name is not None:
+        return name
+    if getattr(coercer, "__qualname__", "") == "_padded.<locals>.pad":
+        (length,) = (c.cell_contents for c in coercer.__closure__)
+        return f"pad:{length}"
+    raise ValueError(f"no Rust coercer for {coercer!r}")
+
+
+def coercer_names(qr: ProvisaQueryResult) -> list[list[str]]:
+    """Each column's coercers, in the order ProvisaQueryResult applies them, by name."""
+    names: list[list[str]] = [[] for _ in range(qr.column_count())]
+    for i, coercer in qr._coerce:
+        names[i].append(_coercer_name(coercer))
+    return names
+
+
+def register_catalog_names(module: Any) -> None:
+    """Hands the reg* writers the catalog names server._register_reg_types reads."""
+    module.register_catalog_names(
+        list(PROC_NAMES.items()), [(oid, entry[-1]) for oid, entry in TYPES.items()]
+    )
 
 
 def python_encode(
@@ -73,12 +135,14 @@ def python_encode(
     batches: Iterable[pa.RecordBatch],
     column_types: list[str],
     formats: list[int] | None = None,
-) -> tuple[bytes, list[str]]:
-    """The DataRow bytes the product sends for these batches, and the BVTypes it chose."""
-    qr = query_result(schema, batches, column_types, formats)
+    **described: Any,
+) -> tuple[bytes, list[str], list[list[str]]]:
+    """The DataRow bytes the product sends for these batches, the BVTypes it chose and the
+    coercers it applies (``described``: query_result's sql, shape and read_shape)."""
+    qr = query_result(schema, batches, column_types, formats, **described)
     sink = _Sink(io.BytesIO())
     BuenaVistaHandler.send_data_rows(sink, qr)
-    return sink.wfile.getvalue(), bvtype_names(qr)
+    return sink.wfile.getvalue(), bvtype_names(qr), coercer_names(qr)
 
 
 def python_encode_count(

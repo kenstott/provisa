@@ -1,12 +1,18 @@
 // Experimental Rust port of the pgwire DataRow encoder (buenavista send_data_rows over the
 // BVTYPE_TO_PGTYPE converters, fed by provisa's Arrow -> row path). Nothing in the product calls
-// this; experiments/pgwire_encoder_rs/test_compare.py holds it to the Python encoder byte for byte.
+// this; experiments/pgwire_encoder_rs/test_compare.py holds it to the Python encoder byte for byte,
+// and to PostgreSQL 17 where the product's answer is not PostgreSQL's.
 
+mod coerce;
 mod fmt_num;
 mod json;
+mod pgtypes;
+mod pyval;
 mod temporal;
+mod tsearch;
 mod tz;
 mod tz_rules;
+mod unicode_tables;
 
 use std::sync::Arc;
 
@@ -19,7 +25,9 @@ use pyo3::exceptions::{PyNotImplementedError, PyOverflowError, PyTypeError, PyVa
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
-use fmt_num::{decimal_str, float4_text, float8_text, numeric_binary};
+use coerce::Coercer;
+use fmt_num::{float4_text, float8_text, numeric_binary, numeric_text};
+use pgtypes::Bv;
 use temporal::{
     date_text, interval_parts_of_duration, interval_parts_of_mdn, interval_text, timestamp_text, TzSpec, DAY_US,
 };
@@ -113,8 +121,9 @@ enum Kind {
     Array(Elem),
 }
 
-fn kind_of(name: &str) -> R<Kind> {
-    Ok(match name {
+/// The direct Arrow writer of a BVType, where there is one.
+fn kind_of(name: &str) -> Option<Kind> {
+    Some(match name {
         "BOOL" => Kind::Bool,
         "SMALLINT" => Kind::Int2,
         "INTEGER" => Kind::Int4,
@@ -141,7 +150,7 @@ fn kind_of(name: &str) -> R<Kind> {
         "DECIMALARRAY" => Kind::Array(Elem::Numeric),
         "BOOLARRAY" => Kind::Array(Elem::Bool),
         "STRINGARRAY" => Kind::Array(Elem::Text),
-        other => return Err(EncErr::Unsupported(format!("BVType {other} is not ported"))),
+        _ => return None,
     })
 }
 
@@ -150,7 +159,7 @@ fn unsupported(kind: Kind, dt: &DataType) -> EncErr {
 }
 
 /// Downcasts `arr` to `T`, owning a clone (Arrow arrays are cheap Arc'd buffers).
-fn typed<T: Array + Clone + 'static>(arr: &ArrayRef) -> T {
+pub(crate) fn typed<T: Array + Clone + 'static>(arr: &ArrayRef) -> T {
     arr.as_any()
         .downcast_ref::<T>()
         .expect("downcast matches DataType")
@@ -373,7 +382,7 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
                 if binary {
                     numeric_binary(neg, &digits, exp, out)
                 } else {
-                    decimal_str(neg, &digits, exp, out);
+                    numeric_text(neg, &digits, exp, out);
                     Ok(())
                 }
             }))
@@ -616,7 +625,7 @@ const DECIMAL_ZEROS: [u32; 67] = [
 
 /// The ASCII byte int() reads a character as (_PyUnicode_TransformDecimalAndSpaceToASCII): Unicode
 /// whitespace a space, a decimal digit its ASCII digit, anything else past ASCII invalid.
-fn int_ascii(c: char) -> u8 {
+pub(crate) fn int_ascii(c: char) -> u8 {
     if c.is_ascii() {
         return c as u8;
     }
@@ -677,7 +686,7 @@ fn int_hex_128(s: &[u8]) -> Option<u128> {
 
 /// uuid.UUID(str(u)).bytes: urn: and uuid: dropped anywhere, braces stripped from the ends, hyphens
 /// dropped anywhere, then 32 characters that int(hex, 16) reads.
-fn uuid_bytes(s: &str) -> R<[u8; 16]> {
+pub(crate) fn uuid_bytes(s: &str) -> R<[u8; 16]> {
     let bad = || EncErr::Value("badly formed hexadecimal UUID string".into());
     let s = s.replace("urn:", "").replace("uuid:", "");
     let s = s.trim_matches(|c| c == '{' || c == '}').replace('-', "");
@@ -691,7 +700,7 @@ fn uuid_bytes(s: &str) -> R<[u8; 16]> {
 }
 
 /// str(uuid.UUID(bytes=b)): lower-case hex in 8-4-4-4-12 groups.
-fn uuid_text(b: &[u8], out: &mut Vec<u8>) {
+pub(crate) fn uuid_text(b: &[u8], out: &mut Vec<u8>) {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     for (k, &byte) in b.iter().enumerate() {
         if matches!(k, 4 | 6 | 8 | 10) {
@@ -759,7 +768,7 @@ fn build_level(arr: &ArrayRef, elem: Elem, binary: bool) -> R<Level> {
     }
 }
 
-fn is_py_space(c: char) -> bool {
+pub(crate) fn is_py_space(c: char) -> bool {
     // str.isspace(), which Python's \s matches in a str pattern.
     matches!(c, '\t'..='\r' | '\x1c'..='\x1f' | ' ' | '\u{85}' | '\u{a0}' | '\u{1680}'
         | '\u{2000}'..='\u{200a}' | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}')
@@ -789,7 +798,29 @@ fn quote_element(out: &mut Vec<u8>, start: usize) {
     out.extend_from_slice(&quoted);
 }
 
+/// Whether the row's array holds nothing at any depth: PostgreSQL writes it {}.
+fn level_empty(level: &Level, i: usize) -> bool {
+    match level {
+        Level::List(_, offs, inner) => {
+            let (s, e) = offs(i);
+            match inner.as_ref() {
+                Level::List(a, _, _) => (s..e).all(|j| !a.is_null(j) && level_empty(inner, j)),
+                Level::Leaf(..) => s == e,
+            }
+        }
+        Level::Leaf(..) => false,
+    }
+}
+
 fn level_text(level: &Level, i: usize, out: &mut Vec<u8>) -> R<()> {
+    if level_empty(level, i) {
+        out.extend_from_slice(b"{}");
+        return Ok(());
+    }
+    level_items_text(level, i, out)
+}
+
+fn level_items_text(level: &Level, i: usize, out: &mut Vec<u8>) -> R<()> {
     match level {
         Level::List(_, offs, inner) => {
             let (s, e) = offs(i);
@@ -808,7 +839,7 @@ fn level_text(level: &Level, i: usize, out: &mut Vec<u8>) -> R<()> {
                     enc(j, out)?;
                     quote_element(out, start);
                 } else {
-                    level_text(inner, j, out)?;
+                    level_items_text(inner, j, out)?;
                 }
             }
             out.push(b'}');
@@ -858,7 +889,8 @@ fn level_shape(level: &Level, i: usize, dims: &mut Vec<usize>, flat: &mut Vec<Op
         }
         rows = next;
     }
-    // A list left where an element is expected goes to the element encoder in Python; not ported.
+    // A list left where an element is expected: PostgreSQL holds no such array (the product writes
+    // str(list) as the element).
     let mut list_element = false;
     for (k, lvl) in rows {
         let Level::List(_, offs, inner) = lvl else {
@@ -881,7 +913,11 @@ fn level_shape(level: &Level, i: usize, dims: &mut Vec<usize>, flat: &mut Vec<Op
         return Err(EncErr::Value("multidimensional array has unequal sublists".into()));
     }
     if list_element {
-        return Err(EncErr::Unsupported("a list as an array element is not ported".into()));
+        return Err(EncErr::Value("malformed array literal: a sub-array as an element".into()));
+    }
+    // An array with no elements has no dimensions (array_send of '{}').
+    if expected == 0 {
+        dims.clear();
     }
     Ok(())
 }
@@ -932,24 +968,90 @@ fn array_enc(elem: Elem, binary: bool, arr: &ArrayRef) -> R<Enc> {
     }))
 }
 
-fn encode(batch: &RecordBatch, kinds: &[Kind], formats: &[i32], out: &mut Vec<u8>) -> R<usize> {
-    let ncols = batch.num_columns();
-    if kinds.len() != ncols {
-        return Err(EncErr::Value(format!("{} types for {} columns", kinds.len(), ncols)));
-    }
-    let mut cols: Vec<(ArrayRef, Option<Enc>)> = Vec::with_capacity(ncols);
-    for (j, kind) in kinds.iter().enumerate() {
-        let arr = batch.column(j).clone();
-        // result_format[i] == 1 asks for binary; every ported type has a binary form.
-        let binary = formats.get(j).copied().unwrap_or(0) == 1;
-        let enc = if *arr.data_type() == DataType::Null {
-            None
-        } else {
-            Some(scalar_enc(*kind, binary, &arr)?)
+/// How one column's cells are written.
+enum Col {
+    /// An Arrow null column: every cell NULL.
+    Null,
+    /// A direct Arrow writer.
+    Fast(ArrayRef, Enc),
+    /// The cell's value (column_values), its coercers, then its BVType's writer.
+    Values {
+        reader: pyval::Reader,
+        coercers: Vec<Coercer>,
+        bv: Bv,
+        binary: bool,
+    },
+}
+
+/// A column's types and coercers, as the encoder is told them.
+pub struct Plan {
+    bvs: Vec<Bv>,
+    kinds: Vec<Option<Kind>>,
+    coercers: Vec<Vec<Coercer>>,
+}
+
+impl Plan {
+    fn new(types: &[String], coercers: Option<Vec<Vec<String>>>) -> R<Plan> {
+        let coercers = match coercers {
+            Some(c) => {
+                if c.len() != types.len() {
+                    return Err(EncErr::Value(format!("{} coercer lists for {} columns", c.len(), types.len())));
+                }
+                c.iter()
+                    .map(|names| names.iter().map(|n| coerce::coercer_of(n)).collect::<R<Vec<_>>>())
+                    .collect::<R<Vec<_>>>()?
+            }
+            None => vec![Vec::new(); types.len()],
         };
-        cols.push((arr, enc));
+        Ok(Plan {
+            bvs: types.iter().map(|t| pgtypes::bv_of(t)).collect(),
+            kinds: types.iter().map(|t| kind_of(t)).collect(),
+            coercers,
+        })
+    }
+}
+
+fn column(plan: &Plan, j: usize, arr: &ArrayRef, uuid_ext: bool, format: i32) -> R<Col> {
+    if *arr.data_type() == DataType::Null {
+        return Ok(Col::Null);
+    }
+    let bv = plan.bvs[j];
+    // send_data_rows writes binary when the format asks for it and the type has a binary writer.
+    let binary = format == 1 && pgtypes::has_binary(bv);
+    if plan.coercers[j].is_empty() {
+        // An arrow.uuid column's values are UUIDs: only the uuid writer reads its bytes directly.
+        if let Some(kind) = plan.kinds[j].filter(|k| !uuid_ext || *k == Kind::Uuid) {
+            match scalar_enc(kind, binary, arr) {
+                Ok(enc) => return Ok(Col::Fast(arr.clone(), enc)),
+                Err(EncErr::Unsupported(_)) => {} // an Arrow type the direct writer does not take
+                Err(e) => return Err(e),
+            }
+        }
+    }
+    Ok(Col::Values {
+        reader: pyval::Reader::new(arr, uuid_ext)?,
+        coercers: plan.coercers[j].clone(),
+        bv,
+        binary,
+    })
+}
+
+fn encode(batch: &RecordBatch, plan: &Plan, formats: &[i32], out: &mut Vec<u8>) -> R<usize> {
+    let ncols = batch.num_columns();
+    if plan.bvs.len() != ncols {
+        return Err(EncErr::Value(format!("{} types for {} columns", plan.bvs.len(), ncols)));
     }
     let nrows = batch.num_rows();
+    if nrows == 0 {
+        return Ok(0); // stream_rows_from_arrow skips an empty batch: no converter runs
+    }
+    let schema = batch.schema();
+    let mut cols: Vec<Col> = Vec::with_capacity(ncols);
+    for j in 0..ncols {
+        let uuid_ext = pyval::is_uuid_field(schema.field(j));
+        let format = formats.get(j).copied().unwrap_or(0);
+        cols.push(column(plan, j, batch.column(j), uuid_ext, format)?);
+    }
     out.reserve(nrows * (7 + ncols * 12));
     let ncols16 = ncols as i16;
     for i in 0..nrows {
@@ -957,16 +1059,37 @@ fn encode(batch: &RecordBatch, kinds: &[Kind], formats: &[i32], out: &mut Vec<u8
         out.push(b'D');
         out.extend_from_slice(&[0; 4]);
         out.extend_from_slice(&ncols16.to_be_bytes());
-        for (arr, enc) in &cols {
-            match enc {
-                Some(enc) if !arr.is_null(i) => {
-                    let p = out.len();
-                    out.extend_from_slice(&[0; 4]);
+        for col in &cols {
+            let p = out.len();
+            out.extend_from_slice(&[0; 4]);
+            let written = match col {
+                Col::Fast(arr, enc) if !arr.is_null(i) => {
                     enc(i, out)?;
-                    let n = (out.len() - p - 4) as i32;
-                    out[p..p + 4].copy_from_slice(&n.to_be_bytes());
+                    true
                 }
-                _ => out.extend_from_slice(b"\xff\xff\xff\xff"),
+                Col::Values { reader, coercers, bv, binary } if !reader.is_null(i) => {
+                    let mut v = reader.get(i)?;
+                    for c in coercers {
+                        v = coerce::apply(c, v)?;
+                        if v == pyval::PyVal::None {
+                            break; // a coercer's None is a NULL cell
+                        }
+                    }
+                    if v == pyval::PyVal::None {
+                        false
+                    } else {
+                        pgtypes::convert(*bv, *binary, &v, out)?;
+                        true
+                    }
+                }
+                _ => false,
+            };
+            if written {
+                let n = (out.len() - p - 4) as i32;
+                out[p..p + 4].copy_from_slice(&n.to_be_bytes());
+            } else {
+                out.truncate(p);
+                out.extend_from_slice(b"\xff\xff\xff\xff");
             }
         }
         let len = (out.len() - msg - 1) as i32;
@@ -976,21 +1099,23 @@ fn encode(batch: &RecordBatch, kinds: &[Kind], formats: &[i32], out: &mut Vec<u8
 }
 
 /// The DataRow messages of every row of `batch`, each column encoded as the BVType named in
-/// `types` (BVType member names) in format `formats[i]` (0 text, 1 binary).
+/// `types` (BVType member names; "xml[]" for xml's array) in format `formats[i]` (0 text,
+/// 1 binary), its values first brought through the coercers named in `coercers[i]`.
 #[pyfunction]
-#[pyo3(signature = (batch, types, formats=None))]
+#[pyo3(signature = (batch, types, formats=None, coercers=None))]
 fn encode_batch<'py>(
     py: Python<'py>,
     batch: &Bound<'py, PyAny>,
     types: Vec<String>,
     formats: Option<Vec<i32>>,
+    coercers: Option<Vec<Vec<String>>>,
 ) -> PyResult<Bound<'py, PyBytes>> {
     let batch = RecordBatch::from_pyarrow_bound(batch)?;
-    let kinds = types.iter().map(|t| kind_of(t)).collect::<R<Vec<_>>>()?;
+    let plan = Plan::new(&types, coercers)?;
     let formats = formats.unwrap_or_default();
     let out = py.allow_threads(|| {
         let mut out = Vec::new();
-        encode(&batch, &kinds, &formats, &mut out).map(|_| out)
+        encode(&batch, &plan, &formats, &mut out).map(|_| out)
     })?;
     Ok(PyBytes::new(py, &out))
 }
@@ -999,31 +1124,106 @@ fn encode_batch<'py>(
 /// encoder, handing each batch's DataRow bytes to `write` — the shape send_data_rows has, one write
 /// per chunk. Returns the row count.
 #[pyfunction]
-#[pyo3(signature = (batches, types, write, formats=None))]
+#[pyo3(signature = (batches, types, write, formats=None, coercers=None))]
 fn encode_stream<'py>(
     py: Python<'py>,
     batches: &Bound<'py, PyAny>,
     types: Vec<String>,
     write: &Bound<'py, PyAny>,
     formats: Option<Vec<i32>>,
+    coercers: Option<Vec<Vec<String>>>,
 ) -> PyResult<usize> {
-    let kinds = Arc::new(types.iter().map(|t| kind_of(t)).collect::<R<Vec<_>>>()?);
+    let plan = Arc::new(Plan::new(&types, coercers)?);
     let formats = formats.unwrap_or_default();
     let mut rows = 0;
     let mut out = Vec::new();
     for item in batches.try_iter()? {
         let batch = RecordBatch::from_pyarrow_bound(&item?)?;
         out.clear();
-        rows += py.allow_threads(|| encode(&batch, &kinds, &formats, &mut out))?;
-        write.call1((PyBytes::new(py, &out),))?;
+        rows += py.allow_threads(|| encode(&batch, &plan, &formats, &mut out))?;
+        if !out.is_empty() {
+            write.call1((PyBytes::new(py, &out),))?;
+        }
     }
     Ok(rows)
+}
+
+/// RawDataRowBytes passthrough: rows a PostgreSQL source sent, each already a whole DataRow
+/// message, forwarded verbatim in send_data_rows' chunks of 500 rows (one `write` per chunk).
+/// Each is checked to be one DataRow message, so a malformed one never reaches the client's
+/// stream. Returns the row count.
+#[pyfunction]
+fn forward_raw<'py>(py: Python<'py>, rows: &Bound<'py, PyAny>, write: &Bound<'py, PyAny>) -> PyResult<usize> {
+    const CHUNK: usize = 500;
+    let mut chunk: Vec<u8> = Vec::new();
+    let (mut n, mut in_chunk) = (0usize, 0usize);
+    for item in rows.try_iter()? {
+        let item = item?;
+        let msg: &[u8] = item.downcast::<PyBytes>()?.as_bytes();
+        check_data_row(msg)?;
+        chunk.extend_from_slice(msg);
+        n += 1;
+        in_chunk += 1;
+        if in_chunk == CHUNK {
+            write.call1((PyBytes::new(py, &chunk),))?;
+            chunk.clear();
+            in_chunk = 0;
+        }
+    }
+    if in_chunk > 0 {
+        write.call1((PyBytes::new(py, &chunk),))?;
+    }
+    Ok(n)
+}
+
+fn check_data_row(msg: &[u8]) -> R<()> {
+    let bad = |why: &str| EncErr::Value(format!("not a DataRow message: {why}"));
+    if msg.len() < 7 || msg[0] != b'D' {
+        return Err(bad("no 'D' header"));
+    }
+    let len = i32::from_be_bytes(msg[1..5].try_into().unwrap());
+    if len as i64 != msg.len() as i64 - 1 {
+        return Err(bad("its length word"));
+    }
+    let ncols = i16::from_be_bytes(msg[5..7].try_into().unwrap());
+    let mut p = 7usize;
+    for _ in 0..ncols.max(0) {
+        let n = i32::from_be_bytes(msg.get(p..p + 4).ok_or_else(|| bad("a cell past its end"))?.try_into().unwrap());
+        p += 4;
+        if n >= 0 {
+            p += n as usize;
+        } else if n != -1 {
+            return Err(bad("a cell length"));
+        }
+    }
+    if p != msg.len() || ncols < 0 {
+        return Err(bad("its cells"));
+    }
+    Ok(())
+}
+
+/// The catalog names the reg* writers read (server._register_reg_types): pg_proc's names and
+/// pg_type's, each as (oid, name) in catalog order. Called once at import.
+#[pyfunction]
+fn register_catalog_names(procs: Vec<(i64, String)>, types: Vec<(i64, String)>) {
+    let mut names = pgtypes::CatalogNames::default();
+    for (oid, name) in procs {
+        names.procs.insert(oid as i128, name);
+    }
+    for (oid, name) in types {
+        names.types.insert(oid as i128, name.clone());
+        names.type_oids.insert(name, oid as i128);
+    }
+    pgtypes::set_catalog_names(names);
 }
 
 #[pymodule]
 fn pgwire_encoder_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(encode_batch, m)?)?;
     m.add_function(wrap_pyfunction!(encode_stream, m)?)?;
+    m.add_function(wrap_pyfunction!(forward_raw, m)?)?;
+    m.add_function(wrap_pyfunction!(register_catalog_names, m)?)?;
+    m.add("UNICODE_VERSION", unicode_tables::UNICODE_VERSION)?;
     // The IANA release chrono-tz's tables and tz_rules.rs's rules were built from.
     m.add("TZDB_VERSION", chrono_tz::IANA_TZDB_VERSION)?;
     m.add("TZ_RULES_VERSION", tz_rules::TZDB_VERSION)?;

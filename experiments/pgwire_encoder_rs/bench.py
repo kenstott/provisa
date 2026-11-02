@@ -238,7 +238,7 @@ def main() -> None:
         formats = [fmt] * len(types)
         # the first two batches agree before anything is timed: every cell's bytes, a float
         # cell's value within the differential's tolerance
-        py, _ = python_encode(schema, batches[:2], types, formats)
+        py, _, _ = python_encode(schema, batches[:2], types, formats)
         rs = b"".join(pgwire_encoder_rs.encode_batch(b, bvtypes, formats) for b in batches[:2])
         assert_same(py, rs, bvtypes, formats)
         del py, rs

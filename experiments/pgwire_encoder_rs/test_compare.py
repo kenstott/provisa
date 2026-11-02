@@ -25,6 +25,7 @@ from __future__ import annotations
 import datetime as dt
 import functools
 import importlib.resources
+import ipaddress
 import math
 import random
 import re
@@ -37,11 +38,22 @@ from fractions import Fraction
 from typing import Any
 
 import pyarrow as pa
+import pyarrow.compute  # noqa: F401 -- pa.compute
 import pytest
 import tzdata
 
 import pgwire_encoder_rs
-from python_ref import named_zones, python_encode
+from pg_reference import pg17
+from python_ref import (
+    bvtype_names,
+    coercer_names,
+    named_zones,
+    python_encode,
+    query_result,
+    register_catalog_names,
+)
+
+register_catalog_names(pgwire_encoder_rs)
 
 UTF8_SPACES = [chr(c) for c in range(sys.maxunicode + 1) if chr(c).isspace()]
 
@@ -669,21 +681,38 @@ def _zone(name: str) -> zoneinfo.ZoneInfo:
 
 
 def _python(
-    batch: pa.RecordBatch, types: list[str], formats: list[int] | None
-) -> tuple[Any, list[str]]:
-    with named_zones(_zone):
+    batch: pa.RecordBatch, types: list[str], formats: list[int] | None, **described: Any
+) -> tuple[Any, list[str], list[list[str]]]:
+    """The reference's DataRow bytes (or its raise), the BVTypes and the coercers: the product's
+    path, with PostgreSQL's answer where the product's is not it (pg_reference.pg17)."""
+    with named_zones(_zone), pg17():
         try:
-            return python_encode(batch.schema, [batch], types, formats)
+            return python_encode(batch.schema, [batch], types, formats, **described)
         except Exception as e:  # noqa: BLE001 -- a raise is an outcome to compare
             # The encoder raised mid-stream; the types are known before any row is encoded.
-            from python_ref import bvtype_names, query_result
+            qr = query_result(batch.schema, [], types, formats, **described)
+            return e, bvtype_names(qr), coercer_names(qr)
 
-            return e, bvtype_names(query_result(batch.schema, [], types, formats))
+
+def _product(
+    batch: pa.RecordBatch, types: list[str], formats: list[int] | None, **described: Any
+) -> Any:
+    """The product's own DataRow bytes (or its raise), with no correction."""
+    with named_zones(_zone):
+        try:
+            return python_encode(batch.schema, [batch], types, formats, **described)[0]
+        except Exception as e:  # noqa: BLE001
+            return e
 
 
-def _rust(batch: pa.RecordBatch, bvtypes: list[str], formats: list[int] | None) -> Any:
+def _rust(
+    batch: pa.RecordBatch,
+    bvtypes: list[str],
+    formats: list[int] | None,
+    coercers: list[list[str]] | None = None,
+) -> Any:
     try:
-        return pgwire_encoder_rs.encode_batch(batch, bvtypes, formats)
+        return pgwire_encoder_rs.encode_batch(batch, bvtypes, formats, coercers)
     except Exception as e:  # noqa: BLE001
         return e
 
@@ -693,21 +722,27 @@ def _batch(arrays: list[Any]) -> pa.RecordBatch:
 
 
 def _both(
-    arrays: list[Any], types: list[str], formats: list[int] | None
+    arrays: list[Any], types: list[str], formats: list[int] | None, **described: Any
 ) -> tuple[Any, Any, list[str]]:
     batch = _batch(arrays)
-    py, bvtypes = _python(batch, types, formats)
-    return py, _rust(batch, bvtypes, formats), bvtypes
+    py, bvtypes, coercers = _python(batch, types, formats, **described)
+    return py, _rust(batch, bvtypes, formats, coercers), bvtypes
 
 
 def _check(
-    arrays: list[Any], types: list[str], formats: list[int] | None, *, encodes: bool = False
+    arrays: list[Any],
+    types: list[str],
+    formats: list[int] | None,
+    *,
+    encodes: bool = False,
+    **described: Any,
 ) -> None:
-    """Python and Rust agree on the batch; with ``encodes``, the product encodes it (no raise)."""
+    """The reference and Rust agree on the batch; with ``encodes``, the reference encodes it (no
+    raise). ``described``: the statement's sql, shape or read_shape (ProvisaQueryResult's)."""
     batch = _batch(arrays)
-    py, bvtypes = _python(batch, types, formats)
+    py, bvtypes, coercers = _python(batch, types, formats, **described)
     assert not (encodes and isinstance(py, Exception)), f"python raised {py!r:.300}"
-    rs = _rust(batch, bvtypes, formats)
+    rs = _rust(batch, bvtypes, formats, coercers)
     # A float4 text cell is held to the float the product sends in binary for that value: its text
     # of a double described as REAL can name another float (RESULTS.md, product defect 4).
     real_text = [
@@ -718,8 +753,9 @@ def _check(
     sent = None
     if real_text and not isinstance(py, Exception):
         binary = [1 if c in real_text else f for c, f in enumerate(formats or [0] * len(bvtypes))]
-        py_binary, _ = _python(batch, types, binary)
-        sent = {c: [row[c] for row in _data_rows(py_binary)] for c in real_text}
+        py_binary, _, _ = _python(batch, types, binary, **described)
+        if not isinstance(py_binary, Exception):  # a value no binary float4 holds is not one
+            sent = {c: [row[c] for row in _data_rows(py_binary)] for c in real_text}
     _assert_same(py, rs, bvtypes, formats, sent)
 
 
@@ -1024,7 +1060,8 @@ def test_many_batches_chunk_boundaries() -> None:
     arrays, types = _mixed(1234, seed=3)
     batch = pa.RecordBatch.from_arrays(arrays, names=[f"c{i}" for i in range(len(arrays))])
     batches = [batch.slice(0, 1), batch.slice(1, 700), batch.slice(701)]
-    py, bvtypes = python_encode(batch.schema, batches, types, [1] * 10)
+    with pg17():
+        py, bvtypes, _ = python_encode(batch.schema, batches, types, [1] * 10)
     rs = b"".join(pgwire_encoder_rs.encode_batch(b, bvtypes, [1] * 10) for b in batches)
     _assert_same(py, rs, bvtypes, [1] * 10)
 
@@ -1037,7 +1074,7 @@ def test_uuid_fixed_size_binary() -> None:
     storage = pa.array(values, pa.binary(16))
     extension = pa.ExtensionArray.from_storage(pa.uuid(), storage)
     for fmt in (0, 1):
-        py, bvtypes = _python(_batch([extension]), ["UUID"], [fmt])
+        py, bvtypes, _ = _python(_batch([extension]), ["UUID"], [fmt])
         for arr in (storage, extension):
             _assert_same(py, _rust(_batch([arr]), bvtypes, [fmt]), bvtypes, [fmt])
 
@@ -1217,3 +1254,223 @@ def test_postgres_float_text(bvtype: str, arrow_type: pa.DataType, cases: list) 
     batch = _batch([pa.array([v for v, _ in cases], arrow_type)])
     rows = _data_rows(pgwire_encoder_rs.encode_batch(batch, [bvtype], [0]))
     assert [r[0] for r in rows] == [text.encode() for _, text in cases]
+
+
+# --- every BVType, from every Arrow type a column may reach it as ---
+
+from buenavista.core import BVType  # noqa: E402
+
+from provisa.pgwire.cast_types import XML_ARRAY  # noqa: E402
+
+#: Every wire type send_data_rows knows, and BVType.UNKNOWN (any type it does not list).
+ALL_TYPES: list[Any] = [*BVType, XML_ARRAY]
+
+
+def _type_name(t: Any) -> str:
+    return getattr(t, "name", t)
+
+
+def _forced(arrays: list[Any], types: list[Any], formats: list[int], **described: Any) -> None:
+    """_check with each column's BVType set outright."""
+    _check(arrays, ["VARCHAR"] * len(arrays), formats, force_types=types, **described)
+
+
+_DUCKDB_INET = pa.struct(
+    [("ip_type", pa.uint8()), ("address", pa.decimal128(38, 0)), ("mask", pa.uint16())]
+)
+
+
+def _duckdb_inet(ips: list[str | None]) -> pa.StructArray:
+    """DuckDB's INET column: each value's type, its address (an IPv6 one with its top bit flipped,
+    a HUGEINT, which can pass decimal128(38, 0)'s 38 digits) and its mask, as DuckDB's Arrow
+    carries it. Built from its buffers: pyarrow refuses a 39-digit value from Python."""
+    kinds, addresses, masks = [], [], []
+    for ip in ips:
+        iface = ipaddress.ip_interface(ip or "0.0.0.0")
+        flipped = int(iface.ip) if iface.version == 4 else int(iface.ip) - (1 << 127)
+        kinds.append(1 if iface.version == 4 else 2)
+        addresses.append(flipped.to_bytes(16, "little", signed=True))
+        masks.append(iface.network.prefixlen)
+    address = pa.Array.from_buffers(
+        pa.decimal128(38, 0), len(ips), [None, pa.py_buffer(b"".join(addresses))]
+    )
+    valid = pa.array([ip is not None for ip in ips])
+    return pa.StructArray.from_arrays(
+        [pa.array(kinds, pa.uint8()), address, pa.array(masks, pa.uint16())],
+        fields=list(_DUCKDB_INET),
+        mask=pa.compute.invert(valid),
+    )
+
+
+#: A column of each Arrow type a result may hold, NULLs among its values.
+POOL: list[tuple[str, Any]] = [
+    ("null", pa.array([None, None], pa.null())),
+    ("bool", pa.array([True, False, None])),
+    ("int8", pa.array([0, -1, 127, None], pa.int8())),
+    ("int64", pa.array([0, 1, -1, 2**40, 26, 23, None], pa.int64())),
+    ("uint64", pa.array([2**64 - 1, None], pa.uint64())),
+    ("float64", pa.array([0.0, -0.0, 0.1, 1e16, 2.5, -1e-7, None])),
+    ("float64_special", pa.array([float("nan"), float("inf"), float("-inf")])),
+    ("float32", pa.array([0.1, 3.0, None], pa.float32())),
+    (
+        "decimal_2",
+        pa.array([Decimal("1.50"), Decimal("-0.01"), Decimal("0.00"), None], pa.decimal128(10, 2)),
+    ),
+    (
+        "decimal_10",
+        pa.array(
+            [Decimal("1E-10"), Decimal("12345678901234567890.1234567891")], pa.decimal128(38, 10)
+        ),
+    ),
+    ("decimal256", pa.array([Decimal("-1.5"), None], pa.decimal256(40, 1))),
+    ("binary", pa.array([b"", b"a'\x00\xff\"", None], pa.binary())),
+    ("fsb16", pa.array([uuid.UUID(UUIDS[0]).bytes, None], pa.binary(16))),
+    (
+        "uuid_ext",
+        pa.ExtensionArray.from_storage(
+            pa.uuid(), pa.array([uuid.UUID(UUIDS[0]).bytes], pa.binary(16))
+        ),
+    ),
+    ("date32", pa.array([_date(2024, 2, 29), _date(1, 1, 1), None], pa.date32())),
+    ("date32_infinity", pa.array([I32_MAX, -I32_MAX], pa.date32())),
+    ("date64", pa.array([_ms_of_date(1999, 12, 31) + 5], pa.date64())),
+    ("ts_us", pa.array([_ts(2000, 1, 1, 12, 30, 0, 500), _ts(1, 1, 1), None], pa.timestamp("us"))),
+    ("ts_us_infinity", pa.array([I64_MAX, -I64_MAX], pa.timestamp("us"))),
+    ("ts_us_utc", pa.array([_ts(2024, 7, 1, 1, 2, 3), None], pa.timestamp("us", "UTC"))),
+    ("ts_us_utc_infinity", pa.array([I64_MAX], pa.timestamp("us", "UTC"))),
+    ("ts_s_offset", pa.array([_ts(2024, 7, 1) // US], pa.timestamp("s", "+05:30"))),
+    ("ts_us_named", pa.array([_ts(2024, 7, 1, 12)], pa.timestamp("us", "America/New_York"))),
+    ("ts_ns", pa.array([1, 1500, None], pa.timestamp("ns"))),
+    ("ts_ns_utc", pa.array([1], pa.timestamp("ns", "UTC"))),
+    ("time_us", pa.array([0, 3_600_000_001, None], pa.time64("us"))),
+    ("time_s", pa.array([45296], pa.time32("s"))),
+    ("time_ns", pa.array([5_000], pa.time64("ns"))),
+    ("duration_us", pa.array([1, -1, DAY_US + 1, None], pa.duration("us"))),
+    ("duration_ns", pa.array([1, -1], pa.duration("ns"))),
+    (
+        "mdn",
+        pa.array(
+            [(1, 2, 3000), (0, 5, 0), (0, 1, 25 * 3600 * 10**9)], pa.month_day_nano_interval()
+        ),
+    ),
+    ("list_int", pa.array([[1, None, 3], [], None], pa.list_(pa.int32()))),
+    ("list_str", pa.array([["a b", "", None, "x'y", 'q"'], []], pa.list_(pa.string()))),
+    (
+        "list_list",
+        pa.array([[[1, 2], [3, 4]], [[], []], [[1], None]], pa.list_(pa.list_(pa.int32()))),
+    ),
+    ("list_list_str", pa.array([[[], []], [None, ["a"]]], pa.list_(pa.list_(pa.string())))),
+    ("list_float", pa.array([[0.5, float("nan"), None]], pa.list_(pa.float64()))),
+    ("list_decimal", pa.array([[Decimal("1.5"), None]], pa.list_(pa.decimal128(5, 1)))),
+    ("list_date", pa.array([[_date(2020, 1, 2)]], pa.list_(pa.date32()))),
+    ("list_ts", pa.array([[_ts(2020, 1, 2, 3, 4, 5, 6)]], pa.list_(pa.timestamp("us")))),
+    ("list_ts_utc", pa.array([[_ts(2020, 1, 2)]], pa.list_(pa.timestamp("us", "UTC")))),
+    ("list_time", pa.array([[1]], pa.list_(pa.time64("us")))),
+    ("list_duration", pa.array([[DAY_US + 5]], pa.list_(pa.duration("us")))),
+    ("list_bytes", pa.array([[b"x\n"]], pa.list_(pa.binary()))),
+    ("list_bool", pa.array([[True, None]], pa.list_(pa.bool_()))),
+    (
+        "struct",
+        pa.array([{"a": 1, "b": "x y"}, None], pa.struct([("a", pa.int64()), ("b", pa.string())])),
+    ),
+    (
+        "struct_reg",
+        pa.array(
+            [{"oid": 1259, "name": "pg_class"}],
+            pa.struct([("oid", pa.int64()), ("name", pa.string())]),
+        ),
+    ),
+    (
+        "struct_nested",
+        pa.array(
+            [{"a": [1, 2], "b": {"c": None}}],
+            pa.struct([("a", pa.list_(pa.int64())), ("b", pa.struct([("c", pa.float64())]))]),
+        ),
+    ),
+    ("duckdb_inet", _duckdb_inet(["1.2.3.4/24", "::ffff:1.2.3.4/128", "2001:db8::1/64", None])),
+    ("map", pa.array([[("k", 1), ("v", None)], []], pa.map_(pa.string(), pa.int64()))),
+    ("dictionary", pa.array(["a", "b", "a", None]).dictionary_encode()),
+    ("large_string", pa.array(["x", None], pa.large_string())),
+    ("strings", pa.array(["", "abc", "t", "NULL", "日本語", "tab\there", None])),
+]
+
+#: Texts each a column of its own (one bad row raises for the column): the PostgreSQL text forms of
+#: the types held as text, and what int(), float() and Decimal() make of a str.
+TEXTS = [
+    "42",
+    "  -17 ",
+    "1_000",
+    "١٢٣",
+    "1.5",
+    "-0.0",
+    "1e300",
+    "inf",
+    "-Infinity",
+    "NaN",
+    "0x1F",
+    "4294967296",
+    "(1,2)",
+    "(1.5,-2e-05)",
+    "{1,-1,0}",
+    "[(0,0),(1,1)]",
+    "((0,0),(1,1),(2,0))",
+    "(2,3),(0,0)",
+    "<(1,2),3>",
+    "[1,10)",
+    "empty",
+    '["2020-01-01 00:00:00","2020-01-02 00:00:00")',
+    '["2020-01-01 00:00:00+00","2020-01-02 00:00:00+05:30")',
+    "[2020-01-01,2020-02-01)",
+    "{[1,3), [5,7)}",
+    "{}",
+    "'a':1A,2 'b''c' 'd\\\\e':3C",
+    "'a' & 'b' | !'c' <-> 'd':*A",
+    "192.168.0.1/24",
+    "10.0.0.0/8",
+    "2001:db8::1",
+    "::ffff:1.2.3.4",
+    "08:00:2b:01:02:03",
+    "08-00-2b-01-02-03-04-05",
+    "101",
+    "10101010101",
+    "(1,2)",
+    "10:20:12,15",
+    "16/B374D848",
+    '<?xml version="1.1" standalone="yes"?><a/>',
+    '<?xml version="1.0"?>\n<a/>',
+    "$1,234.50",
+    "-$0.01",
+    "{1,2,3}",
+    "{{a,b},{c,NULL}}",
+    '{"a": 1, "b": [1, 2]}',
+    "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    "2024-02-29",
+    "12:34:56.789+05:30",
+    "12:34:56-08",
+    "1 day 02:03:04",
+    "$.a",
+    "=r/postgres",
+    "x",
+    "é",
+    "",
+]
+
+MATRIX = [(name, arr) for name, arr in POOL] + [
+    (f"text_{k}", pa.array([t])) for k, t in enumerate(TEXTS)
+]
+
+
+@pytest.mark.parametrize("fmt", [0, 1], ids=["text", "binary"])
+@pytest.mark.parametrize("bvtype", ALL_TYPES, ids=_type_name)
+def test_every_type_from_every_arrow_type(bvtype: Any, fmt: int) -> None:
+    """Each BVType's writer, over every column of the pool: the same bytes, or both raise. A
+    tsquery in binary is held to PostgreSQL's own bytes instead (test_tsquery_binary)."""
+    if bvtype == BVType.TSQUERY and fmt == 1:
+        pytest.skip("held to PostgreSQL's tsquerysend in test_tsquery_binary")
+    failures = []
+    for name, arr in MATRIX:
+        try:
+            _forced([arr], [bvtype], [fmt])
+        except AssertionError as e:
+            failures.append(f"{name}: {e}"[:400])
+    assert not failures, "\n".join(failures)

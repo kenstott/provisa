@@ -161,7 +161,7 @@ pub fn clock_text(us: i64, out: &mut Vec<u8>) {
 }
 
 /// _pg_offset
-fn offset_text(seconds: i32, out: &mut Vec<u8>) {
+pub fn offset_text(seconds: i32, out: &mut Vec<u8>) {
     out.push(if seconds < 0 { b'-' } else { b'+' });
     let a = seconds.unsigned_abs();
     let (h, rest) = (a / 3600, a % 3600);
@@ -229,30 +229,11 @@ pub fn timestamp_text(micros: i128, tz: &TzSpec, out: &mut Vec<u8>) -> R<()> {
     Ok(())
 }
 
-/// trunc(float(n / d)) for n, d > 0: Python's int true division is correctly rounded, then int()
-/// truncates. The quotient rounds up to the next integer only when it is within half a unit in
-/// the last place of it.
-fn trunc_true_div(n: i128, d: i128) -> i128 {
-    let (q, r) = (n / d, n % d);
-    if r == 0 || q == 0 {
-        return q;
-    }
-    assert!(q < (1i128 << 52), "interval quotient past 2**52 days is not ported");
-    // spacing of doubles in [2**L, 2**(L+1)), L = floor(log2 q): 2**(L-52) = 1 / 2**k
-    let l = 127 - q.leading_zeros() as i32;
-    let k = 52 - l;
-    // round up to q+1 iff (q+1) - n/d <= spacing/2 (a tie goes to q+1, whose last bit is even)
-    if (d - r) << (k + 1) <= d {
-        q + 1
-    } else {
-        q
-    }
-}
-
-/// buenavista _interval_parts of a timedelta of `total` microseconds: days = int(micros / 86400e6).
+/// buenavista _interval_parts of a timedelta of `total` microseconds: its days, truncated toward
+/// zero, and the rest. The product divides in floating point (int(micros / 86400e6)), which
+/// rounds a day up within about ten milliseconds of the next near the billion-day limit.
 fn timedelta_parts(total: i128) -> (i64, i64, i64) {
-    let mag = trunc_true_div(total.abs(), DAY_US);
-    let days = if total < 0 { -mag } else { mag };
+    let days = total / DAY_US;
     (0, days as i64, (total - days * DAY_US) as i64)
 }
 
@@ -353,5 +334,27 @@ pub fn interval_text(months: i64, days: i64, micros: i64, out: &mut Vec<u8>) {
             out.push(b'.');
             out.extend_from_slice(&digits[..n]);
         }
+    }
+}
+
+/// Days since 1970-01-01 of a proleptic Gregorian date, any year (Howard Hinnant's
+/// days_from_civil).
+pub fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (m as i64 + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d as i64 - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// The days in a month of a proleptic Gregorian year.
+pub fn month_days(y: i64, m: u32) -> i64 {
+    match m {
+        4 | 6 | 9 | 11 => 30,
+        2 if y % 4 == 0 && (y % 100 != 0 || y % 400 == 0) => 29,
+        2 => 28,
+        _ => 31,
     }
 }

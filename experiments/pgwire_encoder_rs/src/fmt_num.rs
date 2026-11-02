@@ -230,45 +230,41 @@ fn groups_of(s: &[u8]) -> impl Iterator<Item = u16> + '_ {
         .map(|c| c.iter().fold(0u16, |acc, &d| acc * 10 + (d - b'0') as u16))
 }
 
-/// abs(d) under the default decimal context: a coefficient past 28 digits is rounded to 28, half
-/// to even, its exponent raised by the digits dropped.
-fn context_round(digits: &[u8], exp: i32) -> (Vec<u8>, i32) {
-    const PREC: usize = 28;
-    if digits.len() <= PREC {
-        return (digits.to_vec(), exp);
+/// numeric_out of a finite decimal: plain notation with its scale's digits after the point (the
+/// product writes Decimal.__str__, which turns to an exponent below 1E-6), no sign on zero.
+pub fn numeric_text(negative: bool, digits: &[u8], exp: i32, out: &mut Vec<u8>) {
+    let first = digits.iter().position(|&c| c != b'0').unwrap_or(digits.len());
+    let digits = &digits[first..];
+    if negative && !digits.is_empty() {
+        out.push(b'-');
     }
-    let dropped = digits.len() - PREC;
-    let mut kept = digits[..PREC].to_vec();
-    let first = digits[PREC];
-    let rest_zero = digits[PREC + 1..].iter().all(|&c| c == b'0');
-    let up = first > b'5' || (first == b'5' && (!rest_zero || (kept[PREC - 1] - b'0') % 2 == 1));
-    let mut exp = exp + dropped as i32;
-    if up {
-        let mut k = PREC;
-        loop {
-            if k == 0 {
-                // 99..9 carried to 10..0: one digit more than precision, so one more is dropped.
-                kept.insert(0, b'1');
-                kept.pop();
-                exp += 1;
-                break;
-            }
-            k -= 1;
-            if kept[k] == b'9' {
-                kept[k] = b'0';
-            } else {
-                kept[k] += 1;
-                break;
-            }
+    if exp >= 0 {
+        if digits.is_empty() {
+            out.push(b'0');
+        } else {
+            out.extend_from_slice(digits);
+            push_zeros(out, exp);
         }
+        return;
     }
-    (kept, exp)
+    let f = (-exp) as usize;
+    if digits.len() > f {
+        out.extend_from_slice(&digits[..digits.len() - f]);
+    } else {
+        out.push(b'0');
+    }
+    out.push(b'.');
+    if digits.len() < f {
+        push_zeros(out, (f - digits.len()) as i32);
+        out.extend_from_slice(digits);
+    } else {
+        out.extend_from_slice(&digits[digits.len() - f..]);
+    }
 }
 
-/// _numeric_to_pg_binary for a finite decimal.
+/// numeric_send of a finite decimal, every digit kept (the product's _numeric_to_pg_binary takes
+/// abs(d) under the default context, which rounds past 28 significant digits).
 pub fn numeric_binary(negative: bool, digits: &[u8], exp: i32, out: &mut Vec<u8>) -> R<()> {
-    let (rounded, exp) = context_round(digits, exp);
-    let digits = &rounded[..];
     let sign_flag: u16 = if negative && digits != b"0" { 0x4000 } else { 0 };
     let dscale: i64 = if exp < 0 { -(exp as i64) } else { 0 };
     let dscale =
