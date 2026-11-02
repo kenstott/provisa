@@ -131,8 +131,13 @@ def entry_as_result(entry: dict, column_types: list[str] | None) -> QueryResult:
     if kind == KIND_ARROW_IPC:
         from provisa.federation.runtime_support import arrow_type_name
 
+        from provisa.core.ir_arrow import column_values
+
         table = _arrow_table(entry)
-        cols = [col.to_pylist() for col in table.columns]
+        # Each column's values as a live Arrow read gives them (ir_arrow.column_values, as
+        # stream_rows_from_arrow reads them): an interval as the IR interval, an infinite date or
+        # timestamp as the IR infinity -- so a hit answers as the miss did.
+        cols = [column_values(col) for col in table.columns]
         return QueryResult(
             rows=list(zip(*cols, strict=True)) if cols else [],
             column_names=list(table.schema.names),

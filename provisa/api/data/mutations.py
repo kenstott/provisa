@@ -46,7 +46,7 @@ async def _resolve_action_relationships(  # REQ-361, REQ-362
 ) -> list[dict]:
     """Batch-resolve nested relationship fields on action result rows."""
     from graphql import FieldNode as _FieldNode
-    from provisa.executor.serialize import _convert_value
+    from provisa.executor.serialize import result_records
 
     for sel in selection_set.selections:
         if not isinstance(sel, _FieldNode):
@@ -86,8 +86,7 @@ async def _resolve_action_relationships(  # REQ-361, REQ-362
             f' WHERE "{tgt_col}" IN ({placeholders})'
         )
         result = await state.source_pools.execute(tgt.source_id, sql, src_values)
-        rel_cols = result.column_names
-        rel_rows = [{c: _convert_value(v) for c, v in zip(rel_cols, r)} for r in result.rows]
+        rel_rows = result_records(result)
 
         if join_meta.cardinality == "many-to-one":
             rel_index = {rr[tgt_col]: {k: rr[k] for k in nested_cols if k in rr} for rr in rel_rows}
