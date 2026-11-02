@@ -392,6 +392,11 @@ class ArrowResult(QueryResult):  # REQ-2194
         self._rows = value
         self.table = None
 
+    def __repr__(self) -> str:
+        # The dataclass repr reads ``rows``, which would build every row of the table to log it.
+        held = "rows replaced" if self.table is None else f"{self.table.num_rows} rows as Arrow"
+        return f"ArrowResult(column_names={self.column_names!r}, {held})"
+
     def arrow_batches(self) -> Iterator[Any]:
         """The engine's record batches, as it produced them."""
         if self.table is None:

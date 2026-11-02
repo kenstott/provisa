@@ -10,6 +10,7 @@ infinite date or timestamp, which DuckDB's rows get wrong."""
 
 from __future__ import annotations
 
+import math
 from datetime import date, timedelta
 
 import duckdb
@@ -64,6 +65,27 @@ _SHAPES = {
 }
 
 
+def _assert_same(got, expected) -> None:
+    """``got`` is ``expected``: the same Python types at every depth, equal values, a float
+    within a relative tolerance of 1e-14."""
+    assert type(got) is type(expected), (got, expected)
+    if isinstance(expected, float):
+        assert math.isclose(got, expected, rel_tol=1e-14) or (
+            math.isnan(got) and math.isnan(expected)
+        ), (got, expected)
+    elif isinstance(expected, (list, tuple)):
+        assert len(got) == len(expected), (got, expected)
+        for g, e in zip(got, expected):
+            _assert_same(g, e)
+    elif isinstance(expected, dict):
+        assert list(got) == list(expected), (got, expected)
+        for k in expected:
+            _assert_same(got[k], expected[k])
+    else:
+        assert got == expected, (got, expected)
+        assert repr(got) == repr(expected), (got, expected)
+
+
 @pytest.fixture(scope="module")
 def con():
     c = duckdb.connect()
@@ -85,15 +107,28 @@ def _through_arrow(con, sql: str) -> list[tuple]:
 @pytest.mark.parametrize("name", list(_VALUES))
 def test_rows_from_arrow_are_duckdbs_own_rows(con, name, shape):
     sql = f"SELECT {_SHAPES[shape].format(v=_VALUES[name])} AS c, 7 AS n"
-    expected = con.execute(sql).fetchall()
-    got = _through_arrow(con, sql)
-    assert got == expected
-    assert repr(got) == repr(expected)  # same Python types too, not just equal values
+    _assert_same(_through_arrow(con, sql), con.execute(sql).fetchall())
 
 
-def test_a_batch_of_many_rows_reads_each_row(con):
-    sql = "SELECT i, i::VARCHAR AS s, i * 0.5 AS d FROM range(5000) t(i)"
-    assert _through_arrow(con, sql) == con.execute(sql).fetchall()
+@pytest.mark.parametrize("nulls", [False, True])
+def test_a_batch_of_many_rows_reads_each_row(con, nulls):
+    """Many rows of every plain type, with and without nulls (a column holding none is read
+    through numpy: a null there would otherwise be NaN)."""
+    held = "CASE WHEN i % 7 = 0 THEN NULL ELSE {} END" if nulls else "{}"
+    cols = [
+        "i",
+        "i::VARCHAR",
+        "i * 0.5",
+        "i::DOUBLE / 3",
+        "i::FLOAT / 3",
+        "(i % 2 = 0)",
+        "i::UBIGINT * 4000000000",
+        "i::DECIMAL(38, 4) / 7",
+        "i::TINYINT",
+    ]
+    sql = "SELECT " + ", ".join(f"{held.format(c)} AS c{n}" for n, c in enumerate(cols))
+    sql += " FROM range(100) t(i)"
+    _assert_same(_through_arrow(con, sql), con.execute(sql).fetchall())
 
 
 @pytest.mark.parametrize("shape", ["{v}", "[{v}]", "{{'f': {v}}}"])

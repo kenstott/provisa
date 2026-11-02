@@ -199,6 +199,20 @@ def _fix(t: pa.DataType) -> _Fix | None:
     return None
 
 
+def _plain(column: pa.Array | pa.ChunkedArray) -> list[Any]:
+    """A column that needs no fixing, as Python values. Through numpy where that gives the same
+    values ``to_pylist`` does, five to ten times faster: text and decimals at any time (a null is
+    None either way), numbers and booleans when the column holds no null (numpy would read one as
+    NaN)."""
+    t = column.type
+    if pa.types.is_string(t) or pa.types.is_large_string(t) or pa.types.is_decimal(t):
+        return column.to_numpy(zero_copy_only=False).tolist()
+    numeric = pa.types.is_integer(t) or pa.types.is_floating(t) or pa.types.is_boolean(t)
+    if numeric and column.null_count == 0:
+        return column.to_numpy(zero_copy_only=False).tolist()
+    return column.to_pylist()
+
+
 def _column(column: pa.Array | pa.ChunkedArray) -> list[Any]:
     read = _read_type(column.type)
     if read != column.type:
@@ -208,7 +222,7 @@ def _column(column: pa.Array | pa.ChunkedArray) -> list[Any]:
         return column_values(column)
     fix = _fix(t)
     if fix is None:
-        return column.to_pylist()
+        return _plain(column)
     storage = _storage(t)
     values = (column if storage == t else column.cast(storage)).to_pylist()
     return [None if v is None else fix(v) for v in values]

@@ -201,3 +201,10 @@ def test_an_empty_materialized_result_has_its_columns_and_no_batches_of_rows():
     assert res.column_names == ["n", "s"]
     assert res.rows == []
     assert list(res.batches()) == []
+
+
+def test_showing_a_materialized_result_does_not_build_its_rows():
+    to_rows = _CountingRows()
+    res = ArrowResult(pa.Table.from_batches([_batch(0, 2)]), to_rows=to_rows)
+    assert repr(res) == "ArrowResult(column_names=['n', 's'], 2 rows as Arrow)"
+    assert to_rows.calls == 0
