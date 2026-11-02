@@ -202,6 +202,17 @@ def test_an_arrow_interval_column_reads_as_ir_intervals():
         (relativedelta(months=-14, days=1), "-1 years -2 mons +1 day", (0, 1, -14)),
         (timedelta(microseconds=-5), "-00:00:00.000005", (-5, 0, 0)),
         (timedelta(0), "00:00:00", (0, 0, 0)),
+        # Past ~100,000 days a float quotient rounds up across the day boundary.
+        (
+            timedelta(days=500_000, microseconds=86_399_999_999),
+            "500000 days 23:59:59.999999",
+            (86_399_999_999, 500_000, 0),
+        ),
+        (
+            -timedelta(days=500_000, microseconds=86_399_999_999),
+            "-500000 days -23:59:59.999999",
+            (-86_399_999_999, -500_000, 0),
+        ),
     ],
 )
 def test_pgwire_writes_an_interval_as_postgres_does(value, text, binary):

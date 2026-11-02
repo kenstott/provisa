@@ -181,8 +181,10 @@ def _interval_parts(v):
         return exact
     if isinstance(v, datetime.timedelta):
         micros = v // datetime.timedelta(microseconds=1)
-        days = int(micros / 86_400_000_000)
-        return 0, days, micros - days * 86_400_000_000
+        # Integer division truncated toward zero: days and time share the value's sign.
+        days, rest = divmod(abs(micros), 86_400_000_000)
+        sign = -1 if micros < 0 else 1
+        return 0, sign * days, sign * rest
     seconds = (v.hours * 60 + v.minutes) * 60 + v.seconds
     return v.years * 12 + v.months, v.days, seconds * 1_000_000 + v.microseconds
 
@@ -683,7 +685,8 @@ def _numeric_to_pg_binary(v) -> bytes:
         return struct.pack("!HhHH", 0, 0, 0xC000, 0)
 
     sign_flag = 0x4000 if d < 0 else 0x0000
-    d_abs = abs(d)
+    # copy_abs, not abs(): abs() rounds to the context's 28 digits.
+    d_abs = d.copy_abs()
 
     _, _, exp = d_abs.as_tuple()
     dscale = max(0, -exp) if isinstance(exp, int) and exp < 0 else 0
