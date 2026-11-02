@@ -174,6 +174,57 @@ building and nesting Python objects.
   copy into `bytes`, with no single hotspot. Keys are computed without writing output, and a JSON
   column's key is cached across the consecutive rows that repeat a parent's text.
 
+## Against REQ-2194 (amended 50540b536): no Python between the engine result and the bytes
+
+The encoder works directly on the engine's Arrow result. `encode_response` takes the record batches
+through the Arrow C data interface (zero-copy: Python touches each batch once, to export it, and
+never a row or a value), and takes the selection plan once per call as metadata. The plan is one
+`(field_name, nested_in, cardinality, is_agg)` per column, compiled into the nesting plan before
+the first row. Everything after that is Rust, with the GIL released: conversion, dedup keys,
+nesting, and writing the body. No Python row, dict or str is built, and nothing is decoded or
+re-encoded in Python. The JSON-text column is parsed in Rust because the answer's contract
+(product behavior 3) parses it, not because a Python decode sits in between.
+
+### Every place the current Python path serializes or deserializes
+
+Measured by `breakdown.py` on the benchmark dataset (2,000,000 item rows, 499,709 orders), each
+step timed on its own with the values and the call counts the product gives it. The share is of
+the same run's three stages, 51.40 s (12.89 + 37.76 + 0.75). Output in `breakdown-2m.log` and
+`breakdown-2m.json`.
+
+| # | where | what it does | seconds | share |
+|---|---|---|---|---|
+| 1 | `ir_arrow.column_values` → `to_pylist` (via `stream_rows_from_arrow`) | Arrow → 32M Python objects | 11.62 | 22.6% |
+|   | of which `created` (timestamp[µs, UTC]) | a pytz-aware `datetime` per value | 4.42 | 8.6% |
+|   | of which `day`, `shipped` (date32) | a `date` per value | 1.76 | 3.4% |
+|   | of which `amount`, `price` (decimal128) | a `Decimal` per value | 1.32 | 2.6% |
+|   | `_with_infinities` (date, µs timestamp) | cast, compares, `any` per batch | under 0.05 per column | – |
+| 2 | `stream_rows_from_arrow` `zip(*cols)`, `iter_rows` | columns → row tuples | 1.27 | 2.5% |
+| 3 | `serialize._convert_value`, all columns | Python value → JSON-safe Python value: 37.5M calls (each item row converts its order's 11 values for the root key, each new order converts them again for its object, and each item's 5 values) | 21.90 | 42.6% |
+|   | of which `payload` (JSON text) | `json.loads` + `_recursive_json_convert`, 2.5M times | 8.10 | 15.8% |
+|   | of which `json.loads` alone | the decode | 3.89 | 7.6% |
+|   | of which `created`, `day`, `shipped` | `isoformat` + regex `sub` (`temporal_text`) | 6.90 | 13.4% |
+|   | of which `amount`, `price` | `float(Decimal)`, `str(Decimal)` | 0.96 | 1.9% |
+| 4 | `serialize._to_hashable` | the root and element keys | 5.72 | 11.1% |
+|   | of which `payload` | `json.dumps(sort_keys=True)` of the parsed dict, 2M times (a re-encode) | 3.09 | 6.0% |
+| 5 | `_serialize_with_one_to_many` itself | key tuples, result dicts and lists, `dict(values)`, hashing, the loop | 10.14 | 19.7% |
+| 6 | `OrjsonResponse.render` → `json_response.dumps` | Python dicts → JSON bytes | 0.75 | 1.5% |
+| 7 | `_encode_unknown` → `jsonable_encoder` | orjson's fallback | 0 calls | 0% |
+
+Before step 1, depending on the engine and route (not in the 51.40 s above):
+
+| where | what it does | measured |
+|---|---|---|
+| DuckDB `run_sync` → `stream_from_dbapi` (`fetchmany`) | the driver hands back Python rows when the result has no interval, date or timestamp column (`READ_THROUGH_ARROW`); otherwise it reads Arrow and does step 1 | 8.65 s for these 2M rows, against 0.16 s to drain DuckDB's Arrow reader |
+| Snowflake, Databricks, BigQuery, ClickHouse, MSSQL warehouse `run_sync` | native Arrow → `stream_rows_from_arrow` → step 1 | (step 1) |
+| `pg_runtime` (psycopg2 named cursor), `sqlalchemy_runtime` (DB-API, pyodbc), DIRECT routes and the admin route (asyncpg `fetch`) | the driver hands back Python rows | not measured here |
+| Response cache, on a miss (`raw_sql` tee `rows_entry` → `codec.encode_cache_payload`) | Python rows → msgpack | 1.65 s per 500k rows (about 6.6 s per 2M) |
+| Response cache, on a hit (`decode_cache_payload` → `entry_as_result`) | msgpack → lists → tuples; or an Arrow IPC entry → `to_pylist` | 1.07 s / 3.05 s per 500k rows (about 4.3 s / 12.2 s per 2M) |
+
+So of 51.40 s, 1.5% is the JSON encode the answer needs. 25.1% turns Arrow into Python rows
+(steps 1–2), and 73.5% shapes those rows in Python (steps 3–5), including a full JSON decode and
+re-encode of the JSON column (steps 3 and 4, 21.8%). The Rust encoder replaces all of it: 2.74 s.
+
 ## Product behaviors found (reported, not fixed)
 
 The port reproduces each of these; the differential test pins them.
@@ -213,6 +264,13 @@ The port reproduces each of these; the differential test pins them.
    The same collisions also merge a relationship into a JSON value of the same name (live-object
    rule above).
 
+7. **A cache hit can answer differently from a miss.** An Arrow IPC cache entry (written by an
+   Arrow-transport query: the response cache is shared across transports, REQ-1897) is served as
+   rows by `raw_sql.entry_as_result` with plain `to_pylist`, not `column_values`. The same query
+   answered from such an entry writes an interval as `[14,3,5000000000]` where a miss writes
+   `"P1Y2M3DT5S"`, and raises `OverflowError` on an infinite date where a miss reads the IR
+   infinity.
+
 Not a defect, but worth knowing: root rows are deduplicated by the selected values, so a
 selection with no unique column collapses equal rows (`{ orders { status } }` returns one row per
 status). `tests/unit/test_serialize_properties.py` asserts this as intended.
@@ -247,5 +305,7 @@ status). `tests/unit/test_serialize_properties.py` asserts this as intended.
 - `src/fmt.rs`: orjson float and string text, `Decimal` conversion, dates, times, ISO 8601 durations.
 - `build.sh`: `cargo build --release`, then copies the module to `build/`. Nothing is installed
   into any venv.
+- `breakdown.py`: the per-step timing of the Python path; `breakdown-2m.log` and
+  `breakdown-2m.json` hold its output.
 - `python_ref.py`: the product's path. `test_compare.py`: the differential test. `bench.py`: the
   benchmark; `bench-2m.log` and `bench-2m.json` hold its output.

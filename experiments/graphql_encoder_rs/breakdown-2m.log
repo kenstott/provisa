@@ -1,0 +1,44 @@
+[heavy] slot acquired after 77s
+driver: DuckDB DB-API rows (fetchmany)                                         8.65
+driver: DuckDB Arrow reader (reference)                                        0.16
+arrow->rows: total (stream_rows_from_arrow, iter_rows)                        12.89
+arrow->rows: to_pylist id                                                      0.29
+arrow->rows: to_pylist customer                                                0.29
+arrow->rows: to_pylist total                                                   0.29
+arrow->rows: to_pylist ratio                                                   0.28
+arrow->rows: to_pylist amount                                                  0.66
+arrow->rows: to_pylist name                                                    0.56
+arrow->rows: to_pylist created                                                 4.42
+arrow->rows: to_pylist day                                                     0.94
+arrow->rows: to_pylist active                                                  0.27
+arrow->rows: to_pylist payload                                                 0.59
+arrow->rows: to_pylist note                                                    0.47
+arrow->rows: to_pylist item_id                                                 0.29
+arrow->rows: to_pylist sku                                                     0.52
+arrow->rows: to_pylist qty                                                     0.26
+arrow->rows: to_pylist price                                                   0.66
+arrow->rows: to_pylist shipped                                                 0.82
+arrow->rows: zip into tuples, batching (remainder)                             1.27
+serialize_rows: total                                                         37.76
+serialize_rows: _convert_value id                                              0.60
+serialize_rows: _convert_value customer                                        0.60
+serialize_rows: _convert_value total                                           0.62
+serialize_rows: _convert_value ratio                                           0.60
+serialize_rows: _convert_value amount                                          0.55
+serialize_rows: _convert_value name                                            0.68
+serialize_rows: _convert_value created                                         3.66
+serialize_rows: _convert_value day                                             1.88
+serialize_rows: _convert_value active                                          0.63
+serialize_rows: _convert_value payload (json.loads + _recursive_json_convert)       8.10
+serialize_rows: _convert_value note                                            0.69
+serialize_rows: _convert_value item_id                                         0.50
+serialize_rows: _convert_value sku                                             0.55
+serialize_rows: _convert_value qty                                             0.47
+serialize_rows: _convert_value price                                           0.41
+serialize_rows: _convert_value shipped                                         1.36
+  of which json.loads alone (payload)                                          3.89
+serialize_rows: _to_hashable json.dumps(sort_keys) payload                     3.09
+serialize_rows: _to_hashable other columns                                     2.63
+serialize_rows: tuples, dicts, hashing, loop (remainder)                      10.14
+orjson render (dumps)                                                          0.75
+_encode_unknown / jsonable_encoder calls                                       0.00
