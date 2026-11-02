@@ -26849,3 +26849,13 @@ Maintainer 2026-11-02: the Rust DataRow encoder (experiment J483: 14.5x text, 40
 **Code:** —
 
 **Tests:** —
+
+### REQ-2195 · JDBC/ODBC Integration {#REQ-2195}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-02: transport (HTTP, pgwire, Flight, gRPC, Bolt...), query language (SQL, GraphQL, Cypher, SPARQL...) and encoder (pgwire rows, GraphQL JSON, gRPC protobuf, Arrow...) are independent. Every language compiles to one governed statement and every encoder reads the engine result directly ([REQ-2194](#REQ-2194)), so any combination works, even one that makes little sense, such as a GraphQL query answered with the gRPC encoder. A new language, transport or encoder is an addition at one edge and changes neither the others nor the model.
+
+**Code:** —
+
+**Tests:** —

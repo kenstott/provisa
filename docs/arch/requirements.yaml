@@ -92613,3 +92613,33 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2171
   stakeholders:
   - data-engineer
+- id: REQ-2195
+  value: Transport, query language and result encoder are three separate choices, combinable freely.
+  status: proposed
+  target: 2026-Q4
+  group: 8. Client Access & Protocols
+  category: JDBC/ODBC Integration
+  feature: postgres-wire-protocol-client-drivers
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-02: transport (HTTP, pgwire, Flight, gRPC, Bolt...), query language
+    (SQL, GraphQL, Cypher, SPARQL...) and encoder (pgwire rows, GraphQL JSON, gRPC protobuf, Arrow...)
+    are independent. Every language compiles to one governed statement and every encoder reads the engine
+    result directly (REQ-2194), so any combination works, even one that makes little sense, such as a
+    GraphQL query answered with the gRPC encoder. A new language, transport or encoder is an addition
+    at one edge and changes neither the others nor the model.'
+  scenario: 'Given a governed table
+
+    When a GraphQL query for it asks for the gRPC encoder
+
+    Then the rows come back as the role''s protobuf messages, governed exactly as the GraphQL JSON answer
+    is
+
+    When the same rows are asked for as SQL over HTTP with the Arrow encoder
+
+    Then they come back as Arrow, with the same rows'
+  related_reqs:
+  - REQ-2194
+  - REQ-2167
+  stakeholders:
+  - data-engineer
