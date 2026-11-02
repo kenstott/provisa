@@ -42,6 +42,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+import pgwire_function_probe as function_probe
+
 #: Each engine's label on the page, in the page's order.
 ENGINE_LABELS = {"pg": "Postgres", "duckdb": "DuckDB", "trino": "Trino", "clickhouse": "ClickHouse"}
 
@@ -57,6 +59,9 @@ NOT_REACHED = "not_reached"
 #: The keys of ``by_engine.<engine>`` in the merged JSON. ``differs`` is the sum of the two after
 #: it; ``refused_by_name`` counts the result ``refused``.
 RESULT_KEYS = (
+    "passed",
+    "skipped_by_design",
+    "failed",
     "exact",
     "equivalent",
     "not_checked",
@@ -171,10 +176,35 @@ def result_of(outcome: str, rules: Iterable[str] = ()) -> str:
     raise ValueError(f"no result for outcome {outcome!r}")
 
 
+PASSED = "passed"
+SKIPPED_BY_DESIGN = "skipped_by_design"
+FAILED = "failed"
+
+
+def verdict(entry: dict[str, Any]) -> str:
+    """An overload's one verdict on an engine: passed, skipped by design or failed (REQ-2167). A
+    pass is passed. A decision's group is skipped by design, and so is an overload PostgreSQL
+    itself cannot call from SQL (INTERNAL FUNCTIONS: an internal argument, or a refusal no server
+    state changes). Everything else failed: not checked, refused by name with no decision behind
+    it, a wrong answer, an engine error, one PostgreSQL refuses for this server's state, and one
+    the leg did not reach."""
+    outcome = entry["outcome"]
+    if outcome == "pass":
+        return PASSED
+    if outcome == BY_DESIGN:
+        return SKIPPED_BY_DESIGN
+    if outcome == NOT_CALLABLE:
+        detail = entry["detail"]
+        internal = detail == function_probe.NO_CALL or function_probe.proves_internal(detail)
+        return SKIPPED_BY_DESIGN if internal else FAILED
+    return FAILED
+
+
 def result_counts(outcomes: Iterable[dict[str, Any]]) -> dict[str, int]:
     """``RESULT_KEYS`` over overloads' outcomes on one engine."""
     tally: Counter[str] = Counter()
     for entry in outcomes:
+        tally[verdict(entry)] += 1
         result = result_of(entry["outcome"], entry.get("rules", ()))
         tally["refused_by_name" if result == REFUSED else result] += 1
         tally["differs_wrong_answer"] += entry["outcome"] == "wrong_answer"
@@ -307,16 +337,32 @@ def cell(outcome: dict[str, Any]) -> str:
 def engine_table(doc: dict[str, Any]) -> list[str]:
     """One row per engine, in overloads. No row adds them up."""
     lines = [
-        "| Engine | Exact | Equivalent | Not checked | Skipped by design | Refused by name "
-        "| Differs: wrong answer | Differs: engine error |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Engine | Passed | Skipped by design | Failed |",
+        "| --- | ---: | ---: | ---: |",
     ]
     for engine in _ordered(doc):
         c = doc["by_engine"][engine]
         lines.append(
-            f"| {_label(engine)} | {c['exact']} | {c['equivalent']} | {c['not_checked']} "
-            f"| {c['by_design']} | {c['refused_by_name']} | {c['differs_wrong_answer']} "
-            f"| {c['differs_engine_error']} |"
+            f"| {_label(engine)} | {c['passed']} | {c['skipped_by_design']} | {c['failed']} |"
+        )
+    lines += [
+        "",
+        "In detail: passed is exact and equivalent; skipped by design is the decisions' groups "
+        "and what PostgreSQL itself cannot call; failed is the rest.",
+        "",
+        "| Engine | Exact | Equivalent | By a decision | PostgreSQL calls none | Not checked "
+        "| Refused by name | Differs: wrong answer | Differs: engine error "
+        "| PostgreSQL refuses here | Not reached |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for engine in _ordered(doc):
+        c = doc["by_engine"][engine]
+        internal = c["skipped_by_design"] - c["by_design"]
+        lines.append(
+            f"| {_label(engine)} | {c['exact']} | {c['equivalent']} | {c['by_design']} "
+            f"| {internal} | {c['not_checked']} | {c['refused_by_name']} "
+            f"| {c['differs_wrong_answer']} | {c['differs_engine_error']} "
+            f"| {c['not_callable'] - internal} | {c['not_reached']} |"
         )
     return lines
 

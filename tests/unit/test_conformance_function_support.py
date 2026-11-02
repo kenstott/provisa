@@ -1003,7 +1003,7 @@ def test_the_guaranteed_list_is_answers_checked_and_type_and_form_checked_on_eve
     assert doc["counts"]["a"]["not_checked"] == 1
     assert doc["not_checked_reasons"]["a"] == {"volatile": 1}
     text = support.merged_markdown(doc)
-    assert "| a | 3 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert "| a | 3 | 2 | 0 | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
     assert (
         "| Numeric | 3 | 1 + 1 + 0, 1 not checked, of 3 | 1 + 1 + 0, 1 not checked, of 3 | 2 |"
         in text
@@ -1042,7 +1042,11 @@ def test_an_engine_with_no_result_guarantees_nothing():
 
 
 def test_a_not_callable_overload_does_not_keep_a_function_off_the_list():
-    a = {**_entry("abs", "not_callable", checked=False), "overload": "internal"}
+    a = {
+        **_entry("abs", "not_callable", checked=False),
+        "overload": "internal",
+        "detail": support.function_probe.NO_CALL,
+    }
     doc = support.merged({"e": _report("e", _entry("abs", "pass"), a)})
     assert doc["guaranteed"]["functions"] == ["abs"]
 
@@ -1076,8 +1080,8 @@ def test_the_summary_gives_every_engine_and_every_family():
         }
     )
     text = support.merged_markdown(doc)
-    assert "| a | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
-    assert "| b | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert "| a | 2 | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
+    assert "| b | 2 | 2 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
     assert (
         "| Numeric | 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 |"
         in text
@@ -1394,7 +1398,11 @@ def test_what_no_engine_serves_is_counted_by_family():
                 engine,
                 _entry("abs", "pass" if engine == "a" else "refused"),
                 _entry(*both[engine]),
-                {**_entry("lo_in", "not_callable"), "family": "Other"},
+                {
+                    **_entry("lo_in", "not_callable"),
+                    "family": "Other",
+                    "detail": support.function_probe.NO_CALL,
+                },
             )
             for engine in ("a", "b")
         }
@@ -1431,15 +1439,47 @@ def test_the_rules_are_the_ones_the_requirement_and_the_brief_name():
     ]
 
 
-def test_the_report_has_no_overall_failed_count_and_keeps_a_wrong_answer_in_view():
+def test_the_report_fails_per_engine_never_overall_and_keeps_a_wrong_answer_in_view():
     doc = _results(("pg", "wrong_answer", []), ("duckdb", "refused", []))
-    for text in (
-        report.pgwire_block(doc),
-        report.overview_block(doc),
-        support.merged_markdown(doc),
-    ):
-        assert "failed" not in text.lower()
+    for text in (report.pgwire_block(doc), report.overview_block(doc)):
+        assert "| Engine | Passed | Skipped by design | Failed |" in text
+        assert "| Postgres | 0 | 0 | 1 |" in text and "| DuckDB | 0 | 0 | 1 |" in text
+        assert "| Total" not in text and "| All" not in text
     assert "| `abs(integer)` | x |" in report.pgwire_block(doc)
+
+
+@pytest.mark.parametrize(
+    ("entry", "verdict"),
+    [
+        ({"outcome": "pass"}, "passed"),
+        ({"outcome": "by_design"}, "skipped_by_design"),
+        (
+            {"outcome": "not_callable", "detail": support.function_probe.NO_CALL},
+            "skipped_by_design",
+        ),
+        (
+            {
+                "outcome": "not_callable",
+                "detail": "PostgreSQL refuses the call: ERROR:  must be called as trigger",
+            },
+            "skipped_by_design",
+        ),
+        (
+            {
+                "outcome": "not_callable",
+                "detail": "PostgreSQL refuses the call: ERROR:  recovery is not in progress",
+            },
+            "failed",
+        ),
+        ({"outcome": "not_checked"}, "failed"),
+        ({"outcome": "refused"}, "failed"),
+        ({"outcome": "wrong_answer"}, "failed"),
+        ({"outcome": "error"}, "failed"),
+        ({"outcome": "not_reached"}, "failed"),
+    ],
+)
+def test_every_overload_is_passed_skipped_by_design_or_failed(entry, verdict):
+    assert report.verdict(entry) == verdict
 
 
 def test_a_cell_says_what_was_checked_of_a_pass_and_a_call_alone_is_none():
@@ -1462,8 +1502,9 @@ def test_both_pages_are_filled_from_the_results_between_their_markers(tmp_path):
     for name in ("pgwire.md", "overview.md"):
         text = (tmp_path / name).read_text()
         assert "stale text" not in text and "After." in text
-        assert "| Postgres | 1 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
-        assert "| DuckDB | 0 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
+        assert "| Postgres | 1 | 0 | 0 |" in text and "| DuckDB | 0 | 0 | 1 |" in text
+        assert "| Postgres | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+        assert "| DuckDB | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |" in text
 
 
 def test_a_page_without_markers_is_refused():
@@ -1709,6 +1750,9 @@ def test_a_leg_whose_model_lacks_the_table_stops_rather_than_lists_every_overloa
 
 def test_the_results_a_floor_reads_keep_their_keys():
     assert report.RESULT_KEYS == (
+        "passed",
+        "skipped_by_design",
+        "failed",
         "exact",
         "equivalent",
         "not_checked",
