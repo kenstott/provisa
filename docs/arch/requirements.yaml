@@ -92653,7 +92653,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the UI. (Amended 2026-11-02, Stated as a fundamental design choice:) Maintainer 2026-11-02: the website,
     README and docs state it as a fundamental design choice: results from any data source that supports
     Arrow are written by a Rust encoder straight into the requested output (pgwire, GraphQL, gRPC and the
-    rest). Stated once the encoders are wired in, not before.'
+    rest). Stated once the encoders are wired in, not before. (Amended 2026-11-02, JSON:API, OpenAPI REST
+    and OData encoders:) Maintainer 2026-11-02: the encoders also cover JSON:API, the OpenAPI (REST) surface
+    and OData, beside pgwire, GraphQL and gRPC. The JSON-based ones share one Rust JSON writer and differ
+    only in their envelope (JSON:API data, attributes, relationships and included; REST rows; OData value,
+    @odata.context, @odata.nextLink and annotations).'
   scenario: 'Given a statement whose result holds every type pgwire serves, including timestamptz in a
     named zone
 
