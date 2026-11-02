@@ -18195,8 +18195,15 @@
   priority: SHOULD
   type: infrastructure
   description: 'Phase 1 (AF1, complete): Shell script installer with Docker Compose, `provisa` CLI wrapper,
-    state in `~/.provisa/`. Requires Docker/OrbStack/Colima. Phase 2 (AF2): Airgapped native app bundle: Lima + containerd embedded, all service images bundled as `.tar` archives, zero outbound network
-    at install or runtime. AF3 (native OS packages via Homebrew/.deb/.rpm) is superseded by AF2.'
+    state in `~/.provisa/`. Requires Docker/OrbStack/Colima. Phase 2 (AF2): Airgapped native app bundle:
+    [SUPERSEDED by REQ-228, 2026-11-02 -- Lima is no longer used. Kept here for history; do not implement
+    against it.] Lima + containerd embedded, [END SUPERSEDED BLOCK] all service images bundled as `.tar`
+    archives, zero outbound network at install or runtime. AF3 (native OS packages via Homebrew/.deb/.rpm)
+    is superseded by AF2. (Amended 2026-11-02, No Lima:) Maintainer 2026-11-02: Lima is no longer used.
+    On macOS the default native tier is a bundled Python runtime with no Docker and no VM; the optional
+    Docker tier runs on the user''s own Docker (Docker Desktop or colima) with images loaded from the core-images
+    tarball through docker-compose.airgap.yml; Windows'' container tier is WSL2 + containerd. OVA is retired
+    (REQ-633).'
   use_case: AF2 airgapped bundle removes the Docker prerequisite so enterprise users with no internet
     access can install.
   code:
@@ -18205,22 +18212,19 @@
   - tests/e2e/test_installer.py
   - tests/unit/test_infra_requirements.py
   since: 2026-01
-  scenario: 'Given an enterprise environment with no internet access
-
-    When a user installs the AF2 native app bundle
-
-    Then all services start using bundled Lima + containerd and .tar image archives without network calls
-
-    '
+  scenario: Given an enterprise environment with no internet access When a user installs the AF2 native
+    app bundle Then all services start using the bundled native runtime, or the user's Docker loading the
+    bundled .tar image archives, without network calls
   integration_test: deferred
-  integration_test_reason: 'Airgapped bundle with Lima/containerd requires real container runtime and
-    image loading. [deferred: requires external infrastructure not in CI stack]'
+  integration_test_reason: 'Airgapped bundle with the Docker tier''s image loading requires real container
+    runtime and image loading. [deferred: requires external infrastructure not in CI stack]'
   stakeholders:
   - ops
   competitive_position:
     status: ahead
-    rationale: Airgapped native app bundle (Lima + containerd, no Docker required) removes the Docker
-      prerequisite that blocks enterprise adoption of Hasura and other container-based platforms.
+    rationale: Airgapped native app bundle (a bundled Python runtime, no Docker required; an optional Docker
+      tier loads bundled images) removes the Docker prerequisite that blocks enterprise adoption of Hasura
+      and other container-based platforms.
   docs:
   - deployment.md
 - id: REQ-254
@@ -18300,10 +18304,13 @@
   feature: installation-packaging
   priority: MUST
   type: constraint
-  description: The distribution must be fully airgap-capable. No outbound network calls at install time
-    or first launch. All container images are bundled inside the app and loaded via `ctr images import`.
-    Image references in docker-compose use digests, not tags. Suitable for enterprise environments with
-    no internet access.
+  description: 'The distribution must be fully airgap-capable. No outbound network calls at install time
+    or first launch. All container images are bundled inside the app and [SUPERSEDED by REQ-294, 2026-11-02
+    -- Lima is no longer used. Kept here for history; do not implement against it.] loaded via `ctr images
+    import`. [END SUPERSEDED BLOCK] Image references in docker-compose use digests, not tags. Suitable for
+    enterprise environments with no internet access. (Amended 2026-11-02, Image loading without Lima:) Maintainer
+    2026-11-02: Lima is no longer used. Bundled images are loaded with docker load into the user''s Docker
+    on macOS (Docker tier) and with nerdctl into WSL2 containerd on Windows.'
   use_case: Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa
     from local media.
   code:
@@ -18330,8 +18337,9 @@
   - ops
   competitive_position:
     status: ahead
-    rationale: Full airgap capability with all images bundled and loaded via ctr images import at install
-      time is not available in Hasura Cloud, Dremio Cloud, or standard Starburst/Trino distributions.
+    rationale: Full airgap capability with all images bundled and loaded at install time (docker load on
+      macOS, nerdctl in WSL2 on Windows) is not available in Hasura Cloud, Dremio Cloud, or standard Starburst/Trino
+      distributions.
   docs:
   - deployment.md
 - id: REQ-302
@@ -26597,29 +26605,29 @@
   priority: MUST
   type: infrastructure
   since: 2026-07
-  description: Core runtime image set (docker-compose.core.yml + OVA/Lima bundles) must include busybox
-    as a core dependency; no third-party billing mock service is bundled in any compose (dev/core/airgap);
-    python:3.12-slim is build-time only and excluded from packaged/airgapped runtime images.
+  description: 'Core runtime image set [SUPERSEDED by REQ-854, 2026-11-02 -- OVA and Lima are retired; the
+    core-images tarball is loaded into the user''s Docker or WSL2 containerd. Kept here for history; do
+    not implement against it.] (docker-compose.core.yml + OVA/Lima bundles) [END SUPERSEDED BLOCK] must
+    include busybox as a core dependency; no third-party billing mock service is bundled in any compose
+    (dev/core/airgap); python:3.12-slim is build-time only and excluded from packaged/airgapped runtime
+    images. (Amended 2026-11-02, No OVA or Lima:) Maintainer 2026-11-02: Lima is no longer used. On macOS
+    the default native tier is a bundled Python runtime with no Docker and no VM; the optional Docker tier
+    runs on the user''s own Docker (Docker Desktop or colima) with images loaded from the core-images tarball
+    through docker-compose.airgap.yml; Windows'' container tier is WSL2 + containerd. OVA is retired (REQ-633).'
   use_case: Busybox is required at runtime (trino-exchange-init service uses it to chown /data/provisa/exchange
     before Trino starts). Lemon Squeezy is called over the public REST API; tests stub it via HTTP fixtures
-    (LEMONSQUEEZY_BASE_URL), not bundled mocks. Python:3.12-slim exists only as a build base for OVA/Lima
-    source builds. This separation ensures airgapped deployments include all runtime dependencies and
-    excludes unnecessary dev/mock components.
+    (LEMONSQUEEZY_BASE_URL), not bundled mocks. Python:3.12-slim exists only as a build base for core-images
+    builds. This separation ensures airgapped deployments include all runtime dependencies and excludes
+    unnecessary dev/mock components.
   code:
   - docker-compose.core.yml
   - docker-compose.dev.yml
   - .github/workflows/build-dmg.yml
   related_reqs:
   - REQ-836
-  scenario: 'Given an airgapped OVA or Lima deployment built from docker-compose.core.yml
-
-    When the Trino service starts
-
-    Then busybox image is present to support trino-exchange-init initialization
-
+  scenario: Given an airgapped deployment loading the core-images tarball built from docker-compose.core.yml
+    When the Trino service starts Then busybox image is present to support trino-exchange-init initialization
     And no third-party billing mock service is bundled in the package.
-
-    '
   tests:
   - tests/unit/test_release_packaging.py
 - id: REQ-855
@@ -33463,8 +33471,9 @@
   description: '[SUPERSEDED by REQ-1331, 2026-10-03 -- The SaaS front door VM, Cloud SQL and the coordinator
     are provisioned and running at cloud.provisa.dev with no signed customer. Kept here for history; do
     not implement against it.] No cloud infrastructure is provisioned until a customer is signed; pre-customer
-    sunk cost limited to a domain and a free Firebase project. [END SUPERSEDED BLOCK] Cold-start relies
-    on REQ-854 OVA/Lima bundles for sub-hour spin-up.'
+    sunk cost limited to a domain and a free Firebase project. [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-854,
+    2026-11-02 -- OVA and Lima are retired. Kept here for history; do not implement against it.] Cold-start
+    relies on REQ-854 OVA/Lima bundles for sub-hour spin-up. [END SUPERSEDED BLOCK]'
   use_case: Minimizes pre-revenue spending. Defers fixed infrastructure costs until revenue justifies
     them, reducing financial risk during customer acquisition.
   relates_to:
@@ -75782,7 +75791,51 @@
     OAuth redirects, sessions, invites). A data node still checks each request''s credentials itself (tokens,
     pgwire passwords, API keys) against the shared config, so a query never waits on a control node. [END
     SUPERSEDED BLOCK] (Amended 2026-11-02, Withdrawn:) Maintainer 2026-11-02: the existing modes stand as
-    written above (every, query, coordinator); the amendments of this date are withdrawn.'
+    written above (every, query, coordinator); the amendments of this date are withdrawn. (Amended 2026-11-02,
+    Only the coordinator serves the UI:) Maintainer 2026-11-02: only a coordinator (or an every process)
+    serves the UI and the UI''s backend (the admin API the UI calls). A query node serves data requests
+    only: a UI or admin route reaching a query node is refused by name, saying to use the coordinator''s
+    address, the mirror of a coordinator refusing data requests. (Amended 2026-11-02, The UI''s data address
+    is a browser setting:) Maintainer 2026-11-02: the UI has a browser setting for the data node address
+    that the Explorer and the UI''s other data calls use. It defaults to the UI''s own origin (an every
+    process); a user of a coordinator-served UI sets it to the query pool or a specific query node. Query
+    nodes accept the UI''s origin and its sign-in token for those calls. (Amended 2026-11-02, The UI''s
+    data addresses come from the config:) Maintainer 2026-11-02: the data addresses are listed in the control
+    plane''s config, like an OpenAPI document listing its servers: [SUPERSEDED by REQ-1916, 2026-11-02 --
+    a region is not a data node; the list is the node registry. Kept here for history; do not implement
+    against it.] the platform regions'' addresses. The UI is given the addresses the org can use, and its
+    browser setting picks one of them, defaulting to the org''s own region address, or the UI''s own origin
+    where no regions are declared. [END SUPERSEDED BLOCK] (Amended 2026-11-02, The UI''s servers list is
+    the node registry:) Maintainer 2026-11-02: a region is not a data node; a region can have its own coordinator
+    and its own query nodes. [SUPERSEDED by REQ-1916, 2026-11-02 -- the system cannot know the best address
+    because load balancers can be in front. Kept here for history; do not implement against it.] The servers
+    list is the node registry the control plane already keeps (each running node with its mode, region and
+    heartbeat): each node records an address clients can reach, the coordinator gives the UI the live query
+    and every nodes of the org''s region, and the UI''s browser setting picks one, defaulting to the UI''s
+    own origin. [END SUPERSEDED BLOCK] (Amended 2026-11-02, The data addresses are declared:) Maintainer
+    2026-11-02: the system cannot know the best data address for a given UI user, because load balancers
+    can be part of the path. Like an OpenAPI document''s servers list, the operator declares the data addresses
+    in the config (each a URL: a load balancer, a pool or a single node). The coordinator gives the UI that
+    declared list; the UI''s browser setting picks one of them or an address the user types, defaulting
+    to the UI''s own origin when none is declared. (Amended 2026-11-02, Declared per region:) Maintainer
+    2026-11-02: the declared data addresses are a list per region: each region declares the addresses of
+    its data nodes (a load balancer, a pool or a single node), and the UI is given the list for the org''s
+    region. (Amended 2026-11-02, An every node''s UI asks for nothing:) Maintainer 2026-11-02: a UI served
+    from an every node does not ask for a data node: it sends data requests to its own origin and does not
+    show the data-address setting. Only a coordinator-served UI offers it. (Amended 2026-11-02, Registered
+    nodes when none are declared:) Maintainer 2026-11-02: when a region declares no data addresses, the
+    UI''s list is the region''s registered live query and every nodes, each with the client-reachable address
+    it registered; a node that registered no reachable address is not listed. Declared addresses, when present,
+    are the only list. (Amended 2026-11-02, Every region has both roles:) Maintainer 2026-11-02: every region
+    needs a coordinator and query nodes, or an every node: at least one live process serving its data requests
+    and at least one doing its background work. [SUPERSEDED by REQ-1916, 2026-11-02 -- no health check:
+    a region runs independently. Kept here for history; do not implement against it.] Nodes start independently,
+    so this is checked, not enforced at launch: the health endpoint and the admin pages show it per region
+    from the node registry, naming a region with no live data-serving node or no live background node. [END
+    SUPERSEDED BLOCK] (Amended 2026-11-02, A region runs independently:) Maintainer 2026-11-02: there is
+    no cross-region health check. A region runs independently from the same config, under the region data-sharing
+    rules, and that is all; giving each region both roles (a coordinator and query nodes, or an every node)
+    is the deployment''s job, stated in the docs.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
@@ -92735,7 +92788,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and OData encoders:) Maintainer 2026-11-02: the encoders also cover JSON:API, the OpenAPI (REST) surface
     and OData, beside pgwire, GraphQL and gRPC. The JSON-based ones share one Rust JSON writer and differ
     only in their envelope (JSON:API data, attributes, relationships and included; REST rows; OData value,
-    @odata.context, @odata.nextLink and annotations).'
+    @odata.context, @odata.nextLink and annotations). (Amended 2026-11-02, Four platform wheels; no Intel
+    Mac:) Maintainer 2026-11-02: Intel (x86_64) macOS is not distributed or supported, so provisa ships
+    four platform wheels: macOS arm64, Linux amd64, Linux arm64 and Windows x64.'
   scenario: 'Given a statement whose result holds every type pgwire serves, including timestamptz in a
     named zone
 

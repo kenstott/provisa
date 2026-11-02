@@ -33,6 +33,7 @@ from provisa.core.schema_admin import (
     org_auto_join_optouts,
     orgs,
     user_org_memberships,
+    user_profiles,
 )
 from provisa.auth.role_grants import in_force as grant_in_force
 from provisa.core.schema_org import admin_audit_log, roles, user_role_assignments
@@ -321,6 +322,35 @@ async def clear_auto_join_suppression(  # REQ-1306
                 org_auto_join_optouts.c.org_id == org_id,
             )
         )
+
+
+async def org_roster(admin_db: "Database", org_id: str) -> list[dict]:  # REQ-042, REQ-1592
+    """The people who belong to ``org_id``: each membership row with the profile it names.
+
+    Membership is admin-plane, so this is the control plane's answer to who is in the org. Two
+    surfaces read it under different rights: the team page (user_management, which adds what each
+    person may do) and the glossary's author/expert picker (glossary_rw, which needs only who they
+    are) -- so the query lives here once and each route decides what of it to return.
+    """
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(
+                user_org_memberships.c.user_id,
+                user_profiles.c.email,
+                user_profiles.c.display_name,
+                user_profiles.c.provider,
+                user_org_memberships.c.created_at,
+            )
+            .select_from(
+                user_org_memberships.outerjoin(
+                    user_profiles,
+                    user_profiles.c.user_id == user_org_memberships.c.user_id,
+                )
+            )
+            .where(user_org_memberships.c.org_id == org_id)
+            .order_by(user_org_memberships.c.user_id)
+        )
+        return [dict(r._mapping) for r in result.fetchall()]
 
 
 async def org_admin_user_ids(model_db: "Database") -> set[str]:  # REQ-1302
