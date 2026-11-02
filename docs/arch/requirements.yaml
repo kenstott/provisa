@@ -1560,7 +1560,7 @@
   priority: MUST
   type: structural
   description: 'Pluggable auth provider interface: an abstract AuthProvider producing AuthIdentity (user_id,
-    email, roles, claims) mapped to Provisa roles. One provider at a time configured in YAML. (Amended 2026-10-29,
+    email, roles, claims) mapped to Provisa roles. One provider at a time configured in YAML. (Amended 2026-11-01,
     A sign-in acts as a role it holds:) Maintainer 2026-11-01: in claims mode, when no role mapping rule
     matches and the identity holds roles, the request acts as a role the identity holds. default_role applies
     only to an identity that holds none. This holds on every transport.'
@@ -16518,7 +16518,7 @@
   priority: SHOULD
   type: ui
   description: 'Test endpoint execution shows RLS filters applied, columns excluded, schema scope enforced
-    in result metadata. (Amended 2026-10-29, SEE IT IN:) Maintainer 2026-11-01: "as a peer yyou might have
+    in result metadata. (Amended 2026-11-01, SEE IT IN:) Maintainer 2026-11-01: "as a peer yyou might have
     a ''See it in gRPC'', ''See it in JSON:API'', etc.", "go ahead with the See it in links", "Its guaranteed
     by construction." The GraphQL explorer''s plan panel offers See it in gRPC, See it in JSON:API and See
     it in OpenAPI beside Semantic SQL and Cypher, for every query. Each opens that surface''s page with
@@ -35938,7 +35938,7 @@
     2026-10-31: list applies to SQL, that is the pgwire catalog and meta. The gRPC proto, JSON:API, GraphQL,
     Cypher, SPARQL and OpenAPI describe what a role can read or write, so a list-only table does not appear
     on them. This narrows THE SAME ON EVERY CATALOG SURFACE, and scoping to domain grants still holds on
-    all of them. (Amended 2026-10-29, VIEWER HOLDS NO CATALOG_READ:) Maintainer 2026-11-01: "removing catalog_read
+    all of them. (Amended 2026-11-01, VIEWER HOLDS NO CATALOG_READ:) Maintainer 2026-11-01: "removing catalog_read
     from viewer - do it". Viewer no longer holds catalog_read, so a role built on Viewer holds no grant
     on the meta domain from that parent. Every role still has the default tier: core metadata for the non-system
     tables it can read, write or list. catalog_read, the meta grant, is held only by a role that names it.
@@ -37838,7 +37838,7 @@
     (a week) and per-day buckets (31 days), every window a sum over them. The counters live in the control-plane
     PostgreSQL, so budgets hold on every deployment, with or without Redis. The role''s page shows each
     window''s use and when room frees up. This replaces the daily-or-monthly period stated above. (Amended
-    2026-10-29, USAGE BY PRINCIPAL:) Maintainer 2026-11-01: "an interesting feature would be to track stats
+    2026-11-01, USAGE BY PRINCIPAL:) Maintainer 2026-11-01: "an interesting feature would be to track stats
     by principal (basic stats like data volumes, total queries, etc.)", "this could be used by say a company
     that was in the business of provisioning data, like reuters, so billing", "add that feature". Provisa
     records usage by principal, data product and surface: queries, rows and bytes, as a governed table in
@@ -58687,7 +58687,7 @@
     absent from the Columns sheet and from every other sheet that names it, a masked column shows its masked
     form wherever a value or statistic would reveal it, profiling figures follow the column''s grant and
     mask, and a product, contract or term outside the caller''s domains is absent, as for every other sheet.
-    (Amended 2026-10-29, The picker roster in the shared sandbox lists only the caller:) Maintainer 2026-11-02:
+    (Amended 2026-11-02, The picker roster in the shared sandbox lists only the caller:) Maintainer 2026-11-02:
     the author and expert pickers read the org''s roster through a curator''s own right (glossary_rw), not
     the team page''s user_management. In the shared "Try it Out" sandbox org every visitor is a curator,
     so there the roster lists only the caller; other visitors'' names and emails are never shown. Real orgs
@@ -70937,32 +70937,32 @@
   priority: MAY
   type: behavioral
   description: 'The pg engine''s snowflake/databricks/bigquery source types should be reachable as a live,
-    zero-copy ATTACH_R via each warehouse''s Iceberg REST catalog (Snowflake Iceberg Tables'' catalog
-    integration or SYSTEM$GET_ICEBERG_TABLE_INFORMATION, Databricks Unity Catalog''s Iceberg REST endpoint
-    / UniForm, BigQuery BigLake Metastore), instead of only Mechanism.DIRECT (native driver, materialize-required).
+    zero-copy ATTACH_R via each warehouse''s Iceberg REST catalog (Snowflake Iceberg Tables'' catalog integration
+    or SYSTEM$GET_ICEBERG_TABLE_INFORMATION, Databricks Unity Catalog''s Iceberg REST endpoint / UniForm,
+    BigQuery BigLake Metastore), instead of only Mechanism.DIRECT (native driver, materialize-required).
     PgDuckdbIcebergConnector (provisa/federation/connector_duckdb.py) already reads an Iceberg table in
-    place via iceberg_scan, but only from a bare storage path (source.path) — [SUPERSEDED by REQ-1867
-    amendment, 2026-10-03 -- Status is proposed and the text reads as future work, but the three catalog-resolving
+    place via iceberg_scan, but only from a bare storage path (source.path) — [SUPERSEDED by REQ-1867 amendment,
+    2026-10-03 -- Status is proposed and the text reads as future work, but the three catalog-resolving
     connectors and their resolvers already exist (provisa/federation/connector_duckdb.py:1151-1352). Kept
     here for history; do not implement against it.] it has no REST-catalog client, credential/token handling,
-    or table discovery. This closes that gap [END SUPERSEDED BLOCK]: resolve the warehouse''s current
-    metadata.json location via its catalog API, then hand the resolved path to the existing scan connector
-    unchanged.
-
-    (Amended 2026-10-12, DATABRICKS IN-PLACE READ IS OPT-IN AND PER QUERY:) A Databricks source
-    keeps landing through its native driver by default; the steward opts a source into the in-place
-    read with its read policy (federation_hints reach: scan; reach: replica or no hint lands). On
-    the duckdb and pg engines the opt-in reach reads each registered table through Unity Catalog
-    Iceberg REST catalog (/api/2.1/unity-catalog/iceberg-rest/v1: config for the catalog prefix,
-    then LoadTable asking for vended credentials; the legacy iceberg/v1 endpoint answers HTTP 400).
-    Before every statement that names the table, the runtime resolves the current metadata-location
-    and fresh vended S3 credentials and re-points the table view (a DuckDB secret, or a pg_duckdb s3
-    server and user mapping); nothing is resolved at catalog projection and nothing is cached. A
-    table that is neither native Iceberg nor UniForm, or one for which Unity Catalog vends no
-    credentials (metastore external data access off, Databricks default storage, or no EXTERNAL USE
-    SCHEMA), fails that query naming the table. An in-place Databricks source needs no landing
-    clock. A reach other than replica or scan is refused naming it; an engine with no in-place
-    reader for the type refuses reach: scan naming the source.'
+    or table discovery. This closes that gap [END SUPERSEDED BLOCK]: resolve the warehouse''s current metadata.json
+    location via its catalog API, then hand the resolved path to the existing scan connector unchanged.
+    (Amended 2026-10-12, DATABRICKS IN-PLACE READ IS OPT-IN AND PER QUERY:) A Databricks source keeps landing
+    through its native driver by default; the steward opts a source into the in-place read with its read
+    policy (federation_hints reach: scan; reach: replica or no hint lands). On the duckdb and pg engines
+    the opt-in reach reads each registered table through Unity Catalog Iceberg REST catalog (/api/2.1/unity-catalog/iceberg-rest/v1:
+    config for the catalog prefix, then LoadTable asking for vended credentials; the legacy iceberg/v1 endpoint
+    answers HTTP 400). Before every statement that names the table, the runtime resolves the current metadata-location
+    and fresh vended S3 credentials and re-points the table view (a DuckDB secret, or a pg_duckdb s3 server
+    and user mapping); nothing is resolved at catalog projection and nothing is cached. A table that is
+    neither native Iceberg nor UniForm, or one for which Unity Catalog vends no credentials (metastore external
+    data access off, Databricks default storage, or no EXTERNAL USE SCHEMA), fails that query naming the
+    table. An in-place Databricks source needs no landing clock. A reach other than replica or scan is refused
+    naming it; an engine with no in-place reader for the type refuses reach: scan naming the source. (Amended
+    2026-11-02, Exact JSON values in GraphQL and JSON responses:) Maintainer 2026-11-02: a DECIMAL is written
+    as a JSON string holding its exact digits, never as a float; PostgreSQL''s infinite dates and timestamps
+    are written "infinity" and "-infinity", as pgwire writes them; only columns typed json or jsonb become
+    JSON objects or arrays, and text stays a string even when it looks like JSON.'
   use_case: Snowflake/Databricks/BigQuery sources attached to the pg engine currently require a full materialized
     replica even when the underlying table is already Iceberg-format and could be scanned live. Closing this gap removes that replica lag/cost for customers who already use Iceberg-backed warehouse tables.
   code:
@@ -75660,51 +75660,129 @@
   priority: MUST
   type: structural
   target: 2026-Q4
-  description: 'Process roles. A deployment runs the same code in two roles, chosen when a process is
-    started. A query node serves requests on every transport and does nothing else: it never runs a replication
-    copy, a scheduled refresh or any other background job. A coordinator serves no data requests and does
-    the central work: it holds the central replica record and decides and runs every replica build and
-    refresh (REQ-1915), and it runs the scheduled and single-holder background work (materialized view
-    refresh and cleanup, hot-table refresh, scheduled triggers, and the like) that query nodes used to
-    elect one of themselves to run. Query nodes enqueue requests in the central record and read state
-    from it; the coordinator is the only thing that acts on them. Both roles are the same image and the
-    same entry point with a role argument, read the same control plane, and are told of changes by the
-    same propagation (REQ-1914). [SUPERSEDED by the 2026-10-02 amendment below -- the default is now the
-    every mode, one process doing both. Kept here for history; do not implement against it.] By default
-    the launcher starts one coordinator on the same host next to the query nodes, so a small install needs
-    no extra setup; [END SUPERSEDED BLOCK] a larger deployment runs the coordinator on its own server
-    with its own memory and network budget, close to the store and the sources. [SUPERSEDED by the 2026-10-02
-    amendment below -- several coordinators work at once, each on different jobs. Kept here for history;
-    do not implement against it.] More than one coordinator may run for availability, and a lock the control
-    plane guarantees lets exactly one of them act at a time, with another taking over when it stops. [END
-    SUPERSEDED BLOCK] The health endpoint and the admin pages show the coordinator, whether it is running,
-    and what it is doing, because when no coordinator runs nothing is replicated or refreshed; a query
-    node reports that state on reads that need a replica instead of doing the work itself. The role is
-    a launch setting shown in the deployment settings (REQ-1913). (Amended 2026-10-02, THREE MODES:) A
-    process starts in one of three modes -- every, query or coordinator. every is the default and needs
-    no flag -- the process serves requests on every transport and also does the coordinator work, so a
-    small install is one kind of process with nothing to choose. query and coordinator are chosen by a
-    startup command-line flag. A query process serves requests and runs no replica build, view refresh
-    or other background job. A coordinator process serves no data requests and does the background work.
-    The mode is fixed for the life of the process and is shown read-only with the other launch settings.
-    (Amended 2026-10-02, EVERY COORDINATOR BUILDS:) Background capacity grows by adding processes that
-    do coordinator work (coordinator or every mode). Each such process claims requested replica builds,
-    and later view refreshes, one job at a time per claim. A lock the control plane guarantees per replica
-    or view keeps each job to one builder, so several coordinators work at once on different jobs. Three operator limits bound the total: builds per node, background jobs per engine across all nodes, and
-    reads per source (REQ-1915, REQ-1909). Work that must fire exactly once per deployment, such as deciding
-    that a refresh is due or running a scheduled trigger, still goes to one holder at a time, taken over
-    by another when it stops. (Amended 2026-10-02, SCALING AND MEMBERSHIP:) Capacity is added in either
-    of two ways, and the operator chooses by workload. The simple way is to add more every-mode nodes; each adds request capacity and background capacity together. The designed way is to run some number
-    of query nodes and some number of coordinator nodes, sized separately for request load and for replication
-    and refresh load. Both may be mixed in one cluster. A cluster is the set of processes started against
-    one control plane. A node joins by starting against that control plane and leaves by stopping. No other node is restarted or reconfigured, and nothing is registered by hand, so capacity is added and
-    removed while the cluster serves. A joining node loads the current configuration (REQ-1914) and must
-    hold the deployment encryption key (REQ-684) before it serves. A leaving query node finishes or times
-    out the requests it holds. A leaving coordinator releases the jobs it holds: the control plane frees its locks when its session ends, and another node claims and restarts those jobs (REQ-1915). The admin
-    pages and the health endpoint list the nodes now in the cluster with each one mode, so an operator
-    sees what capacity is present and whether any node is doing coordinator work. (Amended 2026-10-03,
-    THE NODE LIST LIVES IN THE PLATFORM STATE STORE:) The node heartbeat and the cluster node list are
-    held in the platform state store (REQ-1932).'
+  description: 'Process roles. A deployment runs the same code in two roles, chosen when a process is started.
+    A query node serves requests on every transport and does nothing else: it never runs a replication copy,
+    a scheduled refresh or any other background job. A coordinator serves no data requests and does the
+    central work: it holds the central replica record and decides and runs every replica build and refresh
+    (REQ-1915), and it runs the scheduled and single-holder background work (materialized view refresh and
+    cleanup, hot-table refresh, scheduled triggers, and the like) that query nodes used to elect one of
+    themselves to run. Query nodes enqueue requests in the central record and read state from it; the coordinator
+    is the only thing that acts on them. Both roles are the same image and the same entry point with a role
+    argument, read the same control plane, and are told of changes by the same propagation (REQ-1914). [SUPERSEDED
+    by the 2026-10-02 amendment below -- the default is now the every mode, one process doing both. Kept
+    here for history; do not implement against it.] By default the launcher starts one coordinator on the
+    same host next to the query nodes, so a small install needs no extra setup; [END SUPERSEDED BLOCK] a
+    larger deployment runs the coordinator on its own server with its own memory and network budget, close
+    to the store and the sources. [SUPERSEDED by the 2026-10-02 amendment below -- several coordinators
+    work at once, each on different jobs. Kept here for history; do not implement against it.] More than
+    one coordinator may run for availability, and a lock the control plane guarantees lets exactly one of
+    them act at a time, with another taking over when it stops. [END SUPERSEDED BLOCK] The health endpoint
+    and the admin pages show the coordinator, whether it is running, and what it is doing, because when
+    no coordinator runs nothing is replicated or refreshed; a query node reports that state on reads that
+    need a replica instead of doing the work itself. The role is a launch setting shown in the deployment
+    settings (REQ-1913). (Amended 2026-10-02, THREE MODES:) A process starts in one of three modes -- every,
+    query or coordinator. every is the default and needs no flag -- the process serves requests on every
+    transport and also does the coordinator work, so a small install is one kind of process with nothing
+    to choose. query and coordinator are chosen by a startup command-line flag. A query process serves requests
+    and runs no replica build, view refresh or other background job. A coordinator process serves no data
+    requests and does the background work. The mode is fixed for the life of the process and is shown read-only
+    with the other launch settings. (Amended 2026-10-02, EVERY COORDINATOR BUILDS:) Background capacity
+    grows by adding processes that do coordinator work (coordinator or every mode). Each such process claims
+    requested replica builds, and later view refreshes, one job at a time per claim. A lock the control
+    plane guarantees per replica or view keeps each job to one builder, so several coordinators work at
+    once on different jobs. Three operator limits bound the total: builds per node, background jobs per
+    engine across all nodes, and reads per source (REQ-1915, REQ-1909). Work that must fire exactly once
+    per deployment, such as deciding that a refresh is due or running a scheduled trigger, still goes to
+    one holder at a time, taken over by another when it stops. (Amended 2026-10-02, SCALING AND MEMBERSHIP:)
+    Capacity is added in either of two ways, and the operator chooses by workload. The simple way is to
+    add more every-mode nodes; each adds request capacity and background capacity together. The designed
+    way is to run some number of query nodes and some number of coordinator nodes, sized separately for
+    request load and for replication and refresh load. Both may be mixed in one cluster. A cluster is the
+    set of processes started against one control plane. A node joins by starting against that control plane
+    and leaves by stopping. No other node is restarted or reconfigured, and nothing is registered by hand,
+    so capacity is added and removed while the cluster serves. A joining node loads the current configuration
+    (REQ-1914) and must hold the deployment encryption key (REQ-684) before it serves. A leaving query node
+    finishes or times out the requests it holds. A leaving coordinator releases the jobs it holds: the control
+    plane frees its locks when its session ends, and another node claims and restarts those jobs (REQ-1915).
+    The admin pages and the health endpoint list the nodes now in the cluster with each one mode, so an
+    operator sees what capacity is present and whether any node is doing coordinator work. (Amended 2026-10-03,
+    THE NODE LIST LIVES IN THE PLATFORM STATE STORE:) The node heartbeat and the cluster node list are held
+    in the platform state store (REQ-1932). [SUPERSEDED by REQ-1916, 2026-11-02 -- withdrawn: the maintainer
+    found the existing query/coordinator/every design already covers the control/data split, with little
+    or no work to do. Kept here for history; do not implement against it.] (Amended 2026-11-02, Control
+    plane and data plane modes:) Maintainer 2026-11-02: a node can be started in control plane mode or data
+    plane mode, an option for a deployment that wants to disentangle them; the default stays one process
+    doing both. The modes become every (the default, as today), control and data, replacing query and coordinator.
+    A control node signs users in, governs, compiles, holds the model store, serves the admin API and UI,
+    runs background work, and answers plan commands from data nodes; it never touches a row. A data node
+    owns the client-facing listeners (pgwire, the HTTP surfaces, gRPC, Flight, Bolt), asks a control node
+    over a socket for the signed plan of each request, fetches the engine''s result as Arrow or a direct
+    cursor, encodes it to the client (REQ-2194), and reports counters (row counts, warnings) back, never
+    rows. Background work that moves data (materialized view refreshes, replica landing) runs as a command
+    a control node sends to a data node. One artifact serves all three modes. (Amended 2026-11-02, A facade
+    over the plan contract:) Maintainer 2026-11-02: "a simple change to create a facade for existing contract
+    - with switch to use the remote or the local." The facade wraps the existing plan half of the one query
+    pipeline (govern and route): in every mode the plan call runs in process, in data mode it is a call
+    to a control node over a socket; executing the plan and encoding to the client stay on the node that
+    holds the client connection, so rows never enter the control process. (Amended 2026-11-02, The control
+    plane advertises data plane addresses:) Maintainer 2026-11-02: the control plane advertises the data
+    plane''s addresses. [SUPERSEDED by REQ-1916, 2026-11-02 -- replaced by node pools declared in the shared
+    config, 2026-11-02. Kept here for history; do not implement against it.] A data node registers with
+    a control node when it starts (its region and its address for each transport) and keeps the registration
+    alive; a node that stops drops out. [END SUPERSEDED BLOCK] Everywhere a client is told where to connect
+    (the UI''s connection details, connection strings, the HTTP surface URLs, MCP settings, Flight''s GetFlightInfo
+    endpoints), the control plane gives the data node for the org''s region. In every mode the one process
+    advertises itself. (Amended 2026-11-02, Each plane scales behind its own load balancer:) Maintainer
+    2026-11-02: control nodes and data nodes each scale independently behind a load balancer. Control nodes
+    hold no state of their own beyond what the shared control-plane store holds, so any control node answers
+    any plan call, and a model change made through one invalidates what the others cached. A plan is signed
+    with a key every node shares, so any data node verifies it. The address the control plane advertises
+    is the data plane load balancer for the org''s region; long-lived connections (pgwire, Bolt, gRPC, Flight)
+    are balanced at TCP level and stay on one data node. Background work is claimed through the shared store
+    so it runs once, not once per control node. (Amended 2026-11-02, Several control nodes use the existing
+    propagation:) Maintainer 2026-11-02 (correcting the wording above): several control nodes need nothing
+    new to stay in step. A model change reaches every control node through the existing propagation (REQ-1914:
+    the stamp advanced in the same transaction as the change tells every process to reload), as it does
+    for every node today. Data nodes hold no model and reload nothing. (Amended 2026-11-02, Response cache
+    per node or shared:) Maintainer 2026-11-02: each node can use its own in-memory response cache or a
+    remote shared one; that is an efficiency choice only, not a correctness one. The response cache holds
+    rows, so it belongs to the data plane: data nodes read and write it, a control node never does. (Amended
+    2026-11-02, Node pools declared in the shared config:) Maintainer 2026-11-02: the topology is declared
+    in the shared config, not registered at run time. The config declares node pools, each with its mode
+    (control or data), its region (for data pools) and its address (the pool''s load balancer); individual
+    machines are not listed, so capacity changes need no config edit. A process starts with only its pool
+    name and takes its mode, region and peers from the config; with no pools declared a process runs in
+    every mode, as today. The address the control plane advertises is the pool''s declared address; liveness
+    is the load balancer''s health check. Every node may read the entire config definition (maintainer:
+    no problem with all nodes seeing it); data nodes still never build or hold the governed model and act
+    only on signed plans. (Amended 2026-11-02, A branch can run the same config on one localhost node:)
+    Maintainer 2026-11-02: because the topology is part of the declared config, a developer can branch a
+    distributed config and change only its pools to one localhost node (or none, so one process runs in
+    every mode) and run it locally. Nothing in the model depends on the topology, so the branch answers
+    the same queries with the same results; only where it runs differs. (Amended 2026-11-02, Why the planes
+    are separated:) Maintainer 2026-11-02: the reason for separating the control plane and the data plane
+    is isolation and scaling for performance, not security. Docs and site describe it that way. (Amended
+    2026-11-02, A customer-owned data node in multi-tenant SaaS:) Maintainer 2026-11-02: in multi-tenant
+    SaaS the customer can own and run the data node, in its own network; that node only ever sees its own
+    org''s config values, not the whole config. The provider''s control plane signs users in, holds the
+    model and plans; the customer''s data node acts only on plans signed for its org, connects to the customer''s
+    engines, resolves the customer''s secrets locally, and its rows never leave the customer''s network.
+    A data pool''s config read is scoped to the orgs it serves; outside SaaS every node may still read the
+    whole config. (Amended 2026-11-02, Data nodes run the whole read path; no plan call:) Maintainer 2026-11-02,
+    superseding every earlier 2026-11-02 amendment''s plan call, plan facade, /internal/plan route and signed
+    plans (do not implement them): a data node has the same code and the same config, so it governs, compiles,
+    fetches and encodes each query itself; it never asks a control node for a plan or a config value. A
+    control node serves the UI and makes changes to the config (the model store''s writes), and keeps the
+    background work this requirement already gives the coordinator. The modes are every (default), control
+    (today''s coordinator) and data (today''s query). Node pools in the shared config, the Rust encoders
+    on the read path (REQ-2194), the response cache on data nodes, the existing REQ-1914 propagation, scaling
+    behind load balancers, and the customer-owned SaaS data node that sees only its own org''s config all
+    stand. (Amended 2026-11-02, What a control node serves:) Maintainer 2026-11-02: a control node serves
+    any UI, makes config changes, does the background work, and handles sign-in (the interactive flows:
+    OAuth redirects, sessions, invites). A data node still checks each request''s credentials itself (tokens,
+    pgwire passwords, API keys) against the shared config, so a query never waits on a control node. [END
+    SUPERSEDED BLOCK] (Amended 2026-11-02, Withdrawn:) Maintainer 2026-11-02: the existing modes stand as
+    written above (every, query, coordinator); the amendments of this date are withdrawn.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
@@ -81471,7 +81549,81 @@
   - tests/unit/test_proto_gen.py
   - tests/integration/test_native_json_postgres.py
   - tests/integration/test_native_json_trino.py
-  description: 'Semantic SQL has no array, struct or map type; nested data is a JSON column, and JSON is the type every catalog and every wire lists for it, on every federation engine and every source read directly, so a registration answers the same on every engine. A datasource hands a native array, struct or map over as JSON, by a cast the source or engine executes; such a column is registered as JSON -- JSON is the type registration suggests for it, never text -- and registering one is never an error, though reading one from a backend with no verified way to produce JSON is refused by name. A column carries three hidden attributes, recorded from the source at registration, stored with the column, not offered in the registration form and available to every translator: its array depth as an integer -- 0 for a column that is not an array of a primitive, 1 for an array of a primitive, 2 for an array of arrays of a primitive, and so on for each level of nesting -- the semantic SQL type of its innermost element with precision and scale where it has them, and the native type of the source in its own spelling. A backend does not need a JSON type to carry such a column, only JSON functions: where a backend has no JSON type the value is held and passed as text, and what makes a backend supported is that it can produce JSON from a native value and operate on JSON text with its own functions. Only an array whose innermost element is one primitive type has a depth above 0; a struct, a map, an array of structs or an array whose elements are of mixed types is a plain JSON column of depth 0 with its native type recorded, and a column that is JSON at its source carries none of the three. Semantic SQL offers one portable set of JSON operations -- element and field access, length, contains, unnest, construct, and aggregate into a JSON array -- spelled as the SQL standard JSON functions, with the PostgreSQL operators accepted as the same operations, and translated to the dialect of the backend a statement is routed to from one rule table covering every operation on every backend class. For an array of a primitive, at any depth, the attributes are an input to that translation: an innermost element that is extracted or unnested is cast to the element type and a literal compared with one is cast to it, inside the generated statement, and where the statement runs on the source and its column is natively an array, element access, length, contains and unnest use the native operation, except that on the PostgreSQL family, whose array type does not record its dimensions, unnest always goes through JSON, so its answer never depends on the dimensions of the value. A typed extraction that goes fewer levels into an array than its depth is refused when the statement is compiled, naming the column and its depth. The native type is recorded for casting in: its being recorded is what tells a translator the column must be converted to JSON on the way out, a conversion that is the same whatever the type, and its content is what a value is cast into on the way in. That holds for a predicate as for a write. In a predicate that runs on the source, the JSON or literal a statement compares with such a column -- with the whole value or with an element -- is cast into the native type, so that the comparison is made on the native column by the source and can use its indexes, and the column is not converted to JSON to be compared. In a write, the JSON a statement gives for a column that is natively an array, struct or map is cast into the recorded native type by the source that stores it, inside the generated statement, through the one write path; a value the source cannot cast is refused with the error of the source, and a backend with no verified way to build its native value from JSON refuses the write by name. A decimal element with a declared precision is written into the JSON as a string and cast back, so it is exact on every engine; a timestamp element keeps its instant; an element that is not a number or is infinite is refused by name. Inside a struct, a map or an array of structs nothing is typed: the whole value and the untyped operations work, and a typed value from inside one needs a cast the user writes. Once a source or an engine has produced a value, Provisa does not parse, convert or re-encode it on any route; the translation is derived once with the governed statement, not per request. An operation a backend cannot perform correctly is refused by name; an operation that is correct but slow is allowed and runs. The user is responsible for what will not perform, and the product says so: the query plan notes, for each JSON operation that the backend it is routed to cannot serve from an index or that is not known to be pushed down, the column, the operation, the backend and the documented alternative, as advice that never blocks or changes the statement and is shown with the plan only; the documentation states the same per backend class from the same rule table. When the type of a source column no longer matches what was recorded, reads of that column are refused, naming the column and both types, until it is registered again. The hidden attributes are standard metadata that a surface able to state a list may read: GraphQL declares a column whose depth is above 0 as a list, nested to that depth, of the GraphQL type of its element, from the attributes alone and never from the spelling of a source type, and declares every other JSON column as the opaque JSON value; the value it serves is the JSON the source or engine produced. Bolt carries a JSON column as a JSON string. (Amended 2026-10-13, WHAT IS DELIVERED:) Delivered: a native array, struct or map registers as JSON with its three hidden attributes recorded from the source (depth, element type, native type, and whose spelling that is), and registering it as any other type is refused by name; a read of such a column is the backend''s own to-JSON expression on DuckDB, PostgreSQL and Trino, resolved in the one transpile step every route takes; a replica lands it as JSON the source or engine produces (jsonb on PostgreSQL); GraphQL declares a column of depth above 0 as a list of its element type from the attributes alone, a decimal element with a declared precision as String, and every other such column as the opaque JSON value; gRPC carries it as a JSON string. A parameter is an argument, not a column: an array parameter (a query vector, REQ-1986) stays a list of its element type on GraphQL and gRPC. An embedding column (REQ-424) is exempt end to end: registered as the native array it is with no hidden attribute, landed as a vector where the engine indexes it and as text elsewhere, read without a JSON conversion, and a list of its components in GraphQL. Not yet delivered: the portable JSON operations and their rule table, typed extraction and its compile-time depth check, native element operations on the source, the plan notes, the cast into the native type in predicates and writes, refusing reads of a column whose source type drifted, and Bolt''s JSON string.'
+  description: 'Semantic SQL has no array, struct or map type; nested data is a JSON column, and JSON is
+    the type every catalog and every wire lists for it, on every federation engine and every source read
+    directly, so a registration answers the same on every engine. A datasource hands a native array, struct
+    or map over as JSON, by a cast the source or engine executes; such a column is registered as JSON --
+    JSON is the type registration suggests for it, never text -- and registering one is never an error,
+    though reading one from a backend with no verified way to produce JSON is refused by name. A column
+    carries three hidden attributes, recorded from the source at registration, stored with the column, not
+    offered in the registration form and available to every translator: its array depth as an integer --
+    0 for a column that is not an array of a primitive, 1 for an array of a primitive, 2 for an array of
+    arrays of a primitive, and so on for each level of nesting -- the semantic SQL type of its innermost
+    element with precision and scale where it has them, and the native type of the source in its own spelling.
+    A backend does not need a JSON type to carry such a column, only JSON functions: where a backend has
+    no JSON type the value is held and passed as text, and what makes a backend supported is that it can
+    produce JSON from a native value and operate on JSON text with its own functions. Only an array whose
+    innermost element is one primitive type has a depth above 0; a struct, a map, an array of structs or
+    an array whose elements are of mixed types is a plain JSON column of depth 0 with its native type recorded,
+    and a column that is JSON at its source carries none of the three. Semantic SQL offers one portable
+    set of JSON operations -- element and field access, length, contains, unnest, construct, and aggregate
+    into a JSON array -- spelled as the SQL standard JSON functions, with the PostgreSQL operators accepted
+    as the same operations, and translated to the dialect of the backend a statement is routed to from one
+    rule table covering every operation on every backend class. For an array of a primitive, at any depth,
+    the attributes are an input to that translation: an innermost element that is extracted or unnested
+    is cast to the element type and a literal compared with one is cast to it, inside the generated statement,
+    and where the statement runs on the source and its column is natively an array, element access, length,
+    contains and unnest use the native operation, except that on the PostgreSQL family, whose array type
+    does not record its dimensions, unnest always goes through JSON, so its answer never depends on the
+    dimensions of the value. A typed extraction that goes fewer levels into an array than its depth is refused
+    when the statement is compiled, naming the column and its depth. The native type is recorded for casting
+    in: its being recorded is what tells a translator the column must be converted to JSON on the way out,
+    a conversion that is the same whatever the type, and its content is what a value is cast into on the
+    way in. That holds for a predicate as for a write. In a predicate that runs on the source, the JSON
+    or literal a statement compares with such a column -- with the whole value or with an element -- is
+    cast into the native type, so that the comparison is made on the native column by the source and can
+    use its indexes, and the column is not converted to JSON to be compared. In a write, the JSON a statement
+    gives for a column that is natively an array, struct or map is cast into the recorded native type by
+    the source that stores it, inside the generated statement, through the one write path; a value the source
+    cannot cast is refused with the error of the source, and a backend with no verified way to build its
+    native value from JSON refuses the write by name. A decimal element with a declared precision is written
+    into the JSON as a string and cast back, so it is exact on every engine; a timestamp element keeps its
+    instant; an element that is not a number or is infinite is refused by name. Inside a struct, a map or
+    an array of structs nothing is typed: the whole value and the untyped operations work, and a typed value
+    from inside one needs a cast the user writes. Once a source or an engine has produced a value, Provisa
+    does not parse, convert or re-encode it on any route; the translation is derived once with the governed
+    statement, not per request. An operation a backend cannot perform correctly is refused by name; an operation
+    that is correct but slow is allowed and runs. The user is responsible for what will not perform, and
+    the product says so: the query plan notes, for each JSON operation that the backend it is routed to
+    cannot serve from an index or that is not known to be pushed down, the column, the operation, the backend
+    and the documented alternative, as advice that never blocks or changes the statement and is shown with
+    the plan only; the documentation states the same per backend class from the same rule table. When the
+    type of a source column no longer matches what was recorded, reads of that column are refused, naming
+    the column and both types, until it is registered again. The hidden attributes are standard metadata
+    that a surface able to state a list may read: GraphQL declares a column whose depth is above 0 as a
+    list, nested to that depth, of the GraphQL type of its element, from the attributes alone and never
+    from the spelling of a source type, and declares every other JSON column as the opaque JSON value; the
+    value it serves is the JSON the source or engine produced. Bolt carries a JSON column as a JSON string.
+    (Amended 2026-10-13, WHAT IS DELIVERED:) Delivered: a native array, struct or map registers as JSON
+    with its three hidden attributes recorded from the source (depth, element type, native type, and whose
+    spelling that is), and registering it as any other type is refused by name; a read of such a column
+    is the backend''s own to-JSON expression on DuckDB, PostgreSQL and Trino, resolved in the one transpile
+    step every route takes; a replica lands it as JSON the source or engine produces (jsonb on PostgreSQL);
+    GraphQL declares a column of depth above 0 as a list of its element type from the attributes alone,
+    a decimal element with a declared precision as String, and every other such column as the opaque JSON
+    value; gRPC carries it as a JSON string. A parameter is an argument, not a column: an array parameter
+    (a query vector, REQ-1986) stays a list of its element type on GraphQL and gRPC. An embedding column
+    (REQ-424) is exempt end to end: registered as the native array it is with no hidden attribute, landed
+    as a vector where the engine indexes it and as text elsewhere, read without a JSON conversion, and a
+    list of its components in GraphQL. Not yet delivered: the portable JSON operations and their rule table,
+    typed extraction and its compile-time depth check, native element operations on the source, the plan
+    notes, the cast into the native type in predicates and writes, refusing reads of a column whose source
+    type drifted, and Bolt''s JSON string. (Amended 2026-11-02, gRPC values written exactly:) Maintainer
+    2026-11-02: a protobuf Timestamp field keeps the maximum value for PostgreSQL''s +infinity (9999-12-31T23:59:59.999999Z)
+    and the minimum (0001-01-01) for -infinity, since Timestamp has no infinity; a string field says "infinity"
+    / "-infinity" as GraphQL and pgwire do. Arrays, structs and maps in a string field are JSON, never a
+    Python repr; bytes are never written as a Python b''...'' literal; a value beyond a float field''s range
+    is refused by name, as PostgreSQL refuses float4 out of range.'
   scenario: 'Given a PostgreSQL source with a column tags of type text[]
 
     When the column is registered
@@ -82806,7 +82958,7 @@
     starting state and states the stage; a tier or template that cannot start is named as failed, never
     left starting. (Amended 2026-10-29, A DEMO NEEDS ITS STORES HEALTHY:) An open refuses a demo whose stores
     are not reachable, or whose Elasticsearch index is red, naming it failed. The sandbox VM keeps only
-    the bundle and engine versions in use. (Amended 2026-10-29, TRADE AFFIRMATION DEMO:) Maintainer 2026-11-01:
+    the bundle and engine versions in use. (Amended 2026-11-01, TRADE AFFIRMATION DEMO:) Maintainer 2026-11-01:
     "add that demo", of "a python code table as the matching engine, and maybe a command that will log the
     match when found", "we use polly surface to drive it", "polly can use the explore surface to drive queries
     as well". A named demo of post-trade matching and affirmation at an asset manager: trades split across
@@ -87706,7 +87858,7 @@ Then the mutation is refused as it is in the UI"
     It reads only the user''s own session, so a masked value stays masked as shown (a password as dots),
     and its answer is cut at the size her admin requests'' answers are. Whenever the user refers to ''this'',
     ''the query'' or anything on the screen, she reads it first and never says she cannot see it. (Amended
-    2026-10-29, THE TOUR FILLS THE FORM AND CANCELS:) Maintainer 2026-11-01: "perhaps we don''t actually
+    2026-11-01, THE TOUR FILLS THE FORM AND CANCELS:) Maintainer 2026-11-01: "perhaps we don''t actually
     save we fill out the form and then cancel", "Same with a lot of things where we are doing a live save/computation
     - if possible - we might complete a form then cancel." The core tour''s source step opens the picker,
     chooses Parquet File, fills the form and presses Cancel; nothing is saved. A tour step whose purpose
@@ -90112,14 +90264,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     level as Details, Versions, Columns and SLAs, not panels inside Details. (Amended 2026-10-29, THREE
     TIERS:) Maintainer 2026-10-31: a contract reads in three tiers: small key-value panels in a grid; medium
     tables in a two-column flow; large tables, Servers and Columns, full width at the bottom. Fields not
-    declared fold into one quiet line per panel, in place of a row each. (Amended 2026-10-29, HOW TO USE:)
+    declared fold into one quiet line per panel, in place of a row each. (Amended 2026-11-01, HOW TO USE:)
     Maintainer 2026-11-01, on the contract''s servers section: "do this". The contract view''s Servers section
     becomes How to use, with three columns: Surface, Address and Try it. Try it is a complete URI where
     one is enough (REST, JSON:API, the OpenAPI description) and a runnable statement using the table''s
     real names otherwise (pgwire, Flight SQL, GraphQL, gRPC, SPARQL). When the viewing role cannot read
     the table, Try it shows who to ask, from the contract''s roles and first-level approvers, instead of
     a query. The instructions are generated in the contract builder so exported contracts carry them; the
-    standard servers field stays as it is, and a token appears only as a placeholder. (Amended 2026-10-29,
+    standard servers field stays as it is, and a token appears only as a placeholder. (Amended 2026-11-01,
     HOW TO USE, BY LINK:) Maintainer 2026-11-01: "they could be hyperlinks to show an example on the related
     provisa ui explore", "just a bit more expanded explanation then the access patterns". This replaces
     the How to use amendment''s runnable statements and its generation in the contract builder. How to use
@@ -90127,16 +90279,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     matching Explore page, using the handlers Access Patterns uses. A surface with no page of its own opens
     the page that speaks its language: Flight SQL opens SQL. When the viewing role cannot read the table,
     who to ask replaces the link, from the contract''s roles and first-level approvers. An exported contract
-    carries the standard servers field and no instructions. (Amended 2026-10-29, HOW TO USE NEEDS ACCESS:)
+    carries the standard servers field and no instructions. (Amended 2026-11-01, HOW TO USE NEEDS ACCESS:)
     Maintainer 2026-11-01: "they won''t work until access is granted. so instructions should say that as
     well." How to use says on every surface that it works only once access is granted, and names who grants
-    it, from the contract''s roles and first-level approvers. (Amended 2026-10-29, THE ADDRESS IS THE MOST
+    it, from the contract''s roles and first-level approvers. (Amended 2026-11-01, THE ADDRESS IS THE MOST
     SPECIFIC ONE:) Maintainer 2026-11-01: "if there is a URI that points specifically to the requested data
     set (like openapi for example) that might provide a little more vvalue." The Address column of How to
     use shows the most specific URI each surface has for the table: the table''s own URI on REST and JSON:API,
     the OpenAPI description narrowed as far as it can be, and a connection URI with the schema for pgwire
     and Flight SQL. A surface with one endpoint per server shows that endpoint, and its link carries the
-    table. (Amended 2026-10-29, OPENAPI NARROWS TO THE TABLE:) Maintainer 2026-11-01: "if you couldn''t
+    table. (Amended 2026-11-01, OPENAPI NARROWS TO THE TABLE:) Maintainer 2026-11-01: "if you couldn''t
     narrow to a table what exactly would the point be". This replaces "as far as it can be" in the most
     specific address amendment: the OpenAPI description in How to use is narrowed to the one table. The
     generated description takes a table filter beside role and domains, and the contract''s address uses
@@ -90620,7 +90772,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-10-31: a function whose value cannot be compared (volatile, or session) is validated by its return
     type and, where it is a string, its canonical form, against PostgreSQL''s own output. The guaranteed
     list holds functions with answers compared or form checked on every engine; a function only called is
-    reported as called only. (Amended 2026-10-29, NO INDEX FUNCTIONS GROUP:) Maintainer 2026-11-01, through
+    reported as called only. (Amended 2026-11-01, NO INDEX FUNCTIONS GROUP:) Maintainer 2026-11-01, through
     the lead: every index support function is served or refused by name, so the Index functions group of
     skipped by design is removed. An unserved index function is failed. The text above that reports them
     skipped by design, and that names two function groups, is superseded; one group remains.'
@@ -90982,11 +91134,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     (?s) where an engine needs it and $ allowed per engine where replay proves it, and refuses the rest
     by name. LIKE with a bound or non-literal pattern is served; a backslash before an ordinary letter is
     a named exception. simple to_tsvector, to_tsquery and @@ are an expansion, matching without ranking.
-    Compiled SPARQL, Cypher and internal forms never pass the check. (Amended 2026-10-29, EXACT OR EQUIVALENT:)
+    Compiled SPARQL, Cypher and internal forms never pass the check. (Amended 2026-11-01, EXACT OR EQUIVALENT:)
     Maintainer 2026-11-01: "perhaps should have a functionally equivalent response vs exact response", "the
     \"equivalence\" notes could be footnotes in the report - connected to relevant tests." A function''s
     comparison reports exact, equivalent or differs. Equivalent passes under a written rule, and each rule
-    is a footnote in the conformance report, linked from every test it covers. (Amended 2026-10-29, RESULTS
+    is a footnote in the conformance report, linked from every test it covers. (Amended 2026-11-01, RESULTS
     ARE BY ENGINE:) Maintainer 2026-11-01: "yes those are everyday functions but also a bit off the mainstream
     for JSON. So its true that these can be engine dependent.", "and there is NO fail outright. Its by engine."
     The conformance report gives each function a result per engine: exact, equivalent, refused by name or
@@ -92347,7 +92499,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a query must supply them or is refused by name, the read is a column list with equality filters, the
     rows land per argument set, and a row limit is met by reading the cursor in batches and stopping. A
     small table may instead replicate whole by the table''s existing replicate setting. Such rows join like
-    any landed table. (Amended 2026-10-29, A CUSTOMER''S JDBC DRIVER:) Maintainer 2026-11-01: supplying
+    any landed table. (Amended 2026-11-01, A CUSTOMER''S JDBC DRIVER:) Maintainer 2026-11-01: supplying
     your own JDBC driver is an option on Generic SQL, not a separate source. A jdbc: URL with a driver jar
     and class name selects it. Calcite is not involved: Provisa opens the driver directly through JPype,
     behind the same connection the rest of Generic SQL uses. The SQL dialect setting, the capability settings,
@@ -92359,22 +92511,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a self-hosted install When an admin presses Detect Then the checks run through that driver in the source''s
     SQL dialect, and no attach setting is offered When a query reads a table Then the read goes through
     the driver and the rows land Given the same source on cloud When it is saved Then it is refused by name
-    (Amended 2026-10-29, THE ONLY FILE URL:) Maintainer 2026-11-01, on the customer scratch files area:
+    (Amended 2026-11-01, THE ONLY FILE URL:) Maintainer 2026-11-01, on the customer scratch files area:
     "that''s the only file:// you are allowed". On cloud a Generic SQL URL that names a file must name one
     in the org''s own files area, written with the {files} or {org} token of REQ-1997, and a path that resolves
     outside the org''s folder is refused, naming the path, by the same check REQ-1997 applies. No other
-    file URL is allowed on cloud.
-
-
-    Given a Generic SQL source on cloud
-
-    When its URL is a SQLite file under {files}
-
-    Then the source reads that file
-
-    When its URL names a file anywhere else, or a path that resolves outside the org''s folder
-
-    Then it is refused, naming the path'
+    file URL is allowed on cloud. Given a Generic SQL source on cloud When its URL is a SQLite file under
+    {files} Then the source reads that file When its URL names a file anywhere else, or a path that resolves
+    outside the org''s folder Then it is refused, naming the path'
   use_case: 'A team runs a database Provisa has no source type for. An admin registers it with its URL
     and the SQL dialect closest to it, presses Detect, and gets whatever it can do: live attach and pushdown
     where it passes, and otherwise a governed source read by key.'
@@ -92436,11 +92579,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     keys and relationships. $top, $skip and nextLink are the table''s paging. OData V2 and V4 are both served:
     the generated spec states each response shape. SQL filters reach the service as $filter on the columns
     the service declares filterable, and $select and $orderby reach it likewise; what cannot be pushed runs
-    on the engine. A service that needs a CSRF token for a write, as SAP''s does, gets one. (Amended 2026-10-29,
+    on the engine. A service that needs a CSRF token for a write, as SAP''s does, gets one. (Amended 2026-11-01,
     BRANDED OVER ODATA:) Maintainer 2026-11-01: branded connectors are built on the generic OData connector
     where it is useful as a base, as branded sources are built on the OpenAPI and GraphQL connectors (REQ-1923).
     A brand names the service, fills in its URL shape and declares its auth (no default credential), and
-    takes everything else from the generic connector. (Amended 2026-10-29, AS DESIGNED:) Maintainer 2026-11-01,
+    takes everything else from the generic connector. (Amended 2026-11-01, AS DESIGNED:) Maintainer 2026-11-01,
     in full, superseding the description above where they differ. "the odata connector takes a URI and delivers
     what''s expected". NOT OVER OPENAPI: "the openapi connector is based on using gets for a known layout
     to express tables", "that''s not what a generic odata connector would be able to do". No OpenAPI spec
@@ -92467,38 +92610,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     constraint gives the column pair; one that does not is offered for the steward to supply the columns.
     "we can''t pushdown internal undeclared relationships, but we could declare them in provisa and do the
     join within the engine". BRANDS: branded connectors are built on the generic connector where useful,
-    a brand declaring its URL shape and auth.
-
-
-    Given an OData V4 service with entity sets Orders and Customers
-
-    When a steward gives its service URL
-
-    Then Orders and Customers are offered as tables with typed columns and keys, and the navigation property
-    between them is a relationship candidate
-
-    Given the same service on OData V2
-
-    Then the same tables and the same rows come back
-
-    When a query filters Orders on a filterable column with a limit
-
-    Then the request carries $filter and $top and only those rows are read
-
-    When the service ignores that filter
-
-    Then the rows returned are still only those matching it
-
-    When a read spans several pages
-
-    Then every row comes back
-
-    When a write to an OData table is attempted
-
-    Then it is refused by name
-
-    When a steward presses Detect and the service answers a $filter on a column and returns a nextLink
-
+    a brand declaring its URL shape and auth. Given an OData V4 service with entity sets Orders and Customers
+    When a steward gives its service URL Then Orders and Customers are offered as tables with typed columns
+    and keys, and the navigation property between them is a relationship candidate Given the same service
+    on OData V2 Then the same tables and the same rows come back When a query filters Orders on a filterable
+    column with a limit Then the request carries $filter and $top and only those rows are read When the
+    service ignores that filter Then the rows returned are still only those matching it When a read spans
+    several pages Then every row comes back When a write to an OData table is attempted Then it is refused
+    by name When a steward presses Detect and the service answers a $filter on a column and returns a nextLink
     Then that column and paging are ticked'
   use_case: An architect registers an S/4HANA or Dynamics 365 OData service by its URL, with nothing installed
     inside that system, and joins its sales orders to a warehouse table, following the relationships the
@@ -92542,12 +92661,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   priority: SHOULD
   type: behavioral
   description: 'Maintainer 2026-11-01: a Provisa OData service, the easier lift with more commercial benefit,
-    a very clean mapping of the model. A table is an entity set, a column a property, a primary key a
-    key, a relationship a navigation property with its referential constraint, and a command an action.
-    $metadata is generated per role, so a role sees only its own tables and columns. A request''s $filter,
-    $select, $orderby, $top, $skip, $count and $expand become one statement through the one governed pipeline,
-    with masks, row rules and audit as on every transport. Excel Power Query and Power BI are the clients
-    it is built for, and it has its own conformance suite. It comes before the OData source of REQ-2192.'
+    a very clean mapping of the model. A table is an entity set, a column a property, a primary key a key,
+    a relationship a navigation property with its referential constraint, and a command an action. $metadata
+    is generated per role, so a role sees only its own tables and columns. A request''s $filter, $select,
+    $orderby, $top, $skip, $count and $expand become one statement through the one governed pipeline, with
+    masks, row rules and audit as on every transport. Excel Power Query and Power BI are the clients it
+    is built for, and it has its own conformance suite. It comes before the OData source of REQ-2192. (Amended
+    2026-11-02, An OData viewer in the OData explorer:) Maintainer 2026-11-02: the OData explorer gains
+    a viewer of its own: an entity-set browser read from the service''s $metadata (entity types, keys, navigation
+    properties) and a query builder for $filter, $select, $expand, $orderby and $top that writes the URL,
+    runs it and shows the rows, paging with @odata.nextLink and showing the row-limit warning. No third-party
+    viewer fits (archived, desktop-only, GPL or unclear licence), so it is built from Provisa''s own UI
+    parts.'
   use_case: An analyst pastes a Provisa OData URL into Excel, signs in, and gets a governed table with
     what their role may see, with no driver installed.
   scenario: 'Given a role that sees orders with one column masked
@@ -92580,9 +92705,37 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   description: 'Maintainer 2026-11-02: the Rust DataRow encoder (experiment J483: 14.5x text, 40.8x binary
     on 5M rows) replaces the Python path, and its blockers have to be resolved: named time zones, nanosecond
     units, date64, every type pgwire serves (inet, cidr, money, geometric, range, tsvector, xml, catalog
-    types and their arrays), the raw DataRow passthrough and the row coercers. Arrow batches go to the
-    encoder with no Python row objects in between. Answers are what PostgreSQL 17 sends; float cells are
-    checked within a tolerance.'
+    types and their arrays), the raw DataRow passthrough and the row coercers. Arrow batches go to the encoder
+    with no Python row objects in between. Answers are what PostgreSQL 17 sends; float cells are checked
+    within a tolerance. (Amended 2026-11-02, Every encoder works directly on the engine result:) Maintainer
+    2026-11-02: any encoder (pgwire, GraphQL, gRPC, REST and the rest) must be very conscious of serialization
+    and deserialization in Python; it works directly against the database result with no intervening Python
+    code. The engine''s result reaches the encoder as Arrow (or the driver''s native columnar buffer) and
+    is written to the wire without Python row objects, Python dicts, or a decode and re-encode in Python.
+    Where a driver hands back Python rows today, the fetch path changes to a columnar one rather than the
+    encoder accepting Python rows. (Amended 2026-11-02, Every engine hands the encoder an Arrow buffer or
+    a direct row cursor:) Maintainer 2026-11-02: this holds for every engine, not only Trino: the encoder
+    reads either the engine''s Arrow buffer or a direct row cursor on the engine''s own result, never rows
+    a Python client has parsed (for example Trino''s Python client turning JSON pages into Python rows).
+    Each engine''s read path is chosen to give one of the two. (Amended 2026-11-02, An engine that cannot
+    is documented:) Maintainer 2026-11-02: where an engine or source offers neither an Arrow buffer nor
+    a direct row cursor, the docs say so for that engine: which read path it uses, that rows pass through
+    Python on the way to the encoder, and what that costs. (Amended 2026-11-02, A columnar endpoint that
+    exists is the one called:) Maintainer 2026-11-02: where an engine or source offers a columnar or direct
+    result but Provisa calls a row-at-a-time endpoint, the calls are redesigned to use it; the docs exception
+    is only for engines that offer none. Data warehouses in particular (Snowflake, BigQuery, Databricks,
+    Fabric, Redshift and the rest) are reviewed against their Arrow-returning interfaces. (Amended 2026-11-02,
+    The encoders ship inside the provisa package:) Maintainer 2026-11-02: the Rust encoders are compiled
+    into the provisa package itself, not published as a separate PyPI project; provisa is released as platform
+    wheels (macOS arm64 and x86_64, Linux amd64 and arm64, Windows x64), each carrying the encoders and
+    the UI. (Amended 2026-11-02, Stated as a fundamental design choice:) Maintainer 2026-11-02: the website,
+    README and docs state it as a fundamental design choice: results from any data source that supports
+    Arrow are written by a Rust encoder straight into the requested output (pgwire, GraphQL, gRPC and the
+    rest). Stated once the encoders are wired in, not before. (Amended 2026-11-02, JSON:API, OpenAPI REST
+    and OData encoders:) Maintainer 2026-11-02: the encoders also cover JSON:API, the OpenAPI (REST) surface
+    and OData, beside pgwire, GraphQL and gRPC. The JSON-based ones share one Rust JSON writer and differ
+    only in their envelope (JSON:API data, attributes, relationships and included; REST rows; OData value,
+    @odata.context, @odata.nextLink and annotations).'
   scenario: 'Given a statement whose result holds every type pgwire serves, including timestamptz in a
     named zone
 
@@ -92594,5 +92747,39 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-2167
   - REQ-2171
+  stakeholders:
+  - data-engineer
+- id: REQ-2195
+  value: Transport, query language and result encoder are three separate choices, combinable freely.
+  status: proposed
+  target: 2026-Q4
+  group: 8. Client Access & Protocols
+  category: JDBC/ODBC Integration
+  feature: postgres-wire-protocol-client-drivers
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-02: transport (HTTP, pgwire, Flight, gRPC, Bolt...), query language (SQL,
+    GraphQL, Cypher, SPARQL...) and encoder (pgwire rows, GraphQL JSON, gRPC protobuf, Arrow...) are independent.
+    Every language compiles to one governed statement and every encoder reads the engine result directly
+    (REQ-2194), so any combination works, even one that makes little sense, such as a GraphQL query answered
+    with the gRPC encoder. A new language, transport or encoder is an addition at one edge and changes neither
+    the others nor the model. (Amended 2026-10-29, Conceptually possible; practical gaps are listed:) Maintainer
+    2026-11-02: "i can imagine there maybe practical gaps - but conceptually possible." The separation is
+    a design principle: nothing in the model or compiler ties a language to a transport or an encoder. Where
+    a combination is not offered today, that is a practical gap, listed as such, not a rule. (Amended 2026-11-02,
+    An academic design idea, not a support matrix:) Maintainer 2026-11-02: "certain combos are so outside
+    expectations there''s no point. its more of an academic design idea." The separation is how Provisa
+    is built, not a promise that every combination is offered or listed; a combination no client would use
+    is neither built nor tracked as a gap.'
+  scenario: 'Given a new query language, transport or encoder
+
+    When it is added
+
+    Then it is added at its own edge, compiling to or reading from the one governed statement
+
+    And no existing language, transport, encoder or the model changes for it'
+  related_reqs:
+  - REQ-2194
+  - REQ-2167
   stakeholders:
   - data-engineer
