@@ -92580,9 +92580,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   description: 'Maintainer 2026-11-02: the Rust DataRow encoder (experiment J483: 14.5x text, 40.8x binary
     on 5M rows) replaces the Python path, and its blockers have to be resolved: named time zones, nanosecond
     units, date64, every type pgwire serves (inet, cidr, money, geometric, range, tsvector, xml, catalog
-    types and their arrays), the raw DataRow passthrough and the row coercers. Arrow batches go to the
-    encoder with no Python row objects in between. Answers are what PostgreSQL 17 sends; float cells are
-    checked within a tolerance.'
+    types and their arrays), the raw DataRow passthrough and the row coercers. Arrow batches go to the encoder
+    with no Python row objects in between. Answers are what PostgreSQL 17 sends; float cells are checked
+    within a tolerance. (Amended 2026-10-29, Every encoder works directly on the engine result:) Maintainer
+    2026-11-02: any encoder (pgwire, GraphQL, gRPC, REST and the rest) must be very conscious of serialization
+    and deserialization in Python; it works directly against the database result with no intervening Python
+    code. The engine''s result reaches the encoder as Arrow (or the driver''s native columnar buffer) and
+    is written to the wire without Python row objects, Python dicts, or a decode and re-encode in Python.
+    Where a driver hands back Python rows today, the fetch path changes to a columnar one rather than the
+    encoder accepting Python rows.'
   scenario: 'Given a statement whose result holds every type pgwire serves, including timestamptz in a
     named zone
 
