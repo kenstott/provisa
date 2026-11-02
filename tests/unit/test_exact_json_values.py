@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 74eac6fa-6c29-4e0a-ad78-615506de5fca
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """REQ-1867 (amended 2026-11-02): GraphQL and the shared JSON response path write exact values.
 
 A DECIMAL is the JSON string of its exact digits; PostgreSQL's infinite dates and timestamps are
