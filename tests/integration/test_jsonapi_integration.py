@@ -19,6 +19,8 @@ Covered REQ-IDs:
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from unittest.mock import MagicMock
 from tests.integration.conftest import no_replica_routes
@@ -173,15 +175,53 @@ def _make_app_state(schema=None):
 # ---------------------------------------------------------------------------
 
 
+def _jsonapi_document(table: dict, columns: list, **over) -> dict:
+    """The JSON:API document the Rust encoder writes for ``table``'s rows (REQ-257, REQ-2194), as
+    the table endpoint hands it the plan."""
+    import pyarrow as pa
+
+    from provisa.executor import json_encoders as je
+
+    document = dict(
+        resource_type="orders",
+        page_size=25,
+        page_number=1,
+        probe=True,
+        total=None,
+        id_columns=["id"],
+        scalar_names={},
+        rel_names=[],
+        rel_scalar_names={},
+        includes=[],
+        include_keys={},
+        base_path="/data/jsonapi/orders",
+        link_params=[],
+    )
+    document.update(over)
+    body, _ = je.jsonapi([pa.record_batch(table)] if table else [], columns, **document)
+    return json.loads(body)
+
+
+def _column(field: str, nested_in: str | None = None, cardinality: str | None = None):
+    from provisa.compiler.sql_types import ColumnRef
+
+    column = field if nested_in is None else f"{nested_in}_{field}"
+    return ColumnRef(None, column, field, nested_in, cardinality)
+
+
+def _one_resource(row: dict, **over) -> dict:
+    import pyarrow as pa
+
+    table = {k: pa.array([v]) for k, v in row.items()}
+    return _jsonapi_document(table, [_column(k) for k in row], **over)["data"][0]
+
+
 class TestJSONAPISerializer:
-    """REQ-257: Serializer produces compliant JSON:API resource objects."""
+    """REQ-257: the JSON:API encoder writes compliant resource objects (REQ-2194)."""
 
     def test_row_to_resource_basic_shape(self):
         # REQ-257: resource objects must have type, id, attributes
-        from provisa.api.jsonapi.serializer import row_to_resource
-
-        row = {"id": 1, "region": "US", "amount": 99.5}
-        resource = row_to_resource(row, "orders")
+        resource = _one_resource({"id": 1, "region": "US", "amount": 99.5})
 
         assert resource["type"] == "orders"
         assert resource["id"] == "1"
@@ -191,42 +231,41 @@ class TestJSONAPISerializer:
 
     def test_row_to_resource_id_excluded_from_attributes(self):
         # REQ-257: id must not appear in attributes
-        from provisa.api.jsonapi.serializer import row_to_resource
-
-        row = {"id": 42, "region": "EU"}
-        resource = row_to_resource(row, "orders")
+        resource = _one_resource({"id": 42, "region": "EU"})
 
         assert "id" not in resource["attributes"]
 
     def test_row_to_resource_relationship_fields(self):
         # REQ-257: FK columns become relationship objects, not attributes
-        from provisa.api.jsonapi.serializer import row_to_resource
-
-        row = {"id": 1, "customer_id": 7, "amount": 50.0}
-        resource = row_to_resource(row, "orders", relationship_fields={"customer_id": "customers"})
+        resource = _one_resource(
+            {"id": 1, "customer_id": 7, "amount": 50.0}, rel_names=[("customer", "customer")]
+        )
 
         assert "customer_id" not in resource["attributes"]
         assert "relationships" in resource
         assert "customer" in resource["relationships"]
         rel_data = resource["relationships"]["customer"]["data"]
-        assert rel_data["type"] == "customers"
+        # The table endpoint types a relationship's resources by the relationship (REQ-1417).
+        assert rel_data["type"] == "customer"
         assert rel_data["id"] == "7"
 
     def test_row_to_resource_null_relationship(self):
         # REQ-257: null FK produces null relationship data
-        from provisa.api.jsonapi.serializer import row_to_resource
+        import pyarrow as pa
 
-        row = {"id": 1, "customer_id": None, "amount": 10.0}
-        resource = row_to_resource(row, "orders", relationship_fields={"customer_id": "customers"})
+        doc = _jsonapi_document(
+            {"id": [1], "customer_id": pa.array([None], pa.int64()), "amount": [10.0]},
+            [_column("id"), _column("customer_id"), _column("amount")],
+            rel_names=[("customer", "customer")],
+        )
 
-        assert resource["relationships"]["customer"]["data"] is None
+        assert doc["data"][0]["relationships"]["customer"]["data"] is None
 
     def test_rows_to_jsonapi_document_structure(self):
-        # REQ-257: document must have data list and meta.total
-        from provisa.api.jsonapi.serializer import rows_to_jsonapi
-
-        rows = [{"id": 1, "region": "US"}, {"id": 2, "region": "EU"}]
-        doc = rows_to_jsonapi(rows, "orders")
+        # REQ-257: document must have a data list; meta.total is the counted total
+        doc = _jsonapi_document(
+            {"id": [1, 2], "region": ["US", "EU"]}, [_column("id"), _column("region")], total=2
+        )
 
         assert "data" in doc
         assert isinstance(doc["data"], list)
@@ -235,15 +274,17 @@ class TestJSONAPISerializer:
 
     def test_rows_to_jsonapi_compound_document_with_included(self):
         # REQ-257: included sideloaded resources in compound documents
-        from provisa.api.jsonapi.serializer import rows_to_jsonapi
-
-        rows = [{"id": 1, "region": "US", "customer_id": 10}]
-        included_rows = {"customer": [{"id": 10, "name": "Alice"}]}
-        doc = rows_to_jsonapi(
-            rows,
-            "orders",
-            relationship_fields={"customer_id": "customers"},
-            included_rows=included_rows,
+        doc = _jsonapi_document(
+            {"id": [1], "region": ["US"], "customer_id": [10], "customer_name": ["Alice"]},
+            [
+                _column("id"),
+                _column("region"),
+                _column("id", "customer", "many-to-one"),
+                _column("name", "customer", "many-to-one"),
+            ],
+            rel_names=[("customer", "customer")],
+            includes=["customer"],
+            include_keys={"customer": ["id"]},
         )
 
         assert "included" in doc
@@ -255,9 +296,7 @@ class TestJSONAPISerializer:
 
     def test_rows_to_jsonapi_empty(self):
         # REQ-257: empty result set returns empty data list
-        from provisa.api.jsonapi.serializer import rows_to_jsonapi
-
-        doc = rows_to_jsonapi([], "orders")
+        doc = _jsonapi_document({}, [_column("id")], total=0)
 
         assert doc["data"] == []
         assert doc["meta"]["total"] == 0
@@ -335,9 +374,7 @@ class TestJSONAPIPagination:
 
     def test_build_pagination_links_first_page_no_prev(self):
         # REQ-257: first page has no prev link
-        from provisa.api.jsonapi.pagination import build_pagination_links
-
-        links = build_pagination_links("/data/jsonapi/orders", 1, 25, 25)
+        links = _jsonapi_document({}, [], page_number=1, page_size=25, total=25)["links"]
 
         assert links["prev"] is None
         assert links["first"] is not None
@@ -345,26 +382,20 @@ class TestJSONAPIPagination:
 
     def test_build_pagination_links_has_next_when_full_page(self):
         # REQ-257: next link present when total > page_size (more pages exist)
-        from provisa.api.jsonapi.pagination import build_pagination_links
-
-        links = build_pagination_links("/data/jsonapi/orders", 1, 25, 50)
+        links = _jsonapi_document({}, [], page_number=1, page_size=25, total=50)["links"]
 
         assert links["next"] is not None
         assert "page%5Bnumber%5D=2" in links["next"] or "page[number]=2" in links["next"]
 
     def test_build_pagination_links_no_next_on_last_page(self):
         # REQ-257: next is None when result_count < page_size (last page)
-        from provisa.api.jsonapi.pagination import build_pagination_links
-
-        links = build_pagination_links("/data/jsonapi/orders", 2, 25, 10)
+        links = _jsonapi_document({}, [], page_number=2, page_size=25, total=10)["links"]
 
         assert links["next"] is None
 
     def test_build_pagination_links_prev_on_later_page(self):
         # REQ-257: prev link present on page > 1
-        from provisa.api.jsonapi.pagination import build_pagination_links
-
-        links = build_pagination_links("/data/jsonapi/orders", 3, 10, 10)
+        links = _jsonapi_document({}, [], page_number=3, page_size=10, total=10)["links"]
 
         assert links["prev"] is not None
 
@@ -449,12 +480,9 @@ class TestJSONAPISparseFieldsets:
 
     def test_serializer_respects_sparse_fields(self):
         # REQ-257: serializer attributes only contain requested fields
-        from provisa.api.jsonapi.serializer import row_to_resource
-
         row = {"id": 1, "amount": 50.0, "region": "US", "created_at": "2026-01-01"}
-        # Sparse fieldset: only amount requested — caller selects which fields are in row
-        sparse_row = {"id": row["id"], "amount": row["amount"]}
-        resource = row_to_resource(sparse_row, "orders")
+        # Sparse fieldset: only amount requested — the compiled selection carries only it
+        resource = _one_resource({"id": row["id"], "amount": row["amount"]})
 
         assert "amount" in resource["attributes"]
         assert "region" not in resource["attributes"]

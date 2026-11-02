@@ -477,7 +477,8 @@ def _arrow_file(
         c.field_name if c.nested_in is None else f"{c.nested_in}.{c.field_name}" for c in columns
     ]
     if batches:
-        table = pa.Table.from_batches(batches).rename_columns(names)
+        # The fields are the statement's first columns, by position.
+        table = pa.Table.from_batches(batches).select(range(len(names))).rename_columns(names)
     else:
         table = pa.table({name: pa.array([], pa.null()) for name in names})
     buf = io.BytesIO()

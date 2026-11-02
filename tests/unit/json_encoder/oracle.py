@@ -401,9 +401,9 @@ def _serialize_flat(rows, columns, root_cols, nested_groups, result_limit):
         if keyed:
             root_key = tuple(_key(column_value(row[idx], columns[idx])) for idx in keyed)
         else:
-            root_key = tuple(
-                _key(column_value(v, col)) for v, col in zip(row, columns, strict=True)
-            )
+            # The plan's columns, by position: a column the statement carries after them is not
+            # the answer's (the Python path's strict zip raised on one).
+            root_key = tuple(_key(column_value(row[i], col)) for i, col in enumerate(columns))
         if root_key in seen_root_keys:
             at = seen_root_keys[root_key]
             # CORRECTED (7): each to-one object against the one the first row built.

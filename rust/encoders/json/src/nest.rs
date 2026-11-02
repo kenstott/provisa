@@ -545,7 +545,9 @@ pub struct Batch {
 pub fn prepare(batches: &[RecordBatch], spec: &[Col]) -> Res<Vec<Batch>> {
     let mut prepared = Vec::with_capacity(batches.len());
     for rb in batches {
-        if rb.num_columns() != spec.len() {
+        // The plan's columns are the statement's first (a column the statement carries after
+        // them, as the serializer read rows by position, is not the answer's).
+        if rb.num_columns() < spec.len() {
             return err(format!("the batch has {} columns, the plan {}", rb.num_columns(), spec.len()));
         }
         if rb.num_rows() == 0 {

@@ -20,6 +20,8 @@ import random
 
 import pyarrow as pa
 import pytest
+
+from provisa.core.json_refusal import JsonValueRefused
 from decimal import Decimal
 
 from tests.unit.json_encoder import encoders as rs
@@ -260,6 +262,14 @@ ERRORS = {
 @pytest.mark.parametrize("name", list(ERRORS))
 def test_errors(name):
     arr, kw, want = ERRORS[name]
+    if name == "json-deep-2000":
+        # Too deep for any response: the encoder refuses it naming the field. Python's own
+        # reading of it depends on the interpreter's recursion (a RecursionError on one build,
+        # parsed then refused as a response on another), so the reference is not consulted.
+        with pytest.raises(JsonValueRefused) as refused:
+            rs.encode_response(pa.table({"v": arr}).to_batches(), [C("v", **kw)], "r")
+        assert refused.value.params["field"] == "v"
+        return
     assert gql(pa.table({"v": arr}), [C("v", **kw)]) == want
 
 
