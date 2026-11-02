@@ -927,9 +927,11 @@ def test_the_sandbox_vm_prunes_its_engine_releases():
     assert "DEMO_PRUNE_ENGINES=true" in settings.splitlines()
 
 
-def test_a_demo_lingered_out_has_its_stores_taken_down_and_its_bundle_kept(tmp_path):
+def test_a_demo_lingered_out_has_its_own_services_taken_down_and_its_data_kept(tmp_path):
     """sandbox.demo_stores_linger after its last sandbox closed, with none opened since, the
-    demo's stores are taken down as an older version's are; its next open asks for it again."""
+    demo's own services are taken down; its data stays loaded (REQ-2049, amended 2026-11-02), and
+    its stores.env stays to say so, so a newer version's run drops it once it is superseded. Its
+    next open asks for it again."""
     import time
 
     run, demo, asked = _sync(tmp_path, lingering_until=int(time.time()) - 1)
@@ -937,7 +939,7 @@ def test_a_demo_lingered_out_has_its_stores_taken_down_and_its_bundle_kept(tmp_p
     assert asked == [f"stop weblogs {_VERSION}"]
     assert not (demo / "requested").exists()
     assert not (demo / "ready").exists()
-    assert not (demo / _VERSION / "stores.env").exists()
+    assert (demo / _VERSION / "stores.env").is_file()
     assert (demo / _VERSION / "docker-compose.run.yml").is_file()
     assert (demo / "pulled").read_text().strip() == _VERSION
 
