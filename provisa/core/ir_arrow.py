@@ -168,7 +168,11 @@ def _zone(name: str) -> tzinfo:
     """The zone an Arrow timestamp column names, as PostgreSQL reads it: a fixed offset, else the
     IANA zone by zoneinfo. pyarrow's own to_pylist takes pytz where it can import it, and pytz has
     no daylight time after 2037, no transitions before 1901 and offsets rounded to the minute.
+    ``UTC``, the zone DuckDB's session writes, is the offset zero, as pyarrow reads it (the same
+    UTC as ``+00:00``), not a region: openCypher writes it ``Z`` and names no region.
     An unknown name raises (ZoneInfoNotFoundError)."""
+    if name == "UTC":
+        return timezone.utc
     fixed = _FIXED_OFFSET.fullmatch(name)
     if fixed is None:
         return ZoneInfo(name)
