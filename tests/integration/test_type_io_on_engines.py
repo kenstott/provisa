@@ -71,33 +71,6 @@ def test_trino_answers_as_postgresql_17_answered(trino_conn, function: str):
     assert _differences(run, "trino", function) == {}
 
 
-@pytest.mark.requires_trino
-def test_j454d_diagnostic(trino_conn):
-    def ask(sql: str) -> Any:
-        try:
-            cursor = trino_conn.cursor()
-            cursor.execute(sql)
-            return cursor.fetchall()[0]
-        except Exception as raised:  # noqa: BLE001
-            return f"RAISED {str(raised)[:400]}"
-
-    seen = {"version": ask("SELECT version()")}
-    for text in ("3.4028235e38", "1.5e10", "1e7", "1e38", "16777216", "33554434"):
-        real = f"CAST('{text}' AS REAL)"
-        double = f"CAST({real} AS DOUBLE)"
-        written = f"CAST(CAST({real} AS VARCHAR) AS DOUBLE)"
-        half = f"power(2, floor(log2(abs({double}))) - 24)"
-        seen[text] = ask(
-            f"SELECT CAST({real} AS VARCHAR), CAST({double} AS VARCHAR), "
-            f"CAST({written} AS VARCHAR), log2(abs({double})), {half}, abs({written} - {double}), "
-            f"abs({written} - {double}) >= {half}, to_hex(to_ieee754_32({real}))"
-        )
-    for text in ("3.4028235e38", "1.5e10"):
-        sql = f"""SELECT pg_catalog."float4out"('{text}'::real) AS v"""
-        seen[f"form {text}"] = ask(transpile(sql, "trino"))
-    pytest.fail("J454D " + repr(seen))
-
-
 @pytest.mark.requires_clickhouse
 def test_clickhouse_answers_as_postgresql_17_answered():
     """One test, every function: requires_clickhouse starts and removes the service for each test,

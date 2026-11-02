@@ -261,10 +261,17 @@ def test_trino_writes_the_one_digit_java_does_not(sql: str):
     assert "'%.0e'" in transpile(sql, "trino")
 
 
+def test_trino_does_not_take_a_float4s_digits_from_its_cast():
+    """Trino's cast keeps seven digits: 3.402823E38, where PostgreSQL's nine read back."""
+    sql = """SELECT pg_catalog."float4out"('3.4028235e38'::real) AS v"""
+    written = transpile(sql, "trino")
+    assert "'%.8e'" in written and "CAST(_s AS REAL)" in written
+
+
 def test_trino_reads_an_instant_into_utc():
     """Trino keeps a text's offset, which PostgreSQL does not: 23:59:59+02 is 21:59:59+00."""
     sql = """SELECT pg_catalog."timestamptz_in"('1999-12-31 23:59:59+02'::cstring, 1184::oid, (-1)::integer) AS v"""
-    assert "AT TIME ZONE 'UTC'" in transpile(sql, "trino")
+    assert "TIME ZONE), 'UTC')" in transpile(sql, "trino")
 
 
 def test_a_null_time_is_text_on_clickhouse():

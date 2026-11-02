@@ -107,18 +107,25 @@ def _trino_pattern(pattern: str) -> str:
     return pattern.replace("[[]", "\\[").replace("[]]", "\\]")
 
 
-def _trino_float_text(sql_type: str, below: str) -> Callable[[str], str]:
-    """A float's text on Trino. Java writes two digits at least, 4.9E-324 where one, 5e-324, reads
-    back the same value: such a digit is PostgreSQL's. Only a value ``below`` that has one."""
+def _trino_real_text(v: str) -> str:
+    """A float4's text on Trino. Its cast keeps seven digits, which need not read back: 1.677722E7
+    for 16777216, 3.402823E38 for the largest float4. The first of these that does is the shortest."""
+    written = ", ".join(f"format('%.{n}e', _r)" for n in range(9))
+    return (
+        f"transform(ARRAY[{v}], _r -> CASE WHEN is_finite(_r) THEN "
+        f"filter(ARRAY[{written}], _s -> CAST(_s AS REAL) = _r)[1] "
+        "ELSE CAST(_r AS VARCHAR) END)[1]"
+    )
 
-    def written(v: str) -> str:
-        one = f"format('%.0e', {v})"
-        return (
-            f"CASE WHEN abs({v}) < {below} AND CAST({one} AS {sql_type}) = {v} THEN {one} "
-            f"ELSE CAST({v} AS VARCHAR) END"
-        )
 
-    return written
+def _trino_double_text(v: str) -> str:
+    """A float8's text on Trino. Java writes two digits at least, 4.9E-324 where one, 5e-324, reads
+    back the same value: such a digit is PostgreSQL's. Only a value this small has one."""
+    one = f"format('%.0e', {v})"
+    return (
+        f"CASE WHEN abs({v}) < 1e-300 AND CAST({one} AS DOUBLE) = {v} THEN {one} "
+        f"ELSE CAST({v} AS VARCHAR) END"
+    )
 
 
 def _clickhouse_raises(state: str, message: str, sql_type: str) -> str:
@@ -227,8 +234,8 @@ TRINO = Engine(
         "AS TIMESTAMP(6) WITH TIME ZONE) AT TIME ZONE 'UTC'"
     ),
     clock=lambda v: f"CAST({v} AS TIME(6))",
-    real_text=_trino_float_text("REAL", "1e-40"),
-    double_text=_trino_float_text("DOUBLE", "1e-300"),
+    real_text=_trino_real_text,
+    double_text=_trino_double_text,
 )
 CLICKHOUSE = Engine(
     dialects=frozenset({"clickhouse"}),
