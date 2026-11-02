@@ -262,7 +262,8 @@ class TestSqlEndpointStatsAndFormat:
                 new=AsyncMock(return_value=fallback_result),
             ),
             patch(
-                "provisa.executor.trino.execute_trino", new=AsyncMock(return_value=fallback_result)
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=fallback_result),
             ),
         ):
             resp = await sql_client.post(
@@ -285,7 +286,8 @@ class TestSqlEndpointStatsAndFormat:
                 new=AsyncMock(return_value=fallback_result),
             ),
             patch(
-                "provisa.executor.trino.execute_trino", new=AsyncMock(return_value=fallback_result)
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=fallback_result),
             ),
         ):
             resp = await sql_client.post(
@@ -312,7 +314,8 @@ class TestSqlEndpointStatsAndFormat:
                 new=AsyncMock(return_value=fallback_result),
             ),
             patch(
-                "provisa.executor.trino.execute_trino", new=AsyncMock(return_value=fallback_result)
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=fallback_result),
             ),
         ):
             resp = await sql_client.post(
@@ -336,7 +339,10 @@ class TestSqlEndpointStatsAndFormat:
         )
         with (
             patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=typed)),
-            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=typed)),
+            patch(
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=typed),
+            ),
         ):
             resp = await sql_client.post(
                 "/data/sql", json={"sql": "SELECT id, name FROM orders", "role": "org_admin"}
@@ -351,7 +357,7 @@ class TestSqlEndpointStatsAndFormat:
         engine = AsyncMock(return_value=result)
         with (
             patch("provisa.executor.direct.execute_direct", new=direct),
-            patch("provisa.executor.trino.execute_trino", new=engine),
+            patch("provisa.executor.trino_flight.execute_trino_flight", new=engine),
         ):
             resp = await sql_client.post(
                 "/data/sql",
@@ -387,7 +393,7 @@ class TestSqlEndpointStatsAndFormat:
         direct, engine = AsyncMock(), AsyncMock()
         with (
             patch("provisa.executor.direct.execute_direct", new=direct),
-            patch("provisa.executor.trino.execute_trino", new=engine),
+            patch("provisa.executor.trino_flight.execute_trino_flight", new=engine),
         ):
             resp = await sql_client.post(
                 "/data/sql", json={"sql": sql, "role": "org_admin", "params": params}
@@ -415,7 +421,8 @@ class TestSqlEndpointStatsAndFormat:
                 new=AsyncMock(return_value=fallback_result),
             ),
             patch(
-                "provisa.executor.trino.execute_trino", new=AsyncMock(return_value=fallback_result)
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=fallback_result),
             ),
         ):
             resp = await sql_client.post(
@@ -451,7 +458,7 @@ class TestSqlExplainEndpoint:
         with (
             patch("provisa.executor.direct.execute_direct", new=direct),
             patch(
-                "provisa.executor.trino.execute_trino",
+                "provisa.executor.trino_flight.execute_trino_flight",
                 new=AsyncMock(return_value=self._explain_result()),
             ),
         ):
@@ -516,7 +523,10 @@ class TestSqlEndpointRoleResolution:
         result = _make_query_result(rows=[(1,)], column_names=["id"])
         with (
             patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=result)),
-            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=result)),
+            patch(
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=result),
+            ),
         ):
             resp = await sql_client.post(
                 "/data/sql",

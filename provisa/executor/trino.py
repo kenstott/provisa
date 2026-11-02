@@ -8,27 +8,19 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Execute transpiled SQL via Trino Python client.
+"""The Trino engine read's retry policy and the shape of a dial that reached no coordinator.
 
-Returns rows and column descriptions. Parameters substituted by Trino.
+Reads run through the Zaychik Arrow Flight SQL proxy (``executor/trino_flight.py``, REQ-2194);
+this module says which of their failures are retried and which mean the engine is unreachable.
 """
 
 # Requirements: REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-303
 
 from __future__ import annotations
 
-import logging
 import random
-import time
 
 import trino
-from provisa.core import request_deadline
-from provisa.executor.result import QueryResult  # re-export: neutral result type (REQ-028)
-from provisa.otel_compat import get_tracer as _get_tracer
-from provisa.otel_compat import stage as _stage
-
-log = logging.getLogger(__name__)
-_tracer = _get_tracer(__name__)
 
 # Error names that indicate coordinator loss — safe to retry on read-only SQL.
 _RETRYABLE_ERROR_NAMES: frozenset[str] = frozenset(
@@ -63,7 +55,9 @@ def is_connection_error(exc: BaseException) -> bool:
     shape of a failed dial asks the owner what that shape is rather than importing the driver to
     look at it itself.
     """
-    return isinstance(exc, trino.exceptions.TrinoConnectionError)
+    from provisa.executor.trino_flight import EngineUnreachable
+
+    return isinstance(exc, (trino.exceptions.TrinoConnectionError, EngineUnreachable))
 
 
 def _backoff_secs(attempt: int, cap: float = 30.0) -> float:
@@ -82,222 +76,3 @@ def _retry_budget() -> float:
     from provisa.core import settings_registry  # REQ-1913
 
     return settings_registry.value("limits.retry_budget_secs")
-
-
-def _alive(conn: trino.dbapi.Connection) -> bool:
-    """Probe liveness with a cheap no-op query."""
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT 1")
-        cur.fetchone()
-        return True
-    except Exception:
-        return False
-
-
-def _describe(cur: trino.dbapi.Cursor) -> tuple[list[str], list[str]]:
-    """Split a DBAPI ``cursor.description`` into (column_names, column_type_codes).
-
-    Each description row is (name, type_code, ...); the type_code is the Trino type name, captured
-    for downstream MV output introspection to translate to IR (REQ-846) without a second round-trip.
-    """
-    desc = cur.description or []
-    return [d[0] for d in desc], [str(d[1]) for d in desc]
-
-
-def _instants_in_utc(rows: list, column_types: list[str]) -> list:
-    """``rows`` with each ``timestamp with time zone`` value at UTC (REQ-2050): Trino hands one on at
-    the offset it was stored with (SQL Server's datetimeoffset, Oracle's TIMESTAMP WITH TIME ZONE);
-    an instant is carried as UTC with its zone. The same instant: nothing is lost."""
-    zoned = [
-        i for i, t in enumerate(column_types) if t.startswith("timestamp") and "with time zone" in t
-    ]
-    if not zoned:
-        return rows
-    from datetime import datetime, timezone
-
-    out = []
-    for row in rows:
-        row = list(row)
-        for i in zoned:
-            value = row[i]
-            if isinstance(value, datetime) and value.tzinfo is not None:
-                row[i] = value.astimezone(timezone.utc)
-        out.append(row)
-    return out
-
-
-def _close_quietly(conn: trino.dbapi.Connection | None) -> None:
-    """Best-effort close of a connection execute_trino owns (opened from conn_kwargs)."""
-    if conn is None:
-        return
-    try:
-        conn.close()
-    except Exception:  # noqa: BLE001  # best-effort close in a finally must never raise
-        pass
-
-
-def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-303
-    conn: trino.dbapi.Connection,
-    sql: str,
-    params: list | None = None,
-    session_hints: dict[str, str] | None = None,
-    conn_kwargs: dict | None = None,
-    span_attrs: dict[str, str] | None = None,
-    extra_table_attrs: list[dict[str, str]] | None = None,
-) -> QueryResult:
-    span_name = "provisa.query.trino" if span_attrs else "trino.execute"
-    with _stage(_tracer, span_name, name="execute") as span:
-        _owned_conn = None
-        if conn_kwargs is not None:
-            conn = trino.dbapi.connect(**conn_kwargs)
-            _owned_conn = conn  # execute_trino owns a conn it creates from kwargs; close it on exit
-        elif not _alive(conn):
-            log.warning("[EXEC TRINO] connection stale — reconnecting")
-            try:
-                from provisa.api.app import state
-
-                conn = trino.dbapi.connect(**state.engine_conn_kwargs)
-                state.engine_conn = conn
-            except Exception as reconnect_exc:
-                raise ConnectionError(f"Trino reconnect failed: {reconnect_exc}") from reconnect_exc
-        # Extract embedded provisa-params comment if present; fall back to explicit params.
-        from provisa.compiler.params import bind_positionally, extract_params_comment
-
-        exec_sql, embedded = extract_params_comment(sql)
-        effective_params = params if params is not None else embedded
-        # Trino Python client uses ? for parameter placeholders.
-        # After SQLGlot transpilation, PG $N becomes Trino @N.
-        # Trino's ? binds positionally: values are ordered by placeholder occurrence, so a repeated
-        # or out-of-order $N (a pgwire client's SQL, REQ-589) binds the right value.
-        if effective_params:
-            exec_sql, effective_params = bind_positionally(exec_sql, effective_params, "?")
-
-        span.set_attribute("db.system", "trino")
-        span.set_attribute("db.statement", exec_sql[:1000])
-        if span_attrs:
-            for k, v in span_attrs.items():
-                span.set_attribute(k, v)
-
-        # Inject session properties before the main query when hints are present.
-        # Always inject query timeout so runaway queries don't starve workers.
-        # FTE hints (retry_policy etc.) are merged in when FTE is enabled globally.
-        effective_hints = dict(session_hints or {})
-        effective_hints.setdefault("query_max_execution_time", f"{_trino_query_timeout()}s")
-        try:
-            from provisa.api.app import state as _app_state
-
-            effective_hints = {**_app_state.engine_session_hints, **effective_hints}
-        except Exception:
-            pass
-
-        retry_budget = _retry_budget()
-        deadline = time.monotonic() + retry_budget
-        last_exc: Exception | None = None
-        attempt = 0
-
-        try:
-            while True:
-                if attempt > 0:
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        break
-                    delay = min(_backoff_secs(attempt), remaining)
-                    log.warning(
-                        "[EXEC TRINO] retry attempt=%d after %.1fs (%.1fs remaining) — %s",
-                        attempt,
-                        delay,
-                        remaining,
-                        last_exc,
-                    )
-                    time.sleep(delay)
-                    try:
-                        from provisa.api.app import state as _retry_state
-
-                        conn = trino.dbapi.connect(**_retry_state.engine_conn_kwargs)
-                        _retry_state.engine_conn = conn
-                    except Exception as reconnect_exc:
-                        last_exc = ConnectionError(
-                            f"Trino reconnect on retry {attempt}: {reconnect_exc}"
-                        )
-                        attempt += 1
-                        continue
-
-                try:
-                    cur = conn.cursor()
-                    for key, value in effective_hints.items():
-                        safe_key = key.replace("'", "")
-                        safe_value = value.replace("'", "")
-                        set_sql = f"SET SESSION {safe_key} = '{safe_value}'"
-                        log.info("[EXEC TRINO] session hint: %s", set_sql)
-                        cur.execute(set_sql)
-
-                    log.info("[EXEC TRINO] sql=%s", exec_sql[:200])
-                    with request_deadline.cancel_on_deadline(cur.cancel):
-                        if effective_params:
-                            cur.execute(exec_sql, effective_params)
-                        else:
-                            cur.execute(exec_sql)
-                        rows = cur.fetchall()
-                    column_names, column_types = _describe(cur)
-                    rows = _instants_in_utc(rows, column_types)
-
-                    span.set_attribute("db.row_count", len(rows))
-                    log.info("[EXEC TRINO] rows=%d", len(rows))
-
-                    if extra_table_attrs:
-                        for _attrs in extra_table_attrs:
-                            with _tracer.start_as_current_span("provisa.query.trino") as _child:
-                                for k, v in _attrs.items():
-                                    _child.set_attribute(k, v)
-
-                    return QueryResult(
-                        rows=rows, column_names=column_names, column_types=column_types
-                    )
-
-                except Exception as exc:
-                    from provisa.executor.errors import FederationError
-
-                    err_msg = str(exc)
-                    # Memory errors are never retryable. Match the error NAMES only: the bare
-                    # substring "Query exceeded" also matches "Query exceeded the maximum
-                    # execution time limit of 120.00s" (EXCEEDED_TIME_LIMIT), which reported a
-                    # timeout as "Query exceeded Trino memory limit — add a limit clause" and sent
-                    # the SharePoint schema-enumeration failure down a memory investigation.
-                    if any(
-                        k in err_msg
-                        for k in (
-                            "EXCEEDED_LOCAL_MEMORY_LIMIT",
-                            "EXCEEDED_GLOBAL_MEMORY_LIMIT",
-                            "Query exceeded per-node memory limit",
-                            "Query exceeded distributed user memory limit",
-                        )
-                    ):
-                        span.set_attribute("error", True)
-                        span.set_attribute("error.message", err_msg[:500])
-                        raise MemoryError(
-                            f"Query exceeded Trino memory limit — add a limit clause or narrow your filter. Detail: {err_msg[:300]}"
-                        ) from exc
-
-                    wrapped = (
-                        FederationError.from_engine_error(exc)
-                        if isinstance(exc, trino.exceptions.TrinoQueryError)
-                        else exc
-                    )
-
-                    if _is_retryable(wrapped) and time.monotonic() < deadline:
-                        last_exc = wrapped
-                        attempt += 1
-                        continue
-
-                    span.set_attribute("error", True)
-                    span.set_attribute("error.message", err_msg[:500])
-                    if isinstance(exc, trino.exceptions.TrinoQueryError):
-                        raise FederationError.from_engine_error(exc) from exc
-                    raise
-
-            span.set_attribute("error", True)
-            span.set_attribute("error.message", str(last_exc)[:500])
-            raise last_exc  # type: ignore[misc]  # loop always sets last_exc before exhausting
-        finally:
-            _close_quietly(_owned_conn)

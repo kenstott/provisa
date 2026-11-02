@@ -1,8 +1,17 @@
 diff --git a/pom.xml b/pom.xml
-index 3b51143..ce5d173 100644
+index 3b51143..30c54a6 100644
 --- a/pom.xml
 +++ b/pom.xml
-@@ -162,5 +162,11 @@
+@@ -18,6 +18,8 @@
+         <trino.version>452</trino.version>
+         <protobuf-java.version>3.25.5</protobuf-java.version>
+         <netty.version>4.1.108.Final</netty.version>
++        <!-- Arrow's memory module needs java.nio opened, in tests as in the image's ENTRYPOINT. -->
++        <argLine>--add-opens=java.base/java.nio=ALL-UNNAMED</argLine>
+     </properties>
+ 
+     <dependencies>
+@@ -162,5 +164,11 @@
              <artifactId>jmx_prometheus_javaagent</artifactId>
              <version>1.0.1</version>
          </dependency>
@@ -772,10 +781,10 @@ index 2a2721a..d7257f9 100644
    }
 diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailure.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailure.java
 new file mode 100644
-index 0000000..446fcf3
+index 0000000..bcf2f69
 --- /dev/null
 +++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailure.java
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,71 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.producer;
 +
 +import io.trino.client.QueryError;
@@ -783,10 +792,14 @@ index 0000000..446fcf3
 +import org.apache.arrow.flight.ErrorFlightMetadata;
 +import org.apache.arrow.flight.FlightRuntimeException;
 +
++import java.nio.charset.StandardCharsets;
++
 +/**
 + * A statement Trino failed, carried to the Flight client with Trino's own error: the status
 + * description is Trino's message, and the trailers name the error as the Trino protocol does
-+ * ({@value #ERROR_NAME}, {@value #ERROR_TYPE}, {@value #ERROR_CODE}, {@value #QUERY_ID}).
++ * ({@value #ERROR_NAME}, {@value #ERROR_TYPE}, {@value #ERROR_CODE}, {@value #QUERY_ID}), and
++ * {@value #ERROR_MESSAGE} holds Trino's message byte for byte (a status description is not: the
++ * client library wraps it).
 + *
 + * <p>A failure to reach the coordinator at all is {@link CallStatus#UNAVAILABLE} with
 + * {@value #ERROR_KIND} {@code connection} and no Trino error name: no statement ran.
@@ -797,6 +810,7 @@ index 0000000..446fcf3
 +  static final String ERROR_CODE = "x-trino-error-code";
 +  static final String QUERY_ID = "x-trino-query-id";
 +  static final String ERROR_KIND = "x-trino-error-kind";
++  static final String ERROR_MESSAGE = "x-trino-error-message-bin";
 +
 +  private final transient FlightRuntimeException flightError;
 +
@@ -813,6 +827,7 @@ index 0000000..446fcf3
 +    metadata.insert(ERROR_TYPE, error.getErrorType());
 +    metadata.insert(ERROR_CODE, Integer.toString(error.getErrorCode()));
 +    metadata.insert(QUERY_ID, queryId);
++    metadata.insert(ERROR_MESSAGE, error.getMessage().getBytes(StandardCharsets.UTF_8));
 +    CallStatus status =
 +        statusOf(error.getErrorType()).withDescription(error.getMessage()).withMetadata(metadata);
 +    return new TrinoQueryFailure(error.getMessage(), status.toRuntimeException(), null);
@@ -823,6 +838,7 @@ index 0000000..446fcf3
 +    ErrorFlightMetadata metadata = new ErrorFlightMetadata();
 +    metadata.insert(ERROR_KIND, "connection");
 +    String message = String.valueOf(cause.getMessage());
++    metadata.insert(ERROR_MESSAGE, message.getBytes(StandardCharsets.UTF_8));
 +    CallStatus status =
 +        CallStatus.UNAVAILABLE.withDescription(message).withCause(cause).withMetadata(metadata);
 +    return new TrinoQueryFailure(message, status.toRuntimeException(), cause);
@@ -1379,10 +1395,10 @@ index 0000000..4c79d92
 +}
 diff --git a/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailureTest.java b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailureTest.java
 new file mode 100644
-index 0000000..5981952
+index 0000000..cc8c9ef
 --- /dev/null
 +++ b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailureTest.java
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,62 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.producer;
 +
 +import io.trino.client.QueryError;
@@ -1391,7 +1407,9 @@ index 0000000..5981952
 +import org.junit.jupiter.api.Test;
 +
 +import java.io.UncheckedIOException;
++import java.nio.charset.StandardCharsets;
 +
++import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 +import static org.junit.jupiter.api.Assertions.assertEquals;
 +import static org.junit.jupiter.api.Assertions.assertFalse;
 +
@@ -1412,6 +1430,9 @@ index 0000000..5981952
 +    assertEquals(
 +        "20261102_000001_00001_abcde", flight.status().metadata().get(TrinoQueryFailure.QUERY_ID));
 +    assertEquals("query", flight.status().metadata().get(TrinoQueryFailure.ERROR_KIND));
++    assertArrayEquals(
++        "line 1:15: Catalog 'nope' not found".getBytes(StandardCharsets.UTF_8),
++        flight.status().metadata().getByte(TrinoQueryFailure.ERROR_MESSAGE));
 +  }
 +
 +  @Test

@@ -26,7 +26,7 @@ from provisa.core.read_refusal import ReadRefused
 import asyncio
 import logging
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -1567,26 +1567,23 @@ class TrinoBackend(EngineBackend):
         span_attrs: dict[str, str] | None = None,
         extra_table_attrs: list[dict[str, str]] | None = None,
     ) -> QueryResult:
-        from provisa.executor.trino import execute_trino
+        """REQ-2194: the read reaches Provisa as Arrow through the Zaychik Flight SQL proxy; the
+        rows are built from it on the executor thread. Every Flight statement is its own Trino
+        session, so ``fresh`` is what every read already is; ``conn_kwargs`` name the session
+        (source, catalog, schema) when a caller passes its own."""
+        from provisa.executor.trino_flight import execute_trino_flight
 
-        if fresh and conn_kwargs is None:
-            conn_kwargs = state.engine_conn_kwargs
-        conn = state.engine_conn
-        # REQ-1043/REQ-1244: a bound-but-unconnected terminal (bind_terminal — sleeping cluster,
-        # wake-on-traffic) has kwargs and no conn; execute_trino's liveness path connects from
-        # state.engine_conn_kwargs on this first query. Only a terminal with NEITHER is an error.
-        if conn is None and conn_kwargs is None and not state.engine_conn_kwargs:
-            raise RuntimeError(f"engine {self.engine.name!r} connection not available")
-        _conn = cast("Any", conn)
+        del fresh  # every statement through the proxy runs in a session of its own
+        transport = self._flight_transport(state)
+        context = self._flight_context(state, session_hints, conn_kwargs)
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
-            lambda: execute_trino(
-                _conn,
+            lambda: execute_trino_flight(
+                transport,
                 sql,
-                params=params,
-                session_hints=session_hints,
-                conn_kwargs=conn_kwargs,
+                params,
+                context=context,
                 span_attrs=span_attrs,
                 extra_table_attrs=extra_table_attrs,
             ),
@@ -1599,14 +1596,39 @@ class TrinoBackend(EngineBackend):
         params: list | None = None,
         *,
         session_hints: dict[str, str] | None = None,
-    ) -> QueryResult:
-        from provisa.executor.trino import execute_trino
+    ) -> ResultStream:
+        """REQ-2194: the engine's Arrow batches as they arrive from the proxy; a consumer that
+        reads rows has each batch turned into them as it pulls it."""
+        from provisa.executor.trino_flight import execute_trino_flight_sync
 
-        conn = state.engine_conn
-        # Same wake-on-traffic contract as execute(): kwargs-only means execute_trino connects.
-        if conn is None and not state.engine_conn_kwargs:
+        return execute_trino_flight_sync(
+            self._flight_transport(state),
+            sql,
+            params,
+            context=self._flight_context(state, session_hints, None),
+        )
+
+    def _flight_context(
+        self, state: Any, session_hints: dict[str, str] | None, conn_kwargs: dict | None
+    ) -> Any:
+        """The Trino session a statement runs in: the terminal's source (the org, REQ-056),
+        catalog and schema (REQ-1623), and its session properties -- the deployment's FTE hints
+        (REQ-302), the caller's hints over them, and the query timeout every read carries
+        (REQ-1913) unless a hint sets one."""
+        from provisa.executor.trino import _trino_query_timeout
+        from provisa.executor.trino_flight import TrinoContext
+
+        kwargs = conn_kwargs if conn_kwargs is not None else state.engine_conn_kwargs
+        if not kwargs:
             raise RuntimeError(f"engine {self.engine.name!r} connection not available")
-        return execute_trino(cast("Any", conn), sql, params=params, session_hints=session_hints)
+        hints = dict(session_hints or {})
+        hints.setdefault("query_max_execution_time", f"{_trino_query_timeout()}s")
+        return TrinoContext(
+            source=kwargs["source"],
+            catalog=kwargs.get("catalog"),
+            schema=kwargs.get("schema"),
+            properties={**state.engine_session_hints, **hints},
+        )
 
     # -- engine-specific transports (Arrow via Zaychik Flight SQL proxy) --------
 
@@ -1616,6 +1638,15 @@ class TrinoBackend(EngineBackend):
         if k8s.provisioning_available():
             return self._shard_flight_transport(state)
 
+        if state.active_engine_endpoint is not None or state.active_isolated_org is not None:
+            # The one proxy here fronts the deployment's configured coordinator. An org whose
+            # terminal is another coordinator (its own engine, REQ-1412; an isolated host,
+            # REQ-1043) has no proxy in front of it: reading through this one would answer from
+            # the wrong engine.
+            raise RuntimeError(
+                f"engine {self.engine.name!r} has no Arrow Flight transport for the active org's "
+                "own coordinator: the Zaychik proxy fronts the configured coordinator only"
+            )
         client = state.flight_client
         if client is None:
             raise RuntimeError(
@@ -1665,9 +1696,19 @@ class TrinoBackend(EngineBackend):
     def execute_arrow(self, state: Any, sql: str, params: list | None = None):
         from provisa.executor.trino_flight import execute_trino_flight_arrow
 
-        return execute_trino_flight_arrow(self._flight_transport(state), sql, params)
+        return execute_trino_flight_arrow(
+            self._flight_transport(state),
+            sql,
+            params,
+            context=self._flight_context(state, None, None),
+        )
 
     def execute_stream(self, state: Any, sql: str, params: list | None = None):
         from provisa.executor.trino_flight import execute_trino_flight_stream
 
-        return execute_trino_flight_stream(self._flight_transport(state), sql, params)
+        return execute_trino_flight_stream(
+            self._flight_transport(state),
+            sql,
+            params,
+            context=self._flight_context(state, None, None),
+        )

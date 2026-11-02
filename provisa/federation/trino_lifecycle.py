@@ -593,7 +593,10 @@ def classify_error(exc: Exception) -> str | None:
 
     Returns ``"connection"`` (→ 503), ``"query"`` (→ 400), or ``None`` (not an engine error the
     Trino backend recognizes — the caller picks a default)."""
-    if isinstance(exc, trino.exceptions.TrinoConnectionError):
+    from provisa.executor.trino_flight import EngineUnreachable
+
+    # REQ-2194: a read through the Zaychik proxy that reached no coordinator.
+    if isinstance(exc, (trino.exceptions.TrinoConnectionError, EngineUnreachable)):
         return "connection"
     if isinstance(exc, trino.exceptions.TrinoQueryError):
         return "query"

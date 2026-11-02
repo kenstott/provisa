@@ -41,7 +41,10 @@ class _FakePools:
 def _state(*, engine_conn=object(), flight_client=None, present=()):
     return types.SimpleNamespace(
         engine_conn=engine_conn,
-        engine_conn_kwargs={},
+        engine_conn_kwargs={"source": "provisa/org-1", "catalog": "system", "schema": "org_1"},
+        engine_session_hints={},
+        active_engine_endpoint=None,
+        active_isolated_org=None,
         flight_client=flight_client,
         source_pools=_FakePools(set(present)),
     )
@@ -109,29 +112,31 @@ async def test_direct_route_uses_native_terminal(monkeypatch):
 async def test_engine_route_uses_engine_terminal(monkeypatch):
     seen = {}
 
-    def _fake_trino(conn, sql, **kwargs):
-        seen.update(conn=conn, sql=sql, kwargs=kwargs)
+    def _fake_trino(transport, sql, params, **kwargs):
+        seen.update(transport=transport, sql=sql, kwargs=kwargs)
         return QueryResult(rows=[(2,)], column_names=["y"])
 
-    monkeypatch.setattr("provisa.executor.trino.execute_trino", _fake_trino)
-    conn = object()
-    rt = EngineRuntime(build_trino_engine(), _state(engine_conn=conn, present={"pg"}))
+    # REQ-2194: the engine terminal reads through the Zaychik Flight transport.
+    monkeypatch.setattr("provisa.executor.trino_flight.execute_trino_flight", _fake_trino)
+    transport = object()
+    rt = EngineRuntime(build_trino_engine(), _state(flight_client=transport, present={"pg"}))
     # Multi-source / non-direct → ENGINE terminal even though a direct source exists.
     decision = RouteDecision(route=Route.ENGINE, source_id=None, dialect=None, reason="")
 
     result = await rt.execute(decision, "SELECT 2", [], source_pools=rt._state.source_pools)
 
     assert result.rows == [(2,)]
-    assert seen["conn"] is conn
+    assert seen["transport"] is transport
+    assert seen["kwargs"]["context"].source == "provisa/org-1"
 
 
 @pytest.mark.asyncio
 async def test_direct_route_falls_to_engine_when_source_absent(monkeypatch):
-    def _fake_trino(conn, sql, **kwargs):
+    def _fake_trino(transport, sql, params, **kwargs):
         return QueryResult(rows=[(3,)], column_names=["z"])
 
-    monkeypatch.setattr("provisa.executor.trino.execute_trino", _fake_trino)
-    rt = EngineRuntime(build_trino_engine(), _state(present=frozenset()))
+    monkeypatch.setattr("provisa.executor.trino_flight.execute_trino_flight", _fake_trino)
+    rt = EngineRuntime(build_trino_engine(), _state(flight_client=object(), present=frozenset()))
     # DIRECT decision but the source has no pool → ENGINE terminal.
     decision = RouteDecision(route=Route.DIRECT, source_id="pg", dialect="postgres", reason="")
 

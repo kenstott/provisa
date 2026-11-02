@@ -11,7 +11,7 @@
 """Unit tests for provisa/executor/trino_flight.py.
 
 Covers:
-- _substitute_params — @N / $N style, multiple params, no params, string escaping, None
+- bound_statement — @N / $N style, multiple params, no params, string escaping, None (EXECUTE IMMEDIATE)
 - create_flight_connection ImportError path
 - execute_trino_flight_arrow — return type is pa.Table with correct column names
 - execute_trino_flight — wraps arrow result into QueryResult
@@ -21,6 +21,7 @@ Covers:
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
+import json
 import sys
 
 import pyarrow as pa
@@ -30,80 +31,79 @@ import provisa.executor.trino_flight as trf
 
 
 # ---------------------------------------------------------------------------
-# _substitute_params
+# bound_statement (REQ-2194: values bound as the Trino client binds them)
 # ---------------------------------------------------------------------------
+
+
+def _with_trino_types(table: pa.Table, types: list[str]) -> pa.Table:
+    """``table`` as the Zaychik proxy sends it: every field names its Trino type."""
+    fields = [
+        f.with_metadata(
+            {
+                "trino.type": t,
+                "trino.type_signature": json.dumps({"rawType": t, "arguments": []}),
+                "trino.encoding": "arrow",
+            }
+        )
+        for f, t in zip(table.schema, types, strict=True)
+    ]
+    return table.cast(pa.schema(fields))
 
 
 class TestSubstituteParams:
     def test_no_params_returns_sql_unchanged(self):
         sql = "SELECT * FROM orders"
-        assert trf._substitute_params(sql, None) == sql
+        assert trf.bound_statement(sql, None) == sql
 
     def test_empty_params_returns_sql_unchanged(self):
         sql = "SELECT * FROM orders WHERE id = 1"
-        assert trf._substitute_params(sql, []) == sql
+        assert trf.bound_statement(sql, []) == sql
 
     def test_at_style_single_param_integer(self):
-        sql = "SELECT * FROM t WHERE id = @1"
-        result = trf._substitute_params(sql, [42])
-        assert result == "SELECT * FROM t WHERE id = 42"
+        result = trf.bound_statement("SELECT * FROM t WHERE id = @1", [42])
+        assert result == "EXECUTE IMMEDIATE 'SELECT * FROM t WHERE id = ?' USING 42"
         assert "@1" not in result
 
     def test_dollar_style_single_param_integer(self):
-        sql = "SELECT * FROM t WHERE id = $1"
-        result = trf._substitute_params(sql, [99])
-        assert result == "SELECT * FROM t WHERE id = 99"
+        result = trf.bound_statement("SELECT * FROM t WHERE id = $1", [99])
+        assert result == "EXECUTE IMMEDIATE 'SELECT * FROM t WHERE id = ?' USING 99"
         assert "$1" not in result
 
     def test_at_style_multiple_params_in_order(self):
-        sql = "SELECT * FROM t WHERE a = @1 AND b = @2"
-        result = trf._substitute_params(sql, ["hello", 7])
-        assert "'hello'" in result
-        assert "7" in result
-        assert "@1" not in result
-        assert "@2" not in result
+        result = trf.bound_statement("SELECT * FROM t WHERE a = @1 AND b = @2", ["hello", 7])
+        assert result == "EXECUTE IMMEDIATE 'SELECT * FROM t WHERE a = ? AND b = ?' USING 'hello',7"
 
     def test_dollar_style_multiple_params_in_order(self):
         sql = "SELECT * FROM t WHERE x = $1 AND y = $2 AND z = $3"
-        result = trf._substitute_params(sql, [1, 2, 3])
+        result = trf.bound_statement(sql, [1, 2, 3])
         assert "@" not in result
         assert "$" not in result
-        assert "1" in result
-        assert "2" in result
-        assert "3" in result
+        assert result.endswith("USING 1,2,3")
 
     def test_string_param_is_single_quoted(self):
-        sql = "SELECT * FROM t WHERE name = @1"
-        result = trf._substitute_params(sql, ["Alice"])
-        assert result == "SELECT * FROM t WHERE name = 'Alice'"
+        result = trf.bound_statement("SELECT * FROM t WHERE name = @1", ["Alice"])
+        assert result == "EXECUTE IMMEDIATE 'SELECT * FROM t WHERE name = ?' USING 'Alice'"
 
     def test_string_param_with_embedded_single_quote_is_escaped(self):
-        sql = "SELECT * FROM t WHERE name = @1"
-        result = trf._substitute_params(sql, ["O'Brien"])
+        result = trf.bound_statement("SELECT * FROM t WHERE name = @1", ["O'Brien"])
         # Single quote must be escaped as ''
-        assert "O''Brien" in result
-        assert "O'Brien'" not in result or "O''Brien" in result
+        assert result.endswith("USING 'O''Brien'")
 
     def test_none_param_becomes_null(self):
-        sql = "SELECT * FROM t WHERE val = @1"
-        result = trf._substitute_params(sql, [None])
-        assert "NULL" in result
+        result = trf.bound_statement("SELECT * FROM t WHERE val = @1", [None])
+        assert result.endswith("USING NULL")
         assert "@1" not in result
 
-    def test_float_param_inlined(self):
-        sql = "SELECT * FROM t WHERE price > @1"
-        result = trf._substitute_params(sql, [3.14])
-        assert "3.14" in result
+    def test_float_param_is_a_double_literal(self):
+        result = trf.bound_statement("SELECT * FROM t WHERE price > @1", [3.14])
+        assert result.endswith("USING DOUBLE '3.14'")
 
     def test_higher_numbered_params_not_partially_replaced(self):
         """@10 must not be treated as @1 followed by '0'."""
-        sql = "SELECT @1, @2, @10"
-        # The implementation replaces in reverse order (len → 1), so @10 is
-        # replaced before @1, which prevents partial replacement.
-        result = trf._substitute_params(sql, ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"])
-        assert "@10" not in result
-        assert "@1" not in result
-        assert "@2" not in result
+        result = trf.bound_statement(
+            "SELECT @1, @2, @10", ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
+        )
+        assert result == "EXECUTE IMMEDIATE 'SELECT ?, ?, ?' USING 'a','b','j'"
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +200,7 @@ class TestExecuteTrinoFlightArrow:
         assert "amount" in result.column_names
 
     def test_params_substituted_before_execution(self):
-        """Parameters are inlined into SQL before the cursor executes."""
+        """Parameters are bound in the statement the cursor executes."""
         schema = pa.schema([("id", pa.int64())])
         table = pa.table({"id": [5]}, schema=schema)
 
@@ -212,8 +212,7 @@ class TestExecuteTrinoFlightArrow:
         trf.execute_trino_flight_arrow(mock_conn, "SELECT * FROM t WHERE id = @1", [5])
 
         executed_sql = mock_cursor.execute.call_args[0][0]
-        assert "5" in executed_sql
-        assert "@1" not in executed_sql
+        assert executed_sql == "EXECUTE IMMEDIATE 'SELECT * FROM t WHERE id = ?' USING 5"
 
     def test_cursor_is_closed_after_fetch(self):
         """cursor.close() is always called after fetching the table."""
@@ -247,7 +246,9 @@ class TestExecuteTrinoFlight:
         from provisa.executor.result import QueryResult
 
         schema = pa.schema([("id", pa.int64()), ("val", pa.string())])
-        table = pa.table({"id": [1, 2], "val": ["x", "y"]}, schema=schema)
+        table = _with_trino_types(
+            pa.table({"id": [1, 2], "val": ["x", "y"]}, schema=schema), ["bigint", "varchar"]
+        )
 
         mock_cursor = MagicMock()
         mock_cursor.fetch_arrow_table.return_value = table
@@ -258,11 +259,14 @@ class TestExecuteTrinoFlight:
 
         assert isinstance(result, QueryResult)
         assert result.column_names == ["id", "val"]
+        assert result.column_types == ["bigint", "varchar"]
         assert len(result.rows) == 2
 
     def test_rows_are_tuples(self):
         schema = pa.schema([("a", pa.int64()), ("b", pa.int64())])
-        table = pa.table({"a": [10, 20], "b": [30, 40]}, schema=schema)
+        table = _with_trino_types(
+            pa.table({"a": [10, 20], "b": [30, 40]}, schema=schema), ["bigint", "bigint"]
+        )
 
         mock_cursor = MagicMock()
         mock_cursor.fetch_arrow_table.return_value = table
