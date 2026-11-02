@@ -141,7 +141,7 @@
           Building a compiler front end has also become cheap: parser generators like ANTLR
           and mature open-source parsers for SQL, GraphQL and SPARQL do most of the work, so adding a language means writing a translation into the IR instead of a new system. Each request is
           compiled when it arrives into one IR, governed there, handed to your engine as
-          native SQL, and shaped on the way out for the transport that asked.
+          native SQL, and encoded on the way out for the transport that asked.
         </p>
         <p>
           Where languages or protocols differ at the edges, their public conformance suites settle it. Provisa runs them and publishes the results.
@@ -149,7 +149,7 @@
         <p>
           It also means the pace of change isn't a constraint. New query languages, protocols,
           engines and sources keep arriving; for most stacks each one is a migration. Here, a
-          new language or transport is a front end or a shaper, and a new engine or source is a driver. Those are additions at the edges, and the model and its governance don't change.
+          new language or transport is a front end or an encoder, and a new engine or source is a driver. Those are additions at the edges, and the model and its governance don't change.
         </p>
 
         <h2 id="command-bindings">Command bindings</h2>
