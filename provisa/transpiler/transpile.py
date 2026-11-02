@@ -24,6 +24,7 @@ from provisa.core.pg_error import MARK
 from provisa.transpiler import (
     function_macros,
     pg_forms_enum,
+    pg_forms_geometric,
     pg_forms_type_io,
     pg_functions,
     pg_held_types,
@@ -1328,6 +1329,7 @@ def transpile(
     # REQ-1965: each read of a natively array/struct/map column becomes this backend's own
     # to-JSON expression here, the one place every route's dialect is known.
     result = resolve_native_json(result, target_dialect)
+    result = pg_forms_geometric.planned(result, target_dialect)  # REQ-2171
     # REQ-2171: each subtyped column read as a value, in PostgreSQL's canonical text.
     result = resolve_reads(result, target_dialect)
     from provisa.vector.similarity import lower as _lower_similarity

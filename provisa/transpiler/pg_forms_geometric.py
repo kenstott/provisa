@@ -1920,6 +1920,15 @@ def _form(e: Engine, row: Row) -> str:
     return f"CASE WHEN {nulls} THEN CAST(NULL AS {sql_type}) ELSE {typed} END"
 
 
+def planned(sql: str, dialect: str) -> str:
+    """A ClickHouse statement holding a shape's form, planned by its old analyzer: the new one takes
+    most of a minute over the deepest forms, the old one about a second (24.3: close_sb 45.9s and
+    1.3s), with the same answers. A form is known by its check of a shape's letters."""
+    if dialect != "clickhouse" or f"'{_NOT_FINITE}'" not in sql or "SETTINGS" in sql.upper():
+        return sql
+    return f"{sql.rstrip().rstrip(';')} SETTINGS allow_experimental_analyzer = 0"
+
+
 def forms(e: Engine) -> dict[tuple[str, str], str]:
     """Each row's form on ``e``: (name, its parameters) -> the SQL."""
     return {

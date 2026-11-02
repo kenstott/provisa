@@ -377,3 +377,26 @@ def test_a_recorded_function_reads_columns_on_each_row():
     sql, wants = statement
     got = [r[0] for r in duckdb.connect().execute(transpile(sql, "duckdb")).fetchall()]
     assert list(map(same, got, wants)) == [True, True], (sql, got, wants)
+
+
+_SHAPE = "SELECT box_add('(3,4),(0,0)'::box, '(1,2)'::point) AS v"
+_ANALYZER_OFF = " SETTINGS allow_experimental_analyzer = 0"
+
+
+def test_clickhouse_plans_a_shapes_form_with_its_old_analyzer():
+    assert transpile(_SHAPE, "clickhouse").endswith(_ANALYZER_OFF)
+
+
+@pytest.mark.parametrize(
+    ("sql", "dialect"),
+    [("SELECT 1 AS v", "clickhouse"), (_SHAPE, "trino"), (_SHAPE, "duckdb")],
+)
+def test_no_other_statement_or_engine_is_planned_otherwise(sql: str, dialect: str):
+    assert "SETTINGS" not in transpile(sql, dialect)
+
+
+def test_trino_writes_a_name_read_once_in_place():
+    """Trino's planning grows with how deep a lambda is nested: a box's form keeps only the lambdas
+    of the names it reads more than once."""
+    written = transpile("SELECT box_center('(3,4),(0,0)'::box) AS v", "trino")
+    assert written.count("TRANSFORM(ARRAY[") <= 3, written  # 15 when each name was a lambda
