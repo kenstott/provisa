@@ -18304,10 +18304,13 @@
   feature: installation-packaging
   priority: MUST
   type: constraint
-  description: The distribution must be fully airgap-capable. No outbound network calls at install time
-    or first launch. All container images are bundled inside the app and loaded via `ctr images import`.
-    Image references in docker-compose use digests, not tags. Suitable for enterprise environments with
-    no internet access.
+  description: 'The distribution must be fully airgap-capable. No outbound network calls at install time
+    or first launch. All container images are bundled inside the app and [SUPERSEDED by REQ-294, 2026-11-02
+    -- Lima is no longer used. Kept here for history; do not implement against it.] loaded via `ctr images
+    import`. [END SUPERSEDED BLOCK] Image references in docker-compose use digests, not tags. Suitable for
+    enterprise environments with no internet access. (Amended 2026-11-02, Image loading without Lima:) Maintainer
+    2026-11-02: Lima is no longer used. Bundled images are loaded with docker load into the user''s Docker
+    on macOS (Docker tier) and with nerdctl into WSL2 containerd on Windows.'
   use_case: Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa
     from local media.
   code:
@@ -18334,8 +18337,9 @@
   - ops
   competitive_position:
     status: ahead
-    rationale: Full airgap capability with all images bundled and loaded via ctr images import at install
-      time is not available in Hasura Cloud, Dremio Cloud, or standard Starburst/Trino distributions.
+    rationale: Full airgap capability with all images bundled and loaded at install time (docker load on
+      macOS, nerdctl in WSL2 on Windows) is not available in Hasura Cloud, Dremio Cloud, or standard Starburst/Trino
+      distributions.
   docs:
   - deployment.md
 - id: REQ-302

@@ -5942,7 +5942,7 @@ Unit tests must mock all external components (databases, Trino, Redis, HTTP endp
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-The distribution must be fully airgap-capable. No outbound network calls at install time or first launch. All container images are bundled inside the app and loaded via `ctr images import`. Image references in docker-compose use digests, not tags. Suitable for enterprise environments with no internet access.
+The distribution must be fully airgap-capable. No outbound network calls at install time or first launch. All container images are bundled inside the app and [SUPERSEDED by REQ-294, 2026-11-02 -- Lima is no longer used. Kept here for history; do not implement against it.] loaded via `ctr images import`. [END SUPERSEDED BLOCK] Image references in docker-compose use digests, not tags. Suitable for enterprise environments with no internet access. (Amended 2026-11-02, Image loading without Lima:) Maintainer 2026-11-02: Lima is no longer used. Bundled images are loaded with docker load into the user's Docker on macOS (Docker tier) and with nerdctl into WSL2 containerd on Windows.
 
 **Use case:** Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa from local media.
 
