@@ -26839,3 +26839,13 @@ Maintainer 2026-11-01: a Provisa OData service, the easier lift with more commer
 **Code:** —
 
 **Tests:** —
+
+### REQ-2194 · JDBC/ODBC Integration {#REQ-2194}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-02: the Rust DataRow encoder (experiment J483: 14.5x text, 40.8x binary on 5M rows) replaces the Python path, and its blockers have to be resolved: named time zones, nanosecond units, date64, every type pgwire serves (inet, cidr, money, geometric, range, tsvector, xml, catalog types and their arrays), the raw DataRow passthrough and the row coercers. Arrow batches go to the encoder with no Python row objects in between. Answers are what PostgreSQL 17 sends; float cells are checked within a tolerance.
+
+**Code:** —
+
+**Tests:** —

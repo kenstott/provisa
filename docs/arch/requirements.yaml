@@ -92568,3 +92568,31 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-062
   stakeholders:
   - data-engineer
+- id: REQ-2194
+  value: pgwire encodes result rows in Rust, straight from Arrow batches, for every type it serves.
+  status: proposed
+  target: 2026-Q4
+  group: 8. Client Access & Protocols
+  category: JDBC/ODBC Integration
+  feature: postgres-wire-protocol-client-drivers
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-02: the Rust DataRow encoder (experiment J483: 14.5x text, 40.8x binary
+    on 5M rows) replaces the Python path, and its blockers have to be resolved: named time zones, nanosecond
+    units, date64, every type pgwire serves (inet, cidr, money, geometric, range, tsvector, xml, catalog
+    types and their arrays), the raw DataRow passthrough and the row coercers. Arrow batches go to the
+    encoder with no Python row objects in between. Answers are what PostgreSQL 17 sends; float cells are
+    checked within a tolerance.'
+  scenario: 'Given a statement whose result holds every type pgwire serves, including timestamptz in a
+    named zone
+
+    When a client reads it over pgwire in text and in binary format
+
+    Then every row arrives as PostgreSQL 17 sends it, floats within one part in 10^14
+
+    And no Python row object is built for the result'
+  related_reqs:
+  - REQ-2167
+  - REQ-2171
+  stakeholders:
+  - data-engineer
