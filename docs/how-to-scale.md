@@ -10,9 +10,7 @@ Every Provisa process starts in one of three modes, set at launch and fixed for 
 
 ### `every` (the default)
 
-A process in `every` mode serves data requests and runs background work — replica builds, view refreshes and scheduled jobs. It serves the admin UI and all non-data HTTP routes too.
-
-Start in `every` mode by launching with no `--mode` flag. A single-node deployment runs one `every` process.
+A process in `every` mode serves data requests, runs background work and serves the admin UI. A single-node deployment runs one `every` process.
 
 ```bash
 provisa run
@@ -22,7 +20,7 @@ provisa run --mode every
 
 ### `query`
 
-A `query` process serves data requests. It serves the admin UI and all non-data HTTP routes. It does not run background work.
+A `query` process serves data requests and the admin UI. It does not run background work.
 
 ```bash
 provisa run --mode query
@@ -30,7 +28,7 @@ provisa run --mode query
 
 ### `coordinator`
 
-A `coordinator` process runs background work. It serves the admin UI and all non-data HTTP routes. Data requests arriving at `/data` or over Arrow Flight are refused with HTTP 503 before reaching a route; the refusal names the transport and tells the caller to use a `query` or `every` node.
+A `coordinator` process runs background work and serves the admin UI. Data requests arriving at `/data` or over Arrow Flight are refused with HTTP 503 before reaching a route; the refusal names the transport and tells the caller to use a `query` or `every` node.
 
 ```bash
 provisa run --mode coordinator
@@ -40,71 +38,60 @@ provisa run --mode coordinator
 
 ## Scaled topology
 
-Start with one `every` process. When query load grows, split the roles into a coordinator node and a pool of query nodes.
+Start with one `every` process. When query load grows, split the roles.
 
 ```
-  admin clients ────────────────────────┐
-  data clients  ───► load balancer ─────┼──► query node
-                                        ├──► query node
-                                        └──► query node
-  heavy clients ───────────────────────────► query node (direct)
+  clients ───► load balancer ─────► query node
+                               ├──► query node
+                               └──► query node (or direct)
 
-  background work ─────────────────────────► coordinator node
+  background work ────────────────► coordinator node
 ```
 
-**Coordinator node.** One coordinator handles background work for most deployments; a second gives redundancy. Scale it vertically first. It runs the scheduler and holds background job slots; more CPU and memory let it take on more concurrent work before a second node adds value.
+**Coordinator node.** The coordinator runs the admin UI, the scheduler and all background work. Scale it vertically first. More CPU and memory let it carry more concurrent background jobs before adding a second node makes sense.
 
-Background jobs are claimed per-job. Replica builds hold session advisory locks on the control plane, one build per replica per region, with engine and host slot limits. View refreshes run a per-view atomic conditional UPDATE with a lease. Neither mechanism needs a global leader, so two coordinators claim different jobs in parallel with no setup beyond running them. When background load outgrows one coordinator, add a second.
+Background work is claimed per-job. Replica builds use session advisory locks on the control plane, scoped to one build per replica per region, with engine and host slot limits. View refreshes take a per-view lease via an atomic conditional UPDATE. Because neither mechanism needs a global leader, more coordinator nodes claim different jobs in parallel with no extra configuration. When background load grows past one coordinator, add more.
 
-**Query nodes.** Query nodes are CPU-bound. Each node governs and routes a request, compiles it, then encodes result rows in batches as the engine streams them. Results stream in batches, so memory per request stays bounded. Scale query nodes by core count and by the number of nodes. Size the federation engine for memory.
+**Query nodes.** Query nodes are CPU-bound. Each node governs and routes a request, compiles it and encodes result rows in batches as the engine streams them. For large result sets, encoding shifts the cost to the network. Memory per request stays bounded because results always stream. Scale query nodes by count.
 
 ---
 
 ## Client addressing
 
-Query nodes are identical. The simplest setup is a pool behind a load balancer at one address; all clients use it.
+The simplest setup puts query nodes behind a load balancer at one address. All clients use it.
 
-For clients that need a dedicated path — long-running analytical queries that hold connections for minutes, for example — run a query node with its own DNS name and point those clients straight at it. They avoid competing with other traffic for load-balancer connections.
+A node or pool with its own address works alongside the shared pool. Give it a DNS name and point specific clients straight at it. Several pools, each with its own address, are also an option. Adding pools gives more capacity and more addressing flexibility. Workload separation belongs to regions, described next.
 
-Multiple pools each with a distinct address are also an option, each sized for the traffic it carries. Routing clients across pools is a capacity and addressing decision; workload isolation at the engine and data level is a region concern, described next.
-
-The coordinator node answers HTTP at its own address. Point admin-UI traffic there if you want it off the query pool.
+The coordinator answers HTTP at its own address. Point admin-UI traffic there to keep it off the query pool.
 
 ---
 
 ## Workload separation: regions
 
-A region is an instance of Provisa with a dedicated engine and its own address, sharing the same model and control plane as every other region. Declaring a region for a workload gives that workload its own engine, sized for the work, at its own hostname.
+A region is an instance of Provisa with a dedicated engine and its own address, sharing the same model and control plane as every other region.
 
-Regions are declared in `platform.regions` in the config:
+Declare a `provisioning` region to isolate replica builds and view refreshes. Give it a large engine and its own address. Provisioning work runs as coordinator background work in that region; other nodes in that region claim builds and refreshes independently.
 
 ```yaml
 platform:
   regions:
-    - id: transactional
-      address: transactional.provisa.example.com
-    - id: bi
-      address: bi.provisa.example.com
+    - id: main
+      address: provisa.example.com
     - id: provisioning
       address: provisioning.provisa.example.com
 ```
 
-Each region's nodes launch with `--region <id>`:
-
 ```bash
-# transactional region: many small, low-latency queries and mutations
-provisa run --mode query --region transactional
+# main region: query nodes for user-facing requests
+provisa run --mode query --region main
 
-# BI region: large analytical scans; size the engine for memory
-provisa run --mode query --region bi
-
-# provisioning region: replica builds and view refreshes as coordinator work
+# provisioning region: coordinator nodes for replica builds and view refreshes
 provisa run --mode coordinator --region provisioning
 ```
 
-The org's config selects the regions it uses and gives each a store configuration covering its engine, replica storage, cache, state store and request record. A table may be pinned to a region; a table pinned to none may be replicated in every region.
+The org's config selects its regions and assigns each a store configuration: engine, replica storage, cache, state store and request record. A table may be pinned to a region; a table pinned to none may be replicated in every region.
 
-From a client's perspective, `transactional.provisa.example.com` and `bi.provisa.example.com` are addresses like any other. The deployment names them to match the team's language.
+From the user side, `provisioning.provisa.example.com` is just an address. The deployment names it whatever fits the team's language — it could be `refresh.internal` or `etl.provisa.example.com`.
 
 For intra-engine isolation when Trino is the engine, Trino's per-org resource groups apply. See [Deployment](deployment.md#kubernetes--helm) for the configuration.
 
@@ -114,6 +101,6 @@ For intra-engine isolation when Trino is the engine, Trino's per-org resource gr
 
 | Node type | Scale by | Size by |
 |---|---|---|
-| Query node | Core count and number of nodes | CPU |
+| Query node | Count | CPU (network for large results) |
 | Federation engine | — | Memory |
-| Coordinator node | Number of nodes (jobs are claimed per-job) | Background job volume |
+| Coordinator node | Count (jobs claimed per-job) | Background job volume |
