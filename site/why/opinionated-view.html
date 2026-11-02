@@ -66,7 +66,7 @@
           <li><strong>Big data and data lakes</strong> (Hadoop, object stores): scale without limits; meaning and governance were left behind, and the lake became a swamp.</li>
           <li><strong>Data catalogs and governance tools</strong>: meaning documented and policies recorded — but neither bound to the data nor enforced at query time.</li>
           <li><strong>Semantic layers and metrics stores</strong>: shared metric definitions for BI — but a thin slice of meaning covering only aggregations, with no model of who owns what or what the terms mean.</li>
-          <li><strong>Ontologies and knowledge graphs</strong>: formal meaning, relationships and reasoning — but rarely bound to operational records and almost never enforced at access.</li>
+          <li><strong>Ontologies and knowledge graphs</strong>: formal meaning, relationships and reasoning — built as an end in themselves, rarely tied to operational records, and valued by assumption rather than measurement.</li>
           <li><strong>Data mesh</strong>: domain ownership and data as a product, with federated computational governance — but deliberately no runtime, leaving programs to implement governance themselves over every domain's own systems.</li>
           <li><strong>Palantir Foundry</strong>: the ontology is bound to data and access is controlled, which gets closer than almost anything else.
             Our reading of their public documentation: Foundry builds applications on top of its own connectors and ontology framework rather than serving consumers over standard protocols. Value scales with the applications specialists build inside the platform, not with the concepts and relationships that people throughout the organization can own.
@@ -76,6 +76,10 @@
             To be clear: this is Provisa's opinion. Foundry's object and link types and its declarative Action rules are genuine contributions to the field.
           </li>
         </ul>
+
+        <p>
+          The last two entries show two ways an ontology fails: the first built concepts as an end in themselves, never tied to records, valued by assumption; the second tied to data and operational, but with no method to prove a term against records, refine it when reality disagrees, or resolve ambiguity when two parts of the organization mean different things by the same word. The opinions below answer both failure modes.
+        </p>
 
         <!-- Palantir source notes for the maintainer:
           Sources checked 2026-11-02:
@@ -113,12 +117,17 @@
         </p>
 
         <p>
-          <strong>Domain boundaries are hypotheses.</strong> A boundary that looks right on a
-          whiteboard will be wrong in the data. The right sequence is: refine the meaning of
-          concepts within a domain, then refine the relationships between domains, then expand
-          or realign a boundary, and add new concepts last. Carving out a new domain before the
-          existing ones are well-grounded accelerates the drift.
+          <strong>Domain boundaries are hypotheses.</strong> When something breaks, most
+          organizations reach for a new system, a new team, or a new layer. Before that, ask
+          these questions in order and stop at the first yes:
         </p>
+        <ol>
+          <li>Are the relevant terms clearly defined and grounded in data? If not: refine the meaning.</li>
+          <li>Do the registered relationships explain the gap? If not: refine the relationships.</li>
+          <li>Is ownership clear? If not: realign the boundary or reassign the steward.</li>
+          <li>Is the relevant reality inside the model at all? If not: expand the boundary.</li>
+          <li>Only then: create a new concept or build something new.</li>
+        </ol>
 
         <p>
           <strong>The model compounds.</strong> A second domain can bind concepts to the first
