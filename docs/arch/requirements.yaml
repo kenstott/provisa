@@ -75723,26 +75723,36 @@
     in every mode the plan call runs in process, in data mode it is a call to a control node over a socket;
     executing the plan and encoding to the client stay on the node that holds the client connection, so
     rows never enter the control process. (Amended 2026-11-02, The control plane advertises data plane addresses:)
-    Maintainer 2026-11-02: the control plane advertises the data plane''s addresses. A data node registers
-    with a control node when it starts (its region and its address for each transport) and keeps the registration
-    alive; a node that stops drops out. Everywhere a client is told where to connect (the UI''s connection
-    details, connection strings, the HTTP surface URLs, MCP settings, Flight''s GetFlightInfo endpoints),
-    the control plane gives the data node for the org''s region. In every mode the one process advertises
-    itself. (Amended 2026-11-02, Each plane scales behind its own load balancer:) Maintainer 2026-11-02:
-    control nodes and data nodes each scale independently behind a load balancer. Control nodes hold no
-    state of their own beyond what the shared control-plane store holds, so any control node answers any
-    plan call, and a model change made through one invalidates what the others cached. A plan is signed
-    with a key every node shares, so any data node verifies it. The address the control plane advertises
-    is the data plane load balancer for the org''s region; long-lived connections (pgwire, Bolt, gRPC, Flight)
-    are balanced at TCP level and stay on one data node. Background work is claimed through the shared store
-    so it runs once, not once per control node. (Amended 2026-11-02, Several control nodes use the existing
-    propagation:) Maintainer 2026-11-02 (correcting the wording above): several control nodes need nothing
-    new to stay in step. A model change reaches every control node through the existing propagation (REQ-1914:
-    the stamp advanced in the same transaction as the change tells every process to reload), as it does
-    for every node today. Data nodes hold no model and reload nothing. (Amended 2026-11-02, Response cache
-    per node or shared:) Maintainer 2026-11-02: each node can use its own in-memory response cache or a
-    remote shared one; that is an efficiency choice only, not a correctness one. The response cache holds
-    rows, so it belongs to the data plane: data nodes read and write it, a control node never does.'
+    Maintainer 2026-11-02: the control plane advertises the data plane''s addresses. [SUPERSEDED by REQ-1916,
+    2026-11-02 -- replaced by node pools declared in the shared config, 2026-11-02. Kept here for history;
+    do not implement against it.] A data node registers with a control node when it starts (its region and
+    its address for each transport) and keeps the registration alive; a node that stops drops out. [END
+    SUPERSEDED BLOCK] Everywhere a client is told where to connect (the UI''s connection details, connection
+    strings, the HTTP surface URLs, MCP settings, Flight''s GetFlightInfo endpoints), the control plane
+    gives the data node for the org''s region. In every mode the one process advertises itself. (Amended
+    2026-11-02, Each plane scales behind its own load balancer:) Maintainer 2026-11-02: control nodes and
+    data nodes each scale independently behind a load balancer. Control nodes hold no state of their own
+    beyond what the shared control-plane store holds, so any control node answers any plan call, and a model
+    change made through one invalidates what the others cached. A plan is signed with a key every node shares,
+    so any data node verifies it. The address the control plane advertises is the data plane load balancer
+    for the org''s region; long-lived connections (pgwire, Bolt, gRPC, Flight) are balanced at TCP level
+    and stay on one data node. Background work is claimed through the shared store so it runs once, not
+    once per control node. (Amended 2026-11-02, Several control nodes use the existing propagation:) Maintainer
+    2026-11-02 (correcting the wording above): several control nodes need nothing new to stay in step. A
+    model change reaches every control node through the existing propagation (REQ-1914: the stamp advanced
+    in the same transaction as the change tells every process to reload), as it does for every node today.
+    Data nodes hold no model and reload nothing. (Amended 2026-11-02, Response cache per node or shared:)
+    Maintainer 2026-11-02: each node can use its own in-memory response cache or a remote shared one; that
+    is an efficiency choice only, not a correctness one. The response cache holds rows, so it belongs to
+    the data plane: data nodes read and write it, a control node never does. (Amended 2026-11-02, Node pools
+    declared in the shared config:) Maintainer 2026-11-02: the topology is declared in the shared config,
+    not registered at run time. The config declares node pools, each with its mode (control or data), its
+    region (for data pools) and its address (the pool''s load balancer); individual machines are not listed,
+    so capacity changes need no config edit. A process starts with only its pool name and takes its mode,
+    region and peers from the config; with no pools declared a process runs in every mode, as today. The
+    address the control plane advertises is the pool''s declared address; liveness is the load balancer''s
+    health check. Every node may read the entire config definition (maintainer: no problem with all nodes
+    seeing it); data nodes still never build or hold the governed model and act only on signed plans.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
