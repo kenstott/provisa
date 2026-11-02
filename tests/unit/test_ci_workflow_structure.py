@@ -625,17 +625,9 @@ _LEAVES_THE_RUN = re.compile(
 
 #: The orchestrator's own jobs, not legs: PyPI trusted publishing does not accept a token issued
 #: to a reusable workflow (pypa/gh-action-pypi-publish#166).
-_RELEASE_PYPI = (
-    "publish-pypi",
-    "publish-notebook-pypi",
-    "publish-pgwire-encoder-pypi",
-    "publish-provisa-pypi",
-)
-#: REQ-2071, REQ-2194: provisa pins provisa-notebook and provisa-pgwire-encoder at its own version,
-#: so provisa waits for both on PyPI.
-_RELEASE_PYPI_AFTER = {
-    "publish-provisa-pypi": {"publish-notebook-pypi", "publish-pgwire-encoder-pypi"}
-}
+_RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi")
+#: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
+_RELEASE_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi"}}
 _RELEASE_PUBLISH = (
     "${{ github.event_name == 'push' || (inputs.publish == true && github.ref_type == 'tag' "
     "&& github.ref_name == inputs.version) }}"

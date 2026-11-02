@@ -3,7 +3,7 @@
 #
 # Stages the precompiled React UI and the runtime config/ files INTO the package
 # tree (provisa/_ui, provisa/_config) so the wheel is self-contained on a
-# Python-only, npm/Node-free host, then runs `python -m build`.
+# Python-only, npm/Node-free host, then builds the sdist and the platform wheel (REQ-2194).
 #
 #   scripts/build-wheel.sh            # vite build + stage + python -m build
 #   PROVISA_SKIP_UI_BUILD=1 ...       # reuse an existing provisa-ui/dist
@@ -50,7 +50,46 @@ cp "${REPO_ROOT}/demo/files/pet_store.sqlite" "${REPO_ROOT}/demo/files/inquiries
 # ── 3. Build sdist + wheel ──────────────────────────────────────────────────
 # PYTHON overridable so a caller can build with a specific interpreter (e.g. the
 # bundled python-build-standalone); defaults to `python` on PATH.
-echo "[build-wheel] ${PYTHON:-python} -m build"
-"${PYTHON:-python}" -m build "$@"
+#
+# REQ-2194: the wheel carries provisa._encoders, compiled from Rust (rust/encoders) by
+# setuptools-rust, so it is a platform wheel for PYTHON's platform. On Linux the Dockerfile's
+# provisa-wheel stage builds it, a manylinux_2_28 wheel cross-compiled with zig for this machine's
+# architecture (the one Linux recipe: the images and the release build it the same way). The Rust
+# toolchain is the one every recipe names (Dockerfile's rust image).
+PY="${PYTHON:-python}"
+export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.95.0}"
+sdist=0; wheel=0
+for arg in "$@"; do
+  case "$arg" in
+    --sdist) sdist=1 ;;
+    --wheel) wheel=1 ;;
+    *) echo "[build-wheel] ERROR: unknown argument $arg (--sdist, --wheel)" >&2; exit 2 ;;
+  esac
+done
+if [ "$sdist" = 0 ] && [ "$wheel" = 0 ]; then sdist=1; wheel=1; fi
+mkdir -p "${REPO_ROOT}/dist"
+
+if [ "$sdist" = 1 ]; then
+  echo "[build-wheel] ${PY} -m build --sdist"
+  "$PY" -m build --sdist
+fi
+if [ "$wheel" = 1 ]; then
+  rm -f "${REPO_ROOT}"/dist/provisa-*.whl
+  if [ "$(uname -s)" = "Linux" ]; then
+    case "$(uname -m)" in
+      x86_64) platform=linux/amd64 ;;
+      aarch64 | arm64) platform=linux/arm64 ;;
+      *) echo "[build-wheel] ERROR: no Linux wheel for $(uname -m)" >&2; exit 1 ;;
+    esac
+    echo "[build-wheel] docker build --target provisa-wheel (${platform})"
+    docker build --platform "$platform" --target provisa-wheel \
+      --output "type=local,dest=${REPO_ROOT}/dist" "$REPO_ROOT"
+  else
+    echo "[build-wheel] ${PY} -m build --wheel"
+    "$PY" -m build --wheel
+  fi
+  # One wheel, with the compiled module and its notices in it, or the build failed.
+  "$PY" "${REPO_ROOT}/scripts/check-provisa-wheel.py" "${REPO_ROOT}"/dist/provisa-*.whl
+fi
 
 echo "[build-wheel] Done. Artifacts in ${REPO_ROOT}/dist/"

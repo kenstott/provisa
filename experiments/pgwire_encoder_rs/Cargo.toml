@@ -6,7 +6,9 @@ publish = false
 
 [lib]
 name = "pgwire_encoder_rs"
-crate-type = ["cdylib"]
+# An rlib: provisa._encoders (rust/encoders) links it as its pgwire submodule. build.sh asks for
+# the cdylib it benchmarks on its own command line (cargo rustc --crate-type cdylib).
+crate-type = ["rlib"]
 
 [dependencies]
 pyo3 = { version = "0.25", features = ["extension-module"] }

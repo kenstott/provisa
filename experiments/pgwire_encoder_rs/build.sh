@@ -8,6 +8,6 @@ cd "$here"
 # The benchmark build is tuned for this CPU. RUSTFLAGS replaces .cargo/config.toml's flags, so it
 # carries the link arguments too. The shipped wheels are built without target-cpu (pyproject.toml).
 RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup -C target-cpu=native" \
-  PYO3_PYTHON="$root/.venv/bin/python" cargo build --release
+  PYO3_PYTHON="$root/.venv/bin/python" cargo rustc --release --lib --crate-type cdylib
 mkdir -p build
 cp target/release/libpgwire_encoder_rs.dylib build/pgwire_encoder_rs.so

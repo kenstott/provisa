@@ -21,6 +21,10 @@ __MACOSX/
 .env
 # render_graph renderer: a checkout links it to provisa-ui/graph-render; the image builds its own
 provisa/_graph_render
-# The encoder's local cargo and bench output; the image builds the crate itself (REQ-2194)
+# The encoders' local cargo and bench output, and the module an editable install compiles into the
+# checkout: the image compiles provisa._encoders itself, for its own platform (REQ-2194)
 experiments/pgwire_encoder_rs/target/
 experiments/pgwire_encoder_rs/build/
+rust/encoders/target/
+provisa/_encoders*.so
+provisa/_encoders*.pyd

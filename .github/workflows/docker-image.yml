@@ -29,9 +29,9 @@ jobs:
       - name: Build the app image (linux/amd64, not pushed)
         run: docker build --platform linux/amd64 -t provisa/provisa:ci .
 
-      # REQ-2194: pgwire's encoder is compiled into the image (the Dockerfile imports it too).
-      - name: the pgwire encoder imports inside the image
-        run: docker run --rm provisa/provisa:ci python -c "import pgwire_encoder_rs"
+      # REQ-2194: provisa's compiled encoders are in the image (the Dockerfile imports them too).
+      - name: provisa's encoders import inside the image
+        run: docker run --rm provisa/provisa:ci python -c "import provisa._encoders.pgwire"
 
       - name: render_graph draws inside the image
         run: docker run --rm -i provisa/provisa:ci python - < scripts/ci/render_graph_smoke.py
