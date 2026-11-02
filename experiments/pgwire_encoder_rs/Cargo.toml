@@ -12,6 +12,12 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.25", features = ["extension-module"] }
 arrow = { version = "56", default-features = false, features = ["pyarrow", "ffi"] }
 itoa = "1"
+# PostgreSQL's float8out/float4out shortest digits are Ryu's (src/common/d2s.c, f2s.c).
+ryu = "1.0.23"
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+# chrono-tz 0.10.4 with its zone tables regenerated at build time from the IANA release in
+# third_party/chrono-tz/tz (2026b, the release Python's pytz and tzdata carry); see RESULTS.md.
+chrono-tz = { path = "third_party/chrono-tz", default-features = false, features = ["std", "filter-by-regex"] }
 
 [profile.release]
 lto = "fat"

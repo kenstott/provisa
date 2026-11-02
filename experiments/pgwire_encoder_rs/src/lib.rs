@@ -5,6 +5,8 @@
 mod fmt_num;
 mod json;
 mod temporal;
+mod tz;
+mod tz_rules;
 
 use std::sync::Arc;
 
@@ -18,7 +20,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
 use fmt_num::{decimal_str, float4_text, float8_text, numeric_binary};
-use temporal::{date_text, interval_parts_of_duration, interval_parts_of_mdn, interval_text, timestamp_text, TzSpec};
+use temporal::{date_text, DAY_US, interval_parts_of_duration, interval_parts_of_mdn, interval_text, timestamp_text, TzSpec};
 
 #[derive(Debug)]
 pub enum EncErr {
@@ -392,49 +394,55 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
             })
         }
         Kind::Date => {
-            let DataType::Date32 = dt else { return Err(unsupported(kind, &dt)) };
-            let a = typed::<Date32Array>(arr);
+            // (days since 1970-01-01, the ±infinity a date32 marks). to_pylist of a date64 is the
+            // date of its milliseconds, floored; only date32 carries the infinity markers.
+            let days: Box<dyn Fn(usize) -> (i64, i32) + Send + Sync> = match &dt {
+                DataType::Date32 => {
+                    let a = typed::<Date32Array>(arr);
+                    Box::new(move |i| (a.value(i) as i64, temporal::date_infinity(a.value(i))))
+                }
+                DataType::Date64 => {
+                    let a = typed::<Date64Array>(arr);
+                    Box::new(move |i| (a.value(i).div_euclid(86_400_000), 0))
+                }
+                _ => return Err(unsupported(kind, &dt)),
+            };
             Ok(Box::new(move |i, out| {
-                let days = a.value(i);
-                let inf = temporal::date_infinity(days);
+                let (days, inf) = days(i);
                 if binary {
                     if inf != 0 {
                         out.extend_from_slice(&(if inf > 0 { i32::MAX } else { i32::MIN }).to_be_bytes());
                     } else {
-                        temporal::check_date(days as i64)?;
-                        out.extend_from_slice(&(days - 10957).to_be_bytes());
+                        temporal::check_date(days)?;
+                        out.extend_from_slice(&((days - 10957) as i32).to_be_bytes());
                     }
                     Ok(())
                 } else {
-                    date_text(days, out)
+                    date_text(days, inf, out)
                 }
             }))
         }
         Kind::Timestamp | Kind::TimestampTz => {
             let DataType::Timestamp(unit, tz) = &dt else { return Err(unsupported(kind, &dt)) };
-            let per_us: i64 = match unit {
-                TimeUnit::Second => 1_000_000,
-                TimeUnit::Millisecond => 1_000,
-                TimeUnit::Microsecond => 1,
-                TimeUnit::Nanosecond => return Err(unsupported(kind, &dt)),
-            };
-            let infinity_marked = *unit == TimeUnit::Microsecond;
+            let unit = *unit;
+            // Only a microsecond column carries the ±infinity markers (column_values).
+            let infinity_marked = unit == TimeUnit::Microsecond;
             let tz = match tz {
                 None => TzSpec::Naive,
-                Some(name) => TzSpec::parse(name).ok_or_else(|| unsupported(kind, &dt))?,
+                Some(name) => TzSpec::parse(name)?,
             };
             let a = typed::<Int64Array>(&cast(arr, &DataType::Int64).map_err(|e| EncErr::Value(e.to_string()))?);
             let tz_required = kind == Kind::TimestampTz;
             Ok(Box::new(move |i, out| {
                 let raw = a.value(i);
                 let inf = if infinity_marked { temporal::timestamp_infinity(raw) } else { 0 };
-                let micros = raw as i128 * per_us as i128;
+                let micros = temporal::micros_of(raw, unit)?;
                 if binary {
                     if inf != 0 {
                         out.extend_from_slice(&(if inf > 0 { i64::MAX } else { i64::MIN }).to_be_bytes());
                         return Ok(());
                     }
-                    temporal::check_timestamp(micros, tz)?;
+                    temporal::check_timestamp(micros, &tz)?;
                     if tz_required && tz == TzSpec::Naive {
                         return Err(EncErr::Value("timestamptz value without a time zone".into()));
                     }
@@ -446,28 +454,37 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
                         out.extend_from_slice(if inf > 0 { b"infinity" } else { b"-infinity" });
                         return Ok(());
                     }
-                    timestamp_text(micros, tz, out)
+                    timestamp_text(micros, &tz, out)
                 }
             }))
         }
         Kind::Time => {
-            let micros: Box<dyn Fn(usize) -> i64 + Send + Sync> = match &dt {
+            let micros: Box<dyn Fn(usize) -> R<i64> + Send + Sync> = match &dt {
                 DataType::Time64(TimeUnit::Microsecond) => {
                     let a = typed::<Time64MicrosecondArray>(arr);
-                    Box::new(move |i| a.value(i))
+                    Box::new(move |i| Ok(a.value(i)))
                 }
                 DataType::Time32(TimeUnit::Millisecond) => {
                     let a = typed::<Time32MillisecondArray>(arr);
-                    Box::new(move |i| a.value(i) as i64 * 1000)
+                    Box::new(move |i| Ok(a.value(i) as i64 * 1000))
                 }
                 DataType::Time32(TimeUnit::Second) => {
                     let a = typed::<Time32SecondArray>(arr);
-                    Box::new(move |i| a.value(i) as i64 * 1_000_000)
+                    Box::new(move |i| Ok(a.value(i) as i64 * 1_000_000))
+                }
+                DataType::Time64(TimeUnit::Nanosecond) => {
+                    // as_py is pandas.Timestamp(v, unit="ns").time(): the time of day of that
+                    // instant, its nanoseconds dropped.
+                    let a = typed::<Time64NanosecondArray>(arr);
+                    Box::new(move |i| {
+                        let us = temporal::micros_of(a.value(i), TimeUnit::Nanosecond)?;
+                        Ok(us.rem_euclid(DAY_US as i128) as i64)
+                    })
                 }
                 _ => return Err(unsupported(kind, &dt)),
             };
             Ok(Box::new(move |i, out| {
-                let us = micros(i);
+                let us = micros(i)?;
                 if !(0..86_400_000_000).contains(&us) {
                     return Err(EncErr::Value("hour must be in 0..23".into()));
                 }
@@ -489,14 +506,9 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
                     })
                 }
                 DataType::Duration(unit) => {
-                    let per_us: i128 = match unit {
-                        TimeUnit::Second => 1_000_000,
-                        TimeUnit::Millisecond => 1_000,
-                        TimeUnit::Microsecond => 1,
-                        TimeUnit::Nanosecond => return Err(unsupported(kind, &dt)),
-                    };
+                    let unit = *unit;
                     let a = typed::<PrimitiveArray<Int64Type>>(&cast(arr, &DataType::Int64).map_err(|e| EncErr::Value(e.to_string()))?);
-                    Box::new(move |i| interval_parts_of_duration(a.value(i) as i128 * per_us))
+                    Box::new(move |i| interval_parts_of_duration(temporal::micros_of(a.value(i), unit)?))
                 }
                 _ => return Err(unsupported(kind, &dt)),
             };
@@ -535,6 +547,22 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
             }))
         }
         Kind::Uuid => {
+            if let DataType::FixedSizeBinary(16) = dt {
+                // The 16 bytes of a UUID (arrow.uuid's storage): to_pylist of an arrow.uuid column
+                // is uuid.UUID values; str() is the canonical form, .bytes the bytes.
+                let a = typed::<FixedSizeBinaryArray>(arr);
+                return Ok(if binary {
+                    Box::new(move |i, out| {
+                        out.extend_from_slice(a.value(i));
+                        Ok(())
+                    })
+                } else {
+                    Box::new(move |i, out| {
+                        uuid_text(a.value(i), out);
+                        Ok(())
+                    })
+                });
+            }
             let g = str_getter(arr).ok_or_else(|| unsupported(kind, &dt))?;
             Ok(if binary {
                 Box::new(move |i, out| {
@@ -552,25 +580,97 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
     }
 }
 
-/// uuid.UUID(str(u)).bytes for the spellings uuid.UUID reads: hyphens anywhere, braces, urn:uuid:.
-fn uuid_bytes(s: &str) -> R<[u8; 16]> {
-    let s = s.replace("urn:", "").replace("uuid:", "");
-    let s = s.trim_matches(|c| c == '{' || c == '}').replace('-', "");
-    if s.len() != 32 {
-        return Err(EncErr::Value("badly formed hexadecimal UUID string".into()));
+/// The digit zero of each run of Unicode decimal digits (Nd) past ASCII, in Unicode 15.0.0 (Python
+/// 3.12's unicodedata): every Nd character is one of these plus 0..9.
+const DECIMAL_ZEROS: [u32; 67] = [
+    0x660, 0x6f0, 0x7c0, 0x966, 0x9e6, 0xa66, 0xae6, 0xb66, 0xbe6, 0xc66, 0xce6, 0xd66, 0xde6, 0xe50, 0xed0, 0xf20, 0x1040, 0x1090, 0x17e0, 0x1810, 0x1946, 0x19d0, 0x1a80, 0x1a90, 0x1b50, 0x1bb0, 0x1c40, 0x1c50, 0xa620, 0xa8d0, 0xa900, 0xa9d0, 0xa9f0, 0xaa50, 0xabf0, 0xff10, 0x104a0, 0x10d30, 0x11066, 0x110f0, 0x11136, 0x111d0, 0x112f0, 0x11450, 0x114d0, 0x11650, 0x116c0, 0x11730, 0x118e0, 0x11950, 0x11c50, 0x11d50, 0x11da0, 0x11f50, 0x16a60, 0x16ac0, 0x16b50, 0x1d7ce, 0x1d7d8, 0x1d7e2, 0x1d7ec, 0x1d7f6, 0x1e140, 0x1e2f0, 0x1e4f0, 0x1e950, 0x1fbf0,
+];
+
+/// The ASCII byte int() reads a character as (_PyUnicode_TransformDecimalAndSpaceToASCII): Unicode
+/// whitespace a space, a decimal digit its ASCII digit, anything else past ASCII invalid.
+fn int_ascii(c: char) -> u8 {
+    if c.is_ascii() {
+        return c as u8;
     }
-    let mut out = [0u8; 16];
-    let b = s.as_bytes();
-    for k in 0..16 {
-        let hi = (b[2 * k] as char).to_digit(16);
-        let lo = (b[2 * k + 1] as char).to_digit(16);
-        match (hi, lo) {
-            (Some(h), Some(l)) => out[k] = (h * 16 + l) as u8,
-            // int(hex, 16) also takes whitespace, underscores and a 0x prefix; not ported.
-            _ => return Err(EncErr::Unsupported(format!("uuid spelling {s:?} not ported"))),
+    if is_py_space(c) {
+        return b' ';
+    }
+    let u = c as u32;
+    match DECIMAL_ZEROS.iter().rev().find(|&&z| z <= u) {
+        Some(&z) if u - z < 10 => b'0' + (u - z) as u8,
+        _ => b'?',
+    }
+}
+
+/// int(s, 16) of at most 32 characters (PyLong_FromString): ASCII whitespace around it, a `+`, an
+/// optional 0x prefix and one underscore after it, then hex digits with single underscores between.
+fn int_hex_128(s: &[u8]) -> Option<u128> {
+    let is_space = |c: u8| matches!(c, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r');
+    let mut p = 0;
+    while p < s.len() && is_space(s[p]) {
+        p += 1;
+    }
+    if s.get(p) == Some(&b'+') {
+        p += 1;
+    }
+    if s.get(p) == Some(&b'0') && matches!(s.get(p + 1), Some(b'x' | b'X')) {
+        p += 2;
+        if s.get(p) == Some(&b'_') {
+            p += 1;
         }
     }
-    Ok(out)
+    let mut v: u128 = 0;
+    let mut digits = 0;
+    let mut prev_underscore = true; // no underscore first
+    while p < s.len() {
+        let c = s[p];
+        if c == b'_' {
+            if prev_underscore {
+                return None;
+            }
+            prev_underscore = true;
+        } else if let Some(d) = (c as char).to_digit(16) {
+            v = (v << 4) | d as u128;
+            digits += 1;
+            prev_underscore = false;
+        } else {
+            break;
+        }
+        p += 1;
+    }
+    if digits == 0 || prev_underscore {
+        return None;
+    }
+    while p < s.len() && is_space(s[p]) {
+        p += 1;
+    }
+    (p == s.len()).then_some(v)
+}
+
+/// uuid.UUID(str(u)).bytes: urn: and uuid: dropped anywhere, braces stripped from the ends, hyphens
+/// dropped anywhere, then 32 characters that int(hex, 16) reads.
+fn uuid_bytes(s: &str) -> R<[u8; 16]> {
+    let bad = || EncErr::Value("badly formed hexadecimal UUID string".into());
+    let s = s.replace("urn:", "").replace("uuid:", "");
+    let s = s.trim_matches(|c| c == '{' || c == '}').replace('-', "");
+    if s.chars().count() != 32 {
+        return Err(bad());
+    }
+    let ascii: Vec<u8> = s.chars().map(int_ascii).collect();
+    let v = int_hex_128(&ascii).ok_or_else(|| EncErr::Value(format!("invalid literal for int() with base 16: {s:?}")))?;
+    Ok(v.to_be_bytes())
+}
+
+/// str(uuid.UUID(bytes=b)): lower-case hex in 8-4-4-4-12 groups.
+fn uuid_text(b: &[u8], out: &mut Vec<u8>) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    for (k, &byte) in b.iter().enumerate() {
+        if matches!(k, 4 | 6 | 8 | 10) {
+            out.push(b'-');
+        }
+        out.push(HEX[(byte >> 4) as usize]);
+        out.push(HEX[(byte & 15) as usize]);
+    }
 }
 
 /// The list column's child values and per-row offsets, for any list layout.
@@ -878,5 +978,8 @@ fn encode_stream<'py>(
 fn pgwire_encoder_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(encode_batch, m)?)?;
     m.add_function(wrap_pyfunction!(encode_stream, m)?)?;
+    // The IANA release chrono-tz's tables and tz_rules.rs's rules were built from.
+    m.add("TZDB_VERSION", chrono_tz::IANA_TZDB_VERSION)?;
+    m.add("TZ_RULES_VERSION", tz_rules::TZDB_VERSION)?;
     Ok(())
 }

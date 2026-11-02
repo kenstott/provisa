@@ -1,9 +1,12 @@
 // Dates, timestamps, times and intervals, as provisa's column_values and buenavista's converters
 // write them.
 
+use arrow::datatypes::TimeUnit;
+
+use crate::tz::Zone;
 use crate::{EncErr, R};
 
-const DAY_US: i128 = 86_400_000_000;
+pub const DAY_US: i128 = 86_400_000_000;
 /// datetime.date(1, 1, 1) and date(9999, 12, 31) as days since 1970-01-01.
 const MIN_DAY: i64 = -719_162;
 const MAX_DAY: i64 = 2_932_896;
@@ -14,23 +17,34 @@ pub enum TzSpec {
     Naive,
     /// A fixed UTC offset in seconds (UTC is 0).
     Fixed(i32),
+    /// An IANA zone: its offset at each instant.
+    Named(Zone),
 }
 
 impl TzSpec {
-    /// The zones whose offset is fixed: UTC and +HH:MM / -HH:MM. A named zone needs the tz database
-    /// pyarrow's own conversion consults; not ported.
-    pub fn parse(name: &str) -> Option<TzSpec> {
+    /// UTC and +HH:MM / -HH:MM are fixed offsets (pyarrow gives them a fixed tzinfo); any other
+    /// name is an IANA zone.
+    pub fn parse(name: &str) -> R<TzSpec> {
         if name == "UTC" {
-            return Some(TzSpec::Fixed(0));
+            return Ok(TzSpec::Fixed(0));
         }
         let b = name.as_bytes();
         if b.len() == 6 && (b[0] == b'+' || b[0] == b'-') && b[3] == b':' {
-            let h: i32 = name[1..3].parse().ok()?;
-            let m: i32 = name[4..6].parse().ok()?;
-            let secs = h * 3600 + m * 60;
-            return Some(TzSpec::Fixed(if b[0] == b'-' { -secs } else { secs }));
+            if let (Ok(h), Ok(m)) = (name[1..3].parse::<i32>(), name[4..6].parse::<i32>()) {
+                let secs = h * 3600 + m * 60;
+                return Ok(TzSpec::Fixed(if b[0] == b'-' { -secs } else { secs }));
+            }
         }
-        None
+        Zone::named(name).map(TzSpec::Named).ok_or_else(|| EncErr::Value(format!("unknown time zone {name:?}")))
+    }
+
+    /// The offset in seconds east of UTC at `micros` after the epoch (UTC), None for a naive value.
+    fn offset_at(&self, micros: i128) -> Option<i32> {
+        match self {
+            TzSpec::Naive => None,
+            TzSpec::Fixed(off) => Some(*off),
+            TzSpec::Named(zone) => Some(zone.offset_at(micros.div_euclid(1_000_000) as i64)),
+        }
     }
 }
 
@@ -63,7 +77,7 @@ pub fn check_date(days: i64) -> R<()> {
 }
 
 /// Civil (year, month, day) of days since 1970-01-01 (Howard Hinnant's days_from_civil inverse).
-fn civil(days: i64) -> (i64, u32, u32) {
+pub fn civil(days: i64) -> (i64, u32, u32) {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);
@@ -93,17 +107,30 @@ fn push_ymd(days: i64, out: &mut Vec<u8>) {
     push2(out, d);
 }
 
-/// _date_text
-pub fn date_text(days: i32, out: &mut Vec<u8>) -> R<()> {
-    match date_infinity(days) {
+/// _date_text of days since 1970-01-01, or the ±infinity `inf` marks.
+pub fn date_text(days: i64, inf: i32, out: &mut Vec<u8>) -> R<()> {
+    match inf {
         1 => out.extend_from_slice(b"infinity"),
         -1 => out.extend_from_slice(b"-infinity"),
         _ => {
-            check_date(days as i64)?;
-            push_ymd(days as i64, out);
+            check_date(days)?;
+            push_ymd(days, out);
         }
     }
     Ok(())
+}
+
+/// Microseconds of an Arrow time value in `unit`. A nanosecond value is a pandas Timestamp or
+/// Timedelta in to_pylist, its microseconds floored; the int64 minimum is NaT, which no converter
+/// takes.
+pub fn micros_of(raw: i64, unit: TimeUnit) -> R<i128> {
+    Ok(match unit {
+        TimeUnit::Second => raw as i128 * 1_000_000,
+        TimeUnit::Millisecond => raw as i128 * 1_000,
+        TimeUnit::Microsecond => raw as i128,
+        TimeUnit::Nanosecond if raw == i64::MIN => return Err(EncErr::Value("NaT is not a value".into())),
+        TimeUnit::Nanosecond => raw.div_euclid(1000) as i128,
+    })
 }
 
 /// _pg_clock's HH:MM:SS[.fraction] of microseconds since midnight.
@@ -153,35 +180,36 @@ fn offset_text(seconds: i32, out: &mut Vec<u8>) {
     }
 }
 
-fn local_micros(micros: i128, tz: TzSpec) -> i128 {
-    match tz {
-        TzSpec::Naive => micros,
-        TzSpec::Fixed(off) => micros + off as i128 * 1_000_000,
-    }
-}
-
-/// A timestamp to_pylist can hold: its UTC and its local time both within datetime's years.
-pub fn check_timestamp(micros: i128, tz: TzSpec) -> R<()> {
+/// A timestamp to_pylist can hold: its UTC and its local time both within datetime's years. Its
+/// local time and offset when it is.
+fn local_of(micros: i128, tz: &TzSpec) -> R<(i128, Option<i32>)> {
     let lo = MIN_DAY as i128 * DAY_US;
     let hi = (MAX_DAY as i128 + 1) * DAY_US;
-    for v in [micros, local_micros(micros, tz)] {
-        if v < lo || v >= hi {
-            return Err(EncErr::Value("year is out of range".into()));
-        }
+    let out_of_range = |v: i128| v < lo || v >= hi;
+    if out_of_range(micros) {
+        return Err(EncErr::Value("year is out of range".into()));
     }
-    Ok(())
+    let offset = tz.offset_at(micros);
+    let local = micros + offset.unwrap_or(0) as i128 * 1_000_000;
+    if out_of_range(local) {
+        return Err(EncErr::Value("year is out of range".into()));
+    }
+    Ok((local, offset))
+}
+
+pub fn check_timestamp(micros: i128, tz: &TzSpec) -> R<()> {
+    local_of(micros, tz).map(|_| ())
 }
 
 /// _timestamp_text for a finite value: the local date and clock, and the offset of an aware one.
-pub fn timestamp_text(micros: i128, tz: TzSpec, out: &mut Vec<u8>) -> R<()> {
-    check_timestamp(micros, tz)?;
-    let local = local_micros(micros, tz);
+pub fn timestamp_text(micros: i128, tz: &TzSpec, out: &mut Vec<u8>) -> R<()> {
+    let (local, offset) = local_of(micros, tz)?;
     let days = local.div_euclid(DAY_US) as i64;
     let tod = local.rem_euclid(DAY_US) as i64;
     push_ymd(days, out);
     out.push(b' ');
     clock_text(tod, out);
-    if let TzSpec::Fixed(off) = tz {
+    if let Some(off) = offset {
         offset_text(off, out);
     }
     Ok(())

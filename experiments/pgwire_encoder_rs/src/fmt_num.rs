@@ -1,10 +1,8 @@
 // Number text and binary forms, each a port of the Python function named in its comment.
 
-use std::fmt::Write;
-
 use crate::{EncErr, R};
 
-/// A fixed stack buffer for core::fmt output (no allocation per value).
+/// A fixed stack buffer for a value's digits (no allocation per value).
 pub struct StackBuf {
     buf: [u8; 128],
     len: usize,
@@ -14,39 +12,6 @@ impl StackBuf {
     pub fn new() -> Self {
         StackBuf { buf: [0; 128], len: 0 }
     }
-    pub fn as_str(&self) -> &str {
-        std::str::from_utf8(&self.buf[..self.len]).unwrap()
-    }
-}
-
-impl Write for StackBuf {
-    fn write_str(&mut self, s: &str) -> std::fmt::Result {
-        let b = s.as_bytes();
-        if self.len + b.len() > self.buf.len() {
-            return Err(std::fmt::Error);
-        }
-        self.buf[self.len..self.len + b.len()].copy_from_slice(b);
-        self.len += b.len();
-        Ok(())
-    }
-}
-
-/// Splits a Rust `{:e}` form (`1.2345e-5`) into its significant digits (no trailing zeros, "0"
-/// for zero) and its decimal exponent.
-fn sci_parts(s: &str, digits: &mut StackBuf) -> i32 {
-    let (mantissa, exp) = s.split_once('e').unwrap();
-    for c in mantissa.bytes().filter(|&c| c != b'.') {
-        digits.buf[digits.len] = c;
-        digits.len += 1;
-    }
-    while digits.len > 1 && digits.buf[digits.len - 1] == b'0' {
-        digits.len -= 1;
-    }
-    if digits.len == 1 && digits.buf[0] == b'0' || digits.len == 0 {
-        digits.buf[0] = b'0';
-        digits.len = 1;
-    }
-    exp.parse().unwrap()
 }
 
 fn push_zeros(out: &mut Vec<u8>, n: i32) {
@@ -55,24 +20,40 @@ fn push_zeros(out: &mut Vec<u8>, n: i32) {
     }
 }
 
-/// repr's digits of a finite |x|: the shortest that read back, the closest of those, a tie to the
-/// even one (David Gay's mode 0). Rust's shortest form can take the odd side of an exact tie,
-/// which only a value needing 15+ digits can be at; there the correctly rounded form of that
-/// length is taken when it reads back.
-fn repr_digits(a: f64, digits: &mut StackBuf) -> i32 {
-    let mut s = StackBuf::new();
-    write!(s, "{:e}", a).unwrap();
-    let exp = sci_parts(s.as_str(), digits);
-    if digits.len < 15 {
-        return exp;
+/// The shortest digits of a finite |x| that read back as x, the closest of those, an exact tie to
+/// the even one, and the decimal exponent of the first digit. These are Ryu's digits, from the
+/// ryu crate: the algorithm PostgreSQL's float8out and float4out run (src/common/d2s.c, f2s.c), and
+/// the digits Python's repr chooses. `formatted` is ryu's output (`1.5e-7`, `0.0001`, `1e16`).
+fn ryu_digits(formatted: &str, digits: &mut StackBuf) -> i32 {
+    let (mantissa, exp) = match formatted.split_once('e') {
+        Some((m, e)) => (m, e.parse::<i32>().unwrap()),
+        None => (formatted, 0),
+    };
+    let point = mantissa.bytes().position(|c| c == b'.').unwrap_or(mantissa.len()) as i32;
+    let mut first = None;
+    for (k, c) in mantissa.bytes().filter(|&c| c != b'.').enumerate() {
+        if first.is_none() && c != b'0' {
+            first = Some(k as i32);
+        }
+        if first.is_some() {
+            digits.buf[digits.len] = c;
+            digits.len += 1;
+        }
     }
-    let mut exact = StackBuf::new();
-    write!(exact, "{:.*e}", digits.len - 1, a).unwrap();
-    if exact.as_str().parse::<f64>().unwrap() == a {
-        digits.len = 0;
-        return sci_parts(exact.as_str(), digits);
+    while digits.len > 1 && digits.buf[digits.len - 1] == b'0' {
+        digits.len -= 1;
     }
-    exp
+    let Some(first) = first else {
+        digits.buf[0] = b'0';
+        digits.len = 1;
+        return 0;
+    };
+    point - 1 - first + exp
+}
+
+fn digits_f64(a: f64, digits: &mut StackBuf) -> i32 {
+    let mut b = ryu::Buffer::new();
+    ryu_digits(b.format_finite(a), digits)
 }
 
 /// _shortest_text: float8out / float4out for a finite value's shortest digits.
@@ -129,53 +110,32 @@ fn non_finite(x: f64, out: &mut Vec<u8>) -> bool {
     true
 }
 
-/// _float8_text: the shortest round-trip digits (repr), PostgreSQL's layout.
+/// float8out (extra_float_digits >= 1, the default): NaN, Infinity, -Infinity, -0, else the
+/// shortest round-trip digits, in fixed form when the decimal exponent is in [-4, 15).
 pub fn float8_text(x: f64, out: &mut Vec<u8>) {
     if non_finite(x, out) {
         return;
     }
     let mut digits = StackBuf::new();
-    let exp = repr_digits(x.abs(), &mut digits);
+    let exp = digits_f64(x.abs(), &mut digits);
     shortest_text(&digits.buf[..digits.len], exp, x.is_sign_negative(), 15, out);
 }
 
-const FLOAT4_MAX_AS_DOUBLE: f64 = 3.4028234663852886e38;
-
-/// _float4_text: the fewest digits (1..9) whose correctly rounded form, read as a double then
-/// packed as a float, is the value's float.
+/// float4out of the float `x` packs to: as float8out over a float's shortest round-trip digits, in
+/// fixed form when the decimal exponent is in [-4, 6). A finite double past float's range is the
+/// OverflowError struct.pack("!f") raises.
 pub fn float4_text(x: f64, out: &mut Vec<u8>) -> R<()> {
     if non_finite(x, out) {
         return Ok(());
     }
-    let a = x.abs();
-    let wanted = a as f32;
-    if wanted.is_infinite() {
+    let f = (x as f32).abs();
+    if f.is_infinite() {
         return Err(EncErr::Overflow("float too large to pack with f format".into()));
     }
-    let wanted = wanted.to_bits();
-    let negative = x.is_sign_negative();
-    for d in 1..10usize {
-        let mut s = StackBuf::new();
-        write!(s, "{:.*e}", d - 1, a).unwrap();
-        let back: f64 = s.as_str().parse().unwrap();
-        let packed = back as f32;
-        let reads_back = if packed.is_infinite() {
-            d == 8 && wanted == (FLOAT4_MAX_AS_DOUBLE as f32).to_bits()
-        } else {
-            packed.to_bits() == wanted
-        };
-        if reads_back {
-            let mut digits = StackBuf::new();
-            let exp = sci_parts(s.as_str(), &mut digits);
-            shortest_text(&digits.buf[..digits.len], exp, negative, 6, out);
-            return Ok(());
-        }
-    }
-    let mut s = StackBuf::new();
-    write!(s, "{:.8e}", a).unwrap();
+    let mut b = ryu::Buffer::new();
     let mut digits = StackBuf::new();
-    let exp = sci_parts(s.as_str(), &mut digits);
-    shortest_text(&digits.buf[..digits.len], exp, negative, 6, out);
+    let exp = ryu_digits(b.format_finite(f), &mut digits);
+    shortest_text(&digits.buf[..digits.len], exp, x.is_sign_negative(), 6, out);
     Ok(())
 }
 
@@ -190,7 +150,7 @@ pub fn float_repr(x: f64, out: &mut Vec<u8>) {
         return;
     }
     let mut db = StackBuf::new();
-    let exp = repr_digits(x.abs(), &mut db);
+    let exp = digits_f64(x.abs(), &mut db);
     let digits = &db.buf[..db.len];
     if x.is_sign_negative() {
         out.push(b'-');
