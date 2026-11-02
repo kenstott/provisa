@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import threading
 import time
 import shutil
 from dataclasses import dataclass
@@ -68,6 +69,38 @@ _OPENING_LOCK_KEY = 7351
 #: the page keeps waiting. Under the UI server's proxy timeout (ui.proxy_timeout, REQ-1448).
 OPEN_WAIT_S = 120.0
 _OPEN_POLL_S = 2.0
+
+# What the tier's VM idle stop counts as use besides an open sandbox's last request (last_active):
+# an open under way, and the last request to any sandbox, kept after the sandbox is reaped. On
+# alpha.498 the VM stopped itself while an open waited for its demo's stores, the sandbox before it
+# closed and reaped, its window counted from when the tier started. Requests run on threads of
+# their own, so a thread lock guards both.
+_use = threading.Lock()
+_opening = 0
+_last_used: datetime | None = None
+
+
+def used() -> None:
+    """A request reached a sandbox, or an open began or ended: the tier is in use now."""
+    global _last_used
+    with _use:
+        _last_used = datetime.now(UTC)
+
+
+@contextlib.contextmanager
+def an_open():
+    """An open under way: the tier counts as in use for as long as it lasts, however long its
+    demo's stores and template take."""
+    global _opening
+    used()
+    with _use:
+        _opening += 1
+    try:
+        yield
+    finally:
+        with _use:
+            _opening -= 1
+        used()
 
 
 @contextlib.asynccontextmanager
@@ -263,6 +296,8 @@ async def demo_status(name: str) -> dict:
     from provisa.api.admin.orgs_router import _admin_pool
     from provisa.api.demo_templates import template_builds
 
+    # A visitor's page asks this while it waits for the demo: that wait is use of the tier.
+    used()
     demo = published_demo(name)
     _refuse_failed_stores(demo)
     _refuse_failed_template(demo)
@@ -312,12 +347,17 @@ async def record_visitor_attributes(conn: Any, person: str, directory: Path) -> 
 async def open_sandbox(name: str, *, kind: str, user_id: str | None = None) -> OpenedSandbox:
     """Open a sandbox of the published demo ``name``: a visitor's (``user_id`` None, minted here)
     or a named one for the signed-in ``user_id``."""
-    from provisa.api.admin.orgs_router import _admin_pool
-
     if kind not in (VISITOR, NAMED):
         raise ValueError(f"unknown sandbox kind {kind!r}")
     if (kind == NAMED) != (user_id is not None):
         raise ValueError("a named sandbox is opened for a signed-in user, a visitor's for none")
+    with an_open():
+        return await _open(name, kind=kind, user_id=user_id)
+
+
+async def _open(name: str, *, kind: str, user_id: str | None) -> OpenedSandbox:
+    from provisa.api.admin.orgs_router import _admin_pool
+
     org_id = new_sandbox_org_id()
     async with _stage(org_id, name, "its demo's readiness"):
         demo = await _ready_demo(name)
@@ -566,6 +606,7 @@ async def touch(org_id: str) -> None:
 
     from provisa.api.admin.orgs_router import _admin_pool
 
+    used()
     clock = time.monotonic()
     if clock - _touched.get(org_id, float("-inf")) < _TOUCH_EVERY_S:
         return
@@ -621,16 +662,22 @@ async def last_active() -> datetime | None:
     """When the tier was last in use, which is what its VM's idle stop counts from: when a request
     last reached any open sandbox, None when none is open; now while it is building templates ahead
     (REQ-2006), which it does only while it is up: stopped at the end of its idle window, a pass over
-    the demos never reached the end of them."""
+    the demos never reached the end of them; now while a sandbox is being opened; and never before
+    the last request this process saw to a sandbox, reaped since or not."""
     from provisa.api.admin.orgs_router import _admin_pool
     from provisa.api import demo_templates
 
     if demo_templates.building_ahead():
         return datetime.now(UTC)
+    with _use:
+        if _opening:
+            return datetime.now(UTC)
+        last_used = _last_used
     async with _admin_pool().acquire() as conn:
-        return (
+        latest = (
             await conn.execute_core(select(func.max(demo_sandboxes.c.last_active_at)))
         ).scalar_one()
+    return max((t for t in (latest, last_used) if t is not None), default=None)
 
 
 async def reap(org_id: str) -> None:
