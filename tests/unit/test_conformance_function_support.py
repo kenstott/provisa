@@ -639,6 +639,12 @@ def test_a_type_with_a_form_of_its_own_is_held_to_it(oid, good, bad):
     assert support.re.fullmatch(form, bad) is None
 
 
+def test_a_functions_own_form_holds_for_the_overload_answering_its_type_only():
+    assert support.value_form("random", 701, "0.5") == support.FUNCTION_FORMS["random"]
+    assert support.re.fullmatch(support.value_form("random", 23, "7"), "2")
+    assert support.re.fullmatch(support.value_form("random", 1700, "1.53"), "2.23")
+
+
 def test_a_string_with_no_form_of_its_own_takes_the_shape_of_postgresqls_answer():
     query = 'SELECT pg_catalog."current_query"() AS v'
     form = support.value_form("current_query", 25, query)

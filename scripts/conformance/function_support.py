@@ -330,6 +330,10 @@ FUNCTION_FORMS = {
     "version": r"PostgreSQL \d+\.\d+ .+",
 }
 
+#: The result type a function's form is of, where another overload answers another type: random()
+#: is a fraction in [0, 1), random(min, max) an integer or a numeric between its bounds.
+_FUNCTION_FORM_OIDS = {"random": 701}
+
 #: timeofday's text, but for its last word: the zone's abbreviation, which is PostgreSQL's to say.
 _TIMEOFDAY = r"[A-Z][a-z]{2} [A-Z][a-z]{2} \d{2} \d{2}:\d{2}:\d{2}\.\d{6} \d{4} "
 
@@ -1727,7 +1731,7 @@ def value_form(name: str, oid: int, sample: str) -> str:
     ``sample``, PostgreSQL's answer."""
     if name == "timeofday":
         return _TIMEOFDAY + re.escape(sample.rsplit(" ", 1)[1])
-    if name in FUNCTION_FORMS:
+    if name in FUNCTION_FORMS and _FUNCTION_FORM_OIDS.get(name, oid) == oid:
         return FUNCTION_FORMS[name]
     if oid in TYPE_FORMS:
         return TYPE_FORMS[oid]
