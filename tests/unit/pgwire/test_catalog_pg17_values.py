@@ -27,6 +27,7 @@ from provisa.pgwire.catalog_constraints import (
     _build_pk_constraint_rows,
     _build_unique_constraint_rows,
 )
+from tests.unit.pgwire.result_rows import rows_of
 
 _ROLE = "testrole"
 
@@ -164,6 +165,6 @@ def test_a_session_lists_itself_in_pg_stat_activity(monkeypatch):
         "SELECT pid, usename, application_name, state, backend_start IS NOT NULL "
         "FROM pg_catalog.pg_stat_activity"
     )
-    assert [tuple(r) for r in result.rows()] == [
+    assert [tuple(r) for r in rows_of(result)] == [
         (session.process_id, _ROLE, "psql", "active", True)
     ]

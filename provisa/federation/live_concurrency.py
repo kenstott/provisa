@@ -250,7 +250,7 @@ class LivePermits:
         connection), exactly as the unwrapped stream would."""
         if not self._held:
             return self._capped(stream)
-        from provisa.executor.result import StreamingQueryResult
+        from provisa.executor.result import rewrapped
 
         source_close = getattr(stream, "close", None)
 
@@ -262,13 +262,7 @@ class LivePermits:
                 self.release()
 
         cap, self._output_cap = self._output_cap, None  # applied once, to the wrapper
-        wrapped = StreamingQueryResult(
-            self.guard(stream.batches()),
-            column_names=list(stream.column_names),
-            column_types=stream.column_types,
-            on_release=_release,
-            column_type_oids=stream.column_type_oids,
-        )
+        wrapped = rewrapped(stream, self.guard, on_release=_release)
         self._output_cap = cap
         return self._capped(wrapped)
 

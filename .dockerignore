@@ -23,8 +23,7 @@ __MACOSX/
 provisa/_graph_render
 # The encoders' local cargo and bench output, and the module an editable install compiles into the
 # checkout: the image compiles provisa._encoders itself, for its own platform (REQ-2194)
-experiments/pgwire_encoder_rs/target/
-experiments/pgwire_encoder_rs/build/
+rust/pgwire/target/
 rust/encoders/target/
 provisa/_encoders*.so
 provisa/_encoders*.pyd

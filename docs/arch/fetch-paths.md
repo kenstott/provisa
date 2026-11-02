@@ -1,6 +1,6 @@
 # Fetch paths: how each engine and source hands a result to the encoders
 
-Status: map and plan, 2026-11-02. The requirement (maintainer, 2026-11-02): every
+Status: map and plan, 2026-11-02; pgwire wired to the Rust encoder (section 1.1). The requirement (maintainer, 2026-11-02): every
 engine hands the encoder an Arrow buffer or a direct row cursor on its own result, never rows a
 Python client has parsed; where a columnar endpoint exists and Provisa calls a row endpoint, the
 call is redesigned; an engine or source with neither is documented here with what it costs.
@@ -31,9 +31,52 @@ Arrow results, so a terminal can carry the engine's Arrow to the consumer unchan
   (and its `repr` does not build it).
 
 Encoders that read `arrow_batches()` get no Python row at all; the row consumers in place today
-(GraphQL, JSON:API, Bolt, pgwire's DataRow loop) keep working, converting at the point they read.
-An async terminal builds the rows on its executor thread before handing the result back
-(`ArrowResult.with_rows()`): the event loop does no per-row work.
+(GraphQL, JSON:API, Bolt) keep working, converting at the point they read. An async terminal
+builds the rows on its executor thread before handing the result back (`ArrowResult.with_rows()`):
+the event loop does no per-row work.
+
+### 1.1 pgwire reads Arrow from every result (REQ-2194)
+
+pgwire's DataRow messages are written by the Rust encoder (`provisa._encoders.pgwire`, crate
+`rust/pgwire`) and by nothing else: buenavista's `send_data_rows` hands the encoder each result's
+Arrow record batches, every column's wire type, the result formats and each column's coercers
+(`encode_stream`), and a passthrough's own DataRow messages go through `forward_raw`. There is no
+Python DataRow writer to fall back to.
+
+Every `ResultStream` has `arrow_batches()`:
+
+- an Arrow result (`ArrowResult`, `ArrowStreamResult`) hands on the engine's batches;
+- a row result (`QueryResult`, `StreamingQueryResult`) builds one record batch per row batch it
+  holds, in **one place**: `provisa.core.ir_arrow.row_batch`. That is the fetch boundary of every
+  engine that still returns Python rows (the Postgres engine, the SQLAlchemy routes, the DIRECT
+  drivers not yet switched, the warehouses in 2.1 not yet switched, Trino until J496z, the admin
+  route), and the **interim cost** of those engines: each value is read into Arrow from the Python
+  value the driver built, once more than an Arrow engine's. It ends engine by engine as each read
+  becomes columnar (section 3); the conversion has no other caller.
+- a passthrough's result (`DataRowResult`, `DataRowStreamResult`) hands on `datarow_batches()`,
+  forwarded unchanged.
+
+`row_batch` keeps each value as the encoder would have read it from the driver's Python value:
+a column Arrow holds as it is (`column_values` reads back the same value, of the same type, at
+the same offset, the same Decimal exponent) is that Arrow; PostgreSQL's infinities become the
+sentinels `column_values` reads as them; an interval with months is month-day-nano. Where Arrow
+cannot hold the values as they are, the column holds what PostgreSQL writes of them, chosen by
+the engine's type name for the column: a numeric of mixed scales (or NaN, Infinity) as
+numeric_out's text, a money or float numeric at its widest scale, a timetz of differing offsets
+as timetz_out's text, an address as inet_out's or cidr_out's, a JSON document of varying keys as
+its JSON text. Aware datetimes of differing offsets are held as instants in UTC (what PostgreSQL
+holds). `tests/unit/pgwire_encoder/test_row_boundary.py` holds each kind of driver value through
+the boundary to PostgreSQL 17's answer.
+
+What wraps a stream keeps its kind (`executor.result.rewrapped`): the live-read permit guard and
+the response-cache tee hand Arrow on as Arrow (the tee keeps an Arrow IPC entry, which a hit
+replays as an `ArrowResult`), and a passthrough's DataRow messages as DataRow messages. A SQL
+cursor buffers the batches it pulled and hands out slices of them; query_to_xml and its kin read
+Python values from the batches (they write an XML document, not DataRow messages).
+
+DuckDB's lossless export carries `HUGEINT`, `UHUGEINT`, `VARINT`, `BIT` and `TIMETZ` as its own
+bytes (Arrow opaque types); the encoder reads them from those bytes as `duckdb_arrow.arrow_rows`
+does, so a DuckDB result reaches the wire with no Python row at all.
 
 ## 2. Map
 

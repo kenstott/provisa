@@ -20,7 +20,9 @@ import struct
 from typing import Any
 
 import pytest
-from buenavista.postgres import BVTYPE_TO_PGTYPE, BVType, _float4_text, _float8_text
+from buenavista.core import BVType
+
+from tests.unit.pgwire import wire_cells as wire
 
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 
@@ -46,8 +48,7 @@ FLOAT8_TEXT = [
 
 @pytest.mark.parametrize(("value", "text"), FLOAT8_TEXT)
 def test_float8_text_is_what_float8out_writes(value: float, text: str) -> None:
-    assert _float8_text(value) == text
-    assert BVTYPE_TO_PGTYPE[BVType.FLOAT][1](value) == text
+    assert wire.text(BVType.FLOAT, value) == text
 
 
 def _as_float4(value: float) -> float:
@@ -79,8 +80,7 @@ def _as_float4(value: float) -> float:
 )
 def test_float4_text_is_the_shortest_form_that_reads_back(value: float, text: str) -> None:
     held = value if value != value or value in (float("inf"), float("-inf")) else _as_float4(value)
-    assert _float4_text(held) == text
-    assert BVTYPE_TO_PGTYPE[BVType.REAL][1](held) == text
+    assert wire.text(BVType.REAL, held) == text
 
 
 def _text(conn: Any, sql: str) -> tuple[int, list[str]]:

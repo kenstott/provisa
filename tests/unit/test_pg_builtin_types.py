@@ -25,7 +25,8 @@ import duckdb
 import pytest
 from graphql import GraphQLList, GraphQLNonNull, execute_sync, parse, print_schema
 
-from buenavista.postgres import BVTYPE_TO_PGTYPE
+from buenavista.postgres import BVTYPE_TO_OID
+from tests.unit.pgwire import wire_cells as wire
 from provisa.api.admin.introspect import _pg_column_typing
 from provisa.compiler.context import build_context
 from provisa.compiler.introspect import ColumnMetadata
@@ -126,7 +127,7 @@ def test_each_built_in_type_is_a_type_of_the_ir_or_a_subtype_at_its_oid(oid, pg_
     assert SUBTYPES[subtype].pg_oid == oid
     assert column_typing(pg_type[_FORMAT], "postgresql").data_type == subtype
     # Sent as, and listed as, its own type.
-    assert BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(subtype)][0] == oid
+    assert BVTYPE_TO_OID[_sql_type_to_bvtype(subtype)] == oid
     assert _physical_to_pg_oid(subtype) == oid
     assert _physical_to_pg_name(subtype) == subtype
     assert oid in {row[0] for row in pg_type_rows()}
@@ -561,7 +562,7 @@ def test_an_array_of_a_subtype_is_a_list_of_its_scalar():
     ],
 )
 def test_a_value_held_as_text_is_sent_in_its_types_text_and_binary_forms(subtype, text, binary):
-    _oid, to_text, to_binary = BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(subtype)]
+    _oid, to_text, to_binary = wire.entry(_sql_type_to_bvtype(subtype))
     assert to_text(text) == text
     assert to_binary(text) == (binary or to_binary([1, 2]))
 
@@ -574,16 +575,25 @@ def test_a_value_held_as_text_is_sent_in_its_types_text_and_binary_forms(subtype
     ],
 )
 def test_a_timetz_read_as_text_is_sent_in_its_binary_form(text, binary):
-    _oid, to_text, to_binary = BVTYPE_TO_PGTYPE[_sql_type_to_bvtype("timetz")]
+    _oid, to_text, to_binary = wire.entry(_sql_type_to_bvtype("timetz"))
     assert to_text(text) == text and to_binary(text) == binary
 
 
-@pytest.mark.parametrize("subtype", ["tsquery", "aclitem", "regrole", "pg_mcv_list"])
+@pytest.mark.parametrize("subtype", ["aclitem", "regrole", "pg_mcv_list"])
 def test_a_type_whose_text_does_not_give_its_binary_form_says_so(subtype):
-    _oid, to_text, to_binary = BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(subtype)]
+    _oid, to_text, to_binary = wire.entry(_sql_type_to_bvtype(subtype))
     assert to_text("x") == "x"
     with pytest.raises(ValueError, match=f"{subtype} is sent in text format only"):
         to_binary("x")
+
+
+def test_a_tsquery_is_sent_in_binary_as_tsquerysend_writes_it():
+    """REQ-2194: tsquery has a binary form, tsquerysend of tsquery_in(text), and the wire sends it
+    as PostgreSQL 17 does (the former writer refused it, a defect): one operand, weight 0, no
+    prefix, its lexeme."""
+    _oid, to_text, to_binary = wire.entry(_sql_type_to_bvtype("tsquery"))
+    assert to_text("'x'") == "'x'"
+    assert to_binary("'x'") == struct.pack("!ibbb", 1, 1, 0, 0) + b"x\x00"
 
 
 def test_every_base_is_a_type_of_the_ir():

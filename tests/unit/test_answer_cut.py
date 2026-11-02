@@ -266,7 +266,7 @@ def test_pgwire_sends_each_warning_as_a_notice_ahead_of_the_rows_once():
     handler = ProvisaHandler.__new__(ProvisaHandler)
     handler.wfile = io.BytesIO()
     plan = SimpleNamespace(warnings=[_cut_warning()], audit=None)
-    with patch("provisa.pgwire._pipeline.audit_on_drain", lambda plan, it: it):
+    with patch("provisa.pgwire._pipeline.audit_on_drain", lambda plan, it, rows_in=len: it):
         result = ProvisaQueryResult(
             QueryResult(rows=[(1,)], column_names=["id"], column_types=["integer"]),
             "SELECT id FROM pets",
