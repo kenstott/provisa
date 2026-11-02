@@ -66,13 +66,17 @@ def query_result(
     shape: list[tuple[str, str]] | None = None,
     read_shape: list[tuple[str, str]] | None = None,
     force_types: list[Any] | None = None,
+    force_coerce: list[tuple[int, Any]] | None = None,
 ) -> ProvisaQueryResult:
-    """``force_types``: each column's BVType set outright, for a type no engine type name reaches
-    (a test of every BVType's writer)."""
+    """``force_types``: each column's BVType set outright, for a type no engine type name reaches;
+    ``force_coerce``: the (column, coercer) pairs set outright (a test of every writer and
+    coercer)."""
     stream = stream_rows_from_arrow(schema, iter(batches), column_types=column_types)
     qr = ProvisaQueryResult(stream, sql, shape=shape, read_shape=read_shape)
     if force_types is not None:
         qr._types = list(force_types)
+    if force_coerce is not None:
+        qr._coerce = list(force_coerce)
     qr.result_format = formats
     return qr
 

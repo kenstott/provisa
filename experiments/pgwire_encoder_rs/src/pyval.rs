@@ -120,7 +120,11 @@ impl RelDelta {
             return p;
         }
         let secs = (self.hours * 60 + self.minutes) * 60 + self.seconds;
-        (self.years * 12 + self.months, self.days, secs * 1_000_000 + self.microseconds)
+        (
+            self.years * 12 + self.months,
+            self.days,
+            secs * 1_000_000 + self.microseconds,
+        )
     }
 }
 
@@ -137,6 +141,8 @@ pub enum PyVal {
     None,
     Bool(bool),
     Int(i128),
+    /// An int past i128 (int() of a UUID, a huge float or decimal): its decimal digits.
+    BigInt(String),
     Float(f64),
     Dec(Dec),
     Str(String),
@@ -169,7 +175,7 @@ impl PyVal {
         match self {
             PyVal::None => "NoneType",
             PyVal::Bool(_) => "bool",
-            PyVal::Int(_) => "int",
+            PyVal::Int(_) | PyVal::BigInt(_) => "int",
             PyVal::Float(_) => "float",
             PyVal::Dec(_) => "decimal.Decimal",
             PyVal::Str(_) => "str",
@@ -259,7 +265,11 @@ fn timestamp_at(raw: i64, unit: TimeUnit, tz: Option<&(TzSpec, TzRepr)>, top: bo
         let inf = temporal::timestamp_infinity(raw);
         if inf != 0 {
             // infinite_timestamp: datetime.max or min, in datetime.timezone.utc when aware
-            let edge = if inf > 0 { 2_932_897 * DAY_US - 1 } else { -719_162 * DAY_US };
+            let edge = if inf > 0 {
+                2_932_897 * DAY_US - 1
+            } else {
+                -719_162 * DAY_US
+            };
             return Ok(PyVal::DateTime(DateTime {
                 local: edge,
                 offset: tz.map(|_| 0),
@@ -340,9 +350,12 @@ fn value_at(arr: &ArrayRef, i: usize, uuid_ext: bool, tz: Option<&(TzSpec, TzRep
         DataType::Binary => PyVal::Bytes(typed::<BinaryArray>(arr).value(i).to_vec()),
         DataType::LargeBinary => PyVal::Bytes(typed::<LargeBinaryArray>(arr).value(i).to_vec()),
         DataType::BinaryView => PyVal::Bytes(typed::<BinaryViewArray>(arr).value(i).to_vec()),
-        DataType::FixedSizeBinary(16) if uuid_ext => {
-            PyVal::Uuid(typed::<FixedSizeBinaryArray>(arr).value(i).try_into().expect("16 bytes"))
-        }
+        DataType::FixedSizeBinary(16) if uuid_ext => PyVal::Uuid(
+            typed::<FixedSizeBinaryArray>(arr)
+                .value(i)
+                .try_into()
+                .expect("16 bytes"),
+        ),
         DataType::FixedSizeBinary(_) => PyVal::Bytes(typed::<FixedSizeBinaryArray>(arr).value(i).to_vec()),
         DataType::Date32 => {
             let v = typed::<Date32Array>(arr).value(i);
@@ -362,8 +375,8 @@ fn value_at(arr: &ArrayRef, i: usize, uuid_ext: bool, tz: Option<&(TzSpec, TzRep
             PyVal::Date { days, inf: 0 }
         }
         DataType::Timestamp(unit, _) => {
-            let raw = typed::<Int64Array>(&arrow::compute::cast(arr, &DataType::Int64).expect("timestamp storage"))
-                .value(i);
+            let raw =
+                typed::<Int64Array>(&arrow::compute::cast(arr, &DataType::Int64).expect("timestamp storage")).value(i);
             timestamp_at(raw, *unit, tz, top)?
         }
         DataType::Time32(unit) => {
@@ -376,8 +389,8 @@ fn value_at(arr: &ArrayRef, i: usize, uuid_ext: bool, tz: Option<&(TzSpec, TzRep
             time_of(raw, *unit)?
         }
         DataType::Duration(unit) => {
-            let raw = typed::<Int64Array>(&arrow::compute::cast(arr, &DataType::Int64).expect("duration storage"))
-                .value(i);
+            let raw =
+                typed::<Int64Array>(&arrow::compute::cast(arr, &DataType::Int64).expect("duration storage")).value(i);
             if *unit == TimeUnit::Nanosecond {
                 PyVal::PdTimedelta((raw != i64::MIN).then_some(raw as i128))
             } else {
@@ -393,7 +406,9 @@ fn value_at(arr: &ArrayRef, i: usize, uuid_ext: bool, tz: Option<&(TzSpec, TzRep
             if top {
                 interval_value(v.months as i128, v.days as i128, v.nanoseconds.div_euclid(1000) as i128)
             } else {
-                return Err(EncErr::Type("a list of month-day-nano intervals is not a row value".into()));
+                return Err(EncErr::Type(
+                    "a list of month-day-nano intervals is not a row value".into(),
+                ));
             }
         }
         DataType::List(_) | DataType::LargeList(_) | DataType::FixedSizeList(..) => {
@@ -689,7 +704,11 @@ fn plus_g(n: i64, out: &mut String) {
 
 /// relativedelta.__repr__ (an _ExactInterval names its own class)
 fn reldelta_repr(r: &RelDelta, out: &mut String) {
-    out.push_str(if r.exact.is_some() { "_ExactInterval(" } else { "relativedelta(" });
+    out.push_str(if r.exact.is_some() {
+        "_ExactInterval("
+    } else {
+        "relativedelta("
+    });
     let mut first = true;
     for (name, v) in [
         ("years", r.years),
@@ -733,7 +752,11 @@ pub fn is_printable(c: char) -> bool {
 
 /// repr(str)
 pub fn str_repr(s: &str, out: &mut String) {
-    let quote = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
+    let quote = if s.contains('\'') && !s.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
     out.push(quote);
     for c in s.chars() {
         match c {
@@ -756,7 +779,11 @@ pub fn str_repr(s: &str, out: &mut String) {
 
 /// repr(bytes)
 pub fn bytes_repr(b: &[u8], out: &mut String) {
-    let quote = if b.contains(&b'\'') && !b.contains(&b'"') { b'"' } else { b'\'' };
+    let quote = if b.contains(&b'\'') && !b.contains(&b'"') {
+        b'"'
+    } else {
+        b'\''
+    };
     out.push('b');
     out.push(quote as char);
     for &c in b {
@@ -787,7 +814,13 @@ fn uuid_str(b: &[u8; 16], out: &mut String) {
 pub fn inet_addr_text(v: &Inet, pg: bool, out: &mut String) {
     if !v.v6 {
         let a = v.addr as u32;
-        out.push_str(&format!("{}.{}.{}.{}", a >> 24, (a >> 16) & 255, (a >> 8) & 255, a & 255));
+        out.push_str(&format!(
+            "{}.{}.{}.{}",
+            a >> 24,
+            (a >> 16) & 255,
+            (a >> 8) & 255,
+            a & 255
+        ));
         return;
     }
     let words: Vec<u16> = (0..8).map(|k| (v.addr >> (112 - 16 * k)) as u16).collect();
@@ -828,7 +861,13 @@ pub fn inet_addr_text(v: &Inet, pg: bool, out: &mut String) {
         // an encapsulated IPv4 address
         if pg && k == 6 && best.0 == 0 && (best.1 == 6 || (best.1 == 5 && words[5] == 0xffff)) {
             let a = v.addr as u32;
-            out.push_str(&format!("{}.{}.{}.{}", a >> 24, (a >> 16) & 255, (a >> 8) & 255, a & 255));
+            out.push_str(&format!(
+                "{}.{}.{}.{}",
+                a >> 24,
+                (a >> 16) & 255,
+                (a >> 8) & 255,
+                a & 255
+            ));
             return;
         }
         out.push_str(&format!("{:x}", words[k as usize]));
@@ -902,6 +941,7 @@ pub fn py_repr(v: &PyVal, out: &mut String) {
         PyVal::None => out.push_str("None"),
         PyVal::Bool(b) => out.push_str(if *b { "True" } else { "False" }),
         PyVal::Int(n) => push_num(out, *n),
+        PyVal::BigInt(d) => out.push_str(d),
         PyVal::Float(x) => push_float(out, *x),
         PyVal::Dec(d) => {
             out.push_str("Decimal('");
@@ -918,7 +958,14 @@ pub fn py_repr(v: &PyVal, out: &mut String) {
         PyVal::DateTime(d) if d.ns.is_some() => {
             // Timestamp('...'), its zone after: pandas' repr
             out.push_str("Timestamp('");
-            datetime_iso(&DateTime { offset: None, ..d.clone() }, ' ', out);
+            datetime_iso(
+                &DateTime {
+                    offset: None,
+                    ..d.clone()
+                },
+                ' ',
+                out,
+            );
             if let Some(off) = d.offset {
                 out.push(if off < 0 { '-' } else { '+' });
                 push_pad(out, (off.abs() / 3600) as i64, 2);
@@ -934,7 +981,11 @@ pub fn py_repr(v: &PyVal, out: &mut String) {
             }
         }
         PyVal::DateTime(d) => {
-            out.push_str(if d.inf != 0 { "_InfiniteDatetime(" } else { "datetime.datetime(" });
+            out.push_str(if d.inf != 0 {
+                "_InfiniteDatetime("
+            } else {
+                "datetime.datetime("
+            });
             datetime_args(d, out);
             if d.tz != TzRepr::Naive {
                 out.push_str(", tzinfo=");
@@ -1146,11 +1197,21 @@ pub fn dec_of_str(s: &str) -> R<Dec> {
     };
     let lower = body.to_ascii_lowercase();
     if lower == "inf" || lower == "infinity" {
-        return Ok(Dec { neg, digits: vec![b'0'], exp: 0, special: DecSpecial::Infinity });
+        return Ok(Dec {
+            neg,
+            digits: vec![b'0'],
+            exp: 0,
+            special: DecSpecial::Infinity,
+        });
     }
     if let Some(payload) = lower.strip_prefix("nan") {
         if payload.bytes().all(|c| c.is_ascii_digit()) {
-            return Ok(Dec { neg, digits: vec![b'0'], exp: 0, special: DecSpecial::NaN });
+            return Ok(Dec {
+                neg,
+                digits: vec![b'0'],
+                exp: 0,
+                special: DecSpecial::NaN,
+            });
         }
         return Err(bad());
     }
@@ -1191,7 +1252,12 @@ pub fn dec_of_str(s: &str) -> R<Dec> {
     let first = digits.iter().position(|&c| c != b'0').unwrap_or(digits.len() - 1);
     digits.drain(..first);
     let exp = i32::try_from(e - fp.len() as i64).map_err(|_| bad())?;
-    Ok(Dec { neg, digits, exp, special: DecSpecial::Finite })
+    Ok(Dec {
+        neg,
+        digits,
+        exp,
+        special: DecSpecial::Finite,
+    })
 }
 
 /// Decimal(repr(x)) of a float: Decimal(str(float)).
@@ -1207,6 +1273,11 @@ pub fn to_float(v: &PyVal) -> R<f64> {
         PyVal::Float(x) => Ok(*x),
         PyVal::Bool(b) => Ok(*b as i32 as f64),
         PyVal::Int(n) => Ok(*n as f64),
+        PyVal::BigInt(d) => d
+            .parse::<f64>()
+            .ok()
+            .filter(|x| x.is_finite())
+            .ok_or_else(|| EncErr::Overflow("int too large to convert to float".into())),
         PyVal::Dec(d) => Ok(match d.special {
             DecSpecial::NaN => f64::NAN.copysign(if d.neg { -1.0 } else { 1.0 }),
             DecSpecial::Infinity => {
@@ -1235,7 +1306,7 @@ pub fn to_float(v: &PyVal) -> R<f64> {
 /// struct.pack("!d" / "!f", value): a float, or what has __float__ or __index__.
 pub fn packable_float(v: &PyVal) -> R<f64> {
     match v {
-        PyVal::Float(_) | PyVal::Bool(_) | PyVal::Int(_) | PyVal::Dec(_) => to_float(v),
+        PyVal::Float(_) | PyVal::Bool(_) | PyVal::Int(_) | PyVal::BigInt(_) | PyVal::Dec(_) => to_float(v),
         _ => Err(EncErr::Value("required argument is not a float".into())),
     }
 }
@@ -1267,19 +1338,66 @@ pub fn to_int(v: &PyVal) -> R<i128> {
                 if keep <= 0 {
                     return Ok(0);
                 }
-                let mut s = String::from_utf8(d.digits[..keep.min(n) as usize].to_vec()).unwrap();
+                let mut s = String::from(if d.neg { "-" } else { "" });
+                s.push_str(std::str::from_utf8(&d.digits[..keep.min(n) as usize]).unwrap());
                 for _ in n..keep {
                     s.push('0');
                 }
-                let v: i128 = s
-                    .parse()
-                    .map_err(|_| EncErr::Overflow("int too large for the encoder".into()))?;
-                Ok(if d.neg { -v } else { v })
+                s.parse()
+                    .map_err(|_| EncErr::Overflow("int too large for the encoder".into()))
             }
         },
         PyVal::Str(s) => int_of_str(s),
         PyVal::Bytes(b) => int_of_str(std::str::from_utf8(b).map_err(|_| type_error("int()", v))?),
-        _ => Err(type_error("int() argument must be a string, a bytes-like object or a real number, not", v)),
+        PyVal::Uuid(_) | PyVal::Inet(_) | PyVal::BigInt(_) => match to_int_value(v)? {
+            PyVal::Int(n) => Ok(n),
+            _ => Err(EncErr::Overflow("int too large for the encoder".into())),
+        },
+        _ => Err(type_error(
+            "int() argument must be a string, a bytes-like object or a real number, not",
+            v,
+        )),
+    }
+}
+
+/// int(value) as the value Python makes, of any size.
+pub fn to_int_value(v: &PyVal) -> R<PyVal> {
+    let big = |digits: String| -> PyVal {
+        match digits.parse::<i128>() {
+            Ok(n) => PyVal::Int(n),
+            Err(_) => PyVal::BigInt(digits),
+        }
+    };
+    match v {
+        PyVal::BigInt(_) => Ok(v.clone()),
+        PyVal::Uuid(b) => Ok(big(u128::from_be_bytes(*b).to_string())),
+        PyVal::Inet(a) => Ok(big(a.addr.to_string())),
+        PyVal::Float(x) if x.is_finite() && x.trunc().abs() >= 1.7e38 => Ok(big(format!("{:.0}", x.trunc()))),
+        PyVal::Dec(d) if d.special == DecSpecial::Finite => {
+            let n = d.digits.len() as i32;
+            let keep = n + d.exp;
+            if keep <= 0 {
+                return Ok(PyVal::Int(0));
+            }
+            let mut s = String::from(if d.neg { "-" } else { "" });
+            s.push_str(std::str::from_utf8(&d.digits[..keep.min(n) as usize]).unwrap());
+            s.extend(std::iter::repeat_n('0', (keep - n).max(0) as usize));
+            let t = s.trim_start_matches('-').trim_start_matches('0');
+            if t.is_empty() {
+                return Ok(PyVal::Int(0));
+            }
+            Ok(big(s))
+        }
+        PyVal::Str(s) => match int_of_str(s) {
+            Err(EncErr::Overflow(_)) => {
+                let t = ascii_number(s).unwrap_or_default().replace('_', "");
+                let neg = t.starts_with('-');
+                let digits = t.trim_start_matches(['-', '+']).trim_start_matches('0');
+                Ok(big(format!("{}{}", if neg { "-" } else { "" }, digits)))
+            }
+            other => other.map(PyVal::Int),
+        },
+        _ => to_int(v).map(PyVal::Int),
     }
 }
 
@@ -1299,6 +1417,7 @@ pub fn truthy(v: &PyVal) -> bool {
         PyVal::None => false,
         PyVal::Bool(b) => *b,
         PyVal::Int(n) => *n != 0,
+        PyVal::BigInt(_) => true,
         PyVal::Float(x) => *x != 0.0,
         PyVal::Dec(d) => !d.is_zero(),
         PyVal::Str(s) => !s.is_empty(),

@@ -43,7 +43,15 @@ import pytest
 import tzdata
 
 import pgwire_encoder_rs
-from pg_reference import pg17
+from buenavista.core import BVType
+from buenavista.postgres import BuenaVistaHandler
+
+import provisa.pgwire.cast_types as cast_types
+import provisa.pgwire.server as server
+from pg_reference import DEFECTS, pg17
+from provisa.federation.duckdb_pg_xml import xml_out
+from provisa.pgwire.cast_types import XML_ARRAY
+from provisa.transpiler.pg_forms_json import jsonb_out
 from python_ref import (
     bvtype_names,
     coercer_names,
@@ -1258,9 +1266,6 @@ def test_postgres_float_text(bvtype: str, arrow_type: pa.DataType, cases: list) 
 
 # --- every BVType, from every Arrow type a column may reach it as ---
 
-from buenavista.core import BVType  # noqa: E402
-
-from provisa.pgwire.cast_types import XML_ARRAY  # noqa: E402
 
 #: Every wire type send_data_rows knows, and BVType.UNKNOWN (any type it does not list).
 ALL_TYPES: list[Any] = [*BVType, XML_ARRAY]
@@ -1460,13 +1465,18 @@ MATRIX = [(name, arr) for name, arr in POOL] + [
 ]
 
 
-@pytest.mark.parametrize("fmt", [0, 1], ids=["text", "binary"])
-@pytest.mark.parametrize("bvtype", ALL_TYPES, ids=_type_name)
+#: Every BVType in each format: a tsquery in binary is held to PostgreSQL's own bytes instead
+#: (test_tsquery_binary), since the product refuses it.
+TYPE_FORMATS = [(t, f) for t in ALL_TYPES for f in (0, 1) if not (t == BVType.TSQUERY and f == 1)]
+
+
+@pytest.mark.parametrize(
+    ("bvtype", "fmt"),
+    TYPE_FORMATS,
+    ids=[f"{_type_name(t)}-{'binary' if f else 'text'}" for t, f in TYPE_FORMATS],
+)
 def test_every_type_from_every_arrow_type(bvtype: Any, fmt: int) -> None:
-    """Each BVType's writer, over every column of the pool: the same bytes, or both raise. A
-    tsquery in binary is held to PostgreSQL's own bytes instead (test_tsquery_binary)."""
-    if bvtype == BVType.TSQUERY and fmt == 1:
-        pytest.skip("held to PostgreSQL's tsquerysend in test_tsquery_binary")
+    """Each BVType's writer, over every column of the pool: the same bytes, or both raise."""
     failures = []
     for name, arr in MATRIX:
         try:
@@ -1474,3 +1484,465 @@ def test_every_type_from_every_arrow_type(bvtype: Any, fmt: int) -> None:
         except AssertionError as e:
             failures.append(f"{name}: {e}"[:400])
     assert not failures, "\n".join(failures)
+
+
+# --- every coercer ProvisaQueryResult applies, over every column of the pool ---
+
+
+COERCED_TEXTS = [
+    "[1, 2.5, null]",
+    "[[1, 2], [3, 4]]",
+    '["a", null, "b c"]',
+    "[]",
+    "null",
+    '{"a": 1}',
+    '{"b": 1, "aa": [1.50, 1e2, -0.0, 0E+2, 1E400], "a": "\\u00e9\\n\\u0001", "a": true}',
+    '"x"',
+    "NaN",
+    "[1, 2",
+    '<?xml version="1.0" encoding="UTF-8"?>\n<a/>',
+    '<?xml  version = "1.0"  standalone="no" ?><a/>',
+    '<?xml version="1.0"?><a/>',
+    "<?xmlx?>",
+    "abcdefgh",
+    "ab",
+    "é日本",
+]
+COERCER_POOL = (
+    MATRIX
+    + [(f"coerced_text_{k}", pa.array([t])) for k, t in enumerate(COERCED_TEXTS)]
+    + [
+        (
+            "clock_bytes",
+            pa.array(
+                [(3_600_000_001).to_bytes(8, "little", signed=True), b"", b"\xff"], pa.binary()
+            ),
+        ),
+    ]
+)
+
+T = BVType
+#: (coercer, the BVTypes it brings values to)
+COERCIONS: list[tuple[Any, list[Any]]] = [
+    (int, [T.INTEGER, T.BIGINT, T.SMALLINT, T.OID]),
+    (float, [T.FLOAT, T.REAL]),
+    (server._to_decimal, [T.DECIMAL, T.MONEY]),
+    (server._to_date, [T.DATE]),
+    (server._to_timestamp, [T.TIMESTAMP, T.TIMESTAMPTZ]),
+    (
+        server._to_list,
+        [
+            T.INTEGERARRAY,
+            T.STRINGARRAY,
+            T.FLOATARRAY,
+            T.DECIMALARRAY,
+            T.BOOLARRAY,
+            T.MONEYARRAY,
+            T.INTERVALARRAY,
+            XML_ARRAY,
+            T.OIDARRAY,
+            T.REALARRAY,
+        ],
+    ),
+    (server._null_alone, [T.TEXT]),
+    (server._duckdb_inet, [T.INET, T.CIDR, T.TEXT]),
+    (xml_out, [T.XML]),
+    (jsonb_out, [T.JSONB]),
+    (cast_types._to_int, [T.INTEGER, T.BIGINT]),
+    (cast_types._to_float, [T.FLOAT, T.REAL]),
+    (cast_types._to_decimal, [T.DECIMAL]),
+    (cast_types._to_bool, [T.BOOL]),
+    (cast_types.record_text, [T.TEXT]),
+    (cast_types._clock_of, [T.TIME]),
+    (cast_types._of_no_zone, [T.TIMESTAMP]),
+    (cast_types._padded(5), [T.TEXT]),
+]
+COERCER_CASES = [(c, t) for c, types in COERCIONS for t in types]
+
+
+@pytest.mark.parametrize("fmt", [0, 1], ids=["text", "binary"])
+@pytest.mark.parametrize(
+    "case",
+    COERCER_CASES,
+    ids=[f"{getattr(c, '__qualname__', c)}-{_type_name(t)}" for c, t in COERCER_CASES],
+)
+def test_every_coercer(case: tuple[Any, Any], fmt: int) -> None:
+    """The coercer, then the type's writer, over every column of the pool: the same bytes, or
+    both raise."""
+    coercer, bvtype = case
+    failures = []
+    for name, arr in COERCER_POOL:
+        try:
+            _forced([arr], [bvtype], [fmt], force_coerce=[(0, coercer)])
+        except AssertionError as e:
+            failures.append(f"{name}: {e}"[:400])
+    assert not failures, "\n".join(failures)
+
+
+# --- columns as the product describes them: engine types, shapes, casts ---
+
+POOL_BY_NAME = dict(POOL)
+_TS_INF = pa.array([I64_MAX, _ts(2024, 1, 2, 3, 4, 5, 6), -I64_MAX, None], pa.timestamp("us"))
+_TSTZ_INF = pa.array([I64_MAX, _ts(2024, 1, 2, 3, 4, 5, 6), None], pa.timestamp("us", "UTC"))
+_DATES_INF = pa.array([I32_MAX, _date(2024, 1, 2), -I32_MAX, None], pa.date32())
+
+#: (id, column, engine type, how it is described, the coercers the product applies)
+DESCRIBED: list[tuple[str, Any, str, dict[str, Any], list[str]]] = [
+    ("duckdb_inet", POOL_BY_NAME["duckdb_inet"], "INET", {}, ["duckdb_inet"]),
+    (
+        "shape_int_of_double",
+        pa.array([1.9, -2.5, 1e18, None]),
+        "DOUBLE",
+        {"shape": [("c0", "INTEGER")]},
+        ["int"],
+    ),
+    (
+        "shape_bigint_of_nan",
+        pa.array([float("nan")]),
+        "DOUBLE",
+        {"shape": [("c0", "BIGINT")]},
+        ["int"],
+    ),
+    (
+        "shape_double_of_bigint",
+        pa.array([2**53 + 1, -3, None]),
+        "BIGINT",
+        {"shape": [("c0", "DOUBLE")]},
+        ["float"],
+    ),
+    (
+        "shape_decimal_of_double",
+        pa.array([0.1, 1e16, 1e-7, -0.0, float("nan"), float("inf"), None]),
+        "DOUBLE",
+        {"shape": [("c0", "DECIMAL")]},
+        ["decimal"],
+    ),
+    ("shape_date_of_timestamp", _TS_INF, "TIMESTAMP", {"shape": [("c0", "DATE")]}, ["date"]),
+    (
+        "shape_timestamp_of_date",
+        _DATES_INF,
+        "DATE",
+        {"shape": [("c0", "TIMESTAMP")]},
+        ["timestamp"],
+    ),
+    (
+        "shape_timestamptz_of_date",
+        _DATES_INF,
+        "DATE",
+        {"shape": [("c0", "TIMESTAMPTZ")]},
+        ["timestamp"],
+    ),
+    (
+        "shape_int_array_of_json",
+        pa.array(["[1, null, 3]", "[[1, 2], [3, 4]]", "[]", "null", None]),
+        "VARCHAR",
+        {"shape": [("c0", "INTEGER[]")]},
+        ["list"],
+    ),
+    (
+        "shape_text_array_of_json",
+        pa.array(['["a", "b c", null]', "[[], []]"]),
+        "VARCHAR",
+        {"shape": [("c0", "VARCHAR[]")]},
+        ["list"],
+    ),
+    (
+        "read_shape_xml",
+        pa.array(['<?xml version="1.0" encoding="UTF-8"?>\n<a/>', "<b/>", None]),
+        "VARCHAR",
+        {"read_shape": [("c0", "xml")]},
+        ["xml_out"],
+    ),
+    (
+        "cast_char",
+        pa.array(["ab", "abcdefg", "", None]),
+        "VARCHAR",
+        {"sql": "SELECT c0::char(5) FROM t"},
+        ["pad:5"],
+    ),
+    ("cast_bool", pa.array([1, 0, 7, None]), "INTEGER", {"sql": "SELECT c0 = 1 FROM t"}, ["bool"]),
+    (
+        "cast_jsonb",
+        pa.array(['{"b": 1, "a": [1.50, 2]}', "", None]),
+        "JSON",
+        {"sql": "SELECT c0::jsonb FROM t"},
+        ["jsonb_out"],
+    ),
+    (
+        "cast_time_of_bytes",
+        POOL_BY_NAME["binary"],
+        "BLOB",
+        {"sql": "SELECT c0::time FROM t"},
+        ["clock"],
+    ),
+    (
+        "cast_timestamp_of_tz",
+        _TSTZ_INF,
+        "TIMESTAMP",
+        {"sql": "SELECT c0::timestamp FROM t"},
+        ["no_zone"],
+    ),
+    (
+        "cast_money",
+        pa.array([Decimal("1234.5"), Decimal("-0.005"), None], pa.decimal128(21, 4)),
+        "DECIMAL(21,4)",
+        {"sql": "SELECT c0::money FROM t"},
+        [],
+    ),
+    (
+        "cast_xml",
+        pa.array(['<?xml version="1.1"?><a/>']),
+        "VARCHAR",
+        {"sql": "SELECT c0::xml FROM t"},
+        ["xml_out"],
+    ),
+    *(
+        (f"read_shape_{name}", pa.array(texts), "VARCHAR", {"read_shape": [("c0", name)]}, [])
+        for name, texts in [
+            ("inet", ["192.168.0.1/24", "::ffff:1.2.3.4", None]),
+            ("cidr", ["10.0.0.0/8"]),
+            ("macaddr", ["08:00:2b:01:02:03"]),
+            ("macaddr8", ["08:00:2b:01:02:03:04:05"]),
+            ("money", ["$1,234.50", "-$0.01"]),
+            ("point", ["(1,2)", "(NaN,-Infinity)"]),
+            ("line", ["{1,-1,0}"]),
+            ("lseg", ["[(0,0),(1,1)]"]),
+            ("box", ["(2,3),(0,0)"]),
+            ("path", ["((0,0),(1,1))", "[(0,0)]"]),
+            ("polygon", ["((0,0),(1,1),(2,0))"]),
+            ("circle", ["<(1,2),3>"]),
+            ("int4range", ["[1,10)", "empty"]),
+            ("daterange", ["[2020-01-01,infinity)"]),
+            ("tsrange", ['["2000-01-01 00:00:00 BC",)']),
+            ("tsvector", ["'a':1A,2 'b'"]),
+            ("tsquery", ["'a' & 'b'"]),
+            ("bit", ["101"]),
+            ("pg_lsn", ["16/B374D848"]),
+            ("jsonpath", ['$."a"']),
+            ("txid_snapshot", ["10:20:12,15"]),
+            ("geometry", ["POINT(1 2)"]),
+        ]
+    ),
+]
+
+
+@pytest.mark.parametrize("fmt", [0, 1], ids=["text", "binary"])
+@pytest.mark.parametrize("case", DESCRIBED, ids=[c[0] for c in DESCRIBED])
+def test_described(case: tuple[str, Any, str, dict[str, Any], list[str]], fmt: int) -> None:
+    """A column as the product describes it (its engine type, the statement's shape or cast) and
+    the coercers it applies, which the Rust encoder is told by name."""
+    _, column, engine_type, described, coercers = case
+    batch = _batch([column])
+    py, bvtypes, said = _python(batch, [engine_type], [fmt], **described)
+    assert said == [coercers]
+    if bvtypes == ["TSQUERY"] and fmt == 1:
+        # the product refuses a binary tsquery: PostgreSQL's own bytes
+        assert isinstance(py, ValueError)
+        rows = _data_rows(_rust(batch, bvtypes, [fmt], said))
+        want = [bytes.fromhex(dict(TSQUERY_SEND)[t]) for t in column.to_pylist()]
+        assert [r[0] for r in rows] == want
+        return
+    _check([column], [engine_type], [fmt], **described)
+
+
+# --- PostgreSQL's own bytes (PostgreSQL 18.4, pg_types_check.py) ---
+
+#: tsquery text -> tsquerysend(text::tsquery)
+TSQUERY_SEND = [
+    ("'a' & 'b' & 'c'", "0000000502020100006300020201000062000100006100"),
+    ("( 'a' | 'b' ) & 'c'", "0000000502020100006300020301000062000100006100"),
+    ("'a' <-> ( 'b' <-> 'c' )", "000000050204000102040001010000630001000062000100006100"),
+    ("'a' <-> 'b' <-> 'c'", "000000050204000101000063000204000101000062000100006100"),
+    ("'a' <3> 'b'", "000000030204000301000062000100006100"),
+    ("!( 'a' & 'b' )", "000000040201020201000062000100006100"),
+    ("!!'a'", "00000003020102010100006100"),
+    ("'a':AB & 'b':*", "0000000302020100016200010c006100"),
+    ("'x y' & 'o''k'", "0000000302020100006f276b0001000078207900"),
+    ("'a\\\\b'", "00000001010000615c6200"),
+    ("( 'a' | 'b' ) <-> 'c'", "00000005020400010100006300020301000062000100006100"),
+    ("'a' <0> 'b'", "000000030204000001000062000100006100"),
+    (
+        "'a' & !'b' | 'c' & 'd':*BCD",
+        "0000000802030202010701640001000063000202020101000062000100006100",
+    ),
+    (
+        "'fat' & ( 'rat' | 'cat' ) <2> !'dog'",
+        "000000080202020400020201010000646f67000203010000636174000100007261740001000066617400",
+    ),
+    ("'é' | 'ü'", "000000030203010000c3bc00010000c3a900"),
+    ("'a' & 'b'", "00000003020201000062000100006100"),
+]
+
+
+def test_tsquery_binary() -> None:
+    """tsquery in binary is tsquerysend of tsquery_in(text): its operators left-associative, each
+    stored before its right operand, then its left. The product refuses a binary tsquery."""
+    texts = [t for t, _ in TSQUERY_SEND] + ["", "   "]
+    out = pgwire_encoder_rs.encode_batch(_batch([pa.array(texts)]), ["TSQUERY"], [1])
+    cells = [row[0] for row in _data_rows(out)]
+    assert cells == [bytes.fromhex(h) for _, h in TSQUERY_SEND] + [b"\x00\x00\x00\x00"] * 2
+    product = _product(
+        _batch([pa.array(texts[:1])]), ["VARCHAR"], [1], force_types=[BVType.TSQUERY]
+    )
+    assert isinstance(product, ValueError)
+
+
+def test_tsquery_malformed() -> None:
+    for text in ["'a' &", "( 'a'", "''", "'a' <x> 'b'", "'unterminated"]:
+        with pytest.raises(ValueError):
+            pgwire_encoder_rs.encode_batch(_batch([pa.array([text])]), ["TSQUERY"], [1])
+
+
+# --- RawDataRowBytes passthrough ---
+
+
+def test_forward_raw() -> None:
+    """Rows a PostgreSQL source sent whole are forwarded verbatim, in send_data_rows' chunks of 500
+    rows."""
+    from buenavista.core import RawDataRowBytes
+
+    from python_ref import _Sink
+
+    rows = [
+        b"D" + struct.pack("!ih", 4 + 2 + 4 + len(v), 1) + struct.pack("!i", len(v)) + v
+        for v in (str(k).encode() for k in range(1234))
+    ] + [b"D\x00\x00\x00\x0a\x00\x01\xff\xff\xff\xff"]
+
+    class _Raw:
+        result_format = None
+
+        def column_count(self) -> int:
+            return 1
+
+        def column(self, i: int) -> tuple[str, Any]:
+            return ("c", BVType.TEXT)
+
+        def rows(self) -> Any:
+            return iter([RawDataRowBytes(r) for r in rows])
+
+    py_writes: list[bytes] = []
+    sink = _Sink(type("W", (), {"write": staticmethod(py_writes.append)})())
+    py_count = BuenaVistaHandler.send_data_rows(sink, _Raw())
+    rs_writes: list[bytes] = []
+    rs_count = pgwire_encoder_rs.forward_raw(iter(rows), rs_writes.append)
+    assert (rs_count, rs_writes) == (py_count, py_writes)
+    assert [len(w) for w in rs_writes][:2] == [sum(len(r) for r in rows[:500])] * 1 + [
+        sum(len(r) for r in rows[500:1000])
+    ]
+    for bad in [
+        b"",
+        b"X\x00\x00\x00\x06\x00\x00",
+        b"D\x00\x00\x00\x07\x00\x00",
+        b"D\x00\x00\x00\x0a\x00\x01\x00\x00\x00\x09",
+    ]:
+        with pytest.raises(ValueError):
+            pgwire_encoder_rs.forward_raw([bad], rs_writes.append)
+
+
+def test_encode_stream_coerced() -> None:
+    """encode_stream takes each column's coercers as encode_batch does."""
+    column = pa.array([1.9, None, -2.5])
+    batch = _batch([column])
+    py, bvtypes, coercers = _python(batch, ["DOUBLE"], [1], shape=[("c0", "INTEGER")])
+    writes: list[bytes] = []
+    n = pgwire_encoder_rs.encode_stream(
+        [batch, batch.slice(0, 0), batch], bvtypes, writes.append, [1], coercers
+    )
+    assert n == 6 and b"".join(writes) == py * 2
+
+
+# --- each product defect pg_reference corrects: the product and the reference differ on a witness,
+# and the encoder gives the reference's (PostgreSQL's) answer ---
+
+WITNESSES: dict[str, tuple[list[Any], list[Any], list[int], dict[str, Any]]] = {
+    "numeric_text": ([pa.array([Decimal("1E-7")], pa.decimal128(10, 7))], [T.DECIMAL], [0], {}),
+    "numeric_binary": (
+        [pa.array([Decimal("1234567890123456789012345678.9012345678")], pa.decimal128(38, 10))],
+        [T.DECIMAL],
+        [1],
+        {},
+    ),
+    "empty_array": (
+        [pa.array([[[], []]], pa.list_(pa.list_(pa.int32())))],
+        [T.INTEGERARRAY],
+        [1],
+        {},
+    ),
+    "array_element_list": (
+        [pa.array([[None, ["a"]]], pa.list_(pa.list_(pa.string())))],
+        [T.STRINGARRAY],
+        [1],
+        {},
+    ),
+    "vector_lower_bound": ([pa.array([[1, 2]], pa.list_(pa.int64()))], [T.OIDVECTOR], [1], {}),
+    "inet_text": (
+        [_duckdb_inet(["::ffff:1.2.3.4/128"])],
+        [T.INET],
+        [0],
+        {"force_coerce": [(0, server._duckdb_inet)]},
+    ),
+    "duckdb_inet": (
+        [POOL_BY_NAME["duckdb_inet"]],
+        [T.INET],
+        [0],
+        {"force_coerce": [(0, server._duckdb_inet)]},
+    ),
+    "range_bounds": ([pa.array(["[2020-01-01,infinity)"])], [T.DATERANGE], [1], {}),
+    "tsquery_binary": ([pa.array(["'a' & 'b'"])], [T.TSQUERY], [1], {}),
+    "money_range": (
+        [pa.array([Decimal("100000000000000000")], pa.decimal128(24, 4))],
+        [T.MONEY],
+        [0],
+        {},
+    ),
+    "interval_days": (
+        [pa.array([(0, 999_999_999, (DAY_US - 1) * 1000)], pa.month_day_nano_interval())],
+        [T.INTERVAL],
+        [0],
+        {},
+    ),
+    "coerced_infinity": ([_TS_INF], [T.DATE], [0], {"force_coerce": [(0, server._to_date)]}),
+    "uuid_bytes": ([POOL_BY_NAME["fsb16"]], [T.UUID], [0], {}),
+}
+
+
+@pytest.mark.parametrize("defect", sorted(DEFECTS))
+def test_product_defect(defect: str) -> None:
+    arrays, types, formats, described = WITNESSES[defect]
+    batch = _batch(arrays)
+    product = _product(batch, ["VARCHAR"] * len(arrays), formats, force_types=types, **described)
+    reference, bvtypes, coercers = _python(
+        batch, ["VARCHAR"] * len(arrays), formats, force_types=types, **described
+    )
+    rust = _rust(batch, bvtypes, formats, coercers)
+    if defect == "tsquery_binary":
+        # no reference writes it: PostgreSQL's own bytes
+        assert isinstance(product, ValueError)
+        assert _data_rows(rust)[0][0] == bytes.fromhex(dict(TSQUERY_SEND)["'a' & 'b'"])
+        return
+    if defect == "inet_text":
+        # the product's text of the address its _duckdb_inet makes (given an int, as DuckDB's own
+        # Python rows carry it): Python's hextets
+        import buenavista.postgres as bp
+
+        assert bp._inet_text(ipaddress.ip_interface("::ffff:1.2.3.4/128")) == "::ffff:102:304"
+        assert _data_rows(rust)[0][0] == b"::ffff:1.2.3.4"
+    assert repr(product) != repr(reference), f"{defect}: the product answers as PostgreSQL does"
+    _assert_same(reference, rust, bvtypes, formats)
+
+
+def test_unicode_version() -> None:
+    """repr's table of printable characters is this interpreter's (gen_unicode.py)."""
+    import unicodedata
+
+    assert pgwire_encoder_rs.UNICODE_VERSION == unicodedata.unidata_version
+
+
+def test_no_type_is_unported() -> None:
+    """Every BVType, from every column of the pool, encodes or raises what the product's writer
+    raises: never NotImplementedError."""
+    for bvtype in ALL_TYPES:
+        for fmt in (0, 1):
+            for _, arr in MATRIX:
+                out = _rust(_batch([arr]), [_type_name(bvtype)], [fmt], [[]])
+                assert not isinstance(out, NotImplementedError), (bvtype, arr.type, out)

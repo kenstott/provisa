@@ -82,7 +82,8 @@ def numeric_binary(v: Any) -> bytes:
     if d.is_nan():
         return struct.pack("!HhHH", 0, 0, 0xC000, 0)
     if d.is_infinite():
-        return struct.pack("!HhHH", 0, 0, 0xF000 if d < 0 else 0xD000, 0)
+        # dscale 32: numeric_send reads it through the short header's bits (0xD000 & 0x1F80)
+        return struct.pack("!HhHH", 0, 0, 0xF000 if d < 0 else 0xD000, 32)
     exact = decimal.Context(prec=decimal.MAX_PREC, Emax=decimal.MAX_EMAX, Emin=decimal.MIN_EMIN)
     with decimal.localcontext(exact):
         return _ORIGINAL_NUMERIC_BINARY(d)

@@ -8,20 +8,39 @@ An experiment, isolated from the product: nothing in `provisa/` or `vendor/` cal
 `provisa.federation.runtime_support.stream_rows_from_arrow` (`column_values` per column, `zip` into
 row tuples) → `provisa.pgwire.server.ProvisaQueryResult` (column types from the engine's type names)
 → `buenavista.postgres.BuenaVistaHandler.send_data_rows` (the `BVTYPE_TO_PGTYPE` converters, DataRow
-framing, 500-row chunked writes). `python_ref.py` drives it into an in-memory writer. The one
-substitution: a timestamp column in a named zone takes its local times from zoneinfo, not pytz
-(`python_ref.named_zones`; see Named time zones).
+framing, 500-row chunked writes). `python_ref.py` drives it into an in-memory writer. Two
+substitutions: a timestamp column in a named zone takes its local times from zoneinfo, not pytz
+(`python_ref.named_zones`; see Named time zones), and **`pg_reference.pg17()`** replaces each
+product helper whose answer is not PostgreSQL 17's with one that gives PostgreSQL's (Product
+defects, below). That reference is what the encoder is held to; everything else is the product's
+own code. `pg_types_check.py` holds the corrected answers to a live server.
 
-**Rust (`src/`):** `pgwire_encoder_rs.encode_batch(batch, bvtypes, formats)` takes the same Arrow
-batch zero-copy through the Arrow C data interface (arrow-rs `pyarrow` feature), the BVType
-`ProvisaQueryResult` resolved for each column, and the per-column result formats, and returns the
-DataRow message bytes. `encode_stream(batches, bvtypes, write, formats)` streams a batch iterator
-and hands each batch's bytes to `write`, the shape `send_data_rows` has. The GIL is released while
-encoding.
+**Rust (`src/`):** `pgwire_encoder_rs.encode_batch(batch, bvtypes, formats, coercers)` takes the
+same Arrow batch zero-copy through the Arrow C data interface (arrow-rs `pyarrow` feature), the
+BVType `ProvisaQueryResult` resolved for each column (its member name, or `"xml[]"`), the
+per-column result formats, and each column's coercers by name (`python_ref.coercer_names`, read off
+`ProvisaQueryResult._coerce`), and returns the DataRow message bytes.
+`encode_stream(batches, bvtypes, write, formats, coercers)` streams a batch iterator and hands each
+batch's bytes to `write`, the shape `send_data_rows` has. `forward_raw(rows, write)` is the
+`RawDataRowBytes` passthrough. `register_catalog_names(procs, types)` hands the reg* writers the
+catalog names once (`python_ref.register_catalog_names`). The GIL is released while encoding.
+
+**How a column is written.** A column whose BVType and Arrow type have a direct writer (the hot
+types: ints, floats, numeric, text, bytea, dates, timestamps, times, intervals, JSON, UUID and the
+scalar arrays) and no coercer is written straight from the Arrow buffers, as before. Every other
+column (each other BVType, an Arrow type the direct writer does not take, or a coerced column) is
+written from its cell values: `src/pyval.rs` reads a cell as `column_values` hands it on (to_pylist,
+the IR's intervals and infinities) into a Rust value, never a Python object; `src/coerce.rs`
+applies the column's coercers; `src/pgtypes.rs` writes it as its BVType's converter does. Python's
+`str()`, `repr()`, `int()`, `float()` and `Decimal()` of a value are ported where a converter uses
+them (repr's printable characters from Python 3.12's Unicode 15.0.0 table, `gen_unicode.py`). No
+type raises `NotImplementedError` (`test_no_type_is_unported`).
 
 ## Differential test (`test_compare.py`)
 
-**1444 passed.** Every cell's bytes are identical, or both encoders raise, except a float4/float8
+**1818 passed, none skipped** (1444 before this job). Every cell's bytes are identical to the
+reference's (the product's, with PostgreSQL's answer for each product defect below), or both
+raise, except a float4/float8
 cell or array element. That one is compared by its decoded value, within one part in 10^14
 (`REL_TOL`), with NaN equal to NaN and the sign of zero kept. A float4 text cell decodes to the float
 `strtof` reads, correctly rounded as PostgreSQL's `float4in` and JDBC read it. A float4 text cell is
@@ -141,14 +160,14 @@ chrono-tz takes its version from NEWS, so line 3 is corrected to 2026b. `test_tz
 in uv.lock to the same release. PostgreSQL itself takes zones from its own build's tz data (or the
 system's), which a deployment pins separately.
 
-### Product behaviors the port reproduces
+### Product behaviors the port reproduces, and product defects
 
 1. **Binary numeric rounds past 28 significant digits** (`abs(d)` under the default decimal
-   context). Ported, as before (`fmt_num::context_round`).
+   context). *Now a defect corrected* (`numeric_binary` below): PostgreSQL keeps every digit.
 2. *(Gone.)* The float8 tie rule no longer needs porting: both sides round exact ties to even, and
    floats compare by value.
-3. **Interval days are split with float division** (`_interval_parts`). Ported, as before
-   (`temporal::trunc_true_div`).
+3. **Interval days are split with float division** (`_interval_parts`). *Now a defect corrected*
+   (`interval_days` below).
 4. **New: float4 text of a double described as REAL can name another float.** `_float4_text`
    searches the *double's* 1..9-digit roundings. When none reads back, it writes the double's 9 digits,
    and that text can sit across a float midpoint: `-3.5713408890908175e-09` is sent as
@@ -162,17 +181,73 @@ system's), which a deployment pins separately.
 7. **New, ported: a zoned ns value whose local time leaves pandas' int64 range is refused**
    (`OutOfBoundsDatetime`, within hours of 1677-09-21 and 2262-04-11). PostgreSQL would write it.
 
-### Not ported (Rust raises `NotImplementedError`; Python would encode)
+### Every type pgwire sends (J492b)
 
-- A 2-D text array whose first sub-list is empty or NULL (Python's binary path writes `str(list)` for
-  each inner list).
-- Every other BVType: inet, cidr, money, geometric, range, tsvector, xml, the catalog types, and the
-  interval/money/oid arrays.
-- `RawDataRowBytes` passthrough, and the row coercers (`_SHAPE_COERCERS`, `_describe_casts`,
-  `xml_out`, `_duckdb_inet`).
+Every BVType in `BVTYPE_TO_PGTYPE` and xml[] is written, in text and binary, from every Arrow type a
+column may reach it as: inet, cidr, macaddr, macaddr8, money, point, line, lseg, box, path, polygon,
+circle, geometry and geography (text only, as the product), the six ranges and six multiranges, bit,
+varbit, tsvector, tsquery, xml, timetz, "char", name, tid, xid, cid, xid8, txid_snapshot,
+pg_snapshot, jsonpath, pg_lsn, regproc, regtype, regclass, regnamespace, the text-only catalog types
+(aclitem, regprocedure, regoper, regoperator, regconfig, regdictionary, regrole, regcollation,
+pg_ndistinct, pg_dependencies, pg_mcv_list, gtsvector, pg_brin_*: binary refused as the product
+refuses it), oidvector, int2vector, every array type (int2/int4/int8/oid/float4/float8/numeric/bool/
+text/"char"/name/money/interval/regtype/xml/aclitem), BVType.ARRAY, UNKNOWN and NULL. The row
+coercers are ported: `_SHAPE_COERCERS` (int, float, `_to_decimal`, `_to_date`, `_to_timestamp`,
+`_to_list`, `xml_out`), every `CastType.coerce` (`_to_int`, `_to_bool`, `_to_float`, `_to_decimal`,
+`_padded(n)`, `jsonb_out`, `record_text`, `_clock_of`, `_of_no_zone`, `xml_out`), `_null_alone` and
+`_duckdb_inet`. `RawDataRowBytes` rows pass through `forward_raw` in 500-row writes, byte for byte
+(each is checked to be one DataRow message; the product forwards anything).
 
-Named zones, ns timestamps/times/durations, date64, the `int()` UUID spellings and
-`fixed_size_binary(16)` UUIDs are ported. None of them raises `NotImplementedError`.
+The new tests (`test_compare.py`):
+
+- `test_every_type_from_every_arrow_type`: every BVType (101) in text and binary, each over 110
+  columns: 54 Arrow types (every int and float width, decimal128/256, binary and
+  fixed_size_binary/arrow.uuid, date32/64 with infinities, timestamps in every unit and zone kind,
+  times, durations, month-day-nano, lists of every element kind, nested lists, structs, maps,
+  dictionaries, null) and 56 one-value text columns (PostgreSQL's text of each type held as text,
+  and what `int()`, `float()` and `Decimal()` read). Same bytes, or both raise.
+- `test_every_coercer`: each of the 17 coercers with each BVType it brings values to (36 pairs),
+  over the same 110 columns plus JSON, XML and padded texts and ClickHouse's Time64 bytes.
+- `test_described`: 40 columns as the product describes them (engine type names, a Describe's
+  shape, a read shape's subtypes, a result cast), asserting the coercers the product applies.
+- `test_tsquery_binary`, `test_forward_raw`, `test_encode_stream_coerced`, `test_product_defect`
+  (each defect below on a witness: the product's answer differs, the encoder gives PostgreSQL's),
+  `test_unicode_version`, `test_no_type_is_unported`.
+
+### Product defects (PostgreSQL 17's answer ported; `pg_reference.DEFECTS`)
+
+| key | the product | PostgreSQL 17 (the encoder) |
+|---|---|---|
+| `numeric_text` | `Decimal.__str__`: `1E-7`, `-0.00`, `1E+16` | `numeric_out`: `0.0000001`, `0.00`, `10000000000000000` |
+| `numeric_binary` | rounds past 28 digits under the default context; `Infinity` raises | every digit; NaN `0xC000`, ±Infinity `0xD000`/`0xF000` with dscale 32 (as `numeric_send` reads it) |
+| `empty_array` | `{{},{}}` and binary ndim 2 with a zero dimension | `{}`, binary ndim 0 (`array_send` of an empty array) |
+| `array_element_list` | a NULL first sub-list: the next sub-lists written as `str(list)` elements | refused: no array holds a sub-array as an element |
+| `vector_lower_bound` | oidvector/int2vector binary with lower bound 1 | lower bound 0 (`oidvectorsend`) |
+| `inet_text` | an IPv6 address holding an IPv4 one in hextets (`::ffff:102:304`) | dotted quad (`::ffff:1.2.3.4`, `::1.2.3.4`) |
+| `duckdb_inet` | DuckDB's INET reaches Arrow with a `decimal128(38, 0)` address; `_duckdb_inet` raises on it, so no DuckDB inet column can be sent | the address it is |
+| `range_bounds` | a date or timestamp bound `infinity`, `BC` or past 9999 raises (`fromisoformat`) | written (`range_send`) |
+| `tsquery_binary` | binary refused | `tsquerysend` of `tsquery_in(text)` |
+| `money_range` | text of a value past int8 cents written | refused (`money out of range`) |
+| `interval_days` | days by float division: a day too many within ~10 ms of the next near a billion days | exact |
+| `coerced_infinity` | `_to_date`, `_to_timestamp` and `_of_no_zone` turn ±infinity into 9999-12-31 / 0001-01-01 | infinity kept |
+| `uuid_bytes` | (defect 5) a plain `fixed_size_binary(16)` uuid as `str(bytes)`; binary refused | the UUID |
+
+Kept as the product has them (no PostgreSQL answer to port, or one the value cannot give): geometry
+and geography in text only (PostGIS sends EWKB; Provisa holds WKT); the text-only catalog types,
+whose binary is an oid or an internal structure the text does not carry; a TEXT column's `str()` of
+any value; tsvector positions past 16383 (PostgreSQL never writes one).
+
+### PostgreSQL check (`pg_types_check.py`)
+
+A throwaway PostgreSQL 18.4 (Homebrew) cluster on a Unix socket: for each type's case, the
+encoder's text and binary cell against the server's output function (`format('%s', v)`) and send
+function (`encode(<type>_send(v), 'hex')`). The cases cover every geometric type, every range and
+multirange (with infinity, BC and year-12000 bounds), tsvector, 14 tsqueries, inet and cidr from text
+and from DuckDB's Arrow INET, macaddr/8, bit/varbit, tid, xid, cid, xid8, both snapshots, pg_lsn,
+jsonpath, xml (with `xml_out`), uuid, timetz, name, "char", money from numeric (rounding and both
+range ends), numeric at scale 10, at 38 digits and NaN/±Infinity, empty and 2-D arrays, numeric and
+money arrays, oidvector and int2vector. **280 cells checked, 0 differ.** PostgreSQL 18's send and
+output functions for these types are 17's.
 
 ## Benchmark (`bench.py`)
 
@@ -256,8 +331,8 @@ spread, since binary floats were never formatted. Python's times are the same pa
   macOS link flags; 120-column formatting.
 - `src/lib.rs`: kinds, Arrow access, per-type writers (UUID parsing as `int(hex, 16)` reads it),
   arrays, DataRow framing, Python entry points, `TZDB_VERSION` and `TZ_RULES_VERSION`.
-- `src/fmt_num.rs`: float8/float4 text (PostgreSQL's digits), float repr, `Decimal.__str__`, binary
-  numeric.
+- `src/fmt_num.rs`: float8/float4 text (PostgreSQL's digits), float repr, `Decimal.__str__`,
+  numeric text and binary (`numeric_out`, `numeric_send`).
 - `src/temporal.rs`: date, timestamp, time and interval text and parts; time units; zones.
 - `src/tz.rs`: a named zone's offset (chrono-tz, then the POSIX rule from 2100).
   `src/tz_rules.rs`: each zone's POSIX rule, generated by `gen_tz_rules.py`.
@@ -267,6 +342,14 @@ spread, since binary floats were never formatted. Python's times are the same pa
   These are path dependencies of this crate only; packaging them is J492d's call.
 - `build.sh`: `cargo build --release`, then copies the module to `build/`. Nothing is installed into
   any venv.
-- `python_ref.py`: drives the product's Python path. `test_compare.py`: the differential test.
+- `src/pyval.rs`: a cell's value (to_pylist's, held in Rust), Python's `str()`, `repr()`, `int()`,
+  `float()` and `Decimal()`. `src/unicode_tables.rs`: the characters `repr` escapes, generated by
+  `gen_unicode.py`. `src/pgtypes.rs`: every BVType's text and binary writer over a value.
+  `src/coerce.rs`: the row coercers, `json.loads`, `jsonb_out`, `xml_out`. `src/tsearch.rs`:
+  tsvector and tsquery binary.
+- `python_ref.py`: drives the product's Python path, names each column's coercers, registers the
+  catalog names. `pg_reference.py`: the product's path with PostgreSQL's answer where it differs.
+  `pg_types_check.py`: the live PostgreSQL check of the types ported here.
+  `test_compare.py`: the differential test.
   `bench.py`: the benchmark. `bench-5m.log`: the benchmark's output. `pg_float_check.py`: the live
   PostgreSQL float text check. `tz_pytz_diff.py`: the product's pytz path against zoneinfo.

@@ -91,7 +91,8 @@ pub fn tsvector_send(t: &str, out: &mut Vec<u8>) -> R<()> {
         lexemes.push(0);
         let n = positions.len() as i64;
         for v in std::iter::once(n).chain(positions) {
-            let v = u16::try_from(v).map_err(|_| EncErr::Value("struct.error: ushort format requires 0 <= number <= 65535".into()))?;
+            let v = u16::try_from(v)
+                .map_err(|_| EncErr::Value("struct.error: ushort format requires 0 <= number <= 65535".into()))?;
             lexemes.extend_from_slice(&v.to_be_bytes());
         }
         count += 1;
@@ -103,9 +104,18 @@ pub fn tsvector_send(t: &str, out: &mut Vec<u8>) -> R<()> {
 
 #[derive(Debug)]
 enum Node {
-    Val { lexeme: Vec<u8>, weight: u8, prefix: bool },
+    Val {
+        lexeme: Vec<u8>,
+        weight: u8,
+        prefix: bool,
+    },
     Not(Box<Node>),
-    Bin { op: u8, distance: i16, left: Box<Node>, right: Box<Node> },
+    Bin {
+        op: u8,
+        distance: i16,
+        left: Box<Node>,
+        right: Box<Node>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -133,7 +143,10 @@ fn priority(op: u8) -> u8 {
     }
 }
 
-fn tokens(t: &str) -> R<(Vec<Tok>, Vec<(Vec<u8>, u8, bool)>)> {
+/// An operand: its lexeme, weight bits and prefix flag.
+type Operand = (Vec<u8>, u8, bool);
+
+fn tokens(t: &str) -> R<(Vec<Tok>, Vec<Operand>)> {
     let c: Vec<char> = t.chars().collect();
     let mut toks = Vec::new();
     let mut vals = Vec::new();
@@ -173,7 +186,10 @@ fn tokens(t: &str) -> R<(Vec<Tok>, Vec<(Vec<u8>, u8, bool)>)> {
                     1
                 } else {
                     let d: i32 = inner.trim().parse().map_err(|_| err())?;
-                    i16::try_from(d).ok().filter(|d| (0..=16384).contains(d)).ok_or_else(err)?
+                    i16::try_from(d)
+                        .ok()
+                        .filter(|d| (0..=16384).contains(d))
+                        .ok_or_else(err)?
                 };
                 toks.push(Tok::Op(OP_PHRASE, distance));
                 i = end + 1;
@@ -248,7 +264,7 @@ fn parse(t: &str) -> R<Option<Node>> {
     Ok(Some(node))
 }
 
-fn parse_expr(toks: &[Tok], vals: &[(Vec<u8>, u8, bool)], pos: &mut usize, min: u8, t: &str) -> R<Node> {
+fn parse_expr(toks: &[Tok], vals: &[Operand], pos: &mut usize, min: u8, t: &str) -> R<Node> {
     let mut left = parse_unary(toks, vals, pos, t)?;
     while let Some(Tok::Op(op, distance)) = toks.get(*pos).copied() {
         let p = priority(op);
@@ -257,12 +273,17 @@ fn parse_expr(toks: &[Tok], vals: &[(Vec<u8>, u8, bool)], pos: &mut usize, min: 
         }
         *pos += 1;
         let right = parse_expr(toks, vals, pos, p, t)?;
-        left = Node::Bin { op, distance, left: Box::new(left), right: Box::new(right) };
+        left = Node::Bin {
+            op,
+            distance,
+            left: Box::new(left),
+            right: Box::new(right),
+        };
     }
     Ok(left)
 }
 
-fn parse_unary(toks: &[Tok], vals: &[(Vec<u8>, u8, bool)], pos: &mut usize, t: &str) -> R<Node> {
+fn parse_unary(toks: &[Tok], vals: &[Operand], pos: &mut usize, t: &str) -> R<Node> {
     match toks.get(*pos).copied() {
         Some(Tok::Not) => {
             *pos += 1;
@@ -307,7 +328,12 @@ fn send_node(n: &Node, out: &mut Vec<u8>) {
             out.extend_from_slice(&[2, OP_NOT]);
             send_node(x, out);
         }
-        Node::Bin { op, distance, left, right } => {
+        Node::Bin {
+            op,
+            distance,
+            left,
+            right,
+        } => {
             out.extend_from_slice(&[2, *op]);
             if *op == OP_PHRASE {
                 out.extend_from_slice(&distance.to_be_bytes());

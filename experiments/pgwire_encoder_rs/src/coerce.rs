@@ -4,8 +4,8 @@
 // (python_ref.coercer_names); a name here is that coercer.
 
 use crate::pyval::{
-    self, dec_of_str, str_of, to_decimal, to_float, to_int, truthy, type_error, DateTime, Dec, DecSpecial,
-    Inet, PyVal, TzRepr,
+    self, dec_of_str, str_of, to_decimal, to_float, to_int, truthy, type_error, DateTime, Dec, DecSpecial, Inet, PyVal,
+    TzRepr,
 };
 use crate::temporal::DAY_US;
 use crate::{EncErr, R};
@@ -70,7 +70,7 @@ pub fn coercer_of(name: &str) -> R<Coercer> {
 /// The coercer applied to a value (not None).
 pub fn apply(c: &Coercer, v: PyVal) -> R<PyVal> {
     Ok(match c {
-        Coercer::Int => PyVal::Int(to_int(&v)?),
+        Coercer::Int => pyval::to_int_value(&v)?,
         Coercer::Float => PyVal::Float(to_float(&v)?),
         Coercer::Decimal => PyVal::Dec(to_decimal(&v)?),
         // A datetime's date; an infinite timestamp is the infinite date (the product's .date()
@@ -80,7 +80,10 @@ pub fn apply(c: &Coercer, v: PyVal) -> R<PyVal> {
                 days: if d.inf > 0 { 2_932_896 } else { -719_162 },
                 inf: d.inf,
             },
-            PyVal::DateTime(d) => PyVal::Date { days: d.local.div_euclid(DAY_US) as i64, inf: 0 },
+            PyVal::DateTime(d) => PyVal::Date {
+                days: d.local.div_euclid(DAY_US) as i64,
+                inf: 0,
+            },
             other => other,
         },
         // A date's midnight; an infinite date is the infinite timestamp (the product's
@@ -137,10 +140,14 @@ pub fn apply(c: &Coercer, v: PyVal) -> R<PyVal> {
                 if b.len() > 16 {
                     return Err(EncErr::Overflow("date value out of range".into()));
                 }
-                let mut buf = [if b.last().is_some_and(|&x| x & 0x80 != 0) { 0xff } else { 0 }; 16];
+                let mut buf = [if b.last().is_some_and(|&x| x & 0x80 != 0) {
+                    0xff
+                } else {
+                    0
+                }; 16];
                 buf[..b.len()].copy_from_slice(&b);
                 let count = i128::from_le_bytes(buf);
-                if count < 0 || count >= 3_652_059 * DAY_US {
+                if !(0..3_652_059 * DAY_US).contains(&count) {
                     return Err(EncErr::Overflow("date value out of range".into()));
                 }
                 PyVal::Time((count % DAY_US) as i64)
@@ -158,7 +165,10 @@ pub fn apply(c: &Coercer, v: PyVal) -> R<PyVal> {
             other => other,
         },
         Coercer::NullAlone => {
-            return Err(EncErr::Type(format!("a value of no type the statement says: {}", repr(&v))))
+            return Err(EncErr::Type(format!(
+                "a value of no type the statement says: {}",
+                repr(&v)
+            )))
         }
         Coercer::DuckdbInet => match v {
             PyVal::Dict(_) => duckdb_inet(&v)?,
@@ -196,7 +206,11 @@ fn duckdb_inet(v: &PyVal) -> R<PyVal> {
     if !(0..=max).contains(&mask) || (!v6 && !(0..=u32::MAX as i128).contains(&addr)) {
         return Err(EncErr::Value(format!("not an address: {}", repr(v))));
     }
-    Ok(PyVal::Inet(Inet { v6, addr: addr as u128, bits: mask as u8 }))
+    Ok(PyVal::Inet(Inet {
+        v6,
+        addr: addr as u128,
+        bits: mask as u8,
+    }))
 }
 
 /// _record_field: nothing for NULL, quoted where it must be.
@@ -206,7 +220,13 @@ fn record_field(v: &PyVal, out: &mut String) {
         PyVal::List(items) => {
             let inner: Vec<String> = items
                 .iter()
-                .map(|x| if *x == PyVal::None { "NULL".to_string() } else { str_of(x) })
+                .map(|x| {
+                    if *x == PyVal::None {
+                        "NULL".to_string()
+                    } else {
+                        str_of(x)
+                    }
+                })
                 .collect();
             format!("{{{}}}", inner.join(","))
         }
@@ -496,7 +516,10 @@ impl JsonParser<'_> {
         if is_float {
             Ok(PyVal::Float(tok.parse().map_err(|_| self.err())?))
         } else {
-            Ok(PyVal::Int(tok.parse().map_err(|_| EncErr::Overflow("int too large for the encoder".into()))?))
+            Ok(match tok.parse::<i128>() {
+                Ok(n) => PyVal::Int(n),
+                Err(_) => PyVal::BigInt(tok),
+            })
         }
     }
     fn string(&mut self) -> R<String> {
@@ -536,9 +559,10 @@ impl JsonParser<'_> {
                                 self.p = save;
                             }
                             // a lone surrogate: a str UTF-8 cannot encode
-                            s.push(char::from_u32(unit).ok_or_else(|| {
-                                EncErr::Value("'utf-8' codec can't encode a surrogate".into())
-                            })?);
+                            s.push(
+                                char::from_u32(unit)
+                                    .ok_or_else(|| EncErr::Value("'utf-8' codec can't encode a surrogate".into()))?,
+                            );
                         }
                         _ => return Err(self.err()),
                     }
@@ -549,7 +573,12 @@ impl JsonParser<'_> {
         }
     }
     fn hex4(&mut self) -> R<u32> {
-        let h: String = self.c.get(self.p..self.p + 4).ok_or_else(|| self.err())?.iter().collect();
+        let h: String = self
+            .c
+            .get(self.p..self.p + 4)
+            .ok_or_else(|| self.err())?
+            .iter()
+            .collect();
         if !h.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err(self.err());
         }
@@ -560,7 +589,12 @@ impl JsonParser<'_> {
 
 /// json.loads(text) (with `decimals`: parse_float=Decimal, parse_int=Decimal).
 pub fn json_loads(text: &str, decimals: bool) -> R<PyVal> {
-    let mut p = JsonParser { c: text.chars().collect(), p: 0, text, decimals };
+    let mut p = JsonParser {
+        c: text.chars().collect(),
+        p: 0,
+        text,
+        decimals,
+    };
     let v = p.value()?;
     p.ws();
     if p.p != p.c.len() {

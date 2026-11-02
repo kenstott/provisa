@@ -21,7 +21,7 @@ use arrow::compute::cast;
 use arrow::datatypes::*;
 use arrow::pyarrow::FromPyArrow;
 use arrow::record_batch::RecordBatch;
-use pyo3::exceptions::{PyNotImplementedError, PyOverflowError, PyTypeError, PyValueError};
+use pyo3::exceptions::{PyOverflowError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
@@ -37,7 +37,8 @@ pub enum EncErr {
     Overflow(String),
     Value(String),
     Type(String),
-    Unsupported(String),
+    /// No direct Arrow writer takes the column: it is written from its values (never raised).
+    NoDirectWriter(String),
 }
 
 impl From<EncErr> for PyErr {
@@ -46,7 +47,7 @@ impl From<EncErr> for PyErr {
             EncErr::Overflow(m) => PyOverflowError::new_err(m),
             EncErr::Value(m) => PyValueError::new_err(m),
             EncErr::Type(m) => PyTypeError::new_err(m),
-            EncErr::Unsupported(m) => PyNotImplementedError::new_err(m),
+            EncErr::NoDirectWriter(m) => PyTypeError::new_err(m),
         }
     }
 }
@@ -155,7 +156,7 @@ fn kind_of(name: &str) -> Option<Kind> {
 }
 
 fn unsupported(kind: Kind, dt: &DataType) -> EncErr {
-    EncErr::Unsupported(format!("{kind:?} from Arrow {dt} is not ported"))
+    EncErr::NoDirectWriter(format!("no direct writer of {kind:?} from Arrow {dt}"))
 }
 
 /// Downcasts `arr` to `T`, owning a clone (Arrow arrays are cheap Arc'd buffers).
@@ -913,7 +914,9 @@ fn level_shape(level: &Level, i: usize, dims: &mut Vec<usize>, flat: &mut Vec<Op
         return Err(EncErr::Value("multidimensional array has unequal sublists".into()));
     }
     if list_element {
-        return Err(EncErr::Value("malformed array literal: a sub-array as an element".into()));
+        return Err(EncErr::Value(
+            "malformed array literal: a sub-array as an element".into(),
+        ));
     }
     // An array with no elements has no dimensions (array_send of '{}').
     if expected == 0 {
@@ -995,7 +998,11 @@ impl Plan {
         let coercers = match coercers {
             Some(c) => {
                 if c.len() != types.len() {
-                    return Err(EncErr::Value(format!("{} coercer lists for {} columns", c.len(), types.len())));
+                    return Err(EncErr::Value(format!(
+                        "{} coercer lists for {} columns",
+                        c.len(),
+                        types.len()
+                    )));
                 }
                 c.iter()
                     .map(|names| names.iter().map(|n| coerce::coercer_of(n)).collect::<R<Vec<_>>>())
@@ -1023,7 +1030,7 @@ fn column(plan: &Plan, j: usize, arr: &ArrayRef, uuid_ext: bool, format: i32) ->
         if let Some(kind) = plan.kinds[j].filter(|k| !uuid_ext || *k == Kind::Uuid) {
             match scalar_enc(kind, binary, arr) {
                 Ok(enc) => return Ok(Col::Fast(arr.clone(), enc)),
-                Err(EncErr::Unsupported(_)) => {} // an Arrow type the direct writer does not take
+                Err(EncErr::NoDirectWriter(_)) => {} // an Arrow type the direct writer does not take
                 Err(e) => return Err(e),
             }
         }
@@ -1067,7 +1074,12 @@ fn encode(batch: &RecordBatch, plan: &Plan, formats: &[i32], out: &mut Vec<u8>) 
                     enc(i, out)?;
                     true
                 }
-                Col::Values { reader, coercers, bv, binary } if !reader.is_null(i) => {
+                Col::Values {
+                    reader,
+                    coercers,
+                    bv,
+                    binary,
+                } if !reader.is_null(i) => {
                     let mut v = reader.get(i)?;
                     for c in coercers {
                         v = coerce::apply(c, v)?;
@@ -1188,7 +1200,12 @@ fn check_data_row(msg: &[u8]) -> R<()> {
     let ncols = i16::from_be_bytes(msg[5..7].try_into().unwrap());
     let mut p = 7usize;
     for _ in 0..ncols.max(0) {
-        let n = i32::from_be_bytes(msg.get(p..p + 4).ok_or_else(|| bad("a cell past its end"))?.try_into().unwrap());
+        let n = i32::from_be_bytes(
+            msg.get(p..p + 4)
+                .ok_or_else(|| bad("a cell past its end"))?
+                .try_into()
+                .unwrap(),
+        );
         p += 4;
         if n >= 0 {
             p += n as usize;

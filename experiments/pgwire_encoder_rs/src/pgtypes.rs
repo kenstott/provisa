@@ -329,6 +329,7 @@ fn int_bytes(n: i128, width: usize, signed: bool, out: &mut Vec<u8>) -> R<()> {
 fn to_bytes(v: &PyVal, width: usize, signed: bool, out: &mut Vec<u8>) -> R<()> {
     match v {
         PyVal::Int(n) => int_bytes(*n, width, signed, out),
+        PyVal::BigInt(_) => Err(EncErr::Overflow("int too big to convert".into())),
         PyVal::Bool(b) => int_bytes(*b as i128, width, signed, out),
         _ => Err(type_error("object has no attribute 'to_bytes'", v)),
     }
@@ -364,9 +365,12 @@ pub fn numeric_send(d: &Dec, out: &mut Vec<u8>) -> R<()> {
         DecSpecial::Infinity if d.neg => 0xF000,
         DecSpecial::Infinity => 0xD000,
     };
+    // numeric_send reads a special value's dscale through the short header's dscale bits: 0 for
+    // NaN, 32 for either infinity.
+    let dscale: u16 = (sign & 0x1F80) >> 7;
     out.extend_from_slice(&[0, 0, 0, 0]);
     out.extend_from_slice(&sign.to_be_bytes());
-    out.extend_from_slice(&[0, 0]);
+    out.extend_from_slice(&dscale.to_be_bytes());
     Ok(())
 }
 
@@ -374,8 +378,7 @@ pub fn numeric_send(d: &Dec, out: &mut Vec<u8>) -> R<()> {
 pub fn array_text_element(s: &str, out: &mut Vec<u8>) {
     let needs = s.is_empty()
         || s.eq_ignore_ascii_case("NULL")
-        || s
-            .chars()
+        || s.chars()
             .any(|c| matches!(c, '{' | '}' | '"' | ',' | '\\') || crate::is_py_space(c));
     if !needs {
         text(out, s);
@@ -425,7 +428,10 @@ fn array_text_items(elem: Elem, v: &PyVal, out: &mut Vec<u8>) -> R<()> {
                 } else {
                     convert(elem.bv(), false, item, &mut cell)?;
                 }
-                array_text_element(std::str::from_utf8(&cell).map_err(|e| EncErr::Value(e.to_string()))?, out);
+                array_text_element(
+                    std::str::from_utf8(&cell).map_err(|e| EncErr::Value(e.to_string()))?,
+                    out,
+                );
             }
         }
     }
@@ -472,7 +478,7 @@ fn array_binary(elem: Elem, elem_oid: i32, v: &PyVal, vector: bool, out: &mut Ve
     if !vector && dims.iter().product::<usize>() == 0 && !dims.is_empty() {
         dims.clear();
     }
-    let has_null = flat.iter().any(|x| *x == PyVal::None);
+    let has_null = flat.contains(&PyVal::None);
     out.extend_from_slice(&(dims.len() as i32).to_be_bytes());
     out.extend_from_slice(&(has_null as i32).to_be_bytes());
     out.extend_from_slice(&elem_oid.to_be_bytes());
@@ -486,7 +492,11 @@ fn array_binary(elem: Elem, elem_oid: i32, v: &PyVal, vector: bool, out: &mut Ve
             PyVal::None => out.extend_from_slice(&(-1i32).to_be_bytes()),
             // PostgreSQL holds no array whose elements are arrays and scalars: a list where an
             // element belongs is malformed (the product writes str(list) as the element).
-            PyVal::List(_) => return Err(EncErr::Value("malformed array literal: a sub-array as an element".into())),
+            PyVal::List(_) => {
+                return Err(EncErr::Value(
+                    "malformed array literal: a sub-array as an element".into(),
+                ))
+            }
             _ => {
                 let p = out.len();
                 out.extend_from_slice(&[0; 4]);
@@ -544,6 +554,7 @@ pub fn json_dumps(v: &PyVal, out: &mut Vec<u8>) -> R<()> {
         PyVal::None => text(out, "null"),
         PyVal::Bool(b) => text(out, if *b { "true" } else { "false" }),
         PyVal::Int(n) => text(out, itoa::Buffer::new().format(*n)),
+        PyVal::BigInt(d) => text(out, d),
         PyVal::Float(x) => crate::fmt_num::float_repr(*x, out),
         PyVal::Str(s) => json::string(s, out),
         PyVal::List(items) | PyVal::Tuple(items) => {
@@ -564,7 +575,7 @@ pub fn json_dumps(v: &PyVal, out: &mut Vec<u8>) -> R<()> {
                 }
                 match key {
                     PyVal::Str(s) => json::string(s, out),
-                    PyVal::Float(_) | PyVal::Int(_) | PyVal::Bool(_) | PyVal::None => {
+                    PyVal::Float(_) | PyVal::Int(_) | PyVal::BigInt(_) | PyVal::Bool(_) | PyVal::None => {
                         out.push(b'"');
                         json_dumps(key, out)?;
                         out.push(b'"');
@@ -836,7 +847,9 @@ pub fn convert(bv: Bv, binary: bool, v: &PyVal, out: &mut Vec<u8>) -> R<()> {
                 PyVal::List(items) | PyVal::Tuple(items) => point_parts(items)?,
                 _ => {
                     let t = s(v);
-                    let t = t.trim_matches(crate::is_py_space).trim_matches(|c| c == '(' || c == ')');
+                    let t = t
+                        .trim_matches(crate::is_py_space)
+                        .trim_matches(|c| c == '(' || c == ')');
                     let parts: Vec<&str> = t.split(',').collect();
                     if parts.len() != 2 {
                         return Err(EncErr::Value("not enough values to unpack".into()));
@@ -918,13 +931,12 @@ pub fn convert(bv: Bv, binary: bool, v: &PyVal, out: &mut Vec<u8>) -> R<()> {
             }
             Ok(())
         }
-        (Bv::Geometry | Bv::Geography, true) => {
-            Err(EncErr::Value("geometry and geography are sent in text format only".into()))
+        (Bv::Geometry | Bv::Geography, true) => Err(EncErr::Value(
+            "geometry and geography are sent in text format only".into(),
+        )),
+        (Bv::Int4Range | Bv::Int8Range | Bv::NumRange | Bv::TsRange | Bv::TstzRange | Bv::DateRange, true) => {
+            range_binary(bv, &s(v), out)
         }
-        (
-            Bv::Int4Range | Bv::Int8Range | Bv::NumRange | Bv::TsRange | Bv::TstzRange | Bv::DateRange,
-            true,
-        ) => range_binary(bv, &s(v), out),
         (Bv::Int4Multirange, true) => multirange_binary(Bv::Int4Range, &s(v), out),
         (Bv::Int8Multirange, true) => multirange_binary(Bv::Int8Range, &s(v), out),
         (Bv::NumMultirange, true) => multirange_binary(Bv::NumRange, &s(v), out),
@@ -1013,13 +1025,17 @@ pub fn convert(bv: Bv, binary: bool, v: &PyVal, out: &mut Vec<u8>) -> R<()> {
             Ok(())
         }
         (Bv::RegProc, true) => match v {
-            PyVal::Str(_) => Err(EncErr::Type("a reg* value read as its text form has no binary form here".into())),
+            PyVal::Str(_) => Err(EncErr::Type(
+                "a reg* value read as its text form has no binary form here".into(),
+            )),
             _ => to_bytes(v, 4, false, out),
         },
         (Bv::RegType, true) => match v {
             PyVal::Str(name) => match catalog_names()?.type_oids.get(name) {
                 Some(oid) => int_bytes(*oid, 4, false, out),
-                None => Err(EncErr::Type("a reg* value read as its text form has no binary form here".into())),
+                None => Err(EncErr::Type(
+                    "a reg* value read as its text form has no binary form here".into(),
+                )),
             },
             _ => to_bytes(v, 4, false, out),
         },
@@ -1037,7 +1053,9 @@ pub fn convert(bv: Bv, binary: bool, v: &PyVal, out: &mut Vec<u8>) -> R<()> {
             },
         },
         (Bv::RegClass | Bv::RegNamespace, true) => match v {
-            PyVal::Str(_) => Err(EncErr::Type("a reg* value read as its text form has no binary form here".into())),
+            PyVal::Str(_) => Err(EncErr::Type(
+                "a reg* value read as its text form has no binary form here".into(),
+            )),
             _ => to_bytes(dict_get(v, "oid")?, 4, false, out),
         },
         (Bv::OidVector | Bv::Int2Vector, false) => {
@@ -1066,7 +1084,9 @@ pub fn convert(bv: Bv, binary: bool, v: &PyVal, out: &mut Vec<u8>) -> R<()> {
         (Bv::ArrayOf(elem, _), false) => array_text(elem, v, out),
         (Bv::ArrayOf(elem, oid), true) => array_binary(elem, array_elem_oid(elem, oid), v, false, out),
         (Bv::AclItemArray, false) => array_text(Elem::Text, v, out),
-        (Bv::AclItemArray, true) => Err(EncErr::Type("aclitem has no binary form; request the column as text".into())),
+        (Bv::AclItemArray, true) => Err(EncErr::Type(
+            "aclitem has no binary form; request the column as text".into(),
+        )),
     }
 }
 
@@ -1094,7 +1114,10 @@ fn date_text(v: &PyVal, out: &mut Vec<u8>) -> R<()> {
 }
 
 fn to_decimal_is_integral(d: &Dec) -> bool {
-    d.exp >= 0 || d.digits[(d.digits.len() as i32 + d.exp).max(0) as usize..].iter().all(|&c| c == b'0')
+    d.exp >= 0
+        || d.digits[(d.digits.len() as i32 + d.exp).max(0) as usize..]
+            .iter()
+            .all(|&c| c == b'0')
 }
 
 /// pandas.Timedelta.isoformat()
@@ -1126,7 +1149,11 @@ fn float_hex(x: f64) -> String {
     let exp = ((bits >> 52) & 0x7ff) as i64;
     let mant = bits & ((1u64 << 52) - 1);
     let (lead, e) = if exp == 0 { (0, -1022) } else { (1, exp - 1023) };
-    format!("{sign}0x{lead}.{mant:013x}p{}{}", if e < 0 { "-" } else { "+" }, e.abs())
+    format!(
+        "{sign}0x{lead}.{mant:013x}p{}{}",
+        if e < 0 { "-" } else { "+" },
+        e.abs()
+    )
 }
 
 fn dict_get<'a>(v: &'a PyVal, key: &str) -> R<&'a PyVal> {
@@ -1208,7 +1235,10 @@ fn mac_bytes(t: &str) -> R<Vec<u8>> {
             k += 1;
             continue;
         }
-        let hi = cleaned[k].to_digit(16).filter(|_| cleaned[k].is_ascii()).ok_or_else(bad)?;
+        let hi = cleaned[k]
+            .to_digit(16)
+            .filter(|_| cleaned[k].is_ascii())
+            .ok_or_else(bad)?;
         let lo = cleaned
             .get(k + 1)
             .and_then(|c| c.to_digit(16).filter(|_| c.is_ascii()))
@@ -1328,7 +1358,10 @@ fn money_cents(v: &PyVal) -> R<i64> {
     let out_of_range = || EncErr::Value("money out of range".into());
     if shift >= 0 {
         for &c in &d.digits {
-            cents = cents.checked_mul(10).and_then(|x| x.checked_add((c - b'0') as i128)).ok_or_else(out_of_range)?;
+            cents = cents
+                .checked_mul(10)
+                .and_then(|x| x.checked_add((c - b'0') as i128))
+                .ok_or_else(out_of_range)?;
         }
         for _ in 0..shift {
             cents = cents.checked_mul(10).ok_or_else(out_of_range)?;
@@ -1336,7 +1369,10 @@ fn money_cents(v: &PyVal) -> R<i64> {
     } else {
         let keep = (n + shift).max(0) as usize;
         for &c in &d.digits[..keep] {
-            cents = cents.checked_mul(10).and_then(|x| x.checked_add((c - b'0') as i128)).ok_or_else(out_of_range)?;
+            cents = cents
+                .checked_mul(10)
+                .and_then(|x| x.checked_add((c - b'0') as i128))
+                .ok_or_else(out_of_range)?;
         }
         let first = if keep < d.digits.len() { d.digits[keep] } else { b'0' };
         let first = if (n + shift) < 0 { b'0' } else { first };
@@ -1534,7 +1570,11 @@ fn range_bounds(t: &str) -> R<(Option<String>, Option<String>, u8)> {
         return Err(EncErr::Value("IndexError: string index out of range".into()));
     }
     let mut flags = if chars[0] == '[' { 0x02 } else { 0 } | if chars[chars.len() - 1] == ']' { 0x04 } else { 0 };
-    let inner: &[char] = if chars.len() >= 2 { &chars[1..chars.len() - 1] } else { &[] };
+    let inner: &[char] = if chars.len() >= 2 {
+        &chars[1..chars.len() - 1]
+    } else {
+        &[]
+    };
     let (mut bounds, mut current, mut quoted, mut i) = (Vec::new(), String::new(), false, 0);
     while i < inner.len() {
         let ch = inner[i];
@@ -1583,8 +1623,24 @@ struct Stamp {
 fn parse_stamp(t: &str) -> R<Stamp> {
     let bad = || EncErr::Value(format!("Invalid isoformat string: {t:?}"));
     match t {
-        "infinity" => return Ok(Stamp { days: 0, micros: 0, offset: None, has_time: false, inf: 1 }),
-        "-infinity" => return Ok(Stamp { days: 0, micros: 0, offset: None, has_time: false, inf: -1 }),
+        "infinity" => {
+            return Ok(Stamp {
+                days: 0,
+                micros: 0,
+                offset: None,
+                has_time: false,
+                inf: 1,
+            })
+        }
+        "-infinity" => {
+            return Ok(Stamp {
+                days: 0,
+                micros: 0,
+                offset: None,
+                has_time: false,
+                inf: -1,
+            })
+        }
         _ => {}
     }
     let (body, bc) = match t.strip_suffix(" BC") {
@@ -1619,7 +1675,13 @@ fn parse_stamp(t: &str) -> R<Stamp> {
     let mut p = ylen + 6;
     if p == b.len() {
         let micros = days * 86_400_000_000;
-        return Ok(Stamp { days, micros, offset: None, has_time: false, inf: 0 });
+        return Ok(Stamp {
+            days,
+            micros,
+            offset: None,
+            has_time: false,
+            inf: 0,
+        });
     }
     if b[p] != b' ' && b[p] != b'T' {
         return Err(bad());
@@ -1675,7 +1737,13 @@ fn parse_stamp(t: &str) -> R<Stamp> {
     }
     let micros = days * 86_400_000_000 + ((hour * 60 + minute) * 60 + second) * 1_000_000 + frac
         - offset.unwrap_or(0) as i64 * 1_000_000;
-    Ok(Stamp { days, micros, offset, has_time: true, inf: 0 })
+    Ok(Stamp {
+        days,
+        micros,
+        offset,
+        has_time: true,
+        inf: 0,
+    })
 }
 
 /// A range bound in its element's binary form.
@@ -1733,7 +1801,11 @@ fn range_binary(bv: Bv, t: &str, out: &mut Vec<u8>) -> R<()> {
 /// _multirange_ranges: each range's text of a multirange's text.
 fn multirange_ranges(t: &str) -> Vec<String> {
     let trimmed: Vec<char> = t.trim_matches(crate::is_py_space).chars().collect();
-    let inner: &[char] = if trimmed.len() >= 2 { &trimmed[1..trimmed.len() - 1] } else { &[] };
+    let inner: &[char] = if trimmed.len() >= 2 {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        &[]
+    };
     let (mut ranges, mut start, mut quoted) = (Vec::new(), None::<usize>, false);
     for (at, &ch) in inner.iter().enumerate() {
         if ch == '"' {
