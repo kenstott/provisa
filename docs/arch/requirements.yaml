@@ -75717,7 +75717,12 @@
     of each request, fetches the engine''s result as Arrow or a direct cursor, encodes it to the client
     (REQ-2194), and reports counters (row counts, warnings) back, never rows. Background work that moves
     data (materialized view refreshes, replica landing) runs as a command a control node sends to a data
-    node. One artifact serves all three modes.'
+    node. One artifact serves all three modes. (Amended 2026-11-02, A facade over the plan contract:) Maintainer
+    2026-11-02: "a simple change to create a facade for existing contract - with switch to use the remote
+    or the local." The facade wraps the existing plan half of the one query pipeline (govern and route):
+    in every mode the plan call runs in process, in data mode it is a call to a control node over a socket;
+    executing the plan and encoding to the client stay on the node that holds the client connection, so
+    rows never enter the control process.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
