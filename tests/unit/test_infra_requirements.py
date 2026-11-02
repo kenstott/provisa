@@ -957,7 +957,7 @@ class TestREQ632LinuxBundlesCoreAndObs:
 
 
 # ---------------------------------------------------------------------------
-# REQ-633: macOS and Windows use extension model. Core creates VM runtime.
+# REQ-633: macOS and Windows use extension model. Container tier runs on the user's Docker (macOS) or WSL2 + containerd (Windows).
 #           Obs and Demo are extensions in ~/.provisa/extensions/<name>/.
 #           Launcher enumerates extensions/*/docker-compose.*.yml at startup.
 # ---------------------------------------------------------------------------
@@ -975,6 +975,30 @@ class TestREQ633ExtensionModel:
         # REQ-633
         content = (REPO_ROOT / "packaging" / "macos" / "build-dmg-demo.sh").read_text()
         assert "extensions/demo" in content or "EXT_DIR" in content
+
+    def test_macos_extension_installers_load_into_users_docker(self):
+        # REQ-633 — the obs/demo DMG installers docker load into the user's own Docker,
+        # the same runtime first-launch.sh's Docker tier uses. No Lima VM exists to drive.
+        for name in ("build-dmg-obs.sh", "build-dmg-demo.sh"):
+            content = (REPO_ROOT / "packaging" / "macos" / name).read_text()
+            assert "require_docker" in content, f"{name} installer must check Docker is running"
+            assert 'docker load -i "$gz_file"' in content, f"{name} must docker load its images"
+            assert "limactl" not in content, f"{name} must not drive Lima (limactl)"
+            assert "ctr --namespace" not in content, f"{name} must not import via containerd ctr"
+
+    def test_macos_app_entitlements_carry_no_vm_entitlements(self):
+        # REQ-633 — the launcher spawns shell scripts and the CLI; it creates no VM and runs
+        # no JIT, so the Lima-era virtualization / JIT / library-validation entitlements are gone.
+        macos = REPO_ROOT / "packaging" / "macos"
+        assert not (macos / "entitlements-limactl.plist").exists()
+        content = (macos / "entitlements.plist").read_text()
+        for key in (
+            "com.apple.security.virtualization",
+            "com.apple.security.cs.allow-jit",
+            "com.apple.security.cs.allow-unsigned-executable-memory",
+            "com.apple.security.cs.disable-library-validation",
+        ):
+            assert key not in content, f"entitlements.plist must not grant {key}"
 
     def test_macos_core_ships_native_venv_and_docker_images(self):
         # Migrated macOS installer: the native tier ships a bare
