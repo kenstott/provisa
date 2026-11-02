@@ -93,7 +93,7 @@ The org's config selects its regions and assigns each a store configuration: eng
 
 From the user side, `provisioning.provisa.example.com` is just an address. The deployment names it whatever fits the team's language — it could be `refresh.internal` or `etl.provisa.example.com`.
 
-For intra-engine isolation when Trino is the engine, Trino's per-org resource groups apply. See [Deployment](deployment.md#kubernetes--helm) for the configuration.
+For intra-engine isolation when Trino is the engine, Trino's per-org resource groups apply. See [Deployment](deployment.md#kubernetes-helm) for the configuration.
 
 ---
 
