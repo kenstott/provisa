@@ -37,6 +37,7 @@ from tests.unit.pgwire.type_io_corpus import (
     REFUSALS,
     REFUSED,
     by_function,
+    column_statements,
     statements,
     verdict,
 )
@@ -56,15 +57,17 @@ def connection() -> Any:
     return connected
 
 
-def _difference(connection: Any, sql: str) -> str | None:
+def _difference(connection: Any, sql: str, recorded: str | None = None) -> str | None:
+    """How ``sql`` differs from the answer recorded for ``recorded``, by default ``sql`` itself."""
+    recorded = recorded or sql
     try:
         got = connection.execute(transpile_to_duckdb(sql)).fetchone()[0]
     except duckdb.Error as raised:
         refusal = from_engine(raised)
         if refusal is None:
             return f"not raised as PostgreSQL's: {raised}"
-        return verdict(sql, RECORDED[sql], None, f"{refusal.sqlstate}: {refusal}")
-    return verdict(sql, RECORDED[sql], got, None)
+        return verdict(recorded, RECORDED[recorded], None, f"{refusal.sqlstate}: {refusal}")
+    return verdict(recorded, RECORDED[recorded], got, None)
 
 
 @pytest.mark.parametrize("function", sorted(_FUNCTIONS))
@@ -72,6 +75,26 @@ def test_duckdb_answers_as_postgresql_17_answered(connection: Any, function: str
     found = {sql: _difference(connection, sql) for sql in _FUNCTIONS[function]}
     assert {s: why for s, why in found.items() if why not in (None, REFUSED)} == {}
     assert sum(why == REFUSED for why in found.values()) <= REFUSALS.get(function, 0)
+
+
+_COLUMNS = column_statements(RECORDED, "duckdb")
+
+
+@pytest.mark.parametrize("sql", sorted(_COLUMNS))
+def test_a_column_is_answered_as_its_literal_was(connection: Any, sql: str):
+    """A literal's call is folded where the statement is read; a column's reaches the form."""
+    assert _difference(connection, sql, _COLUMNS[sql]) is None
+
+
+def test_a_hash_reads_a_timetz_zone_of_seconds():
+    """12:30:45-11:15:30 is 40530 seconds west: hashint8 of its time xor hash_uint32 of 40530."""
+    sql = "SELECT timetz_hash(t) AS v FROM (SELECT '12:30:45-11:15:30'::timetz AS t) AS r"
+    time = "SELECT time_hash('12:30:45'::time) # hashint4(40530)"
+    connection = duckdb.connect()
+    assert (
+        connection.execute(transpile_to_duckdb(sql)).fetchone()[0]
+        == connection.execute(transpile_to_duckdb(time)).fetchone()[0]
+    )
 
 
 @pytest.mark.parametrize("name, arity", [(row[0], len(row[1])) for row in ROWS])
