@@ -75799,7 +75799,11 @@
     is a browser setting:) Maintainer 2026-11-02: the UI has a browser setting for the data node address
     that the Explorer and the UI''s other data calls use. It defaults to the UI''s own origin (an every
     process); a user of a coordinator-served UI sets it to the query pool or a specific query node. Query
-    nodes accept the UI''s origin and its sign-in token for those calls.'
+    nodes accept the UI''s origin and its sign-in token for those calls. (Amended 2026-11-02, The UI''s
+    data addresses come from the config:) Maintainer 2026-11-02: the data addresses are listed in the control
+    plane''s config, like an OpenAPI document listing its servers: the platform regions'' addresses. The
+    UI is given the addresses the org can use, and its browser setting picks one of them, defaulting to
+    the org''s own region address, or the UI''s own origin where no regions are declared.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
