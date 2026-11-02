@@ -64,6 +64,9 @@ class PlanNotPortable(RuntimeError):
             "send it to a node in every mode"
         )
 
+    def __reduce__(self) -> tuple:  # crosses the plane socket as itself
+        return (type(self), (self.what,))
+
 
 #: Plan fields a data node does not run in this slice, with what each one means.
 _NOT_CARRIED = {

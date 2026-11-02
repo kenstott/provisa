@@ -1421,28 +1421,48 @@ async def _govern_and_route(
     ``product_statement``: see :func:`govern_statement`.
 
     REQ-1916: this is the plan facade. In ``data`` mode the plan is a control node's, asked for
-    over the plane socket (:mod:`provisa.planes.facade`); in every other mode it is made here."""
+    over the plane socket (:mod:`provisa.planes.facade`); in every other mode it is made here
+    (:func:`_govern_and_route_here`)."""
     from provisa.core import process_mode
 
+    how = {
+        "session_vars": session_vars,
+        "as_of": as_of,
+        "deliver": deliver,
+        "buffered": buffered,
+        "explain": explain,
+        "params": params,
+        "wire_formats": wire_formats,
+        "route_hint": route_hint,
+        "product_statement": product_statement,
+        "building": building,
+    }
     if process_mode.plans_remotely():
         from provisa.planes.facade import plan_remotely
 
-        return await plan_remotely(
-            "govern_and_route",
-            (sql, role_id),
-            {
-                "session_vars": session_vars,
-                "as_of": as_of,
-                "deliver": deliver,
-                "buffered": buffered,
-                "explain": explain,
-                "params": params,
-                "wire_formats": wire_formats,
-                "route_hint": route_hint,
-                "product_statement": product_statement,
-                "building": building,
-            },
-        )
+        # A control node never reads the response cache for a data node: a hit would be rows.
+        return await plan_remotely("govern_and_route", (sql, role_id), how)
+    return await _govern_and_route_here(sql, role_id, serve_cached=serve_cached, **how)
+
+
+async def _govern_and_route_here(
+    sql: str,
+    role_id: str,
+    *,
+    session_vars: dict[str, str] | None = None,
+    as_of: str | None = None,
+    deliver: Delivery | None = None,
+    buffered: bool = False,
+    explain: bool | None = None,
+    params: list | None = None,
+    serve_cached: bool = False,
+    wire_formats: list[int] | None = None,
+    route_hint: str | None = None,
+    product_statement: bool = False,
+    building: str | None = None,
+) -> _Plan:
+    """:func:`_govern_and_route` made in this process: what every node in ``every`` mode does,
+    and what a control node does for a data node (:mod:`provisa.planes.control_server`)."""
     from provisa.api.app import state
 
     from provisa.core.statement_warnings import collecting
@@ -4935,26 +4955,49 @@ async def _govern_and_route_compiled(  # REQ-262, REQ-263, REQ-265, REQ-266, REQ
     REQ-1916: the plan facade, as :func:`_govern_and_route` is."""
     from provisa.core import process_mode
 
+    how = {
+        "exec_params": exec_params,
+        "api_args": api_args,
+        "deliver": deliver,
+        "buffered": buffered,
+        "cache_hint": cache_hint,
+        "compiled": compiled,
+        "as_of": as_of,
+        "steward_hint": steward_hint,
+        "session_props": session_props,
+        "extra_selections": extra_selections,
+        "sdl_joins": sdl_joins,
+    }
     if process_mode.plans_remotely():
         from provisa.planes.facade import plan_remotely
 
-        return await plan_remotely(
-            "govern_and_route_compiled",
-            (sql, role_id),
-            {
-                "exec_params": exec_params,
-                "api_args": api_args,
-                "deliver": deliver,
-                "buffered": buffered,
-                "cache_hint": cache_hint,
-                "compiled": compiled,
-                "as_of": as_of,
-                "steward_hint": steward_hint,
-                "session_props": session_props,
-                "extra_selections": extra_selections,
-                "sdl_joins": sdl_joins,
-            },
-        )
+        # The caller's ``state`` is this node's; the control node plans with its own.
+        return await plan_remotely("govern_and_route_compiled", (sql, role_id), how)
+    return await _govern_and_route_compiled_here(
+        sql, role_id, state=state, serve_cached=serve_cached, **how
+    )
+
+
+async def _govern_and_route_compiled_here(
+    sql: str,
+    role_id: str,
+    *,
+    exec_params: list | None = None,
+    state: Any | None = None,
+    api_args: dict | None = None,
+    deliver: Delivery | None = None,
+    buffered: bool = False,
+    cache_hint: CacheHint,
+    serve_cached: bool = False,
+    compiled: Any | None = None,
+    as_of: str | None = None,
+    steward_hint: str | None = None,
+    session_props: dict[str, str] | None = None,
+    extra_selections: dict | None = None,
+    sdl_joins: bool,
+) -> _Plan:
+    """:func:`_govern_and_route_compiled` made in this process (see
+    :func:`_govern_and_route_here`)."""
     if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
     from provisa.core.statement_warnings import collecting
@@ -6029,6 +6072,13 @@ async def describe_pgwire_statement(  # REQ-589
         from provisa.planes.facade import describe_remotely
 
         return await describe_remotely(sql, role_id, as_of=as_of)
+    return await _describe_pgwire_statement_here(sql, role_id, as_of=as_of)
+
+
+async def _describe_pgwire_statement_here(
+    sql: str, role_id: str, *, as_of: str | None = None
+) -> _Described:
+    """:func:`describe_pgwire_statement` made in this process."""
     from provisa.api.app import state
     from provisa.pgwire.ext_surfaces import rewrite_surface_operators
     from provisa.pgwire.function_call import detect_sql_function_call

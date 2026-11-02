@@ -49,16 +49,16 @@ async def _plan(op: str, args: tuple, kwargs: dict[str, Any]) -> bytes:
     from provisa.pgwire import _pipeline
 
     if op == "govern_and_route":
-        plan = await _pipeline._govern_and_route(*args, **kwargs)
+        plan = await _pipeline._govern_and_route_here(*args, **kwargs)
     else:
-        plan = await _pipeline._govern_and_route_compiled(*args, **kwargs)
+        plan = await _pipeline._govern_and_route_compiled_here(*args, **kwargs)
     return await portable.export_plan(plan)
 
 
 async def _describe(sql: str, role_id: str, *, as_of: str | None) -> Any:
-    from provisa.pgwire._pipeline import _Described, describe_pgwire_statement
+    from provisa.pgwire._pipeline import _Described, _describe_pgwire_statement_here
 
-    described = await describe_pgwire_statement(sql, role_id, as_of=as_of)
+    described = await _describe_pgwire_statement_here(sql, role_id, as_of=as_of)
     # The governed statement stays here; the data node's Execute asks for its plan.
     return _Described(described.shape, None, described.parameters)
 

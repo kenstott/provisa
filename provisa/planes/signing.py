@@ -47,7 +47,11 @@ class PlanForged(PermissionError):
 
     def __init__(self, kind: str, why: str) -> None:
         self.kind = kind
+        self.why = why
         super().__init__(f"plane {kind} refused as forged: {why}")
+
+    def __reduce__(self) -> tuple:  # crosses the plane socket as itself
+        return (type(self), (self.kind, self.why))
 
 
 class PlanStale(PermissionError):
@@ -61,6 +65,9 @@ class PlanStale(PermissionError):
         super().__init__(
             f"plane {kind} refused as stale: sealed {age_s:.1f}s ago, older than {MAX_AGE_S:.0f}s"
         )
+
+    def __reduce__(self) -> tuple:  # crosses the plane socket as itself
+        return (type(self), (self.kind, self.age_s))
 
 
 @cache

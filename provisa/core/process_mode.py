@@ -57,6 +57,9 @@ class ControlServesNoData(RuntimeError):
             "send them to a node in data or every mode"
         )
 
+    def __reduce__(self) -> tuple:  # a data node is told it by its control node as itself
+        return (type(self), (self.transport,))
+
 
 def refuse_data_request(transport: str) -> None:
     """Refuse a data request arriving on ``transport`` when this process is a control node. Called

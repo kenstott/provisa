@@ -52,7 +52,11 @@ class ControlUnreachable(ConnectionError):
 
     def __init__(self, address: str, why: str) -> None:
         self.address = address
+        self.why = why
         super().__init__(f"this data node cannot reach its control node at {address}: {why}")
+
+    def __reduce__(self) -> tuple:
+        return (type(self), (self.address, self.why))
 
 
 class RemoteRefusal(RuntimeError):
@@ -61,7 +65,11 @@ class RemoteRefusal(RuntimeError):
 
     def __init__(self, kind: str, message: str) -> None:
         self.kind = kind
+        self.message = message
         super().__init__(f"{kind}: {message}")
+
+    def __reduce__(self) -> tuple:
+        return (type(self), (self.kind, self.message))
 
 
 def control_address() -> str:
