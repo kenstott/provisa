@@ -163,7 +163,7 @@ class StreamingQueryResult:  # REQ-028
         # REQ-2171: the type oid PostgreSQL gave each column, where it ran the statement itself.
         self.column_type_oids = column_type_oids
         self.stats = StreamStats()
-        self._batches: Iterator[list[tuple]] | None = iter(batches)
+        self._batches: Iterator[Any] | None = iter(batches)
         self._consumed = False
         self._closed = False
         self._materialized: list[tuple] | None = None
@@ -178,6 +178,14 @@ class StreamingQueryResult:  # REQ-028
             if self._materialized:
                 yield self._materialized
             return
+        yield from self._drain()
+
+    def _tally(self, batch: Any) -> None:
+        self.stats.row_count += len(batch)
+
+    def _drain(self) -> Generator[Any, None, None]:
+        """The source's batches as it yields them, pulled once, tallied, and released at the end
+        or when the consumer stops early."""
         self._begin()
         source = self._batches
         self._batches = None
@@ -188,7 +196,7 @@ class StreamingQueryResult:  # REQ-028
                 # request whose deadline has passed gets no further batch — its stream ends with
                 # the timeout, whichever terminal feeds it and whichever transport drains it.
                 request_deadline.check()
-                self.stats.row_count += len(batch)
+                self._tally(batch)
                 yield batch
         except (TimeoutError, GeneratorExit):
             # The request timed out — noticed here between batches, or raised into the pull of
@@ -253,7 +261,7 @@ class StreamingQueryResult:  # REQ-028
                 source_close()
         self._finish()
 
-    def _release_source(self, source: Iterator[list[tuple]]) -> None:
+    def _release_source(self, source: Iterator[Any]) -> None:
         shield = request_deadline.shielded()
         with shield.lock:
             shield.settle()
@@ -279,3 +287,115 @@ class StreamingQueryResult:  # REQ-028
             self._on_release()
         if self._on_close is not None:
             self._on_close(self.stats)
+
+
+class ArrowStreamResult(StreamingQueryResult):  # REQ-2194
+    """A streaming result whose source is the engine's own Arrow record batches.
+
+    ``arrow_batches()`` hands the batches on as the engine produced them, with no Python row in
+    between: the face an encoder reads. ``batches()``/``iter_rows()``/``rows`` are the row face for
+    the consumers that still take Python rows: each batch is turned into rows by ``to_rows`` only
+    as that consumer pulls it, so the conversion happens at the consumer, never at the fetch. Either
+    face drains the one stream, once; ``stats`` counts rows and the batches' bytes either way.
+    """
+
+    __slots__ = ("schema", "_to_rows")
+
+    def __init__(
+        self,
+        schema: Any,
+        batches: Iterable[Any],
+        column_types: list[str] | None = None,
+        *,
+        to_rows: Callable[[Any], list[tuple]],
+        on_close: Callable[[StreamStats], None] | None = None,
+        on_release: Callable[[], None] | None = None,
+    ) -> None:
+        super().__init__(
+            batches,
+            list(schema.names),
+            column_types,
+            on_close=on_close,
+            on_release=on_release,
+        )
+        self.schema = schema
+        self._to_rows = to_rows
+        self.stats.byte_count = 0
+
+    def _tally(self, batch: Any) -> None:
+        self.stats.row_count += batch.num_rows
+        self.stats.byte_count = (self.stats.byte_count or 0) + batch.nbytes
+
+    def arrow_batches(self) -> Generator[Any, None, None]:
+        """The engine's record batches, as it produced them."""
+        if self._materialized is not None:
+            raise RuntimeError("ArrowStreamResult was already read as rows")
+        yield from self._drain()
+
+    def batches(self) -> Generator[list[tuple], None, None]:
+        if self._materialized is not None:
+            if self._materialized:
+                yield self._materialized
+            return
+        source = self._drain()
+        try:
+            for batch in source:
+                if batch.num_rows:
+                    yield self._to_rows(batch)
+        finally:
+            # A consumer that stops early, or a batch that fails to convert, releases the source.
+            source.close()
+
+
+#: What ArrowResult hands the dataclass __init__ for ``rows``: they are built from its table.
+_FROM_TABLE: list[tuple] = []
+
+
+class ArrowResult(QueryResult):  # REQ-2194
+    """A materialized result held as the engine's Arrow table.
+
+    ``table`` is what the engine returned; ``arrow_batches()`` hands it on with no Python row in
+    between. ``rows`` is built from it by ``to_rows`` the first time a consumer reads it, so the
+    conversion happens at the consumer, never at the fetch. A consumer that replaces ``rows``
+    replaces the result: the table no longer answers for it and is dropped.
+    """
+
+    def __init__(
+        self,
+        table: Any,
+        column_types: list[str] | None = None,
+        *,
+        to_rows: Callable[[Any], list[tuple]],
+    ) -> None:
+        self.table: Any = table
+        self._to_rows = to_rows
+        self._rows: list[tuple] | None = None
+        super().__init__(
+            rows=_FROM_TABLE, column_names=list(table.column_names), column_types=column_types
+        )
+
+    def __post_init__(self) -> None:
+        self.stats = StreamStats(
+            row_count=self.table.num_rows, byte_count=self.table.nbytes, done=True
+        )
+
+    @property
+    def rows(self) -> list[tuple]:  # pyright: ignore[reportIncompatibleVariableOverride]
+        if self._rows is None:
+            self._rows = self._to_rows(self.table)
+        return self._rows
+
+    @rows.setter
+    def rows(self, value: list[tuple]) -> None:  # pyright: ignore[reportIncompatibleVariableOverride]
+        if value is _FROM_TABLE:  # the dataclass __init__: rows are built from the table when read
+            return
+        self._rows = value
+        self.table = None
+
+    def arrow_batches(self) -> Iterator[Any]:
+        """The engine's record batches, as it produced them."""
+        if self.table is None:
+            raise RuntimeError(
+                "ArrowResult rows were replaced; its Arrow table no longer holds them"
+            )
+        return iter(self.table.to_batches())
