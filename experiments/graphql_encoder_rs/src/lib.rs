@@ -12,6 +12,7 @@ mod json;
 mod nest;
 mod odata;
 mod printable;
+mod pytz_data;
 mod pywrite;
 mod pyval;
 mod surfaces;
@@ -256,6 +257,8 @@ fn graphql_encoder_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(encode_jsonapi_group_by, m)?)?;
     m.add_function(wrap_pyfunction!(encode_jsonapi_aggregate, m)?)?;
     m.add_function(wrap_pyfunction!(encode_odata, m)?)?;
+    // The pytz release whose zone tables localize aware timestamps (tools/gen_pytz.py).
+    m.add("PYTZ_VERSION", pytz_data::VERSION)?;
     m.add("EncodeError", m.py().get_type::<EncodeError>())?;
     m.add("ValueRefused", m.py().get_type::<ValueRefused>())?;
     m.add("ResponseRefused", m.py().get_type::<ResponseRefused>())?;

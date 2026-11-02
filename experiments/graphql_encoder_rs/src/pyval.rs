@@ -11,6 +11,7 @@ use arrow::buffer::NullBuffer;
 use arrow::datatypes::*;
 
 use crate::fmt;
+use crate::pytz_data;
 
 /// Why an answer cannot be written. `Value` is an error the product's path raises (a ValueError,
 /// OverflowError, KeyError: a 500); the two refusals are REQ-1867's, answered by name.
@@ -154,15 +155,12 @@ const END_US: i64 = 253_402_300_800_000_000;
 #[derive(Clone)]
 pub enum Zone {
     Fixed(i32),
-    Named(chrono_tz::Tz),
+    /// A pytz zone's transitions (UTC seconds, offset seconds), as pytz localizes with them.
+    Named(&'static [(i64, i32)]),
 }
 
 impl Zone {
     pub fn parse(tz: &str) -> Res<Zone> {
-        match tz {
-            "UTC" | "utc" | "Etc/UTC" | "Z" => return Ok(Zone::Fixed(0)),
-            _ => {}
-        }
         let b = tz.as_bytes();
         if (b.len() == 6 && b[3] == b':' || b.len() == 5) && (b[0] == b'+' || b[0] == b'-') {
             let (h, m) = if b.len() == 6 { (&tz[1..3], &tz[4..6]) } else { (&tz[1..3], &tz[3..5]) };
@@ -171,26 +169,24 @@ impl Zone {
                 return Ok(Zone::Fixed(if b[0] == b'-' { -off } else { off }));
             }
         }
-        match tz.parse::<chrono_tz::Tz>() {
-            Ok(z) => Ok(Zone::Named(z)),
+        match pytz_data::ZONES.binary_search_by(|z| z.0.cmp(tz)) {
+            Ok(i) => {
+                let (_, start, n) = pytz_data::ZONES[i];
+                Ok(Zone::Named(&pytz_data::TRANS[start as usize..(start + n) as usize]))
+            }
             Err(_) => err(format!("Cannot locate timezone '{tz}'")),
         }
     }
 
-    /// The offset in seconds at the UTC instant `utc_us`, as pytz gives it: rounded to the minute.
+    /// The offset in seconds at the UTC instant `utc_us` (pytz's `fromutc`: the last transition at
+    /// or before it).
     pub fn offset_at(&self, utc_us: i64) -> i32 {
         match self {
             Zone::Fixed(o) => *o,
-            Zone::Named(z) => {
-                use chrono::{Offset, TimeZone};
+            Zone::Named(t) => {
                 let secs = utc_us.div_euclid(1_000_000);
-                let naive = chrono::DateTime::from_timestamp(secs, 0).map(|d| d.naive_utc());
-                let s = match naive {
-                    Some(n) => z.offset_from_utc_datetime(&n).fix().local_minus_utc(),
-                    None => 0,
-                };
-                // pytz keeps offsets in whole minutes: an LMT offset is rounded to the nearest.
-                (s + 30).div_euclid(60) * 60
+                let i = t.partition_point(|e| e.0 <= secs);
+                t[i.saturating_sub(1)].1
             }
         }
     }
@@ -566,7 +562,13 @@ impl Reader {
                     if v == i64::MIN {
                         P::NaT
                     } else {
-                        P::Dt(dt_of(v.div_euclid(1000), zone.as_ref(), Some(v.rem_euclid(1000) as u16))?)
+                        let dt = dt_of(v.div_euclid(1000), zone.as_ref(), Some(v.rem_euclid(1000) as u16))?;
+                        // pandas shifts the nanoseconds by the offset in int64: past it, it raises.
+                        let local = v as i128 + dt.offset.unwrap_or(0) as i128 * 1_000_000_000;
+                        if local <= i64::MIN as i128 || local > i64::MAX as i128 {
+                            return err("OutOfBoundsDatetime: the local time overflows nanoseconds");
+                        }
+                        P::Dt(dt)
                     }
                 } else {
                     let us = (v as i128) * u.us_mult() as i128;

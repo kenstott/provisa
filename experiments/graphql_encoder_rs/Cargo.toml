@@ -14,8 +14,6 @@ arrow = { version = "56", default-features = false, features = ["pyarrow", "ffi"
 itoa = "1"
 ryu = "1"
 hashbrown = "0.16"
-chrono = { version = "0.4", default-features = false }
-chrono-tz = "0.10"
 half = "2"
 
 [profile.release]
