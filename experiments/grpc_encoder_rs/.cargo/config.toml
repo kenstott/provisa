@@ -1,0 +1,3 @@
+# A Python extension module resolves the interpreter's symbols when it is loaded.
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup", "-C", "target-cpu=native"]
