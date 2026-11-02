@@ -1618,7 +1618,11 @@ _ROWS: tuple[Macro, ...] = (
     *_ENUMS,
     *(Macro(name, params, forms) for name, params, forms in pg_forms_system.ROWS),
     *(Macro(name, params, forms) for name, params, forms in pg_forms_enum.ROWS),
-    Macro("repeat", ("value", "n"), {_TRINO: pg_forms_system.TRINO_REPEAT, _EVERY: MAPPED}),
+    Macro(
+        "repeat",
+        ("value", "n"),
+        {_TRINO: pg_forms_system.TRINO_REPEAT, _EVERY: Pg("repeat(value, n)")},
+    ),
     *_OTHERS,
     *_XML,
     *_MONEY,
