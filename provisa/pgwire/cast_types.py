@@ -266,12 +266,30 @@ _RETURNED: dict[str, CastType] = {
 }
 
 
+#: The types a form holds as its text, or as what the engine has of it, by format_type's name.
+_NAMED_BY_THE_CALL = {
+    '"any"': 2276, "anyarray": 2277, "anycompatible": 5077, "anycompatiblearray": 5078,
+    "anycompatiblemultirange": 4538, "anycompatiblenonarray": 5079, "anycompatiblerange": 5080,
+    "anyelement": 2283, "anyenum": 3500, "anymultirange": 4537, "anynonarray": 2776,
+    "anyrange": 3831, "cid": 29, "int2vector": 22, "json": 114, "jsonpath": 4072, "oidvector": 30,
+    "pg_ddl_command": 32, "regclass": 2205, "regcollation": 4191, "regconfig": 3734,
+    "regdictionary": 3769, "regnamespace": 4089, "regoper": 2203, "regoperator": 2204,
+    "regproc": 24, "regprocedure": 2202, "regrole": 4096, "text": 25,
+    "time with time zone": 1266, "tsquery": 3615,
+}  # fmt: skip
+_ANY_FORM = _TEXT_FORMS | _INTEGERS | {BVType.JSON}
+_RETURNED.update(
+    {name: CastType(oid, -1, BVType.TEXT, _ANY_FORM) for name, oid in _NAMED_BY_THE_CALL.items()}
+)
+_RETURNED["date"] = CastType(1082, -1, BVType.DATE, frozenset({BVType.DATE}))
+_RETURNED["uuid"] = CastType(2950, -1, BVType.UUID, frozenset({BVType.UUID, BVType.TEXT}))
+
 _BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
 
 
 def bit_varying_read(sql: str) -> str:
     """``sql`` as sqlglot reads it: ``::bit varying`` it takes for a bit and an alias."""
-    return _BIT_VARYING.sub("::varbit", sql)
+    return _BIT_VARYING.sub("::varbit", sql.replace("::cstring[]", "::_cstring"))
 
 
 def _predicate_nodes() -> tuple[type, ...]:
@@ -428,9 +446,28 @@ def _jsonb_columns(tree: Any) -> dict[str, CastType | None]:
     return found
 
 
+def _typed_call(expression: Any) -> CastType | None:
+    """The type a form's marker says of a value only its source has a type for (pg_forms_enum)."""
+    import sqlglot.expressions as exp
+
+    from provisa.core.pg_enum import array_text
+    from provisa.transpiler.pg_forms_enum import TYPED_ARRAY, TYPED_VALUE
+
+    called = expression.name.lower() if isinstance(expression, exp.Anonymous) else ""
+    if called not in (TYPED_VALUE, TYPED_ARRAY):
+        return None
+    oid = int(expression.expressions[0].this)
+    if called == TYPED_VALUE:
+        return CastType(oid, -1, BVType.TEXT, _TEXT_FORMS)
+    return CastType(oid, -1, BVType.TEXT, _TEXT_FORMS | {BVType.STRINGARRAY}, array_text)
+
+
 def _column_type(tree: Any, expression: Any, columns: Any) -> CastType | None:
     import sqlglot.expressions as exp
 
+    typed = _typed_call(expression)
+    if typed is not None:
+        return typed
     reads_jsonb = isinstance(expression, (exp.JSONExtract, exp.JSONBExtract))
     if reads_jsonb and isinstance(expression.this, exp.Column):
         jsonb = _jsonb_columns(tree).get(expression.this.name)

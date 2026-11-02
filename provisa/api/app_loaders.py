@@ -487,6 +487,7 @@ async def _build_source_pools_and_enums(
     from provisa.compiler.enum_detect import build_enum_types
 
     _enum_registry: dict[str, list[str]] = {}
+    _source_enums: dict = {}
     for _src in (*config.sources, *(extra_sources or ())):
         if _src.type.value == "postgresql" and state.source_pools.has(_src.id):
             _driver = state.source_pools.get(_src.id)
@@ -494,7 +495,9 @@ async def _build_source_pools_and_enums(
                 # Swallowing here silently mistypes enum columns — propagate.
                 _reg = await cast(Any, _driver).fetch_enums()
                 _enum_registry.update(_reg)
+                _source_enums.update(await cast(Any, _driver).fetch_source_enums())
     state.pg_enum_types = build_enum_types(_enum_registry)
+    state.pg_source_enums = _source_enums
 
 
 async def apply_configuration(config: ProvisaConfig) -> None:  # REQ-1919, REQ-164

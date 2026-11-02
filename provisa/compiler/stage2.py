@@ -151,6 +151,41 @@ def _readable_term_predicate(column: str, domains: frozenset[str]) -> str:
     return "(" + " OR ".join(tests) + ")"
 
 
+def context_table_map(ctx: Any) -> dict[str, int]:
+    """Every name a statement gives a table of ``ctx``, to its id: what governance reads a
+    statement's references by, and so what anything else reading one must read it by."""
+    from provisa.compiler.naming import physical_relation_name, semantic_relation_names
+    from provisa.compiler.ontology_classes import is_class_table_id
+    from provisa.compiler.sql_rewrite import semantic_table_name
+
+    table_map: dict[str, int] = {}
+    for meta in ctx.tables.values():
+        for said in semantic_relation_names(meta.domain_id, semantic_table_name(meta)):
+            # REQ-2163: a Class is named only under the ontology schema. A table is grounded in
+            # a Class named for it (REQ-2141), so the bare name stays the table's.
+            if is_class_table_id(meta.table_id) and "." not in said:
+                continue
+            table_map[said] = meta.table_id
+        # And its catalog-physical name: a view's body is read into a statement lowered to it,
+        # and two sources may hold tables of one schema.table (naming.table_id_of).
+        table_map[physical_relation_name(meta.catalog_name, meta.schema_name, meta.table_name)] = (
+            meta.table_id
+        )
+        # And its physical schema.table, which a statement lowered without a catalog names it by.
+        # For most tables that is also the stored name below; for one read through a physical
+        # alias (a meta view, an ops log view, a Kafka topic's table) it is not, and without it
+        # such a read is refused as unregistered.
+        table_map[f"{meta.schema_name}.{meta.table_name}"] = meta.table_id
+    # And, unqualified, its field name: the domain-prefixed ``sa__orders`` a domain_prefix schema
+    # exposes, which the validator admits as naming the table (sql_validator). Unresolved, it was
+    # read ungoverned under that name wherever the route happened to find one. A semantic name
+    # another table holds stays that table's; a Class is named only under the ontology schema.
+    for meta in ctx.tables.values():
+        if not is_class_table_id(meta.table_id):
+            table_map.setdefault(meta.field_name, meta.table_id)
+    return table_map
+
+
 def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, REQ-971
     role_id: str,
     rls_context,
@@ -362,39 +397,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     gov.public_tables = frozenset(_public)
 
     # table_map from compilation context — semantic refs only
-    from provisa.compiler.naming import (
-        physical_relation_name,
-        semantic_relation_names,
-        stored_relation_names,
-    )
-    from provisa.compiler.sql_rewrite import semantic_table_name
+    from provisa.compiler.naming import stored_relation_names
 
-    from provisa.compiler.ontology_classes import is_class_table_id
-
-    for meta in ctx.tables.values():
-        for said in semantic_relation_names(meta.domain_id, semantic_table_name(meta)):
-            # REQ-2163: a Class is named only under the ontology schema. A table is grounded in
-            # a Class named for it (REQ-2141), so the bare name stays the table's.
-            if is_class_table_id(meta.table_id) and "." not in said:
-                continue
-            gov.table_map[said] = meta.table_id
-        # And its catalog-physical name: a view's body is read into a statement lowered to it,
-        # and two sources may hold tables of one schema.table (naming.table_id_of).
-        gov.table_map[
-            physical_relation_name(meta.catalog_name, meta.schema_name, meta.table_name)
-        ] = meta.table_id
-        # And its physical schema.table, which a statement lowered without a catalog names it by.
-        # For most tables that is also the stored name below; for one read through a physical
-        # alias (a meta view, an ops log view, a Kafka topic's table) it is not, and without it
-        # such a read is refused as unregistered.
-        gov.table_map[f"{meta.schema_name}.{meta.table_name}"] = meta.table_id
-    # And, unqualified, its field name: the domain-prefixed ``sa__orders`` a domain_prefix schema
-    # exposes, which the validator admits as naming the table (sql_validator). Unresolved, it was
-    # read ungoverned under that name wherever the route happened to find one. A semantic name
-    # another table holds stays that table's; a Class is named only under the ontology schema.
-    for meta in ctx.tables.values():
-        if not is_class_table_id(meta.table_id):
-            gov.table_map.setdefault(meta.field_name, meta.table_id)
+    gov.table_map.update(context_table_map(ctx))
 
     # Also allow domain.original_table_name and schema.original_table_name refs
     # (e.g. "meta.registered_tables", "public.registered_tables")

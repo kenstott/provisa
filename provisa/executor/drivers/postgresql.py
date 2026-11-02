@@ -507,6 +507,13 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
         with self._borrow() as conn:
             return await fetch_enum_registry(_RowFetcher(conn))
 
+    # Async only as fetch_enums is; queries synchronously in-thread.
+    async def fetch_source_enums(self) -> dict:  # REQ-2171
+        from provisa.compiler.enum_detect import fetch_source_enums
+
+        with self._borrow() as conn:
+            return await fetch_source_enums(_RowFetcher(conn))
+
     # Async only for the DirectDriver awaitable contract; closes synchronously in-thread.
     async def close(self) -> None:
         pool, self._pool = self._pool, None

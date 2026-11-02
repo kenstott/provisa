@@ -229,6 +229,10 @@ relationships:
 - {id: owner-to-company, alias: OWNER_IS, cardinality: many-to-one, source_table_id: owners, source_column: owner_lei, target_table_id: owner_company, target_column: lei}
 - {id: owner-to-group, alias: OWNER_IN_GROUP, cardinality: many-to-one, source_table_id: owners, source_column: owner_lei, target_table_id: owner_group, target_column: lei}
 - {id: company-to-group, alias: IN_GROUP, cardinality: one-to-many, source_table_id: owner_company, source_column: lei, target_table_id: owner_group, target_column: lei}
+# The vocabulary a risk officer works with. A group of connected clients is grounded in the group
+# owner_group records for each owner, the company at the top of its chain on Wikidata: that group's
+# entity and name are part of it (REQ-1387: a part grounds the whole it is part of), and the view
+# counts the borrowers under one group together.
 glossary_terms:
 - name: large exposure
   approve: true
@@ -243,6 +247,22 @@ glossary_terms:
   edges:
   - to: large exposure
     rel_type: RELATED_TO
+- name: group entity
+  approve: true
+  definition: "The Wikidata entity of the group an owner belongs to: the company at the top of its chain of parent organizations, or the owner itself when nothing owns it."
+  domains:
+  - groupexposure
+  edges:
+  - to: group of connected clients
+    rel_type: PART_OF
+- name: group name
+  approve: true
+  definition: "The name on Wikidata of the group an owner belongs to, the company at the top of its chain of parent organizations; in the group exposure view, the borrower's own name when nothing owns it."
+  domains:
+  - groupexposure
+  edges:
+  - to: group of connected clients
+    rel_type: PART_OF
 - name: Tier 1 capital
   approve: true
   definition: "A bank's core capital -- its shares and retained earnings -- and the base its large-exposure limit is measured against."
