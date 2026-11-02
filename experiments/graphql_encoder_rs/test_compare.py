@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c276c19f-5b29-4dfa-b8a8-3606c52a5aad
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Differential test: the Rust encoder against the product's Python path (python_ref), on the same
 Arrow batches and selection plan. Both outputs are parsed and compared structurally: key order,
 value types and every value exactly, floats within a relative tolerance of 1e-14. A case where

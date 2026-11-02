@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9e7ae22f-960a-4baf-8845-e3021c9a4c1e
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Benchmark: the product's GraphQL JSON path against the Rust encoder, end to end from Arrow record
 batches to the response body, over a large mixed-type result with one level of nesting.
 
