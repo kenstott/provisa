@@ -231,11 +231,11 @@ class EngineRuntime:  # REQ-825, REQ-840
             pg_sql = fold_catalog_into_schema(pg_sql)
         return self.transpile_physical(pg_sql)
 
-    def connector_pushdown(self, source_type: str):
-        """The bound engine's declared pushdown Capability for ``source_type`` — the same
+    def connector_pushdown(self, source):
+        """The bound engine's declared pushdown Capability for ``source`` — the same
         passthrough pattern as ``dialect``/``transpile_physical``, so callers reach the engine's
         planner input through the runtime seam rather than needing ``.engine`` themselves."""
-        return self.engine.connector_pushdown(source_type)
+        return self.engine.connector_pushdown(source)
 
     @property
     def has_otel_catalog(self) -> bool:

@@ -333,6 +333,52 @@ def google_workspace_refusal(input: SourceInput) -> Optional[MutationResult]:  #
     return None
 
 
+def generic_sql_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-2191
+    """Why a Generic SQL source's settings cannot be a source, or None: for another source type,
+    and for settings that can. The settings are the source's federation hints
+    (provisa.generic_sql.settings); its URL is checked as it will be connected to
+    (provisa.generic_sql.url), so a file it names is held to the org's folder (REQ-1997)."""
+    import json as _json
+
+    from provisa.generic_sql import SOURCE_TYPE
+    from provisa.generic_sql.settings import ATTACH, InvalidGenericSqlSource, parse
+    from provisa.generic_sql.url import FileUrlRefused, check
+
+    if input.type != SOURCE_TYPE:
+        return None
+    try:
+        settings = parse(_json.loads(input.federation_hints_json or "{}"))
+        check(settings.url)
+    except FileUrlRefused as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.generic_sql_file_refused",
+            params={"source": input.id, "path": exc.path, "error": str(exc)},
+        )
+    except InvalidGenericSqlSource as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.generic_sql_invalid",
+            params={"source": input.id, "error": str(exc)},
+        )
+    attached = sorted(engine for engine in settings.capabilities if settings.on(engine, ATTACH))
+    if attached:
+        # No engine attaches a Generic SQL source live yet: the setting would claim a reach the
+        # planner does not have.
+        return MutationResult(
+            success=False,
+            message=(
+                f"Source {input.id!r}: live attach of a Generic SQL source is not built yet "
+                f"(turned on for {', '.join(attached)}); its rows land"
+            ),
+            code="schema.generic_sql_attach_unbuilt",
+            params={"source": input.id, "engines": ", ".join(attached)},
+        )
+    return None
+
+
 def file_source_path(input: SourceInput) -> Optional[MutationResult]:  # REQ-1997
     """A file-based source's path as it is kept, or why it cannot be. The maintainer's ruling:
     "all uploaded file paths must be relative to the org path (in saas in particular we don't

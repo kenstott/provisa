@@ -309,11 +309,25 @@ class FederationEngine:  # REQ-840
             streaming=self.streaming,
         )
 
-    def connector_pushdown(self, source_type: str) -> Capability:
-        """The DECLARED connector-level pushdown capability (predicate/join/aggregate) for a source
-        type (REQ-897/842) — the planner's pushdown INPUT. Reconciles with promote.should_promote and
-        plan_mask_evaluation, which read the same connector ``Capability``; no duplicate trait is
-        introduced. Fails loud (UnreachableSource) when the engine cannot reach the type."""
+    def connector_pushdown(self, source: Any) -> Capability:
+        """The DECLARED connector-level pushdown capability (predicate/join/aggregate) for a
+        registered source (REQ-897/842) — the planner's pushdown INPUT. Reconciles with
+        promote.should_promote and plan_mask_evaluation, which read the same connector
+        ``Capability``; no duplicate trait is introduced. Fails loud (UnreachableSource) when the
+        engine cannot reach the source's type.
+
+        Taken from the source, not only its type (REQ-2191): a Generic SQL source attached live on
+        this engine can do what its settings for this engine turn on, and nothing else. One not
+        attached here lands, and its replica is read as every landed table is."""
+        from provisa.generic_sql import SOURCE_TYPE as GENERIC_SQL
+
+        source_type = source.type.value
+        if source_type == GENERIC_SQL:
+            from provisa.generic_sql.settings import ATTACH, capability, parse
+
+            hints = source.federation_hints
+            if parse(hints).on(self.name, ATTACH):
+                return capability(hints, self.name)
         return self.connector_for(source_type).capability()
 
     # -- reachability (REQ-840) ------------------------------------------------

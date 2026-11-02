@@ -70,6 +70,7 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 | `airport` | — | — (DuckDB extension) | — | No |
 | `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | No |
 | `hiveserver2` | impyla (HiveServer2 over Thrift) | — | hive | No |
+| `generic_sql` | SQLAlchemy, at the source's own URL | — | chosen per source | No |
 
 Wire-compatible databases reuse a base wire's JDBC driver, native async driver and dialect. CockroachDB, YugabyteDB and Greenplum ride the PostgreSQL wire, and TiDB rides the MySQL wire. They need only registry entries and no new connector code.
 
@@ -82,6 +83,18 @@ SAP HANA is read through its own driver and replicated into the active engine's 
 #### `hiveserver2`
 
 A HiveServer2 endpoint read directly over Thrift, for a Hive deployment where the endpoint is the only thing reachable. It is distinct from `hive` and `hive_s3`, which read the warehouse's files and metastore and never go through HiveServer2. Rows are read through the endpoint and replicated into the active engine's store. The form takes host, port (default 10000), username, password and database; `federation_hints.auth_mechanism` selects the authentication (default `PLAIN`, for example `GSSAPI` for Kerberos).
+
+#### `generic_sql`
+
+A database with no named source type, reached through any SQLAlchemy dialect Provisa ships. The source takes three settings, kept in `federation_hints`:
+
+- `url`: the connection URL. Its scheme names the SQLAlchemy dialect and driver, as in `postgresql+psycopg2://db.example.com:5432/sales` or `mssql+pyodbc://host:1433/db?driver=ODBC+Driver+18+for+SQL+Server`. The URL carries no password. The username and password go in the source's own fields, where a `${secret:NAME}` reference works as it does for every source. A scheme whose package is not installed fails the connection and names the missing package.
+- `sql_dialect`: the SQL flavor Provisa writes for the source. It is one of SQLGlot's dialects, or `ansi` for SQLGlot's generic SQL. It is independent of the URL, so a database closest to Postgres can be written as `postgres` behind any driver.
+- `capabilities.<engine>`: the capabilities turned on for the source on that engine, as a comma list of `attach`, `predicate`, `join`, `aggregate` and `key_range`. Each one is off until it is set, and each is held per engine. After an engine swap, nothing is on for the new engine until it is set there. Function pushdown is not offered. Only a `postgresql` or `mysql` URL can turn on `attach`. Live attach is not built yet, so a save that turns it on is refused and the source's rows are replicated into the active engine's store.
+
+A SQLite or DuckDB file is named by its path, written with the organization's tokens: `sqlite:///{files}/shop.db` or `duckdb:///{org}/shop.duckdb`. The file is opened where the token resolves, and a path that leaves the organization's folder is refused, naming the path. On a server of many organizations this is the only file URL allowed. A URL naming any other file is refused, and a DuckDB file is opened with DuckDB's external access off.
+
+A network URL's host is checked like any other source's host (sandbox and multi-organization egress rules), and the connection is made at the address that was checked. Nothing is checked against the database when it connects. Register Table lists the schemas, tables and columns that the source's own SQLAlchemy dialect reports.
 
 ### Cloud Data Warehouses
 

@@ -76,6 +76,9 @@ class SourceType(str, Enum):
     # DuckDB engine; motherduck attaches a remote cloud database on the pg engine.
     motherduck = "motherduck"
     saphana = "saphana"  # SAP HANA — generic self-only landing engine (hana+hdbcli dialect)
+    # REQ-2191: a database with no named type, reached at its own SQLAlchemy URL and written in the
+    # SQL dialect its admin chose (provisa/generic_sql).
+    generic_sql = "generic_sql"
     # Postgres-wire-compatible RDBs — reuse the postgres driver/dialect/Trino connector (REQ-950)
     cockroachdb = "cockroachdb"
     yugabytedb = "yugabytedb"
@@ -422,6 +425,17 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
             data = {**data, "change_signal": source_change_signal(stype, data.get("change_signal"))}
         return data
 
+    @classmethod
+    def settings_view(
+        cls, source_id: str, source_type: str, federation_hints: dict[str, str]
+    ) -> "Source":  # REQ-2191
+        """The source as a runtime's per-source maps hold it -- its id, type and settings -- for a
+        reader that holds only those (``FederationEngine.connector_pushdown``). Not validated
+        again: it was when the source was saved."""
+        return cls.model_construct(
+            id=source_id, type=SourceType(source_type), federation_hints=dict(federation_hints)
+        )
+
     @property
     def connector(self) -> str | None:
         """The Trino catalog ``connector.name`` (the ``USING`` label) for this source type, or None if
@@ -433,7 +447,12 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
 
     @property
     def dialect(self) -> str | None:
-        """SQLGlot dialect name, or None for NoSQL sources."""
+        """SQLGlot dialect name, or None for NoSQL sources. A Generic SQL source's is the one its
+        admin chose (REQ-2191)."""
+        if self.type == SourceType.generic_sql:
+            from provisa.generic_sql.settings import SQL_DIALECT
+
+            return self.federation_hints.get(SQL_DIALECT) or None
         return SOURCE_TO_DIALECT.get(self.type.value)
 
     @property

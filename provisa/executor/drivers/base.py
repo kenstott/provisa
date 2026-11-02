@@ -68,6 +68,17 @@ class DirectDriver(ABC):  # REQ-027, REQ-052
         can't carry these, so warehouse drivers override this to stash them. No-op by default, so the
         RDBMS drivers are untouched."""
 
+    #: REQ-2191: the driver connects at an address its settings name (a Generic SQL source's
+    #: URL), checked and pinned where it connects, never at the ``host`` it is handed.
+    names_own_destination: bool = False
+
+    @property
+    def dialect(self) -> str | None:  # REQ-2191
+        """The SQL dialect this source's statements are written in when the source chose it
+        (a Generic SQL source's ``sql_dialect``), read after ``configure``; None when its type
+        names it (``SOURCE_TO_DIALECT``)."""
+        return None
+
     @abstractmethod
     async def connect(
         self,

@@ -143,6 +143,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     sandbox_destination_refusal,
     download_source_file,
     file_source_path,
+    generic_sql_refusal,
     google_workspace_organisation_refusal,
     microsoft_365_organisation_refusal,
     microsoft_365_refusal,
@@ -2515,6 +2516,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     await download_source_file(input)
                     or logs_refusal(input)
                     or file_source_path(input)
+                    or generic_sql_refusal(input)  # REQ-2191
                     or excel_hints_refusal(input)
                 )  # REQ-1996/1997/2113/2096
                 if _logs_refusal is not None:
@@ -2921,6 +2923,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 (await download_source_file(input) if _fetch else None)
                 or logs_refusal(input)
                 or file_source_path(input)
+                or generic_sql_refusal(input)  # REQ-2191
                 or excel_hints_refusal(input)
             )  # REQ-1996/1997/2113/2096
             if _logs_refusal is not None:
@@ -3023,9 +3026,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 )
         state.source_types[input.id] = input.type
         # REQ-1757: see create_source's identical fix above — was hardcoded "" regardless of type.
-        from provisa.core.source_registry import SOURCE_TO_DIALECT
-
-        state.source_dialects[input.id] = SOURCE_TO_DIALECT.get(input.type, "")
+        # The model's own dialect, as there: a Generic SQL source's is its own (REQ-2191).
+        state.source_dialects[input.id] = model.dialect or ""
+        # As create_source publishes them: the settings a reader holding only the source's id
+        # reads with its type (connector_pushdown, REQ-2191), as they now are.
+        if model.federation_hints:
+            state.source_federation_hints[input.id] = dict(model.federation_hints)
+        else:
+            state.source_federation_hints.pop(input.id, None)
         if input.allowed_domains is not None:
             state.source_allowed_domains[input.id] = list(input.allowed_domains)
 

@@ -1306,7 +1306,7 @@ async def propagate_literal_predicates(sql: str, state: Any) -> str:  # REQ-1880
         src = sources_by_id.get(t.source_id)
         if src is None:
             continue
-        cap = state.federation_engine.connector_pushdown(src.type.value)
+        cap = state.federation_engine.connector_pushdown(src)
         if cap.predicate_pushdown and not cap.join_pushdown:
             eligible.add(phys)
     if not eligible:

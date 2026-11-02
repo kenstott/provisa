@@ -202,7 +202,28 @@ def destinations(fields: dict) -> list[tuple[str, int | None]]:
             url = _url_destination(_plain(value))
             if url is not None:
                 found.append(url)
+    sql_url = _sql_url_destination(fields.get("federation_hints"))
+    if sql_url is not None and sql_url not in found:
+        found.append(sql_url)
     return found
+
+
+def _sql_url_destination(hints: object) -> tuple[str, int | None] | None:
+    """REQ-2191: where a Generic SQL source's connection URL points. Its scheme is any SQLAlchemy
+    dialect's (``mssql+pyodbc://...``), which :func:`_url_destination` does not know as a network
+    scheme; a file database's URL points nowhere."""
+    if not isinstance(hints, dict):
+        return None
+    from provisa.generic_sql.settings import URL, InvalidGenericSqlSource
+    from provisa.generic_sql.url import destination
+
+    url = _plain(hints.get(URL))
+    if url is None or "://" not in url:
+        return None
+    try:
+        return destination(url)
+    except InvalidGenericSqlSource:
+        return None  # no URL at all: nothing can be connected to, and the save refuses it
 
 
 def _strings(node: object) -> list[str]:

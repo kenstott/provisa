@@ -115,6 +115,7 @@ _DIRECT_DRIVER_KEYED: frozenset[str] = frozenset(
         "duckdb",
         "exasol",
         "fabric",
+        "generic_sql",  # REQ-2191: in the SQL dialect its admin chose
         "greenplum",
         "hiveserver2",
         "mariadb",
@@ -223,3 +224,6 @@ def row_materialize_refusal(
 # REQ-2000: the ``qdrant`` dialect named above is registered with SQLGlot wherever this mapping is
 # read, so a Qdrant source's statements transpile and its writes find their dialect.
 import provisa.qdrant.dialect  # noqa: E402, F401
+
+# REQ-2191: the ``ansi`` dialect a Generic SQL source may be written in, registered likewise.
+import provisa.generic_sql.dialect  # noqa: E402, F401
