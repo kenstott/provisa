@@ -10,8 +10,21 @@
 
 // Which loader the demo-sandbox screen shows: chosen at random, the source injectable for tests.
 
-export const SANDBOX_LOADERS = ["cube", "box", "gift"] as const;
+export const SANDBOX_LOADERS = ["cube", "box", "gift", "pot", "plant", "score"] as const;
 export type SandboxLoaderKind = (typeof SANDBOX_LOADERS)[number];
+
+/** The page's title goes with its animation: what is on screen is what the title says is done. */
+const TITLE_KEYS: Partial<Record<SandboxLoaderKind, string>> = {
+  cube: "demoOpenPage.titleMaking",
+  pot: "demoOpenPage.titleCooking",
+  plant: "demoOpenPage.titleGrowing",
+  score: "demoOpenPage.titleComposing",
+};
+
+/** The i18n key of the title shown over loader `kind`. */
+export function loaderTitleKey(kind: SandboxLoaderKind): string {
+  return TITLE_KEYS[kind] ?? "demoOpenPage.title";
+}
 
 /** One loader at random; `random` returns [0, 1) like Math.random. */
 export function pickLoader(random: () => number = Math.random): SandboxLoaderKind {

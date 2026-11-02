@@ -61,8 +61,8 @@ function Launcher() {
 }
 
 /** The Sources screen as far as the step's actions reach it: + Source opens the picker, a type
- * opens its form, Save adds the source's row. */
-function sourcesScreen(rowAlready: boolean) {
+ * opens its form, whose Save and Cancel the test records. */
+function sourcesScreen(formAlready: boolean) {
   const page = document.createElement("div");
   page.id = "sources-stand-in";
   const pressed: string[] = [];
@@ -72,14 +72,20 @@ function sourcesScreen(rowAlready: boolean) {
     e.textContent = text;
     return e;
   };
-  // The list's row as the page draws it: a table row, its first cell the source's ID.
-  const row = () => {
-    const table = page.appendChild(el("table", {}));
-    const tr = table
-      .appendChild(el("tbody", {}))
-      .appendChild(el("tr", { "data-testid": "sources-row-supplies" }));
-    tr.appendChild(el("td", {}, "supplies"));
-    tr.appendChild(el("td", {}, "Parquet File"));
+  const sourceForm = () => {
+    const form = page.appendChild(el("form", { "data-tour": "sources-form" }));
+    form.appendChild(el("input", { "data-testid": "sources-id-input" }));
+    form.appendChild(el("input", { "data-testid": "source-file-location" }));
+    const footer = form.appendChild(el("div", { class: "form-footer" }));
+    footer
+      .appendChild(el("button", { type: "button", "data-testid": "sources-submit" }, "Save"))
+      .addEventListener("click", () => pressed.push("save"));
+    footer
+      .appendChild(el("button", { type: "button", "data-testid": "sources-cancel" }, "Cancel"))
+      .addEventListener("click", () => {
+        pressed.push("cancel");
+        form.remove();
+      });
   };
   const add = page.appendChild(
     el("button", { type: "button", "data-testid": "sources-add-toggle" }, "+ Source"),
@@ -92,19 +98,10 @@ function sourcesScreen(rowAlready: boolean) {
     );
     parquet.addEventListener("click", () => {
       pressed.push("parquet");
-      page.appendChild(el("input", { "data-testid": "sources-id-input" }));
-      page.appendChild(el("input", { "data-testid": "source-file-location" }));
-      const footer = page.appendChild(el("div", { class: "form-footer" }));
-      const save = footer.appendChild(
-        el("button", { type: "button", "data-changes": "true" }, "Save"),
-      );
-      save.addEventListener("click", () => {
-        pressed.push("save");
-        row();
-      });
+      sourceForm();
     });
   });
-  if (rowAlready) row();
+  if (formAlready) sourceForm();
   document.body.appendChild(page);
   return pressed;
 }
@@ -134,7 +131,7 @@ describe("a tour step that acts, then explains", () => {
     document.getElementById("sources-stand-in")?.remove();
   });
 
-  it("builds the source under its caption, then explains the row it built", async () => {
+  it("fills the source form under its caption, explains it, and Next cancels it", async () => {
     const pressed = sourcesScreen(false);
     renderTour();
     fireEvent.click(screen.getByText("launch"));
@@ -146,17 +143,22 @@ describe("a tour step that acts, then explains", () => {
     await waitFor(() => expect(title()).toBe("tour.steps.stepBuildSource.title"), {
       timeout: 20000,
     });
-    // The tour's own press of Save asked nothing more of the visitor.
-    expect(pressed).toEqual(["add", "parquet", "save"]);
+    expect(pressed).toEqual(["add", "parquet"]);
     expect((screen.getByTestId("sources-id-input") as HTMLInputElement).value).toBe("supplies");
     expect((screen.getByTestId("source-file-location") as HTMLInputElement).value).toBe(
       SUPPLIES_PARQUET_URL,
     );
     expect(screen.queryByText("tour.steps.stepBuildSource.acting")).toBeNull();
     expect(document.body.classList.contains("tour-acting")).toBe(false);
+
+    // Next cancels the form: nothing was saved, and the form is gone.
+    fireEvent.click(document.querySelector(".driver-popover-next-btn")!);
+    await waitFor(() => expect(pressed).toEqual(["add", "parquet", "cancel"]));
+    expect(document.querySelector('[data-tour="sources-form"]')).toBeNull();
+    expect(document.querySelector('[data-testid^="sources-row-"]')).toBeNull();
   }, 30000);
 
-  it("entered again, finds what it built and only explains", async () => {
+  it("entered with the form open, only explains", async () => {
     const pressed = sourcesScreen(true);
     renderTour();
     fireEvent.click(screen.getByText("launch"));

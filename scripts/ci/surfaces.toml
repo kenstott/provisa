@@ -236,7 +236,7 @@ tests = ["tests/integration/test_grpc_*.py"]
 [surfaces.mcp]
 wider = "compiler"
 paths = ["provisa/api/mcp/*"]
-tests = ["tests/integration/test_mcp_*.py"]
+tests = ["tests/integration/test_agentdata_demo.py", "tests/integration/test_mcp_*.py"]
 
 [surfaces.rest]
 wider = "compiler"
