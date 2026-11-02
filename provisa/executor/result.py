@@ -184,8 +184,8 @@ class StreamingQueryResult:  # REQ-028
         self.stats.row_count += len(batch)
 
     def _drain(self) -> Generator[Any, None, None]:
-        """The source's batches as it yields them, pulled once, tallied, and released at the end
-        or when the consumer stops early."""
+        """The source's batches as it yields them, pulled once, tallied, and released at the end,
+        when the consumer stops early, or when the source fails."""
         self._begin()
         source = self._batches
         self._batches = None
@@ -198,12 +198,13 @@ class StreamingQueryResult:  # REQ-028
                 request_deadline.check()
                 self._tally(batch)
                 yield batch
-        except (TimeoutError, GeneratorExit):
+        except BaseException:
             # The request timed out — noticed here between batches, or raised into the pull of
-            # one — or the consumer stopped early and closed the stream's iterator (the buffered
-            # threshold probe stops at threshold+1 rows). The source (server-side cursor, pooled
-            # connection, the engine's catalogue read) is released now: nothing will drain this
-            # stream to the end.
+            # one — the consumer stopped early and closed the stream's iterator (the buffered
+            # threshold probe stops at threshold+1 rows), or the source failed as it produced a
+            # batch (an engine error DuckDB meets past the first, duckdb_arrow.answered_batches).
+            # The source (server-side cursor, pooled connection, the engine's catalogue read) is
+            # released now, and the failure re-raised: nothing will drain this stream to the end.
             self._release_source(source)
             raise
         self._finish()
