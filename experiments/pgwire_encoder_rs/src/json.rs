@@ -122,7 +122,10 @@ pub fn dumps(arr: &dyn Array, i: usize, out: &mut Vec<u8>) -> R<()> {
         DataType::UInt16 => int!(UInt16Array),
         DataType::UInt32 => int!(UInt32Array),
         DataType::UInt64 => int!(UInt64Array),
-        DataType::Float32 => float_repr(arr.as_any().downcast_ref::<Float32Array>().unwrap().value(i) as f64, out),
+        DataType::Float32 => float_repr(
+            arr.as_any().downcast_ref::<Float32Array>().unwrap().value(i) as f64,
+            out,
+        ),
         DataType::Float64 => float_repr(arr.as_any().downcast_ref::<Float64Array>().unwrap().value(i), out),
         DataType::Utf8 => string(arr.as_any().downcast_ref::<StringArray>().unwrap().value(i), out),
         DataType::LargeUtf8 => string(arr.as_any().downcast_ref::<LargeStringArray>().unwrap().value(i), out),

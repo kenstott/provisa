@@ -14,6 +14,15 @@ crate-type = ["rlib"]
 pyo3 = { version = "0.25", features = ["extension-module"] }
 arrow = { version = "56", default-features = false, features = ["pyarrow", "ffi"] }
 itoa = "1"
+# Ryu's shortest digits: as Python's repr takes them (json.dumps) ...
+ryu = "1.0.23"
+# ... and as PostgreSQL's float8out/float4out take them (src/common/d2s.c, f2s.c built with
+# STRICTLY_SHORTEST 0): ryu 1.0.23 with acceptBounds false.
+ryu-pg = { path = "third_party/ryu-pg" }
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+# chrono-tz 0.10.4 with its zone tables regenerated at build time from the IANA release in
+# third_party/chrono-tz/tz (2026b, the release Python's pytz and tzdata carry); see RESULTS.md.
+chrono-tz = { path = "third_party/chrono-tz", default-features = false, features = ["std", "filter-by-regex"] }
 
 [profile.release]
 lto = "fat"
