@@ -89069,7 +89069,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Maintainer 2026-11-02: nextval, currval and setval are not supported through Provisa: Provisa does not
     model a source''s sequences. A call is refused by name, and the conformance check counts them skipped
     by design under this decision. lastval() is the exception, answered from the session''s own inserts
-    as amended above.'
+    as amended above. (Amended 2026-11-02, Six-argument regexp_replace is not supported:) Maintainer 2026-11-02:
+    regexp_replace(text, text, text, integer, integer, text), the PostgreSQL 16 form with a start position
+    and an occurrence number, is not supported. A call is refused by name, and the conformance check counts
+    it skipped by design under this decision. The two-, three- and four-argument forms are unchanged.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
