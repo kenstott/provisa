@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 
@@ -34,6 +34,7 @@ import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
 from provisa.core.pg_error import END, MARK
+from provisa.transpiler import pg_forms_hash as hashing
 from provisa.transpiler import pg_type_literals as literals
 from provisa.transpiler.pg_forms_json import jsonb_text
 from provisa.transpiler.pg_forms_types import REFUSED, refused
@@ -292,6 +293,8 @@ CLICKHOUSE = Engine(
 )
 ENGINES = (DUCKDB, TRINO, CLICKHOUSE)
 Typed = Callable[[Engine], str]
+#: A hash's answer on an engine, of its seed: None for the 32-bit hash.
+Hashed = Callable[[Engine, "hashing.Engine", str | None], str]
 
 
 def _quoted(text: str) -> str:
@@ -623,17 +626,14 @@ _ALSO: dict[str, Callable[[Engine, str], str]] = {
 def _canonical(function: str, pattern: str, params: str = "v") -> Row:
     def read(e: Engine) -> str:
         text = e.as_text("v")
-        fits = e.full_match(text, pattern)
-        also = _ALSO.get(function)
-        answer = (
-            text
-            if also is None
-            else (f"CASE WHEN {also(e, text)} THEN {text} ELSE {_by_name(e, function, e.text)} END")
-        )
+        refused = [f"NOT ({e.full_match(text, pattern)})"]
         if "m" in params:  # a typmod that would round its fraction
-            rounds = f"m >= 0 AND m < 6 AND {e.full_match(text, '.*[.][0-9]+.*')}"
-            answer = f"CASE WHEN {rounds} THEN {_by_name(e, function, e.text)} ELSE {answer} END"
-        return f"CASE WHEN {fits} THEN {answer} ELSE {_by_name(e, function, e.text)} END"
+            refused.append(f"m >= 0 AND m < 6 AND {e.full_match(text, '.*[.][0-9]+.*')}")
+        also = _ALSO.get(function)
+        if also is not None:
+            refused.append(f"NOT ({also(e, text)})")
+        by_name = _by_name(e, function, e.text)
+        return f"CASE {' '.join(f'WHEN {c} THEN {by_name}' for c in refused)} ELSE {text} END"
 
     return _noted(_row(function, params, _text, read), "text")
 
@@ -698,7 +698,8 @@ def _spell_in(
     function: str, pattern: str, result: Typed, read: Callable[[Engine, str], str], params: str
 ) -> Callable[[Engine], str]:
     """An input of a text ``pattern`` takes. A typmod that would round its fraction is refused,
-    and a date no calendar holds is PostgreSQL's error."""
+    and a date no calendar holds is PostgreSQL's error. One CASE: ClickHouse makes one node of a
+    refusal written twice, and a node two CASEs share runs whichever branch is taken."""
 
     def form(e: Engine) -> str:
         fraction = e.full_match("v", ".*[.][0-9]+.*")
@@ -706,11 +707,10 @@ def _spell_in(
         day = e.sub("v", "^([0-9]+-[0-9]+-[0-9]+).*$", chr(92) + "1")
         wrong = "FALSE" if function == "time_in" else f"{e.valid_date(day)} IS NULL"
         said = _quoted('date/time field value out of range: "') + " || v || '\"'"
+        by_name = _by_name(e, function, result(e))
         return (
-            f"CASE WHEN {e.full_match('v', pattern)} THEN CASE WHEN {rounds} THEN "
-            f"{_by_name(e, function, result(e))} WHEN {wrong} THEN "
-            f"{e.raises('22008', said, result(e))} ELSE {read(e, 'v')} END "
-            f"ELSE {_by_name(e, function, result(e))} END"
+            f"CASE WHEN NOT ({e.full_match('v', pattern)}) THEN {by_name} WHEN {rounds} THEN {by_name} "
+            f"WHEN {wrong} THEN {e.raises('22008', said, result(e))} ELSE {read(e, 'v')} END"
         )
 
     return form
@@ -755,7 +755,7 @@ def _dates() -> list[Row]:
         _noted(
             _row(
                 "timestamp_in", "v, o, m", of_stamp,
-                _spell_in("timestamp_in", stamp_text, of_stamp, timestamp_in, "v, o, m"),
+                _spell_in("timestamp_in", f"{_DATE}( {_FULL_CLOCK})?", of_stamp, timestamp_in, "v, o, m"),
             ),
             "timestamp without time zone",
         ),
@@ -1065,6 +1065,96 @@ def _typmods_out() -> list[Row]:
     return rows
 
 
+def _hashes() -> list[Row]:
+    """The hashes of the types whose text says their value, by pg_forms_hash's lookup3: a time's,
+    a timestamp's and an LSN's are hashint8's, a uuid's is its bytes', a timetz's its time's xor its
+    zone's (src/backend/utils/adt/date.c, timestamp.c, pg_lsn.c, uuid.c)."""
+
+    def int8_word(h: hashing.Engine, value: str) -> str:
+        return hashing._word_of_int8(replace(h, value=value))
+
+    def clock(e: Engine, h: hashing.Engine, text: str) -> str:
+        return int8_word(h, _micros(e, text))
+
+    def instant(e: Engine, h: hashing.Engine, text: str) -> str:
+        return int8_word(
+            h,
+            f"CASE WHEN {text} = 'infinity' THEN {hashing._MAX_BIGINT} "
+            f"WHEN {text} = '-infinity' THEN {hashing._MIN_BIGINT} ELSE {_instant_us(e, text)} END",
+        )
+
+    def lsn(e: Engine, h: hashing.Engine, text: str) -> str:
+        """hashint8 of the LSN's 64 bits, whose high half says whether they are negative."""
+        high = h.hex_word.format(f"lpad({e.sub(text, '/.*$', '')}, 8, '0')")
+        low = h.hex_word.format(f"lpad({e.sub(text, '^.*/', '')}, 8, '0')")
+        complement = (
+            f"CASE WHEN {high} < {hashing._SIGN} THEN {high} ELSE {hashing._MASK} - {high} END"
+        )
+        return h.xor.format(low, complement)
+
+    def zone(e: Engine, text: str) -> str:
+        """A timetz's zone, as PostgreSQL holds it: its seconds west of UTC."""
+        offset = e.sub(text, "^.*([+-][0-9:]+)$", chr(92) + "1")
+        minutes = (
+            f"CASE WHEN length({offset}) >= 6 THEN CAST(substr({offset}, 5, 2) AS {e.int8}) "
+            "ELSE 0 END"
+        )
+        seconds = (
+            f"CASE WHEN length({offset}) >= 9 THEN CAST(substr({offset}, 8, 2) AS {e.int8}) "
+            "ELSE 0 END"
+        )
+        east = f"(CAST(substr({offset}, 2, 2) AS {e.int8}) * 3600 + {minutes} * 60 + {seconds})"
+        return f"CASE WHEN substr({offset}, 1, 1) = '+' THEN -{east} ELSE {east} END"
+
+    # A word of this module's integers is Nullable on ClickHouse, which lookup3's fold refuses: the
+    # form's CASE has answered a NULL, so the word is the hash engine's value of it.
+    bare = {
+        e.dialects: h.value.replace("value", "({})")
+        for e, (_, h) in zip(ENGINES, hashing.ENGINES, strict=True)
+    }
+
+    def hash_word(e: Engine, h: hashing.Engine, word: str, seed: str | None) -> str:
+        return hashing._of_word(h, bare[e.dialects].format(word), seed)
+
+    def of_word(word: Callable[[Engine, hashing.Engine, str], str]) -> Hashed:
+        def hashed(e: Engine, h: hashing.Engine, seed: str | None) -> str:
+            return hash_word(e, h, word(e, h, e.as_text(h.value)), seed)
+
+        return hashed
+
+    def uuid(e: Engine, h: hashing.Engine, seed: str | None) -> str:
+        return hashing._of_hex(h, f"replace({e.as_text(h.value)}, '-', '')", seed)
+
+    def timetz(e: Engine, h: hashing.Engine, seed: str | None) -> str:
+        text = e.as_text(h.value)
+        time = hash_word(e, h, clock(e, h, e.sub(text, "[+-][0-9:]+$", "")), seed)
+        return h.xor.format(time, hash_word(e, h, zone(e, text), seed))
+
+    rows: list[Row] = []
+    for stem, hashed in (
+        ("time", of_word(clock)),
+        ("timestamp", of_word(instant)),
+        ("pg_lsn", of_word(lsn)),
+        ("uuid", uuid),
+        ("timetz", timetz),
+    ):
+        for name, seed, result in (
+            (f"{stem}_hash", None, "integer"),
+            (f"{stem}_hash_extended", "seed", "bigint"),
+        ):
+            params = "v" if seed is None else "v, seed"
+            forms = {}
+            for e, (_, h) in zip(ENGINES, hashing.ENGINES, strict=True):
+                h = replace(h, value=h.value.replace("value", "v"))
+                answer = hashed(e, h, None if seed is None else h.seed)
+                sql_type = h.int8_type if seed else h.int4_type
+                forms[e.dialects] = _strict(
+                    params, sql_type, f"CAST({_unfolded(e, answer)} AS {sql_type})"
+                )
+            rows.append(_noted((name, tuple(params.split(", ")), forms), result))
+    return rows
+
+
 #: A row: name, parameters, each engine's form.
 ROWS: tuple[Row, ...] = (
     *_integers(),
@@ -1091,6 +1181,7 @@ ROWS: tuple[Row, ...] = (
     _text_send("enum_send"),
     *_parts_sends(),
     *_typmods_out(),
+    *_hashes(),
     *_refused(
         """aclitemin array_out anyarray_out anycompatiblearray_out anyrange_out anymultirange_out
         anycompatiblerange_out anycompatiblemultirange_out range_out multirange_out record_out
@@ -1135,20 +1226,12 @@ ROWS: tuple[Row, ...] = (
     *_refused(
         """bittypmodin bpchartypmodin intervaltypmodin numerictypmodin timestamptypmodin
         timestamptztypmodin timetypmodin timetztypmodin varbittypmodin varchartypmodin
-        interval_hash pg_lsn_hash time_hash timestamp_hash timetz_hash uuid_hash""",
+        interval_hash""",
         "v", _int4, "integer",
     ),
     *_refused(
-        """interval_hash_extended pg_lsn_hash_extended time_hash_extended timestamp_hash_extended
-        timetz_hash_extended uuid_hash_extended""",
+        "interval_hash_extended",
         "v, s", _int8, "bigint",
-    ),
-    *_refused(
-        """float8_avg float8_corr float8_covar_pop float8_covar_samp float8_regr_avgx
-        float8_regr_avgy float8_regr_intercept float8_regr_r2 float8_regr_slope float8_regr_sxx
-        float8_regr_sxy float8_regr_syy float8_stddev_pop float8_stddev_samp float8_var_pop
-        float8_var_samp""",
-        "v", lambda e: e.double, "double precision",
     ),
     *_refused("int8_avg numeric_exp numeric_ln numeric_sqrt", "v", lambda e: e.text, "numeric"),
     *_refused("numeric_div numeric_div_trunc numeric_log numeric_power", "a, b", lambda e: e.text, "numeric"),
@@ -1459,6 +1542,8 @@ _RANGE_OUT = frozenset(
 _RANGE_SEND = frozenset({"range_send", "multirange_send"})
 _ARRAY_OUT = frozenset({"array_out", "anyarray_out", "anycompatiblearray_out"})
 _ARRAY_SEND = frozenset({"array_send", "anyarray_send", "anycompatiblearray_send"})
+#: The final functions of a float8 state (pg_forms_aggregate.FINAL_FUNCTIONS): a literal state is
+#: answered here, a column's by the form.
 _FLOAT8_STATES = frozenset(
     f"float8_{n}" for n in (
         "avg", "var_pop", "var_samp", "stddev_pop", "stddev_samp", "corr", "covar_pop", "covar_samp",
@@ -1466,6 +1551,7 @@ _FLOAT8_STATES = frozenset(
         "regr_syy",
     )
 )  # fmt: skip
+RESULTS.update(dict.fromkeys(_FLOAT8_STATES, "double precision"))
 
 
 def _folded(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
@@ -1497,6 +1583,8 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
     answers itself, whatever type no engine has it says, and a literal of a type is its input."""
 
     def rewrite(node: exp.Expr) -> exp.Expr:
+        if dialect == "clickhouse" and isinstance(node, exp.Cast) and _type_said(node) == "time":
+            return _read(node)  # ClickHouse 24 has no time: a time is its text, as time_in reads it
         target = node
         if (
             isinstance(node, exp.Dot)

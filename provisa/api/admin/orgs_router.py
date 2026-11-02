@@ -44,7 +44,6 @@ from provisa.core.schema_admin import (
     AWAITING_CHECKOUT,
     orgs,
     user_org_memberships,
-    user_profiles,
 )
 from provisa.security.rights import can_act_cross_org
 
@@ -1158,31 +1157,12 @@ async def list_members(org_id: str, request: Request):  # REQ-042, REQ-059, REQ-
     the page can only offer every action to everyone and let the server say no.
     """
     from provisa.api.admin.invites_router import _require_org_admin
-    from provisa.core.org_membership import org_admin_user_ids
+    from provisa.core.org_membership import org_admin_user_ids, org_roster
 
     await _require_org_admin(request, org_id, allow_cross_org=False)  # REQ-1605
     admin_ids = await org_admin_user_ids(await _org_model_db(org_id))
-    pool = _admin_pool()
-    async with pool.acquire() as conn:
-        result = await conn.execute_core(
-            select(
-                user_org_memberships.c.user_id,
-                user_profiles.c.email,
-                user_profiles.c.display_name,
-                user_profiles.c.provider,
-                user_org_memberships.c.created_at,
-            )
-            .select_from(
-                user_org_memberships.outerjoin(
-                    user_profiles,
-                    user_profiles.c.user_id == user_org_memberships.c.user_id,
-                )
-            )
-            .where(user_org_memberships.c.org_id == org_id)
-            .order_by(user_org_memberships.c.user_id)
-        )
-        rows = result.fetchall()
-    return [{**dict(r._mapping), "is_org_admin": r._mapping["user_id"] in admin_ids} for r in rows]
+    rows = await org_roster(_admin_pool(), org_id)
+    return [{**r, "is_org_admin": r["user_id"] in admin_ids} for r in rows]
 
 
 @router.post("/{org_id}/members")

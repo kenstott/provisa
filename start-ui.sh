@@ -52,6 +52,10 @@ export PROVISA_CHANGE_EVENT_BOOTSTRAP="${PROVISA_CHANGE_EVENT_BOOTSTRAP:-localho
 export KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
 export QUERY_ENGINE_CONTAINER="${QUERY_ENGINE_CONTAINER:-provisa-trino-1}"
 export PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"
+# The backend's gRPC and Arrow Flight ports (server.grpc_port / server.flight_port, REQ-1913), set
+# here so the startup banner prints the port the backend binds.
+export GRPC_PORT="${GRPC_PORT:-50051}"
+export FLIGHT_PORT="${FLIGHT_PORT:-8815}"
 # REQ-1494: the platform fake key directory, written by this uvicorn and mounted into Trino.
 export PROVISA_FAKE_KEY_DIR="${PROVISA_FAKE_KEY_DIR:-$SCRIPT_DIR/.provisa/fake-key}"
 export PROVISA_UI_PORT="${PROVISA_UI_PORT:-3000}"
@@ -242,6 +246,29 @@ lsof -i ":$PROVISA_API_PORT" -P -t 2>/dev/null | xargs kill 2>/dev/null || true
 lsof -i ":$PROVISA_UI_PORT" -P -t 2>/dev/null | xargs kill 2>/dev/null || true
 sleep 1
 
+# Print one line per query surface the backend serves (the startup banner). The HTTP paths are
+# system_health.HTTP_SURFACES (tests/unit/test_startup_banner_surfaces.py holds them equal); a
+# listener whose port is 0 or unset is not started, so it has no line.
+print_query_surfaces() {
+  [ "${PROVISA_PGWIRE_PORT:-0}" != 0 ] && echo "  pgwire:  postgresql://admin:ignored@localhost:${PROVISA_PGWIRE_PORT}/provisa  (username = role)"
+  [ "${PROVISA_BOLT_PORT:-0}" != 0 ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
+  echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
+  echo "  graphql: http://localhost:$PROVISA_API_PORT/data/graphql  (GraphQL over HTTP; role via sign-in or X-Provisa-Role)"
+  echo "  cypher:  http://localhost:$PROVISA_API_PORT/data/cypher  (Cypher over HTTP; role via sign-in or X-Provisa-Role)"
+  echo "  rest:    http://localhost:$PROVISA_API_PORT/data/rest  (REST, a path per table; role via sign-in or X-Provisa-Role)"
+  echo "  jsonapi: http://localhost:$PROVISA_API_PORT/data/jsonapi  (JSON:API, a path per table; role via sign-in or X-Provisa-Role)"
+  echo "  odata:   http://localhost:$PROVISA_API_PORT/data/odata  (OData service root; role via sign-in or X-Provisa-Role)"
+  echo "  grpc:    localhost:$GRPC_PORT  (gRPC; role via bearer token or x-provisa-role metadata)"
+  echo "  flight:  grpc://localhost:$FLIGHT_PORT  (Arrow Flight; role via bearer token or x-provisa-role header)"
+  if [ "${PROVISA_MCP_PORT:-0}" != 0 ]; then
+    # The scheme the MCP server answers on: its TLS is opt-in and may serve plain HTTP (REQ-1106).
+    local scheme=http
+    curl -s -o /dev/null --max-time 2 "http://localhost:$PROVISA_MCP_PORT/mcp" 2>/dev/null \
+      || { curl -sk -o /dev/null --max-time 2 "https://localhost:$PROVISA_MCP_PORT/mcp" 2>/dev/null && scheme=https; }
+    echo "  mcp:     ${scheme}://localhost:${PROVISA_MCP_PORT}/mcp  (Model Context Protocol; role via OAuth or PROVISA_MCP_ROLE)"
+  fi
+}
+
 # Truncate old log
 > "$LOG_DIR/server.log"
 
@@ -323,6 +350,7 @@ if [ "$DEMO" = true ]; then
   echo "Provisa running (demo mode):"
   echo "  Backend: http://localhost:$PROVISA_API_PORT  (logs: $LOG_DIR/server.log)"
   echo "  UI:      http://localhost:$PROVISA_UI_PORT"
+  print_query_surfaces
   echo ""
   echo "Demo sources:"
   echo "  - pet-store-pg       (PostgreSQL, pet_store schema)"
@@ -333,6 +361,7 @@ else
   echo "Provisa running:"
   echo "  Backend: http://localhost:$PROVISA_API_PORT  (logs: $LOG_DIR/server.log)"
   echo "  UI:      http://localhost:$PROVISA_UI_PORT"
+  print_query_surfaces
 fi
 echo ""
 echo "Press Ctrl+C to stop. Press Ctrl+R to restart backend."
