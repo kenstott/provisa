@@ -1701,7 +1701,7 @@ def _endpoint_replica(source: Any) -> ConnectorReplica:
     with _ENDPOINTS_LOCK:
         if source_key(source.id) in _DELETING:
             raise SourceBeingDeleted(source.id)
-        if key[0] != org_id:
+        if key != source_key(source.id):  # a server shared: its template is a user as a sandbox is
             _ENDPOINT_USERS.setdefault(key, set()).add(org_id)
         replica = _ENDPOINTS.get(key)
         if replica is None:
@@ -1928,14 +1928,14 @@ def stop_org_servers(org_id: str) -> None:
     """Stop and forget every server this process started for ``org_id``'s sources (REQ-1992:
     before the org's folder's files are encrypted or decrypted)."""
     with _ENDPOINTS_LOCK:
-        mine = [key for key in _ENDPOINTS if key[0] == org_id]
+        mine = [key for key in _ENDPOINTS if key[0] == org_id and key not in _ENDPOINT_USERS]
         # A server several orgs share goes when the last of them stops reading it.
         for key, users in list(_ENDPOINT_USERS.items()):
             users.discard(org_id)
-            if not users and key not in mine and key in _ENDPOINTS:
-                mine.append(key)
             if not users:
                 del _ENDPOINT_USERS[key]
+                if key in _ENDPOINTS:
+                    mine.append(key)
         replicas = [_ENDPOINTS.pop(key) for key in mine]
     for replica in replicas:
         replica.retire()

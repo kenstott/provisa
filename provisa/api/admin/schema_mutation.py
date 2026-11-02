@@ -2112,6 +2112,27 @@ async def _delete_source_row(id: str, reader: "DependentsReader", pool) -> Mutat
     )
 
 
+async def _publish_new_source(
+    info: StrawberryInfo, input: SourceInput
+) -> MutationResult | None:  # REQ-2113, REQ-2006
+    """Rebuild the schemas once for a source just created, with its draft table when one was asked
+    for. Registering that table ends in a rebuild of its own, and typing it from the file needs
+    none first: a Save paid for both, the longest steps it has. What keeps the source from being
+    answered as saved is returned, as :func:`_register_draft_table` says it."""
+    if not input.register_table_draft:
+        await _rebuild_schemas()
+        return None
+    try:
+        said = await _register_draft_table(info, input)
+    except BaseException:
+        # The source stands, whatever became of its table.
+        await _rebuild_schemas()
+        raise
+    if said is not None:
+        await _rebuild_schemas()
+    return said
+
+
 async def _register_draft_table(
     info: StrawberryInfo, input: SourceInput
 ) -> MutationResult | None:  # REQ-2113
@@ -2651,16 +2672,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
             async with pool.acquire() as _companion_conn:
                 await sync_companion(cast("Connection", _companion_conn), input.id)
-        await _rebuild_schemas()
+        said = await _publish_new_source(info, input)
 
         if input.type == "data_profiler":  # REQ-1934: its schedule fires on the org's scheduler
             from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
 
             await reschedule_org_triggers()
-        if input.register_table_draft:  # REQ-2113
-            refused = await _register_draft_table(info, input)
-            if refused is not None:
-                return refused
+        if said is not None:
+            return said
         return MutationResult(
             success=True,
             message=f"Source {input.id!r} created",

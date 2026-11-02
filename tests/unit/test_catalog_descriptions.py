@@ -112,9 +112,16 @@ class TestTheSeedCarriesTheDescriptions:
         async def _transaction():
             yield
 
+        @asynccontextmanager
+        async def _advisory_lock(key):
+            del key
+            yield
+
         conn = AsyncMock()
-        # Each view is created inside a transaction, a context on a real connection.
+        # Each view is created inside a transaction and the catalog client role inside an advisory
+        # lock, both contexts on a real connection.
         conn.transaction = _transaction
+        conn.advisory_lock = _advisory_lock
         conn.upsert_returning = AsyncMock(return_value=7)
         # Reflect the columns the relation actually exposes: a view-backed registration (derived_tags)
         # has no surrogate id, so a fixed one-column stand-in would demand a description for a column

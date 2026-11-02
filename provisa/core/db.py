@@ -11,6 +11,7 @@
 """Control-plane org/tenant bootstrap: role hardening and schema seeding."""
 
 import re
+import zlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -171,6 +172,15 @@ _SCHEMA_NAME = re.compile(r"^[A-Za-z0-9_]+$")
 SCHEMA_LOCK_KEY = 7337
 
 
+def schema_lock_key(schema: str | None) -> int:
+    """REQ-2006: the lock of one schema's bootstrap. What it serializes is two callers creating the
+    same relations in the same schema (see :func:`add_missing_columns`); one key for every schema
+    queued every org's build behind every other's, on every process of the control plane."""
+    if schema is None:
+        return SCHEMA_LOCK_KEY
+    return (SCHEMA_LOCK_KEY << 32) | zlib.crc32(schema.encode())
+
+
 def _validate_schema_name(schema: str) -> None:
     if not _SCHEMA_NAME.match(schema):
         raise ValueError(f"not a schema name: {schema!r}")
@@ -231,7 +241,7 @@ def add_missing_columns(sync_conn, tables, schema: str | None = None) -> None:
         # both CREATE it — the second fails on the catalog's unique index. Taken before the
         # inspection below, held to this transaction's end, so the second sees what the first
         # created.
-        sync_conn.exec_driver_sql(f"SELECT pg_advisory_xact_lock({SCHEMA_LOCK_KEY})")
+        sync_conn.exec_driver_sql(f"SELECT pg_advisory_xact_lock({schema_lock_key(schema)})")
     if schema and postgres:
         _validate_schema_name(schema)
         # Transaction-scoped: nothing of it stays on the pooled connection.
@@ -325,7 +335,7 @@ async def init_schema(
     async with pool.acquire() as conn:
         # This branch is PostgreSQL-only (non-PG returned above); the advisory lock is taken through
         # the abstraction so no PG-specific lock SQL appears here.
-        async with conn.advisory_lock(SCHEMA_LOCK_KEY):
+        async with conn.advisory_lock(schema_lock_key(schema_name)):
             await conn.execute_core(CreateSchema(schema_name, if_not_exists=True))
             await conn.execute_core(
                 CreateSchema(

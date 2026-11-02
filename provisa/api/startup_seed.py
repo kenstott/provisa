@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import logging
 import re
+import time
+import zlib
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +87,33 @@ from provisa.core.models import DERIVED_SOURCE_ID
 # (see the lock's own call site for why). Any distinct bigint works; this one is just
 # "PROVISA1" packed as ASCII bytes, chosen so it reads as clearly app-specific in pg_locks output.
 _SEED_DOMAIN_ADVISORY_LOCK_KEY = 0x50524F5649534131
+# REQ-1900: and the one role every schema's seed shares, the cluster's rather than a schema's.
+_SEED_CATALOG_ROLE_ADVISORY_LOCK_KEY = 0x50524F5649534132
+
+
+class _SeedClock:
+    """Each slow step of a seed, at WARNING as a hosted tier logs (REQ-2006)."""
+
+    def __init__(self, org_id: str) -> None:
+        self._org_id = org_id
+        self._since = time.monotonic()
+
+    def mark(self, step: str) -> None:
+        now = time.monotonic()
+        if now - self._since >= 2.0:  # noqa: PLR2004 - seconds: a step worth a line
+            logging.getLogger(__name__).warning(
+                "seed of %s: %s took %.1fs", self._org_id, step, now - self._since
+            )
+        self._since = now
+
+
+def _seed_lock_key(org_id: str, env: str | None) -> int:
+    """REQ-1900, REQ-2006: the seed's lock for one schema. What it protects is one schema's views
+    between one worker's DDL and its reflect, so workers building that schema take it in turn.
+    One key for every schema queued every org's build behind every other's, on every process of
+    the control plane: both sandbox tiers' opens and template builds, in one line."""
+    return _SEED_DOMAIN_ADVISORY_LOCK_KEY ^ zlib.crc32(org_schema(org_id, env).encode())
+
 
 # The ops views over the signals (ops_schema.OPS_SIGNAL_VIEWS), each engine with the signals
 # defining them in otel.signals.
@@ -267,11 +296,12 @@ async def _seed_catalog_client(conn: Any, schema_name: str) -> None:
     PostgreSQL then refuses it a server file and hides other connections from it. A view reads as
     its owner, so a role needs no grant on what a view reads. provisa_raise is how a form answers
     PostgreSQL's own error. Run once every relation it names is seeded."""
-    await conn.execute(
-        f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
-        "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
-    )
-    await conn.execute(f"GRANT {CLIENT_ROLE} TO CURRENT_USER")
+    async with conn.advisory_lock(_SEED_CATALOG_ROLE_ADVISORY_LOCK_KEY):
+        await conn.execute(
+            f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
+            "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+        )
+        await conn.execute(f"GRANT {CLIENT_ROLE} TO CURRENT_USER")
     await conn.execute(f'GRANT USAGE ON SCHEMA "{schema_name}" TO {CLIENT_ROLE}')
     await conn.execute(f"GRANT SELECT ON {', '.join(_terminal_relations())} TO {CLIENT_ROLE}")
     await conn.execute(RAISE_FUNCTION_SQL)
@@ -324,25 +354,26 @@ async def _register_admin_view(
             _table_columns_t.c.column_name.not_in(list(col_names)),
         )
     )
-    for col in cols:
-        await conn.upsert(
-            _table_columns_t,
-            {
-                "table_id": table_id,
-                "domain_id": domain_id,
-                "column_name": col["column_name"],
-                # REQ-2154: the grant to Viewer the catalog hangs on (inheritance.expand_meta_grants).
-                "visible_to": [VIEWER_ROLE],
-                "data_type": col["data_type"],
-                "is_primary_key": col["column_name"] in pk_cols,
-                "description": _COL_DESC[tbl].get(col["column_name"]),
-            },
-            index_elements=["table_id", "column_name"],
-            update_columns=[],
-            set_extra=_keep_edited_description(
-                _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
-            ),
-        )
+    async with conn.transaction():  # one commit, not one a column
+        for col in cols:
+            await conn.upsert(
+                _table_columns_t,
+                {
+                    "table_id": table_id,
+                    "domain_id": domain_id,
+                    "column_name": col["column_name"],
+                    # REQ-2154: the grant to Viewer the catalog hangs on (inheritance.expand_meta_grants).
+                    "visible_to": [VIEWER_ROLE],
+                    "data_type": col["data_type"],
+                    "is_primary_key": col["column_name"] in pk_cols,
+                    "description": _COL_DESC[tbl].get(col["column_name"]),
+                },
+                index_elements=["table_id", "column_name"],
+                update_columns=[],
+                set_extra=_keep_edited_description(
+                    _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
+                ),
+            )
 
 
 async def _seed_ontology_domain(
@@ -484,25 +515,26 @@ async def _seed_ops_domain(
                 _table_columns_t.c.column_name.not_in(list(col_names)),
             )
         )
-        for col in cols:
-            await conn.upsert(
-                _table_columns_t,
-                {
-                    "table_id": table_id,
-                    "domain_id": "ops",
-                    "column_name": col["column_name"],
-                    # org_admin stewards ops (below), and reads it by this grant (REQ-1386).
-                    "visible_to": ["org_admin"],
-                    "data_type": col["data_type"],
-                    "is_primary_key": col["column_name"] in pk_cols,
-                    "description": _COL_DESC[tbl].get(col["column_name"]),
-                },
-                index_elements=["table_id", "column_name"],
-                update_columns=[],
-                set_extra=_keep_edited_description(
-                    _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
-                ),
-            )
+        async with conn.transaction():  # one commit, not one a column
+            for col in cols:
+                await conn.upsert(
+                    _table_columns_t,
+                    {
+                        "table_id": table_id,
+                        "domain_id": "ops",
+                        "column_name": col["column_name"],
+                        # org_admin stewards ops (below), and reads it by this grant (REQ-1386).
+                        "visible_to": ["org_admin"],
+                        "data_type": col["data_type"],
+                        "is_primary_key": col["column_name"] in pk_cols,
+                        "description": _COL_DESC[tbl].get(col["column_name"]),
+                    },
+                    index_elements=["table_id", "column_name"],
+                    update_columns=[],
+                    set_extra=_keep_edited_description(
+                        _table_columns_t.c.description, _COL_DESC[tbl].get(col["column_name"])
+                    ),
+                )
 
     # REQ-1386: management report views. The unnest spine first (the report views
     # reference it), then each report view, registered like any ops table. Every
@@ -534,25 +566,26 @@ async def _seed_ops_domain(
                 _table_columns_t.c.column_name.not_in(list(col_names)),
             )
         )
-        for col in cols:
-            await conn.upsert(
-                _table_columns_t,
-                {
-                    "table_id": table_id,
-                    "domain_id": "ops",
-                    "column_name": col["column_name"],
-                    # org_admin stewards ops (below), and reads it by this grant (REQ-1386).
-                    "visible_to": ["org_admin"],
-                    "data_type": col["data_type"],
-                    "is_primary_key": col["column_name"] == "id",
-                    "description": _COL_DESC[view_name].get(col["column_name"]),
-                },
-                index_elements=["table_id", "column_name"],
-                set_extra=_keep_edited_description(
-                    _table_columns_t.c.description, _COL_DESC[view_name].get(col["column_name"])
-                ),
-                update_columns=[],
-            )
+        async with conn.transaction():  # one commit, not one a column
+            for col in cols:
+                await conn.upsert(
+                    _table_columns_t,
+                    {
+                        "table_id": table_id,
+                        "domain_id": "ops",
+                        "column_name": col["column_name"],
+                        # org_admin stewards ops (below), and reads it by this grant (REQ-1386).
+                        "visible_to": ["org_admin"],
+                        "data_type": col["data_type"],
+                        "is_primary_key": col["column_name"] == "id",
+                        "description": _COL_DESC[view_name].get(col["column_name"]),
+                    },
+                    index_elements=["table_id", "column_name"],
+                    set_extra=_keep_edited_description(
+                        _table_columns_t.c.description, _COL_DESC[view_name].get(col["column_name"])
+                    ),
+                    update_columns=[],
+                )
 
     # REQ-1386: org_admin stewards the ops domain (REQ-609 — never PENDING).
     await conn.execute_core(
@@ -1018,8 +1051,8 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         # visibility is a property of the OTHER session's DDL, not this session's ordering.
         # Confirmed live under `--workers 8`: `sqlalchemy.exc.NoSuchTableError` on
         # `org_default.usage_ranking`/`org_default.pii_access` from exactly this reflect step.
-        # A session advisory lock serializes the whole phase across every worker regardless of
-        # the exact interleaving — only one worker's pass ever runs at a time, so by the time any
+        # A session advisory lock, one per schema (_seed_lock_key), serializes the whole phase
+        # across every worker regardless of the exact interleaving — only one worker's pass ever runs at a time, so by the time any
         # OTHER worker's turn starts, every view this phase creates is fully committed and stable;
         # every worker's own pass is already idempotent (CREATE OR REPLACE VIEW, upserts), so a
         # later worker's now-serialized pass is just a fast no-op confirmation. Session-scoped
@@ -1028,15 +1061,21 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         # Sqlite (the embedded demo tier) has no multi-worker story and no advisory-lock function.
         # The lock is held on a session of its own on the server (Connection.advisory_lock), so it
         # spans these autocommitting statements even behind a transaction-pooling PgBouncer.
-        async with _conn.advisory_lock(_SEED_DOMAIN_ADVISORY_LOCK_KEY):
+        async with _conn.advisory_lock(_seed_lock_key(org_id, env)):
+            clock = _SeedClock(org_id)
             await _seed_tag_param_values(_conn)  # REQ-1467
             await _seed_meta_domain(_conn, org_id=org_id, env=env)
+            clock.mark("meta domain")
             await _seed_ontology_domain(_conn, org_id=org_id, env=env)  # REQ-2163
+            clock.mark("ontology domain")
             await _seed_ops_pg(_conn)
             await _seed_ops_domain(_conn, org_id=org_id, env=env)  # REQ-884
+            clock.mark("ops domain")
             await _seed_catalog_client(_conn, org_schema(org_id, env))  # REQ-2190
+            clock.mark("catalog client")
             await _ensure_ops_steward_grant(_conn)  # REQ-1386
             await _seed_meta_relationships(_conn)
+            clock.mark("relationships")
         needs_clusters = (
             await _conn.execute_core(
                 select(_sa_func.count())
@@ -1107,27 +1146,28 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
             ),
         )
         cols = await conn.reflect_columns(VIEW_NAME, schema=schema_name)
-        for col in cols:
-            await conn.upsert(
-                _table_columns_t,
-                {
-                    "table_id": table_id,
-                    "domain_id": "meta",
-                    "column_name": col["column_name"],
-                    # REQ-2154: the grant to Viewer the catalog hangs on (inheritance.expand_meta_grants).
-                    "visible_to": [VIEWER_ROLE],
-                    "data_type": col["data_type"],
-                    # A view over the registry has no key of its own — one org appears once per
-                    # org_admin — so nothing here is a primary key.
-                    "is_primary_key": False,
-                    "description": _COL_DESC[VIEW_NAME][col["column_name"]],
-                },
-                index_elements=["table_id", "column_name"],
-                update_columns=["data_type"],
-                set_extra=_keep_edited_description(
-                    _table_columns_t.c.description, _COL_DESC[VIEW_NAME][col["column_name"]]
-                ),
-            )
+        async with conn.transaction():  # one commit, not one a column
+            for col in cols:
+                await conn.upsert(
+                    _table_columns_t,
+                    {
+                        "table_id": table_id,
+                        "domain_id": "meta",
+                        "column_name": col["column_name"],
+                        # REQ-2154: the grant to Viewer the catalog hangs on (inheritance.expand_meta_grants).
+                        "visible_to": [VIEWER_ROLE],
+                        "data_type": col["data_type"],
+                        # A view over the registry has no key of its own — one org appears once per
+                        # org_admin — so nothing here is a primary key.
+                        "is_primary_key": False,
+                        "description": _COL_DESC[VIEW_NAME][col["column_name"]],
+                    },
+                    index_elements=["table_id", "column_name"],
+                    update_columns=["data_type"],
+                    set_extra=_keep_edited_description(
+                        _table_columns_t.c.description, _COL_DESC[VIEW_NAME][col["column_name"]]
+                    ),
+                )
     return True
 
 

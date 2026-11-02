@@ -36,7 +36,7 @@ streamed response (chunk by chunk, with the server's flow control), a large or c
 body, a ``receive()`` after the body (a disconnect watch), and a WebSocket.
 """
 
-# Requirements: REQ-1882
+# Requirements: REQ-1882, REQ-2006
 
 from __future__ import annotations
 
@@ -46,9 +46,11 @@ import contextvars
 import json
 import logging
 import queue
+import re
 import threading
 import time
 from collections.abc import Awaitable, Callable, Coroutine, MutableMapping
+from contextvars import ContextVar
 from typing import Any, TypeVar
 
 from provisa.core import request_deadline
@@ -80,7 +82,23 @@ _PREREAD_MAX_BYTES = 1 << 20
 # only add to it.
 _CONTROL_PATHS = ("/health", "/live", "/ready", "/setup/status", "/data/engine/state")
 _CONTROL_PREFIXES = ("/admin/", "/auth/")
+# REQ-2006: what a demo's visitor and its monitoring ask while demos open: reads of settings and
+# counts, and the closing that frees a place. Queued behind the opens, each was refused server.busy.
+_DEMO_CONTROL_PATHS = ("/sandboxes/limits", "/sandboxes/closing")
+_DEMO_STATUS = re.compile(r"/public/demos/[^/]+/status")
+_DEMO_OPEN = re.compile(r"/(public/demos|sandboxes)/[^/]+")
+# REQ-2006: demos opening at once. An open runs for tens of seconds on the control plane's few
+# connections, so it has threads of its own, which leave a worker's data threads to its visitors'
+# queries; each holds a connection or two of the 18 a worker has (ControlPlaneConfig).
+_OPEN_THREADS = 6
+# One tour warm-up at a time, on a thread of its own (provisa/api/demo_warmup.py).
+_WARM_THREADS = 1
 _WS_TRY_AGAIN_LATER = 1013
+
+#: REQ-2006, REQ-2065: set on a demo sandbox's tour warm-up's own requests: they run on their own
+#: thread, and are the tier's, not the visitor's (demo_sandbox.touch). A request thread runs in the
+#: context it was handed, so what is below this middleware reads it too.
+WARMING: ContextVar[bool] = ContextVar("provisa_tour_warmup", default=False)
 
 
 _LIMITS = ("request_threads", "stream_threads", "control_request_threads")
@@ -387,6 +405,9 @@ async def _noop() -> None:
 _pool = RequestThreadPool()
 # Health probes and the admin/auth API: their own few threads, never the data pool's.
 _control_pool = RequestThreadPool(max_threads=default_limits()["control_request_threads"])
+# Demos being opened, and the tour warm-ups after them (REQ-2006): never the data pool's threads.
+_open_pool = RequestThreadPool(max_threads=_OPEN_THREADS)
+_warm_pool = RequestThreadPool(max_threads=_WARM_THREADS)
 
 
 def configure(
@@ -478,18 +499,34 @@ class RequestThreadMiddleware:
         *,
         pool: RequestThreadPool | None = None,
         control_pool: RequestThreadPool | None = None,
+        open_pool: RequestThreadPool | None = None,
+        warm_pool: RequestThreadPool | None = None,
     ) -> None:
         self._app = app
         self._pool = pool
         self._control_pool = control_pool
+        self._open_pool = open_pool
+        self._warm_pool = warm_pool
 
     def _pool_for(self, scope: Scope) -> RequestThreadPool:
         """Health probes and the admin/auth API run on the control pool's threads, so a worker
         whose request threads are all serving data requests is still reachable to its
-        orchestrator and its administrators. Everything else is a data request."""
+        orchestrator and its administrators. A demo being opened and a tour being warmed have
+        pools of their own, and a demo's status, limits and closing the control pool's, so neither
+        takes a thread a visitor's query or a probe needs (REQ-2006). Everything else is a data
+        request."""
+        if WARMING.get():
+            return self._warm_pool or _warm_pool
         path = scope.get("path", "")
-        if path in _CONTROL_PATHS or path.startswith(_CONTROL_PREFIXES):
+        if (
+            path in _CONTROL_PATHS
+            or path in _DEMO_CONTROL_PATHS
+            or path.startswith(_CONTROL_PREFIXES)
+            or _DEMO_STATUS.fullmatch(path)
+        ):
             return self._control_pool or _control_pool
+        if scope.get("method") == "POST" and _DEMO_OPEN.fullmatch(path):
+            return self._open_pool or _open_pool
         return self._pool or _pool
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:

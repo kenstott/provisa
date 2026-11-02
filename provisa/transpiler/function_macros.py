@@ -45,7 +45,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import END, MARK, PostgresError, raising
-from provisa.transpiler import pg_forms, pg_forms_json, pg_forms_types
+from provisa.transpiler import pg_forms, pg_forms_json, pg_forms_textsearch, pg_forms_types
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 from provisa.transpiler.pg_literals import values_cast
 
@@ -1616,6 +1616,7 @@ _ROWS: tuple[Macro, ...] = (
     *VALUE_FUNCTIONS_OF_THE_SERVER,
     *(Macro(name, params, {_EVERY: Pg(form)}) for name, params, form in VALUE_FORMS),  # REQ-2190
     *(Macro(name, params, forms) for name, params, forms in pg_forms_json.ROWS),
+    *(Macro(name, params, forms) for name, params, forms in pg_forms_textsearch.ROWS),
     *_DIGESTS,
     *map(_operator, pg_forms_types.OPERATORS),
     *(
@@ -1823,7 +1824,11 @@ _NAMES = (
     | set(_COUNTS_NAMES)
 )
 _MENTIONED = re.compile(
-    r"\b(" + "|".join(sorted(_NAMES)) + r")\"?\s*\(|" + pg_forms_json.OPERATORS, re.IGNORECASE
+    r"\b("
+    + "|".join(sorted(_NAMES | pg_forms_textsearch.NAMES))
+    + r")\"?\s*\(|"
+    + pg_forms_json.OPERATORS,
+    re.IGNORECASE,
 )
 #: The names provisa.pgwire.catalog answers where a statement reads no table.
 SERVER_VALUE_NAMES = frozenset(m.name for m in VALUE_FUNCTIONS_OF_THE_SERVER)
@@ -2350,8 +2355,9 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
     if dialect in NATIVE:
         return tree
     try:
+        tree = pg_forms_textsearch.lowered(tree, dialect)
         tree = pg_forms_json.lowered(tree, dialect)
-    except pg_forms_json.NoForm as refused:
+    except (pg_forms_json.NoForm, pg_forms_textsearch.NoForm) as refused:
         raise FunctionRefused(refused.called, dialect) from refused
 
     def rewrite(node: exp.Expr) -> exp.Expr:

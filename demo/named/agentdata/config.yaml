@@ -28,6 +28,13 @@ domains:
 - id: shop
   description: A retailer's customers, their orders and each order's lines
 federation_engine: duckdb
+vector_models:
+# A local sentence-transformers model: no key, no network once it is cached (provisa[vector],
+# which demo.yaml declares). The explorer's agent and Polly search the catalog with it.
+- id: sentence-transformers/all-MiniLM-L6-v2
+  provider: huggingface
+  dimensions: 384
+  enabled: true
 naming:
   domain_prefix: true
   rules: []
