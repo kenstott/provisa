@@ -75739,7 +75739,10 @@
     propagation:) Maintainer 2026-11-02 (correcting the wording above): several control nodes need nothing
     new to stay in step. A model change reaches every control node through the existing propagation (REQ-1914:
     the stamp advanced in the same transaction as the change tells every process to reload), as it does
-    for every node today. Data nodes hold no model and reload nothing.'
+    for every node today. Data nodes hold no model and reload nothing. (Amended 2026-11-02, Response cache
+    per node or shared:) Maintainer 2026-11-02: each node can use its own in-memory response cache or a
+    remote shared one; that is an efficiency choice only, not a correctness one. The response cache holds
+    rows, so it belongs to the data plane: data nodes read and write it, a control node never does.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
