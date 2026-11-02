@@ -23,6 +23,7 @@ import gzip
 import hashlib
 import io
 import json
+import re
 import platform
 import shutil
 import tarfile
@@ -60,8 +61,26 @@ def _zip(files: dict[str, bytes]) -> bytes:
     return raw.getvalue()
 
 
+VERSION = "0.1.0a7+local"
+
+
+def _wheels(root: Path, version: str = VERSION) -> Path:
+    """The Linux provisa wheels of ``version``, one per architecture, each carrying its compiled
+    encoders (REQ-2194), in the build cache's wheelhouse."""
+    house = root / "wheels"
+    house.mkdir(parents=True, exist_ok=True)
+    for arch in ("x86_64", "aarch64"):
+        wheel = house / f"provisa-{version}-cp312-cp312-manylinux_2_28_{arch}.whl"
+        wheel.write_bytes(
+            _zip({"provisa/_encoders.so": f"encoders {arch}".encode(), "provisa/server.py": b""})
+        )
+    return house
+
+
 def _cache(root: Path, platform_key: tuple[str, str]) -> None:
-    """The pinned archives a build reads, already in the cache under their pinned sums."""
+    """The pinned archives a build reads, already in the cache under their pinned sums, and the
+    provisa wheels whose encoders the front end writes its rows with."""
+    _wheels(root)
     archives = root / "code" / "archives"
     archives.mkdir(parents=True, exist_ok=True)
     for name in ("python", "pyarrow", "node", "apache-arrow"):
@@ -123,7 +142,7 @@ def _plan(root: Path, language: str, runtime: str, cache: Path, entry: str | Non
         names=NAMES,
         registries=[],
         cache_root=cache,
-        version="0.1.0a7+local",
+        version=VERSION,
     )
 
 
@@ -213,6 +232,9 @@ def test_a_python_source_is_built_for_linux_with_its_wheels_and_its_host(
         "opt/provisa/front/names.json",
         "opt/provisa/frontlib/duckdb.py",
         "opt/provisa/frontlib/buenavista/postgres.py",
+        # REQ-2194: provisa._encoders from the amd64 wheel, in a provisa package of its own.
+        "opt/provisa/frontlib/provisa/__init__.py",
+        "opt/provisa/frontlib/provisa/_encoders.so",
         "opt/provisa/venv/pyvenv.cfg",
         "opt/provisa/venv/bin/python",
         "opt/provisa/venv/lib/python3.12/site-packages/six.py",
@@ -276,9 +298,59 @@ def test_a_node_source_installs_its_packages_for_the_images_platform(
         f"opt/provisa/front-runtime/{python}",
         "opt/provisa/front/front.py",
         "opt/provisa/frontlib/duckdb.py",
+        "opt/provisa/frontlib/provisa/_encoders.so",
         "opt/provisa/code/node_modules/dayjs",
     } <= paths
     assert not (code / ".npmrc").exists()
+
+
+def test_the_front_ends_encoders_are_the_ones_of_the_images_architecture(tmp_path: Path):
+    plan = _plan(tmp_path, "python", "python", tmp_path)
+    _wheels(tmp_path)
+    for arch, machine in (("amd64", "x86_64"), ("arm64", "aarch64")):
+        entries = {e.path: e for e in image_build._encoders(plan, arch)}
+        module = entries["/opt/provisa/frontlib/provisa/_encoders.so"]
+        assert module.data == f"encoders {machine}".encode() and module.mode == 0o755
+        assert entries["/opt/provisa/frontlib/provisa/__init__.py"].data == b""
+        # Only the compiled encoders: the front end runs no other part of provisa.
+        assert set(entries) == {
+            "/opt/provisa/frontlib/provisa",
+            "/opt/provisa/frontlib/provisa/__init__.py",
+            "/opt/provisa/frontlib/provisa/_encoders.so",
+        }
+
+
+@pytest.mark.parametrize("arch", ["amd64", "arm64"])
+def test_a_build_without_the_provisa_wheel_for_its_architecture_is_refused_by_name(
+    tmp_path: Path, arch: str
+):
+    """No other DataRow writer exists: an image whose front end could not load provisa._encoders
+    is not built."""
+    plan = _plan(tmp_path, "python", "python", tmp_path)
+    house = _wheels(tmp_path)
+    machine = image_build._WHEEL_ARCH[arch]
+    (house / f"provisa-{VERSION}-cp312-cp312-manylinux_2_28_{machine}.whl").unlink()
+    with pytest.raises(image_build.ImageBuildRefused) as refused:
+        image_build._encoders(plan, arch)
+    assert refused.value.code == "codesource.image_encoders"
+    assert f"linux/{arch}" in str(refused.value) and machine in str(refused.value)
+
+
+def test_a_wheel_of_another_provisa_version_is_not_taken(tmp_path: Path):
+    plan = _plan(tmp_path, "python", "python", tmp_path)
+    _wheels(tmp_path, version="0.1.0a6")
+    with pytest.raises(
+        image_build.ImageBuildRefused, match=re.escape(f"no provisa {VERSION} wheel")
+    ):
+        image_build._encoders(plan, "amd64")
+
+
+def test_the_wheelhouse_is_the_one_the_deployment_names(tmp_path: Path, monkeypatch):
+    plan = _plan(tmp_path, "python", "python", tmp_path / "cache")
+    house = _wheels(tmp_path / "elsewhere")
+    monkeypatch.setenv(image_build.WHEELHOUSE_ENV, str(house))
+    assert image_build.wheelhouse(plan) == house
+    assert image_build._encoders(plan, "arm64")
 
 
 def test_an_image_is_built_for_amd64_or_arm64_only(tmp_path: Path, pinned_base):
