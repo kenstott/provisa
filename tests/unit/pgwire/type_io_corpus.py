@@ -534,8 +534,8 @@ REFUSALS: dict[str, int] = {
     "aclitemout": 2,
     "array_in": 11,
     "bit_in": 1,
-    "box_in": 5,
-    "box_out": 4,
+    "box_in": 4,
+    "box_out": 3,
     "box_send": 4,
     "byteain": 5,
     "byteaout": 2,
@@ -548,9 +548,9 @@ REFUSALS: dict[str, int] = {
     "circle_in": 4,
     "circle_out": 2,
     "circle_send": 2,
-    "date_in": 12,
-    "date_out": 9,
-    "date_send": 9,
+    "date_in": 7,
+    "date_out": 5,
+    "date_send": 5,
     "domain_in": 2,
     "enum_in": 2,
     "float4out": 1,
@@ -569,8 +569,8 @@ REFUSALS: dict[str, int] = {
     "jsonpath_in": 8,
     "jsonpath_out": 6,
     "jsonpath_send": 6,
-    "line_in": 6,
-    "line_out": 4,
+    "line_in": 3,
+    "line_out": 1,
     "line_send": 4,
     "lseg_in": 3,
     "lseg_out": 2,
@@ -595,11 +595,8 @@ REFUSALS: dict[str, int] = {
     "path_in": 2,
     "path_out": 1,
     "path_send": 1,
-    "pg_lsn_hash": 2,
-    "pg_lsn_hash_extended": 2,
     "pg_lsn_in": 2,
-    "pg_snapshot_in": 4,
-    "pg_snapshot_out": 2,
+    "pg_snapshot_in": 2,
     "point_in": 5,
     "point_out": 3,
     "point_send": 3,
@@ -631,31 +628,23 @@ REFUSALS: dict[str, int] = {
     "regtypein": 6,
     "regtypeout": 5,
     "tidin": 3,
-    "time_hash": 2,
-    "time_hash_extended": 2,
-    "time_in": 9,
-    "time_out": 6,
-    "time_send": 6,
-    "timestamp_hash": 3,
-    "timestamp_hash_extended": 2,
-    "timestamp_in": 12,
-    "timestamp_out": 9,
-    "timestamp_send": 9,
-    "timestamptz_in": 9,
-    "timestamptz_out": 7,
-    "timestamptz_send": 7,
-    "timetz_hash": 2,
-    "timetz_hash_extended": 2,
-    "timetz_in": 8,
-    "timetz_out": 5,
-    "timetz_send": 5,
+    "time_in": 6,
+    "time_out": 3,
+    "time_send": 3,
+    "timestamp_hash": 1,
+    "timestamp_in": 5,
+    "timestamp_out": 3,
+    "timestamp_send": 3,
+    "timestamptz_in": 4,
+    "timestamptz_out": 2,
+    "timestamptz_send": 2,
+    "timetz_in": 5,
+    "timetz_out": 2,
+    "timetz_send": 2,
     "tsqueryin": 9,
     "tsqueryout": 7,
     "tsquerysend": 7,
-    "txid_snapshot_in": 3,
-    "txid_snapshot_out": 2,
-    "uuid_hash": 2,
-    "uuid_hash_extended": 2,
+    "txid_snapshot_in": 1,
     "uuid_in": 2,
     "varbit_in": 1,
     "xid8in": 3,
@@ -682,6 +671,70 @@ def verdict(
     if oid is None:
         return f"answered {got!r}, PostgreSQL refused: {text}"
     return None if same_answer(got, oid, text) else f"{got!r}, PostgreSQL {text!r}"
+
+
+#: The functions whose forms read a column too, where a literal of the same value is folded: each
+#: statement of theirs, its arguments a row's columns, has the answer its literal call recorded.
+IN_COLUMNS = frozenset(
+    {
+        *(f"{stem}_hash{extended}" for stem in ("time", "timestamp", "timetz", "uuid", "pg_lsn")
+          for extended in ("", "_extended")),
+        *(name for name, _ in _SUPPORT if name.startswith("float8_")),
+    }
+)  # fmt: skip
+_FLOAT8_ARRAY = re.compile(r"'\{([^}]*)\}'::double precision\[\]")
+#: A timetz's zone of hours, which Trino's cast reads only with its minutes: the same value.
+_ZONE_OF_HOURS = re.compile(r"([+-][0-9]{2})'::timetz")
+
+
+def _arguments(text: str) -> list[str]:
+    """A call's arguments, split at the commas outside quotes and parentheses."""
+    found, depth, quoted, start = [], 0, False, 0
+    for at, char in enumerate(text):
+        quoted ^= char == "'"
+        if not quoted:
+            depth += (char in "([") - (char in ")]")
+            if char == "," and depth == 0:
+                found.append(text[start:at].strip())
+                start = at + 1
+    return [*found, text[start:].strip()]
+
+
+def in_columns(sql: str) -> str:
+    """``sql`` with its call's arguments read from a row: no literal reaches the form. An array of
+    float8s is written by ARRAY[], whose elements no engine's cast of a text need read."""
+    function = function_of(sql)
+    inner = sql.split(f'"{function}"(', 1)[1].removesuffix(") AS v")
+    columns = [
+        _ZONE_OF_HOURS.sub(
+            r"\1:00'::timetz", _FLOAT8_ARRAY.sub(r"ARRAY[\1]::double precision[]", a)
+        )
+        for a in _arguments(inner)
+    ]
+    names = [f"a{at}" for at in range(len(columns))]
+    row = ", ".join(f"{c} AS {n}" for c, n in zip(columns, names, strict=True))
+    return f'SELECT pg_catalog."{function}"({", ".join(names)}) AS v FROM (SELECT {row}) AS t'
+
+
+#: What a column of a dialect cannot hold: a Trino or ClickHouse timestamp holds no infinity, and
+#: ClickHouse has no timetz.
+_NO_COLUMN = {
+    "duckdb": (),
+    "trino": ("'infinity'::timestamp",),
+    "clickhouse": ("'infinity'::timestamp", "::timetz"),
+}
+
+
+def column_statements(recorded: Iterable[str], dialect: str) -> dict[str, str]:
+    """Each statement of IN_COLUMNS whose value a column of ``dialect`` holds, as in_columns writes
+    it -> the statement whose answer it has."""
+    return {
+        in_columns(sql): sql
+        for sql in recorded
+        if function_of(sql) in IN_COLUMNS
+        and "(NULL::" not in sql
+        and not any(held in sql for held in _NO_COLUMN[dialect])
+    }
 
 
 def function_of(sql: str) -> str:

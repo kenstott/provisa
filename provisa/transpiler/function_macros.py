@@ -1906,6 +1906,7 @@ REFUSED_ROWS = frozenset(
 _ROWS += (
     *_hashes(),
     *(_operator(form) for form in pg_forms_aggregate.STATE_FUNCTIONS),
+    *(_operator(form) for form in pg_forms_aggregate.FINAL_FUNCTIONS),
     *(_operator(form) for form in pg_forms_index.SUPPORT_FUNCTIONS),
     *(
         Macro(name, tuple(params.split(", ")), {frozenset({d}): sql for d, sql in forms.items()})
