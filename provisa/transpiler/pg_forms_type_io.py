@@ -626,17 +626,14 @@ _ALSO: dict[str, Callable[[Engine, str], str]] = {
 def _canonical(function: str, pattern: str, params: str = "v") -> Row:
     def read(e: Engine) -> str:
         text = e.as_text("v")
-        fits = e.full_match(text, pattern)
-        also = _ALSO.get(function)
-        answer = (
-            text
-            if also is None
-            else (f"CASE WHEN {also(e, text)} THEN {text} ELSE {_by_name(e, function, e.text)} END")
-        )
+        refused = [f"NOT ({e.full_match(text, pattern)})"]
         if "m" in params:  # a typmod that would round its fraction
-            rounds = f"m >= 0 AND m < 6 AND {e.full_match(text, '.*[.][0-9]+.*')}"
-            answer = f"CASE WHEN {rounds} THEN {_by_name(e, function, e.text)} ELSE {answer} END"
-        return f"CASE WHEN {fits} THEN {answer} ELSE {_by_name(e, function, e.text)} END"
+            refused.append(f"m >= 0 AND m < 6 AND {e.full_match(text, '.*[.][0-9]+.*')}")
+        also = _ALSO.get(function)
+        if also is not None:
+            refused.append(f"NOT ({also(e, text)})")
+        by_name = _by_name(e, function, e.text)
+        return f"CASE {' '.join(f'WHEN {c} THEN {by_name}' for c in refused)} ELSE {text} END"
 
     return _noted(_row(function, params, _text, read), "text")
 
@@ -701,7 +698,8 @@ def _spell_in(
     function: str, pattern: str, result: Typed, read: Callable[[Engine, str], str], params: str
 ) -> Callable[[Engine], str]:
     """An input of a text ``pattern`` takes. A typmod that would round its fraction is refused,
-    and a date no calendar holds is PostgreSQL's error."""
+    and a date no calendar holds is PostgreSQL's error. One CASE: ClickHouse makes one node of a
+    refusal written twice, and a node two CASEs share runs whichever branch is taken."""
 
     def form(e: Engine) -> str:
         fraction = e.full_match("v", ".*[.][0-9]+.*")
@@ -709,11 +707,10 @@ def _spell_in(
         day = e.sub("v", "^([0-9]+-[0-9]+-[0-9]+).*$", chr(92) + "1")
         wrong = "FALSE" if function == "time_in" else f"{e.valid_date(day)} IS NULL"
         said = _quoted('date/time field value out of range: "') + " || v || '\"'"
+        by_name = _by_name(e, function, result(e))
         return (
-            f"CASE WHEN {e.full_match('v', pattern)} THEN CASE WHEN {rounds} THEN "
-            f"{_by_name(e, function, result(e))} WHEN {wrong} THEN "
-            f"{e.raises('22008', said, result(e))} ELSE {read(e, 'v')} END "
-            f"ELSE {_by_name(e, function, result(e))} END"
+            f"CASE WHEN NOT ({e.full_match('v', pattern)}) THEN {by_name} WHEN {rounds} THEN {by_name} "
+            f"WHEN {wrong} THEN {e.raises('22008', said, result(e))} ELSE {read(e, 'v')} END"
         )
 
     return form
