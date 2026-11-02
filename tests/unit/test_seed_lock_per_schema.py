@@ -65,6 +65,7 @@ def _keys_of(monkeypatch, org_id: str, env: str | None) -> list[int]:
         "_seed_ontology_domain",
         "_seed_ops_pg",
         "_seed_ops_domain",
+        "_seed_catalog_client",
         "_ensure_ops_steward_grant",
         "_seed_meta_relationships",
     ):

@@ -277,11 +277,25 @@ async def _drop_sibling_environment_registrations(
     )
 
 
+def _terminal_relations() -> list[str]:
+    """Every relation of this schema registered under ``provisa-admin``, by its physical name: what
+    a client's statement on the admin terminal can read."""
+    return sorted(
+        {
+            *(_META_TABLE_ALIAS.get(tbl, tbl) for tbl in _META_TABLES),
+            *ONTOLOGY_TABLE_ALIAS.values(),
+            *_OPS_LOG_TABLE_ALIAS.values(),
+            *_OPS_REPORT_VIEWS,
+        }
+    )
+
+
 async def _seed_catalog_client(conn: Any, schema_name: str) -> None:
-    """REQ-2190: what a client's catalog SQL runs as and may call. The role reads meta's views and
-    nothing else of this schema, and holds no predefined role: PostgreSQL then refuses it a
-    server file and hides other connections from it. A view reads as its owner, so a role needs
-    no grant on what a view reads. provisa_raise is how a form answers PostgreSQL's own error."""
+    """REQ-2190: what every client statement on the admin terminal runs as and may call. The role
+    reads that terminal's relations and nothing else of this schema, and holds no predefined role:
+    PostgreSQL then refuses it a server file and hides other connections from it. A view reads as
+    its owner, so a role needs no grant on what a view reads. provisa_raise is how a form answers
+    PostgreSQL's own error. Run once every relation it names is seeded."""
     async with conn.advisory_lock(_SEED_CATALOG_ROLE_ADVISORY_LOCK_KEY):
         await conn.execute(
             f"DO $$ BEGIN CREATE ROLE {CLIENT_ROLE} NOLOGIN NOINHERIT; "
@@ -289,7 +303,7 @@ async def _seed_catalog_client(conn: Any, schema_name: str) -> None:
         )
         await conn.execute(f"GRANT {CLIENT_ROLE} TO CURRENT_USER")
     await conn.execute(f'GRANT USAGE ON SCHEMA "{schema_name}" TO {CLIENT_ROLE}')
-    await conn.execute(f"GRANT SELECT ON {', '.join(sorted(_META_TABLE_VIEWS))} TO {CLIENT_ROLE}")
+    await conn.execute(f"GRANT SELECT ON {', '.join(_terminal_relations())} TO {CLIENT_ROLE}")
     await conn.execute(RAISE_FUNCTION_SQL)
 
 
@@ -396,7 +410,6 @@ async def _seed_meta_domain(
     schema_name = org_schema(org_id, env)
     for ddl in _META_TABLE_VIEWS.values():
         await _seed_view(conn, ddl)
-    await _seed_catalog_client(conn, schema_name)
 
     await _drop_sibling_environment_registrations(conn, "meta", org_id, schema_name)
 
@@ -1058,6 +1071,8 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
             await _seed_ops_pg(_conn)
             await _seed_ops_domain(_conn, org_id=org_id, env=env)  # REQ-884
             clock.mark("ops domain")
+            await _seed_catalog_client(_conn, org_schema(org_id, env))  # REQ-2190
+            clock.mark("catalog client")
             await _ensure_ops_steward_grant(_conn)  # REQ-1386
             await _seed_meta_relationships(_conn)
             clock.mark("relationships")
@@ -1087,6 +1102,7 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
     failure propagates.
     """
     from provisa.core.org_registry_view import (
+        ORG_SCHEMAS_LOCK_KEY,
         VIEW_NAME,
         RegistryViewUnavailable,
         refresh_org_registry_view,
@@ -1108,6 +1124,11 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
         return False
 
     async with model_db.acquire() as conn:
+        # REQ-2190: a read of it on the admin terminal runs as the client role, and a rebuild drops
+        # the view and its grant with it. Under the rebuild's lock: workers grant at the same boot.
+        async with conn.advisory_lock(ORG_SCHEMAS_LOCK_KEY):
+            await conn.execute(f'GRANT USAGE ON SCHEMA "{schema_name}" TO {CLIENT_ROLE}')
+            await conn.execute(f'GRANT SELECT ON "{schema_name}".{VIEW_NAME} TO {CLIENT_ROLE}')
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {

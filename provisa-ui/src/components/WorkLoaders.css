@@ -1,0 +1,363 @@
+/* The pot, the plant and the score. Each loops on one 4s timeline (the plant's growth is its
+   progress, not a timeline). Under prefers-reduced-motion each stands still, its work done. */
+.work-loader {
+  display: inline-flex;
+}
+.wl {
+  overflow: visible;
+}
+.wl-shadow {
+  fill: rgb(0 0 0 / 0.1);
+}
+
+/* ---- pot ---- */
+.wl-pot {
+  fill: var(--mantine-color-brand-6);
+}
+.wl-pot-shine {
+  fill: none;
+  stroke: var(--mantine-color-brand-3);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.wl-pot-handle {
+  fill: none;
+  stroke: var(--mantine-color-brand-8);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.wl-stew {
+  fill: #e0a050;
+}
+.wl-food--tomato {
+  fill: #e0523f;
+}
+.wl-food--carrot {
+  fill: #f08c2e;
+}
+.wl-food--leek {
+  fill: #6bb36b;
+}
+.wl-spoon-handle {
+  fill: none;
+  stroke: #b3844b;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.wl-steam {
+  fill: none;
+  stroke: var(--mantine-color-gray-5);
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0;
+}
+.wl-spoon {
+  transform-origin: 60px 70px;
+}
+.wl--moving .wl-drop {
+  animation: wl-drop 4s cubic-bezier(0.4, 0, 1, 1) infinite both;
+}
+.wl--moving .wl-drop--2 {
+  animation-delay: 1.3s;
+}
+.wl--moving .wl-drop--3 {
+  animation-delay: 2.6s;
+}
+@keyframes wl-drop {
+  0% {
+    transform: translateY(-46px);
+    opacity: 0;
+  }
+  6% {
+    opacity: 1;
+  }
+  22% {
+    transform: translateY(6px);
+    opacity: 1;
+  }
+  26%,
+  100% {
+    transform: translateY(6px);
+    opacity: 0;
+  }
+}
+.wl--moving .wl-spoon {
+  animation: wl-stir 1.6s ease-in-out infinite;
+}
+@keyframes wl-stir {
+  0%,
+  100% {
+    transform: rotate(-16deg) translateX(-8px);
+  }
+  50% {
+    transform: rotate(14deg) translateX(8px);
+  }
+}
+.wl--moving .wl-steam {
+  animation: wl-steam 2.4s ease-in-out infinite;
+}
+.wl--moving .wl-steam--2 {
+  animation-delay: 1.2s;
+}
+@keyframes wl-steam {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  40% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+.wl--still .wl-steam {
+  opacity: 0.6;
+}
+.wl--still .wl-drop {
+  opacity: 0;
+}
+
+/* ---- plant ---- */
+.wl-terracotta {
+  fill: #c9734a;
+}
+.wl-terracotta-rim {
+  fill: #b3603a;
+}
+.wl-soil {
+  fill: #6b4a2b;
+}
+.wl-seed {
+  fill: #e0c080;
+  stroke: #7d5a33;
+}
+.wl--moving .wl-seed {
+  animation: wl-plant 4s ease-in infinite both;
+}
+@keyframes wl-plant {
+  0% {
+    opacity: 0;
+    transform: translateY(-24px);
+  }
+  10% {
+    opacity: 1;
+  }
+  30%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.wl-stem {
+  fill: none;
+  stroke: #4f9a55;
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  transition: d 0.8s ease-out;
+}
+.wl-leaf {
+  fill: #6bb36b;
+}
+.wl-flower circle {
+  fill: var(--mantine-color-brand-3);
+}
+.wl-flower .wl-flower-eye {
+  fill: #f2c14e;
+}
+.wl-can-body,
+.wl-can-grip,
+.wl-can-spout {
+  stroke: var(--mantine-color-brand-6);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.wl-can-body {
+  fill: var(--mantine-color-brand-3);
+}
+.wl-can-grip,
+.wl-can-spout {
+  fill: none;
+}
+.wl-water {
+  fill: #4aa3df;
+  opacity: 0;
+}
+.wl--moving .wl-water {
+  animation: wl-water 1.4s ease-in infinite;
+}
+.wl--moving .wl-water--2 {
+  animation-delay: 0.45s;
+}
+.wl--moving .wl-water--3 {
+  animation-delay: 0.9s;
+}
+@keyframes wl-water {
+  0% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  15% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+    transform: translateY(44px);
+  }
+}
+.wl--moving .wl-can {
+  transform-box: fill-box;
+  transform-origin: 100% 100%;
+  animation: wl-tip 4s ease-in-out infinite;
+}
+@keyframes wl-tip {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-8deg);
+  }
+}
+
+/* ---- score ---- */
+.wl-sheet {
+  fill: #fbf7ec;
+  stroke: #d8cfb8;
+  stroke-width: 1;
+}
+.wl-staff,
+.wl-clef {
+  fill: none;
+  stroke: #57534a;
+  stroke-width: 1;
+}
+.wl-clef {
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.wl-note ellipse,
+.wl-rising ellipse {
+  fill: #2c2a26;
+}
+.wl-note path,
+.wl-rising path {
+  fill: none;
+  stroke: #2c2a26;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.wl-rising ellipse {
+  fill: var(--mantine-color-brand-6);
+}
+.wl-rising path {
+  stroke: var(--mantine-color-brand-6);
+}
+.wl-baton-stick {
+  fill: none;
+  stroke: var(--mantine-color-gray-6);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+.wl-baton-grip {
+  fill: var(--mantine-color-brand-8);
+}
+.wl-baton {
+  transform-origin: 93px 92px;
+}
+/* A note is written, then the page holds while the baton waves; the page empties to loop. */
+.wl--moving .wl-note {
+  animation: wl-write 6s ease-out infinite both;
+}
+.wl--moving .wl-note--2 {
+  animation-delay: 0.4s;
+}
+.wl--moving .wl-note--3 {
+  animation-delay: 0.8s;
+}
+.wl--moving .wl-note--4 {
+  animation-delay: 1.2s;
+}
+@keyframes wl-write {
+  0% {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  6%,
+  90% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.wl--moving .wl-baton {
+  animation: wl-baton 6s ease-in-out infinite both;
+}
+@keyframes wl-baton {
+  0%,
+  28% {
+    opacity: 0;
+    transform: rotate(-22deg);
+  }
+  34% {
+    opacity: 1;
+    transform: rotate(-22deg);
+  }
+  46% {
+    transform: rotate(14deg);
+  }
+  58% {
+    transform: rotate(-16deg);
+  }
+  70% {
+    transform: rotate(14deg);
+  }
+  84% {
+    opacity: 1;
+    transform: rotate(-6deg);
+  }
+  92%,
+  100% {
+    opacity: 0;
+    transform: rotate(-6deg);
+  }
+}
+.wl--moving .wl-rising {
+  animation: wl-rise 6s ease-out infinite both;
+}
+@keyframes wl-rise {
+  0%,
+  44% {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  54% {
+    opacity: 1;
+  }
+  84%,
+  100% {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+}
+.wl--still .wl-baton {
+  transform: rotate(-6deg);
+}
+
+/* The operating-system setting holds even before the hook has read it. */
+@media (prefers-reduced-motion: reduce) {
+  .wl--moving * {
+    animation: none !important;
+  }
+  .wl--moving .wl-drop,
+  .wl--moving .wl-rising {
+    opacity: 0;
+  }
+  .wl--moving .wl-baton {
+    transform: rotate(-6deg);
+  }
+}
