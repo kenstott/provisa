@@ -20,12 +20,16 @@ Each overload gets one outcome per engine:
 
   pass          every call PostgreSQL answered, Provisa answered the same, or the same under a
                 written rule, which the overload's ``rules`` name (function_report.RULES), and
-                at least one answer was compared or one property checked
+                something was compared: an answer, a type and form, or a side effect
   not_checked   every call PostgreSQL answered, Provisa answered with the same result type, and
-                none compared an answer or checked a property: a call that ran proves nothing,
-                so this is no pass. ``unchecked`` says why
-  wrong_answer  a call compares unequal: its result type, its rows, their values, their form or
-                a property PostgreSQL documents
+                nothing was compared: a call that ran proves nothing, so this is no pass, and it
+                counts as failed. ``unchecked`` says why
+  by_design     skipped by design under a decision of REQ-2167 (``GROUPS``): a side-effect
+                function on an engine but ``SIDE_EFFECT_ENGINE``, one whose side effect no client
+                can see (``NOT_TESTABLE``), or a refusal by name a decision makes
+                (``DECIDED_REFUSALS``)
+  wrong_answer  a call compares unequal: its result type, its rows, their values, their form,
+                or the side effect it had
   error         PostgreSQL answered a call and the engine failed with no named refusal (its
                 message is kept)
   refused       PostgreSQL answered a call and Provisa refused it by name
@@ -34,8 +38,8 @@ Each overload gets one outcome per engine:
 
 A wrong answer outranks an error, which outranks a refusal, which outranks a pass or a not checked:
 the overload is as bad as its worst call. function_report.py says what each outcome is on the
-report (exact, equivalent, not checked, refused by name or differs); there is no overall count,
-only one per engine.
+report (exact, equivalent, not checked, skipped by design, refused by name or differs); there is no
+overall count, only one per engine.
 
 The calls of an overload are the NULL call of pgwire_function_probe.py and, where ``value_calls``
 can write them, up to three calls with real values. How far values go, exactly:
@@ -43,9 +47,9 @@ can write them, up to three calls with real values. How far values go, exactly:
   * Every immutable and stable function is given values, compared under one TimeZone, DateStyle
     and IntervalStyle on the same fixture catalog, but for those whose answer is the answering
     server's own (``OWN_ANSWERS``: its process, its addresses, its clock, its statistics, its
-    transactions, or a by-design session answer, REQ-588 and REQ-579). Volatile functions are
-    never given values, because that would run them for real (they are the ones that act:
-    setval, pg_terminate_backend, lo_unlink), but for ``PROPERTIES``.
+    transactions, or a by-design session answer, REQ-588 and REQ-579). A volatile function is
+    given values only where it acts on nothing and its answer differs by nature
+    (``_FORM_VALUES``): giving one that acts values would run it for real.
   * Every argument must have a literal: ``SAMPLES`` and ``VALUE_SAMPLES`` by type, ``ARG_VALUES``
     by function where the type's literals are not valid input (``Raw`` ones are written as they
     stand), and ``INPUT_TYPES`` for a type's input function. Pseudo-types take the concrete types
@@ -54,22 +58,25 @@ can write them, up to three calls with real values. How far values go, exactly:
   * A value call PostgreSQL refuses compares nothing: that it also refuses on Provisa is not
     checked, nor is Provisa answering what PostgreSQL refuses.
 
-``answers_checked`` is an overload with at least one value call PostgreSQL answered, its value
-compared. ``property_checked`` is one whose value cannot be compared and that had an exact property
-checked against PostgreSQL's documentation or its own output (REQ-2167, WHAT GUARANTEED MEANS):
+What a pass compared, exactly:
 
-  * form: a call with no NULL argument whose answer has the form PostgreSQL's has. ``value_form``
-    gives the form of PostgreSQL's own answer, a named function's, then its type's, then a record's
-    number of fields, and otherwise the sample's shape. Each row Provisa answers must fit.
-    PostgreSQL's NULL or void, or a set Provisa leaves empty, is no form to check.
-  * ``PROPERTIES``: a volatile function's documented range or shape on real values (random(min,
-    max) within its bounds, array_shuffle a permutation, array_sample a sub-multiset of the size
-    asked), and a clock function's answer within the statement's bounds on PostgreSQL's clock.
+  * ``answers_checked``: at least one value call PostgreSQL answered, its value compared.
+  * ``type_and_form_checked``: a value that cannot be compared (volatile, or the server's own),
+    from a call with no NULL argument, has PostgreSQL's result type and the form of PostgreSQL's own
+    answer (REQ-2167, WHAT GUARANTEED MEANS). ``value_form`` gives that form: a named function's,
+    then its type's, then a record's number of fields, and otherwise the shape of PostgreSQL's
+    string. Each row Provisa answers must fit. PostgreSQL's NULL or void, or a set Provisa leaves
+    empty, is no form to check.
+  * ``side_effect_checked``: a function returning void or acting (``side_effect``) is tested by
+    its side effect (REQ-2167, amended 2026-11-02, Side-effect functions): ``EFFECTS`` performs the
+    call on each server and then observes what it did through the same client (a setting read
+    back, the session's advisory locks, a large object, a listener's notification, the time a sleep
+    took, the random sequence a seed fixes), and Provisa's must be PostgreSQL's.
 
-The rest are not checked, and each says why (``unchecked``, which a property checked overload keeps:
-its value is still not compared). A NULL call where PostgreSQL answers NULL holds Provisa to NULL
-too, which can make a wrong answer and never a pass. Three literals, not a domain: a function that
-differs only on values no sample reaches passes here.
+The rest are not checked, and each says why (``unchecked``, which an overload whose type and form
+were compared keeps: its value is still not compared). A NULL call where PostgreSQL answers NULL
+holds Provisa to NULL too, which can make a wrong answer and never a pass. Three literals, not a
+domain: a function that differs only on values no sample reaches passes here.
 
 Literals alone do not say a function works on a column: a form that folds a literal at transpile
 time passes while a column of the same type is refused. So an overload given values gets one more
@@ -102,7 +109,6 @@ UTC, under ``ZONE``, where the zone is in the text they write.
 from __future__ import annotations
 
 import argparse
-import datetime
 import decimal
 import json
 import math
@@ -169,7 +175,7 @@ _JSON_NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 _ARRAY_AGGREGATE = re.compile(r"\b(?:jsonb?_agg|array_agg|json_arrayagg)", re.IGNORECASE)
 _ORDER_BY = re.compile(r"\bORDER\s+BY\b", re.IGNORECASE)
 
-#: Answers from the clock: their value is checked against the statement's bounds (``PROPERTIES``).
+#: Answers from the clock: their type and form are compared, never their value.
 CLOCK_FUNCTIONS = frozenset(
     {"clock_timestamp", "now", "statement_timestamp", "transaction_timestamp"}
 )
@@ -1017,9 +1023,11 @@ _CATALOG_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
     'pg_collation_for("any")': {0: Raw(("'abc'::text", "'abc'::text COLLATE \"C\"", "'x'::name"))},
 }
 
-#: Values of the volatile functions ``PROPERTIES`` checks, by ``_key``.
-_PROPERTY_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
-    "array_sample(anyarray, integer)": {1: ("2", "0", "3")},
+#: Values of the volatile functions with no side effect that ``form_calls`` gives values, by
+#: ``_key``: each array's elements alike in form, so any order of them has the form of another.
+_FORM_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
+    "array_shuffle(anyarray)": {0: ("'{1,2,3}'", "'{}'", "'{4,5,6}'")},
+    "array_sample(anyarray, integer)": {0: ("'{1,2,3}'", "'{}'", "'{4,5,6}'"), 1: ("2", "0", "3")},
     "random(integer, integer)": {0: ("1", "(-5)", "7"), 1: ("10", "5", "7")},
     "random(bigint, bigint)": {0: ("1", "(-5000000000)", "7"), 1: ("10", "5", "7")},
     "random(numeric, numeric)": {0: ("1.5", "(-2.25)", "7"), 1: ("2.25", "5.125", "7.0")},
@@ -1118,7 +1126,7 @@ ARG_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
     "tstzrange": {2: _BOUNDS},
     **_REFUSED_VALUES,
     **_CATALOG_VALUES,
-    **_PROPERTY_VALUES,
+    **_FORM_VALUES,
 }
 
 
@@ -1127,21 +1135,18 @@ class Call:
     """One statement of an overload. ``answers``: a real answer, compared by value; ``values``:
     whether the rows compare at all (the NULL call of a volatile function, or of one whose answer
     is its server's own: no); ``zone``: the session's TimeZone for this call, if not ``SETTINGS``'
-    UTC; ``prop``: the key of the ``PROPERTIES`` check its answer is held to, with ``args``, the
-    literals it was called with."""
+    UTC."""
 
     sql: str
     answers: bool = False
     values: bool = True
     zone: str | None = None
-    prop: str | None = None
-    args: tuple[str, ...] = ()
 
     @property
     def form(self) -> bool:
-        """Whether the answer's form is checked: its value cannot be, no NULL made it, and no
-        property it is held to says more."""
-        return not self.values and self.prop is None and "NULL::" not in self.sql
+        """Whether the answer's type and form are checked: its value cannot be, and no NULL made
+        it."""
+        return not self.values and "NULL::" not in self.sql
 
 
 def _cast(literal: str, argtype: str) -> str:
@@ -1332,30 +1337,22 @@ def column_calls(fn: Function, family: str) -> list[Call]:
     return out
 
 
-def property_calls(fn: Function) -> list[Call]:
-    """The calls of a volatile function of ``PROPERTIES`` with real values, each held to its
-    property: one per row of literals."""
-    prop = _key(fn)
-    if prop not in PROPERTIES:
+def form_calls(fn: Function) -> list[Call]:
+    """A volatile function of ``_FORM_VALUES`` with real values: it acts on nothing, and its answer
+    is held to its type and form (REQ-2167, WHAT GUARANTEED MEANS)."""
+    if _key(fn) not in _FORM_VALUES:
         return []
-    out = []
-    for row in _rows(fn):
-        sql = function_probe.statement(fn, row)
-        out.append(Call(sql, values=False, prop=prop, args=tuple(row)))
-    return out
+    return [Call(function_probe.statement(fn, row), values=False) for row in _rows(fn)]
 
 
 def calls(fn: Function, family: str) -> list[Call]:
-    """Every call of ``fn``: its NULL call, then its value calls or its property calls. The NULL
-    call compares its rows unless the function is volatile or its answer its server's own; a
-    clock function's is held to the statement's bounds (``CLOCK``)."""
-    valued = value_calls(fn, family) or property_calls(fn)
+    """Every call of ``fn``: its NULL call, then its value calls or its form calls. The NULL call
+    compares its rows unless the function is volatile or its answer its server's own."""
+    valued = value_calls(fn, family) or form_calls(fn)
     null = function_probe.call(fn)
     if null is None or any(c.sql == null for c in valued):
         return valued
     zoned = [Call(null, values=False, zone=ZONE)] if fn.name in ZONED_FUNCTIONS else []
-    if fn.name in CLOCK_FUNCTIONS and not fn.argtypes:
-        return [Call(null, values=False, prop=CLOCK)]
     compared = fn.volatility != "v" and own_answer(fn) is None
     return [Call(null, values=compared), *zoned, *valued]
 
@@ -1759,128 +1756,6 @@ def form_check(name: str, want: dict[str, Any], got: dict[str, Any]) -> tuple[bo
     return True, None
 
 
-# --- the properties of a value that cannot be compared ---------------------------------------
-
-
-def _literal(arg: str) -> str:
-    """The value a cast literal of ``value_calls`` writes: ``'{1,2}'::integer[]`` is ``{1,2}``."""
-    text = arg.rsplit("::", 1)[0].strip()
-    if text.startswith("'") and text.endswith("'"):
-        return text[1:-1].replace("''", "'")
-    return text.strip("()")
-
-
-def _elements(array: str) -> list[str] | None:
-    """A one-dimensional array's elements as text; None if ``array`` is none."""
-    if not (array.startswith("{") and array.endswith("}")):
-        return None
-    body = array[1:-1]
-    return body.split(",") if body else []
-
-
-def _single(got: dict[str, Any]) -> str | None:
-    rows = got["rows"]
-    return rows[0][0] if len(rows) == 1 else None
-
-
-def _permutation(args: tuple[str, ...], _want: dict[str, Any], got: dict[str, Any]) -> str | None:
-    """array_shuffle: the input's elements, each as often, in any order."""
-    given, value = _elements(_literal(args[0])), _single(got)
-    answered = None if value is None else _elements(value)
-    if given is None or answered is None or sorted(given) != sorted(answered):
-        return f"{value!r} is no permutation of {_literal(args[0])!r}"
-    return None
-
-
-def _sub_multiset(args: tuple[str, ...], _want: dict[str, Any], got: dict[str, Any]) -> str | None:
-    """array_sample: as many of the input's elements as asked, none more often than it holds."""
-    given, value = _elements(_literal(args[0])), _single(got)
-    answered = None if value is None else _elements(value)
-    size = int(_literal(args[1]))
-    if (
-        given is None
-        or answered is None
-        or len(answered) != size
-        or Counter(answered) - Counter(given)
-    ):
-        return f"{value!r} is no sample of {size} of {_literal(args[0])!r}"
-    return None
-
-
-def _scale(number: str) -> int:
-    return len(number.split(".", 1)[1]) if "." in number else 0
-
-
-def _within(args: tuple[str, ...], _want: dict[str, Any], got: dict[str, Any]) -> str | None:
-    """random(min, max): in [min, max]; a numeric one has the larger scale of the two."""
-    low, high, value = _literal(args[0]), _literal(args[1]), _single(got)
-    try:
-        inside = value is not None and decimal.Decimal(low) <= decimal.Decimal(
-            value
-        ) <= decimal.Decimal(high)
-    except decimal.InvalidOperation:
-        inside = False
-    if not inside:
-        return f"{value!r} is not in [{low}, {high}]"
-    scale = max(_scale(low), _scale(high))
-    if args[0].endswith("::numeric") and value is not None and _scale(value) != scale:
-        return f"{value!r} does not have the scale {scale} of its bounds"
-    return None
-
-
-def _mean_at_no_spread(
-    args: tuple[str, ...], _want: dict[str, Any], got: dict[str, Any]
-) -> str | None:
-    """random_normal(mean, 0): the mean itself, within ``FLOAT_TOLERANCE``."""
-    mean, value = _literal(args[0]), _single(got)
-    if value is None or not (
-        value == mean or _floats_equal(mean, value) or float(mean) == float(value)
-    ):
-        return f"{value!r} is not the mean {mean} of a distribution with no spread"
-    return None
-
-
-#: A volatile function's documented property, by ``_key``: each takes the call's literals,
-#: PostgreSQL's answer and Provisa's, and says how Provisa's breaks it, None if it holds.
-PROPERTIES: dict[str, Callable[[tuple[str, ...], dict[str, Any], dict[str, Any]], str | None]] = {
-    "array_shuffle(anyarray)": _permutation,
-    "array_sample(anyarray, integer)": _sub_multiset,
-    "random(integer, integer)": _within,
-    "random(bigint, bigint)": _within,
-    "random(numeric, numeric)": _within,
-    "random_normal(double precision, double precision)": _mean_at_no_spread,
-}
-
-#: The property of a clock function's answer: within the statement's bounds on PostgreSQL's clock.
-CLOCK = "clock"
-CLOCK_SQL = "SELECT pg_catalog.clock_timestamp()::text AS v"
-#: The clock of the runner the two servers share is one, but each reads it at its own instant: an
-#: answer may be this far outside the bounds PostgreSQL reads before and after it.
-CLOCK_SLACK = datetime.timedelta(seconds=1)
-
-
-def _instant(text: str | None) -> datetime.datetime | None:
-    try:
-        return None if text is None else datetime.datetime.fromisoformat(text)
-    except ValueError:
-        return None
-
-
-def clock_check(before: dict[str, Any], got: dict[str, Any], after: dict[str, Any]) -> str | None:
-    """How Provisa's answer of a clock function falls outside the bounds PostgreSQL's clock read
-    before and after the call; None if it is within them."""
-    low, high = (_instant(_single(b)) if b["ok"] else None for b in (before, after))
-    if low is None or high is None:
-        return f"PostgreSQL's clock gave no bounds: {before}, {after}"
-    value = _single(got)
-    instant = _instant(value)
-    if value is None or instant is None or re.fullmatch(TYPE_FORMS[1184], value) is None:
-        return f"{value!r} is no timestamp with time zone in PostgreSQL's text form"
-    if not low - CLOCK_SLACK <= instant <= high + CLOCK_SLACK:
-        return f"{value!r} is not between {_single(before)!r} and {_single(after)!r}"
-    return None
-
-
 # --- one overload on one engine ---------------------------------------------------------------
 
 
@@ -1921,7 +1796,343 @@ def _all_null(want: dict[str, Any]) -> bool:
     return bool(want["rows"]) and all(v is None for row in want["rows"] for v in row)
 
 
+# --- side effects (REQ-2167, amended 2026-11-02, Side-effect functions) -------------------------
+
+#: The engine side-effect functions are expected to work on: on every other they are skipped by
+#: design.
+SIDE_EFFECT_ENGINE = "pg"
+
+#: The skipped-by-design groups of this check, each a decision of REQ-2167.
+SIDE_EFFECT_GROUP = "Side-effect functions"
+NOT_TESTABLE = "Not testable"
+SEQUENCE_GROUP = "Sequence functions are not supported"
+REGEXP_GROUP = "Six-argument regexp_replace is not supported"
+GROUPS = {
+    SIDE_EFFECT_GROUP: (
+        "A function that returns void or acts is expected to work only on the PostgreSQL engine."
+    ),
+    NOT_TESTABLE: "Its side effect cannot be observed through a client.",
+    SEQUENCE_GROUP: "nextval, currval and setval are refused by name: Provisa does not model a "
+    "source's sequences.",
+    REGEXP_GROUP: "The PostgreSQL 16 form with a start position and an occurrence number is "
+    "refused by name.",
+}
+
+#: The refusals a decision makes, by name or ``_key``: Provisa refusing one by name is that
+#: decision, skipped by design.
+DECIDED_REFUSALS = {
+    "nextval": SEQUENCE_GROUP,
+    "currval": SEQUENCE_GROUP,
+    "setval": SEQUENCE_GROUP,
+    "regexp_replace(text, text, text, integer, integer, text)": REGEXP_GROUP,
+}
+
+#: Volatile functions whose purpose is what they do rather than what they answer, beside every
+#: function returning void.
+_ACTING = frozenset(
+    {
+        "currval",
+        "nextval",
+        "setval",
+        "set_config",
+        "pg_notify",
+        "pg_cancel_backend",
+        "pg_terminate_backend",
+        "pg_reload_conf",
+        "pg_rotate_logfile",
+        "pg_switch_wal",
+        "pg_create_restore_point",
+        "pg_backup_start",
+        "pg_backup_stop",
+        "pg_promote",
+        "pg_drop_replication_slot",
+        "pg_replication_slot_advance",
+        "pg_log_backend_memory_contexts",
+        "pg_log_standby_snapshot",
+        "pg_logical_emit_message",
+        "pg_import_system_collations",
+        "pg_nextoid",
+        "brin_summarize_new_values",
+        "brin_summarize_range",
+        "brin_desummarize_range",
+        "gin_clean_pending_list",
+        "lo_close",
+        "lo_creat",
+        "lo_create",
+        "lo_export",
+        "lo_from_bytea",
+        "lo_import",
+        "lo_lseek",
+        "lo_lseek64",
+        "lo_open",
+        "lo_put",
+        "lo_tell",
+        "lo_tell64",
+        "lo_truncate",
+        "lo_truncate64",
+        "lo_unlink",
+        "loread",
+        "lowrite",
+    }
+)
+_ACTING_PREFIXES = (
+    "pg_advisory_",
+    "pg_try_advisory_",
+    "pg_create_",
+    "pg_copy_",
+    "pg_replication_origin_",
+    "pg_stat_reset",
+    "binary_upgrade_",
+)
+
+
+def side_effect(fn: Function) -> bool:
+    """Whether ``fn`` returns void or acts: it is tested by its side effect."""
+    if fn.rettype == "void":
+        return True
+    return fn.volatility == "v" and (fn.name in _ACTING or fn.name.startswith(_ACTING_PREFIXES))
+
+
+@dataclass(frozen=True)
+class Effect:
+    """How a side effect is seen through a client: ``setup``, then ``call``, then ``observe``,
+    whose answer shows the effect, then ``teardown``, all on one session. ``elapsed``: the call
+    takes at least this many seconds. ``listen``: a second session listens on this channel, and
+    what it receives is the effect."""
+
+    call: str
+    observe: str | None = None
+    setup: tuple[str, ...] = ()
+    teardown: tuple[str, ...] = ()
+    elapsed: float | None = None
+    listen: str | None = None
+
+
+_LOCKS = (
+    "SELECT mode, granted FROM pg_catalog.pg_locks "
+    "WHERE locktype = 'advisory' AND pid = pg_catalog.pg_backend_pid()"
+)
+_UNLOCK_ALL = ("SELECT pg_catalog.pg_advisory_unlock_all()",)
+_LOCK_KEYS = {"bigint": "4242::bigint", "integer, integer": "42, 42"}
+_LARGE_OBJECT = 424242
+_LO_COUNT = (
+    f"SELECT count(*) AS v FROM pg_catalog.pg_largeobject_metadata WHERE oid = {_LARGE_OBJECT}"
+)
+_LO_GET = f"SELECT pg_catalog.lo_get({_LARGE_OBJECT}) AS v"
+_LO_UNLINK = (f"SELECT pg_catalog.lo_unlink({_LARGE_OBJECT})",)
+_LO_ABC = f"SELECT pg_catalog.lo_from_bytea({_LARGE_OBJECT}, '\\x616263'::bytea)"
+#: How long a sleep is asked for, and how far short of it a measured one may end: the client's
+#: clock reads the statement's round trip, which holds the sleep.
+SLEEP_S = 0.2
+SLEEP_TOLERANCE_S = 0.01
+
+
+def _effects() -> dict[str, Effect]:
+    out: dict[str, Effect] = {
+        "set_config(text, text, boolean)": Effect(
+            "SELECT pg_catalog.set_config('conformance.probe', 'on', false) AS v",
+            "SELECT pg_catalog.current_setting('conformance.probe') AS v",
+            teardown=("SELECT pg_catalog.set_config('conformance.probe', '', false)",),
+        ),
+        "pg_notify(text, text)": Effect(
+            "SELECT pg_catalog.pg_notify('conformance_probe', 'payload') AS v",
+            listen="conformance_probe",
+        ),
+        "pg_sleep(double precision)": Effect(
+            f"SELECT pg_catalog.pg_sleep({SLEEP_S}) AS v", elapsed=SLEEP_S
+        ),
+        "pg_sleep_for(interval)": Effect(
+            f"SELECT pg_catalog.pg_sleep_for('{SLEEP_S} seconds'::interval) AS v", elapsed=SLEEP_S
+        ),
+        "pg_sleep_until(timestamp with time zone)": Effect(
+            "SELECT pg_catalog.pg_sleep_until("
+            f"pg_catalog.clock_timestamp() + '{SLEEP_S} seconds'::interval) AS v",
+            elapsed=SLEEP_S,
+        ),
+        "setseed(double precision)": Effect(
+            "SELECT pg_catalog.setseed(0.5) AS v", "SELECT pg_catalog.random() AS v"
+        ),
+        "lo_create(oid)": Effect(
+            f"SELECT pg_catalog.lo_create({_LARGE_OBJECT}) AS v", _LO_COUNT, teardown=_LO_UNLINK
+        ),
+        "lo_from_bytea(oid, bytea)": Effect(_LO_ABC + " AS v", _LO_GET, teardown=_LO_UNLINK),
+        "lo_unlink(oid)": Effect(
+            f"SELECT pg_catalog.lo_unlink({_LARGE_OBJECT}) AS v",
+            _LO_COUNT,
+            setup=(f"SELECT pg_catalog.lo_create({_LARGE_OBJECT})",),
+        ),
+        "lo_put(oid, bigint, bytea)": Effect(
+            f"SELECT pg_catalog.lo_put({_LARGE_OBJECT}, 1, '\\x7a'::bytea) AS v",
+            _LO_GET,
+            setup=(_LO_ABC,),
+            teardown=_LO_UNLINK,
+        ),
+        "pg_advisory_unlock_all()": Effect(
+            "SELECT pg_catalog.pg_advisory_unlock_all() AS v",
+            _LOCKS,
+            setup=("SELECT pg_catalog.pg_advisory_lock(4242::bigint)",),
+        ),
+    }
+    for types, key in _LOCK_KEYS.items():
+        for lock in ("lock", "lock_shared"):
+            for name in (f"pg_advisory_{lock}", f"pg_try_advisory_{lock}"):
+                out[f"{name}({types})"] = Effect(
+                    f"SELECT pg_catalog.{name}({key}) AS v", _LOCKS, teardown=_UNLOCK_ALL
+                )
+            # A transaction's lock is held until its statement ends: seen from inside it.
+            for name in (f"pg_advisory_xact_{lock}", f"pg_try_advisory_xact_{lock}"):
+                out[f"{name}({types})"] = Effect(
+                    f"SELECT ({_LOCKS.replace('SELECT mode, granted', 'SELECT count(*)')}) AS v "
+                    f"FROM (SELECT pg_catalog.{name}({key}) OFFSET 0) s",
+                    _LOCKS,
+                )
+            unlock = lock.replace("lock", "unlock")
+            out[f"pg_advisory_{unlock}({types})"] = Effect(
+                f"SELECT pg_catalog.pg_advisory_{unlock}({key}) AS v",
+                _LOCKS,
+                setup=(f"SELECT pg_catalog.pg_advisory_{lock}({key})",),
+                teardown=_UNLOCK_ALL,
+            )
+    return out
+
+
+#: How each side-effect function's effect is seen, by ``_key``. A side-effect function with none is
+#: not testable (``NOT_TESTABLE``).
+EFFECTS = _effects()
+
+#: How long a listening session waits for a notification.
+LISTEN_TIMEOUT_S = 2.0
+
+
+def _run_effect(server: Session, effect: Effect) -> dict[str, Any]:
+    """``effect`` on ``server``: the call's answer, the observation's, how long the call took and
+    what a listener received, or the first statement that failed. The teardown runs whatever
+    failed before it, so no effect outlives its check."""
+    listener = None
+    try:
+        if effect.listen is not None:
+            try:
+                listener = psycopg.connect(server.dsn, autocommit=True)
+                listener.execute(f"LISTEN {effect.listen}".encode())
+            except psycopg.Error as exc:
+                return {"ok": False, "statement": f"LISTEN {effect.listen}", "error": str(exc)}
+        result = _act(server, effect, listener)
+    finally:
+        if listener is not None:
+            listener.close()
+        torn = [(sql, server.answer(sql)) for sql in effect.teardown]
+    failed = next(((sql, done) for sql, done in torn if not done["ok"]), None)
+    if result["ok"] and failed is not None:
+        return {"ok": False, "statement": failed[0], "error": failed[1]["error"]}
+    return result
+
+
+def _act(server: Session, effect: Effect, listener: psycopg.Connection | None) -> dict[str, Any]:
+    for sql in effect.setup:
+        done = server.answer(sql)
+        if not done["ok"]:
+            return {"ok": False, "statement": sql, "error": done["error"]}
+    started = time.monotonic()
+    called = server.answer(effect.call)
+    took = time.monotonic() - started
+    if not called["ok"]:
+        return {"ok": False, "statement": effect.call, "error": called["error"]}
+    seen = None if effect.observe is None else server.answer(effect.observe)
+    if seen is not None and not seen["ok"]:
+        return {"ok": False, "statement": effect.observe, "error": seen["error"]}
+    heard = None
+    if listener is not None:
+        notes = listener.notifies(timeout=LISTEN_TIMEOUT_S, stop_after=1)
+        heard = [(n.channel, n.payload) for n in notes]
+    return {"ok": True, "called": called, "seen": seen, "took": took, "heard": heard}
+
+
+def effect_difference(effect: Effect, want: dict[str, Any], got: dict[str, Any]) -> str | None:
+    """How Provisa's side effect differs from PostgreSQL's; None if it is the same."""
+    differs = compare(want["called"], got["called"], values=True, sql=effect.call).difference
+    if differs is not None:
+        return f"the call: {differs}"
+    if effect.observe is not None:
+        differs = compare(want["seen"], got["seen"], values=True, sql=effect.observe).difference
+        if differs is not None:
+            return f"after it, {effect.observe}: {differs}"
+    if effect.elapsed is not None and got["took"] < effect.elapsed - SLEEP_TOLERANCE_S:
+        return f"the call took {got['took']:.3f}s, asked for {effect.elapsed}s"
+    if effect.listen is not None and got["heard"] != want["heard"]:
+        return f"a listener received {got['heard']}, PostgreSQL's {want['heard']}"
+    return None
+
+
+def measure_effect(fn: Function, pg: Session, provisa: Session) -> dict[str, Any] | None:
+    """``fn``'s side effect on both servers, as an outcome; None if it has no ``EFFECTS`` entry.
+    One PostgreSQL itself does not produce is not checked: the check, not the function, failed."""
+    effect = EFFECTS.get(_key(fn))
+    if effect is None:
+        return None
+    want = _run_effect(pg, effect)
+    if not want["ok"]:
+        said = f"PostgreSQL did not produce the side effect: {want['statement']}: {want['error']}"
+        return {"outcome": "not_checked", "unchecked": said}
+    got = _run_effect(provisa, effect)
+    if not got["ok"]:
+        named = function_probe.refused_by_name(got["error"])
+        detail = {"statement": got["statement"], "error": got["error"]}
+        return {"outcome": "refused" if named else "error", "detail": detail}
+    differs = effect_difference(effect, want, got)
+    if differs is not None:
+        return {
+            "outcome": "wrong_answer",
+            "detail": {"statement": effect.call, "difference": differs},
+        }
+    return {"outcome": "pass", "side_effect_checked": True}
+
+
+def _by_design(entry: dict[str, Any], group: str) -> dict[str, Any]:
+    entry["outcome"] = "by_design"
+    entry["group"] = group
+    entry["requirement"] = "REQ-2167"
+    entry["detail"] = GROUPS[group]
+    return entry
+
+
 def measure_overload(
+    fn: Function,
+    family: str,
+    pg: Session,
+    provisa: Session,
+    classify: Any,
+    enums: frozenset[int] = frozenset(),
+    *,
+    engine: str,
+) -> dict[str, Any]:
+    """``fn`` on ``engine``, as one outcome. A side-effect function is tested by its side effect on
+    ``SIDE_EFFECT_ENGINE`` and skipped by design elsewhere, and is not testable where no client can
+    see its effect; a refusal a decision makes is skipped by design under it."""
+    entry = _measure_calls(fn, family, pg, provisa, classify, enums)
+    if entry["outcome"] == "not_callable":
+        return entry
+    decided = DECIDED_REFUSALS.get(_key(fn)) or DECIDED_REFUSALS.get(fn.name)
+    if decided is not None and entry["outcome"] == "refused":
+        return _by_design(entry, decided)
+    if not side_effect(fn):
+        return entry
+    if engine != SIDE_EFFECT_ENGINE:
+        return _by_design(entry, SIDE_EFFECT_GROUP)
+    effect = measure_effect(fn, pg, provisa)
+    if effect is not None:
+        entry.update(effect)
+        entry["answers_checked"] = False
+        entry["type_and_form_checked"] = False
+        entry["side_effect_checked"] = effect["outcome"] == "pass"
+        if decided is not None and effect["outcome"] == "refused":
+            return _by_design(entry, decided)
+        return entry
+    if entry["outcome"] in ("pass", "not_checked"):
+        return _by_design(entry, NOT_TESTABLE)
+    return entry
+
+
+def _measure_calls(
     fn: Function,
     family: str,
     pg: Session,
@@ -1954,9 +2165,7 @@ def measure_overload(
         accepted += 1
         answered += call_.answers
         routes.add("catalog" if classify(call_.sql) == "INTERCEPT" else "engine")
-        before = pg.answer(CLOCK_SQL) if call_.prop == CLOCK else None
         got = _answer(provisa, call_)
-        after = pg.answer(CLOCK_SQL) if call_.prop == CLOCK else None
         if not got["ok"]:
             said = {"statement": call_.sql, "error": got["error"]}
             (named if function_probe.refused_by_name(got["error"]) else errors).append(said)
@@ -1973,18 +2182,12 @@ def measure_overload(
         if differs is None and call_.form:
             formed, differs = form_check(fn.name, want, got)
             checked += formed
-        if differs is None and call_.prop is not None:
-            checked += 1
-            if call_.prop == CLOCK:
-                differs = clock_check(before or {}, got, after or {})
-            else:
-                differs = PROPERTIES[call_.prop](call_.args, want, got)
         if differs is not None:
             wrong.append({"statement": call_.sql, "difference": differs})
     entry["calls"] = accepted
     entry["answers_compared"] = answered
     entry["answers_checked"] = answered > 0
-    entry["property_checked"] = checked > 0 and not answered
+    entry["type_and_form_checked"] = checked > 0 and not answered
     entry["served_by"] = "+".join(sorted(routes)) or None
     if not answered:
         why = unchecked(fn, family)
@@ -2093,7 +2296,9 @@ def measure(
             print(f"::error::{server_gone}")
         if server_gone is None:
             try:
-                overloads.append(measure_overload(fn, family, pg, provisa, classify, enums))
+                overloads.append(
+                    measure_overload(fn, family, pg, provisa, classify, enums, engine=engine)
+                )
             except psycopg.OperationalError as exc:
                 server_gone = f"Provisa stopped answering at {fn.signature}: {exc}".strip()
                 print(f"::error::{server_gone}")
@@ -2130,6 +2335,7 @@ def measure(
 OUTCOMES = (
     "pass",
     "not_checked",
+    "by_design",
     "wrong_answer",
     "error",
     "refused",
@@ -2139,19 +2345,34 @@ OUTCOMES = (
 
 
 def counts(overloads: list[dict[str, Any]]) -> dict[str, int]:
-    """The outcomes, with a pass split by what was checked: an answer or a property."""
+    """The outcomes, with a pass split by what was compared: an answer, a type and form, or a side
+    effect."""
     tally = Counter(o["outcome"] for o in overloads)
     out = {name: tally.get(name, 0) for name in OUTCOMES}
     out["total"] = len(overloads)
     out["pass_answers_checked"] = sum(
         1 for o in overloads if o["outcome"] == "pass" and o.get("answers_checked")
     )
-    out["pass_property_checked"] = out["pass"] - out["pass_answers_checked"]
+    out["pass_side_effect_checked"] = sum(
+        1 for o in overloads if o["outcome"] == "pass" and o.get("side_effect_checked")
+    )
+    out["pass_type_and_form_checked"] = (
+        out["pass"] - out["pass_answers_checked"] - out["pass_side_effect_checked"]
+    )
     # Passed without reaching the engine: the catalog DB answers it on every engine alike.
     out["pass_catalog_answered"] = sum(
         1 for o in overloads if o["outcome"] == "pass" and o.get("served_by") == "catalog"
     )
     return out
+
+
+def by_design_groups(overloads: Iterable[dict[str, Any]]) -> dict[str, list[str]]:
+    """The overloads skipped by design, by the group whose decision skips them."""
+    out: dict[str, list[str]] = {}
+    for o in overloads:
+        if o["outcome"] == "by_design":
+            out.setdefault(o["group"], []).append(f"{o['function']}({o['overload']})")
+    return {group: sorted(names) for group, names in sorted(out.items())}
 
 
 def not_checked_reasons(overloads: Iterable[dict[str, Any]]) -> dict[str, int]:
@@ -2162,16 +2383,18 @@ def not_checked_reasons(overloads: Iterable[dict[str, Any]]) -> dict[str, int]:
 
 def _row(label: str, c: dict[str, int]) -> str:
     return (
-        f"| {label} | {c['total']} | {c['pass_answers_checked']} | {c['pass_property_checked']} "
-        f"| {c['not_checked']} | {c['refused']} "
+        f"| {label} | {c['total']} | {c['pass_answers_checked']} "
+        f"| {c['pass_type_and_form_checked']} | {c['pass_side_effect_checked']} "
+        f"| {c['not_checked']} | {c['by_design']} | {c['refused']} "
         f"| {c['wrong_answer']} | {c['error']} | {c['not_callable']} | {c['not_reached']} |"
     )
 
 
 _HEADER = (
-    "| | overloads | pass, answers checked | pass, property checked | not checked "
-    "| refused by name | wrong answer | engine error | not callable | not reached |",
-    "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    "| | overloads | pass, answers compared | pass, type and form compared "
+    "| pass, side effect compared | not checked | skipped by design | refused by name "
+    "| wrong answer | engine error | not callable | not reached |",
+    "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
 )
 
 
@@ -2236,7 +2459,16 @@ def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
     if entry.get("rules"):
         kept["rules"] = entry["rules"]
     if entry["outcome"] == "pass":
-        kept["check"] = "answers" if entry.get("answers_checked") else "property"
+        kept["check"] = (
+            "answers"
+            if entry.get("answers_checked")
+            else "side_effect"
+            if entry.get("side_effect_checked")
+            else "type_and_form"
+        )
+    if entry["outcome"] == "by_design":
+        kept["group"] = entry["group"]
+        kept["requirement"] = entry["requirement"]
     if entry["outcome"] == "not_checked":
         kept["unchecked"] = entry.get("unchecked", "")
     return kept
@@ -2247,10 +2479,10 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
     that left no result: it counts as not reached, so nothing is guaranteed by its absence.
 
     An overload passing on every engine is on the guaranteed list, by what every engine checked of
-    it (``proof``): ``answers_checked``, or ``property_checked`` where a property stood in on any of
-    them (REQ-2167, WHAT GUARANTEED MEANS). One not checked on any engine is not on it: a pass is
-    never a call alone. A function is guaranteed when each of its overloads PostgreSQL can call
-    is."""
+    it (``proof``): ``answers_checked`` on every engine, else ``side_effect_checked`` where a
+    side effect was compared on any, else ``type_and_form_checked`` (REQ-2167, WHAT GUARANTEED
+    MEANS). One not checked or skipped by design on any engine is not on it: a pass is never a
+    call alone. A function is guaranteed when each of its overloads PostgreSQL can call is."""
     by_engine = {
         engine: {
             (o["function"], o["overload"]): o for o in (report or {"overloads": []})["overloads"]
@@ -2274,8 +2506,11 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
                 "answers_checked": any(
                     e is not None and e.get("answers_checked") for e in entries.values()
                 ),
-                "property_checked": any(
-                    e is not None and e.get("property_checked") for e in entries.values()
+                "type_and_form_checked": any(
+                    e is not None and e.get("type_and_form_checked") for e in entries.values()
+                ),
+                "side_effect_checked": any(
+                    e is not None and e.get("side_effect_checked") for e in entries.values()
                 ),
                 "proof": _proof(entries),
                 "unchecked": next(
@@ -2327,12 +2562,16 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
             engine: not_checked_reasons((report or {"overloads": []})["overloads"])
             for engine, report in sorted(reports.items())
         },
+        "by_design_groups": {
+            engine: by_design_groups((report or {"overloads": []})["overloads"])
+            for engine, report in sorted(reports.items())
+        },
         "guaranteed": {
             **{
                 proof: sorted(
                     f"{f['function']}({f['overload']})" for f in guaranteed if f["proof"] == proof
                 )
-                for proof in ("answers_checked", "property_checked")
+                for proof in ("answers_checked", "type_and_form_checked", "side_effect_checked")
             },
             "functions": sorted(
                 name
@@ -2349,7 +2588,9 @@ def _proof(entries: dict[str, dict[str, Any] | None]) -> str:
     present = [e or {} for e in entries.values()]
     if all(e.get("answers_checked") for e in present):
         return "answers_checked"
-    return "property_checked"
+    if any(e.get("side_effect_checked") for e in present):
+        return "side_effect_checked"
+    return "type_and_form_checked"
 
 
 def _absent() -> dict[str, Any]:
@@ -2371,17 +2612,30 @@ def merged_markdown(doc: dict[str, Any]) -> str:
         *(_row(engine, doc["counts"][engine]) for engine in engines),
         "",
         f"**Guaranteed list:** {len(guaranteed['answers_checked'])} overloads with answers "
-        f"compared and {len(guaranteed['property_checked'])} property checked, passing on all "
+        f"compared, {len(guaranteed['type_and_form_checked'])} with type and form compared and "
+        f"{len(guaranteed['side_effect_checked'])} with side effect compared, passing on all "
         f"{len(engines)} engines. {len(guaranteed['functions'])} functions have every callable "
         "overload on the list.",
         "",
-        "Comparison: " + doc["comparison"] + ". A pass, exact or equivalent, is answers checked "
-        "when a call with real values was compared, and property checked when a value that cannot "
-        "be compared has the type and the form of PostgreSQL's, or a property PostgreSQL "
-        "documents. Any other overload PostgreSQL answers is not checked, and no pass: a call "
-        "that ran proves nothing.",
+        "Comparison: " + doc["comparison"] + ". A pass, exact or equivalent, is answers compared "
+        "when a call with real values was compared; type and form compared when a value that "
+        "cannot be compared (volatile, or the server's own) has PostgreSQL's result type and, for "
+        "a string, its canonical form; and side effect compared when what a void or acting "
+        "function did, seen through a client, is what PostgreSQL did. Any other overload "
+        "PostgreSQL answers is not checked, and no pass: a call that ran proves nothing.",
         "",
     ]
+    for engine in engines:
+        groups = doc["by_design_groups"][engine]
+        lines += [
+            f"#### Skipped by design on {engine}",
+            "",
+            *(
+                [f"- {group} (REQ-2167): {len(names)}" for group, names in groups.items()]
+                or ["None."]
+            ),
+            "",
+        ]
     for engine in engines:
         lines += [
             f"#### Not checked on {engine}",
@@ -2398,8 +2652,8 @@ def merged_markdown(doc: dict[str, Any]) -> str:
     if doc["engines_incomplete"]:
         lines += [f"**Incomplete legs:** {', '.join(doc['engines_incomplete'])}.", ""]
     lines += [
-        "### Per family: pass (answers checked + property checked), then not checked, of callable "
-        "overloads",
+        "### Per family: pass (answers + type and form + side effect compared), then not checked, "
+        "of callable overloads",
         "",
         "| family | overloads | " + " | ".join(engines) + " | on all |",
         "|---|---:|" + "---:|" * (len(engines) + 1),
@@ -2418,12 +2672,15 @@ def merged_markdown(doc: dict[str, Any]) -> str:
 
 
 def _family_cell(outcomes: list[dict[str, Any]]) -> str:
-    """One engine's family: answers checked + property checked, then not checked, of callable."""
-    passes = [o for o in outcomes if o["outcome"] == "pass"]
-    checked = sum(1 for o in passes if o.get("check") == "answers")
+    """One engine's family: answers + type and form + side effect compared, then not checked, of
+    callable."""
+    passes = Counter(o.get("check") for o in outcomes if o["outcome"] == "pass")
     unchecked_ = sum(1 for o in outcomes if o["outcome"] == "not_checked")
     callable_ = sum(1 for o in outcomes if o["outcome"] != "not_callable")
-    return f"{checked} + {len(passes) - checked}, {unchecked_} not checked, of {callable_}"
+    return (
+        f"{passes['answers']} + {passes['type_and_form']} + {passes['side_effect']}, "
+        f"{unchecked_} not checked, of {callable_}"
+    )
 
 
 def merge(engines: list[str], indir: Path, out: Path, out_md: Path) -> int:
