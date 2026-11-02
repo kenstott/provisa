@@ -196,7 +196,7 @@ def _fits(argument: str | None, parameter: str) -> bool:
         argument is None
         or argument == parameter
         or parameter in _OF_ANY_TYPE
-        or (parameter == "anynonarray" and not argument.endswith("[]"))
+        or (parameter in _NONARRAYS and not argument.endswith("[]"))
         or (
             parameter == "anyenum" and argument not in _BUILT_IN
         )  # only the server's catalog names one
@@ -210,8 +210,39 @@ def _fits(argument: str | None, parameter: str) -> bool:
     )
 
 
-def _resolved(returns: str, arg_types: list[str | None]) -> str:
-    """A polymorphic result as the array, range or multirange among the arguments makes it."""
+#: The polymorphic parameters of each family that take an element, or an array of one.
+_NONARRAYS = frozenset({"anynonarray", "anycompatiblenonarray"})
+_ELEMENTS = {
+    "anyelement": frozenset({"anyelement", "anynonarray", "anyenum"}),
+    "anycompatible": frozenset({"anycompatible", "anycompatiblenonarray"}),
+}
+_ARRAYS = {"anyelement": "anyarray", "anycompatible": "anycompatiblearray"}
+_FAMILY = {
+    **{p: family for family, params in _ELEMENTS.items() for p in params},
+    **{a: family for family, a in _ARRAYS.items()},
+}
+
+
+def _element(family: str, params: tuple[str, ...], arg_types: list[str | None]) -> str | None:
+    """The element type a family's arguments resolve to: an element's own type, an array's
+    element (PostgreSQL's enforce_generic_type_consistency)."""
+    for param, argument in zip(params, arg_types):
+        if argument is None:
+            continue
+        if param in _ELEMENTS[family]:
+            return argument
+        if param == _ARRAYS[family] and argument.endswith("[]"):
+            return argument[:-2]
+    return None
+
+
+def _resolved(returns: str, arg_types: list[str | None], params: tuple[str, ...] = ()) -> str:
+    """A polymorphic result as the element, array, range or multirange among the arguments
+    makes it."""
+    family = _FAMILY.get(returns)
+    element = None if family is None else _element(family, params, arg_types)
+    if element is not None:
+        return f"{element}[]" if returns in _ARRAYS.values() else element
     if returns == "anyarray":
         return next((a for a in arg_types if a is not None and a.endswith("[]")), returns)
     if returns not in ("anyelement", "anyrange", "anymultirange"):
@@ -257,7 +288,7 @@ def call_result_type(expression: exp.Expr) -> str | None:
         arg_types = [_arg_type(a, literal, numbers) for a in args]
         for name in names:
             candidates = {
-                _resolved(returns, arg_types)
+                _resolved(returns, arg_types, params)
                 for params, returns in FUNCTION_OVERLOADS.get(name, ())
                 if (len(params) == len(arg_types) or params == _VARIADIC_ANY)
                 and all(_fits(t, p) for t, p in zip(arg_types, params))

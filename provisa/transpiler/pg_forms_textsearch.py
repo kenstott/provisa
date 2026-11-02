@@ -937,6 +937,20 @@ _BUILDERS = {
     "websearch_to_tsquery": parse.websearch_to_tsquery,
 }
 _SETS = frozenset({"ts_parse", "ts_debug", "ts_stat"})
+#: What each function returns, as the engine holds it, where that is not text (a tsvector, a
+#: tsquery and text are held as text): a NULL argument answers a NULL of it (REQ-2167).
+_RESULTS = {
+    **dict.fromkeys(_RANKS, "float"),  # real
+    **dict.fromkeys(("ts_lexize", "tsvector_to_array"), "ARRAY<TEXT>"),
+    **dict.fromkeys(("numnode", "tsquery_cmp", "tsvector_cmp"), "int"),
+    **dict.fromkeys(
+        (
+            *_SEARCHES, *_ORDERED, *_ORDER, "tsq_mcontains", "tsq_mcontained", "tsvector_eq",
+            "tsvector_ne", "ts_match_tt", "ts_match_tq",
+        ),
+        "boolean",
+    ),
+}  # fmt: skip
 _PARSER = 3722
 _RECORD_SPECIAL = re.compile(r'[\s,()"\\]')
 _COLUMNS = {
@@ -1252,11 +1266,35 @@ def _rewritten(name: str, args: list[exp.Expr]) -> exp.Expr:
     return _text_value(pg_tsearch.tsquery_text(pg_tsearch.rewrite(_query(args[0]), target, by)))
 
 
-def _headlined(name: str, args: list[exp.Expr]) -> exp.Expr:
-    first_said = _said(args[0])
-    named = first_said == "regconfig" or (
+def _names_config(args: list[exp.Expr]) -> bool:
+    """Whether a ts_headline call's first argument is its config, its document then second."""
+    return _said(args[0]) == "regconfig" or (
         len(args) == 4 or (len(args) == 3 and _said(args[1]) != "tsquery")
     )
+
+
+def _json_value(value: exp.Expr, dialect: str) -> exp.Expr:
+    """A json or jsonb result as the engine's JSON, which pgwire describes as the call's type;
+    ClickHouse, which has no JSON form, holds its text."""
+    if dialect in ("trino", "athena", "presto") and not isinstance(value, exp.Null):
+        return exp.ParseJSON(this=value)
+    return value if dialect == "clickhouse" else exp.cast(value, "JSON")
+
+
+def _null_of(name: str, args: list[exp.Expr], dialect: str) -> exp.Expr:
+    """The NULL a call answers for a NULL argument, of the type the function returns."""
+    if name == "ts_headline":
+        document = args[1] if _names_config(args) else args[0]
+        if _said(document) in ("json", "jsonb"):
+            return _json_value(exp.null(), dialect)
+    result = _RESULTS.get(name, "text")
+    if dialect == "clickhouse" and result.startswith("ARRAY"):
+        return exp.null()  # ClickHouse has no NULL of an array
+    return exp.Cast(this=exp.null(), to=exp.DataType.build(result))
+
+
+def _headlined(name: str, args: list[exp.Expr], dialect: str) -> exp.Expr:
+    named = _names_config(args)
     config = _config(args[0], name) if named else "english"
     rest = args[1:] if named else args
     query = _query(rest[1])
@@ -1269,7 +1307,9 @@ def _headlined(name: str, args: list[exp.Expr]) -> exp.Expr:
     try:
         if _said(rest[0]) in ("json", "jsonb"):
             written = parse.json_headline(document, mark)
-            return _text_value(jsonb_text(written) if _said(rest[0]) == "jsonb" else written)
+            if _said(rest[0]) == "json":
+                return _text_value(written)
+            return _json_value(_text_value(jsonb_text(written)), dialect)
         written = mark(document)
     except parse.Unread:
         raise NoForm(name) from None
@@ -1365,11 +1405,13 @@ def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
             elif name == "ts_rewrite":
                 written = _rewritten(name, args)
             elif name == "ts_headline":
-                written = _headlined(name, args)
+                written = _headlined(name, args, dialect)
             else:
                 written = _on_vector(name, args)
         except _NotConstant:
             raise NoForm(name) from None
+        if isinstance(written, exp.Null):
+            written = _null_of(name, args, dialect)
         if isinstance(node.parent, exp.Select) and node.arg_key == "expressions":
             return exp.alias_(written, name)
         return written

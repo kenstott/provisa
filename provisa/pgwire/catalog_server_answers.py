@@ -234,6 +234,8 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
         "set_next_array_pg_type_oid",
         "set_next_heap_pg_class_oid",
         "set_next_heap_relfilenode",
+        "set_next_multirange_array_pg_type_oid",
+        "set_next_multirange_pg_type_oid",
         "set_next_index_pg_class_oid",
         "set_next_index_relfilenode",
         "set_next_pg_authid_oid",

@@ -526,9 +526,12 @@ _NO_OUTPUT = (
 )  # fmt: skip
 
 
-def _no_value(name: str, message: str, params: str = "v") -> Row:
+def _no_value(
+    name: str, message: str, params: str = "v", sql_type: Typed = _text, result: str = "text"
+) -> Row:
     return _noted(
-        _row(name, params, _text, lambda e: e.raises("0A000", _quoted(message), e.text)), "text"
+        _row(name, params, sql_type, lambda e: e.raises("0A000", _quoted(message), sql_type(e))),
+        result,
     )
 
 
@@ -539,7 +542,15 @@ def _pseudo() -> list[Row]:
         for t in _NO_INPUT_OF_THREE
     ]
     rows += [_no_value(f"{t}_out", f"cannot display a value of type {t}") for t in _NO_OUTPUT]
-    rows += [_no_value("pg_ddl_command_send", "cannot display a value of type pg_ddl_command")]
+    rows += [
+        _no_value(
+            "pg_ddl_command_send",
+            "cannot display a value of type pg_ddl_command",
+            "v",
+            _binary,
+            "bytea",
+        )
+    ]
     rows += [_no_value("shell_out", "cannot display a value of a shell type")]
     rows += [_noted(_row("void_in", "v", _text, lambda _: "''"), "text")]
     rows += [_noted(_row("void_out", "v", _text, lambda _: "''"), "text")]
@@ -1189,11 +1200,13 @@ ROWS: tuple[Row, ...] = (
         tsqueryout tsvectorout xml_out pg_dependencies_out pg_mcv_list_out pg_ndistinct_out
         pg_node_tree_out regclassout regcollationout regconfigout regdictionaryout regnamespaceout
         regoperatorout regoperout regprocedureout regprocout regroleout regtypeout xid8out
-        numeric_out numerictypmodout intervaltypmodout jsonb_in jsonpath_in tsqueryin tsvectorin
+        numeric_out numerictypmodout intervaltypmodout jsonpath_in tsqueryin tsvectorin
         xml_in regclassin regcollationin regconfigin regdictionaryin regnamespacein regoperatorin
-        regoperin regprocedurein regprocin regrolein regtypein xid8in""",
+        regoperin regprocedurein regprocin regrolein regtypein""",
         "v", _text, "text",
     ),
+    *_refused("jsonb_in", "v", _text, "jsonb"),
+    *_refused("xid8in", "v", _text, "xid8"),
     *_refused(
         """array_send anyarray_send anycompatiblearray_send range_send multirange_send record_send
         bit_send varbit_send interval_send jsonb_send jsonpath_send tsquerysend
@@ -1201,9 +1214,10 @@ ROWS: tuple[Row, ...] = (
         "v", _binary, "bytea",
     ),
     *_refused(
-        """array_in range_in multirange_in bit_in varbit_in interval_in numeric_in""",
+        """array_in range_in multirange_in bit_in varbit_in numeric_in""",
         "v, o, m", _text, "text",
     ),
+    *_refused("interval_in", "v, o, m", _text, "interval"),
     *_refused("enum_in", "v, o", _text, "text"),
     _no_value("record_in", "input of anonymous composite types is not implemented", "v, o, m"),
     _noted(
@@ -1311,12 +1325,21 @@ def _is_null(value: exp.Expr) -> bool:
     return isinstance(node.this if isinstance(node, exp.Cast) else node, exp.Null)
 
 
+#: The results a NULL is of only on DuckDB (``None``: the engine a statement with no table goes
+#: to), where pgwire describes it as that type; another engine's NULL of one is its text.
+_DUCKDB_RESULTS = frozenset({"jsonb", "interval", "xid8"})
+
+
 def _null_of(result: str, dialect: str | None = None) -> exp.Expr:
     """A NULL of ``result``. ClickHouse holds a time as its text (Engine.time): sqlglot would write
     toTime64OrNull, which ClickHouse 24 does not have."""
     if dialect == "clickhouse" and result == "time without time zone":
         result = "text"
-    return exp.Cast(this=exp.Null(), to=exp.DataType.build(result, dialect="postgres"))
+    if dialect not in (None, "duckdb") and result in _DUCKDB_RESULTS:
+        result = "text"
+    # xid8 is no type sqlglot knows: pg_held_types holds it as the engine's.
+    to = exp.DataType.build(result, dialect="postgres", udt=True)
+    return exp.Cast(this=exp.Null(), to=to)
 
 
 def _literal_text(value: exp.Expr) -> str | None:
@@ -1632,7 +1655,9 @@ ZONED = frozenset({"timestamptz_in", "timestamptz_out", "timestamptz_send"})
 _ZONED_CALLED = re.compile(r"\b(" + "|".join(sorted(ZONED)) + r")\"?\s*\(", re.IGNORECASE)
 
 
-def _spelled(sql: str) -> str:
+def spelled(sql: str) -> str:
+    """``sql`` as sqlglot reads it: ``::cstring[]`` as ``::_cstring``, ``::bit varying`` as
+    ``::varbit``."""
     return _BIT_VARYING.sub("::varbit", _ARRAY_OF_CSTRING.sub("::_cstring", sql))
 
 
@@ -1643,7 +1668,7 @@ def zoned_call(sql: str) -> str | None:
     if named is None:
         return None
     try:
-        tree = sqlglot.parse_one(_spelled(sql), read="postgres")
+        tree = sqlglot.parse_one(spelled(sql), read="postgres")
     except SqlglotError:
         return named.group(1).lower()
     calls = (call.name.lower() for call in tree.find_all(exp.Anonymous))
@@ -1658,7 +1683,7 @@ def readable(sql: str, dialect: str | None = None) -> str:
     if _CALLED.search(sql) is None:
         return sql
     try:
-        tree = sqlglot.parse_one(_spelled(sql), read="postgres")
+        tree = sqlglot.parse_one(spelled(sql), read="postgres")
         return _lowered(tree, dialect).sql(dialect="postgres")
     except SqlglotError:
         return sql
