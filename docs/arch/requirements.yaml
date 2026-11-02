@@ -92595,7 +92595,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Each engine''s read path is chosen to give one of the two. (Amended 2026-10-29, An engine that cannot
     is documented:) Maintainer 2026-11-02: where an engine or source offers neither an Arrow buffer nor
     a direct row cursor, the docs say so for that engine: which read path it uses, that rows pass through
-    Python on the way to the encoder, and what that costs.'
+    Python on the way to the encoder, and what that costs. (Amended 2026-10-29, A columnar endpoint that
+    exists is the one called:) Maintainer 2026-11-02: where an engine or source offers a columnar or direct
+    result but Provisa calls a row-at-a-time endpoint, the calls are redesigned to use it; the docs exception
+    is only for engines that offer none. Data warehouses in particular (Snowflake, BigQuery, Databricks,
+    Fabric, Redshift and the rest) are reviewed against their Arrow-returning interfaces.'
   scenario: 'Given a statement whose result holds every type pgwire serves, including timestamptz in a
     named zone
 
