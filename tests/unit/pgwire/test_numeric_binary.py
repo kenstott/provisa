@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 764fac7a-2ed1-464c-8dc6-fdb7d2c34aa0
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """pgwire's binary numeric (OID 1700) keeps every digit of a value, as PostgreSQL 17 sends it
 (REQ-2167): no decimal context rounds a value past 28 significant digits."""
 
