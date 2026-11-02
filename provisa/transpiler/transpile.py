@@ -1493,7 +1493,11 @@ _FIRST_MATCH_WRITTEN = frozenset({"trino", "presto", "athena", "clickhouse"})
 def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
     """``pg_sql`` with the 'g' flag taken off each REGEXP_REPLACE for a target whose
     three-argument form replaces every match already (a regex mask masks every match)."""
-    if target_dialect in _REGEXP_FLAGS_KEPT or "REGEXP_REPLACE" not in pg_sql.upper():
+    if "REGEXP_REPLACE" not in pg_sql.upper():
+        return pg_sql
+    if target_dialect == "duckdb":
+        return _flag_past_n(pg_sql)
+    if target_dialect in _REGEXP_FLAGS_KEPT:
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
     replaces = list(tree.find_all(exp.RegexpReplace))
@@ -1513,6 +1517,26 @@ def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
             positioned = node.args.get("position") is not None  # its row reads the start and N
             if node not in flagged and node.args.get("modifiers") is None and not positioned:
                 node.set("modifiers", exp.Literal.string(function_macros.FIRST_MATCH))
+    return tree.sql(dialect="postgres")
+
+
+def _flag_past_n(pg_sql: str) -> str:
+    """``pg_sql`` for DuckDB, whose REGEXP_REPLACE sqlglot writes with a flag and without the start
+    and N. PostgreSQL reads 'g' only where N is not given, so that call is the five-argument one;
+    any other flag beside N has no form."""
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    both = [
+        node
+        for node in tree.find_all(exp.RegexpReplace)
+        if node.args.get("occurrence") is not None and node.args.get("modifiers") is not None
+    ]
+    if not both:
+        return pg_sql
+    for node in both:
+        said = node.args["modifiers"]
+        if not (isinstance(said, exp.Literal) and said.this == "g"):
+            raise function_macros.FunctionRefused("regexp_replace", "duckdb")
+        node.set("modifiers", None)
     return tree.sql(dialect="postgres")
 
 

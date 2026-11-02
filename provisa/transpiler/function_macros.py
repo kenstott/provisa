@@ -1548,7 +1548,10 @@ _ROWS: tuple[Macro, ...] = (
         ("value", "n"),
         {
             _TRINO: pg_forms_system.TRINO_REPEAT,
-            _EVERY: Pg("CASE WHEN n > 0 THEN REPEAT(value, n) WHEN n IS NOT NULL THEN '' END"),
+            _EVERY: Pg(
+                "CASE WHEN n > 0 THEN REPEAT(value, n) "
+                "WHEN n IS NOT NULL AND value IS NOT NULL THEN '' END"
+            ),
         },
     ),
     _pg("textanycat", "a, b", "CAST(CAST(a AS TEXT) || CAST(b AS TEXT) AS TEXT)"),

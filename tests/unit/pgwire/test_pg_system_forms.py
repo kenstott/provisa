@@ -31,7 +31,7 @@ from provisa.transpiler.function_macros import MACROS, FunctionRefused, outcome
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import expand
 from provisa.transpiler.pg_forms_system import ROWS
-from provisa.transpiler.transpile import transpile
+from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 from tests.unit.pgwire.pg17_system_answers import RECORDED
 from tests.unit.pgwire.system_corpus import statements
 
@@ -128,6 +128,9 @@ def test_an_engine_with_no_form_refuses_by_name(dialect: str):
         ("'x'", "0", ""),
         ("'x'", "-1", ""),
         ("NULL::text", "3", None),
+        ("NULL::text", "0", None),
+        ("NULL::text", "-1", None),
+        ("NULL", "0", None),
         ("'x'", "NULL::integer", None),
     ],
 )
@@ -147,6 +150,63 @@ def test_a_form_that_means_trinos_array_repeat_keeps_it():
 @pytest.mark.parametrize("dialect", ["duckdb", "clickhouse", "spark", "snowflake"])
 def test_repeat_stays_the_engines_own_elsewhere(dialect: str):
     assert "REPEAT('x', 3)" in transpile("SELECT repeat('x', 3) AS v", dialect)
+
+
+_STRICT_REPEAT = [
+    ("NULL::text", "3", None),
+    ("NULL::text", "0", None),
+    ("NULL::text", "-1", None),
+    ("NULL", "3", None),
+    ("NULL", "0", None),
+    ("NULL", "-1", None),
+    ("'x'", "NULL::integer", None),
+    ("'x'", "-1", ""),
+    ("'x'", "0", ""),
+    ("'ab'", "2", "abab"),
+]
+
+
+@pytest.mark.parametrize(("value", "count", "want"), _STRICT_REPEAT)
+def test_repeat_is_strict_on_duckdb(value: str, count: str, want: str | None):
+    written = transpile(f"SELECT repeat({value}, {count}) AS v", "duckdb")
+    assert duckdb.connect().execute(written).fetchall() == [(want,)]
+
+
+@pytest.mark.parametrize(("value", "count", "want"), _STRICT_REPEAT)
+def test_repeat_is_strict_on_clickhouse(value: str, count: str, want: str | None):
+    written = transpile(f"SELECT repeat({value}, {count}) AS v", "clickhouse")
+    answer = chdb.query(written, "CSV").bytes().decode().strip()
+    assert answer == ("\\N" if want is None else f'"{want}"')
+
+
+@pytest.mark.parametrize("dialect", ["spark", "snowflake", "bigquery", "mysql", "tsql"])
+def test_repeat_of_nothing_is_null_for_any_count_elsewhere(dialect: str):
+    written = transpile("SELECT repeat(a, b) AS v FROM t", dialect)
+    assert re.search(r"\ba\W* IS NOT NULL", written), written
+
+
+@pytest.mark.parametrize(
+    ("n", "want"),
+    [
+        (2, "aXb-c"),  # postgres:16.11 answered each; regexp.c deduces N only when not given
+        (1, "a-bXc"),
+        (0, "a-b-c"),
+        (3, "aXbXc"),
+    ],
+)
+def test_the_g_flag_is_ignored_where_n_is_given(n: int, want: str):
+    sql = f"SELECT regexp_replace('aXbXc', 'X', '-', 1, {n}, 'g') AS v"
+    assert duckdb.connect().execute(transpile_to_duckdb(sql)).fetchall() == [(want,)]
+    assert chdb.query(transpile(sql, "clickhouse"), "CSV").bytes().decode().strip() == f'"{want}"'
+    assert "'g'" not in transpile(sql, "trino")
+
+
+@pytest.mark.parametrize("flags", ["'gi'", "'i'", "f"])
+@pytest.mark.parametrize("dialect", _ENGINES)
+def test_a_flag_beside_n_is_refused_by_name(flags: str, dialect: str):
+    sql = f"SELECT regexp_replace(a, 'X', '-', 1, 2, {flags}) AS v FROM t"
+    with pytest.raises(FunctionRefused, match=f"regexp_replace.*has no form on {dialect}"):
+        transpile(sql, dialect)
 
 
 @pytest.mark.parametrize(
