@@ -90795,7 +90795,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     outside the org''s folder is refused, naming the path, by the same check REQ-1997 applies. No other
     file URL is allowed on cloud. Given a Generic SQL source on cloud When its URL is a SQLite file under
     {files} Then the source reads that file When its URL names a file anywhere else, or a path that resolves
-    outside the org''s folder Then it is refused, naming the path'
+    outside the org''s folder Then it is refused, naming the path (Amended 2026-11-02, The floor''s parameter
+    kind:) Maintainer 2026-11-02: the floor uses a new parameter kind, column_value: a real column of the
+    table, given by equality, that narrows the read to the rows having that value. A steward marks which
+    are required; a query that omits a required one is refused by name, as for every other kind. partition_key
+    keeps its Cosmos DB meaning and its level-prefix rule.'
   use_case: 'A team runs a database Provisa has no source type for. An admin registers it with its URL
     and the SQL dialect closest to it, presses Detect, and gets whatever it can do: live attach and pushdown
     where it passes, and otherwise a governed source read by key.'
