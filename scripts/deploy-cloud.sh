@@ -209,26 +209,29 @@ build_api() {
   echo "== packaging python package"
   # provisa/_graph_render is a checkout's symlink to provisa-ui/graph-render (gitignored); the image
   # carries the built renderer there as a directory, which a pushed symlink cannot replace.
-  # REQ-2194: pgwire's encoder, compiled from this checkout by the Dockerfile's encoder stage, for
-  # both Linux architectures: each module file is named for its architecture
-  # (pgwire_encoder_rs.cpython-312-<arch>-linux-gnu.so), so one package directory imports on an
-  # amd64 node and an arm64 one alike. Pushed beside buenavista; the image's own copy stays below it.
-  echo "== compiling the pgwire encoder (linux/amd64, linux/arm64)"
-  rm -rf "$STAGE/encoder"
-  local platform
+  # REQ-2194: provisa's compiled encoders (provisa._encoders), taken from provisa's Linux wheels,
+  # which the Dockerfile's provisa-wheel stage builds from this checkout for both architectures.
+  # Each module file is given its architecture's name (_encoders.cpython-312-<arch>-linux-gnu.so),
+  # so the one pushed tree imports on an amd64 node and an arm64 one alike. A checkout's own
+  # (macOS) module stays out.
+  echo "== compiling provisa's encoders (linux/amd64, linux/arm64)"
+  rm -rf "$STAGE/encoders"
+  local platform arch wheel
   for platform in linux/amd64 linux/arm64; do
-    docker build --quiet --platform "$platform" --target pgwire-encoder-wheel \
-      --output "type=local,dest=$STAGE/encoder/wheels" "$REPO" >/dev/null
+    arch=x86_64; [ "$platform" = linux/arm64 ] && arch=aarch64
+    docker build --quiet --platform "$platform" --target provisa-wheel \
+      --output "type=local,dest=$STAGE/encoders/$arch" "$REPO" >/dev/null
+    wheel="$(ls "$STAGE/encoders/$arch"/provisa-*-manylinux_2_28_"$arch".whl)"
+    unzip -q -o "$wheel" 'provisa/_encoders*.so' -d "$STAGE/encoders/$arch/tree"
+    mkdir -p "$STAGE/encoders/tree/provisa"
+    mv "$STAGE/encoders/$arch"/tree/provisa/_encoders*.so \
+      "$STAGE/encoders/tree/provisa/_encoders.cpython-312-$arch-linux-gnu.so"
   done
-  local wheel
-  for wheel in "$STAGE"/encoder/wheels/provisa_pgwire_encoder-*.whl; do
-    unzip -q -o "$wheel" 'pgwire_encoder_rs/*' -d "$STAGE/encoder/tree"
-  done
-  [ "$(ls "$STAGE"/encoder/tree/pgwire_encoder_rs/*-linux-gnu.so | wc -l)" -eq 2 ] \
-    || { echo "the pgwire encoder did not build for both architectures" >&2; exit 1; }
   tar czf "$STAGE/api.tgz" -C "$REPO" --exclude='__pycache__' --exclude='*.pyc' \
-    --exclude='provisa/_graph_render' provisa -C "$REPO/vendor/buenavista" buenavista \
-    -C "$STAGE/encoder/tree" pgwire_encoder_rs
+    --exclude='provisa/_graph_render' --exclude='provisa/_encoders*-darwin.so' provisa \
+    -C "$REPO/vendor/buenavista" buenavista \
+    -C "$STAGE/encoders/tree" provisa/_encoders.cpython-312-x86_64-linux-gnu.so \
+    provisa/_encoders.cpython-312-aarch64-linux-gnu.so
 }
 
 push_api() {
@@ -439,7 +442,6 @@ services:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
       - ${OVERLAY_DIR}/buenavista:/app/buenavista
-      - ${OVERLAY_DIR}/pgwire_encoder_rs:/app/pgwire_encoder_rs
       - ${OVERLAY_DIR}/config:/app/config
       # A huggingface embedding model is fetched into the hub cache at its first use; on the host,
       # a recreate does not fetch it again.
@@ -450,7 +452,6 @@ services:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
       - ${OVERLAY_DIR}/buenavista:/app/buenavista
-      - ${OVERLAY_DIR}/pgwire_encoder_rs:/app/pgwire_encoder_rs
       - ${OVERLAY_DIR}/config:/app/config
   # REQ-2006: the sandbox tier runs the same app; without the tree it ran the image's own code
   # beside an API on the deployed one.
@@ -459,7 +460,6 @@ services:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
       - ${OVERLAY_DIR}/buenavista:/app/buenavista
-      - ${OVERLAY_DIR}/pgwire_encoder_rs:/app/pgwire_encoder_rs
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
@@ -489,7 +489,6 @@ services:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
       - ${OVERLAY_DIR}/buenavista:/app/buenavista
-      - ${OVERLAY_DIR}/pgwire_encoder_rs:/app/pgwire_encoder_rs
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
@@ -1176,7 +1175,6 @@ deploy_sandbox_vm() {
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
       - ${OVERLAY_DIR}/buenavista:/app/buenavista
-      - ${OVERLAY_DIR}/pgwire_encoder_rs:/app/pgwire_encoder_rs
       - ${OVERLAY_DIR}/config:/app/config
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps"

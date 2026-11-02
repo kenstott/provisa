@@ -277,8 +277,8 @@ bundle_native_payload() {
 
   # ── 2. Linux x86_64 wheelhouse ──
   info "Building the provisa wheel (Linux)..."
-  # Build with the bundled python-base (the runner's default python may lack `build`;
-  # the provisa wheel is pure-python so the interpreter version doesn't matter).
+  # Build with the bundled python-base (the runner's default python may lack `build`). REQ-2194:
+  # the wheel is a manylinux_2_28 cp312 wheel built by the Dockerfile's provisa-wheel stage.
   "${base}/bin/python3" -m pip install --quiet build
   if [ -x "${REPO_ROOT}/scripts/build-wheel.sh" ]; then
     PROVISA_SKIP_UI_BUILD=1 PYTHON="${base}/bin/python3" "${REPO_ROOT}/scripts/build-wheel.sh" --wheel
@@ -299,17 +299,12 @@ bundle_native_payload() {
   local notebook_dir="${REPO_ROOT}/dist/notebook"
   rm -rf "$notebook_dir"
   "${REPO_ROOT}/scripts/build-notebook-wheel.sh" "${base}/bin/python3" "$notebook_dir"
-  # REQ-2194: provisa's pinned provisa-pgwire-encoder, a manylinux_2_28 wheel compiled here (the
-  # Dockerfile's encoder stage); in the wheelhouse with the rest for an airgapped first launch.
-  local encoder_dir="${REPO_ROOT}/dist/pgwire-encoder"
-  rm -rf "$encoder_dir"
-  "${REPO_ROOT}/scripts/build-pgwire-encoder-wheel.sh" "${base}/bin/python3" "$encoder_dir"
   "${base}/bin/python3" -m pip download --dest "$wheels" --find-links "$notebook_dir" \
-    --find-links "$encoder_dir" "${built_wheel}[embedded]" uvicorn mcp-proxy
-  if ! ls "$wheels"/provisa_pgwire_encoder-*.whl >/dev/null 2>&1; then
-    err "the wheelhouse has no provisa_pgwire_encoder wheel."
-    exit 1
-  fi
+    "${built_wheel}[embedded]" uvicorn mcp-proxy
+  # REQ-2194: the wheelhouse's provisa is the platform wheel build-wheel.sh built and checked
+  # (manylinux_2_28, with provisa._encoders and its notices); first-launch imports the module.
+  "${base}/bin/python3" "${REPO_ROOT}/scripts/check-provisa-wheel.py" "$wheels"/provisa-*.whl \
+    --tag manylinux_2_28_x86_64 --import
   ok "Wheelhouse staged ($(ls "$wheels" | wc -l | tr -d ' ') wheels)."
 
   # ── 3. Built UI (build provisa-ui/dist if not already present) ──

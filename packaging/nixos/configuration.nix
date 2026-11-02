@@ -55,7 +55,7 @@ in
     gcc14
     gnumake
     unixodbc
-    # REQ-2194: `uv sync` compiles the pgwire encoder crate (experiments/pgwire_encoder_rs).
+    # REQ-2194: `uv sync` compiles provisa._encoders (rust/encoders) into provisa.
     cargo
     rustc
   ];

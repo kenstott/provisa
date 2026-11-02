@@ -1505,9 +1505,9 @@ setup_native_venv() {
     err "No network and no bundled wheels found — reinstall Provisa."
     exit 1
   fi
-  # REQ-2194: pgwire's encoder is compiled; an install without it is a broken install.
-  "${venv}/bin/python3" -c "import pgwire_encoder_rs" || {
-    err "The pgwire encoder (provisa-pgwire-encoder) did not install — reinstall Provisa."
+  # REQ-2194: provisa's encoders are compiled into it; an install without them is a broken install.
+  "${venv}/bin/python3" -c "import provisa._encoders.pgwire" || {
+    err "Provisa's compiled encoders (provisa._encoders) did not install — reinstall Provisa."
     exit 1
   }
 

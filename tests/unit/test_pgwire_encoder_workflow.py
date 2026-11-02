@@ -8,9 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""pgwire's Rust DataRow encoder (provisa-pgwire-encoder) is part of every install: provisa pins it
-at its own version, the release compiles it for every platform a `pip install provisa` runs on and
-publishes it before provisa, and every installer and image compiles it from this repository and
+"""Provisa's Rust encoders are compiled into the provisa package itself (REQ-2194): one extension
+module, provisa._encoders, whose submodules are the encoders (pgwire now). provisa is released as
+five platform wheels, each carrying the module, its licence notices and the UI built once; there
+is no separate PyPI project. Every installer and image builds provisa with the module in it and
 imports it, so an artifact without it is never built."""
 
 # Requirements: REQ-2194
@@ -18,198 +19,470 @@ imports it, so an artifact without it is never built."""
 from __future__ import annotations
 
 import fnmatch
+import hashlib
+import importlib.util
 import re
+import subprocess
 import tomllib
+import zipfile
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 WORKFLOWS = REPO / ".github" / "workflows"
-CRATE = REPO / "experiments" / "pgwire_encoder_rs"
-HELPER = "scripts/build-pgwire-encoder-wheel.sh"
-#: The Rust toolchain and maturin every recipe uses.
+EXTENSION = REPO / "rust" / "encoders"
+PGWIRE = REPO / "experiments" / "pgwire_encoder_rs"
+NOTICES = REPO / "provisa" / "_encoders.THIRD_PARTY_NOTICES"
+#: The Rust toolchain every recipe uses.
 RUST = "1.95.0"
-MATURIN = "1.15.0"
+#: The five platforms of provisa's wheels: label -> (runner, platform tag pattern).
+PLATFORMS = {
+    "linux-x86_64": ("ubuntu-latest", "manylinux_2_28_x86_64"),
+    "linux-aarch64": ("ubuntu-24.04-arm", "manylinux_2_28_aarch64"),
+    "macos-arm64": ("macos-14", r"macosx_\d+_\d+_arm64"),
+    "macos-x86_64": ("macos-14", r"macosx_\d+_\d+_x86_64"),
+    "windows-x64": ("windows-latest", "win_amd64"),
+}
 
 
 def _toml(path: Path) -> dict:
     return tomllib.loads(path.read_text())
 
 
+def _workflow(name: str) -> dict:
+    return yaml.safe_load((WORKFLOWS / name).read_text())
+
+
 def _jobs(name: str) -> dict:
-    return yaml.safe_load((WORKFLOWS / name).read_text())["jobs"]
+    return _workflow(name)["jobs"]
+
+
+def _steps(job: dict) -> dict:
+    return {step["name"]: step for step in job["steps"] if "name" in step}
 
 
 def _runs(job: dict) -> str:
     return "\n".join(step.get("run", "") for step in job["steps"])
 
 
-def test_provisa_pins_the_encoder_at_its_own_version():
+def _checker():
+    spec = importlib.util.spec_from_file_location(
+        "check_provisa_wheel", REPO / "scripts" / "check-provisa-wheel.py"
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# ── provisa builds the extension itself ──────────────────────────────────────
+
+
+def test_provisa_compiles_its_encoders_with_setuptools_rust():
     provisa = _toml(REPO / "pyproject.toml")
-    encoder = _toml(CRATE / "pyproject.toml")
-    version = provisa["project"]["version"]
-    assert encoder["project"]["name"] == "provisa-pgwire-encoder"
-    assert encoder["project"]["version"] == version
-    assert encoder["project"]["requires-python"] == provisa["project"]["requires-python"]
-    assert f"provisa-pgwire-encoder=={version}" in provisa["project"]["dependencies"]
-    assert provisa["tool"]["uv"]["sources"]["provisa-pgwire-encoder"] == {
-        "path": "experiments/pgwire_encoder_rs",
-        "editable": True,
+    assert provisa["build-system"]["build-backend"] == "setuptools.build_meta"
+    assert "setuptools-rust==1.13.0" in provisa["build-system"]["requires"]
+    (ext,) = provisa["tool"]["setuptools-rust"]["ext-modules"]
+    assert ext == {
+        "target": "provisa._encoders",
+        "path": "rust/encoders/Cargo.toml",
+        "binding": "PyO3",
+        # An editable install compiles the release build too: a debug encoder is many times slower.
+        "debug": False,
+        "args": ["--locked"],
     }
-    lock = (REPO / "uv.lock").read_text()
-    assert 'source = { editable = "experiments/pgwire_encoder_rs" }' in lock
+    # The two package roots and the staged UI are setuptools' own configuration, unchanged.
+    find = provisa["tool"]["setuptools"]["packages"]["find"]
+    assert find["where"] == [".", "vendor/buenavista"]
+    assert "_ui/**/*" in provisa["tool"]["setuptools"]["package-data"]["provisa"]
 
 
-def test_the_encoder_is_a_maturin_package_whose_module_is_the_crates():
-    encoder = _toml(CRATE / "pyproject.toml")
-    assert encoder["build-system"]["build-backend"] == "maturin"
-    maturin = encoder["tool"]["maturin"]
-    # The module name is the #[pymodule] function's: a mismatch builds a wheel that cannot import.
-    (pymodule,) = re.findall(r"#\[pymodule\]\s*fn (\w+)", (CRATE / "src" / "lib.rs").read_text())
-    assert maturin["module-name"] == pymodule == "pgwire_encoder_rs"
-    assert maturin["bindings"] == "pyo3"
-    assert maturin["locked"] is True and maturin["profile"] == "release"
-    # A Rust source change rebuilds the checkout's editable install.
-    keys = {entry["file"] for entry in encoder["tool"]["uv"]["cache-keys"]}
-    assert {"Cargo.toml", "Cargo.lock", "src/**/*.rs"} <= keys
+def test_there_is_no_separate_encoder_package():
+    provisa = _toml(REPO / "pyproject.toml")
+    assert not [d for d in provisa["project"]["dependencies"] if "pgwire-encoder" in d]
+    assert "provisa-pgwire-encoder" not in provisa["tool"]["uv"]["sources"]
+    assert "provisa-pgwire-encoder" not in (REPO / "uv.lock").read_text()
+    assert not (PGWIRE / "pyproject.toml").exists()
+    assert not (REPO / "scripts" / "build-pgwire-encoder-wheel.sh").exists()
+    for path in WORKFLOWS.glob("*.yml"):
+        assert "pgwire-encoder" not in path.read_text(), path.name
+    assert "pgwire-encoder" not in (REPO / "packaging/pypi/requirements-embedded.lock").read_text()
+
+
+def test_uv_rebuilds_provisa_when_the_rust_source_changes():
+    keys = {entry["file"] for entry in _toml(REPO / "pyproject.toml")["tool"]["uv"]["cache-keys"]}
+    assert {
+        "pyproject.toml",
+        "rust/encoders/Cargo.toml",
+        "rust/encoders/Cargo.lock",
+        "rust/encoders/src/**/*.rs",
+        "experiments/pgwire_encoder_rs/Cargo.toml",
+        "experiments/pgwire_encoder_rs/src/**/*.rs",
+    } <= keys
+
+
+def test_the_extension_serves_each_encoder_as_a_submodule():
+    """provisa._encoders is one module; pgwire is its submodule (graphql and grpc join it)."""
+    cargo = _toml(EXTENSION / "Cargo.toml")
+    assert cargo["lib"] == {"name": "_encoders", "crate-type": ["cdylib"]}
+    assert cargo["dependencies"]["pgwire_encoder_rs"] == {
+        "path": "../../experiments/pgwire_encoder_rs"
+    }
+    # The same pyo3 as the encoder crate, so the two link as one.
+    assert cargo["dependencies"]["pyo3"] == _toml(PGWIRE / "Cargo.toml")["dependencies"]["pyo3"]
+    lib = (EXTENSION / "src" / "lib.rs").read_text()
+    assert '#[pyo3(name = "_encoders")]' in lib
+    # The init it calls is the one the encoder crate's #[pymodule] exports.
+    (pymodule,) = re.findall(r"#\[pymodule\]\s*fn (\w+)", (PGWIRE / "src" / "lib.rs").read_text())
+    assert f"fn PyInit_{pymodule}()" in lib
+    assert 'add_encoder(m, "pgwire",' in lib
+    assert ".set_item(&qualified, &module)" in lib
+
+
+def test_the_encoder_crate_is_linked_and_the_benchmark_still_builds_its_own_module():
+    assert _toml(PGWIRE / "Cargo.toml")["lib"]["crate-type"] == ["rlib"]
+    build = (PGWIRE / "build.sh").read_text()
+    assert "cargo rustc --release --lib --crate-type cdylib" in build
+
+
+def test_the_build_root_carries_the_encoder_crates_release_profile():
+    """Only the build root's profile applies, so the extension repeats the encoder's."""
+    assert _toml(EXTENSION / "Cargo.toml")["profile"] == _toml(PGWIRE / "Cargo.toml")["profile"]
 
 
 def test_no_shipped_build_is_tuned_for_the_build_machines_cpu():
     """A wheel built with target-cpu=native on one CI runner can stop on a user's older CPU with
     an illegal instruction. Only the benchmark's build.sh asks for it, on its own command line."""
-    config = _toml(CRATE / ".cargo" / "config.toml")
+    config = _toml(PGWIRE / ".cargo" / "config.toml")
     flags = [f for target in config.get("target", {}).values() for f in target.get("rustflags", [])]
     flags += config.get("build", {}).get("rustflags", [])
     assert not [f for f in flags if "target-cpu" in f], flags
-    assert "target-cpu" not in (CRATE / "Cargo.toml").read_text()
-    assert "target-cpu=native" in (CRATE / "build.sh").read_text()
+    for path in (PGWIRE / "Cargo.toml", EXTENSION / "Cargo.toml", REPO / "pyproject.toml"):
+        assert "target-cpu" not in path.read_text(), path
+    assert not (EXTENSION / ".cargo").exists()
+    assert "target-cpu=native" in (PGWIRE / "build.sh").read_text()
 
 
-def test_the_release_compiles_a_wheel_for_every_platform_and_imports_each():
-    job = _jobs("release-packages.yml")["build-pgwire-encoder"]
-    rows = {row["label"]: row for row in job["strategy"]["matrix"]["include"]}
-    assert {label: (row["runner"], row["tag"]) for label, row in rows.items()} == {
-        "linux-x86_64": ("ubuntu-latest", "manylinux_2_28_x86_64"),
-        "linux-aarch64": ("ubuntu-24.04-arm", "manylinux_2_28_aarch64"),
-        "macos-arm64": ("macos-14", r"macosx_\d+_\d+_arm64"),
-        "macos-x86_64": ("macos-14", r"macosx_\d+_\d+_x86_64"),
-        "windows-x64": ("windows-latest", "win_amd64"),
+def test_the_sdist_carries_the_rust_source():
+    manifest = (REPO / "MANIFEST.in").read_text().splitlines()
+    assert "include rust/encoders/Cargo.toml rust/encoders/Cargo.lock" in manifest
+    assert "recursive-include rust/encoders/src *.rs" in manifest
+    assert "include experiments/pgwire_encoder_rs/Cargo.toml" in manifest
+    assert "recursive-include experiments/pgwire_encoder_rs/src *.rs" in manifest
+
+
+# ── licence notices ───────────────────────────────────────────────────────────
+
+
+def test_the_notices_were_written_from_the_current_lock():
+    """scripts/rust-third-party-notices.sh records the lock it read: a lock change without a
+    rerun leaves a crate the module links without its notice."""
+    lock = EXTENSION / "Cargo.lock"
+    first = NOTICES.read_text().splitlines()[0]
+    assert (
+        first == f"rust/encoders/Cargo.lock sha256: {hashlib.sha256(lock.read_bytes()).hexdigest()}"
+    )
+
+
+def test_every_noticed_crate_is_in_the_lock_and_the_main_ones_are_noticed():
+    text = NOTICES.read_text()
+    locked = {
+        (pkg["name"], pkg["version"])
+        for pkg in _toml(EXTENSION / "Cargo.lock")["package"]
+        if "source" in pkg
     }
-    # The Intel Mac wheel is cross-compiled, and imported by an x86_64 Python (Rosetta).
+    noticed = set(re.findall(r"^  ([\w-]+) (\d+\.\d+\.\d+\S*)(?: \(|$)", text, re.M))
+    assert noticed and noticed <= locked, noticed - locked
+    names = {name for name, _ in noticed}
+    assert {"arrow", "pyo3", "itoa"} <= names
+    # Provisa's own crates carry Provisa's licence, not a third party's.
+    assert not names & {"provisa_encoders", "pgwire_encoder_rs"}
+
+
+def test_the_notices_ship_beside_the_module():
+    provisa = _toml(REPO / "pyproject.toml")
+    assert (
+        "_encoders.THIRD_PARTY_NOTICES" in provisa["tool"]["setuptools"]["package-data"]["provisa"]
+    )
+    assert "provisa/_encoders.THIRD_PARTY_NOTICES" in (REPO / "THIRD_PARTY_NOTICES").read_text()
+    about = _toml(EXTENSION / "about.toml")
+    assert set(about["targets"]) == {
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-pc-windows-msvc",
+    }
+    assert about["private"] == {"ignore": True}
+
+
+# ── the wheel check every recipe runs ─────────────────────────────────────────
+
+
+def _wheel(tmp_path: Path, name: str, members: list[str]) -> Path:
+    path = tmp_path / name
+    with zipfile.ZipFile(path, "w") as zf:
+        for member in members:
+            zf.writestr(member, b"")
+    return path
+
+
+_GOOD = [
+    "provisa/__init__.py",
+    "provisa/_encoders.cpython-312-darwin.so",
+    "provisa/_encoders.THIRD_PARTY_NOTICES",
+]
+
+
+def test_the_wheel_check_takes_a_platform_wheel_with_the_module(tmp_path):
+    check = _checker().check
+    wheel = _wheel(tmp_path, "provisa-1.2.3-cp312-cp312-macosx_11_0_arm64.whl", _GOOD)
+    assert check(wheel, None) == []
+    assert check(wheel, r"macosx_\d+_\d+_arm64") == []
+    windows = ["provisa/_encoders.cp312-win_amd64.pyd", "provisa/_encoders.THIRD_PARTY_NOTICES"]
+    assert (
+        check(_wheel(tmp_path, "provisa-1.2.3-cp312-cp312-win_amd64.whl", windows), "win_amd64")
+        == []
+    )
+    cross = ["provisa/_encoders.so", "provisa/_encoders.THIRD_PARTY_NOTICES"]
+    linux = _wheel(tmp_path, "provisa-1.2.3-cp312-cp312-manylinux_2_28_aarch64.whl", cross)
+    assert check(linux, "manylinux_2_28_aarch64") == []
+
+
+@pytest.mark.parametrize(
+    ("name", "members", "problem"),
+    [
+        ("provisa-1.2.3-py3-none-any.whl", _GOOD, "is not a cp312 platform wheel"),
+        ("provisa-1.2.3-cp312-cp312-macosx_11_0_arm64.whl", _GOOD[:1] + _GOOD[2:], "found []"),
+        (
+            "provisa-1.2.3-cp312-cp312-macosx_11_0_arm64.whl",
+            [*_GOOD, "provisa/_encoders.so"],
+            "expected one compiled provisa._encoders module",
+        ),
+        (
+            "provisa-1.2.3-cp312-cp312-macosx_11_0_arm64.whl",
+            _GOOD[:2],
+            "THIRD_PARTY_NOTICES is missing",
+        ),
+    ],
+)
+def test_the_wheel_check_refuses_a_wheel_without_the_module(tmp_path, name, members, problem):
+    problems = _checker().check(_wheel(tmp_path, name, members), None)
+    assert any(problem in p for p in problems), problems
+
+
+def test_the_wheel_check_refuses_another_platform(tmp_path):
+    wheel = _wheel(tmp_path, "provisa-1.2.3-cp312-cp312-macosx_11_0_arm64.whl", _GOOD)
+    assert _checker().check(wheel, "manylinux_2_28_x86_64")
+
+
+def test_the_zig_cargo_pins_glibc_on_the_target_only(tmp_path):
+    """setuptools-rust hands rustc the plain target; cargo-zigbuild gets it with glibc 2.28."""
+    fake = tmp_path / "cargo-zigbuild"
+    fake.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@"\n')
+    fake.chmod(0o755)
+    out = subprocess.run(
+        [
+            str(REPO / "scripts" / "cargo-zigbuild-manylinux"),
+            "rustc",
+            "--lib",
+            "--target",
+            "aarch64-unknown-linux-gnu",
+            "--",
+            "-Clink-arg=x",
+        ],
+        env={"PATH": f"{tmp_path}:/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    assert out == [
+        "rustc",
+        "--lib",
+        "--target",
+        "aarch64-unknown-linux-gnu.2.28",
+        "--",
+        "-Clink-arg=x",
+    ]
+    metadata = subprocess.run(
+        [str(REPO / "scripts" / "cargo-zigbuild-manylinux"), "metadata", "--format-version", "1"],
+        env={"PATH": f"{tmp_path}:/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    assert metadata == ["metadata", "--format-version", "1"]
+
+
+# ── the release ───────────────────────────────────────────────────────────────
+
+
+def test_the_ui_is_built_once_for_every_wheel():
+    jobs = _jobs("release-packages.yml")
+    ui = jobs["build-provisa-ui"]
+    assert "npm run build" in _runs(ui)
+    upload = _steps(ui)["Upload the built UI"]
+    assert upload["with"]["name"] == "provisa-ui-build"
+    assert upload["with"]["path"] == "provisa-ui/dist/"
+    wheel = jobs["build-provisa-wheel"]
+    assert "build-provisa-ui" in wheel["needs"]
+    download = _steps(wheel)["Download the built UI"]
+    assert download["with"] == {"name": "provisa-ui-build", "path": "provisa-ui/dist/"}
+    build = _steps(wheel)[
+        "Build the wheel (bundles the UI, config, buenavista and provisa._encoders)"
+    ]
+    assert build["run"].count("PROVISA_SKIP_UI_BUILD=1") == 2
+    assert "npm" not in _runs(wheel)
+
+
+def test_the_release_builds_a_provisa_wheel_for_every_platform_and_imports_each():
+    job = _jobs("release-packages.yml")["build-provisa-wheel"]
+    rows = {row["label"]: row for row in job["strategy"]["matrix"]["include"]}
+    assert {label: (row["runner"], row["tag"]) for label, row in rows.items()} == PLATFORMS
+    # The Intel Mac wheel is compiled for x86_64 by an x86_64 Python (Rosetta).
     assert rows["macos-x86_64"]["target"] == "x86_64-apple-darwin"
     assert rows["macos-x86_64"]["arch"] == "x64"
     assert job["strategy"]["fail-fast"] is False
-    steps = {step["name"]: step for step in job["steps"]}
-    python = steps["Set up Python"]
-    assert python["uses"] == "actions/setup-python@v5"
-    assert python["with"] == {"python-version": "3.12", "architecture": "${{ matrix.arch }}"}
-    build = steps["Build the wheel"]
-    assert build["run"].startswith(HELPER)
-    assert build["env"] == {"PGWIRE_ENCODER_TARGET": "${{ matrix.target }}"}
-    verify = steps["Verify the wheel's tag and import it"]
-    assert "-cp312-cp312-{os.environ['TAG']}" in verify["run"]
-    assert 'python -c "import pgwire_encoder_rs' in verify["run"].replace('"$PY" -c', "python -c")
+    steps = _steps(job)
+    assert steps["Set up Python"]["with"] == {
+        "python-version": "3.12",
+        "architecture": "${{ matrix.arch }}",
+    }
+    assert (
+        'rustup target add --toolchain 1.95.0 "$TARGET"'
+        in steps["Install the Rust toolchain"]["run"]
+    )
+    verify = steps["Verify the wheel's tag and import its encoders"]
+    assert (
+        'scripts/check-provisa-wheel.py dist/provisa-*.whl --tag "$TAG" --import' in verify["run"]
+    )
+    assert verify["env"]["TAG"] == "${{ matrix.tag }}"
+    assert "provisa/_ui/index.html" in steps["Verify the wheel is self-contained"]["run"]
     upload = steps["Upload dist"]
-    assert upload["with"]["name"] == "pgwire-encoder-wheel-${{ matrix.label }}-dist"
+    assert upload["with"]["name"] == "provisa-wheel-${{ matrix.label }}-dist"
     assert upload["with"]["if-no-files-found"] == "error"
 
 
-def test_the_release_stamps_the_encoder_and_provisas_pin_with_its_version():
-    jobs = _jobs("release-packages.yml")
-    stamp = _runs(jobs["build-pgwire-encoder"])
-    assert "experiments/pgwire_encoder_rs/pyproject.toml" in stamp
+def test_the_sdist_is_published_only_because_a_wheel_builds_from_it():
+    job = _jobs("release-packages.yml")["build-provisa-wheel"]
+    rows = job["strategy"]["matrix"]["include"]
+    assert [row["label"] for row in rows if row.get("sdist")] == ["linux-x86_64"]
+    steps = _steps(job)
+    assert (
+        "scripts/build-wheel.sh --sdist --wheel"
+        in steps["Build the wheel (bundles the UI, config, buenavista and provisa._encoders)"][
+            "run"
+        ]
+    )
+    check = steps["Build a wheel from the sdist and import its encoders"]
+    assert check["if"] == "matrix.sdist"
+    assert "pip wheel" in check["run"] and "dist/provisa-*.tar.gz" in check["run"]
+    assert "check-provisa-wheel.py sdist-check/provisa-*.whl --import" in check["run"]
+
+
+def test_the_release_stamps_provisas_version():
+    stamp = _steps(_jobs("release-packages.yml")["build-provisa-wheel"])["Stamp the version"]["run"]
     assert 'version = "${{ needs.metadata.outputs.py_version }}"' in stamp
-    wheel = _runs(jobs["build-provisa-wheel"])
-    assert '"provisa-pgwire-encoder==${{ needs.metadata.outputs.py_version }}"' in wheel
+    assert '"provisa-notebook==${{ needs.metadata.outputs.py_version }}"' in stamp
 
 
-def test_the_encoder_is_published_before_provisa_and_only_after_every_leg():
-    jobs = _jobs("build-dmg.yml")
-    legs = {"prebuilt", "packages", "macos", "windows", "linux"}
-    publish = jobs["publish-pgwire-encoder-pypi"]
-    assert set(publish["needs"]) == legs
-    assert publish["permissions"] == {"id-token": "write"}
-    assert publish["if"] == jobs["publish"]["with"]["publish"]
-    assert "publish-pgwire-encoder-pypi" in jobs["publish-provisa-pypi"]["needs"]
-    assert "publish-pgwire-encoder-pypi" in jobs["publish"]["needs"]
+def test_the_sbom_and_cve_gate_run_once_for_every_wheel():
+    jobs = _jobs("release-packages.yml")
+    sbom = jobs["provisa-sbom"]
+    runs = _runs(sbom)
+    assert "pip-audit" in runs and "cyclonedx-py" in runs
+    assert "pip-audit" not in _runs(jobs["build-provisa-wheel"])
 
 
-def test_the_pypi_upload_takes_every_platforms_wheel():
+def test_provisas_pypi_upload_takes_every_platforms_wheel():
     """The download is a pattern (one artifact per platform): it has to match each of them, and
     the -dist names are also what the release attaches."""
-    (download, upload) = _jobs("build-dmg.yml")["publish-pgwire-encoder-pypi"]["steps"]
+    jobs = _jobs("build-dmg.yml")
+    assert not [name for name in jobs if "pgwire" in name]
+    download = _steps(jobs["publish-provisa-pypi"])["Download dist"]
     assert download["uses"] == "actions/download-artifact@v4"
-    assert upload["uses"] == "pypa/gh-action-pypi-publish@release/v1"
     assert download["with"]["merge-multiple"] is True
     pattern = download["with"]["pattern"]
-    job = _jobs("release-packages.yml")["build-pgwire-encoder"]
-    name = next(s for s in job["steps"] if s["name"] == "Upload dist")["with"]["name"]
-    labels = [row["label"] for row in job["strategy"]["matrix"]["include"]]
-    for label in labels:
-        artifact = name.replace("${{ matrix.label }}", label)
+    for label in PLATFORMS:
+        artifact = f"provisa-wheel-{label}-dist"
         assert fnmatch.fnmatch(artifact, pattern), artifact
         assert fnmatch.fnmatch(artifact, "*-dist"), artifact
+    assert not fnmatch.fnmatch("provisa-ui-build", pattern)
     attached = _jobs("release-publish.yml")["publish-release"]["steps"]
     assert any((s.get("with") or {}).get("pattern") == "*-dist" for s in attached)
 
 
-def test_every_installer_compiles_the_encoder_and_fails_without_it():
-    for path in ("packaging/macos/build-dmg.sh", "packaging/linux/build-appimage.sh"):
-        text = (REPO / path).read_text()
-        assert HELPER in text, path
-        assert '--find-links "$encoder_dir"' in text, path
-    assert "pgwire_encoder_rs" in (REPO / "packaging/macos/build-dmg.sh").read_text()
-    assert (
-        "provisa_pgwire_encoder-*.whl" in (REPO / "packaging/linux/build-appimage.sh").read_text()
-    )
+# ── installers and images ─────────────────────────────────────────────────────
+
+
+def test_every_installer_builds_provisa_with_its_encoders_and_fails_without_them():
+    dmg = (REPO / "packaging/macos/build-dmg.sh").read_text()
+    assert "provisa._encoders.pgwire" in dmg and "_encoders.THIRD_PARTY_NOTICES" in dmg
+    appimage = (REPO / "packaging/linux/build-appimage.sh").read_text()
+    assert "check-provisa-wheel.py" in appimage
+    assert "--tag manylinux_2_28_x86_64 --import" in appimage
     first_launch = (REPO / "packaging/linux/first-launch.sh").read_text()
-    assert '-c "import pgwire_encoder_rs"' in first_launch
+    assert '-c "import provisa._encoders.pgwire"' in first_launch
     sfx = (REPO / "packaging/windows/build-sfx.ps1").read_text()
-    assert "experiments\\pgwire_encoder_rs" in sfx
-    assert "--find-links $EncoderDir" in sfx
-    assert '& $RuntimePy -c "import pgwire_encoder_rs"' in sfx
+    assert "provisa._encoders.pgwire" in sfx and "_encoders.THIRD_PARTY_NOTICES" in sfx
+    for text in (dmg, appimage, first_launch, sfx):
+        assert "pgwire_encoder_rs" not in text and "pgwire-encoder" not in text
+    build = (REPO / "scripts/build-wheel.sh").read_text()
+    assert "--target provisa-wheel" in build
+    assert 'scripts/check-provisa-wheel.py" "${REPO_ROOT}"/dist/provisa-*.whl' in build
 
 
-def test_every_image_compiles_the_encoder_in_one_recipe_and_imports_it():
-    """Dockerfile's encoder stage is the one Linux recipe: the images, the AppImage (through the
-    helper), the release's arm64 wheelhouse and the cloud push all build it."""
+def test_every_image_builds_provisa_in_one_linux_recipe_and_imports_its_encoders():
+    """The Dockerfile's provisa-wheel stage is the one Linux recipe: the images, every Linux wheel
+    (build-wheel.sh), the release's arm64 wheelhouse and the cloud push all build it."""
     dockerfile = (REPO / "Dockerfile").read_text()
     stage = dockerfile[dockerfile.index("FROM --platform=$BUILDPLATFORM rust:") :]
-    stage = stage[: stage.index("FROM scratch AS pgwire-encoder-wheel")]
-    assert "--zig --compatibility manylinux_2_28" in stage
-    assert "FROM --platform=$BUILDPLATFORM python:3.12-slim AS pgwire-encoder" in stage
-    assert "COPY --from=pgwire-encoder /wheels/ /" in dockerfile
+    stage = stage[: stage.index("FROM scratch AS provisa-wheel")]
+    assert "FROM --platform=$BUILDPLATFORM python:3.12-slim AS provisa-wheel-build" in stage
+    assert "CARGO=cargo-zigbuild-manylinux" in stage
+    assert '"-C--build-option=--plat-name=manylinux_2_28_$arch"' in stage
     dev = (REPO / "Dockerfile.dev").read_text()
-    assert stage.split("\n", 1)[1].strip() in dev, "Dockerfile.dev's encoder stage drifted"
+    assert stage.split("\n", 1)[1].strip() in dev, "Dockerfile.dev's provisa-wheel stage drifted"
     for path, text in (("Dockerfile", dockerfile), ("Dockerfile.dev", dev)):
-        assert 'python -c "import pgwire_encoder_rs"' in text, path
-    helper = (REPO / HELPER).read_text()
-    assert "--target pgwire-encoder-wheel" in helper
+        assert "COPY --from=provisa-wheel-build /wheels/ /tmp/provisa-wheel/" in text, path
+        assert text.count('python -c "import provisa._encoders.pgwire"') == 2, path
+        assert "import pgwire_encoder_rs" not in text, path
+    # The runtime runs /app/provisa, so the module is copied into that tree.
+    assert "COPY --from=installer /encoders/ ./provisa/" in dockerfile
     prebuilt = _jobs("release-prebuilt.yml")["pull-images-core"]
-    wheels = next(
-        s for s in prebuilt["steps"] if s["name"] == "Build provisa wheels for linux/arm64"
-    )
-    run = wheels["run"]
-    assert run.index("--target pgwire-encoder-wheel") < run.index("pip wheel")
+    run = _steps(prebuilt)["Build provisa wheels for linux/arm64"]["run"]
+    assert run.index("--target provisa-wheel") < run.index("pip wheel")
+    assert "--tag manylinux_2_28_aarch64" in run and "import provisa._encoders.pgwire" in run
     image = _jobs("docker-image.yml")["image"]
-    assert 'python -c "import pgwire_encoder_rs"' in _runs(image)
+    assert 'python -c "import provisa._encoders.pgwire"' in _runs(image)
     cloud = (REPO / "scripts/deploy-cloud.sh").read_text()
-    assert "--target pgwire-encoder-wheel" in cloud
+    assert "--target provisa-wheel" in cloud
+    assert "_encoders.cpython-312-$arch-linux-gnu.so" in cloud
     ignored = (REPO / ".dockerignore").read_text().splitlines()
-    assert "experiments/pgwire_encoder_rs/target/" in ignored
+    assert {"rust/encoders/target/", "provisa/_encoders*.so", "provisa/_encoders*.pyd"} <= set(
+        ignored
+    )
 
 
-def test_every_recipe_names_one_toolchain_and_one_maturin():
-    helper = (REPO / HELPER).read_text()
-    assert f'MATURIN_VERSION="{MATURIN}"' in helper
-    assert f'RUSTUP_TOOLCHAIN="${{RUSTUP_TOOLCHAIN:-{RUST}}}"' in helper
+def test_every_recipe_names_one_toolchain():
+    build = (REPO / "scripts/build-wheel.sh").read_text()
+    assert f'RUSTUP_TOOLCHAIN="${{RUSTUP_TOOLCHAIN:-{RUST}}}"' in build
     for path in ("Dockerfile", "Dockerfile.dev"):
-        text = (REPO / path).read_text()
-        assert f"rust:{RUST}-slim-trixie" in text, path
-        assert f'"maturin[zig]=={MATURIN}"' in text, path
-    sfx = (REPO / "packaging/windows/build-sfx.ps1").read_text()
-    assert f"'maturin=={MATURIN}'" in sfx and f"$env:RUSTUP_TOOLCHAIN = '{RUST}'" in sfx
-    # Every recipe builds the lock's dependency set.
-    for text in (helper, (REPO / "Dockerfile").read_text(), sfx):
-        assert "maturin build --release --locked" in text or "build --release --locked" in text
+        assert f"rust:{RUST}-slim-trixie" in (REPO / path).read_text(), path
+    assert (
+        f"$env:RUSTUP_TOOLCHAIN = '{RUST}'"
+        in (REPO / "packaging/windows/build-sfx.ps1").read_text()
+    )
+    for name, jobs in (
+        ("release-macos.yml", ("build-macos-core", "build-macos-container")),
+        ("release-windows.yml", ("build-windows-core",)),
+        ("release-packages.yml", ("build-provisa-wheel",)),
+    ):
+        for job in jobs:
+            install = _steps(_jobs(name)[job])["Install the Rust toolchain"]
+            assert f"rustup toolchain install {RUST} --profile minimal" in install["run"], (
+                name,
+                job,
+            )
