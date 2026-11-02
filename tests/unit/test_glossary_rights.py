@@ -268,3 +268,45 @@ async def test_a_reader_is_refused_the_roster(resolve_caps, roster):
         await attributable_people(_curator_request({"glossary_read"}))
     assert err.value.status_code == 403
     assert roster == []
+
+
+@pytest.fixture
+def two_visitor_roster(monkeypatch):
+    import provisa.core.org_membership as membership
+    from provisa.api.app import state
+
+    async def _roster(admin_db, org_id):
+        return [
+            {"user_id": "alice", "email": "alice@visitor.test", "display_name": "Alice Visitor"},
+            {"user_id": "bob", "email": "bob@visitor.test", "display_name": "Bob Visitor"},
+        ]
+
+    monkeypatch.setattr(membership, "org_roster", _roster)
+    monkeypatch.setattr(state, "admin_db", object())
+
+
+async def test_the_shared_sandbox_roster_lists_only_the_caller(resolve_caps, two_visitor_roster):
+    # REQ-1592 (amended 2026-11-02): every visitor to the shared "Try it Out" org is a curator, so
+    # the roster there would hand each visitor every other visitor's name and email.
+    from provisa.api.admin.glossary_router import attributable_people
+    from provisa.api.sandbox_org import SANDBOX_ORG_ID
+
+    resolve_caps({"glossary_read", "glossary_rw"})
+    request = _request({"glossary_read", "glossary_rw"}, user_id="alice")
+    request.state.active_org_id = SANDBOX_ORG_ID
+    people = await attributable_people(request)
+    assert people == [
+        {"user_id": "alice", "email": "alice@visitor.test", "display_name": "Alice Visitor"}
+    ]
+    assert "bob@visitor.test" not in repr(people)
+    assert "Bob Visitor" not in repr(people)
+
+
+async def test_a_real_org_roster_lists_every_member(resolve_caps, two_visitor_roster):
+    from provisa.api.admin.glossary_router import attributable_people
+
+    resolve_caps({"glossary_read", "glossary_rw"})
+    request = _request({"glossary_read", "glossary_rw"}, user_id="alice")
+    request.state.active_org_id = "acme"
+    people = await attributable_people(request)
+    assert [p["user_id"] for p in people] == ["alice", "bob"]
