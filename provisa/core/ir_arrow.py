@@ -298,9 +298,11 @@ def _decimals(values: list[Any], present: list[Decimal], kind: str) -> pa.Array 
         scale = max(0, -min(int(e) for e in exponents))
         if kind in _FLOAT_TYPES:
             return pa.array([None if v is None else float(v) for v in values], pa.float64())
-        if len(exponents) == 1:
+        if len(exponents) == 1 and min(int(e) for e in exponents) <= 0:
             held = values
         else:
+            # Mixed scales, or a positive exponent (1E+3): each value at the one scale, exact
+            # (1000, as numeric_out writes it).
             quantum = Decimal(1).scaleb(-scale)
             with localcontext() as wide:
                 wide.prec = 1000  # quantize refuses a result past the context's 28 digits
