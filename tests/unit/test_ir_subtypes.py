@@ -29,7 +29,8 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import insert, select
 
-from buenavista.postgres import BVTYPE_TO_PGTYPE
+from buenavista.postgres import BVTYPE_TO_OID
+from tests.unit.pgwire import wire_cells as wire
 from provisa.api.admin.introspect import _pg_column_typing
 from provisa.compiler.introspect import ColumnMetadata, introspect_tables
 from provisa.compiler.result_shape import derive_result_shape
@@ -357,15 +358,15 @@ def test_a_statement_reading_a_subtyped_column_is_described_as_the_subtype():
 
 @pytest.mark.parametrize("name", sorted(_FIRST_SET))
 def test_pgwire_sends_a_subtype_with_its_postgresql_type_oid(name):
-    assert BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(name)][0] == _FIRST_SET[name][1]
+    assert BVTYPE_TO_OID[_sql_type_to_bvtype(name)] == _FIRST_SET[name][1]
 
 
 def _text(name: str, value):
-    return BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(name)][1](value)
+    return wire.entry(_sql_type_to_bvtype(name))[1](value)
 
 
 def _binary(name: str, value):
-    return BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(name)][2](value)
+    return wire.entry(_sql_type_to_bvtype(name))[2](value)
 
 
 def test_pgwire_sends_each_subtype_in_postgresqls_text_form():
@@ -408,7 +409,7 @@ def test_an_undescribed_statements_subtyped_columns_are_sent_as_their_postgresql
         rows=[(1, "10.0.0.1")], column_names=["id", "ip"], column_types=["integer", "varchar"]
     )
     result = ProvisaQueryResult(engine, "SELECT id, ip FROM net.hosts", read_shape=_SHAPE)
-    assert [BVTYPE_TO_PGTYPE[result.column(i)[1]][0] for i in range(2)] == [23, 869]
+    assert [BVTYPE_TO_OID[result.column(i)[1]] for i in range(2)] == [23, 869]
     with pytest.raises(RuntimeError, match="returned 2"):
         ProvisaQueryResult(engine, "SELECT id, ip FROM net.hosts", read_shape=_SHAPE[:1])
 

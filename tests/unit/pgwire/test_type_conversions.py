@@ -353,7 +353,7 @@ def test_a_registered_column_is_sent_as_its_registered_type(registered: Any, col
 def test_a_described_registered_column_is_sent_as_its_registered_type():
     # A statement Described first (Describe(Statement)) is sent by its description: the shape
     # derived from registered metadata types each column, whatever the engine answers.
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
+    from buenavista.postgres import BVTYPE_TO_OID
 
     from provisa.compiler.result_shape import derive_result_shape
     from provisa.executor.result import QueryResult
@@ -373,7 +373,7 @@ def test_a_described_registered_column_is_sent_as_its_registered_type():
     result = ProvisaQueryResult(engine, sql, shape)
     described = [
         (
-            result.column_type_oid(i) or BVTYPE_TO_PGTYPE[result.column(i)[1]][0],
+            result.column_type_oid(i) or BVTYPE_TO_OID[result.column(i)[1]],
             result.column_typmod(i),
         )
         for i in range(len(columns))

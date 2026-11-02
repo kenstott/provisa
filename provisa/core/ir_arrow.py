@@ -474,6 +474,11 @@ def _same(back: Any, value: Any) -> bool:
     bits."""
     if value is None or back is None:
         return value is None and back is None
+    if isinstance(value, tuple) and isinstance(back, list):
+        # Arrow holds a tuple (a point's coordinates, a record) as a list: its writers take either.
+        return len(back) == len(value) and all(
+            _same(b, v) for b, v in zip(back, value, strict=True)
+        )
     if type(back) is not type(value):
         return False
     if isinstance(value, Decimal):

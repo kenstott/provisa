@@ -53,9 +53,8 @@ from buenavista.core import (
     wire_type_name,
 )
 from buenavista.postgres import (
-    BVTYPE_TO_PGTYPE,
-    PG_UNKNOWN,
-    _array_entry,
+    BVTYPE_TO_OID,
+    PG_UNKNOWN_OID,
     BVBuffer,
     BVContext,
     BuenaVistaHandler,
@@ -743,65 +742,8 @@ _WIRE_FAMILIES = (
 )
 
 
-def _reg_text(names: dict[int, str]) -> Callable[[Any], str]:  # REQ-2167
-    """A reg* type's text form, as regprocout / regtypeout write it: the object's name, "-" for
-    0, and the number itself for an oid that names no object. A value already in its text form
-    (a source's own reg* column, read as text) is that text."""
-
-    def text(value: Any) -> str:
-        if isinstance(value, str):
-            return value
-        if value == 0:
-            return "-"
-        return names[value] if value in names else str(value)
-
-    return text
-
-
-def _reg_binary(value: Any) -> bytes:
-    if isinstance(value, str):
-        raise TypeError(f"a reg* value read as its text form {value!r} has no binary form here")
-    return value.to_bytes(4, "big", signed=False)
-
-
-def _named_text(value: dict | str) -> str:  # REQ-2167
-    return value if isinstance(value, str) else value["name"]  # a source's own column: its text
-
-
-def _named_binary(value: dict | str) -> bytes:  # REQ-2167
-    if isinstance(value, str):
-        raise TypeError(f"a reg* value read as its text form {value!r} has no binary form here")
-    return value["oid"].to_bytes(4, "big", signed=False)
-
-
-def _regtype_binary(oids: dict[str, int]) -> Callable[[Any], bytes]:  # REQ-2167
-    """A regtype's binary form: an engine answers one by its name (pg_typeof), sent as its oid."""
-
-    def binary(value: Any) -> bytes:
-        return _reg_binary(oids.get(value, value) if isinstance(value, str) else value)
-
-    return binary
-
-
-def _register_reg_types() -> None:
-    from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
-
-    type_names = {oid: entry[-1] for oid, entry in TYPES.items()}
-    type_oids = {name: oid for oid, name in type_names.items()}
-    BVTYPE_TO_PGTYPE[BVType.REGPROC] = (24, _reg_text(PROC_NAMES), _reg_binary)
-    # A regclass or regnamespace value is its oid and its name (catalog_regs): sent as the name
-    # in text, the oid in binary.
-    BVTYPE_TO_PGTYPE[BVType.REGCLASS] = (2205, _named_text, _named_binary)
-    BVTYPE_TO_PGTYPE[BVType.REGNAMESPACE] = (4089, _named_text, _named_binary)
-    BVTYPE_TO_PGTYPE[BVType.REGTYPE] = (2206, _reg_text(type_names), _regtype_binary(type_oids))
-    BVTYPE_TO_PGTYPE[BVType.REGTYPEARRAY] = _array_entry(BVType.REGTYPE, 2211)
-    oid, text, binary = _array_entry(BVType.XML, 143)
-    # array_send of an empty array: no dimensions, no null flag, the element's OID.
-    empty = struct.pack("!iii", 0, 0, 142)
-    BVTYPE_TO_PGTYPE[XML_ARRAY] = (oid, text, lambda values: binary(values) if values else empty)
-
-
-_register_reg_types()
+# xml[]'s OID: a wire type the vendored BVType does not list (cast_types.XML_ARRAY).
+BVTYPE_TO_OID[XML_ARRAY] = 143
 
 
 def _register_catalog_names() -> None:  # REQ-2194
@@ -996,7 +938,7 @@ def _type_oid(type_str: str | None) -> int | None:  # REQ-2167
 
 def _described_oid(type_str: str) -> int:
     oid = _type_oid(type_str)
-    return BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(type_str)][0] if oid is None else oid
+    return BVTYPE_TO_OID[_sql_type_to_bvtype(type_str)] if oid is None else oid
 
 
 def _infer_bvtype(batch: Any, col_idx: int) -> BVType:
@@ -1707,7 +1649,7 @@ def _columns_of(result: Any) -> list[xml_mapping.Column]:
     columns = []
     for index in range(result.column_count()):
         name, bvtype = result.column(index)
-        oid = result.column_type_oid(index) or BVTYPE_TO_PGTYPE.get(bvtype, PG_UNKNOWN)[0]
+        oid = result.column_type_oid(index) or BVTYPE_TO_OID.get(bvtype, PG_UNKNOWN_OID)
         columns.append(xml_mapping.Column(name, oid, _text_writer(bvtype)))
     return columns
 
