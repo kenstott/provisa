@@ -89059,7 +89059,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     reported as called only. (Amended 2026-11-01, NO INDEX FUNCTIONS GROUP:) Maintainer 2026-11-01, through
     the lead: every index support function is served or refused by name, so the Index functions group of
     skipped by design is removed. An unserved index function is failed. The text above that reports them
-    skipped by design, and that names two function groups, is superseded; one group remains.'
+    skipped by design, and that names two function groups, is superseded; one group remains. (Amended 2026-11-02,
+    lastval from the session''s own inserts:) Maintainer 2026-11-02: lastval() is answered by Provisa, not
+    the source. An INSERT through a pgwire session that makes the source generate an identity or serial
+    value is rewritten to return that value (RETURNING, or the source''s own way of reporting a generated
+    key), and the session keeps the last one. lastval() returns it; before any such insert in the session
+    it raises PostgreSQL''s own error (lastval is not yet defined in this session). The rows the client
+    asked for are unchanged by the rewrite.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
