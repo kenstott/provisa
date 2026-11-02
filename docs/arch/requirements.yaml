@@ -75795,7 +75795,11 @@
     Only the coordinator serves the UI:) Maintainer 2026-11-02: only a coordinator (or an every process)
     serves the UI and the UI''s backend (the admin API the UI calls). A query node serves data requests
     only: a UI or admin route reaching a query node is refused by name, saying to use the coordinator''s
-    address, the mirror of a coordinator refusing data requests.'
+    address, the mirror of a coordinator refusing data requests. (Amended 2026-11-02, The UI''s data address
+    is a browser setting:) Maintainer 2026-11-02: the UI has a browser setting for the data node address
+    that the Explorer and the UI''s other data calls use. It defaults to the UI''s own origin (an every
+    process); a user of a coordinator-served UI sets it to the query pool or a specific query node. Query
+    nodes accept the UI''s origin and its sign-in token for those calls.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
