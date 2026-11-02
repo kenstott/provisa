@@ -1,0 +1,37 @@
+{
+  "rows": 2000000,
+  "orders": 499709,
+  "arrow_mb": 333.268292,
+  "python": {
+    "wall": 49.95870154199656,
+    "cpu": 49.24327000000001,
+    "walls": [
+      51.71082858298905,
+      50.548226166982204,
+      49.95870154199656
+    ],
+    "sha256": "b802873e6b7879b8e069407a830e4e182e51a191a63004452e88cceda7b5fa5a",
+    "bytes": 307298840,
+    "peak_rss_mb": 2976.137216
+  },
+  "rust": {
+    "wall": 2.738065625075251,
+    "cpu": 2.7097949999999997,
+    "walls": [
+      3.2035302079748362,
+      2.738065625075251,
+      2.9140957079362124,
+      2.7513513340381905,
+      2.9123724580276757
+    ],
+    "sha256": "b802873e6b7879b8e069407a830e4e182e51a191a63004452e88cceda7b5fa5a",
+    "bytes": 307298840,
+    "peak_rss_mb": 2976.137216
+  },
+  "python_stages": {
+    "arrow_to_rows": 11.759374040993862,
+    "serialize_rows": 37.52140629198402,
+    "orjson_render": 0.7384813750395551
+  },
+  "profile": "         71959310 function calls (69992888 primitive calls) in 14.383 seconds\n\n   Ordered by: internal time\n   List reduced from 100 to 30 due to restriction <30>\n\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n6554512/4915827    3.494    0.000    8.084    0.000 /Users/kennethstott/.provisa-agent/jobs/J494/provisa/executor/serialize.py:59(_convert_value)\n 34646769    2.114    0.000    2.114    0.000 {built-in method builtins.isinstance}\n        1    1.468    1.468   12.478   12.478 /Users/kennethstott/.provisa-agent/jobs/J494/provisa/executor/serialize.py:152(_serialize_with_one_to_many)\n  3145728    0.704    0.000    7.511    0.000 /Users/kennethstott/.provisa-agent/jobs/J494/provisa/executor/serialize.py:172(<genexpr>)\n       12    0.683    0.057    0.939    0.078 /Users/kennethstott/.provisa-agent/jobs/J494/provisa/core/ir_arrow.py:158(_with_infinities)\n       64    0.682    0.011    1.621    0.025 /Users/kennethstott/.provisa-agent/jobs/J494/provisa/core/ir_arrow.py:135(column_values)\n  4194304    0.552    0.000    1.537    0.000 /Users/kennethstott/.provisa-agent/jobs/J494/provisa/executor/serialize.py:92(_to_hashable)\n  5964631    0.373    0.000    0.373    0.000 {built-in method builtins.hasattr}\n655474/327737    0.373    0.000    1.894    0.000 /Users/kennethstott/.provisa-agent/jobs/J494/provisa/executor/serialize.py:34(_recursive_json_convert)\n   262144    0.346    0.000    0.346    0.000 /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/encoder.py:205(iterencode)\n   865119    0.312    0.000    1.079    0.000 /Users/kennethstott/.provisa-agent/jobs/J494/provisa/executor/serialize.py:53(temporal_text)\n   327737    0.295    0.000    0.321    0.000 {method 'isoformat' of 'datetime.datetime' objects}\n   327737    0.288    0.000    0.611    0.000 /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py:332(decode)\n   865119    0.286    0.000    0.286    0.000 {method 'sub' of 're.Pattern' objects}\n  1572864    0.206    0.000    0.455    0.000 /Users/kennethstott/.provisa-agent/jobs/J494/provisa/executor/serialize.py:200(<genexpr>)\n   262144    0.161    0.000    0.726    0.000 /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py:183(dumps)\n   537382    0.161    0.000    0.161    0.000 {method 'isoformat' of 'datetime.date' objects}\n   327737    0.141    0.000    0.141    0.000 /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/decoder.py:343(raw_decode)\n   262144    0.131    0.000    0.533    0.000 /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/encoder.py:183(encode)\n   327737    0.130    0.000    0.798    0.000 /Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/json/__init__.py:299(loads)\n  2129541    0.128    0.000    0.128    0.000 {built-in method builtins.len}\n   262144    0.123    0.000    0.151    0.000 {function UTC.fromutc at 0x109be8ea0}\n   655474    0.112    0.000    0.112    0.000 {method 'match' of 're.Pattern' objects}\n   524290    0.110    0.000    0.110    0.000 {method 'get' of 'dict' objects}\n        1    0.099    0.099   14.383   14.383 /Users/kennethstott/.provisa-agent/jobs/J494/experiments/graphql_encoder_rs/python_ref.py:48(encode)\n   262144    0.092    0.000    0.138    0.000 /Users/kennethstott/.provisa-agent/jobs/J494/provisa/executor/serialize.py:142(_parent_path)\n        1    0.078    0.078    0.078    0.078 {orjson.dumps}\n        5    0.063    0.013    1.684    0.337 /Users/kennethstott/.provisa-agent/jobs/J494/provisa/federation/runtime_support.py:426(_batches)\n   524288    0.062    0.000    0.062    0.000 {method 'split' of 'str' objects}\n   524288    0.060    0.000    0.060    0.000 /Users/kennethstott/.provisa-agent/jobs/J494/provisa/executor/serialize.py:192(<genexpr>)\n\n\n"
+}

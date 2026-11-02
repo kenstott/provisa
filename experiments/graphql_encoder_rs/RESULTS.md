@@ -127,7 +127,52 @@ PYTHONPATH=.:experiments/graphql_encoder_rs/build:experiments/graphql_encoder_rs
 
 ## Benchmark (`bench.py`)
 
-BENCHMARK
+**Machine:** Apple M3 Pro, 12 cores, 18 GiB RAM, macOS 26.7.1. Python 3.12.0, pyarrow 24.0.0,
+orjson 3.11.9, numpy 2.4.6. rustc 1.95.0, arrow-rs 56.2.1, pyo3 0.25.1. Release build with fat
+LTO, `codegen-units=1` and `target-cpu=native`. Single-threaded, run through `heavy.sh`.
+
+**Dataset:** an orders query with each order's items, a one-to-many relationship (one level of
+nesting): 2,000,000 flat item rows over 499,709 orders (1 to 7 items each), the order's columns
+repeated on each of its rows as the compiler's LEFT JOIN returns them. 31 batches of 65,536 rows
+(DuckDB's Arrow stream batch size), 333.3 MB of Arrow, generated with numpy from seed 494.
+Root: `id` int64, `customer` int32, `total` float64, `ratio` float32, `amount` decimal128(18,2),
+`name` utf8 (some non-ASCII), `created` timestamp[µs, UTC], `day` date32, `active` bool,
+`payload` utf8 JSON text (`{"k": n, "tag": "x", "w": [1.5, 2]}`), `note` utf8 (30% NULL). Under
+`items`: `item_id` int64, `sku` utf8, `qty` int32, `price` decimal128(10,2), `shipped` date32
+(20% NULL).
+
+**Method:** each run is end to end, Arrow batches in and the response body out. The full bodies of
+every run hash to the same SHA-256 on both paths (307.3 MB each, identical bytes). Best of 3 runs
+for Python and best of 5 for Rust; CPU time is `process_time`. The process peaked at 2.98 GB
+resident and free memory stayed at 41% or more (the guard aborts under 25%).
+
+| rows (orders) | body | Python wall (cpu) | Rust wall (cpu) | Python | Rust | speedup |
+|---|---|---|---|---|---|---|
+| 2,000,000 (499,709) | 307.3 MB | 49.96 s (49.24 s) | 2.738 s (2.710 s) | 0.040 Mrow/s, 6.2 MB/s | 0.73 Mrow/s, 112.2 MB/s | **18.2×** |
+
+Run-to-run spread: Python 49.96–51.71 s, Rust 2.74–3.20 s. The output is in `bench-2m.log` and
+`bench-2m.json`.
+
+### Where the Python time goes
+
+One run split by stage: **Arrow → Python rows 11.76 s (24%)**, **`serialize_rows` 37.52 s (75%)**,
+**orjson 0.74 s (1.5%)**. orjson, the step REQ-1867 sped up, is now a rounding error: the cost is
+building and nesting Python objects.
+
+- **Arrow → rows** (`column_values` per column, `zip`): 32M Python objects from `to_pylist`, plus
+  `_with_infinities` on the date and µs-timestamp columns (a cast, two compares, an `or`, an `any`,
+  and a second `to_pylist`, for every batch).
+- **`serialize_rows`.** cProfile over 262,144 rows (the profiler inflates Python time about 2×):
+  `_convert_value` takes 8.1 s of 14.4 s cumulative, over 6.5M calls. Every item row converts all
+  eleven root values to build the root key, although four rows in five belong to an order already
+  seen, and each new root converts them again for the object. The JSON `payload` column costs a
+  `json.loads` per row for the key and another per new order, then a `json.dumps(sort_keys=True)`
+  per row in `_to_hashable`. Dates and timestamps each pay for `isoformat` and a regex `sub`
+  (`temporal_text`), and the `isinstance`/`hasattr` chain runs 35M times.
+- **What is left in Rust.** 2.7 s is about 1.4 µs per row, spread over formatting (float, date,
+  timestamp), the per-row key hash, JSON parsing for new orders, object allocation and the final
+  copy into `bytes`, with no single hotspot. Keys are computed without writing output, and a JSON
+  column's key is cached across the consecutive rows that repeat a parent's text.
 
 ## Product behaviors found (reported, not fixed)
 
