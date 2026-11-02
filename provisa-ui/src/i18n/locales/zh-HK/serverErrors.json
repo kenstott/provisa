@@ -136,7 +136,8 @@
       "graphql_body_not_json": "請求正文不是 JSON:{{error}}",
       "graphql_request_not_object": "GraphQL 請求是包含查詢的 JSON 物件。",
       "graphql_parameter_type": "GraphQL 請求的 {{parameter}} 必須是 {{expected}}。",
-      "graphql_mutation_over_get": "變更操作以 POST 發送,絕不用 GET。"
+      "graphql_mutation_over_get": "變更操作以 POST 發送,絕不用 GET。",
+      "listed_only": "角色 {{role}} 只能列出 {{table}}：可以讀取其中繼資料，不能讀取其資料"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
@@ -293,7 +294,8 @@
       "not_found": "找不到角色",
       "org_selection_required": "需要選取組織",
       "already_exists": "角色 '{{role}}' 已存在",
-      "description_missing": "角色 '{{role}}' 需要說明其用途"
+      "description_missing": "角色 '{{role}}' 需要說明其用途",
+      "right_not_in_parents": "角色 {{role}} 不能持有 {{right}}：沒有父角色持有它"
     },
     "schema": {
       "allowed_domains_updated": "已更新數據來源「{{source}}」的允許領域",

@@ -17,10 +17,9 @@ REQ-213 — ``distinct_on`` query argument deduplicates results via ``DISTINCT O
 REQ-214 — column presets auto-set audit columns on insert/update from session
           variables (headers) or built-in functions (``now``), removing those
           columns from user input before SQL generation.
-REQ-215 — inherited roles: a child role declares ``parents`` and inherits
-          (merges up the chain) the parent's capabilities and domain_access. The
-          hierarchy is flattened at startup into per-role dicts so authorization
-          lookups remain O(1).
+REQ-215 — inherited roles: a child role declares ``parents`` and holds what it
+          is given of what they hold (REQ-2155). The hierarchy is flattened at
+          startup into per-role dicts so authorization lookups remain O(1).
 REQ-216 — scheduled triggers: time-based execution of registered webhooks or
           internal functions via APScheduler using cron expression syntax,
           configured per trigger in ``provisa.yaml``.
@@ -523,8 +522,8 @@ def _given_roles_with_parent_role_id(shared_data: dict) -> None:
         {
             "id": "senior_analyst",
             "description": "Test role.",
-            "capabilities": ["export"],
-            "domain_access": ["finance"],
+            "capabilities": ["aggregate", "read", "export"],
+            "domain_access": ["analytics", "finance"],
             "parents": ["analyst"],
         },
     ]
@@ -532,7 +531,12 @@ def _given_roles_with_parent_role_id(shared_data: dict) -> None:
     role_models = [
         _role("base_viewer", caps=["read"], domains=["public"], parent=None),
         _role("analyst", caps=["aggregate"], domains=["analytics"], parent="base_viewer"),
-        _role("senior_analyst", caps=["export"], domains=["finance"], parent="analyst"),
+        _role(
+            "senior_analyst",
+            caps=["aggregate", "read", "export"],
+            domains=["analytics", "finance"],
+            parent="analyst",
+        ),
     ]
 
     shared_data["role_dicts"] = role_dicts
@@ -616,18 +620,18 @@ def _then_capabilities_and_domain_access_flattened(shared_data: dict) -> None:
     sa_model = flattened_models["senior_analyst"]
     sa_dict = flattened_dicts["senior_analyst"]
 
-    # senior_analyst inherits the full chain: own export + analyst aggregate + base read.
-    assert _caps(sa_model) >= {"export", "aggregate", "read"}, (
-        f"senior_analyst (model) capabilities must include the whole chain; got {_caps(sa_model)}"
+    # REQ-2155: senior_analyst holds what it is given of what its parent holds: no export.
+    assert _caps(sa_model) == {"aggregate", "read"}, (
+        f"senior_analyst (model) capabilities must narrow to its parent's; got {_caps(sa_model)}"
     )
-    assert _domains(sa_model) == {"finance"}, (
-        f"senior_analyst (model) domain_access must be its own; got {_domains(sa_model)}"
+    assert _domains(sa_model) == {"analytics"}, (
+        f"senior_analyst (model) domain_access must narrow to its parent's; got {_domains(sa_model)}"
     )
-    assert _caps(sa_dict) >= {"export", "aggregate", "read"}, (
-        f"senior_analyst (dict) capabilities must include the whole chain; got {_caps(sa_dict)}"
+    assert _caps(sa_dict) == {"aggregate", "read"}, (
+        f"senior_analyst (dict) capabilities must narrow to its parent's; got {_caps(sa_dict)}"
     )
-    assert _domains(sa_dict) == {"finance"}, (
-        f"senior_analyst (dict) domain_access must be its own; got {_domains(sa_dict)}"
+    assert _domains(sa_dict) == {"analytics"}, (
+        f"senior_analyst (dict) domain_access must narrow to its parent's; got {_domains(sa_dict)}"
     )
 
 

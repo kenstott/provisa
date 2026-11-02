@@ -53,8 +53,7 @@ roles:
 - id: shop_analyst
   parents: [analyst]
   description: "Queries the shop's web and database logs."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - shop
 server:

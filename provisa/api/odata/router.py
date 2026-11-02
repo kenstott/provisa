@@ -17,11 +17,15 @@ role's row ceiling and the audit record are that pipeline's, and nothing here ap
 A ``$filter`` is added to the compiled statement (``filter_sql``) before it goes to that pipeline,
 and a ``$expand`` is a relationship field of the same text (``expand``).
 
+What a read's answer says about itself (REQ-1350), its rows cut at the role's row limit among
+them (REQ-1949), rides the ``X-Provisa-Warnings`` header as on every HTTP surface and the body's
+``@Provisa.warnings`` instance annotation, ahead of ``value``.
+
 Pages are read in one order (the client's, then ``model._ordering``), one row past the page: that
 row says a next page exists, and is not returned.
 """
 
-# Requirements: REQ-2193
+# Requirements: REQ-1350, REQ-1949, REQ-2193
 
 from __future__ import annotations
 
@@ -37,7 +41,7 @@ from provisa.api._query_helpers import NO_VARIABLES, build_graphql_query
 from provisa.api.errors import timeout_error
 from provisa.api.generated_plan import compile_generated_graphql
 from provisa.api.json_response import OrjsonResponse
-from provisa.api.odata.csdl import metadata_document, service_document
+from provisa.api.odata.csdl import NAMESPACE, metadata_document, service_document
 from provisa.api.odata.expand import (
     Addressing,
     Plan,
@@ -69,6 +73,7 @@ from provisa.compiler.directives import NO_CACHE_HINT, request_cache_hint
 from provisa.compiler.parser import GraphQLValidationError
 from provisa.compiler.sql_types import CompiledQuery
 from provisa.core.read_refusal import ReadRefused
+from provisa.core.statement_warnings import as_entries
 from provisa.federation.pgwire_replica import SourceStillStartingError
 from provisa.security.masking import MaskType
 
@@ -78,6 +83,7 @@ SERVER_PAGE_SIZE = 5000
 _JSON = "application/json;odata.metadata=minimal"
 _XML = "application/xml"
 _ADDRESS = re.compile(r"([^()/]+)\((.*)\)", re.DOTALL)
+_WARNINGS = f"@{NAMESPACE}.warnings"
 
 
 class _Refused(Exception):
@@ -228,6 +234,13 @@ def _entities(
     return [write(dict(zip(names, row)), entity, fields, plans, root) for row in rows]
 
 
+def _annotate_warnings(document: dict[str, Any]) -> None:
+    """The request's statement warnings as the document's instance annotation (REQ-1350), set
+    once its reads have run and before ``value``; none when nothing was raised."""
+    if warnings := as_entries():
+        document[_WARNINGS] = warnings
+
+
 def _context(request: Request, name: str, options: QueryOptions) -> str:
     selection = context_selection(options)
     suffix = f"({selection})" if selection else ""
@@ -270,6 +283,7 @@ async def _read(
 
     rows = list(result.rows)
     root = _service_root(request)
+    _annotate_warnings(document)
     document["value"] = _entities(rows[:page], compiled, entity, fields, plans, root)
     if len(rows) > page:
         document["@odata.nextLink"] = page_link(
@@ -345,10 +359,9 @@ async def _navigate(
 
     root = _service_root(request)
     (parent,) = _entities(rows[:1], compiled, entity, entity.key, plans, root)
-    document = {
-        "@odata.context": _context(request, navigation.target_set, options),
-        "value": parent[name],
-    }
+    document: dict[str, Any] = {"@odata.context": _context(request, navigation.target_set, options)}
+    _annotate_warnings(document)
+    document["value"] = parent[name]
     link = parent.get(f"{name}@odata.nextLink")
     if link is not None:
         document["@odata.nextLink"] = link

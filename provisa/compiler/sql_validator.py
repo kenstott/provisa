@@ -53,6 +53,7 @@ from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import GovernanceContext, approved_join_key, registered_name
 from provisa.security.rights import (
     TRAVERSABLE_DOMAINS,
+    listed_only_message,
     missing_capability_message,
     reaches_domain,
 )
@@ -176,6 +177,14 @@ def _check_registered_relations(  # REQ-001, REQ-266
             continue  # a CTE, the statement's own or an embedded statement's (EXISTS, COLLECT)
         if not tbl.db and tbl.name in temp_tables.names():
             continue  # REQ-615: the session's own temporary table, no model object
+        said = f"{tbl.db}.{tbl.name}" if tbl.db else tbl.name
+        listed = ctx.listed_only.get(said)
+        if listed is not None:
+            # REQ-1132: list is metadata only, and said so.
+            violations.append(
+                ValidationViolation("V001", listed_only_message(ctx.role_id or "", listed))
+            )
+            continue
         # A registered table is named by its semantic/physical name (table_map) or, unqualified, by
         # its field name — the domain-prefixed ``sa__orders`` form a domain_prefix schema exposes.
         field_named = not tbl.db and tbl.name in ctx.tables

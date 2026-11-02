@@ -136,7 +136,8 @@
       "graphql_body_not_json": "De body van het verzoek is geen JSON: {{error}}",
       "graphql_request_not_object": "Een GraphQL-verzoek is een JSON-object met een query.",
       "graphql_parameter_type": "De parameter {{parameter}} van het GraphQL-verzoek moet {{expected}} zijn.",
-      "graphql_mutation_over_get": "Een mutatie wordt met POST verstuurd, nooit met GET."
+      "graphql_mutation_over_get": "Een mutatie wordt met POST verstuurd, nooit met GET.",
+      "listed_only": "Rol {{role}} kan {{table}} alleen weergeven: de metadata is leesbaar, de gegevens niet"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -293,7 +294,8 @@
       "not_found": "Rol niet gevonden",
       "org_selection_required": "Organisatieselectie vereist",
       "already_exists": "Rol '{{role}}' bestaat al",
-      "description_missing": "De rol '{{role}}' heeft een beschrijving nodig van waar hij voor is"
+      "description_missing": "De rol '{{role}}' heeft een beschrijving nodig van waar hij voor is",
+      "right_not_in_parents": "Rol {{role}} kan {{right}} niet hebben: geen enkele ouder heeft het"
     },
     "schema": {
       "allowed_domains_updated": "Toegestane domeinen bijgewerkt voor bron '{{source}}'",

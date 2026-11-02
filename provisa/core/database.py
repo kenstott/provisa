@@ -1025,6 +1025,44 @@ class Connection:
         from sqlalchemy import inspect as _sa_inspect
 
         eff_schema = schema if self.capabilities.schemas else None
+        insp = _sa_inspect(self._sc)
+        pk = set(insp.get_pk_constraint(table, schema=eff_schema).get("constrained_columns") or [])
+        return self._column_records(
+            insp.get_columns(table, schema=eff_schema), pk, table, eff_schema
+        )
+
+    # Async only to keep the awaitable call-site contract; runs synchronously on the request thread.
+    async def reflect_columns_many(
+        self, tables: list[str], schema: str | None = None
+    ) -> dict[str, list[dict]]:
+        """:meth:`reflect_columns` of several relations of one schema, read in one pass: each
+        relation's columns by name. One Inspector reads them all, so the catalog-wide lookups it
+        makes for every reflection (PostgreSQL's domains and enums, a scan of ``pg_type``) are made
+        once, where a call per relation made them once per relation. A relation that does not
+        exist has no entry: the caller decides whether that is a refusal."""
+        from sqlalchemy import inspect as _sa_inspect
+        from sqlalchemy.engine.reflection import ObjectKind
+
+        eff_schema = schema if self.capabilities.schemas else None
+        names = list(dict.fromkeys(tables))
+        insp = _sa_inspect(self._sc)
+        # ObjectKind.ANY: views (the meta schema's relations are) as well as tables.
+        columns = insp.get_multi_columns(schema=eff_schema, filter_names=names, kind=ObjectKind.ANY)
+        pks = insp.get_multi_pk_constraint(
+            schema=eff_schema, filter_names=names, kind=ObjectKind.ANY
+        )
+        reflected: dict[str, list[dict]] = {}
+        for name in names:
+            key = (eff_schema, name)
+            if key in columns:
+                pk = set((pks.get(key) or {}).get("constrained_columns") or [])
+                reflected[name] = self._column_records(columns[key], pk, name, eff_schema)
+        return reflected
+
+    def _column_records(
+        self, columns: list[Any], pk: set[str], table: str, eff_schema: str | None
+    ) -> list[dict]:
+        """The Inspector's columns of ``table`` as :meth:`reflect_columns` returns them."""
         is_sqlite = self.capabilities.dialect == "sqlite"
 
         # SQLite does not type VIEW columns, so the Inspector reports NullType (→ "null") for the
@@ -1032,8 +1070,6 @@ class Connection:
         # in-line with SQL (``typeof``) and pick the best match; storage classes map cleanly.
         _SQLITE_STORAGE = {"integer": "integer", "real": "double", "text": "text", "blob": "blob"}
         sync_conn = self._sc
-        insp = _sa_inspect(sync_conn)
-        pk = set(insp.get_pk_constraint(table, schema=eff_schema).get("constrained_columns") or [])
         ref = f'"{table}"' if eff_schema is None else f'"{eff_schema}"."{table}"'
 
         def _infer_sqlite(col: str) -> str:
@@ -1046,7 +1082,7 @@ class Connection:
             return _SQLITE_STORAGE.get(row[0], "text") if row else "text"
 
         cols: list[dict] = []
-        for c in insp.get_columns(table, schema=eff_schema):
+        for c in columns:
             type_name = str(c["type"]).split("(")[0].strip().lower()
             if "[]" in type_name or type_name in ("array", "json", "jsonb"):
                 type_name = "text"

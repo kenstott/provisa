@@ -246,7 +246,10 @@ def _sql_state(**roles) -> SimpleNamespace:
     }
     return SimpleNamespace(
         tracked_functions={"text_join": fn},
-        roles={rid: {"id": rid, "domain_access": access} for rid, access in roles.items()},
+        roles={
+            rid: {"id": rid, "capabilities": ["usage"], "domain_access": access}
+            for rid, access in roles.items()
+        },
         federation_engine=SimpleNamespace(dialect="duckdb"),
     )
 

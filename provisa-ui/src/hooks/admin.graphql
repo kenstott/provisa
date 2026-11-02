@@ -71,6 +71,8 @@ query RolesQuery {
     description
     capabilities
     effectiveCapabilities
+    effectiveDomains
+    effectiveResidencyValues
     demonstrated
     domainAccess
     parents

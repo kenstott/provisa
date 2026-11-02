@@ -389,8 +389,7 @@ relationships:
   via_target_column: playgroup_id
   via_label_source: table
 roles:
-- capabilities:
-  - query_development
+- capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - pet-store
   - shelter

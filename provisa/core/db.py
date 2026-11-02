@@ -126,10 +126,15 @@ SANDBOX_WITHHELD: frozenset[str] = (
 
 
 def standard_role_dicts() -> list[dict]:
-    """The standard roles as role rows (id, capabilities, parents), for resolving a role defined
+    """The standard roles as role rows (id, capabilities, parents, reach), for resolving a role defined
     outside a model store -- a demo's -- whose parents are standard roles."""
     return [
-        {"id": rid, "capabilities": list(spec.capabilities), "parents": list(spec.parents)}
+        {
+            "id": rid,
+            "capabilities": list(spec.capabilities),
+            "parents": list(spec.parents),
+            "domain_access": list(spec.domain_access),
+        }
         for rid, spec in STANDARD_ROLES.items()
     ]
 

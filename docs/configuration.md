@@ -793,41 +793,65 @@ Set `materialize: true` on a relationship to automatically generate a materializ
 
 ```yaml
 roles:
-  - id: admin
-    description: Administers sources, tables, relationships and security.
-    capabilities:
-      - source_registration
-      - table_registration
-      - relationship_registration
-      - security_config
-      - query_development
-      - full_results
-      - admin
-    domain_access: ["*"]
-  - id: analyst
+  - id: finance_admin
+    description: Registers finance's sources and tables.
+    capabilities: [source_registration, table_registration]
+    domain_access: [finance]
+  - id: sales_analyst
     description: Queries the sales analytics domain.
-    capabilities: [query_development]
+    parents: [analyst]
+    capabilities: [usage, query_development, glossary_read, data_product_read]
     domain_access: [sales-analytics]
   - id: junior_analyst
-    description: A new analyst, with the analyst's access and nothing more.
-    capabilities: []
+    description: A new analyst, who reads the data and does not develop queries.
+    parents: [sales_analyst]
+    capabilities: [usage, glossary_read]
     domain_access: [sales-analytics]
-    parents: [analyst]           # inherits query_development and the analyst's grants
 ```
 
-Roles with `parents` inherit capabilities, column and object grants, and RLS rules from every parent, with the child's own RLS rule for a table taking precedence. A role's `domain_access` is its own and is not inherited. See [Inherited Roles](#inherited-roles).
+A role with `parents` holds what it lists of what they hold: its capabilities, its `domain_access` and its `residency_values` are each intersected with the union of what its parents hold. So list everything the role should hold, not only what it adds. A right no parent holds fails the load, naming the role and the right, as saving one in the role form does. Column and object grants still pass to the child. See [Inherited Roles](#inherited-roles).
+
+A role with no capabilities can do nothing, reads included. It may carry a name or session values for row rules, run a command that names it in `visible_to`, or be a parent that holds only grants.
 
 ### Capabilities
 
-| Capability | Description |
+| Capability | What it allows |
 | ----------- | ------------- |
-| `source_registration` | Register data sources |
-| `table_registration` | Register tables |
-| `relationship_registration` | Define relationships |
-| `security_config` | Configure RLS, masking |
-| `query_development` | Execute queries |
-| `full_results` | Bypass sampling limits |
-| `admin` | All capabilities |
+| `catalog_read` | Read the meta domain. Viewer does not hold it, so a role holds it by naming it under a parent that holds it (`developer`, `source_admin`, `security_admin` or `org_operator`, and the roles built on them). Without it, a role sees core metadata only for the tables it can read, write or list, and only over SQL. |
+| `glossary_read` | Read the business glossary. |
+| `data_product_read` | See data products. |
+| `usage` | Run queries on governed data. |
+| `query_development` | Use the query development features. Reading data does not need it. |
+| `full_results` | Get full results instead of a sample. |
+| `write` | Write data, where the role has a write grant. |
+| `no_aggregations` | Take aggregate queries away from the role. |
+| `create_view` | Create views. |
+| `approve_view` | Approve views. |
+| `create_relationship` | Define relationships between tables. |
+| `approve_relationship` | Approve relationships. |
+| `ignore_relationships` | Join tables that no approved relationship covers. |
+| `source_registration` | Register data sources, and change or remove them. |
+| `table_registration` | Register tables from a source, and change or remove them. |
+| `access_config` | Configure row rules and other access settings. |
+| `column_grant` | Grant access to columns. |
+| `masking_config` | Configure column masks. |
+| `sensitive_data` | Mark columns as sensitive and change how they are hidden, in every environment. |
+| `view_governance` | See the catalog's governance columns: who can read a column, its masks and view SQL. |
+| `user_management` | Manage the organization's users and their roles. |
+| `glossary_rw` | Edit the glossary within the role's domains. |
+| `org_glossary_rw` | Edit any glossary term in the organization. |
+| `data_product_rw` | Create, edit and delete data products. |
+| `dq_read` | Read data quality checks and their results. |
+| `dq_rw` | Manage data quality checks, expectations and promises. |
+| `org_settings` | Read and change the organization's settings. |
+| `observability` | See performance, health and traces, and read the ops domain. |
+| `environment_switch` | Work in environments other than production. |
+| `environment_owned_management` | Create environments, and delete the ones the role owns. |
+| `environment_management` | Create and delete any environment. |
+| `environment_data` | Change an environment's data choices, such as its data mode and source bindings. |
+| `data_residency` | Set where the data of a table, a source or a materialized view lives, for the regions in `residency_values`. |
+| `platform_settings` | Read and change settings for the whole deployment. |
+| `cross_org` | Act in organizations the user is not a member of. |
 
 ## RLS Rules
 
@@ -1373,27 +1397,24 @@ Presets are added to the statement during compilation, before SQL generation. Th
 
 ## Inherited Roles
 
-A role names the roles it inherits from in `parents`, in order. The inheritance is flattened at startup. A role holds the union of its own capabilities and every ancestor's; a column, metric, function or webhook granted to an ancestor is granted to it. Its `domain_access` is its own. Reach says where the role's capabilities apply, so a child of a role that reaches every domain reaches only the domains it lists.
+A role names the roles it inherits from in `parents`, in order. What it holds is what it is given intersected with the union of what its parents hold, for capabilities, domains and regions alike. A role with no parents holds what it is given. A parent's narrowing reaches every role below it. `"*"` is every data domain: a parent holding it holds any domain a child lists, and a child listing it reaches what its parents reach. A parent listing a domain holds the domains under it. Grants are not narrowed: a column, metric, function or webhook granted to an ancestor is granted to the role.
 
-RLS resolves per table. A role's own rule for a table stands. Without one, the rules its parents resolve are combined with OR, and a parent with no rule adds nothing, so adding a parent never lifts a row rule. A role with no rule anywhere among its ancestors reads every row its grants allow. Write grants resolve the same way per operation. A property such as `max_rows`, `rate_limit` or a session value comes from the role itself, else from the first ancestor that sets it, ancestors walked depth-first in the order `parents` lists them.
+Row rules narrow too. A role's rows are its own rule AND the rules of its parents combined with OR. A parent with no rule stands for every row, and a role with no rule of its own reads under its parents' rules. So a role reads no row its parents could not, and it stays one plain predicate for each right, role and table.
 
 Provisa ships standard roles (`viewer`, `analyst`, `developer`, `modeler`, `data_steward`, `security_admin`, `data_product_owner`, `dq_reader`, `dq_steward`, `source_admin`, `org_operator`, `org_admin`, `sandbox`, `platform_admin`). They are Provisa's and cannot be edited or declared in a config file; extend one with a role of your own that names it in `parents`.
 
 ```yaml
 roles:
-  - id: admin
-    description: Administers everything.
-    capabilities: [admin]
-    domain_access: ["*"]
-  - id: analyst
+  - id: sales_analyst
     description: Queries the sales analytics domain.
-    capabilities: [query_development]
+    parents: [analyst]
+    capabilities: [usage, query_development, glossary_read, data_product_read]
     domain_access: [sales-analytics]
   - id: junior_analyst
-    description: A new analyst, with the analyst's access and nothing more.
-    capabilities: []
+    description: A new analyst, who reads the data and does not develop queries.
+    parents: [sales_analyst]        # holds usage and glossary_read, and sales_analyst's grants
+    capabilities: [usage, glossary_read]
     domain_access: [sales-analytics]
-    parents: [analyst]           # inherits query_development and the analyst's grants
   - id: auditor
     description: Reads the sales analytics domain's records for audit.
     capabilities: []

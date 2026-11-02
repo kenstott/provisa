@@ -151,6 +151,8 @@ class CompilationContext:
     draft_names: dict[str, str] = field(default_factory=dict)
     # REQ-1132: each name of a system domain's table the role holds no capability for -> the domain.
     missing_capability: dict[str, str] = field(default_factory=dict)
+    # REQ-1132: each name of a table the role can only list -> the table.
+    listed_only: dict[str, str] = field(default_factory=dict)
     # (source_type_name, relationship_field_name) → JoinMeta
     joins: dict[tuple[str, str], JoinMeta] = field(default_factory=dict)
     # (table_id, graphql_field_name) → path expression (e.g. "payload.order_id")

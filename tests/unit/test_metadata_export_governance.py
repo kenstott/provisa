@@ -73,8 +73,8 @@ def _config(*, tables: list[Table], rls: list[RLSRule] | None = None) -> Provisa
         tables=tables,
         relationships=[],
         roles=[
-            Role(id="clerk", description="Test role.", capabilities=[], domain_access=["*"]),
-            Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
+            Role(id="clerk", description="Test role.", capabilities=["usage"], domain_access=["*"]),
+            Role(id="admin", description="Test role.", capabilities=["usage"], domain_access=["*"]),
         ],
         rls_rules=rls or [],
     )
@@ -144,7 +144,7 @@ def test_a_role_reads_the_mask_entry_its_ancestor_holds():
         Role(
             id="lead",
             description="Test role.",
-            capabilities=[],
+            capabilities=["usage"],
             domain_access=["*"],
             parents=["admin"],
         )
@@ -387,7 +387,7 @@ def test_visibility_tags_say_what_the_one_column_rule_serves():
         ]
     )
     config.roles.append(
-        Role(id="hr_only", description="Test role.", capabilities=[], domain_access=["hr"])
+        Role(id="hr_only", description="Test role.", capabilities=["usage"], domain_access=["hr"])
     )
     tags = _tags(config, GovernanceSignal.VISIBILITY_RESTRICTED)
     assert [t.asset.fqn() for t in tags] == ["wh.public.customers.id"]

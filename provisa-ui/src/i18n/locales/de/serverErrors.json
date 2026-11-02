@@ -136,7 +136,8 @@
       "graphql_body_not_json": "Der Body der Anfrage ist kein JSON: {{error}}",
       "graphql_request_not_object": "Eine GraphQL-Anfrage ist ein JSON-Objekt mit einer Abfrage.",
       "graphql_parameter_type": "Der Parameter {{parameter}} der GraphQL-Anfrage muss {{expected}} sein.",
-      "graphql_mutation_over_get": "Eine Mutation wird mit POST gesendet, nie mit GET."
+      "graphql_mutation_over_get": "Eine Mutation wird mit POST gesendet, nie mit GET.",
+      "listed_only": "Rolle {{role}} kann {{table}} nur auflisten: Die Metadaten sind lesbar, die Daten nicht"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",
@@ -293,7 +294,8 @@
       "not_found": "Rolle nicht gefunden",
       "org_selection_required": "Organisationsauswahl erforderlich",
       "already_exists": "Die Rolle '{{role}}' existiert bereits",
-      "description_missing": "Die Rolle '{{role}}' braucht eine Beschreibung, wofür sie da ist"
+      "description_missing": "Die Rolle '{{role}}' braucht eine Beschreibung, wofür sie da ist",
+      "right_not_in_parents": "Rolle {{role}} kann {{right}} nicht haben: Keine übergeordnete Rolle hat es"
     },
     "schema": {
       "allowed_domains_updated": "Zulässige Domänen für Quelle '{{source}}' aktualisiert",
