@@ -21,7 +21,14 @@ import re
 import sqlglot
 
 from provisa.core.pg_error import MARK
-from provisa.transpiler import function_macros, pg_functions, pg_held_types, pg_money
+from provisa.transpiler import (
+    function_macros,
+    pg_forms_enum,
+    pg_forms_type_io,
+    pg_functions,
+    pg_held_types,
+    pg_money,
+)
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_forms_json import json_member
@@ -48,9 +55,19 @@ SUPPORTED_DIALECTS: set[str] = {
 }
 
 
+_BIT_VARYING_SAID = re.compile(r"::\s*bit\s+varying\b", re.IGNORECASE)
+_OVERLAPS_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?overlaps"?\s*\(', re.IGNORECASE)
+
+
+def _spelled_for_sqlglot(pg_sql: str) -> str:
+    """``pg_sql`` as sqlglot can read it: it takes ``bit varying`` for a bit and an alias, and has
+    no call of a function named overlaps."""
+    return _OVERLAPS_BY_NAME.sub("overlaps_timestamp(", _BIT_VARYING_SAID.sub("::varbit", pg_sql))
+
+
 def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to Trino SQL."""
-    pg_sql = rewrite_correlated_subqueries_for_trino(pg_sql)
+    pg_sql = rewrite_correlated_subqueries_for_trino(_spelled_for_sqlglot(pg_sql))
     result = transpile(pg_sql, "trino")
     result = _rewrite_epoch_of_timestamp_for_trino(result)
     result = _rewrite_json_build_object_for_trino(result)
@@ -319,7 +336,7 @@ def _rewrite_json_size_for_trino(sql: str) -> str:
     return tree.transform(_sized).sql(dialect="trino")
 
 
-_BACKREFERENCE = re.compile(r"\\(\d)")
+_BACKREFERENCE = re.compile(r"\\(\\|\d)")
 
 
 def _rewrite_regex_backreferences_for_trino(sql: str) -> str:
@@ -331,7 +348,10 @@ def _rewrite_regex_backreferences_for_trino(sql: str) -> str:
     for node in tree.find_all(exp.RegexpReplace):
         replacement = node.args.get("replacement")
         if isinstance(replacement, exp.Literal) and replacement.is_string:
-            written = _BACKREFERENCE.sub(r"$\1", replacement.this)
+            written = _BACKREFERENCE.sub(
+                lambda said: said.group() if said.group(1) == "\\" else f"${said.group(1)}",
+                replacement.this,
+            )
             node.set("replacement", exp.Literal.string(written))
     return tree.sql(dialect="trino")
 
@@ -584,7 +604,8 @@ def _duckdb_form(pg_sql: str) -> str:
     """``pg_sql`` in DuckDB's SQL, derived once: every step is a function of the text alone, and
     the steps parse it about six times. A statement a client repeats reaches here on each run, its
     plan kept or not. A refusal raises and is not kept."""
-    pg_sql = pg_money.lowered(pg_sql, "duckdb")  # REQ-2171
+    pg_sql = pg_money.lowered(pg_forms_type_io.readable(pg_sql), "duckdb")  # REQ-2171
+    pg_sql = pg_forms_enum.lowered(pg_sql, "duckdb")  # REQ-2171
     return pg_functions.after(
         _postgres_semantics_for_duckdb(
             _lengths_for_duckdb(
@@ -748,14 +769,16 @@ _LIKE_ESCAPE_WRITTEN = frozenset({"duckdb", "trino"})
 
 # A source whose datetime literal takes no UTC offset: an instant is written as its UTC wall time,
 # which the connection's UTC session reads as that instant (REQ-2050, executor/drivers/mysql.py).
-_INSTANT_AS_UTC_WALL_TIME = frozenset({"mysql"})
+_INSTANT_AS_UTC_WALL_TIME = frozenset({"clickhouse", "mysql", "trino", "presto", "athena"})
 
 
 def _instants_as_utc(pg_sql: str, target_dialect: str) -> str:
     """``pg_sql`` with each string literal cast to timestamptz that carries an offset written as
     the same instant in UTC, its offset gone. MariaDB reads ``TIMESTAMP('2024-01-01
     20:04:05-05:00')`` as 20:04:05, five hours early (REQ-2050)."""
-    if target_dialect not in _INSTANT_AS_UTC_WALL_TIME or "TIMESTAMPTZ" not in pg_sql.upper():
+    said = pg_sql.upper()
+    zoned = "TIMESTAMPTZ" in said or "TIMESTAMP WITH TIME ZONE" in said
+    if target_dialect not in _INSTANT_AS_UTC_WALL_TIME or not zoned:
         return pg_sql
     from datetime import datetime, timezone
 
@@ -1188,11 +1211,14 @@ def transpile(
     Returns:
         SQL string in target dialect.
     """
+    pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
         pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
+        pg_sql = _spelled_for_sqlglot(pg_sql)
+        pg_sql = _REGEXP_REPLACE_BY_NAME.sub("regexp_replace(", pg_sql)  # its flag is read below
     if target_dialect != "postgres":
         pg_sql = exact_inputs(pg_sql)  # REQ-2171
-    pg_sql = pg_money.lowered(pg_sql, target_dialect)  # REQ-2171
+    pg_sql = pg_forms_enum.lowered(pg_money.lowered(pg_sql, target_dialect), target_dialect)
     # REQ-1730: an identifier UNQUOTED in the source SQL (the common case for a raw/direct query —
     # governed GraphQL/Cypher-compiled queries already force `quoted=True`, see stage2.py's
     # `_expand_star`) stays unquoted through the transpile by default, which is harmless for every
@@ -1235,12 +1261,16 @@ def transpile(
         )
     from provisa.transpiler.native_subtype import MARKER as _SUBTYPE_MARKER, resolve_subtypes
 
+    if target_dialect != "duckdb" and target_dialect != "postgres" and "in_range" in pg_sql.lower():
+        function_macros.refuse_named(sqlglot.parse_one(pg_sql, read="postgres"), target_dialect)
     if target_dialect != "postgres" and "range" in pg_sql.lower():
         # REQ-2171: ranges and multiranges, which only PostgreSQL has, as text and its parts.
         from provisa.transpiler import pg_ranges
 
         lowered = pg_ranges.rewrite(
-            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
+            function_macros.range_rows_chosen(
+                lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+            ),
             target_dialect,
         )
     if _SUBTYPE_MARKER in pg_sql.lower():
@@ -1259,6 +1289,10 @@ def transpile(
         lowered = function_macros.inline(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres"),
             target_dialect,
+        )
+    if target_dialect not in ("postgres", "duckdb") and _CAST_LITERAL_NAMED.search(pg_sql):
+        lowered = literals_as_said(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if target_dialect != "postgres" and pg_held_types.mentioned(pg_sql):
         # REQ-2171: a value of a type only PostgreSQL has, as what the target holds it as. After
@@ -1306,6 +1340,42 @@ def transpile(
 
     trace_stage(f"transpile.{target_dialect}", result)
     return result
+
+
+_REGEXP_REPLACE_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?regexp_replace"?\s*\(', re.IGNORECASE)
+_CAST_LITERAL_NAMED = re.compile(
+    r"\b(numeric|decimal|bytea|character|char|bpchar)\b", re.IGNORECASE
+)
+_BYTEA_ESCAPES = re.compile(r"\\\\|\\[0-3][0-7]{2}")
+
+
+def _bytea_literal(text: str) -> exp.Expr | None:
+    """byteain's reading of a hex literal; None for the escape form, which the engine's own text
+    cast reads wrong and no form can."""
+    if not text.startswith("\\x") or len(text) % 2:
+        return None
+    return exp.Unhex(this=exp.Literal.string(text[2:]))
+
+
+def literals_as_said(tree: exp.Expr) -> exp.Expr:  # REQ-2171
+    """A literal keeps what its cast says: a bare DECIMAL has no fraction on an engine with no
+    unconstrained numeric (2.5::numeric would answer 3 on Trino and 2 on ClickHouse), a bare
+    character is one character, and a bytea is its bytes, not its text."""
+    for cast in list(tree.find_all(exp.Cast)):
+        value = cast.this.unnest()
+        value = value.this if isinstance(value, exp.Neg) else value
+        if not isinstance(value, exp.Literal):
+            continue
+        if cast.to.is_type("decimal") and not cast.to.expressions and not value.is_string:
+            scale = len(value.this.partition(".")[2])
+            cast.set("to", exp.DataType.build(f"DECIMAL(38, {scale})"))
+        elif cast.to.is_type("char") and not cast.to.expressions and value.is_string:
+            value.replace(exp.Literal.string(value.this[:1]))
+        elif cast.to.is_type("varbinary", "binary") and value.is_string:
+            read = _bytea_literal(value.this)
+            if read is not None:
+                cast.replace(read)
+    return tree
 
 
 #: A timestamp on ClickHouse: its DateTime has no fraction, and Arrow reads it as a count of seconds.
@@ -1417,23 +1487,55 @@ def _regex_found(value: exp.Expr, pattern: str, target_dialect: str) -> exp.Expr
 # else its three-argument form already replaces every match, and a fourth argument is something
 # other than flags (Trino's is a function, Snowflake's and MySQL's a position).
 _REGEXP_FLAGS_KEPT = frozenset({"postgres", "duckdb"})
+_FIRST_MATCH_WRITTEN = frozenset({"trino", "presto", "athena", "clickhouse"})
 
 
 def _every_match_unflagged(pg_sql: str, target_dialect: str) -> str:  # REQ-263
     """``pg_sql`` with the 'g' flag taken off each REGEXP_REPLACE for a target whose
     three-argument form replaces every match already (a regex mask masks every match)."""
-    if target_dialect in _REGEXP_FLAGS_KEPT or "REGEXP_REPLACE" not in pg_sql.upper():
+    if "REGEXP_REPLACE" not in pg_sql.upper():
+        return pg_sql
+    if target_dialect == "duckdb":
+        return _flag_past_n(pg_sql)
+    if target_dialect in _REGEXP_FLAGS_KEPT:
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
+    replaces = list(tree.find_all(exp.RegexpReplace))
     flagged = [
         node
-        for node in tree.find_all(exp.RegexpReplace)
+        for node in replaces
         if isinstance(node.args.get("modifiers"), exp.Literal)
         and node.args["modifiers"].this == "g"
     ]
-    if not flagged:
+    first_only = target_dialect in _FIRST_MATCH_WRITTEN
+    if not flagged and not first_only:
         return pg_sql
     for node in flagged:
+        node.set("modifiers", None)
+    if first_only:  # PostgreSQL replaces the first match unless the 'g' flag says every one
+        for node in replaces:
+            positioned = node.args.get("position") is not None  # its row reads the start and N
+            if node not in flagged and node.args.get("modifiers") is None and not positioned:
+                node.set("modifiers", exp.Literal.string(function_macros.FIRST_MATCH))
+    return tree.sql(dialect="postgres")
+
+
+def _flag_past_n(pg_sql: str) -> str:
+    """``pg_sql`` for DuckDB, whose REGEXP_REPLACE sqlglot writes with a flag and without the start
+    and N. PostgreSQL reads 'g' only where N is not given, so that call is the five-argument one;
+    any other flag beside N has no form."""
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    both = [
+        node
+        for node in tree.find_all(exp.RegexpReplace)
+        if node.args.get("occurrence") is not None and node.args.get("modifiers") is not None
+    ]
+    if not both:
+        return pg_sql
+    for node in both:
+        said = node.args["modifiers"]
+        if not (isinstance(said, exp.Literal) and said.this == "g"):
+            raise function_macros.FunctionRefused("regexp_replace", "duckdb")
         node.set("modifiers", None)
     return tree.sql(dialect="postgres")
 

@@ -499,10 +499,55 @@ def test_an_exasol_source_is_addressed_as_exasol_stores_it(pg_sql, exasol_sql):
 
 
 def test_a_captured_group_in_a_replacement_is_written_as_trino_names_it():
-    # PostgreSQL's \1 in regexp_replace's replacement is Trino's $1 (a duration's ISO text read
-    # by its groups, temporal.duration_of_computed_text).
-    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1') FROM t"
+    # PostgreSQL's \1 in regexp_replace's replacement is Trino's $1. The 'g' flag is every match,
+    # which is what Trino's own replaces.
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1', 'g') FROM t"
     assert transpile_to_trino(pg) == "SELECT REGEXP_REPLACE(x, 'a(b)(c)', '$2-$1') FROM t"
+
+
+def test_a_captured_group_of_the_first_match_counts_past_the_text_before_it():
+    # With no flag the first match only (function_macros._first_match): the text before the match
+    # is group 1 of the form written, so PostgreSQL's \1 is Trino's $2.
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1') FROM t"
+    assert transpile_to_trino(pg) == (
+        "SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b)(c))(?<after>.*)$', "
+        "'${before}$3-$2${after}') FROM t"
+    )
+
+
+def test_a_group_the_pattern_does_not_have_is_empty_in_the_first_match():
+    # PostgreSQL's \2 of a pattern of one group is nothing, not the text after the match.
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)[(]\(', '[\2]') FROM t"
+    assert transpile_to_trino(pg) == (
+        r"SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b)[(]\()(?<after>.*)$', "
+        "'${before}[]${after}') FROM t"
+    )
+
+
+def test_a_replacement_s_literal_text_stays_literal_beside_a_group():
+    # \\ is a backslash and the 1 after it a digit; a $ is a dollar sign.
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)', '\1$\\1') FROM t"
+    assert transpile_to_trino(pg) == (
+        "SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b))(?<after>.*)$', "
+        r"'${before}$2\$\\1${after}') FROM t"
+    )
+
+
+def test_a_backslash_and_a_digit_are_literal_when_every_match_is_replaced():
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1\1', 'g') FROM t"
+    assert transpile_to_trino(pg) == r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1$1') FROM t"
+
+
+@pytest.mark.parametrize(
+    "pg",
+    [
+        r"SELECT REGEXP_REPLACE(x, '(a)\1', '\1') FROM t",  # the pattern's \1 would be the text before
+        r"SELECT REGEXP_REPLACE(x, 'a', '\0') FROM t",  # PostgreSQL's \0 names no group
+    ],
+)
+def test_a_first_match_with_no_group_form_is_refused(pg: str):
+    with pytest.raises(FunctionRefused, match="regexp_replace"):
+        transpile_to_trino(pg)
 
 
 def test_an_empty_array_a_coalesce_falls_back_to_is_typed_by_postgres():
