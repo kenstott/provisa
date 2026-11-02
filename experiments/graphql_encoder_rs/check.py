@@ -97,6 +97,7 @@ def compare(surface: str, python, rust) -> str:
         assert p_err is not None and r_err is not None, f"python: {p_err!r}; rust: {r_err!r}"
         same_error(p_err, r_err)
         TALLY[f"{surface}.both_raise"] += 1
+        TALLY[f"{surface}.raise.{type(p_err).__name__}"] += 1
         return "raise"
     same(parse(p), parse(r))
     TALLY[f"{surface}.byte_identical"] += p == r

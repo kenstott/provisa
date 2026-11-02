@@ -50,6 +50,20 @@ pub struct Dt {
     pub offset: Option<i32>,
     /// A pandas `Timestamp`: its nanoseconds below the microsecond.
     pub nanos: Option<u16>,
+    /// Its tzinfo, for its repr.
+    pub tz: Tz,
+}
+
+/// The tzinfo of a datetime.
+#[derive(Clone, Copy, Debug)]
+pub enum Tz {
+    Naive,
+    /// `pytz.FixedOffset(minutes)` (pytz's `utc` for 0).
+    Fixed(i32),
+    /// A pytz zone (index into `ZONES`) at one of its transitions (index into `TRANS`).
+    Named(u32, u32),
+    /// `datetime.timezone(timedelta(seconds=...))`.
+    Py(i32),
 }
 
 /// A Python value as the product's path holds one.
@@ -155,8 +169,8 @@ const END_US: i64 = 253_402_300_800_000_000;
 #[derive(Clone)]
 pub enum Zone {
     Fixed(i32),
-    /// A pytz zone's transitions (UTC seconds, offset seconds), as pytz localizes with them.
-    Named(&'static [(i64, i32)]),
+    /// A pytz zone (index into `ZONES`): its transitions, as pytz localizes with them.
+    Named(u32),
 }
 
 impl Zone {
@@ -170,23 +184,22 @@ impl Zone {
             }
         }
         match pytz_data::ZONES.binary_search_by(|z| z.0.cmp(tz)) {
-            Ok(i) => {
-                let (_, start, n) = pytz_data::ZONES[i];
-                Ok(Zone::Named(&pytz_data::TRANS[start as usize..(start + n) as usize]))
-            }
+            Ok(i) => Ok(Zone::Named(i as u32)),
             Err(_) => err(format!("Cannot locate timezone '{tz}'")),
         }
     }
 
     /// The offset in seconds at the UTC instant `utc_us` (pytz's `fromutc`: the last transition at
-    /// or before it).
-    pub fn offset_at(&self, utc_us: i64) -> i32 {
+    /// or before it), and the tzinfo it gives.
+    pub fn offset_at(&self, utc_us: i64) -> (i32, Tz) {
         match self {
-            Zone::Fixed(o) => *o,
-            Zone::Named(t) => {
+            Zone::Fixed(o) => (*o, Tz::Fixed(*o / 60)),
+            Zone::Named(z) => {
+                let (_, start, n, _) = pytz_data::ZONES[*z as usize];
+                let t = &pytz_data::TRANS[start as usize..(start + n) as usize];
                 let secs = utc_us.div_euclid(1_000_000);
-                let i = t.partition_point(|e| e.0 <= secs);
-                t[i.saturating_sub(1)].1
+                let i = t.partition_point(|e| e.0 <= secs).saturating_sub(1);
+                (t[i].1, Tz::Named(*z, start + i as u32))
             }
         }
     }
@@ -201,12 +214,15 @@ pub fn date_ok(days: i64) -> Res<()> {
 }
 
 fn dt_of(utc_us: i64, zone: Option<&Zone>, nanos: Option<u16>) -> Res<Dt> {
-    let offset = zone.map(|z| z.offset_at(utc_us));
+    let (offset, tz) = match zone.map(|z| z.offset_at(utc_us)) {
+        Some((o, tz)) => (Some(o), tz),
+        None => (None, Tz::Naive),
+    };
     let local = utc_us as i128 + offset.unwrap_or(0) as i128 * 1_000_000;
     if nanos.is_none() && !(MIN_US as i128..END_US as i128).contains(&local) {
         return err("year is out of range");
     }
-    Ok(Dt { local_us: local as i64, offset, nanos })
+    Ok(Dt { local_us: local as i64, offset, nanos, tz })
 }
 
 /// A `timedelta` of `us` microseconds, which Python holds within a billion days (floor days).

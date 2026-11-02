@@ -4,7 +4,8 @@
 //! `json.dumps(sort_keys=True, default=str)` for a dict or list), and `str()` / `repr()`.
 
 use crate::fmt;
-use crate::pyval::{Dt, Error, Res, P};
+use crate::pytz_data;
+use crate::pyval::{Dt, Error, Res, Tz, P};
 use crate::text::{self, IvKind, Rd};
 
 /// orjson refuses a non-empty container nested deeper than this.
@@ -279,9 +280,77 @@ pub fn py_repr(out: &mut Vec<u8>, p: &P) {
     }
 }
 
+fn td_repr(secs: i64) -> String {
+    let (d, s) = (secs.div_euclid(86_400), secs.rem_euclid(86_400));
+    match (d, s) {
+        (0, 0) => "datetime.timedelta(0)".into(),
+        (0, s) => format!("datetime.timedelta(seconds={s})"),
+        (d, 0) => format!("datetime.timedelta(days={d})"),
+        (d, s) => format!("datetime.timedelta(days={d}, seconds={s})"),
+    }
+}
+
+/// The repr of a datetime's tzinfo.
+fn tz_repr(tz: Tz) -> String {
+    match tz {
+        Tz::Naive => String::new(),
+        Tz::Fixed(0) => "<UTC>".into(),
+        Tz::Fixed(m) => format!("pytz.FixedOffset({m})"),
+        Tz::Py(0) => "datetime.timezone.utc".into(),
+        Tz::Py(o) => format!("datetime.timezone({})", td_repr(o as i64)),
+        Tz::Named(z, t) => {
+            let (name, _, _, fixed) = pytz_data::ZONES[z as usize];
+            if let Some(r) = fixed {
+                return r.into();
+            }
+            let (abbr, dst) = pytz_data::INFO[t as usize];
+            let mut off = Vec::new();
+            text::td_str(&mut off, pytz_data::TRANS[t as usize].1 as i128 * 1_000_000);
+            let mut q = Vec::new();
+            text::str_repr(&mut q, name.as_bytes());
+            format!(
+                "<DstTzInfo {} {}{} {}>",
+                String::from_utf8(q).unwrap(),
+                abbr,
+                String::from_utf8(off).unwrap(),
+                if dst { "DST" } else { "STD" }
+            )
+        }
+    }
+}
+
+/// pandas' `tz=` in a Timestamp's repr.
+fn pd_tz_name(tz: Tz) -> String {
+    match tz {
+        Tz::Fixed(0) | Tz::Py(0) => "UTC".into(),
+        Tz::Fixed(m) => format!("pytz.FixedOffset({m})"),
+        Tz::Named(z, _) => pytz_data::ZONES[z as usize].0.into(),
+        Tz::Py(o) => format!("UTC{}{:02}:{:02}", if o < 0 { '-' } else { '+' }, o.abs() / 3600, o.abs() / 60 % 60),
+        Tz::Naive => String::new(),
+    }
+}
+
 fn dt_repr(out: &mut Vec<u8>, dt: &Dt) {
     let day = dt.local_us.div_euclid(86_400_000_000);
     let tod = dt.local_us.rem_euclid(86_400_000_000);
+    if dt.nanos.is_some() {
+        // pandas: Timestamp('YYYY-MM-DD HH:MM:SS[.f]+HHMM', tz='zone')
+        let mut t = Vec::new();
+        let naive = Dt { offset: None, ..*dt };
+        text::dt_iso(&mut t, &naive, b' ', false);
+        if let Some(o) = dt.offset {
+            let a = o.unsigned_abs();
+            t.extend_from_slice(format!("{}{:02}{:02}", if o < 0 { '-' } else { '+' }, a / 3600, a / 60 % 60).as_bytes());
+        }
+        out.extend_from_slice(b"Timestamp('");
+        out.extend_from_slice(&t);
+        out.push(b'\'');
+        if dt.offset.is_some() {
+            out.extend_from_slice(format!(", tz='{}'", pd_tz_name(dt.tz)).as_bytes());
+        }
+        out.push(b')');
+        return;
+    }
     let (y, mo, d) = fmt::civil(day);
     let secs = tod / 1_000_000;
     let (h, mi, s, f) = (secs / 3600, (secs / 60) % 60, secs % 60, tod % 1_000_000);
@@ -292,10 +361,9 @@ fn dt_repr(out: &mut Vec<u8>, dt: &Dt) {
     if f != 0 {
         parts.push(f.to_string());
     }
-    let tz = match dt.offset {
-        None => String::new(),
-        Some(0) => ", tzinfo=<UTC>".into(),
-        Some(o) => format!(", tzinfo=pytz.FixedOffset({})", o / 60),
+    let tz = match dt.tz {
+        Tz::Naive => String::new(),
+        t => format!(", tzinfo={}", tz_repr(t)),
     };
     out.extend_from_slice(format!("datetime.datetime({}{})", parts.join(", "), tz).as_bytes());
 }

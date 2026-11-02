@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use crate::fmt;
 use crate::json;
 use crate::nest::Batch;
-use crate::pyval::{err, Dec, Dt, Error, Res, P};
+use crate::pyval::{err, Dec, Dt, Error, Res, Tz, P};
 use crate::pywrite::{self, MAX_DEPTH};
 use crate::text;
 
@@ -392,10 +392,10 @@ fn as_datetime(p: &P) -> Res<Option<Dt>> {
         P::Dt(dt) => *dt,
         P::InfDt(s, a) => text::inf_dt(*s, *a),
         P::NaT => return Ok(None),
-        P::Date(d) => Dt { local_us: *d as i64 * 86_400_000_000, offset: None, nanos: None },
+        P::Date(d) => Dt { local_us: *d as i64 * 86_400_000_000, offset: None, nanos: None, tz: Tz::Naive },
         P::InfDate(s) => {
             let d = if *s > 0 { 2_932_896 } else { -719_162 };
-            Dt { local_us: d * 86_400_000_000, offset: None, nanos: None }
+            Dt { local_us: d * 86_400_000_000, offset: None, nanos: None, tz: Tz::Naive }
         }
         P::Str(s) => fromisoformat(s)?,
         other => return type_error("AttributeError: no year", other),
@@ -460,6 +460,7 @@ pub fn edm_value(p: &P, edm: Edm) -> Res<P<'static>> {
             Some(mut dt) => {
                 if dt.offset.is_none() {
                     dt.offset = Some(0);
+                    dt.tz = Tz::Py(0);
                 }
                 let mut t = Vec::new();
                 text::dt_iso(&mut t, &dt, b'T', false);
@@ -695,7 +696,7 @@ pub fn fromisoformat(s: &[u8]) -> Res<Dt> {
     let bad = || Error::Value(format!("Invalid isoformat string: {:?}", String::from_utf8_lossy(s)));
     let (days, dlen) = iso_date(s).ok_or_else(bad)?;
     if dlen == s.len() {
-        return Ok(Dt { local_us: days * 86_400_000_000, offset: None, nanos: None });
+        return Ok(Dt { local_us: days * 86_400_000_000, offset: None, nanos: None, tz: Tz::Naive });
     }
     // any one character separates the date from the time
     let (_, sep) = text::wtf8_char(&s[dlen..]);
@@ -721,7 +722,7 @@ pub fn fromisoformat(s: &[u8]) -> Res<Dt> {
             Some(sign * (v / 1_000_000) as i32)
         }
     };
-    Ok(Dt { local_us: days * 86_400_000_000 + us, offset, nanos: None })
+    Ok(Dt { local_us: days * 86_400_000_000 + us, offset, nanos: None, tz: offset.map_or(Tz::Naive, Tz::Py) })
 }
 
 // ---------------------------------------------------------------- entities

@@ -5,7 +5,7 @@
 
 use crate::fmt::{self, civil};
 use crate::printable::is_printable;
-use crate::pyval::{Dec, Dt};
+use crate::pyval::{Dec, Dt, Tz};
 
 const DAY_US: i64 = 86_400_000_000;
 
@@ -234,7 +234,7 @@ pub fn inf_date_iso(out: &mut Vec<u8>, sign: i8) {
 
 pub fn inf_dt(sign: i8, aware: bool) -> Dt {
     let local_us = if sign > 0 { 253_402_300_799_999_999 } else { -62_135_596_800_000_000 };
-    Dt { local_us, offset: aware.then_some(0), nanos: None }
+    Dt { local_us, offset: aware.then_some(0), nanos: None, tz: if aware { Tz::Py(0) } else { Tz::Naive } }
 }
 
 // ---------------------------------------------------------------- durations
