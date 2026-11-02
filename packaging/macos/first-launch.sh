@@ -16,9 +16,8 @@ SENTINEL="${PROVISA_HOME}/.first-launch-complete"
 ARCH="$(uname -m)"
 case "$ARCH" in
   arm64)  BIN_ARCH="arm64" ;;
-  x86_64) BIN_ARCH="x86_64" ;;
   *)
-    printf "[provisa] Unsupported architecture: %s\n" "$ARCH" >&2
+    printf "[provisa] Unsupported architecture: %s (Provisa for macOS requires Apple Silicon)\n" "$ARCH" >&2
     exit 1
     ;;
 esac
