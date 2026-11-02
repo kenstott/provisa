@@ -301,6 +301,33 @@ fn add_as<'py>(m: &Bound<'py, PyModule>, f: Bound<'py, pyo3::types::PyCFunction>
     m.add(name, f)
 }
 
+/// `odata.encode_navigation(batches, names, entity, *, context, name, root, warnings=None)`: a
+/// navigation read's document, the first row's `name` list as its value.
+#[pyfunction]
+#[pyo3(signature = (batches, names, entity, *, context, name, root, warnings=None))]
+#[allow(clippy::too_many_arguments)]
+fn encode_odata_navigation<'py>(
+    py: Python<'py>,
+    batches: Vec<PyArrowType<RecordBatch>>,
+    names: Vec<String>,
+    entity: Bound<'py, PyAny>,
+    context: String,
+    name: String,
+    root: String,
+    warnings: Option<Vec<u8>>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let batches = unwrap(batches);
+    let n = odata::Navigate { context, warnings, root, entity: entity_of(&entity)?, name };
+    let spec: Vec<Col> = names
+        .iter()
+        .map(|n| Col { field: n.clone(), nested_in: None, one_to_many: false, is_agg: false, mode: Mode::Convert })
+        .collect();
+    run(py, || {
+        let b = nest::prepare(&batches, &spec)?;
+        odata::navigation(&b, &names, &n)
+    })
+}
+
 /// A submodule of `parent` named `name`, registered in sys.modules under its qualified name: the
 /// only place the import system finds an extension's submodules.
 fn submodule<'py>(parent: &Bound<'py, PyModule>, name: &str) -> PyResult<Bound<'py, PyModule>> {
@@ -336,5 +363,6 @@ pub fn module<'py>(py: Python<'py>, qualified: &str) -> PyResult<Bound<'py, PyMo
     add_as(&jsonapi, wrap_pyfunction!(encode_jsonapi_aggregate, &jsonapi)?, "encode_aggregate")?;
     let odata = submodule(&m, "odata")?;
     add_as(&odata, wrap_pyfunction!(encode_odata, &odata)?, "encode")?;
+    add_as(&odata, wrap_pyfunction!(encode_odata_navigation, &odata)?, "encode_navigation")?;
     Ok(m)
 }

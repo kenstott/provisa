@@ -1054,3 +1054,44 @@ pub fn read(batches: &[Batch], names: &[String], r: &Read) -> Res<Vec<u8>> {
     out.push(b'}');
     Ok(out)
 }
+
+/// What a navigation read (`set(key)/navigation`) writes: its context, the request's warnings,
+/// the service root, the parent's entity level (its one plan the navigation) and the navigation.
+pub struct Navigate {
+    pub context: String,
+    pub warnings: Option<Vec<u8>>,
+    pub root: String,
+    pub entity: Entity,
+    pub name: String,
+}
+
+/// The document of a navigation read (`router._navigate`): the parent row's list, the page, as
+/// `value`, and its nextLink when the list goes on. The parent is the first row.
+pub fn navigation(batches: &[Batch], names: &[String], n: &Navigate) -> Res<Vec<u8>> {
+    let Some((b, row)) = batches.iter().find(|b| b.rows > 0).map(|b| (b, 0)) else {
+        return err("the navigation's parent has no row");
+    };
+    let Some(plan) = n.entity.plans.iter().find(|p| p.name == n.name) else {
+        return err(format!("KeyError: '{}'", n.name));
+    };
+    let mut values: Vec<(Cow<[u8]>, P)> = Vec::with_capacity(names.len());
+    for (name, c) in names.iter().zip(&b.cells) {
+        values.push((Cow::Borrowed(name.as_bytes()), c.r.get(row)?));
+    }
+    let mut out = Vec::new();
+    out.extend_from_slice(b"{\"@odata.context\":");
+    pywrite::write_text(&mut out, n.context.as_bytes())?;
+    if let Some(w) = &n.warnings {
+        out.extend_from_slice(b",\"@Provisa.warnings\":");
+        out.extend_from_slice(w);
+    }
+    out.extend_from_slice(b",\"value\":");
+    let w = Writer { root: &n.root };
+    let link = w.expanded(&mut out, &values, &n.entity, plan, 1)?;
+    if let Some(l) = link {
+        out.extend_from_slice(b",\"@odata.nextLink\":");
+        pywrite::write_text(&mut out, l.as_bytes())?;
+    }
+    out.push(b'}');
+    Ok(out)
+}

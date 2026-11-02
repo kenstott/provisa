@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 24401962-a475-4117-a1f8-99527a7739ce
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -287,3 +288,9 @@ def odata(batches: list[Any], names: list[str], entity: tuple, **document: Any) 
     ``@Provisa.warnings``, ``value`` (each expansion with its own nextLink) and
     ``@odata.nextLink``."""
     return _encoded(lambda: _encoders().odata.encode(batches, names, entity, **document))
+
+
+def odata_navigation(batches: list[Any], names: list[str], entity: tuple, **document: Any) -> bytes:  # noqa: ANN401
+    """A navigation read's document (``set(key)/navigation``): the parent row's list, the page,
+    as ``value``, with the request's warnings and the list's nextLink when it goes on."""
+    return _encoded(lambda: _encoders().odata.encode_navigation(batches, names, entity, **document))
