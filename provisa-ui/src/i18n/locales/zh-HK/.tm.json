@@ -9077,5 +9077,16 @@
   "zh-HK/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh-HK/dataAddress.json::dataAddress.label": "Data node",
+  "zh-HK/dataAddress.json::dataAddress.heading": "Send data requests to",
+  "zh-HK/dataAddress.json::dataAddress.none": "No data node",
+  "zh-HK/dataAddress.json::dataAddress.noneOffered": "No data node is listed for this region. Type an address below.",
+  "zh-HK/dataAddress.json::dataAddress.typedLabel": "Data node address",
+  "zh-HK/dataAddress.json::dataAddress.typedPlaceholder": "https://data.example.com",
+  "zh-HK/dataAddress.json::dataAddress.typedInvalid": "Enter an http or https address",
+  "zh-HK/dataAddress.json::dataAddress.use": "Use",
+  "zh-HK/dataAddress.json::dataAddress.loadError": "Could not load the data nodes",
+  "zh-HK/settings.json::settings.server.node_url.label": "This node's address",
+  "zh-HK/settings.json::settings.server.node_url.help": "The address clients reach this node at. A coordinator's UI lists it as a data node when the region lists none. The launcher sets it for each node; unset, the node is not listed."
 }

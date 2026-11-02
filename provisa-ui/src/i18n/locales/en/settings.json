@@ -282,6 +282,10 @@
       "public_url": {
         "label": "Public address",
         "help": "The address this deployment is known by, such as https://data.example.com. Every subject's IRI in SPARQL and RDF exports starts with it, so it should stay the same for as long as those IRIs are used. Unset, a query that returns a subject's IRI is refused."
+      },
+      "node_url": {
+        "label": "This node's address",
+        "help": "The address clients reach this node at. A coordinator's UI lists it as a data node when the region lists none. The launcher sets it for each node; unset, the node is not listed."
       }
     },
     "tls": {
