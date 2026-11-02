@@ -155,6 +155,9 @@ jobs:
       - name: Pull core images and build zaychik
         run: |
           # pipefail: a failed `docker save` piped into gzip otherwise ships a truncated image.
+          # save --platform: under the containerd image store (Docker 29+, ubuntu-26.04 runners) a
+          # bare `docker save` exports every platform in the image index, and only the pulled one
+          # is local, so it fails with "unable to create manifests file: NotFound: content digest".
           set -o pipefail
           mkdir -p images trino-image
           for img in \
@@ -167,7 +170,7 @@ jobs:
             tag="${tag//:/-}"
             tag="${tag//\//-}"
             docker pull --platform linux/arm64 "$img"
-            docker save "$img" | gzip -9 > "images/${tag}.tar.gz"
+            docker save --platform linux/arm64 "$img" | gzip -9 > "images/${tag}.tar.gz"
           done
           # Trino ships as its own release asset (see metadata trino_image_name): inside the
           # bundle its ~1 GiB pushed the archive past GitHub's 2 GiB per-asset limit. The asset
@@ -175,14 +178,14 @@ jobs:
           # (tar -xzf / unzip into a staging dir of *.tar.gz) keeps working unchanged.
           docker pull --platform linux/arm64 trinodb/trino:481
           mkdir -p trino-inner
-          docker save trinodb/trino:481 | gzip -9 > trino-inner/trino-481.tar.gz
+          docker save --platform linux/arm64 trinodb/trino:481 | gzip -9 > trino-inner/trino-481.tar.gz
           tar -czf "trino-image/${{ needs.metadata.outputs.trino_image_name }}" -C trino-inner trino-481.tar.gz
           docker build --platform linux/arm64 -t provisa/zaychik:local ./zaychik
-          docker save provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
+          docker save --platform linux/arm64 provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
           # App image in the core-images tarball so the Docker tier can docker load it
           # on demand (macOS/arm64) — no in-VM/host build needed.
           docker build --platform linux/arm64 -t provisa/provisa:local .
-          docker save provisa/provisa:local | gzip -9 > images/provisa-local.tar.gz
+          docker save --platform linux/arm64 provisa/provisa:local | gzip -9 > images/provisa-local.tar.gz
 
       # REQ-2071: provisa depends on provisa-notebook, which PyPI does not have until the release
       # publishes it: its wheel is built first and found beside the others.
@@ -256,6 +259,9 @@ jobs:
       - name: Pull core images (amd64), build zaychik and provisa
         run: |
           # pipefail: a failed `docker save` piped into gzip otherwise ships a truncated image.
+          # save --platform: under the containerd image store (Docker 29+, ubuntu-26.04 runners) a
+          # bare `docker save` exports every platform in the image index, and only the pulled one
+          # is local, so it fails with "unable to create manifests file: NotFound: content digest".
           set -o pipefail
           mkdir -p images trino-image
           for img in \
@@ -268,19 +274,19 @@ jobs:
             tag="${tag//:/-}"
             tag="${tag//\//-}"
             docker pull --platform linux/amd64 "$img"
-            docker save "$img" | gzip -9 > "images/${tag}.tar.gz"
+            docker save --platform linux/amd64 "$img" | gzip -9 > "images/${tag}.tar.gz"
           done
           # Trino ships as its own release asset (see metadata trino_image_amd64_name): inside
           # the bundle its ~1 GiB pushed the zip past GitHub's 2 GiB per-asset limit. Wrapped in
           # an outer tar so consumers extract it into their *.tar.gz staging dir unchanged.
           docker pull --platform linux/amd64 trinodb/trino:481
           mkdir -p trino-inner
-          docker save trinodb/trino:481 | gzip -9 > trino-inner/trino-481.tar.gz
+          docker save --platform linux/amd64 trinodb/trino:481 | gzip -9 > trino-inner/trino-481.tar.gz
           tar -czf "trino-image/${{ needs.metadata.outputs.trino_image_amd64_name }}" -C trino-inner trino-481.tar.gz
           docker build --platform linux/amd64 -t provisa/zaychik:local ./zaychik
-          docker save provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
+          docker save --platform linux/amd64 provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
           docker build --platform linux/amd64 -t provisa/provisa:local .
-          docker save provisa/provisa:local | gzip -9 > images/provisa-local.tar.gz
+          docker save --platform linux/amd64 provisa/provisa:local | gzip -9 > images/provisa-local.tar.gz
 
       - name: Upload amd64 core image tarballs
         uses: actions/upload-artifact@v4
@@ -310,6 +316,9 @@ jobs:
       - name: Pull obs images
         run: |
           # pipefail: a failed `docker save` piped into gzip otherwise ships a truncated image.
+          # save --platform: under the containerd image store (Docker 29+, ubuntu-26.04 runners) a
+          # bare `docker save` exports every platform in the image index, and only the pulled one
+          # is local, so it fails with "unable to create manifests file: NotFound: content digest".
           set -o pipefail
           mkdir -p images
           for img in \
@@ -323,7 +332,7 @@ jobs:
             tag="${tag//:/-}"
             tag="${tag//\//-}"
             docker pull --platform linux/arm64 "$img"
-            docker save "$img" | gzip -9 > "images/${tag}.tar.gz"
+            docker save --platform linux/arm64 "$img" | gzip -9 > "images/${tag}.tar.gz"
           done
 
       - name: Upload obs image tarballs
@@ -349,12 +358,15 @@ jobs:
       - name: Build demo images (all Python — no Java petstore)
         run: |
           # pipefail: a failed `docker save` piped into gzip otherwise ships a truncated image.
+          # save --platform: under the containerd image store (Docker 29+, ubuntu-26.04 runners) a
+          # bare `docker save` exports every platform in the image index, and only the pulled one
+          # is local, so it fails with "unable to create manifests file: NotFound: content digest".
           set -o pipefail
           mkdir -p images
           docker build --platform linux/arm64 -t provisa/petstore-demo:local ./demo/petstore_server
-          docker save provisa/petstore-demo:local | gzip -9 > images/petstore-demo-local.tar.gz
+          docker save --platform linux/arm64 provisa/petstore-demo:local | gzip -9 > images/petstore-demo-local.tar.gz
           docker build --platform linux/arm64 -t provisa/graphql-demo:local ./demo/graphql_server
-          docker save provisa/graphql-demo:local | gzip -9 > images/graphql-demo-local.tar.gz
+          docker save --platform linux/arm64 provisa/graphql-demo:local | gzip -9 > images/graphql-demo-local.tar.gz
 
       - name: Upload demo image tarballs
         uses: actions/upload-artifact@v4
