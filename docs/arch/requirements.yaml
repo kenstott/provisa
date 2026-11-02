@@ -75828,9 +75828,14 @@
     it registered; a node that registered no reachable address is not listed. Declared addresses, when present,
     are the only list. (Amended 2026-11-02, Every region has both roles:) Maintainer 2026-11-02: every region
     needs a coordinator and query nodes, or an every node: at least one live process serving its data requests
-    and at least one doing its background work. Nodes start independently, so this is checked, not enforced
-    at launch: the health endpoint and the admin pages show it per region from the node registry, naming
-    a region with no live data-serving node or no live background node.'
+    and at least one doing its background work. [SUPERSEDED by REQ-1916, 2026-11-02 -- no health check:
+    a region runs independently. Kept here for history; do not implement against it.] Nodes start independently,
+    so this is checked, not enforced at launch: the health endpoint and the admin pages show it per region
+    from the node registry, naming a region with no live data-serving node or no live background node. [END
+    SUPERSEDED BLOCK] (Amended 2026-11-02, A region runs independently:) Maintainer 2026-11-02: there is
+    no cross-region health check. A region runs independently from the same config, under the region data-sharing
+    rules, and that is all; giving each region both roles (a coordinator and query nodes, or an every node)
+    is the deployment''s job, stated in the docs.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
