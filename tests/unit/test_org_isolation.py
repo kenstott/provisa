@@ -542,6 +542,13 @@ def _seeding_conn() -> AsyncMock:
     conn = AsyncMock()
     conn.transaction = _transaction
     conn.advisory_lock = _advisory_lock
+
+    async def _reflect_many(names, schema=None):
+        # Every relation the seed names exists, with no columns (as reflect_columns -> []).
+        del schema
+        return {name: [] for name in names}
+
+    conn.reflect_columns_many = AsyncMock(side_effect=_reflect_many)
     return conn
 
 
@@ -572,6 +579,7 @@ class TestDemoSeedOrgScoping:
         all_calls = [
             str(c)
             for c in mock_conn.reflect_columns.await_args_list
+            + mock_conn.reflect_columns_many.await_args_list
             + mock_conn.upsert_returning.await_args_list
         ]
         assert any("org_demo" in c for c in all_calls)
