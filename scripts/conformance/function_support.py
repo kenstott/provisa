@@ -19,42 +19,57 @@ and the guaranteed list.
 Each overload gets one outcome per engine:
 
   pass          every call PostgreSQL answered, Provisa answered the same, or the same under a
-                written rule, which the overload's ``rules`` name (function_report.RULES)
-  wrong_answer  a call compares unequal: its result type, its rows, their values or their form
+                written rule, which the overload's ``rules`` name (function_report.RULES), and
+                at least one answer was compared or one property checked
+  not_checked   every call PostgreSQL answered, Provisa answered with the same result type, and
+                none compared an answer or checked a property: a call that ran proves nothing,
+                so this is no pass. ``unchecked`` says why
+  wrong_answer  a call compares unequal: its result type, its rows, their values, their form or
+                a property PostgreSQL documents
   error         PostgreSQL answered a call and the engine failed with no named refusal (its
                 message is kept)
   refused       PostgreSQL answered a call and Provisa refused it by name
   not_callable  PostgreSQL itself answers no call of it
   not_reached   the leg ended, or its server went away, before this overload
 
-A wrong answer outranks an error, which outranks a refusal, which outranks a pass: the overload is
-as bad as its worst call. function_report.py says what each outcome is on the report (exact,
-equivalent, refused by name or differs); there is no overall count, only one per engine.
+A wrong answer outranks an error, which outranks a refusal, which outranks a pass or a not checked:
+the overload is as bad as its worst call. function_report.py says what each outcome is on the
+report (exact, equivalent, not checked, refused by name or differs); there is no overall count,
+only one per engine.
 
 The calls of an overload are the NULL call of pgwire_function_probe.py and, where ``value_calls``
 can write them, up to three calls with real values. How far values go, exactly:
 
-  * Only a function whose answer is a function of its arguments is given values: an immutable
-    one, or a stable one of ``STABLE_FAMILIES``, compared under one TimeZone, DateStyle and
-    IntervalStyle. Volatile functions are never given values, because that would run them for
-    real (they are the ones that act: setval, pg_terminate_backend, lo_unlink) and their answers
-    differ by nature (random, now). Stable catalog and session functions read server state that
-    has no PostgreSQL counterpart, so they are not compared either.
-  * Every argument must have a literal: ``SAMPLES`` by type, ``ARG_VALUES`` by function where the
-    type's literals are not valid input. Pseudo-types take the concrete types of
-    pgwire_function_probe.py. An overload taking a type with no sample gets no value call.
+  * Every immutable and stable function is given values, compared under one TimeZone, DateStyle
+    and IntervalStyle on the same fixture catalog, but for those whose answer is the answering
+    server's own (``OWN_ANSWERS``: its process, its addresses, its clock, its statistics, its
+    transactions, or a by-design session answer, REQ-588 and REQ-579). Volatile functions are
+    never given values, because that would run them for real (they are the ones that act:
+    setval, pg_terminate_backend, lo_unlink), but for ``PROPERTIES``.
+  * Every argument must have a literal: ``SAMPLES`` and ``VALUE_SAMPLES`` by type, ``ARG_VALUES``
+    by function where the type's literals are not valid input (``Raw`` ones are written as they
+    stand), and ``INPUT_TYPES`` for a type's input function. Pseudo-types take the concrete types
+    of pgwire_function_probe.py. An overload taking a type with no sample gets no value call;
+    ``NO_LITERAL`` types are ones PostgreSQL takes no literal of.
   * A value call PostgreSQL refuses compares nothing: that it also refuses on Provisa is not
     checked, nor is Provisa answering what PostgreSQL refuses.
 
 ``answers_checked`` is an overload with at least one value call PostgreSQL answered, its value
-compared. ``form_checked`` is one whose value cannot be compared, called with no NULL argument, whose
-answer has the form PostgreSQL's has (REQ-2167, WHAT GUARANTEED MEANS): ``value_form`` gives the form
-of PostgreSQL's own answer, a named function's, then its type's, then a record's number of fields,
-and otherwise the sample's shape. Each row Provisa answers must fit. PostgreSQL's NULL or void, or a
-set Provisa leaves empty, is no form to check. The rest are ``only called`` and each says why
-(``unchecked``, which a form checked overload keeps: its value is still not compared). A NULL call of
-a strict function proves the call was served and its type, not its answer. Three literals, not a
-domain: a function that differs only on values no sample reaches passes here.
+compared. ``property_checked`` is one whose value cannot be compared and that had an exact property
+checked against PostgreSQL's documentation or its own output (REQ-2167, WHAT GUARANTEED MEANS):
+
+  * form: a call with no NULL argument whose answer has the form PostgreSQL's has. ``value_form``
+    gives the form of PostgreSQL's own answer, a named function's, then its type's, then a record's
+    number of fields, and otherwise the sample's shape. Each row Provisa answers must fit.
+    PostgreSQL's NULL or void, or a set Provisa leaves empty, is no form to check.
+  * ``PROPERTIES``: a volatile function's documented range or shape on real values (random(min,
+    max) within its bounds, array_shuffle a permutation, array_sample a sub-multiset of the size
+    asked), and a clock function's answer within the statement's bounds on PostgreSQL's clock.
+
+The rest are not checked, and each says why (``unchecked``, which a property checked overload keeps:
+its value is still not compared). A NULL call where PostgreSQL answers NULL holds Provisa to NULL
+too, which can make a wrong answer and never a pass. Three literals, not a domain: a function that
+differs only on values no sample reaches passes here.
 
 Literals alone do not say a function works on a column: a form that folds a literal at transpile
 time passes while a column of the same type is refused. So an overload given values gets one more
@@ -87,6 +102,7 @@ UTC, under ``ZONE``, where the zone is in the text they write.
 from __future__ import annotations
 
 import argparse
+import datetime
 import decimal
 import json
 import math
@@ -153,26 +169,85 @@ _JSON_NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
 _ARRAY_AGGREGATE = re.compile(r"\b(?:jsonb?_agg|array_agg|json_arrayagg)", re.IGNORECASE)
 _ORDER_BY = re.compile(r"\bORDER\s+BY\b", re.IGNORECASE)
 
-#: The families whose stable functions depend on the session settings alone. Stable functions
-#: elsewhere (System above all) read the catalog or the session.
-STABLE_FAMILIES = frozenset(
-    {
-        "Aggregate and window",
-        "Array",
-        "Date",
-        "Geometric",
-        "JSON",
-        "Network",
-        "Numeric",
-        "Range",
-        "String",
-        "Text search",
-        "XML",
-    }
+#: Answers from the clock: their value is checked against the statement's bounds (``PROPERTIES``).
+CLOCK_FUNCTIONS = frozenset(
+    {"clock_timestamp", "now", "statement_timestamp", "transaction_timestamp"}
 )
 
-#: Stable by pg_proc, but answers from the clock.
-CLOCK_FUNCTIONS = frozenset({"age", "now", "transaction_timestamp", "statement_timestamp"})
+#: The functions whose answer is the answering server's own, by name, with why: never compared by
+#: value, as no PostgreSQL counterpart has it (REQ-2167, WHAT GUARANTEED MEANS: a session function
+#: is validated by its type and form). A by-design one cites its decision (by_design/pgwire.yaml).
+_SERVER = "answers with its own server's state"
+OWN_ANSWERS: dict[str, str] = {
+    **dict.fromkeys(CLOCK_FUNCTIONS, "answers from the clock"),
+    **dict.fromkeys(
+        ("current_user", "session_user", "current_role", "getpgusername", "system_user"),
+        "by design (REQ-588): names the role the session acts as",
+    ),
+    **dict.fromkeys(
+        ("current_database", "current_catalog"),
+        "by design (REQ-588): names the served database",
+    ),
+    "version": "by design (REQ-579): the server's version",
+    **dict.fromkeys(
+        (
+            "inet_client_addr",
+            "inet_client_port",
+            "inet_server_addr",
+            "inet_server_port",
+            "pg_backend_pid",
+            "pg_conf_load_time",
+            "pg_postmaster_start_time",
+            "pg_current_snapshot",
+            "pg_current_xact_id",
+            "pg_current_xact_id_if_assigned",
+            "txid_current",
+            "txid_current_if_assigned",
+            "txid_current_snapshot",
+            "pg_show_all_settings",
+            "pg_config",
+            "pg_available_extensions",
+            "pg_available_extension_versions",
+            "pg_relation_filenode",
+            "pg_relation_filepath",
+            "pg_stat_get_archiver",
+            "pg_stat_get_slru",
+            "pg_stat_get_wal",
+            "pg_stat_get_wal_receiver",
+            "pg_stat_get_wal_senders",
+            "pg_stat_get_snapshot_timestamp",
+            "pg_stat_get_buf_alloc",
+            "pg_stat_get_activity",
+            "mxid_age",
+        ),
+        _SERVER,
+    ),
+}
+#: As ``OWN_ANSWERS``, by prefix: a backend's, the background writer's, the checkpointer's and a
+#: database's statistics.
+_OWN_PREFIXES = (
+    "pg_stat_get_backend_",
+    "pg_stat_get_bgwriter_",
+    "pg_stat_get_checkpointer_",
+    "pg_stat_get_db_",
+)
+#: As ``OWN_ANSWERS``, by signature: the age of a transaction id is the server's.
+_OWN_SIGNATURES = {"age(xid)": _SERVER}
+
+
+def own_answer(fn: Function) -> str | None:
+    """Why ``fn``'s answer is its server's own (``OWN_ANSWERS``); None if it is not."""
+    if fn.name in OWN_ANSWERS:
+        return OWN_ANSWERS[fn.name]
+    if fn.name.startswith(_OWN_PREFIXES):
+        return _SERVER
+    return _OWN_SIGNATURES.get(_key(fn))
+
+
+def _key(fn: Function) -> str:
+    """``fn`` by its name and argument types, with no argument names."""
+    return f"{fn.name}({', '.join(fn.argtypes)})"
+
 
 #: Written into their text as the session's zone abbreviation, which UTC cannot tell from its name.
 ZONED_FUNCTIONS = frozenset({"timeofday"})
@@ -345,6 +420,180 @@ SAMPLES: dict[str, tuple[str, str, str]] = {
     "nummultirange": ("'{[1.5,2.5)}'", "'{}'", "'{(,3]}'"),
 }
 
+_RANGES = '\'{"[1,5)","[7,9)"}\'', "'{}'", "'{\"(,3]\"}'"
+
+#: Literals of the types no registered column holds, each valid input on PostgreSQL itself: a
+#: catalog name names an object every PostgreSQL 17 catalog has, a role a predefined one, a
+#: relation the fixture's own. They are cast as ``SAMPLES`` is, and read from no column.
+VALUE_SAMPLES: dict[str, tuple[str, str, str]] = {
+    "cstring": _STRINGS,
+    "unknown": _STRINGS,
+    "void": ("''", "''", "''"),
+    "record": ("ROW(1, 'a')", "ROW(2, 'b')", "ROW(NULL::integer, 'c')"),
+    "tid": ("'(0,1)'", "'(5,3)'", "'(4294967295,65535)'"),
+    "xid": ("'3'", "'100'", "'4294967295'"),
+    "xid8": ("'3'", "'100'", "'18446744073709551615'"),
+    "cid": ("'0'", "'5'", "'4294967295'"),
+    function_probe.PROBE_ENUM: ("'a'", "'b'", "'a'"),
+    "oidvector": ("'1 2 3'", "''", "'23 25'"),
+    "int2vector": ("'1 2'", "''", "'3'"),
+    "txid_snapshot": ("'10:20:10,14,15'", "'1:1:'", "'5:10:7'"),
+    "pg_snapshot": ("'10:20:10,14,15'", "'1:1:'", "'5:10:7'"),
+    "regclass": ("'pg_catalog.pg_class'", "'pg_catalog.pg_type'", f"'{COLUMN_RELATION}'"),
+    "regtype": ("'integer'", "'text'", "'boolean'"),
+    "regproc": ("'now'", "'int4in'", "'pg_backend_pid'"),
+    "regprocedure": ("'now()'", "'abs(integer)'", "'lower(text)'"),
+    "regoper": ("'||/'", "'|/'", "'||/'"),
+    "regoperator": ("'+(integer,integer)'", "'=(text,text)'", "'-(NONE,integer)'"),
+    "regnamespace": ("'pg_catalog'", "'public'", "'information_schema'"),
+    "regrole": ("'pg_monitor'", "'pg_read_all_data'", "'pg_signal_backend'"),
+    "regcollation": ("'\"C\"'", "'\"POSIX\"'", "'\"default\"'"),
+    "regdictionary": ("'simple'", "'english_stem'", "'simple'"),
+    "aclitem": (
+        "'pg_monitor=r/pg_monitor'",
+        "'=r/pg_monitor'",
+        "'pg_read_all_data=arw/pg_monitor'",
+    ),
+    "aclitem[]": (
+        "'{pg_monitor=r/pg_monitor}'",
+        "'{}'",
+        "'{=r/pg_monitor,pg_read_all_data=arw/pg_monitor}'",
+    ),
+    '"char"[]': ("'{a,b}'", "'{}'", "'{A}'"),
+    "int4range[]": _RANGES,
+    "int8range[]": _RANGES,
+    "numrange[]": ("'{\"[1.5,2.5)\"}'", "'{}'", "'{\"(,3]\"}'"),
+    "daterange[]": (
+        '\'{"[2024-01-01,2024-02-01)","[2024-03-01,2024-04-01)"}\'',
+        "'{}'",
+        "'{empty}'",
+    ),
+    "tsrange[]": ("'{\"[2024-01-01 00:00,2024-02-01 00:00)\"}'", "'{}'", "'{empty}'"),
+    "tstzrange[]": ("'{\"[2024-01-01 00:00+00,2024-02-01 00:00+00)\"}'", "'{}'", "'{empty}'"),
+}
+
+#: The types PostgreSQL takes no literal of: their input function refuses every value ("cannot
+#: accept a value of type"), so only a value the server itself derived could be passed.
+NO_LITERAL = frozenset(
+    {
+        "gtsvector",
+        "pg_brin_bloom_summary",
+        "pg_brin_minmax_multi_summary",
+        "pg_ddl_command",
+        "pg_dependencies",
+        "pg_mcv_list",
+        "pg_ndistinct",
+        "pg_node_tree",
+    }
+)
+
+
+class Raw(tuple):
+    """Literals ``ARG_VALUES`` gives as they stand, cast or not by the literal itself: an argument
+    of a pseudo-type, an expression, or several arguments of a variadic ``"any"``."""
+
+
+#: The type each input function reads, so a cstring argument takes that type's samples as text.
+INPUT_TYPES = {
+    "bit_in": "bit",
+    "boolin": "boolean",
+    "box_in": "box",
+    "bpcharin": "character",
+    "byteain": "bytea",
+    "cash_in": "money",
+    "charin": '"char"',
+    "cidin": "cid",
+    "cidr_in": "cidr",
+    "circle_in": "circle",
+    "cstring_in": "text",
+    "cstring_out": "text",
+    "cstring_send": "text",
+    "date_in": "date",
+    "enum_in": function_probe.PROBE_ENUM,
+    "float4in": "real",
+    "float8in": "double precision",
+    "inet_in": "inet",
+    "int2in": "smallint",
+    "int2vectorin": "int2vector",
+    "int4in": "integer",
+    "int8in": "bigint",
+    "json_in": "json",
+    "jsonpath_in": "jsonpath",
+    "line_in": "line",
+    "lseg_in": "lseg",
+    "macaddr8_in": "macaddr8",
+    "macaddr_in": "macaddr",
+    "namein": "name",
+    "numeric_in": "numeric",
+    "oidin": "oid",
+    "oidvectorin": "oidvector",
+    "path_in": "path",
+    "pg_lsn_in": "pg_lsn",
+    "pg_snapshot_in": "pg_snapshot",
+    "point_in": "point",
+    "poly_in": "polygon",
+    "range_in": "int4range",
+    "multirange_in": "int4multirange",
+    "array_in": "integer[]",
+    "regclassin": "regclass",
+    "regcollationin": "regcollation",
+    "regconfigin": "regconfig",
+    "regdictionaryin": "regdictionary",
+    "regnamespacein": "regnamespace",
+    "regoperatorin": "regoperator",
+    "regoperin": "regoper",
+    "regprocedurein": "regprocedure",
+    "regprocin": "regproc",
+    "regrolein": "regrole",
+    "regtypein": "regtype",
+    "aclitemin": "aclitem",
+    "textin": "text",
+    "tidin": "tid",
+    "time_in": "time without time zone",
+    "timestamp_in": "timestamp without time zone",
+    "timestamptz_in": "timestamp with time zone",
+    "timetz_in": "time with time zone",
+    "tsqueryin": "tsquery",
+    "tsvectorin": "tsvector",
+    "txid_snapshot_in": "txid_snapshot",
+    "uuid_in": "uuid",
+    "varbit_in": "bit varying",
+    "varcharin": "character varying",
+    "xidin": "xid",
+    "xml_in": "xml",
+}
+
+#: The element an input function's type-oid argument names, where it is not the type itself.
+_INPUT_OID = {"array_in": "integer", "range_in": "int4range", "multirange_in": "int4multirange"}
+
+
+def _samples_of(sample_type: str) -> tuple[str, str, str] | None:
+    return SAMPLES.get(sample_type) or VALUE_SAMPLES.get(sample_type)
+
+
+def _as_text(literal: str) -> str:
+    """A literal as the quoted text a type's input function reads."""
+    if literal.startswith("'"):
+        return literal
+    return "'" + literal.strip("()").replace("'", "''") + "'"
+
+
+def _input_given(fn: Function) -> dict[int, tuple[str, ...]]:
+    """An input function's arguments: its type's samples as cstring, then that type's oid and
+    the typmod -1 (``INPUT_TYPES``)."""
+    typ = INPUT_TYPES.get(fn.name)
+    samples = None if typ is None else _samples_of(typ)
+    if samples is None or not fn.argtypes or fn.argtypes[0] != "cstring":
+        return {}
+    given: dict[int, tuple[str, ...]] = {0: Raw(f"{_as_text(s)}::cstring" for s in samples)}
+    if len(fn.argtypes) > 1:
+        named = _INPUT_OID.get(fn.name, typ)
+        given[1] = Raw((f"'{named}'::regtype::oid",) * VALUE_ROWS)
+    if len(fn.argtypes) > 2:
+        given[2] = Raw(("(-1)::integer",) * VALUE_ROWS)
+    return given
+
+
 _UNITS = ("'day'", "'month'", "'year'")
 _FIELDS = ("'year'", "'month'", "'dow'")
 _PATTERNS = ("'b'", "'[a-z]+'", "'^1'")
@@ -353,10 +602,437 @@ _ENCODINGS = ("'hex'", "'base64'", "'escape'")
 _BOUNDS = ("'[)'", "'[]'", "'()'")
 _START = ("1", "2", "1")
 
+_FLAGS = ("'i'", "'c'", "'i'")
+_ROLE_OIDS = Raw(f"'{r}'::regrole::oid" for r in ("pg_monitor", "pg_read_all_data", "pg_monitor"))
+#: float8 transition states: N, the sum and the sum of squared deviations; a regression's adds Sy,
+#: Syy and Sxy.
+_FLOAT8_STATE = ("'{3,6,2}'", "'{1,0.5,0}'", "'{4,10,5}'")
+_REGR_STATE = ("'{3,6,2,9,2,2}'", "'{1,0.5,0,2,0,0}'", "'{4,10,5,8,5,5}'")
+_INT_AVG_STATE = ("'{3,6}'", "'{1,-7}'", "'{4,100}'")
+_FORMS = ("'NFC'", "'NFD'", "'NFKC'")
+_NAMESPACE_ROW = Raw(("NULL::pg_catalog.pg_namespace",) * 3)
+_NAMESPACE_JSON = ('\'{"nspname": "x", "oid": 5}\'', "'{}'", "'{\"nspname\": null}'")
+_NAMESPACE_JSONS = ('\'[{"nspname": "x", "oid": 5}]\'', "'[]'", "'[{}, {\"oid\": 1}]'")
+_PARSER = {0: ("'default'",) * 3}
+_PARSER_OID = {0: ("3722",) * 3}
+_HEADLINE_OPTIONS = ("'MaxWords=2, MinWords=1'", "'ShortWord=1'", "''")
+
+#: The literals of the overloads PostgreSQL refused every sample of, by ``_key``: the values each
+#: one's own input rules take.
+_REFUSED_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
+    'acldefault("char", oid)': {0: ("'r'", "'f'", "'n'"), 1: _ROLE_OIDS},
+    **{
+        f"{name}(text, {time})": {0: ("'hour'", "'minute'", "'second'")}
+        for name in ("date_part", "extract")
+        for time in ("time without time zone", "time with time zone")
+    },
+    "float4_accum(double precision[], real)": {0: _FLOAT8_STATE},
+    "float8_accum(double precision[], double precision)": {0: _FLOAT8_STATE},
+    "float8_combine(double precision[], double precision[])": {0: _FLOAT8_STATE, 1: _FLOAT8_STATE},
+    "float8_regr_accum(double precision[], double precision, double precision)": {0: _REGR_STATE},
+    "float8_regr_combine(double precision[], double precision[])": {
+        0: _REGR_STATE,
+        1: _REGR_STATE,
+    },
+    **{
+        f"float8_{name}(double precision[])": {0: _FLOAT8_STATE}
+        for name in ("avg", "stddev_pop", "stddev_samp", "var_pop", "var_samp")
+    },
+    **{
+        f"float8_{name}(double precision[])": {0: _REGR_STATE}
+        for name in (
+            "corr",
+            "covar_pop",
+            "covar_samp",
+            "regr_avgx",
+            "regr_avgy",
+            "regr_intercept",
+            "regr_r2",
+            "regr_slope",
+            "regr_sxx",
+            "regr_sxy",
+            "regr_syy",
+        )
+    },
+    "int2_avg_accum(bigint[], smallint)": {0: _INT_AVG_STATE},
+    "int2_avg_accum_inv(bigint[], smallint)": {0: _INT_AVG_STATE},
+    "int4_avg_accum(bigint[], integer)": {0: _INT_AVG_STATE},
+    "int4_avg_accum_inv(bigint[], integer)": {0: _INT_AVG_STATE},
+    "int4_avg_combine(bigint[], bigint[])": {0: _INT_AVG_STATE, 1: _INT_AVG_STATE},
+    "int8_avg(bigint[])": {0: _INT_AVG_STATE},
+    "int2int4_sum(bigint[])": {0: _INT_AVG_STATE},
+    "bool(jsonb)": {0: ("'true'", "'false'", "'true'")},
+    "btvarstrequalimage(oid)": {0: ("100", "950", "951")},
+    "is_normalized(text, text)": {1: _FORMS},
+    "normalize(text, text)": {1: _FORMS},
+    "json_to_tsvector(json, jsonb)": {1: ("'[\"string\"]'", "'[\"numeric\"]'", "'[\"all\"]'")},
+    "json_to_tsvector(regconfig, json, jsonb)": {
+        2: ("'[\"string\"]'", "'[\"numeric\"]'", "'[\"all\"]'")
+    },
+    "jsonb_to_tsvector(jsonb, jsonb)": {1: ("'[\"string\"]'", "'[\"numeric\"]'", "'[\"all\"]'")},
+    "jsonb_to_tsvector(regconfig, jsonb, jsonb)": {
+        2: ("'[\"string\"]'", "'[\"numeric\"]'", "'[\"all\"]'")
+    },
+    'json_build_object("any")': {
+        0: Raw(("1::integer, 2::integer", "'a'::text, 3::integer", "'k'::text, NULL::integer"))
+    },
+    'jsonb_build_object("any")': {
+        0: Raw(("1::integer, 2::integer", "'a'::text, 3::integer", "'k'::text, NULL::integer"))
+    },
+    "json_populate_record(anyelement, json, boolean)": {0: _NAMESPACE_ROW, 1: _NAMESPACE_JSON},
+    "json_populate_recordset(anyelement, json, boolean)": {
+        0: _NAMESPACE_ROW,
+        1: _NAMESPACE_JSONS,
+    },
+    "jsonb_populate_record(anyelement, jsonb)": {0: _NAMESPACE_ROW, 1: _NAMESPACE_JSON},
+    "jsonb_populate_record_valid(anyelement, jsonb)": {0: _NAMESPACE_ROW, 1: _NAMESPACE_JSON},
+    "jsonb_populate_recordset(anyelement, jsonb)": {0: _NAMESPACE_ROW, 1: _NAMESPACE_JSONS},
+    "array_agg(anyarray)": {0: ("'{1,2}'", "'{3,4}'", "'{5,NULL}'")},
+    "line(point, point)": {1: ("'(3,4)'", "'(1,1)'", "'(0,4)'")},
+    "macaddr(macaddr8)": {
+        0: ("'08:00:2b:ff:fe:01:02:03'", "'00:00:00:ff:fe:00:00:00'", "'ff:ff:ff:ff:fe:ff:ff:ff'")
+    },
+    "makeaclitem(oid, oid, text, boolean)": {
+        0: _ROLE_OIDS,
+        1: _ROLE_OIDS,
+        2: ("'SELECT'", "'INSERT'", "'SELECT, UPDATE'"),
+    },
+    "regclass(text)": {0: VALUE_SAMPLES["regclass"]},
+    "regexp_count(text, text, integer, text)": {1: _PATTERNS, 2: _START, 3: _FLAGS},
+    "regexp_instr(text, text, integer, integer, integer)": {
+        1: _PATTERNS,
+        2: _START,
+        3: ("1", "1", "2"),
+        4: ("0", "1", "0"),
+    },
+    "regexp_instr(text, text, integer, integer, integer, text)": {
+        1: _PATTERNS,
+        2: _START,
+        3: ("1", "1", "2"),
+        4: ("0", "1", "0"),
+        5: _FLAGS,
+    },
+    "regexp_instr(text, text, integer, integer, integer, text, integer)": {
+        1: _PATTERNS,
+        2: _START,
+        3: ("1", "1", "2"),
+        4: ("0", "1", "0"),
+        5: _FLAGS,
+        6: ("0", "0", "0"),
+    },
+    "regexp_like(text, text, text)": {1: _PATTERNS, 2: _FLAGS},
+    "regexp_match(text, text, text)": {1: _PATTERNS, 2: _FLAGS},
+    "regexp_matches(text, text, text)": {1: _PATTERNS, 2: ("'g'", "'i'", "'gi'")},
+    "regexp_replace(text, text, text, text)": {1: _PATTERNS, 3: ("'g'", "'i'", "'gi'")},
+    "regexp_replace(text, text, text, integer, integer, text)": {
+        1: _PATTERNS,
+        3: _START,
+        4: ("1", "0", "2"),
+        5: _FLAGS,
+    },
+    "regexp_split_to_array(text, text, text)": {1: _PATTERNS, 2: _FLAGS},
+    "regexp_split_to_table(text, text, text)": {1: _PATTERNS, 2: _FLAGS},
+    "regexp_substr(text, text, integer, integer, text)": {
+        1: _PATTERNS,
+        2: _START,
+        3: ("1", "1", "2"),
+        4: _FLAGS,
+    },
+    "regexp_substr(text, text, integer, integer, text, integer)": {
+        1: _PATTERNS,
+        2: _START,
+        3: ("1", "1", "2"),
+        4: _FLAGS,
+        5: ("0", "0", "0"),
+    },
+    "row_security_active(text)": {0: VALUE_SAMPLES["regclass"]},
+    "schema_to_xml(name, boolean, boolean, text)": {0: ("'conformance'",) * 3},
+    "schema_to_xml_and_xmlschema(name, boolean, boolean, text)": {0: ("'conformance'",) * 3},
+    "schema_to_xmlschema(name, boolean, boolean, text)": {0: ("'conformance'",) * 3},
+    **{
+        f"timezone(interval, {time})": {0: ("'1 hour'", "'-05:30'", "'00:00'")}
+        for time in (
+            "timestamp without time zone",
+            "timestamp with time zone",
+            "time with time zone",
+        )
+    },
+    "to_ascii(text, integer)": {1: ("8", "9", "29")},
+    "to_ascii(text, name)": {1: ("'LATIN1'", "'LATIN2'", "'WIN1250'")},
+    "ts_headline(jsonb, tsquery, text)": {2: _HEADLINE_OPTIONS},
+    "ts_headline(json, tsquery, text)": {2: _HEADLINE_OPTIONS},
+    "ts_headline(text, tsquery, text)": {2: _HEADLINE_OPTIONS},
+    "ts_parse(text, text)": _PARSER,
+    "ts_parse(oid, text)": _PARSER_OID,
+    "ts_token_type(text)": _PARSER,
+    "ts_token_type(oid)": _PARSER_OID,
+    **{
+        f"{name}(real[], tsvector, tsquery{rest})": {0: ("'{0.1,0.2,0.4,1.0}'",) * 3}
+        for name in ("ts_rank", "ts_rank_cd")
+        for rest in ("", ", integer")
+    },
+    "xpath(text, xml, text[])": {
+        0: ("'/a'", "'/b/@x'", "'/c/d/text()'"),
+        2: ("'{}'", "'{{x,http://example.com}}'", "'{}'"),
+    },
+    "xpath_exists(text, xml, text[])": {
+        0: ("'/a'", "'/b/@x'", "'/c/d/text()'"),
+        2: ("'{}'", "'{{x,http://example.com}}'", "'{}'"),
+    },
+}
+
+#: Catalog objects every PostgreSQL 17 catalog has, by what kind each is: its name as text, then
+#: its oid. A privilege function asks of these; a description or definition function reads them.
+_TABLE_NAMES = ("'pg_catalog.pg_class'", "'pg_catalog.pg_namespace'", f"'{COLUMN_RELATION}'")
+_OBJECTS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "table": (_TABLE_NAMES, tuple(f"{t}::regclass::oid" for t in _TABLE_NAMES)),
+    "sequence": (
+        (f"'{function_probe.PROBE_SEQUENCE}'",) * 3,
+        (f"'{function_probe.PROBE_SEQUENCE}'::regclass::oid",) * 3,
+    ),
+    "database": (
+        ("current_database()",) * 3,
+        ("(SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())",) * 3,
+    ),
+    "schema": (
+        VALUE_SAMPLES["regnamespace"],
+        tuple(f"{n}::regnamespace::oid" for n in VALUE_SAMPLES["regnamespace"]),
+    ),
+    "function": (
+        ("'pg_catalog.now()'", "'pg_catalog.abs(integer)'", "'pg_catalog.lower(text)'"),
+        tuple(f"{p}::regprocedure::oid" for p in VALUE_SAMPLES["regprocedure"]),
+    ),
+    "language": (("'sql'", "'internal'", "'c'"), ("14", "12", "13")),
+    "tablespace": (("'pg_default'", "'pg_global'", "'pg_default'"), ("1663", "1664", "1663")),
+    "type": (
+        VALUE_SAMPLES["regtype"],
+        tuple(f"{t}::regtype::oid" for t in VALUE_SAMPLES["regtype"]),
+    ),
+    "parameter": (("'work_mem'", "'TimeZone'", "'search_path'"), ()),
+    "role": (VALUE_SAMPLES["regrole"], tuple(_ROLE_OIDS)),
+}
+_OBJECTS["column"] = _OBJECTS["any_column"] = _OBJECTS["table"]
+_PRIVILEGES = {
+    "table": ("'SELECT'", "'INSERT'", "'UPDATE'"),
+    "column": ("'SELECT'", "'UPDATE'", "'REFERENCES'"),
+    "any_column": ("'SELECT'", "'UPDATE'", "'REFERENCES'"),
+    "sequence": ("'USAGE'", "'SELECT'", "'UPDATE'"),
+    "database": ("'CONNECT'", "'CREATE'", "'TEMPORARY'"),
+    "schema": ("'USAGE'", "'CREATE'", "'USAGE'"),
+    "function": ("'EXECUTE'",) * 3,
+    "language": ("'USAGE'",) * 3,
+    "tablespace": ("'CREATE'",) * 3,
+    "type": ("'USAGE'",) * 3,
+    "parameter": ("'SET'", "'ALTER SYSTEM'", "'SET'"),
+    "role": ("'MEMBER'", "'USAGE'", "'MEMBER'"),
+}
+#: A column of each of ``_TABLE_NAMES``, by name and by number.
+_COLUMN_NAMES = ("'relname'", "'nspname'", "'id'")
+_COLUMN_NUMBERS = ("2", "2", "1")
+_PRIVILEGE_FUNCTION = re.compile(r"has_(\w+)_privilege|pg_has_role")
+
+
+def _object(kind: str, argtype: str) -> Raw:
+    names, oids = _OBJECTS[kind]
+    return Raw(oids) if argtype == "oid" else Raw(f"{n}::{argtype}" for n in names)
+
+
+def _privilege_given(fn: Function) -> dict[int, tuple[str, ...]]:
+    """A privilege function's arguments: a role, an object of its kind and a privilege of it."""
+    matched = _PRIVILEGE_FUNCTION.fullmatch(fn.name)
+    if matched is None:
+        return {}
+    kind = matched.group(1) or "role"
+    if kind not in _OBJECTS:
+        return {}
+    types = fn.argtypes
+    objects = 2 if kind == "column" else 1
+    given: dict[int, tuple[str, ...]] = {
+        len(types) - 1: Raw(f"{p}::text" for p in _PRIVILEGES[kind])
+    }
+    first = len(types) - 1 - objects
+    if first == 1:
+        given[0] = _object("role", types[0])
+    given[first] = _object(kind, types[first])
+    if kind == "column":
+        column = types[first + 1]
+        names = _COLUMN_NUMBERS if column == "smallint" else _COLUMN_NAMES
+        given[first + 1] = Raw(f"{n}::{column}" for n in names)
+    return given
+
+
+#: Catalog and session functions, by ``_key``: an object their PostgreSQL 17 catalog has, or the
+#: settings both servers have under ``SETTINGS``.
+_CATALOG_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
+    "current_setting(text)": {0: ("'TimeZone'", "'DateStyle'", "'IntervalStyle'")},
+    "current_setting(text, boolean)": {0: ("'TimeZone'", "'DateStyle'", "'no_such.setting'")},
+    "obj_description(oid)": {0: Raw(_OBJECTS["function"][1])},
+    "obj_description(oid, name)": {
+        0: Raw((*_OBJECTS["function"][1][:2], "'integer'::regtype::oid")),
+        1: ("'pg_proc'", "'pg_proc'", "'pg_type'"),
+    },
+    "col_description(oid, integer)": {0: Raw(_OBJECTS["table"][1]), 1: _COLUMN_NUMBERS},
+    "shobj_description(oid, name)": {0: ("1663", "1664", "1663"), 1: ("'pg_tablespace'",) * 3},
+    "format_type(oid, integer)": {
+        0: Raw(f"{t}::regtype::oid" for t in ("'integer'", "'numeric'", "'character varying'")),
+        1: ("(-1)", "655366", "14"),
+    },
+    "pg_get_userbyid(oid)": {0: _ROLE_OIDS},
+    **{
+        f"pg_get_function_{part}(oid)": {0: Raw(_OBJECTS["function"][1])}
+        for part in ("arguments", "identity_arguments", "result", "sqlbody")
+    },
+    "pg_get_functiondef(oid)": {0: Raw(_OBJECTS["function"][1])},
+    "pg_get_function_arg_default(oid, integer)": {
+        0: Raw(
+            (
+                "'pg_catalog.make_interval(integer, integer, integer, integer, integer, integer, double precision)'::regprocedure::oid",
+            )
+            * 3
+        ),
+        1: ("1", "7", "8"),
+    },
+    "pg_get_viewdef(oid)": {0: Raw(("'pg_catalog.pg_tables'::regclass::oid",) * 3)},
+    "pg_get_viewdef(oid, boolean)": {0: Raw(("'pg_catalog.pg_tables'::regclass::oid",) * 3)},
+    "pg_get_viewdef(oid, integer)": {
+        0: Raw(("'pg_catalog.pg_tables'::regclass::oid",) * 3),
+        1: ("0", "40", "80"),
+    },
+    "pg_get_viewdef(text)": {0: ("'pg_catalog.pg_tables'", "'pg_catalog.pg_views'", "'pg_tables'")},
+    "pg_get_viewdef(text, boolean)": {
+        0: ("'pg_catalog.pg_tables'", "'pg_catalog.pg_views'", "'pg_tables'")
+    },
+    "pg_get_indexdef(oid)": {
+        0: Raw(
+            f"'pg_catalog.{i}'::regclass::oid"
+            for i in ("pg_class_oid_index", "pg_type_oid_index", "pg_namespace_nspname_index")
+        )
+    },
+    "pg_get_indexdef(oid, integer, boolean)": {
+        0: Raw(
+            f"'pg_catalog.{i}'::regclass::oid"
+            for i in ("pg_class_oid_index", "pg_type_oid_index", "pg_namespace_nspname_index")
+        ),
+        1: ("0", "1", "1"),
+    },
+    **{
+        f"pg_get_constraintdef(oid{rest})": {
+            0: Raw(
+                f"(SELECT oid FROM pg_catalog.pg_constraint WHERE conname = '{c}')"
+                for c in ("pg_class_oid_index", "pg_type_oid_index", "pg_namespace_nspname_index")
+            )
+        }
+        for rest in ("", ", boolean")
+    },
+    "pg_get_serial_sequence(text, text)": {0: _TABLE_NAMES, 1: _COLUMN_NAMES},
+    "pg_table_is_visible(oid)": {0: Raw(_OBJECTS["table"][1])},
+    "pg_type_is_visible(oid)": {0: Raw(_OBJECTS["type"][1])},
+    "pg_function_is_visible(oid)": {0: Raw(_OBJECTS["function"][1])},
+    "pg_describe_object(oid, oid, integer)": {
+        0: Raw(
+            (
+                "'pg_catalog.pg_class'::regclass::oid",
+                "'pg_catalog.pg_proc'::regclass::oid",
+                "'pg_catalog.pg_type'::regclass::oid",
+            )
+        ),
+        1: Raw((_OBJECTS["table"][1][0], _OBJECTS["function"][1][0], _OBJECTS["type"][1][0])),
+        2: ("0", "0", "0"),
+    },
+    "pg_identify_object(oid, oid, integer)": {
+        0: Raw(
+            (
+                "'pg_catalog.pg_class'::regclass::oid",
+                "'pg_catalog.pg_proc'::regclass::oid",
+                "'pg_catalog.pg_type'::regclass::oid",
+            )
+        ),
+        1: Raw((_OBJECTS["table"][1][0], _OBJECTS["function"][1][0], _OBJECTS["type"][1][0])),
+        2: ("0", "0", "0"),
+    },
+    "pg_identify_object_as_address(oid, oid, integer)": {
+        0: Raw(
+            (
+                "'pg_catalog.pg_class'::regclass::oid",
+                "'pg_catalog.pg_proc'::regclass::oid",
+                "'pg_catalog.pg_type'::regclass::oid",
+            )
+        ),
+        1: Raw((_OBJECTS["table"][1][0], _OBJECTS["function"][1][0], _OBJECTS["type"][1][0])),
+        2: ("0", "0", "0"),
+    },
+    "pg_get_object_address(text, text[], text[])": {
+        0: ("'table'", "'function'", "'type'"),
+        1: ("'{pg_catalog,pg_class}'", "'{pg_catalog,now}'", "'{integer}'"),
+        2: ("'{}'", "'{}'", "'{}'"),
+    },
+    "pg_index_has_property(regclass, text)": {
+        0: ("'pg_catalog.pg_class_oid_index'",) * 3,
+        1: ("'clusterable'", "'index_scan'", "'bitmap_scan'"),
+    },
+    "pg_index_column_has_property(regclass, integer, text)": {
+        0: ("'pg_catalog.pg_class_oid_index'",) * 3,
+        1: ("1", "1", "1"),
+        2: ("'asc'", "'orderable'", "'returnable'"),
+    },
+    "pg_indexam_has_property(oid, text)": {
+        0: ("403", "405", "403"),
+        1: ("'can_order'", "'can_unique'", "'can_multi_col'"),
+    },
+    "pg_input_is_valid(text, text)": {
+        0: ("'42'", "'abc'", "'2024-02-30'"),
+        1: ("'integer'", "'integer'", "'date'"),
+    },
+    "pg_input_error_info(text, text)": {
+        0: ("'42'", "'abc'", "'2024-02-30'"),
+        1: ("'integer'", "'integer'", "'date'"),
+    },
+    "pg_settings_get_flags(text)": {0: ("'work_mem'", "'TimeZone'", "'no_such_setting'")},
+    "pg_char_to_encoding(name)": {0: ("'UTF8'", "'LATIN1'", "'SQL_ASCII'")},
+    "pg_encoding_to_char(integer)": {0: ("6", "8", "0")},
+    "pg_basetype(regtype)": {0: VALUE_SAMPLES["regtype"]},
+    "pg_options_to_table(text[])": {0: ("'{a=1,b=2}'", "'{}'", "'{fillfactor=70}'")},
+    **{
+        f"to_reg{kind}(text)": {0: (*names[:2], "'no_such_object'")}
+        for kind, names in (
+            ("class", VALUE_SAMPLES["regclass"]),
+            ("collation", VALUE_SAMPLES["regcollation"]),
+            ("namespace", VALUE_SAMPLES["regnamespace"]),
+            ("oper", VALUE_SAMPLES["regoper"]),
+            ("operator", VALUE_SAMPLES["regoperator"]),
+            ("proc", VALUE_SAMPLES["regproc"]),
+            ("procedure", VALUE_SAMPLES["regprocedure"]),
+            ("role", VALUE_SAMPLES["regrole"]),
+            ("type", VALUE_SAMPLES["regtype"]),
+            ("typemod", ("'integer'", "'numeric(10,2)'", "'varchar(12)'")),
+        )
+    },
+    "fmgr_internal_validator(oid)": {0: Raw(("'pg_catalog.now()'::regprocedure::oid",) * 3)},
+    "fmgr_sql_validator(oid)": {
+        0: Raw(("'pg_catalog.ts_debug(regconfig, text)'::regprocedure::oid",) * 3)
+    },
+    "fmgr_c_validator(oid)": {
+        0: Raw(("'pg_catalog.plpgsql_call_handler()'::regprocedure::oid",) * 3)
+    },
+    'pg_collation_for("any")': {0: Raw(("'abc'::text", "'abc'::text COLLATE \"C\"", "'x'::name"))},
+}
+
+#: Values of the volatile functions ``PROPERTIES`` checks, by ``_key``.
+_PROPERTY_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
+    "array_sample(anyarray, integer)": {1: ("2", "0", "3")},
+    "random(integer, integer)": {0: ("1", "(-5)", "7"), 1: ("10", "5", "7")},
+    "random(bigint, bigint)": {0: ("1", "(-5000000000)", "7"), 1: ("10", "5", "7")},
+    "random(numeric, numeric)": {0: ("1.5", "(-2.25)", "7"), 1: ("2.25", "5.125", "7.0")},
+    "random_normal(double precision, double precision)": {
+        0: ("5", "(-2.5)", "0"),
+        1: ("0", "0", "0"),
+    },
+}
+
 #: Where a function needs literals its argument's type cannot give, by name and argument position;
 #: ``name(type)`` for the overloads whose first argument is that type. Raw literals, cast as
 #: ``SAMPLES`` is.
-ARG_VALUES: dict[str, dict[int, tuple[str, str, str]]] = {
+ARG_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
     "date_trunc": {0: _UNITS},
     "date_part": {0: _FIELDS},
     "extract": {0: _FIELDS},
@@ -440,24 +1116,32 @@ ARG_VALUES: dict[str, dict[int, tuple[str, str, str]]] = {
     "numrange": {2: _BOUNDS},
     "tsrange": {2: _BOUNDS},
     "tstzrange": {2: _BOUNDS},
+    **_REFUSED_VALUES,
+    **_CATALOG_VALUES,
+    **_PROPERTY_VALUES,
 }
 
 
 @dataclass(frozen=True)
 class Call:
     """One statement of an overload. ``answers``: a real answer, compared by value; ``values``:
-    whether the rows compare at all (the NULL call of a stable or volatile function: no);
-    ``zone``: the session's TimeZone for this call, if not ``SETTINGS``' UTC."""
+    whether the rows compare at all (the NULL call of a volatile function, or of one whose answer
+    is its server's own: no); ``zone``: the session's TimeZone for this call, if not ``SETTINGS``'
+    UTC; ``prop``: the key of the ``PROPERTIES`` check its answer is held to, with ``args``, the
+    literals it was called with."""
 
     sql: str
     answers: bool = False
     values: bool = True
     zone: str | None = None
+    prop: str | None = None
+    args: tuple[str, ...] = ()
 
     @property
     def form(self) -> bool:
-        """Whether the answer's form is checked: its value cannot be, and no NULL made it."""
-        return not self.values and "NULL::" not in self.sql
+        """Whether the answer's form is checked: its value cannot be, no NULL made it, and no
+        property it is held to says more."""
+        return not self.values and self.prop is None and "NULL::" not in self.sql
 
 
 def _cast(literal: str, argtype: str) -> str:
@@ -465,20 +1149,29 @@ def _cast(literal: str, argtype: str) -> str:
     return f"{literal}::{concrete}"
 
 
-def _given(fn: Function) -> dict[int, tuple[str, str, str]]:
-    """The arguments of ``fn`` that take literals of their own, by position (``ARG_VALUES``)."""
-    return ARG_VALUES.get(f"{fn.name}({fn.argtypes[0]})") or ARG_VALUES.get(fn.name) or {}
+def _given(fn: Function) -> dict[int, tuple[str, ...]]:
+    """The arguments of ``fn`` that take literals of their own, by position: ``ARG_VALUES`` by
+    ``_key``, then by name and first argument type, then by name; an input function's, then a
+    privilege function's."""
+    return (
+        ARG_VALUES.get(_key(fn))
+        or ARG_VALUES.get(f"{fn.name}({fn.argtypes[0]})")
+        or ARG_VALUES.get(fn.name)
+        or _input_given(fn)
+        or _privilege_given(fn)
+    )
 
 
 def _sample(fn: Function, position: int, row: int) -> str | None:
     """Row ``row``'s literal of ``fn``'s argument ``position``, cast; None if it has none."""
     argtype = fn.argtypes[position]
     given = _given(fn).get(position)
+    if isinstance(given, Raw):
+        return given[row]
     if given is None:
-        samples = SAMPLES.get(function_probe.CONCRETE.get(argtype, argtype))
-        if samples is None:
+        given = _samples_of(function_probe.CONCRETE.get(argtype, argtype))
+        if given is None:
             return None
-        given = samples
     return _cast(given[row], argtype)
 
 
@@ -490,10 +1183,9 @@ def unchecked(fn: Function, family: str) -> str | None:
         return "its one statement takes no value"
     if fn.volatility == "v":
         return "volatile"
-    if fn.name in CLOCK_FUNCTIONS:
-        return "answers from the clock"
-    if fn.volatility == "s" and family not in STABLE_FAMILIES:
-        return f"stable, of family {family}"
+    own = own_answer(fn)
+    if own is not None:
+        return own
     missing = sorted(
         {
             function_probe.CONCRETE.get(t, t)
@@ -501,6 +1193,9 @@ def unchecked(fn: Function, family: str) -> str | None:
             if _sample(fn, i, 0) is None
         }
     )
+    unliteral = [t for t in missing if t in NO_LITERAL]
+    if unliteral:
+        return f"PostgreSQL takes no literal of {', '.join(unliteral)}"
     return f"no sample of {', '.join(missing)}" if missing else None
 
 
@@ -584,7 +1279,9 @@ def _column_reads(fn: Function, rows: Iterable[int]) -> tuple[dict[int, str], st
     reads = {
         i: sample_column(function_probe.CONCRETE.get(argtype, argtype))
         for i, argtype in enumerate(fn.argtypes)
-        if i >= first and i not in given
+        if i >= first
+        and i not in given
+        and function_probe.CONCRETE.get(argtype, argtype) in SAMPLES
     }
     if reads:
         return reads, COLUMN_RELATION
@@ -635,14 +1332,32 @@ def column_calls(fn: Function, family: str) -> list[Call]:
     return out
 
 
+def property_calls(fn: Function) -> list[Call]:
+    """The calls of a volatile function of ``PROPERTIES`` with real values, each held to its
+    property: one per row of literals."""
+    prop = _key(fn)
+    if prop not in PROPERTIES:
+        return []
+    out = []
+    for row in _rows(fn):
+        sql = function_probe.statement(fn, row)
+        out.append(Call(sql, values=False, prop=prop, args=tuple(row)))
+    return out
+
+
 def calls(fn: Function, family: str) -> list[Call]:
-    """Every call of ``fn``: its NULL call, then its value calls."""
-    valued = value_calls(fn, family)
+    """Every call of ``fn``: its NULL call, then its value calls or its property calls. The NULL
+    call compares its rows unless the function is volatile or its answer its server's own; a
+    clock function's is held to the statement's bounds (``CLOCK``)."""
+    valued = value_calls(fn, family) or property_calls(fn)
     null = function_probe.call(fn)
     if null is None or any(c.sql == null for c in valued):
         return valued
     zoned = [Call(null, values=False, zone=ZONE)] if fn.name in ZONED_FUNCTIONS else []
-    return [Call(null, values=fn.volatility == "i"), *zoned, *valued]
+    if fn.name in CLOCK_FUNCTIONS and not fn.argtypes:
+        return [Call(null, values=False, prop=CLOCK)]
+    compared = fn.volatility != "v" and own_answer(fn) is None
+    return [Call(null, values=compared), *zoned, *valued]
 
 
 # --- one call on one server -------------------------------------------------------------------
@@ -1044,6 +1759,128 @@ def form_check(name: str, want: dict[str, Any], got: dict[str, Any]) -> tuple[bo
     return True, None
 
 
+# --- the properties of a value that cannot be compared ---------------------------------------
+
+
+def _literal(arg: str) -> str:
+    """The value a cast literal of ``value_calls`` writes: ``'{1,2}'::integer[]`` is ``{1,2}``."""
+    text = arg.rsplit("::", 1)[0].strip()
+    if text.startswith("'") and text.endswith("'"):
+        return text[1:-1].replace("''", "'")
+    return text.strip("()")
+
+
+def _elements(array: str) -> list[str] | None:
+    """A one-dimensional array's elements as text; None if ``array`` is none."""
+    if not (array.startswith("{") and array.endswith("}")):
+        return None
+    body = array[1:-1]
+    return body.split(",") if body else []
+
+
+def _single(got: dict[str, Any]) -> str | None:
+    rows = got["rows"]
+    return rows[0][0] if len(rows) == 1 else None
+
+
+def _permutation(args: tuple[str, ...], _want: dict[str, Any], got: dict[str, Any]) -> str | None:
+    """array_shuffle: the input's elements, each as often, in any order."""
+    given, value = _elements(_literal(args[0])), _single(got)
+    answered = None if value is None else _elements(value)
+    if given is None or answered is None or sorted(given) != sorted(answered):
+        return f"{value!r} is no permutation of {_literal(args[0])!r}"
+    return None
+
+
+def _sub_multiset(args: tuple[str, ...], _want: dict[str, Any], got: dict[str, Any]) -> str | None:
+    """array_sample: as many of the input's elements as asked, none more often than it holds."""
+    given, value = _elements(_literal(args[0])), _single(got)
+    answered = None if value is None else _elements(value)
+    size = int(_literal(args[1]))
+    if (
+        given is None
+        or answered is None
+        or len(answered) != size
+        or Counter(answered) - Counter(given)
+    ):
+        return f"{value!r} is no sample of {size} of {_literal(args[0])!r}"
+    return None
+
+
+def _scale(number: str) -> int:
+    return len(number.split(".", 1)[1]) if "." in number else 0
+
+
+def _within(args: tuple[str, ...], _want: dict[str, Any], got: dict[str, Any]) -> str | None:
+    """random(min, max): in [min, max]; a numeric one has the larger scale of the two."""
+    low, high, value = _literal(args[0]), _literal(args[1]), _single(got)
+    try:
+        inside = value is not None and decimal.Decimal(low) <= decimal.Decimal(
+            value
+        ) <= decimal.Decimal(high)
+    except decimal.InvalidOperation:
+        inside = False
+    if not inside:
+        return f"{value!r} is not in [{low}, {high}]"
+    scale = max(_scale(low), _scale(high))
+    if args[0].endswith("::numeric") and value is not None and _scale(value) != scale:
+        return f"{value!r} does not have the scale {scale} of its bounds"
+    return None
+
+
+def _mean_at_no_spread(
+    args: tuple[str, ...], _want: dict[str, Any], got: dict[str, Any]
+) -> str | None:
+    """random_normal(mean, 0): the mean itself, within ``FLOAT_TOLERANCE``."""
+    mean, value = _literal(args[0]), _single(got)
+    if value is None or not (
+        value == mean or _floats_equal(mean, value) or float(mean) == float(value)
+    ):
+        return f"{value!r} is not the mean {mean} of a distribution with no spread"
+    return None
+
+
+#: A volatile function's documented property, by ``_key``: each takes the call's literals,
+#: PostgreSQL's answer and Provisa's, and says how Provisa's breaks it, None if it holds.
+PROPERTIES: dict[str, Callable[[tuple[str, ...], dict[str, Any], dict[str, Any]], str | None]] = {
+    "array_shuffle(anyarray)": _permutation,
+    "array_sample(anyarray, integer)": _sub_multiset,
+    "random(integer, integer)": _within,
+    "random(bigint, bigint)": _within,
+    "random(numeric, numeric)": _within,
+    "random_normal(double precision, double precision)": _mean_at_no_spread,
+}
+
+#: The property of a clock function's answer: within the statement's bounds on PostgreSQL's clock.
+CLOCK = "clock"
+CLOCK_SQL = "SELECT pg_catalog.clock_timestamp()::text AS v"
+#: The clock of the runner the two servers share is one, but each reads it at its own instant: an
+#: answer may be this far outside the bounds PostgreSQL reads before and after it.
+CLOCK_SLACK = datetime.timedelta(seconds=1)
+
+
+def _instant(text: str | None) -> datetime.datetime | None:
+    try:
+        return None if text is None else datetime.datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def clock_check(before: dict[str, Any], got: dict[str, Any], after: dict[str, Any]) -> str | None:
+    """How Provisa's answer of a clock function falls outside the bounds PostgreSQL's clock read
+    before and after the call; None if it is within them."""
+    low, high = (_instant(_single(b)) if b["ok"] else None for b in (before, after))
+    if low is None or high is None:
+        return f"PostgreSQL's clock gave no bounds: {before}, {after}"
+    value = _single(got)
+    instant = _instant(value)
+    if value is None or instant is None or re.fullmatch(TYPE_FORMS[1184], value) is None:
+        return f"{value!r} is no timestamp with time zone in PostgreSQL's text form"
+    if not low - CLOCK_SLACK <= instant <= high + CLOCK_SLACK:
+        return f"{value!r} is not between {_single(before)!r} and {_single(after)!r}"
+    return None
+
+
 # --- one overload on one engine ---------------------------------------------------------------
 
 
@@ -1080,6 +1917,10 @@ def measure_column(
     return None
 
 
+def _all_null(want: dict[str, Any]) -> bool:
+    return bool(want["rows"]) and all(v is None for row in want["rows"] for v in row)
+
+
 def measure_overload(
     fn: Function,
     family: str,
@@ -1097,7 +1938,7 @@ def measure_overload(
         "kind": fn.kind,
         "volatility": fn.volatility,
     }
-    accepted = answered = formed = 0
+    accepted = answered = checked = 0
     wrong: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
     named: list[dict[str, str]] = []
@@ -1113,7 +1954,9 @@ def measure_overload(
         accepted += 1
         answered += call_.answers
         routes.add("catalog" if classify(call_.sql) == "INTERCEPT" else "engine")
+        before = pg.answer(CLOCK_SQL) if call_.prop == CLOCK else None
         got = _answer(provisa, call_)
+        after = pg.answer(CLOCK_SQL) if call_.prop == CLOCK else None
         if not got["ok"]:
             said = {"statement": call_.sql, "error": got["error"]}
             (named if function_probe.refused_by_name(got["error"]) else errors).append(said)
@@ -1124,15 +1967,24 @@ def measure_overload(
         )
         differs = compared.difference
         rules |= compared.rules
+        if differs is None and not call_.values and _all_null(want):
+            # PostgreSQL's NULL holds Provisa to NULL: a wrong answer if not, never a pass.
+            differs = compare(want, got, values=True, sql=call_.sql).difference
         if differs is None and call_.form:
-            checked, differs = form_check(fn.name, want, got)
-            formed += checked
+            formed, differs = form_check(fn.name, want, got)
+            checked += formed
+        if differs is None and call_.prop is not None:
+            checked += 1
+            if call_.prop == CLOCK:
+                differs = clock_check(before or {}, got, after or {})
+            else:
+                differs = PROPERTIES[call_.prop](call_.args, want, got)
         if differs is not None:
             wrong.append({"statement": call_.sql, "difference": differs})
     entry["calls"] = accepted
     entry["answers_compared"] = answered
     entry["answers_checked"] = answered > 0
-    entry["form_checked"] = formed > 0 and not answered
+    entry["property_checked"] = checked > 0 and not answered
     entry["served_by"] = "+".join(sorted(routes)) or None
     if not answered:
         why = unchecked(fn, family)
@@ -1156,8 +2008,11 @@ def measure_overload(
         entry["outcome"] = "refused"
         entry["detail"] = named[0]
         entry["refused_calls"] = len(named)
-    else:
+    elif answered or checked:
         entry["outcome"] = "pass"
+        entry["rules"] = sorted(rules)
+    else:
+        entry["outcome"] = "not_checked"
         entry["rules"] = sorted(rules)
     column = measure_column(fn, family, pg, provisa, enums)
     if column is not None:
@@ -1272,21 +2127,26 @@ def measure(
 
 # --- counts and the merged data file ----------------------------------------------------------
 
-OUTCOMES = ("pass", "wrong_answer", "error", "refused", "not_callable", "not_reached")
+OUTCOMES = (
+    "pass",
+    "not_checked",
+    "wrong_answer",
+    "error",
+    "refused",
+    "not_callable",
+    "not_reached",
+)
 
 
 def counts(overloads: list[dict[str, Any]]) -> dict[str, int]:
-    """The outcomes, with a pass split by what was checked: an answer, a form, or neither."""
+    """The outcomes, with a pass split by what was checked: an answer or a property."""
     tally = Counter(o["outcome"] for o in overloads)
     out = {name: tally.get(name, 0) for name in OUTCOMES}
     out["total"] = len(overloads)
     out["pass_answers_checked"] = sum(
         1 for o in overloads if o["outcome"] == "pass" and o.get("answers_checked")
     )
-    out["pass_form_checked"] = sum(
-        1 for o in overloads if o["outcome"] == "pass" and o.get("form_checked")
-    )
-    out["pass_only_called"] = out["pass"] - out["pass_answers_checked"] - out["pass_form_checked"]
+    out["pass_property_checked"] = out["pass"] - out["pass_answers_checked"]
     # Passed without reaching the engine: the catalog DB answers it on every engine alike.
     out["pass_catalog_answered"] = sum(
         1 for o in overloads if o["outcome"] == "pass" and o.get("served_by") == "catalog"
@@ -1294,19 +2154,37 @@ def counts(overloads: list[dict[str, Any]]) -> dict[str, int]:
     return out
 
 
+def not_checked_reasons(overloads: Iterable[dict[str, Any]]) -> dict[str, int]:
+    """Why the overloads not checked were not, most first."""
+    tally = Counter(o.get("unchecked", "") for o in overloads if o["outcome"] == "not_checked")
+    return dict(sorted(tally.items(), key=lambda item: (-item[1], item[0])))
+
+
 def _row(label: str, c: dict[str, int]) -> str:
     return (
-        f"| {label} | {c['total']} | {c['pass_answers_checked']} | {c['pass_form_checked']} "
-        f"| {c['pass_only_called']} | {c['refused']} "
+        f"| {label} | {c['total']} | {c['pass_answers_checked']} | {c['pass_property_checked']} "
+        f"| {c['not_checked']} | {c['refused']} "
         f"| {c['wrong_answer']} | {c['error']} | {c['not_callable']} | {c['not_reached']} |"
     )
 
 
 _HEADER = (
-    "| | overloads | pass, answers checked | pass, form checked | pass, only called "
+    "| | overloads | pass, answers checked | pass, property checked | not checked "
     "| refused by name | wrong answer | engine error | not callable | not reached |",
     "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
 )
+
+
+def _reason_lines(reasons: dict[str, int]) -> list[str]:
+    """The not-checked reasons as a table: none of these is a pass."""
+    if not reasons:
+        return ["Not checked: none.", ""]
+    return [
+        "| not checked because | overloads |",
+        "|---|---:|",
+        *(f"| {why.replace('|', chr(92) + '|')} | {n} |" for why, n in reasons.items()),
+        "",
+    ]
 
 
 def _families(overloads: list[dict[str, Any]]) -> Iterator[tuple[str, list[dict[str, Any]]]]:
@@ -1325,6 +2203,7 @@ def engine_markdown(report: dict[str, Any]) -> str:
         _row(report["engine"], report["counts"]),
         *(_row(family, counts(group)) for family, group in _families(report["overloads"])),
         "",
+        *_reason_lines(not_checked_reasons(report["overloads"])),
     ]
     columns = function_report.column_results(
         [{**o, "outcomes": {report["engine"]: o}} for o in report["overloads"]], report["engine"]
@@ -1357,8 +2236,9 @@ def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
     if entry.get("rules"):
         kept["rules"] = entry["rules"]
     if entry["outcome"] == "pass":
-        answers = entry.get("answers_checked")
-        kept["check"] = "answers" if answers else "form" if entry.get("form_checked") else "call"
+        kept["check"] = "answers" if entry.get("answers_checked") else "property"
+    if entry["outcome"] == "not_checked":
+        kept["unchecked"] = entry.get("unchecked", "")
     return kept
 
 
@@ -1366,10 +2246,11 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
     """The legs as one document. ``reports`` holds every engine the workflow runs, None for a leg
     that left no result: it counts as not reached, so nothing is guaranteed by its absence.
 
-    An overload passing on every engine is listed by what every engine checked of it (``proof``):
-    ``answers_checked``, ``form_checked`` where a form stood in on any of them, and ``only_called``
-    if any engine checked neither. The guaranteed list is the first two (REQ-2167, WHAT GUARANTEED
-    MEANS). A function is guaranteed when each of its overloads PostgreSQL can call is."""
+    An overload passing on every engine is on the guaranteed list, by what every engine checked of
+    it (``proof``): ``answers_checked``, or ``property_checked`` where a property stood in on any of
+    them (REQ-2167, WHAT GUARANTEED MEANS). One not checked on any engine is not on it: a pass is
+    never a call alone. A function is guaranteed when each of its overloads PostgreSQL can call
+    is."""
     by_engine = {
         engine: {
             (o["function"], o["overload"]): o for o in (report or {"overloads": []})["overloads"]
@@ -1393,8 +2274,8 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
                 "answers_checked": any(
                     e is not None and e.get("answers_checked") for e in entries.values()
                 ),
-                "form_checked": any(
-                    e is not None and e.get("form_checked") for e in entries.values()
+                "property_checked": any(
+                    e is not None and e.get("property_checked") for e in entries.values()
                 ),
                 "proof": _proof(entries),
                 "unchecked": next(
@@ -1406,7 +2287,7 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
     guaranteed: list[dict[str, Any]] = [
         f for f in functions if all(o["outcome"] == "pass" for o in f["outcomes"].values())
     ]
-    held = {(f["function"], f["overload"]) for f in guaranteed if f["proof"] != "only_called"}
+    held = {(f["function"], f["overload"]) for f in guaranteed}
     callable_by_name: dict[str, list[dict[str, Any]]] = {}
     for f in functions:
         if not all(o["outcome"] == "not_callable" for o in f["outcomes"].values()):
@@ -1442,12 +2323,16 @@ def merged(reports: dict[str, dict[str, Any] | None]) -> dict[str, Any]:
         "no_engine": function_report.no_engine(functions),
         "rules": function_report.rule_coverage(functions, engines),
         "counts": per_engine,
+        "not_checked_reasons": {
+            engine: not_checked_reasons((report or {"overloads": []})["overloads"])
+            for engine, report in sorted(reports.items())
+        },
         "guaranteed": {
             **{
                 proof: sorted(
                     f"{f['function']}({f['overload']})" for f in guaranteed if f["proof"] == proof
                 )
-                for proof in ("answers_checked", "form_checked", "only_called")
+                for proof in ("answers_checked", "property_checked")
             },
             "functions": sorted(
                 name
@@ -1464,9 +2349,7 @@ def _proof(entries: dict[str, dict[str, Any] | None]) -> str:
     present = [e or {} for e in entries.values()]
     if all(e.get("answers_checked") for e in present):
         return "answers_checked"
-    if all(e.get("answers_checked") or e.get("form_checked") for e in present):
-        return "form_checked"
-    return "only_called"
+    return "property_checked"
 
 
 def _absent() -> dict[str, Any]:
@@ -1488,18 +2371,23 @@ def merged_markdown(doc: dict[str, Any]) -> str:
         *(_row(engine, doc["counts"][engine]) for engine in engines),
         "",
         f"**Guaranteed list:** {len(guaranteed['answers_checked'])} overloads with answers "
-        f"compared and {len(guaranteed['form_checked'])} form checked, passing on all "
-        f"{len(engines)} engines; {len(guaranteed['only_called'])} more only called, which are "
-        f"not on it. {len(guaranteed['functions'])} functions have every callable overload on "
-        "the list.",
+        f"compared and {len(guaranteed['property_checked'])} property checked, passing on all "
+        f"{len(engines)} engines. {len(guaranteed['functions'])} functions have every callable "
+        "overload on the list.",
         "",
-        "Comparison: " + doc["comparison"] + ". A pass, exact or equivalent, counts as answers "
-        "checked when a call with "
-        "real values was compared, as form checked when a value that cannot be compared has the "
-        "type and the form of PostgreSQL's, and as only called otherwise: such a pass proves the "
-        "call is served and its type, not its answer.",
+        "Comparison: " + doc["comparison"] + ". A pass, exact or equivalent, is answers checked "
+        "when a call with real values was compared, and property checked when a value that cannot "
+        "be compared has the type and the form of PostgreSQL's, or a property PostgreSQL "
+        "documents. Any other overload PostgreSQL answers is not checked, and no pass: a call "
+        "that ran proves nothing.",
         "",
     ]
+    for engine in engines:
+        lines += [
+            f"#### Not checked on {engine}",
+            "",
+            *_reason_lines(doc["not_checked_reasons"][engine]),
+        ]
     answered = {engine: doc["counts"][engine]["pass_catalog_answered"] for engine in engines}
     lines += [
         "Passes the catalog DB answers, without reaching the engine: "
@@ -1510,7 +2398,8 @@ def merged_markdown(doc: dict[str, Any]) -> str:
     if doc["engines_incomplete"]:
         lines += [f"**Incomplete legs:** {', '.join(doc['engines_incomplete'])}.", ""]
     lines += [
-        "### Per family: pass (answers checked + form checked + only called) of callable overloads",
+        "### Per family: pass (answers checked + property checked), then not checked, of callable "
+        "overloads",
         "",
         "| family | overloads | " + " | ".join(engines) + " | on all |",
         "|---|---:|" + "---:|" * (len(engines) + 1),
@@ -1519,10 +2408,7 @@ def merged_markdown(doc: dict[str, Any]) -> str:
     for f in doc["functions"]:
         by_family.setdefault(f["family"], []).append(f)
     for family, members in sorted(by_family.items()):
-        cells = [
-            _family_cell([f["outcomes"][engine]["outcome"] for f in members], members)
-            for engine in engines
-        ]
+        cells = [_family_cell([f["outcomes"][engine] for f in members]) for engine in engines]
         on_all = sum(
             1 for f in members if all(o["outcome"] == "pass" for o in f["outcomes"].values())
         )
@@ -1531,12 +2417,13 @@ def merged_markdown(doc: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _family_cell(outcomes: list[str], members: list[dict[str, Any]]) -> str:
-    passes = [f for o, f in zip(outcomes, members, strict=True) if o == "pass"]
-    checked = sum(1 for f in passes if f["answers_checked"])
-    formed = sum(1 for f in passes if f["form_checked"])
-    callable_ = sum(1 for o in outcomes if o != "not_callable")
-    return f"{checked} + {formed} + {len(passes) - checked - formed} of {callable_}"
+def _family_cell(outcomes: list[dict[str, Any]]) -> str:
+    """One engine's family: answers checked + property checked, then not checked, of callable."""
+    passes = [o for o in outcomes if o["outcome"] == "pass"]
+    checked = sum(1 for o in passes if o.get("check") == "answers")
+    unchecked_ = sum(1 for o in outcomes if o["outcome"] == "not_checked")
+    callable_ = sum(1 for o in outcomes if o["outcome"] != "not_callable")
+    return f"{checked} + {len(passes) - checked}, {unchecked_} not checked, of {callable_}"
 
 
 def merge(engines: list[str], indir: Path, out: Path, out_md: Path) -> int:

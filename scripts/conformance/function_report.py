@@ -16,10 +16,13 @@ fill_docs.py puts on docs/conformance/pgwire.md and overview.md and that the run
 
 Every overload has one result on each engine:
 
-  exact       every call PostgreSQL answered, the engine answered the same
-  equivalent  the same but for what ``RULES`` allows, each rule a footnote linked from its cells
-  refused     Provisa refused a call, naming what it refuses (refused_by_name)
-  differs     a wrong answer, or an engine error that is neither an answer nor a named refusal
+  exact        every call PostgreSQL answered, the engine answered the same, and an answer was
+               compared or a property checked
+  equivalent   the same but for what ``RULES`` allows, each rule a footnote linked from its cells
+  not checked  the engine answered every call with PostgreSQL's result type, and no answer was
+               compared nor property checked: no pass, a call that ran proves nothing
+  refused      Provisa refused a call, naming what it refuses (refused_by_name)
+  differs      a wrong answer, or an engine error that is neither an answer nor a named refusal
 
 ``not_callable`` (PostgreSQL itself answers no call) and ``not_reached`` (the leg did not get there)
 are no result: nothing was compared. ``RESULT_KEYS`` are the keys of each engine's counts in the
@@ -45,6 +48,7 @@ EXACT = "exact"
 EQUIVALENT = "equivalent"
 REFUSED = "refused"
 DIFFERS = "differs"
+NOT_CHECKED = "not_checked"
 NOT_CALLABLE = "not_callable"
 NOT_REACHED = "not_reached"
 
@@ -53,6 +57,7 @@ NOT_REACHED = "not_reached"
 RESULT_KEYS = (
     "exact",
     "equivalent",
+    "not_checked",
     "refused_by_name",
     "differs",
     "differs_wrong_answer",
@@ -152,6 +157,8 @@ def result_of(outcome: str, rules: Iterable[str] = ()) -> str:
     """The result of one engine's ``outcome`` (function_support.OUTCOMES)."""
     if outcome == "pass":
         return EQUIVALENT if tuple(rules) else EXACT
+    if outcome == NOT_CHECKED:
+        return NOT_CHECKED
     if outcome == "refused":
         return REFUSED
     if outcome in ("wrong_answer", "error"):
@@ -272,13 +279,15 @@ def _footnote(key: str) -> str:
 
 
 def cell(outcome: dict[str, Any]) -> str:
-    """One overload on one engine. An exact pass says when its value could not be compared."""
+    """One overload on one engine. A pass says when its value could not be compared."""
     result = result_of(outcome["outcome"], outcome.get("rules", ()))
+    check = "" if outcome.get("check", "answers") == "answers" else " (property only)"
     if result == EQUIVALENT:
-        return f"{EQUIVALENT} " + " ".join(_footnote(key) for key in outcome["rules"])
+        return f"{EQUIVALENT}{check} " + " ".join(_footnote(key) for key in outcome["rules"])
     if result == EXACT:
-        check = outcome.get("check", "answers")
-        return EXACT if check == "answers" else f"{EXACT} ({check} only)"
+        return EXACT + check
+    if result == NOT_CHECKED:
+        return "not checked"
     if result == DIFFERS:
         return "differs (error)" if outcome["outcome"] == "error" else DIFFERS
     if result == NOT_CALLABLE:
@@ -289,15 +298,16 @@ def cell(outcome: dict[str, Any]) -> str:
 def engine_table(doc: dict[str, Any]) -> list[str]:
     """One row per engine, in overloads. No row adds them up."""
     lines = [
-        "| Engine | Exact | Equivalent | Refused by name | Differs: wrong answer "
+        "| Engine | Exact | Equivalent | Not checked | Refused by name | Differs: wrong answer "
         "| Differs: engine error |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for engine in _ordered(doc):
         c = doc["by_engine"][engine]
         lines.append(
-            f"| {_label(engine)} | {c['exact']} | {c['equivalent']} | {c['refused_by_name']} "
-            f"| {c['differs_wrong_answer']} | {c['differs_engine_error']} |"
+            f"| {_label(engine)} | {c['exact']} | {c['equivalent']} | {c['not_checked']} "
+            f"| {c['refused_by_name']} | {c['differs_wrong_answer']} "
+            f"| {c['differs_engine_error']} |"
         )
     return lines
 
@@ -368,7 +378,8 @@ def family_table(doc: dict[str, Any]) -> list[str]:
         for engine in engines:
             c = per_engine[engine]
             cells.append(
-                f"{c['exact']} / {c['equivalent']} / {c['refused_by_name']} / {c['differs']}"
+                f"{c['exact']} / {c['equivalent']} / {c['not_checked']} / {c['refused_by_name']} "
+                f"/ {c['differs']}"
             )
         lines.append(f"| {family} | " + " | ".join(cells) + " |")
     return lines
@@ -438,6 +449,27 @@ def wrong_answers(doc: dict[str, Any]) -> list[str]:
     return lines[:-1] or ["None."]
 
 
+def not_checked_lines(doc: dict[str, Any]) -> list[str]:
+    """Why each engine's overloads not checked were not."""
+    reasons = doc.get("not_checked_reasons", {})
+    engines = [e for e in _ordered(doc) if reasons.get(e)]
+    if not engines:
+        return ["Every overload PostgreSQL answers had an answer compared or a property checked."]
+    every = sorted({why for e in engines for why in reasons[e]})
+    return [
+        "Why an overload was not checked, by engine:",
+        "",
+        "| Not checked because | " + " | ".join(_label(e) for e in engines) + " |",
+        "| --- |" + " ---: |" * len(engines),
+        *(
+            f"| {why.replace('|', chr(92) + '|')} | "
+            + " | ".join(str(reasons[e].get(why, 0)) for e in engines)
+            + " |"
+            for why in every
+        ),
+    ]
+
+
 def no_engine_lines(doc: dict[str, Any]) -> list[str]:
     gap = doc["no_engine"]
     lines = [
@@ -496,16 +528,22 @@ def pgwire_block(doc: dict[str, Any]) -> str:
             "",
             "| Result | Meaning |",
             "| --- | --- |",
-            "| Exact | The engine answered every call as PostgreSQL did. |",
+            "| Exact | The engine answered every call as PostgreSQL did, and an answer was "
+            "compared or a property checked. |",
             "| Equivalent | The answer passes under a numbered rule below, linked from its row. |",
+            "| Not checked | The engine answered with PostgreSQL's result type, but no answer "
+            "could be compared and no property checked. This is no pass. |",
             "| Refused by name | Provisa refused the call and said what it refuses. |",
             "| Differs: wrong answer | The answer is wrong. This is a defect. |",
             "| Differs: engine error | The engine returned an error and no named refusal. This "
             "is a defect. |",
             "",
-            "An exact result marked *form only* could not be compared by value, so its form was "
-            "checked. One marked *call only* was called with `NULL`, which proves its result type "
-            "and nothing about its answer. `n/a` means PostgreSQL itself refuses every call.",
+            "A result marked *property only* could not be compared by value, so its result type "
+            "and its form, or a property PostgreSQL documents for it (a range, a permutation, "
+            "the statement's clock), were checked. `n/a` means PostgreSQL itself refuses every "
+            "call.",
+            "",
+            *not_checked_lines(doc),
             "",
             "### Literals and columns",
             "",
@@ -521,7 +559,7 @@ def pgwire_block(doc: dict[str, Any]) -> str:
             "",
             "### Results by family",
             "",
-            "Each cell reads exact / equivalent / refused by name / differs.",
+            "Each cell reads exact / equivalent / not checked / refused by name / differs.",
             "",
             *family_table(doc),
             "",
