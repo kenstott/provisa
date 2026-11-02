@@ -349,7 +349,17 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
     ):
         return _BOOLEAN  # << and >> of a range: on anything else, a shift
     returned = call_result_type(expression)
-    return None if returned is None else _RETURNED.get(returned)
+    return None if returned is None else _RETURNED.get(returned) or _row_type(returned)
+
+
+def _row_type(name: str) -> CastType | None:
+    """A relation's composite type, which a populate function returns; held as its text."""
+    from provisa.pgwire.catalog_pg17 import TYPES
+
+    for oid, (_, typname, _, typtype, *_) in TYPES.items():
+        if typname == name and typtype == "c":
+            return CastType(oid, -1, BVType.TEXT, _TEXT_FORMS)
+    return None
 
 
 def _derived_xml(tree: Any, name: str) -> CastType | None:
@@ -374,13 +384,39 @@ def _derived_xml(tree: Any, name: str) -> CastType | None:
     return None
 
 
+def _jsonb_values(values: Any) -> dict[str, CastType | None]:
+    """The columns of a VALUES list its first row says are jsonb."""
+    import sqlglot.expressions as exp
+
+    alias = values.args.get("alias")
+    rows = values.expressions
+    if alias is None or not alias.columns or not rows or not isinstance(rows[0], exp.Tuple):
+        return {}
+    cells = zip(alias.columns, rows[0].expressions)
+    return {
+        column.name: _RETURNED["jsonb"]
+        for column, cell in cells
+        if isinstance(cell, exp.Cast) and cell.is_type("jsonb")
+    }
+
+
 def _jsonb_columns(tree: Any) -> dict[str, CastType | None]:
     """The columns a jsonb set-returning function in a statement's FROM gives it, by name."""
     import sqlglot.expressions as exp
 
     found: dict[str, CastType | None] = {}
+    for values in tree.find_all(exp.Values):
+        found.update(_jsonb_values(values))
     for table in tree.find_all(exp.Table):
         call = table.this.name.lower() if isinstance(table.this, exp.Anonymous) else ""
+        alias = table.args.get("alias")
+        for column in alias.columns if alias is not None else ():
+            if isinstance(column, exp.ColumnDef) and column.args["kind"].is_type("jsonb"):
+                found[column.name] = _RETURNED["jsonb"]  # of json_to_record's definition list
+        if call in ("jsonb_path_query", "jsonb_path_query_tz"):
+            found[alias.columns[0].name if alias is not None and alias.columns else call] = (
+                _RETURNED["jsonb"]
+            )
         names = {"jsonb_array_elements": ("value",), "jsonb_each": ("key", "value")}.get(call)
         if names is None or table.find_ancestor(exp.Select) is not tree:
             continue
@@ -395,6 +431,11 @@ def _jsonb_columns(tree: Any) -> dict[str, CastType | None]:
 def _column_type(tree: Any, expression: Any, columns: Any) -> CastType | None:
     import sqlglot.expressions as exp
 
+    reads_jsonb = isinstance(expression, (exp.JSONExtract, exp.JSONBExtract))
+    if reads_jsonb and isinstance(expression.this, exp.Column):
+        jsonb = _jsonb_columns(tree).get(expression.this.name)
+        if jsonb is not None:
+            return jsonb
     if isinstance(expression, exp.Column):
         jsonb = _jsonb_columns(tree).get(expression.name)
         if jsonb is not None:
