@@ -580,7 +580,7 @@ fn to_float(f: &FieldDesc, v: &V) -> R<f64> {
         let mut shown = Vec::new();
         match v {
             V::Dec(d) => d.write(&mut shown),
-            V::Str(_) | V::Bin(_) => shown.extend_from_slice(text_of(v)?.trim().as_bytes()),
+            V::Str(_) | V::Bin(_) => shown_number(text_of(v)?.trim(), &mut shown),
             V::Int(i) => pyfmt::int_str(*i, &mut shown),
             V::BigInt(d) => shown.extend_from_slice(d.as_bytes()),
             _ => unreachable!(),
@@ -592,6 +592,27 @@ fn to_float(f: &FieldDesc, v: &V) -> R<f64> {
         )));
     }
     Ok(x)
+}
+
+/// A number's text as a refusal names it: numeric_out's long run of integer digits (a numeric past
+/// a double's range, as ir_arrow.row_batch holds it) in Decimal's exponent form, 1E+400.
+fn shown_number(text: &str, out: &mut Vec<u8>) {
+    let (sign, digits) = match text.strip_prefix('-') {
+        Some(d) => ("-", d),
+        None => ("", text),
+    };
+    if digits.len() <= 20 || !digits.bytes().all(|c| c.is_ascii_digit()) || digits.starts_with('0') {
+        out.extend_from_slice(text.as_bytes());
+        return;
+    }
+    let significant = digits.trim_end_matches('0');
+    out.extend_from_slice(sign.as_bytes());
+    out.push(significant.as_bytes()[0]);
+    if significant.len() > 1 {
+        out.push(b'.');
+        out.extend_from_slice(&significant.as_bytes()[1..]);
+    }
+    out.extend_from_slice(format!("E+{}", digits.len() - 1).as_bytes());
 }
 
 /// int(value.toordinal()) for a date or datetime, else int(value).
