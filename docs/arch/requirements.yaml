@@ -75774,7 +75774,11 @@
     already gives the coordinator. The modes are every (default), control (today''s coordinator) and data
     (today''s query). Node pools in the shared config, the Rust encoders on the read path (REQ-2194), the
     response cache on data nodes, the existing REQ-1914 propagation, scaling behind load balancers, and
-    the customer-owned SaaS data node that sees only its own org''s config all stand.'
+    the customer-owned SaaS data node that sees only its own org''s config all stand. (Amended 2026-11-02,
+    What a control node serves:) Maintainer 2026-11-02: a control node serves any UI, makes config changes,
+    does the background work, and handles sign-in (the interactive flows: OAuth redirects, sessions, invites).
+    A data node still checks each request''s credentials itself (tokens, pgwire passwords, API keys) against
+    the shared config, so a query never waits on a control node.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
