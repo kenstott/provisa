@@ -25,6 +25,16 @@ from provisa import sandbox_wake
 INSTANCE = "projects/p/zones/z/instances/provisa-saas-sandbox"
 
 
+@pytest.fixture(autouse=True)
+def _no_use_seen(monkeypatch):
+    """This process has seen no sandbox request and no open: an open another test made in this
+    worker is not use of this test's tier."""
+    from provisa.api import demo_sandbox
+
+    monkeypatch.setattr(demo_sandbox, "_last_used", None)
+    monkeypatch.setattr(demo_sandbox, "_opening", 0)
+
+
 @pytest.fixture
 def compute(monkeypatch):
     """A Compute Engine API and metadata server in one MockTransport; ``state`` is the
