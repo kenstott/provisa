@@ -114,6 +114,8 @@ def _config(work: Path) -> Path:
                 "password": "${env:PG_PASSWORD}",
             }
         ],
+        # analyst holds no full_results, so its row ceiling is this limit: past both page bounds.
+        "server": {"limits": {"default_row_limit": 2 * _ORDERS}},
         "domains": [{"id": "sales", "description": "OData e2e"}],
         "naming": {"domain_prefix": False},
         "tables": [
@@ -208,7 +210,9 @@ def _auth() -> dict:
         "allow_simple_auth": True,
         "jwt_secret": "odata-e2e-signing-secret-0123456789abcdef",
         "simple": {"users": [_user(_ANALYST_USER, "analyst"), _user(_CLERK_USER, _CLERK)]},
-        "role_mapping": [],
+        # In claims mode a sign-in acts as its mapped role, else as default_role, and neither Excel
+        # nor Power BI can name one with X-Provisa-Role.
+        "role_mapping": [{"type": "contains", "claim": "roles", "value": _CLERK, "role": _CLERK}],
         "default_role": "analyst",
     }
 

@@ -26,6 +26,8 @@
 
 The service is at `/data/odata` on the HTTP port, so it has no port of its own. It has its line in the startup log and its row on the admin System health table, as the other HTTP surfaces do, and the OData page under Explore gives its address to copy.
 
+Excel and Power BI send no `X-Provisa-Role`, so a read is as the role the sign-in resolves to. Under `assignments_source: claims` that is the first `role_mapping` rule it matches, else `default_role`, whether or not the sign-in holds that role. A deployment serving more than one role needs a rule for each.
+
 | Request | Answer |
 |---|---|
 | `GET /data/odata/` | The service document: the role's entity sets |
@@ -120,7 +122,7 @@ A column the role cannot see is answered 400, as for a name that does not exist.
 
 ### Masked columns
 
-A filter on a masked column is refused, as on every transport (REQ-531). The statement fails `validate_sql` with V005 and the client gets 403 naming the column. Nothing runs. Otherwise a caller could recover the real value one comparison at a time.
+A filter on a masked column is refused, as on every transport. The statement fails `validate_sql` with V005 and the client gets 403 naming the column. Nothing runs. Otherwise a caller could recover the real value one comparison at a time.
 
 A faked column is the exception, also as on every transport. Its table is read through its faked projection, so a filter on it compares the fake the role is shown, and the real value matches nothing.
 
