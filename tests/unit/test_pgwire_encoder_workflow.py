@@ -434,6 +434,15 @@ def test_every_installer_builds_provisa_with_its_encoders_and_fails_without_them
     assert 'scripts/check-provisa-wheel.py" "${REPO_ROOT}"/dist/provisa-*.whl' in build
 
 
+def test_a_macos_wheel_is_tagged_for_the_one_architecture_its_module_is_built_for():
+    """A universal2 Python would tag an arm64-only module's wheel universal2, and an Intel Mac
+    would install it and fail to import the module."""
+    build = (REPO / "scripts/build-wheel.sh").read_text()
+    assert 'MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-11.0}"' in build
+    assert "import platform; print(platform.machine())" in build
+    assert '"-C--build-option=--plat-name=macosx-${MACOSX_DEPLOYMENT_TARGET}-${arch}"' in build
+
+
 def test_every_image_builds_provisa_in_one_linux_recipe_and_imports_its_encoders():
     """The Dockerfile's provisa-wheel stage is the one Linux recipe: the images, every Linux wheel
     (build-wheel.sh), the release's arm64 wheelhouse and the cloud push all build it."""

@@ -85,8 +85,16 @@ if [ "$wheel" = 1 ]; then
     docker build --platform "$platform" --target provisa-wheel \
       --output "type=local,dest=${REPO_ROOT}/dist" "$REPO_ROOT"
   else
-    echo "[build-wheel] ${PY} -m build --wheel"
-    "$PY" -m build --wheel
+    # A macOS Python is often universal2, but the module is compiled for PYTHON's own architecture
+    # (x86_64 under Rosetta), so the wheel is tagged for that one, at Rust's macOS 11 floor.
+    plat=()
+    if [ "$(uname -s)" = "Darwin" ]; then
+      export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-11.0}"
+      arch="$("$PY" -c 'import platform; print(platform.machine())')"
+      plat=("-C--build-option=--plat-name=macosx-${MACOSX_DEPLOYMENT_TARGET}-${arch}")
+    fi
+    echo "[build-wheel] ${PY} -m build --wheel ${plat[*]+${plat[*]}}"
+    "$PY" -m build --wheel ${plat[@]+"${plat[@]}"}
   fi
   # One wheel, with the compiled module and its notices in it, or the build failed.
   "$PY" "${REPO_ROOT}/scripts/check-provisa-wheel.py" "${REPO_ROOT}"/dist/provisa-*.whl
