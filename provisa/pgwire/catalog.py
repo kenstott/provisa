@@ -682,12 +682,12 @@ def _array_text(value: list) -> str:
 def _with_own_oids(result, oids, served: list[str]):
     """A column of a type the wire has no form of its own for (tsquery, xml[]) is sent as text under
     PostgreSQL's oid, which is what its text form is: the client names it as PostgreSQL does."""
-    from provisa.pgwire.server import BVTYPE_TO_PGTYPE, _sql_type_to_bvtype
+    from provisa.pgwire.server import BVTYPE_TO_OID, _sql_type_to_bvtype
 
     declared = result.column_types
     own: list[int | None] = [None] * len(declared)
     for i, oid in enumerate(oids):
-        if declared[i] == served[i] and BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(served[i])][0] != oid:
+        if declared[i] == served[i] and BVTYPE_TO_OID[_sql_type_to_bvtype(served[i])] != oid:
             own[i] = oid
             declared[i] = "text"
     if not any(own):

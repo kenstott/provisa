@@ -19,7 +19,8 @@ from decimal import Decimal, localcontext
 import pytest
 
 from buenavista.core import BVType
-from buenavista.postgres import BVTYPE_TO_PGTYPE
+
+from tests.unit.pgwire import wire_cells as wire
 
 
 def _decode(data: bytes) -> Decimal:
@@ -41,9 +42,10 @@ def _decode(data: bytes) -> Decimal:
     ],
 )
 def test_a_binary_decimal_38_10_decodes_back_exactly(value):
-    _, to_text, to_binary = BVTYPE_TO_PGTYPE[BVType.DECIMAL]
-    data = to_binary(value)
+    data = wire.binary(BVType.DECIMAL, value)
     assert struct.unpack("!h", data[6:8]) == (10,)
     decoded = _decode(data)
     assert decoded == value
-    assert str(decoded) == to_text(value)
+    # numeric_out's plain digits (REQ-2194: the wire writes PostgreSQL's text, not str(Decimal),
+    # which wrote 1E-10 for the smallest value here)
+    assert format(decoded, "f") == wire.text(BVType.DECIMAL, value)

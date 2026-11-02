@@ -754,8 +754,10 @@ def test_a_read_cut_at_the_limit_warns_the_statement():
         def column_count(self) -> int:
             return 0
 
-        def rows(self) -> list[Any]:
-            return []
+        def data(self) -> Any:
+            from buenavista.core import ResultData
+
+            return ResultData(iter(()))
 
         def late_warnings(self) -> list[Any]:
             return ["cut"]

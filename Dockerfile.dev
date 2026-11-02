@@ -20,8 +20,7 @@ COPY scripts/cargo-zigbuild-manylinux /usr/local/bin/
 WORKDIR /src
 COPY pyproject.toml MANIFEST.in README.md ./
 COPY rust/encoders/ ./rust/encoders/
-COPY experiments/pgwire_encoder_rs/Cargo.toml ./experiments/pgwire_encoder_rs/
-COPY experiments/pgwire_encoder_rs/src/ ./experiments/pgwire_encoder_rs/src/
+COPY rust/pgwire/ ./rust/pgwire/
 COPY vendor/buenavista/ ./vendor/buenavista/
 COPY provisa/ ./provisa/
 # --plat-name names the wheel's platform; a cross-compiled module is named _encoders.so, which

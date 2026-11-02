@@ -106,13 +106,13 @@ def test_a_uuid_beside_a_date_is_read_as_the_uuid_it_is():
 
 
 def test_infinity_is_written_as_postgresql_writes_it():
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
     from buenavista.core import BVType
 
     from provisa.core.ir_types import infinite_date, infinite_timestamp
+    from tests.unit.pgwire import wire_cells
 
     def wire(kind, value):
-        _oid, text, binary = BVTYPE_TO_PGTYPE[kind]
+        _oid, text, binary = wire_cells.entry(kind)
         return text(value), binary(value)
 
     assert wire(BVType.DATE, infinite_date(1)) == ("infinity", struct.pack("!i", 0x7FFFFFFF))

@@ -33,7 +33,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 WORKFLOWS = REPO / ".github" / "workflows"
 EXTENSION = REPO / "rust" / "encoders"
-PGWIRE = REPO / "experiments" / "pgwire_encoder_rs"
+PGWIRE = REPO / "rust" / "pgwire"
 NOTICES = REPO / "provisa" / "_encoders.THIRD_PARTY_NOTICES"
 #: The Rust toolchain every recipe uses.
 RUST = "1.95.0"
@@ -117,8 +117,9 @@ def test_uv_rebuilds_provisa_when_the_rust_source_changes():
         "rust/encoders/Cargo.toml",
         "rust/encoders/Cargo.lock",
         "rust/encoders/src/**/*.rs",
-        "experiments/pgwire_encoder_rs/Cargo.toml",
-        "experiments/pgwire_encoder_rs/src/**/*.rs",
+        "rust/pgwire/Cargo.toml",
+        "rust/pgwire/src/**/*.rs",
+        "rust/pgwire/third_party/**/*",
     } <= keys
 
 
@@ -126,9 +127,7 @@ def test_the_extension_serves_each_encoder_as_a_submodule():
     """provisa._encoders is one module; pgwire is its submodule (graphql and grpc join it)."""
     cargo = _toml(EXTENSION / "Cargo.toml")
     assert cargo["lib"] == {"name": "_encoders", "crate-type": ["cdylib"]}
-    assert cargo["dependencies"]["pgwire_encoder_rs"] == {
-        "path": "../../experiments/pgwire_encoder_rs"
-    }
+    assert cargo["dependencies"]["pgwire_encoder"] == {"path": "../pgwire"}
     # The same pyo3 as the encoder crate, so the two link as one.
     assert cargo["dependencies"]["pyo3"] == _toml(PGWIRE / "Cargo.toml")["dependencies"]["pyo3"]
     lib = (EXTENSION / "src" / "lib.rs").read_text()
@@ -140,10 +139,11 @@ def test_the_extension_serves_each_encoder_as_a_submodule():
     assert ".set_item(&qualified, &module)" in lib
 
 
-def test_the_encoder_crate_is_linked_and_the_benchmark_still_builds_its_own_module():
+def test_the_encoder_crate_is_linked_and_the_local_build_builds_the_shipped_module():
     assert _toml(PGWIRE / "Cargo.toml")["lib"]["crate-type"] == ["rlib"]
-    build = (PGWIRE / "build.sh").read_text()
-    assert "cargo rustc --release --lib --crate-type cdylib" in build
+    build = (REPO / "rust" / "build-local.sh").read_text()
+    assert 'cd "$root/rust/encoders"' in build
+    assert "cargo build --release --lib" in build
 
 
 def test_the_build_root_carries_the_encoder_crates_release_profile():
@@ -153,23 +153,24 @@ def test_the_build_root_carries_the_encoder_crates_release_profile():
 
 def test_no_shipped_build_is_tuned_for_the_build_machines_cpu():
     """A wheel built with target-cpu=native on one CI runner can stop on a user's older CPU with
-    an illegal instruction. Only the benchmark's build.sh asks for it, on its own command line."""
-    config = _toml(PGWIRE / ".cargo" / "config.toml")
+    an illegal instruction. Only rust/build-local.sh asks for it, for a benchmark (NATIVE=1)."""
+    config = _toml(REPO / "rust" / ".cargo" / "config.toml")
     flags = [f for target in config.get("target", {}).values() for f in target.get("rustflags", [])]
     flags += config.get("build", {}).get("rustflags", [])
     assert not [f for f in flags if "target-cpu" in f], flags
     for path in (PGWIRE / "Cargo.toml", EXTENSION / "Cargo.toml", REPO / "pyproject.toml"):
         assert "target-cpu" not in path.read_text(), path
-    assert not (EXTENSION / ".cargo").exists()
-    assert "target-cpu=native" in (PGWIRE / "build.sh").read_text()
+    assert not (EXTENSION / ".cargo").exists() and not (PGWIRE / ".cargo").exists()
+    assert "target-cpu=native" in (REPO / "rust" / "build-local.sh").read_text()
 
 
 def test_the_sdist_carries_the_rust_source():
     manifest = (REPO / "MANIFEST.in").read_text().splitlines()
     assert "include rust/encoders/Cargo.toml rust/encoders/Cargo.lock" in manifest
     assert "recursive-include rust/encoders/src *.rs" in manifest
-    assert "include experiments/pgwire_encoder_rs/Cargo.toml" in manifest
-    assert "recursive-include experiments/pgwire_encoder_rs/src *.rs" in manifest
+    assert "include rust/pgwire/Cargo.toml" in manifest
+    assert "recursive-include rust/pgwire/src *.rs" in manifest
+    assert "graft rust/pgwire/third_party" in manifest
 
 
 # ── licence notices ───────────────────────────────────────────────────────────
@@ -187,17 +188,19 @@ def test_the_notices_were_written_from_the_current_lock():
 
 def test_every_noticed_crate_is_in_the_lock_and_the_main_ones_are_noticed():
     text = NOTICES.read_text()
+    # A registry crate, or one vendored under rust/pgwire/third_party (ryu-pg, chrono-tz).
+    vendored = {path.name for path in (PGWIRE / "third_party").iterdir()}
     locked = {
         (pkg["name"], pkg["version"])
         for pkg in _toml(EXTENSION / "Cargo.lock")["package"]
-        if "source" in pkg
+        if "source" in pkg or pkg["name"] in vendored
     }
     noticed = set(re.findall(r"^  ([\w-]+) (\d+\.\d+\.\d+\S*)(?: \(|$)", text, re.M))
     assert noticed and noticed <= locked, noticed - locked
     names = {name for name, _ in noticed}
-    assert {"arrow", "pyo3", "itoa"} <= names
+    assert {"arrow", "pyo3", "itoa", "ryu-pg", "chrono-tz"} <= names
     # Provisa's own crates carry Provisa's licence, not a third party's.
-    assert not names & {"provisa_encoders", "pgwire_encoder_rs"}
+    assert not names & {"provisa_encoders", "pgwire_encoder"}
 
 
 def test_the_notices_ship_beside_the_module():
