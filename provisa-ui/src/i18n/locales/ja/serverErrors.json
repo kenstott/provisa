@@ -136,7 +136,8 @@
       "graphql_body_not_json": "リクエスト本文が JSON ではありません: {{error}}",
       "graphql_request_not_object": "GraphQL リクエストはクエリを含む JSON オブジェクトです。",
       "graphql_parameter_type": "GraphQL リクエストの {{parameter}} は {{expected}} でなければなりません。",
-      "graphql_mutation_over_get": "ミューテーションは GET ではなく、常に POST で送信します。"
+      "graphql_mutation_over_get": "ミューテーションは GET ではなく、常に POST で送信します。",
+      "listed_only": "ロール {{role}} は {{table}} を一覧表示することしかできません: メタデータは読み取れますが、データは読み取れません"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
@@ -293,7 +294,8 @@
       "not_found": "ロールが見つかりません",
       "org_selection_required": "組織の選択が必要です",
       "already_exists": "ロール '{{role}}' はすでに存在します",
-      "description_missing": "ロール '{{role}}' には目的の説明が必要です"
+      "description_missing": "ロール '{{role}}' には目的の説明が必要です",
+      "right_not_in_parents": "ロール {{role}} は {{right}} を持てません: どの親も持っていません"
     },
     "schema": {
       "allowed_domains_updated": "ソース「{{source}}」の許可ドメインを更新しました",

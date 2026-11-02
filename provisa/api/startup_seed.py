@@ -315,11 +315,13 @@ async def _register_admin_view(
     *,
     base_table: str | None,
     view_name: str,
+    reflected: dict[str, list[dict]],
 ) -> None:
     """Register one of the control plane's own views as table ``tbl`` of a system schema (meta,
     ontology): its columns are the view's, its primary key the base table's it restates (a view
     restating none, ontology._axioms, is keyed by its own id), and descriptions are seeded without
-    overwriting an edited one."""
+    overwriting an edited one. ``reflected`` holds the columns of both relations, read with every
+    other view of the schema (:func:`_reflect_admin_views`)."""
     table_id = await conn.upsert_returning(
         _registered_tables_t,
         {
@@ -339,13 +341,9 @@ async def _register_admin_view(
     pk_cols = (
         {"id"}
         if base_table is None
-        else {
-            c["column_name"]
-            for c in await conn.reflect_columns(base_table, schema=schema_name)
-            if c["is_primary_key"]
-        }
+        else {c["column_name"] for c in reflected[base_table] if c["is_primary_key"]}
     )
-    cols = await conn.reflect_columns(view_name, schema=schema_name)
+    cols = reflected[view_name]
     col_names = {col["column_name"] for col in cols}
     # Remove stale columns that no longer appear in the view.
     await conn.execute_core(
@@ -362,7 +360,7 @@ async def _register_admin_view(
                     "table_id": table_id,
                     "domain_id": domain_id,
                     "column_name": col["column_name"],
-                    # REQ-2154: the catalog is read by every role built on Viewer.
+                    # REQ-2154: the grant to Viewer the catalog hangs on (inheritance.expand_meta_grants).
                     "visible_to": [VIEWER_ROLE],
                     "data_type": col["data_type"],
                     "is_primary_key": col["column_name"] in pk_cols,
@@ -376,6 +374,24 @@ async def _register_admin_view(
             )
 
 
+async def _reflect_admin_views(
+    conn: "Connection", schema_name: str, relations: dict[str, str | None]
+) -> dict[str, list[dict]]:
+    """The columns of a system schema's registered views and of the tables they restate
+    (``relations``: view name to base table), read in one pass. A reflection per relation repeated
+    the catalog-wide lookups every reflection makes, once per relation: with the meta schema's
+    pg_catalog-shaped views (REQ-2190) that was hundreds of catalog scans on every boot, and the
+    deploy's health check timed out on them."""
+    from sqlalchemy.exc import NoSuchTableError
+
+    names = [*relations, *(base for base in relations.values() if base is not None)]
+    reflected = await conn.reflect_columns_many(names, schema=schema_name)
+    missing = sorted(set(names) - set(reflected))
+    if missing:
+        raise NoSuchTableError(f"{schema_name}: {', '.join(missing)}")
+    return reflected
+
+
 async def _seed_ontology_domain(
     conn: "Connection", org_id: str = "default", env: str | None = None
 ) -> None:  # REQ-2163
@@ -386,6 +402,11 @@ async def _seed_ontology_domain(
     for ddl in ONTOLOGY_TABLE_VIEWS.values():
         await _seed_view(conn, ddl)
     await _drop_sibling_environment_registrations(conn, ONTOLOGY_DOMAIN_ID, org_id, schema_name)
+    reflected = await _reflect_admin_views(
+        conn,
+        schema_name,
+        {ONTOLOGY_TABLE_ALIAS[tbl]: ONTOLOGY_BASE_TABLE[tbl] for tbl in ONTOLOGY_TABLES},
+    )
     for tbl in ONTOLOGY_TABLES:
         await _register_admin_view(
             conn,
@@ -394,6 +415,7 @@ async def _seed_ontology_domain(
             tbl,
             base_table=ONTOLOGY_BASE_TABLE[tbl],
             view_name=ONTOLOGY_TABLE_ALIAS[tbl],
+            reflected=reflected,
         )
 
 
@@ -422,6 +444,9 @@ async def _seed_meta_domain(
             _registered_tables_t.c.table_name == view_name,
         )
 
+    reflected = await _reflect_admin_views(
+        conn, schema_name, {_META_TABLE_ALIAS.get(tbl, tbl): tbl for tbl in _META_TABLES}
+    )
     for tbl in _META_TABLES:
         await _register_admin_view(
             conn,
@@ -430,6 +455,7 @@ async def _seed_meta_domain(
             tbl,
             base_table=tbl,
             view_name=_META_TABLE_ALIAS.get(tbl, tbl),
+            reflected=reflected,
         )
 
     # Register registered_tables → table_columns relationship (table_id FK)
@@ -1154,7 +1180,7 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
                         "table_id": table_id,
                         "domain_id": "meta",
                         "column_name": col["column_name"],
-                        # REQ-2154: the catalog is read by every role built on Viewer.
+                        # REQ-2154: the grant to Viewer the catalog hangs on (inheritance.expand_meta_grants).
                         "visible_to": [VIEWER_ROLE],
                         "data_type": col["data_type"],
                         # A view over the registry has no key of its own — one org appears once per
@@ -1206,6 +1232,16 @@ async def _resolve_pk_from_sources() -> None:
         from provisa.federation.replica_routing import kept_sources
 
         _kept = await kept_sources(state)  # REQ-2031: never contacted, its keys never re-read
+        # The control plane's own tables, each schema's read in one pass (reflect_columns_many):
+        # one reflection a table repeated the catalog-wide lookups every reflection makes.
+        _admin_schemas: dict[str, list[str]] = {}
+        for _pk_t in _pk_rows:
+            if _pk_t["source_id"] == "provisa-admin" and _pk_t["domain_id"] != ONTOLOGY_DOMAIN_ID:
+                _admin_schemas.setdefault(_pk_t["schema_name"], []).append(_pk_t["table_name"])
+        _admin_columns = {
+            _schema: await _pk_conn.reflect_columns_many(_names, schema=_schema)
+            for _schema, _names in _admin_schemas.items()
+        }
         for _pk_t in _pk_rows:
             if _pk_t["source_id"] in _kept:
                 continue
@@ -1222,9 +1258,7 @@ async def _resolve_pk_from_sources() -> None:
                     # there portably (the abstraction ignores the schema on schema-less backends).
                     primary = [
                         c["column_name"]
-                        for c in await _pk_conn.reflect_columns(
-                            _pk_t["table_name"], schema=_pk_t["schema_name"]
-                        )
+                        for c in _admin_columns[_pk_t["schema_name"]][_pk_t["table_name"]]
                         if c["is_primary_key"]
                     ]
                 else:

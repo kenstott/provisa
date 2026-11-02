@@ -107,8 +107,10 @@ class NewerDemoFormat(BundleError):
 #: exports take ``inputs`` (REQ-2100) and roles name ``parents`` (REQ-2155); a demo using either
 #: also sets requires_provisa to the release carrying it. A release older than that refuses it by
 #: requires_provisa; any build reading an older format (a checkout or app image, whose version is
-#: the unstamped one) refuses it by its format (NewerDemoFormat).
-DEMO_FORMAT = 3
+#: the unstamped one) refuses it by its format (NewerDemoFormat). 4: a role holds what it lists of
+#: what its parents hold (REQ-2155), so a role lists every right it holds and a bundle of an older
+#: format would lose rights or be refused at load: it is refused here by name (OldDemoFormat).
+DEMO_FORMAT = 4
 
 
 @dataclass(frozen=True)

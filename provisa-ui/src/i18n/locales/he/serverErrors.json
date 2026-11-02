@@ -136,7 +136,8 @@
       "graphql_body_not_json": "גוף הבקשה אינו JSON: {{error}}",
       "graphql_request_not_object": "בקשת GraphQL היא אובייקט JSON עם שאילתה.",
       "graphql_parameter_type": "הפרמטר {{parameter}} של בקשת ה-GraphQL חייב להיות {{expected}}.",
-      "graphql_mutation_over_get": "מוטציה נשלחת ב-POST, אף פעם לא ב-GET."
+      "graphql_mutation_over_get": "מוטציה נשלחת ב-POST, אף פעם לא ב-GET.",
+      "listed_only": "התפקיד {{role}} יכול רק לרשום את {{table}}: ניתן לקרוא את המטא-נתונים שלה, לא את הנתונים"
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -293,7 +294,8 @@
       "not_found": "התפקיד לא נמצא",
       "org_selection_required": "נדרשת בחירת ארגון",
       "already_exists": "התפקיד '{{role}}' כבר קיים",
-      "description_missing": "התפקיד '{{role}}' צריך תיאור של מטרתו"
+      "description_missing": "התפקיד '{{role}}' צריך תיאור של מטרתו",
+      "right_not_in_parents": "התפקיד {{role}} לא יכול להחזיק ב-{{right}}: אף הורה אינו מחזיק בו"
     },
     "schema": {
       "allowed_domains_updated": "הדומיינים המותרים עודכנו עבור המקור '{{source}}'",

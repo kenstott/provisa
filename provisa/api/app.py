@@ -3267,6 +3267,7 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # the inherited grants under the acting role's own id.
         from provisa.security.inheritance import (
             expand_column_grants,
+            expand_meta_grants,
             expand_write_grants,
             flatten_role_dicts,
             parent_map,
@@ -3283,11 +3284,13 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         from provisa.security.row_filters import with_owner_grant
 
         roles = with_owner_grant(roles, await _data_product_repo.owner_roles(conn))
-        # REQ-1363: then down the domain tree -- a role that lists a domain reaches every domain
-        # under it. state.roles carries the flattened list, so every reader of a role's
+        # REQ-1363: down the domain tree before a role is narrowed -- a role that lists a domain
+        # reaches every domain under it, so a parent holds the subtree its child narrows
+        # (REQ-2155). state.roles carries the flattened list, so every reader of a role's
         # domain_access (the data surfaces and the admin's domain gate) sees the subtree.
-        roles = _domain_tree.flatten_role_domains(flatten_role_dicts(roles), _domain_parents)
+        roles = flatten_role_dicts(_domain_tree.flatten_role_domains(roles, _domain_parents))
         expand_column_grants(tables, role_chains_by_id)
+        expand_meta_grants(tables, roles)  # REQ-1132
         expand_write_grants(tables, role_parents_by_id)  # REQ-2074
         state.role_chains = role_chains_by_id
 
@@ -4459,6 +4462,20 @@ def create_app() -> FastAPI:
         )
 
     from provisa.security.rights import MissingDomainCapability as _MissingDomainCapability
+
+    from provisa.security.rights import ListedOnly as _ListedOnly
+
+    @app.exception_handler(_ListedOnly)
+    async def _listed_only_handler(_req: _Request, exc: _ListedOnly):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1132: list means metadata only, and the refusal says so.
+        return _JSONResponse(
+            status_code=403,
+            content={
+                "detail": str(exc),
+                "code": "data.listed_only",
+                "params": {"role": exc.role_id, "table": exc.table},
+            },
+        )
 
     @app.exception_handler(_MissingDomainCapability)
     async def _missing_domain_capability_handler(_req: _Request, exc: _MissingDomainCapability):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]

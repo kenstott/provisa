@@ -136,7 +136,8 @@
       "graphql_body_not_json": "The request body is not JSON: {{error}}",
       "graphql_request_not_object": "A GraphQL request is a JSON object with a query.",
       "graphql_parameter_type": "The GraphQL request's {{parameter}} must be {{expected}}.",
-      "graphql_mutation_over_get": "A mutation is sent with POST, never GET."
+      "graphql_mutation_over_get": "A mutation is sent with POST, never GET.",
+      "listed_only": "Role {{role}} can only list {{table}}: its metadata can be read, its data cannot"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
@@ -293,7 +294,8 @@
       "not_found": "Role not found",
       "org_selection_required": "Org selection required",
       "already_exists": "Role '{{role}}' already exists",
-      "description_missing": "Role '{{role}}' needs a description of what it is for"
+      "description_missing": "Role '{{role}}' needs a description of what it is for",
+      "right_not_in_parents": "Role {{role}} cannot hold {{right}}: no parent holds it"
     },
     "schema": {
       "allowed_domains_updated": "Allowed domains updated for source '{{source}}'",

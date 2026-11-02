@@ -22,7 +22,7 @@ group: agents
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the MCP explorer's explain of a tool call and the tour's mcp
 # steps.
-requires_provisa: 0.1.0a496
+requires_provisa: 0.1.0a497
 # Its agent searches the catalog with a local sentence-transformers model: the vector extra.
 extras:
 - vector

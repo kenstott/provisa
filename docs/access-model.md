@@ -14,6 +14,8 @@ Every column has a scope, which says how far beyond its table's domain it reache
 | `listed` | Every role in the organisation sees the table's name and the column's name in the catalog. Nothing else is shown: no description, type, sample, value or count. | As for `domain`. |
 | `public` | Every role in the organisation sees the names and descriptions, and roles of every domain are served the column as their grants allow. Masks, row rules and limits apply as they do inside the domain. | As for `domain`. |
 
+Viewer holds no meta grant: `catalog_read` is held by a role that names it. On SQL, a role with no meta grant still sees core metadata for the tables of non-system domains it can read, write or list, on the pgwire catalog and in meta. List means metadata only, and querying a table a role only lists is refused by name. The gRPC proto, JSON:API, GraphQL, Cypher, SPARQL and OpenAPI show what a role can read or write. Every catalog is scoped to a role's data domains, and shows a system domain only to a role holding it.
+
 Use `listed` to make a table discoverable. Someone in another domain can find its keys and ask its owners for a grant, and still reads nothing until a grant is given. A table appears outside its domain only through its listed or public columns.
 
 ## Capabilities
@@ -37,15 +39,17 @@ Roles carry capabilities. Provisa ships a set of standard roles, and you build y
 | Org operator | | Org settings, observability, and approving views and relationships |
 | Org admin | All of the above | User and environment management |
 
-Provisa maintains the standard roles, and you cannot edit them. You extend them with child roles of your own. When Provisa adds a capability to a standard role, every role built on it gets that capability.
+Provisa maintains the standard roles, and you cannot edit them. You extend them with child roles of your own. Standard roles are the palette: when Provisa adds a capability to one, a role built on it holds that capability only once it is given it.
 
 ### Inheritance
 
-A role may have several parents. Its capabilities are the union of its own and those of every ancestor, with duplicates removed. Residency and grants are unions over the ancestors too. Least privilege is applied when you assign roles to people. Composing roles only adds.
+A role may have several parents. It stores what it is given, and it holds that intersected with the union of what its parents hold, for capabilities, domains and data_residency's regions alike. A role with no parents holds what it is given. A parent's narrowing reaches every role below it. So a role is always a subset of the union of its parents. Saving a right no parent holds is refused by name, and a hand-written configuration is refused the same way when it loads. The role form lists what the parents hold, all selected, for you to unselect, and shows the rest disabled. Column grants are not narrowed: a child reads what its ancestors are granted.
 
-Reach is the exception, because each role states its own. A role reaches ALL domains or a list of them, and its parents' reach does not pass to it. The standard roles reach ALL. A Finance steward, built on Data steward, states that it reaches the finance domain. To give a role reach to a domain you must reach that domain yourself.
+A domain follows the same rule, and `"*"` stands for every data domain. The standard roles reach ALL. A Finance steward, built on Data steward, lists finance and reaches finance. To give a role reach to a domain you must reach that domain yourself.
 
-Row rules resolve this way. A role's own rule for a table stands. Without one, the rules found among its ancestors are combined with OR, and a parent with no rule adds nothing, so adding a parent never lifts a row rule. A role with no rule anywhere in its ancestry is unrestricted. A property such as a rate limit comes from the role itself, or else from the first ancestor that sets it. Ancestors are searched depth-first, in the order the parents are declared.
+A role reads no row its parents could not. Its rows are its own rule AND the rules of its parents combined with OR. A parent with no rule stands for every row, and a role with no rule of its own reads under its parents' rules. A property such as a rate limit comes from the role itself, or else from the first ancestor that sets it. Ancestors are searched depth-first, in the order the parents are declared.
+
+A role with no capabilities can do nothing, reads included. Such a role has three uses: it carries a name or session values for row rules, it runs a command whose `visible_to` names it and does nothing else, or it is a building block holding only grants, which a role that includes it reads while taking its capabilities from its other parents.
 
 ## Grants
 
@@ -73,10 +77,10 @@ Each use of a deny has an additive form.
 
 | You want | Do this |
 | --- | --- |
-| A role without one capability it would inherit | Compose the role from narrower parents. |
+| A role without one capability its parent holds | Leave that capability unselected on the role. |
 | A column for everyone except some people | Grant it to the roles that should read it instead of to Viewer. |
 | A column whose name is visible but whose values are hidden | Add a mask. Unmasking is a grant. |
-| Only some of a table's rows | Add a row rule. Adding a parent never lifts it. |
+| Only some of a table's rows | Add a row rule. A role reads no row its parents could not. |
 
 ## What sits outside the rules
 
@@ -100,7 +104,7 @@ Each entry cites that product's own documentation. An empty cell means the cited
 
 | Product | A newly created object | Seeing metadata without data access | Role composition | Who grants access | Deny |
 | --- | --- | --- | --- | --- | --- |
-| Provisa | The registering role and Viewer read every column. An empty grant list means no role. | `listed` scope shows table and column names to every role in the organisation. | Several parents; capabilities are a union. Standard roles are locked and extended by child roles. | Any holder, for columns it can read itself. | None. Grants and capabilities only add. |
+| Provisa | The registering role and Viewer read every column. An empty grant list means no role. | `listed` scope shows table and column names to every role in the organisation. | Several parents; a role holds what it is given of what they hold. Standard roles are locked and extended by child roles. | Any holder, for columns it can read itself. | None. Grants and capabilities only add. |
 | Snowflake | "Each securable object is owned by a single role, which by default is the role used to create the object." "Unless allowed by a grant, access is denied." ([access control overview](https://docs.snowflake.com/en/user-guide/security-access-control-overview)) | | Roles are granted to roles, and a role inherits the privileges of roles granted to it. One functional role can receive several access roles ([access control considerations](https://docs.snowflake.com/en/user-guide/security-access-control-considerations)). System-defined roles cannot be dropped ([overview](https://docs.snowflake.com/en/user-guide/security-access-control-overview)). | The object's owner. In a managed access schema, only the schema owner or a role with MANAGE GRANTS ([overview](https://docs.snowflake.com/en/user-guide/security-access-control-overview)). | REVOKE "removes one or more privileges on a securable object from a role or database role" ([REVOKE](https://docs.snowflake.com/en/sql-reference/sql/revoke-privilege)). |
 | Databricks Unity Catalog | "The principal that creates an object becomes its initial owner" ([permissions concepts](https://docs.databricks.com/aws/en/data-governance/unity-catalog/access-control/permissions-concepts)). | BROWSE lets users "discover and view metadata about objects without granting access to the underlying data". For tables, views, volumes and functions it is granted at the catalog level only ([privileges](https://docs.databricks.com/aws/en/data-governance/unity-catalog/manage-privileges/privileges)). | Privileges inherit down the object hierarchy, from catalog to schema to table ([permissions concepts](https://docs.databricks.com/aws/en/data-governance/unity-catalog/access-control/permissions-concepts)). | Owners, and holders of MANAGE ([privileges](https://docs.databricks.com/aws/en/data-governance/unity-catalog/manage-privileges/privileges)). | GRANT and REVOKE add and remove privileges. ABAC policies can deny a privilege, and "Denials inherit downward the same way" ([permissions concepts](https://docs.databricks.com/aws/en/data-governance/unity-catalog/access-control/permissions-concepts)). |
 | Microsoft Purview | Users see data assets where they hold at least Read permission in Data Map or on the Azure or Fabric resource ([roles and permissions](https://learn.microsoft.com/en-us/purview/data-governance-roles-permissions)). | Global Catalog Reader "can read published artifacts across governance domains that don't have a Local Catalog Reader specified" ([roles and permissions](https://learn.microsoft.com/en-us/purview/data-governance-roles-permissions)). | Built-in roles at the tenant, catalog and governance domain levels. Data Quality Steward and Data Quality Reader are sub-roles that require other roles to be held as well ([roles and permissions](https://learn.microsoft.com/en-us/purview/data-governance-roles-permissions)). | "Only a user with the Governance domain owner role can grant governance domain permissions" ([roles and permissions](https://learn.microsoft.com/en-us/purview/data-governance-roles-permissions)). | |

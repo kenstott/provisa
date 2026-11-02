@@ -29,6 +29,7 @@ from provisa.compiler.naming import source_to_catalog
 from provisa.federation.colocation import colocation_key
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.security.meta_role import is_meta_role_id, rebuild_meta_roles, with_meta_masks
+from provisa.security.mutation_authz import command_assigned
 from provisa.security.rights import (
     SYSTEM_DOMAINS,
     Capability,
@@ -1756,7 +1757,11 @@ def _build_role_surface(state: Any, runtime: Any, inputs: dict, role: dict, rls:
     from provisa.api.org_runtime import serving
 
     with serving(runtime):
-        si = schema_input_for(state, role, inputs["tables"], inputs["metrics"])
+        # REQ-2155: a role with no capabilities reads nothing: its schema is its commands.
+        reads = bool(role.get("capabilities"))
+        si = schema_input_for(
+            state, role, inputs["tables"] if reads else [], inputs["metrics"] if reads else []
+        )
         # No swallow: a role whose schema or proto cannot be built raises here, and the lazy
         # surface holds that failure -- logged as an ERROR naming the role, and raised to every
         # read of it -- rather than serving a permanently cached "no schema available". An
@@ -1918,6 +1923,17 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         # that mints another control-plane role is kept off the data plane on the same terms.
         if Capability.CROSS_ORG.value in (role.get("capabilities") or []):
             _drop_data_surface(state, role["id"])
+            continue
+        # REQ-2155: a role with no capabilities can do nothing. A command naming it is its one act,
+        # and its surface holds that and no table (_build_role_surface).
+        if not role.get("capabilities"):
+            inputs = state.role_build_inputs
+            if any(
+                command_assigned(c, role["id"]) for c in [*inputs["functions"], *inputs["webhooks"]]
+            ):
+                register_role_surface(state, role, build_rls_context(rls_rules, role["id"]))
+            else:
+                _drop_data_surface(state, role["id"])
             continue
         # A role reaches the domains it lists, and one that lists NONE reaches no data: it gets no
         # data surface, on the same terms as the control-plane role above — every surface answers

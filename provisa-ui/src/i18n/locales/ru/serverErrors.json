@@ -136,7 +136,8 @@
       "graphql_body_not_json": "Тело запроса не является JSON: {{error}}",
       "graphql_request_not_object": "Запрос GraphQL — это объект JSON с запросом.",
       "graphql_parameter_type": "Параметр {{parameter}} запроса GraphQL должен быть {{expected}}.",
-      "graphql_mutation_over_get": "Мутация отправляется методом POST, никогда GET."
+      "graphql_mutation_over_get": "Мутация отправляется методом POST, никогда GET.",
+      "listed_only": "Роль {{role}} может только перечислять {{table}}: метаданные можно читать, данные нельзя"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Адаптер для '{{source_type}}' не реализует discover_schema",
@@ -293,7 +294,8 @@
       "not_found": "Роль не найдена",
       "org_selection_required": "Требуется выбор организации",
       "already_exists": "Роль '{{role}}' уже существует",
-      "description_missing": "Роли '{{role}}' нужно описание её назначения"
+      "description_missing": "Роли '{{role}}' нужно описание её назначения",
+      "right_not_in_parents": "Роль {{role}} не может иметь {{right}}: ни один родитель его не имеет"
     },
     "schema": {
       "allowed_domains_updated": "Разрешенные домены обновлены для источника '{{source}}'",
