@@ -67,8 +67,14 @@ class _Engine:
     async def execute_engine(self, sql: str, params=None, **_):
         import duckdb
 
+        from provisa.executor.result import QueryResult
+
         cur = duckdb.connect().execute(sql)
-        return SimpleNamespace(column_names=[d[0] for d in cur.description], rows=cur.fetchall())
+        return QueryResult(
+            rows=cur.fetchall(),
+            column_names=[d[0] for d in cur.description],
+            column_types=[str(d[1]) for d in cur.description],
+        )
 
 
 def _state() -> SimpleNamespace:
