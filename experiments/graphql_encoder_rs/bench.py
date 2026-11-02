@@ -8,29 +8,27 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Benchmark: the product's GraphQL JSON path against the Rust encoder, end to end from Arrow record
-batches to the response body, over a large mixed-type result with one level of nesting.
+"""Benchmark: each surface's Python path (python_ref, the exact-values contract) against its Rust
+encoder, end to end from Arrow record batches to the response body, on J494's dataset.
 
 The result is an orders query selecting each order's items (a one-to-many relationship): one flat
-row per item, the order's columns repeated on each, as the compiler's LEFT JOIN returns them.
-``serialize_rows`` nests them (``_serialize_with_one_to_many``) and orjson writes the body. The
-dataset is generated once as Arrow (numpy-vectorized, seeded) in 65,536-row batches, the size
-DuckDB's Arrow reader streams. The GraphQL path buffers the whole result and its answer, so peak
-memory is the Python path's: a run aborts if the system's free memory drops under 25%.
+row per item, the order's columns repeated on each, as the compiler's LEFT JOIN returns them, for
+GraphQL, REST and JSON:API (which sideloads the items as included resources). OData reads the same
+data as its compiler writes an expansion: one row per order, its items one JSON value (the
+correlated subquery's text). The dataset is generated once as Arrow (numpy-vectorized, seeded) in
+65,536-row batches, the size DuckDB's Arrow reader streams. A surface runs in its own process; a
+run aborts if the system's free memory drops under 25%.
 
-    PYTHONPATH=.:experiments/graphql_encoder_rs/build:experiments/graphql_encoder_rs \\
-        ~/.provisa-agent/heavy.sh .venv/bin/python experiments/graphql_encoder_rs/bench.py --rows 2000000
+    cd experiments/graphql_encoder_rs && PYTHONPATH=build/ref:build:. \\
+        ~/.provisa-agent/heavy.sh ../../.venv/bin/python bench.py --surface graphql --rows 2000000
 """
 
 from __future__ import annotations
 
 import argparse
-import cProfile
 import gc
 import hashlib
-import io
 import json
-import pstats
 import re
 import resource
 import subprocess
@@ -41,8 +39,9 @@ from typing import Any
 import numpy as np
 import pyarrow as pa
 
-import graphql_encoder_rs
+import graphql_encoder_rs as rs
 import python_ref as ref
+import wiring
 from provisa.compiler.sql_types import ColumnRef
 
 BATCH_ROWS = 65_536
@@ -50,8 +49,8 @@ MIN_FREE_PCT = 25
 ROOT = "orders"
 
 
-def C(field, nested_in=None, cardinality=None):
-    return ColumnRef(None, field, field, nested_in, cardinality)
+def C(field, nested_in=None, cardinality=None, json=False):
+    return ColumnRef(None, field, field, nested_in, cardinality, json=json)
 
 
 O2M = "one-to-many"
@@ -66,7 +65,7 @@ COLUMNS: list[ColumnRef] = [
     C("created"),
     C("day"),
     C("active"),
-    C("payload"),
+    C("payload", json=True),
     C("note"),
     C("item_id", "items", O2M),
     C("sku", "items", O2M),
@@ -200,36 +199,165 @@ def timed(fn: Callable[[], bytes], repeat: int) -> dict[str, Any]:
     }
 
 
-def python_stages(schema, batches) -> dict[str, float]:
-    """The Python path split into its three stages, one run."""
-    gc.collect()
-    t0 = time.perf_counter()
-    rows = ref.arrow_rows(schema, batches)
-    t1 = time.perf_counter()
-    shaped = ref.shape(rows, COLUMNS, ROOT, None)
-    t2 = time.perf_counter()
-    body = ref.render(ROOT, shaped)
-    t3 = time.perf_counter()
-    del rows, shaped, body
-    return {"arrow_to_rows": t1 - t0, "serialize_rows": t2 - t1, "orjson_render": t3 - t2}
+def odata_dataset(schema, batches, rows: int):
+    """The same orders as OData reads them: one row per order (its first item row's columns), its
+    items the JSON array the expansion's subquery writes."""
+    import pyarrow.compute as pc
+
+    table = pa.Table.from_batches(batches, schema)
+    ids = table["id"].to_numpy()
+    first = np.flatnonzero(np.r_[True, ids[1:] != ids[:-1]])
+    bounds = np.r_[first, rows]
+    item_id = table["item_id"].to_numpy()
+    sku = table["sku"].to_pylist()
+    qty = table["qty"].to_numpy()
+    price = [str(p) for p in table["price"].to_pylist()]
+    shipped = pc.strftime(table["shipped"].cast(pa.timestamp("s")), "%Y-%m-%d").to_pylist()
+    texts = []
+    for o in range(len(first)):
+        parts = []
+        for i in range(bounds[o], bounds[o + 1]):
+            day = "null" if shipped[i] is None else f'"{shipped[i]}"'
+            parts.append(
+                f'{{"item_id": {item_id[i]}, "sku": "{sku[i]}", "qty": {qty[i]}, "price": {price[i]}, "shipped": {day}}}'
+            )
+        texts.append("[" + ", ".join(parts) + "]")
+    root = table.take(pa.array(first)).select(
+        [c.field_name for c in COLUMNS if c.nested_in is None]
+    )
+    root = root.append_column("items", pa.array(texts, pa.string()))
+    return root.schema, root.to_batches(max_chunksize=BATCH_ROWS)
 
 
-def profile_python(schema, batches, top: int) -> str:
-    prof = cProfile.Profile()
-    prof.enable()
-    ref.encode(schema, batches, COLUMNS, ROOT)
-    prof.disable()
-    buf = io.StringIO()
-    pstats.Stats(prof, stream=buf).sort_stats("tottime").print_stats(top)
-    return buf.getvalue()
+def surface_runs(surface: str, schema, batches, rows: int):
+    """(python thunk, rust thunk, what is encoded) for a surface."""
+    plan = ref.plan_tuples(COLUMNS)
+    if surface == "graphql":
+        return (
+            lambda: ref.encode(schema, batches, COLUMNS, ROOT),
+            lambda: rs.encode_response(batches, plan, ROOT),
+            f"{rows:,} item rows",
+        )
+    if surface == "rest":
+        return (
+            lambda: ref.rest(schema, batches, COLUMNS, ROOT),
+            lambda: rs.encode_rest(batches, plan),
+            f"{rows:,} item rows",
+        )
+    if surface == "jsonapi":
+        # Every order on one page (the router caps a page at 1,000 resources; this measures the
+        # encoder's rate), its items sideloaded.
+        kw = {
+            "gql_to_physical": {"customer": "customer_id"},
+            "rel_gql_to_physical": {"items": "items"},
+            "rel_scalar_gql_to_physical": {"items": {"item_id": "item_id"}},
+        }
+        page = rows
+        return (
+            lambda: ref.jsonapi(
+                schema,
+                batches,
+                COLUMNS,
+                gql_table=ROOT,
+                table_name="orders",
+                domain_id="sales",
+                page_number=1,
+                page_size=page,
+                probe_rows=1,
+                total_count=None,
+                base_keys=["id"],
+                physical_include_names=["items"],
+                include_keys={"items": ["item_id"]},
+                extra={"include": "items"},
+                warnings=None,
+                **kw,
+            ),
+            lambda: rs.encode_jsonapi(
+                batches,
+                plan,
+                resource_type="orders",
+                page_size=page,
+                page_number=1,
+                probe=True,
+                total=None,
+                id_columns=["id"],
+                scalar_names=kw["gql_to_physical"],
+                rel_names=list(kw["rel_gql_to_physical"].items()),
+                rel_scalar_names=kw["rel_scalar_gql_to_physical"],
+                includes=["items"],
+                include_keys={"items": ["item_id"]},
+                base_path="/data/jsonapi/sales/orders",
+                link_params=[("include", "items")],
+            ),
+            f"{rows:,} item rows, items included",
+        )
+    if surface == "odata":
+        from provisa.api.odata.edm import edm_type
+        from provisa.api.odata.expand import Plan, page_link
+        from provisa.api.odata.model import EntitySet, Navigation, Property
+        from provisa.api.odata.query import QueryOptions
+
+        oschema, obatches = odata_dataset(schema, batches, rows)
+        types = {"id": "bigint", "customer": "integer", "total": "double", "ratio": "real",
+                 "amount": "numeric(18,2)", "name": "varchar", "created": "timestamptz",
+                 "day": "date", "active": "boolean", "payload": "jsonb", "note": "varchar"}  # fmt: skip
+        item_types = {
+            "item_id": "bigint",
+            "sku": "varchar",
+            "qty": "integer",
+            "price": "numeric(10,2)",
+            "shipped": "date",
+        }
+
+        def ent(name, t, key):
+            props = tuple(Property(n, edm_type(d), n, d) for n, d in t.items())
+            return EntitySet(name, 1, name, key, props, (), key)
+
+        orders, items = ent("Orders", types, ("id",)), ent("Items", item_types, ("item_id",))
+        nav = Navigation("items", "Items", "Items", True, ())
+        plans = (Plan(nav, items, ("id",), QueryOptions(), (), tuple(item_types), (), 1000, 1),)
+        fields = tuple(types)
+        names = list(oschema.names)
+        n = sum(b.num_rows for b in obatches)
+        root = "https://h.example/odata/v4"
+        context = f"{root}/$metadata#Orders"
+        return (
+            lambda: ref.odata(
+                oschema,
+                obatches,
+                names,
+                entity=orders,
+                fields=fields,
+                plans=plans,
+                context=context,
+                count=None,
+                page=n,
+                root=root,
+                items=(),
+                options=QueryOptions(),
+                warnings=None,
+            ),
+            lambda: rs.encode_odata(
+                obatches,
+                names,
+                wiring.odata_entity(orders, fields, plans),
+                context=context,
+                count=None,
+                page=n,
+                next_link=page_link(f"{root}/Orders", (), QueryOptions(), n),
+                root=root,
+            ),
+            f"{n:,} order rows, {rows:,} items expanded",
+        )
+    raise SystemExit(f"no surface {surface!r}")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--surface", required=True, choices=["graphql", "rest", "jsonapi", "odata"])
     ap.add_argument("--rows", type=int, default=2_000_000)
     ap.add_argument("--py-repeat", type=int, default=3)
     ap.add_argument("--rs-repeat", type=int, default=5)
-    ap.add_argument("--profile-rows", type=int, default=262_144)
     ap.add_argument("--out", default="")
     args = ap.parse_args()
 
@@ -237,21 +365,14 @@ def main() -> None:
     t0 = time.perf_counter()
     schema, batches, orders = dataset(args.rows)
     arrow_mb = sum(b.nbytes for b in batches) / 1e6
+    py_fn, rs_fn, what = surface_runs(args.surface, schema, batches, args.rows)
     print(
-        f"dataset: {args.rows:,} item rows, {orders:,} orders, {len(batches)} batches, "
-        f"{arrow_mb:.1f} MB Arrow, built in {time.perf_counter() - t0:.1f}s, "
-        f"free memory {free_pct()}%, peak rss {rss_mb():.0f} MB",
+        f"{args.surface}: {what}, {orders:,} orders, {arrow_mb:.1f} MB Arrow (flat), built in "
+        f"{time.perf_counter() - t0:.1f}s, free memory {free_pct()}%, peak rss {rss_mb():.0f} MB",
         flush=True,
     )
-    plan = ref.plan_tuples(COLUMNS)
 
-    head = batches[:2]
-    assert ref.encode(schema, head, COLUMNS, ROOT) == graphql_encoder_rs.encode_response(
-        head, plan, ROOT
-    )
-    print("first 2 batches byte-identical; timing...", flush=True)
-
-    rust = timed(lambda: graphql_encoder_rs.encode_response(batches, plan, ROOT), args.rs_repeat)
+    rust = timed(rs_fn, args.rs_repeat)
     rust["peak_rss_mb"] = rss_mb()
     print(
         f"rust   best {rust['wall']:.3f}s wall {rust['cpu']:.3f}s cpu runs "
@@ -259,7 +380,7 @@ def main() -> None:
         f"free {free_pct()}%",
         flush=True,
     )
-    python = timed(lambda: ref.encode(schema, batches, COLUMNS, ROOT), args.py_repeat)
+    python = timed(py_fn, args.py_repeat)
     python["peak_rss_mb"] = rss_mb()
     print(
         f"python best {python['wall']:.3f}s wall {python['cpu']:.3f}s cpu runs "
@@ -270,39 +391,18 @@ def main() -> None:
     assert python["sha256"] == rust["sha256"] and python["bytes"] == rust["bytes"], "bodies differ"
     print(f"full bodies identical: sha256 {rust['sha256']}", flush=True)
 
-    stages = python_stages(schema, batches)
-    print("python stages: " + ", ".join(f"{k} {v:.2f}s" for k, v in stages.items()), flush=True)
-
-    nprof = max(1, args.profile_rows // BATCH_ROWS)
-    prof = profile_python(schema, batches[:nprof], 30)
-    print(
-        f"--- cProfile python, {sum(b.num_rows for b in batches[:nprof]):,} rows ---\n{prof}",
-        flush=True,
-    )
-
     mb = rust["bytes"] / 1e6
-    py, rs = python, rust
+    py, r = python, rust
     print(
-        f"SUMMARY {args.rows:,} rows ({orders:,} orders), {mb:.1f} MB body | python {py['wall']:.2f}s "
-        f"({args.rows / py['wall'] / 1e6:.3f} Mrow/s, {mb / py['wall']:.1f} MB/s) | rust {rs['wall']:.3f}s "
-        f"({args.rows / rs['wall'] / 1e6:.2f} Mrow/s, {mb / rs['wall']:.1f} MB/s) | "
-        f"speedup {py['wall'] / rs['wall']:.1f}x"
+        f"SUMMARY {args.surface} {what}, {mb:.1f} MB body | python {py['wall']:.2f}s "
+        f"({args.rows / py['wall'] / 1e6:.3f} Mrow/s, {mb / py['wall']:.1f} MB/s) | rust {r['wall']:.3f}s "
+        f"({args.rows / r['wall'] / 1e6:.2f} Mrow/s, {mb / r['wall']:.1f} MB/s) | "
+        f"speedup {py['wall'] / r['wall']:.1f}x"
     )
     if args.out:
         with open(args.out, "w") as f:
-            json.dump(
-                {
-                    "rows": args.rows,
-                    "orders": orders,
-                    "arrow_mb": arrow_mb,
-                    "python": python,
-                    "rust": rust,
-                    "python_stages": stages,
-                    "profile": prof,
-                },
-                f,
-                indent=2,
-            )
+            json.dump({"surface": args.surface, "what": what, "rows": args.rows, "orders": orders,
+                       "arrow_mb": arrow_mb, "python": python, "rust": rust}, f, indent=2)  # fmt: skip
 
 
 if __name__ == "__main__":

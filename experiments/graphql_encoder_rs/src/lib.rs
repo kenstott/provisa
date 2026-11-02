@@ -217,7 +217,7 @@ fn entity_of(t: &Bound<'_, PyAny>) -> PyResult<odata::Entity> {
         let (n, collection, page, parent_key, link_query, target): (String, bool, usize, Vec<String>, String, Bound<'_, PyAny>) = p.extract()?;
         navs.push(odata::Nav { name: n, collection, page, parent_key, link_query, target: entity_of(&target)? });
     }
-    Ok(odata::Entity { name, types: tm, fields, plans: navs })
+    Ok(odata::Entity::new(name, tm, fields, navs))
 }
 
 /// `encode_odata(batches, names, entity, *, context, count, warnings, page, next_link, root)`:

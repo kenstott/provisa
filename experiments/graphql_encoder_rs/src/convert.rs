@@ -80,7 +80,8 @@ pub fn integer<'a>(p: P<'a>, field: &str) -> Res<P<'a>> {
 /// `json_value(p, field, json_text)`.
 pub fn json_value<'a>(p: P<'a>, field: &str, json_text: &HashSet<Vec<u8>>) -> Res<P<'a>> {
     let v = match p {
-        P::Str(s) => json::parse_column_text(&s, field)?,
+        P::Str(Cow::Borrowed(s)) => json::parse_column_text(s, field)?,
+        P::Str(s) => json::parse_column_text(&s, field)?.into_owned(),
         other => other,
     };
     walk(v, field, json_text, &mut Vec::new())
@@ -94,7 +95,8 @@ fn walk<'a>(v: P<'a>, field: &str, json_text: &HashSet<Vec<u8>>, path: &mut Vec<
                 let len = path.len();
                 path.extend_from_slice(&k);
                 let x = match x {
-                    P::Str(s) if !json_text.is_empty() && json_text.contains(path.as_slice()) => json::parse_column_text(&s, field)?,
+                    P::Str(Cow::Borrowed(s)) if !json_text.is_empty() && json_text.contains(path.as_slice()) => json::parse_column_text(s, field)?,
+                    P::Str(s) if !json_text.is_empty() && json_text.contains(path.as_slice()) => json::parse_column_text(&s, field)?.into_owned(),
                     x => x,
                 };
                 path.push(b'.');

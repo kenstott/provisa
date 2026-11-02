@@ -34,7 +34,7 @@ pub enum Fail {
     IntLimit,
 }
 
-pub fn parse(s: &[u8], floats: Floats) -> Result<P<'static>, Fail> {
+pub fn parse(s: &[u8], floats: Floats) -> Result<P<'_>, Fail> {
     let mut p = Parser { s, i: 0, depth: 0, floats };
     p.ws();
     let v = p.value()?;
@@ -47,7 +47,7 @@ pub fn parse(s: &[u8], floats: Floats) -> Result<P<'static>, Fail> {
 
 /// `serialize._parse_json_text`: JSON text a JSON-typed column holds, as its value, refused by
 /// name where JSON cannot carry it.
-pub fn parse_column_text(s: &[u8], field: &str) -> Res<P<'static>> {
+pub fn parse_column_text<'a>(s: &'a [u8], field: &str) -> Res<P<'a>> {
     let refused = |reason: String| Error::ValueRefused(field.to_string(), reason);
     match parse(s, Floats::JsonNumber) {
         Ok(v) => {
@@ -64,7 +64,7 @@ pub fn parse_column_text(s: &[u8], field: &str) -> Res<P<'static>> {
 }
 
 /// `json.loads(text, parse_float=Decimal)`: OData's reading of a relationship's JSON.
-pub fn parse_decimal_text(s: &[u8]) -> Res<P<'static>> {
+pub fn parse_decimal_text(s: &[u8]) -> Res<P<'_>> {
     match parse(s, Floats::Decimal) {
         Ok(v) => Ok(v),
         Err(Fail::Decode(kind)) => Err(Error::Value(format!("JSONDecodeError: {kind}"))),
@@ -97,6 +97,7 @@ struct Parser<'a> {
 type PR<T> = Result<T, Fail>;
 
 impl<'a> Parser<'a> {
+    #[allow(clippy::needless_lifetimes)]
     fn ws(&mut self) {
         while self.i < self.s.len() && matches!(self.s[self.i], b' ' | b'\t' | b'\n' | b'\r') {
             self.i += 1;
@@ -116,18 +117,18 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn constant(&mut self, name: &'static str, v: f64) -> PR<P<'static>> {
+    fn constant(&mut self, name: &'static str, v: f64) -> PR<P<'a>> {
         match self.floats {
             Floats::JsonNumber => Err(Fail::Constant(name)),
             Floats::Decimal => Ok(P::Float(v)),
         }
     }
 
-    fn value(&mut self) -> PR<P<'static>> {
+    fn value(&mut self) -> PR<P<'a>> {
         match self.peek().ok_or(Fail::Decode("Expecting value"))? {
             b'{' => self.object(),
             b'[' => self.array(),
-            b'"' => Ok(P::Str(Cow::Owned(self.string()?))),
+            b'"' => Ok(P::Str(self.string()?)),
             b'n' if self.lit(b"null") => Ok(P::None),
             b't' if self.lit(b"true") => Ok(P::Bool(true)),
             b'f' if self.lit(b"false") => Ok(P::Bool(false)),
@@ -141,7 +142,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn number(&mut self) -> PR<P<'static>> {
+    fn number(&mut self) -> PR<P<'a>> {
         let s = self.s;
         let start = self.i;
         let mut i = self.i;
@@ -183,7 +184,7 @@ impl<'a> Parser<'a> {
         let text = std::str::from_utf8(&s[start..i]).unwrap();
         if is_float {
             return Ok(match self.floats {
-                Floats::JsonNumber => P::JNum(Cow::Owned(text.to_string())),
+                Floats::JsonNumber => P::JNum(Cow::Borrowed(text)),
                 Floats::Decimal => P::Dec(text::decimal_of_number(text)),
             });
         }
@@ -195,7 +196,7 @@ impl<'a> Parser<'a> {
         }
         Ok(match text.parse::<i128>() {
             Ok(v) => P::Int(v),
-            Err(_) => P::BigInt(Cow::Owned(text.to_string())),
+            Err(_) => P::BigInt(Cow::Borrowed(text)),
         })
     }
 
@@ -207,7 +208,7 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn array(&mut self) -> PR<P<'static>> {
+    fn array(&mut self) -> PR<P<'a>> {
         self.enter()?;
         self.i += 1;
         let mut v = Vec::new();
@@ -234,10 +235,10 @@ impl<'a> Parser<'a> {
         Ok(P::List(v))
     }
 
-    fn object(&mut self) -> PR<P<'static>> {
+    fn object(&mut self) -> PR<P<'a>> {
         self.enter()?;
         self.i += 1;
-        let mut v: Vec<(Cow<'static, [u8]>, P<'static>)> = Vec::new();
+        let mut v: Vec<(Cow<'a, [u8]>, P<'a>)> = Vec::new();
         self.ws();
         if self.peek() == Some(b'}') {
             self.i += 1;
@@ -257,7 +258,7 @@ impl<'a> Parser<'a> {
             self.i += 1;
             self.ws();
             let val = self.value()?;
-            P::dict_set(&mut v, Cow::Owned(k), val);
+            P::dict_set(&mut v, k, val);
             self.ws();
             match self.peek() {
                 Some(b',') => self.i += 1,
@@ -287,16 +288,26 @@ impl<'a> Parser<'a> {
         Ok(v)
     }
 
-    /// A string token as WTF-8.
-    fn string(&mut self) -> PR<Vec<u8>> {
+    /// A string token as WTF-8, borrowed from the text when it has no escape.
+    fn string(&mut self) -> PR<Cow<'a, [u8]>> {
         self.i += 1;
-        let mut out = Vec::new();
+        let start = self.i;
+        let mut j = start;
+        while j < self.s.len() && self.s[j] != b'"' && self.s[j] != b'\\' && self.s[j] >= 0x20 {
+            j += 1;
+        }
+        if self.s.get(j) == Some(&b'"') {
+            self.i = j + 1;
+            return Ok(Cow::Borrowed(&self.s[start..j]));
+        }
+        let mut out = self.s[start..j].to_vec();
+        self.i = j;
         loop {
             let c = *self.s.get(self.i).ok_or(Fail::Decode("Unterminated string starting at"))?;
             match c {
                 b'"' => {
                     self.i += 1;
-                    return Ok(out);
+                    return Ok(Cow::Owned(out));
                 }
                 0x00..=0x1f => return Err(Fail::Decode("Invalid control character at")),
                 b'\\' => {

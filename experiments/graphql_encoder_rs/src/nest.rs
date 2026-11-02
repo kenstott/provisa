@@ -169,6 +169,7 @@ pub enum V {
 /// Python dicts and lists as the serializer builds them: insertion-ordered objects.
 pub struct Tree {
     pub buf: Vec<u8>,
+    scratch: Vec<u8>,
     pub objs: Vec<Vec<(u32, V)>>,
     pub arrs: Vec<Vec<V>>,
     pub jv: Vec<P<'static>>,
@@ -177,7 +178,7 @@ pub struct Tree {
 
 impl Tree {
     pub fn new(names: &Interner) -> Self {
-        Tree { buf: Vec::new(), objs: Vec::new(), arrs: Vec::new(), jv: Vec::new(), names: names.clone() }
+        Tree { buf: Vec::new(), scratch: Vec::new(), objs: Vec::new(), arrs: Vec::new(), jv: Vec::new(), names: names.clone() }
     }
     pub fn clear(&mut self) {
         self.buf.clear();
@@ -198,7 +199,7 @@ impl Tree {
         V::Json(self.jv.len() as u32 - 1)
     }
     /// A V for a value of `p`'s kind (a scalar's JSON bytes, a container held as it is).
-    pub fn value(&mut self, p: P<'static>) -> Res<V> {
+    pub fn value(&mut self, p: P<'_>) -> Res<V> {
         Ok(match p {
             P::None => V::Null,
             P::Float(f) => V::Float(f),
@@ -211,7 +212,7 @@ impl Tree {
                 b.extend_from_slice(if x { b"true" } else { b"false" });
                 Ok(())
             })?,
-            other => self.json(other),
+            other => self.json(other.into_owned()),
         })
     }
     fn leaf(&mut self, kind: LeafKind, f: impl FnOnce(&mut Vec<u8>) -> Res<()>) -> Res<V> {
@@ -268,9 +269,31 @@ impl Tree {
         }
     }
     pub fn cell(&mut self, c: &Cell, row: usize, k: &mut Keyer) -> Res<V> {
-        let p = c.value(row)?;
         let _ = k;
-        self.value(p.into_owned())
+        let mut scratch = std::mem::take(&mut self.scratch);
+        let fast = c.fast(row, &mut scratch);
+        let v = match fast {
+            Some(f) => match f? {
+                Fast::Null => V::Null,
+                Fast::Float(x) => V::Float(x),
+                Fast::Int(i) => self.leaf(LeafKind::Int, |b| {
+                    b.extend_from_slice(itoa::Buffer::new().format(i).as_bytes());
+                    Ok(())
+                })?,
+                Fast::Bool(x) => self.leaf(LeafKind::Bool, |b| {
+                    b.extend_from_slice(if x { b"true" } else { b"false" });
+                    Ok(())
+                })?,
+                Fast::Text(t) => self.leaf(LeafKind::Str, |b| pywrite::write_text(b, t))?,
+                Fast::Scratch => self.leaf(LeafKind::Str, |b| pywrite::write_text(b, &scratch))?,
+            },
+            None => {
+                let p = c.value(row)?;
+                self.value(p)?
+            }
+        };
+        self.scratch = scratch;
+        Ok(v)
     }
 
     /// The JSON of `v`; `depth` is the nesting level of the container holding it.
@@ -406,13 +429,14 @@ pub struct Cell {
     pub r: Reader,
     pub mode: Mode,
     pub field: String,
+    scratch: std::cell::RefCell<Vec<u8>>,
     /// The last JSON text keyed and its key atom: equal text, equal parse, equal key.
     last: std::cell::RefCell<(Vec<u8>, Vec<u8>)>,
 }
 
 impl Cell {
     pub fn new(r: Reader, mode: Mode, field: String) -> Cell {
-        Cell { r, mode, field, last: Default::default() }
+        Cell { r, mode, field, scratch: Default::default(), last: Default::default() }
     }
     pub fn is_null(&self, row: usize) -> bool {
         self.r.is_null(row)
@@ -421,8 +445,62 @@ impl Cell {
     pub fn value(&self, row: usize) -> Res<P<'_>> {
         column_value(self.r.get(row)?, &self.mode, &self.field)
     }
+    /// A scalar of a common column type converted without building its Python value (text in
+    /// `scratch` for `Fast::Scratch`); None for any other column.
+    pub fn fast<'s>(&'s self, row: usize, scratch: &mut Vec<u8>) -> Option<Res<Fast<'s>>> {
+        if matches!(self.mode, Mode::Json(_)) {
+            return None;
+        }
+        let convert = matches!(self.mode, Mode::Convert);
+        if self.r.is_null(row) {
+            return Some(Ok(Fast::Null));
+        }
+        Some(Ok(match &self.r {
+            Reader::Int(a) => Fast::Int(a.value(row) as i128),
+            Reader::UInt(a) => Fast::Int(a.value(row) as i128),
+            Reader::Bool(a) => Fast::Bool(a.value(row)),
+            Reader::Float(a) => Fast::Float(a.value(row)),
+            Reader::Utf8(a) => Fast::Text(a.value(row).as_bytes()),
+            Reader::LUtf8(a) => Fast::Text(a.value(row).as_bytes()),
+            Reader::VUtf8(a) => Fast::Text(a.value(row).as_bytes()),
+            Reader::Dec128(a, sc) if convert => {
+                let c = a.value(row);
+                scratch.clear();
+                let mut b = itoa::Buffer::new();
+                let d = crate::pyval::Dec { neg: c < 0, coef: std::borrow::Cow::Borrowed(b.format(c.unsigned_abs())), exp: -*sc };
+                crate::text::decimal_f(scratch, &d);
+                Fast::Scratch
+            }
+            Reader::Date32(..) | Reader::Ts(_, crate::pyval::Unit::S | crate::pyval::Unit::Ms | crate::pyval::Unit::Us, _, _) if convert => {
+                let p = match self.r.get(row) {
+                    Ok(p) => p,
+                    Err(e) => return Some(Err(e)),
+                };
+                scratch.clear();
+                pywrite::temporal_text(scratch, &p);
+                Fast::Scratch
+            }
+            _ => return None,
+        }))
+    }
+
     /// `_to_hashable(column_value(...))`, appended to `key`.
     pub fn key(&self, row: usize, key: &mut Vec<u8>, k: &mut Keyer) -> Res<()> {
+        let mut scratch = std::mem::take(&mut *self.scratch.borrow_mut());
+        let fast = self.fast(row, &mut scratch);
+        if let Some(f) = fast {
+            match f? {
+                Fast::Null => key.push(pywrite::K_NULL),
+                Fast::Int(i) => k.int_atom(key, i),
+                Fast::Bool(b) => k.int_atom(key, b as i128),
+                Fast::Float(x) => k.float_atom(key, x),
+                Fast::Text(t) => k.str_atom(key, t),
+                Fast::Scratch => k.str_atom(key, &scratch),
+            }
+            *self.scratch.borrow_mut() = scratch;
+            return Ok(());
+        }
+        *self.scratch.borrow_mut() = scratch;
         if let Mode::Json(_) = self.mode {
             if let P::Str(s) = self.r.get(row)? {
                 let mut last = self.last.borrow_mut();
@@ -442,6 +520,17 @@ impl Cell {
         k.atom(key, &v);
         Ok(())
     }
+}
+
+/// A scalar converted without a Python value.
+pub enum Fast<'a> {
+    Null,
+    Text(&'a [u8]),
+    /// Text left in the caller's scratch buffer.
+    Scratch,
+    Int(i128),
+    Bool(bool),
+    Float(f64),
 }
 
 pub struct Batch {

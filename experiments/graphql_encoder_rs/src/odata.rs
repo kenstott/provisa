@@ -53,6 +53,33 @@ pub struct Entity {
     pub types: HashMap<String, Edm>,
     pub fields: Vec<String>,
     pub plans: Vec<Nav>,
+    /// Each field's Edm type (None: not a property, a KeyError when written).
+    pub field_edm: Vec<Option<Edm>>,
+    /// Every key `write` sets is distinct: the entity is written as it is built.
+    pub unique: bool,
+}
+
+impl Entity {
+    pub fn new(name: String, types: HashMap<String, Edm>, fields: Vec<String>, plans: Vec<Nav>) -> Entity {
+        let field_edm = fields.iter().map(|f| types.get(f).copied()).collect();
+        let mut e = Entity { name, types, fields, plans, field_edm, unique: false };
+        e.unique = e.distinct();
+        e
+    }
+
+    fn distinct(&self) -> bool {
+        let mut names: Vec<String> = self.fields.clone();
+        for p in &self.plans {
+            names.push(p.name.clone());
+            if p.collection {
+                names.push(format!("{}@odata.nextLink", p.name));
+            }
+        }
+        let n = names.len();
+        names.sort();
+        names.dedup();
+        names.len() == n
+    }
 }
 
 /// One expansion (`expand.Plan`).
@@ -507,6 +534,42 @@ pub fn edm_value(p: &P, edm: Edm) -> Res<P<'static>> {
     })
 }
 
+/// `edm_value(p, edm)` as orjson writes it: the common pairs directly, any other through
+/// `edm_value`.
+pub fn write_edm(out: &mut Vec<u8>, p: &P, edm: Edm, depth: usize) -> Res<()> {
+    match (p, edm) {
+        (P::None, _) => out.extend_from_slice(b"null"),
+        (P::Int(i), Edm::Int | Edm::Decimal) => out.extend_from_slice(itoa::Buffer::new().format(*i).as_bytes()),
+        (P::Str(s), Edm::String) => pywrite::write_text(out, s)?,
+        (P::Dec(d), Edm::Decimal) => text::decimal_f(out, d),
+        (P::Float(f), Edm::Double | Edm::Single) if f.is_finite() => fmt::write_f64(out, *f),
+        (P::Bool(b), Edm::Boolean) => out.extend_from_slice(if *b { b"true" } else { b"false" }),
+        (P::Date(d), Edm::Date) => {
+            out.push(b'"');
+            text::date_iso(out, *d as i64);
+            out.push(b'"');
+        }
+        (P::Dt(dt), Edm::DateTimeOffset) if dt.nanos.is_none() && dt.offset.is_some() => {
+            out.push(b'"');
+            text::dt_iso(out, &Dt { offset: None, ..*dt }, b'T', false);
+            match dt.offset {
+                Some(0) => out.push(b'Z'),
+                Some(o) => {
+                    let a = o.unsigned_abs();
+                    out.extend_from_slice(format!("{}{:02}:{:02}", if o < 0 { '-' } else { '+' }, a / 3600, a / 60 % 60).as_bytes());
+                    if a % 60 != 0 {
+                        out.extend_from_slice(format!(":{:02}", a % 60).as_bytes());
+                    }
+                }
+                None => unreachable!(),
+            }
+            out.push(b'"');
+        }
+        _ => pywrite::write(out, &edm_value(p, edm)?, depth)?,
+    }
+    Ok(())
+}
+
 /// `orjson.dumps(v, default=str)`: orjson's own types natively, `str()` of the rest; an int past
 /// 64 bits, a lone surrogate or nesting past orjson's limit raise.
 fn orjson_default_str(out: &mut Vec<u8>, p: &P, depth: usize) -> Res<()> {
@@ -728,9 +791,10 @@ pub fn fromisoformat(s: &[u8]) -> Res<Dt> {
 // ---------------------------------------------------------------- entities
 
 /// The expansion's raw value: JSON text read with exact numbers, or what the engine gave.
-fn decoded(p: P) -> Res<P> {
+fn decoded(p: P<'_>) -> Res<P<'_>> {
     match p {
-        P::Str(s) => json::parse_decimal_text(&s),
+        P::Str(Cow::Borrowed(s)) => json::parse_decimal_text(s),
+        P::Str(s) => Ok(json::parse_decimal_text(&s)?.into_owned()),
         other => Ok(other),
     }
 }
@@ -792,6 +856,85 @@ struct Writer<'r> {
 impl Writer<'_> {
     /// `expand.write`: one row as an entity at nesting level `depth`.
     fn entity(&self, out: &mut Vec<u8>, values: &[(Cow<[u8]>, P)], e: &Entity, depth: usize) -> Res<()> {
+        if !e.unique {
+            return self.entity_dict(out, values, e, depth);
+        }
+        out.push(b'{');
+        let mut first = true;
+        let mut key = |out: &mut Vec<u8>, k: &[u8]| -> Res<()> {
+            if !first {
+                out.push(b',');
+            }
+            first = false;
+            pywrite::write_text(out, k)?;
+            out.push(b':');
+            Ok(())
+        };
+        for (name, edm) in e.fields.iter().zip(&e.field_edm) {
+            let edm = edm.ok_or_else(|| Error::Value(format!("KeyError: '{name}'")))?;
+            let v = get(values, name)?;
+            key(out, name.as_bytes())?;
+            write_edm(out, v, edm, depth)?;
+        }
+        for plan in &e.plans {
+            let mut b = Vec::new();
+            let link = self.expanded(&mut b, values, e, plan, depth)?;
+            key(out, plan.name.as_bytes())?;
+            out.extend_from_slice(&b);
+            if let Some(l) = link {
+                key(out, format!("{}@odata.nextLink", plan.name).as_bytes())?;
+                fmt::write_str(out, l.as_bytes());
+            }
+        }
+        out.push(b'}');
+        Ok(())
+    }
+
+    /// One expansion's value (`_expanded`), and its nextLink when the list goes on.
+    fn expanded(&self, b: &mut Vec<u8>, values: &[(Cow<[u8]>, P)], e: &Entity, plan: &Nav, depth: usize) -> Res<Option<String>> {
+        let name = &plan.name;
+        if !plan.collection {
+            let found = decoded(get(values, name)?.clone())?;
+            match found {
+                P::None => b.extend_from_slice(b"null"),
+                P::Dict(entries) => {
+                    if depth + 1 > MAX_DEPTH {
+                        return Err(pywrite::recursion());
+                    }
+                    self.entity(b, &entries, &plan.target, depth + 1)?
+                }
+                other => return type_error("TypeError: not a mapping", &other),
+            }
+            return Ok(None);
+        }
+        let rows = if plan.page > 0 {
+            match decoded(get(values, name)?.clone())? {
+                P::List(v) => v,
+                other => return type_error("TypeError: not a list", &other),
+            }
+        } else {
+            Vec::new()
+        };
+        if depth + 1 > MAX_DEPTH && !rows.is_empty() && plan.page > 0 {
+            return Err(pywrite::recursion());
+        }
+        b.push(b'[');
+        for (i, row) in rows.iter().take(plan.page).enumerate() {
+            if i > 0 {
+                b.push(b',');
+            }
+            let P::Dict(entries) = row else { return type_error("TypeError: not a mapping", row) };
+            if depth + 2 > MAX_DEPTH {
+                return Err(pywrite::recursion());
+            }
+            self.entity(b, entries, &plan.target, depth + 2)?;
+        }
+        b.push(b']');
+        Ok(if rows.len() > plan.page { Some(self.link(values, e, plan)?) } else { None })
+    }
+
+    /// `write` building its dict: a repeated key keeps its first position and takes its last value.
+    fn entity_dict(&self, out: &mut Vec<u8>, values: &[(Cow<[u8]>, P)], e: &Entity, depth: usize) -> Res<()> {
         let mut written: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
         let mut set = |k: Vec<u8>, v: Vec<u8>| match written.iter_mut().find(|x| x.0 == k) {
             Some(x) => x.1 = v,
@@ -799,59 +942,18 @@ impl Writer<'_> {
         };
         for name in &e.fields {
             let edm = *e.types.get(name).ok_or_else(|| Error::Value(format!("KeyError: '{name}'")))?;
-            let v = edm_value(get(values, name)?, edm)?;
             let mut b = Vec::new();
-            pywrite::write(&mut b, &v, depth)?;
+            write_edm(&mut b, get(values, name)?, edm, depth)?;
             set(name.as_bytes().to_vec(), b);
         }
         for plan in &e.plans {
-            let name = &plan.name;
-            if !plan.collection {
-                let found = decoded(get(values, name)?.clone())?;
-                let mut b = Vec::new();
-                match found {
-                    P::None => b.extend_from_slice(b"null"),
-                    P::Dict(entries) => {
-                        if depth + 1 > MAX_DEPTH {
-                            return Err(pywrite::recursion());
-                        }
-                        self.entity(&mut b, &entries, &plan.target, depth + 1)?
-                    }
-                    other => return type_error("TypeError: not a mapping", &other),
-                }
-                set(name.as_bytes().to_vec(), b);
-                continue;
-            }
-            let rows = if plan.page > 0 {
-                match decoded(get(values, name)?.clone())? {
-                    P::List(v) => v,
-                    other => return type_error("TypeError: not a list", &other),
-                }
-            } else {
-                Vec::new()
-            };
             let mut b = Vec::new();
-            if depth + 1 > MAX_DEPTH && !rows.is_empty() && plan.page > 0 {
-                return Err(pywrite::recursion());
-            }
-            b.push(b'[');
-            for (i, row) in rows.iter().take(plan.page).enumerate() {
-                if i > 0 {
-                    b.push(b',');
-                }
-                let P::Dict(entries) = row else { return type_error("TypeError: not a mapping", row) };
-                if depth + 2 > MAX_DEPTH {
-                    return Err(pywrite::recursion());
-                }
-                self.entity(&mut b, entries, &plan.target, depth + 2)?;
-            }
-            b.push(b']');
-            set(name.as_bytes().to_vec(), b);
-            if rows.len() > plan.page {
-                let link = self.link(values, e, plan)?;
+            let link = self.expanded(&mut b, values, e, plan, depth)?;
+            set(plan.name.as_bytes().to_vec(), b);
+            if let Some(l) = link {
                 let mut lb = Vec::new();
-                fmt::write_str(&mut lb, link.as_bytes());
-                set(format!("{name}@odata.nextLink").into_bytes(), lb);
+                fmt::write_str(&mut lb, l.as_bytes());
+                set(format!("{}@odata.nextLink", plan.name).into_bytes(), lb);
             }
         }
         out.push(b'{');
