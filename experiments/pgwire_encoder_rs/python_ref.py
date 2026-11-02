@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 94865ac8-f19a-4123-9c23-5cbb9324ab81
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """The product's own Python encode path, driven in isolation: Arrow batches -> stream_rows_from_arrow
 (column_values per column, zip to row tuples) -> ProvisaQueryResult (types, coercers) -> buenavista
 send_data_rows (BVTYPE_TO_PGTYPE converters, DataRow framing) into an in-memory writer.

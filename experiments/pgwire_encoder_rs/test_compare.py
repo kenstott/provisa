@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: ca69753f-71e8-489e-a5c6-a98d4d9e7b86
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Differential test: the Rust DataRow encoder against the product's Python encode path, byte for
 byte, over every type the port covers, NULLs and edge values, in text and binary formats.
 
