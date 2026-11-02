@@ -382,6 +382,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "grpc_encoder"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "chrono",
+ "chrono-tz",
+ "itoa",
+ "pyo3",
+]
+
+[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -706,6 +717,7 @@ dependencies = [
 name = "provisa_encoders"
 version = "0.1.0"
 dependencies = [
+ "grpc_encoder",
  "pgwire_encoder",
  "pyo3",
 ]
