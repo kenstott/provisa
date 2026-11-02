@@ -48,6 +48,22 @@ class StatementZone:
 
 current_zone: ContextVar[StatementZone | None] = ContextVar("current_zone", default=None)
 
+
+def trino_spelling(zone: StatementZone) -> str | None:
+    return zone.name or zone.offset
+
+
+def clickhouse_spelling(zone: StatementZone) -> str | None:
+    """What ClickHouse reads: a name of the tz database, or cctz's fixed offset."""
+    return zone.name or (None if zone.offset is None else f"Fixed/UTC{zone.offset}:00")
+
+
+def refused_zone(engine: str, zone: StatementZone) -> PostgresError:
+    return PostgresError(
+        "0A000", f"{engine} cannot run this statement in the session TimeZone {zone.shown}"
+    )
+
+
 #: What a statement must spell for its answer to depend on the zone: reading an instant's parts or
 #: its text, or the clock. The cost of matching one that does not depend on it is a refusal.
 _ZONE_MATTERS = re.compile(
@@ -96,7 +112,5 @@ def told_as(sql: str, spelling: Callable[[StatementZone], str | None], engine: s
         return None
     told = spelling(zone)
     if told is None and _ZONE_MATTERS.search(sql):
-        raise PostgresError(
-            "0A000", f"{engine} cannot run this statement in the session TimeZone {zone.shown}"
-        )
+        raise refused_zone(engine, zone)
     return told

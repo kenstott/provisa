@@ -12,12 +12,14 @@
 does not reach (REQ-2171). PostgreSQL 17 proves session_zone_answers.py is its table, and Trino and
 ClickHouse are each held to it case by case, as Provisa writes the statement and tells the engine
 the zone. The instants on each engine are the kind Provisa reads: Trino's carry UTC, as its PostgreSQL
-connector's do, and ClickHouse's are DateTime64(6, 'UTC'), Provisa's own type for an instant."""
+connector's do, and ClickHouse's are DateTime64(6, 'UTC'), Provisa's own type for an instant. An
+instant an engine returns is held to the table as pgwire writes it."""
 
 # Requirements: REQ-2171
 
 from __future__ import annotations
 
+import datetime
 import os
 import subprocess
 import time
@@ -27,7 +29,9 @@ from typing import Any
 
 import psycopg
 import pytest
+from buenavista.postgres import _timestamp_text
 
+from provisa.core.pg_error import PostgresError
 from provisa.core.session_time_zone import bind_zone, reset_zone
 from provisa.executor.trino import execute_trino
 from provisa.federation.clickhouse_runtime import _ServerBackend
@@ -102,6 +106,13 @@ def _in_zone(set_zone: str, run: Any) -> Any:
         reset_zone(token)
 
 
+def _sent(set_zone: str, value: Any) -> str:
+    """``value`` as pgwire sends it: an instant as timestamptz_out writes it in the session's zone."""
+    if not isinstance(value, datetime.datetime):
+        return str(value)
+    return _timestamp_text(value.astimezone(SessionZone(_SESSIONS[set_zone]).written_in()))
+
+
 _TRINO_ROWS = ", ".join(
     f"({i}, TIMESTAMP '{instant.replace('+00', '')} UTC')" for i, instant in enumerate(INSTANTS)
 )
@@ -117,18 +128,29 @@ def _trino_kwargs() -> dict[str, Any]:
     }
 
 
-@pytest.mark.requires_trino
-@pytest.mark.parametrize("set_zone, name, want", CASES)
-def test_trino_answers_as_postgresql_17_answered(trino_conn, set_zone, name, want):
+def _on_trino(trino_conn: Any, name: str) -> Any:
     sql = transpile_to_trino(statement(name)).replace(
-        "FROM t", f"FROM (VALUES {_TRINO_ROWS}) AS t(i, c)"
+        "FROM t ORDER", f"FROM (VALUES {_TRINO_ROWS}) AS t(i, c) ORDER"
     )
     # A statement bound to no zone would run on trino_conn; a zone takes conn_kwargs' connection.
-    result = _in_zone(
-        set_zone,
-        lambda: execute_trino(trino_conn, sql, conn_kwargs=_trino_kwargs()),
-    )
-    assert tuple(str(row[0]) for row in result.rows) == want
+    return execute_trino(trino_conn, sql, conn_kwargs=_trino_kwargs())
+
+
+@pytest.mark.requires_trino
+@pytest.mark.parametrize(
+    "set_zone, name, want", [case for case in CASES if case[1] != "json"]
+)  # to_json has no form of an instant on Trino: refused by name, below
+def test_trino_answers_as_postgresql_17_answered(trino_conn, set_zone, name, want):
+    result = _in_zone(set_zone, lambda: _on_trino(trino_conn, name))
+    assert tuple(_sent(set_zone, row[0]) for row in result.rows) == want
+
+
+@pytest.mark.requires_trino
+@pytest.mark.parametrize("set_zone", list(_SESSIONS))
+def test_trino_refuses_to_json_of_an_instant_by_name(trino_conn, set_zone):
+    with pytest.raises(PostgresError, match="to_json of a timestamptz") as refused:
+        _in_zone(set_zone, lambda: _on_trino(trino_conn, "json"))
+    assert refused.value.sqlstate == "0A000"
 
 
 @pytest.mark.requires_trino
@@ -144,7 +166,7 @@ def test_a_trino_client_after_another_is_on_its_own_zone(trino_conn):
     assert cursor.fetchall()[0][0] != "Asia/Kolkata"
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture  # each test's: requires_clickhouse removes the container after every test
 def clickhouse() -> Iterator[_ServerBackend]:
     backend = _ServerBackend(
         host=os.environ.get("CLICKHOUSE_HOST", "localhost"),
@@ -169,9 +191,11 @@ def clickhouse() -> Iterator[_ServerBackend]:
     "set_zone, name, want", [case for case in CASES if case[1] != "json"]
 )  # to_json has no form on ClickHouse: it is refused by name (pg_forms_json), in every zone
 def test_clickhouse_answers_as_postgresql_17_answered(clickhouse, set_zone, name, want):
-    sql = transpile(statement(name), "clickhouse")
-    rows = _in_zone(set_zone, lambda: clickhouse.query_arrow(sql)).column(0).to_pylist()
-    assert tuple(str(value) for value in rows) == want
+    def run() -> Any:
+        return clickhouse.query_arrow(transpile(statement(name), "clickhouse"))
+
+    rows = _in_zone(set_zone, run).column(0).to_pylist()
+    assert tuple(_sent(set_zone, value) for value in rows) == want
 
 
 @pytest.mark.requires_clickhouse

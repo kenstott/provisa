@@ -27,6 +27,7 @@ from provisa.transpiler import (
     pg_functions,
     pg_held_types,
     pg_money,
+    zoned_instants,
 )
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
@@ -1261,6 +1262,9 @@ def transpile(
         lowered = _OWN_TRY_CASTS[target_dialect](
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
+    # REQ-2171: each read of an instant in the session's zone, on what is not told it. Before the
+    # functions, so what they write of their own text is not read as a statement's.
+    lowered = zoned_instants.written(pg_sql, lowered, target_dialect)
     if function_macros.mentioned(pg_sql, target_dialect):
         # REQ-2167: each function the target does not have, in its form there, or refused by name.
         lowered = function_macros.inline(

@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 from urllib.parse import unquote, urlparse
 
 from provisa.core import request_deadline
-from provisa.core.session_time_zone import StatementZone, told_as
+from provisa.core.session_time_zone import clickhouse_spelling, told_as
 from provisa.federation.land_guard import LandGuard
 from provisa.executor.drivers.clickhouse import result_names
 from provisa.executor.result import QueryResult, ResultStream
@@ -148,17 +148,12 @@ class _CHBackend(Protocol):
     def close(self) -> None: ...
 
 
-def _clickhouse_zone(zone: StatementZone) -> str | None:
-    """What ClickHouse reads: a name of the tz database, or cctz's fixed offset."""
-    return zone.name or (None if zone.offset is None else f"Fixed/UTC{zone.offset}:00")
-
-
 def _settings(qid: str, sql: str) -> dict[str, str]:
     """A statement's settings. ``session_timezone`` is a setting of this request alone, so nothing
     keeps it (REQ-2171). It is what timezone() and an instant read without a zone go by, and no
-    more: toHour, toDate, dateTrunc and toString of a stored column keep the column's zone or the
-    server's, declared or not, so what a statement reads of one is still not the session's zone."""
-    zone = told_as(sql, _clickhouse_zone, "ClickHouse")
+    more: what a statement reads of a stored column has the zone written into it
+    (transpiler.zoned_instants)."""
+    zone = told_as(sql, clickhouse_spelling, "ClickHouse")
     return {"query_id": qid} if zone is None else {"query_id": qid, "session_timezone": zone}
 
 

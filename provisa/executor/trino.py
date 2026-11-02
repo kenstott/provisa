@@ -23,7 +23,8 @@ import time
 
 import trino
 from provisa.core import request_deadline
-from provisa.core.session_time_zone import StatementZone, told_as
+from provisa.core.pg_error import PostgresError
+from provisa.core.session_time_zone import told_as, trino_spelling
 from provisa.executor.result import QueryResult  # re-export: neutral result type (REQ-028)
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -128,8 +129,8 @@ def _instants_in_utc(rows: list, column_types: list[str]) -> list:
     return out
 
 
-def _trino_zone(zone: StatementZone) -> str | None:
-    return zone.name or zone.offset
+#: Trino's refusal while it types a statement, which no form of to_json can avoid (REQ-2171).
+_NO_JSON_OF_INSTANT = "with time zone to json"
 
 
 def _engine_conn_kwargs(given: dict | None) -> dict:
@@ -164,7 +165,7 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
         _owned_conn = None
         # REQ-2171: a zone goes on a connection of this statement's: the shared one's client session
         # is every request's, and X-Trino-Time-Zone is read from it.
-        zone = told_as(sql, _trino_zone, "Trino")
+        zone = told_as(sql, trino_spelling, "Trino")
         zoned_kwargs = (
             None if zone is None else {**_engine_conn_kwargs(conn_kwargs), "timezone": zone}
         )
@@ -317,6 +318,10 @@ def execute_trino(  # REQ-028, REQ-054, REQ-277, REQ-278, REQ-279, REQ-302, REQ-
 
                     span.set_attribute("error", True)
                     span.set_attribute("error.message", err_msg[:500])
+                    if _NO_JSON_OF_INSTANT in err_msg:
+                        raise PostgresError(
+                            "0A000", "to_json of a timestamptz is not available on Trino"
+                        ) from exc
                     if isinstance(exc, trino.exceptions.TrinoQueryError):
                         raise FederationError.from_engine_error(exc) from exc
                     raise

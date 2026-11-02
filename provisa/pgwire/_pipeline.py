@@ -694,15 +694,17 @@ async def _kept_engine_form(
     the literal-predicate carry (REQ-1880), the catalog fold (REQ-1730) and the engine transpile —
     is a function of that text, the registry and the bound engine. The registry is fixed for a
     kept statement (it answers only within one schema generation), so the product is kept in the
-    statement's ``memo`` and answers only for the exact text it was derived from and the engine it
-    was derived for: an optimization that rewrites the text (a hot-table inline follows the data)
-    or a swapped engine derives it again. A refusal raises and is never kept."""
+    statement's ``memo`` and answers only for the exact text it was derived from, the engine it
+    was derived for and the session zone written into it (REQ-2171): an optimization that rewrites
+    the text (a hot-table inline follows the data), a swapped engine or a SET derives it again. A
+    refusal raises and is never kept."""
     engine = state.federation_engine
+    zone = zone_cache_key()
     kept = memo.get("engine_form")
-    if kept is not None and kept[0] == exec_sql and kept[1] is engine:
-        return kept[2]
+    if kept is not None and kept[0] == exec_sql and kept[1] is engine and kept[2] == zone:
+        return kept[3]
     form = await derive()
-    memo["engine_form"] = (exec_sql, engine, form)
+    memo["engine_form"] = (exec_sql, engine, zone, form)
     return form
 
 
@@ -2946,7 +2948,9 @@ async def route_governed(
         # The unoptimized lowering is a function of the governed text, the role's compilation
         # context and the destination — not of the bound values — so it is kept with the governed
         # statement like its catalog-physical form (see _kept_lowering).
-        _direct_key = f"direct_sql\x00{_direct_sid}\x00{dialect}\x00{_flat}\x00{_cap}"
+        _direct_key = (
+            f"direct_sql\x00{_direct_sid}\x00{dialect}\x00{_flat}\x00{_cap}\x00{zone_cache_key()}"
+        )
         _direct = None if _optimized else governed.memo.get(_direct_key)
         if _direct is None:
             if _optimized:
@@ -5764,7 +5768,9 @@ async def _route_compiled(
         # carried onto the direct path. With no optimization the lowering is a function of the
         # governed text, the role's compilation context and the destination — not of the bound
         # values — so it is kept with the governed statement (as route_governed keeps its own).
-        _direct_key = f"direct_sql\x00{_direct_sid}\x00{dialect}\x00{_flat}\x00{_cap}"
+        _direct_key = (
+            f"direct_sql\x00{_direct_sid}\x00{dialect}\x00{_flat}\x00{_cap}\x00{zone_cache_key()}"
+        )
         _direct = None if _optimized else memo.get(_direct_key)
         if _direct is None:
             if _optimized:
