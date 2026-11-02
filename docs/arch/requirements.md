@@ -13872,7 +13872,7 @@ Enterprise deployment modules (terraform/gcp, terraform/aws, terraform/azure) en
 
 New terraform/gcp-saas module enables fully-automated multi-tenant SaaS deployments. Multitenancy is forced true (not a variable). Architecture includes Cloud SQL managed control plane (private IP via Private Service Access), single Trino coordinator (n2-standard-4, DB offloaded) fronting raw-TCP protocol listeners behind a shared passthrough NLB, and autoscaled Spot worker MIG (region instance group manager, min=0 scale-to-zero → max). Supporting app change: packaging/linux/first-launch.sh persists CONFIG_DB_* and PROVISA_EXTERNAL_CONTROL_DB into systemd EnvironmentFile allowlist so the coordinator's control plane points at the external Cloud SQL.
 
-**Use case:** Enables Provisa SaaS operation with automated, cost-optimized infrastructure supporting multiple tenants on shared compute and isolated control planes, following docs/deployment/gcp-saas-infra-plan.md.
+**Use case:** Enables Provisa SaaS operation with automated, cost-optimized infrastructure supporting multiple tenants on shared compute and isolated control planes, following the private infrastructure plan.
 
 **Code:** `terraform/gcp-saas/main.tf`, `packaging/linux/first-launch.sh`
 
@@ -16050,7 +16050,7 @@ Pro is sold as three fixed sizes -- S (4 vCPU / 32GB), M (8/64), L (16/128) -- e
 
 **Use case:** An org picks one of three Pro sizes and is invoiced engine-hours at that size's rate plus measured egress, on hardware it exclusively occupies.
 
-**Code:** `provisa/core/commerce.py`, `provisa/federation/k8s_provisioner.py`, `pricing_model.py`
+**Code:** `provisa/core/commerce.py`, `provisa/federation/k8s_provisioner.py`
 
 **Tests:** `tests/unit/test_k8s_engine_provisioner.py`
 
@@ -16090,7 +16090,7 @@ The published price list is set by the comparables, not derived from cost. Start
 
 **Use case:** A prospect comparing Provisa against Hasura or Starburst finds the same meter shape at the same or a lower rate, and cannot argue the platform is priced above its category.
 
-**Code:** `pricing_model.py`, `provisa/api/app.py`
+**Code:** `provisa/api/app.py`
 
 **Tests:** `tests/unit/test_egress_meter.py`
 
@@ -16102,7 +16102,7 @@ Every tier must clear roughly 75% MARGINAL gross margin -- revenue minus the inf
 
 **Use case:** Pricing decisions are checked against a rule that distinguishes the cost a customer causes from the cost the platform carries, so an early thin month is not mistaken for a mispriced tier.
 
-**Code:** `pricing_model.py`
+**Code:** —
 
 **Tests:** —
 
@@ -16114,7 +16114,7 @@ Starter's billable unit is the ACTIVE HOUR: any clock hour in which the org subm
 
 **Use case:** A Starter customer's invoice can be reconciled against their own query log, and the platform can produce that invoice from a shared cluster it cannot partition.
 
-**Code:** `provisa/audit/pipeline.py`, `provisa/core/commerce.py`, `.claude/commercial/provisa_commercial/usage.py`, `.claude/commercial/provisa_commercial/schema.py`, `pricing_model.py`
+**Code:** `provisa/audit/pipeline.py`, `provisa/core/commerce.py`, `.claude/commercial/provisa_commercial/usage.py`, `.claude/commercial/provisa_commercial/schema.py`
 
 **Tests:** `tests/unit/test_audit_pipeline.py`, `.claude/commercial/tests/test_tier_caps_trino.py`, `.claude/commercial/tests/test_billing_summary.py`
 
@@ -16126,7 +16126,7 @@ Starter opens with a free evaluation period bounded on BOTH axes: 14 days, 40 ac
 
 **Use case:** A prospect can complete real due diligence on live data without a purchase order, and becomes a paying customer at the end of it without a second decision.
 
-**Code:** `.claude/commercial/provisa_commercial/trial.py`, `.claude/commercial/provisa_commercial/usage.py`, `.claude/commercial/provisa_commercial/lemonsqueezy_client.py`, `.claude/commercial/provisa_commercial/router.py`, `.claude/commercial/provisa_commercial/models.py`, `.claude/commercial/provisa_commercial/plan_lane.py`, `.claude/commercial/provisa_commercial/__init__.py`, `provisa/core/egress.py`, `provisa-ui/src/components/admin/BillingTab.tsx`, `pricing_model.py`
+**Code:** `.claude/commercial/provisa_commercial/trial.py`, `.claude/commercial/provisa_commercial/usage.py`, `.claude/commercial/provisa_commercial/lemonsqueezy_client.py`, `.claude/commercial/provisa_commercial/router.py`, `.claude/commercial/provisa_commercial/models.py`, `.claude/commercial/provisa_commercial/plan_lane.py`, `.claude/commercial/provisa_commercial/__init__.py`, `provisa/core/egress.py`, `provisa-ui/src/components/admin/BillingTab.tsx`
 
 **Tests:** `.claude/commercial/tests/test_trial_lifecycle.py`, `.claude/commercial/tests/test_trial_eligibility.py`, `.claude/commercial/tests/test_billing_lemonsqueezy.py`, `tests/unit/test_egress_meter.py`, `provisa-ui/src/__tests__/BillingTab.test.tsx`
 
@@ -16150,7 +16150,7 @@ Plans, tier ceilings, the active-hour meter and the merchant-of-record integrati
 
 **Use case:** A launch visitor sees the whole ladder, buys the one rung that exists, and registers interest in the rungs that do not.
 
-**Code:** `provisa-ui/src/pages`, `pricing_model.py`
+**Code:** `provisa-ui/src/pages`
 
 **Tests:** —
 
@@ -16174,7 +16174,7 @@ Every tier has a CEILING at which the price list stops and a contract begins. St
 
 **Use case:** A customer outgrowing a tier gets a conversation rather than an error, and the platform gets the chance to price scale before it delivers it.
 
-**Code:** `pricing_model.py`
+**Code:** —
 
 **Tests:** —
 
@@ -16186,7 +16186,7 @@ HIGH AVAILABILITY on this platform means a PUBLISHED RECOVERY TIME MEASURED IN M
 
 **Use case:** A buyer is told in writing what failure looks like -- minutes of recovery, a failed query their client retries -- and can choose between the baseline, the Pro engine add-on, a dedicated control plane, or BYO, without anyone promising availability the engine cannot deliver.
 
-**Code:** `provisa/api/org_runtime.py`, `provisa/federation/isolated_provisioner.py`, `terraform/gcp-saas/main.tf`, `pricing_model.py`, `terraform/gcp-saas/gke.tf`
+**Code:** `provisa/api/org_runtime.py`, `provisa/federation/isolated_provisioner.py`, `terraform/gcp-saas/main.tf`, `terraform/gcp-saas/gke.tf`
 
 **Tests:** —
 
@@ -16198,7 +16198,7 @@ A regional standby of the SHARED LANE is ASYMMETRIC: the control plane and its d
 
 **Use case:** An operator can state what a regional outage costs in recovery time at each of three spend levels, and sell the standby to the accounts that need it instead of taxing every Starter org for it.
 
-**Code:** `pricing_model.py`, `terraform/gcp-saas/main.tf`
+**Code:** `terraform/gcp-saas/main.tf`
 
 **Tests:** —
 

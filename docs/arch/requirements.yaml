@@ -42086,7 +42086,7 @@
     persists CONFIG_DB_* and PROVISA_EXTERNAL_CONTROL_DB into systemd EnvironmentFile allowlist so the
     coordinator''s control plane points at the external Cloud SQL.'
   use_case: Enables Provisa SaaS operation with automated, cost-optimized infrastructure supporting multiple
-    tenants on shared compute and isolated control planes, following docs/deployment/gcp-saas-infra-plan.md.
+    tenants on shared compute and isolated control planes, following the private infrastructure plan.
   code:
   - terraform/gcp-saas/main.tf
   - packaging/linux/first-launch.sh
@@ -49947,7 +49947,6 @@
   code:
   - provisa/core/commerce.py
   - provisa/federation/k8s_provisioner.py
-  - pricing_model.py
   tests:
   - tests/unit/test_k8s_engine_provisioner.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
@@ -50122,7 +50121,6 @@
   use_case: A prospect comparing Provisa against Hasura or Starburst finds the same meter shape at the
     same or a lower rate, and cannot argue the platform is priced above its category.
   code:
-  - pricing_model.py
   - provisa/api/app.py
   related_reqs:
   - REQ-1453
@@ -50169,12 +50167,11 @@
   use_case: Pricing decisions are checked against a rule that distinguishes the cost a customer causes
     from the cost the platform carries, so an early thin month is not mistaken for a mispriced tier.
   code:
-  - pricing_model.py
   related_reqs:
   - REQ-1452
   - REQ-1450
   - REQ-1449
-  notes: 'Roadmap audit 2026-10-13: partly built. Missing: Margin model exists only as the pricing_model.py analysis script; nothing enforces or tests the 75% marginal-margin target.'
+  notes: 'Roadmap audit 2026-10-13: partly built. Missing: Margin model exists only as a private analysis script; nothing enforces or tests the 75% marginal-margin target.'
 - id: REQ-1454
   status: complete
   since: 2026-08
@@ -50206,7 +50203,6 @@
   - provisa/core/commerce.py
   - .claude/commercial/provisa_commercial/usage.py
   - .claude/commercial/provisa_commercial/schema.py
-  - pricing_model.py
   tests:
   - tests/unit/test_audit_pipeline.py
   - .claude/commercial/tests/test_tier_caps_trino.py
@@ -50270,7 +50266,6 @@
   - .claude/commercial/provisa_commercial/__init__.py
   - provisa/core/egress.py
   - provisa-ui/src/components/admin/BillingTab.tsx
-  - pricing_model.py
   scenario: 'Given a Starter signup with a card captured under a zero-dollar authorisation
 
     When the org reaches 40 active hours on day nine
@@ -50364,7 +50359,6 @@
     in the rungs that do not.
   code:
   - provisa-ui/src/pages
-  - pricing_model.py
   scenario: 'Given the launch pricing page
 
     When a visitor selects Pro
@@ -50463,7 +50457,6 @@
   use_case: A customer outgrowing a tier gets a conversation rather than an error, and the platform gets
     the chance to price scale before it delivers it.
   code:
-  - pricing_model.py
   scenario: 'Given an Enterprise org whose coordinator reports 200 vCPU, above the 128 vCPU self-serve
     ceiling
 
@@ -50476,7 +50469,7 @@
   - REQ-1452
   - REQ-1044
   - REQ-1459
-  notes: 'Roadmap audit 2026-10-13: partly built. Missing: Ceilings and conversion paths are defined only in pricing_model.py CAPS; no runtime ceiling detection or Pro/Enterprise contract routing exists.'
+  notes: 'Roadmap audit 2026-10-13: partly built. Missing: Ceilings and conversion paths are defined only in the caps in a private analysis script; no runtime ceiling detection or Pro/Enterprise contract routing exists.'
 - id: REQ-1459
   status: in-progress
   target: 2026-Q4
@@ -50542,7 +50535,6 @@
   - provisa/api/org_runtime.py
   - provisa/federation/isolated_provisioner.py
   - terraform/gcp-saas/main.tf
-  - pricing_model.py
   - terraform/gcp-saas/gke.tf
   scenario: 'Given a Pro org without the HA add-on whose engine pod is killed mid-query
 
@@ -50591,7 +50583,6 @@
     levels, and sell the standby to the accounts that need it instead of taxing every Starter org for
     it.
   code:
-  - pricing_model.py
   - terraform/gcp-saas/main.tf
   scenario: 'Given the asymmetric regional standby is provisioned and region A fails
 
