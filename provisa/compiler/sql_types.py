@@ -194,6 +194,9 @@ class CompilationContext:
     row_virtual_columns: dict[int, dict[str, tuple[str, dict[int, str]]]] = field(
         default_factory=dict
     )
+    # REQ-1867: (table_id, physical column name lowercased) for every registered column typed json
+    # or jsonb: the only columns whose text is written as the JSON it holds.
+    json_columns: set[tuple[int, str]] = field(default_factory=set)
     # (table_id, col_name) pairs where the column is a GQL OBJECT stored as JSON
     gql_json_columns: set[tuple[int, str]] = field(default_factory=set)
     # (table_id, col_name) pairs where the GQL OBJECT type is itself a governed (registered) table —
@@ -213,6 +216,12 @@ class CompilationContext:
 # --- Compiled query result ---
 
 
+def is_json_type(data_type: str | None) -> bool:
+    """REQ-1867: a column type whose values are JSON -- PostgreSQL's json and jsonb, as a
+    registration or an engine names them."""
+    return data_type is not None and data_type.strip().lower() in ("json", "jsonb")
+
+
 @dataclass(frozen=True)
 class ColumnRef:
     """A column in the SELECT list with serialization metadata."""
@@ -223,6 +232,14 @@ class ColumnRef:
     nested_in: str | None  # relationship field name, or None for root
     cardinality: str | None = None  # "many-to-one", "one-to-many", "one-to-one", or None for root
     is_agg: bool = False  # True when emitted as ARRAY_AGG correlated subquery
+    # REQ-1867: the value is JSON -- a column typed json or jsonb, or a relationship the statement
+    # builds as one JSON value -- and is written as the object, array or scalar it holds. Any other
+    # text is written as the string it is, even when it reads as JSON.
+    json: bool = False
+    # REQ-1867: the key paths ("items", "items.product") inside a JSON value whose strings are
+    # JSON text the engine wrote: a nested relationship Trino's json_format turns into text, a json
+    # column inside the object. Every other string inside the value is a string.
+    json_text: frozenset[str] = frozenset()
 
 
 class StatementSources(set[str]):

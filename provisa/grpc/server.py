@@ -32,6 +32,7 @@ import logging
 import re
 import sys
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import TYPE_CHECKING, cast
 
 from dateutil.relativedelta import relativedelta
@@ -95,6 +96,15 @@ def _max_concurrent_rpcs() -> int:
     from provisa.core import settings_registry
 
     return settings_registry.value("concurrency.grpc_max_concurrent_rpcs")
+
+
+def _proto_number(value: object) -> object:  # object-ok: an aggregate's value
+    """An aggregate's DECIMAL as the proto number its field holds: an int when it is whole and
+    written without a point, else a float. Any other value as it is."""
+    if isinstance(value, Decimal):
+        f = float(value)
+        return int(f) if f == int(f) and "." not in str(value) else f
+    return value
 
 
 def _proto_value(field, value):
@@ -1357,7 +1367,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
     def _split_agg_columns(self, columns, row) -> tuple[dict, dict]:
         from provisa.grpc.query_ir import split_agg_columns
 
-        return split_agg_columns(columns, row)
+        top, nested = split_agg_columns(columns, row)
+        return (
+            {k: _proto_number(v) for k, v in top.items()},
+            {f: {k: _proto_number(v) for k, v in vs.items()} for f, vs in nested.items()},
+        )
 
     def _build_aggregate_result_message(self, type_name: str, top: dict, nested: dict):
         """Construct a {Type}AggregateResult message from split (top, nested) aggregate values,
@@ -1573,7 +1587,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         if result.redirect is not None:
             return
 
-        from provisa.executor.serialize import _convert_value
+        from provisa.executor.serialize import json_value
         from provisa.grpc.query_ir import split_group_by_columns
 
         group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(compiled.columns)
@@ -1590,7 +1604,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
             agg_row = [row[i] for i in agg_idx]
             top, nested = self._split_agg_columns(agg_cols, agg_row)
             agg_msg = self._build_aggregate_result_message(type_name, top, nested)
-            nodes = _convert_value(row[at]) if at is not None else []
+            nodes = (
+                json_value(row[at], compiled.columns[at].field_name, compiled.columns[at].json_text)
+                if at is not None
+                else []
+            )
             assert isinstance(nodes, list), "a group's nodes column is a JSON list"
             yield row_cls(
                 group_key=json.dumps(group_key, default=str),

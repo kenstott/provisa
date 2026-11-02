@@ -43,7 +43,7 @@ from pydantic import BaseModel
 from provisa.api.role_surface import role_surface
 from provisa.core import request_deadline
 from provisa.core.read_refusal import ReadRefused
-from provisa.core.statement_warnings import collecting
+from provisa.core.statement_warnings import collecting, warn
 from provisa.api.errors import ApiError
 from provisa.cache.middleware import build_cache_headers
 from provisa.federation.replica_state import ReplicaBuilding
@@ -60,7 +60,7 @@ from provisa.api.data.mutations import (
     _handle_mutation,
     _split_action_fields,
 )
-from provisa.executor.serialize import serialize_aggregate
+from provisa.executor.serialize import serialize_aggregate, to_one_truncated
 from graphql.language.ast import OperationDefinitionNode
 from provisa.api.data.graphql_http import (
     GraphQLDocumentError,
@@ -742,6 +742,11 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
     field_rows = (
         response.get("data", {}).get(root_field, []) if isinstance(response, dict) else response
     )
+    if isinstance(response, dict):
+        # What the serializer found about the answer (a to-one that matched several rows) goes
+        # to the request's warnings, which reach the client's extensions.warnings (REQ-1350).
+        for found in response.get("extensions", {}).get("warnings", []):
+            warn(to_one_truncated(found["path"]))
     _elapsed_ms = (_time.perf_counter() - _t0) * 1000
     _n_rows = len(field_rows) if isinstance(field_rows, list) else 0
     _record_per_source_stats(

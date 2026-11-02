@@ -246,6 +246,7 @@ def _nodes_column(
         return f"{_q(root_alias)}.{_q(phys)}" if root_alias else _q(phys)
 
     pairs: list[str] = []
+    json_text: set[str] = set()
     for node_sel in nodes_sel.selection_set.selections:
         if not isinstance(node_sel, FieldNode):
             continue
@@ -282,11 +283,16 @@ def _nodes_column(
                 sources,
                 variables,
                 parent_src_val=_pv,
+                json_text=json_text,
+                key_prefix=f"{key}.",
             )
+            json_text.add(key)
             pairs.append(f"KEY '{key}' VALUE {json_expr}")
         else:
             phys = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
             pairs.append(f"KEY '{key}' VALUE {_scalar_sql(phys)}")
+            if (table.table_id, phys.lower()) in ctx.json_columns:
+                json_text.add(key)
     if not pairs:
         return None
     nodes_key = nodes_sel.alias.value if nodes_sel.alias else "nodes"
@@ -299,6 +305,8 @@ def _nodes_column(
         nested_in=None,
         cardinality="one-to-many",
         is_agg=True,
+        json=True,
+        json_text=frozenset(json_text),
     )
     return sql, column, root_alias, sources
 
