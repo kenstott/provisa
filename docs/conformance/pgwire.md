@@ -46,7 +46,7 @@ Each function is answered in the catalog intercept layer alongside `pg_catalog` 
 
 Every overload of every `pg_catalog` function is called the way PostgreSQL requires it, with the `VARIADIC` form, `WITHIN GROUP`, `OVER`, or a real argument where PostgreSQL refuses a `NULL`. Each overload then has a result on each engine, because what an engine can answer is that engine's own. A function refused by name on an engine is that engine's result, and a wrong answer on any engine is a defect.
 
-Two groups are skipped by design and listed under the pass rate. Internal functions cannot be called by PostgreSQL itself: each takes an `internal` argument, or PostgreSQL refuses the call whatever the server's state. Index functions are the access method support and index maintenance functions, such as `brin_summarize_range`. Indexes belong to the source database, so these are not served. Index metadata is unaffected, and `pg_index`, `pg_get_indexdef` and the like stay served.
+One group is skipped by design and listed under the pass rate. Internal functions cannot be called by PostgreSQL itself: each takes an `internal` argument, or PostgreSQL refuses the call whatever the server's state. Index access method support and index maintenance functions a client can call, such as `brin_summarize_range`, are ordinary functions with a result on each engine.
 
 <!-- function-results:begin -->
 ### Function results by engine

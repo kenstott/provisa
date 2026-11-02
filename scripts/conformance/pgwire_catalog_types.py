@@ -614,12 +614,10 @@ def catalog_functions(
     pg: Server, provisa: Server, names: dict[int, str], engine: str = "duckdb"
 ) -> dict[str, Any]:
     """Each overload is a case: passed when it is served with PostgreSQL's result type; skipped by
-    design in Internal functions when PostgreSQL itself proves it cannot call it, or in Index
-    functions when it is of that family and not served (REQ-2167, amended 2026-10-29, INTERNAL
-    FUNCTIONS and INDEXES BELONG TO THE DATABASE, by_design.FUNCTION_GROUPS); failed otherwise,
-    which is a result type that differs, a function not served, or a refusal of this server's
-    state (``refused_here``, no proof PostgreSQL cannot call it). What stays failed is taken by
-    family."""
+    design in Internal functions when PostgreSQL itself proves it cannot call it (REQ-2167, amended
+    2026-10-29, INTERNAL FUNCTIONS, by_design.FUNCTION_GROUPS); failed otherwise, which is a result
+    type that differs, a function not served, or a refusal of this server's state (``refused_here``,
+    no proof PostgreSQL cannot call it). What stays failed is taken by family."""
     declared = function_probe.families()
     fns = pg_functions(pg)
     matching: list[str] = []

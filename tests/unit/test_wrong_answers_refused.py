@@ -251,3 +251,29 @@ def test_a_clickhouse_time_is_a_time_on_the_wire():
     casts = result_casts("SELECT time_larger('12:30:45'::time, '12:30:45'::time) AS v")
     assert casts is not None and casts[0] is not None and casts[0].coerce is not None
     assert str(casts[0].coerce((45045500000).to_bytes(8, "little"))) == "12:30:45.500000"
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT hashoid(12345::oid) AS v",
+        "SELECT btoidcmp(1::oid, 7::oid) AS v",
+        "SELECT lo_get(1::oid) AS v",
+    ],
+)
+def test_an_oid_is_held_as_a_bigint_and_reaches_a_call(sql, dialect):
+    assert " oid" not in transpile(sql, dialect).lower()
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'SELECT pg_catalog."int8"(12345::oid) AS v',
+        "SELECT pg_catalog.\"nameconcatoid\"('abc'::name, 12345::oid) AS v",
+    ],
+)
+def test_the_calls_of_an_oid_a_replay_refused_stay_refused(sql, dialect):
+    with pytest.raises(FunctionRefused):
+        transpile(sql, dialect)
