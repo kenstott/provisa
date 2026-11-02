@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 
 from provisa.pgwire.catalog import answer
 from provisa.pgwire.server import ProvisaQueryResult
+from tests.unit.pgwire.result_rows import rows_of
 
 SQL_IDENTIFIER, CHARACTER_DATA, YES_OR_NO, CARDINAL_NUMBER = 13302, 13300, 13310, 13297
 OID, NAME, CHAR, TEXT, INT4, INT8, FLOAT8, TIMESTAMPTZ = 26, 19, 18, 25, 23, 20, 701, 1184
@@ -170,7 +171,7 @@ def _wire(sql: str) -> list[tuple[int, str, bytes]]:
     from buenavista.postgres import BVTYPE_TO_PGTYPE
 
     result = ProvisaQueryResult(answer(sql, "testrole", _state()), sql)
-    row = next(iter(result.rows()))
+    row = rows_of(result)[0]
     out = []
     for i, value in enumerate(row):
         bvtype = result.column(i)[1]

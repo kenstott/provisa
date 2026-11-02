@@ -515,7 +515,7 @@ fn clock_of(v: &PyVal, out: &mut Vec<u8>) -> R<()> {
         PyVal::Str(s) => text(out, s),
         PyVal::Time(us) => temporal::clock_text(*us, out),
         PyVal::DateTime(d) => {
-            temporal::clock_text(d.local.rem_euclid(DAY_US) as i64, out);
+            temporal::clock_text(clock_of_day(d), out);
             if let Some(off) = d.offset {
                 temporal::offset_text(off, out);
             }
@@ -528,8 +528,17 @@ fn clock_of(v: &PyVal, out: &mut Vec<u8>) -> R<()> {
 fn clock_micros(v: &PyVal) -> R<i64> {
     match v {
         PyVal::Time(us) => Ok(*us),
-        PyVal::DateTime(d) => Ok(d.local.rem_euclid(DAY_US) as i64),
+        PyVal::DateTime(d) => Ok(clock_of_day(d)),
         _ => Err(type_error("object has no attribute 'hour'", v)),
+    }
+}
+
+/// A datetime's time of day; a TIMETZ's own (TzRepr::Clock), which may be 24:00:00.
+fn clock_of_day(d: &crate::pyval::DateTime) -> i64 {
+    if d.tz == crate::pyval::TzRepr::Clock {
+        d.local as i64
+    } else {
+        d.local.rem_euclid(DAY_US) as i64
     }
 }
 

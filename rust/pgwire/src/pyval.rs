@@ -48,6 +48,9 @@ pub enum TzRepr {
     ZoneInfo(String),
     /// datetime.timezone.utc: an infinite timestamptz (ir_types.infinite_timestamp)
     PyUtc,
+    /// A time of day with its own offset (DuckDB's TIMETZ, duckdb_arrow._timetz): ``local`` is
+    /// its time of day, up to and including 24:00:00, which PostgreSQL's timetz holds.
+    Clock,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -203,10 +206,136 @@ pub fn type_error(what: &str, v: &PyVal) -> EncErr {
 
 // --- from Arrow ---
 
+/// What a field's extension type says its storage holds: a UUID (arrow.uuid), or one of DuckDB's
+/// types Arrow has no match for, carried in DuckDB's own bytes by its lossless export
+/// (arrow.opaque; provisa/executor/drivers/duckdb_arrow.py reads the same bytes).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Ext {
+    Plain,
+    Uuid,
+    HugeInt,
+    UHugeInt,
+    VarInt,
+    Bit,
+    TimeTz,
+}
+
+impl Ext {
+    pub fn of(f: &Field) -> Ext {
+        let md = f.metadata();
+        match md.get("ARROW:extension:name").map(String::as_str) {
+            Some("arrow.uuid") => Ext::Uuid,
+            Some("arrow.opaque") => {
+                let said = md.get("ARROW:extension:metadata").map(String::as_str).unwrap_or("");
+                if !said.contains("\"DuckDB\"") {
+                    return Ext::Plain;
+                }
+                let named = |n: &str| said.contains(&format!("\"type_name\":\"{n}\""));
+                if named("hugeint") {
+                    Ext::HugeInt
+                } else if named("uhugeint") {
+                    Ext::UHugeInt
+                } else if named("varint") || named("bignum") {
+                    Ext::VarInt
+                } else if named("bit") {
+                    Ext::Bit
+                } else if named("time_tz") {
+                    Ext::TimeTz
+                } else {
+                    Ext::Plain
+                }
+            }
+            _ => Ext::Plain,
+        }
+    }
+}
+
+/// The value of one of DuckDB's opaque types from its bytes, as duckdb_arrow.arrow_rows reads it.
+fn duckdb_value(ext: Ext, raw: &[u8]) -> R<PyVal> {
+    Ok(match ext {
+        Ext::HugeInt | Ext::UHugeInt => {
+            let mut buf = [0u8; 16];
+            buf[..raw.len().min(16)].copy_from_slice(&raw[..raw.len().min(16)]);
+            if ext == Ext::HugeInt {
+                PyVal::Int(i128::from_le_bytes(buf))
+            } else {
+                let v = u128::from_le_bytes(buf);
+                match i128::try_from(v) {
+                    Ok(v) => PyVal::Int(v),
+                    Err(_) => PyVal::BigInt(v.to_string()),
+                }
+            }
+        }
+        Ext::VarInt => {
+            // A three-byte header (sign in its top bit, set for a non-negative value), then the
+            // magnitude big-endian; a negative value has every byte inverted. Read as its text.
+            if raw.len() < 3 {
+                return Err(EncErr::Value("a varint shorter than its header".into()));
+            }
+            let negative = raw[0] & 0x80 == 0;
+            let digits: Vec<u8> = raw[3..].iter().map(|b| if negative { !b } else { *b }).collect();
+            let mut text = big_be_decimal(&digits);
+            if negative && text != "0" {
+                text.insert(0, '-');
+            }
+            PyVal::Str(text)
+        }
+        Ext::Bit => {
+            // The first byte counts the padding bits that open the bit string; read as its text.
+            let pad = *raw.first().unwrap_or(&0) as usize;
+            let mut bits = String::with_capacity(raw.len().saturating_sub(1) * 8);
+            for b in raw.iter().skip(1) {
+                for k in (0..8).rev() {
+                    bits.push(if b >> k & 1 == 1 { '1' } else { '0' });
+                }
+            }
+            PyVal::Str(bits.get(pad..).unwrap_or("").to_string())
+        }
+        Ext::TimeTz => {
+            // micros << 24 | (16h - 1s - offset): a time of day and its offset east of UTC
+            let mut buf = [0u8; 8];
+            buf[..raw.len().min(8)].copy_from_slice(&raw[..raw.len().min(8)]);
+            let packed = u64::from_le_bytes(buf);
+            let micros = (packed >> 24) as i128;
+            let offset = (16 * 3600 - 1) - (packed & 0xFF_FFFF) as i32;
+            PyVal::DateTime(DateTime {
+                local: micros,
+                offset: Some(offset),
+                tz: TzRepr::Clock,
+                inf: 0,
+                ns: None,
+            })
+        }
+        Ext::Plain | Ext::Uuid => unreachable!("not an opaque type"),
+    })
+}
+
+/// The decimal digits of a big-endian unsigned magnitude.
+fn big_be_decimal(be: &[u8]) -> String {
+    let mut limbs: Vec<u32> = vec![0]; // base 10^9, least significant first
+    for &byte in be {
+        let mut carry = byte as u64;
+        for limb in limbs.iter_mut() {
+            let v = (*limb as u64) * 256 + carry;
+            *limb = (v % 1_000_000_000) as u32;
+            carry = v / 1_000_000_000;
+        }
+        while carry > 0 {
+            limbs.push((carry % 1_000_000_000) as u32);
+            carry /= 1_000_000_000;
+        }
+    }
+    let mut out = limbs.last().copied().unwrap_or(0).to_string();
+    for limb in limbs.iter().rev().skip(1) {
+        out.push_str(&format!("{limb:09}"));
+    }
+    out
+}
+
 /// Reads one Arrow column's values as column_values hands them on.
 pub struct Reader {
     arr: ArrayRef,
-    uuid_ext: bool,
+    ext: Ext,
     tz: Option<(TzSpec, TzRepr)>,
 }
 
@@ -220,7 +349,7 @@ fn tz_repr(name: &str, spec: &TzSpec) -> TzRepr {
 }
 
 impl Reader {
-    pub fn new(arr: &ArrayRef, uuid_ext: bool) -> R<Reader> {
+    pub fn new(arr: &ArrayRef, ext: Ext) -> R<Reader> {
         let arr = match arr.data_type() {
             DataType::Dictionary(_, value_type) => {
                 arrow::compute::cast(arr, value_type).map_err(|e| EncErr::Value(e.to_string()))?
@@ -235,7 +364,7 @@ impl Reader {
             }
             _ => None,
         };
-        Ok(Reader { arr, uuid_ext, tz })
+        Ok(Reader { arr, ext, tz })
     }
 
     pub fn is_null(&self, i: usize) -> bool {
@@ -243,7 +372,7 @@ impl Reader {
     }
 
     pub fn get(&self, i: usize) -> R<PyVal> {
-        value_at(&self.arr, i, self.uuid_ext, self.tz.as_ref(), true)
+        value_at(&self.arr, i, self.ext, self.tz.as_ref(), true)
     }
 }
 
@@ -319,9 +448,18 @@ pub fn interval_value(months: i128, days: i128, micros: i128) -> PyVal {
     PyVal::Interval(rd)
 }
 
-fn value_at(arr: &ArrayRef, i: usize, uuid_ext: bool, tz: Option<&(TzSpec, TzRepr)>, top: bool) -> R<PyVal> {
+fn value_at(arr: &ArrayRef, i: usize, ext: Ext, tz: Option<&(TzSpec, TzRepr)>, top: bool) -> R<PyVal> {
     if arr.is_null(i) {
         return Ok(PyVal::None);
+    }
+    if !matches!(ext, Ext::Plain | Ext::Uuid) {
+        let raw: Vec<u8> = match arr.data_type() {
+            DataType::FixedSizeBinary(_) => typed::<FixedSizeBinaryArray>(arr).value(i).to_vec(),
+            DataType::Binary => typed::<BinaryArray>(arr).value(i).to_vec(),
+            DataType::LargeBinary => typed::<LargeBinaryArray>(arr).value(i).to_vec(),
+            other => return Err(EncErr::Type(format!("DuckDB's opaque type held as {other}"))),
+        };
+        return duckdb_value(ext, &raw);
     }
     macro_rules! int {
         ($t:ty) => {
@@ -350,7 +488,7 @@ fn value_at(arr: &ArrayRef, i: usize, uuid_ext: bool, tz: Option<&(TzSpec, TzRep
         DataType::Binary => PyVal::Bytes(typed::<BinaryArray>(arr).value(i).to_vec()),
         DataType::LargeBinary => PyVal::Bytes(typed::<LargeBinaryArray>(arr).value(i).to_vec()),
         DataType::BinaryView => PyVal::Bytes(typed::<BinaryViewArray>(arr).value(i).to_vec()),
-        DataType::FixedSizeBinary(16) if uuid_ext => PyVal::Uuid(
+        DataType::FixedSizeBinary(16) if ext == Ext::Uuid => PyVal::Uuid(
             typed::<FixedSizeBinaryArray>(arr)
                 .value(i)
                 .try_into()
@@ -402,20 +540,16 @@ fn value_at(arr: &ArrayRef, i: usize, uuid_ext: bool, tz: Option<&(TzSpec, TzRep
             }
         }
         DataType::Interval(IntervalUnit::MonthDayNano) => {
+            // The IR's interval at any depth, as DuckDB's rows (duckdb_arrow.arrow_rows) read one.
             let v = typed::<IntervalMonthDayNanoArray>(arr).value(i);
-            if top {
-                interval_value(v.months as i128, v.days as i128, v.nanoseconds.div_euclid(1000) as i128)
-            } else {
-                return Err(EncErr::Type(
-                    "a list of month-day-nano intervals is not a row value".into(),
-                ));
-            }
+            interval_value(v.months as i128, v.days as i128, v.nanoseconds.div_euclid(1000) as i128)
         }
-        DataType::List(_) | DataType::LargeList(_) | DataType::FixedSizeList(..) => {
+        DataType::List(f) | DataType::LargeList(f) | DataType::FixedSizeList(f, _) => {
             let (values, s, e) = list_range(arr, i);
+            let item = Ext::of(f);
             let mut items = Vec::with_capacity(e - s);
             for j in s..e {
-                items.push(value_at(&values, j, false, nested_tz(&values)?.as_ref(), false)?);
+                items.push(value_at(&values, j, item, nested_tz(&values)?.as_ref(), false)?);
             }
             PyVal::List(items)
         }
@@ -424,7 +558,7 @@ fn value_at(arr: &ArrayRef, i: usize, uuid_ext: bool, tz: Option<&(TzSpec, TzRep
             let mut items: Vec<(PyVal, PyVal)> = Vec::with_capacity(fields.len());
             for (k, f) in fields.iter().enumerate() {
                 let col = a.column(k).clone();
-                let v = value_at(&col, i, is_uuid_field(f), nested_tz(&col)?.as_ref(), false)?;
+                let v = value_at(&col, i, Ext::of(f), nested_tz(&col)?.as_ref(), false)?;
                 let key = PyVal::Str(f.name().clone());
                 // to_pylist folds a repeated field name into one key, the last value kept
                 match items.iter_mut().find(|(n, _)| *n == key) {
@@ -434,21 +568,25 @@ fn value_at(arr: &ArrayRef, i: usize, uuid_ext: bool, tz: Option<&(TzSpec, TzRep
             }
             PyVal::Dict(items)
         }
-        DataType::Map(..) => {
+        DataType::Map(entry, _) => {
             let a = typed::<MapArray>(arr);
             let o = a.value_offsets();
             let (keys, values) = (a.keys().clone(), a.values().clone());
+            let (key_ext, item_ext) = match entry.data_type() {
+                DataType::Struct(kv) if kv.len() == 2 => (Ext::of(&kv[0]), Ext::of(&kv[1])),
+                _ => (Ext::Plain, Ext::Plain),
+            };
             let mut items = Vec::new();
             for j in o[i] as usize..o[i + 1] as usize {
-                let k = value_at(&keys, j, false, nested_tz(&keys)?.as_ref(), false)?;
-                let v = value_at(&values, j, false, nested_tz(&values)?.as_ref(), false)?;
+                let k = value_at(&keys, j, key_ext, nested_tz(&keys)?.as_ref(), false)?;
+                let v = value_at(&values, j, item_ext, nested_tz(&values)?.as_ref(), false)?;
                 items.push(PyVal::Tuple(vec![k, v]));
             }
             PyVal::List(items)
         }
         DataType::Dictionary(_, value_type) => {
             let decoded = arrow::compute::cast(arr, value_type).map_err(|e| EncErr::Value(e.to_string()))?;
-            return value_at(&decoded, i, uuid_ext, tz, top);
+            return value_at(&decoded, i, ext, tz, top);
         }
         other => return Err(EncErr::Type(format!("no row value for Arrow type {other}"))),
     })
@@ -462,10 +600,6 @@ fn nested_tz(arr: &ArrayRef) -> R<Option<(TzSpec, TzRepr)>> {
         }
         _ => None,
     })
-}
-
-pub fn is_uuid_field(f: &Field) -> bool {
-    f.metadata().get("ARROW:extension:name").map(String::as_str) == Some("arrow.uuid")
 }
 
 fn list_range(arr: &ArrayRef, i: usize) -> (ArrayRef, usize, usize) {
@@ -495,7 +629,8 @@ fn time_of(raw: i64, unit: TimeUnit) -> R<PyVal> {
         TimeUnit::Nanosecond => temporal::micros_of(raw, unit)?.rem_euclid(DAY_US) as i64,
         _ => temporal::micros_of(raw, unit)? as i64,
     };
-    if !(0..86_400_000_000).contains(&us) {
+    // 24:00:00 is a time PostgreSQL holds (time_in, a time rounded up to it)
+    if !(0..=86_400_000_000).contains(&us) {
         return Err(EncErr::Value("hour must be in 0..23".into()));
     }
     Ok(PyVal::Time(us))
@@ -932,6 +1067,7 @@ fn tz_repr_text(tz: &TzRepr) -> String {
         TzRepr::PytzFixed(m) => format!("pytz.FixedOffset({m})"),
         TzRepr::ZoneInfo(key) => format!("zoneinfo.ZoneInfo(key='{key}')"),
         TzRepr::PyUtc => "datetime.timezone.utc".into(),
+        TzRepr::Clock => "datetime.timezone".into(),
     }
 }
 

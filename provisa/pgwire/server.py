@@ -1171,6 +1171,7 @@ _ENGINE_VALUES: dict[str, Callable[[Any], Any]] = {"INET": _duckdb_inet}
 
 
 def _coercer_names_by_function() -> dict[Any, str]:
+    from provisa.core.pg_enum import array_text as enum_array_text
     from provisa.pgwire import cast_types
     from provisa.transpiler.pg_forms_json import jsonb_out
 
@@ -1192,6 +1193,7 @@ def _coercer_names_by_function() -> dict[Any, str]:
         cast_types.record_text: "record",
         cast_types._clock_of: "clock",
         cast_types._of_no_zone: "no_zone",
+        enum_array_text: "enum_array",
     }
 
 

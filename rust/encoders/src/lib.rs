@@ -16,7 +16,11 @@ extern "C" {
 
 /// Adds `module` to `parent` as `name`, also under its qualified name in sys.modules: that is the
 /// only place the import system finds an extension's submodules.
-fn add_encoder(parent: &Bound<'_, PyModule>, name: &str, module: Bound<'_, PyModule>) -> PyResult<()> {
+fn add_encoder(
+    parent: &Bound<'_, PyModule>,
+    name: &str,
+    module: Bound<'_, PyModule>,
+) -> PyResult<()> {
     let qualified = format!("{}.{}", parent.name()?, name);
     module.setattr("__name__", &qualified)?;
     parent.add(name, &module)?;

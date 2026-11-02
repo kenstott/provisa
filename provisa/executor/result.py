@@ -68,6 +68,11 @@ class ResultStream(Protocol):  # REQ-028
         """Yield rows one at a time across all batches."""
         ...
 
+    def arrow_batches(self) -> Iterator[Any]:
+        """The result as Arrow record batches (REQ-2194): the engine's own, or a row result's
+        rows built into them at its fetch boundary."""
+        ...
+
     @property
     def rows(self) -> list[tuple]:
         """The full row list, materializing a streaming result if necessary."""

@@ -42,6 +42,8 @@ pub enum Coercer {
     NullAlone,
     /// server._duckdb_inet
     DuckdbInet,
+    /// pg_enum.array_text: an enum array as array_out writes it
+    EnumArray,
 }
 
 pub fn coercer_of(name: &str) -> R<Coercer> {
@@ -60,6 +62,7 @@ pub fn coercer_of(name: &str) -> R<Coercer> {
         "no_zone" => Coercer::NoZone,
         "null_alone" => Coercer::NullAlone,
         "duckdb_inet" => Coercer::DuckdbInet,
+        "enum_array" => Coercer::EnumArray,
         _ => match name.strip_prefix("pad:").and_then(|n| n.parse().ok()) {
             Some(n) => Coercer::Pad(n),
             None => return Err(EncErr::Value(format!("no coercer named {name:?}"))),
@@ -172,6 +175,23 @@ pub fn apply(c: &Coercer, v: PyVal) -> R<PyVal> {
         }
         Coercer::DuckdbInet => match v {
             PyVal::Dict(_) => duckdb_inet(&v)?,
+            other => other,
+        },
+        Coercer::EnumArray => match v {
+            PyVal::List(items) | PyVal::Tuple(items) => {
+                let mut out = String::from("{");
+                for (k, item) in items.iter().enumerate() {
+                    if k > 0 {
+                        out.push(',');
+                    }
+                    match item {
+                        PyVal::None => out.push_str("NULL"),
+                        other => enum_element(&str_of(other), &mut out),
+                    }
+                }
+                out.push('}');
+                PyVal::Str(out)
+            }
             other => other,
         },
     })
@@ -706,4 +726,25 @@ fn jsonb_written(v: &PyVal, out: &mut String) -> R<()> {
         other => return Err(type_error("Object of this type is not JSON serializable", other)),
     }
     Ok(())
+}
+
+/// pg_enum._element: a label as an array element, quoted where array_out quotes it.
+fn enum_element(label: &str, out: &mut String) {
+    let plain = !label.is_empty()
+        && !label.eq_ignore_ascii_case("NULL")
+        && !label
+            .chars()
+            .any(|c| matches!(c, '{' | '}' | ',' | '"' | '\\') || c.is_whitespace() || crate::is_py_space(c));
+    if plain {
+        out.push_str(label);
+        return;
+    }
+    out.push('"');
+    for c in label.chars() {
+        if c == '\\' || c == '"' {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('"');
 }

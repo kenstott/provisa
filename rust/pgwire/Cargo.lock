@@ -631,7 +631,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3c406c9e2aa74554e662d2c2ee11cd3e73756988800be7e6f5eddb16fed4699"
 
 [[package]]
-name = "pgwire_encoder_rs"
+name = "pgwire_encoder"
 version = "0.1.0"
 dependencies = [
  "arrow",

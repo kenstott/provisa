@@ -30,7 +30,30 @@ from provisa.pgwire.server import (
     _DECLARE_CURSOR_RE,
     _normalize_cursor_name,
     _parse_cursor_nav,
+    _RowBuffer,
 )
+from provisa.core.ir_arrow import column_values, row_batch
+from tests.unit.pgwire.result_rows import rows_of
+
+
+def _state(rows: list, scrollable: bool = False, size: int = 3) -> _CursorState:
+    """A cursor over ``rows``, its source Arrow batches of ``size`` rows (REQ-2194)."""
+    source = (row_batch(rows[k : k + size], ["n"]) for k in range(0, len(rows), size))
+    return _CursorState(
+        name="c",
+        query_result=MagicMock(),
+        source=source,
+        buffer=_RowBuffer(False),
+        scrollable=scrollable,
+    )
+
+
+def _moved(cs: _CursorState, direction: str, count) -> list:
+    """The rows a move hands the client, read back from the batch slices it returns."""
+    out = []
+    for chunk in _cursor_move(cs, direction, count):
+        out.extend(list(r) for r in zip(*[column_values(c) for c in chunk.columns], strict=True))
+    return out
 
 
 class TestDeclareCursorRegex:
@@ -113,55 +136,53 @@ class TestCursorMove:
         # SCROLL cursor now, so this suite (which exercises that raw machinery directly)
         # defaults to scrollable=True; the NO-SCROLL-specific behavior gets its own tests below.
         rows = [[i] for i in range(1, n + 1)]
-        return _CursorState(
-            name="c", query_result=MagicMock(), source=iter(rows), scrollable=scrollable
-        )
+        return _state(rows, scrollable, size=3 if n < 1000 else 1000)
 
     def test_forward_then_forward(self):
         cs = self._cs()
-        assert _cursor_move(cs, "forward", 3) == [[1], [2], [3]]
-        assert _cursor_move(cs, "forward", 2) == [[4], [5]]
+        assert _moved(cs, "forward", 3) == [[1], [2], [3]]
+        assert _moved(cs, "forward", 2) == [[4], [5]]
         assert cs.pos == 5
 
     def test_forward_past_end_clips(self):
         cs = self._cs(3)
-        assert _cursor_move(cs, "forward", 10) == [[1], [2], [3]]
+        assert _moved(cs, "forward", 10) == [[1], [2], [3]]
         assert cs.pos == 3
         assert cs.source_exhausted is True
 
     def test_backward_after_forward(self):
         cs = self._cs()
-        _cursor_move(cs, "forward", 5)
-        assert _cursor_move(cs, "backward", 4) == [[5], [4], [3], [2]]
+        _moved(cs, "forward", 5)
+        assert _moved(cs, "backward", 4) == [[5], [4], [3], [2]]
         assert cs.pos == 1
 
     def test_backward_at_start_returns_empty(self):
         cs = self._cs()
-        assert _cursor_move(cs, "backward", 3) == []
+        assert _moved(cs, "backward", 3) == []
         assert cs.pos == 0
 
     def test_forward_all(self):
         cs = self._cs()
-        _cursor_move(cs, "forward", 1)
-        rest = _cursor_move(cs, "forward", None)
+        _moved(cs, "forward", 1)
+        rest = _moved(cs, "forward", None)
         assert rest == [[i] for i in range(2, 11)]
         assert cs.pos == 10
 
     def test_absolute(self):
         cs = self._cs()
-        assert _cursor_move(cs, "absolute", 5) == [[5]]
+        assert _moved(cs, "absolute", 5) == [[5]]
         assert cs.pos == 5
 
     def test_first_and_last(self):
         cs = self._cs()
-        assert _cursor_move(cs, "last", None) == [[10]]
+        assert _moved(cs, "last", None) == [[10]]
         cs2 = self._cs()
-        assert _cursor_move(cs2, "first", None) == [[1]]
+        assert _moved(cs2, "first", None) == [[1]]
 
     def test_relative_negative(self):
         cs = self._cs()
-        _cursor_move(cs, "forward", 5)
-        assert _cursor_move(cs, "relative", -2) == [[5], [4]]
+        _moved(cs, "forward", 5)
+        assert _moved(cs, "relative", -2) == [[5], [4]]
         assert cs.pos == 3
 
 
@@ -172,12 +193,10 @@ class TestNoScrollCursor:
 
     def _cs(self, n, scrollable=False):
         rows = [[i] for i in range(1, n + 1)]
-        return _CursorState(
-            name="c", query_result=MagicMock(), source=iter(rows), scrollable=scrollable
-        )
+        return _state(rows, scrollable, size=3 if n < 1000 else 1000)
 
     def test_default_is_not_scrollable(self):
-        cs = _CursorState(name="c", query_result=MagicMock(), source=iter([]))
+        cs = _state([])
         assert cs.scrollable is False
 
     @pytest.mark.parametrize(
@@ -192,14 +211,14 @@ class TestNoScrollCursor:
     )
     def test_backward_style_navigation_raises_on_no_scroll(self, direction, count):
         cs = self._cs(10)
-        _cursor_move(cs, "forward", 5)  # give it somewhere to go backward from
+        _moved(cs, "forward", 5)  # give it somewhere to go backward from
         with pytest.raises(_CursorNotScrollableError):
-            _cursor_move(cs, direction, count)
+            _moved(cs, direction, count)
 
     def test_forward_and_relative_positive_still_allowed_on_no_scroll(self):
         cs = self._cs(10)
-        assert _cursor_move(cs, "forward", 3) == [[1], [2], [3]]
-        assert _cursor_move(cs, "relative", 2) == [[4], [5]]
+        assert _moved(cs, "forward", 3) == [[1], [2], [3]]
+        assert _moved(cs, "relative", 2) == [[4], [5]]
 
     def test_forward_scan_is_memory_bounded_on_no_scroll(self):
         # The bug this guards against: FETCH FORWARD through a large (e.g. 80M-row) result used
@@ -212,7 +231,7 @@ class TestNoScrollCursor:
         fetched_count = 0
         max_buffer_len = 0
         while True:
-            out = _cursor_move(cs, "forward", batch)
+            out = _moved(cs, "forward", batch)
             max_buffer_len = max(max_buffer_len, len(cs.buffer))
             fetched_count += len(out)
             if not out or cs.source_exhausted and len(out) < batch:
@@ -230,7 +249,7 @@ class TestNoScrollCursor:
         # backward/absolute navigation genuinely needs it.
         cs = self._cs(50, scrollable=True)
         for _ in range(5):
-            _cursor_move(cs, "forward", 10)
+            _moved(cs, "forward", 10)
         assert len(cs.buffer) == 50
 
 
@@ -274,12 +293,12 @@ class TestHandlerDispatch:
         handler._handle_fetch_move(ctx, "FETCH 2 FROM c1")
         handler.send_row_description.assert_called_once()
         fetched_result = handler.send_data_rows.call_args[0][0]
-        assert list(fetched_result.rows()) == [[1, "a"], [2, "b"]]
+        assert rows_of(fetched_result) == [[1, "a"], [2, "b"]]
         handler.send_command_complete.assert_called_with("FETCH 2\x00")
 
         handler._handle_fetch_move(ctx, "FETCH 2 FROM c1")
         fetched_result = handler.send_data_rows.call_args[0][0]
-        assert list(fetched_result.rows()) == [[3, "c"]]
+        assert rows_of(fetched_result) == [[3, "c"]]
         handler.send_command_complete.assert_called_with("FETCH 1\x00")
 
         handler._handle_close_cursor(ctx, "CLOSE c1")
@@ -311,7 +330,7 @@ class TestHandlerDispatch:
 
         handler._handle_fetch_move(ctx, "FETCH 1 FROM c1")
         fetched_result = handler.send_data_rows.call_args[0][0]
-        assert list(fetched_result.rows()) == [[4]]
+        assert rows_of(fetched_result) == [[4]]
 
     def test_close_all(self):
         handler = self._handler()
@@ -373,4 +392,4 @@ class TestHandlerDispatch:
         handler._handle_fetch_move(ctx, "FETCH BACKWARD 1 FROM c1")
         handler._send_pg_error.assert_not_called()
         fetched_result = handler.send_data_rows.call_args[0][0]
-        assert list(fetched_result.rows()) == [[3]]
+        assert rows_of(fetched_result) == [[3]]

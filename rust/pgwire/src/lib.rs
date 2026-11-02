@@ -517,7 +517,8 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
             };
             Ok(Box::new(move |i, out| {
                 let us = micros(i)?;
-                if !(0..86_400_000_000).contains(&us) {
+                // 24:00:00 is a time PostgreSQL holds (time_in, a time rounded up to it)
+                if !(0..=86_400_000_000).contains(&us) {
                     return Err(EncErr::Value("hour must be in 0..23".into()));
                 }
                 if binary {
@@ -1018,7 +1019,7 @@ impl Plan {
     }
 }
 
-fn column(plan: &Plan, j: usize, arr: &ArrayRef, uuid_ext: bool, format: i32) -> R<Col> {
+fn column(plan: &Plan, j: usize, arr: &ArrayRef, ext: pyval::Ext, format: i32) -> R<Col> {
     if *arr.data_type() == DataType::Null {
         return Ok(Col::Null);
     }
@@ -1027,7 +1028,12 @@ fn column(plan: &Plan, j: usize, arr: &ArrayRef, uuid_ext: bool, format: i32) ->
     let binary = format == 1 && pgtypes::has_binary(bv);
     if plan.coercers[j].is_empty() {
         // An arrow.uuid column's values are UUIDs: only the uuid writer reads its bytes directly.
-        if let Some(kind) = plan.kinds[j].filter(|k| !uuid_ext || *k == Kind::Uuid) {
+        // DuckDB's opaque types are read from their own bytes, never written as those bytes.
+        if let Some(kind) = plan.kinds[j].filter(|k| match ext {
+            pyval::Ext::Plain => true,
+            pyval::Ext::Uuid => *k == Kind::Uuid,
+            _ => false,
+        }) {
             match scalar_enc(kind, binary, arr) {
                 Ok(enc) => return Ok(Col::Fast(arr.clone(), enc)),
                 Err(EncErr::NoDirectWriter(_)) => {} // an Arrow type the direct writer does not take
@@ -1036,7 +1042,7 @@ fn column(plan: &Plan, j: usize, arr: &ArrayRef, uuid_ext: bool, format: i32) ->
         }
     }
     Ok(Col::Values {
-        reader: pyval::Reader::new(arr, uuid_ext)?,
+        reader: pyval::Reader::new(arr, ext)?,
         coercers: plan.coercers[j].clone(),
         bv,
         binary,
@@ -1055,9 +1061,9 @@ fn encode(batch: &RecordBatch, plan: &Plan, formats: &[i32], out: &mut Vec<u8>) 
     let schema = batch.schema();
     let mut cols: Vec<Col> = Vec::with_capacity(ncols);
     for j in 0..ncols {
-        let uuid_ext = pyval::is_uuid_field(schema.field(j));
+        let ext = pyval::Ext::of(schema.field(j));
         let format = formats.get(j).copied().unwrap_or(0);
-        cols.push(column(plan, j, batch.column(j), uuid_ext, format)?);
+        cols.push(column(plan, j, batch.column(j), ext, format)?);
     }
     out.reserve(nrows * (7 + ncols * 12));
     let ncols16 = ncols as i16;

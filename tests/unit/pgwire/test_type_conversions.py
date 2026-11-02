@@ -215,6 +215,7 @@ def test_a_cast_is_sent_as_postgresql_sends_it(conn: Any, sql: str):
 # design (by_design/pgwire.yaml).
 
 from provisa.compiler.introspect import ColumnMetadata  # noqa: E402
+from tests.unit.pgwire.result_rows import rows_of  # noqa: E402
 
 FIXTURE_TABLE_ID = 1
 
@@ -364,9 +365,10 @@ def test_a_described_registered_column_is_sent_as_its_registered_type():
     column_types = {FIXTURE_TABLE_ID: [c for *_, c in _FIXTURE]}
     shape = derive_result_shape(sql, table_map, _fixture_ctx(), column_types)
     engine = QueryResult(
-        rows=[("text value", 12345.6789, 12345.67, "varchar value", "bounded", "ab")],
+        # One value per column (c_oid's too: the encoder writes every cell of the row).
+        rows=[("text value", 12345.6789, 12345.67, "varchar value", "bounded", "ab", 1259)],
         column_names=columns,
-        column_types=["varchar", "double", "double", "varchar", "varchar", "varchar"],
+        column_types=["varchar", "double", "double", "varchar", "varchar", "varchar", "integer"],
     )
     result = ProvisaQueryResult(engine, sql, shape)
     described = [
@@ -378,7 +380,7 @@ def test_a_described_registered_column_is_sent_as_its_registered_type():
     ]
     assert described == [(REGISTERED[c][0], REGISTERED[c][1]) for c in columns]
     # A character(n) value is sent padded to its length, as bpchar's input pads it.
-    assert list(result.rows())[0][-1] == "ab   "
+    assert rows_of(result)[0][columns.index("c_bpchar_5")] == "ab   "
 
 
 def test_the_catalog_lists_a_registered_column_with_its_type_and_typmod(registered: Any):
