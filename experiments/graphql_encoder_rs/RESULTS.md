@@ -95,7 +95,22 @@ its class and what it names (the field, the reason; for "not JSON" the reason's 
 refusal by status, code and message, anything else as `EncodeError`. A Rust `NotImplementedError`
 does not exist any more.
 
-RESULTS_DIFFERENTIAL
+**3,962 passed, 0 failed, none skipped** (`test_compare.py` 1,760, `test_surfaces.py` 1,604,
+`test_zones.py` 598). Every case that produces a body is byte-identical on every surface:
+
+| surface | cases | bodies, all byte-identical | both raise (the same refusal or error) |
+|---|---|---|---|
+| GraphQL | 2,305 | 1,897 | 408 |
+| REST (JSON) | 1,254 | 1,079 | 175 |
+| REST (CSV) | 1,169 | 1,018 | 151 |
+| JSON:API | 968 | 727 | 241 |
+| OData | 1,339 | 891 | 448 |
+| zones (GraphQL) | 597 zones × 56,524 instants | 597 | 0 |
+
+The raises are deliberate: values JSON cannot carry (refusals by name), values `to_pylist` or
+pandas refuse, OData writing a value as an Edm type that cannot hold it (`int("abc")`,
+`Decimal("2020-01-01")`), random plans whose colliding names walk a path through a scalar, and the
+product defects below. In every one the product raises too, with the same refusal.
 
 Covered, for every surface unless named:
 
@@ -163,7 +178,27 @@ page (the router's page is 5,000).
 5 for Rust; CPU time is `process_time`. Every run of both paths writes the same body (SHA-256
 checked, Python against Rust).
 
-RESULTS_BENCH
+| surface | answer | body | Python wall (cpu) | Rust wall (cpu) | Python | Rust | speedup |
+|---|---|---|---|---|---|---|---|
+| GraphQL | 2,000,000 item rows (499,709 orders) | 312.5 MB | 81.12 s (74.51 s) | 3.550 s (3.461 s) | 0.025 Mrow/s, 3.9 MB/s | 0.56 Mrow/s, 88.0 MB/s | **22.9×** |
+| REST | 2,000,000 item rows | 312.5 MB | 67.22 s (65.29 s) | 3.289 s (3.278 s) | 0.030 Mrow/s, 4.6 MB/s | 0.61 Mrow/s, 95.0 MB/s | **20.4×** |
+| JSON:API | 2,000,000 item rows, items included | 495.8 MB | 99.99 s (93.05 s) | 5.741 s (5.657 s) | 0.020 Mrow/s, 5.0 MB/s | 0.35 Mrow/s, 86.4 MB/s | **17.4×** |
+| OData | 499,709 order rows, 2,000,000 items expanded | 313.1 MB | 10.96 s (10.82 s) | 1.630 s (1.627 s) | 0.18 Mitem/s, 28.6 MB/s | 1.23 Mitem/s, 192.0 MB/s | **6.7×** |
+
+Run-to-run spread: GraphQL Python 81.12–81.38 s, Rust 3.55–3.89 s; REST 67.22–68.52 s, 3.29–3.46 s;
+JSON:API 99.99–119.76 s, 5.74–6.21 s; OData 10.96–11.23 s, 1.63–1.72 s. Peak resident memory of the
+process (which holds the dataset, about 1.8 GB): GraphQL 3.36 GB, REST 3.42 GB, JSON:API 4.26 GB,
+OData 2.14 GB. Output in `bench-2m-<surface>.log` and `.json`.
+
+- **The exact-values Python path is slower than J494's** (GraphQL 81 s here, 50 s on the old
+  contract): a JSON column is parsed with `JsonNumber` floats and walked (`json_value`), every key
+  compares exact numbers, and every value goes through `column_value`. The Rust GraphQL encoder takes
+  3.55 s (2.74 s in J494): JSON numbers keep their text and dedup keys compare exact decimals.
+- **OData's Python path is the light one**: no `serialize_rows`, C `json.loads` for each order's
+  items and one small function per property, so the margin is smaller. The Rust OData encoder parses
+  each expansion's JSON borrowing strings and keys from the Arrow buffer.
+- JSON:API's body is larger (`type`, `id`, `attributes`, `relationships` and the included items),
+  and its encoder renames every row's keys and moves the included objects as the router does.
 
 ## Against REQ-2194: no Python between the engine result and the bytes
 
@@ -177,7 +212,40 @@ subquery wrote are parsed in Rust because the answer's contract parses them.
 
 The encoders reproduce each of these; the differential test pins them.
 
-RESULTS_DEFECTS
+1. **Dedup drops rows whose JSON values differ.** Root rows (and list elements) are keyed by
+   `_to_hashable`, which compares a JSON-typed value with Python `==`, or a dict or list by the text of
+   `json.dumps(default=str)`. So the JSON string `"[1]"` and the array `[1]` are one row (the second
+   is dropped: `{"r":[{"v":"[1]"}]}`), the JSON values `1`, `1.0` and `true` are one row, and inside a
+   container a number and the string of its digits are equal (`[1.50]` and `["1.50"]`). Before
+   J497 text was parsed, so this read as dedup of equal values; now that a JSON value's type is kept,
+   distinct values collapse.
+2. **Named-zone timestamps are localized with pytz's 32-bit tables** (pyarrow and pandas use pytz):
+   from 2038 on no daylight-saving transition applies, so `2049-08-14 06:32:28 EDT` is written
+   `2049-08-14T05:32:28-05:00`: the right instant at the wrong offset (`-05:00` all year); before
+   1901-12-13 the zone's first offset (local mean time) holds where it had already moved to standard
+   time (Johannesburg 1895: `+01:52`, tzdata `+01:30`); local mean time is rounded to the minute
+   (`-04:56` for `-04:56:02`). Every surface; 250 of pytz's 597 zones differ from tzdata somewhere
+   in 1800–2100.
+3. **Nanosecond timestamps go through pandas**: i64::MIN is `NaT` and is written as the text `"NaT"`
+   (GraphQL, REST, JSON:API; OData's Edm.Date and Edm.DateTimeOffset too); an aware value within its
+   zone's offset of the int64-nanosecond limits raises `OutOfBoundsDatetime`, a 500.
+4. **JSON:API `?groupBy=` fails on a NULL group**: a group whose every key is NULL has
+   `groupKey: None`, and the router's rename calls `None.items()`: AttributeError, a 500 for any
+   group-by over a nullable column holding NULL.
+5. **JSON:API `?include=` naming a relationship twice** (`include=line_items,customer,line_items`):
+   the second pass pops nothing and sets that relationship's linkage to `{"data": null}`, while the
+   resources the first pass took out stay in `included`.
+6. **JSON:API ids are `str()` of the written value**: a JSON-typed key gives Python's repr
+   (`"{'a': 1}"`), a boolean `"True"`, a float `"1e+16"`; and a column named `id` is always left out
+   of `attributes`, even when the resource's id is made of other key columns.
+7. **The many-to-one truncation warning still never reaches a client** (J494's item 4): GraphQL,
+   REST and JSON:API keep only `data` of `serialize_rows`' answer.
+8. **REST's Parquet and Arrow IPC answers are built from the JSON-shaped rows**: since J497 a DECIMAL
+   column arrives in them as a string column (as dates, timestamps and intervals already did), and a
+   JSON column as whatever pyarrow infers from the parsed values.
+9. **OData writes some values as no Edm type**: Edm.Date and Edm.TimeOfDay hand any other value to
+   orjson as it is (a number, a string, an interval's ISO duration), and Edm.Boolean is Python
+   truthiness (the text `"false"` is `true`).
 
 ## What wiring needs
 
@@ -218,3 +286,5 @@ RESULTS_DEFECTS
 - `python_ref.py`: the product's path per surface. `check.py`: the comparison. `cases.py`: the
   value corpus. `test_compare.py`, `test_surfaces.py`, `test_zones.py`: the differential tests.
 - `bench.py`, `run_bench.sh`: the benchmark; `bench-2m-<surface>.log` and `.json` hold its output.
+- `breakdown.py`, `breakdown-2m.*`: J494's per-step timing of the Python path before J497 (on the
+  old contract), kept for its account of where that path serialized and deserialized.

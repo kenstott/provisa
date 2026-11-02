@@ -447,7 +447,17 @@ pub fn edm_value(p: &P, edm: Edm) -> Res<P<'static>> {
                 P::Bytes(b) => b.to_vec(),
                 P::Int(n) if *n >= 0 => vec![0; *n as usize],
                 P::Bool(b) => vec![0; *b as usize],
-                P::List(v) => {
+                P::Mdn(m, d, n) => {
+                    let mut out = Vec::new();
+                    for x in [*m as i64, *d as i64, *n] {
+                        if !(0..256).contains(&x) {
+                            return err("ValueError: bytes must be in range(0, 256)");
+                        }
+                        out.push(x as u8);
+                    }
+                    out
+                }
+                P::List(v) | P::Tuple(v) => {
                     let mut out = Vec::new();
                     for x in v {
                         match x {

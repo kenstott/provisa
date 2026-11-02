@@ -1,0 +1,6 @@
+[heavy] slot acquired after 110s
+rest: 2,000,000 item rows, 499,709 orders, 333.3 MB Arrow (flat), built in 1.5s, free memory 52%, peak rss 2182 MB
+rust   best 3.289s wall 3.278s cpu runs ['3.371', '3.385', '3.460', '3.289', '3.356'] peak rss 3108 MB free 56%
+python best 67.217s wall 65.293s cpu runs ['67.217', '67.461', '68.520'] peak rss 3421 MB free 47%
+full bodies identical: sha256 cc8f8a4ccca90781f555b4e4aec1b5ecf5905a0c6698781f80beb423e869aa4e
+SUMMARY rest 2,000,000 item rows, 312.5 MB body | python 67.22s (0.030 Mrow/s, 4.6 MB/s) | rust 3.289s (0.61 Mrow/s, 95.0 MB/s) | speedup 20.4x

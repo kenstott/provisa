@@ -1,0 +1,6 @@
+[heavy] slot acquired after 16s
+graphql: 2,000,000 item rows, 499,709 orders, 333.3 MB Arrow (flat), built in 1.5s, free memory 48%, peak rss 1812 MB
+rust   best 3.550s wall 3.461s cpu runs ['3.714', '3.622', '3.886', '3.667', '3.550'] peak rss 2600 MB free 43%
+python best 81.124s wall 74.506s cpu runs ['81.124', '81.383', '81.217'] peak rss 3365 MB free 46%
+full bodies identical: sha256 ddbc0b6c6018030c39f964cb971d4a739f8719b895b963754c9a3f39e3586270
+SUMMARY graphql 2,000,000 item rows, 312.5 MB body | python 81.12s (0.025 Mrow/s, 3.9 MB/s) | rust 3.550s (0.56 Mrow/s, 88.0 MB/s) | speedup 22.9x

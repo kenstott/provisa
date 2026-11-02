@@ -1,0 +1,8 @@
+[heavy] queued: position 4 of 4 for the shared test slot
+[heavy] queued: position 2 of 3 for the shared test slot
+[heavy] slot acquired after 111s
+odata: 499,709 order rows, 2,000,000 items expanded, 499,709 orders, 333.3 MB Arrow (flat), built in 5.1s, free memory 53%, peak rss 1909 MB
+rust   best 1.630s wall 1.627s cpu runs ['1.630', '1.685', '1.681', '1.640', '1.725'] peak rss 1909 MB free 53%
+python best 10.961s wall 10.819s cpu runs ['11.231', '10.964', '10.961'] peak rss 2138 MB free 46%
+full bodies identical: sha256 ba507e19a757740a2f2377782fff642613f2983833d446be5411fc2f12342883
+SUMMARY odata 499,709 order rows, 2,000,000 items expanded, 313.1 MB body | python 10.96s (0.182 Mrow/s, 28.6 MB/s) | rust 1.630s (1.23 Mrow/s, 192.0 MB/s) | speedup 6.7x

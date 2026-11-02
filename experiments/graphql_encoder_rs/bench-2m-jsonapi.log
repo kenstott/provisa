@@ -1,0 +1,6 @@
+[heavy] slot acquired after 97s
+jsonapi: 2,000,000 item rows, items included, 499,709 orders, 333.3 MB Arrow (flat), built in 1.3s, free memory 53%, peak rss 2187 MB
+rust   best 5.741s wall 5.657s cpu runs ['6.215', '5.899', '6.051', '5.741', '6.003'] peak rss 3327 MB free 47%
+python best 99.994s wall 93.047s cpu runs ['119.762', '99.994', '111.195'] peak rss 4263 MB free 48%
+full bodies identical: sha256 36f41afaef3fe61a14b8b781fb06bb3a2b8be5b294823c546ca54ac7e78d3cf6
+SUMMARY jsonapi 2,000,000 item rows, items included, 495.8 MB body | python 99.99s (0.020 Mrow/s, 5.0 MB/s) | rust 5.741s (0.35 Mrow/s, 86.4 MB/s) | speedup 17.4x
