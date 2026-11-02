@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 3da1b457-c8a1-47c7-bd9a-752053494671
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Benchmark: the product's Python DataRow encode path against the Rust encoder, end to end from
 Arrow record batches to DataRow bytes, over a large mixed-type result.
 
