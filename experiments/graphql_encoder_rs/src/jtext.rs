@@ -31,11 +31,12 @@ impl J {
         }
     }
 
-    /// The depth of nested containers (a scalar is 0).
+    /// The depth of nested non-empty containers (a scalar or an empty container is 0): orjson
+    /// refuses a non-empty container nested past its limit, and writes an empty one anywhere.
     pub fn depth(&self) -> usize {
         match self {
-            J::Arr(v) => 1 + v.iter().map(J::depth).max().unwrap_or(0),
-            J::Obj(v) => 1 + v.iter().map(|e| e.1.depth()).max().unwrap_or(0),
+            J::Arr(v) if !v.is_empty() => 1 + v.iter().map(J::depth).max().unwrap_or(0),
+            J::Obj(v) if !v.is_empty() => 1 + v.iter().map(|e| e.1.depth()).max().unwrap_or(0),
             _ => 0,
         }
     }
@@ -159,7 +160,7 @@ impl J {
     }
 }
 
-fn has_surrogate(s: &[u8]) -> bool {
+pub fn has_surrogate(s: &[u8]) -> bool {
     s.windows(2).any(|w| w[0] == 0xED && w[1] >= 0xA0)
 }
 

@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f1d7c5cc-c978-4ea6-9884-fd783e8af23e
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """The product's GraphQL JSON path, run unmodified, from Arrow batches to response bytes.
 
 An ENGINE-routed root field is read as ``_execute_plan``'s buffered drain reads it: the engine's

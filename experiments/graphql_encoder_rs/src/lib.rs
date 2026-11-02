@@ -15,8 +15,9 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
 use cells::{Cell, Keyer, Out, Res};
+use jtext::J;
 
-/// orjson refuses a container nested deeper than this.
+/// orjson refuses a non-empty container nested deeper than this.
 const MAX_DEPTH: usize = 254;
 const RECURSION: &str = "Recursion limit reached";
 
@@ -48,7 +49,7 @@ struct Path {
 }
 
 struct Plan {
-    names: Vec<Vec<u8>>, // each name's JSON key bytes, `"name":`
+    names: Interner,
     root_cols: Vec<usize>,
     root_fields: Fields,
     /// In first-appearance order (`_group_columns`).
@@ -58,21 +59,28 @@ struct Plan {
     with_one_to_many: bool,
 }
 
+/// Object keys: each name's JSON bytes, `"name":`, and whether orjson refuses it (a lone surrogate).
+#[derive(Clone)]
 struct Interner {
-    ids: HashMap<String, u32>,
+    ids: HashMap<Vec<u8>, u32>,
     names: Vec<Vec<u8>>,
+    bad: Vec<bool>,
 }
 
 impl Interner {
     fn id(&mut self, s: &str) -> u32 {
+        self.id_bytes(s.as_bytes())
+    }
+    fn id_bytes(&mut self, s: &[u8]) -> u32 {
         if let Some(&i) = self.ids.get(s) {
             return i;
         }
         let mut k = Vec::new();
-        fmt::write_str(&mut k, s.as_bytes());
+        fmt::write_str(&mut k, s);
         k.push(b':');
         self.names.push(k);
-        self.ids.insert(s.to_string(), self.names.len() as u32 - 1);
+        self.bad.push(jtext::has_surrogate(s));
+        self.ids.insert(s.to_vec(), self.names.len() as u32 - 1);
         self.names.len() as u32 - 1
     }
 }
@@ -90,7 +98,7 @@ fn fields_of(cols: &[usize], spec: &[Col], it: &mut Interner) -> Fields {
 }
 
 fn plan(spec: &[Col]) -> Plan {
-    let mut it = Interner { ids: HashMap::new(), names: Vec::new() };
+    let mut it = Interner { ids: HashMap::new(), names: Vec::new(), bad: Vec::new() };
     let mut root_cols = Vec::new();
     let mut order: Vec<String> = Vec::new();
     let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
@@ -137,7 +145,7 @@ fn plan(spec: &[Col]) -> Plan {
     let mut sorted: Vec<usize> = (0..order.len()).collect();
     sorted.sort_by(|&a, &b| order[a].as_bytes().cmp(order[b].as_bytes()));
     let with_one_to_many = paths.iter().any(|p| p.one_to_many) && !root_cols.is_empty();
-    Plan { names: it.names, root_cols, root_fields, paths, sorted, with_one_to_many }
+    Plan { names: it, root_cols, root_fields, paths, sorted, with_one_to_many }
 }
 
 // ---------------------------------------------------------------- the response tree
@@ -145,34 +153,82 @@ fn plan(spec: &[Col]) -> Plan {
 #[derive(Clone, Copy)]
 enum V {
     Null,
-    Leaf { start: u64, len: u32, depth: u8 },
+    /// A scalar's JSON bytes in `Tree::buf`.
+    Leaf { start: u64, len: u32 },
     Poison(&'static str),
     Obj(u32),
     Arr(u32),
+    /// A converted value held as Python holds it (`Tree::jv`): a dict or list becomes an `Obj` or
+    /// `Arr` the moment the serializer reaches into it.
+    Json(u32),
 }
 
 /// Python dicts and lists as the serializer builds them: insertion-ordered objects.
 struct Tree {
     buf: Vec<u8>,
     objs: Vec<Vec<(u32, V)>>,
-    arrs: Vec<Vec<u32>>,
+    arrs: Vec<Vec<V>>,
+    jv: Vec<J>,
+    names: Interner,
 }
 
 impl Tree {
-    fn new() -> Self {
-        Tree { buf: Vec::new(), objs: Vec::new(), arrs: Vec::new() }
+    fn new(names: &Interner) -> Self {
+        Tree { buf: Vec::new(), objs: Vec::new(), arrs: Vec::new(), jv: Vec::new(), names: names.clone() }
     }
     fn clear(&mut self) {
         self.buf.clear();
         self.objs.clear();
         self.arrs.clear();
+        self.jv.clear();
     }
     fn obj(&mut self) -> u32 {
         self.objs.push(Vec::new());
         self.objs.len() as u32 - 1
     }
-    fn get(&self, o: u32, k: u32) -> Option<V> {
-        self.objs[o as usize].iter().find(|e| e.0 == k).map(|e| e.1)
+    fn arr(&mut self) -> u32 {
+        self.arrs.push(Vec::new());
+        self.arrs.len() as u32 - 1
+    }
+    fn json(&mut self, j: J) -> V {
+        self.jv.push(j);
+        V::Json(self.jv.len() as u32 - 1)
+    }
+    /// `d.get(k)`, a JSON dict or list there made a node first (it is the same object).
+    fn get(&mut self, o: u32, k: u32) -> Option<V> {
+        let pos = self.objs[o as usize].iter().position(|e| e.0 == k)?;
+        let v = self.objs[o as usize][pos].1;
+        if let V::Json(i) = v {
+            if matches!(self.jv[i as usize], J::Obj(_) | J::Arr(_)) {
+                let j = std::mem::replace(&mut self.jv[i as usize], J::Null);
+                let node = self.node(j);
+                self.objs[o as usize][pos].1 = node;
+                return Some(node);
+            }
+        }
+        Some(v)
+    }
+    fn node(&mut self, j: J) -> V {
+        match j {
+            J::Obj(entries) => {
+                let o = self.obj();
+                for (k, v) in entries {
+                    let id = self.names.id_bytes(&k);
+                    let v = self.json(v);
+                    self.objs[o as usize].push((id, v));
+                }
+                V::Obj(o)
+            }
+            J::Arr(items) => {
+                let a = self.arr();
+                for v in items {
+                    let v = self.json(v);
+                    self.arrs[a as usize].push(v);
+                }
+                V::Arr(a)
+            }
+            j => self.json(j),
+        }
     }
     /// `d[k] = v`: a key already there keeps its position.
     fn set(&mut self, o: u32, k: u32, v: V) {
@@ -187,32 +243,40 @@ impl Tree {
         Ok(match c.write(row, &mut self.buf, key, k)? {
             Out::Null => V::Null,
             Out::Poison(p) => V::Poison(p),
-            Out::Leaf(depth) => V::Leaf { start: start as u64, len: (self.buf.len() - start) as u32, depth },
+            Out::Leaf => V::Leaf { start: start as u64, len: (self.buf.len() - start) as u32 },
+            Out::Json(j) => self.json(j),
         })
     }
 
-    fn write_value(&self, v: V, names: &[Vec<u8>], out: &mut Vec<u8>, depth: usize) -> Res<()> {
+    fn write_value(&self, v: V, out: &mut Vec<u8>, depth: usize) -> Res<()> {
         // `depth`: the nesting level of the container holding this value.
         match v {
             V::Null => out.extend_from_slice(b"null"),
             V::Poison(p) => return Err(p.to_string()),
-            V::Leaf { start, len, depth: d } => {
-                if depth + d as usize > MAX_DEPTH {
-                    return Err(RECURSION.into());
-                }
+            V::Leaf { start, len } => {
                 out.extend_from_slice(&self.buf[start as usize..start as usize + len as usize]);
             }
-            V::Obj(o) => self.write_obj(o, names, out, depth + 1)?,
+            V::Json(i) => {
+                let j = &self.jv[i as usize];
+                if let Some(p) = j.poison() {
+                    return Err(p.to_string());
+                }
+                if depth + j.depth() > MAX_DEPTH {
+                    return Err(RECURSION.into());
+                }
+                j.write(out);
+            }
+            V::Obj(o) => self.write_obj(o, out, depth + 1)?,
             V::Arr(a) => {
-                if depth + 1 > MAX_DEPTH {
+                if depth + 1 > MAX_DEPTH && !self.arrs[a as usize].is_empty() {
                     return Err(RECURSION.into());
                 }
                 out.push(b'[');
-                for (i, &o) in self.arrs[a as usize].iter().enumerate() {
+                for (i, &e) in self.arrs[a as usize].iter().enumerate() {
                     if i > 0 {
                         out.push(b',');
                     }
-                    self.write_obj(o, names, out, depth + 2)?;
+                    self.write_value(e, out, depth + 1)?;
                 }
                 out.push(b']');
             }
@@ -220,8 +284,8 @@ impl Tree {
         Ok(())
     }
 
-    fn write_obj(&self, o: u32, names: &[Vec<u8>], out: &mut Vec<u8>, depth: usize) -> Res<()> {
-        if depth > MAX_DEPTH {
+    fn write_obj(&self, o: u32, out: &mut Vec<u8>, depth: usize) -> Res<()> {
+        if depth > MAX_DEPTH && !self.objs[o as usize].is_empty() {
             return Err(RECURSION.into());
         }
         out.push(b'{');
@@ -229,8 +293,11 @@ impl Tree {
             if i > 0 {
                 out.push(b',');
             }
-            out.extend_from_slice(&names[k as usize]);
-            self.write_value(v, names, out, depth)?;
+            if self.names.bad[k as usize] {
+                return Err(fmt::SURROGATE.into());
+            }
+            out.extend_from_slice(&self.names.names[k as usize]);
+            self.write_value(v, out, depth)?;
         }
         out.push(b'}');
         Ok(())
@@ -258,6 +325,7 @@ struct Encoder<'p> {
     spec: &'p [Col],
     k: Keyer,
     key: Vec<u8>,
+    scratch: Vec<u8>,
 }
 
 impl<'p> Encoder<'p> {
@@ -269,16 +337,13 @@ impl<'p> Encoder<'p> {
         let key_cols: Vec<usize> = if keyed.is_empty() { (0..self.spec.len()).collect() } else { keyed };
         // root key -> whether `_detect_truncated_paths` fails on that row (a repeat raises)
         let mut seen: Seen = Seen::default();
-        let mut t = Tree::new();
+        let mut t = Tree::new(&p.names);
         let mut written = 0usize;
         for b in batches {
             for r in 0..b.rows {
                 self.key.clear();
                 for &c in &key_cols {
-                    let mut scratch = std::mem::take(&mut t.buf);
-                    b.cells[c].write(r, &mut scratch, Some(&mut self.key), &mut self.k)?;
-                    scratch.clear();
-                    t.buf = scratch;
+                    b.cells[c].key(r, &mut self.key, &mut self.k, &mut self.scratch)?;
                 }
                 if let Some(&fails) = seen.get(self.key.as_slice()) {
                     if fails != 0 {
@@ -293,13 +358,13 @@ impl<'p> Encoder<'p> {
                     t.set(root, name, v);
                 }
                 self.build_nested(&mut t, root, b, r)?;
-                let fails = self.detect_fails(&t, root);
+                let fails = self.detect_fails(&mut t, root);
                 seen.insert(self.key.as_slice().into(), fails as u32);
                 if limit.is_none_or(|l| written < l) {
                     if written > 0 {
                         out.push(b',');
                     }
-                    t.write_obj(root, &p.names, out, ROW_DEPTH)?;
+                    t.write_obj(root, out, ROW_DEPTH)?;
                     written += 1;
                 }
             }
@@ -355,7 +420,7 @@ impl<'p> Encoder<'p> {
 
     /// Whether `_detect_truncated_paths` raises on a repeat of this row: it walks each path's
     /// parents with `[]` and reads its leaf with `.get`.
-    fn detect_fails(&self, t: &Tree, root: u32) -> bool {
+    fn detect_fails(&self, t: &mut Tree, root: u32) -> bool {
         for path in &self.p.paths {
             let (_, inner) = path.full_parts.split_last().unwrap();
             let mut target = root;
@@ -373,31 +438,24 @@ impl<'p> Encoder<'p> {
     /// kept and written at the end.
     fn one_to_many(&mut self, batches: &[Batch], limit: Option<usize>, out: &mut Vec<u8>) -> Res<()> {
         let p = self.p;
-        let mut t = Tree::new();
+        let mut t = Tree::new(&p.names);
         let mut seen: Seen = Seen::default();
         let mut rows: Vec<u32> = Vec::new();
         let mut elements: Seen = Seen::default();
         let mut placed: Vec<Option<u32>> = vec![None; p.paths.len()];
-        let mut root_vals: Vec<V> = Vec::with_capacity(p.root_cols.len());
         for b in batches {
             for r in 0..b.rows {
                 self.key.clear();
-                root_vals.clear();
-                let mark = t.buf.len();
                 for &c in &p.root_cols {
-                    let v = t.cell(b.cells[c].as_ref(), r, Some(&mut self.key), &mut self.k)?;
-                    root_vals.push(v);
+                    b.cells[c].key(r, &mut self.key, &mut self.k, &mut self.scratch)?;
                 }
                 let root = match seen.get(self.key.as_slice()) {
-                    Some(&o) => {
-                        t.buf.truncate(mark);
-                        o
-                    }
+                    Some(&o) => o,
                     None => {
                         let o = t.obj();
                         for &(name, c) in &p.root_fields {
-                            let at = p.root_cols.iter().position(|&x| x == c).unwrap();
-                            t.set(o, name, root_vals[at]);
+                            let v = t.cell(b.cells[c].as_ref(), r, None, &mut self.k)?;
+                            t.set(o, name, v);
                         }
                         seen.insert(self.key.as_slice().into(), o);
                         rows.push(o);
@@ -432,8 +490,7 @@ impl<'p> Encoder<'p> {
                         let arr = match t.get(holder, leaf) {
                             Some(V::Arr(a)) => a,
                             _ => {
-                                t.arrs.push(Vec::new());
-                                let a = t.arrs.len() as u32 - 1;
+                                let a = t.arr();
                                 t.set(holder, leaf, V::Arr(a));
                                 a
                             }
@@ -444,24 +501,19 @@ impl<'p> Encoder<'p> {
                         }
                         self.key.clear();
                         self.key.extend_from_slice(&arr.to_le_bytes());
-                        let mark = t.buf.len();
-                        let mut vals = Vec::with_capacity(path.fields.len());
-                        for &(name, c) in &path.fields {
-                            let v = t.cell(b.cells[c].as_ref(), r, Some(&mut self.key), &mut self.k)?;
-                            vals.push((name, v));
+                        for &(_, c) in &path.fields {
+                            b.cells[c].key(r, &mut self.key, &mut self.k, &mut self.scratch)?;
                         }
                         let el = match elements.get(self.key.as_slice()) {
-                            Some(&o) => {
-                                t.buf.truncate(mark);
-                                o
-                            }
+                            Some(&o) => o,
                             None => {
                                 let o = t.obj();
-                                for (name, v) in vals {
+                                for &(name, c) in &path.fields {
+                                    let v = t.cell(b.cells[c].as_ref(), r, None, &mut self.k)?;
                                     t.set(o, name, v);
                                 }
                                 elements.insert(self.key.as_slice().into(), o);
-                                t.arrs[arr as usize].push(o);
+                                t.arrs[arr as usize].push(V::Obj(o));
                                 o
                             }
                         };
@@ -497,7 +549,7 @@ impl<'p> Encoder<'p> {
             if i > 0 {
                 out.push(b',');
             }
-            t.write_obj(o, &p.names, out, ROW_DEPTH)?;
+            t.write_obj(o, out, ROW_DEPTH)?;
         }
         Ok(())
     }
@@ -522,7 +574,7 @@ fn encode(batches: &[RecordBatch], spec: &[Col], root_field: &str, limit: Option
     out.extend_from_slice(b"{\"data\":{");
     fmt::write_str(&mut out, root_field.as_bytes());
     out.extend_from_slice(b":[");
-    let mut e = Encoder { p: &p, spec, k: Keyer::new(), key: Vec::new() };
+    let mut e = Encoder { p: &p, spec, k: Keyer::new(), key: Vec::new(), scratch: Vec::new() };
     if p.with_one_to_many {
         e.one_to_many(&prepared, limit, &mut out)?;
     } else {

@@ -71,11 +71,12 @@ pub fn write_f64(out: &mut Vec<u8>, f: f64) {
     while lead < nd - 1 && digits[lead] == b'0' {
         lead += 1;
     }
-    let mut d: Vec<u8> = digits[lead..nd].to_vec();
-    point -= lead as i32;
-    while d.len() > 1 && *d.last().unwrap() == b'0' {
-        d.pop();
+    let mut end = nd;
+    while end - lead > 1 && digits[end - 1] == b'0' {
+        end -= 1;
     }
+    let d = &digits[lead..end];
+    point -= lead as i32;
     if d == b"0" {
         if neg {
             out.push(b'-');
@@ -93,9 +94,9 @@ pub fn write_f64(out: &mut Vec<u8>, f: f64) {
         if e10 <= 0 {
             out.extend_from_slice(b"0.");
             out.extend(std::iter::repeat(b'0').take((-e10) as usize));
-            out.extend_from_slice(&d);
+            out.extend_from_slice(d);
         } else if (e10 as usize) >= d.len() {
-            out.extend_from_slice(&d);
+            out.extend_from_slice(d);
             out.extend(std::iter::repeat(b'0').take(e10 as usize - d.len()));
             out.extend_from_slice(b".0");
         } else {

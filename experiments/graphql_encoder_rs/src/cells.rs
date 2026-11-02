@@ -7,14 +7,16 @@ use arrow::datatypes::*;
 use crate::fmt::{self, DecVal};
 use crate::jtext::{self, J};
 
-/// What writing a cell produced. Its bytes, if any, were appended to the caller's buffer.
-#[derive(Clone, Copy)]
+/// What writing a cell produced. A leaf's bytes were appended to the caller's buffer.
 pub enum Out {
     Null,
-    /// JSON bytes; `depth` is the nesting of containers inside them.
-    Leaf(u8),
+    /// JSON bytes of a scalar.
+    Leaf,
     /// A value orjson refuses when it is written (the message orjson raises).
     Poison(&'static str),
+    /// A dict or list (a parsed JSON text, a struct or list value): Python's own mutable object,
+    /// which the serializer may merge into, append to or walk through.
+    Json(J),
 }
 
 /// Key atoms. Python compares the converted values with `==`: a float NaN is unequal to every
@@ -61,11 +63,17 @@ impl Keyer {
 
 pub type Res<T> = Result<T, String>;
 
-pub trait Cell: Send + Sync {
+pub trait Cell: Send {
     /// The raw value is None (what `all(row[idx] is None ...)` tests).
     fn is_null(&self, row: usize) -> bool;
     /// Append the converted value's JSON to `buf` and, when asked, its key atom to `key`.
     fn write(&self, row: usize, buf: &mut Vec<u8>, key: Option<&mut Vec<u8>>, k: &mut Keyer) -> Res<Out>;
+    /// The key atom alone (`scratch` is the caller's spare buffer).
+    fn key(&self, row: usize, key: &mut Vec<u8>, k: &mut Keyer, scratch: &mut Vec<u8>) -> Res<()> {
+        scratch.clear();
+        self.write(row, scratch, Some(key), k)?;
+        Ok(())
+    }
     /// The errors `column_values` (to_pylist) raises for this column, whichever rows are used.
     fn validate(&self) -> Res<()> {
         Ok(())
@@ -120,13 +128,15 @@ fn ts_value(raw: i64, mult: i64, offset: Option<i32>, buf: &mut Vec<u8>) -> Res<
     Ok(())
 }
 
+/// A duration's (days, micros) as `interval_parts` takes a timedelta apart: the magnitude's, signed.
+/// The timedelta itself (floor days, positive seconds) must lie within a billion days.
 fn duration_parts(v: i128) -> Res<(i64, i64)> {
+    if v.div_euclid(86_400_000_000).abs() > TD_MAX_DAYS {
+        return Err("days=…; must have magnitude <= 999999999".into());
+    }
     let a = v.abs();
     let days = a / 86_400_000_000;
     let rem = a % 86_400_000_000;
-    if days > TD_MAX_DAYS {
-        return Err("days=…; must have magnitude <= 999999999".into());
-    }
     Ok(if v < 0 { (-(days as i64), -(rem as i64)) } else { (days as i64, rem as i64) })
 }
 
@@ -173,27 +183,23 @@ fn key_written(k: &Keyer, key: Option<&mut Vec<u8>>, buf: &[u8], start: usize) {
     }
 }
 
-fn write_j(j: &J, buf: &mut Vec<u8>, key: Option<&mut Vec<u8>>, k: &mut Keyer) -> Out {
+fn json_out(j: J, key: Option<&mut Vec<u8>>, k: &mut Keyer) -> Out {
     if let Some(key) = key {
-        k.canon(key, j);
+        k.canon(key, &j);
     }
-    if let Some(p) = j.poison() {
-        return Out::Poison(p);
-    }
-    j.write(buf);
-    Out::Leaf(j.depth().min(255) as u8)
+    Out::Json(j)
 }
 
 /// A text value: `_convert_value` parses one that looks like JSON.
 fn write_text(s: &[u8], buf: &mut Vec<u8>, key: Option<&mut Vec<u8>>, k: &mut Keyer) -> Out {
     if let Some(j) = jtext::parse_json_text(s) {
-        return write_j(&j, buf, key, k);
+        return json_out(j, key, k);
     }
     if let Some(key) = key {
         k.bytes(key, s);
     }
     fmt::write_str(buf, s);
-    Out::Leaf(0)
+    Out::Leaf
 }
 
 fn dec_out(neg: bool, digits: &str, small: Option<i128>, scale: i32, buf: &mut Vec<u8>, key: Option<&mut Vec<u8>>, k: &mut Keyer) -> Out {
@@ -205,12 +211,12 @@ fn dec_out(neg: bool, digits: &str, small: Option<i128>, scale: i32, buf: &mut V
         DecVal::Int(i) => {
             let mut b = itoa::Buffer::new();
             buf.extend_from_slice(b.format(i).as_bytes());
-            Out::Leaf(0)
+            Out::Leaf
         }
         DecVal::BigInt => Out::Poison(fmt::BIG_INT),
         DecVal::Float(f) => {
             fmt::write_f64(buf, f);
-            Out::Leaf(0)
+            Out::Leaf
         }
     }
 }
@@ -253,7 +259,7 @@ impl Cell for BoolCell {
         let s = buf.len();
         buf.extend_from_slice(if self.a.value(r) { b"true" } else { b"false" });
         key_written(k, key, buf, s);
-        Ok(Out::Leaf(0))
+        Ok(Out::Leaf)
     }
 }
 
@@ -273,7 +279,7 @@ where
         let mut b = itoa::Buffer::new();
         buf.extend_from_slice(b.format(self.a.value(r)).as_bytes());
         key_written(k, key, buf, s);
-        Ok(Out::Leaf(0))
+        Ok(Out::Leaf)
     }
 }
 
@@ -294,7 +300,15 @@ where
             k.num(key, f);
         }
         fmt::write_f64(buf, f);
-        Ok(Out::Leaf(0))
+        Ok(Out::Leaf)
+    }
+    fn key(&self, r: usize, key: &mut Vec<u8>, k: &mut Keyer, _: &mut Vec<u8>) -> Res<()> {
+        if self.a.is_null(r) {
+            key.push(K_NULL);
+        } else {
+            k.num(key, self.a.value(r).into());
+        }
+        Ok(())
     }
 }
 
@@ -312,6 +326,22 @@ impl Cell for Dec128Cell {
         let mut b = itoa::Buffer::new();
         let digits = b.format(c.unsigned_abs());
         Ok(dec_out(c < 0, digits, Some(c), self.scale, buf, key, k))
+    }
+    fn key(&self, r: usize, key: &mut Vec<u8>, k: &mut Keyer, _: &mut Vec<u8>) -> Res<()> {
+        if self.a.is_null(r) {
+            key.push(K_NULL);
+        } else {
+            k.num(key, self.f(r));
+        }
+        Ok(())
+    }
+}
+
+impl Dec128Cell {
+    fn f(&self, r: usize) -> f64 {
+        let c = self.a.value(r);
+        let mut b = itoa::Buffer::new();
+        fmt::decimal_value(c < 0, b.format(c.unsigned_abs()), Some(c), self.scale).1
     }
 }
 
@@ -337,6 +367,8 @@ impl Cell for Dec256Cell {
 
 struct StrCell<A> {
     a: A,
+    /// The last JSON-looking text keyed and its key atom: equal text, equal parse, equal key.
+    last: std::cell::RefCell<(Vec<u8>, Vec<u8>)>,
 }
 impl<A> Cell for StrCell<A>
 where
@@ -349,6 +381,30 @@ where
     fn write(&self, r: usize, buf: &mut Vec<u8>, key: Option<&mut Vec<u8>>, k: &mut Keyer) -> Res<Out> {
         null_guard!(self, r, key);
         Ok(write_text((&self.a).value(r).as_bytes(), buf, key, k))
+    }
+    fn key(&self, r: usize, key: &mut Vec<u8>, k: &mut Keyer, _: &mut Vec<u8>) -> Res<()> {
+        if self.a.is_null(r) {
+            key.push(K_NULL);
+            return Ok(());
+        }
+        let s = (&self.a).value(r).as_bytes();
+        if s.len() < 2 || (s[0] != b'{' && s[0] != b'[') {
+            k.bytes(key, s);
+            return Ok(());
+        }
+        let mut last = self.last.borrow_mut();
+        if last.1.is_empty() || last.0 != s {
+            let mut atom = Vec::new();
+            match jtext::parse_json_text(s) {
+                Some(j) => k.canon(&mut atom, &j),
+                None => k.bytes(&mut atom, s),
+            }
+            last.0.clear();
+            last.0.extend_from_slice(s);
+            last.1 = atom;
+        }
+        key.extend_from_slice(&last.1);
+        Ok(())
     }
 }
 
@@ -394,7 +450,7 @@ where
             hex(buf, (&self.a).value(r));
         }
         key_written(k, key, buf, s);
-        Ok(Out::Leaf(0))
+        Ok(Out::Leaf)
     }
 }
 
@@ -425,7 +481,7 @@ impl Cell for Date32Cell {
         let s = buf.len();
         self.text(r, buf)?;
         key_written(k, key, buf, s);
-        Ok(Out::Leaf(0))
+        Ok(Out::Leaf)
     }
     fn validate(&self) -> Res<()> {
         let mut scratch = Vec::new();
@@ -469,7 +525,7 @@ impl Cell for TsCell {
         let s = buf.len();
         self.text(r, buf)?;
         key_written(k, key, buf, s);
-        Ok(Out::Leaf(0))
+        Ok(Out::Leaf)
     }
     fn validate(&self) -> Res<()> {
         let mut scratch = Vec::new();
@@ -503,7 +559,7 @@ impl Cell for TimeCell {
         fmt::clock_text(buf, us);
         buf.push(b'"');
         key_written(k, key, buf, s);
-        Ok(Out::Leaf(0))
+        Ok(Out::Leaf)
     }
     fn validate(&self) -> Res<()> {
         for r in 0..self.a.len() {
@@ -531,7 +587,7 @@ impl Cell for DurationCell {
         fmt::iso8601_duration(buf, 0, d, u);
         buf.push(b'"');
         key_written(k, key, buf, s);
-        Ok(Out::Leaf(0))
+        Ok(Out::Leaf)
     }
     fn validate(&self) -> Res<()> {
         for r in 0..self.a.len() {
@@ -560,7 +616,7 @@ impl Cell for IntervalCell {
         fmt::iso8601_duration(buf, v.months as i64, v.days as i64, micros);
         buf.push(b'"');
         key_written(k, key, buf, s);
-        Ok(Out::Leaf(0))
+        Ok(Out::Leaf)
     }
     fn validate(&self) -> Res<()> {
         for r in 0..self.a.len() {
@@ -593,7 +649,8 @@ impl Cell for NestedCell {
         }
         let mut j = to_j(self.a.as_ref(), r, self.uuid)?;
         j.convert_value();
-        Ok(write_j(&j, buf, key, k))
+        let _ = buf;
+        Ok(json_out(j, key, k))
     }
     fn validate(&self) -> Res<()> {
         for r in 0..self.a.len() {
@@ -710,6 +767,11 @@ fn to_j(a: &dyn Array, i: usize, uuid: bool) -> Res<J> {
         DataType::LargeList(f) => list_j(a.as_list::<i64>().value(i).as_ref(), is_uuid_field(f))?,
         DataType::FixedSizeList(f, _) => list_j(a.as_fixed_size_list().value(i).as_ref(), is_uuid_field(f))?,
         DataType::Struct(fields) => {
+            let mut names: Vec<&String> = fields.iter().map(|f| f.name()).collect();
+            names.sort();
+            if names.windows(2).any(|w| w[0] == w[1]) {
+                return Err("Converting to Python dictionary is not supported when duplicate field names are present".into());
+            }
             let s = a.as_struct();
             let mut entries = Vec::new();
             for (fi, f) in fields.iter().enumerate() {
@@ -779,9 +841,9 @@ pub fn cell_for(field: &Field, a: &ArrayRef) -> Res<Box<dyn Cell>> {
         DataType::Float64 => Box::new(FloatCell { a: a.as_primitive::<Float64Type>().clone() }),
         DataType::Decimal128(_, s) => Box::new(Dec128Cell { a: a.as_primitive::<Decimal128Type>().clone(), scale: *s as i32 }),
         DataType::Decimal256(_, s) => Box::new(Dec256Cell { a: a.as_primitive::<Decimal256Type>().clone(), scale: *s as i32 }),
-        DataType::Utf8 => Box::new(StrCell { a: a.as_string::<i32>().clone() }),
-        DataType::LargeUtf8 => Box::new(StrCell { a: a.as_string::<i64>().clone() }),
-        DataType::Utf8View => Box::new(StrCell { a: a.as_string_view().clone() }),
+        DataType::Utf8 => Box::new(StrCell { a: a.as_string::<i32>().clone(), last: Default::default() }),
+        DataType::LargeUtf8 => Box::new(StrCell { a: a.as_string::<i64>().clone(), last: Default::default() }),
+        DataType::Utf8View => Box::new(StrCell { a: a.as_string_view().clone(), last: Default::default() }),
         DataType::Dictionary(_, v) if **v == DataType::Utf8 => {
             let d = a.as_any_dictionary();
             Box::new(DictStrCell {
