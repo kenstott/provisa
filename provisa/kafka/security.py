@@ -31,6 +31,7 @@ verification is always on.
 
 from __future__ import annotations
 
+import ssl
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
@@ -149,9 +150,8 @@ class KafkaSecurity:  # REQ-147
             return {}
         kwargs: dict[str, Any] = {"security_protocol": self.protocol}
         if self.tls:
-            from aiokafka.helpers import create_ssl_context
-
-            kwargs["ssl_context"] = create_ssl_context(cadata=self.ca)
+            # Hostname and chain verified; the named CA alone, else the public CAs.
+            kwargs["ssl_context"] = ssl.create_default_context(cadata=self.ca)
         if self.sasl:
             kwargs["sasl_mechanism"] = self.mechanism
             kwargs["sasl_plain_username"] = self.username

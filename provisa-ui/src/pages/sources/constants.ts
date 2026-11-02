@@ -225,13 +225,6 @@ export const API_AUTH_TYPES = [
   { value: "custom_headers", label: "Custom Headers" },
 ];
 
-export const KAFKA_AUTH_TYPES = [
-  { value: "none", label: "No Auth" },
-  { value: "sasl_plain", label: "SASL/PLAIN" },
-  { value: "sasl_scram_256", label: "SASL/SCRAM-SHA-256" },
-  { value: "sasl_scram_512", label: "SASL/SCRAM-SHA-512" },
-];
-
 export const CATEGORIES = [...new Set(SOURCE_TYPES.map((s) => s.category))];
 
 // File-based source types (path only, no host/port/auth)

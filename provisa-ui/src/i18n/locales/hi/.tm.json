@@ -8994,5 +8994,14 @@
   "dataProductsTab.json::dataProductsTab.contract.howToUse.ask.nobody": "This contract names no one to ask",
   "dataProductsTab.json::dataProductsTab.contract.howToUse.open": "Open example",
   "dataProductsTab.json::dataProductsTab.contract.howToUse.openAria": "Open the {{surface}} example for {{table}}",
-  "dataProductsTab.json::dataProductsTab.contract.section.howToUse": "How to use"
+  "dataProductsTab.json::dataProductsTab.contract.section.howToUse": "How to use",
+  "hi/kafkaFields.json::kafkaFields.securityProtocol": "Security protocol",
+  "hi/kafkaFields.json::kafkaFields.securityProtocolHint": "Confluent Cloud and MSK take SASL_SSL. A cluster with no security takes PLAINTEXT.",
+  "hi/kafkaFields.json::kafkaFields.saslMechanism": "SASL mechanism",
+  "hi/kafkaFields.json::kafkaFields.username": "Username",
+  "hi/kafkaFields.json::kafkaFields.usernameHint": "The API key on Confluent Cloud.",
+  "hi/kafkaFields.json::kafkaFields.password": "Password",
+  "hi/kafkaFields.json::kafkaFields.passwordHint": "The API secret on Confluent Cloud. A secret reference, such as ${secret:NAME}, is resolved when the cluster is opened.",
+  "hi/kafkaFields.json::kafkaFields.caCertificate": "CA certificate (PEM)",
+  "hi/kafkaFields.json::kafkaFields.caCertificateHint": "Leave empty for a broker whose certificate comes from a public CA, as on Confluent Cloud and MSK. Paste a private CA's certificate to trust that CA alone."
 }

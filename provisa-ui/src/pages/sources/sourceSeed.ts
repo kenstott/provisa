@@ -27,6 +27,7 @@ import { MICROSOFT_365, m365FieldsFromMapping } from "./microsoft365";
 import { LOGS, logsFieldsFromMapping } from "./logs";
 import { COSMOSDB, cosmosFieldsFromHints } from "./cosmosdb";
 import { excelHintsFromMapping, withExcelHints } from "./excelHints";
+import { KAFKA, kafkaFieldsFromSource } from "./kafka";
 import { QDRANT, qdrantFieldsFromHints } from "./qdrant";
 import { CODE_SOURCE_TYPES, codeFieldsFromMapping } from "./codeSource";
 import { WIKIPEDIA, wikipediaFieldsFromHints } from "./wikipedia";
@@ -195,6 +196,9 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
   }
   if (s.type === COSMOSDB) {
     authFields = cosmosFieldsFromHints(hintsJson); // REQ-1982
+  }
+  if (s.type === KAFKA) {
+    authFields = kafkaFieldsFromSource(s); // REQ-147
   }
   if (s.type === QDRANT) {
     authFields = qdrantFieldsFromHints(hintsJson); // REQ-1983
