@@ -252,37 +252,49 @@ def _refuse_unhealthy_stores(demo: PublishedDemo) -> None:
         raise _demo_failed(demo)
 
 
-async def _ready_demo(name: str) -> PublishedDemo:
+async def _ready_demo(name: str, org_id: str) -> PublishedDemo:
     """Published demo ``name``, its stores up and its template ready: an open waits for them
     (``OPEN_WAIT_S``) in place of being refused while the node brings them up. One that cannot be
-    readied is refused by name at once."""
+    readied is refused by name at once. Each part of the wait is timed (``_stage``): the ask for
+    a newer version, the wait for the demo's stores, the wait for its template."""
     from provisa.api.demo_templates import template_builds
 
     deadline = time.monotonic() + OPEN_WAIT_S
     while True:
         try:
             # REQ-2049: a demo published since is served first, its template rebuilt from it.
-            await follow_latest(name)
+            async with _stage(org_id, name, "its newest version"):
+                await follow_latest(name)
             demo = published_demo(name)
-            await _template_ready(demo)
-            await asyncio.to_thread(_refuse_unhealthy_stores, demo)
+            async with _stage(org_id, name, "its template's readiness"):
+                await _template_ready(demo)
+            async with _stage(org_id, name, "its stores' health"):
+                await asyncio.to_thread(_refuse_unhealthy_stores, demo)
             return demo
         except ApiError as refused:
             if refused.code != "sandbox.demo_not_ready":
                 raise
-            while True:
-                demo = published_demo(name)
-                _refuse_failed_stores(demo)
-                _refuse_failed_template(demo)
-                settled = demo.stores_ready and template_builds.state_of(name) not in (
-                    "queued",
-                    "building",
+            waited = {"its stores": 0.0, "its template": 0.0}
+            try:
+                while True:
+                    demo = published_demo(name)
+                    _refuse_failed_stores(demo)
+                    _refuse_failed_template(demo)
+                    building = template_builds.state_of(name) in ("queued", "building")
+                    if demo.stores_ready and not building:
+                        break
+                    if time.monotonic() >= deadline:
+                        raise
+                    await asyncio.sleep(_OPEN_POLL_S)
+                    waited["its template" if demo.stores_ready else "its stores"] += _OPEN_POLL_S
+            finally:
+                log.warning(
+                    "demo sandbox %s of %s: waited %.0fs for its stores, %.0fs for its template",
+                    org_id,
+                    name,
+                    waited["its stores"],
+                    waited["its template"],
                 )
-                if settled:
-                    break
-                if time.monotonic() >= deadline:
-                    raise
-                await asyncio.sleep(_OPEN_POLL_S)
             if time.monotonic() >= deadline:
                 raise
 
@@ -360,7 +372,7 @@ async def _open(name: str, *, kind: str, user_id: str | None) -> OpenedSandbox:
 
     org_id = new_sandbox_org_id()
     async with _stage(org_id, name, "its demo's readiness"):
-        demo = await _ready_demo(name)
+        demo = await _ready_demo(name, org_id)
     admin = _admin_pool()
     person = user_id if user_id is not None else visitor_user_id(org_id)
     async with _stage(org_id, demo.name, "a place"), admin.acquire() as conn:
