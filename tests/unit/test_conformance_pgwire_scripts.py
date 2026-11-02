@@ -748,13 +748,13 @@ def test_a_declared_group_cannot_skip_a_catalog_function(monkeypatch, tmp_path):
     assert (report["by_design"], report["failed"]) == (0, 1)
 
 
-def test_the_shipped_group_naming_catalog_functions_is_exactly_the_one_allowed():
+def test_the_shipped_groups_naming_catalog_functions_are_exactly_those_allowed():
     import by_design
 
     groups = by_design.groups("pgwire")
     assert groups
     named = [g.group for g in groups if g.case and "catalog function" in g.case.pattern]
-    assert named == ["Internal functions"] == list(by_design.FUNCTION_GROUPS)
+    assert named == ["Internal functions", "Not supported"] == list(by_design.FUNCTION_GROUPS)
     assert [g.group for g in by_design.function_groups("pgwire")] == named
     assert {g.family for g in groups} == {""}
 

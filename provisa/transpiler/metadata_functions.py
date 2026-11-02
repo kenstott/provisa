@@ -616,6 +616,7 @@ READS_THE_SERVER = frozenset(
         "schema_to_xml",
         "schema_to_xml_and_xmlschema",
         "schema_to_xmlschema",
+        "setval",
         "table_to_xml",
         "table_to_xml_and_xmlschema",
         "table_to_xmlschema",

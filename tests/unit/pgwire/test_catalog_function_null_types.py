@@ -100,9 +100,6 @@ TYPED: dict[str, int] = {
             "varchar",
         )
     },
-    # regexp_replace with start, N and flags: strict.
-    'SELECT pg_catalog."regexp_replace"(NULL::text, NULL::text, NULL::text, NULL::integer, '
-    "NULL::integer, NULL::text) AS v": 25,
     # Binary upgrade's functions: strict, so a NULL answers before the server's mode is asked.
     'SELECT pg_catalog."binary_upgrade_set_next_multirange_pg_type_oid"(NULL::oid) AS v': 2278,
     'SELECT pg_catalog."binary_upgrade_set_next_multirange_array_pg_type_oid"(NULL::oid) AS v': (

@@ -111,29 +111,6 @@ def _stat_table(path: str, missing_ok: str) -> str:
     return f"SELECT {columns} FROM (SELECT {_stat(path, missing_ok)} AS _s)"
 
 
-def _setval(*args: str) -> str:
-    """setval(sequence, value [, is_called]): no relation is a sequence."""
-    nulls = " OR ".join(f"{a} IS NULL" for a in args)
-    relation = "(SELECT _sc.relname FROM _pg_class _sc WHERE _sc.oid = seq)"
-    named = "CAST(seq AS BIGINT)"
-    catalog = _catalog_relation_names()
-    return (
-        f"CASE WHEN {nulls} THEN CAST(NULL AS BIGINT) "
-        f"WHEN coalesce({catalog}, {relation}) IS NOT NULL THEN "
-        + raising("42809", f"'cannot open relation \"' || coalesce({catalog}, {relation}) || '\"'")
-        + " ELSE "
-        + raising("XX000", f"'could not open relation with OID ' || {named}")
-        + " END"
-    )
-
-
-def _catalog_relation_names() -> str:
-    from provisa.pgwire.catalog_rewrite import _CATALOG_CLASS_OIDS
-
-    known = " ".join(f"WHEN {oid} THEN '{name}'" for name, oid in _CATALOG_CLASS_OIDS.items())
-    return f"CASE seq {known} END"
-
-
 #: What a void function answers: PostgreSQL's void value, its empty text.
 _VOID = "''"
 _BINARY_UPGRADE = raising(
@@ -1131,10 +1108,6 @@ def macros() -> tuple[str, ...]:
         _read_file("pg_read_binary_file", "BLOB"),
         f"CREATE MACRO pg_stat_file{stat}",
         f"CREATE MACRO pg_stat_file{stat_table}",
-        "CREATE MACRO setval(seq, value) AS "
-        + _setval("seq", "value")
-        + ", (seq, value, called) AS "
-        + _setval("seq", "value", "called"),
         *_answers().statements(),
     )
 
@@ -1147,7 +1120,6 @@ ANSWERED = frozenset(
         "pg_read_file",
         "pg_reload_conf",
         "pg_stat_file",
-        "setval",
         "regclass",
         *SERVER_VALUE_NAMES,
         *_answers().scalar,

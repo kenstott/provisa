@@ -31,7 +31,7 @@ from provisa.transpiler.function_macros import MACROS, FunctionRefused, outcome
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import expand
 from provisa.transpiler.pg_forms_system import ROWS
-from provisa.transpiler.transpile import transpile, transpile_to_duckdb
+from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.pg17_system_answers import RECORDED
 from tests.unit.pgwire.system_corpus import statements
 
@@ -185,20 +185,13 @@ def test_repeat_of_nothing_is_null_for_any_count_elsewhere(dialect: str):
     assert re.search(r"\ba\W* IS NOT NULL", written), written
 
 
-@pytest.mark.parametrize(
-    ("n", "want"),
-    [
-        (2, "aXb-c"),  # postgres:16.11 answered each; regexp.c deduces N only when not given
-        (1, "a-bXc"),
-        (0, "a-b-c"),
-        (3, "aXbXc"),
-    ],
-)
-def test_the_g_flag_is_ignored_where_n_is_given(n: int, want: str):
+@pytest.mark.parametrize("n", [2, 1, 0, 3])
+def test_the_six_argument_form_is_refused_whatever_its_flag(n: int):
+    # REQ-2167 (amended 2026-11-02, Six-argument regexp_replace is not supported).
     sql = f"SELECT regexp_replace('aXbXc', 'X', '-', 1, {n}, 'g') AS v"
-    assert duckdb.connect().execute(transpile_to_duckdb(sql)).fetchall() == [(want,)]
-    assert chdb.query(transpile(sql, "clickhouse"), "CSV").bytes().decode().strip() == f'"{want}"'
-    assert "'g'" not in transpile(sql, "trino")
+    for dialect in _ENGINES:
+        with pytest.raises(FunctionRefused, match=f"regexp_replace.*has no form on {dialect}"):
+            transpile(sql, dialect)
 
 
 @pytest.mark.parametrize("flags", ["'gi'", "'i'", "f"])
