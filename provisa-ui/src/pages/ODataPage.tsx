@@ -96,7 +96,14 @@ export function ODataPage() {
   const root = `${window.location.origin}${SERVICE_ROOT}`;
   const model = useODataModel(role);
   const sets = model.state === "read" ? model.sets : [];
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelectedSet] = useState<string | null>(null);
+  // A query is being built in the panel: Escape (a picker's, as often as the reader's) does not
+  // close it and drop the query. Its close button and another row still do.
+  const [edited, setEdited] = useState(false);
+  const setSelected = (name: string | null) => {
+    setSelectedSet(name);
+    setEdited(false);
+  };
   const entity = sets.find((s) => s.name === selected) ?? null;
 
   const columns: ListColumn<ODataEntitySet>[] = [
@@ -149,6 +156,7 @@ export function ODataPage() {
           storageKey="provisa.odata.detailWidth"
           title={entity?.name ?? ""}
           onClose={() => setSelected(null)}
+          closeOnEscape={!edited}
           labels={{
             panel: t("odataPage.detailPanel"),
             resize: t("tablesPage.resizeDetail"),
@@ -215,6 +223,7 @@ export function ODataPage() {
               entity={entity}
               role={role}
               root={root}
+              onEdited={() => setEdited(true)}
             />
           )}
         </SplitPane>

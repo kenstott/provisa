@@ -277,6 +277,18 @@ describe("the OData viewer", () => {
     );
   });
 
+  it("keeps a query being built open on Escape, and closes an untouched one", async () => {
+    let panel = await openCustomers();
+    fireEvent.change(within(panel).getByTestId("odata-filter"), { target: { value: "id gt 1" } });
+    fireEvent.keyDown(within(panel).getByTestId("odata-filter"), { key: "Escape" });
+    expect(screen.getByTestId("odata-set-Customers")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("odata-set-row-Orders"));
+    panel = await screen.findByTestId("odata-set-Orders");
+    fireEvent.keyDown(panel, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("odata-set-Orders")).not.toBeInTheDocument());
+  });
+
   it("writes the URL as the options are set, and copies it", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });

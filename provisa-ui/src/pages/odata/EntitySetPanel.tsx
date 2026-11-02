@@ -83,17 +83,22 @@ export function EntitySetPanel({
   entity,
   role,
   root,
+  onEdited,
 }: {
   entity: ODataEntitySet;
   role: string;
   /** The service root as a client reaches it (absolute), which the shown URL starts from. */
   root: string;
+  /** An option was set: closing the panel now would drop the query being built. */
+  onEdited: () => void;
 }) {
   const { t } = useTranslation();
   const [query, setQuery] = useState<ODataQuery>(EMPTY_QUERY);
   const read = usePagedRead(role);
-  const set = <K extends keyof ODataQuery>(key: K, value: ODataQuery[K]) =>
+  const set = <K extends keyof ODataQuery>(key: K, value: ODataQuery[K]) => {
     setQuery((q) => ({ ...q, [key]: value }));
+    onEdited();
+  };
   const url = buildQueryUrl(root, entity.name, query);
 
   const propertyNames = entity.properties.map((p) => p.name);
