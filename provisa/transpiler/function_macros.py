@@ -1900,6 +1900,8 @@ REFUSED_ROWS = frozenset(
         ("exact_avg_interval", 1),
         ("current_query", 0),
         *((name, len(params.split(", "))) for name, params in pg_forms_hash.COMPOSITES),
+        # A shape's name of one argument whose type the statement does not say: no overload.
+        *((name, 1) for name, _ in pg_forms_geometric.BARE),
     }
 )
 
