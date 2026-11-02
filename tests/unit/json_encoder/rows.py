@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 33c482d7-558d-4109-916e-a501810cbbc2
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -71,3 +72,10 @@ def serialize_aggregate(
     """``{"data": {root_field: {agg_alias: {...}, "nodes": [...]}}}``."""
     body = je.graphql_aggregate(batches(rows, columns), columns, agg_alias)
     return {"data": {root_field: json.loads(body)}}
+
+
+def field_answer(value: Any) -> je.FieldAnswer:  # noqa: ANN401 — a field's value
+    """A root field's answer holding ``value`` as its JSON, as a stub of ``_execute_one_field``
+    returns it (the encoder's FieldAnswer)."""
+    rows = len(value) if isinstance(value, list) else None
+    return je.FieldAnswer(json.dumps(value, separators=(",", ":")).encode(), rows, {}, [])

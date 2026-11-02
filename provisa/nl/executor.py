@@ -194,22 +194,24 @@ async def _execute_graphql(
 
     merged: dict = {}
     for cq, result in compiled_results:
-        merged[cq.root_field] = _graphql_value(cq, result)
+        merged[cq.root_field] = _graphql_value(
+            cq, result, aggregate=cq.has_nodes and not cq.is_group_by
+        )
 
     return {"data": merged}
 
 
-def _graphql_value(cq: Any, result: Any) -> Any:  # noqa: ANN401 — a CompiledQuery, a result
-    """A root field's value as GraphQL answers it (the Rust encoder's JSON, REQ-2194), read back
-    as the Python value this executor hands its caller."""
-    import orjson
+def _graphql_value(cq: Any, result: Any, *, aggregate: bool) -> Any:  # noqa: ANN401
+    """A root field's value as GraphQL answers it (the Rust encoder's JSON, REQ-2194): its rows,
+    or an aggregate's map; read back as the Python value this executor hands its caller."""
+    import json
 
     from provisa.executor.json_encoders import graphql_aggregate, graphql_field, result_batches
 
     batches = result_batches(result)
-    if cq.has_nodes and not cq.is_group_by:
-        return orjson.loads(graphql_aggregate(batches, cq.columns, cq.agg_alias))
-    return orjson.loads(graphql_field(batches, cq.columns, cq.result_limit).body)
+    if aggregate:
+        return json.loads(graphql_aggregate(batches, cq.columns, cq.agg_alias))
+    return json.loads(graphql_field(batches, cq.columns, cq.result_limit).body)
 
 
 async def _execute_sql(query: str, role: str, app_state: Any, deliver: "Delivery | None") -> dict:
@@ -512,7 +514,7 @@ async def _execute_domain_table_aggregate(
 
     if by_columns:
         # A group's nodes, when selected, are a column of its own row.
-        group_rows = _graphql_value(cq, result)
+        group_rows = _graphql_value(cq, result, aggregate=False)
         if protocol == "jsonapi":
             return {
                 "data": [
@@ -522,7 +524,7 @@ async def _execute_domain_table_aggregate(
             }
         return {"data": group_rows}
 
-    agg_payload = _graphql_value(cq, result).get(cq.agg_alias, {})
+    agg_payload = _graphql_value(cq, result, aggregate=True).get(cq.agg_alias, {})
     if protocol == "jsonapi":
         return {"data": None, "meta": {"aggregate": agg_payload}}
     return {"data": agg_payload}
