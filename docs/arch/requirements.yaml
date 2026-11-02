@@ -75807,10 +75807,17 @@
     browser setting picks one of them, defaulting to the org''s own region address, or the UI''s own origin
     where no regions are declared. [END SUPERSEDED BLOCK] (Amended 2026-11-02, The UI''s servers list is
     the node registry:) Maintainer 2026-11-02: a region is not a data node; a region can have its own coordinator
-    and its own query nodes. The servers list is the node registry the control plane already keeps (each
-    running node with its mode, region and heartbeat): each node records an address clients can reach, the
-    coordinator gives the UI the live query and every nodes of the org''s region, and the UI''s browser
-    setting picks one, defaulting to the UI''s own origin.'
+    and its own query nodes. [SUPERSEDED by REQ-1916, 2026-11-02 -- the system cannot know the best address
+    because load balancers can be in front. Kept here for history; do not implement against it.] The servers
+    list is the node registry the control plane already keeps (each running node with its mode, region and
+    heartbeat): each node records an address clients can reach, the coordinator gives the UI the live query
+    and every nodes of the org''s region, and the UI''s browser setting picks one, defaulting to the UI''s
+    own origin. [END SUPERSEDED BLOCK] (Amended 2026-11-02, The data addresses are declared:) Maintainer
+    2026-11-02: the system cannot know the best data address for a given UI user, because load balancers
+    can be part of the path. Like an OpenAPI document''s servers list, the operator declares the data addresses
+    in the config (each a URL: a load balancer, a pool or a single node). The coordinator gives the UI that
+    declared list; the UI''s browser setting picks one of them or an address the user types, defaulting
+    to the UI''s own origin when none is declared.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
