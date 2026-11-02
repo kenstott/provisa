@@ -1109,9 +1109,19 @@ def _hashes() -> list[Row]:
         east = f"(CAST(substr({offset}, 2, 2) AS {e.int8}) * 3600 + {minutes} * 60 + {seconds})"
         return f"CASE WHEN substr({offset}, 1, 1) = '+' THEN -{east} ELSE {east} END"
 
+    # A word of this module's integers is Nullable on ClickHouse, which lookup3's fold refuses: the
+    # form's CASE has answered a NULL, so the word is the hash engine's value of it.
+    bare = {
+        e.dialects: h.value.replace("value", "({})")
+        for e, (_, h) in zip(ENGINES, hashing.ENGINES, strict=True)
+    }
+
+    def hash_word(e: Engine, h: hashing.Engine, word: str, seed: str | None) -> str:
+        return hashing._of_word(h, bare[e.dialects].format(word), seed)
+
     def of_word(word: Callable[[Engine, hashing.Engine, str], str]) -> Hashed:
         def hashed(e: Engine, h: hashing.Engine, seed: str | None) -> str:
-            return hashing._of_word(h, word(e, h, e.as_text(h.value)), seed)
+            return hash_word(e, h, word(e, h, e.as_text(h.value)), seed)
 
         return hashed
 
@@ -1120,8 +1130,8 @@ def _hashes() -> list[Row]:
 
     def timetz(e: Engine, h: hashing.Engine, seed: str | None) -> str:
         text = e.as_text(h.value)
-        time = hashing._of_word(h, clock(e, h, e.sub(text, "[+-][0-9:]+$", "")), seed)
-        return h.xor.format(time, hashing._of_word(h, zone(e, text), seed))
+        time = hash_word(e, h, clock(e, h, e.sub(text, "[+-][0-9:]+$", "")), seed)
+        return h.xor.format(time, hash_word(e, h, zone(e, text), seed))
 
     rows: list[Row] = []
     for stem, hashed in (

@@ -632,10 +632,11 @@ REFUSALS: dict[str, int] = {
     "time_in": 9,
     "time_out": 6,
     "time_send": 6,
-    "timestamp_hash": 1,
-    "timestamp_in": 11,
-    "timestamp_out": 8,
-    "timestamp_send": 8,
+    "timestamp_hash": 3,
+    "timestamp_hash_extended": 2,
+    "timestamp_in": 12,
+    "timestamp_out": 9,
+    "timestamp_send": 9,
     "timestamptz_in": 9,
     "timestamptz_out": 7,
     "timestamptz_send": 7,
@@ -685,6 +686,8 @@ IN_COLUMNS = frozenset(
     }
 )  # fmt: skip
 _FLOAT8_ARRAY = re.compile(r"'\{([^}]*)\}'::double precision\[\]")
+#: A timetz's zone of hours, which Trino's cast reads only with its minutes: the same value.
+_ZONE_OF_HOURS = re.compile(r"([+-][0-9]{2})'::timetz")
 
 
 def _arguments(text: str) -> list[str]:
@@ -705,7 +708,12 @@ def in_columns(sql: str) -> str:
     float8s is written by ARRAY[], whose elements no engine's cast of a text need read."""
     function = function_of(sql)
     inner = sql.split(f'"{function}"(', 1)[1].removesuffix(") AS v")
-    columns = [_FLOAT8_ARRAY.sub(r"ARRAY[\1]::double precision[]", a) for a in _arguments(inner)]
+    columns = [
+        _ZONE_OF_HOURS.sub(
+            r"\1:00'::timetz", _FLOAT8_ARRAY.sub(r"ARRAY[\1]::double precision[]", a)
+        )
+        for a in _arguments(inner)
+    ]
     names = [f"a{at}" for at in range(len(columns))]
     row = ", ".join(f"{c} AS {n}" for c, n in zip(columns, names, strict=True))
     return f'SELECT pg_catalog."{function}"({", ".join(names)}) AS v FROM (SELECT {row}) AS t'
