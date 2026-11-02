@@ -83383,7 +83383,13 @@
     newer Provisa"), as an older format is. requires_provisa gates against stamped releases only: a build
     that is not a stamped release (a checkout, an app image) reports 0.1.0, newer than every alpha, so on
     those builds the demo format is what refuses a bundle the runtime cannot run. Raising the demo format
-    refuses every bundle built afterwards on an older runtime.'
+    refuses every bundle built afterwards on an older runtime. (Amended 2026-11-02, A lingered-out demo
+    keeps its data:) Maintainer 2026-11-02: when a demo version''s last sandbox has been closed for the
+    linger time, only that version''s own services are taken down; its data stays loaded in the shared stores
+    (Postgres, MongoDB, Qdrant, Elasticsearch), so the next visitor''s open is a container start and a loaded
+    check, and a version''s data loads once. A superseded version''s data is still dropped. Where the DEMO
+    STORES LINGER text says the data is dropped from the shared stores and the visitor waits while it starts,
+    this replaces it.'
   use_case: The maintainer changes an example query of the weblogs demo and merges it; minutes later the live demos page's
     next sandbox and a solution engineer's next start-ui-install.sh --demo weblogs both have the change, with no release cut.
   scenario: 'Given the weblogs bundle is published
@@ -89053,7 +89059,25 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     reported as called only. (Amended 2026-11-01, NO INDEX FUNCTIONS GROUP:) Maintainer 2026-11-01, through
     the lead: every index support function is served or refused by name, so the Index functions group of
     skipped by design is removed. An unserved index function is failed. The text above that reports them
-    skipped by design, and that names two function groups, is superseded; one group remains.'
+    skipped by design, and that names two function groups, is superseded; one group remains. (Amended 2026-11-02,
+    lastval from the session''s own inserts:) Maintainer 2026-11-02: lastval() is answered by Provisa, not
+    the source. An INSERT through a pgwire session that makes the source generate an identity or serial
+    value is rewritten to return that value (RETURNING, or the source''s own way of reporting a generated
+    key), and the session keeps the last one. lastval() returns it; before any such insert in the session
+    it raises PostgreSQL''s own error (lastval is not yet defined in this session). The rows the client
+    asked for are unchanged by the rewrite. (Amended 2026-11-02, Sequence functions are not supported:)
+    Maintainer 2026-11-02: nextval, currval and setval are not supported through Provisa: Provisa does not
+    model a source''s sequences. A call is refused by name, and the conformance check counts them skipped
+    by design under this decision. lastval() is the exception, answered from the session''s own inserts
+    as amended above. (Amended 2026-11-02, Six-argument regexp_replace is not supported:) Maintainer 2026-11-02:
+    regexp_replace(text, text, text, integer, integer, text), the PostgreSQL 16 form with a start position
+    and an occurrence number, is not supported. A call is refused by name, and the conformance check counts
+    it skipped by design under this decision. The two-, three- and four-argument forms are unchanged. (Amended
+    2026-11-02, Side-effect functions:) Maintainer 2026-11-02: a function that returns void, or whose purpose
+    is a side effect, is tested by its side effect, compared with PostgreSQL doing the same. If the side
+    effect cannot be observed through a client, the function is not testable, and the conformance check
+    reports it in a skipped-by-design group of that name. Side-effect functions are expected to work only
+    on the PostgreSQL engine; on every other engine they are skipped by design under this decision.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
