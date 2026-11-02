@@ -169,6 +169,42 @@ def client_querying_jsonapi_endpoint(shared_data):
     shared_data["router"] = router
 
 
+def _jsonapi_document(table: dict, columns: list, **over) -> dict:
+    """The JSON:API document the Rust encoder writes for ``table``'s rows (REQ-257, REQ-2194),
+    as the table endpoint hands it the plan."""
+    import json
+
+    import pyarrow as pa
+
+    from provisa.executor import json_encoders as je
+
+    document = dict(
+        resource_type="orders",
+        page_size=25,
+        page_number=1,
+        probe=True,
+        total=None,
+        id_columns=["id"],
+        scalar_names={},
+        rel_names=[],
+        rel_scalar_names={},
+        includes=[],
+        include_keys={},
+        base_path="/data/jsonapi/orders",
+        link_params=[],
+    )
+    document.update(over)
+    body, _ = je.jsonapi([pa.record_batch(table)] if table else [], columns, **document)
+    return json.loads(body)
+
+
+def _column(field: str, nested_in: str | None = None, cardinality: str | None = None):
+    from provisa.compiler.sql_types import ColumnRef
+
+    column = field if nested_in is None else f"{nested_in}_{field}"
+    return ColumnRef(None, column, field, nested_in, cardinality)
+
+
 @when("the request includes sparse fieldsets, includes, filters, sorting, or pagination")
 def request_includes_jsonapi_features(shared_data):
     """Exercise each JSON:API feature using the real parser/serializer components."""
@@ -180,9 +216,7 @@ def request_includes_jsonapi_features(shared_data):
     from provisa.api.jsonapi.pagination import (
         parse_page_params,
         page_to_limit_offset,
-        build_pagination_links,
     )
-    from provisa.api.jsonapi.serializer import row_to_resource, rows_to_jsonapi
 
     # --- Sparse fieldsets: ?fields[orders]=amount ---
     sparse_params = {"fields[orders]": "amount"}
@@ -237,13 +271,7 @@ def request_includes_jsonapi_features(shared_data):
     assert limit == 25
     assert offset == 25  # (page 2 - 1) * 25
 
-    links = build_pagination_links(
-        base_url="/data/jsonapi/orders",
-        page_number=2,
-        page_size=25,
-        total=100,
-        query_params={},
-    )
+    links = _jsonapi_document({}, [], page_number=2, page_size=25, total=100)["links"]
     assert "next" in links
     assert "prev" in links
     assert "first" in links
@@ -254,7 +282,10 @@ def request_includes_jsonapi_features(shared_data):
         {"id": 1, "region": "US", "amount": 99.99, "created_at": "2024-01-01T00:00:00"},
         {"id": 2, "region": "EU", "amount": 149.50, "created_at": "2024-01-02T00:00:00"},
     ]
-    resource = row_to_resource(row=rows[0], resource_type="orders")
+    columns = [_column(name) for name in rows[0]]
+    table = {name: [row[name] for row in rows] for name in rows[0]}
+    doc = _jsonapi_document(table, columns)
+    resource = doc["data"][0]
     assert resource["type"] == "orders"
     assert resource["id"] == "1"
     assert "attributes" in resource
@@ -266,7 +297,6 @@ def request_includes_jsonapi_features(shared_data):
     assert "region" in resource["attributes"]
 
     # Full jsonapi document
-    doc = rows_to_jsonapi(rows=rows, resource_type="orders")
     assert "data" in doc
     assert isinstance(doc["data"], list)
     assert len(doc["data"]) == 2
@@ -286,7 +316,6 @@ def request_includes_jsonapi_features(shared_data):
 @then("a JSON:API compliant response with compound documents is returned")
 def jsonapi_compliant_response_with_compound_documents(shared_data):
     """Assert full JSON:API compliance: structure, content type, compound docs."""
-    from provisa.api.jsonapi.serializer import rows_to_jsonapi, row_to_resource
     from provisa.api.jsonapi.errors import jsonapi_error, error_response
     from provisa.api.jsonapi.generator import JSONAPI_CONTENT_TYPE, _parse_filters, _parse_sort
 
@@ -311,23 +340,28 @@ def jsonapi_compliant_response_with_compound_documents(shared_data):
     )
 
     # --- Compound document with included resources ---
-    rows_with_related = [
+    # An order joined to its customer, the customer included (?include=customers).
+    compound_doc = _jsonapi_document(
         {
-            "id": 1,
-            "region": "US",
-            "amount": 99.99,
-            "created_at": "2024-01-01",
-            "customer_id": 10,
+            "id": [1],
+            "region": ["US"],
+            "amount": [99.99],
+            "created_at": ["2024-01-01"],
+            "customers_id": [10],
+            "customers_name": ["Acme Corp"],
         },
-    ]
-    customer_rows = [{"id": 10, "name": "Acme Corp"}]
-
-    # Build compound document via rows_to_jsonapi with included_rows
-    compound_doc = rows_to_jsonapi(
-        rows=rows_with_related,
-        resource_type="orders",
-        relationship_fields={"customer_id": "customers"},
-        included_rows={"customers": customer_rows},
+        [
+            _column("id"),
+            _column("region"),
+            _column("amount"),
+            _column("created_at"),
+            _column("id", "customers", "many-to-one"),
+            _column("name", "customers", "many-to-one"),
+        ],
+        rel_names=[("customers", "customers")],
+        includes=["customers"],
+        include_keys={"customers": ["id"]},
+        total=1,
     )
 
     # Compound document must have top-level 'included' array
@@ -340,29 +374,23 @@ def jsonapi_compliant_response_with_compound_documents(shared_data):
     assert compound_doc["included"][0]["id"] == "10"
     assert compound_doc["included"][0]["attributes"]["name"] == "Acme Corp"
 
-    # Meta must be present (rows_to_jsonapi always emits meta.total)
+    # Meta carries the counted total
     assert "meta" in compound_doc
     assert compound_doc["meta"]["total"] == 1
 
     # --- Relationships in resource objects ---
-    row_with_rel = {
-        "id": 1,
-        "region": "US",
-        "amount": 99.99,
-        "created_at": "2024-01-01",
-        "customer_id": 10,
-    }
-    resource_with_rel = row_to_resource(
-        row=row_with_rel,
-        resource_type="orders",
-        relationship_fields={"customer_id": "customers"},
-    )
+    resource_with_rel = _jsonapi_document(
+        {"id": [1], "region": ["US"], "amount": [99.99], "customer_id": [10]},
+        [_column("id"), _column("region"), _column("amount"), _column("customer_id")],
+        rel_names=[("customer", "customer")],
+    )["data"][0]
     assert "relationships" in resource_with_rel, (
         "resource object must expose relationships when include is requested"
     )
     assert "customer" in resource_with_rel["relationships"]
     rel_data = resource_with_rel["relationships"]["customer"]["data"]
-    assert rel_data["type"] == "customers"
+    # The table endpoint types a relationship's resources by the relationship (REQ-1417).
+    assert rel_data["type"] == "customer"
     assert rel_data["id"] == "10"
 
     # --- Error objects comply with JSON:API spec ---

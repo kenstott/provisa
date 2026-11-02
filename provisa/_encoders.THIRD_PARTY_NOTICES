@@ -1,4 +1,4 @@
-rust/encoders/Cargo.lock sha256: 05601b5004758108d8da88d62587ed05da592e910d2c67dd0eeacacf7a521851
+rust/encoders/Cargo.lock sha256: f8676f8a6076b483b9b5d2dc38988d17a8b0efd4989f048470394d5820ba22ea
 
 Third-party notices: provisa._encoders
 ======================================
@@ -6,9 +6,10 @@ Third-party notices: provisa._encoders
 provisa._encoders, Provisa's compiled encoders, links the Rust crates below. Each is listed with
 the licence it is used under, followed by that licence's text.
 
-  Apache License 2.0: 66 crate(s)
+  Apache License 2.0: 68 crate(s)
   MIT License: 8 crate(s)
   Unicode License v3: 1 crate(s)
+  zlib License: 1 crate(s)
 
 --------------------------------------------------------------------------------
 Apache License 2.0 (Apache-2.0)
@@ -1102,6 +1103,7 @@ Used by:
   bitflags 2.13.2 (https://github.com/bitflags/bitflags)
   cfg-if 1.0.5 (https://github.com/rust-lang/cfg-if)
   core-foundation-sys 0.8.7 (https://github.com/servo/core-foundation-rs)
+  equivalent 1.0.3 (https://github.com/indexmap-rs/equivalent)
   hashbrown 0.16.1 (https://github.com/rust-lang/hashbrown)
   heck 0.5.0 (https://github.com/withoutboats/heck)
   num-bigint 0.4.8 (https://github.com/rust-num/num-bigint)
@@ -1747,6 +1749,7 @@ Apache License 2.0 (Apache-2.0)
 
 Used by:
   ryu-pg 1.0.23
+  allocator-api2 0.2.21 (https://github.com/zakarumych/allocator-api2)
   arrow-pyarrow 56.2.1 (https://github.com/apache/arrow-rs)
   half 2.7.1 (https://github.com/VoidStarKat/half-rs)
   indoc 2.0.8 (https://github.com/dtolnay/indoc)
@@ -2542,3 +2545,29 @@ not be used in advertising or otherwise to promote the sale, use or other
 dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 
+
+--------------------------------------------------------------------------------
+zlib License (Zlib)
+
+Used by:
+  foldhash 0.2.0 (https://github.com/orlp/foldhash)
+
+Copyright (c) 2024 Orson Peters
+
+This software is provided 'as-is', without any express or implied warranty. In
+no event will the authors be held liable for any damages arising from the use of
+this software.
+
+Permission is granted to anyone to use this software for any purpose, including
+commercial applications, and to alter it and redistribute it freely, subject to
+the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not claim
+    that you wrote the original software. If you use this software in a product,
+    an acknowledgment in the product documentation would be appreciated but is
+    not required.
+
+2. Altered source versions must be plainly marked as such, and must not be
+    misrepresented as being the original software.
+
+3. This notice may not be removed or altered from any source distribution.

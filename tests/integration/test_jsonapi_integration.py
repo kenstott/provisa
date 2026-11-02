@@ -649,13 +649,8 @@ class TestJSONAPIPaginationHTTP:
         monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route_compiled", _fake_govern)
         monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", _fake_execute)
 
-        # Also stub serialize_rows to return predictable data
-        def _fake_serialize(rows, columns, table):
-            col_names = [getattr(c, "field_name", c) for c in columns]
-            col_rows = [dict(zip(col_names, r)) for r in rows]
-            return {"data": {table: col_rows}}
-
-        monkeypatch.setattr("provisa.executor.serialize.serialize_rows", _fake_serialize)
+        # The encoder is handed the stub rows as the engine's batch (REQ-2194).
+        _encode_stub_rows(monkeypatch, stub_rows)
 
         app, _ = self._build_app_with_stub_execution()
 
@@ -717,12 +712,8 @@ class TestJSONAPIPaginationHTTP:
         monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route_compiled", _fake_govern)
         monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", _fake_execute)
 
-        def _fake_serialize(rows, columns, table):
-            col_names = [getattr(c, "field_name", c) for c in columns]
-            col_rows = [dict(zip(col_names, r)) for r in rows]
-            return {"data": {table: col_rows}}
-
-        monkeypatch.setattr("provisa.executor.serialize.serialize_rows", _fake_serialize)
+        # The encoder is handed the stub rows as the engine's batch (REQ-2194).
+        _encode_stub_rows(monkeypatch, stub_rows)
 
         import httpx
         from fastapi import FastAPI
@@ -790,12 +781,8 @@ class TestJSONAPIPaginationHTTP:
         monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route_compiled", _fake_govern)
         monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", _fake_execute)
 
-        def _fake_serialize(rows, columns, table):
-            col_names = [getattr(c, "field_name", c) for c in columns]
-            col_rows = [dict(zip(col_names, r)) for r in rows]
-            return {"data": {table: col_rows}}
-
-        monkeypatch.setattr("provisa.executor.serialize.serialize_rows", _fake_serialize)
+        # The encoder is handed the stub rows as the engine's batch (REQ-2194).
+        _encode_stub_rows(monkeypatch, stub_rows)
 
         import httpx
         from fastapi import FastAPI
@@ -888,12 +875,8 @@ class TestJSONAPIPaginationHTTP:
         monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route_compiled", _fake_govern)
         monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", _fake_execute)
 
-        def _fake_serialize(rows, columns, table):
-            col_names = [getattr(c, "field_name", c) for c in columns]
-            col_rows = [dict(zip(col_names, r)) for r in rows]
-            return {"data": {table: col_rows}}
-
-        monkeypatch.setattr("provisa.executor.serialize.serialize_rows", _fake_serialize)
+        # The encoder is handed the stub rows as the engine's batch (REQ-2194).
+        _encode_stub_rows(monkeypatch, stub_rows)
 
         import httpx
         from fastapi import FastAPI
@@ -928,3 +911,22 @@ class TestJSONAPIPaginationHTTP:
         # Not asked for: no total is reported, and no page length in its place.
         assert unasked.status_code == 200
         assert "total" not in unasked.json().get("meta", {})
+
+
+def _encode_stub_rows(monkeypatch, stub_rows: list[dict]) -> None:
+    """The JSON:API encoder is handed ``stub_rows`` as the engine's one batch: each compiled
+    column the stub's value for its field (the engine result itself is stubbed)."""
+    import pyarrow as pa
+
+    from provisa.executor import json_encoders
+
+    real = json_encoders.jsonapi
+
+    def encode(batches, columns, **document):
+        table = {
+            f"c{i}": pa.array([row.get(c.field_name) for row in stub_rows])
+            for i, c in enumerate(columns)
+        }
+        return real([pa.record_batch(table)] if stub_rows else [], columns, **document)
+
+    monkeypatch.setattr(json_encoders, "jsonapi", encode)

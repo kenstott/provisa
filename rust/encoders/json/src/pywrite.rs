@@ -394,3 +394,41 @@ impl Keyer {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use super::*;
+
+    fn key(p: &P) -> Vec<u8> {
+        let mut k = Vec::new();
+        Keyer::new().atom(&mut k, p);
+        k
+    }
+
+    #[test]
+    fn a_value_is_its_typed_value() {
+        let one = key(&P::Int(1));
+        assert_ne!(one, key(&P::JNum(Cow::Borrowed("1.0"))));
+        assert_ne!(one, key(&P::Bool(true)));
+        assert_ne!(one, key(&P::str("1")));
+        assert_ne!(key(&P::JNum(Cow::Borrowed("1"))), key(&P::JNum(Cow::Borrowed("1.0"))));
+        assert_eq!(key(&P::JNum(Cow::Borrowed("1.50"))), key(&P::JNum(Cow::Borrowed("1.50"))));
+    }
+
+    #[test]
+    fn a_container_is_never_its_text() {
+        let list = P::List(vec![P::Int(1)]);
+        assert_ne!(key(&list), key(&P::str("[1]")));
+        assert_ne!(key(&list), key(&P::Tuple(vec![P::Int(1)])));
+        assert_eq!(key(&list), key(&P::List(vec![P::Int(1)])));
+    }
+
+    #[test]
+    fn nan_is_nan() {
+        assert_eq!(key(&P::Float(f64::NAN)), key(&P::Float(-f64::NAN)));
+        assert_ne!(key(&P::Float(f64::NAN)), key(&P::None));
+        assert_ne!(key(&P::Float(0.0)), key(&P::Float(-0.0)));
+    }
+}

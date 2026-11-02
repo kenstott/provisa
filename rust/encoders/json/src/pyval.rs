@@ -686,3 +686,19 @@ fn dec_of(c: i128, scale: i32) -> P<'static> {
     let mut b = itoa::Buffer::new();
     P::Dec(Dec { neg: c < 0, coef: Cow::Owned(b.format(c.unsigned_abs()).to_string()), exp: -scale })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_zone_is_read_as_postgresql_reads_it() {
+        assert!(matches!(Zone::parse("UTC"), Ok(Zone::Fixed(0))));
+        assert!(matches!(Zone::parse("-03:30"), Ok(Zone::Fixed(-12600))));
+        let ny = Zone::parse("America/New_York").unwrap();
+        // 2049-08-14T10:32:28Z is EDT; 2049-12-14 is EST.
+        assert_eq!(ny.offset_at(2_512_549_948_000_000).0, -4 * 3600);
+        assert_eq!(ny.offset_at(2_523_087_148_000_000).0, -5 * 3600);
+        assert!(Zone::parse("Nowhere/Else").is_err());
+    }
+}

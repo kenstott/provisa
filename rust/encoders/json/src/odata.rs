@@ -1099,3 +1099,22 @@ pub fn navigation(batches: &[Batch], names: &[String], n: &Navigate) -> Res<Vec<
     out.push(b'}');
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_boolean_is_read_as_postgresql_reads_it() {
+        for t in ["t", "TRUE", " yes ", "on", "1", "tr"] {
+            assert!(boolean(&P::str(t)).unwrap(), "{t}");
+        }
+        for f in ["f", "False", "no", "off", "of", "0"] {
+            assert!(!boolean(&P::str(f)).unwrap(), "{f}");
+        }
+        for bad in ["o", "maybe", "2", ""] {
+            assert!(boolean(&P::str(bad)).is_err(), "{bad}");
+        }
+        assert!(boolean(&P::Int(2)).is_err());
+    }
+}
