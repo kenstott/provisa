@@ -20,6 +20,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from provisa.auth.models import AuthIdentity, AuthProvider
 from provisa.core import data_addresses, process_mode, process_region
 from provisa.core.regions import PlatformConfig
 
@@ -205,6 +206,62 @@ async def test_the_route_answers_choose_and_the_list(platform_db, monkeypatch):
     }
     process_mode.set_mode(process_mode.EVERY)
     assert await get_data_addresses() == {"choose": False, "addresses": []}
+
+
+class _ViewerProvider(AuthProvider):
+    """Signs in one user holding only the viewer role: the least a signed-in UI user holds."""
+
+    provider_name = "test"
+
+    async def validate_token(self, token: str) -> AuthIdentity:
+        if token == "viewer-token":
+            return AuthIdentity(
+                user_id="v1", email="v1@example.com", display_name="Viewer", roles=["viewer"]
+            )
+        raise ValueError("Invalid token")
+
+
+@pytest.fixture
+def signed_in_app(platform_db, monkeypatch, serve_deployment_org):
+    """The route behind the bearer gate of a deployment with an auth provider configured."""
+    from fastapi import FastAPI
+    from starlette.testclient import TestClient
+
+    from provisa.api.admin.data_addresses_router import router
+    from provisa.api.app import state
+    from provisa.auth.middleware import AuthMiddleware
+    from provisa.core.models import ProvisaConfig
+
+    serve_deployment_org("root")
+    monkeypatch.setattr("provisa.auth.middleware._loaded_derived_roles", lambda: [])
+    platform = _platform(data_addresses=["https://lb.eu.example.com"])
+    process_region.bind_launch(platform.model_dump(), requested="eu")
+    monkeypatch.setattr(state, "config", ProvisaConfig.model_construct(platform=platform))
+    monkeypatch.setattr(state, "platform_state_db", platform_db)
+    process_mode.set_mode(process_mode.COORDINATOR)
+    app = FastAPI()
+    app.add_middleware(AuthMiddleware, provider=_ViewerProvider())
+    app.include_router(router)
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_a_caller_with_no_sign_in_is_refused_the_list(signed_in_app):
+    refused = signed_in_app.get("/admin/data-addresses")
+    assert refused.status_code == 401
+    assert "lb.eu.example.com" not in refused.text
+    forged = signed_in_app.get(
+        "/admin/data-addresses", headers={"Authorization": "Bearer not-a-token"}
+    )
+    assert forged.status_code == 401
+
+
+def test_any_signed_in_ui_user_gets_the_list(signed_in_app):
+    """The setting is every UI user's, so the least role a user can hold reads it."""
+    answer = signed_in_app.get(
+        "/admin/data-addresses", headers={"Authorization": "Bearer viewer-token"}
+    )
+    assert answer.status_code == 200
+    assert answer.json() == {"choose": True, "addresses": ["https://lb.eu.example.com"]}
 
 
 _PREFLIGHT = {
