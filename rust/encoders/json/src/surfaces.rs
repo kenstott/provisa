@@ -289,7 +289,7 @@ fn id_text(t: &Tree, v: V, out: &mut Vec<u8>) -> Res<()> {
     let mut w = Vec::new();
     t.write_value(v, &mut w, 0)?;
     match w.first() {
-        Some(b'"') => nest::unescape(&w[1..w.len() - 1], out),
+        Some(b'"') => nest::unescape(&w, out),
         _ => out.extend_from_slice(&w),
     }
     Ok(())

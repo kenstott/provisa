@@ -488,6 +488,10 @@ pub fn edm_value(p: &P, edm: Edm) -> Res<P<'static>> {
             P::Str(Cow::Owned(t))
         }
         Edm::DateTimeOffset => {
+            if let P::InfDate(s) | P::InfDt(s, _) = p {
+                // PostgreSQL's infinite date or timestamp, as every JSON surface writes it.
+                return Ok(P::owned_str(if *s > 0 { "infinity".into() } else { "-infinity".into() }));
+            }
             let mut dt = as_datetime(p)?;
             if dt.offset.is_none() {
                 dt.offset = Some(0);

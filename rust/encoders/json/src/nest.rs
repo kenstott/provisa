@@ -594,11 +594,13 @@ pub struct Encoder<'p> {
     pub spec: &'p [Col],
     pub k: Keyer,
     key: Vec<u8>,
+    /// A to-one object's key (the row's own key stays in `key`).
+    object: Vec<u8>,
 }
 
 impl<'p> Encoder<'p> {
     pub fn new(p: &'p Plan, spec: &'p [Col]) -> Self {
-        Encoder { p, spec, k: Keyer::new(), key: Vec::new() }
+        Encoder { p, spec, k: Keyer::new(), key: Vec::new(), object: Vec::new() }
     }
 
     /// `serialize_rows`.
@@ -642,8 +644,10 @@ impl<'p> Encoder<'p> {
                     if fails[at as usize] {
                         return Err(nesting_error("a repeated row's relationship path is not an object"));
                     }
-                    for pi in differing(&objects[at as usize], &cur) {
-                        truncated.insert(pi);
+                    if !p.paths.is_empty() {
+                        for pi in differing(&objects[at as usize], &cur) {
+                            truncated.insert(pi);
+                        }
                     }
                     continue;
                 }
@@ -674,14 +678,15 @@ impl<'p> Encoder<'p> {
                 }
             }
         }
-        let names = truncated.into_iter().map(|pi| p.paths[pi].name.clone()).collect();
+        let mut names: Vec<String> = truncated.into_iter().map(|pi| p.paths[pi].name.clone()).collect();
+        names.sort();
         Ok(Rows { tree: t, rows: kept, truncated: names })
     }
 
     /// The to-one object `path` builds of row `r`, as one length-prefixed key in `out`: null when
     /// its columns are all null, else `{field: value}` of its own fields.
     fn object_key(&mut self, b: &Batch, r: usize, path: &Path, out: &mut Vec<u8>) -> Res<()> {
-        let mut key = std::mem::take(&mut self.key);
+        let mut key = std::mem::take(&mut self.object);
         key.clear();
         if path.cols.iter().all(|&c| b.cells[c].is_null(r)) {
             key.push(pywrite::K_NULL);
@@ -692,7 +697,7 @@ impl<'p> Encoder<'p> {
             }
         }
         object_atom(out, &key);
-        self.key = key;
+        self.object = key;
         Ok(())
     }
 
