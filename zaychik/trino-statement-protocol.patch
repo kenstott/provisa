@@ -1,0 +1,1442 @@
+diff --git a/pom.xml b/pom.xml
+index 3b51143..ce5d173 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -162,5 +162,11 @@
+             <artifactId>jmx_prometheus_javaagent</artifactId>
+             <version>1.0.1</version>
+         </dependency>
++        <dependency>
++            <groupId>org.junit.jupiter</groupId>
++            <artifactId>junit-jupiter</artifactId>
++            <version>5.10.2</version>
++            <scope>test</scope>
++        </dependency>
+     </dependencies>
+ </project>
+\ No newline at end of file
+diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClients.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClients.java
+new file mode 100644
+index 0000000..25270ca
+--- /dev/null
++++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementClients.java
+@@ -0,0 +1,66 @@
++package ru.raiffeisen.trino.arrow.flight.sql.connection;
++
++import io.airlift.units.Duration;
++import io.trino.client.ClientSession;
++import io.trino.client.OkHttpUtil;
++import io.trino.client.StatementClient;
++import io.trino.client.StatementClientFactory;
++import okhttp3.OkHttpClient;
++import ru.raiffeisen.trino.arrow.flight.sql.config.TrinoConfiguration;
++
++import java.net.URI;
++import java.time.ZoneId;
++import java.util.Locale;
++import java.util.Optional;
++import java.util.Set;
++import java.util.concurrent.TimeUnit;
++
++/**
++ * Submits statements to Trino through its client protocol (the protocol the Trino JDBC driver and
++ * the Trino Python client speak), so a statement's result arrives with what JDBC drops: each
++ * column's type as the coordinator names it and its full type signature, each value as the
++ * protocol carries it, and a failure's error name, type and code.
++ */
++public final class TrinoStatementClients {
++  /** The capabilities the Trino Python client declares, so values and type names match it. */
++  private static final Set<String> CLIENT_CAPABILITIES =
++      Set.of("PARAMETRIC_DATETIME", "SESSION_AUTHORIZATION");
++
++  private static final String DEFAULT_SOURCE = "zaychik";
++
++  private final URI server;
++  private final boolean ssl;
++  private final OkHttpClient httpClient;
++
++  public TrinoStatementClients(TrinoConfiguration config) {
++    this.ssl = config.TRINO_SSL;
++    this.server = URI.create((ssl ? "https" : "http") + "://" + config.TRINO_HOST + ":" + config.TRINO_PORT);
++    OkHttpClient.Builder builder = new OkHttpClient.Builder();
++    OkHttpUtil.setupTimeouts(builder, 60, TimeUnit.SECONDS);
++    this.httpClient = builder.build();
++  }
++
++  /** Submits {@code sql} for {@code user} in {@code context}'s session. */
++  public StatementClient submit(
++      String user, String password, TrinoStatementContext context, String sql) {
++    ClientSession session =
++        ClientSession.builder()
++            .server(server)
++            .user(Optional.of(user))
++            .source(context.source().orElse(DEFAULT_SOURCE))
++            .catalog(context.catalog().orElse(null))
++            .schema(context.schema().orElse(null))
++            .properties(context.properties())
++            .timeZone(ZoneId.systemDefault())
++            .locale(Locale.getDefault())
++            .clientRequestTimeout(new Duration(60, TimeUnit.SECONDS))
++            .build();
++    OkHttpClient client = httpClient;
++    if (ssl && !password.isEmpty()) {
++      // A password is sent only over TLS, as the Trino clients require.
++      client = httpClient.newBuilder().addInterceptor(OkHttpUtil.basicAuth(user, password)).build();
++    }
++    return StatementClientFactory.newStatementClient(
++        client, session, sql, Optional.of(CLIENT_CAPABILITIES));
++  }
++}
+diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContext.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContext.java
+new file mode 100644
+index 0000000..1d916cc
+--- /dev/null
++++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContext.java
+@@ -0,0 +1,82 @@
++package ru.raiffeisen.trino.arrow.flight.sql.connection;
++
++import com.fasterxml.jackson.databind.JsonNode;
++import com.fasterxml.jackson.databind.ObjectMapper;
++
++import java.io.IOException;
++import java.nio.charset.StandardCharsets;
++import java.util.Base64;
++import java.util.Iterator;
++import java.util.LinkedHashMap;
++import java.util.Map;
++import java.util.Optional;
++
++/**
++ * The Trino session a Flight client asks its statement to run in, sent in the call header
++ * {@value #HEADER}: base64 of a JSON object
++ *
++ * <pre>{"source": "...", "catalog": "...", "schema": "...", "properties": {"name": "value"}}</pre>
++ *
++ * <p>Every key is optional. {@code properties} are Trino session properties, sent with the
++ * statement as the Trino client protocol sends them ({@code X-Trino-Session}); a connection that
++ * opens per statement cannot carry a {@code SET SESSION} from one statement to the next, so this is
++ * how a statement gets them.
++ */
++public record TrinoStatementContext(
++    Optional<String> source,
++    Optional<String> catalog,
++    Optional<String> schema,
++    Map<String, String> properties) {
++
++  public static final String HEADER = "x-provisa-trino-context";
++
++  public static final TrinoStatementContext NONE =
++      new TrinoStatementContext(Optional.empty(), Optional.empty(), Optional.empty(), Map.of());
++
++  private static final ObjectMapper MAPPER = new ObjectMapper();
++
++  /** The context {@code header} (the header's value) names; {@link #NONE} when it is absent. */
++  public static TrinoStatementContext parse(String header) {
++    if (header == null) {
++      return NONE;
++    }
++    JsonNode root;
++    try {
++      root = MAPPER.readTree(new String(Base64.getDecoder().decode(header), StandardCharsets.UTF_8));
++    } catch (IOException | IllegalArgumentException e) {
++      throw new IllegalArgumentException(HEADER + " is not base64 of a JSON object: " + e.getMessage(), e);
++    }
++    if (!root.isObject()) {
++      throw new IllegalArgumentException(HEADER + " is not a JSON object");
++    }
++    Map<String, String> properties = new LinkedHashMap<>();
++    JsonNode props = root.path("properties");
++    if (!props.isMissingNode()) {
++      if (!props.isObject()) {
++        throw new IllegalArgumentException(HEADER + ": properties is not a JSON object");
++      }
++      Iterator<Map.Entry<String, JsonNode>> fields = props.fields();
++      while (fields.hasNext()) {
++        Map.Entry<String, JsonNode> field = fields.next();
++        if (!field.getValue().isTextual()) {
++          throw new IllegalArgumentException(
++              HEADER + ": session property " + field.getKey() + " is not a string");
++        }
++        properties.put(field.getKey(), field.getValue().textValue());
++      }
++    }
++    return new TrinoStatementContext(
++        text(root, "source"), text(root, "catalog"), text(root, "schema"), Map.copyOf(properties));
++  }
++
++  private static Optional<String> text(JsonNode root, String key) {
++    JsonNode node = root.path(key);
++    if (node.isMissingNode() || node.isNull()) {
++      return Optional.empty();
++    }
++    if (!node.isTextual()) {
++      throw new IllegalArgumentException(HEADER + ": " + key + " is not a string");
++    }
++    return Optional.of(node.textValue());
++  }
++}
+diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerCache.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerCache.java
+index d53ccfe..a097d7c 100644
+--- a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerCache.java
++++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerCache.java
+@@ -26,6 +26,12 @@ public final class FlightSQLProducerCache implements AutoCloseable {
+    */
+   private final Cache<ByteString, StatementContext> statementCache;
+ 
++  /**
++   * Statements running on Trino between GetFlightInfo and DoGet. DoGet takes its statement out
++   * (it then owns it); one never fetched is cancelled when it expires.
++   */
++  private final Cache<ByteString, TrinoStatementExecution> executionCache;
++
+   public FlightSQLProducerCache() {
+     this.statementCache =
+         CacheBuilder.newBuilder()
+@@ -33,6 +39,30 @@ public final class FlightSQLProducerCache implements AutoCloseable {
+             .expireAfterWrite(10, TimeUnit.MINUTES)
+             .removalListener(new StatementRemovalListener())
+             .build();
++    this.executionCache =
++        CacheBuilder.newBuilder()
++            .expireAfterWrite(10, TimeUnit.MINUTES)
++            .removalListener(
++                (RemovalNotification<ByteString, TrinoStatementExecution> notification) -> {
++                  // An explicit removal is DoGet taking the statement: it owns it now.
++                  if (notification.wasEvicted() && notification.getValue() != null) {
++                    notification.getValue().close();
++                  }
++                })
++            .build();
++  }
++
++  /** Holds a running statement until DoGet takes it; returns its handle. */
++  ByteString putExecution(TrinoStatementExecution execution, String query) {
++    final ByteString handle = getRandomHandle();
++    executionCache.put(handle, execution);
++    return handle;
++  }
++
++  /** The running statement {@code handle} names, removed from the cache (the caller owns it),
++   * or null when there is none. */
++  TrinoStatementExecution takeExecution(ByteString handle) {
++    return executionCache.asMap().remove(handle);
+   }
+   
+   private ByteString getRandomHandle() {
+@@ -139,5 +169,7 @@ public final class FlightSQLProducerCache implements AutoCloseable {
+   @Override
+   public void close() throws Exception {
+     this.statementCache.cleanUp();
++    this.executionCache.asMap().values().forEach(TrinoStatementExecution::close);
++    this.executionCache.invalidateAll();
+   }
+ }
+diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerHelper.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerHelper.java
+index a72f64d..faa6353 100644
+--- a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerHelper.java
++++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerHelper.java
+@@ -91,6 +91,14 @@ class FlightSQLProducerHelper {
+    * @param token Peer identity token containing user credentials.
+    * @return Decoded user credentials as a pair(user, password).
+    */
++  public int getBatchSize() {
++    return batchSize;
++  }
++
++  public long getWaitTimeout() {
++    return waitTimeout;
++  }
++
+   public ImmutablePair<String, String> decodePeerIdentity(String token) {
+     String[] parts =
+         new String(Base64.getDecoder().decode(token), StandardCharsets.UTF_8).split(":");
+diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumn.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumn.java
+new file mode 100644
+index 0000000..016a0db
+--- /dev/null
++++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumn.java
+@@ -0,0 +1,375 @@
++package ru.raiffeisen.trino.arrow.flight.sql.producer;
++
++import com.fasterxml.jackson.annotation.JsonInclude;
++import com.fasterxml.jackson.core.JsonFactory;
++import com.fasterxml.jackson.core.JsonGenerator;
++import com.fasterxml.jackson.core.JsonProcessingException;
++import com.fasterxml.jackson.databind.MapperFeature;
++import com.fasterxml.jackson.databind.ObjectMapper;
++import com.fasterxml.jackson.databind.json.JsonMapper;
++import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
++import io.trino.client.ClientTypeSignature;
++import io.trino.client.ClientTypeSignatureParameter;
++import io.trino.client.Column;
++import io.trino.client.Row;
++import io.trino.client.RowField;
++import org.apache.arrow.vector.BaseFixedWidthVector;
++import org.apache.arrow.vector.BaseVariableWidthVector;
++import org.apache.arrow.vector.BigIntVector;
++import org.apache.arrow.vector.BitVector;
++import org.apache.arrow.vector.DateDayVector;
++import org.apache.arrow.vector.DecimalVector;
++import org.apache.arrow.vector.FieldVector;
++import org.apache.arrow.vector.Float4Vector;
++import org.apache.arrow.vector.Float8Vector;
++import org.apache.arrow.vector.IntVector;
++import org.apache.arrow.vector.SmallIntVector;
++import org.apache.arrow.vector.TimeMicroVector;
++import org.apache.arrow.vector.TimeStampMicroTZVector;
++import org.apache.arrow.vector.TimeStampMicroVector;
++import org.apache.arrow.vector.TinyIntVector;
++import org.apache.arrow.vector.VarBinaryVector;
++import org.apache.arrow.vector.VarCharVector;
++import org.apache.arrow.vector.types.DateUnit;
++import org.apache.arrow.vector.types.FloatingPointPrecision;
++import org.apache.arrow.vector.types.TimeUnit;
++import org.apache.arrow.vector.types.pojo.ArrowType;
++import org.apache.arrow.vector.types.pojo.Field;
++import org.apache.arrow.vector.types.pojo.FieldType;
++
++import java.io.IOException;
++import java.io.StringWriter;
++import java.io.UncheckedIOException;
++import java.math.BigDecimal;
++import java.math.RoundingMode;
++import java.nio.charset.StandardCharsets;
++import java.time.Instant;
++import java.time.LocalDate;
++import java.time.LocalDateTime;
++import java.time.LocalTime;
++import java.time.ZoneId;
++import java.time.ZoneOffset;
++import java.time.temporal.ChronoUnit;
++import java.util.Base64;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++
++/**
++ * One Trino result column as an Arrow field, and how a value of it, as the Trino client protocol
++ * hands it on ({@code io.trino.client.FixJsonDataUtils}), is written into the field's vector.
++ *
++ * <p>Every field carries three metadata entries:
++ *
++ * <ul>
++ *   <li>{@value #TYPE_KEY}: the column's Trino type as the coordinator names it (the protocol's
++ *       {@code type}, e.g. {@code timestamp(6) with time zone});
++ *   <li>{@value #SIGNATURE_KEY}: the column's type signature, as JSON in the protocol's own form;
++ *   <li>{@value #ENCODING_KEY}: how the field holds a value: {@code arrow} (the Arrow type is the
++ *       value), {@code text} (Utf8, the protocol's text of a scalar Trino has no Arrow type for:
++ *       time with time zone, the intervals, json, uuid, ipaddress) or {@code json} (Utf8, the
++ *       protocol's JSON of the value: array, map, row and any other type).
++ * </ul>
++ *
++ * <p>Temporal values are microseconds. A value with more fractional digits than six is rounded to
++ * six half-to-even, the rounding the Trino Python client applies, so both readers give the same
++ * value.
++ */
++final class TrinoArrowColumn {
++  static final String TYPE_KEY = "trino.type";
++  static final String SIGNATURE_KEY = "trino.type_signature";
++  static final String ENCODING_KEY = "trino.encoding";
++
++  static final String ENCODING_ARROW = "arrow";
++  static final String ENCODING_TEXT = "text";
++  static final String ENCODING_JSON = "json";
++
++  private static final long MICROS_PER_DAY = 86_400_000_000L;
++
++  /** Scalars the protocol sends as text and Arrow has no type for: sent as that text. */
++  private static final Set<String> TEXT_TYPES =
++      Set.of(
++          "time with time zone",
++          "interval year to month",
++          "interval day to second",
++          "json",
++          "uuid",
++          "ipaddress");
++
++  /** The coordinator's own JSON settings for a type signature (airlift's ObjectMapperProvider). */
++  private static final ObjectMapper SIGNATURE_MAPPER =
++      JsonMapper.builder()
++          .disable(MapperFeature.AUTO_DETECT_CREATORS)
++          .disable(MapperFeature.AUTO_DETECT_FIELDS)
++          .disable(MapperFeature.AUTO_DETECT_SETTERS)
++          .disable(MapperFeature.AUTO_DETECT_GETTERS)
++          .disable(MapperFeature.AUTO_DETECT_IS_GETTERS)
++          .serializationInclusion(JsonInclude.Include.NON_ABSENT)
++          .addModule(new Jdk8Module())
++          .build();
++
++  private static final JsonFactory JSON = new JsonFactory();
++
++  /** Writes one non-null value into a vector at a row. */
++  interface Writer {
++    void write(FieldVector vector, int row, Object value);
++  }
++
++  private final Field field;
++  private final Writer writer;
++
++  private TrinoArrowColumn(Field field, Writer writer) {
++    this.field = field;
++    this.writer = writer;
++  }
++
++  Field field() {
++    return field;
++  }
++
++  /** Writes {@code value} (null included) into {@code vector} at {@code row}. */
++  void write(FieldVector vector, int row, Object value) {
++    if (value == null) {
++      if (vector instanceof BaseFixedWidthVector fixed) {
++        fixed.setNull(row);
++      } else if (vector instanceof BaseVariableWidthVector variable) {
++        variable.setNull(row);
++      }
++      // A NullVector holds nulls only: its value count is set with the batch's row count.
++      return;
++    }
++    writer.write(vector, row, value);
++  }
++
++  static TrinoArrowColumn of(Column column) {
++    ClientTypeSignature signature = column.getTypeSignature();
++    String rawType = signature.getRawType();
++    ArrowType arrowType;
++    Writer writer;
++    String encoding = ENCODING_ARROW;
++    switch (rawType) {
++      case "boolean" -> {
++        arrowType = ArrowType.Bool.INSTANCE;
++        writer = (v, r, x) -> ((BitVector) v).setSafe(r, ((Boolean) x) ? 1 : 0);
++      }
++      case "tinyint" -> {
++        arrowType = new ArrowType.Int(8, true);
++        writer = (v, r, x) -> ((TinyIntVector) v).setSafe(r, ((Number) x).byteValue());
++      }
++      case "smallint" -> {
++        arrowType = new ArrowType.Int(16, true);
++        writer = (v, r, x) -> ((SmallIntVector) v).setSafe(r, ((Number) x).shortValue());
++      }
++      case "integer" -> {
++        arrowType = new ArrowType.Int(32, true);
++        writer = (v, r, x) -> ((IntVector) v).setSafe(r, ((Number) x).intValue());
++      }
++      case "bigint" -> {
++        arrowType = new ArrowType.Int(64, true);
++        writer = (v, r, x) -> ((BigIntVector) v).setSafe(r, ((Number) x).longValue());
++      }
++      case "real" -> {
++        arrowType = new ArrowType.FloatingPoint(FloatingPointPrecision.SINGLE);
++        writer = (v, r, x) -> ((Float4Vector) v).setSafe(r, ((Number) x).floatValue());
++      }
++      case "double" -> {
++        arrowType = new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE);
++        writer = (v, r, x) -> ((Float8Vector) v).setSafe(r, ((Number) x).doubleValue());
++      }
++      case "decimal" -> {
++        int precision = (int) longArgument(signature, 0);
++        int scale = (int) longArgument(signature, 1);
++        arrowType = new ArrowType.Decimal(precision, scale, 128);
++        writer = (v, r, x) -> ((DecimalVector) v).setSafe(r, new BigDecimal((String) x));
++      }
++      case "varchar", "char" -> {
++        arrowType = ArrowType.Utf8.INSTANCE;
++        writer = (v, r, x) -> ((VarCharVector) v).setSafe(r, utf8((String) x));
++      }
++      case "varbinary" -> {
++        arrowType = ArrowType.Binary.INSTANCE;
++        writer = (v, r, x) -> ((VarBinaryVector) v).setSafe(r, (byte[]) x);
++      }
++      case "date" -> {
++        arrowType = new ArrowType.Date(DateUnit.DAY);
++        writer = (v, r, x) -> ((DateDayVector) v).setSafe(r, dateDays((String) x));
++      }
++      case "time" -> {
++        arrowType = new ArrowType.Time(TimeUnit.MICROSECOND, 64);
++        writer = (v, r, x) -> ((TimeMicroVector) v).setSafe(r, timeMicros((String) x));
++      }
++      case "timestamp" -> {
++        arrowType = new ArrowType.Timestamp(TimeUnit.MICROSECOND, null);
++        writer = (v, r, x) -> ((TimeStampMicroVector) v).setSafe(r, timestampMicros((String) x));
++      }
++      case "timestamp with time zone" -> {
++        arrowType = new ArrowType.Timestamp(TimeUnit.MICROSECOND, "UTC");
++        writer =
++            (v, r, x) -> ((TimeStampMicroTZVector) v).setSafe(r, zonedTimestampMicros((String) x));
++      }
++      case "unknown" -> {
++        // The type of a bare NULL: every value is null.
++        arrowType = ArrowType.Null.INSTANCE;
++        writer =
++            (v, r, x) -> {
++              throw new IllegalStateException("a value of type unknown that is not null: " + x);
++            };
++      }
++      default -> {
++        arrowType = ArrowType.Utf8.INSTANCE;
++        if (TEXT_TYPES.contains(rawType)) {
++          encoding = ENCODING_TEXT;
++          writer = (v, r, x) -> ((VarCharVector) v).setSafe(r, utf8((String) x));
++        } else {
++          encoding = ENCODING_JSON;
++          writer = (v, r, x) -> ((VarCharVector) v).setSafe(r, utf8(protocolJson(x)));
++        }
++      }
++    }
++    Map<String, String> metadata =
++        Map.of(
++            TYPE_KEY, column.getType(),
++            SIGNATURE_KEY, signatureJson(signature),
++            ENCODING_KEY, encoding);
++    Field field = new Field(column.getName(), new FieldType(true, arrowType, null, metadata), null);
++    return new TrinoArrowColumn(field, writer);
++  }
++
++  private static long longArgument(ClientTypeSignature signature, int index) {
++    ClientTypeSignatureParameter argument = signature.getArguments().get(index);
++    return argument.getLongLiteral();
++  }
++
++  private static byte[] utf8(String text) {
++    return text.getBytes(StandardCharsets.UTF_8);
++  }
++
++  static String signatureJson(ClientTypeSignature signature) {
++    try {
++      return SIGNATURE_MAPPER.writeValueAsString(signature);
++    } catch (JsonProcessingException e) {
++      throw new UncheckedIOException(e);
++    }
++  }
++
++  /** {@code yyyy-MM-dd} as days since the epoch (proleptic Gregorian, as the protocol's text). */
++  static int dateDays(String value) {
++    return Math.toIntExact(LocalDate.parse(value).toEpochDay());
++  }
++
++  /** The fraction digits after the seconds' point as microseconds, rounded half-to-even. */
++  static long fractionMicros(String digits) {
++    if (digits.isEmpty()) {
++      return 0;
++    }
++    return new BigDecimal("0." + digits)
++        .setScale(6, RoundingMode.HALF_EVEN)
++        .movePointRight(6)
++        .longValueExact();
++  }
++
++  /** {@code HH:mm:ss[.f...]} as microseconds since midnight; a fraction that rounds up to the next
++   * second at 23:59:59 wraps to midnight, as a Python {@code time} does. */
++  static long timeMicros(String value) {
++    long micros = LocalTime.parse(value.substring(0, 8)).toNanoOfDay() / 1000;
++    String digits = value.length() > 9 ? value.substring(9) : "";
++    return Math.floorMod(micros + fractionMicros(digits), MICROS_PER_DAY);
++  }
++
++  /** {@code yyyy-MM-dd HH:mm:ss[.f...]} (a local date-time) as microseconds since the epoch read
++   * as UTC: the wall-clock value, no zone applied. */
++  static long timestampMicros(String value) {
++    return epochMicros(localDateTime(value).toInstant(ZoneOffset.UTC));
++  }
++
++  /** {@code yyyy-MM-dd HH:mm:ss[.f...] <zone>} (an offset {@code +05:30} or a region) as the
++   * instant it names, in microseconds since the epoch. */
++  static long zonedTimestampMicros(String value) {
++    int space = value.lastIndexOf(' ');
++    String zone = value.substring(space + 1);
++    ZoneId zoneId =
++        zone.startsWith("+") || zone.startsWith("-") ? ZoneOffset.of(zone) : ZoneId.of(zone);
++    return epochMicros(localDateTime(value.substring(0, space)).atZone(zoneId).toInstant());
++  }
++
++  private static LocalDateTime localDateTime(String value) {
++    LocalDateTime whole = LocalDateTime.parse(value.substring(0, 10) + "T" + value.substring(11, 19));
++    String digits = value.length() > 20 ? value.substring(20) : "";
++    return whole.plus(fractionMicros(digits), ChronoUnit.MICROS);
++  }
++
++  private static long epochMicros(Instant instant) {
++    return Math.addExact(
++        Math.multiplyExact(instant.getEpochSecond(), 1_000_000L), instant.getNano() / 1000);
++  }
++
++  /** A value as the protocol's JSON writes it: the inverse of {@code FixJsonDataUtils}. */
++  static String protocolJson(Object value) {
++    StringWriter out = new StringWriter();
++    try (JsonGenerator generator = JSON.createGenerator(out)) {
++      writeJson(generator, value);
++    } catch (IOException e) {
++      throw new UncheckedIOException(e);
++    }
++    return out.toString();
++  }
++
++  private static void writeJson(JsonGenerator generator, Object value) throws IOException {
++    if (value == null) {
++      generator.writeNull();
++    } else if (value instanceof Boolean b) {
++      generator.writeBoolean(b);
++    } else if (value instanceof Double d) {
++      if (d.isNaN() || d.isInfinite()) {
++        generator.writeString(d.toString());
++      } else {
++        generator.writeNumber(d);
++      }
++    } else if (value instanceof Float f) {
++      if (f.isNaN() || f.isInfinite()) {
++        generator.writeString(f.toString());
++      } else {
++        generator.writeNumber(f);
++      }
++    } else if (value instanceof Long l) {
++      generator.writeNumber(l);
++    } else if (value instanceof Integer i) {
++      generator.writeNumber(i);
++    } else if (value instanceof Short s) {
++      generator.writeNumber(s);
++    } else if (value instanceof Byte b) {
++      generator.writeNumber(b);
++    } else if (value instanceof byte[] bytes) {
++      generator.writeString(Base64.getEncoder().encodeToString(bytes));
++    } else if (value instanceof List<?> list) {
++      generator.writeStartArray();
++      for (Object element : list) {
++        writeJson(generator, element);
++      }
++      generator.writeEndArray();
++    } else if (value instanceof Map<?, ?> map) {
++      generator.writeStartObject();
++      for (Map.Entry<?, ?> entry : map.entrySet()) {
++        generator.writeFieldName(mapKey(entry.getKey()));
++        writeJson(generator, entry.getValue());
++      }
++      generator.writeEndObject();
++    } else if (value instanceof Row row) {
++      generator.writeStartArray();
++      for (RowField rowField : row.getFields()) {
++        writeJson(generator, rowField.getValue());
++      }
++      generator.writeEndArray();
++    } else {
++      generator.writeString(value.toString());
++    }
++  }
++
++  /** A map key as the protocol's JSON object writes it: its text. */
++  private static String mapKey(Object key) {
++    if (key instanceof byte[] bytes) {
++      return Base64.getEncoder().encodeToString(bytes);
++    }
++    return String.valueOf(key);
++  }
++}
+diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoFlightSQLProducer.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoFlightSQLProducer.java
+index 2a2721a..d7257f9 100644
+--- a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoFlightSQLProducer.java
++++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoFlightSQLProducer.java
+@@ -16,6 +16,8 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
+ import org.slf4j.Logger;
+ import ru.raiffeisen.trino.arrow.flight.sql.config.FlightConfiguration;
+ import ru.raiffeisen.trino.arrow.flight.sql.connection.TrinoConnectionFactory;
++import ru.raiffeisen.trino.arrow.flight.sql.connection.TrinoStatementClients;
++import ru.raiffeisen.trino.arrow.flight.sql.server.TrinoContextMiddleware;
+ import ru.raiffeisen.trino.arrow.flight.sql.metrics.FlightSqlMetrics;
+ 
+ import java.io.IOException;
+@@ -37,6 +39,7 @@ public class TrinoFlightSQLProducer implements FlightSqlProducer {
+ 
+   private final SqlInfoBuilder sqlInfoBuilder;
+   private final TrinoConnectionFactory trinoSource;
++  private final TrinoStatementClients trinoStatements;
+ 
+   private final FlightSQLProducerCache cache;
+   private final FlightSQLProducerHelper helper;
+@@ -46,9 +49,11 @@ public class TrinoFlightSQLProducer implements FlightSqlProducer {
+ 
+   public TrinoFlightSQLProducer(
+       TrinoConnectionFactory trinoConnFactory,
++      TrinoStatementClients trinoStatements,
+       FlightConfiguration flightConfig,
+       BufferAllocator rootAllocator) {
+     this.trinoSource = trinoConnFactory;
++    this.trinoStatements = trinoStatements;
+     this.rootAllocator = rootAllocator;
+     this.sqlInfoBuilder = new SqlInfoBuilder();
+     this.helper =
+@@ -179,28 +184,31 @@ public class TrinoFlightSQLProducer implements FlightSqlProducer {
+     ImmutablePair<String, String> user = helper.decodePeerIdentity(context.peerIdentity());
+     setLogCtx("get_flight_info_statement", user.left);
+ 
+-    try (BufferAllocator childAllocator =
+-        rootAllocator.newChildAllocator(randomUUID().toString(), 0, Long.MAX_VALUE)) {
++    try {
+       final String query = command.getQuery();
+       log.info("Getting flight info statement for query: {}", prepMsg(query));
+ 
+-      // Ownership of the connection will be passed to the context. Do NOT close!
+-      final Connection connection = trinoSource.getConnection(user.left, user.right);
+-      final PreparedStatement statement =
+-          connection.prepareStatement(
+-              query, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+-
+-      final ByteString handle = cache.put(statement, query);
++      // The statement runs through the Trino client protocol and is followed here until Trino
++      // names its columns: the schema below is the one the stream carries, and a statement Trino
++      // rejects is answered now, with Trino's error. Ownership passes to the cache.
++      final TrinoStatementExecution execution;
++      try {
++        execution =
++            TrinoStatementExecution.start(
++                trinoStatements.submit(
++                    user.left, user.right, TrinoContextMiddleware.of(context), query));
++      } catch (RuntimeException e) {
++        throw TrinoQueryFailure.unreachable(e);
++      }
++      final ByteString handle = cache.putExecution(execution, query);
+       log.info("Statement handle = {}", handle.toStringUtf8());
+ 
+       TicketStatementQuery ticket =
+           TicketStatementQuery.newBuilder().setStatementHandle(handle).build();
+-      return helper.getFlightInfoForSchema(
+-          ticket, descriptor, statement.getMetaData(), childAllocator);
+-    } catch (final SQLException e) {
+-      log.error(
+-          format("There was a problem executing the prepared statement: <%s>.", e.getMessage()), e);
+-      throw CallStatus.INTERNAL.withCause(e).toRuntimeException();
++      return helper.getFlightInfoForSchema(ticket, descriptor, execution.schema());
++    } catch (final TrinoQueryFailure failure) {
++      log.error(format("Statement failed: <%s>.", failure.getMessage()));
++      throw failure.toFlightError();
+     } finally {
+       clearLogCtx();
+     }
+@@ -246,39 +254,31 @@ public class TrinoFlightSQLProducer implements FlightSqlProducer {
+     ImmutablePair<String, String> user = helper.decodePeerIdentity(context.peerIdentity());
+     setLogCtx("get_stream_statement", user.left);
+     final ByteString handle = ticketStatementQuery.getStatementHandle();
+-    final PreparedStatement statement = Objects.requireNonNull(cache.getStatement(handle));
+     log.info("Getting data stream for statement with handle: {}", handle.toStringUtf8());
+ 
+-    boolean isErrored = false;
+-    int rowsStreamed = 0;
+-    long streamingTime = 0;
+-    try (final ResultSet resultSet = statement.executeQuery()) {
++    try (final TrinoStatementExecution execution = cache.takeExecution(handle)) {
++      if (execution == null) {
++        listener.error(
++            CallStatus.NOT_FOUND
++                .withDescription("No statement with handle " + handle.toStringUtf8())
++                .toRuntimeException());
++        return;
++      }
++      ImmutablePair<Integer, Long> streamed;
+       try (BufferAllocator childAllocator =
+           rootAllocator.newChildAllocator(handle.toStringUtf8(), 0, Long.MAX_VALUE)) {
+-        ImmutablePair<Integer, Long> streamingResult = 
+-            helper.streamResultSet(resultSet, childAllocator, listener);
+-        rowsStreamed += streamingResult.left;
+-        streamingTime += streamingResult.right;
++        streamed =
++            execution.stream(
++                childAllocator, listener, helper.getBatchSize(), helper.getWaitTimeout());
+       }
+-    } catch (SQLException | IOException e) {
+-      log.error(format("Failed to stream statement: <%s>.", e.getMessage()), e);
+-      isErrored = true;
+-      listener.error(
+-          CallStatus.INTERNAL
+-              .withDescription("Failed to stream statement: " + e)
+-              .toRuntimeException());
++      log.info("Stream completed. Inform listener.");
++      listener.completed();
++      FlightSqlMetrics.QUERY_COUNT.increment(user.left, streamed.left);
++      FlightSqlMetrics.ROW_COUNT.increment(user.left, streamed.left, streamed.right);
++    } catch (final TrinoQueryFailure failure) {
++      log.error(format("Failed to stream statement: <%s>.", failure.getMessage()));
++      listener.error(failure.toFlightError());
+     } finally {
+-      // listener.error(...) will also terminate stream,
+-      // thus we do not need to call completed() in this case.
+-      if (!isErrored) {
+-        log.info("Stream completed. Inform listener.");
+-        listener.completed();
+-
+-        // Increment metrics only if query was successfully streamed to the client.
+-        FlightSqlMetrics.QUERY_COUNT.increment(user.left, rowsStreamed);
+-        FlightSqlMetrics.ROW_COUNT.increment(user.left, rowsStreamed, streamingTime);
+-      }
+-      cache.invalidate(handle);
+       clearLogCtx();
+     }
+   }
+diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailure.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailure.java
+new file mode 100644
+index 0000000..446fcf3
+--- /dev/null
++++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailure.java
+@@ -0,0 +1,64 @@
++package ru.raiffeisen.trino.arrow.flight.sql.producer;
++
++import io.trino.client.QueryError;
++import org.apache.arrow.flight.CallStatus;
++import org.apache.arrow.flight.ErrorFlightMetadata;
++import org.apache.arrow.flight.FlightRuntimeException;
++
++/**
++ * A statement Trino failed, carried to the Flight client with Trino's own error: the status
++ * description is Trino's message, and the trailers name the error as the Trino protocol does
++ * ({@value #ERROR_NAME}, {@value #ERROR_TYPE}, {@value #ERROR_CODE}, {@value #QUERY_ID}).
++ *
++ * <p>A failure to reach the coordinator at all is {@link CallStatus#UNAVAILABLE} with
++ * {@value #ERROR_KIND} {@code connection} and no Trino error name: no statement ran.
++ */
++final class TrinoQueryFailure extends Exception {
++  static final String ERROR_NAME = "x-trino-error-name";
++  static final String ERROR_TYPE = "x-trino-error-type";
++  static final String ERROR_CODE = "x-trino-error-code";
++  static final String QUERY_ID = "x-trino-query-id";
++  static final String ERROR_KIND = "x-trino-error-kind";
++
++  private final transient FlightRuntimeException flightError;
++
++  private TrinoQueryFailure(String message, FlightRuntimeException flightError, Throwable cause) {
++    super(message, cause);
++    this.flightError = flightError;
++  }
++
++  /** The statement {@code queryId} failed with {@code error}. */
++  static TrinoQueryFailure of(String queryId, QueryError error) {
++    ErrorFlightMetadata metadata = new ErrorFlightMetadata();
++    metadata.insert(ERROR_KIND, "query");
++    metadata.insert(ERROR_NAME, error.getErrorName());
++    metadata.insert(ERROR_TYPE, error.getErrorType());
++    metadata.insert(ERROR_CODE, Integer.toString(error.getErrorCode()));
++    metadata.insert(QUERY_ID, queryId);
++    CallStatus status =
++        statusOf(error.getErrorType()).withDescription(error.getMessage()).withMetadata(metadata);
++    return new TrinoQueryFailure(error.getMessage(), status.toRuntimeException(), null);
++  }
++
++  /** The coordinator could not be reached, or stopped answering the statement's protocol. */
++  static TrinoQueryFailure unreachable(RuntimeException cause) {
++    ErrorFlightMetadata metadata = new ErrorFlightMetadata();
++    metadata.insert(ERROR_KIND, "connection");
++    String message = String.valueOf(cause.getMessage());
++    CallStatus status =
++        CallStatus.UNAVAILABLE.withDescription(message).withCause(cause).withMetadata(metadata);
++    return new TrinoQueryFailure(message, status.toRuntimeException(), cause);
++  }
++
++  FlightRuntimeException toFlightError() {
++    return flightError;
++  }
++
++  private static CallStatus statusOf(String errorType) {
++    return switch (errorType) {
++      case "USER_ERROR" -> CallStatus.INVALID_ARGUMENT;
++      case "INSUFFICIENT_RESOURCES" -> CallStatus.RESOURCE_EXHAUSTED;
++      default -> CallStatus.INTERNAL;
++    };
++  }
++}
+diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoStatementExecution.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoStatementExecution.java
+new file mode 100644
+index 0000000..2c1f3d1
+--- /dev/null
++++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoStatementExecution.java
+@@ -0,0 +1,170 @@
++package ru.raiffeisen.trino.arrow.flight.sql.producer;
++
++import io.trino.client.Column;
++import io.trino.client.QueryError;
++import io.trino.client.QueryStatusInfo;
++import io.trino.client.StatementClient;
++import org.apache.arrow.flight.BackpressureStrategy;
++import org.apache.arrow.flight.FlightProducer;
++import org.apache.arrow.memory.BufferAllocator;
++import org.apache.arrow.vector.FieldVector;
++import org.apache.arrow.vector.VectorSchemaRoot;
++import org.apache.arrow.vector.types.pojo.Schema;
++import org.apache.commons.lang3.tuple.ImmutablePair;
++import org.slf4j.Logger;
++
++import java.util.ArrayList;
++import java.util.List;
++
++import static org.slf4j.LoggerFactory.getLogger;
++
++/**
++ * One statement running on Trino through the client protocol, from the moment its result columns
++ * are known to the last row streamed.
++ *
++ * <p>{@link #start} runs at GetFlightInfo: the statement is submitted and followed until Trino
++ * names its columns, so the schema the FlightInfo announces is the one the stream carries, and a
++ * statement Trino rejects is answered there with Trino's error. {@link #stream} runs at DoGet and
++ * writes the rows as Arrow batches.
++ */
++final class TrinoStatementExecution implements AutoCloseable {
++  private static final Logger log = getLogger(TrinoStatementExecution.class);
++
++  private final StatementClient client;
++  private final List<TrinoArrowColumn> columns;
++  private final Schema schema;
++
++  private TrinoStatementExecution(StatementClient client, List<Column> trinoColumns) {
++    this.client = client;
++    List<TrinoArrowColumn> arrowColumns = new ArrayList<>(trinoColumns.size());
++    for (Column column : trinoColumns) {
++      arrowColumns.add(TrinoArrowColumn.of(column));
++    }
++    this.columns = arrowColumns;
++    this.schema = new Schema(arrowColumns.stream().map(TrinoArrowColumn::field).toList());
++  }
++
++  /**
++   * Follows {@code client} until Trino names the statement's columns (or the statement ends).
++   * The client is closed, and the statement cancelled, when this throws.
++   */
++  static TrinoStatementExecution start(StatementClient client) throws TrinoQueryFailure {
++    try {
++      while (client.isRunning() && client.currentStatusInfo().getColumns() == null) {
++        client.advance();
++      }
++      List<Column> trinoColumns;
++      if (client.isRunning()) {
++        trinoColumns = client.currentStatusInfo().getColumns();
++      } else {
++        QueryStatusInfo finalStatus = client.finalStatusInfo();
++        failIfFailed(finalStatus);
++        trinoColumns = finalStatus.getColumns() == null ? List.of() : finalStatus.getColumns();
++      }
++      return new TrinoStatementExecution(client, trinoColumns);
++    } catch (TrinoQueryFailure failure) {
++      client.close();
++      throw failure;
++    } catch (RuntimeException e) {
++      client.close();
++      throw TrinoQueryFailure.unreachable(e);
++    }
++  }
++
++  Schema schema() {
++    return schema;
++  }
++
++  /**
++   * Streams the statement's rows to {@code listener} in batches of at most {@code batchSize}
++   * rows. Returns the rows streamed and the milliseconds spent streaming them. A statement that
++   * fails while its rows are read throws its Trino error; a listener the client cancelled ends
++   * the stream and cancels the statement.
++   */
++  ImmutablePair<Integer, Long> stream(
++      BufferAllocator allocator,
++      FlightProducer.ServerStreamListener listener,
++      int batchSize,
++      long waitTimeout)
++      throws TrinoQueryFailure {
++    BackpressureStrategyImpl backpressure = new BackpressureStrategyImpl();
++    backpressure.register(listener);
++    long started = System.currentTimeMillis();
++    int streamed = 0;
++    try (VectorSchemaRoot root = VectorSchemaRoot.create(schema, allocator)) {
++      listener.start(root);
++      root.allocateNew();
++      int pending = 0;
++      while (client.isRunning()) {
++        Iterable<List<Object>> data = client.currentData().getData();
++        if (data != null) {
++          for (List<Object> row : data) {
++            for (int i = 0; i < columns.size(); i++) {
++              FieldVector vector = root.getVector(i);
++              columns.get(i).write(vector, pending, row.get(i));
++            }
++            pending++;
++            if (pending == batchSize) {
++              if (!send(root, pending, listener, backpressure, waitTimeout)) {
++                return new ImmutablePair<>(streamed, System.currentTimeMillis() - started);
++              }
++              streamed += pending;
++              pending = 0;
++            }
++          }
++        }
++        client.advance();
++      }
++      failIfFailed(client.finalStatusInfo());
++      if (pending > 0) {
++        if (!send(root, pending, listener, backpressure, waitTimeout)) {
++          return new ImmutablePair<>(streamed, System.currentTimeMillis() - started);
++        }
++        streamed += pending;
++      }
++    } catch (TrinoQueryFailure failure) {
++      throw failure;
++    } catch (RuntimeException e) {
++      if (client.isClientAborted() || listener.isCancelled()) {
++        log.warn("Stream ended by cancellation: {}", e.getMessage());
++        return new ImmutablePair<>(streamed, System.currentTimeMillis() - started);
++      }
++      throw TrinoQueryFailure.unreachable(e);
++    }
++    return new ImmutablePair<>(streamed, System.currentTimeMillis() - started);
++  }
++
++  /** Sends the {@code rows} rows held in {@code root}; false when the client stopped listening
++   * (the statement is then cancelled). */
++  private boolean send(
++      VectorSchemaRoot root,
++      int rows,
++      FlightProducer.ServerStreamListener listener,
++      BackpressureStrategyImpl backpressure,
++      long waitTimeout) {
++    BackpressureStrategy.WaitResult ready = backpressure.waitForListener(waitTimeout);
++    if (ready != BackpressureStrategy.WaitResult.READY) {
++      log.warn("Listener not ready ({}): the statement is cancelled.", ready);
++      client.close();
++      return false;
++    }
++    root.setRowCount(rows);
++    listener.putNext();
++    root.clear();
++    root.allocateNew();
++    return true;
++  }
++
++  private static void failIfFailed(QueryStatusInfo status) throws TrinoQueryFailure {
++    QueryError error = status.getError();
++    if (error != null) {
++      throw TrinoQueryFailure.of(status.getId(), error);
++    }
++  }
++
++  /** Cancels the statement if it is still running. */
++  @Override
++  public void close() {
++    client.close();
++  }
++}
+diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/server/FlightSQLTrinoProxy.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/server/FlightSQLTrinoProxy.java
+index 126c224..ac9dcfb 100644
+--- a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/server/FlightSQLTrinoProxy.java
++++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/server/FlightSQLTrinoProxy.java
+@@ -14,6 +14,7 @@ import ru.raiffeisen.trino.arrow.flight.sql.config.FlightConfiguration;
+ import ru.raiffeisen.trino.arrow.flight.sql.config.ServerConfiguration;
+ import ru.raiffeisen.trino.arrow.flight.sql.config.TrinoConfiguration;
+ import ru.raiffeisen.trino.arrow.flight.sql.connection.TrinoConnectionFactory;
++import ru.raiffeisen.trino.arrow.flight.sql.connection.TrinoStatementClients;
+ import ru.raiffeisen.trino.arrow.flight.sql.logging.LoggingMiddleware;
+ import ru.raiffeisen.trino.arrow.flight.sql.metrics.FlightSqlMetrics;
+ import ru.raiffeisen.trino.arrow.flight.sql.producer.TrinoFlightSQLProducer;
+@@ -51,13 +52,15 @@ public class FlightSQLTrinoProxy {
+     // build and start server:
+     try (final BufferAllocator allocator = new RootAllocator();
+         final TrinoFlightSQLProducer proxy =
+-            new TrinoFlightSQLProducer(trinoConnFactory, flightConfig, allocator);
++            new TrinoFlightSQLProducer(
++                trinoConnFactory, new TrinoStatementClients(trinoConfig), flightConfig, allocator);
+         final FlightServer server =
+             FlightServer.builder(allocator, flightLocation, proxy)
+                 .backpressureThreshold(flightConfig.FLIGHT_BACKPRESSURE_THRESHOLD)
+                 .headerAuthenticator(new GeneratedBearerTokenAuthenticator(authenticator))
+                 .middleware(
+                     FlightServerMiddleware.Key.of("logging"), new LoggingMiddleware.Factory())
++                .middleware(TrinoContextMiddleware.KEY, new TrinoContextMiddleware.Factory())
+                 .build()) {
+       server.start();
+       server.awaitTermination();
+diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/server/TrinoContextMiddleware.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/server/TrinoContextMiddleware.java
+new file mode 100644
+index 0000000..f182875
+--- /dev/null
++++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/server/TrinoContextMiddleware.java
+@@ -0,0 +1,51 @@
++package ru.raiffeisen.trino.arrow.flight.sql.server;
++
++import org.apache.arrow.flight.CallHeaders;
++import org.apache.arrow.flight.CallInfo;
++import org.apache.arrow.flight.CallStatus;
++import org.apache.arrow.flight.FlightProducer;
++import org.apache.arrow.flight.FlightServerMiddleware;
++import org.apache.arrow.flight.RequestContext;
++import ru.raiffeisen.trino.arrow.flight.sql.connection.TrinoStatementContext;
++
++/** Reads a call's {@value TrinoStatementContext#HEADER} header into its statement's context. */
++public final class TrinoContextMiddleware implements FlightServerMiddleware {
++  public static final Key<TrinoContextMiddleware> KEY = Key.of("trino-context");
++
++  private final TrinoStatementContext context;
++
++  private TrinoContextMiddleware(TrinoStatementContext context) {
++    this.context = context;
++  }
++
++  /** The context of the call {@code callContext}. */
++  public static TrinoStatementContext of(FlightProducer.CallContext callContext) {
++    TrinoContextMiddleware middleware = callContext.getMiddleware(KEY);
++    if (middleware == null) {
++      throw new IllegalStateException("TrinoContextMiddleware is not registered on the server");
++    }
++    return middleware.context;
++  }
++
++  public static final class Factory implements FlightServerMiddleware.Factory<TrinoContextMiddleware> {
++    @Override
++    public TrinoContextMiddleware onCallStarted(
++        CallInfo info, CallHeaders incomingHeaders, RequestContext context) {
++      try {
++        return new TrinoContextMiddleware(
++            TrinoStatementContext.parse(incomingHeaders.get(TrinoStatementContext.HEADER)));
++      } catch (IllegalArgumentException e) {
++        throw CallStatus.INVALID_ARGUMENT.withDescription(e.getMessage()).toRuntimeException();
++      }
++    }
++  }
++
++  @Override
++  public void onBeforeSendingHeaders(CallHeaders outgoingHeaders) {}
++
++  @Override
++  public void onCallCompleted(CallStatus status) {}
++
++  @Override
++  public void onCallErrored(Throwable err) {}
++}
+diff --git a/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContextTest.java b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContextTest.java
+new file mode 100644
+index 0000000..882efe2
+--- /dev/null
++++ b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/connection/TrinoStatementContextTest.java
+@@ -0,0 +1,46 @@
++package ru.raiffeisen.trino.arrow.flight.sql.connection;
++
++import org.junit.jupiter.api.Test;
++
++import java.nio.charset.StandardCharsets;
++import java.util.Base64;
++import java.util.Map;
++import java.util.Optional;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertThrows;
++
++/** Gap 3: a statement's session reaches Trino from the Flight call header. */
++class TrinoStatementContextTest {
++
++  private static String header(String json) {
++    return Base64.getEncoder().encodeToString(json.getBytes(StandardCharsets.UTF_8));
++  }
++
++  @Test
++  void parsesSourceCatalogSchemaAndSessionProperties() {
++    TrinoStatementContext context =
++        TrinoStatementContext.parse(
++            header(
++                "{\"source\":\"provisa/org-1\",\"catalog\":\"system\",\"schema\":\"org_1\","
++                    + "\"properties\":{\"query_max_execution_time\":\"120s\",\"retry_policy\":\"TASK\"}}"));
++    assertEquals(Optional.of("provisa/org-1"), context.source());
++    assertEquals(Optional.of("system"), context.catalog());
++    assertEquals(Optional.of("org_1"), context.schema());
++    assertEquals(
++        Map.of("query_max_execution_time", "120s", "retry_policy", "TASK"), context.properties());
++  }
++
++  @Test
++  void absentHeaderIsNoContext() {
++    assertEquals(TrinoStatementContext.NONE, TrinoStatementContext.parse(null));
++  }
++
++  @Test
++  void malformedHeaderIsRefused() {
++    assertThrows(IllegalArgumentException.class, () -> TrinoStatementContext.parse("not base64!"));
++    assertThrows(
++        IllegalArgumentException.class,
++        () -> TrinoStatementContext.parse(header("{\"properties\":{\"a\":1}}")));
++  }
++}
+diff --git a/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumnTest.java b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumnTest.java
+new file mode 100644
+index 0000000..4c79d92
+--- /dev/null
++++ b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumnTest.java
+@@ -0,0 +1,217 @@
++package ru.raiffeisen.trino.arrow.flight.sql.producer;
++
++import io.trino.client.ClientTypeSignature;
++import io.trino.client.ClientTypeSignatureParameter;
++import io.trino.client.Column;
++import io.trino.client.NamedClientTypeSignature;
++import io.trino.client.Row;
++import io.trino.client.RowFieldName;
++import org.apache.arrow.memory.BufferAllocator;
++import org.apache.arrow.memory.RootAllocator;
++import org.apache.arrow.vector.FieldVector;
++import org.apache.arrow.vector.TimeStampMicroVector;
++import org.apache.arrow.vector.VarCharVector;
++import org.apache.arrow.vector.types.TimeUnit;
++import org.apache.arrow.vector.types.pojo.ArrowType;
++import org.apache.arrow.vector.types.pojo.Field;
++import org.junit.jupiter.api.Test;
++
++import java.nio.charset.StandardCharsets;
++import java.util.Arrays;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Optional;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * Expected values are what the Trino Python client (trino.mapper) gives for the same protocol
++ * text, in microseconds since the epoch / midnight: the two readers must agree.
++ */
++class TrinoArrowColumnTest {
++
++  private static ClientTypeSignature type(String raw, ClientTypeSignatureParameter... args) {
++    return new ClientTypeSignature(raw, Arrays.asList(args));
++  }
++
++  private static ClientTypeSignatureParameter precision(long p) {
++    return ClientTypeSignatureParameter.ofLong(p);
++  }
++
++  // -- gap 1: microsecond temporal values, rounded as the Python client rounds ------------------
++
++  @Test
++  void timestampKeepsMicroseconds() {
++    assertEquals(1704164645123456L, TrinoArrowColumn.timestampMicros("2024-01-02 03:04:05.123456"));
++  }
++
++  @Test
++  void timestampBeyondMicrosRoundsHalfEven() {
++    assertEquals(
++        1704164645123456L, TrinoArrowColumn.timestampMicros("2024-01-02 03:04:05.123456500"));
++    assertEquals(
++        1704164645123458L, TrinoArrowColumn.timestampMicros("2024-01-02 03:04:05.123457500"));
++  }
++
++  @Test
++  void timestampRoundingCarriesIntoTheNextSecond() {
++    assertEquals(
++        1735689600000000L, TrinoArrowColumn.timestampMicros("2024-12-31 23:59:59.999999999"));
++  }
++
++  @Test
++  void timestampWithoutFractionAndBeforeTheEpoch() {
++    assertEquals(-1000000L, TrinoArrowColumn.timestampMicros("1969-12-31 23:59:59"));
++  }
++
++  @Test
++  void timeWrapsAtMidnightWhenRoundedUp() {
++    assertEquals(0L, TrinoArrowColumn.timeMicros("23:59:59.9999999"));
++  }
++
++  @Test
++  void timeOfPicosecondPrecision() {
++    assertEquals(3723123457L, TrinoArrowColumn.timeMicros("01:02:03.123456789012"));
++  }
++
++  @Test
++  void zonedTimestampInARegion() {
++    assertEquals(
++        1710052200123000L,
++        TrinoArrowColumn.zonedTimestampMicros("2024-03-10 01:30:00.123 America/New_York"));
++  }
++
++  @Test
++  void zonedTimestampInTheRepeatedHourIsTheEarlierInstant() {
++    assertEquals(
++        1730611800000001L,
++        TrinoArrowColumn.zonedTimestampMicros("2024-11-03 01:30:00.000001 America/New_York"));
++  }
++
++  @Test
++  void zonedTimestampAtAnOffset() {
++    assertEquals(
++        1704144845000006L, TrinoArrowColumn.zonedTimestampMicros("2024-01-02 03:04:05.000006 +05:30"));
++  }
++
++  @Test
++  void dateIsProlepticGregorian() {
++    assertEquals(-354285, TrinoArrowColumn.dateDays("1000-01-01"));
++    assertEquals(-141432, TrinoArrowColumn.dateDays("1582-10-10"));
++  }
++
++  @Test
++  void temporalFieldsAreMicrosecond() {
++    Field ts = TrinoArrowColumn.of(new Column("t", "timestamp(6)", type("timestamp", precision(6)))).field();
++    assertEquals(new ArrowType.Timestamp(TimeUnit.MICROSECOND, null), ts.getType());
++    Field tz =
++        TrinoArrowColumn.of(
++                new Column(
++                    "z",
++                    "timestamp(3) with time zone",
++                    type("timestamp with time zone", precision(3))))
++            .field();
++    assertEquals(new ArrowType.Timestamp(TimeUnit.MICROSECOND, "UTC"), tz.getType());
++    Field time = TrinoArrowColumn.of(new Column("c", "time(6)", type("time", precision(6)))).field();
++    assertEquals(new ArrowType.Time(TimeUnit.MICROSECOND, 64), time.getType());
++  }
++
++  @Test
++  void timestampVectorHoldsTheRoundedValue() {
++    TrinoArrowColumn column =
++        TrinoArrowColumn.of(new Column("t", "timestamp(9)", type("timestamp", precision(9))));
++    try (BufferAllocator allocator = new RootAllocator();
++        FieldVector vector = column.field().createVector(allocator)) {
++      vector.allocateNew();
++      column.write(vector, 0, "2024-01-02 03:04:05.123456500");
++      column.write(vector, 1, null);
++      vector.setValueCount(2);
++      assertEquals(1704164645123456L, ((TimeStampMicroVector) vector).get(0));
++      assertTrue(vector.isNull(1));
++    }
++  }
++
++  // -- gaps 2 and 4: types without an Arrow type, and every column's Trino type ----------------
++
++  @Test
++  void everyFieldNamesItsTrinoType() {
++    Field field =
++        TrinoArrowColumn.of(new Column("n", "decimal(10,2)", type("decimal", precision(10), precision(2))))
++            .field();
++    assertEquals(new ArrowType.Decimal(10, 2, 128), field.getType());
++    assertEquals("decimal(10,2)", field.getMetadata().get(TrinoArrowColumn.TYPE_KEY));
++    assertEquals("arrow", field.getMetadata().get(TrinoArrowColumn.ENCODING_KEY));
++    assertEquals(
++        "{\"rawType\":\"decimal\",\"arguments\":[{\"kind\":\"LONG\",\"value\":10},{\"kind\":\"LONG\",\"value\":2}]}",
++        field.getMetadata().get(TrinoArrowColumn.SIGNATURE_KEY));
++  }
++
++  @Test
++  void scalarWithoutArrowTypeIsItsText() {
++    for (String raw :
++        List.of(
++            "uuid",
++            "ipaddress",
++            "json",
++            "interval day to second",
++            "interval year to month",
++            "time with time zone")) {
++      Field field = TrinoArrowColumn.of(new Column("c", raw, type(raw))).field();
++      assertEquals(ArrowType.Utf8.INSTANCE, field.getType(), raw);
++      assertEquals("text", field.getMetadata().get(TrinoArrowColumn.ENCODING_KEY), raw);
++      assertEquals(raw, field.getMetadata().get(TrinoArrowColumn.TYPE_KEY), raw);
++    }
++  }
++
++  @Test
++  void structuralTypeIsItsProtocolJson() {
++    ClientTypeSignature row =
++        type(
++            "row",
++            ClientTypeSignatureParameter.ofNamedType(
++                new NamedClientTypeSignature(
++                    Optional.of(new RowFieldName("a")), type("bigint"))),
++            ClientTypeSignatureParameter.ofNamedType(
++                new NamedClientTypeSignature(Optional.empty(), type("varbinary"))));
++    TrinoArrowColumn column = TrinoArrowColumn.of(new Column("r", "row(a bigint, varbinary)", row));
++    Field field = column.field();
++    assertEquals(ArrowType.Utf8.INSTANCE, field.getType());
++    assertEquals("json", field.getMetadata().get(TrinoArrowColumn.ENCODING_KEY));
++    // An unnamed field has no fieldName key, as the coordinator writes it.
++    assertEquals(
++        "{\"rawType\":\"row\",\"arguments\":[{\"kind\":\"NAMED_TYPE\",\"value\":{\"fieldName\":{\"name\":\"a\"},"
++            + "\"typeSignature\":{\"rawType\":\"bigint\",\"arguments\":[]}}},{\"kind\":\"NAMED_TYPE\",\"value\":"
++            + "{\"typeSignature\":{\"rawType\":\"varbinary\",\"arguments\":[]}}}]}",
++        field.getMetadata().get(TrinoArrowColumn.SIGNATURE_KEY));
++    try (BufferAllocator allocator = new RootAllocator();
++        FieldVector vector = field.createVector(allocator)) {
++      vector.allocateNew();
++      column.write(
++          vector,
++          0,
++          Row.builder().addField("a", 7L).addUnnamedField(new byte[] {1, 2, 3}).build());
++      vector.setValueCount(1);
++      assertEquals(
++          "[7,\"AQID\"]",
++          new String(((VarCharVector) vector).get(0), StandardCharsets.UTF_8));
++    }
++  }
++
++  @Test
++  void protocolJsonWritesNonFiniteNumbersAsTheProtocolDoes() {
++    Map<Object, Object> map = new LinkedHashMap<>();
++    map.put(1L, Arrays.asList(Double.NaN, Double.POSITIVE_INFINITY, 0.1, null));
++    map.put(2L, List.of(Float.NEGATIVE_INFINITY, 0.1f));
++    assertEquals(
++        "{\"1\":[\"NaN\",\"Infinity\",0.1,null],\"2\":[\"-Infinity\",0.1]}",
++        TrinoArrowColumn.protocolJson(map));
++  }
++
++  @Test
++  void bareNullIsNullType() {
++    Field field = TrinoArrowColumn.of(new Column("x", "unknown", type("unknown"))).field();
++    assertEquals(ArrowType.Null.INSTANCE, field.getType());
++  }
++}
+diff --git a/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailureTest.java b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailureTest.java
+new file mode 100644
+index 0000000..5981952
+--- /dev/null
++++ b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoQueryFailureTest.java
+@@ -0,0 +1,57 @@
++package ru.raiffeisen.trino.arrow.flight.sql.producer;
++
++import io.trino.client.QueryError;
++import org.apache.arrow.flight.FlightRuntimeException;
++import org.apache.arrow.flight.FlightStatusCode;
++import org.junit.jupiter.api.Test;
++
++import java.io.UncheckedIOException;
++
++import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertFalse;
++
++/** Gap 5: Trino's error reaches the Flight client by name, not as a bare INTERNAL. */
++class TrinoQueryFailureTest {
++
++  @Test
++  void userErrorCarriesTrinosNameTypeCodeAndQueryId() {
++    QueryError error =
++        new QueryError(
++            "line 1:15: Catalog 'nope' not found", null, 44, "CATALOG_NOT_FOUND", "USER_ERROR", null, null);
++    FlightRuntimeException flight = TrinoQueryFailure.of("20261102_000001_00001_abcde", error).toFlightError();
++    assertEquals(FlightStatusCode.INVALID_ARGUMENT, flight.status().code());
++    assertEquals("line 1:15: Catalog 'nope' not found", flight.status().description());
++    assertEquals("CATALOG_NOT_FOUND", flight.status().metadata().get(TrinoQueryFailure.ERROR_NAME));
++    assertEquals("USER_ERROR", flight.status().metadata().get(TrinoQueryFailure.ERROR_TYPE));
++    assertEquals("44", flight.status().metadata().get(TrinoQueryFailure.ERROR_CODE));
++    assertEquals(
++        "20261102_000001_00001_abcde", flight.status().metadata().get(TrinoQueryFailure.QUERY_ID));
++    assertEquals("query", flight.status().metadata().get(TrinoQueryFailure.ERROR_KIND));
++  }
++
++  @Test
++  void resourceErrorIsResourceExhausted() {
++    QueryError error =
++        new QueryError(
++            "Query exceeded per-node memory limit",
++            null,
++            131079,
++            "EXCEEDED_LOCAL_MEMORY_LIMIT",
++            "INSUFFICIENT_RESOURCES",
++            null,
++            null);
++    assertEquals(
++        FlightStatusCode.RESOURCE_EXHAUSTED,
++        TrinoQueryFailure.of("q", error).toFlightError().status().code());
++  }
++
++  @Test
++  void unreachableCoordinatorIsUnavailableWithNoErrorName() {
++    FlightRuntimeException flight =
++        TrinoQueryFailure.unreachable(new UncheckedIOException(new java.io.IOException("Connection refused")))
++            .toFlightError();
++    assertEquals(FlightStatusCode.UNAVAILABLE, flight.status().code());
++    assertEquals("connection", flight.status().metadata().get(TrinoQueryFailure.ERROR_KIND));
++    assertFalse(flight.status().metadata().containsKey(TrinoQueryFailure.ERROR_NAME));
++  }
++}
