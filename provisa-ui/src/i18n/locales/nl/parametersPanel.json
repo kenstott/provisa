@@ -13,7 +13,8 @@
       "query_param": "Queryparameter",
       "graphql_arg": "GraphQL-argument",
       "grpc_input": "Veld van het gRPC-verzoek",
-      "query_arg": "Argument van de native query"
+      "query_arg": "Argument van de native query",
+      "column_value": "Kolomwaarde"
     }
   }
 }

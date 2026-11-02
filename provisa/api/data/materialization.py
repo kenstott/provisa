@@ -133,6 +133,10 @@ def is_native_read(table: dict, types: dict[str, str], state: Any) -> bool:
     from provisa.mongodb.pipeline_table import is_pipeline_table
     from provisa.qdrant.table import is_search
 
+    from provisa.generic_sql.table import is_floor_table
+
+    if is_floor_table(table, types, state):
+        return True  # REQ-2191: a Generic SQL table its replica does not serve, read at its floor
     if is_code_table(table, types):
         from provisa.codesource.attach import attached
 
@@ -363,6 +367,21 @@ async def _mat_pipeline_table(
             values_cte_entries,
             search_arguments(table, nf_args),
             lambda: QdrantContract().call(state, search),
+        )
+        return
+    if source_type == "generic_sql":
+        # REQ-2191: the floor -- one SELECT in the source's dialect, its parameters' equalities.
+        from provisa.generic_sql.table import cache_arguments as floor_arguments
+        from provisa.generic_sql.table import read as floor_read
+
+        await _land_per_statement(
+            tn,
+            table,
+            state,
+            cache_rewrites,
+            values_cte_entries,
+            floor_arguments(table, nf_args),
+            lambda: floor_read(state, table, nf_args, statement),
         )
         return
     if source_type == "cosmosdb":

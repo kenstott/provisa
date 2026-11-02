@@ -2987,7 +2987,7 @@ async def _introspect_available_columns(
                 source_id, source_type, schema_name, table_name, state.source_pools
             )
         pk_names = set(native_pks or [])
-        return [
+        listed = [
             AvailableColumnType(
                 name=name,
                 data_type=typing.data_type,
@@ -3000,6 +3000,23 @@ async def _introspect_available_columns(
             )
             for name, typing in native
         ]
+        if source_type == "generic_sql":
+            # REQ-2191: each column offered as an optional column_value parameter, the floor's
+            # equality filter; a steward marks which are required.
+            from provisa.generic_sql.table import parameters_of
+
+            listed += [
+                AvailableColumnType(
+                    name=p["name"],
+                    data_type=p["data_type"],
+                    comment=None,
+                    path=p["path"],
+                    native_filter_type=p["native_filter_type"],
+                    native_filter_required=p["native_filter_required"],
+                )
+                for p in parameters_of([{"name": c.name, "data_type": c.data_type} for c in listed])
+            ]
+        return listed
     # REQ-1912: the engine lists only a source it holds a live attach of. With none, a table the
     # driver listed and found no columns for has none to report; a source the driver cannot list
     # at all is refused, naming it.

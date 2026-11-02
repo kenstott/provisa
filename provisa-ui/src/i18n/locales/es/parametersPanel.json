@@ -13,7 +13,8 @@
       "query_param": "Parámetro de consulta",
       "graphql_arg": "Argumento de GraphQL",
       "grpc_input": "Campo de la solicitud gRPC",
-      "query_arg": "Argumento de la consulta nativa"
+      "query_arg": "Argumento de la consulta nativa",
+      "column_value": "Valor de columna"
     }
   }
 }

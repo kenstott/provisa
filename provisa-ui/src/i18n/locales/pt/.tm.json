@@ -9105,5 +9105,6 @@
   "pt/serverErrors.json::serverErrors.schema.generic_sql_jdbc_refused": "Source {{source}}: a customer's JDBC driver runs as code in Provisa's own JVM, which only a self-hosted install allows.",
   "pt/genericSqlFields.json::genericSqlFields.jdbcDriverJar": "JDBC driver jar",
   "pt/genericSqlFields.json::genericSqlFields.jdbcDriverJarHint": "The driver's jar file. Self-hosted installs only.",
-  "pt/genericSqlFields.json::genericSqlFields.jdbcDriverClass": "Driver class"
+  "pt/genericSqlFields.json::genericSqlFields.jdbcDriverClass": "Driver class",
+  "pt/parametersPanel.json::parametersPanel.kind.column_value": "Column value"
 }

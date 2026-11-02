@@ -1225,7 +1225,9 @@ class Column(
     # "query_param" (an OpenAPI operation), "graphql_arg" (a remote GraphQL field's argument),
     # "grpc_input" (a gRPC request's field), "query_arg" (an argument of the table's native
     # query: a MongoDB pipeline, a Cosmos DB query), "partition_key" (a Cosmos DB container's
-    # partition key, REQ-1982).
+    # partition key, REQ-1982), "column_value" (a real column of the table, given by equality,
+    # that narrows the read to the rows having that value: a Generic SQL source's floor,
+    # REQ-2191).
     native_filter_type: str | None = None
     # Whether the source cannot be read without a value for this parameter, as the source's own
     # description says (an OpenAPI path parameter or one marked required, a GraphQL argument
