@@ -359,6 +359,17 @@ def test_a_generic_sql_url_is_connected_to_at_the_checked_address(
     assert created == [_PUBLIC]
 
 
+def test_a_sandboxs_generic_sql_url_is_held_to_its_checked_address(in_sandbox, public_names):
+    """REQ-2191: a network URL is pinnable -- its driver connects at the checked address."""
+    from provisa.core.models import Source, SourceType
+
+    hints = {"url": "postgresql+psycopg2://db.example.com:5432/d", "sql_dialect": "postgres"}
+    fields = {"host": "", "port": 0, "federation_hints": hints}
+    assert egress.require_connectable(fields, "generic_sql") == _PUBLIC
+    source = Source(id="g", type=SourceType.generic_sql, federation_hints=hints)
+    assert egress.pinned_source(source) is source  # the driver pins; the row is left as written
+
+
 def test_a_generic_sql_url_on_a_private_address_is_refused(in_sandbox, monkeypatch):
     from provisa.executor import pool as pool_mod
 

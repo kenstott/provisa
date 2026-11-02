@@ -21,10 +21,12 @@ file:// you are allowed". A DuckDB file is opened there with DuckDB's external a
 statement on it reaches no other file and no network address of the server's.
 
 A network URL's host is checked where every source's is (``provisa.security.sandbox_egress``) and
-connected to at the address checked. For an org whose sources are so held, the URL carries no
-query parameters: a driver option can name another address than the URL's host (psycopg2 connects
-to a ``?host=`` instead of it), or a file of the server's own (``sslkey``, ``read_default_file``), so
-until which options such an org may give is decided, it may give none.
+connected to at the address checked. For an org whose sources are so held, the URL carries only
+the driver options of :data:`HELD_ORG_OPTIONS`: a driver option can name another address than the
+URL's host (psycopg2 connects to a ``?host=`` instead of it), a file of the server's own
+(``sslkey``, ``read_default_file``), a service, an init command or a local file load. The
+maintainer, 2026-11-02: a per-dialect allowlist, anything else refused by name; a self-hosted
+server and the deployment's own org give any option their driver takes.
 """
 
 # Requirements: REQ-2191, REQ-1997, REQ-2006
@@ -54,12 +56,26 @@ class MissingDialect(RuntimeError):
         self.missing = missing
 
 
-class DriverOptionsRefused(PermissionError):
-    """A held org's network URL that carries driver options (module docstring)."""
+#: The driver options a held org's URL may give, by the dialect its scheme names; none for any
+#: other dialect (module docstring).
+HELD_ORG_OPTIONS: dict[str, frozenset[str]] = {
+    "postgresql": frozenset(
+        {"sslmode", "connect_timeout", "application_name", "target_session_attrs"}
+    ),
+    "mysql": frozenset({"ssl_mode", "connect_timeout", "charset"}),
+    "mssql": frozenset({"driver", "Encrypt", "TrustServerCertificate"}),
+}
 
-    def __init__(self, options: list[str]) -> None:
+
+class DriverOptionsRefused(PermissionError):
+    """A held org's URL that carries a driver option it may not give (module docstring)."""
+
+    def __init__(self, backend_name: str, options: list[str]) -> None:
+        allowed = sorted(HELD_ORG_OPTIONS.get(backend_name, frozenset()))
         super().__init__(
-            f"this org's Generic SQL URL may carry no driver options; it gives {', '.join(options)}"
+            f"this org's {backend_name} URL may not give the driver option "
+            f"{', '.join(options)}; "
+            + (f"it may give {', '.join(allowed)}" if allowed else "it may give none")
         )
         self.options = options
 
@@ -124,8 +140,12 @@ def check(url: str) -> None:
 def _no_options_when_held(parsed: "URL") -> None:
     from provisa.security.sandbox_egress import held_here
 
-    if parsed.query and held_here():
-        raise DriverOptionsRefused(sorted(parsed.query))
+    if not parsed.query or not held_here():
+        return
+    name = parsed.get_backend_name()
+    refused = sorted(set(parsed.query) - HELD_ORG_OPTIONS.get(name, frozenset()))
+    if refused:
+        raise DriverOptionsRefused(name, refused)
 
 
 def destination(url: str) -> tuple[str, int | None] | None:

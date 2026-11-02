@@ -141,7 +141,7 @@ def test_on_a_server_of_many_organizations_only_the_org_files_area_may_be_named(
     gurl.check("sqlite:////data/shop.db")
 
 
-def test_a_held_orgs_url_carries_no_driver_options(monkeypatch):
+def test_a_held_orgs_url_gives_only_the_allowed_driver_options(monkeypatch):
     """A driver option can name another address than the URL's host: psycopg2 connects to a
     ``?host=`` instead of it, past the check the URL's host was given."""
     from sqlalchemy.dialects.postgresql.psycopg2 import PGDialect_psycopg2
@@ -151,11 +151,28 @@ def test_a_held_orgs_url_carries_no_driver_options(monkeypatch):
     _, kwargs = PGDialect_psycopg2().create_connect_args(make_url(url))
     assert kwargs["host"] == "10.0.0.5"
     monkeypatch.setattr("provisa.security.sandbox_egress.held", lambda _org: True)
-    with pytest.raises(gurl.DriverOptionsRefused, match="host, sslmode"):
+    with pytest.raises(gurl.DriverOptionsRefused, match="option host;") as refused:
         gurl.check(url)
+    assert refused.value.options == ["host"]  # sslmode is one it may give
     with pytest.raises(gurl.DriverOptionsRefused):
         gurl.connection_url(url, "u", "p")
     gurl.check("postgresql+psycopg2://db.example.com/sales")
+    gurl.check(
+        "postgresql://db.example.com/sales?sslmode=verify-full&connect_timeout=5"
+        "&application_name=provisa&target_session_attrs=read-write"
+    )
+    gurl.check("mysql+pymysql://db.example.com/sales?ssl_mode=REQUIRED&charset=utf8mb4")
+    gurl.check("mssql+pyodbc://db.example.com/sales?driver=ODBC+Driver+18&Encrypt=yes")
+    for refused_url, option in [
+        ("mysql+pymysql://db.example.com/s?local_infile=1", "local_infile"),
+        ("mysql+mysqldb://db.example.com/s?read_default_file=/etc/my.cnf", "read_default_file"),
+        ("postgresql://db.example.com/s?sslkey=/etc/key", "sslkey"),
+        ("postgresql://db.example.com/s?service=prod", "service"),
+        ("mssql+pyodbc://db.example.com/s?odbc_connect=Server%3D10.0.0.5", "odbc_connect"),
+        ("oracle+oracledb://db.example.com/s?dsn=x", "dsn"),
+    ]:
+        with pytest.raises(gurl.DriverOptionsRefused, match=option):
+            gurl.check(refused_url)
     # An org whose sources are not held gives the options its driver takes.
     monkeypatch.setattr("provisa.security.sandbox_egress.held", lambda _org: False)
     gurl.check(url)

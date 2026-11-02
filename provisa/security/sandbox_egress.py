@@ -375,7 +375,11 @@ def pinned_address(server_address: str, org_id: str | None = None) -> tuple[str,
 #: Source types whose connection, on every engine, takes its network address from ``host`` alone.
 #: (ClickHouse is not one: the DuckDB engine reaches it over HTTP, whose redirects it follows
 #: itself.)
-PINNABLE_TYPES = frozenset({"postgresql", "mysql", "mariadb", "sqlserver", "oracle", "firebird"})
+#: A Generic SQL source's network URL is one (REQ-2191): its driver connects at the checked
+#: address in place of the URL's host, and a held org's URL carries no option naming another.
+PINNABLE_TYPES = frozenset(
+    {"postgresql", "mysql", "mariadb", "sqlserver", "oracle", "firebird", "generic_sql"}
+)
 
 
 class UnpinnableDestinationRefused(PermissionError):
@@ -426,6 +430,17 @@ def pin_host(host: str, port: int | None, source_type: str, org_id: str | None =
     return host
 
 
+def _pinnable_destination(fields: dict, source_type: str) -> list[tuple[str, int | None]]:
+    """The destination a pinnable source's connection takes its address from: its ``host``, or
+    a Generic SQL source's URL host (REQ-2191)."""
+    from provisa.generic_sql import SOURCE_TYPE as GENERIC_SQL
+
+    if source_type == GENERIC_SQL:
+        url = _sql_url_destination(fields.get("federation_hints"))
+        return [] if url is None else [url]
+    return destinations({"host": fields.get("host"), "port": fields.get("port")})
+
+
 def require_connectable(
     fields: dict, source_type: str, org_id: str | None = None, *, source_id: str | None = None
 ) -> str | None:
@@ -446,7 +461,7 @@ def require_connectable(
     undeclared = [d for d in destinations(fields) if not _declared(org, *d)]
     if not undeclared:
         return None
-    host_only = destinations({"host": fields.get("host"), "port": fields.get("port")})
+    host_only = _pinnable_destination(fields, source_type)
     if source_type not in PINNABLE_TYPES or undeclared != host_only:
         if not confined(org):
             # Not a sandbox: checked here and at each connection, not pinned (module docstring).
@@ -469,7 +484,8 @@ def pinned_source(source: object, org_id: str | None = None) -> object:
         org,
         source_id=source.id,  # type: ignore[attr-defined]
     )
-    if address is None:
+    if address is None or source_type == "generic_sql":
+        # REQ-2191: a Generic SQL source's driver connects at the checked address itself.
         return source
     return source.model_copy(update={"host": address})  # type: ignore[attr-defined]
 
