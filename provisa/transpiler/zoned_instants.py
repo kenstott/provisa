@@ -44,6 +44,7 @@ from provisa.core.session_time_zone import (
 )
 
 _MARKED = "provisa_"
+_TEXT_CALLS = frozenset({"replace", "regexp_replace", "substr", "trim", "lower", "upper"})
 _NO_INSTANT = (
     exp.Literal,
     exp.Null,
@@ -161,7 +162,8 @@ def _may_be_instant(value: exp.Expr) -> bool:
     if isinstance(value, exp.Cast):
         return value.to.is_type(exp.DataType.Type.TIMESTAMPTZ)
     if isinstance(value, exp.Anonymous):
-        return not str(value.this).lower().startswith(_MARKED)
+        name = str(value.this).lower()
+        return not (name.startswith(_MARKED) or name in _TEXT_CALLS)
     if isinstance(value, exp.Case):
         taken = [branch.args["true"] for branch in value.args["ifs"]] + [value.args.get("default")]
         return any(_may_be_instant(branch) for branch in taken if branch is not None)
