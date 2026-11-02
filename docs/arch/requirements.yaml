@@ -75791,7 +75791,11 @@
     OAuth redirects, sessions, invites). A data node still checks each request''s credentials itself (tokens,
     pgwire passwords, API keys) against the shared config, so a query never waits on a control node. [END
     SUPERSEDED BLOCK] (Amended 2026-11-02, Withdrawn:) Maintainer 2026-11-02: the existing modes stand as
-    written above (every, query, coordinator); the amendments of this date are withdrawn.'
+    written above (every, query, coordinator); the amendments of this date are withdrawn. (Amended 2026-11-02,
+    Only the coordinator serves the UI:) Maintainer 2026-11-02: only a coordinator (or an every process)
+    serves the UI and the UI''s backend (the admin API the UI calls). A query node serves data requests
+    only: a UI or admin route reaching a query node is refused by name, saying to use the coordinator''s
+    address, the mirror of a coordinator refusing data requests.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
