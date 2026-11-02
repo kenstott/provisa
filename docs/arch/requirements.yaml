@@ -75728,7 +75728,14 @@
     alive; a node that stops drops out. Everywhere a client is told where to connect (the UI''s connection
     details, connection strings, the HTTP surface URLs, MCP settings, Flight''s GetFlightInfo endpoints),
     the control plane gives the data node for the org''s region. In every mode the one process advertises
-    itself.'
+    itself. (Amended 2026-11-02, Each plane scales behind its own load balancer:) Maintainer 2026-11-02:
+    control nodes and data nodes each scale independently behind a load balancer. Control nodes hold no
+    state of their own beyond what the shared control-plane store holds, so any control node answers any
+    plan call, and a model change made through one invalidates what the others cached. A plan is signed
+    with a key every node shares, so any data node verifies it. The address the control plane advertises
+    is the data plane load balancer for the org''s region; long-lived connections (pgwire, Bolt, gRPC, Flight)
+    are balanced at TCP level and stay on one data node. Background work is claimed through the shared store
+    so it runs once, not once per control node.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
