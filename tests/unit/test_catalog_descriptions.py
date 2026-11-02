@@ -135,7 +135,11 @@ class TestTheSeedCarriesTheDescriptions:
                 for c in exposed.get(name, ["id"])
             ]
 
+        async def _reflect_many(names, schema=None):
+            return {name: await _reflect(name, schema) for name in names}
+
         conn.reflect_columns = AsyncMock(side_effect=_reflect)
+        conn.reflect_columns_many = AsyncMock(side_effect=_reflect_many)
         asyncio.run(seeder(conn, **kw))
         return (
             [c.args[1] for c in conn.upsert_returning.await_args_list],

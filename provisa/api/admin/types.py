@@ -983,6 +983,9 @@ class RoleType:  # REQ-042
     # REQ-2155: what the role holds -- its own capabilities and every ancestor's; null as
     # capabilities is. The client builds the caller's rights from it.
     effective_capabilities: list[str] | None = None
+    # REQ-2155: the data domains and regions it holds, what its children may be given.
+    effective_domains: list[str] | None = None
+    effective_residency_values: list[str] | None = None
     rate_limit: RoleRateLimitType | None = None  # REQ-1174
     parents: list[str] = strawberry.field(default_factory=list)  # REQ-2155
     # REQ-2155: a standard role is Provisa's and locked: extended with child roles, never edited.

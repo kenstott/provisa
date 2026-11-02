@@ -738,7 +738,9 @@ async def _save_role(
     # REQ-042/REQ-1337: the same two refusals the REST surface makes — an unknown capability,
     # and a platform right (the role's own or an ancestor's) defined by a caller who is not a
     # platform administrator.
-    from provisa.api.admin._platform_guard import role_definition_problem
+    from provisa.api.admin._platform_guard import role_definition_problem, role_narrowing_problem
+    from provisa.core.repositories import domain as domain_repo
+    from provisa.security import domain_tree
     from provisa.security.inheritance import effective_capabilities
 
     inherited = sorted({c for p in parents for c in effective_capabilities(p, existing)})
@@ -749,6 +751,18 @@ async def _save_role(
         role_id=input.id,
         domain_access=input.domain_access,
     )
+    if definition_problem is None:  # REQ-2155: a right no parent holds, refused by name
+        async with pool.acquire() as conn:
+            domains = await domain_repo.list_all(cast("Connection", conn))
+        definition_problem = role_narrowing_problem(
+            input.id,
+            parents,
+            input.capabilities,
+            input.domain_access,
+            input.residency_values,
+            existing,
+            domain_tree.parent_map(domains),
+        )
     if definition_problem is not None:
         return MutationResult(
             success=False,

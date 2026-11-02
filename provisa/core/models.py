@@ -2205,8 +2205,8 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     capabilities: list[str]
     domain_access: list[str]
     rate_limit: RoleRateLimit | None = None  # REQ-369
-    # REQ-2155: the roles this one inherits from, in order; its capabilities are the union of its
-    # own and every ancestor's (security.inheritance).
+    # REQ-2155: the roles this one inherits from, in order; what it holds is what it is given
+    # intersected with the union of what they hold (security.inheritance.effective_rights).
     parents: list[str] = Field(default_factory=list)
     relationship_guard: bool = (
         True  # when False (+ SQL opt-out), V002 join approval check is skipped
@@ -2245,12 +2245,10 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
 
 
 def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042, REQ-2155
-    """Flatten the inherited role hierarchy: each role with its ancestors' capabilities and
-    domain_access unioned in, and each property (max_rows, session values) set by the nearest
-    ancestor that declares it -- the one resolution the runtime build applies
+    """Flatten the inherited role hierarchy: each role with what it holds, its rights intersected
+    with the union of its parents', and each property (max_rows, session values) set by the
+    nearest ancestor that declares it -- the one resolution the runtime build applies
     (security.inheritance.flatten_role_dicts). Refuses an inheritance cycle by name (REQ-1677).
-
-    Returns new Role objects with inherited permissions merged in.
     """
     from provisa.security.inheritance import flatten_role_dicts
 
@@ -3737,9 +3735,10 @@ class ProvisaConfig(BaseModel):
     def _roles_list_a_domain(self, info: ValidationInfo) -> "ProvisaConfig":
         """A role is always one or more domains, or all (``rights.role_domain_problem``).
 
-        Judged on the role's effective list — its own plus what a parent IN THIS CONFIG hands
-        down. An empty list reads no data, so it fails the load naming the role rather than
-        loading a role that silently reaches nothing.
+        An empty list reads no data, so it fails the load naming the role rather than loading a
+        role that silently reaches nothing. A role with parents is held to the form's rule: a
+        right no parent holds fails the load by name (REQ-2155), judged where every parent is a
+        role of this config or a standard role.
 
         A configuration a file or an apply gives is judged here. The model the store already holds
         (``STORED_MODEL`` in the validation context, ``config_loader.parse_store_raw``) is not: the
@@ -3750,27 +3749,41 @@ class ProvisaConfig(BaseModel):
         """
         if (info.context or {}).get(STORED_MODEL):
             return self
+        from provisa.core.db import STANDARD_ROLES, standard_role_dicts
+        from provisa.security import domain_tree
+        from provisa.security.inheritance import parent_map, right_not_in_parents, role_chain
         from provisa.security.rights import role_domain_problem
 
-        by_id = {r.id: r for r in self.roles}
+        rows = {
+            **{r.id: r.model_dump() for r in self.roles},
+            **{r["id"]: r for r in standard_role_dicts()},
+        }
+        domain_parents = domain_tree.parent_map(d.model_dump() for d in self.domains)
+        parents = parent_map(rows.values())
         for role in self.roles:
-            # Walk the ancestors here rather than through flatten_roles: that refuses an
-            # inheritance cycle, which is its own rule with its own error (REQ-1677), raised
-            # where the roles are flattened. A cycle simply ends this walk.
-            # REQ-2155: capabilities are inherited, reach is the role's own.
-            capabilities: set[str] = set()
-            seen: set[str] = set()
-            pending: list[Role] = [role]
-            while pending:
-                current = pending.pop()
-                if current.id in seen:
-                    continue
-                seen.add(current.id)
-                capabilities.update(current.capabilities)
-                pending.extend(by_id[p] for p in current.parents if p in by_id)
-            problem = role_domain_problem(role.id, capabilities, set(role.domain_access))
+            problem = role_domain_problem(role.id, role.capabilities, set(role.domain_access))
             if problem is not None:
                 raise ValueError(problem)
+            if role.id in STANDARD_ROLES:
+                continue
+            try:
+                chain = role_chain(role.id, parents)
+            except ValueError:
+                continue  # a cycle has its own rule and error, where roles flatten (REQ-1677)
+            if not set(chain) <= set(rows):
+                continue
+            refused = right_not_in_parents(
+                role.id,
+                role.parents,
+                role.capabilities,
+                role.domain_access,
+                role.residency_values,
+                [rows[rid] for rid in chain],
+                domain_parents,
+            )
+            if refused is not None:
+                kind, right, why = refused
+                raise ValueError(f"Role {role.id!r} cannot hold {kind} {right!r}: {why}")
         return self
 
     @model_validator(mode="after")

@@ -281,6 +281,7 @@ class _Admin:
             "org_admin": {
                 "id": "org_admin",
                 "capabilities": ["query_development"],
+                "effectiveCapabilities": ["query_development"],
                 "domainAccess": ["*"],
                 "parents": [],
             }

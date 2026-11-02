@@ -133,7 +133,13 @@ from provisa.security.effective_rights import data_view_from_state  # noqa: E402
 def _state():
     return SimpleNamespace(
         tables=TABLES,
-        roles={"clinical_reviewer": {"id": "clinical_reviewer", "domain_access": ["claims"]}},
+        roles={
+            "clinical_reviewer": {
+                "id": "clinical_reviewer",
+                "capabilities": ["usage"],
+                "domain_access": ["claims"],
+            }
+        },
         role_chains={"clinical_reviewer": CHAIN},
         meta_roles={},
         meta_qualifiers={},
@@ -186,9 +192,13 @@ from provisa.security.effective_rights import table_access  # noqa: E402
 def _two_role_state():
     state = _state()
     state.roles = {
-        "clinical_reviewer": {"id": "clinical_reviewer", "domain_access": ["claims"]},
-        "steward": {"id": "steward", "domain_access": ["claims"]},
-        "viewer": {"id": "viewer", "domain_access": []},
+        "clinical_reviewer": {
+            "id": "clinical_reviewer",
+            "capabilities": ["usage"],
+            "domain_access": ["claims"],
+        },
+        "steward": {"id": "steward", "capabilities": ["usage"], "domain_access": ["claims"]},
+        "viewer": {"id": "viewer", "capabilities": ["usage"], "domain_access": []},
     }
     state.role_chains = {"clinical_reviewer": CHAIN, "steward": ["steward"], "viewer": ["viewer"]}
     state.rls_contexts = {}
@@ -382,7 +392,7 @@ def test_a_meta_role_reads_the_union_with_each_member_s_mask_and_the_or_of_their
     role = lambda rid: {  # noqa: E731
         "id": rid,
         "description": rid,
-        "capabilities": [],
+        "capabilities": ["usage"],
         "domain_access": ["sales"],
         "max_rows": None,
         "rate_limit": None,

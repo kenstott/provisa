@@ -88,7 +88,8 @@ async def test_an_assigned_role_with_write_calls_and_builds_sql():
 
 @pytest.mark.asyncio
 async def test_unauthorized_write_is_403():
-    st = _state(role_caps=[], visible_to=["ops"])  # no WRITE cap
+    # A role holding capabilities but not WRITE; one holding none runs what names it (REQ-2155).
+    st = _state(role_caps=[Capability.USAGE.value], visible_to=["ops"])
     with pytest.raises(HTTPException) as ei:
         await invoke_tracked_function("createOrder", {}, st, "ops")
     assert ei.value.status_code == 403

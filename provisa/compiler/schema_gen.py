@@ -97,8 +97,12 @@ from provisa.compiler.schema_inputs import (
 )
 
 
-def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-039, REQ-363
-    """Filter tables by role's domain access. Build per-table metadata."""
+def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
+    si: SchemaInput, *, for_sql: bool = False
+) -> list[_TableInfo]:
+    """Filter tables by role's domain access. Build per-table metadata. ``for_sql`` keeps meta's
+    default tier, which a role with no meta grant reads on SQL alone (REQ-1132): the other surfaces
+    describe what it reads of its data, and to it meta is no domain."""
     role = si.role
     # A ROLE's domain_access: it reaches the domains it lists, "*" is the only way to say all, an
     # empty list is no domains, and a system domain is reached by its capability
@@ -142,6 +146,8 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:  # REQ-008, REQ-
         # A table outside reach is still served when it publishes a column to the role
         # (REQ-1959) — with its PUBLIC columns only, which column_served decides below.
         reaches = _reaches(table) if class_served is None else bool(class_served)
+        if table["domain_id"] == META_DOMAIN_ID and not reaches and not for_sql:
+            continue
         if not reaches and not served_across_domains(role, table):
             continue
 

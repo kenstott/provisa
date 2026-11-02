@@ -275,6 +275,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         has_capability,
         reaches_domain,
         served_across_domains,
+        unlisted_columns,
     )
 
     from provisa.transpiler.metadata_settings import scope_ids_sql
@@ -339,6 +340,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                 for c in cols
                 if _has_view_gov or c["column_name"] not in GOVERNANCE_META_COLUMNS
             )
+            # REQ-1132: read with no meta grant, as a column published across domains is.
+            if not reaches_domain(role["domain_access"], META_DOMAIN_ID) and served_across_domains(
+                {"id": role_id}, tbl
+            ):
+                _public.add(table_id)
         else:
             # ONE rule with the schema build (security.rights.column_served): the column's grant
             # — empty is everyone, "*", or the role; an explicit grant only in a lockdown domain
@@ -443,24 +449,40 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     from provisa.compiler.naming import apply_sql_name as _sql_name
     from provisa.compiler.sql_literals import sql_literal
 
+    outside = set(ctx.columns_outside_relation) | unlisted_columns(role, tables)
     for view, columns in (
         ("catalog_pg_attribute", "CAST(attrelid AS BIGINT), CAST(attname AS TEXT)"),
         ("is_columns", "CAST(provisa_table_id AS BIGINT) + 16384, CAST(column_name AS TEXT)"),
     ):
-        if not ctx.columns_outside_relation:
+        if not outside:
             break
         pairs = ", ".join(
             f"({16384 + table_id}, "
             + sql_literal(ctx.physical_to_sql.get((table_id, name)) or _sql_name(name), "postgres")
             + ")"
-            for table_id, name in sorted(ctx.columns_outside_relation)
+            for table_id, name in sorted(outside)
         )
         for tm in ctx.tables.values():
             if getattr(tm, "domain_id", None) != META_DOMAIN_ID or tm.table_name != view:
                 continue
             existing = gov.rls_rules.get(tm.table_id)
-            outside = f"({columns}) NOT IN ({pairs})"
-            gov.rls_rules[tm.table_id] = f"({existing}) AND {outside}" if existing else outside
+            out = f"({columns}) NOT IN ({pairs})"
+            gov.rls_rules[tm.table_id] = f"({existing}) AND {out}" if existing else out
+    # REQ-2153: and a listed table's other columns are named to no role that only lists it.
+    unlisted = unlisted_columns(role, tables)
+    if unlisted:
+        pairs = ", ".join(
+            f"({table_id}, {sql_literal(name, 'postgres')})" for table_id, name in sorted(unlisted)
+        )
+        for tm in ctx.tables.values():
+            if getattr(tm, "domain_id", None) != META_DOMAIN_ID or tm.table_name not in (
+                "table_columns_meta",
+                "column_details",
+            ):
+                continue
+            existing = gov.rls_rules.get(tm.table_id)
+            out = f"(table_id, column_name) NOT IN ({pairs})"
+            gov.rls_rules[tm.table_id] = f"({existing}) AND {out}" if existing else out
 
     # REQ-1593, REQ-2163: the ontology schema's definition views answer what the glossary API
     # does -- a term is read where glossary.readable_term admits it -- by the same WHERE-injection.

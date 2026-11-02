@@ -58686,7 +58686,12 @@
     shows only what the caller is served: a column the caller''s roles are not granted (REQ-2153/2154) is
     absent from the Columns sheet and from every other sheet that names it, a masked column shows its masked
     form wherever a value or statistic would reveal it, profiling figures follow the column''s grant and
-    mask, and a product, contract or term outside the caller''s domains is absent, as for every other sheet.'
+    mask, and a product, contract or term outside the caller''s domains is absent, as for every other sheet.
+    (Amended 2026-10-29, The picker roster in the shared sandbox lists only the caller:) Maintainer 2026-11-02:
+    the author and expert pickers read the org''s roster through a curator''s own right (glossary_rw), not
+    the team page''s user_management. In the shared "Try it Out" sandbox org every visitor is a curator,
+    so there the roster lists only the caller; other visitors'' names and emails are never shown. Real orgs
+    and per-visitor demo sandboxes list the org''s roster.'
   tests:
   - tests/unit/test_model_report_workbook.py
   - tests/integration/test_model_report_download.py
@@ -92561,5 +92566,33 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-2192
   - REQ-062
+  stakeholders:
+  - data-engineer
+- id: REQ-2194
+  value: pgwire encodes result rows in Rust, straight from Arrow batches, for every type it serves.
+  status: proposed
+  target: 2026-Q4
+  group: 8. Client Access & Protocols
+  category: JDBC/ODBC Integration
+  feature: postgres-wire-protocol-client-drivers
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-02: the Rust DataRow encoder (experiment J483: 14.5x text, 40.8x binary
+    on 5M rows) replaces the Python path, and its blockers have to be resolved: named time zones, nanosecond
+    units, date64, every type pgwire serves (inet, cidr, money, geometric, range, tsvector, xml, catalog
+    types and their arrays), the raw DataRow passthrough and the row coercers. Arrow batches go to the
+    encoder with no Python row objects in between. Answers are what PostgreSQL 17 sends; float cells are
+    checked within a tolerance.'
+  scenario: 'Given a statement whose result holds every type pgwire serves, including timestamptz in a
+    named zone
+
+    When a client reads it over pgwire in text and in binary format
+
+    Then every row arrives as PostgreSQL 17 sends it, floats within one part in 10^14
+
+    And no Python row object is built for the result'
+  related_reqs:
+  - REQ-2167
+  - REQ-2171
   stakeholders:
   - data-engineer

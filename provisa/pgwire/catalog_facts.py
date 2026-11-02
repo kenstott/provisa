@@ -21,7 +21,13 @@ import time
 from typing import Any
 
 from provisa.compiler.naming import apply_sql_name
-from provisa.security.rights import SQL_CATALOG_TABLES, Capability, has_capability
+from provisa.security.rights import (
+    SQL_CATALOG_TABLES,
+    SYSTEM_DOMAINS,
+    Capability,
+    has_capability,
+    reaches_domain,
+)
 from provisa.transpiler.metadata_facts import CatalogFacts, catalog_facts, role_privileges
 from provisa.transpiler.metadata_oids import metric_oid, table_oid
 
@@ -52,10 +58,17 @@ def role_facts(role_id: str, state: Any) -> CatalogFacts:
     if ctx is None:
         return catalog_facts(role_id, {})
     raw_tables: list[dict] = state.schema_build_cache.get("tables") or []
+    role = state.roles.get(role_id)
+    # REQ-1132: a catalog function answers for a role's non-system grants, and for a system domain
+    # only where the role holds it: meta's default tier is read, and is not among its tables.
     served = {
         tm.table_id
         for tm in ctx.tables.values()
         if (tm.domain_id, tm.original_table_name or tm.table_name) not in SQL_CATALOG_TABLES
+        and (
+            tm.domain_id not in SYSTEM_DOMAINS
+            or reaches_domain(role["domain_access"], tm.domain_id)
+        )
     }
     write_grants = {
         table["id"]: {
@@ -66,7 +79,6 @@ def role_facts(role_id: str, state: Any) -> CatalogFacts:
         for table in raw_tables
     }
     write_ops = {table["id"]: frozenset(table.get("write_ops") or ()) for table in raw_tables}
-    role = state.roles.get(role_id)
     can_write = role is not None and has_capability(role, Capability.WRITE)
     config = getattr(state, "config", None)
     metrics = getattr(config, "metrics", None)
