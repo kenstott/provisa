@@ -179,9 +179,26 @@ _mcp_scheme() {
   fi
 }
 
+# Print one line per query surface the backend serves (the startup banner). The HTTP paths are
+# system_health.HTTP_SURFACES (tests/unit/test_startup_banner_surfaces.py holds them equal); a
+# listener whose port is 0 or unset is not started, so it has no line.
+print_query_surfaces() {
+  echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
+  [ "${PROVISA_BOLT_PORT:-0}" != 0 ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
+  echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
+  echo "  graphql: http://localhost:$PROVISA_API_PORT/data/graphql  (GraphQL over HTTP; role via sign-in or X-Provisa-Role)"
+  echo "  cypher:  http://localhost:$PROVISA_API_PORT/data/cypher  (Cypher over HTTP; role via sign-in or X-Provisa-Role)"
+  echo "  rest:    http://localhost:$PROVISA_API_PORT/data/rest  (REST, a path per table; role via sign-in or X-Provisa-Role)"
+  echo "  jsonapi: http://localhost:$PROVISA_API_PORT/data/jsonapi  (JSON:API, a path per table; role via sign-in or X-Provisa-Role)"
+  echo "  odata:   http://localhost:$PROVISA_API_PORT/data/odata  (OData service root; role via sign-in or X-Provisa-Role)"
+  echo "  grpc:    localhost:$GRPC_PORT  (gRPC; role via bearer token or x-provisa-role metadata)"
+  echo "  flight:  grpc://localhost:$FLIGHT_PORT  (Arrow Flight; role via bearer token or x-provisa-role header)"
+  print_mcp_info
+}
+
 # Print the MCP connect line + (under WSL) the explanation the WSL/Windows split demands.
 print_mcp_info() {
-  [ -n "${PROVISA_MCP_PORT:-}" ] || return 0
+  [ "${PROVISA_MCP_PORT:-0}" != 0 ] || return 0
   local port="$PROVISA_MCP_PORT" scheme host
   scheme=$(_mcp_scheme "$port")
   if is_wsl; then
@@ -244,6 +261,13 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
 fi
 
 export PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"
+# The backend's gRPC, Arrow Flight and MCP ports (server.grpc_port / server.flight_port / mcp.port,
+# REQ-1913), set here so the startup banner prints the port the backend binds. MCP is on by
+# default in dev too (parity with the native tier) so the Explore -> MCP panel and the
+# config-file/mcp-proxy bridge work here.
+export GRPC_PORT="${GRPC_PORT:-50051}"
+export FLIGHT_PORT="${FLIGHT_PORT:-8815}"
+export PROVISA_MCP_PORT="${PROVISA_MCP_PORT:-8009}"
 # REQ-2135: a local install's public address. The boot stores this as server.public_url, the
 # operator setting in Deployment settings, when nothing sets it, so SPARQL works on a fresh start.
 export PROVISA_LOCAL_ADDRESS="http://localhost:$PROVISA_API_PORT"
@@ -868,11 +892,12 @@ start_backend() {
     PROVISA_CONFIG="${PROVISA_CONFIG}"
     PROVISA_CONFIG_REPLACE="true"
     PROVISA_PGWIRE_PORT=5439
-    # MCP on by default in dev too (parity with the native tier) so the Explore -> MCP panel and the
-    # config-file/mcp-proxy bridge work here. Plain HTTP: Claude Desktop reaches a local server only
-    # via the stdio bridge (works over http); its custom-connector URL path is brokered from Anthropic
-    # (public HTTPS only). TLS stays opt-in via PROVISA_MCP_TLS=1. All overridable via env/.env.
-    PROVISA_MCP_PORT="${PROVISA_MCP_PORT:-8009}"
+    GRPC_PORT="$GRPC_PORT"
+    FLIGHT_PORT="$FLIGHT_PORT"
+    # MCP over plain HTTP: Claude Desktop reaches a local server only via the stdio bridge (works
+    # over http); its custom-connector URL path is brokered from Anthropic (public HTTPS only). TLS
+    # stays opt-in via PROVISA_MCP_TLS=1. All overridable via env/.env.
+    PROVISA_MCP_PORT="$PROVISA_MCP_PORT"
     # Bind 0.0.0.0 under WSL so Windows Claude Desktop can reach the backend via the WSL VM IP
     # (the localhost relay drops MCP's streamed response); loopback-only otherwise.
     PROVISA_MCP_HOST="${PROVISA_MCP_HOST:-$(is_wsl && echo 0.0.0.0 || echo 127.0.0.1)}"
@@ -1015,11 +1040,10 @@ if [ -n "$DEMO_NAME" ] && [ -f "$_NAMED_DIR/setup.yaml" ]; then
   if [ "$_DEMO_BUNDLED" = true ]; then _SETUP_SCOPE="--environments-only"; fi
   echo "Named demo '$DEMO_NAME': running its setup (once per control plane)..."
   # shellcheck disable=SC2086  # empty, or the one flag: split on purpose
-  # --flight: where a client step of the setup reads the server (the visitor's node's Flight,
-  # FLIGHT_PORT when set, else the server's own default, 8815).
+  # --flight: where a client step of the setup reads the server (the visitor's node's Flight).
   if ! "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/run_demo_setup.py" \
        "$_NAMED_DIR" --url "http://localhost:$PROVISA_API_PORT" \
-       --flight "grpc://localhost:${FLIGHT_PORT:-8815}" $_SETUP_SCOPE; then
+       --flight "grpc://localhost:$FLIGHT_PORT" $_SETUP_SCOPE; then
     echo "Named demo '$DEMO_NAME': its setup failed (above). Backend log: $LOG_DIR/backend.log"
     exit 1
   fi
@@ -1100,10 +1124,7 @@ if [ "$DEMO" = true ]; then
   echo "  Backend: http://localhost:$PROVISA_API_PORT  (logs: tail -f $LOG_DIR/backend.log)"
   echo "  UI:      http://localhost:3000"
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
-  echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
-  [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
-  echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
-  print_mcp_info
+  print_query_surfaces
   echo ""
   echo "Demo sources:"
   echo "  - pet-store-pg       (PostgreSQL, pet_store schema)"
@@ -1115,10 +1136,7 @@ else
   echo "  Backend: http://localhost:$PROVISA_API_PORT  (logs: tail -f $LOG_DIR/backend.log)"
   echo "  UI:      http://localhost:3000"
   echo "  Control plane (platform + tenant registries): ${CP_STORE_DESC:-unknown}"
-  echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
-  [ -n "${PROVISA_BOLT_PORT:-}" ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
-  echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
-  print_mcp_info
+  print_query_surfaces
   echo ""
   echo "No demo services started. Use --demo to include petstore-mock, graphql-demo, and SQLite ETL."
 fi
