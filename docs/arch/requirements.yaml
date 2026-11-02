@@ -75759,7 +75759,13 @@
     Nothing in the model depends on the topology, so the branch answers the same queries with the same results;
     only where it runs differs. (Amended 2026-11-02, Why the planes are separated:) Maintainer 2026-11-02:
     the reason for separating the control plane and the data plane is isolation and scaling for performance,
-    not security. Docs and site describe it that way.'
+    not security. Docs and site describe it that way. (Amended 2026-11-02, A customer-owned data node in
+    multi-tenant SaaS:) Maintainer 2026-11-02: in multi-tenant SaaS the customer can own and run the data
+    node, in its own network; that node only ever sees its own org''s config values, not the whole config.
+    The provider''s control plane signs users in, holds the model and plans; the customer''s data node acts
+    only on plans signed for its org, connects to the customer''s engines, resolves the customer''s secrets
+    locally, and its rows never leave the customer''s network. A data pool''s config read is scoped to the
+    orgs it serves; outside SaaS every node may still read the whole config.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
