@@ -23,6 +23,11 @@ vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
 vi.mock("../api/glossary", async (importOriginal) => ({
   // Spread the real module so the enum constants stay real; replace the fetchers.
   ...(await importOriginal<typeof import("../api/glossary")>()),
+  // REQ-1592: the expert/author picker is fed by the org's roster, not by typing a user id.
+  listAttributablePeople: vi.fn(async () => [
+    { user_id: "u1", email: "ada@acme.test", display_name: "Ada Lovelace" },
+    { user_id: "u2", email: "grace@acme.test", display_name: "" },
+  ]),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
   createGlossaryTerm: vi.fn(),
@@ -124,26 +129,6 @@ vi.mock("../context/AuthContext", () => ({
     activeOrgId: "acme",
     actingRoles: "org_admin",
   }),
-}));
-
-// REQ-1592: the expert/author picker is fed by the org's roster, not by typing a user id.
-vi.mock("../api/admin", () => ({
-  fetchOrgMembers: vi.fn(async () => [
-    {
-      user_id: "u1",
-      email: "ada@acme.test",
-      display_name: "Ada Lovelace",
-      provider: "local",
-      is_org_admin: false,
-    },
-    {
-      user_id: "u2",
-      email: "grace@acme.test",
-      display_name: "",
-      provider: "local",
-      is_org_admin: false,
-    },
-  ]),
 }));
 
 import {

@@ -77,12 +77,12 @@ import {
   generateAllGlossaryDefinitions,
   generateGlossaryRelationships,
   fetchGlossaryFindings,
+  listAttributablePeople,
   listGlossaryTerms,
   restoreGlossaryTerm,
+  type AttributablePerson,
   type GlossaryFinding,
 } from "../../api/glossary";
-import { fetchOrgMembers } from "../../api/admin";
-import type { OrgMember } from "../../api/admin";
 import { useAuth } from "../../context/AuthContext";
 import {
   ENTERPRISE_DOMAIN,
@@ -198,7 +198,7 @@ export function GlossaryTab() {
 
   // REQ-1592: an expert is PICKED from the org's members, not typed. Naming an author decides who
   // may change the term from then on, so a typo would hand it to nobody.
-  const [members, setMembers] = useState<OrgMember[]>([]);
+  const [members, setMembers] = useState<AttributablePerson[]>([]);
 
   // New concept modal
   const [addOpen, setAddOpen] = useState(false);
@@ -292,10 +292,11 @@ export function GlossaryTab() {
 
   // REQ-1592: the org's members are the people a term can be attributed to. Loaded once for the
   // whole surface rather than per term — the roster does not change while the page is open — and
-  // only for a curator, since a reader has no picker to fill.
+  // only for a curator, since a reader has no picker to fill. Read from the glossary's own roster,
+  // under the right that fills the picker, not the team page's, which takes user management.
   useEffect(() => {
     if (!canEdit || !activeOrgId) return;
-    fetchOrgMembers(activeOrgId)
+    listAttributablePeople()
       .then(setMembers)
       .catch((e: unknown) => setActionError(e instanceof Error ? e.message : String(e)));
   }, [canEdit, activeOrgId]);

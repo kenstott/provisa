@@ -1039,6 +1039,37 @@ async def add_expert(request: Request, term_id: int) -> dict:
     return {"ok": True}
 
 
+@router.get("/people")
+async def attributable_people(request: Request) -> list[dict]:
+    """REQ-1592: the people a term can be attributed to -- the picker's roster.
+
+    An author or expert is chosen from the org's members, never typed, so a curator has to be able
+    to read who they are. Not through the team page's ``/orgs/{id}/members``: that is user
+    management (who administers the org, how each signed in), a right a curator need not hold --
+    the sandbox's visitor curates and is withheld it (REQ-1608). This answers only who each
+    person is, which is all a picker labels them by.
+
+    In the shared "Try it Out" org every visitor is a curator, so the roster there would show each
+    visitor every other visitor's name and email: it lists only the caller. Real orgs and
+    per-visitor demo sandboxes list the whole roster.
+    """
+    from provisa.api.app import state
+    from provisa.api.sandbox_org import SANDBOX_ORG_ID
+    from provisa.core.org_membership import org_roster
+
+    _require_glossary_rw(request)
+    org_id = require_active_org_id(request)
+    assert state.admin_db is not None
+    rows = await org_roster(state.admin_db, org_id)
+    if org_id == SANDBOX_ORG_ID:
+        caller = _caller_id(request)
+        rows = [r for r in rows if r["user_id"] == caller]
+    return [
+        {"user_id": r["user_id"], "email": r["email"], "display_name": r["display_name"]}
+        for r in rows
+    ]
+
+
 @router.delete("/terms/{term_id}/experts/{user_id}")
 async def remove_expert(request: Request, term_id: int, user_id: str) -> dict:
     _require_glossary_rw(request)

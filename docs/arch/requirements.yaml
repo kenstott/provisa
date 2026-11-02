@@ -18195,8 +18195,15 @@
   priority: SHOULD
   type: infrastructure
   description: 'Phase 1 (AF1, complete): Shell script installer with Docker Compose, `provisa` CLI wrapper,
-    state in `~/.provisa/`. Requires Docker/OrbStack/Colima. Phase 2 (AF2): Airgapped native app bundle: Lima + containerd embedded, all service images bundled as `.tar` archives, zero outbound network
-    at install or runtime. AF3 (native OS packages via Homebrew/.deb/.rpm) is superseded by AF2.'
+    state in `~/.provisa/`. Requires Docker/OrbStack/Colima. Phase 2 (AF2): Airgapped native app bundle:
+    [SUPERSEDED by REQ-228, 2026-11-02 -- Lima is no longer used. Kept here for history; do not implement
+    against it.] Lima + containerd embedded, [END SUPERSEDED BLOCK] all service images bundled as `.tar`
+    archives, zero outbound network at install or runtime. AF3 (native OS packages via Homebrew/.deb/.rpm)
+    is superseded by AF2. (Amended 2026-11-02, No Lima:) Maintainer 2026-11-02: Lima is no longer used.
+    On macOS the default native tier is a bundled Python runtime with no Docker and no VM; the optional
+    Docker tier runs on the user''s own Docker (Docker Desktop or colima) with images loaded from the core-images
+    tarball through docker-compose.airgap.yml; Windows'' container tier is WSL2 + containerd. OVA is retired
+    (REQ-633).'
   use_case: AF2 airgapped bundle removes the Docker prerequisite so enterprise users with no internet
     access can install.
   code:
@@ -18205,22 +18212,19 @@
   - tests/e2e/test_installer.py
   - tests/unit/test_infra_requirements.py
   since: 2026-01
-  scenario: 'Given an enterprise environment with no internet access
-
-    When a user installs the AF2 native app bundle
-
-    Then all services start using bundled Lima + containerd and .tar image archives without network calls
-
-    '
+  scenario: Given an enterprise environment with no internet access When a user installs the AF2 native
+    app bundle Then all services start using the bundled native runtime, or the user's Docker loading the
+    bundled .tar image archives, without network calls
   integration_test: deferred
-  integration_test_reason: 'Airgapped bundle with Lima/containerd requires real container runtime and
-    image loading. [deferred: requires external infrastructure not in CI stack]'
+  integration_test_reason: 'Airgapped bundle with the Docker tier''s image loading requires real container
+    runtime and image loading. [deferred: requires external infrastructure not in CI stack]'
   stakeholders:
   - ops
   competitive_position:
     status: ahead
-    rationale: Airgapped native app bundle (Lima + containerd, no Docker required) removes the Docker
-      prerequisite that blocks enterprise adoption of Hasura and other container-based platforms.
+    rationale: Airgapped native app bundle (a bundled Python runtime, no Docker required; an optional Docker
+      tier loads bundled images) removes the Docker prerequisite that blocks enterprise adoption of Hasura
+      and other container-based platforms.
   docs:
   - deployment.md
 - id: REQ-254
@@ -18300,10 +18304,13 @@
   feature: installation-packaging
   priority: MUST
   type: constraint
-  description: The distribution must be fully airgap-capable. No outbound network calls at install time
-    or first launch. All container images are bundled inside the app and loaded via `ctr images import`.
-    Image references in docker-compose use digests, not tags. Suitable for enterprise environments with
-    no internet access.
+  description: 'The distribution must be fully airgap-capable. No outbound network calls at install time
+    or first launch. All container images are bundled inside the app and [SUPERSEDED by REQ-294, 2026-11-02
+    -- Lima is no longer used. Kept here for history; do not implement against it.] loaded via `ctr images
+    import`. [END SUPERSEDED BLOCK] Image references in docker-compose use digests, not tags. Suitable for
+    enterprise environments with no internet access. (Amended 2026-11-02, Image loading without Lima:) Maintainer
+    2026-11-02: Lima is no longer used. Bundled images are loaded with docker load into the user''s Docker
+    on macOS (Docker tier) and with nerdctl into WSL2 containerd on Windows.'
   use_case: Fully airgapped bundle lets enterprises in no-internet environments install and run Provisa
     from local media.
   code:
@@ -18330,8 +18337,9 @@
   - ops
   competitive_position:
     status: ahead
-    rationale: Full airgap capability with all images bundled and loaded via ctr images import at install
-      time is not available in Hasura Cloud, Dremio Cloud, or standard Starburst/Trino distributions.
+    rationale: Full airgap capability with all images bundled and loaded at install time (docker load on
+      macOS, nerdctl in WSL2 on Windows) is not available in Hasura Cloud, Dremio Cloud, or standard Starburst/Trino
+      distributions.
   docs:
   - deployment.md
 - id: REQ-302
@@ -26597,29 +26605,29 @@
   priority: MUST
   type: infrastructure
   since: 2026-07
-  description: Core runtime image set (docker-compose.core.yml + OVA/Lima bundles) must include busybox
-    as a core dependency; no third-party billing mock service is bundled in any compose (dev/core/airgap);
-    python:3.12-slim is build-time only and excluded from packaged/airgapped runtime images.
+  description: 'Core runtime image set [SUPERSEDED by REQ-854, 2026-11-02 -- OVA and Lima are retired; the
+    core-images tarball is loaded into the user''s Docker or WSL2 containerd. Kept here for history; do
+    not implement against it.] (docker-compose.core.yml + OVA/Lima bundles) [END SUPERSEDED BLOCK] must
+    include busybox as a core dependency; no third-party billing mock service is bundled in any compose
+    (dev/core/airgap); python:3.12-slim is build-time only and excluded from packaged/airgapped runtime
+    images. (Amended 2026-11-02, No OVA or Lima:) Maintainer 2026-11-02: Lima is no longer used. On macOS
+    the default native tier is a bundled Python runtime with no Docker and no VM; the optional Docker tier
+    runs on the user''s own Docker (Docker Desktop or colima) with images loaded from the core-images tarball
+    through docker-compose.airgap.yml; Windows'' container tier is WSL2 + containerd. OVA is retired (REQ-633).'
   use_case: Busybox is required at runtime (trino-exchange-init service uses it to chown /data/provisa/exchange
     before Trino starts). Lemon Squeezy is called over the public REST API; tests stub it via HTTP fixtures
-    (LEMONSQUEEZY_BASE_URL), not bundled mocks. Python:3.12-slim exists only as a build base for OVA/Lima
-    source builds. This separation ensures airgapped deployments include all runtime dependencies and
-    excludes unnecessary dev/mock components.
+    (LEMONSQUEEZY_BASE_URL), not bundled mocks. Python:3.12-slim exists only as a build base for core-images
+    builds. This separation ensures airgapped deployments include all runtime dependencies and excludes
+    unnecessary dev/mock components.
   code:
   - docker-compose.core.yml
   - docker-compose.dev.yml
   - .github/workflows/build-dmg.yml
   related_reqs:
   - REQ-836
-  scenario: 'Given an airgapped OVA or Lima deployment built from docker-compose.core.yml
-
-    When the Trino service starts
-
-    Then busybox image is present to support trino-exchange-init initialization
-
+  scenario: Given an airgapped deployment loading the core-images tarball built from docker-compose.core.yml
+    When the Trino service starts Then busybox image is present to support trino-exchange-init initialization
     And no third-party billing mock service is bundled in the package.
-
-    '
   tests:
   - tests/unit/test_release_packaging.py
 - id: REQ-855
@@ -33463,8 +33471,9 @@
   description: '[SUPERSEDED by REQ-1331, 2026-10-03 -- The SaaS front door VM, Cloud SQL and the coordinator
     are provisioned and running at cloud.provisa.dev with no signed customer. Kept here for history; do
     not implement against it.] No cloud infrastructure is provisioned until a customer is signed; pre-customer
-    sunk cost limited to a domain and a free Firebase project. [END SUPERSEDED BLOCK] Cold-start relies
-    on REQ-854 OVA/Lima bundles for sub-hour spin-up.'
+    sunk cost limited to a domain and a free Firebase project. [END SUPERSEDED BLOCK] [SUPERSEDED by REQ-854,
+    2026-11-02 -- OVA and Lima are retired. Kept here for history; do not implement against it.] Cold-start
+    relies on REQ-854 OVA/Lima bundles for sub-hour spin-up. [END SUPERSEDED BLOCK]'
   use_case: Minimizes pre-revenue spending. Defers fixed infrastructure costs until revenue justifies
     them, reducing financial risk during customer acquisition.
   relates_to:
@@ -75660,51 +75669,173 @@
   priority: MUST
   type: structural
   target: 2026-Q4
-  description: 'Process roles. A deployment runs the same code in two roles, chosen when a process is
-    started. A query node serves requests on every transport and does nothing else: it never runs a replication
-    copy, a scheduled refresh or any other background job. A coordinator serves no data requests and does
-    the central work: it holds the central replica record and decides and runs every replica build and
-    refresh (REQ-1915), and it runs the scheduled and single-holder background work (materialized view
-    refresh and cleanup, hot-table refresh, scheduled triggers, and the like) that query nodes used to
-    elect one of themselves to run. Query nodes enqueue requests in the central record and read state
-    from it; the coordinator is the only thing that acts on them. Both roles are the same image and the
-    same entry point with a role argument, read the same control plane, and are told of changes by the
-    same propagation (REQ-1914). [SUPERSEDED by the 2026-10-02 amendment below -- the default is now the
-    every mode, one process doing both. Kept here for history; do not implement against it.] By default
-    the launcher starts one coordinator on the same host next to the query nodes, so a small install needs
-    no extra setup; [END SUPERSEDED BLOCK] a larger deployment runs the coordinator on its own server
-    with its own memory and network budget, close to the store and the sources. [SUPERSEDED by the 2026-10-02
-    amendment below -- several coordinators work at once, each on different jobs. Kept here for history;
-    do not implement against it.] More than one coordinator may run for availability, and a lock the control
-    plane guarantees lets exactly one of them act at a time, with another taking over when it stops. [END
-    SUPERSEDED BLOCK] The health endpoint and the admin pages show the coordinator, whether it is running,
-    and what it is doing, because when no coordinator runs nothing is replicated or refreshed; a query
-    node reports that state on reads that need a replica instead of doing the work itself. The role is
-    a launch setting shown in the deployment settings (REQ-1913). (Amended 2026-10-02, THREE MODES:) A
-    process starts in one of three modes -- every, query or coordinator. every is the default and needs
-    no flag -- the process serves requests on every transport and also does the coordinator work, so a
-    small install is one kind of process with nothing to choose. query and coordinator are chosen by a
-    startup command-line flag. A query process serves requests and runs no replica build, view refresh
-    or other background job. A coordinator process serves no data requests and does the background work.
-    The mode is fixed for the life of the process and is shown read-only with the other launch settings.
-    (Amended 2026-10-02, EVERY COORDINATOR BUILDS:) Background capacity grows by adding processes that
-    do coordinator work (coordinator or every mode). Each such process claims requested replica builds,
-    and later view refreshes, one job at a time per claim. A lock the control plane guarantees per replica
-    or view keeps each job to one builder, so several coordinators work at once on different jobs. Three operator limits bound the total: builds per node, background jobs per engine across all nodes, and
-    reads per source (REQ-1915, REQ-1909). Work that must fire exactly once per deployment, such as deciding
-    that a refresh is due or running a scheduled trigger, still goes to one holder at a time, taken over
-    by another when it stops. (Amended 2026-10-02, SCALING AND MEMBERSHIP:) Capacity is added in either
-    of two ways, and the operator chooses by workload. The simple way is to add more every-mode nodes; each adds request capacity and background capacity together. The designed way is to run some number
-    of query nodes and some number of coordinator nodes, sized separately for request load and for replication
-    and refresh load. Both may be mixed in one cluster. A cluster is the set of processes started against
-    one control plane. A node joins by starting against that control plane and leaves by stopping. No other node is restarted or reconfigured, and nothing is registered by hand, so capacity is added and
-    removed while the cluster serves. A joining node loads the current configuration (REQ-1914) and must
-    hold the deployment encryption key (REQ-684) before it serves. A leaving query node finishes or times
-    out the requests it holds. A leaving coordinator releases the jobs it holds: the control plane frees its locks when its session ends, and another node claims and restarts those jobs (REQ-1915). The admin
-    pages and the health endpoint list the nodes now in the cluster with each one mode, so an operator
-    sees what capacity is present and whether any node is doing coordinator work. (Amended 2026-10-03,
-    THE NODE LIST LIVES IN THE PLATFORM STATE STORE:) The node heartbeat and the cluster node list are
-    held in the platform state store (REQ-1932).'
+  description: 'Process roles. A deployment runs the same code in two roles, chosen when a process is started.
+    A query node serves requests on every transport and does nothing else: it never runs a replication copy,
+    a scheduled refresh or any other background job. A coordinator serves no data requests and does the
+    central work: it holds the central replica record and decides and runs every replica build and refresh
+    (REQ-1915), and it runs the scheduled and single-holder background work (materialized view refresh and
+    cleanup, hot-table refresh, scheduled triggers, and the like) that query nodes used to elect one of
+    themselves to run. Query nodes enqueue requests in the central record and read state from it; the coordinator
+    is the only thing that acts on them. Both roles are the same image and the same entry point with a role
+    argument, read the same control plane, and are told of changes by the same propagation (REQ-1914). [SUPERSEDED
+    by the 2026-10-02 amendment below -- the default is now the every mode, one process doing both. Kept
+    here for history; do not implement against it.] By default the launcher starts one coordinator on the
+    same host next to the query nodes, so a small install needs no extra setup; [END SUPERSEDED BLOCK] a
+    larger deployment runs the coordinator on its own server with its own memory and network budget, close
+    to the store and the sources. [SUPERSEDED by the 2026-10-02 amendment below -- several coordinators
+    work at once, each on different jobs. Kept here for history; do not implement against it.] More than
+    one coordinator may run for availability, and a lock the control plane guarantees lets exactly one of
+    them act at a time, with another taking over when it stops. [END SUPERSEDED BLOCK] The health endpoint
+    and the admin pages show the coordinator, whether it is running, and what it is doing, because when
+    no coordinator runs nothing is replicated or refreshed; a query node reports that state on reads that
+    need a replica instead of doing the work itself. The role is a launch setting shown in the deployment
+    settings (REQ-1913). (Amended 2026-10-02, THREE MODES:) A process starts in one of three modes -- every,
+    query or coordinator. every is the default and needs no flag -- the process serves requests on every
+    transport and also does the coordinator work, so a small install is one kind of process with nothing
+    to choose. query and coordinator are chosen by a startup command-line flag. A query process serves requests
+    and runs no replica build, view refresh or other background job. A coordinator process serves no data
+    requests and does the background work. The mode is fixed for the life of the process and is shown read-only
+    with the other launch settings. (Amended 2026-10-02, EVERY COORDINATOR BUILDS:) Background capacity
+    grows by adding processes that do coordinator work (coordinator or every mode). Each such process claims
+    requested replica builds, and later view refreshes, one job at a time per claim. A lock the control
+    plane guarantees per replica or view keeps each job to one builder, so several coordinators work at
+    once on different jobs. Three operator limits bound the total: builds per node, background jobs per
+    engine across all nodes, and reads per source (REQ-1915, REQ-1909). Work that must fire exactly once
+    per deployment, such as deciding that a refresh is due or running a scheduled trigger, still goes to
+    one holder at a time, taken over by another when it stops. (Amended 2026-10-02, SCALING AND MEMBERSHIP:)
+    Capacity is added in either of two ways, and the operator chooses by workload. The simple way is to
+    add more every-mode nodes; each adds request capacity and background capacity together. The designed
+    way is to run some number of query nodes and some number of coordinator nodes, sized separately for
+    request load and for replication and refresh load. Both may be mixed in one cluster. A cluster is the
+    set of processes started against one control plane. A node joins by starting against that control plane
+    and leaves by stopping. No other node is restarted or reconfigured, and nothing is registered by hand,
+    so capacity is added and removed while the cluster serves. A joining node loads the current configuration
+    (REQ-1914) and must hold the deployment encryption key (REQ-684) before it serves. A leaving query node
+    finishes or times out the requests it holds. A leaving coordinator releases the jobs it holds: the control
+    plane frees its locks when its session ends, and another node claims and restarts those jobs (REQ-1915).
+    The admin pages and the health endpoint list the nodes now in the cluster with each one mode, so an
+    operator sees what capacity is present and whether any node is doing coordinator work. (Amended 2026-10-03,
+    THE NODE LIST LIVES IN THE PLATFORM STATE STORE:) The node heartbeat and the cluster node list are held
+    in the platform state store (REQ-1932). [SUPERSEDED by REQ-1916, 2026-11-02 -- withdrawn: the maintainer
+    found the existing query/coordinator/every design already covers the control/data split, with little
+    or no work to do. Kept here for history; do not implement against it.] (Amended 2026-11-02, Control
+    plane and data plane modes:) Maintainer 2026-11-02: a node can be started in control plane mode or data
+    plane mode, an option for a deployment that wants to disentangle them; the default stays one process
+    doing both. The modes become every (the default, as today), control and data, replacing query and coordinator.
+    A control node signs users in, governs, compiles, holds the model store, serves the admin API and UI,
+    runs background work, and answers plan commands from data nodes; it never touches a row. A data node
+    owns the client-facing listeners (pgwire, the HTTP surfaces, gRPC, Flight, Bolt), asks a control node
+    over a socket for the signed plan of each request, fetches the engine''s result as Arrow or a direct
+    cursor, encodes it to the client (REQ-2194), and reports counters (row counts, warnings) back, never
+    rows. Background work that moves data (materialized view refreshes, replica landing) runs as a command
+    a control node sends to a data node. One artifact serves all three modes. (Amended 2026-11-02, A facade
+    over the plan contract:) Maintainer 2026-11-02: "a simple change to create a facade for existing contract
+    - with switch to use the remote or the local." The facade wraps the existing plan half of the one query
+    pipeline (govern and route): in every mode the plan call runs in process, in data mode it is a call
+    to a control node over a socket; executing the plan and encoding to the client stay on the node that
+    holds the client connection, so rows never enter the control process. (Amended 2026-11-02, The control
+    plane advertises data plane addresses:) Maintainer 2026-11-02: the control plane advertises the data
+    plane''s addresses. [SUPERSEDED by REQ-1916, 2026-11-02 -- replaced by node pools declared in the shared
+    config, 2026-11-02. Kept here for history; do not implement against it.] A data node registers with
+    a control node when it starts (its region and its address for each transport) and keeps the registration
+    alive; a node that stops drops out. [END SUPERSEDED BLOCK] Everywhere a client is told where to connect
+    (the UI''s connection details, connection strings, the HTTP surface URLs, MCP settings, Flight''s GetFlightInfo
+    endpoints), the control plane gives the data node for the org''s region. In every mode the one process
+    advertises itself. (Amended 2026-11-02, Each plane scales behind its own load balancer:) Maintainer
+    2026-11-02: control nodes and data nodes each scale independently behind a load balancer. Control nodes
+    hold no state of their own beyond what the shared control-plane store holds, so any control node answers
+    any plan call, and a model change made through one invalidates what the others cached. A plan is signed
+    with a key every node shares, so any data node verifies it. The address the control plane advertises
+    is the data plane load balancer for the org''s region; long-lived connections (pgwire, Bolt, gRPC, Flight)
+    are balanced at TCP level and stay on one data node. Background work is claimed through the shared store
+    so it runs once, not once per control node. (Amended 2026-11-02, Several control nodes use the existing
+    propagation:) Maintainer 2026-11-02 (correcting the wording above): several control nodes need nothing
+    new to stay in step. A model change reaches every control node through the existing propagation (REQ-1914:
+    the stamp advanced in the same transaction as the change tells every process to reload), as it does
+    for every node today. Data nodes hold no model and reload nothing. (Amended 2026-11-02, Response cache
+    per node or shared:) Maintainer 2026-11-02: each node can use its own in-memory response cache or a
+    remote shared one; that is an efficiency choice only, not a correctness one. The response cache holds
+    rows, so it belongs to the data plane: data nodes read and write it, a control node never does. (Amended
+    2026-11-02, Node pools declared in the shared config:) Maintainer 2026-11-02: the topology is declared
+    in the shared config, not registered at run time. The config declares node pools, each with its mode
+    (control or data), its region (for data pools) and its address (the pool''s load balancer); individual
+    machines are not listed, so capacity changes need no config edit. A process starts with only its pool
+    name and takes its mode, region and peers from the config; with no pools declared a process runs in
+    every mode, as today. The address the control plane advertises is the pool''s declared address; liveness
+    is the load balancer''s health check. Every node may read the entire config definition (maintainer:
+    no problem with all nodes seeing it); data nodes still never build or hold the governed model and act
+    only on signed plans. (Amended 2026-11-02, A branch can run the same config on one localhost node:)
+    Maintainer 2026-11-02: because the topology is part of the declared config, a developer can branch a
+    distributed config and change only its pools to one localhost node (or none, so one process runs in
+    every mode) and run it locally. Nothing in the model depends on the topology, so the branch answers
+    the same queries with the same results; only where it runs differs. (Amended 2026-11-02, Why the planes
+    are separated:) Maintainer 2026-11-02: the reason for separating the control plane and the data plane
+    is isolation and scaling for performance, not security. Docs and site describe it that way. (Amended
+    2026-11-02, A customer-owned data node in multi-tenant SaaS:) Maintainer 2026-11-02: in multi-tenant
+    SaaS the customer can own and run the data node, in its own network; that node only ever sees its own
+    org''s config values, not the whole config. The provider''s control plane signs users in, holds the
+    model and plans; the customer''s data node acts only on plans signed for its org, connects to the customer''s
+    engines, resolves the customer''s secrets locally, and its rows never leave the customer''s network.
+    A data pool''s config read is scoped to the orgs it serves; outside SaaS every node may still read the
+    whole config. (Amended 2026-11-02, Data nodes run the whole read path; no plan call:) Maintainer 2026-11-02,
+    superseding every earlier 2026-11-02 amendment''s plan call, plan facade, /internal/plan route and signed
+    plans (do not implement them): a data node has the same code and the same config, so it governs, compiles,
+    fetches and encodes each query itself; it never asks a control node for a plan or a config value. A
+    control node serves the UI and makes changes to the config (the model store''s writes), and keeps the
+    background work this requirement already gives the coordinator. The modes are every (default), control
+    (today''s coordinator) and data (today''s query). Node pools in the shared config, the Rust encoders
+    on the read path (REQ-2194), the response cache on data nodes, the existing REQ-1914 propagation, scaling
+    behind load balancers, and the customer-owned SaaS data node that sees only its own org''s config all
+    stand. (Amended 2026-11-02, What a control node serves:) Maintainer 2026-11-02: a control node serves
+    any UI, makes config changes, does the background work, and handles sign-in (the interactive flows:
+    OAuth redirects, sessions, invites). A data node still checks each request''s credentials itself (tokens,
+    pgwire passwords, API keys) against the shared config, so a query never waits on a control node. [END
+    SUPERSEDED BLOCK] (Amended 2026-11-02, Withdrawn:) Maintainer 2026-11-02: the existing modes stand as
+    written above (every, query, coordinator); the amendments of this date are withdrawn. (Amended 2026-11-02,
+    Only the coordinator serves the UI:) Maintainer 2026-11-02: only a coordinator (or an every process)
+    serves the UI and the UI''s backend (the admin API the UI calls). A query node serves data requests
+    only: a UI or admin route reaching a query node is refused by name, saying to use the coordinator''s
+    address, the mirror of a coordinator refusing data requests. (Amended 2026-11-02, The UI''s data address
+    is a browser setting:) Maintainer 2026-11-02: the UI has a browser setting for the data node address
+    that the Explorer and the UI''s other data calls use. It defaults to the UI''s own origin (an every
+    process); a user of a coordinator-served UI sets it to the query pool or a specific query node. Query
+    nodes accept the UI''s origin and its sign-in token for those calls. (Amended 2026-11-02, The UI''s
+    data addresses come from the config:) Maintainer 2026-11-02: the data addresses are listed in the control
+    plane''s config, like an OpenAPI document listing its servers: [SUPERSEDED by REQ-1916, 2026-11-02 --
+    a region is not a data node; the list is the node registry. Kept here for history; do not implement
+    against it.] the platform regions'' addresses. The UI is given the addresses the org can use, and its
+    browser setting picks one of them, defaulting to the org''s own region address, or the UI''s own origin
+    where no regions are declared. [END SUPERSEDED BLOCK] (Amended 2026-11-02, The UI''s servers list is
+    the node registry:) Maintainer 2026-11-02: a region is not a data node; a region can have its own coordinator
+    and its own query nodes. [SUPERSEDED by REQ-1916, 2026-11-02 -- the system cannot know the best address
+    because load balancers can be in front. Kept here for history; do not implement against it.] The servers
+    list is the node registry the control plane already keeps (each running node with its mode, region and
+    heartbeat): each node records an address clients can reach, the coordinator gives the UI the live query
+    and every nodes of the org''s region, and the UI''s browser setting picks one, defaulting to the UI''s
+    own origin. [END SUPERSEDED BLOCK] (Amended 2026-11-02, The data addresses are declared:) Maintainer
+    2026-11-02: the system cannot know the best data address for a given UI user, because load balancers
+    can be part of the path. Like an OpenAPI document''s servers list, the operator declares the data addresses
+    in the config (each a URL: a load balancer, a pool or a single node). The coordinator gives the UI that
+    declared list; the UI''s browser setting picks one of them or an address the user types, defaulting
+    to the UI''s own origin when none is declared. (Amended 2026-11-02, Declared per region:) Maintainer
+    2026-11-02: the declared data addresses are a list per region: each region declares the addresses of
+    its data nodes (a load balancer, a pool or a single node), and the UI is given the list for the org''s
+    region. (Amended 2026-11-02, An every node''s UI asks for nothing:) Maintainer 2026-11-02: a UI served
+    from an every node does not ask for a data node: it sends data requests to its own origin and does not
+    show the data-address setting. Only a coordinator-served UI offers it. (Amended 2026-11-02, Registered
+    nodes when none are declared:) Maintainer 2026-11-02: when a region declares no data addresses, the
+    UI''s list is the region''s registered live query and every nodes, each with the client-reachable address
+    it registered; a node that registered no reachable address is not listed. Declared addresses, when present,
+    are the only list. (Amended 2026-11-02, Every region has both roles:) Maintainer 2026-11-02: every region
+    needs a coordinator and query nodes, or an every node: at least one live process serving its data requests
+    and at least one doing its background work. [SUPERSEDED by REQ-1916, 2026-11-02 -- no health check:
+    a region runs independently. Kept here for history; do not implement against it.] Nodes start independently,
+    so this is checked, not enforced at launch: the health endpoint and the admin pages show it per region
+    from the node registry, naming a region with no live data-serving node or no live background node. [END
+    SUPERSEDED BLOCK] (Amended 2026-11-02, A region runs independently:) Maintainer 2026-11-02: there is
+    no cross-region health check. A region runs independently from the same config, under the region data-sharing
+    rules, and that is all; giving each region both roles (a coordinator and query nodes, or an every node)
+    is the deployment''s job, stated in the docs.'
   use_case: Copying data and serving queries compete for the same memory and CPU. Giving the copying to
     its own process, on its own server when the deployment is large, keeps a replication from slowing
     or crashing query serving and lets each be sized on its own.
@@ -81471,7 +81602,81 @@
   - tests/unit/test_proto_gen.py
   - tests/integration/test_native_json_postgres.py
   - tests/integration/test_native_json_trino.py
-  description: 'Semantic SQL has no array, struct or map type; nested data is a JSON column, and JSON is the type every catalog and every wire lists for it, on every federation engine and every source read directly, so a registration answers the same on every engine. A datasource hands a native array, struct or map over as JSON, by a cast the source or engine executes; such a column is registered as JSON -- JSON is the type registration suggests for it, never text -- and registering one is never an error, though reading one from a backend with no verified way to produce JSON is refused by name. A column carries three hidden attributes, recorded from the source at registration, stored with the column, not offered in the registration form and available to every translator: its array depth as an integer -- 0 for a column that is not an array of a primitive, 1 for an array of a primitive, 2 for an array of arrays of a primitive, and so on for each level of nesting -- the semantic SQL type of its innermost element with precision and scale where it has them, and the native type of the source in its own spelling. A backend does not need a JSON type to carry such a column, only JSON functions: where a backend has no JSON type the value is held and passed as text, and what makes a backend supported is that it can produce JSON from a native value and operate on JSON text with its own functions. Only an array whose innermost element is one primitive type has a depth above 0; a struct, a map, an array of structs or an array whose elements are of mixed types is a plain JSON column of depth 0 with its native type recorded, and a column that is JSON at its source carries none of the three. Semantic SQL offers one portable set of JSON operations -- element and field access, length, contains, unnest, construct, and aggregate into a JSON array -- spelled as the SQL standard JSON functions, with the PostgreSQL operators accepted as the same operations, and translated to the dialect of the backend a statement is routed to from one rule table covering every operation on every backend class. For an array of a primitive, at any depth, the attributes are an input to that translation: an innermost element that is extracted or unnested is cast to the element type and a literal compared with one is cast to it, inside the generated statement, and where the statement runs on the source and its column is natively an array, element access, length, contains and unnest use the native operation, except that on the PostgreSQL family, whose array type does not record its dimensions, unnest always goes through JSON, so its answer never depends on the dimensions of the value. A typed extraction that goes fewer levels into an array than its depth is refused when the statement is compiled, naming the column and its depth. The native type is recorded for casting in: its being recorded is what tells a translator the column must be converted to JSON on the way out, a conversion that is the same whatever the type, and its content is what a value is cast into on the way in. That holds for a predicate as for a write. In a predicate that runs on the source, the JSON or literal a statement compares with such a column -- with the whole value or with an element -- is cast into the native type, so that the comparison is made on the native column by the source and can use its indexes, and the column is not converted to JSON to be compared. In a write, the JSON a statement gives for a column that is natively an array, struct or map is cast into the recorded native type by the source that stores it, inside the generated statement, through the one write path; a value the source cannot cast is refused with the error of the source, and a backend with no verified way to build its native value from JSON refuses the write by name. A decimal element with a declared precision is written into the JSON as a string and cast back, so it is exact on every engine; a timestamp element keeps its instant; an element that is not a number or is infinite is refused by name. Inside a struct, a map or an array of structs nothing is typed: the whole value and the untyped operations work, and a typed value from inside one needs a cast the user writes. Once a source or an engine has produced a value, Provisa does not parse, convert or re-encode it on any route; the translation is derived once with the governed statement, not per request. An operation a backend cannot perform correctly is refused by name; an operation that is correct but slow is allowed and runs. The user is responsible for what will not perform, and the product says so: the query plan notes, for each JSON operation that the backend it is routed to cannot serve from an index or that is not known to be pushed down, the column, the operation, the backend and the documented alternative, as advice that never blocks or changes the statement and is shown with the plan only; the documentation states the same per backend class from the same rule table. When the type of a source column no longer matches what was recorded, reads of that column are refused, naming the column and both types, until it is registered again. The hidden attributes are standard metadata that a surface able to state a list may read: GraphQL declares a column whose depth is above 0 as a list, nested to that depth, of the GraphQL type of its element, from the attributes alone and never from the spelling of a source type, and declares every other JSON column as the opaque JSON value; the value it serves is the JSON the source or engine produced. Bolt carries a JSON column as a JSON string. (Amended 2026-10-13, WHAT IS DELIVERED:) Delivered: a native array, struct or map registers as JSON with its three hidden attributes recorded from the source (depth, element type, native type, and whose spelling that is), and registering it as any other type is refused by name; a read of such a column is the backend''s own to-JSON expression on DuckDB, PostgreSQL and Trino, resolved in the one transpile step every route takes; a replica lands it as JSON the source or engine produces (jsonb on PostgreSQL); GraphQL declares a column of depth above 0 as a list of its element type from the attributes alone, a decimal element with a declared precision as String, and every other such column as the opaque JSON value; gRPC carries it as a JSON string. A parameter is an argument, not a column: an array parameter (a query vector, REQ-1986) stays a list of its element type on GraphQL and gRPC. An embedding column (REQ-424) is exempt end to end: registered as the native array it is with no hidden attribute, landed as a vector where the engine indexes it and as text elsewhere, read without a JSON conversion, and a list of its components in GraphQL. Not yet delivered: the portable JSON operations and their rule table, typed extraction and its compile-time depth check, native element operations on the source, the plan notes, the cast into the native type in predicates and writes, refusing reads of a column whose source type drifted, and Bolt''s JSON string.'
+  description: 'Semantic SQL has no array, struct or map type; nested data is a JSON column, and JSON is
+    the type every catalog and every wire lists for it, on every federation engine and every source read
+    directly, so a registration answers the same on every engine. A datasource hands a native array, struct
+    or map over as JSON, by a cast the source or engine executes; such a column is registered as JSON --
+    JSON is the type registration suggests for it, never text -- and registering one is never an error,
+    though reading one from a backend with no verified way to produce JSON is refused by name. A column
+    carries three hidden attributes, recorded from the source at registration, stored with the column, not
+    offered in the registration form and available to every translator: its array depth as an integer --
+    0 for a column that is not an array of a primitive, 1 for an array of a primitive, 2 for an array of
+    arrays of a primitive, and so on for each level of nesting -- the semantic SQL type of its innermost
+    element with precision and scale where it has them, and the native type of the source in its own spelling.
+    A backend does not need a JSON type to carry such a column, only JSON functions: where a backend has
+    no JSON type the value is held and passed as text, and what makes a backend supported is that it can
+    produce JSON from a native value and operate on JSON text with its own functions. Only an array whose
+    innermost element is one primitive type has a depth above 0; a struct, a map, an array of structs or
+    an array whose elements are of mixed types is a plain JSON column of depth 0 with its native type recorded,
+    and a column that is JSON at its source carries none of the three. Semantic SQL offers one portable
+    set of JSON operations -- element and field access, length, contains, unnest, construct, and aggregate
+    into a JSON array -- spelled as the SQL standard JSON functions, with the PostgreSQL operators accepted
+    as the same operations, and translated to the dialect of the backend a statement is routed to from one
+    rule table covering every operation on every backend class. For an array of a primitive, at any depth,
+    the attributes are an input to that translation: an innermost element that is extracted or unnested
+    is cast to the element type and a literal compared with one is cast to it, inside the generated statement,
+    and where the statement runs on the source and its column is natively an array, element access, length,
+    contains and unnest use the native operation, except that on the PostgreSQL family, whose array type
+    does not record its dimensions, unnest always goes through JSON, so its answer never depends on the
+    dimensions of the value. A typed extraction that goes fewer levels into an array than its depth is refused
+    when the statement is compiled, naming the column and its depth. The native type is recorded for casting
+    in: its being recorded is what tells a translator the column must be converted to JSON on the way out,
+    a conversion that is the same whatever the type, and its content is what a value is cast into on the
+    way in. That holds for a predicate as for a write. In a predicate that runs on the source, the JSON
+    or literal a statement compares with such a column -- with the whole value or with an element -- is
+    cast into the native type, so that the comparison is made on the native column by the source and can
+    use its indexes, and the column is not converted to JSON to be compared. In a write, the JSON a statement
+    gives for a column that is natively an array, struct or map is cast into the recorded native type by
+    the source that stores it, inside the generated statement, through the one write path; a value the source
+    cannot cast is refused with the error of the source, and a backend with no verified way to build its
+    native value from JSON refuses the write by name. A decimal element with a declared precision is written
+    into the JSON as a string and cast back, so it is exact on every engine; a timestamp element keeps its
+    instant; an element that is not a number or is infinite is refused by name. Inside a struct, a map or
+    an array of structs nothing is typed: the whole value and the untyped operations work, and a typed value
+    from inside one needs a cast the user writes. Once a source or an engine has produced a value, Provisa
+    does not parse, convert or re-encode it on any route; the translation is derived once with the governed
+    statement, not per request. An operation a backend cannot perform correctly is refused by name; an operation
+    that is correct but slow is allowed and runs. The user is responsible for what will not perform, and
+    the product says so: the query plan notes, for each JSON operation that the backend it is routed to
+    cannot serve from an index or that is not known to be pushed down, the column, the operation, the backend
+    and the documented alternative, as advice that never blocks or changes the statement and is shown with
+    the plan only; the documentation states the same per backend class from the same rule table. When the
+    type of a source column no longer matches what was recorded, reads of that column are refused, naming
+    the column and both types, until it is registered again. The hidden attributes are standard metadata
+    that a surface able to state a list may read: GraphQL declares a column whose depth is above 0 as a
+    list, nested to that depth, of the GraphQL type of its element, from the attributes alone and never
+    from the spelling of a source type, and declares every other JSON column as the opaque JSON value; the
+    value it serves is the JSON the source or engine produced. Bolt carries a JSON column as a JSON string.
+    (Amended 2026-10-13, WHAT IS DELIVERED:) Delivered: a native array, struct or map registers as JSON
+    with its three hidden attributes recorded from the source (depth, element type, native type, and whose
+    spelling that is), and registering it as any other type is refused by name; a read of such a column
+    is the backend''s own to-JSON expression on DuckDB, PostgreSQL and Trino, resolved in the one transpile
+    step every route takes; a replica lands it as JSON the source or engine produces (jsonb on PostgreSQL);
+    GraphQL declares a column of depth above 0 as a list of its element type from the attributes alone,
+    a decimal element with a declared precision as String, and every other such column as the opaque JSON
+    value; gRPC carries it as a JSON string. A parameter is an argument, not a column: an array parameter
+    (a query vector, REQ-1986) stays a list of its element type on GraphQL and gRPC. An embedding column
+    (REQ-424) is exempt end to end: registered as the native array it is with no hidden attribute, landed
+    as a vector where the engine indexes it and as text elsewhere, read without a JSON conversion, and a
+    list of its components in GraphQL. Not yet delivered: the portable JSON operations and their rule table,
+    typed extraction and its compile-time depth check, native element operations on the source, the plan
+    notes, the cast into the native type in predicates and writes, refusing reads of a column whose source
+    type drifted, and Bolt''s JSON string. (Amended 2026-11-02, gRPC values written exactly:) Maintainer
+    2026-11-02: a protobuf Timestamp field keeps the maximum value for PostgreSQL''s +infinity (9999-12-31T23:59:59.999999Z)
+    and the minimum (0001-01-01) for -infinity, since Timestamp has no infinity; a string field says "infinity"
+    / "-infinity" as GraphQL and pgwire do. Arrays, structs and maps in a string field are JSON, never a
+    Python repr; bytes are never written as a Python b''...'' literal; a value beyond a float field''s range
+    is refused by name, as PostgreSQL refuses float4 out of range.'
   scenario: 'Given a PostgreSQL source with a column tags of type text[]
 
     When the column is registered
@@ -92509,12 +92714,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   priority: SHOULD
   type: behavioral
   description: 'Maintainer 2026-11-01: a Provisa OData service, the easier lift with more commercial benefit,
-    a very clean mapping of the model. A table is an entity set, a column a property, a primary key a
-    key, a relationship a navigation property with its referential constraint, and a command an action.
-    $metadata is generated per role, so a role sees only its own tables and columns. A request''s $filter,
-    $select, $orderby, $top, $skip, $count and $expand become one statement through the one governed pipeline,
-    with masks, row rules and audit as on every transport. Excel Power Query and Power BI are the clients
-    it is built for, and it has its own conformance suite. It comes before the OData source of REQ-2192.'
+    a very clean mapping of the model. A table is an entity set, a column a property, a primary key a key,
+    a relationship a navigation property with its referential constraint, and a command an action. $metadata
+    is generated per role, so a role sees only its own tables and columns. A request''s $filter, $select,
+    $orderby, $top, $skip, $count and $expand become one statement through the one governed pipeline, with
+    masks, row rules and audit as on every transport. Excel Power Query and Power BI are the clients it
+    is built for, and it has its own conformance suite. It comes before the OData source of REQ-2192. (Amended
+    2026-11-02, An OData viewer in the OData explorer:) Maintainer 2026-11-02: the OData explorer gains
+    a viewer of its own: an entity-set browser read from the service''s $metadata (entity types, keys, navigation
+    properties) and a query builder for $filter, $select, $expand, $orderby and $top that writes the URL,
+    runs it and shows the rows, paging with @odata.nextLink and showing the row-limit warning. No third-party
+    viewer fits (archived, desktop-only, GPL or unclear licence), so it is built from Provisa''s own UI
+    parts.'
   use_case: An analyst pastes a Provisa OData URL into Excel, signs in, and gets a governed table with
     what their role may see, with no driver installed.
   scenario: 'Given a role that sees orders with one column masked
@@ -92566,7 +92777,20 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     exists is the one called:) Maintainer 2026-11-02: where an engine or source offers a columnar or direct
     result but Provisa calls a row-at-a-time endpoint, the calls are redesigned to use it; the docs exception
     is only for engines that offer none. Data warehouses in particular (Snowflake, BigQuery, Databricks,
-    Fabric, Redshift and the rest) are reviewed against their Arrow-returning interfaces.'
+    Fabric, Redshift and the rest) are reviewed against their Arrow-returning interfaces. (Amended 2026-11-02,
+    The encoders ship inside the provisa package:) Maintainer 2026-11-02: the Rust encoders are compiled
+    into the provisa package itself, not published as a separate PyPI project; provisa is released as platform
+    wheels (macOS arm64 and x86_64, Linux amd64 and arm64, Windows x64), each carrying the encoders and
+    the UI. (Amended 2026-11-02, Stated as a fundamental design choice:) Maintainer 2026-11-02: the website,
+    README and docs state it as a fundamental design choice: results from any data source that supports
+    Arrow are written by a Rust encoder straight into the requested output (pgwire, GraphQL, gRPC and the
+    rest). Stated once the encoders are wired in, not before. (Amended 2026-11-02, JSON:API, OpenAPI REST
+    and OData encoders:) Maintainer 2026-11-02: the encoders also cover JSON:API, the OpenAPI (REST) surface
+    and OData, beside pgwire, GraphQL and gRPC. The JSON-based ones share one Rust JSON writer and differ
+    only in their envelope (JSON:API data, attributes, relationships and included; REST rows; OData value,
+    @odata.context, @odata.nextLink and annotations). (Amended 2026-11-02, Four platform wheels; no Intel
+    Mac:) Maintainer 2026-11-02: Intel (x86_64) macOS is not distributed or supported, so provisa ships
+    four platform wheels: macOS arm64, Linux amd64, Linux arm64 and Windows x64.'
   scenario: 'Given a statement whose result holds every type pgwire serves, including timestamptz in a
     named zone
 
