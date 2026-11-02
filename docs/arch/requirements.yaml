@@ -92735,7 +92735,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and OData encoders:) Maintainer 2026-11-02: the encoders also cover JSON:API, the OpenAPI (REST) surface
     and OData, beside pgwire, GraphQL and gRPC. The JSON-based ones share one Rust JSON writer and differ
     only in their envelope (JSON:API data, attributes, relationships and included; REST rows; OData value,
-    @odata.context, @odata.nextLink and annotations).'
+    @odata.context, @odata.nextLink and annotations). (Amended 2026-11-02, Four platform wheels; no Intel
+    Mac:) Maintainer 2026-11-02: Intel (x86_64) macOS is not distributed or supported, so provisa ships
+    four platform wheels: macOS arm64, Linux amd64, Linux arm64 and Windows x64.'
   scenario: 'Given a statement whose result holds every type pgwire serves, including timestamptz in a
     named zone
 
