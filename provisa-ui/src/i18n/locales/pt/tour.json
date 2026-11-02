@@ -1786,7 +1786,7 @@
       },
       "auditFiled": {
         "title": "A mesma conciliação, nas declarações públicas",
-        "description": "Cada linha de auxílio que as entidades auditadas dos três estados declararam para 2023, ao lado do que o USAspending registrou como empenhado para elas no mesmo programa naquele ano. Cerca de metade corresponde. Uma linha recebida por um intermediário não deve corresponder, e um auxílio empenhado num ano anterior não mostra empenho no ano auditado. As linhas sem correspondência são mantidas, não ocultadas."
+        "description": "Cada linha de auxílio que as entidades auditadas dos três estados declararam para 2023, ao lado do que o USAspending registrou como empenhado para elas no mesmo programa naquele ano. Uma linha sem correspondência não é, por si só, uma lacuna. Uma linha recebida por um intermediário passou por uma agência estadual, então nenhum auxílio federal nomeia a entidade e não se espera que corresponda; e um auxílio empenhado num ano anterior não mostra empenho no ano auditado. As linhas sem correspondência são mantidas, não ocultadas."
       },
       "auditCounty": {
         "title": "Dinheiro federal por condado",

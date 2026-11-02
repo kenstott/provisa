@@ -1786,7 +1786,7 @@
       },
       "auditFiled": {
         "title": "Le même rapprochement, sur les déclarations publiques",
-        "description": "Chaque ligne de subvention déclarée pour 2023 par les entités auditées des trois États, à côté de ce qu'USAspending a enregistré comme engagé pour elles au titre du même programme cette année-là. Environ la moitié concorde. Une ligne reçue par un intermédiaire n'est pas censée concorder, et une subvention engagée une année antérieure ne montre aucun engagement l'année auditée. Les lignes non rapprochées sont conservées, pas masquées."
+        "description": "Chaque ligne de subvention déclarée pour 2023 par les entités auditées des trois États, à côté de ce qu'USAspending a enregistré comme engagé pour elles au titre du même programme cette année-là. Une ligne non rapprochée n'est pas en soi un manque. Une ligne reçue par un intermédiaire est passée par une agence de l'État, donc aucune subvention fédérale ne nomme l'entité et elle n'est pas censée concorder ; et une subvention engagée une année antérieure ne montre aucun engagement l'année auditée. Les lignes non rapprochées sont conservées, pas masquées."
       },
       "auditCounty": {
         "title": "L'argent fédéral par comté",

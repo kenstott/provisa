@@ -1786,7 +1786,7 @@
       },
       "auditFiled": {
         "title": "Dezelfde aansluiting, op openbare indieningen",
-        "description": "Elke subsidieregel die de gecontroleerde organisaties in de drie staten over 2023 indienden, naast wat USAspending dat jaar onder hetzelfde programma aan hen als verplicht vastlegde. Ongeveer de helft sluit aan. Van een doorgegeven regel wordt geen aansluiting verwacht, en een subsidie die in een eerder jaar is verplicht toont geen verplichting in het controlejaar. De niet-aansluitende regels blijven zichtbaar, niet verborgen."
+        "description": "Elke subsidieregel die de gecontroleerde organisaties in de drie staten over 2023 indienden, naast wat USAspending dat jaar onder hetzelfde programma aan hen als verplicht vastlegde. Een niet-aansluitende regel is op zich geen tekort. Een doorgegeven regel kwam via een staatsinstantie bij de organisatie, dus geen federale subsidie noemt haar en er wordt geen aansluiting verwacht; en een subsidie die in een eerder jaar is verplicht toont geen verplichting in het controlejaar. De niet-aansluitende regels blijven zichtbaar, niet verborgen."
       },
       "auditCounty": {
         "title": "Federaal geld per county",

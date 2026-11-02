@@ -1786,7 +1786,7 @@
       },
       "auditFiled": {
         "title": "La stessa riconciliazione, sulle dichiarazioni pubbliche",
-        "description": "Ogni riga di contributo che i soggetti revisionati dei tre stati hanno dichiarato per il 2023, accanto a quanto USAspending ha registrato come impegnato per loro nello stesso programma quell'anno. Circa la metà corrisponde. Una riga ricevuta tramite un intermediario non deve corrispondere, e un contributo impegnato in un anno precedente non mostra impegni nell'anno revisionato. Le righe senza corrispondenza restano visibili, non nascoste."
+        "description": "Ogni riga di contributo che i soggetti revisionati dei tre stati hanno dichiarato per il 2023, accanto a quanto USAspending ha registrato come impegnato per loro nello stesso programma quell'anno. Una riga senza corrispondenza non è di per sé una lacuna. Una riga ricevuta tramite un intermediario è passata per un'agenzia statale, quindi nessun contributo federale nomina il soggetto e non deve corrispondere; e un contributo impegnato in un anno precedente non mostra impegni nell'anno revisionato. Le righe senza corrispondenza restano visibili, non nascoste."
       },
       "auditCounty": {
         "title": "Fondi federali per contea",

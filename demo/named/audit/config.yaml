@@ -283,8 +283,9 @@ views:
   - {name: state_matched_lines, data_type: bigint, description: Those USAspending has a matching obligation for, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
 # The same match run on the public record: each state's 2023 Single Audit award lines by
 # Assistance Listing and direct or passed through, how many USAspending matched and how many it
-# did not. About half match: a passed-through line is not expected to, and a multi-year award
-# obligated in an earlier year does not show in the audit year.
+# did not. An unmatched line is not by itself a gap: a passed-through line (is_direct N) reached
+# the auditee through a state agency, so no federal award names it and none is expected to match,
+# and a multi-year award obligated in an earlier year does not show in the audit year.
 - id: public_match
   domain_id: audit
   enable_aggregates: true
@@ -315,6 +316,13 @@ relationships:
 - {id: award-notice-to-client, alias: AWARDED_TO, cardinality: many-to-one, source_table_id: award_notices, source_column: client_id, target_table_id: clients, target_column: client_id}
 - {id: schedule-line-to-award-notices, alias: RECORDED_AS, cardinality: one-to-many, source_table_id: grant_schedule, source_column: award_number, target_table_id: award_notices, target_column: award_number}
 - {id: client-to-county-obligations, alias: OBLIGATED_IN, cardinality: one-to-many, source_table_id: clients, source_column: county_fips, target_table_id: county_obligations, target_column: county_fips}
+# The public record of the same program: an award's Assistance Listing to what USAspending
+# obligated under it in each county, and to the state's filed award lines of it; a client's state
+# to that state's filings. readiness joins on each.
+- {id: schedule-line-to-county-obligations, alias: LISTING_OBLIGATED_IN, cardinality: one-to-many, source_table_id: grant_schedule, source_column: aln, target_table_id: county_obligations, target_column: assistance_listing}
+- {id: award-notice-to-county-obligations, alias: LISTING_OBLIGATED_IN, cardinality: one-to-many, source_table_id: award_notices, source_column: aln, target_table_id: county_obligations, target_column: assistance_listing}
+- {id: schedule-line-to-filed-awards, alias: LISTING_FILED_AS, cardinality: one-to-many, source_table_id: grant_schedule, source_column: aln, target_table_id: filed_awards, target_column: aln}
+- {id: client-to-state-filings, alias: STATE_FILINGS, cardinality: one-to-many, source_table_id: clients, source_column: state, target_table_id: filed_awards, target_column: auditee_state}
 # The words of a Single Audit, grounded through their edges in the terms the firm's and the public
 # tables' columns derive (expended, obligated, Assistance Listing).
 glossary_terms:

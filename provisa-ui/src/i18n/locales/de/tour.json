@@ -1786,7 +1786,7 @@
       },
       "auditFiled": {
         "title": "Derselbe Abgleich, auf öffentlichen Meldungen",
-        "description": "Jede Zuwendungszeile, die die Geprüften der drei Bundesstaaten für 2023 gemeldet haben, neben dem, was USAspending ihnen im selben Jahr unter demselben Programm als gebunden verzeichnet hat. Etwa die Hälfte stimmt überein. Eine weitergeleitete Zeile soll nicht übereinstimmen, und eine in einem früheren Jahr gebundene Zuwendung zeigt im Prüfungsjahr keine Mittelbindung. Die nicht abgeglichenen Zeilen bleiben sichtbar, nicht verborgen."
+        "description": "Jede Zuwendungszeile, die die Geprüften der drei Bundesstaaten für 2023 gemeldet haben, neben dem, was USAspending ihnen im selben Jahr unter demselben Programm als gebunden verzeichnet hat. Eine nicht abgeglichene Zeile ist für sich noch keine Lücke. Eine weitergeleitete Zeile kam über eine Landesbehörde zum Geprüften, also nennt ihn keine Bundeszuwendung, und es wird keine Übereinstimmung erwartet; und eine in einem früheren Jahr gebundene Zuwendung zeigt im Prüfungsjahr keine Mittelbindung. Die nicht abgeglichenen Zeilen bleiben sichtbar, nicht verborgen."
       },
       "auditCounty": {
         "title": "Bundesmittel nach County",

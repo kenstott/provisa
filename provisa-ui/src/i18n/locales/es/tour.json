@@ -1786,7 +1786,7 @@
       },
       "auditFiled": {
         "title": "La misma conciliación, en presentaciones públicas",
-        "description": "Cada línea de subvención que las entidades auditadas de los tres estados presentaron para 2023, junto a lo que USAspending registró como obligado para ellas bajo el mismo programa ese año. Coincide aproximadamente la mitad. No se espera que coincida una línea recibida a través de un intermediario, y una subvención obligada en un año anterior no muestra obligación en el año auditado. Las líneas sin coincidencia se conservan, no se ocultan."
+        "description": "Cada línea de subvención que las entidades auditadas de los tres estados presentaron para 2023, junto a lo que USAspending registró como obligado para ellas bajo el mismo programa ese año. Una línea sin coincidencia no es por sí sola una carencia. Una línea recibida a través de un intermediario llegó por una agencia estatal, así que ninguna subvención federal nombra a la entidad y no se espera que coincida; y una subvención obligada en un año anterior no muestra obligación en el año auditado. Las líneas sin coincidencia se conservan, no se ocultan."
       },
       "auditCounty": {
         "title": "Dinero federal por condado",

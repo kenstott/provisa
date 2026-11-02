@@ -1786,7 +1786,7 @@
       },
       "auditFiled": {
         "title": "The same match, on public filings",
-        "description": "Every award line the three states' auditees filed for 2023, beside what USAspending recorded obligating to them under the same program that year. About half match. A passed-through line is not expected to match, and an award obligated in an earlier year shows no obligation in the audit year. The unmatched lines are kept, not hidden."
+        "description": "Every award line the three states' auditees filed for 2023, beside what USAspending recorded obligating to them under the same program that year. An unmatched line is not by itself a gap. A passed-through line reached the auditee through a state agency, so no federal award names it and none is expected to match; and an award obligated in an earlier year shows no obligation in the audit year. The unmatched lines are kept, not hidden."
       },
       "auditCounty": {
         "title": "Federal money by county",
