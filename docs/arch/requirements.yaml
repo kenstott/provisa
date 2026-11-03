@@ -89212,7 +89212,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     count:) Maintainer 2026-11-03: an overload whose answer the check did not compare was not tested, so
     it has neither passed nor failed: it is reported as not tested, with its reason, as a gap in the check,
     beside passed, skipped by design and failed. Failed means a compared answer differed, the engine errored,
-    or the function was refused with no decision behind it.'
+    or the function was refused with no decision behind it. (Amended 2026-11-03, Server administration functions:)
+    Maintainer 2026-11-03: functions PostgreSQL refuses for the test server''s own state or configuration
+    are skipped by design on every engine, under a group of this name: WAL replay control (pg_wal_replay_pause,
+    pg_wal_replay_resume, pg_is_wal_replay_paused, pg_get_wal_replay_pause_state), logical decoding (pg_logical_slot_get_changes,
+    pg_logical_slot_peek_changes and their binary forms), pg_sync_replication_slots, pg_last_committed_xact,
+    pg_ls_logdir, pg_replication_origin_session_reset and pg_stop_making_pinned_objects. The conformance
+    check names each in that group with PostgreSQL''s refusal as the reason.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
