@@ -2780,7 +2780,14 @@ async def _build_org_runtime(
                     # The org's catalog names the registrations resolve under (REQ-1266).
                     _populate_source_catalog_names(seed)
                     async with bound_to_request_org():
-                        await rebuild_from_config(seed, conn, state.federation_engine)
+                        if is_template_org(org_id):
+                            from provisa.api.demo_templates import rebuild_template
+
+                            await rebuild_template(
+                                seed_directory, seed, conn, state.federation_engine
+                            )
+                        else:
+                            await rebuild_from_config(seed, conn, state.federation_engine)
                     if is_template_org(org_id):
                         from provisa.api.demo_templates import write_declared_settings
 
