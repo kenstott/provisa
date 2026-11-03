@@ -956,19 +956,28 @@ def _to_reg(a: _Answers) -> None:
         "(SELECT CAST(_r.rolname AS TEXT) FROM meta.catalog_pg_roles _r "
         f"WHERE _r.rolname = {_last_part('name')})",
     )
+    # regproc's text of the one function of that name; NULL for none, or for more than one.
     a.strict(
         "to_regproc",
         "name",
-        "OID",
-        f"(SELECT _p.oid FROM meta.catalog_pg_proc _p WHERE _p.proname = {_last_part('name')} "
-        "LIMIT 1)",
+        "TEXT",
+        "(SELECT CASE WHEN COUNT(*) = 1 THEN QUOTE_IDENT(CAST(MIN(_p.proname) AS TEXT)) END "
+        "FROM meta.catalog_pg_proc _p JOIN meta.catalog_pg_namespace _n "
+        f"ON _n.oid = _p.pronamespace WHERE _p.proname = {_last_part('name')} "
+        f"AND ({_qualifier('name')} IS NULL OR _n.nspname = {_qualifier('name')}))",
     )
+    # regprocedure's text of the function a signature names, its argument types as written.
+    called = "SPLIT_PART(name, '(', 1)"
+    given = "LOWER(REPLACE(RTRIM(SPLIT_PART(name, '(', 2), ') '), ' ', ''))"
     a.strict(
         "to_regprocedure",
         "name",
         "TEXT",
-        "(SELECT SPLIT_PART(name, '(', 1) || '(' || SPLIT_PART(name, '(', 2) "
-        "FROM meta.catalog_pg_proc _p WHERE _p.proname = SPLIT_PART(name, '(', 1) LIMIT 1)",
+        f"(SELECT QUOTE_IDENT(CAST(_p.proname AS TEXT)) || '(' || {_proc_types('_p', ',')} || ')' "
+        "FROM meta.catalog_pg_proc _p JOIN meta.catalog_pg_namespace _n "
+        f"ON _n.oid = _p.pronamespace WHERE _p.proname = {_last_part(called)} "
+        f"AND ({_qualifier(called)} IS NULL OR _n.nspname = {_qualifier(called)}) "
+        f"AND REPLACE({_proc_types('_p', ',')}, ' ', '') = {given} LIMIT 1)",
     )
     a.strict(
         "to_regoper",
@@ -1045,6 +1054,15 @@ def _acl_default() -> str:
     return f"CAST(CASE CAST(kind AS TEXT) {arms} ELSE {_typed(refused, 'TEXT')} END AS TEXT[])"
 
 
+def _proc_types(proc: str, separator: str) -> str:
+    """The types of function ``proc``'s arguments, as format_type writes each."""
+    return (
+        f"COALESCE((SELECT STRING_AGG(format_type(_t.t, NULL), '{separator}' ORDER BY _t.i) "
+        f"FROM UNNEST(CAST(STRING_TO_ARRAY(NULLIF(CAST({proc}.proargtypes AS TEXT), ''), ' ') "
+        "AS _oid)) WITH ORDINALITY AS _t(t, i)), '')"
+    )
+
+
 def _type_lookup(name: str) -> str:
     spelled = " ".join(f"WHEN '{d}' THEN '{i}'" for i, d in _TYPE_SPELLINGS)
     return (
@@ -1085,17 +1103,25 @@ def _named_in_path(schema: str, name: str) -> str:
 
 
 def _type_names(vector: str, separator: str, qualified: bool) -> str:
-    """The names of a vector of type oids, in order, joined by ``separator``."""
+    """The names of a vector of type oids, in order, joined by ``separator``. Qualified as
+    format_type's FORCE_QUALIFY writes them: a type SQL spells by a name of its own (bigint,
+    timestamp with time zone) as it is, any other with its schema."""
     name = (
         "format_type(_v._k, NULL)"
         if not qualified
-        else "QUOTE_IDENT(_tn.nspname) || '.' || QUOTE_IDENT(_ty.typname)"
+        else "CASE WHEN _te.oid IS NOT NULL THEN CASE WHEN format_type(_te.oid, NULL) "
+        "<> QUOTE_IDENT(_te.typname) THEN format_type(_v._k, NULL) ELSE QUOTE_IDENT(_ten.nspname) "
+        "|| '.' || QUOTE_IDENT(_te.typname) || '[]' END "
+        "WHEN format_type(_v._k, NULL) <> QUOTE_IDENT(_ty.typname) THEN format_type(_v._k, NULL) "
+        "ELSE QUOTE_IDENT(_tn.nspname) || '.' || QUOTE_IDENT(_ty.typname) END"
     )
     joined = (
         ""
         if not qualified
         else " JOIN meta.catalog_pg_type _ty ON _ty.oid = _v._k "
-        "JOIN meta.catalog_pg_namespace _tn ON _tn.oid = _ty.typnamespace"
+        "JOIN meta.catalog_pg_namespace _tn ON _tn.oid = _ty.typnamespace "
+        "LEFT JOIN meta.catalog_pg_type _te ON _te.oid = _ty.typelem AND _ty.typcategory = 'A' "
+        "LEFT JOIN meta.catalog_pg_namespace _ten ON _ten.oid = _te.typnamespace"
     )
     return (
         f"(SELECT COALESCE(STRING_AGG({name}, '{separator}' ORDER BY _v._i), '') FROM "
@@ -1186,23 +1212,36 @@ def _addresses(a: _Answers) -> None:
         "schema": raising("3F000", f"'schema \"' || {named} || '\" does not exist'"),
         "type": raising("42704", f"'type \"' || {named} || '\" does not exist'"),
     }
+    listed = "LOWER(REPLACE(ARRAY_TO_STRING(args, ','), ' ', ''))"
+    function = (
+        "(SELECT _p.oid FROM meta.catalog_pg_proc _p JOIN meta.catalog_pg_namespace _n "
+        f"ON _n.oid = _p.pronamespace WHERE _p.proname = {last} "
+        f"AND (ARRAY_LENGTH(names, 1) = 1 OR _n.nspname = {before}) "
+        f"AND REPLACE({_proc_types('_p', ',')}, ' ', '') = {listed} LIMIT 1)"
+    )
+    missing["function"] = raising(
+        "42883",
+        f"'function ' || {named} || '(' || ARRAY_TO_STRING(args, ',') || ') does not exist'",
+    )
     one_name = raising("22023", "'name list length must be exactly 1'")
     found = (
         f"CASE WHEN kind IN ('schema', 'type') AND ARRAY_LENGTH(names, 1) <> 1 THEN {one_name} "
         f"ELSE CASE kind WHEN 'table' THEN COALESCE({relation}, {missing['table']}) "
         f"WHEN 'schema' THEN COALESCE({namespace}, {missing['schema']}) "
-        f"WHEN 'type' THEN COALESCE({_type_lookup(last)}, {missing['type']}) ELSE "
+        f"WHEN 'type' THEN COALESCE({_type_lookup(last)}, {missing['type']}) "
+        f"WHEN 'function' THEN COALESCE({function}, {missing['function']}) ELSE "
         + raising("22023", "'unrecognized object type \"' || kind || '\"'")
         + " END END"
     )
     a.record(
         "pg_get_object_address",
-        f"kind, {names}, args",
+        f"kind, {names}, args:text[]",
         (
             (
                 "classid",
                 "OID",
-                "CASE kind WHEN 'table' THEN 1259 WHEN 'schema' THEN 2615 WHEN 'type' THEN 1247 END",
+                "CASE kind WHEN 'table' THEN 1259 WHEN 'schema' THEN 2615 WHEN 'type' THEN 1247 "
+                "WHEN 'function' THEN 1255 END",
             ),
             ("objid", "OID", found),
             ("objsubid", "INTEGER", "0"),
@@ -1421,7 +1460,6 @@ def _catalog_objects(a: _Answers) -> None:
     a.strict("pg_filenode_relation", "tablespace, filenode", "OID", "CAST(NULL AS OID)")
     a.strict("pg_relation_filenode", "rel", "BIGINT", "CAST(NULL AS BIGINT)")
     a.strict("pg_relation_filepath", "rel", "VARCHAR", "CAST(NULL AS VARCHAR)")
-    a.strict("pg_get_function_arg_default", "f, n", "VARCHAR", "CAST(NULL AS VARCHAR)")
     a.strict("pg_get_statisticsobjdef", "s", "VARCHAR", "CAST(NULL AS VARCHAR)")
     phases = " ".join(f"WHEN {n} THEN '{name}'" for n, name in _BTREE_BUILD_PHASES)
     a.strict(
@@ -1502,7 +1540,15 @@ def _catalog_objects(a: _Answers) -> None:
         "fmgr_sql_validator",
         "plpgsql_validator",
     ):
-        a.strict(name, "f", "VARCHAR", raising("XX000", "'cache lookup failed for function ' || f"))
+        # A function the catalog lists validates (void); any other is no function.
+        a.strict(
+            name,
+            "f:bigint",
+            "VARCHAR",
+            "CASE WHEN EXISTS (SELECT 1 FROM meta.catalog_pg_proc _p WHERE _p.oid = f) THEN '' ELSE "
+            + raising("XX000", "'cache lookup failed for function ' || f")
+            + " END",
+        )
     a.strict(
         "amvalidate",
         "c",

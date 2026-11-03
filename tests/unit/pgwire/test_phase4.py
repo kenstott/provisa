@@ -35,6 +35,8 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
+from provisa.pgwire.catalog_pg17_procs import DESCRIPTIONS, PROCS
+
 from provisa.pgwire.catalog import answer, classify
 from provisa.pgwire.catalog_populate import _build_catalog_db
 
@@ -405,7 +407,8 @@ def test_answer_information_schema_views():
 def test_answer_pg_description():
     state = _make_state()
     result = answer("SELECT * FROM pg_catalog.pg_description", "alice", state)
-    assert result.rows == []
+    # A model with no comment lists the descriptions of what PostgreSQL 17 ships alone.
+    assert len(result.rows) == len(DESCRIPTIONS)
     assert "description" in result.column_names
 
 
@@ -419,7 +422,8 @@ def test_answer_pg_index():
 def test_answer_pg_proc():
     state = _make_state()
     result = answer("SELECT * FROM pg_catalog.pg_proc", "alice", state)
-    assert result.rows == []
+    # A model with no tracked function lists the functions PostgreSQL 17 ships alone.
+    assert len(result.rows) == len(PROCS)
     assert "proname" in result.column_names
 
 
@@ -512,7 +516,7 @@ async def test_wire_pg_description_queryable(pgwire_server_p4, mock_state_p4):
         )
         rows = await conn.fetch("SELECT * FROM pg_catalog.pg_description")
         await conn.close()
-    assert rows == []
+    assert len(rows) == len(DESCRIPTIONS)  # what PostgreSQL 17 ships
 
 
 @pytest.mark.asyncio
@@ -544,7 +548,7 @@ async def test_wire_pg_proc_queryable(pgwire_server_p4, mock_state_p4):
         )
         rows = await conn.fetch("SELECT * FROM pg_catalog.pg_proc")
         await conn.close()
-    assert rows == []
+    assert len(rows) == len(PROCS)  # what PostgreSQL 17 ships
 
 
 @pytest.mark.asyncio

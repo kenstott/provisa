@@ -157,15 +157,27 @@ def test_an_object_is_described_and_identified_from_the_catalog():
         "SELECT pg_describe_object(1247, 23, 0), pg_describe_object(2615, 2200, 0), "
         "pg_describe_object(1213, 1663, 0)"
     ) == [("type integer", "schema public", None)]
-    # DBeaver: an aggregate's function, by 'pg_proc'::regclass.
-    # PostgreSQL's aggregates are reference data; the functions a catalog lists are the model's.
-    assert all(
-        row == (None,)
-        for row in _rows(
+    # DBeaver: an aggregate's function, by 'pg_proc'::regclass: the functions PostgreSQL 17
+    # ships are listed, each identified as PostgreSQL identifies it.
+    identities = {
+        identity
+        for (identity,) in _rows(
             "SELECT (pg_identify_object('pg_proc'::regclass, aggfnoid, 0)).identity "
             "FROM pg_catalog.pg_aggregate"
         )
-    )
+    }
+    assert {"pg_catalog.avg(bigint)", 'pg_catalog.count(pg_catalog."any")'} <= identities
+    assert _rows(
+        "SELECT (pg_identify_object('pg_proc'::regclass, "
+        "'pg_catalog.array_to_tsvector(text[])'::regprocedure, 0)).identity, "
+        "(pg_identify_object('pg_proc'::regclass, 'pg_catalog.timezone(text, timestamp with time "
+        "zone)'::regprocedure, 0)).identity"
+    ) == [
+        (
+            "pg_catalog.array_to_tsvector(pg_catalog.text[])",
+            "pg_catalog.timezone(pg_catalog.text,timestamp with time zone)",
+        )
+    ]
     assert _rows(
         f"SELECT (pg_identify_object('pg_class'::regclass, {oid}, 0)).identity, "
         f"(pg_identify_object(1259, {oid}, 1)).identity, "

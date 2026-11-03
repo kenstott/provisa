@@ -38,7 +38,8 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.ir_types import SUBTYPES
-from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, TYPES
+from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATION_CLASS, TYPES
+from provisa.pgwire.catalog_pg17_procs import ORDERED_SET_ARGUMENTS
 from provisa.transpiler.metadata_facts import PRIVILEGES, UNSERVED, CatalogFacts, relation
 from provisa.transpiler.metadata_oids import (
     FIRST_METRIC_OID,
@@ -382,10 +383,15 @@ def _index_column(key: str, position: str) -> str:
 
 _OBJECT_COMMENT = _answer(OBJECT_COMMENTS, "object_oid")
 #: PostgreSQL's oid of the catalog obj_description is asked about, by the name it is asked with.
+_CATALOG_OIDS = " ".join(
+    f"WHEN '{name}' THEN {oid}"
+    for (schema, name), (oid, kind) in sorted(RELATION_CLASS.items())
+    if schema == "pg_catalog" and kind == "r"
+)
 _COMMENT_IN_CATALOG = _answer(
     COMMENTS,
-    "CAST(object_oid AS TEXT) || ':' || CAST(CASE catalog WHEN 'pg_class' THEN 1259 "
-    "WHEN 'pg_namespace' THEN 2615 END AS TEXT) || ':0'",
+    f"CAST(object_oid AS TEXT) || ':' || CAST(CASE CAST(catalog AS TEXT) {_CATALOG_OIDS} END "
+    "AS TEXT) || ':0'",
 )
 _COLUMN_COMMENT = _answer(
     COMMENTS, "CAST(relation_oid AS TEXT) || ':1259:' || CAST(attnum AS TEXT)"
@@ -454,12 +460,6 @@ def _form(name: str, params: str, sql: str, *facts: str) -> Form:
 #: Functions on an object kind Provisa keeps nothing of, or does not list: NULL of the type
 #: PostgreSQL gives, each with the argument counts PostgreSQL 17 has.
 _NOTHING_KEPT: tuple[tuple[str, tuple[int, ...], str], ...] = (
-    ("pg_get_function_arg_default", (2,), "TEXT"),
-    ("pg_get_function_arguments", (1,), "TEXT"),
-    ("pg_get_function_identity_arguments", (1,), "TEXT"),
-    ("pg_get_function_result", (1,), "TEXT"),
-    ("pg_get_function_sqlbody", (1,), "TEXT"),
-    ("pg_get_functiondef", (1,), "TEXT"),
     ("pg_get_partition_constraintdef", (1,), "TEXT"),
     ("pg_get_partkeydef", (1,), "TEXT"),
     ("pg_get_ruledef", (1, 2), "TEXT"),
@@ -480,6 +480,103 @@ _NOTHING_KEPT: tuple[tuple[str, tuple[int, ...], str], ...] = (
     ("pg_tablespace_size", (1,), "BIGINT"),
     ("pg_column_size", (1,), "INTEGER"),
 )
+
+
+#: A function's arguments in pg_proc, one row each of ``_w``: its place (i), its type (t), its mode
+#: (m), its name (nm), as print_function_arguments writes it (written), and, of an input that takes
+#: one, its default (deflt): the inputs' last pronargdefaults have one each.
+def _arguments(proc: str) -> str:
+    mode = f"COALESCE(CAST({proc}.proargmodes[_u.i] AS TEXT), 'i')"
+    name = f"COALESCE({proc}.proargnames[_u.i], '')"
+    inputs_so_far = (
+        f"(SELECT COUNT(*) FROM GENERATE_SERIES(1, _u.i) _j(j) "
+        f"WHERE COALESCE(CAST({proc}.proargmodes[_j.j] AS TEXT), 'i') IN ('i', 'b', 'v'))"
+    )
+    without_default = f"{proc}.pronargs - {proc}.pronargdefaults"
+    return (
+        f"(SELECT _u.i, _u.t, {mode} AS m, {name} AS nm, "
+        f"CASE {mode} WHEN 'o' THEN 'OUT ' WHEN 'b' THEN 'INOUT ' WHEN 'v' THEN 'VARIADIC ' "
+        f"ELSE '' END || CASE WHEN {name} <> '' THEN QUOTE_IDENT({name}) || ' ' ELSE '' END "
+        "|| format_type(_u.t, NULL) AS written, "
+        f"CASE WHEN {mode} IN ('i', 'b', 'v') AND {inputs_so_far} > {without_default} "
+        f"THEN (STRING_TO_ARRAY(CAST({proc}.proargdefaults AS TEXT), ', '))"
+        f"[{inputs_so_far} - ({without_default})] END AS deflt "
+        f"FROM UNNEST(COALESCE({proc}.proallargtypes, CAST(STRING_TO_ARRAY(NULLIF(CAST("
+        f"{proc}.proargtypes AS TEXT), ''), ' ') AS _oid))) WITH ORDINALITY AS _u(t, i))"
+    )
+
+
+_ORDERED_SET = " ".join(
+    "WHEN {} THEN '{}'".format(oid, args.replace("'", "''"))
+    for oid, args in sorted(ORDERED_SET_ARGUMENTS.items())
+)
+
+
+def _of_function(f: str, answer: str) -> str:
+    """``answer`` of the function whose oid is ``f``, as ``_p`` its pg_proc row; NULL for none."""
+    return f"(SELECT {answer} FROM meta.catalog_pg_proc _p WHERE _p.oid = {f} LIMIT 1)"
+
+
+def _listed_arguments(with_defaults: bool) -> str:
+    written = (
+        "_w.written || COALESCE(' DEFAULT ' || _w.deflt, '')" if with_defaults else "_w.written"
+    )
+    return (
+        f"CASE CAST(_p.oid AS BIGINT) {_ORDERED_SET} ELSE COALESCE((SELECT STRING_AGG({written}, "
+        f"', ' ORDER BY _w.i) FROM {_arguments('_p')} _w WHERE _w.m <> 't'), '') END"
+    )
+
+
+#: pg_get_function_result: a TABLE function's columns, a set's SETOF, else the type.
+_RESULT = (
+    "CASE WHEN EXISTS (SELECT 1 FROM {args} _w WHERE _w.m = 't') THEN 'TABLE(' || "
+    "(SELECT STRING_AGG(CASE WHEN _w.nm <> '' THEN QUOTE_IDENT(_w.nm) || ' ' ELSE '' END "
+    "|| format_type(_w.t, NULL), ', ' ORDER BY _w.i) FROM {args} _w WHERE _w.m = 't') || ')' "
+    "ELSE CASE WHEN _p.proretset THEN 'SETOF ' ELSE '' END || format_type(_p.prorettype, NULL) END"
+).format(args=_arguments("_p"))
+
+#: pg_get_functiondef: as ruleutils writes CREATE OR REPLACE of a function PostgreSQL ships.
+_FUNCTIONDEF = (
+    "CASE WHEN _p.prokind = 'a' THEN "
+    + raising("42809", "'\"' || _p.proname || '\" is an aggregate function'").replace(
+        "@TYPE@", "TEXT"
+    )
+    + " ELSE 'CREATE OR REPLACE ' || CASE _p.prokind WHEN 'p' THEN 'PROCEDURE ' ELSE 'FUNCTION ' "
+    "END || QUOTE_IDENT(_n.nspname) || '.' || QUOTE_IDENT(_p.proname) || '(' || "
+    f"{_listed_arguments(True)} || ')' || CHR(10) || CASE WHEN _p.prokind <> 'p' THEN "
+    f"' RETURNS ' || {_RESULT} || CHR(10) ELSE '' END "
+    "|| ' LANGUAGE ' || QUOTE_IDENT(_l.lanname) || CHR(10) || COALESCE(NULLIF("
+    "CASE WHEN _p.prokind = 'w' THEN ' WINDOW' ELSE '' END "
+    "|| CASE _p.provolatile WHEN 'i' THEN ' IMMUTABLE' WHEN 's' THEN ' STABLE' ELSE '' END "
+    "|| CASE _p.proparallel WHEN 's' THEN ' PARALLEL SAFE' WHEN 'r' THEN ' PARALLEL RESTRICTED' "
+    "ELSE '' END || CASE WHEN _p.proisstrict THEN ' STRICT' ELSE '' END "
+    "|| CASE WHEN _p.prosecdef THEN ' SECURITY DEFINER' ELSE '' END "
+    "|| CASE WHEN _p.proleakproof THEN ' LEAKPROOF' ELSE '' END "
+    "|| CASE WHEN _p.procost <> CASE WHEN _l.lanname IN ('internal', 'c') THEN 1 ELSE 100 END "
+    "THEN ' COST ' || CAST(_p.procost AS TEXT) ELSE '' END "
+    "|| CASE WHEN _p.proretset AND _p.prorows > 0 AND _p.prorows <> 1000 "
+    "THEN ' ROWS ' || CAST(_p.prorows AS TEXT) ELSE '' END "
+    "|| CASE WHEN CAST(_p.prosupport AS OID) <> 0 THEN ' SUPPORT ' || (SELECT "
+    "QUOTE_IDENT(CAST(_s.proname AS TEXT)) FROM meta.catalog_pg_proc _s "
+    "WHERE _s.oid = CAST(_p.prosupport AS OID)) ELSE '' END, '') || CHR(10), '') "
+    "|| CASE WHEN _p.prosqlbody IS NOT NULL THEN CAST(_p.prosqlbody AS TEXT) || CHR(10) "
+    "ELSE 'AS ' || CASE WHEN _l.lanname = 'c' THEN QUOTE_LITERAL(_p.probin) || ', ' ELSE '' END "
+    "|| '$function$' || _p.prosrc || '$function$' || CHR(10) END END"
+)
+
+
+def _functiondef(f: str) -> str:
+    return (
+        f"(SELECT {_FUNCTIONDEF} FROM meta.catalog_pg_proc _p JOIN meta.catalog_pg_namespace _n "
+        "ON _n.oid = _p.pronamespace JOIN meta.catalog_pg_language _l ON _l.oid = _p.prolang "
+        f"WHERE _p.oid = {f} LIMIT 1)"
+    )
+
+
+#: pg_get_function_arg_default(f, n): the default of the nth argument, where it is an input
+#: that takes one.
+_ARG_DEFAULT = _of_function("f", f"(SELECT _w.deflt FROM {_arguments('_p')} _w WHERE _w.i = n)")
+
 #: Every object a catalog holds is on the search path, and the session role holds every role.
 #: Each is strict, as PostgreSQL's is: a NULL argument is NULL.
 _ALWAYS = (
@@ -580,6 +677,12 @@ _FORMS: tuple[Form, ...] = (
         "pg_is_other_temp_schema", "schema_oid", "CASE WHEN schema_oid IS NOT NULL THEN FALSE END"
     ),
     _form("pg_has_role", _unused_params(3), _HAS_ROLE),
+    _form("pg_get_function_arguments", "f", _of_function("f", _listed_arguments(True))),
+    _form("pg_get_function_identity_arguments", "f", _of_function("f", _listed_arguments(False))),
+    _form("pg_get_function_result", "f", _of_function("f", _RESULT)),
+    _form("pg_get_function_arg_default", "f, n", _ARG_DEFAULT),
+    _form("pg_get_function_sqlbody", "f", _of_function("f", "CAST(_p.prosqlbody AS TEXT)")),
+    _form("pg_get_functiondef", "f", _functiondef("f")),
     # Every tablespace a catalog lists, and 0 (the database's), is in the data directory: ''.
     _form(
         "pg_tablespace_location",
@@ -753,6 +856,11 @@ _ATOMIC = (exp.Column, exp.Literal, exp.Func, exp.Cast, exp.Paren, exp.Null, exp
 
 
 def _argument(value: exp.Expr, reads_as: str = "") -> exp.Expr:
+    if reads_as == "bigint" and (isinstance(value, exp.Column) or _object_identifier(value)):
+        # An oid a column or an object identifier value holds (regproc's text is a name): the
+        # statement runs on PostgreSQL, which has oid.
+        oid = exp.DataType.build("oid", dialect="postgres", udt=True)
+        return exp.Paren(this=exp.cast(exp.Cast(this=value.copy(), to=oid), "BIGINT"))
     if reads_as == "text":
         return exp.cast(value, "TEXT")
     if reads_as == "bytea":  # no engine reads a bytes' text back, and a form reads only its NULL
@@ -769,6 +877,13 @@ def _argument(value: exp.Expr, reads_as: str = "") -> exp.Expr:
     if isinstance(value, exp.Cast) and value.to.sql(dialect="postgres").lower() == "pg_node_tree":
         value = value.this  # the cast names pg_get_expr's argument type; a catalog keeps text
     return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
+
+
+def _object_identifier(value: exp.Expr) -> bool:
+    """Whether ``value`` is cast to an object identifier type (regproc, regprocedure, ...)."""
+    return isinstance(value, exp.Cast) and value.to.sql(dialect="postgres").lower().startswith(
+        "reg"
+    )
 
 
 def _written(form: Form, args: list[exp.Expr]) -> exp.Expr:

@@ -39,6 +39,7 @@ from provisa.pgwire.catalog_data import (
     PG_SYSTEM_ROLE_MEMBERS,
 )
 from provisa.pgwire.catalog_pg17 import RELATION_CLASS, RELATIONS, STATIC_ROWS, TYPES
+from provisa.pgwire.catalog_pg17_procs import DESCRIPTIONS, PROCS
 from provisa.transpiler.metadata_functions import (
     listed_type_sql,
     pg_type_name_sql,
@@ -681,7 +682,18 @@ def _pg_description() -> str:
         },
         "FROM metrics m WHERE COALESCE(m.description, m.ai_context) IS NOT NULL",
     )
-    return _view(relation, tables, columns, schemas, metrics)
+    shipped = _select(
+        relation,
+        {"objoid": "s.objoid", "classoid": "s.classoid", "objsubid": "s.objsubid",
+         "description": "s.description"},
+        "FROM "
+        + _unnested(
+            DESCRIPTIONS,
+            (("objoid", "bigint[]"), ("classoid", "bigint[]"), ("objsubid", "integer[]"),
+             ("description", "text[]")),
+        ),
+    )  # fmt: skip
+    return _view(relation, tables, columns, schemas, metrics, shipped)
 
 
 def _pg_constraint() -> str:
@@ -786,7 +798,55 @@ def _pg_proc() -> str:
             },
             "FROM tracked_functions f",
         ),
+        _select(
+            relation,
+            {
+                **{column: f"s.{column}" for column, _ in _PROC_COLUMNS},
+                "proowner": str(OWNER_OID),
+                "prosupport": "CAST(s.prosupport AS OID)",
+                "proargtypes": "s.proargtypes",
+            },
+            f"FROM {_unnested(_shipped_procs(), _PROC_COLUMNS)}",
+        ),
     )
+
+
+#: The columns of a function PostgreSQL ships (catalog_pg17_procs.PROCS), by the array type each is
+#: unnested from: an array value is held as its text.
+_PROC_COLUMNS = (
+    ("oid", "bigint[]"), ("proname", "text[]"), ("pronamespace", "bigint[]"),
+    ("prolang", "bigint[]"), ("procost", "real[]"), ("prorows", "real[]"),
+    ("provariadic", "bigint[]"), ("prosupport", "bigint[]"), ("prokind", "text[]"),
+    ("prosecdef", "boolean[]"), ("proleakproof", "boolean[]"), ("proisstrict", "boolean[]"),
+    ("proretset", "boolean[]"), ("provolatile", "text[]"), ("proparallel", "text[]"),
+    ("pronargs", "smallint[]"), ("pronargdefaults", "smallint[]"), ("prorettype", "bigint[]"),
+    ("proargtypes", "text[]"), ("proallargtypes", "text[]"), ("proargmodes", "text[]"),
+    ("proargnames", "text[]"), ("proargdefaults", "text[]"), ("prosrc", "text[]"),
+    ("probin", "text[]"), ("prosqlbody", "text[]"),
+)  # fmt: skip
+
+
+def _array_text(values) -> str | None:
+    """An array's text form, which a column of its array type reads."""
+    if values is None:
+        return None
+    return (
+        "{"
+        + ",".join('"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"' for v in values)
+        + "}"
+    )
+
+
+def _shipped_procs() -> list[tuple]:
+    """Each function PostgreSQL 17 ships, its array columns as their text."""
+    rows = []
+    for row in PROCS:
+        values = list(row)
+        values[19] = _array_text(values[19])  # proallargtypes
+        values[20] = None if values[20] is None else _array_text(list(values[20]))  # proargmodes
+        values[21] = _array_text(values[21])  # proargnames
+        rows.append(tuple(values))
+    return rows
 
 
 def _is_routines() -> str:

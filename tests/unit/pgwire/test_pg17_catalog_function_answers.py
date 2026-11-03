@@ -497,3 +497,101 @@ def test_a_catalog_function_answers_as_postgresql_17(sql, expected):
 def test_a_tablespace_no_catalog_lists_has_no_location():
     with pytest.raises(Exception, match='could not stat file "pg_tblspc/99999"'):
         _value("SELECT pg_catalog.pg_tablespace_location(99999) AS v")
+
+
+_NOW = "'now()'::regprocedure::oid"
+_MAKE_INTERVAL = (
+    "'pg_catalog.make_interval(integer, integer, integer, integer, integer, integer, "
+    "double precision)'::regprocedure::oid"
+)
+
+
+@pytest.mark.parametrize(
+    "sql,expected",
+    [
+        ("SELECT pg_catalog.\"to_regproc\"('now'::text) AS v", "now"),
+        ("SELECT pg_catalog.to_regproc('abs') AS v", None),  # more than one: none
+        ("SELECT pg_catalog.\"to_regprocedure\"('now()'::text) AS v", "now()"),
+        ("SELECT pg_catalog.to_regprocedure('pg_catalog.abs(integer)') AS v", "abs(integer)"),
+        (
+            "SELECT pg_catalog.to_regprocedure('make_interval(integer, integer, integer, integer, "
+            "integer, integer, double precision)') AS v",
+            "make_interval(integer,integer,integer,integer,integer,integer,double precision)",
+        ),
+        (f'SELECT pg_catalog."pg_get_function_arguments"({_NOW}) AS v', ""),
+        (f'SELECT pg_catalog."pg_get_function_identity_arguments"({_NOW}) AS v', ""),
+        (f'SELECT pg_catalog."pg_get_function_result"({_NOW}) AS v', "timestamp with time zone"),
+        (
+            f'SELECT pg_catalog."pg_get_function_arg_default"({_MAKE_INTERVAL}, 1::integer) AS v',
+            "0",
+        ),
+        (f"SELECT pg_catalog.pg_get_function_arg_default({_MAKE_INTERVAL}, 7) AS v", "0.0"),
+        (
+            "SELECT pg_catalog.pg_get_function_arguments('jsonb_path_query'::regproc) AS v",
+            "target jsonb, path jsonpath, vars jsonb DEFAULT '{}'::jsonb, silent boolean "
+            "DEFAULT false",
+        ),
+        (
+            "SELECT pg_catalog.pg_get_function_identity_arguments('jsonb_path_query'::regproc) AS v",
+            "target jsonb, path jsonpath, vars jsonb, silent boolean",
+        ),
+        (
+            "SELECT pg_catalog.pg_get_function_result('jsonb_path_query'::regproc) AS v",
+            "SETOF jsonb",
+        ),
+        (
+            "SELECT pg_catalog.pg_get_function_arguments('pg_catalog.percentile_cont(double "
+            "precision, interval)'::regprocedure) AS v",
+            "double precision ORDER BY interval",
+        ),
+        (
+            f'SELECT pg_catalog."pg_get_functiondef"({_NOW}) AS v',
+            (
+                "CREATE OR REPLACE FUNCTION pg_catalog.now()\n RETURNS timestamp with time zone\n"
+                " LANGUAGE internal\n STABLE PARALLEL SAFE STRICT\nAS $function$now$function$\n"
+            ),
+        ),
+        (f'SELECT pg_catalog."obj_description"({_NOW}) AS v', "current transaction time"),
+        (
+            f"SELECT pg_catalog.\"obj_description\"({_NOW}, 'pg_proc'::name) AS v",
+            "current transaction time",
+        ),
+        (
+            "SELECT pg_catalog.\"pg_describe_object\"('pg_catalog.pg_proc'::regclass::oid, "
+            f"{_NOW}, 0::integer) AS v",
+            "function now()",
+        ),
+        (f'SELECT pg_catalog."fmgr_internal_validator"({_NOW}) AS v', ""),
+        (
+            "SELECT pg_catalog.\"pg_get_object_address\"('function'::text, "
+            "'{pg_catalog,now}'::text[], '{}'::text[]) AS v",
+            "(1255,1299,0)",
+        ),
+    ],
+)
+def test_a_function_postgresql_ships_is_described_as_postgresql_17_describes_it(sql, expected):
+    assert _value(sql) == expected
+
+
+@pytest.mark.parametrize(
+    "signature,md5",
+    [
+        ("pg_catalog.ts_debug(regconfig,text)", "881ff946ce37d59d764181100be8e66c"),
+        ("pg_catalog.make_interval(integer,integer,integer,integer,integer,integer,"
+         "double precision)", "34b9009000108688a1c8b6c3baf7634b"),
+        ("pg_catalog.koi8r_to_mic(integer,integer,cstring,internal,integer,boolean)",
+         "265526ad6d36536e0a508c6f278882e4"),
+        ("pg_catalog.jsonb_path_query(jsonb,jsonpath,jsonb,boolean)",
+         "6e06258e1b30b23d8c97366e4ba90d3c"),
+    ],
+)  # fmt: skip
+def test_a_functions_definition_is_postgresql_17s(signature, md5):
+    import hashlib
+
+    written = _value(f"SELECT pg_catalog.pg_get_functiondef('{signature}'::regprocedure) AS v")
+    assert hashlib.md5(written.encode()).hexdigest() == md5
+
+
+def test_an_aggregates_definition_is_refused_as_postgresql_refuses_it():
+    with pytest.raises(Exception, match='"max" is an aggregate function'):
+        _value("SELECT pg_catalog.pg_get_functiondef('pg_catalog.max(integer)'::regprocedure) AS v")
