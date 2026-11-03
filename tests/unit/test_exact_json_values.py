@@ -784,16 +784,18 @@ class TestIntegersAreNumbers:
     def test_a_duckdb_hugeint_read_through_arrow_is_a_number(self):
         import duckdb
 
-        from provisa.executor.drivers.duckdb_driver import fetch_rows
+        from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
 
         con = duckdb.connect()
-        # The DATE column sends the result through Arrow, where a HUGEINT is decimal128(38,0).
+        # Every DuckDB read is its Arrow export (REQ-2194), which carries a HUGEINT as DuckDB's
+        # own bytes, read as the int DuckDB's rows hold.
+        con.execute(LOSSLESS_ARROW)
         res = con.execute(
             f"SELECT {_HUGE}::HUGEINT AS h, 12::DECIMAL(38,0) AS d, DATE '2020-01-01' AS day"
         )
         types = [str(d[1]) for d in res.description]
-        rows = fetch_rows(res)
-        assert isinstance(rows[0][0], Decimal)  # Arrow's representation, not the engine's type
+        rows = arrow_rows(res.to_arrow_table())
+        assert rows[0][0] == _HUGE and isinstance(rows[0][0], int)
         result = QueryResult(rows=rows, column_names=["h", "d", "day"], column_types=types)
         assert json.loads(dumps(result_records(result))) == [
             {"h": _HUGE, "d": "12", "day": "2020-01-01"}

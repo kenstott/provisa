@@ -28,10 +28,12 @@ from provisa.transpiler.transpile import transpile_to_duckdb
 
 
 def _on_duckdb(pg_sql: str) -> list[tuple]:
-    from provisa.executor.drivers.duckdb_driver import fetch_rows
+    from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
 
+    # Read as every DuckDB read is (REQ-2194): through its Arrow export.
     with duckdb.connect() as con:
-        return fetch_rows(con.execute(transpile_to_duckdb(pg_sql)))
+        con.execute(LOSSLESS_ARROW)
+        return arrow_rows(con.execute(transpile_to_duckdb(pg_sql)).to_arrow_table())
 
 
 @pytest.mark.parametrize(
