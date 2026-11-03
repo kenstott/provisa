@@ -891,19 +891,21 @@ def _catalog_objects(a: _Answers) -> None:
         "unnest(CAST([] AS STRUCT(name VARCHAR, statement VARCHAR, is_holdable BOOLEAN, "
         "is_binary BOOLEAN, is_scrollable BOOLEAN, creation_time TIMESTAMPTZ)[]))",
     )
+    # The pinned release's zones, and PostgreSQL's Default abbreviations (pg_zones).
     a.body(
         "pg_timezone_names",
         "",
         "unnest((SELECT list(struct_pack(name := _z.name, abbrev := _z.abbrev, "
-        "utc_offset := _z.utc_offset, is_dst := _z.is_dst)) FROM pg_timezone_names() _z))",
+        f"utc_offset := _z.utc_offset, is_dst := _z.is_dst)) FROM ({pg_zones.NAMES}) _z))",
     )
-    # PostgreSQL's Default abbreviations (pg_zones).
     a.body(
         "pg_timezone_abbrevs",
         "",
         "unnest((SELECT list(struct_pack(abbrev := _z.abbrev, utc_offset := _z.utc_offset, "
         f"is_dst := _z.is_dst)) FROM ({pg_zones.ABBREVS}) _z))",
     )
+    # In FROM, each is its rows.
+    a.table.setdefault("pg_timezone_names", []).append(f"() AS TABLE ({pg_zones.NAMES})")
     a.table.setdefault("pg_timezone_abbrevs", []).append(f"() AS TABLE ({pg_zones.ABBREVS})")
     a.rows(
         "pg_wal_summary_contents",

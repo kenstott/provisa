@@ -119,6 +119,9 @@ from __future__ import annotations
 
 import argparse
 import decimal
+import functools
+import html
+import importlib.resources
 import json
 import math
 import re
@@ -148,6 +151,7 @@ from function_report import (
     MODEL_ANSWER,
     NUMBER_VALUE,
     ROW_ORDER,
+    ZONE_PACKAGING,
 )
 from pgwire_function_probe import Function
 
@@ -2008,6 +2012,53 @@ def _pair_rows(
     return used, missing, list(left.values())
 
 
+# --- time zones (REQ-2167, amended 2026-11-03, Time zones follow upstream tzdata) --------------
+
+#: The functions listing time zones by name, its record's first field: Provisa's list is the
+#: pinned upstream IANA tzdata, PostgreSQL's its distribution's packaging of one.
+ZONE_LISTS = frozenset({"pg_timezone_names"})
+#: The names a distribution's tzdata adds to the release's: Debian's.
+DISTRIBUTION_ZONES = frozenset({"localtime", "posixrules"})
+
+
+def _zone_name(row: tuple) -> str | None:
+    fields = _record_fields(row[0]) if row and row[0] is not None else None
+    return fields[0] if fields else None
+
+
+@functools.cache
+def _pinned_zone(name: str) -> bytes | None:
+    """The pinned release's compiled zone of ``name``; a link's is its zone's."""
+    zone = importlib.resources.files("tzdata").joinpath("zoneinfo", *name.split("/"))
+    return zone.read_bytes() if zone.is_file() else None
+
+
+def shared_zones(
+    want: list[tuple], got: list[tuple]
+) -> tuple[list[tuple], list[tuple], frozenset[str]] | str:
+    """The rows of the zones both lists name, and the rule that skipped the rest, or how the lists
+    differ. A name PostgreSQL alone lists is skipped when its distribution adds it
+    (``DISTRIBUTION_ZONES``); one Provisa alone lists when it is a link of the pinned release to a
+    zone both name, a backward link a distribution drops."""
+    named = {_zone_name(row) for row in want}
+    shared = named & {_zone_name(row) for row in got}
+    zones = {zone for name in shared if name and (zone := _pinned_zone(name)) is not None}
+    only_pg = sorted(n or "" for n in named - shared if n not in DISTRIBUTION_ZONES)
+    if only_pg:
+        return f"zones PostgreSQL lists and Provisa does not: {only_pg}"
+    only_provisa = sorted(
+        name or ""
+        for row in got
+        if (name := _zone_name(row)) not in shared
+        and (name is None or _pinned_zone(name) not in zones)
+    )
+    if only_provisa:
+        return f"zones Provisa lists and PostgreSQL does not: {only_provisa}"
+    rules = _SAME if len(shared) == len(want) == len(got) else frozenset({ZONE_PACKAGING})
+    kept = [row for row in want if _zone_name(row) in shared]
+    return kept, [row for row in got if _zone_name(row) in shared], rules
+
+
 @dataclass(frozen=True)
 class Compared:
     """``difference``: how an answer differs, None if it does not. ``rules``: what it took."""
@@ -2034,6 +2085,12 @@ def compare(
         return Compared(rules=typed)
     fields = want["fields"]
     a, b = want["rows"], got["rows"]
+    packaged = _SAME
+    if function in ZONE_LISTS:
+        zoned = shared_zones(a, b)
+        if isinstance(zoned, str):
+            return Compared(zoned)
+        a, b, packaged = zoned
     if len(a) != len(b):
         return Compared(f"{len(b)} rows, PostgreSQL {len(a)}")
 
@@ -2052,7 +2109,7 @@ def compare(
 
     used, missing, left = _pair_rows(a, b, row_rules)
     if not missing:
-        return Compared(rules=typed | used)
+        return Compared(rules=typed | used | packaged)
     missing, left = sorted(missing, key=order), sorted(left, key=order)
     wv, gv = next(
         (wv, gv)
@@ -2153,7 +2210,9 @@ def measure_column(
             }
         compared = compare(want, got, values=True, sql=call_.sql, function=fn.name, enums=enums)
         if compared.difference is not None:
-            group = decided_difference(fn.name, call_.sql, compared.difference)
+            group = decided_difference(fn.name, call_.sql, compared.difference) or decided_answer(
+                fn.name, call_.sql, want, got
+            )
             if group is not None:
                 return {"outcome": "by_design", "group": group}
             detail = {"statement": call_.sql, "difference": compared.difference}
@@ -2185,6 +2244,8 @@ STORAGE_GROUP = "Provisa holds no storage"
 SERVER_FILES_GROUP = "No function reads the server's files"
 SERVER_ADMINISTRATION_GROUP = "Server administration functions"
 SERVER_VERSION_GROUP = "The server's version"
+REFERENCES_GROUP = "REFERENCES is never granted"
+TABLE_XML_GROUP = "A table's XML holds the model's arrays and database"
 GROUPS = {
     # REQ-2167, amended 2026-11-02, Side-effect functions.
     SIDE_EFFECT_GROUP: (
@@ -2228,10 +2289,18 @@ GROUPS = {
     # REQ-579: the server reports its own version, and a collation's version is the server's.
     SERVER_VERSION_GROUP: "A collation's version is the server's own, as the server's version "
     "is (REQ-579).",
+    # REQ-2167, amended 2026-11-03, Time zones follow upstream tzdata; REFERENCES is never granted.
+    REFERENCES_GROUP: "Provisa never grants the REFERENCES privilege, so has_table_privilege and "
+    "the column variants answer false for it.",
+    # REQ-1965: a source's array column is the JSON it is registered as; REQ-588: the database is
+    # the served one.
+    TABLE_XML_GROUP: "table_to_xml and its kin write a source's array column as the JSON array it "
+    "is registered as (REQ-1965), and name the served database in a type's name (REQ-588): the "
+    "document differs from PostgreSQL's in these alone.",
 }
 
 #: The requirement each group's decision is of, where it is not REQ-2167.
-GROUP_REQUIREMENTS = {SERVER_VERSION_GROUP: "REQ-579"}
+GROUP_REQUIREMENTS = {SERVER_VERSION_GROUP: "REQ-579", TABLE_XML_GROUP: "REQ-1965, REQ-588"}
 
 #: The functions a decision skips by design whatever they answer, by name.
 DECIDED_FUNCTIONS = {
@@ -2305,6 +2374,7 @@ _WRITE_ON_A_CATALOG = re.compile(
     re.IGNORECASE,
 )
 _TABLE_TO_XML = re.compile(r"^table_to_xml(schema|_and_xmlschema)?$")
+_REFERENCES = re.compile(r"'REFERENCES'::text", re.IGNORECASE)
 #: A call reading an object only the PostgreSQL fixture server creates (``FIXTURE_SQL``).
 _FIXTURE_OBJECT = re.compile(
     "'(?:"
@@ -2346,6 +2416,12 @@ def decided_difference(name: str, sql: str, difference: str) -> str | None:
         and difference.startswith("'f', PostgreSQL 't'")
     ):
         return SYSTEM_CATALOG_WRITE_GROUP
+    if (
+        _PRIVILEGES_OF_A_RELATION.match(name)
+        and _REFERENCES.search(sql)
+        and difference.startswith("'f', PostgreSQL 't'")
+    ):
+        return REFERENCES_GROUP
     if name in ("regclasssend", "regclassrecv"):
         return CATALOG_IS_THE_MODEL_GROUP  # the oid's bytes: the model's oid
     if _TABLE_TO_XML.match(name) and "'pg_catalog." in sql:
@@ -2353,6 +2429,47 @@ def decided_difference(name: str, sql: str, difference: str) -> str | None:
     if name in _FIXTURE_ANSWERS or _FIXTURE_OBJECT.search(sql):
         return CATALOG_IS_THE_MODEL_GROUP  # an object only the PostgreSQL fixture makes
     return None
+
+
+#: A name of the XML Schema a table maps to, up to the database it names (REQ-588).
+_DATABASE_IN_A_NAME = re.compile(r'"(UDT|RowType|TableType|SchemaType|CatalogType)\.[^".]+')
+#: One line of a table's XML that is one column's element.
+_COLUMN_ELEMENT = re.compile(r"(\s*<([\w.:-]+)>)(.*)(</\2>)")
+
+
+def _element_text(item: Any) -> str:
+    return html.escape(item, quote=False) if isinstance(item, str) else json.dumps(item)
+
+
+def _array_as_json(want: str, got: str) -> bool:
+    """Whether ``got`` is the column element ``want`` is, its array written as the JSON array its
+    column is registered as (REQ-1965): the same elements, a NULL one not written."""
+    w, g = _COLUMN_ELEMENT.fullmatch(want), _COLUMN_ELEMENT.fullmatch(got)
+    if w is None or g is None or w.group(1) != g.group(1):
+        return False
+    try:
+        items = json.loads(html.unescape(g.group(3)))
+    except ValueError:
+        return False
+    if not isinstance(items, list):
+        return False
+    written = "".join(f"<element>{_element_text(i)}</element>" for i in items if i is not None)
+    return written == w.group(3)
+
+
+def decided_answer(name: str, sql: str, want: dict[str, Any], got: dict[str, Any]) -> str | None:
+    """The group of the decision a table's XML differs from PostgreSQL's by, None if none: line
+    by line, the database named in a type's name and an array as JSON alone."""
+    if not _TABLE_TO_XML.match(name) or len(want["rows"]) != 1 or len(got["rows"]) != 1:
+        return None
+    (wanted,), (answered,) = want["rows"], got["rows"]
+    if wanted is None or answered is None:
+        return None
+    a = _DATABASE_IN_A_NAME.sub(r'"\1.', wanted).split("\n")
+    b = _DATABASE_IN_A_NAME.sub(r'"\1.', answered).split("\n")
+    if len(a) != len(b) or any(x != y and not _array_as_json(x, y) for x, y in zip(a, b)):
+        return None
+    return TABLE_XML_GROUP if wanted != answered else None
 
 
 #: Volatile functions whose purpose is what they do rather than what they answer, beside every
@@ -2739,7 +2856,9 @@ def _measure_calls(
             formed, differs = form_check(fn.name, want, got)
             checked += formed
         if differs is not None:
-            group = decided_difference(fn.name, call_.sql, differs)
+            group = decided_difference(fn.name, call_.sql, differs) or decided_answer(
+                fn.name, call_.sql, want, got
+            )
             if group is not None:
                 decided.append(group)
             else:

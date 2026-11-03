@@ -111,12 +111,25 @@ class _PgIntervalBinaryLoader(Loader):
         return interval_value(months, days, micros)
 
 
+#: The built-in range and multirange types: read as the text PostgreSQL writes of them, the form a
+#: range is held in everywhere (provisa.core.pg_range; REQ-2171). psycopg's Range is no such text:
+#: its str() of an unbounded int4range is '(None, 4)', where PostgreSQL writes '(,4)'.
+_RANGE_TYPES = tuple(
+    name
+    for element in ("int4", "int8", "num", "date", "ts", "tstz")
+    for name in (f"{element}range", f"{element}multirange")
+)
+
+
 def _configure(conn: psycopg.Connection[Any]) -> None:
     """Match the value types the asyncpg driver returned: json/jsonb as text (uuid as UUID, inet as
-    ipaddress objects, bytea as bytes and numeric as Decimal are psycopg's own defaults), read an
-    interval with its months, and bound the per-connection prepared-statement cache."""
+    ipaddress objects, bytea as bytes and numeric as Decimal are psycopg's own defaults), read a
+    range as its PostgreSQL text and an interval with its months, and bound the per-connection
+    prepared-statement cache."""
     conn.adapters.register_loader("json", TextLoader)
     conn.adapters.register_loader("jsonb", TextLoader)
+    for name in _RANGE_TYPES:
+        conn.adapters.register_loader(name, TextLoader)
     conn.adapters.register_loader("interval", _PgIntervalLoader)
     conn.adapters.register_loader("interval", _PgIntervalBinaryLoader)
     conn.prepared_max = _PREPARED_MAX
