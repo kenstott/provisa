@@ -344,8 +344,12 @@ def when_query_executed_via_federation(shared_data: dict) -> None:
     shared_data["query_result"] = result
 
 
-@then("Provisa injects the corresponding SET SESSION statements before execution")
-def then_set_session_injected_before_execution(shared_data: dict) -> None:
+@then(
+    "Provisa sets the corresponding session properties on the statement's session before execution"
+)
+def then_session_properties_set_before_execution(shared_data: dict) -> None:
+    # execute_trino applies each session property as SET SESSION on the cursor that then runs
+    # the statement, so the properties are in force on the statement's session.
     executed = shared_data["executed_statements"]
     session_hints = shared_data["session_hints"]
     cleaned_sql = shared_data["cleaned_sql"]
