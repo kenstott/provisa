@@ -442,7 +442,7 @@ def _proc_oid(written: str) -> str:
         "SELECT _rp.oid FROM meta.catalog_pg_proc _rp JOIN meta.catalog_pg_namespace _rn "
         f"ON _rn.oid = _rp.pronamespace WHERE _rp.proname = {_literal(parts[-1])} "
         f"AND _rn.nspname IN ({', '.join(_literal(n) for n in schemas)}) "
-        f"AND COALESCE(_rp.proargtypes, '') = {vector} "
+        f"AND COALESCE(CAST(_rp.proargtypes AS TEXT), '') = {vector} "
         "ORDER BY _rn.nspname = 'pg_catalog' DESC LIMIT 1"
     )
     return _required(lookup, "regprocedure", written)

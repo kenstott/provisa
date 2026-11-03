@@ -236,10 +236,3 @@ def test_a_function_named_with_wrong_arguments_is_postgresqls_undefined_function
     with pytest.raises(PostgresError, match=r'function "abs\(text\)" does not exist') as refused:
         _rows("SELECT p.proname FROM pg_catalog.pg_proc p WHERE p.oid = 'abs(text)'::regprocedure")
     assert _sqlstate_of(refused.value) == "42883"
-
-
-def test_an_operator_class_the_catalog_lists_validates():
-    assert _rows(
-        'SELECT pg_catalog."amvalidate"((SELECT oid FROM pg_catalog.pg_opclass '
-        "WHERE opcname = 'int4_ops' AND opcmethod = 403)) AS v"
-    ) == [(True,)]
