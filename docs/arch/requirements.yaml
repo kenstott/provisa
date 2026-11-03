@@ -90839,7 +90839,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     type with a SQLAlchemy scheme), and with live attach on the source attaches exactly as that built-in
     type does on the active engine, through that type''s existing attach connector. Whether attach is offered
     is the active engine''s answer for that type; a scheme naming no built-in type, or a type the engine
-    cannot attach, has none. A jdbc: URL never attaches.'
+    cannot attach, has none. A jdbc: URL never attaches. (Amended 2026-11-02, Named the JDBC Connector:)
+    Maintainer 2026-11-02: the source is named the JDBC Connector everywhere it is shown or declared (the
+    source type, the UI, the docs, refusals and messages). Generic SQL is the old name; what the source
+    does is unchanged.'
   use_case: 'A team runs a database Provisa has no source type for. An admin registers it with its URL
     and the SQL dialect closest to it, presses Detect, and gets whatever it can do: live attach and pushdown
     where it passes, and otherwise a governed source read by key.'
