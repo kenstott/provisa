@@ -159,7 +159,7 @@ Classes used in the rest of the document:
 | SQLite (source only, never an engine) | J | none; JSON as text, JSONB blob from 3.45 `[doc]` | `json_array(json_array(1,2))` `[doc]` | `json_each` key is the 0-based position `[doc]` | none documented `[doc]` |
 | Exasol | J | none, and no JSON type; JSON in `VARCHAR` `[doc]` | JSON nesting | `JSON_VALUE`; `JSON_EXTRACT ... EMITS` with `#` in the path to split an array into rows `[doc]`; no constructor found | none |
 | SAP HANA | ? | `ARRAY` in column tables only ("cannot create row table having array type", community answer, not the SQL reference) | not verified | the SQL reference page did not render for the fetch | |
-| Db2, Teradata, Vertica, Firebird, MonetDB, SAP ASE, SQL Anywhere, generic `sqlalchemy` | ? | not checked | | Vertica and Teradata have array types `[mem]` | |
+| Db2, Vertica, Firebird, MonetDB, generic `sqlalchemy` | ? | not checked | | Vertica has array types `[mem]` | |
 | pgwire adapters (govdata/AskAmerica, Supabase wrappers stubs) | N1 | as PostgreSQL | | the adapter decides what it exposes | as PostgreSQL |
 | API and file sources | n/a | rows land in the engine's cache or a replica (`provisa/api_source/engine_cache.py:188` `[code]`) | | class of the engine that holds them | |
 
@@ -505,6 +505,6 @@ Vendor pages fetched:
 - Arrow columnar format: https://arrow.apache.org/docs/format/Columnar.html
 
 Not verified today: SAP HANA (reference page did not render), Fabric Warehouse, SingleStore,
-Db2, Teradata, Vertica, Firebird, MonetDB, SAP ASE, SQL Anywhere; the ClickHouse `Nullable`
+Db2, Vertica, Firebird, MonetDB; the ClickHouse `Nullable`
 and out-of-range behaviour; BigQuery array equality; the PostgreSQL binary array layout and the
 OID list; the JDBC driver's array handling; every function spelling tagged `[mem]`.

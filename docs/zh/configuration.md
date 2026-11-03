@@ -1558,10 +1558,7 @@ Provisa 会根据端点 URL 的 scheme 选择 OTLP/HTTP 或 OTLP/gRPC。以 `htt
 | `singlestore` | SingleStore | 按方言 | 否 | 无（仅落地） | 按方言凭据 |
 | `vertica` | Vertica | 按方言 | 否 | 无（仅落地） | 按方言凭据 |
 | `exasol` | Exasol | 按方言 | 否 | 无（仅落地） | 按方言凭据 |
-| `teradata` | Teradata Vantage | 按方言 | 否 | 无（仅落地） | 按方言凭据 |
 | `saphana` | SAP HANA | 按方言 | 否 | 无（仅落地） | 按方言凭据 |
-| `sapase` | SAP ASE (Sybase) | 按方言 | 否 | 无（仅落地） | 按方言凭据 |
-| `sqlanywhere` | SAP SQL Anywhere | 按方言 | 否 | 无（仅落地） | 按方言凭据 |
 | `monetdb` | MonetDB | 按方言 | 否 | 无（仅落地） | 按方言凭据 |
 | `firebird` | Firebird | 按方言 | 否 | 无（仅落地） | 按方言凭据 |
 | `sqlalchemy` | 其他关系型数据库（按连接 URL） | 按方言 | 否 | 无（仅落地） | 按方言凭据 |
@@ -1662,7 +1659,7 @@ PROVISA_ENGINE=synapse
 
 物化存储默认使用 `TENANT_DATABASE_URL`。
 
-#### 关系型数据库引擎（mysql、mariadb、oracle、mssql、db2、redshift、greenplum、cockroachdb、yugabytedb、opengauss、tidb、singlestore、vertica、exasol、teradata、saphana、sapase、sqlanywhere、monetdb、firebird）以及 `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
+#### 关系型数据库引擎（mysql、mariadb、oracle、mssql、db2、redshift、greenplum、cockroachdb、yugabytedb、opengauss、tidb、singlestore、vertica、exasol、saphana、monetdb、firebird）以及 `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-saphana-monetdb-firebird-and-sqlalchemy }
 
 每种可通过网络访问的关系型数据库对应一个键，全部运行在同一个仅落地（land-only）的运行时上（不联邦到外部数据源）：每个数据源都落地到存储中并在那里被查询。该键选择数据库；`PROVISA_ENGINE_URL` 携带其方言所需的 DSN。`sqlalchemy` 是没有专属键的数据库的通用回退项。不提供文件内嵌式存储（SQLite、Access），因为服务器必须可通过网络访问。
 

@@ -167,6 +167,19 @@ def test_a_regions_engine_store_names_an_engine_kind():
     assert "names engine kind 'oracle-rac', which is not one of" in said
 
 
+@pytest.mark.parametrize("kind", ["teradata", "sapase", "sqlanywhere"])
+def test_an_engine_kind_no_longer_offered_is_refused_as_unknown(kind):
+    """REQ-2196: Teradata, SAP ASE and SAP SQL Anywhere were never built or tested, so a region
+    that names one is refused by name like any other unknown kind, and no engine is built for it."""
+    from provisa.federation.engine import build_engine
+
+    bad = [{**s, "kind": kind} if s["id"] == "eu-trino" else s for s in _STORES]
+    said = _refused(_config(platform=_PLATFORM, stores=bad, regions=[_region("eu")]))
+    assert f"names engine kind {kind!r}, which is not one of" in said
+    with pytest.raises(ValueError, match=f"unknown federation engine {kind!r}"):
+        build_engine(kind)
+
+
 def test_with_more_than_one_region_an_engine_store_is_a_server_the_others_reach():
     """REQ-1922: the org's other regions reach each region's engine (an org's delete drops what
     it keeps there, wherever the delete runs); an embedded ClickHouse file is reachable from the
