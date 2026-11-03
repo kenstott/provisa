@@ -72,13 +72,73 @@ export function resolveCompoundOverlaps(cy: CyInstance): void {
   }
 }
 
-// Pass 2 of the two-pass layout: arrange whole-domain boxes to fill the
-// container's aspect ratio instead of letting ELK's single flow axis stack them.
-// Each domain is laid out internally by ELK (pass 1); here each domain box is
-// translated as a rigid group (all children moved by the same delta), so internal
-// table positions and edges are preserved. Uses shelf packing with a target row
-// width derived from total area and the container aspect ratio — so a wide modal
-// yields side-by-side domains, a tall one yields a stack.
+export type PackBox = { id: string; w: number; h: number };
+
+/** Shelf packing of `boxes` into rows no wider than `rowW`, tallest first; the top-left of each
+ * box, and the packing's width and height. */
+function shelf(
+  boxes: PackBox[],
+  rowW: number,
+  pad: number,
+): { at: Map<string, { x: number; y: number }>; w: number; h: number } {
+  const at = new Map<string, { x: number; y: number }>();
+  let cursorX = 0,
+    cursorY = 0,
+    rowH = 0,
+    w = 0;
+  for (const box of boxes) {
+    if (cursorX > 0 && cursorX + box.w > rowW) {
+      cursorX = 0;
+      cursorY += rowH + pad;
+      rowH = 0;
+    }
+    at.set(box.id, { x: cursorX, y: cursorY });
+    w = Math.max(w, cursorX + box.w);
+    cursorX += box.w + pad;
+    rowH = Math.max(rowH, box.h);
+  }
+  return { at, w, h: cursorY + rowH };
+}
+
+/**
+ * Where each domain box goes so that the whole is drawn as large as a pane of `aspectRatio`
+ * (width / height) allows. Every row width a run of boxes can make is tried, and the packing whose
+ * fit into the pane is largest wins -- a wide pane puts domains side by side, a tall one stacks
+ * them. (A row width derived from the boxes' total area is the width of a packing with no gaps
+ * and no ragged rows; the shelf, with both, wraps nearly every box under it and stacks them.)
+ */
+export function packBoxes(
+  boxes: PackBox[],
+  aspectRatio: number,
+  pad: number,
+): Map<string, { x: number; y: number }> {
+  const ordered = [...boxes].sort((a, b) => b.h - a.h);
+  const widths = new Set<number>();
+  for (let i = 0; i < ordered.length; i++) {
+    let run = -pad;
+    for (let j = i; j < ordered.length; j++) {
+      run += ordered[j].w + pad;
+      widths.add(run);
+    }
+  }
+  let best: ReturnType<typeof shelf> | null = null;
+  let bestScale = 0;
+  for (const rowW of [...widths].sort((a, b) => a - b)) {
+    const packed = shelf(ordered, rowW, pad);
+    // The scale the packing is drawn at in a pane `aspectRatio` wide and 1 high.
+    const scale = Math.min(aspectRatio / packed.w, 1 / packed.h);
+    if (scale > bestScale) {
+      best = packed;
+      bestScale = scale;
+    }
+  }
+  return best?.at ?? new Map();
+}
+
+// Pass 2 of the two-pass layout: arrange whole-domain boxes to fill the container's aspect ratio
+// instead of letting ELK's single flow axis stack them. Each domain is laid out internally by ELK
+// (pass 1); here each domain box is translated as a rigid group (all children moved by the same
+// delta), so internal table positions and edges are preserved.
 export function packDomains(cy: CyInstance, aspectRatio: number): void {
   type BB = { x1: number; y1: number; x2: number; y2: number; w: number; h: number };
   const PAD = 60;
@@ -92,29 +152,11 @@ export function packDomains(cy: CyInstance, aspectRatio: number): void {
   });
   if (domains.length < 2) return;
 
-  // Target row width from total box area and desired aspect ratio, but never
-  // narrower than the widest single domain (which cannot be split).
-  const totalArea = domains.reduce((s, d) => s + d.bb.w * d.bb.h, 0);
-  const widest = Math.max(...domains.map((d) => d.bb.w));
-  const targetW = Math.max(Math.sqrt(totalArea * aspectRatio), widest);
-
-  // Shelf packing: tallest-first, greedily fill rows until the next box would
-  // exceed targetW, then wrap to a new row.
-  const ordered = [...domains].sort((a, b) => b.bb.h - a.bb.h);
-  let cursorX = 0,
-    cursorY = 0,
-    rowH = 0;
-  const placements = new Map<string, { x: number; y: number }>();
-  for (const d of ordered) {
-    if (cursorX > 0 && cursorX + d.bb.w > targetW) {
-      cursorX = 0;
-      cursorY += rowH + PAD;
-      rowH = 0;
-    }
-    placements.set((d.node as { id(): string }).id(), { x: cursorX, y: cursorY });
-    cursorX += d.bb.w + PAD;
-    rowH = Math.max(rowH, d.bb.h);
-  }
+  const placements = packBoxes(
+    domains.map((d) => ({ id: (d.node as { id(): string }).id(), w: d.bb.w, h: d.bb.h })),
+    aspectRatio,
+    PAD,
+  );
 
   // Translate each domain's children so its bbox top-left lands on the placement.
   cy.batch(() => {

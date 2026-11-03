@@ -30,6 +30,8 @@ export interface ErdPanelProps {
   checkedDomains: Set<string> | null;
   // REQ-2187: the tables highlighted and fitted into view.
   highlightTableIds?: number[];
+  // The relationship whose detail panel is open: its line highlighted and fitted into view.
+  highlightRelationshipIds?: string[];
   // The page's filter box: what matches is marked and the rest dimmed, nothing rebuilt.
   search?: string;
   page?: "tables" | "relationships";

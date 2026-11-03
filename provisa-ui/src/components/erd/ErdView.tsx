@@ -48,12 +48,18 @@ function ErdFocusBar({ resolved, onClear }: { resolved: ResolvedErdFocus; onClea
   );
 }
 
+const NONE: string[] = [];
+
 export function ErdView({
   page,
   search = "",
+  selected = null,
   onOpen,
 }: {
   page: "tables" | "relationships";
+  /** The page's own item whose detail panel is open -- a table's id on Tables, a relationship's
+   * on Relationships -- highlighted as a focus's tables are, however the ERD was opened. */
+  selected?: string | null;
   /** The page's filter box: highlights what matches and dims the rest; not part of the link. */
   search?: string;
   /** Opens the panel of the page's own kind of item: a table's id on Tables, a relationship's on
@@ -81,6 +87,17 @@ export function ErdView({
       ),
     [focus, tables, domains],
   );
+  const highlightTableIds = useMemo(
+    () =>
+      page === "tables" && selected !== null
+        ? [...new Set([...resolved.highlighted, Number(selected)])]
+        : resolved.highlighted,
+    [page, selected, resolved.highlighted],
+  );
+  const highlightRelationshipIds = useMemo(
+    () => (page === "relationships" && selected !== null ? [selected] : NONE),
+    [page, selected],
+  );
   if (tablesLoading || relationshipsLoading || domainsLoading) {
     return <Loader size="sm" aria-label={t("erdModal.title")} />;
   }
@@ -98,7 +115,8 @@ export function ErdView({
           relationships={relationships}
           domains={domains}
           checkedDomains={resolved.shownDomains ?? narrowed}
-          highlightTableIds={resolved.highlighted}
+          highlightTableIds={highlightTableIds}
+          highlightRelationshipIds={highlightRelationshipIds}
           search={search}
           page={page}
           collapsed={collapsed}

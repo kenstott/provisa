@@ -10,17 +10,8 @@
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ActionIcon,
-  Button,
-  Checkbox,
-  Group,
-  Select,
-  Text,
-  useComputedColorScheme,
-} from "@mantine/core";
-import { Download, ChevronDown, ChevronRight } from "lucide-react";
-import { FitScreenIcon } from "../graph/GraphIcons";
+import { Button, Checkbox, Group, Select, Text, useComputedColorScheme } from "@mantine/core";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import cytoscape from "cytoscape";
 import elkRaw from "cytoscape-elk";
 import cytoscapeSvgRaw from "cytoscape-svg";
@@ -42,7 +33,9 @@ import { getErdPalette } from "./sections/erd-palette";
 import type { TooltipState, ErdPanelProps } from "./sections/erd-types";
 import { useErdCollapseLink } from "./useErdCollapseLink";
 import { Tip } from "../Tip";
-import { getStored, setStored } from "../../lib/browserStorage";
+import { ErdCanvasBar } from "./ErdCanvasBar";
+import { FIT_PADDING } from "./erd-viewport";
+import { useErdOptions } from "./useErdOptions";
 
 // ── cytoscape plugin registration ────────────────────────────────────────────
 type CyExt = Parameters<typeof cytoscape.use>[0];
@@ -62,6 +55,7 @@ try {
 type Pt = { x: number; y: number };
 
 const NO_TABLES: number[] = [];
+const NO_RELATIONSHIPS: string[] = [];
 
 // ── component ─────────────────────────────────────────────────────────────────
 export function ErdPanel({
@@ -70,6 +64,7 @@ export function ErdPanel({
   domains,
   checkedDomains,
   highlightTableIds = NO_TABLES,
+  highlightRelationshipIds = NO_RELATIONSHIPS,
   search = "",
   page = "tables",
   collapsed = null,
@@ -95,20 +90,12 @@ export function ErdPanel({
   // nodeId → pinned model-space position (no Cytoscape lock — nodes stay draggable)
   const pinnedNodesRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
-  const [columnDetail, setColumnDetail] = useState<ColumnDetail>(
-    () => (getStored("erd.columnDetail") as ColumnDetail | null) ?? "key",
-  );
-  const [edgeRouting, setEdgeRouting] = useState<"bezier" | "taxi">(
-    () => (getStored("erd.edgeRouting") as "bezier" | "taxi" | null) ?? "bezier",
-  );
-  const edgeRoutingRef = useRef<"bezier" | "taxi">(
-    (getStored("erd.edgeRouting") as "bezier" | "taxi" | null) ?? "bezier",
-  );
-  const [gridSnap, setGridSnap] = useState<number>(() =>
-    parseInt(getStored("erd.gridSnap") ?? "0", 10),
-  );
-  const gridSnapRef = useRef<number>(parseInt(getStored("erd.gridSnap") ?? "0", 10));
-  const [showOrphans, setShowOrphans] = useState(() => getStored("erd.showOrphans") !== "false");
+  // The diagram's box, holding the canvas and its bar: what goes full screen.
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [options, setOptions] = useErdOptions();
+  const { columnDetail, edgeRouting, gridSnap, showOrphans } = options;
+  const edgeRoutingRef = useRef(edgeRouting);
+  const gridSnapRef = useRef(gridSnap);
   const showOrphansRef = useRef(showOrphans);
   useEffect(() => {
     showOrphansRef.current = showOrphans;
@@ -134,7 +121,13 @@ export function ErdPanel({
     body: "",
   });
 
-  const { highlighted, applyHighlight } = useErdMarks(cyRef, highlightTableIds, search, page);
+  const { highlighted, applyHighlight } = useErdMarks(
+    cyRef,
+    highlightTableIds,
+    highlightRelationshipIds,
+    search,
+    page,
+  );
 
   // The host's handlers, read when a click comes: the diagram is not rebuilt when they change.
   const clicks = useRef({ onTableClick, onRelationshipClick });
@@ -185,20 +178,6 @@ export function ErdPanel({
   useEffect(() => {
     edgeRoutingRef.current = edgeRouting;
   }, [edgeRouting]);
-
-  // Persist toolbar choices across sessions.
-  useEffect(() => {
-    setStored("erd.columnDetail", columnDetail);
-  }, [columnDetail]);
-  useEffect(() => {
-    setStored("erd.edgeRouting", edgeRouting);
-  }, [edgeRouting]);
-  useEffect(() => {
-    setStored("erd.gridSnap", String(gridSnap));
-  }, [gridSnap]);
-  useEffect(() => {
-    setStored("erd.showOrphans", String(showOrphans));
-  }, [showOrphans]);
 
   // All domain IDs present in the table list (before hiding).
   const allDomainIds = [...new Set(tables.map((t) => t.domainId))];
@@ -448,7 +427,7 @@ export function ErdPanel({
       // include the full orphan grid area (hidden nodes are excluded from bbox).
       resolveCompoundOverlaps(cy);
 
-      cy.fit(undefined, 10);
+      cy.fit(undefined, FIT_PADDING);
       applyHighlight(cy);
 
       // Apply current edge routing (handles rebuilds triggered by showOrphans etc.)
@@ -599,7 +578,7 @@ export function ErdPanel({
       const cy = cyRef.current;
       if (!cy || canvas.clientWidth === 0) return;
       cy.resize();
-      cy.fit(undefined, 10);
+      cy.fit(undefined, FIT_PADDING);
       applyHighlight(cy);
     });
     watcher.observe(canvas);
@@ -651,7 +630,7 @@ export function ErdPanel({
         );
       });
     }
-    cy.fit(undefined, 10);
+    cy.fit(undefined, FIT_PADDING);
   }, [showOrphans]);
 
   // ── snap-to-grid change: snap current positions in-place (no re-layout) ─
@@ -879,7 +858,13 @@ export function ErdPanel({
   const allCollapsed =
     visibleDomainIds.length > 0 && visibleDomainIds.every((id) => collapsedDomains.has(id));
   const toggleAll = () => setCollapsedDomains(allCollapsed ? new Set() : new Set(visibleDomainIds));
-  useErdCollapseLink(collapsed, onCollapsed, visibleDomainIds, collapsedDomains, setCollapsedDomains);
+  useErdCollapseLink(
+    collapsed,
+    onCollapsed,
+    visibleDomainIds,
+    collapsedDomains,
+    setCollapsedDomains,
+  );
 
   return (
     <div
@@ -909,7 +894,7 @@ export function ErdPanel({
           <Select
             aria-label={t("erdModal.columnDetailLabel")}
             value={columnDetail}
-            onChange={(v) => v && setColumnDetail(v as ColumnDetail)}
+            onChange={(v) => v && setOptions({ columnDetail: v as ColumnDetail })}
             allowDeselect={false}
             size="xs"
             w={110}
@@ -925,7 +910,7 @@ export function ErdPanel({
           <Select
             aria-label={t("erdModal.edgeRoutingLabel")}
             value={edgeRouting}
-            onChange={(v) => v && setEdgeRouting(v as "bezier" | "taxi")}
+            onChange={(v) => v && setOptions({ edgeRouting: v as "bezier" | "taxi" })}
             allowDeselect={false}
             size="xs"
             w={150}
@@ -940,7 +925,7 @@ export function ErdPanel({
           <Select
             aria-label={t("erdModal.gridSnapLabel")}
             value={String(gridSnap)}
-            onChange={(v) => v && setGridSnap(parseInt(v, 10))}
+            onChange={(v) => v && setOptions({ gridSnap: parseInt(v, 10) })}
             allowDeselect={false}
             size="xs"
             w={110}
@@ -959,7 +944,7 @@ export function ErdPanel({
             <Checkbox
               label={t("erdModal.orphans")}
               checked={showOrphans}
-              onChange={(e) => setShowOrphans(e.currentTarget.checked)}
+              onChange={(e) => setOptions({ showOrphans: e.currentTarget.checked })}
               size="xs"
               styles={{ label: { color: palette.text } }}
               data-testid="erd-show-orphans"
@@ -979,74 +964,20 @@ export function ErdPanel({
               {allCollapsed ? t("erdModal.expandAll") : t("erdModal.collapseAll")}
             </Button>
           </Tip>
-
-          <div style={{ flex: 1 }} />
-
-          {/* exports */}
-          <Tip text={t("erdModal.fitAll")} named>
-            <ActionIcon
-              variant="subtle"
-              size="md"
-              aria-label={t("erdModal.fitAll")}
-              onClick={() => cyRef.current?.fit(undefined, 10)}
-              data-testid="erd-fit-all"
-            >
-              <FitScreenIcon size={15} />
-            </ActionIcon>
-          </Tip>
-          <Tip text={t("erdModal.downloadSvg")}>
-            <Button
-              size="xs"
-              h={30}
-              variant="default"
-              leftSection={<Download size={11} />}
-              onClick={exportSvg}
-              data-testid="erd-export-svg"
-            >
-              SVG
-            </Button>
-          </Tip>
-          <Tip text={t("erdModal.downloadPng")}>
-            <Button
-              size="xs"
-              h={30}
-              variant="default"
-              leftSection={<Download size={11} />}
-              onClick={exportPng}
-              data-testid="erd-export-png"
-            >
-              PNG
-            </Button>
-          </Tip>
-          <Tip text={t("erdModal.downloadJpeg")}>
-            <Button
-              size="xs"
-              h={30}
-              variant="default"
-              leftSection={<Download size={11} />}
-              onClick={exportJpeg}
-              data-testid="erd-export-jpeg"
-            >
-              JPEG
-            </Button>
-          </Tip>
-          <Tip text={t("erdModal.downloadJson")}>
-            <Button
-              size="xs"
-              h={30}
-              variant="default"
-              leftSection={<Download size={11} />}
-              onClick={exportJson}
-              data-testid="erd-export-json"
-            >
-              JSON
-            </Button>
-          </Tip>
         </Group>
 
         {/* ── canvas ── */}
-        <div style={{ flex: 1, position: "relative", background: palette.bg }}>
+        <div
+          ref={stageRef}
+          className="erd-stage"
+          style={{ flex: 1, position: "relative", background: palette.bg }}
+        >
           <div ref={setContainerNode} style={{ width: "100%", height: "100%" }} />
+          <ErdCanvasBar
+            cyRef={cyRef}
+            stageRef={stageRef}
+            exports={{ svg: exportSvg, png: exportPng, jpeg: exportJpeg, json: exportJson }}
+          />
 
           {/* domain resize handles */}
           {resizeHandleBox && (

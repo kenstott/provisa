@@ -97,6 +97,7 @@ const TIPS_INSIDE_TRIGGERS: Readonly<Record<string, number>> = {
   "components/graph/Inspector.tsx": 1, // the inspector's colour chip
   "pages/sql/ColumnFilterMenu.tsx": 1, // a result column's filter
   "components/RegexMaskFields.tsx": 1, // a regex mask's common masks (masks-presets.cjs)
+  "components/erd/ErdCanvasBar.tsx": 1, // the ERD's download (the J562 render harness)
 };
 
 describe("a hint on a menu's or popover's trigger", () => {
