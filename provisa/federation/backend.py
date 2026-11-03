@@ -84,7 +84,7 @@ class EngineBackend:
     # keeps naming the actual storage backend. Only mssql is mapped here (the one mismatch actually
     # reproduced); the other generic `_RDB_KINDS` entries whose SQLAlchemy scheme differs from any
     # SQLGlot dialect name (mariadb/greenplum/cockroachdb/yugabytedb/opengauss/tidb/vertica/
-    # saphana/sapase/sqlanywhere/monetdb/db2/firebird) are tracked, not guessed at, in a filed
+    # saphana/monetdb/db2/firebird) are tracked, not guessed at, in a filed
     # issue — SQLGlot compatibility per product needs verifying, not assuming.
     _SQLGLOT_DIALECT_ALIASES: dict[str, str] = {"mssql": "tsql"}
 

@@ -1281,10 +1281,7 @@ _RDB_KINDS: list[tuple[str, str, str]] = [
     ("singlestore", "SingleStore", "singlestoredb://user:pass@host:3306/db"),
     ("vertica", "Vertica", "vertica+vertica_python://user:pass@host:5433/db"),
     ("exasol", "Exasol", "exa+websocket://user:pass@host:8563/schema"),
-    ("teradata", "Teradata Vantage", "teradatasql://user:pass@host/database"),
     ("saphana", "SAP HANA", "hana+hdbcli://user:pass@host:39015/db"),
-    ("sapase", "SAP ASE (Sybase)", "sybase+pyodbc://user:pass@dsn"),
-    ("sqlanywhere", "SAP SQL Anywhere", "sqlalchemy-sqlany://user:pass@host:2638/db"),
     ("monetdb", "MonetDB", "monetdb://user:pass@host:50000/db"),
     ("firebird", "Firebird", "firebird+fdb://user:pass@host:3050/path/to/db.fdb"),
 ]
