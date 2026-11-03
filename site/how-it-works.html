@@ -138,6 +138,16 @@
           years; Provisa does the same for data.
         </p>
         <p>
+          It also works because data must be expressed relationally before it enters, and that
+          simplifies every tool that reads it. Relational algebra has six primitive operations:
+          selection, projection, union, set difference, Cartesian product and rename; join and
+          the rest are built from them. Even deep traversals can be recursive CTEs, and a
+          property graph's nodes can be expressed as sparsely populated tables by label. Think
+          hard enough and every one of these languages can be expressed in an IR based on
+          extended relational algebra: those six operations plus aggregation, recursion and
+          nesting.
+        </p>
+        <p>
           Building a compiler front end has also become cheap: parser generators like ANTLR
           and mature open-source parsers for SQL, GraphQL and SPARQL do most of the work, so adding a language means writing a translation into the IR instead of a new system. Each request is
           compiled when it arrives into one IR, governed there, handed to your engine as
