@@ -242,8 +242,11 @@ def seed(pg_dsn: str) -> None:
         # What the function probe's calls need that PostgreSQL ships none of.
         conn.execute(f"DROP TYPE IF EXISTS {function_probe.PROBE_ENUM}")
         conn.execute(f"CREATE TYPE {function_probe.PROBE_ENUM} AS ENUM ('a', 'b')")
-        conn.execute(f"DROP SEQUENCE IF EXISTS {function_probe.PROBE_SEQUENCE}")
-        conn.execute(f"CREATE SEQUENCE {function_probe.PROBE_SEQUENCE}")
+        conn.execute(f"DROP TABLE IF EXISTS {function_probe.PROBE_IDENTITY}")
+        conn.execute(
+            f"CREATE TABLE {function_probe.PROBE_IDENTITY} "
+            "(id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, note text)"
+        )
     print(f"seeded {FIXTURE_SCHEMA}.{FIXTURE_TABLE}: {len(FIXTURE)} columns, one row")
 
 
@@ -422,7 +425,26 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
                     }
                     for name, _typ, typing in registered
                 ],
-            }
+            },
+            {
+                # The table lastval's probe inserts into (function_probe.BEFORE): its id is
+                # generated, its note org_admin writes.
+                "source_id": "conformance-pg",
+                "schema": function_probe.PROBE_IDENTITY_SCHEMA,
+                "table": function_probe.PROBE_IDENTITY_TABLE,
+                "alias": function_probe.PROBE_IDENTITY_TABLE,
+                "domain_id": FIXTURE_SCHEMA,
+                "columns": [
+                    {
+                        "name": "id",
+                        "data_type": "integer",
+                        "is_primary_key": True,
+                        "visible_to": ["org_admin"],
+                    },
+                    {"name": "note", "data_type": "varchar", "visible_to": ["org_admin"]},
+                ],
+                "write_grants": [{"role": "org_admin", "operation": "insert", "columns": ["note"]}],
+            },
         ],
     }
 
@@ -621,6 +643,17 @@ def _engine_counts(
     }
 
 
+def called(server: Server, fn: function_probe.Function, sql: str) -> dict[str, Any]:
+    """``sql``, the call of ``fn``, run after what it needs its session to have done
+    (function_probe.BEFORE); that statement's error is the call's answer when it fails."""
+    before = function_probe.BEFORE.get(fn.signature)
+    if before is not None:
+        done = server.run(before)
+        if not done["ok"]:
+            return {**done, "error": f"{before}: {done['error']}"}
+    return server.run(sql)
+
+
 def catalog_functions(
     pg: Server, provisa: Server, names: dict[int, str], engine: str = "duckdb"
 ) -> dict[str, Any]:
@@ -643,17 +676,17 @@ def catalog_functions(
         if sql is None:
             not_callable[fn.signature] = function_probe.NO_CALL
             continue
-        want = pg.run(sql)
+        want = called(pg, fn, sql)
         if not want["ok"] or not want["fields"]:
             why = f"PostgreSQL refuses the call: {want.get('error') or 'no result column'}"
             if function_probe.proves_internal(why):
                 not_callable[fn.signature] = why
-            elif want["ok"] or not same_refusal(want, provisa.run(sql)):
+            elif want["ok"] or not same_refusal(want, called(provisa, fn, sql)):
                 refused_here[fn.signature] = why
             else:
                 matching.append(fn.signature)
             continue
-        got = provisa.run(sql)
+        got = called(provisa, fn, sql)
         if not got["ok"]:
             not_served[fn.signature] = got["error"]
             continue

@@ -447,12 +447,14 @@ ARG_VALUES: dict[str, dict[int, tuple[str, str, str]]] = {
 class Call:
     """One statement of an overload. ``answers``: a real answer, compared by value; ``values``:
     whether the rows compare at all (the NULL call of a stable or volatile function: no);
-    ``zone``: the session's TimeZone for this call, if not ``SETTINGS``' UTC."""
+    ``zone``: the session's TimeZone for this call, if not ``SETTINGS``' UTC; ``before``: what the
+    session must have done first, run just before it (function_probe.BEFORE)."""
 
     sql: str
     answers: bool = False
     values: bool = True
     zone: str | None = None
+    before: str | None = None
 
     @property
     def form(self) -> bool:
@@ -642,7 +644,8 @@ def calls(fn: Function, family: str) -> list[Call]:
     if null is None or any(c.sql == null for c in valued):
         return valued
     zoned = [Call(null, values=False, zone=ZONE)] if fn.name in ZONED_FUNCTIONS else []
-    return [Call(null, values=fn.volatility == "i"), *zoned, *valued]
+    before = function_probe.BEFORE.get(fn.signature)
+    return [Call(null, values=fn.volatility == "i", before=before), *zoned, *valued]
 
 
 # --- one call on one server -------------------------------------------------------------------
@@ -1048,6 +1051,10 @@ def form_check(name: str, want: dict[str, Any], got: dict[str, Any]) -> tuple[bo
 
 
 def _answer(server: Session, call_: Call) -> dict[str, Any]:
+    if call_.before is not None:
+        done = server.answer(call_.before)
+        if not done["ok"]:
+            return {**done, "error": f"{call_.before}: {done['error']}"}
     if call_.zone is None:
         return server.answer(call_.sql)
     server.answer(f"SET TimeZone TO '{call_.zone}'")

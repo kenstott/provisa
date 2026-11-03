@@ -1473,3 +1473,28 @@ def test_a_leg_seeds_the_column_table_and_gives_it_to_the_instance_after_the_eng
     assert "seed-columns" in seed and '"$RUNNER_TEMP/function-columns.yaml"' in seed
     instance = steps[names.index("Start the Provisa instance")]["with"]
     assert instance["extra-tables"] == "${{ runner.temp }}/function-columns.yaml"
+
+
+def test_lastval_is_measured_after_the_insert_its_answer_needs():
+    """REQ-2167 (amended 2026-11-02): lastval answers the session's own INSERT, which runs on
+    the same connection just before the call."""
+    import pgwire_function_probe as function_probe
+
+    lastval = Function("lastval", "", rettype="bigint", volatility="v")
+    (planned,) = support.calls(lastval, "Sequence")
+    assert planned.before == function_probe.BEFORE["lastval()"]
+
+    class _Connection(Fake):
+        def __init__(self) -> None:
+            super().__init__({planned.before: {"ok": True, "fields": [], "rows": []}})
+            self.ran: list[str] = []
+
+        def answer(self, sql: str) -> dict[str, Any]:
+            self.ran.append(sql)
+            if sql == planned.sql and planned.before in self.ran:
+                return _ok(1, oid=20)
+            return super().answer(sql)
+
+    server = _Connection()
+    assert support._answer(server, planned) == _ok(1, oid=20)  # pyright: ignore[reportArgumentType]
+    assert server.ran == [planned.before, planned.sql]
