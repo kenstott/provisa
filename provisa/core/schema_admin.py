@@ -386,9 +386,10 @@ demo_sandboxes = Table(
 )
 
 # REQ-2006: a demo template that finished building, recorded so the sandbox tier's next start can
-# serve it at once: the demo version and Provisa release it was built from (``version``), and the
-# rows each of its replicas and views holds in its store. A start that finds the same version and
-# the same rows on disk trusts it; anything else rebuilds it (demo_templates.warm_ready).
+# serve it at once: the demo version, Provisa release and DDL fingerprint it was built from
+# (``version``, demo_templates.readiness_version), and the rows each of its replicas and views
+# holds in its store. A start that finds the same version and the same rows on disk trusts it;
+# anything else rebuilds it (demo_templates.warm_ready).
 demo_template_readiness = Table(
     "demo_template_readiness",
     metadata,

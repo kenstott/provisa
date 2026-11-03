@@ -941,11 +941,14 @@ template_builds = TemplateBuilds()
 
 def readiness_version(demo: PublishedDemo) -> str:
     """What a template's readiness record is for: its demo's version (a bundle's directory, else
-    the demo's own) and the Provisa release that built it -- a replica's definition is computed
-    by the release, so another release builds the template again."""
+    the demo's own), the Provisa release that built it -- a replica's definition is computed
+    by the release, so another release builds the template again -- and the DDL fingerprint of the
+    tables that code creates in an org's schema: a cloud patch keeps the release, and a template
+    built by code of another shape keeps that code's tables (no migrations)."""
     from provisa.core.demo_bundles import running_provisa
+    from provisa.core.schema_org import ddl_fingerprint
 
-    return f"{demo.directory.name}@{running_provisa()}"
+    return f"{demo.directory.name}@{running_provisa()}@{ddl_fingerprint()}"
 
 
 async def record_ready(pool, demo: PublishedDemo) -> None:
@@ -1053,7 +1056,7 @@ async def _built_for(pool, demo: PublishedDemo) -> str | None:
 
 async def _templated(pool, name: str) -> str | None:
     """The version of bundled demo ``name`` its template was recorded ready from, on the control
-    plane beside its ready record (readiness_version: ``<version>@<release>``); None when it was
+    plane beside its ready record (readiness_version: ``<version>@<release>@<ddl>``); None when it was
     never recorded ready. Never a node's own file: a fresh disk under a shared plane would read
     no version and retire the template the other nodes serve."""
     from sqlalchemy import select

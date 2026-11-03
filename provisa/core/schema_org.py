@@ -36,6 +36,8 @@ the two models may live in separate schemas/engines and FKs cannot span them.
 
 from __future__ import annotations
 
+import functools
+
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -2153,3 +2155,34 @@ admin_audit_log = Table(
     Column("detail", JSON, nullable=False, default=dict, server_default="{}"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
+
+
+def fingerprint_of(tables: MetaData, schema_sql: bytes) -> str:
+    """The first 16 hex of SHA-256 over an org schema's DDL: ``schema_sql`` (the raw script an org
+    schema is created by) and each of ``tables``' CREATE TABLE and CREATE INDEX, compiled for
+    PostgreSQL in name order."""
+    import hashlib
+
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.schema import CreateIndex, CreateTable
+
+    dialect = postgresql.dialect()
+    digest = hashlib.sha256(schema_sql)
+    for name in sorted(tables.tables):
+        table = tables.tables[name]
+        digest.update(str(CreateTable(table).compile(dialect=dialect)).encode())
+        for index in sorted(table.indexes, key=lambda i: str(i.name)):
+            digest.update(str(CreateIndex(index).compile(dialect=dialect)).encode())
+    return digest.hexdigest()[:16]
+
+
+@functools.cache
+def ddl_fingerprint() -> str:
+    """REQ-2006: the shape of the tables this code creates in an org's schema (schema.sql and this
+    metadata). There are no migrations: a demo template built by code of another shape keeps that
+    code's tables, so its readiness record names this (demo_templates.readiness_version), and a
+    cloud patch keeps only the templates recorded under the pushed code's (deploy-cloud.sh's
+    reset_sandbox_state reads it from that code)."""
+    from pathlib import Path
+
+    return fingerprint_of(metadata, (Path(__file__).parent / "schema.sql").read_bytes())
