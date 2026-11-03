@@ -56,11 +56,12 @@ def test_the_encoding_is_utf8_and_its_number_six():
 
 
 def test_a_size_is_unknown_and_the_clients_size_queries_run():
-    # Provisa reports no storage: every size is NULL, never a made-up 0.
+    # Provisa reports no storage: every size is NULL, never a made-up 0. pg_column_size of a
+    # value the statement computes is no storage: the integer 1 takes PostgreSQL's 4 bytes.
     assert _rows(
         "SELECT pg_relation_size(1), pg_total_relation_size(1), pg_indexes_size(1), "
         "pg_table_size(1), pg_database_size(1), pg_tablespace_size(1), pg_column_size(1)"
-    ) == [(None,) * 7]
+    ) == [(None,) * 6 + (4,)]
     # psql \l+ and \dP+, DBeaver's database sizes, pgAdmin's tablespace statistics.
     assert _rows(
         "SELECT d.datname, CASE WHEN pg_catalog.has_database_privilege(d.datname, 'CONNECT') "
@@ -100,7 +101,8 @@ def test_options_and_acls_have_no_items():
         == []
     )
     assert _rows("SELECT (aclexplode(relacl)).grantee FROM pg_catalog.pg_class") == []
-    assert _rows("SELECT acldefault('r'::\"char\", 10)") == [(None,)]
+    # PostgreSQL's default ACL of a relation, its owner the bootstrap role (provisa, by design).
+    assert _rows("SELECT acldefault('r'::\"char\", 10)") == [(["provisa=arwdDxtm/provisa"],)]
 
 
 def test_a_relation_is_its_own_partition_tree_and_ancestor():
@@ -156,15 +158,27 @@ def test_an_object_is_described_and_identified_from_the_catalog():
         "SELECT pg_describe_object(1247, 23, 0), pg_describe_object(2615, 2200, 0), "
         "pg_describe_object(1213, 1663, 0)"
     ) == [("type integer", "schema public", None)]
-    # DBeaver: an aggregate's function, by 'pg_proc'::regclass.
-    # PostgreSQL's aggregates are reference data; the functions a catalog lists are the model's.
-    assert all(
-        row == (None,)
-        for row in _rows(
+    # DBeaver: an aggregate's function, by 'pg_proc'::regclass: the functions PostgreSQL 17
+    # ships are listed, each identified as PostgreSQL identifies it.
+    identities = {
+        identity
+        for (identity,) in _rows(
             "SELECT (pg_identify_object('pg_proc'::regclass, aggfnoid, 0)).identity "
             "FROM pg_catalog.pg_aggregate"
         )
-    )
+    }
+    assert {"pg_catalog.avg(bigint)", 'pg_catalog.count(pg_catalog."any")'} <= identities
+    assert _rows(
+        "SELECT (pg_identify_object('pg_proc'::regclass, "
+        "'pg_catalog.array_to_tsvector(text[])'::regprocedure, 0)).identity, "
+        "(pg_identify_object('pg_proc'::regclass, 'pg_catalog.timezone(text, timestamp with time "
+        "zone)'::regprocedure, 0)).identity"
+    ) == [
+        (
+            "pg_catalog.array_to_tsvector(pg_catalog.text[])",
+            "pg_catalog.timezone(pg_catalog.text,timestamp with time zone)",
+        )
+    ]
     assert _rows(
         f"SELECT (pg_identify_object('pg_class'::regclass, {oid}, 0)).identity, "
         f"(pg_identify_object(1259, {oid}, 1)).identity, "
@@ -188,7 +202,8 @@ def test_a_vector_of_types_is_their_names():
 def test_nothing_is_a_cursor_or_a_sequence():
     assert _rows("SELECT * FROM pg_cursor()") == []
     assert _rows("SELECT pg_sequence_last_value(1)") == [(None,)]
-    assert _rows("SELECT pg_statistics_obj_is_visible(1)") == [(True,)]
+    # No statistics object has oid 1: PostgreSQL answers NULL of an object it does not have.
+    assert _rows("SELECT pg_statistics_obj_is_visible(1)") == [(None,)]
 
 
 @pytest.mark.parametrize("call", ["plpgsql_validator(1)", "pg_catalog.fmgr_c_validator(1)"])

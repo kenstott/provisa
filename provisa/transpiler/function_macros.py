@@ -1241,13 +1241,6 @@ _ENUMS: tuple[Macro, ...] = (
 )
 
 #: A value of a sequence, which only its database can answer: a NULL is strict's.
-_SEQUENCE_REFUSED = raising("0A000", f"'{{}} {pg_forms_types.REFUSED}'")
-
-
-def _anything_beside_null(names: str, function: str) -> str:
-    return strict(names, "BIGINT", _SEQUENCE_REFUSED.format(function))
-
-
 _OPTION = "string_split(_o, '=')"
 _OTHERS: tuple[Macro, ...] = (
     _macro(
@@ -1260,8 +1253,6 @@ _OTHERS: tuple[Macro, ...] = (
         "a, b",
         strict("a, b", "BIGINT", pg_forms.in_range("CAST(a AS HUGEINT) - 1", "BIGINT")),
     ),
-    _macro("currval", "seq", _anything_beside_null("seq", "currval")),
-    _macro("nextval", "seq", _anything_beside_null("seq", "nextval")),
     _macro(
         "satisfies_hash_partition",
         "parent, modulus, remainder, value",

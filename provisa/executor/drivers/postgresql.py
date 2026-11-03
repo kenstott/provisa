@@ -299,9 +299,28 @@ class _RowFetcher:
             return list(cur.fetchall())
 
 
+#: REQ-2167: a table's columns filled from a sequence -- an identity column, a serial one, or one
+#: whose default calls nextval -- with their places among its live columns. The table is named as
+#: an INSERT names it, resolved on the same search path.
+_GENERATED_COLUMNS = """
+SELECT name, position FROM (
+    SELECT a.attname::text AS name,
+           row_number() OVER (ORDER BY a.attnum)::int AS position,
+           a.attidentity <> ''
+           OR pg_get_serial_sequence(a.attrelid::regclass::text, a.attname) IS NOT NULL
+           OR coalesce(pg_get_expr(d.adbin, d.adrelid), '') LIKE 'nextval(%' AS generated
+    FROM pg_attribute a
+    LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+    WHERE a.attrelid = to_regclass(concat_ws('.', quote_ident($1::text), quote_ident($2::text)))
+      AND a.attnum > 0 AND NOT a.attisdropped
+) columns WHERE generated ORDER BY position
+"""
+
+
 class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
     # Bounded wait for a pooled connection when all are checked out (request deadline permitting).
     _ACQUIRE_TIMEOUT = 10.0
+    generated_keys = "returning"  # REQ-2167
     # Rows pulled when a stream opens (so its column metadata is known up front); later batches use
     # the caller's fetch size.
     _FIRST_BATCH_ROWS = 1000
@@ -476,6 +495,12 @@ class PostgreSQLDriver(DirectDriver):  # REQ-052, REQ-053, REQ-068, REQ-550
         return QueryResult(
             rows=rows, column_names=columns, column_types=col_types, rowcount=affected
         )
+
+    async def generated_columns(self, schema: str | None, table: str):  # REQ-2167
+        from provisa.executor.drivers.base import GeneratedColumn
+
+        found = await self.execute(_GENERATED_COLUMNS, [schema, table])
+        return tuple(GeneratedColumn(name, position) for name, position in found.rows)
 
     @property
     def supports_streaming(self) -> bool:  # REQ-1190

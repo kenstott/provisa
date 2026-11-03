@@ -30,9 +30,11 @@ UNIQUE_QUERY_NAME_SLOT = 1023
 #: of every table's oid.
 KEY_OID_BASE = 1_000_000
 
-#: PostgreSQL's own schemas, and the role that owns every table.
+#: PostgreSQL's own schemas, at PostgreSQL 17's oids, and the role that owns every table.
 PG_CATALOG_OID = 11
-INFORMATION_SCHEMA_OID = 12
+INFORMATION_SCHEMA_OID = 13283
+#: The system schemas, as SQL's list of their oids.
+SYSTEM_SCHEMA_OIDS = f"({PG_CATALOG_OID}, {INFORMATION_SCHEMA_OID})"
 PUBLIC_OID = 2200
 OWNER_OID = 10
 #: A tracked function's oid is this plus its id.
