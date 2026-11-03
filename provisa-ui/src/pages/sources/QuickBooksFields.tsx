@@ -150,7 +150,7 @@ export function QuickBooksFields<F extends ConnectionForm>({
         <FormField
           section="authentication"
           help={t("sourceFormFieldsExtended.qbRefreshTokenHint")}
-          size="long"
+          size="medium"
         >
           <PasswordInput
             label={t("sourceFormFieldsExtended.qbRefreshToken")}
