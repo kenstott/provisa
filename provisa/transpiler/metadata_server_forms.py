@@ -1339,7 +1339,6 @@ def _catalog_objects(a: _Answers) -> None:
     a.selected("pg_show_all_settings", "", "SELECT * FROM meta.catalog_pg_settings")
     a.body("getdatabaseencoding", "", "'UTF8'")
     a.body("pg_client_encoding", "", "'UTF8'")
-    a.strict("pg_statistics_obj_is_visible", "s", "BOOLEAN", "TRUE")
     a.strict("pg_sequence_last_value", "seq", "BIGINT", "CAST(NULL AS BIGINT)")
     partitionable = f"FROM {_CLASSES} WHERE _c.oid = rel AND _c.relkind IN ('r', 'p', 'i', 'I')"
     a.selected(

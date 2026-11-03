@@ -201,7 +201,8 @@ def test_a_vector_of_types_is_their_names():
 def test_nothing_is_a_cursor_or_a_sequence():
     assert _rows("SELECT * FROM pg_cursor()") == []
     assert _rows("SELECT pg_sequence_last_value(1)") == [(None,)]
-    assert _rows("SELECT pg_statistics_obj_is_visible(1)") == [(True,)]
+    # No statistics object has oid 1: PostgreSQL answers NULL of an object it does not have.
+    assert _rows("SELECT pg_statistics_obj_is_visible(1)") == [(None,)]
 
 
 @pytest.mark.parametrize("call", ["plpgsql_validator(1)", "pg_catalog.fmgr_c_validator(1)"])

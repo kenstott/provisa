@@ -700,3 +700,29 @@ def test_the_catalogs_indexes_and_their_constraints_are_listed():
         "JOIN pg_catalog.pg_constraint o ON o.conindid = c.oid "
         "WHERE c.relname = 'pg_class_oid_index'"
     ) == [("i", 403, True, [1], "p")]  # an int2vector is read as its numbers
+
+
+@pytest.mark.parametrize(
+    "sql,expected",
+    [
+        ("SELECT pg_catalog.pg_table_is_visible('pg_catalog.pg_class'::regclass) AS v", True),
+        # information_schema is not on the search path.
+        (
+            "SELECT pg_catalog.pg_table_is_visible('information_schema.tables'::regclass) AS v",
+            False,
+        ),
+        (
+            "SELECT pg_catalog.pg_table_is_visible('pg_catalog.pg_class_oid_index'::regclass) AS v",
+            True,
+        ),
+        ("SELECT pg_catalog.pg_table_is_visible(99999) AS v", None),
+        ("SELECT pg_catalog.pg_type_is_visible('integer'::regtype) AS v", True),
+        ("SELECT pg_catalog.pg_type_is_visible(13302) AS v", False),
+        ("SELECT pg_catalog.pg_function_is_visible('now()'::regprocedure) AS v", True),
+        ("SELECT pg_catalog.pg_function_is_visible(99999) AS v", None),
+        ("SELECT pg_catalog.pg_collation_is_visible(100) AS v", True),
+        ("SELECT pg_catalog.pg_operator_is_visible(91) AS v", True),
+    ],
+)
+def test_an_object_is_visible_as_the_search_path_sees_it(sql, expected):
+    assert _value(sql) is expected

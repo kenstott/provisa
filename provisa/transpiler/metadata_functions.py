@@ -338,6 +338,28 @@ LISTED_RELATIONS = "_provisa_listed_relations"
 LISTED_INDEXES = "_provisa_listed_indexes"
 PUBLISHABLE = "_provisa_publishable_relations"
 
+
+def visible_on_the_path(catalog: str, alias: str, name: str, namespace: str) -> str:
+    """Whether the object of ``alias`` (a row of meta's ``catalog``, its name column ``name`` and
+    its schema column ``namespace``) is visible as PostgreSQL's *_is_visible answers on the
+    search path ('public, "$user"', catalog_data): pg_catalog first, as PostgreSQL puts it where
+    the path does not name it, then public, an object there visible unless pg_catalog has one of
+    its name."""
+    earlier = (
+        f"(SELECT CAST(_e.{name} AS TEXT) FROM meta.{catalog} _e "
+        f"WHERE _e.{namespace} = {PG_CATALOG_OID})"
+    )
+    return (
+        f"COALESCE((SELECT _vn.nspname FROM meta.catalog_pg_namespace _vn "
+        f"WHERE _vn.oid = {alias}.{namespace}) = 'pg_catalog' "
+        f"OR ((SELECT _vn.nspname FROM meta.catalog_pg_namespace _vn "
+        f"WHERE _vn.oid = {alias}.{namespace}) = 'public' "
+        f"AND CAST({alias}.{name} AS TEXT) NOT IN {earlier}), FALSE)"
+    )
+
+
+_RELATION_VISIBLE = visible_on_the_path("catalog_pg_class", "_l", "relname", "relnamespace")
+
 #: What a form reads once, by the relation a statement holds it in. A statement reads only those
 #: its forms name, each as a role reads the view: what it does not list has no answer here.
 _READ_ONCE: dict[str, str] = {
@@ -372,12 +394,16 @@ _READ_ONCE: dict[str, str] = {
         "_d.description",
         "FROM meta.catalog_pg_description _d",
     ),
-    # A catalog's own indexes are pg_catalog's, on every search path.
+    # Each listed relation and whether the search path sees it; a catalog's own indexes beside
+    # the relations, the model's keys' indexes apart.
     LISTED_RELATIONS: (
-        "SELECT _l.oid FROM meta.catalog_pg_class _l "
+        f"SELECT _l.oid, {_RELATION_VISIBLE} AS visible FROM meta.catalog_pg_class _l "
         f"WHERE _l.relkind <> 'i' OR _l.relnamespace = {PG_CATALOG_OID}"
     ),
-    LISTED_INDEXES: "SELECT _l.oid FROM meta.catalog_pg_class _l WHERE _l.relkind = 'i'",
+    LISTED_INDEXES: (
+        f"SELECT _l.oid, {_RELATION_VISIBLE} AS visible FROM meta.catalog_pg_class _l "
+        "WHERE _l.relkind = 'i'"
+    ),
     PUBLISHABLE: (
         "SELECT _c.oid FROM meta.catalog_pg_class _c WHERE _c.relkind IN ('r', 'p') "
         f"AND _c.relnamespace NOT IN {SYSTEM_SCHEMA_OIDS}"
@@ -449,11 +475,12 @@ _INDEX_COLUMN_PROPERTY = (
     "WHEN 'distance_orderable' THEN FALSE WHEN 'returnable' THEN TRUE "
     "WHEN 'search_array' THEN TRUE WHEN 'search_nulls' THEN TRUE END END"
 )
+#: pg_table_is_visible: of a relation a role lists, whether search_path sees it; NULL for another.
 _LISTED = (
     f"CASE WHEN CAST(relation_oid AS BIGINT) >= {KEY_OID_BASE} "
     f"AND CAST(relation_oid AS BIGINT) < {FIRST_METRIC_OID} "
-    f"THEN CASE WHEN relation_oid IN (SELECT _c.oid FROM {LISTED_INDEXES} _c) THEN TRUE END "
-    f"WHEN relation_oid IN (SELECT _c.oid FROM {LISTED_RELATIONS} _c) THEN TRUE END"
+    f"THEN (SELECT _c.visible FROM {LISTED_INDEXES} _c WHERE _c.oid = relation_oid) "
+    f"ELSE (SELECT _c.visible FROM {LISTED_RELATIONS} _c WHERE _c.oid = relation_oid) END"
 )
 _PUBLISHABLE = f"COALESCE(relation_oid IN (SELECT _c.oid FROM {PUBLISHABLE} _c), FALSE)"
 
@@ -650,20 +677,31 @@ _PRETTY_VIEWDEF = (
 
 #: Every object a catalog holds is on the search path, and the session role holds every role.
 #: Each is strict, as PostgreSQL's is: a NULL argument is NULL.
-_ALWAYS = (
-    ("pg_collation_is_visible", 1),
-    ("pg_conversion_is_visible", 1),
-    ("pg_function_is_visible", 1),
-    ("pg_opclass_is_visible", 1),
-    ("pg_operator_is_visible", 1),
-    ("pg_opfamily_is_visible", 1),
-    ("pg_ts_config_is_visible", 1),
-    ("pg_ts_dict_is_visible", 1),
-    ("pg_ts_parser_is_visible", 1),
-    ("pg_ts_template_is_visible", 1),
-    ("pg_type_is_visible", 1),
-    ("pg_has_role", 2),
-)
+_ALWAYS = (("pg_has_role", 2),)
+
+#: Each *_is_visible but pg_table_is_visible: the catalog of its objects, their name and schema
+#: columns. Visible as search_path sees the object; NULL for an object no catalog holds.
+_VISIBLE_IN = {
+    "pg_collation_is_visible": ("catalog_pg_collation", "collname", "collnamespace"),
+    "pg_conversion_is_visible": ("catalog_pg_conversion", "conname", "connamespace"),
+    "pg_function_is_visible": ("catalog_pg_proc", "proname", "pronamespace"),
+    "pg_opclass_is_visible": ("catalog_pg_opclass", "opcname", "opcnamespace"),
+    "pg_operator_is_visible": ("catalog_pg_operator", "oprname", "oprnamespace"),
+    "pg_opfamily_is_visible": ("catalog_pg_opfamily", "opfname", "opfnamespace"),
+    "pg_statistics_obj_is_visible": ("catalog_pg_statistic_ext", "stxname", "stxnamespace"),
+    "pg_ts_config_is_visible": ("catalog_pg_ts_config", "cfgname", "cfgnamespace"),
+    "pg_ts_dict_is_visible": ("catalog_pg_ts_dict", "dictname", "dictnamespace"),
+    "pg_ts_parser_is_visible": ("catalog_pg_ts_parser", "prsname", "prsnamespace"),
+    "pg_ts_template_is_visible": ("catalog_pg_ts_template", "tmplname", "tmplnamespace"),
+    "pg_type_is_visible": ("catalog_pg_type", "typname", "typnamespace"),
+}
+
+
+def _visible(catalog: str, name: str, namespace: str) -> str:
+    return (
+        f"(SELECT {visible_on_the_path(catalog, '_o', name, namespace)} FROM meta.{catalog} _o "
+        "WHERE _o.oid = object_oid LIMIT 1)"
+    )
 
 
 def _strictly(arity: int, answer: str) -> str:
@@ -781,6 +819,7 @@ _FORMS: tuple[Form, ...] = (
         for arity in arities
     ),
     *(_form(name, _unused_params(arity), _strictly(arity, "TRUE")) for name, arity in _ALWAYS),
+    *(_form(name, "object_oid", _visible(*where)) for name, where in sorted(_VISIBLE_IN.items())),
 )
 
 FORMS: dict[tuple[str, int], Form] = {

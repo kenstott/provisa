@@ -303,13 +303,15 @@ def test_pg_table_is_visible_executes_true():
     ctx = _make_ctx_with_tables()
     state = _make_state(ctx)
     result = answer(
-        "SELECT pg_table_is_visible(c.oid) FROM pg_catalog.pg_class c",
+        "SELECT n.nspname, pg_table_is_visible(c.oid) FROM pg_catalog.pg_class c "
+        "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace",
         "alice",
         state,
     )
-    # dogs table → one pg_class row → one result row containing True
-    assert len(result.rows) >= 1
-    assert all(r[0] is True for r in result.rows)
+    # As search_path sees them (REQ-2167, amended 2026-11-03): pg_catalog's and public's (dogs),
+    # never information_schema's.
+    visible = {(schema, seen) for schema, seen in result.rows}
+    assert visible == {("pg_catalog", True), ("public", True), ("information_schema", False)}
 
 
 # ── pg_has_role() executes TRUE against real pg_roles row ───────────────────
