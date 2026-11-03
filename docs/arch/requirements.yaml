@@ -87435,7 +87435,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     the table''s name, without naming the column; reading its columns without its subject is still answered.
     (Amended 2026-10-29, PATHS SKIP PARAMETERIZED TABLES:) Maintainer 2026-10-31: shortestPath and any path
     cannot include a parameterized table, one whose read needs arguments. A path search does not pass through
-    one, and a drop never proposes one.'
+    one, and a drop never proposes one. (Amended 2026-11-03, Cypher fails by name at the depth limit; the
+    default is 1000:) Maintainer 2026-11-03 (REQ-348): a Cypher walk that reaches graph.depth_limit and
+    could still extend fails by name ("variable-length path exceeded the maximum depth N") instead of returning
+    a cut result with the statement.path_cut warning; SPARQL property paths keep the warning. graph.depth_limit
+    defaults to 1000, a very large fixed number, since a Cypher walk never repeats a relationship and so
+    ends on its own long before it.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
