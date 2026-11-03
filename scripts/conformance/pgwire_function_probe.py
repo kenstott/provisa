@@ -38,8 +38,12 @@ FAMILIES = Path(__file__).resolve().parent / "function_families.yaml"
 #: The enum the job seeds beside its fixture: PostgreSQL ships none, and anyenum needs one.
 PROBE_ENUM = "conformance.probe_enum"
 
-#: The sequence the job seeds for lastval.
+#: The sequence the job seeds, a real argument for the functions that read one.
 PROBE_SEQUENCE = "conformance.probe_sequence"
+
+#: The table the job seeds for lastval: an identity column, and a column an INSERT gives a value.
+PROBE_IDENTITY_SCHEMA, PROBE_IDENTITY_TABLE = "conformance", "probe_identity"
+PROBE_IDENTITY = f"{PROBE_IDENTITY_SCHEMA}.{PROBE_IDENTITY_TABLE}"
 
 #: The concrete type a call gives each pseudo-type, consistent across one call's arguments:
 #: PostgreSQL resolves anyelement with anyarray, anyrange and anymultirange to one element type.
@@ -168,16 +172,20 @@ ARGUMENTS: dict[str, tuple[str, ...]] = {
 }
 
 #: The statements that are no plain call: a set-returning function taking its row type from a
-#: column definition list, and lastval, which needs a nextval earlier in the same session.
+#: column definition list, and lastval, which answers what an INSERT before it generated
+#: (``BEFORE``).
 STATEMENTS = {
     "json_to_recordset(json)": "SELECT * FROM pg_catalog.\"json_to_recordset\"('[]') AS t(v integer)",
     "jsonb_to_recordset(jsonb)": (
         "SELECT * FROM pg_catalog.\"jsonb_to_recordset\"('[]') AS t(v integer)"
     ),
-    "lastval()": (
-        f"SELECT pg_catalog.\"lastval\"() AS v FROM (SELECT nextval('{PROBE_SEQUENCE}') OFFSET 0) s"
-    ),
+    "lastval()": 'SELECT pg_catalog."lastval"() AS v',
 }
+
+#: What a call needs its session to have done, run on the same connection just before it: lastval
+#: answers the identity value the session's own INSERT made the table generate (REQ-2167, amended
+#: 2026-11-02), not a sequence it advanced, which Provisa refuses.
+BEFORE = {"lastval()": f"INSERT INTO {PROBE_IDENTITY} (note) VALUES ('probe')"}
 
 
 @dataclass(frozen=True)

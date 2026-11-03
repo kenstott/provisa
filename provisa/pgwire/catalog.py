@@ -293,7 +293,10 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
         import sqlglot.expressions as exp
         import sqlglot
 
-        tree = sqlglot.parse_one(stripped, read="postgres")
+        from provisa.transpiler.pg_forms_type_io import spelled
+
+        # REQ-2167: read as the transpiler reads it; ``::cstring[]`` is no subscript.
+        tree = sqlglot.parse_one(spelled(stripped), read="postgres")
         for tbl in tree.find_all(exp.Table):
             db = tbl.db.lower() if tbl.db else ""
             tname = tbl.name.lower() if tbl.name else ""

@@ -1427,13 +1427,15 @@ class Call:
     """One statement of an overload. ``answers``: a real answer, compared by value; ``values``:
     whether the rows compare at all (the NULL call of a volatile function, or of one whose answer
     is its server's own: no); ``zone``: the session's TimeZone for this call, if not ``SETTINGS``'
-    UTC; ``setup`` and ``teardown``: statements around it on the same session, as an open cursor
-    needs its transaction."""
+    UTC; ``before``: what the session must have done first, run just before it
+    (function_probe.BEFORE); ``setup`` and ``teardown``: statements around it on the same session,
+    as an open cursor needs its transaction."""
 
     sql: str
     answers: bool = False
     values: bool = True
     zone: str | None = None
+    before: str | None = None
     setup: tuple[str, ...] = ()
     teardown: tuple[str, ...] = ()
 
@@ -1687,7 +1689,8 @@ def calls(fn: Function, family: str) -> list[Call]:
         return valued
     zoned = [Call(null, values=False, zone=ZONE)] if fn.name in ZONED_FUNCTIONS else []
     compared = fn.volatility != "v" and own_answer(fn) is None
-    return [Call(null, values=compared), *zoned, *valued]
+    before = function_probe.BEFORE.get(fn.signature)
+    return [Call(null, values=compared, before=before), *zoned, *valued]
 
 
 # --- one call on one server -------------------------------------------------------------------
@@ -2093,11 +2096,15 @@ def form_check(name: str, want: dict[str, Any], got: dict[str, Any]) -> tuple[bo
 
 
 def _answer(server: Session, call_: Call) -> dict[str, Any]:
-    """``call_`` on ``server``: the first of its setup that fails is its answer, and its teardown
-    runs whatever came before."""
+    """``call_`` on ``server``: the first of what must run before it (its ``before``, then its
+    setup) that fails is its answer, and its teardown runs whatever came before."""
     if call_.zone is not None:
         server.answer(f"SET TimeZone TO '{call_.zone}'")
     try:
+        if call_.before is not None:
+            done = server.answer(call_.before)
+            if not done["ok"]:
+                return {**done, "error": f"{call_.before}: {done['error']}"}
         for sql in call_.setup:
             done = server.answer(sql)
             if not done["ok"]:

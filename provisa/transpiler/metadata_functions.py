@@ -616,6 +616,7 @@ READS_THE_SERVER = frozenset(
         "schema_to_xml",
         "schema_to_xml_and_xmlschema",
         "schema_to_xmlschema",
+        "setval",
         "table_to_xml",
         "table_to_xml_and_xmlschema",
         "table_to_xmlschema",
@@ -640,7 +641,7 @@ _OF_A_USER = frozenset(
 
 #: A form only PostgreSQL can run, of a function of its argument: a statement with no table is the
 #: engine's, which reads the function's row of function_macros' table instead.
-_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name", "currval", "nextval"}) | SERVER_STATE
+_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name"}) | SERVER_STATE
 
 
 class MetadataFunctionRefused(ValueError):

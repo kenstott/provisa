@@ -140,20 +140,6 @@ _STAT_COLUMNS = (
 )
 
 
-def _setval(*params: str) -> str:
-    """setval(sequence, value [, is_called]): no relation is a sequence."""
-    nulls = " OR ".join(f"{_name(p)} IS NULL" for p in params)
-    relation = "(SELECT _sc.relname FROM meta.catalog_pg_class _sc WHERE _sc.oid = seq)"
-    return (
-        f"CASE WHEN {nulls} THEN CAST(NULL AS BIGINT) "
-        f"WHEN {relation} IS NOT NULL THEN "
-        + raising("42809", f"'cannot open relation \"' || {relation} || '\"'")
-        + " ELSE "
-        + raising("XX000", "'could not open relation with OID ' || seq")
-        + " END"
-    )
-
-
 def _not_an_index(*params: str) -> str:
     """brin_summarize_range and its kin: no relation of a Provisa model is an index, since indexes
     are the source's, so each refuses as PostgreSQL does a relation that is none."""
@@ -1373,8 +1359,6 @@ def _files(a: _Answers) -> None:
     )
     _read_file(a, "pg_read_file", "TEXT")
     _read_file(a, "pg_read_binary_file", "BYTEA")
-    a.body("setval", "seq:bigint, value", _setval("seq", "value"), "BIGINT")
-    a.body("setval", "seq:bigint, value, called", _setval("seq", "value", "called"), "BIGINT")
     for params, missing_ok in (("f", "FALSE"), ("f, missing_ok:boolean", "missing_ok")):
         nulls = "f IS NULL OR " + (missing_ok + " IS NULL")
         check = (

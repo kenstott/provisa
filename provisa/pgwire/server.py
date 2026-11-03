@@ -1013,8 +1013,16 @@ def _to_decimal(v: Any) -> decimal.Decimal:
     return v if isinstance(v, decimal.Decimal) else decimal.Decimal(str(v))
 
 
+#: PostgreSQL's text of an array with its own lower bounds ("[0:2]={1,2,3}"), which no list holds.
+_BOUNDED_ARRAY_TEXT = re.compile(r"(\[-?\d+:-?\d+\])+=\{")
+
+
 def _to_list(v: Any) -> Any:
-    return json.loads(v) if isinstance(v, str) else v
+    """A JSON array's text read as its list; PostgreSQL's text of a bounded array is sent as it is
+    (REQ-2167)."""
+    if not isinstance(v, str) or _BOUNDED_ARRAY_TEXT.match(v):
+        return v
+    return json.loads(v)
 
 
 def _to_date(v: Any) -> Any:
@@ -1708,6 +1716,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-2110: the session's time travel (SET provisa.as_of / provisa.as_recorded).
         self.as_of_setting: str | None = None
         self.as_recorded_setting: str | None = None
+        # REQ-2167: the last identity or serial value an INSERT of this session made its source
+        # generate -- what lastval() answers. None until one has (lastval then raises 55000).
+        self.last_generated: int | None = None
 
     def apply_redirect_settings(self, settings: dict[str, bool | str | None]) -> None:
         """Hold the ``provisa.redirect*`` settings read from the startup packet or a SET."""
@@ -2102,6 +2113,14 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # query) reads the values inline.
         said = said or sql.strip()
         sql = self._with_source_enums(sql)
+        if self.last_generated is not None:
+            from provisa.pgwire.generated_keys import answered_lastval
+
+            # REQ-2167: lastval() is the session's own; a statement its Describe governed with
+            # the call in it is governed again with the value held now.
+            answered = answered_lastval(sql, self.last_generated)
+            if answered is not None:
+                sql, prepared = answered, None
         stripped = sql.strip()
         if xml_mapping.calls_one(stripped):
             # REQ-2167: each read the call makes is a statement of this session, governed here,
@@ -2270,6 +2289,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                         _run_with_org(self.org_id, _execute_plan(governed)),
                         timeout=request_timeout_for("pgwire"),
                     )
+                    if getattr(result, "generated_key", None) is not None:
+                        self.last_generated = result.generated_key  # REQ-2167
                 elif isinstance(governed, _Plan) and governed.route == Route.ENGINE:
                     # REQ-1176: this streaming sink runs physical_sql on the engine directly (like
                     # Flight SQL), so it MUST verify the governed-provenance stamp before the engine
@@ -2676,6 +2697,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
     def send_ready_for_query(self, ctx: Optional[BVContext]) -> None:
         # ReadyForQuery ends the cycle: the Sync of an extended-protocol cycle, or a Query's end.
+        # So does the cycle's error: a Query sends no Sync, and one whose statement failed left
+        # the next extended cycle's every message discarded, unanswered.
+        if ctx is not None:
+            ctx.sync()
         try:
             self._report_zone()
             super().send_ready_for_query(ctx)

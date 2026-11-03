@@ -326,10 +326,14 @@ def _settled_for_the_source(tree: exp.Expr, dialect: str) -> bool:
 
 _TABLES = "pg_get_publication_tables"
 _ANSWERED_BY_ITS_SHAPE = re.compile(
-    rf"\b(lastval|{_TABLES}|regexp_replace|pg_typed_(value|array)|pg_enum_\w+|{SOURCE_CAST})\b",
+    rf"\b(lastval|nextval|currval|setval|{_TABLES}|regexp_replace|pg_typed_(value|array)"
+    rf"|pg_enum_\w+|{SOURCE_CAST})\b",
     re.I,
 )
 _ADVANCES_A_SEQUENCE = frozenset({"nextval", "setval"})
+#: REQ-2167 (amended 2026-11-02, Sequence functions are not supported): Provisa does not model a
+#: source's sequences, so a call is refused by name on every engine, PostgreSQL's included.
+NOT_SUPPORTED = frozenset({"nextval", "currval", "setval"})
 
 
 def _call_of(node: exp.Expr) -> str:
@@ -386,6 +390,21 @@ def _refuse_a_pattern_that_varies(tree: exp.Expr, dialect: str) -> None:
             raise FunctionRefused("regexp_replace", dialect)
 
 
+def _refuse_six_argument_regexp_replace(tree: exp.Expr, dialect: str) -> None:
+    """REQ-2167 (amended 2026-11-02, Six-argument regexp_replace is not supported): the call with a
+    start, an occurrence and flags is refused by name, whatever its arguments; sqlglot reads it as
+    its own call, or, quoted, as no call of its own."""
+    from provisa.transpiler.function_macros import FunctionRefused
+
+    for node in tree.find_all(exp.RegexpReplace, exp.Anonymous):
+        if isinstance(node, exp.RegexpReplace):
+            six = all(node.args.get(k) is not None for k in ("occurrence", "modifiers"))
+        else:
+            six = _call_of(node) == "regexp_replace" and len(node.expressions) == 6
+        if six:
+            raise FunctionRefused("regexp_replace", dialect)
+
+
 def lowered(sql: str, dialect: str) -> str:
     """``sql`` with what its shape decides of these functions settled. A statement that calls
     nextval beside lastval is refused by name, for nextval is: an engine drops a column nothing
@@ -401,6 +420,9 @@ def lowered(sql: str, dialect: str) -> str:
     called = {_call_of(n) for n in tree.find_all(exp.Anonymous)}
     if "lastval" in called and called & _ADVANCES_A_SEQUENCE:
         raise FunctionRefused("lastval", dialect)
+    for name in sorted(called & NOT_SUPPORTED):
+        raise FunctionRefused(name, dialect)
+    _refuse_six_argument_regexp_replace(tree, dialect)
     if dialect == _C:
         _refuse_a_pattern_that_varies(tree, dialect)
     settled = _settled_for_the_source(tree, dialect)

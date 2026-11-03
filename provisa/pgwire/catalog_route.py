@@ -130,7 +130,8 @@ current_request: contextvars.ContextVar[CatalogRequest | None] = contextvars.Con
 #: ``::oid[]``: sqlglot reads the brackets as a subscript. PostgreSQL's own name of each array type
 #: says the same.
 _ARRAY_CAST = re.compile(
-    r"::\s*(?:pg_catalog\.)?(oid|regtype|regclass|name|aclitem|regproc|xid|cid|int2vector|oidvector)"
+    r"::\s*(?:pg_catalog\.)?"
+    r"(oid|regtype|regclass|name|aclitem|regproc|xid|cid|int2vector|oidvector|cstring)"
     r"\[\]",
     re.IGNORECASE,
 )
