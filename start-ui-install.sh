@@ -2,6 +2,8 @@
 # Start Provisa using the install-time configuration (core services only, no dev extras).
 # Simulates the installed product: postgres + trino + redis, no kafka/mongo/observability.
 # Backend runs locally via uvicorn. UI runs on the host via vite.
+# Needs cargo: provisa._encoders (the Rust encoders) is built from rust/ with rust/build-local.sh
+# when provisa/_encoders.so is missing or older than its Rust sources, before the API starts.
 
 set -euo pipefail
 
@@ -259,6 +261,12 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
   . "$SCRIPT_DIR/.env"
   set +a
 fi
+
+# provisa._encoders (the Rust encoders pgwire, gRPC and JSON use, with no Python fallback) built for
+# this checkout before the API starts: rust/ensure-local-build.sh runs rust/build-local.sh when
+# provisa/_encoders.so is missing or older than its Rust sources. No cargo, or a failed build, stops
+# the start here.
+"$SCRIPT_DIR/rust/ensure-local-build.sh" || exit 1
 
 export PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"
 # The backend's gRPC, Arrow Flight and MCP ports (server.grpc_port / server.flight_port / mcp.port,

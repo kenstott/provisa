@@ -12,6 +12,7 @@ This guide is for running Provisa **from the repository**, when you're developin
 - **Python 3.12+**
 - **Node.js 20+**
 - **Git**
+- **Rust** (`cargo`, from [rustup](https://rustup.rs) or `brew install rust`). `start-ui.sh` and `start-ui-install.sh` build `provisa._encoders`, the Rust encoders pgwire, gRPC and JSON use, with `rust/build-local.sh` when `provisa/_encoders.so` is missing or older than its sources under `rust/`, and stop if `cargo` is missing or the build fails.
 
 ---
 
