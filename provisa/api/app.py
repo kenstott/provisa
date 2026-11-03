@@ -2055,7 +2055,9 @@ async def ensure_serving_runtime(org_id: str, env: str | None = None) -> None:  
     await ensure_org_runtime(org_id, env)
 
 
-async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:  # REQ-1266
+async def ensure_org_runtime(
+    org_id: str, env: str | None = None, *, model_cloned: bool = False
+) -> OrgRuntime:  # REQ-1266
     """Get the org ENVIRONMENT's data-plane runtime, building it (once, under the lock) on a miss.
 
     The single seam every entrypoint (HTTP middleware AND the pgwire/bolt/flight/gRPC/MCP protocol
@@ -2068,7 +2070,11 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
     own runtime under its own key. The org-level lane flags are the ORG's — an environment is a
     copy of the model, not a second tenant, so a branch runs on the same engine, the same shard and
     the same storage its org does; what differs is the schema it reads and the bindings its sources
-    resolve through. ``None`` and ``prod`` are the same environment and the same key."""
+    resolve through. ``None`` and ``prod`` are the same environment and the same key.
+
+    ``model_cloned`` (REQ-2006): on a miss the build is a cloned one (build_org_runtime's): the
+    environment was provisioned and its model copied a moment ago, in this process, from one this
+    release built -- a demo sandbox's Test (synthetic) environment, landed in its open."""
 
     # REQ-1574: the org's key ring is resolved BEFORE anything reads its encrypted columns --
     # _read_org_flags decrypts the org's engine and storage DSNs, and those were written under
@@ -2076,7 +2082,8 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
     await ensure_org_encryption(org_id)
 
     runtime = await state.org_registry.get_or_build(
-        runtime_key(org_id, env), lambda _key: build_on_its_lane(org_id, env)
+        runtime_key(org_id, env),
+        lambda _key: build_on_its_lane(org_id, env, model_cloned=model_cloned),
     )
     # REQ-2087: the org's redaction rules and the secrets its model reaches, loaded once.
     from provisa.api.redaction_load import ensure_loaded
@@ -2085,7 +2092,9 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
     return runtime
 
 
-async def build_on_its_lane(org_id: str, env: str | None) -> OrgRuntime:  # REQ-1266, REQ-1922
+async def build_on_its_lane(  # REQ-1266, REQ-1922
+    org_id: str, env: str | None, *, model_cloned: bool = False
+) -> OrgRuntime:
     """Build the org environment's runtime on the lane its admin-plane row and, in a region
     deployment, its model name: the engine and store it runs on. ``ensure_org_runtime`` builds
     through it, and provisioning builds an org again through it once that build has seeded the
@@ -2145,6 +2154,7 @@ async def build_on_its_lane(org_id: str, env: str | None) -> OrgRuntime:  # REQ-
         storage_url=storage_url,
         data_mode=_data_mode,
         mutation_handling=_mutation_handling,
+        model_cloned=model_cloned,
     )
 
 

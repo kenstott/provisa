@@ -129,3 +129,67 @@ async def test_a_template_rebuilt_from_its_config_still_serves_its_bundles_runs(
         await demo_templates.rebuild_template(directory, _seed(directory), conn, None)
     assert await _unheld(template, directory) == []
     assert await _served(template) == _CARRIED_RUNS
+
+
+async def _result_relations(plane, schema: str) -> list[str]:
+    from sqlalchemy import text
+
+    from provisa.profiler.schema import is_result_table_name
+
+    async with plane.acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = :schema ORDER BY table_name"
+                ).bindparams(schema=schema)
+            )
+        ).fetchall()
+    return [r[0] for r in rows if is_result_table_name(r[0])]
+
+
+async def _current_relations(plane) -> list[str]:
+    """The result relations the model names as current: one per carried run's table, under the
+    id the model gives that table now."""
+    async with plane.acquire() as conn:
+        (table_id,) = (
+            await conn.execute_core(
+                select(registered_tables.c.id).where(
+                    registered_tables.c.source_id == "crm",
+                    registered_tables.c.schema_name == "public",
+                    registered_tables.c.table_name == "customers",
+                )
+            )
+        ).one()
+    return [f"customers_{table_id}_profile_runs"]
+
+
+async def test_a_rebuild_leaves_no_superseded_result_relation_and_a_sandbox_copies_none(
+    template, tmp_path
+):
+    """Each rebuild renumbers the template's tables, and the relations named by the old ids were
+    left behind: about 40 per rebuild for profiling, each copied into every sandbox of it
+    (env_copy.copy_profile_results). A rebuild removes them in its own transaction."""
+    from sqlalchemy import text
+
+    from provisa.core.env_copy import copy_profile_results
+
+    directory = _bundle(tmp_path)
+    for _ in range(3):
+        async with template.acquire() as conn:
+            await demo_templates.rebuild_template(directory, _seed(directory), conn, None)
+    current = await _current_relations(template)
+    assert await _result_relations(template, org_schema(ORG)) == current
+    assert await _served(template) == _CARRIED_RUNS
+
+    sandbox = "sbx_profile_copy"
+    async with template.acquire() as conn, conn.transaction():
+        await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{sandbox}" CASCADE'))
+        await conn.execute_core(text(f'CREATE SCHEMA "{sandbox}"'))
+        copied = await copy_profile_results(conn, org_schema(ORG), sandbox)
+    try:
+        assert copied == current
+        assert await _result_relations(template, sandbox) == current
+    finally:
+        async with template.acquire() as conn:
+            await conn.execute_core(text(f'DROP SCHEMA "{sandbox}" CASCADE'))
