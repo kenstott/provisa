@@ -25,6 +25,7 @@ from provisa.federation.duckdb_pg_scalars import register
 from provisa.pgwire.cast_types import result_casts
 from provisa.pgwire.function_types import call_result_type
 from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.pg_forms_geometric import routines_apart
 from provisa.transpiler.pg_literals import exact_inputs, values_cast
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 
@@ -189,8 +190,9 @@ def test_money_divided_by_an_integer_truncates():
 
 
 def test_a_null_shape_is_a_null_on_trino():
-    written = transpile("SELECT center(NULL::box) AS v", "trino")
-    assert written.startswith("SELECT CASE WHEN")
+    # The statement after its routine definitions (REQ-2171: Trino defines a shape's helpers).
+    _, written = routines_apart(transpile("SELECT center(NULL::box) AS v", "trino"))
+    assert written.startswith("SELECT CASE WHEN NULL IS NULL")
 
 
 def test_a_column_of_a_values_list_is_the_type_its_first_row_says():
