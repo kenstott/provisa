@@ -12,7 +12,7 @@
 
 import pytest
 
-from provisa.cypher.parser import CypherParseError, parse_cypher
+from provisa.cypher.parser import parse_cypher
 from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.gql.path_translator import PathTranslateError, path_to_recursive_sql
 
@@ -120,9 +120,13 @@ def test_max_depth_capped_by_argument():
 
 
 def test_unbounded_at_path_translator_level():
-    """Unbounded [*] is rejected at parse time; verify parse_cypher enforces it."""
-    with pytest.raises(CypherParseError, match="[Uu]nbounded"):
-        parse_cypher("MATCH p = shortestPath((a:Person)-[*]->(b:Company)) RETURN p")
+    """REQ-348 (amended 2026-11-03): an unbounded [*] walks to the maximum depth it is given."""
+    lm = _make_label_map()
+    path_func, _ = _extract_path_func(
+        "MATCH p = shortestPath((a:Person)-[:KNOWS*]->(b:Company)) RETURN p"
+    )
+    sql, _, _ = path_to_recursive_sql(path_func, lm, "a", "b", "p", max_depth=7)
+    assert "_depth < 7" in sql and "_depth <= 7" in sql
 
 
 def test_missing_relationship_raises():
