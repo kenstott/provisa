@@ -9098,5 +9098,18 @@
   "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.shopifyStoreHint": "The part of your store's admin address before .myshopify.com, such as my-store.",
   "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.shopifyApiVersion": "API version",
   "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.shopifyApiVersionHint": "The Shopify Admin API version to call, written as year and month (2026-10). Keep the version filled in unless your app needs another.",
-  "nl/serverErrors.json::serverErrors.schema.remote_throttled": "Table '{{table}}' was not registered: the source's rate limit did not let it be checked ({{reason}}). Try again later."
+  "nl/serverErrors.json::serverErrors.schema.remote_throttled": "Table '{{table}}' was not registered: the source's rate limit did not let it be checked ({{reason}}). Try again later.",
+  "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbRealmId": "Company ID (realm ID)",
+  "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbRealmIdHint": "The number of the QuickBooks company to read. Intuit shows it when you connect your app, and in the company's account settings.",
+  "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbRealmIdInvalid": "The company ID is a number, for example 9341453456789012",
+  "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbEnvironment": "Sandbox or production",
+  "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbEnvironmentHint": "A sandbox company is a test company from your Intuit developer account.",
+  "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbSandbox": "Sandbox (test company)",
+  "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbProduction": "Production (real company)",
+  "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbClientId": "Client ID",
+  "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbClientIdHint": "From your app on developer.intuit.com, under Keys and credentials.",
+  "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbClientSecret": "Client secret",
+  "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbClientSecretHint": "From the same page as the client ID. Kept in the secrets vault.",
+  "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbRefreshToken": "Refresh token",
+  "nl/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbRefreshTokenHint": "Lets Provisa read the company. Get one from Intuit's OAuth 2.0 Playground with the Accounting scope. QuickBooks replaces it each time it is used, and Provisa keeps the newest one."
 }

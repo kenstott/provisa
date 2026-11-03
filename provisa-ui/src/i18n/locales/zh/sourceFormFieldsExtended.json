@@ -212,6 +212,19 @@
     "reasoner": "推理机",
     "reasonerNone": "无",
     "axioms": "OWL 公理",
-    "axiomsHint": "Turtle、RDF/XML、函数式或 Manchester 语法。查询为单个 IRI（例如 <http://example.org/kyc#controls>）的表读取由公理推断出的内容。"
+    "axiomsHint": "Turtle、RDF/XML、函数式或 Manchester 语法。查询为单个 IRI（例如 <http://example.org/kyc#controls>）的表读取由公理推断出的内容。",
+    "qbRealmId": "公司 ID（Realm ID）",
+    "qbRealmIdHint": "要读取的 QuickBooks 公司的编号。连接应用时以及在公司的账户设置中，Intuit 会显示该编号。",
+    "qbRealmIdInvalid": "公司 ID 是一个数字，例如 9341453456789012",
+    "qbEnvironment": "沙盒或生产",
+    "qbEnvironmentHint": "沙盒公司是您 Intuit 开发者账户中的测试公司。",
+    "qbSandbox": "沙盒（测试公司）",
+    "qbProduction": "生产（真实公司）",
+    "qbClientId": "客户端 ID",
+    "qbClientIdHint": "在 developer.intuit.com 上您的应用的 Keys and credentials 下。",
+    "qbClientSecret": "客户端密钥",
+    "qbClientSecretHint": "与客户端 ID 在同一页面。保存在密钥保管库中。",
+    "qbRefreshToken": "刷新令牌",
+    "qbRefreshTokenHint": "允许 Provisa 读取该公司。可在 Intuit 的 OAuth 2.0 Playground 中使用 Accounting 范围获取。QuickBooks 每次使用后都会替换它，Provisa 会保留最新的令牌。"
   }
 }

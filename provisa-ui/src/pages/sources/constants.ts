@@ -167,6 +167,7 @@ export const SOURCE_TYPES = [
   { value: "salesforce", label: "Salesforce", category: "Enterprise", defaultPort: 0 }, // REQ-1946
   { value: "servicenow", label: "ServiceNow", category: "Enterprise", defaultPort: 0 }, // REQ-1954
   { value: "jira", label: "Jira", category: "Enterprise", defaultPort: 0 }, // REQ-2069
+  { value: "quickbooks", label: "QuickBooks Online", category: "Enterprise", defaultPort: 0 }, // REQ-2197
   // REQ-1947
   {
     value: "cloudops",

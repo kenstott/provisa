@@ -41,6 +41,7 @@ import {
   siOpenapiinitiative,
   siPostgresql,
   siPrometheus,
+  siQuickbooks,
   siRedis,
   siRss,
   siSap,
@@ -95,6 +96,7 @@ export const MARKS: Record<string, Icon> = {
   shopify: siShopify,
   stripe: siStripe,
   jira: siJira,
+  quickbooks: siQuickbooks, // REQ-2197
   kafka: siApachekafka,
   rss: siRss,
   splunk: siSplunk,

@@ -20,6 +20,7 @@ import { getDefaultPort, parseFilesPath, sourceBrand, uiType } from "./sourceHel
 import { CLOUD_FILE_TYPES, objectStoreFields, objectStoreOf } from "./objectStoreHints";
 import { profilerFieldsFromMapping } from "./profilerMapping";
 import { salesforceFieldsFromMapping } from "./salesforce";
+import { quickbooksFieldsFromMapping } from "./quickbooks";
 import { cloudopsFieldsFromMapping } from "./cloudops";
 import { sparqlFieldsFromMapping } from "./sparqlReasoner";
 import { GOOGLE_WORKSPACE, gwFieldsFromMapping } from "./googleWorkspace";
@@ -215,6 +216,9 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
   }
   if (s.type === "salesforce" && s.mappingJson) {
     authFields = salesforceFieldsFromMapping(s.mappingJson); // REQ-1946
+  }
+  if (s.type === "quickbooks" && s.mappingJson) {
+    authFields = quickbooksFieldsFromMapping(s.mappingJson); // REQ-2197
   }
   if (s.type === "google_sheets" && s.mappingJson) {
     const m = JSON.parse(s.mappingJson) as Record<string, string>;
