@@ -44,6 +44,12 @@ dependencies = [
     "grpcio-reflection",
     "grpcio-health-checking",  # REQ-1904: grpc.health.v1 HealthServicer for orchestrator probes
     "pyarrow",
+    # One IANA release on every surface: zoneinfo reads the tzdata package (provisa/__init__.py
+    # empties its search path), pyarrow reads a zoned timestamp through pytz, and the Rust encoders'
+    # tables are built from rust/pgwire/third_party/chrono-tz/tz. All three are 2026f; bump together
+    # (rust/pgwire/RESULTS.md, tests/unit/test_tz_agreement.py).
+    "tzdata==2026.6",
+    "pytz==2026.6",
     "adbc-driver-flightsql",
     "adbc-driver-manager",
     "adbc-driver-postgresql",  # REQ-1220: Arrow-native zero-copy ADBC transport for the pg engine
@@ -313,13 +319,37 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools>=68"]
+# REQ-2194: setuptools-rust compiles provisa._encoders, so provisa's wheel is a platform wheel.
+requires = ["setuptools>=68", "setuptools-rust==1.13.0"]
 build-backend = "setuptools.build_meta"
+
+# REQ-2194: Provisa's Rust encoders, compiled into provisa itself as one extension module whose
+# submodules are the encoders (provisa._encoders.pgwire; graphql and grpc join it). Every build
+# compiles it, an editable one included (cargo on PATH), in release mode with the committed lock;
+# a build without cargo fails, and there is no Python stand-in.
+[[tool.setuptools-rust.ext-modules]]
+target = "provisa._encoders"
+path = "rust/encoders/Cargo.toml"
+binding = "PyO3"
+debug = false
+args = ["--locked"]
 
 # REQ-2071: in this repository provisa-notebook is the sibling directory, built in place
 # (`python -m provisa_notebook.build`); a release publishes it to PyPI with provisa.
 [tool.uv.sources]
 provisa-notebook = { path = "provisa-notebook", editable = true }
+
+[tool.uv]
+# REQ-2194: `uv sync` rebuilds provisa (and so provisa._encoders) when the Rust source changes.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "rust/encoders/Cargo.toml" },
+    { file = "rust/encoders/Cargo.lock" },
+    { file = "rust/encoders/src/**/*.rs" },
+    { file = "rust/pgwire/Cargo.toml" },
+    { file = "rust/pgwire/src/**/*.rs" },
+    { file = "rust/pgwire/third_party/**/*" },
+]
 
 [tool.setuptools.packages.find]
 # The provisa tree plus the vendored buenavista fork, discovered from two roots so both
@@ -337,10 +367,12 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 # gRPC approval.proto.
 [tool.setuptools.package-data]
 "*" = ["*.sql", "*.proto"]
+# REQ-2194: _encoders.THIRD_PARTY_NOTICES is the licence notice of every Rust crate linked into
+# provisa._encoders (scripts/rust-third-party-notices.sh).
 # REQ-1127: the precompiled React UI (vite build output, staged into provisa/_ui/ by
 # scripts/build-wheel.sh) and the runtime config/ files (staged into provisa/_config/) ship in
 # the wheel so the delivery is self-contained on a Python-only, npm/Node-free host.
-"provisa" = ["_ui/**/*", "_config/*.yaml", "_config/demo/files/*"]
+"provisa" = ["_ui/**/*", "_config/*.yaml", "_config/demo/files/*", "_encoders.THIRD_PARTY_NOTICES"]
 # REQ-1923: the shipped schema of each branded GraphQL source (scripts/bake_graphql_brand_schema.py).
 "provisa.graphql_remote" = ["_known_schemas/*.json.gz"]
 # REQ-1923: the pinned spec of each branded OpenAPI source (scripts/bake_openapi_brand_spec.py).

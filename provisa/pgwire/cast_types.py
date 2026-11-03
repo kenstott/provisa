@@ -45,8 +45,8 @@ _TEXT_FORMS = frozenset({BVType.TEXT})
 
 _XML_FORMS = frozenset({BVType.TEXT, BVType.XML})
 
-#: xml[]'s wire type. Sending only looks a wire type up (BVTYPE_TO_PGTYPE, provisa.pgwire.server),
-#: so one the vendored BVType does not list needs only its entry there.
+#: xml[]'s wire type, one the vendored BVType does not list: its OID is in BVTYPE_TO_OID
+#: (provisa.pgwire.server), and the Rust encoder knows it by this name.
 XML_ARRAY: Any = "xml[]"
 
 

@@ -29,14 +29,23 @@ from zoneinfo import ZoneInfo, available_timezones
 
 import pyarrow as pa
 import pytest
-from buenavista.postgres import BVTYPE_TO_PGTYPE, BVType
+from buenavista.core import BVType
 
 from provisa.core.ir_arrow import column_values
+from tests.unit.pgwire import wire_cells as wire
 
 _UTC = datetime.timezone.utc
 _EPOCH = datetime.datetime(1970, 1, 1, tzinfo=_UTC)
 _PG_EPOCH = datetime.datetime(2000, 1, 1, tzinfo=_UTC)
-_TEXT, _BINARY = BVTYPE_TO_PGTYPE[BVType.TIMESTAMPTZ][1], BVTYPE_TO_PGTYPE[BVType.TIMESTAMPTZ][2]
+
+
+def _text(value: datetime.datetime) -> str:
+    return wire.text(BVType.TIMESTAMPTZ, value)
+
+
+def _binary(value: datetime.datetime) -> bytes:
+    return wire.binary(BVType.TIMESTAMPTZ, value)
+
 
 # Fixed instants, each zone's text checked at all of them: before 1901 (pytz keeps LMT there), its
 # transitions' era, and after 2037 (pytz has no daylight time there), January and July for both
@@ -120,7 +129,13 @@ def test_a_timestamptz_in_a_named_zone_is_written_as_postgresql_writes_it(zone: 
         )
         values = column_values(column)
         assert values[-1] is None
-        got = [(_TEXT(v), _BINARY(v)) for v in values[:-1]]
+        got = list(
+            zip(
+                [t.decode() for t in wire.cells(BVType.TIMESTAMPTZ, values[:-1], 0)],
+                wire.cells(BVType.TIMESTAMPTZ, values[:-1], 1),
+                strict=True,
+            )
+        )
         assert got == [(_pg_text(i, tz), _pg_binary(i)) for i in held], (zone, unit)
 
 
@@ -156,9 +171,9 @@ def test_postgresql_text_of_named_zones_where_pytz_differs(
     zone: str, instant: datetime.datetime, text: str
 ) -> None:
     column = pa.array([_micros(instant)], pa.int64()).cast(pa.timestamp("us", zone))
-    assert _TEXT(column_values(column)[0]) == text
+    assert _text(column_values(column)[0]) == text
     # A value from to_pylist itself, in pytz's zone, is written by zoneinfo's rules too.
-    assert _TEXT(column.to_pylist()[0]) == text
+    assert _text(column.to_pylist()[0]) == text
 
 
 @pytest.mark.parametrize(
@@ -181,7 +196,7 @@ def test_a_zoned_nanosecond_value_outside_pandas_range_is_written(
     column = pa.array([nanos], pa.int64()).cast(pa.timestamp("ns", zone))
     value = column_values(column)[0]
     instant = _EPOCH + datetime.timedelta(microseconds=nanos // 1000)
-    assert (_TEXT(value), _BINARY(value)) == (text, _pg_binary(instant))
+    assert (_text(value), _binary(value)) == (text, _pg_binary(instant))
 
 
 _UUIDS = [
@@ -196,8 +211,7 @@ def test_a_uuid_held_as_16_bytes_is_written_as_the_uuid(extension: bool) -> None
     column = pa.array([u.bytes for u in _UUIDS] + [None], pa.binary(16))
     if extension:
         column = pa.ExtensionArray.from_storage(pa.uuid(), column)
-    text, binary = BVTYPE_TO_PGTYPE[BVType.UUID][1], BVTYPE_TO_PGTYPE[BVType.UUID][2]
     values = column_values(column)
     assert values[-1] is None
-    assert [text(v) for v in values[:-1]] == [str(u) for u in _UUIDS]
-    assert [binary(v) for v in values[:-1]] == [u.bytes for u in _UUIDS]
+    assert [t.decode() for t in wire.cells(BVType.UUID, values[:-1], 0)] == [str(u) for u in _UUIDS]
+    assert wire.cells(BVType.UUID, values[:-1], 1) == [u.bytes for u in _UUIDS]

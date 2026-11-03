@@ -23,7 +23,9 @@ from fractions import Fraction
 from typing import Any
 
 import pytest
-from buenavista.postgres import BVTYPE_TO_PGTYPE, BVType, _float4_text, _float8_text
+from buenavista.core import BVType
+
+from tests.unit.pgwire import wire_cells as wire
 
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 
@@ -49,8 +51,7 @@ FLOAT8_TEXT = [
 
 @pytest.mark.parametrize(("value", "text"), FLOAT8_TEXT)
 def test_float8_text_is_what_float8out_writes(value: float, text: str) -> None:
-    assert _float8_text(value) == text
-    assert BVTYPE_TO_PGTYPE[BVType.FLOAT][1](value) == text
+    assert wire.text(BVType.FLOAT, value) == text
 
 
 def _as_float4(value: float) -> float:
@@ -90,8 +91,7 @@ def _as_float4(value: float) -> float:
 )
 def test_float4_text_is_the_shortest_form_that_reads_back(value: float, text: str) -> None:
     held = value if value != value or value in (float("inf"), float("-inf")) else _as_float4(value)
-    assert _float4_text(held) == text
-    assert BVTYPE_TO_PGTYPE[BVType.REAL][1](held) == text
+    assert wire.text(BVType.REAL, held) == text
 
 
 def _named_float4(text: str) -> bytes:
@@ -122,8 +122,8 @@ def _named_float4(text: str) -> bytes:
 def test_a_double_described_as_real_is_written_as_the_float4_binary_sends(
     value: float, text: str
 ) -> None:
-    assert BVTYPE_TO_PGTYPE[BVType.REAL][1](value) == text
-    assert _named_float4(text) == BVTYPE_TO_PGTYPE[BVType.REAL][2](value)
+    assert wire.text(BVType.REAL, value) == text
+    assert _named_float4(text) == wire.binary(BVType.REAL, value)
 
 
 def test_real_text_and_binary_name_the_same_float4_for_random_doubles() -> None:
@@ -131,12 +131,14 @@ def test_real_text_and_binary_name_the_same_float4_for_random_doubles() -> None:
     own float4out. The assertion is which float is named, so it is exact."""
     rng = random.Random(2167)
     values = [rng.uniform(-1, 1) * 10 ** rng.randint(-44, 38) for _ in range(100_000)]
-    text, binary = BVTYPE_TO_PGTYPE[BVType.REAL][1], BVTYPE_TO_PGTYPE[BVType.REAL][2]
+    values = [v for v in values if abs(v) < 3.4e38]
+    texts = [t.decode() for t in wire.cells(BVType.REAL, values, 0)]
+    binaries = wire.cells(BVType.REAL, values, 1)
+    own = [t.decode() for t in wire.cells(BVType.REAL, [_as_float4(v) for v in values], 0)]
     wrong = [
         v
-        for v in values
-        if abs(v) < 3.4e38
-        and (_named_float4(text(v)) != binary(v) or text(v) != _float4_text(_as_float4(v)))
+        for v, text, binary, own_text in zip(values, texts, binaries, own, strict=True)
+        if _named_float4(text) != binary or text != own_text
     ]
     assert wrong == []
 

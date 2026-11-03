@@ -685,15 +685,15 @@ class TestPostgresJsonIsText:
 
     def test_pgwire_writes_the_text_postgresql_sent(self, pg_cursor):
         from buenavista.core import BVType
-        from buenavista.postgres import BVTYPE_TO_PGTYPE
 
         from provisa.federation.pg_runtime import _read_as_postgresql_writes
+        from tests.unit.pgwire import wire_cells as wire
 
         _read_as_postgresql_writes(pg_cursor)
         pg_cursor.execute("""SELECT '"5"'::jsonb, '{"a": 1.10}'::json""")
         jsonb, json_ = pg_cursor.fetchone()
-        assert BVTYPE_TO_PGTYPE[BVType.JSONB][1](jsonb) == '"5"'
-        assert BVTYPE_TO_PGTYPE[BVType.JSON][1](json_) == '{"a": 1.10}'
+        assert wire.text(BVType.JSONB, jsonb, "jsonb") == '"5"'
+        assert wire.text(BVType.JSON, json_, "json") == '{"a": 1.10}'
 
     def test_flight_sends_the_text_postgresql_sent(self, pg_cursor):
         from provisa.executor.formats.arrow import rows_to_arrow_table

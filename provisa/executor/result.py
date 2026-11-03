@@ -68,6 +68,11 @@ class ResultStream(Protocol):  # REQ-028
         """Yield rows one at a time across all batches."""
         ...
 
+    def arrow_batches(self) -> Iterator[Any]:
+        """The result as Arrow record batches (REQ-2194): the engine's own, or a row result's
+        rows built into them at its fetch boundary."""
+        ...
+
     @property
     def rows(self) -> list[tuple]:
         """The full row list, materializing a streaming result if necessary."""
@@ -121,6 +126,26 @@ class QueryResult:  # REQ-028
 
     def materialize(self) -> QueryResult:
         return self
+
+    def arrow_batches(self) -> Iterator[Any]:  # REQ-2194
+        """The rows as Arrow record batches, built here from the rows (``ir_arrow.row_batch``):
+        the fetch boundary of a row-returning engine (docs/arch/fetch-paths.md)."""
+        from provisa.core.ir_arrow import row_batch
+
+        for batch in self.batches(_ARROW_BATCH_ROWS):
+            yield row_batch(batch, self.column_names, self.column_types)
+
+
+#: Rows per record batch a row result is handed to an encoder in (DuckDB's Arrow reader's size).
+_ARROW_BATCH_ROWS = 65_536
+
+
+class DataRowResult(QueryResult):  # REQ-2194
+    """A materialized result whose rows are a PostgreSQL source's own DataRow messages
+    (``RawDataRowBytes``, a replayed passthrough): pgwire forwards them as they are."""
+
+    def datarow_batches(self) -> Iterator[list[Any]]:
+        return self.batches()
 
 
 class StreamingQueryResult:  # REQ-028
@@ -236,6 +261,19 @@ class StreamingQueryResult:  # REQ-028
         q.stats = self.stats
         return q
 
+    def arrow_batches(self) -> Generator[Any, None, None]:  # REQ-2194
+        """Each row batch as an Arrow record batch, built as it is pulled (``ir_arrow.row_batch``):
+        the fetch boundary of a row-returning engine (docs/arch/fetch-paths.md)."""
+        from provisa.core.ir_arrow import row_batch
+
+        batches = self.batches()
+        try:
+            for batch in batches:
+                if batch:
+                    yield row_batch(batch, self.column_names, self.column_types)
+        finally:
+            batches.close()
+
     def _begin(self) -> None:
         if self._consumed:
             raise RuntimeError(
@@ -291,6 +329,16 @@ class StreamingQueryResult:  # REQ-028
             self._on_release()
         if self._on_close is not None:
             self._on_close(self.stats)
+
+
+class DataRowStreamResult(StreamingQueryResult):  # REQ-2194
+    """A streaming result whose batches are a PostgreSQL source's own DataRow messages
+    (``RawDataRowBytes``, the passthrough): pgwire forwards them as they are."""
+
+    __slots__ = ()
+
+    def datarow_batches(self) -> Generator[list[Any], None, None]:
+        return self.batches()
 
 
 class ArrowStreamResult(StreamingQueryResult):  # REQ-2194
@@ -416,3 +464,38 @@ class ArrowResult(QueryResult):  # REQ-2194
                 "ArrowResult rows were replaced; its Arrow table no longer holds them"
             )
         return iter(self.table.to_batches())
+
+
+def rewrapped(  # REQ-2194
+    stream: ResultStream,
+    transform: Callable[[Iterator[Any]], Iterator[Any]],
+    *,
+    on_release: Callable[[], None] | None = None,
+) -> StreamingQueryResult:
+    """``stream`` as a stream of the same kind with its batches passed through ``transform`` (a
+    permit guard, a response-cache tee): an Arrow result stays Arrow record batches, a
+    passthrough's DataRow messages stay DataRow messages, rows stay rows. Wrapping never turns
+    the engine's Arrow into Python rows."""
+    if isinstance(stream, ArrowStreamResult) or (
+        isinstance(stream, ArrowResult) and stream.table is not None
+    ):
+        schema = stream.schema if isinstance(stream, ArrowStreamResult) else stream.table.schema
+        return ArrowStreamResult(
+            schema,
+            transform(stream.arrow_batches()),
+            stream.column_types,
+            to_rows=stream._to_rows,
+            on_release=on_release,
+        )
+    kind = (
+        DataRowStreamResult
+        if isinstance(stream, (DataRowStreamResult, DataRowResult))
+        else StreamingQueryResult
+    )
+    return kind(
+        transform(stream.batches()),
+        column_names=list(stream.column_names),
+        column_types=stream.column_types,
+        on_release=on_release,
+        column_type_oids=stream.column_type_oids,
+    )

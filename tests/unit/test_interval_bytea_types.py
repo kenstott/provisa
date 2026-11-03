@@ -221,9 +221,9 @@ def test_pgwire_writes_an_interval_as_postgres_does(value, text, binary):
     import struct
 
     from buenavista.core import BVType
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
+    from tests.unit.pgwire import wire_cells as wire
 
-    _, to_text, to_binary = BVTYPE_TO_PGTYPE[BVType.INTERVAL]
+    _, to_text, to_binary = wire.entry(BVType.INTERVAL)
     assert to_text(value) == text
     assert struct.unpack("!qii", to_binary(value)) == binary
 

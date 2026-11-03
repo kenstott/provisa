@@ -21,10 +21,11 @@ import struct
 
 import pytest
 from buenavista.core import BVType
-from buenavista.postgres import BVTYPE_TO_PGTYPE
 
 from provisa.executor.result import QueryResult
 from provisa.pgwire.server import _SHAPE_COERCERS, ProvisaQueryResult, _sql_type_to_bvtype
+from tests.unit.pgwire import wire_cells as wire
+from tests.unit.pgwire.result_rows import rows_of
 
 
 def _int4(*values: int) -> bytes:
@@ -68,7 +69,7 @@ _BOUNDED = [
 
 @pytest.mark.parametrize(("declared", "text", "binary"), _BOUNDED)
 def test_a_bounded_array_is_sent_as_postgresql_sends_it(declared: str, text: str, binary: bytes):
-    _, to_text, to_binary = BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(declared)]
+    _, to_text, to_binary = wire.entry(_sql_type_to_bvtype(declared))
     assert to_text(text) == text
     assert to_binary(text) == binary
 
@@ -79,8 +80,8 @@ def test_a_bounded_array_from_the_postgresql_runtime_reaches_the_encoder_as_its_
         "SELECT v",
     )
     assert result.column(0)[1] == BVType.INTEGERARRAY
-    (row,) = list(result.rows())
-    _, to_text, to_binary = BVTYPE_TO_PGTYPE[BVType.INTEGERARRAY]
+    (row,) = rows_of(result)
+    _, to_text, to_binary = wire.entry(BVType.INTEGERARRAY)
     assert to_text(row[0]) == "[0:2]={1,2,3}"
     assert to_binary(row[0]) == _BOUNDED[0][2]
 
@@ -94,12 +95,12 @@ def test_a_described_array_keeps_its_bounded_text():
 
 
 def test_an_array_from_one_is_still_sent_from_its_list():
-    _, to_text, to_binary = BVTYPE_TO_PGTYPE[BVType.INTEGERARRAY]
+    _, to_text, to_binary = wire.entry(BVType.INTEGERARRAY)
     assert to_text([1, 2]) == "{1,2}"
     assert to_binary([1, 2]) == struct.pack("!iiiii", 1, 0, 23, 2, 1) + _int4(1, 2)
 
 
 def test_an_element_type_with_no_reader_of_its_text_is_refused_by_name():
-    _, _, to_binary = BVTYPE_TO_PGTYPE[BVType.INTERVALARRAY]
+    _, _, to_binary = wire.entry(BVType.INTERVALARRAY)
     with pytest.raises(TypeError, match="INTERVAL"):
         to_binary("[0:0]={00:00:01}")
