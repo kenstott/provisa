@@ -30,11 +30,13 @@ from typing import Any, Callable
 
 from buenavista.core import BVType
 
+from provisa.core.ir_types import interval_parts
 from provisa.core.pg_range import RANGE_TYPES
 from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.pgwire.catalog_pg17 import TYPES
 from provisa.transpiler.pg_forms_json import jsonb_out
 from provisa.transpiler.pg_held_types import HELD_AS
+from provisa.transpiler.pg_type_literals import interval_text
 from provisa.transpiler.xml_syntax import XmlSerialize
 
 #: The header PostgreSQL adds to a typmod that carries a length or a precision (VARHDRSZ).
@@ -182,6 +184,8 @@ def _record_field(value: Any) -> str:
         text = "{" + ",".join("NULL" if v is None else str(v) for v in value) + "}"
     elif isinstance(value, bool):
         text = "t" if value else "f"
+    elif isinstance(value, datetime.timedelta):
+        text = interval_text(*interval_parts(value))  # interval_out, not Python's text
     else:
         text = str(value)
     if text == "" or any(c in text for c in '",\\() \t\n'):

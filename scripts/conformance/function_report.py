@@ -104,6 +104,7 @@ MODEL_ANSWER = "model-answer"
 FLOAT_CLOSE = "float-tolerance"
 JSON_KEY_ORDER = "json-key-order"
 ARRAY_ORDER = "array-order"
+CLOCK_FIELD = "clock-field"
 
 RULES = (
     Rule(
@@ -155,6 +156,12 @@ RULES = (
         "Array built without ORDER BY",
         "Only an `ORDER BY` in the statement fixes the order of an array an aggregate builds. "
         "Without one, its elements compare in any order.",
+    ),
+    Rule(
+        CLOCK_FIELD,
+        "A clock's field compared by its form",
+        "A field read from the clock, such as `pg_cursor`'s `creation_time`, differs on every "
+        "call, so it compares by its type's form; the record's other fields compare by value.",
     ),
 )
 

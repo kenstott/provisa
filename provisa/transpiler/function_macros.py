@@ -65,6 +65,7 @@ from provisa.transpiler import (
     pg_forms_textsearch,
     pg_forms_type_io,
     pg_forms_types,
+    pg_zones,
 )
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 from provisa.transpiler.pg_literals import literal_input as postgres_literal
@@ -469,12 +470,8 @@ VALUE_FUNCTIONS_OF_THE_SERVER = (
         "",
         "unnest((SELECT list(_z) FROM pg_timezone_names() _z))",
     ),
-    _macro(
-        "pg_timezone_abbrevs",
-        "",
-        "unnest((SELECT list(_z) FROM (SELECT DISTINCT COLUMNS(_c -> _c <> 'name') "
-        "FROM pg_timezone_names()) _z))",
-    ),
+    # PostgreSQL's Default abbreviations (pg_zones).
+    _macro("pg_timezone_abbrevs", "", f"unnest((SELECT list(_z) FROM ({pg_zones.ABBREVS}) _z))"),
     _macro(
         "pg_indexam_has_property",
         "am, prop",
@@ -1568,7 +1565,12 @@ _ROWS: tuple[Macro, ...] = (
     Macro(
         "bit_length",
         ("value",),
-        {_EVERY: Pg("8 * OCTET_LENGTH(value)")},
+        {
+            # A bit string's length is its bits; a text's and a bytea's, their bytes times 8.
+            _DUCKDB: "CASE WHEN typeof(value) = 'BIT' THEN bit_length(TRY_CAST(value AS BIT)) "
+            "ELSE 8 * OCTET_LENGTH(value) END",
+            _EVERY: Pg("8 * OCTET_LENGTH(value)"),
+        },
         own={_TRINO: "8 * length(to_utf8(value))", _CLICKHOUSE: "8 * length(value)"},
     ),
     _pg("quote_literal", "value", _PG_QUOTED_LITERAL),
@@ -1652,6 +1654,30 @@ _ROWS: tuple[Macro, ...] = (
                 ("value", "pattern", "start", "n", "flags", "subexpr"),
                 "start, n, flags, subexpr",
                 {frozenset({"snowflake", "oracle"}): MAPPED},  # the others take no group
+            ),
+        )
+    ),
+    *(
+        # sqlglot's DuckDB regexp_instr reads no endoption, flags or subexpression. Every other
+        # dialect keeps sqlglot's own, and the federation engines their refusal (engine_refusals).
+        Macro(
+            "regexp_instr",
+            params,
+            {_DUCKDB: f"provisa_regexp_instr(value, pattern, {rest})", _EVERY: MAPPED},
+            differs_on=_TRINO | _CLICKHOUSE,
+        )
+        for params, rest in (
+            (("value", "pattern"), "1, 1, 0, '', 0"),
+            (("value", "pattern", "start"), "start, 1, 0, '', 0"),
+            (("value", "pattern", "start", "n"), "start, n, 0, '', 0"),
+            (("value", "pattern", "start", "n", "endoption"), "start, n, endoption, '', 0"),
+            (
+                ("value", "pattern", "start", "n", "endoption", "flags"),
+                "start, n, endoption, flags, 0",
+            ),
+            (
+                ("value", "pattern", "start", "n", "endoption", "flags", "subexpr"),
+                "start, n, endoption, flags, subexpr",
             ),
         )
     ),
@@ -2563,6 +2589,9 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     if isinstance(node, exp.RegexpSubstr):
         keys = ("this", "expression", "position", "occurrence", "parameters", "group")
         return "regexp_substr", [node.args[k] for k in keys if node.args.get(k) is not None]
+    if isinstance(node, exp.RegexpInstr):
+        keys = ("this", "expression", "position", "occurrence", "option", "parameters", "group")
+        return "regexp_instr", [node.args[k] for k in keys if node.args.get(k) is not None]
     return None
 
 

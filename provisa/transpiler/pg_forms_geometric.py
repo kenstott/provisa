@@ -409,14 +409,16 @@ def _division(e: Engine, divisor: str, answer: str) -> str:
 
 
 def _box_of(e: Engine, a: tuple[str, str], b: tuple[str, str]) -> str:
-    """box_construct: the corners of two points."""
-    return _list(
-        e,
-        f"greatest({a[0]}, {b[0]})",
-        f"greatest({a[1]}, {b[1]})",
-        f"least({a[0]}, {b[0]})",
-        f"least({a[1]}, {b[1]})",
-    )
+    """box_construct: the corners of two points, ``a`` a coordinate's high only where it is
+    greater (on a tie, as of 0 and -0, ``b``'s is)."""
+
+    def high(x: str, y: str) -> str:
+        return f"CASE WHEN {x} > {y} THEN {x} ELSE {y} END"
+
+    def low(x: str, y: str) -> str:
+        return f"CASE WHEN {x} > {y} THEN {y} ELSE {x} END"
+
+    return _list(e, high(a[0], b[0]), high(a[1], b[1]), low(a[0], b[0]), low(a[1], b[1]))
 
 
 def _center(a: str) -> tuple[str, str]:

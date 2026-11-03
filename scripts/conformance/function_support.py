@@ -140,6 +140,7 @@ import pgwire_catalog_types as catalog
 import pgwire_function_probe as function_probe
 from function_report import (
     ARRAY_ORDER,
+    CLOCK_FIELD,
     ENUM_LABEL,
     FLOAT_CLOSE,
     JSON_KEY_ORDER,
@@ -1906,13 +1907,25 @@ def _record_fields(text: str) -> list[str] | None:
     return [*fields, field]
 
 
-def _record_rules(want: str, got: str, sql: str) -> Rules:
-    """A record whose fields are the same, a JSON container comparing as JSON."""
+#: The fields of a function's record read from the clock, by position, with their type's oid:
+#: they compare by that type's form (REQ-2167, WHAT GUARANTEED MEANS), the others by value.
+CLOCK_FIELDS = {"pg_cursor": {5: 1184}}
+
+
+def _record_rules(want: str, got: str, sql: str, function: str = "") -> Rules:
+    """A record whose fields are the same, a JSON container comparing as JSON, a clock's field
+    (``CLOCK_FIELDS``) by its form."""
     a, b = _record_fields(want), _record_fields(got)
     if a is None or b is None or len(a) != len(b):
         return None
+    clocks = CLOCK_FIELDS.get(function, {})
     found: set[str] = set()
-    for x, y in zip(a, b, strict=True):
+    for at, (x, y) in enumerate(zip(a, b, strict=True)):
+        if at in clocks and x != y:
+            if re.fullmatch(TYPE_FORMS[clocks[at]], y) is None:
+                return None
+            found.add(CLOCK_FIELD)
+            continue
         rules = json_rules(x, y, sql) if x[:1] in ("{", "[") else (_SAME if x == y else None)
         if rules is None:
             return None
@@ -1928,7 +1941,9 @@ def _json_read(sql: str, oid: int, want: str) -> bool:
     return want[:1] in ("{", "[") or _JSON_NUMBER.fullmatch(want) is not None
 
 
-def _value_rules(want: str | None, got: str | None, oid: int, sql: str) -> Rules:
+def _value_rules(
+    want: str | None, got: str | None, oid: int, sql: str, function: str = ""
+) -> Rules:
     if want == got:
         return _SAME
     if want is None or got is None:
@@ -1944,7 +1959,7 @@ def _value_rules(want: str | None, got: str | None, oid: int, sql: str) -> Rules
     if oid in JSON_OIDS or _json_read(sql, oid, want):
         return json_rules(want, got, sql)
     if oid == _RECORD_OID:
-        return _record_rules(want, got, sql)
+        return _record_rules(want, got, sql, function)
     return None
 
 
@@ -2023,7 +2038,7 @@ def compare(
         return Compared(f"{len(b)} rows, PostgreSQL {len(a)}")
 
     def value(wv: str | None, gv: str | None, oid: int) -> Rules:
-        rules = _value_rules(wv, gv, oid, sql)
+        rules = _value_rules(wv, gv, oid, sql, function)
         if rules is None and _model_answer(function, wv, gv):
             return frozenset({MODEL_ANSWER})
         return rules
@@ -2166,6 +2181,10 @@ SYSTEM_CATALOG_WRITE_GROUP = "A system catalog is written by no role"
 NOTIFICATION_GROUP = "LISTEN, NOTIFY and pg_notify are refused"
 LARGE_OBJECT_GROUP = "Large objects as a read-only transaction"
 CATALOG_IS_THE_MODEL_GROUP = "The catalog is the model's"
+STORAGE_GROUP = "Provisa holds no storage"
+SERVER_FILES_GROUP = "No function reads the server's files"
+SERVER_ADMINISTRATION_GROUP = "Server administration functions"
+SERVER_VERSION_GROUP = "The server's version"
 GROUPS = {
     # REQ-2167, amended 2026-11-02, Side-effect functions.
     SIDE_EFFECT_GROUP: (
@@ -2194,7 +2213,64 @@ GROUPS = {
     # and a catalog's rows are the model's, so a regclass is compared by its name.
     CATALOG_IS_THE_MODEL_GROUP: "A relation's oid and a catalog's rows are the model's "
     "(REQ-2190): a regclass is compared by its name, not its oid, and a catalog serialized "
-    "lists the model.",
+    "lists the model; an object only the PostgreSQL fixture server creates (a foreign-data "
+    "wrapper, a foreign server, statistics objects, partitions, a replication slot, a "
+    "statistics reset) is in no model.",
+    # REQ-2167, amended 2026-11-03, Storage, fixture objects and server files (1).
+    STORAGE_GROUP: "Storage functions answer NULL: Provisa holds no storage of its own.",
+    # REQ-2167, amended 2026-11-03, Storage, fixture objects and server files (3); amended
+    # 2026-10-27, PGWIRE'S CATALOG FUNCTIONS: no function reads the server's files.
+    SERVER_FILES_GROUP: "pg_read_file and pg_read_binary_file read no file: no function reads "
+    "the server's files.",
+    # REQ-2167, amended 2026-11-03, Server administration functions.
+    SERVER_ADMINISTRATION_GROUP: "PostgreSQL refuses these for the test server's own state or "
+    "configuration; each names PostgreSQL's refusal as its reason.",
+    # REQ-579: the server reports its own version, and a collation's version is the server's.
+    SERVER_VERSION_GROUP: "A collation's version is the server's own, as the server's version "
+    "is (REQ-579).",
+}
+
+#: The requirement each group's decision is of, where it is not REQ-2167.
+GROUP_REQUIREMENTS = {SERVER_VERSION_GROUP: "REQ-579"}
+
+#: The functions a decision skips by design whatever they answer, by name.
+DECIDED_FUNCTIONS = {
+    **dict.fromkeys(
+        (
+            "pg_relation_size",
+            "pg_table_size",
+            "pg_indexes_size",
+            "pg_total_relation_size",
+            "pg_database_size",
+            "pg_tablespace_size",
+            "pg_relation_filenode",
+            "pg_relation_filepath",
+        ),
+        STORAGE_GROUP,
+    ),
+    **dict.fromkeys(("pg_read_file", "pg_read_binary_file"), SERVER_FILES_GROUP),
+    **dict.fromkeys(
+        (
+            "pg_wal_replay_pause",
+            "pg_wal_replay_resume",
+            "pg_is_wal_replay_paused",
+            "pg_get_wal_replay_pause_state",
+            "pg_logical_slot_get_changes",
+            "pg_logical_slot_peek_changes",
+            "pg_logical_slot_get_binary_changes",
+            "pg_logical_slot_peek_binary_changes",
+            "pg_sync_replication_slots",
+            "pg_last_committed_xact",
+            "pg_ls_logdir",
+            "pg_replication_origin_session_reset",
+            "pg_stop_making_pinned_objects",
+        ),
+        SERVER_ADMINISTRATION_GROUP,
+    ),
+    **dict.fromkeys(
+        ("pg_collation_actual_version", "pg_database_collation_actual_version"),
+        SERVER_VERSION_GROUP,
+    ),
 }
 
 #: The refusals a decision makes, by name or ``_key``: Provisa refusing one by name is that
@@ -2229,6 +2305,29 @@ _WRITE_ON_A_CATALOG = re.compile(
     re.IGNORECASE,
 )
 _TABLE_TO_XML = re.compile(r"^table_to_xml(schema|_and_xmlschema)?$")
+#: A call reading an object only the PostgreSQL fixture server creates (``FIXTURE_SQL``).
+_FIXTURE_OBJECT = re.compile(
+    "'(?:"
+    + "|".join(
+        re.escape(name)
+        for name in (
+            *STATISTICS,
+            STATISTICS_TABLE,
+            f"{PARTITIONED_TABLE}_0",
+            f"{PARTITIONED_TABLE}_1",
+            PARTITIONED_TABLE,
+            FOREIGN_DATA_WRAPPER,
+            FOREIGN_SERVER,
+            REPLICATION_SLOT,
+        )
+    )
+    + ")'"
+)
+#: Functions answering about such an object with no argument naming it: the fixture's
+#: replication slot, its statistics reset, and a collation oid that is the model catalog's.
+_FIXTURE_ANSWERS = frozenset(
+    {"pg_get_replication_slots", "pg_stat_get_db_stat_reset_time", "pg_collation_is_visible"}
+)
 
 
 def decided_error(name: str, error: str) -> str | None:
@@ -2251,6 +2350,8 @@ def decided_difference(name: str, sql: str, difference: str) -> str | None:
         return CATALOG_IS_THE_MODEL_GROUP  # the oid's bytes: the model's oid
     if _TABLE_TO_XML.match(name) and "'pg_catalog." in sql:
         return CATALOG_IS_THE_MODEL_GROUP  # a catalog's rows: the model's
+    if name in _FIXTURE_ANSWERS or _FIXTURE_OBJECT.search(sql):
+        return CATALOG_IS_THE_MODEL_GROUP  # an object only the PostgreSQL fixture makes
     return None
 
 
@@ -2517,9 +2618,17 @@ def measure_effect(fn: Function, pg: Session, provisa: Session) -> dict[str, Any
 def _by_design(entry: dict[str, Any], group: str) -> dict[str, Any]:
     entry["outcome"] = "by_design"
     entry["group"] = group
-    entry["requirement"] = "REQ-2167"
+    entry["requirement"] = GROUP_REQUIREMENTS.get(group, "REQ-2167")
     entry["detail"] = GROUPS[group]
     return entry
+
+
+def _decided_function(entry: dict[str, Any], group: str) -> dict[str, Any]:
+    """``entry`` skipped by design under ``group``, a decision about its function by name. One
+    PostgreSQL refuses keeps the refusal as its reason (Server administration functions)."""
+    if entry["outcome"] == "not_callable":
+        entry["reason"] = entry["detail"]
+    return _by_design(entry, group)
 
 
 def measure_overload(
@@ -2536,6 +2645,8 @@ def measure_overload(
     ``SIDE_EFFECT_ENGINE`` and skipped by design elsewhere, and is not testable where no client can
     see its effect; a refusal a decision makes is skipped by design under it."""
     entry = _measure_calls(fn, family, pg, provisa, classify, enums)
+    if fn.name in DECIDED_FUNCTIONS:
+        return _decided_function(entry, DECIDED_FUNCTIONS[fn.name])
     if entry["outcome"] == "not_callable":
         return entry
     decided = DECIDED_REFUSALS.get(_key(fn)) or DECIDED_REFUSALS.get(fn.name)
@@ -2702,6 +2813,16 @@ def seed_columns(pg_dsn: str, out: Path) -> None:
         "columns": [
             {"name": name, **typing, "visible_to": ["org_admin"]}
             for name, _typ, typing in registered
+        ],
+        # The probe's role writes the table, as the PostgreSQL probe does as its owner, so the
+        # privilege functions compare like with like (REQ-2167, amended 2026-11-03, Storage,
+        # fixture objects and server files (4)).
+        "write_grants": [
+            *(
+                {"role": "org_admin", "operation": op, "columns": [n for n, _t, _y in registered]}
+                for op in ("insert", "update")
+            ),
+            {"role": "org_admin", "operation": "delete"},
         ],
     }
     out.write_text(yaml.safe_dump([entry]))
@@ -2896,7 +3017,9 @@ def by_design_groups(overloads: Iterable[dict[str, Any]]) -> dict[str, list[str]
     out: dict[str, list[str]] = {}
     for o in overloads:
         if o["outcome"] == "by_design":
-            out.setdefault(o["group"], []).append(f"{o['function']}({o['overload']})")
+            named = f"{o['function']}({o['overload']})"
+            reason = o.get("reason")
+            out.setdefault(o["group"], []).append(f"{named}: {reason}" if reason else named)
     return {group: sorted(names) for group, names in sorted(out.items())}
 
 
@@ -2996,6 +3119,8 @@ def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
     if entry["outcome"] == "by_design":
         kept["group"] = entry["group"]
         kept["requirement"] = entry["requirement"]
+        if entry.get("reason"):
+            kept["reason"] = entry["reason"]
     if entry["outcome"] == "not_checked":
         kept["unchecked"] = entry.get("unchecked", "")
     return kept
@@ -3158,7 +3283,10 @@ def merged_markdown(doc: dict[str, Any]) -> str:
             f"#### Skipped by design on {engine}",
             "",
             *(
-                [f"- {group} (REQ-2167): {len(names)}" for group, names in groups.items()]
+                [
+                    f"- {group} ({GROUP_REQUIREMENTS.get(group, 'REQ-2167')}): {len(names)}"
+                    for group, names in groups.items()
+                ]
                 or ["None."]
             ),
             "",

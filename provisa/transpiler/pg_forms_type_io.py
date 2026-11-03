@@ -1540,11 +1540,11 @@ def _fold_text(name: str, text: str, arguments: list[exp.Expr]) -> exp.Expr | No
             written = jsonb_text(text)
         except ValueError:
             raise literals.Refused("22P02", "invalid input syntax for type json") from None
-        return (
-            _said_bytes(literals.jsonb_bytes(written))
-            if name == "jsonb_send"
-            else _said_text(written)
-        )
+        if name == "jsonb_send":
+            return _said_bytes(literals.jsonb_bytes(written))
+        if name == "jsonb_in":
+            return exp.cast(_said_text(written), exp.DataType.build("jsonb", dialect="postgres"))
+        return _said_text(written)
     if name in ("bit_in", "bit_out", "bit_send", "varbit_in", "varbit_out", "varbit_send"):
         fixed = name.startswith("bit")
         typmod = _literal_number(arguments[2]) if name.endswith("_in") else -1

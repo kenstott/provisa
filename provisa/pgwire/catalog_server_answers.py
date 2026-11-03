@@ -26,6 +26,7 @@ import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
 from provisa.core.pg_error import PostgresError, raising
+from provisa.transpiler import pg_zones
 from provisa.transpiler.pg_held_types import HELD_AS
 from provisa.transpiler.function_macros import (
     SERVER_VALUE_NAMES,
@@ -896,16 +897,14 @@ def _catalog_objects(a: _Answers) -> None:
         "unnest((SELECT list(struct_pack(name := _z.name, abbrev := _z.abbrev, "
         "utc_offset := _z.utc_offset, is_dst := _z.is_dst)) FROM pg_timezone_names() _z))",
     )
+    # PostgreSQL's Default abbreviations (pg_zones).
     a.body(
         "pg_timezone_abbrevs",
         "",
         "unnest((SELECT list(struct_pack(abbrev := _z.abbrev, utc_offset := _z.utc_offset, "
-        "is_dst := _z.is_dst)) FROM (SELECT DISTINCT abbrev, utc_offset, is_dst "
-        "FROM pg_timezone_names()) _z))",
+        f"is_dst := _z.is_dst)) FROM ({pg_zones.ABBREVS}) _z))",
     )
-    a.table.setdefault("pg_timezone_abbrevs", []).append(
-        "() AS TABLE (SELECT DISTINCT abbrev, utc_offset, is_dst FROM pg_timezone_names())"
-    )
+    a.table.setdefault("pg_timezone_abbrevs", []).append(f"() AS TABLE ({pg_zones.ABBREVS})")
     a.rows(
         "pg_wal_summary_contents",
         "tli, start_lsn, end_lsn",

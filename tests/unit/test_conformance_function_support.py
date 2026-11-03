@@ -1440,6 +1440,7 @@ def test_the_rules_are_the_ones_the_requirement_and_the_brief_name():
         report.FLOAT_CLOSE,
         report.JSON_KEY_ORDER,
         report.ARRAY_ORDER,
+        report.CLOCK_FIELD,
     ]
 
 
@@ -1876,20 +1877,30 @@ def test_a_volatile_function_that_reads_an_object_is_given_one_and_held_to_its_f
 
 
 def test_a_read_answering_the_form_postgresql_answers_passes_type_and_form_checked():
-    pg = _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("17\n", oid=25))
+    pg = _per_call(LO_GET, {0: _ok(None, oid=17)}, _ok("\\x616263", oid=17))
     entry = support.measure_overload(
-        READ_FILE,
+        LO_GET,
         "System",
         pg,
-        _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("18\n", oid=25)),
+        _per_call(LO_GET, {0: _ok(None, oid=17)}, _ok("\\x616264", oid=17)),
         _route,
         engine="pg",
     )
     assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
     assert entry["unchecked"] == "volatile"
-    other = _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("no such thing", oid=25))
-    entry = support.measure_overload(READ_FILE, "System", pg, other, _route, engine="pg")
+    other = _per_call(LO_GET, {0: _ok(None, oid=17)}, _ok("no such thing", oid=17))
+    entry = support.measure_overload(LO_GET, "System", pg, other, _route, engine="pg")
     assert entry["outcome"] == "wrong_answer"
+
+
+def test_a_server_file_read_is_skipped_by_design_whatever_it_answers():
+    """REQ-2167, amended 2026-11-03 (3): no function reads the server's files, so pg_read_file is
+    no longer held to the form of PostgreSQL's file."""
+    pg = _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("17\n", oid=25))
+    for answer in ("18\n", "no such thing"):
+        got = _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok(answer, oid=25))
+        entry = support.measure_overload(READ_FILE, "System", pg, got, _route, engine="pg")
+        assert entry["outcome"] == "by_design" and entry["group"] == support.SERVER_FILES_GROUP
 
 
 def test_a_statistic_of_a_database_or_a_backend_is_asked_of_the_sessions_own():
@@ -2197,3 +2208,195 @@ def test_a_large_object_write_is_skipped_by_design_under_the_read_only_decision(
     pg = Effects({effect.observe: _ok("1", oid=20)})
     entry = support.measure_overload(LO_CREATE, "Large object", pg, provisa, _route, engine="pg")
     assert entry["outcome"] == "by_design" and entry["group"] == support.LARGE_OBJECT_GROUP
+
+
+# --- decisions of 2026-11-03: storage, fixture objects, server files, server administration ----
+
+
+def _named(name: str, argtypes: tuple[str, ...], rettype: str, volatility: str = "v") -> Function:
+    return Function(
+        name, ", ".join(argtypes), argtypes=argtypes, volatility=volatility, rettype=rettype
+    )
+
+
+@pytest.mark.parametrize(
+    "fn,group",
+    [
+        # REQ-2167, amended 2026-11-03, Storage, fixture objects and server files (1).
+        (_named("pg_relation_size", ("regclass",), "bigint"), support.STORAGE_GROUP),
+        (_named("pg_tablespace_size", ("oid",), "bigint"), support.STORAGE_GROUP),
+        (_named("pg_relation_filepath", ("regclass",), "text", "s"), support.STORAGE_GROUP),
+        # (3): no function reads the server's files.
+        (_named("pg_read_file", ("text", "boolean"), "text"), support.SERVER_FILES_GROUP),
+        (_named("pg_read_binary_file", ("text",), "bytea"), support.SERVER_FILES_GROUP),
+        # REQ-579: a collation's version is the server's.
+        (_named("pg_collation_actual_version", ("oid",), "text"), support.SERVER_VERSION_GROUP),
+        (
+            _named("pg_database_collation_actual_version", ("oid",), "text"),
+            support.SERVER_VERSION_GROUP,
+        ),
+    ],
+)
+def test_a_decided_function_s_null_answer_is_skipped_by_design(fn, group):
+    entry = _both(fn, "System", _ok("114688", oid=20), _ok(None, oid=20))
+    assert entry["outcome"] == "by_design" and entry["group"] == group
+    assert entry["requirement"] == support.GROUP_REQUIREMENTS.get(group, "REQ-2167")
+
+
+def test_a_collation_s_version_cites_the_server_version_decision():
+    assert support.GROUP_REQUIREMENTS[support.SERVER_VERSION_GROUP] == "REQ-579"
+
+
+def test_a_server_file_read_provisa_refuses_is_skipped_by_design():
+    fn = _named("pg_read_file", ("text",), "text")
+    entry = _both(
+        fn,
+        "System",
+        _ok("17\n", oid=25),
+        {"ok": False, "error": 'ERROR:  could not open file "PG_VERSION" for reading'},
+    )
+    assert entry["outcome"] == "by_design" and entry["group"] == support.SERVER_FILES_GROUP
+
+
+@pytest.mark.parametrize(
+    "name,refusal",
+    [
+        ("pg_wal_replay_pause", "ERROR:  recovery is not in progress"),
+        ("pg_logical_slot_peek_binary_changes", 'ERROR:  logical decoding requires "wal_level"'),
+        ("pg_sync_replication_slots", "ERROR:  replication slots can only be synchronized"),
+        ("pg_last_committed_xact", "ERROR:  could not get commit timestamp data"),
+        ("pg_ls_logdir", 'ERROR:  could not open directory "log"'),
+        ("pg_replication_origin_session_reset", "ERROR:  no replication origin is configured"),
+        ("pg_stop_making_pinned_objects", "ERROR:  cannot advance OID counter anymore"),
+    ],
+)
+def test_a_server_administration_function_is_skipped_by_design_with_postgresql_s_refusal(
+    name, refusal
+):
+    """REQ-2167, amended 2026-11-03, Server administration functions: on every engine, PostgreSQL's
+    refusal named as the reason."""
+    fn = _named(name, (), "void")
+    refused = {"ok": False, "error": refusal}
+    for engine in ("pg", "duckdb"):
+        sqls = [c.sql for c in support.calls(fn, "System")]
+        entry = support.measure_overload(
+            fn,
+            "System",
+            Fake(dict.fromkeys(sqls, refused)),
+            Fake({}),
+            _route,
+            engine=engine,
+        )
+        assert entry["outcome"] == "by_design", engine
+        assert entry["group"] == support.SERVER_ADMINISTRATION_GROUP
+        assert refusal in entry["reason"]
+        assert support.function_report.verdict(entry) == "skipped_by_design"
+        assert support.by_design_groups([entry])[support.SERVER_ADMINISTRATION_GROUP] == [
+            f"{name}(): PostgreSQL refuses the call: {refusal}"
+        ]
+
+
+@pytest.mark.parametrize(
+    "name,sql,difference",
+    [
+        (
+            "has_foreign_data_wrapper_privilege",
+            'SELECT pg_catalog."has_foreign_data_wrapper_privilege"((SELECT oid FROM '
+            "pg_catalog.pg_foreign_data_wrapper WHERE fdwname = 'conformance_fdw'), "
+            "'USAGE'::text) AS v",
+            "None, PostgreSQL 't'",
+        ),
+        (
+            "has_server_privilege",
+            'SELECT pg_catalog."has_server_privilege"((SELECT oid FROM '
+            "pg_catalog.pg_foreign_server WHERE srvname = 'conformance_server'), 'USAGE'::text) AS v",
+            "None, PostgreSQL 't'",
+        ),
+        (
+            "pg_ndistinct_send",
+            'SELECT pg_catalog."pg_ndistinct_send"((SELECT d.stxdndistinct FROM '
+            "pg_catalog.pg_statistic_ext_data AS d JOIN pg_catalog.pg_statistic_ext AS s ON "
+            "s.oid = d.stxoid WHERE s.stxname = 'stats_fixture_ab')::pg_ndistinct) AS v",
+            "None, PostgreSQL '\\\\xa4bf'",
+        ),
+        (
+            "pg_get_expr",
+            'SELECT pg_catalog."pg_get_expr"((SELECT relpartbound FROM pg_catalog.pg_class '
+            "WHERE relname = 'hash_fixture_0')::pg_node_tree, 0::oid) AS v",
+            "None, PostgreSQL 'FOR VALUES WITH (modulus 2, remainder 0)'",
+        ),
+        (
+            "satisfies_hash_partition",
+            'SELECT pg_catalog."satisfies_hash_partition"((SELECT oid FROM pg_catalog.pg_class '
+            "WHERE relname = 'hash_fixture'), 2::integer, 0::integer, 42::integer) AS v",
+            "'f', PostgreSQL 't'",
+        ),
+        (
+            "pg_get_replication_slots",
+            'SELECT pg_catalog."pg_get_replication_slots"() AS v',
+            "0 rows, PostgreSQL 1",
+        ),
+        (
+            "pg_stat_get_db_stat_reset_time",
+            'SELECT pg_catalog."pg_stat_get_db_stat_reset_time"(5::oid) AS v',
+            "None, PostgreSQL '2026-11-03 12:23:32.570024+00'",
+        ),
+        # REQ-2190: an oid that is no collation of PostgreSQL's is one of the model's catalog.
+        (
+            "pg_collation_is_visible",
+            'SELECT pg_catalog."pg_collation_is_visible"(12345::oid) AS v',
+            "'t', PostgreSQL None",
+        ),
+    ],
+)
+def test_an_object_only_the_postgresql_fixture_makes_is_the_catalog_s_model(name, sql, difference):
+    """REQ-2167, amended 2026-11-03, Storage, fixture objects and server files (2)."""
+    assert support.decided_difference(name, sql, difference) == support.CATALOG_IS_THE_MODEL_GROUP
+
+
+def test_a_fixture_free_call_of_a_fixture_function_stays_a_wrong_answer():
+    sql = 'SELECT pg_catalog."pg_get_expr"(NULL::pg_node_tree, 0::oid) AS v'
+    assert support.decided_difference("pg_get_expr", sql, "'x', PostgreSQL None") is None
+
+
+def test_the_column_table_grants_the_probe_s_role_writes_on_every_column(tmp_path, monkeypatch):
+    """REQ-2167, amended 2026-11-03 (4): the privilege checks compare like with like."""
+
+    class Conn:
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *_: Any) -> None:
+            return None
+
+        def execute(self, _sql: str) -> None:
+            return None
+
+    monkeypatch.setattr(support.psycopg, "connect", lambda *_a, **_k: Conn())
+    monkeypatch.setattr(catalog, "_sized_numeric", lambda *_a: {"data_type": "numeric(38,3)"})
+    out = tmp_path / "tables.yaml"
+    support.seed_columns("dsn", out)
+    [table] = yaml.safe_load(out.read_text())
+    names = [c["name"] for c in table["columns"]]
+    grants = {g["operation"]: g for g in table["write_grants"]}
+    assert set(grants) == {"insert", "update", "delete"}
+    assert all(g["role"] == "org_admin" for g in grants.values())
+    assert grants["insert"]["columns"] == names and grants["update"]["columns"] == names
+    from provisa.core.models import WriteGrant
+
+    for grant in table["write_grants"]:
+        WriteGrant(**grant)
+
+
+def test_pg_cursor_s_creation_time_is_compared_by_its_form():
+    """REQ-2167, WHAT GUARANTEED MEANS: the clock's field of pg_cursor cannot be compared."""
+    sql = 'SELECT pg_catalog."pg_cursor"() AS v'
+    want = _ok('("",x,f,f,f,"2026-11-03 12:52:57.771655+00")', oid=2249)
+    got = _ok('("",x,f,f,f,"2026-11-03 12:52:57.772824+00")', oid=2249)
+    compared = support.compare(want, got, values=True, sql=sql, function="pg_cursor")
+    assert compared.difference is None
+    assert report.CLOCK_FIELD in compared.rules
+    other = _ok('("",y,f,f,f,"2026-11-03 12:52:57.772824+00")', oid=2249)
+    assert support.compare(want, other, values=True, sql=sql, function="pg_cursor").difference
+    unformed = _ok('("",x,f,f,f,"yesterday")', oid=2249)
+    assert support.compare(want, unformed, values=True, sql=sql, function="pg_cursor").difference
