@@ -208,7 +208,7 @@
       "description": "Brouillon de description",
       "notCreatedTitle": "Consigné, non créé",
       "ruleNotCreated": "Règle du business vault « {{rule}} » : consignée dans la description de sa table ; construisez-la comme vue sur ces tables.",
-      "draftNote": "Chaque description est un premier brouillon qu'un steward révisera dans Tables enregistrées.",
+      "draftNote": "Chaque description est un premier brouillon qu'un intendant révisera dans Tables enregistrées.",
       "create": "Créer",
       "nameRequired": "Donnez un nom à chaque table.",
       "nameTaken": "Deux tables portent le même nom. Donnez-en un propre à chacune."

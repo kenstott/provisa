@@ -1,0 +1,244 @@
+{
+  "modelingWizard": {
+    "stepOf": "第 {{index}} 步,共 {{count}} 步",
+    "next": "下一步",
+    "toReview": "審閱",
+    "back": "上一步",
+    "remove": "移除",
+    "domainHelp": "此精靈建立的每個資料表都會登記在這個網域之下:它是存取控制和查詢的命名空間。",
+    "validTime": "有效時間",
+    "validTimeHelp": "表示每個版本由何時起在業務上成立的欄位。配合記錄時間,即可查詢過往版本。",
+    "recordedTime": "記錄時間",
+    "recordedTimeHelp": "表示每個版本何時記錄到數據來源的欄位。",
+    "primitive": {
+      "entity": "實體",
+      "fact": "事實"
+    },
+    "role": {
+      "dimension": "維度",
+      "fact": "事實",
+      "hub": "中心(Hub)",
+      "satellite": "衛星(Satellite)",
+      "linkSatellite": "連結衛星",
+      "effectivity": "有效性衛星",
+      "link": "連結(Link)",
+      "sameAs": "Same-As 連結"
+    },
+    "roleIn": {
+      "dimension": "星型模式的維度,建立為以其業務鍵為鍵的實體",
+      "fact": "星型模式的事實,建立為與每個維度有關係的事實",
+      "hub": "Data Vault 中心,建立為以業務鍵為鍵的實體",
+      "satellite": "Data Vault 衛星,建立為以其中心的業務鍵為鍵的實體",
+      "linkSatellite": "Data Vault 連結衛星,建立為以連結的鍵為鍵的實體",
+      "effectivity": "Data Vault 有效性衛星,建立為以連結的鍵為鍵並帶有效時間的實體",
+      "link": "Data Vault 連結,建立為沒有度量的事實,其粒度為參與的鍵",
+      "sameAs": "Data Vault Same-As 連結,建立為沒有度量、把中心與自身關聯的事實"
+    },
+    "star": {
+      "process": {
+        "title": "業務流程",
+        "intro": "此星型模式所量度的業務流程、其事件的記錄位置,以及事實的類型。"
+      },
+      "grain": {
+        "title": "粒度",
+        "intro": "事實的一行代表甚麼。先宣告粒度,再宣告維度和度量。"
+      },
+      "dimensions": {
+        "title": "維度",
+        "intro": "每個事件的誰、甚麼、哪裏、何時:每個維度、它如何變化,以及它是否一致性維度。"
+      },
+      "measures": {
+        "title": "度量",
+        "intro": "流程產生的數值、每個數值如何聚合,以及可否加總。"
+      },
+      "processLabel": "業務流程",
+      "processHelp": "事實所記錄的業務流程,用業務自己的說法(訂單履行、索償處理)。它為事實表命名。",
+      "sourceLabel": "流程的記錄位置",
+      "sourceHelp": "載有流程事件的已註冊資料表。事實從中讀取:其粒度、度量以及與維度的關聯。",
+      "factTypeLabel": "事實類型",
+      "factTypeHelp": "交易:每個事件一行。定期快照:每個期間一行,為期末狀態。累積快照:每個項目一行,每經過一個里程碑便更新。",
+      "factType": {
+        "transaction": "交易",
+        "periodic": "定期快照",
+        "accumulating": "累積快照"
+      },
+      "grainStatement": "粒度(文字描述)",
+      "grainStatementHelp": "用簡單的話說明事實的一行。它會寫入事實的描述。",
+      "grainStatementPlaceholder": "每個訂單項目一行",
+      "grainHelp": "流程資料表中識別一行事實的欄位。度量會聚合到此層級。",
+      "dimensionsHelp": "分析事實所依據的每個維度。新維度由其自己的資料表建立;一致性維度是事實與其他事實共用的現有維度。",
+      "dimName": "維度",
+      "dimNameHelp": "維度描述的對象(客戶、產品、日期)。它為維度表命名。",
+      "via": "事實欄位",
+      "viaHelp": "流程資料表中指向此維度的欄位。",
+      "conformed": "一致性維度",
+      "conformedHelp": "選擇現有維度以便與其他事實共用,從而可按它比較。留空則建立新維度。",
+      "conformedNew": "建立新維度",
+      "dimSource": "維度資料表",
+      "dimSourceHelp": "讀取維度各行的已註冊資料表。",
+      "dimKeyHelp": "識別維度中一個成員的欄位。各行按它去重,事實欄位指向它。",
+      "dimAttributesHelp": "分析員用於篩選和分組的描述性欄位。",
+      "scdLabel": "成員變化時",
+      "scdHelp": "類型 1 覆寫:只保留目前的值。類型 2 保留每個版本。快照保留每次載入時的狀態。類型 2 和快照需要有效時間和記錄時間。",
+      "scd": {
+        "type1": "類型 1:覆寫",
+        "type2": "類型 2:保留每個版本",
+        "snapshot": "快照"
+      },
+      "measuresHelp": "流程所量度的數值欄位。每個欄位都成為事實的一個度量,聚合到粒度。",
+      "aggOf": "{{column}}:聚合",
+      "additivityLabel": "可加性",
+      "additivityHelp": "可加:可在所有維度上加總(金額)。半可加:不可跨時間加總(結餘)。不可加:從不加總(比率、價格)。",
+      "additivity": {
+        "additive": "可加",
+        "semiAdditive": "半可加",
+        "nonAdditive": "不可加"
+      },
+      "missing": {
+        "process": "請填寫業務流程、其網域以及記錄它的資料表。",
+        "grain": "請選擇識別事實一行的欄位。",
+        "dimensions": "每個維度都需要名稱和事實欄位,以及一個一致性維度,或者其自己的資料表和鍵(類型 2 或快照亦需要有效時間和記錄時間)。"
+      }
+    },
+    "vault": {
+      "hubs": {
+        "title": "中心和業務鍵",
+        "intro": "核心業務概念、識別每個概念的業務鍵,以及鍵所來自的記錄來源。"
+      },
+      "links": {
+        "title": "連結",
+        "intro": "概念之間的工作單元,以及每個關係會否結束。"
+      },
+      "satellites": {
+        "title": "衛星",
+        "intro": "每個中心或連結的描述屬性,按數據來源、變化頻率或敏感度分組,以及其歷史追溯多遠。"
+      },
+      "rules": {
+        "title": "Business Vault",
+        "intro": "從 Raw Vault 衍生新值的業務規則。可選。"
+      },
+      "hubsLabel": "中心",
+      "hubsHelp": "每個核心業務概念(客戶、產品、訂單)一個中心,以其業務鍵識別:即業務本身使用的鍵,而不是某個系統的代理鍵。",
+      "addHub": "新增中心",
+      "concept": "業務概念",
+      "conceptHelp": "中心所代表的概念。它為中心命名。",
+      "recordSource": "記錄來源",
+      "recordSourceHelp": "載入業務鍵的已註冊資料表。",
+      "businessKeyHelp": "業務用來識別該概念的欄位。",
+      "sameAsSource": "Same-As 連結",
+      "sameAsHelp": "當兩個鍵指向同一實例時(一位客戶在兩個系統中有不同編號),把它們配對的資料表。沒有則留空。",
+      "sameAsNone": "無",
+      "sameAsMaster": "主鍵",
+      "sameAsDuplicate": "重複鍵",
+      "linksLabel": "連結",
+      "linksHelp": "中心之間的每個工作單元一個連結(客戶落訂單)。連結只保存參與的鍵。",
+      "addLink": "新增連結",
+      "linkName": "工作單元",
+      "linkNameHelp": "連結記錄的內容。它為連結命名;留空則按其中心命名。",
+      "linkSource": "連結資料表",
+      "linkSourceHelp": "記錄工作單元的已註冊資料表,載有每個參與中心的鍵。",
+      "linkHubs": "關聯的中心",
+      "linkHubsHelp": "參與的中心。一個連結關聯兩個或以上的中心。",
+      "linkVia": "{{hub}} 的鍵",
+      "endsLabel": "關係會結束嗎?",
+      "endsHelp": "當關係可能結束時(客戶更換客戶經理),有效性衛星會記錄每個關係的開始和結束時間。",
+      "ends": {
+        "never": "不會,建立後一直存在",
+        "effectivity": "會:追蹤有效性"
+      },
+      "depthLabel": "歷史深度",
+      "depthHelp": "每個版本:衛星屬性的每次變化都會保留,並可按任何時間查詢。只限目前的值:變化會覆寫。",
+      "depth": {
+        "full": "每個版本",
+        "current": "只限目前的值"
+      },
+      "satellitesLabel": "衛星",
+      "satellitesHelp": "中心或連結的描述屬性。按數據來源、變化頻率或敏感度把它們分拆到多個衛星。",
+      "addSatellite": "新增衛星",
+      "satParent": "描述對象",
+      "satParentHelp": "衛星所保存屬性的中心或連結。",
+      "parentHub": "中心 {{name}}",
+      "parentLink": "連結 {{name}}",
+      "parentSatellite": "衛星 {{name}}",
+      "satName": "衛星名稱",
+      "satNameHelp": "區分此衛星的內容(其數據來源,如 crm;或其主題,如地址)。會附加到其名稱。",
+      "satSource": "衛星資料表",
+      "satSourceHelp": "讀取屬性的已註冊資料表。",
+      "satParentKey": "描述對象的鍵",
+      "satParentKeyHelp": "衛星資料表中保存中心業務鍵或連結鍵的欄位。",
+      "satAttributesHelp": "此衛星保存的描述性欄位。",
+      "groupedBy": "分組依據",
+      "groupedByHelp": "這些屬性放在一起的原因:來自同一數據來源、變化頻率相同,或敏感度相同(個人資料分開存放)。",
+      "grouping": {
+        "source": "數據來源",
+        "rateOfChange": "變化頻率",
+        "sensitivity": "敏感度"
+      },
+      "multiActive": "多活鍵",
+      "multiActiveHelp": "當一個鍵同時有多行處於活動狀態時(客戶的多個電話號碼),用來區分它們的欄位。否則留空。",
+      "multiActiveNone": "非多活",
+      "rulesLabel": "業務規則",
+      "rulesHelp": "Business Vault 規則從 Raw Vault 衍生一個值(客戶終身價值)。它會記錄在其來源資料表的描述中,之後建立為檢視。",
+      "addRule": "新增規則",
+      "ruleTarget": "衍生自",
+      "ruleText": "規則",
+      "ruleTextPlaceholder": "終身價值 = 訂單總額之和",
+      "missing": {
+        "hubs": "請選擇網域,並為每個中心指定業務概念、記錄來源和業務鍵;Same-As 連結需要其資料表和兩個鍵。",
+        "links": "每個連結都需要其資料表、最少兩個中心、每個中心的鍵,以及在關係會結束時的有效時間和記錄時間。",
+        "satellites": "每個衛星都需要描述對象、其資料表、該鍵及其屬性;保留每個版本時亦需要有效時間和記錄時間。",
+        "rules": "請說明每條規則衍生自哪個資料表。"
+      }
+    },
+    "review": {
+      "title": "審閱",
+      "intro": "每個答案在 Provisa 中會成為甚麼:實體或事實、其鍵或粒度、其歷史及其關係。名稱依照該方法的慣例;可在此更改任何名稱。",
+      "nameOf": "{{role}}名稱",
+      "nameHelp": "資料表的名稱。這是該方法的慣用名稱;如不想使用者看到前綴,請將它刪除。",
+      "source": "讀取",
+      "key": "鍵",
+      "attributes": "屬性",
+      "history": "歷史",
+      "historyNone": "只限目前的值",
+      "historyKept": "每個版本,按有效時間 {{validTime}} 和記錄時間 {{recordedTime}}",
+      "grain": "粒度",
+      "measures": "度量",
+      "relationships": "關係",
+      "relationship": "{{via}} → {{target}}",
+      "description": "描述草稿",
+      "notCreatedTitle": "已記錄,未建立",
+      "ruleNotCreated": "Business Vault 規則「{{rule}}」:已記錄在其資料表的描述中;請將它建立為這些資料表之上的檢視。",
+      "draftNote": "每段描述都是初稿,供數據管家在「已註冊資料表」中修訂。",
+      "create": "建立",
+      "nameRequired": "請為每個資料表命名。",
+      "nameTaken": "有兩個資料表名稱相同。請為每個資料表另起名稱。"
+    },
+    "result": {
+      "created_one": "已建立 {{count}} 個資料表",
+      "created_other": "已建立 {{count}} 個資料表",
+      "stopped": "在 {{name}} 停止",
+      "draftNote": "它們的描述是初稿:請在「已註冊資料表」中修訂。",
+      "oneWay": "精靈只負責建立。請在「已註冊資料表」或實體/事實表單中修改這些資料表;精靈不會重新產生它們。",
+      "relatesTo": "關聯到 {{tables}}",
+      "status": {
+        "created": "已建立",
+        "failed": "被拒絕",
+        "notReached": "未建立"
+      }
+    },
+    "desc": {
+      "none": "無",
+      "dimension": "草稿:{{process}} 流程的星型模式維度「{{name}}」,鍵為 {{key}},讀取自 {{source}}。成員變化時:{{scd}}。",
+      "fact": "草稿:{{process}} 流程的星型模式事實({{factType}})。粒度:{{grain}}。維度:{{dimensions}}。度量:{{measures}}。",
+      "measure": "{{agg}}({{column}}),{{additivity}}",
+      "hub": "草稿:{{concept}} 概念的 Data Vault 中心,業務鍵為 {{key}},記錄來源為 {{source}}。",
+      "sameAs": "草稿:{{hub}} 的 Data Vault Same-As 連結:{{master}} 與 {{duplicate}} 指向同一個 {{concept}},來自 {{source}}。",
+      "link": "草稿:工作單元「{{name}}」的 Data Vault 連結,位於 {{hubs}} 之間,鍵為 {{keys}},來自 {{source}}。",
+      "linkEnds": "該關係可能結束;其有效性衛星會記錄結束時間。",
+      "effectivity": "草稿:{{link}} 的 Data Vault 有效性衛星:每個關係的開始和結束,按有效時間 {{validTime}} 和記錄時間 {{recordedTime}}。",
+      "satellite": "草稿:{{parent}} 的 Data Vault 衛星:來自 {{source}} 的 {{attributes}},按{{grouping}}分組。歷史:{{history}}。",
+      "multiActive": "按 {{columns}} 多活。",
+      "rule": "Business Vault 規則:{{rule}}。"
+    }
+  }
+}

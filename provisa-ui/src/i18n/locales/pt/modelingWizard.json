@@ -107,7 +107,7 @@
       },
       "links": {
         "title": "Links",
-        "intro": "As unidades de trabalho entre os conceitos e se cada relação pode terminar."
+        "intro": "As unidades de trabalho entre os conceitos e se cada relacionamento pode terminar."
       },
       "satellites": {
         "title": "Satélites",
@@ -140,8 +140,8 @@
       "linkHubs": "Hubs que relaciona",
       "linkHubsHelp": "Os hubs que participam. Um link relaciona dois ou mais hubs.",
       "linkVia": "Chave de {{hub}}",
-      "endsLabel": "A relação termina?",
-      "endsHelp": "Quando uma relação pode terminar (um cliente troca de gerente de conta), um satélite de efetividade registra quando cada uma começa e termina.",
+      "endsLabel": "O relacionamento termina?",
+      "endsHelp": "Quando um relacionamento pode terminar (um cliente troca de gerente de conta), um satélite de efetividade registra quando cada um começa e termina.",
       "ends": {
         "never": "Não, permanece depois de criada",
         "effectivity": "Sim: acompanhar a efetividade"
@@ -178,7 +178,7 @@
       "multiActiveHelp": "Quando várias linhas estão ativas ao mesmo tempo para uma chave (os telefones de um cliente), a(s) coluna(s) que as distinguem. Caso contrário, deixe vazio.",
       "multiActiveNone": "Não multiativo",
       "rulesLabel": "Regras de negócio",
-      "rulesHelp": "Uma regra do business vault deriva um valor do raw vault (o valor do ciclo de vida de um cliente). Ela é registrada na descrição da tabela de onde deriva e depois criada como view.",
+      "rulesHelp": "Uma regra do business vault deriva um valor do raw vault (o valor do ciclo de vida de um cliente). Ela é registrada na descrição da tabela de onde deriva e depois criada como exibição.",
       "addRule": "Adicionar regra",
       "ruleTarget": "Deriva de",
       "ruleText": "Regra",
@@ -192,7 +192,7 @@
     },
     "review": {
       "title": "Revisão",
-      "intro": "No que cada resposta se torna no Provisa: uma entidade ou um fato, sua chave ou granularidade, seu histórico e suas relações. Os nomes seguem a convenção do método; altere qualquer um aqui.",
+      "intro": "No que cada resposta se torna no Provisa: uma entidade ou um fato, sua chave ou granularidade, seu histórico e seus relacionamentos. Os nomes seguem a convenção do método; altere qualquer um aqui.",
       "nameOf": "Nome ({{role}})",
       "nameHelp": "O nome da tabela. É o nome usual do método; remova o prefixo se os consumidores não devem vê-lo.",
       "source": "Lê",
@@ -203,11 +203,11 @@
       "historyKept": "cada versão, por tempo de validade {{validTime}} e tempo de registro {{recordedTime}}",
       "grain": "Granularidade",
       "measures": "Medidas",
-      "relationships": "Relações",
+      "relationships": "Relacionamentos",
       "relationship": "{{via}} → {{target}}",
       "description": "Rascunho da descrição",
       "notCreatedTitle": "Registrado, não criado",
-      "ruleNotCreated": "Regra do business vault \"{{rule}}\": registrada na descrição da sua tabela; crie-a como view sobre estas tabelas.",
+      "ruleNotCreated": "Regra do business vault \"{{rule}}\": registrada na descrição da sua tabela; crie-a como exibição sobre estas tabelas.",
       "draftNote": "Cada descrição é um primeiro rascunho para um steward revisar em Tabelas registradas.",
       "create": "Criar",
       "nameRequired": "Dê um nome a cada tabela.",
@@ -234,8 +234,8 @@
       "hub": "Rascunho: hub de Data Vault do conceito {{concept}}, com a chave de negócio {{key}}, da fonte de registro {{source}}.",
       "sameAs": "Rascunho: link same-as de Data Vault de {{hub}}: {{master}} e {{duplicate}} nomeiam a mesma instância de {{concept}}, de {{source}}.",
       "link": "Rascunho: link de Data Vault para a unidade de trabalho \"{{name}}\" entre {{hubs}}, nas chaves {{keys}}, de {{source}}.",
-      "linkEnds": "A relação pode terminar; seu satélite de efetividade registra quando.",
-      "effectivity": "Rascunho: satélite de efetividade de Data Vault de {{link}}: quando cada relação começa e termina, por tempo de validade {{validTime}} e tempo de registro {{recordedTime}}.",
+      "linkEnds": "O relacionamento pode terminar; seu satélite de efetividade registra quando.",
+      "effectivity": "Rascunho: satélite de efetividade de Data Vault de {{link}}: quando cada relacionamento começa e termina, por tempo de validade {{validTime}} e tempo de registro {{recordedTime}}.",
       "satellite": "Rascunho: satélite de Data Vault de {{parent}}: {{attributes}} de {{source}}, agrupado por {{grouping}}. Histórico: {{history}}.",
       "multiActive": "Multiativo em {{columns}}.",
       "rule": "Regra do business vault: {{rule}}."

@@ -19,7 +19,7 @@ import { useTranslation } from "react-i18next";
 import { Alert, Badge, Button, Group, Stack, Text } from "@mantine/core";
 import { useRegisterEntity, useRegisterFact } from "../../../hooks/useAdminQueries";
 import { serverMessage } from "../../../i18n/serverMessage";
-import { FormEntry, FormField, FormLayout } from "../../../components/form/FormLayout";
+import { FieldGroup, FormEntry, FormField, FormLayout } from "../../../components/form/FormLayout";
 import {
   createPlan,
   targetName,
@@ -218,34 +218,38 @@ export function ModelReview({
       />
       {plan.tables.map((table) => (
         <FormEntry key={table.id} data-testid={`wizard-review-${table.id}`}>
-          <TextField
-            label={t("modelingWizard.review.nameOf", {
-              role: t(`modelingWizard.role.${table.role}`),
-            })}
-            help={t("modelingWizard.review.nameHelp")}
-            required
-            testId={`wizard-review-name-${table.id}`}
-            value={names[table.id] ?? ""}
-            onChange={(v) => setNames((prev) => ({ ...prev, [table.id]: v }))}
-          />
-          <FormField size="full">
-            <Stack gap={2}>
-              <Group gap="xs">
-                <Badge variant="light" color={table.primitive === "fact" ? "grape" : "teal"}>
-                  {t(`modelingWizard.primitive.${table.primitive}`)}
-                </Badge>
-                <Text size="sm" c="dimmed">
-                  {t(`modelingWizard.roleIn.${table.role}`)}
-                </Text>
-              </Group>
-              <PrimitiveSummary table={table} names={names} />
-              <Line
-                label={t("modelingWizard.review.description")}
-                value={table.describe((id) => names[id] ?? id)}
-                testId={`wizard-review-description-${table.id}`}
-              />
-            </Stack>
-          </FormField>
+          <FieldGroup>
+            <TextField
+              label={t("modelingWizard.review.nameOf", {
+                role: t(`modelingWizard.role.${table.role}`),
+              })}
+              help={t("modelingWizard.review.nameHelp")}
+              required
+              testId={`wizard-review-name-${table.id}`}
+              value={names[table.id] ?? ""}
+              onChange={(v) => setNames((prev) => ({ ...prev, [table.id]: v }))}
+            />
+          </FieldGroup>
+          <FieldGroup>
+            <FormField size="full">
+              <Stack gap={2}>
+                <Group gap="xs">
+                  <Badge variant="light" color={table.primitive === "fact" ? "grape" : "teal"}>
+                    {t(`modelingWizard.primitive.${table.primitive}`)}
+                  </Badge>
+                  <Text size="sm" c="dimmed">
+                    {t(`modelingWizard.roleIn.${table.role}`)}
+                  </Text>
+                </Group>
+                <PrimitiveSummary table={table} names={names} />
+                <Line
+                  label={t("modelingWizard.review.description")}
+                  value={table.describe((id) => names[id] ?? id)}
+                  testId={`wizard-review-description-${table.id}`}
+                />
+              </Stack>
+            </FormField>
+          </FieldGroup>
         </FormEntry>
       ))}
       {plan.notCreated.length > 0 && (
