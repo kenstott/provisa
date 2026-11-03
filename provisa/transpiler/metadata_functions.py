@@ -1162,6 +1162,17 @@ def _is_column(node: exp.Expr) -> bool:
 
 #: The types a statistic is 0 of; of any other it is NULL.
 _COUNTS = frozenset({"bigint", "integer", "smallint", "oid", "double precision", "real"})
+#: The counts PostgreSQL 17 answers NULL of where it has none: a function's, which track_functions
+#: (none) never counts, and a database's checksum failures, with data checksums off
+#: (src/backend/utils/adt/pgstatfuncs.c).
+_NOT_COUNTED = frozenset(
+    {
+        f"pg_stat_get_{prefix}function_{count}"
+        for prefix in ("", "xact_")
+        for count in ("calls", "self_time", "total_time")
+    }
+    | {"pg_stat_get_db_checksum_failures"}
+)
 
 
 def _statistic(name: str, args: list[exp.Expr]) -> exp.Expr:
@@ -1170,7 +1181,8 @@ def _statistic(name: str, args: list[exp.Expr]) -> exp.Expr:
     if returns == "record":
         return exp.cast(exp.null(), "TEXT")
     to = exp.DataType.build(returns, dialect="postgres", udt=True)
-    counted = exp.Cast(this=exp.Literal.number(0) if returns in _COUNTS else exp.null(), to=to)
+    counts = returns in _COUNTS and name not in _NOT_COUNTED
+    counted = exp.Cast(this=exp.Literal.number(0) if counts else exp.null(), to=to)
     if not args:
         return counted
     nulls = [exp.Is(this=_argument(a), expression=exp.null()) for a in args if not _constant(a)]

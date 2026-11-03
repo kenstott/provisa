@@ -241,13 +241,18 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
     written: str | None = None
     if isinstance(node, exp.CurrentSchemas):
         # The search path's schemas (pgwire's catalog: public), not DuckDB's.
-        implicit = node.this
-        if not isinstance(implicit, exp.Boolean):
+        implicit = node.this.unnest()
+        while isinstance(implicit, exp.Cast) and implicit.to.is_type(exp.DataType.Type.BOOLEAN):
+            implicit = implicit.this.unnest()  # true::boolean says what true does
+        if isinstance(implicit, exp.Boolean):
+            written = "ARRAY['pg_catalog', 'public']" if implicit.this else "ARRAY['public']"
+        elif isinstance(implicit, exp.Null):
             written = "CAST(NULL AS TEXT[])"  # strict: a NULL argument
-        elif implicit.this:
-            written = "ARRAY['pg_catalog', 'public']"
         else:
-            written = "ARRAY['public']"
+            written = (
+                f"CASE WHEN {text(node.this)} THEN ARRAY['pg_catalog', 'public'] "
+                f"WHEN NOT {text(node.this)} THEN ARRAY['public'] END"
+            )
     elif isinstance(node, exp.Rand) and node.args.get("lower") is not None:
         low, high = node.this, node.args["lower"]
         written = _random(text(low), text(high), (low, high))
@@ -611,6 +616,20 @@ def _type_said(value: exp.Expr) -> str | None:
     return "regtype" if named is not None and named[0] == "pg_typeof" else None
 
 
+#: The collations every PostgreSQL 17 has, whatever its locales (initdb), by name.
+_BUILT_IN_COLLATIONS = frozenset({"default", "C", "POSIX", "ucs_basic", "unicode", "pg_c_utf8"})
+
+
+def _collation_named(value: exp.Collate) -> exp.Expr | None:
+    """pg_collation_for of a value a COLLATE clause gives a built-in collation: its name, as
+    quote_ident writes it ("default" is a keyword, so quoted); None for any other collation."""
+    name = value.expression.name
+    if name not in _BUILT_IN_COLLATIONS:
+        return None
+    bare = re.fullmatch(r"[a-z_][a-z0-9_$]*", name) is not None and name != "default"
+    return exp.Literal.string(name if bare else '"' + name.replace('"', '""') + '"')
+
+
 def _call(node: exp.Expr) -> exp.Expr:
     """A call of an overload DuckDB's function of the name does not take."""
     if isinstance(node, exp.Dot) and node.this.name.lower() == "pg_catalog":
@@ -629,6 +648,10 @@ def _call(node: exp.Expr) -> exp.Expr:
     if named is None:
         return node
     name, args = named
+    if name == "pg_collation_for" and len(args) == 1 and isinstance(args[0], exp.Collate):
+        collated = _collation_named(args[0])
+        if collated is not None:
+            return collated
     if name == "pg_typeof" and len(args) == 1:
         said = _type_said(args[0])
         return node if said is None else exp.Literal.string(said)

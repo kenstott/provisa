@@ -200,6 +200,33 @@ def _typed(sql: str, sql_type: str) -> str:
     return sql.replace(_ITS_TYPE, sql_type)
 
 
+#: The types a record form's field is of whose text is the engine's cast to text.
+_TEXT_AS_CAST = frozenset({"BIGINT", "INTEGER", "OID"})
+
+
+def _field_text(value: str, sql_type: str) -> str:
+    """record_out of one field of ``sql_type``, ``value``: nothing for NULL, ``t`` or ``f`` for a
+    boolean, and a text in double quotes, quotes and backslashes doubled, where it is empty or
+    holds a quote, a backslash, a parenthesis, a comma or a space (src/backend/utils/adt/
+    rowtypes.c)."""
+    if value == "NULL":
+        return "''"
+    if sql_type == "BOOLEAN":
+        return f"COALESCE(CASE WHEN {value} THEN 't' ELSE 'f' END, '')"
+    if sql_type in _TEXT_AS_CAST:
+        return f"COALESCE(CAST({value} AS TEXT), '')"
+    if sql_type not in ("TEXT", "VARCHAR"):
+        raise ValueError(f"a record form's field of type {sql_type} has no text written")
+    text = f"CAST({value} AS TEXT)"
+    backslash = "CHR(92)"
+    quoted = (
+        f"'\"' || REPLACE(REPLACE({text}, {backslash}, {backslash} || {backslash}), "
+        "'\"', '\"\"') || '\"'"
+    )
+    special = f"{text} = '' OR {text} ~ '[(),\"[:space:]]' OR STRPOS({text}, {backslash}) > 0"
+    return f"COALESCE(CASE WHEN {special} THEN {quoted} ELSE {text} END, '')"
+
+
 _NO_FILE = "No such file or directory"
 _FILE_REFUSALS = (
     # convert_and_check_filename, for a role without pg_read_server_files.
@@ -354,9 +381,11 @@ class _Answers:
         )
 
     def record(self, name: str, params: str, columns: tuple[tuple[str, str, str], ...]) -> None:
-        """A record-returning function: its one row, strict in ``params``."""
-        fields = ", ".join(f"CAST({_typed(v, t)} AS {t})" for _, t, v in columns)
-        self.body(name, params, strict(params, "TEXT", f"CAST(ROW({fields}) AS TEXT)"))
+        """A record-returning function: its one row, strict in ``params``. As a value, the row is
+        record_out's text, written field by field: an engine's own text of a row is not
+        PostgreSQL's (DuckDB writes a struct's fields spaced, NULL by name and true as true)."""
+        fields = " || ',' || ".join(_field_text(_typed(v, t), t) for _, t, v in columns)
+        self.body(name, params, strict(params, "TEXT", f"'(' || {fields} || ')'"))
         out = ", ".join(
             f"CAST({strict(params, t, _typed(v, t))} AS {t}) AS {c}" for c, t, v in columns
         )
@@ -1486,7 +1515,8 @@ def _catalog_objects(a: _Answers) -> None:
     a.body("pg_notification_queue_usage", "", "CAST(0 AS DOUBLE PRECISION)", "DOUBLE PRECISION")
     a.body("pg_trigger_depth", "", "0", "INTEGER")
     a.strict("row_security_active", "rel", "BOOLEAN", "false")
-    # A setting's flags as PostgreSQL 17 gives them; one Provisa lists that has none, none.
+    # A setting's flags as PostgreSQL 17 gives them; one Provisa lists that has none, none. A
+    # setting is named in any case, as SHOW names one (TimeZone, timezone).
     flagged = " ".join(
         f"WHEN '{name}' THEN CAST('{flags}' AS TEXT[])"
         for name, flags in sorted(SETTING_FLAGS.items())
@@ -1496,7 +1526,8 @@ def _catalog_objects(a: _Answers) -> None:
         "name",
         "VARCHAR[]",
         f"CASE LOWER(name) {flagged} ELSE "
-        "(SELECT CAST(ARRAY[] AS TEXT[]) FROM _pg_settings _s WHERE _s.name = LOWER(name)) END",
+        "(SELECT CAST(ARRAY[] AS TEXT[]) FROM _pg_settings _s "
+        "WHERE LOWER(_s.name) = LOWER(name)) END",
     )
     a.strict(
         "pg_extension_config_dump",

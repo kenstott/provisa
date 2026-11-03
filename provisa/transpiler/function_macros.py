@@ -383,7 +383,8 @@ def _snapshot(family: str, visible: str) -> tuple[Macro, ...]:
             strict(
                 "x, s",
                 "BOOLEAN",
-                f"CASE WHEN x < {_XMIN} THEN true WHEN x >= {_XMAX} THEN false "
+                # A txid is read unsigned, so a negative one is past any snapshot's xmax.
+                f"CASE WHEN x < 0 THEN false WHEN x < {_XMIN} THEN true WHEN x >= {_XMAX} THEN false "
                 f"ELSE NOT coalesce(list_contains({_XIP}, x), false) END",
             ),
         ),
