@@ -72,7 +72,7 @@ sources:
   cache_ttl: -1
   replicate: 0
   description: Wikidata's SPARQL query service -- each owner's entity, country and industry, and
-    the group at its top, landed once when the demo is built
+    the group at its top
 tables:
 - source_id: bank
   domain_id: groupexposure
