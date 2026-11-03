@@ -1080,6 +1080,10 @@ def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
     """
     # Parse failure must fail loud: returning input skips the required pg_duckdb JSON rewrite.
     tree = sqlglot.parse_one(pg_sql, read="postgres")
+    if tree.find(exp.JSONObject) is None:
+        # Nothing to collapse. Written out again, the statement would lose what transpile wrote
+        # for PostgreSQL alone, such as pg_catalog."overlaps" (pg_syntax reads it as the routine).
+        return pg_sql
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         if isinstance(node, exp.JSONObject):
@@ -1096,7 +1100,7 @@ def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
     # pass rewrites only nodes visited before their parent is replaced, so iterate until none remain.
     while list(tree.find_all(exp.JSONObject)):
         tree = tree.transform(_transform)
-    return tree.sql(dialect="postgres")
+    return pg_syntax.overlaps_restored(tree).sql(dialect="postgres")
 
 
 def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778

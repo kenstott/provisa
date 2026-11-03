@@ -163,6 +163,20 @@ Postgres.Parser.FUNCTION_PARSERS["JSON_OBJECT"] = _pg_json_object
 Postgres.Generator.TRANSFORMS[NegativeInnerProduct] = lambda self, e: self.binary(e, "<#>")
 
 
+def _anonymous_sql(self: Any, expression: exp.Anonymous) -> str:
+    """A call by a quoted name keeps the name's case: PostgreSQL resolves a quoted name as written,
+    so ``pg_catalog."json_to_record"`` in FROM is not ``"JSON_TO_RECORD"``. Any other call is
+    written as sqlglot writes it."""
+    name = expression.this
+    if isinstance(name, exp.Identifier) and name.quoted:
+        return self.func(self.sql(expression, "this"), *expression.expressions, normalize=False)
+    return _BASE_ANONYMOUS_SQL(self, expression)
+
+
+_BASE_ANONYMOUS_SQL = Postgres.Generator.anonymous_sql
+Postgres.Generator.anonymous_sql = _anonymous_sql
+
+
 def overlaps_restored(tree: exp.Expr) -> exp.Expr:
     """``tree`` with each call of overlaps PostgreSQL's own, ``pg_catalog."overlaps"``: it has no
     function of the routine's name."""
