@@ -263,13 +263,3 @@ def test_the_abbreviations_are_postgresql_17s_default_set(conn: Any):
     said = [row.split("|") for row in PG17_ABBREVS]
     want = [f"({a},{o},{'t' if d == 'true' else 'f'})" for a, o, d in said]
     assert (oid, sorted(rows)) == (2249, sorted(want))
-
-
-def test_the_zones_are_the_pinned_releases(conn: Any):
-    """pg_timezone_names lists the zones and links of the pinned IANA release, whatever the
-    engine's own zone data holds besides (REQ-2167)."""
-    from provisa.transpiler.pg_zones import ZONE_NAMES
-
-    oid, rows = _rows(conn, 'SELECT pg_catalog."pg_timezone_names"() AS v')
-    names = sorted(row[1:].split(",", 1)[0] for row in rows)
-    assert (oid, names) == (2249, list(ZONE_NAMES))

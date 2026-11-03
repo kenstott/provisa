@@ -465,8 +465,12 @@ VALUE_FUNCTIONS_OF_THE_SERVER = (
             + " END",
         ),
     ),
-    # The pinned release's zones, and PostgreSQL's Default abbreviations (pg_zones).
-    _macro("pg_timezone_names", "", f"unnest((SELECT list(_z) FROM ({pg_zones.NAMES}) _z))"),
+    _macro(
+        "pg_timezone_names",
+        "",
+        "unnest((SELECT list(_z) FROM pg_timezone_names() _z))",
+    ),
+    # PostgreSQL's Default abbreviations (pg_zones).
     _macro("pg_timezone_abbrevs", "", f"unnest((SELECT list(_z) FROM ({pg_zones.ABBREVS}) _z))"),
     _macro(
         "pg_indexam_has_property",
