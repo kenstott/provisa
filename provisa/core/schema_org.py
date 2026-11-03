@@ -36,6 +36,8 @@ the two models may live in separate schemas/engines and FKs cannot span them.
 
 from __future__ import annotations
 
+import functools
+
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -2153,3 +2155,76 @@ admin_audit_log = Table(
     Column("detail", JSON, nullable=False, default=dict, server_default="{}"),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
+
+
+# REQ-2006: every source of the DDL that lands in an org's control-plane schema from code, by its
+# path in this package: its tables (beside this metadata, which ddl_fingerprint compiles), views,
+# functions and triggers. A demo template kept across a cloud patch is trusted only when the code
+# that built it had the same text here (no migrations: one built by older code lacks what is new,
+# e.g. relation "config_stamp" does not exist). A module that runs DDL is in this list or in the
+# guard's list of DDL that never lands in an org's schema
+# (tests/unit/test_demo_template_warm_start.py), so a new source cannot be missed.
+ORG_SCHEMA_DDL_SOURCES: tuple[str, ...] = (
+    "core/schema.sql",
+    "core/db.py",
+    "core/config_stamp.py",
+    "core/env_changes.py",
+    "core/env_copy.py",
+    "audit/query_log.py",
+    "mv/schema.sql",
+    "api/_meta_views.py",
+    "api/_ontology_views.py",
+    "api/_ontology_quality_views.py",
+    "api/_pg_catalog_views.py",
+    "api/startup_seed.py",
+    "grpc/field_numbering.py",
+    "live/watermark.py",
+    "profiler/schema.py",
+    "profiler/carry.py",
+    "dq/scan.py",
+    "ingest/ddl.py",
+    "federation/materialize_exec.py",
+    "federation/query_residency.py",
+    "federation/row_filter.py",
+    "fakes/pg_functions.py",
+    "transpiler/metadata_server_forms.py",
+)
+
+
+def ddl_sources() -> dict[str, bytes]:
+    """The text of each of :data:`ORG_SCHEMA_DDL_SOURCES`, by its path."""
+    from pathlib import Path
+
+    package = Path(__file__).resolve().parents[1]
+    return {path: (package / path).read_bytes() for path in ORG_SCHEMA_DDL_SOURCES}
+
+
+def fingerprint_of(tables: MetaData, sources: dict[str, bytes]) -> str:
+    """The first 16 hex of SHA-256 over an org schema's DDL: each of ``tables``' CREATE TABLE and
+    CREATE INDEX, compiled for PostgreSQL in name order, and the text of each of ``sources`` (the
+    modules and scripts that run the rest of it), in path order."""
+    import hashlib
+
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.schema import CreateIndex, CreateTable
+
+    dialect = postgresql.dialect()
+    digest = hashlib.sha256()
+    for name in sorted(tables.tables):
+        table = tables.tables[name]
+        digest.update(str(CreateTable(table).compile(dialect=dialect)).encode())
+        for index in sorted(table.indexes, key=lambda i: str(i.name)):
+            digest.update(str(CreateIndex(index).compile(dialect=dialect)).encode())
+    for path in sorted(sources):
+        digest.update(path.encode() + b"\0" + sources[path])
+    return digest.hexdigest()[:16]
+
+
+@functools.cache
+def ddl_fingerprint() -> str:
+    """REQ-2006: the shape of what this code creates in an org's schema (this metadata and
+    :data:`ORG_SCHEMA_DDL_SOURCES`). There are no migrations: a demo template built by code of
+    another shape keeps that code's tables, so its readiness record names this
+    (demo_templates.readiness_version), and a cloud patch keeps only the templates recorded under
+    the pushed code's (deploy-cloud.sh's reset_sandbox_state reads it from that code)."""
+    return fingerprint_of(metadata, ddl_sources())
