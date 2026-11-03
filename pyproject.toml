@@ -227,9 +227,23 @@ oracle = ["oracledb"]
 # _RDB_KINDS) reached via the hana+hdbcli SQLAlchemy dialect. hdbcli is SAP's own DBAPI driver;
 # sqlalchemy-hana registers the dialect SQLAlchemy needs to speak it.
 saphana = ["hdbcli", "sqlalchemy-hana"]
+# The other generic self-only landing engines in _RDB_KINDS whose dialect is not a base dep, one extra
+# per engine kind (federation/engine.py RDB_EXTRAS names each; selecting a kind without its extra is
+# refused naming it). Each pairs the SQLAlchemy dialect with the DBAPI driver it loads.
+cockroachdb = ["sqlalchemy-cockroachdb>=2,<3"]                        # Apache-2.0; psycopg2 is a base dep
+db2 = ["ibm-db-sa>=0.4,<1", "ibm-db>=3,<4"]                            # Apache-2.0 (ibm-db bundles IBM's CLI driver)
+exasol = ["sqlalchemy-exasol>=7,<8", "pyexasol>=0.26,<4"]              # BSD-2-Clause / MIT
+# firebird-driver 2.x pins protobuf~=5.29 (via firebird-base 2), below the base protobuf>=6 pin; 1.10 does not.
+firebird = ["sqlalchemy-firebird>=2.2,<3", "firebird-driver>=1.10,<2"]  # MIT / MIT (needs the Firebird client library)
+monetdb = ["sqlalchemy-monetdb>=2,<3", "pymonetdb>=1.8,<2"]           # MIT / MPL-2.0
+opengauss = ["opengauss-sqlalchemy>=2.4,<3"]                          # MIT; psycopg2 is a base dep
+vertica = ["sqlalchemy-vertica-python>=0.6,<1", "vertica-python>=1.4,<2"]  # MIT / Apache-2.0
 # REQ-1676: Cassandra read natively over CQL (Apache-2.0). The Trino connector needs nothing here.
 cassandra = ["cassandra-driver>=3.29"]
-all-drivers = ["aiomysql", "aioodbc", "oracledb", "hdbcli", "sqlalchemy-hana", "cassandra-driver>=3.29"]
+all-drivers = [
+    "aiomysql", "aioodbc", "oracledb", "hdbcli", "sqlalchemy-hana", "cassandra-driver>=3.29",
+    "provisa[cockroachdb,db2,exasol,firebird,monetdb,opengauss,vertica]",
+]
 # REQ-1443: external data-quality checker, invoked out-of-process (never linked). Only the
 # postgres package is needed — the checker aims at Provisa's own pgwire endpoint so it scans the
 # FEDERATED view, which is why a Snowflake- or Iceberg-backed table needs no per-warehouse package.
