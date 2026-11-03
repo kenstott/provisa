@@ -335,7 +335,15 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
     assert cfg.auth.provider == "basic"
     assert cfg.auth.scram is True
     assert cfg.naming.domain_prefix is False
-    (table,) = cfg.tables
+    table, probed = cfg.tables
+    # REQ-2167: lastval's probe inserts into a table whose id the source generates.
+    assert (probed.schema_name, probed.table_name) == (
+        function_probe.PROBE_IDENTITY_SCHEMA,
+        function_probe.PROBE_IDENTITY_TABLE,
+    )
+    assert [(g.role, g.operation, g.columns) for g in probed.write_grants] == [
+        ("org_admin", "insert", ["note"])
+    ]
     assert domain_to_sql_name(table.domain_id) == m.FIXTURE_SCHEMA == table.schema_name
     assert table.table_name == m.FIXTURE_TABLE == table.alias
     assert all(c.visible_to == ["org_admin"] for c in table.columns)
@@ -748,13 +756,13 @@ def test_a_declared_group_cannot_skip_a_catalog_function(monkeypatch, tmp_path):
     assert (report["by_design"], report["failed"]) == (0, 1)
 
 
-def test_the_shipped_group_naming_catalog_functions_is_exactly_the_one_allowed():
+def test_the_shipped_groups_naming_catalog_functions_are_exactly_those_allowed():
     import by_design
 
     groups = by_design.groups("pgwire")
     assert groups
     named = [g.group for g in groups if g.case and "catalog function" in g.case.pattern]
-    assert named == ["Internal functions"] == list(by_design.FUNCTION_GROUPS)
+    assert named == ["Internal functions", "Not supported"] == list(by_design.FUNCTION_GROUPS)
     assert [g.group for g in by_design.function_groups("pgwire")] == named
     assert {g.family for g in groups} == {""}
 
@@ -827,6 +835,59 @@ def test_the_shipped_group_naming_catalog_functions_is_exactly_the_one_allowed()
 )
 def test_a_function_is_called_the_way_postgresql_requires(fn, statement):
     assert function_probe.call(fn) == statement
+
+
+def test_lastval_is_probed_by_an_insert_into_an_identity_table_then_the_call():
+    """REQ-2167 (amended 2026-11-02): lastval answers the session's own inserts, and a sequence
+    function is refused by name, so the probe advances no sequence."""
+    fn = function_probe.Function("lastval", "", rettype="bigint")
+    assert function_probe.call(fn) == 'SELECT pg_catalog."lastval"() AS v'
+    assert function_probe.BEFORE["lastval()"] == (
+        f"INSERT INTO {function_probe.PROBE_IDENTITY} (note) VALUES ('probe')"
+    )
+    assert "nextval" not in function_probe.call(fn) + function_probe.BEFORE["lastval()"]
+
+
+class _Session:
+    """One connection: lastval answers once an INSERT on it ran, else PostgreSQL's 55000."""
+
+    def __init__(self, insert_ok: bool = True) -> None:
+        self.ran: list[str] = []
+        self._insert_ok = insert_ok
+
+    def run(self, sql: str, result_format: int = 0) -> dict:
+        self.ran.append(sql)
+        if sql.startswith("INSERT"):
+            if not self._insert_ok:
+                return {"ok": False, "error": "permission denied", "sqlstate": "42501"}
+            return {"ok": True, "fields": [], "row": None}
+        if any(s.startswith("INSERT") for s in self.ran):
+            return {"ok": True, "fields": [{"type_oid": 20}], "row": [b"1"]}
+        said = "lastval is not yet defined in this session"
+        return {"ok": False, "error": said, "sqlstate": "55000", "primary": said}
+
+    def rows(self, sql: str) -> list[tuple]:
+        return [("lastval", "", "f", False, "n", 0, "bigint", "v", [])]
+
+
+def test_the_catalog_probe_runs_lastval_after_its_insert_on_each_server():
+    m = _load("pgwire_catalog_types")
+    pg, provisa = _Session(), _Session()
+    report = m.catalog_functions(pg, provisa, {20: "int8"})
+    assert report["matching"] == 1
+    for server in (pg, provisa):
+        assert server.ran == [
+            function_probe.BEFORE["lastval()"],
+            'SELECT pg_catalog."lastval"() AS v',
+        ]
+
+
+def test_an_insert_provisa_refuses_is_the_reason_lastval_is_not_served():
+    m = _load("pgwire_catalog_types")
+    report = m.catalog_functions(_Session(), _Session(insert_ok=False), {20: "int8"})
+    assert report["not_served"] == {
+        "lastval()": f"{function_probe.BEFORE['lastval()']}: permission denied"
+    }
 
 
 def test_a_real_argument_is_given_to_no_function_but_those_named():

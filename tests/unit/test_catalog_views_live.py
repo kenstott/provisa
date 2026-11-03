@@ -29,6 +29,7 @@ from provisa.compiler.sql_rewrite import semantic_table_name
 from provisa.core import schema_org
 from provisa.core.naming_rule_check import NamingRuleRefused, refuse_divergent_rule
 from provisa.pgwire.catalog_pg17 import RELATIONS
+from provisa.pgwire.catalog_pg17_procs import SYSTEM_INDEXES
 from provisa.security.rights import compute_meta_row_scope
 from provisa.transpiler.metadata_names import camel_case_sql, snake_case_sql
 from provisa.transpiler.metadata_oids import metric_oid, table_oid
@@ -380,7 +381,8 @@ def test_a_role_reads_what_it_lists_and_every_system_row(plane):
             "SELECT DISTINCT attrelid::bigint FROM meta.catalog_pg_attribute "
             f"WHERE attrelid >= 16384 AND {_scoped('catalog_pg_attribute', {1})} ORDER BY 1",
         )
-    assert unscoped == system and unscoped[0][0] == len(RELATIONS)
+    # PostgreSQL's relations, and the indexes on its catalogs.
+    assert unscoped == system and unscoped[0][0] == len(RELATIONS) + len(SYSTEM_INDEXES)
     assert model == [("customer_orders",), ("revenue",)]  # a metric belongs to no table
     assert attributes[0] == (table_oid(1),)
     assert (table_oid(3),) not in attributes

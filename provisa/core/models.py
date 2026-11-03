@@ -360,6 +360,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # vocabulary), translated to the engine session props at query time. Only that vocabulary reaches
     # the session: every other key is a setting its connector or driver reads from here.
     federation_hints: dict[str, str] = Field(default_factory=dict)
+    # REQ-1923: the values a branded source's setup was given besides its credential, by the
+    # brand's setup field names (Shopify: store, api_version; provisa.graphql_remote.brands
+    # Brand.setup). Empty for a source of no brand, or a brand whose setup asks for nothing.
+    brand_setup: dict[str, str] = Field(default_factory=dict)
     # REQ-251: type-specific mapping DSL for NoSQL/non-relational sources
     # (redis/elasticsearch/prometheus). Holds {"tables": [...]} plus connector options.
     mapping: dict = Field(default_factory=dict)

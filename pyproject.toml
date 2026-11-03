@@ -415,6 +415,7 @@ markers = [
     "requires_trino: reaches a Trino coordinator — the CI side of the test platform (tests/local_platform.py)",
     "e2e: full HTTP pipeline tests against running app",
     "slow: long-running tests",
+    "postgres_engine: a catalog test (tests/unit/pgwire) whose statements reading no table run on a PostgreSQL engine, the plane's server standing in for it, rather than DuckDB",
     "requires_neo4j: requires Neo4j service (docker compose up neo4j)",
     "requires_sparql: requires SPARQL endpoint service (docker compose up fuseki)",
     "requires_elasticsearch: requires Elasticsearch service (docker compose up elasticsearch)",

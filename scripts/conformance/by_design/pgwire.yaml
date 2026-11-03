@@ -1,6 +1,6 @@
 # pgwire (REQ-2167). scripts/conformance/by_design.py.
 #
-# One group here names pg_catalog functions, and by_design.groups refuses any other: a function not
+# Two groups here name pg_catalog functions, and by_design.groups refuses any other: a function not
 # served is otherwise failed, whatever its family (REQ-2167, amended 2026-10-29, PG_CATALOG FUNCTIONS
 # ARE GAPS, INTERNAL FUNCTIONS).
 
@@ -16,6 +16,15 @@
     of a pseudo-type. They are parts of the server rather than functions a client calls.
   case: "^catalog function::"
   reason: "^no call reaches it: "
+
+- group: Not supported
+  requirement: REQ-2167
+  decision: >-
+    Provisa does not model a source's sequences, so nextval, currval and setval are refused by name;
+    lastval is answered from the session's own inserts. regexp_replace with a start position, an
+    occurrence number and flags is refused by name; its other forms are served.
+  case: "^catalog function::(?:(?:nextval|currval|setval)\\(|regexp_replace\\(text, text, text, integer, integer, text\\)$)"
+  reason: "^not served: (?:ERROR:\\s+)?(?:nextval|currval|setval|regexp_replace)\\(\\) has no form "
 
 # Type conversions (pgwire_catalog_types.py, part 3): a statement whose every difference from
 # PostgreSQL is one a design decision makes. Each group names the statements (case) and the only

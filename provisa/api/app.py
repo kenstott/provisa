@@ -2385,13 +2385,19 @@ async def build_org_runtime(
     engine_url: str | None = None,
     shard: str = "",
     storage_url: str | None = None,
+    model_cloned: bool = False,
 ) -> OrgRuntime:  # REQ-1266, REQ-1524
     """Build the org's runtime (``_build_org_runtime``) as one model change.
 
     A build writes the org's model — its role grants, the built-in and demo rows it loads — and
     it is reached from every surface: an HTTP request (whose change it joins), a protocol server
     or a background job (none open one). Every model change commits (REQ-1524), so the build
-    opens its own scope; under an outer one it is part of that one."""
+    opens its own scope; under an outer one it is part of that one.
+
+    ``model_cloned`` (REQ-2006): the org's schema was provisioned and its model cloned, a moment
+    ago in this process, from an org this release built -- a demo sandbox's first build, from its
+    template. Its schema's script is not run again, and the built-in seed makes only what the
+    clone cannot carry (startup_seed._seed_built_in_sources)."""
     async with model_change.scope(f"build org {org_id}/{env}"):
         return await _build_org_runtime(
             org_id,
@@ -2406,6 +2412,7 @@ async def build_org_runtime(
             engine_url=engine_url,
             shard=shard,
             storage_url=storage_url,
+            model_cloned=model_cloned,
         )
 
 
@@ -2463,6 +2470,7 @@ async def _build_org_runtime(
     engine_url: str | None = None,
     shard: str = "",
     storage_url: str | None = None,
+    model_cloned: bool = False,
 ) -> OrgRuntime:  # REQ-1266
     """Build (or rebuild) the per-org data-plane runtime for ``org_id`` and register it.
 
@@ -2704,13 +2712,15 @@ async def _build_org_runtime(
             raise RuntimeError(
                 f"control-plane schema.sql missing from the package: {schema_sql_path}"
             )
-        await init_schema(state.model_db, schema_sql_path.read_text(), org_id=org_id, env=env)
+        if not model_cloned:  # provisioned a moment ago (org_provisioning.provision_org)
+            await init_schema(state.model_db, schema_sql_path.read_text(), org_id=org_id, env=env)
         # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
         # REQ-1623: asserted in the environment being built, whose roles table is its own.
         await apply_tenancy_role_grants(
             state.model_db, org_id, multitenancy=state.multitenancy, env=env
         )
-        await init_audit_schema(state.model_db, org_id=org_id, env=env)
+        if not model_cloned:
+            await init_audit_schema(state.model_db, org_id=org_id, env=env)
         clock.mark("its schema")
 
         # REQ-1349: this org's settings rows, read once here and refreshed by the settings router
@@ -2725,7 +2735,7 @@ async def _build_org_runtime(
         host, port, database, username, _pw = cp.tenant_parts()
         assert database, "control_plane.tenant_url must specify a database"
         await _seed_built_in_sources(
-            host or "", port, database, username or "", org_id=org_id, env=env
+            host or "", port, database, username or "", org_id=org_id, env=env, cloned=model_cloned
         )
         clock.mark("its built-in sources")
         state.source_dsns["provisa-admin"] = colocation_key(

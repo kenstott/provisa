@@ -38,6 +38,9 @@ NAMES = (
     "system_user",
     "time_zone",
     "query",
+    "locks",
+    "enums",
+    "cursors",
     "scope",
     "asked",
 )

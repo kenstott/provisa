@@ -40,6 +40,7 @@ KEPT_ON_FORM_EDIT: tuple[str, ...] = (
     "approval_hook",
     "allowed_domains",
     "gql_naming_convention",
+    "brand_setup",  # REQ-1923: set by the brand's own add (graphql_remote_router)
 )
 
 
@@ -57,6 +58,7 @@ def _source_values(source: Source) -> dict:
         # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
         "mapping": source.mapping or {},
         "federation_hints": source.federation_hints or {},
+        "brand_setup": source.brand_setup,  # REQ-1923
         "cdc": source.cdc.model_dump() if source.cdc else None,  # REQ-824
         "change_signal": getattr(source, "change_signal", "ttl"),  # REQ-929
         "load_protected": getattr(source, "load_protected", False),  # REQ-1141

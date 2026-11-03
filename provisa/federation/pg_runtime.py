@@ -189,8 +189,29 @@ _JSON_AS_TEXT = psycopg2.extensions.new_type((114, 3802), "PG_JSON_TEXT", lambda
 _JSON_ARRAY = psycopg2.extensions.new_array_type((199, 3807), "PG_JSON_ARRAY", _JSON_AS_TEXT)
 
 
+def _bounded(caster: Any) -> Any:
+    """``caster``, an array type's reader, leaving an array whose lower bounds are not 1 as the text
+    PostgreSQL writes of it ("[1:1][2:3]={...}"), which it refuses ("array does not start with
+    '{'") and which no list says."""
+
+    def read(text: str | bytes | None, cur: Any) -> Any:
+        return text if isinstance(text, str) and text.startswith("[") else caster(text, cur)
+
+    return psycopg2.extensions.new_type(caster.values, f"{caster.name}_BOUNDED", read)
+
+
+_BOUNDED_ARRAYS = tuple(
+    _bounded(caster)
+    for caster in {
+        id(c): c for c in psycopg2.extensions.string_types.values() if c.name.endswith("ARRAY")
+    }.values()
+)
+
+
 def _read_as_postgresql_writes(cur: Any) -> None:
     """``cur`` reading a value as PostgreSQL's own text of it, where psycopg2 would not."""
+    for bounded in _BOUNDED_ARRAYS:
+        psycopg2.extensions.register_type(bounded, cur)
     psycopg2.extensions.register_type(_RANGES_AS_TEXT, cur)
     psycopg2.extensions.register_type(_XML_ARRAY, cur)
     psycopg2.extensions.register_type(_JSON_AS_TEXT, cur)
