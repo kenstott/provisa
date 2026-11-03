@@ -129,21 +129,30 @@ async def _env_row(org_id: str, env: str) -> dict[str, Any]:
     return row
 
 
-async def prepare(org_id: str, demo_directory: Path, envs: list[str], *, exporting: bool) -> None:
+async def prepare(
+    org_id: str,
+    demo_directory: Path,
+    envs: list[str],
+    *,
+    exporting: bool,
+    created: list[str],
+) -> None:
     """Give the template ``org_id`` each of its Test (synthetic) environments ``envs`` generated:
     adopted from the demo's seed when its bundle carries one, else generated here -- and, in the
-    bundle build's seeding run, written out as the seed. The template org is bound."""
+    bundle build's seeding run, written out as the seed. The template org is bound. ``created``:
+    the environments created from its prod a moment ago, in this process, after that prod's
+    runtime was built (demo_templates._prepare); each one's runtime is built cloned (REQ-2006)."""
     if not envs:
         return
     store, record = seed_paths(demo_directory)
     if record.exists() and not exporting:
         held = json.loads(record.read_text())
         for env in envs:
-            await _adopt(org_id, env, str(store), held["environments"][env])
+            await _adopt(org_id, env, str(store), held["environments"][env], cloned=env in created)
         return
     await _profile_prod()
     for env in envs:
-        await _generate(org_id, env)
+        await _generate(org_id, env, cloned=env in created)
     if exporting:
         await _export(org_id, envs, store, record)
 
@@ -172,16 +181,17 @@ async def _profile_prod() -> None:
             raise RuntimeError(f"profiler {source_id!r} failed on {failed}")
 
 
-async def _generate(org_id: str, env: str) -> None:
+async def _generate(org_id: str, env: str, *, cloned: bool) -> None:
     """Generate ``env`` from prod's latest successful profile runs, as confirming its warning does
-    (environment_data_router.confirm_generation); refused by name when it does not end generated."""
+    (environment_data_router.confirm_generation); refused by name when it does not end generated.
+    ``cloned``: ``env`` was created from prod a moment ago (:func:`prepare`)."""
     from provisa.api.app import state
     from provisa.api.admin.environment_data_router import kept_counts
     from provisa.core.env_store import set_data
     from provisa.core.environments import PROD, org_schema
     from provisa.synthetic import env_model
 
-    db = await _model_db(org_id, env)
+    db = await _model_db(org_id, env, cloned=cloned)
     with _bound(org_id, env):
         async with db.acquire() as conn:
             plan = await env_model.model_plan(state, conn, PROD, env)
@@ -293,7 +303,11 @@ async def _land(
     """Land generated rows (``from_schema`` of ``store``) and their records as ``org_id``'s
     ``env``, bind its sources to them, and mark it generated. ``cloned``: ``env`` was created from
     its org's prod a moment ago, every built-in row carried with that copy, and its runtime's
-    build seeds none of them again (REQ-2006)."""
+    build seeds none of them again (REQ-2006).
+
+    Its runtime is built again once its sources are bound, here, and cloned: the build before
+    seeded its model (or found it cloned) a moment ago. Left to whatever asked for it next, that
+    build seeded the whole model again."""
     from provisa.api.app import state
     from provisa.api.demo_replicas import _store_path
     from provisa.api.org_runtime import runtime_key
@@ -330,6 +344,7 @@ async def _land(
                     await conn.execute_core(insert(table).values(rows))
         await env_model.bind_generated(state, org_id, env)
     state.org_registry.invalidate(runtime_key(org_id, env))
+    await _model_db(org_id, env, cloned=True)
     await set_data(
         _admin(),
         org_id,
@@ -340,8 +355,8 @@ async def _land(
     )
 
 
-async def _adopt(org_id: str, env: str, store: str, held: dict[str, Any]) -> None:
-    await _land(org_id, env, store, held["schema"], held["records"])
+async def _adopt(org_id: str, env: str, store: str, held: dict[str, Any], *, cloned: bool) -> None:
+    await _land(org_id, env, store, held["schema"], held["records"], cloned=cloned)
     log.info("demo template %s: %s adopted from the seed", org_id, env)
 
 

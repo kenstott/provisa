@@ -2396,6 +2396,7 @@ async def build_org_runtime(
     shard: str = "",
     storage_url: str | None = None,
     model_cloned: bool = False,
+    provisioned: bool = False,
 ) -> OrgRuntime:  # REQ-1266, REQ-1524
     """Build the org's runtime (``_build_org_runtime``) as one model change.
 
@@ -2407,7 +2408,11 @@ async def build_org_runtime(
     ``model_cloned`` (REQ-2006): the org's schema was provisioned and its model cloned, a moment
     ago in this process, from an org this release built -- a demo sandbox's first build, from its
     template. Its schema's script is not run again, and the built-in seed makes only what the
-    clone cannot carry (startup_seed._seed_built_in_sources)."""
+    clone cannot carry (startup_seed._seed_built_in_sources).
+
+    ``provisioned``: the org's schema was created a moment ago, in this process
+    (orgs_router._provision_org_task), and holds none of the built-in views, which the seed makes
+    as one script."""
     async with model_change.scope(f"build org {org_id}/{env}"):
         return await _build_org_runtime(
             org_id,
@@ -2423,6 +2428,7 @@ async def build_org_runtime(
             shard=shard,
             storage_url=storage_url,
             model_cloned=model_cloned,
+            provisioned=provisioned,
         )
 
 
@@ -2481,6 +2487,7 @@ async def _build_org_runtime(
     shard: str = "",
     storage_url: str | None = None,
     model_cloned: bool = False,
+    provisioned: bool = False,
 ) -> OrgRuntime:  # REQ-1266
     """Build (or rebuild) the per-org data-plane runtime for ``org_id`` and register it.
 
@@ -2745,7 +2752,14 @@ async def _build_org_runtime(
         host, port, database, username, _pw = cp.tenant_parts()
         assert database, "control_plane.tenant_url must specify a database"
         await _seed_built_in_sources(
-            host or "", port, database, username or "", org_id=org_id, env=env, cloned=model_cloned
+            host or "",
+            port,
+            database,
+            username or "",
+            org_id=org_id,
+            env=env,
+            cloned=model_cloned,
+            provisioned=provisioned,
         )
         clock.mark("its built-in sources")
         state.source_dsns["provisa-admin"] = colocation_key(
