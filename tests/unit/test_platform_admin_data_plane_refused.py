@@ -402,6 +402,16 @@ class _Conn:
     async def upsert(self, _table, values, **_kw):
         self.writes.append(values)
 
+    def transaction(self):
+        class _Tx:
+            async def __aenter__(self):
+                return None
+
+            async def __aexit__(self, *_exc):
+                return False
+
+        return _Tx()
+
 
 class _Db:
     def __init__(self, rows: list[dict]):

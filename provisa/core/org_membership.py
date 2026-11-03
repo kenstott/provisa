@@ -41,7 +41,7 @@ from provisa.security.inheritance import effective_capabilities
 from provisa.security.rights import DEPLOYMENT_GRANTER, ORG_ADMIN_ROLE, check_role_grant
 
 if TYPE_CHECKING:
-    from provisa.core.database import Database
+    from provisa.core.database import Connection, Database
 
 log = logging.getLogger(__name__)
 
@@ -188,12 +188,20 @@ async def grant_membership(
     and re-announcing an org the member already acknowledged would be noise.
     """
     async with admin_db.acquire() as conn:
-        await conn.upsert(
-            user_org_memberships,
-            membership_values(user_id, org_id, joined_via),
-            index_elements=["user_id", "org_id"],
-            update_columns=[],
-        )
+        await record_membership(conn, user_id, org_id, joined_via=joined_via)
+
+
+async def record_membership(
+    conn: "Connection", user_id: str, org_id: str, *, joined_via: str
+) -> None:
+    """:func:`grant_membership` on ``conn``, a connection to the admin plane: with the writes it
+    goes with, in one transaction and one checkout (a demo sandbox's person, REQ-2006)."""
+    await conn.upsert(
+        user_org_memberships,
+        membership_values(user_id, org_id, joined_via),
+        index_elements=["user_id", "org_id"],
+        update_columns=[],
+    )
 
 
 async def acknowledge_membership(  # REQ-1478
@@ -230,20 +238,41 @@ async def grant_org_role(
     nobody stands behind — an auto-join — passes an empty set.
     """
     async with model_db.acquire() as conn:
+        await grant_org_roles(conn, user_id, [role_id], granter_capabilities=granter_capabilities)
+
+
+async def grant_org_roles(
+    conn: "Connection",
+    user_id: str,
+    role_ids: Iterable[str],
+    *,
+    granter_capabilities: Iterable[str],
+) -> None:
+    """:func:`grant_org_role` for each of ``role_ids``, on ``conn`` (scoped to the org's schema) in
+    one transaction: the roles are read once and every grant checked before any is written. A demo
+    sandbox's person is granted several at its open, each a round trip to a control plane on
+    another machine (REQ-2006)."""
+    wanted = list(role_ids)
+    granter = set(granter_capabilities)
+    async with conn.transaction():
         result = await conn.execute_core(select(roles.c.id, roles.c.capabilities, roles.c.parents))
         role_rows = [dict(r._mapping) for r in result.fetchall()]
-        if role_id not in {r["id"] for r in role_rows}:
-            raise ValueError(
-                f"role {role_id!r} does not exist in the org schema the grant lands in: a role is "
-                "granted out of the roles that schema holds, and its rights are read from that row"
+        held = {r["id"] for r in role_rows}
+        for role_id in wanted:
+            if role_id not in held:
+                raise ValueError(
+                    f"role {role_id!r} does not exist in the org schema the grant lands in: a role "
+                    "is granted out of the roles that schema holds, and its rights are read from "
+                    "that row"
+                )
+            check_role_grant(role_id, effective_capabilities(role_id, role_rows), granter)
+        for role_id in wanted:
+            await conn.upsert(
+                user_role_assignments,
+                {"user_id": user_id, "role_id": role_id, "domain_id": "*"},
+                index_elements=["user_id", "role_id", "domain_id"],
+                update_columns=[],
             )
-        check_role_grant(role_id, effective_capabilities(role_id, role_rows), granter_capabilities)
-        await conn.upsert(
-            user_role_assignments,
-            {"user_id": user_id, "role_id": role_id, "domain_id": "*"},
-            index_elements=["user_id", "role_id", "domain_id"],
-            update_columns=[],
-        )
 
 
 async def grant_org_admin(

@@ -322,6 +322,11 @@ async def copy_to_sandbox(template_org: str, org_id: str) -> None:
     )
     async with _state_db(template_org).acquire() as conn:
         rows = await replica_state.completed_rows(conn)
+    if not rows:
+        # No replica built (a demo whose landed data is its listeners' alone, the streaming demo's
+        # orders): no definition to check or record, so the template's runtime is not built for
+        # one -- on a template retired with its stores, that build was 37 of an open's 38 s.
+        return
     keys = [_key(row) for row in rows]
     own = await definitions(template_org, keys, template_org)
     for row in rows:

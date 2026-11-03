@@ -983,7 +983,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     if cloned:
         async with state.model_db.acquire() as _conn:
             async with _conn.advisory_lock(_seed_lock_key(org_id, env)):
-                await _seed_built_in_views(_conn)
+                await _make_built_in_views(_conn)
                 await _seed_catalog_client(_conn, org_schema(org_id, env))  # REQ-2190
         return
     cp_dialect = state.model_db.dialect
@@ -1134,14 +1134,29 @@ async def _seed_built_in_views(conn: "Connection") -> None:
     """The built-in views of the meta, ontology and ops domains, made in the order their seeds
     make them (_seed_meta_domain, _seed_ontology_domain, _seed_ops_domain), and nothing they
     register."""
-    for ddl in (
+    for ddl in _built_in_view_ddl():
+        await _seed_view(conn, ddl)
+
+
+def _built_in_view_ddl() -> list[str]:
+    """Each built-in view's DDL, in the order :func:`_seed_built_in_views` makes them."""
+    return [
         *_META_TABLE_VIEWS.values(),
         *ONTOLOGY_TABLE_VIEWS.values(),
         *_OPS_LOG_TABLE_VIEWS.values(),
         _ops_table_usage_ddl(),
         *_OPS_REPORT_VIEWS.values(),
-    ):
-        await _seed_view(conn, ddl)
+    ]
+
+
+async def _make_built_in_views(conn: "Connection") -> None:
+    """The built-in views of a schema provisioned a moment ago, which holds none of them (a demo
+    sandbox's, REQ-2006): sent as one script, in one round trip. Made one by one, each in its own
+    transaction, they were about 800 round trips to a control plane on another machine -- 9 s of a
+    sandbox's open. A view already there and reshaped is :func:`_seed_built_in_views`' case."""
+    await conn.execute(
+        "\n".join(f"{ddl.strip().removesuffix(';')};" for ddl in _built_in_view_ddl())
+    )
 
 
 async def seed_org_registry_view() -> bool:  # REQ-1301
