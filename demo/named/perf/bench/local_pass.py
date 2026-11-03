@@ -53,11 +53,20 @@ import three_device  # noqa: E402
 from governance_variants import CACHE, VARIANTS, governance, table  # noqa: E402
 
 TRANSPORTS = ("graphql", "data_sql", "pgwire", "flight_sql", "grpc", "rest", "jsonapi", "mcp")
+# A plan-cache miss needs a statement the server has not seen: only the transports whose request
+# is a text the client writes can send one (request_render.Renderer, knobs.plan_cache).
+PLAN_MISS_TRANSPORTS = ("graphql", "data_sql", "pgwire", "flight_sql", "mcp")
+PLAN_CACHE = ("hit", "miss")
 WARMUP_S = 5
 
 
 def contract(
-    base: dict[str, Any], variant: str, cache: float, steps: list[int], window_s: float
+    base: dict[str, Any],
+    variant: str,
+    cache: float,
+    steps: list[int],
+    window_s: float,
+    plan_cache: str = "hit",
 ) -> dict[str, Any]:
     raw = json.loads(json.dumps(base))
     raw["sources"] = {"bench-postgresql": raw["sources"]["bench-postgresql"]}
@@ -71,7 +80,9 @@ def contract(
     }
     raw["knobs"]["cache"] = {"probability": cache}
     raw["knobs"]["governance"] = governance(variant, telemetry=True)
-    raw["transports"] = {t: {} for t in TRANSPORTS}
+    raw["knobs"]["plan_cache"] = plan_cache
+    sent = PLAN_MISS_TRANSPORTS if plan_cache == "miss" else TRANSPORTS
+    raw["transports"] = {t: {} for t in sent}
     raw["load"]["steps"] = steps
     raw["load"]["window_s"] = window_s
     raw["load"]["warmup_s"] = WARMUP_S  # each transport's plans and caches warm before a step
@@ -213,7 +224,16 @@ def main() -> int:
     parser.add_argument("--window-s", type=float, default=10.0)
     parser.add_argument("--variants", default=",".join(VARIANTS))
     parser.add_argument("--cache", default=",".join(CACHE))
+    parser.add_argument(
+        "--plan-cache",
+        default="hit",
+        help="hit, miss or both; a miss run's cache column reads <cache>_plan_miss",
+    )
     args = parser.parse_args()
+    plans = args.plan_cache.split(",")
+    for plan in plans:
+        if plan not in PLAN_CACHE:
+            parser.error(f"--plan-cache: {plan!r} is not one of {', '.join(PLAN_CACHE)}")
     out = Path(args.output_dir).expanduser()
     out.mkdir(parents=True, exist_ok=True)
     steps = [int(s) for s in args.steps.split(",")]
@@ -242,12 +262,13 @@ def main() -> int:
         base = local_proof.proof_contract(server, project)
         base["deployment"]["endpoints"]["mcp"] = {"url": f"http://127.0.0.1:{mcp_port}/mcp"}
         for variant in args.variants.split(","):
-            for cache in args.cache.split(","):
-                key = f"{variant}/{cache}"
-                run_dir = out / variant / cache
+            for cache, plan in ((c, p) for c in args.cache.split(",") for p in plans):
+                label = cache if plan == "hit" else f"{cache}_plan_miss"
+                key = f"{variant}/{label}"
+                run_dir = out / variant / label
                 run_dir.mkdir(parents=True, exist_ok=True)
                 path = run_dir / "setup.yaml"
-                raw = contract(base, variant, CACHE[cache], steps, args.window_s)
+                raw = contract(base, variant, CACHE[cache], steps, args.window_s, plan)
                 path.write_text(yaml.safe_dump(raw, sort_keys=False))
                 local_proof.log(f"== {key}")
                 results[key] = run_variant(path, run_dir, server, receiver_port)
