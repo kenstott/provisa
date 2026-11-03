@@ -99,3 +99,40 @@ async def test_a_reloaded_shopify_source_shows_its_setup_to_the_edit_form(org):
     request = SimpleNamespace(state=SimpleNamespace())  # no identity: the no-auth deployment
     (listed,) = await list_graphql_remote_sources(request)  # type: ignore[arg-type]
     assert listed["setup"] == SETUP
+
+
+async def _save_in_the_old_shape(db) -> None:
+    """The row a save between d7daab1f6 and the read-side heal left: the setup as a dict in
+    ``federation_hints`` and the ``brand_setup`` column empty."""
+    from sqlalchemy import update
+
+    await _save()
+    async with db.acquire() as conn:
+        await conn.execute_core(
+            update(sources)
+            .where(sources.c.id == "my-shop")
+            .values(federation_hints={"brand": "shopify", "brand_setup": SETUP}, brand_setup=None)
+        )
+
+
+async def test_a_source_saved_in_the_old_shape_reads_as_a_valid_source(org):
+    from provisa.core.repositories import source as source_repo
+
+    await _save_in_the_old_shape(org.db)
+    async with org.db.acquire() as conn:
+        row = (await conn.execute_core(select(sources).where(sources.c.id == "my-shop"))).one()
+    source = source_repo.source_from_row(dict(row._mapping))
+    assert source.brand_setup == SETUP
+    assert "brand_setup" not in source.federation_hints
+    assert source.federation_hints["brand"] == "shopify"
+
+
+async def test_the_model_loads_over_a_source_saved_in_the_old_shape(org):
+    from provisa.core.config_loader import store_config
+
+    await _save_in_the_old_shape(org.db)
+    async with org.db.acquire() as conn:
+        config = await store_config({}, conn)
+    (shop,) = [s for s in config.sources if s.id == "my-shop"]
+    assert shop.brand_setup == SETUP
+    assert "brand_setup" not in shop.federation_hints
