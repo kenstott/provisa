@@ -412,10 +412,13 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                 cache_headers,
             )
         from provisa.compiler.sql_gen import ColumnRef
+        from provisa.compiler.sql_types import is_json_type
 
+        # A column the engine types json or jsonb is written as its JSON (REQ-1867).
+        types = result.column_types or [None] * len(result.column_names)
         columns = [
-            ColumnRef(alias=None, column=c, field_name=c, nested_in=None)
-            for c in result.column_names
+            ColumnRef(alias=None, column=c, field_name=c, nested_in=None, json=is_json_type(t))
+            for c, t in zip(result.column_names, types, strict=True)
         ]
         return _with_cache_headers(
             _format_response(result.rows, columns, "sql", output_format), cache_headers

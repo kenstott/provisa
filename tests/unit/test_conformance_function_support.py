@@ -58,7 +58,7 @@ def _both(fn: Function, family: str, want: dict[str, Any], got: dict[str, Any]) 
     """``fn`` measured where every call of it answers ``want`` and ``got``."""
     sqls = [c.sql for c in support.calls(fn, family)]
     return support.measure_overload(
-        fn, family, Fake({s: want for s in sqls}), Fake({s: got for s in sqls}), _route
+        fn, family, Fake({s: want for s in sqls}), Fake({s: got for s in sqls}), _route, engine="pg"
     )
 
 
@@ -90,19 +90,34 @@ def test_an_immutable_function_is_called_with_null_and_with_three_rows_of_values
             "volatile",
         ),
         (
-            Function("current_setting", "text", argtypes=("text",), volatility="s"),
+            Function("pg_stat_get_db_xact_commit", "oid", argtypes=("oid",), volatility="s"),
             "System",
-            "stable, of family System",
+            "answers with its own server's state",
         ),
         (
-            Function("age", "timestamp", argtypes=("timestamp without time zone",), volatility="s"),
+            Function("age", "xid", argtypes=("xid",), volatility="s"),
+            "System",
+            "answers with its own server's state",
+        ),
+        (
+            Function("now", "", volatility="s", rettype="timestamp with time zone"),
             "Date",
             "answers from the clock",
         ),
         (
-            Function("int4in", "cstring", argtypes=("cstring",), volatility="i"),
+            Function("current_user", "", volatility="s", rettype="name"),
+            "System",
+            "by design (REQ-588): names the role the session acts as",
+        ),
+        (
+            Function("gtsvectorout", "gtsvector", argtypes=("gtsvector",), volatility="i"),
             "Type operators",
-            "no sample of cstring",
+            "PostgreSQL takes no literal of gtsvector",
+        ),
+        (
+            Function("f", "polygon[]", argtypes=("polygon[]",), volatility="i"),
+            "Geometric",
+            "no sample of polygon[]",
         ),
     ],
 )
@@ -111,15 +126,89 @@ def test_a_function_values_cannot_judge_or_must_not_run_gets_none(fn, family, wh
     assert support.value_calls(fn, family) == []
 
 
+def test_a_stable_catalog_or_session_function_is_given_values_like_any_other():
+    setting = Function("current_setting", "text", argtypes=("text",), volatility="s")
+    assert [c.sql for c in support.value_calls(setting, "System")] == [
+        f"""SELECT pg_catalog."current_setting"({name}::text) AS v"""
+        for name in ("'TimeZone'", "'DateStyle'", "'IntervalStyle'")
+    ]
+    age = Function("age", "timestamp", argtypes=("timestamp without time zone",), volatility="s")
+    assert len(support.value_calls(age, "Date")) == 3
+
+
+def test_an_input_function_reads_its_types_samples_as_cstring():
+    int4in = Function("int4in", "cstring", argtypes=("cstring",), volatility="i")
+    assert [c.sql for c in support.value_calls(int4in, "Type operators")] == [
+        f"""SELECT pg_catalog."int4in"({v}::cstring) AS v""" for v in ("'3'", "'-7'", "'42'")
+    ]
+    numeric_in = Function(
+        "numeric_in",
+        "cstring, oid, integer",
+        argtypes=("cstring", "oid", "integer"),
+        volatility="i",
+    )
+    assert support.value_calls(numeric_in, "Type operators")[0].sql == (
+        """SELECT pg_catalog."numeric_in"('2.5'::cstring, 'numeric'::regtype::oid, """
+        "(-1)::integer) AS v"
+    )
+
+
+@pytest.mark.parametrize(
+    ("argtype", "first"),
+    [
+        ("tid", "'(0,1)'::tid"),
+        ("xid8", "'3'::xid8"),
+        ("record", "ROW(1, 'a'::text)::record"),
+        ("anyenum", "'a'::conformance.probe_enum"),
+        ("oidvector", "'1 2 3'::oidvector"),
+        ("regclass", "'pg_catalog.pg_class'::regclass"),
+        ("aclitem", "'pg_monitor=r/pg_monitor'::aclitem"),
+    ],
+)
+def test_a_type_no_column_holds_has_samples_postgresql_accepts(argtype, first):
+    fn = Function("f", argtype, argtypes=(argtype,), volatility="i")
+    assert support.value_calls(fn, "Other")[0].sql == f"""SELECT pg_catalog."f"({first}) AS v"""
+
+
+def test_a_privilege_function_asks_of_a_role_an_object_and_a_privilege():
+    fn = Function(
+        "has_column_privilege",
+        "name, oid, smallint, text",
+        argtypes=("name", "oid", "smallint", "text"),
+        volatility="s",
+    )
+    assert support.value_calls(fn, "System")[0].sql == (
+        """SELECT pg_catalog."has_column_privilege"('pg_monitor'::name, """
+        "'pg_catalog.pg_class'::regclass::oid, 2::smallint, 'SELECT'::text) AS v"
+    )
+    two = Function("has_schema_privilege", "text, text", argtypes=("text", "text"), volatility="s")
+    assert support.value_calls(two, "System")[1].sql == (
+        """SELECT pg_catalog."has_schema_privilege"('public'::text, 'CREATE'::text) AS v"""
+    )
+
+
+def test_a_raw_literal_is_written_as_it_stands():
+    fn = Function("json_build_object", 'VARIADIC "any"', argtypes=('"any"',), volatility="s")
+    assert support.value_calls(fn, "JSON")[0].sql == (
+        """SELECT pg_catalog."json_build_object"(1::integer, 2::integer) AS v"""
+    )
+
+
 def test_no_volatile_function_is_ever_given_a_value():
     # A real value given to one runs it for real (pgwire_function_probe.ARGUMENTS).
     lo_unlink = Function("lo_unlink", "oid", argtypes=("oid",), volatility="v")
     assert [c.answers for c in support.calls(lo_unlink, "Large object")] == [False]
 
 
-def test_the_null_call_of_a_stable_function_compares_its_type_alone():
+def test_the_null_call_of_a_function_answering_its_servers_own_compares_its_type_alone():
     now = Function("now", "", volatility="s", rettype="timestamp with time zone")
-    assert [(c.values, c.answers) for c in support.calls(now, "Date")] == [(False, False)]
+    assert [(c.values, c.answers, c.form) for c in support.calls(now, "Date")] == [
+        (False, False, True)
+    ]
+    stat = Function("pg_stat_get_db_xact_commit", "oid", argtypes=("oid",), volatility="s")
+    assert [(c.values, c.answers) for c in support.calls(stat, "System")][0] == (False, False)
+    setting = Function("current_setting", "text", argtypes=("text",), volatility="s")
+    assert support.calls(setting, "System")[0].values
 
 
 def test_a_function_argument_takes_the_literal_its_type_cannot_give():
@@ -380,19 +469,26 @@ def test_every_call_equal_is_a_pass_with_its_answers_checked():
     assert "unchecked" not in entry
 
 
-def test_a_pass_with_no_value_call_is_only_called_and_says_why():
+def test_a_call_with_nothing_compared_is_not_checked_and_says_why():
     fn = Function("setseed", "double precision", argtypes=("double precision",), volatility="v")
     entry = _both(fn, "Numeric", _ok(None), _ok(None))
-    assert entry["outcome"] == "pass"
-    assert not entry["answers_checked"]
+    assert entry["outcome"] == "not_checked"
+    assert not entry["answers_checked"] and not entry["type_and_form_checked"]
     assert entry["unchecked"] == "volatile"
+
+
+def test_a_null_postgresql_answers_holds_provisa_to_null_and_is_no_pass():
+    fn = Function("setseed", "double precision", argtypes=("double precision",), volatility="v")
+    entry = _both(fn, "Numeric", _ok(None), _ok("0"))
+    assert entry["outcome"] == "wrong_answer"
+    assert entry["detail"]["difference"] == "'0', PostgreSQL None"
 
 
 def test_a_value_call_that_differs_is_a_wrong_answer_even_when_null_agrees():
     sqls = [c.sql for c in support.calls(ABS, "Numeric")]
     want = {sqls[0]: _ok(None), sqls[1]: _ok("3"), sqls[2]: _ok("7"), sqls[3]: _ok("42")}
     got = {**want, sqls[2]: _ok("-7")}
-    entry = support.measure_overload(ABS, "Numeric", Fake(want), Fake(got), _route)
+    entry = support.measure_overload(ABS, "Numeric", Fake(want), Fake(got), _route, engine="pg")
     assert entry["outcome"] == "wrong_answer"
     assert entry["detail"] == {"statement": sqls[2], "difference": "'-7', PostgreSQL '7'"}
 
@@ -401,7 +497,7 @@ def test_a_wrong_answer_outranks_an_error():
     sqls = [c.sql for c in support.calls(ABS, "Numeric")]
     want = {s: _ok("1") for s in sqls}
     got = {sqls[1]: _ok("2")}
-    entry = support.measure_overload(ABS, "Numeric", Fake(want), Fake(got), _route)
+    entry = support.measure_overload(ABS, "Numeric", Fake(want), Fake(got), _route, engine="pg")
     assert entry["outcome"] == "wrong_answer"
 
 
@@ -415,27 +511,29 @@ def test_a_value_call_postgresql_refuses_compares_nothing():
     sqls = [c.sql for c in support.calls(ABS, "Numeric")]
     want = {sqls[0]: _ok(None), sqls[1]: _ok("3")}
     got = {**want, sqls[2]: _ok("anything")}
-    entry = support.measure_overload(ABS, "Numeric", Fake(want), Fake(got), _route)
+    entry = support.measure_overload(ABS, "Numeric", Fake(want), Fake(got), _route, engine="pg")
     assert entry["outcome"] == "pass" and entry["answers_compared"] == 1
 
 
-def test_every_value_call_refused_leaves_a_pass_only_called():
+def test_every_value_call_refused_leaves_it_not_checked():
     sqls = [c.sql for c in support.calls(ABS, "Numeric")]
     want = {sqls[0]: _ok(None)}
-    entry = support.measure_overload(ABS, "Numeric", Fake(want), Fake(want), _route)
-    assert entry["outcome"] == "pass" and not entry["answers_checked"]
+    entry = support.measure_overload(ABS, "Numeric", Fake(want), Fake(want), _route, engine="pg")
+    assert entry["outcome"] == "not_checked" and not entry["answers_checked"]
     assert entry["unchecked"] == "PostgreSQL refused every value call"
 
 
 def test_postgresql_refusing_every_call_is_not_callable():
-    entry = support.measure_overload(ABS, "Numeric", Fake({}), Fake({}), _route)
+    entry = support.measure_overload(ABS, "Numeric", Fake({}), Fake({}), _route, engine="pg")
     assert entry["outcome"] == "not_callable"
     assert entry["detail"] == "PostgreSQL refuses the call: ERROR:  no such function"
 
 
 def test_an_overload_with_no_call_is_not_callable_for_that_reason():
     fn = Function("int4_accum", "internal", argtypes=("internal",), volatility="i")
-    entry = support.measure_overload(fn, "Aggregate support", Fake({}), Fake({}), _route)
+    entry = support.measure_overload(
+        fn, "Aggregate support", Fake({}), Fake({}), _route, engine="pg"
+    )
     assert entry["outcome"] == "not_callable"
     assert entry["detail"] == "takes an internal argument, which no SQL expression can supply"
 
@@ -443,7 +541,9 @@ def test_an_overload_with_no_call_is_not_callable_for_that_reason():
 def test_what_the_catalog_db_answers_is_marked_so():
     sqls = [c.sql for c in support.calls(ABS, "Numeric")]
     want = {s: _ok("3") for s in sqls}
-    entry = support.measure_overload(ABS, "Numeric", Fake(want), Fake(want), lambda _s: "INTERCEPT")
+    entry = support.measure_overload(
+        ABS, "Numeric", Fake(want), Fake(want), lambda _s: "INTERCEPT", engine="pg"
+    )
     assert entry["served_by"] == "catalog"
 
 
@@ -454,7 +554,7 @@ def test_a_hung_statement_costs_its_overload_not_the_leg(monkeypatch):
 
     sqls = [c.sql for c in support.calls(ABS, "Numeric")]
     entry = support.measure_overload(
-        ABS, "Numeric", Fake({s: _ok("3") for s in sqls}), Hung(), _route
+        ABS, "Numeric", Fake({s: _ok("3") for s in sqls}), Hung(), _route, engine="pg"
     )
     assert entry["outcome"] == "error" and entry["detail"]["error"] == "no answer in 30s"
 
@@ -469,8 +569,8 @@ PID = Function("pg_backend_pid", "", volatility="s", rettype="integer")
 USER = Function("current_user", "", volatility="s", rettype="name")
 VERSION = Function("version", "", volatility="s", rettype="text")
 TIMEOFDAY = Function("timeofday", "", volatility="v", rettype="text")
-CURSORS = Function(
-    "pg_cursor", "OUT name text, OUT statement text", volatility="s", rettype="record"
+SETTINGS_ROWS = Function(
+    "pg_show_all_settings", "OUT name text, OUT setting text", volatility="s", rettype="record"
 )
 _V4 = "dfe9efb2-a1e6-472d-835e-a79e9f1d8463"
 _THEN = "2026-10-31 17:20:18.01903+00"
@@ -479,7 +579,6 @@ _THEN = "2026-10-31 17:20:18.01903+00"
 @pytest.mark.parametrize(
     ("fn", "oid", "pg", "provisa"),
     [
-        (NOW, 1184, _THEN, "2024-01-02 03:04:05+00"),
         (UUID, 2950, _V4, "00000000-0000-4000-8000-000000000000"),
         (RANDOM, 701, "0.8675929329186349", "1.2345e-05"),
         (RANDOM, 701, "0.5", "0"),
@@ -488,17 +587,18 @@ _THEN = "2026-10-31 17:20:18.01903+00"
         (VERSION, 25, "PostgreSQL 17.11 (Debian) on x86_64, 64-bit", "PostgreSQL 17.11 on Provisa"),
     ],
 )
-def test_an_answer_of_the_form_postgresql_answers_in_is_a_pass_form_checked(fn, oid, pg, provisa):
+def test_an_answer_of_the_form_postgresql_answers_in_is_a_pass_type_and_form_checked(
+    fn, oid, pg, provisa
+):
     entry = _both(fn, "System", _ok(pg, oid=oid), _ok(provisa, oid=oid))
     assert entry["outcome"] == "pass"
-    assert entry["form_checked"] and not entry["answers_checked"]
+    assert entry["type_and_form_checked"] and not entry["answers_checked"]
     assert entry["unchecked"]  # the value itself was still not compared
 
 
 @pytest.mark.parametrize(
     ("fn", "oid", "pg", "provisa"),
     [
-        (NOW, 1184, _THEN, "2026-10-31T17:20:18Z"),
         (UUID, 2950, _V4, "dfe9efb2-a1e6-172d-835e-a79e9f1d8463"),  # version 1
         (RANDOM, 701, "0.5", "1.5"),
         (RANDOM, 701, "0.5", "-0.5"),
@@ -537,6 +637,12 @@ def test_a_type_with_a_form_of_its_own_is_held_to_it(oid, good, bad):
     assert support.re.fullmatch(form, bad) is None
 
 
+def test_a_functions_own_form_holds_for_the_overload_answering_its_type_only():
+    assert support.value_form("random", 701, "0.5") == support.FUNCTION_FORMS["random"]
+    assert support.re.fullmatch(support.value_form("random", 23, "7"), "2")
+    assert support.re.fullmatch(support.value_form("random", 1700, "1.53"), "2.23")
+
+
 def test_a_string_with_no_form_of_its_own_takes_the_shape_of_postgresqls_answer():
     query = 'SELECT pg_catalog."current_query"() AS v'
     form = support.value_form("current_query", 25, query)
@@ -555,39 +661,42 @@ def test_a_record_is_held_to_its_number_of_fields():
     assert support.re.fullmatch(form, "(a,b,c,d,e)") is None
 
 
-def test_a_function_only_called_with_null_arguments_stays_called_only():
+def test_a_function_only_called_with_null_arguments_is_not_checked():
     fn = Function("pg_sleep", "double precision", argtypes=("double precision",), volatility="v")
     entry = _both(fn, "System", _ok("whatever", oid=25), _ok("no form at all", oid=25))
-    assert entry["outcome"] == "pass"
-    assert not entry["form_checked"] and not entry["answers_checked"]
+    assert entry["outcome"] == "not_checked"
+    assert not entry["type_and_form_checked"] and not entry["answers_checked"]
 
 
-def test_a_null_from_postgresql_leaves_no_form_to_check():
-    entry = _both(NOW, "Date", _ok(None, oid=1184), _ok("not a time", oid=1184))
-    assert entry["outcome"] == "pass" and not entry["form_checked"]
+def test_a_null_from_postgresql_leaves_no_form_to_check_and_holds_provisa_to_null():
+    entry = _both(UUID, "System", _ok(None, oid=2950), _ok(None, oid=2950))
+    assert entry["outcome"] == "not_checked" and not entry["type_and_form_checked"]
+    entry = _both(UUID, "System", _ok(None, oid=2950), _ok(_V4, oid=2950))
+    assert entry["outcome"] == "wrong_answer"
 
 
-def test_a_void_answer_has_no_form():
+def test_a_void_answer_has_no_form_and_is_tested_by_its_side_effect():
     fn = Function("pg_stat_clear_snapshot", "", volatility="v", rettype="void")
     entry = _both(fn, "System", _ok("", oid=2278), _ok("", oid=2278))
-    assert entry["outcome"] == "pass" and not entry["form_checked"]
+    assert not entry["type_and_form_checked"]
+    assert entry["outcome"] == "by_design" and entry["group"] == support.NOT_TESTABLE
 
 
 def test_null_where_postgresql_answers_a_value_is_a_wrong_answer():
-    entry = _both(NOW, "Date", _ok(_THEN, oid=1184), _ok(None, oid=1184))
+    entry = _both(UUID, "System", _ok(_V4, oid=2950), _ok(None, oid=2950))
     assert entry["outcome"] == "wrong_answer"
-    assert entry["detail"]["difference"] == f"None, PostgreSQL {_THEN!r}"
+    assert entry["detail"]["difference"] == f"None, PostgreSQL {_V4!r}"
 
 
 def test_the_rows_of_a_set_are_the_servers_own():
     want = {"ok": True, "fields": [2249], "rows": [("(a,b)",), ("(c,d)",)]}
     none = {"ok": True, "fields": [2249], "rows": []}
-    entry = _both(CURSORS, "System", want, none)
-    assert entry["outcome"] == "pass" and not entry["form_checked"]
+    entry = _both(SETTINGS_ROWS, "System", want, none)
+    assert entry["outcome"] == "not_checked" and not entry["type_and_form_checked"]
     other = {"ok": True, "fields": [2249], "rows": [("(x,y)",), ("(z,w)",), ("(p,q)",)]}
-    assert _both(CURSORS, "System", want, other)["form_checked"]
+    assert _both(SETTINGS_ROWS, "System", want, other)["type_and_form_checked"]
     short = {"ok": True, "fields": [2249], "rows": [("(x,y)",), ("(z)",)]}
-    assert _both(CURSORS, "System", want, short)["outcome"] == "wrong_answer"
+    assert _both(SETTINGS_ROWS, "System", want, short)["outcome"] == "wrong_answer"
 
 
 def test_a_different_type_is_a_wrong_answer_before_any_form():
@@ -616,15 +725,20 @@ _ABBREVIATION = {"UTC": "UTC", support.ZONE: "JST"}
 def test_timeofday_is_exact_on_a_session_off_utc():
     pg = Zoned(_ABBREVIATION.__getitem__)
     entry = support.measure_overload(
-        TIMEOFDAY, "Date", pg, Zoned(_ABBREVIATION.__getitem__), _route
+        TIMEOFDAY, "Date", pg, Zoned(_ABBREVIATION.__getitem__), _route, engine="pg"
     )
-    assert entry["outcome"] == "pass" and entry["form_checked"]
+    assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
     assert pg.zone == "UTC"
 
 
 def test_timeofday_writing_the_zone_name_is_a_wrong_answer():
     entry = support.measure_overload(
-        TIMEOFDAY, "Date", Zoned(_ABBREVIATION.__getitem__), Zoned(lambda zone: zone), _route
+        TIMEOFDAY,
+        "Date",
+        Zoned(_ABBREVIATION.__getitem__),
+        Zoned(lambda zone: zone),
+        _route,
+        engine="pg",
     )
     assert entry["outcome"] == "wrong_answer"
     assert support.ZONE in entry["detail"]["difference"]
@@ -632,17 +746,196 @@ def test_timeofday_writing_the_zone_name_is_a_wrong_answer():
 
 def test_timeofday_ignoring_the_sessions_zone_is_a_wrong_answer():
     entry = support.measure_overload(
-        TIMEOFDAY, "Date", Zoned(_ABBREVIATION.__getitem__), Zoned(lambda _zone: "UTC"), _route
+        TIMEOFDAY,
+        "Date",
+        Zoned(_ABBREVIATION.__getitem__),
+        Zoned(lambda _zone: "UTC"),
+        _route,
+        engine="pg",
     )
     assert entry["outcome"] == "wrong_answer"
+
+
+SHUFFLE = Function("array_shuffle", "anyarray", argtypes=("anyarray",), volatility="v")
+
+
+def test_a_volatile_function_that_acts_on_nothing_has_its_type_and_form_compared():
+    planned = support.calls(SHUFFLE, "Array")
+    assert [c.sql for c in planned[1:]] == [
+        f"""SELECT pg_catalog."array_shuffle"({a}::integer[]) AS v"""
+        for a in ("'{1,2,3}'", "'{}'", "'{4,5,6}'")
+    ]
+    assert all(c.form and not c.answers for c in planned[1:])
+    pg = {c.sql: _ok("{3,1,2}", oid=1007) for c in planned}
+    pg[planned[0].sql] = _ok(None, oid=1007)
+    got = {**pg, planned[1].sql: _ok("{2,3,1}", oid=1007)}
+    entry = support.measure_overload(SHUFFLE, "Array", Fake(pg), Fake(got), _route, engine="pg")
+    assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
+    got[planned[1].sql] = _ok("{2,3}", oid=1007)
+    entry = support.measure_overload(SHUFFLE, "Array", Fake(pg), Fake(got), _route, engine="pg")
+    assert entry["outcome"] == "wrong_answer"
+
+
+def test_a_clock_function_has_its_type_and_form_compared_never_its_value():
+    entry = _both(NOW, "Date", _ok(_THEN, oid=1184), _ok("2024-01-02 03:04:05+00", oid=1184))
+    assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
+    assert entry["unchecked"] == "answers from the clock"
+    entry = _both(NOW, "Date", _ok(_THEN, oid=1184), _ok("2026-10-31T17:20:18Z", oid=1184))
+    assert entry["outcome"] == "wrong_answer"
+
+
+# --- side effects -------------------------------------------------------------------------------
+
+
+class Effects:
+    """A server answering by statement, ``answers``, recording what it ran in ``ran``."""
+
+    def __init__(self, answers: dict[str, dict[str, Any]]) -> None:
+        self.answers = answers
+        self.ran: list[str] = []
+
+    def answer(self, sql: str) -> dict[str, Any]:
+        self.ran.append(sql)
+        return self.answers.get(sql, _ok("", oid=2278))
+
+
+SET_CONFIG = Function(
+    "set_config",
+    "text, text, boolean",
+    argtypes=("text", "text", "boolean"),
+    volatility="v",
+    rettype="text",
+)
+LOCK = Function("pg_advisory_lock", "bigint", argtypes=("bigint",), volatility="v", rettype="void")
+SLEEP = Function(
+    "pg_sleep", "double precision", argtypes=("double precision",), volatility="v", rettype="void"
+)
+STAT_RESET = Function("pg_stat_reset", "", volatility="v", rettype="void")
+
+
+@pytest.mark.parametrize(
+    ("fn", "acts"),
+    [
+        (SET_CONFIG, True),
+        (LOCK, True),
+        (STAT_RESET, True),
+        (Function("pg_try_advisory_lock", "bigint", argtypes=("bigint",), rettype="boolean"), True),
+        (Function("lo_unlink", "oid", argtypes=("oid",), rettype="integer"), True),
+        (
+            Function(
+                "fmgr_sql_validator", "oid", argtypes=("oid",), volatility="s", rettype="void"
+            ),
+            True,
+        ),
+        (RANDOM, False),
+        (SHUFFLE, False),
+        (ABS, False),
+    ],
+)
+def test_a_function_returning_void_or_acting_is_a_side_effect_function(fn, acts):
+    assert support.side_effect(fn) is acts
+
+
+def test_a_side_effect_is_read_back_through_the_same_client_and_compared():
+    effect = support.EFFECTS["set_config(text, text, boolean)"]
+    seen = {effect.observe: _ok("on", oid=25)}
+    pg, provisa = Effects(dict(seen)), Effects(dict(seen))
+    entry = support.measure_overload(SET_CONFIG, "System", pg, provisa, _route, engine="pg")
+    assert entry["outcome"] == "pass" and entry["side_effect_checked"]
+    assert not entry["answers_checked"] and not entry["type_and_form_checked"]
+    assert provisa.ran[-3:] == [effect.call, effect.observe, *effect.teardown]
+    wrong = Effects({effect.observe: _ok("", oid=25)})
+    entry = support.measure_overload(
+        SET_CONFIG, "System", Effects(dict(seen)), wrong, _route, engine="pg"
+    )
+    assert entry["outcome"] == "wrong_answer"
+    assert entry["detail"]["difference"].startswith(f"after it, {effect.observe}:")
+
+
+def test_a_lock_is_seen_in_pg_locks_and_released_whatever_the_check_found():
+    effect = support.EFFECTS["pg_advisory_lock(bigint)"]
+    held = _ok("ExclusiveLock", oid=25)
+    provisa = Effects({effect.observe: {"ok": False, "error": "ERROR:  boom"}})
+    entry = support.measure_overload(
+        LOCK, "System", Effects({effect.observe: held}), provisa, _route, engine="pg"
+    )
+    assert entry["outcome"] == "error"
+    assert entry["detail"] == {"statement": effect.observe, "error": "ERROR:  boom"}
+    assert provisa.ran[-1] == "SELECT pg_catalog.pg_advisory_unlock_all()"
+
+
+class Sleeper(Effects):
+    def __init__(self, seconds: float) -> None:
+        super().__init__({})
+        self.seconds = seconds
+
+    def answer(self, sql: str) -> dict[str, Any]:
+        if "pg_sleep(" in sql and "NULL" not in sql:
+            support.time.sleep(self.seconds)
+        return super().answer(sql)
+
+
+def test_a_sleep_takes_at_least_what_it_was_asked_for():
+    entry = support.measure_overload(
+        SLEEP, "System", Sleeper(support.SLEEP_S), Sleeper(support.SLEEP_S), _route, engine="pg"
+    )
+    assert entry["outcome"] == "pass" and entry["side_effect_checked"]
+    entry = support.measure_overload(
+        SLEEP, "System", Sleeper(support.SLEEP_S), Sleeper(0), _route, engine="pg"
+    )
+    assert entry["outcome"] == "wrong_answer"
+    assert "asked for 0.2s" in entry["detail"]["difference"]
+
+
+def test_a_side_effect_no_client_can_see_is_not_testable_by_design():
+    entry = support.measure_overload(
+        STAT_RESET, "System", Effects({}), Effects({}), _route, engine="pg"
+    )
+    assert entry["outcome"] == "by_design"
+    assert entry["group"] == support.NOT_TESTABLE and entry["requirement"] == "REQ-2167"
+
+
+def test_a_side_effect_function_off_the_postgresql_engine_is_skipped_by_design_uncalled_for_effect():
+    provisa = Effects({})
+    entry = support.measure_overload(
+        SET_CONFIG, "System", Effects({}), provisa, _route, engine="duckdb"
+    )
+    assert entry["outcome"] == "by_design" and entry["group"] == support.SIDE_EFFECT_GROUP
+    assert support.EFFECTS["set_config(text, text, boolean)"].call not in provisa.ran
+
+
+def test_a_side_effect_postgresql_does_not_produce_is_not_checked():
+    effect = support.EFFECTS["set_config(text, text, boolean)"]
+    pg = Effects({effect.call: {"ok": False, "error": "ERROR:  permission denied"}})
+    entry = support.measure_overload(SET_CONFIG, "System", pg, Effects({}), _route, engine="pg")
+    assert entry["outcome"] == "not_checked"
+    assert entry["unchecked"].startswith("PostgreSQL did not produce the side effect")
+
+
+def test_a_refusal_a_decision_makes_is_skipped_by_design_under_it():
+    fn = Function("nextval", "regclass", argtypes=("regclass",), volatility="v", rettype="bigint")
+    refusal = {"ok": False, "error": "ERROR:  nextval() has no form on duckdb"}
+    sql = support.calls(fn, "System")[0].sql
+    entry = support.measure_overload(
+        fn, "System", Fake({sql: _ok(None, oid=20)}), Fake({sql: refusal}), _route, engine="duckdb"
+    )
+    assert entry["outcome"] == "by_design" and entry["group"] == support.SEQUENCE_GROUP
+
+
+def test_every_effect_is_of_a_side_effect_function_and_every_lock_is_undone():
+    for key, effect in support.EFFECTS.items():
+        assert "(" in key and effect.call.startswith("SELECT ")
+        if "advisory_lock" in effect.call and "xact" not in effect.call:
+            assert effect.teardown == ("SELECT pg_catalog.pg_advisory_unlock_all()",)
 
 
 # --- the merged data file ------------------------------------------------------------------------
 
 
 def _entry(
-    name: str, outcome: str, *, checked: bool = True, form: bool = False, family: str = "Numeric"
+    name: str, outcome: str, *, checked: bool = True, prop: bool = False, family: str = "Numeric"
 ) -> dict:
+    """An overload's measurement: a pass is answers checked, or property checked with ``prop``."""
     return {
         "function": name,
         "overload": "integer",
@@ -650,8 +943,8 @@ def _entry(
         "kind": "f",
         "volatility": "i",
         "outcome": outcome,
-        "answers_checked": checked,
-        "form_checked": form,
+        "answers_checked": checked and not prop,
+        "type_and_form_checked": prop,
         "calls": 4,
         "served_by": "engine",
     }
@@ -674,59 +967,72 @@ def test_the_guaranteed_list_is_what_passes_on_every_engine():
                 "a",
                 _entry("abs", "pass"),
                 _entry("sqrt", "pass"),
-                _entry("exp", "pass", checked=False),
+                _entry("exp", "not_checked", checked=False),
             ),
             "b": _report(
                 "b",
                 _entry("abs", "pass"),
                 _entry("sqrt", "wrong_answer"),
-                _entry("exp", "pass", checked=False),
+                _entry("exp", "not_checked", checked=False),
             ),
         }
     )
     assert doc["guaranteed"]["answers_checked"] == ["abs(integer)"]
-    assert doc["guaranteed"]["form_checked"] == []
-    assert doc["guaranteed"]["only_called"] == ["exp(integer)"]
+    assert doc["guaranteed"]["type_and_form_checked"] == []
+    assert set(doc["guaranteed"]) == {
+        "answers_checked",
+        "type_and_form_checked",
+        "side_effect_checked",
+        "functions",
+    }
     assert doc["guaranteed"]["functions"] == ["abs"]
     by = {f["function"]: f for f in doc["functions"]}
     assert by["sqrt"]["outcomes"]["b"]["outcome"] == "wrong_answer"
     assert by["abs"]["family"] == "Numeric"
 
 
-def test_the_guaranteed_list_is_answers_checked_and_form_checked_on_every_engine():
-    now = _entry("now", "pass", checked=False, form=True)
+def test_the_guaranteed_list_is_answers_checked_and_type_and_form_checked_on_every_engine():
+    now = _entry("now", "pass", prop=True)
+    exp = {**_entry("exp", "not_checked", checked=False), "unchecked": "volatile"}
     doc = support.merged(
         {
-            "a": _report("a", _entry("abs", "pass"), now, _entry("exp", "pass", checked=False)),
-            "b": _report("b", _entry("abs", "pass"), now, _entry("exp", "pass", checked=False)),
+            "a": _report("a", _entry("abs", "pass"), now, exp),
+            "b": _report("b", _entry("abs", "pass"), now, exp),
         }
     )
     assert doc["guaranteed"]["answers_checked"] == ["abs(integer)"]
-    assert doc["guaranteed"]["form_checked"] == ["now(integer)"]
-    assert doc["guaranteed"]["only_called"] == ["exp(integer)"]
+    assert doc["guaranteed"]["type_and_form_checked"] == ["now(integer)"]
     assert doc["guaranteed"]["functions"] == ["abs", "now"]
-    assert doc["counts"]["a"]["pass_form_checked"] == 1
+    assert doc["counts"]["a"]["pass_type_and_form_checked"] == 1
+    assert doc["counts"]["a"]["not_checked"] == 1
+    assert doc["not_checked_reasons"]["a"] == {"volatile": 1}
     text = support.merged_markdown(doc)
-    assert "| a | 3 | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 |" in text
-    assert "| Numeric | 3 | 1 + 1 + 1 of 3 | 1 + 1 + 1 of 3 | 3 |" in text
-    assert "**Guaranteed list:** 1 overloads with answers compared and 1 form checked" in text
-    assert "1 more only called" in text
+    assert "| a | 3 | 2 | 0 | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert (
+        "| Numeric | 3 | 1 + 1 + 0, 1 not checked, of 3 | 1 + 1 + 0, 1 not checked, of 3 | 2 |"
+        in text
+    )
+    assert (
+        "**Guaranteed list:** 1 overloads with answers compared, 1 with type and form compared"
+        in text
+    )
+    assert "| volatile | 1 |" in text
 
 
-def test_an_overload_form_checked_on_one_engine_and_only_called_on_another_is_only_called():
+def test_an_overload_type_and_form_checked_on_one_engine_and_not_checked_on_another_is_off_the_list():
     doc = support.merged(
         {
-            "a": _report("a", _entry("now", "pass", checked=False, form=True)),
-            "b": _report("b", _entry("now", "pass", checked=False)),
+            "a": _report("a", _entry("now", "pass", prop=True)),
+            "b": _report("b", _entry("now", "not_checked", checked=False)),
         }
     )
-    assert doc["guaranteed"]["form_checked"] == []
-    assert doc["guaranteed"]["only_called"] == ["now(integer)"]
+    assert doc["guaranteed"]["type_and_form_checked"] == []
     assert doc["guaranteed"]["functions"] == []
+    assert doc["functions"][0]["outcomes"]["b"]["result"] == "not_checked"
 
 
-def test_one_only_called_overload_keeps_its_function_off_the_list():
-    other = {**_entry("abs", "pass", checked=False), "overload": "bigint"}
+def test_one_not_checked_overload_keeps_its_function_off_the_list():
+    other = {**_entry("abs", "not_checked", checked=False), "overload": "bigint"}
     doc = support.merged({"e": _report("e", _entry("abs", "pass"), other)})
     assert doc["guaranteed"]["functions"] == []
 
@@ -740,7 +1046,11 @@ def test_an_engine_with_no_result_guarantees_nothing():
 
 
 def test_a_not_callable_overload_does_not_keep_a_function_off_the_list():
-    a = {**_entry("abs", "not_callable", checked=False), "overload": "internal"}
+    a = {
+        **_entry("abs", "not_callable", checked=False),
+        "overload": "internal",
+        "detail": support.function_probe.NO_CALL,
+    }
     doc = support.merged({"e": _report("e", _entry("abs", "pass"), a)})
     assert doc["guaranteed"]["functions"] == ["abs"]
 
@@ -752,13 +1062,18 @@ def test_one_failing_overload_keeps_its_function_off_the_list():
     assert doc["guaranteed"]["functions"] == []
 
 
-def test_counts_split_a_pass_by_what_was_checked():
+def test_counts_split_a_pass_by_what_was_checked_and_keep_not_checked_apart():
     c = support.counts(
-        [_entry("a", "pass"), _entry("b", "pass", checked=False), _entry("c", "error")]
+        [
+            _entry("a", "pass"),
+            _entry("b", "pass", prop=True),
+            _entry("c", "not_checked", checked=False),
+            _entry("d", "error"),
+        ]
     )
-    assert (c["pass"], c["pass_answers_checked"], c["pass_only_called"]) == (2, 1, 1)
-    assert c["pass_form_checked"] == 0
-    assert (c["error"], c["total"]) == (1, 3)
+    assert (c["pass"], c["pass_answers_checked"], c["pass_type_and_form_checked"]) == (2, 1, 1)
+    assert (c["not_checked"], c["error"], c["total"]) == (1, 1, 4)
+    assert "pass_only_called" not in c and "pass_form_checked" not in c
 
 
 def test_the_summary_gives_every_engine_and_every_family():
@@ -769,10 +1084,16 @@ def test_the_summary_gives_every_engine_and_every_family():
         }
     )
     text = support.merged_markdown(doc)
-    assert "| a | 2 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
-    assert "| b | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
-    assert "| Numeric | 1 | 1 + 0 + 0 of 1 | 1 + 0 + 0 of 1 | 1 |" in text
-    assert "| String | 1 | 0 + 0 + 0 of 1 | 1 + 0 + 0 of 1 | 0 |" in text
+    assert "| a | 2 | 1 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
+    assert "| b | 2 | 2 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert (
+        "| Numeric | 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 |"
+        in text
+    )
+    assert (
+        "| String | 1 | 0 + 0 + 0, 0 not checked, of 1 | 1 + 0 + 0, 0 not checked, of 1 | 0 |"
+        in text
+    )
     assert "1 overloads with answers compared" in text
 
 
@@ -1017,7 +1338,7 @@ def test_a_wrong_answer_on_one_call_outranks_a_refusal_on_another():
         **{sql: _ok("9") for sql in calls_[1:]},
     }
     want = {sql: _ok("3") for sql in calls_}
-    entry = support.measure_overload(ABS, "Numeric", Fake(want), Fake(got), _route)
+    entry = support.measure_overload(ABS, "Numeric", Fake(want), Fake(got), _route, engine="pg")
     assert entry["outcome"] == "wrong_answer"
 
 
@@ -1081,7 +1402,11 @@ def test_what_no_engine_serves_is_counted_by_family():
                 engine,
                 _entry("abs", "pass" if engine == "a" else "refused"),
                 _entry(*both[engine]),
-                {**_entry("lo_in", "not_callable"), "family": "Other"},
+                {
+                    **_entry("lo_in", "not_callable"),
+                    "family": "Other",
+                    "detail": support.function_probe.NO_CALL,
+                },
             )
             for engine in ("a", "b")
         }
@@ -1118,21 +1443,56 @@ def test_the_rules_are_the_ones_the_requirement_and_the_brief_name():
     ]
 
 
-def test_the_report_has_no_overall_failed_count_and_keeps_a_wrong_answer_in_view():
+def test_the_report_fails_per_engine_never_overall_and_keeps_a_wrong_answer_in_view():
     doc = _results(("pg", "wrong_answer", []), ("duckdb", "refused", []))
-    for text in (
-        report.pgwire_block(doc),
-        report.overview_block(doc),
-        support.merged_markdown(doc),
-    ):
-        assert "failed" not in text.lower()
+    for text in (report.pgwire_block(doc), report.overview_block(doc)):
+        assert "| Engine | Passed | Skipped by design | Failed |" in text
+        assert "| Postgres | 0 | 0 | 1 |" in text and "| DuckDB | 0 | 0 | 1 |" in text
+        assert "| Total" not in text and "| All" not in text
     assert "| `abs(integer)` | x |" in report.pgwire_block(doc)
 
 
-def test_a_cell_says_what_was_checked_of_an_exact_result():
+@pytest.mark.parametrize(
+    ("entry", "verdict"),
+    [
+        ({"outcome": "pass"}, "passed"),
+        ({"outcome": "by_design"}, "skipped_by_design"),
+        (
+            {"outcome": "not_callable", "detail": support.function_probe.NO_CALL},
+            "skipped_by_design",
+        ),
+        (
+            {
+                "outcome": "not_callable",
+                "detail": "PostgreSQL refuses the call: ERROR:  must be called as trigger",
+            },
+            "skipped_by_design",
+        ),
+        (
+            {
+                "outcome": "not_callable",
+                "detail": "PostgreSQL refuses the call: ERROR:  recovery is not in progress",
+            },
+            "failed",
+        ),
+        ({"outcome": "not_checked"}, "failed"),
+        ({"outcome": "refused"}, "failed"),
+        ({"outcome": "wrong_answer"}, "failed"),
+        ({"outcome": "error"}, "failed"),
+        ({"outcome": "not_reached"}, "failed"),
+    ],
+)
+def test_every_overload_is_passed_skipped_by_design_or_failed(entry, verdict):
+    assert report.verdict(entry) == verdict
+
+
+def test_a_cell_says_what_was_checked_of_a_pass_and_a_call_alone_is_none():
     assert report.cell({"outcome": "pass", "check": "answers"}) == "exact"
-    assert report.cell({"outcome": "pass", "check": "form"}) == "exact (form only)"
-    assert report.cell({"outcome": "pass", "check": "call"}) == "exact (call only)"
+    assert (
+        report.cell({"outcome": "pass", "check": "type_and_form"}) == "exact (type and form only)"
+    )
+    assert report.cell({"outcome": "not_checked"}) == "not checked"
+    assert report.result_of("not_checked") == report.NOT_CHECKED
     assert report.cell({"outcome": "error"}) == "differs (error)"
     assert report.cell({"outcome": "not_callable"}) == "n/a"
 
@@ -1146,8 +1506,9 @@ def test_both_pages_are_filled_from_the_results_between_their_markers(tmp_path):
     for name in ("pgwire.md", "overview.md"):
         text = (tmp_path / name).read_text()
         assert "stale text" not in text and "After." in text
-        assert "| Postgres | 1 | 0 | 0 | 0 | 0 |" in text
-        assert "| DuckDB | 0 | 0 | 1 | 0 | 0 |" in text
+        assert "| Postgres | 1 | 0 | 0 |" in text and "| DuckDB | 0 | 0 | 1 |" in text
+        assert "| Postgres | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+        assert "| DuckDB | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |" in text
 
 
 def test_a_page_without_markers_is_refused():
@@ -1193,7 +1554,7 @@ class Served(Fake):
 def _measured(column: dict[str, Any]) -> dict[str, Any]:
     pg = Served(_ok("cat", oid=3614), _ok("cat", oid=3614))
     provisa = Served(_ok("cat", oid=3614), column)
-    return support.measure_overload(TO_TSVECTOR, "Text search", pg, provisa, _route)
+    return support.measure_overload(TO_TSVECTOR, "Text search", pg, provisa, _route, engine="pg")
 
 
 def _doc(entry: dict[str, Any]) -> dict[str, Any]:
@@ -1307,7 +1668,7 @@ def test_a_window_function_reads_its_column_over_a_stated_order():
     [
         Function("pi", "", volatility="i"),
         Function("setval", "text", argtypes=("text",), volatility="v"),
-        Function("int4in", "cstring", argtypes=("cstring",), volatility="i"),
+        Function("gtsvectorout", "gtsvector", argtypes=("gtsvector",), volatility="i"),
     ],
 )
 def test_an_overload_with_no_sample_value_has_no_column_call(fn):
@@ -1354,7 +1715,7 @@ def test_any_column_call_that_fails_is_literal_only(column, outcome):
 def test_a_column_rule_is_the_columns_own_and_leaves_the_result_exact():
     pg = Served(_ok("cat", oid=1700), _ok("2.50", oid=1700))
     provisa = Served(_ok("cat", oid=1700), _ok("2.5", oid=1700))
-    entry = support.measure_overload(TO_TSVECTOR, "Text search", pg, provisa, _route)
+    entry = support.measure_overload(TO_TSVECTOR, "Text search", pg, provisa, _route, engine="pg")
     assert entry["rules"] == []
     assert entry["column"] == {"outcome": "pass", "rules": [report.NUMBER_VALUE]}
     assert _doc(entry)["by_engine"]["duckdb"]["exact"] == 1
@@ -1363,7 +1724,7 @@ def test_a_column_rule_is_the_columns_own_and_leaves_the_result_exact():
 def test_a_failing_overload_is_on_neither_list_whatever_its_column_does():
     pg = Served(_ok("cat", oid=3614), _ok("cat", oid=3614))
     provisa = Served({"ok": False, "error": REFUSED_ON_COLUMN}, _ok("cat", oid=3614))
-    entry = support.measure_overload(TO_TSVECTOR, "Text search", pg, provisa, _route)
+    entry = support.measure_overload(TO_TSVECTOR, "Text search", pg, provisa, _route, engine="pg")
     assert entry["outcome"] == "refused"
     engine = _doc(entry)["by_engine"]["duckdb"]
     assert engine["refused_by_name"] == 1
@@ -1393,8 +1754,13 @@ def test_a_leg_whose_model_lacks_the_table_stops_rather_than_lists_every_overloa
 
 def test_the_results_a_floor_reads_keep_their_keys():
     assert report.RESULT_KEYS == (
+        "passed",
+        "skipped_by_design",
+        "failed",
         "exact",
         "equivalent",
+        "not_checked",
+        "by_design",
         "refused_by_name",
         "differs",
         "differs_wrong_answer",
@@ -1473,3 +1839,227 @@ def test_a_leg_seeds_the_column_table_and_gives_it_to_the_instance_after_the_eng
     assert "seed-columns" in seed and '"$RUNNER_TEMP/function-columns.yaml"' in seed
     instance = steps[names.index("Start the Provisa instance")]["with"]
     assert instance["extra-tables"] == "${{ runner.temp }}/function-columns.yaml"
+
+
+# --- real values for what cannot be compared by value (REQ-2167, only compared answers pass) ---
+
+
+LO_GET = Function("lo_get", "oid", argtypes=("oid",), volatility="v", rettype="bytea")
+READ_FILE = Function("pg_read_file", "text", argtypes=("text",), volatility="v", rettype="text")
+AGE_XID = Function("age", "xid", argtypes=("xid",), volatility="s", rettype="integer")
+DB_COMMITS = Function(
+    "pg_stat_get_db_xact_commit", "oid", argtypes=("oid",), volatility="s", rettype="bigint"
+)
+BACKEND_START = Function(
+    "pg_stat_get_backend_start",
+    "integer",
+    argtypes=("integer",),
+    volatility="s",
+    rettype="timestamp with time zone",
+)
+
+
+def _per_call(fn: Function, answers: dict[int, dict[str, Any]], other: dict[str, Any]) -> Fake:
+    """A server answering ``fn``'s call ``i`` with ``answers[i]``, and every other with ``other``."""
+    planned = [c.sql for c in support.calls(fn, "System")]
+    return Fake({sql: answers.get(i, other) for i, sql in enumerate(planned)})
+
+
+def test_a_volatile_function_that_reads_an_object_is_given_one_and_held_to_its_form():
+    planned = support.calls(LO_GET, "Large object")
+    assert [c.sql for c in planned[1:]] == [
+        f'SELECT pg_catalog."lo_get"({support.FIXTURE_LARGE_OBJECT}::oid) AS v'
+    ] * support.VALUE_ROWS
+    assert all(c.form and not c.answers for c in planned[1:])
+    files = [c.sql for c in support.calls(READ_FILE, "System")[1:]]
+    assert files[0] == """SELECT pg_catalog."pg_read_file"('PG_VERSION'::text) AS v"""
+
+
+def test_a_read_answering_the_form_postgresql_answers_passes_type_and_form_checked():
+    pg = _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("17\n", oid=25))
+    entry = support.measure_overload(
+        READ_FILE,
+        "System",
+        pg,
+        _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("18\n", oid=25)),
+        _route,
+        engine="pg",
+    )
+    assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
+    assert entry["unchecked"] == "volatile"
+    other = _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("no such thing", oid=25))
+    entry = support.measure_overload(READ_FILE, "System", pg, other, _route, engine="pg")
+    assert entry["outcome"] == "wrong_answer"
+
+
+def test_a_statistic_of_a_database_or_a_backend_is_asked_of_the_sessions_own():
+    commits = support.calls(DB_COMMITS, "System")
+    assert commits[0].sql == call(DB_COMMITS) and not commits[0].form
+    assert [c.sql for c in commits[1:]] == [
+        f'SELECT pg_catalog."pg_stat_get_db_xact_commit"({oid}) AS v'
+        for oid in support._OBJECTS["database"][1]
+    ]
+    assert all(c.form and not c.values for c in commits[1:])
+    started = support.calls(BACKEND_START, "System")[1]
+    assert "pg_catalog.pg_stat_get_backend_idset()" in started.sql
+    assert "pg_catalog.pg_backend_pid()" in started.sql
+
+
+def test_a_volatile_function_off_the_list_still_gets_no_value_whatever_its_prefix():
+    reset = Function("pg_stat_get_db_reset", "oid", argtypes=("oid",), volatility="v")
+    assert support.form_calls(reset) == []
+
+
+def test_a_value_of_the_servers_own_is_resolved_from_postgresql_before_it_is_given(monkeypatch):
+    monkeypatch.setattr(support, "FIXTURE", {})
+    assert support.form_calls(AGE_XID) == []
+    pg = Fake(
+        {
+            support.FIXTURE_QUERIES["xid"]: _ok("779", oid=28),
+            support.FIXTURE_QUERIES["multixact"]: _ok(None, oid=28),
+        }
+    )
+    resolved = support.resolve_fixture(pg)
+    assert resolved == {"xid": "779"}
+    monkeypatch.setattr(support, "FIXTURE", resolved)
+    assert [c.sql for c in support.form_calls(AGE_XID)] == [
+        """SELECT pg_catalog."age"('779'::xid) AS v"""
+    ] * support.VALUE_ROWS
+    members = Function("pg_get_multixact_members", "xid", argtypes=("xid",), volatility="v")
+    assert support.form_calls(members) == []
+
+
+@pytest.mark.parametrize(
+    ("fn", "reads"),
+    [
+        (
+            Function(
+                "pg_node_tree_out", "pg_node_tree", argtypes=("pg_node_tree",), volatility="i"
+            ),
+            "pg_catalog.pg_attrdef",
+        ),
+        (
+            Function(
+                "pg_ndistinct_out", "pg_ndistinct", argtypes=("pg_ndistinct",), volatility="i"
+            ),
+            "d.stxdndistinct FROM pg_catalog.pg_statistic_ext_data",
+        ),
+        (
+            Function("pg_mcv_list_send", "pg_mcv_list", argtypes=("pg_mcv_list",), volatility="s"),
+            "d.stxdmcv FROM pg_catalog.pg_statistic_ext_data",
+        ),
+    ],
+)
+def test_a_type_postgresql_takes_no_literal_of_is_read_from_its_catalog_and_compared(fn, reads):
+    assert support.unchecked(fn, "Type operators") is None
+    valued = support.value_calls(fn, "Type operators")
+    assert len(valued) == support.VALUE_ROWS and all(c.answers for c in valued)
+    assert reads in valued[0].sql
+
+
+def test_what_the_catalog_values_read_is_what_the_fixture_makes():
+    made = " ".join(support.FIXTURE_SQL)
+    for name in (*support.STATISTICS, support.STATISTICS_TABLE, support.PARTITIONED_TABLE):
+        assert f"{catalog.FIXTURE_SCHEMA}.{name} " in made
+    assert f"{support.PARTITIONED_TABLE}_0" in made
+    trees = support.DERIVED_SAMPLES["pg_node_tree"]
+    assert f"'{support.STATISTICS_TABLE}'" in trees[0]
+    assert f"'{support.PARTITIONED_TABLE}_0'" in trees[1]
+    assert f"lo_from_bytea({support.FIXTURE_LARGE_OBJECT}" in made
+    assert f"'{support.REPLICATION_SLOT}'" in made
+    assert f"CREATE SERVER {support.FOREIGN_SERVER}" in made
+
+
+def test_a_foreign_data_wrapper_or_server_privilege_asks_of_the_fixtures_own():
+    fdw = Function(
+        "has_foreign_data_wrapper_privilege",
+        "text, text",
+        argtypes=("text", "text"),
+        volatility="s",
+    )
+    assert [c.sql for c in support.value_calls(fdw, "System")][0] == (
+        f"""SELECT pg_catalog."has_foreign_data_wrapper_privilege"("""
+        f"""'{support.FOREIGN_DATA_WRAPPER}'::text, 'USAGE'::text) AS v"""
+    )
+    server = Function(
+        "has_server_privilege", "name, oid, text", argtypes=("name", "oid", "text"), volatility="s"
+    )
+    sql = support.value_calls(server, "System")[0].sql
+    assert f"srvname = '{support.FOREIGN_SERVER}'" in sql and "'pg_monitor'::name" in sql
+
+
+def test_a_record_of_no_declared_type_is_called_with_a_column_definition_list():
+    fn = Function("json_to_record", "json", argtypes=("json",), volatility="s", rettype="record")
+    valued = support.value_calls(fn, "JSON")
+    assert [c.sql for c in valued] == list(support.VALUE_STATEMENTS["json_to_record(json)"])
+    assert all(c.answers for c in valued)
+    assert valued[0].sql.endswith("AS t(a integer, b text)")
+
+
+def test_a_cursor_is_opened_in_a_transaction_around_the_call_and_rolled_back():
+    fn = Function(
+        "cursor_to_xmlschema",
+        "cursor refcursor, nulls boolean, tableforest boolean, targetns text",
+        argtypes=("refcursor", "boolean", "boolean", "text"),
+        volatility="v",
+        rettype="xml",
+    )
+    [first, *_] = support.form_calls(fn)
+    assert first.setup == support._CURSOR_SETUP and first.teardown == ("ROLLBACK",)
+    assert f"'{support._CURSOR}'::refcursor" in first.sql
+    server = Effects({s: _ok("x", oid=142) for s in (*first.setup, first.sql, "ROLLBACK")})
+    assert support._answer(server, first)["rows"] == [("x",)]
+    assert server.ran == [*first.setup, first.sql, "ROLLBACK"]
+    no_cursors = {"ok": False, "error": "ERROR:  DECLARE CURSOR is not supported"}
+    refused = Effects({first.setup[1]: no_cursors})
+    assert not support._answer(refused, first)["ok"]
+    assert refused.ran == [*first.setup, "ROLLBACK"]
+
+
+def test_real_values_postgresql_refuses_or_answers_null_to_say_so_and_stay_not_checked():
+    null_call = {0: _ok(None, oid=17)}
+    refusing = _per_call(LO_GET, null_call, {"ok": False, "error": "ERROR:  no such large object"})
+    entry = support.measure_overload(
+        LO_GET, "Large object", refusing, refusing, _route, engine="pg"
+    )
+    assert entry["outcome"] == "not_checked"
+    assert entry["unchecked"] == f"volatile; {support._FORM_REFUSED}"
+    nulls = _per_call(LO_GET, null_call, _ok(None, oid=17))
+    entry = support.measure_overload(LO_GET, "Large object", nulls, nulls, _route, engine="pg")
+    assert entry["unchecked"] == f"volatile; {support._FORMLESS}"
+
+
+def test_the_fixture_makes_a_multixact_of_two_share_locks_held_at_once(monkeypatch):
+    ran: list[tuple[int, str]] = []
+
+    class Conn:
+        def __init__(self, number: int) -> None:
+            self.number = number
+
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *_: Any) -> None:
+            return None
+
+        def execute(self, sql: bytes) -> None:
+            ran.append((self.number, sql.decode()))
+
+        def commit(self) -> None:
+            ran.append((self.number, "COMMIT"))
+
+    made = iter(range(3))
+    monkeypatch.setattr(support.psycopg, "connect", lambda *_a, **_k: Conn(next(made)))
+    support.seed_fixture("dsn")
+    assert [sql for n, sql in ran if n == 0] == list(support.FIXTURE_SQL)
+    lock = f"SELECT id FROM conformance.{support.MULTIXACT_TABLE} FOR SHARE"
+    assert ran[len(support.FIXTURE_SQL) :] == [(1, lock), (2, lock), (1, "COMMIT"), (2, "COMMIT")]
+
+
+def test_seeding_the_column_table_also_seeds_the_fixture(monkeypatch, tmp_path):
+    seeded: list[str] = []
+    monkeypatch.setattr(support, "seed_columns", lambda dsn, _out: seeded.append(f"columns {dsn}"))
+    monkeypatch.setattr(support, "seed_fixture", lambda dsn: seeded.append(f"fixture {dsn}"))
+    out = str(tmp_path / "t.yaml")
+    assert support.main(["function_support.py", "seed-columns", "--pg", "dsn", "--out", out]) == 0
+    assert seeded == ["columns dsn", "fixture dsn"]

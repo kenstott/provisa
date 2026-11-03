@@ -177,7 +177,8 @@ def _read_type(t: pa.DataType) -> pa.DataType:
 
 def _nested_temporal(t: pa.DataType) -> _Fix:
     """A nested date or timestamp read from its stored integer, so an infinite one is the IR
-    infinity rather than a value Python cannot hold."""
+    infinity rather than a value Python cannot hold, and one in a zone is in that zone as a
+    top-level one is (ir_arrow.column_values: zoneinfo, never pytz)."""
     if pa.types.is_date32(t):
         end, infinite = _DATE_INFINITY, infinite_date
     else:
@@ -192,6 +193,8 @@ def _nested_temporal(t: pa.DataType) -> _Fix:
             return infinite(1)
         if stored == -end:
             return infinite(-1)
+        if pa.types.is_timestamp(t) and t.tz is not None:
+            return column_values(pa.array([stored], pa.int64()).cast(t))[0]
         return (
             pa.scalar(stored, pa.int64() if not pa.types.is_date32(t) else pa.int32())
             .cast(t)

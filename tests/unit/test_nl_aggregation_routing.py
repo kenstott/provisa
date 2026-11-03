@@ -608,6 +608,7 @@ class TestExecutorRouting:
                 nested_in=None,
                 cardinality="one-to-many",
                 is_agg=True,
+                json=True,
             ),
         ]
         cq.has_nodes = True
@@ -661,6 +662,7 @@ class TestExecutorRouting:
                 nested_in=None,
                 cardinality="one-to-many",
                 is_agg=True,
+                json=True,
             ),
         ]
         cq.has_nodes = True

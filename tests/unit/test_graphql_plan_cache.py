@@ -30,14 +30,18 @@ from provisa.api.data.graphql_plan import GraphQLPlan, PlanRequest
 from provisa.pgwire import governed_plan
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.compiler.directives import QueryDirectives
-from provisa.compiler.sql_types import CompiledQuery
+from provisa.compiler.sql_types import ColumnRef, CompiledQuery
 from tests.role_state import RoleState
 
 
 def _cq(
     sql: str = 'SELECT "order_id" FROM "sales"."orders"', sources=("sales-pg",)
 ) -> CompiledQuery:
-    return CompiledQuery(sql=sql, params=[1], root_field="orders", columns=[], sources=set(sources))
+    # The one column the statement selects, as a compile declares each (orderId over order_id).
+    columns = [ColumnRef(alias=None, column="order_id", field_name="orderId", nested_in=None)]
+    return CompiledQuery(
+        sql=sql, params=[1], root_field="orders", columns=columns, sources=set(sources)
+    )
 
 
 _ROLE = {"id": "analyst"}
