@@ -100,13 +100,17 @@ async def source_offer(state: Any, source_id: str) -> tuple[SchemaOffer, dict] |
 
 
 def offered_tables(offer: SchemaOffer, reg: dict) -> list[dict]:
-    """Every table the source offers, each as ``{name, description, connection}`` under the
-    name it registers with; ``connection``: its rows sit under a Relay connection."""
+    """Every table the source offers, each as ``{name, description, connection,
+    required_parameters}`` under the name it registers with; ``connection``: its rows sit under a
+    Relay connection; ``required_parameters``: the arguments a read of it must give (REQ-1986)."""
+    from provisa.core.parameters import required_parameters
+
     return [
         {
             "name": t["sql_name"],
             "description": t.get("description"),
             "connection": bool(t.get("rows_path")),
+            "required_parameters": required_parameters(parameter_columns(t)),
         }
         for t in available_tables(offer, reg["namespace"])
     ]
@@ -161,7 +165,15 @@ def _column_models(table: dict) -> "list[Column]":
         )
         for c in table["columns"]
     ]
-    columns += [
+    return columns + parameter_columns(table)
+
+
+def parameter_columns(table: dict) -> "list[Column]":
+    """A mapped table's native-filter columns, one per argument of its root field; a table spec
+    without its columns has them too."""
+    from provisa.core.models import Column
+
+    return [
         Column(
             name=f"_nf_{apply_sql_name(a['name'])}",
             visible_to=[],
@@ -172,7 +184,6 @@ def _column_models(table: dict) -> "list[Column]":
         )
         for a, required in arguments(table)
     ]
-    return columns
 
 
 def arguments(table: dict) -> list[tuple[dict, bool]]:

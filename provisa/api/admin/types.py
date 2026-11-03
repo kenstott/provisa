@@ -801,6 +801,9 @@ class AvailableTableType:  # REQ-533
     paging_kind: str | None = None
     pagination: PagingType | None = None
     paging_ceiling_rows: int | None = None  # graphql_remote.max_rows, for a connection table
+    # REQ-1986: the parameters a read of it must give (path parameters, required arguments), by
+    # the name a caller gives each; the picker lists a table with any apart, as a lookup.
+    required_parameters: list[str] = strawberry.field(default_factory=list)
 
 
 @strawberry.type

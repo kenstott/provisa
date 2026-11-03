@@ -780,6 +780,7 @@ query AvailableTables($sourceId: String!, $schemaName: String!) {
       rowsField
     }
     pagingCeilingRows
+    requiredParameters
   }
 }
 

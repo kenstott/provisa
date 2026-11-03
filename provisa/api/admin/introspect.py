@@ -609,6 +609,25 @@ def _openapi_is_table(query) -> bool:
     return query.response_schema is not None or query.columns_declared
 
 
+def openapi_parameter_columns(query) -> list[dict]:  # REQ-1986
+    """An OpenAPI operation's native-filter columns: one per path parameter, which the
+    operation always requires, then one per query parameter, required where the spec says."""
+    from provisa.openapi.register import _openapi_to_provisa_type
+
+    return [
+        {
+            "name": f"_nf_{p['name']}",
+            # A parameter's type is the spec's (array, object); a column's is one the engine
+            # has, as the response's columns are typed.
+            "type": _openapi_to_provisa_type(p.get("type")),
+            "native_filter_type": kind,
+            "native_filter_required": True if kind == "path_param" else p["required"],
+        }
+        for kind, params in (("path_param", query.path_params), ("query_param", query.query_params))
+        for p in params
+    ]
+
+
 def _unwrap_gql_type(type_node: dict) -> dict:
     """Unwrap NON_NULL wrappers to get the inner type node."""
     while type_node and type_node.get("kind") == "NON_NULL":
@@ -639,6 +658,7 @@ async def _native_tables_openapi(  # REQ-314, REQ-316
     queries, _ = parse_spec(spec_info["spec"])
     from provisa.api.admin._table_paging import paging_type
     from provisa.core.paging import ENDPOINT, paging_row
+    from provisa.core.parameters import required_parameters
 
     return [
         AvailableTableType(
@@ -647,6 +667,7 @@ async def _native_tables_openapi(  # REQ-314, REQ-316
             paging_kind=ENDPOINT,  # REQ-318: with the paging the operation suggests
             pagination=paging_type(paging_row(q.pagination)),
             columns_declared=q.columns_declared,  # REQ-1924
+            required_parameters=required_parameters(openapi_parameter_columns(q)),  # REQ-1986
         )
         for q in queries
         if _openapi_is_table(q)
@@ -676,6 +697,7 @@ async def _native_tables_graphql(  # REQ-307, REQ-308, REQ-1923
             # REQ-318: a connection table may set its own row bound when it is registered.
             paging_kind="connection" if t["connection"] else None,
             paging_ceiling_rows=state.config.graphql_remote.max_rows if t["connection"] else None,
+            required_parameters=t["required_parameters"],  # REQ-1986
         )
         for t in offered_tables(*offered)
     ]
@@ -726,7 +748,7 @@ async def specification_columns(  # REQ-464
         return {
             q.operation_id: [
                 *(c["name"] for c in _schema_to_columns(q.response_schema)),
-                *(f"_nf_{p['name']}" for p in (*q.path_params, *q.query_params)),
+                *(c["name"] for c in openapi_parameter_columns(q)),
             ]
             for q in queries
             if _openapi_is_table(q)
@@ -2054,7 +2076,10 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
         return (
             None
             if found is None
-            else [AvailableTableType(name=n, comment=d or None) for n, d in found]
+            else [
+                AvailableTableType(name=n, comment=d or None, required_parameters=required)
+                for n, d, required in found
+            ]
         )
 
     if t == "cosmosdb":  # REQ-1982
