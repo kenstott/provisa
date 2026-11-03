@@ -109,7 +109,7 @@ def test_the_ddl_fingerprint_changes_with_a_column_and_with_schema_sql():
     assert len(base) == 16 and int(base, 16) >= 0
     assert schema_org.fingerprint_of(copy, sql) == base
     assert schema_org.fingerprint_of(copy, sql + b"\n-- a column") != base
-    copy.tables["calendars"].append_column(Column("day_close", Text))
+    copy.tables["calendars"].append_column(Column("a_column_added_since", Text))
     assert schema_org.fingerprint_of(copy, sql) != base
     assert schema_org.ddl_fingerprint() == schema_org.ddl_fingerprint()
 
