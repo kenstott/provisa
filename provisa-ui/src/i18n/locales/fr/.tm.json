@@ -9150,5 +9150,15 @@
   "fr/tableReadView.json::tableReadView.deleteConsequence": "The table's registration is deleted.",
   "fr/registerTableForm.json::registerTableForm.tablesGroup": "Tables",
   "fr/registerTableForm.json::registerTableForm.lookupsGroup": "Lookups (need a parameter)",
-  "fr/registerTableForm.json::registerTableForm.lookupNeeds": "needs {{params}}"
+  "fr/registerTableForm.json::registerTableForm.lookupNeeds": "needs {{params}}",
+  "fr/jdbcSourceFields.json::jdbcSourceFields.driver": "Driver",
+  "fr/jdbcSourceFields.json::jdbcSourceFields.jarDriver": "Your own JDBC driver (jar)",
+  "fr/jdbcSourceFields.json::jdbcSourceFields.host": "Host",
+  "fr/jdbcSourceFields.json::jdbcSourceFields.port": "Port",
+  "fr/jdbcSourceFields.json::jdbcSourceFields.database": "Database",
+  "fr/jdbcSourceFields.json::jdbcSourceFields.file": "Database file",
+  "fr/jdbcSourceFields.json::jdbcSourceFields.fileHint": "The database file, written {files}/… for one in the organization's files area.",
+  "fr/jdbcSourceFields.json::jdbcSourceFields.jdbcUrl": "JDBC URL",
+  "fr/jdbcSourceFields.json::jdbcSourceFields.jdbcUrlHint": "The driver's jdbc: URL. Give no password in it.",
+  "fr/jdbcSourceFields.json::jdbcSourceFields.jdbcDriverJarPlaceholder": "Upload the driver's jar file"
 }

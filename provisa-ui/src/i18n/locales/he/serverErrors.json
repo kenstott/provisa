@@ -481,7 +481,6 @@
       "kaggle_token_missing": "מערך הנתונים {{owner}}/{{ref}} של Kaggle: למקור הנתונים אין אסימון API של Kaggle. הוסיפו אותו בטופס מקורות נתונים, שבו מוזן האסימון שלו.",
       "jdbc_invalid": "מקור {{source}}: {{error}}",
       "jdbc_file_refused": "מקור {{source}}: כתובת ה-URL מציינת את {{path}}, ששרת זה אינו רשאי לפתוח עבור הארגון.",
-      "jdbc_attach_unbuilt": "מקור {{source}}: חיבור חי של מקור JDBC עדיין אינו זמין (הופעל עבור {{engines}}); השורות שלו משוכפלות.",
       "jdbc_options_refused": "מקור {{source}}: כתובת ה-URL של ארגון זה אינה רשאית לציין את אפשרות מנהל ההתקן {{options}}.",
       "jdbc_driver_refused": "מקור {{source}}: מנהל התקן JDBC של לקוח רץ כקוד בתוך ה-JVM של Provisa, ורק התקנה באירוח עצמי מתירה זאת."
     },

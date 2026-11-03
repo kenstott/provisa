@@ -481,7 +481,6 @@
       "kaggle_token_missing": "Kaggle データセット {{owner}}/{{ref}}: データソースに Kaggle API トークンがありません。トークンを入力するデータソースのフォームで追加してください。",
       "jdbc_invalid": "ソース {{source}}: {{error}}",
       "jdbc_file_refused": "ソース {{source}}: URL が {{path}} を指定していますが、このサーバーは組織のためにこれを開けません。",
-      "jdbc_attach_unbuilt": "ソース {{source}}: JDBC ソースのライブアタッチはまだ利用できません（{{engines}} で有効）。行はレプリカとして複製されます。",
       "jdbc_options_refused": "ソース {{source}}: この組織の URL ではドライバーオプション {{options}} を指定できません。",
       "jdbc_driver_refused": "ソース {{source}}: 顧客の JDBC ドライバーは Provisa 自身の JVM 内でコードとして実行されるため、セルフホスト環境でのみ許可されます。"
     },

@@ -9,8 +9,9 @@
 # permission from the copyright holder.
 
 """The admin API of a JDBC source's form (REQ-2191): what the form offers -- the engine its
-capabilities are set for, the SQL dialects, the capabilities -- and Detect, the checks the admin
-runs from the form against the connection it describes. Detect saves nothing."""
+capabilities are set for, the standard drivers to pick from, the SQL dialects, the capabilities --
+and Detect, the checks the admin runs from the form against the connection it describes. Detect
+saves nothing."""
 
 # Requirements: REQ-2191
 
@@ -20,12 +21,28 @@ from typing import Any
 
 import strawberry
 
-from provisa.jdbc_source.settings import CAPABILITIES, sql_dialects
+from provisa.jdbc_source.settings import CAPABILITIES, NAMED_TYPES, form_scheme, sql_dialects
+
+
+@strawberry.type
+class JdbcDriverType:
+    """A standard driver the form offers: a backend of ``NAMED_TYPES``."""
+
+    backend: str
+    #: The built-in source type of the same database, which names it on the form.
+    source_type: str
+    #: The URL scheme the form writes for it.
+    scheme: str
+    #: Whether its URL names a file (SQLite, DuckDB) rather than a host.
+    file: bool
+    #: Whether the active engine can attach the built-in type, so live attach is offered.
+    attach: bool
 
 
 @strawberry.type
 class JdbcSourceSetupType:
     engine: str
+    drivers: list[JdbcDriverType]
     sql_dialects: list[str]
     capabilities: list[str]
 
@@ -55,9 +72,25 @@ class JdbcSourceDetectionType:
     checks: list[JdbcSourceCheckType]
 
 
-def setup(engine: str) -> JdbcSourceSetupType:
+def setup(engine: Any) -> JdbcSourceSetupType:
+    """What the form offers on ``engine``, the active federation engine."""
+    from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.url import FILE_BACKENDS
+
     return JdbcSourceSetupType(
-        engine=engine, sql_dialects=list(sql_dialects()), capabilities=list(CAPABILITIES)
+        engine=engine.name,
+        drivers=[
+            JdbcDriverType(
+                backend=name,
+                source_type=kind,
+                scheme=form_scheme(name),
+                file=name in FILE_BACKENDS,
+                attach=engine_attaches(engine, kind),
+            )
+            for name, kind in NAMED_TYPES.items()
+        ],
+        sql_dialects=list(sql_dialects()),
+        capabilities=list(CAPABILITIES),
     )
 
 

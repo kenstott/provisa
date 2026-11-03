@@ -2083,12 +2083,13 @@ class Query:  # REQ-021, REQ-042
     @strawberry.field
     async def jdbc_source_setup(self, info: StrawberryInfo) -> JdbcSourceSetupType:  # REQ-2191
         """What a JDBC source's form offers: the engine its capabilities are set for, the
-        SQL dialects it may be written in, and the capabilities."""
+        standard drivers (with whether that engine attaches each), the SQL dialects it may be
+        written in, and the capabilities."""
         require_capability(info, "source_registration")
         from provisa.api.admin.jdbc_source_admin import setup
         from provisa.api.app import state
 
-        return setup(state.federation_engine.name)
+        return setup(state.federation_engine)
 
     @strawberry.field
     async def materialize_store_info(self, info: StrawberryInfo) -> MaterializeStoreInfoType:

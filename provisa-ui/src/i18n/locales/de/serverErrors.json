@@ -481,7 +481,6 @@
       "kaggle_token_missing": "Kaggle-Dataset {{owner}}/{{ref}}: Die Datenquelle enthält keinen Kaggle-API-Token. Fügen Sie ihn im Formular unter „Datenquellen“ hinzu, wo der Token eingegeben wird.",
       "jdbc_invalid": "Quelle {{source}}: {{error}}",
       "jdbc_file_refused": "Quelle {{source}}: Die URL nennt {{path}}, das dieser Server für die Organisation nicht öffnen darf.",
-      "jdbc_attach_unbuilt": "Quelle {{source}}: Die Live-Anbindung einer JDBC-Quelle ist noch nicht verfügbar (aktiviert für {{engines}}); ihre Zeilen werden repliziert.",
       "jdbc_options_refused": "Quelle {{source}}: Die URL dieser Organisation darf die Treiberoption {{options}} nicht angeben.",
       "jdbc_driver_refused": "Quelle {{source}}: Ein kundeneigener JDBC-Treiber läuft als Code in Provisas eigener JVM, was nur eine selbst gehostete Installation erlaubt."
     },

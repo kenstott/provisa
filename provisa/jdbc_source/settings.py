@@ -79,6 +79,20 @@ NAMED_TYPES: dict[str, str] = {
 }
 
 
+#: The URL scheme the source form writes for a backend of :data:`NAMED_TYPES`, where SQLAlchemy's
+#: default driver for it is not the one Provisa ships; any other backend is written bare.
+FORM_SCHEMES: dict[str, str] = {
+    "mysql": "mysql+pymysql",
+    "mariadb": "mariadb+pymysql",
+    "oracle": "oracle+oracledb",
+}
+
+
+def form_scheme(backend_name: str) -> str:
+    """The URL scheme the source form writes for ``backend_name``, a key of :data:`NAMED_TYPES`."""
+    return FORM_SCHEMES.get(backend_name, backend_name)
+
+
 def named_type(url: str) -> str | None:
     """The built-in source type ``url``'s scheme names; None for a jdbc: URL and for a scheme
     naming none."""

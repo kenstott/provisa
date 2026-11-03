@@ -1,19 +1,10 @@
 {
   "jdbcSourceFields": {
-    "url": "कनेक्शन URL",
-    "urlHint": "एक SQLAlchemy URL; इसकी स्कीम ड्राइवर बताती है। इसमें पासवर्ड न दें।",
     "dialect": "SQL डायलेक्ट",
     "dialectHelp": "वह SQL रूप जो Provisa इस स्रोत के लिए लिखता है। इसका ड्राइवर से मेल खाना ज़रूरी नहीं: डेटाबेस के सबसे निकट वाला चुनें, या ANSI।",
     "ansi": "ANSI (सामान्य SQL)",
     "username": "उपयोगकर्ता नाम",
     "password": "पासवर्ड",
-    "capability": {
-      "attach": "{{engine}} पर लाइव अटैच",
-      "predicate": "{{engine}} पर फ़िल्टर पुशडाउन",
-      "join": "{{engine}} पर जॉइन पुशडाउन",
-      "aggregate": "{{engine}} पर एग्रीगेट पुशडाउन",
-      "key_range": "{{engine}} पर कुंजी-सीमा पुशडाउन"
-    },
     "capabilityName": {
       "attach": "लाइव अटैच",
       "predicate": "फ़िल्टर पुशडाउन",
@@ -21,12 +12,21 @@
       "aggregate": "एग्रीगेट पुशडाउन",
       "key_range": "कुंजी-सीमा पुशडाउन"
     },
-    "attachUnbuilt": "लाइव अटैच अभी उपलब्ध नहीं है; पंक्तियाँ रेप्लिकेट की जाती हैं।",
     "detect": "पता लगाएँ",
     "checkPassed": "{{capability}}: सफल",
     "checkFailed": "{{capability}}: विफल ({{reason}})",
     "jdbcDriverJar": "JDBC ड्राइवर JAR",
-    "jdbcDriverJarHint": "ड्राइवर की JAR फ़ाइल। केवल स्व-होस्टेड इंस्टॉल में।",
-    "jdbcDriverClass": "ड्राइवर क्लास"
+    "jdbcDriverJarHint": "ड्राइवर की JAR फ़ाइल, आपकी मशीन से अपलोड की गई। केवल स्व-होस्टेड इंस्टॉलेशन।",
+    "jdbcDriverClass": "ड्राइवर क्लास",
+    "driver": "ड्राइवर",
+    "jarDriver": "आपका अपना JDBC ड्राइवर (JAR)",
+    "host": "होस्ट",
+    "port": "पोर्ट",
+    "database": "डेटाबेस",
+    "file": "डेटाबेस फ़ाइल",
+    "fileHint": "डेटाबेस फ़ाइल, संगठन के फ़ाइल क्षेत्र की फ़ाइल के लिए {files}/… के रूप में लिखी गई।",
+    "jdbcUrl": "JDBC URL",
+    "jdbcUrlHint": "ड्राइवर का jdbc: URL. इसमें कोई पासवर्ड न दें।",
+    "jdbcDriverJarPlaceholder": "ड्राइवर की JAR फ़ाइल अपलोड करें"
   }
 }

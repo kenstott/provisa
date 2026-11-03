@@ -481,7 +481,6 @@
       "kaggle_token_missing": "Kaggle dataset {{owner}}/{{ref}}: the source holds no Kaggle API token. Add it on the Sources form, where its token is entered.",
       "jdbc_invalid": "Source {{source}}: {{error}}",
       "jdbc_file_refused": "Source {{source}}: the URL names {{path}}, which this server may not open for the organization.",
-      "jdbc_attach_unbuilt": "Source {{source}}: live attach of a JDBC source is not available yet (turned on for {{engines}}); its rows are replicated.",
       "jdbc_options_refused": "Source {{source}}: this organization's URL may not give the driver option {{options}}.",
       "jdbc_driver_refused": "Source {{source}}: a customer's JDBC driver runs as code in Provisa's own JVM, which only a self-hosted install allows."
     },

@@ -1,19 +1,10 @@
 {
   "jdbcSourceFields": {
-    "url": "URL de conexión",
-    "urlHint": "Una URL de SQLAlchemy; su esquema indica el controlador. No incluya la contraseña.",
     "dialect": "Dialecto SQL",
     "dialectHelp": "La variante de SQL que Provisa escribe para esta fuente. No tiene que coincidir con el controlador: elija la más cercana a la base de datos, o ANSI.",
     "ansi": "ANSI (SQL genérico)",
     "username": "Usuario",
     "password": "Contraseña",
-    "capability": {
-      "attach": "Conexión en vivo en {{engine}}",
-      "predicate": "Pushdown de filtros en {{engine}}",
-      "join": "Pushdown de joins en {{engine}}",
-      "aggregate": "Pushdown de agregados en {{engine}}",
-      "key_range": "Pushdown de rangos de clave en {{engine}}"
-    },
     "capabilityName": {
       "attach": "Conexión en vivo",
       "predicate": "Pushdown de filtros",
@@ -21,12 +12,21 @@
       "aggregate": "Pushdown de agregados",
       "key_range": "Pushdown de rangos de clave"
     },
-    "attachUnbuilt": "La conexión en vivo aún no está disponible; las filas se replican.",
     "detect": "Detectar",
     "checkPassed": "{{capability}}: superada",
     "checkFailed": "{{capability}}: fallida ({{reason}})",
     "jdbcDriverJar": "JAR del controlador JDBC",
-    "jdbcDriverJarHint": "El archivo JAR del controlador. Solo en instalaciones autoalojadas.",
-    "jdbcDriverClass": "Clase del controlador"
+    "jdbcDriverJarHint": "El archivo JAR del controlador, subido desde su equipo. Solo instalaciones autoalojadas.",
+    "jdbcDriverClass": "Clase del controlador",
+    "driver": "Controlador",
+    "jarDriver": "Su propio controlador JDBC (JAR)",
+    "host": "Host",
+    "port": "Puerto",
+    "database": "Base de datos",
+    "file": "Archivo de base de datos",
+    "fileHint": "El archivo de base de datos, escrito {files}/… para uno del área de archivos de la organización.",
+    "jdbcUrl": "URL JDBC",
+    "jdbcUrlHint": "La URL jdbc: del controlador. No incluya ninguna contraseña.",
+    "jdbcDriverJarPlaceholder": "Suba el archivo JAR del controlador"
   }
 }

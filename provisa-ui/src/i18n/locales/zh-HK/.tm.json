@@ -9151,5 +9151,15 @@
   "zh-HK/tableReadView.json::tableReadView.deleteConsequence": "The table's registration is deleted.",
   "zh-HK/registerTableForm.json::registerTableForm.tablesGroup": "Tables",
   "zh-HK/registerTableForm.json::registerTableForm.lookupsGroup": "Lookups (need a parameter)",
-  "zh-HK/registerTableForm.json::registerTableForm.lookupNeeds": "needs {{params}}"
+  "zh-HK/registerTableForm.json::registerTableForm.lookupNeeds": "needs {{params}}",
+  "zh-HK/jdbcSourceFields.json::jdbcSourceFields.driver": "Driver",
+  "zh-HK/jdbcSourceFields.json::jdbcSourceFields.jarDriver": "Your own JDBC driver (jar)",
+  "zh-HK/jdbcSourceFields.json::jdbcSourceFields.host": "Host",
+  "zh-HK/jdbcSourceFields.json::jdbcSourceFields.port": "Port",
+  "zh-HK/jdbcSourceFields.json::jdbcSourceFields.database": "Database",
+  "zh-HK/jdbcSourceFields.json::jdbcSourceFields.file": "Database file",
+  "zh-HK/jdbcSourceFields.json::jdbcSourceFields.fileHint": "The database file, written {files}/… for one in the organization's files area.",
+  "zh-HK/jdbcSourceFields.json::jdbcSourceFields.jdbcUrl": "JDBC URL",
+  "zh-HK/jdbcSourceFields.json::jdbcSourceFields.jdbcUrlHint": "The driver's jdbc: URL. Give no password in it.",
+  "zh-HK/jdbcSourceFields.json::jdbcSourceFields.jdbcDriverJarPlaceholder": "Upload the driver's jar file"
 }

@@ -481,7 +481,6 @@
       "kaggle_token_missing": "Kaggle-dataset {{owner}}/{{ref}}: de databron bevat geen Kaggle API-token. Voeg het toe in het formulier Databronnen, waar het token wordt ingevoerd.",
       "jdbc_invalid": "Bron {{source}}: {{error}}",
       "jdbc_file_refused": "Bron {{source}}: de URL noemt {{path}}, dat deze server niet voor de organisatie mag openen.",
-      "jdbc_attach_unbuilt": "Bron {{source}}: live koppelen van een JDBC-bron is nog niet beschikbaar (aangezet voor {{engines}}); de rijen worden gerepliceerd.",
       "jdbc_options_refused": "Bron {{source}}: de URL van deze organisatie mag de stuurprogramma-optie {{options}} niet geven.",
       "jdbc_driver_refused": "Bron {{source}}: een eigen JDBC-stuurprogramma van de klant draait als code in de JVM van Provisa, wat alleen een zelfgehoste installatie toestaat."
     },

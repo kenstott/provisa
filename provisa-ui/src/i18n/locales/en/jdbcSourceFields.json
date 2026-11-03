@@ -1,19 +1,10 @@
 {
   "jdbcSourceFields": {
-    "url": "Connection URL",
-    "urlHint": "A SQLAlchemy URL; its scheme names the driver. Give no password in it.",
     "dialect": "SQL dialect",
     "dialectHelp": "The flavor of SQL Provisa writes for this source. It need not match the driver: choose the one closest to the database, or ANSI.",
     "ansi": "ANSI (generic SQL)",
     "username": "Username",
     "password": "Password",
-    "capability": {
-      "attach": "Live attach on {{engine}}",
-      "predicate": "Filter pushdown on {{engine}}",
-      "join": "Join pushdown on {{engine}}",
-      "aggregate": "Aggregate pushdown on {{engine}}",
-      "key_range": "Key-range pushdown on {{engine}}"
-    },
     "capabilityName": {
       "attach": "Live attach",
       "predicate": "Filter pushdown",
@@ -21,12 +12,21 @@
       "aggregate": "Aggregate pushdown",
       "key_range": "Key-range pushdown"
     },
-    "attachUnbuilt": "Live attach is not available yet; rows are replicated.",
     "detect": "Detect",
     "checkPassed": "{{capability}}: passed",
     "checkFailed": "{{capability}}: failed ({{reason}})",
     "jdbcDriverJar": "JDBC driver jar",
-    "jdbcDriverJarHint": "The driver's jar file. Self-hosted installs only.",
-    "jdbcDriverClass": "Driver class"
+    "jdbcDriverJarHint": "The driver's jar file, uploaded from your machine. Self-hosted installs only.",
+    "jdbcDriverClass": "Driver class",
+    "driver": "Driver",
+    "jarDriver": "Your own JDBC driver (jar)",
+    "host": "Host",
+    "port": "Port",
+    "database": "Database",
+    "file": "Database file",
+    "fileHint": "The database file, written {files}/… for one in the organization's files area.",
+    "jdbcUrl": "JDBC URL",
+    "jdbcUrlHint": "The driver's jdbc: URL. Give no password in it.",
+    "jdbcDriverJarPlaceholder": "Upload the driver's jar file"
   }
 }
