@@ -42,6 +42,9 @@ fn encoders(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // SAFETY: a module init returns a new reference, or NULL with the error set.
     let pgwire = unsafe { Bound::from_owned_ptr_or_err(py, PyInit_pgwire_encoder()) }?;
     add_encoder(m, "pgwire", pgwire.downcast_into::<PyModule>()?)?;
+    // REQ-2194: the JSON encoders (rust/encoders/json), provisa._encoders.json.
+    let json = json_encoder::module(py, &format!("{}.json", m.name()?))?;
+    m.add("json", &json)?;
     // SAFETY: as above.
     let grpc = unsafe { Bound::from_owned_ptr_or_err(py, PyInit_grpc_encoder()) }?;
     add_encoder(m, "grpc", grpc.downcast_into::<PyModule>()?)?;

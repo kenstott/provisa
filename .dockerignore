@@ -25,5 +25,6 @@ provisa/_graph_render
 # checkout: the image compiles provisa._encoders itself, for its own platform (REQ-2194)
 rust/pgwire/target/
 rust/encoders/target/
+rust/encoders/json/target/
 provisa/_encoders*.so
 provisa/_encoders*.pyd

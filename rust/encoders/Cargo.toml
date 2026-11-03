@@ -1,6 +1,6 @@
 # REQ-2194: provisa._encoders, the one extension module provisa's wheel carries. Each encoder crate is a
-# submodule of it: pgwire (rust/pgwire) and grpc (rust/encoders/grpc); the GraphQL encoder joins
-# as provisa._encoders.graphql when its crate ships.
+# submodule of it: pgwire (rust/pgwire), grpc (rust/encoders/grpc) and json (rust/encoders/json:
+# GraphQL, REST, JSON:API and OData).
 # setuptools-rust builds it (pyproject.toml [tool.setuptools-rust]); this crate is the build root,
 # so its profile and its Cargo.lock are the ones every wheel is built with.
 [package]
@@ -17,6 +17,8 @@ crate-type = ["cdylib"]
 pyo3 = { version = "0.25", features = ["extension-module"] }
 pgwire_encoder = { path = "../pgwire" }
 grpc_encoder = { path = "grpc" }
+# REQ-2194: the JSON encoders, provisa._encoders.json (graphql, rest, jsonapi, odata).
+json_encoder = { path = "json" }
 
 [profile.release]
 lto = "fat"

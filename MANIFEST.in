@@ -2,6 +2,8 @@
 # from it builds the module (cargo on PATH). rust/encoders' Cargo.lock is the build's lock.
 include rust/encoders/Cargo.toml rust/encoders/Cargo.lock
 recursive-include rust/encoders/src *.rs
+include rust/encoders/json/Cargo.toml
+recursive-include rust/encoders/json/src *.rs
 include rust/encoders/grpc/Cargo.toml
 recursive-include rust/encoders/grpc/src *.rs
 include rust/pgwire/Cargo.toml

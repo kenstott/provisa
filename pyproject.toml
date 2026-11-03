@@ -324,7 +324,7 @@ requires = ["setuptools>=68", "setuptools-rust==1.13.0"]
 build-backend = "setuptools.build_meta"
 
 # REQ-2194: Provisa's Rust encoders, compiled into provisa itself as one extension module whose
-# submodules are the encoders (provisa._encoders.pgwire and .grpc; graphql joins it). Every build
+# submodules are the encoders (provisa._encoders.pgwire, .grpc and .json). Every build
 # compiles it, an editable one included (cargo on PATH), in release mode with the committed lock;
 # a build without cargo fails, and there is no Python stand-in.
 [[tool.setuptools-rust.ext-modules]]
@@ -346,6 +346,8 @@ cache-keys = [
     { file = "rust/encoders/Cargo.toml" },
     { file = "rust/encoders/Cargo.lock" },
     { file = "rust/encoders/src/**/*.rs" },
+    { file = "rust/encoders/json/Cargo.toml" },
+    { file = "rust/encoders/json/src/**/*.rs" },
     { file = "rust/encoders/grpc/Cargo.toml" },
     { file = "rust/encoders/grpc/src/**/*.rs" },
     { file = "rust/pgwire/Cargo.toml" },

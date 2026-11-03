@@ -421,7 +421,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
             for c, t in zip(result.column_names, types, strict=True)
         ]
         return _with_cache_headers(
-            _format_response(result.rows, columns, "sql", output_format), cache_headers
+            _format_response(result, columns, "sql", output_format), cache_headers
         )
 
     # ONE pipeline: /data/sql runs through the single governed chokepoint. execute_sql_batch splits a

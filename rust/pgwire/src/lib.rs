@@ -10,7 +10,8 @@ mod pgtypes;
 mod pyval;
 mod temporal;
 mod tsearch;
-mod tz;
+// Shared with the JSON encoders (rust/encoders/json): one reading of a named zone.
+pub mod tz;
 mod tz_rules;
 mod unicode_tables;
 

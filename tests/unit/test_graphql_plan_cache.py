@@ -32,6 +32,7 @@ from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.compiler.directives import QueryDirectives
 from provisa.compiler.sql_types import ColumnRef, CompiledQuery
 from tests.role_state import RoleState
+from tests.unit.json_encoder.rows import field_answer
 
 
 def _cq(
@@ -257,7 +258,7 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
         seen_sql.append(compiled.sql)
         seen_hints.append(kwargs.get("cache_hint"))
         compiled.sql = "MUTATED DOWNSTREAM"
-        return compiled.root_field, [{"orderId": 1}], None, None
+        return compiled.root_field, field_answer([{"orderId": 1}]), None, None
 
     async def _awake(state):
         return None
@@ -442,7 +443,7 @@ def test_a_single_aggregate_root_is_answered_in_the_data_envelope(monkeypatch):
     answer = {"aggregate": {"count": 4}, "nodes": [{"orderId": 1}]}
 
     async def _aggregate(compiled, *args, **kwargs):
-        return compiled.root_field, answer, None, None
+        return compiled.root_field, field_answer(answer), None, None
 
     monkeypatch.setattr(endpoint, "_execute_one_field", _aggregate)
     body = json.loads(bytes(h.call().body))

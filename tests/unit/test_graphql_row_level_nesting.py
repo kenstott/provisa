@@ -35,7 +35,7 @@ from provisa.api.errors import RowLevelFilterRequired
 from provisa.compiler.params import embed_params_comment
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.sql_rewrite import make_semantic_sql
-from provisa.executor.serialize import serialize_rows
+from tests.unit.json_encoder.rows import serialize_rows
 from provisa.pgwire import _pipeline
 
 _REPO = Path(__file__).resolve().parents[2]
