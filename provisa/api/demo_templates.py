@@ -234,9 +234,11 @@ def demo_environments(directory: Path) -> list[dict[str, str]]:
     return [step["environment"] for step in steps if "environment" in step]
 
 
-async def create_environments(org_id: str, wanted: list[dict[str, str]], created_by: str | None):
+async def create_environments(
+    org_id: str, wanted: list[dict[str, str]], created_by: str | None
+) -> list[str]:
     """Create in ``org_id`` each of ``wanted``'s environments it does not have, from its prod:
-    a demo's template its demo's, a sandbox its template's (REQ-2053)."""
+    a demo's template its demo's, a sandbox its template's (REQ-2053). The names created."""
     from sqlalchemy import select
 
     from provisa.api.admin.orgs_router import _admin_pool, _org_model_db, _pool
@@ -255,6 +257,7 @@ async def create_environments(org_id: str, wanted: list[dict[str, str]], created
                 )
             ).fetchall()
         }
+    created: list[str] = []
     for env in wanted:
         if env["name"] in held:
             continue
@@ -272,6 +275,8 @@ async def create_environments(org_id: str, wanted: list[dict[str, str]], created
             mutation_handling=env.get("mutation_handling", REFUSED),
             note="created from prod, as its demo declares",
         )
+        created.append(env["name"])
+    return created
 
 
 async def template_environments(template_org: str) -> list[dict[str, str]]:
@@ -1294,8 +1299,9 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
     if build:
         await _provision_org_task(org_id, True, None, False)
     rt = await ensure_org_runtime(org_id)
-    # REQ-2053: the environments its setup.yaml declares, which every sandbox of it carries.
-    await create_environments(org_id, demo_environments(demo.directory), None)
+    # REQ-2053: the environments its setup.yaml declares, which every sandbox of it carries. Each
+    # created here is a copy of the prod just built, and is built cloned (demo_synthetic.prepare).
+    created = await create_environments(org_id, demo_environments(demo.directory), None)
     from provisa.api.demo_region_seed import regional
     from provisa.api.demo_replicas import export_seed, live_landing_waits, live_topic_ends
 
@@ -1347,6 +1353,7 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
             demo.directory,
             demo_synthetic.synthetic_envs(demo_environments(demo.directory)),
             exporting=exporting,
+            created=created,
         )
     finally:
         reset_current_org(token)

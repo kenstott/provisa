@@ -11,6 +11,10 @@
     "addViewTitle": "Créer une nouvelle vue dans l'explorateur SQL",
     "model": "+ Modèle",
     "modelTitle": "Modéliser une entité ou un fait (schéma en étoile / Data Vault)",
+    "modelMenu": "Choisir comment modéliser",
+    "modelEntityFact": "Entité/Fait",
+    "modelStarSchema": "Schéma en étoile",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "Classeur",
     "reportXlsxTitle": "Télécharger le modèle sous forme de feuille de calcul pour revue : sources, tables, colonnes, relations, vues, métriques, vues matérialisées, ontologie, produits de données, contrats de données, qualité des données et profils de données, une feuille chacun",
     "viewErd": "Afficher l'ERD",
@@ -84,6 +88,8 @@
     "panelRegisterTable": "Enregistrer une table",
     "panelNewView": "Nouvelle vue",
     "panelNewModel": "Nouveau modèle",
+    "panelStarSchema": "Nouveau schéma en étoile",
+    "panelDataVault": "Nouveau Data Vault",
     "history": {
       "badge": "historique",
       "title": "Conserve l'historique : interrogez-le à une date ou tel qu'enregistré (Voyage dans le temps)"

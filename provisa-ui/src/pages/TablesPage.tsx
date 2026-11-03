@@ -20,13 +20,14 @@ import { RegionSelector } from "../components/RegionSelector";
 import { useState, useEffect, Fragment, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, FileSpreadsheet, X, Layers, Table2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, FileSpreadsheet, X, Layers, Table2 } from "lucide-react";
 import {
   ActionIcon,
   Alert,
   Badge,
   Button,
   Group,
+  Menu,
   Modal,
   Stack,
   Table,
@@ -72,6 +73,8 @@ import { buildTableUpdateInput } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
 import { ModelingForm } from "./tables/ModelingForm";
+import { StarSchemaWizard } from "./tables/modeling/StarSchemaWizard";
+import { DataVaultWizard } from "./tables/modeling/DataVaultWizard";
 import { TableReadView } from "./tables/TableReadView";
 import { TABLE_SECTIONS, type TableSection } from "./tables/tableSections";
 import { COLUMN_TABS, type ColumnTab } from "./tables/columnTopics";
@@ -172,7 +175,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // Table awaiting native-param entry before its profile sample can run.
   const [profileParamsTable, setProfileParamsTable] = useState<RegisteredTable | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [showModeling, setShowModeling] = useState(false); // REQ-1164: entity/fact modeling modal
+  // REQ-1164: entity/fact modeling; REQ-2199: + Model's drop down also opens a method's wizard.
+  const [showModeling, setShowModeling] = useState<false | "entityFact" | "star" | "vault">(false);
   // REQ-1318: Views-page definition-mode flow (SQL editor vs metric/dimension picker).
   const [showViewForm, setShowViewForm] = useState(false);
   const [editingViewDef, setEditingViewDef] = useState<RegisteredTable | null>(null);
@@ -919,6 +923,24 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         onSuccess={() => setShowViewForm(false)}
         onCancel={() => setShowViewForm(false)}
       />
+    ) : showModeling === "star" ? (
+      <StarSchemaWizard
+        domains={domains}
+        onSuccess={() => {
+          setShowModeling(false);
+          reload();
+        }}
+        onCancel={() => setShowModeling(false)}
+      />
+    ) : showModeling === "vault" ? (
+      <DataVaultWizard
+        domains={domains}
+        onSuccess={() => {
+          setShowModeling(false);
+          reload();
+        }}
+        onCancel={() => setShowModeling(false)}
+      />
     ) : showModeling ? (
       <ModelingForm
         domains={domains}
@@ -1020,7 +1042,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         : showViewForm && viewsOnly
           ? translate("tablesPage.panelNewView")
           : showModeling
-            ? translate("tablesPage.panelNewModel")
+            ? translate(
+                showModeling === "star"
+                  ? "tablesPage.panelStarSchema"
+                  : showModeling === "vault"
+                    ? "tablesPage.panelDataVault"
+                    : "tablesPage.panelNewModel",
+              )
             : selectedTable
               ? (selectedTable.alias ?? selectedTable.tableName)
               : "";
@@ -1084,15 +1112,51 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             </Tip>
           )}
           {!viewsOnly && !hidingOnly && (
-            <Tip text={translate("tablesPage.modelTitle")}>
-              <Button
-                variant="default"
-                data-testid="tables-model-toggle"
-                onClick={() => leave.guard(() => setShowModeling(true))}
-              >
-                {translate("tablesPage.model")}
-              </Button>
-            </Tip>
+            // REQ-2199: a split button. + Model opens the entity/fact form; its drop down picks
+            // the method: Entity/Fact, or the Star Schema or Data Vault wizard.
+            <Button.Group>
+              <Tip text={translate("tablesPage.modelTitle")}>
+                <Button
+                  variant="default"
+                  data-testid="tables-model-toggle"
+                  onClick={() => leave.guard(() => setShowModeling("entityFact"))}
+                >
+                  {translate("tablesPage.model")}
+                </Button>
+              </Tip>
+              <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
+                <Menu.Target>
+                  <Button
+                    variant="default"
+                    px={6}
+                    aria-label={translate("tablesPage.modelMenu")}
+                    data-testid="tables-model-menu"
+                  >
+                    <ChevronDown size={14} aria-hidden />
+                  </Button>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item
+                    onClick={() => leave.guard(() => setShowModeling("entityFact"))}
+                    data-testid="tables-model-entity-fact"
+                  >
+                    {translate("tablesPage.modelEntityFact")}
+                  </Menu.Item>
+                  <Menu.Item
+                    onClick={() => leave.guard(() => setShowModeling("star"))}
+                    data-testid="tables-model-star"
+                  >
+                    {translate("tablesPage.modelStarSchema")}
+                  </Menu.Item>
+                  <Menu.Item
+                    onClick={() => leave.guard(() => setShowModeling("vault"))}
+                    data-testid="tables-model-vault"
+                  >
+                    {translate("tablesPage.modelDataVault")}
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+            </Button.Group>
           )}
           {!viewsOnly && (
             // An ancillary action, reached rarely: a borderless icon keeps it out of the
