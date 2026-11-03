@@ -303,8 +303,20 @@ for _oid, _entry in TYPES.items():
 #: and reads it from the same place a client's PostgreSQL would.
 RESOLVED_REGS = frozenset({"regclass", "regtype", "regnamespace", "regrole"})
 _NAMED_IN_RESULT = frozenset({"regclass", "regnamespace"})
-_UNDEFINED = {"regclass": "42P01", "regnamespace": "3F000", "regtype": "42704", "regrole": "42704"}
-_KIND = {"regclass": "relation", "regnamespace": "schema", "regtype": "type", "regrole": "role"}
+_UNDEFINED = {
+    "regclass": "42P01",
+    "regnamespace": "3F000",
+    "regtype": "42704",
+    "regrole": "42704",
+    "regprocedure": "42883",
+}
+_KIND = {
+    "regclass": "relation",
+    "regnamespace": "schema",
+    "regtype": "type",
+    "regrole": "role",
+    "regprocedure": "function",
+}
 _TEXT_TYPES = frozenset({"text", "varchar", "character varying", "name"})
 
 
@@ -405,6 +417,37 @@ def _role_oid(written: str) -> str:
     )
 
 
+def _arguments(written: str) -> list[str]:
+    """The argument types a regprocedure's text lists, each with its own typmod's commas."""
+    found, depth, start = [], 0, 0
+    for i, ch in enumerate(written):
+        depth += {"(": 1, ")": -1}.get(ch, 0)
+        if ch == "," and depth == 0:
+            found.append(written[start:i].strip())
+            start = i + 1
+    last = written[start:].strip()
+    return [*found, last] if last or found else []
+
+
+def _proc_oid(written: str) -> str:
+    """The oid of the function a regprocedure's text names, by its name and argument types as
+    the model's pg_proc lists them: the control plane's own oid of a function initdb creates
+    (plpgsql's) is not the catalog's."""
+    head, _, rest = written.partition("(")
+    parts = _parts(head)
+    oids = [re.sub(r"\s*\(.*\)", "", a) for a in _arguments(rest.rpartition(")")[0])]
+    vector = " || ' ' || ".join(f"CAST({_type_oid(a)} AS TEXT)" for a in oids) or "''"
+    schemas = [parts[-2]] if len(parts) > 1 else [_PG, CURRENT_SCHEMA]
+    lookup = (
+        "SELECT _rp.oid FROM meta.catalog_pg_proc _rp JOIN meta.catalog_pg_namespace _rn "
+        f"ON _rn.oid = _rp.pronamespace WHERE _rp.proname = {_literal(parts[-1])} "
+        f"AND _rn.nspname IN ({', '.join(_literal(n) for n in schemas)}) "
+        f"AND COALESCE(CAST(_rp.proargtypes AS TEXT), '') = {vector} "
+        "ORDER BY _rn.nspname = 'pg_catalog' DESC LIMIT 1"
+    )
+    return _required(lookup, "regprocedure", written)
+
+
 _OID_OF: dict[str, Callable[[str], str]] = {
     "regclass": _class_oid,
     "regnamespace": _namespace_oid,
@@ -413,7 +456,9 @@ _OID_OF: dict[str, Callable[[str], str]] = {
 }
 
 
-def _oid_sql(reg: str, operand: exp.Expr) -> str:
+def _oid_sql(reg: str, operand: exp.Expr, rewrite=None) -> str:
+    """The oid ``operand`` names; ``rewrite`` addresses an operand that is no name, which the
+    statement's own transform does not reach once its cast is replaced."""
     # A name cast to text first ('pg_class'::text) is still that name: regclass(text) reads it.
     while (
         isinstance(operand, exp.Cast)
@@ -423,6 +468,8 @@ def _oid_sql(reg: str, operand: exp.Expr) -> str:
         operand = operand.this
     if isinstance(operand, exp.Literal) and operand.is_string:
         return _OID_OF[reg](operand.this)
+    if rewrite is not None:
+        operand = operand.transform(rewrite)
     return f"CAST({operand.sql(dialect='postgres')} AS OID)"
 
 
@@ -442,7 +489,7 @@ def _output_call(name: str, args: list[exp.Expr], rewrite) -> exp.Expr | None:
         return None
     (value,) = args
     if isinstance(value, exp.Cast) and _reg_of(value.to) == reg:
-        oid = _oid_sql(reg, value.this)
+        oid = _oid_sql(reg, value.this, rewrite)
     else:
         oid = f"CAST({value.transform(rewrite).sql(dialect='postgres')} AS OID)"
     return _parsed(f"CAST({_name_sql(reg, f'({oid})')} AS CSTRING)")
@@ -488,7 +535,7 @@ def _parsed(sql: str) -> exp.Expr:
     return sqlglot.parse_one(sql, read="postgres")
 
 
-def _reg_cast(node: exp.Cast) -> exp.Expr | None:
+def _reg_cast(node: exp.Cast, rewrite) -> exp.Expr | None:
     """``node`` where it casts to or from an object identifier type the model resolves: an oid, a
     name where a statement reads one as text, and otherwise left alone."""
     target = _reg_of(node.to)
@@ -496,9 +543,14 @@ def _reg_cast(node: exp.Cast) -> exp.Expr | None:
     if isinstance(inner, exp.Cast):
         from_reg = _reg_of(inner.to)
         if from_reg in RESOLVED_REGS and target in _TEXT_TYPES:
-            return _parsed(_name_sql(from_reg, f"({_oid_sql(from_reg, inner.this)})"))
+            return _parsed(_name_sql(from_reg, f"({_oid_sql(from_reg, inner.this, rewrite)})"))
     if target in RESOLVED_REGS:
-        return _parsed(f"({_oid_sql(target, inner)})")
+        return _parsed(f"({_oid_sql(target, inner, rewrite)})")
+    if target == "regprocedure" and isinstance(inner, exp.Literal) and inner.is_string:
+        # Computed with, it is the model's oid; a result column is still the server's name of it.
+        column = node.parent if isinstance(node.parent, exp.Alias) else node
+        if not isinstance(column.parent, exp.Select) or column.arg_key != "expressions":
+            return _parsed(f"({_proc_oid(inner.this)})")
     return None
 
 
@@ -794,7 +846,7 @@ def _rewriter(request: CatalogRequest, cte_names: frozenset[str]):
             input_answer = _input_call(name, args)
             return node if input_answer is None else _named(input_answer, node, name)
         if isinstance(node, exp.Cast):
-            return _reg_cast(node) or node
+            return _reg_cast(node, rewrite) or node
         if isinstance(node, exp.Column):
             column = node.name.lower()
             if (

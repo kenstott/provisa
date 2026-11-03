@@ -126,6 +126,27 @@ def test_a_regclass_read_as_text_is_the_listed_name():
     assert written.count("catalog_pg_class") >= 2
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'SELECT pg_catalog."pg_sequence_last_value"((SELECT oid FROM pg_catalog.pg_class '
+        "WHERE relname = 'fixture_sequence')::regclass) AS v",
+        'SELECT pg_catalog."pg_partition_tree"((SELECT oid FROM pg_catalog.pg_class '
+        "WHERE relname = 'hash_fixture')::regclass) AS v",
+        'SELECT pg_catalog."pg_partition_ancestors"((SELECT oid FROM pg_catalog.pg_class '
+        "WHERE relname = 'hash_fixture_0')::regclass) AS v",
+        "SELECT regclassout((SELECT oid FROM pg_class WHERE relname = 'x')::regclass)",
+    ],
+)
+def test_a_catalog_read_cast_to_regclass_in_an_argument_is_metas(sql):
+    """REQ-2167: the subquery a regclass is cast from is the statement's, so its relation is
+    meta's view, never the control plane's own pg_class."""
+    assert _tables(_addressed(sql)) <= {
+        "meta.catalog_pg_class",
+        "meta.catalog_pg_namespace",
+    }
+
+
 def test_a_row_version_column_is_no_views():
     assert "c.xmin" not in _addressed("SELECT c.xmin FROM pg_class c")
 
@@ -351,3 +372,11 @@ def test_system_user_is_null_where_nothing_authenticated():
 def test_the_servers_statistics_began_when_it_did(function):
     addressed = _addressed(f"SELECT {function}()")
     assert "NULL" not in addressed.upper()
+
+
+@pytest.mark.parametrize("wrap", ["80::integer", "true::boolean", "NULL::boolean"])
+def test_a_view_definition_at_a_wrap_column_is_a_statement_governance_can_read(wrap):
+    """REQ-2167: pg_get_viewdef(view, wrap) was 117,000 nodes, which governance did not finish in
+    300 s; each view's wrapped definition is now one literal, unnested."""
+    written = _addressed(f'SELECT pg_catalog."pg_get_viewdef"(NULL::oid, {wrap}) AS v')
+    assert sum(1 for _ in sqlglot.parse_one(written, read="postgres").walk()) < 10_000
