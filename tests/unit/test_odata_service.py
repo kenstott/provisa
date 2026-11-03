@@ -447,6 +447,27 @@ def entity_sets_without_key_check(surface: RoleSurface):
     return entity_sets(surface)
 
 
+async def test_each_entity_set_names_its_tables_domain(service):
+    """The UI narrows the entity sets to the navbar's domain selection by this annotation; without
+    it every set was listed whatever the selection."""
+    root = await _metadata(service, "clerk")
+    domains = {
+        s.get("Name"): [
+            a.get("String")
+            for a in s.iter(f"{_EDM}Annotation")
+            if a.get("Term") == "Provisa.Domain"
+        ]
+        for s in root.iter(f"{_EDM}EntitySet")
+    }
+    assert domains == {"customers": ["sales"], "events": ["sales"], "orders": ["sales"]}
+
+
+async def test_the_domain_term_is_declared(service):
+    root = await _metadata(service, "clerk")
+    (term,) = [t for t in root.iter(f"{_EDM}Term") if t.get("Name") == "Domain"]
+    assert (term.get("Type"), term.get("AppliesTo")) == ("Edm.String", "EntitySet")
+
+
 def test_the_document_is_escaped_and_well_formed():
     surface, _ = _surface("analyst")
     assert ET.fromstring(metadata_document(entity_sets(surface))).tag.endswith("Edmx")

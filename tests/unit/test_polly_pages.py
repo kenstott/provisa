@@ -85,3 +85,21 @@ def test_a_route_with_an_editor_says_so():
 )
 def test_she_is_told_how_to_set_each_page(words):
     assert words in chat._SYSTEM
+
+
+def test_she_can_drive_the_odata_explorer():
+    """The OData page was display-only: she could open it and do nothing on it."""
+    odata = polly_pages.PAGES["/odata"]
+    assert "state.odataUrl" in odata.sets
+    assert "state.autoRun" in odata.sets
+    for option in ("$filter", "$select", "$expand", "$orderby", "$top", "$skip", "$count"):
+        assert option in odata.sets, option
+    for read in ("set", "url", "status", "rows", "warnings", "error"):
+        assert f" {read}," in f" {odata.reads.removeprefix('inputs: ')},", read
+    assert "/odata" in _published("INPUT_ROUTES")
+
+
+def test_the_odata_page_takes_the_payload_she_is_told_of():
+    page = (ROOT / "provisa-ui/src/pages/ODataPage.tsx").read_text()
+    assert "odataUrl?: string; autoRun?: boolean" in page
+    assert 'useScreenInputs("/odata"' in page

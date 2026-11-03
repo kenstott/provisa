@@ -943,10 +943,9 @@ fn uuid_str(b: &[u8; 16], out: &mut String) {
     out.push_str(std::str::from_utf8(&v).expect("ascii"));
 }
 
-/// The text of an address as PostgreSQL's inet_net_ntop writes it (`pg`: an IPv6 address holding
-/// an IPv4 one, mapped or compatible, ends in dotted quad), or as Python 3.12's ipaddress writes
-/// it (all hextets).
-pub fn inet_addr_text(v: &Inet, pg: bool, out: &mut String) {
+/// The text of an address as PostgreSQL's inet_net_ntop writes it: an IPv6 address holding an
+/// IPv4 one, mapped or compatible, ends in dotted quad.
+pub fn inet_addr_text(v: &Inet, out: &mut String) {
     if !v.v6 {
         let a = v.addr as u32;
         out.push_str(&format!(
@@ -994,7 +993,7 @@ pub fn inet_addr_text(v: &Inet, pg: bool, out: &mut String) {
             out.push(':');
         }
         // an encapsulated IPv4 address
-        if pg && k == 6 && best.0 == 0 && (best.1 == 6 || (best.1 == 5 && words[5] == 0xffff)) {
+        if k == 6 && best.0 == 0 && (best.1 == 6 || (best.1 == 5 && words[5] == 0xffff)) {
             let a = v.addr as u32;
             out.push_str(&format!(
                 "{}.{}.{}.{}",
@@ -1026,8 +1025,9 @@ pub fn py_str(v: &PyVal, out: &mut String) {
         PyVal::PdTimedelta(None) | PyVal::NaT => out.push_str("NaT"),
         PyVal::Uuid(b) => uuid_str(b, out),
         PyVal::Inet(a) => {
-            // str of an interface: the address and its prefix
-            inet_addr_text(a, false, out);
+            // str of an interface: the address and its prefix, the address as PostgreSQL's
+            // text(inet) writes it (Python's ipaddress writes it as its patch release does)
+            inet_addr_text(a, out);
             out.push('/');
             push_num(out, a.bits);
         }

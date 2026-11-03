@@ -550,10 +550,12 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
     @rest_router.get("/docs", include_in_schema=False)
     async def rest_docs(  # pyright: ignore[reportUnusedFunction]
         theme: str | None = None,
+        role: str | None = None,
+        domains: str | None = None,
     ):
         from provisa.api.rest.openapi_spec import swagger_ui_html
 
-        return HTMLResponse(content=swagger_ui_html(theme))
+        return HTMLResponse(content=swagger_ui_html(theme, role, domains))
 
     # Before the table route, which ``/meta/resolve`` would otherwise match as a table of meta.
     @rest_router.get(f"/{META_DOMAIN_ID}/resolve")

@@ -1046,16 +1046,19 @@ class TrinoBackend(EngineBackend):
             transpile_to_trino,
         )
 
-        sql = transpile_to_trino(pg_sql)
         from provisa.api.app import state
+        from provisa.transpiler.pg_forms_geometric import around
 
-        # REQ-2050: an instant Trino reads as a plain TIMESTAMP is an output at UTC with its zone.
-        sql = rewrite_instants_for_trino(sql, trino_utc_wall_columns(state))
+        def rewritten(sql: str) -> str:
+            # REQ-2050: an instant Trino reads as a plain TIMESTAMP is an output at UTC with its zone.
+            sql = rewrite_instants_for_trino(sql, trino_utc_wall_columns(state))
+            label_columns = getattr(state, "prometheus_label_columns", None)
+            if label_columns:
+                sql = rewrite_prometheus_labels_for_trino(sql, label_columns)
+            return sql
 
-        label_columns = getattr(state, "prometheus_label_columns", None)
-        if label_columns:
-            sql = rewrite_prometheus_labels_for_trino(sql, label_columns)
-        return sql
+        # REQ-2171: a geometric form's routines are kept as written, ahead of the statement.
+        return around(transpile_to_trino(pg_sql), rewritten)
 
     def _store_catalog_named(self, state: Any, name: str, dsn: str) -> str:
         """Register (once per process) and return the catalog Trino reads the store ``dsn`` under

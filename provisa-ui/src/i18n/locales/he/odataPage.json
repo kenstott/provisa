@@ -37,6 +37,12 @@
     "noRows": "אין שורות תואמות.",
     "rowsCutTitle": "לא הוחזרו כל השורות",
     "warningsTitle": "על תשובה זו",
-    "provenanceUrl": "בקשת OData"
+    "provenanceUrl": "בקשת OData",
+    "handoffNotService": "זו אינה כתובת של שירות OData:‏ {{url}}",
+    "handoffPath": "הסייר קורא קבוצת ישויות שלמה; {{path}} מפנה רק לחלק ממנה.",
+    "handoffOption": "הסייר אינו יכול להגדיר {{option}}={{value}}.",
+    "handoffNumber": "{{option}} חייב להיות מספר שלם, לא {{value}}.",
+    "handoffNoSet": "אין קבוצת ישויות {{set}} עבור תפקיד זה.",
+    "handoffMember": "ל-{{set}} אין {{name}} עבור {{option}}."
   }
 }
