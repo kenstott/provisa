@@ -485,20 +485,14 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     }
   };
 
+  // REQ-2198: the panel's Delete (PanelDelete) shows the delete's progress and says why one
+  // failed; it resolves once the list is read again without the table.
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this table registration?")) return;
-    try {
-      const result = await deleteTable(id);
-      const name = tables.find((tbl) => tbl.id === id)?.tableName ?? String(id);
-      if (refusal.refused(result, name)) return;
-      if (!result.success) {
-        setError(serverMessage(result, result.message));
-        return;
-      }
-      reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    const result = await deleteTable(id);
+    const name = tables.find((tbl) => tbl.id === id)?.tableName ?? String(id);
+    if (refusal.refused(result, name)) return false;
+    if (!result.success) throw new Error(serverMessage(result, result.message));
+    await reload();
   };
 
   // REQ-1921: the detail's Draft box. The same mutation the edit form's draft control saves
@@ -1245,6 +1239,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                       const row = (
                         <Fragment key={t.id}>
                           <ListRow
+                            itemKey={t.id}
                             // A stable per-table anchor (source.table) for tour steps that open one row.
                             data-table-row={`${t.sourceId}.${t.tableName}`}
                             // The row whose detail the right-hand panel is showing.

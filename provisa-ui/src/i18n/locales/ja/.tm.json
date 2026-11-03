@@ -9144,6 +9144,10 @@
   "ja/serverErrors.json::serverErrors.source_sign_in.client_missing": "Enter the app's client ID and client secret, then sign in.",
   "ja/serverErrors.json::serverErrors.source_sign_in.client_not_taken": "This kind of source signs in with your organization's client, not one entered on the form.",
   "ja/serverErrors.json::serverErrors.source_sign_in.no_account_returned": "The sign-in was approved, but the answer did not say which account ({{parameter}}). Sign in again.",
+  "ja.json::common.deleting": "Deleting…",
+  "ja.json::common.deleteFailed": "Not deleted: {{reason}}",
+  "ja/tableReadView.json::tableReadView.deleteTitle": "Delete table {{name}}?",
+  "ja/tableReadView.json::tableReadView.deleteConsequence": "The table's registration is deleted.",
   "ja/registerTableForm.json::registerTableForm.tablesGroup": "Tables",
   "ja/registerTableForm.json::registerTableForm.lookupsGroup": "Lookups (need a parameter)",
   "ja/registerTableForm.json::registerTableForm.lookupNeeds": "needs {{params}}"

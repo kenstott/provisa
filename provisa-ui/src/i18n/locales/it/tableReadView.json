@@ -52,6 +52,8 @@
     "draftNoRightTooltip": "Rilasciare una tabella, o riportarla a bozza, richiede il diritto Registrazione tabelle nel dominio della tabella.",
     "draftPreviewNote": "Anteprima della bozza: i lettori non possono ancora vedere questa tabella.",
     "keepsHistory": "Conserva la cronologia: ogni versione, con quando è accaduto e quando è stato registrato.",
-    "keepsHistoryQuery": "Interrogala a una data o come registrata"
+    "keepsHistoryQuery": "Interrogala a una data o come registrata",
+    "deleteTitle": "Eliminare la tabella {{name}}?",
+    "deleteConsequence": "La registrazione della tabella viene eliminata."
   }
 }

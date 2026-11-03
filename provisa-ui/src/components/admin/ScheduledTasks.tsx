@@ -30,8 +30,8 @@ import {
   TextInput,
   Textarea,
 } from "@mantine/core";
-import { Pencil, Plus, Power, PowerOff, Trash2 } from "lucide-react";
-import { ConfirmDialog } from "../ConfirmDialog";
+import { Pencil, Plus, Power, PowerOff } from "lucide-react";
+import { PanelDelete } from "../list/PanelDelete";
 import { Tip } from "../Tip";
 import {
   useScheduledTasks,
@@ -128,7 +128,7 @@ function inputOf(form: TriggerForm): CreateScheduledTaskInput {
 
 export function ScheduledTasks() {
   const { t } = useTranslation();
-  const { scheduledTasks: tasks, loading } = useScheduledTasks();
+  const { scheduledTasks: tasks, loading, refetch: refetchTasks } = useScheduledTasks();
   const { toggleScheduledTask } = useToggleScheduledTask();
   const { createScheduledTask } = useCreateScheduledTask();
   const { updateScheduledTask } = useUpdateScheduledTask();
@@ -597,26 +597,20 @@ export function ScheduledTasks() {
                 <Pencil size={14} />
               </ActionIcon>
             </Tip>
-            <ConfirmDialog
+            {/* REQ-2198: resolves once the list is read again without the task; a refusal or
+                an error is said by the Delete itself, under the panel's head. */}
+            <PanelDelete
+              itemKey={selected.id}
               title={t("scheduledTasks.deleteTitle", { name: selected.name })}
               consequence={t("scheduledTasks.deleteConsequence")}
-              onConfirm={async () => {
-                if (await listAction(selected.id, () => deleteScheduledTask(selected.id)))
-                  setSelectedId(null);
+              ariaLabel={t("scheduledTasks.deleteAria", { name: selected.name })}
+              testId="scheduled-task-delete"
+              onDelete={async () => {
+                const result = await deleteScheduledTask(selected.id);
+                if (!result.success) throw new Error(result.message);
+                await refetchTasks();
               }}
-            >
-              {(open) => (
-                <ActionIcon
-                  color="red"
-                  aria-label={t("scheduledTasks.deleteAria", { name: selected.name })}
-                  disabled={busy === selected.id}
-                  onClick={open}
-                  data-testid="scheduled-task-delete"
-                >
-                  <Trash2 size={14} />
-                </ActionIcon>
-              )}
-            </ConfirmDialog>
+            />
           </Group>
         </PanelActions>
       </>

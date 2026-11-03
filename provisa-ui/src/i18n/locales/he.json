@@ -9,7 +9,9 @@
     "identity": "זהות",
     "discardTitle": "לבטל את השינויים?",
     "discardBody": "השינויים ב-{{what}} לא נשמרו.",
-    "discard": "ביטול השינויים"
+    "discard": "ביטול השינויים",
+    "deleting": "מוחק…",
+    "deleteFailed": "לא נמחק: {{reason}}"
   },
   "app": {
     "apiUnreachable": "לא ניתן להגיע ל-API של Provisa.",
