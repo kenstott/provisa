@@ -172,3 +172,14 @@ def test_the_engine_session_hints_carry_the_recursion_depth(monkeypatch):
         SimpleNamespace(), (), None, text, writes=False, tree=sqlglot.parse_one(text)
     )
     assert hints is not None and hints["max_recursion_depth"] == "41"
+
+
+def test_the_default_maximum_is_very_large():
+    # Maintainer 2026-11-03: the maximum an unbounded path takes is 1000 by default.
+    from provisa.compiler.hints import recursion_session_props
+
+    sql, _, _ = cypher_to_sql(
+        parse_cypher("MATCH (a:Person)-[:KNOWS*]->(b:Person) RETURN a.name"), _people(), {}
+    )
+    tree = sqlglot.parse_one(sql.sql(dialect="postgres"), read="postgres")
+    assert recursion_session_props(tree) == {"max_recursion_depth": "1001"}

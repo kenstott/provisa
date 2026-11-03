@@ -801,7 +801,7 @@
     "graph": {
       "depth_limit": {
         "label": "Deepest graph path",
-        "help": "The most hops a Cypher variable-length path or a SPARQL property path walks when the query sets no bound of its own. A Cypher path that would go further fails by name; a SPARQL result cut at this depth says it was cut."
+        "help": "The most hops a Cypher variable-length path or a SPARQL property path walks when the query sets no bound of its own. A Cypher path keeps no relationship twice and, if it would go further, fails by name; a SPARQL result cut at this depth says it was cut. Very large by default (1000)."
       },
       "union_limit": {
         "label": "Most predicates a variable predicate covers",

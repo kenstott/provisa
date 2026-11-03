@@ -76,8 +76,9 @@ def test_a_cycle_ends_where_its_trail_would_repeat_within_the_limit():
     assert {r[CUT_COLUMN] for r in rows} == {0}
 
 
-def test_the_default_depth_limit_is_ten():
-    assert "hops <= 10" in _sql(_UNBOUNDED, _people())
+def test_the_default_depth_limit_is_a_thousand():
+    # REQ-348 (amended 2026-11-03): the maximum an unbounded path takes is very large.
+    assert "hops <= 1000" in _sql(_UNBOUNDED, _people())
 
 
 def test_a_bounded_path_carries_no_cut_column():
