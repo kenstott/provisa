@@ -19,6 +19,7 @@ import functools
 import re
 
 import sqlglot
+from sqlglot.dialects.postgres import Postgres
 
 from provisa.core.pg_error import MARK
 from provisa.transpiler import (
@@ -29,6 +30,7 @@ from provisa.transpiler import (
     pg_functions,
     pg_held_types,
     pg_money,
+    pg_syntax,
 )
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
@@ -56,17 +58,7 @@ SUPPORTED_DIALECTS: set[str] = {
 }
 
 
-_BIT_VARYING_SAID = re.compile(r"::\s*bit\s+varying\b", re.IGNORECASE)
-_OVERLAPS_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?overlaps"?\s*\(', re.IGNORECASE)
-
-
-_OVERLAPS_SPELLED = re.compile(r"\boverlaps_timestamp\s*\(", re.IGNORECASE)
 _WITHIN_GROUP = re.compile(r"\bWITHIN\s+GROUP\b", re.IGNORECASE)
-
-
-def _overlaps_restored(sql: str) -> str:
-    """PostgreSQL's own overlaps, which _spelled_for_sqlglot named for sqlglot to read (REQ-2167)."""
-    return _OVERLAPS_SPELLED.sub('pg_catalog."overlaps"(', sql)
 
 
 def _within_group_unqualified(pg_sql: str) -> str:
@@ -91,31 +83,9 @@ def _within_group_unqualified(pg_sql: str) -> str:
     return tree.sql(dialect="postgres") if misread else pg_sql
 
 
-def _spelled_for_sqlglot(pg_sql: str) -> str:
-    """``pg_sql`` as sqlglot can read it: it takes ``bit varying`` for a bit and an alias, and has
-    no call of a function named overlaps."""
-    return _overlaps_by_name(_BIT_VARYING_SAID.sub("::varbit", pg_sql))
-
-
-_OVERLAPS_CALL = re.compile(r'\boverlaps"?\s*\(', re.IGNORECASE)
-
-
-def _overlaps_by_name(pg_sql: str) -> str:
-    """Each call of overlaps by its name, pg_catalog's or bare, as overlaps_timestamp: the operator
-    ``(a, b) OVERLAPS (c, d)`` follows a parenthesis, and a call follows none."""
-    pg_sql = _OVERLAPS_BY_NAME.sub("overlaps_timestamp(", pg_sql)
-
-    def named(found: re.Match[str]) -> str:
-        before = pg_sql[: found.start()].rstrip()
-        operator = before.endswith(")") or before.endswith(".")
-        return found.group() if operator else "overlaps_timestamp("
-
-    return _OVERLAPS_CALL.sub(named, pg_sql)
-
-
 def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to Trino SQL."""
-    pg_sql = rewrite_correlated_subqueries_for_trino(_spelled_for_sqlglot(pg_sql))
+    pg_sql = rewrite_correlated_subqueries_for_trino(pg_sql)
     # REQ-2171: the rewrites read the statement; a geometric form's routines are kept as written.
     return pg_forms_geometric.around(transpile(pg_sql, "trino"), _trino_rewrites)
 
@@ -1273,8 +1243,7 @@ def transpile(
     pg_sql = _within_group_unqualified(pg_sql)
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
         pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
-        pg_sql = _spelled_for_sqlglot(pg_sql)
-        pg_sql = _REGEXP_REPLACE_BY_NAME.sub("regexp_replace(", pg_sql)  # its flag is read below
+        pg_sql = _regexp_replace_by_name(pg_sql)  # its flag is read below
     if target_dialect != "postgres":
         pg_sql = exact_inputs(pg_sql)  # REQ-2171
     pg_sql = pg_forms_enum.lowered(pg_money.lowered(pg_sql, target_dialect), target_dialect)
@@ -1397,8 +1366,10 @@ def transpile(
         result = _lower_similarity(result, target_dialect, pgvector=pgvector)
     # REQ-2171: last, for what a later step parses has no routine definitions at its head.
     result = pg_forms_geometric.planned(result, target_dialect)
-    if target_dialect == "postgres":
-        result = _overlaps_restored(result)
+    if target_dialect == "postgres" and pg_syntax.OVERLAPS in result.lower():
+        result = pg_syntax.overlaps_restored(sqlglot.parse_one(result, read="postgres")).sql(
+            dialect="postgres"
+        )
     from provisa.observability.stage_trace import trace_stage
 
     trace_stage(f"transpile.{target_dialect}", result)
@@ -1406,6 +1377,29 @@ def transpile(
 
 
 _REGEXP_REPLACE_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?regexp_replace"?\s*\(', re.IGNORECASE)
+
+
+def _regexp_replace_by_name(pg_sql: str) -> str:
+    """``pg_sql`` with each pg_catalog.regexp_replace(...) the bare call (REQ-2167): sqlglot reads
+    the qualified one as a function it does not know, and the bare one as REGEXP_REPLACE, whose
+    flag the rewrites below read. PostgreSQL resolves the bare built-in in pg_catalog first."""
+    if _REGEXP_REPLACE_BY_NAME.search(pg_sql) is None:
+        return pg_sql
+    build = Postgres.Parser.FUNCTIONS["REGEXP_REPLACE"]
+
+    def bare(node: exp.Expr) -> exp.Expr:
+        called = node.expression if isinstance(node, exp.Dot) else None
+        if (
+            isinstance(called, exp.Anonymous)
+            and called.name.lower() == "regexp_replace"
+            and node.this.name.lower() == "pg_catalog"
+        ):
+            return build([a.copy() for a in called.expressions], dialect="postgres")
+        return node
+
+    return sqlglot.parse_one(pg_sql, read="postgres").transform(bare).sql(dialect="postgres")
+
+
 _CAST_LITERAL_NAMED = re.compile(
     r"\b(numeric|decimal|bytea|character|char|bpchar)\b", re.IGNORECASE
 )

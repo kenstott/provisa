@@ -1649,20 +1649,12 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
     return tree.transform(rewrite)
 
 
-_ARRAY_OF_CSTRING = re.compile(r"::\s*cstring\s*\[\s*\]", re.IGNORECASE)
-_BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
 _CALLED = re.compile(r"\b(" + "|".join(sorted(RESULTS)) + r")\"?\s*\(", re.IGNORECASE)
 
 
 #: What these forms write in UTC, or read a session's zone into: only a session on UTC is answered.
 ZONED = frozenset({"timestamptz_in", "timestamptz_out", "timestamptz_send"})
 _ZONED_CALLED = re.compile(r"\b(" + "|".join(sorted(ZONED)) + r")\"?\s*\(", re.IGNORECASE)
-
-
-def spelled(sql: str) -> str:
-    """``sql`` as sqlglot reads it: ``::cstring[]`` as ``::_cstring``, ``::bit varying`` as
-    ``::varbit``."""
-    return _BIT_VARYING.sub("::varbit", _ARRAY_OF_CSTRING.sub("::_cstring", sql))
 
 
 def zoned_call(sql: str) -> str | None:
@@ -1672,7 +1664,7 @@ def zoned_call(sql: str) -> str | None:
     if named is None:
         return None
     try:
-        tree = sqlglot.parse_one(spelled(sql), read="postgres")
+        tree = sqlglot.parse_one(sql, read="postgres")
     except SqlglotError:
         return named.group(1).lower()
     calls = (call.name.lower() for call in tree.find_all(exp.Anonymous))
@@ -1680,14 +1672,13 @@ def zoned_call(sql: str) -> str | None:
 
 
 def readable(sql: str, dialect: str | None = None) -> str:
-    """``sql`` with each call of these functions as its row reads it. sqlglot takes ``::cstring[]``
-    for a subscript and ``::bit varying`` for a bit and an alias, and reads PostgreSQL's other
-    spelling of each. A text it cannot parse is left, for the engine to say so. ``dialect`` is the
-    engine it is for, where that changes a NULL's type."""
+    """``sql`` with each call of these functions as its row reads it (``pg_syntax`` reads
+    ``::cstring[]`` and ``::bit varying``). A text it cannot parse is left, for the engine to say
+    so. ``dialect`` is the engine it is for, where that changes a NULL's type."""
     if _CALLED.search(sql) is None:
         return sql
     try:
-        tree = sqlglot.parse_one(spelled(sql), read="postgres")
+        tree = sqlglot.parse_one(sql, read="postgres")
         return _lowered(tree, dialect).sql(dialect="postgres")
     except SqlglotError:
         return sql

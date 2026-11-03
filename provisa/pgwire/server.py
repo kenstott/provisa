@@ -501,13 +501,23 @@ def _pg_literal(v) -> str:
 
 
 def _substitute_params(sql: str, params: list | None) -> str:
-    """Replace $1, $2, ... with literal values (highest index first to avoid $1 matching $10)."""
+    """``sql`` with each $1, $2, ... the literal of its value, on the tree (REQ-2167): a ``$1``
+    in a string literal is its text."""
     if not params:
         return sql
-    result = sql
-    for i in range(len(params), 0, -1):
-        result = result.replace(f"${i}", _pg_literal(params[i - 1]))
-    return result
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    def bound(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Parameter) and node.this is not None and node.name.isdigit():
+            index = int(node.name)
+            if 1 <= index <= len(params):
+                return sqlglot.parse_one(_pg_literal(params[index - 1]), read="postgres")
+        return node
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    written = tree.transform(bound)
+    return sql if written == tree else written.sql(dialect="postgres")
 
 
 def _held_roles(state: Any, identity: Any, mapped: str, org_id: str | None, *, run) -> set[str]:
@@ -1061,14 +1071,34 @@ _SHAPE_COERCERS: dict[BVType, Callable[[Any], Any]] = {
 }
 
 
-_CURRENT_QUERY = re.compile(r'(?:pg_catalog\.)?"?\bcurrent_query"?\s*\(\s*\)', re.IGNORECASE)
+_CURRENT_QUERY = re.compile(r'"?\bcurrent_query"?\s*\(\s*\)', re.IGNORECASE)
 
 
 def _current_query_said(sql: str, client_sql: str) -> str:  # REQ-2171
     """``sql`` with each current_query() the statement the client wrote: what an engine's own would
-    answer is the statement as Provisa wrote it for that engine."""
-    said = "'" + client_sql.replace("'", "''") + "'::text"
-    return _CURRENT_QUERY.sub(lambda _: said, sql)
+    answer is the statement as Provisa wrote it for that engine. Read on the tree (REQ-2167)."""
+    if _CURRENT_QUERY.search(sql) is None:
+        return sql
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    def called(node: exp.Expr) -> bool:
+        return (
+            isinstance(node, exp.Anonymous)
+            and node.name.lower() == "current_query"
+            and not node.expressions
+        )
+
+    def said(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Dot) and node.this.name.lower() == "pg_catalog":
+            node = node.expression if called(node.expression) else node
+        if called(node):
+            return exp.cast(exp.Literal.string(client_sql), exp.DataType.Type.TEXT)
+        return node
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    written = tree.transform(said)
+    return sql if written == tree else written.sql(dialect="postgres")
 
 
 def _null_alone(value: Any) -> Any:  # REQ-2171

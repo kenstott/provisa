@@ -2015,10 +2015,11 @@ _CALLED = {
     "regexp_replace_at": "regexp_replace",
     "pg_to_hex": "to_hex",
 }
-#: How a statement already written through sqlglot spells a row's call.
+#: How a statement already written through sqlglot spells a row's call, and how a client's spells
+#: one pg_syntax reads by its routine's name (overlaps, overlaps_timestamp's).
 _SPELLED = {
     "encode", "substring", "regexp_replace", "array_concat", "to_number",
-    "date_trunc", "substr", "left", "right",
+    "date_trunc", "substr", "left", "right", "overlaps",
 }  # fmt: skip
 _NAMES = (
     frozenset(name for name, _ in MACROS)
