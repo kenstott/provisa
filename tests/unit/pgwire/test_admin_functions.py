@@ -351,3 +351,35 @@ async def test_a_lock_is_taken_once_with_the_binds_key_and_a_null_key_takes_none
     finally:
         await a.close()
         await b.close()
+
+
+@pytest.mark.asyncio
+async def test_a_sessions_own_setting_is_kept_as_postgresql_keeps_it(port, served):
+    a, b = await _connect(port, "alice"), await _connect(port, "alice")
+    try:
+        assert (
+            await a.fetchval("SELECT pg_catalog.set_config('conformance.probe', 'on', false)")
+            == "on"
+        )
+        assert await a.fetchval("SELECT pg_catalog.current_setting('conformance.probe')") == "on"
+        assert (
+            await b.fetchval("SELECT pg_catalog.current_setting('conformance.probe', true)") is None
+        )
+        # Local to a transaction it was not in: it ends with the statement.
+        await a.fetchval("SELECT pg_catalog.set_config('conformance.other', 'x', true)")
+        assert (
+            await a.fetchval("SELECT pg_catalog.current_setting('conformance.other', true)") is None
+        )
+    finally:
+        await a.close()
+        await b.close()
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_setting_is_null_where_missing_ok(port, served):
+    a = await _connect(port, "alice")
+    try:
+        sql = "SELECT pg_catalog.\"current_setting\"('no_such.setting'::text, true::boolean) AS v"
+        assert await a.fetchval(sql) is None
+    finally:
+        await a.close()

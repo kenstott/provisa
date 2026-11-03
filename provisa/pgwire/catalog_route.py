@@ -545,14 +545,27 @@ def _current_setting(args: list[exp.Expr], settings: Mapping[str, str]) -> exp.E
     if not args:
         return exp.null()
     name = args[0]
+    # current_setting(name, missing_ok): a setting no session has is NULL where missing_ok is.
+    missing_ok = len(args) > 1 and _is_true(args[1])
+    unknown = "CAST(NULL AS TEXT)" if missing_ok else "''"
+    while isinstance(name, exp.Cast) and isinstance(name.this, exp.Literal):
+        name = name.this
     if isinstance(name, exp.Literal):
-        return exp.Literal.string(settings.get(name.name.lower(), ""))
+        held = settings.get(name.name.lower())
+        return exp.Literal.string(held) if held is not None else _parsed(unknown)
     if isinstance(name, exp.Null) or (
         isinstance(name, exp.Cast) and isinstance(name.this, exp.Null)
     ):
         return exp.cast(exp.null(), "TEXT")
     cases = " ".join(f"WHEN {_literal(k)} THEN {_literal(v)}" for k, v in sorted(settings.items()))
-    return _parsed(f"CASE LOWER({name.sql(dialect='postgres')}) {cases} ELSE '' END")
+    return _parsed(f"CASE LOWER({name.sql(dialect='postgres')}) {cases} ELSE {unknown} END")
+
+
+def _is_true(value: exp.Expr) -> bool:
+    """Whether ``value`` is the constant true, cast or not."""
+    while isinstance(value, exp.Cast):
+        value = value.this
+    return isinstance(value, exp.Boolean) and bool(value.this)
 
 
 #: When this server's statistics began, which nothing resets: what the two functions of the server's

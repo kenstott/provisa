@@ -1675,6 +1675,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-2167: what pg_stat_activity lists of this connection.
         self.backend_start = datetime.datetime.now(datetime.timezone.utc)
         self.application_name = ""
+        # REQ-2167: what this session's set_config(name, value, false) set, by name, which its
+        # current_setting reads back as PostgreSQL's does.
+        self.client_settings: dict[str, str] = {}
         # REQ-2167: this connection's two ends, (host, port), set when it starts.
         self.client_end: tuple = ()
         self.server_end: tuple = ()
@@ -2213,6 +2216,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     self.zone.current,
                     self.zone,
                     self.org_id,
+                    self.client_settings,
                 ),
                 run=self._catalog_read,
             )

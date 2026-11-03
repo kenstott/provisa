@@ -567,17 +567,47 @@ class CatalogSession:
     zone: SessionZone | None = None
     #: The org whose advisory locks pg_locks lists (advisory_locks.LOCKS keys them by org).
     org_id: str | None = None
+    #: What the connection's own set_config(name, value, false) set (the connection's dict, which
+    #: a set_config here writes): current_setting reads it back. Never a catalog view's setting.
+    client_settings: dict[str, str] | None = None
 
 
 def _session_settings(sql: str, session: CatalogSession | None) -> Mapping[str, str]:
-    """The settings as this session has them. A statement that reads TimeZone in a session whose
-    zone cannot be told is refused; any other is answered."""
+    """The settings as this session has them, what it set itself over the server's. A statement
+    that reads TimeZone in a session whose zone cannot be told is refused; any other is
+    answered."""
     zone = None if session is None else session.zone
+    own = (session.client_settings if session is not None else None) or {}
     if zone is None:
-        return _KNOWN_SETTINGS
+        return {**_KNOWN_SETTINGS, **own}
     if _READS_ZONE_RE.search(sql):
-        return {**_KNOWN_SETTINGS, "timezone": zone.named()}
-    return {**_KNOWN_SETTINGS, "timezone": zone.shown() or _KNOWN_SETTINGS["timezone"]}
+        return {**_KNOWN_SETTINGS, **own, "timezone": zone.named()}
+    return {
+        **_KNOWN_SETTINGS,
+        **own,
+        "timezone": zone.shown() or _KNOWN_SETTINGS["timezone"],
+    }
+
+
+#: A set_config whose name, value and is_local are constants.
+_SET_CONFIG_CALL_RE = re.compile(
+    r"set_config\"?\s*\(\s*'(?P<name>(?:[^']|'')*)'(?:::\w+)?\s*,\s*"
+    r"'(?P<value>(?:[^']|'')*)'(?:::\w+)?\s*,\s*(?P<local>\w+)(?:::\w+)?\s*\)",
+    re.IGNORECASE,
+)
+
+
+def _keep_set_config(sql: str, session: CatalogSession | None) -> None:
+    """A set_config(name, value, false) is the session's from then on, as PostgreSQL keeps it;
+    one local to a transaction ends with it, and TimeZone is the session zone's to keep."""
+    if session is None or session.client_settings is None:
+        return
+    m = _SET_CONFIG_CALL_RE.search(sql)
+    if m is None or m["local"].lower() not in ("false", "f", "off"):
+        return
+    name = m["name"].replace("''", "'").lower()
+    if name != "timezone":
+        session.client_settings[name] = m["value"].replace("''", "'")
 
 
 def _list_session(cur, role_id: str, session: CatalogSession, sql: str) -> None:
@@ -791,6 +821,7 @@ def answer(sql: str, role_id: str, state, session: CatalogSession | None = None,
     if "set_config" in stripped.lower() and "current_setting" not in stripped.lower():
         from provisa.executor.result import QueryResult
 
+        _keep_set_config(stripped, session)
         return QueryResult(
             rows=[(_set_config_value(stripped, settings),)],
             column_names=["set_config"],
