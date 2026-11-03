@@ -47,6 +47,12 @@ async def source_row(conn: "Connection", source_id: str) -> dict[str, Any] | Non
     return dict(row._mapping) if row is not None else None
 
 
+async def is_quickbooks_source(conn: "Connection", source_id: str) -> bool:
+    """REQ-2197: whether ``source_id`` is a QuickBooks source, whose tables carry no query."""
+    row = await source_row(conn, source_id)
+    return row is not None and row["type"] == "quickbooks"
+
+
 async def preview_sparql(conn: "Connection", source_id: str, query: str) -> "QueryPreviewType":
     """Run the SPARQL SELECT (LIMIT 5) against the source's endpoint and infer the columns: one per
     variable the answer's head names, typed by its bindings' XSD datatypes (text otherwise)."""
@@ -395,6 +401,8 @@ async def persist_query_api_registration(
     from provisa.api.app import state
 
     row = await source_row(conn, model.source_id)
+    if row is not None and row["type"] == "quickbooks":
+        return await _persist_quickbooks_table(conn, model)
     if row is None or row["type"] not in QUERY_API_TYPES:
         return None
     if not model.query_template:
@@ -439,5 +447,43 @@ async def persist_query_api_registration(
     state.api_sources[api_source.id] = api_source
     from provisa.api_source.endpoints import put_endpoint
 
+    put_endpoint(state, endpoint)
+    return None
+
+
+async def _persist_quickbooks_table(conn: "Connection", model: "Table") -> "MutationResult | None":
+    """REQ-2197: a QuickBooks table is an entity of the company; its endpoint is the entity's
+    query, written from the source's settings, and mirrored into live state."""
+    from provisa.api.admin.types import MutationResult
+    from provisa.api.app import state
+    from provisa.api_source.endpoints import put_endpoint
+    from provisa.federation.registry_view import registered_sources
+    from provisa.quickbooks.persist import QuickBooksTableRefused, persist_quickbooks_table
+    from provisa.quickbooks.settings import InvalidQuickBooksSource, parse
+
+    (source,) = [s for s in await registered_sources(state, conn) if s.id == model.source_id]
+    try:
+        settings = parse(
+            source.id,
+            username=source.username,
+            password=source.password,
+            database=source.database,
+            mapping=source.mapping,
+        )
+        api_source, endpoint = await persist_quickbooks_table(conn, settings, model)
+    except InvalidQuickBooksSource as invalid:
+        return MutationResult(
+            success=False,
+            message=str(invalid),
+            code="quickbooks.source_invalid",
+            params={"source": model.source_id},
+        )
+    except QuickBooksTableRefused as refused:
+        return MutationResult(
+            success=False, message=str(refused), code=refused.code, params=refused.params
+        )
+    if not isinstance(getattr(state, "api_sources", None), dict):
+        state.api_sources = {}
+    state.api_sources[api_source.id] = api_source
     put_endpoint(state, endpoint)
     return None

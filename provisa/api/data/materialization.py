@@ -1650,6 +1650,7 @@ async def _materialize_api_to_engine_cache(
     from provisa.codesource.table import is_code_table
     from provisa.compiler.nf_extractor import find_api_table_names
     from provisa.qdrant.table import is_search
+    from provisa.quickbooks import pushdown as quickbooks_pushdown
     from provisa.sparql import pushdown as sparql_pushdown
 
     cache_rewrites: dict = {}
@@ -1820,7 +1821,10 @@ async def _materialize_api_to_engine_cache(
             values_cte_entries,
             nf_args=nf_args,
             ctx=ctx,
-            pushed=sparql_pushdown.pushed_arguments(ep, exec_sql, tn),
+            pushed=(
+                sparql_pushdown.pushed_arguments(ep, exec_sql, tn)
+                or quickbooks_pushdown.pushed_arguments(ep, exec_sql, tn)  # REQ-2197
+            ),
             registration=registrations[_sql_name(table)],
         )
         if tn not in cache_rewrites and tn not in values_cte_entries:

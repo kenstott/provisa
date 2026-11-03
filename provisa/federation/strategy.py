@@ -129,6 +129,7 @@ _MATERIALIZE_ONLY = frozenset(
         "microsoft_365",  # REQ-1923: read by its loader and landed
         "logs",  # REQ-1996: read by its loader and landed
         "sparql",
+        "quickbooks",  # REQ-2197: read through its query endpoint and landed
         "neo4j",
         "splunk",
         "sharepoint",

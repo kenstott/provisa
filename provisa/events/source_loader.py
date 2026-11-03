@@ -74,6 +74,8 @@ _ADAPTER_FETCH_ONLY: frozenset[str] = frozenset(
         # connector for either type (trino_connectors.py has no entry).
         "neo4j",
         "sparql",
+        # REQ-2197: a QuickBooks table's rows come from the company's query endpoint.
+        "quickbooks",
         # REQ-1982: Cosmos DB documents are read through its SDK (provisa/cosmosdb/loader.py); no
         # engine reaches it.
         "cosmosdb",
