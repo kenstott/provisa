@@ -23,7 +23,7 @@ from __future__ import annotations
 import re
 
 from provisa.pgwire.catalog_pg17_acl import NO_PUBLIC_SELECT, PG17_ROLES, REVOKED_FUNCTIONS
-from provisa.pgwire.catalog_pg17_procs import CATALOG_FOREIGN_KEYS, SETTING_FLAGS
+from provisa.pgwire.catalog_pg17_procs import CATALOG_FOREIGN_KEYS, OPCLASSES, SETTING_FLAGS
 from provisa.transpiler.metadata_oids import SYSTEM_SCHEMA_OIDS
 
 _OLD_RELATION = re.compile(r"\b_pg_([a-z_]+)\b")
@@ -1613,11 +1613,14 @@ def _catalog_objects(a: _Answers) -> None:
             + raising("XX000", "'cache lookup failed for function ' || f")
             + " END",
         )
+    # An operator class PostgreSQL ships validates; any other is none (REQ-2167).
     a.strict(
         "amvalidate",
-        "c",
+        "c:bigint",
         "BOOLEAN",
-        raising("XX000", "'cache lookup failed for operator class ' || c"),
+        f"CASE WHEN c IN ({', '.join(str(row[0]) for row in OPCLASSES)}) THEN TRUE ELSE "
+        + raising("XX000", "'cache lookup failed for operator class ' || c")
+        + " END",
     )
     a.strict("postgresql_fdw_validator", "options, catalog", "BOOLEAN", "true")
     a.strict(

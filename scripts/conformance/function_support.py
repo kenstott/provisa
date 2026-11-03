@@ -2276,13 +2276,15 @@ GROUPS = {
     "(REQ-2190): a regclass is compared by its name, not its oid, and a catalog serialized "
     "lists the model; an object only the PostgreSQL fixture server creates (a foreign-data "
     "wrapper, a foreign server, statistics objects, partitions, a replication slot, a "
-    "statistics reset) is in no model.",
+    "statistics reset, a large object, a transaction id, an available extension, a system "
+    "view's rule) is in no model.",
     # REQ-2167, amended 2026-11-03, Storage, fixture objects and server files (1).
-    STORAGE_GROUP: "Storage functions answer NULL: Provisa holds no storage of its own.",
+    STORAGE_GROUP: "Storage functions answer NULL: Provisa holds no storage of its own, and so "
+    "no tuple ids (currtid2 finds no relation's).",
     # REQ-2167, amended 2026-11-03, Storage, fixture objects and server files (3); amended
     # 2026-10-27, PGWIRE'S CATALOG FUNCTIONS: no function reads the server's files.
-    SERVER_FILES_GROUP: "pg_read_file and pg_read_binary_file read no file: no function reads "
-    "the server's files.",
+    SERVER_FILES_GROUP: "pg_read_file and pg_read_binary_file read no file, and pg_ls_dir and "
+    "pg_stat_file answer as a server without it: no function reads the server's files.",
     # REQ-2167, amended 2026-11-03, Server administration functions.
     SERVER_ADMINISTRATION_GROUP: "PostgreSQL refuses these for the test server's own state or "
     "configuration; each names PostgreSQL's refusal as its reason.",
@@ -2361,9 +2363,42 @@ _DECIDED_ERRORS: tuple[tuple[re.Pattern[str], re.Pattern[str], str], ...] = (
         LARGE_OBJECT_GROUP,
     ),
     (
-        re.compile(r"^has_sequence_privilege$"),
+        re.compile(r"^(has_sequence_privilege|pg_sequence_parameters)$"),
         re.compile(rf'relation "{re.escape(function_probe.PROBE_SEQUENCE)}" does not exist'),
         SEQUENCE_GROUP,
+    ),
+    # No function reads the server's files: each answers as a server without the file.
+    (
+        re.compile(r"^(pg_ls_dir|pg_stat_file)$"),
+        re.compile(r'could not (open directory|stat file) "[^"]*": No such file or directory'),
+        SERVER_FILES_GROUP,
+    ),
+    # An object only the PostgreSQL fixture server creates is in no model.
+    (
+        re.compile(r"^lo_get$"),
+        re.compile(rf"large object {FIXTURE_LARGE_OBJECT} does not exist"),
+        CATALOG_IS_THE_MODEL_GROUP,
+    ),
+    (
+        re.compile(r"^pg_ls_replslotdir$"),
+        re.compile(rf'replication slot "{re.escape(REPLICATION_SLOT)}" does not exist'),
+        CATALOG_IS_THE_MODEL_GROUP,
+    ),
+    (
+        re.compile(r"^(pg_xact_status|txid_status)$"),
+        re.compile(r"transaction ID \d+ is in the future"),
+        CATALOG_IS_THE_MODEL_GROUP,
+    ),
+    (
+        re.compile(r"^pg_extension_update_paths$"),
+        re.compile(r'extension "hstore" is not available'),
+        CATALOG_IS_THE_MODEL_GROUP,
+    ),
+    # Provisa holds no storage, so no tuple ids.
+    (
+        re.compile(r"^currtid2$"),
+        re.compile(r'relation "[^"]+" does not exist'),
+        STORAGE_GROUP,
     ),
 )
 
@@ -2400,6 +2435,10 @@ _FIXTURE_ANSWERS = frozenset(
 )
 
 
+#: A rule's node tree, which a call reads from pg_rewrite.
+_NODE_TREES = frozenset({"pg_node_tree_out", "pg_node_tree_send"})
+
+
 def decided_error(name: str, error: str) -> str | None:
     """The group of the decision ``name``'s ``error`` is, None if it is no decision's."""
     for function, wording, group in _DECIDED_ERRORS:
@@ -2426,6 +2465,8 @@ def decided_difference(name: str, sql: str, difference: str) -> str | None:
         return CATALOG_IS_THE_MODEL_GROUP  # the oid's bytes: the model's oid
     if _TABLE_TO_XML.match(name) and "'pg_catalog." in sql:
         return CATALOG_IS_THE_MODEL_GROUP  # a catalog's rows: the model's
+    if name in _NODE_TREES and "pg_catalog.pg_rewrite" in sql and difference.startswith("None,"):
+        return CATALOG_IS_THE_MODEL_GROUP  # the model's pg_rewrite holds no system view's rule
     if name in _FIXTURE_ANSWERS or _FIXTURE_OBJECT.search(sql):
         return CATALOG_IS_THE_MODEL_GROUP  # an object only the PostgreSQL fixture makes
     return None

@@ -2193,6 +2193,57 @@ def test_any_other_difference_stays_a_wrong_answer(name, sql, difference):
             'ERROR:  relation "conformance.probe_sequence" does not exist',
             support.SEQUENCE_GROUP,
         ),
+        # REQ-2167, amended 2026-11-02, Sequence functions are not supported.
+        (
+            "pg_sequence_parameters",
+            'ERROR:  relation "conformance.probe_sequence" does not exist',
+            support.SEQUENCE_GROUP,
+        ),
+        # REQ-2167, amended 2026-10-27 and 2026-11-03: no function reads the server's files.
+        (
+            "pg_ls_dir",
+            'ERROR:  could not open directory "base": No such file or directory\nCONTEXT:  '
+            "PL/pgSQL function provisa_raise(text,text) line 1 at RAISE",
+            support.SERVER_FILES_GROUP,
+        ),
+        (
+            "pg_stat_file",
+            'ERROR:  could not stat file "PG_VERSION": No such file or directory',
+            support.SERVER_FILES_GROUP,
+        ),
+        # REQ-2167, amended 2026-11-03, Storage, fixture objects and server files (2).
+        (
+            "lo_get",
+            "ERROR:  large object 424243 does not exist",
+            support.CATALOG_IS_THE_MODEL_GROUP,
+        ),
+        (
+            "pg_ls_replslotdir",
+            'ERROR:  replication slot "conformance_slot" does not exist',
+            support.CATALOG_IS_THE_MODEL_GROUP,
+        ),
+        (
+            "pg_xact_status",
+            "ERROR:  transaction ID 753 is in the future",
+            support.CATALOG_IS_THE_MODEL_GROUP,
+        ),
+        (
+            "txid_status",
+            "ERROR:  transaction ID 753 is in the future",
+            support.CATALOG_IS_THE_MODEL_GROUP,
+        ),
+        (
+            "pg_extension_update_paths",
+            'ERROR:  extension "hstore" is not available',
+            support.CATALOG_IS_THE_MODEL_GROUP,
+        ),
+        # REQ-2167, amended 2026-11-03, Storage, fixture objects and server files (1): Provisa
+        # holds no tuple ids.
+        (
+            "currtid2",
+            'ERROR:  relation "conformance.function_columns" does not exist',
+            support.STORAGE_GROUP,
+        ),
     ],
 )
 def test_an_error_a_decision_makes_is_that_decisions(name, error, group):
@@ -2364,6 +2415,19 @@ def test_a_server_administration_function_is_skipped_by_design_with_postgresql_s
 def test_an_object_only_the_postgresql_fixture_makes_is_the_catalog_s_model(name, sql, difference):
     """REQ-2167, amended 2026-11-03, Storage, fixture objects and server files (2)."""
     assert support.decided_difference(name, sql, difference) == support.CATALOG_IS_THE_MODEL_GROUP
+
+
+@pytest.mark.parametrize("name", ["pg_node_tree_out", "pg_node_tree_send"])
+def test_a_system_views_rule_is_the_catalog_s_model(name):
+    """REQ-2167, CATALOG IS THE MODEL'S: the model's pg_rewrite holds no rule of a system view."""
+    sql = (
+        f'SELECT pg_catalog."{name}"((SELECT r.ev_action FROM pg_catalog.pg_rewrite AS r '
+        "JOIN pg_catalog.pg_class AS c ON c.oid = r.ev_class WHERE c.relname = 'pg_tables' "
+        "AND c.relnamespace = 'pg_catalog'::regnamespace)::pg_node_tree) AS v"
+    )
+    difference = "None, PostgreSQL '({QUERY :commandType 1'"
+    assert support.decided_difference(name, sql, difference) == support.CATALOG_IS_THE_MODEL_GROUP
+    assert support.decided_difference(name, sql, "'x', PostgreSQL 'y'") is None
 
 
 def test_a_fixture_free_call_of_a_fixture_function_stays_a_wrong_answer():

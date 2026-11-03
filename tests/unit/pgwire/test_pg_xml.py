@@ -779,3 +779,31 @@ def test_a_statement_of_xml_and_money_describes_each_column_as_its_own_type():
     assert [column.oid for column in result_casts(sql)] == [143, 790]
     assert [c.oid for c in result_casts("SELECT p FROM (SELECT '$1'::money AS p) s")] == [790]
     assert [c.oid for c in result_casts("SELECT p FROM (SELECT '<a/>'::xml AS p) s")] == [142]
+
+
+class _WithProvisasOwnDomains(_FixtureReads):
+    """The fixture, with the domains Provisa keeps for itself listed beside its schemas."""
+
+    _OWN = ("meta", "ontology", "ops")
+
+    def catalog(self, sql: str, parameters: list[Any]) -> list[tuple]:
+        if sql == xml_mapping._SCHEMAS:
+            return sorted([*super().catalog(sql, parameters), *((d,) for d in self._OWN)])
+        if "c.relname FROM" in sql and parameters[0] in self._OWN:
+            return [("registered_tables",)]
+        return super().catalog(sql, parameters)
+
+
+@pytest.mark.parametrize(
+    "call", ["database_to_xml", "database_to_xmlschema", "database_to_xml_and_xmlschema"]
+)
+def test_a_database_maps_no_domain_provisa_keeps_for_itself(call):
+    """REQ-2167: as PostgreSQL leaves pg_catalog and information_schema out of database_to_xml,
+    Provisa leaves out meta, ops and ontology: reading every row of each, one statement a table,
+    took the call past 30 s."""
+    reads = _WithProvisasOwnDomains()
+    xml_mapping.fold(f"SELECT {call}(true, false, '') AS v", reads, None)
+    assert reads.read
+    assert not [
+        sql for sql in reads.read if '"meta"' in sql or '"ops"' in sql or '"ontology"' in sql
+    ]
