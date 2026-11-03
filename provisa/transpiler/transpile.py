@@ -21,7 +21,7 @@ import re
 import sqlglot
 from sqlglot.dialects.postgres import Postgres
 
-from provisa.core.pg_error import MARK
+from provisa.core.pg_error import MARK, raising
 from provisa.transpiler import (
     function_macros,
     pg_forms_enum,
@@ -688,9 +688,15 @@ def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167
     return tree.transform(_call).sql(dialect="postgres")
 
 
-#: The error a zero divisor raises on DuckDB: PostgreSQL's own message, reported with its
-#: SQLSTATE 22012 (pgwire.server._sqlstate_of).
+#: The error a zero divisor raises on DuckDB: PostgreSQL's own, its SQLSTATE 22012 and message
+#: (pg_error.raising).
 DIVISION_BY_ZERO = "division by zero"
+
+
+#: What a zero divisor answers on DuckDB: PostgreSQL's 22012, raised by the engine.
+_DIVISION_REFUSED = sqlglot.parse_one(
+    raising("22012", exp.Literal.string(DIVISION_BY_ZERO).sql(dialect="duckdb")), read="duckdb"
+)
 
 
 def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
@@ -710,9 +716,7 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
             ifs=[
                 exp.If(
                     this=exp.EQ(this=divisor.copy(), expression=exp.Literal.number(0)),
-                    true=exp.Anonymous(
-                        this="error", expressions=[exp.Literal.string(DIVISION_BY_ZERO)]
-                    ),
+                    true=_DIVISION_REFUSED.copy(),
                 )
             ],
             default=divisor,
