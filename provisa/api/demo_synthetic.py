@@ -307,7 +307,7 @@ async def _land(
 
     Its runtime is built again once its sources are bound, here, and cloned: the build before
     seeded its model (or found it cloned) a moment ago. Left to whatever asked for it next, that
-    build seeded the whole model again: 16.8 s of the profiling template's on cloud."""
+    build seeded the whole model again."""
     from provisa.api.app import state
     from provisa.api.demo_replicas import _store_path
     from provisa.api.org_runtime import runtime_key
