@@ -16,6 +16,7 @@
     "save": "Guardar",
     "updated": "Término actualizado.",
     "delete": "Eliminar",
+    "deleteTitle": "Eliminar término",
     "deleteConfirm": "¿Eliminar el término {{name}}?",
     "deleted": "Término {{name}} eliminado.",
     "deleteDisabledHint": "Este término tiene referencias o relaciones. Retírelo para sacarlo de servicio, o mueva sus referencias y quite sus relaciones para eliminarlo.",
