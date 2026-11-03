@@ -393,14 +393,16 @@ async def _reflect_admin_views(
 
 
 async def _seed_ontology_domain(
-    conn: "Connection", org_id: str = "default", env: str | None = None
+    conn: "Connection", org_id: str = "default", env: str | None = None, *, views_made: bool = False
 ) -> None:  # REQ-2163
     """Register the glossary's definition views as the ontology system schema's tables
     (idempotent), as :func:`_seed_meta_domain` registers meta's. The Class tables generated from
-    the glossary are the schema's too, and are not written here."""
+    the glossary are the schema's too, and are not written here. ``views_made``: the views are
+    there already (:func:`_make_built_in_views`)."""
     schema_name = org_schema(org_id, env)
-    for ddl in ONTOLOGY_TABLE_VIEWS.values():
-        await _seed_view(conn, ddl)
+    if not views_made:
+        for ddl in ONTOLOGY_TABLE_VIEWS.values():
+            await _seed_view(conn, ddl)
     await _drop_sibling_environment_registrations(conn, ONTOLOGY_DOMAIN_ID, org_id, schema_name)
     reflected = await _reflect_admin_views(
         conn,
@@ -420,7 +422,7 @@ async def _seed_ontology_domain(
 
 
 async def _seed_meta_domain(
-    conn: "Connection", org_id: str = "default", env: str | None = None
+    conn: "Connection", org_id: str = "default", env: str | None = None, *, views_made: bool = False
 ) -> None:  # REQ-012, REQ-016, REQ-695
     """Register admin tables in the built-in meta domain (idempotent).
 
@@ -428,10 +430,13 @@ async def _seed_meta_domain(
     a branch's runtime is scoped to its own schema — naming ``org_<id>`` here registered the
     branch's meta tables at prod's address, next to the branch's own copies of the same rows, and
     every request to that runtime then failed the (domain, table) uniqueness assertion.
+
+    ``views_made``: the views are there already (:func:`_make_built_in_views`).
     """
     schema_name = org_schema(org_id, env)
-    for ddl in _META_TABLE_VIEWS.values():
-        await _seed_view(conn, ddl)
+    if not views_made:
+        for ddl in _META_TABLE_VIEWS.values():
+            await _seed_view(conn, ddl)
 
     await _drop_sibling_environment_registrations(conn, "meta", org_id, schema_name)
 
@@ -492,7 +497,7 @@ async def _seed_meta_domain(
 
 
 async def _seed_ops_domain(
-    conn: "Connection", org_id: str = "default", env: str | None = None
+    conn: "Connection", org_id: str = "default", env: str | None = None, *, views_made: bool = False
 ) -> None:  # REQ-884
     """Expose internal operational logs (query_audit_log, …) as first-class tables in
     the built-in ``ops`` domain, reusing the meta-domain view+seed mechanism.
@@ -506,11 +511,14 @@ async def _seed_ops_domain(
     REQ-1386: also creates and registers the management report views
     (``_OPS_REPORT_VIEWS``) on the same path — always seeded on install, not demo
     data — and designates ``org_admin`` as the ops-domain steward so the domain
-    never surfaces as a REQ-609 PENDING stewardship gap."""
+    never surfaces as a REQ-609 PENDING stewardship gap.
+
+    ``views_made``: the views are there already (:func:`_make_built_in_views`)."""
     schema_name = org_schema(org_id, env)  # REQ-1488: the environment's schema, not the org's
     await _drop_sibling_environment_registrations(conn, "ops", org_id, schema_name)
-    for ddl in _OPS_LOG_TABLE_VIEWS.values():
-        await _seed_view(conn, ddl)
+    if not views_made:
+        for ddl in _OPS_LOG_TABLE_VIEWS.values():
+            await _seed_view(conn, ddl)
 
     for tbl, view_name in _OPS_LOG_TABLE_ALIAS.items():
         table_id = await conn.upsert_returning(
@@ -565,9 +573,11 @@ async def _seed_ops_domain(
     # REQ-1386: management report views. The unnest spine first (the report views
     # reference it), then each report view, registered like any ops table. Every
     # report view exposes ``id`` as its primary key.
-    await _seed_view(conn, _ops_table_usage_ddl())
+    if not views_made:
+        await _seed_view(conn, _ops_table_usage_ddl())
     for view_name, ddl in _OPS_REPORT_VIEWS.items():
-        await _seed_view(conn, ddl)
+        if not views_made:
+            await _seed_view(conn, ddl)
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {
@@ -959,6 +969,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     env: str | None = None,
     engine_addressable: bool = True,
     cloned: bool = False,
+    provisioned: bool = False,
 ) -> None:
     """Seed provisa-admin, provisa-otel, and __derived__ source rows; seed meta domain and ops; compute clusters.
 
@@ -978,7 +989,11 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     ``cloned`` (REQ-2006): the org's model was cloned a moment ago from an org this seed ran on in
     this release (a demo sandbox from its template), every row this seed writes with it, rebased
     onto the org's own schema (env_copy._rebase). Only what a schema holds of its own is made: the
-    built-in views those rows register, and the catalog client's grants on them."""
+    built-in views those rows register, and the catalog client's grants on them.
+
+    ``provisioned``: the org's schema was created a moment ago, in this process, and holds none of
+    the built-in views (a demo template's, built anew): they are made as one script
+    (:func:`_make_built_in_views`), and the domain seeds register them."""
     assert state.model_db is not None
     if cloned:
         async with state.model_db.acquire() as _conn:
@@ -1102,12 +1117,17 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
         async with _conn.advisory_lock(_seed_lock_key(org_id, env)):
             clock = _SeedClock(org_id)
             await _seed_tag_param_values(_conn)  # REQ-1467
-            await _seed_meta_domain(_conn, org_id=org_id, env=env)
+            if provisioned:
+                await _make_built_in_views(_conn)
+                clock.mark("built-in views")
+            await _seed_meta_domain(_conn, org_id=org_id, env=env, views_made=provisioned)
             clock.mark("meta domain")
-            await _seed_ontology_domain(_conn, org_id=org_id, env=env)  # REQ-2163
+            await _seed_ontology_domain(  # REQ-2163
+                _conn, org_id=org_id, env=env, views_made=provisioned
+            )
             clock.mark("ontology domain")
             await _seed_ops_pg(_conn)
-            await _seed_ops_domain(_conn, org_id=org_id, env=env)  # REQ-884
+            await _seed_ops_domain(_conn, org_id=org_id, env=env, views_made=provisioned)  # REQ-884
             clock.mark("ops domain")
             await _seed_catalog_client(_conn, org_schema(org_id, env))  # REQ-2190
             clock.mark("catalog client")
@@ -1151,7 +1171,7 @@ def _built_in_view_ddl() -> list[str]:
 
 async def _make_built_in_views(conn: "Connection") -> None:
     """The built-in views of a schema provisioned a moment ago, which holds none of them (a demo
-    sandbox's, REQ-2006): sent as one script, in one round trip. Made one by one, each in its own
+    sandbox's, REQ-2006, or a demo template's built anew): sent as one script, in one round trip. Made one by one, each in its own
     transaction, they were about 800 round trips to a control plane on another machine -- 9 s of a
     sandbox's open. A view already there and reshaped is :func:`_seed_built_in_views`' case."""
     await conn.execute(views_script(_built_in_view_ddl()))

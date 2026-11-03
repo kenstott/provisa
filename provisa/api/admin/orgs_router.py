@@ -424,7 +424,8 @@ async def _provision_org_task(
 
     from provisa.api.app import build_org_runtime, state as _app_state
     from provisa.core.org_membership import grant_org_role, notify_org_ready
-    from provisa.core.org_provisioning import provision_org
+    from provisa.core.environments import org_schema
+    from provisa.core.org_provisioning import provision_org, schema_exists
 
     try:
         if isolated_engine:
@@ -449,6 +450,12 @@ async def _provision_org_task(
 
         schema_sql_path = Path(__file__).parent.parent.parent / "core" / "schema.sql"
         schema_sql = schema_sql_path.read_text() if schema_sql_path.exists() else ""
+        # Whether the schema is made here, and so holds none of the built-in views its build's
+        # seed makes: an org whose earlier provisioning failed, or a demo template left
+        # provisioning by a stopped start, is provisioned again over the schema it has.
+        provisioned = _pool().dialect == "postgresql" and not await schema_exists(
+            _pool(), org_schema(org_id)
+        )
         await provision_org(
             _pool(),
             schema_sql,
@@ -477,7 +484,11 @@ async def _provision_org_task(
         rt = await _app_state.org_registry.rebuild(
             org_id,
             lambda oid: build_org_runtime(
-                oid, include_demo=include_demo, isolated_engine=isolated_engine, shard=shard
+                oid,
+                include_demo=include_demo,
+                isolated_engine=isolated_engine,
+                shard=shard,
+                provisioned=provisioned,
             ),
         )
         rt = await on_its_region_lane(org_id, rt)
@@ -498,7 +509,7 @@ async def _provision_org_task(
         # seeded domains, and the demo model when --demo asked for one): committing it now is what
         # makes the very first user edit a diff rather than the whole model appearing at once.
         from provisa.core.env_repo import ensure_repo, write_through
-        from provisa.core.environments import PROD, org_schema
+        from provisa.core.environments import PROD
 
         ensure_repo(org_id)
         assert rt.model_db is not None
