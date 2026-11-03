@@ -160,14 +160,14 @@ async def _persist_source(  # REQ-307, REQ-1923
     clock its landed tables refresh on (REQ-1907); None leaves the row's as it is. ``setup``:
     the values a brand's setup was given, kept so the source's form shows them again."""
     from provisa.core.repositories.source import owned_if_reconnected
-    from provisa.graphql_remote.brands import BRAND_HINT, NAMESPACE_HINT, SETUP_HINT
+    from provisa.graphql_remote.brands import BRAND_HINT, NAMESPACE_HINT, SETUP_HINT, setup_hint
 
     secret = (auth or {}).get("token") or (auth or {}).get("password") or ""
     hints: dict[str, object] = {NAMESPACE_HINT: namespace, **_auth_hints(auth)}
     if brand_id:
         hints[BRAND_HINT] = brand_id
     if setup:
-        hints[SETUP_HINT] = setup
+        hints[SETUP_HINT] = setup_hint(setup)
     row = {
         "id": source_id,
         "type": "graphql_remote",

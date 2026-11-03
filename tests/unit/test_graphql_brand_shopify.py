@@ -266,7 +266,29 @@ async def test_adding_a_shopify_source_checks_the_token_at_the_store_and_registe
         "auth_type": "header",
         "auth_header": "X-Shopify-Access-Token",
         "brand": "shopify",
-        "brand_setup": {"store": "acme", "api_version": SHOPIFY_API_VERSION},
+        "brand_setup": json.dumps(
+            {"api_version": SHOPIFY_API_VERSION, "store": "acme"}, sort_keys=True
+        ),
+    }
+
+
+@respx.mock
+async def test_the_sources_row_a_shopify_source_writes_is_read_back_as_a_source(plane):
+    """Every reader of the sources table -- the schema rebuild the add itself runs -- reads a row
+    as a Source, whose hints are strings: a setup kept as an object failed every rebuild."""
+    from provisa.api.admin.graphql_remote_router import _register_branded_source
+    from provisa.core.repositories.source import source_from_row
+    from provisa.graphql_remote.brands import setup_from_hints
+
+    respx.post(STORE_URL).mock(
+        return_value=httpx.Response(200, json={"data": {"shop": {"name": "Acme"}}})
+    )
+    await _register_branded_source(None, _add_request())  # type: ignore[arg-type]
+    (row,) = plane.conn.rows
+    source = source_from_row(row)
+    assert setup_from_hints(source.federation_hints) == {
+        "store": "acme",
+        "api_version": SHOPIFY_API_VERSION,
     }
 
 

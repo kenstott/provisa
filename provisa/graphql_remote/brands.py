@@ -42,6 +42,17 @@ NAMESPACE_HINT = "namespace"
 SETUP_HINT = "brand_setup"  # the values a brand's setup was given (Brand.setup)
 
 
+def setup_hint(setup: dict[str, str]) -> str:
+    """A brand's setup as kept in ``federation_hints``, whose values are strings (``Source``)."""
+    return json.dumps(setup, sort_keys=True)
+
+
+def setup_from_hints(hints: dict) -> dict[str, str]:
+    """The setup a source row's ``federation_hints`` keep (:func:`setup_hint`); empty for none."""
+    kept = hints.get(SETUP_HINT)
+    return dict(json.loads(kept)) if kept else {}
+
+
 @dataclass(frozen=True)
 class SetupField:
     """A value a brand's setup asks for besides the credential, filling ``{name}`` in its URL
