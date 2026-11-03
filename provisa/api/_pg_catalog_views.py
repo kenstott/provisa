@@ -1079,6 +1079,32 @@ def _pg_stat_activity() -> str:
     )
 
 
+def _pg_locks() -> str:
+    """The advisory locks of the asking connection's org, which pgwire holds itself
+    (advisory_locks): what pg_locks shows of them, each granted, outside a transaction of its own.
+    A statement that names no connection lists none."""
+    relation = (_PG, "pg_locks")
+    return _view(
+        relation,
+        _select(
+            relation,
+            {
+                "locktype": "'advisory'",
+                "database": "16384",
+                "classid": "CAST(l.lock ->> 'classid' AS BIGINT)",
+                "objid": "CAST(l.lock ->> 'objid' AS BIGINT)",
+                "objsubid": "CAST(l.lock ->> 'objsubid' AS INTEGER)",
+                "pid": "CAST(l.lock ->> 'pid' AS INTEGER)",
+                "mode": "l.lock ->> 'mode'",
+                "granted": "TRUE",
+                "fastpath": "FALSE",
+            },
+            f"FROM JSONB_ARRAY_ELEMENTS(COALESCE(CAST({setting('locks')} AS JSONB), "
+            "CAST('[]' AS JSONB))) AS l(lock)",
+        ),
+    )
+
+
 def _is_tables() -> str:
     relation = (_IS, "tables")
     return _view(
@@ -1473,6 +1499,7 @@ _MODEL_VIEWS = {
     (_PG, "pg_tables"): _pg_tables,
     (_PG, "pg_indexes"): _pg_indexes,
     (_PG, "pg_stat_activity"): _pg_stat_activity,
+    (_PG, "pg_locks"): _pg_locks,
     (_PG, "pg_type"): _pg_type,
     (_IS, "tables"): _is_tables,
     (_IS, "columns"): _is_columns,

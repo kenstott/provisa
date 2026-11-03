@@ -161,18 +161,84 @@ async def test_another_users_session_is_refused_by_name_and_open_to_user_managem
 
 
 @pytest.mark.asyncio
-async def test_a_lock_in_a_larger_statement_is_refused_by_name(port, served):
+async def test_a_lock_whose_key_is_no_constant_is_refused_by_name(port, served):
     a = await _connect(port, "alice")
     try:
         for sql in (
-            "SELECT pg_advisory_lock(1), pg_advisory_lock(2)",
-            "SELECT pg_try_advisory_lock(1) AS l, 2 AS two",
             # A key is evaluated outside governance: nothing may be read for one.
             "SELECT pg_advisory_lock((SELECT count(*) FROM read_text('/etc/hosts')))",
             "SELECT pg_advisory_unlock(length(version()))",
         ):
             with pytest.raises(asyncpg.FeatureNotSupportedError, match="pg_"):
                 await a.fetchval(sql)
+    finally:
+        await a.close()
+
+
+_LOCKS_HELD = (
+    "SELECT classid, objid, objsubid, mode, granted FROM pg_catalog.pg_locks "
+    "WHERE locktype = 'advisory' AND pid = pg_catalog.pg_backend_pid() "
+    "ORDER BY objsubid, classid, objid"
+)
+
+
+@pytest.mark.asyncio
+async def test_a_lock_in_a_larger_statement_is_taken_as_postgresql_takes_it(port, served):
+    a, b = await _connect(port, "alice"), await _connect(port, "alice")
+    held = (
+        "(SELECT count(*) FROM pg_catalog.pg_locks WHERE locktype = 'advisory' "
+        "AND pid = pg_catalog.pg_backend_pid())"
+    )
+    try:
+        both = f"SELECT pg_advisory_lock(7101) AS a, pg_advisory_lock(0, 7102) AS b, {held} AS n"
+        assert tuple(await a.fetchrow(both)) == ("", "", 2)
+        tried = f"SELECT pg_try_advisory_lock(7103) AS l, {held} AS n"
+        assert tuple(await a.fetchrow(tried)) == (True, 3)
+        assert await b.fetchval("SELECT pg_try_advisory_lock(7101)") is False
+        assert await a.fetchval("SELECT pg_advisory_unlock_all()") is None
+        assert await b.fetchval("SELECT pg_try_advisory_lock(7101)") is True
+    finally:
+        await a.close()
+        await b.close()
+
+
+@pytest.mark.asyncio
+async def test_pg_locks_lists_the_sessions_advisory_locks_as_postgresql_does(port, served):
+    a = await _connect(port, "alice")
+    try:
+        # A bigint key is split into its high and low halves (objsubid 1); two integers are
+        # listed as they are (objsubid 2). Each mode a session holds is one row.
+        await a.execute("SELECT pg_advisory_lock(4242::bigint)")
+        await a.execute("SELECT pg_advisory_lock(4242::bigint)")
+        await a.execute("SELECT pg_advisory_lock_shared(42, 42)")
+        await a.execute("SELECT pg_advisory_lock(8589934593)")
+        assert [tuple(r) for r in await a.fetch(_LOCKS_HELD)] == [
+            (0, 4242, 1, "ExclusiveLock", True),
+            (2, 1, 1, "ExclusiveLock", True),
+            (42, 42, 2, "ShareLock", True),
+        ]
+        await a.execute("SELECT pg_advisory_unlock_all()")
+        assert await a.fetch(_LOCKS_HELD) == []
+    finally:
+        await a.close()
+
+
+@pytest.mark.asyncio
+async def test_a_transaction_lock_is_held_for_the_rest_of_its_statement(port, served):
+    a = await _connect(port, "alice")
+    try:
+        for call in (
+            "pg_advisory_xact_lock(4242::bigint)",
+            "pg_try_advisory_xact_lock_shared(42, 42)",
+        ):
+            counted = (
+                "SELECT (SELECT count(*) FROM pg_catalog.pg_locks WHERE locktype = 'advisory' "
+                "AND pid = pg_catalog.pg_backend_pid()) AS v "
+                f"FROM (SELECT pg_catalog.{call} OFFSET 0) s"
+            )
+            assert await a.fetchval(counted) == 1
+            # The statement was its transaction: the lock ended with it.
+            assert await a.fetch(_LOCKS_HELD) == []
     finally:
         await a.close()
 

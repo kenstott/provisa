@@ -889,6 +889,20 @@ def _is_key(arg: Any) -> bool:
     return bound or is_constant(arg)
 
 
+def _embedded_advisory_calls(sql: str) -> tuple[Any, list[Any]] | None:  # REQ-2167
+    """``sql``'s parse and the advisory lock functions it calls among other things, each with
+    constant keys; None where it calls none so, or is only such a call (``_advisory_call``)."""
+    import sqlglot.expressions as exp
+
+    tree = _advisory_tree(sql)
+    if tree is None or _advisory_call(sql) is not None:
+        return None
+    calls = [fn for fn in tree.find_all(exp.Anonymous) if fn.name.lower() in _ADVISORY_FUNCTIONS]
+    if not calls or not all(_is_key(a) for fn in calls for a in fn.expressions):
+        return None
+    return tree, calls
+
+
 def refuse_server_function(sql: str) -> None:  # REQ-2167
     """Refuse a statement that takes an advisory lock while it does anything else, or with a key
     that is not a constant, naming the function: a lock is taken by a statement that only calls
@@ -1864,6 +1878,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         said = sql.strip()  # what the client sent: audit and logs record this, the engine reads sql
         sql = self._with_source_enums(sql)
         stripped = sql.strip()
+        if _embedded_advisory_calls(stripped) is not None and not _placeholder_count(stripped):
+            # REQ-2167: answered as its Execute is, as a statement that only calls one is.
+            return self._execute_sql_bound(sql, params, None, said=said)
         refuse_server_function(stripped)  # REQ-2167
         if xml_mapping.calls_one(stripped):
             # REQ-2167: answered as its Execute is. With a parameter to come it is described with
@@ -1931,39 +1948,69 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
     def _advisory_answer(self, call: _AdvisoryCall, sql: str, params: Any) -> ProvisaQueryResult:
         """An advisory lock function, on this server's locks. Strict: a NULL key takes no lock."""
-        locks = advisory_locks.LOCKS
         answer = self._advisory_shape(call)
-        keys = (
-            _evaluated_keys(tuple(_substitute_params(a, params) for a in call.args))
-            if call.args
-            else ()
-        )
+        value, warnings = self._advisory_value(call.name, call.args, params)
+        if call.name in _ADVISORY_LOCKS and _ADVISORY_LOCKS[call.name][2]:
+            if not self.transaction_open:
+                advisory_locks.LOCKS.end_transaction(self)  # the statement was its own transaction
+        answer.rows.append((value,))
+        result = ProvisaQueryResult(answer, sql)
+        result.warnings = warnings
+        return result
+
+    def _advisory_value(
+        self, name: str, args: tuple[str, ...], params: Any
+    ) -> tuple[Any, tuple[Any, ...]]:
+        """What advisory lock function ``name`` of ``args`` answers, on this server's locks, and
+        what it warns of. Strict: a NULL key takes no lock."""
+        locks = advisory_locks.LOCKS
+        keys = _evaluated_keys(tuple(_substitute_params(a, params) for a in args)) if args else ()
         warnings: tuple[Any, ...] = ()
-        if call.name == "pg_advisory_unlock_all":
+        if name == "pg_advisory_unlock_all":
             locks.release_all(self)
             value: Any = ""
         elif any(k is None for k in keys):
             value = None
         else:
             key = (self.org_id, *keys)  # a one-argument key is another space than a two-argument
-            if call.name in _ADVISORY_UNLOCKS:
-                mode = _ADVISORY_UNLOCKS[call.name]
+            if name in _ADVISORY_UNLOCKS:
+                mode = _ADVISORY_UNLOCKS[name]
                 value = locks.release(key, mode, self)
                 if not value:
                     warnings = (_PostgresWarning(f"you don't own a lock of type {mode}"),)
             else:
-                mode, wait, transaction = _ADVISORY_LOCKS[call.name]
+                mode, wait, transaction = _ADVISORY_LOCKS[name]
                 if wait:
                     locks.acquire(key, mode, self, transaction=transaction)
                     value = ""
                 else:
                     value = locks.try_acquire(key, mode, self, transaction=transaction)
-                if transaction and not self.transaction_open:
-                    locks.end_transaction(self)  # the statement was its own transaction
-        answer.rows.append((value,))
-        result = ProvisaQueryResult(answer, sql)
-        result.warnings = warnings
-        return result
+        return value, warnings
+
+    def _with_advisory_answered(self, sql: str, params: Any) -> str | None:
+        """``sql`` with each advisory lock function it calls among other things answered, each
+        lock taken (or released) in the order the statement names them; None where it calls none,
+        or one with a key that is not a constant, which refuse_server_function refuses. The keys
+        are constants: evaluating them reads nothing governance would govern."""
+        import sqlglot.expressions as exp
+
+        embedded = _embedded_advisory_calls(sql)
+        if embedded is None:
+            return None
+        tree, calls = embedded
+        for fn in calls:
+            args = tuple(a.sql(dialect="postgres") for a in fn.expressions)
+            value, _ = self._advisory_value(fn.name.lower(), args, params)
+            written = (
+                exp.null()
+                if value is None
+                else exp.Boolean(this=value)
+                if isinstance(value, bool)
+                else exp.Literal.string(value)
+            )
+            holder = fn.parent if isinstance(fn.parent, exp.Dot) else fn
+            holder.replace(written)
+        return tree.sql(dialect="postgres")
 
     def _server_function(self, match: re.Match[str]) -> Any:  # REQ-2167
         """pg_backend_pid(), pg_cancel_backend(pid) or pg_terminate_backend(pid[, timeout]), on
@@ -2123,6 +2170,13 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             result.warnings = (*result.warnings, *reads.warnings)
             return result
         bound = list(params) if params else None
+        answered = self._with_advisory_answered(stripped, params)  # REQ-2167
+        if answered is not None:
+            try:
+                return self._execute_sql_bound(answered, params, result_fmt, said=said)
+            finally:
+                if not self.transaction_open:
+                    advisory_locks.LOCKS.end_transaction(self)  # its own transaction ended
         refuse_server_function(stripped)  # REQ-2167
         refuse_other_zone(stripped, self.zone.current)  # REQ-2171
         advisory = _advisory_call(stripped)
@@ -2158,6 +2212,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     self.system_user,
                     self.zone.current,
                     self.zone,
+                    self.org_id,
                 ),
                 run=self._catalog_read,
             )

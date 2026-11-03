@@ -565,6 +565,8 @@ class CatalogSession:
     system_user: str | None = None
     time_zone: str | None = None
     zone: SessionZone | None = None
+    #: The org whose advisory locks pg_locks lists (advisory_locks.LOCKS keys them by org).
+    org_id: str | None = None
 
 
 def _session_settings(sql: str, session: CatalogSession | None) -> Mapping[str, str]:
@@ -626,9 +628,24 @@ def _catalog_request(
         else catalog_facts(role_id, {}),
         settings=_session_settings(sql, session),
         pid=session.pid if session is not None else 0,
-        session={**connection, "query": sql} if "pg_stat_activity" in sql.lower() else connection,
+        session={
+            **connection,
+            **({"query": sql} if "pg_stat_activity" in sql.lower() else {}),
+            **({"locks": _advisory_locks(session)} if "pg_locks" in sql.lower() else {}),
+        },
         reltuples=row_counts(role_id, state) if "reltuples" in sql.lower() else {},
     )
+
+
+def _advisory_locks(session: CatalogSession | None) -> str:
+    """The advisory locks of the asking session's org, as pg_locks' view reads them (JSON)."""
+    import json
+
+    from provisa.pgwire import advisory_locks
+
+    if session is None:
+        return "[]"
+    return json.dumps(advisory_locks.LOCKS.held(session.org_id))
 
 
 def _served_type(oid: int) -> str:

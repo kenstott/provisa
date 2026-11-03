@@ -38,6 +38,7 @@ NAMES = (
     "system_user",
     "time_zone",
     "query",
+    "locks",
     "scope",
     "asked",
 )
