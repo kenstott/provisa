@@ -101,6 +101,16 @@ def source_from_row(row: dict) -> Source:  # REQ-1695
     """
     fields = {k: v for k, v in row.items() if k in Source.model_fields and v is not None}
     fields["password"] = row["password_ref"]
+    # Rows saved between d7daab1f6 and REQ-1923's column hold a brand's setup as a dict in
+    # federation_hints (a map of strings), which fails every read. Read it as brand_setup; the
+    # next save writes the new shape, so no row is rewritten here.
+    hints = fields.get("federation_hints")
+    if isinstance(hints, dict) and isinstance(hints.get("brand_setup"), dict):
+        hints = dict(hints)
+        legacy_setup = hints.pop("brand_setup")
+        fields["federation_hints"] = hints
+        if not fields.get("brand_setup"):
+            fields["brand_setup"] = legacy_setup
     return Source.model_validate(fields)
 
 
