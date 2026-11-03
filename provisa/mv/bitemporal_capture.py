@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Any
 from provisa.mv.bitemporal import MODE_DELTA, BitemporalSpec
 from provisa.mv.bitemporal_inherit import InheritedBuild
 from provisa.mv.bitemporal_tables import VersionedTable
+from provisa.mv.store_shape import shape_probe
 
 if TYPE_CHECKING:
     from provisa.federation.execution_auth import SystemAuth
@@ -209,7 +210,8 @@ async def capture_build(
         dataclasses.replace(mv, sql=scoped, semantic_sql=scoped), engine
     )
     shape = await engine.execute_engine(
-        f"SELECT * FROM ({select_sql}) _shape LIMIT 0", authorization=authorization
+        shape_probe(select_sql),
+        authorization=authorization,
     )
     managed = {c for c, _ in system_columns_ddl(spec)}
     if list(shape.column_names) != [c for c in existing if c not in managed]:
