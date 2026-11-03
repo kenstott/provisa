@@ -497,6 +497,10 @@ _ = types  # silence unused-import lints in some environments
 class TestCapabilityIsDetectedWhenASourceConnects:  # REQ-422
     async def test_the_pool_holds_each_sources_capability(self, monkeypatch):
         import provisa.executor.pool as P
+        from provisa.core import secrets_providers
+
+        # A deployment of one organization (REQ-2006): the API layer says it at import; none here.
+        monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
 
         class _Fake:
             names_own_destination = False  # REQ-2191: the DirectDriver default

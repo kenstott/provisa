@@ -250,10 +250,14 @@ async def test_hot_table_entry_coherence_under_concurrent_promotion():
 
 
 @pytest.mark.asyncio
-async def test_source_pool_add_creates_one_driver_under_concurrency():
+async def test_source_pool_add_creates_one_driver_under_concurrency(monkeypatch):
     """Concurrent first-adds for one source must open exactly one driver. The connect() await is the
     interleaving window; without the lock every racer opens (and leaks) its own driver."""
     import provisa.executor.pool as P
+    from provisa.core import secrets_providers
+
+    # A deployment of one organization (REQ-2006): the API layer says it at import; none here.
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
 
     created = {"n": 0}
 
