@@ -344,10 +344,20 @@ def template_seed(org_id: str) -> Any:  # a ProvisaConfig
 
 async def rebuild_template(directory: Path, seed: Any, conn: Any, engine: Any) -> list[str]:
     """Rebuild a template org's model from its demo's configuration ``seed`` (REQ-1919, every
-    build of its runtime); the source ids whose change feed could not be reached."""
+    build of its runtime), with the profile runs the bundle at ``directory`` carries (REQ-2052);
+    the source ids whose change feed could not be reached. The rebuild gives every table a new
+    id, and its result tables name relations under those ids: a template served as built, holding
+    its runs, lost them at its runtime's first build, and every sandbox cloned from it after that
+    had none. A bundle of a demo that profiles and carries no runs is refused by name."""
     from provisa.core.config_loader import rebuild_from_config
+    from provisa.profiler.carry import results_path
 
-    return await rebuild_from_config(seed, conn, engine)
+    carried = None
+    if demo_profilers(directory):
+        carried = results_path(directory)
+        if not carried.is_file():
+            raise ValueError(f"the bundle carries no profile runs ({carried.name}): rebuild it")
+    return await rebuild_from_config(seed, conn, engine, carried_runs=carried)
 
 
 async def write_declared_settings(model_db: Any, seed: Any) -> None:  # REQ-2006, REQ-2057

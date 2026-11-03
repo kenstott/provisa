@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: c75d708c-d281-4548-b719-bb238c05a643
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -29,6 +30,9 @@ import pytest
 import yaml
 from sqlalchemy import func, insert, select
 
+# The API layer says at import whether the deployment holds many organizations, which the apply
+# asks; run alone, nothing else here imports it.
+import provisa.api.app  # noqa: F401
 from provisa.api import demo_templates
 from provisa.core import config_loader, secrets_store
 from provisa.core.environments import org_schema
