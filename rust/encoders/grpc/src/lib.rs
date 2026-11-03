@@ -431,7 +431,13 @@ impl Reader {
                     }));
                 }
                 let ns = raw as i128 * *mult as i128;
-                let (utc, sub_ns) = (ns.div_euclid(1000), ns.rem_euclid(1000) as u32);
+                // A zoned value is the instant floored to the microsecond (ir_arrow._zoned_values);
+                // a naive nanosecond value is pandas' Timestamp, its nanoseconds kept.
+                let sub_ns = match zone {
+                    Zone::Naive => ns.rem_euclid(1000) as u32,
+                    _ => 0,
+                };
+                let utc = ns.div_euclid(1000);
                 let range = MIN_US as i128..=MAX_US as i128;
                 if !range.contains(&utc) {
                     return Err(EncErr::Value(format!("timestamp {raw} is out of range")));
