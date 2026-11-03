@@ -768,6 +768,12 @@
         "no_description": "מוצר נתונים זה אינו מציין את מטרתו או את אופן השימוש בו.",
         "successor_retired": "מוצר הנתונים שקיבל את החברים של מוצר זה, '{{successor}}', הוצא גם הוא משימוש."
       }
+    },
+    "erd": {
+      "database_unavailable": "לא ניתן לקרוא את פריסות ה-ERD: מסד הנתונים אינו זמין",
+      "layout_not_found": "אין פריסה בשם {{name}}",
+      "layout_name_required": "לפריסה נדרש שם",
+      "layout_place_unreadable": "הפריסה ממקמת {{kind}} שאין לך הרשאה לקרוא"
     }
   }
 }

@@ -768,6 +768,12 @@
         "no_description": "This data product states neither its purpose nor its usage.",
         "successor_retired": "The data product that took this one's members, '{{successor}}', has been retired too."
       }
+    },
+    "erd": {
+      "database_unavailable": "The ERD layouts cannot be read: the database is unavailable",
+      "layout_not_found": "No layout named {{name}}",
+      "layout_name_required": "A layout needs a name",
+      "layout_place_unreadable": "The layout places a {{kind}} you cannot read"
     }
   }
 }

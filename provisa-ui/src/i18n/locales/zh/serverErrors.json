@@ -768,6 +768,12 @@
         "no_description": "此数据产品既未说明用途，也未说明使用方式。",
         "successor_retired": "接收此产品成员的数据产品“{{successor}}”也已停用。"
       }
+    },
+    "erd": {
+      "database_unavailable": "无法读取 ERD 布局:数据库不可用",
+      "layout_not_found": "没有名为 {{name}} 的布局",
+      "layout_name_required": "布局需要名称",
+      "layout_place_unreadable": "该布局放置了您无权读取的 {{kind}}"
     }
   }
 }

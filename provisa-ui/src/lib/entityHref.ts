@@ -69,6 +69,8 @@ export function erdViewHref(
     objects?: string[];
     table?: string | number;
     relationship?: string | number;
+    /** REQ-2189: the saved layout shown; none for Automatic. */
+    layout?: string | null;
   },
 ): string {
   const list = (names: string[]) => names.map(q).join(",");
@@ -77,5 +79,6 @@ export function erdViewHref(
   if (link.objects?.length) query.push(`objects=${list(link.objects)}`);
   if (link.table !== undefined) query.push(`table=${q(link.table)}`);
   if (link.relationship !== undefined) query.push(`relationship=${q(link.relationship)}`);
+  if (link.layout) query.push(`layout=${q(link.layout)}`);
   return `/${page}?${query.join("&")}`;
 }

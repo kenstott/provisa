@@ -768,6 +768,12 @@
         "no_description": "Ce produit de données n'indique ni son objectif ni son usage.",
         "successor_retired": "Le produit de données qui a repris les membres de celui-ci, « {{successor}} », a lui aussi été retiré."
       }
+    },
+    "erd": {
+      "database_unavailable": "Impossible de lire les dispositions de l'ERD : la base de données est indisponible",
+      "layout_not_found": "Aucune disposition nommée {{name}}",
+      "layout_name_required": "Une disposition doit avoir un nom",
+      "layout_place_unreadable": "La disposition place un(e) {{kind}} que vous ne pouvez pas lire"
     }
   }
 }

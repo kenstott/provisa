@@ -768,6 +768,12 @@
         "no_description": "Este producto de datos no indica ni su propósito ni su uso.",
         "successor_retired": "El producto de datos que recibió los miembros de este, '{{successor}}', también se ha retirado."
       }
+    },
+    "erd": {
+      "database_unavailable": "No se pueden leer los diseños del ERD: la base de datos no está disponible",
+      "layout_not_found": "No hay ningún diseño llamado {{name}}",
+      "layout_name_required": "Un diseño necesita un nombre",
+      "layout_place_unreadable": "El diseño coloca un(a) {{kind}} que usted no puede leer"
     }
   }
 }

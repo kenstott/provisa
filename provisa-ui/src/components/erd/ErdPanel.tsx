@@ -35,7 +35,9 @@ import { useErdCollapseLink } from "./useErdCollapseLink";
 import { Tip } from "../Tip";
 import { ErdCanvasBar } from "./ErdCanvasBar";
 import { FIT_PADDING } from "./erd-viewport";
-import { useErdOptions } from "./useErdOptions";
+import { useErdOptions, type ErdOptions } from "./useErdOptions";
+import { applyPlaces, readPlaces } from "./erd-saved-layout";
+import type { SavedLayout } from "../../api/erdLayouts";
 
 // ── cytoscape plugin registration ────────────────────────────────────────────
 type CyExt = Parameters<typeof cytoscape.use>[0];
@@ -71,6 +73,11 @@ export function ErdPanel({
   onCollapsed,
   onTableClick,
   onRelationshipClick,
+  savedLayout = null,
+  onArrange,
+  placesRef,
+  layoutMenu,
+  overlay,
 }: ErdPanelProps) {
   const { t } = useTranslation();
   const colorScheme = useComputedColorScheme("dark");
@@ -92,7 +99,7 @@ export function ErdPanel({
 
   // The diagram's box, holding the canvas and its bar: what goes full screen.
   const stageRef = useRef<HTMLDivElement>(null);
-  const [options, setOptions] = useErdOptions();
+  const [options, changeOptions] = useErdOptions();
   const { columnDetail, edgeRouting, gridSnap, showOrphans } = options;
   const edgeRoutingRef = useRef(edgeRouting);
   const gridSnapRef = useRef(gridSnap);
@@ -106,6 +113,23 @@ export function ErdPanel({
   );
   const isDraggingRef = useRef(false);
   const [collapsedDomains, setCollapsedDomains] = useState<Set<string>>(new Set());
+  // REQ-2189: a saved layout chosen brings its options and what it collapses; its places are
+  // stood after the automatic layout (layoutstop), with what was moved since over them.
+  const [appliedLayout, setAppliedLayout] = useState<SavedLayout | null>(null);
+  if (savedLayout !== appliedLayout) {
+    setAppliedLayout(savedLayout);
+    if (savedLayout !== null) {
+      changeOptions(savedLayout.options);
+      setCollapsedDomains(
+        new Set(savedLayout.domains.filter((d) => d.collapsed).map((d) => d.domainId)),
+      );
+    }
+  }
+  const layoutRef = useRef<SavedLayout | null>(null);
+  useEffect(() => {
+    layoutRef.current = appliedLayout;
+    pinnedNodesRef.current = new Map();
+  }, [appliedLayout]);
   // Domains to hide, derived from the host page's domain filter (not the panel's own state).
   const hiddenDomains = useMemo(() => {
     if (!checkedDomains) return new Set<string>();
@@ -130,10 +154,16 @@ export function ErdPanel({
   );
 
   // The host's handlers, read when a click comes: the diagram is not rebuilt when they change.
-  const clicks = useRef({ onTableClick, onRelationshipClick });
+  const clicks = useRef({ onTableClick, onRelationshipClick, onArrange });
   useEffect(() => {
-    clicks.current = { onTableClick, onRelationshipClick };
-  }, [onTableClick, onRelationshipClick]);
+    clicks.current = { onTableClick, onRelationshipClick, onArrange };
+  }, [onTableClick, onRelationshipClick, onArrange]);
+
+  /** An option the reader set: an edit of the arrangement. */
+  const setOptions = (change: Partial<ErdOptions>) => {
+    changeOptions(change);
+    clicks.current.onArrange?.();
+  };
 
   const [hoveredDomainId, setHoveredDomainId] = useState<string | null>(null);
   const [resizeHandleBox, setResizeHandleBox] = useState<{
@@ -427,6 +457,9 @@ export function ErdPanel({
       // include the full orphan grid area (hidden nodes are excluded from bbox).
       resolveCompoundOverlaps(cy);
 
+      // REQ-2189: a saved layout's places stand over the automatic ones.
+      if (layoutRef.current !== null) applyPlaces(cy, layoutRef.current, pinnedNodesRef.current);
+
       cy.fit(undefined, FIT_PADDING);
       applyHighlight(cy);
 
@@ -437,6 +470,7 @@ export function ErdPanel({
 
     cy.on("tap", ".erd-domain", (evt: CyEvent) => {
       const domainId = evt.target.data("domainId") as string;
+      clicks.current.onArrange?.();
       setCollapsedDomains((prev) => {
         const next = new Set(prev);
         if (next.has(domainId)) next.delete(domainId);
@@ -505,6 +539,7 @@ export function ErdPanel({
 
     cy.on("dragfree", "node", (evt: CyEvent) => {
       isDraggingRef.current = false;
+      clicks.current.onArrange?.();
       const id = evt.target.id() as string;
       // Only pin table nodes — compound domain nodes have unreliable positions
       // on fresh cy instances and corrupt fixedNodeConstraint on next rebuild.
@@ -568,6 +603,7 @@ export function ErdPanel({
     hiddenDomains,
     columnDetail,
     isDark,
+    appliedLayout,
   ]);
 
   // The canvas narrows beside a detail panel and widens when it closes: the diagram follows.
@@ -745,7 +781,10 @@ export function ErdPanel({
       // Scale each child's position proportionally from old compound bounds to
       // new model bounds, preserving the two-phase layout structure.
       cy.batch(() => {
-        (domainNode as unknown as { removeStyle(s: string): void }).removeStyle("width height");
+        // A saved layout's least size (REQ-2189) gives way to the size the reader draws.
+        (domainNode as unknown as { removeStyle(s: string): void }).removeStyle(
+          "width height min-width min-height",
+        );
         children.forEach((child) => {
           const childPos = (child as { position(): Pt }).position();
           const relX = oldBb.w > 0 ? (childPos.x - oldBb.x1) / oldBb.w : 0.5;
@@ -762,6 +801,7 @@ export function ErdPanel({
       });
     }
 
+    onArrange?.();
     // Read freshly computed compound bounds after Cytoscape finishes its render cycle.
     requestAnimationFrame(() => updateHandleBox(hoveredDomainId));
   };
@@ -857,7 +897,10 @@ export function ErdPanel({
   const visibleDomainIds = allDomainIds.filter((id) => !hiddenDomains.has(id));
   const allCollapsed =
     visibleDomainIds.length > 0 && visibleDomainIds.every((id) => collapsedDomains.has(id));
-  const toggleAll = () => setCollapsedDomains(allCollapsed ? new Set() : new Set(visibleDomainIds));
+  const toggleAll = () => {
+    onArrange?.();
+    setCollapsedDomains(allCollapsed ? new Set() : new Set(visibleDomainIds));
+  };
   useErdCollapseLink(
     collapsed,
     onCollapsed,
@@ -865,6 +908,12 @@ export function ErdPanel({
     collapsedDomains,
     setCollapsedDomains,
   );
+  // REQ-2189: what a save reads off the canvas.
+  useEffect(() => {
+    if (!placesRef) return;
+    placesRef.current = () =>
+      cyRef.current === null ? null : readPlaces(cyRef.current, options, collapsedDomains);
+  }, [placesRef, options, collapsedDomains]);
 
   return (
     <div
@@ -890,6 +939,8 @@ export function ErdPanel({
             flexShrink: 0,
           }}
         >
+          {layoutMenu}
+
           {/* column detail select */}
           <Select
             aria-label={t("erdModal.columnDetailLabel")}
@@ -978,6 +1029,8 @@ export function ErdPanel({
             stageRef={stageRef}
             exports={{ svg: exportSvg, png: exportPng, jpeg: exportJpeg, json: exportJson }}
           />
+
+          {overlay}
 
           {/* domain resize handles */}
           {resizeHandleBox && (
