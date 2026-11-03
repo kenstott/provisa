@@ -767,6 +767,24 @@ main {
   flex: 1 1 auto;
   min-height: 0;
 }
+/* The diagram's image controls: a vertical bar at its top corner, shown while the pointer is over
+   the diagram or a control in it has the keyboard's focus. */
+.erd-stage__bar {
+  position: absolute;
+  top: 8px;
+  inset-inline-end: 8px;
+  z-index: 10;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.erd-stage:hover .erd-stage__bar,
+.erd-stage__bar:focus-within {
+  opacity: 1;
+}
 /* The rule between the two IS the grab handle: a 1px line inside a wider hit area. */
 .split-pane__handle {
   flex: 0 0 9px;

@@ -130,6 +130,19 @@ export function buildErdStylesheet(isDark: boolean) {
       },
     },
     {
+      // The relationship whose panel is open.
+      selector: ".erd-rel.erd-focused",
+      style: {
+        "line-color": p.accent,
+        "target-arrow-color": p.accent,
+        "source-arrow-color": p.accent,
+        width: 3,
+        "underlay-color": p.accent,
+        "underlay-opacity": 0.3,
+        "underlay-padding": 4,
+      },
+    },
+    {
       // REQ-2187: the page's filter box dims what does not match, and marks what does.
       selector: ".erd-dim",
       style: { opacity: 0.15 },
