@@ -40,6 +40,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import time
 from pathlib import Path
 
 import httpx
@@ -48,6 +49,7 @@ import pytest
 from tests.integration.regions_tier import serves_on_regions_tier
 from tests.integration.test_sandbox_visitor_walk import (
     _bundle,
+    _failed,
     _open_sandbox,
     _plain_tier,
     _regions_tier,
@@ -59,6 +61,14 @@ _NAMED = Path(__file__).resolve().parents[2] / "demo" / "named"
 
 #: Each demo's first example query's row count, from its bundle's data (the module's docstring).
 _EXPECTED = {"retail": 20, "profiling": 10, "provisioning": 4}
+#: The longest the first query may take: the cloud tier's request timeout (limits.request_timeout).
+_FIRST_QUERY_S = 60.0
+#: What a wrong count is reported with: the tables each demo's first query reads, counted.
+_INPUTS = {
+    "retail": ['"retail"."us_customers"', '"retail"."view_group_customers"'],
+    "profiling": ['"harbor"."customer_profile_runs"', '"harbor"."customer_profile"'],
+    "provisioning": ['"provisioning"."orders"', '"provisioning"."view_order_margins"'],
+}
 
 
 def run_as(text: str) -> str | None:
@@ -110,16 +120,45 @@ def _answers_the_bundles_rows(tier) -> None:
         headers["X-Provisa-Role"] = role
     expected = _EXPECTED[tier.demo]
     # Once, at once, as the demo walk asks it: a visitor's first query is sent as the sandbox opens.
+    started = time.monotonic()
     resp = httpx.post(
         f"{tier.base_url}/data/graphql", json={"query": text}, headers=headers, timeout=300
     )
+    took = time.monotonic() - started
     assert resp.status_code == 200, (first.name, role, resp.text[:2000])
     rows = _rows(resp)
-    assert rows == expected, (
-        f"{tier.demo}: {first.name} as {role or 'the sandbox role'} answered {rows} rows, "
-        f"not {expected}: {resp.text[:1500]}\nserver log end:\n"
-        f"{tier.dump_stderr_debug()[-8000:]}"
+    if rows != expected or took > _FIRST_QUERY_S:
+        raise _failed(
+            tier,
+            f"{first.name} as {role or 'the sandbox role'} answered {rows} rows in {took:.1f}s, "
+            f"not {expected} within {_FIRST_QUERY_S:.0f}s: {resp.text[:1500]}\n"
+            + _what_it_read(tier, sandbox, role),
+        )
+
+
+def _what_it_read(tier, sandbox: dict, role: str | None) -> str:
+    """The first query's inputs, counted as its role and as the sandbox's own, and the views'
+    states, at the moment it answered wrong."""
+    token = {"Authorization": f"Bearer {sandbox['token']}", "x-org-provisa": sandbox["org_id"]}
+    said = []
+    for table in _INPUTS[tier.demo]:
+        for as_role in dict.fromkeys([role, None]):
+            sent = {**token, **({"X-Provisa-Role": as_role} if as_role else {})}
+            resp = httpx.post(
+                f"{tier.base_url}/data/sql",
+                json={"sql": f"SELECT COUNT(*) AS n FROM {table}"},
+                headers=sent,
+                timeout=300,
+            )
+            said.append(f"{table} as {as_role or 'the sandbox role'}: {resp.text[:300]}")
+    views = httpx.post(
+        f"{tier.base_url}/admin/graphql",
+        json={"query": "{ mvList { id status rowCount } }"},
+        headers=token,
+        timeout=120,
     )
+    said.append(f"views: {views.text[:1500]}")
+    return "\n".join(said)
 
 
 def test_the_first_example_query_answers_the_bundles_rows_as_its_role(tier):
