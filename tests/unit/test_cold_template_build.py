@@ -277,3 +277,57 @@ def test_a_landed_environments_runtime_is_built_again_cloned_once_bound(monkeypa
         ("build", "synthetic", True),
         ("ready", "synthetic"),
     ]
+
+
+def test_a_generated_environments_runtime_is_built_again_cloned_once_bound(monkeypatch):
+    """The whole-model generation binds the environment's sources to its store and builds its
+    runtime again: cloned, as the runtime it replaces was built in this process a moment before.
+    On cloud the profiling template's environment was seeded whole a second time here (16.8 s)."""
+    from provisa.api import app
+    from provisa.core import env_store
+    from provisa.synthetic import datasets, env_model, run
+
+    asked: list[tuple] = []
+
+    async def _runtime(org_id, env=None, *, model_cloned=False):
+        asked.append(("build", env, model_cloned))
+
+    async def _nothing(*args, **kwargs):
+        return None
+
+    async def _generate(state, dataset_id, *, bind):
+        await bind()
+
+    class _Db:
+        @asynccontextmanager
+        async def acquire(self):
+            yield object()
+
+    state = SimpleNamespace(
+        model_db=_Db(),
+        admin_db=object(),
+        org_registry=SimpleNamespace(invalidate=lambda key: asked.append(("invalidate", key))),
+    )
+    monkeypatch.setattr(app, "ensure_org_runtime", _runtime)
+    monkeypatch.setattr(run, "check_closure_of", _nothing)
+    monkeypatch.setattr(run, "generate", _generate)
+    monkeypatch.setattr(datasets, "define", _nothing)
+    monkeypatch.setattr(env_model, "bind_generated", _nothing)
+    monkeypatch.setattr(env_model, "record_generation", _nothing)
+    monkeypatch.setattr(env_store, "set_data", _nothing)
+    asyncio.run(
+        env_model._generate(  # noqa: SLF001
+            state,
+            org_id="sbxtplprofiling",
+            env="synthetic",
+            runs={},
+            seed=0,
+            scale=1.0,
+            generated_rows=0,
+        )
+    )
+    assert asked == [
+        ("build", "synthetic", False),
+        ("invalidate", "sbxtplprofiling_env_synthetic"),
+        ("build", "synthetic", True),
+    ]
