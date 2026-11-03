@@ -38,6 +38,7 @@ from provisa.graphql_remote.brands import (
     available_tables,
     brand_schema,
     map_table,
+    table_spec,
 )
 from provisa.graphql_remote.executor import (
     Throttled,
@@ -47,6 +48,7 @@ from provisa.graphql_remote.executor import (
     table_query,
     whole_connection,
 )
+from provisa.compiler.naming import apply_sql_name
 from provisa.graphql_remote.introspect import _build_headers
 from provisa.graphql_remote.mapper import map_schema
 from provisa.graphql_remote.probe import QueryTooComplex
@@ -188,6 +190,56 @@ def test_products_are_a_relay_connection_read_by_cursor():
     query = table_query(table, ["id", "title"], 100)
     assert "products(first: 100, after: $pageCursor)" in query
     assert "pageInfo { hasNextPage endCursor }" in query
+
+
+ROOT_CONNECTIONS = (
+    "shopify__companies",
+    "shopify__customers",
+    "shopify__orders",
+    "shopify__collections",
+    "shopify__products",
+    # A root connection, never the like-named connection under a single record
+    # (company(id:).locations, product(id:).variants), which needs that record's id.
+    "shopify__company_locations",
+    "shopify__product_variants",
+)
+
+
+async def test_the_picker_offers_the_root_connections_with_no_required_parameter():
+    offered = await registration.source_offer(
+        SimpleNamespace(graphql_remote_sources={"my-shop": _reg()}), "my-shop"
+    )
+    assert offered is not None
+    tables = {t["name"]: t for t in registration.offered_tables(*offered)}
+    for name in ROOT_CONNECTIONS:
+        assert tables[name]["connection"], name
+        spec = table_spec(SHOPIFY, "shopify", name)
+        assert spec is not None and spec["required_args"] == [], name
+        assert spec["rows_path"] == ["nodes"], name
+
+
+def test_a_single_record_lookup_still_needs_its_id():
+    for name in ("shopify__company", "shopify__customer", "shopify__order", "shopify__collection"):
+        table = map_table(SHOPIFY, "shopify", "my-shop", "", name)
+        assert [a["name"] for a in table["required_args"]] == ["id"], name
+        offered = registration.offered_columns(SHOPIFY, _reg(), name)
+        assert "_nf_id" in {column for column, _type, _comment in offered}, name
+
+
+async def test_the_picker_lists_a_root_connection_where_the_schema_puts_its_field():
+    # The picker lists tables in the order it is given them. A root connection listed after
+    # every plain table sits hundreds of rows below its neighbours and reads as missing.
+    offered = await registration.source_offer(
+        SimpleNamespace(graphql_remote_sources={"my-shop": _reg()}), "my-shop"
+    )
+    assert offered is not None
+    order = [t["name"] for t in registration.offered_tables(*offered)]
+    schema = brand_schema("shopify")
+    root = next(t for t in schema["types"] if t["name"] == schema["queryType"]["name"])
+    root_tables = [apply_sql_name(f"shopify__{f['name']}") for f in root["fields"]]
+    listed = [n for n in order if n in set(root_tables)]
+    assert listed == [n for n in root_tables if n in set(order)]
+    assert order.index("shopify__companies") + 1 == order.index("shopify__companies_count")
 
 
 # --- adding the source ---

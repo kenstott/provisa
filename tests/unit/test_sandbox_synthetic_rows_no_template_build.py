@@ -87,8 +87,8 @@ def test_rows_are_given_without_building_the_templates_runtime(monkeypatch) -> N
     async def _ready(org_id: str, env: str):
         return {"data_status": "ready", "data_error": None}
 
-    async def _land(org_id, env, store, from_schema, records):
-        landed.append((org_id, env, store, from_schema, records))
+    async def _land(org_id, env, store, from_schema, records, *, cloned=False):
+        landed.append((org_id, env, store, from_schema, records, cloned))
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _runtime)
     monkeypatch.setattr(demo_synthetic, "_tenant", lambda: _Pool(held, read), raising=False)
@@ -100,8 +100,10 @@ def test_rows_are_given_without_building_the_templates_runtime(monkeypatch) -> N
 
     assert built == [], f"the open built the template's runtimes: {built}"
     assert f"{schema}.synthetic_datasets" in read, read
-    ((org_id, env, store, _from, records),) = landed
+    ((org_id, env, store, _from, records, cloned),) = landed
     assert (org_id, env, store) == (_SANDBOX, _ENV, f"/stores/{_TEMPLATE}")
+    # Its environment was created from its prod in this open: its runtime is built cloned.
+    assert cloned is True
     assert records["synthetic_datasets"] == [{"id": "d1"}]
     # A table is carried by its source, schema and name: the sandbox numbers it its own way.
     assert records["synthetic_dataset_tables"] == [

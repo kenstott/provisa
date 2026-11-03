@@ -8,9 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A statement whose PostgreSQL error the engine meets only past its first Arrow batch (REQ-2167,
-REQ-2194): the client is answered with PostgreSQL's own error, SQLSTATE and message, after the rows
-already sent, and the connection answers the next statement."""
+"""A statement whose error the engine meets only past its first Arrow batch (REQ-2167, REQ-2194):
+the client is answered with the error, after the rows already sent -- PostgreSQL's own SQLSTATE and
+message where the engine raised PostgreSQL's error, the SQLSTATE PostgreSQL reports for the engine's
+error otherwise -- and the connection answers the next statement."""
 
 # Requirements: REQ-2167, REQ-2194
 # ruff: noqa: F811 -- the fixtures are conn and pgwire of the module they are imported from
@@ -30,6 +31,18 @@ _ROWS = 400_000
 _LATE_OVERFLOW = (
     f"SELECT pg_catalog.int42pl((2147483647 - {_ROWS} + g.i)::int4, 1::int2) AS v "
     f"FROM generate_series(1, {_ROWS}) AS g(i)"
+)
+
+
+# A zero divisor on row 300,000: the transpiler's division guard, met as a batch is read.
+_LATE_ZERO_DIVISOR = "SELECT 1/(g.i - 300000) AS v FROM generate_series(1, 400000) AS g(i)"
+# Engine errors no catalog macro raises, on the last row: DuckDB's own conversion and overflow.
+_LATE_CONVERSION = (
+    f"SELECT CASE WHEN g.i = {_ROWS} THEN 'x' ELSE g.i::text END::int AS v "
+    f"FROM generate_series(1, {_ROWS}) AS g(i)"
+)
+_LATE_INT4_OVERFLOW = (
+    f"SELECT (2147483647 - {_ROWS} + g.i)::int4 + 1 AS v FROM generate_series(1, {_ROWS}) AS g(i)"
 )
 
 
@@ -56,6 +69,42 @@ def test_an_error_met_in_a_later_batch_is_postgresqls_and_the_connection_goes_on
     after = run("SELECT 42 AS v")
     assert after.status == pq.ExecStatus.TUPLES_OK, (after.error_message or b"").decode()
     assert after.get_value(0, 0) == b"42"
+
+
+def _runner(conn: Any, protocol: str) -> Any:
+    pgconn = conn.conn.pgconn
+    if protocol == "extended":
+        return lambda sql: pgconn.exec_params(sql.encode(), [], result_format=0)
+    return lambda sql: pgconn.exec_(sql.encode())
+
+
+@pytest.mark.parametrize("protocol", ["extended", "simple"])
+@pytest.mark.parametrize(
+    ("sql", "sqlstate"),
+    [
+        (_LATE_ZERO_DIVISOR, "22012"),  # division_by_zero
+        (_LATE_CONVERSION, "22P02"),  # invalid_text_representation
+        (_LATE_INT4_OVERFLOW, "22003"),  # numeric_value_out_of_range
+    ],
+    ids=["zero-divisor", "conversion", "int4-overflow"],
+)
+def test_an_engine_error_met_in_a_later_batch_is_answered_and_the_connection_goes_on(
+    conn: Any, protocol: str, sql: str, sqlstate: str
+):
+    run = _runner(conn, protocol)
+    res = run(sql)
+    assert res.status == pq.ExecStatus.FATAL_ERROR, res.status
+    assert res.error_field(pq.DiagnosticField.SQLSTATE).decode() == sqlstate, (
+        res.error_message or b""
+    ).decode()
+    after = run("SELECT 42 AS v")
+    assert after.status == pq.ExecStatus.TUPLES_OK, (after.error_message or b"").decode()
+    assert after.get_value(0, 0) == b"42"
+
+
+def test_the_zero_divisor_is_postgresqls_division_by_zero(conn: Any):
+    res = _runner(conn, "extended")(_LATE_ZERO_DIVISOR)
+    assert _said(res) == ("22012", "division by zero")
 
 
 def test_a_time_at_the_end_of_the_day_is_answered_and_the_connection_goes_on(conn: Any):
