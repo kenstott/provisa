@@ -22,9 +22,10 @@ repos:
         # The project venv, not whatever pyright is first on PATH: the checker resolves imports
         # against the interpreter it runs under, so a system pyright types the code against a
         # different site-packages than CI's `uv run pyright` and the two disagree.
+        # Only the staged files under provisa/: the whole package took 10-16 minutes per commit
+        # with many jobs sharing one slot. CI's lint workflow still checks the whole package.
         entry: .venv/bin/python -m pyright
-        args: ["provisa"]
-        pass_filenames: false
+        files: ^provisa/
         types: [python]
       - id: lint-imports
         name: lint-imports
