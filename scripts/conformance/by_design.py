@@ -325,15 +325,24 @@ def classify(failures: list[dict], declared: list[Group]) -> tuple[list[dict], l
     return left, excluded
 
 
-def adapted(ran: list[dict], declared: list[Group]) -> list[dict]:
+def adapted(ran: list[dict], declared: list[Group], excluded: list[dict]) -> list[dict]:
     """Each adapted group that names any case run (``ran``: feature, scenario, reason and
-    outcome, "passed" or "failed"): what the cases' setup became and each case's outcome."""
+    outcome, "passed" or "failed"): what the cases' setup became and each case's outcome, the one
+    it counts as (OUTCOMES): a failed case one of ``excluded`` (classify's groups) names is
+    "by_design"."""
+    skipped = {c["case"] for g in excluded for c in g["cases"]}
     marks = []
     for group in (g for g in declared if g.kind == "adapted"):
         cases = [
-            {"case": f"{o['feature']}::{o['scenario']}", "outcome": o["outcome"]}
+            {
+                "case": named,
+                "outcome": "by_design"
+                if o["outcome"] == "failed" and named in skipped
+                else o["outcome"],
+            }
             for o in ran
             if group.matches(o)
+            for named in [f"{o['feature']}::{o['scenario']}"]
         ]
         if cases:
             marks.append({"group": group.group, **group.details, "cases": cases})
@@ -391,14 +400,16 @@ def adapted_lines(marks: list[dict]) -> list[str]:
         return ["None."]
     out = []
     for mark in marks:
-        passed = sum(c["outcome"] == "passed" for c in mark["cases"])
+        counted = ", ".join(
+            f"{sum(c['outcome'] == key for c in mark['cases'])} {label}"
+            for key, label in OUTCOMES.items()
+        )
         out.append(
-            f"<details><summary>{mark['group']} ({passed} of {len(mark['cases'])} passed)"
-            "</summary>\n"
+            f"<details><summary>{mark['group']} ({len(mark['cases'])}: {counted})</summary>\n"
         )
         out.append(f"Setup became: {mark['became']}\n")
         out.append("| Case | Outcome |")
         out.append("| --- | --- |")
-        out.extend(f"| {c['case']} | {c['outcome']} |" for c in mark["cases"])
+        out.extend(f"| {c['case']} | {OUTCOMES[c['outcome']]} |" for c in mark["cases"])
         out.append("\n</details>\n")
     return out
