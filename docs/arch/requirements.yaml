@@ -89201,7 +89201,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     a known role. (3) pg_table_is_visible and the other *_is_visible functions follow search_path exactly
     as PostgreSQL does: a domain''s table is visible only when search_path names its schema. (4) LISTEN,
     NOTIFY and pg_notify are refused by name: Provisa''s pgwire has no notification channel; the conformance
-    check reports them skipped by design under this decision.'
+    check reports them skipped by design under this decision. (Amended 2026-11-03, Every rewrite goes through
+    SQLGlot:) Maintainer 2026-11-03: every pg_catalog rewrite and every PostgreSQL form is made on SQLGlot''s
+    tree, never on the statement''s text, because the engine path and every direct source''s path all go
+    through SQLGlot: a form written once on the tree serves every dialect it is generated for, and the function
+    check run on each engine therefore tests the direct path for that platform too. A text substitution
+    (a regular expression or string replace over SQL) is a defect, whatever it fixes.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
