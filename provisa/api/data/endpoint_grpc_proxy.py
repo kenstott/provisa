@@ -393,7 +393,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
 
             # Each group's nodes are a column of its own row (aggregates._nodes_column), as the
             # native servicer reads them (provisa/grpc/server.py::_handle_query_group_by_bound).
-            from provisa.executor.serialize import _convert_value
+            from provisa.executor.serialize import column_value
             from provisa.grpc.query_ir import nodes_index
 
             at = nodes_index(compiled.columns)
@@ -405,7 +405,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                 top, nested = split_agg_columns(agg_cols, agg_row)
                 out_row: dict[str, Any] = {"group_key": group_key, "aggregate": {**top, **nested}}
                 if include_nodes and at is not None:
-                    out_row["nodes"] = _convert_value(row[at])
+                    out_row["nodes"] = column_value(row[at], compiled.columns[at])
                 out_rows.append(out_row)
             return OrjsonResponse(out_rows)
 

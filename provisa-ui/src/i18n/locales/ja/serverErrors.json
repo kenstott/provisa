@@ -405,6 +405,7 @@
       "source_region_set": "ソース {{source}} のリージョンを {{region}} に設定しました",
       "region_refused": "リージョンは設定されませんでした: {{reason}}",
       "table_too_complex": "テーブル「{{table}}」は選択した列では登録されませんでした: {{reason}}。列を減らしてください。",
+      "remote_throttled": "テーブル「{{table}}」は登録されませんでした: ソースのレート制限により確認できませんでした ({{reason}})。後でもう一度お試しください。",
       "table_updated": "テーブル「{{table}}」を更新しました（id={{id}}）",
       "task_deleted": "タスク「{{task}}」を削除しました",
       "task_disabled": "タスク「{{task}}」を無効にしました",
