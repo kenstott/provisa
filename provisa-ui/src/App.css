@@ -835,6 +835,10 @@ main {
 .split-pane__actions {
   flex: 1 1 auto;
   min-width: 0;
+  /* A fieldset (a delete in progress disables it): none of a fieldset's own box. */
+  border: 0;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -898,6 +902,10 @@ main {
 .split-pane__body {
   flex: 1 1 auto;
   min-height: 0;
+  /* A fieldset (a delete in progress disables it): none of a fieldset's own box. */
+  min-width: 0;
+  border: 0;
+  margin: 0;
   overflow: auto;
   padding: 0.75rem 1rem;
   display: flex;
@@ -2271,6 +2279,23 @@ main {
 }
 .data-table tr.row-selected:hover {
   background: var(--border);
+}
+/* REQ-2198: a row whose item is being deleted: dimmed, and offered for nothing. */
+.data-table tr.row-deleting,
+.data-table tr.row-deleting:hover {
+  opacity: 0.5;
+  cursor: progress;
+}
+/* A detail beneath its row, locked while its delete is in progress: no box of its own. */
+.panel-lock {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.split-pane__body[aria-busy="true"],
+.panel-lock[aria-busy="true"] {
+  cursor: progress;
 }
 
 /* View detail panel */

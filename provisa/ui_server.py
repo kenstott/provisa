@@ -480,8 +480,17 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
             sandbox_wake.answered(base)
             if not upstream.headers.get("content-type", "").startswith("text/event-stream"):
                 await upstream.aread()
-        except httpx.ConnectError:
-            # Both sandbox tiers run on the sandbox VM (REQ-2068).
+        except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError) as exc:
+            # Refused, or accepted and dropped unanswered: a deploy recreating the API's container
+            # drops the requests under way there, and left unhandled that escaped as a bare ASGI
+            # 500. Both sandbox tiers run on the sandbox VM (REQ-2068).
+            if not isinstance(exc, httpx.ConnectError):
+                _log.error(
+                    "upstream dropped the request (%s): %s %s",
+                    type(exc).__name__,
+                    request.method,
+                    target,
+                )
             sandbox = base == SANDBOX_API_URL or base in SANDBOX_REGIONS_NODES.values()
             if sandbox and sandbox_wake.SANDBOX_INSTANCE is not None:
                 return await _sandbox_starting(sandbox_wake.SANDBOX_INSTANCE, base)

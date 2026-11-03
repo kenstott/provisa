@@ -1654,11 +1654,13 @@ _ROWS: tuple[Macro, ...] = (
         )
     ),
     *(
-        # sqlglot's DuckDB regexp_instr reads no endoption, flags or subexpression.
+        # sqlglot's DuckDB regexp_instr reads no endoption, flags or subexpression. Every other
+        # dialect keeps sqlglot's own, and the federation engines their refusal (engine_refusals).
         Macro(
             "regexp_instr",
             params,
             {_DUCKDB: f"provisa_regexp_instr(value, pattern, {rest})", _EVERY: MAPPED},
+            differs_on=_TRINO | _CLICKHOUSE,
         )
         for params, rest in (
             (("value", "pattern"), "1, 1, 0, '', 0"),

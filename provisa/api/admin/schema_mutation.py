@@ -2207,7 +2207,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.app import state
 
         require_capability(info, "source_registration")
-        return await detect(input, state.federation_engine.name)
+        return await detect(input, state.federation_engine)
 
     @strawberry.mutation
     async def set_servicenow_api(
@@ -3008,6 +3008,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     .where(sources.c.id == input.id)
                     .values(allowed_domains=input.allowed_domains)
                 )
+
+        if input.type == "quickbooks":
+            from provisa.quickbooks.token import entered_on_save
+
+            # REQ-2197: a refresh token the save changed replaces the one kept for the company.
+            await entered_on_save(
+                input.id,
+                database=input.database,
+                before_mapping=existing["mapping"],
+                mapping=_stored_mapping,
+            )
 
         await restart_source_server(model)
 

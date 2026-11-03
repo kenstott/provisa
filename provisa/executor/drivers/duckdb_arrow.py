@@ -26,7 +26,8 @@ truncated, as DuckDB's rows read it, and a ``TIME`` or ``TIMETZ`` at ``24:00:00`
 PostgreSQL holds and Python's ``time`` does not, is the text DuckDB's rows hold for it.
 
 An error the engine meets while its reader produces a later batch is raised then, past the point
-where the statement was run; ``answered_batches`` raises it as PostgreSQL's own error there.
+where the statement was run, as an ``OSError``; ``answered_batches`` raises it there as PostgreSQL's
+own error, or as the exception DuckDB raises for the same error met as the statement is run.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from collections.abc import Iterator
 from datetime import time, timedelta, timezone
 from typing import Any, Callable
 
+import duckdb
 import pyarrow as pa
 
 from provisa.core.ir_arrow import column_values
@@ -60,11 +62,30 @@ _PER_SECOND = {"s": 1, "ms": 1_000, "us": 1_000_000, "ns": 1_000_000_000}
 _END_OF_DAY = "24:00:00"
 
 
+#: DuckDB's exceptions by the kind its message opens with, spaced and cased as there ("Out of Range
+#: Error: ..." is an OutOfRangeException).
+_ENGINE_ERRORS: dict[str, type[duckdb.Error]] = {
+    name.removesuffix("Exception").lower(): cls
+    for name, cls in vars(duckdb).items()
+    if name.endswith("Exception") and isinstance(cls, type) and issubclass(cls, duckdb.Error)
+}
+
+
+def _engine_error(error: OSError) -> Exception:
+    """The exception DuckDB raises for the error its Arrow reader raised as ``error``; ``error``
+    itself where its message names no kind DuckDB has an exception for."""
+    message = str(error)
+    kind, sep, _ = message.partition(" Error: ")
+    raised = _ENGINE_ERRORS.get(kind.replace(" ", "").lower()) if sep else None
+    return error if raised is None else raised(message)
+
+
 def answered_batches(reader: Any) -> Iterator[pa.RecordBatch]:  # noqa: ANN401 â€” a reader
     """The batches of DuckDB's Arrow ``reader``. DuckDB produces them as they are read, so an
-    error the engine meets in a later batch (PostgreSQL's own, raised by
-    ``provisa.core.pg_error.raising``) is raised here, as an ``OSError`` carrying its message: it
-    is raised as that PostgreSQL error, which the client is answered with."""
+    error the engine meets in a later batch is raised here, as an ``OSError`` carrying its
+    message: PostgreSQL's own (raised by ``provisa.core.pg_error.raising``) is raised as that
+    PostgreSQL error, and any other as the exception DuckDB raises for it when it is met as the
+    statement is run, so the client is answered with its SQLSTATE either way."""
     batches = iter(reader)
     while True:
         try:
@@ -73,9 +94,7 @@ def answered_batches(reader: Any) -> Iterator[pa.RecordBatch]:  # noqa: ANN401 â
             return
         except OSError as error:
             answered = from_engine(error)
-            if answered is None:
-                raise
-            raise answered from error
+            raise (_engine_error(error) if answered is None else answered) from error
         yield batch
 
 

@@ -39,7 +39,7 @@ From a checkout of this repository you can run any demo on your own machine:
 ./start-ui-install.sh --demo weblogs   # start one, with its tour
 ```
 
-A published demo is pulled as a ready-made bundle; the others run from `demo/named/<name>/`. See [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) for every option.
+A published demo is pulled as a ready-made bundle; the others run from `demo/named/<name>/`. Running from a checkout needs Rust (`cargo`): before the API starts, the start script builds `provisa._encoders`, the Rust encoders pgwire, gRPC and JSON use, with `rust/build-local.sh` when `provisa/_encoders.so` is missing or older than its sources under `rust/`, and stops if `cargo` is missing or the build fails. See [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) for every option.
 
 ## The model
 

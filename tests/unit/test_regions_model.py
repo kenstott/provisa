@@ -21,6 +21,16 @@ from pydantic import ValidationError
 
 from provisa.core.models import ProvisaConfig
 
+
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A deployment of one organization (REQ-2006). The API layer says it at import; these
+    tests import no API layer, so they say it themselves."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 _PLATFORM = {
     "regions": [
         {"id": "eu", "address": "https://eu.example.com"},
@@ -155,6 +165,19 @@ def test_a_regions_engine_store_names_an_engine_kind():
     bad = [{**s, "kind": "oracle-rac"} if s["id"] == "eu-trino" else s for s in _STORES]
     said = _refused(_config(platform=_PLATFORM, stores=bad, regions=[_region("eu")]))
     assert "names engine kind 'oracle-rac', which is not one of" in said
+
+
+@pytest.mark.parametrize("kind", ["teradata", "sapase", "sqlanywhere"])
+def test_an_engine_kind_no_longer_offered_is_refused_as_unknown(kind):
+    """REQ-2196: Teradata, SAP ASE and SAP SQL Anywhere were never built or tested, so a region
+    that names one is refused by name like any other unknown kind, and no engine is built for it."""
+    from provisa.federation.engine import build_engine
+
+    bad = [{**s, "kind": kind} if s["id"] == "eu-trino" else s for s in _STORES]
+    said = _refused(_config(platform=_PLATFORM, stores=bad, regions=[_region("eu")]))
+    assert f"names engine kind {kind!r}, which is not one of" in said
+    with pytest.raises(ValueError, match=f"unknown federation engine {kind!r}"):
+        build_engine(kind)
 
 
 def test_with_more_than_one_region_an_engine_store_is_a_server_the_others_reach():
@@ -419,10 +442,13 @@ def test_the_engine_kinds_the_model_names_are_the_ones_built():
 
 def test_the_engine_kinds_that_read_other_regions_are_the_backends_that_do(monkeypatch):
     from provisa.core.engine_kinds import REGION_READERS
+    from provisa.federation import engine as fe
     from provisa.federation.engine import build_engine, engine_kinds
 
     # A generic SQLAlchemy engine kind is built only with a URL; none is dialed.
     monkeypatch.setenv("PROVISA_ENGINE_URL", "postgresql://h/db")
+    # Whether a kind's dialect extra is installed is not what this asks (test_engine_extras.py does).
+    monkeypatch.setattr(fe, "require_engine_extra", lambda kind: None)
     readers = {k for k in engine_kinds() if build_engine(k).backend.reads_other_regions}
     assert readers == REGION_READERS
 

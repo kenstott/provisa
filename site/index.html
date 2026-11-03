@@ -54,7 +54,14 @@
     <section class="hero">
       <div class="container hero-inner">
         <a class="hero-badge" href="https://sandbox.provisa.dev/register?invite=eca0374b-fce8-45bd-8347-5f9d6e7931c3" target="_blank" rel="noopener"><span class="hero-badge-dot"></span>Try it now in the sandbox</a>
-        <h1>Drift is the enemy.<br />Fragmentation feeds it.<br />A data control plane ends it.</h1>
+        <h1 class="hero-hook" aria-live="polite">
+          <span class="hook-rotate">
+            <span class="hook-pair is-active" aria-hidden="false"><a class="hook-link" href="/start/ai-access"><strong>Connect Postgres, Snowflake and Salesforce.<br />Query with SQL, GraphQL or your AI agent.<br />In 5 minutes.</strong></a></span>
+            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/app-backends"><strong>Connect Postgres, MongoDB and Salesforce.<br />Query with GraphQL from your app.<br />In 5 minutes.</strong></a></span>
+            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/bi-across-sources"><strong>Connect Postgres, Snowflake and Google Sheets.<br />Query with SQL from Tableau.<br />In 5 minutes.</strong></a></span>
+            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/data-science"><strong>Connect Postgres, Elasticsearch and Kafka.<br />Query with Python or Arrow Flight.<br />In 5 minutes.</strong></a></span>
+          </span>
+        </h1>
         <p class="lead">
           Provisa is a data kernel: a compiler and runtime for building your data control
           plane. Sources and engines plug in as drivers. You declare your data model once,
@@ -64,14 +71,7 @@
           reach a table their role can read. Data federation queries each source where it
           lives, so there is no copy left to drift.
         </p>
-        <p class="lead hero-hook" aria-live="polite">
-          <span class="hook-rotate">
-            <span class="hook-pair is-active" aria-hidden="false"><a class="hook-link" href="/start/ai-access"><strong>Connect Postgres, Snowflake and Salesforce.<br />Query with SQL, GraphQL or your AI agent.<br />In 5 minutes.</strong></a></span>
-            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/app-backends"><strong>Connect Postgres, MongoDB and Salesforce.<br />Query with GraphQL from your app.<br />In 5 minutes.</strong></a></span>
-            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/bi-across-sources"><strong>Connect Postgres, Snowflake and Google Sheets.<br />Query with SQL from Tableau.<br />In 5 minutes.</strong></a></span>
-            <span class="hook-pair" aria-hidden="true" hidden><a class="hook-link" href="/start/data-science"><strong>Connect Postgres, Elasticsearch and Kafka.<br />Query with Python or Arrow Flight.<br />In 5 minutes.</strong></a></span>
-          </span>
-        </p>
+        <p class="lead hero-drift"><strong>Drift is the enemy.<br />Fragmentation feeds it.<br />A data control plane ends it.</strong></p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="https://sandbox.provisa.dev/register?invite=eca0374b-fce8-45bd-8347-5f9d6e7931c3" target="_blank" rel="noopener">Try it on your data</a>
           <a class="btn btn-ghost" href="#download">Download</a>
@@ -184,7 +184,7 @@
     <section class="positioning" aria-label="What Provisa is">
       <div class="container">
         <p class="positioning-line">Federation, metrics, <a href="/why/ontology">ontology</a> and governance from a single model. Nothing to keep in sync.</p>
-        <p class="positioning-note">Built from data architecture and governance in regulated industries, with the methods of devops that run through operating systems, Kubernetes, Terraform and Helm, and the compiler design of LLVM. You declare a small set of primitives and a control plane keeps them true, so you assemble a solution instead of writing one, and any code you do need sits behind a contract. <a href="/how-it-works#lineage">Where the design comes from</a>.</p>
+        <p class="positioning-note">Inspired by data architecture and governance in regulated industries, with the methods of devops that run through operating systems, Kubernetes, Terraform and Helm, and the compiler design of LLVM. You declare a small set of primitives and a control plane keeps them true, so you assemble a solution instead of writing one, and any code you do need sits behind a contract. <a href="/how-it-works#lineage">Where the design comes from</a>.</p>
       </div>
     </section>
 

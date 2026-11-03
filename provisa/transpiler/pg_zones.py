@@ -39,12 +39,13 @@ NAMES = (
     f"WHERE _n.name IN ({', '.join(map(_quoted, ZONE_NAMES))})"
 )
 
-#: pg_timezone_abbrevs' rows.
+#: pg_timezone_abbrevs' rows. The rows' own columns are underscored, as a form's own names are.
 ABBREVS = (
-    "SELECT abbrev, CAST(utc_offset AS INTERVAL) AS utc_offset, is_dst FROM (VALUES "
+    "SELECT _abbrev AS abbrev, CAST(_utc_offset AS INTERVAL) AS utc_offset, _is_dst AS is_dst "
+    "FROM (VALUES "
     + ", ".join(
         f"({_quoted(abbrev)}, {_quoted(offset)}, {'TRUE' if dst else 'FALSE'})"
         for abbrev, offset, dst in TIMEZONE_ABBREVS
     )
-    + ") AS _a(abbrev, utc_offset, is_dst)"
+    + ") AS _a(_abbrev, _utc_offset, _is_dst)"
 )

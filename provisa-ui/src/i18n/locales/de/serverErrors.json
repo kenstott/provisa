@@ -631,7 +631,10 @@
       "popup_blocked": "Ihr Browser hat das Anmeldefenster blockiert. Erlauben Sie Pop-ups für diese Website und versuchen Sie es erneut.",
       "window_closed": "Das Anmeldefenster wurde geschlossen, bevor die Anmeldung abgeschlossen war.",
       "tenant_invalid": "Die Microsoft-365-Einstellung der Organisation nennt kein Verzeichnis (Mandant). Ein Administrator gibt die ID oder Domäne des Verzeichnisses ein.",
-      "microsoft_account_unread": "Die Anmeldung wurde genehmigt, aber Microsoft hat nicht angegeben, wessen Postfach es ist."
+      "microsoft_account_unread": "Die Anmeldung wurde genehmigt, aber Microsoft hat nicht angegeben, wessen Postfach es ist.",
+      "client_missing": "Geben Sie die Client-ID und das Client-Secret der App ein und melden Sie sich dann an.",
+      "client_not_taken": "Diese Art von Quelle meldet sich mit dem Client Ihrer Organisation an, nicht mit einem im Formular eingegebenen.",
+      "no_account_returned": "Die Anmeldung wurde genehmigt, aber die Antwort nannte kein Konto ({{parameter}}). Melden Sie sich erneut an."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "Ihre Organisation hat keine Quellen erlaubt, die ihre Postfächer lesen. Ein Administrator erlaubt es unter Admin › E-Mail.",

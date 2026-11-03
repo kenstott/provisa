@@ -39,6 +39,16 @@ from provisa.federation.replica_spool import (
     sweep,
 )
 
+
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A deployment of one organization (REQ-2006). The API layer says it at import; these
+    tests import no API layer, so they say it themselves."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 _N = 5000  # rows in a "large" answer: many chunks of body, many batches
 
 
@@ -151,7 +161,9 @@ def _graphql():
             ],
         }
     }
-    reader = sl.make_graphql_remote_loader(registrations, max_rows=500).replica_source(
+    reader = sl.make_graphql_remote_loader(
+        registrations, max_rows=500, page_size=100
+    ).replica_source(
         SimpleNamespace(id="g"),
         _table("orders", ("id", "name")),
         [("id", "bigint"), ("name", "text")],

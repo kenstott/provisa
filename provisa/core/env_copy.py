@@ -321,10 +321,13 @@ async def copy_profile_results(conn: "Connection", src_schema: str, dst_schema: 
     A run's results are relations of the org's schema of their own (``<table>_<id>_profile_<kind>``,
     provisa.profiler.schema), not model tables, so the model copy does not move them; a sandbox
     is cloned with its template's table ids, so each keeps its name. Each is replaced whole.
-    Returns the relations copied."""
+    A relation no table of ``src_schema``'s model names (profiler.schema.superseded_results) is
+    not copied. Returns the relations copied."""
     from sqlalchemy import text
 
-    from provisa.profiler.schema import is_result_table_name
+    from provisa.profiler.schema import is_result_table_name, superseded_results
+
+    superseded = set(await superseded_results(conn, src_schema))
 
     names = [
         r[0]
@@ -336,7 +339,7 @@ async def copy_profile_results(conn: "Connection", src_schema: str, dst_schema: 
                 ).bindparams(schema=src_schema)
             )
         ).fetchall()
-        if is_result_table_name(r[0])
+        if is_result_table_name(r[0]) and r[0] not in superseded
     ]
     for name in names:
         src, dst = f'"{src_schema}"."{name}"', f'"{dst_schema}"."{name}"'

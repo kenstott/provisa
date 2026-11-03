@@ -67,7 +67,7 @@ from buenavista.postgres import (
 
 from provisa.core import request_deadline
 from provisa.core.egress import CountingWriter
-from provisa.core.pg_error import MARK, PostgresError
+from provisa.core.pg_error import MARK, PostgresError, from_engine
 from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
 from provisa.pgwire.session_zone import (
     UNKNOWN_ZONE,
@@ -76,7 +76,6 @@ from provisa.pgwire.session_zone import (
     raw_row_formats,
     refuse_other_zone,
 )
-from provisa.transpiler.transpile import DIVISION_BY_ZERO  # REQ-2167: its SQLSTATE
 from provisa.otel_compat import annotate_request as _annotate_request
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -224,6 +223,7 @@ _SQLSTATE_BY_CLASS: dict[str, str] = {
 
 def _sqlstate_of(exception: object) -> str:
     """The SQLSTATE an error is reported with: the one a source reported (psycopg, asyncpg), else
+    the one PostgreSQL's own error raised on the engine carries (pg_error.raising), else
     PostgreSQL's code for the engine error's class -- read through the chain of errors that
     carried it up (the pipeline re-raises a statement's failure from it) -- else XX000."""
     chain: list[BaseException] = []
@@ -236,11 +236,9 @@ def _sqlstate_of(exception: object) -> str:
         if isinstance(own, str) and len(own) == 5:
             return own
     for err in chain:
-        # The engine's own raise of PostgreSQL's division error (transpile.DIVISION_BY_ZERO).
-        if type(err).__name__ == "InvalidInputException" and str(err).endswith(
-            f": {DIVISION_BY_ZERO}"
-        ):
-            return "22012"  # division_by_zero
+        raised = from_engine(err) if isinstance(err, Exception) else None  # REQ-2167
+        if raised is not None:
+            return raised.sqlstate
         for cls in type(err).__mro__:
             code = _SQLSTATE_BY_CLASS.get(cls.__name__)
             if code is not None:
@@ -2788,6 +2786,47 @@ class ProvisaConnection(Connection):  # REQ-529
         }
 
 
+class _SourceFailed(Exception):
+    """The error (its cause) a result's source raised as its rows were read for the client --
+    an engine error met past the statement's run, in a later batch -- as against one met writing
+    them to the client's socket. The statement is answered with it; the connection goes on."""
+
+
+class _ReadData:
+    """A result's ``ResultData``, each failure of its source as it is read a ``_SourceFailed``. A
+    timeout is raised as it is: the request's deadline answers it (``ProvisaHandler._timed_out``)."""
+
+    def __init__(self, data: Any) -> None:
+        self._data = data
+        self.raw = data.raw
+
+    def take(self, limit: int = 0) -> Iterator[Any]:
+        batches = self._data.take(limit)
+        while True:
+            try:
+                batch = next(batches)
+            except StopIteration:
+                return
+            except TimeoutError:
+                raise
+            except Exception as error:
+                raise _SourceFailed() from error
+            yield batch
+
+
+class _ReadResult:
+    """``result``, its rows read through ``_ReadData``."""
+
+    def __init__(self, result: Any) -> None:
+        self._result = result
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._result, name)
+
+    def data(self) -> _ReadData:
+        return _ReadData(self._result.data())
+
+
 class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     """Extends BuenaVistaHandler with TLS, cleartext auth, and catalog intercept."""
 
@@ -2871,8 +2910,6 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         refused is answered 0A000 (feature_not_supported) with the refusal's own message, on the
         simple and the extended protocol alike; anything else as the base class sends it."""
         from provisa.compiler.definitions import definition_refusal
-
-        from provisa.core.pg_error import from_engine
 
         answered = from_engine(exception)  # REQ-2167: PostgreSQL's own error, from the engine
         if answered is not None:
@@ -2990,10 +3027,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         # REQ-1910: rows are pulled from the result and encoded onto the socket here.
         with _stage(_tracer, "pgwire.encode", name="encode"):
             session = self._session
-            sent = super().send_data_rows(
-                query_result if session is None else in_session_zone(query_result, session.zone),
-                limit,
-            )
+            read = query_result if session is None else in_session_zone(query_result, session.zone)
+            # An error the source raises as its rows are read is the statement's, answered to the
+            # client by the message handler (_SourceFailed); one writing them is the connection's.
+            sent = super().send_data_rows(cast(BVQueryResult, _ReadResult(read)), limit)
             _annotate_request(db__row_count=sent)
         # REQ-1949: what the rows themselves showed -- the answer was cut at a row limit -- is
         # known when the drain ends, and goes as a NOTICE after the last row, ahead of the
@@ -3749,6 +3786,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             ctx.mark_error()
         except PostgresError as exc:  # REQ-2171: rows that cannot be written in the session's zone
             self.send_error(exc, ctx)
+        except _SourceFailed as exc:  # an engine error met as the rows were read
+            self.send_error(exc.__cause__, ctx)
 
     def handle_query(self, ctx: BVContext, payload: bytes) -> None:
         self._open_request()
@@ -3785,6 +3824,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             self.send_ready_for_query(ctx)
         except PostgresError as exc:  # REQ-2171: rows that cannot be written in the session's zone
             self.send_error(exc, ctx)
+            self.send_ready_for_query(ctx)
+        except _SourceFailed as exc:  # an engine error met as the rows were read
+            self.send_error(exc.__cause__, ctx)
             self.send_ready_for_query(ctx)
         finally:
             if _org_token is not None:

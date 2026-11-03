@@ -225,6 +225,9 @@
     "qbClientSecret": "Clientgeheim",
     "qbClientSecretHint": "Van dezelfde pagina als de client-ID. Bewaard in de geheimenkluis.",
     "qbRefreshToken": "Vernieuwingstoken",
-    "qbRefreshTokenHint": "Geeft Provisa toegang om het bedrijf te lezen. Haal er een op in de OAuth 2.0 Playground van Intuit met de Accounting-scope. QuickBooks vervangt het bij elk gebruik en Provisa bewaart het nieuwste."
+    "qbRefreshTokenHint": "Geeft Provisa toegang om het bedrijf te lezen. Meld u aan met QuickBooks om er een te krijgen, of plak er een uit de OAuth 2.0 Playground van Intuit met de Accounting-scope. QuickBooks vervangt het bij elk gebruik en Provisa bewaart het nieuwste. Een nieuwe die u hier invoert, vervangt bij het opslaan de bewaarde.",
+    "qbSignIn": "Aanmelden met QuickBooks",
+    "qbSignedIn": "Aangemeld bij bedrijf {{realm}}. Sla de bron op om dit te bewaren.",
+    "qbSignInFailed": "Het inloggen kon niet worden voltooid."
   }
 }

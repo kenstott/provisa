@@ -5420,16 +5420,18 @@ def _engine_session_hints(
     exec_sql: str,
     *,
     writes: bool,
-) -> dict[str, str] | None:  # REQ-281, REQ-910
+    tree: Any = None,
+) -> dict[str, str] | None:  # REQ-281, REQ-910, REQ-348
     """The engine session properties one compiled statement runs with: each source's federation
     hints (translated from the ``@provisa`` vocabulary), then the request's own properties and the
     statement's comment hints filling only what the operator left open — and no fault-tolerant
-    retry for a write or a read of a non-replayable connector (:func:`_no_retry`)."""
+    retry for a write or a read of a non-replayable connector (:func:`_no_retry`). A recursive
+    statement (``tree``, its compiled AST) runs with the maximum recursion depth (REQ-348)."""
     from provisa.compiler.directives import merge_session_props, translate_federation_hints
-    from provisa.compiler.hints import extract_hints
+    from provisa.compiler.hints import extract_hints, recursion_session_props
 
     _, comment_hints = extract_hints(exec_sql)
-    operator_hints: dict[str, str] = {}
+    operator_hints: dict[str, str] = recursion_session_props(tree) if tree is not None else {}
     for sid in sources or ():
         operator_hints.update(
             translate_federation_hints(getattr(state, "source_federation_hints", {}).get(sid, {}))
@@ -5743,7 +5745,9 @@ async def _route_compiled(
         # REQ-2100: a code source's own statement the engine runs after all is landed for it.
         _exec_sql, exec_params = await land_direct_reads(_exec_sql, exec_params, state, _table_ids)
         _exec_sql, physical_sql = await _engine_forms(_exec_sql)
-        _hints = _engine_session_hints(state, sources, session_props, _exec_sql, writes=_is_write)
+        _hints = _engine_session_hints(
+            state, sources, session_props, _exec_sql, writes=_is_write, tree=_compiled_tree
+        )
         return _Plan(
             route=Route.ENGINE,
             sql=governed_sql,

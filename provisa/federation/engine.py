@@ -319,16 +319,13 @@ class FederationEngine:  # REQ-840
         Taken from the source, not only its type (REQ-2191): a JDBC source attached live on
         this engine can do what its settings for this engine turn on, and nothing else. One not
         attached here lands, and its replica is read as every landed table is."""
-        from provisa.jdbc_source import SOURCE_TYPE as JDBC_SOURCE
+        from provisa.jdbc_source.attach import attach_type
 
-        source_type = source.type.value
-        if source_type == JDBC_SOURCE:
-            from provisa.jdbc_source.settings import ATTACH, capability, parse
+        if attach_type(source, self) is not None:
+            from provisa.jdbc_source.settings import capability
 
-            hints = source.federation_hints
-            if parse(hints).on(self.name, ATTACH):
-                return capability(hints, self.name)
-        return self.connector_for(source_type).capability()
+            return capability(source.federation_hints, self.name)
+        return self.connector_for(source.type.value).capability()
 
     # -- reachability (REQ-840) ------------------------------------------------
 
@@ -1030,6 +1027,7 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
     from provisa.federation.runtime import EngineCapability
     from provisa.federation.sqlalchemy_backend import SqlAlchemyBackend
 
+    require_engine_extra(name)
     dsn = url or configured_engine_url()
     if not dsn:
         raise ValueError("sqlalchemy engine requires a URL ($PROVISA_ENGINE_URL)")
@@ -1281,13 +1279,59 @@ _RDB_KINDS: list[tuple[str, str, str]] = [
     ("singlestore", "SingleStore", "singlestoredb://user:pass@host:3306/db"),
     ("vertica", "Vertica", "vertica+vertica_python://user:pass@host:5433/db"),
     ("exasol", "Exasol", "exa+websocket://user:pass@host:8563/schema"),
-    ("teradata", "Teradata Vantage", "teradatasql://user:pass@host/database"),
     ("saphana", "SAP HANA", "hana+hdbcli://user:pass@host:39015/db"),
-    ("sapase", "SAP ASE (Sybase)", "sybase+pyodbc://user:pass@dsn"),
-    ("sqlanywhere", "SAP SQL Anywhere", "sqlalchemy-sqlany://user:pass@host:2638/db"),
     ("monetdb", "MonetDB", "monetdb://user:pass@host:50000/db"),
-    ("firebird", "Firebird", "firebird+fdb://user:pass@host:3050/path/to/db.fdb"),
+    ("firebird", "Firebird", "firebird+firebird://user:pass@host:3050/path/to/db.fdb"),
 ]
+
+# The pyproject extra that ships each kind's SQLAlchemy dialect and DBAPI driver, and the modules
+# it installs. A kind absent here is served by the base install. Selecting a kind whose extra is not
+# installed is refused naming the extra (MissingEngineExtra), never left to fail at connect.
+#
+# kind -> (extra, modules the extra installs)
+RDB_EXTRAS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "cockroachdb": ("cockroachdb", ("sqlalchemy_cockroachdb",)),
+    "db2": ("db2", ("ibm_db_sa", "ibm_db")),
+    "exasol": ("exasol", ("sqlalchemy_exasol", "pyexasol")),
+    "firebird": ("firebird", ("sqlalchemy_firebird", "firebird.driver")),
+    "monetdb": ("monetdb", ("sqlalchemy_monetdb", "pymonetdb")),
+    "opengauss": ("opengauss", ("opengauss_sqlalchemy",)),
+    "saphana": ("saphana", ("sqlalchemy_hana", "hdbcli")),
+    "vertica": ("vertica", ("sqla_vertica_python", "vertica_python")),
+}
+
+
+class MissingEngineExtra(ImportError):
+    """The engine kind's dialect ships in a pyproject extra that is not installed. An ImportError,
+    so ``engine_registry`` lists the kind ``unavailable`` naming the extra, as it does an engine
+    whose driver library is absent."""
+
+    def __init__(self, kind: str, extra: str, module: str) -> None:
+        super().__init__(
+            f"the {kind!r} federation engine needs the {extra!r} extra "
+            f"(module {module!r} is not installed): pip install 'provisa[{extra}]'",
+            name=module,
+        )
+        self.kind = kind
+        self.extra = extra
+        self.module = module
+
+
+def require_engine_extra(kind: str) -> None:
+    """Refuse ``kind`` naming its extra when a module the extra installs is absent."""
+    import importlib.util
+
+    if kind not in RDB_EXTRAS:
+        return
+    extra, modules = RDB_EXTRAS[kind]
+    for module in modules:
+        try:
+            found = importlib.util.find_spec(module) is not None
+        except ModuleNotFoundError:  # the parent package of a dotted module is absent
+            found = False
+        if not found:
+            raise MissingEngineExtra(kind, extra, module)
+
 
 for _rdb_key, _rdb_label, _rdb_dsn in _RDB_KINDS:
     # Bind the key as the engine's name so a running engine reports the database it is on, not the

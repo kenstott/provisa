@@ -424,7 +424,7 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
     from provisa.core.env_repo import ensure_repo, write_through
     from provisa.core.env_store import ensure_prod
     from provisa.core.environments import PROD, org_schema
-    from provisa.core.org_membership import JOINED_VIA_ADMIN, grant_membership, grant_org_role
+    from provisa.core.org_membership import JOINED_VIA_ADMIN, grant_org_roles, record_membership
     from provisa.core.org_provisioning import provision_org
     from provisa.core.redis_location import redis_url
     from provisa.security.rights import DEPLOYMENT_GRANTER
@@ -473,30 +473,32 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
         rt = await state.org_registry.rebuild(org_id, partial(_sandbox_runtime, cloned=True))
     assert rt.model_db is not None
     async with _stage(org_id, demo.name, "its person's membership and roles"):
-        if kind == VISITOR:
-            async with _admin_pool().acquire() as conn:
+        # Each plane written once, in one checkout and one transaction: every statement is a round
+        # trip to a control plane on another machine.
+        async with _admin_pool().acquire() as conn, conn.transaction():
+            if kind == VISITOR:
                 await conn.execute_core(
                     insert(user_profiles).values(
                         user_id=person, display_name="Demo visitor", provider="sandbox"
                     )
                 )
-        await grant_membership(_admin_pool(), person, org_id, joined_via=JOINED_VIA_ADMIN)
-        await grant_org_role(
-            rt.model_db, person, SANDBOX_ROLE, granter_capabilities=DEPLOYMENT_GRANTER
-        )
-        # And the demo's own roles (an analyst, say), so its tour can run as each of them; never a
-        # built-in role, which would carry what the sandbox role withholds (REQ-1597).
+            await record_membership(conn, person, org_id, joined_via=JOINED_VIA_ADMIN)
+        # The sandbox role, and the demo's own roles (an analyst, say), so its tour can run as each
+        # of them; never a built-in role, which would carry what the sandbox role withholds
+        # (REQ-1597).
         from provisa.api.demo_templates import demo_roles
 
-        for role_id in demo_roles(demo.template_org):
-            await grant_org_role(
-                rt.model_db, person, role_id, granter_capabilities=DEPLOYMENT_GRANTER
-            )
-        if kind == VISITOR:
-            # REQ-2151: the attributes the demo's visitor carries, so a derived role its tour acts
-            # as is held from an attribute; the runtime resolves requests against them at once.
-            async with rt.model_db.acquire() as conn:
-                rt.user_attributes = await record_visitor_attributes(conn, person, demo.directory)
+        granted = [SANDBOX_ROLE, *demo_roles(demo.template_org)]
+        async with rt.model_db.acquire() as conn:
+            await grant_org_roles(conn, person, granted, granter_capabilities=DEPLOYMENT_GRANTER)
+            if kind == VISITOR:
+                # REQ-2151: the attributes the demo's visitor carries, so a derived role its tour
+                # acts as is held from an attribute; the runtime resolves requests against them at
+                # once.
+                async with conn.transaction():
+                    rt.user_attributes = await record_visitor_attributes(
+                        conn, person, demo.directory
+                    )
     async with _stage(org_id, demo.name, "its record, environments and ready mark"):
         async with _stage(org_id, demo.name, "its record"):
             ensure_repo(org_id)

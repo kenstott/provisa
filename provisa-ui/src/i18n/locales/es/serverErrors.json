@@ -631,7 +631,10 @@
       "popup_blocked": "Su navegador bloqueó la ventana de inicio de sesión. Permita las ventanas emergentes de este sitio e inténtelo de nuevo.",
       "window_closed": "La ventana de inicio de sesión se cerró antes de terminar.",
       "tenant_invalid": "La configuración de Microsoft 365 de la organización no indica un directorio (inquilino). Un administrador introduce el ID o el dominio del directorio.",
-      "microsoft_account_unread": "Se aprobó el inicio de sesión, pero Microsoft no indicó de quién es el buzón."
+      "microsoft_account_unread": "Se aprobó el inicio de sesión, pero Microsoft no indicó de quién es el buzón.",
+      "client_missing": "Introduzca el ID de cliente y el secreto de cliente de la aplicación y luego inicie sesión.",
+      "client_not_taken": "Este tipo de fuente inicia sesión con el cliente de su organización, no con uno introducido en el formulario.",
+      "no_account_returned": "Se aprobó el inicio de sesión, pero la respuesta no indicó qué cuenta ({{parameter}}). Inicie sesión de nuevo."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "Su organización no ha permitido orígenes que lean sus buzones. Un administrador lo permite en Administración › Correo.",

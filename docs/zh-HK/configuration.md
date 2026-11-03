@@ -1558,10 +1558,7 @@ Provisa 從端點 URL 的配置選擇 OTLP/HTTP 或 OTLP/gRPC。 以 `http://` �
 | `singlestore` | SingleStore | 依方言 | 否 | 無（僅落地） | 依方言的認證 |
 | `vertica` | Vertica | 依方言 | 否 | 無（僅落地） | 依方言的認證 |
 | `exasol` | Exasol | 依方言 | 否 | 無（僅落地） | 依方言的認證 |
-| `teradata` | Teradata Vantage | 依方言 | 否 | 無（僅落地） | 依方言的認證 |
 | `saphana` | SAP HANA | 依方言 | 否 | 無（僅落地） | 依方言的認證 |
-| `sapase` | SAP ASE (Sybase) | 依方言 | 否 | 無（僅落地） | 依方言的認證 |
-| `sqlanywhere` | SAP SQL Anywhere | 依方言 | 否 | 無（僅落地） | 依方言的認證 |
 | `monetdb` | MonetDB | 依方言 | 否 | 無（僅落地） | 依方言的認證 |
 | `firebird` | Firebird | 依方言 | 否 | 無（僅落地） | 依方言的認證 |
 | `sqlalchemy` | 其他關聯式資料庫（以連線 URL 指定） | 依方言 | 否 | 無（僅落地） | 依方言的認證 |
@@ -1662,7 +1659,7 @@ PROVISA_ENGINE=synapse
 
 具體化儲存區預設為 `TENANT_DATABASE_URL`。
 
-#### 關聯式資料庫引擎（mysql、mariadb、oracle、mssql、db2、redshift、greenplum、cockroachdb、yugabytedb、opengauss、tidb、singlestore、vertica、exasol、teradata、saphana、sapase、sqlanywhere、monetdb、firebird）與 `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
+#### 關聯式資料庫引擎（mysql、mariadb、oracle、mssql、db2、redshift、greenplum、cockroachdb、yugabytedb、opengauss、tidb、singlestore、vertica、exasol、saphana、monetdb、firebird）與 `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-saphana-monetdb-firebird-and-sqlalchemy }
 
 每個可透過網路定址的關聯式資料庫各有一個鍵，全都跑在同一套僅落地的執行環境上（不聯邦到外部數據來源）：每個數據來源都落地到儲存區，並在那裡被查詢。鍵用來選擇資料庫；`PROVISA_ENGINE_URL` 攜帶其方言所接受的 DSN。`sqlalchemy` 是沒有專屬鍵的資料庫的萬用選項。不提供檔案內嵌式儲存區（SQLite、Access），因為伺服器必須可透過網路連達。
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Start Provisa UI (frontend) and backend API server
 # Backend logs go to ./.logs/server.log
+# Needs cargo: provisa._encoders (the Rust encoders) is built from rust/ with rust/build-local.sh
+# when provisa/_encoders.so is missing or older than its Rust sources, before the API starts.
 
 set -euo pipefail
 
@@ -230,6 +232,12 @@ if [ -f "$SCRIPT_DIR/pyproject.toml" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
     fi
   fi
 fi
+
+# provisa._encoders (the Rust encoders pgwire, gRPC and JSON use, with no Python fallback) built for
+# this checkout before the API starts: rust/ensure-local-build.sh runs rust/build-local.sh when
+# provisa/_encoders.so is missing or older than its Rust sources. No cargo, or a failed build, stops
+# the start here.
+"$SCRIPT_DIR/rust/ensure-local-build.sh" || exit 1
 
 # The firebase provider needs the firebase-admin SDK (the [firebase] extra, not a
 # base dependency). Without it, _load_and_build → FirebaseAuthProvider raises

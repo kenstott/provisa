@@ -1586,10 +1586,7 @@ Precedence: `PROVISA_ENGINE` env var → persisted admin-UI `federation_engine` 
 | `singlestore` | SingleStore | Per-dialect | No | None (land-only) | Per-dialect credentials |
 | `vertica` | Vertica | Per-dialect | No | None (land-only) | Per-dialect credentials |
 | `exasol` | Exasol | Per-dialect | No | None (land-only) | Per-dialect credentials |
-| `teradata` | Teradata Vantage | Per-dialect | No | None (land-only) | Per-dialect credentials |
 | `saphana` | SAP HANA | Per-dialect | No | None (land-only) | Per-dialect credentials |
-| `sapase` | SAP ASE (Sybase) | Per-dialect | No | None (land-only) | Per-dialect credentials |
-| `sqlanywhere` | SAP SQL Anywhere | Per-dialect | No | None (land-only) | Per-dialect credentials |
 | `monetdb` | MonetDB | Per-dialect | No | None (land-only) | Per-dialect credentials |
 | `firebird` | Firebird | Per-dialect | No | None (land-only) | Per-dialect credentials |
 | `sqlalchemy` | Other relational database (by connection URL) | Per-dialect | No | None (land-only) | Per-dialect credentials |
@@ -1690,7 +1687,7 @@ PROVISA_ENGINE=synapse
 
 Materialization store defaults to `TENANT_DATABASE_URL`.
 
-#### Relational-database engines (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) and `sqlalchemy`
+#### Relational-database engines (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, saphana, monetdb, firebird) and `sqlalchemy`
 
 One key per network-addressable relational database, all on the same land-only runtime (no federation to external sources): every source lands into the store and is queried there. The key selects the database; `PROVISA_ENGINE_URL` carries the DSN its dialect takes. `sqlalchemy` is the catch-all for a database with no key of its own. File-embedded stores (SQLite, Access) are not offered, because the server has to be reachable over the network.
 

@@ -755,6 +755,7 @@ def _process_query_fields(
 ) -> tuple[list[dict], list[dict]]:
     """Partition query fields into tables and functions."""
     tables: list[dict] = []
+    children: list[dict] = []  # tables derived from a connection under a root field
     functions: list[dict] = []
     for field in (query_type or {}).get("fields") or []:
         override = field_overrides.get(field["name"], "").lower()
@@ -778,14 +779,21 @@ def _process_query_fields(
             # A type whose every field is a connection, or needs an argument, has no columns
             # to offer and is not a table; its connections still are (Shopify's taxonomy).
             tables.append(_map_query_field_as_table(field, *shape, *depths))
-        tables.extend(_map_child_connection_tables(field, *shape, *depths))
-    # A child connection's derived name never displaces a root field of the same name.
+        derived = _map_child_connection_tables(field, *shape, *depths)
+        tables.extend(derived)
+        children.extend(derived)
+    # A child connection's derived name never displaces a root field of the same name. The
+    # tables keep the schema's order: the Register Table picker lists them as given, and a root
+    # connection moved below every plain table reads as missing.
+    child_ids = {id(t) for t in children}
+    root_names = {t["name"] for t in tables if id(t) not in child_ids}
     seen: set[str] = set()
     unique = []
-    for t in sorted(tables, key=lambda t: "rows_path" in t):
-        if t["name"] not in seen:
-            seen.add(t["name"])
-            unique.append(t)
+    for t in tables:
+        if t["name"] in seen or (id(t) in child_ids and t["name"] in root_names):
+            continue
+        seen.add(t["name"])
+        unique.append(t)
     return unique, functions
 
 

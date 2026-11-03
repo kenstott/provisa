@@ -631,7 +631,10 @@
       "popup_blocked": "Votre navigateur a bloqué la fenêtre de connexion. Autorisez les fenêtres pop-up pour ce site, puis réessayez.",
       "window_closed": "La fenêtre de connexion a été fermée avant la fin.",
       "tenant_invalid": "Le paramètre Microsoft 365 de l’organisation n’indique aucun annuaire (locataire). Un administrateur saisit l’ID ou le domaine de l’annuaire.",
-      "microsoft_account_unread": "La connexion a été approuvée, mais Microsoft n’a pas indiqué à qui appartient la boîte aux lettres."
+      "microsoft_account_unread": "La connexion a été approuvée, mais Microsoft n’a pas indiqué à qui appartient la boîte aux lettres.",
+      "client_missing": "Saisissez l'ID client et le secret client de l'application, puis connectez-vous.",
+      "client_not_taken": "Ce type de source se connecte avec le client de votre organisation, pas avec un client saisi dans le formulaire.",
+      "no_account_returned": "La connexion a été approuvée, mais la réponse n'indiquait pas quel compte ({{parameter}}). Connectez-vous à nouveau."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "Votre organisation n’a pas autorisé les sources qui lisent ses boîtes aux lettres. Un administrateur l’autorise dans Administration › E-mail.",

@@ -53,18 +53,21 @@ def sample_reach(state: Any, route: Any, table: Any) -> SampleReach:
     if route == Route.DIRECT:
         return SampleReach(f"direct {stype}", direct_block_sample(stype), direct_key_range(stype))
     if route == Route.ENGINE:
+        from provisa.core.models import Source
+        from provisa.jdbc_source.attach import reach_type
+
         engine = state.federation_engine.engine
         routes = state.replica_routes
+        hints = getattr(state, "source_federation_hints", {}).get(table.source_id, {})
         replica = (
             table.table_id in routes.floored
             or (table.source_id, table.schema_name, table.table_name) in routes.serving
-            or not engine_attaches(engine, stype)
+            or not engine_attaches(
+                engine, reach_type(Source.settings_view(table.source_id, stype, hints), engine)
+            )
         )
         if replica:
             return SampleReach(f"replica on {engine.name}", False, False)
-        from provisa.core.models import Source
-
-        hints = getattr(state, "source_federation_hints", {}).get(table.source_id, {})
         cap = engine.connector_pushdown(Source.settings_view(table.source_id, stype, hints))
         return SampleReach(f"{engine.name} {stype}", cap.block_sample, cap.key_range)
     return SampleReach(f"{getattr(route, 'value', route)} {stype}", False, False)
