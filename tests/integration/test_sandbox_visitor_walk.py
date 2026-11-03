@@ -127,7 +127,11 @@ def _regions_tier(demo: str, bundle: Path, work: Path) -> Iterator[tuple[Any, Pa
 
 
 @contextlib.contextmanager
-def _plain_tier(demo: str, bundle: Path, work: Path) -> Iterator[tuple[Any, Path]]:
+def _plain_tier(
+    demo: str, bundle: Path, work: Path, *, control_plane: str = "postgres"
+) -> Iterator[tuple[Any, Path]]:
+    """``control_plane``: IsolatedServer's; "own" for a tier restarted on its own record of what
+    it built (a template another test recorded in the shared one has no folder here)."""
     from tests.integration.demo_registry import DemoRegistry
     from tests.integration.isolated_server import IsolatedServer
 
@@ -152,6 +156,7 @@ def _plain_tier(demo: str, bundle: Path, work: Path) -> Iterator[tuple[Any, Path
             f"visitor{demo}",
             engine="duckdb",
             config=str(config),
+            control_plane=control_plane,
             auth=_AUTH,
             env={
                 "PROVISA_SANDBOX_TIER": "true",

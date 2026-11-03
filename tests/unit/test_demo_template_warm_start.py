@@ -328,3 +328,96 @@ async def test_a_regions_tiers_finished_template_is_recorded_and_not_replaced_at
     monkeypatch.setattr(demo_templates, "_retire_template", _retire)
     assert await demo_templates._queue_template(platform, demo) == "ready"
     assert retired == []
+
+
+def _profiled(tmp_path: Path, rows: int) -> PublishedDemo:
+    """A demo whose setup profiles, its bundle carrying one relation of ``rows`` runs."""
+    import json
+
+    directory = tmp_path / "bundles" / "profiling" / "20261102-abc"
+    (directory / "seeded").mkdir(parents=True)
+    (directory / "setup.yaml").write_text("steps:\n- profile: harbor-profiler\n")
+    carried = [{"run_id": f"r{i}", "status": "ok"} for i in range(rows)]
+    (directory / "seeded" / "profile_results.json").write_text(
+        json.dumps(
+            {
+                "results": [
+                    {"table": ["crm", "public", "customers"], "kind": "runs", "rows": carried}
+                ]
+            }
+        )
+    )
+    return PublishedDemo(name="profiling", title="Profiling", directory=directory)
+
+
+async def _holding(platform, demo: PublishedDemo, rows: int) -> None:
+    """The template's schema: its member registered as id 309, and its runs relation, ``rows``."""
+    from sqlalchemy import text
+    from sqlalchemy.schema import CreateTable
+
+    from provisa.core.environments import org_schema
+    from provisa.profiler.schema import result_sa_table
+
+    schema = org_schema(demo.template_org)
+    relation = result_sa_table("customers", 309, "runs")
+    relation.schema = schema
+    async with platform.acquire() as conn:
+        await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        await conn.execute_core(text(f'CREATE SCHEMA "{schema}"'))
+        await conn.execute_core(
+            text(
+                f'CREATE TABLE "{schema}".registered_tables '
+                "(id int, source_id text, schema_name text, table_name text)"
+            )
+        )
+        await conn.execute_core(
+            text(
+                f'INSERT INTO "{schema}".registered_tables '
+                "VALUES (309, 'crm', 'public', 'customers')"
+            )
+        )
+        await conn.execute_core(CreateTable(relation))
+        for i in range(rows):
+            await conn.execute_core(insert(relation).values(run_id=f"r{i}", status="ok"))
+
+
+@pytest.mark.parametrize("held", [0, 1], ids=["emptied", "short"])
+async def test_a_template_not_holding_its_bundles_profile_runs_is_built_again(
+    platform, monkeypatch, tmp_path, held
+):
+    """REQ-2052: a template is ready only when it holds what its bundle carries. One whose profile
+    result relations were emptied was served as built on cloud-dev, and every sandbox of the
+    profiling demo had an empty run history."""
+    demo = _profiled(tmp_path, rows=2)
+    await _built(platform, demo)
+    _on_disk(monkeypatch, {demo.template_org: _BUILT})
+    monkeypatch.setattr("provisa.api.admin.orgs_router._pool", lambda: platform)
+    await _holding(platform, demo, rows=2)
+    assert await demo_templates.warm_ready(platform, demo) is True
+    await _holding(platform, demo, rows=held)
+    assert await demo_templates.warm_ready(platform, demo) is False
+    assert await demo_templates.unheld_profile_runs(demo) == [
+        f"customers_309_profile_runs holds {held} rows of the 2 carried"
+    ]
+
+
+async def test_a_template_missing_a_carried_relation_is_built_again(
+    platform, monkeypatch, tmp_path
+):
+    from sqlalchemy import text
+
+    from provisa.core.environments import org_schema
+
+    demo = _profiled(tmp_path, rows=2)
+    await _built(platform, demo)
+    _on_disk(monkeypatch, {demo.template_org: _BUILT})
+    monkeypatch.setattr("provisa.api.admin.orgs_router._pool", lambda: platform)
+    await _holding(platform, demo, rows=2)
+    async with platform.acquire() as conn:
+        await conn.execute_core(
+            text(f'DROP TABLE "{org_schema(demo.template_org)}".customers_309_profile_runs')
+        )
+    assert await demo_templates.unheld_profile_runs(demo) == [
+        "customers_309_profile_runs is not there"
+    ]
+    assert await demo_templates.warm_ready(platform, demo) is False

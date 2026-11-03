@@ -132,6 +132,83 @@ def bitemporal_view_tables(config: Any) -> list[str]:
     )
 
 
+def live_landed_tables(config: Any) -> list[Any]:
+    """The tables of a demo's configuration a listener lands from a Kafka topic as its messages
+    arrive (``live: {strategy: kafka}``): neither a replica nor a view, so neither the template's
+    replica record nor its views say when they have landed (REQ-2049, amended 2026-11-03)."""
+    kafka = {s.id for s in config.sources if str(getattr(s.type, "value", s.type)) == "kafka"}
+    return [
+        t
+        for t in config.tables
+        if t.source_id in kafka
+        and t.live is not None
+        and t.live.strategy == "kafka"
+        and t.live.kafka is not None
+    ]
+
+
+def _live_topics(config: Any) -> list[tuple[Any, Any, str]]:
+    """Each live-landed table with its source and its topic."""
+    sources = {s.id: s for s in config.sources}
+    return [(t, sources[t.source_id], t.live.kafka.topic) for t in live_landed_tables(config)]
+
+
+async def continue_live_landing(template_org: str, org_id: str, config: Any) -> None:
+    """Record where the template's listener stopped on each live-landed table's topic as where the
+    sandbox ``org_id``'s landing of it stopped (kafka.landed_offsets): the sandbox's listener
+    starts there, over the template's landed rows its open copies next. Taken before they are
+    copied, so a message landed in between is read again and upserted by key, never missed."""
+    from provisa.events.push_wiring import kafka_bootstrap, listener_group
+    from provisa.kafka import landed_offsets
+
+    for _table, source, topic in _live_topics(config):
+        await landed_offsets.carry(
+            kafka_bootstrap(source),
+            listener_group(template_org, None, source.id),
+            landed_offsets.landed_group_of(org_id, None, source.id),
+            topic,
+        )
+
+
+async def live_topic_ends(config: Any) -> dict[str, dict[int, int]]:
+    """Where each live-landed table's topic ends now, by partition: what a template being prepared
+    lands to before it is ready."""
+    from provisa.events.push_wiring import kafka_bootstrap
+    from provisa.kafka import landed_offsets
+
+    return {
+        topic: {
+            tp.partition: offset
+            for tp, offset in (
+                await landed_offsets.end_offsets(kafka_bootstrap(source), topic)
+            ).items()
+        }
+        for _table, source, topic in _live_topics(config)
+    }
+
+
+async def live_landing_waits(
+    template_org: str, config: Any, ends: dict[str, dict[int, int]]
+) -> list[str]:
+    """Each live-landed table whose template listener has not yet landed its topic to ``ends``
+    (:func:`live_topic_ends`), saying how far it has; empty once every one has."""
+    from provisa.events.push_wiring import kafka_bootstrap, listener_group
+    from provisa.kafka import landed_offsets
+
+    waits = []
+    for table, source, topic in _live_topics(config):
+        landed = await landed_offsets.recorded(
+            kafka_bootstrap(source), listener_group(template_org, None, source.id), topic
+        )
+        for partition, end in sorted(ends.get(topic, {}).items()):
+            if landed.get(partition, 0) < end:
+                waits.append(
+                    f"{table.source_id}.{table.schema_name}.{table.table_name}: landed to "
+                    f"{landed.get(partition, 0)} of {end} on partition {partition}"
+                )
+    return waits
+
+
 def view_mv_id(table: str) -> str:
     """The materialized view whose append log is the stored table ``table`` (``mv_<table name>``)."""
     return "view-" + table.removeprefix("mv_")
