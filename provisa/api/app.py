@@ -2869,16 +2869,10 @@ async def _build_org_runtime(
                 naming_override.get("default_domain", default),
             )
 
-        await _rebuild_schemas()
+        # REQ-2006: the replica convergence is started below, after a template's seed is adopted.
+        await _rebuild_schemas(converge=False)
         clock.mark("its schemas")
-        from provisa.api.sandbox_tier import is_template_org
-
-        if is_template_org(org_id) and env == PROD:
-            # REQ-2006: a demo template lands its replicas from the seed its bundle carries,
-            # before the wiring below starts its replica convergence.
-            from provisa.api.demo_templates import land_from_seed
-
-            await land_from_seed(org_id)
+        await _converge_after_seed(org_id, env)
 
         # REQ-1882 (amended 2026-09-29): the wiring below starts process-lifetime scheduler jobs and
         # listener tasks. Inline on the process loop; from a connection-thread loop (this org built
@@ -2962,7 +2956,35 @@ _rebuild_schemas_lock = CrossLoopLock()
 _SLOW_REBUILD_S = 2.0
 
 
-async def _rebuild_schemas(raw_config: dict | None = None, *, announce: bool = True) -> None:
+def start_replica_convergence() -> None:
+    """REQ-1915: converge the bound org's replicas to the model just built, detached, in a process
+    that does background work (replica_converge.converge_logged)."""
+    from provisa.core import process_mode
+    from provisa.core.connection_loop import spawn_background
+    from provisa.federation.replica_converge import converge_logged
+
+    if process_mode.runs_background_work():
+        spawn_background(converge_logged(state), name="replica-converge")
+
+
+async def _converge_after_seed(org_id: str, env: str) -> None:
+    """In the runtime build of ``org_id``'s environment ``env``, its model built: a demo template
+    lands its replicas from the seed its bundle carries (REQ-2006), and only then is its replica
+    convergence started. Started before, it found no record of the seed's replicas and inserted a
+    requested one for each while the adoption deleted and inserted the same records: the two met
+    on replica_state's key and the template's provisioning failed."""
+    from provisa.api.sandbox_tier import is_template_org
+
+    if is_template_org(org_id) and env == PROD:
+        from provisa.api.demo_templates import land_from_seed
+
+        await land_from_seed(org_id)
+    start_replica_convergence()
+
+
+async def _rebuild_schemas(
+    raw_config: dict | None = None, *, announce: bool = True, converge: bool = True
+) -> None:
     # Serialize rebuilds: the body below fetches DB state across many `await`s and then
     # publishes state.schema_build_cache/state.tables in one shot at the end. Two overlapping
     # callers (e.g. graphql_remote_router's back-to-back calls, or create_source's rebuild
@@ -2972,13 +2994,15 @@ async def _rebuild_schemas(raw_config: dict | None = None, *, announce: bool = T
     # fetch happens after every prior rebuild's writes have committed and been published.
     #
     # ``announce=False`` (REQ-1914) is a reload: another worker made the change and announced it.
+    # ``converge=False`` (REQ-2006) leaves the replica convergence to the caller: an org's runtime
+    # build starts it once a demo template's seed is adopted (_converge_after_seed).
     #
     # REQ-2188: a rebuild's writes are the system's, whoever's request ran it: no row rule holds them.
     asked = time.monotonic()
     async with _rebuild_schemas_lock:
         began = time.monotonic()
         with model_row_rules.unnarrowed():
-            await _rebuild_schemas_impl(raw_config, announce=announce)
+            await _rebuild_schemas_impl(raw_config, announce=announce, converge=converge)
     # At WARNING: a hosted tier logs at WARNING. One line per slow rebuild is how its operator sees
     # what a slow save or open spent, and whether it was waiting for another org's (REQ-2006).
     if time.monotonic() - asked >= _SLOW_REBUILD_S:
@@ -2990,7 +3014,9 @@ async def _rebuild_schemas(raw_config: dict | None = None, *, announce: bool = T
         )
 
 
-async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: bool = True) -> None:
+async def _rebuild_schemas_impl(
+    raw_config: dict | None = None, *, announce: bool = True, converge: bool = True
+) -> None:
     # Rebuild per-role schemas from DB state. Column types come from the authoritative
     # table_columns store (introspect_tables does NOT query the engine), so this runs on any
     # engine; a missing the engine connection only skips the engine-catalog ops seeding below.
@@ -3603,14 +3629,10 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # longer declares is retired. This is the one place: the boot build, the build after this
     # worker's own change, and the reload of another worker's change all pass here, so no save
     # or delete path asks for a build or a drop itself. Detached: the model build must not
-    # wait on, or be stopped by, a replica store or a source.
-    from provisa.core import process_mode as _process_mode
-
-    if _process_mode.runs_background_work():
-        from provisa.core.connection_loop import spawn_background as _spawn_background
-        from provisa.federation.replica_converge import converge_logged as _converge_replicas
-
-        _spawn_background(_converge_replicas(state), name="replica-converge")
+    # wait on, or be stopped by, a replica store or a source. An org's runtime build starts it
+    # itself (``converge=False``), once its template's seed is adopted.
+    if converge:
+        start_replica_convergence()
     # REQ-1072: the governed model just changed, so the external catalog is now stale. This is
     # the one chokepoint every model mutation passes through, which is why the event is posted
     # here rather than at each mutation — a new mutation cannot forget to publish.
