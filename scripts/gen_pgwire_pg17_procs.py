@@ -62,6 +62,21 @@ from pg_class c join pg_namespace n on n.oid = c.relnamespace
 where c.relkind = 'v' and n.nspname in ('pg_catalog', 'information_schema')
 """
 
+_SYSTEM_INDEXES_SQL = """
+select json_agg(json_build_array(i.indexrelid::bigint, c.relname, i.indrelid::bigint, i.indnatts,
+  i.indnkeyatts, i.indisunique, i.indisprimary, i.indkey::text, i.indclass::text,
+  i.indcollation::text, i.indoption::text, pg_get_indexdef(i.indexrelid),
+  (select json_agg(pg_get_indexdef(i.indexrelid, k, true) order by k)
+   from generate_series(1, i.indnatts) k)) order by i.indexrelid)
+from pg_index i join pg_class c on c.oid = i.indexrelid where c.relnamespace = 11
+"""
+
+_SYSTEM_CONSTRAINTS_SQL = """
+select json_agg(json_build_array(o.oid::bigint, o.conname, o.contype, o.conrelid::bigint,
+  o.conindid::bigint, o.conkey::text, pg_get_constraintdef(o.oid)) order by o.oid)
+from pg_constraint o where o.connamespace = 11
+"""
+
 _DESCRIPTIONS_SQL = """
 select json_agg(json_build_array(d.objoid::bigint, d.classoid::bigint, d.objsubid, d.description)
   order by d.classoid, d.objoid, d.objsubid)
@@ -91,7 +106,12 @@ aggregated arguments parted by ORDER BY, which pg_proc alone does not tell. DESC
 pg_description's rows of what PostgreSQL ships: objoid, classoid, objsubid, description.
 CATALOG_FOREIGN_KEYS: pg_get_catalog_foreign_keys' rows, each array as its text. SETTING_FLAGS:
 pg_settings_get_flags' answer of each setting that has a flag, as its text. VIEW_DEFINITIONS: a
-system view's definition by its oid, as pg_get_viewdef writes it plain and pretty."""
+system view's definition by its oid, as pg_get_viewdef writes it plain and pretty.
+SYSTEM_INDEXES: each index on a system catalog, every one a btree: indexrelid, relname, indrelid,
+indnatts, indnkeyatts, indisunique, indisprimary, indkey, indclass, indcollation and indoption
+(each vector's text), pg_get_indexdef's definition, and its columns as pg_get_indexdef names
+each. SYSTEM_CONSTRAINTS: each constraint on a system catalog: oid, conname, contype, conrelid,
+conindid, conkey's text, pg_get_constraintdef's definition."""
 
 # Requirements: REQ-2190
 
@@ -120,6 +140,8 @@ def main() -> None:
     foreign_keys = [tuple(r) for r in json.loads(_psql(prefix, _FOREIGN_KEYS_SQL))]
     flags = {name: flag for name, flag in json.loads(_psql(prefix, _SETTING_FLAGS_SQL))}
     views = json.loads(_psql(prefix, _VIEW_DEFINITIONS_SQL))
+    indexes = [_tuple(r) for r in json.loads(_psql(prefix, _SYSTEM_INDEXES_SQL))]
+    constraints = [tuple(r) for r in json.loads(_psql(prefix, _SYSTEM_CONSTRAINTS_SQL))]
     lines = [_HEADER.format(version=version), "PROCS: tuple[tuple, ...] = (\n"]
     lines += [f"    {row!r},\n" for row in procs]
     lines += [")\n\nORDERED_SET_ARGUMENTS: dict[int, str] = {\n"]
@@ -132,7 +154,11 @@ def main() -> None:
     lines += [f"    {name!r}: {flag!r},\n" for name, flag in sorted(flags.items())]
     lines += ["}\n\nVIEW_DEFINITIONS: dict[int, tuple[str, str]] = {\n"]
     lines += [f"    {oid!r}: ({plain!r}, {pretty!r}),\n" for oid, plain, pretty in views]
-    lines += ["}\n"]
+    lines += ["}\n\nSYSTEM_INDEXES: tuple[tuple, ...] = (\n"]
+    lines += [f"    {row!r},\n" for row in indexes]
+    lines += [")\n\nSYSTEM_CONSTRAINTS: tuple[tuple[int, str, str, int, int, str, str], ...] = (\n"]
+    lines += [f"    {row!r},\n" for row in constraints]
+    lines += [")\n"]
     OUT_PATH.write_text("".join(lines))
 
 

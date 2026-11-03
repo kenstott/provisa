@@ -39,11 +39,17 @@ import sqlglot.expressions as exp
 
 from provisa.core.ir_types import SUBTYPES
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATION_CLASS, TYPES
-from provisa.pgwire.catalog_pg17_procs import ORDERED_SET_ARGUMENTS, VIEW_DEFINITIONS
+from provisa.pgwire.catalog_pg17_procs import (
+    ORDERED_SET_ARGUMENTS,
+    SYSTEM_CONSTRAINTS,
+    SYSTEM_INDEXES,
+    VIEW_DEFINITIONS,
+)
 from provisa.transpiler.metadata_facts import PRIVILEGES, UNSERVED, CatalogFacts, relation
 from provisa.transpiler.metadata_oids import (
     FIRST_METRIC_OID,
     KEY_OID_BASE,
+    PG_CATALOG_OID,
     SYSTEM_SCHEMA_OIDS,
     key_id_sql,
 )
@@ -366,7 +372,11 @@ _READ_ONCE: dict[str, str] = {
         "_d.description",
         "FROM meta.catalog_pg_description _d",
     ),
-    LISTED_RELATIONS: "SELECT _l.oid FROM meta.catalog_pg_class _l WHERE _l.relkind <> 'i'",
+    # A catalog's own indexes are pg_catalog's, on every search path.
+    LISTED_RELATIONS: (
+        "SELECT _l.oid FROM meta.catalog_pg_class _l "
+        f"WHERE _l.relkind <> 'i' OR _l.relnamespace = {PG_CATALOG_OID}"
+    ),
     LISTED_INDEXES: "SELECT _l.oid FROM meta.catalog_pg_class _l WHERE _l.relkind = 'i'",
     PUBLISHABLE: (
         "SELECT _c.oid FROM meta.catalog_pg_class _c WHERE _c.relkind IN ('r', 'p') "
@@ -397,8 +407,48 @@ _COLUMN_COMMENT = _answer(
     COMMENTS, "CAST(relation_oid AS TEXT) || ':1259:' || CAST(attnum AS TEXT)"
 )
 
-_KEY_DEFINITION = _answer(KEY_DEFINITIONS, key_id_sql("conoid"))
-_INDEX_DEFINITION = _answer(INDEX_DEFINITIONS, key_id_sql("indexoid"))
+
+def _of_system(oid: str, answers: dict[int, str]) -> str:
+    """What ``answers`` holds of the object PostgreSQL ships whose oid is ``oid``; NULL for any
+    other."""
+    arms = " ".join(
+        "WHEN {} THEN '{}'".format(k, v.replace("'", "''")) for k, v in sorted(answers.items())
+    )
+    return f"CASE CAST({oid} AS BIGINT) {arms} END"
+
+
+#: A key's definition, and its index's, of the model's keys or of PostgreSQL's own catalogs.
+_KEY_DEFINITION = (
+    f"COALESCE({_answer(KEY_DEFINITIONS, key_id_sql('conoid'))}, "
+    f"{_of_system('conoid', {row[0]: row[6] for row in SYSTEM_CONSTRAINTS})})"
+)
+_INDEX_DEFINITION = (
+    f"COALESCE({_answer(INDEX_DEFINITIONS, key_id_sql('indexoid'))}, "
+    f"{_of_system('indexoid', {row[0]: row[11] for row in SYSTEM_INDEXES})})"
+)
+_SYSTEM_INDEX_COLUMN = " ".join(
+    "WHEN '{}:{}' THEN '{}'".format(row[0], n, column.replace("'", "''"))
+    for row in SYSTEM_INDEXES
+    for n, column in enumerate(row[12], 1)
+)
+_SYSTEM_INDEX_OIDS = ", ".join(str(row[0]) for row in SYSTEM_INDEXES)
+_SYSTEM_INDEX_WIDTHS = " ".join(f"WHEN {row[0]} THEN {row[3]}" for row in SYSTEM_INDEXES)
+
+#: pg_index_has_property of an index on a catalog: each is a btree, which has all four.
+_INDEX_PROPERTY = (
+    f"CASE WHEN CAST(idx AS BIGINT) IN ({_SYSTEM_INDEX_OIDS}) THEN CASE LOWER(CAST(prop AS TEXT)) "
+    "WHEN 'clusterable' THEN TRUE WHEN 'index_scan' THEN TRUE WHEN 'bitmap_scan' THEN TRUE "
+    "WHEN 'backward_scan' THEN TRUE END END"
+)
+#: pg_index_column_has_property of a column of an index on a catalog: a btree's ascending key,
+#: nulls last.
+_INDEX_COLUMN_PROPERTY = (
+    f"CASE WHEN CAST(col AS BIGINT) BETWEEN 1 AND CASE CAST(idx AS BIGINT) {_SYSTEM_INDEX_WIDTHS} "
+    "ELSE 0 END THEN CASE LOWER(CAST(prop AS TEXT)) WHEN 'asc' THEN TRUE WHEN 'desc' THEN FALSE "
+    "WHEN 'nulls_first' THEN FALSE WHEN 'nulls_last' THEN TRUE WHEN 'orderable' THEN TRUE "
+    "WHEN 'distance_orderable' THEN FALSE WHEN 'returnable' THEN TRUE "
+    "WHEN 'search_array' THEN TRUE WHEN 'search_nulls' THEN TRUE END END"
+)
 _LISTED = (
     f"CASE WHEN CAST(relation_oid AS BIGINT) >= {KEY_OID_BASE} "
     f"AND CAST(relation_oid AS BIGINT) < {FIRST_METRIC_OID} "
@@ -467,8 +517,6 @@ _NOTHING_KEPT: tuple[tuple[str, tuple[int, ...], str], ...] = (
     ("pg_get_statisticsobjdef", (1,), "TEXT"),
     ("pg_get_statisticsobjdef_columns", (1,), "TEXT"),
     ("pg_get_triggerdef", (1, 2), "TEXT"),
-    ("pg_index_column_has_property", (3,), "BOOLEAN"),
-    ("pg_index_has_property", (2,), "BOOLEAN"),
     ("shobj_description", (2,), "TEXT"),
     # Provisa reports no storage: a size is unknown, never a made-up 0.
     ("pg_relation_size", (1, 2), "BIGINT"),
@@ -673,7 +721,8 @@ _FORMS: tuple[Form, ...] = (
         "pg_get_indexdef",
         "indexoid, position, pretty",
         f"CASE WHEN position = 0 THEN {_INDEX_DEFINITION} "
-        f"ELSE {_index_column('indexoid', 'position')} END",
+        f"ELSE COALESCE({_index_column('indexoid', 'position')}, CASE CAST(indexoid AS TEXT) "
+        f"|| ':' || CAST(position AS TEXT) {_SYSTEM_INDEX_COLUMN} END) END",
         INDEX_DEFINITIONS,
         INDEX_COLUMNS,
     ),
@@ -706,6 +755,8 @@ _FORMS: tuple[Form, ...] = (
     _form("pg_get_function_arg_default", "f, n", _ARG_DEFAULT),
     _form("pg_get_function_sqlbody", "f", _of_function("f", "CAST(_p.prosqlbody AS TEXT)")),
     _form("pg_get_functiondef", "f", _functiondef("f")),
+    _form("pg_index_has_property", "idx, prop", _INDEX_PROPERTY),
+    _form("pg_index_column_has_property", "idx, col, prop", _INDEX_COLUMN_PROPERTY),
     _form("pg_get_viewdef", "tbl", _view_definitions(0)),
     _form("pg_get_viewdef", "tbl, pretty", _PRETTY_VIEWDEF),
     # Every tablespace a catalog lists, and 0 (the database's), is in the data directory: ''.

@@ -35,7 +35,7 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
-from provisa.pgwire.catalog_pg17_procs import DESCRIPTIONS, PROCS
+from provisa.pgwire.catalog_pg17_procs import DESCRIPTIONS, PROCS, SYSTEM_INDEXES
 
 from provisa.pgwire.catalog import answer, classify
 from provisa.pgwire.catalog_populate import _build_catalog_db
@@ -363,7 +363,8 @@ def test_pg_get_indexdef_executes_null():
     )
     # PK on dogs → one index row; position 0 is the whole definition (metadata_functions)
     assert len(result.rows) >= 1
-    assert all(r[0].startswith("CREATE UNIQUE INDEX") for r in result.rows)
+    # The catalogs' own indexes too, some of which are not unique.
+    assert all(r[0].startswith(("CREATE UNIQUE INDEX", "CREATE INDEX")) for r in result.rows)
 
 
 # ── current_setting() ───────────────────────────────────────────────────────
@@ -415,7 +416,8 @@ def test_answer_pg_description():
 def test_answer_pg_index():
     state = _make_state()
     result = answer("SELECT * FROM pg_catalog.pg_index", "alice", state)
-    assert result.rows == []
+    # A model with no key lists the indexes on PostgreSQL 17's catalogs alone.
+    assert len(result.rows) == len(SYSTEM_INDEXES)
     assert "indexrelid" in result.column_names
 
 
@@ -532,7 +534,7 @@ async def test_wire_pg_index_queryable(pgwire_server_p4, mock_state_p4):
         )
         rows = await conn.fetch("SELECT * FROM pg_catalog.pg_index")
         await conn.close()
-    assert rows == []
+    assert len(rows) == len(SYSTEM_INDEXES)  # the indexes on PostgreSQL 17's catalogs
 
 
 @pytest.mark.asyncio

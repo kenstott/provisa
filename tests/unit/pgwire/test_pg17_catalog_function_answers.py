@@ -641,3 +641,62 @@ def test_a_relation_that_is_no_view_has_no_definition():
         _value("SELECT pg_catalog.pg_get_viewdef('pg_catalog.pg_class'::regclass::oid) AS v")
         is None
     )
+
+
+_CLASS_OID_INDEX = "'pg_catalog.pg_class_oid_index'::regclass"
+_ITS_CONSTRAINT = "(SELECT oid FROM pg_catalog.pg_constraint WHERE conname = 'pg_class_oid_index')"
+
+
+@pytest.mark.parametrize(
+    "sql,expected",
+    [
+        (
+            f'SELECT pg_catalog."pg_get_indexdef"({_CLASS_OID_INDEX}::oid) AS v',
+            "CREATE UNIQUE INDEX pg_class_oid_index ON pg_catalog.pg_class USING btree (oid)",
+        ),
+        (
+            f'SELECT pg_catalog."pg_get_indexdef"({_CLASS_OID_INDEX}::oid, 0::integer, '
+            "true::boolean) AS v",
+            "CREATE UNIQUE INDEX pg_class_oid_index ON pg_catalog.pg_class USING btree (oid)",
+        ),
+        (
+            "SELECT pg_catalog.pg_get_indexdef('pg_catalog.pg_class_relname_nsp_index'::regclass"
+            "::oid, 2, true) AS v",
+            "relnamespace",
+        ),
+        (f'SELECT pg_catalog."pg_get_constraintdef"({_ITS_CONSTRAINT}) AS v', "PRIMARY KEY (oid)"),
+        (
+            f'SELECT pg_catalog."pg_get_constraintdef"({_ITS_CONSTRAINT}, true::boolean) AS v',
+            "PRIMARY KEY (oid)",
+        ),
+        (
+            f"SELECT pg_catalog.\"pg_index_has_property\"({_CLASS_OID_INDEX}, 'clusterable'::text) "
+            "AS v",
+            True,
+        ),
+        (
+            f'SELECT pg_catalog."pg_index_column_has_property"({_CLASS_OID_INDEX}, 1::integer, '
+            "'asc'::text) AS v",
+            True,
+        ),
+        (
+            f"SELECT pg_catalog.pg_index_column_has_property({_CLASS_OID_INDEX}, 1, 'desc') AS v",
+            False,
+        ),
+        (
+            f"SELECT pg_catalog.pg_index_column_has_property({_CLASS_OID_INDEX}, 2, 'asc') AS v",
+            None,
+        ),
+    ],
+)
+def test_an_index_on_a_catalog_is_described_as_postgresql_17_describes_it(sql, expected):
+    assert _value(sql) == expected
+
+
+def test_the_catalogs_indexes_and_their_constraints_are_listed():
+    assert _rows(
+        "SELECT c.relkind, c.relam, i.indisprimary, i.indkey, o.contype "
+        "FROM pg_catalog.pg_class c JOIN pg_catalog.pg_index i ON i.indexrelid = c.oid "
+        "JOIN pg_catalog.pg_constraint o ON o.conindid = c.oid "
+        "WHERE c.relname = 'pg_class_oid_index'"
+    ) == [("i", 403, True, [1], "p")]  # an int2vector is read as its numbers

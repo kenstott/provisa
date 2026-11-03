@@ -39,7 +39,12 @@ from provisa.pgwire.catalog_data import (
     PG_SYSTEM_ROLE_MEMBERS,
 )
 from provisa.pgwire.catalog_pg17 import RELATION_CLASS, RELATIONS, STATIC_ROWS, TYPES
-from provisa.pgwire.catalog_pg17_procs import DESCRIPTIONS, PROCS
+from provisa.pgwire.catalog_pg17_procs import (
+    DESCRIPTIONS,
+    PROCS,
+    SYSTEM_CONSTRAINTS,
+    SYSTEM_INDEXES,
+)
 from provisa.transpiler.metadata_functions import (
     listed_type_sql,
     pg_type_name_sql,
@@ -505,7 +510,26 @@ def _pg_class() -> str:
             "AS _v(", "AS s("
         ),
     )
-    return _view(relation, tables, indexes, system)
+    system_indexes = _select(
+        relation,
+        _class_row(
+            {
+                "oid": "s.oid",
+                "relname": "s.name",
+                "relnamespace": str(PG_CATALOG_OID),
+                "reltype": "0",
+                "relam": "403",
+                "relfilenode": "s.oid",
+                "relkind": "'i'",
+                "relnatts": "s.natts",
+            }
+        ),
+        "FROM "
+        + _rows([(row[0], row[1], row[3]) for row in SYSTEM_INDEXES], "oid, name, natts").replace(
+            "AS _v(", "AS s("
+        ),
+    )
+    return _view(relation, tables, indexes, system, system_indexes)
 
 
 def _attribute_row(values: Mapping[str, str]) -> dict[str, str]:
@@ -726,6 +750,35 @@ def _pg_constraint() -> str:
             },
             "FROM catalog_keys k",
         ),
+        _select(
+            relation,
+            {
+                "oid": "s.oid",
+                "conname": "s.conname",
+                "connamespace": str(PG_CATALOG_OID),
+                "contype": "s.contype",
+                "condeferrable": "FALSE",
+                "condeferred": "FALSE",
+                "convalidated": "TRUE",
+                "conrelid": "s.conrelid",
+                "contypid": "0",
+                "conindid": "s.conindid",
+                "conparentid": "0",
+                "confrelid": "0",
+                "confupdtype": "' '",
+                "confdeltype": "' '",
+                "confmatchtype": "' '",
+                "conislocal": "TRUE",
+                "coninhcount": "0",
+                "connoinherit": "TRUE",
+                "conkey": "CAST(s.conkey AS SMALLINT[])",
+            },
+            "FROM "
+            + _rows(
+                [row[:6] for row in SYSTEM_CONSTRAINTS],
+                "oid, conname, contype, conrelid, conindid, conkey",
+            ).replace("AS _v(", "AS s("),
+        ),
     )
 
 
@@ -758,6 +811,36 @@ def _pg_index() -> str:
                 "indoption": zeros,
             },
             "FROM catalog_keys k WHERE k.kind IN ('p', 'u')",
+        ),
+        _select(
+            relation,
+            {
+                "indexrelid": "s.indexrelid",
+                "indrelid": "s.indrelid",
+                "indnatts": "s.indnatts",
+                "indnkeyatts": "s.indnkeyatts",
+                "indisunique": "s.indisunique",
+                "indnullsnotdistinct": "FALSE",
+                "indisprimary": "s.indisprimary",
+                "indisexclusion": "FALSE",
+                "indimmediate": "TRUE",
+                "indisclustered": "FALSE",
+                "indisvalid": "TRUE",
+                "indcheckxmin": "FALSE",
+                "indisready": "TRUE",
+                "indislive": "TRUE",
+                "indisreplident": "FALSE",
+                "indkey": "s.indkey",
+                "indcollation": "s.indcollation",
+                "indclass": "s.indclass",
+                "indoption": "s.indoption",
+            },
+            "FROM "
+            + _rows(
+                [row[:11] for row in SYSTEM_INDEXES],
+                "indexrelid, relname, indrelid, indnatts, indnkeyatts, indisunique, "
+                "indisprimary, indkey, indclass, indcollation, indoption",
+            ).replace("AS _v(", "AS s("),
         ),
     )
 
