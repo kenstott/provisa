@@ -89218,7 +89218,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     pg_wal_replay_resume, pg_is_wal_replay_paused, pg_get_wal_replay_pause_state), logical decoding (pg_logical_slot_get_changes,
     pg_logical_slot_peek_changes and their binary forms), pg_sync_replication_slots, pg_last_committed_xact,
     pg_ls_logdir, pg_replication_origin_session_reset and pg_stop_making_pinned_objects. The conformance
-    check names each in that group with PostgreSQL''s refusal as the reason.'
+    check names each in that group with PostgreSQL''s refusal as the reason. (Amended 2026-11-03, Storage,
+    fixture objects and server files:) Maintainer 2026-11-03: (1) storage functions (pg_relation_size, pg_table_size,
+    pg_indexes_size, pg_total_relation_size, pg_database_size, pg_tablespace_size, pg_relation_filenode,
+    pg_relation_filepath) answer NULL and are skipped by design under a group "Provisa holds no storage".
+    (2) Functions about objects only the PostgreSQL fixture server creates (a foreign-data wrapper, a foreign
+    server, statistics objects, partitions, a replication slot, a statistics reset) count under the existing
+    group "The catalog is the model''s". (3) pg_read_file and pg_read_binary_file are skipped by design
+    under a group citing the rule that no function reads the server''s files. (4) The conformance fixture
+    model grants the probe''s role writes on its fixture table, so the privilege checks compare like with
+    like.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
