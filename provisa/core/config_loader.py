@@ -1994,9 +1994,9 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     made — leaving what the deployment seeds into every store (the built-in sources and their
     tables, the system domains, the seeded roles and the people holding them). Within the
     caller's transaction. A demo organisation is rebuilt from its configuration by this followed
-    by an apply (:func:`rebuild_from_config`). The profile result relations of the tables it
-    removes go with them (profiler.schema.drop_superseded_results): each is named by its table's
-    id, and the apply registers the table again under another."""
+    by an apply (:func:`rebuild_from_config`), which drops the profile result relations of the
+    tables it removes once it has committed (profiler.schema.drop_superseded_results): each is
+    named by its table's id, and the apply registers the table again under another."""
     from sqlalchemy import delete
 
     from provisa.core.db import SEEDED_DOMAIN_IDS, SEEDED_ROLE_IDS, SEEDED_SOURCE_IDS
@@ -2150,9 +2150,6 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     for store_id in await _ids(select(stores.c.id)):
         await discard(conn, ObjectRef("store", store_id))
     await glossary_repo.sweep_refless_terms(conn, before=refs_before)
-    from provisa.profiler.schema import drop_superseded_results
-
-    await drop_superseded_results(conn)
 
 
 async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
@@ -2220,6 +2217,12 @@ async def _apply(
 
                     await load_runs(conn, carried_runs)
                 await _mark_seeded(conn)
+    if reset:
+        # After the commit, in transactions of their own: the backlog of a template's rebuilds,
+        # held in the rebuild's one transaction, ran out the lock table.
+        from provisa.profiler.schema import drop_superseded_results
+
+        await drop_superseded_results(conn)
     return failed
 
 
