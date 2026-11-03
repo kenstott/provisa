@@ -461,6 +461,30 @@ _INDEX_DEFINITION = (
     f"COALESCE({_answer(INDEX_DEFINITIONS, key_id_sql('indexoid'))}, "
     f"{_of_system('indexoid', {row[0]: row[11] for row in SYSTEM_INDEXES})})"
 )
+_CATALOG_NAMES = {
+    oid: name for (schema, name), (oid, _) in RELATION_CLASS.items() if schema == "pg_catalog"
+}
+
+
+def system_index_definition(row: tuple, pretty: bool) -> str:
+    """pg_get_indexdef of an index on a system catalog, from its SYSTEM_INDEXES row: plain names
+    the catalog with its schema, pretty as the search path sees it, where pg_catalog is always
+    first (generate_relation_name under PRETTYFLAG_SCHEMA)."""
+    schema = "" if pretty else "pg_catalog."
+    unique = "UNIQUE " if row[5] else ""
+    return (
+        f"CREATE {unique}INDEX {row[1]} ON {schema}{_CATALOG_NAMES[row[2]]} "
+        f"USING btree ({', '.join(row[12])})"
+    )
+
+
+#: pg_get_indexdef(index, 0, pretty): of an index on a system catalog, its pretty definition
+#: where told so; of a key's index, the definition the plain form gives.
+_PRETTY_INDEX_DEFINITION = (
+    f"CASE WHEN pretty THEN COALESCE({_answer(INDEX_DEFINITIONS, key_id_sql('indexoid'))}, "
+    f"{_of_system('indexoid', {r[0]: system_index_definition(r, True) for r in SYSTEM_INDEXES})}) "
+    f"ELSE {_INDEX_DEFINITION} END"
+)
 _SYSTEM_INDEX_COLUMN = " ".join(
     "WHEN '{}:{}' THEN '{}'".format(row[0], n, column.replace("'", "''"))
     for row in SYSTEM_INDEXES
@@ -785,7 +809,7 @@ _FORMS: tuple[Form, ...] = (
     _form(
         "pg_get_indexdef",
         "indexoid, position, pretty",
-        f"CASE WHEN position = 0 THEN {_INDEX_DEFINITION} "
+        f"CASE WHEN position = 0 THEN {_PRETTY_INDEX_DEFINITION} "
         f"ELSE COALESCE({_index_column('indexoid', 'position')}, CASE CAST(indexoid AS TEXT) "
         f"|| ':' || CAST(position AS TEXT) {_SYSTEM_INDEX_COLUMN} END) END",
         INDEX_DEFINITIONS,
@@ -1162,6 +1186,17 @@ def _is_column(node: exp.Expr) -> bool:
 
 #: The types a statistic is 0 of; of any other it is NULL.
 _COUNTS = frozenset({"bigint", "integer", "smallint", "oid", "double precision", "real"})
+#: The counts PostgreSQL 17 answers NULL of where it has none: a function's, which track_functions
+#: (none) never counts, and a database's checksum failures, with data checksums off
+#: (src/backend/utils/adt/pgstatfuncs.c).
+_NOT_COUNTED = frozenset(
+    {
+        f"pg_stat_get_{prefix}function_{count}"
+        for prefix in ("", "xact_")
+        for count in ("calls", "self_time", "total_time")
+    }
+    | {"pg_stat_get_db_checksum_failures"}
+)
 
 
 def _statistic(name: str, args: list[exp.Expr]) -> exp.Expr:
@@ -1170,7 +1205,8 @@ def _statistic(name: str, args: list[exp.Expr]) -> exp.Expr:
     if returns == "record":
         return exp.cast(exp.null(), "TEXT")
     to = exp.DataType.build(returns, dialect="postgres", udt=True)
-    counted = exp.Cast(this=exp.Literal.number(0) if returns in _COUNTS else exp.null(), to=to)
+    counts = returns in _COUNTS and name not in _NOT_COUNTED
+    counted = exp.Cast(this=exp.Literal.number(0) if counts else exp.null(), to=to)
     if not args:
         return counted
     nulls = [exp.Is(this=_argument(a), expression=exp.null()) for a in args if not _constant(a)]
