@@ -126,6 +126,27 @@ def test_a_regclass_read_as_text_is_the_listed_name():
     assert written.count("catalog_pg_class") >= 2
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'SELECT pg_catalog."pg_sequence_last_value"((SELECT oid FROM pg_catalog.pg_class '
+        "WHERE relname = 'fixture_sequence')::regclass) AS v",
+        'SELECT pg_catalog."pg_partition_tree"((SELECT oid FROM pg_catalog.pg_class '
+        "WHERE relname = 'hash_fixture')::regclass) AS v",
+        'SELECT pg_catalog."pg_partition_ancestors"((SELECT oid FROM pg_catalog.pg_class '
+        "WHERE relname = 'hash_fixture_0')::regclass) AS v",
+        "SELECT regclassout((SELECT oid FROM pg_class WHERE relname = 'x')::regclass)",
+    ],
+)
+def test_a_catalog_read_cast_to_regclass_in_an_argument_is_metas(sql):
+    """REQ-2167: the subquery a regclass is cast from is the statement's, so its relation is
+    meta's view, never the control plane's own pg_class."""
+    assert _tables(_addressed(sql)) <= {
+        "meta.catalog_pg_class",
+        "meta.catalog_pg_namespace",
+    }
+
+
 def test_a_row_version_column_is_no_views():
     assert "c.xmin" not in _addressed("SELECT c.xmin FROM pg_class c")
 

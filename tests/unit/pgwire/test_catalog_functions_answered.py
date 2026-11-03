@@ -214,3 +214,32 @@ def test_a_validator_of_no_function_is_postgresqls_cache_lookup_error(call):
     with pytest.raises(PostgresError, match="cache lookup failed for function 1") as refused:
         _rows(f"SELECT {call}")
     assert _sqlstate_of(refused.value) == "XX000"
+
+
+def test_a_function_initdb_creates_is_named_by_the_catalogs_oid():
+    """REQ-2167: plpgsql's handler has the oid initdb gave it, which is not the control plane's;
+    its regprocedure is the catalog's oid, so the validator finds it as PostgreSQL does."""
+    assert _rows(
+        'SELECT pg_catalog."fmgr_c_validator"('
+        "'pg_catalog.plpgsql_call_handler()'::regprocedure::oid) AS v"
+    ) == [("",)]
+    assert _rows(
+        "SELECT p.proname FROM pg_catalog.pg_proc p "
+        "WHERE p.oid = 'pg_catalog.plpgsql_call_handler()'::regprocedure"
+    ) == [("plpgsql_call_handler",)]
+
+
+def test_a_function_named_with_wrong_arguments_is_postgresqls_undefined_function():
+    from provisa.core.pg_error import PostgresError
+    from provisa.pgwire.server import _sqlstate_of
+
+    with pytest.raises(PostgresError, match=r'function "abs\(text\)" does not exist') as refused:
+        _rows("SELECT p.proname FROM pg_catalog.pg_proc p WHERE p.oid = 'abs(text)'::regprocedure")
+    assert _sqlstate_of(refused.value) == "42883"
+
+
+def test_an_operator_class_the_catalog_lists_validates():
+    assert _rows(
+        'SELECT pg_catalog."amvalidate"((SELECT oid FROM pg_catalog.pg_opclass '
+        "WHERE opcname = 'int4_ops' AND opcmethod = 403)) AS v"
+    ) == [(True,)]
