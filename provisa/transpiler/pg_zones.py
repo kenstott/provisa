@@ -33,10 +33,12 @@ def _quoted(text: str) -> str:
 
 
 #: pg_timezone_names' rows: the engine's own (DuckDB's) of each pinned zone, read from its built-in
-#: table function by its qualified name, so a macro of the same name answering this is not it.
+#: table function by its qualified name, so a macro of the same name answering this is not it. The
+#: rows' own columns are underscored, as a form's own names are.
 NAMES = (
-    "SELECT _n.name, _n.abbrev, _n.utc_offset, _n.is_dst FROM system.main.pg_timezone_names() _n "
-    f"WHERE _n.name IN ({', '.join(map(_quoted, ZONE_NAMES))})"
+    "SELECT _name AS name, _abbrev AS abbrev, _utc_offset AS utc_offset, _is_dst AS is_dst "
+    "FROM system.main.pg_timezone_names() AS _n(_name, _abbrev, _utc_offset, _is_dst) "
+    f"WHERE _name IN ({', '.join(map(_quoted, ZONE_NAMES))})"
 )
 
 #: pg_timezone_abbrevs' rows. The rows' own columns are underscored, as a form's own names are.
