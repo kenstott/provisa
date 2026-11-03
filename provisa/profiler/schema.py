@@ -477,3 +477,40 @@ async def result_exists(
         sa.select(sa.func.to_regclass(sa.literal(qualified, sa.Text)).is_not(None))
     )
     return bool(found.scalar())
+
+
+async def drop_superseded_results(conn: Any) -> list[str]:
+    """Drop every result relation of the org ``conn`` is scoped to that names no table its model
+    registers: a relation is current only while ``registered_tables`` holds its id under its
+    name. A demo organisation's rebuild (config_loader.reset_model) registers every table afresh,
+    under a new id, and the relations of the old ids were left behind, each copied into every
+    sandbox cloned from its template (env_copy.copy_profile_results). Returns the relations
+    dropped."""
+    from sqlalchemy.schema import DropTable
+
+    from provisa.core.schema_org import registered_tables as rt
+
+    current = {
+        (r.table_name, r.id)
+        for r in (await conn.execute_core(sa.select(rt.c.id, rt.c.table_name))).fetchall()
+    }
+    names = [
+        r[0]
+        for r in (
+            await conn.execute_core(
+                sa.text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = current_schema() AND table_type = 'BASE TABLE' "
+                    "ORDER BY table_name"
+                )
+            )
+        ).fetchall()
+        if is_result_table_name(r[0])
+    ]
+    dropped = []
+    for name in names:
+        table, table_id, kind = parse_result_table_name(name)
+        if (table, table_id) not in current:
+            await conn.execute_core(DropTable(result_sa_table(table, table_id, kind)))
+            dropped.append(name)
+    return dropped
