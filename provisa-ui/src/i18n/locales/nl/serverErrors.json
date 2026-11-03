@@ -478,7 +478,12 @@
       "relationship_same_entity_cardinality": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: ze is {{cardinality}}, en dezelfde entiteit is één rij op één rij",
       "relationship_same_entity_not_grounded": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: {{source}} en {{target}} zijn niet in dezelfde term verankerd",
       "relationship_same_entity_not_keys": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: {{columns}} is niet de primaire sleutel of een unieke sleutel van {{table}}",
-      "kaggle_token_missing": "Kaggle-dataset {{owner}}/{{ref}}: de databron bevat geen Kaggle API-token. Voeg het toe in het formulier Databronnen, waar het token wordt ingevoerd."
+      "kaggle_token_missing": "Kaggle-dataset {{owner}}/{{ref}}: de databron bevat geen Kaggle API-token. Voeg het toe in het formulier Databronnen, waar het token wordt ingevoerd.",
+      "generic_sql_invalid": "Bron {{source}}: {{error}}",
+      "generic_sql_file_refused": "Bron {{source}}: de URL noemt {{path}}, dat deze server niet voor de organisatie mag openen.",
+      "generic_sql_attach_unbuilt": "Bron {{source}}: live koppelen van een Generic SQL-bron is nog niet beschikbaar (aangezet voor {{engines}}); de rijen worden gerepliceerd.",
+      "generic_sql_options_refused": "Bron {{source}}: de URL van deze organisatie mag de stuurprogramma-optie {{options}} niet geven.",
+      "generic_sql_jdbc_refused": "Bron {{source}}: een eigen JDBC-stuurprogramma van de klant draait als code in de JVM van Provisa, wat alleen een zelfgehoste installatie toestaat."
     },
     "secrets": {
       "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",

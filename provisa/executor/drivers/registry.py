@@ -106,6 +106,12 @@ def _make_trino() -> DirectDriver:  # remote Trino/Presto coordinator as a SOURC
     return SQLAlchemyDriver("trino")  # trino.sqlalchemy dialect; database part is the catalog
 
 
+def _make_generic_sql() -> DirectDriver:  # REQ-2191: any SQLAlchemy URL, the source's own
+    from provisa.executor.drivers.generic_sql import GenericSQLDriver
+
+    return GenericSQLDriver()
+
+
 def _make_hiveserver2() -> DirectDriver:  # HiveServer2 over Thrift, via impyla
     from provisa.executor.drivers.hive import HiveDriver
 
@@ -167,6 +173,8 @@ _DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {  # REQ-229, REQ-550
     # hive connector or JDBC exasol connector) — read-then-land on ANY engine, same shape as the
     # warehouse drivers above.
     "hiveserver2": _make_hiveserver2,
+    # REQ-2191: a database with no named type, at the URL its source names.
+    "generic_sql": _make_generic_sql,
     "exasol": _make_exasol,
     # GitHub issue #119: registered so SourcePool holds a Neo4jDriver instance per neo4j source —
     # NOT a general routing signal. "neo4j" stays in router.py's VIRTUAL_SOURCES, so decide_route

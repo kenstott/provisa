@@ -76,8 +76,10 @@ class SourcePool:  # REQ-052, REQ-053
             connect_port = pgbouncer_port if use_pgbouncer else port
             from provisa.transpiler.router import CODE_SOURCES
 
+            if driver.names_own_destination:
+                host = ""  # REQ-2191: checked and pinned by the driver, at the URL it connects to
             # REQ-2100: a code source's driver dials nothing; its worker is started on first call.
-            if host and source_type not in CODE_SOURCES:
+            elif host and source_type not in CODE_SOURCES:
                 # REQ-2006: checked at the connection itself, whatever the row said when saved --
                 # the name may resolve elsewhere by now.
                 from provisa.security.sandbox_egress import pin_host
@@ -86,8 +88,14 @@ class SourcePool:  # REQ-052, REQ-053
             await driver.connect(host, connect_port, database, user, password, min_size, max_size)
             from provisa.vector.capability import detect_vector_capability
 
-            dialect = SOURCE_TO_DIALECT.get(source_type, source_type)
-            self._vector[source_id] = await detect_vector_capability(dialect, driver)
+            if driver.dialect is not None:
+                # REQ-2191: a dialect the source chose says nothing of what its database has, and
+                # such a source is checked only when its admin asks (Detect), never on connect.
+                dialect = driver.dialect
+                self._vector[source_id] = None
+            else:
+                dialect = SOURCE_TO_DIALECT.get(source_type, source_type)
+                self._vector[source_id] = await detect_vector_capability(dialect, driver)
             self._drivers[source_id] = driver
             self._dialects[source_id] = dialect
 

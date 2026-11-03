@@ -196,6 +196,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     relationships: list[dict] | None = None,
     source_types: dict[str, str] | None = None,
     engine=None,
+    source_hints: dict[str, dict[str, str]] | None = None,
 ) -> GovernanceContext:
     """Build GovernanceContext from server state for a given role.
 
@@ -219,6 +220,8 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
               (matches every connector registered today, all of which declare predicate_pushdown).
         engine: The bound FederationEngine, used to read each masked table's connector
               ``Capability`` (REQ-897) via ``connector_pushdown``.
+        source_hints: {source_id: federation_hints}: each source's settings, which
+              ``connector_pushdown`` reads with its type (REQ-2191).
     """
     if role is None:
         raise ValueError(
@@ -537,7 +540,10 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             source_type = source_types.get(source_id)
             if not source_type:
                 continue
-            cap = engine.connector_pushdown(source_type)
+            from provisa.core.models import Source
+
+            hints = (source_hints or {}).get(source_id, {})
+            cap = engine.connector_pushdown(Source.settings_view(source_id, source_type, hints))
             plan_mask_evaluation(cap, can_stream=False)
 
     return gov
