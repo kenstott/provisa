@@ -481,7 +481,6 @@
       "kaggle_token_missing": "Jeu de données Kaggle {{owner}}/{{ref}} : la source ne contient aucun jeton d'API Kaggle. Ajoutez-le dans le formulaire Sources de données, où son jeton est saisi.",
       "jdbc_invalid": "Source {{source}} : {{error}}",
       "jdbc_file_refused": "Source {{source}} : l'URL désigne {{path}}, que ce serveur ne peut pas ouvrir pour l'organisation.",
-      "jdbc_attach_unbuilt": "Source {{source}} : l'attachement direct d'une source JDBC n'est pas encore disponible (activé pour {{engines}}) ; ses lignes sont répliquées.",
       "jdbc_options_refused": "Source {{source}} : l'URL de cette organisation ne peut pas indiquer l'option de pilote {{options}}.",
       "jdbc_driver_refused": "Source {{source}} : un pilote JDBC du client s'exécute comme du code dans la JVM de Provisa, ce que seule une installation auto-hébergée permet."
     },

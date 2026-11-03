@@ -481,7 +481,6 @@
       "kaggle_token_missing": "Kaggle 數據集 {{owner}}/{{ref}}：數據來源沒有 Kaggle API 權杖。請在數據來源表單中加入，權杖在那裡輸入。",
       "jdbc_invalid": "資料來源 {{source}}：{{error}}",
       "jdbc_file_refused": "資料來源 {{source}}：URL 指向 {{path}}，此伺服器不能為該組織開啟它。",
-      "jdbc_attach_unbuilt": "資料來源 {{source}}：JDBC 資料來源的即時掛接尚未可用（已為 {{engines}} 開啟）；其資料列會以複本形式複製。",
       "jdbc_options_refused": "資料來源 {{source}}：此組織的 URL 不能指定驅動程式選項 {{options}}。",
       "jdbc_driver_refused": "資料來源 {{source}}：客戶自備的 JDBC 驅動程式會作為程式碼在 Provisa 本身的 JVM 中執行，只有自行託管的安裝才允許這樣做。"
     },

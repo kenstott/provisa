@@ -1,19 +1,10 @@
 {
   "jdbcSourceFields": {
-    "url": "URL de connexion",
-    "urlHint": "Une URL SQLAlchemy ; son schéma désigne le pilote. N'y mettez pas de mot de passe.",
     "dialect": "Dialecte SQL",
     "dialectHelp": "La variante de SQL que Provisa écrit pour cette source. Elle peut différer du pilote : choisissez la plus proche de la base de données, ou ANSI.",
     "ansi": "ANSI (SQL générique)",
     "username": "Nom d'utilisateur",
     "password": "Mot de passe",
-    "capability": {
-      "attach": "Attachement direct sur {{engine}}",
-      "predicate": "Pushdown des filtres sur {{engine}}",
-      "join": "Pushdown des jointures sur {{engine}}",
-      "aggregate": "Pushdown des agrégats sur {{engine}}",
-      "key_range": "Pushdown des plages de clés sur {{engine}}"
-    },
     "capabilityName": {
       "attach": "Attachement direct",
       "predicate": "Pushdown des filtres",
@@ -21,12 +12,21 @@
       "aggregate": "Pushdown des agrégats",
       "key_range": "Pushdown des plages de clés"
     },
-    "attachUnbuilt": "L'attachement direct n'est pas encore disponible ; les lignes sont répliquées.",
     "detect": "Détecter",
     "checkPassed": "{{capability}} : réussi",
     "checkFailed": "{{capability}} : échoué ({{reason}})",
     "jdbcDriverJar": "JAR du pilote JDBC",
-    "jdbcDriverJarHint": "Le fichier JAR du pilote. Installations auto-hébergées uniquement.",
-    "jdbcDriverClass": "Classe du pilote"
+    "jdbcDriverJarHint": "Le fichier JAR du pilote, téléversé depuis votre machine. Installations auto-hébergées uniquement.",
+    "jdbcDriverClass": "Classe du pilote",
+    "driver": "Pilote",
+    "jarDriver": "Votre propre pilote JDBC (JAR)",
+    "host": "Hôte",
+    "port": "Port",
+    "database": "Base de données",
+    "file": "Fichier de base de données",
+    "fileHint": "Le fichier de base de données, écrit {files}/… pour un fichier de l'espace de fichiers de l'organisation.",
+    "jdbcUrl": "URL JDBC",
+    "jdbcUrlHint": "L'URL jdbc: du pilote. N'y mettez pas de mot de passe.",
+    "jdbcDriverJarPlaceholder": "Téléversez le fichier JAR du pilote"
   }
 }

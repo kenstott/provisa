@@ -481,7 +481,6 @@
       "kaggle_token_missing": "Dataset Kaggle {{owner}}/{{ref}}: l'origine dati non contiene alcun token API Kaggle. Aggiungilo nel modulo Origini dati, dove si inserisce il suo token.",
       "jdbc_invalid": "Sorgente {{source}}: {{error}}",
       "jdbc_file_refused": "Sorgente {{source}}: l'URL indica {{path}}, che questo server non può aprire per l'organizzazione.",
-      "jdbc_attach_unbuilt": "Sorgente {{source}}: il collegamento live di una sorgente JDBC non è ancora disponibile (attivato per {{engines}}); le sue righe vengono replicate.",
       "jdbc_options_refused": "Sorgente {{source}}: l'URL di questa organizzazione non può indicare l'opzione del driver {{options}}.",
       "jdbc_driver_refused": "Sorgente {{source}}: un driver JDBC del cliente viene eseguito come codice nella JVM di Provisa, cosa consentita solo da un'installazione self-hosted."
     },

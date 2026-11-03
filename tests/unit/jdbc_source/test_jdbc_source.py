@@ -345,6 +345,64 @@ def test_a_jdbc_driver_is_refused_by_name_on_a_server_of_many_organizations(org,
         jdbc.refuse_where_not_allowed()
 
 
+def _upload_client(monkeypatch):
+    import sys
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from provisa.api.admin import source_files_router
+
+    async def _reprovision(*_args):
+        return None
+
+    async def _pool():
+        return None
+
+    monkeypatch.setattr(source_files_router, "require_capability_request", lambda *_: None)
+    # What the router reaches once the file is kept: a stand-in for the running server's.
+    monkeypatch.setitem(sys.modules, "provisa.api.app", SimpleNamespace(state=SimpleNamespace()))
+    monkeypatch.setitem(
+        sys.modules, "provisa.api.admin.schema_helpers", SimpleNamespace(_get_pool=_pool)
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "provisa.api.admin.schema_mutation_ops",
+        SimpleNamespace(reprovision_source_after_registration=_reprovision),
+    )
+    app = FastAPI()
+    app.include_router(source_files_router.router)
+    return TestClient(app)
+
+
+def test_a_jdbc_driver_jar_is_uploaded_into_the_org_files_area(org, monkeypatch):
+    # The form takes the jar as a file from the admin's machine; it is kept with the source.
+    client = _upload_client(monkeypatch)
+    answer = client.put(
+        "/admin/sources/vendor/file",
+        params={"name": "vendor-jdbc.jar", "type": "jdbc"},
+        content=b"PK\x03\x04jar",
+    )
+    assert answer.status_code == 200, answer.text
+    assert answer.json() == {"path": "{files}/vendor/vendor-jdbc.jar", "bytes": 7}
+    assert (org / "files" / "vendor" / "vendor-jdbc.jar").read_bytes() == b"PK\x03\x04jar"
+
+
+def test_a_jdbc_driver_jar_upload_is_refused_by_name_on_a_server_of_many_organizations(
+    org, monkeypatch
+):
+    client = _upload_client(monkeypatch)
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: True)
+    answer = client.put(
+        "/admin/sources/vendor/file",
+        params={"name": "vendor-jdbc.jar", "type": "jdbc"},
+        content=b"jar",
+    )
+    assert answer.status_code == 403
+    assert "self-hosted" in answer.json()["detail"]
+    assert not (org / "files" / "vendor").exists()
+
+
 def test_jdbc_binds_by_position_in_the_order_the_placeholders_appear():
     from provisa.jdbc_source.jdbc import qmark
 

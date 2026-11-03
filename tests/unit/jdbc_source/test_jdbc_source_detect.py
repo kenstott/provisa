@@ -112,13 +112,34 @@ def test_the_checks_are_written_in_the_sources_dialect():
 # -- the admin API of the form ---------------------------------------------------------------------
 
 
-def test_the_form_is_offered_the_active_engine_the_dialects_and_the_capabilities():
+def test_the_form_is_offered_the_active_engine_the_dialects_and_the_capabilities(duckdb_engine):
     from provisa.api.admin.jdbc_source_admin import setup
 
-    offered = setup("duckdb")
+    offered = setup(duckdb_engine)
     assert offered.engine == "duckdb"
     assert "ansi" in offered.sql_dialects and "postgres" in offered.sql_dialects
     assert offered.capabilities == ["attach", "predicate", "join", "aggregate", "key_range"]
+
+
+def test_the_form_is_offered_the_standard_drivers_and_which_the_engine_attaches(
+    duckdb_engine, trino_engine
+):
+    from provisa.api.admin.jdbc_source_admin import setup
+    from provisa.jdbc_source.settings import NAMED_TYPES
+
+    drivers = {d.backend: d for d in setup(duckdb_engine).drivers}
+    assert list(drivers) == list(NAMED_TYPES)
+    # The form writes the URL with the driver Provisa ships for the backend.
+    assert drivers["mysql"].scheme == "mysql+pymysql"
+    assert drivers["postgresql"].scheme == "postgresql"
+    assert drivers["mssql"].source_type == "sqlserver"
+    # A file database is named by its file, not a host.
+    assert drivers["sqlite"].file and drivers["duckdb"].file
+    assert not drivers["postgresql"].file
+    # Live attach is offered where the active engine attaches the driver's built-in type.
+    assert drivers["sqlite"].attach and drivers["postgresql"].attach
+    on_trino = {d.backend: d.attach for d in setup(trino_engine).drivers}
+    assert not on_trino["sqlite"]
 
 
 async def test_detect_from_the_form_checks_the_connection_it_describes(
