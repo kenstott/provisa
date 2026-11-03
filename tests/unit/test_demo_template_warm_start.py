@@ -82,6 +82,38 @@ async def test_a_changed_demo_version_is_built_again(platform, monkeypatch):
     assert await demo_templates.warm_ready(platform, demo) is False
 
 
+async def test_a_template_built_under_other_control_plane_tables_is_built_again(
+    platform, monkeypatch
+):
+    """A cloud patch keeps the Provisa release, so the release alone never told a template built
+    by older code: its tables are that code's (no migrations), and a column added since failed
+    every sandbox of it. The record names the DDL of the tables the code creates."""
+    demo = _demo("alpha")
+    await _built(platform, demo)
+    _on_disk(monkeypatch, {demo.template_org: _BUILT})
+    monkeypatch.setattr("provisa.core.schema_org.ddl_fingerprint", lambda: "0123456789abcdef")
+    assert demo_templates.readiness_version(demo).endswith("@0123456789abcdef")
+    assert await demo_templates.warm_ready(platform, demo) is False
+
+
+def test_the_ddl_fingerprint_changes_with_a_column_and_with_schema_sql():
+    from sqlalchemy import Column, MetaData, Text
+
+    from provisa.core import schema_org
+
+    sql = b"CREATE TABLE IF NOT EXISTS t (id TEXT);"
+    copy = MetaData()
+    for table in schema_org.metadata.tables.values():
+        table.to_metadata(copy)
+    base = schema_org.fingerprint_of(copy, sql)
+    assert len(base) == 16 and int(base, 16) >= 0
+    assert schema_org.fingerprint_of(copy, sql) == base
+    assert schema_org.fingerprint_of(copy, sql + b"\n-- a column") != base
+    copy.tables["calendars"].append_column(Column("day_close", Text))
+    assert schema_org.fingerprint_of(copy, sql) != base
+    assert schema_org.ddl_fingerprint() == schema_org.ddl_fingerprint()
+
+
 @pytest.mark.parametrize(
     "held",
     [
