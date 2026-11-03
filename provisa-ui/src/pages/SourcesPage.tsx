@@ -85,7 +85,7 @@ import { GOOGLE_WORKSPACE, gwMapping } from "./sources/googleWorkspace";
 import { MICROSOFT_365, m365Mapping } from "./sources/microsoft365";
 import { LOGS, logsMapping } from "./sources/logs";
 import { COSMOSDB, cosmosHints } from "./sources/cosmosdb";
-import { GENERIC_SQL, genericSqlHints } from "./sources/genericSql";
+import { JDBC_SOURCE, jdbcSourceHints } from "./sources/jdbcSource";
 import { excelHintsOf, filesMappingJson, repeatedNames } from "./sources/excelHints";
 import { QDRANT, qdrantHints } from "./sources/qdrant";
 import { CODE_SOURCE_TYPES, codeMappingJson } from "./sources/codeSource";
@@ -624,8 +624,8 @@ export function SourcesPage() {
       const federationHints: Record<string, unknown> =
         form.type === COSMOSDB
           ? cosmosHints(authFields) // REQ-1982: how the Cosmos DB source signs in
-          : form.type === GENERIC_SQL
-            ? genericSqlHints(authFields) // REQ-2191: its URL, dialect and capabilities
+          : form.type === JDBC_SOURCE
+            ? jdbcSourceHints(authFields) // REQ-2191: its URL, dialect and capabilities
             : form.type === QDRANT
               ? qdrantHints(authFields) // REQ-1983: whether the Qdrant source reads over gRPC
               : form.type === WIKIPEDIA

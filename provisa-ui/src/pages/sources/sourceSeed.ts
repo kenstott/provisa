@@ -27,7 +27,7 @@ import { GOOGLE_WORKSPACE, gwFieldsFromMapping } from "./googleWorkspace";
 import { MICROSOFT_365, m365FieldsFromMapping } from "./microsoft365";
 import { LOGS, logsFieldsFromMapping } from "./logs";
 import { COSMOSDB, cosmosFieldsFromHints } from "./cosmosdb";
-import { GENERIC_SQL, genericSqlHints } from "./genericSql";
+import { JDBC_SOURCE, jdbcSourceHints } from "./jdbcSource";
 import { excelHintsFromMapping, withExcelHints } from "./excelHints";
 import { QDRANT, qdrantFieldsFromHints } from "./qdrant";
 import { CODE_SOURCE_TYPES, codeFieldsFromMapping } from "./codeSource";
@@ -198,8 +198,8 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
   if (s.type === COSMOSDB) {
     authFields = cosmosFieldsFromHints(hintsJson); // REQ-1982
   }
-  if (s.type === GENERIC_SQL && hintsJson) {
-    authFields = genericSqlHints(JSON.parse(hintsJson)); // REQ-2191: its settings are its hints
+  if (s.type === JDBC_SOURCE && hintsJson) {
+    authFields = jdbcSourceHints(JSON.parse(hintsJson)); // REQ-2191: its settings are its hints
   }
   if (s.type === QDRANT) {
     authFields = qdrantFieldsFromHints(hintsJson); // REQ-1983

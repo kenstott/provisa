@@ -177,13 +177,13 @@ PROVISA_INTERNAL_SCHEMAS: frozenset[str] = frozenset(
 )
 
 
-def _generic_sql_driver(pool: "SourcePool", source_id: str):  # REQ-2191
-    """A Generic SQL source's driver, which lists what its database holds through its dialect."""
-    from provisa.executor.drivers.generic_sql import GenericSQLDriver
+def _jdbc_source_driver(pool: "SourcePool", source_id: str):  # REQ-2191
+    """A JDBC source's driver, which lists what its database holds through its dialect."""
+    from provisa.executor.drivers.jdbc_source import JdbcSourceDriver
 
     driver = pool.get(source_id)
-    if not isinstance(driver, GenericSQLDriver):
-        raise TypeError(f"source {source_id!r} is not served by the Generic SQL driver")
+    if not isinstance(driver, JdbcSourceDriver):
+        raise TypeError(f"source {source_id!r} is not served by the JDBC driver")
     return driver
 
 
@@ -470,11 +470,11 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         )
         return [row[0] for row in result.rows]
 
-    if t == "generic_sql":
+    if t == "jdbc":
         # REQ-2191: listed by the source's own SQLAlchemy dialect, which knows its catalog.
         if not pool.has(source_id):
             return None
-        return await _generic_sql_driver(pool, source_id).schema_names()
+        return await _jdbc_source_driver(pool, source_id).schema_names()
 
     if t == "saphana":
         # REQ-1753: saphana's direct driver is the generic SQLAlchemyDriver (registry.py's
@@ -1181,8 +1181,8 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
         )
         return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
 
-    if t == "generic_sql":  # REQ-2191: as its dialect lists them
-        listed = await _generic_sql_driver(pool, source_id).table_names(schema_name)
+    if t == "jdbc":  # REQ-2191: as its dialect lists them
+        listed = await _jdbc_source_driver(pool, source_id).table_names(schema_name)
         return [AvailableTableType(name=name, comment=comment) for name, comment in listed]
 
     if t == "saphana":
@@ -1619,8 +1619,8 @@ async def native_columns(  # REQ-1732
             [schema_name, table_name],
         )
         return [(row[0], _oracle_spelling(*row[1:4])) for row in result.rows]
-    if t == "generic_sql":  # REQ-2191: as its dialect reads them
-        return await _generic_sql_driver(pool, source_id).column_types(schema_name, table_name)
+    if t == "jdbc":  # REQ-2191: as its dialect reads them
+        return await _jdbc_source_driver(pool, source_id).column_types(schema_name, table_name)
     if t == "saphana":
         # REQ-1753: same "no ATTACH-mechanism seam" gap as trino above — saphana has no DuckDB
         # ATTACH connector, so this is the only path. SYS.TABLE_COLUMNS is HANA's own catalog view.

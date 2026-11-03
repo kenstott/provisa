@@ -30,7 +30,7 @@ Provisa registers **76** source types, the ones the Sources form offers. The tab
 
 | # | Group | Source types |
 | --- | --- | --- |
-| 1–16 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2`, `generic_sql` |
+| 1–16 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2`, `jdbc` |
 | 17–25 | [Cloud data warehouses](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
 | 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [Data lake / open table formats](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
@@ -70,7 +70,7 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 | `airport` | — | — (DuckDB extension) | — | No |
 | `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | No |
 | `hiveserver2` | impyla (HiveServer2 over Thrift) | — | hive | No |
-| `generic_sql` | SQLAlchemy, at the source's own URL | — | chosen per source | No |
+| `jdbc` | SQLAlchemy, at the source's own URL | — | chosen per source | No |
 
 Wire-compatible databases reuse a base wire's JDBC driver, native async driver and dialect. CockroachDB, YugabyteDB and Greenplum ride the PostgreSQL wire, and TiDB rides the MySQL wire. They need only registry entries and no new connector code.
 
@@ -84,7 +84,7 @@ SAP HANA is read through its own driver and replicated into the active engine's 
 
 A HiveServer2 endpoint read directly over Thrift, for a Hive deployment where the endpoint is the only thing reachable. It is distinct from `hive` and `hive_s3`, which read the warehouse's files and metastore and never go through HiveServer2. Rows are read through the endpoint and replicated into the active engine's store. The form takes host, port (default 10000), username, password and database; `federation_hints.auth_mechanism` selects the authentication (default `PLAIN`, for example `GSSAPI` for Kerberos).
 
-#### `generic_sql`
+#### `jdbc`
 
 A database with no named source type, reached through any SQLAlchemy dialect Provisa ships. The source takes three settings, kept in `federation_hints`:
 
@@ -94,9 +94,9 @@ A database with no named source type, reached through any SQLAlchemy dialect Pro
 
 A SQLite or DuckDB file is named by its path, written with the organization's tokens: `sqlite:///{files}/shop.db` or `duckdb:///{org}/shop.duckdb`. The file is opened where the token resolves, and a path that leaves the organization's folder is refused, naming the path. On a server of many organizations this is the only file URL allowed. A URL naming any other file is refused, and a DuckDB file is opened with DuckDB's external access off.
 
-Provisa never sends a statement to a Generic SQL source whole. Its tables are read at their floor, and the engine runs the rest of the statement. A small table can instead be replicated whole by its replicate setting, and it then joins like any other landed table. Register Table offers each column as an optional parameter of kind `column_value`, named `_nf_<column>`: a value for a real column, given by equality, that narrows the read to the rows with that value. A steward can make a parameter required. A query that leaves a required parameter out is refused, naming the table and the parameter, before anything is sent to the source. In SQL a query gives a parameter as a WHERE condition on `_nf_<column>`, and in GraphQL as an argument. The floor reads the table with one SELECT of its columns, with an equality filter for each parameter given. It is written in the source's SQL dialect, and the values are bound rather than written into the text. The rows land for that set of arguments. When the statement alone sets a row limit, the read pulls the cursor in batches and stops once it has enough rows.
+Provisa never sends a statement to a JDBC source whole. Its tables are read at their floor, and the engine runs the rest of the statement. A small table can instead be replicated whole by its replicate setting, and it then joins like any other landed table. Register Table offers each column as an optional parameter of kind `column_value`, named `_nf_<column>`: a value for a real column, given by equality, that narrows the read to the rows with that value. A steward can make a parameter required. A query that leaves a required parameter out is refused, naming the table and the parameter, before anything is sent to the source. In SQL a query gives a parameter as a WHERE condition on `_nf_<column>`, and in GraphQL as an argument. The floor reads the table with one SELECT of its columns, with an equality filter for each parameter given. It is written in the source's SQL dialect, and the values are bound rather than written into the text. The rows land for that set of arguments. When the statement alone sets a row limit, the read pulls the cursor in batches and stops once it has enough rows.
 
-A customer's own JDBC driver is also a Generic SQL source. Give a `jdbc:` URL plus two more settings: `jdbc_driver_jar`, the driver's jar file (a `{files}/...` path works), and `jdbc_driver_class`, the driver's class name. Provisa opens that driver directly in its own JVM through JPype, with no Calcite involved. The SQL dialect, the capability settings and Detect work as they do for a SQLAlchemy URL. A `jdbc:` URL has no engine attach, so the form doesn't offer one. A customer's jar runs as code inside Provisa's JVM, so this option is for self-hosted installs only. A server of many organizations refuses it, naming the reason, and so does a sandbox organization.
+A JDBC source can also run a customer's own JDBC driver. Give a `jdbc:` URL plus two more settings: `jdbc_driver_jar`, the driver's jar file (a `{files}/...` path works), and `jdbc_driver_class`, the driver's class name. Provisa opens that driver directly in its own JVM through JPype, with no Calcite involved. The SQL dialect, the capability settings and Detect work as they do for a SQLAlchemy URL. A `jdbc:` URL has no engine attach, so the form doesn't offer one. A customer's jar runs as code inside Provisa's JVM, so this option is for self-hosted installs only. A server of many organizations refuses it, naming the reason, and so does a sandbox organization.
 
 For an organization whose sources are held to public addresses (a sandbox, or any organization but the deployment's own on a server of many organizations), the URL may carry only these driver options:
 

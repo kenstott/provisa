@@ -479,11 +479,11 @@
       "relationship_same_entity_not_grounded": "La relación '{{relationship}}' no se puede marcar como la misma entidad: {{source}} y {{target}} no están fundamentadas en el mismo término",
       "relationship_same_entity_not_keys": "La relación '{{relationship}}' no se puede marcar como la misma entidad: {{columns}} no es la clave primaria ni una clave única de {{table}}",
       "kaggle_token_missing": "Conjunto de datos de Kaggle {{owner}}/{{ref}}: el origen de datos no tiene ningún token de API de Kaggle. Añádelo en el formulario de Orígenes de datos, donde se introduce su token.",
-      "generic_sql_invalid": "Fuente {{source}}: {{error}}",
-      "generic_sql_file_refused": "Fuente {{source}}: la URL nombra {{path}}, que este servidor no puede abrir para la organización.",
-      "generic_sql_attach_unbuilt": "Fuente {{source}}: la conexión en vivo de una fuente Generic SQL aún no está disponible (activada para {{engines}}); sus filas se replican.",
-      "generic_sql_options_refused": "Fuente {{source}}: la URL de esta organización no puede indicar la opción de controlador {{options}}.",
-      "generic_sql_jdbc_refused": "Fuente {{source}}: un controlador JDBC del cliente se ejecuta como código en la propia JVM de Provisa, algo que solo permite una instalación autoalojada."
+      "jdbc_invalid": "Fuente {{source}}: {{error}}",
+      "jdbc_file_refused": "Fuente {{source}}: la URL nombra {{path}}, que este servidor no puede abrir para la organización.",
+      "jdbc_attach_unbuilt": "Fuente {{source}}: la conexión en vivo de una fuente JDBC aún no está disponible (activada para {{engines}}); sus filas se replican.",
+      "jdbc_options_refused": "Fuente {{source}}: la URL de esta organización no puede indicar la opción de controlador {{options}}.",
+      "jdbc_driver_refused": "Fuente {{source}}: un controlador JDBC del cliente se ejecuta como código en la propia JVM de Provisa, algo que solo permite una instalación autoalojada."
     },
     "secrets": {
       "name_refused": "{{name}} no es un nombre dentro de los secretos de esta organización en {{service}}: un nombre es relativo a la organización y no puede salir de ella",

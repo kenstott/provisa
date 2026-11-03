@@ -333,17 +333,17 @@ def google_workspace_refusal(input: SourceInput) -> Optional[MutationResult]:  #
     return None
 
 
-def generic_sql_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-2191
-    """Why a Generic SQL source's settings cannot be a source, or None: for another source type,
+def jdbc_source_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-2191
+    """Why a JDBC source's settings cannot be a source, or None: for another source type,
     and for settings that can. The settings are the source's federation hints
-    (provisa.generic_sql.settings); its URL is checked as it will be connected to
-    (provisa.generic_sql.url), so a file it names is held to the org's folder (REQ-1997)."""
+    (provisa.jdbc_source.settings); its URL is checked as it will be connected to
+    (provisa.jdbc_source.url), so a file it names is held to the org's folder (REQ-1997)."""
     import json as _json
 
-    from provisa.generic_sql import SOURCE_TYPE
-    from provisa.generic_sql.settings import ATTACH, InvalidGenericSqlSource, parse
-    from provisa.generic_sql.jdbc import JdbcRefused
-    from provisa.generic_sql.url import DriverOptionsRefused, FileUrlRefused, check
+    from provisa.jdbc_source import SOURCE_TYPE
+    from provisa.jdbc_source.settings import ATTACH, InvalidJdbcSource, parse
+    from provisa.jdbc_source.jdbc import JdbcRefused
+    from provisa.jdbc_source.url import DriverOptionsRefused, FileUrlRefused, check
 
     if input.type != SOURCE_TYPE:
         return None
@@ -354,41 +354,41 @@ def generic_sql_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-
         return MutationResult(
             success=False,
             message=f"Source {input.id!r}: {exc}",
-            code="schema.generic_sql_file_refused",
+            code="schema.jdbc_file_refused",
             params={"source": input.id, "path": exc.path, "error": str(exc)},
         )
     except JdbcRefused as exc:
         return MutationResult(
             success=False,
             message=f"Source {input.id!r}: {exc}",
-            code="schema.generic_sql_jdbc_refused",
+            code="schema.jdbc_driver_refused",
             params={"source": input.id},
         )
     except DriverOptionsRefused as exc:
         return MutationResult(
             success=False,
             message=f"Source {input.id!r}: {exc}",
-            code="schema.generic_sql_options_refused",
+            code="schema.jdbc_options_refused",
             params={"source": input.id, "options": ", ".join(exc.options)},
         )
-    except InvalidGenericSqlSource as exc:
+    except InvalidJdbcSource as exc:
         return MutationResult(
             success=False,
             message=f"Source {input.id!r}: {exc}",
-            code="schema.generic_sql_invalid",
+            code="schema.jdbc_invalid",
             params={"source": input.id, "error": str(exc)},
         )
     attached = sorted(engine for engine in settings.capabilities if settings.on(engine, ATTACH))
     if attached:
-        # No engine attaches a Generic SQL source live yet: the setting would claim a reach the
+        # No engine attaches a JDBC source live yet: the setting would claim a reach the
         # planner does not have.
         return MutationResult(
             success=False,
             message=(
-                f"Source {input.id!r}: live attach of a Generic SQL source is not built yet "
+                f"Source {input.id!r}: live attach of a JDBC source is not built yet "
                 f"(turned on for {', '.join(attached)}); its rows land"
             ),
-            code="schema.generic_sql_attach_unbuilt",
+            code="schema.jdbc_attach_unbuilt",
             params={"source": input.id, "engines": ", ".join(attached)},
         )
     return None

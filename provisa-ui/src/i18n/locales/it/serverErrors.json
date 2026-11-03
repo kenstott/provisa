@@ -479,11 +479,11 @@
       "relationship_same_entity_not_grounded": "La relazione '{{relationship}}' non può essere marcata come stessa entità: {{source}} e {{target}} non sono ancorate allo stesso termine",
       "relationship_same_entity_not_keys": "La relazione '{{relationship}}' non può essere marcata come stessa entità: {{columns}} non è la chiave primaria né una chiave univoca di {{table}}",
       "kaggle_token_missing": "Dataset Kaggle {{owner}}/{{ref}}: l'origine dati non contiene alcun token API Kaggle. Aggiungilo nel modulo Origini dati, dove si inserisce il suo token.",
-      "generic_sql_invalid": "Sorgente {{source}}: {{error}}",
-      "generic_sql_file_refused": "Sorgente {{source}}: l'URL indica {{path}}, che questo server non può aprire per l'organizzazione.",
-      "generic_sql_attach_unbuilt": "Sorgente {{source}}: il collegamento live di una sorgente Generic SQL non è ancora disponibile (attivato per {{engines}}); le sue righe vengono replicate.",
-      "generic_sql_options_refused": "Sorgente {{source}}: l'URL di questa organizzazione non può indicare l'opzione del driver {{options}}.",
-      "generic_sql_jdbc_refused": "Sorgente {{source}}: un driver JDBC del cliente viene eseguito come codice nella JVM di Provisa, cosa consentita solo da un'installazione self-hosted."
+      "jdbc_invalid": "Sorgente {{source}}: {{error}}",
+      "jdbc_file_refused": "Sorgente {{source}}: l'URL indica {{path}}, che questo server non può aprire per l'organizzazione.",
+      "jdbc_attach_unbuilt": "Sorgente {{source}}: il collegamento live di una sorgente JDBC non è ancora disponibile (attivato per {{engines}}); le sue righe vengono replicate.",
+      "jdbc_options_refused": "Sorgente {{source}}: l'URL di questa organizzazione non può indicare l'opzione del driver {{options}}.",
+      "jdbc_driver_refused": "Sorgente {{source}}: un driver JDBC del cliente viene eseguito come codice nella JVM di Provisa, cosa consentita solo da un'installazione self-hosted."
     },
     "secrets": {
       "name_refused": "{{name}} non è un nome all'interno dei segreti di questa organizzazione in {{service}}: un nome è relativo all'organizzazione e non può uscirne",

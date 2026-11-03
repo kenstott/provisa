@@ -479,11 +479,11 @@
       "relationship_same_entity_not_grounded": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: {{source}} und {{target}} sind nicht im selben Begriff verankert",
       "relationship_same_entity_not_keys": "Die Beziehung '{{relationship}}' kann nicht als dieselbe Entität markiert werden: {{columns}} ist weder der Primärschlüssel noch ein eindeutiger Schlüssel von {{table}}",
       "kaggle_token_missing": "Kaggle-Dataset {{owner}}/{{ref}}: Die Datenquelle enthält keinen Kaggle-API-Token. Fügen Sie ihn im Formular unter „Datenquellen“ hinzu, wo der Token eingegeben wird.",
-      "generic_sql_invalid": "Quelle {{source}}: {{error}}",
-      "generic_sql_file_refused": "Quelle {{source}}: Die URL nennt {{path}}, das dieser Server für die Organisation nicht öffnen darf.",
-      "generic_sql_attach_unbuilt": "Quelle {{source}}: Die Live-Anbindung einer Generic-SQL-Quelle ist noch nicht verfügbar (aktiviert für {{engines}}); ihre Zeilen werden repliziert.",
-      "generic_sql_options_refused": "Quelle {{source}}: Die URL dieser Organisation darf die Treiberoption {{options}} nicht angeben.",
-      "generic_sql_jdbc_refused": "Quelle {{source}}: Ein kundeneigener JDBC-Treiber läuft als Code in Provisas eigener JVM, was nur eine selbst gehostete Installation erlaubt."
+      "jdbc_invalid": "Quelle {{source}}: {{error}}",
+      "jdbc_file_refused": "Quelle {{source}}: Die URL nennt {{path}}, das dieser Server für die Organisation nicht öffnen darf.",
+      "jdbc_attach_unbuilt": "Quelle {{source}}: Die Live-Anbindung einer JDBC-Quelle ist noch nicht verfügbar (aktiviert für {{engines}}); ihre Zeilen werden repliziert.",
+      "jdbc_options_refused": "Quelle {{source}}: Die URL dieser Organisation darf die Treiberoption {{options}} nicht angeben.",
+      "jdbc_driver_refused": "Quelle {{source}}: Ein kundeneigener JDBC-Treiber läuft als Code in Provisas eigener JVM, was nur eine selbst gehostete Installation erlaubt."
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",

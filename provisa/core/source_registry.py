@@ -224,5 +224,5 @@ def row_materialize_refusal(
 # read, so a Qdrant source's statements transpile and its writes find their dialect.
 import provisa.qdrant.dialect  # noqa: E402, F401
 
-# REQ-2191: the ``ansi`` dialect a Generic SQL source may be written in, registered likewise.
-import provisa.generic_sql.dialect  # noqa: E402, F401
+# REQ-2191: the ``ansi`` dialect a JDBC source may be written in, registered likewise.
+import provisa.jdbc_source.dialect  # noqa: E402, F401

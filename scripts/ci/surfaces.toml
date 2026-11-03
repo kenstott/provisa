@@ -319,9 +319,9 @@ tests = ["tests/integration/test_file_glob_*.py", "tests/integration/test_files_
 [sources.firebird]
 tests = ["tests/integration/test_firebird_source_e2e.py"]
 
-[sources.generic-sql]
-paths = ["provisa/generic_sql/*"]
-tests = ["tests/integration/test_generic_sql_*.py"]
+[sources.jdbc-source]
+paths = ["provisa/jdbc_source/*"]
+tests = ["tests/integration/test_jdbc_source_*.py"]
 
 [sources.google-sheets]
 paths = ["provisa/google_sheets/*"]

@@ -30,7 +30,7 @@ Provisa 注册了 **76** 种数据源类型，即 Sources 表单所提供的类�
 
 | # | 分组 | 数据源类型 |
 | --- | --- | --- |
-| 1–16 | [RDBMS](#rdbms) | `postgresql`、`mysql`、`mariadb`、`singlestore`、`sqlserver`、`oracle`、`duckdb`、`cockroachdb`、`yugabytedb`、`greenplum`、`tidb`、`firebird`、`airport`、`saphana`、`hiveserver2`、`generic_sql` |
+| 1–16 | [RDBMS](#rdbms) | `postgresql`、`mysql`、`mariadb`、`singlestore`、`sqlserver`、`oracle`、`duckdb`、`cockroachdb`、`yugabytedb`、`greenplum`、`tidb`、`firebird`、`airport`、`saphana`、`hiveserver2`、`jdbc` |
 | 17–25 | [云数据仓库](#cloud-data-warehouses) | `snowflake`、`bigquery`、`databricks`、`redshift`, `athena`、`fabric`、`synapse`、`trino`, [`motherduck`](#motherduck) |
 | 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`、`druid`、`exasol`、`elasticsearch`、`pinot` |
 | 31–34 | [数据湖 / 开放表格式](#data-lake-open-table-formats) | `iceberg`、`delta_lake`、`hive`、`hive_s3` |

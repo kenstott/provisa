@@ -479,11 +479,11 @@
       "relationship_same_entity_not_grounded": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{source}} と {{target}} は同じ用語に紐づいていません",
       "relationship_same_entity_not_keys": "リレーションシップ '{{relationship}}' は同一エンティティとして指定できません: {{columns}} は {{table}} の主キーでも一意キーでもありません",
       "kaggle_token_missing": "Kaggle データセット {{owner}}/{{ref}}: データソースに Kaggle API トークンがありません。トークンを入力するデータソースのフォームで追加してください。",
-      "generic_sql_invalid": "ソース {{source}}: {{error}}",
-      "generic_sql_file_refused": "ソース {{source}}: URL が {{path}} を指定していますが、このサーバーは組織のためにこれを開けません。",
-      "generic_sql_attach_unbuilt": "ソース {{source}}: Generic SQL ソースのライブアタッチはまだ利用できません（{{engines}} で有効）。行はレプリカとして複製されます。",
-      "generic_sql_options_refused": "ソース {{source}}: この組織の URL ではドライバーオプション {{options}} を指定できません。",
-      "generic_sql_jdbc_refused": "ソース {{source}}: 顧客の JDBC ドライバーは Provisa 自身の JVM 内でコードとして実行されるため、セルフホスト環境でのみ許可されます。"
+      "jdbc_invalid": "ソース {{source}}: {{error}}",
+      "jdbc_file_refused": "ソース {{source}}: URL が {{path}} を指定していますが、このサーバーは組織のためにこれを開けません。",
+      "jdbc_attach_unbuilt": "ソース {{source}}: JDBC ソースのライブアタッチはまだ利用できません（{{engines}} で有効）。行はレプリカとして複製されます。",
+      "jdbc_options_refused": "ソース {{source}}: この組織の URL ではドライバーオプション {{options}} を指定できません。",
+      "jdbc_driver_refused": "ソース {{source}}: 顧客の JDBC ドライバーは Provisa 自身の JVM 内でコードとして実行されるため、セルフホスト環境でのみ許可されます。"
     },
     "secrets": {
       "name_refused": "{{name}} は {{service}} 内のこの組織のシークレットに含まれる名前ではありません。名前は組織に対する相対指定であり、組織の外に出ることはできません",
