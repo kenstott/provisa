@@ -142,7 +142,7 @@ const fieldsOf = (onFields: ReturnType<typeof vi.fn>) =>
 
 async function pick(testId: string, name: string) {
   fireEvent.click(screen.getByTestId(testId));
-  fireEvent.click(await screen.findByRole("option", { name }));
+  fireEvent.click(await screen.findByRole("option", { name, hidden: true }));
 }
 
 function Harness({ onFields }: { onFields: (f: Record<string, string>) => void }) {
@@ -170,9 +170,9 @@ describe("the JDBC fields", () => {
     expect(screen.queryByTestId("jdbc-source-host-input")).toBeNull();
     fireEvent.click(screen.getByTestId("jdbc-source-driver-select"));
     for (const name of ["PostgreSQL", "MySQL", "SQLite", "Your own JDBC driver (jar)"]) {
-      expect(await screen.findByRole("option", { name })).toBeTruthy();
+      expect(await screen.findByRole("option", { name, hidden: true })).toBeTruthy();
     }
-    fireEvent.click(screen.getByRole("option", { name: "MySQL" }));
+    fireEvent.click(screen.getByRole("option", { name: "MySQL", hidden: true }));
     fireEvent.change(screen.getByTestId("jdbc-source-host-input"), {
       target: { value: "db.example.com" },
     });
@@ -261,7 +261,7 @@ describe("the JDBC fields", () => {
     upload.mockResolvedValue({ path: "{files}/vendor/vendor-jdbc.jar", bytes: 3 });
     const onFields = vi.fn();
     const { container } = renderInForm(<Harness onFields={onFields} />);
-    await pick("jdbc-source-dialect-select", "ansi");
+    await pick("jdbc-source-dialect-select", "ANSI (generic SQL)");
     await pick("jdbc-source-driver-select", "Your own JDBC driver (jar)");
     expect(screen.queryByTestId("jdbc-source-host-input")).toBeNull();
     expect(screen.queryByTestId("jdbc-source-capability-attach")).toBeNull();
