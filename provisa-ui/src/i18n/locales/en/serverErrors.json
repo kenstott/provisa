@@ -405,6 +405,7 @@
       "source_region_set": "Region of source {{source}} set to {{region}}",
       "region_refused": "The region was not set: {{reason}}",
       "table_too_complex": "Table '{{table}}' was not registered with the columns selected: {{reason}}. Choose fewer columns.",
+      "remote_throttled": "Table '{{table}}' was not registered: the source's rate limit did not let it be checked ({{reason}}). Try again later.",
       "table_updated": "Table '{{table}}' updated (id={{id}})",
       "task_deleted": "Task '{{task}}' deleted",
       "task_disabled": "Task '{{task}}' disabled",

@@ -405,6 +405,7 @@
       "source_region_set": "Região da origem {{source}} definida como {{region}}",
       "region_refused": "A região não foi definida: {{reason}}",
       "table_too_complex": "A tabela '{{table}}' não foi registrada com as colunas selecionadas: {{reason}}. Escolha menos colunas.",
+      "remote_throttled": "A tabela '{{table}}' não foi registrada: o limite de taxa da fonte não permitiu verificá-la ({{reason}}). Tente novamente mais tarde.",
       "table_updated": "Tabela '{{table}}' atualizada (id={{id}})",
       "task_deleted": "Tarefa '{{task}}' excluída",
       "task_disabled": "Tarefa '{{task}}' desabilitada",

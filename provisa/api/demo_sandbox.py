@@ -457,21 +457,11 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
     from provisa.core.demo_bundles import SANDBOX_DEMO_DIRECTORY
 
     (org_files.folder(org_id) / SANDBOX_DEMO_DIRECTORY).write_text(str(demo.directory))
-    from provisa.api.demo_replicas import (
-        bitemporal_view_tables,
-        copy_to_sandbox,
-        copy_views_to_sandbox,
-    )
-    from provisa.api.demo_templates import replicated_tables, template_seed
-
-    from provisa.api.demo_region_seed import regional
+    from provisa.api.demo_replicas import bitemporal_view_tables, copy_views_to_sandbox
+    from provisa.api.demo_templates import template_seed
 
     seed = template_seed(demo.template_org)
-    # Only what the demo serves from replicas is copied (REQ-2049): its own sources are read live.
-    # A regions demo's other regions' views are copied with them (REQ-2068).
-    if replicated_tables(seed) or regional():
-        async with _stage(org_id, demo.name, "the template's store"):
-            await copy_to_sandbox(demo.template_org, org_id)
+    await carry_landed_data(demo.template_org, org_id, seed, demo.name)
     # REQ-1162: and its bitemporal views' history, which no refresh of those sources gives back.
     if views := bitemporal_view_tables(seed):
         async with _stage(org_id, demo.name, "the template's views"):
@@ -547,6 +537,28 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
         env_name=PROD,  # REQ-1503: a sandbox is served from its one environment
     )
     return secret
+
+
+async def carry_landed_data(template_org: str, org_id: str, seed: Any, demo: str) -> None:
+    """The template's landed data, into sandbox ``org_id``'s own store, before its runtime is
+    built. Only what the demo serves from replicas is copied (REQ-2049): its own sources are read
+    live. A regions demo's other regions' views are copied with them (REQ-2068). And what its
+    listeners land from Kafka topics (REQ-2049, amended 2026-11-03): a sandbox landing those itself
+    started from the topic's first message, so its first read, and its views' first refresh, found
+    them empty. Where the template's listeners stopped is recorded as where the sandbox's landing
+    stopped first, then the rows are copied: its listener continues from there."""
+    from provisa.api import demo_replicas
+    from provisa.api.demo_region_seed import regional
+    from provisa.api.demo_templates import replicated_tables
+
+    # A regions tier copies each region's data through its seeds (demo_region_seed).
+    live = [] if regional() else demo_replicas.live_landed_tables(seed)
+    if live:
+        async with _stage(org_id, demo, "where its template's landing stopped"):
+            await demo_replicas.continue_live_landing(template_org, org_id, seed)
+    if live or regional() or replicated_tables(seed):
+        async with _stage(org_id, demo, "the template's store"):
+            await demo_replicas.copy_to_sandbox(template_org, org_id)
 
 
 async def demo_directory_of(org_id: str) -> Path | None:

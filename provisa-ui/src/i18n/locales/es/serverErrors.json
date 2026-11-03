@@ -405,6 +405,7 @@
       "source_region_set": "Región del origen {{source}} establecida en {{region}}",
       "region_refused": "No se estableció la región: {{reason}}",
       "table_too_complex": "La tabla '{{table}}' no se registró con las columnas seleccionadas: {{reason}}. Elija menos columnas.",
+      "remote_throttled": "La tabla '{{table}}' no se registró: el límite de solicitudes del origen no permitió comprobarla ({{reason}}). Inténtelo de nuevo más tarde.",
       "table_updated": "Tabla '{{table}}' actualizada (id={{id}})",
       "task_deleted": "Tarea '{{task}}' eliminada",
       "task_disabled": "Tarea '{{task}}' deshabilitada",

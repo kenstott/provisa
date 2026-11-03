@@ -405,6 +405,7 @@
       "source_region_set": "Region der Quelle {{source}} auf {{region}} gesetzt",
       "region_refused": "Die Region wurde nicht gesetzt: {{reason}}",
       "table_too_complex": "Die Tabelle '{{table}}' wurde mit den ausgewählten Spalten nicht registriert: {{reason}}. Wählen Sie weniger Spalten.",
+      "remote_throttled": "Die Tabelle '{{table}}' wurde nicht registriert: Das Ratenlimit der Quelle ließ ihre Prüfung nicht zu ({{reason}}). Versuchen Sie es später erneut.",
       "table_updated": "Tabelle '{{table}}' aktualisiert (id={{id}})",
       "task_deleted": "Aufgabe '{{task}}' gelöscht",
       "task_disabled": "Aufgabe '{{task}}' deaktiviert",

@@ -405,6 +405,7 @@
       "source_region_set": "Regio van bron {{source}} ingesteld op {{region}}",
       "region_refused": "De regio is niet ingesteld: {{reason}}",
       "table_too_complex": "Tabel '{{table}}' is niet geregistreerd met de geselecteerde kolommen: {{reason}}. Kies minder kolommen.",
+      "remote_throttled": "Tabel '{{table}}' is niet geregistreerd: de snelheidslimiet van de bron liet geen controle toe ({{reason}}). Probeer het later opnieuw.",
       "table_updated": "Tabel '{{table}}' bijgewerkt (id={{id}})",
       "task_deleted": "Taak '{{task}}' verwijderd",
       "task_disabled": "Taak '{{task}}' uitgeschakeld",

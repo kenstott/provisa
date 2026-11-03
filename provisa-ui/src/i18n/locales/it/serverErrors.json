@@ -405,6 +405,7 @@
       "source_region_set": "Regione dell'origine {{source}} impostata su {{region}}",
       "region_refused": "La regione non è stata impostata: {{reason}}",
       "table_too_complex": "La tabella '{{table}}' non è stata registrata con le colonne selezionate: {{reason}}. Scegliere meno colonne.",
+      "remote_throttled": "La tabella '{{table}}' non è stata registrata: il limite di frequenza dell'origine non ne ha consentito la verifica ({{reason}}). Riprovare più tardi.",
       "table_updated": "Tabella '{{table}}' aggiornata (id={{id}})",
       "task_deleted": "Attività '{{task}}' eliminata",
       "task_disabled": "Attività '{{task}}' disabilitata",

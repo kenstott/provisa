@@ -185,6 +185,27 @@ def cdc_capture(src: Any, tbl: Any) -> tuple[str, str] | None:
     return cdc.bootstrap_servers, topic
 
 
+def kafka_bootstrap(src: Any) -> str:
+    """The bootstrap address of Kafka source ``src``, its host resolved as a source pool's is
+    (it may name an environment variable or a secret, ${env:...})."""
+    from provisa.core.secrets import resolve_secrets
+
+    host = resolve_secrets(src.host) if src.host else src.host
+    # REQ-1766: was `src.host` alone — the Sources form (now HOST_PORT_ONLY, see
+    # provisa-ui/src/pages/sources/constants.ts) captures host and port as SEPARATE fields,
+    # the same shape websocket's own ws://host:port derivation uses. Passing bare host as
+    # bootstrap_servers silently used aiokafka's default port (9092) regardless of what the user
+    # actually registered, rather than failing loudly or connecting correctly.
+    return f"{host}:{src.port}" if src.port else host
+
+
+def listener_group(org: str, env: str | None, source_id: str) -> str:
+    """The consumer group an org's (and environment's) listener on ``source_id``'s topics reads
+    under. Each org lands the topic into its own table, so each reads every message: its own
+    group. One shared by every org would split the topic's messages among them."""
+    return f"provisa-{org}-{source_id}" if env is None else f"provisa-{org}-{env}-{source_id}"
+
+
 def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None:
     """A (NotificationProvider, watch_target) pair for *src*, or None (logged) when its config is
     incomplete. ``watch_target`` is what gets passed to ``provider.watch()`` — the Kafka topic for
@@ -218,17 +239,9 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
                 src.id,
             )
             return None
-        # REQ-1766: was `src.host` alone — the Sources form (now HOST_PORT_ONLY, see
-        # provisa-ui/src/pages/sources/constants.ts) captures host and port as SEPARATE fields,
-        # the same shape websocket's own ws://host:port derivation uses just below. Passing bare
-        # host as bootstrap_servers silently used aiokafka's default port (9092) regardless of
-        # what the user actually registered, rather than failing loudly or connecting correctly.
-        bootstrap_servers = f"{host}:{src.port}" if src.port else host
-        # Each org (and each of its environments) lands the topic into its own table, so each
-        # reads every message: its own consumer group. One shared by every org would split the
-        # topic's messages among them.
+        bootstrap_servers = kafka_bootstrap(src)
         org, env, _ = _listener_key(node)
-        group = f"provisa-{org}-{src.id}" if env is None else f"provisa-{org}-{env}-{src.id}"
+        group = listener_group(org, env, src.id)
         provider = get_provider(
             "kafka",
             {

@@ -80,6 +80,8 @@ function props(seedOf: Source): SourceFormFieldsProps {
     onOpenapiPreview: noop,
     gqlNamespace: "",
     setGqlNamespace: noop,
+    brandSetup: {},
+    setBrandSetup: noop,
     gqlCacheTtl: "300",
     setGqlCacheTtl: noop,
     grpcProtoPath: "",

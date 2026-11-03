@@ -28,6 +28,7 @@ import {
   API_AUTH_TYPES,
   BRAND_CARRIER,
   BRAND_AUTH,
+  BRAND_SETUP,
   FILE_TRANSPORTS,
   KAFKA_AUTH_TYPES,
 } from "./constants";
@@ -128,6 +129,8 @@ export function SourceFormFieldsExtended({
   onOpenapiPreview,
   gqlNamespace,
   setGqlNamespace,
+  brandSetup,
+  setBrandSetup,
   gqlCacheTtl,
   setGqlCacheTtl,
   grpcProtoPath,
@@ -266,6 +269,19 @@ export function SourceFormFieldsExtended({
           onSourcesRegistered={onKaggleSourcesRegistered ?? (() => {})}
         />
       )}
+      {/* REQ-1923: a brand reached at a per-customer address asks where (BRAND_SETUP). */}
+      {(BRAND_SETUP[form.type] ?? []).map((field) => (
+        <FormField key={field.name} hint={t(field.hintKey)} size="medium">
+          <TextInput
+            required={field.required}
+            label={t(field.labelKey)}
+            value={brandSetup[field.name] ?? ""}
+            onChange={(e) => setBrandSetup({ ...brandSetup, [field.name]: e.target.value })}
+            placeholder={field.placeholder}
+            data-testid={`brand-setup-${field.name}-input`}
+          />
+        </FormField>
+      ))}
       {/* REQ-1923: a brand asks for the credential it states (BRAND_AUTH), never one by default. */}
       {BRAND_AUTH[form.type] === "token" && (
         <FormField
