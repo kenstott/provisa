@@ -237,3 +237,13 @@ class TestDescribedInOtherWordForms:
         ]
         found = fuzzy_filter("customer invoicing", [*mentions, _make("shop__customers", [])])
         assert found[0].name == "shop__customers"
+
+    def test_a_table_named_for_nothing_but_the_word_ranks_above_narrower_ones(self):
+        narrower = [
+            _make(f"shop__{kind}_orders", [], comment="Orders a customer placed.")
+            for kind in ("draft", "company", "company_location", "subscription")
+        ]
+        found = fuzzy_filter(
+            "customer orders", [*narrower, _make("shop__orders", [], "Orders a customer placed.")]
+        )
+        assert found[0].name == "shop__orders"

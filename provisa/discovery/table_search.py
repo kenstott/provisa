@@ -71,9 +71,11 @@ def _terms(text: str) -> set[str]:  # REQ-464
     return {_stem(t) for t in _tokenize(text)}
 
 
-def _name_hits(query_terms: set[str], candidate: TableCandidate) -> int:  # REQ-464
-    """How many of the query's words the table's own name carries."""
-    return len(query_terms & _terms(candidate.name))
+def _name_rank(query_terms: set[str], candidate: TableCandidate) -> tuple[int, int]:  # REQ-464
+    """How many of the query's words the table's own name carries, then how few other words it
+    has: ``orders`` is the orders table, ``draft_orders`` a narrower one."""
+    name_terms = _terms(candidate.name)
+    return len(query_terms & name_terms), -len(name_terms - query_terms)
 
 
 def _fuzzy_score(query_terms: set[str], candidate: TableCandidate) -> int:
@@ -106,9 +108,10 @@ def fuzzy_filter(  # REQ-167
 
     scored = [(c, _fuzzy_score(query_terms, c)) for c in candidates]
     scored = [(c, s) for c, s in scored if s >= _MIN_FUZZY_SCORE]
-    # Of tables matching as much of the query, one named for its words comes first: in a large
-    # schema hundreds of tables mention a customer, and the cut below keeps the first.
-    scored.sort(key=lambda x: (x[1], _name_hits(query_terms, x[0])), reverse=True)
+    # Of tables matching as much of the query, one named for its words comes first, and of those
+    # the one named for nothing else: in a large schema hundreds of tables mention a customer,
+    # dozens are named for a kind of order, and the cut below keeps the first.
+    scored.sort(key=lambda x: (x[1], *_name_rank(query_terms, x[0])), reverse=True)
     return [c for c, _ in scored[:max_results]]
 
 

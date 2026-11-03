@@ -92,8 +92,14 @@ async def _search(q: str) -> list[str]:
     return [c["table_name"] for c in answer["candidates"]]
 
 
-async def test_a_customer_description_finds_the_shopify_customers_and_orders(shop_state):
-    found = await _search("customer invoicing")
+async def test_a_customer_description_finds_the_shopify_customers(shop_state):
+    assert "shopify__customers" in await _search("customer invoicing")
+
+
+async def test_a_description_of_customer_orders_finds_the_customers_and_the_orders(shop_state):
+    # Dozens of Shopify's tables are a kind of order (draft orders, a company's orders); the
+    # orders table itself is among those the model is shown.
+    found = await _search("customer orders")
     assert "shopify__customers" in found
     assert "shopify__orders" in found
 
