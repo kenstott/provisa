@@ -164,15 +164,22 @@ def test_an_apoc_function_is_read_as_a_function_call():
     assert item.expression.name == "apoc.util.sleep"
 
 
-def test_unbounded_variable_length_rejected():
-    with pytest.raises(CypherParseError, match="[Uu]nbounded"):
-        parse_cypher("MATCH (n:Person)-[*]->(m:Company) RETURN n")
+def test_unbounded_variable_length_parses_with_no_upper_bound():
+    # REQ-348 (amended 2026-11-03): [*] is one hop or more; the translation takes the maximum.
+    rel = (
+        parse_cypher("MATCH (n:Person)-[*]->(m:Company) RETURN n").match_clauses[0].pattern.rels[0]
+    )
+    assert (rel.variable_length, rel.min_hops, rel.max_hops) == (True, 1, None)
 
 
-def test_unbounded_variable_length_written_out_rejected():
+def test_unbounded_variable_length_written_out_is_unbounded():
     # [*..] is [*] written out (REQ-348; openCypher TCK Match5 [2]).
-    with pytest.raises(CypherParseError, match="Unbounded variable-length pattern"):
+    rel = (
         parse_cypher("MATCH (n:Person)-[*..]->(m:Company) RETURN n")
+        .match_clauses[0]
+        .pattern.rels[0]
+    )
+    assert (rel.variable_length, rel.min_hops, rel.max_hops) == (True, 1, None)
 
 
 def test_missing_return_rejected():

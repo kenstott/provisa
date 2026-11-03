@@ -18,11 +18,11 @@ every server, each in its own group citing its requirement and the driver's or s
 Every other case that did not pass is failed. Each case skipped by design keeps its recorded
 reason. The groups are declared per surface in ``by_design/<surface>.yaml``:
 
-    - group: Unbounded variable-length patterns
-      requirement: REQ-348
-      decision: Maximum hop depth is enforced at compile time; unbounded `[*]` is rejected.
-      reason: "Unbounded variable-length pattern"  # a regex the failure's reason matches, and/or
-      case: "VarLengthAcceptance"                  # a regex its feature::scenario matches
+    - group: Dates beyond the years Provisa holds
+      requirement: REQ-2173
+      decision: A date beyond years 0001 to 9999 is refused by name.
+      reason: "is beyond the dates Provisa holds"  # a regex the failure's reason matches, and/or
+      case: "^Temporal10 - "                       # a regex its feature::scenario matches
 
 A group with no requirement is refused: a case with no design decision behind it stays failed.
 
