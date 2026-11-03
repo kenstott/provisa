@@ -598,6 +598,29 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
                     })
                 });
             }
+            if let Some(g) = bytes_getter(arr) {
+                // A UUID's 16 bytes in a plain binary column (pgwire's _uuid: a fixed_size_binary(16)
+                // without the arrow.uuid extension reads back as bytes), written as that UUID.
+                let sixteen = move |i: usize| -> R<&'static [u8]> {
+                    let b = g(i);
+                    if b.len() == 16 {
+                        Ok(b)
+                    } else {
+                        Err(EncErr::Value("bytes is not a 16-char string".into()))
+                    }
+                };
+                return Ok(if binary {
+                    Box::new(move |i, out| {
+                        out.extend_from_slice(sixteen(i)?);
+                        Ok(())
+                    })
+                } else {
+                    Box::new(move |i, out| {
+                        uuid_text(sixteen(i)?, out);
+                        Ok(())
+                    })
+                });
+            }
             let g = str_getter(arr).ok_or_else(|| unsupported(kind, &dt))?;
             Ok(if binary {
                 Box::new(move |i, out| {

@@ -302,7 +302,14 @@ def _declared(declared: str | None) -> str:
 
 
 def _column(values: list[Any], declared: str | None) -> pa.Array:
-    values = [bytes(v) if isinstance(v, (memoryview, bytearray)) else v for v in values]
+    values = [
+        bytes(v)
+        if isinstance(v, (memoryview, bytearray))
+        else _by_zoneinfo(v)
+        if isinstance(v, datetime)
+        else v
+        for v in values
+    ]
     present = [v for v in values if v is not None]
     if not present:
         return pa.nulls(len(values))
@@ -332,6 +339,17 @@ def _column(values: list[Any], declared: str | None) -> pa.Array:
     kind = _declared(declared)
     texts = [None if v is None else _text(v, kind) for v in values]
     return _inferred(texts) or pa.array([None if v is None else str(v) for v in values])
+
+
+def _by_zoneinfo(value: datetime) -> datetime:
+    """A datetime in a pytz zone (pyarrow's to_pylist, DuckDB's rows) as the same instant in that
+    zone by zoneinfo (``_zone``), whose rules PostgreSQL's agree with; pytz has no daylight time
+    after 2037, no transitions before 1901 and offsets rounded to the minute. Any other value is
+    itself."""
+    name = getattr(value.tzinfo, "zone", None)
+    if not isinstance(name, str) or getattr(value, "pg_infinity", 0):
+        return value
+    return value.astimezone(_zone(name))
 
 
 def _inferred(values: list[Any]) -> pa.Array | None:
