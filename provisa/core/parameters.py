@@ -70,6 +70,12 @@ def parameter_name(column: Any) -> str:
     return name[len(NF_PREFIX) :] if name.startswith(NF_PREFIX) else name
 
 
+def required_parameters(columns: Iterable[Any]) -> list[str]:
+    """The parameters of ``columns`` a read must give, by the name a caller gives each: what the
+    Register Table picker names a table by before it is registered."""
+    return [parameter_name(c) for c in columns if is_parameter(c) and is_required(c)]
+
+
 def _canonical(name: str) -> str:
     from provisa.compiler.naming import apply_sql_name
 

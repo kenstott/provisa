@@ -58,7 +58,7 @@ function MetricActions({
             itemKey={m.name}
             title={t("metricsPage.deleteTitle")}
             consequence={t("metricsPage.deleteConfirm", { name: m.name })}
-            label={t("metricsPage.deleteMetric", { name: m.name })}
+            ariaLabel={t("metricsPage.deleteMetric", { name: m.name })}
             testId={`metric-detail-delete-${m.name}`}
             confirmTestId="metric-delete-modal"
             onDelete={onDelete}

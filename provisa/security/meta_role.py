@@ -465,6 +465,24 @@ def _build(
     state.meta_qualifiers[meta_id] = tuple(qualifiers)
 
 
+def fold_tables(state: Any, meta_id: str, tables: list[dict]) -> Any:  # REQ-1620, REQ-1921
+    """How the meta-role ``meta_id`` reads ``tables``, tables its build did not fold (a draft its
+    steward previews, admin/table_read.py): granted to it as :func:`_build` grants a table in
+    service -- every grant to a member reaches it, expanded on ``tables`` in place -- and its row
+    filters and member reads folded from its members' as :func:`_build` folds them. ``state`` is
+    a view whose members' surfaces read ``tables``. Returns the folded RLSContext."""
+    from provisa.security.inheritance import expand_grants
+
+    member_ids = list(state.meta_roles[meta_id])
+    qualifiers = tuple(state.meta_qualifiers.get(meta_id, ()))
+    chains = {
+        meta_id: meta_chain(meta_id, member_ids, state.role_build_inputs["role_chains"], qualifiers)
+    }
+    for t in tables:
+        expand_grants(t.get("columns") or [], chains)
+    return _rls(state, [state.roles[m] for m in member_ids], tables, qualifiers)
+
+
 def ensure_meta_role(state: Any, members: list[str], qualifiers: tuple[str, ...] = ()) -> str:
     """The meta-role acting as ``members`` (roles the caller holds, two or more), built on first
     use. A rebuild of the model rebuilds it from the rebuilt members while requests may still be

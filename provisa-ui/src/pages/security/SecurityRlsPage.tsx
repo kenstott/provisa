@@ -575,7 +575,7 @@ export function SecurityRlsPage() {
                   consequence={t("securityPage.deleteRuleConsequence", {
                     role: r.roleId,
                   })}
-                  label={t("securityPage.delete")}
+                  ariaLabel={t("securityPage.delete")}
                   testId={`delete-rule-${r.id}`}
                   onDelete={() => handleDeleteRule(r)}
                 />

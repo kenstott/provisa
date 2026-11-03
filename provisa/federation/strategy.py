@@ -200,7 +200,10 @@ def federate(
     known-large, is promoted to MATERIALIZED (see promote.should_promote). Both must be
     supplied to arm promotion; absent them, resolution is capability-only as before.
     """
-    source_type = source.type.value
+    from provisa.jdbc_source.attach import reach_type
+
+    # REQ-2191: a JDBC source attached live here is reached as the built-in type its URL names.
+    source_type = reach_type(source, engine)
     # REQ-1867: a source that asks to be read in place gets the engine's opt-in reach for its type
     # (refused by name when there is none); any other source gets its type's reach.
     if engine.asks_in_place(source):

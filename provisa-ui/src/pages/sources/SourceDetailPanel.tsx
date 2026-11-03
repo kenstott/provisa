@@ -151,7 +151,7 @@ export function SourceDetailPanel({
             itemKey={s.id}
             title={t("sourceDetailPanel.deleteTitle", { id: s.id })}
             consequence={t("sourceDetailPanel.deleteConsequence", { id: s.id })}
-            label={t("sourceDetailPanel.deleteTitleShort")}
+            ariaLabel={t("sourceDetailPanel.deleteTitleShort")}
             testId="source-detail-delete"
             onDelete={onDelete}
           />

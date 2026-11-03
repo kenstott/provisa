@@ -98,7 +98,7 @@ export function RelationshipDetail({
                 itemKey={r.id}
                 title={t("relationshipRow.deleteTitle", { id: r.id })}
                 consequence={t("relationshipRow.deleteConsequence")}
-                label={t("relationshipRow.delete")}
+                ariaLabel={t("relationshipRow.delete")}
                 testId="relationship-detail-delete"
                 onDelete={onDelete}
               />

@@ -603,7 +603,7 @@ export function ScheduledTasks() {
               itemKey={selected.id}
               title={t("scheduledTasks.deleteTitle", { name: selected.name })}
               consequence={t("scheduledTasks.deleteConsequence")}
-              label={t("scheduledTasks.deleteAria", { name: selected.name })}
+              ariaLabel={t("scheduledTasks.deleteAria", { name: selected.name })}
               testId="scheduled-task-delete"
               onDelete={async () => {
                 const result = await deleteScheduledTask(selected.id);

@@ -806,13 +806,14 @@ def _settle_table_names(engine: Any, config: ProvisaConfig) -> None:  # REQ-471
     """
     from provisa.compiler.naming import apply_sql_name
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     if engine is None:
         return
     sources_by_id = {src.id: src for src in config.sources}
     for tbl in config.tables:
         src = sources_by_id.get(tbl.source_id)
-        if src is not None and not engine_attaches(engine, src.type.value):
+        if src is not None and not engine_attaches(engine, reach_type(src, engine)):
             tbl.table_name = apply_sql_name(tbl.table_name)
 
 
@@ -1994,7 +1995,9 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     made — leaving what the deployment seeds into every store (the built-in sources and their
     tables, the system domains, the seeded roles and the people holding them). Within the
     caller's transaction. A demo organisation is rebuilt from its configuration by this followed
-    by an apply (:func:`rebuild_from_config`)."""
+    by an apply (:func:`rebuild_from_config`), which drops the profile result relations of the
+    tables it removes once it has committed (profiler.schema.drop_superseded_results): each is
+    named by its table's id, and the apply registers the table again under another."""
     from sqlalchemy import delete
 
     from provisa.core.db import SEEDED_DOMAIN_IDS, SEEDED_ROLE_IDS, SEEDED_SOURCE_IDS
@@ -2215,6 +2218,12 @@ async def _apply(
 
                     await load_runs(conn, carried_runs)
                 await _mark_seeded(conn)
+    if reset:
+        # After the commit, in transactions of their own: the backlog of a template's rebuilds,
+        # held in the rebuild's one transaction, ran out the lock table.
+        from provisa.profiler.schema import drop_superseded_results
+
+        await drop_superseded_results(conn)
     return failed
 
 

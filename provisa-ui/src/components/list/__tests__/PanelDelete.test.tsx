@@ -85,7 +85,7 @@ function Page({ onDelete }: { onDelete: () => Promise<boolean | void> }) {
               itemKey={open}
               title={`Delete ${open}?`}
               consequence="It is deleted."
-              label={`Delete ${open}`}
+              ariaLabel={`Delete ${open}`}
               testId="delete"
               onDelete={async () => {
                 const outcome = await onDelete();
@@ -229,7 +229,7 @@ function ExpandPage({ onDelete }: { onDelete: () => Promise<boolean | void> }) {
                     itemKey="orders"
                     title="Delete orders?"
                     consequence="It is deleted."
-                    label="Delete orders"
+                    ariaLabel="Delete orders"
                     testId="delete"
                     onDelete={onDelete}
                   />

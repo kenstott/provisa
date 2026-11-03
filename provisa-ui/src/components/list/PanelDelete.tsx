@@ -38,7 +38,7 @@ export interface PanelDeleteProps {
   title: string;
   consequence: string;
   /** The control's accessible name and tip. */
-  label: string;
+  ariaLabel: string;
   testId?: string;
   /**
    * The delete. It resolves once the item is deleted and the list read again without it; it
@@ -60,7 +60,7 @@ export function PanelDelete({
   itemKey,
   title,
   consequence,
-  label,
+  ariaLabel,
   testId,
   onDelete,
   icon = <Trash2 size={14} />,
@@ -141,13 +141,13 @@ export function PanelDelete({
         testId={confirmTestId ?? (testId ? `${testId}-confirm-dialog` : undefined)}
       >
         {(open) => (
-          <Tip text={label} named>
+          <Tip text={ariaLabel} named>
             <ActionIcon
               // Borderless, as the panel head's one style (PanelHeadStyle) draws it, and the same
               // beneath a row, where that style is not applied.
               variant="subtle"
               color="red"
-              aria-label={label}
+              aria-label={ariaLabel}
               data-testid={testId}
               disabled={busy}
               data-deleting={busy || undefined}

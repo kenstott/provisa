@@ -86,7 +86,10 @@ def test_a_capability_is_held_per_engine():
         ({gs.URL: "sqlite:///a.db", gs.SQL_DIALECT: "klingon"}, "'klingon' is not a SQL dialect"),
         ({gs.URL: "no-scheme", gs.SQL_DIALECT: "ansi"}, "names no scheme"),
         (_hints("sqlite:///a.db", duckdb="predicate,functions"), "functions is not a capability"),
-        (_hints("sqlite:///a.db", duckdb="attach"), "a sqlite URL has no engine attach"),
+        (
+            _hints("vertica+vertica_python://h/db", duckdb="attach"),
+            "a vertica URL has no engine attach",
+        ),
     ],
 )
 def test_settings_that_cannot_be_a_source_are_refused_by_name(hints, said):
@@ -95,11 +98,14 @@ def test_settings_that_cannot_be_a_source_are_refused_by_name(hints, said):
 
 
 def test_the_attach_an_engine_can_try_follows_from_the_url_scheme():
-    assert gs.attach_kind("postgresql+psycopg2://h/db") == "postgres"
-    assert gs.attach_kind("postgresql://h/db") == "postgres"
-    assert gs.attach_kind("mysql+pymysql://h/db") == "mysql"
-    assert gs.attach_kind("mssql+pyodbc://h/db") is None
-    assert gs.attach_kind("sqlite:///{files}/a.db") is None
+    from provisa.jdbc_source.attach import named_type
+
+    assert named_type("postgresql+psycopg2://h/db") == "postgresql"
+    assert named_type("postgresql://h/db") == "postgresql"
+    assert named_type("mysql+pymysql://h/db") == "mysql"
+    assert named_type("mssql+pyodbc://h/db") == "sqlserver"
+    assert named_type("sqlite:///{files}/a.db") == "sqlite"
+    assert named_type("vertica+vertica_python://h/db") is None
 
 
 def test_the_sources_dialect_is_the_one_its_admin_chose():
@@ -209,8 +215,11 @@ def test_the_save_refuses_by_name(org, monkeypatch):
     leaves = jdbc_source_refusal(_input(_hints("sqlite:///{files}/../../x.db")))
     assert leaves is not None and leaves.code == "schema.jdbc_file_refused"
     assert leaves.params["path"] == "{files}/../../x.db"
-    attach = jdbc_source_refusal(_input(_hints("postgresql://h/db", "postgres", duckdb="attach")))
-    assert attach is not None and attach.code == "schema.jdbc_attach_unbuilt"
+    # Live attach turned on is kept: the source attaches as the type its URL names.
+    assert (
+        jdbc_source_refusal(_input(_hints("postgresql://h/db", "postgres", duckdb="attach")))
+        is None
+    )
     monkeypatch.setattr("provisa.security.sandbox_egress.held", lambda _org: True)
     options = jdbc_source_refusal(_input(_hints("postgresql://h/db?host=10.0.0.5", "postgres")))
     assert options is not None and options.code == "schema.jdbc_options_refused"
@@ -306,7 +315,9 @@ def test_a_jdbc_url_needs_its_driver_jar_and_class_and_has_no_attach():
         gs.parse(_hints(url))
     hints = {**_hints(url), jdbc.DRIVER_JAR: "{files}/sqlite-jdbc.jar", jdbc.DRIVER_CLASS: "x.D"}
     assert gs.parse(hints).url == url
-    assert gs.attach_kind(url) is None
+    from provisa.jdbc_source.attach import named_type
+
+    assert named_type(url) is None
     with pytest.raises(gs.InvalidJdbcSource, match="jdbc URL has no engine attach"):
         gs.parse({**hints, gs.capabilities_key("duckdb"): "attach"})
 

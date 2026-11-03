@@ -348,7 +348,7 @@ function DocumentDetail({
                   : t("referenceLibrary.removeConsequence", { title: doc.title })
               }
               confirmLabel={proposed ? t("referenceLibrary.discard") : t("referenceLibrary.remove")}
-              label={proposed ? t("referenceLibrary.discard") : t("referenceLibrary.remove")}
+              ariaLabel={proposed ? t("referenceLibrary.discard") : t("referenceLibrary.remove")}
               icon={proposed ? <X size={14} /> : undefined}
               testId={proposed ? "reflib-discard" : "reflib-remove"}
               confirmTestId="reflib-confirm"

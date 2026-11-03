@@ -284,7 +284,7 @@ export function DerivedRoleDetail({
               itemKey={derivedRowKey(role.attribute)}
               title={t("securityPage.deleteDerivedTitle", { id: role.attribute })}
               consequence={t("securityPage.deleteDerivedConsequence")}
-              label={t("securityPage.delete")}
+              ariaLabel={t("securityPage.delete")}
               testId={`delete-derived-role-${role.attribute}`}
               onDelete={remove}
             />

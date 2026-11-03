@@ -8996,32 +8996,44 @@
   type: behavioral
   description: 'Path queries — `shortestPath(...)`, `allShortestPaths(...)`, and variable-length relationship
     patterns `[*1..n]` — translate to Trino recursive CTEs (`WITH RECURSIVE`) against the adjacency relation
-    defined in the label mapping. Maximum hop depth is enforced at compile time; unbounded `[*]` is rejected.
-    (Amended 2026-10-28, A SHORTEST PATH NAMES ITS ENDPOINTS'' LABELS:) [SUPERSEDED by REQ-348 amendment
-    UNLABELLED SHORTEST PATHS IN A SESSION, 2026-10-28 -- unlabelled endpoints are allowed in a graph session.
-    Kept here for history; do not implement against it.] shortestPath and allShortestPaths require a labelled
-    source node and a labelled target node, in the model graph and in a graph session alike: a label is
-    what places an endpoint, and a path search from an unlabelled node would start from every table and
-    walk every relationship. A shortest-path pattern with an unlabelled endpoint is refused by name, and
-    the conformance cases that use one are skipped by design under this decision. [END SUPERSEDED BLOCK]
-    (Amended 2026-10-28, UNLABELLED SHORTEST PATHS IN A SESSION:) On the model graph, shortestPath and allShortestPaths
-    require a labelled source node and a labelled target node: a label places an endpoint in its table and
-    the hops in their relationship tables, and without it every hop would be a union over all of them. An
-    unlabelled endpoint there is refused by name, and conformance cases that need one on the model graph
-    are skipped by design under this decision. In a graph session the endpoints need no label: every session
-    relationship lives in the session''s one relationships table, indexed on both ends, so an unlabelled
-    shortest path walks the same table a labelled one does, at the same cost. (Amended 2026-10-28, LABELLED
-    OR BOUND:) [SUPERSEDED by REQ-348 amendment ONE END BOUND OR BINDABLE, 2026-10-28 -- the rule needs
-    one anchored end, not both. Kept here for history; do not implement against it.] Wherever an endpoint
-    must be labelled (shortestPath, allShortestPaths and variable-length patterns on the model graph), it
-    must be labelled or bound: [END SUPERSEDED BLOCK] a variable an earlier clause bound, as in `MATCH (n0:Terms)
-    OPTIONAL MATCH (n0)-[*..2]->(m:Terms)`, satisfies the rule, written bare or not (REQ-347). (Amended
-    2026-10-28, ONE END BOUND OR BINDABLE:) A path search (shortestPath, allShortestPaths and variable-length
-    patterns on the model graph) must not start from a free node: at least one of its ends must be bound
-    (by an earlier clause) or bindable (labelled, which binds it to its table). The search starts from that
-    end and walks outward, each hop following only the relationships that leave the tables reached so far,
-    so the other end may be free: it is whatever the walk reaches within the hop bound. A pattern with both
-    ends free is refused by name.'
+    defined in the label mapping. [SUPERSEDED by REQ-348, 2026-11-03 -- an unbounded path compiles with
+    the maximum depth substituted. Kept here for history; do not implement against it.] Maximum hop depth
+    is enforced at compile time; unbounded `[*]` is rejected. [END SUPERSEDED BLOCK] (Amended 2026-10-28,
+    A SHORTEST PATH NAMES ITS ENDPOINTS'' LABELS:) [SUPERSEDED by REQ-348 amendment UNLABELLED SHORTEST
+    PATHS IN A SESSION, 2026-10-28 -- unlabelled endpoints are allowed in a graph session. Kept here for
+    history; do not implement against it.] shortestPath and allShortestPaths require a labelled source node
+    and a labelled target node, in the model graph and in a graph session alike: a label is what places
+    an endpoint, and a path search from an unlabelled node would start from every table and walk every relationship.
+    A shortest-path pattern with an unlabelled endpoint is refused by name, and the conformance cases that
+    use one are skipped by design under this decision. [END SUPERSEDED BLOCK] (Amended 2026-10-28, UNLABELLED
+    SHORTEST PATHS IN A SESSION:) On the model graph, shortestPath and allShortestPaths require a labelled
+    source node and a labelled target node: a label places an endpoint in its table and the hops in their
+    relationship tables, and without it every hop would be a union over all of them. An unlabelled endpoint
+    there is refused by name, and conformance cases that need one on the model graph are skipped by design
+    under this decision. In a graph session the endpoints need no label: every session relationship lives
+    in the session''s one relationships table, indexed on both ends, so an unlabelled shortest path walks
+    the same table a labelled one does, at the same cost. (Amended 2026-10-28, LABELLED OR BOUND:) [SUPERSEDED
+    by REQ-348 amendment ONE END BOUND OR BINDABLE, 2026-10-28 -- the rule needs one anchored end, not both.
+    Kept here for history; do not implement against it.] Wherever an endpoint must be labelled (shortestPath,
+    allShortestPaths and variable-length patterns on the model graph), it must be labelled or bound: [END
+    SUPERSEDED BLOCK] a variable an earlier clause bound, as in `MATCH (n0:Terms) OPTIONAL MATCH (n0)-[*..2]->(m:Terms)`,
+    satisfies the rule, written bare or not (REQ-347). (Amended 2026-10-28, ONE END BOUND OR BINDABLE:)
+    A path search (shortestPath, allShortestPaths and variable-length patterns on the model graph) must
+    not start from a free node: at least one of its ends must be bound (by an earlier clause) or bindable
+    (labelled, which binds it to its table). The search starts from that end and walks outward, each hop
+    following only the relationships that leave the tables reached so far, so the other end may be free:
+    it is whatever the walk reaches within the hop bound. A pattern with both ends free is refused by name.
+    (Amended 2026-11-03, An unbounded path takes the maximum depth:) Maintainer 2026-11-03: Cypher may claim
+    unbounded paths, but it dies once a certain level is breached. Provisa does the same: when compiling
+    Cypher and an unbounded path is encountered (`[*]`, `[*n..]`, an unbounded shortestPath), the compiler
+    substitutes the maximum recursion depth, a very large configured number. A walk that still breaches
+    it fails by name. The Cypher conformance group that skips unbounded variable-length patterns by design
+    is withdrawn; those scenarios run. (Amended 2026-11-03, How the maximum depth is held:) Lead 2026-11-03,
+    on the maintainer''s maximum-depth decision: a variable-length walk keeps Cypher''s trail rule (no relationship
+    is traversed twice in one path), so the substituted maximum is a safety limit, not what decides the
+    answer; a walk that reaches the maximum and could still extend fails by name rather than returning a
+    truncated answer; and the one configured maximum is applied by each engine''s lowering, including Trino''s
+    max_recursion_depth session property.'
   use_case: Path queries and variable-length traversals translate to recursive CTEs for graph algorithms
     over relational data.
   code:
@@ -87423,7 +87435,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     the table''s name, without naming the column; reading its columns without its subject is still answered.
     (Amended 2026-10-29, PATHS SKIP PARAMETERIZED TABLES:) Maintainer 2026-10-31: shortestPath and any path
     cannot include a parameterized table, one whose read needs arguments. A path search does not pass through
-    one, and a drop never proposes one.'
+    one, and a drop never proposes one. (Amended 2026-11-03, Cypher fails by name at the depth limit; the
+    default is 1000:) Maintainer 2026-11-03 (REQ-348): a Cypher walk that reaches graph.depth_limit and
+    could still extend fails by name ("variable-length path exceeded the maximum depth N") instead of returning
+    a cut result with the statement.path_cut warning; SPARQL property paths keep the warning. graph.depth_limit
+    defaults to 1000, a very large fixed number, since a Cypher walk never repeats a relationship and so
+    ends on its own long before it.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -89258,7 +89275,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     group "The catalog is the model''s". (3) pg_read_file and pg_read_binary_file are skipped by design
     under a group citing the rule that no function reads the server''s files. (4) The conformance fixture
     model grants the probe''s role writes on its fixture table, so the privilege checks compare like with
-    like.'
+    like. (Amended 2026-11-03, Time zones follow upstream tzdata; REFERENCES is never granted:) Maintainer
+    2026-11-03: pg_timezone_names lists the pinned upstream IANA tzdata, as upstream PostgreSQL ships it.
+    The check compares the names both lists share, and the names that differ only through a distribution''s
+    tzdata packaging (Debian drops the backward links and adds localtime and posixrules) are skipped by
+    design. Provisa never grants the REFERENCES privilege, so has_*_privilege(..., ''REFERENCES'') answering
+    ''f'' is correct, and those cases are skipped by design citing this rule.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -91019,7 +91041,19 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     does is unchanged. (Amended 2026-11-02, Its name is JDBC:) Maintainer 2026-11-02: the name shown is
     JDBC, like the other source types'' names, and the source type is jdbc. It covers both a built-in driver
     URL and a customer''s jar ("not entirely accurate - but since it lets you use built-in connectors or
-    a jar - close enough").'
+    a jar - close enough"). (Amended 2026-11-03, The form picks a driver, takes a jar file, and names no
+    engine:) Maintainer 2026-11-03, on the JDBC form: it is "supposed to have a list of standard drivers
+    to pick from, an option to use a jar (from a local file)", "a probe to determine features", and selecting
+    the dialect is correct. So: (1) the form''s first choice is the driver, from a list of the standard
+    drivers Provisa ships (the built-in types with a SQLAlchemy scheme), plus "Your own JDBC driver (jar)".
+    Picking a standard driver asks for host, port, database (or file), user and password, and the form builds
+    the connection URL from them; the raw URL is not what an admin types. (2) Picking the jar option takes
+    the jar as a file chosen from the admin''s machine and uploaded with the source, plus the driver class
+    and the jdbc: URL; it stays self-hosted only, refused by name on cloud. (3) The probe is Detect: it
+    runs the read-only checks against the connection and sets the capabilities that passed, showing why
+    the others failed. (4) The SQL dialect choice stays. (5) No engine is named on the form: the capability
+    settings read "Filter pushdown", "Join pushdown", "Aggregate pushdown", "Key-range pushdown" and "Live
+    attach"; that they are held per engine is internal.'
   use_case: 'A team runs a database Provisa has no source type for. An admin registers it with its URL
     and the SQL dialect closest to it, presses Detect, and gets whatever it can do: live attach and pushdown
     where it passes, and otherwise a governed source read by key.'
@@ -91343,5 +91377,31 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   related_reqs:
   - REQ-2196
   - REQ-1923
+  stakeholders:
+  - data-engineer
+- id: REQ-2198
+  value: 'A delete in a detail panel works like a save: the panel is locked, shows progress, and the list
+    refreshes when the delete is done.'
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: admin-console-surface
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-03: deleting a table can take a while, and the UI still let the table
+    be used while it was being deleted. A delete in any detail panel behaves like a save: every field
+    and action in the panel is disabled, the delete control shows a spinner, the panel closes when the
+    delete has finished, and the list refreshes without the deleted item; a delete that fails unlocks
+    the panel and names the reason. While the delete runs, nothing else in the UI offers the item for
+    use.'
+  scenario: 'Given a registered table open in its detail panel
+
+    When an admin deletes it
+
+    Then the panel is disabled and the delete shows a spinner until the delete finishes
+
+    Then the panel closes and the list no longer shows the table'
+  related_reqs: []
   stakeholders:
   - data-engineer

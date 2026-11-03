@@ -245,9 +245,9 @@ async def _execute_multi_call(
     combined: list[dict] = [{}]
     for rs in all_rows:
         combined = [{**a, **b} for a in combined for b in (rs or [{}])]
-    from provisa.gql.assembler import take_cut
+    from provisa.gql.assembler import take_overrun
 
-    combined = take_cut(combined, None)  # rows of several plans: the request's collector
+    combined = take_overrun(combined)
 
     try:
         assembled = assemble_rows(combined, merged_graph_vars)
@@ -1036,9 +1036,9 @@ async def _answer(
         return JSONResponse(
             content={"type": "cypher", "columns": [], "rows": [], "redirect": _executed.redirect}
         )
-    from provisa.gql.assembler import take_cut
+    from provisa.gql.assembler import take_overrun
 
-    rows = take_cut(_dict_rows(_executed), plan.warnings)
+    rows = take_overrun(_dict_rows(_executed))
     physical_sql = plan.physical_sql or plan.exec_sql or ""
 
     # Assemble & serialize

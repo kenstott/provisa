@@ -288,7 +288,7 @@ export function TableReadView({
               itemKey={table.id}
               title={t("tableReadView.deleteTitle", { name: table.tableName })}
               consequence={t("tableReadView.deleteConsequence")}
-              label={t("tableReadView.deleteButtonLabel", { name: table.tableName })}
+              ariaLabel={t("tableReadView.deleteButtonLabel", { name: table.tableName })}
               testId="table-read-view-delete"
               onDelete={() => handleDelete(table.id)}
             />

@@ -600,7 +600,7 @@ export function CommandsPage() {
                   itemKey={`fn:${fn.name}`}
                   title={t("commandsPage.deleteFunctionTitle", { name: fn.name })}
                   consequence={t("commandsPage.deleteFunctionConsequence")}
-                  label={t("commandsPage.deleteFunctionAria", { name: fn.name })}
+                  ariaLabel={t("commandsPage.deleteFunctionAria", { name: fn.name })}
                   testId={`command-delete-fn-${fn.name}`}
                   onDelete={async () => {
                     await deleteFunction(fn.name);
@@ -658,7 +658,7 @@ export function CommandsPage() {
                   itemKey={`wh:${wh.name}`}
                   title={t("commandsPage.deleteWebhookTitle", { name: wh.name })}
                   consequence={t("commandsPage.deleteWebhookConsequence")}
-                  label={t("commandsPage.deleteWebhookAria", { name: wh.name })}
+                  ariaLabel={t("commandsPage.deleteWebhookAria", { name: wh.name })}
                   testId={`command-delete-wh-${wh.name}`}
                   onDelete={async () => {
                     await deleteWebhook(wh.name);

@@ -9072,10 +9072,6 @@
   "referenceLibrary.json::referenceLibrary.reembedDone": "Documents re-embedded: {{n}}",
   "referenceLibrary.json::referenceLibrary.reembedFailedHeading": "These documents could not be re-embedded and are unchanged:",
   "referenceLibrary.json::referenceLibrary.reembedFailure": "{{title}}: {{reason}}",
-  "registerTableForm.json::registerTableForm.dqResultsTableHint": "(derived from the scanned table; one row per check per scan, every scan kept)",
-  "registerTableForm.json::registerTableForm.dqScanIntervalHint": "Each scan adds its results to the table; earlier scans are kept.",
-  "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
-  "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
   "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP",
   "pt/jdbcSourceFields.json::jdbcSourceFields.url": "Connection URL",
   "pt/jdbcSourceFields.json::jdbcSourceFields.urlHint": "A SQLAlchemy URL; its scheme names the driver. Give no password in it.",
@@ -9151,5 +9147,8 @@
   "pt.json::common.deleting": "Deleting…",
   "pt.json::common.deleteFailed": "Not deleted: {{reason}}",
   "pt/tableReadView.json::tableReadView.deleteTitle": "Delete table {{name}}?",
-  "pt/tableReadView.json::tableReadView.deleteConsequence": "The table's registration is deleted."
+  "pt/tableReadView.json::tableReadView.deleteConsequence": "The table's registration is deleted.",
+  "pt/registerTableForm.json::registerTableForm.tablesGroup": "Tables",
+  "pt/registerTableForm.json::registerTableForm.lookupsGroup": "Lookups (need a parameter)",
+  "pt/registerTableForm.json::registerTableForm.lookupNeeds": "needs {{params}}"
 }

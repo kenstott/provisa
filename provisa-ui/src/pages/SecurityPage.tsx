@@ -384,7 +384,7 @@ export function SecurityRolesPage() {
                   itemKey={r.id}
                   title={t("securityPage.deleteRoleTitle", { id: r.id })}
                   consequence={t("securityPage.deleteRoleConsequence")}
-                  label={t("securityPage.delete")}
+                  ariaLabel={t("securityPage.delete")}
                   testId={`delete-role-${r.id}`}
                   onDelete={() => handleDeleteRole(r.id)}
                 />

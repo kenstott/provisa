@@ -966,7 +966,7 @@ export function DataProductDetailPanel({
               itemKey={p.id}
               title={t("dataProductsTab.deleteTitle")}
               consequence={t("dataProductsTab.deleteConfirm", { id: p.id })}
-              label={t("dataProductsTab.deleteDataProduct", { id: p.id })}
+              ariaLabel={t("dataProductsTab.deleteDataProduct", { id: p.id })}
               testId={`data-product-detail-delete-${p.id}`}
               confirmTestId="data-product-delete-modal"
               onDelete={onDelete}
