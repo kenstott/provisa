@@ -1426,11 +1426,10 @@ async def test_a_graphql_tables_fields_are_read_from_the_schema_held_and_never_f
         return ("the offer", {"namespace": "gh"})
 
     monkeypatch.setattr(reg_mod, "source_offer", _offer)
-    monkeypatch.setattr(reg_mod, "offered_tables", lambda offer, reg: [{"name": "repos"}])
     monkeypatch.setattr(
         reg_mod,
-        "offered_columns",
-        lambda offer, reg, table: [("id", "text", None), ("stars", "integer", None)],
+        "offered_columns_of_every_table",
+        lambda offer, reg: {"repos": [("id", "text", None), ("stars", "integer", None)]},
     )
     held = SimpleNamespace(graphql_remote_sources={"gh": {"schema": {"types": []}, "url": "u"}})
     assert await specification_columns("gh", "graphql_remote", "graphql", held) == {
