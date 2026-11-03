@@ -62,6 +62,7 @@ RESULT_KEYS = (
     "passed",
     "skipped_by_design",
     "failed",
+    "not_tested",
     "exact",
     "equivalent",
     "not_checked",
@@ -196,18 +197,22 @@ def result_of(outcome: str, rules: Iterable[str] = ()) -> str:
 PASSED = "passed"
 SKIPPED_BY_DESIGN = "skipped_by_design"
 FAILED = "failed"
+NOT_TESTED = "not_tested"
 
 
 def verdict(entry: dict[str, Any]) -> str:
-    """An overload's one verdict on an engine: passed, skipped by design or failed (REQ-2167). A
-    pass is passed. A decision's group is skipped by design, and so is an overload PostgreSQL
-    itself cannot call from SQL (INTERNAL FUNCTIONS: an internal argument, or a refusal no server
-    state changes). Everything else failed: not checked, refused by name with no decision behind
-    it, a wrong answer, an engine error, one PostgreSQL refuses for this server's state, and one
-    the leg did not reach."""
+    """An overload's one verdict on an engine: passed, skipped by design, failed or not tested
+    (REQ-2167). A pass is passed. A decision's group is skipped by design, and so is an overload
+    PostgreSQL itself cannot call from SQL (INTERNAL FUNCTIONS: an internal argument, or a refusal
+    no server state changes). An answer the check did not compare, and one the leg did not reach,
+    is not tested (amended 2026-11-03, Not tested is its own count). Everything else failed:
+    refused by name with no decision behind it, a wrong answer, an engine error, and one
+    PostgreSQL refuses for this server's state."""
     outcome = entry["outcome"]
     if outcome == "pass":
         return PASSED
+    if outcome in (NOT_CHECKED, NOT_REACHED):
+        return NOT_TESTED
     if outcome == BY_DESIGN:
         return SKIPPED_BY_DESIGN
     if outcome == NOT_CALLABLE:
@@ -354,18 +359,20 @@ def cell(outcome: dict[str, Any]) -> str:
 def engine_table(doc: dict[str, Any]) -> list[str]:
     """One row per engine, in overloads. No row adds them up."""
     lines = [
-        "| Engine | Passed | Skipped by design | Failed |",
-        "| --- | ---: | ---: | ---: |",
+        "| Engine | Passed | Skipped by design | Failed | Not tested |",
+        "| --- | ---: | ---: | ---: | ---: |",
     ]
     for engine in _ordered(doc):
         c = doc["by_engine"][engine]
         lines.append(
-            f"| {_label(engine)} | {c['passed']} | {c['skipped_by_design']} | {c['failed']} |"
+            f"| {_label(engine)} | {c['passed']} | {c['skipped_by_design']} | {c['failed']} "
+            f"| {c['not_tested']} |"
         )
     lines += [
         "",
         "In detail: passed is exact and equivalent; skipped by design is the decisions' groups "
-        "and what PostgreSQL itself cannot call; failed is the rest.",
+        "and what PostgreSQL itself cannot call; not tested is what the check did not compare or "
+        "did not reach; failed is the rest.",
         "",
         "| Engine | Exact | Equivalent | By a decision | PostgreSQL calls none | Not checked "
         "| Refused by name | Differs: wrong answer | Differs: engine error "

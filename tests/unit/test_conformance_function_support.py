@@ -1448,8 +1448,8 @@ def test_the_rules_are_the_ones_the_requirement_and_the_brief_name():
 def test_the_report_fails_per_engine_never_overall_and_keeps_a_wrong_answer_in_view():
     doc = _results(("pg", "wrong_answer", []), ("duckdb", "refused", []))
     for text in (report.pgwire_block(doc), report.overview_block(doc)):
-        assert "| Engine | Passed | Skipped by design | Failed |" in text
-        assert "| Postgres | 0 | 0 | 1 |" in text and "| DuckDB | 0 | 0 | 1 |" in text
+        assert "| Engine | Passed | Skipped by design | Failed | Not tested |" in text
+        assert "| Postgres | 0 | 0 | 1 | 0 |" in text and "| DuckDB | 0 | 0 | 1 | 0 |" in text
         assert "| Total" not in text and "| All" not in text
     assert "| `abs(integer)` | x |" in report.pgwire_block(doc)
 
@@ -1477,15 +1477,25 @@ def test_the_report_fails_per_engine_never_overall_and_keeps_a_wrong_answer_in_v
             },
             "failed",
         ),
-        ({"outcome": "not_checked"}, "failed"),
+        ({"outcome": "not_checked"}, "not_tested"),
         ({"outcome": "refused"}, "failed"),
         ({"outcome": "wrong_answer"}, "failed"),
         ({"outcome": "error"}, "failed"),
-        ({"outcome": "not_reached"}, "failed"),
+        ({"outcome": "not_reached"}, "not_tested"),
     ],
 )
-def test_every_overload_is_passed_skipped_by_design_or_failed(entry, verdict):
+def test_every_overload_is_passed_skipped_by_design_failed_or_not_tested(entry, verdict):
     assert report.verdict(entry) == verdict
+
+
+def test_the_four_counts_add_up_to_every_overload():
+    outcomes = [
+        {"outcome": o}
+        for o in ("pass", "by_design", "not_checked", "not_reached", "refused", "wrong_answer")
+    ]
+    c = report.result_counts(outcomes)
+    assert (c["passed"], c["skipped_by_design"], c["failed"], c["not_tested"]) == (1, 1, 2, 2)
+    assert c["passed"] + c["skipped_by_design"] + c["failed"] + c["not_tested"] == c["total"]
 
 
 def test_a_cell_says_what_was_checked_of_a_pass_and_a_call_alone_is_none():
@@ -1759,6 +1769,7 @@ def test_the_results_a_floor_reads_keep_their_keys():
         "passed",
         "skipped_by_design",
         "failed",
+        "not_tested",
         "exact",
         "equivalent",
         "not_checked",

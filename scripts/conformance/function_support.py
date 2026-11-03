@@ -3112,7 +3112,10 @@ def counts(overloads: list[dict[str, Any]]) -> dict[str, int]:
     effect."""
     tally = Counter(o["outcome"] for o in overloads)
     verdicts = Counter(function_report.verdict(o) for o in overloads)
-    out = {name: verdicts.get(name, 0) for name in ("passed", "skipped_by_design", "failed")}
+    out = {
+        name: verdicts.get(name, 0)
+        for name in ("passed", "skipped_by_design", "failed", "not_tested")
+    }
     out |= {name: tally.get(name, 0) for name in OUTCOMES}
     out["total"] = len(overloads)
     out["pass_answers_checked"] = sum(
@@ -3151,7 +3154,7 @@ def not_checked_reasons(overloads: Iterable[dict[str, Any]]) -> dict[str, int]:
 def _row(label: str, c: dict[str, int]) -> str:
     return (
         f"| {label} | {c['total']} | {c['passed']} | {c['skipped_by_design']} | {c['failed']} "
-        f"| {c['pass_answers_checked']} "
+        f"| {c['not_tested']} | {c['pass_answers_checked']} "
         f"| {c['pass_type_and_form_checked']} | {c['pass_side_effect_checked']} "
         f"| {c['not_checked']} | {c['by_design']} | {c['refused']} "
         f"| {c['wrong_answer']} | {c['error']} | {c['not_callable']} | {c['not_reached']} |"
@@ -3159,11 +3162,11 @@ def _row(label: str, c: dict[str, int]) -> str:
 
 
 _HEADER = (
-    "| | overloads | passed | skipped by design | failed "
+    "| | overloads | passed | skipped by design | failed | not tested "
     "| pass, answers compared | pass, type and form compared "
     "| pass, side effect compared | not checked | skipped by design | refused by name "
     "| wrong answer | engine error | not callable | not reached |",
-    "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
 )
 
 
