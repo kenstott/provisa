@@ -1218,6 +1218,20 @@ _IDENTIFIED = (
 _OBJECT_PARAMS = "classid:bigint, objid:bigint, objsubid:bigint"
 
 
+#: A routine's address (format_procedure_parts): its schema and name, unquoted, and its
+#: arguments' types, each qualified as format_type_be_qualified writes it.
+_ROUTINE_NAMES = (
+    "(SELECT ARRAY[CAST(_n.nspname AS TEXT), CAST(_p.proname AS TEXT)] "
+    "FROM meta.catalog_pg_proc _p JOIN meta.catalog_pg_namespace _n "
+    "ON _n.oid = _p.pronamespace WHERE _p.oid = objid)"
+)
+_ROUTINE_ARGS = (
+    "(SELECT COALESCE(STRING_TO_ARRAY(NULLIF("
+    f"{_type_names('_p.proargtypes', ',', True)}, ''), ','), CAST(ARRAY[] AS TEXT[])) "
+    "FROM meta.catalog_pg_proc _p WHERE _p.oid = objid)"
+)
+
+
 def _addresses(a: _Answers) -> None:
     """pg_describe_object, pg_identify_object, pg_identify_object_as_address and
     pg_get_object_address, for what a catalog holds. Any other object is none it holds, which
@@ -1233,8 +1247,10 @@ def _addresses(a: _Answers) -> None:
         "pg_identify_object_as_address",
         _OBJECT_PARAMS,
         "SELECT _i.type, CASE _i.type WHEN 'type' THEN ARRAY[SUBSTR(_i.description, 6)] "
+        f"WHEN 'function' THEN {_ROUTINE_NAMES} WHEN 'procedure' THEN {_ROUTINE_NAMES} "
         "ELSE STRING_TO_ARRAY(_i.identity, '.') END AS object_names, "
-        f"CAST(ARRAY[] AS TEXT[]) AS object_args FROM ({_IDENTIFIED}) _i",
+        f"CASE WHEN _i.type IN ('function', 'procedure') THEN {_ROUTINE_ARGS} "
+        f"ELSE CAST(ARRAY[] AS TEXT[]) END AS object_args FROM ({_IDENTIFIED}) _i",
     )
     names = "names:text[]"
     last = "names[ARRAY_LENGTH(names, 1)]"

@@ -657,7 +657,8 @@ _ITS_CONSTRAINT = "(SELECT oid FROM pg_catalog.pg_constraint WHERE conname = 'pg
         (
             f'SELECT pg_catalog."pg_get_indexdef"({_CLASS_OID_INDEX}::oid, 0::integer, '
             "true::boolean) AS v",
-            "CREATE UNIQUE INDEX pg_class_oid_index ON pg_catalog.pg_class USING btree (oid)",
+            # Pretty names the table as the search path sees it (functions run 41635216812).
+            "CREATE UNIQUE INDEX pg_class_oid_index ON pg_class USING btree (oid)",
         ),
         (
             "SELECT pg_catalog.pg_get_indexdef('pg_catalog.pg_class_relname_nsp_index'::regclass"

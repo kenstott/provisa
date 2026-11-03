@@ -99,3 +99,40 @@ def test_duckdb_answers_as_postgresql_17(conn: Any, sql: str, oid: int, rows: li
     assert res.status == pq.ExecStatus.TUPLES_OK, (res.error_message or b"").decode()
     got = [None if (v := res.get_value(i, 0)) is None else v.decode() for i in range(res.ntuples)]
     assert (res.ftype(0), got) == (oid, rows)
+
+
+#: Statements a catalog answers (the control plane stands in for the meta domain), each against
+#: PostgreSQL 17's answer.
+CATALOG_ANSWERS: list[tuple[str, int, list[Any]]] = [
+    (
+        "SELECT pg_catalog.\"pg_get_indexdef\"('pg_catalog.pg_class_oid_index'::regclass::oid, "
+        "0::integer, true::boolean) AS v",
+        TEXT,
+        ["CREATE UNIQUE INDEX pg_class_oid_index ON pg_class USING btree (oid)"],
+    ),
+    (
+        "SELECT pg_catalog.\"pg_get_indexdef\"('pg_catalog.pg_class_oid_index'::regclass::oid, "
+        "0::integer, false::boolean) AS v",
+        TEXT,
+        ["CREATE UNIQUE INDEX pg_class_oid_index ON pg_catalog.pg_class USING btree (oid)"],
+    ),
+    (
+        "SELECT pg_catalog.\"pg_identify_object_as_address\"('pg_catalog.pg_proc'::regclass::oid, "
+        "'now()'::regprocedure::oid, 0::integer) AS v",
+        RECORD,
+        ['(function,"{pg_catalog,now}",{})'],
+    ),
+    (
+        "SELECT pg_catalog.\"pg_identify_object_as_address\"('pg_catalog.pg_proc'::regclass::oid, "
+        "'lower(text)'::regprocedure::oid, 0::integer) AS v",
+        RECORD,
+        ['(function,"{pg_catalog,lower}",{pg_catalog.text})'],
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("sql", "oid", "rows"), CATALOG_ANSWERS, ids=[a[0] for a in CATALOG_ANSWERS]
+)
+def test_a_catalog_answers_as_postgresql_17(conn: Any, sql: str, oid: int, rows: list[Any]):
+    test_duckdb_answers_as_postgresql_17(conn, sql, oid, rows)

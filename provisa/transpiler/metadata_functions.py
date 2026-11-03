@@ -461,6 +461,30 @@ _INDEX_DEFINITION = (
     f"COALESCE({_answer(INDEX_DEFINITIONS, key_id_sql('indexoid'))}, "
     f"{_of_system('indexoid', {row[0]: row[11] for row in SYSTEM_INDEXES})})"
 )
+_CATALOG_NAMES = {
+    oid: name for (schema, name), (oid, _) in RELATION_CLASS.items() if schema == "pg_catalog"
+}
+
+
+def system_index_definition(row: tuple, pretty: bool) -> str:
+    """pg_get_indexdef of an index on a system catalog, from its SYSTEM_INDEXES row: plain names
+    the catalog with its schema, pretty as the search path sees it, where pg_catalog is always
+    first (generate_relation_name under PRETTYFLAG_SCHEMA)."""
+    schema = "" if pretty else "pg_catalog."
+    unique = "UNIQUE " if row[5] else ""
+    return (
+        f"CREATE {unique}INDEX {row[1]} ON {schema}{_CATALOG_NAMES[row[2]]} "
+        f"USING btree ({', '.join(row[12])})"
+    )
+
+
+#: pg_get_indexdef(index, 0, pretty): of an index on a system catalog, its pretty definition
+#: where told so; of a key's index, the definition the plain form gives.
+_PRETTY_INDEX_DEFINITION = (
+    f"CASE WHEN pretty THEN COALESCE({_answer(INDEX_DEFINITIONS, key_id_sql('indexoid'))}, "
+    f"{_of_system('indexoid', {r[0]: system_index_definition(r, True) for r in SYSTEM_INDEXES})}) "
+    f"ELSE {_INDEX_DEFINITION} END"
+)
 _SYSTEM_INDEX_COLUMN = " ".join(
     "WHEN '{}:{}' THEN '{}'".format(row[0], n, column.replace("'", "''"))
     for row in SYSTEM_INDEXES
@@ -785,7 +809,7 @@ _FORMS: tuple[Form, ...] = (
     _form(
         "pg_get_indexdef",
         "indexoid, position, pretty",
-        f"CASE WHEN position = 0 THEN {_INDEX_DEFINITION} "
+        f"CASE WHEN position = 0 THEN {_PRETTY_INDEX_DEFINITION} "
         f"ELSE COALESCE({_index_column('indexoid', 'position')}, CASE CAST(indexoid AS TEXT) "
         f"|| ':' || CAST(position AS TEXT) {_SYSTEM_INDEX_COLUMN} END) END",
         INDEX_DEFINITIONS,
