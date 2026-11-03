@@ -240,7 +240,7 @@ async def test_a_field_github_withholds_on_one_row_is_null_in_that_row():
     rows = (await execute_remote(
         GITHUB.url, None, table["field_name"], ["name", "viewerPermission"],
         variables={"owner": "o", "name": "n"}, required_args=table["required_args"],
-        rows_path=table["rows_path"], error_policy=GITHUB.error_policy,
+        rows_path=table["rows_path"], limit=100, error_policy=GITHUB.error_policy,
     )).rows  # fmt: skip
     assert rows == [{"name": "calcite", "viewerPermission": None}]
 
@@ -261,7 +261,7 @@ async def test_github_refusing_the_table_itself_fails_the_read():
     with pytest.raises(ValueError, match="retrieve domains"):
         await execute_remote(
             GITHUB.url, None, table["field_name"], ["domain"], variables={"login": "apache"},
-            required_args=table["required_args"], rows_path=table["rows_path"],
+            required_args=table["required_args"], rows_path=table["rows_path"], limit=100,
             error_policy=GITHUB.error_policy,
         )  # fmt: skip
 

@@ -244,6 +244,7 @@ async def test_a_connection_is_read_page_by_page_until_the_remote_has_no_next_pa
             variables={"owner": "o", "name": "n"},
             required_args=t["required_args"],
             rows_path=t["rows_path"],
+            limit=100,
         )
     ).rows
     assert [r["id"] for r in rows] == ["1", "2", "3"]  # a null node is not a row
@@ -263,7 +264,7 @@ async def test_a_request_read_stops_at_max_rows_and_says_it_was_cut():
     with collecting() as found:
         answer = await execute_remote(
             URL, None, t["field_name"], ["id"], variables={"owner": "o", "name": "n"},
-            required_args=t["required_args"], rows_path=t["rows_path"], max_rows=3,
+            required_args=t["required_args"], rows_path=t["rows_path"], limit=100, max_rows=3,
         )  # fmt: skip
     assert len(answer.rows) == 3 and route.call_count == 2 and answer.cut
     assert [(w.code, w.params) for w in found] == [
@@ -280,7 +281,7 @@ async def test_a_read_that_ends_exactly_at_max_rows_is_whole():
     with collecting() as found:
         answer = await execute_remote(
             URL, None, t["field_name"], ["id"], variables={"owner": "o", "name": "n"},
-            required_args=t["required_args"], rows_path=t["rows_path"], max_rows=2,
+            required_args=t["required_args"], rows_path=t["rows_path"], limit=100, max_rows=2,
         )  # fmt: skip
     assert [r["id"] for r in answer.rows] == ["1", "2"] and not answer.cut and found == []
 
@@ -309,7 +310,14 @@ async def test_a_build_reads_a_connection_a_page_at_a_time_and_fails_by_name_at_
         ]
     )
     pages = whole_connection(
-        URL, None, t["field_name"], ["id"], t["rows_path"], table="gh.advisories", max_rows=3
+        URL,
+        None,
+        t["field_name"],
+        ["id"],
+        t["rows_path"],
+        table="gh.advisories",
+        page_size=100,
+        max_rows=3,
     )
     first = await anext(pages)
     assert [r["id"] for r in first] == ["1", "2"] and route.call_count == 1  # one page held
@@ -329,7 +337,14 @@ async def test_a_build_of_a_connection_within_max_rows_reads_it_whole():
         side_effect=[_root_page(f, [{"id": "1"}], "c1"), _root_page(f, [{"id": "2"}], None)]
     )
     pages = whole_connection(
-        URL, None, t["field_name"], ["id"], t["rows_path"], table="gh.advisories", max_rows=2
+        URL,
+        None,
+        t["field_name"],
+        ["id"],
+        t["rows_path"],
+        table="gh.advisories",
+        page_size=100,
+        max_rows=2,
     )
     assert [[r["id"] for r in page] async for page in pages] == [["1"], ["2"]]
 
@@ -340,7 +355,7 @@ async def test_a_missing_parent_has_no_rows():
     t = _tables()["gh__repositoryIssues"]
     rows = (await execute_remote(
         URL, None, t["field_name"], ["id"], variables={"owner": "o", "name": "n"},
-        required_args=t["required_args"], rows_path=t["rows_path"],
+        required_args=t["required_args"], rows_path=t["rows_path"], limit=100,
     )).rows  # fmt: skip
     assert rows == []
 
@@ -350,7 +365,9 @@ async def test_a_connection_read_raises_what_the_remote_reports():
     respx.post(URL).mock(return_value=httpx.Response(200, json={"errors": [{"message": "boom"}]}))
     t = _tables()["gh__advisories"]
     with pytest.raises(ValueError, match="boom"):
-        await execute_remote(URL, None, t["field_name"], ["id"], rows_path=t["rows_path"])
+        await execute_remote(
+            URL, None, t["field_name"], ["id"], rows_path=t["rows_path"], limit=100
+        )
 
 
 @respx.mock
@@ -361,7 +378,11 @@ async def test_edges_connection_rows_are_the_edge_nodes():
     }
     respx.post(URL).mock(return_value=httpx.Response(200, json={"data": {"releases": body}}))
     t = _tables()["gh__releases"]
-    rows = (await execute_remote(URL, None, t["field_name"], ["id"], rows_path=t["rows_path"])).rows
+    rows = (
+        await execute_remote(
+            URL, None, t["field_name"], ["id"], rows_path=t["rows_path"], limit=100
+        )
+    ).rows
     assert rows == [{"id": "r1"}]
 
 
@@ -375,7 +396,11 @@ async def test_a_rate_limit_with_a_wait_time_is_waited_out():
         ]
     )
     t = _tables()["gh__advisories"]
-    rows = (await execute_remote(URL, None, t["field_name"], ["id"], rows_path=t["rows_path"])).rows
+    rows = (
+        await execute_remote(
+            URL, None, t["field_name"], ["id"], rows_path=t["rows_path"], limit=100
+        )
+    ).rows
     assert rows == [{"id": "1"}] and route.call_count == 2
 
 
@@ -384,7 +409,9 @@ async def test_a_refusal_that_names_no_wait_is_raised():
     respx.post(URL).mock(return_value=httpx.Response(403))
     t = _tables()["gh__advisories"]
     with pytest.raises(httpx.HTTPStatusError):
-        await execute_remote(URL, None, t["field_name"], ["id"], rows_path=t["rows_path"])
+        await execute_remote(
+            URL, None, t["field_name"], ["id"], rows_path=t["rows_path"], limit=100
+        )
 
 
 # --- fitting a table to the credential ---

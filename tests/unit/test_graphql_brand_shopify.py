@@ -456,6 +456,7 @@ async def _whole_products(url: str = STORE_URL) -> list[dict]:
         ["id", "title"],
         table["rows_path"],
         table="my-shop.shopify__products",
+        page_size=100,
         max_rows=None,
         error_policy=SHOPIFY.error_policy,
     ):
@@ -508,13 +509,13 @@ async def test_a_table_lands_at_the_page_size_its_registration_priced(monkeypatc
     request = SimpleNamespace(
         source_id="my-shop", schema_name="graphql", table_name="shopify__products", domain_id="eng"
     )
-    chosen = [Column(name="id", visible_to=[]), Column(name="title", visible_to=[])]
-    answered = await _graphql_columns_for_input(request, chosen)
+    answered = await _graphql_columns_for_input(request, [])
     assert answered is not None and answered[1] is None  # registered
 
     land = build_adapter_loaders(state, SimpleNamespace(engine=SimpleNamespace(connectors={})))
     rows = await land["graphql_remote"](
-        SimpleNamespace(id="my-shop"), SimpleNamespace(table_name="shopify__products")
+        SimpleNamespace(id="my-shop"),
+        SimpleNamespace(table_name="shopify__products", pagination=None),
     )
     assert [r["title"] for r in rows] == ["A", "B"]
     priced, *landed = [json.loads(c.request.content)["query"] for c in route.calls]
