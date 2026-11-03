@@ -26,7 +26,7 @@ Jede Abfrage läuft am Ende über die Federation-Engine, und genau das lässt je
 
 ## Alle Quellen {: #all-sources }
 
-Provisa registriert **74** Quelltypen, die das Sources-Formular anbietet. Die folgenden Tabellen decken alle 74 ab; der Index ist die Zählung.
+Provisa registriert **75** Quelltypen, die das Sources-Formular anbietet. Die folgenden Tabellen decken alle 75 ab; der Index ist die Zählung.
 
 | # | Gruppe | Quelltypen |
 | --- | --- | --- |
@@ -41,13 +41,13 @@ Provisa registriert **74** Quelltypen, die das Sources-Formular anbietet. Die fo
 | 45–46 | [Graph & Semantic](#graph-semantic) | `neo4j`, `sparql` |
 | 47–51 | [Dateibasiert](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 52–53 | [Observability & Sonstiges](#observability-other) | `google_sheets`, `prometheus` |
-| 54–61 | [Enterprise-SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 62–68 | [API-Quellen](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 69 | [GovData](#govdata) | `govdata` |
-| 70–71 | [Data-Quality-Checker](#data-quality-checkers) | `soda`, `great_expectations` |
-| 72 | [Data-Profiler](#data-profiler) | `data_profiler` |
-| 73 | [Kaggle-Datasets](#kaggle-datasets) | Kaggle (über das Sources-Formular bereitgestellt; registriert als `files`-Quelle — siehe [Kaggle-Datasets](#kaggle-datasets)) |
-| 74 | [Wikipedia](#wikipedia) | Wikipedia (registriert als `files`-Quelle, die die benannten Seiten crawlt — siehe [Wikipedia](#wikipedia)) |
+| 54–62 | [Enterprise-SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 63–69 | [API-Quellen](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 70 | [GovData](#govdata) | `govdata` |
+| 71–72 | [Data-Quality-Checker](#data-quality-checkers) | `soda`, `great_expectations` |
+| 73 | [Data-Profiler](#data-profiler) | `data_profiler` |
+| 74 | [Kaggle-Datasets](#kaggle-datasets) | Kaggle (über das Sources-Formular bereitgestellt; registriert als `files`-Quelle — siehe [Kaggle-Datasets](#kaggle-datasets)) |
+| 75 | [Wikipedia](#wikipedia) | Wikipedia (registriert als `files`-Quelle, die die benannten Seiten crawlt — siehe [Wikipedia](#wikipedia)) |
 
 Referenz für jeden Quelltyp, den Provisa unterstützt. „Direkter Treiber" bedeutet, dass Einzelquellen-Abfragen nativ gegen die Quelle ausgeführt werden (unter 100 ms). „Connector-Name" ist der föderierte Connector, der verwendet wird, wenn die Quelle an Mehrquellen-JOINs teilnimmt.
 

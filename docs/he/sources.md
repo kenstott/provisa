@@ -26,7 +26,7 @@
 
 ## כל המקורות {: #all-sources }
 
-Provisa רושמת **74** סוגי מקור, אלה שטופס המקורות מציע. הטבלאות שלהלן מכסות את כל 74; המספור הוא הספירה.
+Provisa רושמת **75** סוגי מקור, אלה שטופס המקורות מציע. הטבלאות שלהלן מכסות את כל 75; המספור הוא הספירה.
 
 | # | קבוצה | סוגי מקור |
 | --- | --- | --- |
@@ -41,13 +41,13 @@ Provisa רושמת **74** סוגי מקור, אלה שטופס המקורות מ
 | 45–46 | [גרף וסמנטיקה](#graph-semantic) | `neo4j`, `sparql` |
 | 47–51 | [מבוססי קובץ](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 52–53 | [Observability ואחרים](#observability-other) | `google_sheets`, `prometheus` |
-| 54–61 | [מחברי SaaS ארגוניים](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 62–68 | [מקורות API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 69 | [GovData](#govdata) | `govdata` |
-| 70–71 | [בודקי איכות נתונים](#data-quality-checkers) | `soda`, `great_expectations` |
-| 72 | [Data Profiler](#data-profiler) | `data_profiler` |
-| 73 | [ערכות נתונים של Kaggle](#kaggle-datasets) | Kaggle (מוכן דרך טופס המקורות; נרשם כמקור מסוג `files` — ראו [ערכות נתונים של Kaggle](#kaggle-datasets)) |
-| 74 | [Wikipedia](#wikipedia) | Wikipedia (נרשם כמקור מסוג `files` שסורק את הדפים הנקובים — ראו [Wikipedia](#wikipedia)) |
+| 54–62 | [מחברי SaaS ארגוניים](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 63–69 | [מקורות API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 70 | [GovData](#govdata) | `govdata` |
+| 71–72 | [בודקי איכות נתונים](#data-quality-checkers) | `soda`, `great_expectations` |
+| 73 | [Data Profiler](#data-profiler) | `data_profiler` |
+| 74 | [ערכות נתונים של Kaggle](#kaggle-datasets) | Kaggle (מוכן דרך טופס המקורות; נרשם כמקור מסוג `files` — ראו [ערכות נתונים של Kaggle](#kaggle-datasets)) |
+| 75 | [Wikipedia](#wikipedia) | Wikipedia (נרשם כמקור מסוג `files` שסורק את הדפים הנקובים — ראו [Wikipedia](#wikipedia)) |
 
 מסמך עזר לכל סוג מקור שנתמך על ידי Provisa. "דרייבר ישיר" פירושו ששאילתות חד-מקוריות מבוצעות מול המקור באופן ילידי (מתחת ל-100ms). "שם המחבר" הוא המחבר המפודרר שבו נעשה שימוש כאשר המקור משתתף ב-JOIN רב-מקורי.
 

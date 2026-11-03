@@ -26,7 +26,7 @@
 
 ## Все источники {: #all-sources }
 
-Provisa регистрирует **74** типа источников — те, что предлагает форма Sources. Приведённые ниже таблицы охватывают все 74; индекс — это счётчик.
+Provisa регистрирует **75** типов источников — те, что предлагает форма Sources. Приведённые ниже таблицы охватывают все 75; индекс — это счётчик.
 
 | # | Группа | Типы источников |
 | --- | --- | --- |
@@ -41,13 +41,13 @@ Provisa регистрирует **74** типа источников — те, 
 | 45–46 | [Граф и семантика](#graph-semantic) | `neo4j`, `sparql` |
 | 47–51 | [На основе файлов](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 52–53 | [Наблюдаемость и прочее](#observability-other) | `google_sheets`, `prometheus` |
-| 54–61 | [Корпоративный SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 62–68 | [API-источники](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 69 | [GovData](#govdata) | `govdata` |
-| 70–71 | [Проверки качества данных](#data-quality-checkers) | `soda`, `great_expectations` |
-| 72 | [Профайлер данных](#data-profiler) | `data_profiler` |
-| 73 | [Наборы данных Kaggle](#kaggle-datasets) | Kaggle (загружается через форму Sources; регистрируется как источник `files` — см. [Наборы данных Kaggle](#kaggle-datasets)) |
-| 74 | [Wikipedia](#wikipedia) | Wikipedia (регистрируется как источник `files`, который обходит указанные страницы — см. [Wikipedia](#wikipedia)) |
+| 54–62 | [Корпоративный SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 63–69 | [API-источники](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 70 | [GovData](#govdata) | `govdata` |
+| 71–72 | [Проверки качества данных](#data-quality-checkers) | `soda`, `great_expectations` |
+| 73 | [Профайлер данных](#data-profiler) | `data_profiler` |
+| 74 | [Наборы данных Kaggle](#kaggle-datasets) | Kaggle (загружается через форму Sources; регистрируется как источник `files` — см. [Наборы данных Kaggle](#kaggle-datasets)) |
+| 75 | [Wikipedia](#wikipedia) | Wikipedia (регистрируется как источник `files`, который обходит указанные страницы — см. [Wikipedia](#wikipedia)) |
 
 Справочник по каждому типу источника, поддерживаемому Provisa. «Прямой драйвер» означает, что однопоточные запросы выполняются напрямую к источнику (менее 100 мс). «Имя коннектора» — это федеративный коннектор, используемый, когда источник участвует в многопоточных (multi-source) JOIN.
 

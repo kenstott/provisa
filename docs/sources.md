@@ -10,7 +10,7 @@ Every query ends up running through the federation engine, which is what lets an
 | **Federation only** | No | Yes | Redshift, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (S3-backed) |
 | **Direct-read (replica)** | Yes | Yes | Snowflake, Databricks, ClickHouse. The driver reads data and lands a replica; queries run against the replica in the active engine |
 | **Direct (no cross-source connector)** | Yes | No | Athena. Single-source statements run whole in Athena; cross-source joins land a full replica |
-| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Salesforce, ServiceNow, Cloud inventory, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365 |
+| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Salesforce, ServiceNow, Cloud inventory, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365, QuickBooks Online |
 
 **Direct-capable** sources answer a query that touches only them through their own driver, in under 100 ms, without going through the federation engine. They keep their full connector, so they still join other sources through the engine.
 
@@ -26,7 +26,7 @@ Every query ends up running through the federation engine, which is what lets an
 
 ## All Sources
 
-Provisa registers **74** source types, the ones the Sources form offers. The tables below cover all 74; the index is the count.
+Provisa registers **75** source types, the ones the Sources form offers. The tables below cover all 75; the index is the count.
 
 | # | Group | Source types |
 | --- | --- | --- |
@@ -41,13 +41,13 @@ Provisa registers **74** source types, the ones the Sources form offers. The tab
 | 45–46 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |
 | 47–51 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 52–53 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
-| 54–61 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 62–68 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 69 | [GovData](#govdata) | `govdata` |
-| 70–71 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
-| 72 | [Data profiler](#data-profiler) | `data_profiler` |
-| 73 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
-| 74 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
+| 54–62 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
+| 63–69 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 70 | [GovData](#govdata) | `govdata` |
+| 71–72 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
+| 73 | [Data profiler](#data-profiler) | `data_profiler` |
+| 74 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
+| 75 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms). "Connector Name" is the federated connector used when the source participates in multi-source JOINs.
 
@@ -878,6 +878,41 @@ A check that cannot be made asks for a read; it never reports "unchanged". Calen
 **Writes.** `INSERT`, `UPDATE` and `DELETE` on `events`, `event_attendees` and `tasks` go to the provider through one write path for both types. An `UPDATE` or `DELETE` names its rows by `provider`, `account` and `id`; an attendee is named by `event_id` and `address`. One occurrence of a series is named by `series_id` and `original_start_at`. A write that sets a column outside the table's writable set is refused by name. Google writes with `sendUpdates=all` when `calendar_send_updates` is on and `sendUpdates=none` when it is off. Microsoft Graph cannot make such a change silently, so a change to a meeting's attendees is refused, naming the setting.
 
 **Exclusions.** Mail is read only; no statement changes a mailbox. `calendars`, `task_lists` and every mail table take no writes. Gmail's Spam and Trash are left out unless `mail_include_spam_trash` is on. Google's Tasks API keeps only the day a task is due, and has no reminder.
+
+#### QuickBooks Online {: #quickbooks }
+
+A QuickBooks Online source reads the Accounting API of one company: its customers, vendors, invoices, bills, payments, accounts, items, employees, journal entries, estimates and the rest of the entities the API's query endpoint serves (30 in all, from `account` to `vendor_credit`). Register Table lists them, one table per entity, named in snake case (`JournalEntry` is `journal_entry`).
+
+**Setting it up.** Create an app at developer.intuit.com with the Accounting scope (`com.intuit.quickbooks.accounting`). The source's form asks for:
+
+| Form field | Source field | Notes |
+| --- | --- | --- |
+| Company ID (realm ID) | `database` | The company's number. Intuit shows it when the app is connected, and in the company's account settings. |
+| Sandbox or production | `mapping.environment` | `sandbox` (default) reads `sandbox-quickbooks.api.intuit.com`; `production` reads `quickbooks.api.intuit.com`. |
+| Client ID | `username` | From the app's Keys and credentials page. |
+| Client secret | `password` | From the same page. |
+| Refresh token | `mapping.refresh_token` | The approval that lets Provisa read the company. Get one from Intuit's OAuth 2.0 Playground with the Accounting scope. |
+
+Any of them may be a `${secret:…}` or `${env:…}` reference. The source's Cache TTL is required, as for every source whose tables are landed.
+
+**The refresh token.** Intuit answers every refresh with the refresh token to send next time, and the one it replaces stops working. The token entered on the form is used once, at the first read. From then on the newest one is kept in the organisation's state store, under the company's realm ID, where a Microsoft 365 source's approval is kept. One refresh of a source runs at a time, across every process, and the replacement is stored before the access token is used. An entered token is never read again once one is kept, so a token entered after the first read does not replace the kept one. A token Intuit refuses (`invalid_grant`) fails the read and names Intuit's reason, never the token. QuickBooks refusing an access token drops it, and the read asks once more with a new one.
+
+**Columns.** Each field of an entity is a column, named in snake case (`TotalAmt` is `total_amt`). A reference is two columns, its id and its name: `CustomerRef` is `customer_ref_value` and `customer_ref_name`. `MetaData` is `meta_create_time` and `meta_last_updated_time`. Any other object or list is one JSON column: an address (`bill_addr`), and the line items of a transaction (`line`), as the generic API source keeps a nested value. `id` is the primary key.
+
+**Reads.** A table is read through the company's query endpoint, `SELECT * FROM <Entity>`, a page at a time with `STARTPOSITION` and `MAXRESULTS`. A page holds 1,000 rows (the most QuickBooks answers), and a read takes at most 100 pages unless the table's paging says otherwise. A read stopped at its last page with more to read is cut, and the statement carries the `api.answer_cut` warning. An entity with an `Active` flag (customers, vendors, accounts, items, employees and the other lists) is read with its inactive records too, unless the statement names `active`.
+
+**What is pushed down.** The conditions of a statement that reads one QuickBooks table alone are sent in its query when QuickBooks can take them:
+
+| Field | Operators sent |
+| --- | --- |
+| A number, a date, or a time (`MetaData`) | `=`, `<`, `>`, `<=`, `>=`, `IN` |
+| Text, and a reference's id (`customer_ref_value`) | `=`, `IN` |
+| A name QuickBooks matches by pattern (`display_name`, `name`, `company_name`, …) | also `LIKE`, with `%` as its only wildcard |
+| A boolean | `=` |
+
+Only fields QuickBooks filters are sent, such as an invoice's `balance`, `total_amt`, `txn_date`, `due_date`, `doc_number` and `customer_ref_value`. QuickBooks has no `OR`, `NOT` or `!=`. A condition using one of them, or on any other field, is applied by the engine to the rows read. Every condition is also applied again to the rows, so a pushed one only narrows what is fetched. The statement's `LIMIT` is sent too when every condition was, and the statement doesn't group, aggregate, de-duplicate, order or skip rows. For example, `SELECT * FROM invoice WHERE balance > 0` reads `SELECT * FROM Invoice WHERE Balance > 0 STARTPOSITION 1 MAXRESULTS 1000`. The answer to a narrowed query is cached under its own name and is never held as the whole table.
+
+The source reads only; it writes nothing to QuickBooks.
 
 ### API Sources
 
