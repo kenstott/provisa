@@ -163,6 +163,8 @@ async def store(client, creds) -> str:
             "setup": {"store": creds["store"]},
             "domain_id": _DOMAIN,
             "auth": {"type": "bearer", "token": creds["token"]},
+            # The clock its landed tables refresh on, as the form's Load Management sets it.
+            "cache_ttl": 300,
         },
     )
     # The body of a refusal never carries the token (graphql_remote_router._auth_without_secret).
