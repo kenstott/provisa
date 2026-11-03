@@ -10,18 +10,25 @@
 
 // REQ-2197: a QuickBooks Online source — the company (realm id) and whether it is a sandbox
 // company, the Intuit app's client id and secret, and the refresh token that approves Provisa to
-// read the company. Each secret may be a ${secret:…} reference.
+// read the company. Each secret may be a ${secret:…} reference. "Sign in with QuickBooks" gets
+// the approval from Intuit with the source's own app instead: the server keeps it, and the
+// company the person chose at Intuit becomes the source's realm id.
 
-import { PasswordInput, Select, TextInput } from "@mantine/core";
+import { useState } from "react";
+import { Alert, Button, PasswordInput, Select, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import {
+  QUICKBOOKS,
   QUICKBOOKS_ENVIRONMENTS,
   quickbooksEnvironment,
   quickbooksRealmIdValid,
 } from "./quickbooks";
 import { FieldGroup, FormField } from "../../components/form/FormLayout";
+import { serverMessage } from "../../i18n/serverMessage";
+import { SignInRefused, signInSource } from "../../lib/sourceSignIn";
 
 interface ConnectionForm {
+  id: string;
   database: string;
   username: string;
   password: string;
@@ -43,6 +50,40 @@ export function QuickBooksFields<F extends ConnectionForm>({
   setFields,
 }: Props<F>) {
   const { t } = useTranslation();
+  const [signingIn, setSigningIn] = useState(false);
+  const [signedIn, setSignedIn] = useState("");
+  const [problem, setProblem] = useState("");
+  // The app's client is the source's own: the sign-in needs it, and the source's name.
+  const ready = Boolean(form.id.trim() && form.username.trim() && form.password.trim());
+
+  const signIn = async () => {
+    setProblem("");
+    setSigningIn(true);
+    try {
+      const done = await signInSource({
+        source_id: form.id.trim(),
+        kind: QUICKBOOKS,
+        account: form.database.trim(),
+        mapping: { environment: quickbooksEnvironment(fields) },
+        client: { client_id: form.username.trim(), client_secret: form.password.trim() },
+      });
+      // The company approved at Intuit is the one the source reads.
+      setForm({ ...form, database: done.account });
+      setSignedIn(done.account);
+    } catch (err) {
+      setProblem(
+        serverMessage(
+          err instanceof SignInRefused
+            ? { code: err.code, params: err.params, detail: err.message }
+            : null,
+          t("sourceFormFieldsExtended.qbSignInFailed"),
+        ),
+      );
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
   return (
     <>
       <FieldGroup>
@@ -104,20 +145,45 @@ export function QuickBooksFields<F extends ConnectionForm>({
           />
         </FormField>
       </FieldGroup>
-      <FormField
-        section="authentication"
-        help={t("sourceFormFieldsExtended.qbRefreshTokenHint")}
-        size="long"
-      >
-        <PasswordInput
-          required
-          label={t("sourceFormFieldsExtended.qbRefreshToken")}
-          value={fields.refresh_token ?? ""}
-          onChange={(e) => setFields({ ...fields, refresh_token: e.currentTarget.value })}
-          placeholder="${secret:quickbooks_refresh_token}"
-          data-testid="quickbooks-refresh-token-input"
-        />
-      </FormField>
+      {/* The button that gets the approval from Intuit sits at the end of the token's field. */}
+      <FieldGroup>
+        <FormField
+          section="authentication"
+          help={t("sourceFormFieldsExtended.qbRefreshTokenHint")}
+          size="long"
+        >
+          <PasswordInput
+            label={t("sourceFormFieldsExtended.qbRefreshToken")}
+            value={fields.refresh_token ?? ""}
+            onChange={(e) => setFields({ ...fields, refresh_token: e.currentTarget.value })}
+            placeholder="${secret:quickbooks_refresh_token}"
+            data-testid="quickbooks-refresh-token-input"
+          />
+        </FormField>
+        <Button
+          type="button"
+          onClick={signIn}
+          loading={signingIn}
+          disabled={!ready}
+          data-testid="quickbooks-sign-in"
+        >
+          {t("sourceFormFieldsExtended.qbSignIn")}
+        </Button>
+      </FieldGroup>
+      {signedIn && (
+        <FormField size="full">
+          <Alert color="green" variant="light" py={4} px="sm" data-testid="quickbooks-signed-in">
+            {t("sourceFormFieldsExtended.qbSignedIn", { realm: signedIn })}
+          </Alert>
+        </FormField>
+      )}
+      {problem && (
+        <FormField size="full">
+          <Alert color="red" variant="light" data-testid="quickbooks-sign-in-problem">
+            {problem}
+          </Alert>
+        </FormField>
+      )}
     </>
   );
 }

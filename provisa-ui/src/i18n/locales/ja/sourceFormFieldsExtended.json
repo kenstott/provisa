@@ -225,6 +225,9 @@
     "qbClientSecret": "クライアントシークレット",
     "qbClientSecretHint": "クライアント ID と同じページにあります。シークレットボールトに保管されます。",
     "qbRefreshToken": "リフレッシュトークン",
-    "qbRefreshTokenHint": "Provisa が会社を読み取れるようにします。Intuit の OAuth 2.0 Playground で Accounting スコープを指定して取得します。QuickBooks は使用のたびにトークンを置き換え、Provisa は最新のものを保持します。"
+    "qbRefreshTokenHint": "Provisa が会社を読み取れるようにします。QuickBooks でサインインして取得するか、Intuit の OAuth 2.0 Playground で Accounting スコープを指定して取得したものを貼り付けます。QuickBooks は使用のたびにトークンを置き換え、Provisa は最新のものを保持します。ここに新しく入力したものは、保存時に保持中のものを置き換えます。",
+    "qbSignIn": "QuickBooks でサインイン",
+    "qbSignedIn": "会社 {{realm}} にサインインしました。保持するにはソースを保存してください。",
+    "qbSignInFailed": "ログインを完了できませんでした。"
   }
 }

@@ -225,6 +225,9 @@
     "qbClientSecret": "Секрет клиента",
     "qbClientSecretHint": "С той же страницы, что и ID клиента. Хранится в хранилище секретов.",
     "qbRefreshToken": "Токен обновления",
-    "qbRefreshTokenHint": "Позволяет Provisa читать компанию. Получите его в OAuth 2.0 Playground от Intuit с областью Accounting. QuickBooks заменяет его при каждом использовании, а Provisa хранит самый новый."
+    "qbRefreshTokenHint": "Позволяет Provisa читать компанию. Войдите через QuickBooks, чтобы получить его, или вставьте токен из OAuth 2.0 Playground от Intuit с областью Accounting. QuickBooks заменяет его при каждом использовании, а Provisa хранит самый новый. Новый токен, введённый здесь, при сохранении заменяет сохранённый.",
+    "qbSignIn": "Войти через QuickBooks",
+    "qbSignedIn": "Выполнен вход в компанию {{realm}}. Сохраните источник, чтобы это сохранить.",
+    "qbSignInFailed": "Не удалось завершить вход."
   }
 }

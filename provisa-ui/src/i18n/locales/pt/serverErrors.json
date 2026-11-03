@@ -631,7 +631,10 @@
       "popup_blocked": "O navegador bloqueou a janela de login. Permita pop-ups para este site e tente novamente.",
       "window_closed": "A janela de login foi fechada antes de terminar.",
       "tenant_invalid": "A configuração do Microsoft 365 da organização não indica um diretório (locatário). Um administrador insere o ID ou o domínio do diretório.",
-      "microsoft_account_unread": "O início de sessão foi aprovado, mas a Microsoft não indicou de quem é a caixa de correio."
+      "microsoft_account_unread": "O início de sessão foi aprovado, mas a Microsoft não indicou de quem é a caixa de correio.",
+      "client_missing": "Insira o ID do cliente e o segredo do cliente do aplicativo e depois entre.",
+      "client_not_taken": "Este tipo de fonte entra com o cliente da sua organização, não com um inserido no formulário.",
+      "no_account_returned": "O login foi aprovado, mas a resposta não informou qual conta ({{parameter}}). Entre novamente."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "A sua organização não permitiu fontes que leiam as suas caixas de correio. Um administrador permite-o em Administração › E-mail.",
