@@ -100,7 +100,6 @@ jobs:
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       PROVISA_ENGINE: ${{ matrix.engine }}
-      PROVISA_ENGINE_URL: ${{ matrix.engine-url }}
       PROVISA_API_PORT: "8901"
       PROVISA_PGWIRE_PORT: "8906"
       CONFORMANCE_PG_HOST: 127.0.0.1
@@ -141,6 +140,11 @@ jobs:
         with:
           extras: ${{ matrix.extras }}
 
+      # The matrix carries no URL: the runner masks a URL's credentials and drops the plan's
+      # output when it holds one, which leaves this job no legs. Each comes from the legs file.
+      - name: The leg's URLs
+        run: .venv/bin/python scripts/conformance/function_legs.py urls --engine "$PROVISA_ENGINE" >> "$GITHUB_ENV"
+
       - name: Install ODBC Driver 18
         id: odbc
         if: matrix.odbc
@@ -169,7 +173,7 @@ jobs:
           DEMO_SOURCE: ${{ matrix.demo-source }}
           WAIT: ${{ matrix.wait }}
           READY_SQL: ${{ matrix.ready-sql }}
-          SETUP_URL: ${{ matrix.setup-url }}
+          SETUP_URL: ${{ env.LEG_SETUP_URL }}
           SETUP_SQL: ${{ matrix.setup-sql }}
           SOURCE_HOST: ${{ matrix.source-host }}
         run: |
@@ -264,7 +268,7 @@ jobs:
         uses: ./.github/actions/conformance-instance
         with:
           extra-tables: ${{ runner.temp }}/function-columns.yaml
-          control-plane-url: ${{ matrix.control-plane-url }}
+          control-plane-url: ${{ env.LEG_CONTROL_PLANE_URL }}
           boot-attempts: ${{ matrix.boot-attempts }}
 
       - name: Measure every pg_catalog function

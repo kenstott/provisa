@@ -13,7 +13,9 @@ can boot (REQ-2167, REQ-2171): read from function_legs.yaml, which also says why
 kind is not run.
 
 ``plan`` writes the workflow's matrix for the lanes a dispatch names (free, warehouse or all) and
-the engines its merge expects. ``wait`` and ``setup`` make an engine's server ready over its engine URL.
+the engines its merge expects, with no URL in it: the runner masks a URL's credentials and drops a
+job output holding a masked value, so a leg's URLs reach its job by ``urls``, from this file.
+``wait`` and ``setup`` make an engine's server ready over its engine URL.
 ``failure`` writes why a leg left no result, which the merge reports beside it: a leg whose engine
 did not start is a failure with its reason, never a leg skipped.
 """
@@ -33,7 +35,13 @@ import yaml
 
 LEGS = Path(__file__).with_name("function_legs.yaml")
 LANES = {"free": ("free",), "warehouse": ("warehouse",), "all": ("free", "warehouse")}
-#: A leg's fields the matrix carries, each defaulting to empty.
+#: A leg's URLs, which the matrix never carries, by the variable ``urls`` gives each to its job.
+URLS = {
+    "engine-url": "PROVISA_ENGINE_URL",
+    "setup-url": "LEG_SETUP_URL",
+    "control-plane-url": "LEG_CONTROL_PLANE_URL",
+}
+#: A leg's fields, each defaulting to empty; the matrix carries those that are no URL.
 FIELDS = (
     "engine",
     "lane",
@@ -95,7 +103,7 @@ def uncovered(kinds: frozenset[str], doc: dict[str, Any]) -> dict[str, list[str]
 
 
 def matrix_entry(leg: dict[str, Any]) -> dict[str, Any]:
-    entry = {field: leg.get(field, "") for field in FIELDS}
+    entry = {field: leg.get(field, "") for field in FIELDS if field not in URLS}
     entry["odbc"] = bool(leg.get("odbc"))
     entry["wait"] = str(leg.get("wait", 600))
     entry["boot-attempts"] = str(leg.get("boot-attempts", 90))
@@ -110,6 +118,14 @@ def plan(lanes: str, doc: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"lanes must be one of {sorted(LANES)}, not {lanes!r}")
     legs = [matrix_entry(leg) for leg in doc["legs"] if leg["lane"] in LANES[lanes]]
     return {"matrix": {"include": legs}, "engines": ",".join(leg["engine"] for leg in legs)}
+
+
+def urls(engine: str, doc: dict[str, Any]) -> dict[str, str]:
+    """The URLs of ``engine``'s leg, by the variable its job reads each from."""
+    leg = next((leg for leg in doc["legs"] if leg["engine"] == engine), None)
+    if leg is None:
+        raise ValueError(f"no leg measures {engine!r}")
+    return {variable: leg.get(field, "") for field, variable in URLS.items()}
 
 
 def wait(url: str, sql: str, timeout: float, *, interval: float = 5.0) -> None:
@@ -172,6 +188,8 @@ def main(argv: list[str]) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("plan")
     p.add_argument("--lanes", required=True, choices=sorted(LANES))
+    u = sub.add_parser("urls")
+    u.add_argument("--engine", required=True)
     w = sub.add_parser("wait")
     w.add_argument("--url", required=True)
     w.add_argument("--sql", required=True)
@@ -189,6 +207,10 @@ def main(argv: list[str]) -> int:
         planned = plan(args.lanes, load())
         print(f"matrix={json.dumps(planned['matrix'])}")
         print(f"engines={planned['engines']}")
+        return 0
+    if args.command == "urls":
+        for variable, value in urls(args.engine, load()).items():
+            print(f"{variable}={value}")
         return 0
     if args.command == "wait":
         wait(args.url, args.sql, args.timeout)

@@ -182,7 +182,7 @@ def test_a_warehouse_leg_is_planned_only_when_the_dispatch_names_its_lane():
 
 def test_a_plan_entry_carries_every_field_the_workflow_reads():
     entry = legs.plan("free", DOC)["matrix"]["include"][0]
-    assert set(entry) == set(legs.FIELDS)
+    assert set(entry) == set(legs.FIELDS) - set(legs.URLS)
     assert _leg("trino")["boot-attempts"] == "300"
     trino = next(e for e in legs.plan("free", DOC)["matrix"]["include"] if e["engine"] == "trino")
     assert trino["boot-attempts"] == "300" and trino["wait"] == "600"
@@ -399,3 +399,48 @@ def test_down_leaves_stopped_what_up_reached_even_when_the_wake_failed(tmp_path,
         warehouse_leg.up("databricks", given, tmp_path / "github-env", state)
     warehouse_leg.down("databricks", given, state)
     assert calls == [given]
+
+
+def test_the_probe_job_reads_its_matrix_from_the_plan_output():
+    workflow = _workflow()
+    plan_job, probe = workflow["jobs"]["plan"], workflow["jobs"]["probe"]
+    assert plan_job["outputs"]["matrix"] == "${{ steps.plan.outputs.matrix }}"
+    assert "plan" in (probe["needs"] if isinstance(probe["needs"], list) else [probe["needs"]])
+    assert "if" not in probe
+    assert probe["strategy"]["matrix"] == "${{ fromJSON(needs.plan.outputs.matrix) }}"
+
+
+@pytest.mark.parametrize("lanes", sorted(legs.LANES))
+def test_no_plan_output_holds_a_url_the_runner_would_mask_and_drop(lanes):
+    # The runner masks a URL's credentials and skips a job output holding a masked value
+    # ("Skip output 'matrix' since it may contain secret"): the probe job then has no matrix.
+    planned = legs.plan(lanes, DOC)
+    assert "://" not in json.dumps(planned["matrix"]) and "://" not in planned["engines"]
+    assert not set(legs.URLS) & set(planned["matrix"]["include"][0])
+
+
+def test_the_probe_job_reads_its_urls_from_the_legs_file_not_the_matrix():
+    text = (WORKFLOWS / "conformance-functions.yml").read_text()
+    for field in legs.URLS:
+        assert f"matrix.{field}" not in text
+    steps = _workflow()["jobs"]["probe"]["steps"]
+    names = [s.get("name") for s in steps]
+    urls = steps[names.index("The leg's URLs")]
+    assert 'function_legs.py urls --engine "$PROVISA_ENGINE"' in urls["run"]
+    assert '>> "$GITHUB_ENV"' in urls["run"]
+    assert names.index("Set up Python") < names.index("The leg's URLs")
+    assert names.index("The leg's URLs") < names.index("Start the engine's server")
+
+
+def test_the_urls_command_writes_a_legs_urls_as_environment_lines(capsys):
+    assert legs.main(["function_legs.py", "urls", "--engine", "exasol"]) == 0
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    exasol = _leg("exasol")
+    assert out == {
+        "PROVISA_ENGINE_URL": exasol["engine-url"],
+        "LEG_SETUP_URL": exasol["setup-url"],
+        "LEG_CONTROL_PLANE_URL": "",
+    }
+    assert legs.urls("trino", DOC)["LEG_CONTROL_PLANE_URL"] == _leg("trino")["control-plane-url"]
+    with pytest.raises(ValueError, match="no leg"):
+        legs.urls("nosuch", DOC)
