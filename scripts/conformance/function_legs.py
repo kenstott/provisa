@@ -12,8 +12,8 @@
 can boot (REQ-2167, REQ-2171): read from function_legs.yaml, which also says why each other engine
 kind is not run.
 
-``plan`` writes the workflow's matrix for the lanes a dispatch names (free, paid or all) and the
-engines its merge expects. ``wait`` and ``setup`` make an engine's server ready over its engine URL.
+``plan`` writes the workflow's matrix for the lanes a dispatch names (free, warehouse or all) and
+the engines its merge expects. ``wait`` and ``setup`` make an engine's server ready over its engine URL.
 ``failure`` writes why a leg left no result, which the merge reports beside it: a leg whose engine
 did not start is a failure with its reason, never a leg skipped.
 """
@@ -32,18 +32,21 @@ from typing import Any
 import yaml
 
 LEGS = Path(__file__).with_name("function_legs.yaml")
-LANES = {"free": ("free",), "paid": ("paid",), "all": ("free", "paid")}
+LANES = {"free": ("free",), "warehouse": ("warehouse",), "all": ("free", "warehouse")}
 #: A leg's fields the matrix carries, each defaulting to empty.
 FIELDS = (
     "engine",
     "lane",
     "image",
     "service",
+    "demo-source",
     "engine-url",
-    "url-secret",
+    "secrets",
+    "concurrency",
     "ready-sql",
     "setup-url",
     "setup-sql",
+    "extras",
     "pip",
     "apt",
     "odbc",
@@ -52,15 +55,13 @@ FIELDS = (
     "control-plane-url",
     "boot-attempts",
 )
-#: The environment whose reviewers approve each paid leg.
-PAID_ENVIRONMENT = "conformance-paid"
 #: The steps of a leg, in the order they run, by their id in the workflow.
 STEPS = (
     ("odbc", "installing ODBC Driver 18"),
     ("client", "installing the engine's client"),
     ("service", "starting the engine's server"),
     ("trino", "starting the Trino stack"),
-    ("credentials", "reading the engine's credentials"),
+    ("warehouse", "bringing up the warehouse"),
     ("seed", "seeding the column table"),
     ("start", "starting the Provisa instance on the engine"),
     ("measure", "measuring"),
@@ -82,6 +83,8 @@ def load(path: Path = LEGS) -> dict[str, Any]:
         unknown = set(leg) - set(FIELDS)
         if unknown:
             raise ValueError(f"{leg['engine']}: unknown fields {sorted(unknown)}")
+        if bool(leg.get("secrets")) != (leg["lane"] == "warehouse"):
+            raise ValueError(f"{leg['engine']}: a warehouse leg names its secrets, a free leg none")
     return doc
 
 
@@ -96,7 +99,8 @@ def matrix_entry(leg: dict[str, Any]) -> dict[str, Any]:
     entry["odbc"] = bool(leg.get("odbc"))
     entry["wait"] = str(leg.get("wait", 600))
     entry["boot-attempts"] = str(leg.get("boot-attempts", 90))
-    entry["environment"] = PAID_ENVIRONMENT if leg["lane"] == "paid" else ""
+    entry["extras"] = leg.get("extras", "dev")
+    entry["secrets"] = " ".join(leg.get("secrets", ()))
     return entry
 
 

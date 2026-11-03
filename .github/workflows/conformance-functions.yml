@@ -22,13 +22,18 @@ name: Conformance (functions)
 # why each other kind is not run; the plan job reads it and the merge lists it on the report. Every
 # direct-only source can be an engine (maintainer, 2026-11-03), so a leg measures the engine and the
 # direct path of its platform. An engine with a server runs in the docker-compose.test.yml service
-# the integration tests start for it (scripts/conformance/engine_service.sh). A leg whose engine does
-# not start is a failure, and its reason is on the report (function_legs.py failure).
+# the integration tests start for it, or in the demo/sources container another CI lane starts for it
+# (SAP HANA, as the swap UI lane does) (scripts/conformance/engine_service.sh). A leg whose engine
+# does not start is a failure, and its reason is on the report (function_legs.py failure).
 #
-# The paid warehouses (snowflake, databricks, bigquery, fabric, synapse, redshift, motherduck) are
-# the paid lane: planned only by a dispatch with lanes paid or all, each leg in the
-# conformance-paid environment, whose required reviewers approve it, with that environment's
-# secrets. No push or schedule runs this workflow.
+# The live warehouses (snowflake, databricks, bigquery, fabric, synapse, redshift, motherduck and the
+# hosted singlestore) are the warehouse lane, under the gating of the integration suite's warehouse
+# lane (integration-suite-lanes.yml, warehouse job), whose repository secrets they read and no
+# others: planned only by a dispatch with lanes warehouse or all; each secret a leg reads checked
+# by name before anything runs; a leg that wakes compute every run shares (Snowflake, Databricks,
+# the Fabric capacity) in that lane's live-cloud-warehouses concurrency group, never cancelled; and
+# what a leg woke or provisioned left stopped, suspended, paused or deleted whatever happened
+# (REQ-254; scripts/conformance/warehouse_leg.py). No push or schedule runs this workflow.
 
 on:
   workflow_dispatch:
@@ -38,11 +43,11 @@ on:
         required: false
         default: ""
       lanes:
-        description: "free: the engines a hosted runner boots; paid: the warehouses, approved in conformance-paid; all: both"
+        description: "free: the engines a hosted runner boots; warehouse: the warehouse lane's live warehouses, by its secrets; all: both"
         required: false
         type: choice
         default: free
-        options: [free, paid, all]
+        options: [free, warehouse, all]
 
 permissions:
   contents: read
@@ -84,8 +89,12 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 160
-    # A paid leg waits for the conformance-paid environment's reviewers; a free leg has none.
-    environment: ${{ matrix.environment }}
+    # A leg that wakes shared warehouse compute waits for any run of the warehouse lane (or of
+    # another such leg) that holds it, and is never cancelled by one (integration-suite-lanes.yml,
+    # warehouse job, REQ-254); every other leg is a group of its own.
+    concurrency:
+      group: ${{ matrix.concurrency || format('conformance-functions-{0}-{1}', github.run_id, matrix.engine) }}
+      queue: max
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -130,7 +139,7 @@ jobs:
       - name: Set up Python
         uses: ./.github/actions/setup-python
         with:
-          extras: dev
+          extras: ${{ matrix.extras }}
 
       - name: Install ODBC Driver 18
         id: odbc
@@ -154,16 +163,21 @@ jobs:
 
       - name: Start the engine's server
         id: service
-        if: matrix.service != ''
+        if: matrix.service != '' || matrix.demo-source != ''
         env:
           SERVICE: ${{ matrix.service }}
+          DEMO_SOURCE: ${{ matrix.demo-source }}
           WAIT: ${{ matrix.wait }}
           READY_SQL: ${{ matrix.ready-sql }}
           SETUP_URL: ${{ matrix.setup-url }}
           SETUP_SQL: ${{ matrix.setup-sql }}
           SOURCE_HOST: ${{ matrix.source-host }}
         run: |
-          bash scripts/conformance/engine_service.sh up "$SERVICE" "$WAIT"
+          if [ -n "$DEMO_SOURCE" ]; then
+            bash scripts/conformance/engine_service.sh demo "$DEMO_SOURCE"
+          else
+            bash scripts/conformance/engine_service.sh up "$SERVICE" "$WAIT"
+          fi
           if [ -n "$SETUP_SQL" ]; then
             .venv/bin/python scripts/conformance/function_legs.py wait --url "$SETUP_URL" --sql "$READY_SQL" --timeout "$WAIT"
             .venv/bin/python scripts/conformance/function_legs.py setup --url "$SETUP_URL" --sql "$SETUP_SQL"
@@ -198,36 +212,45 @@ jobs:
             echo "PROVISA_ENGINE_LAKEHOUSE_METASTORE_PORT=9083"
           } >> "$GITHUB_ENV"
 
-      # A paid leg's warehouse, from the conformance-paid environment's secrets: the engine URL the
-      # leg names, and the service account BigQuery and the Azure warehouses sign in with.
-      - name: Read the engine's credentials
-        id: credentials
-        if: matrix.lane == 'paid'
+      # A warehouse leg's warehouse, from the warehouse lane's repository secrets (its job's env in
+      # integration-suite-lanes.yml, name for name): those this leg names are checked, given to the
+      # instance through $GITHUB_ENV, and what it uses woken or provisioned, with its engine URL.
+      - name: Bring up the warehouse
+        id: warehouse
+        if: matrix.lane == 'warehouse'
         env:
-          ENGINE_URL: ${{ secrets[matrix.url-secret] }}
-          URL_SECRET: ${{ matrix.url-secret }}
-          BIGQUERY_CREDENTIALS_JSON: ${{ secrets.FUNCTIONS_BIGQUERY_CREDENTIALS_JSON }}
-          AZURE_TENANT_ID: ${{ secrets.FUNCTIONS_AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.FUNCTIONS_AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.FUNCTIONS_AZURE_CLIENT_SECRET }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          DATABRICKS_SERVER_HOSTNAME: ${{ secrets.DATABRICKS_SERVER_HOSTNAME }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+          FABRIC_SQL_SERVER: ${{ secrets.FABRIC_SQL_SERVER }}
+          FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
+          FABRIC_WORKSPACE_ID: ${{ secrets.FABRIC_WORKSPACE_ID }}
+          FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
+          FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
+          SYNAPSE_SQL_SERVER: ${{ secrets.SYNAPSE_SQL_SERVER }}
+          SYNAPSE_DATABASE: ${{ secrets.SYNAPSE_DATABASE }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          REDSHIFT_AWS_ACCESS_KEY_ID: ${{ secrets.REDSHIFT_AWS_ACCESS_KEY_ID }}
+          REDSHIFT_AWS_SECRET_ACCESS_KEY: ${{ secrets.REDSHIFT_AWS_SECRET_ACCESS_KEY }}
+          REDSHIFT_AWS_REGION: ${{ secrets.REDSHIFT_AWS_REGION }}
+          MOTHERDUCK_API_TOKEN: ${{ secrets.MOTHERDUCK_API_TOKEN }}
+          SINGLESTORE_HOST: ${{ secrets.SINGLESTORE_HOST }}
+          SINGLESTORE_PORT: ${{ secrets.SINGLESTORE_PORT }}
+          SINGLESTORE_USERNAME: ${{ secrets.SINGLESTORE_USERNAME }}
+          SINGLESTORE_PASSWORD: ${{ secrets.SINGLESTORE_PASSWORD }}
+          SINGLESTORE_DATABASE: ${{ secrets.SINGLESTORE_DATABASE }}
         run: |
-          if [ -z "$ENGINE_URL" ]; then
-            echo "::error::the conformance-paid environment has no secret $URL_SECRET"; exit 1
-          fi
-          echo "PROVISA_ENGINE_URL=$ENGINE_URL" >> "$GITHUB_ENV"
-          if [ "$PROVISA_ENGINE" = bigquery ]; then
-            test -n "$BIGQUERY_CREDENTIALS_JSON" || { echo "::error::no secret FUNCTIONS_BIGQUERY_CREDENTIALS_JSON"; exit 1; }
-            printf '%s' "$BIGQUERY_CREDENTIALS_JSON" > "$RUNNER_TEMP/bigquery-credentials.json"
-            echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/bigquery-credentials.json" >> "$GITHUB_ENV"
-          fi
-          if [ "$PROVISA_ENGINE" = fabric ] || [ "$PROVISA_ENGINE" = synapse ]; then
-            test -n "$AZURE_CLIENT_SECRET" || { echo "::error::no secrets FUNCTIONS_AZURE_*"; exit 1; }
-            {
-              echo "AZURE_TENANT_ID=$AZURE_TENANT_ID"
-              echo "AZURE_CLIENT_ID=$AZURE_CLIENT_ID"
-              echo "AZURE_CLIENT_SECRET=$AZURE_CLIENT_SECRET"
-            } >> "$GITHUB_ENV"
-          fi
+          .venv/bin/python scripts/conformance/warehouse_leg.py up --engine "$PROVISA_ENGINE" \
+            --state "$RUNNER_TEMP/warehouse" --env-file "$GITHUB_ENV"
 
       - name: Seed the table column calls read
         id: seed
@@ -271,7 +294,10 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/report"
           logs=(--log "$RUNNER_TEMP/provisa/server.log")
-          if [ -n "${{ matrix.service }}" ]; then
+          if [ -n "${{ matrix.demo-source }}" ]; then
+            bash scripts/conformance/engine_service.sh demo-logs "${{ matrix.demo-source }}" "$RUNNER_TEMP/report/engine-$PROVISA_ENGINE.log"
+            logs+=(--log "$RUNNER_TEMP/report/engine-$PROVISA_ENGINE.log")
+          elif [ -n "${{ matrix.service }}" ]; then
             bash scripts/conformance/engine_service.sh logs "${{ matrix.service }}" "$RUNNER_TEMP/report/engine-$PROVISA_ENGINE.log"
             logs+=(--log "$RUNNER_TEMP/report/engine-$PROVISA_ENGINE.log")
           fi
@@ -296,6 +322,17 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
           if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi
+
+      # REQ-254: what the leg woke or provisioned is left stopped, suspended, paused or deleted,
+      # whatever happened, after the instance that used it is gone; one that does not end so fails
+      # the step, as the warehouse lane's own "Leave the ... stopped" steps do. The secrets are
+      # those "Bring up the warehouse" gave the job.
+      - name: Leave the warehouse stopped
+        if: ${{ always() && matrix.lane == 'warehouse' }}
+        run: |
+          .venv/bin/python scripts/conformance/warehouse_leg.py down --engine "$PROVISA_ENGINE" \
+            --state "$RUNNER_TEMP/warehouse" \
+            || { echo "::error::the $PROVISA_ENGINE leg's warehouse could not be confirmed stopped: check it, it may be billing"; exit 1; }
 
   merge:
     name: results by engine

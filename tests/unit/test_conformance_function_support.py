@@ -1112,7 +1112,7 @@ LEGS = {
     "legs": [
         {"engine": "a", "lane": "free", "image": "a:1"},
         {"engine": "b", "lane": "free", "image": "b:2"},
-        {"engine": "w", "lane": "paid", "image": "none (account)"},
+        {"engine": "w", "lane": "warehouse", "image": "none (account)"},
     ],
     "not_run": {"z": "no container image"},
 }
@@ -1137,13 +1137,13 @@ def test_the_report_lists_each_leg_its_image_and_why_a_failed_one_left_no_result
         "b": {"lane": "free", "image": "b:2"},
     }
     assert doc["leg_failures"] == {"b": "b: the leg failed starting the engine's server"}
-    assert doc["not_dispatched"] == {"w": "the paid lane, not dispatched in this run"}
+    assert doc["not_dispatched"] == {"w": "the warehouse lane, not dispatched in this run"}
     assert doc["not_run"] == {"z": "no container image"}
     text = md.read_text()
     assert "| a | free | a:1 | complete |" in text
     assert "| b | free | b:2 | failed: b: the leg failed starting the engine's server |" in text
     assert "- z: no container image" in text
-    assert "- w: the paid lane, not dispatched in this run" in text
+    assert "- w: the warehouse lane, not dispatched in this run" in text
 
 
 def test_a_failed_leg_with_no_reason_is_still_failed_on_the_report(tmp_path):
@@ -1235,15 +1235,15 @@ def test_the_merge_names_every_engine_the_plan_runs():
 def test_a_dispatch_runs_the_free_lane_unless_it_names_another():
     lanes = _workflow()[True]["workflow_dispatch"]["inputs"]["lanes"]
     assert lanes["default"] == "free"
-    assert lanes["options"] == ["free", "paid", "all"]
+    assert lanes["options"] == ["free", "warehouse", "all"]
 
 
-def test_only_a_paid_leg_reads_a_secret_and_only_in_its_approved_environment():
+def test_only_a_warehouse_leg_reads_a_secret_and_in_no_environment_of_its_own():
     probe = _workflow()["jobs"]["probe"]
-    assert probe["environment"] == "${{ matrix.environment }}"
-    with_secrets = [s for s in probe["steps"] if "secrets" in json.dumps(s)]
-    assert [s["name"] for s in with_secrets] == ["Read the engine's credentials"]
-    assert with_secrets[0]["if"] == "matrix.lane == 'paid'"
+    assert "environment" not in probe
+    with_secrets = [s for s in probe["steps"] if "secrets." in json.dumps(s)]
+    assert [s["name"] for s in with_secrets] == ["Bring up the warehouse"]
+    assert with_secrets[0]["if"] == "matrix.lane == 'warehouse'"
     for name, job in _workflow()["jobs"].items():
         if name != "probe":
             assert "secrets" not in json.dumps(job), name

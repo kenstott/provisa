@@ -9,15 +9,23 @@
 #
 # A leg:
 #   engine        the engine kind ($PROVISA_ENGINE)
-#   lane          free: any dispatch; paid: only a dispatch with lanes paid or all, in the
-#                 conformance-paid environment, whose reviewers approve each run
+#   lane          free: any dispatch; warehouse: only a dispatch with lanes warehouse or all, the
+#                 gating of the integration suite's warehouse lane (integration-suite-lanes.yml,
+#                 warehouse job), whose repository secrets it reads
 #   image         the container the engine runs in, as the report lists it
 #   service       the docker-compose.test.yml service the integration tests start for it (started by
 #                 scripts/conformance/engine_service.sh); none for in-process or external engines
-#   engine-url    $PROVISA_ENGINE_URL; a paid leg names the secret holding it (url-secret)
+#   demo-source   instead of a service: the demo/sources/<name> container another CI lane already
+#                 starts for this engine (demo/sources/provision.py, by engine_service.sh demo)
+#   engine-url    $PROVISA_ENGINE_URL; a warehouse leg's is written by warehouse_leg.py up
+#   secrets       a warehouse leg's: the warehouse lane's secrets it reads, each checked before
+#                 anything runs (warehouse_leg.py up)
+#   concurrency   a warehouse leg that wakes compute every run shares (REQ-254): the warehouse
+#                 lane's concurrency group, so it never runs beside a run that stops that compute
 #   ready-sql     a statement the engine URL answers once the engine accepts SQL (function_legs.py
 #                 wait); none where the service's own healthcheck says so
 #   setup-sql     statements run once it is ready, on setup-url (the URL without its database)
+#   extras        the extras of the locked environment the leg installs (default dev)
 #   pip           the SQLAlchemy dialect the engine URL names, where the locked environment has
 #                 none: installed into the leg's environment only (reported: the product ships none)
 #   apt           system libraries the dialect loads
@@ -75,14 +83,6 @@ legs:
     image: pingcap/tidb:latest
     service: tidb
     engine-url: mysql+pymysql://root@127.0.0.1:4000/test
-    ready-sql: SELECT 1
-  - engine: singlestore
-    lane: free
-    image: ghcr.io/singlestore-labs/singlestoredb-dev:latest
-    service: singlestore
-    engine-url: singlestoredb://root:provisa@127.0.0.1:3308/provisa
-    setup-url: singlestoredb://root:provisa@127.0.0.1:3308
-    setup-sql: CREATE DATABASE IF NOT EXISTS provisa
     ready-sql: SELECT 1
   - engine: mssql
     lane: free
@@ -169,45 +169,64 @@ legs:
     pip: ibm-db-sa
     wait: 1200
 
-  # --- paid warehouses: credentials in the conformance-paid environment ---------------------
+  # --- a container another CI lane already starts (demo/sources) ---------------------------
+  # The SAP HANA express edition the swap UI lane boots on amd64 (ui-e2e-swap-amd64.yml,
+  # engine-swap.spec.ts provisionSwapSource: demo/sources/provision.py up saphana), with the dialect
+  # that lane installs (the saphana extra). The tenant HXE answers on 39041 (compose.yml says why).
+  - engine: saphana
+    lane: free
+    image: saplabs/hanaexpress:latest
+    demo-source: saphana
+    engine-url: hana+hdbcli://SYSTEM:HXEHana1@127.0.0.1:39041
+    ready-sql: SELECT 1 FROM DUMMY
+    extras: dev saphana
+    wait: 1200
+
+  # --- live warehouses: the integration suite's warehouse lane's, by its secrets ------------
+  # warehouse_leg.py up wakes or provisions each with that lane's own helpers and writes its engine
+  # URL; down leaves it stopped, suspended, paused or deleted, as the lane does.
   - engine: snowflake
-    lane: paid
-    image: none (Snowflake account)
-    url-secret: FUNCTIONS_SNOWFLAKE_ENGINE_URL
+    lane: warehouse
+    image: none (the warehouse lane's Snowflake account)
+    secrets: [SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD, SNOWFLAKE_WAREHOUSE, SNOWFLAKE_DATABASE]
+    concurrency: live-cloud-warehouses
   - engine: databricks
-    lane: paid
-    image: none (Databricks SQL warehouse)
-    url-secret: FUNCTIONS_DATABRICKS_ENGINE_URL
+    lane: warehouse
+    image: none (the warehouse lane's Databricks SQL warehouse)
+    secrets: [DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN]
+    concurrency: live-cloud-warehouses
   - engine: bigquery
-    lane: paid
-    image: none (BigQuery project; service-account key in FUNCTIONS_BIGQUERY_CREDENTIALS_JSON)
-    url-secret: FUNCTIONS_BIGQUERY_ENGINE_URL
+    lane: warehouse
+    image: none (the warehouse lane's BigQuery project)
+    secrets: [GOOGLE_CLOUD_PROJECT, GOOGLE_APPLICATION_CREDENTIALS_JSON]
   - engine: fabric
-    lane: paid
-    image: none (Fabric warehouse; Azure AD service principal in FUNCTIONS_AZURE_*)
-    url-secret: FUNCTIONS_FABRIC_ENGINE_URL
+    lane: warehouse
+    image: none (the warehouse lane's Fabric warehouse and capacity)
+    secrets: [FABRIC_SQL_SERVER, FABRIC_DATABASE, FABRIC_WORKSPACE_ID, FABRIC_CAPACITY_NAME, FABRIC_RESOURCE_GROUP, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID]
+    concurrency: live-cloud-warehouses
     odbc: true
   - engine: synapse
-    lane: paid
-    image: none (Synapse serverless SQL; Azure AD service principal in FUNCTIONS_AZURE_*)
-    url-secret: FUNCTIONS_SYNAPSE_ENGINE_URL
+    lane: warehouse
+    image: none (the warehouse lane's standing Synapse serverless workspace)
+    secrets: [SYNAPSE_SQL_SERVER, SYNAPSE_DATABASE, FABRIC_RESOURCE_GROUP, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID]
     odbc: true
   - engine: redshift
-    lane: paid
-    image: none (Redshift cluster)
-    url-secret: FUNCTIONS_REDSHIFT_ENGINE_URL
+    lane: warehouse
+    image: none (a Redshift Serverless workgroup provisioned for the leg, scripts/redshift_e2e.py)
+    secrets: [REDSHIFT_AWS_ACCESS_KEY_ID, REDSHIFT_AWS_SECRET_ACCESS_KEY, REDSHIFT_AWS_REGION]
   - engine: motherduck
-    lane: paid
-    image: none (MotherDuck account)
-    url-secret: FUNCTIONS_MOTHERDUCK_ENGINE_URL
+    lane: warehouse
+    image: none (a scratch database in the warehouse lane's MotherDuck account)
+    secrets: [MOTHERDUCK_API_TOKEN]
+  - engine: singlestore
+    lane: warehouse
+    image: none (the warehouse lane's hosted SingleStore instance)
+    secrets: [SINGLESTORE_HOST, SINGLESTORE_PORT, SINGLESTORE_USERNAME, SINGLESTORE_PASSWORD, SINGLESTORE_DATABASE]
 
 not_run:
   teradata: >-
     no container image: Teradata Vantage Express is a VirtualBox/VMware virtual machine, which a
     hosted runner cannot boot as a container
-  saphana: >-
-    no free container image a hosted runner can boot: SAP HANA express edition needs more memory than
-    a hosted runner has, and its image is behind SAP's registration
   sapase: >-
     no container image: SAP ASE Developer Edition is an installer behind SAP's registration, with no
     published image
