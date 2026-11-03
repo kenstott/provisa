@@ -45,6 +45,7 @@ _TOP_STAGES = (
     "its schema",
     "the template's model",
     "its uploads, secrets and files",
+    "where its template's landing stopped",
     "the template's store",
     "the template's views",
     "its runtime",
@@ -111,6 +112,12 @@ def test_a_demo_opened_again_opens_in_seconds(tier):
     steps = _steps(log, second["org_id"])
     table = "\n".join(f"{name:45s} {took:7.1f}s" for name, took in steps.items())
     print(f"second open {second['org_id']}:\n{table}")
-    assert set(_TOP_STAGES) - {"the template's store", "the template's views"} <= set(steps), table
+    # Each stage the demo has: alpha has no replica, view or Kafka landing to copy.
+    optional = {
+        "where its template's landing stopped",
+        "the template's store",
+        "the template's views",
+    }
+    assert set(_TOP_STAGES) - optional <= set(steps), table
     server_s = sum(steps.get(name, 0.0) for name in _TOP_STAGES)
     assert server_s < _STEADY_BOUND_S, f"second open took {server_s:.1f}s on the server:\n{table}"
