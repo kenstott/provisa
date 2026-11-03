@@ -12,7 +12,8 @@
     "recordedTimeHelp": "The column saying when each version was recorded in the source.",
     "primitive": {
       "entity": "Entity",
-      "fact": "Fact"
+      "fact": "Fact",
+      "relationship": "Relationship"
     },
     "role": {
       "dimension": "Dimension",
@@ -187,7 +188,8 @@
         "hubs": "Pick the domain, and give each hub a business concept, a record source and a business key; a same-as link needs its table and both keys.",
         "links": "Each link needs its table, at least two hubs, the key of each, and valid and recorded times when it ends.",
         "satellites": "Each satellite needs what it describes, its table, that key and its attributes, with valid and recorded times when every version is kept.",
-        "rules": "Say which table each rule derives from."
+        "rules": "Say which table each rule derives from.",
+        "satelliteKey": "A satellite's key has as many columns as the key of what it describes, in the same order."
       }
     },
     "review": {

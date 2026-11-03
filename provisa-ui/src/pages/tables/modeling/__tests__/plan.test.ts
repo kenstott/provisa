@@ -319,6 +319,153 @@ describe("a Data Vault's answers", () => {
   });
 });
 
+describe("a Data Vault's satellites are related to what they describe", () => {
+  const plan = planVault(VAULT, t);
+
+  it("each satellite to its hub, on the hub's business key", () => {
+    expect(byId<PlannedEntity>(plan.tables, "sat:s1").relationships).toEqual([
+      {
+        target: { planned: "hub:h1" },
+        sourceColumns: ["customer_no"],
+        targetColumns: ["customer_no"],
+      },
+    ]);
+    // A multi-active satellite relates on the hub's key alone, not its multi-active column.
+    expect(byId<PlannedEntity>(plan.tables, "sat:s2").relationships).toEqual([
+      {
+        target: { planned: "hub:h1" },
+        sourceColumns: ["customer_no"],
+        targetColumns: ["customer_no"],
+      },
+    ]);
+  });
+
+  it("an effectivity satellite to its link, on the link's keys", () => {
+    expect(byId<PlannedEntity>(plan.tables, "eff:l1").relationships).toEqual([
+      {
+        target: { planned: "lnk:l1" },
+        sourceColumns: ["customer_no", "order_no"],
+        targetColumns: ["customer_no", "order_no"],
+      },
+    ]);
+  });
+
+  it("a link satellite to its link, its key columns paired with the link's in order", () => {
+    const withLinkSat = planVault(
+      {
+        ...VAULT,
+        satellites: [
+          {
+            uid: "s9",
+            name: "status",
+            parent: "l1",
+            source: "shop.order_status",
+            parentKey: ["cust", "ord"],
+            attributes: ["status"],
+            groupedBy: "rateOfChange",
+            multiActive: [],
+            validTime: "valid_from",
+            recordedTime: "loaded_at",
+          },
+        ],
+      },
+      t,
+    );
+    expect(byId<PlannedEntity>(withLinkSat.tables, "sat:s9")).toMatchObject({
+      role: "linkSatellite",
+      relationships: [
+        {
+          target: { planned: "lnk:l1" },
+          sourceColumns: ["cust", "ord"],
+          targetColumns: ["customer_no", "order_no"],
+        },
+      ],
+    });
+  });
+
+  it("hubs, links and dimensions carry no relationship of their own", () => {
+    expect(byId<PlannedEntity>(plan.tables, "hub:h1").relationships).toEqual([]);
+    expect(
+      planStar(STAR, t).tables.flatMap((x) => (x.primitive === "entity" ? x.relationships : [])),
+    ).toEqual([]);
+  });
+
+  it("are created after every table, by each table's virtual name, many to one", async () => {
+    const names = Object.fromEntries(plan.tables.map((x) => [x.id, x.name]));
+    const order: string[] = [];
+    const api = {
+      registerEntity: vi.fn(async (i: Record<string, unknown>) => {
+        order.push(`table ${String(i.name)}`);
+        return { success: true, message: "" };
+      }),
+      registerFact: vi.fn(async (i: Record<string, unknown>) => {
+        order.push(`table ${String(i.name)}`);
+        return { success: true, message: "" };
+      }),
+      createRelationship: vi.fn(async (i: Record<string, unknown>) => {
+        order.push(`relationship ${String(i.id)}`);
+        return { success: true, message: "" };
+      }),
+      // Registration gave the hub an alias under the org's naming rules.
+      virtualNames: vi.fn(async () => ({ hub_customer: "hubCustomer" })),
+    };
+    const rows = await createPlan(plan, names, api);
+    const firstRel = order.findIndex((o) => o.startsWith("relationship"));
+    expect(order.slice(0, firstRel).every((o) => o.startsWith("table"))).toBe(true);
+    expect(order.slice(firstRel).every((o) => o.startsWith("relationship"))).toBe(true);
+    expect(api.createRelationship.mock.calls.map(([i]) => i)).toEqual([
+      {
+        id: "sat_customer_order_effectivity__lnk_customer_order",
+        sourceTableId: "sat_customer_order_effectivity",
+        targetTableId: "lnk_customer_order",
+        sourceColumn: "customer_no,order_no",
+        targetColumn: "customer_no,order_no",
+        cardinality: "many-to-one",
+      },
+      {
+        id: "sat_customer_crm__hubCustomer",
+        sourceTableId: "sat_customer_crm",
+        targetTableId: "hubCustomer",
+        sourceColumn: "customer_no",
+        targetColumn: "customer_no",
+        cardinality: "many-to-one",
+      },
+      {
+        id: "sat_customer_phones__hubCustomer",
+        sourceTableId: "sat_customer_phones",
+        targetTableId: "hubCustomer",
+        sourceColumn: "customer_no",
+        targetColumn: "customer_no",
+        cardinality: "many-to-one",
+      },
+    ]);
+    const rels = rows.filter((r) => r.primitive === "relationship");
+    expect(rels.map((r) => [r.name, r.status, r.role])).toEqual([
+      ["sat_customer_order_effectivity → lnk_customer_order", "created", "effectivity"],
+      ["sat_customer_crm → hub_customer", "created", "satellite"],
+      ["sat_customer_phones → hub_customer", "created", "satellite"],
+    ]);
+  });
+
+  it("a refused relationship stops the rest", async () => {
+    const names = Object.fromEntries(plan.tables.map((x) => [x.id, x.name]));
+    const api = {
+      registerEntity: vi.fn(async () => ({ success: true, message: "" })),
+      registerFact: vi.fn(async () => ({ success: true, message: "" })),
+      createRelationship: vi.fn(async () => ({ success: false, message: "id taken" })),
+      virtualNames: vi.fn(async () => ({})),
+    };
+    const rows = await createPlan(plan, names, api);
+    expect(api.createRelationship).toHaveBeenCalledTimes(1);
+    expect(rows.filter((r) => r.primitive === "relationship").map((r) => r.status)).toEqual([
+      "failed",
+      "notReached",
+      "notReached",
+    ]);
+    expect(rows.find((r) => r.status === "failed")?.message).toBe("id taken");
+  });
+});
+
 describe("creating a plan", () => {
   it("registers its entities first, then its facts, by the names kept at review", async () => {
     const plan = planStar(STAR, t);
@@ -332,6 +479,8 @@ describe("creating a plan", () => {
         calls.push(["fact", i]);
         return { success: true, message: "" };
       }),
+      createRelationship: vi.fn(async () => ({ success: true, message: "" })),
+      virtualNames: vi.fn(async () => ({})),
     };
     const names = { "dim:d1": "customer", "dim:d2": "dim_product", fact: "sales" };
     const rows = await createPlan(plan, names, api);
@@ -377,9 +526,18 @@ describe("creating a plan", () => {
           : { success: true, message: "" },
       ),
       registerFact: vi.fn(async () => ({ success: true, message: "" })),
+      createRelationship: vi.fn(async () => ({ success: true, message: "" })),
+      virtualNames: vi.fn(async () => ({})),
     };
     const rows = await createPlan(plan, names, api);
     expect(api.registerFact).not.toHaveBeenCalled();
+    // Nothing is related once a table was refused: those relationships are reported, not made.
+    expect(api.createRelationship).not.toHaveBeenCalled();
+    expect(rows.filter((r) => r.primitive === "relationship").map((r) => r.status)).toEqual([
+      "notReached",
+      "notReached",
+      "notReached",
+    ]);
     const status = Object.fromEntries(rows.map((r) => [r.name, r.status]));
     expect(status).toMatchObject({
       hub_customer: "created",
@@ -389,6 +547,19 @@ describe("creating a plan", () => {
       lnk_customer_order: "notReached",
     });
     expect(rows.find((r) => r.status === "failed")?.message).toBe("name taken");
+  });
+
+  it("a star schema's dimensions relate to its fact only through the fact", async () => {
+    const plan = planStar(STAR, t);
+    const api = {
+      registerEntity: vi.fn(async () => ({ success: true, message: "" })),
+      registerFact: vi.fn(async () => ({ success: true, message: "" })),
+      createRelationship: vi.fn(async () => ({ success: true, message: "" })),
+      virtualNames: vi.fn(async () => ({})),
+    };
+    await createPlan(plan, Object.fromEntries(plan.tables.map((x) => [x.id, x.name])), api);
+    expect(api.createRelationship).not.toHaveBeenCalled();
+    expect(api.virtualNames).not.toHaveBeenCalled();
   });
 
   it("sends a link with no measures", () => {

@@ -49,6 +49,18 @@ export interface PlannedEntity extends PlannedBase {
   history: History;
   validTime: string | null;
   recordedTime: string | null;
+  /**
+   * The tables it is related to on a key they share: a satellite to its hub or link, an
+   * effectivity satellite to its link. Created with the relationship API once both tables exist.
+   */
+  relationships: EntityRelationship[];
+}
+
+export interface EntityRelationship {
+  target: Target;
+  /** This table's key columns, in the order of the target's. */
+  sourceColumns: string[];
+  targetColumns: string[];
 }
 
 export interface PlannedFact extends PlannedBase {
@@ -148,6 +160,7 @@ export function planStar(a: StarAnswers, t: TFunction): ModelPlan {
       history,
       validTime: history === "none" ? null : d.validTime,
       recordedTime: history === "none" ? null : d.recordedTime,
+      relationships: [],
       describe: () =>
         t("modelingWizard.desc.dimension", {
           name: d.name,
@@ -284,6 +297,7 @@ export function planVault(a: VaultAnswers, t: TFunction): ModelPlan {
       history: "none",
       validTime: null,
       recordedTime: null,
+      relationships: [],
       describe: () =>
         t("modelingWizard.desc.hub", {
           concept: h.concept,
@@ -353,6 +367,9 @@ export function planVault(a: VaultAnswers, t: TFunction): ModelPlan {
         history: "scd2",
         validTime: l.validTime,
         recordedTime: l.recordedTime,
+        relationships: [
+          { target: { planned: linkId(l.uid) }, sourceColumns: keys, targetColumns: keys },
+        ],
         describe: (nameOf) =>
           t("modelingWizard.desc.effectivity", {
             link: nameOf(linkId(l.uid)),
@@ -368,6 +385,12 @@ export function planVault(a: VaultAnswers, t: TFunction): ModelPlan {
     const link = links.get(s.parent);
     const parentId = hub ? hubId(hub.uid) : linkId(s.parent);
     const parentWords = hub ? hub.concept : link ? linkName(link) : "";
+    // The parent's own key: the hub's business key, or the link's keys in its hubs' order.
+    const parentKey = hub
+      ? hub.businessKey
+      : link
+        ? link.hubs.map((h) => link.via[h]).filter(Boolean)
+        : [];
     tables.push({
       id: satId(s.uid),
       primitive: "entity",
@@ -379,6 +402,9 @@ export function planVault(a: VaultAnswers, t: TFunction): ModelPlan {
       history,
       validTime: history === "none" ? null : s.validTime,
       recordedTime: history === "none" ? null : s.recordedTime,
+      relationships: [
+        { target: { planned: parentId }, sourceColumns: s.parentKey, targetColumns: parentKey },
+      ],
       describe: (nameOf) =>
         t("modelingWizard.desc.satellite", {
           parent: nameOf(parentId),
@@ -408,16 +434,21 @@ export interface CreateApi {
     input: Record<string, unknown>,
   ) => Promise<{ success: boolean; message: string }>;
   registerFact: (input: Record<string, unknown>) => Promise<{ success: boolean; message: string }>;
+  createRelationship: (
+    input: Record<string, unknown>,
+  ) => Promise<{ success: boolean; message: string }>;
+  /** Each registered table's name as relationships name it: its alias when registration gave one. */
+  virtualNames: () => Promise<Record<string, string>>;
 }
 
 export interface CreatedTable {
   id: string;
   name: string;
-  primitive: "entity" | "fact";
+  primitive: "entity" | "fact" | "relationship";
   role: Role;
   status: "created" | "failed" | "notReached";
   message?: string;
-  /** The tables a created fact was related to. */
+  /** The tables a created fact or relationship relates to. */
   relatesTo: string[];
 }
 
@@ -461,9 +492,28 @@ export function registrationInput(
   };
 }
 
+/** The relationship input an entity's relationship is created with, by the tables' names. */
+export function relationshipInput(
+  source: string,
+  target: string,
+  rel: EntityRelationship,
+): Record<string, unknown> {
+  return {
+    id: `${source}__${target}`,
+    sourceTableId: source,
+    targetTableId: target,
+    // A composite key is its columns listed in order, the target's in the same order.
+    sourceColumn: rel.sourceColumns.join(","),
+    targetColumn: rel.targetColumns.join(","),
+    // Many versions (or many rows) of the satellite to the one parent row.
+    cardinality: "many-to-one",
+  };
+}
+
 /**
- * Create the plan: its entities first, then the facts that relate to them. The first refusal stops
- * it; what was made stays made, and the rest is reported as not reached.
+ * Create the plan: its entities first, then the facts that relate to them, then the entities'
+ * relationships to their hubs and links. The first refusal stops it; what was made stays made,
+ * and the rest is reported as not reached.
  */
 export async function createPlan(
   plan: ModelPlan,
@@ -494,6 +544,52 @@ export async function createPlan(
         table.primitive === "entity"
           ? await api.registerEntity(input)
           : await api.registerFact(input);
+      row.status = res.success ? "created" : "failed";
+      if (!res.success) row.message = res.message;
+    } catch (e) {
+      row.status = "failed";
+      row.message = e instanceof Error ? e.message : String(e);
+    }
+    if (row.status === "failed") stopped = true;
+  }
+  const rels = plan.tables.flatMap((table) =>
+    table.primitive === "entity" ? table.relationships.map((rel) => ({ table, rel })) : [],
+  );
+  // Relationships name a table by its virtual name, read once every table exists.
+  let virtual: Record<string, string> = {};
+  if (rels.length > 0 && !stopped) {
+    try {
+      virtual = await api.virtualNames();
+    } catch (e) {
+      stopped = true;
+      out.push({
+        id: "rel:names",
+        name: "",
+        primitive: "relationship",
+        role: rels[0].table.role,
+        status: "failed",
+        message: e instanceof Error ? e.message : String(e),
+        relatesTo: [],
+      });
+    }
+  }
+  for (const { table, rel } of rels) {
+    const source = names[table.id] ?? table.name;
+    const target = targetName(rel.target, names);
+    const row: CreatedTable = {
+      id: `rel:${table.id}`,
+      name: `${source} → ${target}`,
+      primitive: "relationship",
+      role: table.role,
+      status: "notReached",
+      relatesTo: [target],
+    };
+    out.push(row);
+    if (stopped) continue;
+    try {
+      const res = await api.createRelationship(
+        relationshipInput(virtual[source] ?? source, virtual[target] ?? target, rel),
+      );
       row.status = res.success ? "created" : "failed";
       if (!res.success) row.message = res.message;
     } catch (e) {

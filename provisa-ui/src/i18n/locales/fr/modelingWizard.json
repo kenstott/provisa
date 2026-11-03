@@ -12,7 +12,8 @@
     "recordedTimeHelp": "La colonne indiquant quand chaque version a été enregistrée dans la source.",
     "primitive": {
       "entity": "Entité",
-      "fact": "Fait"
+      "fact": "Fait",
+      "relationship": "Relation"
     },
     "role": {
       "dimension": "Dimension",
@@ -187,7 +188,8 @@
         "hubs": "Choisissez le domaine et donnez à chaque hub un concept métier, une source d'enregistrement et une clé métier ; un link same-as demande sa table et les deux clés.",
         "links": "Chaque link demande sa table, au moins deux hubs, la clé de chacun, et les temps de validité et d'enregistrement s'il prend fin.",
         "satellites": "Chaque satellite demande ce qu'il décrit, sa table, cette clé et ses attributs, avec temps de validité et d'enregistrement si chaque version est conservée.",
-        "rules": "Indiquez de quelle table dérive chaque règle."
+        "rules": "Indiquez de quelle table dérive chaque règle.",
+        "satelliteKey": "La clé d'un satellite compte autant de colonnes que la clé de ce qu'il décrit, dans le même ordre."
       }
     },
     "review": {

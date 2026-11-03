@@ -12,7 +12,8 @@
     "recordedTimeHelp": "Die Spalte, wann jede Version in der Quelle erfasst wurde.",
     "primitive": {
       "entity": "Entität",
-      "fact": "Fakt"
+      "fact": "Fakt",
+      "relationship": "Beziehung"
     },
     "role": {
       "dimension": "Dimension",
@@ -187,7 +188,8 @@
         "hubs": "Wählen Sie die Domäne und geben Sie jedem Hub ein Geschäftsobjekt, eine Record Source und einen Geschäftsschlüssel; ein Same-As-Link braucht seine Tabelle und beide Schlüssel.",
         "links": "Jeder Link braucht seine Tabelle, mindestens zwei Hubs, den Schlüssel jedes Hubs sowie Gültigkeits- und Erfassungszeit, wenn er enden kann.",
         "satellites": "Jeder Satellit braucht, was er beschreibt, seine Tabelle, diesen Schlüssel und seine Attribute, mit Gültigkeits- und Erfassungszeit, wenn jede Version behalten wird.",
-        "rules": "Geben Sie an, aus welcher Tabelle jede Regel ableitet."
+        "rules": "Geben Sie an, aus welcher Tabelle jede Regel ableitet.",
+        "satelliteKey": "Der Schlüssel eines Satelliten hat so viele Spalten wie der Schlüssel des Beschriebenen, in derselben Reihenfolge."
       }
     },
     "review": {

@@ -24,6 +24,7 @@ const t = i18n.getFixedT("en");
 
 const registerEntity = vi.fn();
 const registerFact = vi.fn();
+const upsertRelationship = vi.fn();
 
 const cols = (...names: string[]) =>
   names.map((columnName) => ({ columnName, dataType: "varchar" }));
@@ -45,13 +46,15 @@ const TABLES = {
     listed("sales", "products", ["sku", "title"]),
   ],
   loading: false,
-  refetch: vi.fn(),
+  // What the wizard reads back before relating the tables: their names, none aliased.
+  refetch: vi.fn(async () => ({ data: { tables: [] } })),
 };
 vi.mock("../../../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../../hooks/useAdminQueries")>()),
   useTables: () => TABLES,
   useRegisterEntity: () => ({ registerEntity }),
   useRegisterFact: () => ({ registerFact }),
+  useUpsertRelationship: () => ({ upsertRelationship }),
 }));
 
 const DOMAINS = [{ id: "sales", description: "" }] as unknown as Domain[];
@@ -70,6 +73,7 @@ const next = () => userEvent.click(screen.getByTestId("wizard-next"));
 beforeEach(() => {
   registerEntity.mockReset().mockResolvedValue({ success: true, message: "" });
   registerFact.mockReset().mockResolvedValue({ success: true, message: "" });
+  upsertRelationship.mockReset().mockResolvedValue({ success: true, message: "" });
 });
 
 describe("the star schema wizard", () => {
@@ -259,6 +263,10 @@ describe("the Data Vault wizard", () => {
     expect(screen.getByTestId(linkId)).toHaveTextContent(
       "customer_id → hub_customer; product_id → hub_product",
     );
+    // The satellite is related to its hub on the hub's business key.
+    expect(screen.getAllByTestId(/^wizard-review-relationships-sat:/)[0]).toHaveTextContent(
+      "id → hub_customer",
+    );
 
     await userEvent.click(screen.getByTestId("wizard-create"));
     await screen.findByTestId("wizard-created");
@@ -285,10 +293,32 @@ describe("the Data Vault wizard", () => {
         description: expect.stringMatching(/^Draft: Data Vault link/),
       }),
     );
+    expect(upsertRelationship).toHaveBeenCalledTimes(1);
+    expect(upsertRelationship).toHaveBeenCalledWith(
+      {
+        id: "sat_customer__hub_customer",
+        sourceTableId: "sat_customer",
+        targetTableId: "hub_customer",
+        sourceColumn: "id",
+        targetColumn: "id",
+        cardinality: "many-to-one",
+      },
+      true,
+    );
+    // Created after every table.
+    expect(upsertRelationship.mock.invocationCallOrder[0]).toBeGreaterThan(
+      registerFact.mock.invocationCallOrder[0],
+    );
     await waitFor(() =>
       expect(screen.getByTestId("wizard-created")).toHaveTextContent(
         t("modelingWizard.result.created", { count: 4 }),
       ),
+    );
+    expect(screen.getByTestId(/^wizard-created-rel:sat:/)).toHaveTextContent(
+      "sat_customer → hub_customer",
+    );
+    expect(screen.getByTestId(/^wizard-created-rel:sat:/)).toHaveTextContent(
+      t("modelingWizard.primitive.relationship"),
     );
   });
 });

@@ -17,8 +17,14 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Badge, Button, Group, Stack, Text } from "@mantine/core";
-import { useRegisterEntity, useRegisterFact } from "../../../hooks/useAdminQueries";
+import {
+  useRegisterEntity,
+  useRegisterFact,
+  useTables,
+  useUpsertRelationship,
+} from "../../../hooks/useAdminQueries";
 import { serverMessage } from "../../../i18n/serverMessage";
+import type { ListedTable } from "../../../types/admin";
 import { FieldGroup, FormEntry, FormField, FormLayout } from "../../../components/form/FormLayout";
 import {
   createPlan,
@@ -71,6 +77,20 @@ function PrimitiveSummary({ table, names }: { table: PlannedTable; names: Names 
           }
           testId={`wizard-review-history-${table.id}`}
         />
+        {table.relationships.length > 0 && (
+          <Line
+            label={t("modelingWizard.review.relationships")}
+            value={table.relationships
+              .map((r) =>
+                t("modelingWizard.review.relationship", {
+                  via: r.sourceColumns.join(", "),
+                  target: targetName(r.target, names),
+                }),
+              )
+              .join("; ")}
+            testId={`wizard-review-relationships-${table.id}`}
+          />
+        )}
       </>
     );
   }
@@ -103,7 +123,8 @@ function PrimitiveSummary({ table, names }: { table: PlannedTable; names: Names 
 function CreatedView({ rows, onDone }: { rows: CreatedTable[]; onDone: () => void }) {
   const { t } = useTranslation();
   const failed = rows.find((r) => r.status === "failed");
-  const made = rows.filter((r) => r.status === "created");
+  // The title counts tables; the relationships made between them are listed below it.
+  const made = rows.filter((r) => r.status === "created" && r.primitive !== "relationship");
   return (
     <Stack gap="md" data-testid="wizard-created">
       <Alert
@@ -134,7 +155,8 @@ function CreatedView({ rows, onDone }: { rows: CreatedTable[]; onDone: () => voi
             </Text>
             <Text size="sm" c="dimmed">
               {t(`modelingWizard.primitive.${r.primitive}`)} · {t(`modelingWizard.role.${r.role}`)}
-              {r.relatesTo.length > 0 &&
+              {r.primitive !== "relationship" &&
+                r.relatesTo.length > 0 &&
                 ` · ${t("modelingWizard.result.relatesTo", { tables: r.relatesTo.join(", ") })}`}
             </Text>
           </Group>
@@ -170,6 +192,8 @@ export function ModelReview({
   const { t } = useTranslation();
   const { registerEntity } = useRegisterEntity();
   const { registerFact } = useRegisterFact();
+  const { upsertRelationship } = useUpsertRelationship();
+  const { refetch: refetchTables } = useTables({ inPage: true });
   const [names, setNames] = useState<Names>(() => initialNames(plan));
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -199,6 +223,16 @@ export function ModelReview({
         await createPlan(plan, final, {
           registerEntity: localized(registerEntity),
           registerFact: localized(registerFact),
+          createRelationship: localized((input) => upsertRelationship(input, true)),
+          // Registration may give a table an alias; a relationship names the table by it.
+          virtualNames: async () => {
+            const read = (await refetchTables()) as { data?: { tables?: ListedTable[] } };
+            return Object.fromEntries(
+              (read.data?.tables ?? [])
+                .filter((tbl) => tbl.domainId === plan.domainId)
+                .map((tbl) => [tbl.tableName, tbl.alias ?? tbl.tableName]),
+            );
+          },
         }),
       );
       onCreated();

@@ -86,6 +86,13 @@ const EMPTY: VaultAnswers = {
   rules: [],
 };
 
+/** How many columns the key of a hub or link has: a satellite's key pairs with it in order. */
+function parentKeyLength(a: VaultAnswers, parent: string): number {
+  const hub = a.hubs.find((h) => h.uid === parent);
+  if (hub) return hub.businessKey.length;
+  return a.links.find((l) => l.uid === parent)?.hubs.length ?? 0;
+}
+
 /** What a step still needs before Next, as the problem to show; null when it is answered. */
 function missing(step: (typeof STEPS)[number], a: VaultAnswers): string | null {
   switch (step) {
@@ -122,7 +129,9 @@ function missing(step: (typeof STEPS)[number], a: VaultAnswers): string | null {
           (a.historyDepth === "current" || (s.validTime && s.recordedTime)),
       )
         ? null
-        : "satellites";
+        : a.satellites.every((s) => s.parentKey.length === parentKeyLength(a, s.parent))
+          ? null
+          : "satelliteKey";
     case "rules":
       return a.rules.every((r) => !r.text.trim() || r.target) ? null : "rules";
     default:

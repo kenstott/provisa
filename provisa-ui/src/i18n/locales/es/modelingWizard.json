@@ -12,7 +12,8 @@
     "recordedTimeHelp": "La columna que indica cuándo se registró cada versión en el origen.",
     "primitive": {
       "entity": "Entidad",
-      "fact": "Hecho"
+      "fact": "Hecho",
+      "relationship": "Relación"
     },
     "role": {
       "dimension": "Dimensión",
@@ -187,7 +188,8 @@
         "hubs": "Elija el dominio y dé a cada hub un concepto de negocio, una fuente de registro y una clave de negocio; un link same-as necesita su tabla y ambas claves.",
         "links": "Cada link necesita su tabla, al menos dos hubs, la clave de cada uno y los tiempos de validez y de registro si termina.",
         "satellites": "Cada satélite necesita lo que describe, su tabla, esa clave y sus atributos, con tiempos de validez y de registro si se conserva cada versión.",
-        "rules": "Indique de qué tabla deriva cada regla."
+        "rules": "Indique de qué tabla deriva cada regla.",
+        "satelliteKey": "La clave de un satélite tiene tantas columnas como la clave de lo que describe, en el mismo orden."
       }
     },
     "review": {

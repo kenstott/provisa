@@ -12,7 +12,8 @@
     "recordedTimeHelp": "De kolom die zegt wanneer elke versie in de bron is vastgelegd.",
     "primitive": {
       "entity": "Entiteit",
-      "fact": "Feit"
+      "fact": "Feit",
+      "relationship": "Relatie"
     },
     "role": {
       "dimension": "Dimensie",
@@ -187,7 +188,8 @@
         "hubs": "Kies het domein en geef elke hub een businessbegrip, een record source en een businesssleutel; een same-as-link heeft een tabel en beide sleutels nodig.",
         "links": "Elke link heeft een tabel nodig, minstens twee hubs, de sleutel van elke hub en geldigheids- en registratietijd als hij kan eindigen.",
         "satellites": "Elke satelliet heeft nodig wat hij beschrijft, een tabel, die sleutel en attributen, met geldigheids- en registratietijd als elke versie wordt bewaard.",
-        "rules": "Geef aan uit welke tabel elke regel afleidt."
+        "rules": "Geef aan uit welke tabel elke regel afleidt.",
+        "satelliteKey": "De sleutel van een satelliet heeft evenveel kolommen als de sleutel van wat hij beschrijft, in dezelfde volgorde."
       }
     },
     "review": {
