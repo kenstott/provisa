@@ -205,3 +205,35 @@ class TestSearchTablesFuzzyOnly:
         if len(results) > 1:
             for i in range(len(results) - 1):
                 assert results[i].confidence >= results[i + 1].confidence
+
+
+# ---------------------------------------------------------------------------
+# A description in the steward's words (REQ-464)
+# ---------------------------------------------------------------------------
+
+
+class TestDescribedInOtherWordForms:
+    def test_a_database_sources_tables_are_found_by_another_form_of_their_words(self):
+        # A database table carries no description: its name is what is searched, and the
+        # steward's "customer invoicing" names the customers and invoices tables.
+        candidates = [
+            _make("customers", []),
+            _make("invoices", []),
+            _make("payments", []),
+            _make("products", []),
+        ]
+        found = [c.name for c in fuzzy_filter("customer invoicing", candidates)]
+        assert set(found) == {"customers", "invoices"}
+
+    def test_a_category_is_found_by_its_plural(self):
+        found = fuzzy_filter("categories", [_make("category", []), _make("orders", [])])
+        assert [c.name for c in found] == ["category"]
+
+    def test_a_table_named_for_the_words_ranks_above_one_that_only_mentions_them(self):
+        # Hundreds of a large schema's tables mention a customer in their descriptions; the one
+        # named for customers is among the first the model is shown.
+        mentions = [
+            _make(f"t{i:03d}", [], comment="Details the customer can see.") for i in range(60)
+        ]
+        found = fuzzy_filter("customer invoicing", [*mentions, _make("shop__customers", [])])
+        assert found[0].name == "shop__customers"
