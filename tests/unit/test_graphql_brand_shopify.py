@@ -482,6 +482,48 @@ async def test_a_table_is_read_a_page_at_a_time_following_shopifys_cursor():
 
 
 @respx.mock
+async def test_a_table_lands_at_the_page_size_its_registration_priced(monkeypatch):
+    """Shopify prices a page by its size: a table accepted at registration at
+    graphql_remote.max_list_items is landed at that size, never a larger one it was not priced at."""
+    import provisa.api.app as app
+    from provisa.api.admin._table_ops import _graphql_columns_for_input
+    from provisa.events.app_wiring import build_adapter_loaders
+
+    reg = _reg()
+    state = SimpleNamespace(
+        graphql_remote_sources={"my-shop": reg},
+        config=SimpleNamespace(
+            graphql_remote=SimpleNamespace(max_list_items=25, max_rows=1000), sources=[]
+        ),
+        multitenancy=False,
+    )
+    monkeypatch.setattr(app, "state", state)
+    route = respx.post(STORE_URL).mock(
+        side_effect=[
+            httpx.Response(200, json=_page([], None)),  # the registration's pricing
+            httpx.Response(200, json=_page([{"id": "1", "title": "A"}], "c1")),
+            httpx.Response(200, json=_page([{"id": "2", "title": "B"}], None)),
+        ]
+    )
+    request = SimpleNamespace(
+        source_id="my-shop", schema_name="graphql", table_name="shopify__products", domain_id="eng"
+    )
+    chosen = [Column(name="id", visible_to=[]), Column(name="title", visible_to=[])]
+    answered = await _graphql_columns_for_input(request, chosen)
+    assert answered is not None and answered[1] is None  # registered
+
+    land = build_adapter_loaders(state, SimpleNamespace(engine=SimpleNamespace(connectors={})))
+    rows = await land["graphql_remote"](
+        SimpleNamespace(id="my-shop"), SimpleNamespace(table_name="shopify__products")
+    )
+    assert [r["title"] for r in rows] == ["A", "B"]
+    priced, *landed = [json.loads(c.request.content)["query"] for c in route.calls]
+    page = "products(first: 25, after: $pageCursor)"
+    assert page in priced
+    assert len(landed) == 2 and all(page in q for q in landed)
+
+
+@respx.mock
 async def test_a_throttled_page_waits_until_the_bucket_has_restored_what_it_costs(slept):
     route = respx.post(STORE_URL).mock(
         side_effect=[
