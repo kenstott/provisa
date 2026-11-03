@@ -23,7 +23,6 @@ import pyarrow as pa
 import pytest
 import tzdata
 
-from provisa.executor.json_encoders import EncoderFailed
 from tests.unit.json_encoder import encoders as rs
 from tests.unit.json_encoder import python_ref as ref
 from tests.unit.json_encoder.cases import C
@@ -41,23 +40,26 @@ ZONES = sorted(
 
 
 def test_tables_are_this_tzdata():
-    # The encoders' zones are IANA 2026b (rust/pgwire/third_party/chrono-tz), as is this reference.
-    assert tzdata.IANA_VERSION == "2026b"
+    # The encoders' zones are IANA 2026f (rust/pgwire/third_party/chrono-tz), as is this reference.
+    assert tzdata.IANA_VERSION == "2026f"
 
 
-#: tzdata's zones the shared tz tables (rust/pgwire tz_rules, chrono-tz) do not hold: a column in
-#: one is refused naming the zone (an open question for the pgwire crate, J504w's report).
-NOT_HELD = {"Factory"}
+def test_factory_is_written():
+    # tzdata's placeholder zone (its `factory` file) is held by the shared tz tables too: written at
+    # offset 0, not refused.
+    t = pa.table({"v": pa.array(VALUES[:3], pa.timestamp("us", tz="Factory"))})
+    assert "Factory" in ZONES
+    assert (
+        compare(
+            "zones",
+            lambda: ref.encode(t.schema, t.to_batches(), [C("v")], "r"),
+            lambda: rs.encode_response(t.to_batches(), [C("v")], "r"),
+        )
+        == "ok"
+    )
 
 
-@pytest.mark.parametrize("zone", sorted(NOT_HELD))
-def test_zone_not_held_is_refused(zone):
-    t = pa.table({"v": pa.array(VALUES[:3], pa.timestamp("us", tz=zone))})
-    with pytest.raises(EncoderFailed, match=f"No time zone found with key {zone}"):
-        rs.encode_response(t.to_batches(), [C("v")], "r")
-
-
-@pytest.mark.parametrize("zone", [z for z in ZONES if z not in NOT_HELD])
+@pytest.mark.parametrize("zone", ZONES)
 def test_zone(zone):
     t = pa.table({"v": pa.array(VALUES, pa.timestamp("us", tz=zone))})
     cols = [C("v")]

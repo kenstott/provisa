@@ -20,7 +20,7 @@ account of the Python path are in that branch's `RESULTS.md`.
   (`rust/encoders`) as its `json` submodule, beside `pgwire` (`rust/pgwire`). The packaging is
   the pgwire encoder's (setuptools-rust, `pyproject.toml`, the four platform wheels); `rust/build-local.sh`
   builds the module for this machine.
-- Named time zones are the pgwire crate's (`pgwire_encoder::tz`: chrono-tz's IANA 2026b tables,
+- Named time zones are the pgwire crate's (`pgwire_encoder::tz`: chrono-tz's IANA 2026f tables,
   then each zone's POSIX rule from 2100), as zoneinfo and PostgreSQL read them (J498). No pytz
   table is linked.
 - `provisa/executor/json_encoders.py` is what the routers call: it hands over the compiled plan
@@ -110,13 +110,12 @@ relative tolerance of 1e-14; a refusal by its class and what it names, any other
 extremes, NULLs and random values in five shapes, 61 JSON texts, 18 nesting plans with five result
 limits, 1,500 random plans, the JSON:API and OData envelopes.
 
-- `test_compare.py`: 1,765 passed. `test_surfaces.py`: 1,599 passed. `test_zones.py`: 597 zones
-  (every zone of the pinned `tzdata`, 2026b) at 60,178 instants from 1800 to 2400, all equal;
-  `Factory`, which tzdata lists and the shared tz tables do not hold, is refused naming the zone
-  (an open question for the pgwire crate).
+- `test_compare.py`: 1,765 passed. `test_surfaces.py`: 1,599 passed. `test_zones.py`: 598 zones
+  (every zone of the pinned `tzdata`, 2026f, `Factory` included) at 60,178 instants from 1800 to
+  2400, all equal.
 - The reference reads zones from the pinned `tzdata` package (the release chrono-tz is built from),
-  not the host's `/usr/share/zoneinfo`, which may be a newer release (2026e on the build machine:
-  18 zones differ in 2026 and later).
+  not the host's `/usr/share/zoneinfo`, which may be another release (2026e on the build machine),
+  and so does the product: importing `provisa` empties zoneinfo's search path (`provisa/__init__.py`).
 
 ### Intentional differences from the old Python path
 
