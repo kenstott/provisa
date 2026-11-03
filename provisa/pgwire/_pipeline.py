@@ -36,6 +36,8 @@ from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
+import sqlglot
+
 from provisa.federation.execution_auth import plan_authorization
 
 from provisa.audit.pipeline import PendingAudit
@@ -59,6 +61,7 @@ _CURRENT_SETTING_RE = re.compile(
     r"current_setting\(\s*'provisa\.([A-Za-z0-9_]+)'\s*(?:,\s*true\s*)?\)",
     re.IGNORECASE,
 )
+_SETTING_NAME_RE = re.compile(r"provisa\.([A-Za-z0-9_]+)", re.IGNORECASE)
 
 
 def _resolve_session_settings(sql: str, session_vars: dict[str, str], dialect: str) -> str:
@@ -68,15 +71,36 @@ def _resolve_session_settings(sql: str, session_vars: dict[str, str], dialect: s
     keeps native ``current_setting`` (fed by ``SET LOCAL``) and is untouched.
     """
 
+    if _CURRENT_SETTING_RE.search(sql) is None:
+        return sql
     from provisa.compiler.sql_literals import sql_literal
 
-    def _sub(m: re.Match) -> str:
+    def _resolved(node: sqlglot.exp.Expr) -> sqlglot.exp.Expr:
+        named = _setting_named(node)
+        if named is None:
+            return node
         # ``dialect`` is the dialect ``sql`` is written in: the engine's for transpiled SQL, where
         # a backslash may be an escape, so each value takes that dialect's one literal rule.
-        value = session_vars.get(m.group(1))
-        return "NULL" if value is None else sql_literal(value, dialect)
+        value = session_vars.get(named)
+        return sqlglot.parse_one(
+            "NULL" if value is None else sql_literal(value, dialect), read=dialect
+        )
 
-    return _CURRENT_SETTING_RE.sub(_sub, sql)
+    # REQ-2167: on the tree, so a current_setting a string literal holds is its text.
+    return sqlglot.parse_one(sql, read=dialect).transform(_resolved).sql(dialect=dialect)
+
+
+def _setting_named(node: sqlglot.exp.Expr) -> str | None:
+    """The provisa.<var> ``node`` reads, where it is current_setting('provisa.<var>' [, true])."""
+    exp = sqlglot.exp
+    if not isinstance(node, exp.Anonymous) or node.name.lower() != "current_setting":
+        return None
+    args = node.expressions
+    missing_ok = len(args) == 2 and isinstance(args[1], exp.Boolean) and args[1].this is True
+    if not (len(args) == 1 or missing_ok) or not isinstance(args[0], exp.Literal):
+        return None
+    found = _SETTING_NAME_RE.fullmatch(args[0].this) if args[0].is_string else None
+    return found.group(1) if found else None
 
 
 @dataclass

@@ -293,10 +293,8 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
         import sqlglot.expressions as exp
         import sqlglot
 
-        from provisa.transpiler.pg_forms_type_io import spelled
-
-        # REQ-2167: read as the transpiler reads it; ``::cstring[]`` is no subscript.
-        tree = sqlglot.parse_one(spelled(stripped), read="postgres")
+        # REQ-2167: read as the transpiler reads it; ``::cstring[]`` is no subscript (pg_syntax).
+        tree = sqlglot.parse_one(stripped, read="postgres")
         for tbl in tree.find_all(exp.Table):
             db = tbl.db.lower() if tbl.db else ""
             tname = tbl.name.lower() if tbl.name else ""
@@ -786,6 +784,21 @@ def _with_own_oids(result, oids, served: list[str]):
     return result
 
 
+def _unbound(sql: str) -> str:
+    """``sql`` with each $N NULL, on the tree (REQ-2167): a ``$1`` in a string literal is its
+    text."""
+    if "$" not in sql:
+        return sql
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    def null(node: exp.Expr) -> exp.Expr:
+        unbound = isinstance(node, exp.Parameter) and node.name.isdigit()
+        return exp.Null() if unbound else node
+
+    return sqlglot.parse_one(sql, read="postgres").transform(null).sql(dialect="postgres")
+
+
 def _read_meta(sql: str, role_id: str, state, session: CatalogSession | None, run):
     """The statement as a read of the meta domain, governed as any read is (REQ-2190): ``run``
     takes the coroutine onto the connection's loop."""
@@ -793,7 +806,7 @@ def _read_meta(sql: str, role_id: str, state, session: CatalogSession | None, ru
 
     request = _catalog_request(sql, role_id, state, session)
     # A $N a value was not bound for (Describe of an unbound statement): any value describes it.
-    bare = re.sub(r"\$\d+", "NULL", sql)
+    bare = _unbound(sql)
     try:
         addressed, asked = address(bare, request)
     except MetadataFunctionRefused as exc:

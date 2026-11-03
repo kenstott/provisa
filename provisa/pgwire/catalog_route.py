@@ -128,29 +128,68 @@ current_request: contextvars.ContextVar[CatalogRequest | None] = contextvars.Con
 )
 
 
-# --- what sqlglot cannot read of PostgreSQL's spelling -------------------------------------------
+# --- PostgreSQL's spelling of what sqlglot reads (pg_syntax) -----------------------------------
 
-#: ``::oid[]``: sqlglot reads the brackets as a subscript. PostgreSQL's own name of each array type
-#: says the same.
-_ARRAY_CAST = re.compile(
-    r"::\s*(?:pg_catalog\.)?"
-    r"(oid|regtype|regclass|name|aclitem|regproc|xid|cid|int2vector|oidvector|cstring)"
-    r"\[\]",
-    re.IGNORECASE,
+#: The array types a statement on the catalog names by PostgreSQL's own name of each (``_oid``).
+_ARRAYS_NAMED = frozenset(
+    {
+        "oid",
+        "regtype",
+        "regclass",
+        "name",
+        "aclitem",
+        "regproc",
+        "xid",
+        "cid",
+        "int2vector",
+        "oidvector",
+        "cstring",
+        "char",
+    }
 )
-#: Functions sqlglot reads as syntax of its own: a qualified, quoted call it reads as a call, and
-#: PostgreSQL as the same function.
-_SYNTAX_CALLS = re.compile(r"(?:\bpg_catalog\.)?\b(convert|json_object)\s*\(", re.IGNORECASE)
-#: sqlglot reads ``::bit varying`` as a bit and an alias.
-_BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
-_CHAR_ARRAY_CAST = re.compile(r'::\s*(?:pg_catalog\.)?"char"\[\]', re.IGNORECASE)
+#: Functions sqlglot reads as syntax of its own: pg_catalog's, quoted, which is the same function.
+_SYNTAX_CALLS = frozenset({"convert", "json_object"})
 
 
-def _readable(sql: str) -> str:
-    sql = _SYNTAX_CALLS.sub(lambda m: f'pg_catalog."{m[1].lower()}"(', sql)
-    sql = _BIT_VARYING.sub("::varbit", sql)
-    sql = _CHAR_ARRAY_CAST.sub("::_char", sql)
-    return _ARRAY_CAST.sub(lambda m: f"::_{m[1].lower()}", sql)
+def _type_name(kind: exp.DataType) -> str | None:
+    """The name of ``kind``, pg_catalog's or bare, where it is one of ``_ARRAYS_NAMED``."""
+    named = kind.args.get("kind")
+    if isinstance(named, exp.Dot) and named.this.name.lower() == "pg_catalog":
+        named = named.expression
+    if named is not None:
+        name = named.name
+        quoted = isinstance(named, exp.Identifier) and named.quoted
+        name = name if quoted or name != "char" else ""  # bare char is character, not "char"
+    else:
+        name = kind.sql(dialect="postgres").lower()
+    return name if name in _ARRAYS_NAMED else None
+
+
+def _spelled(node: exp.Expr) -> exp.Expr:
+    if isinstance(node, exp.DataType) and node.is_type(exp.DataType.Type.ARRAY):
+        elements = node.expressions
+        name = _type_name(elements[0]) if len(elements) == 1 else None
+        if name is not None:
+            return exp.DataType(
+                this=exp.DataType.Type.USERDEFINED, kind=exp.to_identifier(f"_{name}")
+            )
+    if isinstance(node, exp.Anonymous) and node.name.lower() in _SYNTAX_CALLS:
+        called = exp.Anonymous(
+            this=exp.to_identifier(node.name.lower(), quoted=True), expressions=node.expressions
+        )
+        return exp.Dot(this=exp.to_identifier("pg_catalog"), expression=called)
+    return node
+
+
+def _read(sql: str) -> exp.Expr:
+    """``sql``'s tree, each array type of ``_ARRAYS_NAMED`` by PostgreSQL's own name of it and each
+    call of ``_SYNTAX_CALLS`` pg_catalog's."""
+    tree = _parsed(sql)
+    for dot in list(tree.find_all(exp.Dot)):
+        if isinstance(dot.expression, exp.Anonymous) and dot.this.name.lower() == "pg_catalog":
+            if dot.expression.name.lower() in _SYNTAX_CALLS:
+                dot.replace(dot.expression)
+    return tree.transform(_spelled)
 
 
 # --- names ---------------------------------------------------------------------------------------
@@ -809,7 +848,7 @@ def address(sql: str, request: CatalogRequest) -> tuple[str, frozenset[str] | No
     the relations it is about where it says (:mod:`provisa.pgwire.catalog_pin`)."""
     token = _ENUMS.set(request.enums)
     try:
-        tree = _parsed(_readable(sql))
+        tree = _read(sql)
         _coerce_reg_comparisons(tree)
         _result_regs(tree)
         routed = tree.transform(_rewriter(request, _cte_names(tree)))

@@ -25,7 +25,6 @@ from __future__ import annotations
 import datetime
 import decimal
 import functools
-import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -285,13 +284,6 @@ _RETURNED.update(
 _RETURNED["date"] = CastType(1082, -1, BVType.DATE, frozenset({BVType.DATE}))
 _RETURNED["uuid"] = CastType(2950, -1, BVType.UUID, frozenset({BVType.UUID, BVType.TEXT}))
 
-_BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
-
-
-def bit_varying_read(sql: str) -> str:
-    """``sql`` as sqlglot reads it: ``::bit varying`` it takes for a bit and an alias."""
-    return _BIT_VARYING.sub("::varbit", sql.replace("::cstring[]", "::_cstring"))
-
 
 def _predicate_nodes() -> tuple[type, ...]:
     import sqlglot.expressions as exp
@@ -516,7 +508,7 @@ def result_casts(sql: str) -> tuple[CastType | None, ...] | None:
     from provisa.transpiler.pg_money import names_money, statement_columns
 
     try:
-        tree = sqlglot.parse_one(bit_varying_read(sql), read="postgres")
+        tree = sqlglot.parse_one(sql, read="postgres")
     except ParseError:
         return None  # not PostgreSQL's grammar: the engine's own types describe it
     if not isinstance(tree, exp.Select):

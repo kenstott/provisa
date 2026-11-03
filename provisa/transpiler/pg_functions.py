@@ -29,7 +29,7 @@ from typing import Any
 
 import sqlglot
 import sqlglot.expressions as exp
-from sqlglot.errors import ParseError
+from sqlglot.dialects.postgres import Postgres
 
 from provisa.transpiler import function_macros, pg_xml
 from provisa.transpiler.pg_literals import postgres_literals
@@ -674,28 +674,48 @@ def _call(node: exp.Expr) -> exp.Expr:
     return node if written is None else sqlglot.parse_one(written, read="postgres")
 
 
-#: What sqlglot's parser cannot read as a call: CONVERT's and JSON_OBJECT's own syntax.
-_UNPARSED_CALLS = re.compile(r"\b(convert|json_object)\s*\(", re.IGNORECASE)
-_BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
-_JSON_OBJECT_OF_ARRAYS = re.compile(r"\bjson_object\s*\(\s*(?='\{|ARRAY\[)", re.IGNORECASE)
+#: What sqlglot's parser reads as syntax of its own (pg_syntax): PostgreSQL's calls of the name.
+_SYNTAX_CALLS = re.compile(r"\b(convert|json_object)\s*\(", re.IGNORECASE)
+_BIT_VARYING = re.compile(r"\bbit\s+varying\b", re.IGNORECASE)
 #: sqlglot reads to_hex as DuckDB's HEX of any value; a form's HEX of its bytes is written the same.
 _TO_HEX = re.compile(r"\"?\bto_hex\"?\s*\(", re.IGNORECASE)
 _SPECIAL_LITERAL = re.compile(r"\bB'[01]*'|\bU&'", re.IGNORECASE)
 
 
+class _HexKept(Postgres):
+    """PostgreSQL, with to_hex read as the form DuckDB's engine has of it (not sqlglot's HEX)."""
+
+    class Parser(Postgres.Parser):
+        FUNCTIONS = {
+            **Postgres.Parser.FUNCTIONS,
+            "TO_HEX": lambda args: exp.Anonymous(this="pg_to_hex", expressions=args),
+        }
+
+
+#: PostgreSQL's calls sqlglot reads as syntax of its own, and the form DuckDB's engine has of each.
+_FORMS = {"convert": "pg_convert", "json_object": "pg_json_object", "to_hex": "pg_to_hex"}
+
+
 def readable(pg_sql: str) -> str:
-    """``pg_sql`` with a call of a function sqlglot reads as syntax spelled as a plain call: a
-    statement that parses is left as it is. ``bit varying``, which sqlglot reads as a bit and an
-    alias, is the bit string the engine holds it as."""
-    pg_sql = _JSON_OBJECT_OF_ARRAYS.sub("pg_json_object(", _BIT_VARYING.sub("::bit", pg_sql))
-    pg_sql = _TO_HEX.sub("pg_to_hex(", pg_sql)
-    if _UNPARSED_CALLS.search(pg_sql) is None:
+    """``pg_sql`` with a call of a function sqlglot reads as syntax its plain call of the form the
+    engine has (pg_syntax reads each as PostgreSQL's call): a statement with none is left as it
+    is. ``bit varying`` is the bit string the engine holds it as."""
+    if not any(p.search(pg_sql) for p in (_SYNTAX_CALLS, _BIT_VARYING, _TO_HEX)):
         return pg_sql
-    try:
-        sqlglot.parse_one(pg_sql, read="postgres")
-    except ParseError:
-        return postgres_literals(_UNPARSED_CALLS.sub(lambda m: f"pg_{m[1].lower()}(", pg_sql))
-    return pg_sql
+    converted = False
+
+    def held(node: exp.Expr) -> exp.Expr:
+        nonlocal converted
+        if isinstance(node, exp.DataType) and node.this == exp.DataType.Type.USERDEFINED:
+            if node.args["kind"].name.lower() == "varbit":
+                return exp.DataType(this=exp.DataType.Type.BIT, expressions=node.expressions)
+        if isinstance(node, exp.Anonymous) and node.name.lower() in _FORMS:
+            converted = converted or node.name.lower() == "convert"
+            return exp.Anonymous(this=_FORMS[node.name.lower()], expressions=node.expressions)
+        return node
+
+    written = sqlglot.parse_one(pg_sql, read=_HexKept).transform(held).sql(dialect="postgres")
+    return postgres_literals(written) if converted else written
 
 
 def typed_calls(pg_sql: str) -> str:
