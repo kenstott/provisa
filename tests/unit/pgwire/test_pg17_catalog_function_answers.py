@@ -209,3 +209,42 @@ def test_pg_monitors_memberships_are_listed():
         (3375, 3373, 10, False, True, True),
         (3377, 3373, 10, False, True, True),
     ]
+
+
+@pytest.mark.parametrize(
+    "sql,expected",
+    [
+        (
+            "SELECT pg_catalog.\"regnamespaceout\"('information_schema'::regnamespace) AS v",
+            "information_schema",
+        ),
+        (
+            "SELECT pg_catalog.\"regnamespacesend\"('information_schema'::regnamespace) AS v",
+            b"\x00\x00\x33\xe3",
+        ),
+        (
+            "SELECT pg_catalog.\"regclassout\"('information_schema.tables'::regclass) AS v",
+            "information_schema.tables",
+        ),
+        ("SELECT pg_catalog.\"regclassout\"('pg_catalog.pg_class'::regclass) AS v", "pg_class"),
+        ("SELECT pg_catalog.\"regtypeout\"('integer'::regtype) AS v", "integer"),
+        ('SELECT pg_catalog."to_regcollation"(\'"C"\'::text) AS v', '"C"'),
+        ("SELECT pg_catalog.\"to_regcollation\"('C'::text) AS v", None),
+    ],
+)
+def test_an_object_identifier_is_written_by_its_name_in_meta(sql, expected):
+    assert _value(sql) == expected
+
+
+def test_information_schema_has_postgresql_17s_oid():
+    assert _rows(
+        "SELECT oid FROM pg_catalog.pg_namespace WHERE nspname = 'information_schema'"
+    ) == [(13283,)]
+
+
+def test_regclass_of_a_name_given_as_text_is_that_relation():
+    # A regclass result is sent with its oid and its name together (catalog_route._result_regs).
+    assert _value("SELECT pg_catalog.\"regclass\"('pg_catalog.pg_class'::text) AS v") == {
+        "oid": 1259,
+        "name": "pg_class",
+    }

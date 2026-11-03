@@ -29,6 +29,7 @@ from provisa.pgwire.catalog_pg17_tables import (
 )
 from provisa.pgwire.catalog_types import CATALOG_TYPE_OIDS
 from provisa.pgwire.ext_surfaces import surface_pg_type_rows, surface_typeinfo
+from provisa.transpiler.metadata_oids import INFORMATION_SCHEMA_OID, PG_CATALOG_OID
 
 
 _PG_TYPE_ROWS = [
@@ -608,7 +609,7 @@ _TABLE_MAP.update({key: served_table(*key) for key in UNQUERIED_RELATIONS})
 
 _CATALOG_TABLE_NAMES = frozenset(t for _, t in _TABLE_MAP)
 
-_NAMESPACE_OIDS = {"pg_catalog": 11, "information_schema": 12}
+_NAMESPACE_OIDS = {"pg_catalog": PG_CATALOG_OID, "information_schema": INFORMATION_SCHEMA_OID}
 
 
 def _array_element(oid: int) -> int:

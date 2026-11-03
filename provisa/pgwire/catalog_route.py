@@ -356,9 +356,38 @@ _OID_OF: dict[str, Callable[[str], str]] = {
 
 
 def _oid_sql(reg: str, operand: exp.Expr) -> str:
+    # A name cast to text first ('pg_class'::text) is still that name: regclass(text) reads it.
+    while (
+        isinstance(operand, exp.Cast)
+        and _reg_of(operand.to) in _TEXT_TYPES
+        and isinstance(operand.this, (exp.Literal, exp.Cast))
+    ):
+        operand = operand.this
     if isinstance(operand, exp.Literal) and operand.is_string:
         return _OID_OF[reg](operand.this)
     return f"CAST({operand.sql(dialect='postgres')} AS OID)"
+
+
+#: The output functions of an object identifier type the model resolves: the name of the object,
+#: from meta. Left to the server, each would name the server's own object of that oid.
+_OUTPUTS = {
+    "regclassout": "regclass",
+    "regnamespaceout": "regnamespace",
+    "regroleout": "regrole",
+    "regtypeout": "regtype",
+}
+
+
+def _output_call(name: str, args: list[exp.Expr], rewrite) -> exp.Expr | None:
+    reg = _OUTPUTS.get(name)
+    if reg is None or len(args) != 1:
+        return None
+    (value,) = args
+    if isinstance(value, exp.Cast) and _reg_of(value.to) == reg:
+        oid = _oid_sql(reg, value.this)
+    else:
+        oid = f"CAST({value.transform(rewrite).sql(dialect='postgres')} AS OID)"
+    return _parsed(f"CAST({_name_sql(reg, f'({oid})')} AS CSTRING)")
 
 
 def _quoted(name: str) -> str:
@@ -681,6 +710,9 @@ def _rewriter(request: CatalogRequest, cte_names: frozenset[str]):
             named_relation = _named_relation_call(name, args)
             if named_relation is not None:
                 return named_relation
+            output = _output_call(name, args, rewrite)
+            if output is not None:
+                return _named(output, node, name)
             input_answer = _input_call(name, args)
             return node if input_answer is None else _named(input_answer, node, name)
         if isinstance(node, exp.Cast):

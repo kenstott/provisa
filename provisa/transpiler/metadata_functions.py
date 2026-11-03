@@ -40,7 +40,12 @@ import sqlglot.expressions as exp
 from provisa.core.ir_types import SUBTYPES
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, TYPES
 from provisa.transpiler.metadata_facts import PRIVILEGES, UNSERVED, CatalogFacts, relation
-from provisa.transpiler.metadata_oids import FIRST_METRIC_OID, KEY_OID_BASE, key_id_sql
+from provisa.transpiler.metadata_oids import (
+    FIRST_METRIC_OID,
+    KEY_OID_BASE,
+    SYSTEM_SCHEMA_OIDS,
+    key_id_sql,
+)
 from provisa.transpiler.metadata_server_forms import SCALAR_FORMS, TABLE_FORMS, raising
 from provisa.transpiler.metadata_settings import setting
 from provisa.transpiler.pg_forms_system import SERVER_STATE
@@ -356,7 +361,7 @@ _READ_ONCE: dict[str, str] = {
     LISTED_INDEXES: "SELECT _l.oid FROM meta.catalog_pg_class _l WHERE _l.relkind = 'i'",
     PUBLISHABLE: (
         "SELECT _c.oid FROM meta.catalog_pg_class _c WHERE _c.relkind IN ('r', 'p') "
-        "AND _c.relnamespace NOT IN (11, 12)"
+        f"AND _c.relnamespace NOT IN {SYSTEM_SCHEMA_OIDS}"
     ),
 }
 
@@ -409,7 +414,7 @@ def _held(privileges: str) -> str:
     ``_c``: on a system relation, SELECT, which PostgreSQL grants every role."""
     listed = f"',' || REPLACE(UPPER({privileges}), ' ', '') || ','"
     return (
-        f"CASE WHEN _c.relnamespace IN (11, 12) THEN POSITION(',SELECT,' IN {listed}) > 0 "
+        f"CASE WHEN _c.relnamespace IN {SYSTEM_SCHEMA_OIDS} THEN POSITION(',SELECT,' IN {listed}) > 0 "
         f"ELSE EXISTS (SELECT 1 FROM {PRIVILEGES} _p WHERE _p.relation_oid = _c.oid "
         f"AND POSITION(',' || _p.privilege || ',' IN {listed}) > 0) END"
     )

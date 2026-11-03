@@ -37,6 +37,7 @@ from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS
 from provisa.pgwire.catalog_server_answers import ANSWERED as SERVER_ANSWERED
 from provisa.core.pg_error import from_engine
 from provisa.transpiler import function_macros
+from provisa.transpiler.metadata_oids import SYSTEM_SCHEMA_OIDS
 from provisa.transpiler.pg_functions import typed_calls
 from provisa.transpiler.pg_literals import postgres_literals
 from provisa.transpiler.pg_money import lowered
@@ -697,7 +698,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                             expression=exp.cast(args[0].transform(_transform), "BIGINT"),
                         )
                     )
-                    .where("relkind IN ('r', 'p') AND relnamespace NOT IN (11, 12)")
+                    .where(f"relkind IN ('r', 'p') AND relnamespace NOT IN {SYSTEM_SCHEMA_OIDS}")
                 )
             if fn == "pg_get_indexdef" and len(args) >= 2:
                 return _index_column_name(

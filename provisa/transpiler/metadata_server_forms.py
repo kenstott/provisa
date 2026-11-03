@@ -882,7 +882,7 @@ def _to_reg(a: _Answers) -> None:
         "to_regcollation",
         "name",
         "TEXT",
-        f"(SELECT CAST(_c.collname AS TEXT) FROM meta.catalog_pg_collation _c "
+        f"(SELECT QUOTE_IDENT(CAST(_c.collname AS TEXT)) FROM meta.catalog_pg_collation _c "
         f"WHERE _c.collname = {_last_part('name')} LIMIT 1)",
     )
     a.strict("to_regtype", "name", "OID", _type_lookup("name"))
