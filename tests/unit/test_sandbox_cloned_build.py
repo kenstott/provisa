@@ -45,6 +45,10 @@ class _Conn:
     async def upsert(self, *args, **kwargs):
         self.sent.append("upsert")
 
+    async def execute(self, sql: str):
+        self.sent.append(sql)
+        return ""
+
     async def execute_core(self, stmt):
         self.sent.append("execute_core")
         return SimpleNamespace(scalar=lambda: 0)
@@ -101,27 +105,34 @@ def _seed(monkeypatch, *, cloned: bool) -> tuple[list[str], list[str]]:
 
 def _every_view() -> list[str]:
     return [
-        f"view {ddl.strip().splitlines()[0]}"
-        for ddl in (
-            *startup_seed._META_TABLE_VIEWS.values(),
-            *startup_seed.ONTOLOGY_TABLE_VIEWS.values(),
-            *startup_seed._OPS_LOG_TABLE_VIEWS.values(),
-            startup_seed._ops_table_usage_ddl(),
-            *startup_seed._OPS_REPORT_VIEWS.values(),
-        )
+        *startup_seed._META_TABLE_VIEWS.values(),
+        *startup_seed.ONTOLOGY_TABLE_VIEWS.values(),
+        *startup_seed._OPS_LOG_TABLE_VIEWS.values(),
+        startup_seed._ops_table_usage_ddl(),
+        *startup_seed._OPS_REPORT_VIEWS.values(),
     ]
 
 
-def test_a_cloned_orgs_seed_makes_every_built_in_view_and_the_catalog_clients_grants(monkeypatch):
-    _sent, steps = _seed(monkeypatch, cloned=True)
-    assert steps == [*_every_view(), "_seed_catalog_client"]
+def test_a_cloned_orgs_seed_makes_every_built_in_view_in_one_script_then_the_grants(monkeypatch):
+    """Every built-in view, in the order the seed makes them, sent as one script: one round trip
+    where one transaction a view was about 800 (9 s of an open on the hosted tier)."""
+    sent, steps = _seed(monkeypatch, cloned=True)
+    assert steps == ["_seed_catalog_client"]
+    scripts = [s for s in sent if s != "lock"]
+    assert len(scripts) == 1
+    script = scripts[0]
+    at = -1
+    for ddl in _every_view():
+        found = script.find(ddl.strip().removesuffix(";"), at + 1)
+        assert found > at, ddl.strip().splitlines()[0]
+        at = found
 
 
 def test_a_cloned_orgs_seed_writes_none_of_the_rows_its_clone_carried(monkeypatch):
     sent, steps = _seed(monkeypatch, cloned=True)
     assert not set(steps) & {*_ROW_STEPS, "remove_where"}
-    # The one statement it sends itself is the lock its schema's seed is held under (REQ-1900).
-    assert sent == ["lock"]
+    # What it sends itself: the lock its schema's seed is held under (REQ-1900), and its views.
+    assert sent[0] == "lock" and len(sent) == 2
 
 
 def test_an_org_not_cloned_is_seeded_whole(monkeypatch):
