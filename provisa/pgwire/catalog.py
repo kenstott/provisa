@@ -38,7 +38,7 @@ from provisa.pgwire.catalog_data import (
     typeinfo,
 )
 from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
-from provisa.pgwire.constant_arguments import is_constant_sql
+from provisa.pgwire.constant_arguments import evaluable, is_constant_sql
 from provisa.pgwire.session_zone import SessionZone
 from provisa.pgwire.catalog_server_answers import ANSWERED as _SERVER_ANSWERED
 from provisa.pgwire.catalog_server_answers import REWRITTEN
@@ -526,6 +526,7 @@ def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
         raise NotImplementedError(
             f"{match['name']}: an argument that is not a constant expression is not supported"
         )
+    arg = evaluable(arg)
     seconds = {
         "pg_sleep": f"CAST(({arg}) AS DOUBLE PRECISION)",
         "pg_sleep_for": f"EXTRACT(EPOCH FROM ({arg}))",

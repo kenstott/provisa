@@ -383,3 +383,23 @@ async def test_an_unknown_setting_is_null_where_missing_ok(port, served):
         assert await a.fetchval(sql) is None
     finally:
         await a.close()
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "pg_catalog.pg_sleep_until(pg_catalog.clock_timestamp() + '0.2 seconds'::interval)",
+        "pg_sleep_until(statement_timestamp() + '0.2 seconds'::interval)",
+        "pg_sleep_for(transaction_timestamp() - now() + '0.2 seconds'::interval)",
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_sleep_until_a_time_read_from_the_clock_sleeps_until_then(port, served, call):
+    a = await _connect(port, "alice")
+    try:
+        started = time.monotonic()
+        # void, which asyncpg reads as None from PostgreSQL too.
+        assert await a.fetchval(f"SELECT {call} AS v") is None
+        assert time.monotonic() - started >= 0.2 - 0.01  # the client's clock holds the sleep
+    finally:
+        await a.close()

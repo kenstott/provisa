@@ -81,7 +81,7 @@ from provisa.compiler import xml_mapping
 from provisa.pgwire import advisory_locks
 from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.pgwire.cast_types import XML_ARRAY
-from provisa.pgwire.constant_arguments import is_constant
+from provisa.pgwire.constant_arguments import evaluable, is_constant
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
@@ -950,7 +950,7 @@ def _evaluated_keys(args: tuple[str, ...]) -> tuple[int | None, ...]:
 
     from provisa.core import engine_memory
 
-    selected = ", ".join(f"CAST(({a}) AS BIGINT)" for a in args)
+    selected = ", ".join(f"CAST(({evaluable(a)}) AS BIGINT)" for a in args)
     sql = sqlglot.transpile(f"SELECT {selected}", read="postgres", write="duckdb")[0]
     con = engine_memory.connect()
     try:
