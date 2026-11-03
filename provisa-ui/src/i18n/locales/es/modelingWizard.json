@@ -1,0 +1,244 @@
+{
+  "modelingWizard": {
+    "stepOf": "Paso {{index}} de {{count}}",
+    "next": "Siguiente",
+    "toReview": "Revisar",
+    "back": "Atrás",
+    "remove": "Quitar",
+    "domainHelp": "El dominio en el que se registra cada tabla que crea este asistente: su espacio de nombres para el control de acceso y las consultas.",
+    "validTime": "Tiempo de validez",
+    "validTimeHelp": "La columna que indica desde cuándo cada versión fue cierta en el negocio. Con el tiempo de registro, permite consultar versiones pasadas.",
+    "recordedTime": "Tiempo de registro",
+    "recordedTimeHelp": "La columna que indica cuándo se registró cada versión en el origen.",
+    "primitive": {
+      "entity": "Entidad",
+      "fact": "Hecho"
+    },
+    "role": {
+      "dimension": "Dimensión",
+      "fact": "Hecho",
+      "hub": "Hub",
+      "satellite": "Satélite",
+      "linkSatellite": "Satélite de link",
+      "effectivity": "Satélite de efectividad",
+      "link": "Link",
+      "sameAs": "Link same-as"
+    },
+    "roleIn": {
+      "dimension": "Una dimensión del esquema en estrella, creada como entidad con su clave de negocio como clave",
+      "fact": "El hecho del esquema en estrella, creado como hecho relacionado con cada dimensión",
+      "hub": "Un hub de Data Vault, creado como entidad con la clave de negocio como clave",
+      "satellite": "Un satélite de Data Vault, creado como entidad con la clave de negocio de su hub como clave",
+      "linkSatellite": "Un satélite de link de Data Vault, creado como entidad con las claves del link",
+      "effectivity": "Un satélite de efectividad de Data Vault, creado como entidad con las claves del link y tiempo de validez",
+      "link": "Un link de Data Vault, creado como hecho sin medidas cuya granularidad son las claves participantes",
+      "sameAs": "Un link same-as de Data Vault, creado como hecho sin medidas que relaciona el hub consigo mismo"
+    },
+    "star": {
+      "process": {
+        "title": "Proceso de negocio",
+        "intro": "El proceso de negocio que mide este esquema en estrella, dónde se registran sus eventos y qué tipo de hecho es."
+      },
+      "grain": {
+        "title": "Granularidad",
+        "intro": "Lo que representa una fila del hecho. Declare la granularidad antes que las dimensiones y las medidas."
+      },
+      "dimensions": {
+        "title": "Dimensiones",
+        "intro": "El quién, qué, dónde y cuándo de cada evento: cada dimensión, cómo cambia y si es conformada."
+      },
+      "measures": {
+        "title": "Medidas",
+        "intro": "Las cifras que produce el proceso, cómo se agrega cada una y si se puede sumar."
+      },
+      "processLabel": "Proceso de negocio",
+      "processHelp": "El proceso de negocio que registra el hecho, en palabras del negocio (gestión de pedidos, tramitación de siniestros). Da nombre a la tabla de hechos.",
+      "sourceLabel": "Dónde se registra el proceso",
+      "sourceHelp": "La tabla registrada con los eventos del proceso. El hecho se lee de ella: su granularidad, sus medidas y sus vínculos con las dimensiones.",
+      "factTypeLabel": "Tipo de hecho",
+      "factTypeHelp": "Transacción: una fila por evento. Instantánea periódica: una fila por periodo, el estado al final. Instantánea acumulativa: una fila por elemento, actualizada al pasar cada hito.",
+      "factType": {
+        "transaction": "Transacción",
+        "periodic": "Instantánea periódica",
+        "accumulating": "Instantánea acumulativa"
+      },
+      "grainStatement": "Granularidad, en palabras",
+      "grainStatementHelp": "Una fila del hecho, dicha con sencillez. Va en la descripción del hecho.",
+      "grainStatementPlaceholder": "una fila por línea de pedido",
+      "grainHelp": "La(s) columna(s) de la tabla del proceso que identifican una fila del hecho. Las medidas se agregan a este nivel.",
+      "dimensionsHelp": "Cada dimensión por la que se analiza el hecho. Una nueva se crea a partir de su propia tabla; una conformada es una dimensión existente que el hecho comparte con otros hechos.",
+      "dimName": "Dimensión",
+      "dimNameHelp": "Lo que describe la dimensión (cliente, producto, fecha). Da nombre a la tabla de dimensión.",
+      "via": "Columna del hecho",
+      "viaHelp": "La columna de la tabla del proceso que apunta a esta dimensión.",
+      "conformed": "Dimensión conformada",
+      "conformedHelp": "Elija una dimensión existente para compartirla con otros hechos y poder compararlos por ella. Déjelo vacío para crear una dimensión nueva.",
+      "conformedNew": "Crear una dimensión nueva",
+      "dimSource": "Tabla de la dimensión",
+      "dimSourceHelp": "La tabla registrada de la que se leen las filas de la dimensión.",
+      "dimKeyHelp": "La(s) columna(s) que identifican un miembro de la dimensión. Las filas se deduplican por ella y la columna del hecho apunta a ella.",
+      "dimAttributesHelp": "Las columnas descriptivas por las que los analistas filtran y agrupan.",
+      "scdLabel": "Cuando cambia un miembro",
+      "scdHelp": "El tipo 1 sobrescribe: solo se conserva el valor actual. El tipo 2 conserva cada versión. La instantánea conserva el estado de cada carga. El tipo 2 y la instantánea necesitan los tiempos de validez y de registro.",
+      "scd": {
+        "type1": "Tipo 1: sobrescribir",
+        "type2": "Tipo 2: conservar cada versión",
+        "snapshot": "Instantánea"
+      },
+      "measuresHelp": "Las columnas numéricas que mide el proceso. Cada una se convierte en una medida del hecho, agregada a la granularidad.",
+      "aggOf": "{{column}}: agregación",
+      "additivityLabel": "Aditividad",
+      "additivityHelp": "Aditiva: se puede sumar en todas las dimensiones (un importe). Semiaditiva: no a lo largo del tiempo (un saldo). No aditiva: nunca se suma (una razón, un precio).",
+      "additivity": {
+        "additive": "Aditiva",
+        "semiAdditive": "Semiaditiva",
+        "nonAdditive": "No aditiva"
+      },
+      "missing": {
+        "process": "Indique el proceso de negocio, su dominio y la tabla donde se registra.",
+        "grain": "Elija la(s) columna(s) que identifican una fila del hecho.",
+        "dimensions": "Cada dimensión necesita un nombre y una columna del hecho, y una dimensión conformada o bien su propia tabla y clave (con tiempos de validez y de registro para el tipo 2 o la instantánea)."
+      }
+    },
+    "vault": {
+      "hubs": {
+        "title": "Hubs y claves de negocio",
+        "intro": "Los conceptos de negocio centrales, la clave de negocio que identifica cada uno y la fuente de registro de la que procede la clave."
+      },
+      "links": {
+        "title": "Links",
+        "intro": "Las unidades de trabajo entre los conceptos y si cada relación puede terminar."
+      },
+      "satellites": {
+        "title": "Satélites",
+        "intro": "Los atributos descriptivos de cada hub o link, agrupados por origen, ritmo de cambio o sensibilidad, y hasta dónde llega su historial."
+      },
+      "rules": {
+        "title": "Business vault",
+        "intro": "Las reglas de negocio que derivan valores nuevos del raw vault. Opcional."
+      },
+      "hubsLabel": "Hubs",
+      "hubsHelp": "Un hub por cada concepto de negocio central (cliente, producto, pedido), identificado por su clave de negocio: la clave que usa el propio negocio, no la clave subrogada de un sistema.",
+      "addHub": "Añadir hub",
+      "concept": "Concepto de negocio",
+      "conceptHelp": "El concepto que representa el hub. Da nombre al hub.",
+      "recordSource": "Fuente de registro",
+      "recordSourceHelp": "La tabla registrada de la que se cargan las claves de negocio.",
+      "businessKeyHelp": "La(s) columna(s) con las que el negocio identifica el concepto.",
+      "sameAsSource": "Link same-as",
+      "sameAsHelp": "Cuando dos claves nombran la misma instancia (un cliente conocido por los números de dos sistemas), la tabla que las empareja. Déjelo vacío si no la hay.",
+      "sameAsNone": "Ninguno",
+      "sameAsMaster": "Clave maestra",
+      "sameAsDuplicate": "Clave duplicada",
+      "linksLabel": "Links",
+      "linksHelp": "Un link por cada unidad de trabajo entre hubs (un cliente hace un pedido). Un link solo contiene las claves participantes.",
+      "addLink": "Añadir link",
+      "linkName": "Unidad de trabajo",
+      "linkNameHelp": "Lo que registra el link. Da nombre al link; si se deja vacío, el link se nombra según sus hubs.",
+      "linkSource": "Tabla del link",
+      "linkSourceHelp": "La tabla registrada que recoge la unidad de trabajo, con la clave de cada hub participante.",
+      "linkHubs": "Hubs que relaciona",
+      "linkHubsHelp": "Los hubs que participan. Un link relaciona dos o más hubs.",
+      "linkVia": "Clave de {{hub}}",
+      "endsLabel": "¿Termina la relación?",
+      "endsHelp": "Cuando una relación puede terminar (un cliente cambia de gestor), un satélite de efectividad registra cuándo empieza y termina cada una.",
+      "ends": {
+        "never": "No, se mantiene una vez creada",
+        "effectivity": "Sí: seguir la efectividad"
+      },
+      "depthLabel": "Profundidad del historial",
+      "depthHelp": "Cada versión: cada cambio en los atributos de un satélite se conserva y se puede consultar en cualquier momento. Solo valores actuales: un cambio sobrescribe.",
+      "depth": {
+        "full": "Cada versión",
+        "current": "Solo valores actuales"
+      },
+      "satellitesLabel": "Satélites",
+      "satellitesHelp": "Los atributos descriptivos de un hub o link. Repártalos en varios satélites por origen, ritmo de cambio o sensibilidad.",
+      "addSatellite": "Añadir satélite",
+      "satParent": "Describe",
+      "satParentHelp": "El hub o link cuyos atributos contiene el satélite.",
+      "parentHub": "Hub {{name}}",
+      "parentLink": "Link {{name}}",
+      "parentSatellite": "Satélite {{name}}",
+      "satName": "Nombre del satélite",
+      "satNameHelp": "Lo que distingue a este satélite (su origen, crm; o su tema, dirección). Se añade a su nombre.",
+      "satSource": "Tabla del satélite",
+      "satSourceHelp": "La tabla registrada de la que se leen los atributos.",
+      "satParentKey": "Clave de lo que describe",
+      "satParentKeyHelp": "La(s) columna(s) de la tabla del satélite que contienen la clave de negocio del hub o las claves del link.",
+      "satAttributesHelp": "Las columnas descriptivas que contiene este satélite.",
+      "groupedBy": "Agrupado por",
+      "groupedByHelp": "Por qué estos atributos van juntos: vienen de un mismo origen, cambian al mismo ritmo o comparten sensibilidad (datos personales aparte).",
+      "grouping": {
+        "source": "Origen",
+        "rateOfChange": "Ritmo de cambio",
+        "sensitivity": "Sensibilidad"
+      },
+      "multiActive": "Clave multiactiva",
+      "multiActiveHelp": "Cuando varias filas están activas a la vez para una clave (los teléfonos de un cliente), la(s) columna(s) que las distinguen. Déjelo vacío en otro caso.",
+      "multiActiveNone": "No multiactivo",
+      "rulesLabel": "Reglas de negocio",
+      "rulesHelp": "Una regla del business vault deriva un valor del raw vault (el valor de vida de un cliente). Se registra en la descripción de la tabla de la que deriva y después se crea como vista.",
+      "addRule": "Añadir regla",
+      "ruleTarget": "Deriva de",
+      "ruleText": "Regla",
+      "ruleTextPlaceholder": "valor de vida = suma de los totales de pedido",
+      "missing": {
+        "hubs": "Elija el dominio y dé a cada hub un concepto de negocio, una fuente de registro y una clave de negocio; un link same-as necesita su tabla y ambas claves.",
+        "links": "Cada link necesita su tabla, al menos dos hubs, la clave de cada uno y los tiempos de validez y de registro si termina.",
+        "satellites": "Cada satélite necesita lo que describe, su tabla, esa clave y sus atributos, con tiempos de validez y de registro si se conserva cada versión.",
+        "rules": "Indique de qué tabla deriva cada regla."
+      }
+    },
+    "review": {
+      "title": "Revisión",
+      "intro": "En qué se convierte cada respuesta en Provisa: una entidad o un hecho, su clave o granularidad, su historial y sus relaciones. Los nombres siguen la convención del método; cambie cualquiera aquí.",
+      "nameOf": "Nombre ({{role}})",
+      "nameHelp": "El nombre de la tabla. Es el nombre habitual del método; quite el prefijo si los consumidores no deben verlo.",
+      "source": "Lee",
+      "key": "Clave",
+      "attributes": "Atributos",
+      "history": "Historial",
+      "historyNone": "solo valores actuales",
+      "historyKept": "cada versión, por tiempo de validez {{validTime}} y tiempo de registro {{recordedTime}}",
+      "grain": "Granularidad",
+      "measures": "Medidas",
+      "relationships": "Relaciones",
+      "relationship": "{{via}} → {{target}}",
+      "description": "Borrador de descripción",
+      "notCreatedTitle": "Registrado, no creado",
+      "ruleNotCreated": "Regla del business vault «{{rule}}»: registrada en la descripción de su tabla; créela como vista sobre estas tablas.",
+      "draftNote": "Cada descripción es un primer borrador que un steward revisará en Tablas registradas.",
+      "create": "Crear",
+      "nameRequired": "Dé un nombre a cada tabla.",
+      "nameTaken": "Dos tablas tienen el mismo nombre. Dé a cada una el suyo."
+    },
+    "result": {
+      "created_one": "{{count}} tabla creada",
+      "created_other": "{{count}} tablas creadas",
+      "stopped": "Detenido en {{name}}",
+      "draftNote": "Sus descripciones son primeros borradores: revíselas en Tablas registradas.",
+      "oneWay": "El asistente solo crea. Modifique estas tablas en Tablas registradas o en el formulario de entidad/hecho; el asistente no las regenera.",
+      "relatesTo": "relacionado con {{tables}}",
+      "status": {
+        "created": "Creada",
+        "failed": "Rechazada",
+        "notReached": "No creada"
+      }
+    },
+    "desc": {
+      "none": "ninguno",
+      "dimension": "Borrador: dimensión «{{name}}» del esquema en estrella del proceso {{process}}, con clave {{key}}, leída de {{source}}. Cuando cambia un miembro: {{scd}}.",
+      "fact": "Borrador: hecho del esquema en estrella del proceso {{process}} ({{factType}}). Granularidad: {{grain}}. Dimensiones: {{dimensions}}. Medidas: {{measures}}.",
+      "measure": "{{agg}}({{column}}), {{additivity}}",
+      "hub": "Borrador: hub de Data Vault del concepto {{concept}}, con la clave de negocio {{key}}, de la fuente de registro {{source}}.",
+      "sameAs": "Borrador: link same-as de Data Vault de {{hub}}: {{master}} y {{duplicate}} nombran la misma instancia de {{concept}}, de {{source}}.",
+      "link": "Borrador: link de Data Vault para la unidad de trabajo «{{name}}» entre {{hubs}}, con las claves {{keys}}, de {{source}}.",
+      "linkEnds": "La relación puede terminar; su satélite de efectividad registra cuándo.",
+      "effectivity": "Borrador: satélite de efectividad de Data Vault de {{link}}: cuándo empieza y termina cada relación, por tiempo de validez {{validTime}} y tiempo de registro {{recordedTime}}.",
+      "satellite": "Borrador: satélite de Data Vault de {{parent}}: {{attributes}} de {{source}}, agrupado por {{grouping}}. Historial: {{history}}.",
+      "multiActive": "Multiactivo por {{columns}}.",
+      "rule": "Regla del business vault: {{rule}}."
+    }
+  }
+}

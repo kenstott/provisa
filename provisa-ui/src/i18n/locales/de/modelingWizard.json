@@ -1,0 +1,244 @@
+{
+  "modelingWizard": {
+    "stepOf": "Schritt {{index}} von {{count}}",
+    "next": "Weiter",
+    "toReview": "Prüfen",
+    "back": "Zurück",
+    "remove": "Entfernen",
+    "domainHelp": "Die Domäne, unter der jede von diesem Assistenten erstellte Tabelle registriert wird: ihr Namensraum für Zugriffskontrolle und Abfragen.",
+    "validTime": "Gültigkeitszeit",
+    "validTimeHelp": "Die Spalte, ab wann jede Version fachlich galt. Zusammen mit der Erfassungszeit lassen sich frühere Versionen abfragen.",
+    "recordedTime": "Erfassungszeit",
+    "recordedTimeHelp": "Die Spalte, wann jede Version in der Quelle erfasst wurde.",
+    "primitive": {
+      "entity": "Entität",
+      "fact": "Fakt"
+    },
+    "role": {
+      "dimension": "Dimension",
+      "fact": "Fakt",
+      "hub": "Hub",
+      "satellite": "Satellit",
+      "linkSatellite": "Link-Satellit",
+      "effectivity": "Effektivitäts-Satellit",
+      "link": "Link",
+      "sameAs": "Same-As-Link"
+    },
+    "roleIn": {
+      "dimension": "Eine Dimension des Sternschemas, als Entität mit ihrem Geschäftsschlüssel als Schlüssel",
+      "fact": "Der Fakt des Sternschemas, als Fakt mit einer Beziehung zu jeder Dimension",
+      "hub": "Ein Data-Vault-Hub, als Entität mit dem Geschäftsschlüssel als Schlüssel",
+      "satellite": "Ein Data-Vault-Satellit, als Entität mit dem Geschäftsschlüssel seines Hubs als Schlüssel",
+      "linkSatellite": "Ein Data-Vault-Link-Satellit, als Entität mit den Schlüsseln des Links",
+      "effectivity": "Ein Data-Vault-Effektivitäts-Satellit, als Entität mit den Schlüsseln des Links und Gültigkeitszeit",
+      "link": "Ein Data-Vault-Link, als Fakt ohne Kennzahlen, dessen Granularität die beteiligten Schlüssel sind",
+      "sameAs": "Ein Data-Vault-Same-As-Link, als Fakt ohne Kennzahlen, der den Hub mit sich selbst verbindet"
+    },
+    "star": {
+      "process": {
+        "title": "Geschäftsprozess",
+        "intro": "Der Geschäftsprozess, den dieses Sternschema misst, wo seine Ereignisse erfasst werden und welche Art von Fakt er ist."
+      },
+      "grain": {
+        "title": "Granularität",
+        "intro": "Wofür eine Zeile des Fakts steht. Legen Sie die Granularität vor den Dimensionen und Kennzahlen fest."
+      },
+      "dimensions": {
+        "title": "Dimensionen",
+        "intro": "Wer, was, wo und wann jedes Ereignisses: jede Dimension, wie sie sich ändert und ob sie konform ist."
+      },
+      "measures": {
+        "title": "Kennzahlen",
+        "intro": "Die Zahlen, die der Prozess liefert, wie jede aggregiert wird und ob sie summiert werden kann."
+      },
+      "processLabel": "Geschäftsprozess",
+      "processHelp": "Der Geschäftsprozess, den der Fakt erfasst, in den Worten des Fachbereichs (Auftragsabwicklung, Schadenbearbeitung). Er benennt die Fakttabelle.",
+      "sourceLabel": "Wo der Prozess erfasst wird",
+      "sourceHelp": "Die registrierte Tabelle mit den Ereignissen des Prozesses. Aus ihr wird der Fakt gelesen: seine Granularität, seine Kennzahlen und seine Verweise auf die Dimensionen.",
+      "factTypeLabel": "Fakttyp",
+      "factTypeHelp": "Transaktion: eine Zeile pro Ereignis. Periodischer Snapshot: eine Zeile pro Periode, der Stand an ihrem Ende. Akkumulierender Snapshot: eine Zeile pro Vorgang, fortgeschrieben bei jedem Meilenstein.",
+      "factType": {
+        "transaction": "Transaktion",
+        "periodic": "Periodischer Snapshot",
+        "accumulating": "Akkumulierender Snapshot"
+      },
+      "grainStatement": "Granularität in Worten",
+      "grainStatementHelp": "Eine Zeile des Fakts, einfach gesagt. Sie kommt in die Beschreibung des Fakts.",
+      "grainStatementPlaceholder": "eine Zeile pro Auftragsposition",
+      "grainHelp": "Die Spalte(n) der Prozesstabelle, die eine Faktzeile identifizieren. Kennzahlen werden auf diese Ebene aggregiert.",
+      "dimensionsHelp": "Jede Dimension, nach der der Fakt analysiert wird. Eine neue wird aus ihrer eigenen Tabelle gebaut; eine konforme ist eine bestehende Dimension, die der Fakt mit anderen Fakten teilt.",
+      "dimName": "Dimension",
+      "dimNameHelp": "Was die Dimension beschreibt (Kunde, Produkt, Datum). Sie benennt die Dimensionstabelle.",
+      "via": "Faktspalte",
+      "viaHelp": "Die Spalte der Prozesstabelle, die auf diese Dimension verweist.",
+      "conformed": "Konforme Dimension",
+      "conformedHelp": "Wählen Sie eine bestehende Dimension, um sie mit anderen Fakten zu teilen, damit diese daran vergleichbar sind. Leer lassen, um eine neue Dimension zu bauen.",
+      "conformedNew": "Neue Dimension bauen",
+      "dimSource": "Dimensionstabelle",
+      "dimSourceHelp": "Die registrierte Tabelle, aus der die Zeilen der Dimension gelesen werden.",
+      "dimKeyHelp": "Die Spalte(n), die ein Element der Dimension identifizieren. Zeilen werden darauf dedupliziert, und die Faktspalte verweist darauf.",
+      "dimAttributesHelp": "Die beschreibenden Spalten, nach denen Analysten filtern und gruppieren.",
+      "scdLabel": "Wenn sich ein Element ändert",
+      "scdHelp": "Typ 1 überschreibt: nur der aktuelle Wert bleibt. Typ 2 behält jede Version. Snapshot behält den Stand jeder Ladung. Typ 2 und Snapshot brauchen Gültigkeits- und Erfassungszeit.",
+      "scd": {
+        "type1": "Typ 1: überschreiben",
+        "type2": "Typ 2: jede Version behalten",
+        "snapshot": "Snapshot"
+      },
+      "measuresHelp": "Die numerischen Spalten, die der Prozess misst. Jede wird eine Kennzahl des Fakts, aggregiert auf die Granularität.",
+      "aggOf": "{{column}}: Aggregation",
+      "additivityLabel": "Additivität",
+      "additivityHelp": "Additiv: über jede Dimension summierbar (ein Betrag). Semi-additiv: nicht über die Zeit (ein Saldo). Nicht additiv: nie summiert (eine Quote, ein Preis).",
+      "additivity": {
+        "additive": "Additiv",
+        "semiAdditive": "Semi-additiv",
+        "nonAdditive": "Nicht additiv"
+      },
+      "missing": {
+        "process": "Nennen Sie den Geschäftsprozess, seine Domäne und die Tabelle, in der er erfasst wird.",
+        "grain": "Wählen Sie die Spalte(n), die eine Zeile des Fakts identifizieren.",
+        "dimensions": "Jede Dimension braucht einen Namen und eine Faktspalte sowie entweder eine konforme Dimension oder eine eigene Tabelle und einen Schlüssel (mit Gültigkeits- und Erfassungszeit bei Typ 2 oder Snapshot)."
+      }
+    },
+    "vault": {
+      "hubs": {
+        "title": "Hubs und Geschäftsschlüssel",
+        "intro": "Die zentralen Geschäftsobjekte, der Geschäftsschlüssel, der jedes identifiziert, und die Record Source, aus der der Schlüssel stammt."
+      },
+      "links": {
+        "title": "Links",
+        "intro": "Die Arbeitseinheiten zwischen den Geschäftsobjekten und ob jede Beziehung enden kann."
+      },
+      "satellites": {
+        "title": "Satelliten",
+        "intro": "Die beschreibenden Attribute jedes Hubs oder Links, gruppiert nach Quelle, Änderungsrate oder Sensibilität, und wie weit ihre Historie zurückreicht."
+      },
+      "rules": {
+        "title": "Business Vault",
+        "intro": "Die Geschäftsregeln, die neue Werte aus dem Raw Vault ableiten. Optional."
+      },
+      "hubsLabel": "Hubs",
+      "hubsHelp": "Ein Hub pro zentralem Geschäftsobjekt (Kunde, Produkt, Auftrag), identifiziert durch seinen Geschäftsschlüssel: den Schlüssel, den das Geschäft selbst verwendet, nicht den Surrogatschlüssel eines Systems.",
+      "addHub": "Hub hinzufügen",
+      "concept": "Geschäftsobjekt",
+      "conceptHelp": "Das Geschäftsobjekt, für das der Hub steht. Es benennt den Hub.",
+      "recordSource": "Record Source",
+      "recordSourceHelp": "Die registrierte Tabelle, aus der die Geschäftsschlüssel geladen werden.",
+      "businessKeyHelp": "Die Spalte(n), über die das Geschäft das Objekt identifiziert.",
+      "sameAsSource": "Same-As-Link",
+      "sameAsHelp": "Wenn zwei Schlüssel dasselbe Exemplar bezeichnen (ein Kunde mit Nummern aus zwei Systemen), die Tabelle, die sie paart. Leer lassen, wenn es keine gibt.",
+      "sameAsNone": "Keiner",
+      "sameAsMaster": "Master-Schlüssel",
+      "sameAsDuplicate": "Duplikat-Schlüssel",
+      "linksLabel": "Links",
+      "linksHelp": "Ein Link pro Arbeitseinheit zwischen Hubs (ein Kunde erteilt einen Auftrag). Ein Link enthält nur die beteiligten Schlüssel.",
+      "addLink": "Link hinzufügen",
+      "linkName": "Arbeitseinheit",
+      "linkNameHelp": "Was der Link erfasst. Es benennt den Link; leer gelassen, wird der Link nach seinen Hubs benannt.",
+      "linkSource": "Link-Tabelle",
+      "linkSourceHelp": "Die registrierte Tabelle, die die Arbeitseinheit erfasst und den Schlüssel jedes beteiligten Hubs enthält.",
+      "linkHubs": "Verbundene Hubs",
+      "linkHubsHelp": "Die beteiligten Hubs. Ein Link verbindet zwei oder mehr Hubs.",
+      "linkVia": "Schlüssel von {{hub}}",
+      "endsLabel": "Kann die Beziehung enden?",
+      "endsHelp": "Wenn eine Beziehung enden kann (ein Kunde wechselt den Betreuer), erfasst ein Effektivitäts-Satellit, wann jede beginnt und endet.",
+      "ends": {
+        "never": "Nein, sie besteht einmal hergestellt",
+        "effectivity": "Ja: Effektivität verfolgen"
+      },
+      "depthLabel": "Historientiefe",
+      "depthHelp": "Jede Version: jede Änderung an den Attributen eines Satelliten bleibt erhalten und ist zu jedem Zeitpunkt abfragbar. Nur aktuelle Werte: eine Änderung überschreibt.",
+      "depth": {
+        "full": "Jede Version",
+        "current": "Nur aktuelle Werte"
+      },
+      "satellitesLabel": "Satelliten",
+      "satellitesHelp": "Die beschreibenden Attribute eines Hubs oder Links. Teilen Sie sie nach Quelle, Änderungsrate oder Sensibilität auf mehrere Satelliten auf.",
+      "addSatellite": "Satellit hinzufügen",
+      "satParent": "Beschreibt",
+      "satParentHelp": "Der Hub oder Link, dessen Attribute der Satellit enthält.",
+      "parentHub": "Hub {{name}}",
+      "parentLink": "Link {{name}}",
+      "parentSatellite": "Satellit {{name}}",
+      "satName": "Name des Satelliten",
+      "satNameHelp": "Was diesen Satelliten unterscheidet (seine Quelle, crm; oder sein Thema, Adresse). Wird an seinen Namen angehängt.",
+      "satSource": "Satellitentabelle",
+      "satSourceHelp": "Die registrierte Tabelle, aus der die Attribute gelesen werden.",
+      "satParentKey": "Schlüssel des Beschriebenen",
+      "satParentKeyHelp": "Die Spalte(n) der Satellitentabelle mit dem Geschäftsschlüssel des Hubs oder den Schlüsseln des Links.",
+      "satAttributesHelp": "Die beschreibenden Spalten, die dieser Satellit enthält.",
+      "groupedBy": "Gruppiert nach",
+      "groupedByHelp": "Warum diese Attribute zusammengehören: Sie stammen aus einer Quelle, ändern sich gleich schnell oder teilen eine Sensibilität (personenbezogene Daten getrennt).",
+      "grouping": {
+        "source": "Quelle",
+        "rateOfChange": "Änderungsrate",
+        "sensitivity": "Sensibilität"
+      },
+      "multiActive": "Multi-Active-Schlüssel",
+      "multiActiveHelp": "Wenn für einen Schlüssel mehrere Zeilen gleichzeitig aktiv sind (die Telefonnummern eines Kunden), die Spalte(n), die sie unterscheiden. Sonst leer lassen.",
+      "multiActiveNone": "Nicht multi-active",
+      "rulesLabel": "Geschäftsregeln",
+      "rulesHelp": "Eine Business-Vault-Regel leitet einen Wert aus dem Raw Vault ab (der Customer Lifetime Value). Sie wird in der Beschreibung der Tabelle festgehalten, aus der sie ableitet, und danach als Sicht gebaut.",
+      "addRule": "Regel hinzufügen",
+      "ruleTarget": "Leitet ab aus",
+      "ruleText": "Regel",
+      "ruleTextPlaceholder": "Lifetime Value = Summe der Auftragssummen",
+      "missing": {
+        "hubs": "Wählen Sie die Domäne und geben Sie jedem Hub ein Geschäftsobjekt, eine Record Source und einen Geschäftsschlüssel; ein Same-As-Link braucht seine Tabelle und beide Schlüssel.",
+        "links": "Jeder Link braucht seine Tabelle, mindestens zwei Hubs, den Schlüssel jedes Hubs sowie Gültigkeits- und Erfassungszeit, wenn er enden kann.",
+        "satellites": "Jeder Satellit braucht, was er beschreibt, seine Tabelle, diesen Schlüssel und seine Attribute, mit Gültigkeits- und Erfassungszeit, wenn jede Version behalten wird.",
+        "rules": "Geben Sie an, aus welcher Tabelle jede Regel ableitet."
+      }
+    },
+    "review": {
+      "title": "Prüfen",
+      "intro": "Was jede Antwort in Provisa wird: eine Entität oder ein Fakt, sein Schlüssel oder seine Granularität, seine Historie und seine Beziehungen. Die Namen folgen der Konvention der Methode; ändern Sie hier jeden davon.",
+      "nameOf": "Name: {{role}}",
+      "nameHelp": "Der Name der Tabelle. Es ist der übliche Name der Methode; entfernen Sie das Präfix, wenn Konsumenten es nicht sehen sollen.",
+      "source": "Liest",
+      "key": "Schlüssel",
+      "attributes": "Attribute",
+      "history": "Historie",
+      "historyNone": "nur aktuelle Werte",
+      "historyKept": "jede Version, nach Gültigkeitszeit {{validTime}} und Erfassungszeit {{recordedTime}}",
+      "grain": "Granularität",
+      "measures": "Kennzahlen",
+      "relationships": "Beziehungen",
+      "relationship": "{{via}} → {{target}}",
+      "description": "Beschreibungsentwurf",
+      "notCreatedTitle": "Festgehalten, nicht erstellt",
+      "ruleNotCreated": "Business-Vault-Regel „{{rule}}“: in der Beschreibung ihrer Tabelle festgehalten; bauen Sie sie als Sicht über diesen Tabellen.",
+      "draftNote": "Jede Beschreibung ist ein erster Entwurf, den ein Steward unter Registrierte Tabellen überarbeitet.",
+      "create": "Erstellen",
+      "nameRequired": "Geben Sie jeder Tabelle einen Namen.",
+      "nameTaken": "Zwei Tabellen haben denselben Namen. Geben Sie jeder einen eigenen."
+    },
+    "result": {
+      "created_one": "{{count}} Tabelle erstellt",
+      "created_other": "{{count}} Tabellen erstellt",
+      "stopped": "Bei {{name}} angehalten",
+      "draftNote": "Ihre Beschreibungen sind erste Entwürfe: Überarbeiten Sie sie unter Registrierte Tabellen.",
+      "oneWay": "Der Assistent erstellt nur. Ändern Sie diese Tabellen unter Registrierte Tabellen oder im Entität/Fakt-Formular; der Assistent erzeugt sie nicht neu.",
+      "relatesTo": "verbunden mit {{tables}}",
+      "status": {
+        "created": "Erstellt",
+        "failed": "Abgelehnt",
+        "notReached": "Nicht erstellt"
+      }
+    },
+    "desc": {
+      "none": "keine",
+      "dimension": "Entwurf: Dimension „{{name}}“ des Sternschemas für den Prozess {{process}}, mit Schlüssel {{key}}, gelesen aus {{source}}. Wenn sich ein Element ändert: {{scd}}.",
+      "fact": "Entwurf: Fakt des Sternschemas für den Prozess {{process}} ({{factType}}). Granularität: {{grain}}. Dimensionen: {{dimensions}}. Kennzahlen: {{measures}}.",
+      "measure": "{{agg}}({{column}}), {{additivity}}",
+      "hub": "Entwurf: Data-Vault-Hub des Geschäftsobjekts {{concept}}, mit dem Geschäftsschlüssel {{key}}, aus der Record Source {{source}}.",
+      "sameAs": "Entwurf: Data-Vault-Same-As-Link von {{hub}}: {{master}} und {{duplicate}} bezeichnen dasselbe Exemplar von {{concept}}, aus {{source}}.",
+      "link": "Entwurf: Data-Vault-Link für die Arbeitseinheit „{{name}}“ zwischen {{hubs}}, über die Schlüssel {{keys}}, aus {{source}}.",
+      "linkEnds": "Die Beziehung kann enden; ihr Effektivitäts-Satellit hält fest, wann.",
+      "effectivity": "Entwurf: Data-Vault-Effektivitäts-Satellit von {{link}}: wann jede Beziehung beginnt und endet, nach Gültigkeitszeit {{validTime}} und Erfassungszeit {{recordedTime}}.",
+      "satellite": "Entwurf: Data-Vault-Satellit von {{parent}}: {{attributes}} aus {{source}}, gruppiert nach {{grouping}}. Historie: {{history}}.",
+      "multiActive": "Multi-active über {{columns}}.",
+      "rule": "Business-Vault-Regel: {{rule}}."
+    }
+  }
+}
