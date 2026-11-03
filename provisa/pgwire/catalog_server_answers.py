@@ -18,6 +18,7 @@ file or changes anything: Provisa has no server files, sequences or WAL a client
 
 from __future__ import annotations
 
+import calendar
 import re
 
 import sqlglot
@@ -1192,7 +1193,22 @@ def input_failure(value: exp.Expr, type_name: exp.Expr) -> tuple[str, str]:
     bits = _INTEGER_RANGES.get(display)
     if bits is not None and re.fullmatch(r"\s*[-+]?\d+\s*", text):
         return f'value "{text}" is out of range for type {display}', "22003"
+    if display == "date" and _day_past_its_month(text):
+        return f'date/time field value out of range: "{text}"', "22008"
     return f'invalid input syntax for type {display}: "{text}"', "22P02"
+
+
+_ISO_DATE = re.compile(r"\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*")
+
+
+def _day_past_its_month(text: str) -> bool:
+    """An ISO date whose month is one and whose day that month does not have: ValidateDate
+    refuses the day as out of range (DTERR_FIELD_OVERFLOW), not as syntax."""
+    found = _ISO_DATE.fullmatch(text)
+    if found is None:
+        return False
+    year, month, day = (int(g) for g in found.groups())
+    return 1 <= month <= 12 and not 1 <= day <= calendar.monthrange(year, month)[1]
 
 
 def input_check(value: exp.Expr, type_name: exp.Expr) -> exp.Expr:

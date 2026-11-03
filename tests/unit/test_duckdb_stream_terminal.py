@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import duckdb
 import pytest
 
 from provisa.core.pg_error import PostgresError
@@ -263,9 +264,11 @@ def test_run_sync_raises_postgresqls_error_met_in_a_later_batch(runtime, face):
     assert runtime.run_sync("select 42 as y").rows == [(42,)]
 
 
-def test_run_sync_raises_any_other_engine_error_as_it_is(runtime):
+def test_run_sync_raises_any_other_engine_error_as_duckdb_raises_it(runtime):
+    """As the exception DuckDB raises for the same error met as the statement is run, so its
+    SQLSTATE is known (pgwire.server._sqlstate_of)."""
     res = runtime.run_sync(_LATE_ERROR.replace("postgresql-error 22012: division by zero", "no"))
     read = res.batches()
     assert next(read)
-    with pytest.raises(OSError, match="Invalid Input Error: no$"):
+    with pytest.raises(duckdb.InvalidInputException, match="Invalid Input Error: no$"):
         list(read)

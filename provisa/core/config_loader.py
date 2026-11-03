@@ -1995,7 +1995,9 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
     made — leaving what the deployment seeds into every store (the built-in sources and their
     tables, the system domains, the seeded roles and the people holding them). Within the
     caller's transaction. A demo organisation is rebuilt from its configuration by this followed
-    by an apply (:func:`rebuild_from_config`)."""
+    by an apply (:func:`rebuild_from_config`), which drops the profile result relations of the
+    tables it removes once it has committed (profiler.schema.drop_superseded_results): each is
+    named by its table's id, and the apply registers the table again under another."""
     from sqlalchemy import delete
 
     from provisa.core.db import SEEDED_DOMAIN_IDS, SEEDED_ROLE_IDS, SEEDED_SOURCE_IDS
@@ -2152,12 +2154,21 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
 
 
 async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
-    config: ProvisaConfig, conn: "Connection", engine: Any = None
+    config: ProvisaConfig,
+    conn: "Connection",
+    engine: Any = None,
+    *,
+    carried_runs: Path | None = None,
 ) -> list[str]:
     """Rebuild a demo organisation's model from its configuration: remove its model
     (:func:`reset_model`) and apply the configuration, in one transaction, so the organisation
     starts exactly as its configuration says. Returns the source ids whose change feed could not
-    be reached."""
+    be reached.
+
+    ``carried_runs``: the profile runs its bundle carries (REQ-2052, provisa.profiler.carry),
+    loaded in the same transaction. The apply registers every table afresh, under a new id, and a
+    profile result relation is named by its table's id: the runs loaded before were left under
+    the old ids, and the result tables named relations that held none."""
     # Its remote sources' tables are registered after the apply, which retries their
     # relationships (graphql_remote_router._upsert_relationships_to_semantic_layer).
     return await _apply(
@@ -2167,6 +2178,7 @@ async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
         label="demo rebuilt from its configuration",
         defer_unregistered=True,
         reset=True,
+        carried_runs=carried_runs,
     )
 
 
@@ -2178,6 +2190,7 @@ async def _apply(
     label: str,
     defer_unregistered: bool,
     reset: bool = False,
+    carried_runs: Path | None = None,
 ) -> list[str]:
     from provisa.core import model_change
 
@@ -2200,7 +2213,17 @@ async def _apply(
                 failed = await _apply_in_txn(
                     config, conn, engine, defer_unregistered=defer_unregistered
                 )
+                if carried_runs is not None:
+                    from provisa.profiler.carry import load_runs  # noqa: PLC0415
+
+                    await load_runs(conn, carried_runs)
                 await _mark_seeded(conn)
+    if reset:
+        # After the commit, in transactions of their own: the backlog of a template's rebuilds,
+        # held in the rebuild's one transaction, ran out the lock table.
+        from provisa.profiler.schema import drop_superseded_results
+
+        await drop_superseded_results(conn)
     return failed
 
 

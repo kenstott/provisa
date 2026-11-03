@@ -200,6 +200,33 @@ def _typed(sql: str, sql_type: str) -> str:
     return sql.replace(_ITS_TYPE, sql_type)
 
 
+#: The types a record form's field is of whose text is the engine's cast to text.
+_TEXT_AS_CAST = frozenset({"BIGINT", "INTEGER", "OID"})
+
+
+def _field_text(value: str, sql_type: str) -> str:
+    """record_out of one field of ``sql_type``, ``value``: nothing for NULL, ``t`` or ``f`` for a
+    boolean, and a text in double quotes, quotes and backslashes doubled, where it is empty or
+    holds a quote, a backslash, a parenthesis, a comma or a space (src/backend/utils/adt/
+    rowtypes.c)."""
+    if value == "NULL":
+        return "''"
+    if sql_type == "BOOLEAN":
+        return f"COALESCE(CASE WHEN {value} THEN 't' ELSE 'f' END, '')"
+    if sql_type in _TEXT_AS_CAST:
+        return f"COALESCE(CAST({value} AS TEXT), '')"
+    if sql_type not in ("TEXT", "VARCHAR"):
+        raise ValueError(f"a record form's field of type {sql_type} has no text written")
+    text = f"CAST({value} AS TEXT)"
+    backslash = "CHR(92)"
+    quoted = (
+        f"'\"' || REPLACE(REPLACE({text}, {backslash}, {backslash} || {backslash}), "
+        "'\"', '\"\"') || '\"'"
+    )
+    special = f"{text} = '' OR {text} ~ '[(),\"[:space:]]' OR STRPOS({text}, {backslash}) > 0"
+    return f"COALESCE(CASE WHEN {special} THEN {quoted} ELSE {text} END, '')"
+
+
 _NO_FILE = "No such file or directory"
 _FILE_REFUSALS = (
     # convert_and_check_filename, for a role without pg_read_server_files.
@@ -354,9 +381,11 @@ class _Answers:
         )
 
     def record(self, name: str, params: str, columns: tuple[tuple[str, str, str], ...]) -> None:
-        """A record-returning function: its one row, strict in ``params``."""
-        fields = ", ".join(f"CAST({_typed(v, t)} AS {t})" for _, t, v in columns)
-        self.body(name, params, strict(params, "TEXT", f"CAST(ROW({fields}) AS TEXT)"))
+        """A record-returning function: its one row, strict in ``params``. As a value, the row is
+        record_out's text, written field by field: an engine's own text of a row is not
+        PostgreSQL's (DuckDB writes a struct's fields spaced, NULL by name and true as true)."""
+        fields = " || ',' || ".join(_field_text(_typed(v, t), t) for _, t, v in columns)
+        self.body(name, params, strict(params, "TEXT", f"'(' || {fields} || ')'"))
         out = ", ".join(
             f"CAST({strict(params, t, _typed(v, t))} AS {t}) AS {c}" for c, t, v in columns
         )
@@ -1189,6 +1218,20 @@ _IDENTIFIED = (
 _OBJECT_PARAMS = "classid:bigint, objid:bigint, objsubid:bigint"
 
 
+#: A routine's address (format_procedure_parts): its schema and name, unquoted, and its
+#: arguments' types, each qualified as format_type_be_qualified writes it.
+_ROUTINE_NAMES = (
+    "(SELECT ARRAY[CAST(_n.nspname AS TEXT), CAST(_p.proname AS TEXT)] "
+    "FROM meta.catalog_pg_proc _p JOIN meta.catalog_pg_namespace _n "
+    "ON _n.oid = _p.pronamespace WHERE _p.oid = objid)"
+)
+_ROUTINE_ARGS = (
+    "(SELECT COALESCE(STRING_TO_ARRAY(NULLIF("
+    f"{_type_names('_p.proargtypes', ',', True)}, ''), ','), CAST(ARRAY[] AS TEXT[])) "
+    "FROM meta.catalog_pg_proc _p WHERE _p.oid = objid)"
+)
+
+
 def _addresses(a: _Answers) -> None:
     """pg_describe_object, pg_identify_object, pg_identify_object_as_address and
     pg_get_object_address, for what a catalog holds. Any other object is none it holds, which
@@ -1204,8 +1247,10 @@ def _addresses(a: _Answers) -> None:
         "pg_identify_object_as_address",
         _OBJECT_PARAMS,
         "SELECT _i.type, CASE _i.type WHEN 'type' THEN ARRAY[SUBSTR(_i.description, 6)] "
+        f"WHEN 'function' THEN {_ROUTINE_NAMES} WHEN 'procedure' THEN {_ROUTINE_NAMES} "
         "ELSE STRING_TO_ARRAY(_i.identity, '.') END AS object_names, "
-        f"CAST(ARRAY[] AS TEXT[]) AS object_args FROM ({_IDENTIFIED}) _i",
+        f"CASE WHEN _i.type IN ('function', 'procedure') THEN {_ROUTINE_ARGS} "
+        f"ELSE CAST(ARRAY[] AS TEXT[]) END AS object_args FROM ({_IDENTIFIED}) _i",
     )
     names = "names:text[]"
     last = "names[ARRAY_LENGTH(names, 1)]"
@@ -1486,7 +1531,8 @@ def _catalog_objects(a: _Answers) -> None:
     a.body("pg_notification_queue_usage", "", "CAST(0 AS DOUBLE PRECISION)", "DOUBLE PRECISION")
     a.body("pg_trigger_depth", "", "0", "INTEGER")
     a.strict("row_security_active", "rel", "BOOLEAN", "false")
-    # A setting's flags as PostgreSQL 17 gives them; one Provisa lists that has none, none.
+    # A setting's flags as PostgreSQL 17 gives them; one Provisa lists that has none, none. A
+    # setting is named in any case, as SHOW names one (TimeZone, timezone).
     flagged = " ".join(
         f"WHEN '{name}' THEN CAST('{flags}' AS TEXT[])"
         for name, flags in sorted(SETTING_FLAGS.items())
@@ -1496,7 +1542,8 @@ def _catalog_objects(a: _Answers) -> None:
         "name",
         "VARCHAR[]",
         f"CASE LOWER(name) {flagged} ELSE "
-        "(SELECT CAST(ARRAY[] AS TEXT[]) FROM _pg_settings _s WHERE _s.name = LOWER(name)) END",
+        "(SELECT CAST(ARRAY[] AS TEXT[]) FROM _pg_settings _s "
+        "WHERE LOWER(_s.name) = LOWER(name)) END",
     )
     a.strict(
         "pg_extension_config_dump",

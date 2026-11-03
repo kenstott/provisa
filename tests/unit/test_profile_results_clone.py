@@ -34,6 +34,13 @@ async def test_a_profile_run_is_carried_whole_and_nothing_else_is(control_plane)
         for schema in ("tmpl_src", "sbx_dst"):
             await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
             await conn.execute_core(text(f'CREATE SCHEMA "{schema}"'))
+        # The source's model: a relation is carried while a table it registers names it.
+        await conn.execute_core(
+            text('CREATE TABLE "tmpl_src"."registered_tables" (id int, table_name text)')
+        )
+        await conn.execute_core(
+            text('INSERT INTO "tmpl_src"."registered_tables" VALUES (1, \'customers\')')
+        )
         await conn.execute_core(CreateTable(columns))
         await conn.execute_core(
             insert(columns).values(run_id="r1", column_name="email", null_count=227)

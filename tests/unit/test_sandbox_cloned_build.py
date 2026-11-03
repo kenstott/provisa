@@ -160,3 +160,78 @@ def test_a_sandbox_runtime_built_cloned_asks_for_the_cloned_build_and_none_other
     asyncio.run(demo_sandbox._sandbox_runtime("sbx0aef6d8dbe7d", cloned=True))
     asyncio.run(demo_sandbox._sandbox_runtime("sbx0aef6d8dbe7d"))
     assert asked == [True, False]
+
+
+def test_a_sandbox_environments_rows_are_landed_on_a_runtime_built_cloned(monkeypatch):
+    """Its Test (synthetic) environment was created from its prod a moment before its rows are
+    landed, every built-in row carried with that copy: the runtime they are landed through is
+    built cloned. On cloud the profiling open spent 70.7 s in "its environments' rows", the
+    environment's runtime seeding its meta domain alone for 27.4 s."""
+    from provisa.api import demo_synthetic
+    from provisa.federation import materialize_broker
+
+    class _Landed(Exception):
+        pass
+
+    asked: list[tuple[str, str, bool]] = []
+
+    async def _model_db(org_id, env, *, cloned=False):
+        asked.append((org_id, env, cloned))
+        raise _Landed
+
+    monkeypatch.setattr(materialize_broker, "copy_schema", lambda *args: None)
+    monkeypatch.setattr("provisa.api.demo_replicas._store_path", lambda org: f"/stores/{org}")
+    monkeypatch.setattr(demo_synthetic, "_model_db", _model_db)
+    for cloned in (True, False):
+        try:
+            asyncio.run(
+                demo_synthetic._land(
+                    "sbx0aef6d8dbe7d", "synthetic", "/s", "from", {}, cloned=cloned
+                )
+            )
+        except _Landed:
+            pass
+    assert asked == [
+        ("sbx0aef6d8dbe7d", "synthetic", True),
+        ("sbx0aef6d8dbe7d", "synthetic", False),
+    ]
+
+
+def test_an_environment_asked_for_cloned_is_built_cloned(monkeypatch):
+    """ensure_org_runtime(model_cloned=True) builds the environment's runtime on its lane as a
+    cloned build (build_org_runtime's model_cloned); an ordinary ask builds an ordinary one."""
+    from provisa.api import app, redaction_load
+
+    built: list[tuple[str, str, bool]] = []
+
+    async def _none(*args, **kwargs):
+        return None
+
+    async def _flags(org_id):
+        return app.OrgLane(False, False, None, None, None, "", None)
+
+    async def _env(admin_db, org_id, env):
+        return {"expires_at": None, "data_mode": "test_synthetic", "mutation_handling": "refused"}
+
+    async def _build(org_id, *, env, model_cloned=False, **kwargs):
+        built.append((org_id, env, model_cloned))
+        return SimpleNamespace()
+
+    class _Registry:
+        async def get_or_build(self, key, build):
+            return await build(key)
+
+    monkeypatch.setattr(app, "ensure_org_encryption", _none)
+    monkeypatch.setattr(app, "_read_org_flags", _flags)
+    monkeypatch.setattr(app, "_region_lane_of", _none)
+    monkeypatch.setattr(app, "build_org_runtime", _build)
+    monkeypatch.setattr("provisa.core.env_store.get_env", _env)
+    monkeypatch.setattr(redaction_load, "ensure_loaded", _none)
+    monkeypatch.setattr(app.state, "org_registry", _Registry())
+    monkeypatch.setattr(app.state, "admin_db", object())
+    asyncio.run(app.ensure_org_runtime("sbx0aef6d8dbe7d", "synthetic", model_cloned=True))
+    asyncio.run(app.ensure_org_runtime("sbx0aef6d8dbe7d", "synthetic"))
+    assert built == [
+        ("sbx0aef6d8dbe7d", "synthetic", True),
+        ("sbx0aef6d8dbe7d", "synthetic", False),
+    ]

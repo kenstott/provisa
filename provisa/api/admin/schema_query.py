@@ -2932,7 +2932,8 @@ async def _introspect_available_columns(
     # use correctly, instead of maintaining a second, divergent construction of the same call.
     if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
         from provisa.openapi.mapper import parse_spec
-        from provisa.openapi.register import _openapi_to_provisa_type, _schema_to_columns
+        from provisa.api.admin.introspect import openapi_parameter_columns
+        from provisa.openapi.register import _schema_to_columns
 
         spec = state.openapi_specs[source_id]["spec"]
         queries, _ = parse_spec(spec)
@@ -2943,30 +2944,7 @@ async def _introspect_available_columns(
         if not cols and not q.path_params and (q.response_schema or {}).get("additionalProperties"):
             cols = await _dynamic_openapi_columns(state.openapi_specs[source_id]["base_url"], q)
         existing = {c["name"] for c in cols}
-        for p in q.path_params:
-            nf_name = f"_nf_{p['name']}"
-            if nf_name not in existing:
-                cols.append(
-                    {
-                        "name": nf_name,
-                        "type": _openapi_to_provisa_type(p.get("type")),
-                        "native_filter_type": "path_param",
-                        "native_filter_required": True,
-                    }
-                )
-        for p in q.query_params:
-            nf_name = f"_nf_{p['name']}"
-            if nf_name not in existing:
-                cols.append(
-                    {
-                        "name": nf_name,
-                        # A parameter's type is the spec's (array, object); a column's is one
-                        # the engine has, as the response's columns are typed.
-                        "type": _openapi_to_provisa_type(p.get("type")),
-                        "native_filter_type": "query_param",
-                        "native_filter_required": p["required"],
-                    }
-                )
+        cols += [c for c in openapi_parameter_columns(q) if c["name"] not in existing]
         return [
             AvailableColumnType(
                 name=c["name"],

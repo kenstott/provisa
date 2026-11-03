@@ -96,11 +96,15 @@ DECLARED: list[Setting] = [
         type="int",
         effect="live",  # read when a graph query is compiled
         # REQ-2135: the most hops a variable-length path or property path walks when the query
-        # gives no bound of its own; a result cut at it says so. 10 was the bound before the setting.
+        # gives no bound of its own; a SPARQL result cut at it says so. REQ-348: the maximum an
+        # unbounded Cypher path ([*], [*n..], an unbounded shortestPath) takes; a Cypher walk keeps
+        # the trail rule, so the maximum is a safety limit, very large by design (maintainer
+        # 2026-11-03: 1000), and a walk that would go further fails by name. A recursive statement
+        # runs on Trino with max_recursion_depth one past it.
         req="REQ-2135",
         env="PROVISA_GRAPH_DEPTH_LIMIT",
         config_path=("server", "limits", "graph_depth_limit"),
-        default=10,
+        default=1000,
         min=1,
         unit="hops",
     ),

@@ -8,11 +8,13 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A path with no upper bound walks to the operator's depth limit (graph.depth_limit), and a result
-cut there says so as a statement warning (REQ-2135, REQ-1350). The recursive form runs on DuckDB,
-so whether the walk was cut is read from rows, not only from SQL."""
+"""A path with no upper bound walks to the operator's depth limit (graph.depth_limit), and the
+statement carries whether it was cut there (REQ-2135): a SPARQL result says so as a statement
+warning (REQ-1350, take_cut); a Cypher one fails by name (REQ-348, test_cypher_unbounded_paths).
+The recursive form runs on DuckDB, so whether the walk was cut is read from rows, not only from
+SQL."""
 
-# Requirements: REQ-2135, REQ-1350
+# Requirements: REQ-2135, REQ-1350, REQ-348
 
 import duckdb
 import pytest
@@ -67,13 +69,16 @@ def test_a_walk_that_ends_within_the_limit_is_not_cut():
 
 
 @pytest.mark.usefixtures("limit3")
-def test_a_cycle_is_cut_at_the_limit():
+def test_a_cycle_ends_where_its_trail_would_repeat_within_the_limit():
+    # REQ-348 (amended 2026-11-03): a walk takes no relationship twice, so round the two-cycle
+    # it stops at two hops, never reaching the limit.
     rows = _run("(1, 'p1', 2), (2, 'p2', 1)", _UNBOUNDED)
-    assert {r[CUT_COLUMN] for r in rows} == {1}
+    assert {r[CUT_COLUMN] for r in rows} == {0}
 
 
-def test_the_default_depth_limit_is_ten():
-    assert "hops <= 10" in _sql(_UNBOUNDED, _people())
+def test_the_default_depth_limit_is_a_thousand():
+    # REQ-348 (amended 2026-11-03): the maximum an unbounded path takes is very large.
+    assert "hops <= 1000" in _sql(_UNBOUNDED, _people())
 
 
 def test_a_bounded_path_carries_no_cut_column():

@@ -581,9 +581,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     // eslint-disable-next-line react-hooks/exhaustive-deps -- applied once per answer
   }, [lateColumns]);
 
+  // A problem the edit met leaves with it: the next form opened is not about that table.
   const cancelEditing = () => {
     setEditingTable(null);
     setNewRegistration(null);
+    setError(null);
   };
 
   // REQ-2109 (settled): the create step chose what is registered; its settings follow in the same
@@ -1060,7 +1062,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               data-tour="tables-add"
               data-testid="tables-add-toggle"
               variant={showForm ? "outline" : "filled"}
-              onClick={() => leave.guard(() => setShowForm(!showForm))}
+              onClick={() =>
+                leave.guard(() => {
+                  // The form opens with no problem of its own yet.
+                  setError(null);
+                  setShowForm(!showForm);
+                })
+              }
               aria-label={showForm ? translate("tablesPage.closeForm") : undefined}
             >
               {showForm ? <X size={14} /> : translate("tablesPage.addTable")}

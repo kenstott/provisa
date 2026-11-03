@@ -420,6 +420,13 @@ def test_gitlabs_shipped_schema_offers_its_tables():
     assert [a["name"] for a in spec["required_args"]] == ["fullPath"]
 
 
+def test_listing_tables_in_schema_order_drops_none_of_githubs_or_gitlabs():
+    # The tables offered from each shipped schema when root connections moved to the schema's
+    # order (Shopify's root connections had been listed after every plain table).
+    assert len(available_tables(GITHUB, "gh")) == 149
+    assert len(available_tables(GITLAB, "gl")) == 563
+
+
 @respx.mock
 async def test_a_table_the_remote_prices_too_high_is_not_registered_and_carries_its_numbers():
     reason = "Query has complexity of 1733, which exceeds max complexity of 200"
