@@ -532,3 +532,50 @@ class TestSwaggerSpecDownload:
         assert 'localStorage.getItem("provisa_' not in identity
         for key in ("provisa_role", "provisa_su_token", "provisa_token", "provisa_org"):
             assert f'identity("{key}")' in identity
+
+
+class TestSwaggerUiScope:
+    """The docs page describes the role and domains the app selected.
+
+    Read from ``location.search``, they were empty in the app's ``srcDoc`` frame, so the spec
+    request named no domains and Swagger listed every domain's endpoints (meta among them) with
+    only "ontology" selected in the navbar.
+    """
+
+    def _scope(self, html: str) -> dict:
+        import json
+
+        start = html.index("const scope = ") + len("const scope = ")
+        return json.loads(html[start : html.index(";\n", start)])
+
+    def test_the_selected_domains_are_stamped_into_the_page(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        html = swagger_ui_html("light", "analyst", "ontology")
+        assert self._scope(html) == {"role": "analyst", "domains": "ontology"}
+
+    def test_the_spec_request_carries_the_stamped_domains(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        html = swagger_ui_html("light", "analyst", "ontology,sales")
+        assert 'const urlDomains = scope.domains || "";' in html
+        assert 'specParams.set("domains", urlDomains)' in html
+
+    def test_the_page_never_reads_its_scope_from_the_url(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        html = swagger_ui_html("light", "analyst", "ontology")
+        assert "__PROVISA_DOC_SCOPE__" not in html
+        assert "window.location.search" not in html
+
+    def test_no_selection_is_an_empty_scope(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        assert self._scope(swagger_ui_html(None)) == {"role": "", "domains": ""}
+
+    def test_a_value_cannot_close_the_script(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        html = swagger_ui_html("light", "</script><b>", None)
+        assert "</script><b>" not in html
+        assert self._scope(html)["role"] == "</script><b>"

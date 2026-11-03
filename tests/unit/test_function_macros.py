@@ -86,6 +86,14 @@ def test_every_overload_is_native_on_postgresql_and_has_a_form_on_duckdb(name, a
     )
 
 
+def _routine_bound(column: sqlglot.exp.Column) -> bool:
+    """A Trino routine's parameter read in its own body: the statement defines it (WITH FUNCTION)."""
+    routine = column.find_ancestor(sqlglot.exp.FunctionSpecification)
+    return routine is not None and column.name in {
+        p.name for p in routine.this.expressions if isinstance(p, sqlglot.exp.ColumnDef)
+    }
+
+
 @pytest.mark.parametrize("dialect", _DIALECTS)
 def test_every_form_is_sql_its_dialect_reads_back(dialect):
     for name, arity in MACROS:
@@ -101,9 +109,10 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         constant = dialect == "clickhouse" and name == "regexp_replace"
         said = [args[0], "'x'", *args[2:]] if constant else said
         out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect)
-        columns = {
-            c.name for c in sqlglot.parse_one(out, read=dialect).find_all(sqlglot.exp.Column)
-        }
+        tree = sqlglot.parse_one(out, read=dialect)
+        # A ClickHouse statement's SETTINGS name a setting, not a column (REQ-2171: its old analyzer).
+        tree.set("settings", None)
+        columns = {c.name for c in tree.find_all(sqlglot.exp.Column) if not _routine_bound(c)}
         # Every parameter is bound; a lambda's own variable (_x) is the form's.
         assert {c for c in columns if not c.startswith("_")} <= set(args), out
 

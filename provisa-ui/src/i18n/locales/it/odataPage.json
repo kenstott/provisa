@@ -37,6 +37,12 @@
     "noRows": "Nessuna riga corrisponde.",
     "rowsCutTitle": "Non tutte le righe sono state restituite",
     "warningsTitle": "Informazioni su questa risposta",
-    "provenanceUrl": "Richiesta OData"
+    "provenanceUrl": "Richiesta OData",
+    "handoffNotService": "Non è un indirizzo del servizio OData: {{url}}",
+    "handoffPath": "L'esploratore legge un intero entity set; {{path}} ne indica solo una parte.",
+    "handoffOption": "L'esploratore non può impostare {{option}}={{value}}.",
+    "handoffNumber": "{{option}} deve essere un numero intero, non {{value}}.",
+    "handoffNoSet": "Non esiste alcun entity set {{set}} per questo ruolo.",
+    "handoffMember": "{{set}} non ha {{name}} per {{option}}."
   }
 }

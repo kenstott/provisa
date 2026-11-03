@@ -32,13 +32,14 @@ from datetime import date, datetime, timezone
 
 from provisa.federation.execution_auth import SystemAuth, mint_system_token
 from provisa.mv.bitemporal import append_sql, create_sql, system_columns_ddl, system_ts_literal
-from provisa.mv.store_shape import output_columns, view_key
+from provisa.mv.store_shape import output_columns, shape_probe, view_key
 from provisa.mv.bitemporal_inherit import InheritedBuild, inherited_build
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
 from provisa.observability.ops_schema import MV_REFRESH_LINEAGE_SPAN
 from provisa.otel_compat import detached_trace_context
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.transpiler.pg_forms_geometric import around
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -266,9 +267,7 @@ async def _refresh_bitemporal(
     existing_business = [c for c in existing_cols if c not in sys_names]
     new_cols = list(
         (
-            await engine.execute_engine(
-                f"SELECT * FROM ({select_sql}) _shape LIMIT 0", authorization=authorization
-            )
+            await engine.execute_engine(shape_probe(select_sql), authorization=authorization)
         ).column_names
     )
     if new_cols != existing_business:
@@ -550,7 +549,8 @@ async def _probe_source_count(
     """Run a COUNT(*) probe over the build's own statement (REQ-2108: a DIRECT build's is its
     staged rows, so the source is read once) to estimate result size."""
     res = await engine.execute_engine(
-        f"SELECT COUNT(*) FROM ({select_sql}) _probe", authorization=authorization
+        around(select_sql, lambda s: f"SELECT COUNT(*) FROM ({s}) _probe"),
+        authorization=authorization,
     )
     return res.rows[0][0]
 
@@ -961,7 +961,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                 if table_exists:
                     new_cols = (
                         await engine.execute_engine(
-                            f"SELECT * FROM ({select_sql}) _shape LIMIT 0",
+                            shape_probe(select_sql),
                             authorization=authorization,
                         )
                     ).column_names

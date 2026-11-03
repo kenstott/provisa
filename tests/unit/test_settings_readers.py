@@ -688,6 +688,8 @@ _BOOTSTRAP = {
     # REQ-1992: set per node by Helm or compose.
     "org_files.shared_mount": "set_by_launcher",
     "org_files.node_id": "set_by_launcher",
+    # REQ-1916: the address clients reach this node at, recorded in the node list.
+    "server.node_url": "set_by_launcher",
     "cache.redis_embedded": "set_by_desktop_launcher",
 }
 

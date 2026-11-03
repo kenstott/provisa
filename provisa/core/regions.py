@@ -24,13 +24,15 @@ With no platform regions there is one implicit region (:data:`DEFAULT_REGION`) a
 model may name a region.
 """
 
-# Requirements: REQ-1921, REQ-1922
+# Requirements: REQ-1916, REQ-1921, REQ-1922
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, Field
+from urllib.parse import urlsplit
+
+from pydantic import BaseModel, Field, field_validator
 
 if TYPE_CHECKING:
     from provisa.core.models import ProvisaConfig
@@ -51,6 +53,30 @@ class PlatformRegion(BaseModel):
 
     id: str = Field(pattern=REGION_ID_PATTERN)
     address: str  # where the region's nodes answer (shown to a node started without --region)
+    # REQ-1916 (amended 2026-11-02, "the data addresses are declared", "declared per region"):
+    # where a coordinator-served UI sends its data calls in this region -- each an http(s) URL of a
+    # load balancer, a pool or a single node, like an OpenAPI document's servers list. Empty, the
+    # UI is offered the region's registered nodes (provisa/core/data_addresses.py).
+    data_addresses: list[str] = Field(default_factory=list)
+
+    @field_validator("data_addresses")
+    @classmethod
+    def _absolute_http_urls(cls, addresses: list[str]) -> list[str]:
+        for address in addresses:
+            require_data_address(address)
+        if len(set(addresses)) != len(addresses):
+            raise ValueError(f"a region lists a data address twice ({', '.join(addresses)})")
+        return addresses
+
+
+def require_data_address(address: str) -> None:
+    """Refuse a data address that is not an absolute http(s) URL with a host and no query: the UI
+    puts a data path after it."""
+    parts = urlsplit(address)
+    if parts.scheme not in ("http", "https") or not parts.hostname or parts.query or parts.fragment:
+        raise ValueError(
+            f"data address {address!r} is not an http(s) URL with a host (and no query or fragment)"
+        )
 
 
 class PlatformConfig(BaseModel):

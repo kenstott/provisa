@@ -3,8 +3,8 @@
 # module (terraform/gcp), which is a fixed single-tenant N-node cluster with postgres
 # in the coordinator's compose stack. This module keeps the control plane in a
 # control-db service on the control-plane VM and runs every federation engine on a GKE cluster (gke.tf) instead of on
-# VMs -- there is no Trino on the control-plane VM and no worker MIG. See
-# docs/deployment/gcp-saas-infra-plan.md. Multitenancy is forced on (not a variable).
+# VMs -- there is no Trino on the control-plane VM and no worker MIG. Multitenancy is
+# forced on (not a variable).
 
 variable "project" {
   description = "GCP project ID"

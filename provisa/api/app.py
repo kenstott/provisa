@@ -4160,14 +4160,6 @@ def create_app() -> FastAPI:
     state.shared_federation_engine.write_config(config_path_str())
     _setup_otel(app)
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
     from fastapi import Request as _Request
     from fastapi.responses import JSONResponse as _JSONResponse
 
@@ -5086,6 +5078,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.debug_trace_router import router as debug_trace_router  # REQ-1910
 
     app.include_router(debug_trace_router)
+    from provisa.api.admin.data_addresses_router import router as data_addresses_router  # REQ-1916
+
+    app.include_router(data_addresses_router)
     from provisa.api.admin.audit_query_text_router import router as audit_text_router  # REQ-1910
 
     app.include_router(audit_text_router)
@@ -5268,6 +5263,15 @@ def create_app() -> FastAPI:
     from provisa.api.coordinator_gate import CoordinatorDataGate
 
     app.add_middleware(CoordinatorDataGate)
+    # REQ-1916 (amended 2026-11-02): the mirror -- a query node answers the UI's backend with its
+    # refusal, naming the UI's address (mail.base_url, read per refusal: the config can reload).
+    from provisa.api.query_gate import QueryUiGate, is_ui_path
+
+    app.add_middleware(
+        QueryUiGate,
+        refuses=is_ui_path,
+        ui_address=lambda: state.config.mail.base_url if state.config is not None else None,
+    )
 
     from provisa.core.request_thread import RequestThreadMiddleware
 
@@ -5277,5 +5281,17 @@ def create_app() -> FastAPI:
     from provisa.api.error_redaction import ErrorRedactionMiddleware
 
     app.add_middleware(ErrorRedactionMiddleware)
+
+    # REQ-1916 (amended 2026-11-02): a coordinator-served UI sends its data calls to a query node,
+    # cross-origin, with its bearer. Outermost, so a browser's preflight (which carries no token) is
+    # answered before auth asks for one, and every answer -- a gate's refusal, auth's 401 -- carries
+    # the headers the UI needs to read it.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     return app

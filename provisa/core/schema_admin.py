@@ -814,6 +814,9 @@ cluster_nodes = Table(
     Column("pid", Integer, nullable=False),
     Column("mode", Text, nullable=False),  # every | query | coordinator
     Column("region", Text, nullable=True),  # REQ-1922: NULL when the platform declares none
+    # REQ-1916 (amended 2026-11-02): the address a client reaches this node at (server.node_url);
+    # NULL when the launch set none, and such a node is never offered to the UI as a data address.
+    Column("address", Text, nullable=True),
     Column("started_at", DateTime(timezone=True), nullable=False),
     Column("last_seen", DateTime(timezone=True), nullable=False),
 )
