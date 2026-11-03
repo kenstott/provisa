@@ -683,12 +683,12 @@ _SPECIAL_LITERAL = re.compile(r"\bB'[01]*'|\bU&'", re.IGNORECASE)
 
 
 class _HexKept(Postgres):
-    """PostgreSQL, with to_hex read as the form DuckDB's engine has of it (not sqlglot's HEX)."""
+    """PostgreSQL, with to_hex read as the call it is (not sqlglot's HEX of any value)."""
 
     class Parser(Postgres.Parser):
         FUNCTIONS = {
             **Postgres.Parser.FUNCTIONS,
-            "TO_HEX": lambda args: exp.Anonymous(this="pg_to_hex", expressions=args),
+            "TO_HEX": lambda args: exp.Anonymous(this="to_hex", expressions=args),
         }
 
 
@@ -714,8 +714,15 @@ def readable(pg_sql: str) -> str:
             return exp.Anonymous(this=_FORMS[node.name.lower()], expressions=node.expressions)
         return node
 
-    written = sqlglot.parse_one(pg_sql, read=_HexKept).transform(held).sql(dialect="postgres")
-    return postgres_literals(written) if converted else written
+    tree = sqlglot.parse_one(pg_sql, read=_HexKept)
+    written = tree.transform(held)
+    if written == tree:
+        return pg_sql
+    return (
+        postgres_literals(written.sql(dialect="postgres"))
+        if converted
+        else written.sql(dialect="postgres")
+    )
 
 
 def typed_calls(pg_sql: str) -> str:

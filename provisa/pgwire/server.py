@@ -508,7 +508,9 @@ def _substitute_params(sql: str, params: list | None) -> str:
                 return sqlglot.parse_one(_pg_literal(params[index - 1]), read="postgres")
         return node
 
-    return sqlglot.parse_one(sql, read="postgres").transform(bound).sql(dialect="postgres")
+    tree = sqlglot.parse_one(sql, read="postgres")
+    written = tree.transform(bound)
+    return sql if written == tree else written.sql(dialect="postgres")
 
 
 def _held_roles(state: Any, identity: Any, mapped: str, org_id: str | None, *, run) -> set[str]:
@@ -1119,7 +1121,9 @@ def _current_query_said(sql: str, client_sql: str) -> str:  # REQ-2171
             return exp.cast(exp.Literal.string(client_sql), exp.DataType.Type.TEXT)
         return node
 
-    return sqlglot.parse_one(sql, read="postgres").transform(said).sql(dialect="postgres")
+    tree = sqlglot.parse_one(sql, read="postgres")
+    written = tree.transform(said)
+    return sql if written == tree else written.sql(dialect="postgres")
 
 
 def _null_alone(value: Any) -> Any:  # REQ-2171

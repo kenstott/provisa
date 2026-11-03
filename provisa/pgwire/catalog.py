@@ -796,7 +796,9 @@ def _unbound(sql: str) -> str:
         unbound = isinstance(node, exp.Parameter) and node.name.isdigit()
         return exp.Null() if unbound else node
 
-    return sqlglot.parse_one(sql, read="postgres").transform(null).sql(dialect="postgres")
+    tree = sqlglot.parse_one(sql, read="postgres")
+    written = tree.transform(null)
+    return sql if written == tree else written.sql(dialect="postgres")
 
 
 def _read_meta(sql: str, role_id: str, state, session: CatalogSession | None, run):

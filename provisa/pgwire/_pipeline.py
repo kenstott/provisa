@@ -87,7 +87,9 @@ def _resolve_session_settings(sql: str, session_vars: dict[str, str], dialect: s
         )
 
     # REQ-2167: on the tree, so a current_setting a string literal holds is its text.
-    return sqlglot.parse_one(sql, read=dialect).transform(_resolved).sql(dialect=dialect)
+    tree = sqlglot.parse_one(sql, read=dialect)
+    resolved = tree.transform(_resolved)
+    return sql if resolved == tree else resolved.sql(dialect=dialect)
 
 
 def _setting_named(node: sqlglot.exp.Expr) -> str | None:

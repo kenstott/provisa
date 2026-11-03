@@ -566,11 +566,9 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     # tree: an array literal is its list, and an ARRAY[...] its cast is redundant to.
     if _LITERAL_CAST.search(sql) is not None:
         tid_read = _TID_FUNCTION.search(sql) is not None
-        sql = (
-            sqlglot.parse_one(sql, read="postgres")
-            .transform(lambda node: _literal_held(node, tid_read))
-            .sql(dialect="postgres")
-        )
+        tree = sqlglot.parse_one(sql, read="postgres")
+        held = tree.transform(lambda node: _literal_held(node, tid_read))
+        sql = sql if held == tree else held.sql(dialect="postgres")
 
     sql = to_char_for_duckdb(sql)  # REQ-2167
     sql = lowered(sql, "duckdb")  # REQ-2171: the catalog DB holds money as the engine does
