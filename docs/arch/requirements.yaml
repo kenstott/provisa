@@ -91345,3 +91345,29 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-1923
   stakeholders:
   - data-engineer
+- id: REQ-2198
+  value: 'A delete in a detail panel works like a save: the panel is locked, shows progress, and the list
+    refreshes when the delete is done.'
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: admin-console-surface
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-03: deleting a table can take a while, and the UI still let the table
+    be used while it was being deleted. A delete in any detail panel behaves like a save: every field
+    and action in the panel is disabled, the delete control shows a spinner, the panel closes when the
+    delete has finished, and the list refreshes without the deleted item; a delete that fails unlocks
+    the panel and names the reason. While the delete runs, nothing else in the UI offers the item for
+    use.'
+  scenario: 'Given a registered table open in its detail panel
+
+    When an admin deletes it
+
+    Then the panel is disabled and the delete shows a spinner until the delete finishes
+
+    Then the panel closes and the list no longer shows the table'
+  related_reqs: []
+  stakeholders:
+  - data-engineer

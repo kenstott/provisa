@@ -26447,3 +26447,15 @@ Maintainer 2026-11-03 (after asking how feasible QuickBooks and NetSuite are, an
 **Code:** —
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2198 · UI {#REQ-2198}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-03: deleting a table can take a while, and the UI still let the table be used while it was being deleted. A delete in any detail panel behaves like a save: every field and action in the panel is disabled, the delete control shows a spinner, the panel closes when the delete has finished, and the list refreshes without the deleted item; a delete that fails unlocks the panel and names the reason. While the delete runs, nothing else in the UI offers the item for use.
+
+**Code:** —
+
+**Tests:** —
