@@ -382,7 +382,13 @@ def _decimals(values: list[Any], present: list[Decimal], kind: str) -> pa.Array 
             with localcontext() as wide:
                 wide.prec = 1000  # quantize refuses a result past the context's 28 digits
                 held = [None if v is None else v.quantize(quantum) for v in values]
-        digits = max(len(v.as_tuple().digits) for v in held if v is not None)
+        # J518 (J502b): a coefficient with a positive exponent (4E+38) has that many more
+        # integer digits, as numeric_out writes it; past decimal256 it is numeric_out's text
+        digits = max(
+            len(v.as_tuple().digits) + max(0, int(v.as_tuple().exponent))
+            for v in held
+            if v is not None
+        )
         precision = max(digits, scale, 1)
         if precision <= 76:
             kind_of = pa.decimal128 if precision <= 38 else pa.decimal256
