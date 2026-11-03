@@ -170,8 +170,6 @@ export function splice(page, html) {
 // Every file that states the number of connectors or of kinds of source.
 export const COUNTED = [
   "README.md",
-  "docs/competitive_analysis.md",
-  "docs/marketing.md",
   "mkdocs.yml",
   "site/index.html",
   "site/vs/hasura.html",

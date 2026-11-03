@@ -1,0 +1,13 @@
+{
+  "dataAddress": {
+    "label": "Nodo de datos",
+    "heading": "Enviar las solicitudes de datos a",
+    "none": "Ningún nodo de datos",
+    "noneOffered": "No hay ningún nodo de datos listado para esta región. Escriba una dirección abajo.",
+    "typedLabel": "Dirección del nodo de datos",
+    "typedPlaceholder": "https://data.example.com",
+    "typedInvalid": "Introduzca una dirección http o https",
+    "use": "Usar",
+    "loadError": "No se pudieron cargar los nodos de datos"
+  }
+}

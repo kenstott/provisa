@@ -10,6 +10,7 @@
 
 import datetime
 import decimal
+import fractions
 import hashlib
 import ipaddress
 import uuid as _uuid_mod
@@ -23,6 +24,7 @@ import re
 import socket
 import socketserver
 import struct
+import zoneinfo
 from typing import Dict, List, Optional
 
 from .core import BVType, Connection, Extension, Session, QueryResult, RawDataRowBytes
@@ -279,6 +281,27 @@ def _timestamp_text(v) -> str:
     return f"{v.year:04d}-{v.month:02d}-{v.day:02d} {_pg_clock(v)}"
 
 
+def _iana(tz):
+    """The zoneinfo zone of a pytz zone (it names itself in ``zone``), whose own rules have no
+    daylight time after 2037, no transitions before 1901 and offsets rounded to the minute; any
+    other zone is itself."""
+    name = getattr(tz, "zone", None)
+    return zoneinfo.ZoneInfo(name) if isinstance(name, str) else tz
+
+
+def _timestamptz_text(v) -> str:
+    """timestamptz_out: the instant ``v`` holds, written in its zone by zoneinfo's rules, as
+    PostgreSQL writes it. A value read from a source may carry a pytz zone (pyarrow, DuckDB) or be a
+    pandas Timestamp, whose range ends in 1677 and 2262; neither decides the text. A value with no
+    zone is written as it is (its binary form is refused)."""
+    if _infinity(v) or v.tzinfo is None:
+        return _timestamp_text(v)
+    if type(v) is datetime.datetime and type(v.tzinfo) in (zoneinfo.ZoneInfo, datetime.timezone):
+        return _timestamp_text(v)
+    instant = _PG_EPOCH_UTC + datetime.timedelta(microseconds=_micros_since_2000(v))
+    return _timestamp_text(instant.astimezone(_iana(v.tzinfo)))
+
+
 def _timestamp_binary(micros):
     """timestamp/timestamptz binary: int64 microseconds since 2000-01-01 (``micros`` reads them);
     infinity is the int64 range's ends."""
@@ -314,8 +337,22 @@ def _timetz_to_pg_binary(t):
     return struct.pack("!qi", _time_to_microseconds(t), -int(offset.total_seconds()))
 
 
+def _uuid(u):
+    """A UUID value: a uuid.UUID, its 16 bytes (an Arrow fixed_size_binary(16) column without the
+    arrow.uuid extension), or its text."""
+    if isinstance(u, _uuid_mod.UUID):
+        return u
+    if isinstance(u, (bytes, bytearray, memoryview)):
+        return _uuid_mod.UUID(bytes=bytes(u))
+    return _uuid_mod.UUID(str(u))
+
+
+def _uuid_text(u) -> str:
+    return u if isinstance(u, str) else str(_uuid(u))
+
+
 def _uuid_to_pg_binary(u):
-    return (u if isinstance(u, _uuid_mod.UUID) else _uuid_mod.UUID(str(u))).bytes
+    return _uuid(u).bytes
 
 
 def _inet_text(v):
@@ -600,24 +637,43 @@ def _float8_text(x):
     return _shortest_text(sig, math.copysign(1.0, x) < 0, _FLOAT8_FIXED_BELOW)
 
 
+def _float4_bounds(bits: int) -> tuple:
+    """The exact ends of the interval of reals that round to the float4 ``bits`` (positive), as
+    Ryu's f2s computes them: halfway to each neighbour, the lower one a quarter step at a power
+    of two. Both ends are outside the interval: PostgreSQL builds Ryu with STRICTLY_SHORTEST 0."""
+    exponent, mantissa = bits >> 23, bits & 0x7FFFFF
+    if exponent == 0:
+        m2, e2 = mantissa, 1 - 127 - 23 - 2
+    else:
+        m2, e2 = mantissa | 0x800000, exponent - 127 - 23 - 2
+    shift = 1 if mantissa != 0 or exponent <= 1 else 0
+    scale = fractions.Fraction(2) ** e2
+    return (4 * m2 - 1 - shift) * scale, (4 * m2 + 2) * scale
+
+
 def _float4_text(x):
-    """float4out: the shortest form that reads back as the same 4-byte float."""
-    x = float(x)
-    special = _non_finite_text(x)
+    """float4out: the float4 ``x`` rounds to (what binary sends: ``struct.pack("!f", x)``) in the
+    fewest digits that lie strictly inside its rounding interval, the nearest such to it, an
+    exact tie to the even digit, as PostgreSQL's Ryu writes it. A double is first rounded to its
+    float4, so text and binary name the same float."""
+    packed = struct.pack("!f", float(x))
+    value = struct.unpack("!f", packed)[0]
+    special = _non_finite_text(value)
     if special is not None:
         return special
-    wanted = struct.pack("!f", abs(x))
-    negative = math.copysign(1.0, x) < 0
+    negative = packed[0] & 0x80 != 0
+    if value == 0:
+        return "-0" if negative else "0"
+    low, high = _float4_bounds(struct.unpack("!I", packed)[0] & 0x7FFFFFFF)
+    exact = decimal.Decimal(abs(value))
     for digits in range(1, 10):
-        sig = f"{abs(x):.{digits - 1}e}"
-        try:
-            reads_back = struct.pack("!f", float(sig)) == wanted
-        except OverflowError:
-            # the shortest form of the largest float4 sits just past it in a double
-            reads_back = digits == 8 and wanted == struct.pack("!f", 3.4028234663852886e38)
-        if reads_back:
-            return _shortest_text(sig, negative, _FLOAT4_FIXED_BELOW)
-    return _shortest_text(f"{abs(x):.8e}", negative, _FLOAT4_FIXED_BELOW)
+        nearest = decimal.Decimal(f"{abs(value):.{digits - 1}e}")
+        step = decimal.Decimal(1).scaleb(exact.adjusted() - digits + 1)
+        other = nearest - step if nearest > exact else nearest + step
+        for candidate in (nearest, other):
+            if low < fractions.Fraction(candidate) < high:
+                return _shortest_text(format(candidate, "e"), negative, _FLOAT4_FIXED_BELOW)
+    raise AssertionError(f"no float4 text for {x!r}")  # nine digits always name a float4
 
 
 def _point_parts(v):
@@ -739,9 +795,9 @@ BVTYPE_TO_PGTYPE = {
         # jsonb binary = a version byte (1) + the JSON text.
         lambda r: b"\x01" + (json.dumps(r) if not isinstance(r, str) else r).encode("utf-8"),
     ),
-    BVType.TIMESTAMPTZ: (1184, _timestamp_text, _timestamp_binary(_micros_since_2000_utc)),
+    BVType.TIMESTAMPTZ: (1184, _timestamptz_text, _timestamp_binary(_micros_since_2000_utc)),
     BVType.TIMETZ: (1266, _pg_clock, _timetz_to_pg_binary),
-    BVType.UUID: (2950, str, _uuid_to_pg_binary),
+    BVType.UUID: (2950, _uuid_text, _uuid_to_pg_binary),
     BVType.NULL: (-1, lambda *_: None),
     BVType.ARRAY: (
         2277,
