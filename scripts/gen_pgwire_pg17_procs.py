@@ -55,6 +55,13 @@ select json_agg(json_build_array(name, pg_settings_get_flags(name)::text) order 
 from pg_settings where pg_settings_get_flags(name) <> '{}'
 """
 
+_VIEW_DEFINITIONS_SQL = """
+select json_agg(json_build_array(c.oid::bigint, pg_get_viewdef(c.oid), pg_get_viewdef(c.oid, true))
+  order by c.oid)
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where c.relkind = 'v' and n.nspname in ('pg_catalog', 'information_schema')
+"""
+
 _DESCRIPTIONS_SQL = """
 select json_agg(json_build_array(d.objoid::bigint, d.classoid::bigint, d.objsubid, d.description)
   order by d.classoid, d.objoid, d.objsubid)
@@ -83,7 +90,8 @@ hypothetical-set aggregate's arguments as pg_get_function_arguments writes them,
 aggregated arguments parted by ORDER BY, which pg_proc alone does not tell. DESCRIPTIONS:
 pg_description's rows of what PostgreSQL ships: objoid, classoid, objsubid, description.
 CATALOG_FOREIGN_KEYS: pg_get_catalog_foreign_keys' rows, each array as its text. SETTING_FLAGS:
-pg_settings_get_flags' answer of each setting that has a flag, as its text."""
+pg_settings_get_flags' answer of each setting that has a flag, as its text. VIEW_DEFINITIONS: a
+system view's definition by its oid, as pg_get_viewdef writes it plain and pretty."""
 
 # Requirements: REQ-2190
 
@@ -111,6 +119,7 @@ def main() -> None:
     descriptions = [tuple(r) for r in json.loads(_psql(prefix, _DESCRIPTIONS_SQL))]
     foreign_keys = [tuple(r) for r in json.loads(_psql(prefix, _FOREIGN_KEYS_SQL))]
     flags = {name: flag for name, flag in json.loads(_psql(prefix, _SETTING_FLAGS_SQL))}
+    views = json.loads(_psql(prefix, _VIEW_DEFINITIONS_SQL))
     lines = [_HEADER.format(version=version), "PROCS: tuple[tuple, ...] = (\n"]
     lines += [f"    {row!r},\n" for row in procs]
     lines += [")\n\nORDERED_SET_ARGUMENTS: dict[int, str] = {\n"]
@@ -121,6 +130,8 @@ def main() -> None:
     lines += [f"    {row!r},\n" for row in foreign_keys]
     lines += [")\n\nSETTING_FLAGS: dict[str, str] = {\n"]
     lines += [f"    {name!r}: {flag!r},\n" for name, flag in sorted(flags.items())]
+    lines += ["}\n\nVIEW_DEFINITIONS: dict[int, tuple[str, str]] = {\n"]
+    lines += [f"    {oid!r}: ({plain!r}, {pretty!r}),\n" for oid, plain, pretty in views]
     lines += ["}\n"]
     OUT_PATH.write_text("".join(lines))
 

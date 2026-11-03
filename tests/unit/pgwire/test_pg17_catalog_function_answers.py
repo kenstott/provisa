@@ -612,3 +612,32 @@ def test_the_catalogs_foreign_keys_are_postgresql_17s():
 )
 def test_a_settings_flags_are_postgresql_17s(sql, expected):
     assert _value(sql) == expected
+
+
+_PLAIN, _PRETTY = "2123afb3b5613547675b418be66ea27a", "30a9194c13d239c08c847be8ce92a298"
+
+
+@pytest.mark.parametrize(
+    "call,md5",
+    [
+        ("'pg_catalog.pg_tables'::regclass::oid", _PLAIN),
+        ("'pg_catalog.pg_tables'::regclass::oid, true::boolean", _PRETTY),
+        ("'pg_catalog.pg_tables'::regclass::oid, 0::integer", _PRETTY),
+        ("'pg_catalog.pg_tables'::text", _PLAIN),
+        ("'pg_catalog.pg_tables'::text, true::boolean", _PRETTY),
+        ("'pg_catalog.pg_tables'::text, false", _PLAIN),
+        ("'information_schema.tables'::text, true", "acdc6eb1ff8215f525200f6742477ae0"),
+    ],
+)
+def test_a_system_views_definition_is_postgresql_17s(call, md5):
+    import hashlib
+
+    written = _value(f'SELECT pg_catalog."pg_get_viewdef"({call}) AS v')
+    assert hashlib.md5(written.encode()).hexdigest() == md5
+
+
+def test_a_relation_that_is_no_view_has_no_definition():
+    assert (
+        _value("SELECT pg_catalog.pg_get_viewdef('pg_catalog.pg_class'::regclass::oid) AS v")
+        is None
+    )

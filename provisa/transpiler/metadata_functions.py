@@ -39,7 +39,7 @@ import sqlglot.expressions as exp
 
 from provisa.core.ir_types import SUBTYPES
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATION_CLASS, TYPES
-from provisa.pgwire.catalog_pg17_procs import ORDERED_SET_ARGUMENTS
+from provisa.pgwire.catalog_pg17_procs import ORDERED_SET_ARGUMENTS, VIEW_DEFINITIONS
 from provisa.transpiler.metadata_facts import PRIVILEGES, UNSERVED, CatalogFacts, relation
 from provisa.transpiler.metadata_oids import (
     FIRST_METRIC_OID,
@@ -467,7 +467,6 @@ _NOTHING_KEPT: tuple[tuple[str, tuple[int, ...], str], ...] = (
     ("pg_get_statisticsobjdef", (1,), "TEXT"),
     ("pg_get_statisticsobjdef_columns", (1,), "TEXT"),
     ("pg_get_triggerdef", (1, 2), "TEXT"),
-    ("pg_get_viewdef", (1, 2), "TEXT"),
     ("pg_index_column_has_property", (3,), "BOOLEAN"),
     ("pg_index_has_property", (2,), "BOOLEAN"),
     ("shobj_description", (2,), "TEXT"),
@@ -577,6 +576,30 @@ def _functiondef(f: str) -> str:
 #: that takes one.
 _ARG_DEFAULT = _of_function("f", f"(SELECT _w.deflt FROM {_arguments('_p')} _w WHERE _w.i = n)")
 
+#: The oid of the view ``tbl`` names, by its oid or by its name as regclass reads one.
+_VIEW_OID = (
+    "CASE WHEN CAST(tbl AS TEXT) ~ '^[0-9]+$' THEN CAST(CAST(tbl AS TEXT) AS BIGINT) "
+    f"ELSE (SELECT CAST(_c.oid AS BIGINT) {_NAMED_RELATION}{_PATH_FIRST}) END"
+)
+
+
+def _view_definitions(which: int) -> str:
+    """A system view's definition as pg_get_viewdef writes it, plain (0) or pretty (1); NULL for a
+    relation that is no view PostgreSQL ships."""
+    arms = " ".join(
+        "WHEN {} THEN '{}'".format(oid, written[which].replace("'", "''"))
+        for oid, written in sorted(VIEW_DEFINITIONS.items())
+    )
+    return f"CASE {_VIEW_OID} {arms} END"
+
+
+#: pg_get_viewdef(view, pretty) or pg_get_viewdef(view, wrap column): pretty but where told false.
+#: A wrap column is read as pretty's own, 0: a longer one would wrap fewer target lists.
+_PRETTY_VIEWDEF = (
+    "CASE WHEN LOWER(CAST(pretty AS TEXT)) IN ('false', 'f') "
+    f"THEN {_view_definitions(0)} ELSE {_view_definitions(1)} END"
+)
+
 #: Every object a catalog holds is on the search path, and the session role holds every role.
 #: Each is strict, as PostgreSQL's is: a NULL argument is NULL.
 _ALWAYS = (
@@ -683,6 +706,8 @@ _FORMS: tuple[Form, ...] = (
     _form("pg_get_function_arg_default", "f, n", _ARG_DEFAULT),
     _form("pg_get_function_sqlbody", "f", _of_function("f", "CAST(_p.prosqlbody AS TEXT)")),
     _form("pg_get_functiondef", "f", _functiondef("f")),
+    _form("pg_get_viewdef", "tbl", _view_definitions(0)),
+    _form("pg_get_viewdef", "tbl, pretty", _PRETTY_VIEWDEF),
     # Every tablespace a catalog lists, and 0 (the database's), is in the data directory: ''.
     _form(
         "pg_tablespace_location",
