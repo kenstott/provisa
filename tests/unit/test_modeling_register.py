@@ -80,3 +80,35 @@ def test_fact_lowers_to_aggregate_table_input_and_relationships():
     assert [(m.name, m.expression, m.from_fact, m.visible_to) for m in fact_metrics] == [
         ("sales_amount_sum", "SUM(Sales.amount)", "Sales", ["public"]),
     ]
+
+
+def test_entity_and_fact_carry_their_description():
+    """REQ-2199: a modeling wizard's draft description reaches the registered table."""
+    ti = entity_table_input(
+        EntityInput(
+            name="hub_customer",
+            source="raw.customers",
+            domain_id="sales",
+            key=["customer_id"],
+            description="Hub of the customer concept.",
+        )
+    )
+    assert ti.description == "Hub of the customer concept."
+    link, _rels, _metrics = fact_table_input(
+        FactInput(
+            name="lnk_customer_order",
+            source="raw.orders",
+            domain_id="sales",
+            grain=["customer_id", "order_id"],
+            description="Link between customer and order.",
+        )
+    )
+    assert link.description == "Link between customer and order."
+    assert "GROUP BY" not in (link.view_sql or "")  # a link has no measures: a pure key-set
+
+
+def test_description_defaults_to_none():
+    ti = entity_table_input(
+        EntityInput(name="Product", source="raw.products", domain_id="sales", key=["sku"])
+    )
+    assert ti.description is None

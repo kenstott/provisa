@@ -206,6 +206,7 @@ mutation RegisterEntity($input: EntityInput!) {
 | `validTime` | String | `null` | Valid-time column; required when `history` isn't `"none"` |
 | `recordedTime` | String | `null` | Recorded-time column; required when `history` isn't `"none"` |
 | `visibleTo` | [String] | `["public"]` | Role visibility list |
+| `description` | String | `null` | The registered table's description |
 
 ### `registerFact`
 
@@ -229,6 +230,7 @@ mutation RegisterFact($input: FactInput!) {
 | `measures` | [MeasureInput] | `[]` | `{ column, agg }` pairs |
 | `dimensions` | [DimRefInput] | `[]` | `{ entity, via }` pairs |
 | `visibleTo` | [String] | `["public"]` | Role visibility list |
+| `description` | String | `null` | The registered table's description |
 
 `MeasureInput`: `{ column: String, agg: String }`; `agg` defaults to `"sum"`.
 
