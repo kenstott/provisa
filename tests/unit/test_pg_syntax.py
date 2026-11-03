@@ -265,3 +265,17 @@ def test_unbound_parameters_are_null_outside_strings() -> None:
     assert _unbound("SELECT $1, '$2' FROM t WHERE a = $2") == (
         "SELECT NULL, '$2' FROM t WHERE a = NULL"
     )
+
+
+@pytest.mark.parametrize(
+    ("call", "written"),
+    [
+        ('pg_catalog."interval_in"(NULL::cstring, NULL::oid, NULL::integer)', "INTERVAL"),
+        ('pg_catalog."jsonb_in"(NULL::cstring)', "JSONB"),
+        ('pg_catalog."xid8in"(NULL::cstring)', "XID8"),
+    ],
+)
+def test_a_null_input_is_postgresqls_null_of_its_type_on_postgres(call: str, written: str) -> None:
+    """REQ-2167: PostgreSQL holds interval, jsonb and xid8, so a strict input's NULL is of that
+    type there, as PostgreSQL describes it; only an engine without the type answers text."""
+    assert transpile(f"SELECT {call} AS v", "postgres") == f"SELECT CAST(NULL AS {written}) AS v"

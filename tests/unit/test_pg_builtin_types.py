@@ -598,3 +598,35 @@ def test_a_tsquery_is_sent_in_binary_as_tsquerysend_writes_it():
 
 def test_every_base_is_a_type_of_the_ir():
     assert {to_ir(sub.base) for sub in SUBTYPES.values()} <= IR_TYPES
+
+
+@pytest.mark.parametrize(
+    ("spelled", "oid"),
+    [
+        ("time without time zone", 1083),
+        ("timestamp without time zone", 1114),
+        ("time with time zone", 1266),
+        ("timestamp with time zone", 1184),
+    ],
+)
+def test_postgresqls_spelling_of_a_clock_type_is_its_wire_type(spelled, oid):
+    """REQ-2167: a column a catalog answer declares as PostgreSQL spells it (time_in's result)
+    is written by that type's encoder, never as Python's text of the value."""
+    assert BVTYPE_TO_OID[_sql_type_to_bvtype(spelled)] == oid
+
+
+def test_a_timetz_of_differing_offsets_is_timetz_outs_text():
+    """REQ-2167: timetz_out writes a fraction without its trailing zeros (23:59:59.5-05), which is
+    what table_to_xml then writes; Python's isoformat pads it to six digits."""
+    from provisa.core.ir_arrow import column_values, row_batch
+
+    west = datetime.timezone(datetime.timedelta(hours=-5))
+    east = datetime.timezone(datetime.timedelta(hours=2))
+    batch = row_batch(
+        [
+            (datetime.time(23, 59, 59, 500000, tzinfo=west),),
+            (datetime.time(12, 30, 45, tzinfo=east),),
+        ],
+        ["t"],
+    )
+    assert column_values(batch.column(0)) == ["23:59:59.5-05", "12:30:45+02"]
