@@ -225,6 +225,9 @@
     "qbClientSecret": "Secret client",
     "qbClientSecretHint": "Sur la même page que l'ID client. Conservé dans le coffre de secrets.",
     "qbRefreshToken": "Jeton d'actualisation",
-    "qbRefreshTokenHint": "Permet à Provisa de lire l'entreprise. Obtenez-en un dans l'OAuth 2.0 Playground d'Intuit avec la portée Accounting. QuickBooks le remplace à chaque utilisation, et Provisa conserve le plus récent."
+    "qbRefreshTokenHint": "Permet à Provisa de lire l'entreprise. Connectez-vous avec QuickBooks pour en obtenir un, ou collez-en un depuis l'OAuth 2.0 Playground d'Intuit avec la portée Accounting. QuickBooks le remplace à chaque utilisation, et Provisa conserve le plus récent. Un nouveau saisi ici remplace celui conservé lors de l'enregistrement.",
+    "qbSignIn": "Se connecter avec QuickBooks",
+    "qbSignedIn": "Connecté à l'entreprise {{realm}}. Enregistrez la source pour la conserver.",
+    "qbSignInFailed": "La connexion n’a pas pu aboutir."
   }
 }

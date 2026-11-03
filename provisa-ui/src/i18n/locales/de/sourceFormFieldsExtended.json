@@ -225,6 +225,9 @@
     "qbClientSecret": "Client-Secret",
     "qbClientSecretHint": "Von derselben Seite wie die Client-ID. Wird im Secrets-Tresor aufbewahrt.",
     "qbRefreshToken": "Refresh-Token",
-    "qbRefreshTokenHint": "Erlaubt Provisa, die Firma zu lesen. Sie erhalten ihn im OAuth 2.0 Playground von Intuit mit dem Accounting-Scope. QuickBooks ersetzt ihn bei jeder Verwendung, und Provisa behält den neuesten."
+    "qbRefreshTokenHint": "Erlaubt Provisa, die Firma zu lesen. Melden Sie sich mit QuickBooks an, um ihn zu erhalten, oder fügen Sie einen aus dem OAuth 2.0 Playground von Intuit mit dem Accounting-Scope ein. QuickBooks ersetzt ihn bei jeder Verwendung, und Provisa behält den neuesten. Ein hier neu eingegebener ersetzt beim Speichern den behaltenen.",
+    "qbSignIn": "Mit QuickBooks anmelden",
+    "qbSignedIn": "Bei Firma {{realm}} angemeldet. Speichern Sie die Quelle, um dies zu behalten.",
+    "qbSignInFailed": "Die Anmeldung konnte nicht abgeschlossen werden."
   }
 }

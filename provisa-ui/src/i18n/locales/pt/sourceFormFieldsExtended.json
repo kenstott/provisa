@@ -225,6 +225,9 @@
     "qbClientSecret": "Segredo do cliente",
     "qbClientSecretHint": "Da mesma página do ID do cliente. Guardado no cofre de segredos.",
     "qbRefreshToken": "Token de atualização",
-    "qbRefreshTokenHint": "Permite que o Provisa leia a empresa. Obtenha um no OAuth 2.0 Playground da Intuit com o escopo Accounting. O QuickBooks o substitui a cada uso, e o Provisa guarda o mais recente."
+    "qbRefreshTokenHint": "Permite que o Provisa leia a empresa. Entre com o QuickBooks para obter um, ou cole um do OAuth 2.0 Playground da Intuit com o escopo Accounting. O QuickBooks o substitui a cada uso, e o Provisa guarda o mais recente. Um novo inserido aqui substitui o guardado ao salvar.",
+    "qbSignIn": "Entrar com o QuickBooks",
+    "qbSignedIn": "Conectado à empresa {{realm}}. Salve a fonte para mantê-la.",
+    "qbSignInFailed": "Não foi possível concluir o login."
   }
 }

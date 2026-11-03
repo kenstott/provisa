@@ -225,6 +225,9 @@
     "qbClientSecret": "Client secret",
     "qbClientSecretHint": "From the same page as the client ID. Kept in the secrets vault.",
     "qbRefreshToken": "Refresh token",
-    "qbRefreshTokenHint": "Lets Provisa read the company. Get one from Intuit's OAuth 2.0 Playground with the Accounting scope. QuickBooks replaces it each time it is used, and Provisa keeps the newest one."
+    "qbRefreshTokenHint": "Lets Provisa read the company. Sign in with QuickBooks to get one, or paste one from Intuit's OAuth 2.0 Playground with the Accounting scope. QuickBooks replaces it each time it is used, and Provisa keeps the newest one. A new one entered here replaces the one kept when you save.",
+    "qbSignIn": "Sign in with QuickBooks",
+    "qbSignedIn": "Signed in to company {{realm}}. Save the source to keep it.",
+    "qbSignInFailed": "The sign-in could not be completed."
   }
 }

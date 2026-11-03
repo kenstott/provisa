@@ -215,7 +215,20 @@ class TestStatus:
 class TestStart:
     async def test_the_form_sends_no_client_and_no_address(self, wired):
         # REQ-1994: the source's settings, from which the server asks for the scopes they read.
-        assert set(router.StartRequest.model_fields) == {"source_id", "kind", "account", "mapping"}
+        # REQ-2197: ``client`` is a source's own client (QuickBooks); a mail source refuses one.
+        assert set(router.StartRequest.model_fields) == {
+            "source_id",
+            "kind",
+            "account",
+            "mapping",
+            "client",
+        }
+        with pytest.raises(ApiError) as raised:
+            await router.start(
+                _request(), _start_body(client={"client_id": "c", "client_secret": "s"})
+            )
+        assert raised.value.code == "source_sign_in.client_not_taken"
+        assert wired["read"] == wired["started"] == []
 
     async def test_the_client_is_the_callers_organisations(self, wired):
         wired["client"] = Configured(KIND, "org-client-1", {"tenant": "contoso"})

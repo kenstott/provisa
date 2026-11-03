@@ -3009,6 +3009,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     .values(allowed_domains=input.allowed_domains)
                 )
 
+        if input.type == "quickbooks":
+            from provisa.quickbooks.token import entered_on_save
+
+            # REQ-2197: a refresh token the save changed replaces the one kept for the company.
+            await entered_on_save(
+                input.id,
+                database=input.database,
+                before_mapping=existing["mapping"],
+                mapping=_stored_mapping,
+            )
+
         await restart_source_server(model)
 
         from provisa.api.app import state

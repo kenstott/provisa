@@ -225,6 +225,9 @@
     "qbClientSecret": "क्लाइंट सीक्रेट",
     "qbClientSecretHint": "क्लाइंट ID वाले पेज से ही। सीक्रेट वॉल्ट में रखा जाता है।",
     "qbRefreshToken": "रीफ़्रेश टोकन",
-    "qbRefreshTokenHint": "Provisa को कंपनी पढ़ने देता है। इसे Intuit के OAuth 2.0 Playground से Accounting स्कोप के साथ प्राप्त करें। QuickBooks हर उपयोग पर इसे बदल देता है, और Provisa सबसे नया रखता है।"
+    "qbRefreshTokenHint": "Provisa को कंपनी पढ़ने देता है। इसे पाने के लिए QuickBooks से साइन इन करें, या Intuit के OAuth 2.0 Playground से Accounting स्कोप के साथ प्राप्त एक पेस्ट करें। QuickBooks हर उपयोग पर इसे बदल देता है, और Provisa सबसे नया रखता है। यहाँ दर्ज किया गया नया टोकन सहेजने पर रखे गए टोकन की जगह लेता है।",
+    "qbSignIn": "QuickBooks से साइन इन करें",
+    "qbSignedIn": "कंपनी {{realm}} में साइन इन किया गया। इसे रखने के लिए स्रोत सहेजें।",
+    "qbSignInFailed": "साइन इन पूरा नहीं हो सका।"
   }
 }

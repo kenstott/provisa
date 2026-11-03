@@ -631,7 +631,10 @@
       "popup_blocked": "Uw browser heeft het inlogvenster geblokkeerd. Sta pop-ups toe voor deze site en probeer het opnieuw.",
       "window_closed": "Het inlogvenster is gesloten voordat het klaar was.",
       "tenant_invalid": "De Microsoft 365-instelling van de organisatie noemt geen directory (tenant). Een beheerder voert de ID of het domein van de directory in.",
-      "microsoft_account_unread": "De aanmelding is goedgekeurd, maar Microsoft heeft niet aangegeven van wie het postvak is."
+      "microsoft_account_unread": "De aanmelding is goedgekeurd, maar Microsoft heeft niet aangegeven van wie het postvak is.",
+      "client_missing": "Voer de client-ID en het clientgeheim van de app in en meld u daarna aan.",
+      "client_not_taken": "Dit soort bron meldt zich aan met de client van uw organisatie, niet met een die in het formulier is ingevoerd.",
+      "no_account_returned": "De aanmelding is goedgekeurd, maar het antwoord noemde geen account ({{parameter}}). Meld u opnieuw aan."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "Uw organisatie heeft geen bronnen toegestaan die haar postvakken lezen. Een beheerder staat dit toe onder Beheer › E-mail.",

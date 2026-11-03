@@ -631,7 +631,10 @@
       "popup_blocked": "Your browser blocked the sign-in window. Allow pop-ups for this site and try again.",
       "window_closed": "The sign-in window was closed before it finished.",
       "tenant_invalid": "The organization's Microsoft 365 setting does not name a directory (tenant). An administrator enters the directory's ID or domain.",
-      "microsoft_account_unread": "The sign-in was approved, but Microsoft did not say whose mailbox it is."
+      "microsoft_account_unread": "The sign-in was approved, but Microsoft did not say whose mailbox it is.",
+      "client_missing": "Enter the app's client ID and client secret, then sign in.",
+      "client_not_taken": "This kind of source signs in with your organization's client, not one entered on the form.",
+      "no_account_returned": "The sign-in was approved, but the answer did not say which account ({{parameter}}). Sign in again."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "Your organization has not allowed sources that read its mailboxes. An administrator allows it under Admin › Email.",

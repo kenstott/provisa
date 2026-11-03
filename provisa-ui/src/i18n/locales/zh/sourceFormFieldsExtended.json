@@ -225,6 +225,9 @@
     "qbClientSecret": "客户端密钥",
     "qbClientSecretHint": "与客户端 ID 在同一页面。保存在密钥保管库中。",
     "qbRefreshToken": "刷新令牌",
-    "qbRefreshTokenHint": "允许 Provisa 读取该公司。可在 Intuit 的 OAuth 2.0 Playground 中使用 Accounting 范围获取。QuickBooks 每次使用后都会替换它，Provisa 会保留最新的令牌。"
+    "qbRefreshTokenHint": "允许 Provisa 读取该公司。使用 QuickBooks 登录以获取，或粘贴在 Intuit 的 OAuth 2.0 Playground 中使用 Accounting 范围获取的令牌。QuickBooks 每次使用后都会替换它，Provisa 会保留最新的令牌。在此输入的新令牌会在保存时替换保留的令牌。",
+    "qbSignIn": "使用 QuickBooks 登录",
+    "qbSignedIn": "已登录公司 {{realm}}。保存数据源以保留此登录。",
+    "qbSignInFailed": "无法完成登录。"
   }
 }

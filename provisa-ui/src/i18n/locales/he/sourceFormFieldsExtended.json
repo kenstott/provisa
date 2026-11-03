@@ -225,6 +225,9 @@
     "qbClientSecret": "סוד לקוח",
     "qbClientSecretHint": "מאותו דף של מזהה הלקוח. נשמר בכספת הסודות.",
     "qbRefreshToken": "אסימון רענון",
-    "qbRefreshTokenHint": "מאפשר ל-Provisa לקרוא את החברה. ניתן לקבל אחד ב-OAuth 2.0 Playground של Intuit עם היקף Accounting. ‏QuickBooks מחליפה אותו בכל שימוש, ו-Provisa שומרת את החדש ביותר."
+    "qbRefreshTokenHint": "מאפשר ל-Provisa לקרוא את החברה. היכנסו עם QuickBooks כדי לקבל אחד, או הדביקו אחד מ-OAuth 2.0 Playground של Intuit עם היקף Accounting. ‏QuickBooks מחליפה אותו בכל שימוש, ו-Provisa שומרת את החדש ביותר. אחד חדש שמוזן כאן מחליף את השמור בעת השמירה.",
+    "qbSignIn": "כניסה עם QuickBooks",
+    "qbSignedIn": "מחובר לחברה {{realm}}. שמרו את המקור כדי לשמור זאת.",
+    "qbSignInFailed": "לא ניתן היה להשלים את הכניסה."
   }
 }

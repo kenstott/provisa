@@ -631,7 +631,10 @@
       "popup_blocked": "瀏覽器封鎖了登入視窗。請允許此網站顯示彈出式視窗,然後再試一次。",
       "window_closed": "登入視窗在完成前已被關閉。",
       "tenant_invalid": "組織的 Microsoft 365 設定未指定目錄（租用戶）。由管理員輸入目錄的 ID 或網域。",
-      "microsoft_account_unread": "登入已獲批准，但 Microsoft 未說明這是誰的信箱。"
+      "microsoft_account_unread": "登入已獲批准，但 Microsoft 未說明這是誰的信箱。",
+      "client_missing": "請輸入應用程式的用戶端 ID 和用戶端密鑰，然後登入。",
+      "client_not_taken": "此類資料來源使用您機構的用戶端登入，而非表單中輸入的用戶端。",
+      "no_account_returned": "登入已獲批准，但回應未說明是哪個帳戶（{{parameter}}）。請重新登入。"
     },
     "mail_platform": {
       "organisation_mailboxes_off": "您的組織尚未允許讀取其信箱的數據來源。管理員可在「管理 › 郵件」中允許。",

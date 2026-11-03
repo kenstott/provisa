@@ -631,7 +631,10 @@
       "popup_blocked": "浏览器拦截了登录窗口。请允许此网站弹出窗口,然后重试。",
       "window_closed": "登录窗口在完成前已被关闭。",
       "tenant_invalid": "组织的 Microsoft 365 设置未指定目录（租户）。由管理员输入目录的 ID 或域名。",
-      "microsoft_account_unread": "登录已获批准，但 Microsoft 未说明这是谁的邮箱。"
+      "microsoft_account_unread": "登录已获批准，但 Microsoft 未说明这是谁的邮箱。",
+      "client_missing": "请输入应用的客户端 ID 和客户端密钥，然后登录。",
+      "client_not_taken": "此类数据源使用您组织的客户端登录，而不是表单中输入的客户端。",
+      "no_account_returned": "登录已获批准，但响应未说明是哪个账户（{{parameter}}）。请重新登录。"
     },
     "mail_platform": {
       "organisation_mailboxes_off": "您的组织尚未允许读取其邮箱的数据源。管理员可在“管理 › 邮件”中允许。",

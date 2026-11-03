@@ -631,7 +631,10 @@
       "popup_blocked": "Il browser ha bloccato la finestra di accesso. Consenti i pop-up per questo sito e riprova.",
       "window_closed": "La finestra di accesso è stata chiusa prima del completamento.",
       "tenant_invalid": "L'impostazione Microsoft 365 dell'organizzazione non indica una directory (tenant). Un amministratore inserisce l'ID o il dominio della directory.",
-      "microsoft_account_unread": "L'accesso è stato approvato, ma Microsoft non ha indicato di chi è la casella di posta."
+      "microsoft_account_unread": "L'accesso è stato approvato, ma Microsoft non ha indicato di chi è la casella di posta.",
+      "client_missing": "Inserisci l'ID client e il segreto client dell'app, poi accedi.",
+      "client_not_taken": "Questo tipo di origine accede con il client della tua organizzazione, non con uno inserito nel modulo.",
+      "no_account_returned": "L'accesso è stato approvato, ma la risposta non indicava quale account ({{parameter}}). Accedi di nuovo."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "La tua organizzazione non ha consentito origini che leggono le sue caselle di posta. Un amministratore lo consente in Amministrazione › Email.",
