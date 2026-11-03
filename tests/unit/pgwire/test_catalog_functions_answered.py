@@ -100,7 +100,8 @@ def test_options_and_acls_have_no_items():
         == []
     )
     assert _rows("SELECT (aclexplode(relacl)).grantee FROM pg_catalog.pg_class") == []
-    assert _rows("SELECT acldefault('r'::\"char\", 10)") == [(None,)]
+    # PostgreSQL's default ACL of a relation, its owner the bootstrap role (provisa, by design).
+    assert _rows("SELECT acldefault('r'::\"char\", 10)") == [(["provisa=arwdDxtm/provisa"],)]
 
 
 def test_a_relation_is_its_own_partition_tree_and_ancestor():

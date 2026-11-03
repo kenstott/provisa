@@ -22,6 +22,9 @@ from __future__ import annotations
 
 import re
 
+from provisa.pgwire.catalog_pg17_acl import NO_PUBLIC_SELECT, PG17_ROLES, REVOKED_FUNCTIONS
+from provisa.transpiler.metadata_oids import SYSTEM_SCHEMA_OIDS
+
 _OLD_RELATION = re.compile(r"\b_pg_([a-z_]+)\b")
 
 
@@ -44,6 +47,103 @@ _ALWAYS_PRIVILEGED = (
     "has_tablespace_privilege",
     "has_type_privilege",
 )
+
+
+def role_name(role: str) -> str:
+    """The name of the role ``role`` (SQL) names, by its name or its oid; NULL for none."""
+    return (
+        "(SELECT CAST(_ro.rolname AS TEXT) FROM meta.catalog_pg_roles _ro "
+        f"WHERE CAST({role} AS TEXT) IN (CAST(_ro.rolname AS TEXT), CAST(_ro.oid AS TEXT)) LIMIT 1)"
+    )
+
+
+#: PostgreSQL's predefined roles, as SQL's list of their names.
+PREDEFINED_ROLES = "(" + ", ".join(f"'{row[1]}'" for row in PG17_ROLES) + ")"
+_NO_PRIVILEGE = "CAST(ARRAY[] AS TEXT[])"
+
+
+def any_held(priv: str, held: str) -> str:
+    """Whether any privilege the list ``priv`` names is among ``held`` (SQL, a text array), as
+    has_*_privilege reads a list: a privilege WITH GRANT OPTION is held by no predefined role."""
+    return (
+        f"EXISTS (SELECT 1 FROM UNNEST(STRING_TO_ARRAY(UPPER({priv}), ',')) _p(p) "
+        f"WHERE TRIM(_p.p) = ANY({held}))"
+    )
+
+
+def _roles_held(name: str) -> str:
+    """The role named ``name`` (SQL) and each role it is a member of."""
+    return (
+        "(SELECT CAST(_hr.rolname AS TEXT) FROM meta.catalog_pg_auth_members _hm "
+        "JOIN meta.catalog_pg_roles _hmr ON _hmr.oid = _hm.member "
+        "JOIN meta.catalog_pg_roles _hr ON _hr.oid = _hm.roleid "
+        f"WHERE CAST(_hmr.rolname AS TEXT) = {name} UNION ALL SELECT {name})"
+    )
+
+
+_NO_PUBLIC_SELECT = ", ".join(
+    f"('{schema}', '{name}')" for schema, name in sorted(NO_PUBLIC_SELECT)
+)
+
+
+def predefined_relation_privileges(who: str) -> str:
+    """The privileges (SQL, a text array) the predefined role ``who`` holds on the relation of
+    ``_c`` and ``_n``: SELECT on a system relation PUBLIC may read, SELECT on every relation for
+    pg_read_all_data, and INSERT, UPDATE and DELETE for pg_write_all_data on every relation but a
+    system catalog, which only a superuser may change."""
+    system = f"_c.relnamespace IN {SYSTEM_SCHEMA_OIDS}"
+    return (
+        f"CASE WHEN {system} "
+        f"AND (CAST(_n.nspname AS TEXT), CAST(_c.relname AS TEXT)) NOT IN ({_NO_PUBLIC_SELECT}) "
+        f"THEN ARRAY['SELECT'] ELSE {_NO_PRIVILEGE} END || CASE "
+        f"WHEN {role_name(who)} = 'pg_read_all_data' THEN ARRAY['SELECT'] "
+        f"WHEN {role_name(who)} = 'pg_write_all_data' AND NOT {system} "
+        f"THEN ARRAY['INSERT', 'UPDATE', 'DELETE'] ELSE {_NO_PRIVILEGE} END"
+    )
+
+
+_REVOKED = ", ".join(
+    f"({oid}, '{signature.replace(' ', '')}', {f"'{grantee}'" if grantee else 'NULL'})"
+    for oid, signature, grantees in REVOKED_FUNCTIONS
+    for grantee in grantees or (None,)
+)
+_REVOKED_OF = (
+    f"FROM (VALUES {_REVOKED}) _f(oid, signature, grantee) WHERE CAST(thing AS TEXT) = "
+    "CAST(_f.oid AS TEXT) OR REPLACE(LOWER(REGEXP_REPLACE(CAST(thing AS TEXT), "
+    "'^pg_catalog\\.', '')), ' ', '') = _f.signature"
+)
+
+
+def _held_by_predefined(name: str) -> str:
+    """What a predefined role ``who`` holds of what ``thing`` names, by function ``name``: what
+    PostgreSQL 17 grants PUBLIC by default, and the predefined roles' own rights."""
+    who = role_name("who")
+    if name == "has_database_privilege":
+        return "ARRAY['CONNECT', 'TEMPORARY', 'TEMP']"
+    if name == "has_schema_privilege":
+        schema = (
+            "(SELECT CAST(_n.nspname AS TEXT) FROM meta.catalog_pg_namespace _n "
+            "WHERE CAST(thing AS TEXT) IN (CAST(_n.nspname AS TEXT), CAST(_n.oid AS TEXT)) LIMIT 1)"
+        )
+        return (
+            f"CASE WHEN {who} IN ('pg_read_all_data', 'pg_write_all_data') "
+            f"OR {schema} IN ('pg_catalog', 'information_schema', 'public') "
+            f"THEN ARRAY['USAGE'] ELSE {_NO_PRIVILEGE} END"
+        )
+    if name == "has_function_privilege":
+        return (
+            f"CASE WHEN NOT EXISTS (SELECT 1 {_REVOKED_OF}) OR EXISTS (SELECT 1 {_REVOKED_OF} "
+            f"AND _f.grantee IN {_roles_held(who)}) THEN ARRAY['EXECUTE'] ELSE {_NO_PRIVILEGE} END"
+        )
+    if name in ("has_language_privilege", "has_type_privilege"):
+        return "ARRAY['USAGE']"
+    if name == "has_sequence_privilege":
+        return (
+            f"CASE {who} WHEN 'pg_read_all_data' THEN ARRAY['SELECT'] "
+            f"WHEN 'pg_write_all_data' THEN ARRAY['UPDATE'] ELSE {_NO_PRIVILEGE} END"
+        )
+    return _NO_PRIVILEGE  # a tablespace, a foreign-data wrapper, a server: its owner's alone
+
 
 #: Stands for the type a raised error's expression takes, which only the form knows: PostgreSQL
 #: types each arm of a CASE, and a call that never returns still has one.
@@ -905,6 +1005,40 @@ def _to_reg(a: _Answers) -> None:
     )
 
 
+#: acldefault's items by the kind of object, ``{o}`` the owner: what PostgreSQL 17 grants an
+#: object's owner, and PUBLIC, before any GRANT.
+_DEFAULT_ACLS = (
+    ("c", ""), ("r", "{o}=arwdDxtm/{o}"), ("s", "{o}=rwU/{o}"), ("d", "=Tc/{o},{o}=CTc/{o}"),
+    ("f", "=X/{o},{o}=X/{o}"), ("l", "=U/{o},{o}=U/{o}"), ("L", "{o}=rw/{o}"), ("n", "{o}=UC/{o}"),
+    ("p", "{o}=sA/{o}"), ("t", "{o}=C/{o}"), ("F", "{o}=U/{o}"), ("S", "{o}=U/{o}"),
+    ("T", "=U/{o},{o}=U/{o}"),
+)  # fmt: skip
+
+
+def _acl_default() -> str:
+    owner = (
+        "COALESCE((SELECT CAST(_r.rolname AS TEXT) FROM meta.catalog_pg_roles _r "
+        "WHERE _r.oid = owner LIMIT 1), CAST(owner AS TEXT))"
+    )
+
+    def items(written: str) -> str:
+        parts = written.split("{o}")
+        return " || ".join(
+            p
+            for i, part in enumerate(parts)
+            for p in ([f"'{part}'"] if part else []) + ([owner] if i < len(parts) - 1 else [])
+        )
+
+    arms = " ".join(
+        f"WHEN '{kind}' THEN '{{' || {items(written)} || '}}'"
+        if written
+        else f"WHEN '{kind}' THEN '{{}}'"
+        for kind, written in _DEFAULT_ACLS
+    )
+    refused = raising("22023", "'unrecognized object type abbreviation: ' || kind")
+    return f"CAST(CASE CAST(kind AS TEXT) {arms} ELSE {_typed(refused, 'TEXT')} END AS TEXT[])"
+
+
 def _type_lookup(name: str) -> str:
     spelled = " ".join(f"WHEN '{d}' THEN '{i}'" for i, d in _TYPE_SPELLINGS)
     return (
@@ -1196,7 +1330,13 @@ def _catalog_objects(a: _Answers) -> None:
     a.strict("pg_get_statisticsobjdef_expressions", "s", "TEXT[]", "CAST(NULL AS TEXT[])")
     for name in _ALWAYS_PRIVILEGED:
         a.strict(name, "thing, priv", "BOOLEAN", "TRUE")
-        a.strict(name, "who, thing, priv", "BOOLEAN", "TRUE")
+        a.strict(
+            name,
+            "who, thing, priv",
+            "BOOLEAN",
+            f"CASE WHEN {role_name('who')} IN {PREDEFINED_ROLES} "
+            f"THEN {any_held('priv', _held_by_predefined(name))} ELSE TRUE END",
+        )
     a.strict("pg_blocking_pids", "pid", "INTEGER[]", "CAST(ARRAY[] AS INTEGER[])")
     a.body("pg_current_logfile", "", "CAST(NULL AS TEXT)")
     a.body("pg_current_logfile", "format", "CAST(NULL AS TEXT)")
@@ -1224,7 +1364,7 @@ def _catalog_objects(a: _Answers) -> None:
         "|| CASE WHEN grantable THEN '*' ELSE '' END ELSE '' END"
         for letter, word in _ACL_RIGHTS
     )
-    role_name = (
+    named_role = (
         "COALESCE((SELECT CAST(_r.rolname AS TEXT) FROM meta.catalog_pg_roles _r "
         "WHERE _r.oid = {oid}), {other})"
     )
@@ -1235,12 +1375,12 @@ def _catalog_objects(a: _Answers) -> None:
         f"CASE WHEN ({rights}) = '' THEN "
         + raising("22023", "'unrecognized privilege type: \"' || priv || '\"'")
         + " ELSE "
-        + role_name.format(oid="grantee", other="''")
+        + named_role.format(oid="grantee", other="''")
         + f" || '=' || {rights} || '/' || "
-        + role_name.format(oid="grantor", other="CAST(grantor AS TEXT)")
+        + named_role.format(oid="grantor", other="CAST(grantor AS TEXT)")
         + " END",
     )
-    a.strict("acldefault", "kind, owner", "TEXT[]", "CAST(NULL AS TEXT[])")
+    a.strict("acldefault", "kind, owner:bigint", "TEXT[]", _acl_default())
     a.strict(
         "pg_collation_actual_version",
         "c:bigint",
@@ -1383,7 +1523,15 @@ def _catalog_objects(a: _Answers) -> None:
         + " ELSE TRUE END"
     )
     a.strict("has_parameter_privilege", "param, priv", "BOOLEAN", privilege)
-    a.strict("has_parameter_privilege", "who, param, priv", "BOOLEAN", privilege)
+    # No predefined role is granted a parameter (pg_parameter_acl lists none).
+    a.strict(
+        "has_parameter_privilege",
+        "who, param, priv",
+        "BOOLEAN",
+        privilege.replace(
+            " ELSE TRUE END", f" ELSE {role_name('who')} NOT IN {PREDEFINED_ROLES} END"
+        ),
+    )
 
 
 def _answers() -> _Answers:

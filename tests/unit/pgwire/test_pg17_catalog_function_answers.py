@@ -248,3 +248,209 @@ def test_regclass_of_a_name_given_as_text_is_that_relation():
         "oid": 1259,
         "name": "pg_class",
     }
+
+
+#: The privilege functions asked of a predefined role, as the functions conformance run asks them,
+#: with PostgreSQL 17's answers: its default grants (PUBLIC reads the system catalogs, executes
+#: functions, uses types and languages, connects) and the predefined roles' own rights.
+_PREDEFINED_ROLE_PRIVILEGES = [
+    (
+        "SELECT pg_catalog.\"has_any_column_privilege\"('pg_monitor'::name, 'pg_catalog.pg_class'::regclass::oid, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_any_column_privilege\"('pg_monitor'::name, 'pg_catalog.pg_class'::text, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_any_column_privilege\"('pg_monitor'::regrole::oid, 'pg_catalog.pg_class'::regclass::oid, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_any_column_privilege\"('pg_monitor'::regrole::oid, 'pg_catalog.pg_class'::text, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_column_privilege\"('pg_monitor'::name, 'pg_catalog.pg_class'::regclass::oid, 'relname'::text, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_column_privilege\"('pg_monitor'::name, 'pg_catalog.pg_class'::regclass::oid, 2::smallint, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_column_privilege\"('pg_monitor'::name, 'pg_catalog.pg_class'::text, 'relname'::text, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_column_privilege\"('pg_monitor'::name, 'pg_catalog.pg_class'::text, 2::smallint, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_column_privilege\"('pg_monitor'::regrole::oid, 'pg_catalog.pg_class'::regclass::oid, 'relname'::text, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_column_privilege\"('pg_monitor'::regrole::oid, 'pg_catalog.pg_class'::regclass::oid, 2::smallint, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_column_privilege\"('pg_monitor'::regrole::oid, 'pg_catalog.pg_class'::text, 'relname'::text, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_column_privilege\"('pg_monitor'::regrole::oid, 'pg_catalog.pg_class'::text, 2::smallint, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_database_privilege\"('pg_read_all_data'::name, (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()), 'CREATE'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_database_privilege\"('pg_read_all_data'::name, current_database()::text, 'CREATE'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_database_privilege\"('pg_read_all_data'::regrole::oid, (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database()), 'CREATE'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_database_privilege\"('pg_read_all_data'::regrole::oid, current_database()::text, 'CREATE'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_function_privilege\"('pg_read_all_data'::regrole::oid, 'abs(integer)'::regprocedure::oid, 'EXECUTE'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_function_privilege\"('pg_read_all_data'::regrole::oid, 'pg_catalog.abs(integer)'::text, 'EXECUTE'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_language_privilege\"('pg_read_all_data'::regrole::oid, 'internal'::text, 'USAGE'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_language_privilege\"('pg_read_all_data'::regrole::oid, 12, 'USAGE'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_parameter_privilege\"('pg_monitor'::name, 'work_mem'::text, 'SET'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_parameter_privilege\"('pg_monitor'::regrole::oid, 'work_mem'::text, 'SET'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_schema_privilege\"('pg_read_all_data'::name, 'public'::regnamespace::oid, 'CREATE'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_schema_privilege\"('pg_read_all_data'::name, 'public'::text, 'CREATE'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_schema_privilege\"('pg_read_all_data'::regrole::oid, 'public'::regnamespace::oid, 'CREATE'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_schema_privilege\"('pg_read_all_data'::regrole::oid, 'public'::text, 'CREATE'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_table_privilege\"('pg_monitor'::name, 'pg_catalog.pg_class'::regclass::oid, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_table_privilege\"('pg_monitor'::name, 'pg_catalog.pg_class'::text, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_table_privilege\"('pg_monitor'::regrole::oid, 'pg_catalog.pg_class'::regclass::oid, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_table_privilege\"('pg_monitor'::regrole::oid, 'pg_catalog.pg_class'::text, 'SELECT'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_tablespace_privilege\"('pg_monitor'::name, 'pg_default'::text, 'CREATE'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_tablespace_privilege\"('pg_monitor'::name, 1663, 'CREATE'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_tablespace_privilege\"('pg_monitor'::regrole::oid, 'pg_default'::text, 'CREATE'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_tablespace_privilege\"('pg_monitor'::regrole::oid, 1663, 'CREATE'::text) AS v",
+        False,
+    ),
+    (
+        "SELECT pg_catalog.\"has_type_privilege\"('pg_read_all_data'::regrole::oid, 'text'::regtype::oid, 'USAGE'::text) AS v",
+        True,
+    ),
+    (
+        "SELECT pg_catalog.\"has_type_privilege\"('pg_read_all_data'::regrole::oid, 'text'::text, 'USAGE'::text) AS v",
+        True,
+    ),
+    ("SELECT has_table_privilege('pg_read_all_data', 'pg_catalog.pg_authid', 'SELECT')", True),
+    ("SELECT has_table_privilege('pg_monitor', 'pg_catalog.pg_authid', 'SELECT')", False),
+    ("SELECT has_table_privilege('pg_write_all_data', 'pg_catalog.pg_class', 'INSERT')", False),
+    ("SELECT has_table_privilege('pg_monitor', 'pg_catalog.pg_class', 'INSERT, SELECT')", True),
+    (
+        "SELECT has_table_privilege('pg_monitor', 'pg_catalog.pg_class', "
+        "'SELECT WITH GRANT OPTION')",
+        False,
+    ),
+    ("SELECT has_database_privilege('pg_monitor', current_database(), 'CONNECT')", True),
+    ("SELECT has_function_privilege('pg_monitor', 'pg_ls_logdir()', 'EXECUTE')", True),
+    ("SELECT has_function_privilege('pg_read_all_data', 'pg_ls_logdir()', 'EXECUTE')", False),
+    (
+        "SELECT has_function_privilege('pg_monitor', "
+        "'pg_catalog.pg_get_backend_memory_contexts()', 'EXECUTE')",
+        True,
+    ),
+    ("SELECT has_schema_privilege('pg_monitor', 'pg_catalog', 'USAGE')", True),
+    ("SELECT has_tablespace_privilege('pg_monitor', 'pg_global', 'CREATE')", False),
+    ("SELECT has_parameter_privilege('pg_monitor', 'work_mem', 'ALTER SYSTEM')", False),
+]
+
+
+@pytest.mark.parametrize("sql,expected", _PREDEFINED_ROLE_PRIVILEGES)
+def test_a_predefined_roles_privilege_is_what_postgresql_grants_it(sql, expected):
+    assert _value(sql) is expected
+
+
+@pytest.mark.parametrize(
+    "kind,expected",
+    [
+        ("c", []),
+        ("r", ["pg_monitor=arwdDxtm/pg_monitor"]),
+        ("s", ["pg_monitor=rwU/pg_monitor"]),
+        ("d", ["=Tc/pg_monitor", "pg_monitor=CTc/pg_monitor"]),
+        ("f", ["=X/pg_monitor", "pg_monitor=X/pg_monitor"]),
+        ("l", ["=U/pg_monitor", "pg_monitor=U/pg_monitor"]),
+        ("L", ["pg_monitor=rw/pg_monitor"]),
+        ("n", ["pg_monitor=UC/pg_monitor"]),
+        ("p", ["pg_monitor=sA/pg_monitor"]),
+        ("t", ["pg_monitor=C/pg_monitor"]),
+        ("F", ["pg_monitor=U/pg_monitor"]),
+        ("S", ["pg_monitor=U/pg_monitor"]),
+        ("T", ["=U/pg_monitor", "pg_monitor=U/pg_monitor"]),
+    ],
+)
+def test_acldefault_is_postgresqls_default_acl(kind, expected):
+    sql = f"SELECT pg_catalog.\"acldefault\"('{kind}'::\"char\", 'pg_monitor'::regrole::oid) AS v"
+    assert _value(sql) == expected
+
+
+def test_acldefault_of_an_oid_no_role_has_writes_the_number():
+    assert _value("SELECT pg_catalog.acldefault('d', 99999) AS v") == [
+        "=Tc/99999",
+        "99999=CTc/99999",
+    ]

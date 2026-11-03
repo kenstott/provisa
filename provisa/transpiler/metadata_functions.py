@@ -46,7 +46,15 @@ from provisa.transpiler.metadata_oids import (
     SYSTEM_SCHEMA_OIDS,
     key_id_sql,
 )
-from provisa.transpiler.metadata_server_forms import SCALAR_FORMS, TABLE_FORMS, raising
+from provisa.transpiler.metadata_server_forms import (
+    PREDEFINED_ROLES,
+    SCALAR_FORMS,
+    TABLE_FORMS,
+    any_held,
+    predefined_relation_privileges,
+    raising,
+    role_name,
+)
 from provisa.transpiler.metadata_settings import setting
 from provisa.transpiler.pg_forms_system import SERVER_STATE
 
@@ -497,12 +505,7 @@ def _strictly(arity: int, answer: str) -> str:
     return f"CASE WHEN {nulls} THEN NULL ELSE {answer} END"
 
 
-def _role_name(role: str) -> str:
-    """The name of the role ``role`` names, by its name or its oid."""
-    return (
-        "(SELECT CAST(_ro.rolname AS TEXT) FROM meta.catalog_pg_roles _ro "
-        f"WHERE CAST({role} AS TEXT) IN (CAST(_ro.rolname AS TEXT), CAST(_ro.oid AS TEXT)) LIMIT 1)"
-    )
+_role_name = role_name
 
 
 def _no_such_role(role: str) -> str:
@@ -804,7 +807,12 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
         if (name, len(args)) in _OF_A_USER:
             user, *args = args
             written = _of_session_role(
-                user, _expanded_form(name, args, rewrite, needed), facts, rewrite
+                user,
+                _expanded_form(name, args, rewrite, needed),
+                facts,
+                rewrite,
+                args[0],
+                args[-1],
             )
         else:
             if (name, len(args)) not in FORMS:
@@ -915,14 +923,44 @@ def _expanded_form(name, args, rewrite, needed: set[str]) -> exp.Expr:
     return _written(form, [a.transform(rewrite) for a in args])
 
 
-def _of_session_role(user: exp.Expr, answer: exp.Expr, facts: CatalogFacts, rewrite) -> exp.Expr:
-    """``answer`` where ``user`` is the session role; NULL for another, whose grants a statement
-    does not hold."""
-    named = exp.cast(_argument(user.transform(rewrite)), "TEXT")
+#: A predefined role's privilege on a relation: PostgreSQL's defaults and the role's own rights.
+_PREDEFINED_RELATION = Form(
+    "_predefined_relation_privilege",
+    ("who", "tbl", "priv"),
+    f"(SELECT {any_held('priv', predefined_relation_privileges('who'))} "
+    f"{_NAMED_RELATION}{_PATH_FIRST})",
+)
+
+
+def _of_session_role(
+    user: exp.Expr, answer: exp.Expr, facts: CatalogFacts, rewrite, tbl: exp.Expr, priv: exp.Expr
+) -> exp.Expr:
+    """``answer`` where ``user`` is the session role; for one of PostgreSQL's predefined roles,
+    what PostgreSQL grants it; NULL for another, whose grants a statement does not hold."""
+    user = user.transform(rewrite)
+    named = exp.cast(_argument(user), "TEXT")
+    predefined = _written(
+        _PREDEFINED_RELATION, [user.copy(), tbl.transform(rewrite), priv.transform(rewrite)]
+    )
     return exp.Case(
         ifs=[
             exp.If(
                 this=exp.EQ(this=named, expression=exp.Literal.string(facts.role_id)), true=answer
-            )
+            ),
+            exp.If(
+                this=_parsed_condition(f"{role_name('_who')} IN {PREDEFINED_ROLES}", user),
+                true=predefined,
+            ),
         ]
     )
+
+
+def _parsed_condition(sql: str, who: exp.Expr) -> exp.Expr:
+    """``sql`` with ``_who`` the expression ``who``."""
+
+    def bound(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Column) and not node.table and node.name == "_who":
+            return _argument(who).copy()
+        return node
+
+    return sqlglot.parse_one(sql, read="postgres").transform(bound)
