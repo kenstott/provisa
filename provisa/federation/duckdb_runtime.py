@@ -40,7 +40,7 @@ import duckdb
 
 from provisa.federation.duckdb_extensions import install_and_load
 from provisa.federation.file_locks import ReadersWriterGate
-from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
+from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, answered_batches, arrow_rows
 from provisa.executor.result import ArrowResult, ArrowStreamResult, QueryResult, ResultStream
 from provisa.federation import store_writer
 from provisa.federation.engine import build_duckdb_engine
@@ -1574,9 +1574,10 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # "DECIMAL(18,2)"), even for a zero-row result — the pgwire Describe relies on it.
         types = [str(d[1]) for d in cur.description]
         # REQ-2194: the engine's Arrow batches, never its DB-API rows. A consumer that reads rows
-        # has each batch turned into them as it pulls it (duckdb_arrow.arrow_rows).
+        # has each batch turned into them as it pulls it (duckdb_arrow.arrow_rows); an engine error
+        # met in a later batch is PostgreSQL's own (duckdb_arrow.answered_batches).
         return ArrowStreamResult(
-            reader.schema, iter(reader), types, to_rows=arrow_rows, on_close=_close
+            reader.schema, answered_batches(reader), types, to_rows=arrow_rows, on_close=_close
         )
 
     def describe_sync(self, duck_sql: str, params: list | None = None) -> ResultStream:

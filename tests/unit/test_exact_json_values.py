@@ -688,14 +688,13 @@ class TestPostgresJsonIsText:
         from buenavista.core import BVType
 
         from provisa.federation.pg_runtime import _read_as_postgresql_writes
-        from tests.unit.pgwire.wire_cells import text
+        from tests.unit.pgwire import wire_cells as wire
 
         _read_as_postgresql_writes(pg_cursor)
         pg_cursor.execute("""SELECT '"5"'::jsonb, '{"a": 1.10}'::json""")
         jsonb, json_ = pg_cursor.fetchone()
-        # pgwire's own send of each cell (the Rust DataRow encoder, REQ-2194).
-        assert text(BVType.JSONB, jsonb, "jsonb") == '"5"'
-        assert text(BVType.JSON, json_, "json") == '{"a": 1.10}'
+        assert wire.text(BVType.JSONB, jsonb, "jsonb") == '"5"'
+        assert wire.text(BVType.JSON, json_, "json") == '{"a": 1.10}'
 
     def test_flight_sends_the_text_postgresql_sent(self, pg_cursor):
         from provisa.executor.formats.arrow import rows_to_arrow_table
@@ -784,16 +783,19 @@ class TestIntegersAreNumbers:
     def test_a_duckdb_hugeint_read_through_arrow_is_a_number(self):
         import duckdb
 
-        from provisa.executor.drivers.duckdb_driver import _arrow_result
+        from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
 
         con = duckdb.connect()
-        # The driver reads the result through Arrow (J496), where a HUGEINT is its own bytes.
+        # Every DuckDB read is its Arrow export (REQ-2194), which carries a HUGEINT as DuckDB's
+        # own bytes, read as the int DuckDB's rows hold.
+        con.execute(LOSSLESS_ARROW)
         res = con.execute(
             f"SELECT {_HUGE}::HUGEINT AS h, 12::DECIMAL(38,0) AS d, DATE '2020-01-01' AS day"
         )
         types = [str(d[1]) for d in res.description]
-        result = _arrow_result(res)
-        result.column_types = types
+        rows = arrow_rows(res.to_arrow_table())
+        assert rows[0][0] == _HUGE and isinstance(rows[0][0], int)
+        result = QueryResult(rows=rows, column_names=["h", "d", "day"], column_types=types)
         assert json.loads(dumps(result_records(result))) == [
             {"h": _HUGE, "d": "12", "day": "2020-01-01"}
         ]

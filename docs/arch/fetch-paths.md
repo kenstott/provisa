@@ -35,7 +35,7 @@ Encoders that read `arrow_batches()` get no Python row at all; the row consumers
 builds the rows on its executor thread before handing the result back (`ArrowResult.with_rows()`):
 the event loop does no per-row work.
 
-### 1.1 pgwire reads Arrow from every result (REQ-2194)
+### 1.1 pgwire reads Arrow from every result
 
 pgwire's DataRow messages are written by the Rust encoder (`provisa._encoders.pgwire`, crate
 `rust/pgwire`) and by nothing else: buenavista's `send_data_rows` hands the encoder each result's
@@ -77,6 +77,17 @@ Python values from the batches (they write an XML document, not DataRow messages
 DuckDB's lossless export carries `HUGEINT`, `UHUGEINT`, `VARINT`, `BIT` and `TIMETZ` as its own
 bytes (Arrow opaque types); the encoder reads them from those bytes as `duckdb_arrow.arrow_rows`
 does, so a DuckDB result reaches the wire with no Python row at all.
+
+### 1.2 gRPC reads Arrow from every result (REQ-2194)
+
+gRPC's query answers are written by the Rust encoder (`provisa._encoders.grpc`, crate
+`rust/encoders/grpc`) and by nothing else: each Query{Type} / Query{Type}Batch RPC hands its
+result's `arrow_batches()` (ENGINE stream, DIRECT buffered read, response-cache hit, API route)
+to one `Encoder` built from the organisation's compiled service, and yields the serialized
+messages it returns. A DIRECT stream's fetched rows become Arrow at the same fetch boundary as
+every row engine's (`ir_arrow.row_batch`). A group's nodes (Query{Type}GroupBy) are written by
+the encoder from the JSON its nodes column holds. There is no Python value path to fall back to;
+`rust/encoders/grpc/RESULTS.md` records what each value is written as and the differential.
 
 ## 2. Map
 

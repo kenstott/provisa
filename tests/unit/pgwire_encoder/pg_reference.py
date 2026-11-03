@@ -23,7 +23,6 @@ import decimal
 import ipaddress
 import math
 import struct
-import uuid
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
 from decimal import Decimal
@@ -247,19 +246,6 @@ def duckdb_inet(value: Any) -> Any:
     return _ORIGINAL_DUCKDB_INET(value)
 
 
-# --- uuid ---
-
-_ORIGINAL_UUID_BINARY = bp._uuid_to_pg_binary
-
-
-def uuid_text(v: Any) -> str:
-    return str(uuid.UUID(bytes=v)) if isinstance(v, bytes) and len(v) == 16 else str(v)
-
-
-def uuid_binary(v: Any) -> bytes:
-    return v if isinstance(v, bytes) and len(v) == 16 else _ORIGINAL_UUID_BINARY(v)
-
-
 # --- ranges ---
 
 
@@ -424,7 +410,6 @@ def pg17() -> Iterator[None]:
         table[t.INET] = (869, inet_text, table[t.INET][2])
         table[t.CIDR] = (650, cidr_text, table[t.CIDR][2])
         table[t.TEXT] = (25, text_text, lambda v: text_text(v).encode("utf-8"))
-        table[t.UUID] = (2950, uuid_text, uuid_binary)
         table.update(_ranges())
         table.update(_arrays())
 

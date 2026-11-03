@@ -19,6 +19,7 @@ import pytest
 from dateutil.relativedelta import relativedelta
 
 from provisa.core.ir_types import infinity_of
+from provisa.core.pg_error import PostgresError
 from provisa.executor.drivers.duckdb_driver import DuckDBDriver
 from provisa.executor.result import ArrowResult
 
@@ -98,3 +99,30 @@ def test_a_stream_reads_past_one_arrow_batch(driver):
     sizes, last = asyncio.run(run())
     assert sum(sizes) == n and all(s == 30_000 for s in sizes[:-1])
     assert last == (n - 1,)
+
+
+def test_a_stream_raises_postgresqls_error_met_in_a_later_batch(driver):
+    """DuckDB's reader meets the engine's error only as it produces the batch that holds it: it is
+    raised as PostgreSQL's own error (duckdb_arrow.answered_batches), and the driver goes on."""
+    from provisa.executor.drivers.cursor_stream import FETCH_CHUNK_ROWS
+
+    # Past what DuckDB computes when the statement is run (about 128K rows).
+    late = 400_000
+    sql = (
+        f"SELECT CASE WHEN range = {late} THEN error('postgresql-error 22003: integer out of "
+        f"range<end of postgresql-error>') ELSE range END AS id FROM range({late + 1})"
+    )
+
+    async def run():
+        stream = await driver.open_stream(sql)
+        first = await stream.fetch(FETCH_CHUNK_ROWS)
+        with pytest.raises(PostgresError) as raised:
+            while await stream.fetch(FETCH_CHUNK_ROWS):
+                pass
+        await stream.close()
+        return first, raised.value, await driver.execute("SELECT 42 AS y")
+
+    first, error, after = asyncio.run(run())
+    assert len(first) == FETCH_CHUNK_ROWS
+    assert (error.sqlstate, str(error)) == ("22003", "integer out of range")
+    assert after.rows == [(42,)]

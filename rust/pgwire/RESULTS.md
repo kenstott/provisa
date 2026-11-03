@@ -123,19 +123,20 @@ from 17's in their copyright lines only. No PostgreSQL 17 binary is installed on
 DuckDB's Arrow timestamptz carries the session `TimeZone`, and the encoder now takes any IANA name.
 It looks up the offset at each instant in **chrono-tz 0.10.4**, rebuilt from the IANA release
 vendored in `third_party/chrono-tz/tz` (with `filter-by-regex` and no filter set, the tables are
-generated from those files at build time). chrono-tz expands a zone's rules only for 1800–2099
+generated from those files at build time, by `third_party/chrono-tz-build`: chrono-tz-build 0.5.0
+with `factory` added to the files it reads, so the tables hold every zone the tzdata package does). chrono-tz expands a zone's rules only for 1800–2099
 (`parse-zoneinfo`). From 2100 on, the encoder applies the zone's POSIX TZ rule (the TZif footer),
 which is what zoneinfo and PostgreSQL apply after a zone's last explicit transition. `src/tz.rs`
 reads `M` rules. `gen_tz_rules.py` writes `src/tz_rules.rs` by running `zic` over the same vendored
 files, and fails on any other rule form. zic's footers from the vendored source equal the tzdata
-package's for all 597 zones. Text offsets keep their seconds (`-04:56:02`), as PostgreSQL writes
+package's for all 598 zones. Text offsets keep their seconds (`-04:56:02`), as PostgreSQL writes
 them.
 
 **What pyarrow uses here: pytz, not zoneinfo.** `to_pylist` of a zoned timestamp calls
-`string_to_tzinfo`, which takes pytz when it can import it. pytz 2026.2 is installed (pandas requires
-it). pytz reads only a TZif file's 32-bit data and rounds offsets to whole minutes. Over the
-differential's instants, `tz_pytz_diff.py` finds the product's own path differing from zoneinfo in
-536 of 597 zones:
+`string_to_tzinfo`, which takes pytz when it can import it. pytz is pinned to the tables' release
+(2026.6, IANA 2026f; pandas requires it). pytz reads only a TZif file's 32-bit data and rounds offsets to whole minutes. Over the
+differential's instants, `tz_pytz_diff.py` found the product's own path differing from zoneinfo in
+536 of 597 zones (measured at 2026b):
 
 | instants | cells that differ |
 |---|---|
@@ -149,7 +150,7 @@ own `column_values` of the column in UTC into the zone, so infinities, NULLs and
 formatters are unchanged. Fixed offsets and UTC still go through the unmodified path.
 
 **Proof** (`test_named_zone`, `test_named_zone_year_limits`): every zone in the tzdata package's list
-except `Factory` (597 zones, links included), in text and binary. Each zone is tested on:
+(598 zones, links and `Factory` included), in text and binary. Each zone is tested on:
 
 - 1 µs either side of, and at, every transition in its TZif file;
 - every transition zoneinfo makes in 2037, 2038, 2050, 2099, 2100, 2101, 2400, 5000, 9998 and 9999
@@ -161,19 +162,23 @@ except `Factory` (597 zones, links included), in text and binary. Each zone is t
   time outside those years.
 
 Every case encodes on the Python side (the test asserts it) and agrees. `Factory`, the placeholder
-zone of tzdata's `factory` file, is not among the files chrono-tz builds, so it is not served.
+zone of tzdata's `factory` file, is built with the rest (offset 0, `-00`), so every surface writes it.
 
-**Pinned version and how it stays in step.** chrono-tz's tables, `tz_rules.rs` and the Python
-reference are all IANA **2026b**. The vendored `tz/` is `tzdata2026b.tar.gz` from data.iana.org,
-sha256 `114543d9f19a6bfeb5bca43686aea173d38755a3db1f2eec112647ae92c6f544`. The signature could not be
-checked: the keyserver was unreachable. pytz 2026.2 and the `tzdata` package (uv.lock) are 2026b too.
-The release's NEWS file labels its top entry "2026a" while its `version` file says 2026b, and
-chrono-tz takes its version from NEWS, so line 3 is corrected to 2026b. `test_tz_version` asserts
-`pgwire_encoder_rs.TZDB_VERSION` (chrono-tz) and `TZ_RULES_VERSION` (`tz_rules.rs`) both equal
-`tzdata.IANA_VERSION`, so a bump of either side fails until the other follows. To bump: replace
-`third_party/chrono-tz/tz` with the new release's files, rerun `gen_tz_rules.py`, and bump `tzdata`
-in uv.lock to the same release. PostgreSQL itself takes zones from its own build's tz data (or the
-system's), which a deployment pins separately.
+**Pinned version and how it stays in step.** chrono-tz's tables, `tz_rules.rs`, the `tzdata` package
+and pytz are all IANA **2026f** (`tzdata==2026.6` and `pytz==2026.6` in pyproject.toml and uv.lock).
+The vendored `tz/` holds the data files of `tzdata2026f.tar.gz` from data.iana.org (with `factory`),
+sha256 `01b4a91cec5167ed48c11e8ab78f2048cead78ce94b0cafcad0ae8c5a3044d3d`. The signature could not be
+checked: the keyserver timed out. zic's footers from the vendored files equal the tzdata 2026.6
+package's for all 598 zones. Python's zoneinfo reads the package, never the host's
+`/usr/share/zoneinfo` (which may be another release: 2026e on the build machine): importing
+`provisa` sets `PYTHONTZPATH` empty and resets zoneinfo's search path (`provisa/__init__.py`).
+`test_tz_version` asserts `pgwire_encoder_rs.TZDB_VERSION` (chrono-tz) and `TZ_RULES_VERSION`
+(`tz_rules.rs`) both equal `tzdata.IANA_VERSION`, and `tests/unit/test_tz_agreement.py` asserts the
+zone sets (`ZONE_NAMES`) are equal and every zone's offsets agree (`zone_offsets`) at 60,178 instants
+from 1800 to 2400, so a bump of either side fails until the other follows. To bump: replace the files
+in `third_party/chrono-tz/tz` with the new release's, rerun `gen_tz_rules.py`, and bump `tzdata` and
+`pytz` in pyproject.toml and uv.lock to the same release. PostgreSQL itself takes zones from its own
+build's tz data (or the system's), which a deployment pins separately.
 
 ### Product behaviors the port reproduces, and product defects
 
@@ -353,7 +358,8 @@ spread, since binary floats were never formatted. Python's times are the same pa
   `src/tz_rules.rs`: each zone's POSIX rule, generated by `gen_tz_rules.py`.
 - `src/json.rs`: `json.dumps` of Arrow nested values.
 - `third_party/chrono-tz`: chrono-tz 0.10.4's source (MIT OR Apache-2.0) with `tz/` replaced by IANA
-  tzdata 2026b. `third_party/ryu-pg`: ryu 1.0.23 (Apache-2.0 OR BSL-1.0) with acceptBounds false.
+  tzdata 2026f. `third_party/chrono-tz-build`: chrono-tz-build 0.5.0 (MIT OR Apache-2.0) reading
+  `factory` too. `third_party/ryu-pg`: ryu 1.0.23 (Apache-2.0 OR BSL-1.0) with acceptBounds false.
   These are path dependencies of this crate only; packaging them is J492d's call.
 - `build.sh`: `cargo build --release`, then copies the module to `build/`. Nothing is installed into
   any venv.

@@ -1241,17 +1241,19 @@ def rest_same_governance_as_graphql(shared_data):
     # filters (its surface's ``rls``) and masks (``state.masking_rules``) and
     # ``compiler.stage2.apply_governance`` writes them into the statement. Proven by behaviour,
     # not by what the source text mentions: the REST-derived statement and the hand-written
-    # GraphQL one are each governed as a role that has a row filter on orders, and as one that
-    # has none.
-    from types import SimpleNamespace
-
+    # GraphQL one are each governed as a role that has a row filter and a mask on orders, and as
+    # one that has neither.
     from provisa.api.role_surface import RoleSurface
     from provisa.compiler.rls import RLSContext
     from provisa.pgwire import _pipeline
+    from provisa.security.masking import MaskingRule, MaskType
+    from tests.role_state import RoleState
 
     ctx = shared_data["ctx"]
-    # A request takes its role's context and row filters from one surface (role_surface).
-    state = SimpleNamespace(
+    # A request takes its role's context and row filters from one surface (role_surface). The
+    # stand-in is the shared RoleState, which holds what the real state always does (a schema
+    # generation, the plan cache, the registries) so the pipeline reads it as it reads AppState.
+    state = RoleState(
         surfaces={
             "filtered": RoleSurface(
                 context=ctx,
@@ -1259,7 +1261,12 @@ def rest_same_governance_as_graphql(shared_data):
             ),
             "unfiltered": RoleSurface(context=ctx),
         },
-        masking_rules={},
+        # The filtered role also sees orders.customer_id masked to a constant; the other sees it plain.
+        masking_rules={
+            (1, "filtered"): {
+                "customer_id": (MaskingRule(mask_type=MaskType.constant, value="***"), "varchar")
+            }
+        },
         # A role always lists the domains it reaches; both reach every domain here, so the row
         # filter is the only difference between them.
         roles={
@@ -1289,19 +1296,23 @@ def rest_same_governance_as_graphql(shared_data):
         )
         # The filter is ANDed with the request's own predicate, never in place of it.
         assert "US" in filtered or "US" in str(compiled.params), filtered
+        assert "'***'" in filtered, (
+            f"{name}: the role's mask must be in the governed statement, got {filtered}"
+        )
+        assert "'***'" not in unfiltered, (
+            f"{name}: a role with no mask must not be given one, got {unfiltered}"
+        )
     # One stage, one result: the same filter lands on both entry points' statements.
     assert ("> 100" in _governed(rest_compiled.sql, "filtered")) == (
         "> 100" in _governed(direct_compiled.sql, "filtered")
     )
 
-    # Masking and routing are applied by the same pipeline the REST route calls.
+    # Routing is decided by the same pipeline the REST route calls.
     src = (
         inspect.getsource(_pipeline._govern_and_route_compiled)
         + inspect.getsource(_pipeline._govern_and_route_compiled_planned)
-        + inspect.getsource(_pipeline._govern_compiled)  # where the masks are taken
         + inspect.getsource(_pipeline._route_compiled)  # where the route is decided
     )
-    assert "masking_rules" in src, "shared pipeline must apply masking"
     assert "decide_route" in src, "shared pipeline must apply routing"
 
     # Confirm the REST generator invokes exactly that shared function.

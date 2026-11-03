@@ -22,7 +22,7 @@ from provisa.core import engine_memory, request_deadline
 from provisa.core.sync_pool import BlockingPool
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.drivers.cursor_stream import FETCH_CHUNK_ROWS
-from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
+from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, answered_batches, arrow_rows
 from provisa.executor.result import ArrowResult, QueryResult
 
 # Requirements: REQ-027, REQ-068, REQ-1882
@@ -64,11 +64,12 @@ def _arrow_result(cursor: Any) -> QueryResult:  # noqa: ANN401 — a DuckDB conn
 class _ArrowCursor:
     """A DuckDB cursor read through its Arrow reader for :class:`PooledCursorStream`:
     ``fetchmany`` builds the next rows from the record batches (duckdb_arrow.arrow_rows), never
-    from DuckDB's DB-API rows (REQ-2194)."""
+    from DuckDB's DB-API rows (REQ-2194); an engine error met in a later batch is PostgreSQL's own
+    (duckdb_arrow.answered_batches)."""
 
     def __init__(self, conn: Any) -> None:  # noqa: ANN401 — a DuckDB connection
         self._cursor = conn.cursor()
-        self._reader: Any = None
+        self._reader: Iterator[Any] | None = None
         self._pending: list[tuple] = []
 
     @property
@@ -79,13 +80,12 @@ class _ArrowCursor:
         self._cursor.execute(LOSSLESS_ARROW)
         self._cursor.execute(sql, params) if params else self._cursor.execute(sql)
         if self._cursor.description:
-            self._reader = self._cursor.to_arrow_reader(FETCH_CHUNK_ROWS)
+            self._reader = answered_batches(self._cursor.to_arrow_reader(FETCH_CHUNK_ROWS))
 
     def fetchmany(self, size: int) -> list[tuple]:
         while len(self._pending) < size and self._reader is not None:
-            try:
-                batch = self._reader.read_next_batch()
-            except StopIteration:
+            batch = next(self._reader, None)
+            if batch is None:
                 self._reader = None
                 break
             self._pending.extend(arrow_rows(batch))

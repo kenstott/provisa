@@ -595,6 +595,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Importing provisa has already pointed zoneinfo at the pinned tzdata package (PYTHONTZPATH
+    # empty, inherited by the servers started here; provisa/__init__.py).
     parser = argparse.ArgumentParser(prog="provisa", description="Provisa embedded runtime")
     sub = parser.add_subparsers(dest="command", required=True)
 

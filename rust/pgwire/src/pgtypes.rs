@@ -11,7 +11,7 @@ use crate::pyval::{
     DecSpecial, Inet, PyVal,
 };
 use crate::temporal::{self, DAY_US};
-use crate::{json, uuid_bytes, EncErr, R};
+use crate::{json, uuid_bytes, uuid_text, EncErr, R};
 
 /// A BVType: how a column is described and written.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -778,13 +778,20 @@ pub fn convert(bv: Bv, binary: bool, v: &PyVal, out: &mut Vec<u8>) -> R<()> {
             }
             Ok(())
         }
+        // _uuid_text / _uuid: a UUID value is a uuid.UUID, its 16 bytes, or its text.
         (Bv::Uuid, false) => {
-            str_text(v, out);
+            match v {
+                PyVal::Str(t) => out.extend_from_slice(t.as_bytes()),
+                PyVal::Uuid(b) => uuid_text(b, out),
+                PyVal::Bytes(b) => uuid_text(&sixteen(b)?, out),
+                _ => uuid_text(&uuid_bytes(&s(v))?, out),
+            }
             Ok(())
         }
         (Bv::Uuid, true) => {
             match v {
                 PyVal::Uuid(b) => out.extend_from_slice(b),
+                PyVal::Bytes(b) => out.extend_from_slice(&sixteen(b)?),
                 _ => out.extend_from_slice(&uuid_bytes(&s(v))?),
             }
             Ok(())
@@ -1862,4 +1869,10 @@ fn timetz_of_str(t: &str) -> R<(i64, Option<i32>)> {
     let off = st.offset;
     let local = st.micros + off.unwrap_or(0) as i64 * 1_000_000;
     Ok((local.rem_euclid(86_400_000_000), off))
+}
+
+/// uuid.UUID(bytes=b): exactly 16 bytes.
+fn sixteen(b: &[u8]) -> R<[u8; 16]> {
+    b.try_into()
+        .map_err(|_| EncErr::Value("bytes is not a 16-char string".into()))
 }
