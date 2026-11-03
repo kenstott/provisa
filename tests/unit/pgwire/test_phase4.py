@@ -316,13 +316,19 @@ def test_pg_table_is_visible_executes_true():
 def test_pg_has_role_executes_true():
     state = _make_state()
     result = answer(
-        "SELECT pg_has_role(r.rolname, 'public', 'USAGE') FROM pg_catalog.pg_roles r",
+        "SELECT pg_has_role(r.rolname, r.rolname, 'USAGE') FROM pg_catalog.pg_roles r",
         "alice",
         state,
     )
-    # pg_roles has the current role plus standard PG system roles — all return True
+    # pg_roles has the current role plus PostgreSQL's predefined roles: each holds itself.
     assert len(result.rows) >= 1
     assert all(row[0] is True for row in result.rows)
+
+
+def test_pg_has_role_refuses_a_role_name_no_role_has():
+    # As PostgreSQL 17 refuses it: "public" is no role.
+    with pytest.raises(Exception, match='role "public" does not exist'):
+        answer("SELECT pg_has_role('pg_monitor', 'public', 'USAGE')", "alice", _make_state())
 
 
 # ── pg_get_constraintdef() answers each constraint's definition ──────────────
@@ -420,7 +426,12 @@ def test_answer_pg_proc():
 def test_answer_pg_auth_members():
     state = _make_state()
     result = answer("SELECT * FROM pg_catalog.pg_auth_members", "alice", state)
-    assert result.rows == []
+    # A model with no role hierarchy lists PostgreSQL 17's own memberships alone: pg_monitor's.
+    assert sorted(result.rows) == [
+        (10226, 3374, 3373, 10, False, True, True),
+        (10227, 3375, 3373, 10, False, True, True),
+        (10228, 3377, 3373, 10, False, True, True),
+    ]
     assert "roleid" in result.column_names
 
 

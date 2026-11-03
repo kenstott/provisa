@@ -247,6 +247,52 @@ class _Answers:
         self.table.setdefault(name, []).append((params, f"SELECT {', '.join(out)}"))
 
 
+_PROGRESS_PARAMS = tuple((f"param{n}", "BIGINT") for n in range(1, 21))
+
+
+def _statistics(a: _Answers) -> None:
+    """The statistics functions that are no single count, as a server where nothing runs and
+    nothing has been counted answers them: no command in progress, no subscription worker, and a
+    slot's or a subscription's counts 0 with no reset time."""
+    a.rows(
+        "pg_stat_get_progress_info",
+        "cmdtype",
+        (("pid", "INTEGER"), ("datid", "OID"), ("relid", "OID"), *_PROGRESS_PARAMS),
+        "FALSE",
+    )
+    a.rows(
+        "pg_stat_get_subscription",
+        "subid",
+        (
+            ("subid", "OID"), ("relid", "OID"), ("pid", "INTEGER"), ("leader_pid", "INTEGER"),
+            ("received_lsn", "PG_LSN"), ("last_msg_send_time", "TIMESTAMPTZ"),
+            ("last_msg_receipt_time", "TIMESTAMPTZ"), ("latest_end_lsn", "PG_LSN"),
+            ("latest_end_time", "TIMESTAMPTZ"), ("worker_type", "TEXT"),
+        ),
+        "FALSE",
+    )  # fmt: skip
+    counts = ("spill_txns", "spill_count", "spill_bytes", "stream_txns", "stream_count")
+    a.record(
+        "pg_stat_get_replication_slot",
+        "slot_name",
+        (
+            ("slot_name", "TEXT", "slot_name"),
+            *((c, "BIGINT", "0") for c in (*counts, "stream_bytes", "total_txns", "total_bytes")),
+            ("stats_reset", "TIMESTAMPTZ", "NULL"),
+        ),
+    )
+    a.record(
+        "pg_stat_get_subscription_stats",
+        "subid:bigint",
+        (
+            ("subid", "OID", "subid"),
+            ("apply_error_count", "BIGINT", "0"),
+            ("sync_error_count", "BIGINT", "0"),
+            ("stats_reset", "TIMESTAMPTZ", "NULL"),
+        ),
+    )
+
+
 def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per function
     """The functions on what a server has that Provisa has none of."""
     for suffix in (
@@ -300,6 +346,7 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
         + raising("22023", "'invalid statistics kind: \"' || kind || '\"'")
         + " END",
     )
+    _statistics(a)
     # Replication: a server whose max_replication_slots is 0.
     a.strict("pg_replication_origin_oid", "name", "BIGINT", "CAST(NULL AS BIGINT)")
     a.body("pg_replication_origin_session_is_setup", "", "FALSE", "BOOLEAN")
@@ -1037,7 +1084,7 @@ def _walfile(a: _Answers) -> None:
     a.strict("pg_walfile_name", "lsn", "TEXT", written)
 
 
-def _literal(value: object) -> str:
+def _literal(value: str | int | float | bool | None) -> str:
     if isinstance(value, str):
         return "'" + value.replace("'", "''") + "'"
     return str(value).upper()
@@ -1115,7 +1162,7 @@ def _catalog_objects(a: _Answers) -> None:
     a.selected("pg_show_all_settings", "", "SELECT * FROM meta.catalog_pg_settings")
     a.body("getdatabaseencoding", "", "'UTF8'")
     a.body("pg_client_encoding", "", "'UTF8'")
-    a.body("pg_statistics_obj_is_visible", "s", "TRUE", "BOOLEAN")
+    a.strict("pg_statistics_obj_is_visible", "s", "BOOLEAN", "TRUE")
     a.strict("pg_sequence_last_value", "seq", "BIGINT", "CAST(NULL AS BIGINT)")
     partitionable = f"FROM {_CLASSES} WHERE _c.oid = rel AND _c.relkind IN ('r', 'p', 'i', 'I')"
     a.selected(
@@ -1137,11 +1184,13 @@ def _catalog_objects(a: _Answers) -> None:
         f"SELECT _c.oid AS relid {partitionable}",
         _pair("_r.relid", _NAME_OF_RELID),
     )
+    # A relation in no partition tree has no root: only a partitioned one, or a partition, does.
     a.strict(
         "pg_partition_root",
         "rel:bigint",
         "OID",
-        f"(SELECT _c.oid {partitionable})",
+        f"(SELECT _c.oid FROM {_CLASSES} WHERE _c.oid = rel "
+        "AND (_c.relkind IN ('p', 'I') OR _c.relispartition))",
     )
     a.strict("pg_get_replica_identity_index", "rel", "OID", "CAST(NULL AS OID)")
     a.strict("pg_get_statisticsobjdef_expressions", "s", "TEXT[]", "CAST(NULL AS TEXT[])")

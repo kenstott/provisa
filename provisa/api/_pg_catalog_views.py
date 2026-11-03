@@ -33,7 +33,11 @@ from collections.abc import Mapping
 
 from provisa.compiler.naming import SYSTEM_SCHEMA_GQL_PREFIX
 from provisa.compiler.sql_literals import sql_literal
-from provisa.pgwire.catalog_data import _PG_SETTINGS_ROWS, _PG_SYSTEM_ROLES
+from provisa.pgwire.catalog_data import (
+    _PG_SETTINGS_ROWS,
+    _PG_SYSTEM_ROLES,
+    PG_SYSTEM_ROLE_MEMBERS,
+)
 from provisa.pgwire.catalog_pg17 import RELATION_CLASS, RELATIONS, STATIC_ROWS, TYPES
 from provisa.transpiler.metadata_functions import (
     listed_type_sql,
@@ -941,6 +945,20 @@ def _pg_auth_members() -> str:
                 "set_option": "TRUE",
             },
             "FROM roles_parents p",
+        ),
+        _select(
+            relation,
+            {
+                c: f"_v.{c}"
+                for c in (
+                    "oid roleid member grantor admin_option inherit_option set_option".split()
+                )
+            },
+            "FROM "
+            + _rows(
+                PG_SYSTEM_ROLE_MEMBERS,
+                "oid, roleid, member, grantor, admin_option, inherit_option, set_option",
+            ),
         ),
     )
 

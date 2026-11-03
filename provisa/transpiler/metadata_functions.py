@@ -41,7 +41,8 @@ from provisa.core.ir_types import SUBTYPES
 from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, TYPES
 from provisa.transpiler.metadata_facts import PRIVILEGES, UNSERVED, CatalogFacts, relation
 from provisa.transpiler.metadata_oids import FIRST_METRIC_OID, KEY_OID_BASE, key_id_sql
-from provisa.transpiler.metadata_server_forms import SCALAR_FORMS, TABLE_FORMS
+from provisa.transpiler.metadata_server_forms import SCALAR_FORMS, TABLE_FORMS, raising
+from provisa.transpiler.metadata_settings import setting
 from provisa.transpiler.pg_forms_system import SERVER_STATE
 
 #: The search path a definition names a table against (catalog_data's search_path).
@@ -467,7 +468,8 @@ _NOTHING_KEPT: tuple[tuple[str, tuple[int, ...], str], ...] = (
     ("pg_tablespace_size", (1,), "BIGINT"),
     ("pg_column_size", (1,), "INTEGER"),
 )
-#: Every object a catalog holds is on the search path, and every role holds every role.
+#: Every object a catalog holds is on the search path, and the session role holds every role.
+#: Each is strict, as PostgreSQL's is: a NULL argument is NULL.
 _ALWAYS = (
     ("pg_collation_is_visible", 1),
     ("pg_conversion_is_visible", 1),
@@ -481,7 +483,46 @@ _ALWAYS = (
     ("pg_ts_template_is_visible", 1),
     ("pg_type_is_visible", 1),
     ("pg_has_role", 2),
-    ("pg_has_role", 3),
+)
+
+
+def _strictly(arity: int, answer: str) -> str:
+    """``answer`` where no argument is NULL, as a strict function answers."""
+    nulls = " OR ".join(f"arg_{n} IS NULL" for n in range(arity))
+    return f"CASE WHEN {nulls} THEN NULL ELSE {answer} END"
+
+
+def _role_name(role: str) -> str:
+    """The name of the role ``role`` names, by its name or its oid."""
+    return (
+        "(SELECT CAST(_ro.rolname AS TEXT) FROM meta.catalog_pg_roles _ro "
+        f"WHERE CAST({role} AS TEXT) IN (CAST(_ro.rolname AS TEXT), CAST(_ro.oid AS TEXT)) LIMIT 1)"
+    )
+
+
+def _no_such_role(role: str) -> str:
+    """PostgreSQL's refusal of a role named by a name no role has; an oid no role has is none."""
+    return (
+        f"WHEN {_role_name(role)} IS NULL AND CAST({role} AS TEXT) !~ '^[0-9]+$' THEN "
+        + raising("42704", f"'role \"' || CAST({role} AS TEXT) || '\" does not exist'").replace(
+            "@TYPE@", "BOOLEAN"
+        )
+        + " "
+    )
+
+
+#: pg_has_role(user, role, privilege): the session role holds every role; another holds itself and
+#: each role it is a member of, as pg_auth_members lists them.
+_HAS_ROLE = _strictly(
+    3,
+    f"CASE {_no_such_role('arg_0')}{_no_such_role('arg_1')}"
+    f"WHEN {_role_name('arg_0')} = {setting('role')} THEN TRUE "
+    f"WHEN {_role_name('arg_0')} = {_role_name('arg_1')} THEN TRUE "
+    "ELSE EXISTS (SELECT 1 FROM meta.catalog_pg_auth_members _m "
+    "JOIN meta.catalog_pg_roles _mr ON _mr.oid = _m.member "
+    "JOIN meta.catalog_pg_roles _rr ON _rr.oid = _m.roleid "
+    f"WHERE CAST(_mr.rolname AS TEXT) = {_role_name('arg_0')} "
+    f"AND CAST(_rr.rolname AS TEXT) = {_role_name('arg_1')}) END",
 )
 
 
@@ -512,15 +553,26 @@ _FORMS: tuple[Form, ...] = (
     _form("obj_description", "object_oid", _OBJECT_COMMENT, OBJECT_COMMENTS),
     _form("obj_description", "object_oid, catalog", _COMMENT_IN_CATALOG, COMMENTS),
     _form("col_description", "relation_oid, attnum", _COLUMN_COMMENT, COMMENTS),
-    # Every table has one owner, the role a client is shown as owning it (pg_class.relowner).
+    # A role's name; the bootstrap role's, oid 10, is provisa, which owns every table (THE
+    # CATALOG'S BOOTSTRAP OWNER IS PROVISA). An oid no role has is written as PostgreSQL writes it.
     _form(
         "pg_get_userbyid",
         "role_oid",
-        "CAST(CASE WHEN role_oid IS NOT NULL THEN 'provisa' END AS NAME)",
+        "CAST(CASE WHEN role_oid IS NOT NULL THEN COALESCE((SELECT _ro.rolname "
+        "FROM meta.catalog_pg_roles _ro WHERE _ro.oid = role_oid LIMIT 1), "
+        "'unknown (OID=' || CAST(role_oid AS TEXT) || ')') END AS NAME)",
     ),
     _form("pg_table_is_visible", "relation_oid", _LISTED, LISTED_RELATIONS, LISTED_INDEXES),
-    _form("pg_relation_is_publishable", "relation_oid", _PUBLISHABLE, PUBLISHABLE),
-    _form("pg_is_other_temp_schema", "schema_oid", "FALSE"),
+    _form(
+        "pg_relation_is_publishable",
+        "relation_oid",
+        f"CASE WHEN relation_oid IS NOT NULL THEN {_PUBLISHABLE} END",
+        PUBLISHABLE,
+    ),
+    _form(
+        "pg_is_other_temp_schema", "schema_oid", "CASE WHEN schema_oid IS NOT NULL THEN FALSE END"
+    ),
+    _form("pg_has_role", _unused_params(3), _HAS_ROLE),
     _form("has_table_privilege", "tbl, priv", _TABLE_PRIVILEGE, PRIVILEGES),
     _form("has_any_column_privilege", "tbl, priv", _TABLE_PRIVILEGE, PRIVILEGES),
     _form("has_column_privilege", "tbl, col, priv", _COLUMN_PRIVILEGE, PRIVILEGES, UNSERVED),
@@ -529,7 +581,7 @@ _FORMS: tuple[Form, ...] = (
         for name, arities, sql_type in _NOTHING_KEPT
         for arity in arities
     ),
-    *(_form(name, _unused_params(arity), "TRUE") for name, arity in _ALWAYS),
+    *(_form(name, _unused_params(arity), _strictly(arity, "TRUE")) for name, arity in _ALWAYS),
 )
 
 FORMS: dict[tuple[str, int], Form] = {
@@ -754,9 +806,8 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
                 if name in READS_THE_SERVER:
                     raise MetadataFunctionRefused(name)
                 if name.startswith(STATISTICS_PREFIXES):
-                    return (
-                        exp.alias_(_statistic(name), name) if _is_column(node) else _statistic(name)
-                    )
+                    counted = _statistic(name, [a.transform(rewrite) for a in args])
+                    return exp.alias_(counted, name) if _is_column(node) else counted
                 return node
             written = _expanded_form(name, args, rewrite, needed)
         if _is_column(node):
@@ -786,14 +837,29 @@ def _is_column(node: exp.Expr) -> bool:
 _COUNTS = frozenset({"bigint", "integer", "smallint", "oid", "double precision", "real"})
 
 
-def _statistic(name: str) -> exp.Expr:
+def _statistic(name: str, args: list[exp.Expr]) -> exp.Expr:
+    """A statistic of ``args``: strict, as each of PostgreSQL's is, so a NULL argument is NULL."""
     returns = FUNCTION_RETURNS.get(name, "text")
     if returns == "record":
         return exp.cast(exp.null(), "TEXT")
-    return exp.Cast(
-        this=exp.Literal.number(0) if returns in _COUNTS else exp.null(),
-        to=exp.DataType.build(returns, dialect="postgres", udt=True),
+    to = exp.DataType.build(returns, dialect="postgres", udt=True)
+    counted = exp.Cast(this=exp.Literal.number(0) if returns in _COUNTS else exp.null(), to=to)
+    if not args:
+        return counted
+    nulls = [exp.Is(this=_argument(a), expression=exp.null()) for a in args if not _constant(a)]
+    if not nulls:
+        return counted
+    return exp.Case(
+        ifs=[exp.If(this=exp.or_(*nulls), true=exp.Cast(this=exp.null(), to=to.copy()))],
+        default=counted,
     )
+
+
+def _constant(value: exp.Expr) -> bool:
+    """A literal that is not NULL, cast or not: a strict function's argument that is never NULL."""
+    while isinstance(value, (exp.Cast, exp.Paren)):
+        value = value.this
+    return isinstance(value, exp.Literal)
 
 
 def _field_of_call(node: exp.Expr, rewrite) -> exp.Expr | None:

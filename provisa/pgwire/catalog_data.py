@@ -275,17 +275,34 @@ _KNOWN_SETTINGS = {
     "in_hot_standby": "off",
 }
 
+#: PostgreSQL 17's predefined roles, as its pg_authid lists them (REQ-2190, META IS A SUPERSET OF THE
+#: CATALOG): none is a superuser or logs in, and each inherits.
 _PG_SYSTEM_ROLES: list[tuple] = [
     # OID, name, super, inherit, createrole, createdb, canlogin, replication, connlimit, bypassrls
-    (3386, "pg_monitor", False, True, False, False, False, False, -1, False),
-    (3387, "pg_read_all_settings", False, True, False, False, False, False, -1, False),
-    (3388, "pg_read_all_stats", False, True, False, False, False, False, -1, False),
-    (3389, "pg_stat_scan_tables", False, True, False, False, False, False, -1, False),
+    (3373, "pg_monitor", False, True, False, False, False, False, -1, False),
+    (3374, "pg_read_all_settings", False, True, False, False, False, False, -1, False),
+    (3375, "pg_read_all_stats", False, True, False, False, False, False, -1, False),
+    (3377, "pg_stat_scan_tables", False, True, False, False, False, False, -1, False),
     (4200, "pg_signal_backend", False, True, False, False, False, False, -1, False),
+    (4544, "pg_checkpoint", False, True, False, False, False, False, -1, False),
+    (4550, "pg_use_reserved_connections", False, True, False, False, False, False, -1, False),
     (4569, "pg_read_server_files", False, True, False, False, False, False, -1, False),
     (4570, "pg_write_server_files", False, True, False, False, False, False, -1, False),
     (4571, "pg_execute_server_program", False, True, False, False, False, False, -1, False),
+    (6171, "pg_database_owner", False, True, False, False, False, False, -1, False),
+    (6181, "pg_read_all_data", False, True, False, False, False, False, -1, False),
+    (6182, "pg_write_all_data", False, True, False, False, False, False, -1, False),
+    (6304, "pg_create_subscription", False, True, False, False, False, False, -1, False),
+    (6337, "pg_maintain", False, True, False, False, False, False, -1, False),
 ]
+
+#: PostgreSQL 17's memberships among them: pg_monitor is a member of the three roles it gathers.
+#: (oid, roleid, member, grantor, admin_option, inherit_option, set_option)
+PG_SYSTEM_ROLE_MEMBERS: tuple[tuple[int, int, int, int, bool, bool, bool], ...] = (
+    (10226, 3374, 3373, 10, False, True, True),
+    (10227, 3375, 3373, 10, False, True, True),
+    (10228, 3377, 3373, 10, False, True, True),
+)
 
 _PG_SETTINGS_ROWS: list[tuple] = [
     (
