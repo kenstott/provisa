@@ -138,3 +138,24 @@ def test_executing_an_unknown_portal_answers_34000():
     blob = b"".join(written)
     assert blob[:1] == b"E" and b"34000" in blob and b'portal "never_bound" does not exist' in blob
     assert ctx.has_error
+
+
+def test_a_simple_query_error_ends_at_its_ready_for_query():
+    """A Query message's error ends with its ReadyForQuery: it has no Sync. An extended cycle
+    after it is answered, not discarded up to its Sync as if it had failed itself (the client
+    saw no result at all: psycopg's "got no result from the query")."""
+    handler, written = _handler()
+    handler._report_zone = lambda: None
+    handler._shield = SimpleNamespace(lock=MagicMock(), settle=lambda: None)
+    handler._close_request = lambda: None
+    session = MagicMock(org_id=None)
+    session.in_transaction.return_value = False
+    session.execute_sql.side_effect = RuntimeError("lastval is not yet defined in this session")
+    ctx = BVContext(session, None, {})
+    handler._process_query_stmts(ctx, ["SELECT lastval()"])
+    assert _codes(written) == [b"E"]
+    assert written[-1][:1] == b"Z"
+    assert not ctx.has_error
+    written.clear()
+    handler.handle_parse(ctx, _parse_payload("SELECT 1"))
+    assert _codes(written) == [b"1"]

@@ -7,8 +7,8 @@ use std::sync::{Arc, RwLock};
 
 use crate::fmt_num::{float4_text, float8_text, numeric_binary, numeric_text};
 use crate::pyval::{
-    self, date_days, iter_items, packable_float, str_of, to_decimal, to_float, to_int, truthy, type_error, Dec,
-    DecSpecial, Inet, PyVal,
+    self, date_days, iter_items, packable_float, str_of, str_repr, to_decimal, to_float, to_int, to_int_value, truthy,
+    type_error, Dec, DecSpecial, Inet, PyVal,
 };
 use crate::temporal::{self, DAY_US};
 use crate::{json, uuid_bytes, uuid_text, EncErr, R};
@@ -128,6 +128,24 @@ impl Elem {
             Elem::Interval => Bv::Interval,
             Elem::RegType => Bv::RegType,
             Elem::Xml => Bv::Xml,
+        }
+    }
+    /// The element's BVType member name.
+    pub fn name(self) -> &'static str {
+        match self {
+            Elem::Int2 => "SMALLINT",
+            Elem::Int4 => "INTEGER",
+            Elem::Int8 => "BIGINT",
+            Elem::Oid => "OID",
+            Elem::Float4 => "REAL",
+            Elem::Float8 => "FLOAT",
+            Elem::Numeric => "DECIMAL",
+            Elem::Bool => "BOOL",
+            Elem::Text => "TEXT",
+            Elem::Money => "MONEY",
+            Elem::Interval => "INTERVAL",
+            Elem::RegType => "REGTYPE",
+            Elem::Xml => "XML",
         }
     }
     pub fn oid(self) -> i32 {
@@ -404,6 +422,11 @@ fn empty_nested(v: &PyVal) -> bool {
 }
 
 fn array_text(elem: Elem, v: &PyVal, out: &mut Vec<u8>) -> R<()> {
+    if let PyVal::Str(s) = v {
+        // PostgreSQL's own text of it, its lower bounds written (REQ-2167).
+        text(out, s);
+        return Ok(());
+    }
     if empty_nested(v) {
         text(out, "{}");
         return Ok(());
@@ -437,6 +460,143 @@ fn array_text_items(elem: Elem, v: &PyVal, out: &mut Vec<u8>) -> R<()> {
     }
     out.push(b'}');
     Ok(())
+}
+
+/// server._BOUNDED_ARRAY_TEXT.match: PostgreSQL's text of an array with its own lower bounds
+/// ("[0:2]={1,2,3}"), one or more `[lower:upper]` then `={`.
+pub fn is_bounded_array_text(s: &str) -> bool {
+    let b = s.as_bytes();
+    let mut i = 0;
+    let mut bounds = 0;
+    while let Some((_, _, next)) = bound_at(b, i) {
+        bounds += 1;
+        i = next;
+    }
+    bounds > 0 && b[i..].starts_with(b"={")
+}
+
+/// The `[-?\d+:-?\d+]` at `b[i]`: its two numbers' text spans and where it ends.
+fn bound_at(b: &[u8], i: usize) -> Option<(&[u8], &[u8], usize)> {
+    fn number(b: &[u8], i: usize) -> Option<usize> {
+        let start = i + usize::from(b.get(i) == Some(&b'-'));
+        let end = start
+            + b[start.min(b.len())..]
+                .iter()
+                .take_while(|c| c.is_ascii_digit())
+                .count();
+        (end > start).then_some(end)
+    }
+    if b.get(i) != Some(&b'[') {
+        return None;
+    }
+    let colon = number(b, i + 1)?;
+    if b.get(colon) != Some(&b':') {
+        return None;
+    }
+    let close = number(b, colon + 1)?;
+    if b.get(close) != Some(&b']') {
+        return None;
+    }
+    Some((&b[i + 1..colon], &b[colon + 1..close], close + 1))
+}
+
+/// postgres._array_text_values: PostgreSQL's text of an array (array_out) as each dimension's
+/// lower bound (every `[lower:upper]` ahead of its braces) and its elements' values, each read as
+/// the value its binary form is sent from. An element type with no reader of its text is refused.
+fn array_text_values(elem: Elem, text: &str) -> R<(Vec<i32>, PyVal)> {
+    let read: fn(&str) -> R<PyVal> = match elem {
+        Elem::Int2 | Elem::Int4 | Elem::Int8 | Elem::Oid => |t| to_int_value(&PyVal::Str(t.into())),
+        Elem::Float4 | Elem::Float8 => |t| Ok(PyVal::Float(to_float(&PyVal::Str(t.into()))?)),
+        Elem::Numeric => |t| Ok(PyVal::Dec(to_decimal(&PyVal::Str(t.into()))?)),
+        Elem::Text => |t| Ok(PyVal::Str(t.into())),
+        Elem::Bool => |t| Ok(PyVal::Bool(t == "t")),
+        _ => {
+            let mut quoted = String::new();
+            str_repr(text, &mut quoted);
+            return Err(EncErr::Type(format!(
+                "an array of {} read as its text {quoted} has no binary form here",
+                elem.name()
+            )));
+        }
+    };
+    let chars: Vec<char> = text.chars().collect();
+    let braces = chars
+        .iter()
+        .position(|&c| c == '{')
+        .ok_or_else(|| EncErr::Value("substring not found".into()))?;
+    let head: String = chars[..braces].iter().collect();
+    let head = head.as_bytes();
+    let mut lowers = Vec::new();
+    let mut i = 0;
+    while i < head.len() {
+        match bound_at(head, i) {
+            Some((lower, _, next)) => {
+                let lower: i64 = std::str::from_utf8(lower)
+                    .unwrap()
+                    .parse()
+                    .map_err(|_| out_of_range())?;
+                lowers.push(i32::try_from(lower).map_err(|_| out_of_range())?);
+                i = next;
+            }
+            None => i += 1,
+        }
+    }
+    let (values, _) = array_text_elements(&chars, braces, read)?;
+    Ok((lowers, PyVal::List(values)))
+}
+
+fn out_of_range() -> EncErr {
+    EncErr::Value("argument out of range".into())
+}
+
+/// postgres._array_text_elements: the elements of the braces opening at `text[i]`, nested as
+/// written, each read by `read` (NULL is None), and where the braces end.
+fn array_text_elements(text: &[char], i: usize, read: fn(&str) -> R<PyVal>) -> R<(Vec<PyVal>, usize)> {
+    let at = |k: usize| -> R<char> {
+        text.get(k)
+            .copied()
+            .ok_or_else(|| EncErr::Value("string index out of range".into()))
+    };
+    let mut out = Vec::new();
+    let mut i = i + 1;
+    if at(i)? == '}' {
+        return Ok((out, i + 1));
+    }
+    loop {
+        if at(i)? == '{' {
+            let (nested, next) = array_text_elements(text, i, read)?;
+            out.push(PyVal::List(nested));
+            i = next;
+        } else if at(i)? == '"' {
+            let mut j = i + 1;
+            let mut chars = String::new();
+            while at(j)? != '"' {
+                if at(j)? == '\\' {
+                    j += 1;
+                }
+                chars.push(at(j)?);
+                j += 1;
+            }
+            out.push(read(&chars)?);
+            i = j + 1;
+        } else {
+            let mut j = i;
+            while !matches!(at(j)?, ',' | '}') {
+                j += 1;
+            }
+            let token: String = text[i..j].iter().collect();
+            out.push(if token.to_uppercase() == "NULL" {
+                PyVal::None
+            } else {
+                read(&token)?
+            });
+            i = j;
+        }
+        if at(i)? == '}' {
+            return Ok((out, i + 1));
+        }
+        i += 1; // the comma between elements
+    }
 }
 
 /// _array_shape: the length of each dimension, read down the first element, and the elements in
@@ -474,6 +634,16 @@ fn array_shape(v: &PyVal) -> R<(Vec<usize>, Vec<PyVal>)> {
 /// array_send. An array with no elements has no dimensions; a vector (oidvector, int2vector) is
 /// one dimension from 0.
 fn array_binary(elem: Elem, elem_oid: i32, v: &PyVal, vector: bool, out: &mut Vec<u8>) -> R<()> {
+    // PostgreSQL's own text of it (REQ-2167): its elements, sent with its lower bounds.
+    let parsed;
+    let (bounds, v) = match v {
+        PyVal::Str(s) => {
+            let (lowers, values) = array_text_values(elem, s)?;
+            parsed = values;
+            (lowers, &parsed)
+        }
+        _ => (Vec::new(), v),
+    };
     let (mut dims, flat) = array_shape(v)?;
     if !vector && dims.iter().product::<usize>() == 0 && !dims.is_empty() {
         dims.clear();
@@ -483,7 +653,12 @@ fn array_binary(elem: Elem, elem_oid: i32, v: &PyVal, vector: bool, out: &mut Ve
     out.extend_from_slice(&(has_null as i32).to_be_bytes());
     out.extend_from_slice(&elem_oid.to_be_bytes());
     let lower: i32 = if vector { 0 } else { 1 };
-    for d in &dims {
+    let lowers = if bounds.is_empty() {
+        vec![lower; dims.len()]
+    } else {
+        bounds
+    };
+    for (d, lower) in dims.iter().zip(&lowers) {
         out.extend_from_slice(&(*d as i32).to_be_bytes());
         out.extend_from_slice(&lower.to_be_bytes());
     }

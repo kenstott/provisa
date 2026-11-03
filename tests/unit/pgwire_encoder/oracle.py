@@ -766,6 +766,69 @@ def _array_shape(values: list) -> tuple[list[int], list]:
     return dimensions, flat
 
 
+#: An array's own lower bounds, written ahead of its braces when one is not 1 ("[0:2]={...}").
+_ARRAY_BOUNDS = re.compile(r"\[(-?\d+):(-?\d+)\]")
+
+#: An element's text, as array_out writes it, read back as the value its binary form is sent from.
+_ELEMENT_READERS = {
+    BVType.INTEGER: int,
+    BVType.BIGINT: int,
+    BVType.SMALLINT: int,
+    BVType.OID: int,
+    BVType.FLOAT: float,
+    BVType.REAL: float,
+    BVType.DECIMAL: decimal.Decimal,
+    BVType.TEXT: str,
+    BVType.BOOL: lambda text: text == "t",
+}
+
+
+def _array_text_elements(text: str, i: int, read) -> tuple[list, int]:
+    """The elements of the braces opening at ``text[i]``, nested as written, each read by
+    ``read`` (NULL is None), and where the braces end."""
+    out: list = []
+    i += 1
+    if text[i] == "}":
+        return out, i + 1
+    while True:
+        if text[i] == "{":
+            nested, i = _array_text_elements(text, i, read)
+            out.append(nested)
+        elif text[i] == '"':
+            j, chars = i + 1, []
+            while text[j] != '"':
+                if text[j] == "\\":
+                    j += 1
+                chars.append(text[j])
+                j += 1
+            out.append(read("".join(chars)))
+            i = j + 1
+        else:
+            j = i
+            while text[j] not in ",}":
+                j += 1
+            token = text[i:j]
+            out.append(None if token.upper() == "NULL" else read(token))
+            i = j
+        if text[i] == "}":
+            return out, i + 1
+        i += 1  # the comma between elements
+
+
+def _array_text_values(text: str, element: BVType) -> tuple[list[int], list]:
+    """PostgreSQL's text of an array (array_out) as each dimension's lower bound and its elements'
+    values. A value read as that text is one whose lower bounds a list cannot hold (REQ-2167)."""
+    read = _ELEMENT_READERS.get(element)
+    if read is None:
+        raise TypeError(
+            f"an array of {element.name} read as its text {text!r} has no binary form here"
+        )
+    braces = text.index("{")
+    lowers = [int(m.group(1)) for m in _ARRAY_BOUNDS.finditer(text[:braces])]
+    values, _ = _array_text_elements(text, braces, read)
+    return lowers, values
+
+
 def _array_entry(element: BVType, array_oid: int, element_text=None, element_oid=None):
     """The (OID, text, binary) entry of an array of ``element``, of any dimensions: text as
     ``{{a,b},{NULL,c}}``, binary as PostgreSQL's array_send (dimensions, null flag, element OID,
@@ -776,6 +839,8 @@ def _array_entry(element: BVType, array_oid: int, element_text=None, element_oid
     text_of = element_text or elem_text
 
     def text(values):
+        if isinstance(values, str):
+            return values  # PostgreSQL's own text of it, its lower bounds written (REQ-2167)
         written = (
             "NULL"
             if v is None
@@ -787,10 +852,14 @@ def _array_entry(element: BVType, array_oid: int, element_text=None, element_oid
         return "{" + ",".join(written) + "}"
 
     def binary(values):
+        lowers = None
+        if isinstance(values, str):  # PostgreSQL's own text of it, with its lower bounds
+            lowers, values = _array_text_values(values, element)
         dimensions, flat = _array_shape(values)
+        lowers = lowers or [1] * len(dimensions)
         has_null = any(v is None for v in flat)
         out = [struct.pack("!iii", len(dimensions), 1 if has_null else 0, elem_oid)]
-        out.extend(struct.pack("!ii", length, 1) for length in dimensions)
+        out.extend(struct.pack("!ii", length, lower) for length, lower in zip(dimensions, lowers))
         for v in flat:
             if v is None:
                 out.append(struct.pack("!i", -1))

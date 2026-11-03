@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Registreer een bron",
-        "description": "➕ Nieuwe verbindingen beginnen met deze knop: PostgreSQL, Snowflake, MongoDB, een REST-API, een CSV en de rest van de 73 connectoren."
+        "description": "➕ Nieuwe verbindingen beginnen met deze knop: PostgreSQL, Snowflake, MongoDB, een REST-API, een CSV en de rest van de 74 connectoren."
       },
       "step3": {
-        "title": "73 brontypen, 14 categorieën",
+        "title": "74 brontypen, 14 categorieën",
         "description": "Eén kiezer toont elk type, gegroepeerd per categorie: <strong>Abonnementen, RDBMS, Cloud-datawarehouse, Analytics, Data lake, NoSQL, Code-resolvers, Grafen, Bestanden, API, Streaming, Enterprise, Datakwaliteit, Overig</strong>. Zoek op naam of alias, of beperk met de categoriechips. Elk type toont zijn logo en een bereikpictogram: ⚡ ter plekke live gelezen, of een kopiepictogram waar Provisa een ververst replica leest.<p>Kies er een, vul de verbinding in en sla op.</p>"
       },
       "stepBuildSource": {

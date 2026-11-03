@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS sources (
     change_signal TEXT NOT NULL DEFAULT 'ttl',  -- REQ-929/1149: source default change signal (ttl|probe|ttl_probe|native|debezium|kafka|signal)
     gql_naming_convention TEXT,
     federation_hints JSONB NOT NULL DEFAULT '{}',  -- connection extras the typed columns can't carry
+    brand_setup   JSONB NOT NULL DEFAULT '{}',  -- REQ-1923: the values a branded source's setup was given
     path          TEXT,  -- file path or URL for file-based sources (csv, parquet, sqlite)
     -- REQ-1919: the rest of a source's settings. After the seed the model store alone owns the
     -- model, so everything a configuration can say about a source is held here.

@@ -132,6 +132,12 @@ class SourcePool:  # REQ-052, REQ-053
         except (FileLocked, UnprotectedWrite) as refused:
             raise refused.of(source_id) from None  # REQ-1997: the refusal names the source
 
+    async def execute_reporting_generated(
+        self, source_id: str, sql: str, params: list | None = None
+    ) -> QueryResult:  # REQ-2167
+        """A write on a source's driver, its connection reporting the value it generated."""
+        return await self._drivers[source_id].execute_reporting_generated(sql, params)
+
     def supports_stream(self, source_id: str) -> bool:  # REQ-1190
         """Whether this source's driver can open a bounded server-side cursor (streaming DIRECT read)."""
         return self._drivers[source_id].supports_streaming

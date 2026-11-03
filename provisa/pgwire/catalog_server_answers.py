@@ -111,29 +111,6 @@ def _stat_table(path: str, missing_ok: str) -> str:
     return f"SELECT {columns} FROM (SELECT {_stat(path, missing_ok)} AS _s)"
 
 
-def _setval(*args: str) -> str:
-    """setval(sequence, value [, is_called]): no relation is a sequence."""
-    nulls = " OR ".join(f"{a} IS NULL" for a in args)
-    relation = "(SELECT _sc.relname FROM _pg_class _sc WHERE _sc.oid = seq)"
-    named = "CAST(seq AS BIGINT)"
-    catalog = _catalog_relation_names()
-    return (
-        f"CASE WHEN {nulls} THEN CAST(NULL AS BIGINT) "
-        f"WHEN coalesce({catalog}, {relation}) IS NOT NULL THEN "
-        + raising("42809", f"'cannot open relation \"' || coalesce({catalog}, {relation}) || '\"'")
-        + " ELSE "
-        + raising("XX000", f"'could not open relation with OID ' || {named}")
-        + " END"
-    )
-
-
-def _catalog_relation_names() -> str:
-    from provisa.pgwire.catalog_rewrite import _CATALOG_CLASS_OIDS
-
-    known = " ".join(f"WHEN {oid} THEN '{name}'" for name, oid in _CATALOG_CLASS_OIDS.items())
-    return f"CASE seq {known} END"
-
-
 #: What a void function answers: PostgreSQL's void value, its empty text.
 _VOID = "''"
 _BINARY_UPGRADE = raising(
@@ -234,6 +211,8 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
         "set_next_array_pg_type_oid",
         "set_next_heap_pg_class_oid",
         "set_next_heap_relfilenode",
+        "set_next_multirange_array_pg_type_oid",
+        "set_next_multirange_pg_type_oid",
         "set_next_index_pg_class_oid",
         "set_next_index_relfilenode",
         "set_next_pg_authid_oid",
@@ -1129,10 +1108,6 @@ def macros() -> tuple[str, ...]:
         _read_file("pg_read_binary_file", "BLOB"),
         f"CREATE MACRO pg_stat_file{stat}",
         f"CREATE MACRO pg_stat_file{stat_table}",
-        "CREATE MACRO setval(seq, value) AS "
-        + _setval("seq", "value")
-        + ", (seq, value, called) AS "
-        + _setval("seq", "value", "called"),
         *_answers().statements(),
     )
 
@@ -1145,7 +1120,6 @@ ANSWERED = frozenset(
         "pg_read_file",
         "pg_reload_conf",
         "pg_stat_file",
-        "setval",
         "regclass",
         *SERVER_VALUE_NAMES,
         *_answers().scalar,
@@ -1158,7 +1132,6 @@ REWRITTEN = frozenset(
         "convert",
         "getpgusername",
         "json_each",
-        "json_object",
         "normalize",
         "pg_indexam_has_property",
         "pg_input_error_info",
@@ -1200,8 +1173,20 @@ def _type_display(name: str) -> str:
 _INTEGER_RANGES = {"smallint": 15, "integer": 31, "bigint": 63}
 
 
+def as_written(value: exp.Expr) -> exp.Expr:
+    """A string literal cast to text ('integer'::text) is that literal, as the argument reads it."""
+    while (
+        isinstance(value, exp.Cast)
+        and value.to.sql(dialect="postgres").lower() in ("text", "varchar", "name", "cstring")
+        and isinstance(value.this, (exp.Literal, exp.Cast))
+    ):
+        value = value.this
+    return value
+
+
 def input_failure(value: exp.Expr, type_name: exp.Expr) -> tuple[str, str]:
     """What the type's input function says of a literal it refuses, and its SQLSTATE."""
+    value, type_name = as_written(value), as_written(type_name)
     display = _type_display(type_name.this)
     text = value.name
     bits = _INTEGER_RANGES.get(display)
@@ -1213,6 +1198,7 @@ def input_failure(value: exp.Expr, type_name: exp.Expr) -> tuple[str, str]:
 def input_check(value: exp.Expr, type_name: exp.Expr) -> exp.Expr:
     """For pg_input_is_valid and pg_input_error_info: whether the value reads as the type. The
     type is named in the statement: the check is a cast to it."""
+    value, type_name = as_written(value), as_written(type_name)
     if not (isinstance(type_name, exp.Literal) and type_name.is_string):
         raise NotImplementedError(
             "pg_input_is_valid: a type that is not a literal is not supported; the cast is "
