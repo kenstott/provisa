@@ -4282,8 +4282,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         )
                     assert table_id is not None  # the upsert returns the id it wrote
                     await save_carried_after_store(_conn, input, model, table_id)  # REQ-2109
-                    if model.query_template:
-                        # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table serves from.
+                    from provisa.api.admin._query_api_registration import (
+                        is_quickbooks_source,
+                    )
+
+                    if model.query_template or await is_quickbooks_source(_conn, model.source_id):
+                        # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table
+                        # serves from; REQ-2197: so do a QuickBooks table's edited columns.
                         from provisa.api.admin._query_api_registration import (
                             persist_query_api_registration,
                         )

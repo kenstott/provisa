@@ -109,6 +109,7 @@ def contract_for(source_type: str) -> SourceContract | None:
                 "grpc_api": Lands("gRPC"),
                 "grpc_remote": Lands("gRPC remote"),
                 "sparql": Lands("SPARQL"),
+                "quickbooks": Lands("QuickBooks Online"),  # REQ-2197
             }
         )
     return _CONTRACTS.get(source_type)

@@ -649,6 +649,37 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
         from provisa.core.secrets import resolve_secrets
 
         return ApiAnswer(await _call_grpc(endpoint, resolved_params, resolve_secrets(base_url)))
+    if endpoint.response_normalizer == "quickbooks_query":
+        # REQ-2197: a QuickBooks entity's table. Its query pages by STARTPOSITION/MAXRESULTS in
+        # the query text itself and its token comes from the approval kept in the
+        # organisation's state store, so it is read by its own reader (provisa/quickbooks/read).
+        from provisa.quickbooks import read as qb_read
+
+        qb_token, qb_forget = qb_read.source_token(endpoint, base_url, auth)
+        qb = qb_read.Read()
+
+        async def _qb() -> ApiAnswer:
+            got = [
+                p
+                async for p in qb_read.pages(
+                    endpoint,
+                    resolved_params,
+                    base_url,
+                    qb_token,
+                    qb_forget,
+                    timeout=timeout,
+                    read=qb,
+                )
+            ]
+            return ApiAnswer(got, endpoint.pagination, qb.more)
+
+        try:
+            return await asyncio.wait_for(_qb(), timeout=total_timeout)
+        except asyncio.TimeoutError as exc:
+            raise ApiCallError(
+                f"QuickBooks read of {endpoint.table_name!r} exceeded "
+                f"total_timeout={total_timeout}s (source={endpoint.source_id!r})"
+            ) from exc
     call = prepare_call(endpoint, resolved_params, base_url, auth, source_headers)
     if endpoint.response_normalizer == "owl_inferred":
         # REQ-2138: an inferred table of a sparql source's reasoner. Its rows are the source's
@@ -702,6 +733,18 @@ async def iter_api_pages(  # REQ-1915
     time limit: a build is not under a request's deadline, and each page is under ``timeout``.
     It stops at the endpoint's ``max_pages`` like every call; ``paging`` tells the reader
     whether the endpoint had more."""
+    if endpoint.response_normalizer == "quickbooks_query":  # REQ-2197: see call_api
+        from provisa.quickbooks import read as qb_read
+
+        qb_token, qb_forget = qb_read.source_token(endpoint, base_url, auth)
+        qb = qb_read.Read()
+        async for page in qb_read.pages(
+            endpoint, resolved_params, base_url, qb_token, qb_forget, timeout=timeout, read=qb
+        ):
+            if paging is not None:
+                paging.more = qb.more
+            yield page
+        return
     call = prepare_call(endpoint, resolved_params, base_url, auth, source_headers)
     async with httpx.AsyncClient(event_hooks=sandbox_egress.http_event_hooks()) as client:
         async for page in _pages(

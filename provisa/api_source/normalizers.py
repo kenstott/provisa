@@ -239,6 +239,15 @@ def owl_inferred(
     return [row for row in _as_list(response) if isinstance(row, dict)]
 
 
+def quickbooks_query(
+    response: object,  # object-ok: one page a QuickBooks query answers
+) -> list[dict]:  # REQ-2197
+    """A QuickBooks query page's records as rows (provisa/quickbooks/rows)."""
+    from provisa.quickbooks.rows import page_rows
+
+    return page_rows(response)
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 NORMALIZERS: dict[
@@ -251,6 +260,7 @@ NORMALIZERS: dict[
     "neo4j_query_v2": neo4j_query_v2,
     "sparql_bindings": sparql_bindings,
     "owl_inferred": owl_inferred,
+    "quickbooks_query": quickbooks_query,
 }
 
 

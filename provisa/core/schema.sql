@@ -1034,7 +1034,7 @@ CREATE TABLE IF NOT EXISTS kafka_topics (
 -- API Sources (Phase U)
 CREATE TABLE IF NOT EXISTS api_sources (
     id          TEXT PRIMARY KEY,
-    type        TEXT NOT NULL CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql')),
+    type        TEXT NOT NULL CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql', 'quickbooks')),
     base_url    TEXT NOT NULL,
     spec_url    TEXT,
     auth        BYTEA,  -- REQ-686: API auth (keys/tokens) encrypted at rest
@@ -1085,12 +1085,12 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
--- REQ-1668/REQ-1683: the query-API source kinds joined the type check after api_sources existed;
+-- REQ-1668/REQ-1683/REQ-2197: the query-API source kinds joined the type check after api_sources existed;
 -- an org schema created before them still carries the narrower constraint.
 DO $$ BEGIN
     ALTER TABLE api_sources DROP CONSTRAINT IF EXISTS api_sources_type_check;
     ALTER TABLE api_sources ADD CONSTRAINT api_sources_type_check
-        CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql'));
+        CHECK (type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql', 'quickbooks'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

@@ -212,6 +212,19 @@
     "reasoner": "推理機",
     "reasonerNone": "無",
     "axioms": "OWL 公理",
-    "axiomsHint": "Turtle、RDF/XML、函數式或 Manchester 語法。查詢為單一 IRI（例如 <http://example.org/kyc#controls>）的表讀取由公理推斷出的內容。"
+    "axiomsHint": "Turtle、RDF/XML、函數式或 Manchester 語法。查詢為單一 IRI（例如 <http://example.org/kyc#controls>）的表讀取由公理推斷出的內容。",
+    "qbRealmId": "公司 ID（Realm ID）",
+    "qbRealmIdHint": "要讀取的 QuickBooks 公司的編號。連接應用程式時以及在公司的帳戶設定中，Intuit 會顯示該編號。",
+    "qbRealmIdInvalid": "公司 ID 是一個數字，例如 9341453456789012",
+    "qbEnvironment": "沙盒或正式環境",
+    "qbEnvironmentHint": "沙盒公司是您 Intuit 開發者帳戶中的測試公司。",
+    "qbSandbox": "沙盒（測試公司）",
+    "qbProduction": "正式環境（真實公司）",
+    "qbClientId": "用戶端 ID",
+    "qbClientIdHint": "在 developer.intuit.com 上您的應用程式的 Keys and credentials 下。",
+    "qbClientSecret": "用戶端密鑰",
+    "qbClientSecretHint": "與用戶端 ID 在同一頁面。保存在密鑰保險庫中。",
+    "qbRefreshToken": "重新整理權杖",
+    "qbRefreshTokenHint": "允許 Provisa 讀取該公司。可在 Intuit 的 OAuth 2.0 Playground 中使用 Accounting 範圍取得。QuickBooks 每次使用後都會替換它，Provisa 會保留最新的權杖。"
   }
 }
