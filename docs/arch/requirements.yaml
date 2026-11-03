@@ -9028,7 +9028,12 @@
     Cypher and an unbounded path is encountered (`[*]`, `[*n..]`, an unbounded shortestPath), the compiler
     substitutes the maximum recursion depth, a very large configured number. A walk that still breaches
     it fails by name. The Cypher conformance group that skips unbounded variable-length patterns by design
-    is withdrawn; those scenarios run.'
+    is withdrawn; those scenarios run. (Amended 2026-11-03, How the maximum depth is held:) Lead 2026-11-03,
+    on the maintainer''s maximum-depth decision: a variable-length walk keeps Cypher''s trail rule (no relationship
+    is traversed twice in one path), so the substituted maximum is a safety limit, not what decides the
+    answer; a walk that reaches the maximum and could still extend fails by name rather than returning a
+    truncated answer; and the one configured maximum is applied by each engine''s lowering, including Trino''s
+    max_recursion_depth session property.'
   use_case: Path queries and variable-length traversals translate to recursive CTEs for graph algorithms
     over relational data.
   code:
