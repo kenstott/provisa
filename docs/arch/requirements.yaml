@@ -91461,8 +91461,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     name of each generated table (Data Vault hub_, sat_, lnk_; star schema dim_, fact_), prefilled and editable
     per table, so a team that does not want prefixes in consumer-facing names clears them there. Descriptions:
     every generated table gets a draft description saying its role in the method and the answers that made
-    it (for example a satellite''s hub, sources and history; a fact''s process, grain and dimensions), left
-    as a draft for a steward to approve.'
+    it (for example a satellite''s hub, sources and history; a fact''s process, grain and dimensions), [SUPERSEDED
+    by REQ-2199, 2026-11-03 -- a draft description is the table''s ordinary description, worded as a first
+    draft; there is no approval step. Kept here for history; do not implement against it.] left as a draft
+    for a steward to approve. [END SUPERSEDED BLOCK] (Amended 2026-11-03, What a draft description is:)
+    Lead 2026-11-03, correcting its own wording: the maintainer asked for the common terms in "draft descriptions".
+    A generated table''s draft description is its ordinary description, written as a first draft for the
+    modeler to revise; the review and result screens say so. Provisa has no description status or approval
+    step, and this requirement adds none. The entity and fact inputs carry an optional description, which
+    the lowering passes to the registered table.'
   scenario: 'Given an admin on the Tables page
 
     When they open the modeling wizard and pick Data Vault
