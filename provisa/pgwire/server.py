@@ -903,6 +903,22 @@ def _embedded_advisory_calls(sql: str) -> tuple[Any, list[Any]] | None:  # REQ-2
     return tree, calls
 
 
+_NOTIFICATION_STATEMENT = re.compile(r"^\s*(LISTEN|UNLISTEN|NOTIFY)\b", re.IGNORECASE)
+
+
+def refuse_notifications(sql: str) -> None:  # REQ-2167
+    """Refuse LISTEN, UNLISTEN and NOTIFY by name (REQ-2167, amended 2026-11-03, Privileges,
+    visibility and notifications): Provisa's pgwire has no notification channel. pg_notify is
+    refused by name on every engine (pg_forms_enum.NOT_SUPPORTED)."""
+    said = _NOTIFICATION_STATEMENT.match(sql)
+    if said is not None:
+        from provisa.compiler.definitions import NotAvailableHere
+
+        raise NotAvailableHere(
+            f"{said[1].upper()} is refused by name: Provisa's pgwire has no notification channel"
+        )
+
+
 def refuse_server_function(sql: str) -> None:  # REQ-2167
     """Refuse a statement that takes an advisory lock while it does anything else, or with a key
     that is not a constant, naming the function: a lock is taken by a statement that only calls
@@ -1881,6 +1897,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         said = sql.strip()  # what the client sent: audit and logs record this, the engine reads sql
         sql = self._with_source_enums(sql)
         stripped = sql.strip()
+        refuse_notifications(stripped)  # REQ-2167
         if _embedded_advisory_calls(stripped) is not None and not _placeholder_count(stripped):
             # REQ-2167: answered as its Execute is, as a statement that only calls one is.
             return self._execute_sql_bound(sql, params, None, said=said)
@@ -2173,6 +2190,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             result.warnings = (*result.warnings, *reads.warnings)
             return result
         bound = list(params) if params else None
+        refuse_notifications(stripped)  # REQ-2167
         answered = self._with_advisory_answered(stripped, params)  # REQ-2167
         if answered is not None:
             try:

@@ -403,3 +403,24 @@ async def test_a_sleep_until_a_time_read_from_the_clock_sleeps_until_then(port, 
         assert time.monotonic() - started >= 0.2 - 0.01  # the client's clock holds the sleep
     finally:
         await a.close()
+
+
+@pytest.mark.parametrize(
+    "sql,verb",
+    [
+        ("LISTEN conformance_probe", "LISTEN"),
+        ("listen conformance_probe", "LISTEN"),
+        ("NOTIFY conformance_probe, 'payload'", "NOTIFY"),
+        ("UNLISTEN *", "UNLISTEN"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_notification_statement_is_refused_by_name(port, served, sql, verb):
+    a = await _connect(port, "alice")
+    try:
+        with pytest.raises(
+            asyncpg.FeatureNotSupportedError, match=f"{verb} is refused by name: Provisa's pgwire"
+        ):
+            await a.execute(sql)
+    finally:
+        await a.close()

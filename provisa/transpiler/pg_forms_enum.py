@@ -326,14 +326,16 @@ def _settled_for_the_source(tree: exp.Expr, dialect: str) -> bool:
 
 _TABLES = "pg_get_publication_tables"
 _ANSWERED_BY_ITS_SHAPE = re.compile(
-    rf"\b(lastval|nextval|currval|setval|{_TABLES}|regexp_replace|pg_typed_(value|array)"
+    rf"\b(lastval|nextval|currval|setval|pg_notify|{_TABLES}|regexp_replace|pg_typed_(value|array)"
     rf"|pg_enum_\w+|{SOURCE_CAST})\b",
     re.I,
 )
 _ADVANCES_A_SEQUENCE = frozenset({"nextval", "setval"})
 #: REQ-2167 (amended 2026-11-02, Sequence functions are not supported): Provisa does not model a
-#: source's sequences, so a call is refused by name on every engine, PostgreSQL's included.
-NOT_SUPPORTED = frozenset({"nextval", "currval", "setval"})
+#: source's sequences, so a call is refused by name on every engine, PostgreSQL's included. And
+#: (amended 2026-11-03, Privileges, visibility and notifications) pg_notify: Provisa's pgwire has
+#: no notification channel.
+NOT_SUPPORTED = frozenset({"nextval", "currval", "setval", "pg_notify"})
 
 
 def _call_of(node: exp.Expr) -> str:
