@@ -160,9 +160,17 @@
           Where languages or protocols differ at the edges, their public conformance suites settle it. Provisa runs them and publishes the results.
         </p>
         <p>
+          So data languages become more about the UX and less about the logic. Conceptually that
+          is a small overstatement: there are a few edge cases, but not a lot, and each
+          language's conformance suite pins them down. Practically, tooling and skill sets really
+          care, and that is why the tradeoff is worth accepting: every team keeps the language and
+          tools it knows, and all of them read one model with one set of rules.
+        </p>
+        <p>
           It also means the pace of change isn't a constraint. New query languages, protocols,
           engines and sources keep arriving; for most stacks each one is a migration. Here, a
-          new language or transport is a front end or an encoder, and a new engine or source is a driver. Those are additions at the edges, and the model and its governance don't change.
+          new language or transport is a front end or an encoder, and a new engine or source is a driver. Those are additions at the edges, and the model and its governance don't change. This compositional model of primitives
+          makes it all plug and play.
         </p>
 
         <h2 id="command-bindings">Command bindings</h2>
