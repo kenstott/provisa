@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Generic SQLAlchemy fallback driver (REQ-229, REQ-550).
+"""JDBCAlchemy fallback driver (REQ-229, REQ-550).
 
 The native drivers (asyncpg/aiomysql/oracledb/pyodbc) cover a fixed set of source types. This
 driver is the FALLBACK for any type that has a SQLAlchemy dialect but no bespoke async driver —

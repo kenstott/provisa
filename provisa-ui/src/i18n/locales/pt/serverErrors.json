@@ -479,11 +479,11 @@
       "relationship_same_entity_not_grounded": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: {{source}} e {{target}} não estão fundamentadas no mesmo termo",
       "relationship_same_entity_not_keys": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: {{columns}} não é a chave primária nem uma chave única de {{table}}",
       "kaggle_token_missing": "Conjunto de dados do Kaggle {{owner}}/{{ref}}: a fonte de dados não tem nenhum token de API do Kaggle. Adicione-o no formulário de Fontes de dados, onde o token é informado.",
-      "generic_sql_invalid": "Fonte {{source}}: {{error}}",
-      "generic_sql_file_refused": "Fonte {{source}}: a URL indica {{path}}, que este servidor não pode abrir para a organização.",
-      "generic_sql_attach_unbuilt": "Fonte {{source}}: a conexão ao vivo de uma fonte Generic SQL ainda não está disponível (ativada para {{engines}}); suas linhas são replicadas.",
-      "generic_sql_options_refused": "Fonte {{source}}: a URL desta organização não pode informar a opção de driver {{options}}.",
-      "generic_sql_jdbc_refused": "Fonte {{source}}: um driver JDBC do cliente é executado como código na própria JVM do Provisa, o que só uma instalação auto-hospedada permite."
+      "jdbc_invalid": "Fonte {{source}}: {{error}}",
+      "jdbc_file_refused": "Fonte {{source}}: a URL indica {{path}}, que este servidor não pode abrir para a organização.",
+      "jdbc_attach_unbuilt": "Fonte {{source}}: a conexão ao vivo de uma fonte JDBC ainda não está disponível (ativada para {{engines}}); suas linhas são replicadas.",
+      "jdbc_options_refused": "Fonte {{source}}: a URL desta organização não pode informar a opção de driver {{options}}.",
+      "jdbc_driver_refused": "Fonte {{source}}: um driver JDBC do cliente é executado como código na própria JVM do Provisa, o que só uma instalação auto-hospedada permite."
     },
     "secrets": {
       "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",

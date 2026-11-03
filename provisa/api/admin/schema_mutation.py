@@ -20,9 +20,9 @@ from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
 
-from provisa.api.admin.generic_sql_admin import (
-    GenericSqlDetectInput,
-    GenericSqlDetectionType,
+from provisa.api.admin.jdbc_source_admin import (
+    JdbcSourceDetectInput,
+    JdbcSourceDetectionType,
 )
 import strawberry
 from sqlalchemy import select, update
@@ -147,7 +147,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     sandbox_destination_refusal,
     download_source_file,
     file_source_path,
-    generic_sql_refusal,
+    jdbc_source_refusal,
     google_workspace_organisation_refusal,
     microsoft_365_organisation_refusal,
     microsoft_365_refusal,
@@ -2197,13 +2197,13 @@ async def _register_draft_table(
 @strawberry.type
 class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     @strawberry.mutation
-    async def detect_generic_sql(
-        self, info: StrawberryInfo, input: GenericSqlDetectInput
-    ) -> GenericSqlDetectionType:  # REQ-2191
-        """Detect, from a Generic SQL source's form: read-only checks against the connection the
+    async def detect_jdbc_source(
+        self, info: StrawberryInfo, input: JdbcSourceDetectInput
+    ) -> JdbcSourceDetectionType:  # REQ-2191
+        """Detect, from a JDBC source's form: read-only checks against the connection the
         form describes, on the active engine. Nothing is saved."""
         from provisa.api.admin.capabilities import require_capability
-        from provisa.api.admin.generic_sql_admin import detect
+        from provisa.api.admin.jdbc_source_admin import detect
         from provisa.api.app import state
 
         require_capability(info, "source_registration")
@@ -2533,7 +2533,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     await download_source_file(input)
                     or logs_refusal(input)
                     or file_source_path(input)
-                    or generic_sql_refusal(input)  # REQ-2191
+                    or jdbc_source_refusal(input)  # REQ-2191
                     or excel_hints_refusal(input)
                 )  # REQ-1996/1997/2113/2096
                 if _logs_refusal is not None:
@@ -2940,7 +2940,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 (await download_source_file(input) if _fetch else None)
                 or logs_refusal(input)
                 or file_source_path(input)
-                or generic_sql_refusal(input)  # REQ-2191
+                or jdbc_source_refusal(input)  # REQ-2191
                 or excel_hints_refusal(input)
             )  # REQ-1996/1997/2113/2096
             if _logs_refusal is not None:
@@ -3043,7 +3043,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 )
         state.source_types[input.id] = input.type
         # REQ-1757: see create_source's identical fix above — was hardcoded "" regardless of type.
-        # The model's own dialect, as there: a Generic SQL source's is its own (REQ-2191).
+        # The model's own dialect, as there: a JDBC source's is its own (REQ-2191).
         state.source_dialects[input.id] = model.dialect or ""
         # As create_source publishes them: the settings a reader holding only the source's id
         # reads with its type (connector_pushdown, REQ-2191), as they now are.

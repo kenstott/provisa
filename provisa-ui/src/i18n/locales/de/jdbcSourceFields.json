@@ -1,0 +1,32 @@
+{
+  "jdbcSourceFields": {
+    "url": "Verbindungs-URL",
+    "urlHint": "Eine SQLAlchemy-URL; ihr Schema benennt den Treiber. Kein Passwort darin angeben.",
+    "dialect": "SQL-Dialekt",
+    "dialectHelp": "Die SQL-Variante, die Provisa für diese Quelle schreibt. Sie muss nicht zum Treiber passen: Wählen Sie die, die der Datenbank am nächsten kommt, oder ANSI.",
+    "ansi": "ANSI (generisches SQL)",
+    "username": "Benutzername",
+    "password": "Passwort",
+    "capability": {
+      "attach": "Live-Anbindung auf {{engine}}",
+      "predicate": "Filter-Pushdown auf {{engine}}",
+      "join": "Join-Pushdown auf {{engine}}",
+      "aggregate": "Aggregat-Pushdown auf {{engine}}",
+      "key_range": "Schlüsselbereich-Pushdown auf {{engine}}"
+    },
+    "capabilityName": {
+      "attach": "Live-Anbindung",
+      "predicate": "Filter-Pushdown",
+      "join": "Join-Pushdown",
+      "aggregate": "Aggregat-Pushdown",
+      "key_range": "Schlüsselbereich-Pushdown"
+    },
+    "attachUnbuilt": "Live-Anbindung ist noch nicht verfügbar; Zeilen werden repliziert.",
+    "detect": "Erkennen",
+    "checkPassed": "{{capability}}: bestanden",
+    "checkFailed": "{{capability}}: fehlgeschlagen ({{reason}})",
+    "jdbcDriverJar": "JDBC-Treiber-JAR",
+    "jdbcDriverJarHint": "Die JAR-Datei des Treibers. Nur bei selbst gehosteten Installationen.",
+    "jdbcDriverClass": "Treiberklasse"
+  }
+}

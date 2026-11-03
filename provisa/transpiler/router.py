@@ -57,10 +57,10 @@ VIRTUAL_SOURCES: set[str] = {
     # NoSQL
     "mongodb",
     "cosmosdb",  # REQ-1982: read by its SDK and landed; no driver
-    # REQ-2191: a Generic SQL source has a driver, but a read of it sends only what it has been
+    # REQ-2191: a JDBC source has a driver, but a read of it sends only what it has been
     # shown to do: its tables are read at their floor (or from their replica) and landed, and the
     # engine runs the statement. Its writes still go to its driver.
-    "generic_sql",
+    "jdbc",
     "node",  # REQ-1984: read in its worker and landed; no driver
     "python",  # REQ-1993: read in its worker and landed; no driver
     "cassandra",

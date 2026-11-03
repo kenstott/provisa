@@ -316,14 +316,14 @@ class FederationEngine:  # REQ-840
         ``Capability``; no duplicate trait is introduced. Fails loud (UnreachableSource) when the
         engine cannot reach the source's type.
 
-        Taken from the source, not only its type (REQ-2191): a Generic SQL source attached live on
+        Taken from the source, not only its type (REQ-2191): a JDBC source attached live on
         this engine can do what its settings for this engine turn on, and nothing else. One not
         attached here lands, and its replica is read as every landed table is."""
-        from provisa.generic_sql import SOURCE_TYPE as GENERIC_SQL
+        from provisa.jdbc_source import SOURCE_TYPE as JDBC_SOURCE
 
         source_type = source.type.value
-        if source_type == GENERIC_SQL:
-            from provisa.generic_sql.settings import ATTACH, capability, parse
+        if source_type == JDBC_SOURCE:
+            from provisa.jdbc_source.settings import ATTACH, capability, parse
 
             hints = source.federation_hints
             if parse(hints).on(self.name, ATTACH):

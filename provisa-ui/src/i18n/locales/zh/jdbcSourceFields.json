@@ -1,0 +1,32 @@
+{
+  "jdbcSourceFields": {
+    "url": "连接 URL",
+    "urlHint": "SQLAlchemy URL；其协议名指定驱动程序。请勿在其中填写密码。",
+    "dialect": "SQL 方言",
+    "dialectHelp": "Provisa 为此数据源编写的 SQL 风格。它不必与驱动程序一致：请选择最接近该数据库的方言，或 ANSI。",
+    "ansi": "ANSI（通用 SQL）",
+    "username": "用户名",
+    "password": "密码",
+    "capability": {
+      "attach": "在 {{engine}} 上实时挂接",
+      "predicate": "在 {{engine}} 上下推过滤",
+      "join": "在 {{engine}} 上下推连接",
+      "aggregate": "在 {{engine}} 上下推聚合",
+      "key_range": "在 {{engine}} 上下推键范围"
+    },
+    "capabilityName": {
+      "attach": "实时挂接",
+      "predicate": "过滤下推",
+      "join": "连接下推",
+      "aggregate": "聚合下推",
+      "key_range": "键范围下推"
+    },
+    "attachUnbuilt": "实时挂接尚不可用；行将以副本形式复制。",
+    "detect": "检测",
+    "checkPassed": "{{capability}}：通过",
+    "checkFailed": "{{capability}}：未通过（{{reason}}）",
+    "jdbcDriverJar": "JDBC 驱动程序 JAR",
+    "jdbcDriverJarHint": "驱动程序的 JAR 文件。仅限自托管安装。",
+    "jdbcDriverClass": "驱动程序类"
+  }
+}

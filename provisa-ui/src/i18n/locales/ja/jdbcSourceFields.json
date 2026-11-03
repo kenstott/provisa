@@ -1,0 +1,32 @@
+{
+  "jdbcSourceFields": {
+    "url": "接続 URL",
+    "urlHint": "SQLAlchemy の URL。スキームでドライバーを指定します。パスワードは含めないでください。",
+    "dialect": "SQL 方言",
+    "dialectHelp": "Provisa がこのソース向けに書く SQL の種類です。ドライバーと一致する必要はありません。データベースに最も近いもの、または ANSI を選択してください。",
+    "ansi": "ANSI（汎用 SQL）",
+    "username": "ユーザー名",
+    "password": "パスワード",
+    "capability": {
+      "attach": "{{engine}} でのライブアタッチ",
+      "predicate": "{{engine}} でのフィルタープッシュダウン",
+      "join": "{{engine}} での結合プッシュダウン",
+      "aggregate": "{{engine}} での集計プッシュダウン",
+      "key_range": "{{engine}} でのキー範囲プッシュダウン"
+    },
+    "capabilityName": {
+      "attach": "ライブアタッチ",
+      "predicate": "フィルタープッシュダウン",
+      "join": "結合プッシュダウン",
+      "aggregate": "集計プッシュダウン",
+      "key_range": "キー範囲プッシュダウン"
+    },
+    "attachUnbuilt": "ライブアタッチはまだ利用できません。行はレプリカとして複製されます。",
+    "detect": "検出",
+    "checkPassed": "{{capability}}: 合格",
+    "checkFailed": "{{capability}}: 不合格（{{reason}}）",
+    "jdbcDriverJar": "JDBC ドライバー JAR",
+    "jdbcDriverJarHint": "ドライバーの JAR ファイル。セルフホスト環境のみ。",
+    "jdbcDriverClass": "ドライバークラス"
+  }
+}

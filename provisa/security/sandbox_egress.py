@@ -209,20 +209,20 @@ def destinations(fields: dict) -> list[tuple[str, int | None]]:
 
 
 def _sql_url_destination(hints: object) -> tuple[str, int | None] | None:
-    """REQ-2191: where a Generic SQL source's connection URL points. Its scheme is any SQLAlchemy
+    """REQ-2191: where a JDBC source's connection URL points. Its scheme is any SQLAlchemy
     dialect's (``mssql+pyodbc://...``), which :func:`_url_destination` does not know as a network
     scheme; a file database's URL points nowhere."""
     if not isinstance(hints, dict):
         return None
-    from provisa.generic_sql.settings import URL, InvalidGenericSqlSource
-    from provisa.generic_sql.url import destination
+    from provisa.jdbc_source.settings import URL, InvalidJdbcSource
+    from provisa.jdbc_source.url import destination
 
     url = _plain(hints.get(URL))
     if url is None or "://" not in url:
         return None
     try:
         return destination(url)
-    except InvalidGenericSqlSource:
+    except InvalidJdbcSource:
         return None  # no URL at all: nothing can be connected to, and the save refuses it
 
 
@@ -375,10 +375,10 @@ def pinned_address(server_address: str, org_id: str | None = None) -> tuple[str,
 #: Source types whose connection, on every engine, takes its network address from ``host`` alone.
 #: (ClickHouse is not one: the DuckDB engine reaches it over HTTP, whose redirects it follows
 #: itself.)
-#: A Generic SQL source's network URL is one (REQ-2191): its driver connects at the checked
+#: A JDBC source's network URL is one (REQ-2191): its driver connects at the checked
 #: address in place of the URL's host, and a held org's URL carries no option naming another.
 PINNABLE_TYPES = frozenset(
-    {"postgresql", "mysql", "mariadb", "sqlserver", "oracle", "firebird", "generic_sql"}
+    {"postgresql", "mysql", "mariadb", "sqlserver", "oracle", "firebird", "jdbc"}
 )
 
 
@@ -432,10 +432,10 @@ def pin_host(host: str, port: int | None, source_type: str, org_id: str | None =
 
 def _pinnable_destination(fields: dict, source_type: str) -> list[tuple[str, int | None]]:
     """The destination a pinnable source's connection takes its address from: its ``host``, or
-    a Generic SQL source's URL host (REQ-2191)."""
-    from provisa.generic_sql import SOURCE_TYPE as GENERIC_SQL
+    a JDBC source's URL host (REQ-2191)."""
+    from provisa.jdbc_source import SOURCE_TYPE as JDBC_SOURCE
 
-    if source_type == GENERIC_SQL:
+    if source_type == JDBC_SOURCE:
         url = _sql_url_destination(fields.get("federation_hints"))
         return [] if url is None else [url]
     return destinations({"host": fields.get("host"), "port": fields.get("port")})
@@ -484,8 +484,8 @@ def pinned_source(source: object, org_id: str | None = None) -> object:
         org,
         source_id=source.id,  # type: ignore[attr-defined]
     )
-    if address is None or source_type == "generic_sql":
-        # REQ-2191: a Generic SQL source's driver connects at the checked address itself.
+    if address is None or source_type == "jdbc":
+        # REQ-2191: a JDBC source's driver connects at the checked address itself.
         return source
     return source.model_copy(update={"host": address})  # type: ignore[attr-defined]
 

@@ -42,6 +42,7 @@ import { SalesforceFields } from "./SalesforceFields";
 import { ServiceNowFields } from "./ServiceNowFields";
 import { JiraFields } from "./JiraFields";
 import { CloudopsFields } from "./CloudopsFields";
+import { GoogleSheetsFields } from "./GoogleSheetsFields";
 import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
 import { Microsoft365Fields } from "./Microsoft365Fields";
 import { CodeSourceFields } from "./CodeSourceFields";
@@ -49,8 +50,8 @@ import { CODE_SOURCE_TYPES } from "./codeSource";
 import { CosmosDbFields } from "./CosmosDbFields";
 import { MOTHERDUCK, MotherDuckFields } from "./MotherDuckFields";
 import { COSMOSDB } from "./cosmosdb";
-import { GenericSqlFields } from "./GenericSqlFields";
-import { GENERIC_SQL } from "./genericSql";
+import { JdbcSourceFields } from "./JdbcSourceFields";
+import { JDBC_SOURCE } from "./jdbcSource";
 import { ExcelHintsFields } from "./ExcelHintsFields";
 import { QdrantFields } from "./QdrantFields";
 import { QDRANT } from "./qdrant";
@@ -219,27 +220,12 @@ export function SourceFormFieldsExtended({
         </>
       )}
       {form.type === "google_sheets" && (
-        <>
-          <FormField section="authentication" size="long">
-            <TextInput
-              required
-              label={t("sourceFormFieldsExtended.credentialsJsonPath")}
-              value={authFields.credentials_json ?? ""}
-              onChange={(e) => setAuthFields({ ...authFields, credentials_json: e.target.value })}
-              placeholder={t("sourceFormFieldsExtended.credentialsJsonPathPlaceholder")}
-              data-testid="google-sheets-credentials-input"
-            />
-          </FormField>
-          <FormField size="medium">
-            <TextInput
-              label={t("sourceFormFieldsExtended.metadataSheetId")}
-              value={form.database}
-              onChange={(e) => setForm({ ...form, database: e.target.value })}
-              placeholder={t("sourceFormFieldsExtended.metadataSheetIdPlaceholder")}
-              data-testid="google-sheets-sheet-id-input"
-            />
-          </FormField>
-        </>
+        <GoogleSheetsFields
+          form={form}
+          setForm={setForm}
+          fields={authFields}
+          setFields={setAuthFields}
+        />
       )}
       {form.type === "openapi" && (
         <OpenApiFormSection
@@ -712,8 +698,8 @@ export function SourceFormFieldsExtended({
           setFields={setAuthFields}
         />
       )}
-      {form.type === GENERIC_SQL && ( // REQ-2191
-        <GenericSqlFields
+      {form.type === JDBC_SOURCE && ( // REQ-2191
+        <JdbcSourceFields
           form={form}
           setForm={setForm}
           authFields={authFields}

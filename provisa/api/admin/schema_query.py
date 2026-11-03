@@ -20,7 +20,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.catalog_scope import CatalogScope, catalog_scope
-from provisa.api.admin.generic_sql_admin import GenericSqlSetupType
+from provisa.api.admin.jdbc_source_admin import JdbcSourceSetupType
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
 
 import strawberry
@@ -2081,11 +2081,11 @@ class Query:  # REQ-021, REQ-042
         )
 
     @strawberry.field
-    async def generic_sql_setup(self, info: StrawberryInfo) -> GenericSqlSetupType:  # REQ-2191
-        """What a Generic SQL source's form offers: the engine its capabilities are set for, the
+    async def jdbc_source_setup(self, info: StrawberryInfo) -> JdbcSourceSetupType:  # REQ-2191
+        """What a JDBC source's form offers: the engine its capabilities are set for, the
         SQL dialects it may be written in, and the capabilities."""
         require_capability(info, "source_registration")
-        from provisa.api.admin.generic_sql_admin import setup
+        from provisa.api.admin.jdbc_source_admin import setup
         from provisa.api.app import state
 
         return setup(state.federation_engine.name)
@@ -3000,10 +3000,10 @@ async def _introspect_available_columns(
             )
             for name, typing in native
         ]
-        if source_type == "generic_sql":
+        if source_type == "jdbc":
             # REQ-2191: each column offered as an optional column_value parameter, the floor's
             # equality filter; a steward marks which are required.
-            from provisa.generic_sql.table import parameters_of
+            from provisa.jdbc_source.table import parameters_of
 
             listed += [
                 AvailableColumnType(
