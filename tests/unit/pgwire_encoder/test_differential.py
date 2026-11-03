@@ -1125,8 +1125,8 @@ def test_random_json_floats() -> None:
 # --- named time zones: chrono-tz (and the zone's POSIX rule from 2100) against zoneinfo ---
 
 ZONE_NAMES = importlib.resources.files("tzdata").joinpath("zones").read_text().split()
-# Factory (the placeholder zone of tzdata's `factory` file) is not one chrono-tz builds.
-ZONES = [z for z in ZONE_NAMES if z != "Factory"]
+# Factory (the placeholder zone of tzdata's `factory` file) included: the tables build that file too.
+ZONES = ZONE_NAMES
 EPOCH = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
 SEC_MIN = _ts(1, 1, 1) // US
 SEC_MAX = _ts(9999, 12, 31, 23, 59, 59) // US
@@ -1937,8 +1937,9 @@ WITNESSES: dict[str, tuple[list[Any], list[Any], list[int], dict[str, Any]]] = {
 
 
 #: Defects main corrected in the Python writers themselves before they were replaced (68bdf0150f,
-#: the integer interval day split): the witness shows the former writers and PostgreSQL agree.
-FIXED_BEFORE_WIRING = {"interval_days"}
+#: the integer interval day split; ed563ffbe6, a UUID's 16 plain bytes): the witness shows the
+#: former writers and PostgreSQL agree.
+FIXED_BEFORE_WIRING = {"interval_days", "uuid_bytes"}
 
 
 @pytest.mark.parametrize("defect", sorted(DEFECTS))

@@ -16,10 +16,14 @@ fill_docs.py puts on docs/conformance/pgwire.md and overview.md and that the run
 
 Every overload has one result on each engine:
 
-  exact       every call PostgreSQL answered, the engine answered the same
-  equivalent  the same but for what ``RULES`` allows, each rule a footnote linked from its cells
-  refused     Provisa refused a call, naming what it refuses (refused_by_name)
-  differs     a wrong answer, or an engine error that is neither an answer nor a named refusal
+  exact        every call PostgreSQL answered, the engine answered the same, and something was
+               compared: an answer, a type and form, or a side effect
+  equivalent   the same but for what ``RULES`` allows, each rule a footnote linked from its cells
+  not checked  the engine answered every call with PostgreSQL's result type, and nothing was
+               compared: no pass, a call that ran proves nothing, and it counts as failed
+  by design    skipped by design under a decision of REQ-2167, the group naming it
+  refused      Provisa refused a call, naming what it refuses (refused_by_name)
+  differs      a wrong answer, or an engine error that is neither an answer nor a named refusal
 
 ``not_callable`` (PostgreSQL itself answers no call) and ``not_reached`` (the leg did not get there)
 are no result: nothing was compared. ``RESULT_KEYS`` are the keys of each engine's counts in the
@@ -38,6 +42,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+import pgwire_function_probe as function_probe
+
 #: Each engine's label on the page, in the page's order.
 ENGINE_LABELS = {"pg": "Postgres", "duckdb": "DuckDB", "trino": "Trino", "clickhouse": "ClickHouse"}
 
@@ -45,14 +51,21 @@ EXACT = "exact"
 EQUIVALENT = "equivalent"
 REFUSED = "refused"
 DIFFERS = "differs"
+NOT_CHECKED = "not_checked"
+BY_DESIGN = "by_design"
 NOT_CALLABLE = "not_callable"
 NOT_REACHED = "not_reached"
 
 #: The keys of ``by_engine.<engine>`` in the merged JSON. ``differs`` is the sum of the two after
 #: it; ``refused_by_name`` counts the result ``refused``.
 RESULT_KEYS = (
+    "passed",
+    "skipped_by_design",
+    "failed",
     "exact",
     "equivalent",
+    "not_checked",
+    "by_design",
     "refused_by_name",
     "differs",
     "differs_wrong_answer",
@@ -152,6 +165,8 @@ def result_of(outcome: str, rules: Iterable[str] = ()) -> str:
     """The result of one engine's ``outcome`` (function_support.OUTCOMES)."""
     if outcome == "pass":
         return EQUIVALENT if tuple(rules) else EXACT
+    if outcome in (NOT_CHECKED, BY_DESIGN):
+        return outcome
     if outcome == "refused":
         return REFUSED
     if outcome in ("wrong_answer", "error"):
@@ -161,10 +176,35 @@ def result_of(outcome: str, rules: Iterable[str] = ()) -> str:
     raise ValueError(f"no result for outcome {outcome!r}")
 
 
+PASSED = "passed"
+SKIPPED_BY_DESIGN = "skipped_by_design"
+FAILED = "failed"
+
+
+def verdict(entry: dict[str, Any]) -> str:
+    """An overload's one verdict on an engine: passed, skipped by design or failed (REQ-2167). A
+    pass is passed. A decision's group is skipped by design, and so is an overload PostgreSQL
+    itself cannot call from SQL (INTERNAL FUNCTIONS: an internal argument, or a refusal no server
+    state changes). Everything else failed: not checked, refused by name with no decision behind
+    it, a wrong answer, an engine error, one PostgreSQL refuses for this server's state, and one
+    the leg did not reach."""
+    outcome = entry["outcome"]
+    if outcome == "pass":
+        return PASSED
+    if outcome == BY_DESIGN:
+        return SKIPPED_BY_DESIGN
+    if outcome == NOT_CALLABLE:
+        detail = entry["detail"]
+        internal = detail == function_probe.NO_CALL or function_probe.proves_internal(detail)
+        return SKIPPED_BY_DESIGN if internal else FAILED
+    return FAILED
+
+
 def result_counts(outcomes: Iterable[dict[str, Any]]) -> dict[str, int]:
     """``RESULT_KEYS`` over overloads' outcomes on one engine."""
     tally: Counter[str] = Counter()
     for entry in outcomes:
+        tally[verdict(entry)] += 1
         result = result_of(entry["outcome"], entry.get("rules", ()))
         tally["refused_by_name" if result == REFUSED else result] += 1
         tally["differs_wrong_answer"] += entry["outcome"] == "wrong_answer"
@@ -272,13 +312,21 @@ def _footnote(key: str) -> str:
 
 
 def cell(outcome: dict[str, Any]) -> str:
-    """One overload on one engine. An exact pass says when its value could not be compared."""
+    """One overload on one engine. A pass says when its value could not be compared."""
     result = result_of(outcome["outcome"], outcome.get("rules", ()))
+    check = {
+        "answers": "",
+        "type_and_form": " (type and form only)",
+        "side_effect": " (side effect)",
+    }[outcome.get("check", "answers")]
     if result == EQUIVALENT:
-        return f"{EQUIVALENT} " + " ".join(_footnote(key) for key in outcome["rules"])
+        return f"{EQUIVALENT}{check} " + " ".join(_footnote(key) for key in outcome["rules"])
     if result == EXACT:
-        check = outcome.get("check", "answers")
-        return EXACT if check == "answers" else f"{EXACT} ({check} only)"
+        return EXACT + check
+    if result == NOT_CHECKED:
+        return "not checked"
+    if result == BY_DESIGN:
+        return f"skipped by design ({outcome['group']})"
     if result == DIFFERS:
         return "differs (error)" if outcome["outcome"] == "error" else DIFFERS
     if result == NOT_CALLABLE:
@@ -289,15 +337,32 @@ def cell(outcome: dict[str, Any]) -> str:
 def engine_table(doc: dict[str, Any]) -> list[str]:
     """One row per engine, in overloads. No row adds them up."""
     lines = [
-        "| Engine | Exact | Equivalent | Refused by name | Differs: wrong answer "
-        "| Differs: engine error |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        "| Engine | Passed | Skipped by design | Failed |",
+        "| --- | ---: | ---: | ---: |",
     ]
     for engine in _ordered(doc):
         c = doc["by_engine"][engine]
         lines.append(
-            f"| {_label(engine)} | {c['exact']} | {c['equivalent']} | {c['refused_by_name']} "
-            f"| {c['differs_wrong_answer']} | {c['differs_engine_error']} |"
+            f"| {_label(engine)} | {c['passed']} | {c['skipped_by_design']} | {c['failed']} |"
+        )
+    lines += [
+        "",
+        "In detail: passed is exact and equivalent; skipped by design is the decisions' groups "
+        "and what PostgreSQL itself cannot call; failed is the rest.",
+        "",
+        "| Engine | Exact | Equivalent | By a decision | PostgreSQL calls none | Not checked "
+        "| Refused by name | Differs: wrong answer | Differs: engine error "
+        "| PostgreSQL refuses here | Not reached |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for engine in _ordered(doc):
+        c = doc["by_engine"][engine]
+        internal = c["skipped_by_design"] - c["by_design"]
+        lines.append(
+            f"| {_label(engine)} | {c['exact']} | {c['equivalent']} | {c['by_design']} "
+            f"| {internal} | {c['not_checked']} | {c['refused_by_name']} "
+            f"| {c['differs_wrong_answer']} | {c['differs_engine_error']} "
+            f"| {c['not_callable'] - internal} | {c['not_reached']} |"
         )
     return lines
 
@@ -368,7 +433,8 @@ def family_table(doc: dict[str, Any]) -> list[str]:
         for engine in engines:
             c = per_engine[engine]
             cells.append(
-                f"{c['exact']} / {c['equivalent']} / {c['refused_by_name']} / {c['differs']}"
+                f"{c['exact']} / {c['equivalent']} / {c['not_checked']} / {c['by_design']} "
+                f"/ {c['refused_by_name']} / {c['differs']}"
             )
         lines.append(f"| {family} | " + " | ".join(cells) + " |")
     return lines
@@ -438,6 +504,46 @@ def wrong_answers(doc: dict[str, Any]) -> list[str]:
     return lines[:-1] or ["None."]
 
 
+def not_checked_lines(doc: dict[str, Any]) -> list[str]:
+    """Why each engine's overloads not checked were not."""
+    reasons = doc["not_checked_reasons"]
+    engines = [e for e in _ordered(doc) if reasons.get(e)]
+    if not engines:
+        return ["Every overload PostgreSQL answers had something compared."]
+    every = sorted({why for e in engines for why in reasons[e]})
+    return [
+        "Why an overload was not checked, by engine:",
+        "",
+        "| Not checked because | " + " | ".join(_label(e) for e in engines) + " |",
+        "| --- |" + " ---: |" * len(engines),
+        *(
+            f"| {why.replace('|', chr(92) + '|')} | "
+            + " | ".join(str(reasons[e].get(why, 0)) for e in engines)
+            + " |"
+            for why in every
+        ),
+    ]
+
+
+def by_design_lines(doc: dict[str, Any]) -> list[str]:
+    """The overloads skipped by design, by group and engine."""
+    groups = doc["by_design_groups"]
+    engines = [e for e in _ordered(doc) if groups.get(e)]
+    if not engines:
+        return ["No overload is skipped by design."]
+    every = sorted({group for e in engines for group in groups[e]})
+    return [
+        "Skipped by design (REQ-2167), by group and engine:",
+        "",
+        "| Group | " + " | ".join(_label(e) for e in engines) + " |",
+        "| --- |" + " ---: |" * len(engines),
+        *(
+            f"| {group} | " + " | ".join(str(len(groups[e].get(group, []))) for e in engines) + " |"
+            for group in every
+        ),
+    ]
+
+
 def no_engine_lines(doc: dict[str, Any]) -> list[str]:
     gap = doc["no_engine"]
     lines = [
@@ -496,16 +602,28 @@ def pgwire_block(doc: dict[str, Any]) -> str:
             "",
             "| Result | Meaning |",
             "| --- | --- |",
-            "| Exact | The engine answered every call as PostgreSQL did. |",
+            "| Exact | The engine answered every call as PostgreSQL did, and an answer, a type "
+            "and form, or a side effect was compared. |",
             "| Equivalent | The answer passes under a numbered rule below, linked from its row. |",
+            "| Not checked | The engine answered with PostgreSQL's result type, but nothing was "
+            "compared. A call that ran proves nothing, so this is no pass. |",
+            "| Skipped by design | A decision of REQ-2167 skips it: a side-effect function off "
+            "the PostgreSQL engine, one whose side effect no client can see, or a refusal by name "
+            "a decision makes. |",
             "| Refused by name | Provisa refused the call and said what it refuses. |",
             "| Differs: wrong answer | The answer is wrong. This is a defect. |",
             "| Differs: engine error | The engine returned an error and no named refusal. This "
             "is a defect. |",
             "",
-            "An exact result marked *form only* could not be compared by value, so its form was "
-            "checked. One marked *call only* was called with `NULL`, which proves its result type "
-            "and nothing about its answer. `n/a` means PostgreSQL itself refuses every call.",
+            "A result marked *type and form only* could not be compared by value, so its result "
+            "type and, for a string, its canonical form were compared with PostgreSQL's own "
+            "output. One marked *side effect* returns void or acts: what it did, seen through a "
+            "client, was compared with what PostgreSQL did. `n/a` means PostgreSQL itself refuses "
+            "every call.",
+            "",
+            *by_design_lines(doc),
+            "",
+            *not_checked_lines(doc),
             "",
             "### Literals and columns",
             "",
@@ -521,7 +639,8 @@ def pgwire_block(doc: dict[str, Any]) -> str:
             "",
             "### Results by family",
             "",
-            "Each cell reads exact / equivalent / refused by name / differs.",
+            "Each cell reads exact / equivalent / not checked / skipped by design / refused by "
+            "name / differs.",
             "",
             *family_table(doc),
             "",

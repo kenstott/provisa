@@ -6,17 +6,20 @@
 
 """DuckDB's reads come from its Arrow reader (REQ-2194); the rows a row consumer is given from
 those batches are the values DuckDB's own rows hold, at every depth, except the interval and the
-infinite date or timestamp, which DuckDB's rows get wrong."""
+infinite date or timestamp, which DuckDB's rows get wrong, and a timestamp in a named zone, which
+DuckDB's rows name by pytz and the engine by zoneinfo, as PostgreSQL reads it (the same instant,
+in the same zone)."""
 
 from __future__ import annotations
 
 import math
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import duckdb
 import pytest
 from dateutil.relativedelta import relativedelta
 
+from provisa.core.ir_arrow import _zone
 from provisa.core.ir_types import infinity_of
 from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
 
@@ -40,6 +43,14 @@ _VALUES = {
     "time": "TIME '01:02:03.123456'",
     "timetz": "'01:02:03.25-07:30'::TIMETZ",
     "timetz_east": "'23:59:59+15:59'::TIMETZ",
+    # 24:00:00, which PostgreSQL holds and Python's time does not: DuckDB's rows hold its text.
+    "time_end_of_day": "TIME '24:00:00'",
+    "timetz_end_of_day": "'24:00:00+01'::TIMETZ",
+    "timetz_end_of_day_utc": "'24:00:00+00'::TIMETZ",
+    "timetz_end_of_day_west": "'24:00:00-15:59'::TIMETZ",
+    "timetz_end_of_day_seconds": "'24:00:00+01:02:03'::TIMETZ",
+    "time_ns": "'12:34:56.123456789'::TIME_NS",
+    "time_ns_end_of_day": "'24:00:00'::TIME_NS",
     "timestamp": "TIMESTAMP '2024-01-02 01:02:03.123456'",
     "timestamp_s": "'2024-01-02 01:02:03'::TIMESTAMP_S",
     "timestamp_ms": "'2024-01-02 01:02:03.123'::TIMESTAMP_MS",
@@ -67,7 +78,8 @@ _SHAPES = {
 
 def _assert_same(got, expected) -> None:
     """``got`` is ``expected``: the same Python types at every depth, equal values, a float
-    within a relative tolerance of 1e-14."""
+    within a relative tolerance of 1e-14, a timestamp in a zone the same instant in the zone
+    PostgreSQL reads that zone's name as (ir_arrow._zone), where DuckDB's rows hold pytz's."""
     assert type(got) is type(expected), (got, expected)
     if isinstance(expected, float):
         assert math.isclose(got, expected, rel_tol=1e-14) or (
@@ -77,6 +89,9 @@ def _assert_same(got, expected) -> None:
         assert len(got) == len(expected), (got, expected)
         for g, e in zip(got, expected):
             _assert_same(g, e)
+    elif isinstance(expected, datetime) and expected.tzinfo is not None:
+        assert got == expected and got.utcoffset() == expected.utcoffset(), (got, expected)
+        assert got.tzinfo is _zone(str(expected.tzinfo)), (got, expected)
     elif isinstance(expected, dict):
         assert list(got) == list(expected), (got, expected)
         for k in expected:

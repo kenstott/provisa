@@ -232,7 +232,7 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
         split_agg_columns,
         split_group_by_columns,
     )
-    from provisa.executor.serialize import _convert_value
+    from provisa.executor.serialize import column_value
 
     ctx = _get_ctx(app_state, role)
 
@@ -274,7 +274,7 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
                 "aggregate": {**top, **nested},
             }
             if at is not None:
-                out_row["nodes"] = _convert_value(row[at])
+                out_row["nodes"] = column_value(row[at], cq.columns[at])
             rows.append(out_row)
         return {"group_by": rows}
 

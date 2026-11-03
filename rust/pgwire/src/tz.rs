@@ -47,6 +47,19 @@ impl Zone {
         Some(Zone { tz, rule })
     }
 
+    /// Every zone `named` takes: those both chrono-tz's tables and tz_rules.rs hold, sorted.
+    pub fn names() -> Vec<&'static str> {
+        let mut names: Vec<&'static str> = chrono_tz::TZ_VARIANTS
+            .iter()
+            .map(|tz| tz.name())
+            .chain(RULES.iter().map(|(n, _)| *n))
+            .filter(|n| Zone::named(n).is_some())
+            .collect();
+        names.sort_unstable();
+        names.dedup();
+        names
+    }
+
     /// The offset in seconds east of UTC at `secs` after 1970-01-01T00:00:00Z, which lies within
     /// years 1..=9999.
     pub fn offset_at(&self, secs: i64) -> i32 {
@@ -186,4 +199,24 @@ fn parse_posix(s: &str) -> Option<Posix> {
         std,
         dst: Some((dst, start, end)),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Zone;
+
+    #[test]
+    fn factory_is_held() {
+        // tzdata's `factory` file: the zoneinfo package holds Factory, so the tables do too.
+        let zone = Zone::named("Factory").expect("Factory is held");
+        assert_eq!(zone.offset_at(0), 0);
+        assert_eq!(zone.offset_at(5_000_000_000), 0);
+        assert!(Zone::names().contains(&"Factory"));
+    }
+
+    #[test]
+    fn names_are_the_rules() {
+        let rules: Vec<&str> = crate::tz_rules::RULES.iter().map(|(n, _)| *n).collect();
+        assert_eq!(Zone::names(), rules);
+    }
 }

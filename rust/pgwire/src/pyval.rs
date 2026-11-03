@@ -408,14 +408,18 @@ fn timestamp_at(raw: i64, unit: TimeUnit, tz: Option<&(TzSpec, TzRepr)>, top: bo
             }));
         }
     }
-    if unit == TimeUnit::Nanosecond && raw == i64::MIN {
+    // A zoned nanosecond value is the instant floored to the microsecond, in its zone
+    // (ir_arrow._zoned_values), never a pandas Timestamp; a naive one is a pandas Timestamp.
+    let zoned_ns = unit == TimeUnit::Nanosecond && tz.is_some();
+    if unit == TimeUnit::Nanosecond && raw == i64::MIN && !zoned_ns {
         return Ok(PyVal::NaT);
     }
-    let micros = temporal::micros_of(raw, unit)?;
+    let micros = if zoned_ns {
+        raw.div_euclid(1000) as i128
+    } else {
+        temporal::micros_of(raw, unit)?
+    };
     let spec = tz.map(|t| t.0).unwrap_or(TzSpec::Naive);
-    if unit == TimeUnit::Nanosecond {
-        temporal::check_ns_local(raw, &spec)?;
-    }
     temporal::check_timestamp(micros, &spec)?;
     let offset = spec.offset_at(micros);
     Ok(PyVal::DateTime(DateTime {
@@ -423,7 +427,7 @@ fn timestamp_at(raw: i64, unit: TimeUnit, tz: Option<&(TzSpec, TzRepr)>, top: bo
         offset,
         tz: tz.map(|t| t.1.clone()).unwrap_or(TzRepr::Naive),
         inf: 0,
-        ns: (unit == TimeUnit::Nanosecond).then(|| raw.rem_euclid(1000) as u16),
+        ns: (unit == TimeUnit::Nanosecond && !zoned_ns).then(|| raw.rem_euclid(1000) as u16),
     }))
 }
 

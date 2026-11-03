@@ -185,11 +185,9 @@ async def _materialize_relation(ref: str, state, columns: list[str] | None = Non
     projection = ", ".join(f'"{c}"' for c in columns) if columns else "*"
     sql = f'SELECT {projection} FROM "{schema}"."{table}"'
     result = await state.source_pools.execute(src_id, sql, [])
-    from provisa.executor.serialize import _convert_value
+    from provisa.executor.serialize import result_records
 
-    cols = result.column_names
-    rows = [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
-    return {"kind": "result_set", "columns": cols, "rows": rows}
+    return {"kind": "result_set", "columns": result.column_names, "rows": result_records(result)}
 
 
 def _arg_kinds(fn: dict) -> dict[str, str]:
@@ -394,10 +392,9 @@ async def _exec_source_procedure(fn: dict, args: dict, state, _payload, _session
     placeholders = ", ".join(f"${i + 1}" for i in range(len(params)))
     sql = f'SELECT * FROM "{fn["schema_name"]}"."{fn["function_name"]}"({placeholders})'
     result = await state.source_pools.execute(src_id, sql, params)
-    from provisa.executor.serialize import _convert_value
+    from provisa.executor.serialize import result_records
 
-    cols = result.column_names
-    return [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
+    return result_records(result)
 
 
 def _json_arguments_from_sql(fn: dict, args: dict) -> dict:
