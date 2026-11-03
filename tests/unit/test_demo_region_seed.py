@@ -218,4 +218,6 @@ def test_a_sandbox_store_is_pinned_once_its_model_is_loaded():
 
     build = inspect.getsource(app._build_org_runtime)
     assert build.index("rebuild_from_config(") < build.index("_sandbox_store(")
-    assert build.index("_sandbox_store(") < build.index("land_from_seed(")
+    # The seed is landed by _converge_after_seed (REQ-2006: before its replica convergence).
+    assert build.index("_sandbox_store(") < build.index("_converge_after_seed(")
+    assert "land_from_seed(" in inspect.getsource(app._converge_after_seed)
