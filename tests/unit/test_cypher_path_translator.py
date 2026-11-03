@@ -123,7 +123,7 @@ def test_unbounded_at_path_translator_level():
     """REQ-348 (amended 2026-11-03): an unbounded [*] walks to the maximum depth it is given."""
     lm = _make_label_map()
     path_func, _ = _extract_path_func(
-        "MATCH p = shortestPath((a:Person)-[:KNOWS*]->(b:Company)) RETURN p"
+        "MATCH p = shortestPath((a:Person)-[:WORKS_AT*]->(b:Company)) RETURN p"
     )
     sql, _, _ = path_to_recursive_sql(path_func, lm, "a", "b", "p", max_depth=7)
     assert "_depth < 7" in sql and "_depth <= 7" in sql
