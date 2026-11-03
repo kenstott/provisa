@@ -91041,7 +91041,19 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     does is unchanged. (Amended 2026-11-02, Its name is JDBC:) Maintainer 2026-11-02: the name shown is
     JDBC, like the other source types'' names, and the source type is jdbc. It covers both a built-in driver
     URL and a customer''s jar ("not entirely accurate - but since it lets you use built-in connectors or
-    a jar - close enough").'
+    a jar - close enough"). (Amended 2026-11-03, The form picks a driver, takes a jar file, and names no
+    engine:) Maintainer 2026-11-03, on the JDBC form: it is "supposed to have a list of standard drivers
+    to pick from, an option to use a jar (from a local file)", "a probe to determine features", and selecting
+    the dialect is correct. So: (1) the form''s first choice is the driver, from a list of the standard
+    drivers Provisa ships (the built-in types with a SQLAlchemy scheme), plus "Your own JDBC driver (jar)".
+    Picking a standard driver asks for host, port, database (or file), user and password, and the form builds
+    the connection URL from them; the raw URL is not what an admin types. (2) Picking the jar option takes
+    the jar as a file chosen from the admin''s machine and uploaded with the source, plus the driver class
+    and the jdbc: URL; it stays self-hosted only, refused by name on cloud. (3) The probe is Detect: it
+    runs the read-only checks against the connection and sets the capabilities that passed, showing why
+    the others failed. (4) The SQL dialect choice stays. (5) No engine is named on the form: the capability
+    settings read "Filter pushdown", "Join pushdown", "Aggregate pushdown", "Key-range pushdown" and "Live
+    attach"; that they are held per engine is internal.'
   use_case: 'A team runs a database Provisa has no source type for. An admin registers it with its URL
     and the SQL dialect closest to it, presses Detect, and gets whatever it can do: live attach and pushdown
     where it passes, and otherwise a governed source read by key.'
