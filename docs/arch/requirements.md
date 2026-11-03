@@ -26459,3 +26459,13 @@ Maintainer 2026-11-03: deleting a table can take a while, and the UI still let t
 **Code:** —
 
 **Tests:** —
+
+### REQ-2199 · UI {#REQ-2199}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-03: the entity/fact form ([REQ-1164](#REQ-1164)) is built from the right primitives, but people won't get how to interpret their method into the primitive. The modeling helper is positioned as a kind of wizard, starting with a picker between the two methods: star schema (Kimball) and Data Vault (Linstedt). Each path asks its questions in that method's own vocabulary. Star schema: the business process, the grain, the dimensions, the measures and their additivity, how each dimension handles change (SCD type 1, type 2 or snapshot), conformed dimensions, and whether the fact is a transaction, periodic snapshot or accumulating snapshot. Data Vault: the core business concepts and their business keys (hubs), the sources of each key (record source, same-as links), the units of work between concepts and whether they end (links, effectivity), the descriptive attributes grouped by source, rate of change and sensitivity (satellites, multi-active satellites), how far back history goes, and what business rules derive (business vault). Before anything is created, a review shows what each answer becomes in Provisa's primitives (an entity, a fact, a relationship, a history setting); then the wizard creates them all through the entity/fact lowering of [REQ-1164](#REQ-1164), unchanged, and shows the result with its relationships. The plain entity/fact form stays for people who think in the primitives. (Lead's reading of the mapping, shown to the maintainer 2026-11-03: hub plus satellite is an entity keyed on the business key with SCD2 history; a link is a fact with no measures whose grain is the participating keys; a link or effectivity satellite is an entity keyed on the link's keys with valid time; PIT, bridge tables and marts are views over them.)
+
+**Code:** —
+
+**Tests:** —
