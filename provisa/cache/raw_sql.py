@@ -185,7 +185,13 @@ def entry_as_arrow(
 
 
 def _table_rows(table: Any) -> list[tuple]:
-    cols = [col.to_pylist() for col in table.columns]
+    """An Arrow entry's rows, each column's values as a live Arrow read gives them
+    (ir_arrow.column_values, as stream_rows_from_arrow reads them): an interval as the IR
+    interval, an infinite date or timestamp as the IR infinity -- so a hit answers as the miss
+    did."""
+    from provisa.core.ir_arrow import column_values
+
+    cols = [column_values(col) for col in table.columns]
     return list(zip(*cols, strict=True)) if cols else []
 
 

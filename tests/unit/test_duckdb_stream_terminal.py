@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.executor.result import QueryResult, StreamingQueryResult
+from provisa.core.pg_error import PostgresError
+from provisa.executor.result import ArrowStreamResult, QueryResult, StreamingQueryResult
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 from provisa.federation.runtime_support import (
     _ARROW_STREAM_BATCH_ROWS,
@@ -233,3 +234,38 @@ async def test_run_builds_its_rows_off_the_event_loop(runtime, monkeypatch):
     assert len(list(res.iter_rows())) == 1000
     assert len(built_on) == built  # nothing more built there
     assert loop_thread not in built_on
+
+
+#: The row the engine raises PostgreSQL's own error on (pg_error.raising): past what DuckDB
+#: computes when the statement is run (about 128K rows), so it is met only as a batch is read.
+_LATE = 400_000
+_LATE_ERROR = (
+    f"select case when x = {_LATE} then error('postgresql-error 22012: division by zero') "
+    f"else x end as v from range({_LATE + 1}) t(x)"
+)
+
+
+@pytest.mark.parametrize("face", ["rows", "arrow_batches"])
+def test_run_sync_raises_postgresqls_error_met_in_a_later_batch(runtime, face):
+    """DuckDB's reader meets the engine's error only as it produces the batch that holds it, as
+    an OSError carrying its message: it is raised as PostgreSQL's own error, on either face."""
+    res = runtime.run_sync(_LATE_ERROR)
+    assert isinstance(res, ArrowStreamResult)
+    read = res.batches() if face == "rows" else res.arrow_batches()
+    first = next(read)
+    assert len(first) == _ARROW_STREAM_BATCH_ROWS
+    with pytest.raises(PostgresError) as raised:
+        list(read)
+    assert (raised.value.sqlstate, str(raised.value)) == ("22012", "division by zero")
+    # The stream that failed is released (its cursor and the catalogue read it held); the runtime
+    # answers the next statement.
+    assert res.stats.done
+    assert runtime.run_sync("select 42 as y").rows == [(42,)]
+
+
+def test_run_sync_raises_any_other_engine_error_as_it_is(runtime):
+    res = runtime.run_sync(_LATE_ERROR.replace("postgresql-error 22012: division by zero", "no"))
+    read = res.batches()
+    assert next(read)
+    with pytest.raises(OSError, match="Invalid Input Error: no$"):
+        list(read)

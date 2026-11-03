@@ -22,12 +22,28 @@ from provisa._encoders import pgwire as encoder
 from provisa.core.ir_arrow import row_batch
 
 
+def cells(
+    bvtype: Any, values: list[Any], fmt: int = 0, declared: str | None = None
+) -> list[bytes | None]:
+    """The cell each of ``values`` is sent as, one column of wire type ``bvtype`` in format
+    ``fmt``, a row each, encoded as one batch."""
+    batch = row_batch([(value,) for value in values], ["value"], [declared])
+    message = encoder.encode_batch(batch, [wire_type_name(bvtype)], [fmt])
+    sent: list[bytes | None] = []
+    at = 0
+    while at < len(message):
+        (length,) = struct.unpack_from("!i", message, at + 1)
+        (size,) = struct.unpack_from("!i", message, at + 7)
+        sent.append(None if size < 0 else message[at + 11 : at + 11 + size])
+        at += 1 + length
+    assert len(sent) == len(values)
+    return sent
+
+
 def cell(bvtype: Any, value: Any, fmt: int = 0, declared: str | None = None) -> bytes | None:
     """The cell ``value`` is sent as, a column of wire type ``bvtype`` in format ``fmt``."""
-    batch = row_batch([(value,)], ["value"], [declared])
-    message = encoder.encode_batch(batch, [wire_type_name(bvtype)], [fmt])
-    (size,) = struct.unpack_from("!i", message, 7)
-    return None if size < 0 else message[11 : 11 + size]
+    (sent,) = cells(bvtype, [value], fmt, declared)
+    return sent
 
 
 def text(bvtype: Any, value: Any, declared: str | None = None) -> str:

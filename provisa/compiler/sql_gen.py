@@ -226,6 +226,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     if join_meta.child_src_val is not None
                     else (src_expr if join_meta.source_column_type != "integer" else None)
                 )
+                _json_text: set[str] = set()
                 json_expr, alias_counter = _build_rel_json_expr(
                     sel.selection_set.selections,
                     ctx,
@@ -241,6 +242,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     sources,
                     variables,
                     parent_src_val=_pv,
+                    json_text=_json_text,
                 )
                 select_parts.append(f"{json_expr} AS {_q(_rel_key)}")
                 columns.append(
@@ -251,6 +253,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         nested_in=None,
                         cardinality=join_meta.cardinality,
                         is_agg=True,
+                        json=True,
+                        json_text=frozenset(_json_text),
                     )
                 )
             else:
@@ -387,6 +391,10 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     column=sql_name,
                     field_name=gql_field_name,
                     nested_in=None,
+                    # a path into a JSON column (col_path) is read as text (->>)
+                    json=not col_path and (table.table_id, phys_name.lower()) in ctx.json_columns,
+                    integer=not col_path
+                    and (table.table_id, phys_name.lower()) in ctx.integer_columns,
                 )
             )
 
@@ -620,7 +628,16 @@ def _compile_connection_field(  # REQ-218
             continue
         phys_name = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
         select_parts.append(_q(phys_name))
-        columns.append(ColumnRef(None, phys_name, sel_name, None))
+        columns.append(
+            ColumnRef(
+                None,
+                phys_name,
+                sel_name,
+                None,
+                json=(table.table_id, phys_name.lower()) in ctx.json_columns,
+                integer=(table.table_id, phys_name.lower()) in ctx.integer_columns,
+            )
+        )
 
     if not select_parts:
         select_parts.append("1")

@@ -25,10 +25,12 @@ from __future__ import annotations
 import ipaddress
 import json
 import math
+import re
 from collections.abc import Sequence
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from decimal import Decimal, localcontext
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pyarrow as pa
 from dateutil.relativedelta import relativedelta
@@ -36,6 +38,7 @@ from dateutil.relativedelta import relativedelta
 from provisa.core.ir_types import (
     infinite_date,
     infinite_timestamp,
+    infinity_of,
     interval_parts,
     interval_value,
     to_ir,
@@ -137,9 +140,10 @@ _TIMESTAMP_INFINITY = 2**63 - 1
 
 def column_values(column: pa.Array | pa.ChunkedArray) -> list[Any]:
     """An Arrow column's values as row values: ``to_pylist``, an interval column's each the IR
-    interval it is (ir_types.interval_value) rather than Arrow's own ``MonthDayNano``, and an
+    interval it is (ir_types.interval_value) rather than Arrow's own ``MonthDayNano``, an
     infinite date or timestamp the IR infinity it is (ir_types.infinite_date,
-    infinite_timestamp), which ``to_pylist`` cannot hold."""
+    infinite_timestamp), which ``to_pylist`` cannot hold, and a timestamp in a zone in that zone
+    as zoneinfo and PostgreSQL write it (``_zoned_values``)."""
     if pa.types.is_interval(column.type):
         return [
             None if v is None else interval_value(v.months, v.days, v.nanoseconds // 1000)
@@ -147,15 +151,70 @@ def column_values(column: pa.Array | pa.ChunkedArray) -> list[Any]:
         ]
     if pa.types.is_date32(column.type):
         return _with_infinities(column, pa.int32(), _DATE_INFINITY, infinite_date)
+    if pa.types.is_timestamp(column.type) and column.type.tz is not None:
+        return _zoned_values(column)
     if pa.types.is_timestamp(column.type) and column.type.unit == "us":
-        aware = column.type.tz is not None
         return _with_infinities(
             column,
             pa.int64(),
             _TIMESTAMP_INFINITY,
-            lambda sign: infinite_timestamp(sign, aware=aware),
+            lambda sign: infinite_timestamp(sign, aware=False),
         )
     return column.to_pylist()
+
+
+# Arrow writes a fixed offset as its zone like this; any other zone is an IANA name.
+_FIXED_OFFSET = re.compile(r"(?P<sign>[+-])(?P<hours>\d\d):(?P<minutes>\d\d)")
+
+
+def _zone(name: str) -> tzinfo:
+    """The zone an Arrow timestamp column names, as PostgreSQL reads it: a fixed offset, else the
+    IANA zone by zoneinfo. pyarrow's own to_pylist takes pytz where it can import it, and pytz has
+    no daylight time after 2037, no transitions before 1901 and offsets rounded to the minute.
+    ``UTC``, the zone DuckDB's session writes, is the offset zero, as pyarrow reads it (the same
+    UTC as ``+00:00``), not a region: openCypher writes it ``Z`` and names no region.
+    An unknown name raises (ZoneInfoNotFoundError)."""
+    if name == "UTC":
+        return timezone.utc
+    fixed = _FIXED_OFFSET.fullmatch(name)
+    if fixed is None:
+        return ZoneInfo(name)
+    east = timedelta(hours=int(fixed["hours"]), minutes=int(fixed["minutes"]))
+    return timezone(-east if fixed["sign"] == "-" else east)
+
+
+def _floor_to_micros(column: pa.Array | pa.ChunkedArray) -> pa.Array | pa.ChunkedArray:
+    """A nanosecond timestamp column as microseconds in UTC, each floored, as PostgreSQL holds an
+    instant to the microsecond. Arrow's cast and division truncate toward zero."""
+    import pyarrow.compute as pc
+
+    nanos = column.cast(pa.int64())
+    micros = pc.call_function("divide", [nanos, pa.scalar(1000, pa.int64())])
+    over = pc.call_function(
+        "greater", [pc.call_function("multiply", [micros, pa.scalar(1000, pa.int64())]), nanos]
+    )
+    micros = pc.call_function("subtract", [micros, over.cast(pa.int64())])
+    return micros.cast(pa.timestamp("us"))
+
+
+def _zoned_values(column: pa.Array | pa.ChunkedArray) -> list[Any]:
+    """A timestamp column in a zone: each value the instant it holds, in that zone by zoneinfo (or
+    its fixed offset), never pytz's (``_zone``). A nanosecond value is floored to the microsecond
+    and never passes through pandas, whose range ends in 1677 and 2262; an infinite microsecond
+    value is the IR infinity, in UTC."""
+    zone = _zone(column.type.tz)
+    unit = column.type.unit
+    utc = _floor_to_micros(column) if unit == "ns" else column.cast(pa.timestamp(unit))
+    values = (
+        _with_infinities(
+            utc, pa.int64(), _TIMESTAMP_INFINITY, lambda sign: infinite_timestamp(sign, aware=True)
+        )
+        if unit == "us"
+        else utc.to_pylist()
+    )
+    return [
+        v if v is None or infinity_of(v) else zone.fromutc(v.replace(tzinfo=zone)) for v in values
+    ]
 
 
 def _with_infinities(
