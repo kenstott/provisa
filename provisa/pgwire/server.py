@@ -2697,6 +2697,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
     def send_ready_for_query(self, ctx: Optional[BVContext]) -> None:
         # ReadyForQuery ends the cycle: the Sync of an extended-protocol cycle, or a Query's end.
+        # So does the cycle's error: a Query sends no Sync, and one whose statement failed left
+        # the next extended cycle's every message discarded, unanswered.
+        if ctx is not None:
+            ctx.sync()
         try:
             self._report_zone()
             super().send_ready_for_query(ctx)
