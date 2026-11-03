@@ -61,8 +61,12 @@ _SOURCE_ID = "shopify-live"
 _DOMAIN = "shopify_live"
 _ROLE = "org_admin"
 _VISIBLE_TO = f'["{_ROLE}"]'
-# One row a page, so any store with two products is read across pages.
-_PAGE_SIZE = 1
+# The page a products read asks for: small, so a store of a few products is read across pages.
+# A table is registered at the deployment's own page (graphql_remote.max_list_items), which is the
+# size Shopify prices it at.
+_PAGE_SIZE = 5
+# The most rows a Shopify connection returns a page.
+_SHOPIFY_MAX_PAGE = 250
 
 
 def _store_handle(domain: str) -> str:
@@ -91,21 +95,15 @@ def creds() -> dict[str, str]:
 
 @pytest_asyncio.fixture(loop_scope="session", scope="module")
 async def client(creds):
-    """An in-process app, its remote GraphQL reads a page of one row each."""
+    """An in-process app."""
     import provisa.api.app as app_mod
 
     del creds
     app = app_mod.create_app()
     async with app.router.lifespan_context(app):
-        gql = app_mod.state.config.graphql_remote
-        prior_page = gql.max_list_items
-        gql.max_list_items = _PAGE_SIZE
-        try:
-            transport = ASGITransport(app=app)
-            async with AsyncClient(transport=transport, base_url="http://test", timeout=300) as c:
-                yield c
-        finally:
-            gql.max_list_items = prior_page
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test", timeout=300) as c:
+            yield c
 
 
 async def _mutation(client: AsyncClient, query: str, field: str) -> dict[str, Any]:
@@ -176,29 +174,47 @@ async def store(client, creds) -> str:
     return state.graphql_remote_sources[_SOURCE_ID]["url"]
 
 
-async def test_products_are_read_a_page_at_a_time_following_shopifys_cursor(client, store):
+async def test_products_are_read_a_page_at_a_time_following_shopifys_cursor(
+    client, store, monkeypatch
+):
+    import provisa.api.app as app_mod
+    from provisa.graphql_remote import executor
+
     await _registered(client, "shopify__products", "products", ["id", "title", "handle"])
+    # Both reads of a connection -- a request's (graphql_remote.max_list_items) and a land's --
+    # ask for pages of _PAGE_SIZE.
+    monkeypatch.setattr(app_mod.state.config.graphql_remote, "max_list_items", _PAGE_SIZE)
+    monkeypatch.setattr(executor, "_CONNECTION_PAGE_SIZE", _PAGE_SIZE)
     with respx.mock(assert_all_called=False) as mock:
         sent = mock.post(store).pass_through()
         mock.route().pass_through()
         rows = await _sql(client, f'SELECT "id", "title", "handle" FROM "{_DOMAIN}"."products"')
     reads = [json.loads(call.request.content) for call in sent.calls]
-    pages = [r for r in reads if f"products(first: {_PAGE_SIZE}, after: $pageCursor)" in r["query"]]
+    pages = [r for r in reads if "products(first: " in r["query"]]
     cursors = [(r.get("variables") or {}).get("pageCursor") for r in pages]
     print(f"\nshopify__products: {len(rows)} rows in {len(pages)} pages of {_PAGE_SIZE}")
     assert rows, "the store holds no products"
     assert all(r["id"].startswith("gid://shopify/Product/") for r in rows)
     assert all(r["title"] and r["handle"] for r in rows)
     assert len(rows) == len({r["id"] for r in rows})
-    # The first page is asked for without a cursor, every later one after the last page's end.
-    assert len(pages) >= 2, reads
-    assert cursors[0] is None and all(cursors[1:]), cursors
-    assert len(pages) == len(rows)
+    assert len(rows) > _PAGE_SIZE, f"the store holds {len(rows)} products: one page"
+    # Every page asked for is a page of _PAGE_SIZE; a read starts without a cursor and asks for
+    # each later page after the last one's end, until the rows are all read.
+    assert all(f"products(first: {_PAGE_SIZE}, after: $pageCursor)" in r["query"] for r in pages)
+    assert cursors[0] is None and any(cursors), cursors
+    assert len(pages) >= -(-len(rows) // _PAGE_SIZE), cursors
 
 
-async def test_a_wide_orders_table_is_refused_with_shopifys_cost_numbers(client, store):
+async def test_a_wide_orders_table_is_refused_with_shopifys_cost_numbers(
+    client, store, monkeypatch
+):
+    import provisa.api.app as app_mod
+
     del store
-    # Every column the schema offers for an order: more than Shopify runs in one query.
+    # Every column the schema offers for an order, at the most a Shopify connection page holds:
+    # more than Shopify runs in one query. (At the default page of 100 the dev store prices the
+    # same query at 965 of its 1,000 and runs it.)
+    monkeypatch.setattr(app_mod.state.config.graphql_remote, "max_list_items", _SHOPIFY_MAX_PAGE)
     result = await _mutation(
         client, _register_table("shopify__orders", "orders_wide", []), "registerTable"
     )
