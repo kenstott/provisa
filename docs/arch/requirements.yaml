@@ -83491,7 +83491,13 @@
     (Postgres, MongoDB, Qdrant, Elasticsearch), so the next visitor''s open is a container start and a loaded
     check, and a version''s data loads once. A superseded version''s data is still dropped. Where the DEMO
     STORES LINGER text says the data is dropped from the shared stores and the visitor waits while it starts,
-    this replaces it.'
+    this replaces it. (Amended 2026-11-03, A sandbox starts with its demo''s landed data:) Maintainer 2026-11-03:
+    a visitor''s sandbox opens holding its demo template''s live-landed (Kafka) rows, copied at open as
+    the template''s other data is, and its listener continues from where the template''s landing stopped;
+    a demo template is ready only when its live-landed tables have landed and it holds every profile result
+    relation its bundle carries, with their rows (lead, 2026-11-03: a template served as built that does
+    not hold them is built again through the existing build). A sandbox never answers a read from data it
+    has not yet loaded.'
   use_case: The maintainer changes an example query of the weblogs demo and merges it; minutes later the live demos page's
     next sandbox and a solution engineer's next start-ui-install.sh --demo weblogs both have the change, with no release cut.
   scenario: 'Given the weblogs bundle is published
