@@ -405,6 +405,7 @@
       "source_region_set": "Région de la source {{source}} définie sur {{region}}",
       "region_refused": "La région n'a pas été définie : {{reason}}",
       "table_too_complex": "La table « {{table}} » n'a pas été enregistrée avec les colonnes sélectionnées : {{reason}}. Choisissez moins de colonnes.",
+      "remote_throttled": "La table « {{table}} » n'a pas été enregistrée : la limite de débit de la source n'a pas permis de la vérifier ({{reason}}). Réessayez plus tard.",
       "table_updated": "Table « {{table}} » mise à jour (id={{id}})",
       "task_deleted": "Tâche « {{task}} » supprimée",
       "task_disabled": "Tâche « {{task}} » désactivée",
