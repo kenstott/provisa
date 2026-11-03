@@ -958,6 +958,7 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     org_id: str,
     env: str | None = None,
     engine_addressable: bool = True,
+    cloned: bool = False,
 ) -> None:
     """Seed provisa-admin, provisa-otel, and __derived__ source rows; seed meta domain and ops; compute clusters.
 
@@ -972,8 +973,19 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     the shard could not be allocated. The only thing that reads it is provisa-otel's recorded
     host/port, so those two columns are left as the last boot wrote them rather than the seed
     inventing an address: everything the seed exists for — the source rows, the meta domain, ops —
-    is control-plane state and is written either way."""
+    is control-plane state and is written either way.
+
+    ``cloned`` (REQ-2006): the org's model was cloned a moment ago from an org this seed ran on in
+    this release (a demo sandbox from its template), every row this seed writes with it, rebased
+    onto the org's own schema (env_copy._rebase). Only what a schema holds of its own is made: the
+    built-in views those rows register, and the catalog client's grants on them."""
     assert state.model_db is not None
+    if cloned:
+        async with state.model_db.acquire() as _conn:
+            async with _conn.advisory_lock(_seed_lock_key(org_id, env)):
+                await _seed_built_in_views(_conn)
+                await _seed_catalog_client(_conn, org_schema(org_id, env))  # REQ-2190
+        return
     cp_dialect = state.model_db.dialect
     from provisa.federation.engine import configured_engine_endpoint
 
@@ -1116,6 +1128,20 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
     # opens both planes.
     if org_id == state.org_id:
         await seed_org_registry_view()
+
+
+async def _seed_built_in_views(conn: "Connection") -> None:
+    """The built-in views of the meta, ontology and ops domains, made in the order their seeds
+    make them (_seed_meta_domain, _seed_ontology_domain, _seed_ops_domain), and nothing they
+    register."""
+    for ddl in (
+        *_META_TABLE_VIEWS.values(),
+        *ONTOLOGY_TABLE_VIEWS.values(),
+        *_OPS_LOG_TABLE_VIEWS.values(),
+        _ops_table_usage_ddl(),
+        *_OPS_REPORT_VIEWS.values(),
+    ):
+        await _seed_view(conn, ddl)
 
 
 async def seed_org_registry_view() -> bool:  # REQ-1301

@@ -208,7 +208,15 @@ while :; do
       others+=("$name")
     fi
   done
+  first=${#waiting[@]}
   for name in ${waiting[@]+"${waiting[@]}"} ${others[@]+"${others[@]}"}; do
+    # Asked for again while it goes over the demos already up: the run goes again at once, the
+    # demo now waited on first. Run to its end, an open waited behind every demo up (REQ-2049).
+    if [ "$first" -le 0 ] && [ -e "$signal" ]; then
+      echo "demo stores: asked for during the run; syncing the demos waited on first"
+      break
+    fi
+    first=$((first - 1))
     # One demo that cannot be synced does not keep the others from theirs; the run still fails.
     # Not `( ... ) || ...`: bash ignores errexit inside a command on the left of ||.
     set +e
