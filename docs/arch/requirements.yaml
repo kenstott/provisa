@@ -81395,7 +81395,14 @@
     opened from it fails on a column added since. So (the lead''s rule, carrying out the decision) a patch
     keeps a template when both its demo bundle''s version and the shape of the control-plane tables the
     current code creates (a fingerprint of their DDL) match what built it, and resets and rebuilds it otherwise.
-    Sandboxes opened from a kept template are reset as before.'
+    Sandboxes opened from a kept template are reset as before. (Amended 2026-11-03, A patch keeps warm demo
+    templates:) Maintainer 2026-11-03: a cloud patch keeps the demo templates that are still good, so the
+    first open of each demo after a deploy does not wait for its template to rebuild. The reset exists because
+    there are no migrations: a template built by older code keeps its old tables, and a sandbox opened from
+    it fails on a column added since. So (the lead''s rule, carrying out the decision) a patch keeps a template
+    when both its demo bundle''s version and the shape of the control-plane tables the current code creates
+    (a fingerprint of their DDL) match what built it, and resets and rebuilds it otherwise. Sandboxes opened
+    from a kept template are reset as before.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true
