@@ -595,3 +595,20 @@ def test_a_functions_definition_is_postgresql_17s(signature, md5):
 def test_an_aggregates_definition_is_refused_as_postgresql_refuses_it():
     with pytest.raises(Exception, match='"max" is an aggregate function'):
         _value("SELECT pg_catalog.pg_get_functiondef('pg_catalog.max(integer)'::regprocedure) AS v")
+
+
+def test_the_catalogs_foreign_keys_are_postgresql_17s():
+    rows = _rows('SELECT pg_catalog."pg_get_catalog_foreign_keys"() AS v')
+    assert len(rows) == 219
+    assert rows[0] == ("(pg_proc,{pronamespace},pg_namespace,{oid},f,f)",)
+
+
+@pytest.mark.parametrize(
+    "sql,expected",
+    [
+        ("SELECT pg_catalog.\"pg_settings_get_flags\"('work_mem'::text) AS v", ["EXPLAIN"]),
+        ("SELECT pg_catalog.pg_settings_get_flags('no_such_setting') AS v", None),
+    ],
+)
+def test_a_settings_flags_are_postgresql_17s(sql, expected):
+    assert _value(sql) == expected

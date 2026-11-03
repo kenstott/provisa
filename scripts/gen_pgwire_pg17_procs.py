@@ -43,6 +43,18 @@ select json_agg(json_build_array(p.oid::bigint, pg_get_function_arguments(p.oid)
 from pg_proc p join pg_aggregate a on a.aggfnoid = p.oid where a.aggkind <> 'n'
 """
 
+_FOREIGN_KEYS_SQL = """
+select json_agg(json_build_array(fktable::text, fkcols::text, pktable::text, pkcols::text, is_array,
+  is_opt) order by k.n)
+from pg_get_catalog_foreign_keys() with ordinality as k(fktable, fkcols, pktable, pkcols, is_array,
+  is_opt, n)
+"""
+
+_SETTING_FLAGS_SQL = """
+select json_agg(json_build_array(name, pg_settings_get_flags(name)::text) order by name)
+from pg_settings where pg_settings_get_flags(name) <> '{}'
+"""
+
 _DESCRIPTIONS_SQL = """
 select json_agg(json_build_array(d.objoid::bigint, d.classoid::bigint, d.objsubid, d.description)
   order by d.classoid, d.objoid, d.objsubid)
@@ -50,6 +62,7 @@ from pg_description d where d.objoid < 16384
 """
 
 _HEADER = '''# Copyright (c) 2026 Kenneth Stott
+# Canary: 54508974-2f97-4b60-a213-cb02a8bb9599
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -68,7 +81,9 @@ pronargdefaults, prorettype, proargtypes (oidvector text), proallargtypes, proar
 prosqlbody (pg_get_function_sqlbody's text). ORDERED_SET_ARGUMENTS: an ordered-set or
 hypothetical-set aggregate's arguments as pg_get_function_arguments writes them, its direct and
 aggregated arguments parted by ORDER BY, which pg_proc alone does not tell. DESCRIPTIONS:
-pg_description's rows of what PostgreSQL ships: objoid, classoid, objsubid, description."""
+pg_description's rows of what PostgreSQL ships: objoid, classoid, objsubid, description.
+CATALOG_FOREIGN_KEYS: pg_get_catalog_foreign_keys' rows, each array as its text. SETTING_FLAGS:
+pg_settings_get_flags' answer of each setting that has a flag, as its text."""
 
 # Requirements: REQ-2190
 
@@ -94,13 +109,19 @@ def main() -> None:
     procs = [_tuple(r) for r in json.loads(_psql(prefix, _PROCS_SQL))]
     ordered = {oid: args for oid, args in json.loads(_psql(prefix, _ORDERED_SET_SQL))}
     descriptions = [tuple(r) for r in json.loads(_psql(prefix, _DESCRIPTIONS_SQL))]
+    foreign_keys = [tuple(r) for r in json.loads(_psql(prefix, _FOREIGN_KEYS_SQL))]
+    flags = {name: flag for name, flag in json.loads(_psql(prefix, _SETTING_FLAGS_SQL))}
     lines = [_HEADER.format(version=version), "PROCS: tuple[tuple, ...] = (\n"]
     lines += [f"    {row!r},\n" for row in procs]
     lines += [")\n\nORDERED_SET_ARGUMENTS: dict[int, str] = {\n"]
     lines += [f"    {oid!r}: {args!r},\n" for oid, args in sorted(ordered.items())]
     lines += ["}\n\nDESCRIPTIONS: tuple[tuple[int, int, int, str], ...] = (\n"]
     lines += [f"    {row!r},\n" for row in descriptions]
-    lines += [")\n"]
+    lines += [")\n\nCATALOG_FOREIGN_KEYS: tuple[tuple[str, str, str, str, bool, bool], ...] = (\n"]
+    lines += [f"    {row!r},\n" for row in foreign_keys]
+    lines += [")\n\nSETTING_FLAGS: dict[str, str] = {\n"]
+    lines += [f"    {name!r}: {flag!r},\n" for name, flag in sorted(flags.items())]
+    lines += ["}\n"]
     OUT_PATH.write_text("".join(lines))
 
 

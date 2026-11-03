@@ -23,6 +23,7 @@ from __future__ import annotations
 import re
 
 from provisa.pgwire.catalog_pg17_acl import NO_PUBLIC_SELECT, PG17_ROLES, REVOKED_FUNCTIONS
+from provisa.pgwire.catalog_pg17_procs import CATALOG_FOREIGN_KEYS, SETTING_FLAGS
 from provisa.transpiler.metadata_oids import SYSTEM_SCHEMA_OIDS
 
 _OLD_RELATION = re.compile(r"\b_pg_([a-z_]+)\b")
@@ -769,17 +770,6 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
                 ("error", "VARCHAR"),
             ),
         ),
-        (
-            "pg_get_catalog_foreign_keys",
-            (
-                ("fktable", "BIGINT"),
-                ("fkcols", "VARCHAR[]"),
-                ("pktable", "BIGINT"),
-                ("pkcols", "VARCHAR[]"),
-                ("is_array", "BOOLEAN"),
-                ("is_opt", "BOOLEAN"),
-            ),
-        ),
         ("pg_config", (("name", "VARCHAR"), ("setting", "VARCHAR"))),
     ):
         a.rows(name, "", columns, "false")  # fmt: skip
@@ -1297,6 +1287,14 @@ def _shipped(a: _Answers) -> None:
         PG_KEYWORDS,
         "TRUE",
     )
+    _listed(
+        a,
+        "pg_get_catalog_foreign_keys",
+        "",
+        "fktable, fkcols, pktable, pkcols, is_array, is_opt",
+        CATALOG_FOREIGN_KEYS,
+        "TRUE",
+    )
     # The default parser, the one parser PostgreSQL ships, by its oid or its name.
     _listed(
         a,
@@ -1475,11 +1473,17 @@ def _catalog_objects(a: _Answers) -> None:
     a.body("pg_notification_queue_usage", "", "CAST(0 AS DOUBLE PRECISION)", "DOUBLE PRECISION")
     a.body("pg_trigger_depth", "", "0", "INTEGER")
     a.strict("row_security_active", "rel", "BOOLEAN", "false")
+    # A setting's flags as PostgreSQL 17 gives them; one Provisa lists that has none, none.
+    flagged = " ".join(
+        f"WHEN '{name}' THEN CAST('{flags}' AS TEXT[])"
+        for name, flags in sorted(SETTING_FLAGS.items())
+    )
     a.strict(
         "pg_settings_get_flags",
         "name",
         "VARCHAR[]",
-        "(SELECT CAST(ARRAY[] AS TEXT[]) FROM _pg_settings _s WHERE _s.name = LOWER(name))",
+        f"CASE LOWER(name) {flagged} ELSE "
+        "(SELECT CAST(ARRAY[] AS TEXT[]) FROM _pg_settings _s WHERE _s.name = LOWER(name)) END",
     )
     a.strict(
         "pg_extension_config_dump",
