@@ -28,12 +28,12 @@ import {
   Pencil,
   Share2,
   Table as TableIcon,
-  Trash2,
 } from "lucide-react";
 import type { DataProduct } from "../../types/admin";
 import { DqRulesModal } from "./DqRulesModal";
 import { OwnerResolutionInline } from "../../components/OwnerResolution";
 import { Tip } from "../../components/Tip";
+import { PanelDelete } from "../../components/list/PanelDelete";
 import { LineageDag } from "../../components/lineage/LineageDag";
 import type { DescribeColumn } from "../../components/lineage/column-descriptions";
 import type { ProductDq, ProductDqEntry, ProductLineage } from "../../api/lineage";
@@ -110,7 +110,8 @@ interface DataProductDetailPanelProps {
   relationLabel?: (relation: string) => string;
   /** Opens the edit form, on ``focus`` where given. */
   onEdit: (focus?: "supportContact") => void;
-  onDelete: () => void;
+  /** REQ-2198: resolves once the product is deleted and the list read again (PanelDelete). */
+  onDelete: () => Promise<boolean | void>;
   // REQ-1634 STATUS, REQ-2146: its lifecycle -- the products a successor is chosen from, the
   // members a retirement moves, its findings, and what follows a status change.
   products: DataProduct[];
@@ -961,20 +962,15 @@ export function DataProductDetailPanel({
             </Tip>
           )}
           {canDelete && (
-            <Tip text={t("dataProductsTab.deleteDataProduct", { id: p.id })} named>
-              <ActionIcon
-                variant="subtle"
-                color="red"
-                aria-label={t("dataProductsTab.deleteDataProduct", { id: p.id })}
-                data-testid={`data-product-detail-delete-${p.id}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-              >
-                <Trash2 size={14} />
-              </ActionIcon>
-            </Tip>
+            <PanelDelete
+              itemKey={p.id}
+              title={t("dataProductsTab.deleteTitle")}
+              consequence={t("dataProductsTab.deleteConfirm", { id: p.id })}
+              label={t("dataProductsTab.deleteDataProduct", { id: p.id })}
+              testId={`data-product-detail-delete-${p.id}`}
+              confirmTestId="data-product-delete-modal"
+              onDelete={onDelete}
+            />
           )}
         </Group>
       )}

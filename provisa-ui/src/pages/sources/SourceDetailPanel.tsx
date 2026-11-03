@@ -9,11 +9,11 @@
 // permission from the copyright holder.
 
 import { PanelActions } from "../../components/list/SplitPane";
+import { PanelDelete } from "../../components/list/PanelDelete";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Alert, Button, Group, Modal, Stack, Text } from "@mantine/core";
-import { Pencil, Trash2, ArrowRight, RefreshCw, Play } from "lucide-react";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { Pencil, ArrowRight, RefreshCw, Play } from "lucide-react";
 import type { Source } from "../../types/admin";
 import { useRefreshKaggleSource } from "../../hooks/useAdminQueries";
 import { runProfiler, type SourceRunOutcome } from "../../api/profiler";
@@ -26,7 +26,8 @@ interface SourceDetailPanelProps {
   fields: ReactNode;
   onEdit: () => void;
   onNavigate: () => void;
-  onDelete: () => void;
+  /** REQ-2198: resolves once the source is deleted and the list read again (PanelDelete). */
+  onDelete: () => Promise<boolean | void>;
 }
 
 export function SourceDetailPanel({
@@ -146,27 +147,14 @@ export function SourceDetailPanel({
               </ActionIcon>
             </Tip>
           )}
-          <ConfirmDialog
+          <PanelDelete
+            itemKey={s.id}
             title={t("sourceDetailPanel.deleteTitle", { id: s.id })}
             consequence={t("sourceDetailPanel.deleteConsequence", { id: s.id })}
-            onConfirm={onDelete}
-          >
-            {(open) => (
-              <Tip text={t("sourceDetailPanel.deleteTitleShort")} named>
-                <ActionIcon
-                  color="red"
-                  aria-label={t("sourceDetailPanel.deleteTitleShort")}
-                  data-testid="source-detail-delete"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    open();
-                  }}
-                >
-                  <Trash2 size={14} />
-                </ActionIcon>
-              </Tip>
-            )}
-          </ConfirmDialog>
+            label={t("sourceDetailPanel.deleteTitleShort")}
+            testId="source-detail-delete"
+            onDelete={onDelete}
+          />
         </Group>
       </PanelActions>
       {kaggleOrigin && (

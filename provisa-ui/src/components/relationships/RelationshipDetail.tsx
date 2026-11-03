@@ -13,10 +13,9 @@
 // place while it is open.
 
 import { useTranslation } from "react-i18next";
-import { ConfirmDialog } from "../ConfirmDialog";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { ActionIcon, Checkbox, Group, Select, Text, TextInput, NumberInput } from "@mantine/core";
-import { Trash2, Pencil, ArrowLeftRight } from "lucide-react";
+import { Pencil, ArrowLeftRight } from "lucide-react";
 import type { Relationship, ListedTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import { tableRef, type RelForm } from "./relationship-types";
@@ -25,6 +24,7 @@ import { RelationshipRead } from "./RelationshipRead";
 import { JunctionPanel } from "./JunctionPanel";
 import { ParametersPanel } from "./ParametersPanel";
 import { PanelActions } from "../list/SplitPane";
+import { PanelDelete } from "../list/PanelDelete";
 import { Tip } from "../Tip";
 
 interface RelationshipDetailProps {
@@ -35,7 +35,8 @@ interface RelationshipDetailProps {
   onStartEdit: () => void;
   /** Opens the form that creates this relationship's reverse. */
   onReverse: () => void;
-  onDelete: () => void;
+  /** REQ-2198: resolves once the relationship is deleted and the list read again (PanelDelete). */
+  onDelete: () => Promise<boolean | void>;
   onEditSave: () => void;
   saving: string | null;
   /** What the form says of a save that did not go through. */
@@ -93,26 +94,14 @@ export function RelationshipDetail({
                   <ArrowLeftRight size={14} />
                 </ActionIcon>
               </Tip>
-              <ConfirmDialog
+              <PanelDelete
+                itemKey={r.id}
                 title={t("relationshipRow.deleteTitle", { id: r.id })}
                 consequence={t("relationshipRow.deleteConsequence")}
-                onConfirm={onDelete}
-              >
-                {(open) => (
-                  <Tip text={t("relationshipRow.delete")} named>
-                    <ActionIcon
-                      color="red"
-                      aria-label={t("relationshipRow.delete")}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        open();
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </ActionIcon>
-                  </Tip>
-                )}
-              </ConfirmDialog>
+                label={t("relationshipRow.delete")}
+                testId="relationship-detail-delete"
+                onDelete={onDelete}
+              />
             </Group>
           </fieldset>
         </PanelActions>

@@ -1569,11 +1569,13 @@ export function SourcesPage() {
                 }
                 onEdit={() => handleEdit(s)}
                 onNavigate={() => navigate(`/tables?source=${encodeURIComponent(s.id)}`)}
+                // REQ-2198: resolves once the list is read again without the source; the
+                // panel's Delete closes the panel and says why a failed one did not go through.
                 onDelete={async () => {
                   const result = await deleteSource(s.id);
-                  if (refusal.refused(result, s.id)) return;
-                  if (expanded === s.id) updateExpanded(null);
-                  load();
+                  if (refusal.refused(result, s.id)) return false;
+                  if (!result.success) throw new Error(serverMessage(result, result.message));
+                  await refetchSources();
                 }}
               />
             )}
@@ -1709,6 +1711,7 @@ export function SourcesPage() {
                         return (
                           <React.Fragment key={s.id}>
                             <ListRow
+                              itemKey={s.id}
                               testId={`sources-row-${s.id}`}
                               // The row whose detail the right-hand panel is showing.
                               selected={isExpanded}

@@ -205,13 +205,17 @@ export function RelationshipsPage() {
       const lost = tagLossOf(result);
       if (lost) {
         setTagLoss({ columns: lost, retry: { kind: "delete", id } });
-        return;
+        return false;
       }
-      if (refusal.refused(result, id)) return;
+      if (refusal.refused(result, id)) return false;
+      // REQ-2198: a failed delete is said by the panel's Delete (PanelDelete), which it unlocks.
+      if (!result.success) throw new Error(serverMessage(result, result.message));
+      // The list read again without it before the panel closes.
+      await refetchRels();
       setExpanded((prev) => (prev === id ? null : prev));
       setEditingRel(null);
     },
-    [deleteRelationship, refusal],
+    [deleteRelationship, refusal, refetchRels],
   );
 
   const handleAdd = useCallback(
@@ -342,7 +346,7 @@ export function RelationshipsPage() {
   const retryTagLoss = (resolve: TagLossResolution) => {
     const retry = (tagLoss as NonNullable<typeof tagLoss>).retry;
     setTagLoss(null);
-    if (retry.kind === "delete") void handleDelete(retry.id, resolve);
+    if (retry.kind === "delete") void handleDelete(retry.id, resolve).catch(() => {});
     else if (retry.kind === "save") void handleEditSave(resolve);
     else void handleAdd(resolve);
   };

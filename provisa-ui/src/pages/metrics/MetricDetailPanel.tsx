@@ -10,9 +10,10 @@
 
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Group, Stack, Text } from "@mantine/core";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil } from "lucide-react";
 import type { Metric } from "../../types/admin";
 import { PanelActions } from "../../components/list/SplitPane";
+import { PanelDelete } from "../../components/list/PanelDelete";
 import { Tip } from "../../components/Tip";
 import { DetailFields } from "../../components/detail/DetailFields";
 
@@ -20,7 +21,8 @@ interface MetricDetailPanelProps {
   m: Metric;
   dependentViews: string[];
   onEdit: () => void;
-  onDelete: () => void;
+  /** REQ-2198: resolves once the metric is deleted and the list read again (PanelDelete). */
+  onDelete: () => Promise<boolean | void>;
 }
 
 // A metric's Edit and Delete. In the page's detail panel they sit in its pinned head
@@ -32,7 +34,8 @@ function MetricActions({
 }: {
   m: Metric;
   onEdit: () => void;
-  onDelete: () => void;
+  /** REQ-2198: resolves once the metric is deleted and the list read again (PanelDelete). */
+  onDelete: () => Promise<boolean | void>;
 }) {
   const { t } = useTranslation();
   return (
@@ -51,19 +54,15 @@ function MetricActions({
               <Pencil size={14} />
             </ActionIcon>
           </Tip>
-          <Tip text={t("metricsPage.deleteMetric", { name: m.name })} named>
-            <ActionIcon
-              color="red"
-              aria-label={t("metricsPage.deleteMetric", { name: m.name })}
-              data-testid={`metric-detail-delete-${m.name}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-            >
-              <Trash2 size={14} />
-            </ActionIcon>
-          </Tip>
+          <PanelDelete
+            itemKey={m.name}
+            title={t("metricsPage.deleteTitle")}
+            consequence={t("metricsPage.deleteConfirm", { name: m.name })}
+            label={t("metricsPage.deleteMetric", { name: m.name })}
+            testId={`metric-detail-delete-${m.name}`}
+            confirmTestId="metric-delete-modal"
+            onDelete={onDelete}
+          />
         </Group>
       </fieldset>
     </PanelActions>

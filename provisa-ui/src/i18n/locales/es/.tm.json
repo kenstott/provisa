@@ -9148,5 +9148,9 @@
   "es/sourceFormFieldsExtended.json::sourceFormFieldsExtended.qbSignInFailed": "The sign-in could not be completed.",
   "es/serverErrors.json::serverErrors.source_sign_in.client_missing": "Enter the app's client ID and client secret, then sign in.",
   "es/serverErrors.json::serverErrors.source_sign_in.client_not_taken": "This kind of source signs in with your organization's client, not one entered on the form.",
-  "es/serverErrors.json::serverErrors.source_sign_in.no_account_returned": "The sign-in was approved, but the answer did not say which account ({{parameter}}). Sign in again."
+  "es/serverErrors.json::serverErrors.source_sign_in.no_account_returned": "The sign-in was approved, but the answer did not say which account ({{parameter}}). Sign in again.",
+  "es.json::common.deleting": "Deleting…",
+  "es.json::common.deleteFailed": "Not deleted: {{reason}}",
+  "es/tableReadView.json::tableReadView.deleteTitle": "Delete table {{name}}?",
+  "es/tableReadView.json::tableReadView.deleteConsequence": "The table's registration is deleted."
 }
