@@ -16,7 +16,8 @@ Three calls, each open to whoever may add a source in the caller's organisation:
   the kind of source, and whether the caller is one who may enter it;
 - ``POST /admin/source-sign-in/start`` -- records the sign-in with the ORGANISATION's client
   (``core.mail_platforms``; none is sent by the form) and answers the address the operator's
-  browser is sent to;
+  browser is sent to. A kind whose client is the source's own (QuickBooks, REQ-2197) is sent
+  that client by the form, as the source's settings hold it, and reads no organisation entry;
 - ``POST /admin/source-sign-in/complete`` -- takes the issuer's answer, which the page the
   browser came back to handed to the form that started the sign-in.
 
@@ -35,6 +36,7 @@ from typing import Any
 
 import provisa.google_workspace.sign_in  # noqa: F401  (registers the Google kind)
 import provisa.microsoft365.sign_in  # noqa: F401  (registers the Microsoft kind)
+import provisa.quickbooks.sign_in  # noqa: F401  (registers the QuickBooks kind)
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.admin.environments_router import _caller_user_id
 from provisa.api.errors import ApiError
@@ -46,9 +48,21 @@ from provisa.core.source_sign_in import SignInRefused
 router = APIRouter(prefix="/admin/source-sign-in", tags=["admin", "sources"])
 
 
+class SourceClient(BaseModel):
+    """REQ-2197: a source's own client, as its settings hold it: each a value or a
+    ``${secret:...}`` reference, resolved in the organisation's vault."""
+
+    client_id: str
+    client_secret: str
+
+    def __repr__(self) -> str:  # a client is never printed with its secret
+        return f"SourceClient(client_id={self.client_id!r})"
+
+
 class StartRequest(BaseModel):
     """What the person adding a source gives. The client is the organisation's and is read
-    from its mail-platform setting, never sent here."""
+    from its mail-platform setting, never sent here -- except for a kind whose client is the
+    source's own (``client``)."""
 
     source_id: str
     kind: str
@@ -56,12 +70,15 @@ class StartRequest(BaseModel):
     #: REQ-1994: the source's settings as the form states them; the server asks for the scopes
     #: of what they read (the source kind's ``scopes``), never a list the form makes.
     mapping: dict[str, Any]
+    client: SourceClient | None = None
 
 
 class CompleteRequest(BaseModel):
     state: str
     code: str | None = None
     error: str | None = None
+    #: REQ-2197: the company Intuit's return address names (its ``realmId``).
+    realm_id: str | None = None
 
 
 def _admin_db() -> Database:
@@ -174,6 +191,38 @@ async def status(
     }
 
 
+async def _resolved(entered: str) -> str:
+    """A value of a source's settings, resolved in the vault of the caller's organisation."""
+    from provisa.core.secrets import resolve_secrets
+    from provisa.core.secrets_store import bound_to_request_org
+
+    async with bound_to_request_org():
+        return resolve_secrets(entered)
+
+
+async def _client(org_id: str, body: StartRequest) -> tuple[str, str | None, dict[str, str]]:
+    """The client a sign-in is started with: its id, its secret as entered where it is the
+    source's own, and what the issuer's addresses are made from."""
+    kind = source_sign_in.KINDS.get(body.kind)
+    if kind is not None and kind.client_of_source:
+        given = body.client
+        if given is None or not (given.client_id.strip() and given.client_secret.strip()):
+            raise SignInRefused(
+                "client_missing", "Enter the app's client id and client secret, then sign in"
+            )
+        # The id is sent to the issuer, so it is resolved now; the secret is resolved only
+        # when the code is exchanged.
+        client_id = await _resolved(given.client_id.strip())
+        return client_id, given.client_secret.strip(), {}
+    if body.client is not None:
+        raise SignInRefused(
+            "client_not_taken", "This kind of source signs in with the organisation's client"
+        )
+    # The organisation's own client, and no other organisation's.
+    entry = await mail_platforms.require(_admin_db(), org_id, body.kind)
+    return entry.client, None, entry.settings
+
+
 @router.post("/start")
 async def start(request: Request, body: StartRequest) -> dict:
     require_capability_request(request, "source_registration")
@@ -181,10 +230,11 @@ async def start(request: Request, body: StartRequest) -> dict:
 
     org_id, env, user_id = require_current_org(), active_env(), _starter(request)
     try:
-        # The organisation's own client, and no other organisation's.
-        client = await mail_platforms.require(_admin_db(), org_id, body.kind)
+        client_id, client_secret, settings = await _client(org_id, body)
     except MailPlatformRefused as refused:
         raise ApiError(refused.status, refused.code, str(refused), None, **refused.params) from None
+    except SignInRefused as refused:
+        raise _refusal(refused) from None
     try:
         await source_sign_in.sweep(
             _admin_db(),
@@ -202,9 +252,12 @@ async def start(request: Request, body: StartRequest) -> dict:
             kind_id=body.kind,
             account=body.account.strip(),
             mapping=body.mapping,
-            client_id=client.client,
+            client_id=client_id,
             public_address=_public_address(),
-            settings=client.settings,
+            settings=settings,
+            # Only a source's own client is handed over; an organisation's secret is read
+            # from its entry when the code is exchanged.
+            **({"client_secret": client_secret} if client_secret else {}),
         )
     except SignInRefused as refused:
         raise _refusal(refused) from None
@@ -231,6 +284,7 @@ async def complete(request: Request, body: CompleteRequest) -> dict:
             code=body.code,
             error=body.error,
             keep_grant=_keep_grant(org_id),
+            returned={"realmId": body.realm_id},
         )
     except SignInRefused as refused:
         raise _refusal(refused) from None
