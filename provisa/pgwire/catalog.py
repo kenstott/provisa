@@ -571,6 +571,8 @@ class CatalogSession:
     #: What the connection's own set_config(name, value, false) set (the connection's dict, which
     #: a set_config here writes): current_setting reads it back. Never a catalog view's setting.
     client_settings: dict[str, str] | None = None
+    #: The cursors pg_cursors lists of the connection: its DECLAREd ones and the open portal.
+    cursors: tuple[dict, ...] = ()
 
 
 def _session_settings(sql: str, session: CatalogSession | None) -> Mapping[str, str]:
@@ -666,10 +668,18 @@ def _catalog_request(
             **({"query": sql} if "pg_stat_activity" in sql.lower() else {}),
             **({"locks": _advisory_locks(session)} if "pg_locks" in sql.lower() else {}),
             **({"enums": _enums_told(enums)} if enums else {}),
+            **({"cursors": _cursors_told(session)} if "pg_cursor" in sql.lower() else {}),
         },
         enums=enums,
         reltuples=row_counts(role_id, state) if "reltuples" in sql.lower() else {},
     )
+
+
+def _cursors_told(session: CatalogSession | None) -> str:
+    """The connection's cursors, as pg_cursors' view reads them (JSON)."""
+    import json
+
+    return json.dumps(list(session.cursors) if session is not None else [])
 
 
 def _enums_told(enums: tuple) -> str:

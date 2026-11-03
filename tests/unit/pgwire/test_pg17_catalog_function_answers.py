@@ -773,3 +773,40 @@ def test_enum_in_reads_a_label_of_a_sources_enum():
         PostgresError, match='invalid input value for enum conformance.probe_enum: "z"'
     ):
         with_source_enums(sql.replace("'a'::cstring", "'z'::cstring"), enums)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT pg_catalog.\"json_object\"('{a,b,c}'::text[], '{a,b,c}'::text[]) AS v",
+        "SELECT pg_catalog.json_object('{a,1,b,2}'::text[]) AS v",
+    ],
+)
+def test_json_object_is_the_engines_not_the_catalogs(sql):
+    # A function of its arguments alone: the engine answers it, with its json text, as
+    # json_build_object is answered. Read through the catalog, the engine's json came back as
+    # its driver's decoded value.
+    from provisa.pgwire.catalog import classify
+    from provisa.transpiler.transpile import transpile
+
+    assert classify(sql) == "PASS_THROUGH"
+    assert "json_object" in transpile(sql, "postgres").lower()
+
+
+@pytest.mark.parametrize(
+    "sql,expected",
+    [
+        ('SELECT pg_catalog."pg_column_size"(3::integer) AS v', 4),
+        ("SELECT pg_catalog.pg_column_size(3) AS v", 4),
+        ("SELECT pg_catalog.pg_column_size(3::bigint) AS v", 8),
+        ("SELECT pg_catalog.pg_column_size(3000000000) AS v", 8),
+        ("SELECT pg_catalog.pg_column_size(true) AS v", 1),
+        ("SELECT pg_catalog.pg_column_size('abc'::text) AS v", 7),
+        ("SELECT pg_catalog.pg_column_size('abc') AS v", 4),
+        ("SELECT pg_catalog.pg_column_size('a'::varchar) AS v", 5),
+        ("SELECT pg_catalog.pg_column_size('2020-01-01'::date) AS v", 4),
+        ("SELECT pg_catalog.pg_column_size(NULL::integer) AS v", None),
+    ],
+)
+def test_a_computed_values_size_is_postgresql_17s(sql, expected):
+    assert _value(sql) == expected

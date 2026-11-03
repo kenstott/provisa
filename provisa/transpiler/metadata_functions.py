@@ -580,7 +580,6 @@ _NOTHING_KEPT: tuple[tuple[str, tuple[int, ...], str], ...] = (
     ("pg_table_size", (1,), "BIGINT"),
     ("pg_database_size", (1,), "BIGINT"),
     ("pg_tablespace_size", (1,), "BIGINT"),
-    ("pg_column_size", (1,), "INTEGER"),
 )
 
 
@@ -1074,6 +1073,9 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
         name, args = call.name.lower(), list(call.expressions)
         if on_the_engine and name in _IN_THE_MACRO_TABLE:
             return node
+        if name == "pg_column_size" and len(args) == 1:
+            sized = _column_size(args[0].transform(rewrite))
+            return exp.alias_(sized, name) if _is_column(node) else sized
         if (name, len(args)) in _OF_A_USER:
             user, *args = args
             written = _of_session_role(
@@ -1105,6 +1107,53 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
         written = out.args["with_"]
         written.set("expressions", sorted(written.expressions, key=lambda c: c.alias not in needed))
     return out
+
+
+#: The bytes a value of a fixed-width type takes, by the type's name as a cast writes it.
+_FIXED_WIDTHS = {
+    "smallint": 2, "int2": 2, "integer": 4, "int": 4, "int4": 4, "bigint": 8, "int8": 8,
+    "real": 4, "float4": 4, "double precision": 8, "float8": 8, "boolean": 1, "bool": 1,
+    "date": 4, "time": 8, "time without time zone": 8, "timetz": 12, "time with time zone": 12,
+    "timestamp": 8, "timestamp without time zone": 8, "timestamptz": 8,
+    "timestamp with time zone": 8, "interval": 16, "uuid": 16, "oid": 4, '"char"': 1,
+    "money": 8,
+}  # fmt: skip
+#: The types whose value is its bytes behind a 4-byte header, where it is computed, not stored.
+_VARLENA = frozenset({"text", "varchar", "character varying", "bytea"})
+_INT4_MAX = 2**31 - 1
+
+
+def _column_size(value: exp.Expr) -> exp.Expr:
+    """pg_column_size of a value the statement computes: a fixed-width type's width, a text's
+    bytes and its 4-byte header, an untyped literal's bytes as a C string. A stored value's size
+    is its source's, which Provisa does not report: NULL (no storage, never a made-up size)."""
+    unknown = exp.cast(exp.null(), "INT")
+    if any(value.find_all(exp.Column)):
+        return unknown
+    if isinstance(value, exp.Null):
+        return unknown
+    if isinstance(value, exp.Boolean):
+        return exp.Literal.number(1)
+    if isinstance(value, exp.Literal):
+        if value.is_string:
+            return exp.Literal.number(len(value.this.encode()) + 1)
+        if value.this.lstrip("-").isdigit():
+            return exp.Literal.number(4 if abs(int(value.this)) <= _INT4_MAX else 8)
+        return unknown
+    if isinstance(value, exp.Cast):
+        said = value.to.sql(dialect="postgres").lower()
+        width = _FIXED_WIDTHS.get(said)
+        if width is not None:
+            return exp.Case(
+                ifs=[exp.If(this=exp.Is(this=value.copy(), expression=exp.null()), true=unknown)],
+                default=exp.Literal.number(width),
+            )
+        if said.split("(")[0] in _VARLENA:
+            return exp.Add(
+                this=exp.Anonymous(this="OCTET_LENGTH", expressions=[value.copy()]),
+                expression=exp.Literal.number(4),
+            )
+    return unknown
 
 
 def _is_column(node: exp.Expr) -> bool:

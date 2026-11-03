@@ -1345,16 +1345,8 @@ def _catalog_objects(a: _Answers) -> None:
         "",
         "SELECT _e.name, _e.default_version, _e.comment FROM meta.catalog_pg_available_extensions _e",
     )
-    a.rows(
-        "pg_cursor",
-        "",
-        (
-            ("name", "TEXT"), ("statement", "TEXT"), ("is_holdable", "BOOLEAN"),
-            ("is_binary", "BOOLEAN"), ("is_scrollable", "BOOLEAN"),
-            ("creation_time", "TIMESTAMPTZ"),
-        ),
-        "FALSE",
-    )  # fmt: skip
+    # The connection's cursors and its open portal (catalog._cursors_told).
+    a.selected("pg_cursor", "", "SELECT * FROM meta.catalog_pg_cursors")
     a.selected("pg_show_all_settings", "", "SELECT * FROM meta.catalog_pg_settings")
     a.body("getdatabaseencoding", "", "'UTF8'")
     a.body("pg_client_encoding", "", "'UTF8'")

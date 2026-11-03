@@ -56,11 +56,12 @@ def test_the_encoding_is_utf8_and_its_number_six():
 
 
 def test_a_size_is_unknown_and_the_clients_size_queries_run():
-    # Provisa reports no storage: every size is NULL, never a made-up 0.
+    # Provisa reports no storage: every size is NULL, never a made-up 0. pg_column_size of a
+    # value the statement computes is no storage: the integer 1 takes PostgreSQL's 4 bytes.
     assert _rows(
         "SELECT pg_relation_size(1), pg_total_relation_size(1), pg_indexes_size(1), "
         "pg_table_size(1), pg_database_size(1), pg_tablespace_size(1), pg_column_size(1)"
-    ) == [(None,) * 7]
+    ) == [(None,) * 6 + (4,)]
     # psql \l+ and \dP+, DBeaver's database sizes, pgAdmin's tablespace statistics.
     assert _rows(
         "SELECT d.datname, CASE WHEN pg_catalog.has_database_privilege(d.datname, 'CONNECT') "

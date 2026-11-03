@@ -40,6 +40,7 @@ NAMES = (
     "query",
     "locks",
     "enums",
+    "cursors",
     "scope",
     "asked",
 )

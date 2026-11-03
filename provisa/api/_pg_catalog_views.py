@@ -1654,6 +1654,28 @@ def _source_enum_types() -> str:
     )
 
 
+def _pg_cursors() -> str:
+    """The asking connection's cursors (catalog._cursors_told): those it DECLAREd, and the
+    protocol portal whose statement is running, as PostgreSQL lists a portal a Bind created."""
+    relation = (_PG, "pg_cursors")
+    return _view(
+        relation,
+        _select(
+            relation,
+            {
+                "name": "c.cursor ->> 'name'",
+                "statement": "c.cursor ->> 'statement'",
+                "is_holdable": "CAST(c.cursor ->> 'is_holdable' AS BOOLEAN)",
+                "is_binary": "CAST(c.cursor ->> 'is_binary' AS BOOLEAN)",
+                "is_scrollable": "CAST(c.cursor ->> 'is_scrollable' AS BOOLEAN)",
+                "creation_time": "CAST(c.cursor ->> 'creation_time' AS TIMESTAMPTZ)",
+            },
+            f"FROM JSONB_ARRAY_ELEMENTS(COALESCE(CAST({setting('cursors')} AS JSONB), "
+            "CAST('[]' AS JSONB))) AS c(cursor)",
+        ),
+    )
+
+
 def _pg_enum() -> str:
     """Each label of a source's enum, in its order. A label's own oid is none the source tells,
     so it is numbered after its type's."""
@@ -1715,6 +1737,7 @@ _MODEL_VIEWS = {
     (_PG, "pg_stat_activity"): _pg_stat_activity,
     (_PG, "pg_locks"): _pg_locks,
     (_PG, "pg_enum"): _pg_enum,
+    (_PG, "pg_cursors"): _pg_cursors,
     (_PG, "pg_type"): _pg_type,
     (_IS, "tables"): _is_tables,
     (_IS, "columns"): _is_columns,

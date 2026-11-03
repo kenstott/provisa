@@ -1132,7 +1132,6 @@ REWRITTEN = frozenset(
         "convert",
         "getpgusername",
         "json_each",
-        "json_object",
         "normalize",
         "pg_indexam_has_property",
         "pg_input_error_info",

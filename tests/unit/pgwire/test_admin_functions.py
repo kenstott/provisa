@@ -424,3 +424,50 @@ async def test_a_notification_statement_is_refused_by_name(port, served, sql, ve
             await a.execute(sql)
     finally:
         await a.close()
+
+
+_EXTENDED_PROTOCOL_CLIENT = """
+import json, sys
+import psycopg
+
+port, sql = int(sys.argv[1]), sys.argv[2]
+with psycopg.connect(
+    host="127.0.0.1", port=port, user="alice", password="secret", dbname="provisa",
+    connect_timeout=10,
+) as conn:
+    pgconn = conn.pgconn
+    pgconn.send_query_params(sql.encode(), [], result_format=0)
+    rows, res = [], pgconn.get_result()
+    while res is not None:
+        rows += [
+            [None if (v := res.get_value(r, c)) is None else v.decode() for c in range(res.nfields)]
+            for r in range(res.ntuples)
+        ]
+        res = pgconn.get_result()
+print(json.dumps(rows))
+"""
+
+
+async def _over_the_extended_protocol(port: int, sql: str) -> list[tuple]:
+    """``sql`` over the extended protocol (Parse, Bind, Describe(Portal), Execute), as the
+    functions conformance run sends it, from a client process of its own."""
+    import json
+    import sys
+
+    client = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", _EXTENDED_PROTOCOL_CLIENT, str(port), sql,
+        stdout=asyncio.subprocess.PIPE,
+    )  # fmt: skip
+    out, _ = await asyncio.wait_for(client.communicate(), timeout=60)
+    return [tuple(row) for row in json.loads(out)]
+
+
+@pytest.mark.asyncio
+async def test_pg_cursor_lists_the_portal_running_the_statement(port, served):
+    # As PostgreSQL 17 lists the unnamed portal a Bind created: name '', the statement, not
+    # holdable, not binary, not scrollable.
+    sql = "SELECT pg_catalog.pg_cursor() AS v"
+    ((listed,),) = await _over_the_extended_protocol(port, sql)
+    assert listed.startswith(f'("","{sql}",f,f,f,"')
+    listing = "SELECT name, statement, is_holdable FROM pg_catalog.pg_cursors"
+    assert await _over_the_extended_protocol(port, listing) == [("", listing, "f")]

@@ -24,6 +24,7 @@ from __future__ import annotations
 from provisa.compiler.sql_literals import sql_literal
 
 import json
+import contextlib
 import datetime
 import decimal
 import logging
@@ -1478,6 +1479,11 @@ class _CursorState:  # REQ-1862
     query_result: ProvisaQueryResult
     source: Iterator[list]
     scrollable: bool = False
+    # What pg_cursors lists of it (REQ-2167): the DECLARE as written, WITH HOLD, BINARY, and when.
+    statement: str = ""
+    holdable: bool = False
+    binary: bool = False
+    created: datetime.datetime | None = None
     buffer: list = _dc_field(default_factory=list)
     pos: int = 0
     source_exhausted: bool = False
@@ -1694,6 +1700,10 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-2167: what this session's set_config(name, value, false) set, by name, which its
         # current_setting reads back as PostgreSQL's does.
         self.client_settings: dict[str, str] = {}
+        # REQ-2167: the protocol portal whose statement is running, which pg_cursors lists
+        # beside the DECLAREd cursors: its name, statement, whether binary, and when bound.
+        self.open_portal: tuple[str, str, bool, datetime.datetime] | None = None
+        self.portal_bound: dict[str, datetime.datetime] = {}
         # REQ-2167: this connection's two ends, (host, port), set when it starts.
         self.client_end: tuple = ()
         self.server_end: tuple = ()
@@ -2007,6 +2017,34 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     value = locks.try_acquire(key, mode, self, transaction=transaction)
         return value, warnings
 
+    def _listed_cursors(self) -> tuple[dict[str, Any], ...]:
+        """What pg_cursors lists of this session: each DECLAREd cursor, and the protocol portal
+        whose statement is running, as PostgreSQL lists a portal a Bind created (REQ-2167)."""
+        listed = [
+            {
+                "name": c.name,
+                "statement": c.statement,
+                "is_holdable": c.holdable,
+                "is_binary": c.binary,
+                "is_scrollable": c.scrollable,
+                "creation_time": c.created.isoformat() if c.created else None,
+            }
+            for c in self.cursors.values()
+        ]
+        if self.open_portal is not None:
+            name, statement, binary, bound = self.open_portal
+            listed.append(
+                {
+                    "name": name,
+                    "statement": statement,
+                    "is_holdable": False,
+                    "is_binary": binary,
+                    "is_scrollable": False,
+                    "creation_time": bound.isoformat(),
+                }
+            )
+        return tuple(listed)
+
     def _with_advisory_answered(self, sql: str, params: Any) -> str | None:
         """``sql`` with each advisory lock function it calls among other things answered, each
         lock taken (or released) in the order the statement names them; None where it calls none,
@@ -2235,6 +2273,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     self.zone,
                     self.org_id,
                     self.client_settings,
+                    self._listed_cursors(),
                 ),
                 run=self._catalog_read,
             )
@@ -2736,6 +2775,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             return
         try:
             _refuse_wrong_parameter_count(ctx, payload)
+            if self._session is not None:
+                portal = bytes(payload[: payload.index(0)]).decode("utf-8")
+                self._session.portal_bound[portal] = datetime.datetime.now(datetime.timezone.utc)
             super().handle_bind(ctx, payload)
         except Exception as exc:  # noqa: BLE001 -- answered as the statement's ErrorResponse
             self.send_error(exc, ctx)
@@ -3515,7 +3557,26 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                     if closer is not None:
                         closer()
             return
-        super().handle_describe(ctx, payload)
+        with self._portal_open(
+            ctx, ba[1 : len(ba) - 1].decode("utf-8") if ba[0] == ord("P") else None
+        ):
+            super().handle_describe(ctx, payload)
+
+    @contextlib.contextmanager
+    def _portal_open(self, ctx: BVContext, portal: str | None):
+        """While a portal's statement runs, the session lists it as pg_cursors does (REQ-2167)."""
+        session = self._session
+        if portal is None or session is None or portal not in ctx.portals:
+            yield
+            return
+        stmt, _params, formats = ctx.portals[portal]
+        sql = ctx.stmts.get(stmt, ("",))[0]
+        bound = session.portal_bound.get(portal, datetime.datetime.now(datetime.timezone.utc))
+        session.open_portal = (portal, sql, bool(formats) and all(f == 1 for f in formats), bound)
+        try:
+            yield
+        finally:
+            session.open_portal = None
 
     def handle_execute(self, ctx: BVContext, payload: bytes) -> None:
         self._open_request()
@@ -3527,7 +3588,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             self.wfile.write(struct.pack("!ci", ServerResponse.EMPTY_QUERY_RESPONSE, 4))
             return
         try:
-            super().handle_execute(ctx, payload)
+            with self._portal_open(ctx, portal):
+                super().handle_execute(ctx, payload)
         except TimeoutError as exc:
             # REQ-1905: the deadline passed while rows were being sent. The statement ends with
             # an ErrorResponse and the rest of the cycle is skipped up to its Sync.
@@ -3610,6 +3672,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 query_result=query_result,
                 source=query_result.rows(),
                 scrollable=scrollable,
+                statement=stmt,
+                holdable=re.search(r"\bWITH\s+HOLD\b", stmt, re.IGNORECASE) is not None,
+                binary=re.search(r"\bBINARY\b", stmt.split("CURSOR")[0], re.IGNORECASE) is not None,
+                created=datetime.datetime.now(datetime.timezone.utc),
             )
             self.send_command_complete("DECLARE CURSOR\x00")
         except PermissionError as exc:
