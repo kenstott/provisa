@@ -23,6 +23,7 @@ from typing import Any, cast
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.compiler import walk_checks
 from provisa.core import settings_registry
 from provisa.gql.label_map import (
     CypherLabelMap,
@@ -309,8 +310,10 @@ def _bar(expr: Any) -> Any:  # pyright: ignore[reportPrivateImportUsage]  # lib 
 def _untaken(trail: Any, edge: Any) -> Any:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """True when ``edge`` is not on ``trail`` (``|edge|edge|``): the visited-relationship check a
     recursive walk's step carries, so no path takes a relationship twice (REQ-348)."""
-    return exp.EQ(
-        this=exp.StrPosition(this=trail, substr=_bar(edge)), expression=exp.Literal.number(0)
+    return walk_checks.record(
+        exp.EQ(
+            this=exp.StrPosition(this=trail, substr=_bar(edge)), expression=exp.Literal.number(0)
+        )
     )
 
 
