@@ -395,6 +395,14 @@ _ITEST_PORT_ENV = [
     "CLICKHOUSE_PORT",
     "FIREBIRD_PORT",
     "EXASOL_PORT",
+    # The engines only Conformance (functions) starts (docker-compose.test.yml): leased all the
+    # same, so a stack that ever starts one binds no fixed port.
+    "MYSQL_PORT",
+    "SINGLESTORE_PORT",
+    "MONETDB_PORT",
+    "OPENGAUSS_PORT",
+    "VERTICA_PORT",
+    "DB2_PORT",
     "SPLUNK_MGMT_PORT",
     "SPLUNK_HEC_PORT",
     "AIRPORT_PORT",

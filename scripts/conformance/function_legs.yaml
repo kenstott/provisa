@@ -1,0 +1,220 @@
+# The legs of Conformance (functions) (.github/workflows/conformance-functions.yml), one per engine
+# kind of provisa/core/engine_kinds.py ENGINE_KINDS that runs in a container a hosted runner can
+# boot, and why each other kind is not run. function_legs.py plans the workflow's matrix from it and
+# function_support.py merge lists it on the report. A unit test holds every engine kind to exactly
+# one of `legs` and `not_run`.
+#
+# Every direct-only source can be an engine (maintainer, 2026-11-03), so a leg measures the engine
+# and the direct path of its platform at once.
+#
+# A leg:
+#   engine        the engine kind ($PROVISA_ENGINE)
+#   lane          free: any dispatch; paid: only a dispatch with lanes paid or all, in the
+#                 conformance-paid environment, whose reviewers approve each run
+#   image         the container the engine runs in, as the report lists it
+#   service       the docker-compose.test.yml service the integration tests start for it (started by
+#                 scripts/conformance/engine_service.sh); none for in-process or external engines
+#   engine-url    $PROVISA_ENGINE_URL; a paid leg names the secret holding it (url-secret)
+#   ready-sql     a statement the engine URL answers once the engine accepts SQL (function_legs.py
+#                 wait); none where the service's own healthcheck says so
+#   setup-sql     statements run once it is ready, on setup-url (the URL without its database)
+#   pip           the SQLAlchemy dialect the engine URL names, where the locked environment has
+#                 none: installed into the leg's environment only (reported: the product ships none)
+#   apt           system libraries the dialect loads
+#   odbc          true when the dialect connects through Microsoft's ODBC Driver 18
+#   source-host   runner when the engine runs in a container and reads the conformance PostgreSQL
+#                 itself (ATTACH), by the runner's own address; else the source is read by Provisa
+#   wait          seconds the service gets to become ready (default 600)
+
+legs:
+  # --- in-process, or the runner's own PostgreSQL --------------------------------------------
+  - engine: duckdb
+    lane: free
+    image: in-process (duckdb)
+  - engine: pg
+    lane: free
+    image: postgres:17.11 (the workflow's PostgreSQL service)
+    engine-url: postgresql://postgres:conformance@127.0.0.1:55432/conformance
+  - engine: clickhouse
+    lane: free
+    image: in-process (chdb)
+  # The compose stack the Trino UI lane runs: the engine, its object store, its Arrow proxy, its
+  # metastore, and the control plane Trino reads over JDBC.
+  - engine: trino
+    lane: free
+    image: trinodb/trino:481 (docker-compose.core.yml)
+    control-plane-url: postgresql+psycopg://provisa:provisa@localhost:5432/provisa
+    boot-attempts: "300"
+  # Any SQLAlchemy URL: here the runner's PostgreSQL by its generic dialect, its own database.
+  - engine: sqlalchemy
+    lane: free
+    image: postgres:17.11 (the workflow's PostgreSQL service)
+    engine-url: postgresql+psycopg2://postgres:conformance@127.0.0.1:55432/postgres
+
+  # --- containers the integration tests already start (docker-compose.test.yml) -------------
+  - engine: clickhouse-server
+    lane: free
+    image: clickhouse/clickhouse-server:24.3
+    service: clickhouse
+    engine-url: clickhouse://default:provisa@127.0.0.1:8123/default
+    source-host: runner
+  - engine: mysql
+    lane: free
+    image: mysql:8.4
+    service: mysql
+    engine-url: mysql+pymysql://root:provisa@127.0.0.1:3307/provisa
+    ready-sql: SELECT 1
+  - engine: mariadb
+    lane: free
+    image: mariadb:11
+    service: mariadb
+    engine-url: mariadb+pymysql://root:provisa@127.0.0.1:3306/provisa
+    ready-sql: SELECT 1
+  - engine: tidb
+    lane: free
+    image: pingcap/tidb:latest
+    service: tidb
+    engine-url: mysql+pymysql://root@127.0.0.1:4000/test
+    ready-sql: SELECT 1
+  - engine: singlestore
+    lane: free
+    image: ghcr.io/singlestore-labs/singlestoredb-dev:latest
+    service: singlestore
+    engine-url: singlestoredb://root:provisa@127.0.0.1:3308/provisa
+    setup-url: singlestoredb://root:provisa@127.0.0.1:3308
+    setup-sql: CREATE DATABASE IF NOT EXISTS provisa
+    ready-sql: SELECT 1
+  - engine: mssql
+    lane: free
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    service: sqlserver
+    engine-url: mssql+pyodbc://sa:Provisa_2026!@127.0.0.1:1433/master?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes
+    ready-sql: SELECT 1
+    odbc: true
+  - engine: oracle
+    lane: free
+    image: gvenzl/oracle-free:slim
+    service: oracle
+    engine-url: oracle+oracledb://system:provisa@127.0.0.1:1521/?service_name=FREEPDB1
+    ready-sql: SELECT 1 FROM DUAL
+    wait: 900
+  - engine: firebird
+    lane: free
+    image: jacobalberty/firebird:v4
+    service: firebird
+    engine-url: firebird+firebird://provisa:provisa@127.0.0.1:3050//firebird/data/test.fdb
+    ready-sql: SELECT 1 FROM RDB$DATABASE
+    pip: sqlalchemy-firebird firebird-driver
+    apt: libfbclient2
+  - engine: cockroachdb
+    lane: free
+    image: cockroachdb/cockroach:v24.1.0
+    service: cockroachdb
+    engine-url: cockroachdb://root@127.0.0.1:26257/defaultdb?sslmode=disable
+    ready-sql: SELECT 1
+    pip: sqlalchemy-cockroachdb
+  - engine: yugabytedb
+    lane: free
+    image: yugabytedb/yugabyte:2026.1.1.1-b2
+    service: yugabytedb
+    engine-url: postgresql+psycopg2://yugabyte@127.0.0.1:5433/yugabyte
+    ready-sql: SELECT 1
+  - engine: greenplum
+    lane: free
+    image: datagrip/greenplum:6.8
+    service: greenplum
+    engine-url: postgresql+psycopg2://gpadmin@127.0.0.1:15432/postgres
+    ready-sql: SELECT 1
+    wait: 900
+  - engine: exasol
+    lane: free
+    image: exasol/docker-db:latest
+    service: exasol
+    engine-url: exa+websocket://sys:exasol@127.0.0.1:8563/PROVISA?SSLCertificate=SSL_VERIFY_NONE
+    setup-url: exa+websocket://sys:exasol@127.0.0.1:8563?SSLCertificate=SSL_VERIFY_NONE
+    setup-sql: CREATE SCHEMA IF NOT EXISTS PROVISA
+    ready-sql: SELECT 1
+    pip: sqlalchemy-exasol
+    wait: 900
+
+  # --- containers started for this run alone (docker-compose.test.yml, no test of their own) --
+  - engine: monetdb
+    lane: free
+    image: monetdb/monetdb:latest
+    service: monetdb
+    engine-url: monetdb://monetdb:monetdb@127.0.0.1:50000/provisa
+    ready-sql: SELECT 1
+    pip: sqlalchemy-monetdb
+  - engine: opengauss
+    lane: free
+    image: opengauss/opengauss:latest
+    service: opengauss
+    engine-url: opengauss://gaussdb:Provisa_2026@127.0.0.1:15433/postgres
+    ready-sql: SELECT 1
+    pip: opengauss-sqlalchemy
+  - engine: vertica
+    lane: free
+    image: vertica/vertica-ce:24.1.0-0
+    service: vertica
+    engine-url: vertica+vertica_python://dbadmin@127.0.0.1:5434/VMart
+    ready-sql: SELECT 1
+    pip: sqlalchemy-vertica-python
+    wait: 900
+  - engine: db2
+    lane: free
+    image: icr.io/db2_community/db2:11.5.9.0
+    service: db2
+    engine-url: db2+ibm_db://db2inst1:provisa@127.0.0.1:50001/PROVISA
+    ready-sql: SELECT 1 FROM SYSIBM.SYSDUMMY1
+    pip: ibm-db-sa
+    wait: 1200
+
+  # --- paid warehouses: credentials in the conformance-paid environment ---------------------
+  - engine: snowflake
+    lane: paid
+    image: none (Snowflake account)
+    url-secret: FUNCTIONS_SNOWFLAKE_ENGINE_URL
+  - engine: databricks
+    lane: paid
+    image: none (Databricks SQL warehouse)
+    url-secret: FUNCTIONS_DATABRICKS_ENGINE_URL
+  - engine: bigquery
+    lane: paid
+    image: none (BigQuery project; service-account key in FUNCTIONS_BIGQUERY_CREDENTIALS_JSON)
+    url-secret: FUNCTIONS_BIGQUERY_ENGINE_URL
+  - engine: fabric
+    lane: paid
+    image: none (Fabric warehouse; Azure AD service principal in FUNCTIONS_AZURE_*)
+    url-secret: FUNCTIONS_FABRIC_ENGINE_URL
+    odbc: true
+  - engine: synapse
+    lane: paid
+    image: none (Synapse serverless SQL; Azure AD service principal in FUNCTIONS_AZURE_*)
+    url-secret: FUNCTIONS_SYNAPSE_ENGINE_URL
+    odbc: true
+  - engine: redshift
+    lane: paid
+    image: none (Redshift cluster)
+    url-secret: FUNCTIONS_REDSHIFT_ENGINE_URL
+  - engine: motherduck
+    lane: paid
+    image: none (MotherDuck account)
+    url-secret: FUNCTIONS_MOTHERDUCK_ENGINE_URL
+
+not_run:
+  teradata: >-
+    no container image: Teradata Vantage Express is a VirtualBox/VMware virtual machine, which a
+    hosted runner cannot boot as a container
+  saphana: >-
+    no free container image a hosted runner can boot: SAP HANA express edition needs more memory than
+    a hosted runner has, and its image is behind SAP's registration
+  sapase: >-
+    no container image: SAP ASE Developer Edition is an installer behind SAP's registration, with no
+    published image
+  sqlanywhere: >-
+    no container image: SAP SQL Anywhere is an installer behind SAP's registration, with no
+    published image
+  trino-byo: >-
+    the trino leg: trino-byo is built by the same builder (provisa/federation/engine.py
+    _ENGINE_BUILDERS, build_trino_engine), and the trino leg already reaches its coordinator in a
+    compose container that Provisa does not manage, which is what trino-byo is

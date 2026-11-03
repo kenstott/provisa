@@ -17,11 +17,18 @@ name: Conformance (functions)
 # the per-engine sections of docs/conformance/pgwire.md and overview.md from it, and uploads all
 # three. It is failed when any leg left no complete result: such a list guarantees nothing.
 #
-# Engines left out: the paid warehouses (snowflake, databricks, bigquery, fabric, synapse,
-# motherduck) need credentials; clickhouse-server is the clickhouse leg's runtime on a server of
-# its own, so it would repeat that leg; the SQLAlchemy engines (mysql, mssql and the rest) each
-# need a server, and landing the fixture into it, that no conformance job has booted yet, and a
-# leg that leaves no result leaves no guaranteed list.
+# The legs are scripts/conformance/function_legs.yaml, one per engine kind of
+# provisa/core/engine_kinds.py that runs in a container a hosted runner can boot, which also says
+# why each other kind is not run; the plan job reads it and the merge lists it on the report. Every
+# direct-only source can be an engine (maintainer, 2026-11-03), so a leg measures the engine and the
+# direct path of its platform. An engine with a server runs in the docker-compose.test.yml service
+# the integration tests start for it (scripts/conformance/engine_service.sh). A leg whose engine does
+# not start is a failure, and its reason is on the report (function_legs.py failure).
+#
+# The paid warehouses (snowflake, databricks, bigquery, fabric, synapse, redshift, motherduck) are
+# the paid lane: planned only by a dispatch with lanes paid or all, each leg in the
+# conformance-paid environment, whose required reviewers approve it, with that environment's
+# secrets. No push or schedule runs this workflow.
 
 on:
   workflow_dispatch:
@@ -30,6 +37,12 @@ on:
         description: "Commit or branch to test (default: the dispatched one)"
         required: false
         default: ""
+      lanes:
+        description: "free: the engines a hosted runner boots; paid: the warehouses, approved in conformance-paid; all: both"
+        required: false
+        type: choice
+        default: free
+        options: [free, paid, all]
 
 permissions:
   contents: read
@@ -43,25 +56,39 @@ defaults:
     shell: bash
 
 jobs:
+  plan:
+    name: legs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      engines: ${{ steps.plan.outputs.engines }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          extras: dev
+
+      - name: Plan the legs
+        id: plan
+        run: |
+          .venv/bin/python scripts/conformance/function_legs.py plan --lanes "${{ inputs.lanes || 'free' }}" \
+            | tee -a "$GITHUB_OUTPUT"
+
   probe:
     name: functions on ${{ matrix.engine }}
+    needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 130
+    timeout-minutes: 160
+    # A paid leg waits for the conformance-paid environment's reviewers; a free leg has none.
+    environment: ${{ matrix.environment }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - engine: duckdb
-          # The PostgreSQL service below, as the engine.
-          - engine: pg
-            engine-url: postgresql://postgres:conformance@127.0.0.1:55432/conformance
-          # chdb, in-process.
-          - engine: clickhouse
-          # The compose stack the Trino UI lane runs: the engine, its object store, its Arrow
-          # proxy, its metastore, and the control plane Trino reads over JDBC.
-          - engine: trino
-            control-plane-url: postgresql+psycopg://provisa:provisa@localhost:5432/provisa
-            boot-attempts: "300"
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       PROVISA_ENGINE: ${{ matrix.engine }}
       PROVISA_ENGINE_URL: ${{ matrix.engine-url }}
@@ -105,11 +132,57 @@ jobs:
         with:
           extras: dev
 
+      - name: Install ODBC Driver 18
+        id: odbc
+        if: matrix.odbc
+        timeout-minutes: 10
+        uses: ./.github/actions/mssql-odbc
+
+      # The SQLAlchemy dialect the engine URL names, where the locked environment has none, into
+      # this leg's environment alone.
+      - name: Install the engine's client
+        id: client
+        if: matrix.pip != '' || matrix.apt != ''
+        run: |
+          if [ -n "${{ matrix.apt }}" ]; then
+            sudo apt-get -o DPkg::Lock::Timeout=300 update -q
+            sudo DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=300 install -y -q ${{ matrix.apt }}
+          fi
+          if [ -n "${{ matrix.pip }}" ]; then
+            uv pip install --python .venv/bin/python ${{ matrix.pip }}
+          fi
+
+      - name: Start the engine's server
+        id: service
+        if: matrix.service != ''
+        env:
+          SERVICE: ${{ matrix.service }}
+          WAIT: ${{ matrix.wait }}
+          READY_SQL: ${{ matrix.ready-sql }}
+          SETUP_URL: ${{ matrix.setup-url }}
+          SETUP_SQL: ${{ matrix.setup-sql }}
+          SOURCE_HOST: ${{ matrix.source-host }}
+        run: |
+          bash scripts/conformance/engine_service.sh up "$SERVICE" "$WAIT"
+          if [ -n "$SETUP_SQL" ]; then
+            .venv/bin/python scripts/conformance/function_legs.py wait --url "$SETUP_URL" --sql "$READY_SQL" --timeout "$WAIT"
+            .venv/bin/python scripts/conformance/function_legs.py setup --url "$SETUP_URL" --sql "$SETUP_SQL"
+          fi
+          if [ -n "$READY_SQL" ]; then
+            .venv/bin/python scripts/conformance/function_legs.py wait --url "$PROVISA_ENGINE_URL" --sql "$READY_SQL" --timeout "$WAIT"
+          fi
+          # An engine in a container that reads the conformance PostgreSQL itself reaches it by the
+          # runner's own address.
+          if [ "$SOURCE_HOST" = runner ]; then
+            echo "CONFORMANCE_PG_HOST=$(hostname -I | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          fi
+
       # scripts/ci/lanes/trino-stack-prepare.sh, the Trino lanes' one copy; no catalog here reads
       # the certificate. The app runs on this host and Trino in a container, so each is told the
       # address the other side dials: playwright.config.ts's Trino webServer, name for name. The
       # conformance source is addressed by the runner's own address, which both can reach.
       - name: Start the Trino stack
+        id: trino
         if: matrix.engine == 'trino'
         run: |
           bash scripts/ci/test-store-env.sh | tee -a "$GITHUB_ENV" > "$RUNNER_TEMP/store-env"
@@ -125,7 +198,39 @@ jobs:
             echo "PROVISA_ENGINE_LAKEHOUSE_METASTORE_PORT=9083"
           } >> "$GITHUB_ENV"
 
+      # A paid leg's warehouse, from the conformance-paid environment's secrets: the engine URL the
+      # leg names, and the service account BigQuery and the Azure warehouses sign in with.
+      - name: Read the engine's credentials
+        id: credentials
+        if: matrix.lane == 'paid'
+        env:
+          ENGINE_URL: ${{ secrets[matrix.url-secret] }}
+          URL_SECRET: ${{ matrix.url-secret }}
+          BIGQUERY_CREDENTIALS_JSON: ${{ secrets.FUNCTIONS_BIGQUERY_CREDENTIALS_JSON }}
+          AZURE_TENANT_ID: ${{ secrets.FUNCTIONS_AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.FUNCTIONS_AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.FUNCTIONS_AZURE_CLIENT_SECRET }}
+        run: |
+          if [ -z "$ENGINE_URL" ]; then
+            echo "::error::the conformance-paid environment has no secret $URL_SECRET"; exit 1
+          fi
+          echo "PROVISA_ENGINE_URL=$ENGINE_URL" >> "$GITHUB_ENV"
+          if [ "$PROVISA_ENGINE" = bigquery ]; then
+            test -n "$BIGQUERY_CREDENTIALS_JSON" || { echo "::error::no secret FUNCTIONS_BIGQUERY_CREDENTIALS_JSON"; exit 1; }
+            printf '%s' "$BIGQUERY_CREDENTIALS_JSON" > "$RUNNER_TEMP/bigquery-credentials.json"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/bigquery-credentials.json" >> "$GITHUB_ENV"
+          fi
+          if [ "$PROVISA_ENGINE" = fabric ] || [ "$PROVISA_ENGINE" = synapse ]; then
+            test -n "$AZURE_CLIENT_SECRET" || { echo "::error::no secrets FUNCTIONS_AZURE_*"; exit 1; }
+            {
+              echo "AZURE_TENANT_ID=$AZURE_TENANT_ID"
+              echo "AZURE_CLIENT_ID=$AZURE_CLIENT_ID"
+              echo "AZURE_CLIENT_SECRET=$AZURE_CLIENT_SECRET"
+            } >> "$GITHUB_ENV"
+          fi
+
       - name: Seed the table column calls read
+        id: seed
         run: |
           .venv/bin/python scripts/conformance/function_support.py seed-columns \
             --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD" \
@@ -137,9 +242,10 @@ jobs:
         with:
           extra-tables: ${{ runner.temp }}/function-columns.yaml
           control-plane-url: ${{ matrix.control-plane-url }}
-          boot-attempts: ${{ matrix.boot-attempts || '90' }}
+          boot-attempts: ${{ matrix.boot-attempts }}
 
       - name: Measure every pg_catalog function
+        id: measure
         timeout-minutes: 110
         run: |
           mkdir -p "$RUNNER_TEMP/report"
@@ -155,6 +261,23 @@ jobs:
         run: |
           cat "$RUNNER_TEMP/report/function-support-$PROVISA_ENGINE.md" >> "$GITHUB_STEP_SUMMARY"
           cp "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/server-$PROVISA_ENGINE.log"
+
+      # Why the leg left no result, which the merge puts on the report beside it: the step that
+      # failed and the end of the engine's and the instance's logs.
+      - name: Record why the leg failed
+        if: ${{ failure() }}
+        env:
+          STEPS: ${{ toJSON(steps) }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/report"
+          logs=(--log "$RUNNER_TEMP/provisa/server.log")
+          if [ -n "${{ matrix.service }}" ]; then
+            bash scripts/conformance/engine_service.sh logs "${{ matrix.service }}" "$RUNNER_TEMP/report/engine-$PROVISA_ENGINE.log"
+            logs+=(--log "$RUNNER_TEMP/report/engine-$PROVISA_ENGINE.log")
+          fi
+          .venv/bin/python scripts/conformance/function_legs.py failure --engine "$PROVISA_ENGINE" \
+            --steps "$STEPS" "${logs[@]}" --out "$RUNNER_TEMP/report/leg-failure-$PROVISA_ENGINE.json" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload results
         if: ${{ !cancelled() }}
@@ -176,8 +299,8 @@ jobs:
 
   merge:
     name: results by engine
-    needs: probe
-    if: ${{ !cancelled() }}
+    needs: [plan, probe]
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -199,7 +322,8 @@ jobs:
         run: |
           status=0
           .venv/bin/python scripts/conformance/function_support.py merge \
-            --engines duckdb,pg,clickhouse,trino \
+            --engines "${{ needs.plan.outputs.engines }}" \
+            --legs scripts/conformance/function_legs.yaml \
             --in "$RUNNER_TEMP/legs" \
             --out scripts/conformance/function_support.json \
             --out-md "$RUNNER_TEMP/function-support.md" || status=$?

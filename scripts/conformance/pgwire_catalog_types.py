@@ -352,7 +352,8 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
     engine = os.environ.get("PROVISA_ENGINE") or "duckdb"
     # ClickHouse's PostgreSQL database engine mounts one schema, public unless the source's hint
     # says otherwise (ClickHousePostgresConnector); no other engine reads it for this source.
-    hints = {"federation_hints": {"schema": FIXTURE_SCHEMA}} if engine == "clickhouse" else {}
+    clickhouse = engine in ("clickhouse", "clickhouse-server")
+    hints = {"federation_hints": {"schema": FIXTURE_SCHEMA}} if clickhouse else {}
     return {
         "federation_engine": engine,
         "auth": {
