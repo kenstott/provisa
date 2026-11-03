@@ -1369,6 +1369,49 @@ profiler_classifications = Table(
     PrimaryKeyConstraint("table_id", "physical_column", "kind"),
 )
 
+# REQ-2189: a saved, named arrangement of the ERD -- the bar's options, and per domain and table
+# what is selected, collapsed and where it stands. Only the arrangement: columns and relationships
+# are read from the live model, and a table or domain goes from every layout when it goes.
+erd_layouts = Table(
+    "erd_layouts",
+    metadata,
+    Column("name", Text, primary_key=True),
+    Column("options", JSON, nullable=False),  # columnDetail, edgeRouting, gridSnap, showOrphans
+    Column("updated_by", Text),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# A domain the layout shows: whether the focus names it, whether it is collapsed, and its box (the
+# centre and size) as it was saved.
+erd_layout_domains = Table(
+    "erd_layout_domains",
+    metadata,
+    Column("layout_name", Text, ForeignKey("erd_layouts.name", ondelete="CASCADE"), nullable=False),
+    Column("domain_id", Text, ForeignKey("domains.id", ondelete="CASCADE"), nullable=False),
+    Column("selected", Boolean, nullable=False, server_default=false()),
+    Column("collapsed", Boolean, nullable=False, server_default=false()),
+    Column("x", Float),
+    Column("y", Float),
+    Column("w", Float),
+    Column("h", Float),
+    PrimaryKeyConstraint("layout_name", "domain_id"),
+)
+
+# A table the layout holds, by id so that a rename keeps its place: whether the focus names it,
+# and its position; none for a table in a domain that was collapsed when it was saved.
+erd_layout_tables = Table(
+    "erd_layout_tables",
+    metadata,
+    Column("layout_name", Text, ForeignKey("erd_layouts.name", ondelete="CASCADE"), nullable=False),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("selected", Boolean, nullable=False, server_default=false()),
+    Column("x", Float),
+    Column("y", Float),
+    PrimaryKeyConstraint("layout_name", "table_id"),
+)
+
 # REQ-1939: how close a generated dataset came to the profiles it was drawn from.
 synthetic_report = Table(
     "synthetic_report",

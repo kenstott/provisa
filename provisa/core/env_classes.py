@@ -40,6 +40,10 @@ CARRIED: frozenset[str] = frozenset(
         # REQ-2147: a steward's classification decisions are about the model's columns, as the
         # constraints are, so they travel with them.
         "profiler_classifications",
+        # REQ-2189: a saved ERD layout is stored in the model and versions with the environment.
+        "erd_layouts",
+        "erd_layout_domains",
+        "erd_layout_tables",
         "metrics",
         # ``roles`` and ``user_role_assignments`` are additionally SEEDED_AT_CREATION: CARRIED,
         # but only by a creation. See that class for why no later copy touches them.
