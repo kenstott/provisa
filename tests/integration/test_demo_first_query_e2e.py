@@ -51,7 +51,6 @@ from tests.integration.test_sandbox_visitor_walk import (
     _open_sandbox,
     _plain_tier,
     _regions_tier,
-    _status,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.local_platform, pytest.mark.timeout(3600)]
@@ -145,12 +144,12 @@ def own_plane_tier(request, tmp_path_factory):
         subprocess.run(["docker", "compose", "-p", project, "down", "-v"], check=False)
 
 
-def test_a_restarted_tier_serves_the_same_rows_from_the_template_as_built(own_plane_tier):
-    """The cloud's tier is restarted at each deploy and each wake from idle, and serves the
-    template it built before as it is (``ready (as built)``): a sandbox opened then is cloned
-    from that template, and answers what one opened before the restart did."""
+def test_a_restarted_tier_answers_the_same_rows(own_plane_tier):
+    """The cloud's tier is restarted at each deploy and each wake from idle: a sandbox opened
+    then is cloned from the template it serves, and answers what one opened before did."""
     _answers_the_bundles_rows(own_plane_tier)
     own_plane_tier.restart(timeout=600)
-    # Served as built: ready on the first question after the start, nothing prepared again.
-    assert _status(own_plane_tier)["state"] == "ready", own_plane_tier.dump_stderr_debug()[-6000:]
+    # A template whose store still holds the rows recorded is served as built; one whose store
+    # has moved on (provisioning's feeds land on) is prepared again (demo_templates.warm_ready).
+    # Either way the first sandbox opened after the start answers the same.
     _answers_the_bundles_rows(own_plane_tier)
