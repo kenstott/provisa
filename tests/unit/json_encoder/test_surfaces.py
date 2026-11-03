@@ -460,6 +460,7 @@ def entity(name, props, key=()):
         tuple(Property(n, edm_type(t), n, t) for n, t in props),
         (),
         tuple(key),
+        "sales",
     )
 
 
