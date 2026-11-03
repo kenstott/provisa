@@ -1275,7 +1275,14 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
     rt = await ensure_org_runtime(org_id)
     # REQ-2053: the environments its setup.yaml declares, which every sandbox of it carries.
     await create_environments(org_id, demo_environments(demo.directory), None)
-    from provisa.api.demo_replicas import export_seed
+    from provisa.api.demo_region_seed import regional
+    from provisa.api.demo_replicas import export_seed, live_landing_waits, live_topic_ends
+
+    # REQ-2049 (amended 2026-11-03): where each topic its listeners land ends now, with its
+    # runtime (and so its listeners) built: the template is ready once it has landed to there.
+    # A regions tier's sandboxes are copied from its region seeds (demo_region_seed).
+    live = not regional()
+    ends = await live_topic_ends(template_seed(org_id)) if live else {}
 
     exporting = seeding_release()
     said = None
@@ -1300,6 +1307,14 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
             )
         await asyncio.sleep(_LANDED_POLL_S)
     log.info("demo template %s: every replica landed", demo.name)
+    # And every table its listeners land from a Kafka topic, which neither its replica record nor
+    # its views count: a sandbox is opened holding what its template landed (carry_landed_data).
+    said = None
+    while live and (waiting := await live_landing_waits(org_id, template_seed(org_id), ends)):
+        if waiting != said:
+            said = waiting
+            log.warning("demo template %s: waiting on its live landing: %s", demo.name, waiting)
+        await asyncio.sleep(_LANDED_POLL_S)
     # REQ-1942, REQ-2053: its Test (synthetic) environments, generated once here (or adopted from
     # the seed its bundle carries), which every sandbox of it is given (demo_synthetic).
     from provisa.api import demo_synthetic
