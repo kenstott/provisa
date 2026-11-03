@@ -405,6 +405,7 @@
       "source_region_set": "स्रोत {{source}} का क्षेत्र {{region}} पर सेट किया गया",
       "region_refused": "क्षेत्र सेट नहीं हुआ: {{reason}}",
       "table_too_complex": "टेबल '{{table}}' चुने गए कॉलम के साथ पंजीकृत नहीं हुई: {{reason}}। कम कॉलम चुनें।",
+      "remote_throttled": "टेबल '{{table}}' पंजीकृत नहीं हुई: स्रोत की दर सीमा ने इसकी जाँच नहीं होने दी ({{reason}})। बाद में फिर से प्रयास करें।",
       "table_updated": "टेबल '{{table}}' अपडेट हुई (id={{id}})",
       "task_deleted": "टास्क '{{task}}' हटाया गया",
       "task_disabled": "टास्क '{{task}}' अक्षम किया गया",

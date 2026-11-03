@@ -37,7 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import MetaData, Table, delete, select
+from sqlalchemy import MetaData, Table, case, delete, insert, literal, select
 
 from provisa.core.env_classes import (
     BINDING_COLUMN,
@@ -411,6 +411,9 @@ async def _copy_table(
     dst = _scoped(table, dst_schema)
     columns = _carried_columns(table, strip_identities)
     delta = TableDelta(table.name)
+    if apply and not (table.name in IDENTITY_ONLY and strip_identities):
+        if not await _holds_rows(conn, dst):
+            return await _copy_into_empty(conn, src, dst, columns, src_schema, dst_schema, delta)
 
     source_rows = {
         k: _rebase(r, src_schema, dst_schema) for k, r in (await _rows(conn, src)).items()
@@ -471,6 +474,41 @@ async def _copy_table(
     for key, values in updates:
         await conn.execute_core(dst.update().where(_where(dst, key)).values(**values))
     await _insert_rows(conn, dst, inserts)
+    return delta
+
+
+async def _holds_rows(conn: "Connection", table: Table) -> bool:
+    return (
+        await conn.execute_core(select(literal(1)).select_from(table).limit(1))
+    ).first() is not None
+
+
+async def _copy_into_empty(
+    conn: "Connection",
+    src: Table,
+    dst: Table,
+    columns: list[str],
+    src_schema: str,
+    dst_schema: str,
+    delta: TableDelta,
+) -> TableDelta:
+    """A table the target holds no row of, copied in one statement on the server: every source row
+    arrives as the row-by-row path would insert it, a value naming the source's own schema rebased
+    onto the target's (``_rebase``). The rows are never carried here and back: a sandbox's open
+    copied its template's model three times over (prod and two environments), each time 2,722
+    rows of table_columns, nearly all the built-in tables', through one statement of a value a
+    parameter (REQ-2006). A row whose binding a copy decides (IDENTITY_ONLY, stripped) never
+    comes here."""
+    picked = {
+        c: case((src.c[c] == src_schema, literal(dst_schema)), else_=src.c[c]).label(c)
+        if c == _SCHEMA_COLUMN
+        else src.c[c]
+        for c in columns
+    }
+    keys = await conn.execute_core(select(*(picked[c.name] for c in src.primary_key.columns)))
+    delta.added = [_render(tuple(key)) for key in keys.fetchall()]
+    if delta.added:
+        await conn.execute_core(insert(dst).from_select(columns, select(*picked.values())))
     return delta
 
 

@@ -95,6 +95,9 @@ class QueryResult:  # REQ-028
     # where a write has no RETURNING clause and ``rows`` is therefore empty. None when the driver
     # doesn't report one or the statement wasn't a DML write.
     rowcount: int | None = field(default=None)
+    # REQ-2167: the last identity or serial value a write made its source generate, for the pgwire
+    # session's lastval(). None when it generated none, or was not asked to report one.
+    generated_key: int | None = field(default=None)
     # REQ-536: the response-cache entry this result was served from (``cache.store.CachedResult``),
     # set by the pipeline on a HIT; None for a result that was executed. A surface reports
     # HIT/MISS and the entry's age from it (``cache.middleware.build_cache_headers``).

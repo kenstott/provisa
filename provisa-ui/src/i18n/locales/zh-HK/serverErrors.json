@@ -405,6 +405,7 @@
       "source_region_set": "資料來源 {{source}} 的區域已設為 {{region}}",
       "region_refused": "未設定區域：{{reason}}",
       "table_too_complex": "資料表「{{table}}」未能以所選欄位註冊：{{reason}}。請選擇較少欄位。",
+      "remote_throttled": "資料表「{{table}}」未有註冊：來源的速率限制令它無法被檢查（{{reason}}）。請稍後再試。",
       "table_updated": "資料表「{{table}}」已更新（id={{id}}）",
       "task_deleted": "任務「{{task}}」已刪除",
       "task_disabled": "任務「{{task}}」已停用",

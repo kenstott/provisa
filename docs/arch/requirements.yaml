@@ -83491,7 +83491,13 @@
     (Postgres, MongoDB, Qdrant, Elasticsearch), so the next visitor''s open is a container start and a loaded
     check, and a version''s data loads once. A superseded version''s data is still dropped. Where the DEMO
     STORES LINGER text says the data is dropped from the shared stores and the visitor waits while it starts,
-    this replaces it.'
+    this replaces it. (Amended 2026-11-03, A sandbox starts with its demo''s landed data:) Maintainer 2026-11-03:
+    a visitor''s sandbox opens holding its demo template''s live-landed (Kafka) rows, copied at open as
+    the template''s other data is, and its listener continues from where the template''s landing stopped;
+    a demo template is ready only when its live-landed tables have landed and it holds every profile result
+    relation its bundle carries, with their rows (lead, 2026-11-03: a template served as built that does
+    not hold them is built again through the existing build). A sandbox never answers a read from data it
+    has not yet loaded.'
   use_case: The maintainer changes an example query of the weblogs demo and merges it; minutes later the live demos page's
     next sandbox and a solution engineer's next start-ui-install.sh --demo weblogs both have the change, with no release cut.
   scenario: 'Given the weblogs bundle is published
@@ -91253,5 +91259,29 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-1753
   - REQ-1981
   - REQ-2191
+  stakeholders:
+  - data-engineer
+- id: REQ-2197
+  value: QuickBooks Online is a named source type.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-relational-and-warehouses
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-03 (after asking how feasible QuickBooks and NetSuite are, and adding
+    QuickBooks sandbox credentials): QuickBooks Online is a source type. Its entities (customers, invoices,
+    bills, payments, accounts, items and the rest the Accounting API exposes) are tables; a read pushes
+    simple filters into QuickBooks'' own query language; it signs in with OAuth2 against the company (realm)
+    the admin authorizes and keeps the refresh token QuickBooks hands back on each refresh.'
+  scenario: 'Given a QuickBooks Online sandbox company the admin has authorized
+
+    When the admin registers its invoices table and a query reads unpaid invoices
+
+    Then the rows are QuickBooks'' invoices with a balance, and the filter was sent to QuickBooks'
+  related_reqs:
+  - REQ-2196
+  - REQ-1923
   stakeholders:
   - data-engineer

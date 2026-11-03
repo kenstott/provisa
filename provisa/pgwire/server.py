@@ -24,6 +24,7 @@ from __future__ import annotations
 from provisa.compiler.sql_literals import sql_literal
 
 import json
+import contextlib
 import datetime
 import decimal
 import logging
@@ -81,7 +82,7 @@ from provisa.compiler import xml_mapping
 from provisa.pgwire import advisory_locks
 from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.pgwire.cast_types import XML_ARRAY
-from provisa.pgwire.constant_arguments import is_constant
+from provisa.pgwire.constant_arguments import evaluable, is_constant
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
 log = logging.getLogger(__name__)
@@ -889,6 +890,36 @@ def _is_key(arg: Any) -> bool:
     return bound or is_constant(arg)
 
 
+def _embedded_advisory_calls(sql: str) -> tuple[Any, list[Any]] | None:  # REQ-2167
+    """``sql``'s parse and the advisory lock functions it calls among other things, each with
+    constant keys; None where it calls none so, or is only such a call (``_advisory_call``)."""
+    import sqlglot.expressions as exp
+
+    tree = _advisory_tree(sql)
+    if tree is None or _advisory_call(sql) is not None:
+        return None
+    calls = [fn for fn in tree.find_all(exp.Anonymous) if fn.name.lower() in _ADVISORY_FUNCTIONS]
+    if not calls or not all(_is_key(a) for fn in calls for a in fn.expressions):
+        return None
+    return tree, calls
+
+
+_NOTIFICATION_STATEMENT = re.compile(r"^\s*(LISTEN|UNLISTEN|NOTIFY)\b", re.IGNORECASE)
+
+
+def refuse_notifications(sql: str) -> None:  # REQ-2167
+    """Refuse LISTEN, UNLISTEN and NOTIFY by name (REQ-2167, amended 2026-11-03, Privileges,
+    visibility and notifications): Provisa's pgwire has no notification channel. pg_notify is
+    refused by name on every engine (pg_forms_enum.NOT_SUPPORTED)."""
+    said = _NOTIFICATION_STATEMENT.match(sql)
+    if said is not None:
+        from provisa.compiler.definitions import NotAvailableHere
+
+        raise NotAvailableHere(
+            f"{said[1].upper()} is refused by name: Provisa's pgwire has no notification channel"
+        )
+
+
 def refuse_server_function(sql: str) -> None:  # REQ-2167
     """Refuse a statement that takes an advisory lock while it does anything else, or with a key
     that is not a constant, naming the function: a lock is taken by a statement that only calls
@@ -936,7 +967,7 @@ def _evaluated_keys(args: tuple[str, ...]) -> tuple[int | None, ...]:
 
     from provisa.core import engine_memory
 
-    selected = ", ".join(f"CAST(({a}) AS BIGINT)" for a in args)
+    selected = ", ".join(f"CAST(({evaluable(a)}) AS BIGINT)" for a in args)
     sql = sqlglot.transpile(f"SELECT {selected}", read="postgres", write="duckdb")[0]
     con = engine_memory.connect()
     try:
@@ -1013,8 +1044,16 @@ def _to_decimal(v: Any) -> decimal.Decimal:
     return v if isinstance(v, decimal.Decimal) else decimal.Decimal(str(v))
 
 
+#: PostgreSQL's text of an array with its own lower bounds ("[0:2]={1,2,3}"), which no list holds.
+_BOUNDED_ARRAY_TEXT = re.compile(r"(\[-?\d+:-?\d+\])+=\{")
+
+
 def _to_list(v: Any) -> Any:
-    return json.loads(v) if isinstance(v, str) else v
+    """A JSON array's text read as its list; PostgreSQL's text of a bounded array is sent as it is
+    (REQ-2167)."""
+    if not isinstance(v, str) or _BOUNDED_ARRAY_TEXT.match(v):
+        return v
+    return json.loads(v)
 
 
 def _to_date(v: Any) -> Any:
@@ -1448,6 +1487,11 @@ class _CursorState:  # REQ-1862
     query_result: ProvisaQueryResult
     source: Iterator[list]
     scrollable: bool = False
+    # What pg_cursors lists of it (REQ-2167): the DECLARE as written, WITH HOLD, BINARY, and when.
+    statement: str = ""
+    holdable: bool = False
+    binary: bool = False
+    created: datetime.datetime | None = None
     buffer: list = _dc_field(default_factory=list)
     pos: int = 0
     source_exhausted: bool = False
@@ -1661,6 +1705,13 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-2167: what pg_stat_activity lists of this connection.
         self.backend_start = datetime.datetime.now(datetime.timezone.utc)
         self.application_name = ""
+        # REQ-2167: what this session's set_config(name, value, false) set, by name, which its
+        # current_setting reads back as PostgreSQL's does.
+        self.client_settings: dict[str, str] = {}
+        # REQ-2167: the protocol portal whose statement is running, which pg_cursors lists
+        # beside the DECLAREd cursors: its name, statement, whether binary, and when bound.
+        self.open_portal: tuple[str, str, bool, datetime.datetime] | None = None
+        self.portal_bound: dict[str, datetime.datetime] = {}
         # REQ-2167: this connection's two ends, (host, port), set when it starts.
         self.client_end: tuple = ()
         self.server_end: tuple = ()
@@ -1708,6 +1759,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-2110: the session's time travel (SET provisa.as_of / provisa.as_recorded).
         self.as_of_setting: str | None = None
         self.as_recorded_setting: str | None = None
+        # REQ-2167: the last identity or serial value an INSERT of this session made its source
+        # generate -- what lastval() answers. None until one has (lastval then raises 55000).
+        self.last_generated: int | None = None
 
     def apply_redirect_settings(self, settings: dict[str, bool | str | None]) -> None:
         """Hold the ``provisa.redirect*`` settings read from the startup packet or a SET."""
@@ -1861,6 +1915,10 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         said = sql.strip()  # what the client sent: audit and logs record this, the engine reads sql
         sql = self._with_source_enums(sql)
         stripped = sql.strip()
+        refuse_notifications(stripped)  # REQ-2167
+        if _embedded_advisory_calls(stripped) is not None and not _placeholder_count(stripped):
+            # REQ-2167: answered as its Execute is, as a statement that only calls one is.
+            return self._execute_sql_bound(sql, params, None, said=said)
         refuse_server_function(stripped)  # REQ-2167
         if xml_mapping.calls_one(stripped):
             # REQ-2167: answered as its Execute is. With a parameter to come it is described with
@@ -1928,39 +1986,97 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
     def _advisory_answer(self, call: _AdvisoryCall, sql: str, params: Any) -> ProvisaQueryResult:
         """An advisory lock function, on this server's locks. Strict: a NULL key takes no lock."""
-        locks = advisory_locks.LOCKS
         answer = self._advisory_shape(call)
-        keys = (
-            _evaluated_keys(tuple(_substitute_params(a, params) for a in call.args))
-            if call.args
-            else ()
-        )
+        value, warnings = self._advisory_value(call.name, call.args, params)
+        if call.name in _ADVISORY_LOCKS and _ADVISORY_LOCKS[call.name][2]:
+            if not self.transaction_open:
+                advisory_locks.LOCKS.end_transaction(self)  # the statement was its own transaction
+        answer.rows.append((value,))
+        result = ProvisaQueryResult(answer, sql)
+        result.warnings = warnings
+        return result
+
+    def _advisory_value(
+        self, name: str, args: tuple[str, ...], params: Any
+    ) -> tuple[Any, tuple[Any, ...]]:
+        """What advisory lock function ``name`` of ``args`` answers, on this server's locks, and
+        what it warns of. Strict: a NULL key takes no lock."""
+        locks = advisory_locks.LOCKS
+        keys = _evaluated_keys(tuple(_substitute_params(a, params) for a in args)) if args else ()
         warnings: tuple[Any, ...] = ()
-        if call.name == "pg_advisory_unlock_all":
+        if name == "pg_advisory_unlock_all":
             locks.release_all(self)
             value: Any = ""
         elif any(k is None for k in keys):
             value = None
         else:
             key = (self.org_id, *keys)  # a one-argument key is another space than a two-argument
-            if call.name in _ADVISORY_UNLOCKS:
-                mode = _ADVISORY_UNLOCKS[call.name]
+            if name in _ADVISORY_UNLOCKS:
+                mode = _ADVISORY_UNLOCKS[name]
                 value = locks.release(key, mode, self)
                 if not value:
                     warnings = (_PostgresWarning(f"you don't own a lock of type {mode}"),)
             else:
-                mode, wait, transaction = _ADVISORY_LOCKS[call.name]
+                mode, wait, transaction = _ADVISORY_LOCKS[name]
                 if wait:
                     locks.acquire(key, mode, self, transaction=transaction)
                     value = ""
                 else:
                     value = locks.try_acquire(key, mode, self, transaction=transaction)
-                if transaction and not self.transaction_open:
-                    locks.end_transaction(self)  # the statement was its own transaction
-        answer.rows.append((value,))
-        result = ProvisaQueryResult(answer, sql)
-        result.warnings = warnings
-        return result
+        return value, warnings
+
+    def _listed_cursors(self) -> tuple[dict[str, Any], ...]:
+        """What pg_cursors lists of this session: each DECLAREd cursor, and the protocol portal
+        whose statement is running, as PostgreSQL lists a portal a Bind created (REQ-2167)."""
+        listed = [
+            {
+                "name": c.name,
+                "statement": c.statement,
+                "is_holdable": c.holdable,
+                "is_binary": c.binary,
+                "is_scrollable": c.scrollable,
+                "creation_time": c.created.isoformat() if c.created else None,
+            }
+            for c in self.cursors.values()
+        ]
+        if self.open_portal is not None:
+            name, statement, binary, bound = self.open_portal
+            listed.append(
+                {
+                    "name": name,
+                    "statement": statement,
+                    "is_holdable": False,
+                    "is_binary": binary,
+                    "is_scrollable": False,
+                    "creation_time": bound.isoformat(),
+                }
+            )
+        return tuple(listed)
+
+    def _with_advisory_answered(self, sql: str, params: Any) -> str | None:
+        """``sql`` with each advisory lock function it calls among other things answered, each
+        lock taken (or released) in the order the statement names them; None where it calls none,
+        or one with a key that is not a constant, which refuse_server_function refuses. The keys
+        are constants: evaluating them reads nothing governance would govern."""
+        import sqlglot.expressions as exp
+
+        embedded = _embedded_advisory_calls(sql)
+        if embedded is None:
+            return None
+        tree, calls = embedded
+        for fn in calls:
+            args = tuple(a.sql(dialect="postgres") for a in fn.expressions)
+            value, _ = self._advisory_value(fn.name.lower(), args, params)
+            written = (
+                exp.null()
+                if value is None
+                else exp.Boolean(this=value)
+                if isinstance(value, bool)
+                else exp.Literal.string(value)
+            )
+            holder = fn.parent if isinstance(fn.parent, exp.Dot) else fn
+            holder.replace(written)
+        return tree.sql(dialect="postgres")
 
     def _server_function(self, match: re.Match[str]) -> Any:  # REQ-2167
         """pg_backend_pid(), pg_cancel_backend(pid) or pg_terminate_backend(pid[, timeout]), on
@@ -2102,6 +2218,14 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # query) reads the values inline.
         said = said or sql.strip()
         sql = self._with_source_enums(sql)
+        if self.last_generated is not None:
+            from provisa.pgwire.generated_keys import answered_lastval
+
+            # REQ-2167: lastval() is the session's own; a statement its Describe governed with
+            # the call in it is governed again with the value held now.
+            answered = answered_lastval(sql, self.last_generated)
+            if answered is not None:
+                sql, prepared = answered, None
         stripped = sql.strip()
         if xml_mapping.calls_one(stripped):
             # REQ-2167: each read the call makes is a statement of this session, governed here,
@@ -2112,6 +2236,14 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             result.warnings = (*result.warnings, *reads.warnings)
             return result
         bound = list(params) if params else None
+        refuse_notifications(stripped)  # REQ-2167
+        answered = self._with_advisory_answered(stripped, params)  # REQ-2167
+        if answered is not None:
+            try:
+                return self._execute_sql_bound(answered, params, result_fmt, said=said)
+            finally:
+                if not self.transaction_open:
+                    advisory_locks.LOCKS.end_transaction(self)  # its own transaction ended
         refuse_server_function(stripped)  # REQ-2167
         refuse_other_zone(stripped, self.zone.current)  # REQ-2171
         advisory = _advisory_call(stripped)
@@ -2147,6 +2279,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     self.system_user,
                     self.zone.current,
                     self.zone,
+                    self.org_id,
+                    self.client_settings,
+                    self._listed_cursors(),
                 ),
                 run=self._catalog_read,
             )
@@ -2270,6 +2405,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                         _run_with_org(self.org_id, _execute_plan(governed)),
                         timeout=request_timeout_for("pgwire"),
                     )
+                    if getattr(result, "generated_key", None) is not None:
+                        self.last_generated = result.generated_key  # REQ-2167
                 elif isinstance(governed, _Plan) and governed.route == Route.ENGINE:
                     # REQ-1176: this streaming sink runs physical_sql on the engine directly (like
                     # Flight SQL), so it MUST verify the governed-provenance stamp before the engine
@@ -2646,6 +2783,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             return
         try:
             _refuse_wrong_parameter_count(ctx, payload)
+            if self._session is not None:
+                portal = bytes(payload[: payload.index(0)]).decode("utf-8")
+                self._session.portal_bound[portal] = datetime.datetime.now(datetime.timezone.utc)
             super().handle_bind(ctx, payload)
         except Exception as exc:  # noqa: BLE001 -- answered as the statement's ErrorResponse
             self.send_error(exc, ctx)
@@ -2676,6 +2816,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
     def send_ready_for_query(self, ctx: Optional[BVContext]) -> None:
         # ReadyForQuery ends the cycle: the Sync of an extended-protocol cycle, or a Query's end.
+        # So does the cycle's error: a Query sends no Sync, and one whose statement failed left
+        # the next extended cycle's every message discarded, unanswered.
+        if ctx is not None:
+            ctx.sync()
         try:
             self._report_zone()
             super().send_ready_for_query(ctx)
@@ -3425,7 +3569,26 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                     if closer is not None:
                         closer()
             return
-        super().handle_describe(ctx, payload)
+        with self._portal_open(
+            ctx, ba[1 : len(ba) - 1].decode("utf-8") if ba[0] == ord("P") else None
+        ):
+            super().handle_describe(ctx, payload)
+
+    @contextlib.contextmanager
+    def _portal_open(self, ctx: BVContext, portal: str | None):
+        """While a portal's statement runs, the session lists it as pg_cursors does (REQ-2167)."""
+        session = self._session
+        if portal is None or session is None or portal not in ctx.portals:
+            yield
+            return
+        stmt, _params, formats = ctx.portals[portal]
+        sql = ctx.stmts.get(stmt, ("",))[0]
+        bound = session.portal_bound.get(portal, datetime.datetime.now(datetime.timezone.utc))
+        session.open_portal = (portal, sql, bool(formats) and all(f == 1 for f in formats), bound)
+        try:
+            yield
+        finally:
+            session.open_portal = None
 
     def handle_execute(self, ctx: BVContext, payload: bytes) -> None:
         self._open_request()
@@ -3437,7 +3600,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             self.wfile.write(struct.pack("!ci", ServerResponse.EMPTY_QUERY_RESPONSE, 4))
             return
         try:
-            super().handle_execute(ctx, payload)
+            with self._portal_open(ctx, portal):
+                super().handle_execute(ctx, payload)
         except TimeoutError as exc:
             # REQ-1905: the deadline passed while rows were being sent. The statement ends with
             # an ErrorResponse and the rest of the cycle is skipped up to its Sync.
@@ -3520,6 +3684,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 query_result=query_result,
                 source=query_result.rows(),
                 scrollable=scrollable,
+                statement=stmt,
+                holdable=re.search(r"\bWITH\s+HOLD\b", stmt, re.IGNORECASE) is not None,
+                binary=re.search(r"\bBINARY\b", stmt.split("CURSOR")[0], re.IGNORECASE) is not None,
+                created=datetime.datetime.now(datetime.timezone.utc),
             )
             self.send_command_complete("DECLARE CURSOR\x00")
         except PermissionError as exc:

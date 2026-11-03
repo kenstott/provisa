@@ -274,6 +274,7 @@ async def _graphql_columns_for_input(
     )
     from provisa.api.admin.types import MutationResult
     from provisa.api.app import state
+    from provisa.graphql_remote.executor import Throttled
     from provisa.graphql_remote.probe import QueryTooComplex
 
     if input.source_id not in getattr(state, "graphql_remote_sources", {}):
@@ -316,6 +317,16 @@ async def _graphql_columns_for_input(
             ),
             code="schema.table_too_complex",
             params={"table": input.table_name, "reason": costly.reason},
+        )
+    except Throttled as throttled:
+        return [], MutationResult(
+            success=False,
+            message=(
+                f"{offer.label}'s rate limit did not let {input.table_name} be checked: "
+                f"{throttled.reason}. Try again later"
+            ),
+            code="schema.remote_throttled",
+            params={"table": input.table_name, "reason": throttled.reason},
         )
     if not any(c.native_filter_type is None for c in columns):
         reasons = sorted({o["reason"] for o in omitted})

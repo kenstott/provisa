@@ -869,7 +869,9 @@ SQL
 
 verify() {
   echo "== verifying $SITE"
-  # Accept: text/html marks this a document request; ui_server proxies anything else to
+  # Accept: text/html with Sec-Fetch-Dest: document marks this a page load, which the front door and
+  # ui_server send to the UI; anything else goes to the API, where an unauthenticated GET / is a
+  # 401 and says nothing about the deploy (ui_server proxies anything else to
   # the API, where an unauthenticated GET / is a 401 and says nothing about the deploy.
   # 300s. The old 120s budget was shorter than a cold restart on this node, where the API's
   # lifespan spends ~115s in engine-wake alone, so the poll reported 503 on a deploy that then
@@ -878,7 +880,7 @@ verify() {
     # A refused connection is the expected state while the container restarts, so it is
     # recorded as a probe result instead of tripping `set -e` and aborting the poll. It is
     # never treated as success: the loop still fails loudly below if 200 never arrives.
-    code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: text/html' "$SITE/") || code="unreachable"
+    code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: text/html' -H 'Sec-Fetch-Dest: document' -H 'Sec-Fetch-Mode: navigate' "$SITE/") || code="unreachable"
     [ "$code" = "200" ] && { echo "$SITE/ -> 200 after $((i * 2))s"; return 0; }
     sleep 2
   done

@@ -26,11 +26,12 @@ from __future__ import annotations
 
 import gzip
 import json
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from provisa.graphql_remote.executor import ErrorPolicy
+from provisa.graphql_remote.executor import NO_POLICY, ErrorPolicy
 from provisa.graphql_remote.mapper import map_schema
 
 _SCHEMA_DIR = Path(__file__).parent / "_known_schemas"
@@ -38,12 +39,35 @@ _SCHEMA_DIR = Path(__file__).parent / "_known_schemas"
 # Where a source row records its brand and namespace (``sources.federation_hints``).
 BRAND_HINT = "brand"
 NAMESPACE_HINT = "namespace"
+# The values a brand's setup was given (Brand.setup) are the row's own ``brand_setup``
+# (Source.brand_setup), not a hint: ``federation_hints`` maps names to strings.
+
+
+@dataclass(frozen=True)
+class SetupField:
+    """A value a brand's setup asks for besides the credential, filling ``{name}`` in its URL
+    (Shopify: the store, and the API version)."""
+
+    name: str
+    pattern: str  # what the value must match, whole
+    default: str | None = None  # None: the steward must give it
+
+
+class SetupInvalid(ValueError):
+    """A brand's setup was given a value its field does not take, or none for a field that has
+    no default. ``field``: which."""
+
+    def __init__(self, brand: str, field: str, message: str):
+        super().__init__(f"{brand}: {message}")
+        self.field = field
 
 
 @dataclass(frozen=True)
 class Brand:
     id: str  # the value the source picker sends and the source row records
     label: str  # what the user sees
+    # The endpoint. A brand reached at a per-customer address writes it as a template whose
+    # ``{name}`` parts are filled from its setup fields.
     url: str
     namespace: str  # default prefix of the source's table names
     verify_query: str  # a minimal query that succeeds only with a working credential
@@ -68,9 +92,52 @@ class Brand:
     max_list_depth: int = 2
     max_list_items: int = 100
     field_overrides: dict[str, str] | None = None  # a brand's schema is mapped as shipped
+    # What setup asks for besides the credential, for a brand whose ``url`` is a template.
+    setup_fields: tuple[SetupField, ...] = ()
+    # The header the credential is sent in, bare; None sends it as a bearer token.
+    auth_header: str | None = None
+    # Where scripts/bake_graphql_brand_schema.py introspects the shipped schema, for a brand
+    # whose ``url`` is a template; empty for one whose ``url`` is the endpoint itself.
+    schema_url: str = ""
 
     def auth(self, token: str) -> dict:
+        if self.auth_header is not None:
+            return {"type": "header", "header": self.auth_header, "token": token}
         return {"type": "bearer", "token": token}
+
+    def setup(self, given: dict[str, str] | None) -> dict[str, str]:
+        """The setup values a source is added with: each field's value as given, or its default.
+        Raises :class:`SetupInvalid` naming the field for a missing or malformed value, and for
+        a value given to a field the brand does not ask for."""
+        given = {k: v.strip() for k, v in (given or {}).items()}
+        known = {f.name for f in self.setup_fields}
+        unknown = sorted(set(given) - known)
+        if unknown:
+            raise SetupInvalid(self.label, unknown[0], f"setup takes no {unknown[0]!r}")
+        values = {}
+        for field in self.setup_fields:
+            value = given.get(field.name) or field.default
+            if not value:
+                raise SetupInvalid(self.label, field.name, f"setup needs {field.name!r}")
+            if not re.fullmatch(field.pattern, value):
+                raise SetupInvalid(
+                    self.label,
+                    field.name,
+                    f"{field.name} {value!r} is not of the form {field.pattern}",
+                )
+            values[field.name] = value
+        return values
+
+    def endpoint(self, setup: dict[str, str]) -> str:
+        """The endpoint of a source added with ``setup`` (as :meth:`setup` returns it)."""
+        return self.url.format(**setup)
+
+    @property
+    def introspection_url(self) -> str:
+        """Where the shipped schema is read from when it is baked."""
+        if self.setup_fields and not self.schema_url:
+            raise ValueError(f"{self.label} is reached per customer and names no schema_url")
+        return self.schema_url or self.url
 
     def schema(self) -> dict:
         return brand_schema(self.id)
@@ -92,6 +159,7 @@ class LiveSchema:
     max_list_items: int
     refused_error_types: frozenset[str] = frozenset()
     too_complex_messages: tuple[str, ...] = ()
+    error_policy: ErrorPolicy = NO_POLICY
     # REQ-597: fields the steward reclassified between query and mutation.
     field_overrides: dict[str, str] | None = None
 
@@ -108,6 +176,11 @@ class LiveSchema:
 # What a remote GraphQL source's tables are offered from: a brand's shipped schema, or a plain
 # source's own.
 SchemaOffer = Brand | LiveSchema
+
+
+# The newest stable Admin API version when the shipped Shopify schema was baked
+# (publicApiVersions); the version a Shopify source is added with unless the steward names one.
+SHOPIFY_API_VERSION = "2026-10"
 
 
 BRANDS: dict[str, Brand] = {
@@ -145,6 +218,36 @@ BRANDS: dict[str, Brand] = {
         # GitLab prices every query (200 points for an anonymous caller, 250 with a token) and
         # refuses one over 10,000 characters.
         too_complex_messages=("Query has complexity of", "Query too large"),
+    ),
+    "shopify": Brand(
+        id="shopify",
+        label="Shopify",
+        # Each store is its own endpoint, and the API version is part of the address.
+        url="https://{store}.myshopify.com/admin/api/{api_version}/graphql.json",
+        setup_fields=(
+            # The store's handle, the part of its admin address before .myshopify.com.
+            SetupField("store", r"[a-z0-9][a-z0-9-]*"),
+            SetupField("api_version", r"\d{4}-\d{2}", default=SHOPIFY_API_VERSION),
+        ),
+        # Shopify's public copy of the Admin API, which answers introspection without a store
+        # (the endpoint Shopify's own GraphQL codegen reads the schema from).
+        schema_url=f"https://shopify.dev/admin-graphql-direct-proxy/{SHOPIFY_API_VERSION}",
+        namespace="shopify",
+        auth_header="X-Shopify-Access-Token",
+        verify_query="query { shop { name } }",
+        # A field outside the app's access scopes: "Access denied for orders field. Required
+        # access: `read_orders` access scope."
+        refused_error_types=frozenset({"ACCESS_DENIED"}),
+        error_policy=ErrorPolicy(
+            overload=frozenset({"MAX_COST_EXCEEDED"}),
+            # The store's bucket of query points has too little left; extensions.cost says
+            # what the query costs and how many points a second it restores.
+            throttled=frozenset({"THROTTLED"}),
+        ),
+        max_object_depth=0,
+        # Shopify prices every query and refuses one priced over 1,000 points: "Query cost is
+        # 1850, which exceeds the single query max cost limit (1000)."
+        too_complex_messages=("Query cost is",),
     ),
 }
 

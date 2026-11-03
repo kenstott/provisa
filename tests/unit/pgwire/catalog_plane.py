@@ -35,7 +35,7 @@ from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import MetadataFunctionRefused
 from provisa.security.rights import Capability, has_capability
 from provisa.transpiler.metadata_settings import set_statement, statement_settings
-from provisa.transpiler.transpile import transpile_to_duckdb
+from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 from provisa.transpiler.metadata_views import (
     CATALOG_VIEW_NAMES,
     NEUTRAL_VIEW_NAMES,
@@ -196,10 +196,13 @@ class Plane:
     """``answer``'s read of meta, on ``engine``: a state's model is written the first time a
     statement of that state reads it."""
 
-    def __init__(self, engine: Engine) -> None:
+    def __init__(self, engine: Engine, *, engine_is_postgres: bool = False) -> None:
         self.engine = engine
         self._written: tuple[int, str] | None = None
         self._runtime: DuckDBFederationRuntime | None = None
+        # The PostgreSQL engine: a statement reading no table runs on a PostgreSQL, which the
+        # plane's own server stands in for, rather than on DuckDB.
+        self.engine_is_postgres = engine_is_postgres
 
     def read(self, sql: str, role_id: str, state: Any, session: Any, _run: Any) -> QueryResult:
         written = (id(state), role_id)
@@ -249,6 +252,8 @@ class Plane:
     def _read_on_the_engine(self, sql: str, addressed: str) -> QueryResult:
         """A statement reading no table, as the pipeline routes it: the engine's, never the plane's
         (REQ-2190)."""
+        if self.engine_is_postgres:
+            return self._read_on_postgres(sql, addressed)
         if self._runtime is None:
             self._runtime = DuckDBFederationRuntime()
         try:
@@ -265,6 +270,24 @@ class Plane:
                 column_names=list(answer.column_names),
                 column_types=list(answer.column_types or ()),
             ),
+        )
+
+    def _read_on_postgres(self, sql: str, addressed: str) -> QueryResult:
+        written = transpile(addressed, "postgres")  # as the PostgreSQL engine is given it
+        with self.engine.begin() as conn:
+            conn.connection.driver_connection.adapters.register_loader("json", TextLoader)
+            try:
+                result = conn.exec_driver_sql(written.replace("%", "%%"))
+            except Exception as exc:
+                answered = postgres_error(exc)
+                if answered is not None:
+                    raise answered from exc
+                raise
+            described = [int(d[1]) for d in result.cursor.description]
+            names = list(result.keys())
+            rows = [tuple(r) for r in result.fetchall()]
+        return catalog._as_declared(
+            sql, QueryResult(rows=rows, column_names=names, column_type_oids=described)
         )
 
 
