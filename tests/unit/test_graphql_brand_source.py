@@ -36,6 +36,16 @@ from provisa.graphql_remote.mapper import map_schema
 from provisa.graphql_remote.probe import QueryTooComplex
 from provisa.graphql_remote.executor import column_selection, execute_remote, table_query
 
+
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A deployment of one organization (REQ-2006). The API layer says it at import; these
+    tests import no API layer, so they say it themselves."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 GITHUB = BRANDS["github"]
 
 
