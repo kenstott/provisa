@@ -19,6 +19,7 @@ import argparse
 import contextlib
 import importlib.util
 import json
+import re
 import time
 from pathlib import Path
 
@@ -650,6 +651,7 @@ def _sync(
     check_fail: str | None = None,
     failed_before: str | None = None,
     prune_engines: bool = False,
+    up_and_another_waiting: bool = False,
 ):
     """scripts/demo_stores_sync.sh for the weblogs demo, its pull and scripts/demo_stores.py fakes
     that record what they were asked."""
@@ -666,6 +668,14 @@ def _sync(
         (bundles / "weblogs" / "requested").write_text(f"until {lingering_until}\n")
         (bundles / "weblogs" / "ready").write_text(_VERSION + "\n")
         (bundles / "weblogs" / _VERSION / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
+    if up_and_another_waiting:
+        # weblogs up and in use; a visitor waits on "later", asked for and not up.
+        (bundles / "weblogs" / "requested").write_text("requested\n")
+        (bundles / "weblogs" / "ready").write_text(_VERSION + "\n")
+        (bundles / "weblogs" / _VERSION / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
+        (bundles / "later" / _VERSION).mkdir(parents=True)
+        (bundles / "later" / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
+        (bundles / "later" / "requested").write_text("requested\n")
     if in_use is not None:
         (bundles / "weblogs" / "in-use").write_text(in_use + "\n")
     if wanted is not None:
@@ -705,7 +715,9 @@ def _sync(
         (bundles / "weblogs" / "failed").write_text(failed_before + "\n")
     env = {
         **os.environ,
-        "PROVISA_DEMO_BUNDLES": "weblogs,later" if ask_on_pull else "weblogs",
+        "PROVISA_DEMO_BUNDLES": "weblogs,later"
+        if ask_on_pull or up_and_another_waiting
+        else "weblogs",
         "DEMO_BUNDLES_DIR": str(bundles),
         "DEMO_PULL": str(fake / "pull"),
         "DEMO_PULL_INTO": str(bundles),
@@ -800,6 +812,31 @@ def test_a_demo_asked_for_during_a_run_has_its_stores_brought_up_by_that_run(tmp
     assert not (demo.parent / ".wanted").exists()
 
 
+def test_a_demo_a_visitor_waits_on_is_brought_up_before_the_ones_already_up(tmp_path):
+    """A run brings up first each demo asked for and not up -- the one a visitor's open waits on
+    -- and only then goes over the demos already up. On the sandbox tier a run went over every demo
+    in the order the node lists them, each one up brought up again, so an open of a demo late in
+    the list waited behind every demo opened before it."""
+    run, demo, asked = _sync(tmp_path, up_and_another_waiting=True)
+    assert run.returncode == 0, run.stderr
+    later = demo.parent / "later"
+    assert asked[:2] == [
+        f"up later {_VERSION} {later / _VERSION}",
+        f"check later {_VERSION} {later / _VERSION}",
+    ]
+    assert (later / "ready").read_text().strip() == _VERSION
+    assert (tmp_path / "pulls").read_text().split() == ["later", "weblogs"]
+
+
+def test_each_demo_s_sync_is_timed_in_the_node_s_log(tmp_path):
+    """The node's log says how long each demo's pull and stores took, so a slow open is named by
+    the step it waited on."""
+    run, _demo, _asked = _sync(tmp_path, requested=True)
+    assert run.returncode == 0, run.stderr
+    assert re.search(r"demo weblogs: pulled in \d+s", run.stdout), run.stdout
+    assert re.search(r"demo weblogs: stores up and checked in \d+s", run.stdout), run.stdout
+
+
 def test_an_older_version_nothing_reads_is_taken_down_and_one_read_is_kept(tmp_path):
     bundles = tmp_path / "bundles" / "weblogs"
     for old in ("202601010000-old0001", "202601020000-old0002"):
@@ -890,9 +927,11 @@ def test_the_sandbox_vm_prunes_its_engine_releases():
     assert "DEMO_PRUNE_ENGINES=true" in settings.splitlines()
 
 
-def test_a_demo_lingered_out_has_its_stores_taken_down_and_its_bundle_kept(tmp_path):
+def test_a_demo_lingered_out_has_its_own_services_taken_down_and_its_data_kept(tmp_path):
     """sandbox.demo_stores_linger after its last sandbox closed, with none opened since, the
-    demo's stores are taken down as an older version's are; its next open asks for it again."""
+    demo's own services are taken down; its data stays loaded (REQ-2049, amended 2026-11-02), and
+    its stores.env stays to say so, so a newer version's run drops it once it is superseded. Its
+    next open asks for it again."""
     import time
 
     run, demo, asked = _sync(tmp_path, lingering_until=int(time.time()) - 1)
@@ -900,7 +939,7 @@ def test_a_demo_lingered_out_has_its_stores_taken_down_and_its_bundle_kept(tmp_p
     assert asked == [f"stop weblogs {_VERSION}"]
     assert not (demo / "requested").exists()
     assert not (demo / "ready").exists()
-    assert not (demo / _VERSION / "stores.env").exists()
+    assert (demo / _VERSION / "stores.env").is_file()
     assert (demo / _VERSION / "docker-compose.run.yml").is_file()
     assert (demo / "pulled").read_text().strip() == _VERSION
 

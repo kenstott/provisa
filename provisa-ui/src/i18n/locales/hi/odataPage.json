@@ -37,6 +37,12 @@
     "noRows": "कोई पंक्ति मेल नहीं खाती।",
     "rowsCutTitle": "सभी पंक्तियाँ नहीं लौटाई गईं",
     "warningsTitle": "इस उत्तर के बारे में",
-    "provenanceUrl": "OData अनुरोध"
+    "provenanceUrl": "OData अनुरोध",
+    "handoffNotService": "यह OData सेवा का पता नहीं है: {{url}}",
+    "handoffPath": "एक्सप्लोरर पूरा एंटिटी सेट पढ़ता है; {{path}} उसके केवल एक भाग को इंगित करता है।",
+    "handoffOption": "एक्सप्लोरर {{option}}={{value}} सेट नहीं कर सकता।",
+    "handoffNumber": "{{option}} एक पूर्ण संख्या होनी चाहिए, {{value}} नहीं।",
+    "handoffNoSet": "इस भूमिका के लिए कोई एंटिटी सेट {{set}} नहीं है।",
+    "handoffMember": "{{set}} में {{option}} के लिए {{name}} नहीं है।"
   }
 }

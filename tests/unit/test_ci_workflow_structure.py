@@ -1086,9 +1086,9 @@ def test_no_proof_job_fails_on_purpose_uncontained_and_no_needed_job_is_containe
 
 
 def test_the_primer_names_only_guards_actions_and_scripts_that_exist():
-    """.github/README.md states each rule beside the test that holds it. A rule whose test was
+    """.github/CI.md states each rule beside the test that holds it. A rule whose test was
     renamed or removed would read as held when it is not."""
-    primer = (REPO / ".github" / "README.md").read_text()
+    primer = (REPO / ".github" / "CI.md").read_text()
     cited = set(re.findall(r"`(test_[a-z0-9_]+)`", primer))
     assert len(cited) >= 12
     defined = set()
@@ -1100,6 +1100,15 @@ def test_the_primer_names_only_guards_actions_and_scripts_that_exist():
     assert set(re.findall(r"^\| `([a-z-]+)` \|", primer, re.M)) == actions
     for path in re.findall(r"`((?:scripts/ci|\.github/workflows)/[\w./-]+\.(?:py|yml))`", primer):
         assert (REPO / path).exists(), path
+
+
+def test_the_repository_front_page_is_the_product_readme():
+    """GitHub renders .github/README.md in preference to the root README.md. The CI primer once
+    lived there and took the repository's front page; it is .github/CI.md now."""
+    assert not (REPO / ".github" / "README.md").exists()
+    assert (REPO / ".github" / "CI.md").exists()
+    assert not (REPO / "docs" / "README.md").exists()
+    assert (REPO / "README.md").exists()
 
 
 def test_a_job_checks_out_the_commit_its_workflow_came_from_or_the_one_it_was_asked_for():
