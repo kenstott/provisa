@@ -44,6 +44,7 @@ from tests.integration.test_sandbox_visitor_walk import (
     _open_sandbox,
     _plain_tier,
     _regions_tier,
+    _status,
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.local_platform, pytest.mark.timeout(3600)]
@@ -94,7 +95,8 @@ def _rows(resp: httpx.Response) -> int:
     return sum(len(v) if isinstance(v, list) else 1 for v in data.values())
 
 
-def test_the_first_example_query_answers_the_bundles_rows_as_its_role(tier):
+def _answers_the_bundles_rows(tier) -> None:
+    """A new sandbox of ``tier``'s demo answers its first example query with the bundle's rows."""
     (first, *_) = sorted((tier.directory / "queries").glob("*.graphql"))
     text = first.read_text()
     role = run_as(text)
@@ -118,3 +120,36 @@ def test_the_first_example_query_answers_the_bundles_rows_as_its_role(tier):
         f"not {expected}: {resp.text[:1500]}\nserver log end:\n"
         f"{tier.dump_stderr_debug()[-8000:]}"
     )
+
+
+def test_the_first_example_query_answers_the_bundles_rows_as_its_role(tier):
+    _answers_the_bundles_rows(tier)
+
+
+@pytest.fixture(params=[d for d in sorted(_EXPECTED) if not serves_on_regions_tier(_NAMED / d)])
+def own_plane_tier(request, tmp_path_factory):
+    """As ``tier``, on a control plane of its own, so a restart serves the template it recorded
+    as built (a regions tier never serves one so: demo_templates._served_as_built)."""
+    demo = request.param
+    work = tmp_path_factory.mktemp(f"first_query_restart_{demo}")
+    bundle = _bundle(demo, work / "built")
+    version = bundle.name.removeprefix(f"{demo}-").removesuffix(".tar.gz")
+    try:
+        with _plain_tier(demo, bundle, work, control_plane="own") as (server, bundles):
+            server.demo = demo
+            server.directory = bundles / demo / version
+            yield server
+    finally:
+        project = f"provisa-demo-{demo}-{version}"
+        subprocess.run(["docker", "compose", "-p", project, "down", "-v"], check=False)
+
+
+def test_a_restarted_tier_serves_the_same_rows_from_the_template_as_built(own_plane_tier):
+    """The cloud's tier is restarted at each deploy and each wake from idle, and serves the
+    template it built before as it is (``ready (as built)``): a sandbox opened then is cloned
+    from that template, and answers what one opened before the restart did."""
+    _answers_the_bundles_rows(own_plane_tier)
+    own_plane_tier.restart(timeout=600)
+    # Served as built: ready on the first question after the start, nothing prepared again.
+    assert _status(own_plane_tier)["state"] == "ready", own_plane_tier.dump_stderr_debug()[-6000:]
+    _answers_the_bundles_rows(own_plane_tier)
