@@ -26425,3 +26425,15 @@ Maintainer 2026-11-02: transport (HTTP, pgwire, Flight, gRPC, Bolt...), query la
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2196 · Source Connectors {#REQ-2196}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-02: rather than a generic Python driver option, Provisa adds each of these as its own source type, as HANA, Exasol and Athena are: Teradata, IBM Db2, Vertica, Netezza, Informix, Sybase (ASE and IQ) and Google Spanner. Each has its own setup form, its SQL dialect, discovery of its tables and columns, its type mapping, and the reach every other relational source has (direct route, replica, and the engine's attach where one exists). Each is read through its vendor's or a maintained Python driver.
+
+**Code:** —
+
+**Tests:** —

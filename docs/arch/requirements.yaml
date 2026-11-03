@@ -91113,3 +91113,34 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2167
   stakeholders:
   - data-engineer
+- id: REQ-2196
+  value: Teradata, IBM Db2, Vertica, Netezza, Informix, Sybase and Google Spanner are named source types.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-relational-and-warehouses
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-02: rather than a generic Python driver option, Provisa adds each of
+    these as its own source type, as HANA, Exasol and Athena are: Teradata, IBM Db2, Vertica, Netezza,
+    Informix, Sybase (ASE and IQ) and Google Spanner. Each has its own setup form, its SQL dialect, discovery
+    of its tables and columns, its type mapping, and the reach every other relational source has (direct
+    route, replica, and the engine''s attach where one exists). Each is read through its vendor''s or
+    a maintained Python driver.'
+  scenario: 'Given a reachable instance of each of these databases
+
+    When an admin registers it as its named source type and registers a table
+
+    Then the table''s columns are discovered with their types
+
+    When a query reads the table
+
+    Then the rows come back with the source''s values, governed as any other source''s are'
+  related_reqs:
+  - REQ-950
+  - REQ-1753
+  - REQ-1981
+  - REQ-2191
+  stakeholders:
+  - data-engineer
