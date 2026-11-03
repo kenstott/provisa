@@ -70,8 +70,13 @@ PAGES: dict[str, PollyPage] = {
         "inputs: url, table, fields, include, filter, sort, status, error",
     ),
     "/odata": PollyPage(
-        "OData: the service root and metadata addresses to paste into Excel, Power BI or any "
-        "OData client"
+        "OData explorer: the service root and metadata addresses to paste into Excel, Power BI or "
+        "any OData client, and the role's entity sets, each with a query builder and its rows",
+        "state.odataUrl, a read of one entity set as /data/odata/<set>?<options> with any of "
+        "$filter, $select, $expand, $orderby, $top, $skip, $count=true, opened in its panel with "
+        "those options set; state.autoRun true runs it",
+        "inputs: entitySets, set, url, filter, select, expand, orderby, top, skip, count, status, "
+        "error, rows, total, nextPage, warnings, handoffError",
     ),
     "/openapi": PollyPage(
         "OpenAPI docs",

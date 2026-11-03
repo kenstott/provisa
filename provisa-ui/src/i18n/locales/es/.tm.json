@@ -9077,5 +9077,11 @@
   "registerTableForm.json::registerTableForm.dqScanIntervalHint": "Each scan adds its results to the table; earlier scans are kept.",
   "registerTableForm.json::registerTableForm.dqScanIntervalLabel": "Scan every (seconds)",
   "registerTableForm.json::registerTableForm.errorDqScanInterval": "Set how often the table is scanned, in seconds.",
-  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP"
+  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP",
+  "es/odataPage.json::odataPage.handoffNotService": "Not an address of the OData service: {{url}}",
+  "es/odataPage.json::odataPage.handoffPath": "The explorer reads a whole entity set; {{path}} addresses part of one.",
+  "es/odataPage.json::odataPage.handoffOption": "The explorer cannot set {{option}}={{value}}.",
+  "es/odataPage.json::odataPage.handoffNumber": "{{option}} must be a whole number, not {{value}}.",
+  "es/odataPage.json::odataPage.handoffNoSet": "There is no entity set {{set}} for this role.",
+  "es/odataPage.json::odataPage.handoffMember": "{{set}} has no {{name}} for {{option}}."
 }

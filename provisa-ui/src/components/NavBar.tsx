@@ -148,6 +148,7 @@ export function NavBar() {
     location.pathname === "/nl" ||
     location.pathname === "/grpc" ||
     location.pathname === "/jsonapi" ||
+    location.pathname === "/odata" ||
     location.pathname === "/openapi" ||
     // REQ-1591: the glossary list is narrowed by the same selection, and its create modal makes a
     // term's domains from it.
