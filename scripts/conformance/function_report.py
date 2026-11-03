@@ -105,6 +105,7 @@ FLOAT_CLOSE = "float-tolerance"
 JSON_KEY_ORDER = "json-key-order"
 ARRAY_ORDER = "array-order"
 CLOCK_FIELD = "clock-field"
+ZONE_PACKAGING = "tzdata-packaging"
 
 RULES = (
     Rule(
@@ -162,6 +163,15 @@ RULES = (
         "A clock's field compared by its form",
         "A field read from the clock, such as `pg_cursor`'s `creation_time`, differs on every "
         "call, so it compares by its type's form; the record's other fields compare by value.",
+    ),
+    Rule(
+        ZONE_PACKAGING,
+        "Time zones a distribution packages differently",
+        "`pg_timezone_names` lists the pinned upstream IANA tzdata, as upstream PostgreSQL ships "
+        "it, and compares by the names both lists hold. A name that differs only through a "
+        "distribution's tzdata packaging is skipped by design (REQ-2167, amended 2026-11-03, "
+        "Time zones follow upstream tzdata): Debian drops the backward links, a link Provisa "
+        "lists whose zone both list, and adds `localtime` and `posixrules`.",
     ),
 )
 

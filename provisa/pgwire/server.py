@@ -1247,6 +1247,8 @@ class _StatementDescription(BVQueryResult):  # REQ-589
         self._types = [_sql_type_to_bvtype(t) for _, t in shape]
         self._type_oids = [_type_oid(t) for _, t in shape]
         self._typmods = [-1] * len(shape)
+        # REQ-1961: a registered column is described as its Execute sends it.
+        _describe_registered(shape, self._types, self._type_oids, self._typmods, [])
         _describe_casts(sql, self._types, self._type_oids, self._typmods, [])
         self._status = _tag_from_sql(sql)
 

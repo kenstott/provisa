@@ -465,12 +465,8 @@ VALUE_FUNCTIONS_OF_THE_SERVER = (
             + " END",
         ),
     ),
-    _macro(
-        "pg_timezone_names",
-        "",
-        "unnest((SELECT list(_z) FROM pg_timezone_names() _z))",
-    ),
-    # PostgreSQL's Default abbreviations (pg_zones).
+    # The pinned release's zones, and PostgreSQL's Default abbreviations (pg_zones).
+    _macro("pg_timezone_names", "", f"unnest((SELECT list(_z) FROM ({pg_zones.NAMES}) _z))"),
     _macro("pg_timezone_abbrevs", "", f"unnest((SELECT list(_z) FROM ({pg_zones.ABBREVS}) _z))"),
     _macro(
         "pg_indexam_has_property",
@@ -2489,7 +2485,7 @@ def _percentile(node: exp.WithinGroup, dialect: str) -> exp.Expr:
 
 
 #: The functions in FROM with columns of their own, which DuckDB's unnest of a struct does not make.
-_ROWS_OF_COLUMNS = frozenset({"pg_options_to_table", "aclexplode"})
+_ROWS_OF_COLUMNS = frozenset({"pg_options_to_table", "aclexplode", "pg_timezone_names"})
 
 
 #: byteain's escapes: a doubled backslash, or a byte in three octal digits.
