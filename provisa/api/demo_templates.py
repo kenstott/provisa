@@ -981,7 +981,38 @@ async def warm_ready(pool, demo: PublishedDemo) -> bool:
     if record.version != readiness_version(demo):
         return False
     held = await asyncio.to_thread(store_counts, demo.template_org)
-    return held == {"replicas": dict(record.replicas), "views": dict(record.views)}
+    if held != {"replicas": dict(record.replicas), "views": dict(record.views)}:
+        return False
+    # REQ-2052: and the profile runs its bundle carries, which every sandbox of it is cloned with.
+    # A template served as built without them gave every sandbox an empty run history; one that
+    # does not hold them is prepared again, which loads them (profile_template).
+    unheld = await unheld_profile_runs(demo)
+    if unheld:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "demo template %s: not served as built, its profile runs are not held: %s",
+            demo.name,
+            "; ".join(unheld),
+        )
+        return False
+    return True
+
+
+async def unheld_profile_runs(demo: PublishedDemo) -> list[str]:
+    """The profile runs ``demo``'s bundle carries that its template does not hold, rows and all
+    (provisa.profiler.carry.unheld_runs); empty when it holds every one or profiles nothing."""
+    from provisa.api.admin.orgs_router import _pool
+    from provisa.core.environments import org_schema
+    from provisa.profiler.carry import results_path, unheld_runs
+
+    if not demo_profilers(demo.directory):
+        return []
+    path = results_path(demo.directory)
+    if not path.is_file():
+        return [f"the bundle carries no profile runs ({path.name}): rebuild it"]
+    async with _pool().acquire() as conn:
+        return await unheld_runs(conn, path, org_schema(demo.template_org))
 
 
 async def _built_for(pool, demo: PublishedDemo) -> str | None:
