@@ -132,6 +132,8 @@ export interface SourceFormFieldsProps {
   onOpenapiPreview: () => void;
   gqlNamespace: string;
   setGqlNamespace: (v: string) => void;
+  brandSetup: Record<string, string>;
+  setBrandSetup: (v: Record<string, string>) => void;
   gqlCacheTtl: string;
   setGqlCacheTtl: (v: string) => void;
   grpcProtoPath: string;

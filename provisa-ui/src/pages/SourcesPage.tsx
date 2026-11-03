@@ -66,6 +66,7 @@ import { DERIVED_SOURCE_ID } from "../types/admin";
 import { cdcTransportApplicable, sourceChangeSignals } from "../liveCapability";
 import {
   BRAND_CARRIER,
+  brandSetupDefaults,
   CATEGORIES,
   DB_DESCRIPTION_TYPES,
   DISCOVERABLE_TYPES,
@@ -455,6 +456,7 @@ export function SourcesPage() {
     // for this type (SourceFormFields.tsx), so default straight to it instead of "none".
     setAuthType(type === "hive_s3" ? "aws" : "none");
     setAuthFields({});
+    setBrandSetup(brandSetupDefaults(type));
     resetSpFields();
   };
 
@@ -498,6 +500,7 @@ export function SourcesPage() {
     if (r.kind === "graphql") {
       setGqlNamespace(r.namespace);
       setGqlCacheTtl(r.cacheTtl);
+      setBrandSetup(r.setup);
     } else if (r.kind === "openapi") {
       setOpenapiSpecMode(r.specMode);
       setOpenapiSpecPath(r.specPath);
@@ -921,6 +924,8 @@ export function SourcesPage() {
   };
 
   const [gqlNamespace, setGqlNamespace] = useState("");
+  // REQ-1923: what a brand reached at a per-customer address was set up with (BRAND_SETUP).
+  const [brandSetup, setBrandSetup] = useState<Record<string, string>>({});
   const [gqlCacheTtl, setGqlCacheTtl] = useState("300");
   const [refreshingSourceId, setRefreshingSourceId] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -1120,6 +1125,7 @@ export function SourcesPage() {
                 // is the brand's, and no tables are registered by adding it.
                 source_id: form.id,
                 brand: form.type,
+                setup: brandSetup,
                 namespace: gqlNamespace,
                 domain_id: "",
                 auth: { type: "bearer", token: authFields.token ?? "" },
@@ -1224,6 +1230,8 @@ export function SourcesPage() {
     onOpenapiPreview: handleOpenapiPreview,
     gqlNamespace,
     setGqlNamespace,
+    brandSetup,
+    setBrandSetup,
     gqlCacheTtl,
     setGqlCacheTtl,
     grpcProtoPath,
