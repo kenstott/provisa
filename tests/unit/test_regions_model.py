@@ -442,10 +442,13 @@ def test_the_engine_kinds_the_model_names_are_the_ones_built():
 
 def test_the_engine_kinds_that_read_other_regions_are_the_backends_that_do(monkeypatch):
     from provisa.core.engine_kinds import REGION_READERS
+    from provisa.federation import engine as fe
     from provisa.federation.engine import build_engine, engine_kinds
 
     # A generic SQLAlchemy engine kind is built only with a URL; none is dialed.
     monkeypatch.setenv("PROVISA_ENGINE_URL", "postgresql://h/db")
+    # Whether a kind's dialect extra is installed is not what this asks (test_engine_extras.py does).
+    monkeypatch.setattr(fe, "require_engine_extra", lambda kind: None)
     readers = {k for k in engine_kinds() if build_engine(k).backend.reads_other_regions}
     assert readers == REGION_READERS
 
