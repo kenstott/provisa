@@ -342,6 +342,14 @@ def template_seed(org_id: str) -> Any:  # a ProvisaConfig
         return parse_config_dict(raw)
 
 
+async def rebuild_template(directory: Path, seed: Any, conn: Any, engine: Any) -> list[str]:
+    """Rebuild a template org's model from its demo's configuration ``seed`` (REQ-1919, every
+    build of its runtime); the source ids whose change feed could not be reached."""
+    from provisa.core.config_loader import rebuild_from_config
+
+    return await rebuild_from_config(seed, conn, engine)
+
+
 async def write_declared_settings(model_db: Any, seed: Any) -> None:  # REQ-2006, REQ-2057
     """Every org setting a sandbox is cloned with (``carries_setting``, by ``clone_model``) that the
     demo's configuration declares, as its template org's own settings, in one write at every build
