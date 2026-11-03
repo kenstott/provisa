@@ -146,6 +146,24 @@ def test_a_parameterized_insert_into_a_table_with_no_generated_key(pg_server):
         _undefined(conn)
 
 
+def test_a_parameterized_insert_then_lastval(pg_server):
+    """The extended protocol's bound value, on a connection of its own."""
+    with _log_on_failure(pg_server), _pgwire(pg_server) as conn:
+        inserted = conn.execute("INSERT INTO sales.events (note) VALUES (%s)", ("bound",))
+        assert inserted.rowcount == 1
+        assert _pg_rows(pg_server)[_lastval(conn)] == "bound"
+
+
+def test_a_lastval_the_client_prepared_then_an_insert(pg_server):
+    """psycopg prepares a statement it has run five times: lastval, then a write after it."""
+    with _log_on_failure(pg_server), _pgwire(pg_server) as conn:
+        conn.execute("INSERT INTO sales.events (note) VALUES ('repeated')")
+        for _ in range(7):
+            assert _pg_rows(pg_server)[_lastval(conn)] == "repeated"
+        conn.execute("INSERT INTO sales.events (note) VALUES ('after')")
+        assert _pg_rows(pg_server)[_lastval(conn)] == "after"
+
+
 def test_postgresql_insert_then_lastval(pg_server):
     with _log_on_failure(pg_server), _pgwire(pg_server) as conn:
         _undefined(conn)
