@@ -751,8 +751,7 @@ async def specification_columns(  # REQ-464
         if not reg.get("brand") and reg.get("schema") is None:
             return None  # its schema has not been read from its endpoint yet: no call here
         from provisa.api.admin._graphql_table_registration import (
-            offered_columns,
-            offered_tables,
+            offered_columns_of_every_table,
             source_offer,
         )
 
@@ -760,10 +759,8 @@ async def specification_columns(  # REQ-464
         if offered is None:
             return None
         return {
-            table["name"]: [
-                name for name, _type, _comment in offered_columns(*offered, table["name"])
-            ]
-            for table in offered_tables(*offered)
+            table: [name for name, _type, _comment in columns]
+            for table, columns in offered_columns_of_every_table(*offered).items()
         }
     return None
 

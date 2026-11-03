@@ -49,22 +49,49 @@ def _tokenize(text: str) -> set[str]:
     return {t.lower() for t in re.split(r"[\W_]+", text) if len(t) > 1}
 
 
-def _fuzzy_score(query_tokens: set[str], candidate: TableCandidate) -> int:
-    """Score candidate against query tokens — token overlap across name + columns + comment."""
-    target_tokens: set[str] = set()
-    target_tokens.update(_tokenize(candidate.name))
-    for col in candidate.columns:
-        target_tokens.update(_tokenize(col))
-    if candidate.comment:
-        target_tokens.update(_tokenize(candidate.comment))
-    if candidate.group:
-        target_tokens.update(_tokenize(candidate.group))
+# Endings stripped so a word's forms meet: "customers" and "customer", "invoicing" and
+# "invoices", "categories" and "category". The longest that leaves a stem of 3+ letters is taken.
+_ENDINGS = ("ations", "ation", "ings", "ing", "ies", "es", "ed", "s")
 
-    if not target_tokens:
+
+def _stem(token: str) -> str:  # REQ-464
+    """One form for a word's inflections, so a description in the steward's own words matches a
+    table named, or described, in another form of them."""
+    for ending in _ENDINGS:
+        if not token.endswith(ending) or len(token) - len(ending) < 3:
+            continue
+        if ending == "s" and token.endswith("ss"):
+            break  # "address" is not a plural
+        token = token[: -len(ending)] + ("y" if ending == "ies" else "")
+        break
+    return token[:-1] if token.endswith("e") and len(token) > 3 else token
+
+
+def _terms(text: str) -> set[str]:  # REQ-464
+    return {_stem(t) for t in _tokenize(text)}
+
+
+def _name_hits(query_terms: set[str], candidate: TableCandidate) -> int:  # REQ-464
+    """How many of the query's words the table's own name carries."""
+    return len(query_terms & _terms(candidate.name))
+
+
+def _fuzzy_score(query_terms: set[str], candidate: TableCandidate) -> int:
+    """Score candidate against query terms — overlap across name + columns + comment."""
+    target_terms: set[str] = set()
+    target_terms.update(_terms(candidate.name))
+    for col in candidate.columns:
+        target_terms.update(_terms(col))
+    if candidate.comment:
+        target_terms.update(_terms(candidate.comment))
+    if candidate.group:
+        target_terms.update(_terms(candidate.group))
+
+    if not target_terms:
         return 0
-    matched = query_tokens & target_tokens
+    matched = query_terms & target_terms
     # Overlap ratio relative to query size
-    return int(100 * len(matched) / len(query_tokens)) if query_tokens else 0
+    return int(100 * len(matched) / len(query_terms)) if query_terms else 0
 
 
 def fuzzy_filter(  # REQ-167
@@ -73,13 +100,15 @@ def fuzzy_filter(  # REQ-167
     max_results: int = _MAX_FUZZY_CANDIDATES,
 ) -> list[TableCandidate]:
     """Return up to max_results candidates ranked by token overlap, score >= threshold."""
-    query_tokens = _tokenize(query)
-    if not query_tokens:
+    query_terms = _terms(query)
+    if not query_terms:
         return candidates[:max_results]
 
-    scored = [(c, _fuzzy_score(query_tokens, c)) for c in candidates]
+    scored = [(c, _fuzzy_score(query_terms, c)) for c in candidates]
     scored = [(c, s) for c, s in scored if s >= _MIN_FUZZY_SCORE]
-    scored.sort(key=lambda x: x[1], reverse=True)
+    # Of tables matching as much of the query, one named for its words comes first: in a large
+    # schema hundreds of tables mention a customer, and the cut below keeps the first.
+    scored.sort(key=lambda x: (x[1], _name_hits(query_terms, x[0])), reverse=True)
     return [c for c, _ in scored[:max_results]]
 
 
@@ -184,13 +213,13 @@ async def search_tables(  # REQ-167
         return ranked
 
     # Fallback: return fuzzy results as RankedTable with no confidence scores
-    query_tokens = _tokenize(query)
+    query_terms = _terms(query)
     return [
         RankedTable(
             name=c.name,
             schema_name=c.schema_name,
             comment=c.comment,
-            confidence=_fuzzy_score(query_tokens, c) / 100.0,
+            confidence=_fuzzy_score(query_terms, c) / 100.0,
             reasoning="Matched by name/column keyword overlap.",
         )
         for c in filtered

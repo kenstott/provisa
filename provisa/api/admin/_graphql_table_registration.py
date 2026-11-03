@@ -38,6 +38,7 @@ from provisa.graphql_remote.brands import (
     SchemaOffer,
     available_tables,
     map_table,
+    map_tables,
     table_spec,
 )
 
@@ -188,7 +189,21 @@ def offered_columns(
     """The columns a not-yet-registered table offers, for the picker's column list: each as
     (name, stored type, description), native-filter columns included."""
     name = offered_name(offer, reg, table_name)
-    table = map_table(offer, reg["namespace"], reg["source_id"], "", name)
+    return _picker_columns(map_table(offer, reg["namespace"], reg["source_id"], "", name))
+
+
+def offered_columns_of_every_table(
+    offer: SchemaOffer, reg: dict
+) -> dict[str, list[tuple[str, str, str | None]]]:
+    """``offered_columns`` of every table the source offers, by its registered name, read in
+    one walk of the schema (REQ-464): a table at a time, a shipped schema of 500 tables took
+    minutes."""
+    names = [t["name"] for t in offered_tables(offer, reg)]
+    mapped = map_tables(offer, reg["namespace"], reg["source_id"], "", names)
+    return {name: _picker_columns(table) for name, table in mapped.items()}
+
+
+def _picker_columns(table: dict) -> list[tuple[str, str, str | None]]:
     return [
         (apply_sql_name(c["name"]), _PHYSICAL_TYPE[c["type"]], c.get("description"))
         for c in table["columns"]
