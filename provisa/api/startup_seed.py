@@ -1173,7 +1173,6 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
     failure propagates.
     """
     from provisa.core.org_registry_view import (
-        ORG_SCHEMAS_LOCK_KEY,
         VIEW_NAME,
         RegistryViewUnavailable,
         refresh_org_registry_view,
@@ -1183,23 +1182,14 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
     assert state.admin_db is not None
     model_db = state.model_db
     assert model_db is not None
-    try:
-        await refresh_org_registry_view(model_db=model_db, admin_db=state.admin_db)
-        # The registration must name the schema the view was actually built in, which is the root
-        # connection's own scope — not a name recomposed from the org id.
-        schema_name = root_schema_name(model_db)
-    except RegistryViewUnavailable as exc:
-        logging.getLogger(__name__).info(
-            "org registry view not available on this deployment: %s", exc
-        )
-        return False
 
-    async with model_db.acquire() as conn:
+    async def _grant_and_register(conn: "Connection") -> None:
+        # Under the rebuild's hold of the lock: an org's schema dropped once it is let go takes the
+        # view with it (CASCADE), and a GRANT or a read of its columns after that fails.
         # REQ-2190: a read of it on the admin terminal runs as the client role, and a rebuild drops
-        # the view and its grant with it. Under the rebuild's lock: workers grant at the same boot.
-        async with conn.advisory_lock(ORG_SCHEMAS_LOCK_KEY):
-            await conn.execute(f'GRANT USAGE ON SCHEMA "{schema_name}" TO {CLIENT_ROLE}')
-            await conn.execute(f'GRANT SELECT ON "{schema_name}".{VIEW_NAME} TO {CLIENT_ROLE}')
+        # the view and its grant with it.
+        await conn.execute(f'GRANT USAGE ON SCHEMA "{schema_name}" TO {CLIENT_ROLE}')
+        await conn.execute(f'GRANT SELECT ON "{schema_name}".{VIEW_NAME} TO {CLIENT_ROLE}')
         table_id = await conn.upsert_returning(
             _registered_tables_t,
             {
@@ -1239,6 +1229,20 @@ async def seed_org_registry_view() -> bool:  # REQ-1301
                         _table_columns_t.c.description, _COL_DESC[VIEW_NAME][col["column_name"]]
                     ),
                 )
+
+    try:
+        # The registration must name the schema the view was actually built in, which is the root
+        # connection's own scope — not a name recomposed from the org id.
+        schema_name = root_schema_name(model_db)
+        await refresh_org_registry_view(
+            model_db=model_db, admin_db=state.admin_db, with_view=_grant_and_register
+        )
+    except RegistryViewUnavailable as exc:
+        logging.getLogger(__name__).info(
+            "org registry view not available on this deployment: %s", exc
+        )
+        return False
+
     return True
 
 
