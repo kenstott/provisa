@@ -45,7 +45,14 @@ from provisa.pgwire.catalog_pg17_procs import (
     SYSTEM_INDEXES,
     VIEW_DEFINITIONS,
 )
-from provisa.transpiler.metadata_facts import PRIVILEGES, UNSERVED, CatalogFacts, relation
+from provisa.transpiler.metadata_facts import (
+    PRIVILEGES,
+    ROLE_PRIVILEGES,
+    ROLE_UNSERVED,
+    UNSERVED,
+    CatalogFacts,
+    relation,
+)
 from provisa.transpiler.metadata_oids import (
     FIRST_METRIC_OID,
     KEY_OID_BASE,
@@ -54,12 +61,14 @@ from provisa.transpiler.metadata_oids import (
     key_id_sql,
 )
 from provisa.transpiler.metadata_server_forms import (
-    PREDEFINED_ROLES,
     SCALAR_FORMS,
     TABLE_FORMS,
     any_held,
+    holds_public_alone,
+    no_such_role_name,
     predefined_relation_privileges,
     raising,
+    refused_role,
     role_name,
 )
 from provisa.transpiler.metadata_settings import setting
@@ -500,29 +509,48 @@ _NAMED_RELATION = (
 _PATH_FIRST = " ORDER BY _n.nspname = 'pg_catalog' DESC LIMIT 1"
 
 
-def _held(privileges: str) -> str:
+def _held(privileges: str, of_role: str = "") -> str:
     """Whether the role holds any privilege of the list ``privileges`` on the relation of
-    ``_c``: on a system relation, SELECT, which PostgreSQL grants every role."""
+    ``_c``: on a system relation, SELECT, which PostgreSQL grants every role, and no write
+    (REQ-2167, amended 2026-11-03: nobody writes a system catalog through Provisa). The session
+    role's, or the model role named ``of_role`` (SQL)."""
     listed = f"',' || REPLACE(UPPER({privileges}), ' ', '') || ','"
+    granted = (
+        f"{ROLE_PRIVILEGES} _p WHERE _p.role_name = {of_role} AND"
+        if of_role
+        else f"{PRIVILEGES} _p WHERE"
+    )
     return (
         f"CASE WHEN _c.relnamespace IN {SYSTEM_SCHEMA_OIDS} THEN POSITION(',SELECT,' IN {listed}) > 0 "
-        f"ELSE EXISTS (SELECT 1 FROM {PRIVILEGES} _p WHERE _p.relation_oid = _c.oid "
+        f"ELSE EXISTS (SELECT 1 FROM {granted} _p.relation_oid = _c.oid "
         f"AND POSITION(',' || _p.privilege || ',' IN {listed}) > 0) END"
     )
 
 
 _TABLE_PRIVILEGE = f"(SELECT {_held('priv')} {_NAMED_RELATION}{_PATH_FIRST})"
-#: A listed column the role is not served is false: its table is read, and it is not.
-_COLUMN_PRIVILEGE = (
-    f"(SELECT NOT EXISTS (SELECT 1 FROM {UNSERVED} _u WHERE _u.relation_oid = _c.oid "
-    f"AND _u.column_name = _a.attname) AND {_held('priv')} "
-    "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace "
-    "JOIN meta.catalog_pg_attribute _a ON _a.attrelid = _c.oid "
-    "AND CAST(col AS TEXT) IN (_a.attname, CAST(_a.attnum AS TEXT)) "
-    f"WHERE {_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
-    "_n.nspname || '.' || _c.relname, "
-    f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END){_PATH_FIRST})"
-)
+
+
+def _column_privilege(of_role: str = "") -> str:
+    """A listed column the role is not served is false: its table is read, and it is not. The
+    session role's, or the model role named ``of_role`` (SQL)."""
+    unserved = (
+        f"{ROLE_UNSERVED} _u WHERE _u.role_name = {of_role} AND"
+        if of_role
+        else f"{UNSERVED} _u WHERE"
+    )
+    return (
+        f"(SELECT NOT EXISTS (SELECT 1 FROM {unserved} _u.relation_oid = _c.oid "
+        f"AND _u.column_name = _a.attname) AND {_held('priv', of_role)} "
+        "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n "
+        "ON _n.oid = _c.relnamespace JOIN meta.catalog_pg_attribute _a ON _a.attrelid = _c.oid "
+        "AND CAST(col AS TEXT) IN (_a.attname, CAST(_a.attnum AS TEXT)) "
+        f"WHERE {_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
+        "_n.nspname || '.' || _c.relname, "
+        f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END){_PATH_FIRST})"
+    )
+
+
+_COLUMN_PRIVILEGE = _column_privilege()
 _OWN_TYPE_NAMES = " ".join(
     f"WHEN {subtype.pg_oid} THEN '{name}'"
     for name, subtype in sorted(SUBTYPES.items())
@@ -1049,12 +1077,7 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
         if (name, len(args)) in _OF_A_USER:
             user, *args = args
             written = _of_session_role(
-                user,
-                _expanded_form(name, args, rewrite, needed),
-                facts,
-                rewrite,
-                args[0],
-                args[-1],
+                user, _expanded_form(name, args, rewrite, needed), facts, rewrite, args, needed
             )
         else:
             if (name, len(args)) not in FORMS:
@@ -1174,26 +1197,52 @@ _PREDEFINED_RELATION = Form(
 )
 
 
+#: Another model role's privilege on a relation, and on a column: from its grants in the model.
+_OTHER_RELATION = Form(
+    "_other_relation_privilege",
+    ("who", "tbl", "priv"),
+    f"(SELECT {_held('priv', role_name('who'))} {_NAMED_RELATION}{_PATH_FIRST})",
+    frozenset({ROLE_PRIVILEGES}),
+)
+_OTHER_COLUMN = Form(
+    "_other_column_privilege",
+    ("who", "tbl", "col", "priv"),
+    _column_privilege(role_name("who")),
+    frozenset({ROLE_PRIVILEGES, ROLE_UNSERVED}),
+)
+
+
 def _of_session_role(
-    user: exp.Expr, answer: exp.Expr, facts: CatalogFacts, rewrite, tbl: exp.Expr, priv: exp.Expr
+    user: exp.Expr,
+    answer: exp.Expr,
+    facts: CatalogFacts,
+    rewrite,
+    args: list[exp.Expr],
+    needed: set[str],
 ) -> exp.Expr:
     """``answer`` where ``user`` is the session role; for one of PostgreSQL's predefined roles,
-    what PostgreSQL grants it; NULL for another, whose grants a statement does not hold."""
+    or an oid no role has, what PostgreSQL grants it; for another model role, what its grants in
+    the model give it (REQ-2167, amended 2026-11-03); a name no role has is PostgreSQL's
+    refusal."""
     user = user.transform(rewrite)
     named = exp.cast(_argument(user), "TEXT")
-    predefined = _written(
-        _PREDEFINED_RELATION, [user.copy(), tbl.transform(rewrite), priv.transform(rewrite)]
-    )
+    given = [a.transform(rewrite) for a in args]
+    tbl, priv = given[0], given[-1]
+    predefined = _written(_PREDEFINED_RELATION, [user.copy(), tbl.copy(), priv.copy()])
+    other = _OTHER_COLUMN if len(given) == 3 else _OTHER_RELATION
+    needed.update(other.facts)
     return exp.Case(
         ifs=[
             exp.If(
                 this=exp.EQ(this=named, expression=exp.Literal.string(facts.role_id)), true=answer
             ),
             exp.If(
-                this=_parsed_condition(f"{role_name('_who')} IN {PREDEFINED_ROLES}", user),
-                true=predefined,
+                this=_parsed_condition(no_such_role_name("_who"), user),
+                true=_parsed_condition(refused_role("_who", "BOOLEAN"), user),
             ),
-        ]
+            exp.If(this=_parsed_condition(holds_public_alone("_who"), user), true=predefined),
+        ],
+        default=_written(other, [user.copy(), *(a.copy() for a in given)]),
     )
 
 

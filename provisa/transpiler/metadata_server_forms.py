@@ -58,6 +58,25 @@ def role_name(role: str) -> str:
     )
 
 
+def no_such_role_name(role: str) -> str:
+    """SQL: whether ``role`` names a role by a name no role has, which PostgreSQL refuses; an oid
+    no role has is read as a role holding PUBLIC's privileges alone."""
+    return f"({role_name(role)} IS NULL AND CAST({role} AS TEXT) !~ '^[0-9]+$')"
+
+
+def refused_role(role: str, sql_type: str) -> str:
+    """PostgreSQL's refusal of a role name no role has."""
+    return _typed(
+        raising("42704", f"'role \"' || CAST({role} AS TEXT) || '\" does not exist'"), sql_type
+    )
+
+
+def holds_public_alone(role: str) -> str:
+    """SQL: whether ``role`` holds what PostgreSQL grants by default and no more: a predefined
+    role (beside its own rights), or an oid no role has."""
+    return f"({role_name(role)} IN {PREDEFINED_ROLES} OR {role_name(role)} IS NULL)"
+
+
 #: PostgreSQL's predefined roles, as SQL's list of their names.
 PREDEFINED_ROLES = "(" + ", ".join(f"'{row[1]}'" for row in PG17_ROLES) + ")"
 _NO_PRIVILEGE = "CAST(ARRAY[] AS TEXT[])"
@@ -1372,11 +1391,14 @@ def _catalog_objects(a: _Answers) -> None:
     a.strict("pg_get_statisticsobjdef_expressions", "s", "TEXT[]", "CAST(NULL AS TEXT[])")
     for name in _ALWAYS_PRIVILEGED:
         a.strict(name, "thing, priv", "BOOLEAN", "TRUE")
+        # The session role and every model role as the session role is answered: PostgreSQL's
+        # defaults for each, which Provisa's grants do not narrow (REQ-2167, amended 2026-11-03).
         a.strict(
             name,
             "who, thing, priv",
             "BOOLEAN",
-            f"CASE WHEN {role_name('who')} IN {PREDEFINED_ROLES} "
+            f"CASE WHEN {no_such_role_name('who')} THEN {refused_role('who', 'BOOLEAN')} "
+            f"WHEN {holds_public_alone('who')} "
             f"THEN {any_held('priv', _held_by_predefined(name))} ELSE TRUE END",
         )
     a.strict("pg_blocking_pids", "pid", "INTEGER[]", "CAST(ARRAY[] AS INTEGER[])")

@@ -16,6 +16,7 @@ role lists and is not served holds no privilege, so those functions answer false
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import time
 from typing import Any
@@ -53,7 +54,22 @@ def _unserved(ctx: Any, raw_tables: list[dict]) -> list[tuple[int, str]]:
 
 
 def role_facts(role_id: str, state: Any) -> CatalogFacts:
-    """``role_id``'s facts, of the model as it stands."""
+    """``role_id``'s facts, of the model as it stands, beside every model role's privileges by
+    its name: a privilege function asked about another role answers from them (REQ-2167, amended
+    2026-11-03, Privileges, visibility and notifications)."""
+    own = _own_facts(role_id, state)
+    others = [
+        (name, _own_facts(name, state))
+        for name in sorted(r for r in (getattr(state, "roles", None) or {}) if isinstance(r, str))
+    ]
+    return dataclasses.replace(
+        own,
+        role_privileges=tuple((name, *row) for name, facts in others for row in facts.privileges),
+        role_unserved=tuple((name, *row) for name, facts in others for row in facts.unserved),
+    )
+
+
+def _own_facts(role_id: str, state: Any) -> CatalogFacts:
     ctx = state.contexts.get(role_id)
     if ctx is None:
         return catalog_facts(role_id, {})
