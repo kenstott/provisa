@@ -57,6 +57,19 @@ HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement) {
   });
 } as unknown as typeof HTMLCanvasElement.prototype.getContext;
 
+const saved = vi.hoisted(() => ({ files: [] as string[] }));
+vi.mock("../components/graph/graph-export", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph/graph-export")>()),
+  downloadBlob: (_blob: Blob, name: string) => saved.files.push(name),
+}));
+
+// jsdom has no Fullscreen API: the element asked to go full screen is recorded.
+const fullscreen = vi.hoisted(() => ({ asked: [] as Element[] }));
+HTMLElement.prototype.requestFullscreen = function (this: HTMLElement) {
+  fullscreen.asked.push(this);
+  return Promise.resolve();
+};
+
 function table(id: number, tableName: string, domainId: string): RegisteredTable {
   const serving = "cache" as const;
   return {
@@ -290,6 +303,8 @@ const toggle = (page: "tables" | "relationships") =>
 beforeEach(() => {
   drawn.cy = null;
   FILTER.checkedDomains = new Set();
+  saved.files = [];
+  fullscreen.asked = [];
 });
 
 describe("the requirement's scenario", () => {
@@ -346,7 +361,9 @@ describe("the requirement's scenario", () => {
     await waitFor(() => expect(param("objects")).toBeNull());
     expect(param("domains")).toBeNull();
     expect(param("view")).toBe("erd");
-    await settled("");
+    // The focus is gone; the table whose panel is still open stays highlighted.
+    expect(param("table")).toBe("1");
+    await settled("1");
     expect(screen.queryByTestId("erd-focus-bar")).toBeNull();
     expect(drawnHas("t:1")).toBe(true);
     expect(drawnHas("t:3")).toBe(false);
@@ -450,9 +467,10 @@ describe("Add to focus", () => {
     // The table is in the focus already.
     expect(await screen.findByTestId("erd-add-to-focus")).toBeDisabled();
 
-    // Show all draws the other domain, and Focus starts a new focus on one of its tables.
+    // Show all draws the other domain, and Focus starts a new focus on one of its tables. The
+    // table whose panel is open stays highlighted.
     fireEvent.click(screen.getByTestId("erd-show-all"));
-    await settled("");
+    await settled("1");
     await diagramHolds("t:3");
     tap("t:3");
     await waitFor(() => expect(param("table")).toBe("3"));
@@ -550,7 +568,8 @@ describe("clicks in the diagram", () => {
     expect(param("objects")).toBe("sales.orders");
     expect(param("table")).toBe("2");
     expect(await screen.findByTestId("tables-split-title")).toHaveTextContent("customers");
-    await settled("1");
+    // The focus's table, and the table whose panel opened.
+    await settled("1,2");
     expect(screen.getByTestId("erd-focus-table")).toBeInTheDocument();
   });
 });
@@ -566,7 +585,9 @@ describe("a domain of orphan tables only", () => {
       expect(drawnHas("t:6")).toBe(true);
       expect(drawnHas("t:1")).toBe(false);
       const node = (id: string) =>
-        (drawn.cy as unknown as { getElementById(id: string): { style(k: string): string } }).getElementById(id);
+        (
+          drawn.cy as unknown as { getElementById(id: string): { style(k: string): string } }
+        ).getElementById(id);
       // Laid out and shown: the layout leaves the orphans displayed.
       await waitFor(() => expect(node("t:5").style("display")).toBe("element"));
       expect(node("d:ops").style("display")).toBe("element");
@@ -627,5 +648,118 @@ describe("the page's filter box on the ERD", () => {
     expect(param("search")).toBeNull(); // not in the link
     type("t3"); // a source that is no table's name matches nothing
     await waitFor(() => expect(dimmed("r:orders-customers")).toBe(true));
+  });
+});
+
+describe("the item whose detail panel is open", () => {
+  const lineHighlighted = (id: string) => drawn.cy?.getElementById(id).hasClass("erd-focused");
+
+  it("on Tables is highlighted when the ERD opens from the list", async () => {
+    open("/tables");
+    await screen.findByTestId("tables-list");
+    fireEvent.click(
+      document.querySelector('[data-table-row="warehouse.customers"]') as HTMLElement,
+    );
+    expect(await screen.findByTestId("tables-split-title")).toHaveTextContent("customers");
+    toggle("tables");
+    await diagramHolds("t:2");
+    await settled("2");
+    expect(highlighted("t:2")).toBe(true);
+    expect(highlighted("t:1")).toBe(false);
+  });
+
+  it("on Tables is highlighted when clicked in the ERD, and not once its panel closes", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:3");
+    await settled("");
+    tap("t:3");
+    await settled("3");
+    fireEvent.click(await screen.findByTestId("tables-split-close"));
+    await settled("");
+    expect(highlighted("t:3")).toBe(false);
+  });
+
+  it("on Relationships is its line, highlighted when the ERD opens with its panel open", async () => {
+    open("/relationships?relationship=ledger-invoices");
+    expect(await screen.findByTestId("relationships-split-title")).toHaveTextContent(
+      "ledger-invoices",
+    );
+    toggle("relationships");
+    await diagramHolds("r:ledger-invoices");
+    await waitFor(() => expect(lineHighlighted("r:ledger-invoices")).toBe(true));
+    expect(lineHighlighted("r:orders-customers")).toBe(false);
+    // A line is not a table: the tables highlighted are a focus's alone.
+    await settled("");
+  });
+});
+
+describe("the diagram's image controls", () => {
+  const bar = () => screen.getByTestId("erd-canvas-bar");
+
+  it("are a vertical bar inside the diagram, and gone from the toolbar", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    expect(bar()).toHaveAttribute("aria-orientation", "vertical");
+    expect(bar().closest(".erd-stage")).not.toBeNull();
+    for (const id of [
+      "erd-zoom-in",
+      "erd-zoom-out",
+      "erd-fit-all",
+      "erd-fullscreen",
+      "erd-download",
+    ])
+      expect(within(bar()).getByTestId(id)).toBeInTheDocument();
+    // The toolbar keeps the view options only.
+    const toolbar = screen.getByTestId("erd-column-detail").closest(".mantine-Group-root");
+    expect(toolbar).not.toBeNull();
+    expect(within(toolbar as HTMLElement).queryByTestId("erd-download")).toBeNull();
+    expect(within(toolbar as HTMLElement).queryByTestId("erd-fit-all")).toBeNull();
+    expect(within(toolbar as HTMLElement).getByTestId("erd-toggle-all")).toBeInTheDocument();
+    expect(screen.queryByTestId("erd-export-svg")).toBeNull();
+  });
+
+  it("download is one control whose menu names the file types, each saving its file", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    fireEvent.click(within(bar()).getByTestId("erd-download"));
+    const menu = await screen.findByTestId("erd-download-menu");
+    expect(
+      ["svg", "png", "jpeg", "json"].map(
+        (k) => within(menu).getByTestId(`erd-export-${k}`).textContent,
+      ),
+    ).toEqual(["SVG", "PNG", "JPEG", "JSON"]);
+    fireEvent.click(within(menu).getByTestId("erd-export-json"));
+    await waitFor(() => expect(saved.files).toEqual(["erd.json"]));
+  });
+
+  it("zooms in and out, and fit all fits the whole diagram", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    const cy = drawn.cy as unknown as {
+      zoom(level?: number): number;
+      fit(eles?: unknown, padding?: number): void;
+      getElementById(id: string): { style(k: string): string };
+    };
+    // Laid out: the layout has shown the orphans, and fits nothing more of its own.
+    await waitFor(() => expect(cy.getElementById("t:5").style("display")).toBe("element"));
+    // jsdom's canvas has no size, so a fit leaves no zoom to compare against: start from 1.
+    cy.zoom(1);
+    fireEvent.click(screen.getByTestId("erd-zoom-in"));
+    expect(cy.zoom()).toBeCloseTo(1.3, 12);
+    fireEvent.click(screen.getByTestId("erd-zoom-out"));
+    fireEvent.click(screen.getByTestId("erd-zoom-out"));
+    expect(cy.zoom()).toBeCloseTo(1 / 1.3, 12);
+    const fit = vi.spyOn(cy, "fit");
+    fireEvent.click(screen.getByTestId("erd-fit-all"));
+    expect(fit).toHaveBeenCalledWith(undefined, 10);
+  });
+
+  it("full screen is asked of the diagram's own box, bar and all", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    fireEvent.click(screen.getByTestId("erd-fullscreen"));
+    expect(fullscreen.asked).toHaveLength(1);
+    expect(fullscreen.asked[0]).toHaveClass("erd-stage");
+    expect(fullscreen.asked[0]).toContainElement(bar());
   });
 });
