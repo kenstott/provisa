@@ -23,7 +23,15 @@ sandbox's own role. Each demo's count is what its bundle's data holds:
 - profiling: one row per column of the customers table the profile runs measured (db/init.sql:
   10 columns);
 - provisioning: one group per product category (db/init.sql: beans, equipment, merchandise and
-  services), as finance, once the feeds' orders have landed."""
+  services), as finance: the template's dataset, with its feeds' orders landed, is the sandbox's.
+
+Each is asked once, as soon as the sandbox is open, as the demo walk asks it.
+
+A tier restarted serves the template it built before as it is (a deploy, a wake from idle), and a
+sandbox opened then answers the same.
+
+The demos page's walk counts the rows of whatever answer it gets: an HTTP refusal is no rows. Here
+any answer but 200 fails by its status."""
 
 # Requirements: REQ-2006, REQ-2009, REQ-2049
 
@@ -32,7 +40,6 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-import time
 from pathlib import Path
 
 import httpx
@@ -53,8 +60,6 @@ _NAMED = Path(__file__).resolve().parents[2] / "demo" / "named"
 
 #: Each demo's first example query's row count, from its bundle's data (the module's docstring).
 _EXPECTED = {"retail": 20, "profiling": 10, "provisioning": 4}
-#: How long a demo whose data lands live after the sandbox opens (provisioning's feeds) is given.
-_LANDING_S = {"provisioning": 300.0}
 
 
 def run_as(text: str) -> str | None:
@@ -105,16 +110,12 @@ def _answers_the_bundles_rows(tier) -> None:
     if role is not None:
         headers["X-Provisa-Role"] = role
     expected = _EXPECTED[tier.demo]
-    deadline = time.monotonic() + _LANDING_S.get(tier.demo, 0.0)
-    while True:
-        resp = httpx.post(
-            f"{tier.base_url}/data/graphql", json={"query": text}, headers=headers, timeout=300
-        )
-        assert resp.status_code == 200, (first.name, role, resp.text[:2000])
-        rows = _rows(resp)
-        if rows == expected or time.monotonic() > deadline:
-            break
-        time.sleep(5)
+    # Once, at once, as the demo walk asks it: a visitor's first query is sent as the sandbox opens.
+    resp = httpx.post(
+        f"{tier.base_url}/data/graphql", json={"query": text}, headers=headers, timeout=300
+    )
+    assert resp.status_code == 200, (first.name, role, resp.text[:2000])
+    rows = _rows(resp)
     assert rows == expected, (
         f"{tier.demo}: {first.name} as {role or 'the sandbox role'} answered {rows} rows, "
         f"not {expected}: {resp.text[:1500]}\nserver log end:\n"
