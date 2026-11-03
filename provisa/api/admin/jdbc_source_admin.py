@@ -16,6 +16,8 @@ runs from the form against the connection it describes. Detect saves nothing."""
 
 from __future__ import annotations
 
+from typing import Any
+
 import strawberry
 
 from provisa.jdbc_source.settings import CAPABILITIES, sql_dialects
@@ -59,7 +61,7 @@ def setup(engine: str) -> JdbcSourceSetupType:
     )
 
 
-async def detect(input: JdbcSourceDetectInput, engine: str) -> JdbcSourceDetectionType:
+async def detect(input: JdbcSourceDetectInput, engine: Any) -> JdbcSourceDetectionType:
     """The checks against the connection input describes, on the active engine. Its
     settings are refused by name as a save of them would be, before anything is connected to."""
     from provisa.core.secrets import resolve_secrets
@@ -82,9 +84,10 @@ async def detect(input: JdbcSourceDetectInput, engine: str) -> JdbcSourceDetecti
             hints,
             input.username,
             str(resolve_secrets(input.password)) if input.password else "",
+            engine,
         )
     return JdbcSourceDetectionType(
-        engine=engine,
+        engine=engine.name,
         checks=[
             JdbcSourceCheckType(capability=c.capability, passed=c.passed, reason=c.reason)
             for c in found

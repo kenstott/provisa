@@ -1449,9 +1449,11 @@ class TrinoBackend(EngineBackend):
         """Register the source's catalog — its live attach. A source the operator floors
         (REQ-030/826/1141) is read only from its replica, so it has no catalog at all (REQ-1912):
         one left from before the setting was turned on is dropped. Nothing can then read the
-        source through the engine, whatever a statement names."""
+        source through the engine, whatever a statement names. A JDBC source attached live here
+        is registered as the built-in type its URL names (REQ-2191)."""
         from provisa.core import catalog
         from provisa.core.operator_floor import floor_setting
+        from provisa.jdbc_source.attach import attach_type, attach_view
 
         with self._provisioning_conn(state) as conn:
             if conn is None:
@@ -1459,6 +1461,9 @@ class TrinoBackend(EngineBackend):
             if floor_setting(source) is not None:
                 catalog.drop_catalog(conn, source.id, catalog_name=catalog_name)
                 return
+            named = attach_type(source, self.engine)
+            if named is not None:
+                source = attach_view(source, named)
             catalog.create_catalog(conn, source, resolved_password, catalog_name=catalog_name)
 
     def drop_source(self, state: Any, source_id: str, catalog_name: str | None = None) -> None:
