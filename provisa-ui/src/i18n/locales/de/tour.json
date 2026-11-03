@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Eine Quelle registrieren",
-        "description": "➕ Neue Verbindungen beginnen mit dieser Schaltfläche: PostgreSQL, Snowflake, MongoDB, eine REST-API, eine CSV und die übrigen der 74 Konnektoren."
+        "description": "➕ Neue Verbindungen beginnen mit dieser Schaltfläche: PostgreSQL, Snowflake, MongoDB, eine REST-API, eine CSV und die übrigen der 76 Konnektoren."
       },
       "step3": {
-        "title": "74 Quellentypen, 14 Kategorien",
+        "title": "76 Quellentypen, 14 Kategorien",
         "description": "Eine Auswahl listet jeden Typ, nach Kategorie gruppiert: <strong>Abonnements, RDBMS, Cloud-Data-Warehouse, Analytics, Data Lake, NoSQL, Code-Resolver, Graph, Dateien, API, Streaming, Unternehmen, Datenqualität, Sonstige</strong>. Suchen Sie nach Name oder Alias oder grenzen Sie mit den Kategorie-Chips ein. Jeder Typ zeigt sein Logo und ein Reichweiten-Symbol: ⚡ direkt vor Ort gelesen, oder ein Kopie-Symbol, wo Provisa ein aktualisiertes Replikat liest.<p>Wählen Sie einen aus, tragen Sie die Verbindung ein, speichern Sie.</p>"
       },
       "stepBuildSource": {

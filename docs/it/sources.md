@@ -26,28 +26,28 @@ Nemmeno le origini **Materialize** hanno un connettore federato. Provisa recuper
 
 ## Tutte le origini {: #all-sources }
 
-Provisa registra **75** tipi di origine, quelli che il modulo Sources offre. Le tabelle qui sotto le coprono tutte e 75; l'indice è il conteggio.
+Provisa registra **76** tipi di origine, quelli che il modulo Sources offre. Le tabelle qui sotto le coprono tutte e 76; l'indice è il conteggio.
 
 | # | Gruppo | Tipi di origine |
 | --- | --- | --- |
-| 1–15 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
-| 16–24 | [Data warehouse cloud](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
-| 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
-| 30–33 | [Data Lake / formati tabella aperti](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
-| 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | [Sorgenti di codice](code-sources.md) | `node`, `python` |
-| 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 44 | [Ricevitore push](#push-receiver) | `ingest` |
-| 45–46 | [Grafo e semantico](#graph-semantic) | `neo4j`, `sparql` |
-| 47–51 | [Basate su file](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 52–53 | [Osservabilità e altro](#observability-other) | `google_sheets`, `prometheus` |
-| 54–62 | [Connettori SaaS enterprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 63–69 | [Origini API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 70 | [GovData](#govdata) | `govdata` |
-| 71–72 | [Controlli di qualità dei dati](#data-quality-checkers) | `soda`, `great_expectations` |
-| 73 | [Data profiler](#data-profiler) | `data_profiler` |
-| 74 | [Dataset Kaggle](#kaggle-datasets) | Kaggle (messo in stage tramite il modulo Sources; si registra come origine `files` — vedere [Dataset Kaggle](#kaggle-datasets)) |
-| 75 | [Wikipedia](#wikipedia) | Wikipedia (si registra come origine `files` che scansiona le pagine indicate — vedere [Wikipedia](#wikipedia)) |
+| 1–16 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2`, `generic_sql` |
+| 17–25 | [Data warehouse cloud](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
+| 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 31–34 | [Data Lake / formati tabella aperti](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
+| 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
+| 40–41 | [Sorgenti di codice](code-sources.md) | `node`, `python` |
+| 42–44 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 45 | [Ricevitore push](#push-receiver) | `ingest` |
+| 46–47 | [Grafo e semantico](#graph-semantic) | `neo4j`, `sparql` |
+| 48–52 | [Basate su file](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 53–54 | [Osservabilità e altro](#observability-other) | `google_sheets`, `prometheus` |
+| 55–63 | [Connettori SaaS enterprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 64–70 | [Origini API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 71 | [GovData](#govdata) | `govdata` |
+| 72–73 | [Controlli di qualità dei dati](#data-quality-checkers) | `soda`, `great_expectations` |
+| 74 | [Data profiler](#data-profiler) | `data_profiler` |
+| 75 | [Dataset Kaggle](#kaggle-datasets) | Kaggle (messo in stage tramite il modulo Sources; si registra come origine `files` — vedere [Dataset Kaggle](#kaggle-datasets)) |
+| 76 | [Wikipedia](#wikipedia) | Wikipedia (si registra come origine `files` che scansiona le pagine indicate — vedere [Wikipedia](#wikipedia)) |
 
 Riferimento per ogni tipo di origine supportato da Provisa. "Driver diretto" significa che le query a singola origine vengono eseguite nativamente contro l'origine (sub-100ms). "Nome connettore" è il connettore federato usato quando l'origine partecipa a JOIN multi-source.
 

@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Registre uma fonte",
-        "description": "➕ Novas conexões começam com este botão: PostgreSQL, Snowflake, MongoDB, uma API REST, um CSV e o restante dos 74 conectores."
+        "description": "➕ Novas conexões começam com este botão: PostgreSQL, Snowflake, MongoDB, uma API REST, um CSV e o restante dos 76 conectores."
       },
       "step3": {
-        "title": "74 tipos de fonte, 14 categorias",
+        "title": "76 tipos de fonte, 14 categorias",
         "description": "Um seletor lista cada tipo, agrupado por categoria: <strong>Assinaturas, RDBMS, Data warehouse na nuvem, Análise, Data lake, NoSQL, Resolvers de código, Grafos, Arquivos, API, Streaming, Empresarial, Qualidade de dados, Outros</strong>. Pesquise por nome ou apelido, ou restrinja com os chips de categoria. Cada tipo mostra seu logotipo e um ícone de alcance: ⚡ leitura ao vivo no local, ou um ícone de cópia onde o Provisa lê uma réplica atualizada.<p>Escolha um, preencha a conexão e salve.</p>"
       },
       "stepBuildSource": {

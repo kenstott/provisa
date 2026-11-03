@@ -124,7 +124,7 @@ These are the connection protocols. SQL, GraphQL and Cypher ride over them, and 
 
 ### Data Sources
 
-- **74 connectors, 90+ kinds of source.** The larger number counts the hosted PostgreSQL services (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) and the File Crawler's file formats one by one. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Kaggle, Salesforce, ServiceNow, Stripe and the rest sit behind a single API. Graph and RDF sources stand on equal terms with relational ones.
+- **76 connectors, 90+ kinds of source.** The larger number counts the hosted PostgreSQL services (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) and the File Crawler's file formats one by one. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Kaggle, Salesforce, ServiceNow, Stripe and the rest sit behind a single API. Graph and RDF sources stand on equal terms with relational ones.
 - **Smart routing.** A single-source query routes direct to the driver (under 100 ms). A multi-source query routes through the engine, on your own cluster or on the embedded workers.
 - **API sources.** Register REST, GraphQL, gRPC, WebSocket or RSS endpoints as queryable tables, with SPARQL helpers included. Cross-source joins between API sources and relational sources need no extra setup.
 - **Remote schema introspection.** Point at any GraphQL, OpenAPI or gRPC endpoint, and its documented operations surface as queryable tables, graph nodes and edges with full governance applied on top.
