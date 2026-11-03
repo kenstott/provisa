@@ -31,7 +31,7 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.dialects.postgres import Postgres
 
-from provisa.transpiler import function_macros, pg_xml
+from provisa.transpiler import function_macros, pg_syntax, pg_xml
 from provisa.transpiler.pg_literals import postgres_literals
 
 _REGEXP_MATCHES = "provisa_regexp_matches"
@@ -557,7 +557,9 @@ def _time_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
 def _named(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     """The name and arguments of a call of a function a parser class stands for."""
     if isinstance(node, exp.Anonymous):
-        return node.name.lower(), list(node.expressions)
+        name = node.name.lower()
+        # pg_syntax reads a call of overlaps as its routine's; its overloads are overlaps' own.
+        return "overlaps" if name == pg_syntax.OVERLAPS else name, list(node.expressions)
     if isinstance(node, exp.Overlaps):
         periods = (node.this, node.expression)
         if not all(isinstance(p, exp.Tuple) for p in periods):

@@ -474,8 +474,12 @@ async def test_a_sources_keyed_fetch_is_asked_for_only_what_this_region_may_keep
 
 
 @pytest.mark.asyncio
-async def test_the_engine_fetch_carries_the_admission_predicate_in_its_own_dialect():
+async def test_the_engine_fetch_carries_the_admission_predicate_in_its_own_dialect(monkeypatch):
+    from provisa.core import secrets_providers
     from provisa.events.source_loader import SourceRowLoader
+
+    # A single-org deployment: the API layer says so at import, which this test does not make.
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
 
     sent: list[str] = []
 

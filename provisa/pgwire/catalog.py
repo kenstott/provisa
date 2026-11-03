@@ -86,11 +86,18 @@ _SCALAR_FN_RE = re.compile(
 
 
 def _parse_typeinfo_oids(sql: str) -> list[int] | None:
-    """Extract OIDs from ANY('{oid,...}'::oid[]) pattern; None if $1 still present."""
-    m = re.search(r"ANY\s*\(\s*'\{([^}]*)\}'", sql, re.IGNORECASE)
-    if m:
-        raw = m.group(1).strip()
-        return [int(x) for x in raw.split(",") if x.strip()] if raw else []
+    """The OIDs asyncpg's type introspection asks for: the array its ``ANY($1::oid[])`` was bound
+    to, read on the tree (REQ-2167); None while the ``$1`` is unbound (Describe)."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    for any_ in sqlglot.parse_one(sql, read="postgres").find_all(exp.Any):
+        bound = any_.this
+        while isinstance(bound, (exp.Cast, exp.Paren)):
+            bound = bound.this
+        if isinstance(bound, exp.Literal) and bound.is_string:
+            raw = bound.name.strip().removeprefix("{").removesuffix("}")
+            return [int(x) for x in raw.split(",") if x.strip()]
     return None
 
 
