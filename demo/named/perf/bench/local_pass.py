@@ -274,7 +274,7 @@ def main() -> int:
                 results[key] = run_variant(path, run_dir, server, receiver_port)
     finally:
         if server is not None:
-            (out / "server-stderr-tail.txt").write_text(server.dump_stderr_debug()[-20000:])
+            (out / "server-stderr.txt").write_text(server.dump_stderr_debug())
             server.stop_process()
         if receiver is not None:
             receiver.terminate()
