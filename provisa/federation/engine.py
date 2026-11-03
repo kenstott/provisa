@@ -319,16 +319,13 @@ class FederationEngine:  # REQ-840
         Taken from the source, not only its type (REQ-2191): a JDBC source attached live on
         this engine can do what its settings for this engine turn on, and nothing else. One not
         attached here lands, and its replica is read as every landed table is."""
-        from provisa.jdbc_source import SOURCE_TYPE as JDBC_SOURCE
+        from provisa.jdbc_source.attach import attach_type
 
-        source_type = source.type.value
-        if source_type == JDBC_SOURCE:
-            from provisa.jdbc_source.settings import ATTACH, capability, parse
+        if attach_type(source, self) is not None:
+            from provisa.jdbc_source.settings import capability
 
-            hints = source.federation_hints
-            if parse(hints).on(self.name, ATTACH):
-                return capability(hints, self.name)
-        return self.connector_for(source_type).capability()
+            return capability(source.federation_hints, self.name)
+        return self.connector_for(source.type.value).capability()
 
     # -- reachability (REQ-840) ------------------------------------------------
 

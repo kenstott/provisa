@@ -194,9 +194,10 @@ def make_floored_direct_loader(state: Any, engine: Any) -> AdapterLoader:  # REQ
 
     from provisa.core.operator_floor import floor_setting
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        if floor_setting(source) is None and engine_attaches(engine, _source_type(source)):
+        if floor_setting(source) is None and engine_attaches(engine, reach_type(source, engine)):
             return await engine_table_rows(engine, source, table)
         dialect = state.source_dialects[source.id] or None
         relation = direct_relation(table, dialect)
@@ -337,6 +338,7 @@ class SourceRowLoader:
             EngineTableSource,
         )
         from provisa.federation.strategy import engine_attaches
+        from provisa.jdbc_source.attach import reach_type
 
         stype = _source_type(source)
         pools = getattr(state, "source_pools", None)
@@ -415,7 +417,7 @@ class SourceRowLoader:
         return EngineTableSource(
             self._engine,
             ref,
-            in_place=engine_attaches(self._engine, stype),
+            in_place=engine_attaches(self._engine, reach_type(source, self._engine)),
             projection=projection,
             where=landing_where(table, lambda: self._engine.dialect),  # REQ-2062
         )

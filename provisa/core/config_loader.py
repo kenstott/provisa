@@ -806,13 +806,14 @@ def _settle_table_names(engine: Any, config: ProvisaConfig) -> None:  # REQ-471
     """
     from provisa.compiler.naming import apply_sql_name
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     if engine is None:
         return
     sources_by_id = {src.id: src for src in config.sources}
     for tbl in config.tables:
         src = sources_by_id.get(tbl.source_id)
-        if src is not None and not engine_attaches(engine, src.type.value):
+        if src is not None and not engine_attaches(engine, reach_type(src, engine)):
             tbl.table_name = apply_sql_name(tbl.table_name)
 
 

@@ -10,7 +10,9 @@
 
 """Detect: what a JDBC source has been shown to do (REQ-2191).
 
-Run only when the admin presses Detect on the source form, never on connect. Each check is a
+Run only when the admin presses Detect on the source form, never on connect. The attach check asks
+the active engine: it passes when the URL names a built-in source type the engine has an attach
+for and the source answers at that URL (``provisa.jdbc_source.attach``). Each other check is a
 read-only statement against the real connection, written the way the source's real queries are --
 in PostgreSQL, transpiled to the source's SQL dialect -- over rows the statement makes itself, so
 no table of the source is needed and nothing is written. A check passes when the source answers
@@ -35,7 +37,6 @@ from provisa.jdbc_source.settings import (
     JOIN,
     KEY_RANGE,
     PREDICATE,
-    attach_kind,
     backend,
 )
 
@@ -107,29 +108,40 @@ def _check_rows(capability: str, rows: list[tuple] | None, failure: str) -> Chec
     return Check(capability, True, "")
 
 
-def _attach(url: str) -> Check:
-    if attach_kind(url) is None:
+def _attach(url: str, engine: Any, failure: str) -> Check:
+    from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import named_type
+
+    if backend(url) == "jdbc":
+        return Check(ATTACH, False, "a jdbc URL never attaches")
+    named = named_type(url)
+    if named is None:
         return Check(ATTACH, False, f"a {backend(url)} URL has no engine attach")
-    return Check(ATTACH, False, "live attach of a JDBC source is not built yet")
+    if not engine_attaches(engine, named):
+        return Check(ATTACH, False, f"the {engine.name} engine has no attach for a {named} source")
+    if failure:
+        return Check(ATTACH, False, failure)
+    return Check(ATTACH, True, "")
 
 
-async def detect(hints: dict[str, str], user: str, password: str) -> list[Check]:
+async def detect(hints: dict[str, str], user: str, password: str, engine: Any) -> list[Check]:
     """Every capability's check against the source the form's settings (``hints``) describe, in
     the order the form shows them, through the driver the source would be read through
     (``JdbcSourceDriver``): its URL held to the org's folder and its egress rules, a jdbc: URL to
     the customer's driver where this server runs one. A check the source answers with an error
-    fails naming it; a source that cannot be connected to fails every check with why."""
+    fails naming it; a source that cannot be connected to fails every check with why. The attach
+    check is ``engine``'s, the active one."""
     from provisa.executor.drivers.jdbc_source import JdbcSourceDriver
 
     driver = JdbcSourceDriver()
     driver.configure(hints)
     settings = driver.settings
-    checks = [_attach(settings.url)]
     failure = ""
     try:
         await driver.connect("", 0, "", user, password)
     except Exception as exc:  # noqa: BLE001 -- why it cannot be connected is every check's reason
         failure = _reason(exc)
+    checks = [_attach(settings.url, engine, failure)]
     try:
         for capability in (PREDICATE, JOIN, AGGREGATE, KEY_RANGE):
             rows: list[tuple] | None = None

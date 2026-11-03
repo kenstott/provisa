@@ -2207,7 +2207,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.app import state
 
         require_capability(info, "source_registration")
-        return await detect(input, state.federation_engine.name)
+        return await detect(input, state.federation_engine)
 
     @strawberry.mutation
     async def set_servicenow_api(

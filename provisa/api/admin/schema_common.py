@@ -341,7 +341,7 @@ def jdbc_source_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-
     import json as _json
 
     from provisa.jdbc_source import SOURCE_TYPE
-    from provisa.jdbc_source.settings import ATTACH, InvalidJdbcSource, parse
+    from provisa.jdbc_source.settings import InvalidJdbcSource, parse
     from provisa.jdbc_source.jdbc import JdbcRefused
     from provisa.jdbc_source.url import DriverOptionsRefused, FileUrlRefused, check
 
@@ -378,19 +378,8 @@ def jdbc_source_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-
             code="schema.jdbc_invalid",
             params={"source": input.id, "error": str(exc)},
         )
-    attached = sorted(engine for engine in settings.capabilities if settings.on(engine, ATTACH))
-    if attached:
-        # No engine attaches a JDBC source live yet: the setting would claim a reach the
-        # planner does not have.
-        return MutationResult(
-            success=False,
-            message=(
-                f"Source {input.id!r}: live attach of a JDBC source is not built yet "
-                f"(turned on for {', '.join(attached)}); its rows land"
-            ),
-            code="schema.jdbc_attach_unbuilt",
-            params={"source": input.id, "engines": ", ".join(attached)},
-        )
+    # Attach turned on is kept: the source attaches as the built-in type its URL names where the
+    # engine has that type's attach, and lands where it has not (provisa.jdbc_source.attach).
     return None
 
 
