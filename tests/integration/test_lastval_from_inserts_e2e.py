@@ -18,6 +18,8 @@ the source holds."""
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import psycopg
 import pytest
@@ -51,6 +53,17 @@ def _keyed_table(source_id: str, domain_id: str, schema: str) -> dict:
         ],
         "write_grants": config_write_grants(["org_admin"], ["id", "note"]),
     }
+
+
+@contextmanager
+def _log_on_failure(boot: WorkerBoot) -> Iterator[None]:
+    """The server's own log, its last lines, beside a failure: what the client saw is often only
+    a dropped connection."""
+    try:
+        yield
+    except BaseException:
+        print("\n".join(boot.log_text().splitlines()[-200:]))
+        raise
 
 
 def _boot(extra: dict, seed) -> WorkerBoot:
@@ -104,7 +117,9 @@ def pg_server():
         engine.dispose()
 
     base = _config(_PG_HOST, _PG_PORT, "unused")
-    boot = _boot({"tables": [*base["tables"], _keyed_table("sales-pg", "sales", "public")]}, seed)
+    orders = base["tables"][0]
+    orders["write_grants"] = config_write_grants(["org_admin"], ["id", "region"])
+    boot = _boot({"tables": [orders, _keyed_table("sales-pg", "sales", "public")]}, seed)
     try:
         boot.start()
         boot.wait_all_ready(timeout=300)
@@ -121,8 +136,18 @@ def _pg_rows(boot: WorkerBoot) -> dict[int, str]:
     return rows
 
 
+def test_a_parameterized_insert_into_a_table_with_no_generated_key(pg_server):
+    """Nothing is rewritten here: the extended protocol's own write, beside the one below."""
+    with _log_on_failure(pg_server), _pgwire(pg_server) as conn:
+        inserted = conn.execute(
+            "INSERT INTO sales.orders (id, region) VALUES (%s, %s)", (90, "north")
+        )
+        assert inserted.rowcount == 1
+        _undefined(conn)
+
+
 def test_postgresql_insert_then_lastval(pg_server):
-    with _pgwire(pg_server) as conn:
+    with _log_on_failure(pg_server), _pgwire(pg_server) as conn:
         _undefined(conn)
         inserted = conn.execute("INSERT INTO sales.events (note) VALUES ('first')")
         # The client's command tag and rows: the rewrite added none.
@@ -211,13 +236,17 @@ def test_mariadb_insert_then_lastval():
             },
         ],
         "domains": [*base["domains"], {"id": "shop", "description": "MariaDB source"}],
-        "tables": [*base["tables"], _keyed_table("shop-mariadb", "shop", "provisa")],
+        # A MariaDB table lands, and is read again on its cache_ttl.
+        "tables": [
+            *base["tables"],
+            {**_keyed_table("shop-mariadb", "shop", "provisa"), "cache_ttl": 300},
+        ],
     }
     boot = _boot(extra, seed)
     try:
         boot.start()
         boot.wait_all_ready(timeout=300)
-        with _pgwire(boot) as conn:
+        with _log_on_failure(boot), _pgwire(boot) as conn:
             _undefined(conn)
             assert conn.execute("INSERT INTO shop.events (note) VALUES ('first')").rowcount == 1
             first = _lastval(conn)
