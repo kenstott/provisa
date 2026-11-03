@@ -9082,5 +9082,16 @@
   "nl/odataPage.json::odataPage.handoffOption": "The explorer cannot set {{option}}={{value}}.",
   "nl/odataPage.json::odataPage.handoffNumber": "{{option}} must be a whole number, not {{value}}.",
   "nl/odataPage.json::odataPage.handoffNoSet": "There is no entity set {{set}} for this role.",
-  "nl/odataPage.json::odataPage.handoffMember": "{{set}} has no {{name}} for {{option}}."
+  "nl/odataPage.json::odataPage.handoffMember": "{{set}} has no {{name}} for {{option}}.",
+  "nl/dataAddress.json::dataAddress.label": "Data node",
+  "nl/dataAddress.json::dataAddress.heading": "Send data requests to",
+  "nl/dataAddress.json::dataAddress.none": "No data node",
+  "nl/dataAddress.json::dataAddress.noneOffered": "No data node is listed for this region. Type an address below.",
+  "nl/dataAddress.json::dataAddress.typedLabel": "Data node address",
+  "nl/dataAddress.json::dataAddress.typedPlaceholder": "https://data.example.com",
+  "nl/dataAddress.json::dataAddress.typedInvalid": "Enter an http or https address",
+  "nl/dataAddress.json::dataAddress.use": "Use",
+  "nl/dataAddress.json::dataAddress.loadError": "Could not load the data nodes",
+  "nl/settings.json::settings.server.node_url.label": "This node's address",
+  "nl/settings.json::settings.server.node_url.help": "The address clients reach this node at. A coordinator's UI lists it as a data node when the region lists none. The launcher sets it for each node; unset, the node is not listed."
 }
