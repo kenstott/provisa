@@ -263,3 +263,26 @@ def test_the_abbreviations_are_postgresql_17s_default_set(conn: Any):
     said = [row.split("|") for row in PG17_ABBREVS]
     want = [f"({a},{o},{'t' if d == 'true' else 'f'})" for a, o, d in said]
     assert (oid, sorted(rows)) == (2249, sorted(want))
+
+
+def test_the_zones_are_the_pinned_releases(conn: Any):
+    """pg_timezone_names lists the zones and links of the pinned IANA release, whatever the
+    engine's own zone data holds besides (REQ-2167, amended 2026-11-03, Time zones follow upstream
+    tzdata)."""
+    from provisa.transpiler.pg_zones import ZONE_NAMES
+
+    oid, rows = _rows(conn, 'SELECT pg_catalog."pg_timezone_names"() AS v')
+    names = sorted(row[1:].split(",", 1)[0] for row in rows)
+    assert (oid, names) == (2249, list(ZONE_NAMES))
+
+
+def test_the_zones_are_a_set_in_from(conn: Any):
+    """pg_timezone_names is a set-returning function: in FROM it is its rows, the rows its call
+    in the select list answers (REQ-2167)."""
+    _, listed = _rows(conn, 'SELECT pg_catalog."pg_timezone_names"() AS v')
+    oid, counted = _rows(conn, "SELECT count(*) FROM pg_catalog.pg_timezone_names()")
+    assert (oid, counted) == (20, [str(len(listed))])
+    oid, named = _rows(
+        conn, "SELECT name FROM pg_catalog.pg_timezone_names() WHERE name = 'Asia/Tokyo'"
+    )
+    assert (oid, named) == (TEXT, ["Asia/Tokyo"])

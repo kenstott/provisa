@@ -383,6 +383,32 @@ def test_a_described_registered_column_is_sent_as_its_registered_type():
     assert rows_of(result)[0][columns.index("c_bpchar_5")] == "ab   "
 
 
+def test_a_statement_s_description_types_a_registered_column_as_its_registered_type():
+    # Describe(Statement) answers from the shape alone, before anything runs, and is what
+    # table_to_xmlschema and its kin read a table's column types by: a registered column is its
+    # registered type there too, a varchar or a bpchar with its length (REQ-1961, VARCHAR AND
+    # CHAR KEEP THEIR TYPE; REQ-2167).
+    from buenavista.postgres import BVTYPE_TO_OID
+
+    from provisa.compiler.result_shape import derive_result_shape
+    from provisa.pgwire.server import _StatementDescription
+
+    columns = list(REGISTERED)
+    sql = f"SELECT {', '.join(columns)} FROM conformance.types_fixture"
+    table_map = {"conformance.types_fixture": FIXTURE_TABLE_ID}
+    column_types = {FIXTURE_TABLE_ID: [c for *_, c in _FIXTURE]}
+    shape = derive_result_shape(sql, table_map, _fixture_ctx(), column_types)
+    description = _StatementDescription(shape, None, sql)
+    described = [
+        (
+            description.column_type_oid(i) or BVTYPE_TO_OID[description.column(i)[1]],
+            description.column_typmod(i),
+        )
+        for i in range(len(columns))
+    ]
+    assert described == [(REGISTERED[c][0], REGISTERED[c][1]) for c in columns]
+
+
 def test_the_catalog_lists_a_registered_column_with_its_type_and_typmod(registered: Any):
     rows = registered.execute(
         "SELECT a.attname, a.atttypid::int8, a.atttypmod, "

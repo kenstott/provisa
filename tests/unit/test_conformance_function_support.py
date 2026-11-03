@@ -1441,6 +1441,7 @@ def test_the_rules_are_the_ones_the_requirement_and_the_brief_name():
         report.JSON_KEY_ORDER,
         report.ARRAY_ORDER,
         report.CLOCK_FIELD,
+        report.ZONE_PACKAGING,
     ]
 
 
@@ -2400,3 +2401,128 @@ def test_pg_cursor_s_creation_time_is_compared_by_its_form():
     assert support.compare(want, other, values=True, sql=sql, function="pg_cursor").difference
     unformed = _ok('("",x,f,f,f,"yesterday")', oid=2249)
     assert support.compare(want, unformed, values=True, sql=sql, function="pg_cursor").difference
+
+
+# --- decisions of 2026-11-03: time zones, REFERENCES, a table's XML (REQ-2167) --------------------
+
+_ZONES_SQL = 'SELECT pg_catalog."pg_timezone_names"() AS v'
+
+
+def _zones(*names: str) -> dict[str, Any]:
+    return _ok(*(f"({name},UTC,00:00:00,f)" for name in names), oid=2249)
+
+
+def _compared_zones(want: dict[str, Any], got: dict[str, Any]) -> Any:
+    return support.compare(want, got, values=True, sql=_ZONES_SQL, function="pg_timezone_names")
+
+
+def test_the_zones_compare_by_the_names_both_lists_hold():
+    """REQ-2167, amended 2026-11-03, Time zones follow upstream tzdata: Debian's tzdata drops the
+    backward links (US/Eastern, a link to America/New_York) and adds localtime and posixrules."""
+    want = _zones("America/New_York", "UTC", "localtime", "posixrules")
+    got = _zones("America/New_York", "US/Eastern", "UTC")
+    compared = _compared_zones(want, got)
+    assert compared.difference is None
+    assert report.ZONE_PACKAGING in compared.rules
+
+
+def test_the_same_zones_need_no_packaging():
+    compared = _compared_zones(_zones("UTC", "Asia/Tokyo"), _zones("Asia/Tokyo", "UTC"))
+    assert compared.difference is None
+    assert report.ZONE_PACKAGING not in compared.rules
+
+
+def test_a_zone_both_lists_hold_compares_its_row():
+    got = _ok("(UTC,UCT,00:00:00,f)", oid=2249)
+    compared = _compared_zones(_zones("UTC", "localtime"), got)
+    assert compared.difference == "'(UTC,UCT,00:00:00,f)', PostgreSQL '(UTC,UTC,00:00:00,f)'"
+
+
+@pytest.mark.parametrize(
+    "want,got,named",
+    [
+        # A zone PostgreSQL lists that is no distribution's own.
+        (("UTC", "Mars/Olympus"), ("UTC",), "Mars/Olympus"),
+        # A zone of the pinned release that is no link to one both lists hold.
+        (("UTC",), ("UTC", "Asia/Tokyo"), "Asia/Tokyo"),
+        # A link whose zone PostgreSQL does not list either.
+        (("UTC",), ("UTC", "US/Eastern"), "US/Eastern"),
+    ],
+)
+def test_a_zone_one_list_holds_for_any_other_reason_differs(want, got, named):
+    compared = _compared_zones(_zones(*want), _zones(*got))
+    assert compared.difference is not None and named in compared.difference
+
+
+@pytest.mark.parametrize(
+    "name,sql",
+    [
+        (
+            "has_table_privilege",
+            "SELECT pg_catalog.\"has_table_privilege\"('conformance.function_columns'::text, "
+            "'REFERENCES'::text) AS v",
+        ),
+        (
+            "has_column_privilege",
+            'SELECT pg_catalog."has_column_privilege"('
+            "'conformance.function_columns'::regclass::oid, 1::smallint, 'REFERENCES'::text) AS v",
+        ),
+        (
+            "has_any_column_privilege",
+            "SELECT pg_catalog.\"has_any_column_privilege\"('conformance.function_columns'::text, "
+            "'REFERENCES'::text) AS v",
+        ),
+    ],
+)
+def test_references_is_never_granted(name, sql):
+    """REQ-2167, amended 2026-11-03, REFERENCES is never granted: 'f' is Provisa's answer."""
+    assert support.decided_difference(name, sql, "'f', PostgreSQL 't'") == support.REFERENCES_GROUP
+    assert support.GROUPS[support.REFERENCES_GROUP]
+
+
+def test_another_privilege_on_the_model_s_table_stays_a_wrong_answer():
+    sql = (
+        "SELECT pg_catalog.\"has_table_privilege\"('conformance.function_columns'::text, "
+        "'SELECT'::text) AS v"
+    )
+    assert support.decided_difference("has_table_privilege", sql, "'f', PostgreSQL 't'") is None
+
+
+_TABLE_XML_SQL = (
+    "SELECT pg_catalog.\"table_to_xml_and_xmlschema\"('conformance.function_columns'::regclass, "
+    "true::boolean, true::boolean, '12'::text) AS v"
+)
+
+
+def _document(database: str, arrays: tuple[str, str], tail: str = "") -> dict[str, Any]:
+    integers, texts = arrays
+    return _ok(
+        f'<xsd:simpleType name="UDT.{database}.pg_catalog._int4">\n'
+        f'<xsd:complexType name="RowType.{database}.conformance.function_columns">\n'
+        f"  <c_integer_array>{integers}</c_integer_array>\n"
+        f"  <c_text_array>{texts}</c_text_array>\n"
+        f"  <c_int4range>(,4)</c_int4range>{tail}\n",
+        oid=142,
+    )
+
+
+def test_a_table_s_xml_differing_in_its_arrays_and_database_alone_is_by_design():
+    """REQ-1965: an array column is the JSON it is registered as; REQ-588: the database is the
+    served one."""
+    want = _document("conformance", ("<element>-7</element><element>42</element>", ""))
+    got = _document("provisa", ("[-7, null, 42]", "[]"))
+    differs = support.compare(want, got, values=True, sql=_TABLE_XML_SQL).difference
+    assert differs is not None
+    group = support.decided_answer("table_to_xml_and_xmlschema", _TABLE_XML_SQL, want, got)
+    assert group == support.TABLE_XML_GROUP
+    assert support.GROUP_REQUIREMENTS[group] == "REQ-1965, REQ-588"
+
+
+def test_a_table_s_xml_differing_in_anything_else_stays_a_wrong_answer():
+    want = _document("conformance", ("<element>-7</element><element>42</element>", ""))
+    for got in (
+        _document("provisa", ("[-7, null, 42]", "[]"), tail="x"),
+        _document("provisa", ("[-7, null, 43]", "[]")),
+    ):
+        assert support.decided_answer("table_to_xml", _TABLE_XML_SQL, want, got) is None
+    assert support.decided_answer("abs", _TABLE_XML_SQL, want, want) is None
