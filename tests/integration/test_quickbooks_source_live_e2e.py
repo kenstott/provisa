@@ -43,11 +43,9 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from urllib.parse import parse_qs, urlsplit
 
 import pytest
 import pytest_asyncio
-import respx
 from httpx import ASGITransport, AsyncClient
 
 from tests.env_creds import unset
@@ -75,7 +73,6 @@ _VISIBLE_TO = f'["{_ROLE}"]'
 # The page a read asks for: small, so a sandbox company's few dozen customers are read across
 # pages. A table is registered at QuickBooks' largest page, 1,000.
 _PAGE_SIZE = 5
-_SANDBOX_QUERY = "https://sandbox-quickbooks.api.intuit.com/v3/company/"
 
 
 @pytest.fixture(scope="module")
@@ -168,44 +165,56 @@ async def company(client) -> None:
     assert created["success"], created
 
 
-def _queries(calls) -> list[str]:
-    """The QuickBooks queries the source sent, in order."""
-    return [parse_qs(urlsplit(str(c.request.url)).query)["query"][0] for c in calls]
+@pytest.fixture
+def sent(monkeypatch) -> list[str]:
+    """Every query the source sends QuickBooks, in order, as its reader sends it (one entry per
+    request: a statement's own read and the table's replica build each send theirs)."""
+    from provisa.quickbooks import read as qb_read
+
+    queries: list[str] = []
+    page = qb_read._page
+
+    async def recorded(client, url, query, token, forget, timeout):
+        queries.append(query)
+        return await page(client, url, query, token, forget, timeout)
+
+    monkeypatch.setattr(qb_read, "_page", recorded)
+    return queries
+
+
+def _starts(queries: list[str]) -> list[int]:
+    return [int(q.split("STARTPOSITION ")[1].split()[0]) for q in queries]
 
 
 async def test_customers_are_read_a_page_at_a_time_following_startposition(
-    client, company, monkeypatch
+    client, company, sent, monkeypatch
 ):
-    from provisa.quickbooks import read as qb_read
+    from provisa.quickbooks import persist
 
     del company
+    # The table is registered with a page of _PAGE_SIZE: every reader of it pages by that size.
+    monkeypatch.setattr(persist, "MAX_PAGE", _PAGE_SIZE)
     await _registered(client, "customer", "customers", ["id", "display_name", "balance", "active"])
-    monkeypatch.setattr(qb_read, "page_size", lambda endpoint: _PAGE_SIZE)
-    with respx.mock(assert_all_called=False) as mock:
-        sent = mock.get(url__startswith=_SANDBOX_QUERY).pass_through()
-        mock.route().pass_through()
-        rows = await _sql(
-            client, f'SELECT "id", "display_name", "balance" FROM "{_DOMAIN}"."customers"'
-        )
-    queries = _queries(sent.calls)
-    print(f"\ncustomer: {len(rows)} rows in {len(queries)} pages of {_PAGE_SIZE}")
-    for q in queries:
+    rows = await _sql(
+        client, f'SELECT "id", "display_name", "balance" FROM "{_DOMAIN}"."customers"'
+    )
+    print(f"\ncustomer: {len(rows)} rows; {len(sent)} requests of {_PAGE_SIZE} rows")
+    for q in sent:
         print(f"  sent: {q}")
     assert rows, "the sandbox company holds no customers"
     assert all(r["id"] and r["display_name"] for r in rows)
     assert len(rows) == len({r["id"] for r in rows})
     assert len(rows) > _PAGE_SIZE, f"the company holds {len(rows)} customers: one page"
-    starts = [int(q.split("STARTPOSITION ")[1].split()[0]) for q in queries]
-    assert starts[:2] == [1, 1 + _PAGE_SIZE], queries
     assert all(
         q.startswith("SELECT * FROM Customer WHERE Active IN (true, false) STARTPOSITION ")
         and q.endswith(f"MAXRESULTS {_PAGE_SIZE}")
-        for q in queries
-    ), queries
-    assert len(queries) >= -(-len(rows) // _PAGE_SIZE)
+        for q in sent
+    ), sent
+    # Each page starts after the last: 1, 6, 11, ... up to the page that came back short.
+    assert set(range(1, len(rows) + 1, _PAGE_SIZE)) <= set(_starts(sent)), sent
 
 
-async def test_an_invoice_balance_condition_is_sent_in_quickbooks_query(client, company):
+async def test_an_invoice_balance_condition_is_sent_in_quickbooks_query(client, company, sent):
     del company
     await _registered(
         client,
@@ -213,23 +222,20 @@ async def test_an_invoice_balance_condition_is_sent_in_quickbooks_query(client, 
         "invoices",
         ["id", "doc_number", "txn_date", "total_amt", "balance", "customer_ref_value"],
     )
-    with respx.mock(assert_all_called=False) as mock:
-        sent = mock.get(url__startswith=_SANDBOX_QUERY).pass_through()
-        mock.route().pass_through()
-        every = await _sql(client, f'SELECT "id", "balance" FROM "{_DOMAIN}"."invoices"')
-        open_ones = await _sql(
-            client,
-            f'SELECT "id", "balance", "customer_ref_value" FROM "{_DOMAIN}"."invoices" '
-            'WHERE "balance" > 0',
-        )
-    queries = _queries(sent.calls)
+    # The first statement on the table is read from QuickBooks with its condition pushed; the
+    # table's replica, built beside it, serves the statements after it.
+    open_ones = await _sql(
+        client,
+        f'SELECT "id", "balance", "customer_ref_value" FROM "{_DOMAIN}"."invoices" '
+        'WHERE "balance" > 0',
+    )
+    every = await _sql(client, f'SELECT "id", "balance" FROM "{_DOMAIN}"."invoices"')
     print(f"\ninvoice: {len(every)} rows; balance > 0: {len(open_ones)} rows")
-    for q in queries:
+    for q in sent:
         print(f"  sent: {q}")
     assert every, "the sandbox company holds no invoices"
     assert open_ones, "the sandbox company holds no invoice with a balance"
     assert all(float(r["balance"]) > 0 for r in open_ones)
     assert all(r["customer_ref_value"] for r in open_ones)
     assert {r["id"] for r in open_ones} == {r["id"] for r in every if float(r["balance"]) > 0}
-    assert "SELECT * FROM Invoice STARTPOSITION 1 MAXRESULTS 1000" in queries
-    assert "SELECT * FROM Invoice WHERE Balance > 0 STARTPOSITION 1 MAXRESULTS 1000" in queries
+    assert "SELECT * FROM Invoice WHERE Balance > '0' STARTPOSITION 1 MAXRESULTS 1000" in sent

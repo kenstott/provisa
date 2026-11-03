@@ -95,7 +95,9 @@ def _literal(kind: str, value: Any) -> str | None:
     if kind in (NUMBER, INTEGER):
         if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
             return None
-        return repr(value) if isinstance(value, float) else str(value)
+        # QuickBooks' parser takes a number quoted, as text it reads as the number: an unquoted
+        # one after < or > is a syntax error (live sandbox, REQ-2197).
+        return _text(repr(value) if isinstance(value, float) else str(value))
     if kind == BOOLEAN:
         return ("true" if value else "false") if isinstance(value, bool) else None
     if kind == DATE:

@@ -180,9 +180,9 @@ def _col(entity_name: str, name: str) -> entities.Column:
 @pytest.mark.parametrize(
     ("column", "op", "value", "lowered"),
     [
-        ("balance", "gt", 0, "Balance > 0"),
-        ("balance", "lte", 100.5, "Balance <= 100.5"),
-        ("total_amt", "in", [1, 2], "TotalAmt IN (1, 2)"),
+        ("balance", "gt", 0, "Balance > '0'"),
+        ("balance", "lte", 100.5, "Balance <= '100.5'"),
+        ("total_amt", "in", [1, 2], "TotalAmt IN ('1', '2')"),
         ("txn_date", "gte", "2026-01-01", "TxnDate >= '2026-01-01'"),
         ("txn_date", "lt", dt.date(2026, 2, 1), "TxnDate < '2026-02-01'"),
         ("doc_number", "eq", "1037", "DocNumber = '1037'"),
@@ -240,14 +240,16 @@ def test_a_statements_conditions_are_pushed_and_the_rest_left_to_the_engine():
         "invoice",
     )
     # The private note is not filterable, so not every condition went: the LIMIT stays.
-    assert args == {"query": "SELECT * FROM Invoice WHERE Balance > 0 AND TxnDate >= '2026-01-01'"}
+    assert args == {
+        "query": "SELECT * FROM Invoice WHERE Balance > '0' AND TxnDate >= '2026-01-01'"
+    }
 
 
 def test_the_limit_is_pushed_when_every_condition_was():
     args = pushed_arguments(
         _endpoint(), "SELECT id FROM invoice WHERE balance > 0 LIMIT 7", "invoice"
     )
-    assert args == {"query": "SELECT * FROM Invoice WHERE Balance > 0", "max_rows": 7}
+    assert args == {"query": "SELECT * FROM Invoice WHERE Balance > '0'", "max_rows": 7}
     assert pushed_arguments(_endpoint(), "SELECT id FROM invoice LIMIT 3", "invoice") == {
         "max_rows": 3
     }
@@ -436,10 +438,12 @@ def test_a_pushed_query_and_limit_shape_every_page():
     read = qb_read.Read()
     with respx.mock() as mock:
         mock.get(QUERY_URL).mock(side_effect=company)
-        pages = _read(ep, {"query": "SELECT * FROM Invoice WHERE Balance > 0", "max_rows": 6}, read)
+        pages = _read(
+            ep, {"query": "SELECT * FROM Invoice WHERE Balance > '0'", "max_rows": 6}, read
+        )
     assert company.queries == [
-        "SELECT * FROM Invoice WHERE Balance > 0 STARTPOSITION 1 MAXRESULTS 4",
-        "SELECT * FROM Invoice WHERE Balance > 0 STARTPOSITION 5 MAXRESULTS 2",
+        "SELECT * FROM Invoice WHERE Balance > '0' STARTPOSITION 1 MAXRESULTS 4",
+        "SELECT * FROM Invoice WHERE Balance > '0' STARTPOSITION 5 MAXRESULTS 2",
     ]
     assert sum(len(page_rows(p)) for p in pages) == 6
     assert read.more is False
