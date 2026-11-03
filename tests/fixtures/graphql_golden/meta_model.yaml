@@ -1425,7 +1425,7 @@ tables:
   table: catalog_pg_enum
   columns:
   - name: enumlabel
-    data_type: varchar
+    data_type: varchar collate "default"
     visible_to:
     - viewer
   - name: enumsortorder
