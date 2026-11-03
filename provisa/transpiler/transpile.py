@@ -682,6 +682,13 @@ def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167
         function = node.expression
         if not isinstance(function, exp.Anonymous):
             return function.transform(_call)
+        part = function.expressions[0] if len(function.expressions) == 2 else None
+        part = part.this if isinstance(part, exp.Cast) else part
+        if function.name.lower() == "extract" and isinstance(part, exp.Literal) and part.is_string:
+            # extract(text, value), as EXTRACT(field FROM value) reads it: its field a keyword,
+            # where date_part's is a text (a numeric's answer, not a float8's).
+            value = function.expressions[1].transform(_call)
+            return exp.Extract(this=exp.var(part.this), expression=value)
         args = ", ".join(a.transform(_call).sql(dialect="postgres") for a in function.expressions)
         return sqlglot.parse_one(f"{function.name}({args})", read="postgres")
 
@@ -1582,13 +1589,16 @@ def _flag_past_n(pg_sql: str) -> str:
     and N. PostgreSQL reads 'g' only where N is not given, so that call is the five-argument one;
     any other flag beside N has no form."""
     tree = sqlglot.parse_one(pg_sql, read="postgres")
+    # A flag given as text ('i'::text) is its literal: sqlglot writes DuckDB's flags only from one.
+    for node in tree.find_all(exp.RegexpReplace):
+        said = node.args.get("modifiers")
+        if isinstance(said, exp.Cast) and said.this.is_string and said.to.is_type("text"):
+            node.set("modifiers", said.this)
     both = [
         node
         for node in tree.find_all(exp.RegexpReplace)
         if node.args.get("occurrence") is not None and node.args.get("modifiers") is not None
     ]
-    if not both:
-        return pg_sql
     for node in both:
         said = node.args["modifiers"]
         if not (isinstance(said, exp.Literal) and said.this == "g"):

@@ -45,6 +45,7 @@ from provisa.pgwire.catalog_pg17_procs import (
     SYSTEM_INDEXES,
     VIEW_DEFINITIONS,
 )
+from provisa.pgwire.catalog_pg17_viewdefs import VIEW_WRAPS
 from provisa.transpiler.metadata_facts import (
     PRIVILEGES,
     ROLE_PRIVILEGES,
@@ -719,11 +720,45 @@ def _view_definitions(which: int) -> str:
     return f"CASE {_VIEW_OID} {arms} END"
 
 
-#: pg_get_viewdef(view, pretty) or pg_get_viewdef(view, wrap column): pretty but where told false.
-#: A wrap column is read as pretty's own, 0: a longer one would wrap fewer target lists.
+#: The wrap column pg_get_viewdef's second argument says; NULL where it is a boolean.
+_WRAP = (
+    "(CASE WHEN CAST(pretty AS TEXT) ~ '^-?[0-9]+$' THEN CAST(CAST(pretty AS TEXT) AS BIGINT) END)"
+)
+
+
+def _quoted(text: str) -> str:
+    return "'" + text.replace("'", "''") + "'"
+
+
+def _wrapped(texts: tuple[str, ...], separators: tuple) -> str:
+    """A view's definition at the wrap column ``_WRAP``: its texts joined by each separator's
+    form at that column (catalog_pg17_viewdefs.VIEW_WRAPS)."""
+    parts = [_quoted(texts[0])]
+    for (form, one_line, spans), text in zip(separators, texts[1:], strict=True):
+        at = " OR ".join(
+            f"{_WRAP} BETWEEN {low} AND {high}" if high is not None else f"{_WRAP} >= {low}"
+            for low, high in spans
+        )
+        chosen = f"CASE WHEN {at or 'FALSE'} THEN {_quoted(form)} ELSE {_quoted(one_line)} END"
+        parts += [chosen, _quoted(text)]
+    return " || ".join(parts)
+
+
+def _view_definitions_wrapped() -> str:
+    """pg_get_viewdef(view, wrap column): each target list's separators as PostgreSQL 17 writes
+    them at that column; NULL for a relation that is no view PostgreSQL ships."""
+    arms = " ".join(
+        f"WHEN {oid} THEN {_wrapped(*written)}" for oid, written in sorted(VIEW_WRAPS.items())
+    )
+    return f"CASE {_VIEW_OID} {arms} END"
+
+
+#: pg_get_viewdef(view, pretty) or pg_get_viewdef(view, wrap column): plain where told false,
+#: pretty where told true, and wrapped at a column where given one.
 _PRETTY_VIEWDEF = (
-    "CASE WHEN LOWER(CAST(pretty AS TEXT)) IN ('false', 'f') "
-    f"THEN {_view_definitions(0)} ELSE {_view_definitions(1)} END"
+    "CASE WHEN pretty IS NULL THEN NULL WHEN LOWER(CAST(pretty AS TEXT)) IN ('false', 'f') "
+    f"THEN {_view_definitions(0)} WHEN LOWER(CAST(pretty AS TEXT)) IN ('true', 't') "
+    f"THEN {_view_definitions(1)} ELSE {_view_definitions_wrapped()} END"
 )
 
 #: Every object a catalog holds is on the search path, and the session role holds every role.

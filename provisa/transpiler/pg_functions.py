@@ -68,7 +68,7 @@ _SPELLED = {
 #: The statements ``before`` has anything to do in.
 _NAMED = re.compile(
     r"\b(random|regexp_matches|timezone|to_timestamp|[blr]?trim|setseed"
-    r"|overlay|substring|extract|decode|encode|pg_size_pretty|current_schemas)\b",
+    r"|overlay|substring|extract|date_part|decode|encode|pg_size_pretty|current_schemas)\b",
     re.IGNORECASE,
 )
 #: The statements ``typed_calls`` has anything to do in.
@@ -106,6 +106,20 @@ _MAKE_INTERVAL = ("years", "months", "weeks", "days", "hours", "mins", "secs")
 _NO_INTERVAL = ("0", "0", "0", "0", "0", "0", "0.0")
 
 _RANDOM_BOUNDS = "lower bound must be less than or equal to upper bound"
+
+
+#: The names PostgreSQL reads a part of a second as (datetktbl).
+_SECOND_PARTS = frozenset({"s", "sec", "secs", "second", "seconds"})
+
+
+def _of_a_second(node: exp.Extract) -> bool:
+    """Whether ``node`` reads a second (of a value that has one: PostgreSQL refuses a date's)."""
+    part = node.this.this if isinstance(node.this, exp.Cast) else node.this
+    named = part.name if isinstance(part, exp.Var) else part.this if part.is_string else None
+    if not isinstance(named, str) or named.strip().lower() not in _SECOND_PARTS:
+        return False
+    value = node.expression
+    return not (isinstance(value, exp.Cast) and value.to.is_type("date"))
 
 
 def _is_null(node: exp.Expr) -> bool:
@@ -283,6 +297,13 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
         and _is_text(node.args["start"])
     ):
         written = _regex_substring(text(node.this), node.args["start"])
+    elif isinstance(node, exp.Extract) and _of_a_second(node):
+        # DuckDB's second is a whole number: PostgreSQL's keeps its fraction, the second's
+        # microseconds over a million, a numeric of scale 6 for EXTRACT and a float8 for
+        # date_part (whose part is a text).
+        micros = f"{_DATE_PART}('microseconds', {text(node.expression)})"
+        exact = f"(CAST({micros} AS DECIMAL(20, 0)) * CAST(0.000001 AS DECIMAL(7, 6)))"
+        written = exact if isinstance(node.this, exp.Var) else f"CAST({exact} AS DOUBLE PRECISION)"
     elif isinstance(node, exp.Extract) and not isinstance(node.this, exp.Var):
         written = f"{_DATE_PART}({text(node.this)}, {text(node.expression)})"
     elif isinstance(node, exp.Encode) and node.args.get("charset") is not None:
