@@ -20,6 +20,7 @@ whose rows differ from the record, is built again through the build queue."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -96,22 +97,144 @@ async def test_a_template_built_under_other_control_plane_tables_is_built_again(
     assert await demo_templates.warm_ready(platform, demo) is False
 
 
-def test_the_ddl_fingerprint_changes_with_a_column_and_with_schema_sql():
-    from sqlalchemy import Column, MetaData, Text
+def _metadata_copy():
+    from sqlalchemy import MetaData
 
     from provisa.core import schema_org
 
-    sql = b"CREATE TABLE IF NOT EXISTS t (id TEXT);"
     copy = MetaData()
     for table in schema_org.metadata.tables.values():
         table.to_metadata(copy)
-    base = schema_org.fingerprint_of(copy, sql)
+    return copy
+
+
+def test_the_ddl_fingerprint_changes_with_a_column_and_with_schema_sql():
+    from sqlalchemy import Column, Text
+
+    from provisa.core import schema_org
+
+    copy, sources = _metadata_copy(), schema_org.ddl_sources()
+    base = schema_org.fingerprint_of(copy, sources)
     assert len(base) == 16 and int(base, 16) >= 0
-    assert schema_org.fingerprint_of(copy, sql) == base
-    assert schema_org.fingerprint_of(copy, sql + b"\n-- a column") != base
+    assert schema_org.fingerprint_of(copy, sources) == base
+    changed = {**sources, "core/schema.sql": sources["core/schema.sql"] + b"\n-- a column"}
+    assert schema_org.fingerprint_of(copy, changed) != base
     copy.tables["calendars"].append_column(Column("a_column_added_since", Text))
-    assert schema_org.fingerprint_of(copy, sql) != base
+    assert schema_org.fingerprint_of(copy, sources) != base
     assert schema_org.ddl_fingerprint() == schema_org.ddl_fingerprint()
+
+
+@pytest.mark.parametrize(
+    "path, before, after",
+    [
+        # config_stamp's trigger function and its triggers (cloud: relation "config_stamp" does not
+        # exist in a sandbox opened from a template built before it).
+        ("core/config_stamp.py", b"CREATE OR REPLACE FUNCTION", b"CREATE OR REPLACE FUNCTION  "),
+        ("core/config_stamp.py", b"CREATE TRIGGER", b"CREATE  TRIGGER"),
+        ("core/env_changes.py", b"CreateTable(", b"CreateTable( "),
+        ("api/_meta_views.py", b"CREATE OR REPLACE VIEW", b"CREATE OR REPLACE VIEW "),
+    ],
+    ids=["function", "trigger", "env-changes-table", "view"],
+)
+def test_the_ddl_fingerprint_changes_with_a_trigger_function_or_view(path, before, after):
+    from provisa.core import schema_org
+
+    copy, sources = _metadata_copy(), schema_org.ddl_sources()
+    assert before in sources[path]
+    changed = {**sources, path: sources[path].replace(before, after, 1)}
+    assert schema_org.fingerprint_of(copy, changed) != schema_org.fingerprint_of(copy, sources)
+
+
+# Every module that runs DDL, by the statements it names, and where that DDL lands when it is not an
+# org's control-plane schema. A module here or in schema_org.ORG_SCHEMA_DDL_SOURCES, never neither:
+# a new source of an org's tables, views, functions or triggers fails this until it is classed.
+_DDL = re.compile(
+    rb"CREATE (OR REPLACE )?(TABLE|VIEW|FUNCTION|TRIGGER|INDEX|UNIQUE INDEX|MATERIALIZED VIEW"
+    rb"|SEQUENCE|TYPE)|CreateTable\(|CreateIndex\(|\.create_all\(|CreateSchema"
+)
+_NOT_ORG_SCHEMA_DDL = {
+    "core/schema_org.py": "this metadata, compiled by the fingerprint itself",
+    "core/schema_admin.py": "the platform plane, never an org's schema",
+    "core/boot_lock.py": "the platform plane's boot lock",
+    "core/org_registry_view.py": "a view in the root org's schema, never a template's",
+    "core/duckdb_store.py": "the embedded DuckDB control plane's dialect",
+    "core/ir_types.py": "names CREATE TABLE in a comment",
+    "core/trino_system_catalogs.py": "Iceberg's JDBC catalog tables, for the Trino catalogs",
+    "observability/ops_schema.py": "the ops schema",
+    "observability/ops_trino.py": "the otel catalog",
+    "scheduler/jobs.py": "the otel catalog",
+    "api_source/engine_cache.py": "an API source's cache catalog",
+    "api/demo_region_seed.py": "a region store's copy of a demo seed (data)",
+    "api/admin/schema_mutation_ops.py": "a view deployed to a source",
+    "api/admin/introspect.py": "names CREATE VIEW in a comment",
+    "api/admin/orgs_router.py": "names CREATE VIEW in a comment",
+    "api/admin/schema_query.py": "names CREATE TABLE in a comment",
+    "api/airport/server.py": "an Airport action's name",
+    "api/flight/server.py": "names statements it refuses",
+    "api/metadata_export/unity_catalog.py": "exported text for Unity Catalog",
+    "api/org_runtime.py": "names CREATE VIEW in a comment",
+    "api/rest/graph_tools_router.py": "a Cypher index statement",
+    "codehost/pgcatalog.py": "an in-process DuckDB catalog",
+    "compiler/definitions.py": "names statements it classes",
+    "ephemeral/indexes.py": "a session's scratch store",
+    "ephemeral/store.py": "a session's scratch store",
+    "events/triggers.py": "triggers in a source's own database",
+    "subscriptions/pg_triggers.py": "triggers in a source's own database",
+    "executor/drivers/postgresql.py": "names CREATE INDEX in a comment",
+    "executor/trino_write.py": "the results catalog",
+    "hive/fetch.py": "names CREATE TABLE in a comment",
+    "mv/refresh.py": "a materialized view's target (data)",
+    "mv/bitemporal.py": "a materialized view's target (data)",
+    "pgwire/catalog_constraints.py": "pgwire's in-process catalog",
+    "pgwire/catalog_pg17.py": "pgwire's in-process catalog",
+    "pgwire/catalog_pg17_procs.py": "pgwire's in-process catalog",
+    "pgwire/catalog_pg17_tables.py": "pgwire's in-process catalog",
+    "pgwire/catalog_pg17_viewdefs.py": "pgwire's in-process catalog",
+    "pgwire/catalog_populate.py": "pgwire's in-process catalog",
+    "pgwire/catalog_privileges.py": "pgwire's in-process catalog",
+    "pgwire/catalog_server_answers.py": "pgwire's in-process catalog",
+    "pgwire/ext_surfaces.py": "names CREATE INDEX in a comment",
+    "pgwire/server.py": "command tags",
+    "pgwire/system_tables.py": "pgwire's in-process catalog",
+    "transpiler/metadata_functions.py": "text a catalog answer returns",
+    "federation/backend.py": "an engine's own schemas",
+    "federation/bigquery_store.py": "a BigQuery store",
+    "federation/clickhouse_connectors.py": "a ClickHouse engine",
+    "federation/clickhouse_runtime.py": "a ClickHouse engine",
+    "federation/clickhouse_store.py": "a ClickHouse store",
+    "federation/connector_duckdb.py": "a DuckDB engine's views of a source",
+    "federation/custom_connectors.py": "an engine's views of a source",
+    "federation/databricks_connectors.py": "a Databricks engine",
+    "federation/databricks_runtime.py": "a Databricks engine",
+    "federation/databricks_store.py": "a Databricks store",
+    "federation/duckdb_runtime.py": "a DuckDB engine",
+    "federation/mail_write.py": "an in-process scratch table",
+    "federation/materialize_broker.py": "replicas in the materialization store (data)",
+    "federation/mssql_warehouse_runtime.py": "a warehouse engine",
+    "federation/pg_runtime.py": "a pg engine's views of a source",
+    "federation/replica_target.py": "replicas in their store (data)",
+    "federation/replica_target_warehouse.py": "replicas in a warehouse (data)",
+    "federation/session_rows.py": "indexes of a replica (data)",
+    "federation/snowflake_store.py": "a Snowflake store",
+    "federation/sqlalchemy_runtime.py": "an engine's own schemas",
+    "federation/store_connection.py": "the materialization store",
+    "federation/store_writer.py": "the materialization store",
+}
+
+
+def test_every_module_running_ddl_is_classed_for_the_fingerprint():
+    from provisa.core import schema_org
+
+    package = Path(schema_org.__file__).resolve().parents[1]
+    found = {
+        str(f.relative_to(package))
+        for f in package.rglob("*")
+        if f.suffix in (".py", ".sql") and _DDL.search(f.read_bytes())
+    }
+    listed = set(schema_org.ORG_SCHEMA_DDL_SOURCES)
+    assert not listed & set(_NOT_ORG_SCHEMA_DDL)
+    assert found - listed - set(_NOT_ORG_SCHEMA_DDL) == set(), "class each new source of DDL"
+    assert listed <= found, "a listed source that runs no DDL"
 
 
 @pytest.mark.parametrize(
