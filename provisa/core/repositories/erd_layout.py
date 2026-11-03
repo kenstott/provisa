@@ -28,7 +28,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, delete, insert, select
+from sqlalchemy import and_, delete, func, insert, select
 
 from provisa.core import model_change
 from provisa.core.repositories.integrity import ObjectRef, discard
@@ -123,7 +123,8 @@ async def save(
         erd_layouts,
         {"name": name, "options": options, "updated_by": by},
         index_elements=["name"],
-        update_columns=["options", "updated_by", "updated_at"],
+        update_columns=["options", "updated_by"],
+        set_extra={"updated_at": func.now()},
     )
     held_domains = await conn.execute_core(
         select(erd_layout_domains.c.domain_id).where(erd_layout_domains.c.layout_name == name)
