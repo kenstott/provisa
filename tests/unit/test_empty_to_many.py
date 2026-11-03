@@ -168,5 +168,44 @@ def test_on_trino_the_empty_default_is_an_empty_list_and_the_subquery_is_still_j
     # The correlated JSON subquery is still rewritten to a joined aggregate for Trino...
     assert "_grel_" in trino and "LEFT JOIN" in trino
     # ...and its default is the text '[]' its json_format(...) aggregate is compared with.
-    assert "COALESCE(" in trino and "'[]')" in trino
+    assert "COALESCE(_grel_0._val, '[]')" in trino
     assert "CAST('[]' AS JSON)" not in trino
+    assert "JSON_PARSE('[]')" not in trino
+
+
+_TRINO_LIST = (
+    'SELECT "t0"."order_id", COALESCE((SELECT json_agg(json_build_object(\'eventType\', '
+    '"t1"."event_type")) FROM {source}), CAST(\'[]\' AS JSON)) AS "orderEvents" '
+    'FROM "pg"."public"."orders" "t0"'
+)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        # a relationship with a row limit: the correlated subquery stays inline
+        '(SELECT * FROM "ch"."default"."order_events" "t1" '
+        'WHERE "t1"."order_id" = "t0"."order_id" LIMIT 100) "t1"',
+        # without one: it becomes a joined aggregate (_grel_0)
+        '"ch"."default"."order_events" "t1" WHERE "t1"."order_id" = "t0"."order_id"',
+    ],
+    ids=["inline", "joined"],
+)
+def test_on_trino_a_list_default_is_text_like_its_json_format_aggregate(source):
+    """Trino refuses COALESCE(varchar, json) (TYPE_MISMATCH): the aggregate is json_format(...)
+    text, so its empty default is the text '[]', whatever form the json cast was written in."""
+    from provisa.transpiler.transpile import transpile_to_trino
+
+    trino = transpile_to_trino(_TRINO_LIST.format(source=source))
+    coalesce = sqlglot.parse_one(trino, read="trino").find(exp.Coalesce)
+    assert coalesce is not None
+    (default,) = coalesce.expressions
+    assert default == exp.Literal.string("[]")
+
+
+def test_on_trino_a_json_cast_of_a_list_literal_not_defaulting_an_aggregate_stays_json():
+    """A statement's own cast of '[]' to json is a json array on Trino (JSON_PARSE), not text."""
+    from provisa.transpiler.transpile import transpile_to_trino
+
+    trino = transpile_to_trino("SELECT CAST('[]' AS JSON) AS j, COALESCE(NULL, CAST('[]' AS JSON))")
+    assert trino.count("JSON_PARSE('[]')") == 2
