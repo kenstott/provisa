@@ -42,15 +42,37 @@ _CONSTANT_NODES = (
 )
 
 
+#: The time, by each of PostgreSQL's names for it: within one evaluation, the same instant.
+_NOW = frozenset({"now", "clock_timestamp", "statement_timestamp", "transaction_timestamp"})
+
+
 def _constant_node(node: exp.Expr) -> bool:
     if isinstance(node, exp.Anonymous):
-        return node.name.lower() == "now" and not node.expressions
+        return node.name.lower() in _NOW and not node.expressions
+    if isinstance(node, exp.Dot):  # pg_catalog.now()
+        return isinstance(node.this, exp.Identifier) and node.this.name.lower() == "pg_catalog"
     return isinstance(node, _CONSTANT_NODES)
 
 
 def is_constant(expression: exp.Expr) -> bool:
     """Whether ``expression`` is literals, casts and arithmetic, and the time: nothing it reads."""
     return all(_constant_node(node) for node in expression.walk())
+
+
+def evaluable(sql: str) -> str:
+    """A constant expression (``is_constant_sql``) as the evaluating DuckDB reads it: each name of
+    the time is now(), which DuckDB has, and no pg_catalog qualifier."""
+
+    def now(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Dot) and isinstance(node.expression, exp.Anonymous):
+            node = node.expression
+        if isinstance(node, exp.Anonymous) and node.name.lower() in _NOW:
+            return exp.Anonymous(this="now")
+        return node
+
+    select = sqlglot.parse_one(f"SELECT {sql}", read="postgres")
+    assert isinstance(select, exp.Select)
+    return select.selects[0].transform(now).sql(dialect="postgres")
 
 
 def is_constant_sql(sql: str) -> bool:

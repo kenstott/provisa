@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import NamedTuple
 
 from provisa.executor.result import QueryResult
 
@@ -40,8 +41,37 @@ class DirectResultStream(ABC):  # REQ-1190
         """Release the cursor, transaction, and pooled connection. Idempotent."""
 
 
+class GeneratedColumn(NamedTuple):  # REQ-2167
+    """A column its source fills from a sequence or counter when a row is given no value for it:
+    its name, and its place among the table's columns (1-based), which a row given without a
+    column list is matched to."""
+
+    name: str
+    position: int
+
+
 class DirectDriver(ABC):  # REQ-027, REQ-052
     """Abstract async driver for direct database execution."""
+
+    #: REQ-2167: how a write reports the value it made the source generate -- ``"returning"``,
+    #: the statement returns it; ``"last_insert_id"``, the connection reports it
+    #: (:meth:`execute_reporting_generated`) -- or None: the source has no way to.
+    generated_keys: str | None = None
+
+    async def generated_columns(
+        self, schema: str | None, table: str
+    ) -> tuple[GeneratedColumn, ...]:  # REQ-2167
+        """The columns of ``table`` the source generates a value for, read from its catalog, in
+        their order in the table. Only for a driver whose ``generated_keys`` is set."""
+        raise NotImplementedError(f"{type(self).__name__} reports no generated key")
+
+    async def execute_reporting_generated(
+        self, sql: str, params: list | None = None
+    ) -> QueryResult:  # REQ-2167
+        """Run a write, the result carrying the value it made the source generate
+        (``QueryResult.generated_key``), None when it generated none. Only for a driver whose
+        ``generated_keys`` is ``"last_insert_id"``."""
+        raise NotImplementedError(f"{type(self).__name__} reports no generated key")
 
     @property
     def supports_streaming(self) -> bool:  # REQ-1190
@@ -67,6 +97,17 @@ class DirectDriver(ABC):  # REQ-027, REQ-052
         native-vs-http ``scheme``. The standard ``connect(host, port, database, user, password)`` args
         can't carry these, so warehouse drivers override this to stash them. No-op by default, so the
         RDBMS drivers are untouched."""
+
+    #: REQ-2191: the driver connects at an address its settings name (a Generic SQL source's
+    #: URL), checked and pinned where it connects, never at the ``host`` it is handed.
+    names_own_destination: bool = False
+
+    @property
+    def dialect(self) -> str | None:  # REQ-2191
+        """The SQL dialect this source's statements are written in when the source chose it
+        (a Generic SQL source's ``sql_dialect``), read after ``configure``; None when its type
+        names it (``SOURCE_TO_DIALECT``)."""
+        return None
 
     @abstractmethod
     async def connect(

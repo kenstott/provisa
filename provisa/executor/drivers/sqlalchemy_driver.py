@@ -169,7 +169,7 @@ class SQLAlchemyDriver(DirectDriver):  # REQ-229, REQ-550
     def supports_streaming(self) -> bool:  # REQ-1190
         return True
 
-    async def open_stream(self, sql: str, params: list | None = None) -> "SqlAlchemyResultStream":
+    async def open_stream(self, sql: str, params: list | None = None) -> DirectResultStream:
         """The result a batch at a time on a ``stream_results`` connection: the dialect reads
         from the server as ``fetchmany`` asks (a server-side cursor where the DBAPI has one),
         so one batch is held, never the result."""

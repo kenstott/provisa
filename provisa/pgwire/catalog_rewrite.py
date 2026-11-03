@@ -37,6 +37,7 @@ from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATIONS
 from provisa.pgwire.catalog_server_answers import ANSWERED as SERVER_ANSWERED
 from provisa.core.pg_error import from_engine
 from provisa.transpiler import function_macros
+from provisa.transpiler.metadata_oids import SYSTEM_SCHEMA_OIDS
 from provisa.transpiler.pg_functions import typed_calls
 from provisa.transpiler.pg_literals import postgres_literals
 from provisa.transpiler.pg_money import lowered
@@ -644,9 +645,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
         if isinstance(node, exp.Anonymous):
             fn = node.name.lower()
             args = node.args.get("expressions", [])
-            if (fn in SERVER_ANSWERED and fn != "setval") or (
-                fn.startswith("reg") and fn.endswith("send")
-            ):
+            if fn in SERVER_ANSWERED or (fn.startswith("reg") and fn.endswith("send")):
                 # REQ-2167: a macro of its own (catalog_server_answers, function_macros).
                 return cast("exp.Expression", _resolved_regs(node, args))
             if fn == "getpgusername":
@@ -666,22 +665,6 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                     ),
                     expression=exp.Literal.number(1),
                 )
-            if fn == "setval" and args:
-                # REQ-2167: a name is resolved as the call is read, as PostgreSQL reads a regclass
-                # argument: a name naming no relation is its error.
-                from provisa.pgwire.catalog_regs import reg_oid, reg_type_of
-
-                named = args[0]
-                if isinstance(named, exp.Cast) and reg_type_of(named.to) == "regclass":
-                    named = named.this
-                if isinstance(named, exp.Literal) and named.is_string:
-                    return exp.Anonymous(
-                        this="setval",
-                        expressions=[
-                            reg_oid("regclass", named),
-                            *(a.transform(_transform) for a in args[1:]),
-                        ],
-                    )
             if fn == "json_build_object":
                 # DuckDB has no json_build_object; json_object takes the same
                 # alternating key/value argument list.
@@ -715,7 +698,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                             expression=exp.cast(args[0].transform(_transform), "BIGINT"),
                         )
                     )
-                    .where("relkind IN ('r', 'p') AND relnamespace NOT IN (11, 12)")
+                    .where(f"relkind IN ('r', 'p') AND relnamespace NOT IN {SYSTEM_SCHEMA_OIDS}")
                 )
             if fn == "pg_get_indexdef" and len(args) >= 2:
                 return _index_column_name(

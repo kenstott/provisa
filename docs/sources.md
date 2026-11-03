@@ -70,6 +70,7 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 | `airport` | — | — (DuckDB extension) | — | No |
 | `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | No |
 | `hiveserver2` | impyla (HiveServer2 over Thrift) | — | hive | No |
+| `generic_sql` | SQLAlchemy, at the source's own URL | — | chosen per source | No |
 
 Wire-compatible databases reuse a base wire's JDBC driver, native async driver and dialect. CockroachDB, YugabyteDB and Greenplum ride the PostgreSQL wire, and TiDB rides the MySQL wire. They need only registry entries and no new connector code.
 
@@ -82,6 +83,34 @@ SAP HANA is read through its own driver and replicated into the active engine's 
 #### `hiveserver2`
 
 A HiveServer2 endpoint read directly over Thrift, for a Hive deployment where the endpoint is the only thing reachable. It is distinct from `hive` and `hive_s3`, which read the warehouse's files and metastore and never go through HiveServer2. Rows are read through the endpoint and replicated into the active engine's store. The form takes host, port (default 10000), username, password and database; `federation_hints.auth_mechanism` selects the authentication (default `PLAIN`, for example `GSSAPI` for Kerberos).
+
+#### `generic_sql`
+
+A database with no named source type, reached through any SQLAlchemy dialect Provisa ships. The source takes three settings, kept in `federation_hints`:
+
+- `url`: the connection URL. Its scheme names the SQLAlchemy dialect and driver, as in `postgresql+psycopg2://db.example.com:5432/sales` or `mssql+pyodbc://host:1433/db?driver=ODBC+Driver+18+for+SQL+Server`. The URL carries no password. The username and password go in the source's own fields, where a `${secret:NAME}` reference works as it does for every source. A scheme whose package is not installed fails the connection and names the missing package.
+- `sql_dialect`: the SQL flavor Provisa writes for the source. It is one of SQLGlot's dialects, or `ansi` for SQLGlot's generic SQL. It is independent of the URL, so a database closest to Postgres can be written as `postgres` behind any driver.
+- `capabilities.<engine>`: the capabilities turned on for the source on that engine, as a comma list of `attach`, `predicate`, `join`, `aggregate` and `key_range`. Each one is off until it is set, and each is held per engine. After an engine swap, nothing is on for the new engine until it is set there. Function pushdown is not offered. Only a `postgresql` or `mysql` URL can turn on `attach`. Live attach is not built yet, so a save that turns it on is refused and the source's rows are replicated into the active engine's store.
+
+A SQLite or DuckDB file is named by its path, written with the organization's tokens: `sqlite:///{files}/shop.db` or `duckdb:///{org}/shop.duckdb`. The file is opened where the token resolves, and a path that leaves the organization's folder is refused, naming the path. On a server of many organizations this is the only file URL allowed. A URL naming any other file is refused, and a DuckDB file is opened with DuckDB's external access off.
+
+Provisa never sends a statement to a Generic SQL source whole. Its tables are read at their floor, and the engine runs the rest of the statement. A small table can instead be replicated whole by its replicate setting, and it then joins like any other landed table. Register Table offers each column as an optional parameter of kind `column_value`, named `_nf_<column>`: a value for a real column, given by equality, that narrows the read to the rows with that value. A steward can make a parameter required. A query that leaves a required parameter out is refused, naming the table and the parameter, before anything is sent to the source. In SQL a query gives a parameter as a WHERE condition on `_nf_<column>`, and in GraphQL as an argument. The floor reads the table with one SELECT of its columns, with an equality filter for each parameter given. It is written in the source's SQL dialect, and the values are bound rather than written into the text. The rows land for that set of arguments. When the statement alone sets a row limit, the read pulls the cursor in batches and stops once it has enough rows.
+
+A customer's own JDBC driver is also a Generic SQL source. Give a `jdbc:` URL plus two more settings: `jdbc_driver_jar`, the driver's jar file (a `{files}/...` path works), and `jdbc_driver_class`, the driver's class name. Provisa opens that driver directly in its own JVM through JPype, with no Calcite involved. The SQL dialect, the capability settings and Detect work as they do for a SQLAlchemy URL. A `jdbc:` URL has no engine attach, so the form doesn't offer one. A customer's jar runs as code inside Provisa's JVM, so this option is for self-hosted installs only. A server of many organizations refuses it, naming the reason, and so does a sandbox organization.
+
+For an organization whose sources are held to public addresses (a sandbox, or any organization but the deployment's own on a server of many organizations), the URL may carry only these driver options:
+
+| Dialect | Options allowed |
+| ------- | --------------- |
+| `postgresql` | `sslmode`, `connect_timeout`, `application_name`, `target_session_attrs` |
+| `mysql` | `ssl_mode`, `connect_timeout`, `charset` |
+| `mssql` | `driver`, `Encrypt`, `TrustServerCertificate` |
+
+Any other option is refused by name. That covers options that name another host, a file, a service, an init command or a local file load. A self-hosted server and the deployment's own organization can pass any option their driver accepts.
+
+Detect is a button on the form. It runs read-only checks against the connection the form describes, on the active engine, written in the source's SQL dialect over rows the statement makes itself. It ticks the capabilities that passed and shows the source's own error for those that failed. Nothing is saved until the form is. After changing the URL or the dialect, press Detect again.
+
+A network URL's host is checked like any other source's host (sandbox and multi-organization egress rules), and the connection is made at the address that was checked, a sandbox's included. Nothing is checked against the database when it connects. Register Table lists the schemas, tables and columns that the source's own SQLAlchemy dialect reports.
 
 ### Cloud Data Warehouses
 

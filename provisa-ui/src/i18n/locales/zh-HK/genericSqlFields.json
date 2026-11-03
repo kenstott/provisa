@@ -1,0 +1,32 @@
+{
+  "genericSqlFields": {
+    "url": "連接 URL",
+    "urlHint": "SQLAlchemy URL；其協定名稱指定驅動程式。請勿在其中填寫密碼。",
+    "dialect": "SQL 方言",
+    "dialectHelp": "Provisa 為此資料來源編寫的 SQL 風格。它不必與驅動程式一致：請選擇最接近該資料庫的方言，或 ANSI。",
+    "ansi": "ANSI（通用 SQL）",
+    "username": "使用者名稱",
+    "password": "密碼",
+    "capability": {
+      "attach": "在 {{engine}} 上即時掛接",
+      "predicate": "在 {{engine}} 上下推篩選",
+      "join": "在 {{engine}} 上下推連接",
+      "aggregate": "在 {{engine}} 上下推聚合",
+      "key_range": "在 {{engine}} 上下推鍵範圍"
+    },
+    "capabilityName": {
+      "attach": "即時掛接",
+      "predicate": "篩選下推",
+      "join": "連接下推",
+      "aggregate": "聚合下推",
+      "key_range": "鍵範圍下推"
+    },
+    "attachUnbuilt": "即時掛接尚未可用；資料列會以複本形式複製。",
+    "detect": "偵測",
+    "checkPassed": "{{capability}}：通過",
+    "checkFailed": "{{capability}}：未通過（{{reason}}）",
+    "jdbcDriverJar": "JDBC 驅動程式 JAR",
+    "jdbcDriverJarHint": "驅動程式的 JAR 檔案。僅限自行託管的安裝。",
+    "jdbcDriverClass": "驅動程式類別"
+  }
+}

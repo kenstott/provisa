@@ -132,6 +132,9 @@ sources = Table(
     # Connection extras the typed columns cannot carry (warehouse account/http_path, remote-schema
     # override, Exasol server-certificate fingerprint) — Source.federation_hints.
     Column("federation_hints", JSON, nullable=False, default=dict, server_default="{}"),
+    # REQ-1923: the values a branded source's setup was given (Shopify: store, api_version) --
+    # Source.brand_setup.
+    Column("brand_setup", JSON, nullable=False, default=dict, server_default="{}"),
     Column("cdc", JSON(none_as_null=True)),
     Column("change_signal", Text, nullable=False, server_default="ttl"),  # REQ-929
     # REQ-1491: whether this environment has supplied this source's connection values. A copy

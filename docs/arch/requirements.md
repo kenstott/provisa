@@ -26437,3 +26437,13 @@ Maintainer 2026-11-02: rather than a generic Python driver option, Provisa adds 
 **Code:** —
 
 **Tests:** —
+
+### REQ-2197 · Source Connectors {#REQ-2197}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-03 (after asking how feasible QuickBooks and NetSuite are, and adding QuickBooks sandbox credentials): QuickBooks Online is a source type. Its entities (customers, invoices, bills, payments, accounts, items and the rest the Accounting API exposes) are tables; a read pushes simple filters into QuickBooks' own query language; it signs in with OAuth2 against the company (realm) the admin authorizes and keeps the refresh token QuickBooks hands back on each refresh.
+
+**Code:** —
+
+**Tests:** —

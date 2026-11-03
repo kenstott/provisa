@@ -25,9 +25,18 @@ from typing import Any
 
 # How a parameter reaches the source (core/models.py Column.native_filter_type).
 # partition_key (REQ-1982): a Cosmos DB container's partition key, which narrows a read to one
-# partition.
+# partition. column_value (REQ-2191): a real column of the table, given by equality, that narrows
+# the read to the rows having that value (a Generic SQL source's floor).
 PARAMETER_KINDS = frozenset(
-    {"path_param", "query_param", "graphql_arg", "grpc_input", "query_arg", "partition_key"}
+    {
+        "path_param",
+        "query_param",
+        "graphql_arg",
+        "grpc_input",
+        "query_arg",
+        "partition_key",
+        "column_value",
+    }
 )
 
 NF_PREFIX = "_nf_"

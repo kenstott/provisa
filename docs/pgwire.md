@@ -164,6 +164,22 @@ Rows of an existing registered table are written through pgwire as on every othe
 
 Whatever cannot be decided is refused by name rather than admitted on doubt (an `INSERT … SELECT`, a value that is neither a literal nor a bound parameter, a filter that reads a column the statement does not supply).
 
+### lastval() and sequence functions
+
+`lastval()` answers the last identity or serial value an `INSERT` of **this pgwire session** made its source generate. Provisa answers it, not the source: a source connection is pooled, so the source's own `lastval` would belong to whichever session used that connection last. Before any such insert in the session, `lastval()` raises PostgreSQL's own error, SQLSTATE 55000 `lastval is not yet defined in this session`. The value outlives a `ROLLBACK`, as PostgreSQL's does.
+
+The generated columns are read from the source's own catalog when the insert runs: on PostgreSQL an identity column, a serial column (`pg_get_serial_sequence`) or one whose default calls `nextval`; on MySQL a column marked `AUTO_INCREMENT`. The insert is then written to report the value, and the client's rows and command tag are unchanged by it:
+
+| Source kind | How the value is reported | Which value |
+| --- | --- | --- |
+| PostgreSQL (and CockroachDB, YugabyteDB, Greenplum: the PostgreSQL driver) | `RETURNING` of the generated columns is added after the client's own `RETURNING`, and stripped from the rows sent back | The last row's last generated column, as PostgreSQL's `lastval()` |
+| MySQL (and MariaDB, TiDB, SingleStore: the MySQL driver) | `LAST_INSERT_ID()` read on the write's own connection, set to 0 just before it so a value left by another statement is never read | MySQL's own: for an insert of several rows, the **first** row's value |
+| Any other source, and a source written through its own pgwire server | None | `lastval()` stays undefined after its inserts (55000) |
+
+A row that gives the generated column its own value generates none, and the session keeps the value it had. On PostgreSQL an `INSERT … ON CONFLICT` is not rewritten: the source draws a value for a row it then skips or updates, which nothing it returns shows, so the session keeps the value it had.
+
+`nextval`, `currval` and `setval` are refused by name on every source (Provisa does not model a source's sequences).
+
 ### COPY
 
 `COPY ... TO STDOUT` and `COPY ... FROM STDIN` are both supported.

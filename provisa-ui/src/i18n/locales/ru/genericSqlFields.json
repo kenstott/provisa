@@ -1,0 +1,32 @@
+{
+  "genericSqlFields": {
+    "url": "URL подключения",
+    "urlHint": "URL SQLAlchemy; его схема указывает драйвер. Не указывайте в нём пароль.",
+    "dialect": "Диалект SQL",
+    "dialectHelp": "Вариант SQL, который Provisa пишет для этого источника. Он не обязан совпадать с драйвером: выберите ближайший к базе данных или ANSI.",
+    "ansi": "ANSI (общий SQL)",
+    "username": "Имя пользователя",
+    "password": "Пароль",
+    "capability": {
+      "attach": "Живое подключение в {{engine}}",
+      "predicate": "Pushdown фильтров в {{engine}}",
+      "join": "Pushdown соединений в {{engine}}",
+      "aggregate": "Pushdown агрегатов в {{engine}}",
+      "key_range": "Pushdown диапазонов ключа в {{engine}}"
+    },
+    "capabilityName": {
+      "attach": "Живое подключение",
+      "predicate": "Pushdown фильтров",
+      "join": "Pushdown соединений",
+      "aggregate": "Pushdown агрегатов",
+      "key_range": "Pushdown диапазонов ключа"
+    },
+    "attachUnbuilt": "Живое подключение пока недоступно; строки реплицируются.",
+    "detect": "Определить",
+    "checkPassed": "{{capability}}: пройдено",
+    "checkFailed": "{{capability}}: не пройдено ({{reason}})",
+    "jdbcDriverJar": "JAR JDBC-драйвера",
+    "jdbcDriverJarHint": "JAR-файл драйвера. Только при самостоятельном размещении.",
+    "jdbcDriverClass": "Класс драйвера"
+  }
+}

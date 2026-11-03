@@ -208,6 +208,7 @@ def governance_reader(state: Any, surface: Any, role_id: str) -> Callable[[], An
     role = effective_domain_access_role(role_id, state.roles)
     relationships = getattr(state, "relationships", None)
     source_types = state.source_types
+    source_hints = getattr(state, "source_federation_hints", {})
     engine = getattr(state, "federation_engine", None)
 
     # The plan store is per org and a later read may come on the audit writer's thread, where no
@@ -228,6 +229,7 @@ def governance_reader(state: Any, surface: Any, role_id: str) -> Callable[[], An
                     relationships=relationships,
                     source_types=source_types,
                     engine=engine,
+                    source_hints=source_hints,
                 )
             )
             slot.keep(governance)

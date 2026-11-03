@@ -76,6 +76,9 @@ class SourceType(str, Enum):
     # DuckDB engine; motherduck attaches a remote cloud database on the pg engine.
     motherduck = "motherduck"
     saphana = "saphana"  # SAP HANA — generic self-only landing engine (hana+hdbcli dialect)
+    # REQ-2191: a database with no named type, reached at its own SQLAlchemy URL and written in the
+    # SQL dialect its admin chose (provisa/generic_sql).
+    generic_sql = "generic_sql"
     # Postgres-wire-compatible RDBs — reuse the postgres driver/dialect/Trino connector (REQ-950)
     cockroachdb = "cockroachdb"
     yugabytedb = "yugabytedb"
@@ -363,6 +366,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # vocabulary), translated to the engine session props at query time. Only that vocabulary reaches
     # the session: every other key is a setting its connector or driver reads from here.
     federation_hints: dict[str, str] = Field(default_factory=dict)
+    # REQ-1923: the values a branded source's setup was given besides its credential, by the
+    # brand's setup field names (Shopify: store, api_version; provisa.graphql_remote.brands
+    # Brand.setup). Empty for a source of no brand, or a brand whose setup asks for nothing.
+    brand_setup: dict[str, str] = Field(default_factory=dict)
     # REQ-251: type-specific mapping DSL for NoSQL/non-relational sources
     # (redis/elasticsearch/prometheus). Holds {"tables": [...]} plus connector options.
     mapping: dict = Field(default_factory=dict)
@@ -425,6 +432,17 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
             data = {**data, "change_signal": source_change_signal(stype, data.get("change_signal"))}
         return data
 
+    @classmethod
+    def settings_view(
+        cls, source_id: str, source_type: str, federation_hints: dict[str, str]
+    ) -> "Source":  # REQ-2191
+        """The source as a runtime's per-source maps hold it -- its id, type and settings -- for a
+        reader that holds only those (``FederationEngine.connector_pushdown``). Not validated
+        again: it was when the source was saved."""
+        return cls.model_construct(
+            id=source_id, type=SourceType(source_type), federation_hints=dict(federation_hints)
+        )
+
     @property
     def connector(self) -> str | None:
         """The Trino catalog ``connector.name`` (the ``USING`` label) for this source type, or None if
@@ -436,7 +454,12 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
 
     @property
     def dialect(self) -> str | None:
-        """SQLGlot dialect name, or None for NoSQL sources."""
+        """SQLGlot dialect name, or None for NoSQL sources. A Generic SQL source's is the one its
+        admin chose (REQ-2191)."""
+        if self.type == SourceType.generic_sql:
+            from provisa.generic_sql.settings import SQL_DIALECT
+
+            return self.federation_hints.get(SQL_DIALECT) or None
         return SOURCE_TO_DIALECT.get(self.type.value)
 
     @property
@@ -1209,7 +1232,9 @@ class Column(
     # "query_param" (an OpenAPI operation), "graphql_arg" (a remote GraphQL field's argument),
     # "grpc_input" (a gRPC request's field), "query_arg" (an argument of the table's native
     # query: a MongoDB pipeline, a Cosmos DB query), "partition_key" (a Cosmos DB container's
-    # partition key, REQ-1982).
+    # partition key, REQ-1982), "column_value" (a real column of the table, given by equality,
+    # that narrows the read to the rows having that value: a Generic SQL source's floor,
+    # REQ-2191).
     native_filter_type: str | None = None
     # Whether the source cannot be read without a value for this parameter, as the source's own
     # description says (an OpenAPI path parameter or one marked required, a GraphQL argument

@@ -202,7 +202,28 @@ def destinations(fields: dict) -> list[tuple[str, int | None]]:
             url = _url_destination(_plain(value))
             if url is not None:
                 found.append(url)
+    sql_url = _sql_url_destination(fields.get("federation_hints"))
+    if sql_url is not None and sql_url not in found:
+        found.append(sql_url)
     return found
+
+
+def _sql_url_destination(hints: object) -> tuple[str, int | None] | None:
+    """REQ-2191: where a Generic SQL source's connection URL points. Its scheme is any SQLAlchemy
+    dialect's (``mssql+pyodbc://...``), which :func:`_url_destination` does not know as a network
+    scheme; a file database's URL points nowhere."""
+    if not isinstance(hints, dict):
+        return None
+    from provisa.generic_sql.settings import URL, InvalidGenericSqlSource
+    from provisa.generic_sql.url import destination
+
+    url = _plain(hints.get(URL))
+    if url is None or "://" not in url:
+        return None
+    try:
+        return destination(url)
+    except InvalidGenericSqlSource:
+        return None  # no URL at all: nothing can be connected to, and the save refuses it
 
 
 def _strings(node: object) -> list[str]:
@@ -244,6 +265,11 @@ def _org(org_id: str | None) -> str | None:
     from provisa.core.request_context import current_org
 
     return current_org.get(None)
+
+
+def held_here(org_id: str | None = None) -> bool:
+    """Whether the sources of ``org_id`` (the bound org when None) are held (:func:`held`)."""
+    return held(_org(org_id))
 
 
 def require_allowed(host: str, port: int | None, org_id: str | None = None) -> None:
@@ -349,7 +375,11 @@ def pinned_address(server_address: str, org_id: str | None = None) -> tuple[str,
 #: Source types whose connection, on every engine, takes its network address from ``host`` alone.
 #: (ClickHouse is not one: the DuckDB engine reaches it over HTTP, whose redirects it follows
 #: itself.)
-PINNABLE_TYPES = frozenset({"postgresql", "mysql", "mariadb", "sqlserver", "oracle", "firebird"})
+#: A Generic SQL source's network URL is one (REQ-2191): its driver connects at the checked
+#: address in place of the URL's host, and a held org's URL carries no option naming another.
+PINNABLE_TYPES = frozenset(
+    {"postgresql", "mysql", "mariadb", "sqlserver", "oracle", "firebird", "generic_sql"}
+)
 
 
 class UnpinnableDestinationRefused(PermissionError):
@@ -400,6 +430,17 @@ def pin_host(host: str, port: int | None, source_type: str, org_id: str | None =
     return host
 
 
+def _pinnable_destination(fields: dict, source_type: str) -> list[tuple[str, int | None]]:
+    """The destination a pinnable source's connection takes its address from: its ``host``, or
+    a Generic SQL source's URL host (REQ-2191)."""
+    from provisa.generic_sql import SOURCE_TYPE as GENERIC_SQL
+
+    if source_type == GENERIC_SQL:
+        url = _sql_url_destination(fields.get("federation_hints"))
+        return [] if url is None else [url]
+    return destinations({"host": fields.get("host"), "port": fields.get("port")})
+
+
 def require_connectable(
     fields: dict, source_type: str, org_id: str | None = None, *, source_id: str | None = None
 ) -> str | None:
@@ -420,7 +461,7 @@ def require_connectable(
     undeclared = [d for d in destinations(fields) if not _declared(org, *d)]
     if not undeclared:
         return None
-    host_only = destinations({"host": fields.get("host"), "port": fields.get("port")})
+    host_only = _pinnable_destination(fields, source_type)
     if source_type not in PINNABLE_TYPES or undeclared != host_only:
         if not confined(org):
             # Not a sandbox: checked here and at each connection, not pinned (module docstring).
@@ -443,7 +484,8 @@ def pinned_source(source: object, org_id: str | None = None) -> object:
         org,
         source_id=source.id,  # type: ignore[attr-defined]
     )
-    if address is None:
+    if address is None or source_type == "generic_sql":
+        # REQ-2191: a Generic SQL source's driver connects at the checked address itself.
         return source
     return source.model_copy(update={"host": address})  # type: ignore[attr-defined]
 

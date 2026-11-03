@@ -50,6 +50,8 @@ import { CODE_SOURCE_TYPES } from "./codeSource";
 import { CosmosDbFields } from "./CosmosDbFields";
 import { MOTHERDUCK, MotherDuckFields } from "./MotherDuckFields";
 import { COSMOSDB } from "./cosmosdb";
+import { GenericSqlFields } from "./GenericSqlFields";
+import { GENERIC_SQL } from "./genericSql";
 import { ExcelHintsFields } from "./ExcelHintsFields";
 import { QdrantFields } from "./QdrantFields";
 import { QDRANT } from "./qdrant";
@@ -706,6 +708,14 @@ export function SourceFormFieldsExtended({
       )}
       {form.type === MOTHERDUCK && <MotherDuckFields form={form} setForm={setForm} />}
       {form.type === COSMOSDB && <CosmosDbFields {...typed} /> /* REQ-1982 */}
+      {form.type === GENERIC_SQL && ( // REQ-2191
+        <GenericSqlFields
+          form={form}
+          setForm={setForm}
+          authFields={authFields}
+          setAuthFields={setAuthFields}
+        />
+      )}
       {form.type === QDRANT && ( // REQ-1983
         <QdrantFields form={form} setForm={setForm} fields={authFields} setFields={setAuthFields} />
       )}

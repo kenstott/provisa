@@ -204,10 +204,14 @@ def _regression_combine() -> Form:
     )
 
 
-def _no_aggregate(name: str, message: str) -> Form:
-    """A step PostgreSQL runs only inside an aggregate, and refuses by that name outside one."""
-    raised = refused(_INTERNAL_ERROR, f"'{message}'", "BIGINT")
-    return Form(name, "a, b", _strict("a, b", "BIGINT", f"ELSE {raised}"))
+def _no_aggregate(name: str, message: str, result: str) -> Form:
+    """A step PostgreSQL runs only inside an aggregate, and refuses by that name outside one: its
+    NULL of what the step returns (a range is held as its text), an array's refusal its element."""
+    element = result.removesuffix("[]")
+    raised = refused(_INTERNAL_ERROR, f"'{message}'", element)
+    if element != result:
+        raised = f"CAST(ARRAY[{raised}] AS {result})"
+    return Form(name, "a, b", _strict("a, b", result, f"ELSE {raised}"))
 
 
 STATE_FUNCTIONS: tuple[Form, ...] = (
@@ -218,14 +222,18 @@ STATE_FUNCTIONS: tuple[Form, ...] = (
     _average_step("int4_avg_accum", "+"),
     _average_step("int2_avg_accum_inv", "-"),
     _average_step("int4_avg_accum_inv", "-"),
-    _no_aggregate("int4_avg_combine", "aggregate function called in non-aggregate context"),
+    _no_aggregate(
+        "int4_avg_combine", "aggregate function called in non-aggregate context", "BIGINT[]"
+    ),
     _no_aggregate(
         "range_intersect_agg_transfn",
         "range_intersect_agg_transfn called in non-aggregate context",
+        "VARCHAR",
     ),
     _no_aggregate(
         "multirange_intersect_agg_transfn",
         "multirange_intersect_agg_transfn called in non-aggregate context",
+        "VARCHAR",
     ),
     _accum("float8_accum"),
     _accum("float4_accum"),

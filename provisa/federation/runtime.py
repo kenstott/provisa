@@ -231,11 +231,11 @@ class EngineRuntime:  # REQ-825, REQ-840
             pg_sql = fold_catalog_into_schema(pg_sql)
         return self.transpile_physical(pg_sql)
 
-    def connector_pushdown(self, source_type: str):
-        """The bound engine's declared pushdown Capability for ``source_type`` — the same
+    def connector_pushdown(self, source):
+        """The bound engine's declared pushdown Capability for ``source`` — the same
         passthrough pattern as ``dialect``/``transpile_physical``, so callers reach the engine's
         planner input through the runtime seam rather than needing ``.engine`` themselves."""
-        return self.engine.connector_pushdown(source_type)
+        return self.engine.connector_pushdown(source)
 
     @property
     def has_otel_catalog(self) -> bool:
@@ -339,15 +339,25 @@ class EngineRuntime:  # REQ-825, REQ-840
         sql: str,
         params: list | None = None,
         span_attrs: dict[str, str] | None = None,
+        *,
+        reports_generated: bool = False,
     ) -> QueryResult:
         """DIRECT terminal (REQ-825): execute on a single reachable source's native driver.
 
         ``span_attrs`` carries the governed plan's OTel attributes so the DIRECT terminal is
-        observable on the same footing as ENGINE (REQ-1425).
+        observable on the same footing as ENGINE (REQ-1425). ``reports_generated``: the write's
+        connection reports the value it generated (REQ-2167, ``execute_reporting_generated``).
         """
         from provisa.executor.direct import execute_direct
 
-        return await execute_direct(source_pools, source_id, sql, params, span_attrs)
+        return await execute_direct(
+            source_pools,
+            source_id,
+            sql,
+            params,
+            span_attrs,
+            reports_generated=reports_generated,
+        )
 
     def execute_native_stream(
         self,

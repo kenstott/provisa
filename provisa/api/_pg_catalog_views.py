@@ -33,8 +33,18 @@ from collections.abc import Mapping
 
 from provisa.compiler.naming import SYSTEM_SCHEMA_GQL_PREFIX
 from provisa.compiler.sql_literals import sql_literal
-from provisa.pgwire.catalog_data import _PG_SETTINGS_ROWS, _PG_SYSTEM_ROLES
+from provisa.pgwire.catalog_data import (
+    _PG_SETTINGS_ROWS,
+    _PG_SYSTEM_ROLES,
+    PG_SYSTEM_ROLE_MEMBERS,
+)
 from provisa.pgwire.catalog_pg17 import RELATION_CLASS, RELATIONS, STATIC_ROWS, TYPES
+from provisa.pgwire.catalog_pg17_procs import (
+    DESCRIPTIONS,
+    PROCS,
+    SYSTEM_CONSTRAINTS,
+    SYSTEM_INDEXES,
+)
 from provisa.transpiler.metadata_functions import (
     listed_type_sql,
     pg_type_name_sql,
@@ -395,7 +405,10 @@ def _pg_namespace() -> str:
             f"UNION ALL SELECT {schema_oid_sql('s.name')}, s.name FROM (SELECT DISTINCT "
             f"{domain_sql_name_sql('rt.domain_id')} AS name FROM registered_tables rt "
             f"WHERE {LISTED_TABLE} UNION SELECT '{_METRICS_SCHEMA}' "
-            "FROM metrics) s) a) "
+            "FROM metrics) s "
+            # The schema of each source enum the statement is told, which is a type's there.
+            f"UNION ALL SELECT {schema_oid_sql('s.name')}, s.name FROM (SELECT "
+            f"e.enum ->> 'schema' AS name FROM {_SOURCE_ENUMS}) s) a) "
             "AS n(oid, name)",
         ),
     )
@@ -500,7 +513,26 @@ def _pg_class() -> str:
             "AS _v(", "AS s("
         ),
     )
-    return _view(relation, tables, indexes, system)
+    system_indexes = _select(
+        relation,
+        _class_row(
+            {
+                "oid": "s.oid",
+                "relname": "s.name",
+                "relnamespace": str(PG_CATALOG_OID),
+                "reltype": "0",
+                "relam": "403",
+                "relfilenode": "s.oid",
+                "relkind": "'i'",
+                "relnatts": "s.natts",
+            }
+        ),
+        "FROM "
+        + _rows([(row[0], row[1], row[3]) for row in SYSTEM_INDEXES], "oid, name, natts").replace(
+            "AS _v(", "AS s("
+        ),
+    )
+    return _view(relation, tables, indexes, system, system_indexes)
 
 
 def _attribute_row(values: Mapping[str, str]) -> dict[str, str]:
@@ -677,7 +709,18 @@ def _pg_description() -> str:
         },
         "FROM metrics m WHERE COALESCE(m.description, m.ai_context) IS NOT NULL",
     )
-    return _view(relation, tables, columns, schemas, metrics)
+    shipped = _select(
+        relation,
+        {"objoid": "s.objoid", "classoid": "s.classoid", "objsubid": "s.objsubid",
+         "description": "s.description"},
+        "FROM "
+        + _unnested(
+            DESCRIPTIONS,
+            (("objoid", "bigint[]"), ("classoid", "bigint[]"), ("objsubid", "integer[]"),
+             ("description", "text[]")),
+        ),
+    )  # fmt: skip
+    return _view(relation, tables, columns, schemas, metrics, shipped)
 
 
 def _pg_constraint() -> str:
@@ -709,6 +752,35 @@ def _pg_constraint() -> str:
                 "confkey": "k.referenced_columns",
             },
             "FROM catalog_keys k",
+        ),
+        _select(
+            relation,
+            {
+                "oid": "s.oid",
+                "conname": "s.conname",
+                "connamespace": str(PG_CATALOG_OID),
+                "contype": "s.contype",
+                "condeferrable": "FALSE",
+                "condeferred": "FALSE",
+                "convalidated": "TRUE",
+                "conrelid": "s.conrelid",
+                "contypid": "0",
+                "conindid": "s.conindid",
+                "conparentid": "0",
+                "confrelid": "0",
+                "confupdtype": "' '",
+                "confdeltype": "' '",
+                "confmatchtype": "' '",
+                "conislocal": "TRUE",
+                "coninhcount": "0",
+                "connoinherit": "TRUE",
+                "conkey": "CAST(s.conkey AS SMALLINT[])",
+            },
+            "FROM "
+            + _rows(
+                [row[:6] for row in SYSTEM_CONSTRAINTS],
+                "oid, conname, contype, conrelid, conindid, conkey",
+            ).replace("AS _v(", "AS s("),
         ),
     )
 
@@ -742,6 +814,36 @@ def _pg_index() -> str:
                 "indoption": zeros,
             },
             "FROM catalog_keys k WHERE k.kind IN ('p', 'u')",
+        ),
+        _select(
+            relation,
+            {
+                "indexrelid": "s.indexrelid",
+                "indrelid": "s.indrelid",
+                "indnatts": "s.indnatts",
+                "indnkeyatts": "s.indnkeyatts",
+                "indisunique": "s.indisunique",
+                "indnullsnotdistinct": "FALSE",
+                "indisprimary": "s.indisprimary",
+                "indisexclusion": "FALSE",
+                "indimmediate": "TRUE",
+                "indisclustered": "FALSE",
+                "indisvalid": "TRUE",
+                "indcheckxmin": "FALSE",
+                "indisready": "TRUE",
+                "indislive": "TRUE",
+                "indisreplident": "FALSE",
+                "indkey": "s.indkey",
+                "indcollation": "s.indcollation",
+                "indclass": "s.indclass",
+                "indoption": "s.indoption",
+            },
+            "FROM "
+            + _rows(
+                [row[:11] for row in SYSTEM_INDEXES],
+                "indexrelid, relname, indrelid, indnatts, indnkeyatts, indisunique, "
+                "indisprimary, indkey, indclass, indcollation, indoption",
+            ).replace("AS _v(", "AS s("),
         ),
     )
 
@@ -782,7 +884,55 @@ def _pg_proc() -> str:
             },
             "FROM tracked_functions f",
         ),
+        _select(
+            relation,
+            {
+                **{column: f"s.{column}" for column, _ in _PROC_COLUMNS},
+                "proowner": str(OWNER_OID),
+                "prosupport": "CAST(s.prosupport AS OID)",
+                "proargtypes": "s.proargtypes",
+            },
+            f"FROM {_unnested(_shipped_procs(), _PROC_COLUMNS)}",
+        ),
     )
+
+
+#: The columns of a function PostgreSQL ships (catalog_pg17_procs.PROCS), by the array type each is
+#: unnested from: an array value is held as its text.
+_PROC_COLUMNS = (
+    ("oid", "bigint[]"), ("proname", "text[]"), ("pronamespace", "bigint[]"),
+    ("prolang", "bigint[]"), ("procost", "real[]"), ("prorows", "real[]"),
+    ("provariadic", "bigint[]"), ("prosupport", "bigint[]"), ("prokind", "text[]"),
+    ("prosecdef", "boolean[]"), ("proleakproof", "boolean[]"), ("proisstrict", "boolean[]"),
+    ("proretset", "boolean[]"), ("provolatile", "text[]"), ("proparallel", "text[]"),
+    ("pronargs", "smallint[]"), ("pronargdefaults", "smallint[]"), ("prorettype", "bigint[]"),
+    ("proargtypes", "text[]"), ("proallargtypes", "text[]"), ("proargmodes", "text[]"),
+    ("proargnames", "text[]"), ("proargdefaults", "text[]"), ("prosrc", "text[]"),
+    ("probin", "text[]"), ("prosqlbody", "text[]"),
+)  # fmt: skip
+
+
+def _array_text(values) -> str | None:
+    """An array's text form, which a column of its array type reads."""
+    if values is None:
+        return None
+    return (
+        "{"
+        + ",".join('"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"' for v in values)
+        + "}"
+    )
+
+
+def _shipped_procs() -> list[tuple]:
+    """Each function PostgreSQL 17 ships, its array columns as their text."""
+    rows = []
+    for row in PROCS:
+        values = list(row)
+        values[19] = _array_text(values[19])  # proallargtypes
+        values[20] = None if values[20] is None else _array_text(list(values[20]))  # proargmodes
+        values[21] = _array_text(values[21])  # proargnames
+        rows.append(tuple(values))
+    return rows
 
 
 def _is_routines() -> str:
@@ -942,6 +1092,20 @@ def _pg_auth_members() -> str:
             },
             "FROM roles_parents p",
         ),
+        _select(
+            relation,
+            {
+                c: f"_v.{c}"
+                for c in (
+                    "oid roleid member grantor admin_option inherit_option set_option".split()
+                )
+            },
+            "FROM "
+            + _rows(
+                PG_SYSTEM_ROLE_MEMBERS,
+                "oid, roleid, member, grantor, admin_option, inherit_option, set_option",
+            ),
+        ),
     )
 
 
@@ -1057,6 +1221,32 @@ def _pg_stat_activity() -> str:
                 "backend_type": "'client backend'",
             },
             f"WHERE {setting('pid')} IS NOT NULL",
+        ),
+    )
+
+
+def _pg_locks() -> str:
+    """The advisory locks of the asking connection's org, which pgwire holds itself
+    (advisory_locks): what pg_locks shows of them, each granted, outside a transaction of its own.
+    A statement that names no connection lists none."""
+    relation = (_PG, "pg_locks")
+    return _view(
+        relation,
+        _select(
+            relation,
+            {
+                "locktype": "'advisory'",
+                "database": "16384",
+                "classid": "CAST(l.lock ->> 'classid' AS BIGINT)",
+                "objid": "CAST(l.lock ->> 'objid' AS BIGINT)",
+                "objsubid": "CAST(l.lock ->> 'objsubid' AS INTEGER)",
+                "pid": "CAST(l.lock ->> 'pid' AS INTEGER)",
+                "mode": "l.lock ->> 'mode'",
+                "granted": "TRUE",
+                "fastpath": "FALSE",
+            },
+            f"FROM JSONB_ARRAY_ELEMENTS(COALESCE(CAST({setting('locks')} AS JSONB), "
+            "CAST('[]' AS JSONB))) AS l(lock)",
         ),
     )
 
@@ -1413,7 +1603,97 @@ def _pg_type() -> str:
         "FROM pg_catalog.pg_type r JOIN pg_catalog.pg_namespace rn ON rn.oid = r.typnamespace "
         f"WHERE r.oid < 16384 AND rn.nspname <> '{_IS}'"
     )
-    return _view(relation, _select(relation, real, server), own, domains)
+    return _view(relation, _select(relation, real, server), own, domains, _source_enum_types())
+
+
+#: The enums the model's sources declare, as the statement is told them (catalog._source_enums):
+#: one JSON object each, with its oid, its array's, its schema, name and labels.
+_SOURCE_ENUMS = (
+    f"JSONB_ARRAY_ELEMENTS(COALESCE(CAST({setting('enums')} AS JSONB), CAST('[]' AS JSONB))) "
+    "AS e(enum)"
+)
+
+
+def _source_enum_types() -> str:
+    """A source's enum type, as PostgreSQL lists one: of category E, read by enum_in."""
+    relation = (_PG, "pg_type")
+    return _select(
+        relation,
+        {
+            "oid": "CAST(e.enum ->> 'oid' AS BIGINT)",
+            "typname": "e.enum ->> 'name'",
+            "typnamespace": schema_oid_sql("e.enum ->> 'schema'"),
+            "typowner": str(OWNER_OID),
+            "typlen": "4",
+            "typbyval": "TRUE",
+            "typtype": "'e'",
+            "typcategory": "'E'",
+            "typispreferred": "FALSE",
+            "typisdefined": "TRUE",
+            "typdelim": "','",
+            "typrelid": "0",
+            "typsubscript": "0",
+            "typelem": "0",
+            "typarray": "CAST(e.enum ->> 'array_oid' AS BIGINT)",
+            "typinput": "3506",
+            "typoutput": "3507",
+            "typreceive": "3532",
+            "typsend": "3533",
+            "typmodin": "0",
+            "typmodout": "0",
+            "typanalyze": "0",
+            "typalign": "'i'",
+            "typstorage": "'p'",
+            "typnotnull": "FALSE",
+            "typbasetype": "0",
+            "typtypmod": "-1",
+            "typndims": "0",
+            "typcollation": "0",
+        },
+        f"FROM {_SOURCE_ENUMS}",
+    )
+
+
+def _pg_cursors() -> str:
+    """The asking connection's cursors (catalog._cursors_told): those it DECLAREd, and the
+    protocol portal whose statement is running, as PostgreSQL lists a portal a Bind created."""
+    relation = (_PG, "pg_cursors")
+    return _view(
+        relation,
+        _select(
+            relation,
+            {
+                "name": "c.cursor ->> 'name'",
+                "statement": "c.cursor ->> 'statement'",
+                "is_holdable": "CAST(c.cursor ->> 'is_holdable' AS BOOLEAN)",
+                "is_binary": "CAST(c.cursor ->> 'is_binary' AS BOOLEAN)",
+                "is_scrollable": "CAST(c.cursor ->> 'is_scrollable' AS BOOLEAN)",
+                "creation_time": "CAST(c.cursor ->> 'creation_time' AS TIMESTAMPTZ)",
+            },
+            f"FROM JSONB_ARRAY_ELEMENTS(COALESCE(CAST({setting('cursors')} AS JSONB), "
+            "CAST('[]' AS JSONB))) AS c(cursor)",
+        ),
+    )
+
+
+def _pg_enum() -> str:
+    """Each label of a source's enum, in its order. A label's own oid is none the source tells,
+    so it is numbered after its type's."""
+    relation = (_PG, "pg_enum")
+    return _view(
+        relation,
+        _select(
+            relation,
+            {
+                "oid": "CAST(e.enum ->> 'oid' AS BIGINT) * 1000 + l.n",
+                "enumtypid": "CAST(e.enum ->> 'oid' AS BIGINT)",
+                "enumsortorder": "l.n",
+                "enumlabel": "l.label",
+            },
+            f"FROM {_SOURCE_ENUMS} CROSS JOIN LATERAL "
+            "JSONB_ARRAY_ELEMENTS_TEXT(e.enum -> 'labels') WITH ORDINALITY AS l(label, n)",
+        ),
+    )
 
 
 def _conformance(name: str) -> str:
@@ -1455,6 +1735,9 @@ _MODEL_VIEWS = {
     (_PG, "pg_tables"): _pg_tables,
     (_PG, "pg_indexes"): _pg_indexes,
     (_PG, "pg_stat_activity"): _pg_stat_activity,
+    (_PG, "pg_locks"): _pg_locks,
+    (_PG, "pg_enum"): _pg_enum,
+    (_PG, "pg_cursors"): _pg_cursors,
     (_PG, "pg_type"): _pg_type,
     (_IS, "tables"): _is_tables,
     (_IS, "columns"): _is_columns,

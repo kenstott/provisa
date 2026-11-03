@@ -62,7 +62,10 @@ def sample_reach(state: Any, route: Any, table: Any) -> SampleReach:
         )
         if replica:
             return SampleReach(f"replica on {engine.name}", False, False)
-        cap = engine.connector_pushdown(stype)
+        from provisa.core.models import Source
+
+        hints = getattr(state, "source_federation_hints", {}).get(table.source_id, {})
+        cap = engine.connector_pushdown(Source.settings_view(table.source_id, stype, hints))
         return SampleReach(f"{engine.name} {stype}", cap.block_sample, cap.key_range)
     return SampleReach(f"{getattr(route, 'value', route)} {stype}", False, False)
 
