@@ -194,8 +194,7 @@ describe("the Layout menu", () => {
     fireEvent.click(screen.getByTestId("erd-layout-menu"));
     fireEvent.click(await screen.findByTestId("erd-layout-delete"));
     expect(props.onDelete).not.toHaveBeenCalled();
-    await screen.findByTestId("erd-layout-delete-confirm");
-    fireEvent.click(screen.getByRole("button", { name: /Delete/ }));
+    fireEvent.click(await screen.findByTestId("erd-layout-delete-confirm-confirm"));
     await waitFor(() => expect(props.onDelete).toHaveBeenCalledWith("Sales overview"));
   });
 });
