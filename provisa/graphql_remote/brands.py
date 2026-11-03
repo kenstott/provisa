@@ -39,7 +39,8 @@ _SCHEMA_DIR = Path(__file__).parent / "_known_schemas"
 # Where a source row records its brand and namespace (``sources.federation_hints``).
 BRAND_HINT = "brand"
 NAMESPACE_HINT = "namespace"
-SETUP_HINT = "brand_setup"  # the values a brand's setup was given (Brand.setup)
+# The values a brand's setup was given (Brand.setup) are the row's own ``brand_setup``
+# (Source.brand_setup), not a hint: ``federation_hints`` maps names to strings.
 
 
 @dataclass(frozen=True)
