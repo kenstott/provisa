@@ -1013,8 +1013,16 @@ def _to_decimal(v: Any) -> decimal.Decimal:
     return v if isinstance(v, decimal.Decimal) else decimal.Decimal(str(v))
 
 
+#: PostgreSQL's text of an array with its own lower bounds ("[0:2]={1,2,3}"), which no list holds.
+_BOUNDED_ARRAY_TEXT = re.compile(r"(\[-?\d+:-?\d+\])+=\{")
+
+
 def _to_list(v: Any) -> Any:
-    return json.loads(v) if isinstance(v, str) else v
+    """A JSON array's text read as its list; PostgreSQL's text of a bounded array is sent as it is
+    (REQ-2167)."""
+    if not isinstance(v, str) or _BOUNDED_ARRAY_TEXT.match(v):
+        return v
+    return json.loads(v)
 
 
 def _to_date(v: Any) -> Any:
