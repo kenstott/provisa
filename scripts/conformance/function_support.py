@@ -2462,7 +2462,7 @@ def decided_answer(name: str, sql: str, want: dict[str, Any], got: dict[str, Any
     by line, the database named in a type's name and an array as JSON alone."""
     if not _TABLE_TO_XML.match(name) or len(want["rows"]) != 1 or len(got["rows"]) != 1:
         return None
-    (wanted,), (answered,) = want["rows"], got["rows"]
+    ((wanted,),), ((answered,),) = want["rows"], got["rows"]
     if wanted is None or answered is None:
         return None
     a = _DATABASE_IN_A_NAME.sub(r'"\1.', wanted).split("\n")

@@ -2483,7 +2483,7 @@ def _percentile(node: exp.WithinGroup, dialect: str) -> exp.Expr:
 
 
 #: The functions in FROM with columns of their own, which DuckDB's unnest of a struct does not make.
-_ROWS_OF_COLUMNS = frozenset({"pg_options_to_table", "aclexplode"})
+_ROWS_OF_COLUMNS = frozenset({"pg_options_to_table", "aclexplode", "pg_timezone_names"})
 
 
 #: byteain's escapes: a doubled backslash, or a byte in three octal digits.
