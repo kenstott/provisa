@@ -115,7 +115,6 @@ _DIRECT_DRIVER_KEYED: frozenset[str] = frozenset(
         "duckdb",
         "exasol",
         "fabric",
-        "generic_sql",  # REQ-2191: in the SQL dialect its admin chose
         "greenplum",
         "hiveserver2",
         "mariadb",

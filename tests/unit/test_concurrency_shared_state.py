@@ -258,6 +258,9 @@ async def test_source_pool_add_creates_one_driver_under_concurrency():
     created = {"n": 0}
 
     class _FakeDriver:
+        names_own_destination = False  # REQ-2191: the DirectDriver default
+        dialect = None  # REQ-2191: the type names its dialect
+
         def bind_source(self, source_id):  # REQ-2000: a driver knows its source
             pass
 

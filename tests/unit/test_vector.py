@@ -499,6 +499,9 @@ class TestCapabilityIsDetectedWhenASourceConnects:  # REQ-422
         import provisa.executor.pool as P
 
         class _Fake:
+            names_own_destination = False  # REQ-2191: the DirectDriver default
+            dialect = None  # REQ-2191: the type names its dialect
+
             def __init__(self, rows):
                 self.rows = rows
 
