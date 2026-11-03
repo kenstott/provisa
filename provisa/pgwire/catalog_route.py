@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.core.pg_enum import SourceEnum
 from provisa.pgwire.cast_types import record_text
 from provisa.pgwire.catalog_pg17 import RELATION_CLASS, RELATIONS, TYPES
 from provisa.pgwire.catalog_pin import asked_relations, narrow_kinds
@@ -116,6 +117,8 @@ class CatalogRequest:
     session: Mapping[str, str] = field(default_factory=dict)
     #: Each listed table's engine row count, by relation oid, for a statement reading reltuples.
     reltuples: Mapping[int, float] = field(default_factory=dict)
+    #: The enums the model's sources declare: types of the catalog as PostgreSQL's are (REQ-2190).
+    enums: tuple[SourceEnum, ...] = ()
 
 
 #: The request of the catalog statement being governed, read by the pipeline's three decisions on
@@ -328,7 +331,23 @@ def _namespace_oid(written: str) -> str:
     )
 
 
+#: The source enums of the statement being addressed (CatalogRequest.enums).
+_ENUMS: contextvars.ContextVar[tuple[SourceEnum, ...]] = contextvars.ContextVar(
+    "provisa_catalog_enums", default=()
+)
+
+
+def _source_enum(written: str) -> SourceEnum | None:
+    """The source's enum a type name names: by its schema, or on the search path (public)."""
+    parts = _parts(written)
+    schema, name = (parts[-2], parts[-1]) if len(parts) > 1 else ("public", parts[-1])
+    return next((e for e in _ENUMS.get() if (e.schema, e.name) == (schema, name)), None)
+
+
 def _type_oid(written: str) -> str:
+    enum = _source_enum(written)
+    if enum is not None:
+        return str(enum.oid)
     name = written.strip().lower().removeprefix("pg_catalog.")
     if name in _TYPE_BY_NAME:
         return str(_TYPE_BY_NAME[name])
@@ -415,7 +434,14 @@ def _name_sql(reg: str, oid_sql: str) -> str:
             f"WHERE _ro.oid = {oid_sql})"
         )
     else:
-        name = f"format_type({oid_sql}, NULL)"
+        named = " ".join(
+            "WHEN {} THEN '{}'".format(e.oid, e.shown.replace("'", "''")) for e in _ENUMS.get()
+        )
+        name = (
+            f"CASE CAST({oid_sql} AS BIGINT) {named} ELSE format_type({oid_sql}, NULL) END"
+            if named
+            else f"format_type({oid_sql}, NULL)"
+        )
     return f"COALESCE({name}, CAST({oid_sql} AS TEXT))"
 
 
@@ -781,16 +807,20 @@ def _server_state(tree: exp.Expr, extra: Mapping) -> exp.Expr:
 def address(sql: str, request: CatalogRequest) -> tuple[str, frozenset[str] | None]:
     """``sql``, a client's statement on PostgreSQL's catalog, as a statement on the meta domain, and
     the relations it is about where it says (:mod:`provisa.pgwire.catalog_pin`)."""
-    tree = _parsed(_readable(sql))
-    _coerce_reg_comparisons(tree)
-    _result_regs(tree)
-    routed = tree.transform(_rewriter(request, _cte_names(tree)))
-    asked = asked_relations(routed)
-    narrow_kinds(routed)
-    return (
-        _server_state(expand(routed, request.facts), _surface_rows()).sql(dialect="postgres"),
-        asked,
-    )
+    token = _ENUMS.set(request.enums)
+    try:
+        tree = _parsed(_readable(sql))
+        _coerce_reg_comparisons(tree)
+        _result_regs(tree)
+        routed = tree.transform(_rewriter(request, _cte_names(tree)))
+        asked = asked_relations(routed)
+        narrow_kinds(routed)
+        return (
+            _server_state(expand(routed, request.facts), _surface_rows()).sql(dialect="postgres"),
+            asked,
+        )
+    finally:
+        _ENUMS.reset(token)
 
 
 def addressed_statement(sql: str, request: CatalogRequest) -> str:

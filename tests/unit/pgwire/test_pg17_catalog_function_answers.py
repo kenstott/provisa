@@ -726,3 +726,50 @@ def test_the_catalogs_indexes_and_their_constraints_are_listed():
 )
 def test_an_object_is_visible_as_the_search_path_sees_it(sql, expected):
     assert _value(sql) is expected
+
+
+def _enum_state():
+    from provisa.core.pg_enum import SourceEnum
+
+    state = _state()
+    state.pg_source_enums = {
+        ("conformance", "probe_enum"): SourceEnum(
+            "conformance", "probe_enum", 16500, 16499, ("a", "b")
+        )
+    }
+    return state
+
+
+def _enum_rows(sql: str) -> list[tuple]:
+    return [tuple(r) for r in answer(sql, _ROLE, _enum_state()).rows]
+
+
+def test_a_sources_enum_is_a_type_of_the_catalog():
+    # REQ-2190: catalog fidelity: a source's enum is a type, by its name and by its labels.
+    assert _enum_rows("SELECT 'conformance.probe_enum'::regtype::oid AS v") == [(16500,)]
+    assert _enum_rows(
+        "SELECT t.typname, t.typtype, t.typcategory, t.typarray, n.nspname "
+        "FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace "
+        "WHERE t.oid = 16500"
+    ) == [("probe_enum", "e", "E", 16499, "conformance")]
+    assert _enum_rows(
+        "SELECT enumlabel, enumsortorder FROM pg_catalog.pg_enum WHERE enumtypid = 16500 "
+        "ORDER BY enumsortorder"
+    ) == [("a", 1.0), ("b", 2.0)]
+    assert _enum_rows("SELECT pg_catalog.regtypeout('conformance.probe_enum'::regtype) AS v") == [
+        ("conformance.probe_enum",)
+    ]
+
+
+def test_enum_in_reads_a_label_of_a_sources_enum():
+    from provisa.core.pg_error import PostgresError
+    from provisa.transpiler.pg_forms_enum import with_source_enums
+
+    enums = _enum_state().pg_source_enums
+    sql = "SELECT pg_catalog.\"enum_in\"('a'::cstring, 'conformance.probe_enum'::regtype::oid) AS v"
+    # The label, of anyenum (3500), as PostgreSQL types enum_in's result.
+    assert "pg_typed_value(3500, 'a')" in with_source_enums(sql, enums).lower()
+    with pytest.raises(
+        PostgresError, match='invalid input value for enum conformance.probe_enum: "z"'
+    ):
+        with_source_enums(sql.replace("'a'::cstring", "'z'::cstring"), enums)

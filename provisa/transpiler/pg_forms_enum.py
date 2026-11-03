@@ -113,7 +113,9 @@ ROWS: tuple[tuple[str, tuple[str, ...], dict[frozenset[str], str]], ...] = (
     ("pg_enum_min", ("labels", "value"), _per_engine(lambda d: _extreme(d, "min"))),
 )
 
-_CALLS_AN_ENUM = re.compile(r"\benum_(first|last|range|larger|smaller)\b|\b(max|min)\b", re.I)
+_CALLS_AN_ENUM = re.compile(r"\benum_(first|last|range|larger|smaller|in)\b|\b(max|min)\b", re.I)
+#: anyenum, the type PostgreSQL says enum_in returns.
+_ANYENUM = 3500
 
 #: table, column -> the type a table's column is registered with.
 TableType = Callable[[exp.Table, str], "str | None"]
@@ -205,8 +207,24 @@ def _form(name: str, enum: SourceEnum, *values: exp.Expr) -> exp.Anonymous:
     return exp.Anonymous(this=name, expressions=args)
 
 
+def _named_type(enums: SourceEnums, value: exp.Expr) -> SourceEnum | None:
+    """The source's enum a type argument names: its name ('s.e'::regtype) or its oid."""
+    while isinstance(value, (exp.Cast, exp.Paren)):
+        value = value.this
+    if not isinstance(value, exp.Literal):
+        return None
+    if not value.is_string:
+        return of_oid(enums, int(value.this))
+    schema, _, name = value.this.rpartition(".")
+    return named(enums, schema or None, name)
+
+
 def _enum_call(call: exp.Anonymous, said: _Statement) -> exp.Expr | None:
     name, args = call.name.lower(), call.expressions
+    if name == "enum_in" and len(args) == 2:
+        # enum_in(text, type): the label, read as the type's input reads it (REQ-2190).
+        typed = _named_type(said.enums, args[1])
+        return None if typed is None else _typed(TYPED_VALUE, _ANYENUM, _text(args[0], typed))
     enums = [said.of(arg) for arg in args]
     enum = next((e for e in enums if e is not None), None)
     if enum is None or len(args) not in (1, 2):

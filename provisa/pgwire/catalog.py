@@ -641,6 +641,8 @@ def _catalog_request(
     from provisa.pgwire.catalog_data import served_database_name
     from provisa.transpiler.metadata_facts import catalog_facts
 
+    held = getattr(state, "pg_source_enums", None)
+    enums = tuple(held.values()) if isinstance(held, dict) else ()
     connection: dict[str, str] = {}
     if session is not None:
         connection = {
@@ -663,8 +665,28 @@ def _catalog_request(
             **connection,
             **({"query": sql} if "pg_stat_activity" in sql.lower() else {}),
             **({"locks": _advisory_locks(session)} if "pg_locks" in sql.lower() else {}),
+            **({"enums": _enums_told(enums)} if enums else {}),
         },
+        enums=enums,
         reltuples=row_counts(role_id, state) if "reltuples" in sql.lower() else {},
+    )
+
+
+def _enums_told(enums: tuple) -> str:
+    """The sources' enums, as pg_type's and pg_enum's views read them (JSON)."""
+    import json
+
+    return json.dumps(
+        [
+            {
+                "oid": e.oid,
+                "array_oid": e.array_oid,
+                "schema": e.schema,
+                "name": e.name,
+                "labels": list(e.labels),
+            }
+            for e in enums
+        ]
     )
 
 

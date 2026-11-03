@@ -405,7 +405,10 @@ def _pg_namespace() -> str:
             f"UNION ALL SELECT {schema_oid_sql('s.name')}, s.name FROM (SELECT DISTINCT "
             f"{domain_sql_name_sql('rt.domain_id')} AS name FROM registered_tables rt "
             f"WHERE {LISTED_TABLE} UNION SELECT '{_METRICS_SCHEMA}' "
-            "FROM metrics) s) a) "
+            "FROM metrics) s "
+            # The schema of each source enum the statement is told, which is a type's there.
+            f"UNION ALL SELECT {schema_oid_sql('s.name')}, s.name FROM (SELECT "
+            f"e.enum ->> 'schema' AS name FROM {_SOURCE_ENUMS}) s) a) "
             "AS n(oid, name)",
         ),
     )
@@ -1600,7 +1603,75 @@ def _pg_type() -> str:
         "FROM pg_catalog.pg_type r JOIN pg_catalog.pg_namespace rn ON rn.oid = r.typnamespace "
         f"WHERE r.oid < 16384 AND rn.nspname <> '{_IS}'"
     )
-    return _view(relation, _select(relation, real, server), own, domains)
+    return _view(relation, _select(relation, real, server), own, domains, _source_enum_types())
+
+
+#: The enums the model's sources declare, as the statement is told them (catalog._source_enums):
+#: one JSON object each, with its oid, its array's, its schema, name and labels.
+_SOURCE_ENUMS = (
+    f"JSONB_ARRAY_ELEMENTS(COALESCE(CAST({setting('enums')} AS JSONB), CAST('[]' AS JSONB))) "
+    "AS e(enum)"
+)
+
+
+def _source_enum_types() -> str:
+    """A source's enum type, as PostgreSQL lists one: of category E, read by enum_in."""
+    relation = (_PG, "pg_type")
+    return _select(
+        relation,
+        {
+            "oid": "CAST(e.enum ->> 'oid' AS BIGINT)",
+            "typname": "e.enum ->> 'name'",
+            "typnamespace": schema_oid_sql("e.enum ->> 'schema'"),
+            "typowner": str(OWNER_OID),
+            "typlen": "4",
+            "typbyval": "TRUE",
+            "typtype": "'e'",
+            "typcategory": "'E'",
+            "typispreferred": "FALSE",
+            "typisdefined": "TRUE",
+            "typdelim": "','",
+            "typrelid": "0",
+            "typsubscript": "0",
+            "typelem": "0",
+            "typarray": "CAST(e.enum ->> 'array_oid' AS BIGINT)",
+            "typinput": "3506",
+            "typoutput": "3507",
+            "typreceive": "3532",
+            "typsend": "3533",
+            "typmodin": "0",
+            "typmodout": "0",
+            "typanalyze": "0",
+            "typalign": "'i'",
+            "typstorage": "'p'",
+            "typnotnull": "FALSE",
+            "typbasetype": "0",
+            "typtypmod": "-1",
+            "typndims": "0",
+            "typcollation": "0",
+        },
+        f"FROM {_SOURCE_ENUMS}",
+    )
+
+
+def _pg_enum() -> str:
+    """Each label of a source's enum, in its order. A label's own oid is none the source tells,
+    so it is numbered after its type's."""
+    relation = (_PG, "pg_enum")
+    return _view(
+        relation,
+        _select(
+            relation,
+            {
+                "oid": "CAST(e.enum ->> 'oid' AS BIGINT) * 1000 + l.n",
+                "enumtypid": "CAST(e.enum ->> 'oid' AS BIGINT)",
+                "enumsortorder": "l.n",
+                "enumlabel": "l.label",
+            },
+            f"FROM {_SOURCE_ENUMS} CROSS JOIN LATERAL "
+            "JSONB_ARRAY_ELEMENTS_TEXT(e.enum -> 'labels') WITH ORDINALITY AS l(label, n)",
+        ),
+    )
 
 
 def _conformance(name: str) -> str:
@@ -1643,6 +1714,7 @@ _MODEL_VIEWS = {
     (_PG, "pg_indexes"): _pg_indexes,
     (_PG, "pg_stat_activity"): _pg_stat_activity,
     (_PG, "pg_locks"): _pg_locks,
+    (_PG, "pg_enum"): _pg_enum,
     (_PG, "pg_type"): _pg_type,
     (_IS, "tables"): _is_tables,
     (_IS, "columns"): _is_columns,

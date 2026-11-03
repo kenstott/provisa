@@ -39,6 +39,7 @@ NAMES = (
     "time_zone",
     "query",
     "locks",
+    "enums",
     "scope",
     "asked",
 )
