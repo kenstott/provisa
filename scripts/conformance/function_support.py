@@ -2121,6 +2121,9 @@ def measure_column(
             continue
         got = _answer(provisa, call_)
         if not got["ok"]:
+            group = decided_error(fn.name, got["error"])
+            if group is not None:
+                return {"outcome": "by_design", "group": group}
             named = function_probe.refused_by_name(got["error"])
             return {
                 "outcome": "refused" if named else "error",
@@ -2128,6 +2131,9 @@ def measure_column(
             }
         compared = compare(want, got, values=True, sql=call_.sql, function=fn.name, enums=enums)
         if compared.difference is not None:
+            group = decided_difference(fn.name, call_.sql, compared.difference)
+            if group is not None:
+                return {"outcome": "by_design", "group": group}
             detail = {"statement": call_.sql, "difference": compared.difference}
             return {"outcome": "wrong_answer", "detail": detail}
         return {"outcome": "pass", "rules": sorted(compared.rules)}
@@ -2149,6 +2155,10 @@ SIDE_EFFECT_GROUP = "Side-effect functions"
 NOT_TESTABLE = "Not testable"
 SEQUENCE_GROUP = "Sequence functions are not supported"
 REGEXP_GROUP = "Six-argument regexp_replace is not supported"
+SYSTEM_CATALOG_WRITE_GROUP = "A system catalog is written by no role"
+NOTIFICATION_GROUP = "LISTEN, NOTIFY and pg_notify are refused"
+LARGE_OBJECT_GROUP = "Large objects as a read-only transaction"
+CATALOG_IS_THE_MODEL_GROUP = "The catalog is the model's"
 GROUPS = {
     SIDE_EFFECT_GROUP: (
         "A function that returns void or acts is expected to work only on the PostgreSQL engine."
@@ -2158,6 +2168,21 @@ GROUPS = {
     "source's sequences.",
     REGEXP_GROUP: "The PostgreSQL 16 form with a start position and an occurrence number is "
     "refused by name.",
+    # REQ-2167, amended 2026-11-03, Privileges, visibility and notifications (1).
+    SYSTEM_CATALOG_WRITE_GROUP: "has_table_privilege and the column variants answer false for a "
+    "write on PostgreSQL's own system catalogs, for every role: nobody writes a system catalog "
+    "through Provisa (REQ-127).",
+    # REQ-2167, amended 2026-11-03, Privileges, visibility and notifications (4).
+    NOTIFICATION_GROUP: "LISTEN, NOTIFY and pg_notify are refused by name: Provisa's pgwire has "
+    "no notification channel.",
+    # REQ-2167, amended 2026-10-29, LOCKS, FLOATS AND SERVER ANSWERS.
+    LARGE_OBJECT_GROUP: "A large object function answers as PostgreSQL does in a read-only "
+    "transaction: Provisa keeps no large objects.",
+    # REQ-2190, META IS A SUPERSET OF THE CATALOG: a relation's oid and a catalog's rows are the
+    # model's, so a regclass is compared by its name.
+    CATALOG_IS_THE_MODEL_GROUP: "A relation's oid and a catalog's rows are the model's "
+    "(REQ-2190): a regclass is compared by its name, not its oid, and a catalog serialized "
+    "lists the model.",
 }
 
 #: The refusals a decision makes, by name or ``_key``: Provisa refusing one by name is that
@@ -2167,7 +2192,55 @@ DECIDED_REFUSALS = {
     "currval": SEQUENCE_GROUP,
     "setval": SEQUENCE_GROUP,
     "regexp_replace(text, text, text, integer, integer, text)": REGEXP_GROUP,
+    "pg_notify": NOTIFICATION_GROUP,
 }
+
+#: The errors a decision makes, by function and the error's wording: Provisa answering one so is
+#: that decision, skipped by design.
+_DECIDED_ERRORS: tuple[tuple[re.Pattern[str], re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"^lo_|^lo(read|write)$"),
+        re.compile(r"cannot execute lo_\w+\(\) in a read-only transaction"),
+        LARGE_OBJECT_GROUP,
+    ),
+    (
+        re.compile(r"^has_sequence_privilege$"),
+        re.compile(rf'relation "{re.escape(function_probe.PROBE_SEQUENCE)}" does not exist'),
+        SEQUENCE_GROUP,
+    ),
+)
+
+#: The differences a decision makes, by function, statement and difference.
+_PRIVILEGES_OF_A_RELATION = re.compile(r"^has_(table|column|any_column)_privilege$")
+_WRITE_ON_A_CATALOG = re.compile(
+    r"'pg_catalog\.\w+'.*'(INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER|MAINTAIN)'::text",
+    re.IGNORECASE,
+)
+_TABLE_TO_XML = re.compile(r"^table_to_xml(schema|_and_xmlschema)?$")
+
+
+def decided_error(name: str, error: str) -> str | None:
+    """The group of the decision ``name``'s ``error`` is, None if it is no decision's."""
+    for function, wording, group in _DECIDED_ERRORS:
+        if function.search(name) and wording.search(error):
+            return group
+    return None
+
+
+def decided_difference(name: str, sql: str, difference: str) -> str | None:
+    """The group of the decision a call's ``difference`` from PostgreSQL is, None if none."""
+    if (
+        _PRIVILEGES_OF_A_RELATION.match(name)
+        and _WRITE_ON_A_CATALOG.search(sql)
+        and difference.startswith("'f', PostgreSQL 't'")
+    ):
+        return SYSTEM_CATALOG_WRITE_GROUP
+    if name in ("regclasssend", "regclassrecv"):
+        return CATALOG_IS_THE_MODEL_GROUP  # the oid's bytes: the model's oid
+    if _TABLE_TO_XML.match(name) and "'pg_catalog." in sql:
+        return CATALOG_IS_THE_MODEL_GROUP  # a catalog's rows: the model's
+    return None
+
 
 #: Volatile functions whose purpose is what they do rather than what they answer, beside every
 #: function returning void.
@@ -2468,6 +2541,10 @@ def measure_overload(
         entry["side_effect_checked"] = effect["outcome"] == "pass"
         if decided is not None and effect["outcome"] == "refused":
             return _by_design(entry, decided)
+        if effect["outcome"] == "error":
+            group = decided_error(fn.name, effect["detail"]["error"])
+            if group is not None:
+                return _by_design(entry, group)
         return entry
     if entry["outcome"] in ("pass", "not_checked"):
         return _by_design(entry, NOT_TESTABLE)
@@ -2503,6 +2580,7 @@ def _measure_calls(
     wrong: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
     named: list[dict[str, str]] = []
+    decided: list[str] = []  # the groups of the calls a decision answers
     refused: list[str] = []
     routes: set[str] = set()
     rules: set[str] = set()
@@ -2519,7 +2597,11 @@ def _measure_calls(
         got = _answer(provisa, call_)
         if not got["ok"]:
             said = {"statement": call_.sql, "error": got["error"]}
-            (named if function_probe.refused_by_name(got["error"]) else errors).append(said)
+            group = decided_error(fn.name, got["error"])
+            if group is not None:
+                decided.append(group)
+            else:
+                (named if function_probe.refused_by_name(got["error"]) else errors).append(said)
             lost = lost or got.get("lost", False)
             continue
         compared = compare(
@@ -2534,7 +2616,11 @@ def _measure_calls(
             formed, differs = form_check(fn.name, want, got)
             checked += formed
         if differs is not None:
-            wrong.append({"statement": call_.sql, "difference": differs})
+            group = decided_difference(fn.name, call_.sql, differs)
+            if group is not None:
+                decided.append(group)
+            else:
+                wrong.append({"statement": call_.sql, "difference": differs})
     entry["calls"] = accepted
     entry["answers_compared"] = answered
     entry["answers_checked"] = answered > 0
@@ -2564,6 +2650,8 @@ def _measure_calls(
         entry["outcome"] = "refused"
         entry["detail"] = named[0]
         entry["refused_calls"] = len(named)
+    elif decided:
+        _by_design(entry, decided[0])
     elif answered or checked:
         entry["outcome"] = "pass"
         entry["rules"] = sorted(rules)
