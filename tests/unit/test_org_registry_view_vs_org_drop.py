@@ -203,17 +203,18 @@ def test_a_reap_cannot_drop_an_orgs_schema_while_the_registry_view_is_rebuilt(mo
 
 def test_a_reap_cannot_take_the_registry_view_away_before_it_is_granted(monkeypatch):
     from provisa.api import startup_seed
+    from provisa.api.admin.orgs_router import _refresh_root_registry_view
 
     monkeypatch.setattr(core_db, "add_missing_columns", lambda *a, **k: None)
     server = _Server({f"org_{_ROOT}", f"org_{_DOOMED}"}, [_ROOT, _DOOMED])
     monkeypatch.setattr(startup_seed.state, "model_db", _Database(server, f"org_{_ROOT}"))
     monkeypatch.setattr(startup_seed.state, "admin_db", _Database(server, None))
     failures: list[BaseException] = []
-    landed: list[bool] = []
 
     def _open() -> None:
+        # The open's own call (demo_sandbox._build), which binds the root org on its thread.
         try:
-            landed.append(asyncio.run(startup_seed.seed_org_registry_view()))
+            asyncio.run(_refresh_root_registry_view())
         except BaseException as exc:  # noqa: BLE001 -- reported by the assertion below
             failures.append(exc)
         finally:
@@ -235,6 +236,5 @@ def test_a_reap_cannot_take_the_registry_view_away_before_it_is_granted(monkeypa
         t.join(timeout=10)
 
     assert not failures, failures
-    assert landed == [True]
     # The view was granted while it stood; the drop, and the cascade with it, came after.
     assert server.events == ["view", "grant", "dropped"]
