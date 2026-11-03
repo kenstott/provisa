@@ -221,20 +221,33 @@ def _plain(value: Any) -> Any:
     return value.isoformat() if isinstance(value, datetime) else value
 
 
+def _tenant() -> Any:
+    """The tenant control plane, whose schemas hold every org's environments (REQ-1488)."""
+    from provisa.api.admin.orgs_router import _pool
+
+    return _pool()
+
+
 async def _records(org_id: str, env: str) -> dict[str, list[dict[str, Any]]]:
+    """``org_id``'s environment ``env``'s generation records, read from its schema. Not through
+    its runtime: a sandbox's open reads its template's, and building the template's runtimes there
+    (none is built at a start that serves it as built) held the open past the upstream limit."""
+    from provisa.core.env_project import _table_in
+    from provisa.core.environments import org_schema
     from provisa.core.schema_org import registered_tables
 
-    db = await _model_db(org_id, env)
+    schema = org_schema(org_id, env)
     out: dict[str, list[dict[str, Any]]] = {}
-    with _bound(org_id, env):
-        async with db.acquire() as conn:
-            keys = {
-                r.id: [r.source_id, r.schema_name, r.table_name]
-                for r in (await conn.execute_core(select(registered_tables))).fetchall()
-            }
-            for table in _record_tables():
-                rows = (await conn.execute_core(select(table))).fetchall()
-                out[table.name] = [{k: _plain(v) for k, v in r._mapping.items()} for r in rows]
+    async with _tenant().acquire() as conn:
+        keys = {
+            r.id: [r.source_id, r.schema_name, r.table_name]
+            for r in (
+                await conn.execute_core(select(_table_in(conn, registered_tables, schema)))
+            ).fetchall()
+        }
+        for table in _record_tables():
+            rows = (await conn.execute_core(select(_table_in(conn, table, schema)))).fetchall()
+            out[table.name] = [{str(k): _plain(v) for k, v in r._mapping.items()} for r in rows]
     # A table is carried by its source, schema and name: another deployment numbers it apart.
     for row in out["synthetic_dataset_tables"]:
         row[_TABLE_KEY] = keys[row.pop("table_id")]
