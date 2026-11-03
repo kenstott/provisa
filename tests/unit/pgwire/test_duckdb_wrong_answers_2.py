@@ -286,3 +286,48 @@ def test_the_zones_are_a_set_in_from(conn: Any):
         conn, "SELECT name FROM pg_catalog.pg_timezone_names() WHERE name = 'Asia/Tokyo'"
     )
     assert (oid, named) == (TEXT, ["Asia/Tokyo"])
+
+
+#: Zones whose abbreviation does not change with the date, each as PostgreSQL 17.11 answers it:
+#: the pinned release's abbreviation, not the engine's own zone data's (DuckDB's ICU names
+#: Africa/Abidjan's Iceland and UTC's UCT).
+_STEADY_ABBREVS = {
+    "Africa/Abidjan": "GMT",
+    "UTC": "UTC",
+    "Etc/UTC": "UTC",
+    "Asia/Tokyo": "JST",
+    "Asia/Kolkata": "IST",
+    "Asia/Dubai": "+04",
+}
+
+
+@pytest.mark.parametrize(("zone", "abbrev"), sorted(_STEADY_ABBREVS.items()))
+def test_a_zones_abbreviation_is_the_pinned_releases(conn: Any, zone: str, abbrev: str):
+    oid, rows = _rows(
+        conn, f"SELECT abbrev FROM pg_catalog.pg_timezone_names() WHERE name = '{zone}'"
+    )
+    assert (oid, rows) == (TEXT, [abbrev])
+
+
+def test_a_zones_abbreviation_is_the_one_in_effect_now(conn: Any):
+    """A zone with daylight time answers the abbreviation of the time it is in now, as PostgreSQL
+    computes it from the release's rules."""
+    _, rows = _rows(
+        conn,
+        "SELECT CASE WHEN is_dst THEN abbrev = 'EDT' ELSE abbrev = 'EST' END "
+        "FROM pg_catalog.pg_timezone_names() WHERE name = 'America/New_York'",
+    )
+    assert rows == ["t"]
+
+
+def test_the_abbreviations_are_a_set_in_from(conn: Any):
+    """pg_timezone_abbrevs is a set-returning function: in FROM it is its rows, with their own
+    columns (REQ-2167)."""
+    oid, counted = _rows(conn, "SELECT count(*) FROM pg_catalog.pg_timezone_abbrevs()")
+    assert (oid, counted) == (20, [str(len(PG17_ABBREVS))])
+    oid, named = _rows(
+        conn,
+        "SELECT abbrev FROM pg_catalog.pg_timezone_abbrevs() AS a "
+        "WHERE a.abbrev = 'JST' AND NOT a.is_dst",
+    )
+    assert (oid, named) == (TEXT, ["JST"])
