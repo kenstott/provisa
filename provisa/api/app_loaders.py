@@ -1088,6 +1088,13 @@ async def _graphql_remote_auth(state, src: dict) -> dict | None:
         return {"type": "bearer", "token": secret}
     if auth_type == "basic":
         return {"type": "basic", "username": src["username"], "password": secret}
+    if auth_type == "header":
+        header = (src["federation_hints"] or {}).get("auth_header")
+        if not header:
+            raise ValueError(
+                f"graphql_remote source {src['id']!r}: auth_type 'header' names no auth_header"
+            )
+        return {"type": "header", "header": header, "token": secret}
     raise ValueError(f"graphql_remote source {src['id']!r}: unknown auth_type {auth_type!r}")
 
 
@@ -1119,7 +1126,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
     """Load persisted graphql_remote sources from DB into state.graphql_remote_sources."""
     from provisa.api.app import state
     from provisa.core.secrets import resolve_secrets
-    from provisa.graphql_remote.brands import NAMESPACE_HINT, brand_of
+    from provisa.graphql_remote.brands import NAMESPACE_HINT, SETUP_HINT, brand_of
 
     if state.model_db is None:
         log.warning("[GQL REMOTE] model_db is None — skipping DB load")
@@ -1243,6 +1250,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                     **(
                         {
                             "brand": brand.id,
+                            "setup": dict(hints.get(SETUP_HINT) or {}),
                             "error_policy": brand.error_policy,
                         }
                         if brand is not None

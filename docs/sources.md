@@ -26,7 +26,7 @@ Every query ends up running through the federation engine, which is what lets an
 
 ## All Sources
 
-Provisa registers **73** source types, the ones the Sources form offers. The tables below cover all 73; the index is the count.
+Provisa registers **74** source types, the ones the Sources form offers. The tables below cover all 74; the index is the count.
 
 | # | Group | Source types |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ Provisa registers **73** source types, the ones the Sources form offers. The tab
 | 47–51 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 52–53 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
 | 54–61 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 62–67 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
-| 68 | [GovData](#govdata) | `govdata` |
-| 69–70 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
-| 71 | [Data profiler](#data-profiler) | `data_profiler` |
-| 72 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
-| 73 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
+| 62–68 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 69 | [GovData](#govdata) | `govdata` |
+| 70–71 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
+| 72 | [Data profiler](#data-profiler) | `data_profiler` |
+| 73 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
+| 74 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms). "Connector Name" is the federated connector used when the source participates in multi-source JOINs.
 
@@ -896,6 +896,10 @@ API responses are fetched, cached in PostgreSQL (configurable TTL), and exposed 
 #### GitHub and GitLab
 
 GitHub and GitLab are branded sources carried by `graphql_remote`: each appears in the Sources form under its own name and registers as a remote GraphQL source that records its brand. The form takes a personal access token and nothing else. The endpoint (`https://api.github.com/graphql`, `https://gitlab.com/api/graphql`) and the schema ship with Provisa, so the schema is not introspected at registration. The token is checked when the source is added. Adding the source registers no tables: every table the schema offers is available under the source's namespace (`gh`, `gl`), and the steward registers the ones wanted. A field the token may not read is left out of a table when it is registered.
+
+#### Shopify {: #shopify }
+
+Shopify is a branded source carried by `graphql_remote`, over a store's Admin GraphQL API. The form asks for the store name (the part of its admin address before `.myshopify.com`), the API version (filled in with `2026-10`, the newest stable version when the shipped schema was taken) and an Admin API access token, sent in the `X-Shopify-Access-Token` header. The endpoint is `https://<store>.myshopify.com/admin/api/<version>/graphql.json`. Adding the source checks the token and registers no tables; its tables are offered under the namespace `shopify`. Shopify prices each query and refuses one over 1,000 points, so a table is priced with the columns chosen when it is registered and refused with Shopify's numbers when it is over; a throttled read waits as long as Shopify says its bucket needs. See [Remote schemas: Shopify](remote-schemas.md#shopify). Not yet read against a live store.
 
 #### Stripe {: #stripe }
 

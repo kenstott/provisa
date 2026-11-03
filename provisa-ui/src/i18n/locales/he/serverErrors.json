@@ -405,6 +405,7 @@
       "source_region_set": "האזור של המקור {{source}} הוגדר ל-{{region}}",
       "region_refused": "האזור לא הוגדר: {{reason}}",
       "table_too_complex": "הטבלה '{{table}}' לא נרשמה עם העמודות שנבחרו: {{reason}}. בחרו פחות עמודות.",
+      "remote_throttled": "הטבלה '{{table}}' לא נרשמה: מגבלת הקצב של המקור לא אפשרה לבדוק אותה ({{reason}}). נסו שוב מאוחר יותר.",
       "table_updated": "הטבלה '{{table}}' עודכנה (id={{id}})",
       "task_deleted": "המשימה '{{task}}' נמחקה",
       "task_disabled": "המשימה '{{task}}' הושבתה",

@@ -725,6 +725,22 @@ def _collect_queryable_types(
     return queryable_type_names, type_to_table
 
 
+def _offers_columns(type_def: dict | None, types: list[dict]) -> bool:
+    """Whether a root field's type has a field :func:`_build_columns` makes a column of: one
+    selected bare (no required argument) that is not a connection. A scalar or enum root field
+    is its own column."""
+    if type_def is None or type_def.get("fields") is None:
+        return True
+    for f in type_def["fields"]:
+        if _build_required_args(f):
+            continue
+        kind, name = _unwrap_type(f["type"])
+        if kind in _COMPOSITE_KINDS and _is_connection(_find_type(types, name)):
+            continue
+        return True
+    return False
+
+
 def _process_query_fields(
     query_type: dict | None,
     namespace: str,
@@ -758,7 +774,10 @@ def _process_query_fields(
             if connection is not None:
                 tables.append(connection)
             continue
-        tables.append(_map_query_field_as_table(field, *shape, *depths))
+        if _offers_columns(_find_type(types, ret_name), types):
+            # A type whose every field is a connection, or needs an argument, has no columns
+            # to offer and is not a table; its connections still are (Shopify's taxonomy).
+            tables.append(_map_query_field_as_table(field, *shape, *depths))
         tables.extend(_map_child_connection_tables(field, *shape, *depths))
     # A child connection's derived name never displaces a root field of the same name.
     seen: set[str] = set()
