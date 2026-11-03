@@ -18,7 +18,7 @@ are stored once the table has been fitted to what the source's credential may re
 registered table is read.
 
 The schema a source's tables are offered from is the brand's, shipped with Provisa, for a
-branded source (GitHub, GitLab), and the source's own, read from its endpoint, for any other.
+branded source (GitHub, GitLab, Shopify), and the source's own, read from its endpoint, for any other.
 """
 
 # Requirements: REQ-308, REQ-1923
@@ -234,6 +234,7 @@ async def columns_to_register(
         offer.refused_error_types,
         page_size,
         offer.too_complex_messages,
+        offer.error_policy,
     )
     fitted = {**fitted, BY_KEYS: key_fetches(offer.schema(), fitted)}
     offered = _column_models(fitted)

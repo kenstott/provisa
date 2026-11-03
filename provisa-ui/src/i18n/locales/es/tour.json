@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Registra un origen",
-        "description": "➕ Las conexiones nuevas empiezan con este botón: PostgreSQL, Snowflake, MongoDB, una API REST, un CSV y el resto de los 73 conectores."
+        "description": "➕ Las conexiones nuevas empiezan con este botón: PostgreSQL, Snowflake, MongoDB, una API REST, un CSV y el resto de los 74 conectores."
       },
       "step3": {
-        "title": "73 tipos de fuente, 14 categorías",
+        "title": "74 tipos de fuente, 14 categorías",
         "description": "Un selector enumera cada tipo, agrupado por categoría: <strong>Suscripciones, RDBMS, Almacén de datos en la nube, Analítica, Data lake, NoSQL, Resolvers de código, Grafos, Archivos, API, Streaming, Empresa, Calidad de datos, Otros</strong>. Busque por nombre o alias, o acote con los chips de categoría. Cada tipo muestra su logotipo y un icono de alcance: ⚡ lectura en vivo en el origen, o un icono de copia donde Provisa lee una réplica actualizada.<p>Elija uno, rellene la conexión y guarde.</p>"
       },
       "stepBuildSource": {

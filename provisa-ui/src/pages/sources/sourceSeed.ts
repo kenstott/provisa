@@ -326,7 +326,14 @@ type RemoteAuth = Record<string, string> | null | undefined;
 
 /** What a remote API source's registration adds to the form: kept apart from the source record. */
 export type RemoteSeed =
-  | { kind: "graphql"; namespace: string; cacheTtl: string; auth: RemoteAuth }
+  | {
+      kind: "graphql";
+      namespace: string;
+      cacheTtl: string;
+      auth: RemoteAuth;
+      // REQ-1923: what a brand reached at a per-customer address was set up with.
+      setup: Record<string, string>;
+    }
   | {
       kind: "openapi";
       specMode: "path" | "inline";
@@ -377,6 +384,7 @@ export async function fetchRemoteSeed(s: Source): Promise<RemoteSeed> {
       namespace: String(reg.namespace),
       cacheTtl: ttl,
       auth: reg.auth as RemoteAuth,
+      setup: (reg.setup as Record<string, string> | undefined) ?? {},
     };
   }
   if (s.type === "openapi") {

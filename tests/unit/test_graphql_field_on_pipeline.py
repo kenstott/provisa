@@ -152,7 +152,9 @@ async def test_an_aggregate_reads_its_nodes_in_its_one_plan(pipeline):
         'FROM "sales"."orders"',
         columns=[
             ColumnRef(None, "count", "count", "aggregate"),
-            ColumnRef(None, "nodes", "nodes", None, cardinality="one-to-many", is_agg=True),
+            ColumnRef(
+                None, "nodes", "nodes", None, cardinality="one-to-many", is_agg=True, json=True
+            ),
         ],
         has_nodes=True,
         api_args={"region": "EU"},
@@ -247,9 +249,9 @@ def test_every_graphql_answer_is_encoded_by_orjson(monkeypatch):
     monkeypatch.setattr(endpoint, "_execute_one_field", _rows)
     answered = h.call()
     assert isinstance(answered, OrjsonResponse)
-    assert (
-        bytes(answered.body) == b'{"data":{"orders":[{"amount":2.5}]}}'
-    )  # as jsonable_encoder gives it
+    # A Decimal as the string of its exact digits (REQ-1867, amended 2026-11-02); before, the
+    # float jsonable_encoder gave.
+    assert bytes(answered.body) == b'{"data":{"orders":[{"amount":"2.50"}]}}'
 
     async def _redirected(compiled, *args, **kwargs):
         return compiled.root_field, None, {"redirect_url": "https://x/r", "row_count": 3}, None
