@@ -1613,11 +1613,14 @@ def _catalog_objects(a: _Answers) -> None:
             + raising("XX000", "'cache lookup failed for function ' || f")
             + " END",
         )
+    # An operator class the catalog lists is PostgreSQL's own, which validates; any other is none.
     a.strict(
         "amvalidate",
-        "c",
+        "c:bigint",
         "BOOLEAN",
-        raising("XX000", "'cache lookup failed for operator class ' || c"),
+        "CASE WHEN EXISTS (SELECT 1 FROM meta.catalog_pg_opclass _o WHERE _o.oid = c) THEN TRUE ELSE "
+        + raising("XX000", "'cache lookup failed for operator class ' || c")
+        + " END",
     )
     a.strict("postgresql_fdw_validator", "options, catalog", "BOOLEAN", "true")
     a.strict(

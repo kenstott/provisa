@@ -441,7 +441,10 @@ def _offset_text(offset: timedelta) -> str:
 
 
 def _timetz_text(value: time) -> str:
+    """timetz_out: a fraction without its trailing zeros, which isoformat writes to six digits."""
     clock = value.replace(tzinfo=None).isoformat()
+    if value.microsecond:
+        clock = clock.rstrip("0")
     offset = value.utcoffset()
     return clock if offset is None else clock + _offset_text(offset)
 

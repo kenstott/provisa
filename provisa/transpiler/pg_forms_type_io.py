@@ -1336,10 +1336,11 @@ _DUCKDB_RESULTS = frozenset({"jsonb", "interval", "xid8"})
 
 def _null_of(result: str, dialect: str | None = None) -> exp.Expr:
     """A NULL of ``result``. ClickHouse holds a time as its text (Engine.time): sqlglot would write
-    toTime64OrNull, which ClickHouse 24 does not have."""
+    toTime64OrNull, which ClickHouse 24 does not have. Only DuckDB and PostgreSQL hold jsonb,
+    interval and xid8."""
     if dialect == "clickhouse" and result == "time without time zone":
         result = "text"
-    if dialect not in (None, "duckdb") and result in _DUCKDB_RESULTS:
+    if dialect not in (None, "duckdb", "postgres") and result in _DUCKDB_RESULTS:
         result = "text"
     # xid8 is no type sqlglot knows: pg_held_types holds it as the engine's.
     to = exp.DataType.build(result, dialect="postgres", udt=True)

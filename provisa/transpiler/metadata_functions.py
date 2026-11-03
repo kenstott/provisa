@@ -730,27 +730,44 @@ def _quoted(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 
 
-def _wrapped(texts: tuple[str, ...], separators: tuple) -> str:
-    """A view's definition at the wrap column ``_WRAP``: its texts joined by each separator's
-    form at that column (catalog_pg17_viewdefs.VIEW_WRAPS)."""
-    parts = [_quoted(texts[0])]
-    for (form, one_line, spans), text in zip(separators, texts[1:], strict=True):
-        at = " OR ".join(
-            f"{_WRAP} BETWEEN {low} AND {high}" if high is not None else f"{_WRAP} >= {low}"
-            for low, high in spans
-        )
-        chosen = f"CASE WHEN {at or 'FALSE'} THEN {_quoted(form)} ELSE {_quoted(one_line)} END"
-        parts += [chosen, _quoted(text)]
-    return " || ".join(parts)
+#: What separates a wrapped definition's lists, and the items of each, in its one literal.
+_LISTS, _ITEMS = "\x1e", "\x1f"
+
+
+def _wrap_literal(texts: tuple[str, ...], separators: tuple) -> str:
+    """A view's definition at a wrap column as one literal: its texts, and before each but the
+    first its separator's form, its one-line form and the wrap columns (``low:high``, ``low:``
+    unbounded) at which the form is written (catalog_pg17_viewdefs.VIEW_WRAPS)."""
+    forms, lines, spans = [""], [""], [""]
+    for form, one_line, at in separators:
+        forms.append(form)
+        lines.append(one_line)
+        spans.append(",".join(f"{low}:{'' if high is None else high}" for low, high in at))
+    lists = (texts, forms, lines, spans)
+    return _quoted(_LISTS.join(_ITEMS.join(items) for items in lists))
 
 
 def _view_definitions_wrapped() -> str:
     """pg_get_viewdef(view, wrap column): each target list's separators as PostgreSQL 17 writes
-    them at that column; NULL for a relation that is no view PostgreSQL ships."""
+    them at that column; NULL for a relation that is no view PostgreSQL ships. One literal for a
+    view, unnested into its parts: a form spelled out separator by separator is too large a
+    statement to govern."""
     arms = " ".join(
-        f"WHEN {oid} THEN {_wrapped(*written)}" for oid, written in sorted(VIEW_WRAPS.items())
+        f"WHEN {oid} THEN {_wrap_literal(*written)}" for oid, written in sorted(VIEW_WRAPS.items())
     )
-    return f"CASE {_VIEW_OID} {arms} END"
+    view = f"CASE {_VIEW_OID} {arms} END"
+    lists = ", ".join(
+        f"STRING_TO_ARRAY(SPLIT_PART({view}, CHR(30), {n}), CHR(31))" for n in range(1, 5)
+    )
+    at = (
+        "EXISTS (SELECT 1 FROM UNNEST(STRING_TO_ARRAY(_u.s, ',')) AS _r(r) "
+        f"WHERE {_WRAP} >= CAST(SPLIT_PART(_r.r, ':', 1) AS BIGINT) "
+        f"AND (SPLIT_PART(_r.r, ':', 2) = '' OR {_WRAP} <= CAST(SPLIT_PART(_r.r, ':', 2) AS BIGINT)))"
+    )
+    return (
+        f"(SELECT STRING_AGG(CASE WHEN _u.i = 1 THEN '' WHEN {at} THEN _u.f ELSE _u.l END || _u.t, "
+        f"'' ORDER BY _u.i) FROM UNNEST({lists}) WITH ORDINALITY AS _u(t, f, l, s, i))"
+    )
 
 
 #: pg_get_viewdef(view, pretty) or pg_get_viewdef(view, wrap column): plain where told false,

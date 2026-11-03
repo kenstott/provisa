@@ -272,7 +272,7 @@ def test_unbound_parameters_are_null_outside_strings() -> None:
     [
         ('pg_catalog."interval_in"(NULL::cstring, NULL::oid, NULL::integer)', "INTERVAL"),
         ('pg_catalog."jsonb_in"(NULL::cstring)', "JSONB"),
-        ('pg_catalog."xid8in"(NULL::cstring)', "XID8"),
+        ('pg_catalog."xid8in"(NULL::cstring)', "xid8"),
     ],
 )
 def test_a_null_input_is_postgresqls_null_of_its_type_on_postgres(call: str, written: str) -> None:

@@ -607,6 +607,9 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "TIMESTAMP_MS": BVType.TIMESTAMP,
     "TIMESTAMP_NS": BVType.TIMESTAMP,
     "TIME WITH TIME ZONE": BVType.TIMETZ,
+    # PostgreSQL's own spelling, which a catalog answer declares its column with (REQ-2167).
+    "TIME WITHOUT TIME ZONE": BVType.TIME,
+    "TIMESTAMP WITHOUT TIME ZONE": BVType.TIMESTAMP,
     "REAL": BVType.REAL,
     "DOUBLE PRECISION": BVType.FLOAT,
     "JSON": BVType.JSON,
