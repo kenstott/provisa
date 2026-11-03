@@ -238,7 +238,7 @@ The new tests (`test_compare.py`):
 | `empty_array` | `{{},{}}` and binary ndim 2 with a zero dimension | `{}`, binary ndim 0 (`array_send` of an empty array) |
 | `array_element_list` | a NULL first sub-list: the next sub-lists written as `str(list)` elements | refused: no array holds a sub-array as an element |
 | `vector_lower_bound` | oidvector/int2vector binary with lower bound 1 | lower bound 0 (`oidvectorsend`) |
-| `inet_text` | an IPv6 address holding an IPv4 one in hextets (`::ffff:102:304`) | dotted quad (`::ffff:1.2.3.4`, `::1.2.3.4`) |
+| `inet_text` | an IPv6 address holding an IPv4 one as `ipaddress` writes it, in inet, cidr and text: hextets (`::102:304`; `::ffff:102:304` before CPython 3.12.16) | dotted quad (`::ffff:1.2.3.4`, `::1.2.3.4`) |
 | `duckdb_inet` | DuckDB's INET reaches Arrow with a `decimal128(38, 0)` address; `_duckdb_inet` raises on it, so no DuckDB inet column can be sent | the address it is |
 | `range_bounds` | a date or timestamp bound `infinity`, `BC` or past 9999 raises (`fromisoformat`) | written (`range_send`) |
 | `tsquery_binary` | binary refused | `tsquerysend` of `tsquery_in(text)` |

@@ -48,7 +48,8 @@ DEFECTS = {
     "array_element_list": "a sub-array where an element belongs is malformed (the product writes "
     "str(list) as the element)",
     "vector_lower_bound": "oidvector and int2vector count from 0 (array_send writes lower bound 0)",
-    "inet_text": "an IPv6 address holding an IPv4 one is written in dotted quad (::ffff:1.2.3.4)",
+    "inet_text": "an IPv6 address holding an IPv4 one is written in dotted quad (::1.2.3.4, "
+    "::ffff:1.2.3.4), in inet, cidr and text alike (the product wrote ipaddress's text)",
     "duckdb_inet": "DuckDB's INET reaches Arrow with its address a decimal128; _duckdb_inet raises",
     "range_bounds": "a range bound may be infinity, BC or past year 9999 (fromisoformat raises)",
     "tsquery_binary": "tsquery has a binary form, tsquerysend of the parsed query (the product "
@@ -188,10 +189,12 @@ _INTERFACES = (ipaddress.IPv4Interface, ipaddress.IPv6Interface)
 
 
 def pg_address(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str:
-    """inet_net_ntop: an IPv6 address whose first 80 bits are zero and next 16 zero or ffff ends
-    in dotted quad."""
+    """inet_net_ntop: lowercase hextets without leading zeros, the longest run of two or more zero
+    words (the first of equal runs) as ::, and an IPv6 address whose first 80 bits are zero and
+    next 16 zero or ffff ending in dotted quad. Written from the address's bytes, not by
+    ipaddress, whose text of an IPv4-mapped address changes between patch releases."""
     if ip.version == 4:
-        return str(ip)
+        return ".".join(str(b) for b in ip.packed)
     words = [int.from_bytes(ip.packed[k : k + 2], "big") for k in range(0, 16, 2)]
     best_base, best_len, cur_base, cur_len = -1, 0, -1, 0
     for k, w in enumerate(words + [1]):
@@ -203,11 +206,14 @@ def pg_address(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str:
             cur_base, cur_len = -1, 0
     if best_len < 2:
         best_base, best_len = -1, 0
-    v4_tail = best_base == 0 and (best_len == 6 or (best_len == 5 and words[5] == 0xFFFF))
-    if not v4_tail:
-        return str(ip)
-    head = "::" if best_len == 6 else "::ffff:"
-    return head + str(ipaddress.IPv4Address(ip.packed[12:]))
+    if best_base == 0 and (best_len == 6 or (best_len == 5 and words[5] == 0xFFFF)):
+        head = "::" if best_len == 6 else "::ffff:"
+        return head + ".".join(str(b) for b in ip.packed[12:])
+    if best_base == -1:
+        return ":".join(f"{w:x}" for w in words)
+    left = ":".join(f"{w:x}" for w in words[:best_base])
+    right = ":".join(f"{w:x}" for w in words[best_base + best_len :])
+    return f"{left}::{right}"
 
 
 def inet_text(v: Any) -> str:
@@ -218,6 +224,12 @@ def inet_text(v: Any) -> str:
     if isinstance(v, (ipaddress.IPv4Address, ipaddress.IPv6Address)):
         return pg_address(v)  # a bare address (psycopg's inet of a host) is inet_out's too
     return str(v)
+
+
+def text_text(v: Any) -> str:
+    """text: an interface (the value _duckdb_inet makes) as PostgreSQL's text(inet), its address
+    then its prefix; anything else as str()."""
+    return cidr_text(v) if isinstance(v, _INTERFACES) else str(v)
 
 
 def cidr_text(v: Any) -> str:
@@ -411,6 +423,7 @@ def pg17() -> Iterator[None]:
         table[t.MONEY] = (790, money_text, table[t.MONEY][2])
         table[t.INET] = (869, inet_text, table[t.INET][2])
         table[t.CIDR] = (650, cidr_text, table[t.CIDR][2])
+        table[t.TEXT] = (25, text_text, lambda v: text_text(v).encode("utf-8"))
         table[t.UUID] = (2950, uuid_text, uuid_binary)
         table.update(_ranges())
         table.update(_arrays())
