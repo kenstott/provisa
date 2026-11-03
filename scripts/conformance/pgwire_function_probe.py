@@ -106,6 +106,8 @@ REFUSAL = re.compile(
             r"\S+ is a catalog view of the meta domain",
             r"\w+: (?:a|the) [\w ']+ is not supported; ",
             r"\[V006\] Table function \S+ is not a governed relation",
+            # REQ-2167 (amended 2026-11-03): pgwire has no notification channel.
+            r"(?:LISTEN|UNLISTEN|NOTIFY) is refused by name: ",
         )
     )
     + r")"

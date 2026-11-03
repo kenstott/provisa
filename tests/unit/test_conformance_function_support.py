@@ -2088,3 +2088,112 @@ def test_lastval_is_measured_after_the_insert_its_answer_needs():
     server = _Connection()
     assert support._answer(server, planned) == _ok(1, oid=20)  # pyright: ignore[reportArgumentType]
     assert server.ran == [planned.before, planned.sql]
+
+
+# --- decisions of 2026-11-03 (REQ-2167) and the catalog's model (REQ-2190) ----------------------
+
+
+@pytest.mark.parametrize(
+    "name,sql,difference,group",
+    [
+        (
+            "has_table_privilege",
+            "SELECT pg_catalog.\"has_table_privilege\"('pg_catalog.pg_namespace'::text, "
+            "'INSERT'::text) AS v",
+            "'f', PostgreSQL 't'",
+            support.SYSTEM_CATALOG_WRITE_GROUP,
+        ),
+        (
+            "has_column_privilege",
+            "SELECT pg_catalog.\"has_column_privilege\"('pg_catalog.pg_namespace'::regclass::oid, "
+            "'nspname'::text, 'UPDATE'::text) AS v",
+            "'f', PostgreSQL 't'",
+            support.SYSTEM_CATALOG_WRITE_GROUP,
+        ),
+        (
+            "regclasssend",
+            "SELECT pg_catalog.\"regclasssend\"('conformance.function_columns'::regclass) AS v",
+            "'\\\\x0000410b', PostgreSQL '\\\\x00004002'",
+            support.CATALOG_IS_THE_MODEL_GROUP,
+        ),
+        (
+            "table_to_xml",
+            "SELECT pg_catalog.\"table_to_xml\"('pg_catalog.pg_class'::regclass, true::boolean, "
+            "true::boolean, 'abc'::text) AS v",
+            "'<pg_class ...', PostgreSQL '<pg_class ...'",
+            support.CATALOG_IS_THE_MODEL_GROUP,
+        ),
+    ],
+)
+def test_a_difference_a_decision_makes_is_that_decisions(name, sql, difference, group):
+    assert support.decided_difference(name, sql, difference) == group
+
+
+@pytest.mark.parametrize(
+    "name,sql,difference",
+    [
+        # A read of a catalog, or a write on the model's own table, is no decision's.
+        (
+            "has_table_privilege",
+            "SELECT pg_catalog.\"has_table_privilege\"('pg_catalog.pg_class'::text, "
+            "'SELECT'::text) AS v",
+            "'f', PostgreSQL 't'",
+        ),
+        (
+            "has_table_privilege",
+            "SELECT pg_catalog.\"has_table_privilege\"('conformance.function_columns'::text, "
+            "'INSERT'::text) AS v",
+            "'f', PostgreSQL 't'",
+        ),
+        ("abs", 'SELECT pg_catalog."abs"(3::integer) AS v', "'4', PostgreSQL '3'"),
+    ],
+)
+def test_any_other_difference_stays_a_wrong_answer(name, sql, difference):
+    assert support.decided_difference(name, sql, difference) is None
+
+
+@pytest.mark.parametrize(
+    "name,error,group",
+    [
+        (
+            "lo_create",
+            "ERROR:  cannot execute lo_create() in a read-only transaction",
+            support.LARGE_OBJECT_GROUP,
+        ),
+        (
+            "lo_put",
+            "ERROR:  cannot execute lo_from_bytea() in a read-only transaction",
+            support.LARGE_OBJECT_GROUP,
+        ),
+        (
+            "has_sequence_privilege",
+            'ERROR:  relation "conformance.probe_sequence" does not exist',
+            support.SEQUENCE_GROUP,
+        ),
+    ],
+)
+def test_an_error_a_decision_makes_is_that_decisions(name, error, group):
+    assert support.decided_error(name, error) == group
+    assert support.decided_error("abs", error) is None
+
+
+def test_listen_and_notify_are_refused_by_name():
+    assert refused_by_name(
+        "ERROR:  LISTEN is refused by name: Provisa's pgwire has no notification channel"
+    )
+    assert support.DECIDED_REFUSALS["pg_notify"] == support.NOTIFICATION_GROUP
+
+
+LO_CREATE = Function("lo_create", "oid", argtypes=("oid",), volatility="v", rettype="oid")
+
+
+def test_a_large_object_write_is_skipped_by_design_under_the_read_only_decision():
+    effect = support.EFFECTS["lo_create(oid)"]
+    refusal = {
+        "ok": False,
+        "error": "ERROR:  cannot execute lo_create() in a read-only transaction",
+    }
+    provisa = Effects({effect.call: refusal})
+    pg = Effects({effect.observe: _ok("1", oid=20)})
+    entry = support.measure_overload(LO_CREATE, "Large object", pg, provisa, _route, engine="pg")
+    assert entry["outcome"] == "by_design" and entry["group"] == support.LARGE_OBJECT_GROUP
