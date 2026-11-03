@@ -1154,9 +1154,13 @@ async def _make_built_in_views(conn: "Connection") -> None:
     sandbox's, REQ-2006): sent as one script, in one round trip. Made one by one, each in its own
     transaction, they were about 800 round trips to a control plane on another machine -- 9 s of a
     sandbox's open. A view already there and reshaped is :func:`_seed_built_in_views`' case."""
-    await conn.execute(
-        "\n".join(f"{ddl.strip().removesuffix(';')};" for ddl in _built_in_view_ddl())
-    )
+    await conn.execute(views_script(_built_in_view_ddl()))
+
+
+def views_script(ddls: list[str]) -> str:
+    """The view DDLs as one script. Each statement's terminator goes on a line of its own: a DDL
+    that ends in a ``--`` comment would otherwise swallow it, and the next CREATE fails."""
+    return "\n".join(f"{ddl.strip().removesuffix(';')}\n;" for ddl in ddls)
 
 
 async def seed_org_registry_view() -> bool:  # REQ-1301
