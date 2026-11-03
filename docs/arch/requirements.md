@@ -26432,7 +26432,7 @@ Maintainer 2026-11-02: transport (HTTP, pgwire, Flight, gRPC, Bolt...), query la
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Maintainer 2026-11-02: rather than a generic Python driver option, Provisa adds each of these as its own source type, as HANA, Exasol and Athena are: Teradata, IBM Db2, Vertica, Netezza, Informix, Sybase (ASE and IQ) and Google Spanner. Each has its own setup form, its SQL dialect, discovery of its tables and columns, its type mapping, and the reach every other relational source has (direct route, replica, and the engine's attach where one exists). Each is read through its vendor's or a maintained Python driver.
+Maintainer 2026-11-02: rather than a generic Python driver option, Provisa adds each of these as its own source type, as HANA, Exasol and Athena are: Teradata, IBM Db2, Vertica, Netezza, Informix, Sybase (ASE and IQ) and Google Spanner. Each has its own setup form, its SQL dialect, discovery of its tables and columns, its type mapping, and the reach every other relational source has (direct route, replica, and the engine's attach where one exists). Each is read through its vendor's or a maintained Python driver. (Amended 2026-11-03, Untested engines are not offered:) Maintainer 2026-11-03: Teradata, SAP ASE and SAP SQL Anywhere are removed from the engine kinds a deployment can select until each is built and tested against a running instance; an engine nobody has connected to is not offered. They return with this requirement's source work.
 
 **Code:** —
 
