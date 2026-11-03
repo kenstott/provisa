@@ -89270,7 +89270,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     group "The catalog is the model''s". (3) pg_read_file and pg_read_binary_file are skipped by design
     under a group citing the rule that no function reads the server''s files. (4) The conformance fixture
     model grants the probe''s role writes on its fixture table, so the privilege checks compare like with
-    like.'
+    like. (Amended 2026-11-03, Time zones follow upstream tzdata; REFERENCES is never granted:) Maintainer
+    2026-11-03: pg_timezone_names lists the pinned upstream IANA tzdata, as upstream PostgreSQL ships it.
+    The check compares the names both lists share, and the names that differ only through a distribution''s
+    tzdata packaging (Debian drops the backward links and adds localtime and posixrules) are skipped by
+    design. Provisa never grants the REFERENCES privilege, so has_*_privilege(..., ''REFERENCES'') answering
+    ''f'' is correct, and those cases are skipped by design citing this rule.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
