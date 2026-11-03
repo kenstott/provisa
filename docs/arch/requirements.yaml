@@ -91447,12 +91447,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a link is a fact with no measures whose grain is the participating keys; a link or effectivity satellite
     is an entity keyed on the link''s keys with valid time; PIT, bridge tables and marts are views over
     them.) (Amended 2026-11-03, Where the wizard lives, and one way:) Maintainer 2026-11-03: + Model on
-    the Tables page has a drop down: New | Star Schema | Data Vault. New is the entity/fact form as it is;
-    Star Schema and Data Vault each open that method''s wizard, so the drop down is the picker and the wizard
-    starts at the method''s own questions. Each opens in the + Model detail panel, its steps inside the
-    panel. The wizard is one way: once generated, the entities, facts and relationships are modified through
-    the primitives (the entity/fact form and Registered Tables); the wizard never regenerates or edits what
-    it made.'
+    the Tables page [SUPERSEDED by REQ-2199, 2026-11-03 -- the first choice is named Entity/Fact. Kept here
+    for history; do not implement against it.] has a drop down: New | Star Schema | Data Vault. New is the
+    entity/fact form as it is; [END SUPERSEDED BLOCK] Star Schema and Data Vault each open that method''s
+    wizard, so the drop down is the picker and the wizard starts at the method''s own questions. Each opens
+    in the + Model detail panel, its steps inside the panel. The wizard is one way: once generated, the
+    entities, facts and relationships are modified through the primitives (the entity/fact form and Registered
+    Tables); the wizard never regenerates or edits what it made. (Amended 2026-11-03, The drop down''s names:)
+    Maintainer 2026-11-03: the + Model drop down reads Entity/Fact | Star Schema | Data Vault. Entity/Fact
+    opens the entity/fact form as it is.'
   scenario: 'Given an admin on the Tables page
 
     When they open the modeling wizard and pick Data Vault
