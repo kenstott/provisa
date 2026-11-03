@@ -58,8 +58,7 @@ def no_vault(monkeypatch):
     monkeypatch.setattr(secrets_store, "bound_to_request_org", _unbound)
 
 
-@pytest.fixture
-async def template(control_plane, monkeypatch):
+async def _bound(control_plane, monkeypatch):
     """The template org's model store, bound as its runtime build binds it."""
     # The namespace of the demo's data in the node's stores, as template_seed gives it.
     monkeypatch.setenv("PROFILING_PG_NS", "")
@@ -72,6 +71,40 @@ async def template(control_plane, monkeypatch):
     token = set_current_org(ORG)
     yield plane
     reset_current_org(token)
+
+
+@pytest.fixture
+async def template(control_plane, monkeypatch):
+    async for plane in _bound(control_plane, monkeypatch):
+        yield plane
+
+
+@pytest.fixture(scope="module")
+def small_lock_table():
+    """A Postgres of its own whose lock table is small (max_locks_per_transaction 16, about 2,000
+    slots with the default max_connections), so a backlog larger than it is quick to build."""
+    from tests.embedded_pg import start_local_postgres
+    from tests.pg_control_plane import build_template
+
+    pg = start_local_postgres(settings={"max_locks_per_transaction": "16"})
+    yield pg, build_template(pg)
+    pg.stop()
+
+
+@pytest.fixture
+def small_lock_plane(small_lock_table):
+    from tests.pg_control_plane import clone
+
+    pg, built = small_lock_table
+    plane = clone(pg, built)
+    yield plane
+    plane.close()
+
+
+@pytest.fixture
+async def small_lock_template(small_lock_plane, monkeypatch):
+    async for plane in _bound(small_lock_plane, monkeypatch):
+        yield plane
 
 
 def _bundle(tmp_path: Path) -> Path:
@@ -183,6 +216,85 @@ async def test_a_rebuild_leaves_no_superseded_result_relation_and_a_sandbox_copi
     assert await _served(template) == _CARRIED_RUNS
 
     sandbox = "sbx_profile_copy"
+    async with template.acquire() as conn, conn.transaction():
+        await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{sandbox}" CASCADE'))
+        await conn.execute_core(text(f'CREATE SCHEMA "{sandbox}"'))
+        copied = await copy_profile_results(conn, org_schema(ORG), sandbox)
+    try:
+        assert copied == current
+        assert await _result_relations(template, sandbox) == current
+    finally:
+        async with template.acquire() as conn:
+            await conn.execute_core(text(f'DROP SCHEMA "{sandbox}" CASCADE'))
+
+
+def _lock_slots(control_plane) -> int:
+    """The lock table's documented size: max_locks_per_transaction x (max_connections +
+    max_prepared_transactions)."""
+    import psycopg
+
+    with psycopg.connect(control_plane.pg.dsn(control_plane.name)) as conn:
+        locks, connections, prepared = (
+            int(conn.execute(f"SHOW {name}").fetchone()[0])  # type: ignore[index]
+            for name in (
+                "max_locks_per_transaction",
+                "max_connections",
+                "max_prepared_transactions",
+            )
+        )
+    return locks * (connections + prepared)
+
+
+def _plant_superseded(control_plane, like: str, count: int) -> list[str]:
+    """``count`` result relations of ids no table holds, as the rebuilds of a template left them:
+    each created in its own transaction, as each rebuild created its own."""
+    import psycopg
+
+    schema = org_schema(ORG)
+    names = [f"customers_{900000 + i}_profile_runs" for i in range(count)]
+    with psycopg.connect(control_plane.pg.dsn(control_plane.name), autocommit=True) as conn:
+        for name in names:
+            conn.execute(f'CREATE TABLE "{schema}"."{name}" (LIKE "{schema}"."{like}")')
+    return names
+
+
+async def test_a_rebuild_drops_a_backlog_larger_than_the_lock_table(
+    small_lock_template, small_lock_plane, tmp_path
+):
+    """On cloud the control database held 36,869 relations, most of them superseded result
+    relations, and the rebuild dropped them all in its one transaction: every DROP holds its
+    locks to the commit, and the API's start failed with 'out of shared memory'. A backlog of
+    more relations than the lock table has slots is dropped, and the rebuild starts."""
+    directory = _bundle(tmp_path)
+    async with small_lock_template.acquire() as conn:
+        await demo_templates.rebuild_template(directory, _seed(directory), conn, None)
+    (current,) = await _current_relations(small_lock_template)
+    _plant_superseded(small_lock_plane, current, _lock_slots(small_lock_plane))
+
+    async with small_lock_template.acquire() as conn:
+        await demo_templates.rebuild_template(directory, _seed(directory), conn, None)
+
+    assert await _result_relations(small_lock_template, org_schema(ORG)) == (
+        await _current_relations(small_lock_template)
+    )
+    assert await _served(small_lock_template) == _CARRIED_RUNS
+
+
+async def test_a_sandbox_copies_no_superseded_result_relation(template, control_plane, tmp_path):
+    """A template's superseded relations were copied into every sandbox cloned from it
+    (env_copy.copy_profile_results), each sandbox a second copy of the backlog. Only the
+    relations its model names are copied."""
+    from sqlalchemy import text
+
+    from provisa.core.env_copy import copy_profile_results
+
+    directory = _bundle(tmp_path)
+    async with template.acquire() as conn:
+        await demo_templates.rebuild_template(directory, _seed(directory), conn, None)
+    current = await _current_relations(template)
+    _plant_superseded(control_plane, current[0], 3)
+
+    sandbox = "sbx_profile_superseded"
     async with template.acquire() as conn, conn.transaction():
         await conn.execute_core(text(f'DROP SCHEMA IF EXISTS "{sandbox}" CASCADE'))
         await conn.execute_core(text(f'CREATE SCHEMA "{sandbox}"'))
