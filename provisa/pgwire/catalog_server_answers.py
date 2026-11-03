@@ -1132,7 +1132,6 @@ REWRITTEN = frozenset(
         "convert",
         "getpgusername",
         "json_each",
-        "json_object",
         "normalize",
         "pg_indexam_has_property",
         "pg_input_error_info",
@@ -1174,8 +1173,20 @@ def _type_display(name: str) -> str:
 _INTEGER_RANGES = {"smallint": 15, "integer": 31, "bigint": 63}
 
 
+def as_written(value: exp.Expr) -> exp.Expr:
+    """A string literal cast to text ('integer'::text) is that literal, as the argument reads it."""
+    while (
+        isinstance(value, exp.Cast)
+        and value.to.sql(dialect="postgres").lower() in ("text", "varchar", "name", "cstring")
+        and isinstance(value.this, (exp.Literal, exp.Cast))
+    ):
+        value = value.this
+    return value
+
+
 def input_failure(value: exp.Expr, type_name: exp.Expr) -> tuple[str, str]:
     """What the type's input function says of a literal it refuses, and its SQLSTATE."""
+    value, type_name = as_written(value), as_written(type_name)
     display = _type_display(type_name.this)
     text = value.name
     bits = _INTEGER_RANGES.get(display)
@@ -1187,6 +1198,7 @@ def input_failure(value: exp.Expr, type_name: exp.Expr) -> tuple[str, str]:
 def input_check(value: exp.Expr, type_name: exp.Expr) -> exp.Expr:
     """For pg_input_is_valid and pg_input_error_info: whether the value reads as the type. The
     type is named in the statement: the check is a cast to it."""
+    value, type_name = as_written(value), as_written(type_name)
     if not (isinstance(type_name, exp.Literal) and type_name.is_string):
         raise NotImplementedError(
             "pg_input_is_valid: a type that is not a literal is not supported; the cast is "

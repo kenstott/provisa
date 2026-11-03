@@ -31,10 +31,11 @@ from dataclasses import dataclass, field
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.core.pg_enum import SourceEnum
 from provisa.pgwire.cast_types import record_text
 from provisa.pgwire.catalog_pg17 import RELATION_CLASS, RELATIONS, TYPES
 from provisa.pgwire.catalog_pin import asked_relations, narrow_kinds
-from provisa.pgwire.catalog_server_answers import input_check, input_failure
+from provisa.pgwire.catalog_server_answers import as_written, input_check, input_failure
 from provisa.pgwire.ext_surfaces import extension_rows, surface_pg_type_rows
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import expand
@@ -116,6 +117,8 @@ class CatalogRequest:
     session: Mapping[str, str] = field(default_factory=dict)
     #: Each listed table's engine row count, by relation oid, for a statement reading reltuples.
     reltuples: Mapping[int, float] = field(default_factory=dict)
+    #: The enums the model's sources declare: types of the catalog as PostgreSQL's are (REQ-2190).
+    enums: tuple[SourceEnum, ...] = ()
 
 
 #: The request of the catalog statement being governed, read by the pipeline's three decisions on
@@ -328,7 +331,23 @@ def _namespace_oid(written: str) -> str:
     )
 
 
+#: The source enums of the statement being addressed (CatalogRequest.enums).
+_ENUMS: contextvars.ContextVar[tuple[SourceEnum, ...]] = contextvars.ContextVar(
+    "provisa_catalog_enums", default=()
+)
+
+
+def _source_enum(written: str) -> SourceEnum | None:
+    """The source's enum a type name names: by its schema, or on the search path (public)."""
+    parts = _parts(written)
+    schema, name = (parts[-2], parts[-1]) if len(parts) > 1 else ("public", parts[-1])
+    return next((e for e in _ENUMS.get() if (e.schema, e.name) == (schema, name)), None)
+
+
 def _type_oid(written: str) -> str:
+    enum = _source_enum(written)
+    if enum is not None:
+        return str(enum.oid)
     name = written.strip().lower().removeprefix("pg_catalog.")
     if name in _TYPE_BY_NAME:
         return str(_TYPE_BY_NAME[name])
@@ -356,9 +375,38 @@ _OID_OF: dict[str, Callable[[str], str]] = {
 
 
 def _oid_sql(reg: str, operand: exp.Expr) -> str:
+    # A name cast to text first ('pg_class'::text) is still that name: regclass(text) reads it.
+    while (
+        isinstance(operand, exp.Cast)
+        and _reg_of(operand.to) in _TEXT_TYPES
+        and isinstance(operand.this, (exp.Literal, exp.Cast))
+    ):
+        operand = operand.this
     if isinstance(operand, exp.Literal) and operand.is_string:
         return _OID_OF[reg](operand.this)
     return f"CAST({operand.sql(dialect='postgres')} AS OID)"
+
+
+#: The output functions of an object identifier type the model resolves: the name of the object,
+#: from meta. Left to the server, each would name the server's own object of that oid.
+_OUTPUTS = {
+    "regclassout": "regclass",
+    "regnamespaceout": "regnamespace",
+    "regroleout": "regrole",
+    "regtypeout": "regtype",
+}
+
+
+def _output_call(name: str, args: list[exp.Expr], rewrite) -> exp.Expr | None:
+    reg = _OUTPUTS.get(name)
+    if reg is None or len(args) != 1:
+        return None
+    (value,) = args
+    if isinstance(value, exp.Cast) and _reg_of(value.to) == reg:
+        oid = _oid_sql(reg, value.this)
+    else:
+        oid = f"CAST({value.transform(rewrite).sql(dialect='postgres')} AS OID)"
+    return _parsed(f"CAST({_name_sql(reg, f'({oid})')} AS CSTRING)")
 
 
 def _quoted(name: str) -> str:
@@ -386,7 +434,14 @@ def _name_sql(reg: str, oid_sql: str) -> str:
             f"WHERE _ro.oid = {oid_sql})"
         )
     else:
-        name = f"format_type({oid_sql}, NULL)"
+        named = " ".join(
+            "WHEN {} THEN '{}'".format(e.oid, e.shown.replace("'", "''")) for e in _ENUMS.get()
+        )
+        name = (
+            f"CASE CAST({oid_sql} AS BIGINT) {named} ELSE format_type({oid_sql}, NULL) END"
+            if named
+            else f"format_type({oid_sql}, NULL)"
+        )
     return f"COALESCE({name}, CAST({oid_sql} AS TEXT))"
 
 
@@ -516,14 +571,27 @@ def _current_setting(args: list[exp.Expr], settings: Mapping[str, str]) -> exp.E
     if not args:
         return exp.null()
     name = args[0]
+    # current_setting(name, missing_ok): a setting no session has is NULL where missing_ok is.
+    missing_ok = len(args) > 1 and _is_true(args[1])
+    unknown = "CAST(NULL AS TEXT)" if missing_ok else "''"
+    while isinstance(name, exp.Cast) and isinstance(name.this, exp.Literal):
+        name = name.this
     if isinstance(name, exp.Literal):
-        return exp.Literal.string(settings.get(name.name.lower(), ""))
+        held = settings.get(name.name.lower())
+        return exp.Literal.string(held) if held is not None else _parsed(unknown)
     if isinstance(name, exp.Null) or (
         isinstance(name, exp.Cast) and isinstance(name.this, exp.Null)
     ):
         return exp.cast(exp.null(), "TEXT")
     cases = " ".join(f"WHEN {_literal(k)} THEN {_literal(v)}" for k, v in sorted(settings.items()))
-    return _parsed(f"CASE LOWER({name.sql(dialect='postgres')}) {cases} ELSE '' END")
+    return _parsed(f"CASE LOWER({name.sql(dialect='postgres')}) {cases} ELSE {unknown} END")
+
+
+def _is_true(value: exp.Expr) -> bool:
+    """Whether ``value`` is the constant true, cast or not."""
+    while isinstance(value, exp.Cast):
+        value = value.this
+    return isinstance(value, exp.Boolean) and bool(value.this)
 
 
 #: When this server's statistics began, which nothing resets: what the two functions of the server's
@@ -644,7 +712,7 @@ def _input_call(name: str, args: list[exp.Expr]) -> exp.Expr | None:
     a cast to the type, which is all the statement needs of its input function (REQ-2171)."""
     if name not in _INPUT_CALLS or len(args) != _INPUT_ARGUMENTS:
         return None
-    value, type_name = args
+    value, type_name = (as_written(a) for a in args)
     if any(isinstance(a.this if isinstance(a, exp.Cast) else a, exp.Null) for a in args):
         return exp.cast(exp.null(), _INPUT_CALLS[name])
     check = input_check(value, type_name)
@@ -681,6 +749,9 @@ def _rewriter(request: CatalogRequest, cte_names: frozenset[str]):
             named_relation = _named_relation_call(name, args)
             if named_relation is not None:
                 return named_relation
+            output = _output_call(name, args, rewrite)
+            if output is not None:
+                return _named(output, node, name)
             input_answer = _input_call(name, args)
             return node if input_answer is None else _named(input_answer, node, name)
         if isinstance(node, exp.Cast):
@@ -736,16 +807,20 @@ def _server_state(tree: exp.Expr, extra: Mapping) -> exp.Expr:
 def address(sql: str, request: CatalogRequest) -> tuple[str, frozenset[str] | None]:
     """``sql``, a client's statement on PostgreSQL's catalog, as a statement on the meta domain, and
     the relations it is about where it says (:mod:`provisa.pgwire.catalog_pin`)."""
-    tree = _parsed(_readable(sql))
-    _coerce_reg_comparisons(tree)
-    _result_regs(tree)
-    routed = tree.transform(_rewriter(request, _cte_names(tree)))
-    asked = asked_relations(routed)
-    narrow_kinds(routed)
-    return (
-        _server_state(expand(routed, request.facts), _surface_rows()).sql(dialect="postgres"),
-        asked,
-    )
+    token = _ENUMS.set(request.enums)
+    try:
+        tree = _parsed(_readable(sql))
+        _coerce_reg_comparisons(tree)
+        _result_regs(tree)
+        routed = tree.transform(_rewriter(request, _cte_names(tree)))
+        asked = asked_relations(routed)
+        narrow_kinds(routed)
+        return (
+            _server_state(expand(routed, request.facts), _surface_rows()).sql(dialect="postgres"),
+            asked,
+        )
+    finally:
+        _ENUMS.reset(token)
 
 
 def addressed_statement(sql: str, request: CatalogRequest) -> str:

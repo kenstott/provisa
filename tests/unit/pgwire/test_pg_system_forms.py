@@ -52,9 +52,19 @@ def _on_the_engine(sql: str) -> str:
     return expand(sqlglot.parse_one(sql, read="postgres"), CatalogFacts("analyst")).sql("postgres")
 
 
+#: What a decision refuses by name, recorded as PostgreSQL 17 answered it (REQ-2167, amended
+#: 2026-11-03, Privileges, visibility and notifications: pgwire has no notification channel).
+_REFUSED_BY_DECISION = ("pg_notify",)
+
+
 @pytest.mark.parametrize("sql", list(RECORDED))
 def test_duckdb_answers_as_postgresql_17_answered(connection: Any, sql: str):
     want = RECORDED[sql]
+    refused = [name for name in _REFUSED_BY_DECISION if f'"{name}"(' in sql]
+    if refused:
+        with pytest.raises(FunctionRefused, match=rf"{refused[0]}\(\) has no form on duckdb"):
+            transpile(_on_the_engine(sql), "duckdb")
+        return
     try:
         rows = connection.execute(transpile(_on_the_engine(sql), "duckdb")).fetchall()
     except PostgresError as raised:  # settled by the statement's shape, before any engine
@@ -67,6 +77,12 @@ def test_duckdb_answers_as_postgresql_17_answered(connection: Any, sql: str):
         return
     assert want[0] == "ok", rows
     assert [row[0] for row in rows] == want[2]
+
+
+@pytest.mark.parametrize("dialect", (*_ENGINES, "postgres"))
+def test_pg_notify_is_refused_by_name_on_every_engine(dialect: str):
+    with pytest.raises(FunctionRefused, match=f"pg_notify\\(\\) has no form on {dialect}"):
+        transpile("SELECT pg_catalog.pg_notify('conformance_probe', 'payload') AS v", dialect)
 
 
 @pytest.mark.parametrize("sql", [s for s, want in RECORDED.items() if want[0] == "ok"])

@@ -39,8 +39,6 @@ _CLICKHOUSE = frozenset({"clickhouse"})
 _RECOVERY = ("55000", "recovery is not in progress")
 _SLOT_ARITIES = range(3, 9)  # slot, upto_lsn, upto_nchanges, then its VARIADIC options
 _LOGICAL = ("55000", 'logical decoding requires "wal_level" >= "logical"')
-_NAME_BYTES = 64
-_PAYLOAD_BYTES = 8000
 
 
 def _quoted(text: str) -> str:
@@ -141,29 +139,11 @@ _REFUSALS: dict[str, tuple[tuple[int, ...], tuple[str, str]]] = {
 }
 #: What a statement may call on an engine though it would read a server (metadata_functions).
 SERVER_STATE = frozenset(_REFUSALS) | {
+    # Refused by name on every engine (pg_forms_enum.NOT_SUPPORTED): the engine's refusal.
     "pg_notify",
     "pg_column_compression",
     "pg_get_publication_tables",
 }
-
-
-def _notify(engine: _Engine) -> str:
-    """Nobody is listening: the checks of Async_Notify, then void. NULL is the empty text here."""
-    channel, payload = "coalesce(channel, '')", engine.bytes.format("payload")
-    return _checked(
-        engine,
-        (
-            (f"{channel} = ''", "22023", "channel name cannot be empty"),
-            (
-                f"{engine.bytes.format(channel)} >= {_NAME_BYTES}",
-                "22023",
-                "channel name too long",
-            ),
-            (f"{payload} >= {_PAYLOAD_BYTES}", "22023", "payload string too long"),
-        ),
-        "''",
-        engine.text,
-    )
 
 
 #: Each said type no collation applies to, as the statement spells it -> as format_type does.
@@ -378,7 +358,6 @@ def _rows() -> tuple[tuple[str, tuple[str, ...], dict[frozenset[str], str]], ...
             ("value",),
             _per_engine(lambda e: f"CAST(NULL AS {e.bigint})"),
         ),
-        ("pg_notify", ("channel", "payload"), _per_engine(_notify)),
         ("regexp_replace", _REGEXP_PARAMS, _per_engine(_regexp_replace_nth)),
         ("regexp_replace_at", _REGEXP_PARAMS, _per_engine(_regexp_replace_nth)),
     )

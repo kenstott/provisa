@@ -38,7 +38,7 @@ from provisa.pgwire.catalog_data import (
     typeinfo,
 )
 from provisa.pgwire.catalog_pg17 import PROC_NAMES, TYPES
-from provisa.pgwire.constant_arguments import is_constant_sql
+from provisa.pgwire.constant_arguments import evaluable, is_constant_sql
 from provisa.pgwire.session_zone import SessionZone
 from provisa.pgwire.catalog_server_answers import ANSWERED as _SERVER_ANSWERED
 from provisa.pgwire.catalog_server_answers import REWRITTEN
@@ -526,6 +526,7 @@ def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
         raise NotImplementedError(
             f"{match['name']}: an argument that is not a constant expression is not supported"
         )
+    arg = evaluable(arg)
     seconds = {
         "pg_sleep": f"CAST(({arg}) AS DOUBLE PRECISION)",
         "pg_sleep_for": f"EXTRACT(EPOCH FROM ({arg}))",
@@ -565,17 +566,51 @@ class CatalogSession:
     system_user: str | None = None
     time_zone: str | None = None
     zone: SessionZone | None = None
+    #: The org whose advisory locks pg_locks lists (advisory_locks.LOCKS keys them by org).
+    org_id: str | None = None
+    #: What the connection's own set_config(name, value, false) set (the connection's dict, which
+    #: a set_config here writes): current_setting reads it back. Never a catalog view's setting.
+    client_settings: dict[str, str] | None = None
+    #: The cursors pg_cursors lists of the connection: its DECLAREd ones and the open portal.
+    cursors: tuple[dict, ...] = ()
 
 
 def _session_settings(sql: str, session: CatalogSession | None) -> Mapping[str, str]:
-    """The settings as this session has them. A statement that reads TimeZone in a session whose
-    zone cannot be told is refused; any other is answered."""
+    """The settings as this session has them, what it set itself over the server's. A statement
+    that reads TimeZone in a session whose zone cannot be told is refused; any other is
+    answered."""
     zone = None if session is None else session.zone
+    own = (session.client_settings if session is not None else None) or {}
     if zone is None:
-        return _KNOWN_SETTINGS
+        return {**_KNOWN_SETTINGS, **own}
     if _READS_ZONE_RE.search(sql):
-        return {**_KNOWN_SETTINGS, "timezone": zone.named()}
-    return {**_KNOWN_SETTINGS, "timezone": zone.shown() or _KNOWN_SETTINGS["timezone"]}
+        return {**_KNOWN_SETTINGS, **own, "timezone": zone.named()}
+    return {
+        **_KNOWN_SETTINGS,
+        **own,
+        "timezone": zone.shown() or _KNOWN_SETTINGS["timezone"],
+    }
+
+
+#: A set_config whose name, value and is_local are constants.
+_SET_CONFIG_CALL_RE = re.compile(
+    r"set_config\"?\s*\(\s*'(?P<name>(?:[^']|'')*)'(?:::\w+)?\s*,\s*"
+    r"'(?P<value>(?:[^']|'')*)'(?:::\w+)?\s*,\s*(?P<local>\w+)(?:::\w+)?\s*\)",
+    re.IGNORECASE,
+)
+
+
+def _keep_set_config(sql: str, session: CatalogSession | None) -> None:
+    """A set_config(name, value, false) is the session's from then on, as PostgreSQL keeps it;
+    one local to a transaction ends with it, and TimeZone is the session zone's to keep."""
+    if session is None or session.client_settings is None:
+        return
+    m = _SET_CONFIG_CALL_RE.search(sql)
+    if m is None or m["local"].lower() not in ("false", "f", "off"):
+        return
+    name = m["name"].replace("''", "'").lower()
+    if name != "timezone":
+        session.client_settings[name] = m["value"].replace("''", "'")
 
 
 def _list_session(cur, role_id: str, session: CatalogSession, sql: str) -> None:
@@ -608,6 +643,8 @@ def _catalog_request(
     from provisa.pgwire.catalog_data import served_database_name
     from provisa.transpiler.metadata_facts import catalog_facts
 
+    held = getattr(state, "pg_source_enums", None)
+    enums = tuple(held.values()) if isinstance(held, dict) else ()
     connection: dict[str, str] = {}
     if session is not None:
         connection = {
@@ -626,9 +663,52 @@ def _catalog_request(
         else catalog_facts(role_id, {}),
         settings=_session_settings(sql, session),
         pid=session.pid if session is not None else 0,
-        session={**connection, "query": sql} if "pg_stat_activity" in sql.lower() else connection,
+        session={
+            **connection,
+            **({"query": sql} if "pg_stat_activity" in sql.lower() else {}),
+            **({"locks": _advisory_locks(session)} if "pg_locks" in sql.lower() else {}),
+            **({"enums": _enums_told(enums)} if enums else {}),
+            **({"cursors": _cursors_told(session)} if "pg_cursor" in sql.lower() else {}),
+        },
+        enums=enums,
         reltuples=row_counts(role_id, state) if "reltuples" in sql.lower() else {},
     )
+
+
+def _cursors_told(session: CatalogSession | None) -> str:
+    """The connection's cursors, as pg_cursors' view reads them (JSON)."""
+    import json
+
+    return json.dumps(list(session.cursors) if session is not None else [])
+
+
+def _enums_told(enums: tuple) -> str:
+    """The sources' enums, as pg_type's and pg_enum's views read them (JSON)."""
+    import json
+
+    return json.dumps(
+        [
+            {
+                "oid": e.oid,
+                "array_oid": e.array_oid,
+                "schema": e.schema,
+                "name": e.name,
+                "labels": list(e.labels),
+            }
+            for e in enums
+        ]
+    )
+
+
+def _advisory_locks(session: CatalogSession | None) -> str:
+    """The advisory locks of the asking session's org, as pg_locks' view reads them (JSON)."""
+    import json
+
+    from provisa.pgwire import advisory_locks
+
+    if session is None:
+        return "[]"
+    return json.dumps(advisory_locks.LOCKS.held(session.org_id))
 
 
 def _served_type(oid: int) -> str:
@@ -774,6 +854,7 @@ def answer(sql: str, role_id: str, state, session: CatalogSession | None = None,
     if "set_config" in stripped.lower() and "current_setting" not in stripped.lower():
         from provisa.executor.result import QueryResult
 
+        _keep_set_config(stripped, session)
         return QueryResult(
             rows=[(_set_config_value(stripped, settings),)],
             column_names=["set_config"],

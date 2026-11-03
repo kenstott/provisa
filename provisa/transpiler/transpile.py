@@ -1133,7 +1133,13 @@ def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
                 exp.Literal.string(node.to.sql(dialect="postgres")),
             ],
         )
-        cast = exp.Cast(this=node.this.copy(), to=node.to.copy())
+        operand = node.this.copy()
+        if not any(operand.find_all(exp.Column, exp.Placeholder, exp.Parameter)):
+            # A constant's cast is folded when the statement is planned, whatever the CASE
+            # decides: PostgreSQL would refuse the value it was asked to test. Its scalar
+            # subquery is not folded.
+            operand = exp.Subquery(this=exp.select(operand))
+        cast = exp.Cast(this=operand, to=node.to.copy())
         return exp.Case(ifs=[exp.If(this=valid, true=cast)])
 
     return tree.transform(_lowered)
