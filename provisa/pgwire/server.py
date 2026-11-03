@@ -2817,7 +2817,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     def send_ready_for_query(self, ctx: Optional[BVContext]) -> None:
         # ReadyForQuery ends the cycle: the Sync of an extended-protocol cycle, or a Query's end.
         # So does the cycle's error: a Query sends no Sync, and one whose statement failed left
-        # the next extended cycle's every message discarded, unanswered.
+        # the next extended cycle's every message discarded, unanswered. A failed transaction is
+        # not cleared with it: ReadyForQuery reports 'E' until ROLLBACK (BVContext.transaction_failed).
         if ctx is not None:
             ctx.sync()
         try:

@@ -1227,7 +1227,11 @@ class BVContext:
         # Execute to continue from (single use); portal name -> the one its Bind took.
         self.statement_prepared = {}
         self.portal_prepared = {}
+        # has_error: the cycle failed, and its later messages are discarded up to its Sync (a
+        # Query's ends at its ReadyForQuery). transaction_failed: a statement failed in the open
+        # transaction, reported 'E' by ReadyForQuery until the transaction ends.
         self.has_error = False
+        self.transaction_failed = False
         self.authenticated = False
         self.salt: bytes | None = None
 
@@ -1240,13 +1244,16 @@ class BVContext:
 
     def mark_error(self):
         self.has_error = True
+        if self.session.in_transaction():
+            self.transaction_failed = True
 
     def transaction_status(self):
         if self.session.in_transaction():
-            if self.has_error:
+            if self.has_error or self.transaction_failed:
                 return TransactionStatus.IN_FAILED_TRANSACTION
             else:
                 return TransactionStatus.IN_TRANSACTION
+        self.transaction_failed = False
         return TransactionStatus.IDLE
 
     def execute_sql(
