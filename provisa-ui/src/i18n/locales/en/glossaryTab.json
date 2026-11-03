@@ -16,6 +16,7 @@
     "save": "Save",
     "updated": "Term updated.",
     "delete": "Delete",
+    "deleteTitle": "Delete term",
     "deleteConfirm": "Delete term {{name}}?",
     "deleted": "Term {{name}} deleted.",
     "deleteDisabledHint": "This term has refs or relationships. Retire it to take it out of service, or move its refs and remove its relationships to delete it.",

@@ -278,4 +278,46 @@ describe("PanelDelete beneath its row (REQ-2198)", () => {
     expect(screen.getByTestId("description")).not.toBeDisabled();
     expect(screen.getByTestId("row-orders")).not.toHaveAttribute("data-deleting");
   });
+
+  it("as a text button among worded actions: its word, held while it cannot delete, a spinner before the word mid-delete", async () => {
+    const user = userEvent.setup();
+    const del = slowDelete();
+    function Toolbar({ blocked }: { blocked: boolean }) {
+      return (
+        <PanelDelete
+          itemKey="orders"
+          title="Delete term"
+          consequence="Delete term orders?"
+          ariaLabel="Delete"
+          text="Delete"
+          disabled={blocked}
+          tip={blocked ? "It has refs." : null}
+          testId="text-delete"
+          onDelete={del.run}
+        />
+      );
+    }
+    const { rerender } = render(<Toolbar blocked />);
+    expect(screen.getByRole("button", { name: "Delete" })).toHaveTextContent("Delete");
+    expect(screen.getByTestId("text-delete")).toBeDisabled();
+
+    rerender(<Toolbar blocked={false} />);
+    const control = screen.getByTestId("text-delete");
+    expect(control).toBeEnabled();
+    expect(control).toHaveTextContent("Delete");
+    await user.click(control);
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(del.run).toHaveBeenCalledTimes(1));
+    expect(control).toBeDisabled();
+    expect(control).toHaveAttribute("aria-busy", "true");
+    expect(control).toHaveTextContent("Delete");
+    expect(control.querySelector(".mantine-Loader-root")).not.toBeNull();
+
+    await act(async () => del.settle().reject(new Error("still referenced")));
+    expect(await screen.findByTestId("text-delete-problem")).toHaveTextContent(
+      "Not deleted: still referenced",
+    );
+    expect(control).toBeEnabled();
+  });
 });

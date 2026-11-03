@@ -16,6 +16,7 @@
     "save": "保存",
     "updated": "术语已更新。",
     "delete": "删除",
+    "deleteTitle": "删除术语",
     "deleteConfirm": "删除术语 {{name}}?",
     "deleted": "术语 {{name}} 已删除。",
     "deleteDisabledHint": "此术语存在引用或关系。可将其停用以使其退出使用，或迁移其引用并移除其关系后再删除。",

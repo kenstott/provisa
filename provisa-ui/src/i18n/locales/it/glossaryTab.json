@@ -16,6 +16,7 @@
     "save": "Salva",
     "updated": "Termine aggiornato.",
     "delete": "Elimina",
+    "deleteTitle": "Elimina termine",
     "deleteConfirm": "Eliminare il termine {{name}}?",
     "deleted": "Termine {{name}} eliminato.",
     "deleteDisabledHint": "Questo termine ha riferimenti o relazioni. Ritiralo per toglierlo dal servizio, oppure sposta i suoi riferimenti e rimuovi le sue relazioni per eliminarlo.",

@@ -675,16 +675,21 @@ describe("GlossaryTab", () => {
     await screen.findByTestId("glossary-edge-in-1-RELATED_TO");
     expect(screen.getByTestId("glossary-delete-btn")).toBeDisabled();
 
-    // Margin has neither refs nor relationships: delete is enabled, and a server 400 lands in
-    // the error alert.
+    // Margin has neither refs nor relationships: delete is enabled, and a server 400 is said in
+    // the detail, which stays open and unlocked (REQ-2198).
     fireEvent.click(screen.getByTestId("glossary-item-3"));
     await waitFor(() => expect(screen.getByTestId("glossary-delete-btn")).toBeEnabled());
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     mockDelete.mockRejectedValue(new Error("term 3 still has refs"));
 
     fireEvent.click(screen.getByTestId("glossary-delete-btn"));
+    fireEvent.click(await screen.findByTestId("glossary-delete-confirm-confirm"));
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith(3));
-    expect(await screen.findByTestId("glossary-error")).toHaveTextContent("term 3 still has refs");
+    expect(await screen.findByTestId("glossary-delete-btn-problem")).toHaveTextContent(
+      t("common.deleteFailed", { reason: "term 3 still has refs" }),
+    );
+    expect(screen.getByTestId("panel-delete-lock")).not.toBeDisabled();
+    expect(screen.getByTestId("glossary-delete-btn")).toBeEnabled();
+    expect(screen.getByTestId("glossary-item-3")).not.toHaveAttribute("data-deleting");
   });
 
   it("sets export exclusion in the form, sent on Save", async () => {

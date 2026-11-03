@@ -16,6 +16,7 @@
     "save": "Opslaan",
     "updated": "Term bijgewerkt.",
     "delete": "Verwijderen",
+    "deleteTitle": "Term verwijderen",
     "deleteConfirm": "Term {{name}} verwijderen?",
     "deleted": "Term {{name}} verwijderd.",
     "deleteDisabledHint": "Deze term heeft verwijzingen of relaties. Stel hem buiten gebruik om hem uit dienst te nemen, of verplaats zijn verwijzingen en verwijder zijn relaties om hem te verwijderen.",

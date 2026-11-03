@@ -16,6 +16,7 @@
     "save": "Enregistrer",
     "updated": "Terme mis à jour.",
     "delete": "Supprimer",
+    "deleteTitle": "Supprimer le terme",
     "deleteConfirm": "Supprimer le terme {{name}} ?",
     "deleted": "Terme {{name}} supprimé.",
     "deleteDisabledHint": "Ce terme a des références ou des relations. Retirez-le pour le mettre hors service, ou déplacez ses références et supprimez ses relations pour le supprimer.",

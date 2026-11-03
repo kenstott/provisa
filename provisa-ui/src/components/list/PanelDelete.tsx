@@ -16,9 +16,17 @@
 // panel, the list already read again without the item; one that failed unlocks the panel and
 // says why, where a refused save says it (under the panel's head).
 
-import { useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
-import { ActionIcon, Loader } from "@mantine/core";
+import { ActionIcon, Button, Loader } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -51,6 +59,16 @@ export interface PanelDeleteProps {
   /** The confirmation's own word and test id, where "Confirm" and the default do not suit. */
   confirmLabel?: string;
   confirmTestId?: string;
+  /**
+   * The control's word, where it stands among the detail's other worded actions (a toolbar of
+   * Edit, Retire, ...) rather than as an icon in the panel's head: it is then a text button, its
+   * icon (or spinner) before the word.
+   */
+  text?: string;
+  /** Where the item cannot be deleted now (it has dependents); `tip` then says why. */
+  disabled?: boolean;
+  /** The control's tip, where it is not its accessible name; `null` for none. */
+  tip?: string | null;
 }
 
 const reasonOf = (error: unknown) =>
@@ -66,6 +84,9 @@ export function PanelDelete({
   icon = <Trash2 size={14} />,
   confirmLabel,
   confirmTestId,
+  text,
+  disabled = false,
+  tip,
 }: PanelDeleteProps) {
   const { t } = useTranslation();
   const pane = useContext(PanelDeletingContext);
@@ -140,29 +161,44 @@ export function PanelDelete({
         confirmLabel={confirmLabel}
         testId={confirmTestId ?? (testId ? `${testId}-confirm-dialog` : undefined)}
       >
-        {(open) => (
-          <Tip text={ariaLabel} named>
-            <ActionIcon
-              // Borderless, as the panel head's one style (PanelHeadStyle) draws it, and the same
-              // beneath a row, where that style is not applied.
-              variant="subtle"
-              color="red"
-              aria-label={ariaLabel}
-              data-testid={testId}
-              disabled={busy}
-              data-deleting={busy || undefined}
-              aria-busy={busy || undefined}
-              // REQ-2115: what Polly presses here changes something; she asks the user first.
-              data-changes="true"
-              onClick={(e) => {
-                e.stopPropagation();
-                open();
-              }}
-            >
-              {busy ? <Loader size={14} color="currentColor" /> : icon}
-            </ActionIcon>
-          </Tip>
-        )}
+        {(open) => {
+          const shared = {
+            color: "red",
+            "aria-label": ariaLabel,
+            "data-testid": testId,
+            disabled: busy || disabled,
+            "data-deleting": busy || undefined,
+            "aria-busy": busy || undefined,
+            // REQ-2115: what Polly presses here changes something; she asks the user first.
+            "data-changes": "true",
+            onClick: (e: MouseEvent) => {
+              e.stopPropagation();
+              open();
+            },
+          } as const;
+          const spinner = <Loader size={14} color="currentColor" />;
+          return text !== undefined ? (
+            <Tip text={tip === undefined ? ariaLabel : tip} named={tip === undefined}>
+              {/* A disabled button takes no pointer: the tip is held by its wrapper. */}
+              <span>
+                <Button variant="light" leftSection={busy ? spinner : icon} {...shared}>
+                  {text}
+                </Button>
+              </span>
+            </Tip>
+          ) : (
+            <Tip text={tip === undefined ? ariaLabel : tip} named={tip === undefined}>
+              <ActionIcon
+                // Borderless, as the panel head's one style (PanelHeadStyle) draws it, and the
+                // same beneath a row, where that style is not applied.
+                variant="subtle"
+                {...shared}
+              >
+                {busy ? spinner : icon}
+              </ActionIcon>
+            </Tip>
+          );
+        }}
       </ConfirmDialog>
       {said !== null && (notice ? createPortal(said, notice) : notice === undefined ? said : null)}
     </>
