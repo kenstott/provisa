@@ -506,30 +506,34 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
             async with rt.model_db.acquire() as conn:
                 rt.user_attributes = await record_visitor_attributes(conn, person, demo.directory)
     async with _stage(org_id, demo.name, "its record, environments and ready mark"):
-        ensure_repo(org_id)
-        async with rt.model_db.acquire() as conn:
-            await write_through(
-                conn,
-                _admin_pool(),
-                org_id,
-                PROD,
-                org_schema(org_id),
-                "opened from its demo",
-                person,
-            )
+        async with _stage(org_id, demo.name, "its record"):
+            ensure_repo(org_id)
+            async with rt.model_db.acquire() as conn:
+                await write_through(
+                    conn,
+                    _admin_pool(),
+                    org_id,
+                    PROD,
+                    org_schema(org_id),
+                    "opened from its demo",
+                    person,
+                )
         # REQ-2053: the template's environments (a test environment of fakes, say), each created from
         # the sandbox's prod after its person's roles are granted, so each carries them.
         from provisa.api.demo_templates import create_environments, template_environments
 
         wanted = await template_environments(demo.template_org)
-        await create_environments(org_id, wanted, person)
+        for env in wanted:
+            async with _stage(org_id, demo.name, f"its environment {env['name']}"):
+                await create_environments(org_id, [env], person)
         # REQ-1942: a Test (synthetic) one is given the template's generated rows; nothing is generated
         # at a visitor's request.
         from provisa.api import demo_synthetic
 
-        await demo_synthetic.copy_to_sandbox(
-            demo.template_org, org_id, demo_synthetic.synthetic_envs(wanted)
-        )
+        async with _stage(org_id, demo.name, "its environments' rows"):
+            await demo_synthetic.copy_to_sandbox(
+                demo.template_org, org_id, demo_synthetic.synthetic_envs(wanted)
+            )
         await _refresh_root_registry_view()
         async with _admin_pool().acquire() as conn:
             await conn.execute_core(
