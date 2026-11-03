@@ -320,6 +320,12 @@ class _Answers:
         row = value or "CAST(_r AS TEXT)"
         self.body(name, params, f"UNNEST(ARRAY(SELECT {row} FROM ({select}) _r))")
 
+    def one_row(self, name: str, params: str, select: str) -> None:
+        """A function returning one record, the row of ``select``: as a value, that row's record,
+        and NULL where ``select`` has none, as PostgreSQL answers of an object it does not have."""
+        self.table.setdefault(name, []).append((params, select))
+        self.body(name, params, f"(SELECT CAST(_r AS TEXT) FROM ({select}) _r LIMIT 1)")
+
     def values(self, name: str, sql_type: str) -> None:
         """A set-returning function of one column, with no rows."""
         self.body(name, "", f"UNNEST(CAST(ARRAY[] AS {sql_type}[]))", sql_type)
@@ -1158,8 +1164,8 @@ def _addresses(a: _Answers) -> None:
         f"(SELECT _i.description FROM ({_IDENTIFIED}) _i)",
     )
     identified = f"SELECT _i.type, _i.schema, _i.name, _i.identity FROM ({_IDENTIFIED}) _i"
-    a.selected("pg_identify_object", _OBJECT_PARAMS, identified)
-    a.selected(
+    a.one_row("pg_identify_object", _OBJECT_PARAMS, identified)
+    a.one_row(
         "pg_identify_object_as_address",
         _OBJECT_PARAMS,
         "SELECT _i.type, CASE _i.type WHEN 'type' THEN ARRAY[SUBSTR(_i.description, 6)] "
@@ -1405,11 +1411,12 @@ def _catalog_objects(a: _Answers) -> None:
         "INTEGER",
         f"CASE WHEN coalesce({is_table}, false) THEN 28 ELSE 0 END",
     )
+    # A system column (a negative attnum) is never updatable.
     a.strict(
         "pg_column_is_updatable",
-        "rel:bigint, att, cascaded",
+        "rel:bigint, att:bigint, cascaded",
         "BOOLEAN",
-        f"coalesce({is_table}, false)",
+        f"att > 0 AND coalesce({is_table}, false)",
     )
     a.strict("pg_filenode_relation", "tablespace, filenode", "OID", "CAST(NULL AS OID)")
     a.strict("pg_relation_filenode", "rel", "BIGINT", "CAST(NULL AS BIGINT)")

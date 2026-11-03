@@ -34,7 +34,7 @@ import sqlglot.expressions as exp
 from provisa.pgwire.cast_types import record_text
 from provisa.pgwire.catalog_pg17 import RELATION_CLASS, RELATIONS, TYPES
 from provisa.pgwire.catalog_pin import asked_relations, narrow_kinds
-from provisa.pgwire.catalog_server_answers import input_check, input_failure
+from provisa.pgwire.catalog_server_answers import as_written, input_check, input_failure
 from provisa.pgwire.ext_surfaces import extension_rows, surface_pg_type_rows
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import expand
@@ -686,7 +686,7 @@ def _input_call(name: str, args: list[exp.Expr]) -> exp.Expr | None:
     a cast to the type, which is all the statement needs of its input function (REQ-2171)."""
     if name not in _INPUT_CALLS or len(args) != _INPUT_ARGUMENTS:
         return None
-    value, type_name = args
+    value, type_name = (as_written(a) for a in args)
     if any(isinstance(a.this if isinstance(a, exp.Cast) else a, exp.Null) for a in args):
         return exp.cast(exp.null(), _INPUT_CALLS[name])
     check = input_check(value, type_name)

@@ -454,3 +454,46 @@ def test_acldefault_of_an_oid_no_role_has_writes_the_number():
         "=Tc/99999",
         "99999=CTc/99999",
     ]
+
+
+@pytest.mark.parametrize(
+    "sql,expected",
+    [
+        ('SELECT pg_catalog."pg_tablespace_location"(0::oid) AS v', ""),
+        ("SELECT pg_catalog.pg_tablespace_location(1663) AS v", ""),
+        ('SELECT pg_catalog."pg_identify_object"(NULL::oid, NULL::oid, NULL::integer) AS v', None),
+        (
+            "SELECT pg_catalog.\"pg_identify_object\"('pg_catalog.pg_class'::regclass::oid, "
+            "'pg_catalog.pg_class'::regclass::oid, 0::integer) AS v",
+            "(table,pg_catalog,pg_class,pg_catalog.pg_class)",
+        ),
+        (
+            'SELECT pg_catalog."pg_identify_object_as_address"(NULL::oid, NULL::oid, '
+            "NULL::integer) AS v",
+            None,
+        ),
+        (
+            "SELECT pg_catalog.\"pg_column_is_updatable\"('pg_catalog.pg_type'::regclass, "
+            "(-7)::smallint, false::boolean) AS v",
+            False,
+        ),
+        (
+            "SELECT pg_catalog.\"pg_column_is_updatable\"('pg_catalog.pg_type'::regclass, "
+            "1::smallint, false::boolean) AS v",
+            True,
+        ),
+        ("SELECT pg_catalog.\"pg_input_is_valid\"('42'::text, 'integer'::text) AS v", True),
+        (
+            "SELECT pg_catalog.\"pg_input_error_info\"('x'::text, 'integer'::text) AS v",
+            '("invalid input syntax for type integer: ""x""",,,22P02)',
+        ),
+        ("SELECT pg_catalog.pg_input_error_info('42', 'integer') AS v", "(,,,)"),
+    ],
+)
+def test_a_catalog_function_answers_as_postgresql_17(sql, expected):
+    assert _value(sql) == expected
+
+
+def test_a_tablespace_no_catalog_lists_has_no_location():
+    with pytest.raises(Exception, match='could not stat file "pg_tblspc/99999"'):
+        _value("SELECT pg_catalog.pg_tablespace_location(99999) AS v")

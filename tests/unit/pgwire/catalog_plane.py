@@ -35,7 +35,7 @@ from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import MetadataFunctionRefused
 from provisa.security.rights import Capability, has_capability
 from provisa.transpiler.metadata_settings import set_statement, statement_settings
-from provisa.transpiler.transpile import transpile_to_duckdb
+from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 from provisa.transpiler.metadata_views import (
     CATALOG_VIEW_NAMES,
     NEUTRAL_VIEW_NAMES,
@@ -273,10 +273,11 @@ class Plane:
         )
 
     def _read_on_postgres(self, sql: str, addressed: str) -> QueryResult:
+        written = transpile(addressed, "postgres")  # as the PostgreSQL engine is given it
         with self.engine.begin() as conn:
             conn.connection.driver_connection.adapters.register_loader("json", TextLoader)
             try:
-                result = conn.exec_driver_sql(addressed.replace("%", "%%"))
+                result = conn.exec_driver_sql(written.replace("%", "%%"))
             except Exception as exc:
                 answered = postgres_error(exc)
                 if answered is not None:

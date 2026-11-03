@@ -470,7 +470,6 @@ _NOTHING_KEPT: tuple[tuple[str, tuple[int, ...], str], ...] = (
     ("pg_get_viewdef", (1, 2), "TEXT"),
     ("pg_index_column_has_property", (3,), "BOOLEAN"),
     ("pg_index_has_property", (2,), "BOOLEAN"),
-    ("pg_tablespace_location", (1,), "TEXT"),
     ("shobj_description", (2,), "TEXT"),
     # Provisa reports no storage: a size is unknown, never a made-up 0.
     ("pg_relation_size", (1, 2), "BIGINT"),
@@ -581,6 +580,19 @@ _FORMS: tuple[Form, ...] = (
         "pg_is_other_temp_schema", "schema_oid", "CASE WHEN schema_oid IS NOT NULL THEN FALSE END"
     ),
     _form("pg_has_role", _unused_params(3), _HAS_ROLE),
+    # Every tablespace a catalog lists, and 0 (the database's), is in the data directory: ''.
+    _form(
+        "pg_tablespace_location",
+        "tablespace_oid",
+        "CASE WHEN tablespace_oid IS NULL THEN NULL "
+        "WHEN CAST(tablespace_oid AS BIGINT) IN (0, 1663, 1664) THEN '' ELSE "
+        + raising(
+            "58P01",
+            "'could not stat file \"pg_tblspc/' || CAST(tablespace_oid AS TEXT) "
+            "|| '\": No such file or directory'",
+        ).replace("@TYPE@", "TEXT")
+        + " END",
+    ),
     _form("has_table_privilege", "tbl, priv", _TABLE_PRIVILEGE, PRIVILEGES),
     _form("has_any_column_privilege", "tbl, priv", _TABLE_PRIVILEGE, PRIVILEGES),
     _form("has_column_privilege", "tbl, col, priv", _COLUMN_PRIVILEGE, PRIVILEGES, UNSERVED),
