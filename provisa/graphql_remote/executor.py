@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from collections.abc import AsyncGenerator, Iterator
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -155,31 +156,13 @@ def _connection_query(
     return f"query({var_decls}) {{ {root} {{ {body} }} }}"
 
 
-# A remote that limits request rate answers 403 or 429 and says in Retry-After how many
-# seconds to wait (GitHub's secondary rate limit). The request is sent again after that wait,
-# this many times at most, and only when the wait asked for is no longer than this.
-_RETRY_AFTER_STATUSES = (403, 429)
-_RETRY_AFTER_ATTEMPTS = 3
-_RETRY_AFTER_MAX_SECONDS = 120
-
-
-async def _post(
-    client: httpx.AsyncClient, url: str, payload: dict, headers: dict
-) -> httpx.Response:
-    """POST the query, waiting out a rate limit the remote puts a time on. A refusal with no
-    Retry-After, or one asking for a longer wait, is returned for the caller to raise."""
-    for _ in range(_RETRY_AFTER_ATTEMPTS):
-        resp = await client.post(url, json=payload, headers=headers)
-        wait = resp.headers.get("retry-after", "")
-        if (
-            resp.status_code not in _RETRY_AFTER_STATUSES
-            or not wait.isdigit()
-            or int(wait) > _RETRY_AFTER_MAX_SECONDS
-        ):
-            return resp
-        log.warning("graphql_remote %s: rate limited; retrying in %ss", url, wait)
-        await asyncio.sleep(int(wait))
-    return await client.post(url, json=payload, headers=headers)
+def error_code(error: dict) -> str | None:
+    """The code a GraphQL error carries: its ``type`` (GitHub), or ``extensions.code``, where the
+    GraphQL spec places it (Shopify)."""
+    code = error.get("type")
+    if code is None:
+        code = (error.get("extensions") or {}).get("code")
+    return code if isinstance(code, str) else None
 
 
 @dataclass(frozen=True)
@@ -196,17 +179,107 @@ class ErrorPolicy:
     # The same, for a remote that reports it with an untyped error: how that error's message
     # starts.
     overload_messages: tuple[str, ...] = ()
+    # Returned when the remote's rate limit has too little left for the query: the query is sent
+    # again once the limit has restored what the query costs, as the answer's
+    # ``extensions.cost`` states it (:func:`_throttle_wait`).
+    throttled: frozenset[str] = frozenset()
 
     def overloaded_by(self, errors: list[dict]) -> list[str]:
         """What among ``errors`` says the page asked for too much; empty when nothing does."""
-        said = {e["type"] for e in errors if e.get("type") in self.overload}
+        said = {c for e in errors if (c := error_code(e)) in self.overload}
         said |= {
             prefix
             for e in errors
             for prefix in self.overload_messages
-            if "type" not in e and str(e.get("message", "")).startswith(prefix)
+            if error_code(e) is None and str(e.get("message", "")).startswith(prefix)
         }
         return sorted(said)
+
+    def throttled_by(self, errors: list[dict]) -> bool:
+        """Whether ``errors`` say the remote's rate limit has too little left for the query."""
+        return any(error_code(e) in self.throttled for e in errors)
+
+
+# A remote that limits request rate answers 403 or 429 and says in Retry-After how many
+# seconds to wait (GitHub's secondary rate limit), or answers with an error its source declares
+# as throttled and states in ``extensions.cost`` what the query costs and how fast the limit
+# restores (Shopify). The request is sent again after that wait, this many times at most, and
+# only when the wait asked for is no longer than this.
+_RETRY_AFTER_STATUSES = (403, 429)
+_RETRY_AFTER_ATTEMPTS = 3
+_RETRY_AFTER_MAX_SECONDS = 120
+
+
+class Throttled(ValueError):
+    """The remote's rate limit would not run the query in the waits a read allows. ``reason``
+    is the remote's own account: its errors and what its ``extensions.cost`` says."""
+
+    def __init__(self, url: str, reason: str):
+        super().__init__(f"{url}: the remote's rate limit did not let the query run: {reason}")
+        self.reason = reason
+
+
+def _throttle_wait(body: dict) -> float | None:
+    """Seconds until the rate limit stated in a GraphQL answer's ``extensions.cost`` has restored
+    what the query costs: ``(requestedQueryCost - currentlyAvailable) / restoreRate``. None when
+    the answer states no such limit."""
+    cost = (body.get("extensions") or {}).get("cost") or {}
+    status = cost.get("throttleStatus") or {}
+    requested = cost.get("requestedQueryCost")
+    available = status.get("currentlyAvailable")
+    rate = status.get("restoreRate")
+    if not (
+        isinstance(requested, (int, float))
+        and isinstance(available, (int, float))
+        and isinstance(rate, (int, float))
+        and rate > 0
+    ):
+        return None
+    return max(0.0, (requested - available) / rate)
+
+
+def _wait_asked(resp: httpx.Response, policy: ErrorPolicy) -> tuple[float | None, str]:
+    """How long the remote asks to wait before the query is sent again, and what it said; None
+    when it asks for no wait it states."""
+    wait = resp.headers.get("retry-after", "")
+    if resp.status_code in _RETRY_AFTER_STATUSES and wait.isdigit():
+        return float(wait), f"HTTP {resp.status_code} Retry-After: {wait}"
+    if not policy.throttled or "json" not in resp.headers.get("content-type", ""):
+        return None, ""
+    body = _safe_json(resp)
+    if not isinstance(body, dict) or not policy.throttled_by(body.get("errors") or []):
+        return None, ""
+    said = f"{body.get('errors')} cost={(body.get('extensions') or {}).get('cost')}"
+    computed = _throttle_wait(body)
+    if computed is None:
+        raise Throttled(str(resp.request.url), f"{said}; it states no wait")
+    return computed, said
+
+
+async def _post(
+    client: httpx.AsyncClient,
+    url: str,
+    payload: dict,
+    headers: dict,
+    policy: ErrorPolicy | None = None,
+) -> httpx.Response:
+    """POST the query, waiting out a rate limit the remote puts a time on (``policy`` declares
+    which of its errors mean that). A Retry-After refusal asking for a longer wait is returned
+    for the caller to raise; a throttled answer that asks for too long a wait, or is still
+    throttled after the last attempt, raises :class:`Throttled` naming what the remote said."""
+    policy = policy or NO_POLICY
+    for attempt in range(_RETRY_AFTER_ATTEMPTS + 1):
+        resp = await client.post(url, json=payload, headers=headers)
+        wait, said = _wait_asked(resp, policy)
+        if wait is None:
+            return resp
+        if wait > _RETRY_AFTER_MAX_SECONDS or attempt == _RETRY_AFTER_ATTEMPTS:
+            if resp.status_code in _RETRY_AFTER_STATUSES:
+                return resp
+            raise Throttled(url, said)
+        log.warning("graphql_remote %s: rate limited (%s); retrying in %.1fs", url, said, wait)
+        await asyncio.sleep(wait)
+    raise AssertionError("unreachable")  # the last attempt returns or raises
 
 
 NO_POLICY = ErrorPolicy()
@@ -227,13 +300,15 @@ def _accept_row_field_errors(
     """
     for error in errors:
         path = error.get("path") or []
-        if error.get("type") not in tolerated or len(path) <= row_depth:
+        if error_code(error) not in tolerated or len(path) <= row_depth:
             raise ValueError(f"Remote GraphQL errors: {errors}")
     log.warning(
         "graphql_remote %s: %d field(s) returned null by the remote: %s",
         table,
         len(errors),
-        sorted({f"{e['type']} {'.'.join(str(p) for p in e['path'][row_depth:])}" for e in errors}),
+        sorted(
+            {f"{error_code(e)} {'.'.join(str(p) for p in e['path'][row_depth:])}" for e in errors}
+        ),
     )
 
 
@@ -287,7 +362,7 @@ async def _connection_page(
             read.field_name, read.columns, read.rows_path, read.required_args, page_size
         )
         payload = {"query": query, "variables": {**read.variables, _CURSOR_VAR: cursor}}
-        resp = await _post(client, read.url, payload, read.headers)
+        resp = await _post(client, read.url, payload, read.headers, read.policy)
         data: dict = {}
         answered: object = resp.status_code
         too_heavy = resp.status_code in _PAGE_TOO_HEAVY
@@ -542,7 +617,7 @@ async def execute_remote(  # REQ-309, REQ-307, REQ-310, REQ-313
             payload: dict = {"query": query}
             if variables:
                 payload["variables"] = variables
-            resp = await _post(client, url, payload, headers)
+            resp = await _post(client, url, payload, headers, error_policy)
             resp.raise_for_status()
             data = _safe_json(resp)
             if "errors" in data:
@@ -588,8 +663,10 @@ def iter_remote_rows_spooled(  # REQ-1915, REQ-1923
 
     selected = list(columns)
     headers = {"Content-Type": "application/json", **_build_headers(auth)}
+    narrowed = False
+    throttled = 0
     with httpx.Client(timeout=30.0, event_hooks=sandbox_egress.http_sync_event_hooks()) as client:
-        for attempt in range(2):
+        while True:
             selection = "\n".join(selected) if selected else "__typename"
             payload = {"query": f"query {{ {field_name} {{ {selection} }} }}"}
             with spooled(
@@ -598,9 +675,30 @@ def iter_remote_rows_spooled(  # REQ-1915, REQ-1923
                 errors = list(json_items(body, "errors.item"))
                 at = f"data.{field_name}"
                 listed = json_starts(body, at) == "start_array"
+                if errors and error_policy.throttled_by(errors):
+                    # The same wait :func:`_post` honours, read off the spooled answer.
+                    answer = {
+                        "errors": errors,
+                        "extensions": next(json_items(body, "extensions"), {}),
+                    }
+                    wait = _throttle_wait(answer)
+                    said = f"{errors} cost={answer['extensions'].get('cost')}"
+                    if (
+                        wait is None
+                        or wait > _RETRY_AFTER_MAX_SECONDS
+                        or throttled == _RETRY_AFTER_ATTEMPTS
+                    ):
+                        raise Throttled(url, said)
+                    throttled += 1
+                    log.warning(
+                        "graphql_remote %s: rate limited (%s); retrying in %.1fs", url, said, wait
+                    )
+                    time.sleep(wait)
+                    continue
                 if errors:
                     object_fields = _object_fields_from_errors(errors)
-                    if object_fields and attempt == 0:
+                    if object_fields and not narrowed:
+                        narrowed = True
                         selected = [c for c in selected if c.split()[0] not in object_fields]
                         continue
                     # A row is the root field's value, or an element of it when it is a list.
