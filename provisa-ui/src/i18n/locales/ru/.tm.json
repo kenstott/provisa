@@ -9106,5 +9106,22 @@
   "ru/genericSqlFields.json::genericSqlFields.jdbcDriverJar": "JDBC driver jar",
   "ru/genericSqlFields.json::genericSqlFields.jdbcDriverJarHint": "The driver's jar file. Self-hosted installs only.",
   "ru/genericSqlFields.json::genericSqlFields.jdbcDriverClass": "Driver class",
-  "ru/parametersPanel.json::parametersPanel.kind.column_value": "Column value"
+  "ru/parametersPanel.json::parametersPanel.kind.column_value": "Column value",
+  "ru/odataPage.json::odataPage.handoffNotService": "Not an address of the OData service: {{url}}",
+  "ru/odataPage.json::odataPage.handoffPath": "The explorer reads a whole entity set; {{path}} addresses part of one.",
+  "ru/odataPage.json::odataPage.handoffOption": "The explorer cannot set {{option}}={{value}}.",
+  "ru/odataPage.json::odataPage.handoffNumber": "{{option}} must be a whole number, not {{value}}.",
+  "ru/odataPage.json::odataPage.handoffNoSet": "There is no entity set {{set}} for this role.",
+  "ru/odataPage.json::odataPage.handoffMember": "{{set}} has no {{name}} for {{option}}.",
+  "ru/dataAddress.json::dataAddress.label": "Data node",
+  "ru/dataAddress.json::dataAddress.heading": "Send data requests to",
+  "ru/dataAddress.json::dataAddress.none": "No data node",
+  "ru/dataAddress.json::dataAddress.noneOffered": "No data node is listed for this region. Type an address below.",
+  "ru/dataAddress.json::dataAddress.typedLabel": "Data node address",
+  "ru/dataAddress.json::dataAddress.typedPlaceholder": "https://data.example.com",
+  "ru/dataAddress.json::dataAddress.typedInvalid": "Enter an http or https address",
+  "ru/dataAddress.json::dataAddress.use": "Use",
+  "ru/dataAddress.json::dataAddress.loadError": "Could not load the data nodes",
+  "ru/settings.json::settings.server.node_url.label": "This node's address",
+  "ru/settings.json::settings.server.node_url.help": "The address clients reach this node at. A coordinator's UI lists it as a data node when the region lists none. The launcher sets it for each node; unset, the node is not listed."
 }

@@ -20,6 +20,7 @@ import { HIDING_RIGHTS } from "../lib/capabilities";
 import { useTour } from "../tour/useTour";
 import { RoleSelector } from "./RoleSelector";
 import { OrgSwitcher } from "./OrgSwitcher";
+import { DataAddressSwitcher } from "./DataAddressSwitcher";
 import { EnvSwitcher } from "./EnvSwitcher";
 import { ColorSchemeToggle } from "../theme/ColorSchemeToggle";
 import { UserProfileModal } from "./UserProfileModal";
@@ -148,6 +149,7 @@ export function NavBar() {
     location.pathname === "/nl" ||
     location.pathname === "/grpc" ||
     location.pathname === "/jsonapi" ||
+    location.pathname === "/odata" ||
     location.pathname === "/openapi" ||
     // REQ-1591: the glossary list is narrowed by the same selection, and its create modal makes a
     // term's domains from it.
@@ -272,6 +274,7 @@ export function NavBar() {
             </div>
           )}
           <EnvSwitcher />
+          <DataAddressSwitcher />
           <RoleSelector />
           <ColorSchemeToggle />
           {/* No launcher where the viewer's rights open none of the tour's pages — a button

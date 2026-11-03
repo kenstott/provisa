@@ -113,21 +113,19 @@ def test_audit_logging_module_exists():
         )
 
 
-def test_requirements_doc_contains_saas_tier_reference():
-    # REQ-073: SaaS tier must be documented in the requirements.
-    req_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "docs", "arch", "requirements.md"
-    )
-    with open(req_path) as f:
-        content = f.read()
-    assert "REQ-073" in content, "REQ-073 (SaaS tier) must appear in requirements.md"
+def test_requirements_doc_carries_no_commercial_requirements():
+    # Commercial requirements (Pricing & Tiering, SaaS Billing, Commercial Positioning) live in
+    # provisa-private (commercial/requirements.yaml, moved 2026-11-02); the REQ-073 SaaS tier and
+    # REQ-074 Enterprise tier checks moved there with them.
+    import yaml
 
-
-def test_requirements_doc_contains_enterprise_tier_reference():
-    # REQ-074: Enterprise tier must be documented in the requirements.
-    req_path = os.path.join(
-        os.path.dirname(__file__), "..", "..", "docs", "arch", "requirements.md"
-    )
-    with open(req_path) as f:
+    base = os.path.join(os.path.dirname(__file__), "..", "..", "docs", "arch")
+    with open(os.path.join(base, "requirements.yaml")) as f:
+        reqs = yaml.safe_load(f)
+    reqs = reqs if isinstance(reqs, list) else reqs["requirements"]
+    commercial = {"Pricing & Tiering", "SaaS Billing", "Commercial Positioning"}
+    assert [r["id"] for r in reqs if r.get("category") in commercial] == []
+    with open(os.path.join(base, "requirements.md")) as f:
         content = f.read()
-    assert "REQ-074" in content, "REQ-074 (Enterprise tier) must appear in requirements.md"
+    for rid in ("REQ-073", "REQ-074"):
+        assert f"{rid}:" not in content and f"## {rid}" not in content, rid

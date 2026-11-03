@@ -13,7 +13,7 @@
 // One entity set in the OData explorer's detail panel: its entity type as $metadata declares it,
 // a builder of the read's system query options, the URL they write (to copy), and the read's rows.
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Badge,
@@ -31,6 +31,7 @@ import { Play } from "lucide-react";
 import { CopyButton } from "../../components/CopyButton";
 import { DetailFields } from "../../components/detail/DetailFields";
 import { FormChecks, FormField, FormLayout } from "../../components/form/FormLayout";
+import { useScreenInputs } from "../../mcp/screenState";
 import type { ODataEntitySet, ODataNavigation } from "./metadata";
 import { buildQueryUrl, EMPTY_QUERY, type ODataQuery } from "./queryUrl";
 import { ODataResults } from "./ODataResults";
@@ -83,23 +84,58 @@ export function EntitySetPanel({
   entity,
   role,
   root,
+  start,
   onEdited,
 }: {
   entity: ODataEntitySet;
   role: string;
   /** The service root as a client reaches it (absolute), which the shown URL starts from. */
   root: string;
+  /** A read handed to the page (Polly, a link): the options it starts from, and whether it is run
+   * as soon as the panel opens. */
+  start?: { query: ODataQuery; autoRun: boolean };
   /** An option was set: closing the panel now would drop the query being built. */
   onEdited: () => void;
 }) {
   const { t } = useTranslation();
-  const [query, setQuery] = useState<ODataQuery>(EMPTY_QUERY);
+  const [query, setQuery] = useState<ODataQuery>(start?.query ?? EMPTY_QUERY);
   const read = usePagedRead(role);
   const set = <K extends keyof ODataQuery>(key: K, value: ODataQuery[K]) => {
     setQuery((q) => ({ ...q, [key]: value }));
     onEdited();
   };
   const url = buildQueryUrl(root, entity.name, query);
+
+  // A handed read with autoRun is run once, as the panel opens on it (a new hand-off is a new panel).
+  const autoRan = useRef(false);
+  const { run } = read;
+  useEffect(() => {
+    if (!start?.autoRun || autoRan.current) return;
+    autoRan.current = true;
+    run(url);
+  }, [start, run, url]);
+
+  // REQ-2115: Polly's read_screen reads the read on screen from here: its options, how it went and
+  // what the answer says about itself, never the rows (the results grid gives their columns and
+  // count).
+  const { page } = read;
+  useScreenInputs("/odata", {
+    set: entity.name,
+    url,
+    filter: query.filter,
+    select: query.select,
+    expand: query.expand,
+    orderby: query.orderBy.map((k) => (k.descending ? `${k.property} desc` : k.property)),
+    top: query.top,
+    skip: query.skip,
+    count: query.count,
+    status: read.error ? "failed" : read.loading ? "running" : page ? "answered" : "idle",
+    error: read.error,
+    rows: page ? page.rows.length : null,
+    total: page?.count ?? null,
+    nextPage: page ? page.nextLink !== null : null,
+    warnings: page ? page.warnings.map((w) => ({ code: w.code, message: w.message })) : [],
+  });
 
   const propertyNames = entity.properties.map((p) => p.name);
   const orderValues = query.orderBy.map((k) => (k.descending ? `${k.property} desc` : k.property));

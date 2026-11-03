@@ -37,6 +37,12 @@
     "noRows": "Geen rijen gevonden.",
     "rowsCutTitle": "Niet alle rijen zijn geretourneerd",
     "warningsTitle": "Over dit antwoord",
-    "provenanceUrl": "OData-aanvraag"
+    "provenanceUrl": "OData-aanvraag",
+    "handoffNotService": "Geen adres van de OData-service: {{url}}",
+    "handoffPath": "De verkenner leest een volledige entity set; {{path}} verwijst naar een deel ervan.",
+    "handoffOption": "De verkenner kan {{option}}={{value}} niet instellen.",
+    "handoffNumber": "{{option}} moet een geheel getal zijn, niet {{value}}.",
+    "handoffNoSet": "Er is geen entity set {{set}} voor deze rol.",
+    "handoffMember": "{{set}} heeft geen {{name}} voor {{option}}."
   }
 }

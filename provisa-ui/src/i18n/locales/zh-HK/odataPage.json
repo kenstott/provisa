@@ -37,6 +37,12 @@
     "noRows": "沒有相符的行。",
     "rowsCutTitle": "並未傳回所有行",
     "warningsTitle": "關於此結果",
-    "provenanceUrl": "OData 要求"
+    "provenanceUrl": "OData 要求",
+    "handoffNotService": "不是 OData 服務的地址：{{url}}",
+    "handoffPath": "瀏覽器讀取整個實體集；{{path}} 只指向其中一部分。",
+    "handoffOption": "瀏覽器無法設定 {{option}}={{value}}。",
+    "handoffNumber": "{{option}} 必須是整數，而不是 {{value}}。",
+    "handoffNoSet": "此角色沒有實體集 {{set}}。",
+    "handoffMember": "{{set}} 沒有用於 {{option}} 的 {{name}}。"
   }
 }

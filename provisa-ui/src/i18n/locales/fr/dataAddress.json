@@ -1,0 +1,13 @@
+{
+  "dataAddress": {
+    "label": "Nœud de données",
+    "heading": "Envoyer les requêtes de données à",
+    "none": "Aucun nœud de données",
+    "noneOffered": "Aucun nœud de données n'est listé pour cette région. Saisissez une adresse ci-dessous.",
+    "typedLabel": "Adresse du nœud de données",
+    "typedPlaceholder": "https://data.example.com",
+    "typedInvalid": "Saisissez une adresse http ou https",
+    "use": "Utiliser",
+    "loadError": "Impossible de charger les nœuds de données"
+  }
+}

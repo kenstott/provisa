@@ -9107,5 +9107,22 @@
   "zh-HK/genericSqlFields.json::genericSqlFields.jdbcDriverJar": "JDBC driver jar",
   "zh-HK/genericSqlFields.json::genericSqlFields.jdbcDriverJarHint": "The driver's jar file. Self-hosted installs only.",
   "zh-HK/genericSqlFields.json::genericSqlFields.jdbcDriverClass": "Driver class",
-  "zh-HK/parametersPanel.json::parametersPanel.kind.column_value": "Column value"
+  "zh-HK/parametersPanel.json::parametersPanel.kind.column_value": "Column value",
+  "zh-HK/odataPage.json::odataPage.handoffNotService": "Not an address of the OData service: {{url}}",
+  "zh-HK/odataPage.json::odataPage.handoffPath": "The explorer reads a whole entity set; {{path}} addresses part of one.",
+  "zh-HK/odataPage.json::odataPage.handoffOption": "The explorer cannot set {{option}}={{value}}.",
+  "zh-HK/odataPage.json::odataPage.handoffNumber": "{{option}} must be a whole number, not {{value}}.",
+  "zh-HK/odataPage.json::odataPage.handoffNoSet": "There is no entity set {{set}} for this role.",
+  "zh-HK/odataPage.json::odataPage.handoffMember": "{{set}} has no {{name}} for {{option}}.",
+  "zh-HK/dataAddress.json::dataAddress.label": "Data node",
+  "zh-HK/dataAddress.json::dataAddress.heading": "Send data requests to",
+  "zh-HK/dataAddress.json::dataAddress.none": "No data node",
+  "zh-HK/dataAddress.json::dataAddress.noneOffered": "No data node is listed for this region. Type an address below.",
+  "zh-HK/dataAddress.json::dataAddress.typedLabel": "Data node address",
+  "zh-HK/dataAddress.json::dataAddress.typedPlaceholder": "https://data.example.com",
+  "zh-HK/dataAddress.json::dataAddress.typedInvalid": "Enter an http or https address",
+  "zh-HK/dataAddress.json::dataAddress.use": "Use",
+  "zh-HK/dataAddress.json::dataAddress.loadError": "Could not load the data nodes",
+  "zh-HK/settings.json::settings.server.node_url.label": "This node's address",
+  "zh-HK/settings.json::settings.server.node_url.help": "The address clients reach this node at. A coordinator's UI lists it as a data node when the region lists none. The launcher sets it for each node; unset, the node is not listed."
 }

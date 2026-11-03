@@ -57,6 +57,7 @@ from provisa.mv.bitemporal import (
     InheritedInput,
     system_columns_ddl,
 )
+from provisa.mv.store_shape import shape_probe
 
 if TYPE_CHECKING:
     from provisa.federation.execution_auth import SystemAuth
@@ -201,7 +202,8 @@ async def inherited_build(
     if build.scoped and build.select_sql is not None:
         assert existing is not None  # a scoped build reads a log that exists
         shape = await engine.execute_engine(
-            f"SELECT * FROM ({build.select_sql}) _shape LIMIT 0", authorization=authorization
+            shape_probe(build.select_sql),
+            authorization=authorization,
         )
         managed = {c for c, _ in system_columns_ddl(_spec(mv))}
         if list(shape.column_names) != [c for c in existing if c not in managed]:

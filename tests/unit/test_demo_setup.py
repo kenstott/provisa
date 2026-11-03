@@ -203,7 +203,8 @@ def test_a_client_step_names_a_script_of_the_demo(tmp_path):
 
 def test_the_launcher_tells_the_setup_where_its_flight_is():
     set_up = _LAUNCHER[_LAUNCHER.index("scripts/run_demo_setup.py") :][:400]
-    assert '--flight "grpc://localhost:${FLIGHT_PORT:-8815}"' in set_up
+    assert '--flight "grpc://localhost:$FLIGHT_PORT"' in set_up
+    assert 'export FLIGHT_PORT="${FLIGHT_PORT:-8815}"' in _LAUNCHER
 
 
 def test_an_environment_step_creates_it_in_the_active_org(monkeypatch, tmp_path):

@@ -57,6 +57,7 @@ from provisa.transpiler import (
     pg_forms,
     pg_forms_aggregate,
     pg_forms_enum,
+    pg_forms_geometric,
     pg_forms_hash,
     pg_forms_index,
     pg_forms_json,
@@ -1899,13 +1900,33 @@ REFUSED_ROWS = frozenset(
         ("exact_avg_interval", 1),
         ("current_query", 0),
         *((name, len(params.split(", "))) for name, params in pg_forms_hash.COMPOSITES),
+        # A shape's name of one argument whose type the statement does not say: no overload.
+        *((name, 1) for name, _ in pg_forms_geometric.BARE),
     }
 )
+
+
+def _geometric() -> tuple[Macro, ...]:
+    """Each geometric row, and its plain name, on each engine of pg_forms_geometric."""
+    rows: dict[tuple[str, str], dict[frozenset[str], str]] = {}
+    for engine in pg_forms_geometric.ENGINES:
+        for key, form in pg_forms_geometric.forms(engine).items():
+            rows.setdefault(key, {})[frozenset({engine.name})] = form
+    plain = {
+        alias: rows[next(key for key in rows if key[0] == row)]
+        for alias, row in pg_forms_geometric.ALIASES.items()
+    }
+    bare = (Macro(n, (p,)) for n, p in pg_forms_geometric.BARE)
+    return (
+        *bare,
+        *(Macro(n, tuple(p.split(", ")), f) for (n, p), f in {**rows, **plain}.items()),
+    )
 
 
 _ROWS += (
     *_hashes(),
     *(_operator(form) for form in pg_forms_aggregate.STATE_FUNCTIONS),
+    *(_operator(form) for form in pg_forms_aggregate.FINAL_FUNCTIONS),
     *(_operator(form) for form in pg_forms_index.SUPPORT_FUNCTIONS),
     *(
         Macro(name, tuple(params.split(", ")), {frozenset({d}): sql for d, sql in forms.items()})
@@ -1914,7 +1935,7 @@ _ROWS += (
 )
 #: A call's name and argument count -> its overload: the one table.
 MACROS: dict[tuple[str, int], Macro] = {
-    (m.name, len(m.params)): _with_replay(m) for m in (*_ROWS, *_EXACT_ROWS)
+    (m.name, len(m.params)): _with_replay(m) for m in (*_ROWS, *_EXACT_ROWS, *_geometric())
 }
 #: (function, argument count, the type the statement says of its first argument) -> its row:
 #: PostgreSQL's own name for the overload. The operation is chosen by the type, not the engine's.
@@ -1951,6 +1972,7 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
     ("trunc", 1, "double precision"): "dtrunc",
     **{(name, 1, "decimal"): f"numeric_{name}" for name in ("ceil", "floor", "round", "trunc")},
     ("md5", 1, "bytea"): "md5_bytea",
+    **pg_forms_geometric.OVERLOADS,
     **pg_forms_hash.OVERLOADS,
     ("int4", 1, "bit"): "bittoint4",
     ("int8", 1, "bit"): "bittoint8",
@@ -2058,9 +2080,43 @@ _ANSWERED_BY_A_NULL = frozenset(m.name for m in _EXACT_ROWS)
 _COLLATED = frozenset({"max_collated", "min_collated"})
 
 
+def _bucket_said(value: exp.Expr) -> str | None:
+    """What width_bucket's resolution reads of an argument; an untyped number's literal says it."""
+    node = value.unnest()
+    node = node.this if isinstance(node, exp.Neg) else node
+    written = isinstance(node, exp.Literal) and not node.is_string and not node.is_int
+    return said_type(value) or ("decimal" if written else None)
+
+
+def _bucket_row(args: list[exp.Expr]) -> str:
+    """width_bucket's row: PostgreSQL picks numeric or float8 from all three values, and float8 of
+    integers. What no statement says of a column, the engine's type answers in the row of the name."""
+    if len(args) == 2:
+        nested = isinstance(args[1].unnest(), exp.Array) and any(
+            isinstance(item, exp.Array) for item in args[1].unnest().expressions
+        )
+        return (
+            pg_forms_geometric.OVERLOADS[("width_bucket", 2, pg_forms_geometric.NESTED)]
+            if (nested)
+            else "width_bucket"
+        )
+    said = {_bucket_said(a) for a in args[:3]}
+    if said & {"double precision", "real"}:
+        return "width_bucket_float8"
+    if any(s and s.startswith("decimal") for s in said if s):
+        told = all(a.find(exp.Column) is None for a in args[:3]) or any(
+            (said_type(a) or "").startswith("decimal") for a in args[:3]
+        )
+        if told:
+            return "width_bucket_numeric"
+    return "width_bucket" if any(a.find(exp.Column) for a in args[:3]) else "width_bucket_float8"
+
+
 def overload(name: str, args: list[exp.Expr]) -> str:
     """The row a call reads: the overload of the type its first argument is said to be, else the
     row of its own name."""
+    if name == "width_bucket" and len(args) in (2, 4):
+        return _bucket_row(args)
     said = said_type(args[0]) if args else None
     if said is None:
         return name
@@ -2473,6 +2529,9 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return "timestamp", [a for a in (node.this, node.args.get("zone")) if a is not None]
     if isinstance(node, exp.ToNumber):
         return "to_number", [node.this, node.args["format"]]
+    if isinstance(node, exp.WidthBucket):
+        at = ("this", "min_value", "max_value", "num_buckets", "threshold")
+        return "width_bucket", [node.args[k] for k in at if node.args.get(k) is not None]
     if isinstance(node, exp.Length):  # an overload of a type: length(text) has no row
         return "length", [node.this]
     if isinstance(node, exp.Cast) and isinstance(node.this, exp.IntDiv):  # sqlglot's reading of div

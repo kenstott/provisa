@@ -1448,12 +1448,6 @@
       coordinator, and its waking answer matches the caller, a page for navigation and a status for fetch
       calls. A status API reports coordinator state, and the proxy's service account holds only the three
       permissions it needs.
-  - id: saas-operations-billing
-    text: Billing runs through Lemon Squeezy as merchant of record. A Starter org signs up with a card,
-      sees what it owes and when it will be charged, and changes plan on the Billing page across the orderable
-      plans. Active hours and egress overage are posted as usage records, an org's engine lane and size
-      follow from its plan, and the source ceiling is enforced where sources are created. On a deployment
-      that sells orgs, an org is not built until a subscription pays for it.
   - id: saas-operations-email
     text: Transactional email, such as org invitations and approval requests, exists only in hosted mode
       and is sent through an internal sender interface so the provider can change without touching callers.
@@ -1484,22 +1478,6 @@
   section: Internal (never published)
   visibility: internal
   paragraphs:
-  - id: commercial-tiers
-    text: 'The core is open source: Compose, Helm, the UI, the compiler and the engine layer. SaaS offers
-      two isolation lanes, a pooled shared engine for small orgs and a bring-your-own or dedicated engine
-      for larger ones. Enterprise adds SLAs, support and advanced audit, and premium gates cover SSO and
-      fine-grained access control, longer retention and dedicated compute. Plans, ceilings and the metering
-      live in a separate commercial distribution, and each tier has a ceiling where the price list ends
-      and a contract begins.'
-  - id: commercial-pricing
-    text: Prices are set against comparable products, not derived from cost, with a target of high marginal
-      gross margin on every tier. Starter bills per active hour, any clock hour in which the org ran a query,
-      with a monthly minimum; usage is metered in credits and the public pricing page renders tier limits
-      from the entitlement table.
-  - id: commercial-trials
-    text: Starter opens with a free evaluation bounded by days, active hours and egress, whichever is
-      reached first, offered once per person, and a reset is an endpoint rather than a hand-written update.
-      Starter is also orderable without a trial, and signup credit provides a soft on-ramp.
   - id: commercial-website
     text: The marketing site runs as static pages on Cloudflare Pages with documentation published beside
       it, and its main calls to action map to the onboarding paths of the hosted product.

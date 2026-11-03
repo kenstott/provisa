@@ -37,6 +37,12 @@
     "noRows": "没有匹配的行。",
     "rowsCutTitle": "并未返回所有行",
     "warningsTitle": "关于此结果",
-    "provenanceUrl": "OData 请求"
+    "provenanceUrl": "OData 请求",
+    "handoffNotService": "不是 OData 服务的地址：{{url}}",
+    "handoffPath": "浏览器读取整个实体集；{{path}} 仅指向其中一部分。",
+    "handoffOption": "浏览器无法设置 {{option}}={{value}}。",
+    "handoffNumber": "{{option}} 必须是整数，而不是 {{value}}。",
+    "handoffNoSet": "此角色没有实体集 {{set}}。",
+    "handoffMember": "{{set}} 没有用于 {{option}} 的 {{name}}。"
   }
 }
