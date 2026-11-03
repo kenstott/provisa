@@ -146,6 +146,18 @@ def test_a_parameterized_insert_into_a_table_with_no_generated_key(pg_server):
         _undefined(conn)
 
 
+def test_a_statement_the_client_prepared_then_a_bound_insert(pg_server):
+    """Nothing is rewritten here: psycopg prepares a statement it has run five times, and a write
+    with a bound value follows it on the same connection."""
+    with _log_on_failure(pg_server), _pgwire(pg_server) as conn:
+        for _ in range(7):
+            assert conn.execute("SELECT 1 AS n").fetchone() == (1,)
+        inserted = conn.execute(
+            "INSERT INTO sales.orders (id, region) VALUES (%s, %s)", (91, "south")
+        )
+        assert inserted.rowcount == 1
+
+
 def test_a_parameterized_insert_then_lastval(pg_server):
     """The extended protocol's bound value, on a connection of its own."""
     with _log_on_failure(pg_server), _pgwire(pg_server) as conn:
