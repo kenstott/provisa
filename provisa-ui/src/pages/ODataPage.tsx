@@ -10,7 +10,7 @@
 
 // Requirements: REQ-1949, REQ-2193
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Code, Group, Stack, Table, Text } from "@mantine/core";
 import { Sheet } from "lucide-react";
@@ -21,8 +21,12 @@ import { SplitPane } from "../components/list/SplitPane";
 import { ListEmpty, ListHead, ListItems, ListRow, ListTable } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { useAuth } from "../context/AuthContext";
+import { useDomainFilter } from "../context/DomainFilterContext";
+import { useNavPayload } from "../hooks/useNavPayload";
+import { useScreenInputs } from "../mcp/screenState";
 import { fetchODataMetadata, SERVICE_ROOT } from "../api/odata";
-import { parseMetadata, type ODataEntitySet } from "./odata/metadata";
+import { parseMetadata, setsInDomains, type ODataEntitySet } from "./odata/metadata";
+import { checkHandedRead, HandoffRefused, parseQueryUrl, type ODataQuery } from "./odata/queryUrl";
 import { EntitySetPanel } from "./odata/EntitySetPanel";
 import "./odata/ODataPage.css";
 
@@ -95,16 +99,65 @@ export function ODataPage() {
   const role = actingRoles ?? "";
   const root = `${window.location.origin}${SERVICE_ROOT}`;
   const model = useODataModel(role);
-  const sets = model.state === "read" ? model.sets : [];
+  const { checkedDomains, ensureDomainChecked } = useDomainFilter();
+  const allSets = model.state === "read" ? model.sets : [];
+  // The navbar's domain selection narrows the sets listed, as it narrows every Explore page.
+  const sets = setsInDomains(allSets, checkedDomains);
   const [selected, setSelectedSet] = useState<string | null>(null);
   // A query is being built in the panel: Escape (a picker's, as often as the reader's) does not
   // close it and drop the query. Its close button and another row still do.
   const [edited, setEdited] = useState(false);
+  // The read the open panel was handed (Polly, a link); null for a set opened from the list.
+  const [start, setStart] = useState<{ query: ODataQuery; autoRun: boolean; seq: number } | null>(
+    null,
+  );
   const setSelected = (name: string | null) => {
     setSelectedSet(name);
     setEdited(false);
+    setStart(null);
   };
   const entity = sets.find((s) => s.name === selected) ?? null;
+
+  // A read handed to the page (Polly's navigate with state.odataUrl), whether the page was just
+  // opened or already open. Each hand-off has its own sequence number and is applied once, as soon
+  // as the role's model is read: its set opened, its options set, and run when autoRun asks.
+  const [handoff, setHandoff] = useState<{ url: string; autoRun: boolean; seq: number } | null>(
+    null,
+  );
+  const [handoffError, setHandoffError] = useState<string | null>(null);
+  useNavPayload<{ odataUrl?: string; autoRun?: boolean }>((payload) => {
+    if (!payload.odataUrl) return;
+    const url = payload.odataUrl;
+    const autoRun = payload.autoRun === true;
+    setHandoff((prev) => ({ url, autoRun, seq: (prev?.seq ?? 0) + 1 }));
+  });
+  const appliedSeq = useRef<number | null>(null);
+  useEffect(() => {
+    if (!handoff || model.state !== "read" || appliedSeq.current === handoff.seq) return;
+    appliedSeq.current = handoff.seq;
+    try {
+      const handed = parseQueryUrl(handoff.url, SERVICE_ROOT);
+      const target = model.sets.find((s) => s.name === handed.set);
+      if (!target) throw new HandoffRefused("odataPage.handoffNoSet", { set: handed.set });
+      checkHandedRead(handed, target);
+      // A set of a domain the selection hides is shown, as the SQL page shows a handed table's.
+      if (target.domain) ensureDomainChecked(target.domain);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- applies a hand-off once the role's model has loaded, once per hand-off; it cannot be applied before the model is read
+      setSelectedSet(target.name);
+      setStart({ query: handed.query, autoRun: handoff.autoRun, seq: handoff.seq });
+      setEdited(true);
+      setHandoffError(null);
+    } catch (e) {
+      if (!(e instanceof HandoffRefused)) throw e;
+      setHandoffError(t(e.key, e.values));
+    }
+  }, [handoff, model, ensureDomainChecked, t]);
+
+  // REQ-2115: what read_screen reports of the page itself; the open panel adds its read.
+  useScreenInputs("/odata", {
+    entitySets: sets.map((s) => s.name),
+    handoffError,
+  });
 
   const columns: ListColumn<ODataEntitySet>[] = [
     { key: "name", label: t("odataPage.entitySet"), sortValue: (s) => s.name },
@@ -143,6 +196,11 @@ export function ODataPage() {
         />
       </Group>
 
+      {handoffError && (
+        <Alert color="red" mb="sm" data-testid="odata-handoff-error">
+          {handoffError}
+        </Alert>
+      )}
       {model.state === "failed" && (
         <Alert color="red" mb="sm" data-testid="odata-metadata-error">
           {model.error}
@@ -219,10 +277,11 @@ export function ODataPage() {
           {entity && (
             // A set's own builder and rows: another set starts from an empty query.
             <EntitySetPanel
-              key={`${role}/${entity.name}`}
+              key={`${role}/${entity.name}/${start?.seq ?? 0}`}
               entity={entity}
               role={role}
               root={root}
+              start={start ?? undefined}
               onEdited={() => setEdited(true)}
             />
           )}

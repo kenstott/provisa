@@ -24,6 +24,7 @@ from provisa.core.pg_error import MARK
 from provisa.transpiler import (
     function_macros,
     pg_forms_enum,
+    pg_forms_geometric,
     pg_forms_type_io,
     pg_functions,
     pg_held_types,
@@ -68,7 +69,11 @@ def _spelled_for_sqlglot(pg_sql: str) -> str:
 def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to Trino SQL."""
     pg_sql = rewrite_correlated_subqueries_for_trino(_spelled_for_sqlglot(pg_sql))
-    result = transpile(pg_sql, "trino")
+    # REQ-2171: the rewrites read the statement; a geometric form's routines are kept as written.
+    return pg_forms_geometric.around(transpile(pg_sql, "trino"), _trino_rewrites)
+
+
+def _trino_rewrites(result: str) -> str:
     result = _rewrite_epoch_of_timestamp_for_trino(result)
     result = _rewrite_json_build_object_for_trino(result)
     result = _rewrite_json_arrayagg_for_trino(result)
@@ -1336,6 +1341,8 @@ def transpile(
     # reads the governed call itself and runs the search through Qdrant's API.
     if target_dialect != "qdrant":
         result = _lower_similarity(result, target_dialect, pgvector=pgvector)
+    # REQ-2171: last, for what a later step parses has no routine definitions at its head.
+    result = pg_forms_geometric.planned(result, target_dialect)
     from provisa.observability.stage_trace import trace_stage
 
     trace_stage(f"transpile.{target_dialect}", result)

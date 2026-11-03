@@ -1239,6 +1239,24 @@ DECLARED: list[Setting] = [
         editable=False,
         readonly_reason="set_by_launcher",
     ),
+    # REQ-1916 (amended 2026-11-02, "registered nodes when none are declared"): the address a client
+    # reaches THIS node at, recorded in the node list, so a coordinator-served UI can offer the
+    # region's live query and every nodes when the region declares no data addresses. Per node:
+    # server.public_url is the deployment's one IRI base and server.hostname a bare host, neither
+    # an address of one node. Set by the launcher, never stored: a stored value would be the same
+    # on every node. Unset, the node is not offered.
+    Setting(
+        key="server.node_url",
+        card="bootstrap",
+        type="str",
+        effect="restart",  # recorded when the node registers at boot
+        req="REQ-1916",
+        env="PROVISA_NODE_URL",
+        default=None,
+        nullable=True,
+        editable=False,
+        readonly_reason="set_by_launcher",
+    ),
     # --- MCP -------------------------------------------------------------------------------------
     Setting(
         key="mcp.max_rows",

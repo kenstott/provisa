@@ -110,6 +110,11 @@ EXEMPT: dict[tuple[str, str], str] = {
         "/admin/creation-requests/rejection-reasons",
     ): "static vocabulary for the request form",
     ("GET", "/admin/platform/maintenance"): "REQ-1466: the notice banner every client renders",
+    (
+        "GET",
+        "/admin/data-addresses",
+    ): "REQ-1916: every signed-in UI user picks a data address from it, whatever their role; "
+    "the bearer gate refuses a caller with no sign-in (test_ui_data_addresses)",
     # --- the GraphQL endpoint itself; its resolvers are checked individually below --------------
     ("GET", "/admin/graphql"): "transport; per-resolver gates are checked in the GraphQL pass",
     ("POST", "/admin/graphql"): "transport; per-resolver gates are checked in the GraphQL pass",
