@@ -1126,7 +1126,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
     """Load persisted graphql_remote sources from DB into state.graphql_remote_sources."""
     from provisa.api.app import state
     from provisa.core.secrets import resolve_secrets
-    from provisa.graphql_remote.brands import NAMESPACE_HINT, SETUP_HINT, brand_of
+    from provisa.graphql_remote.brands import NAMESPACE_HINT, brand_of
 
     if state.model_db is None:
         log.warning("[GQL REMOTE] model_db is None — skipping DB load")
@@ -1145,6 +1145,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                             _sources_t.c.username,
                             _sources_t.c.password_ref,
                             _sources_t.c.federation_hints,
+                            _sources_t.c.brand_setup,  # REQ-1923
                             _sources_t.c.mapping,
                         ).where(_sources_t.c.type == "graphql_remote")
                     )
@@ -1250,7 +1251,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                     **(
                         {
                             "brand": brand.id,
-                            "setup": dict(hints.get(SETUP_HINT) or {}),
+                            "setup": dict(src["brand_setup"]),
                             "error_policy": brand.error_policy,
                         }
                         if brand is not None

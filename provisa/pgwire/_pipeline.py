@@ -246,6 +246,9 @@ class _Plan:
     writes_tables: bool = field(default=False)
     # The registered table a write targets (None for a read): what :func:`_after_write` acts on.
     written_table_id: int | None = field(default=None)
+    # REQ-2167: how a pgwire INSERT reports the identity or serial value it makes its source
+    # generate (pgwire.generated_keys.GeneratedKey), for the session's lastval(). None otherwise.
+    generated_key: Any = field(default=None)
     # REQ-1897: the governed role and the registered tables the statement reads/writes — the
     # response-cache key and policy inputs. Carried on the plan itself, not read off ``audit``: a
     # statement with no acting principal (an unsecured Flight ticket) has no audit record.
@@ -4574,13 +4577,23 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         )
     else:
         # DIRECT terminal (REQ-825): single reachable source on its native driver.
+        from provisa.pgwire.generated_keys import LAST_INSERT_ID
+
+        key = plan.generated_key
+        # REQ-2167: a write whose connection reports what it generated is run to report it.
+        reported = (
+            {"reports_generated": True} if key is not None and key.by == LAST_INSERT_ID else {}
+        )
         result = await engine.execute_native(
             state.source_pools,
             plan.source_id,
             plan.sql,
             plan.exec_params,
             plan.span_attrs,
+            **reported,
         )
+        if key is not None:
+            result = key.taken(result)  # REQ-2167: the client's rows, the generated value kept
     return result
 
 
@@ -5840,6 +5853,39 @@ async def plan_pgwire_sql(  # REQ-267
     return await _govern_and_route(sql, role_id, as_of=as_of)
 
 
+async def reporting_generated(plan: _Plan, state: Any) -> _Plan:  # REQ-2167
+    """A pgwire INSERT written to report the identity or serial value it makes its source
+    generate (pgwire.generated_keys), the columns that would be read from the source's own
+    catalog. Any other plan, and one for a source with no way to report one, is unchanged."""
+    from provisa.pgwire.generated_keys import LAST_INSERT_ID, GeneratedKey
+    from provisa.pgwire.generated_keys import inserted_table, returning_rewrite
+    from provisa.transpiler.router import Route
+
+    if not (
+        plan.writes_tables
+        and plan.route == Route.DIRECT
+        and plan.source_id
+        and state.source_pools.has(plan.source_id)
+    ):
+        return plan
+    driver = state.source_pools.get(plan.source_id)
+    if driver.generated_keys is None:
+        return plan
+    target = inserted_table(plan.sql, plan.dialect or "postgres")
+    if target is None:
+        return plan
+    columns = await driver.generated_columns(*target)
+    if not columns:
+        return plan
+    if driver.generated_keys == LAST_INSERT_ID:
+        plan.generated_key = GeneratedKey(LAST_INSERT_ID)
+        return plan
+    rewritten = returning_rewrite(plan.sql, columns)
+    if rewritten is not None:
+        plan.sql, plan.generated_key = rewritten
+    return plan
+
+
 async def govern_pgwire_plan(  # REQ-028, REQ-266
     sql: str,
     role_id: str,
@@ -5909,7 +5955,7 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
         deliver=deliver,
         as_of=as_of,
     )
-    return plan
+    return await reporting_generated(plan, _state)  # REQ-2167
 
 
 async def govern_catalog_plan(sql: str, role_id: str, request: Any) -> _Plan:  # REQ-2190
@@ -6039,7 +6085,8 @@ async def plan_pgwire_statement(  # REQ-589
         deliver=deliver,
         as_of=governed.as_of,
     )
-    return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
+    plan = await _attach_live_caps(await _attach_tier_caps(plan, state), state)
+    return await reporting_generated(plan, state)  # REQ-2167
 
 
 async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:  # REQ-266, REQ-267, REQ-272

@@ -112,13 +112,23 @@ BY_DESIGN = ("design", "client", "suite")
 #: What a group naming catalog functions says of its cases.
 FUNCTION_CASE = "^catalog function::"
 
-#: REQ-2167 (amended 2026-10-29, INTERNAL FUNCTIONS): the only group that may name catalog
-#: functions, exactly as here. PostgreSQL's own refusal or an internal argument puts a function in
+#: REQ-2167 (amended 2026-10-29, INTERNAL FUNCTIONS; 2026-11-02): the only groups that may name
+#: catalog functions, exactly as here. PostgreSQL's own refusal or an internal argument puts a function in
 #: it (pgwire_catalog_types.py words its reason). Any other function not served is failed
 #: (PG_CATALOG FUNCTIONS ARE GAPS): the index support functions are served or refused by name
 #: (REQ-2171), so they have no group.
 FUNCTION_GROUPS = {
     "Internal functions": {"case": FUNCTION_CASE, "reason": "^no call reaches it: "},
+    # REQ-2167 (amended 2026-11-02, Sequence functions are not supported; Six-argument
+    # regexp_replace is not supported): these overloads, and only as refused by name.
+    "Not supported": {
+        "case": (
+            r"^catalog function::(?:(?:nextval|currval|setval)\("
+            r"|regexp_replace\(text, text, text, integer, integer, text\)$)"
+        ),
+        "reason": r"^not served: (?:ERROR:\s+)?(?:nextval|currval|setval|regexp_replace)\(\) "
+        r"has no form ",
+    },
 }
 
 

@@ -126,15 +126,21 @@ def array_entry(
         return "{" + ",".join(written) + "}"
 
     def text(values: Any) -> str:
+        if isinstance(values, str):
+            return values  # PostgreSQL's own text of it, its lower bounds written
         return "{}" if _empty_nested(values) else items(values)
 
     def binary(values: Any) -> bytes:
+        lowers: list[int] = []
+        if isinstance(values, str):  # PostgreSQL's own text of it, with its lower bounds
+            lowers, values = bp._array_text_values(values, element)
         dimensions, flat = bp._array_shape(values)
         if not vector and dimensions and math.prod(dimensions) == 0:
             dimensions = []
+        lowers = lowers or [0 if vector else 1] * len(dimensions)
         has_null = any(v is None for v in flat)
         out = [struct.pack("!iii", len(dimensions), 1 if has_null else 0, elem_oid)]
-        out.extend(struct.pack("!ii", length, 0 if vector else 1) for length in dimensions)
+        out.extend(struct.pack("!ii", length, lower) for length, lower in zip(dimensions, lowers))
         for v in flat:
             if v is None:
                 out.append(struct.pack("!i", -1))

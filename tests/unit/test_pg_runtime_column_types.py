@@ -69,3 +69,51 @@ async def test_a_read_names_each_columns_own_type(runtime):
     read = "SELECT 'a'::char(1) AS c FROM (VALUES (1)) AS t(n)"
     assert (await runtime.run(read)).column_type_oids[0] == 1042
     assert runtime.run_sync(read).column_type_oids[0] == 1042
+
+
+#: REQ-2167: what PostgreSQL wrote of a json value is its answer, spacing and key order kept; read
+#: into a dict, it came back as Python's repr ("{'a': 'a'}").
+_JSON_BUILDERS = [
+    (
+        "SELECT json_object('{a,b,c}'::text[], '{a,b,c}'::text[]) AS v",
+        '{"a" : "a", "b" : "b", "c" : "c"}',
+    ),
+    ("SELECT json_object('{a,1,b,2}'::text[]) AS v", '{"a" : "1", "b" : "2"}'),
+    ("SELECT json_build_object('a', 1, 'b', 'x') AS v", '{"a" : 1, "b" : "x"}'),
+    ("SELECT json_build_array(1, 'x', NULL) AS v", '[1, "x", null]'),
+    ("SELECT to_json(ARRAY[1, 2]) AS v", "[1,2]"),
+    ("SELECT row_to_json(ROW(1, 'x')) AS v", '{"f1":1,"f2":"x"}'),
+    ("SELECT array_to_json(ARRAY[1, 2]) AS v", "[1,2]"),
+    ('SELECT \'{"b":1,  "a":2}\'::json AS v', '{"b":1,  "a":2}'),
+]
+
+
+@pytest.mark.parametrize(("sql", "want"), _JSON_BUILDERS)
+async def test_a_json_value_is_postgresqls_own_text(runtime, sql: str, want: str):
+    assert (await runtime.run(sql)).rows == [(want,)]
+    assert runtime.run_sync(sql).rows == [(want,)]
+
+
+def test_a_json_array_keeps_each_elements_text(runtime):
+    assert runtime.run_sync("SELECT ARRAY['{\"a\" : 1}'::json] AS v").rows == [(['{"a" : 1}'],)]
+
+
+#: An array whose lower bounds are not 1 is written with its bounds, which psycopg2's array reader
+#: refused ("array does not start with '{'"): its text is PostgreSQL's answer.
+_BOUNDED = [
+    (
+        "SELECT array_fill(3::integer, '{1,2,3}'::integer[], '{1,2,3}'::integer[]) AS v",
+        "[1:1][2:3][3:5]={{{3,3,3},{3,3,3}}}",
+    ),
+    ("SELECT '[0:1]={a,b}'::text[] AS v", "[0:1]={a,b}"),
+]
+
+
+@pytest.mark.parametrize(("sql", "want"), _BOUNDED)
+async def test_an_array_with_its_own_bounds_is_postgresqls_own_text(runtime, sql: str, want: str):
+    assert (await runtime.run(sql)).rows == [(want,)]
+    assert runtime.run_sync(sql).rows == [(want,)]
+
+
+def test_an_array_from_one_is_still_a_list(runtime):
+    assert runtime.run_sync("SELECT array_fill(3, ARRAY[2]) AS v").rows == [([3, 3],)]

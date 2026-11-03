@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from functools import partial
 import threading
 import time
 import shutil
@@ -127,16 +128,17 @@ class OpenedSandbox:
     token: str | None
 
 
-async def _sandbox_runtime(org_id: str) -> Any:
+async def _sandbox_runtime(org_id: str, *, cloned: bool = False) -> Any:
     """Build a sandbox's runtime: on the regions sandbox tier, in its region's store (REQ-2068),
     where its replicas and views were copied (demo_region_seed.copy_to_sandbox); elsewhere in the
-    store of its own folder."""
+    store of its own folder. ``cloned``: its first build, its schema provisioned and its model
+    cloned from its template a moment ago (app.build_org_runtime's ``model_cloned``)."""
     from provisa.api.app import _region_lane_of, build_org_runtime
     from provisa.core.environments import PROD
 
     bound = await _region_lane_of(org_id, PROD)
     return await build_org_runtime(
-        org_id, storage_url=None if bound is None else bound.materialize_url
+        org_id, storage_url=None if bound is None else bound.materialize_url, model_cloned=cloned
     )
 
 
@@ -468,7 +470,7 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
             await copy_views_to_sandbox(demo.template_org, org_id, views, demo.directory)
 
     async with _stage(org_id, demo.name, "its runtime"):
-        rt = await state.org_registry.rebuild(org_id, _sandbox_runtime)
+        rt = await state.org_registry.rebuild(org_id, partial(_sandbox_runtime, cloned=True))
     assert rt.model_db is not None
     async with _stage(org_id, demo.name, "its person's membership and roles"):
         if kind == VISITOR:
@@ -496,30 +498,34 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
             async with rt.model_db.acquire() as conn:
                 rt.user_attributes = await record_visitor_attributes(conn, person, demo.directory)
     async with _stage(org_id, demo.name, "its record, environments and ready mark"):
-        ensure_repo(org_id)
-        async with rt.model_db.acquire() as conn:
-            await write_through(
-                conn,
-                _admin_pool(),
-                org_id,
-                PROD,
-                org_schema(org_id),
-                "opened from its demo",
-                person,
-            )
+        async with _stage(org_id, demo.name, "its record"):
+            ensure_repo(org_id)
+            async with rt.model_db.acquire() as conn:
+                await write_through(
+                    conn,
+                    _admin_pool(),
+                    org_id,
+                    PROD,
+                    org_schema(org_id),
+                    "opened from its demo",
+                    person,
+                )
         # REQ-2053: the template's environments (a test environment of fakes, say), each created from
         # the sandbox's prod after its person's roles are granted, so each carries them.
         from provisa.api.demo_templates import create_environments, template_environments
 
         wanted = await template_environments(demo.template_org)
-        await create_environments(org_id, wanted, person)
+        for env in wanted:
+            async with _stage(org_id, demo.name, f"its environment {env['name']}"):
+                await create_environments(org_id, [env], person)
         # REQ-1942: a Test (synthetic) one is given the template's generated rows; nothing is generated
         # at a visitor's request.
         from provisa.api import demo_synthetic
 
-        await demo_synthetic.copy_to_sandbox(
-            demo.template_org, org_id, demo_synthetic.synthetic_envs(wanted)
-        )
+        async with _stage(org_id, demo.name, "its environments' rows"):
+            await demo_synthetic.copy_to_sandbox(
+                demo.template_org, org_id, demo_synthetic.synthetic_envs(wanted)
+            )
         await _refresh_root_registry_view()
         async with _admin_pool().acquire() as conn:
             await conn.execute_core(

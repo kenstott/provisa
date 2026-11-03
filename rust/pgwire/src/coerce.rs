@@ -105,8 +105,9 @@ pub fn apply(c: &Coercer, v: PyVal) -> R<PyVal> {
             }),
             other => other,
         },
+        // server._to_list: PostgreSQL's text of a bounded array is sent as it is (REQ-2167).
         Coercer::List => match v {
-            PyVal::Str(s) => json_loads(&s, false)?,
+            PyVal::Str(s) if !crate::pgtypes::is_bounded_array_text(&s) => json_loads(&s, false)?,
             other => other,
         },
         Coercer::XmlOut => match v {

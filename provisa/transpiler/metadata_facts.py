@@ -28,23 +28,37 @@ from provisa.transpiler.metadata_oids import table_oid
 
 PRIVILEGES = "_provisa_privileges"
 UNSERVED = "_provisa_unserved_columns"
+#: Every model role's privileges and unserved columns, by the role's name: what a privilege
+#: function asked about another role reads (REQ-2167, amended 2026-11-03).
+ROLE_PRIVILEGES = "_provisa_role_privileges"
+ROLE_UNSERVED = "_provisa_role_unserved_columns"
 
 _RELATIONS: Mapping[str, tuple[tuple[str, str], ...]] = {
     PRIVILEGES: (("relation_oid", "BIGINT"), ("privilege", "TEXT")),
     UNSERVED: (("relation_oid", "BIGINT"), ("column_name", "TEXT")),
+    ROLE_PRIVILEGES: (("role_name", "TEXT"), ("relation_oid", "BIGINT"), ("privilege", "TEXT")),
+    ROLE_UNSERVED: (("role_name", "TEXT"), ("relation_oid", "BIGINT"), ("column_name", "TEXT")),
 }
 
 
 @dataclass(frozen=True)
 class CatalogFacts:
-    """A role's facts: rows of ``PRIVILEGES`` and ``UNSERVED``, and the role."""
+    """A role's facts: rows of ``PRIVILEGES`` and ``UNSERVED``, and the role; and every model
+    role's, by its name (``ROLE_PRIVILEGES``, ``ROLE_UNSERVED``)."""
 
     role_id: str
     privileges: tuple[tuple[Any, ...], ...] = ()
     unserved: tuple[tuple[Any, ...], ...] = ()
+    role_privileges: tuple[tuple[Any, ...], ...] = ()
+    role_unserved: tuple[tuple[Any, ...], ...] = ()
 
     def rows(self, relation: str) -> tuple[tuple[Any, ...], ...]:
-        return {PRIVILEGES: self.privileges, UNSERVED: self.unserved}[relation]
+        return {
+            PRIVILEGES: self.privileges,
+            UNSERVED: self.unserved,
+            ROLE_PRIVILEGES: self.role_privileges,
+            ROLE_UNSERVED: self.role_unserved,
+        }[relation]
 
 
 def role_privileges(

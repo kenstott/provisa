@@ -266,8 +266,8 @@ async def test_adding_a_shopify_source_checks_the_token_at_the_store_and_registe
         "auth_type": "header",
         "auth_header": "X-Shopify-Access-Token",
         "brand": "shopify",
-        "brand_setup": {"store": "acme", "api_version": SHOPIFY_API_VERSION},
     }
+    assert row["brand_setup"] == {"store": "acme", "api_version": SHOPIFY_API_VERSION}
 
 
 @respx.mock
