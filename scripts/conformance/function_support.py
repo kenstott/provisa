@@ -47,14 +47,22 @@ can write them, up to three calls with real values. How far values go, exactly:
   * Every immutable and stable function is given values, compared under one TimeZone, DateStyle
     and IntervalStyle on the same fixture catalog, but for those whose answer is the answering
     server's own (``OWN_ANSWERS``: its process, its addresses, its clock, its statistics, its
-    transactions, or a by-design session answer, REQ-588 and REQ-579). A volatile function is
-    given values only where it acts on nothing and its answer differs by nature
-    (``_FORM_VALUES``): giving one that acts values would run it for real.
+    transactions, or a by-design session answer, REQ-588 and REQ-579). Those get real values for
+    their type and form alone (``form_calls``): the session's own database, backend and process,
+    an object of the catalog or of the fixture, a transaction and a multixact of the fixture
+    (``FIXTURE``, resolved from PostgreSQL when a leg starts). A volatile function is given values
+    only where it acts on nothing (``_FORM_VALUES``): it reads an object, a file or a directory of
+    the data directory, or its answer differs by nature. Giving one that acts values would run it
+    for real.
   * Every argument must have a literal: ``SAMPLES`` and ``VALUE_SAMPLES`` by type, ``ARG_VALUES``
     by function where the type's literals are not valid input (``Raw`` ones are written as they
     stand), and ``INPUT_TYPES`` for a type's input function. Pseudo-types take the concrete types
     of pgwire_function_probe.py. An overload taking a type with no sample gets no value call;
-    ``NO_LITERAL`` types are ones PostgreSQL takes no literal of.
+    ``NO_LITERAL`` types are ones PostgreSQL takes no literal of, and ``DERIVED_SAMPLES`` reads the
+    values of those its catalog holds (an expression tree, the statistics ANALYZE built). A record
+    of no declared type is called with a column definition list (``VALUE_STATEMENTS``), and a
+    cursor is opened in a transaction around its call (``Call.setup``).
+  * ``seed_fixture`` makes what those values read (``FIXTURE_SQL``), beside the column table.
   * A value call PostgreSQL refuses compares nothing: that it also refuses on Provisa is not
     checked, nor is Provisa answering what PostgreSQL refuses.
 
@@ -74,7 +82,8 @@ What a pass compared, exactly:
     took, the random sequence a seed fixes), and Provisa's must be PostgreSQL's.
 
 The rest are not checked, and each says why (``unchecked``, which an overload whose type and form
-were compared keeps: its value is still not compared). A NULL call where PostgreSQL answers NULL
+were compared keeps: its value is still not compared). One given real values for its form that
+still has none checked says too whether PostgreSQL refused them or answered NULL or no row. A NULL call where PostgreSQL answers NULL
 holds Provisa to NULL too, which can make a wrong answer and never a pass. Three literals, not a
 domain: a function that differs only on values no sample reaches passes here.
 
@@ -439,7 +448,8 @@ VALUE_SAMPLES: dict[str, tuple[str, str, str]] = {
     "cstring": _STRINGS,
     "unknown": _STRINGS,
     "void": ("''", "''", "''"),
-    "record": ("ROW(1, 'a')", "ROW(2, 'b')", "ROW(NULL::integer, 'c')"),
+    # Typed fields: a field of type unknown has no comparison, hash or image of its own.
+    "record": ("ROW(1, 'a'::text)", "ROW(2, 'b'::text)", "ROW(NULL::integer, 'c'::text)"),
     "tid": ("'(0,1)'", "'(5,3)'", "'(4294967295,65535)'"),
     "xid": ("'3'", "'100'", "'4294967295'"),
     "xid8": ("'3'", "'100'", "'18446744073709551615'"),
@@ -496,6 +506,63 @@ NO_LITERAL = frozenset(
         "pg_node_tree",
     }
 )
+
+
+def _catalog_read(column: str, relation: str, where: str) -> str:
+    return f"(SELECT {column} FROM pg_catalog.{relation} WHERE {where})"
+
+
+def _statistics(kind: str) -> tuple[str, str, str]:
+    """A statistics object's ``kind`` as ANALYZE built it, from each of ``STATISTICS``."""
+    first, second, third = (
+        _catalog_read(
+            f"d.stxd{kind}",
+            "pg_statistic_ext_data AS d JOIN pg_catalog.pg_statistic_ext AS s ON s.oid = d.stxoid",
+            f"s.stxname = '{name}'",
+        )
+        for name in STATISTICS
+    )
+    return first, second, third
+
+
+#: The fixture ``seed_fixture`` makes: a table with a column default and statistics objects,
+#: and a hash-partitioned table, each named in pg_class alone so a server's own catalog finds it.
+STATISTICS_TABLE = "stats_fixture"
+STATISTICS = {"stats_fixture_ab": "a, b", "stats_fixture_ac": "a, c", "stats_fixture_bc": "b, c"}
+PARTITIONED_TABLE = "hash_fixture"
+#: A foreign-data wrapper and a server of it, which PostgreSQL has none of until one is made.
+FOREIGN_DATA_WRAPPER = "conformance_fdw"
+FOREIGN_SERVER = "conformance_server"
+#: A large object, a replication slot and a table row two transactions share-locked, so its xmax
+#: is a multixact.
+FIXTURE_LARGE_OBJECT = 424243
+REPLICATION_SLOT = "conformance_slot"
+MULTIXACT_TABLE = "multixact_fixture"
+#: A sequence that has answered once: the probe's own is made again after the fixture.
+FIXTURE_SEQUENCE = "fixture_sequence"
+_RELATION_OID = "(SELECT oid FROM pg_catalog.pg_class WHERE relname = '{}')"
+
+#: Values of the ``NO_LITERAL`` types the server itself derived, read from its catalog: an
+#: expression tree (a column default, a partition bound, a view's rule), and the statistics
+#: ANALYZE built for ``STATISTICS``. They are cast as ``SAMPLES`` is.
+DERIVED_SAMPLES: dict[str, tuple[str, str, str]] = {
+    "pg_node_tree": (
+        _catalog_read(
+            "d.adbin",
+            "pg_attrdef AS d JOIN pg_catalog.pg_class AS c ON c.oid = d.adrelid",
+            f"c.relname = '{STATISTICS_TABLE}'",
+        ),
+        _catalog_read("relpartbound", "pg_class", f"relname = '{PARTITIONED_TABLE}_0'"),
+        _catalog_read(
+            "r.ev_action",
+            "pg_rewrite AS r JOIN pg_catalog.pg_class AS c ON c.oid = r.ev_class",
+            "c.relname = 'pg_tables' AND c.relnamespace = 'pg_catalog'::regnamespace",
+        ),
+    ),
+    "pg_ndistinct": _statistics("ndistinct"),
+    "pg_dependencies": _statistics("dependencies"),
+    "pg_mcv_list": _statistics("mcv"),
+}
 
 
 class Raw(tuple):
@@ -578,7 +645,11 @@ _INPUT_OID = {"array_in": "integer", "range_in": "int4range", "multirange_in": "
 
 
 def _samples_of(sample_type: str) -> tuple[str, str, str] | None:
-    return SAMPLES.get(sample_type) or VALUE_SAMPLES.get(sample_type)
+    return (
+        SAMPLES.get(sample_type)
+        or VALUE_SAMPLES.get(sample_type)
+        or DERIVED_SAMPLES.get(sample_type)
+    )
 
 
 def _as_text(literal: str) -> str:
@@ -625,6 +696,15 @@ _NAMESPACE_JSON = ('\'{"nspname": "x", "oid": 5}\'', "'{}'", "'{\"nspname\": nul
 _NAMESPACE_JSONS = ('\'[{"nspname": "x", "oid": 5}]\'', "'[]'", "'[{}, {\"oid\": 1}]'")
 _PARSER = {0: ("'default'",) * 3}
 _PARSER_OID = {0: ("3722",) * 3}
+#: A timestamp's year, month, day, hour, minute and seconds.
+_TIMESTAMP_PARTS: dict[int, tuple[str, ...]] = {
+    0: ("2024", "1999", "2000"),
+    1: ("6", "12", "2"),
+    2: ("15", "31", "29"),
+    3: ("12", "0", "23"),
+    4: ("30", "0", "59"),
+    5: ("45.5", "0", "59.5"),
+}
 _HEADLINE_OPTIONS = ("'MaxWords=2, MinWords=1'", "'ShortWord=1'", "''")
 
 #: The literals of the overloads PostgreSQL refused every sample of, by ``_key``: the values each
@@ -767,6 +847,31 @@ _REFUSED_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
             "time with time zone",
         )
     },
+    "make_timestamptz(integer, integer, integer, integer, integer, double precision, text)": {
+        **_TIMESTAMP_PARTS,
+        6: ("'UTC'", "'America/New_York'", "'+05:30'"),
+    },
+    "record_in(cstring, oid, integer)": {
+        0: Raw(f"{r}::cstring" for r in ("'(1,x,10,)'", "'(2,\"a b\",10,{})'", "'(3,,10,)'")),
+        1: Raw(("'pg_catalog.pg_namespace'::regtype::oid",) * 3),
+        2: Raw(("(-1)::integer",) * 3),
+    },
+    "pg_extension_update_paths(name)": {0: ("'hstore'", "'plpgsql'", "'pg_trgm'")},
+    "pg_sequence_parameters(oid)": {
+        0: Raw((f"'{function_probe.PROBE_SEQUENCE}'::regclass::oid",) * 3)
+    },
+    "pg_split_walfile_name(text)": {
+        0: (
+            "'000000010000000000000001'",
+            "'00000002000000A1000000FF'",
+            "'000000010000000000000000'",
+        )
+    },
+    'satisfies_hash_partition(oid, integer, integer, "any")': {
+        0: Raw((_RELATION_OID.format(PARTITIONED_TABLE),) * 3),
+        1: ("2", "2", "2"),
+        2: ("0", "1", "0"),
+    },
     "to_ascii(text, integer)": {1: ("8", "9", "29")},
     "to_ascii(text, name)": {1: ("'LATIN1'", "'LATIN2'", "'WIN1250'")},
     "ts_headline(jsonb, tsquery, text)": {2: _HEADLINE_OPTIONS},
@@ -820,6 +925,15 @@ _OBJECTS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     ),
     "parameter": (("'work_mem'", "'TimeZone'", "'search_path'"), ()),
     "role": (VALUE_SAMPLES["regrole"], tuple(_ROLE_OIDS)),
+    "foreign_data_wrapper": (
+        (f"'{FOREIGN_DATA_WRAPPER}'",) * 3,
+        (_catalog_read("oid", "pg_foreign_data_wrapper", f"fdwname = '{FOREIGN_DATA_WRAPPER}'"),)
+        * 3,
+    ),
+    "server": (
+        (f"'{FOREIGN_SERVER}'",) * 3,
+        (_catalog_read("oid", "pg_foreign_server", f"srvname = '{FOREIGN_SERVER}'"),) * 3,
+    ),
 }
 _OBJECTS["column"] = _OBJECTS["any_column"] = _OBJECTS["table"]
 _PRIVILEGES = {
@@ -835,6 +949,8 @@ _PRIVILEGES = {
     "type": ("'USAGE'",) * 3,
     "parameter": ("'SET'", "'ALTER SYSTEM'", "'SET'"),
     "role": ("'MEMBER'", "'USAGE'", "'MEMBER'"),
+    "foreign_data_wrapper": ("'USAGE'", "'USAGE WITH GRANT OPTION'", "'USAGE'"),
+    "server": ("'USAGE'", "'USAGE WITH GRANT OPTION'", "'USAGE'"),
 }
 #: A column of each of ``_TABLE_NAMES``, by name and by number.
 _COLUMN_NAMES = ("'relname'", "'nspname'", "'id'")
@@ -1027,9 +1143,182 @@ _CATALOG_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
     'pg_collation_for("any")': {0: Raw(("'abc'::text", "'abc'::text COLLATE \"C\"", "'x'::name"))},
 }
 
+#: The job's PostgreSQL's own values that no literal names before it runs, resolved from it when
+#: a leg starts (``resolve_fixture``) and written into a literal where ``{fixture:<name>}`` stands:
+#: a committed transaction of the fixture, and a multixact. A literal naming one unresolved is no
+#: sample.
+FIXTURE: dict[str, str] = {}
+FIXTURE_QUERIES = {
+    "xid": f"SELECT xmin FROM {COLUMN_RELATION} WHERE id = 1",
+    "multixact": f"SELECT xmax FROM {catalog.FIXTURE_SCHEMA}.{MULTIXACT_TABLE}",
+}
+_FIXTURE_TOKEN = re.compile(r"\{fixture:(\w+)\}")
+
+
+def _resolved(literal: str) -> str | None:
+    """``literal`` with each ``FIXTURE`` value written in; None if one is not resolved."""
+    names = _FIXTURE_TOKEN.findall(literal)
+    if any(name not in FIXTURE for name in names):
+        return None
+    return _FIXTURE_TOKEN.sub(lambda m: FIXTURE[m.group(1)], literal)
+
+
+_DATABASE_OID = _OBJECTS["database"][1]
+_BACKEND_PID = Raw(("pg_catalog.pg_backend_pid()",) * VALUE_ROWS)
+#: The answering session's own backend id, which pg_stat_get_backend_idset numbers from 1.
+_BACKEND_ID = Raw(
+    (
+        "(SELECT b FROM pg_catalog.pg_stat_get_backend_idset() AS b "
+        "WHERE pg_catalog.pg_stat_get_backend_pid(b) = pg_catalog.pg_backend_pid())",
+    )
+    * VALUE_ROWS
+)
+_FIXTURE_XID = ("'{fixture:xid}'",) * VALUE_ROWS
+_RELATIONS = ("'pg_catalog.pg_class'", "'pg_catalog.pg_type'", f"'{COLUMN_RELATION}'")
+_FILES = ("'PG_VERSION'", "'base/1/PG_VERSION'", "'PG_VERSION'")
+#: Directories of the data directory whose entries are alike in form: databases' oids, WAL
+#: segments with their status and summary directories.
+_DIRECTORIES = ("'base'", "'pg_wal'", "'base'")
+_TS_QUERIES = (
+    "'SELECT ''cat:1 fat:2''::tsvector'",
+    "'SELECT ''a:1A b:2B''::tsvector'",
+    "'SELECT ''rat:3''::tsvector UNION ALL SELECT ''cat:1''::tsvector'",
+)
+_XML_QUERIES = {
+    0: ("'SELECT 1 AS a'", "'SELECT ''x''::text AS b, 2 AS c'", "'SELECT 1 AS a WHERE false'"),
+    1: ("true", "false", "true"),
+    2: ("false", "true", "false"),
+    3: ("''", "'urn:conformance'", "''"),
+}
+_CURSOR = "conformance_cursor"
+_COLLATIONS = Raw(
+    _catalog_read("oid", "pg_collation", f"collname = '{c}'")
+    for c in ("und-x-icu", "en_US.utf8", "en_US")
+)
+
 #: Values of the volatile functions with no side effect that ``form_calls`` gives values, by
 #: ``_key``: each array's elements alike in form, so any order of them has the form of another.
+#: An object each reads is a catalog's own, or one ``seed_fixture`` made, named or read as each
+#: server's catalog has it; a file or a directory is the data directory's own.
 _FORM_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
+    "amvalidate(oid)": {
+        0: Raw(
+            _catalog_read("oid", "pg_opclass", f"opcname = '{name}' AND opcmethod = {am}")
+            for name, am in (("int4_ops", 403), ("text_ops", 403), ("int4_ops", 405))
+        )
+    },
+    "currtid2(text, tid)": {
+        0: (f"'{COLUMN_RELATION}'",) * VALUE_ROWS,
+        1: ("'(0,1)'", "'(0,2)'", "'(0,3)'"),
+    },
+    **{
+        f"cursor_to_xml{schema}(refcursor{count}, boolean, boolean, text)": {
+            0: (f"'{_CURSOR}'",) * VALUE_ROWS,
+            **({1: ("1", "2", "0")} if count else {}),
+            **{i + bool(count): _XML_QUERIES[i] for i in (1, 2, 3)},
+        }
+        for schema, count in (("", ", integer"), ("schema", ""))
+    },
+    "lo_get(oid)": {0: (str(FIXTURE_LARGE_OBJECT),) * VALUE_ROWS},
+    "lo_get(oid, bigint, integer)": {
+        0: (str(FIXTURE_LARGE_OBJECT),) * VALUE_ROWS,
+        1: ("0", "1", "2"),
+        2: ("2", "1", "5"),
+    },
+    "pg_get_multixact_members(xid)": {0: ("'{fixture:multixact}'",) * VALUE_ROWS},
+    "pg_blocking_pids(integer)": {0: _BACKEND_PID},
+    "pg_safe_snapshot_blocking_pids(integer)": {0: _BACKEND_PID},
+    "pg_isolation_test_session_is_blocked(integer, integer[])": {
+        0: _BACKEND_PID,
+        1: ("'{}'", "'{1}'", "'{}'"),
+    },
+    "pg_collation_actual_version(oid)": {0: _COLLATIONS},
+    "pg_database_collation_actual_version(oid)": {0: Raw(_DATABASE_OID)},
+    "pg_current_logfile(text)": {0: ("'stderr'", "'csvlog'", "'jsonlog'")},
+    "pg_database_size(name)": {0: Raw(("pg_catalog.current_database()",) * VALUE_ROWS)},
+    "pg_database_size(oid)": {0: Raw(_DATABASE_OID)},
+    "pg_tablespace_size(name)": {0: ("'pg_default'", "'pg_global'", "'pg_default'")},
+    "pg_tablespace_size(oid)": {0: ("1663", "1664", "1663")},
+    **{
+        f"{name}(regclass)": {0: _RELATIONS}
+        for name in (
+            "pg_indexes_size",
+            "pg_relation_size",
+            "pg_table_size",
+            "pg_total_relation_size",
+        )
+    },
+    "pg_relation_size(regclass, text)": {0: _RELATIONS, 1: ("'main'", "'fsm'", "'vm'")},
+    "pg_ls_dir(text)": {0: _DIRECTORIES},
+    "pg_ls_dir(text, boolean, boolean)": {
+        0: (*_DIRECTORIES[:2], "'no_such_directory'"),
+        1: ("false", "true", "true"),
+        2: ("false", "false", "false"),
+    },
+    "pg_ls_replslotdir(text)": {0: (f"'{REPLICATION_SLOT}'",) * VALUE_ROWS},
+    "pg_ls_tmpdir(oid)": {0: ("1663",) * VALUE_ROWS},
+    "pg_partition_ancestors(regclass)": {
+        0: Raw(
+            f"{_RELATION_OID.format(t)}::regclass"
+            for t in (f"{PARTITIONED_TABLE}_0", f"{PARTITIONED_TABLE}_1", PARTITIONED_TABLE)
+        )
+    },
+    "pg_partition_tree(regclass)": {
+        0: Raw(
+            f"{_RELATION_OID.format(t)}::regclass"
+            for t in (PARTITIONED_TABLE, f"{PARTITIONED_TABLE}_1", PARTITIONED_TABLE)
+        )
+    },
+    **{
+        f"{name}(text{rest})": {0: _FILES, **given}
+        for name in ("pg_read_file", "pg_read_binary_file")
+        for rest, given in (
+            ("", {}),
+            (", boolean", {0: (*_FILES[:2], "'no_such_file'"), 1: ("false", "true", "true")}),
+            (", bigint, bigint", {1: ("0", "1", "0"), 2: ("2", "1", "1")}),
+            (
+                ", bigint, bigint, boolean",
+                {
+                    0: (*_FILES[:2], "'no_such_file'"),
+                    1: ("0", "1", "0"),
+                    2: ("2", "1", "1"),
+                    3: ("false", "true", "true"),
+                },
+            ),
+        )
+    },
+    "pg_stat_file(text)": {0: ("'PG_VERSION'", "'base'", "'postmaster.pid'")},
+    "pg_stat_file(text, boolean)": {
+        0: ("'PG_VERSION'", "'base'", "'no_such_file'"),
+        1: ("false", "true", "true"),
+    },
+    "pg_sequence_last_value(regclass)": {
+        0: Raw((f"{_RELATION_OID.format(FIXTURE_SEQUENCE)}::regclass",) * VALUE_ROWS)
+    },
+    "pg_stat_have_stats(text, oid, oid)": {
+        0: ("'database'", "'relation'", "'database'"),
+        1: Raw((*_DATABASE_OID[:2], "0::oid")),
+        2: Raw(("0::oid", "'pg_catalog.pg_class'::regclass::oid", "0::oid")),
+    },
+    "pg_wal_summary_contents(bigint, pg_lsn, pg_lsn)": {
+        0: ("1",) * VALUE_ROWS,
+        1: ("'0/0'",) * VALUE_ROWS,
+        2: ("'0/1000000'", "'0/2000000'", "'1/0'"),
+    },
+    "pg_xact_commit_timestamp(xid)": {0: _FIXTURE_XID},
+    "pg_xact_commit_timestamp_origin(xid)": {0: _FIXTURE_XID},
+    "pg_xact_status(xid8)": {0: _FIXTURE_XID},
+    "txid_status(bigint)": {0: _FIXTURE_XID},
+    **{
+        f"query_to_xml{part}(text, boolean, boolean, text)": _XML_QUERIES
+        for part in ("", "schema", "_and_xmlschema")
+    },
+    "ts_rewrite(tsquery, text)": {
+        0: ("'a & b'", "'cat'", "'a | c'"),
+        1: ("'SELECT ''a''::tsquery, ''c''::tsquery'",) * VALUE_ROWS,
+    },
+    "ts_stat(text)": {0: _TS_QUERIES},
+    "ts_stat(text, text)": {0: _TS_QUERIES, 1: ("'a'", "'ab'", "'d'")},
     "array_shuffle(anyarray)": {0: ("'{1,2,3}'", "'{}'", "'{4,5,6}'")},
     "array_sample(anyarray, integer)": {0: ("'{1,2,3}'", "'{}'", "'{4,5,6}'"), 1: ("2", "0", "3")},
     "random(integer, integer)": {0: ("1", "(-5)", "7"), 1: ("10", "5", "7")},
@@ -1039,6 +1328,19 @@ _FORM_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
         0: ("5", "(-2.5)", "0"),
         1: ("0", "0", "0"),
     },
+    # Answers with the server's own state (``OWN_ANSWERS``), of an object it has.
+    "age(xid)": {0: _FIXTURE_XID},
+    "mxid_age(xid)": {0: ("'{fixture:multixact}'",) * VALUE_ROWS},
+    "pg_relation_filenode(regclass)": {0: _RELATIONS},
+    "pg_relation_filepath(regclass)": {0: _RELATIONS},
+    "pg_stat_get_activity(integer)": {0: _BACKEND_PID},
+}
+
+#: As ``_FORM_VALUES``, by prefix: a database's statistics of the session's own database, a
+#: backend's of the session's own backend.
+_OWN_PREFIX_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
+    "pg_stat_get_db_": {0: Raw(_DATABASE_OID)},
+    "pg_stat_get_backend_": {0: _BACKEND_ID},
 }
 
 #: Where a function needs literals its argument's type cannot give, by name and argument position;
@@ -1061,22 +1363,8 @@ ARG_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
     "to_number": {0: ("'12,345.5'", "'-7'", "'0042'"), 1: ("'99G999D9'", "'S9'", "'0000'")},
     "make_date": {0: ("2024", "1999", "2000"), 1: ("6", "12", "2"), 2: ("15", "31", "29")},
     "make_time": {0: ("12", "0", "23"), 1: ("30", "0", "59"), 2: ("45.5", "0", "59.5")},
-    "make_timestamp": {
-        0: ("2024", "1999", "2000"),
-        1: ("6", "12", "2"),
-        2: ("15", "31", "29"),
-        3: ("12", "0", "23"),
-        4: ("30", "0", "59"),
-        5: ("45.5", "0", "59.5"),
-    },
-    "make_timestamptz": {
-        0: ("2024", "1999", "2000"),
-        1: ("6", "12", "2"),
-        2: ("15", "31", "29"),
-        3: ("12", "0", "23"),
-        4: ("30", "0", "59"),
-        5: ("45.5", "0", "59.5"),
-    },
+    "make_timestamp": _TIMESTAMP_PARTS,
+    "make_timestamptz": _TIMESTAMP_PARTS,
     "regexp_count": {1: _PATTERNS},
     "regexp_instr": {1: _PATTERNS},
     "regexp_like": {1: _PATTERNS},
@@ -1139,12 +1427,15 @@ class Call:
     """One statement of an overload. ``answers``: a real answer, compared by value; ``values``:
     whether the rows compare at all (the NULL call of a volatile function, or of one whose answer
     is its server's own: no); ``zone``: the session's TimeZone for this call, if not ``SETTINGS``'
-    UTC."""
+    UTC; ``setup`` and ``teardown``: statements around it on the same session, as an open cursor
+    needs its transaction."""
 
     sql: str
     answers: bool = False
     values: bool = True
     zone: str | None = None
+    setup: tuple[str, ...] = ()
+    teardown: tuple[str, ...] = ()
 
     @property
     def form(self) -> bool:
@@ -1168,7 +1459,16 @@ def _given(fn: Function) -> dict[int, tuple[str, ...]]:
         or ARG_VALUES.get(fn.name)
         or _input_given(fn)
         or _privilege_given(fn)
+        or _own_given(fn)
     )
+
+
+def _own_given(fn: Function) -> dict[int, tuple[str, ...]]:
+    """The arguments of a stable function answering its server's own of the session's own
+    object (``_OWN_PREFIX_VALUES``)."""
+    if fn.volatility == "v" or own_answer(fn) is None:
+        return {}
+    return next((g for p, g in _OWN_PREFIX_VALUES.items() if fn.name.startswith(p)), {})
 
 
 def _sample(fn: Function, position: int, row: int) -> str | None:
@@ -1176,12 +1476,13 @@ def _sample(fn: Function, position: int, row: int) -> str | None:
     argtype = fn.argtypes[position]
     given = _given(fn).get(position)
     if isinstance(given, Raw):
-        return given[row]
+        return _resolved(given[row])
     if given is None:
         given = _samples_of(function_probe.CONCRETE.get(argtype, argtype))
         if given is None:
             return None
-    return _cast(given[row], argtype)
+    literal = _resolved(given[row])
+    return None if literal is None else _cast(literal, argtype)
 
 
 def unchecked(fn: Function, family: str) -> str | None:
@@ -1256,10 +1557,23 @@ def _window(fn: Function) -> str:
     return f"SELECT {named}({', '.join(columns[1:])}) OVER (ORDER BY c1) AS v FROM {relation}"
 
 
+#: Value calls written whole, by ``_key``: a function returning a record of no declared type is
+#: called where a column definition list gives it one.
+VALUE_STATEMENTS: dict[str, tuple[str, ...]] = {
+    f"{name}({typ})": tuple(
+        f'SELECT t.a, t.b FROM pg_catalog."{name}"({doc}::{typ}) AS t(a integer, b text)'
+        for doc in ('\'{"a": 1, "b": "x"}\'', "'{\"b\": null}'", '\'{"a": -7, "c": true}\'')
+    )
+    for name, typ in (("json_to_record", "json"), ("jsonb_to_record", "jsonb"))
+}
+
+
 def value_calls(fn: Function, family: str) -> list[Call]:
     """The calls of ``fn`` with real values, none if ``unchecked`` says so."""
     if unchecked(fn, family) is not None:
         return []
+    if _key(fn) in VALUE_STATEMENTS:
+        return [Call(sql, answers=True) for sql in VALUE_STATEMENTS[_key(fn)]]
     if fn.kind == "a":
         return [Call(_aggregate(fn), answers=True)]
     if fn.kind == "w":
@@ -1341,12 +1655,27 @@ def column_calls(fn: Function, family: str) -> list[Call]:
     return out
 
 
+#: The statements around a call reading ``_CURSOR``: its transaction, and the cursor in it.
+_CURSOR_SETUP = ("BEGIN", f"DECLARE {_CURSOR} CURSOR FOR SELECT 1 AS a UNION ALL SELECT 2")
+_CURSOR_TEARDOWN = ("ROLLBACK",)
+
+
 def form_calls(fn: Function) -> list[Call]:
-    """A volatile function of ``_FORM_VALUES`` with real values: it acts on nothing, and its answer
-    is held to its type and form (REQ-2167, WHAT GUARANTEED MEANS)."""
-    if _key(fn) not in _FORM_VALUES:
+    """A function whose value cannot be compared, with real values, its answer held to its type
+    and form (REQ-2167, WHAT GUARANTEED MEANS): a volatile one of ``_FORM_VALUES``, which acts on
+    nothing, or a stable one answering its server's own, of ``_FORM_VALUES`` or
+    ``_OWN_PREFIX_VALUES``. None if a value is not resolved (``FIXTURE``)."""
+    if not fn.argtypes or not (_key(fn) in _FORM_VALUES or _own_given(fn)):
         return []
-    return [Call(function_probe.statement(fn, row), values=False) for row in _rows(fn)]
+    rows = range(VALUE_ROWS)
+    if any(_sample(fn, i, row) is None for i in range(len(fn.argtypes)) for row in rows):
+        return []
+    cursor = fn.argtypes[0] == "refcursor"
+    setup, teardown = (_CURSOR_SETUP, _CURSOR_TEARDOWN) if cursor else ((), ())
+    return [
+        Call(function_probe.statement(fn, row), values=False, setup=setup, teardown=teardown)
+        for row in _rows(fn)
+    ]
 
 
 def calls(fn: Function, family: str) -> list[Call]:
@@ -1764,12 +2093,21 @@ def form_check(name: str, want: dict[str, Any], got: dict[str, Any]) -> tuple[bo
 
 
 def _answer(server: Session, call_: Call) -> dict[str, Any]:
-    if call_.zone is None:
+    """``call_`` on ``server``: the first of its setup that fails is its answer, and its teardown
+    runs whatever came before."""
+    if call_.zone is not None:
+        server.answer(f"SET TimeZone TO '{call_.zone}'")
+    try:
+        for sql in call_.setup:
+            done = server.answer(sql)
+            if not done["ok"]:
+                return done
         return server.answer(call_.sql)
-    server.answer(f"SET TimeZone TO '{call_.zone}'")
-    answer = server.answer(call_.sql)
-    server.answer(SETTINGS[0])
-    return answer
+    finally:
+        for sql in call_.teardown:
+            server.answer(sql)
+        if call_.zone is not None:
+            server.answer(SETTINGS[0])
 
 
 def measure_column(
@@ -2136,6 +2474,11 @@ def measure_overload(
     return entry
 
 
+#: Why an overload given real values for its form still had none checked.
+_FORM_REFUSED = "PostgreSQL refused every call with real values"
+_FORMLESS = "with real values PostgreSQL answers NULL or no row"
+
+
 def _measure_calls(
     fn: Function,
     family: str,
@@ -2154,6 +2497,9 @@ def _measure_calls(
         "volatility": fn.volatility,
     }
     accepted = answered = checked = 0
+    # The form calls of real values, and how many of them PostgreSQL answered at all.
+    form_sqls = {c.sql for c in form_calls(fn)}
+    formed_accepted = 0
     wrong: list[dict[str, str]] = []
     errors: list[dict[str, str]] = []
     named: list[dict[str, str]] = []
@@ -2168,6 +2514,7 @@ def _measure_calls(
             continue
         accepted += 1
         answered += call_.answers
+        formed_accepted += call_.sql in form_sqls
         routes.add("catalog" if classify(call_.sql) == "INTERCEPT" else "engine")
         got = _answer(provisa, call_)
         if not got["ok"]:
@@ -2194,8 +2541,10 @@ def _measure_calls(
     entry["type_and_form_checked"] = checked > 0 and not answered
     entry["served_by"] = "+".join(sorted(routes)) or None
     if not answered:
-        why = unchecked(fn, family)
-        entry["unchecked"] = why or "PostgreSQL refused every value call"
+        why = unchecked(fn, family) or "PostgreSQL refused every value call"
+        if form_sqls and not checked:
+            why += f"; {_FORMLESS if formed_accepted else _FORM_REFUSED}"
+        entry["unchecked"] = why
     if lost:
         entry["connection_lost"] = True
     if accepted == 0:
@@ -2259,6 +2608,74 @@ def seed_columns(pg_dsn: str, out: Path) -> None:
     print(f"seeded {COLUMN_RELATION}: {len(columns)} columns, {VALUE_ROWS} rows")
 
 
+_SCHEMA = catalog.FIXTURE_SCHEMA
+
+#: What the values PostgreSQL takes no literal of, and the objects a call reads, are made of: a
+#: table with a column default and statistics objects ANALYZE fills, a hash-partitioned table, a
+#: foreign-data wrapper with a server, a large object, a replication slot, a sequence that has
+#: answered, database statistics that were reset, so they have a time, and a row to share-lock.
+FIXTURE_SQL = (
+    f"DROP TABLE IF EXISTS {_SCHEMA}.{STATISTICS_TABLE}, {_SCHEMA}.{PARTITIONED_TABLE}, "
+    f"{_SCHEMA}.{MULTIXACT_TABLE}",
+    f"CREATE TABLE {_SCHEMA}.{STATISTICS_TABLE} (a integer, b integer, c text DEFAULT 'x')",
+    f"INSERT INTO {_SCHEMA}.{STATISTICS_TABLE} "
+    "SELECT i % 10, i % 5, 'v' || (i % 3) FROM generate_series(1, 1000) AS i",
+    *(
+        f"CREATE STATISTICS {_SCHEMA}.{name} (ndistinct, dependencies, mcv) "
+        f"ON {columns} FROM {_SCHEMA}.{STATISTICS_TABLE}"
+        for name, columns in STATISTICS.items()
+    ),
+    f"ANALYZE {_SCHEMA}.{STATISTICS_TABLE}",
+    f"CREATE TABLE {_SCHEMA}.{PARTITIONED_TABLE} (id integer) PARTITION BY HASH (id)",
+    *(
+        f"CREATE TABLE {_SCHEMA}.{PARTITIONED_TABLE}_{r} PARTITION OF "
+        f"{_SCHEMA}.{PARTITIONED_TABLE} FOR VALUES WITH (MODULUS 2, REMAINDER {r})"
+        for r in (0, 1)
+    ),
+    f"DROP SERVER IF EXISTS {FOREIGN_SERVER}",
+    f"DROP FOREIGN DATA WRAPPER IF EXISTS {FOREIGN_DATA_WRAPPER}",
+    f"CREATE FOREIGN DATA WRAPPER {FOREIGN_DATA_WRAPPER}",
+    f"CREATE SERVER {FOREIGN_SERVER} FOREIGN DATA WRAPPER {FOREIGN_DATA_WRAPPER}",
+    f"SELECT pg_catalog.lo_unlink(oid) FROM pg_catalog.pg_largeobject_metadata "
+    f"WHERE oid = {FIXTURE_LARGE_OBJECT}",
+    f"SELECT pg_catalog.lo_from_bytea({FIXTURE_LARGE_OBJECT}, '\\x616263'::bytea)",
+    "SELECT pg_catalog.pg_drop_replication_slot(slot_name) FROM pg_catalog.pg_replication_slots "
+    f"WHERE slot_name = '{REPLICATION_SLOT}'",
+    f"SELECT pg_catalog.pg_create_physical_replication_slot('{REPLICATION_SLOT}', true)",
+    f"DROP SEQUENCE IF EXISTS {_SCHEMA}.{FIXTURE_SEQUENCE}",
+    f"CREATE SEQUENCE {_SCHEMA}.{FIXTURE_SEQUENCE}",
+    f"SELECT pg_catalog.nextval('{_SCHEMA}.{FIXTURE_SEQUENCE}')",
+    "SELECT pg_catalog.pg_stat_reset()",
+    f"CREATE TABLE {_SCHEMA}.{MULTIXACT_TABLE} (id integer)",
+    f"INSERT INTO {_SCHEMA}.{MULTIXACT_TABLE} VALUES (1)",
+)
+
+
+def seed_fixture(pg_dsn: str) -> None:
+    """``FIXTURE_SQL`` in the job's PostgreSQL, then two transactions share-locking the row of
+    ``MULTIXACT_TABLE`` at once, which makes its xmax a multixact."""
+    with psycopg.connect(pg_dsn, autocommit=True) as conn:
+        for sql in FIXTURE_SQL:
+            conn.execute(sql.encode())
+    lock = f"SELECT id FROM {_SCHEMA}.{MULTIXACT_TABLE} FOR SHARE".encode()
+    with psycopg.connect(pg_dsn) as first, psycopg.connect(pg_dsn) as second:
+        first.execute(lock)
+        second.execute(lock)
+        first.commit()
+        second.commit()
+    print(f"seeded the fixture: {len(FIXTURE_SQL)} statements and a multixact")
+
+
+def resolve_fixture(pg: Session) -> dict[str, str]:
+    """``FIXTURE``'s values, from the job's PostgreSQL: one it does not answer stays unresolved."""
+    resolved = {}
+    for name, sql in FIXTURE_QUERIES.items():
+        found = pg.answer(sql)
+        if found["ok"] and found["rows"] and found["rows"][0][0] is not None:
+            resolved[name] = found["rows"][0][0]
+    return resolved
+
+
 def require_column_table(provisa: Session) -> None:
     """Stops a leg whose model lacks ``COLUMN_TABLE``: every column call would be refused, and
     every overload would read as passing on literals only."""
@@ -2278,6 +2695,8 @@ def measure(
 ) -> int:
     """One leg. Written whatever the leg reaches: what it did not reach is ``not_reached``."""
     pg = Session(pg_dsn)
+    FIXTURE.update(resolve_fixture(pg))
+    print(f"fixture: {FIXTURE}")
     fns = catalog.pg_functions(pg)
     enums = frozenset(
         oid
@@ -2731,6 +3150,7 @@ def main(argv: list[str]) -> int:
         return measure(args.engine, args.pg, args.provisa, args.out_json, args.out_md, args.limit)
     if args.command == "seed-columns":
         seed_columns(args.pg, args.out)
+        seed_fixture(args.pg)
         return 0
     return merge(args.engines.split(","), args.indir, args.out, args.out_md)
 

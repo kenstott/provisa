@@ -110,11 +110,9 @@ def test_an_immutable_function_is_called_with_null_and_with_three_rows_of_values
             "by design (REQ-588): names the role the session acts as",
         ),
         (
-            Function(
-                "pg_node_tree_out", "pg_node_tree", argtypes=("pg_node_tree",), volatility="i"
-            ),
+            Function("gtsvectorout", "gtsvector", argtypes=("gtsvector",), volatility="i"),
             "Type operators",
-            "PostgreSQL takes no literal of pg_node_tree",
+            "PostgreSQL takes no literal of gtsvector",
         ),
         (
             Function("f", "polygon[]", argtypes=("polygon[]",), volatility="i"),
@@ -160,7 +158,7 @@ def test_an_input_function_reads_its_types_samples_as_cstring():
     [
         ("tid", "'(0,1)'::tid"),
         ("xid8", "'3'::xid8"),
-        ("record", "ROW(1, 'a')::record"),
+        ("record", "ROW(1, 'a'::text)::record"),
         ("anyenum", "'a'::conformance.probe_enum"),
         ("oidvector", "'1 2 3'::oidvector"),
         ("regclass", "'pg_catalog.pg_class'::regclass"),
@@ -208,7 +206,7 @@ def test_the_null_call_of_a_function_answering_its_servers_own_compares_its_type
         (False, False, True)
     ]
     stat = Function("pg_stat_get_db_xact_commit", "oid", argtypes=("oid",), volatility="s")
-    assert [(c.values, c.answers) for c in support.calls(stat, "System")] == [(False, False)]
+    assert [(c.values, c.answers) for c in support.calls(stat, "System")][0] == (False, False)
     setting = Function("current_setting", "text", argtypes=("text",), volatility="s")
     assert support.calls(setting, "System")[0].values
 
@@ -1670,7 +1668,7 @@ def test_a_window_function_reads_its_column_over_a_stated_order():
     [
         Function("pi", "", volatility="i"),
         Function("setval", "text", argtypes=("text",), volatility="v"),
-        Function("pg_node_tree_out", "pg_node_tree", argtypes=("pg_node_tree",), volatility="i"),
+        Function("gtsvectorout", "gtsvector", argtypes=("gtsvector",), volatility="i"),
     ],
 )
 def test_an_overload_with_no_sample_value_has_no_column_call(fn):
@@ -1841,3 +1839,227 @@ def test_a_leg_seeds_the_column_table_and_gives_it_to_the_instance_after_the_eng
     assert "seed-columns" in seed and '"$RUNNER_TEMP/function-columns.yaml"' in seed
     instance = steps[names.index("Start the Provisa instance")]["with"]
     assert instance["extra-tables"] == "${{ runner.temp }}/function-columns.yaml"
+
+
+# --- real values for what cannot be compared by value (REQ-2167, only compared answers pass) ---
+
+
+LO_GET = Function("lo_get", "oid", argtypes=("oid",), volatility="v", rettype="bytea")
+READ_FILE = Function("pg_read_file", "text", argtypes=("text",), volatility="v", rettype="text")
+AGE_XID = Function("age", "xid", argtypes=("xid",), volatility="s", rettype="integer")
+DB_COMMITS = Function(
+    "pg_stat_get_db_xact_commit", "oid", argtypes=("oid",), volatility="s", rettype="bigint"
+)
+BACKEND_START = Function(
+    "pg_stat_get_backend_start",
+    "integer",
+    argtypes=("integer",),
+    volatility="s",
+    rettype="timestamp with time zone",
+)
+
+
+def _per_call(fn: Function, answers: dict[int, dict[str, Any]], other: dict[str, Any]) -> Fake:
+    """A server answering ``fn``'s call ``i`` with ``answers[i]``, and every other with ``other``."""
+    planned = [c.sql for c in support.calls(fn, "System")]
+    return Fake({sql: answers.get(i, other) for i, sql in enumerate(planned)})
+
+
+def test_a_volatile_function_that_reads_an_object_is_given_one_and_held_to_its_form():
+    planned = support.calls(LO_GET, "Large object")
+    assert [c.sql for c in planned[1:]] == [
+        f'SELECT pg_catalog."lo_get"({support.FIXTURE_LARGE_OBJECT}::oid) AS v'
+    ] * support.VALUE_ROWS
+    assert all(c.form and not c.answers for c in planned[1:])
+    files = [c.sql for c in support.calls(READ_FILE, "System")[1:]]
+    assert files[0] == """SELECT pg_catalog."pg_read_file"('PG_VERSION'::text) AS v"""
+
+
+def test_a_read_answering_the_form_postgresql_answers_passes_type_and_form_checked():
+    pg = _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("17\n", oid=25))
+    entry = support.measure_overload(
+        READ_FILE,
+        "System",
+        pg,
+        _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("18\n", oid=25)),
+        _route,
+        engine="pg",
+    )
+    assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
+    assert entry["unchecked"] == "volatile"
+    other = _per_call(READ_FILE, {0: _ok(None, oid=25)}, _ok("no such thing", oid=25))
+    entry = support.measure_overload(READ_FILE, "System", pg, other, _route, engine="pg")
+    assert entry["outcome"] == "wrong_answer"
+
+
+def test_a_statistic_of_a_database_or_a_backend_is_asked_of_the_sessions_own():
+    commits = support.calls(DB_COMMITS, "System")
+    assert commits[0].sql == call(DB_COMMITS) and not commits[0].form
+    assert [c.sql for c in commits[1:]] == [
+        f'SELECT pg_catalog."pg_stat_get_db_xact_commit"({oid}) AS v'
+        for oid in support._OBJECTS["database"][1]
+    ]
+    assert all(c.form and not c.values for c in commits[1:])
+    started = support.calls(BACKEND_START, "System")[1]
+    assert "pg_catalog.pg_stat_get_backend_idset()" in started.sql
+    assert "pg_catalog.pg_backend_pid()" in started.sql
+
+
+def test_a_volatile_function_off_the_list_still_gets_no_value_whatever_its_prefix():
+    reset = Function("pg_stat_get_db_reset", "oid", argtypes=("oid",), volatility="v")
+    assert support.form_calls(reset) == []
+
+
+def test_a_value_of_the_servers_own_is_resolved_from_postgresql_before_it_is_given(monkeypatch):
+    monkeypatch.setattr(support, "FIXTURE", {})
+    assert support.form_calls(AGE_XID) == []
+    pg = Fake(
+        {
+            support.FIXTURE_QUERIES["xid"]: _ok("779", oid=28),
+            support.FIXTURE_QUERIES["multixact"]: _ok(None, oid=28),
+        }
+    )
+    resolved = support.resolve_fixture(pg)
+    assert resolved == {"xid": "779"}
+    monkeypatch.setattr(support, "FIXTURE", resolved)
+    assert [c.sql for c in support.form_calls(AGE_XID)] == [
+        """SELECT pg_catalog."age"('779'::xid) AS v"""
+    ] * support.VALUE_ROWS
+    members = Function("pg_get_multixact_members", "xid", argtypes=("xid",), volatility="v")
+    assert support.form_calls(members) == []
+
+
+@pytest.mark.parametrize(
+    ("fn", "reads"),
+    [
+        (
+            Function(
+                "pg_node_tree_out", "pg_node_tree", argtypes=("pg_node_tree",), volatility="i"
+            ),
+            "pg_catalog.pg_attrdef",
+        ),
+        (
+            Function(
+                "pg_ndistinct_out", "pg_ndistinct", argtypes=("pg_ndistinct",), volatility="i"
+            ),
+            "d.stxdndistinct FROM pg_catalog.pg_statistic_ext_data",
+        ),
+        (
+            Function("pg_mcv_list_send", "pg_mcv_list", argtypes=("pg_mcv_list",), volatility="s"),
+            "d.stxdmcv FROM pg_catalog.pg_statistic_ext_data",
+        ),
+    ],
+)
+def test_a_type_postgresql_takes_no_literal_of_is_read_from_its_catalog_and_compared(fn, reads):
+    assert support.unchecked(fn, "Type operators") is None
+    valued = support.value_calls(fn, "Type operators")
+    assert len(valued) == support.VALUE_ROWS and all(c.answers for c in valued)
+    assert reads in valued[0].sql
+
+
+def test_what_the_catalog_values_read_is_what_the_fixture_makes():
+    made = " ".join(support.FIXTURE_SQL)
+    for name in (*support.STATISTICS, support.STATISTICS_TABLE, support.PARTITIONED_TABLE):
+        assert f"{catalog.FIXTURE_SCHEMA}.{name} " in made
+    assert f"{support.PARTITIONED_TABLE}_0" in made
+    trees = support.DERIVED_SAMPLES["pg_node_tree"]
+    assert f"'{support.STATISTICS_TABLE}'" in trees[0]
+    assert f"'{support.PARTITIONED_TABLE}_0'" in trees[1]
+    assert f"lo_from_bytea({support.FIXTURE_LARGE_OBJECT}" in made
+    assert f"'{support.REPLICATION_SLOT}'" in made
+    assert f"CREATE SERVER {support.FOREIGN_SERVER}" in made
+
+
+def test_a_foreign_data_wrapper_or_server_privilege_asks_of_the_fixtures_own():
+    fdw = Function(
+        "has_foreign_data_wrapper_privilege",
+        "text, text",
+        argtypes=("text", "text"),
+        volatility="s",
+    )
+    assert [c.sql for c in support.value_calls(fdw, "System")][0] == (
+        f"""SELECT pg_catalog."has_foreign_data_wrapper_privilege"("""
+        f"""'{support.FOREIGN_DATA_WRAPPER}'::text, 'USAGE'::text) AS v"""
+    )
+    server = Function(
+        "has_server_privilege", "name, oid, text", argtypes=("name", "oid", "text"), volatility="s"
+    )
+    sql = support.value_calls(server, "System")[0].sql
+    assert f"srvname = '{support.FOREIGN_SERVER}'" in sql and "'pg_monitor'::name" in sql
+
+
+def test_a_record_of_no_declared_type_is_called_with_a_column_definition_list():
+    fn = Function("json_to_record", "json", argtypes=("json",), volatility="s", rettype="record")
+    valued = support.value_calls(fn, "JSON")
+    assert [c.sql for c in valued] == list(support.VALUE_STATEMENTS["json_to_record(json)"])
+    assert all(c.answers for c in valued)
+    assert valued[0].sql.endswith("AS t(a integer, b text)")
+
+
+def test_a_cursor_is_opened_in_a_transaction_around_the_call_and_rolled_back():
+    fn = Function(
+        "cursor_to_xmlschema",
+        "cursor refcursor, nulls boolean, tableforest boolean, targetns text",
+        argtypes=("refcursor", "boolean", "boolean", "text"),
+        volatility="v",
+        rettype="xml",
+    )
+    [first, *_] = support.form_calls(fn)
+    assert first.setup == support._CURSOR_SETUP and first.teardown == ("ROLLBACK",)
+    assert f"'{support._CURSOR}'::refcursor" in first.sql
+    server = Effects({s: _ok("x", oid=142) for s in (*first.setup, first.sql, "ROLLBACK")})
+    assert support._answer(server, first)["rows"] == [("x",)]
+    assert server.ran == [*first.setup, first.sql, "ROLLBACK"]
+    no_cursors = {"ok": False, "error": "ERROR:  DECLARE CURSOR is not supported"}
+    refused = Effects({first.setup[1]: no_cursors})
+    assert not support._answer(refused, first)["ok"]
+    assert refused.ran == [*first.setup, "ROLLBACK"]
+
+
+def test_real_values_postgresql_refuses_or_answers_null_to_say_so_and_stay_not_checked():
+    null_call = {0: _ok(None, oid=17)}
+    refusing = _per_call(LO_GET, null_call, {"ok": False, "error": "ERROR:  no such large object"})
+    entry = support.measure_overload(
+        LO_GET, "Large object", refusing, refusing, _route, engine="pg"
+    )
+    assert entry["outcome"] == "not_checked"
+    assert entry["unchecked"] == f"volatile; {support._FORM_REFUSED}"
+    nulls = _per_call(LO_GET, null_call, _ok(None, oid=17))
+    entry = support.measure_overload(LO_GET, "Large object", nulls, nulls, _route, engine="pg")
+    assert entry["unchecked"] == f"volatile; {support._FORMLESS}"
+
+
+def test_the_fixture_makes_a_multixact_of_two_share_locks_held_at_once(monkeypatch):
+    ran: list[tuple[int, str]] = []
+
+    class Conn:
+        def __init__(self, number: int) -> None:
+            self.number = number
+
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *_: Any) -> None:
+            return None
+
+        def execute(self, sql: bytes) -> None:
+            ran.append((self.number, sql.decode()))
+
+        def commit(self) -> None:
+            ran.append((self.number, "COMMIT"))
+
+    made = iter(range(3))
+    monkeypatch.setattr(support.psycopg, "connect", lambda *_a, **_k: Conn(next(made)))
+    support.seed_fixture("dsn")
+    assert [sql for n, sql in ran if n == 0] == list(support.FIXTURE_SQL)
+    lock = f"SELECT id FROM conformance.{support.MULTIXACT_TABLE} FOR SHARE"
+    assert ran[len(support.FIXTURE_SQL) :] == [(1, lock), (2, lock), (1, "COMMIT"), (2, "COMMIT")]
+
+
+def test_seeding_the_column_table_also_seeds_the_fixture(monkeypatch, tmp_path):
+    seeded: list[str] = []
+    monkeypatch.setattr(support, "seed_columns", lambda dsn, _out: seeded.append(f"columns {dsn}"))
+    monkeypatch.setattr(support, "seed_fixture", lambda dsn: seeded.append(f"fixture {dsn}"))
+    out = str(tmp_path / "t.yaml")
+    assert support.main(["function_support.py", "seed-columns", "--pg", "dsn", "--out", out]) == 0
+    assert seeded == ["columns dsn", "fixture dsn"]
