@@ -134,7 +134,9 @@
           Languages are ways of expressing logic, and the logic of data is bounded: select,
           join, aggregate, traverse. Transports are bounded too: whatever the protocol, data
           leaves through a socket as rows, nested documents, graphs, columnar batches or
-          streams. Programming languages have shared one compiler infrastructure for twenty
+          streams. Encoding is bounded as well: there's a small set, from PostgreSQL's wire rows
+          and JSON to protobuf, Arrow, CSV, XML and Bolt's PackStream. Programming languages have
+          shared one compiler infrastructure for twenty
           years; Provisa does the same for data.
         </p>
         <p>
