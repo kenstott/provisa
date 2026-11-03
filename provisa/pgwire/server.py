@@ -3677,11 +3677,28 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self.send_authentication_ok()
         self.handle_post_auth(ctx)
 
+    def _cursor_command(self, ctx: BVContext, kind: int, name: str) -> str | None:
+        """The DECLARE, CLOSE or MOVE a statement or portal holds, which has no rows to describe and
+        runs as the simple Query's does (REQ-1862, REQ-2167); None for any other statement."""
+        if kind == ord("P"):
+            if name not in ctx.portals:
+                return None
+            name = ctx.portals[name][0]
+        sql = ctx.stmts.get(name, ("",))[0]
+        if _DECLARE_CURSOR_RE.match(sql) or _CLOSE_CURSOR_RE.match(sql) or _MOVE_RE.match(sql):
+            return sql
+        return None
+
     def handle_describe(self, ctx: BVContext, payload: bytes) -> None:
         self._open_request()
         if ctx.has_error:
             return
         ba = bytearray(payload)
+        if self._cursor_command(ctx, ba[0], ba[1 : len(ba) - 1].decode("utf-8")) is not None:
+            if ba[0] == ord("S"):
+                self.send_parameter_description([])
+            self.send_no_data()
+            return
         if ba[0] == ord("P"):
             portal = ba[1 : len(ba) - 1].decode("utf-8")
             stmt_name = ctx.portals.get(portal, (None,))[0] if portal in ctx.portals else None
@@ -3775,6 +3792,17 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         stmt_name = ctx.portals.get(portal, (None,))[0] if portal in ctx.portals else None
         if stmt_name is not None and not ctx.stmts.get(stmt_name, ("x",))[0].strip():
             self.wfile.write(struct.pack("!ci", ServerResponse.EMPTY_QUERY_RESPONSE, 4))
+            return
+        command = self._cursor_command(ctx, ord("P"), portal)
+        if command is not None:
+            if ctx.has_error:
+                return
+            if _DECLARE_CURSOR_RE.match(command):
+                self._handle_declare_cursor(ctx, command)
+            elif _CLOSE_CURSOR_RE.match(command):
+                self._handle_close_cursor(ctx, command)
+            else:
+                self._handle_fetch_move(ctx, command)
             return
         try:
             with self._portal_open(ctx, portal):
