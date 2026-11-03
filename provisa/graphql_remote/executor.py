@@ -118,9 +118,6 @@ def table_query(table: dict, columns: list[str], page_size: int = 1) -> str:
     return _field_query(table["field_name"], columns, required, [])
 
 
-# Rows asked for per page of a connection when the caller names no limit. Relay servers require
-# a page size and cap it (GitHub at 100, Shopify at 250).
-_CONNECTION_PAGE_SIZE = 100
 _CURSOR_VAR = "pageCursor"
 
 
@@ -509,6 +506,7 @@ async def whole_connection(  # REQ-1915, REQ-1923
     rows_path: list[str],
     *,
     table: str,
+    page_size: int,
     max_rows: int | None,
     error_policy: ErrorPolicy = NO_POLICY,
     variables: dict | None = None,
@@ -518,11 +516,13 @@ async def whole_connection(  # REQ-1915, REQ-1923
     it (a replica build, an event-loop land): the read never holds more than one page, and one
     that reaches ``max_rows`` with more to read fails by name (:class:`RowLimitReached`, naming
     ``table``) instead of yielding a table cut at the bound. ``variables``: the arguments every
-    page is read with -- a table's fixed arguments (REQ-2061) -- declared by ``required_args``."""
+    page is read with -- a table's fixed arguments (REQ-2061) -- declared by ``required_args``.
+    ``page_size``: the rows asked for a page, the size the table's query was priced at when it
+    was registered (``graphql_remote.max_list_items``)."""
     read = _connection_read(
         url, auth, field_name, columns, rows_path, variables, required_args, error_policy
     )
-    async with aclosing(bounded_pages(read, _CONNECTION_PAGE_SIZE, max_rows)) as pages:
+    async with aclosing(bounded_pages(read, page_size, max_rows)) as pages:
         async for page, cut_at in pages:
             if cut_at is not None:
                 assert max_rows is not None  # a cut is reported only under a bound
@@ -591,10 +591,14 @@ async def execute_remote(  # REQ-309, REQ-307, REQ-310, REQ-313
     if rows_path:
         # A connection table (mapper._map_connection_table): its rows sit under ``rows_path`` and
         # are read by cursor. ``limit`` is the page size here, ``max_rows`` the bound on the read.
+        # A Relay server requires a page size and prices the query by it, so the caller names
+        # the one the table was priced at (graphql_remote.max_list_items).
+        if limit is None:
+            raise ValueError(f"{field_name}: a connection table's read names its page size")
         read = _connection_read(
             url, auth, field_name, selected_cols, rows_path, variables, required_args, error_policy
         )
-        answer = await _execute_connection(read, limit or _CONNECTION_PAGE_SIZE, max_rows)
+        answer = await _execute_connection(read, limit, max_rows)
         _flatten_scalar_projections(answer.rows, selected_cols)
         return answer
 

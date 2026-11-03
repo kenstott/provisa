@@ -218,7 +218,7 @@ async def test_a_connection_lands_with_its_fixed_arguments_on_every_page():
 
     route = respx.post(URL).mock(side_effect=[page([{"id": "1"}], "c1"), page([{"id": "2"}], None)])
     pages = whole_connection(
-        URL, None, t["field_name"], ["id"], t["rows_path"], table="gh.issues", max_rows=10,
+        URL, None, t["field_name"], ["id"], t["rows_path"], table="gh.issues", page_size=100, max_rows=10,
         variables={"owner": "acme", "name": "payments"}, required_args=t["required_args"],
     )  # fmt: skip
     assert [[r["id"] for r in p] async for p in pages] == [["1"], ["2"]]
