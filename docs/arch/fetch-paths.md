@@ -78,7 +78,7 @@ DuckDB's lossless export carries `HUGEINT`, `UHUGEINT`, `VARINT`, `BIT` and `TIM
 bytes (Arrow opaque types); the encoder reads them from those bytes as `duckdb_arrow.arrow_rows`
 does, so a DuckDB result reaches the wire with no Python row at all.
 
-### 1.2 gRPC reads Arrow from every result (REQ-2194)
+### 1.2 gRPC reads Arrow from every result
 
 gRPC's query answers are written by the Rust encoder (`provisa._encoders.grpc`, crate
 `rust/encoders/grpc`) and by nothing else: each Query{Type} / Query{Type}Batch RPC hands its
