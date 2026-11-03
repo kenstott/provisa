@@ -1708,6 +1708,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-2110: the session's time travel (SET provisa.as_of / provisa.as_recorded).
         self.as_of_setting: str | None = None
         self.as_recorded_setting: str | None = None
+        # REQ-2167: the last identity or serial value an INSERT of this session made its source
+        # generate -- what lastval() answers. None until one has (lastval then raises 55000).
+        self.last_generated: int | None = None
 
     def apply_redirect_settings(self, settings: dict[str, bool | str | None]) -> None:
         """Hold the ``provisa.redirect*`` settings read from the startup packet or a SET."""
@@ -2102,6 +2105,14 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # query) reads the values inline.
         said = said or sql.strip()
         sql = self._with_source_enums(sql)
+        if self.last_generated is not None:
+            from provisa.pgwire.generated_keys import answered_lastval
+
+            # REQ-2167: lastval() is the session's own; a statement its Describe governed with
+            # the call in it is governed again with the value held now.
+            answered = answered_lastval(sql, self.last_generated)
+            if answered is not None:
+                sql, prepared = answered, None
         stripped = sql.strip()
         if xml_mapping.calls_one(stripped):
             # REQ-2167: each read the call makes is a statement of this session, governed here,
@@ -2270,6 +2281,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                         _run_with_org(self.org_id, _execute_plan(governed)),
                         timeout=request_timeout_for("pgwire"),
                     )
+                    if getattr(result, "generated_key", None) is not None:
+                        self.last_generated = result.generated_key  # REQ-2167
                 elif isinstance(governed, _Plan) and governed.route == Route.ENGINE:
                     # REQ-1176: this streaming sink runs physical_sql on the engine directly (like
                     # Flight SQL), so it MUST verify the governed-provenance stamp before the engine
