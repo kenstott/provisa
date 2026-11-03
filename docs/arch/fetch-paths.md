@@ -35,7 +35,7 @@ Encoders that read `arrow_batches()` get no Python row at all; the row consumers
 builds the rows on its executor thread before handing the result back (`ArrowResult.with_rows()`):
 the event loop does no per-row work.
 
-### 1.1 pgwire reads Arrow from every result (REQ-2194)
+### 1.1 pgwire reads Arrow from every result
 
 pgwire's DataRow messages are written by the Rust encoder (`provisa._encoders.pgwire`, crate
 `rust/pgwire`) and by nothing else: buenavista's `send_data_rows` hands the encoder each result's
