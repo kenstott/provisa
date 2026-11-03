@@ -14,7 +14,7 @@
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { render, screen, within } from "../../../test-utils/render";
+import { renderInForm, screen, within } from "../../../test-utils/render";
 import { LOOKUP_GLYPH, requiredParametersOf } from "../lookups";
 import { SchemaTableSelects } from "../SchemaTableSelects";
 
@@ -64,7 +64,7 @@ const valuesIn = (label: string) =>
 
 describe("the table picker lists lookups apart", () => {
   it("in two groups: the tables that list rows, then the lookups", () => {
-    render(<Picker tables={SHOP} />);
+    renderInForm(<Picker tables={SHOP} />);
     expect(groupLabels()).toEqual(["Tables", "Lookups (need a parameter)"]);
     expect(valuesIn("Tables")).toEqual(["shop__companies", "shop__orders"]);
     expect(valuesIn("Lookups (need a parameter)")).toEqual([
@@ -74,7 +74,7 @@ describe("the table picker lists lookups apart", () => {
   });
 
   it("each lookup is marked and names the parameters it needs", () => {
-    render(<Picker tables={SHOP} />);
+    renderInForm(<Picker tables={SHOP} />);
     const company = screen.getByRole("option", { name: `${LOOKUP_GLYPH} shop__company` });
     expect(company).toHaveAttribute("title", "needs id");
     const byOwner = screen.getByRole("option", { name: `${LOOKUP_GLYPH} shop__order_by_owner` });
@@ -84,13 +84,13 @@ describe("the table picker lists lookups apart", () => {
   });
 
   it("a source with no lookup lists its tables as before, under no heading", () => {
-    render(<Picker tables={SHOP.filter((t) => !t.requiredParameters?.length)} />);
+    renderInForm(<Picker tables={SHOP.filter((t) => !t.requiredParameters?.length)} />);
     expect(groupLabels()).toEqual([]);
     expect(screen.getByRole("option", { name: "shop__orders" })).toBeInTheDocument();
   });
 
   it("a lookup picked is marked beside the picker, its hint naming what it needs", async () => {
-    render(<Picker tables={SHOP} />);
+    renderInForm(<Picker tables={SHOP} />);
     expect(screen.queryByTestId("register-table-lookup-mark")).not.toBeInTheDocument();
     await userEvent.selectOptions(
       screen.getByTestId("register-table-table-select"),
@@ -108,7 +108,7 @@ describe("the table picker lists lookups apart", () => {
   });
 
   it("a registered lookup is still listed apart, and cannot be picked again", () => {
-    render(<Picker tables={SHOP} registered={["shop__company"]} />);
+    renderInForm(<Picker tables={SHOP} registered={["shop__company"]} />);
     const lookups = screen
       .getByTestId("register-table-table-select")
       .querySelector('optgroup[label="Lookups (need a parameter)"]') as HTMLElement;
