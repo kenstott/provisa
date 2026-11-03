@@ -158,6 +158,17 @@ def test_a_statement_the_client_prepared_then_a_bound_insert(pg_server):
         assert inserted.rowcount == 1
 
 
+@pytest.mark.parametrize("read", ["SELECT 1 AS n", "SELECT lastval()"])
+def test_a_bound_insert_right_after_the_client_prepares_a_read(pg_server, read: str):
+    """psycopg prepares a statement on its fifth run; the write follows that very run."""
+    with _log_on_failure(pg_server), _pgwire(pg_server) as conn:
+        conn.execute("INSERT INTO sales.events (note) VALUES ('before')")
+        for _ in range(5):
+            assert conn.execute(read).fetchone() is not None
+        inserted = conn.execute("INSERT INTO sales.events (note) VALUES (%s)", ("right after",))
+        assert inserted.rowcount == 1
+
+
 def test_a_parameterized_insert_then_lastval(pg_server):
     """The extended protocol's bound value, on a connection of its own."""
     with _log_on_failure(pg_server), _pgwire(pg_server) as conn:
