@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 8916956b-5ba9-4aef-8199-8bd311d54dd2
 #
 # This source code is licensed under the Business Source License 1.1.
 """The built-in views go to a new schema as one script (_make_built_in_views)."""
