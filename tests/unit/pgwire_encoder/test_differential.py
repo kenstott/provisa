@@ -1937,8 +1937,9 @@ WITNESSES: dict[str, tuple[list[Any], list[Any], list[int], dict[str, Any]]] = {
 
 
 #: Defects main corrected in the Python writers themselves before they were replaced (68bdf0150f,
-#: the integer interval day split): the witness shows the former writers and PostgreSQL agree.
-FIXED_BEFORE_WIRING = {"interval_days"}
+#: the integer interval day split; ed563ffbe6, a UUID's 16 plain bytes): the witness shows the
+#: former writers and PostgreSQL agree.
+FIXED_BEFORE_WIRING = {"interval_days", "uuid_bytes"}
 
 
 @pytest.mark.parametrize("defect", sorted(DEFECTS))

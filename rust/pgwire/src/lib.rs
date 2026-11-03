@@ -465,10 +465,13 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
                 } else {
                     0
                 };
-                let micros = temporal::micros_of(raw, unit)?;
-                if unit == TimeUnit::Nanosecond {
-                    temporal::check_ns_local(raw, &tz)?;
-                }
+                // A zoned nanosecond value is floored to the microsecond, at any local time
+                // (ir_arrow._zoned_values); pandas' range does not bound it.
+                let micros = if unit == TimeUnit::Nanosecond && tz != TzSpec::Naive {
+                    raw.div_euclid(1000) as i128
+                } else {
+                    temporal::micros_of(raw, unit)?
+                };
                 if binary {
                     if inf != 0 {
                         out.extend_from_slice(&(if inf > 0 { i64::MAX } else { i64::MIN }).to_be_bytes());

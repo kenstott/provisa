@@ -781,8 +781,10 @@ pub fn convert(bv: Bv, binary: bool, v: &PyVal, out: &mut Vec<u8>) -> R<()> {
         // _uuid_text / _uuid: a UUID value is a uuid.UUID, its 16 bytes, or its text.
         (Bv::Uuid, false) => {
             match v {
+                PyVal::Str(t) => out.extend_from_slice(t.as_bytes()),
+                PyVal::Uuid(b) => uuid_text(b, out),
                 PyVal::Bytes(b) => uuid_text(&sixteen(b)?, out),
-                _ => str_text(v, out),
+                _ => uuid_text(&uuid_bytes(&s(v))?, out),
             }
             Ok(())
         }

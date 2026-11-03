@@ -175,8 +175,22 @@ def _timetz_to_pg_binary(t):
     return struct.pack("!qi", _time_to_microseconds(t), -int(offset.total_seconds()))
 
 
+def _uuid(u):
+    """A UUID value: a uuid.UUID, its 16 bytes (an Arrow fixed_size_binary(16) column without the
+    arrow.uuid extension), or its text."""
+    if isinstance(u, _uuid_mod.UUID):
+        return u
+    if isinstance(u, (bytes, bytearray, memoryview)):
+        return _uuid_mod.UUID(bytes=bytes(u))
+    return _uuid_mod.UUID(str(u))
+
+
+def _uuid_text(u) -> str:
+    return u if isinstance(u, str) else str(_uuid(u))
+
+
 def _uuid_to_pg_binary(u):
-    return (u if isinstance(u, _uuid_mod.UUID) else _uuid_mod.UUID(str(u))).bytes
+    return _uuid(u).bytes
 
 
 def _inet_text(v):
@@ -598,7 +612,7 @@ BVTYPE_TO_PGTYPE = {
     ),
     BVType.TIMESTAMPTZ: (1184, _timestamp_text, _timestamp_binary(_micros_since_2000_utc)),
     BVType.TIMETZ: (1266, _pg_clock, _timetz_to_pg_binary),
-    BVType.UUID: (2950, str, _uuid_to_pg_binary),
+    BVType.UUID: (2950, _uuid_text, _uuid_to_pg_binary),
     BVType.NULL: (-1, lambda *_: None),
     BVType.ARRAY: (
         2277,
