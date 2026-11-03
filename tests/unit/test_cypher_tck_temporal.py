@@ -211,13 +211,15 @@ def test_a_session_time_with_its_offset_has_its_accessors(monkeypatch):
     ],
 )
 def test_a_date_time_read_in_utc_is_written_without_a_region(query, text):
-    """The engine reads a timestamptz through Arrow in its session zone, UTC (fetch_rows), and
+    """The engine reads a timestamptz through Arrow in its session zone, UTC (arrow_rows), and
     openCypher writes a date time in UTC as ``Z``, naming no region, as it does a fixed offset."""
-    from provisa.executor.drivers.duckdb_driver import fetch_rows
+    from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
     from provisa.gql.temporal import cypher_text
 
     sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
     con = duckdb.connect()
     con.execute("SET TimeZone = 'UTC'")  # as the engine runs (federation/duckdb_runtime.py)
-    ((value,),) = fetch_rows(con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres"))))
+    con.execute(LOSSLESS_ARROW)
+    con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres")))
+    ((value,),) = arrow_rows(con.to_arrow_table())
     assert cypher_text(value) == text

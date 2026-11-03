@@ -1505,6 +1505,11 @@ setup_native_venv() {
     err "No network and no bundled wheels found — reinstall Provisa."
     exit 1
   fi
+  # REQ-2194: provisa's encoders are compiled into it; an install without them is a broken install.
+  "${venv}/bin/python3" -c "import provisa._encoders.pgwire" || {
+    err "Provisa's compiled encoders (provisa._encoders) did not install — reinstall Provisa."
+    exit 1
+  }
 
   # Place the built UI where ui_server resolves it (<site-packages>/static).
   local ui_src; ui_src="$(_find_payload ui-dist '' || true)"

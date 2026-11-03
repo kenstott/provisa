@@ -57,11 +57,18 @@ def role_facts(role_id: str, state: Any) -> CatalogFacts:
     """``role_id``'s facts, of the model as it stands, beside every model role's privileges by
     its name: a privilege function asked about another role answers from them (REQ-2167, amended
     2026-11-03, Privileges, visibility and notifications)."""
-    own = _own_facts(role_id, state)
-    others = [
-        (name, _own_facts(name, state))
-        for name in sorted(r for r in (getattr(state, "roles", None) or {}) if isinstance(r, str))
-    ]
+    names = sorted(r for r in (getattr(state, "roles", None) or {}) if isinstance(r, str))
+    metrics = getattr(getattr(state, "config", None), "metrics", None)
+    # A metric's grant names the roles that read it (REQ-2153); a column's visibility is not
+    # decided here.
+    reads = {
+        name: [metric_oid(m.name) for m in metrics if name in m.visible_to]
+        if isinstance(metrics, list)
+        else []
+        for name in {role_id, *names}
+    }
+    own = _own_facts(role_id, state, reads[role_id])
+    others = [(name, _own_facts(name, state, reads[name])) for name in names]
     return dataclasses.replace(
         own,
         role_privileges=tuple((name, *row) for name, facts in others for row in facts.privileges),
@@ -69,7 +76,7 @@ def role_facts(role_id: str, state: Any) -> CatalogFacts:
     )
 
 
-def _own_facts(role_id: str, state: Any) -> CatalogFacts:
+def _own_facts(role_id: str, state: Any, metric_oids: list[int]) -> CatalogFacts:
     ctx = state.contexts.get(role_id)
     if ctx is None:
         return catalog_facts(role_id, {})
@@ -96,16 +103,11 @@ def _own_facts(role_id: str, state: Any) -> CatalogFacts:
     }
     write_ops = {table["id"]: frozenset(table.get("write_ops") or ()) for table in raw_tables}
     can_write = role is not None and has_capability(role, Capability.WRITE)
-    config = getattr(state, "config", None)
-    metrics = getattr(config, "metrics", None)
-    readable_metrics = sorted(
-        m.name for m in (metrics if isinstance(metrics, list) else ()) if role_id in m.visible_to
-    )
     return catalog_facts(
         role_id,
         role_privileges(served, write_grants, write_ops, can_write),
         _unserved(ctx, raw_tables),
-        [metric_oid(name) for name in readable_metrics],
+        metric_oids,
     )
 
 

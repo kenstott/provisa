@@ -18,7 +18,7 @@ Provisa compiles each request and hands it to your engine. Results stream back. 
 
 Four things follow from the one model:
 
-- **Cross-source queries.** 73 source drivers reach more than 85 kinds of source, Salesforce, ServiceNow and Stripe among them. The SaaS systems your business runs on read as tables beside your databases, in place, without a pipeline into a warehouse first. Federation is declared in the model; the engine you choose runs it.
+- **Cross-source queries.** 76 source drivers reach more than 200 kinds of source, Salesforce, ServiceNow and Stripe among them. The SaaS systems your business runs on read as tables beside your databases, in place, without a pipeline into a warehouse first. Federation is declared in the model; the engine you choose runs it.
 - **Metrics.** A metric is a named, governed aggregate. Define it once, and every tool and language that asks for it gets the same definition.
 - **Ontology.** The business glossary is a graph of concepts, their definitions and how they relate. Provisa maps it onto the tables and columns that hold the values. A concept stays a draft until it reaches data. The glossary says what a concept is; a metric says how a number is computed.
 - **Governance.** Six layers of checks are compiled into every query plan, in every language and over every protocol. Every request is recorded the same way: who queried what, as which role, under which policy. Traces, metrics and logs are registered as queryable tables beside your business data.
@@ -124,7 +124,7 @@ These are the connection protocols. SQL, GraphQL and Cypher ride over them, and 
 
 ### Data Sources
 
-- **74 connectors, 90+ kinds of source.** The larger number counts the hosted PostgreSQL services (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) and the File Crawler's file formats one by one. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Kaggle, Salesforce, ServiceNow, Stripe and the rest sit behind a single API. Graph and RDF sources stand on equal terms with relational ones.
+- **76 connectors, over 200 data sources.** The generic connectors (code resolvers, GraphQL, OpenAPI and JDBC) reach well past the named ones, as do the hosted PostgreSQL services and the File Crawler's file formats. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Kaggle, Salesforce, ServiceNow, Stripe and the rest sit behind a single API. Graph and RDF sources stand on equal terms with relational ones.
 - **Smart routing.** A single-source query routes direct to the driver (under 100 ms). A multi-source query routes through the engine, on your own cluster or on the embedded workers.
 - **API sources.** Register REST, GraphQL, gRPC, WebSocket or RSS endpoints as queryable tables, with SPARQL helpers included. Cross-source joins between API sources and relational sources need no extra setup.
 - **Remote schema introspection.** Point at any GraphQL, OpenAPI or gRPC endpoint, and its documented operations surface as queryable tables, graph nodes and edges with full governance applied on top.

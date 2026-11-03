@@ -33,11 +33,8 @@ from provisa.compiler.sql_types import ColumnRef
 from provisa.core.ir_types import infinite_date, infinite_timestamp, interval_value
 from provisa.core.json_refusal import JsonRefused, JsonResponseRefused, JsonValueRefused
 from provisa.executor.result import QueryResult
-from provisa.executor.serialize import (
-    result_records,
-    serialize_aggregate,
-    serialize_rows,
-)
+from provisa.executor.serialize import result_records
+from tests.unit.json_encoder.rows import encoded, serialize_aggregate, serialize_rows
 
 
 def _col(
@@ -67,9 +64,14 @@ def _rows(rows, columns, root="t"):
     return serialize_rows(rows, columns, root)["data"][root]
 
 
+def _document(rows, columns, root="t") -> bytes:
+    """The response body's bytes as GraphQL answers the field (the encoder's rows, embedded)."""
+    return b'{"data":{"' + root.encode() + b'":' + encoded(rows, columns) + b"}}"
+
+
 def _body(rows, columns, root="t"):
     """The response body's bytes, parsed back: what the client reads."""
-    return json.loads(dumps(serialize_rows(rows, columns, root)))["data"][root]
+    return json.loads(_document(rows, columns, root))["data"][root]
 
 
 # --- Decision 1: a DECIMAL is the JSON string of its exact digits --------------------------------
@@ -186,7 +188,7 @@ class TestJsonEdges:
 
     def test_an_int_past_64_bits_is_written_with_all_its_digits(self):
         text = '{"n": 123456789012345678901234567890, "m": -18446744073709551617}'
-        body = dumps(serialize_rows([(text,)], [_col("prefs", json_=True)], "t"))
+        body = _document([(text,)], [_col("prefs", json_=True)], "t")
         assert b"123456789012345678901234567890" in body
         assert json.loads(body)["data"]["t"] == [
             {"prefs": {"n": 123456789012345678901234567890, "m": -18446744073709551617}}
@@ -211,9 +213,8 @@ class TestJsonEdges:
 
     def test_nesting_past_the_encoder_is_refused_by_name(self):
         text = "[" * 300 + "]" * 300
-        shaped = serialize_rows([(text,)], [_col("prefs", json_=True)], "t")
         with pytest.raises(JsonResponseRefused) as refused:
-            dumps(shaped)
+            _document([(text,)], [_col("prefs", json_=True)], "t")
         assert isinstance(refused.value, JsonRefused)
 
     def test_nesting_past_the_parser_is_refused_naming_the_field(self):
@@ -343,7 +344,7 @@ class TestCompilerMarksJson:
         doc = parse("{ customers { id orders { meta } } }")
         (compiled,) = compile_query(doc, _ctx(), None)
         value = json.dumps([{"meta": "[1]"}, {"meta": {"a": "[2]"}}])
-        got = json.loads(dumps(serialize_rows([(1, value)], compiled.columns, "t")))
+        got = json.loads(_document([(1, value)], compiled.columns, "t"))
         assert got["data"]["t"] == [{"id": 1, "orders": [{"meta": "[1]"}, {"meta": {"a": "[2]"}}]}]
 
 
@@ -442,7 +443,7 @@ async def test_the_truncation_warning_reaches_the_request(pipeline):
             query_session_props=None,
             cache_hint=CacheHint(opt_in=False, ttl=None, debug_trace=False),
         )
-    assert field_rows == [{"id": 1, "owner": {"a": "x"}}]
+    assert json.loads(field_rows.body) == [{"id": 1, "owner": {"a": "x"}}]
     assert [(w.code, w.params) for w in warned] == [(TO_ONE_TRUNCATED, {"path": "owner"})]
 
 
@@ -685,15 +686,15 @@ class TestPostgresJsonIsText:
 
     def test_pgwire_writes_the_text_postgresql_sent(self, pg_cursor):
         from buenavista.core import BVType
-        from buenavista.postgres import BVTYPE_TO_PGTYPE
 
         from provisa.federation.pg_runtime import _read_as_postgresql_writes
+        from tests.unit.pgwire import wire_cells as wire
 
         _read_as_postgresql_writes(pg_cursor)
         pg_cursor.execute("""SELECT '"5"'::jsonb, '{"a": 1.10}'::json""")
         jsonb, json_ = pg_cursor.fetchone()
-        assert BVTYPE_TO_PGTYPE[BVType.JSONB][1](jsonb) == '"5"'
-        assert BVTYPE_TO_PGTYPE[BVType.JSON][1](json_) == '{"a": 1.10}'
+        assert wire.text(BVType.JSONB, jsonb, "jsonb") == '"5"'
+        assert wire.text(BVType.JSON, json_, "json") == '{"a": 1.10}'
 
     def test_flight_sends_the_text_postgresql_sent(self, pg_cursor):
         from provisa.executor.formats.arrow import rows_to_arrow_table
@@ -710,21 +711,19 @@ class TestPostgresJsonIsText:
 
 class TestJsonNumbersAreExact:
     def test_a_number_past_a_floats_digits_is_written_with_all_of_them(self):
-        body = dumps(
-            serialize_rows([('{"x": 0.12345678901234567890123}',)], [_col("p", json_=True)], "t")
-        )
+        body = _document([('{"x": 0.12345678901234567890123}',)], [_col("p", json_=True)], "t")
         assert b"0.12345678901234567890123" in body
         got = json.loads(body)["data"]["t"][0]["p"]["x"]
         assert got == pytest.approx(0.12345678901234567890123, rel=1e-14)
 
     def test_a_root_json_number_is_written_with_its_digits(self):
-        body = dumps(serialize_rows([("3.14159265358979323846264",)], [_col("p", json_=True)], "t"))
+        body = _document([("3.14159265358979323846264",)], [_col("p", json_=True)], "t")
         assert json.loads(body, parse_float=Decimal)["data"]["t"] == [
             {"p": Decimal("3.14159265358979323846264")}
         ]
 
     def test_a_numbers_own_spelling_is_kept(self):
-        body = dumps(serialize_rows([("[1.10, 1E+5, -0.0, 7]",)], [_col("p", json_=True)], "t"))
+        body = _document([("[1.10, 1E+5, -0.0, 7]",)], [_col("p", json_=True)], "t")
         assert b"[1.10,1E+5,-0.0,7]" in body
 
     def test_a_number_is_still_a_number_where_json_is_written_by_the_standard_library(self):
@@ -738,7 +737,7 @@ class TestJsonNumbersAreExact:
             _col("n", nested_in="items", cardinality="one-to-many", json_=True),
         ]
         rows = [(1, "0.10000000000000000001"), (1, "0.10000000000000000002")]
-        body = dumps(serialize_rows(rows, cols, "t"))
+        body = _document(rows, cols, "t")
         assert b"0.10000000000000000001" in body and b"0.10000000000000000002" in body
 
     def test_ndjson_writes_a_json_number_with_its_digits(self):
@@ -784,16 +783,18 @@ class TestIntegersAreNumbers:
     def test_a_duckdb_hugeint_read_through_arrow_is_a_number(self):
         import duckdb
 
-        from provisa.executor.drivers.duckdb_driver import fetch_rows
+        from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
 
         con = duckdb.connect()
-        # The DATE column sends the result through Arrow, where a HUGEINT is decimal128(38,0).
+        # Every DuckDB read is its Arrow export (REQ-2194), which carries a HUGEINT as DuckDB's
+        # own bytes, read as the int DuckDB's rows hold.
+        con.execute(LOSSLESS_ARROW)
         res = con.execute(
             f"SELECT {_HUGE}::HUGEINT AS h, 12::DECIMAL(38,0) AS d, DATE '2020-01-01' AS day"
         )
         types = [str(d[1]) for d in res.description]
-        rows = fetch_rows(res)
-        assert isinstance(rows[0][0], Decimal)  # Arrow's representation, not the engine's type
+        rows = arrow_rows(res.to_arrow_table())
+        assert rows[0][0] == _HUGE and isinstance(rows[0][0], int)
         result = QueryResult(rows=rows, column_names=["h", "d", "day"], column_types=types)
         assert json.loads(dumps(result_records(result))) == [
             {"h": _HUGE, "d": "12", "day": "2020-01-01"}

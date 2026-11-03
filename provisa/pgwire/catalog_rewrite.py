@@ -430,13 +430,60 @@ _ANSWERED_BY_MACRO = frozenset(
 _TEXT_ELEMENTS = frozenset({"text", "varchar", "name", "bpchar", "aclitem"})
 
 
-def _array_literal(found) -> str:
-    """A '{...}'::type[] literal as a list: its elements quoted where they are strings."""
-    if found[2].lower() not in _TEXT_ELEMENTS:
-        return "[" + found[1] + "]"
-    elements = [e.strip().strip('"').replace("'", "''") for e in found[1].split(",") if e.strip()]
-    written = ("NULL" if e.upper() == "NULL" else f"'{e}'" for e in elements)
-    return "[" + ", ".join(written) + "]::TEXT[]"
+#: Whether a statement may hold a literal ``_literal_held`` reads: a cast of a string or an ARRAY.
+_LITERAL_CAST = re.compile(r"'\s*::|'\s+AS\b|\bARRAY\s*\[", re.IGNORECASE)
+
+
+def _element_type(to: exp.DataType) -> str | None:
+    """The name of the element type of array type ``to``: ``int[]``, or PostgreSQL's ``_int``."""
+    if to.is_type(exp.DataType.Type.ARRAY) and to.expressions:
+        element = to.expressions[0]
+        while element.is_type(exp.DataType.Type.ARRAY) and element.expressions:
+            element = element.expressions[0]
+        return element.sql(dialect="postgres").lower()
+    kind = to.args.get("kind") if to.this == exp.DataType.Type.USERDEFINED else None
+    name = kind.name.lower() if isinstance(kind, exp.Identifier) else ""
+    return name[1:] if name.startswith("_") else None
+
+
+def _array_literal(text: str, element: str) -> exp.Expr:
+    """A '{...}'::type[] literal as a list: its elements strings where the type's are."""
+    elements = [e.strip() for e in text[1:-1].split(",") if e.strip()]
+    if element not in _TEXT_ELEMENTS:
+        return exp.Array(expressions=[sqlglot.parse_one(e, read="postgres") for e in elements])
+    written = [
+        exp.Null() if e.strip('"').upper() == "NULL" else exp.Literal.string(e.strip('"'))
+        for e in elements
+    ]
+    return exp.cast(exp.Array(expressions=written), "TEXT[]", dialect="postgres")
+
+
+def _literal_held(node: exp.Expr, tid_read: bool) -> exp.Expr:
+    """``node`` where it is a literal the catalog DB holds otherwise: '{...}'::type[] as a list,
+    '1 2'::oidvector as its list, '(0,1)'::tid as the integer the catalog holds a tid as (unless
+    a function of the tid type reads its text, ``tid_read``), and ARRAY[...]::type[] the ARRAY."""
+    if not isinstance(node, exp.Cast):
+        return node
+    value, to = node.this, node.to
+    element = _element_type(to)
+    if isinstance(value, exp.Literal) and value.is_string:
+        text = value.this
+        if (
+            element is not None
+            and text.startswith("{")
+            and text.endswith("}")
+            and "}" not in text[1:-1]
+        ):
+            return _array_literal(text, element)
+        if to.sql(dialect="postgres").lower() == "oidvector" and re.fullmatch(r"[\d ]*", text):
+            numbers = [exp.Literal.number(n) for n in text.split()]
+            return exp.cast(exp.Array(expressions=numbers), to.copy())
+        if to.sql(dialect="postgres").lower() == "tid" and not tid_read:
+            if re.fullmatch(r"\(\d+,\d+\)", text):
+                return exp.cast(exp.Literal.number(0), to.copy())
+    if isinstance(value, exp.Array) and element is not None:
+        return value
+    return node
 
 
 def _resolved_regs(node, args: list):
@@ -501,28 +548,27 @@ def _input_answer(fn: str, args: list) -> exp.Expr:
     )
 
 
+def _oid_then_star(selected: list[exp.Expr]) -> None:
+    """Each ``x.*`` straight after ``x.oid`` in ``selected``, EXCLUDE (oid)."""
+    for before, star in zip(selected, selected[1:]):
+        if not (isinstance(star, exp.Column) and isinstance(star.this, exp.Star)):
+            continue
+        if isinstance(before, exp.Column) and before.name.lower() == "oid" and before.table:
+            if before.table == star.table and not star.this.args.get("except_"):
+                star.this.set("except_", [exp.column("oid")])
+
+
 def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
     """Rewrite catalog table refs for DuckDB and transpile from postgres dialect."""
     import sqlglot.expressions as exp
-    import re as _pre_re
 
-    # Convert PG array literals with type casts to DuckDB array syntax before
-    # sqlglot parses — sqlglot misparses e.g. '{16395}'::oid[] (treats [] as
-    # bracket indexing, not array type), causing a silent fallback to original SQL.
-    # '{a,b,c}'::type[] → [a,b,c]
-    sql = _pre_re.sub(r"'\{([^}]*)\}'::(\w+)(?:\[\])+", _array_literal, sql)
-    # REQ-2167: an oidvector literal is its list.
-    sql = _pre_re.sub(
-        r"'([\d ]*)'::oidvector\b",
-        lambda m: "[" + ", ".join(m[1].split()) + "]::oidvector",
-        sql,
-    )
-    # REQ-2167: the catalog holds a tid as an integer: its literal is that integer. A function of
-    # the tid type reads the literal's text (pg_forms_types).
-    if _TID_FUNCTION.search(sql) is None:
-        sql = _pre_re.sub(r"'\(\d+,\d+\)'::tid\b", "0::tid", sql)
-    # ARRAY[a,b]::type[] → ARRAY[a,b] (strip redundant cast; DuckDB infers type)
-    sql = _pre_re.sub(r"(ARRAY\[[^\]]*\])::\w+(?:\[\])+", r"\1", sql, flags=_pre_re.IGNORECASE)
+    # REQ-2167: PostgreSQL's array, oidvector and tid literals as the catalog DB holds each, on the
+    # tree: an array literal is its list, and an ARRAY[...] its cast is redundant to.
+    if _LITERAL_CAST.search(sql) is not None:
+        tid_read = _TID_FUNCTION.search(sql) is not None
+        tree = sqlglot.parse_one(sql, read="postgres")
+        held = tree.transform(lambda node: _literal_held(node, tid_read))
+        sql = sql if held == tree else held.sql(dialect="postgres")
 
     sql = to_char_for_duckdb(sql)  # REQ-2167
     sql = lowered(sql, "duckdb")  # REQ-2171: the catalog DB holds money as the engine does
@@ -934,18 +980,12 @@ def _rewrite_for_duckdb(sql: str, role_id: str, database: str) -> str:
                 _outer = [j for j in _joins if (j.args.get("side") or "").upper() in _outer_sides]
                 if _inner and _outer:
                     _sel.set("joins", _inner + _outer)
-        sql_out = rewritten.sql(dialect="duckdb")
         # In real PG, oid is a hidden system column excluded from *. In our DuckDB tables,
         # oid is an explicit regular column, so "x.oid, x.*" returns oid twice. Remove the
         # duplicate by adding EXCLUDE on the star expression.
-        import re as _re
-
-        sql_out = _re.sub(
-            r"(\w+)\.oid\s*,\s*\1\.\*",
-            lambda m: f"{m.group(1)}.oid, {m.group(1)}.* EXCLUDE (oid)",
-            sql_out,
-        )
-        return sql_out
+        for _sel in rewritten.find_all(exp.Select):
+            _oid_then_star(_sel.expressions)
+        return rewritten.sql(dialect="duckdb")
     except (PostgresError, NotImplementedError):
         raise  # REQ-2167: the answer to the call, not a statement left unrewritten
     except Exception:

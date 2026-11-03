@@ -109,8 +109,13 @@ Pop-Location
 if ($NotebookBuilt -ne 0) { throw "provisa-notebook assets build failed" }
 & $RuntimePy -m build --wheel (Join-Path $RepoRoot 'provisa-notebook') --outdir $NotebookDir
 if ($LASTEXITCODE -ne 0) { throw "provisa-notebook wheel build failed" }
+# REQ-2194: installing provisa compiles its Rust encoders (provisa._encoders) with setuptools-rust,
+# with the toolchain every recipe names.
+$env:RUSTUP_TOOLCHAIN = '1.95.0'
 & $RuntimePy -m pip install --quiet --find-links $NotebookDir $RepoRoot uvicorn mcp-proxy
 if ($LASTEXITCODE -ne 0) { throw "pip install provisa failed" }
+& $RuntimePy -c "import provisa, provisa._encoders.pgwire, pathlib; assert (pathlib.Path(provisa.__file__).parent / '_encoders.THIRD_PARTY_NOTICES').is_file()" 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "provisa._encoders (or its notices) missing from the bundled native runtime" }
 & $RuntimePy -c "import provisa_notebook; provisa_notebook.pyodide_dir()" 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "provisa-notebook assets missing from the bundled native runtime" }
 & $RuntimePy -c "import mcp_proxy" 2>&1 | Out-Null

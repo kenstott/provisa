@@ -78,6 +78,7 @@ import { schemaRegistryAuthPayload } from "./sources/schemaRegistryAuth";
 import type { CdcState, SourceFormFieldsProps, SourceFormState } from "./sources/SourceFormFields";
 import { profilerMappingJson } from "./sources/profilerMapping";
 import { salesforceMappingJson } from "./sources/salesforce";
+import { quickbooksMappingJson } from "./sources/quickbooks";
 import { cloudopsMappingJson } from "./sources/cloudops";
 import { sparqlMappingJson } from "./sources/sparqlReasoner";
 import { GOOGLE_WORKSPACE, gwMapping } from "./sources/googleWorkspace";
@@ -776,39 +777,41 @@ export function SourcesPage() {
                         ? JSON.stringify(logsMapping(authFields)) // REQ-1996
                         : form.type === "salesforce"
                           ? salesforceMappingJson(authFields) // REQ-1946
-                          : form.type === "sharepoint"
-                            ? JSON.stringify({
-                                auth_type: spAuthType,
-                                ...(spAuthType === "CERTIFICATE"
-                                  ? {
-                                      certificate_path: spCertPath,
-                                      certificate_password: spCertPassword,
-                                    }
-                                  : {}),
-                                ...(spAuthType === "USERNAME_PASSWORD"
-                                  ? { sp_username: spUsername, sp_password: spPassword }
-                                  : {}),
-                              })
-                            : form.type === "splunk"
+                          : form.type === "quickbooks"
+                            ? quickbooksMappingJson(authFields) // REQ-2197
+                            : form.type === "sharepoint"
                               ? JSON.stringify({
-                                  use_token: splunkAuthMode === "token",
-                                  ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
+                                  auth_type: spAuthType,
+                                  ...(spAuthType === "CERTIFICATE"
+                                    ? {
+                                        certificate_path: spCertPath,
+                                        certificate_password: spCertPassword,
+                                      }
+                                    : {}),
+                                  ...(spAuthType === "USERNAME_PASSWORD"
+                                    ? { sp_username: spUsername, sp_password: spPassword }
+                                    : {}),
                                 })
-                              : // The Trino gsheets catalog needs the service-account key path alongside the metadata
-                                // sheet id (which rides in `database`), so it travels in the mapping like the other
-                                // connectors' extra options.
-                                form.type === "google_sheets"
+                              : form.type === "splunk"
                                 ? JSON.stringify({
-                                    credentials_json: authFields.credentials_json ?? "",
+                                    use_token: splunkAuthMode === "token",
+                                    ...(splunkDisableSsl ? { disable_ssl_validation: true } : {}),
                                   })
-                                : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
-                                  // region/endpoint) are a mapping-discriminated config choice read by
-                                  // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
-                                  // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
-                                  // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
-                                  form.type === "hive" || form.type === "hive_s3"
-                                  ? JSON.stringify({ storage: lakeStorage, ...authFields })
-                                  : undefined;
+                                : // The Trino gsheets catalog needs the service-account key path alongside the metadata
+                                  // sheet id (which rides in `database`), so it travels in the mapping like the other
+                                  // connectors' extra options.
+                                  form.type === "google_sheets"
+                                  ? JSON.stringify({
+                                      credentials_json: authFields.credentials_json ?? "",
+                                    })
+                                  : // hive/hive_s3's storage backend creds (mapping.access_key_id/secret_access_key/
+                                    // region/endpoint) are a mapping-discriminated config choice read by
+                                    // trino_connectors.py's _hive_s3_props (provisa/core/models.py:91-92) — but
+                                    // delta_lake/iceberg have no such mapping.storage reader; their S3 creds route
+                                    // through federationHintsJson above instead (_s3_secret_ddl reads federation_hints).
+                                    form.type === "hive" || form.type === "hive_s3"
+                                    ? JSON.stringify({ storage: lakeStorage, ...authFields })
+                                    : undefined;
       const sourcePayload = {
         ...coreForm,
         ...authCredentials,

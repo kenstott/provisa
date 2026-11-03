@@ -1030,7 +1030,7 @@ api_sources = Table(
     ),  # REQ-1942: own | copied | unbound
     CheckConstraint("binding IN ('own', 'copied', 'unbound')", name="api_sources_binding_check"),
     CheckConstraint(
-        "type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql')",
+        "type IN ('openapi', 'graphql_api', 'grpc_api', 'neo4j', 'sparql', 'quickbooks')",
         name="api_sources_type_check",
     ),
 )

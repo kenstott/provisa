@@ -271,6 +271,9 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if t == "sparql":
         return ["sparql"]
 
+    if t == "quickbooks":
+        return ["default"]  # REQ-2197: one schema; an entity is the table
+
     if t == "elasticsearch":
         return ["default"]  # REQ-1672: one schema; the index is the table
 
@@ -2030,6 +2033,15 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
 
     if t in ("neo4j", "sparql"):
         return []
+
+    if t == "quickbooks":  # REQ-2197: the Accounting API's entities
+        from provisa.api.admin.types import AvailableTableType
+        from provisa.quickbooks.entities import ENTITIES, table_name as _qb_table
+
+        return [
+            AvailableTableType(name=_qb_table(e.name), comment=e.description)
+            for e in ENTITIES.values()
+        ]
 
     if t == "elasticsearch":
         return await _native_tables_elasticsearch(source_id, schema_name, config_conn, state)

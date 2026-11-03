@@ -1,0 +1,25 @@
+# REQ-2194: the gRPC result encoder, provisa._encoders.grpc. An engine's Arrow batches and the
+# organisation's compiled service (its FileDescriptorSet) in, the serialized {Type} / {Type}Batch
+# response messages out. An rlib: provisa._encoders (rust/encoders) links it as its grpc submodule.
+[package]
+name = "grpc_encoder"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "grpc_encoder"
+crate-type = ["rlib"]
+
+[dependencies]
+pyo3 = { version = "0.25", features = ["extension-module"] }
+arrow = { version = "56", default-features = false, features = ["pyarrow", "ffi"] }
+itoa = "1"
+# A named zone's offset as zoneinfo finds it: the pgwire crate's zone code (src/tz.rs, read in by
+# path) on the same chrono-tz build, so both encoders read one tz database.
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+chrono-tz = { path = "../../pgwire/third_party/chrono-tz", default-features = false, features = ["std", "filter-by-regex"] }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1

@@ -190,23 +190,28 @@ async def _run_single_compiled_graphql(
 async def _execute_graphql(
     query: str, role: str, app_state: Any, deliver: "Delivery | None"
 ) -> dict:
-    from provisa.executor.serialize import serialize_aggregate, serialize_rows
-
     compiled_results = await _compile_and_execute_graphql(query, role, app_state, deliver)
 
     merged: dict = {}
     for cq, result in compiled_results:
-        if cq.has_nodes and not cq.is_group_by:
-            serialized = serialize_aggregate(
-                result.rows, cq.columns, cq.root_field, agg_alias=cq.agg_alias
-            )
-        else:
-            serialized = serialize_rows(
-                result.rows, cq.columns, cq.root_field, result_limit=cq.result_limit
-            )
-        merged.update(serialized.get("data", {}))
+        merged[cq.root_field] = _graphql_value(
+            cq, result, aggregate=cq.has_nodes and not cq.is_group_by
+        )
 
     return {"data": merged}
+
+
+def _graphql_value(cq: Any, result: Any, *, aggregate: bool) -> Any:  # noqa: ANN401
+    """A root field's value as GraphQL answers it (the Rust encoder's JSON, REQ-2194): its rows,
+    or an aggregate's map; read back as the Python value this executor hands its caller."""
+    import json
+
+    from provisa.executor.json_encoders import graphql_aggregate, graphql_field, result_batches
+
+    batches = result_batches(result)
+    if aggregate:
+        return json.loads(graphql_aggregate(batches, cq.columns, cq.agg_alias))
+    return json.loads(graphql_field(batches, cq.columns, cq.result_limit).body)
 
 
 async def _execute_sql(query: str, role: str, app_state: Any, deliver: "Delivery | None") -> dict:
@@ -482,8 +487,6 @@ async def _execute_domain_table_aggregate(
     ``include_nodes`` (REQ-1361/REQ-1401) mirrors ``?includeNodes=true`` — the per-group
     row-level detail JSON:API/REST's real group-by endpoints attach via a ``nodes { ... }``
     sub-selection."""
-    from provisa.executor.serialize import serialize_aggregate, serialize_rows
-
     ctx = _get_ctx(app_state, role)
     meta = next(
         (m for m in ctx.tables.values() if m.domain_id == domain_id and m.table_name == table_name),
@@ -511,8 +514,7 @@ async def _execute_domain_table_aggregate(
 
     if by_columns:
         # A group's nodes, when selected, are a column of its own row.
-        shaped = serialize_rows(result.rows, cq.columns, cq.root_field)
-        group_rows = shaped.get("data", {}).get(cq.root_field, [])
+        group_rows = _graphql_value(cq, result, aggregate=False)
         if protocol == "jsonapi":
             return {
                 "data": [
@@ -522,8 +524,7 @@ async def _execute_domain_table_aggregate(
             }
         return {"data": group_rows}
 
-    shaped = serialize_aggregate(result.rows, cq.columns, cq.root_field, agg_alias=cq.agg_alias)
-    agg_payload = shaped.get("data", {}).get(cq.root_field, {}).get(cq.agg_alias, {})
+    agg_payload = _graphql_value(cq, result, aggregate=True).get(cq.agg_alias, {})
     if protocol == "jsonapi":
         return {"data": None, "meta": {"aggregate": agg_payload}}
     return {"data": agg_payload}

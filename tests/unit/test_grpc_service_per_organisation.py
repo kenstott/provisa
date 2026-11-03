@@ -258,11 +258,15 @@ message Orders { int32 id = 1; google.protobuf.Timestamp created_at = 2; }
 message OrdersRequest { int32 limit = 1; }
 service ProvisaService { rpc QueryOrders (OrdersRequest) returns (stream Orders); }
 """).Orders
-from provisa.grpc.server import _proto_value  # after the organisation's service is compiled
+import pyarrow as pa
+
+from provisa.grpc.server import _row_encoder  # after the organisation's service is compiled
 
 when = datetime(2026, 10, 12, 3, 4, 5, tzinfo=timezone.utc)
-field = orders.DESCRIPTOR.fields_by_name["created_at"]
-row = orders(id=1, created_at=_proto_value(field, when)).SerializeToString()
+batch = pa.record_batch(
+    {"id": pa.array([1], pa.int32()), "created_at": pa.array([when], pa.timestamp("us", "UTC"))}
+)
+(row,) = _row_encoder(orders, ["id", "created_at"]).encode(batch)
 assert orders.FromString(row).created_at.ToDatetime(tzinfo=timezone.utc) == when
 '''
 

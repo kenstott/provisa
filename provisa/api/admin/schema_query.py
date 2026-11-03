@@ -2860,6 +2860,20 @@ async def _introspect_available_columns(
         ]
     if source_type == "logs":
         return await _logs_columns(source_id)
+    if source_type == "quickbooks":
+        # REQ-2197: an entity's columns are the catalog's, typed as QuickBooks' schema types them.
+        from provisa.api_source.persist import data_type_for_api_column
+        from provisa.quickbooks.entities import columns_of, entity
+
+        return [
+            AvailableColumnType(
+                name=c.name,
+                data_type=data_type_for_api_column(c.type),
+                comment=None,
+                is_primary_key=c.name == "id",
+            )
+            for c in columns_of(entity(table_name))
+        ]
     if source_type == "rss":
         # REQ-1745: an rss/Atom feed has no catalog to introspect at all (native_schemas/
         # native_tables give it a synthetic single "default"/<source_id> pick so the picker isn't

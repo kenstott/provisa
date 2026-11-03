@@ -22,12 +22,10 @@ from decimal import Decimal
 from provisa.compiler.sql_gen import ColumnRef, CompiledQuery
 from provisa.executor.serialize import (
     _convert_value,
-    _to_hashable,
     json_value,
-    serialize_aggregate,
     serialize_connection,
-    serialize_rows,
 )
+from tests.unit.json_encoder.rows import serialize_aggregate, serialize_rows
 
 
 def _cr(
@@ -47,7 +45,7 @@ def _cr(
 
 
 # ---------------------------------------------------------------------------
-# _convert_value / json_value / _to_hashable
+# _convert_value / json_value / the encoder's row identity
 # ---------------------------------------------------------------------------
 
 
@@ -116,19 +114,27 @@ class TestJsonValue:
         assert got == [{"id": 1, "items": [{"n": 2}]}]
 
 
-class TestToHashable:
-    def test_dict_becomes_json_string(self):
-        result = _to_hashable({"b": 1, "a": 2})
-        assert result == '{"a": 2, "b": 1}'
+class TestRowIdentity:
+    """Rows are one when they are the same typed value (REQ-2194, REQ-1867): the Rust encoder's
+    dedup key, which replaced ``_to_hashable``'s ``json.dumps(default=str)`` text."""
 
-    def test_list_becomes_json_string(self):
-        result = _to_hashable([1, 2])
-        assert result == "[1, 2]"
+    def test_equal_objects_are_one_row(self):
+        cols = [_cr("doc", json=True)]
+        rows = [('{"b": 1, "a": 2}',), ('{"b":1,"a":2}',)]
+        assert serialize_rows(rows, cols, "t")["data"]["t"] == [{"doc": {"b": 1, "a": 2}}]
 
-    def test_scalar_passthrough(self):
-        assert _to_hashable(5) == 5
-        assert _to_hashable("x") == "x"
-        assert _to_hashable(None) is None
+    def test_an_object_and_its_text_are_two_rows(self):
+        cols = [_cr("doc", json=True)]
+        rows = [('{"a": 1}',), ('"{\\"a\\": 1}"',)]
+        assert serialize_rows(rows, cols, "t")["data"]["t"] == [
+            {"doc": {"a": 1}},
+            {"doc": '{"a": 1}'},
+        ]
+
+    def test_a_number_and_its_digits_are_two_rows(self):
+        cols = [_cr("v", json=True)]
+        rows = [("5",), ('"5"',), ("5.0",), ("5",)]
+        assert serialize_rows(rows, cols, "t")["data"]["t"] == [{"v": 5}, {"v": "5"}, {"v": 5.0}]
 
 
 # ---------------------------------------------------------------------------

@@ -86,11 +86,18 @@ _SCALAR_FN_RE = re.compile(
 
 
 def _parse_typeinfo_oids(sql: str) -> list[int] | None:
-    """Extract OIDs from ANY('{oid,...}'::oid[]) pattern; None if $1 still present."""
-    m = re.search(r"ANY\s*\(\s*'\{([^}]*)\}'", sql, re.IGNORECASE)
-    if m:
-        raw = m.group(1).strip()
-        return [int(x) for x in raw.split(",") if x.strip()] if raw else []
+    """The OIDs asyncpg's type introspection asks for: the array its ``ANY($1::oid[])`` was bound
+    to, read on the tree (REQ-2167); None while the ``$1`` is unbound (Describe)."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    for any_ in sqlglot.parse_one(sql, read="postgres").find_all(exp.Any):
+        bound = any_.this
+        while isinstance(bound, (exp.Cast, exp.Paren)):
+            bound = bound.this
+        if isinstance(bound, exp.Literal) and bound.is_string:
+            raw = bound.name.strip().removeprefix("{").removesuffix("}")
+            return [int(x) for x in raw.split(",") if x.strip()]
     return None
 
 
@@ -293,10 +300,8 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
         import sqlglot.expressions as exp
         import sqlglot
 
-        from provisa.transpiler.pg_forms_type_io import spelled
-
-        # REQ-2167: read as the transpiler reads it; ``::cstring[]`` is no subscript.
-        tree = sqlglot.parse_one(spelled(stripped), read="postgres")
+        # REQ-2167: read as the transpiler reads it; ``::cstring[]`` is no subscript (pg_syntax).
+        tree = sqlglot.parse_one(stripped, read="postgres")
         for tbl in tree.find_all(exp.Table):
             db = tbl.db.lower() if tbl.db else ""
             tname = tbl.name.lower() if tbl.name else ""
@@ -765,12 +770,12 @@ def _array_text(value: list) -> str:
 def _with_own_oids(result, oids, served: list[str]):
     """A column of a type the wire has no form of its own for (tsquery, xml[]) is sent as text under
     PostgreSQL's oid, which is what its text form is: the client names it as PostgreSQL does."""
-    from provisa.pgwire.server import BVTYPE_TO_PGTYPE, _sql_type_to_bvtype
+    from provisa.pgwire.server import BVTYPE_TO_OID, _sql_type_to_bvtype
 
     declared = result.column_types
     own: list[int | None] = [None] * len(declared)
     for i, oid in enumerate(oids):
-        if declared[i] == served[i] and BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(served[i])][0] != oid:
+        if declared[i] == served[i] and BVTYPE_TO_OID[_sql_type_to_bvtype(served[i])] != oid:
             own[i] = oid
             declared[i] = "text"
     if not any(own):
@@ -786,6 +791,23 @@ def _with_own_oids(result, oids, served: list[str]):
     return result
 
 
+def _unbound(sql: str) -> str:
+    """``sql`` with each $N NULL, on the tree (REQ-2167): a ``$1`` in a string literal is its
+    text."""
+    if "$" not in sql:
+        return sql
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    def null(node: exp.Expr) -> exp.Expr:
+        unbound = isinstance(node, exp.Parameter) and node.name.isdigit()
+        return exp.Null() if unbound else node
+
+    tree = sqlglot.parse_one(sql, read="postgres")
+    written = tree.transform(null)
+    return sql if written == tree else written.sql(dialect="postgres")
+
+
 def _read_meta(sql: str, role_id: str, state, session: CatalogSession | None, run):
     """The statement as a read of the meta domain, governed as any read is (REQ-2190): ``run``
     takes the coroutine onto the connection's loop."""
@@ -793,7 +815,7 @@ def _read_meta(sql: str, role_id: str, state, session: CatalogSession | None, ru
 
     request = _catalog_request(sql, role_id, state, session)
     # A $N a value was not bound for (Describe of an unbound statement): any value describes it.
-    bare = re.sub(r"\$\d+", "NULL", sql)
+    bare = _unbound(sql)
     try:
         addressed, asked = address(bare, request)
     except MetadataFunctionRefused as exc:

@@ -20,6 +20,8 @@ tests pin what the endpoint asks for and how it shapes what comes back."""
 
 from __future__ import annotations
 
+import json
+
 from types import SimpleNamespace
 from typing import Any
 
@@ -29,6 +31,7 @@ from provisa.compiler.directives import CacheHint
 from provisa.compiler.sql_types import ColumnRef, CompiledQuery
 from provisa.executor.result import QueryResult
 from provisa.transpiler.router import Route
+from tests.unit.json_encoder.rows import field_answer
 
 _HINT = CacheHint(opt_in=True, ttl=30, debug_trace=False)
 
@@ -122,7 +125,12 @@ async def test_rows_are_shaped_under_the_fields_own_alias(pipeline):
     for alias in ("a", "b"):
         pipeline.results.append(QueryResult(rows=rows, column_names=["id"]))
         root, field_rows, redirect, hit = await _field(_compiled(alias))
-        assert (root, field_rows, redirect, hit) == (alias, [{"id": 1}, {"id": 2}], None, None)
+        assert (root, json.loads(field_rows.body), redirect, hit) == (
+            alias,
+            [{"id": 1}, {"id": 2}],
+            None,
+            None,
+        )
 
 
 async def test_a_cache_hit_reports_its_record(pipeline):
@@ -130,7 +138,7 @@ async def test_a_cache_hit_reports_its_record(pipeline):
     pipeline.plans.append(_plan(route=Route.CACHE, cache_hit=([], record)))
     pipeline.results.append(QueryResult(rows=[(7,)], column_names=["id"]))
     root, field_rows, redirect, hit = await _field(_compiled())
-    assert field_rows == [{"id": 7}] and redirect is None and hit is record
+    assert json.loads(field_rows.body) == [{"id": 7}] and redirect is None and hit is record
 
 
 async def test_a_forced_delivery_answers_with_its_handle(pipeline):
@@ -167,7 +175,10 @@ async def test_an_aggregate_reads_its_nodes_in_its_one_plan(pipeline):
     (only,) = pipeline.asked
     assert only["buffered"] is False  # the rows it aggregates may be many
     assert only["compiled"] is compiled
-    assert field_rows == {"aggregate": {"count": 2}, "nodes": [{"id": 1}, {"id": 2}]}
+    assert json.loads(field_rows.body) == {
+        "aggregate": {"count": 2},
+        "nodes": [{"id": 1}, {"id": 2}],
+    }
 
 
 async def test_a_refused_field_reaches_the_caller_as_403():
@@ -235,7 +246,6 @@ def test_the_complexity_refusal_keeps_the_apps_413(monkeypatch):
 def test_every_graphql_answer_is_encoded_by_orjson(monkeypatch):
     """REQ-1867: /data/graphql returns its body as an orjson response, never a dict for FastAPI's
     jsonable_encoder pass: a query, a redirect handle and a mutation's body alike."""
-    import decimal
 
     from provisa.api.data import endpoint
     from provisa.api.json_response import OrjsonResponse
@@ -244,7 +254,7 @@ def test_every_graphql_answer_is_encoded_by_orjson(monkeypatch):
     h = _endpoint_harness(monkeypatch)
 
     async def _rows(compiled, *args, **kwargs):
-        return compiled.root_field, [{"amount": decimal.Decimal("2.50")}], None, None
+        return compiled.root_field, field_answer([{"amount": "2.50"}]), None, None
 
     monkeypatch.setattr(endpoint, "_execute_one_field", _rows)
     answered = h.call()

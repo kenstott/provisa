@@ -41,6 +41,7 @@ import { ProfilerFormSection } from "./ProfilerFormSection";
 import { SalesforceFields } from "./SalesforceFields";
 import { ServiceNowFields } from "./ServiceNowFields";
 import { JiraFields } from "./JiraFields";
+import { QuickBooksFields } from "./QuickBooksFields";
 import { CloudopsFields } from "./CloudopsFields";
 import { GoogleSheetsFields } from "./GoogleSheetsFields";
 import { GoogleWorkspaceFields } from "./GoogleWorkspaceFields";
@@ -171,6 +172,8 @@ export function SourceFormFieldsExtended({
   // the sole Streaming member — websocket/rss/ingest now share the category and each needs its own
   // fields, so this must key on the type itself.
   const isKafka = form.type === "kafka";
+  // The props of a type's own fields that keep their settings beside the connection's.
+  const typed = { form, setForm, fields: authFields, setFields: setAuthFields };
   const simpleAuthData = [
     { value: "none", label: t("sourceFormFieldsExtended.authNone") },
     { value: "basic", label: t("sourceFormFieldsExtended.authBasic") },
@@ -690,14 +693,7 @@ export function SourceFormFieldsExtended({
         />
       )}
       {form.type === MOTHERDUCK && <MotherDuckFields form={form} setForm={setForm} />}
-      {form.type === COSMOSDB && ( // REQ-1982
-        <CosmosDbFields
-          form={form}
-          setForm={setForm}
-          fields={authFields}
-          setFields={setAuthFields}
-        />
-      )}
+      {form.type === COSMOSDB && <CosmosDbFields {...typed} /> /* REQ-1982 */}
       {form.type === JDBC_SOURCE && ( // REQ-2191
         <JdbcSourceFields
           form={form}
@@ -714,16 +710,10 @@ export function SourceFormFieldsExtended({
       )}
       {form.type === LOGS && <LogsFields fields={authFields} setFields={setAuthFields} />}
       {form.type === "cloudops" && <CloudopsFields fields={authFields} setFields={setAuthFields} />}
-      {form.type === "salesforce" && (
-        <SalesforceFields
-          form={form}
-          setForm={setForm}
-          fields={authFields}
-          setFields={setAuthFields}
-        />
-      )}
+      {form.type === "salesforce" && <SalesforceFields {...typed} />}
       {form.type === "servicenow" && <ServiceNowFields form={form} setForm={setForm} />}
       {form.type === "jira" && <JiraFields form={form} setForm={setForm} />}
+      {form.type === "quickbooks" && <QuickBooksFields {...typed} /> /* REQ-2197 */}
       {form.type === "sharepoint" && (
         <SharepointFields
           form={form}

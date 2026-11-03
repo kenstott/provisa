@@ -164,6 +164,9 @@ class SourceType(str, Enum):
     sharepoint = "sharepoint"
     salesforce = "salesforce"
     servicenow = "servicenow"  # REQ-1954: read through the instance's Table API
+    # REQ-2197: QuickBooks Online, its Accounting API entities read through the query endpoint
+    # (simple conditions pushed into its query language) and landed.
+    quickbooks = "quickbooks"
     jira = "jira"  # REQ-2069: Jira Cloud, read through its Calcite adapter (JQL pushed down)
     cloudops = "cloudops"  # REQ-1947: Azure / AWS / GCP resource inventory, read only
     splunk = "splunk"

@@ -163,7 +163,7 @@ def _applicable_types(source_oids: list[int], described_oids: list[int] | None) 
     ``described_oids`` are the type OIDs the client was already told at Describe: every source
     column must have that exact layout. With no prior Describe (``None``) the client is told the
     source's own types, so each must be one pgwire advertises under its own OID."""
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
+    from buenavista.postgres import BVTYPE_TO_OID
 
     from provisa.pgwire.server import _sql_type_to_bvtype
 
@@ -173,7 +173,7 @@ def _applicable_types(source_oids: list[int], described_oids: list[int] | None) 
         if name is None:
             raise PassthroughError(f"result column {i + 1} has source type OID {oid}")
         if described_oids is None:
-            if not _same_layout(oid, BVTYPE_TO_PGTYPE[_sql_type_to_bvtype(name)][0]):
+            if not _same_layout(oid, BVTYPE_TO_OID[_sql_type_to_bvtype(name)]):
                 raise PassthroughError(f"source type {name!r} is not advertised under its own OID")
         names.append(name)
     if described_oids is not None:

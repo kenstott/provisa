@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.executor.result import QueryResult, StreamingQueryResult
+from provisa.core.pg_error import PostgresError
+from provisa.executor.result import ArrowStreamResult, QueryResult, StreamingQueryResult
 from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 from provisa.federation.runtime_support import (
     _ARROW_STREAM_BATCH_ROWS,
@@ -128,3 +129,143 @@ def test_run_sync_reads_an_infinite_date_or_timestamp_as_infinite(runtime):
     )
     [row] = res.rows
     assert [infinity_of(v) for v in row] == [1, -1, 0]
+
+
+def test_run_sync_hands_on_duckdbs_arrow_batches(runtime):
+    """REQ-2194: the sync terminal's result is DuckDB's Arrow reader, never its DB-API rows; an
+    encoder reads the record batches as DuckDB produced them."""
+    import pyarrow as pa
+
+    from provisa.executor.result import ArrowStreamResult
+
+    n = _ARROW_STREAM_BATCH_ROWS + 3
+    res = runtime.run_sync(f"select x, x::varchar as s from range({n}) t(x)")
+    assert isinstance(res, ArrowStreamResult)
+    assert res.column_names == ["x", "s"]
+    assert res.column_types == ["BIGINT", "VARCHAR"]
+    batches = list(res.arrow_batches())
+    assert all(isinstance(b, pa.RecordBatch) for b in batches)
+    assert sum(b.num_rows for b in batches) == n
+    assert res.stats.row_count == n and res.stats.done
+    assert res.stats.byte_count == sum(b.nbytes for b in batches)
+
+
+def test_run_sync_arrow_reader_keeps_a_zero_row_results_columns(runtime):
+    res = runtime.run_sync("select 1::integer as a, 'x' as b where false")
+    assert res.column_names == ["a", "b"]
+    assert res.column_types == ["INTEGER", "VARCHAR"]
+    assert res.rows == []
+
+
+def test_run_sync_reads_values_duckdbs_rows_hold(runtime):
+    """A row consumer is given the values DuckDB's own rows hold (duckdb_arrow.arrow_rows): a
+    UUID is a uuid.UUID, a MAP a dict, a HUGEINT an int, a TIMETZ keeps its offset."""
+    import uuid
+    from datetime import time, timedelta, timezone
+
+    res = runtime.run_sync(
+        "select '7d9f1c2e-1111-2222-3333-444455556666'::uuid as u, map {'k': 1} as m, "
+        "170141183460469231731687303715884105727::hugeint as h, '01:02:03+05'::timetz as t"
+    )
+    assert res.rows == [
+        (
+            uuid.UUID("7d9f1c2e-1111-2222-3333-444455556666"),
+            {"k": 1},
+            2**127 - 1,
+            time(1, 2, 3, tzinfo=timezone(timedelta(hours=5))),
+        )
+    ]
+
+
+def test_run_sync_keeps_duckdbs_default_export_for_the_flight_transport(runtime):
+    """The lossless export is the row terminal's cursor's own: the Arrow transport's reads keep
+    DuckDB's default export (a HUGEINT is a decimal128 there, not DuckDB's opaque bytes)."""
+    import pyarrow as pa
+
+    runtime.run_sync("select 1::hugeint as h").rows
+    schema, batches = runtime.run_arrow_stream("select 1::hugeint as h")
+    list(batches)
+    assert schema.field("h").type == pa.decimal128(38, 0)
+
+
+async def test_run_returns_the_engines_arrow_table(runtime):
+    """REQ-2194: the async terminal's materialized result is DuckDB's Arrow table; rows are built
+    from it only when a consumer reads them."""
+    import pyarrow as pa
+
+    from provisa.executor.result import ArrowResult
+
+    res = await runtime.run("select x, x * 2 as y from range(4) t(x)")
+    assert isinstance(res, ArrowResult)
+    assert isinstance(res.table, pa.Table)
+    assert res.column_names == ["x", "y"]
+    assert res.column_types == ["BIGINT", "BIGINT"]
+    assert res.stats.row_count == 4
+    assert res.rows == [(0, 0), (1, 2), (2, 4), (3, 6)]
+
+
+async def test_run_of_a_statement_that_returns_no_rows_has_none(runtime):
+    # DuckDB reports a SET as one 'Success' column with no rows, as its cursor always did.
+    res = await runtime.run("set threads = 2")
+    assert res.rows == [] and res.column_names == ["Success"]
+
+
+async def test_run_builds_its_rows_off_the_event_loop(runtime, monkeypatch):
+    """Every request runs on its own thread, and its event loop does no per-row work: the async
+    terminal's rows are built on the executor thread before the result is handed back, and a
+    consumer reading them on the loop builds nothing."""
+    import threading
+
+    from provisa.executor.drivers import duckdb_arrow
+    from provisa.federation import duckdb_runtime
+
+    built_on: list[int] = []
+
+    def recording(data):
+        built_on.append(threading.get_ident())
+        return duckdb_arrow.arrow_rows(data)
+
+    monkeypatch.setattr(duckdb_runtime, "arrow_rows", recording)
+    loop_thread = threading.get_ident()
+    res = await runtime.run("select x, x::varchar as s from range(1000) t(x)")
+    assert built_on and loop_thread not in built_on
+    built = len(built_on)
+    assert len(res.rows) == 1000  # read on the loop
+    assert len(list(res.iter_rows())) == 1000
+    assert len(built_on) == built  # nothing more built there
+    assert loop_thread not in built_on
+
+
+#: The row the engine raises PostgreSQL's own error on (pg_error.raising): past what DuckDB
+#: computes when the statement is run (about 128K rows), so it is met only as a batch is read.
+_LATE = 400_000
+_LATE_ERROR = (
+    f"select case when x = {_LATE} then error('postgresql-error 22012: division by zero') "
+    f"else x end as v from range({_LATE + 1}) t(x)"
+)
+
+
+@pytest.mark.parametrize("face", ["rows", "arrow_batches"])
+def test_run_sync_raises_postgresqls_error_met_in_a_later_batch(runtime, face):
+    """DuckDB's reader meets the engine's error only as it produces the batch that holds it, as
+    an OSError carrying its message: it is raised as PostgreSQL's own error, on either face."""
+    res = runtime.run_sync(_LATE_ERROR)
+    assert isinstance(res, ArrowStreamResult)
+    read = res.batches() if face == "rows" else res.arrow_batches()
+    first = next(read)
+    assert len(first) == _ARROW_STREAM_BATCH_ROWS
+    with pytest.raises(PostgresError) as raised:
+        list(read)
+    assert (raised.value.sqlstate, str(raised.value)) == ("22012", "division by zero")
+    # The stream that failed is released (its cursor and the catalogue read it held); the runtime
+    # answers the next statement.
+    assert res.stats.done
+    assert runtime.run_sync("select 42 as y").rows == [(42,)]
+
+
+def test_run_sync_raises_any_other_engine_error_as_it_is(runtime):
+    res = runtime.run_sync(_LATE_ERROR.replace("postgresql-error 22012: division by zero", "no"))
+    read = res.batches()
+    assert next(read)
+    with pytest.raises(OSError, match="Invalid Input Error: no$"):
+        list(read)

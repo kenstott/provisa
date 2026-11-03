@@ -25,7 +25,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.sql_rewrite import make_semantic_sql
-from provisa.executor.serialize import serialize_rows
+from tests.unit.json_encoder.rows import serialize_rows
 from tests.unit.test_nested_field_arguments import _EDGES, _TERMS, _answer, _compiled, meta  # noqa: F401
 
 
