@@ -1263,15 +1263,26 @@ fn register_catalog_names(procs: Vec<(i64, String)>, types: Vec<(i64, String)>) 
     pgtypes::set_catalog_names(names);
 }
 
+/// The offsets (seconds east of UTC) of a named zone at instants (seconds after the epoch, within
+/// years 1..=9999) as every encoder reads them, or None for a zone the tables do not hold.
+#[pyfunction]
+fn zone_offsets(name: &str, secs: Vec<i64>) -> Option<Vec<i32>> {
+    let zone = tz::Zone::named(name)?;
+    Some(secs.into_iter().map(|s| zone.offset_at(s)).collect())
+}
+
 #[pymodule]
 fn pgwire_encoder(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(encode_batch, m)?)?;
     m.add_function(wrap_pyfunction!(encode_stream, m)?)?;
     m.add_function(wrap_pyfunction!(forward_raw, m)?)?;
     m.add_function(wrap_pyfunction!(register_catalog_names, m)?)?;
+    m.add_function(wrap_pyfunction!(zone_offsets, m)?)?;
     m.add("UNICODE_VERSION", unicode_tables::UNICODE_VERSION)?;
     // The IANA release chrono-tz's tables and tz_rules.rs's rules were built from.
     m.add("TZDB_VERSION", chrono_tz::IANA_TZDB_VERSION)?;
     m.add("TZ_RULES_VERSION", tz_rules::TZDB_VERSION)?;
+    // The zones every encoder takes (the same tables serve pgwire and the JSON encoders).
+    m.add("ZONE_NAMES", tz::Zone::names())?;
     Ok(())
 }

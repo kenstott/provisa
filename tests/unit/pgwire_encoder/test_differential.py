@@ -1125,8 +1125,8 @@ def test_random_json_floats() -> None:
 # --- named time zones: chrono-tz (and the zone's POSIX rule from 2100) against zoneinfo ---
 
 ZONE_NAMES = importlib.resources.files("tzdata").joinpath("zones").read_text().split()
-# Factory (the placeholder zone of tzdata's `factory` file) is not one chrono-tz builds.
-ZONES = [z for z in ZONE_NAMES if z != "Factory"]
+# Factory (the placeholder zone of tzdata's `factory` file) included: the tables build that file too.
+ZONES = ZONE_NAMES
 EPOCH = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
 SEC_MIN = _ts(1, 1, 1) // US
 SEC_MAX = _ts(9999, 12, 31, 23, 59, 59) // US

@@ -20,7 +20,8 @@ ryu = "1.0.23"
 ryu-pg = { path = "third_party/ryu-pg" }
 chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 # chrono-tz 0.10.4 with its zone tables regenerated at build time from the IANA release in
-# third_party/chrono-tz/tz (2026b, the release Python's pytz and tzdata carry); see RESULTS.md.
+# third_party/chrono-tz/tz (2026f, the release the pinned pytz and tzdata carry; Factory included
+# through third_party/chrono-tz-build); see RESULTS.md.
 chrono-tz = { path = "third_party/chrono-tz", default-features = false, features = ["std", "filter-by-regex"] }
 
 [profile.release]

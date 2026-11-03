@@ -119,6 +119,7 @@ default-features = false
 
 [dev-dependencies.chrono-tz-build]
 version = "0.5"
+path = "../chrono-tz-build"
 
 [dev-dependencies.serde_test]
 version = "1"
@@ -128,4 +129,5 @@ version = "0.1"
 
 [build-dependencies.chrono-tz-build]
 version = "0.5"
+path = "../chrono-tz-build"
 optional = true

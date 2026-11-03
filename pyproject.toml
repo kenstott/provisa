@@ -44,6 +44,12 @@ dependencies = [
     "grpcio-reflection",
     "grpcio-health-checking",  # REQ-1904: grpc.health.v1 HealthServicer for orchestrator probes
     "pyarrow",
+    # One IANA release on every surface: zoneinfo reads the tzdata package (provisa/__init__.py
+    # empties its search path), pyarrow reads a zoned timestamp through pytz, and the Rust encoders'
+    # tables are built from rust/pgwire/third_party/chrono-tz/tz. All three are 2026f; bump together
+    # (rust/pgwire/RESULTS.md, tests/unit/test_tz_agreement.py).
+    "tzdata==2026.6",
+    "pytz==2026.6",
     "adbc-driver-flightsql",
     "adbc-driver-manager",
     "adbc-driver-postgresql",  # REQ-1220: Arrow-native zero-copy ADBC transport for the pg engine

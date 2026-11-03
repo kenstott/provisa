@@ -27,7 +27,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parents[1]
 TZ = HERE / "third_party" / "chrono-tz" / "tz"
 OUT = HERE / "src" / "tz_rules.rs"
-# The files chrono-tz builds from (parse_zoneinfo::FILES).
+# The files chrono-tz builds from (third_party/chrono-tz-build: parse_zoneinfo::FILES and factory).
 FILES = [
     "africa",
     "antarctica",
@@ -36,6 +36,7 @@ FILES = [
     "backward",
     "etcetera",
     "europe",
+    "factory",
     "northamerica",
     "southamerica",
 ]
