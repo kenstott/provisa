@@ -364,9 +364,7 @@ export const BRAND_SETUP: Record<string, BrandSetupField[]> = {
 
 /** The setup values a brand's form starts with: each field's default, or empty. */
 export function brandSetupDefaults(brand: string): Record<string, string> {
-  return Object.fromEntries(
-    (BRAND_SETUP[brand] ?? []).map((f) => [f.name, f.defaultValue ?? ""]),
-  );
+  return Object.fromEntries((BRAND_SETUP[brand] ?? []).map((f) => [f.name, f.defaultValue ?? ""]));
 }
 
 // UI source-type values → backend SourceType vocabulary where the two differ (REQ-947).

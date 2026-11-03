@@ -25,16 +25,7 @@ import {
 import React, { useState, useEffect, useMemo, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Group,
-  Select,
-  Table,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, Select, Table, Text, TextInput } from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
 import { TipSurface } from "../components/Tip";
