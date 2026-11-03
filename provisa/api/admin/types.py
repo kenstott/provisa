@@ -1468,6 +1468,8 @@ class EntityInput:  # REQ-1164: dimension / hub+satellite sugar → lowers to a 
     valid_time: str | None = None
     recorded_time: str | None = None
     visible_to: list[str] = strawberry.field(default_factory=lambda: ["public"])
+    # REQ-2199: the registered table's description (a modeling wizard's first draft of it).
+    description: str | None = None
 
 
 @strawberry.input
@@ -1491,6 +1493,8 @@ class FactInput:  # REQ-1164: star fact / DV link sugar → lowers to an aggrega
     measures: list[MeasureInput] = strawberry.field(default_factory=list)
     dimensions: list[DimRefInput] = strawberry.field(default_factory=list)
     visible_to: list[str] = strawberry.field(default_factory=lambda: ["public"])
+    # REQ-2199: the registered table's description (a modeling wizard's first draft of it).
+    description: str | None = None
 
 
 @strawberry.type

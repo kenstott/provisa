@@ -11,6 +11,10 @@
     "addViewTitle": "Crea una nuova vista nell'esploratore SQL",
     "model": "+ Modello",
     "modelTitle": "Modella un'entità o un fatto (schema a stella / Data Vault)",
+    "modelMenu": "Scegli come modellare",
+    "modelEntityFact": "Entità/Fatto",
+    "modelStarSchema": "Schema a stella",
+    "modelDataVault": "Data Vault",
     "reportXlsx": "Cartella di lavoro",
     "reportXlsxTitle": "Scarica il modello come foglio di calcolo per la revisione: origini, tabelle, colonne, relazioni, viste, metriche, viste materializzate, ontologia, prodotti dati, contratti dati, qualità dei dati e profili dei dati, un foglio ciascuno",
     "viewErd": "Visualizza ERD",
@@ -84,6 +88,8 @@
     "panelRegisterTable": "Registra tabella",
     "panelNewView": "Nuova vista",
     "panelNewModel": "Nuovo modello",
+    "panelStarSchema": "Nuovo schema a stella",
+    "panelDataVault": "Nuovo Data Vault",
     "history": {
       "badge": "cronologia",
       "title": "Conserva la cronologia: interrogala a una data o come registrata (Viaggio nel tempo)"
