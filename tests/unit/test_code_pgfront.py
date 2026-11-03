@@ -74,9 +74,40 @@ _CODE = textwrap.dedent(
 )
 
 
-@pytest.fixture
-def host(tmp_path):
-    """A front end on a free port, paired; its port and the paired identity's files."""
+def _image_frontlib(tmp_path: Path) -> Path:
+    """The front end's library as a code image lays it out (image_build._front): buenavista's
+    modules, and provisa._encoders as image_build._encoders takes it from the Linux provisa
+    wheel -- here a wheel of the module built for this machine."""
+    import shutil
+    import zipfile
+
+    import buenavista
+
+    import provisa._encoders as encoders
+    from provisa.codesource import image_build
+
+    lib = tmp_path / "frontlib"
+    shutil.copytree(Path(buenavista.__file__).parent, lib / "buenavista")
+    house = tmp_path / "wheels"
+    house.mkdir()
+    module = Path(encoders.__file__).resolve()
+    arch = "arm64" if os.uname().machine in ("arm64", "aarch64") else "amd64"
+    wheel = house / f"provisa-1.0.0-cp312-cp312-manylinux_2_28_{image_build._WHEEL_ARCH[arch]}.whl"
+    with zipfile.ZipFile(wheel, "w") as w:
+        w.write(module, f"provisa/{module.name}")
+    plan = SimpleNamespace(cache_root=tmp_path, version="1.0.0")
+    for entry in image_build._encoders(plan, arch):  # type: ignore[arg-type]
+        at = lib / Path(entry.path).relative_to(f"{image_build.ROOT}/frontlib")
+        if entry.directory:
+            at.mkdir(parents=True, exist_ok=True)
+        else:
+            at.write_bytes(entry.data or b"")
+    return lib
+
+
+def _start_host(tmp_path: Path, frontlib: Path | None):
+    """A front end on a free port, paired; its port and the paired identity's files. With
+    ``frontlib``, it runs as in a code image: isolated (no PYTHONPATH), its libraries there."""
     code = tmp_path / "code"
     code.mkdir()
     (code / "shop.py").write_text(_CODE)
@@ -88,9 +119,18 @@ def host(tmp_path):
     names.write_text(json.dumps(name_tables(read_manifest(json.loads(done.stdout), PYTHON_RULES))))
     port = 0
     worker = [sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"]
+    if frontlib is None:
+        python, env = [sys.executable], {**os.environ, "PROVISA_CODE_HASH": "h1"}
+    else:
+        python = [sys.executable, "-I"]
+        env = {
+            **{k: v for k, v in os.environ.items() if k != "PYTHONPATH"},
+            "PROVISA_CODE_HASH": "h1",
+            "PROVISA_FRONT_LIB": str(frontlib),
+        }
     process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's front end
         [
-            sys.executable,
+            *python,
             front.__file__,
             str(port),
             str(tmp_path / "state"),
@@ -98,7 +138,7 @@ def host(tmp_path):
             str(names),
             *worker,
         ],
-        env={**os.environ, "PROVISA_CODE_HASH": "h1"},
+        env=env,
         stderr=subprocess.PIPE,
         text=True,
     )
@@ -120,7 +160,23 @@ def host(tmp_path):
     cert.write_text(identity.certificate)
     key.write_text(identity.key)
     key.chmod(0o600)
-    yield port, cert, key
+    return process, (port, cert, key)
+
+
+@pytest.fixture
+def host(tmp_path):
+    """A front end on a free port, paired; its port and the paired identity's files."""
+    process, served = _start_host(tmp_path, None)
+    yield served
+    process.terminate()
+    process.wait(timeout=10)
+
+
+@pytest.fixture
+def image_host(tmp_path):
+    """The front end as a code image runs it: its encoders from the image's provisa wheel."""
+    process, served = _start_host(tmp_path, _image_frontlib(tmp_path))
+    yield served
     process.terminate()
     process.wait(timeout=10)
 
@@ -296,3 +352,29 @@ def test_the_duckdb_engines_own_attach_verifies_and_reads_the_host(host, monkeyp
     refused.execute("LOAD postgres")
     with pytest.raises(duckdb.Error):
         refused.execute(connector.details(source)["attach"])
+
+
+def test_in_a_code_images_layout_the_front_end_sends_rows_through_the_wheels_encoders(image_host):
+    """REQ-2194: a code image carries provisa._encoders from the provisa wheel for its
+    architecture, and the front end's DataRows are written by it, in text and in binary."""
+    with psycopg.connect(_dsn(*image_host), autocommit=True) as conn:
+        query = 'SELECT id, "customerName" FROM public.orders WHERE _nf_n = 3 ORDER BY id'
+        assert _rows(conn, query) == [(0, "zeta"), (1, "acme"), (2, "zeta")]
+        with conn.cursor(binary=True) as cur:
+            cur.execute(query)
+            assert cur.fetchall() == [(0, "zeta"), (1, "acme"), (2, "zeta")]
+
+
+def test_in_a_code_images_layout_duckdb_reads_the_host_through_binary_copy(image_host):
+    """DuckDB's postgres scanner reads a table with COPY ... TO STDOUT (FORMAT binary), which the
+    front end writes from the encoder's binary DataRows."""
+    import duckdb
+
+    port, cert, key = image_host
+    db = duckdb.connect()
+    db.execute("LOAD postgres")
+    dsn = _dsn(port, cert, key)
+    db.execute(f"ATTACH '{dsn.replace("'", "''")}' AS shop (TYPE postgres, READ_ONLY)")
+    assert db.execute(
+        'SELECT id, "customerName" FROM shop.public.orders WHERE _nf_n = 3 ORDER BY id'
+    ).fetchall() == [(0, "zeta"), (1, "acme"), (2, "zeta")]

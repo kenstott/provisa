@@ -1417,7 +1417,7 @@ fn money_text(cents: i64, out: &mut Vec<u8>) -> R<()> {
 /// address.
 fn inet_out(a: &Inet, cidr: bool, out: &mut Vec<u8>) {
     let mut s = String::new();
-    pyval::inet_addr_text(a, true, &mut s);
+    pyval::inet_addr_text(a, &mut s);
     let max = if a.v6 { 128 } else { 32 };
     if cidr || a.bits != max {
         s.push('/');

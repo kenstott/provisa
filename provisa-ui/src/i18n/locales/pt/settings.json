@@ -282,6 +282,10 @@
       "public_url": {
         "label": "Endereço público",
         "help": "O endereço pelo qual esta implantação é conhecida, como https://data.example.com. A IRI de cada sujeito no SPARQL e nas exportações RDF começa por ele, então ele deve permanecer o mesmo enquanto essas IRIs forem usadas. Sem valor, uma consulta que retorna a IRI de um sujeito é recusada."
+      },
+      "node_url": {
+        "label": "Endereço deste nó",
+        "help": "O endereço em que os clientes alcançam este nó. A interface de um coordenador o lista como nó de dados quando a região não lista nenhum. O inicializador o define para cada nó; sem ele, o nó não é listado."
       }
     },
     "tls": {

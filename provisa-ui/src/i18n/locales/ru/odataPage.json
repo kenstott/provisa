@@ -37,6 +37,12 @@
     "noRows": "Подходящих строк нет.",
     "rowsCutTitle": "Возвращены не все строки",
     "warningsTitle": "Об этом ответе",
-    "provenanceUrl": "Запрос OData"
+    "provenanceUrl": "Запрос OData",
+    "handoffNotService": "Это не адрес службы OData: {{url}}",
+    "handoffPath": "Обозреватель читает набор сущностей целиком; {{path}} указывает лишь на его часть.",
+    "handoffOption": "Обозреватель не может задать {{option}}={{value}}.",
+    "handoffNumber": "{{option}} должно быть целым числом, а не {{value}}.",
+    "handoffNoSet": "Для этой роли нет набора сущностей {{set}}.",
+    "handoffMember": "В {{set}} нет {{name}} для {{option}}."
   }
 }

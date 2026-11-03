@@ -37,6 +37,12 @@
     "noRows": "Nenhuma linha corresponde.",
     "rowsCutTitle": "Nem todas as linhas foram retornadas",
     "warningsTitle": "Sobre esta resposta",
-    "provenanceUrl": "Solicitação OData"
+    "provenanceUrl": "Solicitação OData",
+    "handoffNotService": "Não é um endereço do serviço OData: {{url}}",
+    "handoffPath": "O explorador lê um conjunto de entidades inteiro; {{path}} refere-se apenas a uma parte dele.",
+    "handoffOption": "O explorador não pode definir {{option}}={{value}}.",
+    "handoffNumber": "{{option}} deve ser um número inteiro, não {{value}}.",
+    "handoffNoSet": "Não há nenhum conjunto de entidades {{set}} para esta função.",
+    "handoffMember": "{{set}} não tem {{name}} para {{option}}."
   }
 }

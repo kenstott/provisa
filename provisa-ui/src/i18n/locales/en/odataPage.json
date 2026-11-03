@@ -37,6 +37,12 @@
     "noRows": "No rows match.",
     "rowsCutTitle": "Not every row was returned",
     "warningsTitle": "About this answer",
-    "provenanceUrl": "OData request"
+    "provenanceUrl": "OData request",
+    "handoffNotService": "Not an address of the OData service: {{url}}",
+    "handoffPath": "The explorer reads a whole entity set; {{path}} addresses part of one.",
+    "handoffOption": "The explorer cannot set {{option}}={{value}}.",
+    "handoffNumber": "{{option}} must be a whole number, not {{value}}.",
+    "handoffNoSet": "There is no entity set {{set}} for this role.",
+    "handoffMember": "{{set}} has no {{name}} for {{option}}."
   }
 }

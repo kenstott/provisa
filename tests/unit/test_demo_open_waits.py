@@ -17,6 +17,7 @@ waits for a demo's stores and template rather than answering "not ready"."""
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -174,7 +175,7 @@ def test_an_open_waits_for_a_demos_stores_instead_of_refusing(monkeypatch, node)
             _not_ready(name)
 
     _opening(monkeypatch, follow=follow)
-    assert asyncio.run(demo_sandbox._ready_demo("a")).name == "a"
+    assert asyncio.run(demo_sandbox._ready_demo("a", "sbxtest")).name == "a"
     assert len(calls) == 2
 
 
@@ -182,7 +183,7 @@ def test_an_open_past_its_wait_is_refused_as_not_ready(monkeypatch, node):
     monkeypatch.setattr(demo_sandbox, "OPEN_WAIT_S", 0)
     _opening(monkeypatch, follow=_not_ready)
     with pytest.raises(ApiError) as refused:
-        asyncio.run(demo_sandbox._ready_demo("a"))
+        asyncio.run(demo_sandbox._ready_demo("a", "sbxtest"))
     assert refused.value.code == "sandbox.demo_not_ready"
 
 
@@ -190,7 +191,7 @@ def test_stores_that_fail_during_the_wait_are_named_at_once(monkeypatch, node):
     node.failed["a"] = "no such image"
     _opening(monkeypatch, follow=_not_ready)
     with pytest.raises(ApiError) as refused:
-        asyncio.run(demo_sandbox._ready_demo("a"))
+        asyncio.run(demo_sandbox._ready_demo("a", "sbxtest"))
     assert refused.value.code == "sandbox.demo_stores_failed"
 
 
@@ -199,7 +200,7 @@ def test_a_template_that_fails_during_the_wait_is_named_at_once(monkeypatch, nod
     builds.record("a", False)
     _opening(monkeypatch, follow=_not_ready)
     with pytest.raises(ApiError) as refused:
-        asyncio.run(demo_sandbox._ready_demo("a"))
+        asyncio.run(demo_sandbox._ready_demo("a", "sbxtest"))
     assert refused.value.code == "sandbox.demo_failed"
 
 
@@ -209,7 +210,7 @@ def test_any_other_refusal_is_not_waited_on(monkeypatch, node):
 
     _opening(monkeypatch, follow=follow)
     with pytest.raises(ApiError) as refused:
-        asyncio.run(demo_sandbox._ready_demo("a"))
+        asyncio.run(demo_sandbox._ready_demo("a", "sbxtest"))
     assert refused.value.code == "sandbox.unknown_demo"
 
 
@@ -255,3 +256,24 @@ def test_the_status_of_a_template_that_failed_names_the_failure(monkeypatch, nod
     with pytest.raises(ApiError) as refused:
         _status(monkeypatch, node)
     assert refused.value.code == "sandbox.demo_failed"
+
+
+def test_an_open_logs_how_long_it_waited_for_the_stores_and_the_template(monkeypatch, node, caplog):
+    """Each part of an open's wait is in the log: the minutes an open took on alpha.498 could not
+    be told apart from the tier's log, which named only "its demo's readiness"."""
+    import logging
+
+    calls = []
+
+    def follow(name):
+        calls.append(name)
+        if len(calls) == 1:
+            node.up.add(name)
+            _not_ready(name)
+
+    _opening(monkeypatch, follow=follow)
+    with caplog.at_level(logging.WARNING, logger="provisa.api.demo_sandbox"):
+        asyncio.run(demo_sandbox._ready_demo("a", "sbxtest"))
+    said = caplog.text
+    assert "demo sandbox sbxtest of a: its newest version took" in said
+    assert re.search(r"sbxtest of a: waited \d+s for its stores, \d+s for its template", said)

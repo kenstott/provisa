@@ -43,7 +43,12 @@ export interface ODataEntitySet {
   key: string[];
   properties: ODataProperty[];
   navigations: ODataNavigation[];
+  /** The domain of the table the set reads (its `Provisa.Domain` annotation); null when unnamed. */
+  domain: string | null;
 }
+
+/** The annotation term each entity set names its table's domain by (provisa/api/odata/csdl.py). */
+const DOMAIN_TERM = "Provisa.Domain";
 
 function children(parent: Element, localName: string): Element[] {
   return Array.from(parent.children).filter(
@@ -121,6 +126,17 @@ export function parseMetadata(xml: string): ODataEntitySet[] {
       key: keys.length ? children(keys[0], "PropertyRef").map((r) => required(r, "Name")) : [],
       properties: children(type, "Property").map(property),
       navigations: children(type, "NavigationProperty").map((n) => navigation(n, bindings)),
+      domain:
+        children(set, "Annotation")
+          .find((a) => a.getAttribute("Term") === DOMAIN_TERM)
+          ?.getAttribute("String") ?? null,
     };
   });
+}
+
+/** The sets of the domains `checked` names. An empty selection (none read yet) and a set that names
+ * no domain hide nothing, as on the other Explore pages. */
+export function setsInDomains(sets: ODataEntitySet[], checked: Set<string>): ODataEntitySet[] {
+  if (checked.size === 0) return sets;
+  return sets.filter((s) => s.domain === null || checked.has(s.domain));
 }

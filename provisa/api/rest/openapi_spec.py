@@ -17,6 +17,7 @@ per column, and typed response schemas — derived from the GraphQL schema.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from graphql import (
@@ -538,6 +539,7 @@ def _empty_spec() -> dict[str, Any]:
 
 
 _THEME_CLASS_SLOT = "__PROVISA_THEME_CLASS__"
+_DOC_SCOPE_SLOT = "__PROVISA_DOC_SCOPE__"
 
 SWAGGER_UI_HTML = """\
 <!DOCTYPE html>
@@ -723,9 +725,10 @@ SWAGGER_UI_HTML = """\
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script>
     window.onload = () => {
-      const params = new URLSearchParams(window.location.search);
-      const urlRole = params.get("role") || "";
-      const urlDomains = params.get("domains") || "";
+      // The role and domains this page describes, stamped by the server (see swagger_ui_html).
+      const scope = __PROVISA_DOC_SCOPE__;
+      const urlRole = scope.role || "";
+      const urlDomains = scope.domains || "";
       const specParams = new URLSearchParams();
       if (urlRole) specParams.set("role", urlRole);
       if (urlDomains) specParams.set("domains", urlDomains);
@@ -801,8 +804,8 @@ SWAGGER_UI_HTML = """\
 """
 
 
-def swagger_ui_html(theme: str | None) -> str:
-    """The Swagger UI page with the app's colour scheme already applied.
+def swagger_ui_html(theme: str | None, role: str | None = None, domains: str | None = None) -> str:
+    """The Swagger UI page with the app's colour scheme, role and domain selection already applied.
 
     The theme is stamped into the markup rather than read from ``location.search`` in the browser:
     the UI loads this page into a ``srcDoc`` iframe so it can attach the bearer token, and a
@@ -811,5 +814,13 @@ def swagger_ui_html(theme: str | None) -> str:
 
     Anything other than "light" is dark, which is what a direct visit to /data/rest/docs (no theme
     param, no app around it) gets.
+
+    The role and domains are stamped for the same reason: read from ``location.search`` they were
+    always empty in the app, so the spec described every domain whatever the navbar selection was.
     """
-    return SWAGGER_UI_HTML.replace(_THEME_CLASS_SLOT, "" if theme == "light" else "dark-mode")
+    scope = json.dumps({"role": role or "", "domains": domains or ""})
+    # Inside a <script>, "</" could close the element early; \u003c reads back as the same "<".
+    scope = scope.replace("<", "\\u003c")
+    return SWAGGER_UI_HTML.replace(
+        _THEME_CLASS_SLOT, "" if theme == "light" else "dark-mode"
+    ).replace(_DOC_SCOPE_SLOT, scope)

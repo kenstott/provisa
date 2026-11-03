@@ -1906,7 +1906,7 @@ WITNESSES: dict[str, tuple[list[Any], list[Any], list[int], dict[str, Any]]] = {
     ),
     "vector_lower_bound": ([pa.array([[1, 2]], pa.list_(pa.int64()))], [T.OIDVECTOR], [1], {}),
     "inet_text": (
-        [_duckdb_inet(["::ffff:1.2.3.4/128"])],
+        [_duckdb_inet(["::1.2.3.4/128", "::ffff:1.2.3.4/128"])],
         [T.INET],
         [0],
         {"force_coerce": [(0, server._duckdb_inet)]},
@@ -1959,11 +1959,12 @@ def test_product_defect(defect: str) -> None:
         return
     if defect == "inet_text":
         # the former text of the address _duckdb_inet makes (given an int, as DuckDB's own
-        # Python rows carry it): Python's hextets
+        # Python rows carry it): ipaddress's hextets for an IPv4-compatible address, in every
+        # Python (an IPv4-mapped one is dotted from CPython 3.12.16 on, hextets before)
         from tests.unit.pgwire_encoder import oracle
 
-        assert oracle._inet_text(ipaddress.ip_interface("::ffff:1.2.3.4/128")) == "::ffff:102:304"
-        assert _data_rows(wired)[0][0] == b"::ffff:1.2.3.4"
+        assert oracle._inet_text(ipaddress.ip_interface("::1.2.3.4/128")) == "::102:304"
+        assert [r[0] for r in _data_rows(wired)] == [b"::1.2.3.4", b"::ffff:1.2.3.4"]
     if defect in FIXED_BEFORE_WIRING:
         assert repr(former) == repr(reference), f"{defect}: the former writers differ again"
     else:

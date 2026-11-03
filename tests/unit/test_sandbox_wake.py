@@ -25,6 +25,16 @@ from provisa import sandbox_wake
 INSTANCE = "projects/p/zones/z/instances/provisa-saas-sandbox"
 
 
+@pytest.fixture(autouse=True)
+def _no_use_seen(monkeypatch):
+    """This process has seen no sandbox request and no open: an open another test made in this
+    worker is not use of this test's tier."""
+    from provisa.api import demo_sandbox
+
+    monkeypatch.setattr(demo_sandbox, "_last_used", None)
+    monkeypatch.setattr(demo_sandbox, "_opening", 0)
+
+
 @pytest.fixture
 def compute(monkeypatch):
     """A Compute Engine API and metadata server in one MockTransport; ``state`` is the
@@ -324,3 +334,86 @@ def test_a_template_whose_stores_went_down_is_retired(monkeypatch):
     monkeypatch.setattr(jobs, "unschedule_org", lambda sched, org: unscheduled.append(org))
     assert demo_templates.retire_templates_without_stores() == ["down"]
     assert gone == ["sbxtpldown"] and unscheduled == ["sbxtpldown"]
+
+
+def _no_sandbox_open(monkeypatch):
+    """The control plane holds no open sandbox (max(last_active_at) is NULL); the VM's stops are
+    recorded. The job's ``since`` -- when the tier started -- is long past the idle window."""
+    from datetime import UTC, datetime, timedelta
+
+    from provisa.api import demo_templates
+    from provisa.api.admin import orgs_router
+
+    stopped: list[str] = []
+
+    async def _stop(instance):
+        stopped.append(instance)
+
+    class _Rows:
+        def scalar_one(self):
+            return None
+
+    class _Conn:
+        async def execute_core(self, stmt):
+            return _Rows()
+
+    class _Held:
+        async def __aenter__(self):
+            return _Conn()
+
+        async def __aexit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(
+        orgs_router, "_admin_pool", lambda: type("P", (), {"acquire": lambda s: _Held()})()
+    )
+    monkeypatch.setattr(sandbox_wake, "SANDBOX_INSTANCE", INSTANCE)
+    monkeypatch.setattr(sandbox_wake, "stop", _stop)
+    monkeypatch.setattr(demo_templates, "building_ahead", lambda: False)
+    monkeypatch.setenv("PROVISA_SANDBOX_IDLE_STOP_SECONDS", "1800")
+    return stopped, datetime.now(UTC) - timedelta(hours=2)
+
+
+def test_a_vm_is_not_stopped_while_a_demo_is_being_opened(monkeypatch):
+    """REQ-2006: on alpha.498 the tier stopped its own VM at 11:27 and 12:08 while a visitor's
+    open waited for its demo's stores: the visitor before had closed their sandbox and it was
+    reaped, so no sandbox was open, and the window was counted from when the tier started. The
+    churn and opioids opens then met a VM going down (sandbox.starting for six minutes), and the
+    insurance open was cut off (500)."""
+    from provisa.api import demo_sandbox
+    from provisa.scheduler import jobs
+
+    stopped, since = _no_sandbox_open(monkeypatch)
+    monkeypatch.setattr(demo_sandbox, "_last_used", None)
+    with demo_sandbox.an_open():
+        asyncio.run(jobs.stop_idle_sandbox_vm(since=since))
+    assert stopped == []
+
+
+def test_a_sandbox_reaped_since_it_was_used_still_counts_as_use(monkeypatch):
+    """A sandbox closed and reaped a minute ago was used a minute ago: its row is gone, but the
+    window is counted from its last request, not from when the tier started."""
+    from provisa.api import demo_sandbox
+    from provisa.scheduler import jobs
+
+    stopped, since = _no_sandbox_open(monkeypatch)
+    monkeypatch.setattr(demo_sandbox, "_last_used", None)
+    monkeypatch.setattr(demo_sandbox, "_touched", {})
+    demo_sandbox.used()
+    asyncio.run(jobs.stop_idle_sandbox_vm(since=since))
+    assert stopped == []
+
+
+def test_with_no_open_and_no_use_in_the_window_the_vm_is_stopped(monkeypatch):
+    from provisa.api import demo_sandbox
+    from provisa.scheduler import jobs
+
+    stopped, since = _no_sandbox_open(monkeypatch)
+    monkeypatch.setattr(demo_sandbox, "_last_used", None)
+    with demo_sandbox.an_open():
+        pass
+    from datetime import UTC, datetime, timedelta
+
+    monkeypatch.setattr(demo_sandbox, "_last_used", datetime.now(UTC) - timedelta(hours=1))
+    asyncio.run(jobs.stop_idle_sandbox_vm(since=since))
+    assert stopped == [INSTANCE]
