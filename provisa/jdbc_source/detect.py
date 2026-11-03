@@ -64,6 +64,9 @@ _CHECKS: dict[str, tuple[str, list[tuple]]] = {
     ),
 }
 
+#: The attach check's read: the source answers at its URL (the connection opens on first use).
+_ANSWERS = "SELECT 1 AS x"
+
 #: Dialects in which every SELECT names a table: the rows a check makes are selected FROM DUAL.
 _FROM_REQUIRED: dict[str, str] = {"oracle": "dual"}
 
@@ -78,12 +81,17 @@ class Check:
 
 def statement(capability: str, sql_dialect: str) -> str:
     """The check for capability, as the source's dialect writes it."""
+    return _written(_CHECKS[capability][0], sql_dialect)
+
+
+def _written(sql: str, sql_dialect: str) -> str:
+    """``sql``, a PostgreSQL statement, as the source's dialect writes it."""
     import sqlglot
     from sqlglot import exp
 
     import provisa.jdbc_source.dialect  # noqa: F401 -- registers "ansi"
 
-    tree = sqlglot.parse_one(_CHECKS[capability][0], read="postgres")
+    tree = sqlglot.parse_one(sql, read="postgres")
     table = _FROM_REQUIRED.get(sql_dialect)
     if table is not None:
         for select in tree.find_all(exp.Select):
@@ -141,8 +149,14 @@ async def detect(hints: dict[str, str], user: str, password: str, engine: Any) -
         await driver.connect("", 0, "", user, password)
     except Exception as exc:  # noqa: BLE001 -- why it cannot be connected is every check's reason
         failure = _reason(exc)
-    checks = [_attach(settings.url, engine, failure)]
     try:
+        attach_failure = failure
+        if not failure:
+            try:
+                await driver.execute(_written(_ANSWERS, settings.sql_dialect))
+            except Exception as exc:  # noqa: BLE001 -- the source's own error is the reason
+                attach_failure = _reason(exc)
+        checks = [_attach(settings.url, engine, attach_failure)]
         for capability in (PREDICATE, JOIN, AGGREGATE, KEY_RANGE):
             rows: list[tuple] | None = None
             reason = failure
