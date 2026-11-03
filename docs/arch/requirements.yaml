@@ -90842,7 +90842,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     cannot attach, has none. A jdbc: URL never attaches. (Amended 2026-11-02, Named the JDBC Connector:)
     Maintainer 2026-11-02: the source is named the JDBC Connector everywhere it is shown or declared (the
     source type, the UI, the docs, refusals and messages). Generic SQL is the old name; what the source
-    does is unchanged.'
+    does is unchanged. (Amended 2026-11-02, Its name is JDBC:) Maintainer 2026-11-02: the name shown is
+    JDBC, like the other source types'' names, and the source type is jdbc. It covers both a built-in driver
+    URL and a customer''s jar ("not entirely accurate - but since it lets you use built-in connectors or
+    a jar - close enough").'
   use_case: 'A team runs a database Provisa has no source type for. An admin registers it with its URL
     and the SQL dialect closest to it, presses Detect, and gets whatever it can do: live attach and pushdown
     where it passes, and otherwise a governed source read by key.'
