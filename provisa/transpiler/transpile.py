@@ -378,23 +378,49 @@ def _rewrite_regex_backreferences_for_trino(sql: str) -> str:
     return tree.sql(dialect="trino")
 
 
+def _is_json_list_literal(node: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]
+    """'[]' as json: CAST('[]' AS JSON), or JSON_PARSE('[]') as the json forms write a json cast
+    of a literal for Trino (pg_forms_json._cast)."""
+    if isinstance(node, exp.Cast):
+        literal, is_json = node.this, node.to.is_type(exp.DataType.Type.JSON)
+    elif isinstance(node, exp.ParseJSON):
+        literal, is_json = node.this, True
+    else:
+        return False
+    return is_json and isinstance(literal, exp.Literal) and literal.this == "[]"
+
+
+def _is_json_text_aggregate(node: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]
+    """A list field's aggregate as Trino holds it: json_format(...) text
+    (_rewrite_json_arrayagg_for_trino), inline as a subquery or as the value column of the joined
+    aggregate it was hoisted to (transpile_correlated: _grel_<n>._val)."""
+    value = node
+    if isinstance(node, exp.Subquery) and isinstance(node.this, exp.Select):
+        selects = node.this.selects
+        value = selects[0].unalias() if len(selects) == 1 else node
+    if isinstance(value, exp.JSONFormat):
+        return True
+    return (
+        isinstance(value, exp.Column) and value.name == "_val" and value.table.startswith("_grel_")
+    )
+
+
 def _rewrite_empty_json_list_for_trino(sql: str) -> str:
     """A list field's empty default (sql_selection.EMPTY_JSON_LIST, CAST('[]' AS JSON)) is
     '[]' for Trino: there the aggregate it defaults is json_format(...) text
     (_rewrite_json_arrayagg_for_trino), and Trino's CAST of text to JSON is a JSON string, not an
-    array (#286)."""
-    if "'[]' AS JSON" not in sql:
+    array (#286). Only that default is rewritten: a statement's own json cast of '[]' stays json.
+    The json forms have already written the cast as JSON_PARSE('[]') by the time this runs, so
+    both forms are read."""
+    if "'[]'" not in sql:
         return sql
     tree = sqlglot.parse_one(sql, read="trino")
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
-        if (
-            isinstance(node, exp.Cast)
-            and isinstance(node.this, exp.Literal)
-            and node.this.this == "[]"
-            and node.to.is_type(exp.DataType.Type.JSON)
-        ):
-            return exp.Literal.string("[]")
+        if isinstance(node, exp.Coalesce) and _is_json_text_aggregate(node.this):
+            for default in node.expressions:
+                if _is_json_list_literal(default):
+                    default.replace(exp.Literal.string("[]"))
         return node
 
     return tree.transform(_transform).sql(dialect="trino")
