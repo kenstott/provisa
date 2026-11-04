@@ -205,7 +205,7 @@ def test_code_that_breaks_the_rules_is_refused_with_every_problem(reader, go, tm
         "Pipe(in): the type chan int cannot be mapped",
         "Pair (result): the type 2 results (a function returns one, and an error) cannot be mapped",
         "Spread: the rest parameter ids cannot be a parameter",
-        "Once: @stream is a generator or an async generator",
+        "Once: @stream returns iter.Seq2[T, error]",
         "Complex(c): the type complex128 cannot be mapped",
         "Keyed(m): the type map[int]string cannot be mapped",
     ):
