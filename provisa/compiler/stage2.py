@@ -20,10 +20,10 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.cte_utils import physical_tables
-from provisa.compiler.rls import _qualify_filter
+from provisa.compiler.rls import qualified_filter
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
-from provisa.security.masking import build_mask_expression
+from provisa.security.masking import mask_expression
 
 
 # --------------------------------------------------------------------------- #
@@ -87,7 +87,7 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     fake_fingerprint: str | None = None
     # REQ-1942: per table with kept mutations (a Reversible environment), its change log's
     # address and primary key; the table is read with the log applied.
-    kept: dict[int, tuple[str, list[str]]] = field(default_factory=dict)
+    kept: dict[int, tuple[tuple[str, ...], list[str]]] = field(default_factory=dict)
     # REQ-421/423: per table, its embedding columns (by the name a statement uses) and each one's
     # model; and the registered models' dimensions, which the pipeline sets for the statement.
     embedding_columns: dict[int, dict[str, str]] = field(default_factory=dict)
@@ -806,7 +806,7 @@ def _governed_relation(
         entry = gov_ctx.masking_rules.get((tid, physical))
         if entry is not None and not _is_fake(entry[0]):
             rule, mask_type = entry
-            value = _expr(build_mask_expression(rule, value.sql(dialect="postgres"), mask_type))
+            value = mask_expression(rule, value, mask_type)
         projections.append(exp.alias_(value, out, quoted=True))
         columns.append((out, physical))
         if not served:
@@ -1334,20 +1334,6 @@ def _unmark_views(tree: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateI
     return tree
 
 
-def _query(sql: str) -> exp.Query:
-    """The query ``sql`` holds, without the parentheses a projection builder puts round it."""
-    node = sqlglot.parse_one(sql, read="postgres")
-    while isinstance(node, (exp.Subquery, exp.Paren)) and not node.alias:
-        node = node.this
-    assert isinstance(node, exp.Query), sql
-    return node
-
-
-def _expr(sql: str) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
-    """An expression another module gives as text (a mask, a row filter): parsed, never spliced."""
-    return sqlglot.parse_one(sql, read="postgres")
-
-
 def _table_alias(alias: str) -> exp.TableAlias:
     return exp.TableAlias(this=exp.to_identifier(alias, quoted=True))
 
@@ -1372,14 +1358,14 @@ def _row_filter(gov_ctx: GovernanceContext, tid: int, alias: str) -> exp.Expr | 
     if tid not in gov_ctx.rls_rules:
         return None
     column_types = {name: dtype for name, dtype in gov_ctx.all_columns.get(tid, [])}
-    return _expr(_qualify_filter(gov_ctx.rls_rules[tid], alias, column_types))
+    return qualified_filter(gov_ctx.rls_rules[tid], alias, column_types)
 
 
 def _project_faked(
     tbl: exp.Table,
     tid: int,
     gov_ctx: GovernanceContext,
-    carried: dict[str, tuple[str, str]] | None = None,
+    carried: dict[str, tuple[exp.Expr, exp.Expr]] | None = None,
 ) -> exp.Subquery:  # REQ-1494
     """Put the faked projection of ``tbl`` in its place, under the same alias."""
     from provisa.compiler.naming import apply_sql_name
@@ -1389,33 +1375,34 @@ def _project_faked(
     alias = _alias_for(tbl)
     base = tbl.copy()
     base.set("alias", None)
-    row_filter = _row_filter(gov_ctx, tid, alias)
     columns = [
         (apply_sql_name(name), dtype, family(dtype)) for name, dtype in gov_ctx.all_columns[tid]
     ]
     assert gov_ctx.fake_fingerprint is not None  # bound with the faked columns
-    sql = faked_projection(
-        base.sql(dialect="postgres"),
+    projection = faked_projection(
+        base,
         alias,
         columns,
         gov_ctx.fake_columns[tid],
         gov_ctx.fake_fingerprint,
-        None if row_filter is None else row_filter.sql(dialect="postgres"),
+        _row_filter(gov_ctx, tid, alias),
         None if carried is None else {n: base_expr for n, (base_expr, _) in carried.items()},
     )
-    subquery = _derived(_query(sql), alias)
+    subquery = _derived(projection, alias)
     tbl.replace(subquery)
     return subquery
 
 
 def _with_carried(
-    query: exp.Select, carried: dict[str, tuple[str, str]], alias: str
+    query: exp.Select,
+    carried: dict[str, tuple[exp.Expr, exp.Expr]],
+    alias: str,  # pyright: ignore[reportPrivateImportUsage]
 ) -> exp.Select:  # REQ-1620
     """``query`` -- a read of a table's rows under ``alias`` -- with every column of the row and
     the member flags and real values ``carried`` names, each computed on the real row."""
     return query.select(
         exp.Column(this=exp.Star(), table=exp.to_identifier(alias, quoted=True)),
-        *(exp.alias_(_expr(e), n, quoted=True) for n, (e, _) in carried.items()),
+        *(exp.alias_(e.copy(), n, quoted=True) for n, (e, _) in carried.items()),
         append=False,
     )
 
@@ -1431,7 +1418,7 @@ def _project_kept(
     log applied in its place, under the same alias. The row filter reads the table's rows and the
     log's versions alike."""
     from provisa.compiler.naming import apply_sql_name
-    from provisa.core.env_changes import overlay_sql
+    from provisa.core.env_changes import overlay
 
     alias = _alias_for(tbl)
     log, key = gov_ctx.kept[tid]
@@ -1447,12 +1434,12 @@ def _project_kept(
         row_filter = _row_filter(gov_ctx, tid, alias)
         if row_filter is not None:
             base = base.where(row_filter)
-    sql = overlay_sql(
-        base.sql(dialect="postgres"),
+    applied = overlay(
+        base,
         log,
         [apply_sql_name(k) for k in key],
         [apply_sql_name(name) for name, _ in gov_ctx.all_columns[tid]],
-        None if rls is None else _qualify_filter(rls, "l", column_types),
+        None if rls is None else qualified_filter(rls, "l", column_types),
         # REQ-1620: the same flags and real values over a written row's version.
         None
         if members is None
@@ -1461,7 +1448,7 @@ def _project_kept(
             for n, (_, log_expr) in _member_carried(tid, members, gov_ctx, alias).items()
         },
     )
-    subquery = _derived(_query(sql), alias)
+    subquery = _derived(applied, alias)
     (faked if faked is not None else tbl).replace(subquery)
     return subquery
 
@@ -1494,7 +1481,7 @@ def _member_branches(reads: Any, column: str) -> tuple[list[tuple[list[int], int
 
 def _member_carried(
     tid: int, differing: list[str], gov_ctx: GovernanceContext, alias: str
-) -> dict[str, tuple[str, str]]:  # REQ-1620
+) -> dict[str, tuple[exp.Expr, exp.Expr]]:  # pyright: ignore[reportPrivateImportUsage]  # REQ-1620
     """What a member projection reads off the real row, by internal name: each member's flag
     (``__m_<i>``, its own row filter) and the real value of each column the members read
     differently (``__real_<name>``) -- each as an expression over ``alias`` and over a change log's
@@ -1503,7 +1490,7 @@ def _member_carried(
 
     reads = gov_ctx.member_reads[tid]
     column_types = {name: dtype for name, dtype in gov_ctx.all_columns.get(tid, [])}
-    carried: dict[str, tuple[str, str]] = {}
+    carried: dict[str, tuple[exp.Expr, exp.Expr]] = {}  # pyright: ignore[reportPrivateImportUsage]
     # Only the flags a WHEN branch reads; a member admitting every row is the branches' ELSE.
     read = sorted(
         {i for c in differing for group, _ in _member_branches(reads, c)[0] for i in group}
@@ -1511,14 +1498,14 @@ def _member_carried(
     for i in read:
         flag = reads.flags[i]
         carried[f"__m_{i}"] = (
-            exp.paren(_expr(_qualify_filter(flag, alias, column_types))).sql(dialect="postgres"),
-            exp.paren(_expr(_qualify_filter(flag, "l", column_types))).sql(dialect="postgres"),
+            exp.paren(qualified_filter(flag, alias, column_types)),
+            exp.paren(qualified_filter(flag, "l", column_types)),
         )
     for name in differing:
         sql_name = apply_sql_name(name)
         carried[f"__real_{sql_name}"] = (
-            exp.column(sql_name, table=alias, quoted=True).sql(dialect="postgres"),
-            exp.column(sql_name, table="l", quoted=True).sql(dialect="postgres"),
+            exp.column(sql_name, table=alias, quoted=True),
+            exp.column(sql_name, table="l", quoted=True),
         )
     return carried
 
@@ -1529,7 +1516,7 @@ def _project_members(
     tid: int,
     differing: list[str],
     gov_ctx: GovernanceContext,
-    carried: dict[str, tuple[str, str]] | None,
+    carried: dict[str, tuple[exp.Expr, exp.Expr]] | None,
 ) -> exp.Subquery:  # REQ-1620
     """Put ``tbl`` -- or ``current``, the faked or kept projection already in its place, which
     carries the member flags and real values (:func:`_member_carried`) -- read row by row as the
@@ -1578,8 +1565,7 @@ def _project_members(
                 return exp.column(real, quoted=True)
             if rule.mask_type == MaskType.fake:
                 return exp.column(sql_name, quoted=True)  # the faked projection's value
-            real_sql = exp.column(real, quoted=True).sql(dialect="postgres")
-            return _expr(build_mask_expression(rule, real_sql, dtype))
+            return mask_expression(rule, exp.column(real, quoted=True), dtype)
 
         whens, rest = _member_branches(reads, name)
         case = exp.Case(
@@ -1707,9 +1693,7 @@ def _maybe_mask_column(
         entry = gov_ctx.masking_rules.get((tid, registered_name(gov_ctx, tid, col_name)))
         if entry and not _is_fake(entry[0]):
             rule, dtype = entry
-            col_sql = col.sql(dialect="postgres")
-            mask_expr_str = build_mask_expression(rule, col_sql, dtype)
-            return sqlglot.parse_one(mask_expr_str, read="postgres")
+            return mask_expression(rule, col, dtype)
         # Visibility check: the one rule (_is_column_visible)
         if not _is_column_visible(col, alias_to_tid, gov_ctx):
             return exp.Null()
@@ -1720,9 +1704,7 @@ def _maybe_mask_column(
             entry = gov_ctx.masking_rules.get((tid, registered_name(gov_ctx, tid, col_name)))
             if entry and not _is_fake(entry[0]):
                 rule, dtype = entry
-                col_sql = col.sql(dialect="postgres")
-                mask_expr_str = build_mask_expression(rule, col_sql, dtype)
-                return sqlglot.parse_one(mask_expr_str, read="postgres")
+                return mask_expression(rule, col, dtype)
         return col
 
 
@@ -1818,9 +1800,7 @@ def _expand_star(
             entry = gov_ctx.masking_rules.get((tid, col_name))
             if entry and not _is_fake(entry[0]):
                 rule, col_dtype = entry
-                col_sql = col_expr.sql(dialect="postgres")
-                mask_sql = build_mask_expression(rule, col_sql, col_dtype)
-                masked = sqlglot.parse_one(mask_sql, read="postgres")
+                masked = mask_expression(rule, col_expr, col_dtype)
                 if final:
                     masked = _as_read(masked, col_expr, {alias: tid}, gov_ctx)
                 result.append(
@@ -1929,7 +1909,7 @@ def _served_returning(target: exp.Table, tid: int, gov_ctx: GovernanceContext) -
         value: exp.Expr = exp.column(apply_sql_name(physical), table=alias, quoted=True)  # pyright: ignore[reportPrivateImportUsage]
         entry = gov_ctx.masking_rules.get((tid, physical))
         if entry is not None and not _is_fake(entry[0]):
-            value = _expr(build_mask_expression(entry[0], value.sql(dialect="postgres"), entry[1]))
+            value = mask_expression(entry[0], value, entry[1])
         out = gov_ctx.published_name.get((tid, physical), apply_sql_name(physical))
         columns.append(exp.alias_(value, out, quoted=True))
     if not columns:

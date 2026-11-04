@@ -235,13 +235,13 @@ class TestMaskingDialectConsistency:
     def test_regex_mask_expression_is_ansi_regexp_replace(self):
         rule = MaskingRule(mask_type=MaskType.regex, pattern="^(.{2}).*$", replace="$1***")
         expr = build_mask_expression(rule, '"col"', "varchar")
-        assert expr.startswith("provisa_regex_replace(")
+        assert expr.startswith("PROVISA_REGEX_REPLACE(")
 
     def test_truncate_mask_expression_is_ansi_date_trunc(self):
         rule = MaskingRule(mask_type=MaskType.truncate, precision="day")
         expr = build_mask_expression(rule, '"ts"', "timestamp")
         assert expr.startswith("DATE_TRUNC(")
-        assert "'day'" in expr
+        assert "'DAY'" in expr
 
     def test_constant_integer_mask_is_bare_literal(self):
         """Constant integer mask must emit a bare numeric literal (no quotes)."""
@@ -275,14 +275,16 @@ class TestMaskingDialectConsistency:
         """varchar(255) must be treated as varchar for REGEXP_REPLACE emission."""
         rule = MaskingRule(mask_type=MaskType.regex, pattern=".*", replace="X")
         expr = build_mask_expression(rule, '"col"', "varchar(255)")
-        assert expr.startswith("provisa_regex_replace(")
+        assert expr.startswith("PROVISA_REGEX_REPLACE(")
 
     def test_truncate_mask_preserves_precision_token(self):
-        """The precision token must be preserved exactly in the DATE_TRUNC call."""
+        """The precision token is preserved in the DATE_TRUNC call, spelled as the governed
+        statement spells a unit (upper case; every engine reads a unit in any case)."""
         for precision in ("year", "month", "day", "hour"):
             rule = MaskingRule(mask_type=MaskType.truncate, precision=precision)
             expr = build_mask_expression(rule, '"ts"', "timestamp")
-            assert f"'{precision}'" in expr, f"Precision '{precision}' not found in: {expr}"
+            unit = precision.upper()
+            assert f"'{unit}'" in expr, f"Precision '{unit}' not found in: {expr}"
 
     def test_max_constant_resolves_per_integer_subtype(self):
         """MAX sentinel resolves to the correct bound for each integer subtype."""

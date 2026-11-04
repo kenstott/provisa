@@ -309,7 +309,7 @@ def test_a_faked_and_kept_table_reads_a_written_row_as_the_member_that_admits_it
     )
     con.execute("INSERT INTO public.log VALUES (1, 'upsert', 2, 'EU', 'w@eu.example', '999')")
     ctx = CompilationContext()
-    ctx.kept = {_TABLE: ("public.log", ["id"])}
+    ctx.kept = {_TABLE: (("public", "log"), ["id"])}
     rows = _faked_read("SELECT id, region, email, phone FROM public.t", _gov(state, meta, ctx), con)
     assert rows[1] == (2, "EU", "w@eu.example", "999")
     assert rows[0][0] == 1 and rows[0][3] == "111" and rows[0][2] not in _REAL_EMAILS
@@ -326,7 +326,7 @@ def test_a_faked_and_kept_table_hides_a_written_row_from_the_member_that_alone_a
     # Row 1 written into the US region: `us` alone admits it now, and is not served phone.
     con.execute("INSERT INTO public.log VALUES (1, 'upsert', 1, 'US', 'w@us.example', '999')")
     ctx = CompilationContext()
-    ctx.kept = {_TABLE: ("public.log", ["id"])}
+    ctx.kept = {_TABLE: (("public", "log"), ["id"])}
     rows = _faked_read("SELECT id, region, phone FROM public.t", _gov(state, meta, ctx), con)
     assert rows == [(1, "US", None), (2, "US", None)]
 

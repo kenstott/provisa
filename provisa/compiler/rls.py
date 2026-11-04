@@ -166,10 +166,11 @@ def _qualified_predicate(filter_expr: str, alias: str | None) -> exp.Expression:
     return pred  # pyright: ignore[reportReturnType]  # sqlglot stub types parse_one as Expr
 
 
-def _qualify_filter(
+def qualified_filter(
     filter_expr: str, alias: str, column_types: dict[str, str] | None = None
-) -> str:
-    """Qualify bare columns in ``filter_expr`` with ``alias`` and return the SQL text.
+) -> exp.Expression:  # REQ-913
+    """``filter_expr`` -- an administrator's rule, parsed once -- with its bare columns qualified
+    by ``alias``, as an expression (AST).
 
     ``column_types`` (column name → IR type) casts every session-variable term compared with a
     typed column to that column's type (REQ-1686).
@@ -177,7 +178,14 @@ def _qualify_filter(
     pred = _qualified_predicate(filter_expr, alias)
     if column_types:
         cast_session_terms(pred, column_types)
-    return pred.sql(dialect="postgres")
+    return pred
+
+
+def _qualify_filter(
+    filter_expr: str, alias: str, column_types: dict[str, str] | None = None
+) -> str:
+    """:func:`qualified_filter` as SQL text."""
+    return qualified_filter(filter_expr, alias, column_types).sql(dialect="postgres")
 
 
 def _is_session_term(node: exp.Expression) -> bool:

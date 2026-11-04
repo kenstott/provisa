@@ -23,7 +23,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from provisa.compiler.sql_literals import sql_literal
+import sqlglot.expressions as exp
+
 
 from dataclasses import dataclass
 from enum import Enum
@@ -152,67 +153,74 @@ def validate_masking_rule(  # REQ-038, REQ-040, REQ-042
             )
 
 
-def _resolve_constant(value: int | float | str | None, data_type: str) -> str:
-    """Resolve a constant mask value to a SQL literal.
+def _number(text: str) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """A numeric literal, a negative one as the parser reads it (a negated literal)."""
+    if text.startswith("-"):
+        return exp.Neg(this=exp.Literal.number(text[1:]))
+    return exp.Literal.number(text)
+
+
+def _resolve_constant(value: int | float | str | None, data_type: str) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """Resolve a constant mask value to a literal.
 
     Handles special values: NULL, MAX, MIN (resolved from column type bounds).
     """
     if value is None:
-        return "NULL"
+        return exp.Null()
 
     if isinstance(value, str):
         upper = value.upper()
         base = _base_type(data_type)
 
         if upper == "MAX" and base in _INTEGER_BOUNDS:
-            return str(_INTEGER_BOUNDS[base][1])
+            return _number(str(_INTEGER_BOUNDS[base][1]))
         if upper == "MIN" and base in _INTEGER_BOUNDS:
-            return str(_INTEGER_BOUNDS[base][0])
+            return _number(str(_INTEGER_BOUNDS[base][0]))
 
         # String literal (governed semantic SQL; transpiled to the engine afterwards).
-        return sql_literal(value, "postgres")
+        return exp.Literal.string(value)
 
     if isinstance(value, bool):
-        return "TRUE" if value else "FALSE"
+        return exp.Boolean(this=value)
 
     if isinstance(value, (int, float)):
-        return str(value)
+        return _number(str(value))
 
-    return sql_literal(value, "postgres")
+    return exp.Literal.string(str(value))
 
 
-def build_mask_expression(  # REQ-040, REQ-263
+def mask_expression(  # REQ-040, REQ-263, REQ-913
     rule: MaskingRule,
-    column_ref: str,
+    column: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
     data_type: str,
-) -> str:
-    """Build the SQL expression that replaces a column reference.
-
-    Args:
-        rule: The masking rule to apply.
-        column_ref: The fully qualified column reference (e.g., '"t0"."email"').
-        data_type: The engine data type of the column.
-
-    Returns:
-        SQL expression string.
-    """
+) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """The expression that reads ``column`` -- a column reference, e.g. ``"t0"."email"`` --
+    through ``rule``, built on the AST (REQ-913): ``column`` is copied in, never rendered as text
+    and parsed back. ``data_type`` is the engine data type of the column."""
     if rule.mask_type == MaskType.regex:
         assert rule.pattern is not None
         assert rule.replace is not None
-        pattern = sql_literal(rule.pattern, "postgres")
-        replace = sql_literal(rule.replace, "postgres")
         full = full_mask(data_type)
-        otherwise = "NULL" if full is None else sql_literal(full, "postgres")
+        otherwise = exp.Null() if full is None else exp.Literal.string(full)
         # REQ-2142: the pattern and replacement are universal; the transpiler lowers this call to
         # the engine's own REGEXP_REPLACE, every match replaced, in its regex flavour -- and a
         # value the pattern does not match to ``otherwise`` (fail closed).
-        return f"{UNIVERSAL_REGEX_REPLACE}({column_ref}, {pattern}, {replace}, {otherwise})"
+        return exp.func(
+            UNIVERSAL_REGEX_REPLACE,
+            column.copy(),
+            exp.Literal.string(rule.pattern),
+            exp.Literal.string(rule.replace),
+            otherwise,
+            dialect="postgres",
+        )
 
     if rule.mask_type == MaskType.constant:
         return _resolve_constant(rule.value, data_type)
 
     if rule.mask_type == MaskType.truncate:
-        return f"DATE_TRUNC('{rule.precision}', {column_ref})"
+        return exp.func(
+            "DATE_TRUNC", exp.Literal.string(str(rule.precision)), column.copy(), dialect="postgres"
+        )
 
     if rule.mask_type == MaskType.fake:
         raise MaskingValidationError(
@@ -220,6 +228,19 @@ def build_mask_expression(  # REQ-040, REQ-263
         )
 
     raise MaskingValidationError(f"Unknown mask type: {rule.mask_type!r}")
+
+
+def build_mask_expression(  # REQ-040, REQ-263
+    rule: MaskingRule,
+    column_ref: str,
+    data_type: str,
+) -> str:
+    """:func:`mask_expression` as text, for a reader holding the column reference as text (the
+    governance path builds on the AST and does not call this)."""
+    import sqlglot
+
+    column = sqlglot.parse_one(column_ref, read="postgres")
+    return mask_expression(rule, column, data_type).sql(dialect="postgres")
 
 
 def _resolve_constant_value(value: int | float | str | None, data_type: str):

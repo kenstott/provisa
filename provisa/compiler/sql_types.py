@@ -142,7 +142,7 @@ class CompilationContext:
     write_ops: dict[int, frozenset[str]] = field(default_factory=dict)
     # REQ-1942: per table with kept mutations (a Reversible environment), its change log's
     # address and primary key columns.
-    kept: dict[int, tuple[str, list[str]]] = field(default_factory=dict)
+    kept: dict[int, tuple[tuple[str, ...], list[str]]] = field(default_factory=dict)
 
     # Root query field_name → TableMeta
     tables: dict[str, TableMeta] = field(default_factory=dict)

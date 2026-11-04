@@ -744,7 +744,7 @@ def admit_write(
             )
         return tree
 
-    from provisa.compiler.rls import _qualify_filter  # noqa: PLC0415
+    from provisa.compiler.rls import qualified_filter  # noqa: PLC0415
     from provisa.compiler.stage2 import _alias_for  # noqa: PLC0415
 
     assert isinstance(tree, (exp.Update, exp.Delete))
@@ -767,6 +767,6 @@ def admit_write(
         if _every_row(predicate):
             continue
         assert predicate is not None
-        touched = _qualify_filter(predicate, _alias_for(table), column_types)
-        tree = tree.where(f"({touched})", dialect="postgres", append=True)
+        touched = qualified_filter(predicate, _alias_for(table), column_types)
+        tree = tree.where(exp.paren(touched), append=True)
     return tree
