@@ -108,6 +108,15 @@ describe("the toolbar rules fail what they are meant to fail", () => {
     ).toEqual([]);
   });
 
+  it("reads a page's (?) help as help, last", () => {
+    const bar = (inner: string) => `const x = <Group data-toolbar>${inner}</Group>;`;
+    expect(rules(bar(`<PageHelp title="t" /><Button>Add</Button>`))).toEqual(["toolbar-order"]);
+    expect(rules(bar(`<PageHelp title="t" /><ExpandButton onClick={f} testId="e" />`))).toEqual([
+      "toolbar-order",
+    ]);
+    expect(rules(bar(`<Button>Add</Button><PageHelp title="t" />`))).toEqual([]);
+  });
+
   it("reads a group marked data-toolbar as a toolbar", () => {
     expect(
       rules(`const x = <Group data-toolbar><OntologyToggle open /><Button>Term</Button></Group>;`),
