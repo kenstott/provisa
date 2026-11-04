@@ -100,6 +100,7 @@
     "homonyms": "La stessa parola con un altro significato: {{names}}",
     "definition": "Definizione",
     "definitionExplicit": "Definito nel documento",
+    "definitionInTable": "Definito nella tabella",
     "definitionSynthesized": "Sintetizzata",
     "definitionSynthesizedHint": "Nessun passaggio lo definisce esplicitamente; questa definizione è tratta dai passaggi contrassegnati come usati.",
     "definitionMissing": "Nessuna definizione trovata",

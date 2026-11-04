@@ -100,6 +100,7 @@
     "homonyms": "Hetzelfde woord met een andere betekenis: {{names}}",
     "definition": "Definitie",
     "definitionExplicit": "Gedefinieerd in het document",
+    "definitionInTable": "Gedefinieerd in de tabel",
     "definitionSynthesized": "Samengesteld",
     "definitionSynthesizedHint": "Geen passage definieert het uitdrukkelijk; deze definitie is afgeleid van de passages die als gebruikt zijn gemarkeerd.",
     "definitionMissing": "Geen definitie gevonden",

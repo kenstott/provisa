@@ -9410,5 +9410,6 @@
   "de/findTerms.json::findTerms.definitionColumnHelp": "The column holding the term's definition. Each row is offered for review as a term with this definition.",
   "de/findTerms.json::findTerms.chooseTerms": "Choose a table, its term column and its definition column.",
   "de/findTerms.json::findTerms.termsNote": "No AI model reads the rows, so nothing counts against your role's AI budget.",
-  "de/findTerms.json::findTerms.tableTermsHint": "Read from the table {{domain}}.{{table}}: each row's {{term_column}} with its {{definition_column}}."
+  "de/findTerms.json::findTerms.tableTermsHint": "Read from the table {{domain}}.{{table}}: each row's {{term_column}} with its {{definition_column}}.",
+  "de/findTerms.json::findTerms.definitionInTable": "Defined in the table"
 }

@@ -100,6 +100,7 @@
     "homonyms": "वही शब्द दूसरे अर्थ में: {{names}}",
     "definition": "परिभाषा",
     "definitionExplicit": "दस्तावेज़ में परिभाषित",
+    "definitionInTable": "तालिका में परिभाषित",
     "definitionSynthesized": "संश्लेषित",
     "definitionSynthesizedHint": "कोई अंश इसे स्पष्ट रूप से परिभाषित नहीं करता; यह परिभाषा उपयोग किए गए के रूप में चिह्नित अंशों से ली गई है।",
     "definitionMissing": "कोई परिभाषा नहीं मिली",

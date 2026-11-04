@@ -100,6 +100,7 @@
     "homonyms": "То же слово в другом значении: {{names}}",
     "definition": "Определение",
     "definitionExplicit": "Определено в документе",
+    "definitionInTable": "Определено в таблице",
     "definitionSynthesized": "Синтезировано",
     "definitionSynthesizedHint": "Ни один фрагмент не определяет его прямо; это определение составлено из фрагментов, отмеченных как использованные.",
     "definitionMissing": "Определение не найдено",

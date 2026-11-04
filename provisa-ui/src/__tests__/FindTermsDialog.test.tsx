@@ -539,6 +539,9 @@ describe("FindTermsDialog", () => {
     fireEvent.click(screen.getByTestId("find-terms-open-9"));
     const draft = await screen.findByTestId("find-terms-draft-13");
     expect(within(draft).queryByText("Business concept")).toBeNull();
+    expect(within(draft).getByTestId("find-terms-explicit")).toHaveTextContent(
+      "Defined in the table",
+    );
     fireEvent.click(within(draft).getByTestId("find-terms-passages-toggle-13"));
     expect(within(draft).getByTestId("find-terms-passage")).toHaveTextContent(
       "sales.data_dictionary, row Churn rate",

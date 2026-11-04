@@ -100,6 +100,7 @@
     "homonyms": "同一個詞的另一個意思：{{names}}",
     "definition": "定義",
     "definitionExplicit": "文件中已定義",
+    "definitionInTable": "表中已定義",
     "definitionSynthesized": "綜合生成",
     "definitionSynthesizedHint": "沒有段落明確定義它；此定義取自標記為已使用的段落。",
     "definitionMissing": "找不到定義",

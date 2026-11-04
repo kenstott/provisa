@@ -100,6 +100,7 @@
     "homonyms": "אותה מילה במשמעות אחרת: {{names}}",
     "definition": "הגדרה",
     "definitionExplicit": "מוגדר במסמך",
+    "definitionInTable": "מוגדר בטבלה",
     "definitionSynthesized": "מסונתזת",
     "definitionSynthesizedHint": "אף קטע אינו מגדיר אותו במפורש; ההגדרה הזו נגזרה מהקטעים המסומנים כמשמשים.",
     "definitionMissing": "לא נמצאה הגדרה",

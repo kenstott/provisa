@@ -137,12 +137,18 @@ function PassageQuote({ citation, document }: { citation: Citation; document: st
   );
 }
 
-function DefinitionBadge({ kind }: { kind: Draft["definition_kind"] }) {
+function DefinitionBadge({
+  kind,
+  fromTable,
+}: {
+  kind: Draft["definition_kind"];
+  fromTable: boolean;
+}) {
   const { t } = useTranslation();
   if (kind === "explicit")
     return (
-      <Badge size="xs" variant="light" color="teal">
-        {t("findTerms.definitionExplicit")}
+      <Badge size="xs" variant="light" color="teal" data-testid="find-terms-explicit">
+        {t(fromTable ? "findTerms.definitionInTable" : "findTerms.definitionExplicit")}
       </Badge>
     );
   if (kind === "synthesized")
@@ -199,6 +205,7 @@ function ProposalBadge({ draft }: { draft: Draft }) {
 function DraftCard({
   draft,
   document,
+  fromTable,
   terms,
   selected,
   onSelect,
@@ -206,6 +213,8 @@ function DraftCard({
 }: {
   draft: Draft;
   document: string;
+  /** The scan read a table (REQ-2202), not a document. */
+  fromTable: boolean;
   terms: GlossaryTermSummary[];
   selected: boolean;
   onSelect: (on: boolean) => void;
@@ -384,7 +393,7 @@ function DraftCard({
                 <Text size="xs" fw={600} c="dimmed" tt="uppercase">
                   {t("findTerms.definition")}
                 </Text>
-                <DefinitionBadge kind={draft.definition_kind} />
+                <DefinitionBadge kind={draft.definition_kind} fromTable={fromTable} />
               </Group>
               {draft.definition && <Text size="sm">{draft.definition}</Text>}
             </Stack>
@@ -767,6 +776,7 @@ export function TermReviewQueue({
             key={`${d.id}-${d.status}`}
             draft={d}
             document={scan.document_title}
+            fromTable={scan.source_table != null}
             terms={terms}
             selected={selected.has(d.id)}
             onSelect={(on) =>

@@ -100,6 +100,7 @@
     "homonyms": "別の意味で使われている同じ語：{{names}}",
     "definition": "定義",
     "definitionExplicit": "ドキュメントで定義",
+    "definitionInTable": "テーブルで定義",
     "definitionSynthesized": "合成",
     "definitionSynthesizedHint": "明示的に定義しているパッセージはありません。この定義は、使用済みとしてマークされたパッセージから作成されています。",
     "definitionMissing": "定義が見つかりません",
