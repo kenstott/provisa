@@ -139,16 +139,6 @@ export function ErdLayoutMenu({
           </Badge>
         </Tip>
       )}
-      {savingAs && (
-        <SaveAsDialog
-          taken={layouts.map((l) => l.name)}
-          onClose={() => setSavingAs(false)}
-          onSave={async (name) => {
-            if (await onSave(name)) setSavingAs(false);
-            return true;
-          }}
-        />
-      )}
       {current !== null && (
         <ConfirmDialog
           opened={deleting}
@@ -164,6 +154,16 @@ export function ErdLayoutMenu({
             }
           }}
           testId="erd-layout-delete-confirm"
+        />
+      )}
+      {savingAs && (
+        <SaveAsDialog
+          taken={layouts.map((l) => l.name)}
+          onClose={() => setSavingAs(false)}
+          onSave={async (name) => {
+            if (await onSave(name)) setSavingAs(false);
+            return true;
+          }}
         />
       )}
     </Group>
