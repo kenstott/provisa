@@ -20,6 +20,10 @@ found by one query ordered by cosine distance over that index (:func:`nearest_pa
 no unindexed search. pgvector indexes a ``vector`` to 2000 dimensions; from 2001 to 4000 the index is
 over ``vector::halfvec(n)`` (half precision) while the column stays full precision, and above 4000
 the library refuses the embeddings by name.
+
+A passage's neighbours, for governed retrieval: the passages just before and after it in its
+document, read through the (document_id, ordinal) key (:func:`adjacent_passages`), and the passages
+nearest it by embedding, the same indexed search seeded with its own vector (:func:`near_passage`).
 """
 
 # Requirements: REQ-2185
@@ -32,7 +36,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete, func, insert, select, text, update
+from sqlalchemy import Select, delete, func, insert, select, text, update
 
 from provisa.core import pgvector
 
@@ -450,6 +454,21 @@ async def index_vectors(conn: Connection, schema: str | None = None) -> None:
 # -- governed retrieval's nearest passages ------------------------------------------------------
 
 
+def _nearest_sql(n: int, operand: str, where: str = "") -> str:
+    """The indexed cosine search over ``n``-dimension passages of ``:ids`` for the ``:k`` nearest
+    ``operand`` (an expression of the index's type), each also meeting ``where``."""
+    kind = _type(n)
+    return (
+        "SELECT document_id, ordinal, section, page, text, 1 - distance AS score FROM ("
+        "SELECT document_id, ordinal, section, page, text, "
+        f"(vector::{kind}) OPERATOR({_V}.<=>) {operand} "
+        "AS distance FROM reference_passages "
+        f"WHERE {_V}.vector_dims(vector) = {int(n)} AND document_id = ANY(:ids){where} "
+        "ORDER BY distance LIMIT :k"
+        ") nearest ORDER BY distance, document_id, ordinal"
+    )
+
+
 def nearest_sql(
     query: Sequence[float], document_ids: Collection[int], k: int
 ) -> tuple[str, dict[str, Any]]:
@@ -459,27 +478,34 @@ def nearest_sql(
     over ``halfvec``, so the column and the question are cast to it and the order, and the score,
     come from the half-precision distance (the order is that of the half-precision index)."""
     n = int(len(query))
-    kind = _type(n)
-    sql = (
-        "SELECT document_id, ordinal, section, page, text, 1 - distance AS score FROM ("
-        "SELECT document_id, ordinal, section, page, text, "
-        f"(vector::{kind}) OPERATOR({_V}.<=>) CAST(:query AS {kind}) "
-        "AS distance FROM reference_passages "
-        f"WHERE {_V}.vector_dims(vector) = {n} AND document_id = ANY(:ids) "
-        "ORDER BY distance LIMIT :k"
-        ") nearest ORDER BY distance, document_id, ordinal"
-    )
+    sql = _nearest_sql(n, f"CAST(:query AS {_type(n)})")
     return sql, {"query": pgvector.literal(query), "ids": sorted(document_ids), "k": k}
 
 
-async def nearest_passages(
-    conn: Connection, query: Sequence[float], document_ids: Collection[int], k: int
-) -> list[PassageHit]:
-    """The ``k`` passages of ``document_ids`` nearest ``query`` by cosine distance, nearest first,
-    found through the index of the question's dimension. A document of another dimension is
-    refused by name rather than left out."""
-    if not document_ids:
-        return []
+def near_passage_sql(
+    document_id: int, ordinal: int, dimensions: int, document_ids: Collection[int], k: int
+) -> tuple[str, dict[str, Any]]:
+    """:func:`nearest_sql` seeded with a passage's own embedding (read by its key in the same
+    statement) rather than a question's, the passage itself left out."""
+    seed = "document_id = :seed_document AND ordinal = :seed_ordinal"
+    sql = _nearest_sql(
+        dimensions,
+        f"(SELECT vector::{_type(dimensions)} FROM reference_passages WHERE {seed})",
+        f" AND NOT ({seed})",
+    )
+    return sql, {
+        "seed_document": document_id,
+        "seed_ordinal": ordinal,
+        "ids": sorted(document_ids),
+        "k": k,
+    }
+
+
+async def _refuse_other_dimensions(
+    conn: Connection, document_ids: Collection[int], n: int, whose: str
+) -> None:
+    """A document of ``document_ids`` whose passages are not of ``n`` dimensions is refused by
+    name rather than left out of a search."""
     # A document's passages are written together, by one model: its first passage's dimension
     # is the document's, read through the (document_id, ordinal) key, one row per document.
     other = (
@@ -490,21 +516,111 @@ async def nearest_passages(
                 "SELECT vector FROM reference_passages WHERE document_id = d.id "
                 "ORDER BY ordinal LIMIT 1) AS p "
                 f"WHERE {_V}.vector_dims(p.vector) <> :n ORDER BY d.id LIMIT 1"
-            ).bindparams(ids=sorted(document_ids), n=len(query))
+            ).bindparams(ids=sorted(document_ids), n=n)
         )
     ).fetchone()
     if other is not None:
         raise ValueError(
-            f"library document {other[0]}'s passages have {other[1]} dimensions; "
-            f"the question's have {len(query)}"
+            f"library document {other[0]}'s passages have {other[1]} dimensions; {whose} have {n}"
         )
-    sql, params = nearest_sql(query, document_ids, k)
+
+
+async def _search(conn: Connection, sql: str, params: dict[str, Any]) -> list[PassageHit]:
     async with conn.transaction():
         # Filtered by document, an HNSW scan would stop at its candidate list (hnsw.ef_search)
         # and return fewer than k; iterative scanning goes on until k are found, in order.
         await conn.execute_core(text("SET LOCAL hnsw.iterative_scan = strict_order"))
         rows = (await conn.execute_core(text(sql).bindparams(**params))).fetchall()
     return [PassageHit(*row) for row in rows]
+
+
+async def nearest_passages(
+    conn: Connection, query: Sequence[float], document_ids: Collection[int], k: int
+) -> list[PassageHit]:
+    """The ``k`` passages of ``document_ids`` nearest ``query`` by cosine distance, nearest first,
+    found through the index of the question's dimension. A document of another dimension is
+    refused by name rather than left out."""
+    if not document_ids:
+        return []
+    await _refuse_other_dimensions(conn, document_ids, len(query), "the question's")
+    return await _search(conn, *nearest_sql(query, document_ids, k))
+
+
+# -- a passage's neighbours ---------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Passage:
+    """A passage where it sits in its document."""
+
+    document_id: int
+    ordinal: int
+    section: str | None
+    page: int | None
+    text: str
+
+
+def _within(document_id: int, document_ids: Collection[int]) -> None:
+    if document_id not in document_ids:
+        raise ValueError(
+            f"library document {document_id} is not among the documents being searched"
+        )
+
+
+async def adjacent_passages(
+    conn: Connection, document_id: int, ordinal: int, document_ids: Collection[int], n: int = 1
+) -> list[Passage]:
+    """The passages up to ``n`` before and after passage ``ordinal`` in its document, in order,
+    read through the (document_id, ordinal) key. The document must be one of ``document_ids``,
+    those being searched."""
+    if n <= 0:
+        raise ValueError("n must be a positive integer")
+    _within(document_id, document_ids)
+    result = await conn.execute_core(adjacent_query(document_id, ordinal, n))
+    return [Passage(*row) for row in result.fetchall()]
+
+
+def adjacent_query(document_id: int, ordinal: int, n: int) -> Select:
+    """:func:`adjacent_passages`' query."""
+    return (
+        select(
+            passages_t.c.document_id,
+            passages_t.c.ordinal,
+            passages_t.c.section,
+            passages_t.c.page,
+            passages_t.c.text,
+        )
+        .where(
+            (passages_t.c.document_id == document_id)
+            & passages_t.c.ordinal.between(ordinal - n, ordinal + n)
+            & (passages_t.c.ordinal != ordinal)
+        )
+        .order_by(passages_t.c.ordinal)
+    )
+
+
+async def near_passage(
+    conn: Connection, document_id: int, ordinal: int, document_ids: Collection[int], k: int
+) -> list[PassageHit]:
+    """The ``k`` passages of ``document_ids`` nearest passage ``ordinal`` of ``document_id`` by
+    cosine distance (the score is the similarity to that passage), nearest first, the passage
+    itself left out: :func:`nearest_passages` seeded with the passage's embedding. Its document
+    must be one of ``document_ids``; a document of another dimension is refused by name."""
+    _within(document_id, document_ids)
+    dimensions = (
+        await conn.execute_core(
+            text(
+                f"SELECT {_V}.vector_dims(vector) FROM reference_passages "
+                "WHERE document_id = :d AND ordinal = :o"
+            ).bindparams(d=document_id, o=ordinal)
+        )
+    ).scalar()
+    if dimensions is None:
+        raise ValueError(f"library document {document_id} has no passage {ordinal}")
+    await _refuse_other_dimensions(conn, document_ids, int(dimensions), "the passage's")
+    return await _search(
+        conn, *near_passage_sql(document_id, ordinal, int(dimensions), document_ids, k)
+    )
 
 
 async def passages(

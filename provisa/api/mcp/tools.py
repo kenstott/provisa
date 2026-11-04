@@ -1638,8 +1638,9 @@ async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) ->
 
 async def search_reference_library(state: Any, role: str, question: str, k: int = 5) -> list[dict]:
     """The reference library's passages that best answer ``question`` (REQ-2185), from the kept
-    documents ``role`` may read: those whose domains it reads, and every ``*`` document. Each
-    carries what citing it takes -- the document, its section or page, the quoted text."""
+    documents ``role`` may read: those whose domains it reads, and every ``*`` document, with
+    their neighbours (retrieve.retrieve_with_neighbours). Each carries what citing it takes -- the
+    document, its section or page, the quoted text -- and how it was reached."""
     role = require_role(role, state)
     from provisa.reference_library.retrieve import search_for_role
 
