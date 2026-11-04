@@ -101,10 +101,10 @@ class Expected:
     tests: dict[str, str]  # test id -> reason key
 
 
-def load(driver: str, lists: Path = LISTS) -> Expected:
+def load(driver: str, lists: Path | None = None) -> Expected:
     """The driver's expected-failure list, refused when an entry has no reason, a reason is
     neither a decision nor a defect, or a reason names no test."""
-    path = lists / f"{driver}.yaml"
+    path = (lists or LISTS) / f"{driver}.yaml"
     doc = yaml.safe_load(path.read_text()) or {}
     if doc.get("driver") != driver:
         raise ValueError(f"{path.name}: names driver {doc.get('driver')!r}, not {driver!r}")
