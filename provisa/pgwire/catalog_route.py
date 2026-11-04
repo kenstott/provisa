@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.compiler.result_shape import _pg_column_name
 from provisa.core.pg_enum import SourceEnum
 from provisa.pgwire.cast_types import record_text
 from provisa.pgwire.catalog_pg17 import RELATION_CLASS, RELATIONS, TYPES
@@ -252,7 +253,7 @@ def _surface_rows() -> dict[tuple[str, str], list[dict[str, object]]]:
     }  # fmt: skip
 
 
-def _value(value: object, pg_type: str) -> str:
+def _value(value: object, pg_type: str) -> str:  # object-ok: a row value of any column type
     written = "NULL" if value is None else _literal(str(value))
     return f"CAST({written} AS {_VIEW_TYPES.get(pg_type, pg_type)})"
 
@@ -453,7 +454,66 @@ _OID_OF: dict[str, Callable[[str], str]] = {
     "regnamespace": _namespace_oid,
     "regtype": _type_oid,
     "regrole": _role_oid,
+    "regprocedure": _proc_oid,
 }
+
+_DIGITS = re.compile(r"[0-9]+")
+
+
+def _input_oid(reg: str, written: str) -> str:
+    """The oid a reg type's input function reads ``written`` as: a string of digits is the oid it
+    spells, whether or not an object has it (regclassin and its kin); any other is a name."""
+    if _DIGITS.fullmatch(written):
+        return written
+    return _OID_OF[reg](written)
+
+
+def _computed_lookup(reg: str, text: str) -> tuple[str, str]:
+    """The lookup of the object the text ``text`` names when the statement runs, as the literal's
+    is written in (``_OID_OF``), and the name its error says."""
+    parts = f"PARSE_IDENT({text})"
+    last = f"({parts})[CARDINALITY({parts})]"
+    if reg == "regclass":
+        lookup = (
+            f"SELECT _rc.oid {_CLASSES} WHERE _rc.relname = {last} AND CASE WHEN "
+            f"CARDINALITY({parts}) > 1 THEN _rn.nspname = ({parts})[CARDINALITY({parts}) - 1] "
+            f"ELSE _rn.nspname IN ({_literal(_PG)}, {_literal(CURRENT_SCHEMA)}) END "
+            "ORDER BY _rn.nspname = 'pg_catalog' DESC LIMIT 1"
+        )
+        return lookup, f"ARRAY_TO_STRING({parts}, '.')"
+    if reg == "regnamespace":
+        return f"SELECT _rn.oid FROM meta.catalog_pg_namespace _rn WHERE _rn.nspname = {last}", last
+    if reg == "regrole":
+        return f"SELECT _ro.oid FROM meta.catalog_pg_roles _ro WHERE _ro.rolname = {last}", last
+    name = f"LOWER(REGEXP_REPLACE({text}, '^pg_catalog\\.', ''))"
+    enums = " ".join(
+        f"WHEN {_literal(spelled)} THEN {e.oid}"
+        for e in _ENUMS.get()
+        for spelled in ({f"{e.schema}.{e.name}"} | ({e.name} if e.schema == "public" else set()))
+    )
+    lookup = (
+        f"SELECT _rt.oid FROM meta.catalog_pg_type _rt WHERE _rt.typname = {name} "
+        f"OR format_type(_rt.oid, NULL) = {name} ORDER BY _rt.typname = {name} DESC LIMIT 1"
+    )
+    if enums:
+        lookup = f"SELECT CASE {name} {enums} ELSE ({lookup}) END"
+    return lookup, text
+
+
+def _computed_oid(reg: str, operand: str) -> str:
+    """The oid the text ``operand`` names, resolved when the statement runs as a literal's is
+    resolved here: a digit string is that oid, a name is looked up in the catalog, and a name of
+    nothing is PostgreSQL's error. NULL is NULL (the input function is strict)."""
+    text = f"CAST(({operand}) AS TEXT)"
+    lookup, said = _computed_lookup(reg, text)
+    opening, closing = _literal(f'{_KIND[reg]} "'), _literal('" does not exist')
+    message = f"{opening} || {said} || {closing}"
+    missing = f"provisa_raise({_literal(_UNDEFINED[reg])}, {message})"
+    return (
+        f"CASE WHEN {text} ~ '^[0-9]+$' THEN CAST({text} AS OID) "
+        f"ELSE COALESCE(({lookup}), CAST(CASE WHEN {text} IS NOT NULL THEN {missing} END AS OID)) "
+        "END"
+    )
 
 
 def _oid_sql(reg: str, operand: exp.Expr, rewrite=None) -> str:
@@ -467,10 +527,77 @@ def _oid_sql(reg: str, operand: exp.Expr, rewrite=None) -> str:
     ):
         operand = operand.this
     if isinstance(operand, exp.Literal) and operand.is_string:
-        return _OID_OF[reg](operand.this)
+        return _input_oid(reg, operand.this)
+    numbered = _is_number(operand)
     if rewrite is not None:
         operand = operand.transform(rewrite)
-    return f"CAST({operand.sql(dialect='postgres')} AS OID)"
+    if numbered:
+        return f"CAST({operand.sql(dialect='postgres')} AS OID)"
+    # Text, or a value the catalog does not type, is read as its text is: an oid's is its digits.
+    return _computed_oid(reg, operand.sql(dialect="postgres"))
+
+
+#: The catalog's column types a reg cast reads as the oid it is.
+_NUMBERS = frozenset(
+    {
+        "oid",
+        "bigint",
+        "integer",
+        "smallint",
+        "regproc",
+        "regtype",
+        "information_schema.cardinal_number",
+    }
+)
+_VIEW_RELATIONS = {catalog_view_name(*relation): relation for relation in RELATIONS}
+
+
+def _from_relations(select: exp.Select) -> list[tuple[exp.Table, tuple[str, str]]]:
+    """The catalog relations ``select`` reads in its FROM and joins, by its name or its view's."""
+    found = []
+    joined = select.args.get("from_")
+    for source in [
+        joined.this if joined else None,
+        *(j.this for j in select.args.get("joins") or []),
+    ]:
+        if not isinstance(source, exp.Table):
+            continue
+        db, name = (source.db or "").lower(), source.name.lower()
+        relation = _VIEW_RELATIONS.get(name) if db == _META else _relation_of(db, name)
+        if relation is not None:
+            found.append((source, relation))
+    return found
+
+
+def _column_type(column: exp.Column) -> str | None:
+    """The catalog type of ``column``, by the relation it resolves to here or in an outer query."""
+    select = column.find_ancestor(exp.Select)
+    while select is not None:
+        for table, relation in _from_relations(select):
+            if column.table and column.table != table.alias_or_name:
+                continue
+            typed = next((t for name, t, _ in RELATIONS[relation] if name == column.name), None)
+            if typed is not None:
+                return typed
+        select = select.find_ancestor(exp.Select)
+    return None
+
+
+def _is_number(operand: exp.Expr) -> bool:
+    """Whether ``operand`` is a number by what the statement says of it: a catalog column of a
+    numeric type, a number, a cast to a type that is not text, or a subquery of one."""
+    if isinstance(operand, exp.Paren):
+        return _is_number(operand.this)
+    if isinstance(operand, exp.Literal):
+        return not operand.is_string
+    if isinstance(operand, exp.Cast):
+        return _reg_of(operand.to) not in _TEXT_TYPES
+    if isinstance(operand, exp.Column):
+        return _column_type(operand) in _NUMBERS
+    if isinstance(operand, exp.Subquery) and isinstance(operand.this, exp.Select):
+        selects = operand.this.selects
+        return len(selects) == 1 and _is_number(selects[0].unalias())
+    return False
 
 
 #: The output functions of an object identifier type the model resolves: the name of the object,
@@ -550,7 +677,7 @@ def _reg_cast(node: exp.Cast, rewrite) -> exp.Expr | None:
         # Computed with, it is the model's oid; a result column is still the server's name of it.
         column = node.parent if isinstance(node.parent, exp.Alias) else node
         if not isinstance(column.parent, exp.Select) or column.arg_key != "expressions":
-            return _parsed(f"({_proc_oid(inner.this)})")
+            return _parsed(f"({_input_oid(target, inner.this)})")
     return None
 
 
@@ -610,7 +737,8 @@ def _result_regs(tree: exp.Expr) -> None:
             f"JSONB_BUILD_OBJECT('oid', CAST({oid} AS BIGINT), 'name', {_name_sql(reg, oid)}) END"
         )
         if select is target:
-            select.replace(exp.alias_(pair, reg))
+            # Unaliased, it is named as PostgreSQL names the cast: stxrelid::regclass is stxrelid.
+            select.replace(exp.alias_(pair, _pg_column_name(target), quoted=True))
         else:
             target.replace(pair)
 
@@ -793,7 +921,7 @@ def _named_relation_call(name: str, args: list[exp.Expr]) -> exp.Expr | None:
     if not (args and isinstance(args[0], exp.Literal) and args[0].is_string):
         return None
     if name == "setval":
-        oid = _parsed(f"({_class_oid(args[0].this)})")
+        oid = _parsed(f"({_input_oid('regclass', args[0].this)})")
         return exp.Anonymous(this=name, expressions=[oid, *(a.copy() for a in args[1:])])
     return None
 
@@ -823,10 +951,10 @@ def _rewriter(request: CatalogRequest, cte_names: frozenset[str]):
         if isinstance(node, exp.Table) and isinstance(node.this, (exp.Identifier, str)):
             return _addressed(node, cte_names, extra)
         if type(node) in _SYNTAX_SESSION:
-            name = _SYNTAX_SESSION[type(node)]
-            answered = _session_call(name, [], request)
+            answered = _session_call(_SYNTAX_SESSION[type(node)], [], request)
             assert answered is not None
-            return _named(answered, node, name)
+            # Named for the keyword: current_catalog is current_database(), named current_catalog.
+            return _named(answered, node, _pg_column_name(node))
         if isinstance(node, exp.CurrentVersion):
             return _named(exp.cast(exp.Literal.string(VERSION), "TEXT"), node, "version")
         called = _call(node)
@@ -846,7 +974,8 @@ def _rewriter(request: CatalogRequest, cte_names: frozenset[str]):
             input_answer = _input_call(name, args)
             return node if input_answer is None else _named(input_answer, node, name)
         if isinstance(node, exp.Cast):
-            return _reg_cast(node, rewrite) or node
+            cast = _reg_cast(node, rewrite)
+            return node if cast is None else _named(cast, node, _pg_column_name(node))
         if isinstance(node, exp.Column):
             column = node.name.lower()
             if (

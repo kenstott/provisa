@@ -337,6 +337,7 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
                 "SessionUser",
                 "CurrentDatabase",
                 "CurrentSchema",
+                "CurrentCatalog",
             ):
                 return "INTERCEPT"
     except Exception:
