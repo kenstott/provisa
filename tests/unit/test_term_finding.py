@@ -231,9 +231,13 @@ class _Client:
         self.usage = usage
         self.cut_off = cut_off
         self.asked: list[tuple[str, int]] = []
+        self.reasoning_off: list[bool] = []
 
-    async def complete_detailed(self, prompt: str, system: str, max_tokens: int) -> Any:
+    async def complete_detailed(
+        self, prompt: str, system: str, max_tokens: int, *, reasoning_off: bool
+    ) -> Any:
         self.asked.append((prompt, max_tokens))
+        self.reasoning_off.append(reasoning_off)
         return types.SimpleNamespace(
             text="[]",
             vendor="anthropic",
@@ -251,6 +255,7 @@ async def test_a_call_is_limited_to_the_roles_room_and_debited_with_what_it_used
     call = model.Held(client, guard, None)
     assert await call("find terms", 4096) == "[]"
     assert client.asked[0][1] == 500
+    assert client.reasoning_off == [True]
     ((usage, model_name),) = guard.debited
     assert (usage.input_tokens, usage.output_tokens, model_name) == (100, 20, "claude-test")
 
@@ -272,6 +277,88 @@ async def test_a_cut_off_answer_is_counted_and_raised_naming_the_limit_it_stoppe
     with pytest.raises(scan.AnswerCutOff, match="anthropic:claude-test .* 500 output tokens"):
         await model.Held(_Client(USAGE, cut_off=True), guard, None)("find terms", 4096)
     assert len(guard.debited) == 1
+
+
+# -- the model's reasoning ------------------------------------------------------------------------
+
+
+class _Wire:
+    """aisuite with the request recorded as the vendor would receive it: the provider each client
+    is configured for, and every argument of every completion asked of it."""
+
+    def __init__(self) -> None:
+        self.configs: list[dict] = []
+        self.sent: list[dict[str, Any]] = []
+        self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=self.create))
+
+    def __call__(self, config: dict | None = None) -> _Wire:
+        self.configs.append(config or {})
+        return self
+
+    def create(self, **request: Any) -> Any:
+        self.sent.append(request)
+        return types.SimpleNamespace(
+            choices=[
+                types.SimpleNamespace(
+                    message=types.SimpleNamespace(content="[]"), finish_reason="stop"
+                )
+            ],
+            usage=USAGE,
+        )
+
+
+#: The endpoint the "Demo bundles" build scans through (scripts/demo_bundle._ANSWERING_ENDPOINT).
+OPENROUTER = {
+    "id": "openrouter",
+    "style": "openai",
+    "base_url": "https://openrouter.ai/api/v1",
+    "api_key_env": "OPENROUTER_API_KEY",
+}
+
+
+async def test_a_call_through_openrouter_turns_the_models_reasoning_off(monkeypatch):
+    """Demo bundles 41930549595: anthropic/claude-haiku-5.5 on OpenRouter reasons by default
+    (default_effort medium) and spent all of 4096, then 8192, output tokens before any text. The
+    request carries OpenRouter's ``reasoning`` object with reasoning disabled."""
+    wire = _Wire()
+    monkeypatch.setattr("aisuite.Client", wire)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    config = {
+        "ai_endpoints": [OPENROUTER],
+        "ai_models": {
+            model.OPERATION: {"vendor": "openrouter", "model": "anthropic/claude-haiku-5.5"}
+        },
+    }
+    client = ProvisaLLMClient(model.OPERATION, config=config)
+    assert await model.Held(client, _Guard(budget=False), None)("find terms", 4096) == "[]"
+    ((sent,),) = [wire.sent]
+    assert sent["model"] == "openai:anthropic/claude-haiku-5.5"
+    assert sent["max_tokens"] == 4096
+    assert sent["extra_body"] == {"reasoning": {"enabled": False}}
+    assert wire.configs == [{"openai": {"base_url": OPENROUTER["base_url"], "api_key": "test-key"}}]
+
+
+async def test_a_call_to_anthropic_turns_extended_thinking_off(monkeypatch):
+    wire = _Wire()
+    monkeypatch.setattr("aisuite.Client", wire)
+    config = {"ai_models": {model.OPERATION: {"vendor": "anthropic", "model": "claude-test"}}}
+    client = ProvisaLLMClient(model.OPERATION, config=config, api_keys={"anthropic": "k"})
+    await model.Held(client, _Guard(budget=False), None)("find terms", 4096)
+    ((sent,),) = [wire.sent]
+    assert sent["thinking"] == {"type": "disabled"}
+    assert "extra_body" not in sent
+
+
+async def test_a_vendor_whose_reasoning_cannot_be_turned_off_fails_the_call_naming_it(monkeypatch):
+    """No silent fallback: a vendor Provisa has no documented way to turn reasoning off for is not
+    asked as though it had none."""
+    wire = _Wire()
+    monkeypatch.setattr("aisuite.Client", wire)
+    config = {"ai_models": {model.OPERATION: {"vendor": "groq", "model": "some-model"}}}
+    client = ProvisaLLMClient(model.OPERATION, config=config, api_keys={"groq": "k"})
+    with pytest.raises(scan.ScanFailed, match="groq:some-model failed: .*reasoning off"):
+        await model.Held(client, _Guard(budget=False), None)("find terms", 4096)
+    assert wire.sent == []
 
 
 # -- an answer cut off, an answer that is not JSON ------------------------------------------------
@@ -911,7 +998,7 @@ class _Vendor:
     def __call__(self, *args: Any) -> _Vendor:
         return self
 
-    def create(self, *, model: str, messages: list[dict], max_tokens: int) -> Any:
+    def create(self, *, model: str, messages: list[dict], max_tokens: int, thinking: dict) -> Any:
         self.asked += 1
         prompt = messages[-1]["content"]
         return types.SimpleNamespace(
@@ -994,8 +1081,10 @@ class _Spending(_Vendor):
         super().__init__(_definitions_answer)
         self.cut: list[int] = []
 
-    def create(self, *, model: str, messages: list[dict], max_tokens: int) -> Any:
-        answered = super().create(model=model, messages=messages, max_tokens=max_tokens)
+    def create(self, *, model: str, messages: list[dict], max_tokens: int, thinking: dict) -> Any:
+        answered = super().create(
+            model=model, messages=messages, max_tokens=max_tokens, thinking=thinking
+        )
         choice = answered.choices[0]
         held = max_tokens * self.chars_per_token
         if len(choice.message.content) > held:

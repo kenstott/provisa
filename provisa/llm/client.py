@@ -58,6 +58,8 @@ _KEY_ENV = {
 
 #: What a vendor's ``finish_reason`` says of an answer that stopped at ``max_tokens``.
 _CUT_OFF_REASONS = frozenset({"length", "max_tokens"})
+#: The host of an OpenAI-wire endpoint that takes OpenRouter's ``reasoning`` request object.
+_OPENROUTER_HOST = "openrouter.ai"
 
 _T = TypeVar("_T")
 
@@ -98,6 +100,11 @@ def _stopped_at_limit(finish_reason: Any, usage: Any, max_tokens: int) -> bool:
         return True
     used = getattr(usage, "completion_tokens", None)
     return isinstance(used, int) and used >= max_tokens
+
+
+class ReasoningNotControllable(ValueError):
+    """A call asked for the model's reasoning off, and its vendor's wire has no setting Provisa
+    knows that turns it off: the call is not sent as though it had one."""
 
 
 class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
@@ -214,10 +221,37 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
     ) -> str:
         return self._respond(vendor, model, prompt, system, max_tokens).text
 
+    def _reasoning_off(self, vendor: str, model: str) -> dict[str, Any]:
+        """The request arguments that turn ``vendor``'s model's reasoning off, on its wire:
+        OpenRouter's ``reasoning`` object with ``enabled: false`` (sent as the OpenAI client's
+        ``extra_body``), or Anthropic's ``thinking`` of type ``disabled`` (natively or through an
+        Anthropic-style endpoint). Any other wire raises :class:`ReasoningNotControllable`."""
+        endpoint = self._endpoints.get(vendor)
+        wire = endpoint["style"] if endpoint is not None else vendor
+        if wire == "anthropic":
+            return {"thinking": {"type": "disabled"}}
+        if wire == "openai" and endpoint is not None:
+            if _OPENROUTER_HOST in str(endpoint.get("base_url") or ""):
+                return {"extra_body": {"reasoning": {"enabled": False}}}
+        raise ReasoningNotControllable(
+            f"{vendor}:{model} was asked with its reasoning off, and Provisa knows no setting "
+            f"that turns reasoning off on the {wire} wire"
+            + (f" at {endpoint.get('base_url')}" if endpoint is not None else "")
+        )
+
     def _respond(
-        self, vendor: str, model: str, prompt: str, system: str, max_tokens: int
+        self,
+        vendor: str,
+        model: str,
+        prompt: str,
+        system: str,
+        max_tokens: int,
+        reasoning_off: bool = False,
     ) -> Completion:
         import aisuite as ai
+
+        # Settled before any client is made: a wire that cannot be told is never called.
+        reasoning = self._reasoning_off(vendor, model) if reasoning_off else {}
 
         endpoint = self._endpoints.get(vendor)
         if endpoint is not None:
@@ -253,6 +287,7 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             model=model_id,
             messages=messages,
             max_tokens=max_tokens,
+            **reasoning,
         )
         choice = response.choices[0]
         content = choice.message.content
@@ -328,16 +363,25 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         )
 
     async def complete_detailed(
-        self, prompt: str, system: str = "You are a helpful assistant.", max_tokens: int = 1024
+        self,
+        prompt: str,
+        system: str = "You are a helpful assistant.",
+        max_tokens: int = 1024,
+        *,
+        reasoning_off: bool = False,
     ) -> Completion:
-        """:meth:`complete` with the vendor, model and usage of the answer (:class:`Completion`)."""
+        """:meth:`complete` with the vendor, model and usage of the answer (:class:`Completion`).
+        ``reasoning_off`` asks each model called, the fallback's too, with its reasoning turned off
+        (:meth:`_reasoning_off`); a vendor whose wire has no such setting fails the call."""
         import asyncio
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
             lambda: self._with_fallback(
-                lambda vendor, model: self._respond(vendor, model, prompt, system, max_tokens)
+                lambda vendor, model: self._respond(
+                    vendor, model, prompt, system, max_tokens, reasoning_off
+                )
             ),
         )
 
