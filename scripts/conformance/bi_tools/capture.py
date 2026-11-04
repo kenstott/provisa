@@ -588,6 +588,8 @@ DBEAVER_STEPS = [
     "Expand Tables, then each table's Columns, Constraints, Foreign Keys and Indexes",
     "Expand Views, Materialized Views, Functions, Sequences and Data types",
     "Open each table's editor (Properties, DDL tabs)",
+    "Open Database > Session Manager (Tools > Session Manager); refresh it once",
+    "Open the connection's Dashboard and leave it open for 30 seconds",
     "Disconnect",
 ]
 
