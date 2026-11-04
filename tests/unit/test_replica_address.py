@@ -22,6 +22,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from provisa.federation import engine as engine_module
 from provisa.federation.engine import _ENGINE_BUILDERS, build_engine
 from provisa.federation.replica_address import (
     AmbiguousReplica,
@@ -54,6 +55,8 @@ _ENGINES = sorted(_ENGINE_BUILDERS)
 def engine(request, monkeypatch):
     # a generic engine reads its URL when it is built; none is dialled here
     monkeypatch.setenv("PROVISA_ENGINE_URL", "mssql://user:secret@engine-host/warehouse")
+    # Whether a kind's dialect extra is installed is not what this asks (test_engine_extras.py does).
+    monkeypatch.setattr(engine_module, "require_engine_extra", lambda kind: None)
     built = build_engine(request.param)
     monkeypatch.setattr(type(built), "materialize_store", lambda _self: "postgresql:///store")
     return built
