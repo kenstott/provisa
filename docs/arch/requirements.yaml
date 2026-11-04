@@ -27993,21 +27993,29 @@
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: 'An aggregate query is answered from a fresh materialized view that pre-aggregates its
-    table, with nothing declared (Amended 2026-10-14, maintainer ruling: the earlier catalog rewrote the
-    SELECT list to the bare columns its aggregates used and re-applied filters to pre-aggregated rows, which
-    gave wrong answers, and nothing set serves_aggregates, so it never fired). What a view keeps is derived
-    from its SQL: a single-table GROUP BY whose select list is its grouping columns (its dimensions) and
-    named SUM(c), COUNT(*), COUNT(c), MIN(c), MAX(c) (its measures). A view with a WHERE, a join, AVG,
-    COUNT(DISTINCT) or any other expression keeps nothing a query can use. A single-table aggregate from
-    any surface, SQL or compiled (amended 2026-10-14), over the same table is read from the view only when it groups by a subset of the view''s dimensions,
-    filters and orders only on them, and asks only for aggregates that re-aggregate exactly: SUM over the
-    stored sum, COUNT as the sum of the stored count (a bigint, 0 over no rows), MIN and MAX over the stored
-    MIN and MAX, AVG as the stored sum over the stored count of the same column. Anything else -- a join,
-    DISTINCT, HAVING, a window, a column the view does not keep -- is not rewritten. The rewrite runs after governance:
-    a row filter on one of the view''s dimensions is carried onto the view; a row filter on any other
-    column, or a mask over a measured column, leaves the statement to its table, as the view was computed
-    over every row. On a hit the statement''s sources become the view''s catalog.'
+  description: 'An aggregate query is answered from a fresh materialized view that pre-aggregates its table,
+    with nothing declared (Amended 2026-10-14, maintainer ruling: the earlier catalog rewrote the SELECT
+    list to the bare columns its aggregates used and re-applied filters to pre-aggregated rows, which gave
+    wrong answers, and nothing set serves_aggregates, so it never fired). What a view keeps is derived from
+    its SQL: a single-table GROUP BY whose select list is its grouping columns (its dimensions) and named
+    SUM(c), COUNT(*), COUNT(c), MIN(c), MAX(c) (its measures). A view with a WHERE, a join, AVG, COUNT(DISTINCT)
+    or any other expression keeps nothing a query can use. A single-table aggregate from any surface, SQL
+    or compiled (amended 2026-10-14), over the same table is read from the view only when it groups by a
+    subset of the view''s dimensions, filters and orders only on them, and asks only for aggregates that
+    re-aggregate exactly: SUM over the stored sum, COUNT as the sum of the stored count (a bigint, 0 over
+    no rows), MIN and MAX over the stored MIN and MAX, AVG as the stored sum over the stored count of the
+    same column. Anything else -- a join, DISTINCT, HAVING, a window, a column the view does not keep --
+    is not rewritten. The rewrite runs after governance: a row filter on one of the view''s dimensions is
+    carried onto the view; a row filter on any other column, or a mask over a measured column, leaves the
+    statement to its table, as the view was computed over every row. On a hit the statement''s sources become
+    the view''s catalog. (Amended 2026-11-04, A ROW FILTER ON THE VIEW''S DIMENSIONS:) Maintainer approved:
+    a statement the role reads through a row filter on the table is answered from an aggregate view when
+    every column the filter references is one of the view''s dimensions; the filter is applied to the view''s
+    rows, which is exact because each row is one combination of dimension values. A filter that references
+    any other column, or that contains a subquery, and any mask on a column the statement reads, leaves
+    the statement to its table as before. Governance is decided on the base table before the rewrite; the
+    view''s own grants are not consulted, since the rewrite only replaces how the already-governed statement
+    is computed.'
   use_case: Enables query acceleration via pre-computed aggregates stored in materialized views, allowing
     queries requesting SUM/AVG/etc over MV-backed tables to read pre-aggregated results instead of materializing
     raw rows and computing aggregates at query time.
