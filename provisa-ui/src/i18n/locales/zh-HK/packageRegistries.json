@@ -10,7 +10,7 @@
     "pypiNone": "沒有 PyPI 索引。套件來自公共 PyPI。",
     "add_pypi": "新增 PyPI 索引",
     "goproxyTitle": "Go 模組代理",
-    "goproxyHelp": "Go 資料來源取得其模組所使用的代理。每個模組都會根據程式碼的 go.sum 核對。預設代理代替公共代理服務每次 Go 安裝。",
+    "goproxyHelp": "Go 資料來源取得模組所使用的代理，每個模組都根據 go.sum 核對。預設代理取代公共代理。",
     "goproxyNone": "沒有 Go 模組代理。模組來自公共 Go 模組代理 proxy.golang.org。",
     "add_goproxy": "新增 Go 模組代理",
     "gitTitle": "Git 主機",

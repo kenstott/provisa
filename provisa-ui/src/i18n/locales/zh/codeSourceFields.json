@@ -12,6 +12,7 @@
     "git": "Git 仓库",
     "upload": "上传",
     "package": "包",
+    "module": "模块",
     "version": "版本",
     "versionHint": "精确版本，例如 1.2.0。",
     "versionHintGo": "精确的模块版本，例如 v1.2.0。",

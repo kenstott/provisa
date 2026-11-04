@@ -12,6 +12,7 @@
     "git": "Git-repository",
     "upload": "Uploaden",
     "package": "Pakket",
+    "module": "Module",
     "version": "Versie",
     "versionHint": "Een exacte versie, zoals 1.2.0.",
     "versionHintGo": "Een exacte moduleversie, zoals v1.2.0.",

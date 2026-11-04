@@ -10,7 +10,7 @@
     "pypiNone": "Nessun indice PyPI. I pacchetti provengono dal PyPI pubblico.",
     "add_pypi": "Aggiungi indice PyPI",
     "goproxyTitle": "Proxy dei moduli Go",
-    "goproxyHelp": "I proxy da cui le sorgenti Go recuperano i propri moduli. Ogni modulo viene verificato rispetto al go.sum del codice. Il proxy predefinito serve ogni installazione Go al posto di quello pubblico.",
+    "goproxyHelp": "I proxy da cui le sorgenti Go recuperano i moduli, ciascuno verificato rispetto a go.sum. Il proxy predefinito sostituisce quello pubblico.",
     "goproxyNone": "Nessun proxy dei moduli Go. I moduli provengono dal proxy pubblico dei moduli Go, proxy.golang.org.",
     "add_goproxy": "Aggiungi proxy dei moduli Go",
     "gitTitle": "Host Git",

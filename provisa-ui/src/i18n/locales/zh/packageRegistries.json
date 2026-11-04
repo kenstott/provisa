@@ -10,7 +10,7 @@
     "pypiNone": "没有 PyPI 索引。包来自公共 PyPI。",
     "add_pypi": "添加 PyPI 索引",
     "goproxyTitle": "Go 模块代理",
-    "goproxyHelp": "Go 数据源获取其模块所使用的代理。每个模块都会根据代码的 go.sum 进行校验。默认代理代替公共代理服务每次 Go 安装。",
+    "goproxyHelp": "Go 数据源获取模块所使用的代理，每个模块都根据 go.sum 校验。默认代理取代公共代理。",
     "goproxyNone": "没有 Go 模块代理。模块来自公共 Go 模块代理 proxy.golang.org。",
     "add_goproxy": "添加 Go 模块代理",
     "gitTitle": "Git 主机",

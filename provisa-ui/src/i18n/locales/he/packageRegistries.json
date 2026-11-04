@@ -10,7 +10,7 @@
     "pypiNone": "אין אינדקסים של PyPI. החבילות מגיעות מ-PyPI הציבורי.",
     "add_pypi": "הוספת אינדקס PyPI",
     "goproxyTitle": "proxy של מודולי Go",
-    "goproxyHelp": "שרתי ה-proxy שמהם מקורות Go מושכים את המודולים שלהם. כל מודול נבדק מול קובץ go.sum של הקוד. proxy ברירת המחדל משרת כל התקנת Go במקום הציבורי.",
+    "goproxyHelp": "שרתי ה-proxy שמהם מקורות Go מושכים מודולים, כל אחד נבדק מול go.sum. proxy ברירת המחדל מחליף את הציבורי.",
     "goproxyNone": "אין proxy של מודולי Go. המודולים מגיעים מ-proxy המודולים הציבורי של Go,‏ proxy.golang.org.",
     "add_goproxy": "הוספת proxy של מודולי Go",
     "gitTitle": "שרתי Git",

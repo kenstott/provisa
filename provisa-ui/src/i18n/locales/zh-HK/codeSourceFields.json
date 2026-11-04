@@ -12,6 +12,7 @@
     "git": "Git 儲存庫",
     "upload": "上載",
     "package": "套件",
+    "module": "模組",
     "version": "版本",
     "versionHint": "精確版本，例如 1.2.0。",
     "versionHintGo": "精確的模組版本，例如 v1.2.0。",

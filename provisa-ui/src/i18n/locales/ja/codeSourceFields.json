@@ -12,6 +12,7 @@
     "git": "Git リポジトリ",
     "upload": "アップロード",
     "package": "パッケージ",
+    "module": "モジュール",
     "version": "バージョン",
     "versionHint": "1.2.0 のような正確なバージョン。",
     "versionHintGo": "v1.2.0 のような正確なモジュールバージョン。",

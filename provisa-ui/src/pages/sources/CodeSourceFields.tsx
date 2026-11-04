@@ -240,7 +240,7 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
             <FormField size="medium">
               <TextInput
                 required
-                label={t("codeSourceFields.package")}
+                label={t(go ? "codeSourceFields.module" : "codeSourceFields.package")}
                 placeholder={
                   python ? "acme-rates" : go ? "github.com/acme/rates" : "@acme/rates"
                 }

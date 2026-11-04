@@ -9387,7 +9387,7 @@
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
   "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
   "zh-HK/packageRegistries.json::packageRegistries.goproxyTitle": "Go module proxies",
-  "zh-HK/packageRegistries.json::packageRegistries.goproxyHelp": "The proxies Go sources fetch their modules from. Every module is checked against the code's go.sum. The default proxy serves every Go install in place of the public one.",
+  "zh-HK/packageRegistries.json::packageRegistries.goproxyHelp": "The proxies Go sources fetch modules from, each checked against go.sum. The default proxy replaces the public one.",
   "zh-HK/packageRegistries.json::packageRegistries.goproxyNone": "No Go module proxies. Modules come from the public Go module proxy, proxy.golang.org.",
   "zh-HK/packageRegistries.json::packageRegistries.add_goproxy": "Add Go module proxy",
   "zh-HK/packageRegistries.json::packageRegistries.goproxyAddress": "Proxy URL",
@@ -9398,5 +9398,6 @@
   "zh-HK/codeSourceFields.json::codeSourceFields.gomod": "Go module",
   "zh-HK/codeSourceFields.json::codeSourceFields.versionHintGo": "An exact module version, such as v1.2.0.",
   "zh-HK/codeSourceFields.json::codeSourceFields.entryGo": "Package",
-  "zh-HK/codeSourceFields.json::codeSourceFields.entryGoHint": "The directory of the module's package whose functions are the source's, such as feeds. Leave empty for the module's root package."
+  "zh-HK/codeSourceFields.json::codeSourceFields.entryGoHint": "The directory of the module's package whose functions are the source's, such as feeds. Leave empty for the module's root package.",
+  "zh-HK/codeSourceFields.json::codeSourceFields.module": "Module"
 }

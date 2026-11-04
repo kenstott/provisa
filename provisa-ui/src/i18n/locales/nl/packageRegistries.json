@@ -10,7 +10,7 @@
     "pypiNone": "Geen PyPI-indexen. Pakketten komen uit de openbare PyPI.",
     "add_pypi": "PyPI-index toevoegen",
     "goproxyTitle": "Go-moduleproxy's",
-    "goproxyHelp": "De proxy's waaruit Go-bronnen hun modules ophalen. Elke module wordt gecontroleerd tegen de go.sum van de code. De standaardproxy bedient elke Go-installatie in plaats van de openbare.",
+    "goproxyHelp": "De proxy's waaruit Go-bronnen modules ophalen, elk gecontroleerd tegen go.sum. De standaardproxy vervangt de openbare.",
     "goproxyNone": "Geen Go-moduleproxy's. Modules komen uit de openbare Go-moduleproxy, proxy.golang.org.",
     "add_goproxy": "Go-moduleproxy toevoegen",
     "gitTitle": "Git-hosts",

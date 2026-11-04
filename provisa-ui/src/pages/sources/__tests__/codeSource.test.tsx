@@ -273,6 +273,9 @@ describe("the code source's fields", () => {
     );
     expect(screen.getByTestId("code-version")).toHaveAttribute("placeholder", "v1.2.0");
     expect(screen.getByTestId("code-entry")).toHaveAttribute("placeholder", "feeds");
+    // The module and the package in it are two things, each named as Go names it.
+    expect(screen.getByLabelText(/^Module/)).toBe(screen.getByTestId("code-package"));
+    expect(screen.getByLabelText(/^Package/)).toBe(screen.getByTestId("code-entry"));
   });
 
   it("upload the archive and keep its content hash", async () => {

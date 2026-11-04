@@ -12,6 +12,7 @@
     "git": "Dépôt Git",
     "upload": "Téléversement",
     "package": "Paquet",
+    "module": "Module",
     "version": "Version",
     "versionHint": "Une version exacte, par exemple 1.2.0.",
     "versionHintGo": "Une version exacte du module, par exemple v1.2.0.",

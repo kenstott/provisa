@@ -10,7 +10,7 @@
     "pypiNone": "No PyPI indexes. Packages come from the public PyPI.",
     "add_pypi": "Add PyPI index",
     "goproxyTitle": "Go module proxies",
-    "goproxyHelp": "The proxies Go sources fetch their modules from. Every module is checked against the code's go.sum. The default proxy serves every Go install in place of the public one.",
+    "goproxyHelp": "The proxies Go sources fetch modules from, each checked against go.sum. The default proxy replaces the public one.",
     "goproxyNone": "No Go module proxies. Modules come from the public Go module proxy, proxy.golang.org.",
     "add_goproxy": "Add Go module proxy",
     "gitTitle": "Git hosts",

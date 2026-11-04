@@ -9386,7 +9386,7 @@
   "referenceLibrary.json::referenceLibrary.reembedFailure": "{{title}}: {{reason}}",
   "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP",
   "de/packageRegistries.json::packageRegistries.goproxyTitle": "Go module proxies",
-  "de/packageRegistries.json::packageRegistries.goproxyHelp": "The proxies Go sources fetch their modules from. Every module is checked against the code's go.sum. The default proxy serves every Go install in place of the public one.",
+  "de/packageRegistries.json::packageRegistries.goproxyHelp": "The proxies Go sources fetch modules from, each checked against go.sum. The default proxy replaces the public one.",
   "de/packageRegistries.json::packageRegistries.goproxyNone": "No Go module proxies. Modules come from the public Go module proxy, proxy.golang.org.",
   "de/packageRegistries.json::packageRegistries.add_goproxy": "Add Go module proxy",
   "de/packageRegistries.json::packageRegistries.goproxyAddress": "Proxy URL",
@@ -9397,5 +9397,6 @@
   "de/codeSourceFields.json::codeSourceFields.gomod": "Go module",
   "de/codeSourceFields.json::codeSourceFields.versionHintGo": "An exact module version, such as v1.2.0.",
   "de/codeSourceFields.json::codeSourceFields.entryGo": "Package",
-  "de/codeSourceFields.json::codeSourceFields.entryGoHint": "The directory of the module's package whose functions are the source's, such as feeds. Leave empty for the module's root package."
+  "de/codeSourceFields.json::codeSourceFields.entryGoHint": "The directory of the module's package whose functions are the source's, such as feeds. Leave empty for the module's root package.",
+  "de/codeSourceFields.json::codeSourceFields.module": "Module"
 }

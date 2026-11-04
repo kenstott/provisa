@@ -12,6 +12,7 @@
     "git": "Git-Repository",
     "upload": "Hochladen",
     "package": "Paket",
+    "module": "Modul",
     "version": "Version",
     "versionHint": "Eine exakte Version, etwa 1.2.0.",
     "versionHintGo": "Eine exakte Modulversion, etwa v1.2.0.",

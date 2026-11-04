@@ -12,6 +12,7 @@
     "git": "מאגר Git",
     "upload": "העלאה",
     "package": "חבילה",
+    "module": "מודול",
     "version": "גרסה",
     "versionHint": "גרסה מדויקת, כמו 1.2.0.",
     "versionHintGo": "גרסת מודול מדויקת, כמו v1.2.0.",
