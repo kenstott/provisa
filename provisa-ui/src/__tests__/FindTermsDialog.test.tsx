@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2179: Find terms in a document. The steward picks a library document or gives a new file or
+// REQ-2179: Find terms. The steward picks a library document or gives a new file or
 // URL, with the domains they work in, and starts a scan; its review queue shows each candidate's
 // proposal, definition (explicit or synthesized), synonyms, passages and conflicting explanations
 // side by side, and the steward accepts, merges, rejects or accepts several at once. REQ-2202: or

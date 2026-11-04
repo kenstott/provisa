@@ -1,6 +1,6 @@
 {
   "findTerms": {
-    "menuItem": "Encontrar termos em um documento",
+    "menuItem": "Encontrar termos",
     "title": "Encontrar termos",
     "intro": "Propõe os conceitos que um documento ou uma tabela define e usa: conceitos de negócio, papéis, tipos de organização, políticas, processos e regulamentações, nunca pessoas ou empresas nomeadas. Cada proposta chega à fila de revisão como rascunho, com os trechos de onde veio.",
     "fromLibrary": "Da biblioteca",

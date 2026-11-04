@@ -1,6 +1,6 @@
 {
   "findTerms": {
-    "menuItem": "Begriffe in einem Dokument finden",
+    "menuItem": "Begriffe finden",
     "title": "Begriffe finden",
     "intro": "Schlägt die Konzepte vor, die ein Dokument oder eine Tabelle definiert und verwendet: Geschäftskonzepte, Rollen, Organisationstypen, Richtlinien, Prozesse und Vorschriften, nie namentlich genannte Personen oder Unternehmen. Jeder Vorschlag landet als Entwurf in der Prüfwarteschlange, mit den Passagen, aus denen er stammt.",
     "fromLibrary": "Aus der Bibliothek",

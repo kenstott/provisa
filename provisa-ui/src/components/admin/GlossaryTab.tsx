@@ -188,7 +188,7 @@ export function GlossaryTab() {
   // Editable copies of the selected term's name/definition.
   const [bulkGeneratingDefinitions, setBulkGeneratingDefinitions] = useState(false);
   const [bulkGeneratingRelationships, setBulkGeneratingRelationships] = useState(false);
-  // REQ-2179: Find terms in a document, and the review queue of what it proposes.
+  // REQ-2179: Find terms, and the review queue of what it proposes.
   const [findTermsOpen, setFindTermsOpen] = useState(false);
   // REQ-2115: the open term by name, once the glossary has answered for it, and whether the Find
   // terms dialog is open.

@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2179: the glossary's Find terms in a document. The steward picks a reference library
+// REQ-2179: the glossary's Find terms. The steward picks a reference library
 // document they may read, or gives a new one as a file or URL (it joins the library as proposed,
 // in the domains they are working in), and starts a scan. The scans made so far are listed below,
 // each opening its review queue, and any can be scanned again on demand (REQ-2185): nothing is
