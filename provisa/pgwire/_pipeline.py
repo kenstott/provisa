@@ -3096,8 +3096,9 @@ def _pk_bounds_inputs(semantic_sql: str, state: Any) -> tuple[tuple[Any, ...], .
     import sqlglot
     import sqlglot.expressions as exp
 
+    from provisa.compiler.governed_relation import base_table, relation_of
     from provisa.compiler.pk_bounds import scope_predicates
-    from provisa.federation.query_residency import _join_key_column
+    from provisa.federation.query_residency import join_key_column
 
     ast = sqlglot.parse_one(semantic_sql, read="postgres")
     written = None
@@ -3107,31 +3108,46 @@ def _pk_bounds_inputs(semantic_sql: str, state: Any) -> tuple[tuple[Any, ...], .
         written = target_table(ast)  # pyright: ignore[reportArgumentType]
     joined: dict[str, int] = {}
     for join in ast.find_all(exp.Join):
-        if isinstance(join.this, exp.Table) and join.this.name in row_tables:
-            name = row_tables[join.this.name].table_name
+        read = base_table(join.this)  # REQ-039: a governed relation is read as its table
+        if read is not None and read.name in row_tables:
+            name = row_tables[read.name].table_name
             joined[name] = joined.get(name, 0) + 1
     reads: list[tuple[Any, ...]] = []
     for ref in ast.find_all(exp.Table):
         if ref.name not in row_tables or ref is written:
             continue
         table = row_tables[ref.name]
-        join = ref.parent if isinstance(ref.parent, exp.Join) and ref.parent.this is ref else None
+        # REQ-039: a reference stands in the statement as its governed relation, which applies
+        # the row rule; the predicates that bound it are the relation's own and those of the
+        # SELECT that reads the relation, read over the table's columns.
+        relation = relation_of(ref)
+        node: exp.Expr = ref if relation is None else relation.relation
+        join = (
+            node.parent if isinstance(node.parent, exp.Join) and node.parent.this is node else None
+        )
         if (
             join is not None
             and isinstance(ast, exp.Select)
             and joined[table.table_name] == 1
             and sum(1 for c in table.columns if c.is_primary_key) == 1
-            and _join_key_column(join, ref.alias_or_name) is not None
+            and join_key_column(join) is not None
         ):
             continue  # bound by key pushdown
-        select = ref.find_ancestor(exp.Select)
+        select = node.find_ancestor(exp.Select)
         relations = list(select.find_all(exp.Table)) if select is not None else [ref]
+        predicates = scope_predicates(node)
+        if relation is not None:
+            sole = len(relations) == 1
+            predicates = [
+                *relation.predicates,
+                *(relation.over_table(p, sole=sole) for p in predicates),
+            ]
         reads.append(
             (
                 table,
                 ref.name,
                 exp.select("1").from_(ref.copy()),
-                scope_predicates(ref),
+                predicates,
                 frozenset({ref.alias_or_name, ref.name}),
                 len(relations) == 1,
             )
