@@ -338,7 +338,11 @@
     RETURNING ...) SELECT ... FROM w; any other placement is refused. The change to governance by construction
     lands whole: the passes that read the governed statement (materialized-view rewrite, primary-key bounds,
     parameter extraction and result typing) read through governed relations in the same change, so no read
-    loses its materialized view or its row cache.'
+    loses its materialized view or its row cache. (Amended 2026-11-04, A WRITE REACHES ONLY READABLE ROWS:)
+    Maintainer 2026-11-04: a write reaches only rows the role may both read and write: an UPDATE or DELETE
+    carries the role''s read row rule as well as its write grant and U/D rule, whatever form the compiler
+    gives it, so nothing is changed blind and an affected-row count cannot reveal a row outside the read
+    rule.'
   use_case: Schema visibility enforcement ensures unauthorized tables and columns are invisible to clients
     at design time.
   code:
