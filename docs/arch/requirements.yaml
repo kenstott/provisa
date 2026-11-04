@@ -86310,7 +86310,13 @@ Then the mutation is refused as it is in the UI"
     save we fill out the form and then cancel", "Same with a lot of things where we are doing a live save/computation
     - if possible - we might complete a form then cancel." The core tour''s source step opens the picker,
     chooses Parquet File, fills the form and presses Cancel; nothing is saved. A tour step whose purpose
-    is to show a form does the same. This replaces the step''s live build and save.'
+    is to show a form does the same. This replaces the step''s live build and save. (Amended 2026-11-04,
+    THE DATA NODE IN READ SCREEN:) Maintainer 2026-11-04: read_screen also reports, app-wide and on every
+    route, the data node a coordinator-served UI sends its data calls to (REQ-1916), so Polly can say which
+    node is chosen as well as change it. Lists that are not result grids (a dialog''s scans, Detect''s results,
+    a page''s list) stay outside read_screen; Polly reads them through her admin API. A file the browser
+    asks the user to pick (a JDBC driver jar) is left to the user: Polly fills the rest of the form and
+    asks for it.'
   use_case: A new user asks Polly how to add a source; she opens the Sources page, fills in the form in front of them, and presses Create once they confirm.
   scenario: "Given the user is on any page and asks Polly to set up a CSV source from a URL
 
@@ -89297,7 +89303,27 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     session statistics are the engine''s:) Maintainer 2026-11-03: the pg_stat_get_backend_* functions and
     pg_stat_get_backend_idset() report on the engine''s own sessions (their activity, client addresses,
     start times), not the model. Provisa refuses them by name, and the check skips them by design under
-    the server administration group: serving them would show one tenant other sessions'' activity.'
+    the server administration group: serving them would show one tenant other sessions'' activity. (Amended
+    2026-11-04, Server state, internal types and the check''s own call shapes:) Maintainer 2026-11-04: (1)
+    A function that reads PostgreSQL''s own server state is skipped by design: there is no single server
+    to test, since the answer is whichever engine''s runs. That covers WAL, replication and recovery, log
+    files, the hba and ident files, shared memory and memory contexts, locks, I/O and SLRU statistics, wait
+    events, server directory listings, prepared transactions, and the pg_stat_get_xact_* transaction counters
+    (beside the backend statistics). (2) Also skipped by design: pg_cursor (the session''s own cursors),
+    pg_sequence_last_value (Provisa does not drive a source''s sequences), pg_extension_update_paths (the
+    server''s installed extensions), unknownin (the parser''s internal type, which PostgreSQL itself cannot
+    call from SQL), and the one-argument to_ascii (it converts only from a LATIN1, LATIN2, LATIN9 or WIN1250
+    database; the forms naming the encoding are compared). (3) Input and output functions of types no SQL
+    value can have are skipped by design, as PostgreSQL errors on every call: the any* and anycompatible*
+    pseudo-types, shell_out, pg_ddl_command, pg_node_tree_in, the extended statistics inputs (pg_ndistinct,
+    pg_dependencies, pg_mcv_list), the BRIN bloom and multi-minmax summaries, and gtsvector. (4) A volatile
+    function is never left not tested for being volatile: every volatile overload is checked by its return
+    type and canonical form against PostgreSQL''s output, as WHAT GUARANTEED MEANS says. (5) The check writes
+    each call in the shape PostgreSQL requires and supplies the values it needs: json_to_recordset and jsonb_to_recordset
+    with a column definition list, percentile_cont and percentile_disc with WITHIN GROUP, a cstring[] modifier
+    for the *typmodin functions, interval_in and domain_in with a type oid and typmod (the fixture creates
+    a domain), and samples for btvarstrequalimage, int4_avg_combine and the range and multirange intersect
+    transition functions where PostgreSQL can call them; one it cannot call is reported for a decision.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
