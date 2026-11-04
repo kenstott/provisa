@@ -41,7 +41,16 @@ def _gov(rls_rules: dict[int, str] | None = None, **extra) -> GovernanceContext:
         rls_rules=rls_rules or {},
         masking_rules={},
         visible_columns={1: frozenset({"id", "name", "email"})},
-        table_map={"bank.customer": 1, "customer": 1, "bank.orders": 2, "bank.regions": 3},
+        table_map={
+            "bank.customer": 1,
+            "customer": 1,
+            "bank.orders": 2,
+            "bank.regions": 3,
+            # the names a BI tool's connection writes
+            "public.customers": 1,
+            "public.orders": 2,
+            "public.regions": 3,
+        },
         all_columns={1: list(_CUSTOMER), 2: list(_ORDERS), 3: list(_REGIONS)},
         limit_ceiling=None,
         sample_size=None,
@@ -117,6 +126,65 @@ def test_a_bi_tool_left_deep_nested_join_runs_governed():
 
 def test_a_bi_tool_left_deep_nested_join_s_hidden_column_is_refused():
     assert "V003" in _codes(_TABLEAU.replace('"c"."name"', '"c"."ssn"'))
+
+
+# Tableau's classic joins: left-deep, the table's name as its quoted alias, ordinal GROUP BY.
+_TABLEAU_CLASSIC = (
+    'SELECT "customers"."name" AS "name", "regions"."label" AS "label", '
+    'SUM("orders"."id") AS "sum:amount:ok" '
+    'FROM (("public"."orders" "orders" '
+    'INNER JOIN "public"."customers" "customers" ON ("orders"."customer_id" = "customers"."id")) '
+    'LEFT JOIN "public"."regions" "regions" ON ("customers"."id" = "regions"."customer_id")) '
+    "GROUP BY 1, 2"
+)
+
+
+def test_tableau_classic_joins_are_flattened_and_governed():
+    assert _codes(_TABLEAU_CLASSIC) == []
+    governed = _governed(_TABLEAU_CLASSIC)
+    assert (
+        "FROM public.orders AS orders INNER JOIN public.customers AS customers ON "
+        "(orders.customer_id = customers.id) LEFT JOIN public.regions AS regions"
+    ) in governed
+    assert "customers.id = 2" in governed  # the row rule
+    assert governed.endswith("GROUP BY 1, 2")
+
+
+# Tableau's custom SQL as a join operand: a derived table with its own alias, not an aliased group.
+_TABLEAU_CUSTOM_SQL = (
+    'SELECT "Custom SQL Query"."n" AS "n", "customers"."name" AS "name" '
+    'FROM ((SELECT id AS n FROM bank.orders) "Custom SQL Query" '
+    'INNER JOIN "public"."customers" "customers" ON ("Custom SQL Query"."n" = "customers"."id"))'
+)
+
+
+def test_tableau_custom_sql_as_a_join_operand_is_not_refused():
+    assert _codes(_TABLEAU_CUSTOM_SQL) == []
+    governed = _governed(_TABLEAU_CUSTOM_SQL)
+    assert "FROM (SELECT id AS n FROM bank.orders) AS Custom SQL Query INNER JOIN" in governed
+    assert "customers.id = 2" in governed
+
+
+def test_tableau_custom_sql_reading_a_hidden_column_is_refused():
+    sql = _TABLEAU_CUSTOM_SQL.replace(
+        "SELECT id AS n FROM bank.orders", "SELECT ssn AS n FROM bank.customer"
+    )
+    assert "V003" in _codes(sql)
+
+
+def test_an_odbc_left_group_is_flattened_and_governed():
+    # MS Query / ODBC: the first join in parentheses, the next outside them
+    sql = (
+        "SELECT o.id FROM (bank.orders o INNER JOIN bank.customer c ON o.customer_id = c.id) "
+        "INNER JOIN bank.regions r ON c.id = r.customer_id"
+    )
+    assert _codes(sql) == []
+    governed = _governed(sql)
+    assert (
+        "FROM bank.orders AS o INNER JOIN bank.customer AS c ON o.customer_id = c.id "
+        "INNER JOIN bank.regions AS r"
+    ) in governed
+    assert "c.id = 2" in governed
 
 
 _REFUSED_GROUPS = [
