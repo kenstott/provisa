@@ -315,7 +315,13 @@
     them (an unquoted name in lower case). A column qualified by a name that matches no relation in scope
     is refused. A source whose columns cannot be known never ends the check: a name is passed to the engine
     only when an unregistered source in scope is known to provide it. Row rules and masks written by administrators
-    may use any column; governance adds them, not the role.'
+    may use any column; governance adds them, not the role. (Amended 2026-11-04, VIEW BODIES ARE THE ADMINISTRATOR''S;
+    WRITES TOO:) Maintainer 2026-11-04: an administrator''s view definition is the administrator''s, as
+    a row rule is: in a view body only its select list is judged against the reader, and its other clauses
+    may use columns hidden from the reader; the every-clause rule applies to the reader''s own SQL. Writes
+    follow the every-clause rule: a column hidden from the role cannot be set, filtered on or returned in
+    UPDATE (SET and WHERE), DELETE (WHERE), INSERT ... SELECT or RETURNING, so affected-row counts cannot
+    act as an oracle on hidden values.'
   use_case: Schema visibility enforcement ensures unauthorized tables and columns are invisible to clients
     at design time.
   code:
