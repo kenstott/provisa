@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 53993579-aacd-4321-b3e7-53ce903d0915
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """A set-returning catalog function in FROM WITH ORDINALITY keeps its ordinality column
 (REQ-2167, REQ-2204): the replacement yields it, named by the alias list."""
 

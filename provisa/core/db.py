@@ -333,6 +333,11 @@ async def init_schema(
     _validate_org_id(org_id)
     schema_name = org_schema(org_id, env, region=region)
     async with pool.acquire() as conn:
+        # REQ-2185: the reference library's passages are a pgvector column under a vector index,
+        # and schema.sql declares them so; a control plane without pgvector is refused here.
+        from provisa.core import pgvector
+
+        await pgvector.require(conn)
         # This branch is PostgreSQL-only (non-PG returned above); the advisory lock is taken through
         # the abstraction so no PG-specific lock SQL appears here.
         async with conn.advisory_lock(schema_lock_key(schema_name)):

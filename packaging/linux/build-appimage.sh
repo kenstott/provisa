@@ -150,13 +150,14 @@ save_images() {
   # provisa-obs-images-<version>.tar.gz add-on.
   info "Saving service images (core)..."
   local images=(
-    "postgres:16"
+    "pgvector/pgvector:pg16-trixie"
     "edoburu/pgbouncer:latest"
     "redis:7-alpine"
     "trinodb/trino:480"
   )
   for img in "${images[@]}"; do
-    local tag="${img##*/}"
+    local tag="${img%@*}"  # a digest-pinned image is named by its tag
+    tag="${tag##*/}"
     tag="${tag//:/-}"
     tag="${tag//\//-}"
     local out="${IMAGES_DIR}/${tag}.tar.gz"

@@ -332,7 +332,7 @@ locals {
     cat > /root/.provisa/extensions/control-db/docker-compose.control-db.yml <<'YAML'
     services:
       control-db:
-        image: postgres:16.14@sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b
+        image: pgvector/pgvector:pg16-trixie@sha256:9cf8b511f0e9a2c209b61430fc139f1ab9c75edbb31fb1751db6617b246a897a
         restart: unless-stopped
         command: ["postgres", "-c", "max_connections=200"]
         environment:

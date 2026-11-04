@@ -377,6 +377,10 @@ async def copy_term_scans(conn: "Connection", src_schema: str, dst_schema: str) 
             insert(dst).from_select(columns, select(*(src.c[c] for c in columns)))
         )
     await _resync_sequences(conn, tables, dst_schema)
+    # REQ-2185: the copied passages searchable under their dimension's vector index.
+    from provisa.reference_library import store
+
+    await store.index_vectors(conn, dst_schema)
     return list(_SCAN_TABLES)
 
 

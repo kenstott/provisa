@@ -1851,8 +1851,9 @@ CREATE TABLE IF NOT EXISTS code_source_vectors (
 
 -- REQ-2185: the org's reference library: documents its assistants draw on, each proposed or kept,
 -- with domains (a list, or '*' for the whole org, as a glossary term's). A document's content is
--- held as its passages, each embedded by the org's vector model; vector is the embedding as a JSON
--- array of floats (the code_source_vectors pattern). Mirrors schema_org.reference_documents,
+-- held as its passages, each embedded by the org's vector model; vector is the embedding, a pgvector
+-- column of any dimension (provisa.core.pgvector), under one partial HNSW index per dimension in use
+-- (provisa.reference_library.store). Mirrors schema_org.reference_documents,
 -- reference_document_domains and reference_passages.
 CREATE TABLE IF NOT EXISTS reference_documents (
     id              SERIAL PRIMARY KEY,
@@ -1887,7 +1888,7 @@ CREATE TABLE IF NOT EXISTS reference_passages (
     section     TEXT,
     page        INTEGER,
     text        TEXT NOT NULL,
-    vector      TEXT NOT NULL,
+    vector      public.vector NOT NULL,
     tenant_id   UUID,
     UNIQUE (document_id, ordinal)
 );
