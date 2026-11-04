@@ -8,7 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""What a code source's bundle offers, from what its declarations say (REQ-1984, REQ-1993).
+"""What a code source's bundle offers, from what its declarations say (REQ-1984, REQ-1993,
+REQ-2200).
 
 Every language's reader writes the same document (docs/arch/code-sources.md, section 2); Node's
 (provisa/node/reader.mjs) writes every export of the bundle's entry module with its
@@ -38,7 +39,7 @@ JSDoc tags and its signature's types as trees. This module applies REQ-1984's ru
 Every problem is collected, and the bundle is refused with all of them at once.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-2131
+# Requirements: REQ-1984, REQ-1993, REQ-2131, REQ-2200
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -80,6 +81,10 @@ NODE_RULES = Rules(standard_tags=STANDARD_TAGS, sync_streams=False)
 #: Python (REQ-1993): a docstring has no standard tag beginning with ``@``, so every one but
 #: Provisa's is unknown; a stream is a generator or an async generator.
 PYTHON_RULES = Rules(standard_tags=frozenset(), sync_streams=True)
+#: Go (REQ-2200): a doc comment has no standard tag beginning with ``@``, so every one but
+#: Provisa's is unknown; a stream is an iterator function (``iter.Seq`` or ``iter.Seq2`` with an
+#: error), which Go has no async counterpart of.
+GO_RULES = Rules(standard_tags=frozenset(), sync_streams=True)
 
 
 # -- shapes -----------------------------------------------------------------------------------------
