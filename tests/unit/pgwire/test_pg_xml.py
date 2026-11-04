@@ -759,6 +759,9 @@ def test_a_read_cut_at_the_limit_warns_the_statement():
 
             return ResultData(iter(()))
 
+        def kinds(self) -> None:
+            return None
+
         def late_warnings(self) -> list[Any]:
             return ["cut"]
 
@@ -772,6 +775,77 @@ def test_a_read_cut_at_the_limit_warns_the_statement():
     reads = _SessionReads(Session())  # type: ignore[arg-type]
     reads.rows("SELECT 1")
     assert reads.warnings == ["first", "cut"]
+
+
+class _OneResult:
+    """A session whose every statement answers ``result``."""
+
+    def __init__(self, result: Any) -> None:
+        self.result = result
+        self.cursors: dict[str, Any] = {}
+
+    def _execute_sql_bound(self, sql: str, params: Any, formats: Any) -> Any:
+        return self.result
+
+
+def _row_result() -> Any:
+    from provisa.executor.result import QueryResult
+    from provisa.pgwire.server import ProvisaQueryResult
+
+    stream = QueryResult(
+        rows=[(1, "a & b", Decimal("2.50")), (2, None, Decimal("-1"))],
+        column_names=["id", "name", "price"],
+        column_types=["integer", "text", "decimal(10,2)"],
+    )
+    return ProvisaQueryResult(stream, "SELECT id, name, price FROM orders")
+
+
+def test_query_to_xml_maps_a_row_results_rows():
+    # REQ-2195: a row result reaches pgwire as its rows, not as Arrow; they are the values
+    # query_to_xml maps, not a passthrough's DataRow messages.
+    from provisa.pgwire.server import _SessionReads
+
+    reads = _SessionReads(_OneResult(_row_result()))  # type: ignore[arg-type]
+    document = xml_mapping._query_to_xml(
+        reads, "SELECT id, name, price FROM orders", True, False, ""
+    )
+    assert document == (
+        '<table xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">\n\n'
+        "<row>\n  <id>1</id>\n  <name>a &amp; b</name>\n  <price>2.50</price>\n</row>\n\n"
+        '<row>\n  <id>2</id>\n  <name xsi:nil="true"/>\n  <price>-1</price>\n</row>\n\n'
+        "</table>\n"
+    )
+
+
+def test_cursor_to_xml_maps_a_row_results_rows():
+    from provisa.pgwire.server import _CursorState, _RowBuffer, _SessionReads
+
+    result = _row_result()
+    data = result.data()
+    session = _OneResult(result)
+    session.cursors["c"] = _CursorState(
+        name="c", query_result=result, source=data.take(), buffer=_RowBuffer(data.raw, data.rows)
+    )
+    reads = _SessionReads(session)  # type: ignore[arg-type]
+    columns, rows = reads.cursor_rows("c", 1)
+    assert [c.name for c in columns] == ["id", "name", "price"]
+    assert rows == [(1, "a & b", Decimal("2.50"))]
+    assert reads.cursor_rows("c", 5)[1] == [(2, None, Decimal("-1"))]
+
+
+def test_a_passthroughs_datarow_messages_are_not_mapped_as_rows():
+    from provisa.executor.result import DataRowResult
+    from provisa.pgwire.server import ProvisaQueryResult, _SessionReads
+
+    passthrough = DataRowResult(
+        rows=[b"D\x00\x00\x00\x0b\x00\x01\x00\x00\x00\x011"],
+        column_names=["id"],
+        column_types=["integer"],
+    )
+    result = ProvisaQueryResult(passthrough, "SELECT id FROM orders")
+    reads = _SessionReads(_OneResult(result))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="passthrough's DataRow messages"):
+        reads.rows("SELECT id FROM orders")
 
 
 def test_a_statement_of_xml_and_money_describes_each_column_as_its_own_type():

@@ -1777,22 +1777,24 @@ def _normalize_cursor_name(raw: str) -> str:
 def _columns_of(result: Any) -> list[xml_mapping.Column]:
     """A described or executed result's columns: their names, type OIDs and text writers."""
     columns = []
+    kinds = result.kinds() or [None] * result.column_count()
     for index in range(result.column_count()):
         name, bvtype = result.column(index)
         oid = result.column_type_oid(index) or BVTYPE_TO_OID.get(bvtype, PG_UNKNOWN_OID)
-        columns.append(xml_mapping.Column(name, oid, _text_writer(bvtype)))
+        columns.append(xml_mapping.Column(name, oid, _text_writer(bvtype, kinds[index])))
     return columns
 
 
-def _text_writer(bvtype: Any) -> Callable[[Any], str]:  # REQ-2194
+def _text_writer(bvtype: Any, kind: str | None = None) -> Callable[[Any], str]:  # REQ-2194
     """A value's PostgreSQL text form as the wire's encoder writes it (REQ-2195: from the value
-    as it is)."""
+    as it is; ``kind`` the engine's type name of a row result's column, as the wire passes it)."""
     from provisa._encoders import pgwire as encoder
 
     types = [wire_type_name(bvtype)]
+    kinds = [kind]
 
     def text(value: Any) -> str:
-        message = encoder.encode_rows([(value,)], types, [0])
+        message = encoder.encode_rows([(value,)], types, [0], None, kinds)
         (cell,) = _data_row_cells(message)
         if cell is None:
             raise ValueError(f"no text form of {value!r}")
@@ -1817,17 +1819,22 @@ def _data_row_cells(message: bytes) -> list[bytes | None]:
     return cells
 
 
-def _python_rows(result: Any, chunks: Iterator[Any]) -> list[tuple]:
+def _python_rows(result: Any, chunks: Iterator[Any], raw: bool, row_form: bool) -> list[tuple]:
     """A result's batches as Python rows, each value brought to its described type: what
-    query_to_xml and its kin write an XML document from (they are not the wire's DataRow path)."""
+    query_to_xml and its kin write an XML document from (they are not the wire's DataRow path).
+    ``raw`` and ``row_form`` say the form the batches have (``ResultData.raw``/``.rows``): a
+    passthrough's DataRow messages, or a row result's rows (REQ-2195), else Arrow."""
     from provisa.core.ir_arrow import column_values
 
+    if raw:
+        raise ValueError("a passthrough's DataRow messages have no values to map to XML")
     rows: list[tuple] = []
     coerce = getattr(result, "_coerce", ())
     for chunk in chunks:
-        if isinstance(chunk, list):
-            raise ValueError("a passthrough's DataRow messages have no values to map to XML")
-        columns = [column_values(column) for column in chunk.columns]
+        if row_form:
+            columns = [list(column) for column in zip(*chunk, strict=True)]
+        else:
+            columns = [column_values(column) for column in chunk.columns]
         for i, coercer in coerce:
             columns[i] = [None if v is None else coercer(v) for v in columns[i]]
         rows.extend(zip(*columns, strict=True))
@@ -1852,7 +1859,8 @@ class _SessionReads:  # REQ-2167
     def rows(self, sql: str) -> tuple[list[xml_mapping.Column], list[Any]]:
         result = self._session._execute_sql_bound(sql, None, None)
         try:
-            read = _columns_of(result), _python_rows(result, result.data().take())
+            data = result.data()
+            read = _columns_of(result), _python_rows(result, data.take(), data.raw, data.rows)
             self.warnings.extend((*result.warnings, *result.late_warnings()))
             return read
         finally:
@@ -1870,7 +1878,10 @@ class _SessionReads:  # REQ-2167
     def cursor_rows(self, name: str, count: int) -> tuple[list[xml_mapping.Column], list[Any]]:
         cursor = self._cursor(name)
         fetched = _cursor_move(cursor, "forward", count)
-        return _columns_of(cursor.query_result), _python_rows(cursor.query_result, iter(fetched))
+        rows = _python_rows(
+            cursor.query_result, iter(fetched), cursor.buffer.raw, cursor.buffer.row_form
+        )
+        return _columns_of(cursor.query_result), rows
 
     def cursor_shape(self, name: str) -> list[xml_mapping.Column]:
         return _columns_of(self._cursor(name).query_result)
