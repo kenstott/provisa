@@ -102,7 +102,7 @@ Two independent enforcement layers: schema visibility and SQL enforcement (Stage
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-Schema visibility layer: unauthorized tables/columns do not appear in SDL or query builder; compiler rejects at parse time.
+Schema visibility layer: unauthorized tables/columns do not appear in SDL or query builder; compiler rejects at parse time. (Amended 2026-11-04, A COLUMN IS JUDGED WHERE IT RESOLVES:) Maintainer 2026-11-04: the column check (V003) resolves each unqualified column within its own SELECT scope to the in-scope registered relation that has it, and refuses it only when that relation does not serve the column to the role. A nested subquery's columns are judged in the subquery's own scope. A name that resolves to no registered relation in scope (a table function's alias or column, a lateral column, an outer reference) is not refused by governance: it is passed to the engine, which answers or errors as PostgreSQL does. A governed column is still checked wherever it resolves.
 
 **Use case:** Schema visibility enforcement ensures unauthorized tables and columns are invisible to clients at design time.
 
