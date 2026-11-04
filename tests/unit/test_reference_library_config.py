@@ -16,6 +16,8 @@ from provisa.core.models import ProvisaConfig, ReferenceLibraryConfig
 
 _ROLES = [{"id": "admin", "description": "admin", "capabilities": [], "domain_access": ["*"]}]
 
+_BASE = {"sources": [], "domains": [], "tables": []}
+
 
 def test_the_retrieval_setting_validates_and_defaults_to_passage():
     assert ReferenceLibraryConfig().retrieval == "passage"
@@ -29,12 +31,15 @@ def test_an_invalid_retrieval_is_a_validation_error():
 
 def test_provisa_config_declares_reference_library():
     config = ProvisaConfig.model_validate(
-        {"roles": _ROLES, "reference_library": {"retrieval": "graph"}}
+        {**_BASE, "roles": _ROLES, "reference_library": {"retrieval": "graph"}}
     )
     assert config.reference_library.retrieval == "graph"
     assert "reference_library" in config.model_fields_set
     assert (
-        "reference_library" not in ProvisaConfig.model_validate({"roles": _ROLES}).model_fields_set
+        "reference_library"
+        not in ProvisaConfig.model_validate({**_BASE, "roles": _ROLES}).model_fields_set
     )
     with pytest.raises(ValidationError):
-        ProvisaConfig.model_validate({"roles": _ROLES, "reference_library": {"retrieval": "x"}})
+        ProvisaConfig.model_validate(
+            {**_BASE, "roles": _ROLES, "reference_library": {"retrieval": "x"}}
+        )
