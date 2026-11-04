@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 9e352cbc-332a-4111-8c72-7f2929059edb
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """REQ-2167, REQ-2204: only a statement that is SELECT current_setting('x') [AS a] (with
 set_config) takes the shortcut; every other statement mentioning current_setting reads the catalog."""
 
