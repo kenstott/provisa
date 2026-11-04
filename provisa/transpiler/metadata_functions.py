@@ -1313,9 +1313,20 @@ def _relation_form(table: exp.Table, rewrite) -> exp.Expr:
         select = exp.select(exp.alias_(_written(value, [a.transform(rewrite) for a in args]), name))
     else:
         select = cast(exp.Select, _written(form, [a.transform(rewrite) for a in args]))
-    if not alias.columns and len(select.selects) == 1 and not select.is_star:
+    if table.args.get("ordinality"):
+        select = _with_ordinality(select)
+    elif not alias.columns and len(select.selects) == 1 and not select.is_star:
         alias = exp.TableAlias(this=alias.this.copy(), columns=[exp.to_identifier(alias.name)])
     return exp.Subquery(this=select, alias=alias)
+
+
+def _with_ordinality(select: exp.Select) -> exp.Select:
+    """WITH ORDINALITY: the form's rows and a last column numbering them from 1 in the order the
+    form yields them. The alias list names it; with none it is ``ordinality``, as in PostgreSQL."""
+    return exp.select(
+        exp.Star(),
+        exp.alias_(exp.Window(this=exp.RowNumber(), partition_by=[], order=None), "ordinality"),
+    ).from_(exp.Subquery(this=select, alias=exp.TableAlias(this=exp.to_identifier("_o"))))
 
 
 def _expanded_form(name, args, rewrite, needed: set[str]) -> exp.Expr:
