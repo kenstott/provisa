@@ -616,7 +616,7 @@ Settings are **org-scoped**: each org's choices sit on top of the deployment con
 | `sql_generation` | NL → SQL generation |
 | `table_selection` | Choosing which tables to include in the NL prompt |
 | `mcp_chat` | The chat assistant panel's tool-use loop |
-| `glossary_term_finding` | Find terms in a document. It has no default: a scan is refused until one is chosen |
+| `glossary_term_finding` | Find terms. It has no default: a scan is refused until one is chosen |
 
 The vendor field accepts any `aisuite`-compatible vendor (`anthropic`, `openai`, `groq`, `mistral`, `cohere`, and others) or a local endpoint (`ollama`, `lmstudio`). Blank model string removes the org's override and reverts to the deployment default.
 

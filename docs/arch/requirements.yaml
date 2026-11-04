@@ -89323,7 +89323,24 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     with a column definition list, percentile_cont and percentile_disc with WITHIN GROUP, a cstring[] modifier
     for the *typmodin functions, interval_in and domain_in with a type oid and typmod (the fixture creates
     a domain), and samples for btvarstrequalimage, int4_avg_combine and the range and multirange intersect
-    transition functions where PostgreSQL can call them; one it cannot call is reported for a decision.'
+    transition functions where PostgreSQL can call them; one it cannot call is reported for a decision.
+    (Amended 2026-11-04, A call PostgreSQL cannot make is skipped by design:) Maintainer 2026-11-04: every
+    overload PostgreSQL itself will not call from SQL is skipped by design, provided the refusal is about
+    the call and not about the values or types the check passed. The check decides this from the refusal''s
+    SQLSTATE and message: a refusal of the call itself (feature not supported, wrong object type, an aggregate
+    support function called outside an aggregate, a type that cannot accept or display a value, no collation
+    determinable for a non-collatable argument, a trigger or binary-upgrade function called directly, a
+    function no longer supported or not implemented) is skipped by design; a refusal of the arguments (no
+    such function for those types, a datatype mismatch, a cast that cannot be made, invalid input syntax,
+    any other data exception) is a gap in the check''s samples and stays not tested until a sample PostgreSQL
+    accepts is found. An overload counts as not callable only when every call the check tried was refused
+    for the call itself. This covers int4_avg_combine, range_intersect_agg_transfn, multirange_intersect_agg_transfn,
+    btvarstrequalimage, aclinsert, aclremove and xmlvalidate. Also skipped by design as the server''s own
+    state: pg_config, pg_available_extensions, pg_available_extension_versions, pg_current_xact_id_if_assigned,
+    txid_current_if_assigned, pg_stat_get_activity, pg_stat_get_db_checksum_failures, pg_stat_get_db_checksum_last_failure,
+    pg_stat_get_snapshot_timestamp and pg_stat_get_progress_info. domain_in, whose result has the pseudo-type
+    any, is compared by whether its answer IS NULL and by the refusal a value breaking the domain''s check
+    gets.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
@@ -90396,22 +90413,25 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Relationships action. Everything lands as draft in a review queue the steward works through (accept,
     edit, merge, reject, bulk accept), run by Polly under the org''s AI settings and the role''s LLM budget
     (REQ-1174). The existing Generate Definitions and Generate Relationships actions likewise produce drafts.
-    (Amended 2026-10-27, FIND TERMS IN A DOCUMENT, BY FILE OR URL:) 2026-10-28: the menu item is ''Find
-    terms in a document''. The document is given as a file or as an http(s) URL, since many policies and
-    regulations are published as web pages; a URL is fetched once and its content treated as the document,
-    its source passages citing the URL. A later step, not part of this requirement, may follow links from
-    an HTML page to a depth limit, reusing the files source''s HTML crawl (REQ-1960). (Amended 2026-10-28,
-    FROM THE LIBRARY OR A NEW DOCUMENT:) Find terms in a document offers two ways to choose the document:
-    pick one already in the reference library (REQ-2185), or give a new one as a file or an http(s) URL,
-    which joins the library as a proposed document. Either way the scan is the same and its proposals cite
-    the library''s copy. (Amended 2026-10-29, A SCAN ALWAYS ENDS:) A scan runs in background work that outlives
-    the request. glossary_term_finding has no default model: a scan is refused at start, saying where to
-    set one, until an org names it. Each model call has 300 seconds; a scan with no progress for 660 seconds,
-    or from an earlier launch, fails with the reason. The scan shows its model and step, a person can cancel
-    it, and a cancelled scan is stored failed with who cancelled it. (Amended 2026-10-29, A CUT-OFF ANSWER
-    SPLITS:) A reading the model cut off at its limit splits its batch in half, down to one passage, then
-    names that passage. A resolve cut off fails by name. An answer that is not JSON is asked once more,
-    then named.'
+    (Amended 2026-10-27, FIND TERMS IN A DOCUMENT, BY FILE OR URL:) [SUPERSEDED by REQ-2179, 2026-11-04
+    -- the menu item is ''Find terms'', since it reads tables too. Kept here for history; do not implement
+    against it.] 2026-10-28: the menu item is ''Find terms in a document''. [END SUPERSEDED BLOCK] The document
+    is given as a file or as an http(s) URL, since many policies and regulations are published as web pages;
+    a URL is fetched once and its content treated as the document, its source passages citing the URL. A
+    later step, not part of this requirement, may follow links from an HTML page to a depth limit, reusing
+    the files source''s HTML crawl (REQ-1960). (Amended 2026-10-28, FROM THE LIBRARY OR A NEW DOCUMENT:)
+    Find terms in a document offers two ways to choose the document: pick one already in the reference library
+    (REQ-2185), or give a new one as a file or an http(s) URL, which joins the library as a proposed document.
+    Either way the scan is the same and its proposals cite the library''s copy. (Amended 2026-10-29, A SCAN
+    ALWAYS ENDS:) A scan runs in background work that outlives the request. glossary_term_finding has no
+    default model: a scan is refused at start, saying where to set one, until an org names it. Each model
+    call has 300 seconds; a scan with no progress for 660 seconds, or from an earlier launch, fails with
+    the reason. The scan shows its model and step, a person can cancel it, and a cancelled scan is stored
+    failed with who cancelled it. (Amended 2026-10-29, A CUT-OFF ANSWER SPLITS:) A reading the model cut
+    off at its limit splits its batch in half, down to one passage, then names that passage. A resolve cut
+    off fails by name. An answer that is not JSON is asked once more, then named. (Amended 2026-11-04, THE
+    MENU ITEM IS FIND TERMS:) Maintainer 2026-11-04: the menu item and its dialog are named ''Find terms'',
+    since they read a document or a table (REQ-2202).'
   scenario: 'Given a policy document that defines "Client" in its definitions section and also calls clients "customers"
     and "CX" elsewhere
     When a steward runs From a document

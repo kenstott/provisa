@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2179: the glossary's Find terms in a document. The steward picks a reference library
+// REQ-2179: the glossary's Find terms. The steward picks a reference library
 // document they may read, or gives a new one as a file or URL (it joins the library as proposed,
 // in the domains they are working in), and starts a scan. The scans made so far are listed below,
 // each opening its review queue, and any can be scanned again on demand (REQ-2185): nothing is
@@ -57,7 +57,7 @@ import { useScanProgress } from "./useScanProgress";
 import { documentMark } from "../../lib/documentMark";
 
 /** The files the reference library reads. */
-const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx";
+const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx,.xml";
 /** How often the list is read again while a scan in it is running, in milliseconds. */
 const POLL_MS = 2000;
 
@@ -241,7 +241,7 @@ function ScanForm({
   return (
     <FormLayout>
       <FormField size="full">
-        <Text size="sm" c="dimmed">
+        <Text size="sm" c="dimmed" data-testid="find-terms-intro">
           {t("findTerms.intro")}
         </Text>
       </FormField>
@@ -528,7 +528,8 @@ export function FindTermsDialog({
 }) {
   const { t } = useTranslation();
   const [documents, setDocuments] = useState<ScannableDocument[] | null>(null);
-  const [scans, setScans] = useState<Scan[]>([]);
+  // Null until the first read returns, so the list never claims "nothing scanned" before it knows.
+  const [scans, setScans] = useState<Scan[] | null>(null);
   const [openScan, setOpenScan] = useState<number | null>(null);
   const [problem, setProblem] = useState("");
 
@@ -549,7 +550,7 @@ export function FindTermsDialog({
   }, [load]);
 
   // While the list shows a running scan it is read again, until each has ended.
-  const running = openScan === null && scans.some((s) => s.status === "running");
+  const running = openScan === null && !!scans?.some((s) => s.status === "running");
   useEffect(() => {
     if (!running) return;
     const timer = window.setTimeout(() => {
@@ -609,7 +610,9 @@ export function FindTermsDialog({
           )}
           <Stack gap="xs">
             <Title order={5}>{t("findTerms.scansTitle")}</Title>
-            <ScanList scans={scans} onOpen={setOpenScan} onRescan={(s) => void rescan(s)} />
+            {scans !== null && (
+              <ScanList scans={scans} onOpen={setOpenScan} onRescan={(s) => void rescan(s)} />
+            )}
           </Stack>
         </Stack>
       )}

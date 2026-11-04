@@ -123,6 +123,15 @@ describe("ReferenceLibraryTab", () => {
     await waitFor(() => expect(screen.queryByTestId("reflib-row-2")).toBeNull());
   });
 
+  it("offers eCFR's XML as a file it reads, as it reads an eCFR URL", async () => {
+    render(<ReferenceLibraryTab />);
+    fireEvent.click(await screen.findByTestId("reflib-add"));
+    const pickers = document.querySelectorAll<HTMLInputElement>('input[type="file"]');
+    expect(pickers.length).toBeGreaterThan(0);
+    pickers.forEach((picker) => expect(picker.accept.split(",")).toContain(".xml"));
+    expect(screen.getByRole("img", { name: /eCFR XML/ })).toBeInTheDocument();
+  });
+
   it("adds a document by its URL with its domains", async () => {
     api.addLibraryDocument.mockResolvedValue({ ...URL_DOC, id: 9, title: "Records schedule" });
     render(<ReferenceLibraryTab />);

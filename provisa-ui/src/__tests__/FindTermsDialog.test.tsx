@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2179: Find terms in a document. The steward picks a library document or gives a new file or
+// REQ-2179: Find terms. The steward picks a library document or gives a new file or
 // URL, with the domains they work in, and starts a scan; its review queue shows each candidate's
 // proposal, definition (explicit or synthesized), synonyms, passages and conflicting explanations
 // side by side, and the steward accepts, merges, rejects or accepts several at once. REQ-2202: or
@@ -324,6 +324,9 @@ describe("FindTermsDialog", () => {
     expect(screen.getByTestId("find-terms-summary")).toHaveTextContent(
       "12 passages read, 9 mentions, 2 candidate terms.",
     );
+    expect(screen.getByTestId("find-terms-left-out")).toHaveTextContent(
+      "Left out: 1 not ontology concepts",
+    );
     expect(within(draft).getByText("New term")).toBeInTheDocument();
     expect(within(draft).getByTestId("find-terms-synthesized")).toHaveTextContent("Synthesized");
     const conflicts = within(draft).getByTestId("find-terms-conflicts");
@@ -536,6 +539,8 @@ describe("FindTermsDialog", () => {
     open();
     fireEvent.click(await screen.findByTestId("find-terms-open-9"));
     const draft = await screen.findByTestId("find-terms-draft-13");
+    // A model read the text, so what it left out is shown.
+    expect(screen.getByTestId("find-terms-left-out")).toBeInTheDocument();
     fireEvent.click(within(draft).getByTestId("find-terms-passages-toggle-13"));
     const passages = within(draft).getAllByTestId("find-terms-passage");
     expect(passages[0]).toHaveTextContent("sales.policy_sections, row POL-1");
@@ -566,6 +571,9 @@ describe("FindTermsDialog", () => {
     expect(within(row).getByTestId("find-terms-table-scan-9")).toHaveTextContent("Table");
     fireEvent.click(screen.getByTestId("find-terms-open-9"));
     const draft = await screen.findByTestId("find-terms-draft-13");
+    // No model read the rows, so nothing was left out as a model's answer would be.
+    expect(screen.getByTestId("find-terms-summary")).toBeInTheDocument();
+    expect(screen.queryByTestId("find-terms-left-out")).toBeNull();
     expect(within(draft).queryByText("Business concept")).toBeNull();
     expect(within(draft).getByTestId("find-terms-explicit")).toHaveTextContent(
       "Defined in the table",
@@ -574,5 +582,37 @@ describe("FindTermsDialog", () => {
     expect(within(draft).getByTestId("find-terms-passage")).toHaveTextContent(
       "sales.data_dictionary, row Churn rate",
     );
+  });
+
+  it("names itself and its scans for a document or a table alike", async () => {
+    api.fetchScans.mockResolvedValue([]);
+    open();
+    expect(await screen.findByTestId("find-terms-no-scans")).toHaveTextContent(
+      "Nothing has been scanned yet.",
+    );
+    expect(
+      screen.getByText("Find terms", { selector: ".mantine-Modal-title" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Find terms in a document/)).toBeNull();
+    expect(screen.getByTestId("find-terms-intro")).toHaveTextContent("a document or table");
+  });
+
+  it("names a table scan's source, and its reading, without a document", async () => {
+    api.fetchScans.mockResolvedValue([{ ...TABLE_SCAN, status: "running", step: null }]);
+    open();
+    const scans = await screen.findByTestId("find-terms-scans");
+    expect(within(scans).getByRole("columnheader", { name: "Source" })).toBeInTheDocument();
+    expect(screen.getByTestId("find-terms-progress-9")).toHaveTextContent(
+      "Reading the passages...",
+    );
+  });
+
+  it("offers eCFR's XML as a file it reads", async () => {
+    open();
+    await screen.findByTestId("find-terms-scan-7");
+    fireEvent.click(screen.getByRole("radio", { name: "A new file" }));
+    const picker = document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(picker?.accept.split(",")).toContain(".xml");
+    expect(screen.getByRole("img", { name: /eCFR XML/ })).toBeInTheDocument();
   });
 });

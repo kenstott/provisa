@@ -183,8 +183,7 @@ def require_named(config: dict[str, Any]) -> None:
     named = (config.get("ai_models") or {}).get(OPERATION)
     if not (named.get("model") if isinstance(named, dict) else named):
         raise ModelRefused(
-            "no AI model is set for finding terms in a document: choose one under "
-            f"{WHERE_TO_SET}, Find terms in a document"
+            f"no AI model is set for finding terms: choose one under {WHERE_TO_SET}, Find terms"
         )
 
 
