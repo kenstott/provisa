@@ -28015,7 +28015,13 @@
     any other column, or that contains a subquery, and any mask on a column the statement reads, leaves
     the statement to its table as before. Governance is decided on the base table before the rewrite; the
     view''s own grants are not consulted, since the rewrite only replaces how the already-governed statement
-    is computed.'
+    is computed. (Amended 2026-11-04, A REQUEST CAN DECLINE THE VIEWS:) Maintainer approved: a request can
+    ask not to be answered from any materialized view, with the existing request-hint form: -- @provisa
+    mv=off in SQL, # @provisa mv=off in GraphQL, and the same key wherever a transport carries request hints.
+    Such a request is governed exactly as any other and read from its tables. It needs no right, since it
+    can only make the read slower, never widen what the role sees. Uses: a read that must be live rather
+    than as of the view''s last refresh, checking a view''s answer against its tables, and measuring what
+    a view saves.'
   use_case: Enables query acceleration via pre-computed aggregates stored in materialized views, allowing
     queries requesting SUM/AVG/etc over MV-backed tables to read pre-aggregated results instead of materializing
     raw rows and computing aggregates at query time.
