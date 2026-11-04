@@ -142,6 +142,9 @@ describe("the star schema wizard", () => {
       "customer_id → customer",
     );
 
+    // REQ-2115: Create changes something, so Polly asks the user first; Back changes nothing.
+    expect(screen.getByTestId("wizard-create")).toHaveAttribute("data-changes", "true");
+    expect(screen.getByTestId("wizard-back")).toHaveAttribute("data-changes", "false");
     await userEvent.click(screen.getByTestId("wizard-create"));
     await screen.findByTestId("wizard-created");
     expect(registerEntity).toHaveBeenCalledWith(

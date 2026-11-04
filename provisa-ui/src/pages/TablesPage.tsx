@@ -160,14 +160,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { suggestTableAlias } = useSuggestTableAlias();
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
-  // REQ-2115: Polly's read_screen reads the page's view from here. A table is named only once the
-  // list holds it, so a link to one that does not exist reads as none.
-  useScreenInputs(viewsOnly ? "/views" : "/tables", {
-    view: erd.on ? "erd" : "list",
-    table: tables.find((tb) => tb.id === expanded)?.id ?? null,
-    domains: erd.focus.domains,
-    objects: erd.focus.objects,
-  });
   // One request for every row; asked for often only while a build runs or a detail is open.
   const { replicaBuilds } = useReplicaBuilds({ watching: expanded !== null });
   // REQ-1386: table whose governed SELECT * preview modal is open.
@@ -177,6 +169,16 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [showForm, setShowForm] = useState(false);
   // REQ-1164: entity/fact modeling; REQ-2199: + Model's drop down also opens a method's wizard.
   const [showModeling, setShowModeling] = useState<false | "entityFact" | "star" | "vault">(false);
+  // REQ-2115: Polly's read_screen reads the page's view from here, and the modeling form or wizard
+  // open (a wizard's step is published by the step itself). A table is named only once the list
+  // holds it, so a link to one that does not exist reads as none.
+  useScreenInputs(viewsOnly ? "/views" : "/tables", {
+    view: erd.on ? "erd" : "list",
+    table: tables.find((tb) => tb.id === expanded)?.id ?? null,
+    domains: erd.focus.domains,
+    objects: erd.focus.objects,
+    modeling: showModeling || null,
+  });
   // REQ-1318: Views-page definition-mode flow (SQL editor vs metric/dimension picker).
   const [showViewForm, setShowViewForm] = useState(false);
   const [editingViewDef, setEditingViewDef] = useState<RegisteredTable | null>(null);

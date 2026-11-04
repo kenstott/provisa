@@ -17,6 +17,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../test-utils/render";
+import { runUiActions } from "../mcp/uiActions";
 
 const api = vi.hoisted(() => ({
   fetchScannableDocuments: vi.fn(),
@@ -287,6 +288,33 @@ describe("FindTermsDialog", () => {
     open();
     fireEvent.click(await screen.findByTestId("find-terms-rescan-7"));
     await waitFor(() => expect(api.startScan).toHaveBeenCalledWith({ document_id: 4 }, ["sales"]));
+  });
+
+  // REQ-2115: a scan runs and spends the model's budget, so Polly starts one only on the user's yes.
+  it("asks the user before Polly starts or repeats a scan, and starts none on a no", async () => {
+    open();
+    await screen.findByTestId("find-terms-scan-7");
+    const confirm = vi.fn().mockResolvedValue(false);
+    const steps = { confirm, paceMs: 0, waitMs: 300 };
+    const out = await runUiActions(
+      [
+        { do: "press", target: { role: "radio", name: "A URL" } },
+        { do: "fill", target: { testId: "find-terms-url" }, value: "https://x.example.com/a" },
+        { do: "press", target: { testId: "find-terms-start" } },
+      ],
+      steps,
+    );
+    expect(out.success).toBe(false);
+    expect(out.steps.at(-1)).toBe(
+      'The user declined: the element with test id "find-terms-start" was not pressed.',
+    );
+    const again = await runUiActions(
+      [{ do: "press", target: { testId: "find-terms-rescan-7" } }],
+      steps,
+    );
+    expect(again.success).toBe(false);
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(api.startScan).not.toHaveBeenCalled();
   });
 
   it("shows each draft's proposal, definition, passages and conflicts side by side", async () => {

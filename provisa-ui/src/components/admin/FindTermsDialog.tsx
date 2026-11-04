@@ -366,6 +366,8 @@ function ScanForm({
             leftSection={<ScanSearch size={14} />}
             onClick={() => void start()}
             loading={starting}
+            // REQ-2115: a scan runs and spends the model's budget; Polly asks the user first.
+            data-changes="true"
             data-testid="find-terms-start"
           >
             {t("findTerms.start")}
@@ -483,6 +485,7 @@ function ScanList({
                         variant="subtle"
                         leftSection={<RotateCw size={12} />}
                         onClick={() => onRescan(s)}
+                        data-changes="true"
                         data-testid={`find-terms-rescan-${s.id}`}
                       >
                         {t("findTerms.rescan")}

@@ -88,9 +88,7 @@ export function ErdView({
   // A click leaves the form open in the panel, as a list row's does.
   const guard = useLeaveGuard();
   const { focus, setFocus, collapsed, layout, setLayout, takeFocus } = useErdView();
-  // Polly's read_screen reads the collapsed domains from here: they are the panel's own state.
   const [collapsedDomains, setCollapsedDomains] = useState<string[] | "all">([]);
-  useScreenInputs(`/${page}`, { collapsed: collapsedDomains });
   const { checkedDomains, domains: filterDomains } = useDomainFilter();
   const { tables, loading: tablesLoading } = useTables();
   const { relationships, loading: relationshipsLoading } = useAllRelationships();
@@ -147,6 +145,9 @@ export function ErdView({
   const unsaved =
     edited ||
     (shown !== null && shown === focused && !sameFocus(focus, layoutFocus(shown, tables)));
+  // Polly's read_screen reads the collapsed domains (the panel's own state) and the saved layout
+  // shown, with whether it is edited since it was loaded or saved, from here.
+  useScreenInputs(`/${page}`, { collapsed: collapsedDomains, layout, layoutUnsaved: unsaved });
   // The filter hides only the domains it offers and the reader unticked: a domain it does not offer
   // (a system domain the acting roles' domain list leaves out, ops among them) cannot be ticked
   // again from the page, so it stays drawn.

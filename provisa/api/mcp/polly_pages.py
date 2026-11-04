@@ -37,17 +37,29 @@ PAGES: dict[str, PollyPage] = {
     "/welcome": PollyPage("a new org's welcome"),
     "/docs": PollyPage("the product documentation"),
     "/demos/:name": PollyPage("a named demo's opening page"),
-    "/sources": PollyPage("data sources", "?source= etc. as its links do"),
+    "/sources": PollyPage(
+        "data sources. + Source opens the picker of every source type; the JDBC form picks a "
+        "driver (jdbc-source-driver-select), fills its URL or host fields, and Detect "
+        "(jdbc-source-detect) ticks the capabilities the source passes. A driver jar is a file on "
+        "the user's machine: they choose it themselves",
+        "?source= etc. as its links do",
+    ),
     "/tables": PollyPage(
         "the registered tables, as a list or the ERD",
         "query parameters: view=erd, table=<id> (its panel), domains=<a,b> (only these shown), "
-        "objects=<domain.table,...> (highlighted), collapsed=<a,b> or collapsed=all",
-        "inputs: view, table, domains, objects, collapsed",
+        "objects=<domain.table,...> (highlighted), collapsed=<a,b> or collapsed=all, "
+        "layout=<saved layout name>. + Model (tables-model-toggle) opens the entity/fact form; "
+        "its drop down (tables-model-menu) offers tables-model-entity-fact, tables-model-star "
+        "and tables-model-vault, the Star Schema and Data Vault wizards, stepped with wizard-next "
+        "and wizard-back and ended with wizard-create",
+        "inputs: view, table, domains, objects, modeling (entityFact, star, vault or null), "
+        "wizardStep (number, count, title), collapsed, layout, layoutUnsaved",
     ),
     "/relationships": PollyPage(
         "relationships, as a list or the same ERD",
-        "query parameters: view=erd, relationship=<id>, domains, objects, collapsed, as /tables",
-        "inputs: view, relationship, domains, objects, collapsed",
+        "query parameters: view=erd, relationship=<id>, domains, objects, collapsed, layout, "
+        "as /tables",
+        "inputs: view, relationship, domains, objects, collapsed, layout, layoutUnsaved",
     ),
     "/team": PollyPage("the org's members"),
     "/security": PollyPage("redirects to /security/roles"),
@@ -104,8 +116,10 @@ PAGES: dict[str, PollyPage] = {
         "state.panel 'graph' or 'terms', state.term <id>, and state.graph, the graph's controls: "
         "flat true (2D) or false (3D), layout 'auto', 'force' or 'layered', preset 'ontology' or "
         "'taxonomy', layers from 'ontology', 'domains', 'data', 'columns'; or query parameters "
-        "panel= and term=",
-        "inputs: panel, term, termName, editing, graph",
+        "panel= and term=. Find terms (glossary-generate-menu, then glossary-find-terms-btn) "
+        "reads a document by URL or file, or a registered table; find-terms-start starts the "
+        "scan. A term's delete is glossary-delete-btn, then glossary-delete-confirm-confirm",
+        "inputs: panel, term, termName, editing, graph, findTerms (the dialog is open)",
     ),
     "/admin/overview": PollyPage("the admin dashboard"),
     "/admin/domains": PollyPage("domains"),
@@ -148,9 +162,13 @@ def _row(route: str, page: PollyPage) -> str:
 SYSTEM_SECTION = (
     "THE PAGES: every page of the app, how to set it and what read_screen reports. A navigate "
     "with state or query parameters on these reads the screen back before it answers. On the "
-    "ERD (/tables or /relationships with view=erd) a table's panel, the focus and the collapsed "
-    "domains are all in the link; its exports are the buttons erd-export-svg, erd-export-png, "
-    "erd-export-jpeg and erd-export-json, pressed with navigate's actions by testId, and a "
-    "whole domain collapses with collapsed=<domain id>.\n"
+    "ERD (/tables or /relationships with view=erd) a table's panel, the focus, the collapsed "
+    "domains and the saved layout shown are all in the link; its exports are in the canvas "
+    "bar's Download menu: press erd-download, then erd-export-svg, erd-export-png, "
+    "erd-export-jpeg or erd-export-json, with navigate's actions by testId, and a whole domain "
+    "collapses with collapsed=<domain id>. Its Layout menu (erd-layout-menu) chooses "
+    "erd-layout-automatic or erd-layout-choose-<name>, saves with erd-layout-save, saves under "
+    "a new name with erd-layout-save-as (fill erd-layout-name, press erd-layout-save-as-ok) and "
+    "deletes with erd-layout-delete, then erd-layout-delete-confirm-confirm.\n"
     + "\n".join(f"- {_row(route, page)}" for route, page in PAGES.items())
 )

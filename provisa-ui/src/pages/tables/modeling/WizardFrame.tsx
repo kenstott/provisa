@@ -15,6 +15,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Input, Text } from "@mantine/core";
 import { FormField, FormFooter } from "../../../components/form/FormLayout";
+import { useScreenInputs } from "../../../mcp/screenState";
 import { FieldLabel } from "../FieldLabel";
 
 /** Which step this is, its title and what it asks, at the head of the step. */
@@ -32,6 +33,8 @@ export function StepHead({
   testId: string;
 }) {
   const { t } = useTranslation();
+  // REQ-2115: Polly's read_screen reads the step on screen; a wizard opens only on Tables.
+  useScreenInputs("/tables", { wizardStep: { number: index + 1, count, title } });
   return (
     <FormField size="full">
       <div data-testid={testId}>
@@ -87,6 +90,7 @@ export function WizardFooter({
   problem,
   busy = false,
   nextTestId = "wizard-next",
+  creates = false,
 }: {
   first: boolean;
   nextLabel: string;
@@ -96,6 +100,8 @@ export function WizardFooter({
   problem: string | null;
   busy?: boolean;
   nextTestId?: string;
+  /** Next creates the model (the review's Create); every other step's Next only moves on. */
+  creates?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -105,11 +111,12 @@ export function WizardFooter({
       problem={problem}
       action={
         <>
-          <Button onClick={onNext} loading={busy} data-testid={nextTestId}>
+          {/* REQ-2115: Polly asks the user before she presses Create, not Next or Back. */}
+          <Button onClick={onNext} loading={busy} data-changes={creates} data-testid={nextTestId}>
             {nextLabel}
           </Button>
           {!first && (
-            <Button onClick={onBack} disabled={busy} data-testid="wizard-back">
+            <Button onClick={onBack} disabled={busy} data-changes={false} data-testid="wizard-back">
               {t("modelingWizard.back")}
             </Button>
           )}
