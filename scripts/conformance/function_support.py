@@ -2460,6 +2460,9 @@ DECIDED_FUNCTIONS = {
         STORAGE_GROUP,
     ),
     **dict.fromkeys(("pg_read_file", "pg_read_binary_file"), SERVER_FILES_GROUP),
+    # With missing_ok, pg_stat_file answers NULL as a server without the file does; the fixture
+    # server has it. Without, its refusal is the decision (_DECIDED_ERRORS).
+    "pg_stat_file(text, boolean)": SERVER_FILES_GROUP,
     **dict.fromkeys(
         (
             "pg_wal_replay_pause",

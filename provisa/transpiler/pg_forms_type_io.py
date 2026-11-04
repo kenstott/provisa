@@ -1582,6 +1582,30 @@ _FLOAT8_STATES = frozenset(
 RESULTS.update(dict.fromkeys(_FLOAT8_STATES, "double precision"))
 
 
+def _as_interval(said: exp.Expr, dialect: str | None) -> exp.Expr:
+    """interval_in's folded text as the interval it reads, on an engine that holds PostgreSQL's
+    interval: the wire says interval only of a value the engine holds as one (cast_types).
+    PostgreSQL reads its own text; DuckDB, which does not read all of it ("-1 years +2 days"), is
+    given the interval's fields. A refusal, an infinity DuckDB has no interval of, and another
+    engine's answer stay as they are."""
+    if not (isinstance(said, exp.Literal) and said.is_string):
+        return said
+    if dialect == "postgres":
+        return exp.Cast(this=said, to=exp.DataType.build("interval", dialect="postgres"))
+    if dialect not in (None, "duckdb") or said.this in ("infinity", "-infinity"):
+        return said
+    fields = literals.interval_fields(said.this)
+    if fields is None:
+        return said
+    months, days, us = (
+        exp.Anonymous(this=f"to_{unit}", expressions=[_said_number(number, sql_type)])
+        for unit, number, sql_type in zip(
+            ("months", "days", "microseconds"), fields, ("integer", "integer", "bigint")
+        )
+    )
+    return exp.Paren(this=exp.Add(this=exp.Add(this=months, expression=days), expression=us))
+
+
 def _folded(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
     """``_fold_row``, with PostgreSQL's refusal of a literal as an expression that raises it."""
     try:
@@ -1639,6 +1663,8 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
                 return node
             return exp.alias_(said, name) if in_select else said
         folded = _folded(name, arguments)
+        if folded is not None and name == "interval_in":
+            folded = _as_interval(folded, dialect)
         if folded is not None:
             return exp.alias_(folded, name) if in_select else folded
         if name.endswith("in"):

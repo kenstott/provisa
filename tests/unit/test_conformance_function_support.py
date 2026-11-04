@@ -2335,6 +2335,9 @@ def _named(name: str, argtypes: tuple[str, ...], rettype: str, volatility: str =
         # (3): no function reads the server's files.
         (_named("pg_read_file", ("text", "boolean"), "text"), support.SERVER_FILES_GROUP),
         (_named("pg_read_binary_file", ("text",), "bytea"), support.SERVER_FILES_GROUP),
+        # pg_stat_file with missing_ok answers as a server without the file: NULL, where the
+        # fixture server has it (2026-11-04).
+        (_named("pg_stat_file", ("text", "boolean"), "record"), support.SERVER_FILES_GROUP),
         # REQ-579: a collation's version is the server's.
         (_named("pg_collation_actual_version", ("oid",), "text"), support.SERVER_VERSION_GROUP),
         (
@@ -2347,6 +2350,14 @@ def test_a_decided_function_s_null_answer_is_skipped_by_design(fn, group):
     entry = _both(fn, "System", _ok("114688", oid=20), _ok(None, oid=20))
     assert entry["outcome"] == "by_design" and entry["group"] == group
     assert entry["requirement"] == support.GROUP_REQUIREMENTS.get(group, "REQ-2167")
+
+
+def test_pg_stat_file_of_one_argument_is_not_decided_whatever_it_answers():
+    """Without missing_ok, a server without the file refuses: that refusal is the decision
+    (_DECIDED_ERRORS), and any other answer is measured."""
+    fn = _named("pg_stat_file", ("text",), "record")
+    entry = _both(fn, "System", _ok("(4096)", oid=2249), _ok(None, oid=2249))
+    assert entry["outcome"] != "by_design"
 
 
 def test_a_collation_s_version_cites_the_server_version_decision():
