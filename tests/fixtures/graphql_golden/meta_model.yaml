@@ -3646,7 +3646,7 @@ tables:
     visible_to:
     - viewer
   - name: datname
-    data_type: varchar
+    data_type: varchar collate "default"
     visible_to:
     - viewer
   - name: deadlocks
@@ -4806,16 +4806,20 @@ tables:
     data_type: bigint
     visible_to:
     - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
   - name: relid
     data_type: oid
     visible_to:
     - viewer
   - name: relname
-    data_type: varchar
+    data_type: varchar collate "default"
     visible_to:
     - viewer
   - name: schemaname
-    data_type: varchar
+    data_type: varchar collate "default"
     visible_to:
     - viewer
   - name: seq_scan

@@ -1,7 +1,10 @@
 # Which cash needs a currency transaction report: each person and business day whose cash in, or
 # cash out, comes to more than $10,000 across their accounts and branches.
 query CtrRequired {
-  b__viewCtrRequired(limit: 20) {
+  b__viewCtrRequired(
+    order_by: [{ businessDay: asc }, { person: asc }, { direction: asc }]
+    limit: 20
+  ) {
     person
     businessDay
     direction
