@@ -57,7 +57,7 @@ import { useScanProgress } from "./useScanProgress";
 import { documentMark } from "../../lib/documentMark";
 
 /** The files the reference library reads. */
-const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx";
+const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx,.xml";
 /** How often the list is read again while a scan in it is running, in milliseconds. */
 const POLL_MS = 2000;
 
@@ -241,7 +241,7 @@ function ScanForm({
   return (
     <FormLayout>
       <FormField size="full">
-        <Text size="sm" c="dimmed">
+        <Text size="sm" c="dimmed" data-testid="find-terms-intro">
           {t("findTerms.intro")}
         </Text>
       </FormField>

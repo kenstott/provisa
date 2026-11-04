@@ -699,13 +699,16 @@ export function TermReviewQueue({
               candidates: summary.candidates,
             })}
           </Text>
-          <Text size="xs" c="dimmed">
-            {t("findTerms.leftOut", {
-              count: summary.left_out.not_a_concept,
-              misquoted: summary.left_out.quote_not_in_passage,
-              unresolved: summary.left_out.unresolved,
-            })}
-          </Text>
+          {/* A table of terms and definitions is read with no model, so nothing is left out. */}
+          {!(scan.source_table && "term_column" in scan.source_table) && (
+            <Text size="xs" c="dimmed" data-testid="find-terms-left-out">
+              {t("findTerms.leftOut", {
+                count: summary.left_out.not_a_concept,
+                misquoted: summary.left_out.quote_not_in_passage,
+                unresolved: summary.left_out.unresolved,
+              })}
+            </Text>
+          )}
         </Stack>
       )}
 
