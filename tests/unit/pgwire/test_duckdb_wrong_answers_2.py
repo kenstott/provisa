@@ -349,17 +349,16 @@ _STEADY_ZONES = {
 def test_a_zones_offset_and_daylight_flag_are_the_pinned_releases(conn: Any, zone: str, row: str):
     """A zone's offset and daylight flag are the pinned release's reading of it now, as its
     abbreviation is, so the three agree (REQ-2167, amended 2026-11-03)."""
-    oid, rows = _rows(
-        conn,
-        "SELECT z FROM pg_catalog.pg_timezone_names() AS z WHERE z.name = '" + zone + "'",
-    )
-    assert (oid, rows) == (2249, [row])
+    oid, rows = _rows(conn, 'SELECT pg_catalog."pg_timezone_names"() AS v')
+    assert (oid, [r for r in rows if r.startswith(f"({zone},")]) == (2249, [row])
 
 
 def _local_time_types(zone: str) -> set[str]:
     """The (abbreviation, offset seconds, daylight flag) local time types the pinned release's
-    compiled data for ``zone`` declares (its TZif v2 body's ttinfo records)."""
+    compiled data for ``zone`` declares: its TZif v2 body's ttinfo records, and the standard and
+    daylight times of its footer's rule (a slim file holds some only there, Norfolk's +12)."""
     import importlib.resources
+    import re
     import struct
 
     data = importlib.resources.files("tzdata.zoneinfo").joinpath(*zone.split("/")).read_bytes()
@@ -377,6 +376,20 @@ def _local_time_types(zone: str) -> set[str]:
         offset, dst, index = struct.unpack(">lBB", data[at + 6 * k : at + 6 * k + 6])
         name = names[index : names.index(b"\0", index)].decode()
         found.add(f"{name}|{offset}|{'true' if dst else 'false'}")
+    term = r"(<[^>]+>|[A-Za-z]+)([-+]?\d+(?::\d+){0,2})?"
+    rule = re.match(term + "(?:" + term + ")?", data.rsplit(b"\n", 2)[-2].decode())
+    if rule and rule.group(2):
+
+        def seconds(text: str) -> int:
+            sign = -1 if text.startswith("-") else 1
+            parts = [int(p) for p in text.lstrip("+-").split(":")] + [0, 0]
+            return -sign * (parts[0] * 3600 + parts[1] * 60 + parts[2])
+
+        standard = seconds(rule.group(2))
+        found.add(f"{rule.group(1).strip('<>')}|{standard}|false")
+        if rule.group(3):
+            daylight = seconds(rule.group(4)) if rule.group(4) else standard + 3600
+            found.add(f"{rule.group(3).strip('<>')}|{daylight}|true")
     return found
 
 

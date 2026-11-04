@@ -439,11 +439,15 @@ def _offset_text(offset: timedelta) -> str:
     return text
 
 
+def _clock_text(value: time | datetime) -> str:
+    """time_out or timestamp_out of a naive value: a fraction without its trailing zeros."""
+    clock = value.isoformat(" ") if isinstance(value, datetime) else value.isoformat()
+    return clock.rstrip("0") if value.microsecond else clock
+
+
 def _timetz_text(value: time) -> str:
     """timetz_out: a fraction without its trailing zeros, then the offset."""
-    clock = value.replace(tzinfo=None).isoformat()
-    if value.microsecond:
-        clock = clock.rstrip("0")
+    clock = _clock_text(value.replace(tzinfo=None))
     offset = value.utcoffset()
     return clock if offset is None else clock + _offset_text(offset)
 
@@ -493,6 +497,8 @@ def _text(value: Any, kind: str) -> Any:
         return _numeric_text(value)
     if isinstance(value, time) and value.tzinfo is not None:
         return _timetz_text(value)
+    if isinstance(value, (time, datetime)) and value.tzinfo is None:
+        return _clock_text(value)
     if isinstance(value, _ADDRESSES):
         return _address_text(value, kind)
     return str(value)
