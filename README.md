@@ -440,6 +440,20 @@ Worker count can be changed at any time by editing `~/.provisa/config.yaml` (`fe
 
 **Bring your own engine cluster.** Point Provisa at an existing external engine cluster instead of the embedded workers. We recommend this for large-scale or cloud deployments, and [docs/deployment.md](docs/deployment.md) covers the configuration.
 
+## Contributing
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kenstott/provisa?quickstart=1)
+
+Open the repository in the dev container and you can run the tests without any other setup. In VS Code, install the Dev Containers extension and run **Dev Containers: Reopen in Container**. In GitHub, choose **Code → Codespaces → Create codespace**. The container brings the pinned Python, Rust, Go and Node toolchains, a PostgreSQL with pgvector, and Docker for the tests that start their own containers. The first build syncs the Python dependencies, compiles the Rust encoders and installs the UI's packages.
+
+When it finishes, this command runs the unit suite:
+
+```bash
+pytest tests/unit -n auto
+```
+
+For the UI unit tests, run `npm run test:unit` in `provisa-ui`.
+
 ## License
 
 Business Source License 1.1 (unmodified, per MariaDB's Licensor covenants). Each

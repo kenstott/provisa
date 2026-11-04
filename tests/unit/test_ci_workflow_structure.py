@@ -46,6 +46,7 @@ _OWNED = {
     r"security import\b": "apple-signing",
     r"key: (\$\{\{ inputs.key-prefix \}\})?trino-plugins-": "trino-plugins",
     r"gh release create": "ensure-release",
+    r"rm -rf /usr/share/dotnet": "free-runner-disk",
 }
 
 
@@ -140,6 +141,28 @@ def test_every_job_that_needs_a_python_environment_gets_it_from_the_action():
             assert any((s.get("uses") or "") == "./.github/actions/setup-python" for s in steps), (
                 f"{workflow}:{job} runs uv without the setup-python action"
             )
+
+
+def test_every_prebuilt_job_that_builds_the_app_image_frees_runner_disk_first():
+    """The arm64 build of provisa/provisa:local (QEMU, the full site-packages copied between
+    stages) next to the saved core and Trino images needs more disk than a hosted runner always
+    leaves free: on an AWS-backed ubuntu-latest runner (run 41836852453) it ran out at the
+    installer-to-runtime COPY, where Azure-backed runners had passed with the same inputs."""
+    path = REPO / ".github" / "workflows" / "release-prebuilt.yml"
+    builders = []
+    for job, body in (yaml.safe_load(path.read_text())["jobs"] or {}).items():
+        steps = body.get("steps") or []
+        builds = [
+            i for i, s in enumerate(steps) if "-t provisa/provisa:local" in (s.get("run") or "")
+        ]
+        if not builds:
+            continue
+        builders.append(job)
+        frees = [
+            i for i, s in enumerate(steps) if s.get("uses") == "./.github/actions/free-runner-disk"
+        ]
+        assert frees and frees[0] < builds[0], f"{job} builds the app image without freeing disk"
+    assert set(builders) == {"pull-images-core", "pull-images-core-amd64"}, builders
 
 
 # --- one lane workflow (stage 2) ------------------------------------------------------------------
@@ -1064,7 +1087,7 @@ def test_the_reusable_workflows_are_checked_only_after_every_action_is():
     assert level_zero == {
         job for job, body in jobs.items() if str(body.get("name", "")).startswith("action / ")
     }
-    assert len(level_zero) == 11
+    assert len(level_zero) == 12
     assert jobs["level-1"]["needs"] == ["lane-results", "release-results"]
 
 

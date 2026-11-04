@@ -125,6 +125,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The app image's build and the saved images need more disk than every hosted runner
+      # leaves free (an AWS-backed runner ran out mid-build, run 41836852453).
+      - name: Free runner disk
+        uses: ./.github/actions/free-runner-disk
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
         with:
@@ -246,6 +251,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # The app image's build and the saved images need more disk than every hosted runner
+      # leaves free (an AWS-backed runner ran out mid-build, run 41836852453).
+      - name: Free runner disk
+        uses: ./.github/actions/free-runner-disk
 
       # The provisa/provisa:local image serves the React SPA from static/ (Dockerfile
       # COPY static/ ./static/). A clean checkout ships static/ empty, so without this

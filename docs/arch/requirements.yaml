@@ -330,7 +330,15 @@
     A column the role is not served therefore does not exist in the statement the engine runs, and naming
     it fails as an unknown column, whatever the scoping. A data-modifying statement anywhere in the tree,
     a CTE included, is a write and is admitted and governed as one. The column check (V003) stays as an
-    early, readable refusal; it is no longer the boundary.'
+    early, readable refusal; it is no longer the boundary. (Amended 2026-11-04, HIDDEN JOIN KEYS, ONE WRITE,
+    ONE CHANGE:) Maintainer 2026-11-04: a relationship whose join key the role is not served keeps working
+    for that role: the governed relation carries the real key under an internal name only for an approved
+    join on it, and a star, a whole-row read and a NATURAL or USING join never include it; the role can
+    neither name nor read it. A statement holds at most one write, either at its root or as WITH w AS (<write>
+    RETURNING ...) SELECT ... FROM w; any other placement is refused. The change to governance by construction
+    lands whole: the passes that read the governed statement (materialized-view rewrite, primary-key bounds,
+    parameter extraction and result typing) read through governed relations in the same change, so no read
+    loses its materialized view or its row cache.'
   use_case: Schema visibility enforcement ensures unauthorized tables and columns are invisible to clients
     at design time.
   code:
