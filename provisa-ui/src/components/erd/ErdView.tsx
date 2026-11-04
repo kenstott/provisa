@@ -147,8 +147,20 @@ export function ErdView({
   const unsaved =
     edited ||
     (shown !== null && shown === focused && !sameFocus(focus, layoutFocus(shown, tables)));
-  const narrowed =
-    checkedDomains.size > 0 && checkedDomains.size < filterDomains.length ? checkedDomains : null;
+  // The filter hides only the domains it offers and the reader unticked: a domain it does not offer
+  // (a system domain the acting roles' domain list leaves out, ops among them) cannot be ticked
+  // again from the page, so it stays drawn.
+  const narrowed = useMemo(
+    () =>
+      checkedDomains.size > 0 && checkedDomains.size < filterDomains.length
+        ? new Set(
+            tables
+              .map((t) => t.domainId)
+              .filter((d) => checkedDomains.has(d) || !filterDomains.includes(d)),
+          )
+        : null,
+    [checkedDomains, filterDomains, tables],
+  );
   const shownDomains = resolved.shownDomains ?? narrowed;
   const waiting = useMemo(
     () =>
