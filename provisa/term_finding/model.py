@@ -16,18 +16,20 @@ org's own vendor keys. Every call is held to the LLM budget of the role the stew
 (REQ-1174, provisa.security.llm_budget): admitted before it runs, its output limited to what the
 role has room for, and what it used debited after. A refusal names the window that is full and
 ends the scan. A scan that could not run is refused before it starts (:func:`for_role`): no model
-named, or no key for it. Every other failure of a call ends the scan naming the model. An answer
-cut off at its output limit is counted like any other and raised as
+named, or no key for it; a table scan is refused too when the role's budget has no room for
+the rows it would send (:meth:`Held.require_room`, REQ-2202). Every other failure of a call ends
+the scan naming the model. An answer cut off at its output limit is counted like any other and raised as
 :class:`~provisa.term_finding.scan.AnswerCutOff`, for the scan to decide what to do about it.
 
 What the scan sends is redacted as everything Provisa sends out is (provisa.security.redaction).
 """
 
-# Requirements: REQ-2179, REQ-1174
+# Requirements: REQ-2179, REQ-1174, REQ-2202
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+import math
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 from provisa.llm.client import LLMEmptyResponseError, LLMTimeoutError
@@ -40,10 +42,18 @@ SYSTEM = "You are a data catalog assistant helping a data steward build a busine
 WHERE_TO_SET = "Admin, AI Models"
 
 Call = Callable[[str, int], Awaitable[str]]
+#: About how many characters of text one token holds: what a scan's prompts are reckoned at
+#: before it starts (:meth:`Held.require_room`), no model having counted them yet.
+CHARS_PER_TOKEN = 4
 
 
 class ModelRefused(ScanFailed):
     """A scan refused before it starts: its model cannot run. The message says where to set it."""
+
+
+class OverBudget(ScanFailed):
+    """A scan refused before it starts: the role's LLM budget has no room for what it would send
+    (REQ-2202). The message names the limit."""
 
 
 def usage_of(vendor: str, reported: Any) -> Any:
@@ -124,6 +134,48 @@ class Held:
                 "tokens"
             )
         return answered.text
+
+    async def require_room(self, prompts: Sequence[str], what: str) -> None:
+        """Refuse (:class:`OverBudget`) a scan of ``what`` whose ``prompts`` -- what it sends at
+        the least -- the role's LLM budget has no room for: the largest of them over its per-call
+        cap, or all of them over what is left of a window. Reckoned in tokens at
+        :data:`CHARS_PER_TOKEN`, and a USD limit at the model's input price. A role that sets no
+        budget is not held to one."""
+        from provisa.api.mcp import polly_usage
+        from provisa.security.llm_budget import BudgetRefused
+
+        budget, model = self._budget, self._client.model
+        try:
+            await budget.admit(model)
+        except BudgetRefused as exc:
+            raise OverBudget(str(exc)) from None
+        admitted = budget.admitted
+        if admitted is None or admitted.budget is None or not prompts:
+            return
+        sizes = [math.ceil(len(p) / CHARS_PER_TOKEN) for p in prompts]
+        price = polly_usage.prices().get(model)
+
+        def spend(limit: Any, tokens: int) -> float:
+            if limit.unit == "tokens":
+                return tokens
+            return 0.0 if price is None else tokens * price.input / 1_000_000
+
+        role, held = admitted.role_id, admitted.budget
+        cap = held.call_cap
+        if cap is not None and spend(cap, max(sizes)) > cap.amount:
+            raise OverBudget(
+                f"scanning {what} sends about {cap.said(spend(cap, max(sizes)))} in one call, and "
+                f"role {role!r} caps one LLM call at {cap.said(cap.amount)}"
+            )
+        for use in admitted.uses:
+            needed, left = spend(use.limit, sum(sizes)), use.limit.amount - use.used
+            if needed > left:
+                said = f"the {use.window}" if use.window != "month" else "the month (30 days)"
+                raise OverBudget(
+                    f"scanning {what} sends at least about {use.limit.said(needed)} to the model, "
+                    f"and role {role!r} has {use.limit.said(max(left, 0.0))} left of its LLM "
+                    f"budget for {said}"
+                )
 
 
 def require_named(config: dict[str, Any]) -> None:

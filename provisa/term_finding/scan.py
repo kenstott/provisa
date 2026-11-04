@@ -35,11 +35,15 @@ the document), every other explanation kept as a supporting passage; a synthesiz
 marked so, listing every passage it used; conflicting explanations side by side. :func:`match`
 then finds the glossary terms and synonyms each candidate duplicates or names again.
 
+A registered table of text is scanned the same way, each of its rows one passage cited by the
+row's id; a table of terms and their definitions needs no model at all (:func:`defined`)
+(REQ-2202).
+
 Nothing here touches a database or a model: the caller passes the passages and a ``call`` that
 answers a prompt (:mod:`.model`).
 """
 
-# Requirements: REQ-2179
+# Requirements: REQ-2179, REQ-2202
 
 from __future__ import annotations
 
@@ -81,6 +85,12 @@ DUPLICATE = "duplicate"
 SYNONYM = "synonym"
 
 
+#: What a scan reads: a reference library document, or a registered table whose every row is one
+#: passage (REQ-2202).
+DOCUMENT = "document"
+TABLE = "table"
+_ROWS = {DOCUMENT: "", TABLE: " (each passage is one row of the table)"}
+
 #: The steps a running scan reports (:func:`run`).
 READING = "reading"
 MERGING = "merging"
@@ -109,6 +119,8 @@ class Passage:
     section: str | None
     page: int | None
     text: str
+    #: The id of the table row the passage is, when a table is scanned (REQ-2202).
+    row: str | None = None
 
 
 @dataclass(frozen=True)
@@ -267,21 +279,30 @@ def batches(passages: Sequence[Passage], limit: int = BATCH_CHARS) -> list[list[
     return out
 
 
+def reading_prompts(title: str, passages: Sequence[Passage], kind: str = DOCUMENT) -> list[str]:
+    """The prompts a scan of ``passages`` sends at the least: one per batch, before any batch is
+    split or asked for again and before the mentions are resolved."""
+    return [extraction_prompt(title, batch, kind) for batch in batches(passages)]
+
+
 def _where(p: Passage) -> str:
     bits = []
     if p.section:
         bits.append(f"section {p.section!r}")
     if p.page is not None:
         bits.append(f"page {p.page}")
+    if p.row is not None:
+        bits.append(f"row {p.row!r}")
     return f" ({', '.join(bits)})" if bits else ""
 
 
-def extraction_prompt(title: str, batch: Sequence[Passage]) -> str:
-    """The prompt naming the concepts ``batch``'s passages define or use."""
+def extraction_prompt(title: str, batch: Sequence[Passage], kind: str = DOCUMENT) -> str:
+    """The prompt naming the concepts ``batch``'s passages define or use. ``kind`` is what is
+    scanned: a :data:`DOCUMENT`, or a :data:`TABLE` whose rows are its passages."""
     numbered = "\n\n".join(f"[P{p.ordinal}]{_where(p)}\n{p.text}" for p in batch)
     return (
-        "You are helping a data steward build a business glossary from a document. Below are "
-        f"passages of the document {title!r}, each numbered [P<n>].\n\n"
+        f"You are helping a data steward build a business glossary from a {kind}. Below are "
+        f"passages of the {kind} {title!r}{_ROWS[kind]}, each numbered [P<n>].\n\n"
         "Find the concepts these passages define or use that belong in a business glossary: "
         "business concepts, roles, organization types, policies, processes and regulations. "
         "Never a named individual: not a particular person, company, product, system, place, "
@@ -373,7 +394,7 @@ def read_mentions(
 
 
 def resolution_prompt(
-    title: str, mentions: Sequence[Mention], passages: Mapping[int, Passage]
+    title: str, mentions: Sequence[Mention], passages: Mapping[int, Passage], kind: str = DOCUMENT
 ) -> str:
     """The prompt resolving ``mentions`` into the concepts they are mentions of."""
 
@@ -387,8 +408,8 @@ def resolution_prompt(
 
     listed = "\n".join(line(m) for m in mentions)
     return (
-        "You are helping a data steward build a business glossary from a document. Below are "
-        f"the mentions of concepts found in the document {title!r}, each numbered M<n>, with "
+        f"You are helping a data steward build a business glossary from a {kind}. Below are "
+        f"the mentions of concepts found in the {kind} {title!r}, each numbered M<n>, with "
         "the passage P<n> it is in and the passage's own words for it.\n\n"
         "Group the mentions into concepts:\n"
         "- Mentions of one concept form one group however they are worded: a different case, "
@@ -506,6 +527,7 @@ def candidates(
                 "ordinal": p.ordinal,
                 "section": p.section,
                 "page": p.page,
+                "row": p.row,
                 "quote": m.quote,
                 "explicit": m.explicit,
                 "sense": m.sense,
@@ -583,6 +605,55 @@ def match(
         )
 
 
+# -- a table of terms and their definitions ----------------------------------------------------
+
+
+def defined(rows: Sequence[tuple[Any, Any]]) -> list[Candidate]:
+    """The candidates a table of terms and their definitions holds, each row ``(term,
+    definition)`` -- read as it is, with no model (REQ-2202). Rows naming one term (compared as
+    :func:`normal` compares names) are one candidate: the first row's definition is its
+    definition, each other row's a supporting passage. A row with no term holds none, and one with
+    no definition leaves the candidate's to the steward. The table names no category, so the
+    candidate has none. Each passage is cited by the term, the row's own name for itself."""
+    found: dict[str, Candidate] = {}
+    for ordinal, (raw_term, raw_definition) in enumerate(rows, start=1):
+        term = _SPACE.sub(" ", str(raw_term or "")).strip()
+        if not term:
+            continue
+        definition = str(raw_definition or "").strip() or None
+        held = found.get(normal(term))
+        if held is None:
+            held = found[normal(term)] = Candidate(
+                name=term,
+                category="",
+                sense="",
+                definition=None,
+                definition_kind=MISSING,
+                passages=[],
+                variants=[],
+                conflicts=[],
+            )
+        if definition is None:
+            continue
+        first = held.definition is None
+        if first:
+            held.definition, held.definition_kind = definition, EXPLICIT
+        held.passages.append(
+            {
+                "mention": ordinal - 1,
+                "ordinal": ordinal,
+                "section": None,
+                "page": None,
+                "row": term,
+                "quote": definition,
+                "explicit": True,
+                "sense": "",
+                "role": "definition" if first else "supporting",
+            }
+        )
+    return list(found.values())
+
+
 # -- the scan -----------------------------------------------------------------------------------
 
 
@@ -600,13 +671,14 @@ async def run(
     passages: Sequence[Passage],
     call: Callable[[str, int], Awaitable[str]],
     report: Callable[[str, int, int], Awaitable[None]],
+    kind: str = DOCUMENT,
 ) -> Result:
     """Scan ``passages`` with ``call`` (a prompt and an output limit to the model's answer).
     ``report`` hears each call before it is made: :data:`READING` a call of how many are now known
     to be needed, the total growing as a batch is split or asked for again, then :data:`MERGING`
     (0 of 0); it raises :class:`ScanStopped` to stop the scan there."""
     if not passages:
-        raise ScanFailed(f"the document {title!r} holds no passages to scan")
+        raise ScanFailed(f"the {kind} {title!r} holds no passages to scan")
     left_out = LeftOut()
     mentions: list[Mention] = []
     calls = 0
@@ -617,7 +689,7 @@ async def run(
         await report(READING, calls + 1, calls + 1 + len(waiting))
         calls += 1
         try:
-            raw = await call(extraction_prompt(title, batch), EXTRACT_MAX_TOKENS)
+            raw = await call(extraction_prompt(title, batch, kind), EXTRACT_MAX_TOKENS)
             mentions.extend(read_mentions(raw, batch, len(mentions), left_out))
         except AnswerCutOff as exc:
             if len(batch) == 1:
@@ -634,7 +706,7 @@ async def run(
     by_ordinal = {p.ordinal: p for p in passages}
     if not mentions:
         return Result([], len(passages), 0, left_out, calls)
-    prompt = resolution_prompt(title, mentions, by_ordinal)
+    prompt = resolution_prompt(title, mentions, by_ordinal, kind)
     groups: list[Group] | None = None
     retried = False
     while groups is None:

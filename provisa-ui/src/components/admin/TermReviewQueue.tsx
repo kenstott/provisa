@@ -13,7 +13,8 @@
 // its definition -- the document's own, or a synthesized one marked so -- the synonyms it would
 // add, every source passage it came from, and explanations that disagree side by side. The
 // steward edits, accepts, merges or rejects each, or accepts the selected ones at once; accepted
-// terms are then handed to Generate relationships.
+// terms are then handed to Generate relationships. A table's passage is cited by the table and
+// the row's id (REQ-2202).
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -101,6 +102,7 @@ function where(c: Citation, t: (k: string, o?: Record<string, unknown>) => strin
   return [
     c.section ? t("findTerms.section", { section: c.section }) : null,
     c.page !== null ? t("findTerms.page", { page: c.page }) : null,
+    c.row != null ? t("findTerms.row", { row: c.row }) : null,
   ]
     .filter(Boolean)
     .join(", ");
@@ -136,12 +138,18 @@ function PassageQuote({ citation, document }: { citation: Citation; document: st
   );
 }
 
-function DefinitionBadge({ kind }: { kind: Draft["definition_kind"] }) {
+function DefinitionBadge({
+  kind,
+  fromTable,
+}: {
+  kind: Draft["definition_kind"];
+  fromTable: boolean;
+}) {
   const { t } = useTranslation();
   if (kind === "explicit")
     return (
-      <Badge size="xs" variant="light" color="teal">
-        {t("findTerms.definitionExplicit")}
+      <Badge size="xs" variant="light" color="teal" data-testid="find-terms-explicit">
+        {t(fromTable ? "findTerms.definitionInTable" : "findTerms.definitionExplicit")}
       </Badge>
     );
   if (kind === "synthesized")
@@ -198,6 +206,7 @@ function ProposalBadge({ draft }: { draft: Draft }) {
 function DraftCard({
   draft,
   document,
+  fromTable,
   terms,
   selected,
   onSelect,
@@ -205,6 +214,8 @@ function DraftCard({
 }: {
   draft: Draft;
   document: string;
+  /** The scan read a table (REQ-2202), not a document. */
+  fromTable: boolean;
   terms: GlossaryTermSummary[];
   selected: boolean;
   onSelect: (on: boolean) => void;
@@ -260,9 +271,12 @@ function DraftCard({
               />
             )}
             <Text fw={600}>{draft.name}</Text>
-            <Badge size="xs" variant="outline" color="gray">
-              {CATEGORY_KEYS[draft.category] ? t(CATEGORY_KEYS[draft.category]) : draft.category}
-            </Badge>
+            {/* A term read from a table of terms and definitions has no category (REQ-2202). */}
+            {draft.category && (
+              <Badge size="xs" variant="outline" color="gray">
+                {CATEGORY_KEYS[draft.category] ? t(CATEGORY_KEYS[draft.category]) : draft.category}
+              </Badge>
+            )}
             <ProposalBadge draft={draft} />
           </Group>
           {open && !editing && !merging && (
@@ -380,7 +394,7 @@ function DraftCard({
                 <Text size="xs" fw={600} c="dimmed" tt="uppercase">
                   {t("findTerms.definition")}
                 </Text>
-                <DefinitionBadge kind={draft.definition_kind} />
+                <DefinitionBadge kind={draft.definition_kind} fromTable={fromTable} />
               </Group>
               {draft.definition && <Text size="sm">{draft.definition}</Text>}
             </Stack>
@@ -768,6 +782,7 @@ export function TermReviewQueue({
             key={`${d.id}-${d.status}`}
             draft={d}
             document={scan.document_title}
+            fromTable={scan.source_table != null}
             terms={terms}
             selected={selected.has(d.id)}
             onSelect={(on) =>
