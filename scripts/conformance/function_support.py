@@ -35,7 +35,14 @@ Each overload gets one outcome per engine:
   error         PostgreSQL answered a call and the engine failed with no named refusal (its
                 message is kept)
   refused       PostgreSQL answered a call and Provisa refused it by name
-  not_callable  PostgreSQL itself answers no call of it
+  not_callable  PostgreSQL itself answers no call of it: every call was refused, or none answered
+                anything but NULL from NULL arguments and every call with a real value was refused
+                for the call itself. ``refused_for`` says which (REQ-2167, amended 2026-11-04, A
+                call PostgreSQL cannot make is skipped by design): ``function_probe.THE_CALL``
+                when every refusal was of the call, read from its SQLSTATE
+                (``function_probe.refused_for``); ``function_probe.ITS_ARGUMENTS`` when a refusal
+                was of the values or types the check gave it, a gap in its samples, which is
+                ``not_checked`` instead
   not_reached   the leg ended, or its server went away, before this overload
 
 A wrong answer outranks an error, which outranks a refusal, which outranks a pass or a not checked:
@@ -1425,9 +1432,10 @@ ARG_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
     "percentile_cont(double precision[])": {0: _FRACTIONS},
     "percentile_disc(double precision[])": {0: _FRACTIONS},
     **_TYPMODS,
-    # domain_in reads its text as the fixture's domain (``FIXTURE_DOMAIN``), with no typmod.
+    # domain_in reads its text as the fixture's domain (``FIXTURE_DOMAIN``), with no typmod: a
+    # NULL among them, as its answer is compared by whether it IS NULL (``domain_in_calls``).
     "domain_in": {
-        0: Raw(("'5'::cstring", "'42'::cstring", "'1'::cstring")),
+        0: Raw(("'5'::cstring", "NULL::cstring", "'1'::cstring")),
         1: ("'{fixture:domain}'",) * VALUE_ROWS,
         2: Raw(("(-1)::integer",) * VALUE_ROWS),
     },
@@ -1475,11 +1483,13 @@ class Call:
     is its server's own: no); ``zone``: the session's TimeZone for this call, if not ``SETTINGS``'
     UTC; ``before``: what the session must have done first, run just before it
     (function_probe.BEFORE); ``setup`` and ``teardown``: statements around it on the same session,
-    as an open cursor needs its transaction."""
+    as an open cursor needs its transaction; ``refusal``: PostgreSQL's answer is its refusal,
+    which Provisa must answer with the same SQLSTATE and message."""
 
     sql: str
     answers: bool = False
     values: bool = True
+    refusal: bool = False
     zone: str | None = None
     before: str | None = None
     setup: tuple[str, ...] = ()
@@ -1636,6 +1646,8 @@ def value_calls(fn: Function, family: str) -> list[Call]:
         return []
     if _key(fn) in VALUE_STATEMENTS:
         return [Call(sql, answers=True) for sql in VALUE_STATEMENTS[_key(fn)]]
+    if fn.name == "domain_in":
+        return domain_in_calls(fn)
     if fn.kind == "a":
         return [Call(_aggregate(fn), answers=True)]
     if fn.kind == "w":
@@ -1648,6 +1660,23 @@ def value_calls(fn: Function, family: str) -> list[Call]:
             row = [*row[:-1], f"VARIADIC {row[-1]}"]
         calls.append(Call(function_probe.statement(fn, row), answers=True))
     return calls
+
+
+#: A value breaking the fixture domain's CHECK (VALUE > 0).
+DOMAIN_BREAKING = "'-1'::cstring"
+
+
+def domain_in_calls(fn: Function) -> list[Call]:
+    """domain_in's calls: its answer, of the pseudo-type any, which no client can display, is
+    compared by whether it IS NULL, and a value breaking the fixture domain's CHECK by the refusal
+    it gets (REQ-2167, amended 2026-11-04, A call PostgreSQL cannot make is skipped by design)."""
+    named = f'pg_catalog."{fn.name}"'
+    rows = _rows(fn)
+    breaking = [DOMAIN_BREAKING, *rows[0][1:]]
+    return [
+        *(Call(f"SELECT {named}({', '.join(row)}) IS NULL AS v", answers=True) for row in rows),
+        Call(f"SELECT {named}({', '.join(breaking)}) IS NULL AS v", answers=True, refusal=True),
+    ]
 
 
 def sample_column(sample_type: str) -> str:
@@ -1804,9 +1833,11 @@ class Session(catalog.Server):
 
 def _result(res: Any) -> dict[str, Any]:
     if res.status not in (pq.ExecStatus.TUPLES_OK, pq.ExecStatus.COMMAND_OK):
+        state = res.error_field(pq.DiagnosticField.SQLSTATE)
         return {
             "ok": False,
             "error": (res.error_message or b"").decode(errors="replace").strip()[:400],
+            "sqlstate": state.decode() if state else "",
         }
     fields = [res.ftype(i) for i in range(res.nfields)]
     rows = [
@@ -2473,6 +2504,19 @@ DECIDED_FUNCTIONS = {
             "pg_ls_logicalsnapdir",
             # prepared transactions
             "pg_prepared_xact",
+            # REQ-2167, amended 2026-11-04, A call PostgreSQL cannot make is skipped by design:
+            # the server's build and extensions, its transaction ids, its activity, checksum and
+            # progress statistics
+            "pg_config",
+            "pg_available_extensions",
+            "pg_available_extension_versions",
+            "pg_current_xact_id_if_assigned",
+            "txid_current_if_assigned",
+            "pg_stat_get_activity",
+            "pg_stat_get_db_checksum_failures",
+            "pg_stat_get_db_checksum_last_failure",
+            "pg_stat_get_snapshot_timestamp",
+            "pg_stat_get_progress_info",
         ),
         SERVER_STATE_GROUP,
     ),
@@ -3001,7 +3045,7 @@ def measure_overload(
     group = decided_function(fn)
     if group is not None:
         return _decided_function(entry, group)
-    if entry["outcome"] == "not_callable":
+    if entry["outcome"] == "not_callable" or "refused_for" in entry:
         return entry
     decided = DECIDED_REFUSALS.get(_key(fn)) or DECIDED_REFUSALS.get(fn.name)
     if decided is not None and entry["outcome"] == "refused":
@@ -3026,6 +3070,48 @@ def measure_overload(
     if entry["outcome"] in ("pass", "not_checked"):
         return _by_design(entry, NOT_TESTABLE)
     return entry
+
+
+def _nothing(want: dict[str, Any]) -> bool:
+    """Whether PostgreSQL answered nothing but NULL, or no row."""
+    return all(v is None for row in want["rows"] for v in row)
+
+
+def _refused_for(fn: Function, refused: list[dict[str, str]]) -> str | None:
+    """What PostgreSQL's refusals of ``fn`` are of: the call itself only when every one is
+    (REQ-2167, amended 2026-11-04, A call PostgreSQL cannot make is skipped by design), its
+    arguments when any one is; None if they are neither, as one for the server's state is."""
+    kinds = [function_probe.refused_for(fn, r["sqlstate"], r["error"]) for r in refused]
+    if all(k == function_probe.THE_CALL for k in kinds):
+        return function_probe.THE_CALL
+    if function_probe.ITS_ARGUMENTS in kinds:
+        return function_probe.ITS_ARGUMENTS
+    return None
+
+
+def _primary(answer: dict[str, Any]) -> str:
+    return answer["error"].split("\n", 1)[0]
+
+
+def _refusal_answer(
+    call_: Call, want: dict[str, Any], got: dict[str, Any]
+) -> tuple[str, dict[str, str]] | None:
+    """A call whose answer is PostgreSQL's refusal (``Call.refusal``), compared: None if Provisa
+    refuses it with the same SQLSTATE and message, else the kind of what it did (wrong, error or
+    named) with what it said: another SQLSTATE or message is a wrong answer."""
+    expected = f"{want.get('sqlstate', '')} {_primary(want)}"
+    if got["ok"]:
+        difference = f"answered {got['rows']!r}, PostgreSQL refused: {expected}"
+        return "wrong", {"statement": call_.sql, "difference": difference}
+    if got.get("sqlstate", "") == want.get("sqlstate", "") and _primary(got) == _primary(want):
+        return None
+    said = {"statement": call_.sql, "error": got["error"]}
+    if function_probe.refused_by_name(got["error"]):
+        return "named", said
+    if got.get("sqlstate"):
+        difference = f"refused: {got['sqlstate']} {_primary(got)}, PostgreSQL {expected}"
+        return "wrong", {"statement": call_.sql, "difference": difference}
+    return "error", said
 
 
 #: Why an overload given real values for its form still had none checked.
@@ -3058,17 +3144,39 @@ def _measure_calls(
     errors: list[dict[str, str]] = []
     named: list[dict[str, str]] = []
     decided: list[str] = []  # the groups of the calls a decision answers
-    refused: list[str] = []
+    refused: list[dict[str, str]] = []
+    made = 0  # the calls PostgreSQL answered with a real value or anything but NULL
     routes: set[str] = set()
     rules: set[str] = set()
     lost = False
     volatile_typed = fn.volatility == "v" and not side_effect(fn)
     for call_ in planned:
         want = _answer(pg, call_)
+        if call_.refusal and want["ok"]:
+            # A sample that should break the fixture's rule and does not: a gap in the check.
+            refused.append({"sqlstate": "", "error": f"PostgreSQL answered {call_.sql}"})
+            continue
+        if call_.refusal:
+            accepted += 1
+            made += 1
+            answered += call_.answers
+            got = _answer(provisa, call_)
+            lost = lost or got.get("lost", False)
+            found = _refusal_answer(call_, want, got)
+            if found is not None:
+                kind, said = found
+                {"wrong": wrong, "error": errors, "named": named}[kind].append(said)
+            continue
         if not want["ok"] or not want["fields"]:
-            refused.append(want.get("error") or "no result column")
+            refused.append(
+                {
+                    "sqlstate": want.get("sqlstate", ""),
+                    "error": want.get("error") or "no result column",
+                }
+            )
             continue
         accepted += 1
+        made += call_.answers or call_.form or not _nothing(want)
         answered += call_.answers
         formed_accepted += call_.sql in form_sqls
         routes.add("catalog" if classify(call_.sql) == "INTERCEPT" else "engine")
@@ -3120,11 +3228,24 @@ def _measure_calls(
         entry["unchecked"] = why
     if lost:
         entry["connection_lost"] = True
-    if accepted == 0:
+    why = _refused_for(fn, refused) if not made and refused else None
+    if why == function_probe.THE_CALL or (accepted == 0 and why is None):
         entry["outcome"] = "not_callable"
         entry["detail"] = (
-            f"PostgreSQL refuses the call: {refused[0]}" if refused else function_probe.NO_CALL
+            f"PostgreSQL refuses the call: {refused[0]['error']}"
+            if refused
+            else function_probe.NO_CALL
         )
+        if why is not None:
+            entry["refused_for"] = why
+            entry["refusal_sqlstates"] = sorted({r["sqlstate"] for r in refused})
+    elif accepted == 0:
+        # Refused for the values the check gave it: a gap in its samples, not tested.
+        entry["outcome"] = "not_checked"
+        entry["rules"] = []
+        entry["refused_for"] = why
+        entry["refusal_sqlstates"] = sorted({r["sqlstate"] for r in refused})
+        entry["unchecked"] = f"PostgreSQL refused every call for {why}: {refused[0]['error']}"
     elif wrong:
         entry["outcome"] = "wrong_answer"
         entry["detail"] = wrong[0]
@@ -3473,7 +3594,7 @@ def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
         "outcome": entry["outcome"],
         "result": function_report.result_of(entry["outcome"], entry.get("rules", ())),
     }
-    for key in ("detail", "served_by", "column"):
+    for key in ("detail", "served_by", "column", "refused_for", "refusal_sqlstates"):
         if entry.get(key) is not None:
             kept[key] = entry[key]
     if entry.get("rules"):

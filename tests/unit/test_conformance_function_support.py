@@ -46,6 +46,17 @@ class Fake:
         return self.answers.get(sql, {"ok": False, "error": "ERROR:  no such function"})
 
 
+class Refusing(Fake):
+    """As ``Fake``, refusing a statement it does not know with one SQLSTATE and message."""
+
+    def __init__(self, answers: dict[str, dict[str, Any]], *, sqlstate: str, error: str) -> None:
+        super().__init__(answers)
+        self.refusal = {"ok": False, "error": error, "sqlstate": sqlstate}
+
+    def answer(self, sql: str) -> dict[str, Any]:
+        return self.answers.get(sql, self.refusal)
+
+
 def _ok(*values: Any, oid: int = 23) -> dict[str, Any]:
     return {"ok": True, "fields": [oid], "rows": [(v,) for v in values]}
 
@@ -663,7 +674,7 @@ def test_a_record_is_held_to_its_number_of_fields():
 
 def test_a_stable_function_only_called_with_null_arguments_is_not_checked():
     # Its answer is its server's own, and no real value is given it: the NULL call alone.
-    fn = Function("pg_stat_get_activity", "text", argtypes=("text",), volatility="s")
+    fn = Function("pg_stat_get_buf_alloc", "text", argtypes=("text",), volatility="s")
     entry = _both(fn, "System", _ok("whatever", oid=25), _ok("no form at all", oid=25))
     assert entry["outcome"] == "not_checked"
     assert not entry["type_and_form_checked"] and not entry["answers_checked"]
@@ -1481,8 +1492,16 @@ def test_the_report_fails_per_engine_never_overall_and_keeps_a_wrong_answer_in_v
             {
                 "outcome": "not_callable",
                 "detail": "PostgreSQL refuses the call: ERROR:  must be called as trigger",
+                "refused_for": "the call",
             },
             "skipped_by_design",
+        ),
+        (
+            {
+                "outcome": "not_callable",
+                "detail": "PostgreSQL refuses the call: ERROR:  must be called as trigger",
+            },
+            "failed",
         ),
         (
             {
@@ -2722,11 +2741,12 @@ def test_unknownin_s_refusal_proves_it_internal_and_skipped_by_design():
     import pgwire_function_probe as function_probe
 
     refusal = "ERROR:  failed to find conversion function from unknown to text"
-    assert function_probe.proves_internal(refusal)
     fn = _named("unknownin", ("cstring",), "unknown", "i")
-    entry = support.measure_overload(fn, "Type operators", Fake({}), Fake({}), _route, engine="pg")
+    assert function_probe.refused_for(fn, "XX000", refusal) == function_probe.THE_CALL
+    pg = Refusing({}, sqlstate="XX000", error=refusal)
+    entry = support.measure_overload(fn, "Type operators", pg, Fake({}), _route, engine="pg")
     assert entry["outcome"] == "not_callable"
-    entry["detail"] = f"PostgreSQL refuses the call: {refusal}"
+    assert entry["detail"] == f"PostgreSQL refuses the call: {refusal}"
     assert support.function_report.verdict(entry) == "skipped_by_design"
 
 
@@ -2834,10 +2854,308 @@ def test_domain_in_reads_the_fixture_s_domain(monkeypatch):
     monkeypatch.setattr(support, "FIXTURE", {})
     assert support.value_calls(fn, "Type operators") == []
     monkeypatch.setattr(support, "FIXTURE", {"domain": "16393"})
-    assert [c.sql for c in support.value_calls(fn, "Type operators")] == [
-        f"SELECT pg_catalog.\"domain_in\"('{v}'::cstring, '16393'::oid, (-1)::integer) AS v"
-        for v in ("5", "42", "1")
+    assert [c.sql for c in support.value_calls(fn, "Type operators")][:3] == [
+        f"SELECT pg_catalog.\"domain_in\"({v}::cstring, '16393'::oid, (-1)::integer) IS NULL AS v"
+        for v in ("'5'", "NULL", "'1'")
     ]
     made = " ".join(support.FIXTURE_SQL)
     assert f"CREATE DOMAIN conformance.{support.FIXTURE_DOMAIN} AS integer" in made
     assert support.FIXTURE_DOMAIN in support.FIXTURE_QUERIES["domain"]
+
+
+# --- a call PostgreSQL cannot make (REQ-2167, amended 2026-11-04) -------------------------------
+
+import pgwire_function_probe as function_probe  # noqa: E402
+
+OID_ARG = Function("f", "oid", argtypes=("oid",), volatility="i", rettype="boolean")
+TEXT_ARG = Function("f", "text", argtypes=("text",), volatility="i", rettype="boolean")
+
+
+@pytest.mark.parametrize(
+    ("fn", "sqlstate", "error", "kind"),
+    [
+        (OID_ARG, "0A000", "ERROR:  aclinsert is no longer supported", "the call"),
+        (OID_ARG, "0A000", "ERROR:  cannot display a value of type any", "the call"),
+        (OID_ARG, "42809", "ERROR:  x is not a table", "the call"),
+        (OID_ARG, "39P01", 'ERROR:  function "x" was not called by trigger manager', "the call"),
+        (
+            OID_ARG,
+            "39P03",
+            "ERROR:  x() can only be called in an event trigger function",
+            "the call",
+        ),
+        (OID_ARG, "42P22", "ERROR:  could not determine which collation to use", "the call"),
+        (TEXT_ARG, "42P22", "ERROR:  could not determine which collation to use", "its arguments"),
+        (OID_ARG, "42883", "ERROR:  function f(text) does not exist", "its arguments"),
+        (OID_ARG, "42804", "ERROR:  argument of WHERE must be type boolean", "its arguments"),
+        (OID_ARG, "42846", "ERROR:  cannot cast type integer to point", "its arguments"),
+        (OID_ARG, "22P02", 'ERROR:  invalid input syntax for type integer: "x"', "its arguments"),
+        (OID_ARG, "22003", "ERROR:  integer out of range", "its arguments"),
+        # XX000 and 55P02 are each PostgreSQL's code for both kinds: the message tells them apart.
+        (
+            OID_ARG,
+            "XX000",
+            "ERROR:  aggregate function called in non-aggregate context",
+            "the call",
+        ),
+        (OID_ARG, "XX000", "ERROR:  cache lookup failed for type 1", None),
+        (
+            OID_ARG,
+            "55P02",
+            "ERROR:  function can only be called when server is in binary upgrade mode",
+            "the call",
+        ),
+        (OID_ARG, "55P02", 'ERROR:  parameter "x" cannot be changed now', None),
+        (OID_ARG, "55000", "ERROR:  recovery is not in progress", None),
+        (OID_ARG, "", "ERROR:  no such function", None),
+    ],
+)
+def test_a_refusal_is_of_the_call_or_of_its_arguments_by_its_sqlstate(fn, sqlstate, error, kind):
+    assert function_probe.refused_for(fn, sqlstate, error) == kind
+
+
+#: The seven overloads the amendment names, each with PostgreSQL 17.11's refusal of its value calls.
+SEVEN = [
+    (
+        Function(
+            "int4_avg_combine",
+            "bigint[], bigint[]",
+            argtypes=("bigint[]", "bigint[]"),
+            volatility="i",
+            rettype="bigint[]",
+        ),
+        "XX000",
+        "ERROR:  aggregate function called in non-aggregate context",
+    ),
+    (
+        Function(
+            "range_intersect_agg_transfn",
+            "anyrange, anyrange",
+            argtypes=("anyrange", "anyrange"),
+            volatility="i",
+            rettype="anyrange",
+        ),
+        "XX000",
+        "ERROR:  range_intersect_agg_transfn called in non-aggregate context",
+    ),
+    (
+        Function(
+            "multirange_intersect_agg_transfn",
+            "anymultirange, anymultirange",
+            argtypes=("anymultirange", "anymultirange"),
+            volatility="i",
+            rettype="anymultirange",
+        ),
+        "XX000",
+        "ERROR:  multirange_intersect_agg_transfn called in non-aggregate context",
+    ),
+    (
+        Function("btvarstrequalimage", "oid", argtypes=("oid",), volatility="i", rettype="boolean"),
+        "42P22",
+        "ERROR:  could not determine which collation to use for string comparison",
+    ),
+    (
+        Function(
+            "aclinsert",
+            "aclitem[], aclitem",
+            argtypes=("aclitem[]", "aclitem"),
+            volatility="i",
+            rettype="aclitem[]",
+        ),
+        "0A000",
+        "ERROR:  aclinsert is no longer supported",
+    ),
+    (
+        Function(
+            "aclremove",
+            "aclitem[], aclitem",
+            argtypes=("aclitem[]", "aclitem"),
+            volatility="i",
+            rettype="aclitem[]",
+        ),
+        "0A000",
+        "ERROR:  aclremove is no longer supported",
+    ),
+    (
+        Function(
+            "xmlvalidate", "xml, text", argtypes=("xml", "text"), volatility="i", rettype="boolean"
+        ),
+        "0A000",
+        "ERROR:  xmlvalidate is not implemented",
+    ),
+]
+
+
+@pytest.mark.parametrize(("fn", "sqlstate", "error"), SEVEN, ids=[f.name for f, _, _ in SEVEN])
+def test_an_overload_postgresql_refuses_every_real_call_of_is_skipped_by_design(
+    fn, sqlstate, error
+):
+    """Its NULL call answers NULL without running it (it is strict); every call with a value is
+    refused for the call itself."""
+    planned = support.calls(fn, "Aggregate support")
+    assert any(c.answers for c in planned)
+    null = {planned[0].sql: _ok(None)}
+    pg = Refusing(null, sqlstate=sqlstate, error=error)
+    entry = support.measure_overload(fn, "Aggregate support", pg, Fake(null), _route, engine="pg")
+    assert entry["outcome"] == "not_callable"
+    assert entry["refused_for"] == "the call" and entry["refusal_sqlstates"] == [sqlstate]
+    assert entry["detail"] == f"PostgreSQL refuses the call: {error}"
+    assert report.verdict(entry) == "skipped_by_design"
+
+
+def test_one_refusal_of_the_arguments_leaves_the_overload_not_tested():
+    """Not callable only when every call was refused for the call itself: one refused for the
+    values the check gave it is a gap in the samples."""
+    planned = support.calls(ABS, "Numeric")
+    pg = Fake(
+        {
+            planned[0].sql: _ok(None),
+            planned[1].sql: {"ok": False, "error": "ERROR:  not supported", "sqlstate": "0A000"},
+            planned[2].sql: {"ok": False, "error": "ERROR:  bad", "sqlstate": "22P02"},
+            planned[3].sql: {"ok": False, "error": "ERROR:  not supported", "sqlstate": "0A000"},
+        }
+    )
+    entry = support.measure_overload(
+        ABS, "Numeric", pg, Fake({planned[0].sql: _ok(None)}), _route, engine="pg"
+    )
+    assert entry["outcome"] == "not_checked" and report.verdict(entry) == "not_tested"
+
+
+def test_every_call_refused_for_its_arguments_is_not_tested_not_failed():
+    pg = Refusing({}, sqlstate="42883", error="ERROR:  function abs(text) does not exist")
+    entry = support.measure_overload(ABS, "Numeric", pg, Fake({}), _route, engine="pg")
+    assert entry["outcome"] == "not_checked" and entry["refused_for"] == "its arguments"
+    assert entry["unchecked"] == (
+        "PostgreSQL refused every call for its arguments: ERROR:  function abs(text) does not exist"
+    )
+    assert report.verdict(entry) == "not_tested"
+
+
+def test_every_call_refused_for_the_server_s_state_still_fails():
+    pg = Refusing({}, sqlstate="55000", error="ERROR:  recovery is not in progress")
+    entry = support.measure_overload(ABS, "Numeric", pg, Fake({}), _route, engine="pg")
+    assert entry["outcome"] == "not_callable" and "refused_for" not in entry
+    assert report.verdict(entry) == "failed"
+
+
+def test_an_overload_postgresql_answers_a_value_call_of_is_callable():
+    planned = support.calls(ABS, "Numeric")
+    answered = {planned[0].sql: _ok(None), planned[1].sql: _ok("3")}
+    pg = Refusing(answered, sqlstate="0A000", error="ERROR:  not supported")
+    entry = support.measure_overload(ABS, "Numeric", pg, Fake(answered), _route, engine="pg")
+    assert entry["outcome"] == "pass"
+
+
+def test_a_null_call_answering_a_value_makes_the_overload_callable():
+    planned = support.calls(ABS, "Numeric")
+    answered = {planned[0].sql: _ok("0")}
+    pg = Refusing(answered, sqlstate="0A000", error="ERROR:  not supported")
+    entry = support.measure_overload(ABS, "Numeric", pg, Fake(answered), _route, engine="pg")
+    assert entry["outcome"] != "not_callable" and "refused_for" not in entry
+
+
+def test_the_data_file_keeps_why_postgresql_refused_the_call():
+    entry = {
+        "outcome": "not_callable",
+        "detail": "PostgreSQL refuses the call: ERROR:  xmlvalidate is not implemented",
+        "refused_for": "the call",
+        "refusal_sqlstates": ["0A000"],
+    }
+    kept = support._outcome(entry)
+    assert kept["refused_for"] == "the call" and kept["refusal_sqlstates"] == ["0A000"]
+    assert report.verdict(kept) == "skipped_by_design"
+
+
+def test_a_server_s_refusal_keeps_its_sqlstate():
+    class Res:
+        status = support.pq.ExecStatus.FATAL_ERROR
+        error_message = b'ERROR:  value for domain d violates check constraint "d_check"\n'
+
+        @staticmethod
+        def error_field(field: Any) -> bytes | None:
+            assert field == support.pq.DiagnosticField.SQLSTATE
+            return b"23514"
+
+    assert support._result(Res()) == {
+        "ok": False,
+        "error": 'ERROR:  value for domain d violates check constraint "d_check"',
+        "sqlstate": "23514",
+    }
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "pg_config",
+        "pg_available_extensions",
+        "pg_available_extension_versions",
+        "pg_current_xact_id_if_assigned",
+        "txid_current_if_assigned",
+        "pg_stat_get_activity",
+        "pg_stat_get_db_checksum_failures",
+        "pg_stat_get_db_checksum_last_failure",
+        "pg_stat_get_snapshot_timestamp",
+        "pg_stat_get_progress_info",
+    ],
+)
+def test_more_of_postgresql_s_own_server_state_is_skipped_by_design(name):
+    assert support.decided_function(_named(name, (), "record", "s")) == (support.SERVER_STATE_GROUP)
+
+
+# --- domain_in: whether its answer IS NULL, and the refusal its domain's CHECK makes --------------
+
+DOMAIN_IN = Function(
+    "domain_in",
+    "cstring, oid, integer",
+    argtypes=("cstring", "oid", "integer"),
+    volatility="s",
+    rettype='"any"',
+)
+CHECK_REFUSAL = {
+    "ok": False,
+    "error": "ERROR:  value for domain conformance.fixture_domain violates check constraint "
+    '"fixture_domain_check"',
+    "sqlstate": "23514",
+}
+
+
+def _domain_in(monkeypatch, provisa_refusal: dict[str, Any]) -> dict[str, Any]:
+    monkeypatch.setattr(support, "FIXTURE", {"domain": "16393"})
+    planned = support.calls(DOMAIN_IN, "Type operators")
+    answers = {planned[0].sql: _ok(None, oid=2276)}
+    for c in planned[1:]:
+        answers[c.sql] = (
+            CHECK_REFUSAL if c.refusal else _ok("t" if "NULL::cstring" in c.sql else "f", oid=16)
+        )
+    got = {**answers, planned[-1].sql: provisa_refusal}
+    return support.measure_overload(
+        DOMAIN_IN, "Type operators", Fake(answers), Fake(got), _route, engine="pg"
+    )
+
+
+def test_domain_in_is_compared_by_whether_its_answer_is_null(monkeypatch):
+    monkeypatch.setattr(support, "FIXTURE", {"domain": "16393"})
+    planned = support.value_calls(DOMAIN_IN, "Type operators")
+    assert all(c.sql.endswith(" IS NULL AS v") and c.answers for c in planned)
+    assert [c.refusal for c in planned] == [False, False, False, True]
+    assert planned[-1].sql == (
+        "SELECT pg_catalog.\"domain_in\"('-1'::cstring, '16393'::oid, (-1)::integer) IS NULL AS v"
+    )
+
+
+def test_domain_in_passes_on_postgresql_s_check_refusal(monkeypatch):
+    entry = _domain_in(monkeypatch, CHECK_REFUSAL)
+    assert entry["outcome"] == "pass" and entry["answers_checked"]
+
+
+def test_domain_in_refused_with_another_sqlstate_is_a_wrong_answer(monkeypatch):
+    other = {**CHECK_REFUSAL, "sqlstate": "22P02"}
+    entry = _domain_in(monkeypatch, other)
+    assert entry["outcome"] == "wrong_answer"
+    assert entry["detail"]["difference"].startswith("refused: 22P02 ")
+
+
+def test_domain_in_answering_a_value_breaking_its_check_is_a_wrong_answer(monkeypatch):
+    entry = _domain_in(monkeypatch, _ok("f", oid=16))
+    assert entry["outcome"] == "wrong_answer"
+    assert entry["detail"]["difference"].startswith("answered [('f',)], PostgreSQL refused: 23514 ")
