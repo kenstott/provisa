@@ -69,7 +69,12 @@ class PassthroughError(Exception):
 class PassthroughFailure(RuntimeError):
     """The passthrough applies but failed — the source returned an ErrorResponse, the connection
     closed, or its rows contradict the RowDescription the client was sent. The request fails with
-    this error; it never falls back to the decode/re-encode path (REQ-1863)."""
+    this error; it never falls back to the decode/re-encode path (REQ-1863). The source's own error
+    carries its SQLSTATE, and its text is the source's message (REQ-2167)."""
+
+    def __init__(self, message: str, sqlstate: str | None = None) -> None:
+        super().__init__(message)
+        self.sqlstate = sqlstate
 
 
 class _ConnectionLost(PassthroughFailure):
@@ -270,13 +275,14 @@ def _error_sqlstate(payload: bytes) -> str:
     return ""
 
 
-def _parse_error_response(payload: bytes) -> str:
-    fields = payload.split(b"\x00")
-    parts = []
-    for f in fields:
-        if len(f) > 1:
-            parts.append(f[1:].decode("utf-8", errors="replace"))
-    return "; ".join(parts) if parts else "unknown Postgres error"
+def _source_failure(payload: bytes) -> PassthroughFailure:
+    """An ErrorResponse as the source's error: its SQLSTATE (C) and its message (M)."""
+    fields = {
+        part[:1]: part[1:].decode("utf-8", errors="replace")
+        for part in payload.split(b"\x00")
+        if len(part) > 1
+    }
+    return PassthroughFailure(fields.get(b"M", "unknown Postgres error"), fields.get(b"C"))
 
 
 def _parse_row_description(payload: bytes) -> tuple[list[str], list[int]]:
@@ -422,10 +428,10 @@ def _prepare(
         if tag == b"n":  # NoData — the statement returns no rows
             break
         if tag == b"E":  # ErrorResponse — the source ignores the rest until Sync
-            message = _parse_error_response(payload)
+            failure = _source_failure(payload)
             exchange.sync()
             exchange.release(discard=False)
-            raise PassthroughFailure(message)
+            raise failure
         # CloseComplete, ParseComplete, ParameterDescription, Notice, ParameterStatus: keep reading.
     prepared = PreparedOnConnection(name, names, oids)
     statements[sql] = prepared
@@ -474,7 +480,7 @@ class PassthroughCursor:
                     + _SYNC
                 )
             rows: list[bytes] = []
-            failure: str | None = None
+            failure: PassthroughFailure | None = None
             stale = False
             while len(rows) < limit:
                 tag, payload = exchange.read_message()
@@ -489,7 +495,7 @@ class PassthroughCursor:
                 elif (
                     tag == b"E"
                 ):  # ErrorResponse — ReadyForQuery follows (the Sync is already sent)
-                    failure = _parse_error_response(payload)
+                    failure = _source_failure(payload)
                     if _error_sqlstate(payload) in _STALE_STATEMENT_STATES:
                         self._borrowed.statements.pop(self._sql, None)
                         stale = True
@@ -505,7 +511,7 @@ class PassthroughCursor:
                     self._done = True
                     exchange.release(discard=False)
                     if failure is not None:
-                        raise PassthroughFailure(failure)
+                        raise failure
                     return rows
                 # BindComplete, CommandComplete, EmptyQueryResponse, Notice, ParameterStatus.
             self._handed_on = self._handed_on or bool(rows)
