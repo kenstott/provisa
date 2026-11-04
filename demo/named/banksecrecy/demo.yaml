@@ -17,7 +17,7 @@ description: >-
   concept: which cash needs a currency transaction report, and who is structuring just under
   $10,000, with tellers seeing account numbers masked and compliance seeing them in full.
 screenshot: card.png
-published: false
+published: true
 group: compliance
 extras:
 - vector

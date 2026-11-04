@@ -576,7 +576,7 @@ Each step has:
 | `mcp` | a natural-language question | MCP explorer (`/explore`): its agent answers live, as the header's role, its tool calls shown as they run |
 | `mcp_explain` | `true` | MCP explorer: the explain of the agent's last `run_sql` call, the statement it sent beside the statement that ran for the role |
 | `mcp_connect` | `true` | MCP explorer: the Connect Claude Desktop panel, opened |
-| `find_terms` | a document's address, one the demo's `setup.yaml` scans | Glossary (`/admin/ontology`): Find terms opened, the address typed, a scan started and cancelled; the stopped scan explained |
+| `find_terms` | a document's address, one the demo's `setup.yaml` scans, or `{url, domains}` with the demo's domains its scan is curated in | Glossary (`/admin/ontology`): Find terms opened, the address typed, a scan started and cancelled; the stopped scan explained |
 | `scan` | a document's address, one the demo's `setup.yaml` scans | Glossary: the scan of it done ahead, opened from Find terms' list, its candidate terms shown |
 | `library` | a document's address, one the demo's `setup.yaml` scans | Reference library (`/admin/reference-library`): the document's row |
 
@@ -605,7 +605,9 @@ role, with the row filters and masks governance added. Next closes it. The tour 
 `agentdata` demo walks all three.
 
 A `find_terms` step shows a visitor how a scan starts without waiting for one: the tour opens Find
-terms from the glossary's menu, types the address, presses Start, and cancels the scan at once,
+terms from the glossary's menu, types the address, chooses the domains it names (a sandbox's
+Find terms proposes none, and a scan in none is refused in a demo in domains), presses Start, and
+cancels the scan at once,
 under the step's `acting` caption (its words carry one in every language). A `scan` step then opens
 the scan the bundle build made of the same document. Each step closes Find terms on leaving, so the
 next opens it afresh. The tour test refuses both off `/admin/ontology`, a `library` step off

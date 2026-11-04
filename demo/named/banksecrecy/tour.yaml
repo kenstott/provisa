@@ -38,7 +38,9 @@ steps:
 - key: banksecrecyFindTerms
   route: /admin/ontology
   capability: glossary_read
-  find_terms: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
+  find_terms:
+    url: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
+    domains: [banksecrecy]
 - key: banksecrecyRuleTerms
   scan: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
 - key: banksecrecyAggregation

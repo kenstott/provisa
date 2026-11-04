@@ -129,13 +129,13 @@ const STEPS = demoTourSteps(
   [],
 );
 
-function dialog() {
+function dialog(defaultDomains: string[] = ["bank"]) {
   return render(
     <FindTermsDialog
       terms={[]}
       domainOptions={["bank"]}
       domainsEnabled
-      defaultDomains={["bank"]}
+      defaultDomains={defaultDomains}
       onClose={() => undefined}
       onGlossaryChanged={() => undefined}
     />,
@@ -154,9 +154,10 @@ describe("a find_terms step", () => {
   it("opens Find terms from the glossary's menu, then types the address, starts and cancels", () => {
     const [find] = STEPS;
     expect(find.route).toBe("/admin/ontology");
+    // Opened as a scan step opens it, each click waiting for what it opens: a menu pressed as an
+    // action inside a running tour closed again before its item was pressed.
+    expect(find.ensureOpen).toEqual(STEPS[1].ensureOpen);
     expect(find.actions).toEqual([
-      { do: "press", target: { testId: "glossary-generate-menu" } },
-      { do: "press", target: { testId: "glossary-find-terms-btn" } },
       { do: "press", target: { testId: "find-terms-mode-url" } },
       { do: "fill", target: { testId: "find-terms-url" }, value: RULE },
       { do: "press", target: { testId: "find-terms-start" } },
@@ -176,12 +177,46 @@ describe("a find_terms step", () => {
     });
     dialog();
     await screen.findByTestId("find-terms-start");
-    const inDialog = (find.actions as UiAction[]).slice(2);
+    const inDialog = find.actions as UiAction[];
     const acted = await runUiActions(inDialog, RUN);
     expect(acted.steps).toHaveLength(4);
     expect(acted.success).toBe(true);
     expect(api.startScan).toHaveBeenCalledWith({ url: RULE }, ["bank"]);
     expect(api.cancelScan).toHaveBeenCalledWith(8);
+    await waitFor(() => expect(document.querySelector(find.element)).not.toBeNull());
+  });
+
+  it("chooses the domains it names before it starts, when Find terms opens with none", async () => {
+    // A sandbox's domain filter shows every domain, so Find terms proposes none; a scan in none
+    // is refused in a demo in domains.
+    const [find] = demoTourSteps(
+      [
+        {
+          key: "find",
+          route: "/admin/ontology",
+          capability: "glossary_read",
+          find_terms: { url: RULE, domains: ["bank"] },
+        },
+      ],
+      [],
+    );
+    expect((find.actions as UiAction[])[2]).toEqual({
+      do: "choose",
+      target: { testId: "find-terms-domains" },
+      option: "bank",
+    });
+    api.fetchScans.mockResolvedValue([]);
+    api.startScan.mockResolvedValue({ scan: RUNNING, document: {} });
+    api.fetchScan.mockResolvedValue({ scan: RUNNING, drafts: [] });
+    api.cancelScan.mockResolvedValue({
+      scan: { ...RUNNING, status: "failed", error: "cancelled by visitor" },
+    });
+    dialog([]);
+    await screen.findByTestId("find-terms-start");
+    const acted = await runUiActions(find.actions as UiAction[], RUN);
+    expect(acted.steps.at(-1)).toMatch(/^Pressed/);
+    expect(acted.success).toBe(true);
+    expect(api.startScan).toHaveBeenCalledWith({ url: RULE }, ["bank"]);
     await waitFor(() => expect(document.querySelector(find.element)).not.toBeNull());
   });
 });
