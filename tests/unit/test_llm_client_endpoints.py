@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from provisa.llm.client import LLMEmptyResponseError, ProvisaLLMClient, ReasoningNotControllable
+from provisa.llm.client import LLMEmptyResponseError, ProvisaLLMClient
 
 
 def _aisuite_stub():
@@ -259,9 +259,16 @@ class TestReasoningOff:
         sent, _ = self._sent(self._endpoint("anthropic", "https://gw/anthropic"))
         assert sent[0]["thinking"] == {"type": "disabled"}
 
-    def test_an_openai_wire_that_is_not_openrouter_fails_naming_the_wire(self):
-        with pytest.raises(ReasoningNotControllable, match=r"gw:m .* openai wire at https://gw/v1"):
-            self._sent(self._endpoint("openai", "https://gw/v1"))
+    def test_an_openai_wire_that_is_not_openrouter_is_sent_no_reasoning_setting(self):
+        # Maintainer decision 2026-11-04: only wires with a documented switch get one.
+        sent, _ = self._sent(self._endpoint("openai", "https://gw/v1"))
+        assert len(sent) == 1
+        assert "extra_body" not in sent[0] and "thinking" not in sent[0]
+
+    def test_a_vendor_without_a_reasoning_switch_is_sent_no_reasoning_setting(self):
+        sent, _ = self._sent({"ai_models": {"x": {"vendor": "groq", "model": "m"}}})
+        assert len(sent) == 1
+        assert "extra_body" not in sent[0] and "thinking" not in sent[0]
 
     def test_a_call_not_asking_for_reasoning_off_is_sent_as_before(self):
         cfg = self._endpoint("openai", "https://openrouter.ai/api/v1")

@@ -102,11 +102,6 @@ def _stopped_at_limit(finish_reason: Any, usage: Any, max_tokens: int) -> bool:
     return isinstance(used, int) and used >= max_tokens
 
 
-class ReasoningNotControllable(ValueError):
-    """A call asked for the model's reasoning off, and its vendor's wire has no setting Provisa
-    knows that turns it off: the call is not sent as though it had one."""
-
-
 class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
     """Vendor-agnostic LLM client backed by aisuite.
 
@@ -225,7 +220,7 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         """The request arguments that turn ``vendor``'s model's reasoning off, on its wire:
         OpenRouter's ``reasoning`` object with ``enabled: false`` (sent as the OpenAI client's
         ``extra_body``), or Anthropic's ``thinking`` of type ``disabled`` (natively or through an
-        Anthropic-style endpoint). Any other wire raises :class:`ReasoningNotControllable`."""
+        Anthropic-style endpoint). Any other wire gets no setting (``{}``)."""
         endpoint = self._endpoints.get(vendor)
         wire = endpoint["style"] if endpoint is not None else vendor
         if wire == "anthropic":
@@ -233,11 +228,11 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         if wire == "openai" and endpoint is not None:
             if _OPENROUTER_HOST in str(endpoint.get("base_url") or ""):
                 return {"extra_body": {"reasoning": {"enabled": False}}}
-        raise ReasoningNotControllable(
-            f"{vendor}:{model} was asked with its reasoning off, and Provisa knows no setting "
-            f"that turns reasoning off on the {wire} wire"
-            + (f" at {endpoint.get('base_url')}" if endpoint is not None else "")
-        )
+        # Maintainer decision, 2026-11-04: "leave other vendors on their default." Only wires with
+        # a documented switch get one; the rest (openai direct, groq, ollama, lmstudio, other
+        # openai-compatible gateways) send no reasoning setting and keep the vendor's default.
+        # This is the documented design, not a fallback.
+        return {}
 
     def _respond(
         self,
@@ -250,7 +245,6 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
     ) -> Completion:
         import aisuite as ai
 
-        # Settled before any client is made: a wire that cannot be told is never called.
         reasoning = self._reasoning_off(vendor, model) if reasoning_off else {}
 
         endpoint = self._endpoints.get(vendor)
@@ -372,7 +366,7 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
     ) -> Completion:
         """:meth:`complete` with the vendor, model and usage of the answer (:class:`Completion`).
         ``reasoning_off`` asks each model called, the fallback's too, with its reasoning turned off
-        (:meth:`_reasoning_off`); a vendor whose wire has no such setting fails the call."""
+        (:meth:`_reasoning_off`); a wire with no documented switch is sent none and keeps its default."""
         import asyncio
 
         loop = asyncio.get_event_loop()

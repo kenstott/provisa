@@ -118,8 +118,8 @@ class Held:
                 # Reasoning off: finding and resolving terms is reading, and a model that reasons
                 # by default spends the output limit before any answer. Demo bundles 41930549595:
                 # anthropic/claude-haiku-5.5 on OpenRouter (default_effort medium) used all of
-                # 4096, then 8192, tokens and returned no text. A vendor that cannot be told
-                # fails the call by name (provisa.llm.client.ReasoningNotControllable).
+                # 4096, then 8192, tokens and returned no text. A wire with no documented
+                # switch is sent none and keeps its vendor's default (provisa.llm.client).
                 reasoning_off=True,
             )
         except LLMEmptyResponseError as exc:

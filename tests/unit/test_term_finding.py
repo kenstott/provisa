@@ -349,16 +349,17 @@ async def test_a_call_to_anthropic_turns_extended_thinking_off(monkeypatch):
     assert "extra_body" not in sent
 
 
-async def test_a_vendor_whose_reasoning_cannot_be_turned_off_fails_the_call_naming_it(monkeypatch):
-    """No silent fallback: a vendor Provisa has no documented way to turn reasoning off for is not
-    asked as though it had none."""
+async def test_a_vendor_without_a_reasoning_switch_is_called_with_its_default(monkeypatch):
+    """Maintainer decision 2026-11-04: only wires with a documented switch get one; the rest keep
+    their default. The request carries no reasoning parameter and the call succeeds."""
     wire = _Wire()
     monkeypatch.setattr("aisuite.Client", wire)
     config = {"ai_models": {model.OPERATION: {"vendor": "groq", "model": "some-model"}}}
     client = ProvisaLLMClient(model.OPERATION, config=config, api_keys={"groq": "k"})
-    with pytest.raises(scan.ScanFailed, match="groq:some-model failed: .*reasoning off"):
-        await model.Held(client, _Guard(budget=False), None)("find terms", 4096)
-    assert wire.sent == []
+    assert await model.Held(client, _Guard(budget=False), None)("find terms", 4096) == "[]"
+    ((sent,),) = [wire.sent]
+    assert sent["model"] == "groq:some-model"
+    assert "extra_body" not in sent and "thinking" not in sent
 
 
 # -- an answer cut off, an answer that is not JSON ------------------------------------------------
