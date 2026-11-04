@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.compiler.naming import LabelClash, SqlAddressTaken, stored_convention
 from typing import TYPE_CHECKING, Any, Optional, cast
 
@@ -2099,7 +2100,7 @@ async def _delete_source_row(id: str, reader: "DependentsReader", pool) -> Mutat
             from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
 
             await reschedule_org_triggers()
-        if _existing["type"] in ("node", "python"):  # REQ-1984, REQ-1993: its workers go
+        if _existing["type"] in CODE_SOURCE_TYPES:  # REQ-1984, REQ-1993, REQ-2200: its workers go
             from provisa.codesource.source import forget
 
             forget(id)

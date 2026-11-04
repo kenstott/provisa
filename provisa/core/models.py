@@ -127,10 +127,11 @@ class SourceType(str, Enum):
     kafka = "kafka"
     websocket = "websocket"  # External WebSocket feed — connect, subscribe, receive events
     rss = "rss"  # RSS 2.0 / Atom feed — poll, watermark by pubDate/updated
-    # Code (REQ-1984, REQ-1993): the organisation's own functions, run in a sandboxed worker; their
-    # tables are read per argument set and landed, as a pipeline table is.
+    # Code (REQ-1984, REQ-1993, REQ-2200): the organisation's own functions, run in a sandboxed
+    # worker; their tables are read per argument set and landed, as a pipeline table is.
     node = "node"
     python = "python"
+    go = "go"
     # Graph / Semantic
     neo4j = "neo4j"
     sparql = "sparql"

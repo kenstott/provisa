@@ -425,7 +425,7 @@ def test_a_go_command_reaches_no_network_and_inherits_nothing(tmp_path, monkeypa
         "HOME": str(tmp_path),
         "GOCACHE": str(tmp_path / "cache"),
         "GOMODCACHE": str(tmp_path / "mod"),
-        "GOPATH": str(tmp_path),
+        "GOPATH": str(tmp_path / "gopath"),
         "GOTOOLCHAIN": "local",
         "GOFLAGS": "-mod=readonly",
         "GOPROXY": "off",

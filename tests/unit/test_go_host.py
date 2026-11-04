@@ -29,7 +29,15 @@ from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.manifest import Manifest
 from provisa.core import request_deadline
 from provisa.golang import source
-from provisa.golang.build import HOST, build_host, build_module, exports_source, import_path
+from provisa.golang.build import (
+    HOST,
+    build_host,
+    build_module,
+    directives,
+    exports_source,
+    import_path,
+    requirements,
+)
 from provisa.golang.reader import ensure_reader, read_code
 from provisa.runtime_deps.code_runtimes import RUNTIMES, CodeRuntimeResolver
 
@@ -267,24 +275,43 @@ def test_a_panic_a_yielded_error_and_a_value_with_no_form_fail_the_call_by_name(
 def test_the_build_joins_the_hosts_module_and_the_codes(tmp_path, fixture_manifest):
     code = tmp_path / "code"
     shutil.copytree(FIXTURE, code)
-    (code / "go.mod").write_text("module example.com/orders\n\ngo 1.27.1\n")
+    (code / "go.mod").write_text(
+        "module example.com/orders\n\ngo 1.27.1\n\n"
+        "require (\n\tgolang.org/x/sys v0.99.0 // indirect\n\texample.com/dep v1.0.0\n)\n\n"
+        "replace example.com/dep => ./vendored/dep\n"
+    )
     (code / "go.sum").write_text("example.com/dep v1.0.0 h1:abc=\n")
     into = tmp_path / "build"
     into.mkdir()
     build_module(code, ".", fixture_manifest, into)
     module = (into / "go.mod").read_text()
-    assert module.startswith("module provisa/codehost\n")
-    assert "\ngo 1.27.1\n" in module  # the newer of the host's and the code's
-    assert module.endswith(
-        "require example.com/orders v0.0.0-00010101000000-000000000000\n\n"
-        f"replace example.com/orders => {code}\n"
-    )
+    host_requires = requirements((HOST / "go.mod").read_text())
+    assert module.startswith("module provisa/codehost\n\ngo 1.27.1\n")  # the newer go line
+    required = dict(w for w in directives(module, "require"))
+    # Every module either requires, the code's module itself replaced by its directory.
+    assert required == {
+        **host_requires,
+        "golang.org/x/sys": "v0.99.0",  # the higher of the host's and the code's
+        "example.com/dep": "v1.0.0",
+        "example.com/orders": "v0.0.0-00010101000000-000000000000",
+    }
+    assert [" ".join(w) for w in directives(module, "replace")] == [
+        f"example.com/orders => {code}",
+        f"example.com/dep => {(code / 'vendored' / 'dep').resolve()}",
+    ]
     sums = (into / "go.sum").read_text().splitlines()
     assert "example.com/dep v1.0.0 h1:abc=" in sums
     assert set((HOST / "go.sum").read_text().splitlines()) - {""} <= set(sums)
     assert sorted(p.name for p in into.iterdir()) == [
         "arrow.go", "call.go", "exports.go", "go.mod", "go.sum", "host.go", "values.go",
     ]  # fmt: skip
+
+
+def test_the_higher_of_two_required_versions_is_kept_as_semver_orders_them():
+    assert requirements(
+        "require (\n\ta v1.2.0\n\tb v0.0.0-20260101000000-abcdef123456\n\tc v2.0.0-rc.2\n)\n",
+        "require a v1.10.0\nrequire b v0.1.0\nrequire c v2.0.0-rc.10 // indirect\n",
+    ) == {"a": "v1.10.0", "b": "v0.1.0", "c": "v2.0.0-rc.10"}
 
 
 def test_the_generated_exports_register_each_tagged_function(fixture_manifest):

@@ -96,13 +96,13 @@ _CONTRACTS: dict[str, SourceContract] = {}
 def contract_for(source_type: str) -> SourceContract | None:
     """``source_type``'s contract, or None for a SQL database or a source the engine reads."""
     if not _CONTRACTS:
+        from provisa.codesource.languages import CODE_SOURCE_TYPES
         from provisa.codesource.proxy import CodeProxy
         from provisa.qdrant.contract import QdrantContract
 
         _CONTRACTS.update(
             {
-                "node": CodeProxy(),
-                "python": CodeProxy(),
+                **{t: CodeProxy() for t in CODE_SOURCE_TYPES},
                 "qdrant": QdrantContract(),
                 "openapi": Lands("REST"),
                 "graphql_api": Lands("GraphQL remote"),

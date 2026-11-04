@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.federation.connector_base import CatalogEntry, Connector
 
 if TYPE_CHECKING:
@@ -682,8 +683,7 @@ def build_duckdb_engine(
         [
             DuckDBPostgresConnector(),
             # REQ-2100: a built code host, attached as the Postgres server it speaks as.
-            DuckDBCodeHostConnector("node"),
-            DuckDBCodeHostConnector("python"),
+            *(DuckDBCodeHostConnector(t) for t in sorted(CODE_SOURCE_TYPES)),
             DuckDBSqliteConnector(),
             DuckDBDuckdbConnector(),  # DuckDB attaches another DuckDB database in place (core)
             DuckDBCsvConnector(),
@@ -861,8 +861,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
             PostgresFdwConnector(),  # postgresql
             # REQ-2100: a built code host, through postgres_fdw (probe: a directory shared for its
             # identity).
-            PgCodeHostConnector("node"),
-            PgCodeHostConnector("python"),
+            *(PgCodeHostConnector(t) for t in sorted(CODE_SOURCE_TYPES)),
             PgFilesConnector(),  # files (pgwire bridge, live attach — REQ-1730)
             PgSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
             PgSalesforceConnector(),  # salesforce (pgwire bridge, live attach — REQ-1946)

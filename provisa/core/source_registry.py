@@ -18,6 +18,7 @@ it was a hand-maintained duplicate of those objects' names. REACH, likewise, is 
 engine's OWN connector registry (``reachable_source_types``), never a parallel map here."""
 
 # Requirements: REQ-229, REQ-250, REQ-251, REQ-372, REQ-950, REQ-947
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 
 # Wire-protocol families (REQ-950): a wire-compatible RDB reuses its base wire's JDBC driver,
 # native async driver, and SQLGlot dialect — it only needs registry entries, no new code.
@@ -75,8 +76,7 @@ SOURCE_TO_DIALECT: dict[str, str] = {
     "microsoft_365": "postgres",
     "exasol": "exasol",
     # REQ-2100: a code table's rows are read in DuckDB when its host answers the engine.
-    "node": "duckdb",
-    "python": "duckdb",
+    **{t: "duckdb" for t in CODE_SOURCE_TYPES},
 }
 
 # Source types that are CONNECTOR_ONLY — no direct driver, no SQLGlot dialect (REQ-229)

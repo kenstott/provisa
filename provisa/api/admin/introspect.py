@@ -26,6 +26,7 @@ import json
 
 from sqlalchemy import select
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.core.schema_org import kafka_topics, sources
 
 if TYPE_CHECKING:
@@ -277,7 +278,7 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if t == "elasticsearch":
         return ["default"]  # REQ-1672: one schema; the index is the table
 
-    if t in ("node", "python"):
+    if t in CODE_SOURCE_TYPES:
         return ["default"]  # REQ-1984, REQ-1993: one schema; a @table function is the table
 
     if t == "cosmosdb":  # REQ-1982: the source's database; a container is the table
@@ -2065,7 +2066,7 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     if t == "elasticsearch":
         return await _native_tables_elasticsearch(source_id, schema_name, config_conn, state)
 
-    if t in ("node", "python"):  # REQ-1984, REQ-1993: the code's @table functions
+    if t in CODE_SOURCE_TYPES:  # REQ-1984, REQ-1993, REQ-2200: the code's @table functions
         from provisa.api.admin.types import AvailableTableType
         from provisa.codesource import discovery as _code
 

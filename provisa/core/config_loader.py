@@ -22,6 +22,7 @@ from pydantic import AliasChoices, BaseModel
 import yaml
 from sqlalchemy import insert, select, update
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.core.repositories.identity import TableInIdentity
 from provisa.core.models import (
     ControlPlaneConfig,
@@ -616,8 +617,8 @@ def _validate_neo4j_sources(config: ProvisaConfig) -> None:  # REQ-1668, REQ-168
 
             check_qdrant_table(tbl)
             continue
-        if stype in ("node", "python"):
-            # REQ-1984, REQ-1993: a code table names its function; checked against the code when
+        if stype in CODE_SOURCE_TYPES:
+            # REQ-1984, REQ-1993, REQ-2200: a code table names its function; checked against the code when
             # the table is registered (its manifest is the code's, read in the worker's sandbox).
             from provisa.codesource.table import check_table as check_code_table
 
