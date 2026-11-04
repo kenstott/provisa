@@ -91788,3 +91788,25 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     When an answer differs and no skipped-by-design decision covers it
 
     Then the replay reports the statement, the tool and the difference as a failure'
+- id: REQ-2205
+  value: A contributor opens the repository in a dev container and has a working toolchain and test setup
+    without reading setup docs.
+  status: proposed
+  target: 2026-Q4
+  group: 11. Platform, Infrastructure & Delivery
+  category: Developer Experience
+  feature: deployment-compose-helm
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-04: the repository carries a dev container definition (.devcontainer)
+    that VS Code and GitHub Codespaces open as is. It provides the pinned Python with the project''s dependencies
+    synced from uv.lock, the Rust toolchain with the provisa._encoders extension built for the checkout,
+    the pinned Go toolchain, Node with provisa-ui''s dependencies, and a control-plane PostgreSQL with
+    pgvector (the same image the compose stack uses), with Docker available for the tests that start their
+    own containers. Opening it ends with the unit suite runnable by one command, and the README''s contributing
+    section says so.'
+  scenario: 'Given a fresh clone opened in the dev container
+
+    When the container finishes building
+
+    Then pytest tests/unit and the UI unit tests run with no further setup'

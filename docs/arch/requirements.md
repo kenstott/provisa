@@ -26527,3 +26527,15 @@ Maintainer 2026-11-04: the catalog queries that DBeaver, Metabase, Grafana and p
 **Code:** —
 
 **Tests:** —
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2205 · Developer Experience {#REQ-2205}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-04: the repository carries a dev container definition (.devcontainer) that VS Code and GitHub Codespaces open as is. It provides the pinned Python with the project's dependencies synced from uv.lock, the Rust toolchain with the provisa._encoders extension built for the checkout, the pinned Go toolchain, Node with provisa-ui's dependencies, and a control-plane PostgreSQL with pgvector (the same image the compose stack uses), with Docker available for the tests that start their own containers. Opening it ends with the unit suite runnable by one command, and the README's contributing section says so.
+
+**Code:** —
+
+**Tests:** —
