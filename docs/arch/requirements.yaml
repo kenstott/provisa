@@ -89340,7 +89340,18 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     txid_current_if_assigned, pg_stat_get_activity, pg_stat_get_db_checksum_failures, pg_stat_get_db_checksum_last_failure,
     pg_stat_get_snapshot_timestamp and pg_stat_get_progress_info. domain_in, whose result has the pseudo-type
     any, is compared by whether its answer IS NULL and by the refusal a value breaking the domain''s check
-    gets.'
+    gets. (Amended 2026-11-04, Server state the client tools read is answered as Provisa''s own:) Maintainer
+    2026-11-04: the server-state reads that the recorded client tools send (REQ-2204: DBeaver''s Session
+    Manager, Dashboard and Properties, Metabase''s sync, psql''s \d+) are answered with what is true of
+    Provisa itself, never a copy of another server''s numbers, and compared by type and form: pg_stat_activity
+    lists only the caller''s own session, as active; pg_stat_database has one row for the caller''s database,
+    with Provisa''s count of the caller''s queries as xact_commit and 0 for rollbacks and block reads and
+    hits; pg_stat_user_tables.n_live_tup is Provisa''s row estimate for the table where it has one, and
+    no row where it has none; pg_stat_get_numscans of an index is 0; pg_tablespace lists pg_default and
+    pg_global, with an empty pg_tablespace_location; pg_relation_is_publishable is false. pg_relation_size
+    and pg_total_relation_size stay NULL (Provisa holds no storage). These replace, for these functions
+    and views only, the skipped-by-design decisions above; every other server-state function stays skipped
+    by design.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
