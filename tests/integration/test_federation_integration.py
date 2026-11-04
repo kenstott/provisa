@@ -81,7 +81,13 @@ class _Postgres:
         subprocess.run(
             ["docker", "run", "-d", "--rm", "--memory", "512m", "--name", self._name]
             + ["-e", "POSTGRES_USER=provisa", "-e", "POSTGRES_PASSWORD=provisa"]
-            + ["-e", "POSTGRES_DB=provisa", "-p", f"127.0.0.1:{self.port}:5432", "postgres:16"],
+            + [
+                "-e",
+                "POSTGRES_DB=provisa",
+                "-p",
+                f"127.0.0.1:{self.port}:5432",
+                "pgvector/pgvector:pg16",
+            ],
             check=True,
             capture_output=True,
         )

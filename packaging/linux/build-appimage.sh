@@ -150,7 +150,7 @@ save_images() {
   # provisa-obs-images-<version>.tar.gz add-on.
   info "Saving service images (core)..."
   local images=(
-    "postgres:16"
+    "pgvector/pgvector:pg16"
     "edoburu/pgbouncer:latest"
     "redis:7-alpine"
     "trinodb/trino:480"

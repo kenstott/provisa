@@ -505,7 +505,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    | ------- | ---------- |
    | `provisa/provisa:<version>` | API Provisa |
    | `trinodb/trino:480` | Координатор и рабочие узлы федеративного движка |
-   | `postgres:16` | PostgreSQL внутри кластера (если `postgresql.enabled`) |
+   | `pgvector/pgvector:pg16` | PostgreSQL внутри кластера (если `postgresql.enabled`) |
    | `edoburu/pgbouncer:latest` | PgBouncer внутри кластера (если `pgbouncer.enabled`) |
    | `redis:7.2` | Redis внутри кластера (если `redis.enabled` и не задан `redis.host`) |
    | `minio/minio:latest` | MinIO внутри кластера (если `minio.enabled`) |

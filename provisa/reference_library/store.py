@@ -344,12 +344,16 @@ def _dimensions(vectors: Sequence[Sequence[float]]) -> int:
             f"one document's embeddings have {sorted(found)} dimensions; one is needed"
         )
     (dimensions,) = found
+    _indexable(dimensions)
+    return dimensions
+
+
+def _indexable(dimensions: int) -> None:
     if not 0 < dimensions <= pgvector.MAX_INDEXED_DIMENSIONS:
         raise ValueError(
             f"the embeddings have {dimensions} dimensions; pgvector indexes vectors of at most "
             f"{pgvector.MAX_INDEXED_DIMENSIONS}, so the library cannot hold them"
         )
-    return dimensions
 
 
 def _table(schema: str | None) -> str:
@@ -418,8 +422,7 @@ async def index_vectors(conn: Connection, schema: str | None = None) -> None:
     passages written other than through this module: a demo's carried library
     (provisa.term_finding.carry) and a sandbox's copy of its template's (env_copy)."""
     for dimensions in sorted(await _held_dimensions(conn, schema)):
-        if dimensions > pgvector.MAX_INDEXED_DIMENSIONS:
-            _dimensions([[0.0] * dimensions])  # refused by name
+        _indexable(dimensions)
         await _index(conn, dimensions, schema)
     await _drop_unused_indexes(conn, schema)
 

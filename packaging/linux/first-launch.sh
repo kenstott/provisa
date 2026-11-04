@@ -1048,7 +1048,8 @@ services:
   region-pg-eu: &region_pg
     profiles: ["sandbox"]
     restart: unless-stopped
-    image: postgres:16
+    # REQ-2185: a region's store holds org schemas, whose reference library needs pgvector.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: provisa
       POSTGRES_PASSWORD: "\${PROVISA_PG_PASSWORD:?the deployment database password}"

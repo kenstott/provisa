@@ -127,14 +127,14 @@ def pytest_collection_modifyitems(config, items):
         item.add_marker(getattr(pytest.mark, group))
 
 
-_PG_SERVER_MAJOR = "16"  # matches the postgres:16 image pinned across docker-compose*.yml
+_PG_SERVER_MAJOR = "16"  # matches the PostgreSQL 16 control-plane image (pgvector/pgvector:pg16) of docker-compose*.yml
 
 
 def _pg_tool(name: str) -> str:
     """Resolve a PG client binary (pg_dump/pg_restore).
 
     PATH first — Linux CI and the linux-mem Docker lane ship a pg_* on PATH that matches
-    the postgres:16 server image. On local macOS dev, Homebrew's default pg_dump/pg_restore
+    the PostgreSQL 16 server image. On local macOS dev, Homebrew's default pg_dump/pg_restore
     tracks Homebrew's latest major version, which drifts ahead of the pinned server image;
     a client built against a newer major emits syntax (e.g. `SET transaction_timeout = 0`)
     the 16 server rejects on restore. When PATH resolves to a mismatched major and the macOS

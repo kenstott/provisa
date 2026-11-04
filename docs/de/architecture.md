@@ -825,7 +825,7 @@ Für große analytische Workloads verwenden Sie entweder:
 | Provisa gRPC | (Host-Prozess) | 50051 | Protobuf-gRPC-Server |
 | Federation Engine | `trinodb/trino` (Standard) oder externes Warehouse | 8080 / variiert | Query-Federation-Engine — Trino für den eingebetteten Stack; Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB für Warehouse-Ziele |
 | Zaychik | `provisa-zaychik` (aus dem Quellcode gebaut) | 8480 | Arrow-Flight-SQL-Proxy für Trino; für Warehouse-Engines nicht erforderlich |
-| PostgreSQL | `postgres:16` | 5432 | Konfigurationsmetadaten + Iceberg-Katalog |
+| PostgreSQL | `pgvector/pgvector:pg16` | 5432 | Konfigurationsmetadaten + Iceberg-Katalog |
 | MongoDB | `mongo:7` | 27017 | Demo-NoSQL-Datenquelle |
 | MinIO | `minio/minio` | 9000/9001 | S3-kompatibler Objektspeicher |
 | Redis | `redis:7-alpine` | 6379 | Query-Result-Cache |

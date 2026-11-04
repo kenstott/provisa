@@ -269,7 +269,7 @@ pulls the amd64 image zip on demand. MinIO is a core service (REQ-561). No demo.
 
 ```bash
 # Core
-"postgres:16"
+"pgvector/pgvector:pg16"
 "edoburu/pgbouncer:latest"
 "redis:7-alpine"
 "minio/minio:latest"

@@ -505,7 +505,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    | ------- | ---------- |
    | `provisa/provisa:<version>` | Provisa API |
    | `trinodb/trino:480` | 聯邦引擎協調器 + 工作處理程序 |
-   | `postgres:16` | 叢集內 PostgreSQL（若 `postgresql.enabled`） |
+   | `pgvector/pgvector:pg16` | 叢集內 PostgreSQL（若 `postgresql.enabled`） |
    | `edoburu/pgbouncer:latest` | 叢集內 PgBouncer（若 `pgbouncer.enabled`） |
    | `redis:7.2` | 叢集內 Redis（若 `redis.enabled` 且無 `redis.host`） |
    | `minio/minio:latest` | 叢集內 MinIO（若 `minio.enabled`） |

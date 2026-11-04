@@ -825,7 +825,7 @@ Para grandes cargas de trabalho analíticas, use:
 | Provisa gRPC | (processo host) | 50051 | Servidor gRPC Protobuf |
 | Motor de Federação | `trinodb/trino` (padrão) ou warehouse externo | 8080 / varia | Motor de federação de consulta — Trino para a stack embutida; Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB para alvos de warehouse |
 | Zaychik | `provisa-zaychik` (construído a partir do código-fonte) | 8480 | Proxy Arrow Flight SQL para Trino; não exigido para motores de warehouse |
-| PostgreSQL | `postgres:16` | 5432 | Metadados de config + catálogo Iceberg |
+| PostgreSQL | `pgvector/pgvector:pg16` | 5432 | Metadados de config + catálogo Iceberg |
 | MongoDB | `mongo:7` | 27017 | Fonte de dados NoSQL de demonstração |
 | MinIO | `minio/minio` | 9000/9001 | Armazenamento de objetos compatível com S3 |
 | Redis | `redis:7-alpine` | 6379 | Cache de resultado de consulta |

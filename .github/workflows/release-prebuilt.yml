@@ -162,7 +162,7 @@ jobs:
           mkdir -p images trino-image
           for img in \
             "python:3.12-slim" \
-            "postgres:16" \
+            "pgvector/pgvector:pg16" \
             "edoburu/pgbouncer:latest" \
             "redis:7-alpine" \
             "busybox:latest"; do
@@ -274,7 +274,7 @@ jobs:
           mkdir -p images trino-image
           for img in \
             "python:3.12-slim" \
-            "postgres:16" \
+            "pgvector/pgvector:pg16" \
             "edoburu/pgbouncer:latest" \
             "redis:7-alpine" \
             "busybox:latest"; do
