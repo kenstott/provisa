@@ -30,7 +30,7 @@ says this copy IS the creation (``seed``). Afterwards they are the environment's
 may do what (REQ-1539).
 """
 
-# Requirements: REQ-1488, REQ-1489, REQ-1491, REQ-1539
+# Requirements: REQ-1488, REQ-1489, REQ-1491, REQ-1539, REQ-2201
 
 from __future__ import annotations
 
@@ -312,6 +312,7 @@ async def clone_model(
             conn, src_schema, dst_schema, report, REPLACE, True, True, False, landing, apply=True
         )
         await copy_profile_results(conn, src_schema, dst_schema)
+        await copy_term_scans(conn, src_schema, dst_schema)
         return report
 
 
@@ -347,6 +348,36 @@ async def copy_profile_results(conn: "Connection", src_schema: str, dst_schema: 
         await conn.execute_core(text(f"CREATE TABLE {dst} (LIKE {src} INCLUDING ALL)"))
         await conn.execute_core(text(f"INSERT INTO {dst} SELECT * FROM {src}"))
     return names
+
+
+#: REQ-2201: a library document, its domains and passages, and the scans of it with their drafts,
+#: in the order their foreign keys need.
+_SCAN_TABLES = (
+    "reference_documents",
+    "reference_document_domains",
+    "reference_passages",
+    "glossary_term_scans",
+    "glossary_term_drafts",
+)
+
+
+async def copy_term_scans(conn: "Connection", src_schema: str, dst_schema: str) -> list[str]:
+    """REQ-2201: the reference library and the scans of it of ``src_schema``, carried into
+    ``dst_schema``: a demo's template holds the scans its bundle carries (provisa.term_finding.carry),
+    and a sandbox opens on them. They are the environment's own (env_classes.NEVER_RUNTIME), so the
+    model copy does not move them; a sandbox is cloned with its template's glossary term ids, so
+    each row keeps its ids. Each table is replaced whole. Returns the tables copied."""
+    tables = [org_metadata.tables[name] for name in _SCAN_TABLES]
+    for table in reversed(tables):
+        await conn.execute_core(delete(_scoped(table, dst_schema)))
+    for table in tables:
+        src, dst = _scoped(table, src_schema), _scoped(table, dst_schema)
+        columns = [c.name for c in table.columns]
+        await conn.execute_core(
+            insert(dst).from_select(columns, select(*(src.c[c] for c in columns)))
+        )
+    await _resync_sequences(conn, tables, dst_schema)
+    return list(_SCAN_TABLES)
 
 
 async def _copy_schemas(

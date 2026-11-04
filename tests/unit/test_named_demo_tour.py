@@ -51,6 +51,9 @@ _TARGETS = (
     "mcp",
     "mcp_explain",
     "mcp_connect",
+    "find_terms",
+    "scan",
+    "library",
 )
 # What a step runs that a role may stand beside: the role is picked as the step opens (demoTour.ts).
 _RUN_AS_ITS_ROLE = {"example", "sql", "mcp"}
@@ -95,6 +98,9 @@ _PROFILE_GRAPHS = set(
         ).group(1),
     )
 )
+# REQ-2201: the page the glossary's Find terms opens on, and the Reference library page.
+_GLOSSARY_PAGE = "/admin/ontology"
+_LIBRARY_PAGE = "/admin/reference-library"
 # The page each surface's step runs on.
 _SURFACE_PAGES = {"api": "/openapi", "jsonapi": "/jsonapi", "grpc": "/grpc", "cypher": "/graph"}
 
@@ -236,6 +242,8 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     setup = home / "setup.yaml"
     made = (yaml.safe_load(setup.read_text()) or {}).get("steps") or [] if setup.exists() else []
     envs = {"prod"} | {s["environment"]["name"] for s in made if "environment" in s}
+    # REQ-2201: the documents the demo's setup scans for terms when its bundle is built.
+    scanned = {s["scan"] for s in made if "scan" in s}
     terms = {t["name"] for t in config.get("glossary_terms", [])}
     products = {p["id"] for p in config.get("data_products", [])}
     tables = {f"{t['source_id']}.{config_table_name(t)}" for t in config["tables"]}
@@ -425,6 +433,18 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
         if "mcp_connect" in step:
             assert step["mcp_connect"] is True, step
             assert page == "/explore", f"{step['key']}: mcp_connect is on /explore, not {page}"
+        for kind in ("find_terms", "scan"):
+            if kind in step:
+                # REQ-2201: Find terms opens from the glossary, on a document the demo's setup
+                # scanned ahead, so the scan done is there to open and a cancelled one shows it.
+                assert page == _GLOSSARY_PAGE, f"{step['key']}: {kind} is on {_GLOSSARY_PAGE}"
+                assert step[kind] in scanned, f"{step['key']}: setup.yaml scans no {step[kind]}"
+        if "library" in step:
+            # REQ-2201: a library document's row, the document the demo's setup scanned.
+            assert page == _LIBRARY_PAGE, f"{step['key']}: library is on {_LIBRARY_PAGE}"
+            assert step["library"] in scanned, (
+                f"{step['key']}: setup.yaml scans no {step['library']}"
+            )
         if "sql" in step:
             sql_steps[step["key"]] = step["sql"]
             # A relation read at a time is named with its arguments (REQ-1163): its name is the call's.
@@ -597,8 +617,8 @@ def test_an_agent_in_a_demo_can_search_its_catalog(home):
 def test_every_step_has_its_words_in_every_language(path):
     steps = yaml.safe_load(path.read_text())["steps"]
     keys = [s["key"] for s in steps]
-    # A step that acts first (a graph it opens) shows its caption while it does.
-    acting = {s["key"] for s in steps if "graph" in s}
+    # A step that acts first (a graph it opens, a scan it starts) shows its caption while it does.
+    acting = {s["key"] for s in steps if "graph" in s or "find_terms" in s}
     for locale in sorted(p for p in _LOCALES.iterdir() if p.is_dir()):
         words = json.loads((locale / "tour.json").read_text())["tour"]
         for key in keys:
@@ -916,3 +936,63 @@ def test_the_mcp_explorer_s_steps_are_on_the_explorer():
 def test_an_mcp_step_off_the_explorer_or_with_nothing_to_explain_is_refused(steps):
     with pytest.raises(AssertionError):
         _check_steps(_WEBLOGS, steps)
+
+
+# -- REQ-2201: Find terms and the reference library ------------------------------------------------
+
+_RULE = (
+    "https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311"
+)
+_GLOSSARY = {"route": _GLOSSARY_PAGE, "capability": "glossary_read"}
+_LIBRARY = {"route": _LIBRARY_PAGE, "capability": "org_settings"}
+
+
+@pytest.fixture
+def scanning(tmp_path):
+    """The weblogs demo, its setup scanning the rule for terms."""
+    import shutil
+
+    home = tmp_path / "weblogs"
+    shutil.copytree(_WEBLOGS, home, ignore=shutil.ignore_patterns("logs", "seeded", "dump"))
+    (home / "setup.yaml").write_text(yaml.safe_dump({"steps": [{"scan": _RULE}]}))
+    return home
+
+
+def test_a_tour_scans_on_the_glossary_and_points_at_the_library(scanning):
+    _check_steps(
+        scanning,
+        [
+            {"key": "f", **_GLOSSARY, "find_terms": _RULE},
+            {"key": "s", "scan": _RULE},
+            {"key": "l", **_LIBRARY, "library": _RULE},
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        # Find terms is the glossary's.
+        [{"key": "f", **_LIBRARY, "find_terms": _RULE}],
+        [{"key": "s", **_LIBRARY, "scan": _RULE}],
+        # The library's row is on its own page.
+        [{"key": "l", **_GLOSSARY, "library": _RULE}],
+        # A document the demo's setup does not scan: no scan done ahead to open.
+        [{"key": "f", **_GLOSSARY, "find_terms": _RULE.replace("1010.311", "1010.100")}],
+        [{"key": "s", **_GLOSSARY, "scan": _RULE.replace("1010.311", "1010.100")}],
+        [{"key": "l", **_LIBRARY, "library": _RULE.replace("1010.311", "1010.100")}],
+    ],
+    ids=[
+        "find-page",
+        "scan-page",
+        "library-page",
+        "find-unscanned",
+        "scan-unscanned",
+        "library-unscanned",
+    ],
+)
+def test_a_scan_or_library_step_off_its_page_or_on_a_document_never_scanned_is_refused(
+    scanning, steps
+):
+    with pytest.raises(AssertionError):
+        _check_steps(scanning, steps)
