@@ -50,6 +50,26 @@ Several regions may share one database instance, one Redis or one object-store b
 
 A deployment that declares no regions has one implicit region and shows region nowhere. There is no region field, no `--region` flag, and a configuration that names a region is refused.
 
+## Where a coordinator's admin UI sends data requests
+
+A node started with `provisa run --mode coordinator` serves the admin UI but no data requests. A UI it serves therefore sends every data request (everything under `/data`) to a data node you choose, with your sign-in carried along. Choose it under **Data node** in the navigation bar. The menu lists the addresses the coordinator offers for its region, and you can type another `http` or `https` address instead. Your choice is kept in this browser for the organization. A UI served by an `every` node, the default mode, sends data requests to its own address and shows no **Data node** menu.
+
+List the addresses to offer on each platform region, as `data_addresses`. Each is an absolute `http` or `https` URL with no query, such as a load balancer, a pool or a single node:
+
+```yaml
+platform:
+  regions:
+    - id: eu
+      address: "https://eu.provisa.example"
+      data_addresses:
+        - "https://data.eu.provisa.example"
+        - "https://eu-node-2.provisa.example:8001"
+```
+
+A region that lists none offers its live `query` and `every` nodes instead, oldest first, at the address each registered when it started. The launcher sets that address as `PROVISA_NODE_URL`. A node without one is not offered. In a deployment with no declared regions, the coordinator offers its own nodes the same way.
+
+Data requests then cross from one address to another. A data node answers the browser's cross-origin preflight before it checks sign-in, and its refusals stay readable across origins.
+
 ## Region homing: a table names its home
 
 A table may name one of its organization's regions as its home. Its home is the only region that builds and refreshes its replica, and the only one that may keep it hot. Every other region reads the table from the home region's replica, in place, at the address the model gives. The reader's row and column rules go into that statement, so the filtering happens in the home region and only what the reader may see crosses.
