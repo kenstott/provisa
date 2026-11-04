@@ -91579,19 +91579,24 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   feature: glossary-tags-ontology-terms
   priority: SHOULD
   type: behavioral
-  description: 'Maintainer 2026-11-03: "another angle for getting terms from docs would be a sql query
-    with id + text against a registered table", then "it could literally just be domain,,table,id,text".
-    Find terms (REQ-2179) can scan a registered table instead of a document: the steward picks a domain,
-    a table in it, its id column and its text column, and each row is one passage. A candidate term''s
-    source passages name the table and the row''s id. The rows are read through the governed pipeline
-    as the steward''s acting role, so masks and row rules apply and no text the steward cannot read reaches
-    the model; the scan is held to the role''s LLM budget like a document scan (REQ-1174). (Lead''s reading,
-    2026-11-03: a table scan is a scan only, not a reference library document.)'
-  scenario: 'Given a registered table of support tickets with an id and a text column
+  description: 'Maintainer 2026-11-03: "another angle for getting terms from docs would be a sql query with
+    id + text against a registered table", then "it could literally just be domain,,table,id,text". Find
+    terms (REQ-2179) can scan a registered table instead of a document: the steward picks a domain, a table
+    in it, its id column and its text column, and each row is one passage. A candidate term''s source passages
+    name the table and the row''s id. The rows are read through the governed pipeline as the steward''s
+    acting role, so masks and row rules apply and no text the steward cannot read reaches the model; the
+    scan is held to the role''s LLM budget like a document scan (REQ-1174). (Lead''s reading, 2026-11-03:
+    a table scan is a scan only, not a reference library document.) (Amended 2026-11-03, For sources that
+    hold definitions:) Maintainer 2026-11-03: "not sure I would use this feature to look at support tickets
+    they would not define a term. This is not about connecting transactions to terms, this is to take any
+    relational sources that truly have definitions/docs." A table scan is for relational sources that hold
+    definitions or documentation (a data dictionary or glossary table, policy or procedure text kept as
+    rows, knowledge-base articles kept in a table), not transactional text.'
+  scenario: 'Given a registered data dictionary table with an id and a definition text column
 
     When a steward scans it for terms, picking the domain, the table, the id column and the text column
 
-    Then candidate terms are offered, each citing the rows it was found in by id'
+    Then candidate terms are offered with their definitions, each citing the rows it was found in by id'
   related_reqs:
   - REQ-2179
   - REQ-2185
