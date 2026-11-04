@@ -91591,7 +91591,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     they would not define a term. This is not about connecting transactions to terms, this is to take any
     relational sources that truly have definitions/docs." A table scan is for relational sources that hold
     definitions or documentation (a data dictionary or glossary table, policy or procedure text kept as
-    rows, knowledge-base articles kept in a table), not transactional text.'
+    rows, knowledge-base articles kept in a table), not transactional text. (Amended 2026-11-03, Two ways
+    in from a table:) Maintainer 2026-11-03: "there are 2 ways to move terms in from tables - it could be
+    explicit, domain,table,term,definition OR inferred: domain,table,id,text." Explicit: the steward picks
+    a domain, a table, its term column and its definition column; each row is a term with its definition,
+    read through the governed pipeline with no model call, matched against the glossary''s terms and synonyms
+    like a scan''s candidates, and offered in the same review queue (a new term, or a merge into the term
+    it matches). Inferred: the domain, table, id column and text column described above, each row a passage
+    the model reads for the terms it defines.'
   scenario: 'Given a registered data dictionary table with an id and a definition text column
 
     When a steward scans it for terms, picking the domain, the table, the id column and the text column
