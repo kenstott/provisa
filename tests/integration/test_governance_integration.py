@@ -36,6 +36,7 @@ import os
 
 import pytest
 import pytest_asyncio
+import sqlglot
 
 from provisa.auth.approval_hook import (
     ApprovalHookConfig,
@@ -44,6 +45,7 @@ from provisa.auth.approval_hook import (
     FallbackPolicy,
     HookType,
 )
+from provisa.compiler.governed_relation import relations
 from provisa.compiler.mask_inject import MaskingRules
 from provisa.compiler.rls import RLSContext, build_rls_context
 from provisa.compiler.sql_gen import (
@@ -289,16 +291,19 @@ class TestRLSEnforcement:
             )
 
     async def test_rls_where_clause_present_in_generated_sql(self):
-        # REQ-040: SQL enforcement layer injects WHERE predicate into generated SQL.
+        # REQ-040: SQL enforcement layer injects the WHERE predicate into generated SQL; by
+        # construction (REQ-039) it is the WHERE of the governed relation read in the table's place.
         ctx = _make_ctx()
         compiled = _orders_compiled()
 
         rls = RLSContext(rules={ORDERS_TABLE_ID: "amount > 0"})
         with_rls = governed_for_role(compiled.sql, ctx, ROLE_ANALYST, rls=rls)
 
-        assert with_rls == f'{compiled.sql} WHERE ("orders"."amount" > 0)', (
-            "REQ-040: WHERE clause must be present in governed SQL"
-        )
+        (relation,) = relations(sqlglot.parse_one(with_rls, read="postgres"))
+        assert relation.table.name == "orders"
+        assert relation.predicates == [
+            sqlglot.parse_one('"orders"."amount" > 0', read="postgres")
+        ], "REQ-040: WHERE clause must be present in governed SQL"
 
     async def test_empty_rls_context_returns_all_rows(self, source_pool):
         # REQ-040: empty RLS (no rules) must not restrict rows.

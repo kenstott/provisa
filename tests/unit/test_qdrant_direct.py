@@ -393,6 +393,99 @@ def test_the_padded_side_of_an_outer_join_reads_its_join_conditions():
     assert _part(sql) == f'SELECT {_COLUMNS} FROM "docs" WHERE "lang" = \'en\''
 
 
+# --- the same parts through the governed relation stage 2 puts in the collection's place (REQ-039) ---
+
+_SERVED = ("id", "title", "lang", "pages", "score", "body_vec")
+_SCORED = '"d"."score" > 0'
+_ENGLISH = '"d"."lang" = \'en\''
+
+
+def _governed(alias: str = "d", rule: str = "", **values: str) -> str:
+    """The governed relation of ``docs`` under ``alias``: each served column under its name, or
+    the value ``values`` gives it (a mask, or a published name's column), the row rule applied."""
+    projections = ", ".join(
+        f'{values.get(c, f'"{alias}"."{c}"')} AS "{c}"' for c in _SERVED if values.get(c) != ""
+    )
+    where = f" WHERE {rule}" if rule else ""
+    return f'(SELECT {projections} FROM "default"."docs" AS "{alias}"{where}) AS "{alias}"'
+
+
+def test_a_governed_read_keeps_the_statements_condition_and_key():
+    sql = f'SELECT d."title" FROM {_governed()} WHERE d."lang" = \'en\' AND d."id" IN (1, 2)'
+    assert _part(sql) == f'SELECT {_COLUMNS} FROM "docs" WHERE "lang" = \'en\' AND "id" IN (1, 2)'
+
+
+def test_a_governed_top_k_read_alone_in_its_select_is_the_parts_top_k():
+    sql = (
+        f'SELECT x."id", o."n" FROM (SELECT d."id", {_SIM} AS s FROM {_governed()} '
+        f'WHERE d."pages" >= 3 ORDER BY {_SIM} DESC LIMIT 1) AS x JOIN "pg"."orders" AS o '
+        'ON o."doc_id" = x."id"'
+    )
+    assert _part(sql) == (
+        f'SELECT {_COLUMNS} FROM "docs" WHERE "pages" >= 3 '
+        f"ORDER BY {_SIM.replace('cosine_similarity', 'COSINE_SIMILARITY')} DESC LIMIT 1"
+    )
+
+
+def test_a_governed_top_k_with_no_condition_is_the_parts_top_k():
+    sql = f'SELECT "id" FROM {_governed()} ORDER BY {_SIM} DESC LIMIT 3'
+    assert _part(sql) == (
+        f'SELECT {_COLUMNS} FROM "docs" '
+        f"ORDER BY {_SIM.replace('cosine_similarity', 'COSINE_SIMILARITY')} DESC LIMIT 3"
+    )
+
+
+def test_a_governed_join_keeps_its_on_and_where_conditions_and_the_row_rule():
+    sql = (
+        f'SELECT d."title", o."n" FROM {_governed(rule=_SCORED)} '
+        'JOIN "pg"."orders" AS o ON o."doc_id" = d."id" AND d."pages" >= 2 '
+        'WHERE d."lang" = \'en\' AND o."n" > 1'
+    )
+    assert _part(sql) == (
+        f'SELECT {_COLUMNS} FROM "docs" WHERE "lang" = \'en\' AND "pages" >= 2 AND "score" > 0'
+    )
+
+
+def test_a_governed_row_rule_alone_bounds_the_part():
+    sql = f'SELECT d."id" FROM {_governed(rule=_ENGLISH)}'
+    assert _part(sql) == f'SELECT {_COLUMNS} FROM "docs" WHERE "lang" = \'en\''
+
+
+def test_a_condition_on_a_published_name_reads_the_column_it_serves():
+    sql = f'SELECT d."id" FROM {_governed(title='"d"."lang"')} WHERE d."title" = \'en\''
+    assert _part(sql) == f'SELECT {_COLUMNS} FROM "docs" WHERE "lang" = \'en\''
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        f'SELECT d."id", o."n" FROM {_governed()} JOIN "pg"."orders" AS o ON o."doc_id" = d."id"',
+        f'SELECT d."id" FROM {_governed()}',
+        f'SELECT d."id" FROM {_governed()} WHERE d."lang" = $1',
+        f'SELECT o."n" FROM "pg"."orders" AS o LEFT JOIN {_governed()} '
+        'ON o."doc_id" = d."id" WHERE d."lang" = \'en\'',
+        # A condition on a masked value is not a condition on the column's.
+        f'SELECT d."id" FROM {_governed(lang="CASE WHEN FALSE THEN 1 ELSE NULL END")} '
+        "WHERE d.\"lang\" = 'en'",
+        # Nor is an ordering by a masked vector a top-k of the collection.
+        f'SELECT d."id" FROM {_governed(body_vec="NULL")} ORDER BY {_SIM} DESC LIMIT 3',
+    ],
+)
+def test_a_governed_part_that_would_read_the_whole_collection_is_refused_by_name(sql):
+    from provisa.federation.live_only import LiveReadRefused
+
+    with pytest.raises(LiveReadRefused, match="'docs' is read live from its source: .* whole"):
+        _part(sql)
+
+
+def test_the_padded_side_of_a_governed_outer_join_reads_its_join_conditions():
+    sql = (
+        f'SELECT o."n" FROM "pg"."orders" AS o LEFT JOIN {_governed()} '
+        'ON o."doc_id" = d."id" AND d."lang" = \'en\''
+    )
+    assert _part(sql) == f'SELECT {_COLUMNS} FROM "docs" WHERE "lang" = \'en\''
+
+
 def _state(driver):
     from types import SimpleNamespace
 
