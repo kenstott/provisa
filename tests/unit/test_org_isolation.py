@@ -9,19 +9,27 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import DEFAULT, AsyncMock, MagicMock, patch
 
 import pytest
 
 
 def _conn_with_advisory_lock() -> AsyncMock:
     """A mocked Connection whose advisory_lock(key) is an async context manager (matches the
-    migrated ``core.db.init_schema`` PG path)."""
+    migrated ``core.db.init_schema`` PG path), on a database that has pgvector in ``public`` —
+    so ``pgvector.require`` (REQ-2185) finds it the way it does on a real control plane."""
     conn = AsyncMock()
     lock_cm = AsyncMock(
         __aenter__=AsyncMock(return_value=None), __aexit__=AsyncMock(return_value=False)
     )
     conn.advisory_lock = MagicMock(return_value=lock_cm)
+
+    def _answer(statement, *_args, **_kwargs):
+        if "pg_extension" in str(statement):
+            return MagicMock(fetchone=MagicMock(return_value=("public",)))
+        return DEFAULT
+
+    conn.execute_core.side_effect = _answer
     return conn
 
 
