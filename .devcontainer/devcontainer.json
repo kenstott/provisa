@@ -1,10 +1,12 @@
 {
   "name": "Provisa",
-  "dockerComposeFile": "compose.yml",
-  "service": "dev",
-  "runServices": ["dev", "postgres"],
-  "workspaceFolder": "/workspaces/provisa",
-  "shutdownAction": "stopCompose",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "mounts": [
+    "source=provisa-node-modules-${devcontainerId},target=${containerWorkspaceFolder}/provisa-ui/node_modules,type=volume",
+    "source=provisa-encoders-target-${devcontainerId},target=${containerWorkspaceFolder}/rust/encoders/target,type=volume"
+  ],
   "remoteUser": "vscode",
   "hostRequirements": {
     "cpus": 4,

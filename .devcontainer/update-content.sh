@@ -7,7 +7,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# The named volumes compose mounts over these directories start out owned by root.
+# The named volumes devcontainer.json mounts over these directories (so a macOS or Windows host's
+# own node_modules and cargo output in the same checkout are neither used nor overwritten) start
+# out owned by root.
 sudo chown vscode:vscode provisa-ui/node_modules rust/encoders/target
 
 # The environment lives at $UV_PROJECT_ENVIRONMENT, outside the checkout, so a host's own .venv in
