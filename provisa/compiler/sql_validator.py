@@ -653,7 +653,9 @@ def _check_column_visibility(  # REQ-039, REQ-040, REQ-263, REQ-265
         if _the_roles(select):
             violations += _merged_column_violations(select, gov_ctx, cte_names_set)
     for col in tree.find_all(exp.Column):
-        if _is_star(col) or not _the_roles(col) or _names_an_output(col, gov_ctx, cte_names_set):
+        if _is_star(col) and isinstance(col.parent, exp.Select):
+            continue  # a select list's ``t.*``, judged above; a ``t.*`` in an expression is a row
+        if not _the_roles(col) or _names_an_output(col, gov_ctx, cte_names_set):
             continue
         if _names_no_relation(col, scopes):
             violations.append(_no_relation_violation(col))

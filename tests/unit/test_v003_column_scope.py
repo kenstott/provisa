@@ -237,10 +237,10 @@ def test_pg_catalog_unnest_is_refused_where_no_client_table_function_is_admitted
 def test_client_table_function_names_the_function_a_table_reads():
     from provisa.compiler.sql_validator import client_table_function
 
-    def target(sql: str) -> sqlglot.exp.Expr:
+    def target(sql: str) -> sqlglot.exp.Table:
         table = sqlglot.parse_one(sql, read="postgres").find(sqlglot.exp.Table)
         assert table is not None
-        return table.this
+        return table
 
     assert client_table_function(target("SELECT 1 FROM pg_catalog.unnest(a) x"), {"unnest"})
     assert client_table_function(target("SELECT 1 FROM pg_catalog.json_each(a) x"), {"json_each"})

@@ -28,10 +28,10 @@ pytestmark = pytest.mark.unit
 _SQL = 'SELECT o.id, x FROM "sales"."orders" o, pg_catalog.unnest(ARRAY[1]) x'
 
 
-async def _govern() -> None:
+async def _govern(sql: str = _SQL) -> None:
     from provisa.pgwire import _pipeline
 
-    await _pipeline.govern_statement(_SQL, "r")
+    await _pipeline.govern_statement(sql, "r")
 
 
 async def test_pg_catalog_unnest_is_admitted_on_a_catalog_statement(monkeypatch):
@@ -47,3 +47,28 @@ async def test_pg_catalog_unnest_is_refused_on_any_other_statement(monkeypatch):
     _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
     with pytest.raises(PermissionError, match="UNNEST|unnest"):
         await _govern()
+
+
+@pytest.mark.parametrize(
+    "fn",
+    [
+        "evil.unnest(ARRAY[1]) x",
+        "public.unnest(ARRAY[1]) x",
+        "cat.evil.unnest(ARRAY[1]) x",
+        "explode(ARRAY[1]) x",
+        "pg_catalog.explode(ARRAY[1]) x",
+        "pg_catalog.posexplode(ARRAY[1]) x",
+    ],
+)
+async def test_a_function_that_is_not_postgresql_unnest_is_refused_on_a_catalog_statement(
+    monkeypatch, fn
+):
+    # RV597 H3: only pg_catalog's own unnest is the client table function, never another schema's
+    # function of that name or sqlglot's other Explode functions.
+    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
+    token = current_request.set(SimpleNamespace(role_id="r"))  # type: ignore[arg-type]
+    try:
+        with pytest.raises(PermissionError, match="(?i)unnest|explode"):
+            await _govern(f'SELECT o.id FROM "sales"."orders" o, {fn}')
+    finally:
+        current_request.reset(token)
