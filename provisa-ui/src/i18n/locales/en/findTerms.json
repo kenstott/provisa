@@ -1,6 +1,6 @@
 {
   "findTerms": {
-    "menuItem": "Find terms in a document",
+    "menuItem": "Find terms",
     "title": "Find terms",
     "intro": "Proposes the concepts a document or table defines and uses: business concepts, roles, organization types, policies, processes and regulations, never named people or companies. Every proposal lands in the review queue as a draft, with the passages it came from.",
     "fromLibrary": "From the library",

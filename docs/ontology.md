@@ -375,7 +375,7 @@ The **Draft** banner on a term tells you whether it still needs a definition (al
 
 ### Finding terms in documents and tables
 
-**Find terms in a document**, on the ✨ menu, proposes new terms from a source your organization already writes its definitions in. Every proposal lands in a review queue as a draft, with the passages it came from. Nothing joins the ontology until you accept it. You need the right to curate the glossary.
+**Find terms**, on the ✨ menu, proposes new terms from a source your organization already writes its definitions in. Every proposal lands in a review queue as a draft, with the passages it came from. Nothing joins the ontology until you accept it. You need the right to curate the glossary.
 
 Pick where the terms come from, then the domains you are working in. The new terms are placed in those domains.
 
@@ -399,7 +399,7 @@ https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&sec
 
 Either way a table is read as your acting role reads it, so its row rules and masks apply, and no text you can't read reaches the model. A table scan adds nothing to the reference library. If a row limit cuts the read short, the scan is refused and names the limit, because a scan of part of a table would leave rows out without saying so.
 
-**The model and its budget.** A scan that reads text uses the AI model your organization chose for **Find terms in a document** under **Admin → AI Models**. Until one is chosen, the scan is refused and the message says where to set it. A scan of text counts against your role's AI budget, and a table whose rows would not fit in the budget is refused before the scan starts. A running scan shows its model and its progress, and **Cancel scan** stops it.
+**The model and its budget.** A scan that reads text uses the AI model your organization chose for **Find terms** under **Admin → AI Models**. Until one is chosen, the scan is refused and the message says where to set it. A scan of text counts against your role's AI budget, and a table whose rows would not fit in the budget is refused before the scan starts. A running scan shows its model and its progress, and **Cancel scan** stops it.
 
 **Reviewing.** Each scan's review queue lists every candidate as a new term, a duplicate of an existing term, or another name for one. **Accept** adds a new term, **Merge** folds a candidate into the term it matches, and **Reject** drops it. **Accept selected** decides many at once, as each proposes. **Propose relationships** then runs the relationship assistant over the ontology, including the terms you just accepted. **Scan again** rereads the document or the table. Earlier decisions stand, and the new scan shows only what the ontology doesn't hold yet and what matches its terms.
 

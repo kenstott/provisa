@@ -1,6 +1,6 @@
 {
   "findTerms": {
-    "menuItem": "Trova termini in un documento",
+    "menuItem": "Trova termini",
     "title": "Trova termini",
     "intro": "Propone i concetti che un documento o una tabella definisce e usa: concetti di business, ruoli, tipi di organizzazione, policy, processi e normative, mai persone o aziende con nome proprio. Ogni proposta arriva nella coda di revisione come bozza, con i passaggi da cui proviene.",
     "fromLibrary": "Dalla biblioteca",

@@ -731,7 +731,7 @@ describe("GlossaryTab", () => {
     const menu = await screen.findByRole("menu");
     // Mantine's items are not exposed by role in jsdom (mantine-menu-test-pattern): read them in place.
     expect([...menu.querySelectorAll('[role="menuitem"]')].map((m) => m.textContent)).toEqual([
-      "Find terms in a document",
+      "Find terms",
       "Relationships",
       "Definitions",
     ]);

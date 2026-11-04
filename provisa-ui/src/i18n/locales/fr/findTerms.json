@@ -1,6 +1,6 @@
 {
   "findTerms": {
-    "menuItem": "Trouver des termes dans un document",
+    "menuItem": "Trouver des termes",
     "title": "Trouver des termes",
     "intro": "Propose les concepts qu'un document ou une table définit et utilise : concepts métier, rôles, types d'organisation, politiques, processus et réglementations, jamais des personnes ou des entreprises nommées. Chaque proposition arrive dans la file de revue sous forme de brouillon, avec les passages dont elle provient.",
     "fromLibrary": "Depuis la bibliothèque",
