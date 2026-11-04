@@ -91321,7 +91321,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the JSON family) takes the result in the form it already has. An Arrow result goes through the Rust
     Arrow encoder; a row result is encoded from its rows; nothing is converted to Arrow only to be encoded.
     And where a source can be upgraded to return Arrow (for example Postgres read through ADBC), it is upgraded,
-    so its results take the Arrow path.'
+    so its results take the Arrow path. (Amended 2026-11-03, Postgres direct reads stay rows for now:) Maintainer
+    2026-11-03: Postgres read directly stays a row source (psycopg), its rows going straight to the encoders.
+    Arrow through ADBC''s Postgres driver is not taken now: it returns no value for infinity dates and timestamps,
+    returns uuid, inet, cidr, macaddr, timetz, geometric types, bit, tsvector, reg* types and ranges as
+    raw PostgreSQL wire bytes, money as cents, numeric NaN lowercased, and overflows oid above 2^31. Revisit
+    when the driver reads these types.'
   scenario: 'Given a new query language, transport or encoder
 
     When it is added
