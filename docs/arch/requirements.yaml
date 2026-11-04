@@ -89293,7 +89293,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     The check compares the names both lists share, and the names that differ only through a distribution''s
     tzdata packaging (Debian drops the backward links and adds localtime and posixrules) are skipped by
     design. Provisa never grants the REFERENCES privilege, so has_*_privilege(..., ''REFERENCES'') answering
-    ''f'' is correct, and those cases are skipped by design citing this rule.'
+    ''f'' is correct, and those cases are skipped by design citing this rule. (Amended 2026-11-03, Backend
+    session statistics are the engine''s:) Maintainer 2026-11-03: the pg_stat_get_backend_* functions and
+    pg_stat_get_backend_idset() report on the engine''s own sessions (their activity, client addresses,
+    start times), not the model. Provisa refuses them by name, and the check skips them by design under
+    the server administration group: serving them would show one tenant other sessions'' activity.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
