@@ -211,8 +211,8 @@ def test_an_ungoverned_call_never_reaches_a_terminal():
 def test_duckdb_ranks_a_governed_search_by_similarity():
     con = duckdb.connect()
     con.execute(
-        "CREATE TABLE docs AS SELECT * FROM (VALUES (1, [1.0, 0.0, 0.0]), "
-        "(2, [0.0, 1.0, 0.0]), (3, [1.0, 1.0, 0.0])) v(id, vec)"
+        "CREATE TABLE docs AS SELECT * FROM (VALUES (1, [1.0, 0.0, 0.0], 'a'), "
+        "(2, [0.0, 1.0, 0.0], 'b'), (3, [1.0, 1.0, 0.0], 'c')) v(id, vec, title)"
     )
     governed = _governed(
         "SELECT d.id, cosine_similarity(d.vec, $1) AS s FROM docs d ORDER BY s DESC LIMIT 2"
@@ -230,8 +230,10 @@ def test_plain_postgres_ranks_a_governed_search_by_similarity(embedded_postgres)
     )
     physical = cast(LiteralString, transpile(governed, "postgres").replace("$1", "%s"))
     with psycopg.connect(embedded_postgres.dsn()) as conn:
-        conn.execute("CREATE TEMP TABLE docs (id int, vec real[])")
-        conn.execute("INSERT INTO docs VALUES (1, '{1,0,0}'), (2, '{0,1,0}'), (3, '{1,1,0}')")
+        conn.execute("CREATE TEMP TABLE docs (id int, vec real[], title text)")
+        conn.execute(
+            "INSERT INTO docs VALUES (1, '{1,0,0}', 'a'), (2, '{0,1,0}', 'b'), (3, '{1,1,0}', 'c')"
+        )
         rows = conn.execute(physical, ["[1.0, 0.0, 0.0]"]).fetchall()
     assert [r[0] for r in rows] == [1, 3]
     assert rows[1][1] == pytest.approx(0.7071, abs=1e-4)

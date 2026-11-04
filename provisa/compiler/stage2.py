@@ -108,6 +108,12 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # Per table, its registered primary key's columns (CompilationContext.pk_columns): the key a
     # write that reads beyond its target matches its rows by (REQ-039).
     pk_columns: dict[int, list[str]] = field(default_factory=dict)
+    # REQ-039, REQ-1942: the write the statement last governed with this context, admitted (its
+    # grant's rows and the role's U or D rule in its WHERE) as the role wrote it, before what it
+    # reads was moved over the governed relation; None for a read. A Reversible environment keeps
+    # a write by reading its rows as a governed read of its own (pgwire/kept_mutations), which
+    # this form gives it.
+    admitted_write: str | None = None
 
 
 def registered_name(gov_ctx: GovernanceContext, table_id: int, name: str) -> str:  # REQ-040
@@ -2160,6 +2166,13 @@ def _govern_write(
     if role_where is not None:
         write.set("where", None)
     admitted = admit_write(write, gov_ctx, session_vars, params)  # pyright: ignore[reportArgumentType]
+    kept = admitted.copy()
+    if role_where is not None:
+        terms = [role_where.this.copy()]
+        if kept.args.get("where") is not None:
+            terms.append(kept.args["where"].this)
+        kept.set("where", exp.Where(this=exp.and_(*terms)))
+    gov_ctx.admitted_write = kept.sql(dialect="postgres")
     if admitted is not write:
         if write is tree:
             tree = admitted
@@ -2272,6 +2285,7 @@ def apply_governance(
     # RETURNING ...) SELECT ... FROM w; it is a write wherever it stands.
     write = the_write(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
     writes = write is not None
+    gov_ctx.admitted_write = None
     if write is not None:
         bind_schema_qualified_columns(tree)
         tree = _govern_write(tree, write, gov_ctx, session_vars, params)

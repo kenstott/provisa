@@ -1057,20 +1057,19 @@ def _reject_view_writes(parsed: Any, state: Any) -> None:
     error, violating the no-silent-failure rule. Only the write TARGET is checked; a view read in the
     FROM/USING of a write is fine, and a base table (not in view_sql_map) is never affected.
     """
-    import sqlglot.expressions as _exp
 
     view_map = getattr(state, "view_sql_map", None)
     if not view_map:
         return
-    if not isinstance(
-        parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge, _exp.TruncateTable)
-    ):
-        return
-    from provisa.compiler.write_admission import target_table
+    from provisa.compiler.write_admission import target_table, the_write
 
-    tbl = target_table(parsed)
+    # REQ-039: a write wherever it stands in the statement, a data-modifying CTE included.
+    write = the_write(parsed)
+    if write is None:
+        return
+    tbl = target_table(write)
     if tbl is not None and tbl.name in view_map:
-        op = type(parsed).__name__.upper()
+        op = type(write).__name__.upper()
         raise PermissionError(
             f"{op} into {tbl.name!r} is not allowed: it is a view/MV-backed relation and is query-only"
             ". A write would fail at the source or be lost on the next materialized-view refresh."
@@ -1102,7 +1101,6 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
     REQ-1157's view guard is: a check on one surface is a check the next surface does not have.
     prod returns immediately — it inherits from nothing, so every binding it has is its own.
     """
-    import sqlglot.expressions as _exp
 
     from provisa.core.request_context import active_env
     from provisa.core.environments import PROD
@@ -1110,10 +1108,13 @@ async def _reject_unbound_writes(parsed: Any, state: Any) -> None:
     env = active_env()
     if env == PROD:
         return
-    if not isinstance(
-        parsed, (_exp.Insert, _exp.Update, _exp.Delete, _exp.Merge, _exp.TruncateTable)
-    ):
+    from provisa.compiler.write_admission import the_write
+
+    # REQ-039: a write wherever it stands in the statement, a data-modifying CTE included.
+    write = the_write(parsed)
+    if write is None:
         return
+    parsed = write
     # REQ-1942: what a mutation in this environment does, chosen with its data mode.
     from provisa.core.env_classes import DIRECT, REFUSED
 
@@ -1983,6 +1984,9 @@ async def govern_statement(
     governed_semantic = await _off_loop(
         apply_governance, normalized_sql, gov_ctx, _session_vars, embedded_params or None
     )
+    # REQ-039, REQ-1942: a write as admitted, before what it reads was moved over the governed
+    # relation -- what a Reversible environment keeps it by (route_governed).
+    _admitted_write = gov_ctx.admitted_write
     # REQ-2109: a table whose rows are its versions is read at each reference's time travel. The
     # versions read is Provisa's own, like a row rule or a view's internals: it is applied to the
     # governed statement, so its reads of the recorded time are not judged against the caller's
@@ -2050,6 +2054,8 @@ async def govern_statement(
             lambda command, name: admit_command(command, state, role_id, name),
         )
 
+    if _admitted_write is not None:
+        _memo["admitted_write"] = _admitted_write
     governed = _Governed(
         sql=sql,
         role_id=role_id,
@@ -2070,9 +2076,9 @@ async def govern_statement(
     # Not kept: a write (its admission checks run per call) and a statement that runs a registered
     # command while it is prepared. The slot itself refuses one governed while a schema rebuild
     # was moving the state it read.
-    if not isinstance(
-        _parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
-    ) and not _calls_a_registered_command(_parsed_input, state):
+    from provisa.compiler.write_admission import is_write
+
+    if not is_write(_parsed_input) and not _calls_a_registered_command(_parsed_input, state):
         _slot.keep(governed)
     return governed
 
@@ -2472,10 +2478,10 @@ async def route_governed(
     # REQ-031: an UPDATE/DELETE/INSERT/MERGE always routes DIRECT — the engine terminal takes no
     # writes. decide_route only applies that rule when told; the raw-SQL surfaces (pgwire, /data/sql)
     # parse the statement themselves, so the type must be passed through explicitly.
-    _is_mutation = isinstance(
-        _parsed_input, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
-    )
-    from provisa.compiler.write_admission import written_table_id
+    # REQ-039: a write wherever it stands in the statement, a data-modifying CTE included.
+    from provisa.compiler.write_admission import is_write, written_table_id
+
+    _is_mutation = is_write(_parsed_input)
 
     _written_table_id = written_table_id(_parsed_input, governed.gov_ctx) if _is_mutation else None
     from provisa.core.env_classes import REVERSIBLE
@@ -2497,7 +2503,8 @@ async def route_governed(
             role_id=role_id,
             table_ids=_table_ids,
             kept=KeptMutation(
-                statement=governed_semantic,
+                # REQ-039: the write as admitted; the kept path reads its rows as a governed read.
+                statement=governed.memo.get("admitted_write") or governed_semantic,
                 table_id=_written_table_id,
                 role_id=role_id,
                 params=embedded_params,
@@ -3091,10 +3098,10 @@ def _pk_bounds_inputs(semantic_sql: str, state: Any) -> tuple[tuple[Any, ...], .
 
     ast = sqlglot.parse_one(semantic_sql, read="postgres")
     written = None
-    if isinstance(ast, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)):
-        from provisa.compiler.write_admission import target_table
+    from provisa.compiler.write_admission import is_write, target_table
 
-        written = target_table(ast)
+    if is_write(ast):  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
+        written = target_table(ast)  # pyright: ignore[reportArgumentType]
     joined: dict[str, int] = {}
     for join in ast.find_all(exp.Join):
         if isinstance(join.this, exp.Table) and join.this.name in row_tables:
@@ -5497,13 +5504,12 @@ async def _route_compiled(
     _cache_hint = cache_hint
     # A write on a compiled surface (a GraphQL mutation, a Cypher write over HTTP or Bolt) ends
     # like one on the raw-SQL surfaces: nothing cached, the steps after a write at the terminal.
-    import sqlglot.expressions as exp
 
     from provisa.compiler.write_admission import written_table_id
 
-    _is_write = isinstance(
-        _compiled_tree, (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
-    )
+    from provisa.compiler.write_admission import is_write
+
+    _is_write = is_write(_compiled_tree)
     _written_table_id = written_table_id(_compiled_tree, gov_ctx) if _is_write else None
     from provisa.codesource.writes import is_code_table
 

@@ -474,9 +474,21 @@ def _lower_column_aliases(tree: exp.Expression, ctx: CompilationContext) -> None
         inserted = tree.expression
         if isinstance(inserted, exp.Query):
             _lower_column_aliases(cast(exp.Expression, inserted), ctx)
+        # REQ-039: a governed write reads what the role wrote in a leading CTE, lowered as any
+        # query is.
+        with_ = tree.args.get("with_")
+        for cte in with_.expressions if with_ is not None else []:
+            if isinstance(cte.this, exp.Query):
+                _lower_column_aliases(cast(exp.Expression, cte.this), ctx)
         return
     if not isinstance(tree, exp.Query):
         return
+    # REQ-039: WITH w AS (<write> RETURNING ...) SELECT ... FROM w -- the write is lowered as a
+    # write is; scopes below never enter a data-modifying CTE.
+    with_ = tree.args.get("with_")
+    for cte in with_.expressions if with_ is not None else []:
+        if isinstance(cte.this, (exp.Insert, exp.Update, exp.Delete)):
+            _lower_column_aliases(cast(exp.Expression, cte.this), ctx)
     for scope in traverse_scope(tree):
         tables: dict[str, dict[str, str]] = {}
         derived: list[set[str]] = []
