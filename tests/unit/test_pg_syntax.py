@@ -279,3 +279,31 @@ def test_a_null_input_is_postgresqls_null_of_its_type_on_postgres(call: str, wri
     """REQ-2167: PostgreSQL holds interval, jsonb and xid8, so a strict input's NULL is of that
     type there, as PostgreSQL describes it; only an engine without the type answers text."""
     assert transpile(f"SELECT {call} AS v", "postgres") == f"SELECT CAST(NULL AS {written}) AS v"
+
+
+# --- a keyword as a column label after AS ------------------------------------------------------
+
+_METABASE_PRIVILEGES = (
+    "select NULL as role, t.schemaname as schema, "
+    "pg_catalog.has_any_column_privilege(current_user, t.objectname, 'update') as update, "
+    "pg_catalog.has_any_column_privilege(current_user, t.objectname, 'select') as select, "
+    "pg_catalog.has_table_privilege(current_user, t.objectname, 'delete') as delete "
+    "from pg_catalog.pg_tables t"
+)
+
+
+def test_metabase_privileges_statement_reads_select_as_a_label() -> None:
+    written = sqlglot.parse_one(_METABASE_PRIVILEGES, read="postgres").sql("postgres")
+    assert 'AS "select"' in written
+    assert 'AS "select" FROM' not in written  # the label is a column, not the clause
+    assert sqlglot.parse_one(written, read="postgres").sql("postgres") == written
+
+
+@pytest.mark.parametrize("keyword", ["select", "not", "SELECT", "Not"])
+def test_any_keyword_after_as_is_a_quoted_label(keyword: str) -> None:
+    tree = sqlglot.parse_one(f"SELECT 1 AS {keyword}, 2 AS x", read="postgres")
+    assert tree.sql("postgres") == f'SELECT 1 AS "{keyword.lower()}", 2 AS x'
+
+
+def test_a_label_without_as_is_untouched() -> None:
+    assert sqlglot.parse_one("SELECT 1 x", read="postgres").sql("postgres") == "SELECT 1 AS x"
