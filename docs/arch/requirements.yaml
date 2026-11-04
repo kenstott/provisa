@@ -29534,16 +29534,23 @@
   feature: engineering-standards-principles
   priority: MUST
   type: structural
-  description: Every query transform — governance (RLS, masking, visibility, row-cap), correlated- subquery
+  description: 'Every query transform — governance (RLS, masking, visibility, row-cap), correlated- subquery
     rewriting, and dialect lowering — MUST operate on a parsed SQL/relational AST, never on SQL text via
     regex or string substitution. Each surface language (GraphQL, Cypher, SQL) parses to an AST that is
-    carried through governance and planning and serialized to a dialect string only at final emission;
-    no stage may re-derive query structure (SELECT scope, WHERE injection point, alias binding, LIMIT)
-    from text. (Amended 2026-10-01, parsed fragments are reused:) `parse_expression` keeps a bounded cache
-    of parsed fragments keyed by their text and hands each caller its own copy of the tree (the nodes
-    are mutable). The grammar costs about a millisecond per fragment and every request of one statement
-    shape re-parses the same property references, measured at 7 ms per Cypher request, more than the
-    rest of its compilation; a failed parse is not cached.
+    carried through governance and planning and serialized to a dialect string only at final emission; no
+    stage may re-derive query structure (SELECT scope, WHERE injection point, alias binding, LIMIT) from
+    text. (Amended 2026-10-01, parsed fragments are reused:) `parse_expression` keeps a bounded cache of
+    parsed fragments keyed by their text and hands each caller its own copy of the tree (the nodes are mutable).
+    The grammar costs about a millisecond per fragment and every request of one statement shape re-parses
+    the same property references, measured at 7 ms per Cypher request, more than the rest of its compilation;
+    a failed parse is not cached. (Amended 2026-11-04, NO SQL TEXT IN THE QUERY PIPELINE:) Maintainer 2026-11-04:
+    within the query pipeline (a request''s statement through compiling, view and metric expansion, governance
+    including the assembly of row rules and masks, optimizing, lowering, routing and execution), any text
+    manipulation of SQL is a red flag: SQL is built and changed as SQLGlot expressions, never by formatting,
+    concatenating, replacing or pattern-matching SQL text, and never by parsing text the pipeline itself
+    generated. A text step is allowed only where nothing else can do it (reading an administrator''s rule
+    or a client''s statement once, a dialect form SQLGlot cannot express), and each such step carries an
+    inline comment saying why.'
   use_case: 'String/regex transforms silently mis-apply governance: a scalar subquery in the projection
     moves the masking boundary (PII leak), a non-t0 alias convention skips RLS qualification (scope-ambiguous
     predicate), and a parameterized LIMIT bypasses the row-cap ceiling. AST transforms make "governance
