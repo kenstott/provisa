@@ -1116,7 +1116,7 @@ def _govern_references(
     which the projection rewrite names and drops. A column of this SELECT's tables referenced
     from a nested SELECT by its alias (a correlated subquery) is replaced too."""
     top_level = {id(e) for e in node.expressions}
-    outputs = {e.alias_or_name.lower() for e in node.expressions if e.alias_or_name}
+    outputs = output_names(node)
     for col in list(node.find_all(exp.Column)):
         parent = col.parent
         if id(col) in top_level or (
@@ -1148,6 +1148,19 @@ def _govern_references(
             continue
         replacement.meta[_GOVERNED] = True
         _replace_reference(col, replacement)
+
+
+def output_names(node: exp.Select) -> set[str]:  # REQ-039
+    """The output names of ``node`` an ORDER BY key may name, in lower case: a real alias's, and
+    a bare column's own. A string literal names no output -- PostgreSQL calls ``'ssn'`` ?column?,
+    so ``ORDER BY ssn`` beside it is the input column ``ssn``."""
+    names: set[str] = set()
+    for e in node.expressions:
+        if isinstance(e, exp.Alias) and e.alias:
+            names.add(e.alias.lower())
+        elif isinstance(e, exp.Column) and not isinstance(e.this, exp.Star):
+            names.add(e.name.lower())
+    return names
 
 
 def _names_an_output(col: exp.Column, node: exp.Select, outputs: set[str]) -> bool:
@@ -1529,12 +1542,13 @@ def apply_governance(
 
     Returns governed SQL string.
     """
-    from provisa.compiler.write_admission import admit_write, is_write
+    from provisa.compiler.write_admission import admit_write, is_write, refuse_nested_writes
     from provisa.core.session_terms import expand_list_settings
     from provisa.observability.stage_trace import trace_stage
 
     trace_stage("govern.in", sql)
     tree = sqlglot.parse_one(sql, read="postgres")
+    refuse_nested_writes(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
     writes = is_write(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
     if writes:
         tree = admit_write(tree, gov_ctx, session_vars, params)  # pyright: ignore[reportArgumentType]
