@@ -91541,7 +91541,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     then cancel." Extracting terms from the regulation runs when the demo is built, and its result (the
     candidate terms with their passages) ships in the demo. The tour shows the steps that load the document
     and start a scan, then cancels it, and opens the scan already done, so a visitor sees the result at
-    once.'
+    once. (Amended 2026-11-03, Its public address, and the reference library:) Maintainer 2026-11-03: "if
+    the doc were a public url - even better": the regulation is read from its public address (the official
+    eCFR page of 31 CFR 1010.311 and the definitions it uses), not an uploaded copy. And "the bank secrecy
+    act can then be added to a ref lib": the tour points out that the regulation can then be added to the
+    reference library, so it stays with the model as a governed reference document.'
   scenario: 'Given the Bank Secrecy Act demo
 
     When its tour extracts terms from the regulation
