@@ -441,36 +441,49 @@ def _set_config_value(sql: str, settings: Mapping[str, str]) -> str | None:
 
 
 def _handle_current_setting(sql: str, settings: Mapping[str, str]):
-    """Answer SELECT current_setting(...) [+ set_config(...)] without DuckDB."""
+    """Answer a statement that is only SELECT current_setting('x') [AS a] [, set_config(...) [AS b]]
+    without DuckDB. Any other statement that mentions current_setting is None: the catalog read
+    answers it with the rest of the statement intact (REQ-2167, REQ-2204)."""
+    import sqlglot
+    import sqlglot.errors
+    import sqlglot.expressions as exp
     from provisa.executor.result import QueryResult
 
-    lower = sql.lower()
-    if "current_setting" not in lower:
+    if "current_setting" not in sql.lower():
+        return None
+    try:
+        tree = sqlglot.parse_one(sql, read="postgres")
+    except sqlglot.errors.SqlglotError:
+        return None
+    if not isinstance(tree, exp.Select) or any(
+        tree.args.get(k) for k in tree.args if k not in ("expressions", "kind")
+    ):
         return None
 
-    # Multi-expression startup query: SELECT current_setting('x') AS a, set_config(...) AS b
-    # Detect alias names from the SQL so we return the right column names for asyncpg.
-    if "set_config" in lower:
-        m1 = re.search(
-            r"current_setting\s*\(\s*['\"]([^'\"]+)['\"]\s*\)(?:\s+AS\s+(\w+))?",
-            sql,
-            re.IGNORECASE,
-        )
-        m2 = re.search(r"set_config\s*\([^)]+\)(?:\s+AS\s+(\w+))?", sql, re.IGNORECASE)
-        col1 = (m1.group(2) or "current_setting") if m1 else "current_setting"
-        col2 = (m2.group(1) or "set_config") if m2 else "set_config"
-        key = m1.group(1).lower() if m1 else ""
-        val1 = settings.get(key, "")
-        return QueryResult(
-            rows=[(val1, _set_config_value(sql, settings))], column_names=[col1, col2]
-        )
+    names: list[str] = []
+    values: list[str | None] = []
+    for projection in tree.expressions:
+        alias = projection.alias if isinstance(projection, exp.Alias) else ""
+        call = projection.this if isinstance(projection, exp.Alias) else projection
+        if not isinstance(call, exp.Anonymous):
+            return None
+        fn = call.name.lower()
+        args = call.expressions
+        if fn == "current_setting" and len(args) == 1 and _is_string_literal(args[0]):
+            names.append(alias or "current_setting")
+            values.append(settings.get(args[0].name.lower(), ""))
+        elif fn == "set_config" and names:  # only after a current_setting
+            names.append(alias or "set_config")
+            values.append(_set_config_value(call.sql(dialect="postgres"), settings))
+        else:
+            return None
+    return QueryResult(rows=[tuple(values)], column_names=names)
 
-    m = re.search(r"current_setting\s*\(\s*['\"]([^'\"]+)['\"]\s*\)", sql, re.IGNORECASE)
-    if not m:
-        return None
-    key = m.group(1).lower()
-    value = settings.get(key, "")
-    return QueryResult(rows=[(value,)], column_names=["current_setting"])
+
+def _is_string_literal(node) -> bool:
+    import sqlglot.expressions as exp
+
+    return isinstance(node, exp.Literal) and node.is_string
 
 
 #: An object identifier value a statement reads with its name, its oid and name held together.
