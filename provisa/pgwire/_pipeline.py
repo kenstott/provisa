@@ -2429,7 +2429,9 @@ async def _run_keyed_write(plan: "_Plan", state: Any) -> QueryResult:  # REQ-039
     written = 0
     returned: list = []
     for statement, values in writes(two, rows):
-        write = await route_write(statement, values or None)
+        # A write by key binds the values it was given; a write needing no key read is the
+        # statement's own, binding the statement's.
+        write = await route_write(statement, values if two.read is not None else plan.exec_params)
         result = await _run_plan_terminal(write, state)
         returned.extend(result.rows)
         # The write's count, as pgwire's command tag reads it (server._write_tag).

@@ -18,6 +18,7 @@ a transaction of their own, fills them, runs the governed statement and rolls ev
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, LiteralString, cast
@@ -44,6 +45,70 @@ class Refused(Exception):
     """PostgreSQL refused the governed statement (a column or relation that is not there)."""
 
 
+@dataclass
+class Written:
+    """What a governed write did (:meth:`GovernedPG.written`)."""
+
+    #: The rows it returned (its RETURNING), in the order returned.
+    returned: list[tuple]
+    #: The rows it reports affected, as a source's command tag gives them.
+    count: int
+    #: Every row of each table after it, by table, sorted.
+    after: dict[str, list[tuple]]
+
+
+def _create(conn: Any, tables: dict[str, list[dict[str, Any]]]) -> None:
+    from psycopg import sql
+
+    for name, rows in tables.items():
+        parts = name.split(".")
+        if len(parts) == 2:
+            conn.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(sql.Identifier(parts[0])))
+        columns = list(rows[0])
+        conn.execute(
+            sql.SQL("CREATE TABLE {} ({})").format(
+                sql.Identifier(*parts),
+                sql.SQL(", ").join(
+                    sql.SQL("{} {}").format(
+                        sql.Identifier(c),
+                        sql.SQL(cast(LiteralString, _type([r[c] for r in rows]))),
+                    )
+                    for c in columns
+                ),
+            )
+        )
+        for row in rows:
+            conn.execute(
+                sql.SQL("INSERT INTO {} VALUES ({})").format(
+                    sql.Identifier(*parts),
+                    sql.SQL(", ").join(sql.Placeholder() for _ in columns),
+                ),
+                [row[c] for c in columns],
+            )
+
+
+def _physical(statement: Any, session: dict[str, str] | None, params: list | None) -> str:
+    """``statement`` (text or a tree) as the source is handed it: its session settings resolved
+    as the pipeline resolves them, its ``$n`` bound to ``params``, a mask's portable function
+    lowered to PostgreSQL's."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.pgwire._pipeline import _resolve_session_settings
+    from provisa.transpiler.transpile import transpile
+
+    tree = (
+        sqlglot.parse_one(statement, read="postgres") if isinstance(statement, str) else statement
+    )
+    tree = tree.copy()
+    for node in list(tree.find_all(exp.Parameter, exp.Placeholder)):
+        index = int(node.name) - 1
+        assert params is not None and 0 <= index < len(params), f"${index + 1} is not bound"
+        node.replace(exp.convert(params[index]))
+    resolved = _resolve_session_settings(tree.sql(dialect="postgres"), session or {}, "postgres")
+    return transpile(resolved, "postgres")
+
+
 class GovernedPG:
     """A database of the test session's embedded PostgreSQL for governed statements."""
 
@@ -57,7 +122,6 @@ class GovernedPG:
         rows, each a dict of column -> value; every row of a table has the same columns).
         :class:`Refused` when PostgreSQL refuses the statement."""
         import psycopg
-        from psycopg import sql
 
         from provisa.transpiler.transpile import transpile
 
@@ -65,41 +129,72 @@ class GovernedPG:
         physical = transpile(governed, "postgres")
         with psycopg.connect(self.dsn) as conn:
             try:
-                for name, rows in tables.items():
-                    parts = name.split(".")
-                    if len(parts) == 2:
-                        conn.execute(
-                            sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(
-                                sql.Identifier(parts[0])
-                            )
-                        )
-                    columns = list(rows[0])
-                    conn.execute(
-                        sql.SQL("CREATE TABLE {} ({})").format(
-                            sql.Identifier(*parts),
-                            sql.SQL(", ").join(
-                                sql.SQL("{} {}").format(
-                                    sql.Identifier(c),
-                                    sql.SQL(cast(LiteralString, _type([r[c] for r in rows]))),
-                                )
-                                for c in columns
-                            ),
-                        )
-                    )
-                    for row in rows:
-                        conn.execute(
-                            sql.SQL("INSERT INTO {} VALUES ({})").format(
-                                sql.Identifier(*parts),
-                                sql.SQL(", ").join(sql.Placeholder() for _ in columns),
-                            ),
-                            [row[c] for c in columns],
-                        )
+                _create(conn, tables)
                 try:
                     cur = conn.execute(cast(LiteralString, physical))
                 except psycopg.Error as exc:
                     raise Refused(f"{type(exc).__name__}: {exc}") from exc
                 self.names = [d.name for d in cur.description or []]
                 return cur.fetchall() if cur.description else []
+            finally:
+                conn.rollback()
+
+    def written(
+        self,
+        governed: str,
+        tables: dict[str, list[dict[str, Any]]],
+        *,
+        session: dict[str, str] | None = None,
+        params: list | None = None,
+        two_steps: bool = False,
+    ) -> Written:
+        """What the governed write ``governed`` does to ``tables``, run as the pipeline sends it:
+        its session settings resolved from ``session`` and its ``$n`` bound to ``params``. With
+        ``two_steps`` it runs as a source refusing a write led by WITH takes it
+        (pgwire/keyed_writes.py): the key read, then each write by key. :class:`Refused` when
+        PostgreSQL refuses a statement."""
+        import psycopg
+        import sqlglot
+        from psycopg import sql
+
+        with psycopg.connect(self.dsn) as conn:
+            try:
+                _create(conn, tables)
+
+                def run(statement: Any, values: list | None) -> tuple[list[tuple], int]:
+                    try:
+                        cur = conn.execute(
+                            cast(LiteralString, _physical(statement, session, values))
+                        )
+                    except psycopg.Error as exc:
+                        raise Refused(f"{type(exc).__name__}: {exc}") from exc
+                    self.names = [d.name for d in cur.description or []]
+                    rows = cur.fetchall() if cur.description else []
+                    return rows, cur.rowcount
+
+                if two_steps:
+                    from provisa.pgwire.keyed_writes import split, writes
+
+                    two = split(sqlglot.parse_one(governed, read="postgres"))
+                    keys = run(two.read, params)[0] if two.read is not None else None
+                    returned: list[tuple] = []
+                    count = 0
+                    for statement, values in writes(two, keys):
+                        rows, affected = run(statement, values if two.read is not None else params)
+                        returned.extend(rows)
+                        count += affected
+                else:
+                    returned, count = run(governed, params)
+                after = {
+                    name: sorted(
+                        conn.execute(
+                            sql.SQL("SELECT * FROM {}").format(sql.Identifier(*name.split(".")))
+                        ).fetchall(),
+                        key=repr,
+                    )
+                    for name in tables
+                }
+                return Written(returned, count, after)
             finally:
                 conn.rollback()
 

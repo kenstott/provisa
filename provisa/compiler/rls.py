@@ -155,11 +155,13 @@ def _qualified_predicate(filter_expr: str, alias: str | None) -> exp.Expression:
     Structural, not textual: string literals and keywords are their own node types, so only
     genuine Column nodes are touched — no regex, no keyword denylist. Already-qualified columns
     keep their table. Column identifiers are rendered quoted to match the compiler convention.
+    A column inside a subquery of the rule is the subquery's to resolve: qualified to ``alias``,
+    ``region IN (SELECT region FROM allowed)`` would compare each row's region with itself.
     """
     pred = sqlglot.parse_one(filter_expr, read="postgres")
     if alias:
         for col in pred.find_all(exp.Column):
-            if not col.table:
+            if not col.table and col.find_ancestor(exp.Query) is None:
                 col.set("table", exp.to_identifier(alias, quoted=True))
             if isinstance(col.this, exp.Identifier):
                 col.this.set("quoted", True)
