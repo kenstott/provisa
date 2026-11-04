@@ -71,7 +71,7 @@ NO_CALL = "takes an internal argument, which no SQL expression can supply"
 
 #: PostgreSQL's refusals that hold on every server in every state: the function runs only from the
 #: trigger manager, an event trigger, binary upgrade, a language call or initdb, or is a
-#: pseudo-type's input or output function. Each is PostgreSQL's own wording. Any other refusal is
+#: pseudo-type's input or output function, or the parser's unknown type's. Each is PostgreSQL's own wording. Any other refusal is
 #: no proof: "recovery is not in progress", say, names a state another server is in.
 INTERNAL_REFUSAL = re.compile(
     "|".join(
@@ -85,6 +85,8 @@ INTERNAL_REFUSAL = re.compile(
             r'functions returning type "internal" cannot be called explicitly',
             r"PL/pgSQL functions cannot return type language_handler",
             r"cannot advance OID counter anymore",
+            # unknownin: the parser's internal type (REQ-2167, amended 2026-11-04 (2)).
+            r"failed to find conversion function from unknown to text",
         )
     )
 )

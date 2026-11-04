@@ -470,11 +470,11 @@ def test_every_call_equal_is_a_pass_with_its_answers_checked():
 
 
 def test_a_call_with_nothing_compared_is_not_checked_and_says_why():
-    fn = Function("setseed", "double precision", argtypes=("double precision",), volatility="v")
-    entry = _both(fn, "Numeric", _ok(None), _ok(None))
+    fn = Function("f", "polygon[]", argtypes=("polygon[]",), volatility="i")
+    entry = _both(fn, "Geometric", _ok(None), _ok(None))
     assert entry["outcome"] == "not_checked"
     assert not entry["answers_checked"] and not entry["type_and_form_checked"]
-    assert entry["unchecked"] == "volatile"
+    assert entry["unchecked"] == "no sample of polygon[]"
 
 
 def test_a_null_postgresql_answers_holds_provisa_to_null_and_is_no_pass():
@@ -661,16 +661,30 @@ def test_a_record_is_held_to_its_number_of_fields():
     assert support.re.fullmatch(form, "(a,b,c,d,e)") is None
 
 
-def test_a_function_only_called_with_null_arguments_is_not_checked():
-    fn = Function("pg_sleep", "double precision", argtypes=("double precision",), volatility="v")
+def test_a_stable_function_only_called_with_null_arguments_is_not_checked():
+    # Its answer is its server's own, and no real value is given it: the NULL call alone.
+    fn = Function("pg_stat_get_activity", "text", argtypes=("text",), volatility="s")
     entry = _both(fn, "System", _ok("whatever", oid=25), _ok("no form at all", oid=25))
     assert entry["outcome"] == "not_checked"
     assert not entry["type_and_form_checked"] and not entry["answers_checked"]
 
 
+def test_a_volatile_function_only_called_with_null_arguments_has_its_type_checked():
+    """REQ-2167, amended 2026-11-04 (4): a volatile overload is never left not tested for being
+    volatile: its NULL call's result type and NULLs are PostgreSQL's."""
+    fn = Function("f", "double precision", argtypes=("double precision",), volatility="v")
+    entry = _both(fn, "System", _ok("whatever", oid=25), _ok("no form at all", oid=25))
+    assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
+    assert not entry["answers_checked"]
+    assert _both(fn, "System", _ok("whatever", oid=25), _ok("1", oid=23))["outcome"] == (
+        "wrong_answer"
+    )
+
+
 def test_a_null_from_postgresql_leaves_no_form_to_check_and_holds_provisa_to_null():
+    # Volatile: its type and its NULL are PostgreSQL's (REQ-2167, amended 2026-11-04 (4)).
     entry = _both(UUID, "System", _ok(None, oid=2950), _ok(None, oid=2950))
-    assert entry["outcome"] == "not_checked" and not entry["type_and_form_checked"]
+    assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
     entry = _both(UUID, "System", _ok(None, oid=2950), _ok(_V4, oid=2950))
     assert entry["outcome"] == "wrong_answer"
 
@@ -2040,16 +2054,26 @@ def test_a_cursor_is_opened_in_a_transaction_around_the_call_and_rolled_back():
 
 
 def test_real_values_postgresql_refuses_or_answers_null_to_say_so_and_stay_not_checked():
+    own = "answers with its own server's state"
+    null_call = {0: _ok(None, oid=20)}
+    refusing = _per_call(DB_COMMITS, null_call, {"ok": False, "error": "ERROR:  no such database"})
+    entry = support.measure_overload(DB_COMMITS, "System", refusing, refusing, _route, engine="pg")
+    assert entry["outcome"] == "not_checked"
+    assert entry["unchecked"] == f"{own}; {support._FORM_REFUSED}"
+    nulls = _per_call(DB_COMMITS, null_call, _ok(None, oid=20))
+    entry = support.measure_overload(DB_COMMITS, "System", nulls, nulls, _route, engine="pg")
+    assert entry["unchecked"] == f"{own}; {support._FORMLESS}"
+
+
+def test_a_volatile_read_postgresql_refuses_real_values_of_is_checked_by_its_null_call():
+    """REQ-2167, amended 2026-11-04 (4): never not tested for being volatile."""
     null_call = {0: _ok(None, oid=17)}
     refusing = _per_call(LO_GET, null_call, {"ok": False, "error": "ERROR:  no such large object"})
     entry = support.measure_overload(
         LO_GET, "Large object", refusing, refusing, _route, engine="pg"
     )
-    assert entry["outcome"] == "not_checked"
-    assert entry["unchecked"] == f"volatile; {support._FORM_REFUSED}"
-    nulls = _per_call(LO_GET, null_call, _ok(None, oid=17))
-    entry = support.measure_overload(LO_GET, "Large object", nulls, nulls, _route, engine="pg")
-    assert entry["unchecked"] == f"volatile; {support._FORMLESS}"
+    assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
+    assert entry["unchecked"] == "volatile"
 
 
 def test_the_fixture_makes_a_multixact_of_two_share_locks_held_at_once(monkeypatch):
@@ -2601,3 +2625,219 @@ def test_a_table_s_xml_differing_in_anything_else_stays_a_wrong_answer():
     ):
         assert support.decided_answer("table_to_xml", _TABLE_XML_SQL, want, got) is None
     assert support.decided_answer("abs", _TABLE_XML_SQL, want, want) is None
+
+
+# --- REQ-2167, amended 2026-11-03 and 2026-11-04: server state, internal types, call shapes ----
+
+_DECIDED_2026_11_04 = [
+    # Backend session statistics are the engine's (amended 2026-11-03).
+    (_named("pg_stat_get_backend_activity", ("integer",), "text", "s"), "SERVER_ADMINISTRATION"),
+    (_named("pg_stat_get_backend_subxact", ("integer",), "record", "s"), "SERVER_ADMINISTRATION"),
+    (_named("pg_stat_get_backend_idset", (), "integer", "s"), "SERVER_ADMINISTRATION"),
+    # (1) PostgreSQL's own server state, the transaction counters beside it.
+    (_named("pg_stat_get_xact_numscans", ("oid",), "bigint"), "SERVER_STATE"),
+    (_named("pg_stat_get_xact_function_calls", ("oid",), "bigint"), "SERVER_STATE"),
+    (_named("pg_current_logfile", ("text",), "text"), "SERVER_STATE"),
+    (_named("pg_hba_file_rules", (), "record"), "SERVER_STATE"),
+    (_named("pg_get_shmem_allocations", (), "record"), "SERVER_STATE"),
+    (_named("pg_lock_status", (), "record"), "SERVER_STATE"),
+    (_named("pg_stat_get_slru", (), "record", "s"), "SERVER_STATE"),
+    (_named("pg_stat_get_wal_senders", (), "record", "s"), "SERVER_STATE"),
+    (_named("pg_ls_tmpdir", ("oid",), "record"), "SERVER_STATE"),
+    (_named("pg_prepared_xact", (), "record"), "SERVER_STATE"),
+    # (2) the session's cursors, a source's sequences, the server's extensions, LATIN encodings.
+    (_named("pg_cursor", (), "record", "s"), "SESSION_CURSORS"),
+    (_named("pg_sequence_last_value", ("regclass",), "bigint"), "SEQUENCE"),
+    (_named("pg_extension_update_paths", ("name",), "record", "s"), "SERVER_EXTENSIONS"),
+    (_named("to_ascii", ("text",), "text", "i"), "SINGLE_BYTE_DATABASE"),
+    # (3) the types no SQL value can have.
+    (
+        _named("anycompatiblenonarray_out", ("anycompatiblenonarray",), "cstring", "i"),
+        "NO_SQL_VALUE",
+    ),
+    (_named("shell_out", ("void",), "cstring", "i"), "NO_SQL_VALUE"),
+    (_named("pg_mcv_list_in", ("cstring",), "pg_mcv_list", "s"), "NO_SQL_VALUE"),
+    (_named("brin_bloom_summary_send", ("pg_brin_bloom_summary",), "bytea", "s"), "NO_SQL_VALUE"),
+    (_named("gtsvectorout", ("gtsvector",), "cstring", "i"), "NO_SQL_VALUE"),
+]
+
+
+@pytest.mark.parametrize(("fn", "group"), _DECIDED_2026_11_04)
+def test_a_function_a_decision_names_is_skipped_by_design_whatever_it_answers(fn, group):
+    group = getattr(support, f"{group}_GROUP")
+    assert support.decided_function(fn) == group
+    for got in (_ok("1"), {"ok": False, "error": "ERROR:  pg_cursor() has no form on pg"}):
+        entry = _both(fn, "System", _ok("1"), got)
+        assert entry["outcome"] == "by_design" and entry["group"] == group
+        assert entry["detail"] == support.GROUPS[group]
+        assert support.function_report.verdict(entry) == "skipped_by_design"
+
+
+def test_a_backend_statistic_provisa_refuses_by_name_is_skipped_by_design():
+    """REQ-2167, amended 2026-11-03, Backend session statistics are the engine's."""
+    refused = {"ok": False, "error": "ERROR:  pg_stat_get_backend_pid() has no form on pg"}
+    fn = _named("pg_stat_get_backend_pid", ("integer",), "integer", "s")
+    entry = _both(fn, "System", _ok("42"), refused)
+    assert entry["group"] == support.SERVER_ADMINISTRATION_GROUP
+    assert "pg_stat_get_backend_* and pg_stat_get_backend_idset" in entry["detail"]
+
+
+def test_the_twenty_five_pseudo_type_and_eight_summary_io_functions_are_decided():
+    decided = {
+        name for name, g in support.DECIDED_FUNCTIONS.items() if g == support.NO_SQL_VALUE_GROUP
+    }
+    summaries = {
+        "brin_bloom_summary_in",
+        "brin_bloom_summary_out",
+        "brin_bloom_summary_send",
+        "brin_minmax_multi_summary_in",
+        "brin_minmax_multi_summary_out",
+        "brin_minmax_multi_summary_send",
+        "gtsvectorin",
+        "gtsvectorout",
+    }
+    assert summaries <= decided and len(decided - summaries) == 25
+    # The forms a value can reach stay compared: an array's output, a recv's internal argument.
+    assert "anyarray_out" not in decided and "anyarray_recv" not in decided
+
+
+def test_only_the_one_argument_to_ascii_is_decided():
+    assert support.decided_function(_named("to_ascii", ("text", "integer"), "text", "i")) is None
+    assert support.decided_function(_named("to_ascii", ("text", "name"), "text", "i")) is None
+
+
+def test_a_function_no_decision_names_is_measured():
+    for fn in (
+        ABS,
+        _named("pg_stat_get_db_xact_commit", ("oid",), "bigint", "s"),
+        _named("pg_current_wal_lsn", (), "pg_lsn"),
+        _named("pg_partition_tree", ("regclass",), "record"),
+    ):
+        assert support.decided_function(fn) is None
+
+
+def test_unknownin_s_refusal_proves_it_internal_and_skipped_by_design():
+    """REQ-2167, amended 2026-11-04 (2): the parser's internal type, which PostgreSQL itself cannot
+    call from SQL."""
+    import pgwire_function_probe as function_probe
+
+    refusal = "ERROR:  failed to find conversion function from unknown to text"
+    assert function_probe.proves_internal(refusal)
+    fn = _named("unknownin", ("cstring",), "unknown", "i")
+    entry = support.measure_overload(fn, "Type operators", Fake({}), Fake({}), _route, engine="pg")
+    assert entry["outcome"] == "not_callable"
+    entry["detail"] = f"PostgreSQL refuses the call: {refusal}"
+    assert support.function_report.verdict(entry) == "skipped_by_design"
+
+
+def test_a_volatile_function_answering_a_null_where_postgresql_answers_a_value_is_wrong():
+    """REQ-2167, amended 2026-11-04 (4): its type and form, NULLs too, are PostgreSQL's."""
+    fn = Function("f", "integer", argtypes=("integer",), volatility="v", rettype="text")
+    entry = _both(fn, "System", _ok("x", oid=25), _ok(None, oid=25))
+    assert entry["outcome"] == "wrong_answer"
+    assert entry["detail"]["difference"] == "None, PostgreSQL 'x'"
+
+
+def test_a_volatile_set_provisa_answers_empty_has_its_type_checked():
+    tree = _named("pg_partition_tree", ("regclass",), "record")
+    want = {"ok": True, "fields": [2249], "rows": [("(a,,t,0)",), ("(b,a,t,1)",)]}
+    none = {"ok": True, "fields": [2249], "rows": []}
+    entry = _both(tree, "System", want, none)
+    assert entry["outcome"] == "pass" and entry["type_and_form_checked"]
+    other = {"ok": True, "fields": [25], "rows": []}
+    assert _both(tree, "System", want, other)["outcome"] == "wrong_answer"
+
+
+def test_a_volatile_function_that_acts_is_tested_by_its_side_effect_not_its_type():
+    fn = _named("pg_cancel_backend", ("integer",), "boolean")
+    entry = _both(fn, "System", _ok(None, oid=16), _ok(None, oid=16))
+    assert not entry["type_and_form_checked"]
+    assert entry["outcome"] == "by_design" and entry["group"] == support.NOT_TESTABLE
+
+
+@pytest.mark.parametrize(
+    "name,typ", [("json_to_recordset", "json"), ("jsonb_to_recordset", "jsonb")]
+)
+def test_a_recordset_is_called_in_from_with_a_column_definition_list(name, typ):
+    """REQ-2167, amended 2026-11-04 (5)."""
+    fn = Function(name, typ, argtypes=(typ,), volatility="s", rettype="record")
+    assert support.unchecked(fn, "JSON") is None
+    planned = support.value_calls(fn, "JSON")
+    assert [c.sql for c in planned][0] == (
+        f'SELECT * FROM pg_catalog."{name}"(\'[{{"a": 1, "b": "x"}}, {{"a": 2}}]\'::{typ}) '
+        "AS t(a integer, b text)"
+    )
+    assert len(planned) == support.VALUE_ROWS and all(c.answers for c in planned)
+
+
+@pytest.mark.parametrize(
+    "argtypes",
+    [
+        ("double precision[]", "double precision"),
+        ("double precision[]", "interval"),
+        ("double precision[]", "anyelement"),
+    ],
+)
+def test_a_percentile_of_an_array_of_fractions_is_within_group(argtypes):
+    for name in ("percentile_cont", "percentile_disc"):
+        fn = Function(name, "x", kind="a", aggkind="o", direct=1, argtypes=argtypes, volatility="i")
+        sql = support.value_calls(fn, "Numeric")[0].sql
+        assert sql.startswith(
+            f"SELECT pg_catalog.\"{name}\"('{{0.25,0.5}}'::double precision[]) "
+            "WITHIN GROUP (ORDER BY c1) AS v FROM (VALUES "
+        )
+
+
+@pytest.mark.parametrize(
+    "name,modifier",
+    [
+        *(
+            (f"{t}typmodin", "'{10}'")
+            for t in ("bit", "bpchar", "timestamp", "timestamptz", "time", "timetz", "varbit")
+        ),
+        ("varchartypmodin", "'{10}'"),
+        ("numerictypmodin", "'{12,2}'"),
+        # PostgreSQL refuses a bare number for interval: its fields and precision, INTERVAL(3).
+        ("intervaltypmodin", "'{32767,3}'"),
+    ],
+)
+def test_a_typmodin_reads_a_cstring_array_modifier(name, modifier):
+    fn = Function(name, "cstring[]", argtypes=("cstring[]",), volatility="i", rettype="integer")
+    assert support.unchecked(fn, "Type operators") is None
+    assert [c.sql for c in support.value_calls(fn, "Type operators")] == [
+        f'SELECT pg_catalog."{name}"({modifier}::cstring[]) AS v'
+    ] * support.VALUE_ROWS
+
+
+def test_interval_in_reads_intervals_with_its_type_oid_and_no_typmod():
+    fn = Function(
+        "interval_in",
+        "cstring, oid, integer",
+        argtypes=("cstring", "oid", "integer"),
+        volatility="s",
+        rettype="interval",
+    )
+    assert support.value_calls(fn, "Type operators")[0].sql == (
+        "SELECT pg_catalog.\"interval_in\"('1 day 02:03:04'::cstring, 'interval'::regtype::oid, "
+        "(-1)::integer) AS v"
+    )
+
+
+def test_domain_in_reads_the_fixture_s_domain(monkeypatch):
+    fn = Function(
+        "domain_in",
+        "cstring, oid, integer",
+        argtypes=("cstring", "oid", "integer"),
+        volatility="s",
+        rettype='"any"',
+    )
+    monkeypatch.setattr(support, "FIXTURE", {})
+    assert support.value_calls(fn, "Type operators") == []
+    monkeypatch.setattr(support, "FIXTURE", {"domain": "16393"})
+    assert [c.sql for c in support.value_calls(fn, "Type operators")] == [
+        f"SELECT pg_catalog.\"domain_in\"('{v}'::cstring, '16393'::oid, (-1)::integer) AS v"
+        for v in ("5", "42", "1")
+    ]
+    made = " ".join(support.FIXTURE_SQL)
+    assert f"CREATE DOMAIN conformance.{support.FIXTURE_DOMAIN} AS integer" in made
+    assert support.FIXTURE_DOMAIN in support.FIXTURE_QUERIES["domain"]
