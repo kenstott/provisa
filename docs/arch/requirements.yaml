@@ -80581,7 +80581,7 @@
   since: 2026-10
   group: 3. Source Registration & Data Modeling
   category: Table Registration
-  feature: source-registration-explicit-tables
+  feature: source-registration-lookups
   priority: MUST
   type: behavioral
   description: 'A table declares its parameters: the values a caller passes to the source to read the table.
@@ -90378,7 +90378,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
-  feature: glossary-tags-ontology-terms
+  feature: glossary-tags-ontology-find-terms
   priority: SHOULD
   type: behavioral
   description: 'The glossary''s Generate with AI menu gains From a document: a steward provides a document
@@ -90929,7 +90929,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: Admin UI
-  feature: semantic-model-erd
+  feature: semantic-model-erd-layouts
   priority: MAY
   type: behavioral
   description: 'Maintainer 2026-10-30: a layout is a saved arrangement of the ERD, for building a high quality
@@ -91440,7 +91440,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: UI
-  feature: admin-console-surface
+  feature: admin-console-delete
   priority: SHOULD
   type: behavioral
   description: 'Maintainer 2026-11-03: deleting a table can take a while, and the UI still let the table
@@ -91626,7 +91626,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
-  feature: glossary-tags-ontology-terms
+  feature: glossary-tags-ontology-find-terms
   priority: SHOULD
   type: behavioral
   description: 'Maintainer 2026-11-03: "another angle for getting terms from docs would be a sql query with
