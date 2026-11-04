@@ -199,3 +199,91 @@ class TestCutOff:
         with pytest.raises(LLMEmptyResponseError) as empty:
             _detailed(content=None, finish_reason="stop", completion_tokens=0)
         assert empty.value.answer.cut_off is False
+
+
+class TestReasoningOff:
+    """``reasoning_off`` is stated on each wire in that wire's own words, or the call fails."""
+
+    @staticmethod
+    def _sent(cfg: dict, env: dict[str, str] | None = None) -> tuple[list[dict], list[dict]]:
+        sent: list[dict] = []
+        created: list[dict] = []
+
+        class _Recording:
+            def __init__(self, config=None):
+                created.append(config or {})
+                self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+
+            def create(self, **request):
+                sent.append(request)
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(message=SimpleNamespace(content="ok"), finish_reason="stop")
+                    ],
+                    usage=SimpleNamespace(completion_tokens=1),
+                )
+
+        client = ProvisaLLMClient("x", config=cfg, api_keys={"anthropic": "k"})
+        stub = MagicMock()
+        stub.Client = _Recording
+        with patch.dict(os.environ, env or {}), patch.dict("sys.modules", {"aisuite": stub}):
+            asyncio.run(client.complete_detailed("p", max_tokens=16, reasoning_off=True))
+        return sent, created
+
+    @staticmethod
+    def _endpoint(style: str, base_url: str) -> dict:
+        return {
+            "ai_models": {"x": {"vendor": "gw", "model": "m"}},
+            "ai_endpoints": [{"id": "gw", "style": style, "base_url": base_url}],
+        }
+
+    def test_openrouter_is_sent_its_reasoning_object_disabled(self):
+        sent, _ = self._sent(self._endpoint("openai", "https://openrouter.ai/api/v1"))
+        assert sent == [
+            {
+                "model": "openai:m",
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": "p"},
+                ],
+                "max_tokens": 16,
+                "extra_body": {"reasoning": {"enabled": False}},
+            }
+        ]
+
+    def test_anthropic_is_sent_thinking_disabled(self):
+        sent, _ = self._sent({"ai_models": {"x": {"vendor": "anthropic", "model": "m"}}})
+        assert sent[0]["thinking"] == {"type": "disabled"}
+
+    def test_an_anthropic_style_endpoint_is_sent_thinking_disabled(self):
+        sent, _ = self._sent(self._endpoint("anthropic", "https://gw/anthropic"))
+        assert sent[0]["thinking"] == {"type": "disabled"}
+
+    def test_an_openai_wire_that_is_not_openrouter_is_sent_no_reasoning_setting(self):
+        # Maintainer decision 2026-11-04: only wires with a documented switch get one.
+        sent, _ = self._sent(self._endpoint("openai", "https://gw/v1"))
+        assert len(sent) == 1
+        assert "extra_body" not in sent[0] and "thinking" not in sent[0]
+
+    def test_a_vendor_without_a_reasoning_switch_is_sent_no_reasoning_setting(self):
+        sent, _ = self._sent({"ai_models": {"x": {"vendor": "groq", "model": "m"}}})
+        assert len(sent) == 1
+        assert "extra_body" not in sent[0] and "thinking" not in sent[0]
+
+    def test_a_call_not_asking_for_reasoning_off_is_sent_as_before(self):
+        cfg = self._endpoint("openai", "https://openrouter.ai/api/v1")
+        client = ProvisaLLMClient("x", config=cfg)
+        sent: list[dict] = []
+        stub = MagicMock()
+        stub.Client.return_value.chat.completions.create.side_effect = lambda **r: (
+            sent.append(r)
+            or SimpleNamespace(
+                choices=[
+                    SimpleNamespace(message=SimpleNamespace(content="ok"), finish_reason="stop")
+                ],
+                usage=None,
+            )
+        )
+        with patch.dict("sys.modules", {"aisuite": stub}):
+            asyncio.run(client.complete_detailed("p", max_tokens=16))
+        assert "extra_body" not in sent[0] and "thinking" not in sent[0]

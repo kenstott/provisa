@@ -112,7 +112,15 @@ class Held:
                 self.limited_to = max_tokens = allowed
         try:
             answered = await client.complete_detailed(
-                redact(prompt, self._org_id), system=SYSTEM, max_tokens=max_tokens
+                redact(prompt, self._org_id),
+                system=SYSTEM,
+                max_tokens=max_tokens,
+                # Reasoning off: finding and resolving terms is reading, and a model that reasons
+                # by default spends the output limit before any answer. Demo bundles 41930549595:
+                # anthropic/claude-haiku-5.5 on OpenRouter (default_effort medium) used all of
+                # 4096, then 8192, tokens and returned no text. A wire with no documented
+                # switch is sent none and keeps its vendor's default (provisa.llm.client).
+                reasoning_off=True,
             )
         except LLMEmptyResponseError as exc:
             if not exc.answer.cut_off:
