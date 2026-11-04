@@ -1,6 +1,7 @@
 //! REQ-2194: the JSON encoders, provisa._encoders.json: GraphQL, the REST (OpenAPI) table endpoint
-//! (JSON and CSV), JSON:API and OData, one submodule each. Each takes a read's Arrow batches
-//! (zero-copy, the GIL released) and the plan its router compiled, and writes the response body:
+//! (JSON and CSV), JSON:API and OData, one submodule each. Each takes a read in the form it has,
+//! its Arrow batches (zero-copy, the GIL released) or a row result's rows (`RowBatches`, read as
+//! they are by pyrows.rs, REQ-2195), and the plan its router compiled, and writes the response body:
 //! the nesting (one-to-many and many-to-one), the values on REQ-1867's exact-values contract
 //! (a DECIMAL as a string of its digits, `infinity`, JSON only from json/jsonb columns, integers
 //! by engine type, JSON numbers with their digits) and the surface's envelope. They share one value
@@ -12,6 +13,7 @@ mod json;
 mod nest;
 mod odata;
 mod printable;
+mod pyrows;
 mod pywrite;
 mod pyval;
 mod surfaces;
@@ -29,7 +31,7 @@ use pyo3::types::{PyBytes, PyModule};
 
 use convert::Mode;
 use nest::Col;
-use pyval::{Error, Res};
+use pyval::{Error, Res, P};
 
 create_exception!(json, EncodeError, PyValueError, "The answer cannot be written (a 500).");
 create_exception!(json, ValueRefused, EncodeError, "JsonValueRefused(field, reason).");
@@ -74,8 +76,80 @@ fn run<'py>(py: Python<'py>, f: impl FnOnce() -> Res<Vec<u8>> + Send) -> PyResul
     }
 }
 
-fn unwrap(batches: Vec<PyArrowType<RecordBatch>>) -> Vec<RecordBatch> {
-    batches.into_iter().map(|b| b.0).collect()
+/// A row result's batches handed to an encoder (REQ-2195): `RowBatches(batches, kinds=None)`,
+/// each batch a list of rows (each a sequence of its cells), `kinds` each column's engine type
+/// name (or None). The encoder reads the cells as they are, never through Arrow.
+#[pyclass(frozen, module = "provisa._encoders.json")]
+struct RowBatches {
+    batches: Py<PyAny>,
+    kinds: Vec<Option<String>>,
+}
+
+#[pymethods]
+impl RowBatches {
+    #[new]
+    #[pyo3(signature = (batches, kinds=None))]
+    fn new(batches: Py<PyAny>, kinds: Option<Vec<Option<String>>>) -> Self {
+        RowBatches { batches, kinds: kinds.unwrap_or_default() }
+    }
+
+    /// The rows the batches hold.
+    fn __len__(&self, py: Python<'_>) -> PyResult<usize> {
+        let mut n = 0;
+        for batch in self.batches.bind(py).try_iter()? {
+            n += batch?.len()?;
+        }
+        Ok(n)
+    }
+}
+
+/// What an encoder reads: a result's Arrow batches, or a row result's cells.
+enum Source {
+    Arrow(Vec<RecordBatch>),
+    /// Each batch's columns' cells.
+    Rows(Vec<Vec<Vec<P<'static>>>>),
+}
+
+impl<'py> FromPyObject<'py> for Source {
+    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+        let Ok(rows) = ob.downcast::<RowBatches>() else {
+            let batches: Vec<PyArrowType<RecordBatch>> = ob.extract()?;
+            return Ok(Source::Arrow(batches.into_iter().map(|b| b.0).collect()));
+        };
+        let rows = rows.get();
+        let cells = pyrows::Cells::new(ob.py())?;
+        let mut out = Vec::new();
+        for batch in rows.batches.bind(ob.py()).try_iter()? {
+            let batch = batch?;
+            let width = match batch.try_iter()?.next() {
+                Some(row) => row?.len()?,
+                None => continue,
+            };
+            out.push(cells.columns(&batch, width, &rows.kinds)?);
+        }
+        Ok(Source::Rows(out))
+    }
+}
+
+impl Source {
+    /// The batches' cells, as the surfaces read them.
+    fn prepare(self, spec: &[Col]) -> Res<Vec<nest::Batch>> {
+        match self {
+            Source::Arrow(batches) => nest::prepare(&batches, spec),
+            Source::Rows(batches) => {
+                let mut kept = Vec::with_capacity(batches.len());
+                for mut columns in batches {
+                    // The plan's columns are the statement's first (as `prepare` reads a batch).
+                    if columns.len() < spec.len() {
+                        return pyval::err(format!("the row has {} columns, the plan {}", columns.len(), spec.len()));
+                    }
+                    columns.truncate(spec.len());
+                    kept.push(columns);
+                }
+                nest::prepare_rows(kept, spec)
+            }
+        }
+    }
 }
 
 /// `(rows, row count, {relationship: matched rows}, [truncated to-one path])`.
@@ -88,14 +162,13 @@ type FieldAnswer<'py> = (Bound<'py, PyBytes>, usize, HashMap<String, u64>, Vec<S
 #[pyo3(signature = (batches, columns, result_limit=None))]
 fn encode_field<'py>(
     py: Python<'py>,
-    batches: Vec<PyArrowType<RecordBatch>>,
+    batches: Source,
     columns: Vec<ColumnTuple>,
     result_limit: Option<usize>,
 ) -> PyResult<FieldAnswer<'py>> {
-    let batches = unwrap(batches);
     let spec = spec_of(columns);
     let r = py.allow_threads(|| {
-        let b = nest::prepare(&batches, &spec)?;
+        let b = batches.prepare(&spec)?;
         surfaces::graphql_field(&b, &spec, result_limit)
     });
     let (body, w) = r.map_err(py_err)?;
@@ -107,14 +180,13 @@ fn encode_field<'py>(
 #[pyfunction]
 fn encode_aggregate<'py>(
     py: Python<'py>,
-    batches: Vec<PyArrowType<RecordBatch>>,
+    batches: Source,
     columns: Vec<ColumnTuple>,
     aggregate_alias: String,
 ) -> PyResult<Bound<'py, PyBytes>> {
-    let batches = unwrap(batches);
     let spec = spec_of(columns);
     run(py, || {
-        let b = nest::prepare(&batches, &spec)?;
+        let b = batches.prepare(&spec)?;
         surfaces::graphql_aggregate(&b, &spec, &aggregate_alias)
     })
 }
@@ -125,14 +197,13 @@ fn encode_aggregate<'py>(
 #[pyo3(signature = (batches, columns, aggregate_alias=None))]
 fn encode_rest<'py>(
     py: Python<'py>,
-    batches: Vec<PyArrowType<RecordBatch>>,
+    batches: Source,
     columns: Vec<ColumnTuple>,
     aggregate_alias: Option<String>,
 ) -> PyResult<(Bound<'py, PyBytes>, Vec<String>)> {
-    let batches = unwrap(batches);
     let spec = spec_of(columns);
     let r = py.allow_threads(|| {
-        let b = nest::prepare(&batches, &spec)?;
+        let b = batches.prepare(&spec)?;
         surfaces::rest(&b, &spec, aggregate_alias.as_deref())
     });
     let (body, w) = r.map_err(py_err)?;
@@ -144,13 +215,12 @@ fn encode_rest<'py>(
 #[pyfunction]
 fn encode_rest_csv<'py>(
     py: Python<'py>,
-    batches: Vec<PyArrowType<RecordBatch>>,
+    batches: Source,
     columns: Vec<ColumnTuple>,
 ) -> PyResult<(Bound<'py, PyBytes>, Vec<String>)> {
-    let batches = unwrap(batches);
     let spec = spec_of(columns);
     let r = py.allow_threads(|| {
-        let b = nest::prepare(&batches, &spec)?;
+        let b = batches.prepare(&spec)?;
         surfaces::rest_csv(&b, &spec)
     });
     let (body, truncated) = r.map_err(py_err)?;
@@ -169,7 +239,7 @@ fn encode_rest_csv<'py>(
 #[allow(clippy::too_many_arguments)]
 fn encode_jsonapi<'py>(
     py: Python<'py>,
-    batches: Vec<PyArrowType<RecordBatch>>,
+    batches: Source,
     columns: Vec<ColumnTuple>,
     resource_type: String,
     page_size: usize,
@@ -187,7 +257,6 @@ fn encode_jsonapi<'py>(
     truncation: (String, String),
     warnings: Option<Vec<u8>>,
 ) -> PyResult<(Bound<'py, PyBytes>, Vec<String>)> {
-    let batches = unwrap(batches);
     let spec = spec_of(columns);
     let a = surfaces::JsonApi {
         resource_type,
@@ -207,7 +276,7 @@ fn encode_jsonapi<'py>(
         truncation,
     };
     let r = py.allow_threads(|| {
-        let b = nest::prepare(&batches, &spec)?;
+        let b = batches.prepare(&spec)?;
         surfaces::jsonapi(&b, &spec, &a)
     });
     let (body, truncated) = r.map_err(py_err)?;
@@ -219,17 +288,16 @@ fn encode_jsonapi<'py>(
 #[pyo3(signature = (batches, columns, *, resource_type, scalar_names, rel_names, rel_scalar_names))]
 fn encode_jsonapi_group_by<'py>(
     py: Python<'py>,
-    batches: Vec<PyArrowType<RecordBatch>>,
+    batches: Source,
     columns: Vec<ColumnTuple>,
     resource_type: String,
     scalar_names: HashMap<String, String>,
     rel_names: Vec<(String, String)>,
     rel_scalar_names: HashMap<String, HashMap<String, String>>,
 ) -> PyResult<Bound<'py, PyBytes>> {
-    let batches = unwrap(batches);
     let spec = spec_of(columns);
     run(py, || {
-        let b = nest::prepare(&batches, &spec)?;
+        let b = batches.prepare(&spec)?;
         surfaces::jsonapi_group_by(&b, &spec, &resource_type, &scalar_names, &rel_names, &rel_scalar_names)
     })
 }
@@ -238,14 +306,13 @@ fn encode_jsonapi_group_by<'py>(
 #[pyfunction]
 fn encode_jsonapi_aggregate<'py>(
     py: Python<'py>,
-    batches: Vec<PyArrowType<RecordBatch>>,
+    batches: Source,
     columns: Vec<ColumnTuple>,
     aggregate_alias: String,
 ) -> PyResult<Bound<'py, PyBytes>> {
-    let batches = unwrap(batches);
     let spec = spec_of(columns);
     run(py, || {
-        let b = nest::prepare(&batches, &spec)?;
+        let b = batches.prepare(&spec)?;
         surfaces::jsonapi_aggregate(&b, &spec, &aggregate_alias)
     })
 }
@@ -274,7 +341,7 @@ fn entity_of(t: &Bound<'_, PyAny>) -> PyResult<odata::Entity> {
 #[allow(clippy::too_many_arguments)]
 fn encode_odata<'py>(
     py: Python<'py>,
-    batches: Vec<PyArrowType<RecordBatch>>,
+    batches: Source,
     names: Vec<String>,
     entity: Bound<'py, PyAny>,
     context: String,
@@ -284,14 +351,13 @@ fn encode_odata<'py>(
     root: String,
     warnings: Option<Vec<u8>>,
 ) -> PyResult<Bound<'py, PyBytes>> {
-    let batches = unwrap(batches);
     let r = odata::Read { context, count, warnings, page, next_link, root, entity: entity_of(&entity)? };
     let spec: Vec<Col> = names
         .iter()
         .map(|n| Col { field: n.clone(), nested_in: None, one_to_many: false, is_agg: false, mode: Mode::Convert })
         .collect();
     run(py, || {
-        let b = nest::prepare(&batches, &spec)?;
+        let b = batches.prepare(&spec)?;
         odata::read(&b, &names, &r)
     })
 }
@@ -308,7 +374,7 @@ fn add_as<'py>(m: &Bound<'py, PyModule>, f: Bound<'py, pyo3::types::PyCFunction>
 #[allow(clippy::too_many_arguments)]
 fn encode_odata_navigation<'py>(
     py: Python<'py>,
-    batches: Vec<PyArrowType<RecordBatch>>,
+    batches: Source,
     names: Vec<String>,
     entity: Bound<'py, PyAny>,
     context: String,
@@ -316,14 +382,13 @@ fn encode_odata_navigation<'py>(
     root: String,
     warnings: Option<Vec<u8>>,
 ) -> PyResult<Bound<'py, PyBytes>> {
-    let batches = unwrap(batches);
     let n = odata::Navigate { context, warnings, root, entity: entity_of(&entity)?, name };
     let spec: Vec<Col> = names
         .iter()
         .map(|n| Col { field: n.clone(), nested_in: None, one_to_many: false, is_agg: false, mode: Mode::Convert })
         .collect();
     run(py, || {
-        let b = nest::prepare(&batches, &spec)?;
+        let b = batches.prepare(&spec)?;
         odata::navigation(&b, &names, &n)
     })
 }
@@ -349,6 +414,7 @@ pub fn module<'py>(py: Python<'py>, qualified: &str) -> PyResult<Bound<'py, PyMo
     m.add("ValueRefused", py.get_type::<ValueRefused>())?;
     m.add("ResponseRefused", py.get_type::<ResponseRefused>())?;
     m.add("ODataRefused", py.get_type::<ODataRefused>())?;
+    m.add_class::<RowBatches>()?;
     // Registered first, so each submodule's qualified name is the json module's.
     py.import("sys")?.getattr("modules")?.set_item(qualified, &m)?;
     let graphql = submodule(&m, "graphql")?;

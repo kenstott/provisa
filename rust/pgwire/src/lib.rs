@@ -1,6 +1,6 @@
-// REQ-2194: pgwire's DataRow encoder. provisa._encoders.pgwire (rust/encoders) serves it, and
-// provisa.pgwire.server's send_data_rows writes every result through it, straight from the
-// engine's Arrow batches. tests/unit/pgwire_encoder/test_differential.py holds it to PostgreSQL
+// REQ-2194, REQ-2195: pgwire's DataRow encoder. provisa._encoders.pgwire (rust/encoders) serves
+// it, and provisa.pgwire.server's send_data_rows writes every result through it in the form the
+// result has: the engine's Arrow batches, or a row result's rows (read as they are, pyrows.rs). tests/unit/pgwire_encoder/test_differential.py holds it to PostgreSQL
 // 17's answers, byte for byte (floats within one part in 10^14).
 
 mod coerce;
@@ -1105,9 +1105,19 @@ fn encode(batch: &RecordBatch, plan: &Plan, formats: &[i32], out: &mut Vec<u8>) 
 }
 
 /// The DataRow messages of a row result's rows (REQ-2195): `columns` each column's cells.
-fn encode_cells(columns: Vec<Vec<pyval::PyVal>>, nrows: usize, plan: &Plan, formats: &[i32], out: &mut Vec<u8>) -> R<usize> {
+fn encode_cells(
+    columns: Vec<Vec<pyval::PyVal>>,
+    nrows: usize,
+    plan: &Plan,
+    formats: &[i32],
+    out: &mut Vec<u8>,
+) -> R<usize> {
     if plan.bvs.len() != columns.len() {
-        return Err(EncErr::Value(format!("{} types for {} columns", plan.bvs.len(), columns.len())));
+        return Err(EncErr::Value(format!(
+            "{} types for {} columns",
+            plan.bvs.len(),
+            columns.len()
+        )));
     }
     if nrows == 0 {
         return Ok(0);
@@ -1118,7 +1128,12 @@ fn encode_cells(columns: Vec<Vec<pyval::PyVal>>, nrows: usize, plan: &Plan, form
         .map(|(j, cells)| {
             let bv = plan.bvs[j];
             let binary = formats.get(j).copied().unwrap_or(0) == 1 && pgtypes::has_binary(bv);
-            Col::Cells { cells, coercers: plan.coercers[j].clone(), bv, binary }
+            Col::Cells {
+                cells,
+                coercers: plan.coercers[j].clone(),
+                bv,
+                binary,
+            }
         })
         .collect();
     write_rows(&mut cols, nrows, out)
@@ -1167,7 +1182,13 @@ fn write_rows(cols: &mut [Col], nrows: usize, out: &mut Vec<u8>) -> R<usize> {
                     coercers,
                     bv,
                     binary,
-                } if cells[i] != pyval::PyVal::None => write_value(std::mem::replace(&mut cells[i], pyval::PyVal::None), coercers, *bv, *binary, out)?,
+                } if cells[i] != pyval::PyVal::None => write_value(
+                    std::mem::replace(&mut cells[i], pyval::PyVal::None),
+                    coercers,
+                    *bv,
+                    *binary,
+                    out,
+                )?,
                 _ => false,
             };
             if written {
@@ -1208,7 +1229,12 @@ fn encode_batch<'py>(
 
 /// A row result's batch's cells (REQ-2195), each row any sequence of its cells: `kinds` the
 /// engine's type name of each column (or None), for the text of a value no rule reads.
-fn read_cells(py: Python<'_>, rows: &Bound<'_, PyAny>, width: usize, kinds: &[Option<String>]) -> PyResult<(Vec<Vec<pyval::PyVal>>, usize)> {
+fn read_cells(
+    py: Python<'_>,
+    rows: &Bound<'_, PyAny>,
+    width: usize,
+    kinds: &[Option<String>],
+) -> PyResult<(Vec<Vec<pyval::PyVal>>, usize)> {
     let cells = pyrows::Cells::new(py)?;
     let mut columns: Vec<Vec<pyval::PyVal>> = (0..width).map(|_| Vec::new()).collect();
     let mut n = 0;

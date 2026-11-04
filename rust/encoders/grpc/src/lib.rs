@@ -1,7 +1,7 @@
-// REQ-2194, REQ-1965: the gRPC result encoder (provisa._encoders.grpc). An engine's Arrow batches
+// REQ-2194, REQ-1965, REQ-2195: the gRPC result encoder (provisa._encoders.grpc). A result in the
+// form it has (an engine's Arrow batches, or a row result's rows, read as they are by pyrows.rs)
 // and the organisation's compiled service in, the serialized {Type} / {Type}Batch response
-// messages out, with no Python value in between: grpc/server.py hands each result's
-// arrow_batches() to an Encoder and yields the bytes it returns. Each value is written as
+// messages out: grpc/server.py hands each result to an Encoder and yields the bytes it returns. Each value is written as
 // REQ-1965 has gRPC write it: an array, struct or map in a string field as JSON, bytes in a
 // string field as PostgreSQL's hex, PostgreSQL's infinities as "infinity" / "-infinity" in a
 // string field and as Timestamp's maximum / minimum in a Timestamp field, and a value beyond a

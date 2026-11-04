@@ -75,7 +75,10 @@ impl<'py> Cells<'py> {
                 s if s > 0 => 2_932_896,
                 _ => -719_162,
             };
-            return Ok(PyVal::Date { days: days as i64, inf: sign });
+            return Ok(PyVal::Date {
+                days: days as i64,
+                inf: sign,
+            });
         }
         if let Ok(t) = v.downcast::<PyTime>() {
             let us = clock_us(t.get_hour(), t.get_minute(), t.get_second(), t.get_microsecond());
@@ -86,13 +89,20 @@ impl<'py> Cells<'py> {
                     let off = v.call_method0("utcoffset")?;
                     let off = off.downcast::<PyDelta>()?;
                     let offset = off.get_days() * 86_400 + off.get_seconds();
-                    PyVal::DateTime(DateTime { local: us, offset: Some(offset), tz: fixed(offset), inf: 0, ns: None })
+                    PyVal::DateTime(DateTime {
+                        local: us,
+                        offset: Some(offset),
+                        tz: fixed(offset),
+                        inf: 0,
+                        ns: None,
+                    })
                 }
             });
         }
         if let Ok(d) = v.downcast::<PyDelta>() {
             if d.is_exact_instance_of::<PyDelta>() {
-                let us = (d.get_days() as i128 * 86_400 + d.get_seconds() as i128) * 1_000_000 + d.get_microseconds() as i128;
+                let us = (d.get_days() as i128 * 86_400 + d.get_seconds() as i128) * 1_000_000
+                    + d.get_microseconds() as i128;
                 return Ok(PyVal::TimeDelta(us));
             }
             // pandas' Timedelta
@@ -105,7 +115,9 @@ impl<'py> Cells<'py> {
             return Ok(PyVal::Bytes(b.to_vec()));
         }
         if v.is_instance_of::<PyMemoryView>() {
-            return Ok(PyVal::Bytes(v.call_method0("tobytes")?.downcast::<PyBytes>()?.as_bytes().to_vec()));
+            return Ok(PyVal::Bytes(
+                v.call_method0("tobytes")?.downcast::<PyBytes>()?.as_bytes().to_vec(),
+            ));
         }
         if v.is_instance(&self.uuid)? {
             let b: Vec<u8> = v.getattr("bytes")?.extract()?;
@@ -113,7 +125,11 @@ impl<'py> Cells<'py> {
         }
         if v.is_instance(&self.relativedelta)? {
             let field = |name: &str| -> PyResult<i64> { v.getattr(name)?.extract() };
-            let exact = if v.is_instance(&self.exact_interval)? { Some(v.getattr("pg_parts")?.extract()?) } else { None };
+            let exact = if v.is_instance(&self.exact_interval)? {
+                Some(v.getattr("pg_parts")?.extract()?)
+            } else {
+                None
+            };
             return Ok(PyVal::Interval(RelDelta {
                 years: field("years")?,
                 months: field("months")?,
@@ -155,7 +171,11 @@ impl<'py> Cells<'py> {
         if sign != 0 {
             // infinite_timestamp: datetime.max or min, in datetime.timezone.utc when aware
             let aware = d.get_tzinfo().is_some();
-            let local = if sign > 0 { 2_932_897 * DAY_US - 1 } else { -719_162 * DAY_US };
+            let local = if sign > 0 {
+                2_932_897 * DAY_US - 1
+            } else {
+                -719_162 * DAY_US
+            };
             return Ok(PyVal::DateTime(DateTime {
                 local,
                 offset: aware.then_some(0),
@@ -197,7 +217,13 @@ impl<'py> Cells<'py> {
         } else {
             None
         };
-        Ok(PyVal::DateTime(DateTime { local, offset, tz, inf: 0, ns }))
+        Ok(PyVal::DateTime(DateTime {
+            local,
+            offset,
+            tz,
+            inf: 0,
+            ns,
+        }))
     }
 }
 
@@ -218,13 +244,23 @@ fn decimal(v: &Bound<'_, PyAny>) -> PyResult<PyVal> {
         for d in digits.iter() {
             text.push(b'0' + d.extract::<u8>()?);
         }
-        return Ok(PyVal::Dec(Dec { neg, digits: text, exp, special: DecSpecial::Finite }));
+        return Ok(PyVal::Dec(Dec {
+            neg,
+            digits: text,
+            exp,
+            special: DecSpecial::Finite,
+        }));
     }
     let special = match exp.extract::<String>()?.as_str() {
         "F" => DecSpecial::Infinity,
         _ => DecSpecial::NaN, // "n" (NaN) and "N" (sNaN)
     };
-    Ok(PyVal::Dec(Dec { neg, digits: vec![b'0'], exp: 0, special }))
+    Ok(PyVal::Dec(Dec {
+        neg,
+        digits: vec![b'0'],
+        exp: 0,
+        special,
+    }))
 }
 
 /// ir_types.infinity_of: the IR infinite date's or timestamp's sign, else 0.

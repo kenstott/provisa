@@ -1358,14 +1358,15 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         # REQ-2194, REQ-2195: a passthrough's DataRow messages are forwarded as they are, an
         # Arrow result's batches go to the encoder as Arrow, and a row result's rows as rows.
         self._raw = hasattr(engine_result, "datarow_batches")
-        self._rows = not self._raw and not is_arrow(engine_result)
-        self._batch_iter: Iterator[Any] = (
-            engine_result.datarow_batches()  # type: ignore[attr-defined]
-            if self._raw
-            else engine_result.batches()
-            if self._rows
-            else engine_result.arrow_batches()
-        )
+        self._rows = False
+        self._batch_iter: Iterator[Any]
+        if self._raw:
+            self._batch_iter = engine_result.datarow_batches()  # type: ignore[attr-defined]
+        elif is_arrow(engine_result):
+            self._batch_iter = engine_result.arrow_batches()
+        else:
+            self._rows = True
+            self._batch_iter = engine_result.batches()
         if plan is not None:
             # REQ-074: the statement's audit row is written when this drain ends (audit_on_drain).
             from provisa.pgwire._pipeline import audit_on_drain
