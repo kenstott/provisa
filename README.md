@@ -442,6 +442,8 @@ Worker count can be changed at any time by editing `~/.provisa/config.yaml` (`fe
 
 ## Contributing
 
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kenstott/provisa?quickstart=1)
+
 Open the repository in the dev container and you can run the tests without any other setup. In VS Code, install the Dev Containers extension and run **Dev Containers: Reopen in Container**. In GitHub, choose **Code → Codespaces → Create codespace**. The container brings the pinned Python, Rust, Go and Node toolchains, a PostgreSQL with pgvector, and Docker for the tests that start their own containers. The first build syncs the Python dependencies, compiles the Rust encoders and installs the UI's packages.
 
 When it finishes, this command runs the unit suite:
