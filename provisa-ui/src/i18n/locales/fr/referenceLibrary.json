@@ -54,6 +54,10 @@
     "needsReembeddingHelp": "Intégré avec {{model}}, et non avec le modèle vectoriel actuel de l'organisation.",
     "reembedDone": "Documents réintégrés : {{n}}",
     "reembedFailedHeading": "Ces documents n'ont pas pu être réintégrés et sont inchangés :",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "retrieval": "Récupération",
+    "retrievalPassage": "Passage",
+    "retrievalGraph": "Graphe",
+    "retrievalHelp": "Comment la question d'un assistant est traitée à partir de la bibliothèque. Passage : les passages les plus proches de la question, et les passages qui les entourent. Graphe : suit aussi le glossaire depuis les termes que nomme la question, par leurs relations, jusqu'aux passages que citent les termes atteints, de sorte qu'une réponse peut s'appuyer sur une règle dont la formulation ne ressemble pas à la question."
   }
 }

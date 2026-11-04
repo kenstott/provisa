@@ -54,6 +54,10 @@
     "needsReembeddingHelp": "Embedded with {{model}}, not the organization's current vector model.",
     "reembedDone": "Documents re-embedded: {{n}}",
     "reembedFailedHeading": "These documents could not be re-embedded and are unchanged:",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "retrieval": "Retrieval",
+    "retrievalPassage": "Passage",
+    "retrievalGraph": "Graph",
+    "retrievalHelp": "How an assistant's question is answered from the library. Passage: the passages nearest the question, and the passages around them. Graph: also follows the glossary from the terms the question names, over their relationships, to the passages the terms reached cite, so an answer can draw on a rule whose wording does not resemble the question."
   }
 }

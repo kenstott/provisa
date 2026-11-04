@@ -12,7 +12,8 @@
 // source, status, domains, when each was added and last refreshed or replaced -- with the selected
 // one in the panel on the right: its facts and passages, Keep or Discard for a proposed one,
 // Refresh for a URL document, Upload new version for a file one, Remove, and its domains. Adding a
-// document opens its form in the same panel.
+// document opens its form in the same panel. Above the list, the library's retrieval setting,
+// passage or graph (GRAPH RETRIEVAL), saved as it is changed.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -37,21 +38,24 @@ import {
   addLibraryDocument,
   fetchLibrary,
   fetchLibraryDocument,
+  fetchRetrieval,
   keepLibraryDocument,
   reembedLibrary,
   reembedLibraryDocument,
   refreshLibraryDocument,
   removeLibraryDocument,
+  saveRetrieval,
   setLibraryDomains,
   uploadLibraryVersion,
   type LibraryDocument,
   type LibraryDocumentDetail,
   type ReembedOutcome,
+  type Retrieval,
 } from "../../api/referenceLibrary";
 import { useDomains } from "../../hooks/useAdminQueries";
 import { PanelDelete } from "../list/PanelDelete";
 import { DetailFields } from "../detail/DetailFields";
-import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { FormField, FormFooter, FormLayout, LabelWithHelp } from "../form/FormLayout";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../list/ListTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
@@ -447,6 +451,57 @@ function DocumentDetail({
   );
 }
 
+/** The library's retrieval setting, saved as it is changed. */
+function RetrievalSetting({ onError }: { onError: (message: string) => void }) {
+  const { t } = useTranslation();
+  const [retrieval, setRetrieval] = useState<Retrieval | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchRetrieval()
+      .then(setRetrieval)
+      .catch((e) => onError(e instanceof Error ? e.message : String(e)));
+  }, [onError]);
+
+  const change = async (next: Retrieval) => {
+    const before = retrieval;
+    setRetrieval(next);
+    setSaving(true);
+    try {
+      setRetrieval(await saveRetrieval(next));
+    } catch (e) {
+      setRetrieval(before);
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Group gap="xs" wrap="nowrap" data-testid="reflib-retrieval">
+      <Text size="sm" component="div">
+        <LabelWithHelp
+          label={t("referenceLibrary.retrieval")}
+          help={t("referenceLibrary.retrievalHelp")}
+          textId="reflib-retrieval-label"
+        />
+      </Text>
+      <SegmentedControl
+        size="xs"
+        aria-labelledby="reflib-retrieval-label"
+        value={retrieval ?? ""}
+        disabled={retrieval === null || saving}
+        onChange={(v) => change(v as Retrieval)}
+        data={[
+          { value: "passage", label: t("referenceLibrary.retrievalPassage") },
+          { value: "graph", label: t("referenceLibrary.retrievalGraph") },
+        ]}
+        data-testid="reflib-retrieval-control"
+      />
+    </Group>
+  );
+}
+
 export function ReferenceLibraryTab() {
   const { t, i18n } = useTranslation();
   const [documents, setDocuments] = useState<LibraryDocument[] | null>(null);
@@ -540,7 +595,8 @@ export function ReferenceLibraryTab() {
         <Text c="dimmed" size="sm" maw={820}>
           {t("referenceLibrary.intro")}
         </Text>
-        <Group gap="xs" wrap="nowrap">
+        <Group gap="md" wrap="nowrap">
+          <RetrievalSetting onError={setError} />
           {stale > 0 && (
             <Button
               size="xs"

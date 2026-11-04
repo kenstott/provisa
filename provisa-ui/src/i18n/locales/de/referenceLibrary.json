@@ -54,6 +54,10 @@
     "needsReembeddingHelp": "Eingebettet mit {{model}}, nicht mit dem aktuellen Vektormodell der Organisation.",
     "reembedDone": "Neu eingebettete Dokumente: {{n}}",
     "reembedFailedHeading": "Diese Dokumente konnten nicht neu eingebettet werden und sind unverändert:",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "retrieval": "Abruf",
+    "retrievalPassage": "Passage",
+    "retrievalGraph": "Graph",
+    "retrievalHelp": "Wie die Frage eines Assistenten aus der Bibliothek beantwortet wird. Passage: die Passagen, die der Frage am nächsten sind, und die Passagen um sie herum. Graph: folgt außerdem dem Glossar von den Begriffen, die die Frage nennt, über ihre Beziehungen zu den Passagen, die die erreichten Begriffe zitieren, sodass sich eine Antwort auf eine Regel stützen kann, deren Wortlaut der Frage nicht ähnelt."
   }
 }

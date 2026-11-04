@@ -54,6 +54,10 @@
     "needsReembeddingHelp": "Incorporado com {{model}}, não com o modelo vetorial atual da organização.",
     "reembedDone": "Documentos reincorporados: {{n}}",
     "reembedFailedHeading": "Estes documentos não puderam ser reincorporados e permanecem inalterados:",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "retrieval": "Recuperação",
+    "retrievalPassage": "Trecho",
+    "retrievalGraph": "Grafo",
+    "retrievalHelp": "Como a pergunta de um assistente é respondida a partir da biblioteca. Trecho: os trechos mais próximos da pergunta e os trechos ao redor deles. Grafo: também segue o glossário a partir dos termos que a pergunta nomeia, por meio de seus relacionamentos, até os trechos que os termos alcançados citam, para que uma resposta possa se apoiar em uma regra cuja redação não se parece com a pergunta."
   }
 }

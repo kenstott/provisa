@@ -54,6 +54,10 @@
     "needsReembeddingHelp": "使用 {{model}} 嵌入，而非组织当前的向量模型。",
     "reembedDone": "已重新嵌入的文档：{{n}}",
     "reembedFailedHeading": "以下文档无法重新嵌入，保持不变：",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "retrieval": "检索方式",
+    "retrievalPassage": "段落",
+    "retrievalGraph": "图",
+    "retrievalHelp": "如何从资料库回答助手的问题。段落：与问题最接近的段落，以及它们前后的段落。图：还会从问题提到的术语出发，沿着它们的关系遍历术语表，找到所到达术语引用的段落，因此回答可以依据措辞与问题并不相似的规则。"
   }
 }

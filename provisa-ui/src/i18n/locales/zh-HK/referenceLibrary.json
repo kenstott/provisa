@@ -54,6 +54,10 @@
     "needsReembeddingHelp": "使用 {{model}} 嵌入，而非機構目前的向量模型。",
     "reembedDone": "已重新嵌入的文件：{{n}}",
     "reembedFailedHeading": "以下文件無法重新嵌入，維持不變：",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "retrieval": "檢索方式",
+    "retrievalPassage": "段落",
+    "retrievalGraph": "圖",
+    "retrievalHelp": "如何從資料庫回答助理的問題。段落：與問題最接近的段落，以及它們前後的段落。圖：還會從問題提到的術語出發，沿着它們的關係遍歷詞彙表，找到所到達術語引用的段落，因此回答可以依據措辭與問題並不相似的規則。"
   }
 }

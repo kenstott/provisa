@@ -54,6 +54,10 @@
     "needsReembeddingHelp": "Incrustado con {{model}}, no con el modelo vectorial actual de la organización.",
     "reembedDone": "Documentos reincrustados: {{n}}",
     "reembedFailedHeading": "Estos documentos no se pudieron reincrustar y no han cambiado:",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "retrieval": "Recuperación",
+    "retrievalPassage": "Pasaje",
+    "retrievalGraph": "Grafo",
+    "retrievalHelp": "Cómo se responde la pregunta de un asistente a partir de la biblioteca. Pasaje: los pasajes más cercanos a la pregunta y los pasajes que los rodean. Grafo: además sigue el glosario desde los términos que nombra la pregunta, a través de sus relaciones, hasta los pasajes que citan los términos alcanzados, de modo que una respuesta puede basarse en una norma cuya redacción no se parece a la pregunta."
   }
 }

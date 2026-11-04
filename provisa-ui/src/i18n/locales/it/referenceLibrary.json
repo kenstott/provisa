@@ -54,6 +54,10 @@
     "needsReembeddingHelp": "Incorporato con {{model}}, non con il modello vettoriale attuale dell'organizzazione.",
     "reembedDone": "Documenti reincorporati: {{n}}",
     "reembedFailedHeading": "Questi documenti non sono stati reincorporati e restano invariati:",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "retrieval": "Recupero",
+    "retrievalPassage": "Passaggio",
+    "retrievalGraph": "Grafo",
+    "retrievalHelp": "Come si risponde alla domanda di un assistente a partire dalla libreria. Passaggio: i passaggi più vicini alla domanda e i passaggi che li circondano. Grafo: segue anche il glossario dai termini che la domanda nomina, attraverso le loro relazioni, fino ai passaggi citati dai termini raggiunti, così una risposta può basarsi su una regola la cui formulazione non somiglia alla domanda."
   }
 }

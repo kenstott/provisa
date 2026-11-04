@@ -54,6 +54,10 @@
     "needsReembeddingHelp": "{{model}} で埋め込み済みです。組織の現在のベクトルモデルではありません。",
     "reembedDone": "再埋め込みしたドキュメント: {{n}}",
     "reembedFailedHeading": "次のドキュメントは再埋め込みできず、変更されていません:",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "retrieval": "検索方式",
+    "retrievalPassage": "パッセージ",
+    "retrievalGraph": "グラフ",
+    "retrievalHelp": "アシスタントの質問にライブラリからどう答えるか。パッセージ：質問に最も近いパッセージと、その前後のパッセージ。グラフ：さらに、質問が挙げる用語から関係をたどって用語集を進み、到達した用語が引用するパッセージも使います。そのため、質問と文言が似ていない規則にも回答が基づけます。"
   }
 }

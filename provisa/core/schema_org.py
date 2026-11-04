@@ -2097,6 +2097,26 @@ reference_passages = Table(
     UniqueConstraint("document_id", "ordinal"),
 )
 
+# REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding -- its name and definition,
+# embedded by the org's vector model -- that governed retrieval finds the terms nearest a question
+# by. ``digest`` is of the model and the text embedded, so a term whose name or definition changed,
+# or a change of model, is embedded again (provisa.reference_library.terms). ``vector`` is held as
+# a passage's is, under one partial HNSW index per dimension in use.
+glossary_term_vectors = Table(
+    "glossary_term_vectors",
+    metadata,
+    Column(
+        "term_id",
+        Integer,
+        ForeignKey("glossary_terms.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("embedding_model", Text, nullable=False),
+    Column("digest", Text, nullable=False),
+    Column("vector", Vector(), nullable=False),
+    Column("tenant_id", Uuid),
+)
+
 # REQ-2179: the glossary's scans of reference library documents for terms. A scan keeps the
 # document's title and source as they were, so its citations outlive the document (document_id is
 # cleared when the document is removed, and the citations are then marked as citing a removed
