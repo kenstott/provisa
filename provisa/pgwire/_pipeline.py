@@ -558,6 +558,12 @@ async def _optimize_and_route(
         if _live or _live_inline:
             optimized = True
             opt_labels.extend(f"read live: {_tn}" for _tn in sorted({*_live, *_live_inline}))
+    if not sources and not is_mutation:
+        from provisa.compiler.result_shape import pg_named
+
+        # REQ-2167: a statement reading no table is the engine's, which names SELECT 1 "1";
+        # PostgreSQL names it ?column?.
+        exec_sql = pg_named(exec_sql)
     return exec_sql, decision, optimized, sources, tuple(opt_labels)
 
 

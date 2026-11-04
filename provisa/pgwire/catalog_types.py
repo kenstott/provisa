@@ -159,4 +159,5 @@ def _function_type(expression: exp.Expr) -> str:
 def _format_type(data_type) -> str:
     if data_type is None or data_type.is_type("unknown"):
         return ""
-    return data_type.sql("postgres").lower()
+    # A type named in pg_catalog is the type of its bare name (pg_catalog.regclass is regclass).
+    return data_type.sql("postgres").lower().removeprefix("pg_catalog.")
