@@ -307,7 +307,15 @@
     the column to the role. A nested subquery''s columns are judged in the subquery''s own scope. A name
     that resolves to no registered relation in scope (a table function''s alias or column, a lateral column,
     an outer reference) is not refused by governance: it is passed to the engine, which answers or errors
-    as PostgreSQL does. A governed column is still checked wherever it resolves.'
+    as PostgreSQL does. A governed column is still checked wherever it resolves. (Amended 2026-11-04, A
+    HIDDEN COLUMN IS REFUSED IN EVERY CLAUSE:) Maintainer 2026-11-04: a column the role is not served cannot
+    be named anywhere in the role''s SQL: the select list, WHERE, JOIN ON, GROUP BY, HAVING, ORDER BY, window
+    clauses, FROM-item function arguments and LATERAL items, and inside any subquery, CTE or set operation,
+    so that no clause can act as an oracle on hidden values. Identifiers are compared as PostgreSQL folds
+    them (an unquoted name in lower case). A column qualified by a name that matches no relation in scope
+    is refused. A source whose columns cannot be known never ends the check: a name is passed to the engine
+    only when an unregistered source in scope is known to provide it. Row rules and masks written by administrators
+    may use any column; governance adds them, not the role.'
   use_case: Schema visibility enforcement ensures unauthorized tables and columns are invisible to clients
     at design time.
   code:
