@@ -154,12 +154,14 @@ views:
   columns:
   - {name: person_id, data_type: integer, description: The customer the cash is by or on behalf of, visible_to: [data_steward, teller, compliance_officer]}
   - {name: person, data_type: varchar, description: Their name, visible_to: [data_steward, teller, compliance_officer]}
-  - {name: tax_id, data_type: varchar, description: 'Their taxpayer identification number, as the report needs it; masked for a teller', visible_to: [data_steward, teller, compliance_officer], masks: [{to: [teller], mask: {type: regex, pattern: '^[0-9]{2,3}-[0-9]{2}', replace: '***'}}, {mask: null}]}
+  # The view reads customers and accounts as its reader, so a teller reads the tax id and the
+  # account numbers through their tables' masks; a mask here would read the masked value again.
+  - {name: tax_id, data_type: varchar, description: 'Their taxpayer identification number, as the report needs it; masked for a teller', visible_to: [data_steward, teller, compliance_officer]}
   - {name: business_day, data_type: date, description: The business day the cash posted to, visible_to: [data_steward, teller, compliance_officer]}
   - {name: direction, data_type: varchar, description: 'deposit (cash in) or withdrawal (cash out)', visible_to: [data_steward, teller, compliance_officer]}
   - {name: multiple_transactions, data_type: bigint, description: 'How many transactions were counted as one', visible_to: [data_steward, teller, compliance_officer]}
   - {name: branches, data_type: bigint, description: How many branches took them, visible_to: [data_steward, teller, compliance_officer]}
-  - {name: account_numbers, data_type: varchar, description: 'The accounts the cash went into or came out of; a teller sees their last four digits', visible_to: [data_steward, teller, compliance_officer], masks: [{to: [teller], mask: {type: regex, pattern: '4417-[0-9]{4}', replace: 'XXXX-XXXX'}}, {mask: null}]}
+  - {name: account_numbers, data_type: varchar, description: 'The accounts the cash went into or came out of; a teller sees their last four digits', visible_to: [data_steward, teller, compliance_officer]}
   - {name: conducted_by_another, data_type: bigint, description: 'How many were brought to the window by someone else on the person''s behalf', visible_to: [data_steward, teller, compliance_officer]}
   - {name: cash_total, data_type: decimal, description: The cash together in US dollars, visible_to: [data_steward, teller, compliance_officer]}
 # Who is structuring (31 CFR 1010.100(xx)): cash deposits just under the $10,000 threshold -- from
