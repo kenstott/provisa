@@ -1,108 +1,388 @@
 {
-  "version": "v0.1.0-alpha.498",
-  "previous": "v0.1.0-alpha.497",
-  "date": "2026-11-02",
+  "version": "v0.1.0-alpha.499",
+  "previous": "v0.1.0-alpha.498",
+  "date": "2026-11-04",
   "features": [],
   "changes": [
     {
-      "scope": "audit",
+      "scope": "admin",
       "entries": [
-        "A governance read on the writer thread runs in the request org"
+        "Gate the ERD layout routes; drop requirement ids from fetch-paths",
+        "ERD layout reads open to every signed-in role"
+      ]
+    },
+    {
+      "scope": "api",
+      "entries": [
+        "A query node serves no UI or UI backend"
       ]
     },
     {
       "scope": "bench",
       "entries": [
-        "A role chain lists what the role holds"
+        "plan-cache hit/miss knob and a rows-and-masks governance variant",
+        "The mask share counts the contract's columns, not every deployment column"
+      ]
+    },
+    {
+      "scope": "codesource",
+      "entries": [
+        "Code images carry provisa._encoders from the provisa wheel"
+      ]
+    },
+    {
+      "scope": "config-watch",
+      "entries": [
+        "Stop reading an org reaped during a check"
+      ]
+    },
+    {
+      "scope": "conformance",
+      "entries": [
+        "An overload with no compared answer is not checked, never a pass",
+        "Side effects compared on pg, type and form for values that cannot be",
+        "Every overload is passed, skipped by design or failed",
+        "random()'s form holds for random() alone",
+        "Real arguments for the overloads called with NULL only",
+        "The 2026-11-03 decisions and the catalog's model skipped by design",
+        "Not checked and not reached count as not tested, not failed",
+        "An adapted case is marked with the outcome it counts as"
+      ]
+    },
+    {
+      "scope": "cypher",
+      "entries": [
+        "The maximum depth defaults to 1000",
+        "A walk along a relationship of a table to itself passes the guard with its trail check"
       ]
     },
     {
       "scope": "demo",
       "entries": [
-        "Ground \"group of connected clients\" in groupexposure"
+        "A built-in view ending in a comment no longer swallows the script terminator",
+        "A template's build adopts its seed before starting replica convergence",
+        "Drop \"landed once when the demo is built\" from source descriptions"
       ]
     },
     {
-      "scope": "notebook",
+      "scope": "demos",
       "entries": [
-        "Read and write build text as UTF-8 on every OS"
+        "Carry a demo's scans for terms in its bundle"
       ]
     },
     {
-      "scope": "odata",
+      "scope": "deploy",
       "entries": [
-        "OData V4 service, first slice",
-        "$filter, $orderby and the odata request timeout",
-        "$expand, nested paging and the e2e test",
-        "Show the endpoint in the startup log and the admin console",
-        "Carry statement warnings in the body as @Provisa.warnings"
+        "Verify sends a page-load request"
+      ]
+    },
+    {
+      "scope": "docs",
+      "entries": [
+        "Count 76 source types after Generic SQL and QuickBooks merged"
+      ]
+    },
+    {
+      "scope": "encoders",
+      "entries": [
+        "JSON surfaces answer from the Rust encoders; Python serializers deleted",
+        "The plan's columns are the statement's first; integration and unit tests on the encoders"
+      ]
+    },
+    {
+      "scope": "erd",
+      "entries": [
+        "A saved layout's time is set by the database on every save",
+        "A failed layout delete frees its confirm; the Layout menu's hinted trigger is listed",
+        "The delete confirm comes before the Save-as dialog, so no save's await sits inside its busy span",
+        "The automatic layout overlaps no two tables of a domain"
+      ]
+    },
+    {
+      "scope": "executor",
+      "entries": [
+        "DuckDB reads hand the terminal Arrow, rows built at the consumer",
+        "DuckDB async rows built off the event loop; DIRECT driver reads Arrow",
+        "Columnar reads answer PostgreSQL's error met mid-stream; 24:00 times"
+      ]
+    },
+    {
+      "scope": "experiments",
+      "entries": [
+        "Pgwire encoder benchmark and results",
+        "Pgwire encoder benchmark and results",
+        "Pgwire encoder PostgreSQL floats, named zones, ns units",
+        "Pgwire encoder writes every type pgwire sends"
+      ]
+    },
+    {
+      "scope": "explore",
+      "entries": [
+        "OData and OpenAPI follow the navbar domain selection; Polly drives OData"
+      ]
+    },
+    {
+      "scope": "federation",
+      "entries": [
+        "Ship each generic engine kind's dialect as a named extra"
+      ]
+    },
+    {
+      "scope": "glossary",
+      "entries": [
+        "Fill the expert picker from a glossary_rw roster, not the team page's",
+        "List only the caller in the shared sandbox's picker roster"
+      ]
+    },
+    {
+      "scope": "go",
+      "entries": [
+        "A Go source's reader and the manifest's Go rules",
+        "Pinned Go toolchain; a stream yields a row and an error",
+        "The Go host, compiled with the code linked in, and its sandbox"
+      ]
+    },
+    {
+      "scope": "golden",
+      "entries": [
+        "The GraphQL front gate's expected answer is the encoder's"
+      ]
+    },
+    {
+      "scope": "graph",
+      "entries": [
+        "A dragged SPARQL node stays pinned and the drawing is kept"
+      ]
+    },
+    {
+      "scope": "graphql_remote",
+      "entries": [
+        "Land connection tables at the page size registration priced"
+      ]
+    },
+    {
+      "scope": "grpc",
+      "entries": [
+        "Write values exactly",
+        "A zoned nanosecond timestamp is floored to the microsecond"
+      ]
+    },
+    {
+      "scope": "ir_arrow",
+      "entries": [
+        "Read an Arrow UTC timestamp as offset zero, not a region"
+      ]
+    },
+    {
+      "scope": "jdbc_source",
+      "entries": [
+        "The attach check reads from the source before it passes",
+        "The JDBC form picks a driver, takes a jar file, names no engine"
+      ]
+    },
+    {
+      "scope": "org-registry",
+      "entries": [
+        "Grant and register the registry view under the hold that rebuilt it"
+      ]
+    },
+    {
+      "scope": "pg engine",
+      "entries": [
+        "ordered-set aggregates, overlaps, character(n), json text, bounded arrays, interval elements",
+        "Overlaps and quoted table functions reach PostgreSQL as written",
+        "Catalog reads in regclass arguments, the catalog's function oids, pg_get_viewdef's size, clock and NULL types",
+        "Amvalidate from PostgreSQL 17's opclasses, database_to_xml without Provisa's domains, decided errors"
       ]
     },
     {
       "scope": "pgwire",
       "entries": [
-        "Enums by a table's schema, audit the text sent, casts refused by name",
-        "Timestamptz text, SHOW and ParameterStatus follow the session zone",
-        "Type operators reach Trino and ClickHouse",
-        "A Trino instant reads into UTC, a built-in type is no enum, a timetz keeps its encoder",
-        "float4out takes Trino's digits from text that reads back",
-        "Exact binary numeric past 28 digits, integer interval day split"
+        "Hashes of time, timestamp, timetz, uuid and pg_lsn, float8 finals of a column",
+        "ClickHouse reads date, time and timestamp literals, refusing only what it cannot read",
+        "A time literal in a ClickHouse statement of these forms is read by time_in",
+        "Zoneinfo timestamptz text, float4out for REAL, UUID bytes",
+        "Delete the Python DataRow writers; every cell is the Rust encoder's",
+        "A schema-named function in FROM is no table; regexp_replace reads its flags beside N",
+        "Sequence functions and six-argument regexp_replace refused by name, skipped by design",
+        "Lastval from the session's own inserts",
+        "A bounded array sent as PostgreSQL sends it; lastval documented",
+        "Inet text is PostgreSQL's whatever Python's ipaddress writes",
+        "Advisory locks show in pg_locks; a lock with constant keys may sit in a larger statement",
+        "set_config keeps a session's setting; current_setting(name, true) of an unknown one is NULL",
+        "A sleep's time may be read from the clock",
+        "A simple query's error ends at its ReadyForQuery",
+        "LISTEN, UNLISTEN, NOTIFY and pg_notify refused by name",
+        "A pytz-zoned value and a UUID's 16 bytes are sent as main's writers sent them",
+        "pg_cursor lists the session's cursors and its open portal; pg_column_size of a computed value; json_object is the engine's",
+        "A zoned nanosecond value is floored to the microsecond, a UUID is written as main's _uuid_text writes it",
+        "Notices from the current lock; no requirement id in fetch-paths' heading",
+        "ReadyForQuery reports 'E' after a failed statement in a transaction",
+        "DuckDB answers System functions as PostgreSQL 17 does",
+        "Answer an engine error met mid-stream, keep the connection",
+        "pg_timezone_names left as it was, pending the maintainer's zone list",
+        "regexp_instr's UDF is DuckDB's alone; the abbreviations' rows name their own columns",
+        "DuckDB PostgreSQL-function leftovers",
+        "pg_timezone_names in FROM is its rows; a table's XML row unpacked",
+        "pg_timezone_names' rows name their own columns",
+        "Timetz text, zone abbreviations and pg_timezone_abbrevs in FROM as PostgreSQL 17",
+        "DECLARE, CLOSE and MOVE over the extended protocol run as the simple Query's",
+        "A regprocedure's argument types compare as text; amvalidate waits on a decision"
+      ]
+    },
+    {
+      "scope": "pgwire catalog",
+      "entries": [
+        "PostgreSQL 17's predefined roles, strict catalog functions and statistics",
+        "Reg types write meta's names; information_schema at PostgreSQL 17's oid",
+        "A predefined role's privileges and acldefault answer as PostgreSQL 17",
+        "Tablespace location, object identity, updatable columns and input checks answer as PostgreSQL 17",
+        "The functions and descriptions PostgreSQL 17 ships are in meta",
+        "pg_get_catalog_foreign_keys and pg_settings_get_flags answer as PostgreSQL 17",
+        "pg_get_viewdef gives a system view's definition as PostgreSQL 17",
+        "The indexes and constraints of PostgreSQL 17's catalogs are in meta",
+        "*_is_visible follows search_path as PostgreSQL does",
+        "A privilege function asked about another model role answers from its grants",
+        "A source's enum types are types of the catalog"
       ]
     },
     {
       "scope": "polly",
       "entries": [
-        "Add the /odata page to Polly's page table"
+        "Read and operate the screens added since alpha.498"
       ]
     },
     {
-      "scope": "release",
+      "scope": "profiler",
       "entries": [
-        "Unblock Build Provisa Packages (guava CVE, arm64 docker save)"
+        "A rebuild drops superseded result relations after its commit, 50 to a transaction; a sandbox copies only current ones"
       ]
     },
     {
-      "scope": "rights",
+      "scope": "quickbooks",
       "entries": [
-        "Viewer holds no catalog_read; a role map fits its panel on every open",
-        "The Cypher and catalog-fact checks read only what their branch needs"
+        "Live sandbox test passes: quoted numbers, api_sources type check, one page size"
       ]
     },
     {
-      "scope": "startup",
+      "scope": "reference-library",
       "entries": [
-        "The boot reads a schema's catalog once, not once a table"
+        "Read eCFR's XML"
+      ]
+    },
+    {
+      "scope": "sandbox",
+      "entries": [
+        "The VM idle stop counts an open under way and the last sandbox request",
+        "An open times its ask for a newer version and its waits for stores and template",
+        "The VM idle stop counts an open under way and the last sandbox request",
+        "An open times its ask for a newer version and its waits for stores and template",
+        "A template is served as built only when it holds its bundle's profile runs",
+        "A sandbox opens holding its template's Kafka-landed rows, its listener continuing from there",
+        "A dropped open answers starting, and an open builds none of its template's runtimes",
+        "A template's runtime build keeps the profile runs its bundle carries",
+        "A patch keeps demo templates built under the same DDL",
+        "The DDL fingerprint covers every source of an org schema's DDL",
+        "The sandbox VM is not stopped under an open sandbox or another tier's visitor"
+      ]
+    },
+    {
+      "scope": "serialize",
+      "entries": [
+        "Exact JSON values in GraphQL and the shared JSON path",
+        "Exact JSON numbers, json as text, integers by type"
+      ]
+    },
+    {
+      "scope": "sources",
+      "entries": [
+        "Generic SQL source type over any SQLAlchemy URL",
+        "A held org's Generic SQL URL carries no driver options",
+        "Held orgs give only allowed Generic SQL URL options; URL is pinnable",
+        "Generic SQL form and Detect",
+        "A customer JDBC driver behind Generic SQL",
+        "The Generic SQL floor, read by column_value parameters",
+        "A branded source's setup is Source.brand_setup, not a hint",
+        "Read a Shopify source saved with its setup in federation_hints",
+        "Generic SQL lands on Unit against main"
+      ]
+    },
+    {
+      "scope": "start",
+      "entries": [
+        "Build provisa._encoders before a source start runs the API"
+      ]
+    },
+    {
+      "scope": "start-ui",
+      "entries": [
+        "List every query surface in the startup banner"
+      ]
+    },
+    {
+      "scope": "table-search",
+      "entries": [
+        "Find a remote source's tables by description; no stale form problem",
+        "The table named for the word ranks above narrower kinds of it"
+      ]
+    },
+    {
+      "scope": "tables",
+      "entries": [
+        "The table picker lists lookups apart"
+      ]
+    },
+    {
+      "scope": "term-finding",
+      "entries": [
+        "A table of terms and definitions, read with no model"
+      ]
+    },
+    {
+      "scope": "tour",
+      "entries": [
+        "find_terms, scan and library steps for a named demo"
       ]
     },
     {
       "scope": "transpiler",
       "entries": [
-        "A call by pg_catalog is the call of the function on an engine without that schema",
-        "The round-trip forms in PostgreSQL syntax, a numeric literal keeps its digits",
-        "Numeric forms in PostgreSQL syntax, refused by name where a replay differs",
-        "String and date forms in PostgreSQL syntax, refused by name where a replay differs",
-        "Position edges, first match, and refusals from the replay on real engines",
-        "The second replay on real engines read back into forms and refusals",
-        "The third replay read back: a NULL part, zoned literals, an answer's scale refused",
-        "Nameconcatoid keeps its text type, jsonb_numeric restored",
-        "A large object form reads its bytes as bytea on Trino",
-        "A bytea argument of a server form stays bytes",
-        "A time beside a date stays refused on ClickHouse's server",
-        "A server's state answered, and regexp_replace's Nth match, recorded on postgres:17.11",
-        "regexp_replace's Nth match compiles on ClickHouse, repeat is a text on Trino",
-        "A tid's and an aclitem's forms reach the engine past the held-type refusal",
-        "A source's enum keeps its type on the wire, its functions on every engine",
-        "A captured group reaches the first match on Trino",
-        "Repeat has a form on every dialect, so only the rule's own step goes without",
-        "A positioned regexp_replace reaches its row past the first-match mark",
-        "Repeat of NULL is NULL for any count, N overrides the g flag on DuckDB"
+        "J455 slope is infinite on a vertical line, doubles compare as numbers",
+        "J455 circle, lseg, path, polygon, line forms and polygon containment",
+        "J455d the geometric forms left and width_bucket, on columns",
+        "J455c2 the geometric forms plan in seconds on Trino and ClickHouse",
+        "J455e Trino defines each geometric helper as a routine of the statement",
+        "J455e a Trino statement's routine head survives what wraps it; floats replay within 1e-14",
+        "J455f geometric bare names are refused rows; main's tests read Trino routines and ClickHouse SETTINGS",
+        "regexp_instr's sqlglot-written forms are the OWN step"
+      ]
+    },
+    {
+      "scope": "trino",
+      "entries": [
+        "A list field's empty default is text like its json_format aggregate again (#286,)"
+      ]
+    },
+    {
+      "scope": "tz",
+      "entries": [
+        "One IANA release (2026f) for zoneinfo, pytz and the Rust zone tables, brought forward from fix/tz-one-release",
+        "The JSON encoders' zone tests and lock at IANA 2026f, from fix/tz-one-release"
       ]
     },
     {
       "scope": "ui",
       "entries": [
-        "A copy button names its hint, the one tooltip",
-        "CopySymbolButton keeps its title"
+        "OData viewer strings in every locale",
+        "OData viewer keeps a query being built open on Escape",
+        "A coordinator-served UI sends its data calls to a chosen data node",
+        "A detail panel's delete works like its save",
+        "A glossary term's Delete works like a save",
+        "Modeling wizards relate each satellite to its hub and each effectivity satellite to its link",
+        "ERD image controls in a hover bar, the open item highlighted, domains packed side by side",
+        "The ERD keeps a domain the domain filter does not offer (ops)",
+        "A table's definition is badged as defined in the table",
+        "Move the ERD's hint off the diagram into the toolbar's (?) help"
       ]
     }
   ]
