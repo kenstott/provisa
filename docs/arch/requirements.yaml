@@ -91315,7 +91315,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     An academic design idea, not a support matrix:) Maintainer 2026-11-02: "certain combos are so outside
     expectations there''s no point. its more of an academic design idea." The separation is how Provisa
     is built, not a promise that every combination is offered or listed; a combination no client would use
-    is neither built nor tracked as a gap.'
+    is neither built nor tracked as a gap. (Amended 2026-11-03, An encoder takes the result in the form
+    it has:) Maintainer 2026-11-03, after the encoder benchmark showed gRPC 1.3-1.5x slower on a row-shaped
+    source (rows converted to Arrow in Python only to be encoded): every result encoder (pgwire, gRPC and
+    the JSON family) takes the result in the form it already has. An Arrow result goes through the Rust
+    Arrow encoder; a row result is encoded from its rows; nothing is converted to Arrow only to be encoded.
+    And where a source can be upgraded to return Arrow (for example Postgres read through ADBC), it is upgraded,
+    so its results take the Arrow path.'
   scenario: 'Given a new query language, transport or encoder
 
     When it is added
@@ -91545,7 +91551,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the doc were a public url - even better": the regulation is read from its public address (the official
     eCFR page of 31 CFR 1010.311 and the definitions it uses), not an uploaded copy. And "the bank secrecy
     act can then be added to a ref lib": the tour points out that the regulation can then be added to the
-    reference library, so it stays with the model as a governed reference document.'
+    reference library, so it stays with the model as a governed reference document. (Amended 2026-11-03,
+    Read from eCFR''s official API:) Maintainer 2026-11-03: eCFR''s web pages refuse automated clients (a
+    request-access page), so the demo reads the regulation from eCFR''s official API, which returns XML:
+    the reference library learns to read that XML (its sections and paragraphs), and the demo reads 31 CFR
+    1010.311 and 1010.100 from it.'
   scenario: 'Given the Bank Secrecy Act demo
 
     When its tour extracts terms from the regulation
