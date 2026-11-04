@@ -599,44 +599,75 @@ describe("a domain of orphan tables only", () => {
 });
 
 
-describe("PROBE ops with relationships", () => {
-  const base = { tables: TABLES.tables, rels: RELS.relationships, all: ALL_RELS.relationships, doms: DOMAINS.domains, fd: FILTER.domains };
-  const rel = (id: string, s: number, t: number, d: string) => ({ ...relationship(id, s, t), sourceDomainId: d });
+describe("a domain the domain filter does not offer", () => {
+  // The model as the server answers it: ops traces reached from meta, every table anchored to
+  // meta.registered_tables (HAS_TABLE), and the page's list without the system's own rows.
+  const before = {
+    tables: TABLES.tables,
+    rels: RELS.relationships,
+    all: ALL_RELS.relationships,
+    domains: DOMAINS.domains,
+    offered: FILTER.domains,
+  };
+  const from = (id: string, source: number, target: number, domain: string) => ({
+    ...relationship(id, source, target),
+    sourceDomainId: domain,
+  });
   beforeEach(() => {
     TABLES.tables = [
-      table(1, "orders", "sales"), table(2, "customers", "sales"),
-      table(10, "registered_tables", "meta"), table(11, "queries", "meta"),
-      table(20, "traces", "ops"), table(21, "query_audit_log", "ops"),
+      table(1, "orders", "sales"),
+      table(2, "customers", "sales"),
+      table(10, "registered_tables", "meta"),
+      table(11, "queries", "meta"),
+      table(20, "traces", "ops"),
+      table(21, "query_audit_log", "ops"),
     ];
     RELS.relationships = [relationship("orders-customers", 1, 2)];
     ALL_RELS.relationships = [
       relationship("orders-customers", 1, 2),
-      rel("meta:queries:traces", 11, 20, "meta"),
-      rel("meta:has_table:1", 1, 10, "sales"), rel("meta:has_table:2", 2, 10, "sales"),
-      rel("meta:has_table:20", 20, 10, "ops"), rel("meta:has_table:21", 21, 10, "ops"),
+      from("meta:queries:traces", 11, 20, "meta"),
+      from("meta:has_table:20", 20, 10, "ops"),
+      from("meta:has_table:21", 21, 10, "ops"),
     ];
     DOMAINS.domains = ["sales", "meta", "ops"].map((id) => ({ id, description: "" }));
   });
   afterEach(() => {
-    TABLES.tables = base.tables; RELS.relationships = base.rels; ALL_RELS.relationships = base.all;
-    DOMAINS.domains = base.doms; FILTER.domains = base.fd;
+    TABLES.tables = before.tables;
+    RELS.relationships = before.rels;
+    ALL_RELS.relationships = before.all;
+    DOMAINS.domains = before.domains;
+    FILTER.domains = before.offered;
   });
-  const cases = [
-    ["all ticked", ["sales", "meta", "ops"], new Set<string>(["sales", "meta", "ops"])],
-    ["ops ticked, sales not", ["sales", "meta", "ops"], new Set<string>(["meta", "ops"])],
-    ["filter offers no ops, all offered ticked", ["sales", "meta"], new Set<string>(["sales", "meta"])],
-    ["filter offers no ops, one unticked", ["sales", "meta"], new Set<string>(["sales"])],
-  ] as const;
-  for (const page of ["tables", "relationships"] as const)
-    for (const [name, fd, checked] of cases)
-      it(`${page}: ${name}`, async () => {
-        FILTER.domains = [...fd];
-        FILTER.checkedDomains = new Set(checked);
-        open(`/${page}?view=erd`);
-        await diagramHolds("d:meta");
-        console.log("PROBE", page, name, "ops", drawnHas("d:ops"), "t20", drawnHas("t:20"), "edge", drawnHas("r:meta:queries:traces"));
-        expect(drawnHas("d:ops")).toBe(true);
-      });
+
+  it.each(["tables", "relationships"] as const)(
+    "stays drawn on the %s ERD, with its relationships, when another domain is unticked",
+    async (page) => {
+      // The acting roles' domain list leaves ops out; the reader unticked sales.
+      FILTER.domains = ["sales", "meta"];
+      FILTER.checkedDomains = new Set(["meta"]);
+      open(`/${page}?view=erd`);
+      await diagramHolds("d:meta");
+      expect(drawnHas("d:ops")).toBe(true);
+      expect(drawnHas("t:20")).toBe(true);
+      expect(drawnHas("t:21")).toBe(true);
+      expect(drawnHas("r:meta:queries:traces")).toBe(true);
+      expect(drawnHas("r:meta:has_table:20")).toBe(true);
+      // What the reader unticked is still hidden.
+      expect(drawnHas("d:sales")).toBe(false);
+    },
+  );
+
+  it.each(["tables", "relationships"] as const)(
+    "is hidden on the %s ERD when the filter offers it and it is unticked",
+    async (page) => {
+      FILTER.domains = ["sales", "meta", "ops"];
+      FILTER.checkedDomains = new Set(["sales", "meta"]);
+      open(`/${page}?view=erd`);
+      await diagramHolds("d:meta");
+      expect(drawnHas("d:ops")).toBe(false);
+      expect(drawnHas("t:20")).toBe(false);
+    },
+  );
 });
 
 describe("the page's filter box on the ERD", () => {
