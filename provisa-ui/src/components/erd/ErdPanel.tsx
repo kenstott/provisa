@@ -20,12 +20,7 @@ import { useErdMarks } from "./useErdMarks";
 import type { ColumnDetail, ErdNodeDomain, ErdNodeTable } from "./erd-model";
 import { downloadBlob } from "../graph/graph-export";
 import type { CyInstance, CyEvent } from "../graph/cytoscape-types";
-import {
-  nodesWithEdges,
-  resolveCompoundOverlaps,
-  packDomains,
-  placeIsolatedGrid,
-} from "./sections/erd-layout";
+import { nodesWithEdges, placeIsolatedGrid, arrangeErd } from "./sections/erd-layout";
 import { buildErdStylesheet } from "./sections/erd-stylesheet";
 import { ERD_ELK_LAYOUT } from "./erd-layout-options";
 import { applyTaxiLanes, clearTaxiLanes } from "./sections/erd-taxi";
@@ -245,217 +240,15 @@ export function ErdPanel({
     // Two-phase post-layout: place orphan grid below each domain's connected bbox.
     cy.on("layoutstop", () => {
       if (isDraggingRef.current) return;
-      if (gridSnapRef.current > 0) {
-        const g = gridSnapRef.current;
-        cy.nodes(".erd-table").forEach((n) => {
-          const p = (n as { position(): { x: number; y: number } }).position();
-          (n as { position(p: { x: number; y: number }): void }).position({
-            x: Math.round(p.x / g) * g,
-            y: Math.round(p.y / g) * g,
-          });
-        });
-        // Align connected pairs that are within 1 grid step in x or y — eliminates
-        // unnecessary bends in right-angle edge routing after fCoSE snap jitter.
-        const ALIGN_THRESHOLD = g;
-        cy.edges(".erd-rel").forEach((edge) => {
-          const s = cy.getElementById(edge.data("source") as string) as unknown as {
-            position(): Pt;
-            position(p: Pt): void;
-          };
-          const t = cy.getElementById(edge.data("target") as string) as unknown as {
-            position(): Pt;
-            position(p: Pt): void;
-          };
-          const sp = s.position();
-          const tp = t.position();
-          const dx = Math.abs(sp.x - tp.x);
-          const dy = Math.abs(sp.y - tp.y);
-          if (dx <= ALIGN_THRESHOLD && dx < dy) {
-            const ax = Math.round((sp.x + tp.x) / 2 / g) * g;
-            s.position({ ...sp, x: ax });
-            t.position({ ...tp, x: ax });
-          } else if (dy <= ALIGN_THRESHOLD && dy < dx) {
-            const ay = Math.round((sp.y + tp.y) / 2 / g) * g;
-            s.position({ ...sp, y: ay });
-            t.position({ ...tp, y: ay });
-          }
-        });
-      }
-
-      // Collapsed domain leaf nodes placed inside an expanded compound by fCoSE render
-      // behind its background and become invisible. Move them outside.
-      cy.nodes(".erd-domain").forEach((leafDomain) => {
-        if (!(leafDomain.children() as unknown as { empty(): boolean }).empty()) return;
-        cy.nodes(".erd-domain").forEach((compound) => {
-          if (compound.id() === leafDomain.id()) return;
-          if ((compound.children() as unknown as { empty(): boolean }).empty()) return;
-          const cbb = (
-            compound as unknown as {
-              boundingBox(o: object): { x1: number; x2: number; y1: number; y2: number };
-            }
-          ).boundingBox({});
-          const pos = (leafDomain as { position(): { x: number; y: number } }).position();
-          if (pos.x > cbb.x1 && pos.x < cbb.x2 && pos.y > cbb.y1 && pos.y < cbb.y2) {
-            (leafDomain as { position(p: { x: number; y: number }): void }).position({
-              x: cbb.x2 + 120,
-              y: (cbb.y1 + cbb.y2) / 2,
-            });
-          }
-        });
-      });
-
-      // Capture per-domain bboxes NOW — true orphans are still hidden (display:none),
-      // so the compound bbox reflects only edge-connected nodes.
-      const edgeConnectedNow = nodesWithEdges(cy);
-      const domainBboxes = new Map<string, { x1: number; x2: number; y2: number }>();
-      cy.nodes(".erd-domain").forEach((domain) => {
-        let hasConnected = false;
-        domain.children().forEach((n) => {
-          if (edgeConnectedNow.has((n as { id(): string }).id())) hasConnected = true;
-        });
-        if (!hasConnected) return;
-        const bb = (
-          domain as unknown as { boundingBox(o: object): { x1: number; x2: number; y2: number } }
-        ).boundingBox({ includeLabels: false });
-        domainBboxes.set((domain as { id(): string }).id(), bb);
-      });
-
-      // Phase 2: place orphan grid, then apply showOrphans visibility.
-      const edgeConnected = nodesWithEdges(cy);
-      const isolatedIds = new Set(
-        cy
-          .nodes(".erd-table")
-          .filter((n) => !edgeConnected.has((n as { id(): string }).id()))
-          .map((n) => (n as { id(): string }).id()),
-      );
-      // Store for the showOrphans toggle effect (avoids re-running fCoSE on toggle).
-      isolatedIdsRef.current = isolatedIds;
-      connectedDomainBboxesRef.current = domainBboxes;
-
-      placeIsolatedGrid(cy, isolatedIds, domainBboxes);
-
-      // Re-snap all nodes to grid after post-processing moves.
-      if (gridSnapRef.current > 0) {
-        const g = gridSnapRef.current;
-        cy.nodes(".erd-table").forEach((n) => {
-          const p = (n as { position(): Pt }).position();
-          (n as { position(p: Pt): void }).position({
-            x: Math.round(p.x / g) * g,
-            y: Math.round(p.y / g) * g,
-          });
-        });
-      }
-
-      // Push connected nodes apart on each axis independently.
-      // Primary axis gets MIN_LABEL_GAP; secondary axis gets 0 (just clear overlap).
-      // Runs after re-snap so the re-snap cannot undo the push.
-      // Uses Math.ceil so tiny gaps always produce at least one grid step of movement.
-      {
-        type BB = { x1: number; x2: number; y1: number; y2: number };
-        const MIN_LABEL_GAP = 60;
-        const g = gridSnapRef.current > 0 ? gridSnapRef.current : 1;
-        cy.edges(".erd-rel").forEach((edge) => {
-          const s = cy.getElementById(edge.data("source") as string) as unknown as {
-            position(): Pt;
-            position(p: Pt): void;
-            boundingBox(o: object): BB;
-          };
-          const t = cy.getElementById(edge.data("target") as string) as unknown as {
-            position(): Pt;
-            position(p: Pt): void;
-            boundingBox(o: object): BB;
-          };
-          let sp = s.position();
-          let tp = t.position();
-          const sbb = s.boundingBox({});
-          const tbb = t.boundingBox({});
-          const xSep = tp.x > sp.x ? tbb.x1 - sbb.x2 : sbb.x1 - tbb.x2;
-          const ySep = tp.y > sp.y ? tbb.y1 - sbb.y2 : sbb.y1 - tbb.y2;
-          const primaryY = Math.abs(sp.x - tp.x) <= Math.abs(sp.y - tp.y);
-          // Secondary axis is only pushed when there is actual 2D overlap (both seps negative).
-          // This avoids splitting nodes that share a row/column but don't visually overlap.
-          const has2dOverlap = xSep < 0 && ySep < 0;
-
-          // Y axis: MIN_LABEL_GAP if primary; clear 2D overlap only on secondary.
-          if (primaryY ? ySep < MIN_LABEL_GAP : has2dOverlap && ySep < 0) {
-            const yNeeded = primaryY ? MIN_LABEL_GAP : 0;
-            const push = Math.ceil((yNeeded - ySep) / 2 / g) * g;
-            if (tp.y > sp.y) {
-              s.position({ ...sp, y: sp.y - push });
-              t.position({ ...tp, y: tp.y + push });
-            } else {
-              s.position({ ...sp, y: sp.y + push });
-              t.position({ ...tp, y: tp.y - push });
-            }
-            sp = s.position();
-            tp = t.position();
-          }
-
-          // X axis: MIN_LABEL_GAP if primary; clear 2D overlap only on secondary.
-          if (!primaryY ? xSep < MIN_LABEL_GAP : has2dOverlap && xSep < 0) {
-            const xNeeded = !primaryY ? MIN_LABEL_GAP : 0;
-            const push = Math.ceil((xNeeded - xSep) / 2 / g) * g;
-            if (tp.x > sp.x) {
-              s.position({ ...sp, x: sp.x - push });
-              t.position({ ...tp, x: tp.x + push });
-            } else {
-              s.position({ ...sp, x: sp.x + push });
-              t.position({ ...tp, x: tp.x - push });
-            }
-          }
-        });
-      }
-
-      // Refresh per-domain bboxes after gap enforcement moved connected nodes,
-      // then re-place orphan grid so it lands below the final connected positions.
-      {
-        type BBxy = { x1: number; x2: number; y2: number };
-        const freshBboxes = new Map<string, BBxy>();
-        cy.nodes(".erd-domain").forEach((domain) => {
-          let x1 = Infinity,
-            x2 = -Infinity,
-            y2 = -Infinity,
-            hasConnected = false;
-          domain.children().forEach((child) => {
-            if (isolatedIds.has((child as { id(): string }).id())) return;
-            const bb = (
-              child as unknown as {
-                boundingBox(o: object): { x1: number; x2: number; y1: number; y2: number };
-              }
-            ).boundingBox({});
-            x1 = Math.min(x1, bb.x1);
-            x2 = Math.max(x2, bb.x2);
-            y2 = Math.max(y2, bb.y2);
-            hasConnected = true;
-          });
-          if (hasConnected) freshBboxes.set((domain as { id(): string }).id(), { x1, x2, y2 });
-        });
-        connectedDomainBboxesRef.current = freshBboxes;
-        placeIsolatedGrid(cy, isolatedIds, freshBboxes);
-      }
-
-      // Apply final orphan visibility without triggering re-layout.
-      if (showOrphansRef.current) {
-        cy.nodes(".erd-table").style("display", "element");
-      } else {
-        isolatedIds.forEach((id) => {
-          (cy.getElementById(id) as unknown as { style(k: string, v: string): void }).style(
-            "display",
-            "none",
-          );
-        });
-      }
-
-      // Pack domain boxes to the container aspect ratio (side-by-side vs stacked)
-      // now that each domain's full extent — connected nodes + orphan grid — is
-      // known. resolveCompoundOverlaps below is a safety net; packing already
-      // separates boxes.
       const crect = containerRef.current?.getBoundingClientRect();
-      if (crect && crect.height > 0) packDomains(cy, crect.width / crect.height);
-
-      // Resolve compound overlaps AFTER orphans are shown so compound bboxes
-      // include the full orphan grid area (hidden nodes are excluded from bbox).
-      resolveCompoundOverlaps(cy);
+      const arranged = arrangeErd(cy, {
+        gridSnap: gridSnapRef.current,
+        showOrphans: showOrphansRef.current,
+        aspectRatio: crect && crect.height > 0 ? crect.width / crect.height : null,
+      });
+      // Store for the showOrphans toggle effect (avoids re-running the layout on toggle).
+      isolatedIdsRef.current = arranged.isolatedIds;
+      connectedDomainBboxesRef.current = arranged.connectedBboxes;
 
       // REQ-2189: a saved layout's places stand over the automatic ones.
       if (layoutRef.current !== null) applyPlaces(cy, layoutRef.current, pinnedNodesRef.current);
