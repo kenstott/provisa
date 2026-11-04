@@ -35,38 +35,33 @@ Encoders that read `arrow_batches()` get no Python row at all; the row consumers
 builds the rows on its executor thread before handing the result back (`ArrowResult.with_rows()`):
 the event loop does no per-row work.
 
-### 1.1 pgwire reads Arrow from every result
+### 1.1 Every encoder takes the result in the form it has
 
 pgwire's DataRow messages are written by the Rust encoder (`provisa._encoders.pgwire`, crate
-`rust/pgwire`) and by nothing else: buenavista's `send_data_rows` hands the encoder each result's
-Arrow record batches, every column's wire type, the result formats and each column's coercers
-(`encode_stream`), and a passthrough's own DataRow messages go through `forward_raw`. There is no
-Python DataRow writer to fall back to.
+`rust/pgwire`) and by nothing else, and so are gRPC's messages (`provisa._encoders.grpc`) and the
+JSON surfaces' documents (`provisa._encoders.json`). Each encoder takes a result in the form it
+has (REQ-2195), and nothing converts a result into another form only to encode it:
 
-Every `ResultStream` has `arrow_batches()`:
-
-- an Arrow result (`ArrowResult`, `ArrowStreamResult`) hands on the engine's batches;
-- a row result (`QueryResult`, `StreamingQueryResult`) builds one record batch per row batch it
-  holds, in **one place**: `provisa.core.ir_arrow.row_batch`. That is the fetch boundary of every
-  engine that still returns Python rows (the Postgres engine, the SQLAlchemy routes, the DIRECT
-  drivers not yet switched, the warehouses in 2.1 not yet switched, Trino until J496z, the admin
-  route), and the **interim cost** of those engines: each value is read into Arrow from the Python
-  value the driver built, once more than an Arrow engine's. It ends engine by engine as each read
-  becomes columnar (section 3); the conversion has no other caller.
+- an Arrow result (`ArrowResult`, `ArrowStreamResult`; `executor.result.is_arrow`) hands the
+  encoder the engine's record batches (`arrow_batches()`);
+- a row result (`QueryResult`, `StreamingQueryResult`: a DIRECT driver's rows, a response-cache
+  entry held as rows, an API source, an admin or catalog answer) hands the encoder its batches of
+  rows (`batches()`), and the encoder reads each cell as it is (pgwire `encode_rows_stream`,
+  gRPC `Encoder.encode_rows`, JSON `RowBatches`). A row result has no `arrow_batches()`;
 - a passthrough's result (`DataRowResult`, `DataRowStreamResult`) hands on `datarow_batches()`,
-  forwarded unchanged.
+  forwarded unchanged (`forward_raw`).
 
-`row_batch` keeps each value as the encoder would have read it from the driver's Python value:
-a column Arrow holds as it is (`column_values` reads back the same value, of the same type, at
-the same offset, the same Decimal exponent) is that Arrow; PostgreSQL's infinities become the
-sentinels `column_values` reads as them; an interval with months is month-day-nano. Where Arrow
-cannot hold the values as they are, the column holds what PostgreSQL writes of them, chosen by
-the engine's type name for the column: a numeric of mixed scales (or NaN, Infinity) as
-numeric_out's text, a money or float numeric at its widest scale, a timetz of differing offsets
-as timetz_out's text, an address as inet_out's or cidr_out's, a JSON document of varying keys as
-its JSON text. Aware datetimes of differing offsets are held as instants in UTC (what PostgreSQL
-holds). `tests/unit/pgwire_encoder/test_row_boundary.py` holds each kind of driver value through
-the boundary to PostgreSQL 17's answer.
+Each crate reads a row result's cell into the value model its Arrow reader already produces
+(pgwire `PyVal`, gRPC `V`, JSON `P`: the value `column_values` gives of an Arrow cell), so one set
+of writers answers both forms. A value of a type no rule reads (a range, a point, an address, a
+time with a zone) is written as the text `ir_arrow.text_of` gives of it, chosen by the engine's
+type name for the column. Each encoder's differential holds the rows form to the Arrow form's
+bytes for every value both can hold (`tests/unit/*_encoder/`), and each `test_rows.py` holds a
+driver's own values (UUIDs, addresses, memoryviews, relativedeltas, PostgreSQL's infinities, pytz
+datetimes) to what the encoder answered of them when they were built into Arrow first. Where the
+Arrow form could not hold a value as it is, the rows form now writes the value itself: dicts of
+differing keys are JSON objects (Arrow held their repr's text), an int past 128 bits is a JSON
+number, and a timestamp keeps its own offset rather than an instant in UTC.
 
 What wraps a stream keeps its kind (`executor.result.rewrapped`): the live-read permit guard and
 the response-cache tee hand Arrow on as Arrow (the tee keeps an Arrow IPC entry, which a hit
@@ -78,15 +73,13 @@ DuckDB's lossless export carries `HUGEINT`, `UHUGEINT`, `VARINT`, `BIT` and `TIM
 bytes (Arrow opaque types); the encoder reads them from those bytes as `duckdb_arrow.arrow_rows`
 does, so a DuckDB result reaches the wire with no Python row at all.
 
-### 1.2 gRPC reads Arrow from every result
+### 1.2 gRPC
 
-gRPC's query answers are written by the Rust encoder (`provisa._encoders.grpc`, crate
-`rust/encoders/grpc`) and by nothing else: each Query{Type} / Query{Type}Batch RPC hands its
-result's `arrow_batches()` (ENGINE stream, DIRECT buffered read, response-cache hit, API route)
-to one `Encoder` built from the organisation's compiled service, and yields the serialized
-messages it returns. A DIRECT stream's fetched rows become Arrow at the same fetch boundary as
-every row engine's (`ir_arrow.row_batch`). A group's nodes (Query{Type}GroupBy) are written by
-the encoder from the JSON its nodes column holds. There is no Python value path to fall back to;
+Each Query{Type} / Query{Type}Batch RPC hands its result (ENGINE stream, DIRECT stream or
+buffered read, response-cache hit, API route) to one `Encoder` built from the organisation's
+compiled service, in the form it has (1.1): `encode` per Arrow record batch, `encode_rows` per
+batch of rows (a DIRECT stream's fetched rows go to it as they are fetched). A group's nodes
+(Query{Type}GroupBy) are written by the encoder from the JSON its nodes column holds.
 `rust/encoders/grpc/RESULTS.md` records what each value is written as and the differential.
 
 ## 2. Map

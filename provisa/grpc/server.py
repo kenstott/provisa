@@ -47,6 +47,7 @@ from provisa.core.request_context import reset_current_org
 from provisa.grpc.auth import org_bound_for_rpc
 from provisa.grpc.descriptor import SERVICE_NAME, bound_descriptor, role_descriptor
 from provisa.core.read_refusal import ReadRefused
+from provisa.executor.result import is_arrow
 
 log = logging.getLogger(__name__)
 
@@ -122,11 +123,12 @@ def _proto_number(value: object) -> object:  # object-ok: an aggregate's value
 
 
 def _row_encoder(msg_cls, out_cols: list[str], restrictions=None, batch_cls=None, batch_rows=0):
-    """The encoder of one RPC's result (REQ-2194, REQ-1965): the result's Arrow batches in, the
-    serialized ``msg_cls`` messages out (``batch_cls`` messages of ``batch_rows`` rows for
-    Query{Type}Batch), each column written to the field ``out_cols`` names and, under a read mask,
-    restricted to its selection (``restrictions``, one per column). No value of the result is a
-    Python object on the way: provisa._encoders.grpc reads the batches and writes the wire."""
+    """The encoder of one RPC's result (REQ-2194, REQ-1965, REQ-2195): the result in the form it
+    has, the engine's Arrow batches or a row result's rows, in; the serialized ``msg_cls``
+    messages out (``batch_cls`` messages of ``batch_rows`` rows for Query{Type}Batch), each column
+    written to the field ``out_cols`` names and, under a read mask, restricted to its selection
+    (``restrictions``, one per column). provisa._encoders.grpc reads the batches, or each row's
+    cells as they are, and writes the wire; a row result is never built into Arrow first."""
     from provisa._encoders import grpc as grpc_encoder
 
     descriptor = msg_cls.DESCRIPTOR
@@ -140,12 +142,25 @@ def _row_encoder(msg_cls, out_cols: list[str], restrictions=None, batch_cls=None
     )
 
 
-def _encoded(encoder, batches):
-    """``(rows, messages)`` for each of ``batches`` (record batches): its row count and the
-    messages it completes; last ``(0, ...)``, Query{Type}Batch's partly filled final message."""
-    for batch in batches:
-        yield batch.num_rows, encoder.encode(batch)
+def _encoded(encoder, result):
+    """``(rows, messages)`` for each batch of ``result`` in the form it has (REQ-2195): an Arrow
+    result's record batches, any other result's row batches; its row count and the messages it
+    completes; last ``(0, ...)``, Query{Type}Batch's partly filled final message."""
+    if is_arrow(result):
+        for batch in result.arrow_batches():
+            yield batch.num_rows, encoder.encode(batch)
+    else:
+        types = _column_types(result)
+        for rows in result.batches():
+            yield len(rows), encoder.encode_rows(rows, types)
     yield 0, encoder.finish()
+
+
+def _column_types(result) -> list[str | None] | None:
+    """The engine's type name of each of a row result's columns, as the encoder reads them."""
+    if not result.column_types:
+        return None
+    return [None if t is None else str(t) for t in result.column_types]
 
 
 def _nodes_field(row_cls, node_cls, nodes: list) -> bytes:
@@ -1115,9 +1130,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             hit = await cached_result(plan, state)
             self._emit_trailing_metadata(context, plan.warnings)  # REQ-1137
             try:
-                for _rows, messages in _encoded(
-                    _encoder_for(hit.column_names), hit.arrow_batches()
-                ):
+                for _rows, messages in _encoded(_encoder_for(hit.column_names), hit):
                     for m in messages:
                         yield m
             except Exception as exc:
@@ -1195,10 +1208,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
             try:
                 _delivered = 0  # query_audit_log.row_count
-                # REQ-2194: the engine's Arrow batches, straight to the encoder.
-                for rows, messages in _encoded(
-                    _encoder_for(stream.column_names), stream.arrow_batches()
-                ):
+                # REQ-2194, REQ-2195: the engine's result, Arrow or rows, straight to the encoder.
+                for rows, messages in _encoded(_encoder_for(stream.column_names), stream):
                     _delivered += rows
                     for m in messages:
                         yield m
@@ -1266,7 +1277,6 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 # whole result. A source without a streaming driver still falls through to
                 # execute_native unchanged — no regression for those.
                 if state.source_pools.supports_stream(plan.source_id):
-                    from provisa.core.ir_arrow import row_batch
                     from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
 
                     ds = await state.source_pools.open_stream(
@@ -1274,6 +1284,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                     )
                     _said = self._emit_trailing_metadata(context, plan.warnings)
                     encoder = _encoder_for(ds.column_names)
+                    types = _column_types(ds)
                     _delivered = 0  # query_audit_log.row_count
                     # The copy an opted-in MISS writes back, held only within the cache's own row
                     # bound: a result past it is still streamed, and is not cached.
@@ -1289,11 +1300,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
                                     _kept = None
                                 else:
                                     _kept.extend(batch)
-                            # REQ-2194: the driver's rows become Arrow at the one fetch boundary
-                            # of a row engine (docs/arch/fetch-paths.md), then the encoder's.
-                            for m in encoder.encode(
-                                row_batch(batch, ds.column_names, ds.column_types)
-                            ):
+                            # REQ-2195: the driver's rows, encoded as they are.
+                            for m in encoder.encode_rows(batch, types):
                                 yield m
                         for m in encoder.finish():
                             yield m
@@ -1330,9 +1338,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 # REQ-1137/REQ-1350: trailing metadata (notice, warnings) before the row stream.
                 self._emit_trailing_metadata(context, plan.warnings)
                 try:
-                    for _rows, messages in _encoded(
-                        _encoder_for(result.column_names), result.arrow_batches()
-                    ):
+                    for _rows, messages in _encoded(_encoder_for(result.column_names), result):
                         for m in messages:
                             yield m
                 except Exception as exc:
@@ -1354,9 +1360,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             context, plan.warnings
         )  # REQ-1137: trailing-metadata nag before the row stream
         try:
-            for _rows, messages in _encoded(
-                _encoder_for(result.column_names), result.arrow_batches()
-            ):
+            for _rows, messages in _encoded(_encoder_for(result.column_names), result):
                 for m in messages:
                     yield m
         except Exception as exc:

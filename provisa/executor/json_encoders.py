@@ -9,8 +9,9 @@
 # permission from the copyright holder.
 
 """The JSON surfaces' answers, written by the Rust encoders (provisa._encoders.json) straight from
-the engine's Arrow batches (REQ-2194): GraphQL, the REST table endpoint (JSON and CSV), JSON:API
-and OData. No Python row, dict or value is built for a row; what a router hands over is the plan it
+the result in the form it has (REQ-2194, REQ-2195): the engine's Arrow batches, or a row result's
+rows, never built into Arrow (``result_batches``): GraphQL, the REST table endpoint (JSON and
+CSV), JSON:API and OData. No Python row, dict or value is built for a row; what a router hands over is the plan it
 already holds (the compiled columns, OData's entity levels, JSON:API's names and page), once per
 request.
 
@@ -25,7 +26,7 @@ What JSON cannot carry is refused by name: :class:`JsonValueRefused` (naming the
 of the encoder is :class:`EncoderFailed`, a 500 naming its cause.
 """
 
-# Requirements: REQ-2194, REQ-1867
+# Requirements: REQ-2194, REQ-2195, REQ-1867
 
 from __future__ import annotations
 
@@ -34,6 +35,7 @@ from contextlib import contextmanager
 from typing import Any, TypeVar
 
 from provisa.compiler.sql_types import ColumnRef
+from provisa.executor.result import is_arrow
 from provisa.core.json_refusal import JsonResponseRefused, JsonValueRefused
 
 _T = TypeVar("_T")
@@ -154,10 +156,23 @@ def arrow_batches(batches: Iterable[Any]) -> list[Any]:  # noqa: ANN401 — pyar
     return out
 
 
-def result_batches(result: Any) -> list[Any]:  # noqa: ANN401 — a ResultStream
-    """A result's Arrow record batches: the engine's own, or a row engine's rows built into them
-    at its fetch boundary (``ResultStream.arrow_batches``, docs/arch/fetch-paths.md)."""
-    return arrow_batches(result.arrow_batches())
+def result_batches(result: Any) -> Any:  # noqa: ANN401 — a ResultStream
+    """A result as the encoders read it, in the form it has (REQ-2195): the engine's Arrow record
+    batches, or a row result's batches of rows (``RowBatches``, each column's engine type name
+    with them), read by the encoder as they are and never built into Arrow."""
+    if is_arrow(result):
+        return arrow_batches(result.arrow_batches())
+    kinds = None
+    if result.column_types:
+        kinds = [None if t is None else str(t) for t in result.column_types]
+    return _encoders().RowBatches([b for b in result.batches() if b], kinds)
+
+
+def any_rows(batches: Any) -> bool:  # noqa: ANN401 — result_batches' answer
+    """Whether ``result_batches``' answer holds a row."""
+    if isinstance(batches, list):
+        return any(b.num_rows for b in batches)
+    return len(batches) > 0
 
 
 def warnings_json(warnings: list[dict] | None) -> bytes | None:
@@ -187,7 +202,7 @@ class FieldAnswer:
 
 
 def graphql_field(
-    batches: list[Any], columns: list[ColumnRef], result_limit: int | None = None
+    batches: Any, columns: list[ColumnRef], result_limit: int | None = None
 ) -> FieldAnswer:
     """A GraphQL root field's rows (REQ-047..REQ-050: one-to-many lists, many-to-one objects)."""
     body, rows, joined, truncated = _encoded(
@@ -196,7 +211,7 @@ def graphql_field(
     return FieldAnswer(body, rows, joined, truncated)
 
 
-def graphql_aggregate(batches: list[Any], columns: list[ColumnRef], agg_alias: str) -> bytes:
+def graphql_aggregate(batches: Any, columns: list[ColumnRef], agg_alias: str) -> bytes:
     """A GraphQL aggregate root field's answer (REQ-196, REQ-197): its aggregates under
     ``agg_alias`` and its nodes, when selected."""
     return _encoded(
@@ -208,14 +223,14 @@ def graphql_aggregate(batches: list[Any], columns: list[ColumnRef], agg_alias: s
 
 
 def rest(
-    batches: list[Any], columns: list[ColumnRef], agg_alias: str | None = None
+    batches: Any, columns: list[ColumnRef], agg_alias: str | None = None
 ) -> tuple[bytes, list[str]]:
     """The REST table endpoint's ``{"data": rows}`` (a read or a group-by), or ``{"data":
     aggregate}``; and the truncated to-one paths."""
     return _encoded(lambda: _encoders().rest.encode(batches, plan_tuples(columns), agg_alias))
 
 
-def rest_csv(batches: list[Any], columns: list[ColumnRef]) -> tuple[bytes, list[str]]:
+def rest_csv(batches: Any, columns: list[ColumnRef]) -> tuple[bytes, list[str]]:
     """The REST table endpoint's ``text/csv`` answer; and the truncated to-one paths."""
     return _encoded(lambda: _encoders().rest.encode_csv(batches, plan_tuples(columns)))
 
@@ -223,9 +238,7 @@ def rest_csv(batches: list[Any], columns: list[ColumnRef]) -> tuple[bytes, list[
 # ------------------------------------------------------------------ JSON:API
 
 
-def jsonapi(
-    batches: list[Any], columns: list[ColumnRef], **document: Any
-) -> tuple[bytes, list[str]]:  # noqa: ANN401
+def jsonapi(batches: Any, columns: list[ColumnRef], **document: Any) -> tuple[bytes, list[str]]:  # noqa: ANN401
     """A JSON:API table read's compound document (data, relationships, included, meta, links);
     ``document`` is what the router built for it (``jsonapi.encode``'s keywords). Each truncated
     to-one path is in ``meta.warnings``; the paths are returned for the response's header."""
@@ -241,14 +254,14 @@ def jsonapi(
     )
 
 
-def jsonapi_group_by(batches: list[Any], columns: list[ColumnRef], **names: Any) -> bytes:  # noqa: ANN401
+def jsonapi_group_by(batches: Any, columns: list[ColumnRef], **names: Any) -> bytes:  # noqa: ANN401
     """JSON:API ``?groupBy=``: each group as a resource, its groupKey and nodes renamed."""
     return _encoded(
         lambda: _encoders().jsonapi.encode_group_by(batches, plan_tuples(columns), **names)
     )
 
 
-def jsonapi_aggregate(batches: list[Any], columns: list[ColumnRef], agg_alias: str) -> bytes:
+def jsonapi_aggregate(batches: Any, columns: list[ColumnRef], agg_alias: str) -> bytes:
     """JSON:API ``?aggregate``: ``{"data": null, "meta": {"aggregate": {...}}}``."""
     return _encoded(
         lambda: _encoders().jsonapi.encode_aggregate(batches, plan_tuples(columns), agg_alias)
@@ -283,14 +296,14 @@ def odata_entity(entity: Any, fields: tuple[str, ...], plans: tuple[Any, ...]) -
     )
 
 
-def odata(batches: list[Any], names: list[str], entity: tuple, **document: Any) -> bytes:  # noqa: ANN401
+def odata(batches: Any, names: list[str], entity: tuple, **document: Any) -> bytes:  # noqa: ANN401
     """An OData entity set read's document: ``@odata.context``, ``@odata.count``,
     ``@Provisa.warnings``, ``value`` (each expansion with its own nextLink) and
     ``@odata.nextLink``."""
     return _encoded(lambda: _encoders().odata.encode(batches, names, entity, **document))
 
 
-def odata_navigation(batches: list[Any], names: list[str], entity: tuple, **document: Any) -> bytes:  # noqa: ANN401
+def odata_navigation(batches: Any, names: list[str], entity: tuple, **document: Any) -> bytes:  # noqa: ANN401
     """A navigation read's document (``set(key)/navigation``): the parent row's list, the page,
     as ``value``, with the request's warnings and the list's nextLink when it goes on."""
     return _encoded(lambda: _encoders().odata.encode_navigation(batches, names, entity, **document))

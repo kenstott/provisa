@@ -82,7 +82,7 @@ from provisa.otel_compat import stage as _stage
 from provisa.otel_compat import HeldRequestSpan
 from provisa.executor.redirect import COMMAND_NOT_REDIRECTED as _COMMAND_NOT_REDIRECTED
 from provisa.executor.redirect import REDIRECT_ROW_SHAPE as _REDIRECT_SHAPE
-from provisa.executor.result import ResultStream
+from provisa.executor.result import ResultStream, is_arrow
 from provisa.core.ir_types import HELD_AS_TEXT, SUBTYPES
 from provisa.compiler import xml_mapping
 from provisa.pgwire import advisory_locks
@@ -1015,11 +1015,46 @@ def _infer_bvtype(batch: Any, col_idx: int) -> BVType:
     return BVType.TEXT
 
 
-def _inferred_bvtypes(head: Any, count: int, raw: bool) -> list[BVType]:
+def _inferred_bvtypes(head: Any, count: int, raw: bool, rows: bool = False) -> list[BVType]:
     """Each column's wire type as the first batch shows it; TEXT where there is none to look at."""
     if head is None or raw:
         return [BVType.TEXT] * count
+    if rows:
+        return [_infer_row_bvtype(head, i) for i in range(count)]
     return [_infer_bvtype(head, i) for i in range(count)]
+
+
+def _infer_row_bvtype(rows: list[Any], col_idx: int) -> BVType:
+    """The wire type of a row result's column the engine gave no type for (REQ-2195), from its
+    first non-NULL value."""
+    for row in rows:
+        v = row[col_idx] if col_idx < len(row) else None
+        if v is None:
+            continue
+        if isinstance(v, bool):
+            return BVType.BOOL
+        if isinstance(v, int):
+            return BVType.BIGINT
+        if isinstance(v, float):
+            return BVType.FLOAT
+        if isinstance(v, decimal.Decimal):
+            return BVType.DECIMAL
+        if isinstance(v, datetime.datetime):
+            return BVType.TIMESTAMP
+        if isinstance(v, datetime.date):
+            return BVType.DATE
+        if isinstance(v, datetime.time):
+            return BVType.TIME
+        if isinstance(v, list):
+            if v and isinstance(v[0], int):
+                return BVType.INTEGERARRAY
+            if v and isinstance(v[0], str):
+                return BVType.STRINGARRAY
+            return BVType.JSON
+        if isinstance(v, dict):
+            return BVType.JSON
+        return BVType.TEXT
+    return BVType.TEXT
 
 
 def _batch_rows(batch: Any) -> int:
@@ -1281,9 +1316,10 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
     """Adapts a :class:`ResultStream` (streaming ENGINE terminal, materialized DIRECT/admin
     result, or DuckDB catalog result) to the buenavista QueryResult ABC.
 
-    The result reaches the encoder as the engine's Arrow record batches (REQ-2194: a row engine's
-    rows become Arrow at its fetch boundary, ``ResultStream.arrow_batches``), or as a PostgreSQL
-    source's own DataRow messages (``datarow_batches``, the passthrough). Batches are pulled
+    The result reaches the encoder in the form it has (REQ-2194, REQ-2195): the engine's Arrow
+    record batches (``ResultStream.arrow_batches``), a row result's batches of rows, never built
+    into Arrow, or a PostgreSQL source's own DataRow messages (``datarow_batches``, the
+    passthrough). Batches are pulled
     lazily: a streaming result is drained only as buenavista emits DataRow messages, so a large
     user result set never fully materializes. The wire protocol needs column types up front
     (RowDescription precedes DataRow); when the engine supplies no per-column types, exactly ONE
@@ -1319,18 +1355,24 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         self._said: list[Any] = list(self.warnings)
         self._cols = engine_result.column_names
         self._status = _status_of(original_sql, engine_result, plan)
-        # REQ-2194: a passthrough's DataRow messages are forwarded as they are; every other
-        # result reaches the encoder as Arrow.
+        # REQ-2194, REQ-2195: a passthrough's DataRow messages are forwarded as they are, an
+        # Arrow result's batches go to the encoder as Arrow, and a row result's rows as rows.
         self._raw = hasattr(engine_result, "datarow_batches")
-        self._batch_iter: Iterator[Any] = (
-            engine_result.datarow_batches() if self._raw else engine_result.arrow_batches()  # type: ignore[attr-defined]
-        )
+        self._rows = False
+        self._batch_iter: Iterator[Any]
+        if self._raw:
+            self._batch_iter = engine_result.datarow_batches()  # type: ignore[attr-defined]
+        elif is_arrow(engine_result):
+            self._batch_iter = engine_result.arrow_batches()
+        else:
+            self._rows = True
+            self._batch_iter = engine_result.batches()
         if plan is not None:
             # REQ-074: the statement's audit row is written when this drain ends (audit_on_drain).
             from provisa.pgwire._pipeline import audit_on_drain
 
             self._batch_iter = audit_on_drain(
-                plan, self._batch_iter, len if self._raw else _batch_rows
+                plan, self._batch_iter, len if self._raw or self._rows else _batch_rows
             )
         # The batch peeked for column types, handed to the encoder first.
         self._head: Any = None
@@ -1373,7 +1415,7 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         # requires the first batch on hand before RowDescription is sent.
         if not ctypes or any(t is None for t in ctypes):
             self._head = next(self._batch_iter, None)
-        inferred = _inferred_bvtypes(self._head, len(self._cols), self._raw)
+        inferred = _inferred_bvtypes(self._head, len(self._cols), self._raw, self._rows)
         if ctypes:
             self._types = [
                 _sql_type_to_bvtype(t) if t else inferred[i] for i, t in enumerate(ctypes)
@@ -1428,13 +1470,19 @@ class ProvisaQueryResult(BVQueryResult):  # REQ-529, REQ-028
         if self._data is None:
             head, self._head = self._head, None
             batches = self._batch_iter if head is None else chain((head,), self._batch_iter)
-            self._data = ResultData(batches, raw=self._raw)
+            self._data = ResultData(batches, raw=self._raw, rows=self._rows)
         return self._data
 
     def coercers(self) -> list[list[str]] | None:
         if self._raw or not self._coerce:
             return None
         return coercer_names(self._coerce, len(self._cols))
+
+    def kinds(self) -> list[str | None] | None:
+        ctypes = self._engine_result.column_types
+        if not self._rows or not ctypes:
+            return None
+        return [None if t is None else str(t) for t in ctypes]
 
     def status(self) -> str:
         return self._status or "OK"
@@ -1466,7 +1514,8 @@ class _CursorRowsResult(BVQueryResult):  # REQ-1862
         source = cursor.query_result
         self._columns = [source.column(i) for i in range(source.column_count())]
         self._coercers = source.coercers()
-        self._data = ResultData(iter(fetched), raw=cursor.buffer.raw)
+        self._kinds = source.kinds()
+        self._data = ResultData(iter(fetched), raw=cursor.buffer.raw, rows=cursor.buffer.row_form)
 
     def has_results(self) -> bool:
         return True
@@ -1483,6 +1532,9 @@ class _CursorRowsResult(BVQueryResult):  # REQ-1862
     def coercers(self) -> list[list[str]] | None:
         return self._coercers
 
+    def kinds(self) -> list[str | None] | None:
+        return self._kinds
+
     def status(self) -> str:
         return "OK"
 
@@ -1494,12 +1546,13 @@ class _CursorNotScrollableError(Exception):
 
 
 class _RowBuffer:  # REQ-1862, REQ-2194
-    """A cursor's rows pulled so far, held in the batches they came in (Arrow record batches, or
-    a passthrough's DataRow messages): rows are addressed by position and handed back as slices
-    of those batches, never as Python rows."""
+    """A cursor's rows pulled so far, held in the batches they came in (Arrow record batches, a
+    row result's rows, or a passthrough's DataRow messages): rows are addressed by position and
+    handed back as slices of those batches, in the form they came in."""
 
-    def __init__(self, raw: bool) -> None:
+    def __init__(self, raw: bool, rows: bool = False) -> None:
         self.raw = raw
+        self.row_form = rows
         self._chunks: list[Any] = []
         self._size = 0
 
@@ -1532,7 +1585,7 @@ class _RowBuffer:  # REQ-1862, REQ-2194
 
         out = []
         for piece in reversed(self.rows(start, stop)):
-            if self.raw:
+            if self.raw or self.row_form:
                 out.append(list(reversed(piece)))
             else:
                 out.append(piece.take(pa.array(range(piece.num_rows - 1, -1, -1))))
@@ -1732,14 +1785,14 @@ def _columns_of(result: Any) -> list[xml_mapping.Column]:
 
 
 def _text_writer(bvtype: Any) -> Callable[[Any], str]:  # REQ-2194
-    """A value's PostgreSQL text form as the wire's encoder writes it."""
+    """A value's PostgreSQL text form as the wire's encoder writes it (REQ-2195: from the value
+    as it is)."""
     from provisa._encoders import pgwire as encoder
-    from provisa.core.ir_arrow import row_batch
 
     types = [wire_type_name(bvtype)]
 
     def text(value: Any) -> str:
-        message = encoder.encode_batch(row_batch([(value,)], ["value"]), types, [0])
+        message = encoder.encode_rows([(value,)], types, [0])
         (cell,) = _data_row_cells(message)
         if cell is None:
             raise ValueError(f"no text form of {value!r}")
@@ -2802,6 +2855,7 @@ class _ReadData:
     def __init__(self, data: Any) -> None:
         self._data = data
         self.raw = data.raw
+        self.rows = data.rows
 
     def take(self, limit: int = 0) -> Iterator[Any]:
         batches = self._data.take(limit)
@@ -3894,7 +3948,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 name=name,
                 query_result=query_result,
                 source=data.take(),
-                buffer=_RowBuffer(data.raw),
+                buffer=_RowBuffer(data.raw, data.rows),
                 scrollable=scrollable,
                 statement=stmt,
                 holdable=re.search(r"\bWITH\s+HOLD\b", stmt, re.IGNORECASE) is not None,
