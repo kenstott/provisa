@@ -25,9 +25,12 @@ table for the operation (REQ-2074), in this order:
    the grant presets is the grant's to set: the statement may not supply it, and the grant's
    value (a session variable, a literal, or the time of the write) is added to the statement.
 4. **The rows it may touch.** The grant's rows predicate is ANDed into the WHERE of an UPDATE
-   or DELETE, and beside it the role's U rule into an UPDATE and its D rule into a DELETE
-   (REQ-2188). A rule only narrows: it is read after the grant, so it gives nothing to a role
-   holding no grant for the operation, and a role with no rule for a right is not narrowed.
+   or DELETE, and beside it the role's read row rule (REQ-039: a write reaches only rows the
+   role may read) and its U rule into an UPDATE and its D rule into a DELETE (REQ-2188). A rule
+   only narrows: it is read after the grant, so it gives nothing to a role holding no grant for
+   the operation, and a role with no rule for a right is not narrowed. A TRUNCATE, a MERGE and an
+   ``ON CONFLICT DO UPDATE`` cannot carry a predicate, so a role whose reads are narrowed is
+   refused them.
 5. **The rows it leaves behind.** An INSERT's rows, and the new values of an UPDATE that sets a
    column the grant's check reads, are checked against the check before anything is sent to a
    source: the supplied values are put in the check's place for those columns and the resulting
@@ -119,6 +122,7 @@ _FORM_NAMES = {
     "delete_using": "DELETE ... USING",
     "merge": "MERGE",
     "truncate": "TRUNCATE",
+    "with_write": "a write led by WITH",
 }
 
 
@@ -670,6 +674,12 @@ def admit_write(
                 f"TRUNCATE of {name!r}: role {gov.role_id!r} has a {_label(grant, 'rows')} on "
                 f"this table ({rows}), which a TRUNCATE cannot apply. Use DELETE, which does."
             )
+        readable = gov.rls_rules.get(table_id)  # REQ-039: it would empty rows the role cannot read
+        if not _every_row(readable):
+            raise WriteNotAdmitted(
+                f"TRUNCATE of {name!r}: role {gov.role_id!r} has a row filter on this table "
+                f"({readable}), which a TRUNCATE cannot apply. Use DELETE, which does."
+            )
         rule = _rule(gov, table_id, "delete")  # REQ-2188
         if rule is not None:
             raise WriteNotAdmitted(
@@ -685,7 +695,10 @@ def admit_write(
             _require_columns(gov, grant, name, every)
             grant = for_columns(grant, every)
             stated = [grant.get("check")] + ([grant.get("rows")] if operation == "update" else [])
-            narrowed = operation == "update" and _rule(gov, table_id, "update") is not None
+            narrowed = operation == "update" and (
+                _rule(gov, table_id, "update") is not None
+                or not _every_row(gov.rls_rules.get(table_id))  # REQ-039: rows it cannot read
+            )
             if narrowed or not all(_every_row(_predicate(gov, table_id, p)) for p in stated):
                 raise WriteNotAdmitted(
                     f"MERGE into {name!r}: role {gov.role_id!r}'s {operation} grant limits the "
@@ -715,6 +728,7 @@ def admit_write(
             if (
                 update.get("presets")
                 or _rule(gov, table_id, "update") is not None  # REQ-2188
+                or not _every_row(gov.rls_rules.get(table_id))  # REQ-039: rows it cannot read
                 or not (
                     _every_row(_predicate(gov, table_id, update.get("rows")))
                     and _every_row(_predicate(gov, table_id, update.get("check")))
@@ -763,7 +777,11 @@ def admit_write(
             )
     rows = _predicate(gov, table_id, grant.get("rows"))
     column_types = dict(gov.all_columns.get(table_id, []))
-    for predicate in (rows, _rule(gov, table_id, operation)):
+    # REQ-039: a write reaches only rows the role may both read and write -- the role's read row
+    # rule beside the grant's rows (the same rule when the grant states none) and its U or D rule,
+    # so nothing is changed blind and the affected-row count reveals no row outside the read rule.
+    readable = gov.rls_rules.get(table_id)
+    for predicate in dict.fromkeys((rows, readable, _rule(gov, table_id, operation))):
         if _every_row(predicate):
             continue
         assert predicate is not None

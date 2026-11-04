@@ -244,6 +244,9 @@ class _Plan:
     # needs (an UPDATE's or a DELETE's keys, an INSERT ... SELECT's rows), carried out by the
     # table's bound command at the terminal.
     code_write: Any = field(default=None)
+    # REQ-039: a write led by WITH on a source that cannot run one (keyed_writes.TwoStepWrite),
+    # with the plan of its key read: the keys read first, then written by key at the terminal.
+    keyed_write: Any = field(default=None)
     # REQ-1986: the scratch tables landed for this statement alone -- a TTL-0 table's rows too
     # many to inline -- each (CacheLocation, table name), dropped when it ends.
     scratch: tuple = field(default=())
@@ -2362,6 +2365,78 @@ async def _run_code_write(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2100
     return QueryResult(rows=[], column_names=[], rowcount=count)
 
 
+async def _keyed_write_plan(
+    governed: "_Governed",
+    table_id: int,
+    *,
+    params: list | None,
+    audit: Any,
+    state: Any,
+    read: Callable[[Any], Coroutine[Any, Any, "_Plan"]],
+    route_write: Callable[[Any, list | None], Coroutine[Any, Any, "_Plan"]],
+    ctx: Any,
+) -> "_Plan | None":
+    """REQ-039: the plan of a governed write led by WITH to a table whose source cannot run one
+    (``with_write``, executor/writable.py), in two steps (pgwire/keyed_writes.py): its key read
+    planned by ``read`` -- the key-read path a code table's write takes -- then each write by key
+    routed by ``route_write`` (the statement, its bound values) at the terminal. None when the
+    write is not led by WITH or its source runs one."""
+    import sqlglot
+
+    from provisa.pgwire.keyed_writes import leads_with_a_write, split
+    from provisa.transpiler.router import Route
+
+    if "with_write" not in governed.gov_ctx.write_refused_forms.get(table_id, frozenset()):
+        return None
+    tree = sqlglot.parse_one(governed.governed_semantic, read="postgres")
+    if not leads_with_a_write(tree):
+        return None
+    two = split(tree)
+    read_plan = None
+    if two.read is not None:
+        read_plan = await read(two.read)
+        read_plan.audit = None  # the statement's one record is the write's
+    target_source = next(m.source_id for m in ctx.tables.values() if m.table_id == table_id)
+    return _Plan(
+        route=Route.DIRECT,
+        sql=governed.governed_semantic,
+        source_id=target_source,
+        dialect=state.source_dialects.get(target_source) or "postgres",
+        exec_params=params,
+        audit=audit,
+        stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
+        route_reason=(
+            "a write led by WITH, which its source cannot run: its keys read first, then "
+            "written by key"
+        ),
+        role_id=governed.role_id,
+        table_ids=governed.table_ids,
+        sources=frozenset({target_source, *(read_plan.sources if read_plan else ())}),
+        writes_tables=True,
+        written_table_id=table_id,
+        keyed_write=(two, read_plan, route_write),
+    )
+
+
+async def _run_keyed_write(plan: "_Plan", state: Any) -> QueryResult:  # REQ-039
+    """Read the keys and new values, then write by key through the target's write route: the
+    affected count, and the served, masked columns of the rows written when the write returns
+    them."""
+    from provisa.pgwire.keyed_writes import writes
+
+    two, read, route_write = plan.keyed_write
+    rows = (await _execute_plan_bound(read, state)).materialize().rows if read else None
+    written = 0
+    returned: list = []
+    for statement, values in writes(two, rows):
+        write = await route_write(statement, values or None)
+        result = await _run_plan_terminal(write, state)
+        returned.extend(result.rows)
+        # The write's count, as pgwire's command tag reads it (server._write_tag).
+        written += result.rowcount if result.rowcount is not None else len(result.rows)
+    return QueryResult(rows=returned, column_names=two.returned, rowcount=written)
+
+
 async def _run_two_step(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2001
     """Read the statement's rows, then write them through the target's write route, a batch of
     rows an INSERT ... VALUES under the statement's own target, columns and ON CONFLICT."""
@@ -2524,21 +2599,24 @@ async def route_governed(
             )
     from provisa.codesource.writes import is_code_table
 
-    if _is_mutation and is_code_table(state, _written_table_id):
-        assert _written_table_id is not None
+    async def _read_keys(read_tree: Any) -> _Plan:
+        # The key read: the governed write's own WITH, FROM and WHERE, read as any read is.
         import dataclasses
 
+        read_governed = dataclasses.replace(
+            governed,
+            governed_semantic=read_tree.sql(dialect="postgres"),
+            parsed=read_tree,
+            memo={},
+        )
+        return await route_governed(read_governed, params=params, as_of=as_of)
+
+    if _is_mutation and is_code_table(state, _written_table_id):
+        assert _written_table_id is not None
         import sqlglot
 
         async def _read_governed(read_sql: str) -> _Plan:
-            # The key read: the governed write's own FROM and WHERE, read as any read is.
-            read_governed = dataclasses.replace(
-                governed,
-                governed_semantic=read_sql,
-                parsed=sqlglot.parse_one(read_sql, read="postgres"),
-                memo={},
-            )
-            return await route_governed(read_governed, params=params, as_of=as_of)
+            return await _read_keys(sqlglot.parse_one(read_sql, read="postgres"))
 
         return await _code_write_plan(
             governed,
@@ -2549,6 +2627,33 @@ async def route_governed(
             state=state,
             read=_read_governed,
         )
+    if _is_mutation:
+        assert _written_table_id is not None
+
+        async def _write_by_key(statement: Any, values: list | None) -> _Plan:
+            # A write by key: the governed write's own target, grant and rules, routed as it is.
+            import dataclasses
+
+            write_governed = dataclasses.replace(
+                governed,
+                governed_semantic=statement.sql(dialect="postgres"),
+                comment_params=None,
+                memo={},
+            )
+            return await route_governed(write_governed, params=values)
+
+        _keyed = await _keyed_write_plan(
+            governed,
+            _written_table_id,
+            params=params,
+            audit=_audit,
+            state=state,
+            read=_read_keys,
+            route_write=_write_by_key,
+            ctx=governed.ctx,
+        )
+        if _keyed is not None:
+            return _keyed
     # REQ-1897: a read whose result is rows — not a write, an EXPLAIN, or a sink delivery.
     _raw_cacheable = not _is_mutation and explain is None and deliver is None
     # REQ-544 (amended 2026-09-30): the response cache is per-request opt-in — a `-- @provisa
@@ -3770,6 +3875,8 @@ def streams_from_terminal(plan: _Plan, *, applies_columns: bool = False) -> bool
         return False  # REQ-2001: its rows are read, then written, by the pipeline terminal
     if plan.code_write is not None:
         return False  # REQ-2100: its command is called by the pipeline terminal
+    if plan.keyed_write is not None:
+        return False  # REQ-039: its keys are read, then written, by the pipeline terminal
     if plan.scratch:
         return False  # REQ-1986: its scratch tables are dropped when the terminal is done
     if plan.columns is not None and not applies_columns:
@@ -4467,6 +4574,8 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         return await _run_staged(plan, state)  # REQ-2131
     if plan.code_write is not None:
         return await _run_code_write(plan, state)  # REQ-2100
+    if plan.keyed_write is not None:
+        return await _run_keyed_write(plan, state)  # REQ-039
     engine = state.federation_engine
 
     if plan.materialize is not None:
@@ -5568,6 +5677,63 @@ async def _route_compiled(
             state=state,
             read=_read_compiled,
         )
+
+    if _is_write:
+        # REQ-039: a write led by WITH on a source that cannot run one, in two steps: its key read
+        # and each write by key routed here as the governed statements they are.
+        assert _written_table_id is not None
+        from provisa.compiler.directives import NO_CACHE_HINT
+
+        async def _routed(statement: Any, values: list | None) -> _Plan:
+            governed_step = statement.sql(dialect="postgres")
+            return await _route_compiled(
+                sql,
+                role_id,
+                state,
+                ctx=ctx,
+                gov_ctx=gov_ctx,
+                governed_sql=governed_step,
+                compiled_tree=statement,
+                table_ids=table_ids,
+                audit=None,  # the statement's one record is the write's
+                cache_hint=NO_CACHE_HINT,
+                exec_params=values,
+                api_args=None,
+                deliver=None,
+                buffered=False,
+                memo={},
+                cache_params=list(values or []),
+                cache_missed=(),
+                row_level=_RowLevelBounds.of(
+                    functools.partial(_kept_pk_bounds, {}, governed_step, state, values)
+                ),
+                travel=travel,
+                as_of=as_of,
+                steward_hint=steward_hint,
+            )
+
+        async def _read_keys(read_tree: Any) -> _Plan:
+            return await _routed(read_tree, exec_params)
+
+        from types import SimpleNamespace
+
+        _keyed = await _keyed_write_plan(
+            SimpleNamespace(  # type: ignore[arg-type]
+                governed_semantic=governed_sql,
+                role_id=role_id,
+                table_ids=table_ids,
+                gov_ctx=gov_ctx,
+            ),
+            _written_table_id,
+            params=exec_params,
+            audit=audit,
+            state=state,
+            read=_read_keys,
+            route_write=_routed,
+            ctx=ctx,
+        )
+        if _keyed is not None:
+            return _keyed
 
     # Post-governance optimization stage (may REMOVE sources): lower to catalog-physical, then
     # inline hot/API tables as VALUES CTEs, prune unreachable union branches, and rewrite cached
