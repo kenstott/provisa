@@ -54,6 +54,12 @@
     "needsReembeddingHelp": "Incrustado con {{model}}, no con el modelo vectorial actual de la organización.",
     "reembedDone": "Documentos reincrustados: {{n}}",
     "reembedFailedHeading": "Estos documentos no se pudieron reincrustar y no han cambiado:",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "helpLabel": "Acerca de la biblioteca de referencia",
+    "helpTitle": "Acerca de la biblioteca de referencia",
+    "helpWhat": "Un conjunto breve y seleccionado de documentos de referencia (políticas, normativas, contratos, procesos), añadidos por archivo o URL. No es un almacén de documentos.",
+    "helpWho": "Polly responde a partir de ella y cita los pasajes. Los agentes de IA conectados mediante el servidor MCP de Provisa la consultan (search_reference_library). «Buscar términos» la lee para proponer términos y definiciones del glosario.",
+    "helpSees": "Un asistente que actúa para un rol solo usa documentos conservados de dominios que el rol puede leer, además de los de toda la organización.",
+    "helpEmbedding": "Los pasajes de un documento se incrustan con el modelo de embeddings de la organización al añadirlo; «Reincrustar» solo es necesario cuando ese modelo cambia."
   }
 }

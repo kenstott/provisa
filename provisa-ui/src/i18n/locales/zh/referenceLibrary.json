@@ -54,6 +54,12 @@
     "needsReembeddingHelp": "使用 {{model}} 嵌入，而非组织当前的向量模型。",
     "reembedDone": "已重新嵌入的文档：{{n}}",
     "reembedFailedHeading": "以下文档无法重新嵌入，保持不变：",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "helpLabel": "关于参考资料库",
+    "helpTitle": "关于参考资料库",
+    "helpWhat": "一小组精选的参考文档（政策、法规、合同、流程），通过文件或 URL 添加。它不是文档存储库。",
+    "helpWho": "Polly 依据它作答并引用段落。通过 Provisa 的 MCP 服务器连接的 AI 智能体会搜索它（search_reference_library）。“查找术语”会读取它，以提出术语表的术语和定义。",
+    "helpSees": "代表某个角色工作的助手只使用该角色可读取的域中已保留的文档，以及面向整个组织的文档。",
+    "helpEmbedding": "添加文档时，其段落会用组织的嵌入模型进行嵌入；只有在该模型更换后才需要“重新嵌入”。"
   }
 }
