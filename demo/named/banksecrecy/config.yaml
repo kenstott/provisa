@@ -62,6 +62,9 @@ vector_models:
   provider: huggingface
   dimensions: 384
   enabled: true
+# The library answers by the glossary walk as well as by nearest passage (REQ-2185, GRAPH RETRIEVAL).
+reference_library:
+  retrieval: graph
 sources:
 - id: banksecrecy-db
   type: postgresql
