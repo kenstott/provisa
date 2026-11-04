@@ -768,6 +768,12 @@
         "no_description": "Dit dataproduct vermeldt doel noch gebruik.",
         "successor_retired": "Het dataproduct dat de leden van dit product overnam, '{{successor}}', is ook buiten gebruik gesteld."
       }
+    },
+    "erd": {
+      "database_unavailable": "De ERD-indelingen kunnen niet worden gelezen: de database is niet beschikbaar",
+      "layout_not_found": "Geen indeling met de naam {{name}}",
+      "layout_name_required": "Een indeling heeft een naam nodig",
+      "layout_place_unreadable": "De indeling plaatst een {{kind}} die u niet mag lezen"
     }
   }
 }

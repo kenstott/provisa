@@ -666,6 +666,19 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
             for endpoint in nested["endpoints"]:
                 rows["api_endpoints"].append({**endpoint, "source_id": source})
 
+        elif table == "erd_layouts":  # REQ-2189
+            own, nested = _split(body, "domains", "tables")
+            name = _name_of(path)[0]
+            rows["erd_layouts"].append({**own, "name": name})
+            for domain in nested["domains"]:
+                named(path, "domain", domain.get("domain_id"), known_domains)
+                rows["erd_layout_domains"].append({**domain, "layout_name": name})
+            for placed in nested["tables"]:
+                at = placed.pop("table")
+                rows["erd_layout_tables"].append(
+                    {**placed, "layout_name": name, "table_id": resolve_table(at, path, "table")}
+                )
+
         elif table == "calendars":
             name, version = _name_of(path)
             rows["calendars"].append({**body, "name": name, "version": version})

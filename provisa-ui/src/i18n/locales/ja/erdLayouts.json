@@ -1,0 +1,23 @@
+{
+  "erdLayouts": {
+    "layout": "レイアウト: {{name}}",
+    "layouts": "レイアウト",
+    "menuHint": "この図の保存済み配置を選択、保存、または削除します",
+    "automatic": "自動",
+    "save": "保存",
+    "saveAs": "名前を付けて保存…",
+    "delete": "削除",
+    "unsaved": "未保存",
+    "unsavedHint": "このレイアウトの保存後に図が変更されました",
+    "saveAsTitle": "名前を付けてレイアウトを保存",
+    "name": "名前",
+    "nameTaken": "{{name}} という名前のレイアウトは既に存在します",
+    "deleteTitle": "レイアウト {{name}} を削除しますか?",
+    "deleteConsequence": "レイアウトは全員に対して削除されます。表示されているテーブルとリレーションシップは変更されません。",
+    "newSinceSaved_one": "レイアウトの保存後に追加されたテーブル {{count}} 件",
+    "newSinceSaved_other": "レイアウトの保存後に追加されたテーブル {{count}} 件",
+    "place": "配置",
+    "placeHint": "テーブルをレイアウトに追加します",
+    "notDrawn": "図はまだ描画されていません"
+  }
+}

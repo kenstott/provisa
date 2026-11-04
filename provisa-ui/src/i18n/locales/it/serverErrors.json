@@ -768,6 +768,12 @@
         "no_description": "Questo prodotto dati non indica né il suo scopo né il suo utilizzo.",
         "successor_retired": "Anche il prodotto dati che ha preso i membri di questo, '{{successor}}', è stato ritirato."
       }
+    },
+    "erd": {
+      "database_unavailable": "Impossibile leggere i layout dell'ERD: il database non è disponibile",
+      "layout_not_found": "Nessun layout chiamato {{name}}",
+      "layout_name_required": "Un layout richiede un nome",
+      "layout_place_unreadable": "Il layout posiziona un(a) {{kind}} che non puoi leggere"
     }
   }
 }

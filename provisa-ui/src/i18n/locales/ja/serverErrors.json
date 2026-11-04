@@ -768,6 +768,12 @@
         "no_description": "このデータプロダクトは目的も使い方も記載していません。",
         "successor_retired": "このプロダクトのメンバーを引き継いだデータプロダクト '{{successor}}' も廃止されています。"
       }
+    },
+    "erd": {
+      "database_unavailable": "ERD レイアウトを読み取れません: データベースが利用できません",
+      "layout_not_found": "{{name}} という名前のレイアウトはありません",
+      "layout_name_required": "レイアウトには名前が必要です",
+      "layout_place_unreadable": "レイアウトが、読み取り権限のない {{kind}} を配置しています"
     }
   }
 }

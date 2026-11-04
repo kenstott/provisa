@@ -12,7 +12,7 @@
 // The pages differ only in the panel: a click on the page's own kind of item opens its panel there,
 // and a click on the other kind goes to the other page's ERD with that item's panel open.
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useScreenInputs } from "../../mcp/screenState";
 import { useTranslation } from "react-i18next";
@@ -21,8 +21,25 @@ import { useLeaveGuard } from "../list/panelLeave";
 import { useDomainFilter } from "../../context/DomainFilterContext";
 import { useAllRelationships, useDomains, useTables } from "../../hooks/useAdminQueries";
 import { erdViewHref } from "../../lib/entityHref";
+import {
+  deleteErdLayout,
+  fetchErdLayout,
+  fetchErdLayouts,
+  saveErdLayout,
+  type SavedLayout,
+  type SavedLayoutName,
+} from "../../api/erdLayouts";
 import { ErdPanel } from "./ErdPanel";
+import { ErdLayoutMenu } from "./ErdLayoutMenu";
+import { ErdNewTray } from "./ErdNewTray";
 import { focusIsOn, resolveErdFocus, type ResolvedErdFocus } from "./erd-focus";
+import {
+  arrangementOf,
+  layoutFocus,
+  newSinceSaved,
+  sameFocus,
+  type ErdPlaces,
+} from "./erd-saved-layout";
 import { useErdView } from "./useErdView";
 
 /** Names the focus, says what of it does not exist, and clears it. */
@@ -70,7 +87,7 @@ export function ErdView({
   const navigate = useNavigate();
   // A click leaves the form open in the panel, as a list row's does.
   const guard = useLeaveGuard();
-  const { focus, setFocus, collapsed } = useErdView();
+  const { focus, setFocus, collapsed, layout, setLayout, takeFocus } = useErdView();
   // Polly's read_screen reads the collapsed domains from here: they are the panel's own state.
   const [collapsedDomains, setCollapsedDomains] = useState<string[] | "all">([]);
   useScreenInputs(`/${page}`, { collapsed: collapsedDomains });
@@ -87,6 +104,101 @@ export function ErdView({
       ),
     [focus, tables, domains],
   );
+  // REQ-2189: the saved layouts, the one shown (null for Automatic), and what is edited since it
+  // was loaded or saved.
+  const [layouts, setLayouts] = useState<SavedLayoutName[]>([]);
+  const [loaded, setLoaded] = useState<SavedLayout | null>(null);
+  const [edited, setEdited] = useState(false);
+  const [placed, setPlaced] = useState<Set<number>>(new Set());
+  const [layoutError, setLayoutError] = useState<string | null>(null);
+  const placesRef = useRef<(() => ErdPlaces | null) | null>(null);
+  const shown = layout !== null && loaded?.name === layout ? loaded : null;
+  useEffect(() => {
+    fetchErdLayouts().then(
+      (answer) => setLayouts(answer.layouts),
+      (error: Error) => setLayoutError(error.message),
+    );
+  }, []);
+  const [asked, setAsked] = useState<string | null>(null);
+  if (layout !== asked) {
+    setAsked(layout);
+    setEdited(false);
+    setPlaced(new Set());
+    setLayoutError(null);
+  }
+  useEffect(() => {
+    if (layout === null || layout === loaded?.name) return;
+    fetchErdLayout(layout).then(
+      (answer) => setLoaded(answer),
+      (error: Error) => setLayoutError(error.message),
+    );
+  }, [layout, loaded]);
+  // A layout's selection is its focus: it takes the link's place once the layout and the tables
+  // it names are in hand.
+  const [focused, setFocused] = useState<SavedLayout | null>(null);
+  if (shown !== null && shown !== focused && !tablesLoading) setFocused(shown);
+  const latest = useRef({ tables, takeFocus });
+  useEffect(() => {
+    latest.current = { tables, takeFocus };
+  });
+  useEffect(() => {
+    if (focused !== null) latest.current.takeFocus(layoutFocus(focused, latest.current.tables));
+  }, [focused]);
+  const unsaved =
+    edited ||
+    (shown !== null && shown === focused && !sameFocus(focus, layoutFocus(shown, tables)));
+  const narrowed =
+    checkedDomains.size > 0 && checkedDomains.size < filterDomains.length ? checkedDomains : null;
+  const shownDomains = resolved.shownDomains ?? narrowed;
+  const waiting = useMemo(
+    () =>
+      shown === null
+        ? []
+        : newSinceSaved(shown, tables, shownDomains).filter((t) => !placed.has(t.id)),
+    [shown, tables, shownDomains, placed],
+  );
+  const drawn = useMemo(() => {
+    if (waiting.length === 0) return tables;
+    const held = new Set(waiting.map((t) => t.id));
+    return tables.filter((t) => !held.has(t.id));
+  }, [tables, waiting]);
+  const arrange = useCallback(() => setEdited(true), []);
+
+  const save = async (name: string): Promise<boolean> => {
+    const places = placesRef.current?.() ?? null;
+    if (places === null) {
+      setLayoutError(t("erdLayouts.notDrawn"));
+      return false;
+    }
+    const members = drawn.filter((d) => shownDomains === null || shownDomains.has(d.domainId));
+    try {
+      const saved = await saveErdLayout(name, arrangementOf(places, focus, members, shown));
+      setLayouts((await fetchErdLayouts()).layouts);
+      setLoaded(saved);
+      setFocused(saved);
+      setEdited(false);
+      setPlaced(new Set());
+      setLayoutError(null);
+      if (name !== layout) setLayout(name);
+      return true;
+    } catch (error) {
+      setLayoutError((error as Error).message);
+      return false;
+    }
+  };
+  const remove = async (name: string): Promise<boolean> => {
+    try {
+      await deleteErdLayout(name);
+      setLayouts((await fetchErdLayouts()).layouts);
+      setLoaded(null);
+      setLayout(null);
+      return true;
+    } catch (error) {
+      setLayoutError((error as Error).message);
+      return false;
+    }
+  };
+
   const highlightTableIds = useMemo(
     () =>
       page === "tables" && selected !== null
@@ -102,8 +214,6 @@ export function ErdView({
     return <Loader size="sm" aria-label={t("erdModal.title")} />;
   }
   // A focus is what is shown; the page's filter stands underneath it, unchanged.
-  const narrowed =
-    checkedDomains.size > 0 && checkedDomains.size < filterDomains.length ? checkedDomains : null;
   return (
     <div className="erd-view" data-testid="erd-view">
       {focusIsOn(focus) && (
@@ -111,10 +221,41 @@ export function ErdView({
       )}
       <div className="erd-view__diagram">
         <ErdPanel
-          tables={tables}
+          tables={drawn}
           relationships={relationships}
           domains={domains}
-          checkedDomains={resolved.shownDomains ?? narrowed}
+          checkedDomains={shownDomains}
+          savedLayout={shown}
+          onArrange={arrange}
+          placesRef={placesRef}
+          layoutMenu={
+            <>
+              <ErdLayoutMenu
+                layouts={layouts}
+                current={layout}
+                unsaved={unsaved}
+                onChoose={setLayout}
+                onSave={save}
+                onDelete={remove}
+              />
+              {layoutError !== null && (
+                <Text size="sm" c="red" data-testid="erd-layout-error">
+                  {layoutError}
+                </Text>
+              )}
+            </>
+          }
+          overlay={
+            waiting.length > 0 && (
+              <ErdNewTray
+                tables={waiting}
+                onPlace={(id) => {
+                  setPlaced((before) => new Set([...before, id]));
+                  setEdited(true);
+                }}
+              />
+            )
+          }
           highlightTableIds={highlightTableIds}
           highlightRelationshipIds={highlightRelationshipIds}
           search={search}
@@ -125,14 +266,14 @@ export function ErdView({
             guard(() =>
               page === "tables"
                 ? onOpen(String(id))
-                : navigate(erdViewHref("tables", { ...focus, table: id })),
+                : navigate(erdViewHref("tables", { ...focus, table: id, layout })),
             )
           }
           onRelationshipClick={(id) =>
             guard(() =>
               page === "relationships"
                 ? onOpen(id)
-                : navigate(erdViewHref("relationships", { ...focus, relationship: id })),
+                : navigate(erdViewHref("relationships", { ...focus, relationship: id, layout })),
             )
           }
         />

@@ -768,6 +768,12 @@
         "no_description": "Dieses Datenprodukt nennt weder seinen Zweck noch seine Verwendung.",
         "successor_retired": "Das Datenprodukt, das die Mitglieder dieses Produkts übernommen hat, '{{successor}}', ist ebenfalls ausgemustert."
       }
+    },
+    "erd": {
+      "database_unavailable": "Die ERD-Layouts können nicht gelesen werden: Die Datenbank ist nicht verfügbar",
+      "layout_not_found": "Kein Layout namens {{name}}",
+      "layout_name_required": "Ein Layout braucht einen Namen",
+      "layout_place_unreadable": "Das Layout platziert ein(e) {{kind}}, das Sie nicht lesen dürfen"
     }
   }
 }

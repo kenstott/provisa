@@ -162,6 +162,7 @@ KINDS: dict[str, Kind] = {
     "synthetic_dataset": Kind("synthetic_datasets", "id"),  # REQ-1939
     "reference_document": Kind("reference_documents", "id"),  # REQ-2185
     "term_scan": Kind("glossary_term_scans", "id"),  # REQ-2179
+    "erd_layout": Kind("erd_layouts", "name"),  # REQ-2189
 }
 
 _P, _D, _L = Standing.PART, Standing.DEPENDENT, Standing.LINK
@@ -195,6 +196,8 @@ REFERENCES: tuple[Reference, ...] = (
     _dep("user_role_assignments", "domain_id", "domain", "role_assignment", "id"),
     # REQ-1363: a domain's children block it -- they are moved or removed first.
     _dep("domains", "parent_domain_id", "domain", "domain", "id"),
+    # REQ-2189: a domain's place in a saved ERD layout goes with it.
+    _part("erd_layout_domains", "domain_id", "domain"),
     # --- to a source ---------------------------------------------------------------------------
     _dep("registered_tables", "source_id", "source", "table", "id"),
     # REQ-1934: a table's Data Profiler membership.
@@ -218,6 +221,11 @@ REFERENCES: tuple[Reference, ...] = (
     _part("profiler_constraints", "table_id", "table"),
     # REQ-2147: a steward's decision on a table's column classification is part of the table.
     _part("profiler_classifications", "table_id", "table"),
+    # REQ-2189: a table's place in a saved ERD layout goes with it: it disappears from the layout.
+    _part("erd_layout_tables", "table_id", "table"),
+    # --- to a saved ERD layout (REQ-2189): its places go with it -------------------------------
+    _part("erd_layout_domains", "layout_name", "erd_layout"),
+    _part("erd_layout_tables", "layout_name", "erd_layout"),
     # REQ-2091: an adequacy check's result on a table's column is part of the table.
     _part("fake_adequacy_checks", "table_id", "table"),
     _part("file_source_mtimes", "table_id", "table"),

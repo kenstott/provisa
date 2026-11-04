@@ -785,6 +785,20 @@ main {
 .erd-stage__bar:focus-within {
   opacity: 1;
 }
+/* REQ-2189: the tables new since the layout was saved, waiting to be placed. */
+.erd-stage__tray {
+  position: absolute;
+  bottom: 8px;
+  inset-inline-start: 8px;
+  z-index: 10;
+  max-width: 280px;
+  max-height: 40%;
+  overflow-y: auto;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
 /* The rule between the two IS the grab handle: a 1px line inside a wider hit area. */
 .split-pane__handle {
   flex: 0 0 9px;

@@ -1310,6 +1310,36 @@ CREATE TABLE IF NOT EXISTS profiler_classifications (
     PRIMARY KEY (table_id, physical_column, kind)
 );
 
+-- REQ-2189: a saved, named arrangement of the ERD. Only the arrangement: what is drawn in it comes
+-- from the live model, and a table or domain removed from the model goes from every layout with it.
+CREATE TABLE IF NOT EXISTS erd_layouts (
+    name        TEXT PRIMARY KEY,
+    options     JSONB NOT NULL,
+    updated_by  TEXT,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS erd_layout_domains (
+    layout_name  TEXT NOT NULL REFERENCES erd_layouts(name) ON DELETE CASCADE,
+    domain_id    TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    selected     BOOLEAN NOT NULL DEFAULT false,
+    collapsed    BOOLEAN NOT NULL DEFAULT false,
+    x            DOUBLE PRECISION,
+    y            DOUBLE PRECISION,
+    w            DOUBLE PRECISION,
+    h            DOUBLE PRECISION,
+    PRIMARY KEY (layout_name, domain_id)
+);
+
+CREATE TABLE IF NOT EXISTS erd_layout_tables (
+    layout_name  TEXT NOT NULL REFERENCES erd_layouts(name) ON DELETE CASCADE,
+    table_id     INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    selected     BOOLEAN NOT NULL DEFAULT false,
+    x            DOUBLE PRECISION,
+    y            DOUBLE PRECISION,
+    PRIMARY KEY (layout_name, table_id)
+);
+
 CREATE TABLE IF NOT EXISTS synthetic_report (
     id               SERIAL PRIMARY KEY,
     dataset_id       TEXT NOT NULL REFERENCES synthetic_datasets(id) ON DELETE CASCADE,
