@@ -184,11 +184,24 @@ class Server:
             finally:
                 self.conn = psycopg.connect(self.dsn, autocommit=True)
 
-    def run(self, sql: str, result_format: int = 0) -> dict[str, Any]:
-        """One statement over the extended protocol: its fields, first row, or its error."""
+    def run(
+        self,
+        sql: str,
+        result_format: int = 0,
+        params: list[tuple[int, bytes | None, int]] | None = None,
+    ) -> dict[str, Any]:
+        """One statement over the extended protocol: its fields, first row, or its error.
+        ``params`` are its bind parameters, each (type OID, value, format code)."""
+        params = params or []
         try:
             self._ensure()
-            res = self.conn.pgconn.exec_params(sql.encode(), [], result_format=result_format)
+            res = self.conn.pgconn.exec_params(
+                sql.encode(),
+                [value for _, value, _ in params],
+                param_types=[oid for oid, _, _ in params],
+                param_formats=[fmt for _, _, fmt in params],
+                result_format=result_format,
+            )
         except psycopg.Error as exc:
             return {"ok": False, "error": f"connection: {exc}".strip()}
         if res.status not in (pq.ExecStatus.TUPLES_OK, pq.ExecStatus.COMMAND_OK):
