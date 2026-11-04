@@ -1,114 +1,34 @@
 {
-  "version": "v0.1.0-alpha.500",
-  "previous": "v0.1.0-alpha.499",
+  "version": "v0.1.0-alpha.501",
+  "previous": "v0.1.0-alpha.500",
   "date": "2026-11-04",
   "features": [],
   "changes": [
     {
-      "scope": "catalog",
-      "entries": [
-        "A set-returning catalog form in FROM keeps WITH ORDINALITY"
-      ]
-    },
-    {
       "scope": "compiler",
       "entries": [
-        "Bind schema-qualified column refs before FROM rewrites"
+        "Refuse shapes that hide a registered relation from governance",
+        "Stage 2 refuses a parenthesised join group with a registered relation",
+        "Govern a leftmost parenthesised join group as the flat join",
+        "Quote a request-given name as one identifier"
       ]
     },
     {
-      "scope": "conformance",
+      "scope": "cypher,compiler",
       "entries": [
-        "apply's 2026-11-03/04 pgcatalog decisions to the function check",
-        "A call PostgreSQL cannot make is skipped by design"
+        "Lower a write's WHERE from its tree; no SQL text rewrites"
       ]
     },
     {
-      "scope": "demo",
+      "scope": "meta",
       "entries": [
-        "Banksecrecy registered, captured and answering one way"
-      ]
-    },
-    {
-      "scope": "demos",
-      "entries": [
-        "The banksecrecy named demo -- the Bank Secrecy Act read, its terms grounded, asked by concept",
-        "Banksecrecy aliases its two customer edges and asks Polly in plain words"
-      ]
-    },
-    {
-      "scope": "devcontainer",
-      "entries": [
-        "Dev container with pinned toolchains and control-plane PostgreSQL",
-        "Codespaces-ready setup and feature lock"
-      ]
-    },
-    {
-      "scope": "glossary",
-      "entries": [
-        "The menu item is named Find terms"
-      ]
-    },
-    {
-      "scope": "go",
-      "entries": [
-        "A Go source's remote image; each language's image parts its own",
-        "Each language's image fetch looks its install up when called; the Go tests pass export names",
-        "A Go source names its Module and its Package; the proxies help fits one line"
-      ]
-    },
-    {
-      "scope": "installers",
-      "entries": [
-        "Check the bundled runtime, not the checkout, for provisa._encoders"
-      ]
-    },
-    {
-      "scope": "library",
-      "entries": [
-        "half-precision HNSW index for 2001-4000 dimension embeddings"
-      ]
-    },
-    {
-      "scope": "pgwire",
-      "entries": [
-        "query_to_xml and its kin map a row result's rows",
-        "Answer the server state client tools read as Provisa's own",
-        "current_setting shortcut only for a bare SELECT current_setting(...)",
-        "comment-only query is empty; keyword after AS is a quoted label",
-        "pg's last four function-check failures (J603,)"
-      ]
-    },
-    {
-      "scope": "polly",
-      "entries": [
-        "read_screen reports the data node",
-        "read_screen's tool description names dataNode"
-      ]
-    },
-    {
-      "scope": "reference-library",
-      "entries": [
-        "Passages in pgvector under per-dimension HNSW indexes"
-      ]
-    },
-    {
-      "scope": "sql-validator",
-      "entries": [
-        "Fold identifiers as PostgreSQL does and refuse unknown qualifiers (J609)"
+        "The meta seed retires the tables it no longer declares"
       ]
     },
     {
       "scope": "ui",
       "entries": [
-        "Find terms wording for table scans;.xml in reference library pickers",
-        "Find terms lists no scans only once it has read them"
-      ]
-    },
-    {
-      "scope": "views",
-      "entries": [
-        "A view the reader is served no column of is refused; banksecrecy masks once"
+        "page-level (?) help, first on the Reference library page"
       ]
     }
   ]

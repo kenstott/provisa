@@ -3,6 +3,31 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.501
+
+Released 2026-11-04.
+
+### Changes
+
+#### compiler
+
+- Refuse shapes that hide a registered relation from governance
+- Stage 2 refuses a parenthesised join group with a registered relation
+- Govern a leftmost parenthesised join group as the flat join
+- Quote a request-given name as one identifier
+
+#### cypher,compiler
+
+- Lower a write's WHERE from its tree; no SQL text rewrites
+
+#### meta
+
+- The meta seed retires the tables it no longer declares
+
+#### ui
+
+- page-level (?) help, first on the Reference library page
+
 ## v0.1.0-alpha.500
 
 Released 2026-11-04.
