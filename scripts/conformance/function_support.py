@@ -26,14 +26,23 @@ Each overload gets one outcome per engine:
                 counts as failed. ``unchecked`` says why
   by_design     skipped by design under a decision of REQ-2167 (``GROUPS``): a side-effect
                 function on an engine but ``SIDE_EFFECT_ENGINE``, one whose side effect no client
-                can see (``NOT_TESTABLE``), or a refusal by name a decision makes
-                (``DECIDED_REFUSALS``)
+                can see (``NOT_TESTABLE``), a refusal by name a decision makes
+                (``DECIDED_REFUSALS``), or a function a decision skips whatever it answers
+                (``decided_function``: PostgreSQL's own server state, the types no SQL value can
+                have, and the others amended 2026-11-03 and 2026-11-04 name)
   wrong_answer  a call compares unequal: its result type, its rows, their values, their form,
                 or the side effect it had
   error         PostgreSQL answered a call and the engine failed with no named refusal (its
                 message is kept)
   refused       PostgreSQL answered a call and Provisa refused it by name
-  not_callable  PostgreSQL itself answers no call of it
+  not_callable  PostgreSQL itself answers no call of it: every call was refused, or none answered
+                anything but NULL from NULL arguments and every call with a real value was refused
+                for the call itself. ``refused_for`` says which (REQ-2167, amended 2026-11-04, A
+                call PostgreSQL cannot make is skipped by design): ``function_probe.THE_CALL``
+                when every refusal was of the call, read from its SQLSTATE
+                (``function_probe.refused_for``); ``function_probe.ITS_ARGUMENTS`` when a refusal
+                was of the values or types the check gave it, a gap in its samples, which is
+                ``not_checked`` instead
   not_reached   the leg ended, or its server went away, before this overload
 
 A wrong answer outranks an error, which outranks a refusal, which outranks a pass or a not checked:
@@ -74,7 +83,10 @@ What a pass compared, exactly:
     answer (REQ-2167, WHAT GUARANTEED MEANS). ``value_form`` gives that form: a named function's,
     then its type's, then a record's number of fields, and otherwise the shape of PostgreSQL's
     string. Each row Provisa answers must fit. PostgreSQL's NULL or void, or a set Provisa leaves
-    empty, is no form to check.
+    empty, is no form to check. A volatile overload is never left not tested for being volatile
+    (amended 2026-11-04 (4)): any call of it, a NULL call too, whose result type and, in a single
+    row, NULLs are PostgreSQL's has its type and form checked; one acting is tested by its side
+    effect.
   * ``side_effect_checked``: a function returning void or acting (``side_effect``) is tested by
     its side effect (REQ-2167, amended 2026-11-02, Side-effect functions): ``EFFECTS`` performs the
     call on each server and then observes what it did through the same client (a setting read
@@ -551,6 +563,7 @@ REPLICATION_SLOT = "conformance_slot"
 MULTIXACT_TABLE = "multixact_fixture"
 #: A sequence that has answered once: the probe's own is made again after the fixture.
 FIXTURE_SEQUENCE = "fixture_sequence"
+FIXTURE_DOMAIN = "fixture_domain"
 _RELATION_OID = "(SELECT oid FROM pg_catalog.pg_class WHERE relname = '{}')"
 
 #: Values of the ``NO_LITERAL`` types the server itself derived, read from its catalog: an
@@ -605,6 +618,7 @@ INPUT_TYPES = {
     "int2vectorin": "int2vector",
     "int4in": "integer",
     "int8in": "bigint",
+    "interval_in": "interval",
     "json_in": "json",
     "jsonpath_in": "jsonpath",
     "line_in": "line",
@@ -702,6 +716,26 @@ _FLOAT8_STATE = ("'{3,6,2}'", "'{1,0.5,0}'", "'{4,10,5}'")
 _REGR_STATE = ("'{3,6,2,9,2,2}'", "'{1,0.5,0,2,0,0}'", "'{4,10,5,8,5,5}'")
 _INT_AVG_STATE = ("'{3,6}'", "'{1,-7}'", "'{4,100}'")
 _FORMS = ("'NFC'", "'NFD'", "'NFKC'")
+_FRACTIONS = ("'{0.25,0.5}'", "'{0.5}'", "'{0,0.75,1}'")
+#: A type's modifier as the parser hands it to the type's typmodin, by function: interval's names
+#: its fields and precision (INTERVAL(3)), as PostgreSQL refuses a bare number for it.
+_TYPMODS: dict[str, dict[int, tuple[str, ...]]] = {
+    **{
+        f"{name}typmodin": {0: ("'{10}'",) * VALUE_ROWS}
+        for name in (
+            "bit",
+            "bpchar",
+            "timestamp",
+            "timestamptz",
+            "time",
+            "timetz",
+            "varbit",
+            "varchar",
+        )
+    },
+    "numerictypmodin": {0: ("'{12,2}'",) * VALUE_ROWS},
+    "intervaltypmodin": {0: ("'{32767,3}'",) * VALUE_ROWS},
+}
 _NAMESPACE_ROW = Raw(("NULL::pg_catalog.pg_namespace",) * 3)
 _NAMESPACE_JSON = ('\'{"nspname": "x", "oid": 5}\'', "'{}'", "'{\"nspname\": null}'")
 _NAMESPACE_JSONS = ('\'[{"nspname": "x", "oid": 5}]\'', "'[]'", "'[{}, {\"oid\": 1}]'")
@@ -1162,6 +1196,10 @@ FIXTURE: dict[str, str] = {}
 FIXTURE_QUERIES = {
     "xid": f"SELECT xmin FROM {COLUMN_RELATION} WHERE id = 1",
     "multixact": f"SELECT xmax FROM {catalog.FIXTURE_SCHEMA}.{MULTIXACT_TABLE}",
+    "domain": (
+        f"SELECT oid FROM pg_catalog.pg_type WHERE typname = '{FIXTURE_DOMAIN}' "
+        f"AND typnamespace = '{catalog.FIXTURE_SCHEMA}'::regnamespace"
+    ),
 }
 _FIXTURE_TOKEN = re.compile(r"\{fixture:(\w+)\}")
 
@@ -1404,6 +1442,17 @@ ARG_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
     "ntile": {0: ("2", "2", "2")},
     "percentile_cont": {0: ("0.25", "0.5", "0.75")},
     "percentile_disc": {0: ("0.25", "0.5", "0.75")},
+    # The array forms take an array of fractions (REQ-2167, amended 2026-11-04 (5)).
+    "percentile_cont(double precision[])": {0: _FRACTIONS},
+    "percentile_disc(double precision[])": {0: _FRACTIONS},
+    **_TYPMODS,
+    # domain_in reads its text as the fixture's domain (``FIXTURE_DOMAIN``), with no typmod: a
+    # NULL among them, as its answer is compared by whether it IS NULL (``domain_in_calls``).
+    "domain_in": {
+        0: Raw(("'5'::cstring", "NULL::cstring", "'1'::cstring")),
+        1: ("'{fixture:domain}'",) * VALUE_ROWS,
+        2: Raw(("(-1)::integer",) * VALUE_ROWS),
+    },
     "width_bucket(numeric)": {1: ("0", "(-10)", "0"), 2: ("10", "10", "100"), 3: ("5", "4", "10")},
     "width_bucket(double precision)": {
         1: ("0", "(-10)", "0"),
@@ -1448,11 +1497,13 @@ class Call:
     is its server's own: no); ``zone``: the session's TimeZone for this call, if not ``SETTINGS``'
     UTC; ``before``: what the session must have done first, run just before it
     (function_probe.BEFORE); ``setup`` and ``teardown``: statements around it on the same session,
-    as an open cursor needs its transaction."""
+    as an open cursor needs its transaction; ``refusal``: PostgreSQL's answer is its refusal,
+    which Provisa must answer with the same SQLSTATE and message."""
 
     sql: str
     answers: bool = False
     values: bool = True
+    refusal: bool = False
     zone: str | None = None
     before: str | None = None
     setup: tuple[str, ...] = ()
@@ -1510,7 +1561,7 @@ def unchecked(fn: Function, family: str) -> str | None:
     """Why ``fn`` is given no values; None if it is."""
     if function_probe.UNCALLABLE in fn.argtypes:
         return function_probe.NO_CALL
-    if fn.signature in function_probe.STATEMENTS:
+    if fn.signature in function_probe.STATEMENTS and _key(fn) not in VALUE_STATEMENTS:
         return "its one statement takes no value"
     if fn.volatility == "v":
         return "volatile"
@@ -1579,13 +1630,27 @@ def _window(fn: Function) -> str:
 
 
 #: Value calls written whole, by ``_key``: a function returning a record of no declared type is
-#: called where a column definition list gives it one.
+#: called where a column definition list gives it one, a set of them in FROM (REQ-2167, amended
+#: 2026-11-04 (5)).
 VALUE_STATEMENTS: dict[str, tuple[str, ...]] = {
-    f"{name}({typ})": tuple(
-        f'SELECT t.a, t.b FROM pg_catalog."{name}"({doc}::{typ}) AS t(a integer, b text)'
-        for doc in ('\'{"a": 1, "b": "x"}\'', "'{\"b\": null}'", '\'{"a": -7, "c": true}\'')
-    )
-    for name, typ in (("json_to_record", "json"), ("jsonb_to_record", "jsonb"))
+    **{
+        f"{name}({typ})": tuple(
+            f'SELECT t.a, t.b FROM pg_catalog."{name}"({doc}::{typ}) AS t(a integer, b text)'
+            for doc in ('\'{"a": 1, "b": "x"}\'', "'{\"b\": null}'", '\'{"a": -7, "c": true}\'')
+        )
+        for name, typ in (("json_to_record", "json"), ("jsonb_to_record", "jsonb"))
+    },
+    **{
+        f"{name}({typ})": tuple(
+            f'SELECT * FROM pg_catalog."{name}"({doc}::{typ}) AS t(a integer, b text)'
+            for doc in (
+                '\'[{"a": 1, "b": "x"}, {"a": 2}]\'',
+                "'[]'",
+                '\'[{"b": null}, {"a": -7, "c": true}]\'',
+            )
+        )
+        for name, typ in (("json_to_recordset", "json"), ("jsonb_to_recordset", "jsonb"))
+    },
 }
 
 
@@ -1595,6 +1660,8 @@ def value_calls(fn: Function, family: str) -> list[Call]:
         return []
     if _key(fn) in VALUE_STATEMENTS:
         return [Call(sql, answers=True) for sql in VALUE_STATEMENTS[_key(fn)]]
+    if fn.name == "domain_in":
+        return domain_in_calls(fn)
     if fn.kind == "a":
         return [Call(_aggregate(fn), answers=True)]
     if fn.kind == "w":
@@ -1607,6 +1674,23 @@ def value_calls(fn: Function, family: str) -> list[Call]:
             row = [*row[:-1], f"VARIADIC {row[-1]}"]
         calls.append(Call(function_probe.statement(fn, row), answers=True))
     return calls
+
+
+#: A value breaking the fixture domain's CHECK (VALUE > 0).
+DOMAIN_BREAKING = "'-1'::cstring"
+
+
+def domain_in_calls(fn: Function) -> list[Call]:
+    """domain_in's calls: its answer, of the pseudo-type any, which no client can display, is
+    compared by whether it IS NULL, and a value breaking the fixture domain's CHECK by the refusal
+    it gets (REQ-2167, amended 2026-11-04, A call PostgreSQL cannot make is skipped by design)."""
+    named = f'pg_catalog."{fn.name}"'
+    rows = _rows(fn)
+    breaking = [DOMAIN_BREAKING, *rows[0][1:]]
+    return [
+        *(Call(f"SELECT {named}({', '.join(row)}) IS NULL AS v", answers=True) for row in rows),
+        Call(f"SELECT {named}({', '.join(breaking)}) IS NULL AS v", answers=True, refusal=True),
+    ]
 
 
 def sample_column(sample_type: str) -> str:
@@ -1763,9 +1847,11 @@ class Session(catalog.Server):
 
 def _result(res: Any) -> dict[str, Any]:
     if res.status not in (pq.ExecStatus.TUPLES_OK, pq.ExecStatus.COMMAND_OK):
+        state = res.error_field(pq.DiagnosticField.SQLSTATE)
         return {
             "ok": False,
             "error": (res.error_message or b"").decode(errors="replace").strip()[:400],
+            "sqlstate": state.decode() if state else "",
         }
     fields = [res.ftype(i) for i in range(res.nfields)]
     rows = [
@@ -2239,6 +2325,17 @@ def _all_null(want: dict[str, Any]) -> bool:
     return bool(want["rows"]) and all(v is None for row in want["rows"] for v in row)
 
 
+def _null_difference(want: dict[str, Any], got: dict[str, Any]) -> str | None:
+    """How the NULLs of Provisa's one row differ from those of PostgreSQL's; None if they do not.
+    A set's rows are its server's own, so a set differs in none."""
+    if len(want["rows"]) != 1 or len(got["rows"]) != 1:
+        return None
+    for wv, gv in zip(want["rows"][0], got["rows"][0], strict=False):
+        if (wv is None) != (gv is None):
+            return f"{gv!r}, PostgreSQL {wv!r}"
+    return None
+
+
 # --- side effects (REQ-2167, amended 2026-11-02, Side-effect functions) -------------------------
 
 #: The engine side-effect functions are expected to work on: on every other they are skipped by
@@ -2260,6 +2357,11 @@ SERVER_ADMINISTRATION_GROUP = "Server administration functions"
 SERVER_VERSION_GROUP = "The server's version"
 REFERENCES_GROUP = "REFERENCES is never granted"
 TABLE_XML_GROUP = "A table's XML holds the model's arrays and database"
+SERVER_STATE_GROUP = "PostgreSQL's own server state"
+SESSION_CURSORS_GROUP = "The session's own cursors"
+SERVER_EXTENSIONS_GROUP = "The server's installed extensions"
+SINGLE_BYTE_DATABASE_GROUP = "One-argument to_ascii needs a single-byte database"
+NO_SQL_VALUE_GROUP = "Types no SQL value can have"
 GROUPS = {
     # REQ-2167, amended 2026-11-02, Side-effect functions.
     SIDE_EFFECT_GROUP: (
@@ -2269,7 +2371,9 @@ GROUPS = {
     NOT_TESTABLE: "Its side effect cannot be observed through a client.",
     # REQ-2167, amended 2026-11-02, Sequence functions are not supported.
     SEQUENCE_GROUP: "nextval, currval and setval are refused by name: Provisa does not model a "
-    "source's sequences.",
+    "source's sequences. pg_sequence_last_value is skipped: Provisa does not drive a source's "
+    "sequences (amended 2026-11-04, Server state, internal types and the check's own call shapes "
+    "(2)).",
     # REQ-2167, amended 2026-11-02, Six-argument regexp_replace is not supported.
     REGEXP_GROUP: "The PostgreSQL 16 form with a start position and an occurrence number is "
     "refused by name.",
@@ -2299,9 +2403,12 @@ GROUPS = {
     # 2026-10-27, PGWIRE'S CATALOG FUNCTIONS: no function reads the server's files.
     SERVER_FILES_GROUP: "pg_read_file and pg_read_binary_file read no file, and pg_ls_dir and "
     "pg_stat_file answer as a server without it: no function reads the server's files.",
-    # REQ-2167, amended 2026-11-03, Server administration functions.
+    # REQ-2167, amended 2026-11-03, Server administration functions; amended 2026-11-03, Backend
+    # session statistics are the engine's.
     SERVER_ADMINISTRATION_GROUP: "PostgreSQL refuses these for the test server's own state or "
-    "configuration; each names PostgreSQL's refusal as its reason.",
+    "configuration; each names PostgreSQL's refusal as its reason. pg_stat_get_backend_* and "
+    "pg_stat_get_backend_idset report on the engine's own sessions, not the model: Provisa refuses "
+    "them by name, as serving them would show one tenant other sessions' activity.",
     # REQ-579: the server reports its own version, and a collation's version is the server's.
     SERVER_VERSION_GROUP: "A collation's version is the server's own, as the server's version "
     "is (REQ-579).",
@@ -2313,12 +2420,31 @@ GROUPS = {
     TABLE_XML_GROUP: "table_to_xml and its kin write a source's array column as the JSON array it "
     "is registered as (REQ-1965), and name the served database in a type's name (REQ-588): the "
     "document differs from PostgreSQL's in these alone.",
+    # REQ-2167, amended 2026-11-04, Server state, internal types and the check's own call shapes
+    # (1).
+    SERVER_STATE_GROUP: "These read PostgreSQL's own server state (WAL, replication and "
+    "recovery, log files, the hba and ident files, shared memory and memory contexts, locks, I/O "
+    "and SLRU statistics, wait events, server directory listings, prepared transactions, the "
+    "pg_stat_get_xact_* transaction counters): there is no single server to test, since the "
+    "answer is whichever engine's runs.",
+    # REQ-2167, amended 2026-11-04, Server state, internal types and the check's own call shapes
+    # (2).
+    SESSION_CURSORS_GROUP: "pg_cursor lists the session's own cursors.",
+    SERVER_EXTENSIONS_GROUP: "pg_extension_update_paths reads the server's installed extensions.",
+    SINGLE_BYTE_DATABASE_GROUP: "to_ascii(text) converts only from a LATIN1, LATIN2, LATIN9 or "
+    "WIN1250 database; the forms naming the encoding are compared.",
+    # REQ-2167, amended 2026-11-04, Server state, internal types and the check's own call shapes
+    # (3).
+    NO_SQL_VALUE_GROUP: "The input and output functions of types no SQL value can have: "
+    "PostgreSQL errors on every call (the any* and anycompatible* pseudo-types, shell_out, "
+    "pg_ddl_command, pg_node_tree_in, the extended statistics inputs, the BRIN bloom and "
+    "multi-minmax summaries, gtsvector).",
 }
 
 #: The requirement each group's decision is of, where it is not REQ-2167.
 GROUP_REQUIREMENTS = {SERVER_VERSION_GROUP: "REQ-579", TABLE_XML_GROUP: "REQ-1965, REQ-588"}
 
-#: The functions a decision skips by design whatever they answer, by name.
+#: The functions a decision skips by design whatever they answer, by name or ``_key``.
 DECIDED_FUNCTIONS = {
     **dict.fromkeys(
         (
@@ -2356,7 +2482,120 @@ DECIDED_FUNCTIONS = {
         ("pg_collation_actual_version", "pg_database_collation_actual_version"),
         SERVER_VERSION_GROUP,
     ),
+    **dict.fromkeys(
+        (
+            # WAL
+            "pg_available_wal_summaries",
+            "pg_wal_summary_contents",
+            "pg_get_wal_resource_managers",
+            "pg_stat_get_wal",
+            "pg_stat_get_archiver",
+            # replication and recovery
+            "pg_last_wal_receive_lsn",
+            "pg_last_wal_replay_lsn",
+            "pg_last_xact_replay_timestamp",
+            "pg_stat_get_wal_receiver",
+            "pg_stat_get_wal_senders",
+            "pg_stat_get_recovery_prefetch",
+            "pg_show_replication_origin_status",
+            # log files, the hba and ident files
+            "pg_current_logfile",
+            "pg_hba_file_rules",
+            "pg_ident_file_mappings",
+            # shared memory and memory contexts
+            "pg_get_shmem_allocations",
+            "pg_get_backend_memory_contexts",
+            # locks, I/O and SLRU statistics, wait events
+            "pg_lock_status",
+            "pg_stat_get_io",
+            "pg_stat_get_slru",
+            "pg_get_wait_events",
+            # server directory listings
+            "pg_ls_waldir",
+            "pg_ls_archive_statusdir",
+            "pg_ls_tmpdir",
+            "pg_ls_logicalmapdir",
+            "pg_ls_logicalsnapdir",
+            # prepared transactions
+            "pg_prepared_xact",
+            # REQ-2167, amended 2026-11-04, A call PostgreSQL cannot make is skipped by design:
+            # the server's build and extensions, its transaction ids, its activity, checksum and
+            # progress statistics
+            "pg_config",
+            "pg_available_extensions",
+            "pg_available_extension_versions",
+            "pg_current_xact_id_if_assigned",
+            "txid_current_if_assigned",
+            "pg_stat_get_activity",
+            "pg_stat_get_db_checksum_failures",
+            "pg_stat_get_db_checksum_last_failure",
+            "pg_stat_get_snapshot_timestamp",
+            "pg_stat_get_progress_info",
+        ),
+        SERVER_STATE_GROUP,
+    ),
+    "pg_cursor": SESSION_CURSORS_GROUP,
+    "pg_sequence_last_value": SEQUENCE_GROUP,
+    "pg_extension_update_paths": SERVER_EXTENSIONS_GROUP,
+    "to_ascii(text)": SINGLE_BYTE_DATABASE_GROUP,
+    **dict.fromkeys(
+        (
+            *(
+                f"{pseudo}_{io}"
+                for pseudo, ios in (
+                    ("any", ("in", "out")),
+                    ("anyarray", ("in",)),
+                    ("anycompatible", ("in", "out")),
+                    ("anycompatiblearray", ("in",)),
+                    ("anycompatiblemultirange", ("in",)),
+                    ("anycompatiblenonarray", ("in", "out")),
+                    ("anycompatiblerange", ("in",)),
+                    ("anyelement", ("in", "out")),
+                    ("anyenum", ("in",)),
+                    ("anymultirange", ("in",)),
+                    ("anynonarray", ("in", "out")),
+                    ("anyrange", ("in",)),
+                )
+                for io in ios
+            ),
+            "shell_out",
+            "pg_ddl_command_in",
+            "pg_ddl_command_out",
+            "pg_ddl_command_send",
+            "pg_node_tree_in",
+            "pg_ndistinct_in",
+            "pg_dependencies_in",
+            "pg_mcv_list_in",
+            # the index summaries
+            "brin_bloom_summary_in",
+            "brin_bloom_summary_out",
+            "brin_bloom_summary_send",
+            "brin_minmax_multi_summary_in",
+            "brin_minmax_multi_summary_out",
+            "brin_minmax_multi_summary_send",
+            "gtsvectorin",
+            "gtsvectorout",
+        ),
+        NO_SQL_VALUE_GROUP,
+    ),
 }
+#: As ``DECIDED_FUNCTIONS``, by prefix: the engine's backend statistics (amended 2026-11-03,
+#: Backend session statistics are the engine's) and its transaction counters (amended 2026-11-04
+#: (1)).
+_DECIDED_PREFIXES = {
+    "pg_stat_get_backend_": SERVER_ADMINISTRATION_GROUP,
+    "pg_stat_get_xact_": SERVER_STATE_GROUP,
+}
+
+
+def decided_function(fn: Function) -> str | None:
+    """The group of the decision that skips ``fn`` whatever it answers, by ``_key``, name or
+    prefix; None if no decision does."""
+    group = DECIDED_FUNCTIONS.get(_key(fn)) or DECIDED_FUNCTIONS.get(fn.name)
+    if group is not None:
+        return group
+    return next((g for p, g in _DECIDED_PREFIXES.items() if fn.name.startswith(p)), None)
+
 
 #: The refusals a decision makes, by name or ``_key``: Provisa refusing one by name is that
 #: decision, skipped by design.
@@ -2817,9 +3056,10 @@ def measure_overload(
     ``SIDE_EFFECT_ENGINE`` and skipped by design elsewhere, and is not testable where no client can
     see its effect; a refusal a decision makes is skipped by design under it."""
     entry = _measure_calls(fn, family, pg, provisa, classify, enums)
-    if fn.name in DECIDED_FUNCTIONS:
-        return _decided_function(entry, DECIDED_FUNCTIONS[fn.name])
-    if entry["outcome"] == "not_callable":
+    group = decided_function(fn)
+    if group is not None:
+        return _decided_function(entry, group)
+    if entry["outcome"] == "not_callable" or "refused_for" in entry:
         return entry
     decided = DECIDED_REFUSALS.get(_key(fn)) or DECIDED_REFUSALS.get(fn.name)
     if decided is not None and entry["outcome"] == "refused":
@@ -2844,6 +3084,48 @@ def measure_overload(
     if entry["outcome"] in ("pass", "not_checked"):
         return _by_design(entry, NOT_TESTABLE)
     return entry
+
+
+def _nothing(want: dict[str, Any]) -> bool:
+    """Whether PostgreSQL answered nothing but NULL, or no row."""
+    return all(v is None for row in want["rows"] for v in row)
+
+
+def _refused_for(fn: Function, refused: list[dict[str, str]]) -> str | None:
+    """What PostgreSQL's refusals of ``fn`` are of: the call itself only when every one is
+    (REQ-2167, amended 2026-11-04, A call PostgreSQL cannot make is skipped by design), its
+    arguments when any one is; None if they are neither, as one for the server's state is."""
+    kinds = [function_probe.refused_for(fn, r["sqlstate"], r["error"]) for r in refused]
+    if all(k == function_probe.THE_CALL for k in kinds):
+        return function_probe.THE_CALL
+    if function_probe.ITS_ARGUMENTS in kinds:
+        return function_probe.ITS_ARGUMENTS
+    return None
+
+
+def _primary(answer: dict[str, Any]) -> str:
+    return answer["error"].split("\n", 1)[0]
+
+
+def _refusal_answer(
+    call_: Call, want: dict[str, Any], got: dict[str, Any]
+) -> tuple[str, dict[str, str]] | None:
+    """A call whose answer is PostgreSQL's refusal (``Call.refusal``), compared: None if Provisa
+    refuses it with the same SQLSTATE and message, else the kind of what it did (wrong, error or
+    named) with what it said: another SQLSTATE or message is a wrong answer."""
+    expected = f"{want.get('sqlstate', '')} {_primary(want)}"
+    if got["ok"]:
+        difference = f"answered {got['rows']!r}, PostgreSQL refused: {expected}"
+        return "wrong", {"statement": call_.sql, "difference": difference}
+    if got.get("sqlstate", "") == want.get("sqlstate", "") and _primary(got) == _primary(want):
+        return None
+    said = {"statement": call_.sql, "error": got["error"]}
+    if function_probe.refused_by_name(got["error"]):
+        return "named", said
+    if got.get("sqlstate"):
+        difference = f"refused: {got['sqlstate']} {_primary(got)}, PostgreSQL {expected}"
+        return "wrong", {"statement": call_.sql, "difference": difference}
+    return "error", said
 
 
 #: Why an overload given real values for its form still had none checked.
@@ -2876,16 +3158,39 @@ def _measure_calls(
     errors: list[dict[str, str]] = []
     named: list[dict[str, str]] = []
     decided: list[str] = []  # the groups of the calls a decision answers
-    refused: list[str] = []
+    refused: list[dict[str, str]] = []
+    made = 0  # the calls PostgreSQL answered with a real value or anything but NULL
     routes: set[str] = set()
     rules: set[str] = set()
     lost = False
+    volatile_typed = fn.volatility == "v" and not side_effect(fn)
     for call_ in planned:
         want = _answer(pg, call_)
+        if call_.refusal and want["ok"]:
+            # A sample that should break the fixture's rule and does not: a gap in the check.
+            refused.append({"sqlstate": "", "error": f"PostgreSQL answered {call_.sql}"})
+            continue
+        if call_.refusal:
+            accepted += 1
+            made += 1
+            answered += call_.answers
+            got = _answer(provisa, call_)
+            lost = lost or got.get("lost", False)
+            found = _refusal_answer(call_, want, got)
+            if found is not None:
+                kind, said = found
+                {"wrong": wrong, "error": errors, "named": named}[kind].append(said)
+            continue
         if not want["ok"] or not want["fields"]:
-            refused.append(want.get("error") or "no result column")
+            refused.append(
+                {
+                    "sqlstate": want.get("sqlstate", ""),
+                    "error": want.get("error") or "no result column",
+                }
+            )
             continue
         accepted += 1
+        made += call_.answers or call_.form or not _nothing(want)
         answered += call_.answers
         formed_accepted += call_.sql in form_sqls
         routes.add("catalog" if classify(call_.sql) == "INTERCEPT" else "engine")
@@ -2907,9 +3212,16 @@ def _measure_calls(
         if differs is None and not call_.values and _all_null(want):
             # PostgreSQL's NULL holds Provisa to NULL: a wrong answer if not, never a pass.
             differs = compare(want, got, values=True, sql=call_.sql).difference
+        formed = False
         if differs is None and call_.form:
             formed, differs = form_check(fn.name, want, got)
-            checked += formed
+        # A volatile overload is never left not tested for being volatile: an answer whose type
+        # and NULL-ness are PostgreSQL's is its type and form checked (REQ-2167, amended
+        # 2026-11-04 (4)). One acting is tested by its side effect instead.
+        typed = differs is None and not call_.values and volatile_typed
+        if typed and not formed:
+            differs = _null_difference(want, got)
+        checked += formed or typed
         if differs is not None:
             group = decided_difference(fn.name, call_.sql, differs) or decided_answer(
                 fn.name, call_.sql, want, got
@@ -2930,11 +3242,24 @@ def _measure_calls(
         entry["unchecked"] = why
     if lost:
         entry["connection_lost"] = True
-    if accepted == 0:
+    why = _refused_for(fn, refused) if not made and refused else None
+    if why == function_probe.THE_CALL or (accepted == 0 and why is None):
         entry["outcome"] = "not_callable"
         entry["detail"] = (
-            f"PostgreSQL refuses the call: {refused[0]}" if refused else function_probe.NO_CALL
+            f"PostgreSQL refuses the call: {refused[0]['error']}"
+            if refused
+            else function_probe.NO_CALL
         )
+        if why is not None:
+            entry["refused_for"] = why
+            entry["refusal_sqlstates"] = sorted({r["sqlstate"] for r in refused})
+    elif accepted == 0:
+        # Refused for the values the check gave it: a gap in its samples, not tested.
+        entry["outcome"] = "not_checked"
+        entry["rules"] = []
+        entry["refused_for"] = why
+        entry["refusal_sqlstates"] = sorted({r["sqlstate"] for r in refused})
+        entry["unchecked"] = f"PostgreSQL refused every call for {why}: {refused[0]['error']}"
     elif wrong:
         entry["outcome"] = "wrong_answer"
         entry["detail"] = wrong[0]
@@ -3008,7 +3333,8 @@ _SCHEMA = catalog.FIXTURE_SCHEMA
 #: What the values PostgreSQL takes no literal of, and the objects a call reads, are made of: a
 #: table with a column default and statistics objects ANALYZE fills, a hash-partitioned table, a
 #: foreign-data wrapper with a server, a large object, a replication slot, a sequence that has
-#: answered, database statistics that were reset, so they have a time, and a row to share-lock.
+#: answered, database statistics that were reset, so they have a time, a row to share-lock, and a
+#: domain for domain_in.
 FIXTURE_SQL = (
     f"DROP TABLE IF EXISTS {_SCHEMA}.{STATISTICS_TABLE}, {_SCHEMA}.{PARTITIONED_TABLE}, "
     f"{_SCHEMA}.{MULTIXACT_TABLE}",
@@ -3043,6 +3369,8 @@ FIXTURE_SQL = (
     "SELECT pg_catalog.pg_stat_reset()",
     f"CREATE TABLE {_SCHEMA}.{MULTIXACT_TABLE} (id integer)",
     f"INSERT INTO {_SCHEMA}.{MULTIXACT_TABLE} VALUES (1)",
+    f"DROP DOMAIN IF EXISTS {_SCHEMA}.{FIXTURE_DOMAIN}",
+    f"CREATE DOMAIN {_SCHEMA}.{FIXTURE_DOMAIN} AS integer CHECK (VALUE > 0)",
 )
 
 
@@ -3280,7 +3608,7 @@ def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
         "outcome": entry["outcome"],
         "result": function_report.result_of(entry["outcome"], entry.get("rules", ())),
     }
-    for key in ("detail", "served_by", "column"):
+    for key in ("detail", "served_by", "column", "refused_for", "refusal_sqlstates"):
         if entry.get(key) is not None:
             kept[key] = entry[key]
     if entry.get("rules"):

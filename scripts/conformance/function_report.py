@@ -203,9 +203,11 @@ NOT_TESTED = "not_tested"
 def verdict(entry: dict[str, Any]) -> str:
     """An overload's one verdict on an engine: passed, skipped by design, failed or not tested
     (REQ-2167). A pass is passed. A decision's group is skipped by design, and so is an overload
-    PostgreSQL itself cannot call from SQL (INTERNAL FUNCTIONS: an internal argument, or a refusal
-    no server state changes). An answer the check did not compare, and one the leg did not reach,
-    is not tested (amended 2026-11-03, Not tested is its own count). Everything else failed:
+    PostgreSQL itself cannot call from SQL (INTERNAL FUNCTIONS: an internal argument; amended
+    2026-11-04, A call PostgreSQL cannot make is skipped by design: every call refused for the call
+    itself, ``refused_for`` read from the refusals' SQLSTATEs). An answer the check did not
+    compare, and one the leg did not reach, is not tested (amended 2026-11-03, Not tested is its
+    own count), as is one PostgreSQL refused for the values the check gave it. Everything else failed:
     refused by name with no decision behind it, a wrong answer, an engine error, and one
     PostgreSQL refuses for this server's state."""
     outcome = entry["outcome"]
@@ -216,8 +218,10 @@ def verdict(entry: dict[str, Any]) -> str:
     if outcome == BY_DESIGN:
         return SKIPPED_BY_DESIGN
     if outcome == NOT_CALLABLE:
-        detail = entry["detail"]
-        internal = detail == function_probe.NO_CALL or function_probe.proves_internal(detail)
+        internal = (
+            entry["detail"] == function_probe.NO_CALL
+            or entry.get("refused_for") == function_probe.THE_CALL
+        )
         return SKIPPED_BY_DESIGN if internal else FAILED
     return FAILED
 
