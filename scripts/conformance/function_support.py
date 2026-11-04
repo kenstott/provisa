@@ -2318,7 +2318,7 @@ GROUPS = {
 #: The requirement each group's decision is of, where it is not REQ-2167.
 GROUP_REQUIREMENTS = {SERVER_VERSION_GROUP: "REQ-579", TABLE_XML_GROUP: "REQ-1965, REQ-588"}
 
-#: The functions a decision skips by design whatever they answer, by name.
+#: The functions a decision skips by design whatever they answer, by name or ``_key``.
 DECIDED_FUNCTIONS = {
     **dict.fromkeys(
         (
@@ -2334,6 +2334,9 @@ DECIDED_FUNCTIONS = {
         STORAGE_GROUP,
     ),
     **dict.fromkeys(("pg_read_file", "pg_read_binary_file"), SERVER_FILES_GROUP),
+    # With missing_ok, pg_stat_file answers NULL as a server without the file does; the fixture
+    # server has it. Without, its refusal is the decision (_DECIDED_ERRORS).
+    "pg_stat_file(text, boolean)": SERVER_FILES_GROUP,
     **dict.fromkeys(
         (
             "pg_wal_replay_pause",
@@ -2817,8 +2820,9 @@ def measure_overload(
     ``SIDE_EFFECT_ENGINE`` and skipped by design elsewhere, and is not testable where no client can
     see its effect; a refusal a decision makes is skipped by design under it."""
     entry = _measure_calls(fn, family, pg, provisa, classify, enums)
-    if fn.name in DECIDED_FUNCTIONS:
-        return _decided_function(entry, DECIDED_FUNCTIONS[fn.name])
+    group = DECIDED_FUNCTIONS.get(_key(fn)) or DECIDED_FUNCTIONS.get(fn.name)
+    if group is not None:
+        return _decided_function(entry, group)
     if entry["outcome"] == "not_callable":
         return entry
     decided = DECIDED_REFUSALS.get(_key(fn)) or DECIDED_REFUSALS.get(fn.name)
