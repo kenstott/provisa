@@ -14,6 +14,7 @@
 // REQ-2104: the org secrets its code may read, picked by name.
 // REQ-2105: the monthly cap on what its calls to the LLM service cost.
 // REQ-2106: its non-secret settings, which its code reads through Provisa's services.
+// REQ-2200: a Go source is a Go module at an exact version, its package and its go.sum.
 
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -40,12 +41,13 @@ import { codeFieldsFromMapping, codeMappingJson, missingCodeFields } from "../co
 import { NO_CONNECTION_TYPES, SOURCE_TYPES } from "../constants";
 
 describe("the source pick list", () => {
-  it("offers Node.js and Python as code sources, with no connection fields", () => {
+  it("offers Node.js, Python and Go as code sources, with no connection fields", () => {
     expect(SOURCE_TYPES.filter((s) => s.category === "Code").map((s) => s.value)).toEqual([
       "node",
       "python",
+      "go",
     ]);
-    expect(NO_CONNECTION_TYPES.has("node") && NO_CONNECTION_TYPES.has("python")).toBe(true);
+    expect(["node", "python", "go"].every((t) => NO_CONNECTION_TYPES.has(t))).toBe(true);
   });
 });
 
@@ -71,6 +73,32 @@ describe("what a code source saves", () => {
       code_package: "acme-rates",
       lockfile_upload: "lock-sha-1",
       code_entry: "rates",
+    });
+  });
+
+  it("is a Go module at its version, its package and the go.sum given beside it", () => {
+    // REQ-2200: Go has one runtime, its package kind is gomod, and its entry is its package.
+    const fields = {
+      code_origin: "package",
+      code_runtime: "bun",
+      code_package: " github.com/acme/rates ",
+      code_version: "v1.2.0",
+      lockfile_upload: "lock-sha-1",
+      lockfile_filename: "go.sum",
+      code_entry: "feeds",
+    };
+    const mapping = JSON.parse(codeMappingJson("go", fields));
+    expect(mapping).toEqual({
+      runtime: "go",
+      code: { kind: "gomod", package: "github.com/acme/rates", version: "v1.2.0" },
+      lockfile: { filename: "go.sum", upload: "lock-sha-1" },
+      entry: "feeds",
+    });
+    expect(codeFieldsFromMapping(JSON.stringify(mapping))).toMatchObject({
+      code_origin: "package",
+      code_package: "github.com/acme/rates",
+      code_version: "v1.2.0",
+      code_entry: "feeds",
     });
   });
 
@@ -233,6 +261,18 @@ describe("the code source's fields", () => {
     renderInForm(<Harness type="python" onFields={() => {}} />);
     expect(screen.queryByTestId("code-runtime")).toBeNull();
     expect(screen.getByTestId("code-entry")).toBeInTheDocument();
+  });
+
+  it("offer a Go module and its package, with no runtime to pick", () => {
+    renderInForm(<Harness type="go" onFields={() => {}} />);
+    expect(screen.queryByTestId("code-runtime")).toBeNull();
+    expect(screen.getByTestId("code-origin")).toHaveValue("Go module");
+    expect(screen.getByTestId("code-package")).toHaveAttribute(
+      "placeholder",
+      "github.com/acme/rates",
+    );
+    expect(screen.getByTestId("code-version")).toHaveAttribute("placeholder", "v1.2.0");
+    expect(screen.getByTestId("code-entry")).toHaveAttribute("placeholder", "feeds");
   });
 
   it("upload the archive and keep its content hash", async () => {
