@@ -1,0 +1,50 @@
+# The dev container and its control-plane PostgreSQL (REQ-2205). No project name: the devcontainer
+# CLI names the project after the checkout, so two checkouts get two stacks.
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sleep infinity
+    volumes:
+      - ..:/workspaces/provisa:cached
+      # Linux builds kept off the bind mount, so a macOS or Windows host's own node_modules and
+      # cargo output in the same checkout are neither used nor overwritten.
+      - node-modules:/workspaces/provisa/provisa-ui/node_modules
+      - encoders-target:/workspaces/provisa/rust/encoders/target
+    environment:
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_DATABASE: provisa
+      PG_USER: provisa
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    # The control-plane image docker-compose.core.yml runs (tests/unit/test_devcontainer_pins.py).
+    image: pgvector/pgvector:pg16-trixie
+    command: >
+      postgres
+      -c wal_level=logical
+      -c max_replication_slots=10
+      -c max_wal_senders=10
+    environment:
+      POSTGRES_DB: provisa
+      POSTGRES_USER: provisa
+      # Reachable only on this stack's network (no published port), so it takes no password and
+      # the definition carries none.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - ../db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U provisa -d provisa"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  node-modules:
+  encoders-target:
+  pg-data:
