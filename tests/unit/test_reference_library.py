@@ -19,6 +19,7 @@ from __future__ import annotations
 import base64
 import re
 import types
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -190,6 +191,101 @@ def test_a_word_document_is_read_by_its_headings_with_its_tables_in_place():
 def test_a_pdf_or_word_file_that_is_not_one_is_refused_by_name(media, name, says):
     with pytest.raises(extract.UnreadableDocument, match=says):
         extract.read(b"not a document", media, name)
+
+
+ECFR = Path(__file__).resolve().parents[1] / "fixtures" / "ecfr"
+
+
+def test_ecfr_xml_is_read_by_its_section_heading():
+    """31 CFR 1010.311 as eCFR's API serves it (versioner/v1/full/<date>/title-31.xml)."""
+    document = extract.read(
+        (ECFR / "31-cfr-1010.311.xml").read_bytes(), extract.XML, "title-31.xml"
+    )
+    heading = "§ 1010.311 Filing obligations for reports of transactions in currency."
+    assert document.title == heading
+    assert [s.heading for s in document.sections] == [heading]
+    [paragraph] = document.sections[0].paragraphs
+    assert paragraph.startswith(
+        "Each financial institution other than a casino shall file a report of each deposit,"
+    )
+    assert paragraph.endswith("the purchase of postage or philatelic products.")
+    [passage] = cut(document)
+    assert passage.section == heading and passage.text == paragraph
+
+
+def test_ecfr_definitions_are_each_read_under_their_own_heading():
+    document = extract.read(
+        (ECFR / "31-cfr-1010.100.xml").read_bytes(), extract.XML, "title-31.xml"
+    )
+    sections = {s.heading: s.paragraphs for s in document.sections}
+    assert document.title == "§ 1010.100 General definitions."
+    assert sections["§ 1010.100 General definitions."][0].startswith(
+        "When used in this chapter and in forms prescribed under this chapter"
+    )
+    assert sections["§ 1010.100 General definitions — (i) Business day"] == [
+        "(i) Business day. As used in this chapter with respect to banks, business day means "
+        "that day, as normally communicated to its depository customers, on which a bank "
+        "routinely posts a particular transaction to its customer's account."
+    ]
+    institution = sections["§ 1010.100 General definitions — (t) Financial institution"]
+    assert institution[0].startswith("(t) Financial institution. Each agent, agency, branch")
+    assert "(3) A money services business as defined in paragraph (ff) of this section;" in (
+        institution
+    )
+    # a term defined inside another definition is headed by its own term
+    assert "§ 1010.100 General definitions — (6)(i) Card club" in sections
+    text = " ".join(p for paragraphs in sections.values() for p in paragraphs)
+    # eCFR's amendment links and source citation are not the regulation's text
+    assert "Link to an amendment" not in text and "75 FR 65812" not in text
+
+
+async def test_an_ecfr_api_address_is_read_into_passages_with_their_sections():
+    url = (
+        "https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml"
+        "?part=1010&section=1010.311"
+    )
+    media, charset = extract.media_type_of_response("text/xml", url)
+    content = library.Content((ECFR / "31-cfr-1010.311.xml").read_bytes(), media, charset, url)
+    read = await library._read(content, EMBEDDER)
+    assert read.title == "§ 1010.311 Filing obligations for reports of transactions in currency."
+    assert [p.section for p in read.passages] == [read.title]
+    assert read.passages[0].text.startswith("Each financial institution other than a casino")
+
+
+def test_xml_is_read_as_its_content_type_or_name_says():
+    assert extract.media_type_of_response("text/xml", "https://x/t.xml") == (extract.XML, None)
+    assert extract.media_type_of_response("application/xml; charset=utf-8", "https://x/t") == (
+        extract.XML,
+        "utf-8",
+    )
+    assert extract.media_type_of_name("title-31.XML") == extract.XML
+
+
+@pytest.mark.parametrize(
+    ("content", "says"),
+    [
+        (
+            b"<rss><channel><title>News</title></channel></rss>",
+            "'feed.xml' is XML the library does not read",
+        ),
+        (b"<DIV8><HEAD>x</HEAD><P>unclosed", "'feed.xml' is not XML that can be read"),
+        (b"<DIV8 N='1'><HEAD>Empty</HEAD></DIV8>", "'feed.xml' holds no text"),
+    ],
+)
+def test_xml_the_reader_cannot_read_is_refused_by_name(content, says):
+    with pytest.raises(extract.UnreadableDocument, match=says):
+        extract.read(content, extract.XML, "feed.xml")
+
+
+def test_ecfr_xml_does_not_resolve_its_entities(tmp_path):
+    secret = tmp_path / "secret.txt"
+    secret.write_text("do not read me")
+    content = (
+        f'<?xml version="1.0"?><!DOCTYPE DIV8 [<!ENTITY x SYSTEM "file://{secret}">]>'
+        "<DIV8 N='1'><HEAD>H</HEAD><P>before &x; after</P></DIV8>"
+    ).encode()
+    document = extract.read(content, extract.XML, "t.xml")
+    assert "do not read me" not in " ".join(document.sections[0].paragraphs)
 
 
 def test_passages_keep_to_one_section_and_a_long_paragraph_is_cut_at_its_sentences():
