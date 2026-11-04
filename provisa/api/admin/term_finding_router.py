@@ -26,7 +26,7 @@ Curation's rules hold throughout (glossary_router.py): the queue takes ``glossar
 added only in domains the caller curates; a draft merges only into a term the caller may change.
 """
 
-# Requirements: REQ-2179, REQ-2185
+# Requirements: REQ-2179, REQ-2185, REQ-2201
 
 from __future__ import annotations
 
@@ -373,6 +373,22 @@ async def start_scan(request: Request) -> dict:
     _launch(run_scan(pool, scan_id, document.id, document.title, call))
     assert started is not None
     return {"scan": _scan(started), "document": _document(document)}
+
+
+@router.post("/carried-scans")
+async def load_carried_scans(request: Request) -> dict:
+    """REQ-2201: load the scans the bundle of the demo this server was started as carries, as its
+    hosted template loads them (a bundled demo's setup calls this in place of scanning)."""
+    glossary._require_glossary_rw(request)
+    require_active_org_id(request)
+    from provisa.core.demo import started_demo_directory
+    from provisa.term_finding.carry import load_bundle_scans
+
+    async with _pool().acquire() as conn, conn.transaction():
+        try:
+            return {"loaded": await load_bundle_scans(conn, started_demo_directory())}
+        except ValueError as exc:
+            raise ApiError(409, "term_finding.carried_scans_refused", str(exc)) from exc
 
 
 @router.get("/scans")

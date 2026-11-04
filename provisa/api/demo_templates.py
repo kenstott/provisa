@@ -34,7 +34,7 @@ gives (the bundle's stores.env). Without ``PROVISA_DEMO_BUNDLES`` the demos are 
 under ``named_demos_dir()`` -- a source checkout's, for development, and the bundle build's own.
 """
 
-# Requirements: REQ-2006, REQ-1858, REQ-1919, REQ-2049
+# Requirements: REQ-2006, REQ-1858, REQ-1919, REQ-2049, REQ-2201
 
 from __future__ import annotations
 
@@ -224,6 +224,49 @@ async def profile_template(demo: "PublishedDemo", org_id: str) -> list[str]:
     return []
 
 
+def demo_scans(directory: Path) -> list[str]:
+    """The documents demo ``directory``'s setup.yaml scans for terms (REQ-2201): each ``scan``
+    step's URL, in order; none when it has no setup.yaml."""
+    path = directory / "setup.yaml"
+    if not path.is_file():
+        return []
+    steps = (yaml.safe_load(path.read_text()) or {}).get("steps") or []
+    return [step["scan"] for step in steps if "scan" in step]
+
+
+async def scan_template(demo: "PublishedDemo", org_id: str) -> list[str]:
+    """Load the demo's scans for terms into its template (REQ-2201): the library documents its
+    setup scanned and the scans of them with their drafts, which a sandbox is cloned with
+    (env_copy.copy_term_scans). They are the bundle build's, carried in the bundle
+    (provisa.term_finding.carry): a scan asks the org's AI model for minutes, and the demo's
+    tour opens the one done ahead. Returns what kept them from loading; empty when the demo scans
+    nothing or they loaded."""
+    import logging
+
+    from provisa.api.app import state
+    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.term_finding.carry import load_scans, scans_path
+
+    log = logging.getLogger(__name__)
+    if not demo_scans(demo.directory):
+        return []
+    path = scans_path(demo.directory)
+    if not path.is_file():
+        return [f"the bundle carries no scans ({path.name}): rebuild it"]
+    token = set_current_org(org_id)
+    try:
+        model_db = state.model_db
+        assert model_db is not None
+        async with model_db.acquire() as conn, conn.transaction():
+            loaded = await load_scans(conn, path)
+    except ValueError as exc:
+        return [str(exc)]
+    finally:
+        reset_current_org(token)
+    log.info("demo template %s: scans of %s loaded", demo.name, ", ".join(loaded))
+    return []
+
+
 def demo_environments(directory: Path) -> list[dict[str, str]]:
     """The environments demo ``directory``'s setup.yaml creates (REQ-2053): each ``environment``
     step's ``{name, data_mode}``, in order; none when it has no setup.yaml."""
@@ -356,13 +399,20 @@ async def rebuild_template(directory: Path, seed: Any, conn: Any, engine: Any) -
     had none. A bundle of a demo that profiles and carries no runs is refused by name."""
     from provisa.core.config_loader import rebuild_from_config
     from provisa.profiler.carry import results_path
+    from provisa.term_finding.carry import scans_path
 
     carried = None
     if demo_profilers(directory):
         carried = results_path(directory)
         if not carried.is_file():
             raise ValueError(f"the bundle carries no profile runs ({carried.name}): rebuild it")
-    return await rebuild_from_config(seed, conn, engine, carried_runs=carried)
+    # REQ-2201: and its scans for terms, whose drafts name the glossary terms the rebuild makes.
+    scans = None
+    if demo_scans(directory):
+        scans = scans_path(directory)
+        if not scans.is_file():
+            raise ValueError(f"the bundle carries no scans ({scans.name}): rebuild it")
+    return await rebuild_from_config(seed, conn, engine, carried_runs=carried, carried_scans=scans)
 
 
 async def write_declared_settings(model_db: Any, seed: Any) -> None:  # REQ-2006, REQ-2057
@@ -1022,7 +1072,35 @@ async def warm_ready(pool, demo: PublishedDemo) -> bool:
             "; ".join(unheld),
         )
         return False
+    # REQ-2201: and the scans for terms its bundle carries, as its profile runs.
+    unheld = await unheld_term_scans(demo)
+    if unheld:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "demo template %s: not served as built, its scans are not held: %s",
+            demo.name,
+            "; ".join(unheld),
+        )
+        return False
     return True
+
+
+async def unheld_term_scans(demo: PublishedDemo) -> list[str]:
+    """The scans for terms ``demo``'s bundle carries that its template does not hold, passages
+    and drafts all (provisa.term_finding.carry.unheld_scans); empty when it holds every one or
+    scans nothing."""
+    from provisa.api.admin.orgs_router import _pool
+    from provisa.core.environments import org_schema
+    from provisa.term_finding.carry import scans_path, unheld_scans
+
+    if not demo_scans(demo.directory):
+        return []
+    path = scans_path(demo.directory)
+    if not path.is_file():
+        return [f"the bundle carries no scans ({path.name}): rebuild it"]
+    async with _pool().acquire() as conn:
+        return await unheld_scans(conn, path, org_schema(demo.template_org))
 
 
 async def unheld_profile_runs(demo: PublishedDemo) -> list[str]:
@@ -1420,6 +1498,11 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         failed_runs = await profile_template(demo, org_id)
         if failed_runs:
             log.error("demo template %s: profile runs not loaded: %s", demo.name, failed_runs)
+            return False
+        # REQ-2201: and its scans for terms, as its profile runs.
+        failed_scans = await scan_template(demo, org_id)
+        if failed_scans:
+            log.error("demo template %s: scans not loaded: %s", demo.name, failed_scans)
             return False
     token = set_current_org(org_id)
     try:
