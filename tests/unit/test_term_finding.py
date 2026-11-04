@@ -938,6 +938,198 @@ def _real_client(monkeypatch, vendor: _Vendor, guard: _Guard | None = None) -> A
     return client
 
 
+# -- a document too large to resolve in one answer ------------------------------------------------
+
+#: A definitions section as long as 31 CFR 1010.100: one defined term per passage.
+DEFINED = [
+    scan.Passage(n, "1010.100", None, f"Term {n} means the regulated thing numbered {n}.")
+    for n in range(180)
+]
+#: A group as the model writes it: a sense, a synthesized definition and its mentions.
+SYNTHESIS = "A regulated thing the definitions section names, as its passages explain it. " * 3
+
+
+def _definitions_answer(prompt: str) -> str:
+    """A model's answer to a reading, a resolution or a joining of :data:`DEFINED`."""
+    if "Group the mentions" in prompt:
+        return json.dumps(
+            [
+                {
+                    "name": name,
+                    "sense": "a regulated thing",
+                    "mentions": [int(n)],
+                    "variants": [],
+                    "conflicts": [],
+                    "definition": SYNTHESIS,
+                    "uses": [int(n)],
+                }
+                for n, name in re.findall(r"^M(\d+) \[[^]]+\] '([^']+)'", prompt, re.MULTILINE)
+            ]
+        )
+    if "one concept" in prompt and "G0 " in prompt:
+        return "[]"
+    return json.dumps(
+        [
+            {
+                "passage": n,
+                "name": f"term {n}",
+                "category": "business concept",
+                "sense": "s",
+                "quote": DEFINED[n].text,
+                "explicit": False,
+                "variants": [],
+            }
+            for n in _read(prompt)
+        ]
+    )
+
+
+class _Spending(_Vendor):
+    """A vendor whose answer costs a token for every :data:`model.CHARS_PER_TOKEN` characters,
+    stopping at ``max_tokens`` with ``finish_reason='length'`` as a real one does."""
+
+    chars_per_token = model.CHARS_PER_TOKEN
+
+    def __init__(self) -> None:
+        super().__init__(_definitions_answer)
+        self.cut: list[int] = []
+
+    def create(self, *, model: str, messages: list[dict], max_tokens: int) -> Any:
+        answered = super().create(model=model, messages=messages, max_tokens=max_tokens)
+        choice = answered.choices[0]
+        held = max_tokens * self.chars_per_token
+        if len(choice.message.content) > held:
+            self.cut.append(max_tokens)
+            choice.message.content = choice.message.content[:held]
+            choice.finish_reason = "length"
+        return answered
+
+
+async def test_a_document_whose_resolution_outgrows_one_answer_is_resolved_in_parts(monkeypatch):
+    """Demo bundles 41882977548: 31 CFR 1010.100's mentions resolved in one call came back cut
+    off at 8192 output tokens. Each resolution call is sized to fit its answer."""
+    vendor = _Spending()
+    monkeypatch.setattr("aisuite.Client", vendor)
+    config = {"ai_models": {model.OPERATION: {"vendor": "anthropic", "model": "fake-model"}}}
+    client = ProvisaLLMClient(model.OPERATION, config=config, api_keys={"anthropic": "k"})
+    call = model.Held(client, _Guard(budget=False), None)
+    result = await scan.run("31 CFR 1010.100", DEFINED, call, _Steps())
+    assert scan.RESOLVE_MAX_TOKENS not in vendor.cut
+    assert result.mentions == len(DEFINED)
+    assert [c.name for c in result.candidates] == [f"term {n}" for n in range(len(DEFINED))]
+    assert result.left_out.unresolved == 0
+    assert result.calls == vendor.asked
+
+
+def _mention(id: int, name: str, *variants: str) -> scan.Mention:
+    return scan.Mention(
+        id, id, name, "role", "s", "q", False, tuple(scan.Variant(v, "form") for v in variants)
+    )
+
+
+def test_mentions_named_alike_are_resolved_in_one_part():
+    mentions = [
+        _mention(0, "customer"),
+        _mention(1, "kyc"),
+        _mention(2, "the customers"),
+        _mention(3, "know your customer", "KYC"),
+        _mention(4, "ledger"),
+    ]
+    parts = scan.resolution_batches(mentions, limit=2)
+    assert [[m.id for m in part] for part in parts] == [[0, 2], [1, 3], [4]]
+
+
+def test_a_set_named_alike_larger_than_a_part_is_a_part_of_its_own():
+    mentions = [_mention(0, "ledger"), *(_mention(n, "account") for n in range(1, 5))]
+    parts = scan.resolution_batches(mentions, limit=2)
+    assert [[m.id for m in part] for part in parts] == [[0], [1, 2, 3, 4]]
+
+
+class _Parts(_Reader):
+    """A model that resolves each mention into a group of its own and joins the groups the
+    joining answer names."""
+
+    def __init__(self, joins: list[list[int]], *, cut_join: bool = False):
+        super().__init__()
+        self.joins = joins
+        self.cut_join = cut_join
+
+    async def __call__(self, prompt: str, max_tokens: int) -> str:
+        if "one concept" not in prompt or not prompt.count("\nG0 "):
+            return await super().__call__(prompt, max_tokens)
+        self.asked.append(prompt)
+        if self.cut_join:
+            raise scan.AnswerCutOff(
+                f"fake:model stopped at its limit of {max_tokens} output tokens"
+            )
+        return json.dumps(self.joins)
+
+
+async def test_concepts_named_differently_in_different_parts_are_joined(monkeypatch):
+    monkeypatch.setattr(scan, "RESOLVE_BATCH_MENTIONS", 2)
+    monkeypatch.setattr(
+        scan, "resolution_batches", lambda m: [list(m[i : i + 2]) for i in range(0, len(m), 2)]
+    )
+
+    class _Each(_Parts):
+        async def __call__(self, prompt: str, max_tokens: int) -> str:
+            if "Group the mentions" in prompt:
+                self.asked.append(prompt)
+                return json.dumps(
+                    [
+                        {"name": f"concept {n}", "sense": "s", "mentions": [int(n)]}
+                        for n in re.findall(r"^M(\d+) ", prompt, re.MULTILINE)
+                    ]
+                )
+            return await super().__call__(prompt, max_tokens)
+
+    reader, steps = _Each([[0, 3], [1, 4, 0]]), _Steps()
+    result = await scan.run("t", PARTS, reader, steps)
+    assert [(c.name, [p["ordinal"] for p in c.passages]) for c in result.candidates] == [
+        ("concept 0", [0, 3]),
+        ("concept 1", [1, 4]),
+        ("concept 2", [2]),
+    ]
+    assert {"text": "concept 3", "kind": "alternative name", "keep": True} in (
+        result.candidates[0].variants
+    )
+    assert steps.heard[-4:] == [("merging", 0, 0)] * 4
+    assert result.calls == len(reader.asked) == 1 + 3 + 1
+
+
+async def test_a_cut_off_part_or_joining_fails_saying_which(monkeypatch):
+    monkeypatch.setattr(
+        scan, "resolution_batches", lambda m: [list(m[i : i + 3]) for i in range(0, len(m), 3)]
+    )
+    with pytest.raises(scan.ScanFailed) as failed:
+        await scan.run("t", PARTS, _Reader(cut_merge=True), _Steps())
+    assert str(failed.value) == (
+        "the model's answer to the mentions' resolution (part 1 of 2) was cut off: "
+        "fake:model stopped at its limit of 8192 output tokens"
+    )
+    with pytest.raises(scan.ScanFailed) as failed:
+        await scan.run("t", PARTS, _Parts([], cut_join=True), _Steps())
+    assert str(failed.value) == (
+        "the model's answer to the concepts' joining was cut off: "
+        "fake:model stopped at its limit of 8192 output tokens"
+    )
+
+
+def test_a_joining_answer_keeps_each_group_in_its_first_set():
+    groups = [
+        scan.Group(f"g{n}", "s", (n,), (), (), "made up" if n == 2 else None, (n,))
+        for n in range(4)
+    ]
+    left_out = scan.LeftOut()
+    joined = scan.read_joins(json.dumps([[0, 2], [2, 3], "x", [9]]), groups, left_out)
+    assert [(g.name, g.mentions, g.definition, g.uses) for g in joined] == [
+        ("g0", (0, 2), "made up", (2,)),
+        ("g1", (1,), None, (1,)),
+        ("g3", (3,), None, (3,)),
+    ]
+    assert left_out.malformed == 1
+
+
 def test_a_scan_outlives_the_request_and_ends_with_its_candidates(api, monkeypatch):
     """The real path but for the vendor: the request's loop stops when it has answered."""
     vendor = _Vendor()
