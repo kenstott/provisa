@@ -61,7 +61,17 @@ def _where(sql: str) -> str:
 def _rows(model, compiled) -> list[tuple]:
     """The compiled statement governed, lowered and run on DuckDB with its bound values."""
     _schema, ctx = model
-    tables = [{"id": 1, "domain_id": "sales", "columns": []}]
+    tables = [
+        {
+            "id": 1,
+            "domain_id": "sales",
+            # REQ-039: the table is read through a relation of its registered columns.
+            "columns": [
+                {"column_name": name, "data_type": dtype, "visible_to": ["admin"]}
+                for name, dtype in _COLUMNS
+            ],
+        }
+    ]
     role = {"id": "admin", "domain_access": ["*"], "capabilities": []}
     gov = build_governance_context("admin", RLSContext(rules={}), {}, ctx, tables, role, [])
     lowered = lower_to_catalog_physical(apply_governance(compiled.sql, gov), ctx)

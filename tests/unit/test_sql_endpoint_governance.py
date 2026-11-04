@@ -238,8 +238,8 @@ class TestSQLGovernanceApplied:
                 "schema_name": "public",
                 "table_name": "orders",
                 "columns": [
-                    {"column_name": "id", "data_type": "integer", "visible_to": ["org_admin"]},
-                    {"column_name": "status", "data_type": "varchar", "visible_to": ["org_admin"]},
+                    {"column_name": "id", "data_type": "integer", "visible_to": ["analyst"]},
+                    {"column_name": "status", "data_type": "varchar", "visible_to": ["analyst"]},
                 ],
             }
         ]
@@ -290,6 +290,7 @@ class TestSQLGovernanceApplied:
         gov = GovernanceContext(
             rls_rules={1: "status = 'active'"},
             table_map={"orders": 1},
+            all_columns={1: [("id", "integer"), ("status", "varchar")]},
         )
         sql = "SELECT id FROM orders"
         result = apply_governance(sql, gov)
@@ -303,6 +304,7 @@ class TestSQLGovernanceApplied:
         gov = GovernanceContext(
             rls_rules={99: "region = 'us'"},  # table_id 99 not in table_map
             table_map={"orders": 1},
+            all_columns={1: [("id", "integer")]},
         )
         sql = "SELECT id FROM orders"
         result = apply_governance(sql, gov)

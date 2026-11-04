@@ -492,6 +492,22 @@ def _meta_context(*names: str):
     return ctx
 
 
+def _meta_tables(ctx, columns: list[str]) -> list[dict]:
+    """The catalog views of ``ctx`` as governance is handed a table, each registering
+    ``columns``: a view is read through a relation of its registered columns (REQ-039)."""
+    return [
+        {
+            "id": meta.table_id,
+            "domain_id": META_DOMAIN_ID,
+            "source_id": meta.source_id,
+            "schema_name": meta.schema_name,
+            "table_name": meta.table_name,
+            "columns": [{"column_name": c, "visible_to": []} for c in columns],
+        }
+        for meta in ctx.tables.values()
+    ]
+
+
 _ROLE = {"id": "analyst", "capabilities": [], "domain_access": ["sales"]}
 _TABLES = [
     {
@@ -561,6 +577,17 @@ def test_a_whole_catalog_role_is_not_scoped():
     assert 10 not in gov.rls_rules
 
 
+def _relation_wheres(governed: str) -> dict[str, exp.Expression]:
+    """Each governed relation's row rule (the WHERE of the derived table put in a view's place),
+    by the alias the statement reads the view under."""
+    tree = sqlglot.parse_one(governed, read="postgres")
+    return {
+        sub.alias: sub.this.args["where"].this
+        for sub in tree.find_all(exp.Subquery)
+        if isinstance(sub.this, exp.Select) and sub.this.args.get("where") is not None
+    }
+
+
 @pytest.mark.parametrize(
     ("view", "column"),
     (
@@ -575,13 +602,19 @@ def test_a_scope_survives_governance_on_an_aliased_read(view, column):
 
     ctx = _meta_context(view)
     gov = build_governance_context(
-        "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
+        "analyst",
+        SimpleNamespace(rules={}, write_rules={}),
+        {},
+        ctx,
+        [*_TABLES, *_meta_tables(ctx, [column])],
+        _ROLE,
+        [],
     )
     governed = apply_governance(f"SELECT c.{column} FROM meta.{view} AS c", gov)
-    tree = sqlglot.parse_one(governed, read="postgres")
     assert "COALESCE" in governed and "provisa.catalog.scope" in governed
-    assert tree.args["where"] is not None
-    for reference in tree.args["where"].find_all(exp.Column):
+    # REQ-039: the scope is the row rule of the view's governed relation, read under its alias.
+    (where,) = _relation_wheres(governed).values()
+    for reference in where.find_all(exp.Column):
         assert reference.table == "c", reference.sql()
 
 
@@ -591,15 +624,23 @@ def test_a_scope_is_qualified_on_a_join_of_two_views():
 
     ctx = _meta_context("catalog_pg_class", "catalog_pg_namespace")
     gov = build_governance_context(
-        "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
+        "analyst",
+        SimpleNamespace(rules={}, write_rules={}),
+        {},
+        ctx,
+        [*_TABLES, *_meta_tables(ctx, ["oid", "relname", "relnamespace"])],
+        _ROLE,
+        [],
     )
     governed = apply_governance(
         "SELECT c.relname FROM meta.catalog_pg_class c "
         "JOIN meta.catalog_pg_namespace n ON n.oid = c.relnamespace",
         gov,
     )
-    where = sqlglot.parse_one(governed, read="postgres").args["where"]
-    assert {reference.table for reference in where.find_all(exp.Column)} == {"c"}
+    wheres = _relation_wheres(governed)
+    assert "c" in wheres
+    for alias, where in wheres.items():
+        assert {reference.table for reference in where.find_all(exp.Column)} == {alias}
 
 
 def _schema_input_with_views():
