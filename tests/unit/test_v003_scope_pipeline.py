@@ -1,0 +1,48 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""pg_catalog.unnest(...) is the client table function it is in the pgwire pipeline's relation
+check too (REQ-2204; J595 triage cause 8): on a catalog statement a role without every domain
+is not refused it as an inaccessible table; on any other statement it is refused."""
+
+# Requirements: REQ-2204
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from provisa.pgwire.catalog_route import current_request
+from tests.unit.test_view_inputs_in_service import _OVER_A_SERVED_TABLE, _build, _view
+
+pytestmark = pytest.mark.unit
+
+_SQL = 'SELECT o.id, x FROM "sales"."orders" o, pg_catalog.unnest(ARRAY[1]) x'
+
+
+async def _govern() -> None:
+    from provisa.pgwire import _pipeline
+
+    await _pipeline.govern_statement(_SQL, "r")
+
+
+async def test_pg_catalog_unnest_is_admitted_on_a_catalog_statement(monkeypatch):
+    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
+    token = current_request.set(SimpleNamespace(role_id="r"))  # type: ignore[arg-type]
+    try:
+        await _govern()
+    finally:
+        current_request.reset(token)
+
+
+async def test_pg_catalog_unnest_is_refused_on_any_other_statement(monkeypatch):
+    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
+    with pytest.raises(PermissionError, match="UNNEST|unnest"):
+        await _govern()
