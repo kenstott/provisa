@@ -31,7 +31,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from provisa.api.admin.capabilities import has_capability_request, require_capability_request
+from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
 
 router = APIRouter(prefix="/admin", tags=["admin", "erd"])
@@ -75,13 +75,6 @@ def _db() -> Any:
     if state.model_db is None:
         raise ApiError(503, "erd.database_unavailable", "Database unavailable")
     return state.model_db
-
-
-def _require_read(request: Request) -> None:
-    """The ERD is a view of the Tables and Relationships pages, so whoever holds the right to one
-    of them reads its layouts."""
-    if not has_capability_request(request, "create_relationship"):
-        require_capability_request(request, "table_registration")
 
 
 def _require_write(request: Request) -> None:
@@ -144,8 +137,6 @@ def _answer(layout: dict[str, Any]) -> dict[str, Any]:
 async def list_layouts(request: Request) -> dict:
     from provisa.core.repositories import erd_layout
 
-    _require_read(request)
-
     async with _db().acquire() as conn:
         saved = await erd_layout.names(conn)
     return {
@@ -163,8 +154,6 @@ async def list_layouts(request: Request) -> dict:
 @router.get("/erd-layouts/{name}")
 async def get_layout(request: Request, name: str) -> dict:
     from provisa.core.repositories import erd_layout
-
-    _require_read(request)
 
     async with _db().acquire() as conn:
         layout = await erd_layout.read(conn, name, await _readable(conn, request))

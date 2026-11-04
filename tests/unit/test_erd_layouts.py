@@ -228,18 +228,18 @@ async def test_a_layout_is_deleted_and_a_missing_one_is_not_found(control_plane,
 
 
 @pytest.mark.asyncio
-async def test_a_caller_without_the_modelling_right_cannot_read_or_change_layouts(
+async def test_a_caller_without_the_modelling_right_reads_layouts_but_cannot_change_them(
     control_plane, monkeypatch
 ):
-    async with _model(control_plane, monkeypatch, held=frozenset({"query_development"})) as (
-        _db,
-        ids,
-        _reads,
-    ):
+    async with _model(control_plane, monkeypatch) as (_db, ids, _reads):
         request = cast(Any, _request())
+        await router_mod.save_layout(request, "L", _body(ids))
+        monkeypatch.setattr(
+            capmod, "_resolved_capabilities", lambda _identity, _state: {"query_development"}
+        )
+        assert [r["name"] for r in (await router_mod.list_layouts(request))["layouts"]] == ["L"]
+        assert (await router_mod.get_layout(request, "L"))["name"] == "L"
         for refused_call in (
-            router_mod.list_layouts(request),
-            router_mod.get_layout(request, "L"),
             router_mod.save_layout(request, "L", _body(ids)),
             router_mod.delete_layout(request, "L"),
         ):
@@ -247,22 +247,6 @@ async def test_a_caller_without_the_modelling_right_cannot_read_or_change_layout
                 await refused_call
             assert refused.value.status_code == 403
             assert refused.value.code == "auth.missing_capability"
-
-
-@pytest.mark.asyncio
-async def test_the_relationships_right_reads_layouts_but_does_not_change_them(
-    control_plane, monkeypatch
-):
-    async with _model(control_plane, monkeypatch) as (_db, ids, _reads):
-        request = cast(Any, _request())
-        await router_mod.save_layout(request, "L", _body(ids))
-        monkeypatch.setattr(
-            capmod, "_resolved_capabilities", lambda _identity, _state: {"create_relationship"}
-        )
-        assert [r["name"] for r in (await router_mod.list_layouts(request))["layouts"]] == ["L"]
-        with pytest.raises(ApiError) as refused:
-            await router_mod.delete_layout(request, "L")
-        assert refused.value.code == "auth.missing_capability"
 
 
 @pytest.mark.asyncio
