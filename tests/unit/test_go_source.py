@@ -9,14 +9,12 @@
 # permission from the copyright holder.
 
 """A Go source (REQ-2200): its exported functions read from their doc comments and signatures
-by the Go reader, and judged by the shared rules. The reader is compiled here by the go command
-on PATH, its dependency fetched from the public module proxy and checked against its go.sum."""
+by the Go reader, and judged by the shared rules. The reader is compiled here by the pinned Go
+toolchain, its dependency fetched from the public module proxy and checked against its go.sum."""
 
 # Requirements: REQ-2200
 from __future__ import annotations
 
-import shutil
-import subprocess
 import textwrap
 from pathlib import Path
 
@@ -34,8 +32,10 @@ from provisa.codesource.manifest import (
     Scalar,
     read_manifest,
 )
+from provisa.runtime_deps.code_runtimes import RUNTIMES, CodeRuntimeResolver
 from provisa.golang.reader import (
     READER,
+    check_go_line,
     ensure_reader,
     go_environment,
     read_code,
@@ -49,17 +49,15 @@ FIXTURE = Path(__file__).parent.parent / "fixtures" / "go_source"
 
 @pytest.fixture(scope="module")
 def go() -> Path:
-    found = shutil.which("go")
-    assert found, "the Go reader is compiled by a go toolchain, and none is on PATH"
-    return Path(found).resolve()
+    """The pinned Go toolchain, fetched and checked on first use."""
+    return CodeRuntimeResolver().resolve("go")
 
 
 @pytest.fixture(scope="module")
 def reader(go: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
-    version = subprocess.run(
-        [str(go), "env", "GOVERSION"], capture_output=True, text=True, check=True
-    ).stdout.strip()
-    return ensure_reader(go, version, tmp_path_factory.mktemp("cache"), "https://proxy.golang.org")
+    return ensure_reader(
+        go, RUNTIMES["go"].version, tmp_path_factory.mktemp("cache"), "https://proxy.golang.org"
+    )
 
 
 def _read(reader: Path, go: Path, code: Path, tmp_path: Path, package: str = ".") -> Manifest:
@@ -236,7 +234,7 @@ def test_a_tag_is_a_line_of_its_own_and_prose_that_names_one_is_not(reader, go, 
     assert manifest.export("Loaded").description == "Loaded is one."
 
 
-def test_a_stream_is_an_iterator_function(reader, go, tmp_path):
+def test_a_stream_yields_a_row_and_an_error_and_a_table_may_be_an_iterator(reader, go, tmp_path):
     code = _code(
         tmp_path,
         """
@@ -247,13 +245,16 @@ def test_a_stream_is_an_iterator_function(reader, go, tmp_path):
         type Row struct{ ID int64 }
 
         // @stream
-        func Rows() iter.Seq[Row] { return nil }
-
-        // @stream
         func Failing() iter.Seq2[Row, error] { return nil }
 
         // @table
         func Listed() iter.Seq2[Row, error] { return nil }
+
+        // @table
+        func Plain() iter.Seq[Row] { return nil }
+
+        // @stream
+        func Rows() iter.Seq[Row] { return nil }
 
         // @stream
         func Paired() iter.Seq2[Row, string] { return nil }
@@ -262,20 +263,74 @@ def test_a_stream_is_an_iterator_function(reader, go, tmp_path):
     with pytest.raises(ManifestRefused) as refused:
         _read(reader, go, code, tmp_path)
     assert refused.value.problems == [
+        "Rows: @stream returns iter.Seq2[T, error]",
         "Paired (row): the type iter.Seq2[Row, string] (its second value is not an error) cannot "
         "be mapped",
         "Paired: its rows are not objects; a row is an object whose fields are columns",
     ]
     (fixed := code / "rows.go").write_text(
-        fixed.read_text().replace("iter.Seq2[Row, string]", "iter.Seq2[Row, error]")
+        fixed.read_text()
+        .replace("func Rows() iter.Seq[Row]", "func Rows() iter.Seq2[Row, error]")
+        .replace("iter.Seq2[Row, string]", "iter.Seq2[Row, error]")
     )
     manifest = _read(reader, go, code, tmp_path)
     assert [(e.name, e.kind, e.returns) for e in manifest.exports] == [
-        ("Rows", "stream", Named("Row")),
         ("Failing", "stream", Named("Row")),
         ("Listed", "table", Named("Row")),
+        ("Plain", "table", Named("Row")),
+        ("Rows", "stream", Named("Row")),
         ("Paired", "stream", Named("Row")),
     ]
+
+
+def test_a_parameter_beside_the_context_and_the_inputs_is_refused_by_name(reader, go, tmp_path):
+    code = _code(
+        tmp_path,
+        """
+        package rows
+
+        import "context"
+
+        type Row struct{ ID int64 }
+
+        type In struct{ Region string }
+
+        // @table
+        func Rows(ctx context.Context, in In) ([]Row, error) { return nil, nil }
+
+        // @table
+        func Extra(ctx context.Context, in In, limit int) ([]Row, error) { return nil, nil }
+
+        // @table
+        func Scalar(region string) ([]Row, error) { return nil, nil }
+
+        // @table
+        func Late(in In, ctx context.Context) ([]Row, error) { return nil, nil }
+        """,
+    )
+    with pytest.raises(ManifestRefused) as refused:
+        _read(reader, go, code, tmp_path)
+    assert refused.value.problems == [
+        "Extra: a @table function takes (inputs, context) -- an object whose fields are its "
+        "inputs, and a ReadContext, either left out -- not (in, limit)",
+        "Scalar(region): its inputs are an object whose fields are its inputs, a dataclass, a "
+        "TypedDict or an interface",
+        "Late: a @table function takes (inputs, context) -- an object whose fields are its "
+        "inputs, and a ReadContext, either left out -- not (in, ctx)",
+    ]
+
+
+def test_a_go_line_newer_than_the_pinned_toolchain_is_refused_by_name(tmp_path):
+    (tmp_path / "go.mod").write_text("module example.com/rows\n\ngo 1.99.0\n")
+    with pytest.raises(BundleRefused) as refused:
+        check_go_line(tmp_path, "1.27.3")
+    assert refused.value.code == "codesource.go_too_new"
+    assert "asks for go 1.99.0, and this Provisa's Go is 1.27.3" in str(refused.value)
+    (tmp_path / "go.mod").write_text("module example.com/rows\n\ngo 1.27\n")
+    check_go_line(tmp_path, "1.27.3")
+    (tmp_path / "go.mod").unlink()
+    with pytest.raises(BundleRefused, match="the code has no go.mod"):
+        check_go_line(tmp_path, "1.27.3")
 
 
 def test_code_that_does_not_type_check_is_refused_with_its_error(reader, go, tmp_path):
@@ -405,14 +460,20 @@ def _export(name: str, tags: list[str], returns: dict, parameters=()) -> dict:
     }
 
 
-def test_go_rules_take_a_synchronous_iterator_as_a_stream_and_no_standard_tags():
+def test_go_rules_take_an_iterator_yielding_errors_as_a_stream_and_no_standard_tags():
     row = {"kind": "ref", "name": "Row"}
     raw = {
         "exports": [
             _export(
                 "Rows",
                 ["stream"],
-                {"kind": "iterable", "async": False, "generator": True, "element": row},
+                {
+                    "kind": "iterable",
+                    "async": False,
+                    "generator": True,
+                    "errors": True,
+                    "element": row,
+                },
             )
         ],
         "types": {"Row": {"name": "Row", "fields": []}},

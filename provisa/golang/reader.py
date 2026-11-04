@@ -29,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess  # nosec B404 - argv-list invocation only, never shell=True
 import tempfile
@@ -37,9 +38,33 @@ from pathlib import Path
 
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.manifest import GO_RULES, Manifest, read_manifest
+from provisa.runtime_deps.code_runtimes import RUNTIMES
 
 READER = Path(__file__).with_name("reader")
 _READER_SOURCES = ("go.mod", "go.sum", "main.go")
+_GO_LINE = re.compile(r"^go\s+(\d+(?:\.\d+){0,2})\s*$", re.MULTILINE)
+
+
+def _version(text: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in text.split("."))
+
+
+def check_go_line(code: Path, toolchain: str | None = None) -> None:
+    """Refuse code whose ``go.mod`` asks for a newer Go than the pinned toolchain (``toolchain``,
+    the pin's by default): the toolchain runs with GOTOOLCHAIN=local and fetches no other. Code
+    without a ``go.mod`` is refused too: a Go source is a module."""
+    pinned = toolchain or RUNTIMES["go"].version
+    module = code / "go.mod"
+    if not module.is_file():
+        raise BundleRefused("no_go_mod", "the code has no go.mod: a Go source is a module")
+    found = _GO_LINE.search(module.read_text())
+    if found is not None and _version(found.group(1)) > _version(pinned):
+        raise BundleRefused(
+            "go_too_new",
+            f"the code's go.mod asks for go {found.group(1)}, and this Provisa's Go is {pinned}",
+            go=found.group(1),
+            pinned=pinned,
+        )
 
 
 def go_environment(go: Path, *, gocache: Path, gomodcache: Path, **extra: str) -> dict[str, str]:
@@ -135,6 +160,8 @@ def read_code(
     every problem by name (:func:`provisa.codesource.manifest.read_manifest`). ``gomodcache``
     holds the code's installed modules; ``scratch`` is where the go command keeps its build
     cache for this read."""
+    code = code.resolve()  # the reader runs in it, and the go command it starts runs there too
+    check_go_line(code)
     env = go_environment(go, gocache=scratch / "gocache", gomodcache=gomodcache)
     out = run([str(reader), str(code), package], env, code)
     return read_manifest(json.loads(out), GO_RULES)

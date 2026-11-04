@@ -106,10 +106,10 @@ func Placed(ctx context.Context, in PlacedInputs) iter.Seq2[Order, error] {
 }
 
 // @stream
-func Ticks() iter.Seq[map[string]any] {
-	return func(yield func(map[string]any) bool) {
+func Ticks() iter.Seq2[map[string]any, error] {
+	return func(yield func(map[string]any, error) bool) {
 		for n := 0; ; n++ {
-			if !yield(map[string]any{"tick": n}) {
+			if !yield(map[string]any{"tick": n}, nil) {
 				return
 			}
 			time.Sleep(10 * time.Millisecond)

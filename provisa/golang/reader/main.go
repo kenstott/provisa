@@ -182,15 +182,16 @@ func (r *reader) qualifier(p *types.Package) string {
 // type; a string type with constants of its own as an enum of them; any other as what it is.
 func (r *reader) named(n *types.Named) node {
 	args := n.TypeArgs()
+	// An iterator function: iter.Seq yields rows, iter.Seq2 a row and an error with each.
 	if isNamed(n, "iter", "Seq") {
-		return node{"kind": "iterable", "async": false, "generator": true, "element": r.tree(args.At(0))}
+		return node{"kind": "iterable", "async": false, "generator": true, "errors": false, "element": r.tree(args.At(0))}
 	}
 	if isNamed(n, "iter", "Seq2") {
 		element := r.tree(args.At(0))
 		if !isError(args.At(1)) {
 			element = unsupported(types.TypeString(n, r.qualifier) + " (its second value is not an error)")
 		}
-		return node{"kind": "iterable", "async": false, "generator": true, "element": element}
+		return node{"kind": "iterable", "async": false, "generator": true, "errors": true, "element": element}
 	}
 	if args.Len() > 0 {
 		return unsupported(types.TypeString(n, r.qualifier))

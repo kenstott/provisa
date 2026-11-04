@@ -74,6 +74,9 @@ class Rules:
     standard_tags: frozenset[str]
     #: Whether a ``@stream`` may be a plain (synchronous) generator as well as an async one.
     sync_streams: bool
+    #: Whether a ``@stream`` yields an error beside each row (Go's ``iter.Seq2[T, error]``): one
+    #: that does not is a problem by name.
+    stream_errors: bool = False
 
 
 #: Node (REQ-1984): JSDoc and TSDoc tags; a stream is an async generator.
@@ -82,9 +85,9 @@ NODE_RULES = Rules(standard_tags=STANDARD_TAGS, sync_streams=False)
 #: Provisa's is unknown; a stream is a generator or an async generator.
 PYTHON_RULES = Rules(standard_tags=frozenset(), sync_streams=True)
 #: Go (REQ-2200): a doc comment has no standard tag beginning with ``@``, so every one but
-#: Provisa's is unknown; a stream is an iterator function (``iter.Seq`` or ``iter.Seq2`` with an
-#: error), which Go has no async counterpart of.
-GO_RULES = Rules(standard_tags=frozenset(), sync_streams=True)
+#: Provisa's is unknown; a stream is an iterator function yielding a row and an error
+#: (``iter.Seq2[T, error]``), which Go has no async counterpart of.
+GO_RULES = Rules(standard_tags=frozenset(), sync_streams=True, stream_errors=True)
 
 
 # -- shapes -----------------------------------------------------------------------------------------
@@ -645,7 +648,11 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             if column_transform is not None:
                 exports.append(column_transform)
         elif kind == STREAM:
-            if not (returns["kind"] == "iterable" and (returns["async"] or rules.sync_streams)):
+            if rules.stream_errors:
+                if not (returns["kind"] == "iterable" and returns.get("errors")):
+                    problems.append(f"{name}: @stream returns iter.Seq2[T, error]")
+                    continue
+            elif not (returns["kind"] == "iterable" and (returns["async"] or rules.sync_streams)):
                 problems.append(
                     f"{name}: @stream is a generator or an async generator"
                     if rules.sync_streams
