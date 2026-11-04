@@ -1777,6 +1777,10 @@
         "title": "Os termos da regra",
         "description": "A análise feita antecipadamente: cada termo candidato com a passagem de onde vem. Uma instituição financeira relata cada transação em espécie acima de 10.000 $. Os termos que o glossário já tem são oferecidos para fusão."
       },
+      "banksecrecyAggregation": {
+        "title": "A regra de agregação",
+        "description": "De 31 CFR 1010.313 vêm transações múltiplas e em nome de: o dinheiro por ou em nome de uma pessoa, acima de 10.000 $ num dia útil, é tratado como uma única transação, e todas as agências são uma instituição. Os depósitos noturnos contam no dia útil seguinte."
+      },
       "banksecrecyDefinitions": {
         "title": "As definições que usa",
         "description": "As palavras da regra estão definidas em 31 CFR 1010.100: pessoa, dia útil, instituição financeira, fracionamento. Cada definição é uma passagem própria, por isso cada termo é oferecido com o parágrafo que o define."

@@ -1777,6 +1777,10 @@
         "title": "De begrippen in de regel",
         "description": "De vooraf gedane scan: elk kandidaatbegrip met de passage waar het uit komt. Een financiële instelling meldt elke contante transactie boven 10.000 $. Begrippen die de woordenlijst al heeft, worden aangeboden om samen te voegen."
       },
+      "banksecrecyAggregation": {
+        "title": "De aggregatieregel",
+        "description": "Uit 31 CFR 1010.313 komen meerdere transacties en namens: contanten door of namens één persoon, boven 10.000 $ op één werkdag, gelden als één transactie, en elk filiaal hoort bij één instelling. Nachtstortingen tellen op de volgende werkdag."
+      },
       "banksecrecyDefinitions": {
         "title": "De definities die hij gebruikt",
         "description": "De woorden van de regel staan gedefinieerd in 31 CFR 1010.100: persoon, werkdag, financiële instelling, opsplitsen. Elke definitie is een eigen passage, dus elk begrip komt met de alinea die het definieert."

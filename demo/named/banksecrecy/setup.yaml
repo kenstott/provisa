@@ -10,12 +10,15 @@
 # What the banksecrecy demo runs once, in order, after the server is up (REQ-2016, REQ-2201;
 # scripts/run_demo_setup.py):
 #
-#   scan  a document's public address, scanned for terms by the glossary's Find terms
+#   scan  a document's public address, scanned for terms by the glossary's Find terms, the terms
+#         curated in the demo's domain
 #
-# The regulation, read from eCFR's official API (the eCFR version of 2026-10-15): the currency
-# transaction reporting rule, 31 CFR 1010.311, and the definitions it uses, 31 CFR 1010.100. Each
-# scan asks the AI model for minutes, so it runs when the demo's bundle is built and ships in it
-# (seeded/term_scans.json); the tour opens the scans done.
+# The regulation, read from eCFR's official API (the eCFR version of 2026-10-15): the filing
+# obligation for currency transaction reports, 31 CFR 1010.311; its aggregation rule, 1010.313;
+# and the definitions both use, 1010.100. Each scan asks the AI model for minutes, so it runs when
+# the demo's bundle is built and ships in it (seeded/term_scans.json); the tour opens the scans
+# done.
 steps:
-- scan: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
-- scan: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.100
+- scan: {url: 'https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311', domains: [banksecrecy]}
+- scan: {url: 'https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.313', domains: [banksecrecy]}
+- scan: {url: 'https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.100', domains: [banksecrecy]}

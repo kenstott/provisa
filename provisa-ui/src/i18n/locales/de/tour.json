@@ -1777,6 +1777,10 @@
         "title": "Die Begriffe der Vorschrift",
         "description": "Der vorab gelaufene Scan: jeder Kandidatenbegriff mit der Passage, aus der er stammt. Ein Finanzinstitut meldet jede Bargeldtransaktion über 10.000 $. Begriffe, die das Glossar schon hat, werden zum Zusammenführen angeboten."
       },
+      "banksecrecyAggregation": {
+        "title": "Die Aggregationsregel",
+        "description": "Aus 31 CFR 1010.313 stammen mehrere Transaktionen und im Auftrag von: Bargeld durch oder für eine Person, über 10.000 $ an einem Geschäftstag, gilt als eine einzige Transaktion, und jede Filiale gehört zu einem Institut. Nachteinzahlungen zählen am nächsten Geschäftstag."
+      },
       "banksecrecyDefinitions": {
         "title": "Die verwendeten Definitionen",
         "description": "Die Begriffe der Vorschrift sind in 31 CFR 1010.100 definiert: Person, Geschäftstag, Finanzinstitut, Structuring. Jede Definition ist eine eigene Passage, daher kommt jeder Begriff mit dem Absatz, der ihn definiert."

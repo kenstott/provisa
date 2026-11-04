@@ -1777,6 +1777,10 @@
         "title": "Les termes de la règle",
         "description": "L'analyse faite à l'avance : chaque terme candidat avec le passage dont il vient. Un établissement financier déclare chaque transaction en espèces de plus de 10 000 $. Les termes que le glossaire contient déjà sont proposés en fusion."
       },
+      "banksecrecyAggregation": {
+        "title": "La règle d'agrégation",
+        "description": "31 CFR 1010.313 est la source de transactions multiples et pour le compte de : les espèces par ou pour le compte d'une personne, plus de 10 000 $ en un jour ouvrable, sont traitées comme une seule transaction, et toutes les agences forment un seul établissement. Les dépôts de nuit comptent le jour ouvrable suivant."
+      },
       "banksecrecyDefinitions": {
         "title": "Les définitions qu'elle utilise",
         "description": "Les mots de la règle sont définis dans 31 CFR 1010.100 : personne, jour ouvrable, établissement financier, fractionnement. Chaque définition est un passage distinct, chaque terme est donc proposé avec le paragraphe qui le définit."

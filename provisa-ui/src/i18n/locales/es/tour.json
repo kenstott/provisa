@@ -1777,6 +1777,10 @@
         "title": "Los términos de la norma",
         "description": "El análisis hecho de antemano: cada término candidato con el pasaje del que proviene. Una institución financiera reporta cada transacción en efectivo de más de 10.000 $. Los términos que el glosario ya tiene se ofrecen para fusionar."
       },
+      "banksecrecyAggregation": {
+        "title": "La regla de agregación",
+        "description": "De 31 CFR 1010.313 vienen transacciones múltiples y en nombre de: el efectivo por o en nombre de una persona, más de 10.000 $ en un día hábil, se trata como una sola transacción, y todas las sucursales son una institución. Los depósitos nocturnos cuentan el siguiente día hábil."
+      },
       "banksecrecyDefinitions": {
         "title": "Las definiciones que usa",
         "description": "Las palabras de la norma están definidas en 31 CFR 1010.100: persona, día hábil, institución financiera, fraccionamiento. Cada definición es un pasaje propio, así que cada término se ofrece con el párrafo que lo define."

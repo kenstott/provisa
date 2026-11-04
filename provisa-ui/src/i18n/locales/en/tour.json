@@ -1777,6 +1777,10 @@
         "title": "The terms in the rule",
         "description": "The scan done ahead: each candidate term with the passage it comes from. A financial institution reports each transaction in currency of more than $10,000. Terms the glossary already holds are offered as merges."
       },
+      "banksecrecyAggregation": {
+        "title": "The aggregation rule",
+        "description": "31 CFR 1010.313 is where multiple transactions and on behalf of come from: cash by or on behalf of one person, over $10,000 in one business day, is treated as a single transaction, and every branch is one institution. Night deposits count on the next business day."
+      },
       "banksecrecyDefinitions": {
         "title": "The definitions it uses",
         "description": "The rule's words are defined in 31 CFR 1010.100: person, business day, financial institution, structuring. Each definition is its own passage, so each term is offered with the paragraph that defines it."

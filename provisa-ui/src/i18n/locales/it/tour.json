@@ -1777,6 +1777,10 @@
         "title": "I termini della norma",
         "description": "La scansione fatta in anticipo: ogni termine candidato con il passaggio da cui proviene. Un istituto finanziario segnala ogni operazione in contanti oltre 10.000 $. I termini che il glossario ha già sono proposti come unione."
       },
+      "banksecrecyAggregation": {
+        "title": "La regola di aggregazione",
+        "description": "Da 31 CFR 1010.313 vengono operazioni multiple e per conto di: il contante da o per conto di una persona, oltre 10.000 $ in un giorno lavorativo, è trattato come un'unica operazione, e tutte le filiali sono un solo istituto. I versamenti notturni contano il giorno lavorativo successivo."
+      },
       "banksecrecyDefinitions": {
         "title": "Le definizioni che usa",
         "description": "Le parole della norma sono definite in 31 CFR 1010.100: persona, giorno lavorativo, istituto finanziario, frazionamento. Ogni definizione è un passaggio a sé, quindi ogni termine è proposto con il paragrafo che lo definisce."

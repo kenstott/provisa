@@ -34,13 +34,15 @@ steps:
   capability: create_relationship
   relationship: ON_BEHALF_OF
 # The law: read from its public address, a scan started and cancelled -- the one done ahead is
-# opened -- and the definitions it uses.
+# opened -- then its aggregation rule and the definitions both use.
 - key: banksecrecyFindTerms
   route: /admin/ontology
   capability: glossary_read
   find_terms: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
 - key: banksecrecyRuleTerms
   scan: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
+- key: banksecrecyAggregation
+  scan: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.313
 - key: banksecrecyDefinitions
   scan: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.100
 - key: banksecrecyLibrary

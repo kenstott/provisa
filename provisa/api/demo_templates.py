@@ -226,12 +226,13 @@ async def profile_template(demo: "PublishedDemo", org_id: str) -> list[str]:
 
 def demo_scans(directory: Path) -> list[str]:
     """The documents demo ``directory``'s setup.yaml scans for terms (REQ-2201): each ``scan``
-    step's URL, in order; none when it has no setup.yaml."""
+    step's URL (the step's value, or its ``url``), in order; none when it has no setup.yaml."""
     path = directory / "setup.yaml"
     if not path.is_file():
         return []
     steps = (yaml.safe_load(path.read_text()) or {}).get("steps") or []
-    return [step["scan"] for step in steps if "scan" in step]
+    scans = [step["scan"] for step in steps if "scan" in step]
+    return [scan["url"] if isinstance(scan, dict) else scan for scan in scans]
 
 
 async def scan_template(demo: "PublishedDemo", org_id: str) -> list[str]:

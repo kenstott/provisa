@@ -367,8 +367,9 @@ steps:
 - client: setup_pulls.py
 ```
 
-A `scan:` step names a document's public `https://` address. It runs the glossary's Find terms on
-it, as org_admin: the document joins the reference library, and the org's AI model reads it for
+A `scan:` step names a document's public `https://` address, or `{url, domains}` with the domains
+the scan's terms are curated in. A demo in domains names them: Find terms refuses a scan with no
+domains there. The step runs the glossary's Find terms on the document, as org_admin: the document joins the reference library, and the org's AI model reads it for
 candidate terms. The step waits until the scan ends; a scan that stops fails the step and says why.
 A scan asks the model call after call for minutes, so a demo scans ahead: at the bundle build,
 where the setup server runs Find terms through OpenRouter on the sandbox's model
@@ -377,13 +378,14 @@ with the library documents they read (passages, embeddings, domains) as `seeded/
 (`provisa/term_finding/carry.py`). The demo's template loads them when it is prepared and at every
 rebuild of its model; a draft names the glossary term it matched by name, since the rebuild makes
 each term again. A template that does not hold them is not served as built, and every sandbox is
-cloned with them. The demo's config declares a vector model for the library's passages. A scan
-of 31 CFR 1010.311 from eCFR's XML API:
+cloned with them. The demo's config declares a vector model for the library's passages. The
+banksecrecy demo scans three sections of 31 CFR from eCFR's XML API:
 
 ```yaml
-# demo/named/<demo>/setup.yaml
+# demo/named/banksecrecy/setup.yaml (excerpt)
 steps:
-- scan: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
+- scan: {url: 'https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311', domains: [banksecrecy]}
+- scan: {url: 'https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.313', domains: [banksecrecy]}
 ```
 
 The launcher passes the server's Flight address (`--flight grpc://localhost:${FLIGHT_PORT:-8815}`),

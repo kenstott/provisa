@@ -243,7 +243,9 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     made = (yaml.safe_load(setup.read_text()) or {}).get("steps") or [] if setup.exists() else []
     envs = {"prod"} | {s["environment"]["name"] for s in made if "environment" in s}
     # REQ-2201: the documents the demo's setup scans for terms when its bundle is built.
-    scanned = {s["scan"] for s in made if "scan" in s}
+    from provisa.api.demo_templates import demo_scans
+
+    scanned = set(demo_scans(home))
     terms = {t["name"] for t in config.get("glossary_terms", [])}
     products = {p["id"] for p in config.get("data_products", [])}
     tables = {f"{t['source_id']}.{config_table_name(t)}" for t in config["tables"]}
