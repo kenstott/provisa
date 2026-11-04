@@ -1809,6 +1809,10 @@
         "title": "Wer stückelt?",
         "description": "Einzahlungen knapp unter 10.000 $, dreimal oder öfter, über Filialen und Tage. Keine davon brauchte allein eine Meldung. Victor Hale ging in einer Woche zu drei Filialen, und Marcus Reeds zwei Einzahlungen an einem Tag brauchten zusammen eine Meldung. Nur Compliance sieht diese Ansicht."
       },
+      "banksecrecyPollyWalk": {
+        "title": "Was muss die Bank tun?",
+        "description": "Ein Kunde zahlt immer wieder Bargeld knapp unter 10.000 $ ein. Was muss die Bank tun? Eine Suche in den Passagen des Gesetzes nach diesen Worten verfehlt die Antwort. Polly geht stattdessen das Glossar entlang: Einzahlungen unter dem Schwellenwert, zu Structuring, zu Suspicious Activity Report, und erreicht 31 CFR 1010.314 und 31 CFR 1020.320, die Passagen, die es sagen."
+      },
       "banksecrecyExample": {
         "title": "Dieselbe Antwort in GraphQL",
         "description": "Die fälligen Meldungen als API-Aufruf. Jede Schnittstelle liest dieselbe verwaltete Ansicht mit denselben Masken für dieselbe Rolle."

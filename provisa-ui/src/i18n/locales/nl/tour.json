@@ -1809,6 +1809,10 @@
         "title": "Wie splitst op?",
         "description": "Stortingen net onder 10.000 $, drie keer of vaker, over filialen en dagen. Geen ervan vereiste op zichzelf een melding. Victor Hale ging in een week naar drie filialen, en de twee stortingen van Marcus Reed op één dag vereisten samen een melding. Alleen compliance ziet deze view."
       },
+      "banksecrecyPollyWalk": {
+        "title": "Wat moet de bank doen?",
+        "description": "Een klant stort steeds contant geld net onder 10.000 $. Wat moet de bank doen? Zoeken naar die woorden in de passages van de wet mist het antwoord. Polly loopt in plaats daarvan door het glossarium: stortingen onder de drempel, naar structureren (structuring), naar melding van ongebruikelijke activiteit, en komt bij 31 CFR 1010.314 en 31 CFR 1020.320, de passages die het zeggen."
+      },
       "banksecrecyExample": {
         "title": "Hetzelfde antwoord in GraphQL",
         "description": "De verschuldigde meldingen als API-aanroep. Elke interface leest dezelfde beheerde view, met dezelfde maskers voor dezelfde rol."

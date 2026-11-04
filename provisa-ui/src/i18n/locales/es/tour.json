@@ -1809,6 +1809,10 @@
         "title": "¿Quién fracciona?",
         "description": "Depósitos justo por debajo de 10.000 $, tres veces o más, entre sucursales y días. Ninguno requería un reporte por sí solo. Victor Hale fue a tres sucursales en una semana, y los dos depósitos de Marcus Reed en un día requerían un reporte juntos. Solo cumplimiento ve esta vista."
       },
+      "banksecrecyPollyWalk": {
+        "title": "¿Qué debe hacer el banco?",
+        "description": "Un cliente deposita una y otra vez efectivo justo por debajo de 10.000 $. ¿Qué debe hacer el banco? Buscar esas palabras en los pasajes de la ley no da con la respuesta. Polly recorre el glosario: depósitos bajo el umbral, a fraccionamiento (structuring), a reporte de actividad sospechosa, y llega a 31 CFR 1010.314 y 31 CFR 1020.320, los pasajes que lo dicen."
+      },
       "banksecrecyExample": {
         "title": "La misma respuesta en GraphQL",
         "description": "Los reportes pendientes, como llamada de API. Cada interfaz lee la misma vista gobernada, con las mismas máscaras para el mismo rol."

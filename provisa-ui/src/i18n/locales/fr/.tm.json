@@ -9453,6 +9453,8 @@
   "fr/tour.json::tour.steps.banksecrecyComplianceAsks.description": "The compliance officer runs the same question and sees account numbers and tax ids in full, as the report needs them. Dana Whitmore's total includes cash brought in on her behalf by someone else.",
   "fr/tour.json::tour.steps.banksecrecyStructuring.title": "Who is structuring?",
   "fr/tour.json::tour.steps.banksecrecyStructuring.description": "Deposits just under $10,000, three or more times, across branches and days. None of them needed a report on its own. Victor Hale went to three branches in a week, and Marcus Reed's two deposits on one day needed a report together. Only compliance sees this view.",
+  "fr/tour.json::tour.steps.banksecrecyPollyWalk.title": "What must the bank do?",
+  "fr/tour.json::tour.steps.banksecrecyPollyWalk.description": "A customer keeps depositing cash just under $10,000. What must the bank do? Searching the law's passages for those words misses the answer. Polly walks the glossary instead: deposits under threshold, to structuring, to suspicious activity report, and reaches 31 CFR 1010.314 and 31 CFR 1020.320, the passages that say.",
   "fr/tour.json::tour.steps.banksecrecyExample.title": "The same answer in GraphQL",
   "fr/tour.json::tour.steps.banksecrecyExample.description": "The reports due, as an API call. Each surface reads the same governed view, with the same masks for the same role.",
   "fr/tour.json::tour.steps.banksecrecyRecap.title": "What you saw",
