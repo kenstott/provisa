@@ -9444,5 +9444,7 @@
   "he/tour.json::tour.steps.banksecrecyRecap.title": "What you saw",
   "he/tour.json::tour.steps.banksecrecyRecap.description": "The law was read from its public address, its terms were found and grounded on the bank's tables, and the bank asked by concept. The currency transaction report reaches the data through its multiple transactions, and each role saw what it may see.",
   "he/tour.json::tour.steps.banksecrecyAggregation.title": "The aggregation rule",
-  "he/tour.json::tour.steps.banksecrecyAggregation.description": "31 CFR 1010.313 is where multiple transactions and on behalf of come from: cash by or on behalf of one person, over $10,000 in one business day, is treated as a single transaction, and every branch is one institution. Night deposits count on the next business day."
+  "he/tour.json::tour.steps.banksecrecyAggregation.description": "31 CFR 1010.313 is where multiple transactions and on behalf of come from: cash by or on behalf of one person, over $10,000 in one business day, is treated as a single transaction, and every branch is one institution. Night deposits count on the next business day.",
+  "he/tour.json::tour.steps.banksecrecyPollyAsks.title": "Asked in plain words",
+  "he/tour.json::tour.steps.banksecrecyPollyAsks.description": "Compliance asks Polly in plain words: which cash needs a currency transaction report? Polly finds the governed view the concept reaches and answers from it, so it names the same people the SQL and the GraphQL returned. Nobody had to know the view's name."
 }

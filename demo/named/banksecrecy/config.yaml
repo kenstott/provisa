@@ -198,8 +198,8 @@ relationships:
 - {id: cash-to-account, alias: ON_ACCOUNT, cardinality: many-to-one, source_table_id: cash_transactions, source_column: account_id, target_table_id: accounts, target_column: id}
 - {id: cash-to-branch, alias: AT_BRANCH, cardinality: many-to-one, source_table_id: cash_transactions, source_column: branch_id, target_table_id: branches, target_column: id}
 - {id: cash-to-teller, alias: TAKEN_BY, cardinality: many-to-one, source_table_id: cash_transactions, source_column: teller_id, target_table_id: tellers, target_column: id}
-- {id: cash-conducted-by, alias: CONDUCTED_BY, cardinality: many-to-one, source_table_id: cash_transactions, source_column: conducted_by, target_table_id: customers, target_column: id}
-- {id: cash-on-behalf-of, alias: ON_BEHALF_OF, cardinality: many-to-one, source_table_id: cash_transactions, source_column: on_behalf_of, target_table_id: customers, target_column: id}
+- {id: cash-conducted-by, alias: CONDUCTED_BY, graphql_alias: conductedBy, cardinality: many-to-one, source_table_id: cash_transactions, source_column: conducted_by, target_table_id: customers, target_column: id}
+- {id: cash-on-behalf-of, alias: ON_BEHALF_OF, graphql_alias: onBehalfOf, cardinality: many-to-one, source_table_id: cash_transactions, source_column: on_behalf_of, target_table_id: customers, target_column: id}
 # The regulation's words, as the scans of 31 CFR 1010.311, 1010.313 and 1010.100 find them,
 # grounded on the bank's tables: each through an edge from the term a table or column derives,
 # or holding the column of its own name (business day, on behalf of, multiple transactions). The

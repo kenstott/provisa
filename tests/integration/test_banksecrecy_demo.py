@@ -216,6 +216,23 @@ def test_the_regulation_s_terms_reach_the_bank_s_tables(server):
         assert grounding.get(term) == "grounded", (term, grounding.get(term))
 
 
+def test_who_stood_at_the_window_and_whose_cash_it_is_are_two_fields(server):
+    # Both relationships reach customers from one table: each is its own GraphQL field, so the
+    # server serves both (it refuses to start when two relationships would share a field).
+    gql = "{ b__cashTransactions { id conductedBy { name } onBehalfOf { name } } }"
+    resp = _post(server, "/data/graphql", {"query": gql}, _COMPLIANCE)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert not body.get("errors"), body
+    pairs = {
+        (r["conductedBy"]["name"], r["onBehalfOf"]["name"])
+        for r in body["data"]["b__cashTransactions"]
+    }
+    # Paul Greer brought $4,500 to the window on Dana Whitmore's behalf.
+    assert ("Paul Greer", "Dana Whitmore") in pairs, pairs
+    assert ("Dana Whitmore", "Dana Whitmore") in pairs, pairs
+
+
 @pytest.mark.parametrize(
     "path", sorted((_DEMO / "queries").glob("*.graphql")), ids=lambda p: p.stem
 )

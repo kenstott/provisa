@@ -1813,6 +1813,10 @@
         "title": "La misma respuesta en GraphQL",
         "description": "Los reportes pendientes, como llamada de API. Cada interfaz lee la misma vista gobernada, con las mismas máscaras para el mismo rol."
       },
+      "banksecrecyPollyAsks": {
+        "title": "Preguntado en palabras sencillas",
+        "description": "Cumplimiento le pregunta a Polly en palabras sencillas: ¿qué efectivo requiere un Currency Transaction Report? Polly encuentra la vista gobernada a la que llega el concepto y responde desde ella, así que nombra a las mismas personas que devolvieron el SQL y el GraphQL. Nadie tuvo que saber el nombre de la vista."
+      },
       "banksecrecyRecap": {
         "title": "Lo que vio",
         "description": "La ley se leyó desde su dirección pública, sus términos se encontraron y anclaron en las tablas del banco, y el banco preguntó por concepto. El Currency Transaction Report llega a los datos a través de sus transacciones múltiples, y cada rol vio lo que puede ver."

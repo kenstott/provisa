@@ -14,8 +14,8 @@
 #
 # The track: the scenario -- a bank reading a US law; how the pieces fit -- its cash, the
 # regulation read from its public address, the terms found in it and grounded on the bank's
-# tables; the solution, asked by concept as two roles; a recap; and "Where next?", the landing
-# page below.
+# tables; the solution, asked by concept as two roles, over GraphQL and in plain words to Polly; a
+# recap; and "Where next?", the landing page below.
 landing:
   route: /sql
   capability: query_development
@@ -86,6 +86,9 @@ steps:
   route: /query
   capability: query_development
   example: 1-ctr-required
+# The same question in plain words, to Polly: answered from the same governed view.
+- key: banksecrecyPollyAsks
+  polly: Which cash needs a currency transaction report?
 # The recap: the report, a concept the law names, reaching the bank's data.
 - key: banksecrecyRecap
   route: /admin/ontology

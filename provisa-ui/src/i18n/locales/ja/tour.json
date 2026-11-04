@@ -1813,6 +1813,10 @@
         "title": "同じ答えを GraphQL で",
         "description": "報告対象を API 呼び出しで。どのインターフェースも同じ管理されたビューを、同じロールには同じマスクで読みます。"
       },
+      "banksecrecyPollyAsks": {
+        "title": "ふつうの言葉で質問",
+        "description": "コンプライアンスが Polly にふつうの言葉で尋ねます。どの現金に Currency Transaction Report が必要か？Polly は概念が届く管理されたビューを見つけてそこから答えるので、SQL と GraphQL が返したのと同じ人を挙げます。ビューの名前を知っている必要は誰にもありませんでした。"
+      },
       "banksecrecyRecap": {
         "title": "ご覧いただいた内容",
         "description": "法律を公開アドレスから読み、その用語を見つけて銀行のテーブルに結び付け、銀行は概念で問い合わせました。Currency Transaction Report は複数の取引を通じてデータに到達し、各ロールは見てよいものを見ました。"

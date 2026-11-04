@@ -1813,6 +1813,10 @@
         "title": "Hetzelfde antwoord in GraphQL",
         "description": "De verschuldigde meldingen als API-aanroep. Elke interface leest dezelfde beheerde view, met dezelfde maskers voor dezelfde rol."
       },
+      "banksecrecyPollyAsks": {
+        "title": "In gewone woorden gevraagd",
+        "description": "Compliance vraagt Polly in gewone woorden: welke contanten vereisen een Currency Transaction Report? Polly vindt de beheerde view die het concept bereikt en antwoordt daaruit, en noemt dus dezelfde personen als de SQL en de GraphQL. Niemand hoefde de naam van de view te kennen."
+      },
       "banksecrecyRecap": {
         "title": "Wat u zag",
         "description": "De wet werd vanaf het openbare adres gelezen, de begrippen gevonden en verankerd in de tabellen van de bank, en de bank vroeg per concept. Het Currency Transaction Report bereikt de gegevens via zijn meerdere transacties, en elke rol zag wat hij mag zien."

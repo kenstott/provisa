@@ -1813,6 +1813,10 @@
         "title": "La même réponse en GraphQL",
         "description": "Les déclarations dues, en appel d'API. Chaque interface lit la même vue gouvernée, avec les mêmes masques pour le même rôle."
       },
+      "banksecrecyPollyAsks": {
+        "title": "Demandé en mots simples",
+        "description": "La conformité demande à Polly en mots simples : quelles espèces exigent un Currency Transaction Report ? Polly trouve la vue gouvernée qu'atteint le concept et répond à partir d'elle, et nomme donc les mêmes personnes que le SQL et le GraphQL. Personne n'a eu besoin de connaître le nom de la vue."
+      },
       "banksecrecyRecap": {
         "title": "Ce que vous avez vu",
         "description": "La loi a été lue depuis son adresse publique, ses termes trouvés et ancrés dans les tables de la banque, et la banque a interrogé par concept. Le Currency Transaction Report atteint les données par ses transactions multiples, et chaque rôle a vu ce qu'il peut voir."

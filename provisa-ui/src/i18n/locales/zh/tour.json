@@ -1813,6 +1813,10 @@
         "title": "同样的答案，用 GraphQL",
         "description": "需要提交的报告，以 API 调用的形式。每个接口读取同一个受治理的视图，同一角色使用相同的遮蔽。"
       },
+      "banksecrecyPollyAsks": {
+        "title": "用平实的话提问",
+        "description": "合规用平实的话问 Polly：哪些现金需要 Currency Transaction Report？Polly 找到概念所达的受治理视图并从中作答，所以它列出的人与 SQL 和 GraphQL 返回的相同。没有人需要知道视图的名称。"
+      },
       "banksecrecyRecap": {
         "title": "您看到了什么",
         "description": "法律从公开地址读取，其术语被找出并落实到银行的表上，银行按概念进行了查询。Currency Transaction Report 通过其多笔交易到达数据，每个角色都看到了它可以看到的内容。"

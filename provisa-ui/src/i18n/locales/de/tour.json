@@ -1813,6 +1813,10 @@
         "title": "Dieselbe Antwort in GraphQL",
         "description": "Die fälligen Meldungen als API-Aufruf. Jede Schnittstelle liest dieselbe verwaltete Ansicht mit denselben Masken für dieselbe Rolle."
       },
+      "banksecrecyPollyAsks": {
+        "title": "In einfachen Worten gefragt",
+        "description": "Compliance fragt Polly in einfachen Worten: Welches Bargeld braucht einen Currency Transaction Report? Polly findet die verwaltete Ansicht, die das Konzept erreicht, und antwortet aus ihr, und nennt so dieselben Personen, die SQL und GraphQL geliefert haben. Niemand musste den Namen der Ansicht kennen."
+      },
       "banksecrecyRecap": {
         "title": "Was Sie gesehen haben",
         "description": "Das Gesetz wurde von seiner öffentlichen Adresse gelesen, seine Begriffe gefunden und in den Tabellen der Bank verankert, und die Bank fragte nach Konzept. Der Currency Transaction Report erreicht die Daten über seine mehreren Transaktionen, und jede Rolle sah, was sie sehen darf."

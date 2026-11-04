@@ -1813,6 +1813,10 @@
         "title": "A mesma resposta em GraphQL",
         "description": "Os relatórios devidos, como chamada de API. Cada interface lê a mesma vista governada, com as mesmas máscaras para o mesmo papel."
       },
+      "banksecrecyPollyAsks": {
+        "title": "Perguntado em palavras simples",
+        "description": "O compliance pergunta à Polly em palavras simples: que dinheiro exige um Currency Transaction Report? A Polly encontra a vista governada a que o conceito chega e responde a partir dela, por isso nomeia as mesmas pessoas que o SQL e o GraphQL devolveram. Ninguém precisou de saber o nome da vista."
+      },
       "banksecrecyRecap": {
         "title": "O que viu",
         "description": "A lei foi lida do seu endereço público, os seus termos encontrados e ancorados nas tabelas do banco, e o banco perguntou por conceito. O Currency Transaction Report chega aos dados pelas suas transações múltiplas, e cada papel viu o que pode ver."

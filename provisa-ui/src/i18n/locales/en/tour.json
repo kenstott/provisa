@@ -1813,6 +1813,10 @@
         "title": "The same answer in GraphQL",
         "description": "The reports due, as an API call. Each surface reads the same governed view, with the same masks for the same role."
       },
+      "banksecrecyPollyAsks": {
+        "title": "Asked in plain words",
+        "description": "Compliance asks Polly in plain words: which cash needs a currency transaction report? Polly finds the governed view the concept reaches and answers from it, so it names the same people the SQL and the GraphQL returned. Nobody had to know the view's name."
+      },
       "banksecrecyRecap": {
         "title": "What you saw",
         "description": "The law was read from its public address, its terms were found and grounded on the bank's tables, and the bank asked by concept. The currency transaction report reaches the data through its multiple transactions, and each role saw what it may see."
