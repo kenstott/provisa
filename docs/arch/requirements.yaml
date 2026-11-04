@@ -91569,3 +91569,32 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2063
   stakeholders:
   - data-engineer
+- id: REQ-2202
+  value: 'Find terms can read a registered table: a domain, a table, its id column and its text column,
+    each row one passage.'
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-03: "another angle for getting terms from docs would be a sql query
+    with id + text against a registered table", then "it could literally just be domain,,table,id,text".
+    Find terms (REQ-2179) can scan a registered table instead of a document: the steward picks a domain,
+    a table in it, its id column and its text column, and each row is one passage. A candidate term''s
+    source passages name the table and the row''s id. The rows are read through the governed pipeline
+    as the steward''s acting role, so masks and row rules apply and no text the steward cannot read reaches
+    the model; the scan is held to the role''s LLM budget like a document scan (REQ-1174). (Lead''s reading,
+    2026-11-03: a table scan is a scan only, not a reference library document.)'
+  scenario: 'Given a registered table of support tickets with an id and a text column
+
+    When a steward scans it for terms, picking the domain, the table, the id column and the text column
+
+    Then candidate terms are offered, each citing the rows it was found in by id'
+  related_reqs:
+  - REQ-2179
+  - REQ-2185
+  - REQ-1174
+  stakeholders:
+  - data-steward

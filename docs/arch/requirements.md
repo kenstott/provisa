@@ -26493,3 +26493,15 @@ Maintainer 2026-11-03: "reading a u.s. law text, extracting terms and applying a
 **Code:** —
 
 **Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-2202 · Business Glossary & Ontology {#REQ-2202}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-03: "another angle for getting terms from docs would be a sql query with id + text against a registered table", then "it could literally just be domain,,table,id,text". Find terms ([REQ-2179](#REQ-2179)) can scan a registered table instead of a document: the steward picks a domain, a table in it, its id column and its text column, and each row is one passage. A candidate term's source passages name the table and the row's id. The rows are read through the governed pipeline as the steward's acting role, so masks and row rules apply and no text the steward cannot read reaches the model; the scan is held to the role's LLM budget like a document scan ([REQ-1174](#REQ-1174)). (Lead's reading, 2026-11-03: a table scan is a scan only, not a reference library document.)
+
+**Code:** —
+
+**Tests:** —
