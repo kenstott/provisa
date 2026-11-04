@@ -12,8 +12,9 @@
 
 Until every reference to a registered relation is governed by construction, a statement whose
 shape governance cannot read is refused rather than served: a parenthesised join group holding a
-registered relation (C3), a data write anywhere but at the statement's root (C4), and a CTE named
-as a registered relation the statement reads (H2). An ORDER BY name matches an output only where
+registered relation, unless it is the leftmost FROM item, which is the flat join and governed as
+one (C3); a data write anywhere but at the statement's root (C4); and a CTE named as a registered
+relation the statement reads (H2). An ORDER BY name matches an output only where
 PostgreSQL names one -- a real alias or a column -- so ``'ssn'`` names no output and ``ORDER BY
 ssn`` is the hidden input column (H1).
 """
@@ -31,6 +32,8 @@ from provisa.compiler.write_admission import WriteNotAdmitted
 
 _ROLE = {"id": "teller", "capabilities": [], "domain_access": ["*"]}
 _CUSTOMER = [("id", "integer"), ("name", "varchar"), ("ssn", "varchar"), ("email", "varchar")]
+_ORDERS = [("id", "integer"), ("customer_id", "integer")]
+_REGIONS = [("customer_id", "integer"), ("label", "varchar")]
 
 
 def _gov(rls_rules: dict[int, str] | None = None, **extra) -> GovernanceContext:
@@ -38,8 +41,8 @@ def _gov(rls_rules: dict[int, str] | None = None, **extra) -> GovernanceContext:
         rls_rules=rls_rules or {},
         masking_rules={},
         visible_columns={1: frozenset({"id", "name", "email"})},
-        table_map={"bank.customer": 1, "customer": 1},
-        all_columns={1: list(_CUSTOMER)},
+        table_map={"bank.customer": 1, "customer": 1, "bank.orders": 2, "bank.regions": 3},
+        all_columns={1: list(_CUSTOMER), 2: list(_ORDERS), 3: list(_REGIONS)},
         limit_ceiling=None,
         sample_size=None,
         **extra,
@@ -56,35 +59,88 @@ def _codes(sql: str) -> list[str]:
 
 
 # -- C3: a parenthesised join group hides the governed table ---------------------------------------
+#
+# Joins associate left to right, so a group that is the leftmost FROM item is the flat join: it is
+# flattened and governed as one. A group elsewhere changes meaning and is refused.
+
+_ROW_RULE = {1: "id = 2"}
 
 
-_PARENTHESISED_GROUPS = [
-    "SELECT ssn FROM (bank.customer CROSS JOIN (VALUES (1)) v)",
-    "SELECT j.ssn FROM (bank.customer c CROSS JOIN (VALUES (1)) v) AS j",
-    "SELECT * FROM (bank.customer c CROSS JOIN (VALUES (1)) v)",
-    "SELECT id FROM (bank.customer c CROSS JOIN (VALUES (1)) v) WHERE c.ssn LIKE '1%'",
-    "SELECT count(*) FROM (bank.customer JOIN (VALUES ('111-SECRET')) v(ssn) USING (ssn))",
-    "SELECT count(*) FROM (bank.customer NATURAL JOIN (VALUES ('111-SECRET')) v(ssn))",
+def _governed(sql: str) -> str:
+    return apply_governance(sql, _gov(rls_rules=_ROW_RULE)).replace('"', "")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT ssn FROM (bank.customer CROSS JOIN (VALUES (1)) v)",
+        "SELECT count(*) FROM (bank.customer JOIN (VALUES ('111-SECRET')) v(ssn) USING (ssn))",
+        "SELECT count(*) FROM (bank.customer NATURAL JOIN (VALUES ('111-SECRET')) v(ssn))",
+        "SELECT c.ssn FROM ((bank.customer c CROSS JOIN (VALUES (1)) v))",
+    ],
+)
+def test_a_leftmost_group_s_hidden_column_is_refused_as_in_the_flat_join(sql):
+    assert "V003" in _codes(sql)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT id FROM (bank.customer CROSS JOIN (VALUES (1)) v)",
+        "SELECT * FROM (bank.customer c CROSS JOIN (VALUES (1)) v)",
+        "SELECT id FROM (bank.customer c CROSS JOIN (VALUES (1)) v) WHERE c.ssn LIKE '1%'",
+        "SELECT * FROM ((bank.customer c CROSS JOIN (VALUES (1)) v))",
+    ],
+)
+def test_a_leftmost_group_is_governed_as_the_flat_join(sql):
+    assert _codes(sql) == []
+    governed = _governed(sql)
+    assert "customer" in governed and "(bank.customer" not in governed  # flattened
+    assert "id = 2" in governed  # the row rule
+    assert "ssn" not in governed  # the hidden column, served nowhere
+
+
+_TABLEAU = (
+    'SELECT "o"."id", "c"."name", "r"."label" FROM (("bank"."orders" "o" '
+    'INNER JOIN "bank"."customer" "c" ON ("o"."customer_id" = "c"."id")) '
+    'LEFT JOIN "bank"."regions" "r" ON ("c"."id" = "r"."customer_id"))'
+)
+
+
+def test_a_bi_tool_left_deep_nested_join_runs_governed():
+    assert _codes(_TABLEAU) == []
+    governed = _governed(_TABLEAU)
+    assert "FROM bank.orders AS o INNER JOIN bank.customer AS c" in governed
+    assert "LEFT JOIN bank.regions AS r" in governed
+    assert "c.id = 2" in governed
+
+
+def test_a_bi_tool_left_deep_nested_join_s_hidden_column_is_refused():
+    assert "V003" in _codes(_TABLEAU.replace('"c"."name"', '"c"."ssn"'))
+
+
+_REFUSED_GROUPS = [
+    # the right side of a join: flattening would change what the join means
     "SELECT c.id FROM bank.customer c JOIN (bank.customer d CROSS JOIN (VALUES (1)) v) "
     "ON c.id = d.id WHERE d.ssn LIKE '1%'",
-    # a parenthesised registered table with no join is hidden the same way
+    "SELECT o.id FROM bank.orders o LEFT JOIN (bank.customer c JOIN bank.regions r "
+    "ON c.id = r.customer_id) ON o.customer_id = c.id",
+    # under an alias: the alias names the group, which the flat join has not
+    "SELECT j.ssn FROM (bank.customer c CROSS JOIN (VALUES (1)) v) AS j",
     "SELECT ssn FROM (bank.customer) AS x",
-    "SELECT * FROM ((bank.customer c CROSS JOIN (VALUES (1)) v))",
-    # the row-rule bypass: no WHERE was added inside the group
-    "SELECT id FROM (bank.customer CROSS JOIN (VALUES (1)) v)",
 ]
 
 
-@pytest.mark.parametrize("sql", _PARENTHESISED_GROUPS)
-def test_a_parenthesised_join_with_a_registered_relation_is_refused(sql):
+@pytest.mark.parametrize("sql", _REFUSED_GROUPS)
+def test_a_group_that_is_not_leftmost_or_is_aliased_is_refused(sql):
     assert "V006" in _codes(sql)
 
 
-@pytest.mark.parametrize("sql", _PARENTHESISED_GROUPS)
-def test_stage_2_refuses_a_parenthesised_join_with_a_registered_relation(sql):
+@pytest.mark.parametrize("sql", _REFUSED_GROUPS)
+def test_stage_2_refuses_a_group_that_is_not_leftmost_or_is_aliased(sql):
     # a route that skips validate_sql: stage 2 refuses what it cannot govern
     with pytest.raises(PermissionError, match="V006"):
-        apply_governance(sql, _gov(rls_rules={1: "id = 2"}))
+        apply_governance(sql, _gov(rls_rules=_ROW_RULE))
 
 
 def test_an_unparenthesised_join_is_still_served():

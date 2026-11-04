@@ -628,14 +628,46 @@ def _table_id_for_node(table_node: exp.Table, gov_ctx: GovernanceContext) -> int
     return table_id_of(table_node, gov_ctx.table_map)
 
 
+def flatten_leftmost_join_groups(tree: exp.Expr) -> None:  # REQ-039
+    """Unwrap, in place, an unaliased parenthesised join group that is a SELECT's first FROM item
+    -- recursively, the group's own leftmost item -- into that SELECT's FROM and joins, in order.
+    Joins associate left to right, so ``((a JOIN b ON ..) LEFT JOIN c ON ..)`` (the form BI tools
+    write) is ``a JOIN b ON .. LEFT JOIN c ON ..``, and its relations are governed as any other.
+    A group elsewhere -- the right side of a join, or under an alias -- is left as it is
+    (:func:`parenthesised_join_tables` refuses it)."""
+    for frm in list(tree.find_all(exp.From)):
+        select = frm.parent
+        if not isinstance(select, exp.Select):
+            continue
+        while True:
+            group = frm.this
+            if (
+                not isinstance(group, exp.Subquery)
+                # a derived table's query; a nested group's parentheses are a Subquery (a Query)
+                or (isinstance(group.this, exp.Query) and not isinstance(group.this, exp.Subquery))
+                or {k for k, v in group.args.items() if v} - {"this", "joins"}
+            ):
+                break
+            inner = group.this
+            joins = [
+                *(inner.args.get("joins") or []),
+                *(group.args.get("joins") or []),
+                *(select.args.get("joins") or []),
+            ]
+            inner.set("joins", None)
+            frm.set("this", inner)
+            select.set("joins", joins)
+
+
 def parenthesised_join_tables(  # REQ-039
     tree: exp.Expr, gov_ctx: GovernanceContext
 ) -> list[exp.Table]:
-    """The first registered relation of each parenthesised FROM item that is no query -- a join
-    group ``(bank.customer CROSS JOIN v)``, or ``(bank.customer) x``. Neither the column checks nor
-    this stage see a relation inside one, so its hidden columns, masks and row rules would go
-    unapplied: it is refused until every registered-relation reference is governed by
-    construction. A table of a query nested in the group, or a CTE, is not the group's own."""
+    """The first registered relation of each parenthesised FROM item that is no query and that
+    :func:`flatten_leftmost_join_groups` leaves -- a group on the right side of a join, ``a JOIN
+    (bank.customer CROSS JOIN v) ON ..``, or one under an alias, ``(bank.customer) x``. Neither the
+    column checks nor this stage see a relation inside one, so its hidden columns, masks and row
+    rules would go unapplied: it is refused until every registered-relation reference is governed
+    by construction. A table of a query nested in the group, or a CTE, is not the group's own."""
     from provisa.compiler.cte_utils import names_a_cte_in_scope
 
     found: list[exp.Table] = []
@@ -1591,6 +1623,7 @@ def apply_governance(
     trace_stage("govern.in", sql)
     tree = sqlglot.parse_one(sql, read="postgres")
     refuse_nested_writes(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
+    flatten_leftmost_join_groups(tree)
     hidden = parenthesised_join_tables(tree, gov_ctx)
     if hidden:
         raise PermissionError(f"[V006] {parenthesised_join_message(hidden[0])}")

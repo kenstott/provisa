@@ -54,6 +54,7 @@ from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import (
     GovernanceContext,
     approved_join_key,
+    flatten_leftmost_join_groups,
     parenthesised_join_message,
     parenthesised_join_tables,
     registered_name,
@@ -107,6 +108,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
         written = sqlglot.parse_one(sql, read="postgres")
     except Exception as exc:
         return [ValidationViolation("V000", f"SQL parse error: {exc}")]
+    flatten_leftmost_join_groups(written)  # as stage 2 does: a leftmost group is the flat join
     folded = normalize_identifiers(written.copy(), dialect="postgres")
 
     seen: set[tuple[str, str, tuple[int, int] | None]] = set()
@@ -694,6 +696,46 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
                             )
                         )
         violations += _hidden_sort_keys(select, am, gov_ctx)
+        violations += _hidden_join_keys(select, am, gov_ctx)
+    return violations
+
+
+def _hidden_columns(tid: int, gov_ctx: GovernanceContext) -> set[str]:
+    """The registered columns of table ``tid`` the role is not served."""
+    vis = gov_ctx.visible_columns.get(tid)
+    if vis is None:
+        return set()
+    return {c for c, _ in gov_ctx.all_columns.get(tid, [])} - vis
+
+
+def _hidden_join_keys(  # REQ-039
+    select: exp.Select, am: dict[str, int], gov_ctx: GovernanceContext
+) -> list[ValidationViolation]:
+    """V003 for a join of ``select`` that matches rows on a hidden column it never names in a
+    select list: ``USING (ssn)``, or a NATURAL join beside a table with a hidden column (it joins
+    on every common name, which the other side may give). Either counts rows by the hidden value."""
+    violations = []
+    for join in select.args.get("joins") or []:
+        for key in join.args.get("using") or []:
+            if any(
+                registered_name(gov_ctx, tid, key.name) in _hidden_columns(tid, gov_ctx)
+                for tid in am.values()
+            ):
+                violations.append(
+                    ValidationViolation(
+                        "V003", f"Column {key.name!r} is not visible to this role (JOIN USING)"
+                    )
+                )
+        if (join.args.get("method") or "").upper() == "NATURAL" and any(
+            _hidden_columns(tid, gov_ctx) for tid in am.values()
+        ):
+            violations.append(
+                ValidationViolation(
+                    "V003",
+                    "A NATURAL JOIN over a table with columns not visible to this role may match "
+                    "on them: name the join's columns",
+                )
+            )
     return violations
 
 
