@@ -321,7 +321,16 @@
     may use columns hidden from the reader; the every-clause rule applies to the reader''s own SQL. Writes
     follow the every-clause rule: a column hidden from the role cannot be set, filtered on or returned in
     UPDATE (SET and WHERE), DELETE (WHERE), INSERT ... SELECT or RETURNING, so affected-row counts cannot
-    act as an oracle on hidden values.'
+    act as an oracle on hidden values. (Amended 2026-11-04, HIDDEN COLUMNS ARE KEPT OUT BY CONSTRUCTION:)
+    Maintainer 2026-11-04: hidden columns are kept from the role by construction, not by predicting where
+    PostgreSQL resolves a name. The compiler replaces every reference to a registered relation, wherever
+    it stands in the statement (a parenthesised join, a subquery, a CTE body, a LATERAL item, a set operation,
+    the target or source of a write), with the role''s governed relation: a derived table exposing only
+    the columns the role is served, masked as the role''s masks say, filtered by the role''s row rules.
+    A column the role is not served therefore does not exist in the statement the engine runs, and naming
+    it fails as an unknown column, whatever the scoping. A data-modifying statement anywhere in the tree,
+    a CTE included, is a write and is admitted and governed as one. The column check (V003) stays as an
+    early, readable refusal; it is no longer the boundary.'
   use_case: Schema visibility enforcement ensures unauthorized tables and columns are invisible to clients
     at design time.
   code:
