@@ -63,7 +63,7 @@ class _Stores:
             # One port inside and out: the engine's postgres_fdw dials the parent source from in
             # this container, the server dials it from the host, and both read one address.
             + [
-                "pgvector/pgvector:pg16-trixie@sha256:9cf8b511f0e9a2c209b61430fc139f1ab9c75edbb31fb1751db6617b246a897a",
+                "pgvector/pgvector:pg16-trixie",
                 "-p",
                 str(self.pg_port),
             ],

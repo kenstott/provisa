@@ -60,7 +60,7 @@ class _Stores:
                 "POSTGRES_DB=provisa",
                 "-p",
                 f"127.0.0.1:{self.pg_port}:5432",
-                "pgvector/pgvector:pg16-trixie@sha256:9cf8b511f0e9a2c209b61430fc139f1ab9c75edbb31fb1751db6617b246a897a",
+                "pgvector/pgvector:pg16-trixie",
             ],
             check=True,
             capture_output=True,

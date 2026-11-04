@@ -80,7 +80,7 @@ class _SourceAndEngine:
                 publish[0],
                 "-p",
                 publish[1],
-                "pgvector/pgvector:pg16-trixie@sha256:9cf8b511f0e9a2c209b61430fc139f1ab9c75edbb31fb1751db6617b246a897a",
+                "pgvector/pgvector:pg16-trixie",
             ]
             + ["-c", f"port={self.source_port}", *logging],
             check=True,
@@ -90,7 +90,7 @@ class _SourceAndEngine:
             ["docker", "run", "-d", "--rm", "--name", self._engine, *env]
             + ["-e", "POSTGRES_DB=provisa", "--network", f"container:{self._source}"]
             + [
-                "pgvector/pgvector:pg16-trixie@sha256:9cf8b511f0e9a2c209b61430fc139f1ab9c75edbb31fb1751db6617b246a897a",
+                "pgvector/pgvector:pg16-trixie",
                 "-c",
                 f"port={self.engine_port}",
                 *logging,

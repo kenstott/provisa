@@ -166,12 +166,16 @@ jobs:
             "edoburu/pgbouncer:latest" \
             "redis:7-alpine" \
             "busybox:latest"; do
-            tag="${img%@*}"  # a digest-pinned image is named by its tag
-            tag="${tag##*/}"
+            # A digest-pinned image is pulled by digest (reproducible) but retagged and saved
+            # by its tag: a loaded tarball has no registry digest, and the compose/helm
+            # references are by tag, so the loaded image must carry that tag.
+            ref="${img%@*}"
+            tag="${ref##*/}"
             tag="${tag//:/-}"
             tag="${tag//\//-}"
             docker pull --platform linux/arm64 "$img"
-            docker save --platform linux/arm64 "$img" | gzip -9 > "images/${tag}.tar.gz"
+            [ "$ref" = "$img" ] || docker tag "$img" "$ref"
+            docker save --platform linux/arm64 "$ref" | gzip -9 > "images/${tag}.tar.gz"
           done
           # Trino ships as its own release asset (see metadata trino_image_name): inside the
           # bundle its ~1 GiB pushed the archive past GitHub's 2 GiB per-asset limit. The asset
@@ -279,12 +283,16 @@ jobs:
             "edoburu/pgbouncer:latest" \
             "redis:7-alpine" \
             "busybox:latest"; do
-            tag="${img%@*}"  # a digest-pinned image is named by its tag
-            tag="${tag##*/}"
+            # A digest-pinned image is pulled by digest (reproducible) but retagged and saved
+            # by its tag: a loaded tarball has no registry digest, and the compose/helm
+            # references are by tag, so the loaded image must carry that tag.
+            ref="${img%@*}"
+            tag="${ref##*/}"
             tag="${tag//:/-}"
             tag="${tag//\//-}"
             docker pull --platform linux/amd64 "$img"
-            docker save --platform linux/amd64 "$img" | gzip -9 > "images/${tag}.tar.gz"
+            [ "$ref" = "$img" ] || docker tag "$img" "$ref"
+            docker save --platform linux/amd64 "$ref" | gzip -9 > "images/${tag}.tar.gz"
           done
           # Trino ships as its own release asset (see metadata trino_image_amd64_name): inside
           # the bundle its ~1 GiB pushed the zip past GitHub's 2 GiB per-asset limit. Wrapped in

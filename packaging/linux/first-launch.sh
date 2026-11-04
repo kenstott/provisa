@@ -1049,7 +1049,7 @@ services:
     profiles: ["sandbox"]
     restart: unless-stopped
     # REQ-2185: a region's store holds org schemas, whose reference library needs pgvector.
-    image: pgvector/pgvector:pg16-trixie@sha256:9cf8b511f0e9a2c209b61430fc139f1ab9c75edbb31fb1751db6617b246a897a
+    image: pgvector/pgvector:pg16-trixie
     environment:
       POSTGRES_USER: provisa
       POSTGRES_PASSWORD: "\${PROVISA_PG_PASSWORD:?the deployment database password}"
