@@ -91481,3 +91481,38 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-2063
   stakeholders:
   - data-engineer
+- id: REQ-2200
+  value: A code source can be written in Go, with the same tables, commands and streams as a Node or Python
+    code source.
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-03: asked whether a Go or Java code resolver is possible, and chose
+    Go first. A Go code source is a third language for code sources (REQ-1984, REQ-1993), behind the same
+    language-neutral worker protocol, manifest, sandbox and build image (REQ-2098) as Node and Python;
+    nothing in the shared layer names Go. (Lead''s reading of what a language adds, from docs/arch/code-sources.md,
+    shown to the maintainer: a reader that prints the same manifest from the code''s exported functions
+    and types; a host program that speaks the worker protocol over the Unix socket and returns rows as
+    Arrow; package fetch and install from go.sum through the organisation''s registries; the runtime,
+    which for Go is a static binary compiled once per code hash with the code linked in and cached like
+    an install; the sandbox profile on macOS and Linux; and the remote image.) Java is a later, separate
+    language.'
+  scenario: 'Given a Go code source whose exported functions return rows
+
+    When it is registered
+
+    Then its exports are offered as tables, commands and streams with columns from their Go types
+
+    When a query reads one of its tables
+
+    Then the function runs in the sandbox and its rows are returned'
+  related_reqs:
+  - REQ-1984
+  - REQ-1993
+  - REQ-2098
+  stakeholders:
+  - data-engineer

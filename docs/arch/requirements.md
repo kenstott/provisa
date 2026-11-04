@@ -26469,3 +26469,15 @@ Maintainer 2026-11-03: the entity/fact form ([REQ-1164](#REQ-1164)) is built fro
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2200 · Source Connectors {#REQ-2200}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-03: asked whether a Go or Java code resolver is possible, and chose Go first. A Go code source is a third language for code sources ([REQ-1984](#REQ-1984), [REQ-1993](#REQ-1993)), behind the same language-neutral worker protocol, manifest, sandbox and build image ([REQ-2098](#REQ-2098)) as Node and Python; nothing in the shared layer names Go. (Lead's reading of what a language adds, from docs/arch/code-sources.md, shown to the maintainer: a reader that prints the same manifest from the code's exported functions and types; a host program that speaks the worker protocol over the Unix socket and returns rows as Arrow; package fetch and install from go.sum through the organisation's registries; the runtime, which for Go is a static binary compiled once per code hash with the code linked in and cached like an install; the sandbox profile on macOS and Linux; and the remote image.) Java is a later, separate language.
+
+**Code:** —
+
+**Tests:** —
