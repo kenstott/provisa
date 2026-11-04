@@ -22,6 +22,8 @@ taught to its parser here:
 - ``convert(bytes, from, to)`` is PostgreSQL's call, not the CONVERT of a type or a charset.
 - ``json_object('{...}')`` and ``json_object(ARRAY[...], ...)`` are PostgreSQL's calls of an
   array, not SQL's JSON_OBJECT of key and value pairs.
+- a keyword after ``AS`` is a column label (``AS select``): sqlglot refuses the reserved ones; the
+  label is read as a quoted identifier, so the statement writes back as PostgreSQL reads it.
 - pgvector's ``a <#> b`` is its negative inner product: it tokenizes as ``<`` and ``#>``."""
 
 # Requirements: REQ-2167, REQ-423
@@ -150,11 +152,37 @@ def _reads_negative_inner_product(parser: type) -> None:
     parser._parse_bitwise = _parse_bitwise_with_inner_product
 
 
+def _reads_keyword_labels(parser: type) -> None:
+    """``expr AS <keyword>``: PostgreSQL takes any keyword as a label after AS. A word token
+    sqlglot does not take as an identifier becomes one, quoted and folded to lower case as
+    PostgreSQL folds it."""
+    parse_alias = parser._parse_alias
+
+    def _parse_alias(self, this: exp.Expr | None, explicit: bool = False) -> exp.Expr | None:
+        current, following = self._curr, self._next
+        if (
+            this is not None
+            and current is not None
+            and current.token_type == TokenType.ALIAS
+            and following is not None
+            and following.text.isalpha()
+            and following.token_type not in self.ID_VAR_TOKENS
+            and following.token_type != TokenType.STRING
+        ):
+            self._advance(2)
+            label = exp.to_identifier(following.text.lower(), quoted=True)
+            return self.expression(exp.Alias(this=this, alias=label))
+        return parse_alias(self, this, explicit)
+
+    parser._parse_alias = _parse_alias
+
+
 _JSON_OBJECT = Postgres.Parser.FUNCTION_PARSERS["JSON_OBJECT"]
 
 _reads_types(Postgres.Parser)
 _reads_qualified_calls(Postgres.Parser)
 _reads_negative_inner_product(Postgres.Parser)
+_reads_keyword_labels(Postgres.Parser)
 Postgres.Parser.FUNC_TOKENS = Postgres.Parser.FUNC_TOKENS | {TokenType.OVERLAPS}
 Postgres.Parser.FUNCTIONS["OVERLAPS"] = _overlaps
 Postgres.Parser.FUNCTION_PARSERS.pop("CONVERT", None)

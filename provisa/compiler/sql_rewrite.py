@@ -41,20 +41,28 @@ def split_sql_statements(sql: str) -> list[str]:
     malformed fragments). Original statement text is preserved (sliced between top-level semicolon
     tokens, not re-rendered), so COPY/CTAS regex matching and governance see EXACTLY what executes —
     closing the parser-differential where the batch was tokenized one way for governance and another
-    at execution. Blank fragments (a trailing ``;``) are dropped."""
+    at execution. A segment holding no token but comments (a trailing ``;``, ``-- ping``) is dropped."""
     tokens = sqlglot.tokenize(sql, read="postgres")
     stmts: list[str] = []
     start = 0
+    held = False  # the segment since the last ';' holds a token: comments are not tokens
     for tok in tokens:
         if tok.token_type == sqlglot.TokenType.SEMICOLON:
-            seg = sql[start : tok.start].strip()
-            if seg:
-                stmts.append(seg)
+            if held:
+                stmts.append(sql[start : tok.start].strip())
+            held = False
             start = tok.end + 1
-    tail = sql[start:].strip()
-    if tail:
-        stmts.append(tail)
+        else:
+            held = True
+    if held:
+        stmts.append(sql[start:].strip())
     return stmts
+
+
+def holds_no_statement(sql: str) -> bool:
+    """True when ``sql`` holds nothing but whitespace, comments and ``;``: PostgreSQL answers it
+    with EmptyQueryResponse on both protocols (REQ-2167)."""
+    return not split_sql_statements(sql)
 
 
 # --- Type coercion for cross-source JOINs ---

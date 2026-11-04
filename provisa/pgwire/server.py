@@ -3856,12 +3856,14 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             session.open_portal = None
 
     def handle_execute(self, ctx: BVContext, payload: bytes) -> None:
+        from provisa.compiler.sql_rewrite import holds_no_statement
+
         self._open_request()
         ba = bytearray(payload)
         portal_idx = ba.index(0)
         portal = ba[:portal_idx].decode("utf-8")
         stmt_name = ctx.portals.get(portal, (None,))[0] if portal in ctx.portals else None
-        if stmt_name is not None and not ctx.stmts.get(stmt_name, ("x",))[0].strip():
+        if stmt_name is not None and holds_no_statement(ctx.stmts.get(stmt_name, ("x",))[0]):
             self.wfile.write(struct.pack("!ci", ServerResponse.EMPTY_QUERY_RESPONSE, 4))
             return
         command = self._cursor_command(ctx, ord("P"), portal)
