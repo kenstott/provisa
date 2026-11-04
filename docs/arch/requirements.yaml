@@ -90756,30 +90756,33 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     read by AI assistance: Polly answers from it, MCP serves it to agents, and the ontology uses it when
     it finds terms in a document (REQ-2179), drafts definitions and proposes relationships. Whatever uses
     a passage cites it (document, section or page, quoted text). A role reads only the library documents
-    it may read, so an assistant acting for a role draws only on those. The library is built from what exists:
-    a files source holds the documents (REQ-1960) and an embedded search table over their passages serves
-    retrieval; it is not a separate store. (Amended 2026-10-28, MAINTAINED IN ADMIN:) The reference library
-    is maintained in Admin, on a Reference library page: an admin adds a document by file or URL, sees each
-    document''s title, source, when it was added or last fetched and which roles may read it, refreshes
-    a URL document, and removes one. Removing a document stops every assistant drawing on it; terms and
-    definitions that cite it keep their citations, marked as citing a removed document. (Amended 2026-10-28,
-    PROPOSED DOCUMENTS AND THEIR DOMAINS:) A library document has a status, proposed or kept, and domains:
-    a list of domains, or * for the whole org, the same as a glossary term''s. Its domains decide who draws
-    on it: an assistant acting for a role uses a document whose domains the role reads, and every role uses
-    a * document. When a steward has the ontology find terms in a document (REQ-2179), the document is added
-    to the library as proposed, with the domains the steward is working in, which the steward can change;
-    the steward then keeps it or discards it, and a proposed document is listed on the Admin Reference library
-    page until someone does. A document already in the library is not added again; the scan cites the library''s
-    copy. (Amended 2026-10-28, RESCANNED ON DEMAND, NEVER RE-REVIEWED AUTOMATICALLY:) Nothing is re-reviewed
-    automatically when a library document changes or is refreshed; terms are not flagged and no review is
-    queued. Instead, whenever someone is working in the glossary they can scan any library document again,
-    or add and scan a new one (REQ-2179): the scan shows the candidate terms the glossary does not hold
-    yet and the ones that match or duplicate existing terms and synonyms, each with its passages, enough
-    to decide whether to change anything. A refreshed URL document is simply scanned from its current content.
-    (Amended 2026-10-28, REFRESH AND NEW VERSIONS:) The Admin Reference library page keeps documents current:
-    Refresh on a URL document fetches it again and replaces its content with what the URL serves now; Upload
-    new version on a file document replaces its content with the uploaded file. The document keeps its place,
-    status and domains, and shows when it was last refreshed or replaced. Earlier content is not kept; citations
+    it may read, so an assistant acting for a role draws only on those. [SUPERSEDED by REQ-2185, 2026-11-04
+    -- the files source reads tables, not prose, and no runtime generates embedding columns; the library
+    keeps its own indexed passages (THE LIBRARY''S STORE AND RETRIEVAL). Kept here for history; do not implement
+    against it.] The library is built from what exists: a files source holds the documents (REQ-1960) and
+    an embedded search table over their passages serves retrieval; it is not a separate store. [END SUPERSEDED
+    BLOCK] (Amended 2026-10-28, MAINTAINED IN ADMIN:) The reference library is maintained in Admin, on a
+    Reference library page: an admin adds a document by file or URL, sees each document''s title, source,
+    when it was added or last fetched and which roles may read it, refreshes a URL document, and removes
+    one. Removing a document stops every assistant drawing on it; terms and definitions that cite it keep
+    their citations, marked as citing a removed document. (Amended 2026-10-28, PROPOSED DOCUMENTS AND THEIR
+    DOMAINS:) A library document has a status, proposed or kept, and domains: a list of domains, or * for
+    the whole org, the same as a glossary term''s. Its domains decide who draws on it: an assistant acting
+    for a role uses a document whose domains the role reads, and every role uses a * document. When a steward
+    has the ontology find terms in a document (REQ-2179), the document is added to the library as proposed,
+    with the domains the steward is working in, which the steward can change; the steward then keeps it
+    or discards it, and a proposed document is listed on the Admin Reference library page until someone
+    does. A document already in the library is not added again; the scan cites the library''s copy. (Amended
+    2026-10-28, RESCANNED ON DEMAND, NEVER RE-REVIEWED AUTOMATICALLY:) Nothing is re-reviewed automatically
+    when a library document changes or is refreshed; terms are not flagged and no review is queued. Instead,
+    whenever someone is working in the glossary they can scan any library document again, or add and scan
+    a new one (REQ-2179): the scan shows the candidate terms the glossary does not hold yet and the ones
+    that match or duplicate existing terms and synonyms, each with its passages, enough to decide whether
+    to change anything. A refreshed URL document is simply scanned from its current content. (Amended 2026-10-28,
+    REFRESH AND NEW VERSIONS:) The Admin Reference library page keeps documents current: Refresh on a URL
+    document fetches it again and replaces its content with what the URL serves now; Upload new version
+    on a file document replaces its content with the uploaded file. The document keeps its place, status
+    and domains, and shows when it was last refreshed or replaced. Earlier content is not kept; citations
     already made keep their quoted text, and later scans and answers read the current content. (Amended
     2026-10-28, PASSAGES ARE KEPT, NOT FILES; KEPT DOCUMENTS ONLY; RE-EMBED:) The library keeps a document''s
     passages (text, section or page, and their embeddings) and its metadata, not the original file; the
@@ -90803,7 +90806,22 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     candidate never reaches the answer. Only terms, relationships and documents the role may read are walked
     or offered. Acceptance: in the bank secrecy demo, asked which cash deposits need a currency transaction
     report, Polly''s answer with graph retrieval cites the aggregation rule (31 CFR 1010.313), and with
-    passage retrieval the answer is recorded for comparison.'
+    passage retrieval the answer is recorded for comparison. (Amended 2026-11-04, THE LIBRARY''S STORE AND
+    RETRIEVAL:) Maintainer 2026-11-04: the library reuses Provisa''s fetch and egress rules, its document
+    extraction and the org''s embedding model, and keeps its documents and passages in the org''s control
+    plane, each passage with its section, page, position in its document and embedding in a pgvector column
+    under a vector index; the control plane''s PostgreSQL (embedded and cloud) carries pgvector, and the
+    library refuses to start without it (no unindexed search). Retrieval for a question, within the role''s
+    readable documents, in this order of priority within one passage budget: (1) the passages nearest the
+    question; (2) under graph retrieval, the glossary walk of GRAPH RETRIEVAL, seeded by the in-service
+    terms the question names, the terms whose embedding (name and definition) is nearest the question, and
+    the terms citing the passages of (1); the reached terms'' definitions are returned as context beside
+    the passages they cite; (3) neighbours of the passages of (1) and (2): the passages just before and
+    after each in its document, and the passages nearest each by embedding. Every item reaches the assistant
+    labelled with how it was reached; the assistant cites only what it used. Glossary terms are the graph''s
+    entities and ontology relationships its relations; Provisa runs no separate entity extraction over the
+    library beyond Find terms. A passage that is repeatedly used in answers but cited by no glossary term
+    is offered to Find terms as a proposal for review.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
