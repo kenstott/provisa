@@ -11,7 +11,8 @@
 """REQ-2185 (GRAPH RETRIEVAL): governed retrieval that follows the glossary -- the walk's weights,
 decay and cutoff, the passages each reached term offers, their place in the passage budget, what a
 role may read, the terms' embeddings kept current, the Admin setting, and the bank secrecy demo's
-question answered with the aggregation rule."""
+questions: one both retrievals answer with the aggregation rule, and one only the walk answers,
+with the suspicious activity report a customer's deposits just under $10,000 call for."""
 
 # Requirements: REQ-2185
 
@@ -694,11 +695,25 @@ async def test_the_assistant_s_tool_retrieves_as_the_org_s_setting_says(api, mon
 
 ECFR = ROOT / "tests" / "fixtures" / "ecfr"
 DEMO = ROOT / "demo" / "named" / "banksecrecy"
-QUESTION = "which cash deposits need a currency transaction report"
+
+#: The bank's library: the currency transaction report's filing obligation, aggregation rule,
+#: filing, identification and exemptions; structuring and its prohibition; the definitions; and the
+#: suspicious activity report -- 31 CFR sections as eCFR's API serves them (tests/fixtures/ecfr).
+SECTIONS = (
+    "1010.100",
+    "1010.306",
+    "1010.311",
+    "1010.312",
+    "1010.313",
+    "1010.314",
+    "1020.315",
+    "1020.320",
+)
 
 #: The demo's vector model, sentence-transformers/all-MiniLM-L6-v2, as it embedded every text the
-#: case embeds -- the three sections' passages, the demo's terms and the question -- computed once
-#: with the model and kept beside the sections (tests/fixtures/ecfr), so the case runs offline.
+#: cases embed -- the sections' passages, the demo's terms and the questions -- computed once with
+#: the model by scripts/gen_ecfr_minilm_vectors.py and kept beside the sections, so the cases run
+#: offline.
 MINILM: dict[str, list[float]] = json.loads((ECFR / "banksecrecy-minilm.json").read_text())
 
 
@@ -707,6 +722,7 @@ async def _minilm(texts: list[str]) -> list[list[float]]:
 
 
 DEMO_MODEL = library.Embedder(model="sentence-transformers/all-MiniLM-L6-v2", embed=_minilm)
+ROLE = frozenset({"banksecrecy"})
 
 
 async def _demo_glossary(conn) -> dict[str, int]:
@@ -733,7 +749,7 @@ async def _ecfr(conn, section: str) -> int:
     """31 CFR ``section`` as eCFR's API serves it, read into the library as the demo's scans do."""
     url = (
         "https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml"
-        f"?part=1010&section={section}"
+        f"?part={section.split('.')[0]}&section={section}"
     )
     data = (ECFR / f"31-cfr-{section}.xml").read_bytes()
     return await library.add(
@@ -747,59 +763,129 @@ async def _ecfr(conn, section: str) -> int:
     )
 
 
-def test_the_demo_glossary_relates_the_report_to_multiple_transactions():
+async def _passage(conn, document_id: int, opening: str) -> tuple[int, int]:
+    """The passage of ``document_id`` that opens with ``opening``."""
+    (ordinal,) = [
+        o for o, _, _, t in await store.passages(conn, document_id) if t.startswith(opening)
+    ]
+    return document_id, ordinal
+
+
+#: Where the scans found each term, as (section, the cited passage's opening): each passage names
+#: its term, and each term's definition is drawn from its passages.
+CITED = {
+    "currency transaction report": (("1010.311", "Each financial institution other than"),),
+    "multiple transactions": (("1010.313", "(b) Multiple transactions."),),
+    "structuring": (
+        ("1010.100", "(xx) Structure (structuring)."),
+        ("1010.314", "No person shall for the purpose of evading"),
+    ),
+    "suspicious activity report": (
+        ("1020.320", "(a) General. (1) Every bank shall file"),
+        ("1020.320", "(b) Filing procedures"),
+    ),
+}
+
+
+async def _demo_library(conn) -> dict[str, tuple[int, int]]:
+    """The demo's glossary, the bank's library and the scans' citations; each cited passage by
+    its section and opening."""
+    ids = await _demo_glossary(conn)
+    documents = {section: await _ecfr(conn, section) for section in SECTIONS}
+    keys: dict[str, tuple[int, int]] = {}
+    for name, cited in CITED.items():
+        for section, opening in cited:
+            keys[f"{section} {opening}"] = key = await _passage(conn, documents[section], opening)
+            await _cite(conn, ids[name], key[0], [key[1]])
+    return keys
+
+
+async def _both(conn, question: str) -> tuple[list[retrieve.Citation], list[retrieve.Citation]]:
+    """What passage retrieval and graph retrieval give an assistant for ``question``, k=5."""
+    by_passage = await retrieve.retrieve_with_neighbours(conn, question, ROLE, DEMO_MODEL)
+    by_graph = await retrieve.retrieve_with_neighbours(
+        conn, question, ROLE, DEMO_MODEL, retrieval=retrieve.GRAPH
+    )
+    record = {
+        mode: [f"{c.document_title} [{c.ordinal}] {c.reached}" for c in found]
+        for mode, found in (("passage", by_passage), ("graph", by_graph))
+    }
+    print(json.dumps(record, indent=1))
+    return by_passage, by_graph
+
+
+def test_the_demo_glossary_relates_structuring_to_both_reports():
     declared = yaml.safe_load((DEMO / "config.yaml").read_text())["glossary_terms"]
     edges = {(t["name"], e["to"], e["rel_type"]) for t in declared for e in t.get("edges", ())}
     assert ("multiple transactions", "currency transaction report", "PART_OF") in edges
+    assert ("deposits under threshold", "structuring", "PART_OF") in edges
+    assert ("suspicious activity report", "structuring", "RELATED_TO") in edges
 
 
-async def test_graph_retrieval_answers_the_demo_question_with_the_aggregation_rule(db):
+async def test_both_retrievals_answer_which_deposits_need_a_report_with_the_aggregation_rule(db):
+    """Asked which cash deposits need a currency transaction report, passage retrieval already
+    finds the aggregation rule, 1010.313(b): under the demo's model it is among the passages
+    nearest the question, so graph retrieval holds it from there too, and the walk's offer of it
+    is not given twice."""
     async with db.acquire() as conn:
-        ids = await _demo_glossary(conn)
-        filing = await _ecfr(conn, "1010.311")
-        aggregation = await _ecfr(conn, "1010.313")
-        await _ecfr(conn, "1010.100")
-        held = {o: t for o, _, _, t in await store.passages(conn, aggregation)}
-        (rule,) = [o for o, t in held.items() if t.startswith("(b) Multiple transactions.")]
-        # the scans' citations: the report in the filing obligation, multiple transactions in
-        # the aggregation rule
-        await _cite(conn, ids["currency transaction report"], filing, [0])
-        await _cite(conn, ids["multiple transactions"], aggregation, [rule])
-        role = frozenset({"banksecrecy"})
-
-        by_passage = await retrieve.retrieve_with_neighbours(conn, QUESTION, role, DEMO_MODEL)
-        by_graph = await retrieve.retrieve_with_neighbours(
-            conn, QUESTION, role, DEMO_MODEL, retrieval=retrieve.GRAPH
+        cited = await _demo_library(conn)
+        rule = cited["1010.313 (b) Multiple transactions."]
+        by_passage, by_graph = await _both(
+            conn, "which cash deposits need a currency transaction report"
         )
-        record = {
-            mode: [f"{c.document_title} [{c.ordinal}] {c.reached}" for c in found]
-            for mode, found in (("passage", by_passage), ("graph", by_graph))
-        }
-        print(json.dumps(record, indent=1))
 
-        # Both return the aggregation rule. Under the demo's model its passage is itself the one
-        # nearest the question, so graph retrieval holds it from the question's passages, as
-        # passage retrieval does, and the walk's offer of it is not given twice.
-        rule_key = (aggregation, rule)
-        assert by_passage[0] == by_graph[0]
-        assert (by_graph[0].document_id, by_graph[0].ordinal) == rule_key
-        assert by_graph[0].reached == retrieve.NEAREST_QUESTION
+        for found in (by_passage, by_graph):
+            (held,) = [c for c in found if (c.document_id, c.ordinal) == rule]
+            assert held.reached == retrieve.NEAREST_QUESTION
+        assert by_passage[:5] == by_graph[:5]
         assert len(set(_keys(by_graph))) == len(by_graph)
 
-        # The walk itself reaches it from the term the question names, whatever the question's
-        # passages are: its candidates with none held.
-        documents = await retrieve._readable_documents(conn, role, DEMO_MODEL)
-        query = await retrieve._embed_question(QUESTION, DEMO_MODEL)
+        # The walk itself reaches the rule from the term the question names, whatever the
+        # question's passages are: its candidates with none held.
+        question = "which cash deposits need a currency transaction report"
+        documents = await retrieve._readable_documents(conn, ROLE, DEMO_MODEL)
+        query = await retrieve._embed_question(question, DEMO_MODEL)
         offered = await retrieve._graph_candidates(
-            conn, QUESTION, query, [], documents, role, DEMO_MODEL
+            conn, question, query, [], documents, ROLE, DEMO_MODEL
         )
-        print(
-            json.dumps([f"{c.document_title} [{c.ordinal}] {c.reached}" for c in offered], indent=1)
-        )
-        (found,) = [c for c in offered if (c.document_id, c.ordinal) == rule_key]
+        (found,) = [c for c in offered if (c.document_id, c.ordinal) == rule]
         assert found.reached == "via currency transaction report -> multiple transactions (part of)"
         assert found.term == "multiple transactions"
         assert found.term_definition is not None and "1010.313(b)" in found.term_definition
-        # the report's own citation comes first: the seed, before the term one hop away
-        assert offered[0].reached == "via currency transaction report"
-        assert (offered[0].document_id, offered[0].ordinal) == (filing, 0)
+
+
+async def test_graph_retrieval_finds_the_suspicious_activity_report_passage_retrieval_misses(db):
+    """A customer keeps depositing cash just under $10,000. No deposit needs a currency
+    transaction report, and the passages nearest the question are about cash and $10,000: the
+    aggregation rule, the exemption of businesses that deal in cash, check cashers. What the bank
+    must do is in none of them: the pattern is structuring (1010.100(xx)), which 1010.314
+    prohibits, and a bank files a suspicious activity report of a transaction designed to evade
+    the reporting (1020.320). The glossary relates deposits under the threshold to structuring and
+    structuring to the suspicious activity report, so the walk reaches all three."""
+    async with db.acquire() as conn:
+        cited = await _demo_library(conn)
+        by_passage, by_graph = await _both(
+            conn, "a customer keeps depositing cash just under $10,000; what must the bank do"
+        )
+
+        definition = cited["1010.100 (xx) Structure (structuring)."]
+        prohibition = cited["1010.314 No person shall for the purpose of evading"]
+        sar = cited["1020.320 (a) General. (1) Every bank shall file"]
+        needed = {definition, prohibition, sar}
+
+        # Passage retrieval gives none of them, not even as a neighbour.
+        assert needed.isdisjoint(_keys(by_passage))
+
+        # Graph retrieval gives each, labelled with the glossary path that reached it, beside the
+        # question's own passages, which it keeps.
+        assert by_graph[:5] == by_passage[:5]
+        reached = {(c.document_id, c.ordinal): c for c in by_graph}
+        to_structuring = "via deposits under threshold -> structuring (part of)"
+        assert reached[definition].reached == to_structuring
+        assert reached[prohibition].reached == to_structuring
+        found = reached[sar]
+        assert found.reached == f"{to_structuring} -> suspicious activity report (related to)"
+        assert found.term == "suspicious activity report"
+        assert found.term_definition is not None and "1020.320" in found.term_definition
+        assert "designed to evade" in found.term_definition
+        assert len(set(_keys(by_graph))) == len(by_graph)
