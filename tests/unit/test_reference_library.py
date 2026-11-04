@@ -617,6 +617,9 @@ async def test_the_mcp_tool_searches_for_the_callers_role(db, monkeypatch):
         "score",
         "ordinal",
         "reached",
+        # REQ-2185 (GRAPH RETRIEVAL): a glossary candidate's term and definition; None otherwise
+        "term",
+        "term_definition",
     }
 
 

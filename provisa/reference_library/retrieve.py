@@ -258,7 +258,8 @@ async def _graph_candidates(
     ``hits``; it reaches terms over the relationships between terms the role may read
     (graph.walk), and each term reached offers up to :data:`PASSAGES_PER_TERM` of the passages it
     cites in ``documents`` (those the role may read), the nearest the question first, a passage
-    already given or offered skipped. Each is labelled with the term's path and carries the term's
+    already given or offered skipped, and so is a citation of a passage its document no longer
+    holds (its content was replaced since). Each is labelled with the term's path and carries the term's
     definition. Every in-service term's embedding is brought up to date first (terms.refresh)."""
     from provisa.core.repositories.glossary import term_edges
 
@@ -287,7 +288,7 @@ async def _graph_candidates(
     out: list[Citation] = []
     for r in reached:
         own = sorted(
-            (scores[key] for key in cited.get(r.term_id, ()) if key not in given),
+            (scores[key] for key in cited.get(r.term_id, ()) if key in scores and key not in given),
             key=lambda p: (-p.score, p.document_id, p.ordinal),
         )[:PASSAGES_PER_TERM]
         term = readable[r.term_id]

@@ -167,8 +167,11 @@ _TOOLS: list[Any] = [
             "your answer uses a passage, cite it by its document title and section or page, and "
             "quote it. Each also carries reached, how it was found: 'nearest the question', or "
             "a neighbour of another passage ('after passage 3 in <document>', 'before ...', "
-            "'near ...'; ordinal is a passage's number). A neighbour is context that may or may "
-            "not bear on the question: cite only the passages your answer used. An empty result "
+            "'near ...'; ordinal is a passage's number), or, under graph retrieval, a passage a "
+            "glossary term cites, reached over the glossary's relationships ('via <term> -> "
+            "<term> (part of)'), with that term and its definition (term, term_definition). A "
+            "neighbour or a glossary passage is context that may or may not bear on the "
+            "question: cite only the passages your answer used. An empty result "
             "means the library holds nothing the user may read on it."
         ),
         "input_schema": {

@@ -685,7 +685,11 @@ def build_mcp_server(state: Any):
         up to as many again of their neighbours (the passages just after and before each in its
         document, and those nearest it); each passage's ``reached`` says how it was found
         ("nearest the question", "after passage 3 in 'Client policy'", "near ..."), its
-        ``ordinal`` its number in its document. Cite only the passages an answer used.
+        ``ordinal`` its number in its document. Under the org's graph retrieval, passages the
+        glossary terms reached from the question cite come between, labelled with the path
+        ("via currency transaction report -> multiple transactions (part of)") and carrying the
+        term and its definition (``term``, ``term_definition``). Cite only the passages an
+        answer used.
         """
         return await tools.search_reference_library(state, _role(role), question, k=k)
 
