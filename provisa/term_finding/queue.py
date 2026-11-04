@@ -11,12 +11,12 @@
 """The review queue in the org's control plane (REQ-2179).
 
 ``glossary_term_scans`` and ``glossary_term_drafts`` (schema_org.py): a scan of a library
-document, and each candidate term it proposes as a draft until the steward accepts, merges or
+document or of a registered table (REQ-2202), and each candidate term it proposes as a draft until the steward accepts, merges or
 rejects it. Nothing is re-reviewed automatically: a scan is made only when someone asks for one,
 and a draft changes only when the steward decides on it.
 """
 
-# Requirements: REQ-2179
+# Requirements: REQ-2179, REQ-2202
 
 from __future__ import annotations
 
@@ -67,6 +67,9 @@ class ScanRow:
     batch: int | None
     batches: int | None
     budget_limit: int | None
+    #: A table's scan (REQ-2202): its ``domain``, ``table``, ``id_column`` and ``text_column``;
+    #: None for a library document's.
+    source_table: dict[str, str] | None
 
 
 @dataclass(frozen=True)
@@ -106,6 +109,7 @@ _SCAN_COLUMNS = (
     scans_t.c.batch,
     scans_t.c.batches,
     scans_t.c.budget_limit,
+    scans_t.c.source_table,
 )
 _DRAFT_COLUMNS = (
     drafts_t.c.id,
@@ -131,6 +135,7 @@ def _scan(row: Any) -> ScanRow:
     values = list(row)
     values[4] = json.loads(values[4])
     values[7] = None if values[7] is None else json.loads(values[7])
+    values[16] = None if values[16] is None else json.loads(values[16])
     return ScanRow(*values)
 
 
@@ -143,18 +148,22 @@ def _draft(row: Any) -> DraftRow:
 async def start_scan(
     conn: Connection,
     *,
-    document_id: int,
+    document_id: int | None,
     document_title: str,
     document_source: str,
     domains: Sequence[str],
     started_by: str | None,
     model: str,
     launch: str,
+    source_table: dict[str, str] | None = None,
 ) -> int:
+    """A running scan of a library document, or of a table (``source_table``, REQ-2202): a table
+    is no library document, so its scan has no ``document_id``."""
     result = await conn.execute_core(
         insert(scans_t)
         .values(
             document_id=document_id,
+            source_table=None if source_table is None else json.dumps(source_table),
             document_title=document_title,
             document_source=document_source,
             domains=json.dumps(sorted(domains)),

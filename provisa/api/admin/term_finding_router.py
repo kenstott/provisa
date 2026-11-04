@@ -8,7 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Find terms in a document: the glossary's API for it (REQ-2179, REQ-2185).
+"""Find terms in a document or a registered table: the glossary's API for it (REQ-2179,
+REQ-2185, REQ-2202).
 
 A steward picks a reference library document they may read, or gives a new one as a file or an
 http(s) URL, which joins the library as a proposed document in the domains the steward is working
@@ -18,15 +19,16 @@ candidates land as drafts in the review queue, where the steward edits, accepts,
 rejects each, or accepts several at once. A scan always ends: it finishes, or it stops saying why
 -- refused at the start when its model cannot run, failed by a model call that stalls or a budget
 that refuses, cancelled by a person, or given up on by :func:`keep` when its server restarted or it
-stopped moving. Scanning a document again is a new scan whose drafts
-show the candidates the glossary does not hold yet and those that match or duplicate its terms
-and synonyms; nothing is re-reviewed automatically.
+stopped moving. A registered table is scanned the same way, its rows read as the steward's acting
+role (term_finding_table.py); it is a scan only, and joins no library. Scanning a document again
+is a new scan whose drafts show the candidates the glossary does not hold yet and those that
+match or duplicate its terms and synonyms; nothing is re-reviewed automatically.
 
 Curation's rules hold throughout (glossary_router.py): the queue takes ``glossary_rw``; a term is
 added only in domains the caller curates; a draft merges only into a term the caller may change.
 """
 
-# Requirements: REQ-2179, REQ-2185
+# Requirements: REQ-2179, REQ-2185, REQ-2202
 
 from __future__ import annotations
 
@@ -113,7 +115,9 @@ def _scan(s: queue.ScanRow, counts: dict[str, int] | None = None) -> dict[str, A
         "document_title": s.document_title,
         "document_source": s.document_source,
         # REQ-2185: a removed document's citations stay, marked as citing a removed document.
-        "document_removed": s.document_id is None,
+        "document_removed": s.document_id is None and s.source_table is None,
+        # REQ-2202: a table's scan names its domain, table, id column and text column.
+        "source_table": s.source_table,
         "domains": s.domains,
         "status": s.status,
         "error": s.error,
@@ -211,11 +215,14 @@ async def _model(request: Request) -> Held:
 async def run_scan(
     pool: Database,
     scan_id: int,
-    document_id: int,
+    document_id: int | None,
     title: str,
     call: Held,
+    *,
+    rows: list[scan.Passage] | None = None,
 ) -> None:
-    """Scan the document and queue its candidates; a scan that cannot finish is marked failed,
+    """Scan the document -- or a table's ``rows``, already read as the steward (REQ-2202) -- and
+    queue its candidates; a scan that cannot finish is marked failed,
     naming why. Each step is recorded on the scan's row, and a scan whose row has been ended (a
     person cancelled it, :func:`keep` gave up on it) stops there: the row is what every worker
     reads, and the worker running a scan need not be the one that was asked."""
@@ -234,9 +241,12 @@ async def run_scan(
             raise scan.ScanStopped
 
     try:
-        async with pool.acquire() as conn:
-            rows = await store.passages(conn, document_id)
-        result = await scan.run(title, [scan.Passage(*r) for r in rows], call, report)
+        if rows is None:
+            async with pool.acquire() as conn:
+                stored = await store.passages(conn, cast("int", document_id))
+            result = await scan.run(title, [scan.Passage(*r) for r in stored], call, report)
+        else:
+            result = await scan.run(title, rows, call, report, scan.TABLE)
         async with pool.acquire() as conn:
             terms = [
                 {"id": t["id"], "name": t["name"]}
@@ -317,19 +327,61 @@ async def keep(state: Any) -> None:
         await asyncio.sleep(KEEP_EVERY_S)
 
 
+async def _start_table_scan(
+    request: Request, raw: Any, declared: set[str], call: Held
+) -> dict[str, Any]:
+    """Scan a registered table (REQ-2202): its rows read as the steward's acting role, refused
+    before the scan starts when the role's LLM budget has no room for them."""
+    from provisa.api.admin import term_finding_table as table
+    from provisa.api.admin.capabilities import acting_role_of_request
+    from provisa.api.app import state
+
+    source = table.source_of(raw)
+    rows = await table.read(state, source, acting_role_of_request(request))
+    if not rows:
+        raise ApiError(
+            409,
+            "term_finding.no_rows",
+            f"{source.name} holds no row with text in {source.text_column!r} to scan",
+            table=source.name,
+        )
+    try:
+        await call.require_room(scan.reading_prompts(source.name, rows, scan.TABLE), source.name)
+    except model.OverBudget as exc:
+        raise ApiError(409, "term_finding.over_budget", str(exc)) from None
+    pool = _pool()
+    async with pool.acquire() as conn:
+        scan_id = await queue.start_scan(
+            conn,
+            document_id=None,
+            document_title=source.name,
+            document_source=source.name,
+            domains=sorted(declared),
+            started_by=glossary._caller_id(request),
+            model=call.name,
+            launch=this_launch(),
+            source_table=source.as_dict(),
+        )
+        started = await queue.scan(conn, scan_id)
+    _launch(run_scan(pool, scan_id, None, source.name, call, rows=rows))
+    assert started is not None
+    return {"scan": _scan(started)}
+
+
 @router.post("/scans")
 async def start_scan(request: Request) -> dict:
-    """Scan a library document (``document_id``) or a new one (``url``, or ``file_name`` with
-    ``content_b64``), in the steward's working ``domains``."""
+    """Scan a library document (``document_id``), a new one (``url``, or ``file_name`` with
+    ``content_b64``) or a registered table (``table``: its ``domain``, ``table``, ``id_column``
+    and ``text_column``), in the steward's working ``domains``."""
     glossary._require_glossary_rw(request)
     org_id = require_active_org_id(request)
     body = await request.json()
-    given = [k for k in ("document_id", "url", "content_b64") if body.get(k) is not None]
+    given = [k for k in ("document_id", "url", "content_b64", "table") if body.get(k) is not None]
     if len(given) != 1:
         raise ApiError(
             400,
             "term_finding.one_document",
-            "a scan reads one document: a library document, a URL or a file",
+            "a scan reads one source: a library document, a URL, a file or a table",
         )
     declared = glossary._declared_domains(request, body.get("domains"), current=set())
     pool = _pool()
@@ -338,6 +390,8 @@ async def start_scan(request: Request) -> dict:
         call = await _model(request)
     except model.ModelRefused as exc:
         raise ApiError(409, "term_finding.no_model", str(exc)) from None
+    if given == ["table"]:
+        return await _start_table_scan(request, body["table"], declared, call)
     try:
         async with pool.acquire() as conn:
             if body.get("document_id") is not None:
