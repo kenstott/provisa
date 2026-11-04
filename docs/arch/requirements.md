@@ -26481,3 +26481,15 @@ Maintainer 2026-11-03: asked whether a Go or Java code resolver is possible, and
 **Code:** —
 
 **Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2201 · UI {#REQ-2201}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-03: "reading a u.s. law text, extracting terms and applying a bank example, then querying based on a concept, could interesting"; chose the Bank Secrecy Act. The demo reads the currency transaction reporting rule (31 CFR 1010.311 and the definitions it uses in 31 CFR 1010.100), a public-domain US regulation, with Find terms in a document, and the terms it extracts (transaction in currency, financial institution, person, business day, multiple transactions, on behalf of) are grounded on a bank's tables: customers, accounts, branches, and cash deposits and withdrawals. The tour then asks by concept which transactions require a currency transaction report (cash in or out over $10,000 by or on behalf of one person in one business day, aggregated across accounts and branches) and who is structuring (repeated cash just under the threshold), with a teller role that sees account numbers masked and a compliance role that sees them. (Lead's proposal shown to the maintainer 2026-11-03; the concept queries and roles are the lead's reading.)
+
+**Code:** —
+
+**Tests:** —
