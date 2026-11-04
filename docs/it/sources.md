@@ -26,7 +26,7 @@ Nemmeno le origini **Materialize** hanno un connettore federato. Provisa recuper
 
 ## Tutte le origini {: #all-sources }
 
-Provisa registra **76** tipi di origine, quelli che il modulo Sources offre. Le tabelle qui sotto le coprono tutte e 76; l'indice è il conteggio.
+Provisa registra **77** tipi di origine, quelli che il modulo Sources offre. Le tabelle qui sotto le coprono tutte e 77; l'indice è il conteggio.
 
 | # | Gruppo | Tipi di origine |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa registra **76** tipi di origine, quelli che il modulo Sources offre. Le 
 | 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [Data Lake / formati tabella aperti](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–41 | [Sorgenti di codice](code-sources.md) | `node`, `python` |
-| 42–44 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 45 | [Ricevitore push](#push-receiver) | `ingest` |
-| 46–47 | [Grafo e semantico](#graph-semantic) | `neo4j`, `sparql` |
-| 48–52 | [Basate su file](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 53–54 | [Osservabilità e altro](#observability-other) | `google_sheets`, `prometheus` |
-| 55–63 | [Connettori SaaS enterprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 64–70 | [Origini API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 71 | [GovData](#govdata) | `govdata` |
-| 72–73 | [Controlli di qualità dei dati](#data-quality-checkers) | `soda`, `great_expectations` |
-| 74 | [Data profiler](#data-profiler) | `data_profiler` |
-| 75 | [Dataset Kaggle](#kaggle-datasets) | Kaggle (messo in stage tramite il modulo Sources; si registra come origine `files` — vedere [Dataset Kaggle](#kaggle-datasets)) |
-| 76 | [Wikipedia](#wikipedia) | Wikipedia (si registra come origine `files` che scansiona le pagine indicate — vedere [Wikipedia](#wikipedia)) |
+| 40–42 | [Sorgenti di codice](code-sources.md) | `node`, `python`, `go` |
+| 43–45 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 46 | [Ricevitore push](#push-receiver) | `ingest` |
+| 47–48 | [Grafo e semantico](#graph-semantic) | `neo4j`, `sparql` |
+| 49–53 | [Basate su file](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 54–55 | [Osservabilità e altro](#observability-other) | `google_sheets`, `prometheus` |
+| 56–64 | [Connettori SaaS enterprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 65–71 | [Origini API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 72 | [GovData](#govdata) | `govdata` |
+| 73–74 | [Controlli di qualità dei dati](#data-quality-checkers) | `soda`, `great_expectations` |
+| 75 | [Data profiler](#data-profiler) | `data_profiler` |
+| 76 | [Dataset Kaggle](#kaggle-datasets) | Kaggle (messo in stage tramite il modulo Sources; si registra come origine `files` — vedere [Dataset Kaggle](#kaggle-datasets)) |
+| 77 | [Wikipedia](#wikipedia) | Wikipedia (si registra come origine `files` che scansiona le pagine indicate — vedere [Wikipedia](#wikipedia)) |
 
 Riferimento per ogni tipo di origine supportato da Provisa. "Driver diretto" significa che le query a singola origine vengono eseguite nativamente contro l'origine (sub-100ms). "Nome connettore" è il connettore federato usato quando l'origine partecipa a JOIN multi-source.
 
