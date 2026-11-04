@@ -6,12 +6,15 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from provisa.compiler.stage2 import (
     GovernanceContext,
     apply_governance,
     build_governance_context,
 )
 from provisa.security.masking import MaskingRule, MaskType
+from tests.governed_pg import Refused, governed_database
 from tests.helpers import unscoped_role
 
 
@@ -29,102 +32,115 @@ def _gov(**kwargs) -> GovernanceContext:
     return GovernanceContext(**defaults)
 
 
+_ORDERS = [
+    ("id", "integer"),
+    ("region", "varchar"),
+    ("status", "varchar"),
+    ("active", "boolean"),
+    ("cid", "integer"),
+]
+_ORDER_ROWS = [
+    {"id": 1, "region": "us", "status": "active", "active": True, "cid": 1},
+    {"id": 2, "region": "eu", "status": "active", "active": True, "cid": 2},
+    {"id": 3, "region": "us", "status": "closed", "active": False, "cid": 2},
+]
+_CUSTOMER_ROWS = [{"id": 1, "active": True}, {"id": 2, "active": False}]
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_stage2")
+
+
 class TestRLSInjection:
-    def test_rls_where_injected(self):
+    def test_rls_where_injected(self, pg):
         gov = _gov(
-            rls_rules={1: "region = 'us'"},
-            table_map={"orders": 1},
+            rls_rules={1: "region = 'us'"}, table_map={"orders": 1}, all_columns={1: _ORDERS}
         )
-        sql = "SELECT id FROM orders"
-        result = apply_governance(sql, gov)
-        assert "WHERE" in result
-        assert "\"region\" = 'us'" in result
+        result = apply_governance("SELECT id FROM orders ORDER BY id", gov)
+        assert pg.answer(result, {"orders": _ORDER_ROWS}) == [(1,), (3,)]
 
-    def test_rls_ands_with_existing_where(self):
+    def test_rls_ands_with_existing_where(self, pg):
         gov = _gov(
-            rls_rules={1: "region = 'us'"},
-            table_map={"orders": 1},
+            rls_rules={1: "region = 'us'"}, table_map={"orders": 1}, all_columns={1: _ORDERS}
         )
-        sql = "SELECT id FROM orders WHERE status = 'active'"
-        result = apply_governance(sql, gov)
-        assert "\"region\" = 'us'" in result
-        assert "status = 'active'" in result
-        assert "AND" in result
+        result = apply_governance("SELECT id FROM orders WHERE status = 'active'", gov)
+        assert pg.answer(result, {"orders": _ORDER_ROWS}) == [(1,)]
 
-    def test_rls_injected_on_subquery(self):
+    def test_rls_injected_on_subquery(self, pg):
         gov = _gov(
-            rls_rules={1: "active = true"},
-            table_map={"orders": 1},
+            rls_rules={1: "active = true"}, table_map={"orders": 1}, all_columns={1: _ORDERS}
         )
-        sql = "SELECT * FROM (SELECT id FROM orders) AS sub"
-        result = apply_governance(sql, gov)
-        assert "active" in result.lower() and "true" in result.lower()
+        result = apply_governance("SELECT * FROM (SELECT id FROM orders) AS sub ORDER BY id", gov)
+        assert pg.answer(result, {"orders": _ORDER_ROWS}) == [(1,), (2,)]
 
-    def test_rls_injected_for_joined_table(self):
+    def test_rls_injected_for_joined_table(self, pg):
         gov = _gov(
             rls_rules={1: "region = 'us'", 2: "active = true"},
             table_map={"orders": 1, "customers": 2},
+            all_columns={1: _ORDERS, 2: [("id", "integer"), ("active", "boolean")]},
         )
         sql = "SELECT o.id FROM orders o JOIN customers c ON o.cid = c.id"
         result = apply_governance(sql, gov)
-        assert "\"region\" = 'us'" in result
-        assert "active" in result.lower() and "true" in result.lower()
+        tables = {"orders": _ORDER_ROWS, "customers": _CUSTOMER_ROWS}
+        assert pg.answer(result, tables) == [(1,)]
 
     def test_no_rls_rule_unchanged(self):
-        gov = _gov(
-            rls_rules={99: "x = 1"},
-            table_map={"orders": 1},
-        )
-        sql = "SELECT id FROM orders"
-        result = apply_governance(sql, gov)
+        gov = _gov(rls_rules={99: "x = 1"}, table_map={"orders": 1}, all_columns={1: _ORDERS})
+        result = apply_governance("SELECT id FROM orders", gov)
         assert "WHERE" not in result
 
 
+_USERS = [("id", "integer"), ("email", "varchar")]
+_USER_ROWS = [{"id": 1, "email": "ann@x.com"}]
+
+
 class TestMaskingInjection:
-    def test_masked_column_wrapped(self):
+    def test_masked_column_wrapped(self, pg):
         rule = MaskingRule(mask_type=MaskType.regex, pattern=r".+@", replace="***@")
         gov = _gov(
             masking_rules={(1, "email"): (rule, "varchar")},
             table_map={"users": 1},
+            all_columns={1: _USERS},
         )
-        sql = "SELECT email FROM users"
-        result = apply_governance(sql, gov)
-        assert "PROVISA_REGEX_REPLACE" in result
-        assert "email" in result
+        result = apply_governance("SELECT email FROM users", gov)
+        assert pg.answer(result, {"users": _USER_ROWS}) == [("***@x.com",)]
 
-    def test_non_masked_column_unchanged(self):
+    def test_non_masked_column_unchanged(self, pg):
         rule = MaskingRule(mask_type=MaskType.regex, pattern=r".+@", replace="***@")
         gov = _gov(
             masking_rules={(1, "email"): (rule, "varchar")},
             table_map={"users": 1},
+            all_columns={1: _USERS},
         )
-        sql = "SELECT id FROM users"
-        result = apply_governance(sql, gov)
-        assert "PROVISA_REGEX_REPLACE" not in result
-        assert "id" in result
+        result = apply_governance("SELECT id FROM users", gov)
+        assert pg.answer(result, {"users": _USER_ROWS}) == [(1,)]
 
-    def test_constant_mask_applied(self):
+    def test_constant_mask_applied(self, pg):
         rule = MaskingRule(mask_type=MaskType.constant, value=None)
         gov = _gov(
             masking_rules={(1, "secret"): (rule, "varchar")},
             table_map={"data": 1},
+            all_columns={1: [("id", "integer"), ("secret", "varchar")]},
         )
-        sql = "SELECT secret FROM data"
-        result = apply_governance(sql, gov)
-        assert "NULL" in result
+        result = apply_governance("SELECT secret FROM data", gov)
+        assert pg.answer(result, {"data": [{"id": 1, "secret": "s3"}]}) == [(None,)]
 
 
 class TestVisibilityFiltering:
-    def test_invisible_column_removed(self):
+    def test_invisible_column_removed(self, pg):
         gov = _gov(
             visible_columns={1: frozenset({"id"})},
             table_map={"orders": 1},
             all_columns={1: [("id", "integer"), ("secret", "varchar")]},
         )
-        sql = "SELECT id, secret FROM orders"
-        result = apply_governance(sql, gov)
-        # invisible column replaced with NULL
-        assert "secret" not in result or "NULL" in result
+        result = apply_governance("SELECT id, secret FROM orders", gov)
+        # The governed relation has no secret: naming it reads nothing.
+        with pytest.raises(Refused, match="secret"):
+            pg.answer(result, {"orders": [{"id": 1, "secret": "s3"}]})
+        assert pg.answer(
+            apply_governance("SELECT * FROM orders", gov), {"orders": [{"id": 1, "secret": "s3"}]}
+        ) == [(1,)]
 
     def test_visible_column_kept(self):
         gov = _gov(
@@ -219,15 +235,14 @@ class TestStarExpansion:
 
 
 class TestUnionGovernance:
-    def test_union_branches_governed_independently(self):
+    def test_union_branches_governed_independently(self, pg):
         gov = _gov(
-            rls_rules={1: "region = 'us'"},
-            table_map={"orders": 1},
+            rls_rules={1: "region = 'us'"}, table_map={"orders": 1}, all_columns={1: _ORDERS}
         )
-        sql = "SELECT id FROM orders UNION ALL SELECT id FROM orders"
+        sql = "SELECT id FROM orders UNION ALL SELECT id FROM orders ORDER BY id"
         result = apply_governance(sql, gov)
-        # Both branches should have RLS applied
-        assert result.count("\"region\" = 'us'") >= 2
+        # Both branches read the governed relation, its row rule applied.
+        assert pg.answer(result, {"orders": _ORDER_ROWS}) == [(1,), (1,), (3,), (3,)]
 
 
 class TestCeilingWiring:
@@ -314,21 +329,33 @@ class TestPerTableCeiling:
     """REQ-005: LIMIT injected from the most restrictive ceiling on a referenced table."""
 
     def test_per_table_ceiling_applied_for_referenced_table(self):
-        gov = _gov(table_map={"orders": 1}, table_ceilings={1: 10})
+        gov = _gov(table_map={"orders": 1}, all_columns={1: _ORDERS}, table_ceilings={1: 10})
         result = apply_governance("SELECT id FROM orders", gov)
         assert "LIMIT 10" in result
 
     def test_per_table_ceiling_ignored_when_table_not_referenced(self):
-        gov = _gov(table_map={"orders": 1, "users": 2}, table_ceilings={2: 5})
+        gov = _gov(
+            table_map={"orders": 1, "users": 2}, all_columns={1: _ORDERS}, table_ceilings={2: 5}
+        )
         result = apply_governance("SELECT id FROM orders", gov)
         assert "LIMIT" not in result
 
     def test_min_of_role_and_table_ceiling_wins(self):
-        gov = _gov(table_map={"orders": 1}, table_ceilings={1: 10}, limit_ceiling=100)
+        gov = _gov(
+            table_map={"orders": 1},
+            all_columns={1: _ORDERS},
+            table_ceilings={1: 10},
+            limit_ceiling=100,
+        )
         result = apply_governance("SELECT id FROM orders", gov)
         assert "LIMIT 10" in result
 
     def test_role_ceiling_used_when_more_restrictive(self):
-        gov = _gov(table_map={"orders": 1}, table_ceilings={1: 100}, limit_ceiling=20)
+        gov = _gov(
+            table_map={"orders": 1},
+            all_columns={1: _ORDERS},
+            table_ceilings={1: 100},
+            limit_ceiling=20,
+        )
         result = apply_governance("SELECT id FROM orders", gov)
         assert "LIMIT 20" in result

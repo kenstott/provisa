@@ -256,7 +256,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     _with_member_reads(gov, rls_context)
     _bind_fakes(gov)
     gov.kept = dict(ctx.kept)  # REQ-1942
-    gov.pk_columns = dict(ctx.pk_columns)  # REQ-039
+    gov.pk_columns = dict(getattr(ctx, "pk_columns", None) or {})  # REQ-039
     from provisa.compiler.sql_rewrite import published_columns
     from provisa.compiler.sql_validator import approved_joins
 
@@ -2171,6 +2171,11 @@ def _govern_write(
     assert tid is not None  # admitted
     returning = write.args.get("returning")
     reads = returning is not None and returning.find(exp.Query) is not None
+    if isinstance(write, exp.Update):
+        # REQ-039: a column the role is not served cannot be set.
+        for assignment in write.expressions:
+            if isinstance(assignment, exp.EQ) and isinstance(assignment.this, exp.Column):
+                _refuse_hidden(assignment.this, tid, gov_ctx)
     if isinstance(write, (exp.Update, exp.Delete)):
         granted = write.args.get("where")
         if _plain_write(write, role_where):
@@ -2286,7 +2291,15 @@ def apply_governance(
     if bound is not None:
         from provisa.compiler.list_cap import cap_lists
 
-        def columns_of(table: exp.Table) -> list[str] | None:
+        def columns_of(table: exp.Expr) -> list[str] | None:  # pyright: ignore[reportPrivateImportUsage]
+            relation = _relation(table)
+            if relation is not None:
+                # REQ-039: a governed relation's columns are the ones it serves.
+                return [
+                    out for out, physical in relation.columns if physical not in relation.hidden
+                ]
+            if not isinstance(table, exp.Table):
+                return None
             tid = _table_id_for_node(table, gov_ctx)
             if tid is None or tid not in gov_ctx.all_columns:
                 return None

@@ -158,7 +158,16 @@ def require_write_op(gov: "GovernanceContext", table_id: int, name: str, kind: s
 
 def is_write(tree: exp.Expression) -> bool:
     """Whether ``tree`` holds a data-modifying statement anywhere: a CTE's included (REQ-039)."""
-    return any(isinstance(node, WRITES) for node in tree.walk())
+    return bool(_writes(tree))
+
+
+def _writes(tree: exp.Expression) -> list[exp.Expression]:
+    """Every data-modifying statement in ``tree``: a MERGE's WHEN actions are the MERGE's own."""
+    return [
+        node
+        for node in tree.walk()
+        if isinstance(node, WRITES) and node.find_ancestor(exp.When) is None
+    ]
 
 
 def the_write(tree: exp.Expression) -> exp.Expression | None:  # REQ-039
@@ -166,7 +175,7 @@ def the_write(tree: exp.Expression) -> exp.Expression | None:  # REQ-039
     either at its root or as ``WITH w AS (<write> RETURNING ...) SELECT ... FROM w``; any other
     placement, and a second write, is refused (V006): a write nested anywhere else escaped
     admission, and several writes in one statement may reach sources no route runs atomically."""
-    writes = [node for node in tree.walk() if isinstance(node, WRITES)]
+    writes = _writes(tree)
     if not writes:
         return None
     if len(writes) > 1:
