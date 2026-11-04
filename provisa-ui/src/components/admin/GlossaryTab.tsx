@@ -183,10 +183,6 @@ export function GlossaryTab() {
 
   const navigate = useNavigate();
   const [detail, setDetail] = useState<GlossaryTermDetail | null>(null);
-  // REQ-2115: the open term by name, once the glossary has answered for it.
-  useScreenInputs("/admin/ontology", {
-    termName: detail?.id === selectedId ? (detail?.name ?? null) : null,
-  });
   const [detailLoading, setDetailLoading] = useState(false);
 
   // Editable copies of the selected term's name/definition.
@@ -194,6 +190,12 @@ export function GlossaryTab() {
   const [bulkGeneratingRelationships, setBulkGeneratingRelationships] = useState(false);
   // REQ-2179: Find terms in a document, and the review queue of what it proposes.
   const [findTermsOpen, setFindTermsOpen] = useState(false);
+  // REQ-2115: the open term by name, once the glossary has answered for it, and whether the Find
+  // terms dialog is open.
+  useScreenInputs("/admin/ontology", {
+    termName: detail?.id === selectedId ? (detail?.name ?? null) : null,
+    findTerms: findTermsOpen,
+  });
 
   const [actionError, setActionError] = useState("");
   // REQ-2198: a term's Delete works like a save. While it runs the detail is locked and the term's

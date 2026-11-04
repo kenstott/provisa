@@ -12,11 +12,13 @@
 // (lookups) apart from those that list rows with none, each marked and naming what it needs.
 
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { renderInForm, screen, within } from "../../../test-utils/render";
 import { LOOKUP_GLYPH, requiredParametersOf } from "../lookups";
 import { SchemaTableSelects } from "../SchemaTableSelects";
+import { readScreen } from "../../../mcp/screenState";
+import { runUiActions } from "../../../mcp/uiActions";
 
 type Offered = { name: string; comment: string | null; requiredParameters?: string[] };
 
@@ -115,6 +117,62 @@ describe("the table picker lists lookups apart", () => {
     expect(
       within(lookups).getByRole("option", { name: `${LOOKUP_GLYPH} shop__company` }),
     ).toBeDisabled();
+  });
+});
+
+// REQ-2115: Polly names the picker as the user reads it, "Table", and picks a lookup by its name.
+describe("Polly and the table picker", () => {
+  const steps = { confirm: vi.fn(), paceMs: 0, waitMs: 300 };
+
+  it("names the picker by its label alone, not by the options it holds", async () => {
+    HTMLElement.prototype.checkVisibility = () => true;
+    renderInForm(<Picker tables={SHOP} />);
+    const out = await runUiActions(
+      [{ do: "choose", target: { role: "combobox", name: "Table" }, option: "shop__orders" }],
+      steps,
+    );
+    expect(out.steps).toEqual(['Chose "shop__orders" in the combobox named "Table".']);
+    const read = await readScreen(300);
+    if (typeof read === "string") throw new Error(read);
+    expect(read.fields).toContainEqual({ label: "Table", value: "shop__orders" });
+  });
+
+  it("picks a lookup by its name, without its mark", async () => {
+    renderInForm(<Picker tables={SHOP} />);
+    const out = await runUiActions(
+      [
+        {
+          do: "choose",
+          target: { testId: "register-table-table-select" },
+          option: "shop__company",
+        },
+      ],
+      steps,
+    );
+    expect(out.success).toBe(true);
+    expect(screen.getByTestId("register-table-lookup-mark")).toHaveAccessibleName("needs id");
+  });
+
+  it("answers back a registered table, which the user cannot pick either", async () => {
+    renderInForm(<Picker tables={SHOP} registered={["shop__company"]} />);
+    const out = await runUiActions(
+      [
+        {
+          do: "choose",
+          target: { testId: "register-table-table-select" },
+          option: "shop__company",
+        },
+      ],
+      steps,
+    );
+    expect(out).toEqual({
+      success: false,
+      steps: [
+        'Could not choose in the element with test id "register-table-table-select": ' +
+          'its option "shop__company" cannot be chosen.',
+      ],
+    });
+    expect(screen.getByTestId("register-table-table-select")).toHaveValue("");
   });
 });
 

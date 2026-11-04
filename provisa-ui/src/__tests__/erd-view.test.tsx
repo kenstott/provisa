@@ -272,6 +272,8 @@ vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
 
 import { RelationshipsPage } from "../pages/RelationshipsPage";
 import { TablesPage } from "../pages/TablesPage";
+import { readScreen } from "../mcp/screenState";
+import { runUiActions } from "../mcp/uiActions";
 
 function Where() {
   const { pathname, search } = useLocation();
@@ -856,5 +858,66 @@ describe("the diagram's hint", () => {
     expect(await screen.findByTestId("erd-hint-card")).toHaveTextContent(
       "Click a domain group to collapse / expand · dashed lines connect collapsed domains",
     );
+  });
+});
+
+// REQ-2115: what Polly reads and presses on the Tables page's screens of REQ-2189 and REQ-2199.
+describe("Polly on the ERD and + Model", () => {
+  async function inputs(route: string) {
+    window.history.pushState({}, "", route);
+    const read = await readScreen(1000);
+    if (typeof read === "string") throw new Error(read);
+    return read.inputs;
+  }
+  const steps = { paceMs: 0, waitMs: 2000 };
+
+  beforeEach(() => {
+    HTMLElement.prototype.checkVisibility = () => true;
+  });
+
+  it("reads the saved layout the link names, and whether it is edited", async () => {
+    open("/tables?view=erd&layout=Sales%20overview");
+    await diagramHolds("t:1");
+    expect(await inputs("/tables")).toMatchObject({
+      view: "erd",
+      layout: "Sales overview",
+      layoutUnsaved: false,
+      modeling: null,
+    });
+  });
+
+  it("opens Star Schema from + Model's drop down and reads its wizard and step", async () => {
+    open("/tables");
+    await screen.findByTestId("tables-model-menu");
+    const confirm = vi.fn().mockResolvedValue(false);
+    const out = await runUiActions(
+      [
+        { do: "press", target: { testId: "tables-model-menu" } },
+        { do: "press", target: { testId: "tables-model-star" } },
+      ],
+      { ...steps, confirm },
+    );
+    expect(out.success).toBe(true);
+    await screen.findByTestId("wizard-next");
+    expect(await inputs("/tables")).toMatchObject({
+      modeling: "star",
+      wizardStep: { number: 1, count: 5 },
+    });
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("presses a wizard's Next without asking", async () => {
+    open("/tables");
+    fireEvent.click(await screen.findByTestId("tables-model-menu"));
+    fireEvent.click(await screen.findByTestId("tables-model-vault"));
+    expect(await screen.findByTestId("wizard-next")).toHaveAttribute("data-changes", "false");
+    const confirm = vi.fn().mockResolvedValue(false);
+    const out = await runUiActions([{ do: "press", target: { testId: "wizard-next" } }], {
+      ...steps,
+      confirm,
+    });
+    expect(out.steps).toEqual(['Pressed the element with test id "wizard-next".']);
+    expect(confirm).not.toHaveBeenCalled();
+    expect((await inputs("/tables"))?.modeling).toBe("vault");
   });
 });
