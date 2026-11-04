@@ -165,6 +165,49 @@
           individuals.
         </p>
 
+        <h2>Answers from the documents you already keep</h2>
+        <p>
+          Most of what people ask an assistant at work is about their own organization. What
+          does this policy say? How does that process run? The answers are in a short list of documents
+          your teams already write and maintain, in your own words. Provisa keeps them in a
+          reference library. Polly, Provisa's assistant, answers from it, and agents reach the
+          same library over MCP.
+        </p>
+        <ul>
+          <li><strong>The documents you choose.</strong> An admin adds each one as a file or
+            a link, and refreshes it when it changes. There is no ingestion pipeline to run.</li>
+          <li><strong>The glossary you already curate.</strong> Find terms reads a library
+            document against the glossary terms and synonyms you hold. What's new is proposed;
+            what you already have is offered as a merge.</li>
+          <li><strong>Only what the role may read.</strong> Each document belongs to domains,
+            or to the whole organization. An assistant working for a role searches only the
+            documents that role may read, and only once a steward has kept them.</li>
+          <li><strong>Every passage cited.</strong> A passage comes back with its document,
+            its section or page, and the quoted text. Polly is told to cite each one it uses,
+            so you can check the answer against the source.</li>
+          <li><strong>No new database.</strong> The passages and their embeddings (the numbers
+            a model uses to compare meaning) are stored in the PostgreSQL database Provisa
+            already runs, under a vector index. The embedding model is the one in your AI
+            Models settings, and it can be a local model with no key.</li>
+          <li><strong>Nothing to tune per use case.</strong> A question finds the passages
+            nearest to it among the documents the role may read. A policy question and a
+            contract question go through the same search.</li>
+        </ul>
+        <p>
+          Because the library sits beside the governed data, a question about a rule can be
+          answered with the rule and the rows. In the bank secrecy demo, a community bank adds
+          the cash reporting rule (31 CFR 1010.311 and 1010.313) to its library from its public
+          address. Find terms turns the rule's words into glossary terms grounded on the bank's
+          cash tables. A governed view applies the rule to cash in, or cash out, of more than
+          $10,000 for one person on one business day, counted across every account and branch.
+          Ask Polly which cash needs a currency transaction report and the answer comes from
+          that view. A teller sees the account numbers masked. Compliance sees them in full.
+        </p>
+        <p>
+          The questions most organizations actually ask, answered from the documents they
+          already maintain.
+        </p>
+
         <h2>What it looks like</h2>
         <div class="cmp-wrap">
           <table class="cmp">
