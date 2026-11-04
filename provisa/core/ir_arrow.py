@@ -499,6 +499,13 @@ def _text(value: Any, kind: str) -> Any:
     return str(value)
 
 
+def text_of(value: Any, declared: str | None) -> Any:  # REQ-2195
+    """What PostgreSQL writes of a row result's cell that no encoder reads by its type (a range,
+    a point, an address, a time with a zone), ``declared`` the engine's type name of its column:
+    the encoders read a row result's cells as they are and take this text of any other."""
+    return _text(value, _declared(declared))
+
+
 def _instants(values: list[Any]) -> pa.Array | None:
     try:
         return pa.array(

@@ -466,6 +466,14 @@ class ArrowResult(QueryResult):  # REQ-2194
         return iter(self.table.to_batches())
 
 
+def is_arrow(result: ResultStream) -> bool:  # REQ-2195
+    """Whether ``result`` holds the engine's own Arrow (``arrow_batches()`` hands it on): an
+    encoder reads it as Arrow, and any other result from its rows, never built into Arrow."""
+    return isinstance(result, ArrowStreamResult) or (
+        isinstance(result, ArrowResult) and result.table is not None
+    )
+
+
 def rewrapped(  # REQ-2194
     stream: ResultStream,
     transform: Callable[[Iterator[Any]], Iterator[Any]],

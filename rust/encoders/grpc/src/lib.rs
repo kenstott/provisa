@@ -12,6 +12,7 @@ mod descriptor;
 mod json;
 mod parse;
 mod pyfmt;
+mod pyrows;
 // A named zone's offset at an instant, as zoneinfo finds it: the pgwire crate's zone code, read
 // in by path so both encoders answer from one tz database (J498).
 #[path = "../../../pgwire/src/tz.rs"]
@@ -38,6 +39,7 @@ use pyo3::types::{PyBytes, PyDict, PyList};
 
 use descriptor::*;
 use json::{Mask, J};
+use pyrows::{Cells, Pv};
 use pyfmt::{Clock, DAY_US, EPOCH_ORDINAL, MAX_DAYS, MAX_US, MIN_DAYS, MIN_US};
 
 #[derive(Debug, Clone)]
@@ -190,6 +192,8 @@ enum V<'a> {
     Nested(&'a Reader, usize),
     /// An array or object json.loads gave.
     Json(&'a J),
+    /// A list or dict of a row result's cell.
+    Py(&'a Pv),
 }
 
 /// A column's (or a nested child's) values.
@@ -226,6 +230,8 @@ enum Reader {
     Map(Vec<usize>, Box<Reader>, Box<Reader>, Option<NullBuffer>),
     /// A type the encoder does not read: refused at the first non-null value.
     Refused(String),
+    /// A row result's column: its cells as they are (REQ-2195).
+    Py(Vec<Pv>),
 }
 
 fn int_reader<T: ArrowPrimitiveType>(a: &ArrayRef) -> Reader
@@ -489,6 +495,7 @@ impl Reader {
             }
             Reader::Struct(..) | Reader::List(..) | Reader::Map(..) => V::Nested(self, i),
             Reader::Refused(what) => return Err(EncErr::Type(what.clone())),
+            Reader::Py(cells) => pv_value(&cells[i]),
         })
     }
 
@@ -550,6 +557,8 @@ fn py_type(v: &V) -> &'static str {
         V::Nested(..) => "list",
         V::Json(J::Obj(_)) => "dict",
         V::Json(_) => "list",
+        V::Py(Pv::Dict(_)) => "dict",
+        V::Py(_) => "list",
     }
 }
 
@@ -665,6 +674,9 @@ fn to_bool(v: &V) -> bool {
         V::Json(J::Arr(items)) => !items.is_empty(),
         V::Json(J::Obj(entries)) => !entries.is_empty(),
         V::Json(_) => unreachable!(),
+        V::Py(Pv::List(items)) => !items.is_empty(),
+        V::Py(Pv::Dict(entries)) => !entries.is_empty(),
+        V::Py(_) => unreachable!(),
     }
 }
 
@@ -679,7 +691,7 @@ fn write_text(f: &FieldDesc, v: &V, mask: Option<&Mask>, out: &mut Vec<u8>) -> R
         V::Date(_, inf) | V::Ts(Ts { inf, .. }) if *inf != 0 => infinity_text(*inf, out),
         V::Interval(m, d, us) => pyfmt::iso8601_duration(*m, *d, *us, out),
         V::Bin(b) => bytea_hex(b, out),
-        V::Nested(..) | V::Json(_) => write_json(f, v, mask, out)?,
+        V::Nested(..) | V::Json(_) | V::Py(_) => write_json(f, v, mask, out)?,
         _ => write_str(v, out)?,
     }
     Ok(())
@@ -863,8 +875,70 @@ fn write_json(f: &FieldDesc, v: &V, mask: Option<&Mask>, out: &mut Vec<u8>) -> R
         }
         V::Nested(..) => unreachable!(),
         V::Json(j) => write_json_tree(f, j, out)?,
+        V::Py(Pv::List(items)) => {
+            out.push(b'[');
+            for (n, item) in items.iter().enumerate() {
+                if n > 0 {
+                    out.push(b',');
+                }
+                write_cell(f, item, mask, out)?;
+            }
+            out.push(b']');
+        }
+        V::Py(Pv::Dict(entries)) => {
+            out.push(b'{');
+            let mut first = true;
+            for (name, item) in entries {
+                let below = match mask {
+                    None => None,
+                    Some(m) => match m.get(name) {
+                        Some(below) => below.as_ref(),
+                        None => continue,
+                    },
+                };
+                if !first {
+                    out.push(b',');
+                }
+                first = false;
+                json::write_str(name, false, out);
+                out.push(b':');
+                write_cell(f, item, below, out)?;
+            }
+            out.push(b'}');
+        }
+        V::Py(_) => unreachable!(),
     }
     Ok(())
+}
+
+/// A row result's cell as the encoder reads an Arrow cell: a list or dict stays a reference to it.
+fn pv_value(p: &Pv) -> V<'_> {
+    match p {
+        Pv::Null => unreachable!("a null cell has no value"),
+        Pv::Bool(b) => V::Bool(*b),
+        Pv::Int(x) => V::Int(*x),
+        Pv::BigInt(d) => V::BigInt(d),
+        Pv::Float(x) => V::Float(*x),
+        Pv::Dec(d) => V::Dec(*d),
+        Pv::Str(s) => V::Str(s),
+        Pv::Bin(b) => V::Bin(b),
+        Pv::Date(d, inf) => V::Date(*d, *inf),
+        Pv::Ts(t) => V::Ts(*t),
+        Pv::Time(c) => V::Time(*c),
+        Pv::Interval(m, d, us) => V::Interval(*m, *d, *us),
+        Pv::List(_) | Pv::Dict(_) => V::Py(p),
+    }
+}
+
+/// A list item or dict value of a row result's cell, as JSON.
+fn write_cell(f: &FieldDesc, p: &Pv, mask: Option<&Mask>, out: &mut Vec<u8>) -> R<()> {
+    match p {
+        Pv::Null => {
+            out.extend_from_slice(b"null");
+            Ok(())
+        }
+        _ => write_json(f, &pv_value(p), mask, out),
+    }
 }
 
 impl Reader {
@@ -1082,11 +1156,9 @@ const TIMESTAMP: &str = "google.protobuf.Timestamp";
 impl Plan {
     /// server._kwargs_for -> msg_cls(**kwargs): a column with no field raises at its first
     /// non-null value, as msg_cls does on the unknown name.
-    fn build(msg: &MsgDesc, columns: Vec<(String, ArrayRef, Option<Arc<Mask>>)>) -> Plan {
+    fn build(msg: &MsgDesc, columns: Vec<(String, Reader, Option<NullBuffer>, Option<Arc<Mask>>)>) -> Plan {
         let mut cols = Vec::with_capacity(columns.len());
-        for (name, array, mask) in columns {
-            let reader = Reader::read(&array, true);
-            let nulls = array.logical_nulls();
+        for (name, reader, nulls, mask) in columns {
             let (kind, number) = match msg.field(&name) {
                 None => (
                     Kind::Fails(EncErr::Value(format!(
@@ -1283,12 +1355,41 @@ impl Encoder {
             .columns
             .iter()
             .cloned()
-            .zip(batch.columns().iter().cloned())
+            .zip(batch.columns().iter())
             .zip(self.masks.iter().cloned())
-            .map(|((n, a), m)| (n, a, m))
+            .map(|((n, a), m)| (n, Reader::read(a, true), a.logical_nulls(), m))
             .collect();
+        self.encode_plan(columns, batch.num_rows(), out)
+    }
+
+    /// A row result's batch (REQ-2195): each column's cells read as they are, then written as
+    /// an Arrow batch's are.
+    fn encode_cells(&mut self, columns: Vec<Vec<Pv>>, rows: usize, out: &mut Messages) -> R<()> {
+        let columns = self
+            .columns
+            .iter()
+            .cloned()
+            .zip(columns)
+            .zip(self.masks.iter().cloned())
+            .map(|((n, cells), m)| {
+                let nulls = cells
+                    .iter()
+                    .any(|c| matches!(c, Pv::Null))
+                    .then(|| NullBuffer::from_iter(cells.iter().map(|c| !matches!(c, Pv::Null))));
+                (n, Reader::Py(cells), nulls, m)
+            })
+            .collect();
+        self.encode_plan(columns, rows, out)
+    }
+
+    fn encode_plan(
+        &mut self,
+        columns: Vec<(String, Reader, Option<NullBuffer>, Option<Arc<Mask>>)>,
+        rows: usize,
+        out: &mut Messages,
+    ) -> R<()> {
         let plan = Plan::build(self.pool.message(&self.message)?, columns);
-        for i in 0..batch.num_rows() {
+        for i in 0..rows {
             match self.batch {
                 None => {
                     plan.encode(i, &mut out.data)?;
@@ -1385,6 +1486,40 @@ impl Encoder {
     /// The serialized messages this Arrow record batch completes.
     fn encode<'py>(&mut self, py: Python<'py>, batch: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyList>> {
         let m = self.run(py, Some(batch))?;
+        as_list(py, m)
+    }
+
+    /// The serialized messages these rows complete: a row result's batch, each row a sequence of
+    /// its cells in the columns' order, ``types`` the engine's type name of each column (or None).
+    #[pyo3(signature = (rows, types=None))]
+    fn encode_rows<'py>(
+        &mut self,
+        py: Python<'py>,
+        rows: &Bound<'py, PyAny>,
+        types: Option<Vec<Option<String>>>,
+    ) -> PyResult<Bound<'py, PyList>> {
+        let width = self.columns.len();
+        let types = types.unwrap_or_else(|| vec![None; width]);
+        if types.len() != width {
+            return Err(PyValueError::new_err(format!("{} types for {width} columns", types.len())));
+        }
+        let cells = Cells::new(py)?;
+        let mut columns: Vec<Vec<Pv>> = (0..width).map(|_| Vec::new()).collect();
+        let mut n = 0;
+        for row in rows.try_iter()? {
+            let row = row?;
+            if row.len()? != width {
+                return Err(EncErr::Value(format!("{width} columns named for a row of {}", row.len()?)).into());
+            }
+            for (c, column) in columns.iter_mut().enumerate() {
+                column.push(cells.read(&row.get_item(c)?, types[c].as_deref())?);
+            }
+            n += 1;
+        }
+        let m = py.allow_threads(|| {
+            let mut out = Messages { data: Vec::new(), ends: Vec::new() };
+            self.encode_cells(columns, n, &mut out).map(|_| out)
+        })?;
         as_list(py, m)
     }
 
