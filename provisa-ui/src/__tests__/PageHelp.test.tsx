@@ -13,7 +13,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
-import { PageHelp } from "../components/PageHelp";
+import { PageHelp, PAGE_HELP_CLOSE_DELAY_MS } from "../components/PageHelp";
 
 function renderHelp() {
   return render(
@@ -120,5 +120,80 @@ describe("PageHelp", () => {
     const card = await screen.findByTestId("page-help-card");
     fireEvent.keyDown(card, { key: "Escape" });
     await waitFor(() => expect(screen.queryByTestId("page-help-card")).not.toBeInTheDocument());
+  });
+
+  it("stays open after the pointer leaves once a click pinned the card the hover opened", async () => {
+    renderHelp();
+    const icon = screen.getByTestId("page-help");
+    fireEvent.mouseEnter(icon);
+    await screen.findByTestId("page-help-card");
+    fireEvent.click(icon);
+    fireEvent.mouseLeave(icon);
+    await new Promise((r) => setTimeout(r, PAGE_HELP_CLOSE_DELAY_MS + 250));
+    expect(screen.getByTestId("page-help-card")).toBeInTheDocument();
+    expect(icon).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("stays open after the pointer leaves the card of a card pinned by a click", async () => {
+    renderHelp();
+    const icon = screen.getByTestId("page-help");
+    fireEvent.mouseEnter(icon);
+    const card = await screen.findByTestId("page-help-card");
+    fireEvent.click(icon);
+    fireEvent.mouseLeave(icon);
+    fireEvent.mouseEnter(card);
+    fireEvent.mouseLeave(card);
+    await new Promise((r) => setTimeout(r, PAGE_HELP_CLOSE_DELAY_MS + 250));
+    expect(screen.getByTestId("page-help-card")).toBeInTheDocument();
+  });
+
+  it("closes on a second click of the icon when the card is pinned", async () => {
+    renderHelp();
+    const icon = screen.getByTestId("page-help");
+    fireEvent.mouseEnter(icon);
+    await screen.findByTestId("page-help-card");
+    fireEvent.click(icon);
+    fireEvent.mouseLeave(icon);
+    fireEvent.mouseEnter(icon);
+    fireEvent.click(icon);
+    await waitFor(() => expect(screen.queryByTestId("page-help-card")).not.toBeInTheDocument());
+    // Unpinned: the next hover opens it and leaving closes it again.
+    fireEvent.mouseEnter(icon);
+    await screen.findByTestId("page-help-card");
+    fireEvent.mouseLeave(icon);
+    await waitFor(() => expect(screen.queryByTestId("page-help-card")).not.toBeInTheDocument());
+  });
+
+  it("closes on Escape when the card is pinned", async () => {
+    renderHelp();
+    const icon = screen.getByTestId("page-help");
+    fireEvent.mouseEnter(icon);
+    const card = await screen.findByTestId("page-help-card");
+    fireEvent.click(icon);
+    fireEvent.mouseLeave(icon);
+    fireEvent.keyDown(card, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("page-help-card")).not.toBeInTheDocument());
+  });
+
+  it("closes on a click outside when the card is pinned", async () => {
+    renderHelp();
+    const icon = screen.getByTestId("page-help");
+    fireEvent.mouseEnter(icon);
+    await screen.findByTestId("page-help-card");
+    fireEvent.click(icon);
+    fireEvent.mouseLeave(icon);
+    fireEvent.mouseDown(document.body);
+    fireEvent.mouseUp(document.body);
+    await waitFor(() => expect(screen.queryByTestId("page-help-card")).not.toBeInTheDocument());
+  });
+
+  it("a click while closed opens it pinned, so it stays open after the pointer leaves", async () => {
+    renderHelp();
+    const icon = screen.getByTestId("page-help");
+    fireEvent.click(icon);
+    await screen.findByTestId("page-help-card");
+    fireEvent.mouseLeave(icon);
+    await new Promise((r) => setTimeout(r, PAGE_HELP_CLOSE_DELAY_MS + 250));
+    expect(screen.getByTestId("page-help-card")).toBeInTheDocument();
   });
 });

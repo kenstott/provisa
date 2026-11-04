@@ -17,7 +17,9 @@ import { CircleHelp } from "lucide-react";
  * reader cannot see on the screen. It sits last among the page's head actions. Like HelpBubble it
  * opens on hover and on keyboard focus, but it stays open while the pointer is over the icon or the
  * card, so the text can be read and selected; leaving both closes it after a short delay. A click
- * toggles it too (the way a touch screen opens it); Escape or a click outside closes it.
+ * pins it open (the way a touch screen opens it, and what a mouse click after the hover that
+ * already opened it means): a pinned card stays open after the pointer leaves, until Escape, a
+ * click outside, or a second click on the icon.
  */
 
 /** Long enough to cross the gap between the icon and the card, short enough not to be waited for. */
@@ -35,6 +37,7 @@ export function PageHelp({
   testId: string;
 }) {
   const [opened, setOpened] = useState(false);
+  const pinned = useRef(false);
   const timer = useRef<number | null>(null);
   const cancel = useCallback(() => {
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -47,10 +50,13 @@ export function PageHelp({
   };
   const closeSoon = () => {
     cancel();
+    if (pinned.current) return;
     timer.current = window.setTimeout(() => setOpened(false), PAGE_HELP_CLOSE_DELAY_MS);
   };
+  // Escape and click-outside arrive here with false: closing also unpins.
   const set = (next: boolean) => {
     cancel();
+    pinned.current = next;
     setOpened(next);
   };
   return (
@@ -71,7 +77,8 @@ export function PageHelp({
           color="gray"
           aria-label={ariaLabel}
           data-testid={testId}
-          onClick={() => set(!opened)}
+          // Open from hover or closed: pin it open. Pinned: this click closes it.
+          onClick={() => set(!(opened && pinned.current))}
           onMouseEnter={open}
           onMouseLeave={closeSoon}
           onFocus={(e) => {
