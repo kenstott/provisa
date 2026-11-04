@@ -222,7 +222,7 @@ def _install(
             go=go,
             code=root,
             package=package,
-            manifest=manifest,
+            exports=[e.name for e in manifest.exports],
             gomodcache=root / MODULES,
             proxy=env["GOPROXY"],
             dest=host_binary(root),

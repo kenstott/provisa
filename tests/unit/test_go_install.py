@@ -247,3 +247,39 @@ def test_a_package_of_the_module_is_its_entry(toolchain, tmp_path):
     (code / "go.mod").write_text("module example.com/orders\n\ngo 1.23\n")
     installed = _install(toolchain, code, tmp_path, package="feeds")
     assert host_binary(installed.path).is_file()
+
+
+@pytest.mark.parametrize(("goarch", "machine"), [("amd64", 62), ("arm64", 183)])
+def test_an_images_host_is_one_static_linux_binary_of_its_architecture(
+    toolchain, tmp_path, goarch, machine
+):
+    """REQ-2098: for an image, the host is compiled for linux and the image's architecture, with no
+    cgo: an ELF of that machine with no interpreter to load it, which runs on the distroless
+    base with nothing beside it."""
+    import struct
+
+    from provisa.golang.build import build_host
+    from provisa.golang.reader import read_code
+
+    go, reader, cache = toolchain
+    gomodcache = cache / "gomod"
+    manifest = read_code(
+        reader=reader, go=go, code=FIXTURE, package=".", gomodcache=gomodcache, scratch=tmp_path
+    )
+    binary = build_host(
+        go=go,
+        code=FIXTURE,
+        package=".",
+        exports=[e.name for e in manifest.exports],
+        gomodcache=gomodcache,
+        proxy=PUBLIC_PROXY,
+        dest=tmp_path / goarch / "host",
+        extra_env={"GOOS": "linux", "GOARCH": goarch},
+    )
+    elf = binary.read_bytes()
+    assert elf[:4] == b"\x7fELF" and elf[4] == 2  # 64-bit
+    assert struct.unpack_from("<H", elf, 18)[0] == machine
+    (phoff,) = struct.unpack_from("<Q", elf, 32)
+    entsize, count = struct.unpack_from("<HH", elf, 54)
+    kinds = [struct.unpack_from("<I", elf, phoff + i * entsize)[0] for i in range(count)]
+    assert 3 not in kinds  # PT_INTERP: no dynamic loader, a static binary

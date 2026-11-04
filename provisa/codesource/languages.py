@@ -44,6 +44,9 @@ class CodeLanguage:
     #: its ``prepare(source_id, config, code, lockfile, ctx)`` and its ``package_code(package,
     #: version)``, the reference of one of its packages.
     module: str
+    #: The language's module of what it puts in a source's remote host image (REQ-2098,
+    #: provisa/codesource/image_build.py): its ``fetch``, ``LOCKFILES`` and ``layers``.
+    image: str
 
     def prepare(self) -> Callable[..., Any]:
         return importlib.import_module(self.module).prepare
@@ -56,11 +59,22 @@ LANGUAGES: dict[str, CodeLanguage] = {
     language.source_type: language
     for language in (
         # REQ-1984: JavaScript (TypeScript declarations), on Node, Bun or Deno.
-        CodeLanguage("node", ("node", "bun", "deno"), "npm", False, "provisa.node.prepare"),
+        CodeLanguage(
+            "node",
+            ("node", "bun", "deno"),
+            "npm",
+            False,
+            "provisa.node.prepare",
+            "provisa.node.image",
+        ),
         # REQ-1993: Python, on the pinned CPython.
-        CodeLanguage("python", ("python",), "pypi", True, "provisa.python.prepare"),
+        CodeLanguage(
+            "python", ("python",), "pypi", True, "provisa.python.prepare", "provisa.python.image"
+        ),
         # REQ-2200: Go, compiled by the pinned toolchain into one static host per code hash.
-        CodeLanguage("go", ("go",), "gomod", True, "provisa.golang.prepare"),
+        CodeLanguage(
+            "go", ("go",), "gomod", True, "provisa.golang.prepare", "provisa.golang.image"
+        ),
     )
 }
 
