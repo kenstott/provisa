@@ -495,7 +495,7 @@ class _ScanServer(_Server):
         return super().__call__(request)
 
 
-def _scanning(tmp_path: Path, scan: str = _RULE) -> Path:
+def _scanning(tmp_path: Path, scan: "str | dict" = _RULE) -> Path:
     home = tmp_path / "bsa"
     home.mkdir()
     steps = [{"scan": scan}, {"environment": {"name": "dev", "data_mode": "test_fake"}}]
@@ -541,6 +541,23 @@ def test_a_bundled_demo_loads_the_scans_its_bundle_carries_in_place_of_scanning(
     assert setup.run(_scanning(tmp_path), "http://provisa.test", environments_only=True) == 0
     assert server.started == []
     assert server.calls == [setup.CARRIED_SCANS, "/admin/orgs/acme/environments"]
+
+
+def test_a_scan_step_names_the_domains_its_terms_are_curated_in(monkeypatch, tmp_path):
+    """A demo in domains names them: a scan with none is refused there, as Find terms refuses."""
+    server = _ScanServer()
+    _serve(monkeypatch, server)
+    home = _scanning(tmp_path, scan={"url": _RULE, "domains": ["bank"]})
+    assert setup.run(home, "http://provisa.test") == 0
+    assert server.started == [{"url": _RULE, "domains": ["bank"]}]
+
+
+@pytest.mark.parametrize(
+    "scan", [{"url": _RULE}, {"url": _RULE, "domains": []}, {"url": _RULE, "domains": "bank"}]
+)
+def test_a_scan_step_s_domains_are_a_list_of_some(tmp_path, scan):
+    with pytest.raises(SystemExit, match="domains: \\[<domain>"):
+        setup.steps(_scanning(tmp_path, scan=scan))
 
 
 def test_a_scan_step_names_a_document_s_https_address(tmp_path):

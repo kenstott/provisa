@@ -43,8 +43,10 @@ def _carried(tmp_path):
 
 
 def test_the_scanned_documents_are_the_setup_s_scan_steps(tmp_path):
-    demo = _demo(tmp_path, [{"command": "x"}, {"scan": _RULE}, {"refresh": "v"}])
-    assert demo_templates.demo_scans(demo.directory) == [_RULE]
+    other = _RULE.replace("1010.311", "1010.313")
+    steps = [{"command": "x"}, {"scan": _RULE}, {"scan": {"url": other, "domains": ["bank"]}}]
+    demo = _demo(tmp_path, steps)
+    assert demo_templates.demo_scans(demo.directory) == [_RULE, other]
     assert demo_templates.demo_scans(tmp_path / "none") == []
 
 

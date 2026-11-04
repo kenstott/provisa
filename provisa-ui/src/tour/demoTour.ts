@@ -17,6 +17,7 @@
 import type { Capability } from "../types/auth";
 import type { ExampleQuery } from "../api/setup";
 import type { TourStep } from "./tourSteps";
+import type { UiAction } from "../mcp/uiActions";
 import { runSql } from "../api/admin";
 import { documentMark } from "../lib/documentMark";
 import type { TourPrerequisites } from "./tourPrerequisites";
@@ -110,8 +111,10 @@ export interface DemoTourStepDef {
   product?: string;
   /** REQ-2201: a document's public address, given to the glossary's Find terms: the tour opens
    *  the dialog, types the address, starts a scan and cancels it, then explains the stopped scan.
-   *  A scan reads for minutes; the one done ahead is opened by a `scan` step. */
-  find_terms?: string;
+   *  A scan reads for minutes; the one done ahead is opened by a `scan` step. With `domains`, the
+   *  domains the scan's terms are curated in, chosen before it starts: a demo in domains names
+   *  them, as Find terms refuses a scan in none. */
+  find_terms?: string | { url: string; domains: string[] };
   /** REQ-2201: the scan of the document at this address done ahead (the demo's setup.yaml scans it
    *  when its bundle is built): opened from Find terms' list, its candidate terms shown. */
   scan?: string;
@@ -172,6 +175,15 @@ const FIND_TERMS_CLOSE = `${FIND_TERMS_DIALOG} .mantine-Modal-close`;
 /** The glossary's menu that offers Find terms, and its item. */
 const GLOSSARY_GENERATE_MENU = "glossary-generate-menu";
 const GLOSSARY_FIND_TERMS = "glossary-find-terms-btn";
+
+/** Find terms opened from the glossary's menu, each click waiting for what it opens. */
+const OPEN_FIND_TERMS = [
+  {
+    click: `[data-testid="${GLOSSARY_GENERATE_MENU}"]`,
+    unlessPresent: `${FIND_TERMS_DIALOG}, [data-testid="${GLOSSARY_FIND_TERMS}"]`,
+  },
+  { click: `[data-testid="${GLOSSARY_FIND_TERMS}"]`, unlessPresent: FIND_TERMS_DIALOG },
+];
 
 /** A scan of the document at `url` that has ended `status`: its row in Find terms' list and the
  *  scan open in the window both carry these. */
@@ -447,17 +459,26 @@ function demoTourStep(
   if (def.find_terms !== undefined) {
     // Act, then explain (REQ-2115): the visitor sees the address typed and the scan started, and
     // the tour cancels it at once -- a scan reads for minutes -- then explains the stopped scan.
+    const { url, domains } =
+      typeof def.find_terms === "string" ? { url: def.find_terms, domains: [] } : def.find_terms;
     return {
       ...page,
+      // Find terms opened as a scan step opens it; the window's own steps are acted.
+      ensureOpen: OPEN_FIND_TERMS,
       actions: [
-        { do: "press", target: { testId: GLOSSARY_GENERATE_MENU } },
-        { do: "press", target: { testId: GLOSSARY_FIND_TERMS } },
         { do: "press", target: { testId: "find-terms-mode-url" } },
-        { do: "fill", target: { testId: "find-terms-url" }, value: def.find_terms },
+        { do: "fill", target: { testId: "find-terms-url" }, value: url },
+        ...domains.map(
+          (domain): UiAction => ({
+            do: "choose",
+            target: { testId: "find-terms-domains" },
+            option: domain,
+          }),
+        ),
         { do: "press", target: { testId: "find-terms-start" } },
         { do: "press", target: { testId: "find-terms-cancel" } },
       ],
-      element: `${FIND_TERMS_QUEUE}${scanOf(def.find_terms, "failed")}`,
+      element: `${FIND_TERMS_QUEUE}${scanOf(url, "failed")}`,
       waitMs: RESULT_WAIT_MS,
       clickAfterNext: FIND_TERMS_CLOSE,
     };
@@ -467,13 +488,7 @@ function demoTourStep(
     const done = scanOf(def.scan, "done");
     return {
       ...page,
-      ensureOpen: [
-        {
-          click: `[data-testid="${GLOSSARY_GENERATE_MENU}"]`,
-          unlessPresent: `${FIND_TERMS_DIALOG}, [data-testid="${GLOSSARY_FIND_TERMS}"]`,
-        },
-        { click: `[data-testid="${GLOSSARY_FIND_TERMS}"]`, unlessPresent: FIND_TERMS_DIALOG },
-      ],
+      ensureOpen: OPEN_FIND_TERMS,
       clickBefore: `[data-testid="find-terms-scans"] ${done} [data-find-terms-open]`,
       readySelector: `${FIND_TERMS_QUEUE}${done} [data-testid^="find-terms-draft-"]`,
       element: `${FIND_TERMS_QUEUE}${done}`,

@@ -160,10 +160,20 @@ CLOUDPOLICY = (
     ),
 )
 
+# The banksecrecy demo's question (REQ-2201): the concept asked in plain words, answered from the
+# governed view the tour reads in SQL and GraphQL: each person with cash that needs a report.
+BANKSECRECY = (
+    Question(
+        "Which cash needs a currency transaction report?",
+        'SELECT person AS a FROM "banksecrecy"."view_ctr_required"',
+    ),
+)
+
 # Each named demo's questions, by its name (its directory under demo/named).
 QUESTIONS: dict[str, tuple[Question, ...]] = {
     "weblogs": WEBLOGS,
     "insider": INSIDER,
     "banking": BANKING,
     "cloudpolicy": CLOUDPOLICY,
+    "banksecrecy": BANKSECRECY,
 }

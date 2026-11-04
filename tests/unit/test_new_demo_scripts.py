@@ -363,6 +363,15 @@ def test_a_demo_with_a_code_export_taking_inputs_must_require_the_release_carryi
     assert check_demo.check_features(home, "0.1.0a496") == []
 
 
+def test_a_demo_scanning_a_document_must_require_the_release_carrying_its_scans(tmp_path):
+    """REQ-2201: a demo whose setup scans a document for terms ships the scans in its bundle."""
+    home = _demo_using(tmp_path, "0.1.0a497")
+    (home / "setup.yaml").write_text("steps:\n- scan: https://www.ecfr.gov/api/x.xml\n")
+    assert [p for p in check_demo.check_features(home, "0.1.0a497") if "REQ-2201" in p]
+    assert check_demo.check_features(home, "0.1.0a499") == []
+    assert check_demo.needed_release(home) == "0.1.0a499"
+
+
 def test_a_demo_using_nothing_newer_is_not_reported(tmp_path):
     home = _demo_using(tmp_path, "0.1.0a483", code="def f(x): ...\n")
     assert check_demo.check_features(home, "0.1.0a483") == []

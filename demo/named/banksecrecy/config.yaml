@@ -1,0 +1,287 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "banksecrecy" (start-ui-install.sh --demo banksecrecy;
+# REQ-1858, REQ-2201). A community bank reads the Bank Secrecy Act's currency transaction reporting
+# rule from its public address, finds its terms, grounds them on its own tables, and asks by
+# concept: which of its cash needs a currency transaction report, and who is structuring?
+#
+#   banksecrecy-db   the bank's Postgres, read live as provisa_reader (db/init.sql): customers,
+#                    accounts, branches, tellers and a month of cash at its windows.
+#
+# The regulation (31 CFR 1010.311, 1010.313 and 1010.100) is read by setup.yaml's scans, from
+# eCFR's API, into the reference library; the library's passages are embedded by the local model
+# below.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: banksecrecy
+  description: A community bank's cash at its teller windows, read against the Bank Secrecy Act
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+# The teller: the cash at the windows, every account number masked to its last four digits and
+# every tax id masked. Not the structuring review.
+- id: teller
+  parents: [analyst]
+  description: "A teller: the cash at the windows and the reports it needs, account numbers and tax ids masked."
+  capabilities: [data_product_read, glossary_read, query_development, usage]
+  domain_access:
+  - banksecrecy
+# Compliance: everything, account numbers and tax ids in full, and who is structuring.
+- id: compliance_officer
+  parents: [analyst]
+  description: "The BSA compliance officer: every report and every structuring pattern, account numbers and tax ids in full."
+  capabilities: [data_product_read, glossary_read, query_development, usage]
+  domain_access:
+  - banksecrecy
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+vector_models:
+# A local sentence-transformers model for the reference library's passages: no key, no network
+# once it is cached (provisa[vector], which demo.yaml declares).
+- id: sentence-transformers/all-MiniLM-L6-v2
+  provider: huggingface
+  dimensions: 384
+  enabled: true
+sources:
+- id: banksecrecy-db
+  type: postgresql
+  host: ${env:BANKSECRECY_PG_HOST:-localhost}
+  port: ${env:BANKSECRECY_PG_PORT:-30432}
+  database: banksecrecy${env:BANKSECRECY_PG_NS}
+  username: provisa_reader
+  password: provisa_reader
+  description: The bank's core system -- customers, accounts, branches, tellers and the cash at its windows
+tables:
+- source_id: banksecrecy-db
+  domain_id: banksecrecy
+  schema: public
+  table: branches
+  description: The bank's branches
+  columns:
+  - {name: id, data_type: integer, is_primary_key: true, description: The branch's id, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: name, data_type: varchar, description: The branch's name, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: city, data_type: varchar, description: The city it is in, visible_to: [data_steward, teller, compliance_officer]}
+- source_id: banksecrecy-db
+  domain_id: banksecrecy
+  schema: public
+  table: tellers
+  description: The tellers at each branch's windows
+  columns:
+  - {name: id, data_type: integer, is_primary_key: true, description: The teller's id, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: name, data_type: varchar, description: The teller's name, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: branch_id, data_type: integer, description: The branch they work at, visible_to: [data_steward, teller, compliance_officer]}
+- source_id: banksecrecy-db
+  domain_id: banksecrecy
+  schema: public
+  table: customers
+  description: The bank's customers, people and businesses
+  columns:
+  - {name: id, data_type: integer, is_primary_key: true, description: The customer's id, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: name, data_type: varchar, description: The customer's name, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: kind, data_type: varchar, description: 'individual or business', visible_to: [data_steward, teller, compliance_officer]}
+  - {name: tax_id, data_type: varchar, description: 'The customer''s taxpayer identification number; masked for a teller', visible_to: [data_steward, teller, compliance_officer], masks: [{to: [teller], mask: {type: regex, pattern: '^[0-9]{2,3}-[0-9]{2}', replace: '***'}}, {mask: null}]}
+  - {name: city, data_type: varchar, description: The city the customer lives or trades in, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: customer_since, data_type: date, description: When they became a customer, visible_to: [data_steward, teller, compliance_officer]}
+- source_id: banksecrecy-db
+  domain_id: banksecrecy
+  schema: public
+  table: accounts
+  description: Each customer's checking and savings accounts, each at a branch
+  columns:
+  - {name: id, data_type: integer, is_primary_key: true, description: The account's id, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: account_number, data_type: varchar, description: 'The account number; a teller sees its last four digits', visible_to: [data_steward, teller, compliance_officer], masks: [{to: [teller], mask: {type: regex, pattern: '4417-[0-9]{4}', replace: 'XXXX-XXXX'}}, {mask: null}]}
+  - {name: customer_id, data_type: integer, description: The customer who holds it, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: branch_id, data_type: integer, description: The branch it was opened at, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: product, data_type: varchar, description: 'checking or savings', visible_to: [data_steward, teller, compliance_officer]}
+  - {name: opened_on, data_type: date, description: When it was opened, visible_to: [data_steward, teller, compliance_officer]}
+- source_id: banksecrecy-db
+  domain_id: banksecrecy
+  schema: public
+  table: cash_transactions
+  description: Every cash deposit and withdrawal at a teller's window, with the teller, the branch, the time and the business day it posted to
+  columns:
+  - {name: id, data_type: integer, is_primary_key: true, description: The transaction's id, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: account_id, data_type: integer, description: The account the cash went into or came out of, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: branch_id, data_type: integer, description: The branch whose window took it, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: teller_id, data_type: integer, description: The teller who took it, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: direction, data_type: varchar, description: 'deposit (cash in) or withdrawal (cash out)', visible_to: [data_steward, teller, compliance_officer]}
+  - {name: amount, data_type: decimal, description: The cash in US dollars, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: transacted_at, data_type: timestamp, description: 'When it was taken at the window, in local time', visible_to: [data_steward, teller, compliance_officer]}
+  - {name: business_day, data_type: date, description: 'The business day it posted to: cash after the 17:00 cutoff posts to the next', visible_to: [data_steward, teller, compliance_officer]}
+  - {name: conducted_by, data_type: integer, description: The customer who stood at the window, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: on_behalf_of, data_type: integer, description: 'The customer whose cash it is, the account''s holder: the person the transaction is conducted on behalf of', visible_to: [data_steward, teller, compliance_officer]}
+views:
+# Which cash needs a currency transaction report (31 CFR 1010.311): cash in, or cash out, of more
+# than $10,000 by or on behalf of one person on one business day, the multiple transactions
+# counted as one across every account and branch (1010.313). Cash in and cash out are counted
+# apart.
+- id: ctr_required
+  domain_id: banksecrecy
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Each person and business day whose cash in, or cash out, comes to more than $10,000 across their accounts and branches: a currency transaction report is due'
+  sql: >-
+    SELECT c.id AS person_id, c.name AS person, c.tax_id, t.business_day, t.direction,
+      COUNT(*) AS multiple_transactions, COUNT(DISTINCT t.branch_id) AS branches,
+      STRING_AGG(DISTINCT a.account_number, ', ') AS account_numbers,
+      SUM(CASE WHEN t.conducted_by <> t.on_behalf_of THEN 1 ELSE 0 END) AS conducted_by_another,
+      SUM(t.amount) AS cash_total
+    FROM "banksecrecy"."cash_transactions" AS t
+    JOIN "banksecrecy"."accounts" AS a ON a.id = t.account_id
+    JOIN "banksecrecy"."customers" AS c ON c.id = t.on_behalf_of
+    GROUP BY c.id, c.name, c.tax_id, t.business_day, t.direction
+    HAVING SUM(t.amount) > 10000
+  columns:
+  - {name: person_id, data_type: integer, description: The customer the cash is by or on behalf of, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: person, data_type: varchar, description: Their name, visible_to: [data_steward, teller, compliance_officer]}
+  # The view reads customers and accounts as its reader, so a teller reads the tax id and the
+  # account numbers through their tables' masks; a mask here would read the masked value again.
+  - {name: tax_id, data_type: varchar, description: 'Their taxpayer identification number, as the report needs it; masked for a teller', visible_to: [data_steward, teller, compliance_officer]}
+  - {name: business_day, data_type: date, description: The business day the cash posted to, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: direction, data_type: varchar, description: 'deposit (cash in) or withdrawal (cash out)', visible_to: [data_steward, teller, compliance_officer]}
+  - {name: multiple_transactions, data_type: bigint, description: 'How many transactions were counted as one', visible_to: [data_steward, teller, compliance_officer]}
+  - {name: branches, data_type: bigint, description: How many branches took them, visible_to: [data_steward, teller, compliance_officer]}
+  - {name: account_numbers, data_type: varchar, description: 'The accounts the cash went into or came out of; a teller sees their last four digits', visible_to: [data_steward, teller, compliance_officer]}
+  - {name: conducted_by_another, data_type: bigint, description: 'How many were brought to the window by someone else on the person''s behalf', visible_to: [data_steward, teller, compliance_officer]}
+  - {name: cash_total, data_type: decimal, description: The cash together in US dollars, visible_to: [data_steward, teller, compliance_officer]}
+# Who is structuring (31 CFR 1010.100(xx)): cash deposits just under the $10,000 threshold -- from
+# $8,000 up to $10,000 -- three or more times, by one person, at any of the branches on any of the
+# days. For compliance only.
+- id: structuring
+  domain_id: banksecrecy
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Each person who deposited cash just under $10,000 three or more times, across branches and days: a pattern compliance reviews for structuring'
+  sql: >-
+    SELECT c.id AS person_id, c.name AS person, COUNT(*) AS deposits_under_threshold,
+      COUNT(DISTINCT t.branch_id) AS branches, COUNT(DISTINCT t.business_day) AS business_days,
+      MIN(t.business_day) AS first_day, MAX(t.business_day) AS last_day,
+      STRING_AGG(DISTINCT a.account_number, ', ') AS account_numbers, SUM(t.amount) AS cash_total
+    FROM "banksecrecy"."cash_transactions" AS t
+    JOIN "banksecrecy"."accounts" AS a ON a.id = t.account_id
+    JOIN "banksecrecy"."customers" AS c ON c.id = t.on_behalf_of
+    WHERE t.direction = 'deposit' AND t.amount >= 8000 AND t.amount <= 10000
+    GROUP BY c.id, c.name
+    HAVING COUNT(*) >= 3
+  columns:
+  - {name: person_id, data_type: integer, description: The customer, visible_to: [data_steward, compliance_officer]}
+  - {name: person, data_type: varchar, description: Their name, visible_to: [data_steward, compliance_officer]}
+  - {name: deposits_under_threshold, data_type: bigint, description: 'Cash deposits from $8,000 up to $10,000', visible_to: [data_steward, compliance_officer]}
+  - {name: branches, data_type: bigint, description: How many branches took them, visible_to: [data_steward, compliance_officer]}
+  - {name: business_days, data_type: bigint, description: On how many business days, visible_to: [data_steward, compliance_officer]}
+  - {name: first_day, data_type: date, description: The first of them, visible_to: [data_steward, compliance_officer]}
+  - {name: last_day, data_type: date, description: The last, visible_to: [data_steward, compliance_officer]}
+  - {name: account_numbers, data_type: varchar, description: The accounts they went into, visible_to: [data_steward, compliance_officer]}
+  - {name: cash_total, data_type: decimal, description: The cash together in US dollars, visible_to: [data_steward, compliance_officer]}
+relationships:
+- {id: account-to-customer, alias: HELD_BY, cardinality: many-to-one, source_table_id: accounts, source_column: customer_id, target_table_id: customers, target_column: id}
+- {id: account-to-branch, alias: OPENED_AT, cardinality: many-to-one, source_table_id: accounts, source_column: branch_id, target_table_id: branches, target_column: id}
+- {id: teller-to-branch, alias: WORKS_AT, cardinality: many-to-one, source_table_id: tellers, source_column: branch_id, target_table_id: branches, target_column: id}
+- {id: cash-to-account, alias: ON_ACCOUNT, cardinality: many-to-one, source_table_id: cash_transactions, source_column: account_id, target_table_id: accounts, target_column: id}
+- {id: cash-to-branch, alias: AT_BRANCH, cardinality: many-to-one, source_table_id: cash_transactions, source_column: branch_id, target_table_id: branches, target_column: id}
+- {id: cash-to-teller, alias: TAKEN_BY, cardinality: many-to-one, source_table_id: cash_transactions, source_column: teller_id, target_table_id: tellers, target_column: id}
+- {id: cash-conducted-by, alias: CONDUCTED_BY, graphql_alias: conductedBy, cardinality: many-to-one, source_table_id: cash_transactions, source_column: conducted_by, target_table_id: customers, target_column: id}
+- {id: cash-on-behalf-of, alias: ON_BEHALF_OF, graphql_alias: onBehalfOf, cardinality: many-to-one, source_table_id: cash_transactions, source_column: on_behalf_of, target_table_id: customers, target_column: id}
+# The regulation's words, as the scans of 31 CFR 1010.311, 1010.313 and 1010.100 find them,
+# grounded on the bank's tables: each through an edge from the term a table or column derives,
+# or holding the column of its own name (business day, on behalf of, multiple transactions). The
+# definitions quote or follow the regulation; a draft a scan proposes for one of these is a merge.
+glossary_terms:
+- name: transaction in currency
+  approve: true
+  definition: 'A deposit, withdrawal, exchange of currency or other payment or transfer, by, through or to a financial institution, that involves the physical transfer of currency. A financial institution reports each one of more than $10,000 (31 CFR 1010.311).'
+  domains:
+  - banksecrecy
+- name: cash transaction
+  approve: true
+  definition: 'A cash deposit or withdrawal at one of the bank''s teller windows, as its core system records it.'
+  domains:
+  - banksecrecy
+  edges:
+  - to: transaction in currency
+    rel_type: KIND_OF
+- name: person
+  approve: true
+  definition: 'An individual, a corporation, a partnership, a trust or estate, a joint stock company, an association, a syndicate, joint venture, or other unincorporated organization or group, an Indian Tribe, and all entities cognizable as legal personalities (31 CFR 1010.100(mm)).'
+  domains:
+  - banksecrecy
+- name: customer
+  approve: true
+  definition: 'A person -- an individual or a business -- who holds an account with the bank.'
+  domains:
+  - banksecrecy
+  edges:
+  - to: person
+    rel_type: KIND_OF
+- name: financial institution
+  approve: true
+  definition: 'Each agent, agency, branch, or office within the United States of any person doing business, whether or not on a regular basis or as an organized business concern, as a bank or in another capacity the regulation lists (31 CFR 1010.100(t)).'
+  domains:
+  - banksecrecy
+- name: branch
+  approve: true
+  definition: 'One of the bank''s offices, with its own teller windows. A financial institution includes all of its domestic branch offices (31 CFR 1010.313(a)), so the cash at every branch is counted together.'
+  domains:
+  - banksecrecy
+  edges:
+  - to: financial institution
+    rel_type: PART_OF
+- name: business day
+  approve: true
+  definition: 'As used with respect to banks, the day, as normally communicated to its depository customers, on which a bank routinely posts a particular transaction to its customer''s account (31 CFR 1010.100(i)). This bank posts cash taken after 17:00 to the next.'
+  domains:
+  - banksecrecy
+- name: on behalf of
+  approve: true
+  definition: 'Whose cash a transaction is. Multiple transactions by or on behalf of one person are counted together (31 CFR 1010.313(b)), whoever stands at the window.'
+  domains:
+  - banksecrecy
+- name: multiple transactions
+  approve: true
+  definition: 'Multiple currency transactions shall be treated as a single transaction if the financial institution has knowledge that they are by or on behalf of any person and result in either cash in or cash out totaling more than $10,000 during any one business day (31 CFR 1010.313(b)).'
+  domains:
+  - banksecrecy
+  edges:
+  - to: currency transaction report
+    rel_type: PART_OF
+- name: currency transaction report
+  approve: true
+  definition: 'The report a financial institution files for each transaction in currency of more than $10,000, multiple transactions counted as one, by or on behalf of one person on one business day (31 CFR 1010.311, 1010.313).'
+  domains:
+  - banksecrecy
+  edges:
+  - to: transaction in currency
+    rel_type: RELATED_TO
+- name: deposits under threshold
+  approve: true
+  definition: 'Cash deposits from $8,000 up to $10,000: each too small to need a report on its own.'
+  domains:
+  - banksecrecy
+  edges:
+  - to: structuring
+    rel_type: PART_OF
+- name: structuring
+  approve: true
+  definition: 'Conducting or attempting to conduct one or more transactions in currency, in any amount, at one or more financial institutions, on one or more days, in any manner, for the purpose of evading the reporting requirements -- including breaking a sum over $10,000 into sums at or below it (31 CFR 1010.100(xx)).'
+  domains:
+  - banksecrecy

@@ -1755,6 +1755,71 @@
       "agentdataConnect": {
         "title": "Je eigen agent, dezelfde server",
         "description": "Dit is de server die de agent van de verkenner gebruikte. Plak deze configuratie in Claude Desktop, of richt een willekeurige MCP-client op de URL, en je eigen agent krijgt dezelfde beheerde tools, gebonden aan dezelfde regels."
+      },
+      "banksecrecyScenario": {
+        "title": "Een bank leest een Amerikaanse wet",
+        "description": "Een lokale bank moet contanten boven 10.000 $ melden onder de Bank Secrecy Act. Deze demo leest de regel zelf vanaf het openbare adres, vindt de begrippen die hij gebruikt, verankert ze in de gegevens van de bank en vraagt dan per concept: welke contanten vereisen een Currency Transaction Report, en wie splitst op? Hij begint bij het kernsysteem van de bank, live gelezen waar het staat."
+      },
+      "banksecrecyCash": {
+        "title": "Contanten aan de loketten",
+        "description": "Elke contante storting en opname aan het loket: de rekening, het filiaal, de kassier, het tijdstip en de werkdag waarop ze geboekt is. Contanten na 17:00 uur worden op de volgende werkdag geboekt."
+      },
+      "banksecrecyOnBehalf": {
+        "title": "Namens wie",
+        "description": "Elke transactie noemt wie aan het loket stond en van wie de contanten zijn. Brengt een medewerker of familielid contanten, dan tellen die mee voor het totaal van de rekeninghouder, zoals de wet ze telt."
+      },
+      "banksecrecyFindTerms": {
+        "title": "De wet lezen vanaf het openbare adres",
+        "description": "Begrippen zoeken leest een document vanaf zijn adres, hier 31 CFR 1010.311 via de officiële API van eCFR. Een scan vraagt het AI-model naar elke passage en duurt minuten, dus de rondleiding stopte deze. Dezelfde scan liep bij het bouwen van de demo.",
+        "acting": "Het adres van de regelgeving invullen en een scan starten"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "De begrippen in de regel",
+        "description": "De vooraf gedane scan: elk kandidaatbegrip met de passage waar het uit komt. Een financiële instelling meldt elke contante transactie boven 10.000 $. Begrippen die de woordenlijst al heeft, worden aangeboden om samen te voegen."
+      },
+      "banksecrecyAggregation": {
+        "title": "De aggregatieregel",
+        "description": "Uit 31 CFR 1010.313 komen meerdere transacties en namens: contanten door of namens één persoon, boven 10.000 $ op één werkdag, gelden als één transactie, en elk filiaal hoort bij één instelling. Nachtstortingen tellen op de volgende werkdag."
+      },
+      "banksecrecyDefinitions": {
+        "title": "De definities die hij gebruikt",
+        "description": "De woorden van de regel staan gedefinieerd in 31 CFR 1010.100: persoon, werkdag, financiële instelling, opsplitsen. Elke definitie is een eigen passage, dus elk begrip komt met de alinea die het definieert."
+      },
+      "banksecrecyLibrary": {
+        "title": "Bewaard in de referentiebibliotheek",
+        "description": "Elk gescand document kwam als voorgesteld in de referentiebibliotheek. Bewaar het, en de regelgeving blijft bij het model als beheerde referentie: Polly en de agents van de organisatie citeren de passages in hun antwoorden."
+      },
+      "banksecrecyGrounded": {
+        "title": "De woorden van de wet, verankerd",
+        "description": "Transaction in currency is het begrip van de regelgeving. De contante transactie van de bank is daar een soort van, dus het begrip bereikt de tabel cash_transactions. Persoon bereikt zo de klanten, en financiële instelling bereikt de filialen van de bank."
+      },
+      "banksecrecyBusinessDay": {
+        "title": "Werkdag, op zijn kolom",
+        "description": "De werkdag van de regelgeving is de dag waarop een bank een transactie op de rekening van de klant boekt. De kolom business_day van de bank bevat precies dat, dus het begrip houdt de kolom zelf vast."
+      },
+      "banksecrecyTellerAsks": {
+        "title": "Welke contanten vereisen een melding? Als kassier",
+        "description": "Gevraagd per concept: contanten in of uit van meer dan 10.000 $ door of namens één persoon op één werkdag, meerdere transacties als één geteld over rekeningen en filialen. Een kassier ziet de verschuldigde meldingen, met gemaskeerde rekeningnummers en fiscale nummers."
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "Dezelfde vraag, als compliance",
+        "description": "De compliance officer stelt dezelfde vraag en ziet rekeningnummers en fiscale nummers volledig, zoals de melding ze nodig heeft. Het totaal van Dana Whitmore bevat contanten die iemand anders namens haar bracht."
+      },
+      "banksecrecyStructuring": {
+        "title": "Wie splitst op?",
+        "description": "Stortingen net onder 10.000 $, drie keer of vaker, over filialen en dagen. Geen ervan vereiste op zichzelf een melding. Victor Hale ging in een week naar drie filialen, en de twee stortingen van Marcus Reed op één dag vereisten samen een melding. Alleen compliance ziet deze view."
+      },
+      "banksecrecyExample": {
+        "title": "Hetzelfde antwoord in GraphQL",
+        "description": "De verschuldigde meldingen als API-aanroep. Elke interface leest dezelfde beheerde view, met dezelfde maskers voor dezelfde rol."
+      },
+      "banksecrecyPollyAsks": {
+        "title": "In gewone woorden gevraagd",
+        "description": "Compliance vraagt Polly in gewone woorden: welke contanten vereisen een Currency Transaction Report? Polly vindt de beheerde view die het concept bereikt en antwoordt daaruit, en noemt dus dezelfde personen als de SQL en de GraphQL. Niemand hoefde de naam van de view te kennen."
+      },
+      "banksecrecyRecap": {
+        "title": "Wat u zag",
+        "description": "De wet werd vanaf het openbare adres gelezen, de begrippen gevonden en verankerd in de tabellen van de bank, en de bank vroeg per concept. Het Currency Transaction Report bereikt de gegevens via zijn meerdere transacties, en elke rol zag wat hij mag zien."
       }
     },
     "status": {
@@ -1879,6 +1944,10 @@
       "agentdata": {
         "title": "Geef een agent je data",
         "summary": "Kan een AI-agent de orderdata van een retailer krijgen en beperkt worden tot wat zijn gebruiker mag zien? De MCP-verkenner toont de agent als supportmedewerker en als analist: andere rijen en kolommen, gemaskeerde e-mails en de beheerde SQL achter elk antwoord."
+      },
+      "banksecrecy": {
+        "title": "Contantenmeldingen gelezen uit de Bank Secrecy Act",
+        "summary": "Een bank leest de meldregel voor contanten van de Bank Secrecy Act vanaf het officiële openbare adres, vindt de begrippen en verankert ze in haar eigen tabellen. Daarna vraagt ze per concept welke contanten een Currency Transaction Report vereisen en wie net onder 10.000 $ opsplitst. De bank en haar klanten zijn verzonnen; de regelgeving is echt."
       }
     }
   }

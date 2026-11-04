@@ -16,8 +16,9 @@ stored rows of a view of its config.yaml with ``materialize: true``; ``profile: 
 Data Profiler source of its config.yaml at once for every member table (REQ-2052): a sandbox
 cloned from the demo's template carries those runs (env_copy.clone_model); ``environment: {name,
 data_mode}`` creates an environment of the model (REQ-2053), as the Environments page does;
-``scan: <url>`` finds terms in the document at that address with the org's AI model, as the
-glossary's Find terms does, and waits for the scan to end (REQ-2201): a sandbox cloned from the
+``scan: <url>`` (or ``scan: {url, domains}``, the domains the scan's terms are curated in,
+which a demo in domains names) finds terms in the document at that address with the org's AI
+model, as the glossary's Find terms does, and waits for the scan to end (REQ-2201): a sandbox cloned from the
 demo's template carries the scan done (env_copy.copy_term_scans);
 ``client: <script>`` runs a client of the demo's own (a script in its directory) against the server
 until it exits, told where the server is -- ``PROVISA_URL`` and ``PROVISA_FLIGHT`` -- beside this
@@ -96,8 +97,19 @@ def steps(demo_dir: Path) -> list[dict]:
                 f"'profile: <profiler>', 'scan: <url>', "
                 f"'environment: {{name: <name>, data_mode: <mode>}}' or 'client: <script>': {step}"
             )
-        if "scan" in step and not str(step["scan"]).startswith("https://"):
-            raise SystemExit(f"{path}: a scan step names a document's https:// address: {step}")
+        if "scan" in step:
+            scan = step["scan"]
+            if isinstance(scan, dict) and (
+                set(scan) != {"url", "domains"}
+                or not isinstance(scan["domains"], list)
+                or not scan["domains"]
+            ):
+                raise SystemExit(
+                    f"{path}: a scan step is 'scan: <url>' or 'scan: {{url: <url>, domains: "
+                    f"[<domain>, ...]}}': {step}"
+                )
+            if not scan_address(step).startswith("https://"):
+                raise SystemExit(f"{path}: a scan step names a document's https:// address: {step}")
         if "client" in step and not (demo_dir / str(step["client"])).is_file():
             raise SystemExit(f"{path}: a client step names a script of the demo's: {step}")
         if "environment" in step and (
@@ -106,6 +118,12 @@ def steps(demo_dir: Path) -> list[dict]:
         ):
             raise SystemExit(f"{path}: an environment step names its name and data_mode: {step}")
     return listed
+
+
+def scan_address(step: dict) -> str:
+    """The address a ``scan`` step reads: the step's value, or its ``url``."""
+    scan = step["scan"]
+    return str(scan["url"] if isinstance(scan, dict) else scan)
 
 
 def _ok(response: httpx.Response, step: dict) -> Any:
@@ -240,7 +258,11 @@ def run_step(client: httpx.Client, step: dict) -> str:
 def _scanned(client: httpx.Client, step: dict) -> str:
     """Scan the document at the step's address for terms, as the glossary's Find terms does
     (REQ-2201), and wait until the scan ends: done, or stopped naming why."""
-    started = client.post(SCANS, json={"url": step["scan"]})
+    scan = step["scan"]
+    body = {"url": scan_address(step)}
+    if isinstance(scan, dict):
+        body["domains"] = scan["domains"]
+    started = client.post(SCANS, json=body)
     if started.status_code != 200:
         raise StepFailed(step, f"HTTP {started.status_code}: {started.text}")
     scan_id = started.json()["scan"]["id"]
@@ -252,7 +274,7 @@ def _scanned(client: httpx.Client, step: dict) -> str:
         found = read.json()
         status = found["scan"]["status"]
         if status == "done":
-            return f"scan {step['scan']}: done, {len(found['drafts'])} candidate terms"
+            return f"scan {scan_address(step)}: done, {len(found['drafts'])} candidate terms"
         if status == "failed":
             raise StepFailed(step, f"the scan stopped: {found['scan']['error']}")
         if time.monotonic() > deadline:

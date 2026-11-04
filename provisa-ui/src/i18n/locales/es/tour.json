@@ -1755,6 +1755,71 @@
       "agentdataConnect": {
         "title": "Tu propio agente, el mismo servidor",
         "description": "Este es el servidor que usó el agente del explorador. Pega esta configuración en Claude Desktop, o apunta cualquier cliente MCP a la URL, y tu propio agente obtiene las mismas herramientas gobernadas, sujetas a las mismas reglas."
+      },
+      "banksecrecyScenario": {
+        "title": "Un banco lee una ley de EE. UU.",
+        "description": "Un banco comunitario debe reportar el efectivo de más de 10.000 $ según la Bank Secrecy Act. Esta demo lee la norma misma desde su dirección pública, encuentra los términos que usa, los ancla en los datos del banco y luego pregunta por concepto: ¿qué efectivo requiere un Currency Transaction Report y quién fracciona? Empieza con el sistema central del banco, leído en vivo donde está."
+      },
+      "banksecrecyCash": {
+        "title": "Efectivo en ventanilla",
+        "description": "Cada depósito y retiro de efectivo en ventanilla: la cuenta, la sucursal, el cajero, la hora y el día hábil en que se contabilizó. El efectivo recibido después de las 17:00 se contabiliza el siguiente día hábil."
+      },
+      "banksecrecyOnBehalf": {
+        "title": "En nombre de quién",
+        "description": "Cada transacción indica quién estaba en la ventanilla y de quién es el efectivo. Cuando un empleado o un familiar lleva efectivo, cuenta para el total del titular de la cuenta, como lo cuenta la ley."
+      },
+      "banksecrecyFindTerms": {
+        "title": "Leer la ley desde su dirección pública",
+        "description": "Buscar términos lee un documento desde su dirección, aquí 31 CFR 1010.311 en la API oficial de eCFR. Un análisis consulta al modelo de IA sobre cada pasaje y tarda minutos, así que el recorrido detuvo este. El mismo análisis se hizo al construir la demo.",
+        "acting": "Escribiendo la dirección de la norma e iniciando un análisis"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "Los términos de la norma",
+        "description": "El análisis hecho de antemano: cada término candidato con el pasaje del que proviene. Una institución financiera reporta cada transacción en efectivo de más de 10.000 $. Los términos que el glosario ya tiene se ofrecen para fusionar."
+      },
+      "banksecrecyAggregation": {
+        "title": "La regla de agregación",
+        "description": "De 31 CFR 1010.313 vienen transacciones múltiples y en nombre de: el efectivo por o en nombre de una persona, más de 10.000 $ en un día hábil, se trata como una sola transacción, y todas las sucursales son una institución. Los depósitos nocturnos cuentan el siguiente día hábil."
+      },
+      "banksecrecyDefinitions": {
+        "title": "Las definiciones que usa",
+        "description": "Las palabras de la norma están definidas en 31 CFR 1010.100: persona, día hábil, institución financiera, fraccionamiento. Cada definición es un pasaje propio, así que cada término se ofrece con el párrafo que lo define."
+      },
+      "banksecrecyLibrary": {
+        "title": "Guardado en la biblioteca de referencia",
+        "description": "Cada documento analizado entró en la biblioteca de referencia como propuesto. Consérvelo y la normativa queda con el modelo como referencia gobernada: Polly y los agentes de la organización citan sus pasajes al responder."
+      },
+      "banksecrecyGrounded": {
+        "title": "Las palabras de la ley, ancladas",
+        "description": "Transaction in currency es el término de la normativa. La transacción en efectivo del banco es un tipo de ella, así que el término llega a la tabla cash_transactions. Persona llega así a los clientes, e institución financiera llega a las sucursales del banco."
+      },
+      "banksecrecyBusinessDay": {
+        "title": "Día hábil, en su columna",
+        "description": "El día hábil de la normativa es el día en que un banco contabiliza una transacción en la cuenta del cliente. La columna business_day del banco contiene exactamente eso, así que el término contiene la columna misma."
+      },
+      "banksecrecyTellerAsks": {
+        "title": "¿Qué efectivo requiere un reporte? Como cajero",
+        "description": "Preguntado por concepto: entrada o salida de efectivo de más de 10.000 $ por o en nombre de una persona en un día hábil, las transacciones múltiples contadas como una entre cuentas y sucursales. Un cajero ve los reportes pendientes, con números de cuenta e identificadores fiscales enmascarados."
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "La misma pregunta, como cumplimiento",
+        "description": "El oficial de cumplimiento hace la misma pregunta y ve los números de cuenta e identificadores fiscales completos, como el reporte los necesita. El total de Dana Whitmore incluye efectivo llevado en su nombre por otra persona."
+      },
+      "banksecrecyStructuring": {
+        "title": "¿Quién fracciona?",
+        "description": "Depósitos justo por debajo de 10.000 $, tres veces o más, entre sucursales y días. Ninguno requería un reporte por sí solo. Victor Hale fue a tres sucursales en una semana, y los dos depósitos de Marcus Reed en un día requerían un reporte juntos. Solo cumplimiento ve esta vista."
+      },
+      "banksecrecyExample": {
+        "title": "La misma respuesta en GraphQL",
+        "description": "Los reportes pendientes, como llamada de API. Cada interfaz lee la misma vista gobernada, con las mismas máscaras para el mismo rol."
+      },
+      "banksecrecyPollyAsks": {
+        "title": "Preguntado en palabras sencillas",
+        "description": "Cumplimiento le pregunta a Polly en palabras sencillas: ¿qué efectivo requiere un Currency Transaction Report? Polly encuentra la vista gobernada a la que llega el concepto y responde desde ella, así que nombra a las mismas personas que devolvieron el SQL y el GraphQL. Nadie tuvo que saber el nombre de la vista."
+      },
+      "banksecrecyRecap": {
+        "title": "Lo que vio",
+        "description": "La ley se leyó desde su dirección pública, sus términos se encontraron y anclaron en las tablas del banco, y el banco preguntó por concepto. El Currency Transaction Report llega a los datos a través de sus transacciones múltiples, y cada rol vio lo que puede ver."
       }
     },
     "status": {
@@ -1879,6 +1944,10 @@
       "agentdata": {
         "title": "Dale tus datos a un agente",
         "summary": "¿Se le pueden dar a un agente de IA los datos de pedidos de un minorista y limitarlo a lo que su usuario puede ver? El explorador MCP muestra al agente como agente de soporte y como analista: otras filas y columnas, correos enmascarados y el SQL gobernado detrás de cada respuesta."
+      },
+      "banksecrecy": {
+        "title": "Reportes de efectivo leídos de la Bank Secrecy Act",
+        "summary": "Un banco lee la norma de reporte de efectivo de la Bank Secrecy Act desde su dirección pública oficial, encuentra sus términos y los ancla en sus propias tablas. Luego pregunta por concepto qué efectivo requiere un Currency Transaction Report y quién fracciona justo por debajo de 10.000 $. El banco y sus clientes son ficticios; la normativa es real."
       }
     }
   }

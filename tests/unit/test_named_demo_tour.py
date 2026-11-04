@@ -243,7 +243,9 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     made = (yaml.safe_load(setup.read_text()) or {}).get("steps") or [] if setup.exists() else []
     envs = {"prod"} | {s["environment"]["name"] for s in made if "environment" in s}
     # REQ-2201: the documents the demo's setup scans for terms when its bundle is built.
-    scanned = {s["scan"] for s in made if "scan" in s}
+    from provisa.api.demo_templates import demo_scans
+
+    scanned = set(demo_scans(home))
     terms = {t["name"] for t in config.get("glossary_terms", [])}
     products = {p["id"] for p in config.get("data_products", [])}
     tables = {f"{t['source_id']}.{config_table_name(t)}" for t in config["tables"]}
@@ -437,8 +439,15 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             if kind in step:
                 # REQ-2201: Find terms opens from the glossary, on a document the demo's setup
                 # scanned ahead, so the scan done is there to open and a cancelled one shows it.
+                # A find_terms step may name the demo's domains its scan is curated in.
+                url = step[kind]
+                if kind == "find_terms" and isinstance(url, dict):
+                    assert set(url) == {"url", "domains"}, f"{step['key']}: {url}"
+                    domain_ids = {d["id"] for d in config["domains"]}
+                    assert url["domains"] and set(url["domains"]) <= domain_ids, step
+                    url = url["url"]
                 assert page == _GLOSSARY_PAGE, f"{step['key']}: {kind} is on {_GLOSSARY_PAGE}"
-                assert step[kind] in scanned, f"{step['key']}: setup.yaml scans no {step[kind]}"
+                assert url in scanned, f"{step['key']}: setup.yaml scans no {url}"
         if "library" in step:
             # REQ-2201: a library document's row, the document the demo's setup scanned.
             assert page == _LIBRARY_PAGE, f"{step['key']}: library is on {_LIBRARY_PAGE}"
@@ -963,6 +972,7 @@ def test_a_tour_scans_on_the_glossary_and_points_at_the_library(scanning):
         scanning,
         [
             {"key": "f", **_GLOSSARY, "find_terms": _RULE},
+            {"key": "d", "find_terms": {"url": _RULE, "domains": ["shop"]}},
             {"key": "s", "scan": _RULE},
             {"key": "l", **_LIBRARY, "library": _RULE},
         ],
@@ -981,6 +991,9 @@ def test_a_tour_scans_on_the_glossary_and_points_at_the_library(scanning):
         [{"key": "f", **_GLOSSARY, "find_terms": _RULE.replace("1010.311", "1010.100")}],
         [{"key": "s", **_GLOSSARY, "scan": _RULE.replace("1010.311", "1010.100")}],
         [{"key": "l", **_LIBRARY, "library": _RULE.replace("1010.311", "1010.100")}],
+        # A domain the demo does not have, or none.
+        [{"key": "f", **_GLOSSARY, "find_terms": {"url": _RULE, "domains": ["elsewhere"]}}],
+        [{"key": "f", **_GLOSSARY, "find_terms": {"url": _RULE, "domains": []}}],
     ],
     ids=[
         "find-page",
@@ -989,6 +1002,8 @@ def test_a_tour_scans_on_the_glossary_and_points_at_the_library(scanning):
         "find-unscanned",
         "scan-unscanned",
         "library-unscanned",
+        "find-other-domain",
+        "find-no-domain",
     ],
 )
 def test_a_scan_or_library_step_off_its_page_or_on_a_document_never_scanned_is_refused(

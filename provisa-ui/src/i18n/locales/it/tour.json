@@ -1755,6 +1755,71 @@
       "agentdataConnect": {
         "title": "Il tuo agente, lo stesso server",
         "description": "Questo è il server usato dall'agente dell'esploratore. Incolla questa configurazione in Claude Desktop, o punta qualsiasi client MCP all'URL, e il tuo agente ottiene gli stessi strumenti governati, soggetti alle stesse regole."
+      },
+      "banksecrecyScenario": {
+        "title": "Una banca legge una legge statunitense",
+        "description": "Una banca locale deve segnalare il contante oltre 10.000 $ secondo il Bank Secrecy Act. Questa demo legge la norma stessa dal suo indirizzo pubblico, trova i termini che usa, li ancora ai dati della banca e poi chiede per concetto: quale contante richiede un Currency Transaction Report, e chi sta frazionando? Parte dal sistema centrale della banca, letto dal vivo dove si trova."
+      },
+      "banksecrecyCash": {
+        "title": "Il contante agli sportelli",
+        "description": "Ogni versamento e prelievo di contante allo sportello: il conto, la filiale, il cassiere, l'ora e il giorno lavorativo in cui è stato registrato. Il contante ricevuto dopo le 17:00 è registrato il giorno lavorativo successivo."
+      },
+      "banksecrecyOnBehalf": {
+        "title": "Per conto di chi",
+        "description": "Ogni operazione indica chi era allo sportello e di chi è il contante. Quando un dipendente o un familiare porta contante, conta nel totale del titolare del conto, come lo conta la legge."
+      },
+      "banksecrecyFindTerms": {
+        "title": "Leggere la legge dal suo indirizzo pubblico",
+        "description": "Trova termini legge un documento dal suo indirizzo, qui 31 CFR 1010.311 sull'API ufficiale di eCFR. Una scansione interroga il modello di IA su ogni passaggio e richiede minuti, quindi il tour l'ha fermata. La stessa scansione è stata eseguita alla creazione della demo.",
+        "acting": "Inserimento dell'indirizzo della norma e avvio di una scansione"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "I termini della norma",
+        "description": "La scansione fatta in anticipo: ogni termine candidato con il passaggio da cui proviene. Un istituto finanziario segnala ogni operazione in contanti oltre 10.000 $. I termini che il glossario ha già sono proposti come unione."
+      },
+      "banksecrecyAggregation": {
+        "title": "La regola di aggregazione",
+        "description": "Da 31 CFR 1010.313 vengono operazioni multiple e per conto di: il contante da o per conto di una persona, oltre 10.000 $ in un giorno lavorativo, è trattato come un'unica operazione, e tutte le filiali sono un solo istituto. I versamenti notturni contano il giorno lavorativo successivo."
+      },
+      "banksecrecyDefinitions": {
+        "title": "Le definizioni che usa",
+        "description": "Le parole della norma sono definite in 31 CFR 1010.100: persona, giorno lavorativo, istituto finanziario, frazionamento. Ogni definizione è un passaggio a sé, quindi ogni termine è proposto con il paragrafo che lo definisce."
+      },
+      "banksecrecyLibrary": {
+        "title": "Conservato nella libreria di riferimento",
+        "description": "Ogni documento scansionato è entrato nella libreria di riferimento come proposto. Conservalo e la norma resta con il modello come riferimento governato: Polly e gli agenti dell'organizzazione citano i suoi passaggi nelle risposte."
+      },
+      "banksecrecyGrounded": {
+        "title": "Le parole della legge, ancorate",
+        "description": "Transaction in currency è il termine della norma. L'operazione in contanti della banca ne è un tipo, quindi il termine raggiunge la tabella cash_transactions. Persona raggiunge così i clienti, e istituto finanziario raggiunge le filiali della banca."
+      },
+      "banksecrecyBusinessDay": {
+        "title": "Giorno lavorativo, sulla sua colonna",
+        "description": "Il giorno lavorativo della norma è il giorno in cui una banca registra un'operazione sul conto del cliente. La colonna business_day della banca contiene esattamente questo, quindi il termine contiene la colonna stessa."
+      },
+      "banksecrecyTellerAsks": {
+        "title": "Quale contante richiede una segnalazione? Come cassiere",
+        "description": "Chiesto per concetto: contante in entrata o in uscita oltre 10.000 $ da o per conto di una persona in un giorno lavorativo, le operazioni multiple contate come una sola tra conti e filiali. Un cassiere vede le segnalazioni dovute, con numeri di conto e codici fiscali mascherati."
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "La stessa domanda, come compliance",
+        "description": "Il responsabile compliance pone la stessa domanda e vede numeri di conto e codici fiscali per intero, come la segnalazione li richiede. Il totale di Dana Whitmore include contante portato per suo conto da un'altra persona."
+      },
+      "banksecrecyStructuring": {
+        "title": "Chi sta frazionando?",
+        "description": "Versamenti appena sotto i 10.000 $, tre volte o più, tra filiali e giorni. Nessuno richiedeva una segnalazione da solo. Victor Hale è andato in tre filiali in una settimana, e i due versamenti di Marcus Reed nello stesso giorno richiedevano insieme una segnalazione. Solo la compliance vede questa vista."
+      },
+      "banksecrecyExample": {
+        "title": "La stessa risposta in GraphQL",
+        "description": "Le segnalazioni dovute, come chiamata API. Ogni interfaccia legge la stessa vista governata, con le stesse maschere per lo stesso ruolo."
+      },
+      "banksecrecyPollyAsks": {
+        "title": "Chiesto a parole semplici",
+        "description": "La compliance chiede a Polly a parole semplici: quale contante richiede un Currency Transaction Report? Polly trova la vista governata a cui arriva il concetto e risponde da essa, quindi nomina le stesse persone restituite da SQL e GraphQL. Nessuno ha dovuto conoscere il nome della vista."
+      },
+      "banksecrecyRecap": {
+        "title": "Cosa hai visto",
+        "description": "La legge è stata letta dal suo indirizzo pubblico, i suoi termini trovati e ancorati alle tabelle della banca, e la banca ha chiesto per concetto. Il Currency Transaction Report raggiunge i dati tramite le sue operazioni multiple, e ogni ruolo ha visto ciò che può vedere."
       }
     },
     "status": {
@@ -1879,6 +1944,10 @@
       "agentdata": {
         "title": "Dai i tuoi dati a un agente",
         "summary": "Si possono dare a un agente di IA i dati degli ordini di un rivenditore, limitandolo a ciò che il suo utente può vedere? L'esploratore MCP mostra l'agente come addetto al supporto e come analista: altre righe e colonne, email mascherate e l'SQL governato dietro ogni risposta."
+      },
+      "banksecrecy": {
+        "title": "Segnalazioni di contante lette dal Bank Secrecy Act",
+        "summary": "Una banca legge la norma sulle segnalazioni di contante del Bank Secrecy Act dal suo indirizzo pubblico ufficiale, ne trova i termini e li ancora alle proprie tabelle. Poi chiede per concetto quale contante richiede un Currency Transaction Report e chi fraziona appena sotto i 10.000 $. La banca e i clienti sono inventati; la norma è reale."
       }
     }
   }

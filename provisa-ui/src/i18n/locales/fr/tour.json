@@ -1755,6 +1755,71 @@
       "agentdataConnect": {
         "title": "Votre propre agent, le même serveur",
         "description": "Voici le serveur qu'a utilisé l'agent de l'explorateur. Collez cette configuration dans Claude Desktop, ou pointez n'importe quel client MCP vers l'URL, et votre propre agent obtient les mêmes outils gouvernés, soumis aux mêmes règles."
+      },
+      "banksecrecyScenario": {
+        "title": "Une banque lit une loi américaine",
+        "description": "Une banque régionale doit déclarer les espèces de plus de 10 000 $ selon le Bank Secrecy Act. Cette démo lit la règle elle-même depuis son adresse publique, trouve les termes qu'elle emploie, les ancre dans les données de la banque, puis interroge par concept : quelles espèces exigent un Currency Transaction Report, et qui fractionne ? Elle commence par le système central de la banque, lu en direct là où il se trouve."
+      },
+      "banksecrecyCash": {
+        "title": "Les espèces aux guichets",
+        "description": "Chaque dépôt et retrait d'espèces au guichet : le compte, l'agence, le guichetier, l'heure et le jour ouvrable où il a été comptabilisé. Les espèces reçues après 17 h sont comptabilisées le jour ouvrable suivant."
+      },
+      "banksecrecyOnBehalf": {
+        "title": "Pour le compte de qui",
+        "description": "Chaque transaction indique qui se tenait au guichet et à qui sont les espèces. Quand un employé ou un proche apporte des espèces, elles comptent dans le total du titulaire du compte, comme la loi les compte."
+      },
+      "banksecrecyFindTerms": {
+        "title": "Lire la loi depuis son adresse publique",
+        "description": "Trouver des termes lit un document depuis son adresse, ici 31 CFR 1010.311 sur l'API officielle d'eCFR. Une analyse interroge le modèle d'IA sur chaque passage et prend des minutes, la visite a donc arrêté celle-ci. La même analyse a été faite lors de la construction de la démo.",
+        "acting": "Saisie de l'adresse de la réglementation et lancement d'une analyse"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "Les termes de la règle",
+        "description": "L'analyse faite à l'avance : chaque terme candidat avec le passage dont il vient. Un établissement financier déclare chaque transaction en espèces de plus de 10 000 $. Les termes que le glossaire contient déjà sont proposés en fusion."
+      },
+      "banksecrecyAggregation": {
+        "title": "La règle d'agrégation",
+        "description": "31 CFR 1010.313 est la source de transactions multiples et pour le compte de : les espèces par ou pour le compte d'une personne, plus de 10 000 $ en un jour ouvrable, sont traitées comme une seule transaction, et toutes les agences forment un seul établissement. Les dépôts de nuit comptent le jour ouvrable suivant."
+      },
+      "banksecrecyDefinitions": {
+        "title": "Les définitions qu'elle utilise",
+        "description": "Les mots de la règle sont définis dans 31 CFR 1010.100 : personne, jour ouvrable, établissement financier, fractionnement. Chaque définition est un passage distinct, chaque terme est donc proposé avec le paragraphe qui le définit."
+      },
+      "banksecrecyLibrary": {
+        "title": "Conservé dans la bibliothèque de référence",
+        "description": "Chaque document analysé a rejoint la bibliothèque de référence comme proposé. Conservez-le, et la réglementation reste avec le modèle comme référence gouvernée : Polly et les agents de l'organisation citent ses passages dans leurs réponses."
+      },
+      "banksecrecyGrounded": {
+        "title": "Les mots de la loi, ancrés",
+        "description": "Transaction in currency est le terme de la réglementation. La transaction en espèces de la banque en est une sorte, donc le terme atteint la table cash_transactions. Personne atteint ainsi les clients, et un établissement financier atteint les agences de la banque."
+      },
+      "banksecrecyBusinessDay": {
+        "title": "Le jour ouvrable, sur sa colonne",
+        "description": "Le jour ouvrable de la réglementation est le jour où une banque comptabilise une transaction sur le compte du client. La colonne business_day de la banque contient exactement cela, donc le terme porte la colonne elle-même."
+      },
+      "banksecrecyTellerAsks": {
+        "title": "Quelles espèces exigent une déclaration ? En guichetier",
+        "description": "Interrogé par concept : espèces entrantes ou sortantes de plus de 10 000 $ par ou pour le compte d'une personne en un jour ouvrable, les transactions multiples comptées comme une seule sur tous comptes et agences. Un guichetier voit les déclarations dues, numéros de compte et identifiants fiscaux masqués."
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "La même question, en conformité",
+        "description": "Le responsable de la conformité pose la même question et voit les numéros de compte et identifiants fiscaux en entier, comme la déclaration l'exige. Le total de Dana Whitmore inclut des espèces apportées pour son compte par quelqu'un d'autre."
+      },
+      "banksecrecyStructuring": {
+        "title": "Qui fractionne ?",
+        "description": "Des dépôts juste sous 10 000 $, trois fois ou plus, sur plusieurs agences et jours. Aucun n'exigeait de déclaration à lui seul. Victor Hale est allé dans trois agences en une semaine, et les deux dépôts de Marcus Reed le même jour exigeaient ensemble une déclaration. Seule la conformité voit cette vue."
+      },
+      "banksecrecyExample": {
+        "title": "La même réponse en GraphQL",
+        "description": "Les déclarations dues, en appel d'API. Chaque interface lit la même vue gouvernée, avec les mêmes masques pour le même rôle."
+      },
+      "banksecrecyPollyAsks": {
+        "title": "Demandé en mots simples",
+        "description": "La conformité demande à Polly en mots simples : quelles espèces exigent un Currency Transaction Report ? Polly trouve la vue gouvernée qu'atteint le concept et répond à partir d'elle, et nomme donc les mêmes personnes que le SQL et le GraphQL. Personne n'a eu besoin de connaître le nom de la vue."
+      },
+      "banksecrecyRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "La loi a été lue depuis son adresse publique, ses termes trouvés et ancrés dans les tables de la banque, et la banque a interrogé par concept. Le Currency Transaction Report atteint les données par ses transactions multiples, et chaque rôle a vu ce qu'il peut voir."
       }
     },
     "status": {
@@ -1879,6 +1944,10 @@
       "agentdata": {
         "title": "Confiez vos données à un agent",
         "summary": "Peut-on confier à un agent d'IA les données de commandes d'un détaillant en le limitant à ce que son utilisateur peut voir ? L'explorateur MCP montre l'agent en agent de support et en analyste : d'autres lignes et colonnes, des e-mails masqués et le SQL gouverné derrière chaque réponse."
+      },
+      "banksecrecy": {
+        "title": "Déclarations d'espèces lues dans le Bank Secrecy Act",
+        "summary": "Une banque lit la règle de déclaration des espèces du Bank Secrecy Act depuis son adresse publique officielle, en trouve les termes et les ancre dans ses propres tables. Puis elle interroge par concept : quelles espèces exigent un Currency Transaction Report, et qui fractionne juste sous 10 000 $. La banque et ses clients sont fictifs ; la réglementation est réelle."
       }
     }
   }
