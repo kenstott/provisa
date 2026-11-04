@@ -200,6 +200,8 @@
     "dimBadge": "Dim",
     "scopeDomain": "domain",
     "scopePublic": "public",
+    "scopeListed": "listed",
+    "scopeOwnDomain": "own-domain",
     "scopeRestricted": "restricted",
     "cancel": "Cancel",
     "save": "Save",
@@ -264,7 +266,7 @@
     "draftHelp": "Out of service while checked: read and written nowhere, offered in no schema, and copied nowhere. Existing copies in every region are removed. A table or view registered here starts as draft; clear it to release it.",
     "pagingRowsFieldHelp": "The property of the answer that holds the rows, such as a page wrapper's values or data. Leave empty when the answer is the rows. The table's columns are those of the objects there.",
     "pagingRowsFieldFixed": "Set when the table was registered. Register the table again to read its rows from elsewhere.",
-    "scopeHelp": "domain: served to roles that reach this table's domain. public: also to roles outside it. restricted: only to the roles named in Visible to.",
+    "scopeHelp": "domain: served to roles that reach this table's domain, through a parent domain included. listed: the same, and every role sees the column's name in the catalog. public: also served to roles outside the domain. own-domain: served only to roles whose own domain access lists this table's domain; a role that reaches it only through a parent domain is not served it, even when Visible to names it.",
     "columnTabs": {
       "label": "Column attributes",
       "naming": "Naming",

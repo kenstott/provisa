@@ -49,6 +49,7 @@ const VIEW = {
           granted_by: "analyst",
           via: ["dq_lead", "dq_steward", "analyst"],
         }),
+        column("settlement_amount", { scope: "own-domain" }),
       ],
     },
     {
@@ -74,6 +75,13 @@ describe("a role's Data access tab (REQ-2161)", () => {
     expect(
       within(screen.getByTestId("role-data-table-2")).getByText("across domains"),
     ).toBeTruthy();
+  });
+
+  it("names an own-domain column's scope (REQ-2153)", async () => {
+    render(<RoleDataAccess roleId="dq_lead" />);
+    const amount = await screen.findByTestId("role-data-column-1-settlement_amount");
+    expect(amount).toHaveTextContent("own-domain");
+    expect(amount).not.toHaveTextContent("scope_");
   });
 
   it("narrows to the domains the page's filter keeps", async () => {
