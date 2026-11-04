@@ -308,10 +308,38 @@ def governed_for_role(
     the role's :func:`governance_for_role` context."""
     from provisa.compiler.stage2 import apply_governance
 
+    if column_types is None:
+        column_types = _columns_read(sql, ctx, rls, masking_rules)
     gov = governance_for_role(
         ctx, role_id, rls=rls, masking_rules=masking_rules, column_types=column_types
     )
     return apply_governance(sql, gov)
+
+
+def _columns_read(sql: str, ctx, rls, masking_rules) -> dict[int, list[tuple[str, str]]]:
+    """Each table of ``ctx`` registering the columns ``sql``, its row rules and its masks name
+    (as varchar), for a test that registers none: governance reads a table through a relation of
+    its registered columns (REQ-039), so a table with none would be refused."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.compiler.rls import RLSContext
+
+    names = {
+        c.name
+        for c in sqlglot.parse_one(sql, read="postgres").find_all(exp.Column)
+        if not isinstance(c.this, exp.Star) and c.name
+    }
+    rules = rls.rules if isinstance(rls, RLSContext) else dict(rls or {})
+    for predicate in rules.values():
+        names |= {
+            c.name for c in sqlglot.parse_one(predicate, read="postgres").find_all(exp.Column)
+        }
+    for (_tid, _role), columns in (masking_rules or {}).items():
+        names |= set(columns)
+    metas = {m.table_id for m in ctx.tables.values()}
+    metas |= {j.target.table_id for j in ctx.joins.values()}
+    return {tid: [(n, "varchar") for n in sorted(names)] for tid in metas}
 
 
 def assert_span_emitted(exporter, name_fragment: str) -> None:

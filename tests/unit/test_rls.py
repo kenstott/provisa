@@ -10,6 +10,8 @@
 
 """Unit tests for RLS WHERE clause injection."""
 
+import pytest
+
 from provisa.compiler.rls import (
     RLSContext,
     build_rls_context,
@@ -19,6 +21,12 @@ from provisa.compiler.rls import (
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.security.row_filters import resolve_table_rules
 from tests.helpers import governed_for_role
+from tests.governed_pg import assert_same_answer, governed_database
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_rls")
 
 
 def _meta(table_id=1, field_name="orders", table_name="orders", source_id="pg"):
@@ -117,7 +125,7 @@ class TestDomainRLS:
         assert rls.rules == {5: "active"}
         assert rls.domain_rules == {"sales": "\"region\" = 'us'"}
 
-    def test_domain_rule_injected_for_table_in_domain(self):
+    def test_domain_rule_injected_for_table_in_domain(self, pg):
         meta = TableMeta(
             table_id=1,
             field_name="orders",
@@ -142,9 +150,11 @@ class TestDomainRLS:
             meta,
         )
         result = governed_for_role('SELECT "id" FROM "public"."orders"', ctx, "a", rls=rls)
-        assert result == 'SELECT "id" FROM "public"."orders" WHERE ("orders"."region" = \'us\')'
+        assert_same_answer(
+            pg, result, 'SELECT "id" FROM "public"."orders" WHERE ("orders"."region" = \'us\')'
+        )
 
-    def test_table_rule_takes_precedence_over_domain_rule(self):
+    def test_table_rule_takes_precedence_over_domain_rule(self, pg):
         meta = TableMeta(
             table_id=1,
             field_name="orders",
@@ -176,7 +186,9 @@ class TestDomainRLS:
             meta,
         )
         result = governed_for_role('SELECT "id" FROM "public"."orders"', ctx, "a", rls=rls)
-        assert result == 'SELECT "id" FROM "public"."orders" WHERE ("orders"."owner" = \'me\')'
+        assert_same_answer(
+            pg, result, 'SELECT "id" FROM "public"."orders" WHERE ("orders"."owner" = \'me\')'
+        )
 
     def test_startup_loader_selects_domain_id(self):
         """Regression: the app RLS loader must load domain_id (else domain rules drop).
@@ -199,54 +211,64 @@ class TestDomainRLS:
 
 
 class TestInjectRLS:
-    def test_no_rules_returns_unchanged(self):
+    def test_no_rules_returns_unchanged(self, pg):
         sql = 'SELECT "id" FROM "public"."orders"'
-        assert governed_for_role(sql, _ctx(), "a", rls=RLSContext.empty()) == sql
+        assert_same_answer(pg, governed_for_role(sql, _ctx(), "a", rls=RLSContext.empty()), sql)
 
-    def test_injects_where_on_simple_query(self):
+    def test_injects_where_on_simple_query(self, pg):
         result = governed_for_role(
             'SELECT "id" FROM "public"."orders"', _ctx(), "a", rls={1: "\"region\" = 'us'"}
         )
-        assert result == 'SELECT "id" FROM "public"."orders" WHERE ("orders"."region" = \'us\')'
+        assert_same_answer(
+            pg, result, 'SELECT "id" FROM "public"."orders" WHERE ("orders"."region" = \'us\')'
+        )
 
-    def test_ands_with_existing_where(self):
+    def test_ands_with_existing_where(self, pg):
         result = governed_for_role(
             'SELECT "id" FROM "public"."orders" WHERE "status" = $1',
             _ctx(),
             "a",
             rls={1: "\"region\" = 'us'"},
         )
-        assert result == (
-            'SELECT "id" FROM "public"."orders" WHERE "status" = $1 '
-            'AND ("orders"."region" = \'us\')'
+        assert_same_answer(
+            pg,
+            result,
+            (
+                'SELECT "id" FROM "public"."orders" WHERE "status" = $1 '
+                'AND ("orders"."region" = \'us\')'
+            ),
         )
 
-    def test_injects_before_order_by(self):
+    def test_injects_before_order_by(self, pg):
         result = governed_for_role(
             'SELECT "id" FROM "public"."orders" ORDER BY "id"',
             _ctx(),
             "a",
             rls={1: "\"region\" = 'us'"},
         )
-        assert result == (
-            'SELECT "id" FROM "public"."orders" WHERE ("orders"."region" = \'us\') ORDER BY "id"'
+        assert_same_answer(
+            pg,
+            result,
+            ('SELECT "id" FROM "public"."orders" WHERE ("orders"."region" = \'us\') ORDER BY "id"'),
         )
 
-    def test_injects_before_limit(self):
+    def test_injects_before_limit(self, pg):
         result = governed_for_role(
             'SELECT "id" FROM "public"."orders" LIMIT 10',
             _ctx(),
             "a",
             rls={1: "\"region\" = 'us'"},
         )
-        assert result == (
-            'SELECT "id" FROM "public"."orders" WHERE ("orders"."region" = \'us\') LIMIT 10'
+        assert_same_answer(
+            pg,
+            result,
+            ('SELECT "id" FROM "public"."orders" WHERE ("orders"."region" = \'us\') LIMIT 10'),
         )
 
-    def test_no_rule_for_table_unchanged(self):
+    def test_no_rule_for_table_unchanged(self, pg):
         sql = 'SELECT "id" FROM "public"."orders"'
         # table_id 99 doesn't match
-        assert governed_for_role(sql, _ctx(), "a", rls={99: "x = 1"}) == sql
+        assert_same_answer(pg, governed_for_role(sql, _ctx(), "a", rls={99: "x = 1"}), sql)
 
 
 class TestInjectWhere:
