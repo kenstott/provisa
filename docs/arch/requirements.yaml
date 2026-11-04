@@ -91526,17 +91526,22 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   feature: product-tour-and-demos-named-demos
   priority: SHOULD
   type: behavioral
-  description: 'Maintainer 2026-11-03: "reading a u.s. law text, extracting terms and applying a bank
-    example, then querying based on a concept, could interesting"; chose the Bank Secrecy Act. The demo
-    reads the currency transaction reporting rule (31 CFR 1010.311 and the definitions it uses in 31 CFR
-    1010.100), a public-domain US regulation, with Find terms in a document, and the terms it extracts
-    (transaction in currency, financial institution, person, business day, multiple transactions, on behalf
-    of) are grounded on a bank''s tables: customers, accounts, branches, and cash deposits and withdrawals.
-    The tour then asks by concept which transactions require a currency transaction report (cash in or
-    out over $10,000 by or on behalf of one person in one business day, aggregated across accounts and
-    branches) and who is structuring (repeated cash just under the threshold), with a teller role that
-    sees account numbers masked and a compliance role that sees them. (Lead''s proposal shown to the maintainer
-    2026-11-03; the concept queries and roles are the lead''s reading.)'
+  description: 'Maintainer 2026-11-03: "reading a u.s. law text, extracting terms and applying a bank example,
+    then querying based on a concept, could interesting"; chose the Bank Secrecy Act. The demo reads the
+    currency transaction reporting rule (31 CFR 1010.311 and the definitions it uses in 31 CFR 1010.100),
+    a public-domain US regulation, with Find terms in a document, and the terms it extracts (transaction
+    in currency, financial institution, person, business day, multiple transactions, on behalf of) are grounded
+    on a bank''s tables: customers, accounts, branches, and cash deposits and withdrawals. The tour then
+    asks by concept which transactions require a currency transaction report (cash in or out over $10,000
+    by or on behalf of one person in one business day, aggregated across accounts and branches) and who
+    is structuring (repeated cash just under the threshold), with a teller role that sees account numbers
+    masked and a compliance role that sees them. (Lead''s proposal shown to the maintainer 2026-11-03; the
+    concept queries and roles are the lead''s reading.) (Amended 2026-11-03, The scan is done ahead:) Maintainer
+    2026-11-03: "to do this efficiently you will need to preprocess, maybe show keystrokes to load, and
+    then cancel." Extracting terms from the regulation runs when the demo is built, and its result (the
+    candidate terms with their passages) ships in the demo. The tour shows the steps that load the document
+    and start a scan, then cancels it, and opens the scan already done, so a visitor sees the result at
+    once.'
   scenario: 'Given the Bank Secrecy Act demo
 
     When its tour extracts terms from the regulation
