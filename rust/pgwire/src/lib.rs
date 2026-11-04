@@ -7,6 +7,7 @@ mod coerce;
 mod fmt_num;
 mod json;
 mod pgtypes;
+mod pyrows;
 mod pyval;
 mod temporal;
 mod tsearch;
@@ -1012,6 +1013,14 @@ enum Col {
         bv: Bv,
         binary: bool,
     },
+    /// A row result's cells as they are (REQ-2195), each taken as its row is written: its
+    /// coercers, then its BVType's writer, as a cell read from Arrow.
+    Cells {
+        cells: Vec<pyval::PyVal>,
+        coercers: Vec<Coercer>,
+        bv: Bv,
+        binary: bool,
+    },
 }
 
 /// A column's types and coercers, as the encoder is told them.
@@ -1092,6 +1101,46 @@ fn encode(batch: &RecordBatch, plan: &Plan, formats: &[i32], out: &mut Vec<u8>) 
         let format = formats.get(j).copied().unwrap_or(0);
         cols.push(column(plan, j, batch.column(j), ext, format)?);
     }
+    write_rows(&mut cols, nrows, out)
+}
+
+/// The DataRow messages of a row result's rows (REQ-2195): `columns` each column's cells.
+fn encode_cells(columns: Vec<Vec<pyval::PyVal>>, nrows: usize, plan: &Plan, formats: &[i32], out: &mut Vec<u8>) -> R<usize> {
+    if plan.bvs.len() != columns.len() {
+        return Err(EncErr::Value(format!("{} types for {} columns", plan.bvs.len(), columns.len())));
+    }
+    if nrows == 0 {
+        return Ok(0);
+    }
+    let mut cols: Vec<Col> = columns
+        .into_iter()
+        .enumerate()
+        .map(|(j, cells)| {
+            let bv = plan.bvs[j];
+            let binary = formats.get(j).copied().unwrap_or(0) == 1 && pgtypes::has_binary(bv);
+            Col::Cells { cells, coercers: plan.coercers[j].clone(), bv, binary }
+        })
+        .collect();
+    write_rows(&mut cols, nrows, out)
+}
+
+/// The value's cell: through its coercers, then its BVType's writer; false for a NULL cell.
+fn write_value(mut v: pyval::PyVal, coercers: &[Coercer], bv: Bv, binary: bool, out: &mut Vec<u8>) -> R<bool> {
+    for c in coercers {
+        v = coerce::apply(c, v)?;
+        if v == pyval::PyVal::None {
+            return Ok(false); // a coercer's None is a NULL cell
+        }
+    }
+    if v == pyval::PyVal::None {
+        return Ok(false);
+    }
+    pgtypes::convert(bv, binary, &v, out)?;
+    Ok(true)
+}
+
+fn write_rows(cols: &mut [Col], nrows: usize, out: &mut Vec<u8>) -> R<usize> {
+    let ncols = cols.len();
     out.reserve(nrows * (7 + ncols * 12));
     let ncols16 = ncols as i16;
     for i in 0..nrows {
@@ -1099,7 +1148,7 @@ fn encode(batch: &RecordBatch, plan: &Plan, formats: &[i32], out: &mut Vec<u8>) 
         out.push(b'D');
         out.extend_from_slice(&[0; 4]);
         out.extend_from_slice(&ncols16.to_be_bytes());
-        for col in &cols {
+        for col in cols.iter_mut() {
             let p = out.len();
             out.extend_from_slice(&[0; 4]);
             let written = match col {
@@ -1112,21 +1161,13 @@ fn encode(batch: &RecordBatch, plan: &Plan, formats: &[i32], out: &mut Vec<u8>) 
                     coercers,
                     bv,
                     binary,
-                } if !reader.is_null(i) => {
-                    let mut v = reader.get(i)?;
-                    for c in coercers {
-                        v = coerce::apply(c, v)?;
-                        if v == pyval::PyVal::None {
-                            break; // a coercer's None is a NULL cell
-                        }
-                    }
-                    if v == pyval::PyVal::None {
-                        false
-                    } else {
-                        pgtypes::convert(*bv, *binary, &v, out)?;
-                        true
-                    }
-                }
+                } if !reader.is_null(i) => write_value(reader.get(i)?, coercers, *bv, *binary, out)?,
+                Col::Cells {
+                    cells,
+                    coercers,
+                    bv,
+                    binary,
+                } if cells[i] != pyval::PyVal::None => write_value(std::mem::replace(&mut cells[i], pyval::PyVal::None), coercers, *bv, *binary, out)?,
                 _ => false,
             };
             if written {
@@ -1163,6 +1204,76 @@ fn encode_batch<'py>(
         encode(&batch, &plan, &formats, &mut out).map(|_| out)
     })?;
     Ok(PyBytes::new(py, &out))
+}
+
+/// A row result's batch's cells (REQ-2195), each row any sequence of its cells: `kinds` the
+/// engine's type name of each column (or None), for the text of a value no rule reads.
+fn read_cells(py: Python<'_>, rows: &Bound<'_, PyAny>, width: usize, kinds: &[Option<String>]) -> PyResult<(Vec<Vec<pyval::PyVal>>, usize)> {
+    let cells = pyrows::Cells::new(py)?;
+    let mut columns: Vec<Vec<pyval::PyVal>> = (0..width).map(|_| Vec::new()).collect();
+    let mut n = 0;
+    for row in rows.try_iter()? {
+        let row = row?;
+        if row.len()? != width {
+            return Err(EncErr::Value(format!("{width} types for a row of {}", row.len()?)).into());
+        }
+        for (j, column) in columns.iter_mut().enumerate() {
+            column.push(cells.read(&row.get_item(j)?, kinds.get(j).and_then(|k| k.as_deref()))?);
+        }
+        n += 1;
+    }
+    Ok((columns, n))
+}
+
+/// The DataRow messages of a row result's rows (REQ-2195), each row a sequence of its cells,
+/// encoded as encode_batch encodes a batch's; `kinds` the engine's type name of each column.
+#[pyfunction]
+#[pyo3(signature = (rows, types, formats=None, coercers=None, kinds=None))]
+fn encode_rows<'py>(
+    py: Python<'py>,
+    rows: &Bound<'py, PyAny>,
+    types: Vec<String>,
+    formats: Option<Vec<i32>>,
+    coercers: Option<Vec<Vec<String>>>,
+    kinds: Option<Vec<Option<String>>>,
+) -> PyResult<Bound<'py, PyBytes>> {
+    let plan = Plan::new(&types, coercers)?;
+    let formats = formats.unwrap_or_default();
+    let (columns, n) = read_cells(py, rows, types.len(), &kinds.unwrap_or_default())?;
+    let out = py.allow_threads(|| {
+        let mut out = Vec::new();
+        encode_cells(columns, n, &plan, &formats, &mut out).map(|_| out)
+    })?;
+    Ok(PyBytes::new(py, &out))
+}
+
+/// encode_stream for a row result: each of `batches` a list of rows, its DataRow bytes handed to
+/// `write`. Returns the row count.
+#[pyfunction]
+#[pyo3(signature = (batches, types, write, formats=None, coercers=None, kinds=None))]
+fn encode_rows_stream<'py>(
+    py: Python<'py>,
+    batches: &Bound<'py, PyAny>,
+    types: Vec<String>,
+    write: &Bound<'py, PyAny>,
+    formats: Option<Vec<i32>>,
+    coercers: Option<Vec<Vec<String>>>,
+    kinds: Option<Vec<Option<String>>>,
+) -> PyResult<usize> {
+    let plan = Plan::new(&types, coercers)?;
+    let formats = formats.unwrap_or_default();
+    let kinds = kinds.unwrap_or_default();
+    let mut rows = 0;
+    let mut out = Vec::new();
+    for batch in batches.try_iter()? {
+        let (columns, n) = read_cells(py, &batch?, types.len(), &kinds)?;
+        out.clear();
+        rows += py.allow_threads(|| encode_cells(columns, n, &plan, &formats, &mut out))?;
+        if !out.is_empty() {
+            write.call1((PyBytes::new(py, &out),))?;
+        }
+    }
+    Ok(rows)
 }
 
 /// Streams every batch of a pyarrow RecordBatchReader (or any iterable of batches) through the
@@ -1279,6 +1390,8 @@ fn zone_offsets(name: &str, secs: Vec<i64>) -> Option<Vec<i32>> {
 fn pgwire_encoder(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(encode_batch, m)?)?;
     m.add_function(wrap_pyfunction!(encode_stream, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_rows, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_rows_stream, m)?)?;
     m.add_function(wrap_pyfunction!(forward_raw, m)?)?;
     m.add_function(wrap_pyfunction!(register_catalog_names, m)?)?;
     m.add_function(wrap_pyfunction!(zone_offsets, m)?)?;

@@ -295,12 +295,16 @@ class _ZonedData:
         self._columns = columns
         self._zone = zone
         self.raw = data.raw
+        self.rows = data.rows
 
     def take(self, limit: int = 0) -> Iterator[Any]:
         import pyarrow as pa
 
         if self.raw:
             raise _unwritable(self._zone.current)  # a portal opened on UTC, read after a SET
+        if self.rows:
+            yield from self._rows_in_zone(limit)
+            return
         try:
             zone = _arrow_zone(self._zone.written_in())
         except ValueError:
@@ -310,6 +314,31 @@ class _ZonedData:
             for i in self._columns:
                 arrays[i] = _in_zone(arrays[i], zone)
             yield pa.RecordBatch.from_arrays(arrays, names=batch.schema.names)
+
+    def _rows_in_zone(self, limit: int) -> Iterator[list[Any]]:
+        """A row result's batches (REQ-2195), each timestamptz value of ``columns`` the same
+        instant in the zone; an infinity is itself."""
+        zone = self._zone.written_in()
+        for batch in self._data.take(limit):
+            out = []
+            for row in batch:
+                cells = list(row)
+                for i in self._columns:
+                    cells[i] = _value_in_zone(cells[i], zone)
+                out.append(cells)
+            yield out
+
+
+def _value_in_zone(value: Any, zone: datetime.tzinfo) -> Any:
+    if (
+        value is None
+        or getattr(value, "pg_infinity", 0)
+        or not isinstance(value, datetime.datetime)
+    ):
+        return value
+    if value.tzinfo is None:  # as the binary encoder refuses it, never taken for UTC
+        raise ValueError("timestamptz value without a time zone")
+    return value.astimezone(zone)
 
 
 class _WrittenInZone:
