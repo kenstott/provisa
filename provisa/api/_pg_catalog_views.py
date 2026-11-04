@@ -1212,6 +1212,8 @@ def _pg_stat_activity() -> str:
                 "usesysid": role_oid_sql(setting("role")),
                 "usename": setting("role"),
                 "application_name": f"COALESCE({setting('application_name')}, '')",
+                "client_addr": f"CAST({setting('client_addr')} AS INET)",
+                "client_port": f"CAST({setting('client_port')} AS INTEGER)",
                 "backend_start": f"CAST({setting('backend_start')} AS TIMESTAMPTZ)",
                 "xact_start": "NOW()",
                 "query_start": "NOW()",
@@ -1221,6 +1223,53 @@ def _pg_stat_activity() -> str:
                 "backend_type": "'client backend'",
             },
             f"WHERE {setting('pid')} IS NOT NULL",
+        ),
+    )
+
+
+def _pg_stat_database() -> str:
+    """The caller's database, the one row a catalog lists, as Provisa knows it: its count of the
+    connection's statements as commits, and no rollbacks or block reads or hits, Provisa holding
+    no storage (REQ-2167). What Provisa keeps no count of is NULL. A statement that names no
+    connection lists none."""
+    relation = (_PG, "pg_stat_database")
+    return _view(
+        relation,
+        _select(
+            relation,
+            {
+                "datid": "16384",
+                "datname": _SERVED_NAME,
+                "numbackends": "1",
+                "xact_commit": f"CAST({setting('queries')} AS BIGINT)",
+                "xact_rollback": "0",
+                "blks_read": "0",
+                "blks_hit": "0",
+            },
+            f"WHERE {setting('pid')} IS NOT NULL",
+        ),
+    )
+
+
+def _pg_stat_user_tables() -> str:
+    """Each listed table Provisa has a row estimate of (catalog._row_estimates_told), the estimate
+    its n_live_tup; a table with none has no row (REQ-2167). Provisa counts no scans or writes of
+    a source's table, so the rest is NULL."""
+    relation = (_PG, "pg_stat_user_tables")
+    return _view(
+        relation,
+        _select(
+            relation,
+            {
+                "relid": "t.relation_oid",
+                "schemaname": "t.schema_name",
+                "relname": "t.table_name",
+                "n_live_tup": "CAST(e.value AS BIGINT)",
+                SCOPE_COLUMN: "t.table_id",
+            },
+            "FROM catalog_tables t JOIN JSONB_EACH_TEXT(COALESCE(CAST("
+            f"{setting('row_estimates')} AS JSONB), CAST('{{}}' AS JSONB))) AS e(key, value) "
+            "ON e.key = CAST(t.relation_oid AS TEXT) WHERE t.table_id IS NOT NULL",
         ),
     )
 
@@ -1735,6 +1784,8 @@ _MODEL_VIEWS = {
     (_PG, "pg_tables"): _pg_tables,
     (_PG, "pg_indexes"): _pg_indexes,
     (_PG, "pg_stat_activity"): _pg_stat_activity,
+    (_PG, "pg_stat_database"): _pg_stat_database,
+    (_PG, "pg_stat_user_tables"): _pg_stat_user_tables,
     (_PG, "pg_locks"): _pg_locks,
     (_PG, "pg_enum"): _pg_enum,
     (_PG, "pg_cursors"): _pg_cursors,

@@ -578,6 +578,10 @@ class CatalogSession:
     client_settings: dict[str, str] | None = None
     #: The cursors pg_cursors lists of the connection: its DECLAREd ones and the open portal.
     cursors: tuple[dict, ...] = ()
+    #: The client's end of the connection, (host, port), which pg_stat_activity lists.
+    client_end: tuple = ()
+    #: The statements the connection has run, this one with them: pg_stat_database's xact_commit.
+    queries: int = 0
 
 
 def _session_settings(sql: str, session: CatalogSession | None) -> Mapping[str, str]:
@@ -656,6 +660,8 @@ def _catalog_request(
             "pid": str(session.pid),
             "application_name": session.application_name,
             "backend_start": session.backend_start.isoformat() if session.backend_start else "",
+            "queries": str(session.queries),
+            **_client_end_told(session.client_end),
             **({"system_user": session.system_user} if session.system_user else {}),
             **({"time_zone": session.time_zone} if session.time_zone else {}),
         }
@@ -674,10 +680,31 @@ def _catalog_request(
             **({"locks": _advisory_locks(session)} if "pg_locks" in sql.lower() else {}),
             **({"enums": _enums_told(enums)} if enums else {}),
             **({"cursors": _cursors_told(session)} if "pg_cursor" in sql.lower() else {}),
+            **(
+                {"row_estimates": _row_estimates_told(row_counts(role_id, state))}
+                if "pg_stat_user_tables" in sql.lower()
+                else {}
+            ),
         },
         enums=enums,
         reltuples=row_counts(role_id, state) if "reltuples" in sql.lower() else {},
     )
+
+
+def _client_end_told(end: tuple) -> dict[str, str]:
+    """The client's address and port, as pg_stat_activity's view reads them: none where the
+    connection's client end is not known."""
+    if len(end) < 2:
+        return {}
+    return {"client_addr": str(end[0]), "client_port": str(end[1])}
+
+
+def _row_estimates_told(counts: Mapping[int, float]) -> str:
+    """The role's row estimates by relation oid, as pg_stat_user_tables' view reads them (JSON):
+    a table with none is not in it."""
+    import json
+
+    return json.dumps({str(oid): round(rows) for oid, rows in counts.items()})
 
 
 def _cursors_told(session: CatalogSession | None) -> str:

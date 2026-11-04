@@ -209,6 +209,12 @@ OWN_ANSWERS: dict[str, str] = {
         "by design (REQ-588): names the served database",
     ),
     "version": "by design (REQ-579): the server's version",
+    # REQ-2167, amended 2026-11-04, Server state the client tools read is answered as
+    # Provisa's own: compared by type and form.
+    **dict.fromkeys(
+        ("pg_stat_get_numscans", "pg_tablespace_location", "pg_relation_is_publishable"),
+        "by design (REQ-2167): answers with Provisa's own server state",
+    ),
     **dict.fromkeys(
         (
             "inet_client_addr",
@@ -1339,6 +1345,14 @@ _FORM_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
     "pg_relation_filenode(regclass)": {0: _RELATIONS},
     "pg_relation_filepath(regclass)": {0: _RELATIONS},
     "pg_stat_get_activity(integer)": {0: _BACKEND_PID},
+    "pg_stat_get_numscans(oid)": {
+        0: Raw(
+            f"'pg_catalog.{i}'::regclass::oid"
+            for i in ("pg_class_oid_index", "pg_type_oid_index", "pg_namespace_nspname_index")
+        )
+    },
+    "pg_tablespace_location(oid)": {0: ("1663", "1664", "1663")},
+    "pg_relation_is_publishable(regclass)": {0: _RELATIONS},
 }
 
 #: As ``_FORM_VALUES``, by prefix: a database's statistics of the session's own database, a

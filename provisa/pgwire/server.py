@@ -1915,6 +1915,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         self.portal_bound: dict[str, datetime.datetime] = {}
         # REQ-2167: this connection's two ends, (host, port), set when it starts.
         self.client_end: tuple = ()
+        # REQ-2167: the statements this connection has run, which pg_stat_database lists as its
+        # commits.
+        self.queries = 0
         self.server_end: tuple = ()
         self.role_id: str | None = None
         # REQ-1620: the held roles this session acts as when it named several; ``role_id`` is then
@@ -2063,6 +2066,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         continues from it instead of governing again); ``shape`` is the result shape that Describe
         told the client, which the rows are encoded to. Both are None for a statement that was
         never described (the simple protocol, or a Bind with no Describe(Statement))."""
+        self.queries += 1
         return self._with_org(
             lambda: self._execute_sql_bound(sql, params, result_fmt, prepared=prepared, shape=shape)
         )
@@ -2483,6 +2487,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     self.org_id,
                     self.client_settings,
                     self._listed_cursors(),
+                    self.client_end,
+                    self.queries,
                 ),
                 run=self._catalog_read,
             )

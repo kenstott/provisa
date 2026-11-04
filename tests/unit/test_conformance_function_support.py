@@ -2601,3 +2601,32 @@ def test_a_table_s_xml_differing_in_anything_else_stays_a_wrong_answer():
     ):
         assert support.decided_answer("table_to_xml", _TABLE_XML_SQL, want, got) is None
     assert support.decided_answer("abs", _TABLE_XML_SQL, want, want) is None
+
+
+# REQ-2167, amended 2026-11-04: the server state the client tools read is Provisa's own, and
+# compared by its type and form, never skipped by design.
+_TOOL_SERVER_STATE = (
+    (Function("pg_stat_get_numscans", "oid", argtypes=("oid",), volatility="s"), 20, "1", "0"),
+    (Function("pg_tablespace_location", "oid", argtypes=("oid",), volatility="s"), 25, "", ""),
+    (
+        Function("pg_relation_is_publishable", "regclass", argtypes=("regclass",), volatility="s"),
+        16,
+        "t",
+        "f",
+    ),
+)
+
+
+@pytest.mark.parametrize(("fn", "oid", "pg", "provisa"), _TOOL_SERVER_STATE)
+def test_server_state_a_client_tool_reads_is_compared_by_type_and_form(fn, oid, pg, provisa):
+    assert support.own_answer(fn) is not None
+    assert fn.name not in support.DECIDED_FUNCTIONS
+    assert len(support.form_calls(fn)) == support.VALUE_ROWS
+    entry = _both(fn, "System", _ok(pg, oid=oid), _ok(provisa, oid=oid))
+    assert entry["outcome"] == "pass"
+    assert entry["type_and_form_checked"] and not entry["answers_checked"]
+
+
+@pytest.mark.parametrize("name", ["pg_relation_size", "pg_total_relation_size"])
+def test_relation_sizes_stay_skipped_by_design_as_provisa_holds_no_storage(name):
+    assert support.DECIDED_FUNCTIONS[name] == support.STORAGE_GROUP
