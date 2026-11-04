@@ -3916,9 +3916,13 @@
   feature: semantic-model-domains
   priority: MUST
   type: constraint
-  description: Every domain must have a designated steward before it can serve governed data. A domain
-    may exist in a pending state until a steward is assigned; a domain without a steward cannot expose
-    tables, views, or relationships to consumers.
+  description: 'Every domain must have a designated steward before it can serve governed data. A domain
+    may exist in a pending state until a steward is assigned; a domain without a steward cannot expose tables,
+    views, or relationships to consumers. (Amended 2026-11-04, A DOMAIN IS EDITED FROM ITS LIST:) The Domains
+    page follows every other list page: clicking a domain opens its detail panel, where its description,
+    GraphQL alias, parent domain and steward are edited and saved. Its id is its identity and is shown,
+    not edited. A change that renames what clients see (the alias, or a parent that changes the domain''s
+    place in the tree) says so before it is saved, and the schema is rebuilt when it is.'
   use_case: Steward requirement ensures accountability is always assigned before governed data is exposed.
   code:
   - provisa/core/domain_policy.py
@@ -22373,10 +22377,16 @@
   feature: semantic-model-domains
   priority: MUST
   type: behavioral
-  description: Domain policy tri-state mode (legacy/single-domain/namespaced). Legacy mode (use_domains
-    absent) stores declared domain_id verbatim; single-domain mode (use_domains=False) coerces all tables
-    to default_domain; namespaced mode (use_domains=True) stores domain_id as declared. Reload validation
-    sweep rejects pre-existing foreign domains when switching to single-domain mode.
+  description: '[SUPERSEDED by REQ-749, 2026-11-04 -- there are two modes, not three; see the TWO MODES
+    amendment. Kept here for history; do not implement against it.] Domain policy tri-state mode (legacy/single-domain/namespaced).
+    Legacy mode (use_domains absent) stores declared domain_id verbatim; [END SUPERSEDED BLOCK] single-domain
+    mode (use_domains=False) coerces all tables to default_domain; namespaced mode (use_domains=True) stores
+    domain_id as declared. Reload validation sweep rejects pre-existing foreign domains when switching to
+    single-domain mode. (Amended 2026-11-04, TWO MODES:) Maintainer chose "Two states only": the domain
+    mode has exactly two states, single domain and namespaced, in the backend as in the UI. There is no
+    unset or legacy state: a configuration or organization that declares no mode is in single-domain mode,
+    and every shipped configuration that declares domains (the demo among them) declares namespaced. The
+    Domains page shows the mode the organization is actually in.'
   use_case: Domain policy modes enable multi-tenancy architectures without breaking legacy single-domain
     deployments.
   code:
