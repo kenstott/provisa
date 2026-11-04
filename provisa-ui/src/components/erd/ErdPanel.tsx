@@ -10,7 +10,7 @@
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Checkbox, Group, Select, Text, useComputedColorScheme } from "@mantine/core";
+import { Button, Checkbox, Group, Select, useComputedColorScheme } from "@mantine/core";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import cytoscape from "cytoscape";
 import elkRaw from "cytoscape-elk";
@@ -28,6 +28,7 @@ import { getErdPalette } from "./sections/erd-palette";
 import type { TooltipState, ErdPanelProps } from "./sections/erd-types";
 import { useErdCollapseLink } from "./useErdCollapseLink";
 import { Tip } from "../Tip";
+import { HelpBubble } from "../HelpBubble";
 import { ErdCanvasBar } from "./ErdCanvasBar";
 import { FIT_PADDING } from "./erd-viewport";
 import { useErdOptions, type ErdOptions } from "./useErdOptions";
@@ -808,6 +809,19 @@ export function ErdPanel({
               {allCollapsed ? t("erdModal.expandAll") : t("erdModal.collapseAll")}
             </Button>
           </Tip>
+
+          {/* How the domain boxes work: in the row's (?) help, last and at its end, so nothing is
+              drawn over the diagram. */}
+          {allDomainIds.length > 0 && (
+            <Group ml="auto">
+              <HelpBubble
+                title={t("erdModal.title")}
+                paragraphs={[t("erdModal.hint")]}
+                ariaLabel={t("erdModal.hint")}
+                testId="erd-hint"
+              />
+            </Group>
+          )}
         </Group>
 
         {/* ── canvas ── */}
@@ -907,25 +921,6 @@ export function ErdPanel({
                 <div style={{ color: palette.textMuted, lineHeight: 1.4 }}>{tooltip.body}</div>
               )}
             </div>
-          )}
-          {/* ── hint overlay ── */}
-          {allDomainIds.length > 0 && (
-            <Text
-              size="10px"
-              c={palette.textMuted}
-              style={{
-                position: "absolute",
-                top: 6,
-                left: 12,
-                padding: "2px 8px",
-                background: isDark ? "rgba(15, 23, 42, 0.75)" : "rgba(248, 250, 252, 0.85)",
-                borderRadius: 4,
-                pointerEvents: "none",
-                zIndex: 5,
-              }}
-            >
-              {t("erdModal.hint")}
-            </Text>
           )}
         </div>
       </>

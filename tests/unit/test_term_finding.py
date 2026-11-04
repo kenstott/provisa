@@ -15,7 +15,7 @@ queue the steward accepts, edits, merges or rejects; every model call held to th
 budget (REQ-1174). REQ-2185: a new document joins the library as proposed in the steward's
 domains; one already there is not added again; a rescan shows matches and duplicates."""
 
-# Requirements: REQ-2179, REQ-2185
+# Requirements: REQ-2179, REQ-2185, REQ-2202
 
 from __future__ import annotations
 
@@ -48,6 +48,7 @@ from provisa.llm import client as llm_client
 from provisa.llm.client import ProvisaLLMClient
 from provisa.reference_library import library, store
 from provisa.security.llm_budget import BudgetRefused
+from provisa.api.admin import term_finding_table as table
 from provisa.term_finding import model, queue, scan
 
 if TYPE_CHECKING:
@@ -1419,3 +1420,196 @@ async def test_an_ended_scan_keeps_its_first_ending(api):
         )
         assert await queue.drafts(conn, scan_id) == []
     assert (await _row(api, scan_id)).error == "cancelled by alice"
+
+
+# -- REQ-2202: a registered table scanned; a scan only ---------------------------------------
+
+TABLE_SOURCE = {
+    "domain": "d",
+    "table": "policy_sections",
+    "id_column": "section_id",
+    "text_column": "body",
+}
+TABLE_ROWS = [
+    ("POL-1", '"Customer" means any party that holds an account.'),
+    ("POL-2", None),
+    ("POL-4", "A customer account is opened after KYC checks."),
+]
+
+
+def _row_answer(prompt: str) -> str:
+    """Each row read names the concept "customer", quoting the row; the mentions resolve into it."""
+    if "Group the mentions" in prompt:
+        ids = [int(i) for i in re.findall(r"^M(\d+) ", prompt, re.M)]
+        return json.dumps([{"name": "customer", "sense": "a party", "mentions": ids}])
+    rows = re.findall(r"\[P(\d+)\] \(row '[^']+'\)\n(.+)", prompt)
+    return json.dumps(
+        [
+            {
+                "passage": int(n),
+                "name": "customer",
+                "category": "business concept",
+                "sense": "a party",
+                "quote": text,
+                "explicit": text.startswith('"Customer" means'),
+                "variants": [],
+            }
+            for n, text in rows
+        ]
+    )
+
+
+class _TableModel(_Model):
+    def __init__(self, answer=_row_answer, refuse: str | None = None):
+        super().__init__(answer)
+        self.refuse = refuse
+        self.reckoned: list[tuple[list[str], str]] = []
+
+    async def require_room(self, prompts: list[str], what: str) -> None:
+        self.reckoned.append((prompts, what))
+        if self.refuse:
+            raise model.OverBudget(self.refuse)
+
+
+@pytest.fixture
+def tables(api, monkeypatch):
+    read: list[tuple[Any, str]] = []
+
+    async def _read(state: Any, source: table.TableSource, role_id: str) -> list[scan.Passage]:
+        read.append((source, role_id))
+        return table.passages(TABLE_ROWS)
+
+    held = _TableModel()
+
+    async def _model(request):
+        return held
+
+    monkeypatch.setattr(table, "read", _read)
+    monkeypatch.setattr(router, "_model", _model)
+    return types.SimpleNamespace(read=read, model=held)
+
+
+async def test_a_table_is_scanned_its_candidates_citing_the_table_and_row_ids(api, tables):
+    started = await router.start_scan(_request({"table": TABLE_SOURCE, "domains": ["d"]}))
+    assert started["scan"]["status"] == "running"
+    assert started["scan"]["source_table"] == TABLE_SOURCE
+    assert "document" not in started
+    await api.launched.pop()
+
+    ((source, role_id),) = tables.read
+    assert (source.name, role_id) == ("d.policy_sections", "steward")
+    ((prompts, what),) = tables.model.reckoned
+    assert what == "d.policy_sections"
+    assert prompts == scan.reading_prompts(
+        "d.policy_sections", table.passages(TABLE_ROWS), scan.TABLE
+    )
+
+    found = await router.get_scan(started["scan"]["id"], _request())
+    assert found["scan"]["status"] == "done"
+    assert found["scan"]["document_title"] == "d.policy_sections"
+    assert found["scan"]["document_removed"] is False
+    (draft,) = found["drafts"]
+    assert draft["name"] == "customer"
+    assert [(p["row"], p["role"]) for p in draft["passages"]] == [
+        ("POL-1", "definition"),
+        ("POL-4", "supporting"),
+    ]
+    # A scan only: the reference library holds nothing new.
+    async with api.db.acquire() as conn:
+        assert await store.documents(conn) == []
+        (row,) = await queue.scans(conn)
+    assert (row.document_id, row.source_table) == (None, TABLE_SOURCE)
+
+
+async def test_a_table_scan_the_budget_has_no_room_for_is_refused_before_it_starts(api, tables):
+    tables.model.refuse = "role 'steward' has 100 tokens left of its LLM budget for the day"
+    with pytest.raises(ApiError) as caught:
+        await router.start_scan(_request({"table": TABLE_SOURCE, "domains": ["d"]}))
+    assert (caught.value.status_code, caught.value.code) == (409, "term_finding.over_budget")
+    assert "100 tokens left" in str(caught.value.detail)
+    assert api.launched == []
+    async with api.db.acquire() as conn:
+        assert await queue.scans(conn) == []
+
+
+async def test_a_table_with_no_text_to_read_is_refused_before_it_starts(api, tables, monkeypatch):
+    async def _empty(state: Any, source: table.TableSource, role_id: str) -> list[scan.Passage]:
+        return []
+
+    monkeypatch.setattr(table, "read", _empty)
+    with pytest.raises(ApiError) as caught:
+        await router.start_scan(_request({"table": TABLE_SOURCE, "domains": ["d"]}))
+    assert caught.value.code == "term_finding.no_rows"
+    assert api.launched == []
+
+
+async def test_a_scan_reads_one_source_a_table_or_a_document(api, tables):
+    with pytest.raises(ApiError) as caught:
+        await router.start_scan(
+            _request({"table": TABLE_SOURCE, "document_id": 1, "domains": ["d"]})
+        )
+    assert caught.value.code == "term_finding.one_document"
+    assert tables.read == []
+
+
+TERMS_SOURCE = {
+    "domain": "d",
+    "table": "data_dictionary",
+    "term_column": "term",
+    "definition_column": "meaning",
+}
+TERMS_ROWS = [
+    ("Client", "A party that holds an account with the Bank."),
+    ("Churn rate", "The share of customers who leave in a period."),
+]
+
+
+@pytest.fixture
+def terms_table(api, monkeypatch):
+    read: list[tuple[Any, str]] = []
+
+    async def _rows(state: Any, source: Any, role_id: str) -> list[tuple]:
+        read.append((source, role_id))
+        return TERMS_ROWS
+
+    async def _no_model(request):
+        raise AssertionError("a table of terms asks no model")
+
+    monkeypatch.setattr(table, "rows", _rows)
+    monkeypatch.setattr(router, "_model", _no_model)
+    return types.SimpleNamespace(read=read)
+
+
+async def test_a_table_of_terms_is_queued_at_once_matched_against_the_glossary(api, terms_table):
+    async with api.db.acquire() as conn:
+        client = await glossary_repo.create_abstract_term(conn, "client", domains={"d"})
+    started = await router.start_scan(_request({"table": TERMS_SOURCE, "domains": ["d"]}))
+    assert started["scan"]["status"] == "done"
+    assert started["scan"]["source_table"] == TERMS_SOURCE
+    assert api.launched == []
+    ((source, role_id),) = terms_table.read
+    assert (source.name, role_id) == ("d.data_dictionary", "steward")
+
+    found = await router.get_scan(started["scan"]["id"], _request())
+    drafts = _by_name(found)
+    assert list(drafts) == ["Client", "Churn rate"]
+    assert (drafts["Client"]["proposal"], drafts["Client"]["match_kind"]) == ("merge", "duplicate")
+    assert drafts["Client"]["match"]["term_id"] == client
+    churn = drafts["Churn rate"]
+    assert (churn["proposal"], churn["definition_kind"]) == ("new", "explicit")
+    assert churn["definition"] == "The share of customers who leave in a period."
+    assert [(p["row"], p["role"]) for p in churn["passages"]] == [("Churn rate", "definition")]
+    async with api.db.acquire() as conn:
+        assert await store.documents(conn) == []
+
+
+async def test_a_table_of_terms_with_no_term_is_refused(api, terms_table, monkeypatch):
+    async def _blank(state: Any, source: Any, role_id: str) -> list[tuple]:
+        return [(None, "A definition with no term.")]
+
+    monkeypatch.setattr(table, "rows", _blank)
+    with pytest.raises(ApiError) as caught:
+        await router.start_scan(_request({"table": TERMS_SOURCE, "domains": ["d"]}))
+    assert caught.value.code == "term_finding.no_rows"
+    async with api.db.acquire() as conn:
+        assert await queue.scans(conn) == []

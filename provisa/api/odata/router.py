@@ -73,6 +73,7 @@ from provisa.compiler.sql_types import CompiledQuery
 from provisa.core.read_refusal import ReadRefused
 from provisa.core.statement_warnings import as_entries
 from provisa.executor.json_encoders import (
+    any_rows,
     odata,
     odata_entity,
     odata_navigation,
@@ -352,7 +353,7 @@ async def _navigate(
     result = await _run(state, role_id, compiled.sql, compiled.params, request)
     _landed(result)
     batches = result_batches(result)
-    if not any(b.num_rows for b in batches):
+    if not any_rows(batches):
         raise _Refused(404, "not_found", f"no row {address!r}")
 
     # REQ-2194: the Rust encoder writes the parent row's list (the page) and its nextLink.

@@ -1916,6 +1916,7 @@ CREATE TABLE IF NOT EXISTS glossary_term_scans (
     budget_limit    INTEGER,
     launch          TEXT,
     progress_at     TIMESTAMPTZ,
+    source_table    TEXT,  -- REQ-2202: a table's scan: its domain, table, id and text columns
     tenant_id       UUID
 );
 

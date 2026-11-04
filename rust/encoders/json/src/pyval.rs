@@ -299,6 +299,8 @@ pub enum Reader {
     Dict(Vec<usize>, Option<NullBuffer>, Box<Reader>),
     Union(Vec<i8>, Option<Vec<i32>>, Vec<(i8, Reader)>),
     Ree(Vec<usize>, Box<Reader>),
+    /// A row result's column: its cells as they are (REQ-2195, pyrows.rs).
+    Rows(Vec<P<'static>>),
 }
 
 type OffsetBuffer32 = arrow::buffer::OffsetBuffer<i32>;
@@ -507,6 +509,7 @@ impl Reader {
                 child.is_null(at)
             }
             Reader::Ree(idx, v) => v.is_null(idx[r]),
+            Reader::Rows(cells) => cells[r].is_none(),
         }
     }
 
@@ -631,6 +634,7 @@ impl Reader {
                 child.get(at)?
             }
             Reader::Ree(idx, v) => v.get(idx[r])?,
+            Reader::Rows(cells) => view(&cells[r]),
         })
     }
 
@@ -657,6 +661,22 @@ impl Reader {
             }
         }
         Ok(())
+    }
+}
+
+/// A row result's cell, borrowed.
+fn view<'a>(p: &'a P<'static>) -> P<'a> {
+    match p {
+        P::BigInt(s) => P::BigInt(Cow::Borrowed(&s[..])),
+        P::JNum(s) => P::JNum(Cow::Borrowed(&s[..])),
+        P::Str(s) => P::Str(Cow::Borrowed(&s[..])),
+        P::Bytes(b) => P::Bytes(Cow::Borrowed(&b[..])),
+        P::Dec(d) => P::Dec(Dec { neg: d.neg, coef: Cow::Borrowed(&d.coef[..]), exp: d.exp }),
+        P::DecSpecial(s) => P::DecSpecial(Cow::Borrowed(&s[..])),
+        P::List(v) => P::List(v.iter().map(view).collect()),
+        P::Tuple(v) => P::Tuple(v.iter().map(view).collect()),
+        P::Dict(e) => P::Dict(e.iter().map(|(k, x)| (Cow::Borrowed(&k[..]), view(x))).collect()),
+        other => other.clone(),
     }
 }
 

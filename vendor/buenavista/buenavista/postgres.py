@@ -907,9 +907,9 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
 
     def send_data_rows(self, query_result: QueryResult, limit: int = 0) -> int:
         """The result's DataRow messages onto the socket, ``limit`` rows of them (0: all), written
-        by the Rust encoder (REQ-2194): its Arrow batches with each column's wire type, result
-        format and coercers, or a source's own DataRow messages forwarded as they are. No Python
-        row is built."""
+        by the Rust encoder from the result in the form it has (REQ-2194, REQ-2195): its Arrow
+        batches, or a row result's rows, with each column's wire type, result format and
+        coercers; or a source's own DataRow messages forwarded as they are."""
         # Imported here, not with this module: the code host's front end (provisa/codehost) runs
         # buenavista's modules on their own, and imports them before any result is sent.
         from provisa._encoders import pgwire as encoder
@@ -919,12 +919,19 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         if data.raw:
             return encoder.forward_raw((row for batch in data.take(limit) for row in batch), write)
         count = query_result.column_count()
+        types = [wire_type_name(query_result.column(i)[1]) for i in range(count)]
+        formats = list(query_result.result_format) if query_result.result_format else None
+        if data.rows:
+            return encoder.encode_rows_stream(
+                data.take(limit),
+                types,
+                write,
+                formats,
+                query_result.coercers(),
+                query_result.kinds(),
+            )
         return encoder.encode_stream(
-            data.take(limit),
-            [wire_type_name(query_result.column(i)[1]) for i in range(count)],
-            write,
-            list(query_result.result_format) if query_result.result_format else None,
-            query_result.coercers(),
+            data.take(limit), types, write, formats, query_result.coercers()
         )
 
     def send_error(self, exception, ctx: Optional[BVContext] = None):

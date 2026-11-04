@@ -564,6 +564,25 @@ pub fn prepare(batches: &[RecordBatch], spec: &[Col]) -> Res<Vec<Batch>> {
     Ok(prepared)
 }
 
+/// A row result's batches (REQ-2195), each its columns' cells as pyrows read them: cells as
+/// `prepare` makes of Arrow batches.
+pub fn prepare_rows(batches: Vec<Vec<Vec<P<'static>>>>, spec: &[Col]) -> Res<Vec<Batch>> {
+    let mut prepared = Vec::with_capacity(batches.len());
+    for columns in batches {
+        let rows = columns.first().map_or(0, Vec::len);
+        if rows == 0 {
+            continue;
+        }
+        let cells = columns
+            .into_iter()
+            .zip(spec)
+            .map(|(cells, c)| Cell::new(Reader::Rows(cells), c.mode.clone(), c.field.clone()))
+            .collect();
+        prepared.push(Batch { cells, rows });
+    }
+    Ok(prepared)
+}
+
 // ---------------------------------------------------------------- serialize_rows
 
 /// What `serialize_rows` built: the tree and its result rows, in order (all of them; the caller

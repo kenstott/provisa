@@ -2128,6 +2128,9 @@ glossary_term_scans = Table(
     Column("budget_limit", Integer, nullable=True),
     Column("launch", Text, nullable=True),
     Column("progress_at", DateTime(timezone=True), nullable=True),
+    # REQ-2202: a scan of a registered table, not a library document -- a JSON object naming its
+    # domain, table, id column and text column; null for a document's scan.
+    Column("source_table", Text, nullable=True),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "status IN ('running', 'done', 'failed')", name="glossary_term_scans_status_check"

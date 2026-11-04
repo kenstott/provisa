@@ -37,7 +37,10 @@ from provisa.grpc.server import _nodes_field
 from tests.unit.grpc_encoder.python_ref import (
     Service,
     node_reference,
+    has_map,
     python_encode,
+    rows_encode,
+    rows_of,
     rust_encode,
 )
 
@@ -118,10 +121,34 @@ def compare(
         assert not isinstance(sent_exc.value, NotImplementedError), (
             f"the reference raised {exc!r}; the encoder refused instead: {sent_exc.value!r}"
         )
+        if any(has_map(b) for b in batches):
+            return []
+        # REQ-2195: the rows form refuses it too (reading the cells, or writing them)
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            rows_encode(
+                svc.wire,
+                type_name,
+                [rows_of(b) for b in batches],
+                list(batches[0].schema.names),
+                batch_rows=batch_rows,
+                masks=masks,
+            )
         return []
     sent = rust_encode(svc.wire, type_name, batches, batch_rows=batch_rows, masks=masks)
     name = f"{type_name}Batch" if batch_rows else type_name
     assert_same(getattr(decode_as or svc.wire, name), expected, sent)
+    if any(has_map(b) for b in batches):
+        return sent
+    # REQ-2195: the same result as a row result is encoded from its rows, to the same bytes
+    from_rows = rows_encode(
+        svc.wire,
+        type_name,
+        [rows_of(b) for b in batches],
+        list(batches[0].schema.names),
+        batch_rows=batch_rows,
+        masks=masks,
+    )
+    assert from_rows == sent, "the rows form answers otherwise"
     return sent
 
 

@@ -143,15 +143,18 @@ def wire_type_name(bvtype: Any) -> str:
 
 
 class ResultData:
-    """A result's rows as the encoder reads them (REQ-2194): Arrow record batches, or -- ``raw`` --
-    batches of a PostgreSQL source's own DataRow messages (RawDataRowBytes), forwarded as they are.
+    """A result's rows as the encoder reads them, in the form the result has (REQ-2194,
+    REQ-2195): Arrow record batches; -- ``rows`` -- a row result's batches of rows, each a sequence
+    of its cells; or -- ``raw`` -- batches of a PostgreSQL source's own DataRow messages
+    (RawDataRowBytes), forwarded as they are.
 
     A result hands out one ResultData for its life, so a portal read ``limit`` rows at a time (each
     Execute of a suspended portal) resumes where the last read stopped: a batch cut at the limit
     keeps its rest for the next read."""
 
-    def __init__(self, batches: Iterator[Any], raw: bool = False) -> None:
+    def __init__(self, batches: Iterator[Any], raw: bool = False, rows: bool = False) -> None:
         self.raw = raw
+        self.rows = rows
         self._batches = iter(batches)
         self._rest: Any = None
 
@@ -206,6 +209,11 @@ class QueryResult:
     def coercers(self) -> Optional[List[List[str]]]:
         """Each column's coercers, by the name the encoder knows each by, in the order they apply;
         None for none."""
+        return None
+
+    def kinds(self) -> Optional[List[Optional[str]]]:
+        """Each column's engine type name, by which the encoder writes a row result's cell of a
+        type it reads by no rule (REQ-2195); None for none."""
         return None
 
     def reusable_for_execute(self, result_formats: List[int]) -> bool:
@@ -355,10 +363,7 @@ class SimpleQueryResult(QueryResult):
 
     def data(self) -> ResultData:
         if self._data is None:
-            import pyarrow as pa
-
-            batch = pa.RecordBatch.from_arrays([pa.array([self.value], pa.string())], [self.name])
-            self._data = ResultData(iter([batch]))
+            self._data = ResultData(iter([[(self.value,)]]), rows=True)
         return self._data
 
     def status(self) -> str:
