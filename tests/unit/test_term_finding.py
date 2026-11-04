@@ -1424,11 +1424,16 @@ async def test_an_ended_scan_keeps_its_first_ending(api):
 
 # -- REQ-2202: a registered table scanned; a scan only ---------------------------------------
 
-TABLE_SOURCE = {"domain": "d", "table": "notes", "id_column": "note_id", "text_column": "body"}
+TABLE_SOURCE = {
+    "domain": "d",
+    "table": "policy_sections",
+    "id_column": "section_id",
+    "text_column": "body",
+}
 TABLE_ROWS = [
-    ("n-1", '"Customer" means any party that holds an account.'),
-    ("n-2", None),
-    ("n-4", "A customer account is opened after KYC checks."),
+    ("POL-1", '"Customer" means any party that holds an account.'),
+    ("POL-2", None),
+    ("POL-4", "A customer account is opened after KYC checks."),
 ]
 
 
@@ -1492,20 +1497,22 @@ async def test_a_table_is_scanned_its_candidates_citing_the_table_and_row_ids(ap
     await api.launched.pop()
 
     ((source, role_id),) = tables.read
-    assert (source.name, role_id) == ("d.notes", "steward")
+    assert (source.name, role_id) == ("d.policy_sections", "steward")
     ((prompts, what),) = tables.model.reckoned
-    assert what == "d.notes"
-    assert prompts == scan.reading_prompts("d.notes", table.passages(TABLE_ROWS), scan.TABLE)
+    assert what == "d.policy_sections"
+    assert prompts == scan.reading_prompts(
+        "d.policy_sections", table.passages(TABLE_ROWS), scan.TABLE
+    )
 
     found = await router.get_scan(started["scan"]["id"], _request())
     assert found["scan"]["status"] == "done"
-    assert found["scan"]["document_title"] == "d.notes"
+    assert found["scan"]["document_title"] == "d.policy_sections"
     assert found["scan"]["document_removed"] is False
     (draft,) = found["drafts"]
     assert draft["name"] == "customer"
     assert [(p["row"], p["role"]) for p in draft["passages"]] == [
-        ("n-1", "definition"),
-        ("n-4", "supporting"),
+        ("POL-1", "definition"),
+        ("POL-4", "supporting"),
     ]
     # A scan only: the reference library holds nothing new.
     async with api.db.acquire() as conn:
@@ -1543,3 +1550,66 @@ async def test_a_scan_reads_one_source_a_table_or_a_document(api, tables):
         )
     assert caught.value.code == "term_finding.one_document"
     assert tables.read == []
+
+
+TERMS_SOURCE = {
+    "domain": "d",
+    "table": "data_dictionary",
+    "term_column": "term",
+    "definition_column": "meaning",
+}
+TERMS_ROWS = [
+    ("Client", "A party that holds an account with the Bank."),
+    ("Churn rate", "The share of customers who leave in a period."),
+]
+
+
+@pytest.fixture
+def terms_table(api, monkeypatch):
+    read: list[tuple[Any, str]] = []
+
+    async def _rows(state: Any, source: Any, role_id: str) -> list[tuple]:
+        read.append((source, role_id))
+        return TERMS_ROWS
+
+    async def _no_model(request):
+        raise AssertionError("a table of terms asks no model")
+
+    monkeypatch.setattr(table, "rows", _rows)
+    monkeypatch.setattr(router, "_model", _no_model)
+    return types.SimpleNamespace(read=read)
+
+
+async def test_a_table_of_terms_is_queued_at_once_matched_against_the_glossary(api, terms_table):
+    async with api.db.acquire() as conn:
+        client = await glossary_repo.create_abstract_term(conn, "client", domains={"d"})
+    started = await router.start_scan(_request({"table": TERMS_SOURCE, "domains": ["d"]}))
+    assert started["scan"]["status"] == "done"
+    assert started["scan"]["source_table"] == TERMS_SOURCE
+    assert api.launched == []
+    ((source, role_id),) = terms_table.read
+    assert (source.name, role_id) == ("d.data_dictionary", "steward")
+
+    found = await router.get_scan(started["scan"]["id"], _request())
+    drafts = _by_name(found)
+    assert list(drafts) == ["Client", "Churn rate"]
+    assert (drafts["Client"]["proposal"], drafts["Client"]["match_kind"]) == ("merge", "duplicate")
+    assert drafts["Client"]["match"]["term_id"] == client
+    churn = drafts["Churn rate"]
+    assert (churn["proposal"], churn["definition_kind"]) == ("new", "explicit")
+    assert churn["definition"] == "The share of customers who leave in a period."
+    assert [(p["row"], p["role"]) for p in churn["passages"]] == [("Churn rate", "definition")]
+    async with api.db.acquire() as conn:
+        assert await store.documents(conn) == []
+
+
+async def test_a_table_of_terms_with_no_term_is_refused(api, terms_table, monkeypatch):
+    async def _blank(state: Any, source: Any, role_id: str) -> list[tuple]:
+        return [(None, "A definition with no term.")]
+
+    monkeypatch.setattr(table, "rows", _blank)
+    with pytest.raises(ApiError) as caught:
+        await router.start_scan(_request({"table": TERMS_SOURCE, "domains": ["d"]}))
+    assert caught.value.code == "term_finding.no_rows"
+    async with api.db.acquire() as conn:
+        assert await queue.scans(conn) == []

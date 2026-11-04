@@ -35,7 +35,8 @@ the document), every other explanation kept as a supporting passage; a synthesiz
 marked so, listing every passage it used; conflicting explanations side by side. :func:`match`
 then finds the glossary terms and synonyms each candidate duplicates or names again.
 
-A registered table is scanned the same way, each of its rows one passage cited by the row's id
+A registered table of text is scanned the same way, each of its rows one passage cited by the
+row's id; a table of terms and their definitions needs no model at all (:func:`defined`)
 (REQ-2202).
 
 Nothing here touches a database or a model: the caller passes the passages and a ``call`` that
@@ -602,6 +603,55 @@ def match(
         c.match_kind = (
             DUPLICATE if first["via"] == c.name and target == first["term_id"] else SYNONYM
         )
+
+
+# -- a table of terms and their definitions ----------------------------------------------------
+
+
+def defined(rows: Sequence[tuple[Any, Any]]) -> list[Candidate]:
+    """The candidates a table of terms and their definitions holds, each row ``(term,
+    definition)`` -- read as it is, with no model (REQ-2202). Rows naming one term (compared as
+    :func:`normal` compares names) are one candidate: the first row's definition is its
+    definition, each other row's a supporting passage. A row with no term holds none, and one with
+    no definition leaves the candidate's to the steward. The table names no category, so the
+    candidate has none. Each passage is cited by the term, the row's own name for itself."""
+    found: dict[str, Candidate] = {}
+    for ordinal, (raw_term, raw_definition) in enumerate(rows, start=1):
+        term = _SPACE.sub(" ", str(raw_term or "")).strip()
+        if not term:
+            continue
+        definition = str(raw_definition or "").strip() or None
+        held = found.get(normal(term))
+        if held is None:
+            held = found[normal(term)] = Candidate(
+                name=term,
+                category="",
+                sense="",
+                definition=None,
+                definition_kind=MISSING,
+                passages=[],
+                variants=[],
+                conflicts=[],
+            )
+        if definition is None:
+            continue
+        first = held.definition is None
+        if first:
+            held.definition, held.definition_kind = definition, EXPLICIT
+        held.passages.append(
+            {
+                "mention": ordinal - 1,
+                "ordinal": ordinal,
+                "section": None,
+                "page": None,
+                "row": term,
+                "quote": definition,
+                "explicit": True,
+                "sense": "",
+                "role": "definition" if first else "supporting",
+            }
+        )
+    return list(found.values())
 
 
 # -- the scan -----------------------------------------------------------------------------------

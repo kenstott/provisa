@@ -8,10 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Find terms in a registered table: its rows read as the scan's passages (REQ-2202).
+"""Find terms in a registered table that holds definitions or documentation (REQ-2202).
 
-The steward names a domain, a table in it, its id column and its text column; each row is one
-passage, cited by the table and the row's id. The rows are read as the steward's acting role
+A table is read one of two ways. Explicit (:class:`TermsSource`): the steward names a domain, a
+table in it, its term column and its definition column, and each row is a term with its
+definition, offered with no model call (term_finding.scan.defined). Inferred
+(:class:`TableSource`): the steward names its id column and its text column instead, and each row
+is one passage the model reads for the terms it defines, cited by the table and the row's id.
+Either way the rows are read as the steward's acting role
 through the one pipeline (``_govern_and_route`` / ``_execute_plan``), so the role's masks and row
 rules apply and no text it cannot read reaches the model. The statement is written here, from the
 table's registration; the caller sends no SQL. A table scan is a scan only: nothing is added to
@@ -26,17 +30,35 @@ part of a table would leave rows out without saying so.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, cast
 
 from provisa.api.admin.table_read import table_sql_ref
 from provisa.api.errors import ApiError
 from provisa.term_finding import scan
 
 
+class _Source:
+    domain: str
+    table: str
+
+    @property
+    def name(self) -> str:
+        """The table as a citation names it: its domain, then its own name."""
+        return f"{self.domain}.{self.table}"
+
+    @property
+    def columns(self) -> tuple[str, str]:
+        """The two columns read: the one a row is known by, then the one holding its text."""
+        raise NotImplementedError
+
+    def as_dict(self) -> dict[str, str]:
+        return asdict(cast("Any", self))
+
+
 @dataclass(frozen=True)
-class TableSource:
-    """The table a scan reads: by its domain and name, with the column that identifies a row and
-    the column holding its text."""
+class TableSource(_Source):
+    """A table whose rows the model reads (inferred): the column that identifies a row and the
+    column holding its text."""
 
     domain: str
     table: str
@@ -44,30 +66,48 @@ class TableSource:
     text_column: str
 
     @property
-    def name(self) -> str:
-        """The table as a citation names it: its domain, then its own name."""
-        return f"{self.domain}.{self.table}"
+    def columns(self) -> tuple[str, str]:
+        return self.id_column, self.text_column
 
-    def as_dict(self) -> dict[str, str]:
-        return asdict(self)
+
+@dataclass(frozen=True)
+class TermsSource(_Source):
+    """A table of terms and their definitions (explicit): its term column and its definition
+    column."""
+
+    domain: str
+    table: str
+    term_column: str
+    definition_column: str
+
+    @property
+    def columns(self) -> tuple[str, str]:
+        return self.term_column, self.definition_column
 
 
 def _refused(code: str, message: str, **params: Any) -> ApiError:
     return ApiError(400, f"term_finding.{code}", message, **params)
 
 
-def source_of(raw: Any) -> TableSource:
-    """The ``table`` of a scan request: an object naming ``domain``, ``table``, ``id_column`` and
-    ``text_column``, each a name."""
-    fields = ("domain", "table", "id_column", "text_column")
-    if not isinstance(raw, dict) or not all(
-        isinstance(raw.get(f), str) and raw[f].strip() for f in fields
-    ):
+_TERMS = ("term_column", "definition_column")
+_TEXT = ("id_column", "text_column")
+
+
+def source_of(raw: Any) -> TableSource | TermsSource:
+    """The ``table`` of a scan request: an object naming ``domain`` and ``table``, and either
+    ``term_column`` and ``definition_column`` (explicit) or ``id_column`` and ``text_column``
+    (inferred), each a name."""
+    given = raw if isinstance(raw, dict) else {}
+    terms, text = any(k in given for k in _TERMS), any(k in given for k in _TEXT)
+    kind, pair = (TermsSource, _TERMS) if terms and not text else (TableSource, _TEXT)
+    fields = ("domain", "table", *pair)
+    if terms == text or not all(isinstance(given.get(f), str) and given[f].strip() for f in fields):
         raise _refused(
             "table_source",
-            "a table scan names a domain, a table, its id column and its text column",
+            "a table names a domain, a table and either its term column and its definition "
+            "column, or its id column and its text column",
         )
-    return TableSource(*(raw[f].strip() for f in fields))
+    return kind(*(given[f].strip() for f in fields))
 
 
 def _column(table: dict, name: str) -> str:
@@ -82,7 +122,7 @@ def _column(table: dict, name: str) -> str:
     )
 
 
-def registered(state: Any, source: TableSource) -> dict:
+def registered(state: Any, source: _Source) -> dict:
     """The registered table in service ``source`` names, refused when there is none."""
     for table in state.tables:
         if table["domain_id"] == source.domain and source.table in (
@@ -98,9 +138,9 @@ def registered(state: Any, source: TableSource) -> dict:
     )
 
 
-def statement(table: dict, source: TableSource) -> str:
-    """Every row's id and text, in id order."""
-    ident, text = _column(table, source.id_column), _column(table, source.text_column)
+def statement(table: dict, source: _Source) -> str:
+    """Every row's two columns (:attr:`_Source.columns`), in the order of the first."""
+    ident, text = (_column(table, c) for c in source.columns)
 
     def quoted(name: str) -> str:
         return '"' + name.replace('"', '""') + '"'
@@ -123,6 +163,11 @@ def passages(rows: list[tuple]) -> list[scan.Passage]:
 
 async def read(state: Any, source: TableSource, role_id: str) -> list[scan.Passage]:
     """The table's rows as ``role_id`` reads them, each a passage."""
+    return passages(await rows(state, source, role_id))
+
+
+async def rows(state: Any, source: _Source, role_id: str) -> list[tuple]:
+    """The table's rows, its two columns, as ``role_id`` reads them."""
     from provisa.compiler.limits import role_max_query_time_ms
     from provisa.core import request_deadline
     from provisa.core.limits import request_timeout_for
@@ -152,4 +197,4 @@ async def read(state: Any, source: TableSource, role_id: str) -> list[scan.Passa
             table=source.name,
             limit=limit,
         )
-    return passages(list(result.rows))
+    return list(result.rows)

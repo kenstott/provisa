@@ -261,9 +261,12 @@ function DraftCard({
               />
             )}
             <Text fw={600}>{draft.name}</Text>
-            <Badge size="xs" variant="outline" color="gray">
-              {CATEGORY_KEYS[draft.category] ? t(CATEGORY_KEYS[draft.category]) : draft.category}
-            </Badge>
+            {/* A term read from a table of terms and definitions has no category (REQ-2202). */}
+            {draft.category && (
+              <Badge size="xs" variant="outline" color="gray">
+                {CATEGORY_KEYS[draft.category] ? t(CATEGORY_KEYS[draft.category]) : draft.category}
+              </Badge>
+            )}
             <ProposalBadge draft={draft} />
           </Group>
           {open && !editing && !merging && (

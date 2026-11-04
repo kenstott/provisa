@@ -52,13 +52,11 @@ export interface ScanSummary {
   };
 }
 
-/** A registered table a scan reads (REQ-2202): each row one passage, cited by its id. */
-export interface TableScanSource {
-  domain: string;
-  table: string;
-  id_column: string;
-  text_column: string;
-}
+/** A registered table a scan reads (REQ-2202): a table of terms and their definitions, each row a
+ * term (no model), or a table of text, each row one passage cited by its id. */
+export type TableScanSource =
+  | { domain: string; table: string; term_column: string; definition_column: string }
+  | { domain: string; table: string; id_column: string; text_column: string };
 
 export interface Scan {
   id: number;
@@ -136,7 +134,10 @@ export interface Draft {
 
 /** What a scan reads: a library document, a new one by file or URL, or a registered table. */
 export type ScanSource =
-  { document_id: number } | { url: string } | { file: File } | { table: TableScanSource };
+  | { document_id: number }
+  | { url: string }
+  | { file: File }
+  | { table: TableScanSource };
 
 async function ok<T>(res: Response, op: string): Promise<T> {
   if (!res.ok) {

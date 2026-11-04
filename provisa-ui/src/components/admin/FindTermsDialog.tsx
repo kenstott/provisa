@@ -63,18 +63,31 @@ const POLL_MS = 2000;
 type Origin = "document" | "table";
 type Mode = "library" | "file" | "url";
 
+/** How a table is read: each row a term with its definition (no model), or text the model reads
+ * for the terms it defines. */
+type Reads = "terms" | "text";
+
 interface TablePick {
+  reads: Reads;
   domain: string | null;
   table: string | null;
-  idColumn: string | null;
+  /** The term column, or the id column. */
+  keyColumn: string | null;
+  /** The definition column, or the text column. */
   textColumn: string | null;
 }
 
-const NO_TABLE: TablePick = { domain: null, table: null, idColumn: null, textColumn: null };
+const NO_TABLE: TablePick = {
+  reads: "terms",
+  domain: null,
+  table: null,
+  keyColumn: null,
+  textColumn: null,
+};
 
-/** The table a scan reads: a domain, a registered table in it, its id column and its text column,
- * picked with the pickers the modeling forms use. Drafts are in no role's schema, so none is
- * offered. */
+/** The table a scan reads, for a source that holds definitions or documentation: how it is read,
+ * a domain, a registered table in it and its two columns, picked with the pickers the modeling
+ * forms use. Drafts are in no role's schema, so none is offered. */
 function TableFields({ value, onChange }: { value: TablePick; onChange: (v: TablePick) => void }) {
   const { t } = useTranslation();
   const { tables } = useTables();
@@ -89,8 +102,22 @@ function TableFields({ value, onChange }: { value: TablePick; onChange: (v: Tabl
   const inDomain = scannable.filter((tbl) => tbl.domainId === value.domain);
   const picked = inDomain.find((tbl) => tbl.tableName === value.table);
   const columns = useColumnOptions(picked?.columns ?? []);
+  const terms = value.reads === "terms";
   return (
     <>
+      <FormField size="full">
+        <SegmentedControl
+          data-testid="find-terms-table-reads"
+          value={value.reads}
+          onChange={(v) =>
+            onChange({ ...value, reads: v as Reads, keyColumn: null, textColumn: null })
+          }
+          data={[
+            { value: "terms", label: t("findTerms.tableTerms") },
+            { value: "text", label: t("findTerms.tableText") },
+          ]}
+        />
+      </FormField>
       <ChoiceField
         label={t("findTerms.tableDomain")}
         help={t("findTerms.tableDomainHelp")}
@@ -98,7 +125,7 @@ function TableFields({ value, onChange }: { value: TablePick; onChange: (v: Tabl
         testId="find-terms-table-domain"
         data={domains}
         value={value.domain}
-        onChange={(domain) => onChange({ ...NO_TABLE, domain })}
+        onChange={(domain) => onChange({ ...NO_TABLE, reads: value.reads, domain })}
       />
       <ChoiceField
         label={t("findTerms.table")}
@@ -107,25 +134,27 @@ function TableFields({ value, onChange }: { value: TablePick; onChange: (v: Tabl
         testId="find-terms-table"
         data={inDomain.map((tbl) => ({ value: tbl.tableName, label: tbl.alias || tbl.tableName }))}
         value={value.table}
-        onChange={(table) => onChange({ ...NO_TABLE, domain: value.domain, table })}
+        onChange={(table) =>
+          onChange({ ...NO_TABLE, reads: value.reads, domain: value.domain, table })
+        }
         placeholder={t("findTerms.tablePlaceholder")}
         disabled={!value.domain}
       />
       <ChoiceField
-        label={t("findTerms.idColumn")}
-        help={t("findTerms.idColumnHelp")}
+        label={t(terms ? "findTerms.termColumn" : "findTerms.idColumn")}
+        help={t(terms ? "findTerms.termColumnHelp" : "findTerms.idColumnHelp")}
         required
-        testId="find-terms-id-column"
-        data={columns.keys}
-        value={value.idColumn}
-        onChange={(idColumn) => onChange({ ...value, idColumn })}
+        testId={terms ? "find-terms-term-column" : "find-terms-id-column"}
+        data={terms ? columns.all : columns.keys}
+        value={value.keyColumn}
+        onChange={(keyColumn) => onChange({ ...value, keyColumn })}
         disabled={!picked}
       />
       <ChoiceField
-        label={t("findTerms.textColumn")}
-        help={t("findTerms.textColumnHelp")}
+        label={t(terms ? "findTerms.definitionColumn" : "findTerms.textColumn")}
+        help={t(terms ? "findTerms.definitionColumnHelp" : "findTerms.textColumnHelp")}
         required
-        testId="find-terms-text-column"
+        testId={terms ? "find-terms-definition-column" : "find-terms-text-column"}
         data={columns.all}
         value={value.textColumn}
         onChange={(textColumn) => onChange({ ...value, textColumn })}
@@ -136,9 +165,11 @@ function TableFields({ value, onChange }: { value: TablePick; onChange: (v: Tabl
 }
 
 function tableSource(pick: TablePick): TableScanSource | null {
-  const { domain, table, idColumn, textColumn } = pick;
-  if (!domain || !table || !idColumn || !textColumn) return null;
-  return { domain, table, id_column: idColumn, text_column: textColumn };
+  const { reads, domain, table, keyColumn, textColumn } = pick;
+  if (!domain || !table || !keyColumn || !textColumn) return null;
+  return reads === "terms"
+    ? { domain, table, term_column: keyColumn, definition_column: textColumn }
+    : { domain, table, id_column: keyColumn, text_column: textColumn };
 }
 
 /** The chooser: a library document, or a new file or URL, and the steward's domains. */
@@ -180,7 +211,15 @@ function ScanForm({
     setProblem("");
     const chosen = source();
     if (chosen === null) {
-      setProblem(t(origin === "table" ? "findTerms.chooseTable" : "findTerms.chooseDocument"));
+      setProblem(
+        t(
+          origin === "document"
+            ? "findTerms.chooseDocument"
+            : table.reads === "terms"
+              ? "findTerms.chooseTerms"
+              : "findTerms.chooseTable",
+        ),
+      );
       return;
     }
     if (domainsEnabled && domains.length === 0) {
@@ -314,7 +353,9 @@ function ScanForm({
       <FormField size="full">
         <Group justify="space-between" wrap="nowrap">
           <Text size="xs" c="dimmed">
-            {t("findTerms.budgetNote")}
+            {origin === "table" && table.reads === "terms"
+              ? t("findTerms.termsNote")
+              : t("findTerms.budgetNote")}
           </Text>
           <Button
             leftSection={<ScanSearch size={14} />}
@@ -370,7 +411,14 @@ function ScanList({
                 <Group gap={6} wrap="nowrap">
                   <Text size="sm">{s.document_title}</Text>
                   {s.source_table && (
-                    <Tip text={t("findTerms.tableScanHint", { ...s.source_table })}>
+                    <Tip
+                      text={t(
+                        "term_column" in s.source_table
+                          ? "findTerms.tableTermsHint"
+                          : "findTerms.tableScanHint",
+                        { ...s.source_table },
+                      )}
+                    >
                       <Badge
                         size="xs"
                         variant="light"

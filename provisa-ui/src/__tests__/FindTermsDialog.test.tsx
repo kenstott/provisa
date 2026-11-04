@@ -44,25 +44,31 @@ const col = (columnName: string, dataType: string) => ({
   nativeFilterType: null,
   nativeFilterRequired: false,
   requiredBySteward: false,
-  isPrimaryKey: columnName === "note_id",
+  isPrimaryKey: columnName === "section_id",
   isForeignKey: false,
 });
-const NOTES = {
+const POLICY_SECTIONS = {
   id: 21,
   sourceId: "crm",
   domainId: "sales",
   schemaName: "public",
-  tableName: "notes",
+  tableName: "policy_sections",
   alias: null,
   draft: false,
-  columns: [col("note_id", "varchar"), col("body", "text")],
+  columns: [col("section_id", "varchar"), col("body", "text")],
 };
 // One value per hook across renders: a fresh array each render reruns the form's effects.
 const TABLES = {
   tables: [
-    NOTES,
-    { ...NOTES, id: 22, tableName: "draft_notes", draft: true },
-    { ...NOTES, id: 23, domainId: "finance", tableName: "ledger" },
+    POLICY_SECTIONS,
+    { ...POLICY_SECTIONS, id: 22, tableName: "draft_policy_sections", draft: true },
+    { ...POLICY_SECTIONS, id: 23, domainId: "finance", tableName: "ledger" },
+    {
+      ...POLICY_SECTIONS,
+      id: 24,
+      tableName: "data_dictionary",
+      columns: [col("term", "varchar"), col("meaning", "text")],
+    },
   ],
   loading: false,
   refetch: vi.fn(),
@@ -191,8 +197,8 @@ const MATCH_DRAFT = {
 
 const TABLE_SOURCE = {
   domain: "sales",
-  table: "notes",
-  id_column: "note_id",
+  table: "policy_sections",
+  id_column: "section_id",
   text_column: "body",
 };
 
@@ -200,8 +206,8 @@ const TABLE_SCAN = {
   ...SCAN,
   id: 9,
   document_id: null,
-  document_title: "sales.notes",
-  document_source: "sales.notes",
+  document_title: "sales.policy_sections",
+  document_source: "sales.policy_sections",
   source_table: TABLE_SOURCE,
 };
 
@@ -216,8 +222,8 @@ const ROW_DRAFT = {
   id: 13,
   scan_id: 9,
   passages: [
-    rowCite("n-1", '"Customer" means any party.', "definition", 0),
-    rowCite("n-4", "A customer account is opened.", "supporting", 1),
+    rowCite("POL-1", '"Customer" means any party.', "definition", 0),
+    rowCite("POL-4", "A customer account is opened.", "supporting", 1),
   ],
 };
 
@@ -424,11 +430,40 @@ describe("FindTermsDialog", () => {
     );
   });
 
-  it("scans a registered table: its domain, the table, its id column and its text column", async () => {
+  it("offers a table of terms and definitions as terms, with no AI model", async () => {
+    const terms = {
+      domain: "sales",
+      table: "data_dictionary",
+      term_column: "term",
+      definition_column: "meaning",
+    };
+    api.startScan.mockResolvedValue({
+      scan: { ...TABLE_SCAN, id: 11, document_title: "sales.data_dictionary", source_table: terms },
+    });
+    open();
+    await screen.findByTestId("find-terms-scan-7");
+    fireEvent.click(screen.getByRole("radio", { name: "A table" }));
+    expect(screen.getByRole("radio", { name: "Terms and definitions" })).toBeChecked();
+    expect(screen.getByText(/No AI model reads the rows/)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("find-terms-start"));
+    expect(
+      await screen.findByText("Choose a table, its term column and its definition column."),
+    ).toBeInTheDocument();
+    await choose("find-terms-table-domain", "sales");
+    await choose("find-terms-table", "data_dictionary");
+    await choose("find-terms-term-column", "term (varchar)");
+    await choose("find-terms-definition-column", "meaning (text)");
+    fireEvent.click(screen.getByTestId("find-terms-start"));
+    await waitFor(() => expect(api.startScan).toHaveBeenCalledWith({ table: terms }, ["sales"]));
+    await waitFor(() => expect(api.fetchScan).toHaveBeenCalledWith(11));
+  });
+
+  it("scans a table of text: its domain, the table, its id column and its text column", async () => {
     api.startScan.mockResolvedValue({ scan: { ...TABLE_SCAN, status: "running" } });
     open();
     await screen.findByTestId("find-terms-scan-7");
     fireEvent.click(screen.getByRole("radio", { name: "A table" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Text to read" }));
     expect(screen.queryByTestId("find-terms-mode")).toBeNull();
     expect(screen.getByTestId("find-terms-table-note")).toHaveTextContent(
       "its row rules and masks apply",
@@ -440,10 +475,12 @@ describe("FindTermsDialog", () => {
     await choose("find-terms-table-domain", "sales");
     fireEvent.click(screen.getByTestId("find-terms-table"));
     // A draft is in no role's schema, and a table of another domain is not offered.
-    expect(screen.queryByRole("option", { name: "draft_notes", hidden: true })).toBeNull();
+    expect(
+      screen.queryByRole("option", { name: "draft_policy_sections", hidden: true }),
+    ).toBeNull();
     expect(screen.queryByRole("option", { name: "ledger", hidden: true })).toBeNull();
-    await choose("find-terms-table", "notes");
-    await choose("find-terms-id-column", "note_id (varchar)");
+    await choose("find-terms-table", "policy_sections");
+    await choose("find-terms-id-column", "section_id (varchar)");
     await choose("find-terms-text-column", "body (text)");
     fireEvent.click(screen.getByTestId("find-terms-start"));
     await waitFor(() =>
@@ -456,7 +493,7 @@ describe("FindTermsDialog", () => {
     api.startScan.mockResolvedValue({ scan: { ...TABLE_SCAN, id: 10 } });
     open();
     const row = await screen.findByTestId("find-terms-scan-9");
-    expect(row).toHaveTextContent("sales.notes");
+    expect(row).toHaveTextContent("sales.policy_sections");
     expect(within(row).getByTestId("find-terms-table-scan-9")).toHaveTextContent("Table");
     expect(row).not.toHaveTextContent("Removed from the library");
     fireEvent.click(screen.getByTestId("find-terms-rescan-9"));
@@ -473,7 +510,38 @@ describe("FindTermsDialog", () => {
     const draft = await screen.findByTestId("find-terms-draft-13");
     fireEvent.click(within(draft).getByTestId("find-terms-passages-toggle-13"));
     const passages = within(draft).getAllByTestId("find-terms-passage");
-    expect(passages[0]).toHaveTextContent("sales.notes, row n-1");
-    expect(passages[1]).toHaveTextContent("sales.notes, row n-4");
+    expect(passages[0]).toHaveTextContent("sales.policy_sections, row POL-1");
+    expect(passages[1]).toHaveTextContent("sales.policy_sections, row POL-4");
+  });
+
+  it("shows a term from a table of terms without a category", async () => {
+    const terms = {
+      domain: "sales",
+      table: "data_dictionary",
+      term_column: "term",
+      definition_column: "meaning",
+    };
+    const scan = { ...TABLE_SCAN, document_title: "sales.data_dictionary", source_table: terms };
+    api.fetchScans.mockResolvedValue([scan]);
+    api.fetchScan.mockResolvedValue({
+      scan,
+      drafts: [
+        {
+          ...ROW_DRAFT,
+          category: "",
+          passages: [rowCite("Churn rate", "The share of customers who leave.", "definition", 0)],
+        },
+      ],
+    });
+    open();
+    const row = await screen.findByTestId("find-terms-scan-9");
+    expect(within(row).getByTestId("find-terms-table-scan-9")).toHaveTextContent("Table");
+    fireEvent.click(screen.getByTestId("find-terms-open-9"));
+    const draft = await screen.findByTestId("find-terms-draft-13");
+    expect(within(draft).queryByText("Business concept")).toBeNull();
+    fireEvent.click(within(draft).getByTestId("find-terms-passages-toggle-13"));
+    expect(within(draft).getByTestId("find-terms-passage")).toHaveTextContent(
+      "sales.data_dictionary, row Churn rate",
+    );
   });
 });

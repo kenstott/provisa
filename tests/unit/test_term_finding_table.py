@@ -30,25 +30,25 @@ from provisa.term_finding import model, scan
 
 SOURCE = {
     "domain": "d",
-    "table": "notes",
-    "id_column": "note_id",
+    "table": "policy_sections",
+    "id_column": "section_id",
     "text_column": "body",
 }
 REGISTERED = {
     "id": 7,
     "domain_id": "d",
-    "table_name": "notes",
+    "table_name": "policy_sections",
     "alias": None,
     "columns": [
-        {"column_name": "note_id", "alias": None},
-        {"column_name": "note_text", "alias": "body"},
+        {"column_name": "section_id", "alias": None},
+        {"column_name": "section_text", "alias": "body"},
     ],
 }
 ROWS = [
-    ("n-1", '"Customer" means any party that holds an account.'),
-    ("n-2", None),
-    ("n-3", "   "),
-    ("n-4", "A customer account is opened after KYC checks."),
+    ("POL-1", '"Customer" means any party that holds an account.'),
+    ("POL-2", None),
+    ("POL-3", "   "),
+    ("POL-4", "A customer account is opened after KYC checks."),
 ]
 
 
@@ -58,15 +58,15 @@ ROWS = [
 def test_each_row_with_text_is_one_passage_cited_by_its_id():
     found = table.passages(ROWS)
     assert [(p.ordinal, p.row, p.section, p.page) for p in found] == [
-        (1, "n-1", None, None),
-        (2, "n-4", None, None),
+        (1, "POL-1", None, None),
+        (2, "POL-4", None, None),
     ]
     assert found[1].text == "A customer account is opened after KYC checks."
 
 
 def test_the_statement_is_written_from_the_registration_in_id_order():
     sql = table.statement(REGISTERED, table.source_of(SOURCE))
-    assert sql == 'SELECT "note_id", "body" FROM "d"."notes" ORDER BY "note_id"'
+    assert sql == 'SELECT "section_id", "body" FROM "d"."policy_sections" ORDER BY "section_id"'
 
 
 def test_a_source_names_all_four_and_its_table_and_columns_must_be_registered():
@@ -83,10 +83,12 @@ def test_a_source_names_all_four_and_its_table_and_columns_must_be_registered():
 
 
 def test_a_table_prompt_says_its_passages_are_rows_and_cites_each_by_id():
-    prompt = scan.extraction_prompt("d.notes", table.passages(ROWS), scan.TABLE)
-    assert "passages of the table 'd.notes' (each passage is one row of the table)" in prompt
-    assert "[P1] (row 'n-1')" in prompt
-    assert "[P2] (row 'n-4')" in prompt
+    prompt = scan.extraction_prompt("d.policy_sections", table.passages(ROWS), scan.TABLE)
+    assert (
+        "passages of the table 'd.policy_sections' (each passage is one row of the table)" in prompt
+    )
+    assert "[P1] (row 'POL-1')" in prompt
+    assert "[P2] (row 'POL-4')" in prompt
 
 
 # -- read through the one pipeline, as the acting role ------------------------------------------
@@ -110,7 +112,7 @@ class _Pipeline:
 
     async def execute(self, plan: Any, state: Any) -> Any:
         self.executed.append(plan)
-        return types.SimpleNamespace(rows=self.rows, column_names=["note_id", "body"])
+        return types.SimpleNamespace(rows=self.rows, column_names=["section_id", "body"])
 
 
 def _state() -> Any:
@@ -134,10 +136,10 @@ async def test_the_rows_are_read_through_the_governed_pipeline_as_the_role(pipel
     fake = pipeline(ROWS)
     found = await table.read(_state(), table.source_of(SOURCE), "steward")
     assert fake.governed == [
-        ('SELECT "note_id", "body" FROM "d"."notes" ORDER BY "note_id"', "steward")
+        ('SELECT "section_id", "body" FROM "d"."policy_sections" ORDER BY "section_id"', "steward")
     ]
     assert len(fake.executed) == 1
-    assert [p.row for p in found] == ["n-1", "n-4"]
+    assert [p.row for p in found] == ["POL-1", "POL-4"]
 
 
 @pytest.mark.parametrize("outcome", ["cut", "unchecked"])
@@ -178,9 +180,9 @@ DAY = Limit(1000, "tokens")
 async def test_a_scan_the_budget_has_no_room_for_is_refused_naming_the_window():
     held = _held(Budget(windows={"day": DAY}), (WindowUse("day", DAY, 900, None),))
     with pytest.raises(model.OverBudget) as caught:
-        await held.require_room(["x" * 2000], "d.notes")
+        await held.require_room(["x" * 2000], "d.policy_sections")
     said = str(caught.value)
-    assert "d.notes" in said
+    assert "d.policy_sections" in said
     assert "500 tokens" in said
     assert "role 'steward' has 100 tokens left of its LLM budget for the day" in said
 
@@ -188,10 +190,62 @@ async def test_a_scan_the_budget_has_no_room_for_is_refused_naming_the_window():
 async def test_a_scan_over_the_per_call_cap_is_refused_naming_it():
     held = _held(Budget(call_cap=Limit(100, "tokens")))
     with pytest.raises(model.OverBudget, match="caps one LLM call at 100 tokens"):
-        await held.require_room(["x" * 40, "x" * 800], "d.notes")
+        await held.require_room(["x" * 40, "x" * 800], "d.policy_sections")
 
 
 async def test_a_scan_within_the_budget_or_with_none_starts():
     roomy = _held(Budget(windows={"day": DAY}), (WindowUse("day", DAY, 0, None),))
-    await roomy.require_room(["x" * 2000], "d.notes")
-    await _held(None).require_room(["x" * 10_000_000], "d.notes")
+    await roomy.require_room(["x" * 2000], "d.policy_sections")
+    await _held(None).require_room(["x" * 10_000_000], "d.policy_sections")
+
+
+# -- explicit: a table of terms and their definitions, no model ---------------------------------
+
+TERMS = {
+    "domain": "d",
+    "table": "data_dictionary",
+    "term_column": "term",
+    "definition_column": "meaning",
+}
+DICTIONARY = {
+    **REGISTERED,
+    "table_name": "data_dictionary",
+    "columns": [{"column_name": "term", "alias": None}, {"column_name": "meaning", "alias": None}],
+}
+
+
+def test_a_source_names_a_term_and_definition_column_or_an_id_and_text_column():
+    explicit = table.source_of(TERMS)
+    assert isinstance(explicit, table.TermsSource)
+    assert explicit.as_dict() == TERMS
+    assert isinstance(table.source_of(SOURCE), table.TableSource)
+    for mixed in ({**TERMS, "id_column": "term"}, {**TERMS, "definition_column": " "}):
+        with pytest.raises(ApiError) as caught:
+            table.source_of(mixed)
+        assert caught.value.code == "term_finding.table_source"
+    assert (
+        table.statement(DICTIONARY, explicit)
+        == 'SELECT "term", "meaning" FROM "d"."data_dictionary" ORDER BY "term"'
+    )
+
+
+def test_each_row_of_a_terms_table_is_a_term_with_its_definition():
+    found = scan.defined(
+        [
+            ("Churn rate", "The share of customers who leave in a period."),
+            ("churn rates", "Customers lost over customers at the start."),
+            ("  ", "A definition with no term."),
+            ("Net revenue", None),
+        ]
+    )
+    assert [(c.name, c.definition_kind, c.category) for c in found] == [
+        ("Churn rate", "explicit", ""),
+        ("Net revenue", "missing", ""),
+    ]
+    churn, revenue = found
+    assert churn.definition == "The share of customers who leave in a period."
+    assert [(p["row"], p["role"], p["quote"][:12]) for p in churn.passages] == [
+        ("Churn rate", "definition", "The share of"),
+        ("churn rates", "supporting", "Customers lo"),
+    ]
+    assert (revenue.definition, revenue.passages) == (None, [])

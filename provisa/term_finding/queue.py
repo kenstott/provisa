@@ -153,7 +153,7 @@ async def start_scan(
     document_source: str,
     domains: Sequence[str],
     started_by: str | None,
-    model: str,
+    model: str | None,
     launch: str,
     source_table: dict[str, str] | None = None,
 ) -> int:

@@ -19,8 +19,10 @@ candidates land as drafts in the review queue, where the steward edits, accepts,
 rejects each, or accepts several at once. A scan always ends: it finishes, or it stops saying why
 -- refused at the start when its model cannot run, failed by a model call that stalls or a budget
 that refuses, cancelled by a person, or given up on by :func:`keep` when its server restarted or it
-stopped moving. A registered table is scanned the same way, its rows read as the steward's acting
-role (term_finding_table.py); it is a scan only, and joins no library. Scanning a document again
+stopped moving. A registered table that holds definitions or documentation is read as the
+steward's acting role (term_finding_table.py): a table of terms and their definitions is queued at
+once with no model call; a table of text is scanned as a document is. Either is a scan only, and
+joins no library. Scanning a document again
 is a new scan whose drafts show the candidates the glossary does not hold yet and those that
 match or duplicate its terms and synonyms; nothing is re-reviewed automatically.
 
@@ -212,6 +214,16 @@ async def _model(request: Request) -> Held:
     return await model.for_role(state, acting_role_of_request(request))
 
 
+async def _match(conn: Connection, candidates: list[scan.Candidate]) -> None:
+    """Mark ``candidates`` with the glossary's terms and synonyms they duplicate or name again."""
+    terms = [
+        {"id": t["id"], "name": t["name"]}
+        for t in await glossary_repo.list_terms(cast("Connection", conn))
+    ]
+    edges = await glossary_repo.term_edges(cast("Connection", conn))
+    scan.match(candidates, terms, [(f, t) for f, t, rel in edges if rel == review.SYNONYM_OF])
+
+
 async def run_scan(
     pool: Database,
     scan_id: int,
@@ -248,16 +260,7 @@ async def run_scan(
         else:
             result = await scan.run(title, rows, call, report, scan.TABLE)
         async with pool.acquire() as conn:
-            terms = [
-                {"id": t["id"], "name": t["name"]}
-                for t in await glossary_repo.list_terms(cast("Connection", conn))
-            ]
-            edges = await glossary_repo.term_edges(cast("Connection", conn))
-            scan.match(
-                result.candidates,
-                terms,
-                [(f, t) for f, t, rel in edges if rel == review.SYNONYM_OF],
-            )
+            await _match(conn, result.candidates)
             summary = {
                 "passages": result.passages,
                 "mentions": result.mentions,
@@ -327,24 +330,67 @@ async def keep(state: Any) -> None:
         await asyncio.sleep(KEEP_EVERY_S)
 
 
-async def _start_table_scan(
-    request: Request, raw: Any, declared: set[str], call: Held
-) -> dict[str, Any]:
-    """Scan a registered table (REQ-2202): its rows read as the steward's acting role, refused
-    before the scan starts when the role's LLM budget has no room for them."""
+def _no_rows(source: Any, column: str) -> ApiError:
+    return ApiError(
+        409,
+        "term_finding.no_rows",
+        f"{source.name} holds no row with text in {column!r} to scan",
+        table=source.name,
+    )
+
+
+async def _import_terms(request: Request, source: Any, declared: set[str]) -> dict[str, Any]:
+    """Offer a table of terms and their definitions (REQ-2202, explicit): its rows read as the
+    steward's acting role, each a term with its definition, matched against the glossary and
+    queued for review at once. No model is asked, so none need be set and no budget is spent."""
     from provisa.api.admin import term_finding_table as table
     from provisa.api.admin.capabilities import acting_role_of_request
     from provisa.api.app import state
 
-    source = table.source_of(raw)
+    candidates = scan.defined(await table.rows(state, source, acting_role_of_request(request)))
+    if not candidates:
+        raise _no_rows(source, source.term_column)
+    async with _pool().acquire() as conn:
+        await _match(conn, candidates)
+        async with conn.transaction():
+            scan_id = await queue.start_scan(
+                conn,
+                document_id=None,
+                document_title=source.name,
+                document_source=source.name,
+                domains=sorted(declared),
+                started_by=glossary._caller_id(request),
+                model=None,
+                launch=this_launch(),
+                source_table=source.as_dict(),
+            )
+            rows = sum(len(c.passages) for c in candidates)
+            summary = {
+                "passages": rows,
+                "mentions": rows,
+                "candidates": len(candidates),
+                "calls": 0,
+                "left_out": scan.LeftOut().as_dict(),
+            }
+            await queue.finish_scan(conn, scan_id, candidates, summary)
+        done = await queue.scan(conn, scan_id)
+        counts = (await queue.draft_counts(conn)).get(scan_id)
+    assert done is not None
+    return {"scan": _scan(done, counts)}
+
+
+async def _start_table_scan(
+    request: Request, source: Any, declared: set[str], call: Held
+) -> dict[str, Any]:
+    """Scan a registered table (REQ-2202, inferred): its rows read as the steward's acting role,
+    refused before the scan starts when the role's LLM budget has no room for them."""
+    from provisa.api.admin import term_finding_table as table
+    from provisa.api.admin.capabilities import acting_role_of_request
+    from provisa.api.app import state
+
     rows = await table.read(state, source, acting_role_of_request(request))
     if not rows:
-        raise ApiError(
-            409,
-            "term_finding.no_rows",
-            f"{source.name} holds no row with text in {source.text_column!r} to scan",
-            table=source.name,
-        )
+        raise _no_rows(source, source.text_column)
     try:
         await call.require_room(scan.reading_prompts(source.name, rows, scan.TABLE), source.name)
     except model.OverBudget as exc:
@@ -384,14 +430,19 @@ async def start_scan(request: Request) -> dict:
             "a scan reads one source: a library document, a URL, a file or a table",
         )
     declared = glossary._declared_domains(request, body.get("domains"), current=set())
+    from provisa.api.admin import term_finding_table as table
+
+    source = table.source_of(body["table"]) if given == ["table"] else None
+    if isinstance(source, table.TermsSource):
+        return await _import_terms(request, source, declared)
     pool = _pool()
     # Before anything is written: a scan that could not run adds no document to the library.
     try:
         call = await _model(request)
     except model.ModelRefused as exc:
         raise ApiError(409, "term_finding.no_model", str(exc)) from None
-    if given == ["table"]:
-        return await _start_table_scan(request, body["table"], declared, call)
+    if source is not None:
+        return await _start_table_scan(request, source, declared, call)
     try:
         async with pool.acquire() as conn:
             if body.get("document_id") is not None:
