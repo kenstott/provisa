@@ -406,6 +406,7 @@ def targets() -> list[Target]:
                 db=rt.model_db,
                 kind=config_stamp.MODEL,
                 loaded=lambda rt=rt: rt.model_stamp,
+                watched=lambda rt=rt: _held(rt),
                 reload=lambda rt=rt: reload_model(rt),
             )
         )
@@ -415,6 +416,7 @@ def targets() -> list[Target]:
                 db=rt.model_db,
                 kind=config_stamp.SETTINGS,
                 loaded=lambda rt=rt: rt.settings_stamp,
+                watched=lambda rt=rt: _held(rt),
                 reload=lambda rt=rt: reload_org_settings(rt),
             )
         )
@@ -424,6 +426,7 @@ def targets() -> list[Target]:
                 db=rt.tenant_db,
                 kind=config_stamp.REPLICA,
                 loaded=lambda rt=rt: rt.replica_stamp,
+                watched=lambda rt=rt: _held(rt),
                 reload=lambda rt=rt: reload_replicas(rt),
             )
         )

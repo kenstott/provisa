@@ -598,7 +598,6 @@ describe("a domain of orphan tables only", () => {
   );
 });
 
-
 describe("a domain the domain filter does not offer", () => {
   // The model as the server answers it: ops traces reached from meta, every table anchored to
   // meta.registered_tables (HAS_TABLE), and the page's list without the system's own rows.
@@ -836,5 +835,26 @@ describe("the diagram's image controls", () => {
     expect(fullscreen.asked).toHaveLength(1);
     expect(fullscreen.asked[0]).toHaveClass("erd-stage");
     expect(fullscreen.asked[0]).toContainElement(bar());
+  });
+});
+
+describe("the diagram's hint", () => {
+  it("is the toolbar's (?) help, last in the row, and nothing over the diagram", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    const hint = screen.getByTestId("erd-hint");
+    expect(hint.closest(".erd-stage")).toBeNull();
+    const toolbar = screen.getByTestId("erd-column-detail").closest(".mantine-Group-root");
+    expect(toolbar).toContainElement(hint);
+    expect(
+      screen.getByTestId("erd-toggle-all").compareDocumentPosition(hint) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const stage = document.querySelector(".erd-stage") as HTMLElement;
+    expect(stage).not.toHaveTextContent("Click a domain group");
+    fireEvent.mouseEnter(hint);
+    expect(await screen.findByTestId("erd-hint-card")).toHaveTextContent(
+      "Click a domain group to collapse / expand · dashed lines connect collapsed domains",
+    );
   });
 });
