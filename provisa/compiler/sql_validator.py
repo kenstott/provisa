@@ -45,6 +45,7 @@ from dataclasses import dataclass
 
 import sqlglot
 import sqlglot.expressions as exp
+from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.compiler import temp_tables
@@ -89,12 +90,51 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     bypass_uncovered_relationships: bool = False,
     table_functions: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
-    """Validate SQL against role-scoped GraphQL-equivalent access rules."""
+    """Validate SQL against role-scoped GraphQL-equivalent access rules.
+
+    REQ-039: the statement is judged twice, as written and with its identifiers folded as
+    PostgreSQL folds them (unquoted in lower case, quoted exactly), and refused for what either
+    reading refuses. The folded reading is what the engine executes; the written one is what stage
+    2 matches its rules against, name for name. A spelling only one of them resolves -- ``C.ssn``
+    over ``FROM bank.customer c`` -- is refused, so no column reaches the engine past either."""
     try:
-        tree = sqlglot.parse_one(sql, read="postgres")
+        written = sqlglot.parse_one(sql, read="postgres")
     except Exception as exc:
         return [ValidationViolation("V000", f"SQL parse error: {exc}")]
+    folded = normalize_identifiers(written.copy(), dialect="postgres")
 
+    seen: set[tuple[str, str, tuple[int, int] | None]] = set()
+    violations: list[ValidationViolation] = []
+    for tree in (written, folded):
+        for v in _violations(
+            tree,
+            ctx,
+            gov_ctx,
+            role,
+            raw_tables,
+            bypass_relationship_guard=bypass_relationship_guard,
+            bypass_uncovered_relationships=bypass_uncovered_relationships,
+            table_functions=table_functions,
+        ):
+            key = (v.code, v.message, v.tables)
+            if key not in seen:
+                seen.add(key)
+                violations.append(v)
+    return violations
+
+
+def _violations(
+    tree: exp.Expr,
+    ctx: CompilationContext,
+    gov_ctx: GovernanceContext,
+    role: dict,
+    raw_tables: list[dict],
+    *,
+    bypass_relationship_guard: bool,
+    bypass_uncovered_relationships: bool,
+    table_functions: frozenset[str],
+) -> list[ValidationViolation]:
+    """Every rule's violations in one reading of the statement (:func:`validate_sql`)."""
     violations: list[ValidationViolation] = []
     cte_names_set = cte_names(tree)
     violations += _check_registered_relations(tree, gov_ctx, ctx, cte_names_set, table_functions)
@@ -549,10 +589,14 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
     cte_names_set: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
     violations = []
+    scopes = _relation_names_by_scope(tree)
     for select in tree.find_all(exp.Select):
         am = _alias_map(select, gov_ctx, cte_names_set)
         for expr in select.expressions:
             if _is_star(expr):
+                if isinstance(expr, exp.Column) and _names_no_relation(expr, scopes):
+                    violations.append(_no_relation_violation(expr))
+                    continue
                 # A star's columns are the ones the role is served (stage2._expand_star); it is
                 # refused only when that is none of them.
                 star = _star_violation(expr, am, gov_ctx)
@@ -563,6 +607,9 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
             for col in cols:
                 tbl_ref = col.table
                 col_name = col.name
+                if _names_no_relation(col, scopes):
+                    violations.append(_no_relation_violation(col))
+                    continue
                 if col_name in SERVED_WITH_EVERY_TABLE:
                     # A virtual column (a table's _domain_/_name_, registered_tables'
                     # table_query_name) is served with the table to every role that reads it,
@@ -639,6 +686,58 @@ def _collect_columns(expr: exp.Expr) -> list[exp.Column]:
     if isinstance(expr, exp.Star):
         return []
     return list(expr.find_all(exp.Column))
+
+
+# The nodes a FROM item's name is in scope of: a query's own, a DML statement's for its subqueries.
+_SCOPES = (exp.Select, exp.Update, exp.Delete, exp.Insert, exp.Merge)
+
+
+def _relation_names_by_scope(tree: exp.Expr) -> dict[int, set[str]]:
+    """The names a column may be qualified by in each scope of ``tree`` (by ``id`` of its
+    statement node): each FROM item's alias, else a table's name, else a function's name -- as
+    PostgreSQL names an unaliased ``generate_series(1, 3)``. A CTE's name is listed where the CTE
+    is declared; it is a relation where it is read."""
+    names: dict[int, set[str]] = {}
+    for node in tree.find_all(exp.TableAlias, exp.Table, exp.Unnest):
+        if isinstance(node, exp.TableAlias):
+            name = node.name
+        elif node.alias:
+            continue  # its TableAlias names it
+        elif isinstance(node, exp.Table) and isinstance(node.this, exp.Identifier):
+            name = node.name
+        else:
+            fn = node.this if isinstance(node, exp.Table) else node
+            if fn is None:
+                continue
+            name = fn.sql(dialect="postgres").split("(", 1)[0].rsplit(".", 1)[-1].lower()
+        scope = node.find_ancestor(*_SCOPES)
+        if name and scope is not None:
+            names.setdefault(id(scope), set()).add(name)
+    return names
+
+
+def _names_no_relation(col: exp.Column, scopes: dict[int, set[str]]) -> bool:  # REQ-039
+    """Whether ``col`` is qualified by a name that matches no relation in its own scope or any
+    enclosing one -- compared exactly, in the reading of the statement ``scopes`` was taken from.
+    PostgreSQL refuses it (a missing FROM-clause entry); governance refuses it before that, never
+    reading it as a column it need not check."""
+    if not col.table:
+        return False
+    scope = col.find_ancestor(*_SCOPES)
+    while scope is not None:
+        if col.table in scopes.get(id(scope), ()):
+            return False
+        scope = scope.find_ancestor(*_SCOPES)
+    return True
+
+
+def _no_relation_violation(col: exp.Column) -> ValidationViolation:
+    written = col.sql(dialect="postgres")
+    return ValidationViolation(
+        "V003",
+        f"Column {written}: {col.table!r} names no relation in scope (a column is qualified by "
+        f"its relation's name or alias as the FROM clause writes it)",
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -795,10 +894,14 @@ def _check_masked_in_xmltable(  # REQ-040, REQ-2167
     Masks are written on the statement's projections and visibility checked on its select lists,
     and XMLTABLE is in FROM, so its rows would come from the plaintext."""
     violations = []
+    scopes = _relation_names_by_scope(tree)
     for select in tree.find_all(exp.Select):
         am = _alias_map(select, gov_ctx, cte_names_set)
         for table in select.find_all(exp.XMLTable):
             for col in table.find_all(exp.Column):
+                if _names_no_relation(col, scopes):
+                    violations.append(_no_relation_violation(col))
+                    continue
                 tids = [am[col.table]] if col.table in am else []
                 tids = tids if col.table else list(am.values())
                 written = col.sql(dialect="postgres")
@@ -827,6 +930,7 @@ def _check_masked_in_predicate(  # REQ-040, REQ-263
     """Reject masked columns in WHERE/HAVING — they would filter on plaintext,
     allowing inference of the unmasked value despite output masking."""
     violations = []
+    scopes = _relation_names_by_scope(tree)
     for select in tree.find_all(exp.Select):
         am = _alias_map(select, gov_ctx, cte_names_set)
         for clause in (select.args.get("where"), select.args.get("having")):
@@ -835,6 +939,9 @@ def _check_masked_in_predicate(  # REQ-040, REQ-263
             for col in clause.find_all(exp.Column):
                 col_name = col.name
                 tbl_ref = col.table
+                if _names_no_relation(col, scopes):
+                    violations.append(_no_relation_violation(col))
+                    continue
                 if approved_join_key(col, gov_ctx):
                     # A registered relationship's join condition: it relates the rows on the real
                     # key and filters nothing of the role's own (REQ-603).
