@@ -22,7 +22,9 @@ from __future__ import annotations
 import json
 import platform
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from provisa.codesource import oci
 from provisa.codesource.image_build import (
@@ -36,15 +38,20 @@ from provisa.codesource.image_build import (
     runtime_layer,
     scratch_env,
 )
-from provisa.codesource.install import Runner
+from provisa.codesource.install import Http, Runner
+from provisa.node import install
 from provisa.node.install import LOCKFILES as _BY_RUNTIME
-from provisa.node.install import fetch
 from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
 
 __all__ = ["LOCKFILES", "fetch", "layers"]
 
 #: Every lockfile a Node, Bun or Deno install reads.
 LOCKFILES = tuple(n for names in _BY_RUNTIME.values() for n in names)
+
+
+def fetch(code: Any, registries: Sequence[Any], http: Http, dest: Path) -> Path:
+    """The code, fetched by the language's install (looked up when called)."""
+    return install.fetch(code, registries, http, dest)
 
 
 def _deno_platform_packages(root: Path) -> list[str]:

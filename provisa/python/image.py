@@ -15,7 +15,9 @@ platform, the code's wheels installed for it (wheels only), the host and the cod
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from provisa.codesource import oci
 from provisa.codesource.image_build import (
@@ -27,11 +29,17 @@ from provisa.codesource.image_build import (
     uv_install,
     uv_install_env,
 )
-from provisa.codesource.install import Runner
-from provisa.python.install import LOCKFILES, fetch
+from provisa.codesource.install import Http, Runner
+from provisa.python import install
+from provisa.python.install import LOCKFILES
 from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
 
 __all__ = ["LOCKFILES", "fetch", "layers"]
+
+
+def fetch(code: Any, registries: Sequence[Any], http: Http, dest: Path) -> Path:
+    """The code, fetched by the language's install (looked up when called)."""
+    return install.fetch(code, registries, http, dest)
 
 
 def layers(

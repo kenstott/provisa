@@ -70,7 +70,7 @@ def _build(toolchain, code: Path, manifest: Manifest, dest: Path) -> Path:
         go=go,
         code=code,
         package=".",
-        manifest=manifest,
+        exports=[e.name for e in manifest.exports],
         gomodcache=gomodcache,
         proxy=PROXY,
         dest=dest,
@@ -283,7 +283,7 @@ def test_the_build_joins_the_hosts_module_and_the_codes(tmp_path, fixture_manife
     (code / "go.sum").write_text("example.com/dep v1.0.0 h1:abc=\n")
     into = tmp_path / "build"
     into.mkdir()
-    build_module(code, ".", fixture_manifest, into)
+    build_module(code, ".", [e.name for e in fixture_manifest.exports], into)
     module = (into / "go.mod").read_text()
     host_requires = requirements((HOST / "go.mod").read_text())
     assert module.startswith("module provisa/codehost\n\ngo 1.27.1\n")  # the newer go line
@@ -315,7 +315,7 @@ def test_the_higher_of_two_required_versions_is_kept_as_semver_orders_them():
 
 
 def test_the_generated_exports_register_each_tagged_function(fixture_manifest):
-    text = exports_source("example.com/orders", fixture_manifest)
+    text = exports_source("example.com/orders", [e.name for e in fixture_manifest.exports])
     assert 'import code "example.com/orders"' in text
     assert [line.strip() for line in text.splitlines() if line.strip().startswith('"')] == [
         f'"{e.name}": code.{e.name},' for e in fixture_manifest.exports
@@ -347,7 +347,7 @@ def test_a_build_the_go_command_refuses_is_refused_with_its_words(tmp_path, fixt
             go=tmp_path / "go",
             code=code,
             package=".",
-            manifest=fixture_manifest,
+            exports=[e.name for e in fixture_manifest.exports],
             gomodcache=tmp_path / "mod",
             proxy="off",
             dest=tmp_path / "bin" / "host",

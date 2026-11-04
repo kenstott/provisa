@@ -19,17 +19,26 @@ Python every image without one of its own carries."""
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from provisa.codesource import oci
 from provisa.codesource.image_build import ROOT, ImageParts, Plan
-from provisa.codesource.install import Runner
+from provisa.codesource.install import Http, Runner
+from provisa.golang import install
 from provisa.golang.build import build_host
-from provisa.golang.install import LOCKFILES, MODULES, check_lockfile, fetch, install_environment
+from provisa.golang.install import LOCKFILES, MODULES, check_lockfile, install_environment
 from provisa.golang.reader import pattern, run_go
 from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
 
 __all__ = ["LOCKFILES", "fetch", "layers"]
+
+
+def fetch(code: Any, registries: Sequence[Any], http: Http, dest: Path) -> Path:
+    """The code, fetched by the language's install (looked up when called)."""
+    return install.fetch(code, registries, http, dest)
+
 
 #: Where the host is in the image.
 HOST = f"{ROOT}/host/host"

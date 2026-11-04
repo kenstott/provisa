@@ -49,7 +49,7 @@ def built(tmp_path_factory) -> tuple[Manifest, Path]:
         go=go,
         code=FIXTURE,
         package=".",
-        manifest=manifest,
+        exports=[e.name for e in manifest.exports],
         gomodcache=cache / "mod",
         proxy=PROXY,
         dest=tmp_path_factory.mktemp("bin") / "host",
