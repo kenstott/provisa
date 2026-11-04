@@ -432,6 +432,17 @@ def test_every_installer_builds_provisa_with_its_encoders_and_fails_without_them
     assert 'scripts/check-provisa-wheel.py" "${REPO_ROOT}"/dist/provisa-*.whl' in build
 
 
+def test_the_installers_check_the_runtime_not_the_checkout():
+    """The DMG and SFX check the bundled runtime from the repository root, where `python -c` puts
+    the checkout first on sys.path. The checkout's provisa has the notices but no compiled module,
+    so an unisolated check imports it in place of the installed wheel (alpha.499). -I drops it."""
+    dmg = (REPO / "packaging/macos/build-dmg.sh").read_text()
+    assert '"$py" -I -c "import provisa, sqlite3, mcp_proxy, provisa._encoders.pgwire' in dmg
+    sfx = (REPO / "packaging/windows/build-sfx.ps1").read_text()
+    checks = re.findall(r"^& \$RuntimePy (.*?)-c \"import ", sfx, re.M)
+    assert checks and all(flags == "-I " for flags in checks)
+
+
 def test_a_macos_wheel_is_tagged_for_the_one_architecture_its_module_is_built_for():
     """A universal2 Python would tag an arm64-only module's wheel universal2, and an Intel Mac
     would install it and fail to import the module."""
