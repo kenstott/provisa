@@ -16,6 +16,9 @@ stored rows of a view of its config.yaml with ``materialize: true``; ``profile: 
 Data Profiler source of its config.yaml at once for every member table (REQ-2052): a sandbox
 cloned from the demo's template carries those runs (env_copy.clone_model); ``environment: {name,
 data_mode}`` creates an environment of the model (REQ-2053), as the Environments page does;
+``scan: <url>`` finds terms in the document at that address with the org's AI model, as the
+glossary's Find terms does, and waits for the scan to end (REQ-2201): a sandbox cloned from the
+demo's template carries the scan done (env_copy.copy_term_scans);
 ``client: <script>`` runs a client of the demo's own (a script in its directory) against the server
 until it exits, told where the server is -- ``PROVISA_URL`` and ``PROVISA_FLIGHT`` -- beside this
 run's environment: what the client writes to the demo's stores is then theirs (REQ-2067, the
@@ -26,7 +29,8 @@ A bundled demo runs only its environment steps where it runs (``--environments-o
 steps ran when its bundle was built and what they wrote is in its stores' dumps, but an
 environment is a branch of the model in the control plane, which every start of the demo builds
 anew. Its profile runs, kept in the control plane too, are the build's, carried in the bundle and
-loaded in place of its profile steps (REQ-2052).
+loaded in place of its profile steps (REQ-2052). So are its scans for terms, kept in the control
+plane too (REQ-2201).
 
 Once per control plane: the demo's name is added to the operator setting ``demo.setup_completed``
 when every step has succeeded, and a demo already listed there is not set up again. The first step
@@ -52,6 +56,11 @@ import yaml
 SETTING = "demo.setup_completed"
 #: Where a bundled demo's server loads the profile runs its bundle carries (REQ-2052).
 CARRIED_RUNS = "/admin/profilers/carried-runs"
+#: Where a bundled demo's server loads the scans for terms its bundle carries (REQ-2201).
+CARRIED_SCANS = "/admin/glossary/term-finding/carried-scans"
+SCANS = "/admin/glossary/term-finding/scans"
+#: How often a scan step reads its scan again while it runs, in seconds.
+_SCAN_POLL_S = 5.0
 _ROLE = {"X-Provisa-Role": "org_admin"}
 _TIMEOUT = 1800.0
 
@@ -62,8 +71,8 @@ class StepFailed(RuntimeError):
 
 
 def steps(demo_dir: Path) -> list[dict]:
-    """The demo's steps, each one ``command``, ``refresh``, ``profile``, ``environment`` or
-    ``client``; none when it has no setup.yaml."""
+    """The demo's steps, each one ``command``, ``refresh``, ``profile``, ``scan``, ``environment``
+    or ``client``; none when it has no setup.yaml."""
     path = demo_dir / "setup.yaml"
     if not path.exists():
         return []
@@ -77,15 +86,18 @@ def steps(demo_dir: Path) -> list[dict]:
                 "command",
                 "refresh",
                 "profile",
+                "scan",
                 "environment",
                 "client",
             )
         ):
             raise SystemExit(
                 f"{path}: a step is one 'command: <name>', 'refresh: <view>', "
-                f"'profile: <profiler>', 'environment: {{name: <name>, data_mode: <mode>}}' or "
-                f"'client: <script>': {step}"
+                f"'profile: <profiler>', 'scan: <url>', "
+                f"'environment: {{name: <name>, data_mode: <mode>}}' or 'client: <script>': {step}"
             )
+        if "scan" in step and not str(step["scan"]).startswith("https://"):
+            raise SystemExit(f"{path}: a scan step names a document's https:// address: {step}")
         if "client" in step and not (demo_dir / str(step["client"])).is_file():
             raise SystemExit(f"{path}: a client step names a script of the demo's: {step}")
         if "environment" in step and (
@@ -180,6 +192,13 @@ def run_step(client: httpx.Client, step: dict) -> str:
         if response.status_code != 200:
             raise StepFailed(step, f"HTTP {response.status_code}: {response.text}")
         return f"profile runs carried in the bundle: {', '.join(response.json()['loaded'])}"
+    if "carried_scans" in step:
+        response = client.post(CARRIED_SCANS)
+        if response.status_code != 200:
+            raise StepFailed(step, f"HTTP {response.status_code}: {response.text}")
+        return f"scans carried in the bundle: {', '.join(response.json()['loaded'])}"
+    if "scan" in step:
+        return _scanned(client, step)
     if "profile" in step:
         profiler = step["profile"]
         response = client.post(f"/admin/profilers/{profiler}/run")
@@ -218,6 +237,29 @@ def run_step(client: httpx.Client, step: dict) -> str:
     return f"refresh {view}: {data['refreshMv']['message']}"
 
 
+def _scanned(client: httpx.Client, step: dict) -> str:
+    """Scan the document at the step's address for terms, as the glossary's Find terms does
+    (REQ-2201), and wait until the scan ends: done, or stopped naming why."""
+    started = client.post(SCANS, json={"url": step["scan"]})
+    if started.status_code != 200:
+        raise StepFailed(step, f"HTTP {started.status_code}: {started.text}")
+    scan_id = started.json()["scan"]["id"]
+    deadline = time.monotonic() + _TIMEOUT
+    while True:
+        read = client.get(f"{SCANS}/{scan_id}")
+        if read.status_code != 200:
+            raise StepFailed(step, f"HTTP {read.status_code}: {read.text}")
+        found = read.json()
+        status = found["scan"]["status"]
+        if status == "done":
+            return f"scan {step['scan']}: done, {len(found['drafts'])} candidate terms"
+        if status == "failed":
+            raise StepFailed(step, f"the scan stopped: {found['scan']['error']}")
+        if time.monotonic() > deadline:
+            raise StepFailed(step, f"the scan did not end in {_TIMEOUT:.0f}s")
+        time.sleep(_SCAN_POLL_S)
+
+
 def _generated(client: httpx.Client, org: str, step: dict, env: str) -> str:
     """Generate the Test (synthetic) environment ``env`` from prod's profile runs, as its
     Generate and Confirm on the Environments page do (REQ-1942): declaring it in setup.yaml is the
@@ -254,9 +296,13 @@ def run(
         # them: the first run and the drift run setup measured, not two runs of the data as setup
         # left it. A Test (synthetic) environment is generated from them.
         profiles = any("profile" in step for step in listed)
+        scans = any("scan" in step for step in listed)
         listed = [step for step in listed if "environment" in step]
         if profiles:
             listed.insert(0, {"carried_runs": True})
+        # REQ-2201: and its scans for terms, the build's, which its tour opens.
+        if scans:
+            listed.insert(0, {"carried_scans": True})
     if not listed:
         return 0
     name = demo_dir.resolve().name

@@ -54,6 +54,7 @@ import { FormField, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { ScanStatusBadge, TermReviewQueue } from "./TermReviewQueue";
 import { useScanProgress } from "./useScanProgress";
+import { documentMark } from "../../lib/documentMark";
 
 /** The files the reference library reads. */
 const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx";
@@ -277,7 +278,11 @@ function ScanForm({
             data={[
               { value: "library", label: t("findTerms.fromLibrary") },
               { value: "file", label: t("findTerms.newFile") },
-              { value: "url", label: t("findTerms.newUrl") },
+              {
+                value: "url",
+                // REQ-2201: what a demo's tour presses to give the document by its address.
+                label: <span data-testid="find-terms-mode-url">{t("findTerms.newUrl")}</span>,
+              },
             ]}
           />
         </FormField>
@@ -406,7 +411,13 @@ function ScanList({
           const decided =
             (s.counts.accepted ?? 0) + (s.counts.merged ?? 0) + (s.counts.rejected ?? 0);
           return (
-            <Table.Tr key={s.id} data-testid={`find-terms-scan-${s.id}`}>
+            <Table.Tr
+              key={s.id}
+              data-testid={`find-terms-scan-${s.id}`}
+              // REQ-2201: a demo's tour opens the scan of a document done ahead, by its address.
+              data-scan-source={documentMark(s.document_source)}
+              data-scan-status={s.status}
+            >
               <Table.Td>
                 <Group gap={6} wrap="nowrap">
                   <Text size="sm">{s.document_title}</Text>
@@ -483,6 +494,7 @@ function ScanList({
                     variant="light"
                     onClick={() => onOpen(s.id)}
                     data-testid={`find-terms-open-${s.id}`}
+                    data-find-terms-open
                   >
                     {t("findTerms.open")}
                   </Button>

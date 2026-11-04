@@ -142,7 +142,9 @@ def test_the_first_step_that_fails_stops_the_run_naming_it(monkeypatch, demo, ca
 
 def test_a_step_that_is_neither_a_command_nor_a_refresh_is_refused(tmp_path):
     (tmp_path / "setup.yaml").write_text(yaml.safe_dump({"steps": [{"sql": "SELECT 1"}]}))
-    with pytest.raises(SystemExit, match="'profile: <profiler>', 'environment.* or 'client"):
+    with pytest.raises(
+        SystemExit, match="'profile: <profiler>', 'scan: <url>', 'environment.* or 'client"
+    ):
         setup.steps(tmp_path)
 
 
@@ -449,3 +451,98 @@ def test_a_bundle_whose_runs_are_refused_fails_the_start_naming_why(monkeypatch,
     assert setup.run(_profiling(tmp_path), "http://provisa.test", environments_only=True) == 1
     assert server.stored is None
     assert refusal in capsys.readouterr().err
+
+
+# -- REQ-2201: a document scanned for terms at the build, carried in the bundle -------------------
+
+_RULE = (
+    "https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311"
+)
+
+
+class _ScanServer(_Server):
+    """The glossary's Find terms as a server answers it: a scan that runs ``polls`` reads, then
+    ends ``ending`` (``done`` with two drafts, or ``failed`` naming why)."""
+
+    def __init__(self, polls: int = 2, ending: str = "done") -> None:
+        super().__init__(done=[])
+        self.polls = polls
+        self.ending = ending
+        self.started: list[dict] = []
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path == setup.SCANS and request.method == "POST":
+            self.started.append(json.loads(request.content))
+            return httpx.Response(200, json={"scan": {"id": 9, "status": "running"}})
+        if path == f"{setup.SCANS}/9":
+            self.calls.append(path)
+            if len(self.calls) < self.polls:
+                return httpx.Response(200, json={"scan": {"status": "running"}, "drafts": []})
+            drafts = [{"name": "transaction in currency"}, {"name": "business day"}]
+            error = "cancelled by alice" if self.ending == "failed" else None
+            return httpx.Response(
+                200, json={"scan": {"status": self.ending, "error": error}, "drafts": drafts}
+            )
+        if path == setup.CARRIED_SCANS:
+            self.calls.append(path)
+            return httpx.Response(200, json={"loaded": [_RULE]})
+        if path == "/auth/me":
+            return httpx.Response(200, json={"active_org_id": "acme"})
+        if path.endswith("/environments"):
+            self.calls.append(path)
+            return httpx.Response(200, json={"environment": json.loads(request.content)})
+        return super().__call__(request)
+
+
+def _scanning(tmp_path: Path, scan: str = _RULE) -> Path:
+    home = tmp_path / "bsa"
+    home.mkdir()
+    steps = [{"scan": scan}, {"environment": {"name": "dev", "data_mode": "test_fake"}}]
+    (home / "setup.yaml").write_text(yaml.safe_dump({"steps": steps}))
+    return home
+
+
+def _serve(monkeypatch, server: _Server) -> None:
+    real = httpx.Client
+    monkeypatch.setattr(
+        setup.httpx, "Client", lambda **kw: real(transport=httpx.MockTransport(server), **kw)
+    )
+    monkeypatch.setattr(setup, "_SCAN_POLL_S", 0)
+
+
+def test_a_scan_step_scans_the_document_at_its_address_and_waits_for_the_scan_to_end(
+    monkeypatch, tmp_path, capsys
+):
+    server = _ScanServer(polls=3)
+    _serve(monkeypatch, server)
+    assert setup.run(_scanning(tmp_path), "http://provisa.test") == 0
+    assert server.started == [{"url": _RULE}]
+    assert server.calls[:3] == [f"{setup.SCANS}/9"] * 3
+    assert f"scan {_RULE}: done, 2 candidate terms" in capsys.readouterr().out
+    assert server.stored == ["bsa"]
+
+
+def test_a_scan_that_stops_fails_the_setup_naming_why(monkeypatch, tmp_path, capsys):
+    server = _ScanServer(ending="failed")
+    _serve(monkeypatch, server)
+    assert setup.run(_scanning(tmp_path), "http://provisa.test") == 1
+    assert "the scan stopped: cancelled by alice" in capsys.readouterr().err
+    assert server.stored is None
+
+
+def test_a_bundled_demo_loads_the_scans_its_bundle_carries_in_place_of_scanning(
+    monkeypatch, tmp_path
+):
+    """REQ-2201: a bundle's demo started here opens the scan its build made; nothing asks a
+    model."""
+    server = _ScanServer()
+    _serve(monkeypatch, server)
+    assert setup.run(_scanning(tmp_path), "http://provisa.test", environments_only=True) == 0
+    assert server.started == []
+    assert server.calls == [setup.CARRIED_SCANS, "/admin/orgs/acme/environments"]
+
+
+def test_a_scan_step_names_a_document_s_https_address(tmp_path):
+    with pytest.raises(SystemExit, match="a scan step names a document's https:// address"):
+        setup.steps(_scanning(tmp_path, scan="ecfr.gov/title-31"))

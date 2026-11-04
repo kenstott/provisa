@@ -2159,6 +2159,7 @@ async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
     engine: Any = None,
     *,
     carried_runs: Path | None = None,
+    carried_scans: Path | None = None,
 ) -> list[str]:
     """Rebuild a demo organisation's model from its configuration: remove its model
     (:func:`reset_model`) and apply the configuration, in one transaction, so the organisation
@@ -2168,7 +2169,11 @@ async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
     ``carried_runs``: the profile runs its bundle carries (REQ-2052, provisa.profiler.carry),
     loaded in the same transaction. The apply registers every table afresh, under a new id, and a
     profile result relation is named by its table's id: the runs loaded before were left under
-    the old ids, and the result tables named relations that held none."""
+    the old ids, and the result tables named relations that held none.
+
+    ``carried_scans``: the scans for terms its bundle carries (REQ-2201,
+    provisa.term_finding.carry), loaded in the same transaction, after the apply: a draft names
+    the glossary term it matched by its id, and the apply makes every term afresh."""
     # Its remote sources' tables are registered after the apply, which retries their
     # relationships (graphql_remote_router._upsert_relationships_to_semantic_layer).
     return await _apply(
@@ -2179,6 +2184,7 @@ async def rebuild_from_config(  # REQ-1919: DEMO ORGANISATIONS ARE THEIR CONFIG
         defer_unregistered=True,
         reset=True,
         carried_runs=carried_runs,
+        carried_scans=carried_scans,
     )
 
 
@@ -2191,6 +2197,7 @@ async def _apply(
     defer_unregistered: bool,
     reset: bool = False,
     carried_runs: Path | None = None,
+    carried_scans: Path | None = None,
 ) -> list[str]:
     from provisa.core import model_change
 
@@ -2217,6 +2224,10 @@ async def _apply(
                     from provisa.profiler.carry import load_runs  # noqa: PLC0415
 
                     await load_runs(conn, carried_runs)
+                if carried_scans is not None:
+                    from provisa.term_finding.carry import load_scans  # noqa: PLC0415
+
+                    await load_scans(conn, carried_scans)
                 await _mark_seeded(conn)
     if reset:
         # After the commit, in transactions of their own: the backlog of a template's rebuilds,
