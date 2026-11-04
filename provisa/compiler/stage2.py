@@ -1985,8 +1985,7 @@ def _govern_plain_write(
     gov_ctx: GovernanceContext,  # pyright: ignore[reportPrivateImportUsage]
 ) -> exp.Where | None:
     """An UPDATE or DELETE whose expressions read only its target, governed in place: a column the
-    role is not served is refused (V003), a masked one is its mask, and the role's row rule
-    joins its WHERE. Returns the governed WHERE."""
+    role is not served is refused (V003) and a masked one is its mask. Returns the role's WHERE."""
     alias = _alias_for(target)
     names = {_folded(target.this), alias.lower(), alias}
     values = [e.expression for e in write.expressions] if isinstance(write, exp.Update) else []
@@ -2015,11 +2014,9 @@ def _govern_plain_write(
                             e.set("expression", masked)
                 else:
                     col.replace(masked)
-    terms = [role_where.this] if role_where is not None else []
-    row_filter = _row_filter(gov_ctx, tid, alias)
-    if row_filter is not None:
-        terms.append(exp.paren(row_filter))
-    return exp.Where(this=exp.and_(*terms)) if terms else None
+    # The rows it may write are its grant's (admission: the grant's rows, which are the role's
+    # read row rule unless the grant states its own, and its U or D rule).
+    return role_where
 
 
 def _keyed_write(
