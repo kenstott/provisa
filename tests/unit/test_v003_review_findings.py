@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 74b3f0c5-5b21-44d4-8a33-e316669dbd83
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """A hidden column is refused in every clause; a source of unknown columns never ends the check
 (REQ-039, amended 2026-11-04: A COLUMN IS JUDGED WHERE IT RESOLVES; A HIDDEN COLUMN IS REFUSED IN
 EVERY CLAUSE; REQ-2204).
