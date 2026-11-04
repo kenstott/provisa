@@ -207,6 +207,51 @@ def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     return _apply_replacements(sql, replacements)
 
 
+def _from_entries(node: exp.Expr) -> list[exp.Expr]:  # pyright: ignore[reportPrivateImportUsage]
+    """The relations ``node`` (a SELECT, UPDATE or DELETE) names in its own FROM, JOINs, target
+    and USING -- never a nested query's."""
+    entries = [node.this] if isinstance(node, (exp.Update, exp.Delete)) else []
+    from_ = node.args.get("from_")
+    if from_ is not None:
+        entries.append(from_.this)
+    entries.extend(j.this for j in node.args.get("joins") or [])
+    entries.extend(node.args.get("using") or [])
+    return [e for e in entries if isinstance(e, (exp.Table, exp.Subquery))]
+
+
+def bind_schema_qualified_columns(tree: exp.Expr) -> None:  # REQ-2204
+    """Each column reference qualified by its table's schema -- ``"s"."t"."c"``, as Metabase
+    writes every data query -- rebound to the name the table has in FROM: ``"t"."c"``. While the
+    table is unaliased the two are one reference to PostgreSQL; once a later step aliases it
+    (normalize_table_refs pins its own name) or puts a governed projection in its place (stage2),
+    the schema-qualified form names nothing and PostgreSQL refuses it (42P01 "invalid reference
+    to FROM-clause entry"). Bound before those steps, the reference reads the name they keep.
+
+    The nearest scope with a relation of the reference's table name decides: an unaliased table
+    of that schema (and catalog, when the reference names one) binds it; anything else -- an
+    alias, another schema's table, a derived relation -- leaves it as written."""
+    for col in list(tree.find_all(exp.Column)):
+        db = col.args.get("db")
+        if db is None:
+            continue
+        scope = col.find_ancestor(exp.Select, exp.Update, exp.Delete)
+        while scope is not None:
+            named = [e for e in _from_entries(scope) if e.alias_or_name == col.table]
+            if named:
+                entry = named[0]
+                catalog = col.args.get("catalog")
+                if (
+                    isinstance(entry, exp.Table)
+                    and not entry.alias
+                    and entry.db == db.name
+                    and (catalog is None or entry.catalog == catalog.name)
+                ):
+                    col.set("db", None)
+                    col.set("catalog", None)
+                break
+            scope = scope.find_ancestor(exp.Select, exp.Update, exp.Delete)
+
+
 def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     """Qualify and quote all table references using CompilationContext.
 
@@ -270,6 +315,8 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
 
     # Parse failure must fail loud: returning un-rewritten SQL skips physical/catalog qualification.
     tree = sqlglot.parse_one(sql, read="postgres")
+    # The alias pinned below hides the table's schema-qualified name from its column references.
+    bind_schema_qualified_columns(tree)
     quoted_aliases: set[str] = set()
 
     def _rewrite(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
