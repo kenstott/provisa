@@ -449,6 +449,21 @@ async def _seed_meta_domain(
             _registered_tables_t.c.table_name == view_name,
         )
 
+    # REQ-2163: meta's tables are a SET this seed declares, as ops's are (_seed_ops_pg), and a
+    # table an older build declared is retired with what refers to it. The glossary's moved to
+    # ontology, and its kept meta registrations kept their relationships beside the new ones: two
+    # `glossaryRefs` fields on registered_tables, and the schema build refused (J627). The root
+    # org's registry view is meta's too, written by seed_org_registry_view, not here.
+    from provisa.core.org_registry_view import VIEW_NAME as _ORG_REGISTRY_VIEW
+
+    await _table_repo.remove_registrations(
+        conn,
+        _registered_tables_t.c.source_id == "provisa-admin",
+        _registered_tables_t.c.domain_id == "meta",
+        _registered_tables_t.c.schema_name == schema_name,
+        _registered_tables_t.c.table_name.not_in([*_META_TABLES, _ORG_REGISTRY_VIEW]),
+    )
+
     reflected = await _reflect_admin_views(
         conn, schema_name, {_META_TABLE_ALIAS.get(tbl, tbl): tbl for tbl in _META_TABLES}
     )
