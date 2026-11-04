@@ -81395,7 +81395,13 @@
     opened from it fails on a column added since. So (the lead''s rule, carrying out the decision) a patch
     keeps a template when both its demo bundle''s version and the shape of the control-plane tables the
     current code creates (a fingerprint of their DDL) match what built it, and resets and rebuilds it otherwise.
-    Sandboxes opened from a kept template are reset as before.'
+    Sandboxes opened from a kept template are reset as before. (Amended 2026-11-03, The sandbox VM stops
+    only when every tier is idle:) Lead 2026-11-03, from J575''s finding (the VM''s idle stop powered it
+    off under visitors: each of the VM''s three tiers judged idleness by its own use alone, and the VM stopped
+    after 30 idle minutes while an open sandbox lives for sandbox.idle_ttl): the sandbox VM stops itself
+    only when no demo sandbox is open on any of its tiers and no tier on it has been used for the idle window.
+    Each tier records its last use where the others can read it. The cost is a longer idle runtime: up to
+    sandbox.idle_ttl after the last request, then the idle window.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true
