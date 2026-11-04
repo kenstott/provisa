@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: d5bf75db-740e-4a19-ac61-c05a1cfd151f
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -145,3 +146,43 @@ def test_a_name_without_a_quote_is_quoted_as_before(ctx):
     assert compiled.sql == (
         'SELECT "id", "region" FROM "public"."orders" WHERE "region" = $1 ORDER BY "id" ASC'
     )
+
+
+def test_a_group_by_where_after_a_filter_binds_each_value_to_its_own_placeholder(ctx):
+    """An aggregate's filter binds its values first; the where's follow in the order they are
+    written, ten or more of them each to its own placeholder."""
+    regions = [f"r{i}" for i in range(12)]
+    (compiled,) = compile_query(
+        parse(
+            "query($w: X) { orders_group_by(by: [region], where: $w) "
+            '{ region aggregate(where: {status: {eq: "open"}}) { count } } }'
+        ),
+        ctx,
+        {"w": {"region": {"in": regions}}},
+    )
+    statement = sqlglot.parse_one(compiled.sql, read="postgres")
+    bound = {
+        int(p.this.this): compiled.params[int(p.this.this) - 1]
+        for p in statement.find_all(exp.Parameter)
+    }
+    (in_list,) = statement.find_all(exp.In)
+    assert [bound[int(p.this.this)] for p in in_list.expressions] == regions, compiled.sql
+    assert sorted(bound) == list(range(1, len(compiled.params) + 1)), compiled.sql
+
+
+@pytest.mark.parametrize("name", ["x ASC", "DESC NULLS FIRST"])
+def test_a_backward_page_reverses_the_order_and_keeps_each_column_name(ctx, name):
+    """A backward page reads its rows in the reverse order: each direction flips, a column's name
+    is never read as a direction."""
+    (compiled,) = compile_query(
+        parse(
+            'query($v: [X!]) { orders_connection(last: 2, before: "WzFd", order_by: $v) '
+            "{ edges { node { id } } } }"
+        ),
+        ctx,
+        {"v": [{name: "asc_nulls_first"}]},
+    )
+    statement = sqlglot.parse_one(compiled.sql, read="postgres")
+    (ordered,) = statement.args["order"].expressions
+    assert ordered.this == exp.column(name, quoted=True), compiled.sql
+    assert ordered.args.get("desc") is True, compiled.sql
