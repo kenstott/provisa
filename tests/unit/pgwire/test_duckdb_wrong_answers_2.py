@@ -18,6 +18,7 @@ DuckDB engine, against PostgreSQL 17.11's answer to the same statement (REQ-2167
 
 from __future__ import annotations
 
+import datetime
 from typing import Any
 
 import pytest
@@ -331,3 +332,83 @@ def test_the_abbreviations_are_a_set_in_from(conn: Any):
         "WHERE a.abbrev = 'JST' AND NOT a.is_dst",
     )
     assert (oid, named) == (TEXT, ["JST"])
+
+
+#: Zones whose offset or daylight flag the engine's own zone data (DuckDB's ICU) reads otherwise
+#: than the pinned release (2026f), each as PostgreSQL 17.11 on that release answers it: the
+#: release keeps them on standard time from November 2026 on, and Havana on its CDT (daylight).
+_STEADY_ZONES = {
+    "America/Vancouver": "(America/Vancouver,MST,-07:00:00,f)",
+    "America/Edmonton": "(America/Edmonton,CST,-06:00:00,f)",
+    "America/Winnipeg": "(America/Winnipeg,EST,-05:00:00,f)",
+    "Asia/Tokyo": "(Asia/Tokyo,JST,09:00:00,f)",
+}
+
+
+@pytest.mark.parametrize(("zone", "row"), sorted(_STEADY_ZONES.items()))
+def test_a_zones_offset_and_daylight_flag_are_the_pinned_releases(conn: Any, zone: str, row: str):
+    """A zone's offset and daylight flag are the pinned release's reading of it now, as its
+    abbreviation is, so the three agree (REQ-2167, amended 2026-11-03)."""
+    oid, rows = _rows(
+        conn,
+        "SELECT z FROM pg_catalog.pg_timezone_names() AS z WHERE z.name = '" + zone + "'",
+    )
+    assert (oid, rows) == (2249, [row])
+
+
+def _local_time_types(zone: str) -> set[str]:
+    """The (abbreviation, offset seconds, daylight flag) local time types the pinned release's
+    compiled data for ``zone`` declares (its TZif v2 body's ttinfo records)."""
+    import importlib.resources
+    import struct
+
+    data = importlib.resources.files("tzdata.zoneinfo").joinpath(*zone.split("/")).read_bytes()
+
+    def counts(at: int) -> tuple[int, ...]:
+        return struct.unpack(">6l", data[at + 20 : at + 44])
+
+    isutc, isstd, leap, times, types, chars = counts(0)
+    at = 44 + times * 5 + types * 6 + chars + leap * 8 + isstd + isutc
+    _, _, _, times, types, chars = counts(at)
+    at += 44 + times * 9
+    names = data[at + types * 6 : at + types * 6 + chars]
+    found = set()
+    for k in range(types):
+        offset, dst, index = struct.unpack(">lBB", data[at + 6 * k : at + 6 * k + 6])
+        name = names[index : names.index(b"\0", index)].decode()
+        found.add(f"{name}|{offset}|{'true' if dst else 'false'}")
+    return found
+
+
+def test_every_zones_columns_are_one_of_its_local_time_types(conn: Any):
+    """Each zone's abbreviation, offset and daylight flag are read together from the pinned
+    release, so they are one of the local time types its compiled data declares (DuckDB's ICU put
+    -08 beside Vancouver's MST, and zoneinfo's guessed daylight offset is 0 for Havana's CDT)."""
+    _, rows = _rows(
+        conn,
+        "SELECT name || '|' || abbrev || '|' || CAST(extract(epoch FROM utc_offset) AS bigint) "
+        "|| '|' || CAST(is_dst AS text) FROM pg_catalog.pg_timezone_names()",
+    )
+    wrong = {}
+    for row in rows:
+        zone, said = row.split("|", 1)
+        if said not in _local_time_types(zone):
+            wrong[zone] = said
+    assert (len(rows) > 500, wrong) == (True, {})
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [
+        ([datetime.time(12, 0, 59, 500000)], ["12:00:59.5"]),
+        ([datetime.time(12, 0, 59)], ["12:00:59"]),
+        ([datetime.datetime(2026, 1, 2, 3, 4, 5, 120000)], ["2026-01-02 03:04:05.12"]),
+        ([datetime.datetime(2026, 1, 2, 3, 4, 5)], ["2026-01-02 03:04:05"]),
+    ],
+)
+def test_a_lists_naive_clock_is_postgresqls_text(value: list[Any], text: list[str]):
+    """A naive time or timestamp inside a list Arrow cannot hold is written as time_out and
+    timestamp_out write it: a fraction without its trailing zeros (REQ-2167)."""
+    from provisa.core.ir_arrow import text_of
+
+    assert text_of(value, None) == text
