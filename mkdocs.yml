@@ -160,6 +160,7 @@ nav:
       - Bolt: conformance/bolt.md
       - GraphQL: conformance/graphql.md
       - pgwire: conformance/pgwire.md
+      - pgwire Drivers: conformance/drivers.md
       - Arrow Flight SQL: conformance/flight-sql.md
       - REST / OpenAPI: conformance/rest.md
       - JSON:API: conformance/jsonapi.md
