@@ -1,7 +1,7 @@
 name: Conformance (pgwire)
 
 # REQ-2167: Provisa's pgwire endpoint against public conformance checks, the first conformance job.
-# Four parts, one run, one report:
+# Five parts, one run, one report:
 #
 #   * pgspec, the PostgreSQL v3 wire-protocol compliance suite (github.com/goceleris/celeris,
 #     package test/pgspec, Apache-2.0), fetched at a pinned version by `go mod download` (checked
@@ -12,7 +12,12 @@ name: Conformance (pgwire)
 #   * catalog coverage: the relations and functions that PostgreSQL has and Provisa does not, on
 #     this job's one engine (Conformance (functions) gives every overload's result per engine);
 #   * type conversions: type OID, typmod, text and binary encoding of each fixture type and of the
-#     casts tools commonly issue, against the same statement on that PostgreSQL.
+#     casts tools commonly issue, against the same statement on that PostgreSQL;
+#   * BI tools' catalog statements (REQ-2204): the statements psql, DBeaver, Metabase and Grafana
+#     send to browse a schema, captured at pinned versions (scripts/conformance/bi_tools/), replayed
+#     on that PostgreSQL and on Provisa and compared as the catalog shape is; per tool, passed,
+#     skipped by design, failed or not tested, written to bi-tools.json beside the report. The job
+#     fails on a failed statement, as the pgwire baseline does.
 #
 # Every result is written to the job summary and to the artifact conformance-pgwire.json. Each
 # part's every case -- a pgspec test, a catalog relation or function, a type conversion -- is
@@ -122,11 +127,22 @@ jobs:
           echo "top-level tests:"; cat "$RUNNER_TEMP/pgspec-tests.txt"
           test -s "$RUNNER_TEMP/pgspec-tests.txt"
 
+      # The tables the BI tools browsed when their statements were captured (REQ-2204): two keyed
+      # tables in the PostgreSQL service, declared in the instance's model beside its fixture.
+      - name: Seed the BI tools' tables
+        run: |
+          .venv/bin/python scripts/conformance/bi_tools/fixtures.py seed \
+            --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD" \
+            --tables "$RUNNER_TEMP/bi-tools-tables.yaml" --relationships "$RUNNER_TEMP/bi-tools-relationships.yaml"
+
       # The instance (.github/actions/conformance-instance): fixture, model, server, job user and
       # its token in CONFORMANCE_AUTHORIZATION.
       - name: Start the Provisa instance
         id: start
         uses: ./.github/actions/conformance-instance
+        with:
+          extra-tables: ${{ runner.temp }}/bi-tools-tables.yaml
+          extra-relationships: ${{ runner.temp }}/bi-tools-relationships.yaml
 
 
       # One `go test` per top-level test: a failure is data (continue-on-error), and a test that
@@ -162,6 +178,17 @@ jobs:
             --engine duckdb \
             --out-json "$RUNNER_TEMP/catalog-types.json" --out-md "$RUNNER_TEMP/catalog-types.md"
 
+      # REQ-2204: each tool's stored statements on both servers. A failed statement fails the step
+      # once the report is written; the summary below still runs.
+      - name: Replay the BI tools' catalog statements
+        if: ${{ !cancelled() && steps.start.outcome == 'success' }}
+        timeout-minutes: 15
+        run: |
+          .venv/bin/python scripts/conformance/bi_tools/replay.py replay \
+            --pg "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD" \
+            --provisa "host=127.0.0.1 port=$PROVISA_PGWIRE_PORT dbname=provisa user=$CONFORMANCE_USER password=$CONFORMANCE_PASSWORD sslmode=disable" \
+            --out-json "$RUNNER_TEMP/bi-tools.json" --out-md "$RUNNER_TEMP/bi-tools.md"
+
       - name: Summarise
         if: ${{ !cancelled() && steps.start.outcome == 'success' }}
         run: |
@@ -177,10 +204,18 @@ jobs:
           .venv/bin/python scripts/conformance/pgwire_catalog_types.py combine \
             --pgspec "$RUNNER_TEMP/pgspec.json" --catalog "$RUNNER_TEMP/catalog-types.json" \
             --out "$RUNNER_TEMP/report/conformance-pgwire.json"
-          cat "$RUNNER_TEMP/pgspec.md" "$RUNNER_TEMP/catalog-types.md" > "$RUNNER_TEMP/report/conformance-pgwire.md"
+          if [ -f "$RUNNER_TEMP/bi-tools.json" ]; then
+            cp "$RUNNER_TEMP/bi-tools.json" "$RUNNER_TEMP/report/"
+          else
+            echo "## BI tools' catalog statements: the replay did not complete (see its step)" > "$RUNNER_TEMP/bi-tools.md"
+          fi
+          cat "$RUNNER_TEMP/pgspec.md" "$RUNNER_TEMP/catalog-types.md" "$RUNNER_TEMP/bi-tools.md" > "$RUNNER_TEMP/report/conformance-pgwire.md"
           cat "$RUNNER_TEMP/report/conformance-pgwire.md" >> "$GITHUB_STEP_SUMMARY"
           cp "$RUNNER_TEMP/pgspec-results.jsonl" "$RUNNER_TEMP/provisa/server.log" "$RUNNER_TEMP/report/"
           .venv/bin/python scripts/conformance/fill_docs.py "$RUNNER_TEMP/report/conformance-pgwire.json"
+          if [ -f "$RUNNER_TEMP/bi-tools.json" ]; then
+            .venv/bin/python scripts/conformance/bi_tools/replay.py docs "$RUNNER_TEMP/bi-tools.json"
+          fi
           cp docs/conformance/pgwire.md "$RUNNER_TEMP/report/"
           exit "${ran:-0}"
 

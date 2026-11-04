@@ -4079,6 +4079,23 @@ A PostgreSQL `numeric` column declared without a precision is registered as `num
 
 Workaround: declare the column with its precision and scale at the source, or read the table through the PostgreSQL engine.
 
+## BI tools' catalog statements
+
+The statements psql, DBeaver, Metabase and Grafana send when they connect and browse a schema are captured from each tool at a pinned version and replayed on every run, against the job's PostgreSQL and against Provisa serving the same tables. Each answer is compared as the catalog shape is: the columns it describes (name, order, type and typmod), or, where PostgreSQL refuses the statement, the refusal. Catalog content is not compared, because it is the role's governed view of the model.
+
+How each tool was captured:
+
+- **psql**: the `postgres:17.11` image's psql runs `\dn`, `\d`, `\dt`, `\dv`, `\di`, `\df` (each also over `conformance.*`) and `\d+` of each fixture table.
+- **Metabase**: the official image, driven through its HTTP API. It adds the database, which runs the first sync and analysis, then re-syncs and reads the database's and each table's metadata.
+- **Grafana**: the official image with the bundled PostgreSQL data source, added and checked through its HTTP API. The SQL its query editor sends to list tables and a table's columns then runs through `/api/ds/query`.
+- **DBeaver**: a desktop application with no headless schema browser, so it is captured once by hand. Run `scripts/conformance/bi_tools/capture.py serve --tool dbeaver --version <version>`. It starts a PostgreSQL with the fixture behind a recording proxy and lists the steps to follow in DBeaver. Pressing Enter writes `scripts/conformance/bi_tools/dbeaver.yaml`. Until that file exists, DBeaver is listed as not tested.
+
+To capture again at a new version, run `scripts/conformance/bi_tools/capture.py run` (Docker). Each tool's statements are stored in `scripts/conformance/bi_tools/<tool>.yaml` with the tool's version and the bind parameters it sent.
+
+<!-- bi-tools-results:begin -->
+No run has filled this section yet.
+<!-- bi-tools-results:end -->
+
 ## Tools
 
 | Tool | Version | Date | Method |
