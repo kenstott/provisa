@@ -9385,5 +9385,22 @@
   "referenceLibrary.json::referenceLibrary.reembedDone": "Documents re-embedded: {{n}}",
   "referenceLibrary.json::referenceLibrary.reembedFailedHeading": "These documents could not be re-embedded and are unchanged:",
   "referenceLibrary.json::referenceLibrary.reembedFailure": "{{title}}: {{reason}}",
-  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP"
+  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP",
+  "es/findTerms.json::findTerms.fromDocument": "A document",
+  "es/findTerms.json::findTerms.fromTable": "A table",
+  "es/findTerms.json::findTerms.tableDomain": "Domain",
+  "es/findTerms.json::findTerms.tableDomainHelp": "The domain of the table to read.",
+  "es/findTerms.json::findTerms.table": "Table",
+  "es/findTerms.json::findTerms.tablePlaceholder": "Pick a table",
+  "es/findTerms.json::findTerms.tableHelp": "A registered table in the domain. Each of its rows is read as one passage.",
+  "es/findTerms.json::findTerms.idColumn": "ID column",
+  "es/findTerms.json::findTerms.idColumnHelp": "The column that identifies a row. Every proposal cites the rows it came from by this value.",
+  "es/findTerms.json::findTerms.textColumn": "Text column",
+  "es/findTerms.json::findTerms.textColumnHelp": "The column holding each row's text.",
+  "es/findTerms.json::findTerms.tableNote": "The rows are read as your role reads them: its row rules and masks apply. A table scan adds nothing to the reference library.",
+  "es/findTerms.json::findTerms.chooseTable": "Choose a table, its ID column and its text column.",
+  "es/findTerms.json::findTerms.row": "row {{row}}",
+  "es/findTerms.json::findTerms.tableScan": "Table",
+  "es/findTerms.json::findTerms.tableScanHint": "Read from the table {{domain}}.{{table}}: each row's {{text_column}}, cited by its {{id_column}}.",
+  "es/findTerms.json::findTerms.rescanTableHint": "Read the table's rows again and scan them. The new scan shows the terms the ontology does not hold yet and those that match its terms; earlier decisions stand."
 }

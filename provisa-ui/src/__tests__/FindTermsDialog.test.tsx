@@ -11,7 +11,9 @@
 // REQ-2179: Find terms in a document. The steward picks a library document or gives a new file or
 // URL, with the domains they work in, and starts a scan; its review queue shows each candidate's
 // proposal, definition (explicit or synthesized), synonyms, passages and conflicting explanations
-// side by side, and the steward accepts, merges, rejects or accepts several at once.
+// side by side, and the steward accepts, merges, rejects or accepts several at once. REQ-2202: or
+// the steward picks a registered table -- domain, table, id column, text column -- and each
+// candidate's passages cite the table and the row's id.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../test-utils/render";
@@ -31,6 +33,44 @@ const api = vi.hoisted(() => ({
 vi.mock("../api/termFinding", () => api);
 const glossary = vi.hoisted(() => ({ generateGlossaryRelationships: vi.fn() }));
 vi.mock("../api/glossary", () => glossary);
+
+const col = (columnName: string, dataType: string) => ({
+  id: columnName.length,
+  columnName,
+  alias: null,
+  computedSqlAlias: null,
+  description: null,
+  dataType,
+  nativeFilterType: null,
+  nativeFilterRequired: false,
+  requiredBySteward: false,
+  isPrimaryKey: columnName === "note_id",
+  isForeignKey: false,
+});
+const NOTES = {
+  id: 21,
+  sourceId: "crm",
+  domainId: "sales",
+  schemaName: "public",
+  tableName: "notes",
+  alias: null,
+  draft: false,
+  columns: [col("note_id", "varchar"), col("body", "text")],
+};
+// One value per hook across renders: a fresh array each render reruns the form's effects.
+const TABLES = {
+  tables: [
+    NOTES,
+    { ...NOTES, id: 22, tableName: "draft_notes", draft: true },
+    { ...NOTES, id: 23, domainId: "finance", tableName: "ledger" },
+  ],
+  loading: false,
+  refetch: vi.fn(),
+};
+vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
+  useTables: () => TABLES,
+}));
 
 import { FindTermsDialog } from "../components/admin/FindTermsDialog";
 
@@ -149,6 +189,47 @@ const MATCH_DRAFT = {
   matches: [{ term_id: 3, name: "client", via: "client" }],
 };
 
+const TABLE_SOURCE = {
+  domain: "sales",
+  table: "notes",
+  id_column: "note_id",
+  text_column: "body",
+};
+
+const TABLE_SCAN = {
+  ...SCAN,
+  id: 9,
+  document_id: null,
+  document_title: "sales.notes",
+  document_source: "sales.notes",
+  source_table: TABLE_SOURCE,
+};
+
+const rowCite = (row: string, quote: string, role: string, mention: number) => ({
+  ...cite("", quote, role, mention),
+  section: null,
+  row,
+});
+
+const ROW_DRAFT = {
+  ...MATCH_DRAFT,
+  id: 13,
+  scan_id: 9,
+  passages: [
+    rowCite("n-1", '"Customer" means any party.', "definition", 0),
+    rowCite("n-4", "A customer account is opened.", "supporting", 1),
+  ],
+};
+
+/** Pick ``option`` in the Select whose input has ``testId``. */
+async function choose(testId: string, option: string) {
+  const input = screen.getByTestId(testId);
+  fireEvent.click(input);
+  await waitFor(() => expect(input).toHaveAttribute("aria-controls"));
+  const list = document.getElementById(input.getAttribute("aria-controls") as string);
+  fireEvent.click(within(list as HTMLElement).getByRole("option", { name: option, hidden: true }));
+}
+
 function open() {
   return render(
     <FindTermsDialog
@@ -166,7 +247,7 @@ beforeEach(() => {
   Object.values(api).forEach((fn) => fn.mockReset());
   glossary.generateGlossaryRelationships.mockReset();
   api.fetchScannableDocuments.mockResolvedValue([DOC]);
-  api.fetchScans.mockResolvedValue([SCAN]);
+  api.fetchScans.mockResolvedValue([{ ...SCAN, source_table: null }]);
   api.fetchScan.mockResolvedValue({ scan: SCAN, drafts: [NEW_DRAFT, MATCH_DRAFT] });
 });
 
@@ -341,5 +422,58 @@ describe("FindTermsDialog", () => {
     expect(await screen.findByTestId("find-terms-failed")).toHaveTextContent(
       "the role's LLM budget for the hour is spent",
     );
+  });
+
+  it("scans a registered table: its domain, the table, its id column and its text column", async () => {
+    api.startScan.mockResolvedValue({ scan: { ...TABLE_SCAN, status: "running" } });
+    open();
+    await screen.findByTestId("find-terms-scan-7");
+    fireEvent.click(screen.getByRole("radio", { name: "A table" }));
+    expect(screen.queryByTestId("find-terms-mode")).toBeNull();
+    expect(screen.getByTestId("find-terms-table-note")).toHaveTextContent(
+      "its row rules and masks apply",
+    );
+    fireEvent.click(screen.getByTestId("find-terms-start"));
+    expect(
+      await screen.findByText("Choose a table, its ID column and its text column."),
+    ).toBeInTheDocument();
+    await choose("find-terms-table-domain", "sales");
+    fireEvent.click(screen.getByTestId("find-terms-table"));
+    // A draft is in no role's schema, and a table of another domain is not offered.
+    expect(screen.queryByRole("option", { name: "draft_notes", hidden: true })).toBeNull();
+    expect(screen.queryByRole("option", { name: "ledger", hidden: true })).toBeNull();
+    await choose("find-terms-table", "notes");
+    await choose("find-terms-id-column", "note_id (varchar)");
+    await choose("find-terms-text-column", "body (text)");
+    fireEvent.click(screen.getByTestId("find-terms-start"));
+    await waitFor(() =>
+      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"]),
+    );
+  });
+
+  it("marks a table's scan and scans the table again on demand", async () => {
+    api.fetchScans.mockResolvedValue([TABLE_SCAN]);
+    api.startScan.mockResolvedValue({ scan: { ...TABLE_SCAN, id: 10 } });
+    open();
+    const row = await screen.findByTestId("find-terms-scan-9");
+    expect(row).toHaveTextContent("sales.notes");
+    expect(within(row).getByTestId("find-terms-table-scan-9")).toHaveTextContent("Table");
+    expect(row).not.toHaveTextContent("Removed from the library");
+    fireEvent.click(screen.getByTestId("find-terms-rescan-9"));
+    await waitFor(() =>
+      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"]),
+    );
+  });
+
+  it("cites a table's passages by the table and the row's id", async () => {
+    api.fetchScans.mockResolvedValue([TABLE_SCAN]);
+    api.fetchScan.mockResolvedValue({ scan: TABLE_SCAN, drafts: [ROW_DRAFT] });
+    open();
+    fireEvent.click(await screen.findByTestId("find-terms-open-9"));
+    const draft = await screen.findByTestId("find-terms-draft-13");
+    fireEvent.click(within(draft).getByTestId("find-terms-passages-toggle-13"));
+    const passages = within(draft).getAllByTestId("find-terms-passage");
+    expect(passages[0]).toHaveTextContent("sales.notes, row n-1");
+    expect(passages[1]).toHaveTextContent("sales.notes, row n-4");
   });
 });

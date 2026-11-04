@@ -15,7 +15,7 @@ queue the steward accepts, edits, merges or rejects; every model call held to th
 budget (REQ-1174). REQ-2185: a new document joins the library as proposed in the steward's
 domains; one already there is not added again; a rescan shows matches and duplicates."""
 
-# Requirements: REQ-2179, REQ-2185
+# Requirements: REQ-2179, REQ-2185, REQ-2202
 
 from __future__ import annotations
 
@@ -48,6 +48,7 @@ from provisa.llm import client as llm_client
 from provisa.llm.client import ProvisaLLMClient
 from provisa.reference_library import library, store
 from provisa.security.llm_budget import BudgetRefused
+from provisa.api.admin import term_finding_table as table
 from provisa.term_finding import model, queue, scan
 
 if TYPE_CHECKING:
@@ -1419,3 +1420,126 @@ async def test_an_ended_scan_keeps_its_first_ending(api):
         )
         assert await queue.drafts(conn, scan_id) == []
     assert (await _row(api, scan_id)).error == "cancelled by alice"
+
+
+# -- REQ-2202: a registered table scanned; a scan only ---------------------------------------
+
+TABLE_SOURCE = {"domain": "d", "table": "notes", "id_column": "note_id", "text_column": "body"}
+TABLE_ROWS = [
+    ("n-1", '"Customer" means any party that holds an account.'),
+    ("n-2", None),
+    ("n-4", "A customer account is opened after KYC checks."),
+]
+
+
+def _row_answer(prompt: str) -> str:
+    """Each row read names the concept "customer", quoting the row; the mentions resolve into it."""
+    if "Group the mentions" in prompt:
+        ids = [int(i) for i in re.findall(r"^M(\d+) ", prompt, re.M)]
+        return json.dumps([{"name": "customer", "sense": "a party", "mentions": ids}])
+    rows = re.findall(r"\[P(\d+)\] \(row '[^']+'\)\n(.+)", prompt)
+    return json.dumps(
+        [
+            {
+                "passage": int(n),
+                "name": "customer",
+                "category": "business concept",
+                "sense": "a party",
+                "quote": text,
+                "explicit": text.startswith('"Customer" means'),
+                "variants": [],
+            }
+            for n, text in rows
+        ]
+    )
+
+
+class _TableModel(_Model):
+    def __init__(self, answer=_row_answer, refuse: str | None = None):
+        super().__init__(answer)
+        self.refuse = refuse
+        self.reckoned: list[tuple[list[str], str]] = []
+
+    async def require_room(self, prompts: list[str], what: str) -> None:
+        self.reckoned.append((prompts, what))
+        if self.refuse:
+            raise model.OverBudget(self.refuse)
+
+
+@pytest.fixture
+def tables(api, monkeypatch):
+    read: list[tuple[Any, str]] = []
+
+    async def _read(state: Any, source: table.TableSource, role_id: str) -> list[scan.Passage]:
+        read.append((source, role_id))
+        return table.passages(TABLE_ROWS)
+
+    held = _TableModel()
+
+    async def _model(request):
+        return held
+
+    monkeypatch.setattr(table, "read", _read)
+    monkeypatch.setattr(router, "_model", _model)
+    return types.SimpleNamespace(read=read, model=held)
+
+
+async def test_a_table_is_scanned_its_candidates_citing_the_table_and_row_ids(api, tables):
+    started = await router.start_scan(_request({"table": TABLE_SOURCE, "domains": ["d"]}))
+    assert started["scan"]["status"] == "running"
+    assert started["scan"]["source_table"] == TABLE_SOURCE
+    assert "document" not in started
+    await api.launched.pop()
+
+    ((source, role_id),) = tables.read
+    assert (source.name, role_id) == ("d.notes", "steward")
+    ((prompts, what),) = tables.model.reckoned
+    assert what == "d.notes"
+    assert prompts == scan.reading_prompts("d.notes", table.passages(TABLE_ROWS), scan.TABLE)
+
+    found = await router.get_scan(started["scan"]["id"], _request())
+    assert found["scan"]["status"] == "done"
+    assert found["scan"]["document_title"] == "d.notes"
+    assert found["scan"]["document_removed"] is False
+    (draft,) = found["drafts"]
+    assert draft["name"] == "customer"
+    assert [(p["row"], p["role"]) for p in draft["passages"]] == [
+        ("n-1", "definition"),
+        ("n-4", "supporting"),
+    ]
+    # A scan only: the reference library holds nothing new.
+    async with api.db.acquire() as conn:
+        assert await store.documents(conn) == []
+        (row,) = await queue.scans(conn)
+    assert (row.document_id, row.source_table) == (None, TABLE_SOURCE)
+
+
+async def test_a_table_scan_the_budget_has_no_room_for_is_refused_before_it_starts(api, tables):
+    tables.model.refuse = "role 'steward' has 100 tokens left of its LLM budget for the day"
+    with pytest.raises(ApiError) as caught:
+        await router.start_scan(_request({"table": TABLE_SOURCE, "domains": ["d"]}))
+    assert (caught.value.status_code, caught.value.code) == (409, "term_finding.over_budget")
+    assert "100 tokens left" in str(caught.value.detail)
+    assert api.launched == []
+    async with api.db.acquire() as conn:
+        assert await queue.scans(conn) == []
+
+
+async def test_a_table_with_no_text_to_read_is_refused_before_it_starts(api, tables, monkeypatch):
+    async def _empty(state: Any, source: table.TableSource, role_id: str) -> list[scan.Passage]:
+        return []
+
+    monkeypatch.setattr(table, "read", _empty)
+    with pytest.raises(ApiError) as caught:
+        await router.start_scan(_request({"table": TABLE_SOURCE, "domains": ["d"]}))
+    assert caught.value.code == "term_finding.no_rows"
+    assert api.launched == []
+
+
+async def test_a_scan_reads_one_source_a_table_or_a_document(api, tables):
+    with pytest.raises(ApiError) as caught:
+        await router.start_scan(
+            _request({"table": TABLE_SOURCE, "document_id": 1, "domains": ["d"]})
+        )
+    assert caught.value.code == "term_finding.one_document"
+    assert tables.read == []

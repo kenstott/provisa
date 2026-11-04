@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2179: find terms in a document. A scan of a reference library document (picked there, or
+// REQ-2179, REQ-2202: find terms in a document or a registered table. A scan of a reference library document (picked there, or
 // given as a file or URL and added to the library as proposed), and the review queue of the
 // candidate terms it proposes, each a draft the steward edits, accepts, merges or rejects.
 
@@ -52,6 +52,14 @@ export interface ScanSummary {
   };
 }
 
+/** A registered table a scan reads (REQ-2202): each row one passage, cited by its id. */
+export interface TableScanSource {
+  domain: string;
+  table: string;
+  id_column: string;
+  text_column: string;
+}
+
 export interface Scan {
   id: number;
   document_id: number | null;
@@ -59,6 +67,8 @@ export interface Scan {
   document_source: string;
   /** The document was removed from the library; its citations stay. */
   document_removed: boolean;
+  /** A table's scan: the table it read; null for a document's. */
+  source_table: TableScanSource | null;
   domains: string[];
   status: ScanStatus;
   error: string | null;
@@ -84,6 +94,8 @@ export interface Citation {
   ordinal: number;
   section: string | null;
   page: number | null;
+  /** The id of the table row the passage is, in a table's scan. */
+  row?: string | null;
   quote: string;
   explicit: boolean;
   sense: string;
@@ -122,8 +134,9 @@ export interface Draft {
   matches: (TermRef & { via: string })[];
 }
 
-/** The document a scan reads: one in the library, or a new one by file or URL. */
-export type ScanSource = { document_id: number } | { url: string } | { file: File };
+/** What a scan reads: a library document, a new one by file or URL, or a registered table. */
+export type ScanSource =
+  { document_id: number } | { url: string } | { file: File } | { table: TableScanSource };
 
 async function ok<T>(res: Response, op: string): Promise<T> {
   if (!res.ok) {
@@ -150,7 +163,7 @@ export async function fetchScannableDocuments(): Promise<ScannableDocument[]> {
 export async function startScan(
   source: ScanSource,
   domains: string[],
-): Promise<{ scan: Scan; document: ScannableDocument }> {
+): Promise<{ scan: Scan; document?: ScannableDocument }> {
   const given =
     "file" in source
       ? { file_name: source.file.name, content_b64: await base64Of(source.file) }

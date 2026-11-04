@@ -9385,5 +9385,22 @@
   "zh-HK/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh-HK/findTerms.json::findTerms.fromDocument": "A document",
+  "zh-HK/findTerms.json::findTerms.fromTable": "A table",
+  "zh-HK/findTerms.json::findTerms.tableDomain": "Domain",
+  "zh-HK/findTerms.json::findTerms.tableDomainHelp": "The domain of the table to read.",
+  "zh-HK/findTerms.json::findTerms.table": "Table",
+  "zh-HK/findTerms.json::findTerms.tablePlaceholder": "Pick a table",
+  "zh-HK/findTerms.json::findTerms.tableHelp": "A registered table in the domain. Each of its rows is read as one passage.",
+  "zh-HK/findTerms.json::findTerms.idColumn": "ID column",
+  "zh-HK/findTerms.json::findTerms.idColumnHelp": "The column that identifies a row. Every proposal cites the rows it came from by this value.",
+  "zh-HK/findTerms.json::findTerms.textColumn": "Text column",
+  "zh-HK/findTerms.json::findTerms.textColumnHelp": "The column holding each row's text.",
+  "zh-HK/findTerms.json::findTerms.tableNote": "The rows are read as your role reads them: its row rules and masks apply. A table scan adds nothing to the reference library.",
+  "zh-HK/findTerms.json::findTerms.chooseTable": "Choose a table, its ID column and its text column.",
+  "zh-HK/findTerms.json::findTerms.row": "row {{row}}",
+  "zh-HK/findTerms.json::findTerms.tableScan": "Table",
+  "zh-HK/findTerms.json::findTerms.tableScanHint": "Read from the table {{domain}}.{{table}}: each row's {{text_column}}, cited by its {{id_column}}.",
+  "zh-HK/findTerms.json::findTerms.rescanTableHint": "Read the table's rows again and scan them. The new scan shows the terms the ontology does not hold yet and those that match its terms; earlier decisions stand."
 }

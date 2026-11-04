@@ -13,7 +13,8 @@
 // its definition -- the document's own, or a synthesized one marked so -- the synonyms it would
 // add, every source passage it came from, and explanations that disagree side by side. The
 // steward edits, accepts, merges or rejects each, or accepts the selected ones at once; accepted
-// terms are then handed to Generate relationships.
+// terms are then handed to Generate relationships. A table's passage is cited by the table and
+// the row's id (REQ-2202).
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -100,6 +101,7 @@ function where(c: Citation, t: (k: string, o?: Record<string, unknown>) => strin
   return [
     c.section ? t("findTerms.section", { section: c.section }) : null,
     c.page !== null ? t("findTerms.page", { page: c.page }) : null,
+    c.row != null ? t("findTerms.row", { row: c.row }) : null,
   ]
     .filter(Boolean)
     .join(", ");
