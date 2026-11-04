@@ -157,7 +157,39 @@ def require_write_op(gov: "GovernanceContext", table_id: int, name: str, kind: s
 
 
 def is_write(tree: exp.Expression) -> bool:
-    return isinstance(tree, WRITES)
+    """Whether ``tree`` holds a data-modifying statement anywhere: a CTE's included (REQ-039)."""
+    return any(isinstance(node, WRITES) for node in tree.walk())
+
+
+def the_write(tree: exp.Expression) -> exp.Expression | None:  # REQ-039
+    """The one write ``tree`` holds, or None for a read. A statement holds at most one write,
+    either at its root or as ``WITH w AS (<write> RETURNING ...) SELECT ... FROM w``; any other
+    placement, and a second write, is refused (V006): a write nested anywhere else escaped
+    admission, and several writes in one statement may reach sources no route runs atomically."""
+    writes = [node for node in tree.walk() if isinstance(node, WRITES)]
+    if not writes:
+        return None
+    if len(writes) > 1:
+        raise WriteNotAdmitted(
+            "[V006] a statement holds at most one INSERT, UPDATE, DELETE or MERGE"
+        )
+    write = writes[0]
+    if write is tree:
+        return write
+    cte = write.parent
+    with_ = cte.parent if isinstance(cte, exp.CTE) else None
+    if (
+        isinstance(cte, exp.CTE)
+        and cte.this is write
+        and isinstance(tree, exp.Query)
+        and with_ is tree.args.get("with_")
+        and write.args.get("returning") is not None
+    ):
+        return write
+    raise WriteNotAdmitted(
+        "[V006] a write stands at the statement's root or as WITH w AS (<write> RETURNING ...) "
+        "SELECT ... FROM w; it may not be nested anywhere else"
+    )
 
 
 def _kind(tree: exp.Expression) -> str:
@@ -165,8 +197,18 @@ def _kind(tree: exp.Expression) -> str:
 
 
 def target_table(tree: exp.Expression) -> exp.Table:
-    """The table a write targets."""
-    return _target(tree)[0]
+    """The table a write targets: the statement's one write, wherever it stands."""
+    return _target(_located(tree))[0]
+
+
+def _located(tree: exp.Expression) -> exp.Expression:
+    """The statement's one write (``the_write``); the statement itself when it is one."""
+    if isinstance(tree, WRITES):
+        return tree
+    write = the_write(tree)
+    if write is None:
+        raise WriteNotAdmitted("the statement holds no write")
+    return write
 
 
 def _target(tree: exp.Expression) -> tuple[exp.Table, list[str] | None]:
@@ -570,7 +612,7 @@ def written_columns(tree: exp.Expression, gov: "GovernanceContext", table_id: in
 def written_table_id(tree: exp.Expression, gov: "GovernanceContext") -> int:
     """The registered table a write targets — what the steps after a successful write act on
     (its cached reads dropped, its views marked stale, its change event and sinks)."""
-    return _resolve(_target(tree)[0], gov)
+    return _resolve(_target(_located(tree))[0], gov)
 
 
 def admit_write(
