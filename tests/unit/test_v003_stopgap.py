@@ -33,9 +33,9 @@ _ROLE = {"id": "teller", "capabilities": [], "domain_access": ["*"]}
 _CUSTOMER = [("id", "integer"), ("name", "varchar"), ("ssn", "varchar"), ("email", "varchar")]
 
 
-def _gov(**extra) -> GovernanceContext:
+def _gov(rls_rules: dict[int, str] | None = None, **extra) -> GovernanceContext:
     return GovernanceContext(
-        rls_rules={},
+        rls_rules=rls_rules or {},
         masking_rules={},
         visible_columns={1: frozenset({"id", "name", "email"})},
         table_map={"bank.customer": 1, "customer": 1},
@@ -58,28 +58,39 @@ def _codes(sql: str) -> list[str]:
 # -- C3: a parenthesised join group hides the governed table ---------------------------------------
 
 
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "SELECT ssn FROM (bank.customer CROSS JOIN (VALUES (1)) v)",
-        "SELECT j.ssn FROM (bank.customer c CROSS JOIN (VALUES (1)) v) AS j",
-        "SELECT * FROM (bank.customer c CROSS JOIN (VALUES (1)) v)",
-        "SELECT id FROM (bank.customer c CROSS JOIN (VALUES (1)) v) WHERE c.ssn LIKE '1%'",
-        "SELECT count(*) FROM (bank.customer JOIN (VALUES ('111-SECRET')) v(ssn) USING (ssn))",
-        "SELECT count(*) FROM (bank.customer NATURAL JOIN (VALUES ('111-SECRET')) v(ssn))",
-        "SELECT c.id FROM bank.customer c JOIN (bank.customer d CROSS JOIN (VALUES (1)) v) "
-        "ON c.id = d.id WHERE d.ssn LIKE '1%'",
-        # a parenthesised registered table with no join is hidden the same way
-        "SELECT ssn FROM (bank.customer) AS x",
-        "SELECT * FROM ((bank.customer c CROSS JOIN (VALUES (1)) v))",
-    ],
-)
+_PARENTHESISED_GROUPS = [
+    "SELECT ssn FROM (bank.customer CROSS JOIN (VALUES (1)) v)",
+    "SELECT j.ssn FROM (bank.customer c CROSS JOIN (VALUES (1)) v) AS j",
+    "SELECT * FROM (bank.customer c CROSS JOIN (VALUES (1)) v)",
+    "SELECT id FROM (bank.customer c CROSS JOIN (VALUES (1)) v) WHERE c.ssn LIKE '1%'",
+    "SELECT count(*) FROM (bank.customer JOIN (VALUES ('111-SECRET')) v(ssn) USING (ssn))",
+    "SELECT count(*) FROM (bank.customer NATURAL JOIN (VALUES ('111-SECRET')) v(ssn))",
+    "SELECT c.id FROM bank.customer c JOIN (bank.customer d CROSS JOIN (VALUES (1)) v) "
+    "ON c.id = d.id WHERE d.ssn LIKE '1%'",
+    # a parenthesised registered table with no join is hidden the same way
+    "SELECT ssn FROM (bank.customer) AS x",
+    "SELECT * FROM ((bank.customer c CROSS JOIN (VALUES (1)) v))",
+    # the row-rule bypass: no WHERE was added inside the group
+    "SELECT id FROM (bank.customer CROSS JOIN (VALUES (1)) v)",
+]
+
+
+@pytest.mark.parametrize("sql", _PARENTHESISED_GROUPS)
 def test_a_parenthesised_join_with_a_registered_relation_is_refused(sql):
     assert "V006" in _codes(sql)
 
 
+@pytest.mark.parametrize("sql", _PARENTHESISED_GROUPS)
+def test_stage_2_refuses_a_parenthesised_join_with_a_registered_relation(sql):
+    # a route that skips validate_sql: stage 2 refuses what it cannot govern
+    with pytest.raises(PermissionError, match="V006"):
+        apply_governance(sql, _gov(rls_rules={1: "id = 2"}))
+
+
 def test_an_unparenthesised_join_is_still_served():
-    assert _codes("SELECT c.id FROM bank.customer c CROSS JOIN (VALUES (1)) v") == []
+    sql = "SELECT c.id FROM bank.customer c CROSS JOIN (VALUES (1)) v"
+    assert _codes(sql) == []
+    assert "id = 2" in apply_governance(sql, _gov(rls_rules={1: "id = 2"})).replace('"', "")
 
 
 def test_a_parenthesised_join_of_unregistered_relations_is_still_served():

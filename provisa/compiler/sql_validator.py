@@ -51,7 +51,13 @@ from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.compiler import temp_tables
 from provisa.compiler.cte_utils import cte_names, names_a_cte_in_scope
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
-from provisa.compiler.stage2 import GovernanceContext, approved_join_key, registered_name
+from provisa.compiler.stage2 import (
+    GovernanceContext,
+    approved_join_key,
+    parenthesised_join_message,
+    parenthesised_join_tables,
+    registered_name,
+)
 from provisa.security.rights import (
     TRAVERSABLE_DOMAINS,
     listed_only_message,
@@ -269,23 +275,10 @@ def _check_unreadable_shapes(  # REQ-039
       relation for the CTE."""
     from provisa.compiler.write_admission import nested_writes
 
-    violations: list[ValidationViolation] = []
-    for group in tree.find_all(exp.Subquery):
-        if isinstance(group.this, exp.Query):
-            continue
-        for tbl in group.find_all(exp.Table):
-            if _within_query(tbl, group) or _resolve_table_id(tbl, gov_ctx) is None:
-                continue
-            if not tbl.db and names_a_cte_in_scope(tbl):
-                continue
-            violations.append(
-                ValidationViolation(
-                    "V006",
-                    f"Relation {tbl.sql(dialect='postgres')!r} is in a parenthesised join group, "
-                    "which is not supported: write the join without the parentheses",
-                )
-            )
-            break
+    violations = [
+        ValidationViolation("V006", parenthesised_join_message(tbl))
+        for tbl in parenthesised_join_tables(tree, gov_ctx)
+    ]
     for node in nested_writes(tree):  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
         violations.append(
             ValidationViolation(
@@ -309,17 +302,6 @@ def _check_unreadable_shapes(  # REQ-039
                 )
             )
     return violations
-
-
-def _within_query(node: exp.Expr, stop: exp.Expr) -> bool:
-    """Whether a query lies between ``node`` and its ancestor ``stop``: ``node`` is that query's
-    own, not ``stop``'s."""
-    cur = node.parent
-    while cur is not None and cur is not stop:
-        if isinstance(cur, exp.Query):
-            return True
-        cur = cur.parent
-    return False
 
 
 # --------------------------------------------------------------------------- #
