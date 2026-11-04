@@ -1755,6 +1755,63 @@
       "agentdataConnect": {
         "title": "Your own agent, the same server",
         "description": "This is the server the explorer's agent used. Paste this config into Claude Desktop, or point any MCP client at the URL, and your own agent gets the same governed tools, held to the same rules."
+      },
+      "banksecrecyScenario": {
+        "title": "A bank reads a US law",
+        "description": "A community bank must report cash over $10,000 under the Bank Secrecy Act. This demo reads the rule itself from its public address, finds the terms it uses, grounds them on the bank's data, and then asks by concept: which cash needs a currency transaction report, and who is structuring? It starts with the bank's core system, read live where it is."
+      },
+      "banksecrecyCash": {
+        "title": "Cash at the windows",
+        "description": "Every cash deposit and withdrawal at a teller's window: the account, the branch, the teller, the time, and the business day it posted to. Cash taken after the 17:00 cutoff posts to the next business day."
+      },
+      "banksecrecyOnBehalf": {
+        "title": "On whose behalf",
+        "description": "Each transaction names who stood at the window and whose cash it is. When an employee or a relative brings cash in, it counts toward the account holder's total, which is how the law counts it."
+      },
+      "banksecrecyFindTerms": {
+        "title": "Read the law from its public address",
+        "description": "Find terms reads a document from its address. Here it is 31 CFR 1010.311 on eCFR's official API. A scan asks the AI model about every passage and takes minutes, so the tour stopped this one. The same scan ran when the demo was built.",
+        "acting": "Typing the regulation's address and starting a scan"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "The terms in the rule",
+        "description": "The scan done ahead: each candidate term with the passage it comes from. A financial institution reports each transaction in currency of more than $10,000. Terms the glossary already holds are offered as merges."
+      },
+      "banksecrecyDefinitions": {
+        "title": "The definitions it uses",
+        "description": "The rule's words are defined in 31 CFR 1010.100: person, business day, financial institution, structuring. Each definition is its own passage, so each term is offered with the paragraph that defines it."
+      },
+      "banksecrecyLibrary": {
+        "title": "Kept in the reference library",
+        "description": "Each scanned document joined the reference library as proposed. Keep it, and the regulation stays with the model as a governed reference: Polly and the org's agents cite its passages when they answer."
+      },
+      "banksecrecyGrounded": {
+        "title": "The law's words, grounded",
+        "description": "Transaction in currency is the regulation's term. The bank's cash transaction is a kind of it, so the term reaches the cash_transactions table. Person reaches customers the same way, and a financial institution reaches the bank's branches."
+      },
+      "banksecrecyBusinessDay": {
+        "title": "Business day, on its column",
+        "description": "The regulation's business day is the day a bank posts a transaction to the customer's account. The bank's business_day column holds exactly that, so the term holds the column itself."
+      },
+      "banksecrecyTellerAsks": {
+        "title": "Which cash needs a report? As a teller",
+        "description": "Asked by concept: cash in, or cash out, of more than $10,000 by or on behalf of one person on one business day, the multiple transactions counted as one across accounts and branches. A teller sees the reports due, with account numbers and tax ids masked."
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "The same question, as compliance",
+        "description": "The compliance officer runs the same question and sees account numbers and tax ids in full, as the report needs them. Dana Whitmore's total includes cash brought in on her behalf by someone else."
+      },
+      "banksecrecyStructuring": {
+        "title": "Who is structuring?",
+        "description": "Deposits just under $10,000, three or more times, across branches and days. None of them needed a report on its own. Victor Hale went to three branches in a week, and Marcus Reed's two deposits on one day needed a report together. Only compliance sees this view."
+      },
+      "banksecrecyExample": {
+        "title": "The same answer in GraphQL",
+        "description": "The reports due, as an API call. Each surface reads the same governed view, with the same masks for the same role."
+      },
+      "banksecrecyRecap": {
+        "title": "What you saw",
+        "description": "The law was read from its public address, its terms were found and grounded on the bank's tables, and the bank asked by concept. The currency transaction report reaches the data through its multiple transactions, and each role saw what it may see."
       }
     },
     "status": {
@@ -1879,6 +1936,10 @@
       "agentdata": {
         "title": "Give an agent your data",
         "summary": "Can an AI agent be given a retailer's order data and held to what its user may see? The MCP explorer shows the agent as a support agent and as an analyst: different rows and columns, emails masked, and the governed SQL behind each answer."
+      },
+      "banksecrecy": {
+        "title": "Cash reports read from the Bank Secrecy Act",
+        "summary": "A bank reads the Bank Secrecy Act's cash reporting rule from its official public address, finds its terms and grounds them on its own tables, then asks by concept which cash needs a currency transaction report and who is structuring just under $10,000. The bank and its customers are made up; the regulation is real."
       }
     }
   }

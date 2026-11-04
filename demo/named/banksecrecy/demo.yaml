@@ -1,0 +1,29 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The banksecrecy demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
+# by scripts/gen-site-demos.mjs. published: true once card.png, a screenshot of the demo in
+# Provisa, is beside it.
+title: Cash reports read from the Bank Secrecy Act
+description: >-
+  The Bank Secrecy Act's cash reporting rule, read from its official public address, its terms
+  found and grounded on a bank's customers, accounts, branches and teller cash. Then asked by
+  concept: which cash needs a currency transaction report, and who is structuring just under
+  $10,000, with tellers seeing account numbers masked and compliance seeing them in full.
+screenshot: card.png
+published: false
+group: compliance
+extras:
+- vector
+# The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
+# by name. The first release carrying the demo and its scans for terms carried in its bundle.
+requires_provisa: 0.1.0a499
+# The demo's video: its tagline names what the demo shows Provisa being.
+video:
+  tagline: "The Law, Read and Asked"

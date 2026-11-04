@@ -1755,6 +1755,63 @@
       "agentdataConnect": {
         "title": "Ihr eigener Agent, derselbe Server",
         "description": "Dies ist der Server, den der Agent des Explorers verwendet hat. Fügen Sie diese Konfiguration in Claude Desktop ein oder richten Sie einen beliebigen MCP-Client auf die URL, und Ihr eigener Agent erhält dieselben geregelten Tools, an dieselben Regeln gebunden."
+      },
+      "banksecrecyScenario": {
+        "title": "Eine Bank liest ein US-Gesetz",
+        "description": "Eine Regionalbank muss nach dem Bank Secrecy Act Bargeld über 10.000 $ melden. Diese Demo liest die Vorschrift selbst von ihrer öffentlichen Adresse, findet ihre Begriffe, verankert sie in den Daten der Bank und fragt dann nach Konzept: Welches Bargeld braucht einen Currency Transaction Report, und wer stückelt? Sie beginnt mit dem Kernsystem der Bank, live dort gelesen, wo es liegt."
+      },
+      "banksecrecyCash": {
+        "title": "Bargeld an den Schaltern",
+        "description": "Jede Bareinzahlung und -auszahlung am Schalter: das Konto, die Filiale, der Kassierer, die Uhrzeit und der Geschäftstag, auf den sie gebucht wurde. Bargeld nach 17:00 Uhr wird auf den nächsten Geschäftstag gebucht."
+      },
+      "banksecrecyOnBehalf": {
+        "title": "In wessen Auftrag",
+        "description": "Jede Transaktion nennt, wer am Schalter stand und wessen Bargeld es ist. Bringt ein Mitarbeiter oder Angehöriger Bargeld, zählt es zur Summe des Kontoinhabers, so wie das Gesetz es zählt."
+      },
+      "banksecrecyFindTerms": {
+        "title": "Das Gesetz von seiner öffentlichen Adresse lesen",
+        "description": "Begriffe finden liest ein Dokument von seiner Adresse, hier 31 CFR 1010.311 über die offizielle API von eCFR. Ein Scan fragt das KI-Modell zu jeder Passage und dauert Minuten, daher hat die Tour diesen gestoppt. Derselbe Scan lief beim Erstellen der Demo.",
+        "acting": "Die Adresse der Vorschrift eingeben und einen Scan starten"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "Die Begriffe der Vorschrift",
+        "description": "Der vorab gelaufene Scan: jeder Kandidatenbegriff mit der Passage, aus der er stammt. Ein Finanzinstitut meldet jede Bargeldtransaktion über 10.000 $. Begriffe, die das Glossar schon hat, werden zum Zusammenführen angeboten."
+      },
+      "banksecrecyDefinitions": {
+        "title": "Die verwendeten Definitionen",
+        "description": "Die Begriffe der Vorschrift sind in 31 CFR 1010.100 definiert: Person, Geschäftstag, Finanzinstitut, Structuring. Jede Definition ist eine eigene Passage, daher kommt jeder Begriff mit dem Absatz, der ihn definiert."
+      },
+      "banksecrecyLibrary": {
+        "title": "In der Referenzbibliothek behalten",
+        "description": "Jedes gescannte Dokument kam als vorgeschlagen in die Referenzbibliothek. Behalten Sie es, bleibt die Vorschrift als verwaltete Referenz beim Modell: Polly und die Agenten der Organisation zitieren ihre Passagen in ihren Antworten."
+      },
+      "banksecrecyGrounded": {
+        "title": "Die Begriffe des Gesetzes, verankert",
+        "description": "Transaction in currency ist der Begriff der Vorschrift. Die Bargeldtransaktion der Bank ist eine Art davon, also erreicht der Begriff die Tabelle cash_transactions. Person erreicht so die Kunden, und ein Finanzinstitut erreicht die Filialen der Bank."
+      },
+      "banksecrecyBusinessDay": {
+        "title": "Geschäftstag, auf seiner Spalte",
+        "description": "Der Geschäftstag der Vorschrift ist der Tag, an dem eine Bank eine Transaktion auf das Kundenkonto bucht. Die Spalte business_day der Bank enthält genau das, also hält der Begriff die Spalte selbst."
+      },
+      "banksecrecyTellerAsks": {
+        "title": "Welches Bargeld braucht eine Meldung? Als Kassierer",
+        "description": "Gefragt nach Konzept: Bargeld ein oder aus über 10.000 $ durch oder für eine Person an einem Geschäftstag, mehrere Transaktionen als eine gezählt über Konten und Filialen. Ein Kassierer sieht die fälligen Meldungen mit maskierten Kontonummern und Steuernummern."
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "Dieselbe Frage, als Compliance",
+        "description": "Der Compliance-Beauftragte stellt dieselbe Frage und sieht Kontonummern und Steuernummern vollständig, wie die Meldung sie braucht. Dana Whitmores Summe enthält Bargeld, das jemand anderes für sie eingezahlt hat."
+      },
+      "banksecrecyStructuring": {
+        "title": "Wer stückelt?",
+        "description": "Einzahlungen knapp unter 10.000 $, dreimal oder öfter, über Filialen und Tage. Keine davon brauchte allein eine Meldung. Victor Hale ging in einer Woche zu drei Filialen, und Marcus Reeds zwei Einzahlungen an einem Tag brauchten zusammen eine Meldung. Nur Compliance sieht diese Ansicht."
+      },
+      "banksecrecyExample": {
+        "title": "Dieselbe Antwort in GraphQL",
+        "description": "Die fälligen Meldungen als API-Aufruf. Jede Schnittstelle liest dieselbe verwaltete Ansicht mit denselben Masken für dieselbe Rolle."
+      },
+      "banksecrecyRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Das Gesetz wurde von seiner öffentlichen Adresse gelesen, seine Begriffe gefunden und in den Tabellen der Bank verankert, und die Bank fragte nach Konzept. Der Currency Transaction Report erreicht die Daten über seine mehreren Transaktionen, und jede Rolle sah, was sie sehen darf."
       }
     },
     "status": {
@@ -1879,6 +1936,10 @@
       "agentdata": {
         "title": "Geben Sie einem Agenten Ihre Daten",
         "summary": "Kann ein KI-Agent die Bestelldaten eines Händlers bekommen und auf das beschränkt werden, was sein Benutzer sehen darf? Der MCP-Explorer zeigt den Agenten als Support-Mitarbeiter und als Analyst: andere Zeilen und Spalten, maskierte E-Mails und das geregelte SQL hinter jeder Antwort."
+      },
+      "banksecrecy": {
+        "title": "Bargeldmeldungen aus dem Bank Secrecy Act",
+        "summary": "Eine Bank liest die Bargeld-Meldevorschrift des Bank Secrecy Act von ihrer offiziellen öffentlichen Adresse, findet ihre Begriffe und verankert sie in den eigenen Tabellen. Dann fragt sie nach Konzept, welches Bargeld einen Currency Transaction Report braucht und wer knapp unter 10.000 $ stückelt. Die Bank und ihre Kunden sind erfunden, die Vorschrift ist echt."
       }
     }
   }

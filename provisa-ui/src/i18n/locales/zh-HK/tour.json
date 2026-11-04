@@ -1755,6 +1755,63 @@
       "agentdataConnect": {
         "title": "你自己的智能體,同一部伺服器",
         "description": "這就是瀏覽器中的智能體使用的伺服器。把這段設定貼到 Claude Desktop,或將任何 MCP 客戶端指向該 URL,你自己的智能體就能獲得同樣受管治的工具,遵守同樣的規則。"
+      },
+      "banksecrecyScenario": {
+        "title": "一家銀行閱讀美國法律",
+        "description": "一家社區銀行必須依據 Bank Secrecy Act 報告超過 10,000 美元的現金。本示範從公開地址讀取規則本身，找出其中使用的術語，把它們落實到銀行的數據上，然後按概念查詢：哪些現金需要 Currency Transaction Report，誰在拆分交易？它從銀行的核心系統開始，在原處即時讀取。"
+      },
+      "banksecrecyCash": {
+        "title": "櫃檯上的現金",
+        "description": "櫃檯上的每一筆現金存入和提取：帳戶、分行、櫃員、時間以及入帳的營業日。17:00 之後收取的現金記入下一個營業日。"
+      },
+      "banksecrecyOnBehalf": {
+        "title": "代表誰",
+        "description": "每筆交易都記錄了誰站在櫃檯前，以及現金屬於誰。僱員或親屬代為存入的現金，按法律的計算方式計入帳戶持有人的合計。"
+      },
+      "banksecrecyFindTerms": {
+        "title": "從公開地址讀取法律",
+        "description": "尋找術語從地址讀取文件，這裏是 eCFR 官方 API 上的 31 CFR 1010.311。一次掃描會就每個段落詢問 AI 模型，需要幾分鐘，因此導覽停止了這次掃描。同樣的掃描在建立示範時已經執行過。",
+        "acting": "正在輸入法規地址並開始掃描"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "規則中的術語",
+        "description": "預先完成的掃描：每個候選術語及其出處段落。金融機構須報告每筆超過 10,000 美元的現金交易。術語表中已有的術語會作為合併提出。"
+      },
+      "banksecrecyDefinitions": {
+        "title": "規則使用的定義",
+        "description": "規則中的詞語在 31 CFR 1010.100 中定義：人、營業日、金融機構、拆分交易。每條定義都是獨立的段落，因此每個術語都附有定義它的那一段。"
+      },
+      "banksecrecyLibrary": {
+        "title": "保存在參考庫中",
+        "description": "每份掃描過的文件都以「建議」狀態加入了參考庫。保留它，法規就作為受管治的參考文件留在模型身邊：Polly 和組織的代理在回答時會引用其中的段落。"
+      },
+      "banksecrecyGrounded": {
+        "title": "法律的詞語，落實到數據",
+        "description": "Transaction in currency 是法規的術語。銀行的現金交易是它的一種，因此該術語可以到達 cash_transactions 表。同樣，「人」到達客戶，「金融機構」到達銀行的分行。"
+      },
+      "banksecrecyBusinessDay": {
+        "title": "營業日，落在它的欄上",
+        "description": "法規中的營業日是銀行將交易記入客戶帳戶的那一天。銀行的 business_day 欄正好保存這一點，因此該術語直接持有這一欄。"
+      },
+      "banksecrecyTellerAsks": {
+        "title": "哪些現金需要報告？以櫃員身分",
+        "description": "按概念查詢：一個人或代表一個人在一個營業日內存入或提取超過 10,000 美元的現金，多筆交易跨帳戶和分行合計為一筆。櫃員看到需要提交的報告，帳號和納稅人識別號已被遮蔽。"
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "同樣的問題，以合規身分",
+        "description": "合規主任提出同樣的問題，按報告的需要看到完整的帳號和納稅人識別號。Dana Whitmore 的合計包括他人代她存入的現金。"
+      },
+      "banksecrecyStructuring": {
+        "title": "誰在拆分交易？",
+        "description": "在不同分行和日期，三次或更多次略低於 10,000 美元的存款。其中任何一筆單獨都無需報告。Victor Hale 一週內去了三間分行，而 Marcus Reed 同一天的兩筆存款合起來需要報告。只有合規人員能看到這個視圖。"
+      },
+      "banksecrecyExample": {
+        "title": "同樣的答案，用 GraphQL",
+        "description": "需要提交的報告，以 API 呼叫的形式。每個介面讀取同一個受管治的視圖，同一角色使用相同的遮蔽。"
+      },
+      "banksecrecyRecap": {
+        "title": "您看到了甚麼",
+        "description": "法律從公開地址讀取，其術語被找出並落實到銀行的表上，銀行按概念進行了查詢。Currency Transaction Report 通過其多筆交易到達數據，每個角色都看到了它可以看到的內容。"
       }
     },
     "status": {
@@ -1879,6 +1936,10 @@
       "agentdata": {
         "title": "把數據交給智能體",
         "summary": "能否把零售商的訂單數據交給 AI 智能體,並將其限制在用戶有權查看的範圍內?MCP 瀏覽器分別以客服和分析師身份展示智能體:不同的行和欄、遮罩的電郵,以及每個答案背後受管治的 SQL。"
+      },
+      "banksecrecy": {
+        "title": "從 Bank Secrecy Act 讀出的現金報告",
+        "summary": "一家銀行從官方公開地址讀取 Bank Secrecy Act 的現金報告規則，找出其中的術語並將其落實到自己的表上。然後按概念查詢：哪些現金需要 Currency Transaction Report，誰在 10,000 美元以下拆分交易。銀行和客戶是虛構的，法規是真實的。"
       }
     }
   }

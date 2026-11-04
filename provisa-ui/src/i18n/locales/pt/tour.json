@@ -1755,6 +1755,63 @@
       "agentdataConnect": {
         "title": "Seu próprio agente, o mesmo servidor",
         "description": "Este é o servidor que o agente do explorador usou. Cole esta configuração no Claude Desktop, ou aponte qualquer cliente MCP para a URL, e seu próprio agente recebe as mesmas ferramentas governadas, sujeitas às mesmas regras."
+      },
+      "banksecrecyScenario": {
+        "title": "Um banco lê uma lei dos EUA",
+        "description": "Um banco comunitário tem de relatar dinheiro em espécie acima de 10.000 $ pela Bank Secrecy Act. Esta demo lê a própria regra a partir do seu endereço público, encontra os termos que usa, ancora-os nos dados do banco e depois pergunta por conceito: que dinheiro exige um Currency Transaction Report, e quem está a fracionar? Começa pelo sistema central do banco, lido ao vivo onde está."
+      },
+      "banksecrecyCash": {
+        "title": "Dinheiro nos balcões",
+        "description": "Cada depósito e levantamento em espécie no balcão: a conta, a agência, o caixa, a hora e o dia útil em que foi lançado. O dinheiro recebido após as 17:00 é lançado no dia útil seguinte."
+      },
+      "banksecrecyOnBehalf": {
+        "title": "Em nome de quem",
+        "description": "Cada transação indica quem estava no balcão e de quem é o dinheiro. Quando um funcionário ou familiar traz dinheiro, conta para o total do titular da conta, como a lei o conta."
+      },
+      "banksecrecyFindTerms": {
+        "title": "Ler a lei a partir do seu endereço público",
+        "description": "Encontrar termos lê um documento a partir do seu endereço, aqui 31 CFR 1010.311 na API oficial do eCFR. Uma análise consulta o modelo de IA sobre cada passagem e demora minutos, por isso a visita parou esta. A mesma análise foi feita quando a demo foi construída.",
+        "acting": "Escrevendo o endereço da regulamentação e iniciando uma análise"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "Os termos da regra",
+        "description": "A análise feita antecipadamente: cada termo candidato com a passagem de onde vem. Uma instituição financeira relata cada transação em espécie acima de 10.000 $. Os termos que o glossário já tem são oferecidos para fusão."
+      },
+      "banksecrecyDefinitions": {
+        "title": "As definições que usa",
+        "description": "As palavras da regra estão definidas em 31 CFR 1010.100: pessoa, dia útil, instituição financeira, fracionamento. Cada definição é uma passagem própria, por isso cada termo é oferecido com o parágrafo que o define."
+      },
+      "banksecrecyLibrary": {
+        "title": "Guardado na biblioteca de referência",
+        "description": "Cada documento analisado entrou na biblioteca de referência como proposto. Mantenha-o e a regulamentação fica com o modelo como referência governada: a Polly e os agentes da organização citam as suas passagens ao responder."
+      },
+      "banksecrecyGrounded": {
+        "title": "As palavras da lei, ancoradas",
+        "description": "Transaction in currency é o termo da regulamentação. A transação em espécie do banco é um tipo dela, por isso o termo chega à tabela cash_transactions. Pessoa chega assim aos clientes, e instituição financeira chega às agências do banco."
+      },
+      "banksecrecyBusinessDay": {
+        "title": "Dia útil, na sua coluna",
+        "description": "O dia útil da regulamentação é o dia em que um banco lança uma transação na conta do cliente. A coluna business_day do banco guarda exatamente isso, por isso o termo detém a própria coluna."
+      },
+      "banksecrecyTellerAsks": {
+        "title": "Que dinheiro exige um relatório? Como caixa",
+        "description": "Perguntado por conceito: entrada ou saída de dinheiro acima de 10.000 $ por ou em nome de uma pessoa num dia útil, as transações múltiplas contadas como uma entre contas e agências. Um caixa vê os relatórios devidos, com números de conta e identificadores fiscais mascarados."
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "A mesma pergunta, como compliance",
+        "description": "O responsável de compliance faz a mesma pergunta e vê números de conta e identificadores fiscais completos, como o relatório os exige. O total de Dana Whitmore inclui dinheiro trazido em seu nome por outra pessoa."
+      },
+      "banksecrecyStructuring": {
+        "title": "Quem está a fracionar?",
+        "description": "Depósitos logo abaixo de 10.000 $, três vezes ou mais, entre agências e dias. Nenhum exigia relatório sozinho. Victor Hale foi a três agências numa semana, e os dois depósitos de Marcus Reed num dia exigiam juntos um relatório. Só o compliance vê esta vista."
+      },
+      "banksecrecyExample": {
+        "title": "A mesma resposta em GraphQL",
+        "description": "Os relatórios devidos, como chamada de API. Cada interface lê a mesma vista governada, com as mesmas máscaras para o mesmo papel."
+      },
+      "banksecrecyRecap": {
+        "title": "O que viu",
+        "description": "A lei foi lida do seu endereço público, os seus termos encontrados e ancorados nas tabelas do banco, e o banco perguntou por conceito. O Currency Transaction Report chega aos dados pelas suas transações múltiplas, e cada papel viu o que pode ver."
       }
     },
     "status": {
@@ -1879,6 +1936,10 @@
       "agentdata": {
         "title": "Dê seus dados a um agente",
         "summary": "Dá para entregar a um agente de IA os dados de pedidos de um varejista e limitá-lo ao que seu usuário pode ver? O explorador MCP mostra o agente como atendente de suporte e como analista: outras linhas e colunas, e-mails mascarados e o SQL governado por trás de cada resposta."
+      },
+      "banksecrecy": {
+        "title": "Relatórios de dinheiro lidos da Bank Secrecy Act",
+        "summary": "Um banco lê a regra de relato de dinheiro em espécie da Bank Secrecy Act a partir do seu endereço público oficial, encontra os seus termos e ancora-os nas próprias tabelas. Depois pergunta por conceito que dinheiro exige um Currency Transaction Report e quem fraciona logo abaixo de 10.000 $. O banco e os clientes são fictícios; a regulamentação é real."
       }
     }
   }
