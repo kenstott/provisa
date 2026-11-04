@@ -214,14 +214,17 @@
         <p>
           Because the library sits beside the governed data, a question about a rule can be
           answered with the rule and the rows. In the bank secrecy demo, a community bank adds
-          the cash reporting rule (31 CFR 1010.311 and 1010.313) to its library from its public
-          address. Find terms turns the rule's words into glossary terms grounded on the bank's
-          cash tables. Ask Polly which cash deposits need a currency transaction report. The
-          aggregation rule in 1010.313, which counts several deposits by one person on one day
-          as one, reads nothing like that question. The glossary links the report to "multiple
-          transactions", so the walk reaches the rule and Polly cites it. The rows come from a
-          governed view that applies the rule across every account and branch. A teller sees
-          the account numbers masked. Compliance sees them in full.
+          the cash reporting rules (31 CFR 1010.311, 1010.313 and 1010.314) and the suspicious
+          activity rule (31 CFR 1020.320) to its library from their public addresses. Find terms
+          turns the rules' words into glossary terms grounded on the bank's cash tables. Ask
+          Polly what the bank must do about a customer who keeps depositing cash just under
+          $10,000. Each deposit is too small for a currency transaction report, and a search of
+          the rules' text for the question turns up the $10,000 rules and nothing about what to
+          do next. The glossary links deposits just under the threshold to structuring, and
+          structuring to the suspicious activity report, so the walk reaches the rule that the
+          bank must file one, and Polly cites it. The rows come from a governed view that finds
+          every customer depositing just under $10,000 across accounts, branches and days, and
+          only compliance reads it.
         </p>
         <p>
           The questions most organizations actually ask, answered from the documents they
