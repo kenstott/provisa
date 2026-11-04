@@ -17,7 +17,9 @@ under one partial HNSW index per dimension in use, ``reference_passages_vector_<
 re-embed with another model brings its own. Writing passages of a dimension creates its index; a
 re-embed or a removal that leaves none of a dimension drops it. The passages nearest a question are
 found by one query ordered by cosine distance over that index (:func:`nearest_passages`); there is
-no unindexed search.
+no unindexed search. pgvector indexes a ``vector`` to 2000 dimensions; from 2001 to 4000 the index is
+over ``vector::halfvec(n)`` (half precision) while the column stays full precision, and above 4000
+the library refuses the embeddings by name.
 """
 
 # Requirements: REQ-2185
@@ -348,11 +350,29 @@ def _dimensions(vectors: Sequence[Sequence[float]]) -> int:
     return dimensions
 
 
+#: The most dimensions pgvector's HNSW index takes for a ``halfvec``.
+_MAX_HALF_DIMENSIONS = 4000
+
+
+def _half(dimensions: int) -> bool:
+    """Whether ``dimensions`` are indexed as ``halfvec``: more than a ``vector`` index takes."""
+    return dimensions > pgvector.MAX_INDEXED_DIMENSIONS
+
+
+def _type(dimensions: int) -> str:
+    """The type the index of ``dimensions`` is over, and a search casts to."""
+    return f"{_V}.{'halfvec' if _half(dimensions) else 'vector'}({int(dimensions)})"
+
+
+def _ops(dimensions: int) -> str:
+    return f"{_V}.{'halfvec' if _half(dimensions) else 'vector'}_cosine_ops"
+
+
 def _indexable(dimensions: int) -> None:
-    if not 0 < dimensions <= pgvector.MAX_INDEXED_DIMENSIONS:
+    if not 0 < dimensions <= _MAX_HALF_DIMENSIONS:
         raise ValueError(
-            f"the embeddings have {dimensions} dimensions; pgvector indexes vectors of at most "
-            f"{pgvector.MAX_INDEXED_DIMENSIONS}, so the library cannot hold them"
+            f"the embeddings have {dimensions} dimensions; the library indexes embeddings of at "
+            f"most {_MAX_HALF_DIMENSIONS}, so it cannot hold them"
         )
 
 
@@ -394,7 +414,7 @@ async def _index(conn: Connection, dimensions: int, schema: str | None) -> None:
         await conn.execute_core(
             text(
                 f"CREATE INDEX IF NOT EXISTS {_INDEX_PREFIX}{int(dimensions)} ON {_table(schema)} "
-                f"USING hnsw ((vector::{_V}.vector({int(dimensions)})) {_V}.vector_cosine_ops) "
+                f"USING hnsw ((vector::{_type(dimensions)}) {_ops(dimensions)}) "
                 f"WHERE {_V}.vector_dims(vector) = {int(dimensions)}"
             )
         )
@@ -435,12 +455,15 @@ def nearest_sql(
 ) -> tuple[str, dict[str, Any]]:
     """The search for the ``k`` passages of ``document_ids`` nearest ``query``, and its
     parameters. The dimension is written into the SQL, not bound: the planner matches the
-    partial index's predicate and expression only to a constant."""
+    partial index's predicate and expression only to a constant. From 2001 dimensions the index is
+    over ``halfvec``, so the column and the question are cast to it and the order, and the score,
+    come from the half-precision distance (the order is that of the half-precision index)."""
     n = int(len(query))
+    kind = _type(n)
     sql = (
         "SELECT document_id, ordinal, section, page, text, 1 - distance AS score FROM ("
         "SELECT document_id, ordinal, section, page, text, "
-        f"(vector::{_V}.vector({n})) OPERATOR({_V}.<=>) CAST(:query AS {_V}.vector({n})) "
+        f"(vector::{kind}) OPERATOR({_V}.<=>) CAST(:query AS {kind}) "
         "AS distance FROM reference_passages "
         f"WHERE {_V}.vector_dims(vector) = {n} AND document_id = ANY(:ids) "
         "ORDER BY distance LIMIT :k"

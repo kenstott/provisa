@@ -807,6 +807,8 @@ async def _vector_indexes(conn) -> set[str]:
 #: Stored with pgvector's single-precision floats, a similarity agrees with the double-precision
 #: cosine to about float32's epsilon (1.2e-7) per operation, not to 1e-14.
 FLOAT4 = 1e-6
+#: Ordered by the half-precision index, a similarity agrees to half precision's 2**-11 per value.
+HALF = 5e-3
 
 
 async def test_the_passages_vector_is_a_pgvector_column(db):
@@ -904,12 +906,12 @@ async def test_removing_the_last_document_of_a_dimension_drops_its_index(db):
         assert await _vector_indexes(conn) == set()
 
 
-async def test_embeddings_pgvector_cannot_index_are_refused_by_name(db):
+async def test_embeddings_beyond_the_half_precision_limit_are_refused_by_name(db):
     async def wide(texts: list[str]) -> list[list[float]]:
-        return [[1.0] * 2001 for _ in texts]
+        return [[1.0] * 4097 for _ in texts]
 
     async with db.acquire() as conn:
-        with pytest.raises(ValueError, match=r"2001 dimensions.*at most 2000"):
+        with pytest.raises(ValueError, match=r"4097 dimensions.*at most 4000"):
             await library.add(
                 conn,
                 _file("glossary.txt", b"A contract binds a client."),
@@ -920,6 +922,74 @@ async def test_embeddings_pgvector_cannot_index_are_refused_by_name(db):
                 added_by="alice",
             )
         assert await store.documents(conn) == []
+
+
+WIDE = 3072
+
+
+def _wide_vector(text: str) -> list[float]:
+    """The vocabulary vector in the first dimensions of a 3072-dimension space, the rest zero:
+    cosine between two of them is that of the narrow vectors."""
+    return _vector(text) + [0.0] * (WIDE - len(VOCABULARY))
+
+
+async def _embed_wide(texts: list[str]) -> list[list[float]]:
+    return [_wide_vector(t) for t in texts]
+
+
+async def test_a_3072_dimension_model_is_held_under_a_half_precision_index(db):
+    wide = library.Embedder(model="wide-embed", embed=_embed_wide)
+    async with db.acquire() as conn:
+        ids = [
+            await library.add(
+                conn,
+                _file(name, data),
+                source_kind=store.FILE,
+                domains=["*"],
+                status=store.KEPT,
+                embedder=wide,
+                added_by="alice",
+            )
+            for name, data in (("policy.html", POLICY), ("spec.md", SPEC))
+        ]
+        assert await _vector_indexes(conn) == {f"reference_passages_vector_{WIDE}"}
+        held = [
+            (document_id, ordinal, text_)
+            for document_id in ids
+            for ordinal, _, _, text_ in await store.passages(conn, document_id)
+        ]
+        for question in ("What is a client?", "When does a payment settle?"):
+            query = _wide_vector(question)
+            expected = sorted((-_old_cosine(query, _wide_vector(t)), d, o, t) for d, o, t in held)[
+                :3
+            ]
+            hits = await store.nearest_passages(conn, query, ids, 3)
+            assert [(h.document_id, h.ordinal, h.text) for h in hits] == [
+                (d, o, t) for _, d, o, t in expected
+            ]
+            for hit, (negative, *_rest) in zip(hits, expected, strict=True):
+                assert hit.score == pytest.approx(-negative, rel=HALF)
+
+        sql, params = store.nearest_sql(_wide_vector("client"), ids, 3)
+        async with conn.transaction():
+            await conn.execute_core(sa.text("SET LOCAL enable_seqscan = off"))
+            await conn.execute_core(sa.text("SET LOCAL enable_sort = off"))
+            explained = await conn.execute_core(sa.text(f"EXPLAIN {sql}").bindparams(**params))
+            plan = "\n".join(r[0] for r in explained.fetchall())
+        assert f"reference_passages_vector_{WIDE}" in plan
+        indexed = await conn.execute_core(
+            sa.text(
+                "SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() "
+                f"AND indexname = 'reference_passages_vector_{WIDE}'"
+            )
+        )
+        definition = indexed.scalar()
+        assert "halfvec_cosine_ops" in definition
+        assert f"halfvec({WIDE})" in definition
+
+        await library.remove(conn, ids[0])
+        await library.remove(conn, ids[1])
+        assert await _vector_indexes(conn) == set()
 
 
 def test_the_library_refuses_to_start_without_pgvector(embedded_postgres):
