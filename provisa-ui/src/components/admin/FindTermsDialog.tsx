@@ -525,7 +525,8 @@ export function FindTermsDialog({
 }) {
   const { t } = useTranslation();
   const [documents, setDocuments] = useState<ScannableDocument[] | null>(null);
-  const [scans, setScans] = useState<Scan[]>([]);
+  // Null until the first read returns, so the list never claims "nothing scanned" before it knows.
+  const [scans, setScans] = useState<Scan[] | null>(null);
   const [openScan, setOpenScan] = useState<number | null>(null);
   const [problem, setProblem] = useState("");
 
@@ -546,7 +547,7 @@ export function FindTermsDialog({
   }, [load]);
 
   // While the list shows a running scan it is read again, until each has ended.
-  const running = openScan === null && scans.some((s) => s.status === "running");
+  const running = openScan === null && !!scans?.some((s) => s.status === "running");
   useEffect(() => {
     if (!running) return;
     const timer = window.setTimeout(() => {
@@ -606,7 +607,9 @@ export function FindTermsDialog({
           )}
           <Stack gap="xs">
             <Title order={5}>{t("findTerms.scansTitle")}</Title>
-            <ScanList scans={scans} onOpen={setOpenScan} onRescan={(s) => void rescan(s)} />
+            {scans !== null && (
+              <ScanList scans={scans} onOpen={setOpenScan} onRescan={(s) => void rescan(s)} />
+            )}
           </Stack>
         </Stack>
       )}
