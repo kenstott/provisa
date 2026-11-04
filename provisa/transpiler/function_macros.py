@@ -43,6 +43,7 @@ from dataclasses import dataclass, field, replace
 
 import sqlglot
 import sqlglot.expressions as exp
+from sqlglot.dialects.dialect import Dialects
 
 from provisa.core.pg_error import END, MARK, PostgresError, raising
 from provisa.core.pg_range import (
@@ -78,6 +79,8 @@ _DUCKDB = frozenset({"duckdb"})
 _TRINO = frozenset({"trino", "presto", "athena"})
 _SPARK = frozenset({"spark", "databricks"})
 _EVERY = frozenset({"*"})
+#: Every dialect sqlglot writes but DuckDB: ``_EVERY`` in ``own`` would answer before DuckDB's form.
+_EVERY_BUT_DUCKDB = frozenset(d.value for d in Dialects if d.value) - _DUCKDB - NATIVE
 #: LIKE ignores case by the collation here, and a replay of a dialect that differs refuses the form.
 _NO_CASE_SENSITIVE_LIKE = frozenset({"mysql", "tsql", "oracle", "sqlite"})
 #: No regular expression match, or none sqlglot can write.
@@ -1659,7 +1662,8 @@ _ROWS: tuple[Macro, ...] = (
         Macro(
             "regexp_instr",
             params,
-            {_DUCKDB: f"provisa_regexp_instr(value, pattern, {rest})", _EVERY: MAPPED},
+            {_DUCKDB: f"provisa_regexp_instr(value, pattern, {rest})"},
+            {_EVERY_BUT_DUCKDB: MAPPED},
             differs_on=_TRINO | _CLICKHOUSE,
         )
         for params, rest in (
