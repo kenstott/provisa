@@ -153,6 +153,14 @@ EXEMPT[("graphql:query", "namingConventions")] = (
 EXEMPT[("graphql:query", "dqContractParse")] = (
     "parses the contract text it is given; touches no source, credential or model row"
 )
+# The saved ERD arrangement (REQ-2189): positions only, no model content; the ERD is shown to every
+# role in Schema Explorer, and a layout's places are trimmed to what the caller reads.
+_ERD_LAYOUT_READ = (
+    "saved ERD arrangement (positions only, no model content); the ERD is shown to every role in "
+    "Schema Explorer"
+)
+EXEMPT[("GET", "/admin/erd-layouts")] = _ERD_LAYOUT_READ
+EXEMPT[("GET", "/admin/erd-layouts/{name}")] = _ERD_LAYOUT_READ
 
 
 def _callees(fn) -> set[str]:
