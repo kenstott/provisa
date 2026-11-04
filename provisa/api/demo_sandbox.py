@@ -712,6 +712,39 @@ async def last_active() -> datetime | None:
     return max((t for t in (latest, last_used) if t is not None), default=None)
 
 
+async def any_open() -> bool:
+    """Whether any demo sandbox is open, on whichever tier: every tier runs on the one sandbox VM,
+    and a sandbox is open until it is reaped (``sandbox.idle_ttl`` with no request, or its tab
+    closed), however long since its visitor's last request."""
+    from provisa.api.admin.orgs_router import _admin_pool
+
+    async with _admin_pool().acquire() as conn:
+        latest = (
+            await conn.execute_core(select(func.max(demo_sandboxes.c.last_active_at)))
+        ).scalar_one()
+    return latest is not None
+
+
+async def vm_last_active(since: datetime) -> datetime:
+    """When any tier on the sandbox VM was last in use: this tier's own last use (``last_active``,
+    or ``since``, when this process started) is recorded for the others, and the latest every
+    tier has recorded returned. Each tier's use is in its own process; one that counted only its
+    own stopped the VM under a visitor of another (2026-11-03 20:40, 2026-11-04 02:27)."""
+    from provisa.api.admin.orgs_router import _admin_pool
+    from provisa.api.demo_region_seed import here
+    from provisa.core.schema_admin import sandbox_tier_use
+
+    mine = max(t for t in (await last_active(), since) if t is not None)
+    async with _admin_pool().acquire() as conn:
+        await conn.upsert(
+            sandbox_tier_use, {"tier": here(), "last_used_at": mine}, index_elements=["tier"]
+        )
+        latest = (
+            await conn.execute_core(select(func.max(sandbox_tier_use.c.last_used_at)))
+        ).scalar_one()
+    return max(t for t in (mine, latest) if t is not None)
+
+
 async def reap(org_id: str) -> None:
     """Delete the sandbox ``org_id`` whole: its org (schemas, rows, its visitor's token), its
     engine, and its folder with its DuckDB file and uploads."""
