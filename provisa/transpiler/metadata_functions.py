@@ -346,7 +346,6 @@ COMMENTS = "_provisa_comments"
 #: them, which is the keys.
 LISTED_RELATIONS = "_provisa_listed_relations"
 LISTED_INDEXES = "_provisa_listed_indexes"
-PUBLISHABLE = "_provisa_publishable_relations"
 
 
 def visible_on_the_path(catalog: str, alias: str, name: str, namespace: str) -> str:
@@ -413,10 +412,6 @@ _READ_ONCE: dict[str, str] = {
     LISTED_INDEXES: (
         f"SELECT _l.oid, {_RELATION_VISIBLE} AS visible FROM meta.catalog_pg_class _l "
         "WHERE _l.relkind = 'i'"
-    ),
-    PUBLISHABLE: (
-        "SELECT _c.oid FROM meta.catalog_pg_class _c WHERE _c.relkind IN ('r', 'p') "
-        f"AND _c.relnamespace NOT IN {SYSTEM_SCHEMA_OIDS}"
     ),
 }
 
@@ -516,7 +511,6 @@ _LISTED = (
     f"THEN (SELECT _c.visible FROM {LISTED_INDEXES} _c WHERE _c.oid = relation_oid) "
     f"ELSE (SELECT _c.visible FROM {LISTED_RELATIONS} _c WHERE _c.oid = relation_oid) END"
 )
-_PUBLISHABLE = f"COALESCE(relation_oid IN (SELECT _c.oid FROM {PUBLISHABLE} _c), FALSE)"
 
 #: A relation's name as written: a quoted one as it is, an unquoted one folded to lower case.
 _WRITTEN_NAME = (
@@ -880,11 +874,11 @@ _FORMS: tuple[Form, ...] = (
         "'unknown (OID=' || CAST(role_oid AS TEXT) || ')') END AS NAME)",
     ),
     _form("pg_table_is_visible", "relation_oid", _LISTED, LISTED_RELATIONS, LISTED_INDEXES),
+    # REQ-2167 (amended 2026-11-04): Provisa publishes no relation for logical replication.
     _form(
         "pg_relation_is_publishable",
         "relation_oid",
-        f"CASE WHEN relation_oid IS NOT NULL THEN {_PUBLISHABLE} END",
-        PUBLISHABLE,
+        "CASE WHEN relation_oid IS NOT NULL THEN FALSE END",
     ),
     _form(
         "pg_is_other_temp_schema", "schema_oid", "CASE WHEN schema_oid IS NOT NULL THEN FALSE END"
@@ -1313,9 +1307,20 @@ def _relation_form(table: exp.Table, rewrite) -> exp.Expr:
         select = exp.select(exp.alias_(_written(value, [a.transform(rewrite) for a in args]), name))
     else:
         select = cast(exp.Select, _written(form, [a.transform(rewrite) for a in args]))
-    if not alias.columns and len(select.selects) == 1 and not select.is_star:
+    if table.args.get("ordinality"):
+        select = _with_ordinality(select)
+    elif not alias.columns and len(select.selects) == 1 and not select.is_star:
         alias = exp.TableAlias(this=alias.this.copy(), columns=[exp.to_identifier(alias.name)])
     return exp.Subquery(this=select, alias=alias)
+
+
+def _with_ordinality(select: exp.Select) -> exp.Select:
+    """WITH ORDINALITY: the form's rows and a last column numbering them from 1 in the order the
+    form yields them. The alias list names it; with none it is ``ordinality``, as in PostgreSQL."""
+    return exp.select(
+        exp.Star(),
+        exp.alias_(exp.Window(this=exp.RowNumber(), partition_by=[], order=None), "ordinality"),
+    ).from_(exp.Subquery(this=select, alias=exp.TableAlias(this=exp.to_identifier("_o"))))
 
 
 def _expanded_form(name, args, rewrite, needed: set[str]) -> exp.Expr:

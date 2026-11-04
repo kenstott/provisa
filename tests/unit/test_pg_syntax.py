@@ -279,3 +279,47 @@ def test_a_null_input_is_postgresqls_null_of_its_type_on_postgres(call: str, wri
     """REQ-2167: PostgreSQL holds interval, jsonb and xid8, so a strict input's NULL is of that
     type there, as PostgreSQL describes it; only an engine without the type answers text."""
     assert transpile(f"SELECT {call} AS v", "postgres") == f"SELECT CAST(NULL AS {written}) AS v"
+
+
+# --- a keyword as a column label after AS ------------------------------------------------------
+
+# Metabase 0.5x's table-privileges statement (bi_tools/metabase.yaml, id 10), as it sends it.
+_METABASE_PRIVILEGES = """with table_privileges as (
+ select
+   NULL as role,
+   t.schemaname as schema,
+   t.objectname as table,
+   pg_catalog.has_any_column_privilege(current_user, '"' || replace(t.schemaname, '"', '""') || '"' || '.' || '"' || replace(t.objectname, '"', '""') || '"',  'update') as update,
+   pg_catalog.has_any_column_privilege(current_user, '"' || replace(t.schemaname, '"', '""') || '"' || '.' || '"' || replace(t.objectname, '"', '""') || '"',  'select') as select,
+   pg_catalog.has_any_column_privilege(current_user, '"' || replace(t.schemaname, '"', '""') || '"' || '.' || '"' || replace(t.objectname, '"', '""') || '"',  'insert') as insert,
+   pg_catalog.has_table_privilege(     current_user, '"' || replace(t.schemaname, '"', '""') || '"' || '.' || '"' || replace(t.objectname, '"', '""') || '"',  'delete') as delete
+ from (
+   select schemaname, tablename as objectname from pg_catalog.pg_tables
+   union
+   select schemaname, viewname as objectname from pg_catalog.pg_views
+   union
+   select schemaname, matviewname as objectname from pg_catalog.pg_matviews
+ ) t
+ where t.schemaname !~ '^pg_'
+   and t.schemaname <> 'information_schema'
+   and pg_catalog.has_schema_privilege(current_user, t.schemaname, 'usage')
+)
+select t.*
+from table_privileges t"""
+
+
+def test_metabase_privileges_statement_reads_select_as_a_label() -> None:
+    written = sqlglot.parse_one(_METABASE_PRIVILEGES, read="postgres").sql("postgres")
+    assert 'AS "select"' in written
+    assert " AS select" not in written.lower()
+    assert sqlglot.parse_one(written, read="postgres").sql("postgres") == written
+
+
+@pytest.mark.parametrize("keyword", ["select", "not", "SELECT", "Not"])
+def test_any_keyword_after_as_is_a_quoted_label(keyword: str) -> None:
+    tree = sqlglot.parse_one(f"SELECT 1 AS {keyword}, 2 AS x", read="postgres")
+    assert tree.sql("postgres") == f'SELECT 1 AS "{keyword.lower()}", 2 AS x'
+
+
+def test_a_label_without_as_is_untouched() -> None:
+    assert sqlglot.parse_one("SELECT 1 x", read="postgres").sql("postgres") == "SELECT 1 AS x"

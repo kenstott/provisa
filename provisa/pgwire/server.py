@@ -1915,6 +1915,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         self.portal_bound: dict[str, datetime.datetime] = {}
         # REQ-2167: this connection's two ends, (host, port), set when it starts.
         self.client_end: tuple = ()
+        # REQ-2167: the statements this connection has run, which pg_stat_database lists as its
+        # commits.
+        self.queries = 0
         self.server_end: tuple = ()
         self.role_id: str | None = None
         # REQ-1620: the held roles this session acts as when it named several; ``role_id`` is then
@@ -2063,6 +2066,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         continues from it instead of governing again); ``shape`` is the result shape that Describe
         told the client, which the rows are encoded to. Both are None for a statement that was
         never described (the simple protocol, or a Bind with no Describe(Statement))."""
+        self.queries += 1
         return self._with_org(
             lambda: self._execute_sql_bound(sql, params, result_fmt, prepared=prepared, shape=shape)
         )
@@ -2483,6 +2487,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     self.org_id,
                     self.client_settings,
                     self._listed_cursors(),
+                    self.client_end,
+                    self.queries,
                 ),
                 run=self._catalog_read,
             )
@@ -3850,12 +3856,14 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             session.open_portal = None
 
     def handle_execute(self, ctx: BVContext, payload: bytes) -> None:
+        from provisa.compiler.sql_rewrite import holds_no_statement
+
         self._open_request()
         ba = bytearray(payload)
         portal_idx = ba.index(0)
         portal = ba[:portal_idx].decode("utf-8")
         stmt_name = ctx.portals.get(portal, (None,))[0] if portal in ctx.portals else None
-        if stmt_name is not None and not ctx.stmts.get(stmt_name, ("x",))[0].strip():
+        if stmt_name is not None and holds_no_statement(ctx.stmts.get(stmt_name, ("x",))[0]):
             self.wfile.write(struct.pack("!ci", ServerResponse.EMPTY_QUERY_RESPONSE, 4))
             return
         command = self._cursor_command(ctx, ord("P"), portal)
