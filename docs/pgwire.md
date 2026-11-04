@@ -220,6 +220,22 @@ A junction-backed relationship produces no FK row. It's an edge through an assoc
 
 `pg_index` is populated with one row per primary-key and UNIQUE constraint (`indrelid` = table oid, `indkey` = ordered key attnums, `indisprimary`/`indisunique` set). Clients that resolve key columns via `pg_index.indkey` rather than `pg_constraint`, DataGrip for example, discover the correct columns through the standard `pg_index` → `pg_attribute` join.
 
+**Functions and their descriptions.** `pg_proc` lists every function PostgreSQL 17 ships in `pg_catalog` and `information_schema`, and `pg_description` holds PostgreSQL's own description of each. A client that browses functions, or asks for one's signature, gets PostgreSQL's answer. `pg_get_function_arguments`, `pg_get_function_identity_arguments`, `pg_get_function_result`, `pg_get_function_arg_default`, `pg_get_function_sqlbody` and `pg_get_functiondef` write a shipped function as PostgreSQL 17 does, and `to_regproc`, `to_regprocedure` and `obj_description` find it:
+
+```sql
+SELECT pg_get_function_arguments('pg_catalog.lpad(text,integer,text)'::regprocedure),
+       obj_description('pg_catalog.lpad(text,integer,text)'::regprocedure, 'pg_proc');
+```
+
+**A source's enum types.** An enum type declared in a PostgreSQL source is a type of the catalog. It is listed in `pg_type` with category `E`, its labels are rows of `pg_enum` in their declared order, and its schema is in `pg_namespace`. A client that resolves a column's type by its oid finds the enum by name. `'mood'::regtype` resolves it, and `enum_in` reads one of its labels as PostgreSQL does. Enums are read from each PostgreSQL source when the model loads:
+
+```sql
+SELECT t.typname, e.enumlabel
+FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid
+WHERE t.typcategory = 'E'
+ORDER BY t.typname, e.enumsortorder;
+```
+
 The following scalar expressions are also intercepted:
 
 - `current_user`, `session_user` → the authenticated `role_id`
@@ -291,4 +307,4 @@ Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` q
 
 **DECLARE SCROLL buffers the full result.** A `SCROLL` cursor accumulates every row it pulls from the engine into Python heap so `FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, and `LAST` can be served on demand. Against a large result this means the whole result lives in memory for as long as the cursor is open. Use the default `NO SCROLL` for forward-only streaming.
 
-**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** These tables exist in the catalog layer but are empty stubs. Monitoring tools that query them will receive zero rows rather than errors. (`pg_index` is populated; see Catalog Intercept.)
+**`pg_stat_user_tables`, `pg_extension`.** These tables exist in the catalog layer but are empty stubs. Monitoring tools that query them will receive zero rows rather than errors. (`pg_index`, `pg_proc`, `pg_enum`, `pg_attrdef` and `pg_stat_activity` are populated; see Catalog Intercept.)

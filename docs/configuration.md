@@ -1696,6 +1696,21 @@ PROVISA_ENGINE=mysql
 PROVISA_ENGINE_URL="mysql+pymysql://user:pass@host:3306/db"
 ```
 
+Some of these databases need a SQLAlchemy dialect and a driver that the base install leaves out. Each ships as a pip extra named after its engine key, and `all-drivers` installs every one:
+
+| Engine key | Install | Example `PROVISA_ENGINE_URL` |
+| --- | --- | --- |
+| `cockroachdb` | `pip install 'provisa[cockroachdb]'` | `cockroachdb://user:pass@host:26257/db` |
+| `db2` | `pip install 'provisa[db2]'` | `db2+ibm_db://user:pass@host:50000/db` |
+| `exasol` | `pip install 'provisa[exasol]'` | `exa+websocket://user:pass@host:8563/schema` |
+| `firebird` | `pip install 'provisa[firebird]'` | `firebird+firebird://user:pass@host:3050/path/to/db.fdb` |
+| `monetdb` | `pip install 'provisa[monetdb]'` | `monetdb://user:pass@host:50000/db` |
+| `opengauss` | `pip install 'provisa[opengauss]'` | `opengauss://user:pass@host:5432/db` |
+| `saphana` | `pip install 'provisa[saphana]'` | `hana+hdbcli://user:pass@host:39015/db` |
+| `vertica` | `pip install 'provisa[vertica]'` | `vertica+vertica_python://user:pass@host:5433/db` |
+
+Firebird also needs the Firebird client library on the host. If the extra for the selected key is missing, building the engine fails with an error that names the command to run, for example `the 'vertica' federation engine needs the 'vertica' extra (module 'sqla_vertica_python' is not installed): pip install 'provisa[vertica]'`. The federation engine list in the admin UI shows that key as unavailable, with the same hint.
+
 Materialization store defaults to `TENANT_DATABASE_URL`.
 
 ### Materialization store
