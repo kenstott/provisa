@@ -570,7 +570,8 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
         args, _GROUP_BY_ARGS, ctx.native_filter_columns.get(table.table_id, {})
     )
     nf_conditions = _sw.native_arg_conditions(api_args)
-    if "where" in args and not agg_filter_where:
+    if "where" in args:
+        # After the aggregate filter's: its values are bound first, as its FILTER is written first.
         where_sql = _sw._compile_where(
             args["where"],
             collector,
@@ -581,26 +582,6 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
             column_types=ctx.aggregate_columns,
         )
         sql += f" WHERE {where_sql}"
-    elif "where" in args and agg_filter_where:
-        # FILTER params already consumed above; need a fresh sub-collector for WHERE
-        where_collector = ParamCollector()
-        where_sql = _sw._compile_where(
-            args["where"],
-            where_collector,
-            None,
-            _vvals,
-            table.table_id,
-            ctx.exposed_to_physical,
-            column_types=ctx.aggregate_columns,
-        )
-        # Re-number params: append where params after filter params
-        _filter_count = len(collector.params)
-        renumbered = where_sql
-        for i in range(len(where_collector.params), 0, -1):
-            renumbered = renumbered.replace(f"${i}", f"${i + _filter_count}")
-        for p in where_collector.params:
-            collector._params.append(p)
-        sql += f" WHERE {renumbered}"
     if nf_conditions:
         sql += f" {'AND' if 'where' in args else 'WHERE'} {' AND '.join(nf_conditions)}"
 
