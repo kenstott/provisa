@@ -149,3 +149,5 @@ def test_the_page_publishes_what_the_table_names(source, published):
 def test_she_is_told_read_screen_reports_the_data_node():
     assert "dataNode" in polly_pages.SYSTEM_SECTION
     assert "dataNode" in chat._SYSTEM
+    tool = next(t for t in chat._CLIENT_TOOLS if t["name"] == "read_screen")
+    assert "dataNode" in tool["description"]
