@@ -108,7 +108,7 @@ the row stream into a `QueryResult` on the executor thread: the same `to_pylist`
 
 | Source | Driver | Python rows built at | Columnar alternative |
 |---|---|---|---|
-| PostgreSQL, pgwire servers | psycopg 3 pool (`drivers/postgresql.py`), server-side cursor for streams | psycopg 3 binary/text loaders | ADBC postgresql; for pgwire, the raw DataRow passthrough is the direct cursor `[code]` |
+| PostgreSQL, pgwire servers | psycopg 3 pool (`drivers/postgresql.py`), server-side cursor for streams | psycopg 3 binary/text loaders | none taken: stays a row source, its rows encoded as they are (REQ-2195; ADBC postgresql not taken, see section 3, item 4); for pgwire, the raw DataRow passthrough is the direct cursor `[code]` |
 | DuckDB / MotherDuck | **this change:** `drivers/duckdb_driver.py` reads `to_arrow_table` (an `ArrowResult`) and streams from `to_arrow_reader`; before, `fetchall` / `fetchmany` | `duckdb_arrow.arrow_rows`, in the driver (`execute`) or per fetch (`open_stream`) | — (done) `[code]` |
 | Snowflake | `drivers/snowflake.py`: `fetchall` / `fetchmany` | the connector's row conversion | `fetch_arrow_batches` (the runtime already uses it) or ADBC snowflake (installed, 1.11.0) `[code]` |
 | Databricks | `drivers/databricks.py` via `pooled.py`: `fetchall` / `fetchmany` | the connector | `fetchmany_arrow` / `fetchall_arrow` (the runtime already uses it) `[code]` |
@@ -151,8 +151,19 @@ Ordered by what it costs today and how small the change is.
    `job.result().to_arrow_iterable(bqstorage_client=BigQueryReadClient(...))`. The Storage Read
    API is billed per byte read; a small result read through it costs more than through
    `tabledata.list`. Warehouse lane.
-4. **Postgres engine (`pg_runtime`) and the Postgres DIRECT driver** — `run_sync`/`run` and
-   `open_stream` on the ADBC postgresql connection the runtime already pools for `run_arrow*`
+4. **Postgres DIRECT driver: decided, stays psycopg rows** (maintainer, 2026-11-03). Since
+   REQ-2195 every encoder takes a row result's rows as they are, so the Arrow build in Python that
+   made DIRECT Postgres slow is gone; what remains is psycopg's own per-value decode. ADBC
+   postgresql (1.11.0, probed against PostgreSQL 17, J567) was not taken because it cannot give
+   the values the driver serves today: PostgreSQL's `infinity` / `-infinity` dates and timestamps
+   raise inside ADBC ("date value out of range"), so there is no value to encode; uuid, inet,
+   cidr, macaddr, timetz, point and the other geometric types, bit, tsvector, the reg* types and
+   every range arrive as PostgreSQL's binary wire bytes (`arrow.opaque` on binary storage), which
+   an encoder would write as bytes; money arrives as int64 cents; numeric arrives as text with
+   NaN lowercased to `nan`; oid arrives as int32, which overflows past 2^31. Taking ADBC would
+   need readers for those opaque types in each encoder crate and a way past the infinity failure.
+   The rest of this item (the Postgres engine) is unchanged:
+   **Postgres engine (`pg_runtime`)** — `run_sync`/`run` on the ADBC postgresql connection the runtime already pools for `run_arrow*`
    (`cursor.fetch_record_batch()`), returning `ArrowStreamResult`/`ArrowResult`. Open point: the
    rows a row consumer is given must equal psycopg's (interval, infinity, numeric, json, arrays,
    the column type oids pgwire reports) — the same parity test this change wrote for DuckDB
