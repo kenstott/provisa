@@ -894,11 +894,6 @@ def _project_faked(
     projection = sqlglot.parse_one(f"SELECT * FROM {sql} AS {_quote(alias)}", read="postgres")
     subquery = projection.args["from_"].this
     subquery.meta[_GOVERNED] = True  # its own references are the projection's, already governed
-    # A reference qualified by the table's schema now names the projection by its alias alone.
-    for col in node.find_all(exp.Column):
-        if col.table == tbl.name and col.args.get("db") is not None and alias == tbl.name:
-            col.set("db", None)
-            col.set("catalog", None)
     tbl.replace(subquery)
     return subquery
 
@@ -956,10 +951,6 @@ def _project_kept(
     projection = sqlglot.parse_one(f"SELECT * FROM ({sql}) AS {_quote(alias)}", read="postgres")
     subquery = projection.args["from_"].this
     subquery.meta[_GOVERNED] = True  # its own references are already governed
-    for col in node.find_all(exp.Column):
-        if col.table == tbl.name and col.args.get("db") is not None and alias == tbl.name:
-            col.set("db", None)
-            col.set("catalog", None)
     (faked if faked is not None else tbl).replace(subquery)
     return subquery
 
@@ -1097,10 +1088,6 @@ def _project_members(
     projection = sqlglot.parse_one(f"SELECT * FROM ({sql}) AS {_quote(alias)}", read="postgres")
     subquery = projection.args["from_"].this
     subquery.meta[_GOVERNED] = True  # its own references are already governed
-    for col in node.find_all(exp.Column):
-        if col.table == tbl.name and col.args.get("db") is not None and alias == tbl.name:
-            col.set("db", None)
-            col.set("catalog", None)
     (current if current is not None else tbl).replace(subquery)
     return real_keys
 
@@ -1461,6 +1448,11 @@ def _govern_selects(
 
     ``answers``: ``tree`` is a read whose rows are the answer (not a fragment of a larger
     statement, and not a write), so its own projection is read as REQ-1961 says."""
+    from provisa.compiler.sql_rewrite import bind_schema_qualified_columns
+
+    # REQ-2204: a column the statement qualifies by its table's schema is read by the table's
+    # name before any table is put behind a projection under that name.
+    bind_schema_qualified_columns(tree)
     for select in reversed(list(tree.find_all(exp.Select))):
         final = answers and isinstance(tree, exp.Query) and _is_the_answer(select, tree)
         governed_select = _govern_select(select, gov_ctx, final=final)
