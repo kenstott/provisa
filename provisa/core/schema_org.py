@@ -61,6 +61,8 @@ from sqlalchemy import (
     true,
 )
 
+from provisa.core.pgvector import Vector
+
 metadata = MetaData()
 
 
@@ -2036,7 +2038,8 @@ code_source_vectors = Table(
 # REQ-2185: the org's reference library -- documents its assistants draw on, each with a status
 # (proposed or kept) and domains (a list, or "*" for the whole org, as a glossary term's). A
 # document's content is held as its passages, each embedded by the org's vector model;
-# ``vector`` is the embedding as a JSON array of floats (the code_source_vectors pattern).
+# ``vector`` is the embedding, a pgvector column of any dimension (provisa.core.pgvector), under one
+# partial HNSW index per dimension in use (provisa.reference_library.store).
 reference_documents = Table(
     "reference_documents",
     metadata,
@@ -2089,7 +2092,7 @@ reference_passages = Table(
     Column("section", Text, nullable=True),
     Column("page", Integer, nullable=True),
     Column("text", Text, nullable=False),
-    Column("vector", Text, nullable=False),
+    Column("vector", Vector(), nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("document_id", "ordinal"),
 )
