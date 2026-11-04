@@ -91555,7 +91555,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Read from eCFR''s official API:) Maintainer 2026-11-03: eCFR''s web pages refuse automated clients (a
     request-access page), so the demo reads the regulation from eCFR''s official API, which returns XML:
     the reference library learns to read that XML (its sections and paragraphs), and the demo reads 31 CFR
-    1010.311 and 1010.100 from it.'
+    1010.311 and 1010.100 from it. (Amended 2026-11-03, The aggregation rule is read too:) Lead 2026-11-03,
+    correcting its own wording: the terms "multiple transactions" and "on behalf of" come from 31 CFR 1010.313
+    (aggregation of currency transactions), not from 1010.311 or 1010.100, and the concept query is that
+    aggregation rule. So the demo reads three sections from eCFR''s API: 1010.311 (the filing obligation),
+    1010.313 (aggregation) and 1010.100 (the definitions). In the sandbox, the live scan the tour starts
+    and cancels uses the same AI model the sandbox''s other AI steps use, and the tour''s role holds glossary_rw
+    so Find terms is offered.'
   scenario: 'Given the Bank Secrecy Act demo
 
     When its tour extracts terms from the regulation
