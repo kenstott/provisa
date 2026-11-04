@@ -2602,14 +2602,13 @@ async def route_governed(
     from provisa.codesource.writes import is_code_table
 
     async def _read_keys(read_tree: Any) -> _Plan:
-        # The key read: the governed write's own WITH, FROM and WHERE, read as any read is.
+        # The key read: the governed write's own WITH, FROM and WHERE, read as any read is -- as
+        # its own text, so no cache comment on the write makes the keys it reads a cached answer.
         import dataclasses
 
+        read_sql = read_tree.sql(dialect="postgres")
         read_governed = dataclasses.replace(
-            governed,
-            governed_semantic=read_tree.sql(dialect="postgres"),
-            parsed=read_tree,
-            memo={},
+            governed, sql=read_sql, governed_semantic=read_sql, parsed=read_tree, memo={}
         )
         return await route_governed(read_governed, params=params, as_of=as_of)
 
