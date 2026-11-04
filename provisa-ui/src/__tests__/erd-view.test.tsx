@@ -14,7 +14,7 @@
 
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { Route, Routes, useLocation } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "../test-utils/render";
 import type { RegisteredTable } from "../types/admin";
 
@@ -189,6 +189,9 @@ const RELS = {
   loading: false,
   refetch: REFETCH,
 };
+// What the ERD draws: the system's own relationships too (allRelationships), which the page's list
+// (relationships) leaves out.
+const ALL_RELS = { ...RELS };
 const DOMAINS = {
   domains: [
     { id: "sales", description: "" },
@@ -254,7 +257,7 @@ vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
   useRoles: () => ({ roles: NONE, loading: false, refetch: REFETCH }),
   useDataProducts: () => ({ dataProducts: NONE, loading: false, refetch: REFETCH }),
   useRelationships: () => RELS,
-  useAllRelationships: () => RELS,
+  useAllRelationships: () => ALL_RELS,
   useUpsertRelationship: () => ({ upsertRelationship: vi.fn() }),
   useDeleteRelationship: () => ({ deleteRelationship: vi.fn() }),
   useAvailableColumnsMetadataLazy: () => ({
@@ -591,6 +594,78 @@ describe("a domain of orphan tables only", () => {
       // Laid out and shown: the layout leaves the orphans displayed.
       await waitFor(() => expect(node("t:5").style("display")).toBe("element"));
       expect(node("d:ops").style("display")).toBe("element");
+    },
+  );
+});
+
+
+describe("a domain the domain filter does not offer", () => {
+  // The model as the server answers it: ops traces reached from meta, every table anchored to
+  // meta.registered_tables (HAS_TABLE), and the page's list without the system's own rows.
+  const before = {
+    tables: TABLES.tables,
+    rels: RELS.relationships,
+    all: ALL_RELS.relationships,
+    domains: DOMAINS.domains,
+    offered: FILTER.domains,
+  };
+  const from = (id: string, source: number, target: number, domain: string) => ({
+    ...relationship(id, source, target),
+    sourceDomainId: domain,
+  });
+  beforeEach(() => {
+    TABLES.tables = [
+      table(1, "orders", "sales"),
+      table(2, "customers", "sales"),
+      table(10, "registered_tables", "meta"),
+      table(11, "queries", "meta"),
+      table(20, "traces", "ops"),
+      table(21, "query_audit_log", "ops"),
+    ];
+    RELS.relationships = [relationship("orders-customers", 1, 2)];
+    ALL_RELS.relationships = [
+      relationship("orders-customers", 1, 2),
+      from("meta:queries:traces", 11, 20, "meta"),
+      from("meta:has_table:20", 20, 10, "ops"),
+      from("meta:has_table:21", 21, 10, "ops"),
+    ];
+    DOMAINS.domains = ["sales", "meta", "ops"].map((id) => ({ id, description: "" }));
+  });
+  afterEach(() => {
+    TABLES.tables = before.tables;
+    RELS.relationships = before.rels;
+    ALL_RELS.relationships = before.all;
+    DOMAINS.domains = before.domains;
+    FILTER.domains = before.offered;
+  });
+
+  it.each(["tables", "relationships"] as const)(
+    "stays drawn on the %s ERD, with its relationships, when another domain is unticked",
+    async (page) => {
+      // The acting roles' domain list leaves ops out; the reader unticked sales.
+      FILTER.domains = ["sales", "meta"];
+      FILTER.checkedDomains = new Set(["meta"]);
+      open(`/${page}?view=erd`);
+      await diagramHolds("d:meta");
+      expect(drawnHas("d:ops")).toBe(true);
+      expect(drawnHas("t:20")).toBe(true);
+      expect(drawnHas("t:21")).toBe(true);
+      expect(drawnHas("r:meta:queries:traces")).toBe(true);
+      expect(drawnHas("r:meta:has_table:20")).toBe(true);
+      // What the reader unticked is still hidden.
+      expect(drawnHas("d:sales")).toBe(false);
+    },
+  );
+
+  it.each(["tables", "relationships"] as const)(
+    "is hidden on the %s ERD when the filter offers it and it is unticked",
+    async (page) => {
+      FILTER.domains = ["sales", "meta", "ops"];
+      FILTER.checkedDomains = new Set(["sales", "meta"]);
+      open(`/${page}?view=erd`);
+      await diagramHolds("d:meta");
+      expect(drawnHas("d:ops")).toBe(false);
+      expect(drawnHas("t:20")).toBe(false);
     },
   );
 });
