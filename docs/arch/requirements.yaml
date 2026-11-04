@@ -90786,7 +90786,24 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     files source supplies the reading. Assistants draw only on kept documents; a proposed one is used only
     once a steward keeps it. When the org''s embedding model changes, documents embedded with the earlier
     model are named as needing re-embedding, and the Admin page offers Re-embed, for one document or all,
-    which re-embeds the stored passage text with the current model.'
+    which re-embeds the stored passage text with the current model. (Amended 2026-11-04, GRAPH RETRIEVAL:)
+    Maintainer 2026-11-04: the reference library has a retrieval setting, passage or graph, shown and changed
+    on the Admin Reference library page. Passage retrieval is today''s: the passages nearest the question.
+    Graph retrieval also follows the glossary: it finds the in-service glossary terms the question names,
+    walks their relationships out from those terms, and offers the passages the reached terms cite as further
+    candidates, so an answer can draw on a rule whose wording does not resemble the question (the aggregation
+    rule behind a currency transaction report). A candidate''s priority is the weight of the relationship
+    types on its path, multiplied over the path, so it falls with each hop from the initial terms: SYNONYM_OF
+    and PREFERRED_TERM_FOR weigh 1.0; KIND_OF, PART_OF and VALID_VALUE_OF 0.8; DERIVED_FROM and REPLACES
+    0.6; RELATED_TO 0.4; TRANSLATION_OF and ANTONYM_OF conduct nothing. The walk stops where the priority
+    falls below 0.25. The passages nearest the question come first; graph candidates fill the rest of the
+    same passage budget in priority order, at most two per reached term, so graph retrieval never displaces
+    what passage retrieval found. Each graph candidate reaches the assistant labelled with its path (from
+    which term, over which relationships), and the assistant cites only the passages it used, so an irrelevant
+    candidate never reaches the answer. Only terms, relationships and documents the role may read are walked
+    or offered. Acceptance: in the bank secrecy demo, asked which cash deposits need a currency transaction
+    report, Polly''s answer with graph retrieval cites the aggregation rule (31 CFR 1010.313), and with
+    passage retrieval the answer is recorded for comparison.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
