@@ -91572,7 +91572,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     aggregation rule. So the demo reads three sections from eCFR''s API: 1010.311 (the filing obligation),
     1010.313 (aggregation) and 1010.100 (the definitions). In the sandbox, the live scan the tour starts
     and cancels uses the same AI model the sandbox''s other AI steps use, and the tour''s role holds glossary_rw
-    so Find terms is offered.'
+    so Find terms is offered. (Amended 2026-11-03, Asked in plain words too:) Maintainer 2026-11-03: besides
+    the concept-named views over SQL and GraphQL, the tour asks the concept in plain words, through the
+    AI surface as compliance ("which cash needs a currency transaction report?"), answered from the governed
+    views.'
   scenario: 'Given the Bank Secrecy Act demo
 
     When its tour extracts terms from the regulation
