@@ -76,7 +76,8 @@ def go_environment(go: Path, *, gocache: Path, gomodcache: Path, **extra: str) -
         "HOME": str(gocache.parent),
         "GOCACHE": str(gocache),
         "GOMODCACHE": str(gomodcache),
-        "GOPATH": str(gomodcache.parent),
+        # A GOPATH of its own: never the code (whose go.mod the go command would then ignore).
+        "GOPATH": str(gocache.parent / "gopath"),
         "GOTOOLCHAIN": "local",
         "GOFLAGS": "-mod=readonly",
         "GOPROXY": "off",
@@ -146,6 +147,11 @@ def ensure_reader(
     return binary
 
 
+def pattern(package: str) -> str:
+    """The go command's pattern for ``package``, a directory of the code's module ("." its root)."""
+    return package if package == "." or package.startswith("./") else f"./{package}"
+
+
 def read_code(
     *,
     reader: Path,
@@ -163,5 +169,5 @@ def read_code(
     code = code.resolve()  # the reader runs in it, and the go command it starts runs there too
     check_go_line(code)
     env = go_environment(go, gocache=scratch / "gocache", gomodcache=gomodcache)
-    out = run([str(reader), str(code), package], env, code)
+    out = run([str(reader), str(code), pattern(package)], env, code)
     return read_manifest(json.loads(out), GO_RULES)

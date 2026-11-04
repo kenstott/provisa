@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.core.schema_org import sources
 
 if TYPE_CHECKING:
@@ -357,7 +358,7 @@ async def pipeline_table_refusal(conn: "Connection", model: "Table") -> "Mutatio
         elif model.query_template and row is not None and row["type"] == "elasticsearch":
             # REQ-2017: an index table, or a native search; a search is checked here.
             check_search_table(model)
-        elif row is not None and row["type"] in ("node", "python"):
+        elif row is not None and row["type"] in CODE_SOURCE_TYPES:
             # REQ-1984, REQ-1993: checked against the function it names, in the code as read.
             await _check_code_table(model)
     except (

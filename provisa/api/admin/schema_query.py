@@ -19,6 +19,7 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, cast
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.api.admin.catalog_scope import CatalogScope, catalog_scope
 from provisa.api.admin.jdbc_source_admin import JdbcSourceSetupType
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
@@ -2812,7 +2813,7 @@ async def _introspect_available_columns(
             return await _cosmosdb_columns(source_id, table_name)
         if source_type == "qdrant":
             return await _qdrant_columns(source_id, table_name)
-        if source_type in ("node", "python"):
+        if source_type in CODE_SOURCE_TYPES:
             return await _code_columns(source_id, table_name)
         if source_type == "redis":
             return await _redis_columns(source_id, table_name)

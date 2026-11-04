@@ -9411,5 +9411,19 @@
   "de/findTerms.json::findTerms.chooseTerms": "Choose a table, its term column and its definition column.",
   "de/findTerms.json::findTerms.termsNote": "No AI model reads the rows, so nothing counts against your role's AI budget.",
   "de/findTerms.json::findTerms.tableTermsHint": "Read from the table {{domain}}.{{table}}: each row's {{term_column}} with its {{definition_column}}.",
-  "de/findTerms.json::findTerms.definitionInTable": "Defined in the table"
+  "de/findTerms.json::findTerms.definitionInTable": "Defined in the table",
+  "de/packageRegistries.json::packageRegistries.goproxyTitle": "Go module proxies",
+  "de/packageRegistries.json::packageRegistries.goproxyHelp": "The proxies Go sources fetch modules from, each checked against go.sum. The default proxy replaces the public one.",
+  "de/packageRegistries.json::packageRegistries.goproxyNone": "No Go module proxies. Modules come from the public Go module proxy, proxy.golang.org.",
+  "de/packageRegistries.json::packageRegistries.add_goproxy": "Add Go module proxy",
+  "de/packageRegistries.json::packageRegistries.goproxyAddress": "Proxy URL",
+  "de/packageRegistries.json::packageRegistries.goproxyCredential": "user:password",
+  "de/packageRegistries.json::packageRegistries.goproxyCredentialHelp": "The user and password the go command logs in with, for example an Artifactory user and its API key.",
+  "de/packageRegistries.json::packageRegistries.goproxyMirror": "Default proxy for every install",
+  "de/packageRegistries.json::packageRegistries.goproxyMirrorHelp": "Every Go module is fetched through this proxy instead of the public one. An organization has one default proxy.",
+  "de/codeSourceFields.json::codeSourceFields.gomod": "Go module",
+  "de/codeSourceFields.json::codeSourceFields.versionHintGo": "An exact module version, such as v1.2.0.",
+  "de/codeSourceFields.json::codeSourceFields.entryGo": "Package",
+  "de/codeSourceFields.json::codeSourceFields.entryGoHint": "The directory of the module's package whose functions are the source's, such as feeds. Leave empty for the module's root package.",
+  "de/codeSourceFields.json::codeSourceFields.module": "Module"
 }

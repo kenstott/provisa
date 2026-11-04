@@ -26,7 +26,7 @@
 
 ## Все источники {: #all-sources }
 
-Provisa регистрирует **76** типов источников — те, что предлагает форма Sources. Приведённые ниже таблицы охватывают все 76; индекс — это счётчик.
+Provisa регистрирует **77** типов источников — те, что предлагает форма Sources. Приведённые ниже таблицы охватывают все 77; индекс — это счётчик.
 
 | # | Группа | Типы источников |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa регистрирует **76** типов источников — те
 | 26–30 | [Аналитика / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [Data lake / открытые табличные форматы](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–41 | [Источники на основе кода](code-sources.md) | `node`, `python` |
-| 42–44 | [Потоковая передача](#streaming) | `kafka`, `websocket`, `rss` |
-| 45 | [Приёмник push-данных](#push-receiver) | `ingest` |
-| 46–47 | [Граф и семантика](#graph-semantic) | `neo4j`, `sparql` |
-| 48–52 | [На основе файлов](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 53–54 | [Наблюдаемость и прочее](#observability-other) | `google_sheets`, `prometheus` |
-| 55–63 | [Корпоративный SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 64–70 | [API-источники](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 71 | [GovData](#govdata) | `govdata` |
-| 72–73 | [Проверки качества данных](#data-quality-checkers) | `soda`, `great_expectations` |
-| 74 | [Профайлер данных](#data-profiler) | `data_profiler` |
-| 75 | [Наборы данных Kaggle](#kaggle-datasets) | Kaggle (загружается через форму Sources; регистрируется как источник `files` — см. [Наборы данных Kaggle](#kaggle-datasets)) |
-| 76 | [Wikipedia](#wikipedia) | Wikipedia (регистрируется как источник `files`, который обходит указанные страницы — см. [Wikipedia](#wikipedia)) |
+| 40–42 | [Источники на основе кода](code-sources.md) | `node`, `python`, `go` |
+| 43–45 | [Потоковая передача](#streaming) | `kafka`, `websocket`, `rss` |
+| 46 | [Приёмник push-данных](#push-receiver) | `ingest` |
+| 47–48 | [Граф и семантика](#graph-semantic) | `neo4j`, `sparql` |
+| 49–53 | [На основе файлов](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 54–55 | [Наблюдаемость и прочее](#observability-other) | `google_sheets`, `prometheus` |
+| 56–64 | [Корпоративный SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 65–71 | [API-источники](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 72 | [GovData](#govdata) | `govdata` |
+| 73–74 | [Проверки качества данных](#data-quality-checkers) | `soda`, `great_expectations` |
+| 75 | [Профайлер данных](#data-profiler) | `data_profiler` |
+| 76 | [Наборы данных Kaggle](#kaggle-datasets) | Kaggle (загружается через форму Sources; регистрируется как источник `files` — см. [Наборы данных Kaggle](#kaggle-datasets)) |
+| 77 | [Wikipedia](#wikipedia) | Wikipedia (регистрируется как источник `files`, который обходит указанные страницы — см. [Wikipedia](#wikipedia)) |
 
 Справочник по каждому типу источника, поддерживаемому Provisa. «Прямой драйвер» означает, что однопоточные запросы выполняются напрямую к источнику (менее 100 мс). «Имя коннектора» — это федеративный коннектор, используемый, когда источник участвует в многопоточных (multi-source) JOIN.
 

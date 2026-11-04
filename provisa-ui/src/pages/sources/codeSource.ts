@@ -8,13 +8,15 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1984, REQ-1993: a code source -- the organisation's own Node or Python functions, run in a
-// sandboxed worker -- keeps what its code is in its mapping (provisa/codesource/source.py):
+// REQ-1984, REQ-1993, REQ-2200: a code source -- the organisation's own Node, Python or Go
+// functions, run in a sandboxed worker -- keeps what its code is in its mapping
+// (provisa/codesource/source.py):
 //
-//   runtime   node | bun | deno (Node); python (Python)
+//   runtime   node | bun | deno (Node); python (Python); go (Go)
 //   code      a package at an exact version, a Git repository at a commit, or an uploaded archive
 //   lockfile  a lockfile given beside code that carries none
-//   entry     a Python source's entry module, when its code has more than one
+//   entry     a Python source's entry module, when its code has more than one; a Go source's
+//             package directory, when its functions are not the module's root package
 //   mode      REQ-2098: dev (its code on this server) or built (its image on a remote host); a
 //             built source also keeps its remote host and the code hash it is pinned to, which
 //             an edit of the form carries through unchanged
@@ -29,20 +31,31 @@
 
 export const NODE = "node";
 export const PYTHON = "python";
-export const CODE_SOURCE_TYPES = new Set([NODE, PYTHON]);
+export const GO = "go";
+export const CODE_SOURCE_TYPES = new Set([NODE, PYTHON, GO]);
+
+/** The languages whose source names where its code is entered: Python's module, Go's package. */
+export const NAMED_ENTRY = new Set([PYTHON, GO]);
 
 export const NODE_RUNTIMES = ["node", "bun", "deno"] as const;
 
-/** Where the code comes from: a package (npm or PyPI), a Git repository, or an upload. */
+/** Where the code comes from: a package (npm, PyPI or a Go module), a Git repository, or an
+ * upload. */
 export type CodeOrigin = "package" | "git" | "upload" | "directory";
 
 /** The package kind each language's packages come from. */
-export const PACKAGE_KIND: Record<string, string> = { [NODE]: "npm", [PYTHON]: "pypi" };
+export const PACKAGE_KIND: Record<string, string> = {
+  [NODE]: "npm",
+  [PYTHON]: "pypi",
+  [GO]: "gomod",
+};
 
-/** The lockfiles each language installs from (provisa/node/install.py, provisa/python/install.py). */
+/** The lockfiles each language installs from (provisa/node/install.py, provisa/python/install.py,
+ * provisa/golang/install.py). */
 export const LOCKFILES: Record<string, string[]> = {
   [NODE]: ["package-lock.json", "npm-shrinkwrap.json", "bun.lock", "bun.lockb", "deno.lock"],
   [PYTHON]: ["uv.lock", "pylock.toml", "requirements.txt"],
+  [GO]: ["go.sum"],
 };
 
 const COMMIT = /^[0-9a-f]{40}$/;
@@ -130,10 +143,11 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
         }
       : {};
   return JSON.stringify({
-    runtime: type === PYTHON ? PYTHON : (fields.code_runtime ?? "node"),
+    // Node names its runtime; Python and Go each have one.
+    runtime: type === NODE ? (fields.code_runtime ?? "node") : type,
     code,
     ...(lockfile ? { lockfile } : {}),
-    ...(type === PYTHON && entry ? { entry } : {}),
+    ...(NAMED_ENTRY.has(type) && entry ? { entry } : {}),
     ...(secrets ? { secrets } : {}),
     ...(cap ? { llm: { cap_usd: Number(cap) } } : {}),
     ...(Object.keys(settings).length ? { settings } : {}),

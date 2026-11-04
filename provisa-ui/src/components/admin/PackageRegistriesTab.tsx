@@ -110,6 +110,15 @@ const LABELS: Record<
     credentialHelp: "packageRegistries.pypiCredentialHelp",
     mirror: "packageRegistries.pypiMirror",
   },
+  // REQ-2200: a Go module proxy; its credential is the login the go command sends.
+  goproxy: {
+    address: "packageRegistries.goproxyAddress",
+    addressHelp: null,
+    placeholder: "https://goproxy.example.com",
+    credential: "packageRegistries.goproxyCredential",
+    credentialHelp: "packageRegistries.goproxyCredentialHelp",
+    mirror: "packageRegistries.goproxyMirror",
+  },
   git: {
     address: "packageRegistries.gitHost",
     addressHelp: "packageRegistries.gitHostHelp",
@@ -320,6 +329,7 @@ export function PackageRegistriesTab() {
       <Text size="sm">{t("packageRegistries.help")}</Text>
       {section("npm")}
       {section("pypi")}
+      {section("goproxy")}
       {section("git")}
     </Stack>
   );

@@ -304,6 +304,80 @@ def test_a_node_source_installs_its_packages_for_the_images_platform(
     assert not (code / ".npmrc").exists()
 
 
+def test_a_go_source_is_its_host_compiled_for_the_images_platform(
+    tmp_path: Path, pinned_base, monkeypatch
+):
+    """REQ-2200: a Go source's image is its host, compiled by the pinned Go for linux and the
+    image's architecture with the code linked in, and the front end on its own Python."""
+    from provisa.golang import image as go_image
+
+    code = tmp_path / "src"
+    code.mkdir()
+    (code / "go.mod").write_text("module example.com/rates\n\ngo 1.23\n")
+    (code / "rates.go").write_text(
+        "package rates\n\n// @table\nfunc Rates() []map[string]any { return nil }\n"
+    )
+    cache = tmp_path / "cache"
+    _cache(cache, LINUX_ARM64)
+    here = (platform.system(), platform.machine())
+    go = cache / "code" / "go" / RUNTIMES["go"].version / RUNTIMES["go"].asset(here).executable
+    go.parent.mkdir(parents=True, exist_ok=True)
+    go.write_text("")
+    monkeypatch.setattr(image_build, "_fetched", _fetched_from(code))
+    listed: list[tuple[list[str], dict]] = []
+    built_with: dict = {}
+
+    def run_go(argv, env, cwd):
+        listed.append((list(argv), env))
+        return ""
+
+    def build_host(**given):
+        built_with.update(given)
+        given["dest"].parent.mkdir(parents=True, exist_ok=True)
+        given["dest"].write_bytes(b"\x7fELF static host")
+        return given["dest"]
+
+    monkeypatch.setattr(go_image, "run_go", run_go)
+    monkeypatch.setattr(go_image, "build_host", build_host)
+    built = image_build.assemble(
+        _plan(code, "go", "go", cache),
+        None,
+        None,
+        "arm64",
+        tmp_path / "w",
+        run=lambda argv, cwd, env: (
+            Path(argv[argv.index("--target") + 1]) / "duckdb.py"
+        ).write_text(""),
+        base=pinned_base,
+    )
+    [(argv, env)] = listed
+    assert argv[1:] == ["list", "-deps", "."]
+    assert (env["GOOS"], env["GOARCH"], env["CGO_ENABLED"]) == ("linux", "arm64", "0")
+    assert env["GOPROXY"] == "https://proxy.golang.org"
+    assert built_with["exports"] == ["rates"] and built_with["package"] == "."
+    assert (built_with["extra_env"]["GOOS"], built_with["extra_env"]["GOARCH"]) == (
+        "linux",
+        "arm64",
+    )
+    config = json.loads(built.image.config())
+    python = RUNTIMES["python"].asset(LINUX_ARM64).executable
+    assert config["architecture"] == "arm64"
+    assert config["config"]["Entrypoint"] == [
+        f"/opt/provisa/front-runtime/{python}", *FRONT, "/opt/provisa/host/host", "{fd}",
+    ]  # fmt: skip
+    assert config["config"]["Labels"]["dev.provisa.runtime"] == "go"
+    paths = _layers_paths(built)
+    assert {
+        "opt/provisa/host/host",
+        f"opt/provisa/front-runtime/{python}",
+        "opt/provisa/front/front.py",
+        "opt/provisa/frontlib/provisa/_encoders.so",
+        "opt/provisa/code",
+    } <= paths
+    # Nothing of the code but the host it is linked into.
+    assert not any(p.startswith("opt/provisa/code/") for p in paths)
+
+
 def test_the_front_ends_encoders_are_the_ones_of_the_images_architecture(tmp_path: Path):
     plan = _plan(tmp_path, "python", "python", tmp_path)
     _wheels(tmp_path)

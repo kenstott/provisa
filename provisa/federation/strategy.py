@@ -36,6 +36,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.federation.connector import Mechanism
 from provisa.federation.engine import UnreachableSource
 
@@ -116,8 +117,8 @@ _MATERIALIZE_ONLY = frozenset(
         "grpc_remote",
         "mongodb",
         "cosmosdb",  # REQ-1982: no engine reaches it; read by its SDK and landed
-        "node",  # REQ-1984: a function's rows, read in its worker and landed
-        "python",  # REQ-1993: the same, for a Python function
+        # REQ-1984, REQ-1993, REQ-2200: a function's rows, read in its worker and landed
+        *CODE_SOURCE_TYPES,
         "cassandra",
         "redis",
         "elasticsearch",
