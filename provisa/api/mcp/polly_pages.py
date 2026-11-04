@@ -160,7 +160,10 @@ def _row(route: str, page: PollyPage) -> str:
 
 
 SYSTEM_SECTION = (
-    "THE PAGES: every page of the app, how to set it and what read_screen reports. A navigate "
+    "THE PAGES: every page of the app, how to set it and what read_screen reports. On every "
+    "page read_screen also reports dataNode: the data node a coordinator-served UI sends its "
+    "data calls to (the address chosen in the NavBar's data address control), or null when the "
+    "UI is not coordinator-served. A navigate "
     "with state or query parameters on these reads the screen back before it answers. On the "
     "ERD (/tables or /relationships with view=erd) a table's panel, the focus, the collapsed "
     "domains and the saved layout shown are all in the link; its exports are in the canvas "

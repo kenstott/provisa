@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { useEffect, useMemo } from "react";
+import { currentDataAddress } from "../lib/dataAddress";
 import { accessibleName, hidden } from "./uiActions";
 
 /**
@@ -160,6 +161,9 @@ function screenFields(): ScreenField[] {
 
 export interface Screen {
   route: string;
+  /** The data node a coordinator-served UI sends its data calls to (REQ-1916), as the NavBar's
+   * data address control reads it; null when the UI is not coordinator-served. */
+  dataNode: string | null;
   /** The editor of the route on screen; null on a route with none. */
   editor: ScreenEditor | null;
   /** The main inputs of the route on screen; null on a route that publishes none. */
@@ -198,8 +202,15 @@ export async function readScreen(waitMs: number): Promise<Screen | string> {
     return `the page on ${pathname} has not loaded within ${waitMs / 1000}s`;
   }
   const readers = readersOf(pathname);
+  let dataNode: string | null;
+  try {
+    dataNode = await currentDataAddress();
+  } catch (err) {
+    return `the data node could not be read: ${err instanceof Error ? err.message : String(err)}`;
+  }
   return {
     route: `${window.location.pathname}${window.location.search}`,
+    dataNode,
     editor: editors.get(pathname) ?? null,
     inputs: readers.length > 0 ? Object.assign({}, ...readers.map(({ read }) => read())) : null,
     fields: screenFields(),
