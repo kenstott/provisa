@@ -22,7 +22,7 @@ fails, an archive whose hash is not the recorded one, or an archive without the 
 executable raises ``RuntimeUnavailable``. There is no unpinned or unchecked fallback.
 """
 
-# Requirements: REQ-1984, REQ-1993
+# Requirements: REQ-1984, REQ-1993, REQ-2200
 from __future__ import annotations
 
 import hashlib
@@ -221,6 +221,36 @@ RUNTIMES: dict[str, RuntimePin] = {
                 "uv-x86_64-pc-windows-msvc.zip",
                 "cae6a3bc25239f83dffb467a4b180508d9da23986c04639ebfa44e43e6a84bff",
                 "uv.exe",
+            ),
+        },
+    ),
+    # REQ-2200: the Go toolchain a Go source is read and compiled with (go.dev/dl; each sum the
+    # one go.dev publishes). One version per release of Provisa, run with GOTOOLCHAIN=local, so
+    # a go.mod's toolchain line never fetches another; a go line newer than this is refused.
+    "go": RuntimePin(
+        "go",
+        "1.27.3",
+        "https://go.dev/dl/{filename}",
+        {
+            DARWIN_ARM64: Asset(
+                "go1.27.3.darwin-arm64.tar.gz",
+                "dd3908cf20959d798c1e06ebe5b72213f0505ce01373b40ce3110975a6cd99c2",
+                "go/bin/go",
+            ),
+            LINUX_X64: Asset(
+                "go1.27.3.linux-amd64.tar.gz",
+                "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40",
+                "go/bin/go",
+            ),
+            LINUX_ARM64: Asset(
+                "go1.27.3.linux-arm64.tar.gz",
+                "a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49",
+                "go/bin/go",
+            ),
+            WINDOWS_X64: Asset(
+                "go1.27.3.windows-amd64.zip",
+                "f26081f438319757f8a1b46d7d0b2c5ec7583d4038e485e0aa725cfde7885fff",
+                "go/bin/go.exe",
             ),
         },
     ),

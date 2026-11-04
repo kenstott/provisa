@@ -403,6 +403,8 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 "provisa.core" = ["standard_roles.yaml", "apoc_commands.yaml"]
 # REQ-1984: the reader a Node source's declarations are read with, run by the source's runtime.
 "provisa.node" = ["reader.mjs", "host.mjs"]
+# REQ-2200: the reader a Go source's package is read with, compiled by the pinned Go toolchain.
+"provisa.golang" = ["reader/go.mod", "reader/go.sum", "reader/main.go"]
 # REQ-2138: a sparql source's reasoner, run from its source by the pinned JDK.
 "provisa.sparql" = ["reasoner/Reasoner.java"]
 
