@@ -49,6 +49,8 @@ class GovernedPG:
 
     def __init__(self, dsn: str) -> None:
         self.dsn = dsn
+        #: The output column names of the last statement answered.
+        self.names: list[str] = []
 
     def answer(self, governed: str, tables: dict[str, list[dict[str, Any]]]) -> list[tuple]:
         """The rows ``governed`` returns over ``tables`` (``"schema.table"`` or ``"table"`` -> its
@@ -96,6 +98,7 @@ class GovernedPG:
                     cur = conn.execute(cast(LiteralString, physical))
                 except psycopg.Error as exc:
                     raise Refused(f"{type(exc).__name__}: {exc}") from exc
+                self.names = [d.name for d in cur.description or []]
                 return cur.fetchall() if cur.description else []
             finally:
                 conn.rollback()
@@ -206,5 +209,7 @@ def assert_same_answer(
     governed, expected = _bound(governed), _bound(expected)
     tables = sample_tables(governed, expected, types=types)
     want = pg.answer(expected, tables)
+    names = pg.names
     assert want, f"the reference reads nothing: {expected}"
     assert sorted(map(repr, pg.answer(governed, tables))) == sorted(map(repr, want)), governed
+    assert pg.names == names, f"{governed} names its columns {pg.names}, not {names}"

@@ -319,27 +319,38 @@ def governed_for_role(
 def _columns_read(sql: str, ctx, rls, masking_rules) -> dict[int, list[tuple[str, str]]]:
     """Each table of ``ctx`` registering the columns ``sql``, its row rules and its masks name
     (as varchar), for a test that registers none: governance reads a table through a relation of
-    its registered columns (REQ-039), so a table with none would be refused."""
+    its registered columns (REQ-039), so a table with none would be refused. A column the
+    statement qualifies is the qualified table's; an unqualified one every table's."""
     import sqlglot
     import sqlglot.expressions as exp
 
     from provisa.compiler.rls import RLSContext
 
-    names = {
-        c.name
-        for c in sqlglot.parse_one(sql, read="postgres").find_all(exp.Column)
-        if not isinstance(c.this, exp.Star) and c.name
+    metas = {m.table_id: m for m in ctx.tables.values()}
+    for join in ctx.joins.values():
+        metas.setdefault(join.target.table_id, join.target)
+    by_name = {m.table_name: tid for tid, m in metas.items()}
+    tree = sqlglot.parse_one(sql, read="postgres")
+    aliases = {
+        t.alias_or_name: by_name[t.name] for t in tree.find_all(exp.Table) if t.name in by_name
     }
+    names: dict[int, set[str]] = {tid: set() for tid in metas}
+    for col in tree.find_all(exp.Column):
+        if isinstance(col.this, exp.Star) or not col.name:
+            continue
+        owners = [aliases[col.table]] if col.table in aliases else list(metas)
+        for tid in owners:
+            names[tid].add(col.name)
     rules = rls.rules if isinstance(rls, RLSContext) else dict(rls or {})
-    for predicate in rules.values():
-        names |= {
-            c.name for c in sqlglot.parse_one(predicate, read="postgres").find_all(exp.Column)
-        }
-    for (_tid, _role), columns in (masking_rules or {}).items():
-        names |= set(columns)
-    metas = {m.table_id for m in ctx.tables.values()}
-    metas |= {j.target.table_id for j in ctx.joins.values()}
-    return {tid: [(n, "varchar") for n in sorted(names)] for tid in metas}
+    for tid, predicate in rules.items():
+        if tid in names:
+            names[tid] |= {
+                c.name for c in sqlglot.parse_one(predicate, read="postgres").find_all(exp.Column)
+            }
+    for (tid, _role), columns in (masking_rules or {}).items():
+        if tid in names:
+            names[tid] |= set(columns)
+    return {tid: [(n, "varchar") for n in sorted(cols)] for tid, cols in names.items()}
 
 
 def assert_span_emitted(exporter, name_fragment: str) -> None:

@@ -25,6 +25,7 @@ import sqlglot
 from provisa.compiler.sql_validator import _check_column_visibility
 from provisa.compiler.stage2 import GovernanceContext, apply_governance
 from provisa.security.masking import MaskingRule, MaskType
+from tests.governed_pg import governed_database
 from tests.write_governance import grants_over
 
 _COLUMNS = [("id", "integer"), ("name", "varchar"), ("ssn", "varchar"), ("account_no", "varchar")]
@@ -72,42 +73,47 @@ def test_a_star_over_a_table_with_no_visible_column_is_refused(sql):
 # -- a star is the visible columns, masked ---------------------------------------------------------
 
 
-def test_a_star_reads_only_the_visible_columns():
+_ROWS = {
+    "bank.customer": [{"id": 1, "name": "ann", "ssn": "111-SECRET", "account_no": "A1"}],
+    "bank.deal": [{"deal_id": 10, "customer_id": 1}],
+}
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_star_column_visibility")
+
+
+def test_a_star_reads_only_the_visible_columns(pg):
     gov = _gov(frozenset({"id", "name"}))
     governed = apply_governance("SELECT * FROM bank.customer", gov)
-    assert _projection(governed) == ["id", "name"]
-    assert "ssn" not in governed and "*" not in governed
+    assert "ssn" not in governed
+    assert pg.answer(governed, _ROWS) == [(1, "ann")]
 
 
-def test_a_qualified_star_reads_only_that_tables_visible_columns_masked():
+def test_a_qualified_star_reads_only_that_tables_visible_columns_masked(pg):
     masks = {(1, "name"): (MaskingRule(mask_type=MaskType.constant, value="***"), "varchar")}
     gov = _gov(frozenset({"id", "name"}), masks)
     governed = apply_governance(
         "SELECT c.*, d.deal_id FROM bank.customer AS c JOIN bank.deal AS d ON d.customer_id = c.id",
         gov,
     )
-    assert _projection(governed) == ["id", "name", "deal_id"]
-    assert "ssn" not in governed and "account_no" not in governed and ".*" not in governed
-    assert "'***'" in governed  # the mask, as on the column named alone
+    assert "ssn" not in governed and "account_no" not in governed
+    assert pg.answer(governed, _ROWS) == [(1, "***", 10)]  # the mask, as on the column alone
 
 
-def test_a_qualified_star_over_a_fully_visible_table_is_still_masked():
+def test_a_qualified_star_over_a_fully_visible_table_is_still_masked(pg):
     masks = {(1, "ssn"): (MaskingRule(mask_type=MaskType.constant, value="***"), "varchar")}
     gov = _gov(None, masks)
     governed = apply_governance("SELECT c.* FROM bank.customer AS c", gov)
-    assert _projection(governed) == ["id", "name", "ssn", "account_no"]
-    assert "'***'" in governed and ".*" not in governed
+    assert pg.answer(governed, _ROWS) == [(1, "ann", "***", "A1")]
 
 
-def test_a_star_over_a_derived_relation_reads_what_its_governed_body_projects():
+def test_a_star_over_a_derived_relation_reads_what_its_governed_body_projects(pg):
     gov = _gov(frozenset({"id"}))
     governed = apply_governance("SELECT * FROM (SELECT * FROM bank.customer) AS s", gov)
-    assert "ssn" not in governed and _projection(governed) == ["*"]
-    inner = sqlglot.parse_one(governed, read="postgres").find(sqlglot.exp.Subquery)
-    assert [e.alias_or_name for e in inner.this.expressions] == ["id"]
-
-
-# -- the rows a write returns are read like a SELECT's ----------------------------------------------
+    assert "ssn" not in governed
+    assert pg.answer(governed, _ROWS) == [(1,)]
 
 
 def _writable(gov: GovernanceContext) -> GovernanceContext:
@@ -140,5 +146,6 @@ def test_a_write_returning_a_hidden_column_is_refused():
 
 def test_a_write_returning_star_over_a_table_the_role_is_served_nothing_of_is_refused():
     gov = _writable(_gov(frozenset()))
-    with pytest.raises(PermissionError, match="no column of"):
+    # Refused: its WHERE names a column the role is not served (V003), and so would its star.
+    with pytest.raises(PermissionError, match="V003|no column of"):
         apply_governance("DELETE FROM bank.customer WHERE id = 1 RETURNING *", gov)

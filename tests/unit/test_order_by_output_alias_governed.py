@@ -65,7 +65,8 @@ def test_an_ordering_by_a_hidden_column_is_still_refused_or_dropped():
     governed = apply_governance(
         'SELECT c.region FROM "store"."customers" AS c ORDER BY c.email', _gov()
     )
-    assert "email" not in governed
+    # REQ-039: the governed relation does not hold it, so the engine refuses the ordering.
+    assert 'AS "email"' not in governed and '"c"."email"' not in governed
 
 
 def test_an_output_named_as_a_hidden_column_orders_by_the_output():
