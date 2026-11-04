@@ -48,6 +48,7 @@ SCOPED_BY_COLUMN: frozenset[str] = frozenset(
     {
         "catalog_pg_tables",
         "catalog_pg_indexes",
+        "catalog_pg_stat_user_tables",
         "is_tables",
         "is_columns",
         "is_table_constraints",

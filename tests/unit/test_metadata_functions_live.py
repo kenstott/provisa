@@ -396,7 +396,8 @@ def test_visibility_of_a_relation_is_what_the_catalog_lists(live):
         assert _form(conn, "pg_table_is_visible(1259)") is _real(conn, "pg_table_is_visible(1259)")
         assert _form(conn, "pg_table_is_visible(99999999)") is None
         assert _real(conn, "pg_table_is_visible(99999999)") is None
-        assert _form(conn, f"pg_relation_is_publishable({table_oid(1)})") is True
+        # REQ-2167 (amended 2026-11-04): Provisa publishes no relation.
+        assert _form(conn, f"pg_relation_is_publishable({table_oid(1)})") is False
         assert _form(conn, "pg_relation_is_publishable(99999999)") is False
 
 
