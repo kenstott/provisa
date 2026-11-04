@@ -112,3 +112,16 @@ def test_the_environment_lives_outside_the_checkout():
     # A host's own .venv in the bind-mounted checkout is never synced over.
     env = _devcontainer()["containerEnv"]["UV_PROJECT_ENVIRONMENT"]
     assert not env.startswith(_devcontainer()["workspaceFolder"])
+
+
+def test_the_slow_setup_is_one_a_codespaces_prebuild_runs():
+    # A prebuild runs onCreateCommand and updateContentCommand; postCreateCommand runs on every
+    # codespace's first start, so the sync and builds there would never be cached.
+    config = _devcontainer()
+    assert config["updateContentCommand"] == "bash .devcontainer/update-content.sh"
+    assert (DEVCONTAINER / "update-content.sh").is_file()
+    assert "postCreateCommand" not in config
+
+
+def test_codespaces_picks_a_machine_that_builds_it():
+    assert _devcontainer()["hostRequirements"] == {"cpus": 4, "memory": "16gb", "storage": "32gb"}

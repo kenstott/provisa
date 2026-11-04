@@ -1,7 +1,9 @@
 #!/bin/bash
-# Runs once when the dev container is created (REQ-2205): the locked Python dependencies with the
-# extras CI's unit job installs, provisa._encoders compiled for this checkout, and provisa-ui's
-# packages. Afterwards `pytest tests/unit -n auto` and `npm run test:unit` (in provisa-ui) run.
+# The dev container's slow setup (REQ-2205): the locked Python dependencies with the extras CI's
+# unit job installs, provisa._encoders compiled for this checkout, and provisa-ui's packages. It is
+# the updateContentCommand, so it runs when the container is created and again when the checkout's
+# content changes, and a Codespaces prebuild runs it ahead of time. Afterwards
+# `pytest tests/unit -n auto` and `npm run test:unit` (in provisa-ui) run.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

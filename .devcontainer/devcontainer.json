@@ -6,6 +6,11 @@
   "workspaceFolder": "/workspaces/provisa",
   "shutdownAction": "stopCompose",
   "remoteUser": "vscode",
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "16gb",
+    "storage": "32gb"
+  },
   "features": {
     "ghcr.io/devcontainers/features/rust:1.6.0": {
       "version": "1.95.0",
@@ -30,7 +35,7 @@
   "remoteEnv": {
     "PATH": "/home/vscode/.venv/bin:${containerEnv:PATH}"
   },
-  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "updateContentCommand": "bash .devcontainer/update-content.sh",
   "customizations": {
     "vscode": {
       "extensions": [
