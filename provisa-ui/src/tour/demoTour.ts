@@ -18,6 +18,7 @@ import type { Capability } from "../types/auth";
 import type { ExampleQuery } from "../api/setup";
 import type { TourStep } from "./tourSteps";
 import { runSql } from "../api/admin";
+import { documentMark } from "../lib/documentMark";
 import type { TourPrerequisites } from "./tourPrerequisites";
 
 /** REQ-2013: a demo's track needs the sources and tables its steps show. */
@@ -107,6 +108,16 @@ export interface DemoTourStepDef {
   term?: string;
   /** A data product, by id: opened on the Data Products page, its members and lineage shown. */
   product?: string;
+  /** REQ-2201: a document's public address, given to the glossary's Find terms: the tour opens
+   *  the dialog, types the address, starts a scan and cancels it, then explains the stopped scan.
+   *  A scan reads for minutes; the one done ahead is opened by a `scan` step. */
+  find_terms?: string;
+  /** REQ-2201: the scan of the document at this address done ahead (the demo's setup.yaml scans it
+   *  when its bundle is built): opened from Find terms' list, its candidate terms shown. */
+  scan?: string;
+  /** REQ-2201: a reference library document, by the address it was read from: its row on the
+   *  Reference library page. */
+  library?: string;
   /** A role (or "all"): shown in its picker (the SQL explorer's run-as on /sql, else the header's)
    *  and picked on Next. Beside `example`, `sql` or `mcp`, picked as the step opens, and what the
    *  step names runs as it. */
@@ -152,6 +163,21 @@ const PROFILE_RUNS_NONE = '[data-testid="profile-runs-none"]';
 
 /** A Mantine modal's close button: an explain step leaves the explorer as it found it. */
 const MODAL_CLOSE = ".mantine-Modal-close";
+
+/** The glossary's Find terms (REQ-2179): its window, the scan open in it, and its close button,
+ *  which a find_terms or scan step presses on leaving, so each step opens the window afresh. */
+const FIND_TERMS_DIALOG = '[data-testid="find-terms-dialog"]';
+const FIND_TERMS_QUEUE = '[data-testid="find-terms-queue"]';
+const FIND_TERMS_CLOSE = `${FIND_TERMS_DIALOG} .mantine-Modal-close`;
+/** The glossary's menu that offers Find terms, and its item. */
+const GLOSSARY_GENERATE_MENU = "glossary-generate-menu";
+const GLOSSARY_FIND_TERMS = "glossary-find-terms-btn";
+
+/** A scan of the document at `url` that has ended `status`: its row in Find terms' list and the
+ *  scan open in the window both carry these. */
+function scanOf(url: string, status: "done" | "failed"): string {
+  return `[data-scan-source="${documentMark(url)}"][data-scan-status="${status}"]`;
+}
 
 /** Answers that come from the server are slow on a loaded demo; a run's result waits this long. */
 const RESULT_WAIT_MS = 60000;
@@ -417,6 +443,46 @@ function demoTourStep(
       clickBefore: `[data-glossary-term="${def.term}"]`,
       element: '[data-testid="glossary-detail"]',
     };
+  }
+  if (def.find_terms !== undefined) {
+    // Act, then explain (REQ-2115): the visitor sees the address typed and the scan started, and
+    // the tour cancels it at once -- a scan reads for minutes -- then explains the stopped scan.
+    return {
+      ...page,
+      actions: [
+        { do: "press", target: { testId: GLOSSARY_GENERATE_MENU } },
+        { do: "press", target: { testId: GLOSSARY_FIND_TERMS } },
+        { do: "press", target: { testId: "find-terms-mode-url" } },
+        { do: "fill", target: { testId: "find-terms-url" }, value: def.find_terms },
+        { do: "press", target: { testId: "find-terms-start" } },
+        { do: "press", target: { testId: "find-terms-cancel" } },
+      ],
+      element: `${FIND_TERMS_QUEUE}${scanOf(def.find_terms, "failed")}`,
+      waitMs: RESULT_WAIT_MS,
+      clickAfterNext: FIND_TERMS_CLOSE,
+    };
+  }
+  if (def.scan !== undefined) {
+    // The scan done ahead, opened from the list of Find terms, opened first when it is not.
+    const done = scanOf(def.scan, "done");
+    return {
+      ...page,
+      ensureOpen: [
+        {
+          click: `[data-testid="${GLOSSARY_GENERATE_MENU}"]`,
+          unlessPresent: `${FIND_TERMS_DIALOG}, [data-testid="${GLOSSARY_FIND_TERMS}"]`,
+        },
+        { click: `[data-testid="${GLOSSARY_FIND_TERMS}"]`, unlessPresent: FIND_TERMS_DIALOG },
+      ],
+      clickBefore: `[data-testid="find-terms-scans"] ${done} [data-find-terms-open]`,
+      readySelector: `${FIND_TERMS_QUEUE}${done} [data-testid^="find-terms-draft-"]`,
+      element: `${FIND_TERMS_QUEUE}${done}`,
+      waitMs: RESULT_WAIT_MS,
+      clickAfterNext: FIND_TERMS_CLOSE,
+    };
+  }
+  if (def.library !== undefined) {
+    return { ...page, element: `[data-reflib-source="${documentMark(def.library)}"]` };
   }
   if (def.product !== undefined) {
     // The page opens the product its deep link names (`?product=<id>`), read when it opens.

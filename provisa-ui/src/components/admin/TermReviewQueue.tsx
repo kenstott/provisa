@@ -55,6 +55,7 @@ import { Tip } from "../Tip";
 import { useScanProgress } from "./useScanProgress";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
+import { documentMark } from "../../lib/documentMark";
 
 /** How often a running scan is read again, in milliseconds. */
 const POLL_MS = 2000;
@@ -608,7 +609,12 @@ export function TermReviewQueue({
   const allSelected = toReview.length > 0 && toReview.every((d) => selected.has(d.id));
 
   return (
-    <Stack gap="md" data-testid="find-terms-queue">
+    <Stack
+      gap="md"
+      data-testid="find-terms-queue"
+      data-scan-source={documentMark(scan.document_source)}
+      data-scan-status={scan.status}
+    >
       <Group justify="space-between" wrap="nowrap">
         <Group gap="xs" wrap="nowrap">
           <Button

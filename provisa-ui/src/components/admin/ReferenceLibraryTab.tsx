@@ -58,6 +58,7 @@ import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
 import { PageLoading } from "../PageLoading";
 import { Tip } from "../Tip";
 import { scopeChange, WHOLE_ORG } from "./referenceScope";
+import { documentMark } from "../../lib/documentMark";
 
 /** The files the library reads. */
 const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx";
@@ -641,6 +642,8 @@ export function ReferenceLibraryTab() {
                   <React.Fragment key={d.id}>
                     <ListRow
                       testId={`reflib-row-${d.id}`}
+                      // REQ-2201: a demo's tour points at a document by the address it was read from.
+                      data-reflib-source={documentMark(d.source)}
                       selected={selected === d.id && !adding}
                       onClick={() => {
                         setAdding(false);
