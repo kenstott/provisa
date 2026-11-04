@@ -227,12 +227,18 @@ async def govern_action_rows(
     from provisa.compiler.stage2 import apply_governance
     from provisa.pgwire._pipeline import _resolve_session_settings
 
+    import sqlglot.expressions as exp
+
     gov, enforcement = _governance_context(action, cols, role_id, state)
     rel = relation_name(action["name"])
-    # Each column carries its own name as an alias so a masked projection keeps the column's
-    # name in the result — the same shape the pipeline's star expansion produces.
-    quoted = ", ".join(f'"{n}" AS "{n}"' for n in names)
-    governed = apply_governance(f'SELECT {quoted} FROM "{rel}"', gov)
+    # REQ-039: the read names only the columns the role is served -- a column it is not served
+    # does not exist in its governed relation. The governed relation exposes each served column
+    # under its own name, masked or not. REQ-913: the statement is built as an expression.
+    served = gov.visible_columns[synthetic_table_id(action["name"])]
+    read = exp.select(*(exp.column(n, quoted=True) for n in names if n in served)).from_(
+        exp.table_(rel, quoted=True)
+    )
+    governed = apply_governance(read.sql(dialect="postgres"), gov)
     sql = build_values_cte_sql(governed, rel, _Rows(names, rows))
     from provisa.core.request_context import session_vars_for
 
