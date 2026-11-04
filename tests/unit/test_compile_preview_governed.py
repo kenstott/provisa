@@ -107,7 +107,9 @@ async def _shown(monkeypatch) -> str:
 
 
 async def test_the_preview_shows_a_join_on_a_masked_key_reading_the_mask(monkeypatch):
-    assert 'ON \'***\' = "t1"."name"' in await _shown(monkeypatch)
+    shown = await _shown(monkeypatch)
+    # REQ-039: the join reads t0's governed relation, which serves email as its mask.
+    assert "'***' AS \"email\"" in shown and 'ON "t0"."email" = "t1"."name"' in shown
 
 
 async def test_the_preview_carries_the_row_filter_and_the_row_cap_the_run_applies(monkeypatch):

@@ -1301,6 +1301,13 @@ def _judge_view_selects(tree: exp.Expr, gov_ctx: GovernanceContext) -> None:  # 
                     col.replace(null)
 
 
+def unmark_views(sql: str) -> str:  # REQ-039
+    """``sql`` -- a statement whose views were expanded marked (``view_read.semantic_statement``)
+    -- without the marks: the text every use other than governance reads, so the mark is never
+    logged, audited or keyed on."""
+    return _unmark_views(sqlglot.parse_one(sql, read="postgres")).sql(dialect="postgres")
+
+
 def _unmark_views(tree: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """The statement without the marks its view bodies were expanded under: each
     ``SELECT * FROM (<body>) AS "<mark><view>"`` is the body itself, so the mark is never in the

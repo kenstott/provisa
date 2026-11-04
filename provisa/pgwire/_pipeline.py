@@ -1865,13 +1865,16 @@ async def govern_statement(
     # ONE semantic statement: every view the statement reads is replaced by its SQL before
     # governance, so governance judges it whole for this reader (provisa.mv.view_read).
     _validated_sql = normalized_sql
+    _marked_sql = normalized_sql
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map:
         from provisa.mv.view_read import semantic_statement
 
-        normalized_sql, _validated_sql = semantic_statement(
-            normalized_sql, _view_map, state, gov_ctx
-        )
+        from provisa.compiler.stage2 import unmark_views
+
+        # REQ-039: governance reads each view body as marked; every other use reads it unmarked.
+        _marked_sql, _validated_sql = semantic_statement(normalized_sql, _view_map, state, gov_ctx)
+        normalized_sql = unmark_views(_marked_sql)
         _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
     await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
@@ -1982,7 +1985,7 @@ async def govern_statement(
     if _registry is not None:
         gov_ctx.embedding_dims = {m.id: m.dimensions for m in _registry.list_enabled()}
     governed_semantic = await _off_loop(
-        apply_governance, normalized_sql, gov_ctx, _session_vars, embedded_params or None
+        apply_governance, _marked_sql, gov_ctx, _session_vars, embedded_params or None
     )
     # REQ-039, REQ-1942: a write as admitted, before what it reads was moved over the governed
     # relation -- what a Reversible environment keeps it by (route_governed).
@@ -5353,13 +5356,18 @@ async def _govern_compiled(
     # ONE semantic statement, as on the raw-SQL stage: every view is replaced by its SQL before
     # governance (provisa.mv.view_read).
     _validated_sql = sql
+    _marked_sql = sql
     _views: dict[str, str] = {}
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map:
         from provisa.mv.view_read import semantic_statement, views_read
 
+        from provisa.compiler.stage2 import unmark_views
+
         _views = views_read(sql, _view_map)
-        sql, _validated_sql = semantic_statement(sql, _view_map, state, gov_ctx)
+        # REQ-039: governance reads each view body as marked; every other use reads it unmarked.
+        _marked_sql, _validated_sql = semantic_statement(sql, _view_map, state, gov_ctx)
+        sql = unmark_views(_marked_sql)
         _compiled_tree = await _off_loop(lambda: _sg.parse_one(sql, read="postgres"))
     await _guard_complexity(sql, role_id, _compiled_tree, gov_ctx, ctx, state)
     # The V-rules every statement meets (a masked column in a filter, a hidden column, tables
@@ -5414,7 +5422,9 @@ async def _govern_compiled(
         gov_ctx.embedding_dims = {m.id: m.dimensions for m in _registry.list_enabled()}
     # REQ-863 pipeline order: governance → post-governance optimization → routing.
     # REQ-1882: off-loaded, same rationale as the raw-SQL path's own apply_governance call above.
-    governed_sql = await _off_loop(apply_governance, sql, gov_ctx, session_vars, exec_params)
+    governed_sql = await _off_loop(
+        apply_governance, _marked_sql, gov_ctx, session_vars, exec_params
+    )
     # REQ-2109: the versions read is applied to the governed statement, as on the raw-SQL stage:
     # its reads of the recorded time are Provisa's own, not judged against the caller's grants.
     from provisa.mv.bitemporal_tables import read_versions
