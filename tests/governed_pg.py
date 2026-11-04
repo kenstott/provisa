@@ -192,6 +192,26 @@ def _bound(statement: str) -> str:
     return tree.sql(dialect="postgres")
 
 
+def assert_same_rows(
+    pg: GovernedPG,
+    governed: str,
+    expected: str,
+    tables: dict[str, list[dict[str, Any]]],
+    *,
+    ordered: bool = False,
+) -> list[tuple]:
+    """``governed`` answers what ``expected`` answers over ``tables`` -- the same rows (in the
+    same order, with ``ordered``) under the same column names. Returns those rows."""
+    want = pg.answer(expected, tables)
+    names = pg.names
+    got = pg.answer(governed, tables)
+    if not ordered:
+        got, want = sorted(got, key=repr), sorted(want, key=repr)
+    assert got == want, governed
+    assert pg.names == names, f"{governed} names its columns {pg.names}, not {names}"
+    return want
+
+
 def assert_same_answer(
     pg: GovernedPG,
     governed: str,

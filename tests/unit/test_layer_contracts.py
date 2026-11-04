@@ -7,6 +7,10 @@
 """Layer contract tests: sql_gen → rls → executor type boundaries."""
 
 import dataclasses
+from decimal import Decimal
+
+import pytest
+import sqlglot
 
 from graphql import parse, validate
 
@@ -16,6 +20,7 @@ from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import CompilationContext, CompiledQuery, TableMeta, compile_query
 from provisa.compiler.context import build_context
 from provisa.executor.result import QueryResult
+from tests.governed_pg import assert_same_rows, governed_database
 from tests.helpers import governed_for_role
 
 
@@ -179,6 +184,20 @@ def _build_minimal_ctx():
 # --- Round-trip: CompilationContext → compile_query → CompiledQuery → governed SQL ---
 
 
+#: What each governed read is answered over, on PostgreSQL (tests/governed_pg.py).
+_ROWS = {
+    "public.orders": [
+        {"id": 1, "amount": Decimal("2.50")},
+        {"id": 2, "amount": Decimal("-1.00")},
+    ]
+}
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_layer_contracts")
+
+
 class TestRoundTripContracts:
     def test_compile_produces_compiled_query(self):
         schema, ctx = _build_minimal_ctx()
@@ -200,20 +219,26 @@ class TestRoundTripContracts:
         results = compile_query(doc, ctx)
         assert len(results[0].sql) > 0
 
-    def test_inject_rls_with_rule_modifies_sql(self):
+    def test_inject_rls_with_rule_modifies_sql(self, pg):
         schema, ctx = _build_minimal_ctx()
         doc = parse("{ orders { id amount } }")
         compiled = compile_query(doc, ctx)[0]
         rls = RLSContext(rules={1: '"amount" > 0'})
         result = governed_for_role(compiled.sql, ctx, "admin", rls=rls)
-        assert result == f'{compiled.sql} WHERE ("orders"."amount" > 0)'
+        expected = sqlglot.parse_one(compiled.sql, read="postgres").where('"amount" > 0')
+        assert assert_same_rows(pg, result, expected.sql(dialect="postgres"), _ROWS) == [
+            (1, Decimal("2.50")),
+        ]
 
-    def test_inject_rls_empty_rules_returns_same_sql(self):
+    def test_inject_rls_empty_rules_returns_same_sql(self, pg):
         schema, ctx = _build_minimal_ctx()
         doc = parse("{ orders { id amount } }")
         compiled = compile_query(doc, ctx)[0]
         result = governed_for_role(compiled.sql, ctx, "admin", rls=RLSContext.empty())
-        assert result == compiled.sql
+        assert assert_same_rows(pg, result, compiled.sql, _ROWS) == [
+            (1, Decimal("2.50")),
+            (2, Decimal("-1.00")),
+        ]
 
 
 class TestImportBoundaries:  # REQ-1678

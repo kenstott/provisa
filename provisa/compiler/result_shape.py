@@ -419,9 +419,15 @@ def _column_source(scope: Any, column: exp.Column) -> tuple[Any, str]:
     its exposed name), so the registered column under it types it."""
     from sqlglot.optimizer.scope import Scope
 
+    from provisa.compiler.governed_relation import read_through
+
     source = scope.sources.get(column.table)
     name = column.name
-    while isinstance(source, Scope) and isinstance(source.expression, exp.Select):
+    while (
+        isinstance(source, Scope)
+        and isinstance(source.expression, exp.Select)
+        and read_through(source.expression.parent) is not None
+    ):
         passed = next(
             (
                 s
