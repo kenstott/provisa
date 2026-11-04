@@ -122,6 +122,6 @@ def _refusal(why: str) -> str:
     return (
         f"the reference library's governed retrieval needs the pgvector extension in the control "
         f"plane's PostgreSQL, and {why}. Run the control plane on PostgreSQL with pgvector (the "
-        "pgvector/pgvector:pg16 image) and a role that may create it; the library is not searched "
+        "pgvector/pgvector:pg16-trixie image) and a role that may create it; the library is not searched "
         "without its index"
     )

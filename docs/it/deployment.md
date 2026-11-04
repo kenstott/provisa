@@ -505,7 +505,7 @@ Nota: l'AppImage di Provisa non può girare dentro un pod Kubernetes. Richiede F
    | ------- | ---------- |
    | `provisa/provisa:<version>` | API Provisa |
    | `trinodb/trino:480` | Coordinator + worker del motore di federazione |
-   | `pgvector/pgvector:pg16` | PostgreSQL in-cluster (se `postgresql.enabled`) |
+   | `pgvector/pgvector:pg16-trixie` | PostgreSQL in-cluster (se `postgresql.enabled`) |
    | `edoburu/pgbouncer:latest` | PgBouncer in-cluster (se `pgbouncer.enabled`) |
    | `redis:7.2` | Redis in-cluster (se `redis.enabled` e nessun `redis.host`) |
    | `minio/minio:latest` | MinIO in-cluster (se `minio.enabled`) |

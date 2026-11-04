@@ -13,7 +13,7 @@ services:
     # REQ-2185: the control plane carries pgvector (the reference library's passages are a vector
     # column under a vector index, and the library refuses to start without it). The same
     # PostgreSQL 16 with the extension added; entrypoint, init scripts and data layout unchanged.
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg16-trixie@sha256:9cf8b511f0e9a2c209b61430fc139f1ab9c75edbb31fb1751db6617b246a897a
     command: >
       postgres
       -c wal_level=logical

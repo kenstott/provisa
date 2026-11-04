@@ -127,7 +127,7 @@ def pytest_collection_modifyitems(config, items):
         item.add_marker(getattr(pytest.mark, group))
 
 
-_PG_SERVER_MAJOR = "16"  # matches the PostgreSQL 16 control-plane image (pgvector/pgvector:pg16) of docker-compose*.yml
+_PG_SERVER_MAJOR = "16"  # matches the PostgreSQL 16 control-plane image (pgvector/pgvector:pg16-trixie@sha256:9cf8b511f0e9a2c209b61430fc139f1ab9c75edbb31fb1751db6617b246a897a) of docker-compose*.yml
 
 
 def _pg_tool(name: str) -> str:

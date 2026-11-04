@@ -505,7 +505,7 @@ Note: the Provisa AppImage can't run inside a Kubernetes pod. It needs FUSE and 
    | ------- | ---------- |
    | `provisa/provisa:<version>` | Provisa API |
    | `trinodb/trino:480` | Federation engine coordinator + workers |
-   | `pgvector/pgvector:pg16` | In-cluster PostgreSQL (if `postgresql.enabled`) |
+   | `pgvector/pgvector:pg16-trixie` | In-cluster PostgreSQL (if `postgresql.enabled`) |
    | `edoburu/pgbouncer:latest` | In-cluster PgBouncer (if `pgbouncer.enabled`) |
    | `redis:7.2` | In-cluster Redis (if `redis.enabled` and no `redis.host`) |
    | `minio/minio:latest` | In-cluster MinIO (if `minio.enabled`) |
