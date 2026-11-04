@@ -157,8 +157,11 @@ export function ErdLayoutMenu({
           consequence={t("erdLayouts.deleteConsequence")}
           confirmLabel={t("erdLayouts.delete")}
           onConfirm={async () => {
-            await onDelete(current);
-            setDeleting(false);
+            try {
+              await onDelete(current);
+            } finally {
+              setDeleting(false);
+            }
           }}
           testId="erd-layout-delete-confirm"
         />

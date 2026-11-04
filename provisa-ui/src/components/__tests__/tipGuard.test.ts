@@ -98,6 +98,7 @@ const TIPS_INSIDE_TRIGGERS: Readonly<Record<string, number>> = {
   "pages/sql/ColumnFilterMenu.tsx": 1, // a result column's filter
   "components/RegexMaskFields.tsx": 1, // a regex mask's common masks (masks-presets.cjs)
   "components/erd/ErdCanvasBar.tsx": 1, // the ERD's download (the J562 render harness)
+  "components/erd/ErdLayoutMenu.tsx": 1, // the ERD's Layout menu (erd-saved-layout.test.tsx)
 };
 
 describe("a hint on a menu's or popover's trigger", () => {
