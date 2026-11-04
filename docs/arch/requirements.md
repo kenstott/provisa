@@ -26505,3 +26505,25 @@ Maintainer 2026-11-03: "another angle for getting terms from docs would be a sql
 **Code:** —
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2203 · Protocol Conformance {#REQ-2203}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-04: the PostgreSQL drivers' own upstream test suites run against a Provisa test instance over pgwire, as CockroachDB runs them against its own server: pgjdbc, psycopg, asyncpg, npgsql and pgx, each at a pinned upstream version. Each driver has a list of expected failures, every entry naming its reason: a skipped-by-design decision (transactions are no-ops, no sequences, no writes, no LISTEN/NOTIFY, no large-object writes, the catalog is the model's) or an open defect. A run fails only when a test not on the list fails, or a listed test now passes (then the list is corrected). The results are published per driver beside the other conformance results, in the four counts: passed, skipped by design, failed, not tested. No code, test data or runner is taken from CockroachDB; only the method.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-2204 · Protocol Conformance {#REQ-2204}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-04: the catalog queries that DBeaver, Metabase, Grafana and psql's \d commands send when they connect and browse a schema are captured from each tool at a pinned version, stored as statements, and replayed against both PostgreSQL 17 and a Provisa test instance serving the same fixture model; the answers are compared as the catalog check compares them ([REQ-2167](#REQ-2167)). A difference is a failure unless a skipped-by-design decision covers it. The results are published per tool beside the other conformance results.
+
+**Code:** —
+
+**Tests:** —
