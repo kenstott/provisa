@@ -88355,7 +88355,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     a role''s grants. It is resolved before the product is declared green. (Amended 2026-10-28, LISTED IS
     NOT A PRODUCT''S CONTRACT:) listed stays a column scope of its own, for discovery by analysts outside
     any product. A data product''s contract (REQ-2158) advertises the product''s members independently of
-    their columns'' scope, and changes no column''s scope.'
+    their columns'' scope, and changes no column''s scope. (Amended 2026-11-04, OWN-DOMAIN SCOPE:) A column''s
+    scope gains a value, own-domain: the column is served only to a role whose own domain access names the
+    table''s domain (a role listing every domain names it). A role that reaches the table''s domain only
+    through an ancestor domain (REQ-1363) is not served the column, even when visible_to names it. domain
+    keeps its meaning: served to every role that reaches the table''s domain, through an ancestor included.
+    Example: an executive_settlements table in executive_litigation, a child of legal, whose columns are
+    own-domain, is read by exec_litigation_counsel (granted executive_litigation) and never by legal_viewer
+    (granted legal).'
   scenario: 'Given finance.invoice_ledger with customer_id listed, amount domain and currency public
 
     When a sales role with no reach into finance opens the catalog
