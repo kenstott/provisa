@@ -3337,8 +3337,10 @@ async def _rebuild_schemas_impl(
             expand_meta_grants,
             expand_write_grants,
             flatten_role_dicts,
+            narrow_own_domain_grants,
             parent_map,
             role_chains,
+            with_own_domains,
         )
 
         role_chains_by_id = role_chains(roles)
@@ -3355,8 +3357,13 @@ async def _rebuild_schemas_impl(
         # reaches every domain under it, so a parent holds the subtree its child narrows
         # (REQ-2155). state.roles carries the flattened list, so every reader of a role's
         # domain_access (the data surfaces and the admin's domain gate) sees the subtree.
-        roles = flatten_role_dicts(_domain_tree.flatten_role_domains(roles, _domain_parents))
+        # REQ-2153: each role's own domain access is kept from before the tree, which an
+        # own-domain column's grant is narrowed by, once the grants are folded down the chains.
+        roles = flatten_role_dicts(
+            _domain_tree.flatten_role_domains(with_own_domains(roles), _domain_parents)
+        )
         expand_column_grants(tables, role_chains_by_id)
+        narrow_own_domain_grants([*tables, *draft_tables], roles)
         expand_meta_grants(tables, roles)  # REQ-1132
         expand_write_grants(tables, role_parents_by_id)  # REQ-2074
         state.role_chains = role_chains_by_id

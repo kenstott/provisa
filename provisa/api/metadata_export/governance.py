@@ -169,13 +169,13 @@ def _role_definitions(config: ProvisaConfig):
     REQ-1677), and every role that reaches a domain (a role reaching none, a control-plane role,
     is no data audience, REQ-1327)."""
     from provisa.core.db import standard_role_dicts
-    from provisa.security.inheritance import flatten_role_dicts, role_chains
+    from provisa.security.inheritance import flatten_role_dicts, role_chains, with_own_domains
     from provisa.security.rights import lists_data_domain
 
     stored = {r["id"]: r for r in standard_role_dicts()}
     stored.update({role.id: role.model_dump() for role in config.roles})
     # REQ-2155: what each role holds, which is what reads the columns.
-    definitions = {r["id"]: r for r in flatten_role_dicts(list(stored.values()))}
+    definitions = {r["id"]: r for r in flatten_role_dicts(with_own_domains(stored.values()))}
     all_roles = tuple(
         sorted(r for r, d in definitions.items() if lists_data_domain(d["domain_access"]))
     )

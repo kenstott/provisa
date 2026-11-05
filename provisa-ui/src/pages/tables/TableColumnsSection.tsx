@@ -260,10 +260,11 @@ export function TableColumnsSection({
                             title={t("tableEditForm.scopeHelp")}
                             data={[
                               { value: "domain", label: t("tableEditForm.scopeDomain") },
+                              { value: "listed", label: t("tableEditForm.scopeListed") },
                               { value: "public", label: t("tableEditForm.scopePublic") },
                               {
-                                value: "restricted",
-                                label: t("tableEditForm.scopeRestricted"),
+                                value: "own-domain",
+                                label: t("tableEditForm.scopeOwnDomain"),
                               },
                             ]}
                             value={c.scope || "domain"}
