@@ -13,8 +13,8 @@
 // below the term, under it, and each term in no such edge a root beside the others.
 
 import { describe, expect, it } from "vitest";
-import { GLOSSARY_SCOPE, NO_FILTERS, layoutGraph, visibleGraph, type LayerId } from "../graphModel";
-import { glossaryGraph, type TermEdgeRow, type TermRow } from "../glossaryGraphData";
+import { ONTOLOGY_SCOPE, NO_FILTERS, layoutGraph, visibleGraph, type LayerId } from "../graphModel";
+import { glossaryGraph, type TermEdgeRow, type TermRow } from "../ontologyData";
 
 const ref = (table: number, column: string) => ({
   columnKey: `${table}:${column}`,
@@ -54,7 +54,7 @@ const EDGES: TermEdgeRow[] = [
   { id: 4, fromTermId: 5, toTermId: 3, relType: "RELATED_TO" },
 ];
 const G = glossaryGraph(TERMS, EDGES);
-const tax = GLOSSARY_SCOPE.presets.taxonomy as NonNullable<typeof GLOSSARY_SCOPE.presets.taxonomy>;
+const tax = ONTOLOGY_SCOPE.presets.taxonomy as NonNullable<typeof ONTOLOGY_SCOPE.presets.taxonomy>;
 
 function tree(layers: LayerId[], edgeTypes: string[] = tax.edgeTypes ?? [], from = G) {
   const g = visibleGraph(
@@ -62,7 +62,7 @@ function tree(layers: LayerId[], edgeTypes: string[] = tax.edgeTypes ?? [], from
     new Set(layers),
     { ...NO_FILTERS, edgeTypes },
     new Set(),
-    GLOSSARY_SCOPE,
+    ONTOLOGY_SCOPE,
   );
   const at = layoutGraph(g, "layered");
   const x = (id: string) => (at.get(id) as number[])[0];

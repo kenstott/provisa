@@ -41,10 +41,12 @@ Security model / layer responsibilities:
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 
 import sqlglot
 import sqlglot.expressions as exp
+from sqlglot.dialects.postgres import Postgres
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
@@ -66,6 +68,28 @@ from provisa.security.rights import (
     reaches_domain,
 )
 from provisa.transpiler.xml_syntax import MAPPINGS
+
+
+# The functions sqlglot's PostgreSQL reader takes for unnest under other names: it reads
+# ``explode(a)`` and ``pg_catalog.explode(a)`` as it reads ``pg_catalog.unnest(a)``, an Explode.
+# PostgreSQL has no such functions, so a user's schema may.
+_EXPLODE_NAMES = frozenset({"EXPLODE", "EXPLODE_OUTER", "POSEXPLODE", "POSEXPLODE_OUTER"})
+
+
+class PostgresAsWritten(Postgres):
+    """PostgreSQL as the validator reads it (REQ-039, REQ-266): a function is read by the name it
+    is written with -- ``explode`` is an unknown function, never PostgreSQL's unnest."""
+
+    class Parser(Postgres.Parser):
+        FUNCTIONS = {
+            name: build
+            for name, build in Postgres.Parser.FUNCTIONS.items()
+            if name not in _EXPLODE_NAMES
+        }
+
+
+#: The dialect a statement is parsed in for validation (:func:`validate_sql`).
+READ = PostgresAsWritten
 
 
 @dataclass
@@ -105,7 +129,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     2 matches its rules against, name for name. A spelling only one of them resolves -- ``C.ssn``
     over ``FROM bank.customer c`` -- is refused, so no column reaches the engine past either."""
     try:
-        written = sqlglot.parse_one(sql, read="postgres")
+        written = sqlglot.parse_one(sql, read=READ)
     except Exception as exc:
         return [ValidationViolation("V000", f"SQL parse error: {exc}")]
     flatten_leftmost_join_groups(written)  # as stage 2 does: a leftmost group is the flat join
@@ -195,6 +219,21 @@ def _violations(
 _ROW_GENERATORS = (exp.GenerateSeries, exp.ExplodingGenerateSeries, exp.XMLTable)
 
 
+def client_table_function(tbl: exp.Table, table_functions: Collection[str]) -> bool:
+    """Whether FROM item ``tbl`` reads one of ``table_functions``: PostgreSQL's own, unqualified
+    or in pg_catalog, never a function of that name in another schema or catalog (a user's
+    ``evil.unnest``). A schema-qualified ``pg_catalog.unnest(...)`` is read by sqlglot as an
+    Explode, not by its name: it is PostgreSQL's unnest all the same (REQ-2204). Only that Explode
+    -- in :data:`READ`, ``explode`` and its kin are read by their own names, so an Explode was
+    written ``unnest``; a subclass (``Posexplode``) is another function."""
+    if tbl.catalog or tbl.db not in ("", "pg_catalog"):
+        return False
+    target = tbl.this
+    if isinstance(target, exp.Anonymous):
+        return target.name.lower() in table_functions
+    return type(target) is exp.Explode and "unnest" in table_functions
+
+
 def _check_registered_relations(  # REQ-001, REQ-266
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
@@ -214,7 +253,7 @@ def _check_registered_relations(  # REQ-001, REQ-266
         target = tbl.this
         if isinstance(target, _ROW_GENERATORS):
             continue
-        if isinstance(target, exp.Anonymous) and target.name.lower() in table_functions:
+        if client_table_function(tbl, table_functions):
             continue  # REQ-2190: a statement of the catalog, on the role that runs client SQL
         if not isinstance(target, exp.Identifier):
             fn = target.sql(dialect="postgres").split("(", 1)[0] if target is not None else "?"

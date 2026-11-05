@@ -24,6 +24,7 @@
     "layer_relationships": "קשרים בין חברים",
     "layer_outside": "קשרים לטבלאות חיצוניות",
     "layer_lineage": "Data Lineage",
+    "layer_productLinks": "קישורים למוצרים אחרים",
     "filterDomain": "תחומים",
     "filterTag": "תגיות",
     "filterSensitivity": "רגישות",
@@ -78,6 +79,7 @@
     "ontologyView": "תצוגת אונטולוגיה",
     "orphans": "יתומים",
     "columnsToggle": "עמודות",
+    "tablesToggle": "טבלאות",
     "allEdgeTypes": "כל סוגי הקשתות",
     "someEdgeTypes": "{{count}} מתוך {{total}} סוגי קשתות",
     "allDomains": "כל התחומים",
@@ -146,6 +148,8 @@
     "factOwner": "בעלים",
     "factMembers": "טבלאות חברות",
     "factColumns": "עמודות",
+    "depth": "עומק",
+    "lateral": "קשתות רוחביות",
     "grounding_grounded": "מעוגן",
     "grounding_grounded_pending": "מעוגן, דרך טיוטה"
   }

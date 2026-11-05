@@ -24,6 +24,7 @@
     "layer_relationships": "Relationships between members",
     "layer_outside": "Relationships to outside tables",
     "layer_lineage": "Lineage",
+    "layer_productLinks": "Links to other products",
     "filterDomain": "Domains",
     "filterTag": "Tags",
     "filterSensitivity": "Sensitivity",
@@ -78,6 +79,7 @@
     "ontologyView": "Ontology view",
     "orphans": "Orphans",
     "columnsToggle": "Columns",
+    "tablesToggle": "Tables",
     "allEdgeTypes": "All edge types",
     "someEdgeTypes": "{{count}} of {{total}} edge types",
     "allDomains": "All domains",
@@ -146,6 +148,8 @@
     "factOwner": "Owner",
     "factMembers": "Member tables",
     "factColumns": "Columns",
+    "depth": "Depth",
+    "lateral": "Lateral edges",
     "grounding_grounded": "Grounded",
     "grounding_grounded_pending": "Grounded, via a draft"
   }
