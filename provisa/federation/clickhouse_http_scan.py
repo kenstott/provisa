@@ -39,7 +39,8 @@ in-flight download, so the remaining budget is sent as ClickHouse's own ``max_ex
 (one second past the Provisa deadline, so the Provisa deadline fires first and the request fails with
 its TimeoutError when ClickHouse aborts the stream).
 
-Leaf module: sqlglot + the compiler's predicate classifier only; the runtime owns every connection.
+Leaf module: sqlglot, the compiler's predicate classifier and its governed-relation reader only; the
+runtime owns every connection.
 """
 
 # Requirements: REQ-899
@@ -59,6 +60,7 @@ from urllib.parse import quote, urlencode
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.compiler.governed_relation import ReadThrough, relation_of
 from provisa.compiler.sql_rewrite import _literal_predicate_target, _split_and
 
 
@@ -394,7 +396,7 @@ def _needed_columns(
     return [name for name, _ in rel.columns if name in wanted]
 
 
-def _candidate_conjuncts(tbl: exp.Table, select: exp.Select | None) -> list[exp.Expr]:
+def _candidate_conjuncts(tbl: exp.Expr, select: exp.Select | None) -> list[exp.Expr]:
     """Top-level AND conjuncts that filter this table's rows wherever they appear: its SELECT's
     WHERE (every classified predicate is null-rejecting, so even a null-supplying side is safe), an
     INNER join's ON anywhere in the SELECT, and its own LEFT join's ON (it is the null-supplying
@@ -428,13 +430,90 @@ def _candidate_conjuncts(tbl: exp.Table, select: exp.Select | None) -> list[exp.
     return out
 
 
+def _governed_conjuncts(through: ReadThrough) -> list[exp.Expr]:
+    """The conjuncts that filter the rows of the table a governed relation reads (REQ-039),
+    over the table under the relation's alias: those of the SELECT that reads the relation, each
+    column read as the table column the relation serves as it is (a masked or computed one reads
+    as NULL, so no predicate on it is pushed). The relation's own row rule is its table's own
+    SELECT's WHERE, taken there."""
+    item = through.relation
+    holder = item.parent
+    outer = holder.parent if isinstance(holder, (exp.From, exp.Join)) else None
+    if not isinstance(outer, exp.Select):
+        return []
+    sole = not (outer.args.get("joins") or [])
+    return [through.over_table(c, sole=sole) for c in _candidate_conjuncts(item, outer)]
+
+
+def _read_outputs(tree: exp.Expr, through: ReadThrough) -> set[str] | None:
+    """The outputs of a governed relation (REQ-039) the statement reads outside it, by name; None
+    when it reads them all -- a ``*``, the alias's ``.*``, a whole-row reference or a NATURAL
+    join. A name the statement may read unqualified is counted as read."""
+    exposed = {name.lower(): name for name in through.columns}
+    alias = through.alias.lower()
+    if any(j.args.get("method") for j in tree.find_all(exp.Join)):
+        return None
+    holder = through.relation.parent
+    outer = holder.parent if isinstance(holder, (exp.From, exp.Join)) else None
+    if isinstance(outer, exp.Select) and any(isinstance(p, exp.Star) for p in outer.expressions):
+        return None
+    read: set[str] = set()
+    for col in tree.find_all(exp.Column):
+        if _within(col, through.relation):
+            continue
+        qualifier = col.table.lower()
+        if qualifier and qualifier != alias:
+            continue
+        if isinstance(col.this, exp.Star):
+            return None
+        name = col.name.lower()
+        if not qualifier and name == alias and name not in exposed:
+            return None  # DuckDB whole-row reference: SELECT t0 FROM ...
+        if name in exposed:
+            read.add(exposed[name])
+    for join in tree.find_all(exp.Join):
+        for ident in join.args.get("using") or []:
+            if ident.name.lower() in exposed:
+                read.add(exposed[ident.name.lower()])
+    return read
+
+
+def _within(node: exp.Expr, ancestor: exp.Expr) -> bool:
+    parent = node.parent
+    while parent is not None:
+        if parent is ancestor:
+            return True
+        parent = parent.parent
+    return False
+
+
+def _keep_read_outputs(tree: exp.Expr, through: ReadThrough) -> None:
+    """Drop the outputs of a governed relation that read its table directly that the statement
+    never reads: the live read then fetches only the columns the statement and the relation's own
+    row rule use, as it does for a table read as itself. Its first output stays when none is read
+    (``count(*)``): a SELECT has at least one."""
+    body = through.relation.this
+    source = body.args.get("from_")
+    if source is None or source.this is not through.table:
+        return  # a chain: an inner level reads every column the level above exposes
+    read = _read_outputs(tree, through)
+    if read is None:
+        return
+    kept = [p for p in body.expressions if p.alias_or_name in read] or body.expressions[:1]
+    body.set("expressions", kept)
+
+
 def _pushed_predicates(
     tbl: exp.Table, select: exp.Select | None, rel: ClickHouseRelation, params: list | None
 ) -> list[str]:
     alias = tbl.alias_or_name.lower()
     types = {name.lower(): (name, t) for name, t in rel.columns}
     pushed: list[str] = []
-    for conjunct in _candidate_conjuncts(tbl, select):
+    through = relation_of(tbl)
+    conjuncts = _candidate_conjuncts(tbl, select)
+    if through is not None:
+        conjuncts += _governed_conjuncts(through)
+    for conjunct in conjuncts:
         target = _literal_predicate_target(conjunct, allow_params=True)
         if target is None or target[0].lower() != alias or target[1].lower() not in types:
             continue
@@ -511,7 +590,12 @@ def rewrite(
     planned = []
     for tbl, rel in hits:
         select = _own_select(tbl)
-        columns = _needed_columns(tree, tbl, select, rel)
+        through = relation_of(tbl)
+        if through is None:
+            columns = _needed_columns(tree, tbl, select, rel)
+        else:
+            _keep_read_outputs(tree, through)
+            columns = _needed_columns(through.relation, tbl, select, rel)
         predicates = _pushed_predicates(tbl, select, rel, params)
         ch_sql, casts = clickhouse_query(rel, columns, predicates, describe=describe)
         planned.append(

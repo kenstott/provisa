@@ -21,12 +21,14 @@ from provisa.compiler.sql_literals import sql_literal
 
 import functools
 import re as _re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, cast
 
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.compiler.governed_relation import ReadThrough, read_through
 from provisa.compiler.native_nested import mark_native_nested_reads
 from provisa.compiler.native_subtype import mark_subtype_operations, mark_subtype_reads
 from provisa.compiler.ontology_classes import is_class_table_id
@@ -982,6 +984,43 @@ def _collect_table_aliases(select: exp.Select) -> dict[str, tuple[str, str]]:
     return aliases
 
 
+@dataclass(frozen=True)
+class _Read:
+    """A FROM or JOIN item of one SELECT, read as the registered table it reads: ``table`` is its
+    lowercased (schema, table), ``through`` the governed relation it stands as (REQ-039), None
+    when it is the table itself."""
+
+    table: tuple[str, str]
+    through: ReadThrough | None = None
+
+    def column(self, name: str) -> str | None:
+        """The table's column, lowercased, the item exposes as ``name`` unchanged. None when a
+        governed relation exposes no such column, or exposes it masked or computed: a predicate
+        on that value is not one on the table's column."""
+        if self.through is None:
+            return name.lower()
+        physical = self.through.column(name)
+        return None if physical is None else physical.lower()
+
+
+def _read_aliases(select: exp.Select) -> dict[str, _Read]:
+    """alias (lowercased) -> the table it reads, for this SELECT's own FROM + JOIN items only --
+    never descends into a nested subquery's own FROM/JOIN (each is its own scope, visited
+    separately by the caller's own ``find_all(exp.Select)``). Stage 2 puts the role's governed
+    relation in the place of every registered table (REQ-039): such an item is read as its
+    table, under the relation's alias."""
+    aliases: dict[str, _Read] = {}
+    from_ = select.args.get("from_") or select.args.get("from")
+    items: list[exp.Expr] = [from_.this] if from_ is not None else []
+    items += [j.this for j in select.args.get("joins") or []]
+    for item in items:
+        through = read_through(item)
+        tbl = item if through is None else through.table
+        if isinstance(tbl, exp.Table) and tbl.db:
+            aliases[item.alias_or_name.lower()] = _Read((tbl.db.lower(), tbl.name.lower()), through)
+    return aliases
+
+
 def propagate_literal_join_predicates(  # REQ-1880
     sql: str,
     dialect: str,
@@ -1026,7 +1065,7 @@ def propagate_literal_join_predicates(  # REQ-1880
         joins = select.args.get("joins") or []
         if where is None or not joins:
             continue
-        alias_to_phys = _collect_table_aliases(select)
+        alias_to_phys = _read_aliases(select)
         if not alias_to_phys:
             continue
         literal_preds: dict[tuple[str, str], list[exp.Expr]] = {}
@@ -1050,18 +1089,28 @@ def propagate_literal_join_predicates(  # REQ-1880
                 preds = literal_preds.get((drv_alias.lower(), drv_col.lower()))
                 if not preds:
                     continue
-                tgt_phys = alias_to_phys.get(tgt_alias.lower())
-                drv_phys = alias_to_phys.get(drv_alias.lower())
-                if tgt_phys is None or drv_phys is None or tgt_phys not in eligible_targets:
+                tgt = alias_to_phys.get(tgt_alias.lower())
+                drv = alias_to_phys.get(drv_alias.lower())
+                if tgt is None or drv is None or tgt.table not in eligible_targets:
                     continue
-                drv_type = column_types.get((*drv_phys, drv_col.lower()))
-                tgt_type = column_types.get((*tgt_phys, tgt_col.lower()))
+                drv_physical, tgt_physical = drv.column(drv_col), tgt.column(tgt_col)
+                if drv_physical is None or tgt_physical is None:
+                    continue
+                drv_type = column_types.get((*drv.table, drv_physical))
+                tgt_type = column_types.get((*tgt.table, tgt_physical))
                 if (
                     drv_type is None
                     or tgt_type is None
                     or not _types_compatible(drv_type, tgt_type)
                 ):
                     continue
+                # The far side's own identifiers, quoting kept: its column need not share the
+                # driving column's name.
+                far = next(
+                    c
+                    for c in (join.args["on"].left, join.args["on"].right)
+                    if c.table == tgt_alias and c.name == tgt_col
+                )
                 for pred in preds:
                     propagated = pred.copy()
                     for col in propagated.find_all(exp.Column):
@@ -1069,7 +1118,8 @@ def propagate_literal_join_predicates(  # REQ-1880
                             col.table.lower() == drv_alias.lower()
                             and col.name.lower() == drv_col.lower()
                         ):
-                            col.set("table", exp.to_identifier(tgt_alias))
+                            col.set("table", far.args["table"].copy())
+                            col.set("this", far.args["this"].copy())
                     new_preds.append(propagated)
         if new_preds:
             combined = where.this
@@ -1198,7 +1248,7 @@ def _propagate_into_correlated_subqueries(
         where = outer.args.get("where")
         if where is None:
             continue
-        outer_aliases = _collect_table_aliases(outer)
+        outer_aliases = _read_aliases(outer)
         if not outer_aliases:
             continue
         literal_preds: dict[tuple[str, str], list[exp.Expr]] = {}
@@ -1215,7 +1265,7 @@ def _propagate_into_correlated_subqueries(
                 sub_where = sub.args.get("where")
                 if sub_where is None:
                     continue
-                sub_aliases = _collect_table_aliases(sub)
+                sub_aliases = _read_aliases(sub)
                 additions: list[exp.Expr] = []
                 key: tuple[exp.EQ, exp.Column, exp.Column] | None = None
                 for conjunct in _split_and(sub_where.this):
@@ -1239,13 +1289,15 @@ def _propagate_into_correlated_subqueries(
                         preds = literal_preds.get((outer_alias, outer_col.name.lower()))
                         if not preds:
                             continue
-                        tgt_phys = sub_aliases[inner_alias]
-                        if tgt_phys not in eligible_targets:
+                        tgt, drv = sub_aliases[inner_alias], outer_aliases[outer_alias]
+                        if tgt.table not in eligible_targets:
                             continue
-                        drv_type = column_types.get(
-                            (*outer_aliases[outer_alias], outer_col.name.lower())
-                        )
-                        tgt_type = column_types.get((*tgt_phys, inner_col.name.lower()))
+                        drv_physical = drv.column(outer_col.name)
+                        tgt_physical = tgt.column(inner_col.name)
+                        if drv_physical is None or tgt_physical is None:
+                            continue
+                        drv_type = column_types.get((*drv.table, drv_physical))
+                        tgt_type = column_types.get((*tgt.table, tgt_physical))
                         if (
                             drv_type is None
                             or tgt_type is None
