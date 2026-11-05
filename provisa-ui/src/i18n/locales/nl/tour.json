@@ -936,13 +936,29 @@
         "title": "Eén concern, twee regio's",
         "description": "Een retailconcern runt een EU- en een US-dochteronderneming als één bedrijf. Kan dat zonder de GDPR te schenden? Elke dochteronderneming houdt een eigen database: dit is die van de EU, met haar klanten van het loyaliteitsprogramma, hun toestemming voor marketing, bestellingen, personeel en de mail die het personeel buiten het concern stuurt."
       },
+      "retailPlatformRegions": {
+        "title": "Regio's beginnen in één configuratie",
+        "description": "De configuratie van het platform declareert de regio's, hier de EU en de US, en kent ze toe aan de organisatie. Elke regio heeft haar eigen gegevensverwerking: haar eigen engine en haar eigen opslag. Het doel van de EU is dataresidentie, voor klantgegevens die in de Europese Unie moeten blijven. In deze sandbox kunt u deze pagina lezen, maar niet wijzigen."
+      },
+      "retailPurposes": {
+        "title": "Wat een doel zegt",
+        "description": "De legenda legt elk doel uit. Een doel zegt waarom een regio bestaat. Het verplaatst geen gegevens en beslist niet wie ze leest. Dat doen twee lagen, en de rondleiding toont elk ervan: homing, de regels van de engine over waar gegevens staan, en beveiliging, de regels van de data steward over wie wat leest."
+      },
+      "retailOrgRegions": {
+        "title": "De regio's en opslag van de organisatie",
+        "description": "De organisatie heeft beide regio's. Elke rij noemt de opslag die daar wordt gebruikt: de engine van de regio, en waar haar replica's, views, cache, buildstatus en logboek worden bewaard. EU-gegevens worden verwerkt met de eigen opslag van de EU."
+      },
+      "retailEngines": {
+        "title": "Eén engine per regio",
+        "description": "Federatie heeft een tabblad voor elke regio, en elke regio draait haar eigen engine. Eén configuratie geeft dus twee omgevingen voor gegevensverwerking. U bent op de US-node. Die leest EU-gegevens alleen via de opslag van de EU, nooit uit een eigen kopie."
+      },
       "retailRegions": {
-        "title": "Eén definitie van elke regio",
-        "description": "De database van de US-dochteronderneming, gevestigd in de US. Het model declareert beide regio's en legt één keer vast waar elke tabel staat en welke views waar worden gebouwd. Een tweede Provisa-node draait in de EU: die kopieert de EU-tabellen naar de eigen opslag van de EU en bouwt daar de EU-views. U zit op de US-node, die EU-gegevens alleen uit die EU-opslag leest, zodat elke grensoverschrijdende regel op één plek wordt toegepast."
+        "title": "Homing: elke bron noemt haar thuisregio",
+        "description": "De database van de US-dochteronderneming is gevestigd in de US, die van de EU-dochteronderneming in de EU. Homing is de regel van de engine over waar gegevens staan. De replica's en cache van een gevestigde tabel blijven in haar thuisregio, en andere regio's bereiken haar alleen via die regio."
       },
       "retailEuCustomers": {
         "title": "Een EU-tabel, gevestigd in de EU",
-        "description": "De EU-klanten. De tabel noemt de EU als haar regio: haar rijen worden alleen naar de opslag van de EU gekopieerd en alleen daar berekend. Lezers elders krijgen ze via de views van de EU, of helemaal niet."
+        "description": "De EU-klanten. De regio van de tabel is de EU, dus haar replica's en cache staan alleen in de opslag van de EU. Homing beslist waar de rijen staan. Het beslist niet wie ze mag lezen. Dat is de volgende laag."
       },
       "retailRequests": {
         "title": "Verzoeken van betrokkenen",
@@ -953,12 +969,12 @@
         "description": "Een verzoek wordt op e-mailadres gekoppeld aan de klanten van elke dochteronderneming. Zo vindt één verzoek dezelfde persoon in beide."
       },
       "retailAsAnalyst": {
-        "title": "Als concernanalist",
-        "description": "Vervolgens schakelt de rolkiezer naar <strong>group_analyst</strong>, die in de US aan de concernrapportage werkt, zodat de SQL en GraphQL hierna als group_analyst draaien."
+        "title": "De regels van de data steward, als groepsanalist",
+        "description": "De tweede laag is beveiliging: de regels van de data steward beslissen wat elke lezer krijgt, naar rol en naar de regio van de lezer. Ze worden toegepast in de thuisregio, voordat er iets uit vertrekt. Vervolgens schakelt de rolkiezer over naar <strong>group_analyst</strong>, die in de US aan groepsrapportage werkt, zodat de SQL en GraphQL hierna als group_analyst draaien."
       },
       "retailGroupView": {
         "title": "Concernrapportage, EU-klanten gepseudonimiseerd",
-        "description": "Elke klant van het loyaliteitsprogramma van het concern. US-klanten verschijnen zoals ze zijn; EU-klanten verschijnen onder een pseudoniem dat de EU heeft berekend, zonder naam of adres. Het EU-deel is uit de opslag van de EU gelezen, en de registratie van deze query noemt de EU als de regio die antwoordde."
+        "description": "Elke loyaliteitsklant van de groep. US-klanten verschijnen zoals ze zijn. EU-klanten verschijnen onder een pseudoniem, omdat de regel van de steward zegt dat een lezer buiten de EU geen naam of adres krijgt. De EU paste die regel toe voordat haar rijen vertrokken, en het logboek van deze query noemt de EU als de regio die antwoordde."
       },
       "retailGroupGraphql": {
         "title": "Hetzelfde, in GraphQL",
@@ -970,7 +986,7 @@
       },
       "retailAudience": {
         "title": "Alleen klanten die toestemming gaven",
-        "description": "De SQL-verkenner draait nu als <strong>marketing_eu</strong>. EU-marketing leest de EU-klanten die toestemming voor marketing gaven, en alleen hen. De view wordt in de EU gebouwd uit EU-rijen."
+        "description": "De SQL-verkenner draait nu als <strong>marketing_eu</strong>. De regel van de steward laat EU-marketing de EU-klanten lezen die met marketing instemden, en alleen hen. De view wordt in de EU gebouwd uit EU-rijen."
       },
       "retailAsDpo": {
         "title": "Als functionaris gegevensbescherming",
@@ -998,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "De afzender, onthuld in de EU",
-        "description": "Dezelfde wachtrij. De maskeringslijst van de afzenderkolom onthult de afzender alleen aan een beoordelaar die ook region__eu heeft; alle anderen lezen hem achtergehouden. Het is één toekenning, reviewer en region__eu, zonder een rol die voor de combinatie is gemaakt."
+        "description": "Dezelfde wachtrij. Het masker van de steward op de afzenderkolom toont de afzender alleen aan een beoordelaar wiens toegewezen regio de EU is (region__eu). Alle anderen lezen hem achtergehouden. Wat een lezer krijgt, hangt af van zijn regio en van zijn rol, en er is geen rol voor de combinatie gemaakt."
       },
       "retailAsAdmin": {
         "title": "Terug naar elke rol",
@@ -1014,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "Wat u zag",
-        "description": "Eén model definieerde beide regio's: waar elke tabel staat, welke views waar worden gebouwd, en wie wat leest. De concernrapportage las EU-klanten gepseudonimiseerd, EU-marketing las alleen klanten die toestemming gaven, en een inzageverzoek en een wissing waren elk één query. De insidercontrole onthulde een afzender alleen in de EU, en elke lezing staat in één registratie."
+        "description": "Eén configuratie kende twee regio's toe, elk met een eigen engine en eigen opslag: twee omgevingen voor gegevensverwerking. Homing hield de EU-tabellen, hun replica's en hun cache in de EU. De regels van de data steward bepaalden wat elke lezer kreeg, naar rol en naar de regio van de lezer, en de EU paste ze toe voordat er iets vertrok. Groepsrapportage las EU-klanten gepseudonimiseerd, EU-marketing las alleen klanten die instemden, inzage en wissing waren elk één query, de afzender werd alleen aan een beoordelaar in de EU getoond, en elke leesactie staat in één logboek."
       },
       "provisioningScenario": {
         "title": "Waar deze demo over gaat",

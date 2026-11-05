@@ -936,13 +936,29 @@
         "title": "Um grupo, duas regiões",
         "description": "Um grupo varejista opera uma subsidiária na EU e outra nos US como um único negócio. Ele consegue fazer isso sem violar o GDPR? Cada subsidiária mantém seu próprio banco de dados: este é o da EU, com seus clientes do programa de fidelidade, o consentimento de marketing deles, os pedidos, a equipe e o e-mail que a equipe envia para fora do grupo."
       },
+      "retailPlatformRegions": {
+        "title": "As regiões começam numa configuração",
+        "description": "A configuração da plataforma declara as regiões, aqui a EU e os US, e concede-as à organização. Cada região tem o seu próprio processamento de dados: o seu próprio motor e os seus próprios armazenamentos. O propósito da EU é a residência, para os dados de clientes que precisam ficar na União Europeia. Neste sandbox você pode ler esta página, mas não alterá-la."
+      },
+      "retailPurposes": {
+        "title": "O que um propósito diz",
+        "description": "A legenda explica cada propósito. Um propósito diz por que uma região existe. Ele não move dados nem decide quem os lê. Duas camadas fazem isso, e o tour mostra cada uma: a hospedagem, as regras do motor sobre onde os dados ficam, e a segurança, as regras do data steward sobre quem lê o quê."
+      },
+      "retailOrgRegions": {
+        "title": "As regiões e os armazenamentos da organização",
+        "description": "A organização detém as duas regiões. Cada linha nomeia os armazenamentos usados ali: o motor da região e onde ficam as suas réplicas, visões, cache, estado de construção e registro. Os dados da EU são processados com os armazenamentos da própria EU."
+      },
+      "retailEngines": {
+        "title": "Um motor por região",
+        "description": "Federação tem uma aba para cada região, e cada região executa o seu próprio motor. Assim, uma configuração dá dois ambientes de processamento de dados. Você está no nó dos US. Ele lê os dados da EU apenas pelo armazenamento da EU, nunca de uma cópia própria."
+      },
       "retailRegions": {
-        "title": "Uma única definição de cada região",
-        "description": "O banco de dados da subsidiária dos US, hospedado nos US. O modelo declara as duas regiões e diz, uma única vez, onde cada tabela fica e quais visões são construídas onde. Um segundo nó do Provisa roda na EU: ele copia as tabelas da EU para o armazenamento próprio da EU e constrói lá as visões da EU. Você está no nó dos US, que lê dados da EU apenas desse armazenamento da EU, então cada regra transfronteiriça é aplicada em um só lugar."
+        "title": "Hospedagem: cada fonte nomeia a sua região de origem",
+        "description": "O banco de dados da subsidiária dos US está hospedado nos US, e o da subsidiária da EU na EU. A hospedagem é a regra do motor sobre onde os dados ficam. As réplicas e o cache de uma tabela hospedada ficam na sua região de origem, e as outras regiões só chegam a ela através dessa região."
       },
       "retailEuCustomers": {
         "title": "Uma tabela da EU, hospedada na EU",
-        "description": "Os clientes da EU. A tabela indica a EU como sua região: suas linhas são copiadas apenas para o armazenamento da EU e calculadas apenas lá. Leitores de outros lugares as obtêm pelas visões da EU ou não as obtêm."
+        "description": "Os clientes da EU. A região da tabela é a EU, então as suas réplicas e o seu cache ficam apenas no armazenamento da EU. A hospedagem decide onde as linhas ficam. Ela não decide quem pode lê-las. Essa é a próxima camada."
       },
       "retailRequests": {
         "title": "Solicitações dos titulares",
@@ -953,12 +969,12 @@
         "description": "Uma solicitação se junta aos clientes de cada subsidiária pelo endereço de e-mail. É assim que uma solicitação encontra a mesma pessoa nas duas."
       },
       "retailAsAnalyst": {
-        "title": "Como analista do grupo",
-        "description": "Em seguida, o seletor de papéis passa para <strong>group_analyst</strong>, que trabalha nos relatórios do grupo nos US, para que o SQL e o GraphQL seguintes rodem como group_analyst."
+        "title": "As regras do data steward, como analista do grupo",
+        "description": "A segunda camada é a segurança: as regras do data steward decidem o que cada leitor recebe, pela função e pela região do leitor. Elas são aplicadas na região de origem, antes que algo saia dela. Em seguida, o seletor de funções muda para <strong>group_analyst</strong>, que trabalha nos relatórios do grupo nos US, de modo que o SQL e o GraphQL seguintes são executados como group_analyst."
       },
       "retailGroupView": {
         "title": "Relatórios do grupo, clientes da EU pseudonimizados",
-        "description": "Cada cliente do programa de fidelidade do grupo. Os clientes dos US aparecem como são; os clientes da EU aparecem por um pseudônimo que a EU calculou, sem nome nem endereço. A parte da EU foi lida do armazenamento da EU, e o registro desta consulta indica a EU como a região que respondeu."
+        "description": "Todos os clientes de fidelidade do grupo. Os clientes dos US aparecem como são. Os clientes da EU aparecem com um pseudônimo, porque a regra do steward diz que um leitor fora da EU não recebe nome nem endereço. A EU aplicou essa regra antes que as suas linhas saíssem, e o registro desta consulta nomeia a EU como a região que respondeu."
       },
       "retailGroupGraphql": {
         "title": "O mesmo, em GraphQL",
@@ -970,7 +986,7 @@
       },
       "retailAudience": {
         "title": "Apenas clientes que concordaram",
-        "description": "O explorador SQL agora roda como <strong>marketing_eu</strong>. O marketing da EU lê os clientes da EU que concordaram com o marketing, e somente eles. A visão é construída na EU a partir de linhas da EU."
+        "description": "O explorador SQL agora é executado como <strong>marketing_eu</strong>. A regra do steward permite que o marketing da EU leia os clientes da EU que concordaram com o marketing, e somente eles. A visão é construída na EU a partir de linhas da EU."
       },
       "retailAsDpo": {
         "title": "Como encarregado de proteção de dados",
@@ -998,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "O remetente, revelado na EU",
-        "description": "A mesma fila. A lista de mascaramento da coluna do remetente revela o remetente apenas a um revisor que também tem region__eu; todos os demais o leem retido. É uma única concessão, reviewer e region__eu, sem nenhuma função criada para a combinação."
+        "description": "A mesma fila. A máscara do steward na coluna do remetente revela o remetente apenas a um revisor cuja região atribuída é a EU (region__eu). Todos os outros o leem retido. O que um leitor recebe depende da sua região, além da sua função, e nenhuma função foi criada para a combinação."
       },
       "retailAsAdmin": {
         "title": "De volta a todas as funções",
@@ -1014,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "O que você viu",
-        "description": "Um modelo definiu as duas regiões: onde cada tabela fica, quais visões são construídas onde, e quem lê o quê. Os relatórios do grupo leram os clientes da EU pseudonimizados, o marketing da EU leu apenas os clientes que consentiram, e uma solicitação de acesso e uma eliminação foram cada uma uma única consulta. A revisão de informação privilegiada revelou um remetente apenas na EU, e cada leitura está em um único registro."
+        "description": "Uma configuração concedeu duas regiões, cada uma com o seu próprio motor e os seus próprios armazenamentos: dois ambientes de processamento de dados. A hospedagem manteve as tabelas da EU, as suas réplicas e o seu cache na EU. As regras do data steward decidiram o que cada leitor recebia, pela função e pela região do leitor, e a EU aplicou-as antes que algo saísse dela. Os relatórios do grupo leram os clientes da EU pseudonimizados, o marketing da EU leu apenas os clientes que consentiram, o acesso e o apagamento foram cada um uma consulta, o remetente foi revelado apenas a um revisor na EU, e cada leitura está num único registro."
       },
       "provisioningScenario": {
         "title": "O que é esta demo",
