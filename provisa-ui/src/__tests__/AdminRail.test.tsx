@@ -23,6 +23,7 @@ const auth = {
   // either held or absent; the demonstration path is covered in CapabilityGate.test.tsx.
   demonstrated: [] as string[],
   billing: false,
+  activeOrgId: null as string | null,
 };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
 

@@ -92375,7 +92375,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     to mark a statement already rewritten. That is the migration path: an application connects with its
     old dialect as the default, so every statement keeps working; each statement rewritten to PostgreSQL
     carries the postgres hint; when none is left in the old dialect, the connection default changes to postgres
-    and the hints are dropped. Every statement runs at every step.'
+    and the hints are dropped. Every statement runs at every step. (Amended 2026-11-05, case of names under
+    a dialect:) Under a dialect named by the connection or by a statement hint, an unquoted name matches
+    the catalog ignoring case; when two catalog names differ only by case the statement is refused with
+    an error naming both. A quoted name matches exactly. Result column labels follow the named dialect''s
+    rule: an unquoted alias or column comes back as written for T-SQL and MySQL, in upper case for Snowflake,
+    Oracle and DB2, and in lower case for PostgreSQL, Trino and DuckDB; a quoted name comes back exactly
+    as written. Name matching is part of governance''s input and label case is presentation applied to the
+    answer, so both live in the one query pipeline.'
   scenario: 'Given a pgwire connection that names dialect tsql
 
 

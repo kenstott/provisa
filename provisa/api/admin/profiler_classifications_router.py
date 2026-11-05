@@ -48,6 +48,7 @@ from provisa.api.admin.capabilities import (
     require_capability_request,
 )
 from provisa.api.admin.profiler_router import _db, _jsonable, _member
+from provisa.api.admin.table_read import table_for_steward
 from provisa.api.errors import ApiError
 
 router = APIRouter(prefix="/admin", tags=["admin", "profiler"])
@@ -317,7 +318,6 @@ def _scan_doc(scan: dict) -> dict:
 
 @router.post("/tables/{table_id}/sensitive-scans")
 async def start_sensitive_scan(request: Request, table_id: int) -> dict:
-    from provisa.api.admin.table_read import table_for_steward
     from provisa.api.app import state
     from provisa.core.connection_loop import spawn_background
     from provisa.profiler import hints
@@ -335,7 +335,6 @@ async def start_sensitive_scan(request: Request, table_id: int) -> dict:
 @router.get("/tables/{table_id}/sensitive-scans/latest")
 async def latest_sensitive_scan(request: Request, table_id: int) -> dict:
     from provisa.api.admin.read_rights import served_columns_request
-    from provisa.api.admin.table_read import table_for_steward
     from provisa.api.app import state
     from provisa.profiler import hints
     from provisa.profiler.classify import kind_of
