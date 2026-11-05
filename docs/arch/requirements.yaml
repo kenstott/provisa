@@ -84773,7 +84773,11 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
     roles:) A write grant''s role may be a combined entry (REQ-2058): analyst+region__eu is held only by
     a request acting as every one of the named roles. The Writes section''s role picker composes it the
     way the column grant picker does (Combine). (Amended 2026-11-05, write grants:) In the UI a table''s
-    write grants are labelled Write grants, matching the columns'' Read grants.'
+    write grants are labelled Write grants, matching the columns'' Read grants. (Amended 2026-11-05, write
+    grants sit beside read grants:) The table''s Write grants are edited under its Columns section, as a
+    sub-tab beside Read grants, so every grant on the table is edited in one place; the editor stays per
+    role and operation, and the table no longer has a separate Writes section. The table''s Access section
+    stays the per-column summary.'
   use_case: An administrator lets a customer place orders for themselves only (insert of ship_to, with
     customer_id set from their session and status set to placed) and lets support change the status of
     placed or packed orders only, without either role gaining any other write.
