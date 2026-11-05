@@ -32,7 +32,7 @@ from provisa.core.org_invite import (
     unspent,
 )
 from provisa.core.schema_admin import org_invites, orgs, user_org_memberships
-from provisa.security.rights import ORG_ADMIN_ROLE, Capability, can_act_cross_org
+from provisa.security.rights import Capability, can_act_cross_org
 
 log = logging.getLogger(__name__)
 
@@ -55,9 +55,8 @@ async def _require_org_admin(
     membership row. Dev/no-auth (anonymous) is allowed, matching _require_platform_admin.
 
     REQ-1327: the platform admin keeps only an org's lifecycle (create, suspend, tier, delete) and
-    the appointment of its org admins (an invitation naming org_admin, the audited grant_org_admin
-    and its revocation); it never edits the org's other members, invitations, join settings or
-    branding. So the cross_org bypass is withheld unless the route is one of those
+    the appointment of its org admins (the audited grant_org_admin and its revocation); it never
+    edits the org's other members, invitations, join settings or branding. So the cross_org bypass is withheld unless the route is one of those
     and passes ``allow_cross_org=True``. Reading who is in an org, its settings, its branding, or its
     config is that org's data at rest (REQ-1605) — platform_admin sees it only where it also holds
     an actual org_admin assignment (seeded, REQ-1599's sandbox, or a REQ-1303 grant taken for that
@@ -235,9 +234,9 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
     # Audit attribution must be a real user — never fall back to "system".
     if identity is None:
         raise ApiError(401, "auth.authentication_required", "Authentication required")
-    # REQ-1327: the platform appoints an org's admins — inviting the first is its act. Every other
-    # invitation is a member of the org's, which only that org's admin issues.
-    await _require_org_admin(request, body.org_id, allow_cross_org=body.role_id == ORG_ADMIN_ROLE)
+    # REQ-1327: an invitation seats a member of the org, which only that org's admin issues. The
+    # platform appoints an org's admins through grant_org_admin (orgs_router), not by invitation.
+    await _require_org_admin(request, body.org_id)
     _check_env_policy(body)
     created_by = identity.user_id
     # token and expiry are computed app-side (portable) rather than via
