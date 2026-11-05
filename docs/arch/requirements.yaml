@@ -46829,7 +46829,11 @@
     as one lost and one gained, and the report says so. A branch with no commit at or before that time shows
     no history, not zero, and a term absent then counts as new. (Amended 2026-11-04, SENSITIVE COVERAGE
     IS A STANDARD REPORT:) Sensitive coverage is one of the seeded ops-domain reports: every sensitive column,
-    its tags, whether a fake covers it, and the reason when none does, read from meta.sensitive_coverage.'
+    its tags, whether a fake covers it, and the reason when none does, read from meta.sensitive_coverage.
+    (Amended 2026-11-05, REVIEW AND POLICY REPORTS:) The review and policy reports are standard reports
+    on Admin > Reports (REQ-1386): reviews overdue, each item''s attestation history, security items with
+    no review schedule, and, from REQ-2208, policy sections no security item cites and security items that
+    cite no policy, with flagged and broken policy references.'
   use_case: 'Provides self-service management/operations reporting through the governed pipeline without
     custom code: usage-driven deprecation decisions, PII-access oversight, governance-effectiveness inspection,
     and capacity/caching signals, all consumable from any BI tool over pgwire.'
@@ -74561,7 +74565,11 @@
     they change no routing, policy or validation. They teach why regions exist and help an organization
     think about how to use the regions it is granted. Each purpose shows a one-line explanation wherever
     regions are listed (the Platform page and Admin > Regions), and the GDPR demo''s tour (REQ-2035) points
-    at its EU region''s residency purpose before the residency queries.'
+    at its EU region''s residency purpose before the residency queries. (Amended 2026-11-05, A REGION''S
+    FEDERATION TAB IS ITS ENGINE STORE:) Each region''s tab on Admin > Federation shows and edits that region''s
+    engine store as the platform assigned it to the organization: its engine kind and its URL exactly as
+    entered, saved through the platform''s per-organization grant, by the platform admin. No per-kind engine
+    form maps fields into a URL.'
   use_case: A regulated enterprise needs some data processed and kept inside a country, with the rest
     of the estate readable from anywhere, under one set of definitions. Two independent deployments would
     each need their own definitions, which could diverge. Two clusters on one shared model give each region
@@ -88303,35 +88311,42 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: connector-catalog-streams-logs-and-public-data
   priority: SHOULD
   type: behavioral
-  description: >-
-    The profiler classifies columns from their profiled values, as Purview's classification rules do.
-    Its plausible types (REQ-1934) gain classification kinds, each recognised by a test applied to the
-    profile's sampled values, not only a shape. Most kinds are sensitive, each with a value validator:
-    US social security numbers (area, group and serial rules), payment card numbers (Luhn), IBANs
-    (mod-97), passport and national-identifier formats, and similar. Others are reference data,
-    recognised by membership in a shipped reference list: world cities, countries, currency codes,
-    language codes, and similar. When the share of a column's sampled non-null values that pass a
-    kind's test reaches that kind's threshold, the column gets a classification suggestion stating the
-    kind and its evidence, for example "customers.tax_id looks like a US SSN: 97% of sampled values pass
-    the SSN rules" or "stores.city looks like a world city: 99% of sampled values are known cities". A
-    data steward accepts or rejects it. Accepting links the column to the glossary Property term for
-    that kind; for a sensitive kind it also marks the column PII (PII lives on columns or Property
-    terms) and offers the kind's mask preset (for example ssn_last4). A rejected suggestion is not
-    raised again for the same column and kind. The classification kinds are listed in the admin UI,
-    each with its test, threshold and whether it is sensitive; an org admin can disable a kind, and a
-    disabled kind is not tested and raises no suggestions until it is enabled again.
-    (Amended 2026-10-24, DECISIONS AND KINDS:) A decision is made by a holder of sensitive_data in the
-    table's own domain: a data steward in its domains, an org admin in every one. On a key column,
-    accepting marks the column PII and offers the mask but does not link the Property term, because a
-    key column's meaning is its Class term (REQ-2141); the answer says so. A suggestion needs at least
-    ten sampled non-null values; a number column is tested by its whole numbers, any other number
-    failing. A decision can be withdrawn, which makes the suggestion new again and undoes nothing
-    accepting did. The shipped kinds are the US social security number, payment card number, IBAN, UK
-    National Insurance number, Canadian social insurance number, Spanish DNI or NIE, Dutch citizen
-    service number, Indian Aadhaar number and US passport number (sensitive), and the country name, ISO
-    3166 country code, ISO 4217 currency code, ISO 639 language code and world city (reference, the
-    lists derived from GeoNames under CC BY 4.0), each with a threshold of 90%. A kind's test,
-    threshold, term and mask are the shipped catalogue's; only whether it is enabled is the org's.
+  description: 'The profiler classifies columns from their profiled values, as Purview''s classification
+    rules do. Its plausible types (REQ-1934) gain classification kinds, each recognised by a test applied
+    to the profile''s sampled values, not only a shape. Most kinds are sensitive, each with a value validator:
+    US social security numbers (area, group and serial rules), payment card numbers (Luhn), IBANs (mod-97),
+    passport and national-identifier formats, and similar. Others are reference data, recognised by membership
+    in a shipped reference list: world cities, countries, currency codes, language codes, and similar. When
+    the share of a column''s sampled non-null values that pass a kind''s test reaches that kind''s threshold,
+    the column gets a classification suggestion stating the kind and its evidence, for example "customers.tax_id
+    looks like a US SSN: 97% of sampled values pass the SSN rules" or "stores.city looks like a world city:
+    99% of sampled values are known cities". A data steward accepts or rejects it. Accepting links the column
+    to the glossary Property term for that kind; for a sensitive kind it also marks the column PII (PII
+    lives on columns or Property terms) and offers the kind''s mask preset (for example ssn_last4). A rejected
+    suggestion is not raised again for the same column and kind. The classification kinds are listed in
+    the admin UI, each with its test, threshold and whether it is sensitive; an org admin can disable a
+    kind, and a disabled kind is not tested and raises no suggestions until it is enabled again. (Amended
+    2026-10-24, DECISIONS AND KINDS:) A decision is made by a holder of sensitive_data in the table''s own
+    domain: a data steward in its domains, an org admin in every one. On a key column, accepting marks the
+    column PII and offers the mask but does not link the Property term, because a key column''s meaning
+    is its Class term (REQ-2141); the answer says so. A suggestion needs at least ten sampled non-null values;
+    a number column is tested by its whole numbers, any other number failing. A decision can be withdrawn,
+    which makes the suggestion new again and undoes nothing accepting did. The shipped kinds are the US
+    social security number, payment card number, IBAN, UK National Insurance number, Canadian social insurance
+    number, Spanish DNI or NIE, Dutch citizen service number, Indian Aadhaar number and US passport number
+    (sensitive), and the country name, ISO 3166 country code, ISO 4217 currency code, ISO 639 language code
+    and world city (reference, the lists derived from GeoNames under CC BY 4.0), each with a threshold of
+    90%. A kind''s test, threshold, term and mask are the shipped catalogue''s; only whether it is enabled
+    is the org''s. (Amended 2026-11-05, KINDS ARE PATTERN RULES; CONTAINED VALUES ARE HINTS:) A classification
+    kind is declared in classification_kinds.yaml by a regular expression, with an optional validator (a
+    checksum or check digit) where one exists, so a new kind is a new entry. A kind is tested two ways:
+    whole value, where a column''s values are the kind, which is a classification the steward accepts or
+    rejects; and contained in, where values contain the kind inside free text, which is only a hint, never
+    a classification and never applied by itself. A contained-in scan runs when a person asks for it, when
+    registering a table or from a column''s access settings, as a background profile run, since it may take
+    time; it keeps only the share of sampled values that matched each kind, never the matched text. Its
+    hints are shown on the column''s access settings and at registration, and a column with a hint and no
+    restriction appears in the sensitive coverage report.'
   scenario: |
     Given a profiled column whose sampled values are valid US social security numbers
     When the profile run completes
@@ -92182,31 +92197,45 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   feature: roles-and-capabilities-platform-admins
   priority: SHOULD
   type: behavioral
-  description: 'Maintainer 2026-11-05: periodic review with recorded attestation. A role, a row rule, a mask, a
-    residency grant, and a reference library document or section can each carry an optional review schedule (an
-    interval such as 90 days). Two kinds of review exist: a definition review (is this item still right) and a membership
-    review of a role (should each holder still hold it, attested holder by holder). Each schedule carries its attestation
-    statement, the words the reviewer confirms; each kind of item has a default statement the organization can edit,
-    and a schedule may state its own. Attesting is a capability (review_attestation), carried by default by the
-    roles that own each kind of item (the data steward for row rules, masks, residency grants and policy sections;
-    the org admin for role definitions); each schedule names the role whose holders review it, and a reviewer must
-    hold that role and the capability, so an organization can make a reviewer role that attests without being able
-    to change what it reviews. A membership review names who reviews whom, chosen per schedule: the role''s owner
-    reviews all its holders (the default); a reviewer role reviews the holders who also hold a population role,
-    often a derived role such as team__sales; or a governed SQL statement returns reviewer and holder pairs (for
-    example from an HR source of managers and their staff), run when the review falls due. Provisa keeps no reporting
-    structure of its own: a manager attests their staff through one of these, and still needs the attestation capability.
-    No one attests their own membership, and the last person to change an item cannot be its only attester. When
-    a review falls due, the reviewers are reminded by email through the configured mail provider and by an item
-    in the review queue, the same queue REQ-2208''s flagged policy references join. The reviewer sees the exact
-    statement, the item, and the policy sections it cites, and records an outcome (still valid, changed, retire)
-    with an optional comment. Each attestation records the statement text as shown (not a reference to the current
-    wording), who attested and when, a hash of the item''s definition at that moment, the outcome and the comment,
-    in the administrative trail, exportable. Whether an overdue review lapses is set per schedule: unset, an overdue
-    item is flagged and escalated by email; set, it lapses, and a lapse never widens access: a lapsed membership
-    removes that holder''s grant, a lapsed role is no longer held, a lapsed residency grant is withdrawn, and a
-    lapsed row rule or mask leaves the roles it governs reading none of the rows or none of the column it governs
-    until it is attested. A report lists items overdue and each item''s attestation history.'
+  description: 'Maintainer 2026-11-05: periodic review with recorded attestation. A role, a row rule, a
+    mask, a residency grant, and a reference library document or section can each carry an optional review
+    schedule (an interval such as 90 days). Two kinds of review exist: a definition review (is this item
+    still right) and a membership review of a role (should each holder still hold it, attested holder by
+    holder). Each schedule carries its attestation statement, the words the reviewer confirms; each kind
+    of item has a default statement the organization can edit, and a schedule may state its own. Attesting
+    is a capability (review_attestation), carried by default by the roles that own each kind of item (the
+    data steward for row rules, masks, residency grants and policy sections; the org admin for role definitions);
+    each schedule names the role whose holders review it, and a reviewer must hold that role and the capability,
+    so an organization can make a reviewer role that attests without being able to change what it reviews.
+    A membership review names who reviews whom, chosen per schedule: the role''s owner reviews all its holders
+    (the default); a reviewer role reviews the holders who also hold a population role, often a derived
+    role such as team__sales; or a governed SQL statement returns reviewer and holder pairs (for example
+    from an HR source of managers and their staff), run when the review falls due. Provisa keeps no reporting
+    structure of its own: a manager attests their staff through one of these, and still needs the attestation
+    capability. No one attests their own membership, and the last person to change an item cannot be its
+    only attester. When a review falls due, the reviewers are reminded by email through the configured mail
+    provider and by an item in the review queue, the same queue REQ-2208''s flagged policy references join.
+    The reviewer sees the exact statement, the item, and the policy sections it cites, and records an outcome
+    (still valid, changed, retire) with an optional comment. Each attestation records the statement text
+    as shown (not a reference to the current wording), who attested and when, a hash of the item''s definition
+    at that moment, the outcome and the comment, in the administrative trail, exportable. Whether an overdue
+    review lapses is set per schedule: unset, an overdue item is flagged and escalated by email; set, it
+    lapses, and a lapse never widens access: a lapsed membership removes that holder''s grant, a lapsed
+    role is no longer held, a lapsed residency grant is withdrawn, and a lapsed row rule or mask leaves
+    the roles it governs reading none of the rows or none of the column it governs until it is attested.
+    A report lists items overdue and each item''s attestation history. (Amended 2026-11-05, REVIEW RULES
+    SET THE MINIMUMS:) Schedules come from two places. An owner of an item (the role''s owner, or the steward
+    for a rule) may give it a schedule. A review rule, declared once, gives a schedule to every item it
+    matches, by tag (rules and masks on pii columns), by capability (roles holding user_management), or
+    by citation (items citing a policy section), with the cadence, attestation statement, reviewers and
+    lapse setting; it cites the policy section that requires it (REQ-2208), and items created or tagged
+    later are matched when they appear. Where several apply, the strictest cadence wins: an owner may make
+    an item''s schedule stricter than the rules require, never looser. Writing review rules and setting
+    schedules is a capability, carried by default by the data steward for data items and the org admin for
+    roles. (Amended 2026-11-05, THE REPORTS ARE STANDARD ADMIN REPORTS:) The review and policy reports are
+    standard reports on Admin > Reports (REQ-1386): reviews overdue, each item''s attestation history, security
+    items with no review schedule, and, from REQ-2208, policy sections no security item cites and security
+    items that cite no policy, with flagged and broken policy references.'
   scenario: 'Given a role with a 90-day membership review whose overdue reviews lapse, and a holder no one attests
 
 
