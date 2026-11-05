@@ -1776,6 +1776,94 @@
         "title": "Ihr eigener Agent, derselbe Server",
         "description": "Dies ist der Server, den der Agent des Explorers verwendet hat. Fügen Sie diese Konfiguration in Claude Desktop ein oder richten Sie einen beliebigen MCP-Client auf die URL, und Ihr eigener Agent erhält dieselben geregelten Tools, an dieselben Regeln gebunden."
       },
+      "auditScenario": {
+        "title": "Worum es in dieser Demo geht",
+        "description": "Eine Prüfungsgesellschaft prüft neun gemeinnützige Organisationen, die Bundeszuschüsse ausgeben. Vor der Prüfung vor Ort fragt der Partner, ob die erfassten Bundeszuwendungen jedes Mandanten mit dem übereinstimmen, was laut den Aufzeichnungen der Regierung an ihn gezahlt wurde. Die Aufstellungen und Zuwendungsunterlagen der Mandanten liegen in der eigenen Datenbank der Gesellschaft; die Single-Audit-Meldungen und Mittelbindungen des Bundes sind öffentlich. Die Mandanten und ihre Zahlen sind erfunden; die Programme, Countys und öffentlichen Daten sind echt."
+      },
+      "auditAnswer": {
+        "title": "Die offenen Punkte aller Mandanten",
+        "description": "Die Sicht readiness beantwortet dieselbe Frage für alle Mandanten zugleich und wird gespeichert vorgehalten. Sie stellt jede Zeile der Aufstellung neben ihre Zuwendungsunterlagen und die öffentlichen Daten des Programms und listet die Punkte auf, die jedes Bereitschaftsmemo braucht."
+      },
+      "auditExample": {
+        "title": "Offene Punkte in GraphQL",
+        "description": "Die Punkte des Bereitschaftsmemos als GraphQL-Abfrage, für die eigenen Prüfungswerkzeuge der Gesellschaft."
+      },
+      "auditRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Die eigenen Mandantenunterlagen der Gesellschaft und die öffentlichen Meldungen und Mittelbindungen der Regierung, verknüpft in einem gesteuerten Modell. Eine gespeicherte Sicht beantwortet die Frage des Partners für jeden Mandanten. Jedes Team liest nur seine eigenen Mandanten, und jede Abfrage wird protokolliert."
+      },
+      "auditGovdata": {
+        "title": "Die öffentlichen Daten",
+        "description": "Die Regierungsdaten stammen von AskAmerica: jede Zuwendungszeile der Single Audits 2023, die beim Federal Audit Clearinghouse in Vermont, New Hampshire und Maine eingereicht wurden, jeweils neben dem, was USAspending demselben Empfänger unter demselben Programm gebunden hat, sowie die Mittelbindungen von USAspending nach County und Programm."
+      },
+      "auditSchedule": {
+        "title": "Die Aufstellung des Mandanten",
+        "description": "Der Entwurf der Aufstellung der Ausgaben aus Bundeszuwendungen (Schedule of Expenditures of Federal Awards) jedes Mandanten für 2023: eine Zeile je Zuwendung, mit ihrem Assistance Listing, ob sie direkt von einer Bundesbehörde oder über eine Landesbehörde kam, und dem, was der Mandant nach eigener Angabe ausgegeben hat."
+      },
+      "auditNotices": {
+        "title": "Die Zuwendungsunterlagen",
+        "description": "Die Zuwendungsunterlagen des Bundes, die jeder Mandant für seine direkten Zuwendungen hat: eine Zeile je Mittelbindung, mit dem Bundeshaushaltsjahr, in dem sie erfolgte, und dem Betrag. Eine mehrjährige Zuwendung kann vor dem Jahr gebunden worden sein, in dem sie ausgegeben wurde."
+      },
+      "auditFiled": {
+        "title": "Derselbe Abgleich, auf öffentlichen Meldungen",
+        "description": "Jede Zuwendungszeile, die die Geprüften der drei Bundesstaaten für 2023 gemeldet haben, neben dem, was USAspending ihnen im selben Jahr unter demselben Programm als gebunden verzeichnet hat. Eine nicht abgeglichene Zeile ist für sich noch keine Lücke. Eine weitergeleitete Zeile kam über eine Landesbehörde zum Geprüften, also nennt ihn keine Bundeszuwendung, und es wird keine Übereinstimmung erwartet; und eine in einem früheren Jahr gebundene Zuwendung zeigt im Prüfungsjahr keine Mittelbindung. Die nicht abgeglichenen Zeilen bleiben sichtbar, nicht verborgen."
+      },
+      "auditCounty": {
+        "title": "Bundesmittel nach County",
+        "description": "Was USAspending im Bundeshaushaltsjahr 2023 im County jedes Mandanten nach Programm als gebunden verzeichnet hat, gezählt dort, wo die Arbeit geleistet wird. Es zeigt, ob ein Programm, das der Mandant aufführt, in seinem County überhaupt auszahlt."
+      },
+      "auditRecordedAs": {
+        "title": "Aufstellung zu Zuwendungsunterlagen",
+        "description": "Diese Beziehung verknüpft jede Zeile der Aufstellung über die Zuwendungsreferenz der Gesellschaft mit ihren Zuwendungsunterlagen. Eine Zeile ohne Unterlage dahinter und eine Unterlage ohne Zeile sind das, wonach der Prüfer sucht."
+      },
+      "auditCountyJoin": {
+        "title": "Mandanten zu ihren Countys",
+        "description": "Der County-Code jedes Mandanten verknüpft ihn mit den County-Mittelbindungen von USAspending, und seine Assistance Listings verknüpfen seine Aufstellung mit den öffentlichen Meldungen desselben Programms in seinem Bundesstaat."
+      },
+      "auditTerms": {
+        "title": "In den Worten eines Prüfers",
+        "description": "Die Ontologie erklärt die Begriffe eines Single Audit: die Aufstellung, das Assistance Listing, die weiterleitende Stelle, die Mittelbindung, eine zeitliche Differenz, eine fehlende Zuwendung und das Bereitschaftsmemo."
+      },
+      "auditRequest": {
+        "title": "Der Auftrag des Partners",
+        "description": "Der Partner bittet den Analysten, Brindlewood Community Health für die Prüfung vor Ort vorzubereiten. Dies ist der Entwurf seiner Aufstellung: fünf Bundesprogramme, drei davon direkte Zuwendungen. Als Nächstes arbeitet der Analyst den Auftrag mit Polly durch."
+      },
+      "auditPollySchedule": {
+        "title": "Welche Zuwendungen er erfasst",
+        "description": "Der Analyst beginnt mit dem, was der Mandant erfasst. Polly listet die Zuwendungen seiner Aufstellung 2023 auf und zeigt das SQL, das sie ausgeführt hat. Ihre Antwort wurde beim Erstellen der Demo erzeugt und mit ihr gespeichert."
+      },
+      "auditPollyRecords": {
+        "title": "Was die Unterlagen als gezahlt zeigen",
+        "description": "Als Nächstes die Seite der Regierung: was die Zuwendungsunterlagen des Mandanten im Bundeshaushaltsjahr 2023 als an ihn gebunden zeigen. Eine der Mittelbindungen gilt einem Programm, das die Aufstellung nicht aufführt."
+      },
+      "auditPollyDiffer": {
+        "title": "Wo sie abweichen",
+        "description": "Polly stellt die Aufstellung neben die Zuwendungsunterlagen und listet jede Zuwendung auf, bei der beide nicht übereinstimmen, mit der Abfrage hinter ihrer Antwort."
+      },
+      "auditPollyKinds": {
+        "title": "Zeitlich oder fehlend",
+        "description": "Eine zeitliche Differenz ist eine Zuwendung, die in einem früheren Jahr gebunden und in diesem Jahr ausgegeben wurde; sie braucht nur eine Erklärung. Eine fehlende Zuwendung ist eine direkte Zeile ohne Bundesunterlage dahinter; sie braucht eine Korrektur. Polly ordnet die Abweichungen den beiden Arten zu."
+      },
+      "auditPollyMemo": {
+        "title": "Das Bereitschaftsmemo",
+        "description": "Zuletzt das Memo: jeder Punkt, den der Mandant vor Beginn der Prüfung vor Ort erklären oder korrigieren muss, von den zeitlichen Differenzen bis zu der Zuwendung, die seine Aufstellung auslässt."
+      },
+      "auditPublic": {
+        "title": "Das Muster in öffentlichen Meldungen",
+        "description": "Derselbe Abgleich, ausgeführt auf den öffentlichen Meldungen der drei Bundesstaaten. Dies sind die Programme, deren direkte Zuwendungszeilen am häufigsten keine USAspending-Mittelbindung im Prüfungsjahr haben. Sie werden gezeigt, wie sie sind, und sie zeigen, warum eine nicht abgeglichene Zeile eine Frage für den Prüfer ist und kein Fehler."
+      },
+      "auditAsTeam": {
+        "title": "Als Team Maine",
+        "description": "Als Prüfungsteam Maine ausgeführt, liefert dieselbe Sicht nur die drei Mandanten des Teams Maine. Zeilenregeln auf jeder Tabelle und auf der Sicht beschränken jedes Team auf seine eigenen Mandate. Der Partner sieht alle."
+      },
+      "auditLineage": {
+        "title": "Woher jede Zahl stammt",
+        "description": "Die Lineage verfolgt jede Spalte der Antwort durch die Sicht zurück bis zu den Tabellen der Gesellschaft und den öffentlichen Daten, sodass ein Reviewer sieht, woher jede Zahl im Memo stammt."
+      },
+      "auditRest": {
+        "title": "Dieselbe Antwort über REST",
+        "description": "Die Sicht ist auch ein REST-Endpunkt, nach Befund gruppiert und auf dem Server summiert, sodass eine Arbeitspapier-Tabelle sie über HTTP lesen kann."
+      },
       "banksecrecyScenario": {
         "title": "Eine Bank liest ein US-Gesetz",
         "description": "Eine Regionalbank muss nach dem Bank Secrecy Act Bargeld über 10.000 $ melden. Diese Demo liest die Vorschrift selbst von ihrer öffentlichen Adresse, findet ihre Begriffe, verankert sie in den Daten der Bank und fragt dann nach Konzept: Welches Bargeld braucht einen Currency Transaction Report, und wer stückelt? Sie beginnt mit dem Kernsystem der Bank, live dort gelesen, wo es liegt."
@@ -1964,6 +2052,10 @@
       "agentdata": {
         "title": "Geben Sie einem Agenten Ihre Daten",
         "summary": "Kann ein KI-Agent die Bestelldaten eines Händlers bekommen und auf das beschränkt werden, was sein Benutzer sehen darf? Der MCP-Explorer zeigt den Agenten als Support-Mitarbeiter und als Analyst: andere Zeilen und Spalten, maskierte E-Mails und das geregelte SQL hinter jeder Antwort."
+      },
+      "audit": {
+        "title": "Single-Audit-Bereitschaft",
+        "summary": "Stimmen die erfassten Bundeszuwendungen eines gemeinnützigen Mandanten mit dem überein, was laut den Aufzeichnungen der Regierung an ihn gezahlt wurde? Die Mandantenaufstellungen einer Prüfungsgesellschaft, verknüpft mit Single-Audit-Meldungen und USAspending-Mittelbindungen, beantworten die Frage."
       },
       "banksecrecy": {
         "title": "Bargeldmeldungen aus dem Bank Secrecy Act",

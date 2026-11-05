@@ -1776,6 +1776,94 @@
         "title": "Seu próprio agente, o mesmo servidor",
         "description": "Este é o servidor que o agente do explorador usou. Cole esta configuração no Claude Desktop, ou aponte qualquer cliente MCP para a URL, e seu próprio agente recebe as mesmas ferramentas governadas, sujeitas às mesmas regras."
       },
+      "auditScenario": {
+        "title": "Do que trata esta demo",
+        "description": "Uma firma de auditoria audita nove organizações sem fins lucrativos que gastam auxílios federais. Antes do trabalho de campo, o sócio pergunta se os auxílios federais registrados por cada cliente correspondem ao que os registros do governo mostram ter pago a ele. As relações e os registros de auxílios dos clientes estão no banco de dados da própria firma; as declarações do Single Audit e os empenhos federais são públicos. Os clientes e seus números são fictícios; os programas, os condados e os dados públicos são reais."
+      },
+      "auditAnswer": {
+        "title": "Os itens em aberto de cada cliente",
+        "description": "A view readiness responde à mesma pergunta para todos os clientes de uma vez e fica armazenada. Ela coloca cada linha da relação ao lado dos seus registros de auxílio e dos dados públicos do programa, e lista os itens de que cada memorando de preparação precisa."
+      },
+      "auditExample": {
+        "title": "Itens em aberto em GraphQL",
+        "description": "Os itens do memorando de preparação como uma consulta GraphQL, para as ferramentas de trabalho da firma."
+      },
+      "auditRecap": {
+        "title": "O que você viu",
+        "description": "Os registros de clientes da firma e as declarações e empenhos públicos do governo, unidos num único modelo governado. Uma view armazenada responde à pergunta do sócio para cada cliente. Cada equipe lê apenas seus próprios clientes, e cada consulta é registrada."
+      },
+      "auditGovdata": {
+        "title": "Os dados públicos",
+        "description": "Os dados do governo vêm da AskAmerica: cada linha de auxílio dos Single Audits de 2023 entregues ao Federal Audit Clearinghouse em Vermont, New Hampshire e Maine, cada uma ao lado do que o USAspending empenhou para o mesmo beneficiário no mesmo programa, e os empenhos do USAspending por condado e programa."
+      },
+      "auditSchedule": {
+        "title": "A relação do cliente",
+        "description": "O rascunho da relação de despesas com auxílios federais (Schedule of Expenditures of Federal Awards) de cada cliente para 2023: uma linha por auxílio, com seu Assistance Listing, se veio diretamente de uma agência federal ou por meio de uma agência estadual, e o que o cliente diz ter gasto."
+      },
+      "auditNotices": {
+        "title": "Os registros de auxílios",
+        "description": "Os registros federais de auxílios que cada cliente mantém para seus auxílios diretos: uma linha por empenho, o ano fiscal federal em que foi feito e o valor. Um auxílio plurianual pode ter sido empenhado antes do ano em que foi gasto."
+      },
+      "auditFiled": {
+        "title": "A mesma conciliação, nas declarações públicas",
+        "description": "Cada linha de auxílio que as entidades auditadas dos três estados declararam para 2023, ao lado do que o USAspending registrou como empenhado para elas no mesmo programa naquele ano. Uma linha sem correspondência não é, por si só, uma lacuna. Uma linha recebida por um intermediário passou por uma agência estadual, então nenhum auxílio federal nomeia a entidade e não se espera que corresponda; e um auxílio empenhado num ano anterior não mostra empenho no ano auditado. As linhas sem correspondência são mantidas, não ocultadas."
+      },
+      "auditCounty": {
+        "title": "Dinheiro federal por condado",
+        "description": "O que o USAspending registrou como empenhado no condado de cada cliente no ano fiscal federal de 2023, por programa, contado onde o trabalho é feito. Mostra se um programa que o cliente lista paga alguma coisa no seu condado."
+      },
+      "auditRecordedAs": {
+        "title": "Da relação aos registros",
+        "description": "Este relacionamento une cada linha da relação aos seus registros de auxílio pela referência de auxílio da firma. Uma linha sem registro por trás, e um registro sem linha, são o que o auditor procura."
+      },
+      "auditCountyJoin": {
+        "title": "Clientes e seus condados",
+        "description": "O código de condado de cada cliente o une aos empenhos por condado do USAspending, e seus Assistance Listings unem sua relação às declarações públicas do mesmo programa no seu estado."
+      },
+      "auditTerms": {
+        "title": "Nas palavras de um auditor",
+        "description": "A ontologia explica os termos de um Single Audit: a relação, o Assistance Listing, a entidade repassadora, o empenho, uma diferença temporal, um auxílio ausente e o memorando de preparação."
+      },
+      "auditRequest": {
+        "title": "O pedido do sócio",
+        "description": "O sócio pede ao analista que prepare a Brindlewood Community Health para o trabalho de campo. Este é o rascunho da sua relação: cinco programas federais, três deles auxílios diretos. Em seguida, o analista resolve o pedido com a Polly."
+      },
+      "auditPollySchedule": {
+        "title": "Quais auxílios ele registra",
+        "description": "O analista começa pelo que o cliente registra. A Polly lista os auxílios da sua relação de 2023 e mostra o SQL que executou. A resposta dela foi gerada quando a demo foi construída e está guardada com ela."
+      },
+      "auditPollyRecords": {
+        "title": "O que os registros mostram ter pago",
+        "description": "Depois, o lado do governo: o que os registros federais de auxílio do cliente mostram como empenhado para ele no ano fiscal federal de 2023. Um dos empenhos é de um programa que a relação não lista."
+      },
+      "auditPollyDiffer": {
+        "title": "Onde divergem",
+        "description": "A Polly coloca a relação ao lado dos registros de auxílio e lista cada auxílio em que os dois não concordam, com a consulta por trás da resposta."
+      },
+      "auditPollyKinds": {
+        "title": "Temporal ou ausente",
+        "description": "Uma diferença temporal é um auxílio empenhado num ano anterior e gasto neste ano, que precisa apenas de uma explicação. Um auxílio ausente é uma linha direta sem registro federal por trás, que precisa de correção. A Polly separa as diferenças nos dois tipos."
+      },
+      "auditPollyMemo": {
+        "title": "O memorando de preparação",
+        "description": "Por fim, o memorando: cada item que o cliente precisa explicar ou corrigir antes do início do trabalho de campo, das diferenças temporais ao auxílio que sua relação omite."
+      },
+      "auditPublic": {
+        "title": "O padrão nas declarações públicas",
+        "description": "A mesma conciliação, executada sobre as declarações públicas dos três estados. Estes são os programas cujas linhas de auxílio direto mais vezes não têm empenho do USAspending no ano auditado. São mostrados como são, e mostram por que uma linha sem correspondência é uma pergunta para o auditor e não um erro."
+      },
+      "auditAsTeam": {
+        "title": "Como a equipe do Maine",
+        "description": "Executada como a equipe de trabalho do Maine, a mesma view retorna apenas os três clientes dessa equipe. Regras de linha em cada tabela e na view restringem cada equipe aos seus próprios trabalhos. O sócio vê todos."
+      },
+      "auditLineage": {
+        "title": "De onde vem cada número",
+        "description": "A linhagem rastreia cada coluna da resposta pela view até as tabelas da firma e os dados públicos, para que um revisor veja de onde vem cada número do memorando."
+      },
+      "auditRest": {
+        "title": "A mesma resposta via REST",
+        "description": "A view também é um endpoint REST, agrupada por constatação e somada no servidor, para que uma planilha de papéis de trabalho a leia por HTTP."
+      },
       "banksecrecyScenario": {
         "title": "Um banco lê uma lei dos EUA",
         "description": "Um banco comunitário tem de relatar dinheiro em espécie acima de 10.000 $ pela Bank Secrecy Act. Esta demo lê a própria regra a partir do seu endereço público, encontra os termos que usa, ancora-os nos dados do banco e depois pergunta por conceito: que dinheiro exige um Currency Transaction Report, e quem está a fracionar? Começa pelo sistema central do banco, lido ao vivo onde está."
@@ -1964,6 +2052,10 @@
       "agentdata": {
         "title": "Dê seus dados a um agente",
         "summary": "Dá para entregar a um agente de IA os dados de pedidos de um varejista e limitá-lo ao que seu usuário pode ver? O explorador MCP mostra o agente como atendente de suporte e como analista: outras linhas e colunas, e-mails mascarados e o SQL governado por trás de cada resposta."
+      },
+      "audit": {
+        "title": "Preparação para o Single Audit",
+        "summary": "Os auxílios federais registrados por um cliente sem fins lucrativos correspondem ao que os registros do governo mostram ter pago a ele? As relações de clientes de uma firma de auditoria, unidas às declarações do Single Audit e aos empenhos do USAspending, respondem."
       },
       "banksecrecy": {
         "title": "Relatórios de dinheiro lidos da Bank Secrecy Act",

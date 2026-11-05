@@ -1776,6 +1776,94 @@
         "title": "Il tuo agente, lo stesso server",
         "description": "Questo è il server usato dall'agente dell'esploratore. Incolla questa configurazione in Claude Desktop, o punta qualsiasi client MCP all'URL, e il tuo agente ottiene gli stessi strumenti governati, soggetti alle stesse regole."
       },
+      "auditScenario": {
+        "title": "Di cosa tratta questa demo",
+        "description": "Una società di revisione verifica nove organizzazioni senza scopo di lucro che spendono contributi federali. Prima del lavoro sul campo, il partner chiede se i contributi federali registrati da ciascun cliente corrispondono a quanto i registri del governo indicano di avergli pagato. I prospetti e i documenti dei contributi dei clienti sono nel database della società; le dichiarazioni Single Audit e gli impegni federali sono pubblici. I clienti e le loro cifre sono inventati; i programmi, le contee e i dati pubblici sono reali."
+      },
+      "auditAnswer": {
+        "title": "I punti aperti di ogni cliente",
+        "description": "La vista readiness risponde alla stessa domanda per tutti i clienti insieme ed è memorizzata. Mette ogni riga del prospetto accanto ai suoi documenti di contributo e ai dati pubblici del programma, ed elenca i punti di cui ogni nota di preparazione ha bisogno."
+      },
+      "auditExample": {
+        "title": "Punti aperti in GraphQL",
+        "description": "I punti della nota di preparazione come query GraphQL, per gli strumenti di incarico della società."
+      },
+      "auditRecap": {
+        "title": "Cosa hai visto",
+        "description": "I documenti dei clienti della società e le dichiarazioni e gli impegni pubblici del governo, uniti in un unico modello governato. Una vista memorizzata risponde alla domanda del partner per ogni cliente. Ogni team legge solo i propri clienti, e ogni query viene registrata."
+      },
+      "auditGovdata": {
+        "title": "I dati pubblici",
+        "description": "I dati governativi provengono da AskAmerica: ogni riga di contributo dei Single Audit 2023 depositati presso il Federal Audit Clearinghouse in Vermont, New Hampshire e Maine, ciascuna accanto a quanto USAspending ha impegnato per lo stesso beneficiario nello stesso programma, e gli impegni di USAspending per contea e programma."
+      },
+      "auditSchedule": {
+        "title": "Il prospetto del cliente",
+        "description": "La bozza del prospetto delle spese dei contributi federali (Schedule of Expenditures of Federal Awards) di ciascun cliente per il 2023: una riga per contributo, con il suo Assistance Listing, se è arrivato direttamente da un'agenzia federale o tramite un'agenzia statale, e quanto il cliente dichiara di aver speso."
+      },
+      "auditNotices": {
+        "title": "I documenti dei contributi",
+        "description": "I documenti federali dei contributi che ciascun cliente conserva per i suoi contributi diretti: una riga per impegno, l'esercizio federale in cui è stato assunto e l'importo. Un contributo pluriennale può essere stato impegnato prima dell'anno in cui è stato speso."
+      },
+      "auditFiled": {
+        "title": "La stessa riconciliazione, sulle dichiarazioni pubbliche",
+        "description": "Ogni riga di contributo che i soggetti revisionati dei tre stati hanno dichiarato per il 2023, accanto a quanto USAspending ha registrato come impegnato per loro nello stesso programma quell'anno. Una riga senza corrispondenza non è di per sé una lacuna. Una riga ricevuta tramite un intermediario è passata per un'agenzia statale, quindi nessun contributo federale nomina il soggetto e non deve corrispondere; e un contributo impegnato in un anno precedente non mostra impegni nell'anno revisionato. Le righe senza corrispondenza restano visibili, non nascoste."
+      },
+      "auditCounty": {
+        "title": "Fondi federali per contea",
+        "description": "Quanto USAspending ha registrato come impegnato nella contea di ciascun cliente nell'esercizio federale 2023, per programma, contato dove si svolge il lavoro. Mostra se un programma che il cliente riporta nel prospetto eroga qualcosa nella sua contea."
+      },
+      "auditRecordedAs": {
+        "title": "Dal prospetto ai documenti",
+        "description": "Questa relazione unisce ogni riga del prospetto ai suoi documenti di contributo tramite il riferimento della società. Una riga senza documento dietro, e un documento senza riga, sono ciò che il revisore cerca."
+      },
+      "auditCountyJoin": {
+        "title": "I clienti e le loro contee",
+        "description": "Il codice di contea di ciascun cliente lo unisce agli impegni per contea di USAspending, e i suoi Assistance Listing uniscono il suo prospetto alle dichiarazioni pubbliche dello stesso programma nel suo stato."
+      },
+      "auditTerms": {
+        "title": "Con le parole di un revisore",
+        "description": "L'ontologia spiega i termini di un Single Audit: il prospetto, l'Assistance Listing, l'ente intermediario, l'impegno, una differenza temporale, un contributo mancante e la nota di preparazione."
+      },
+      "auditRequest": {
+        "title": "La richiesta del partner",
+        "description": "Il partner chiede all'analista di preparare Brindlewood Community Health al lavoro sul campo. Questa è la bozza del suo prospetto: cinque programmi federali, tre dei quali contributi diretti. Poi l'analista affronta la richiesta con Polly."
+      },
+      "auditPollySchedule": {
+        "title": "Quali contributi registra",
+        "description": "L'analista parte da ciò che il cliente registra. Polly elenca i contributi del suo prospetto 2023 e mostra l'SQL che ha eseguito. La sua risposta è stata generata durante la build della demo ed è salvata con essa."
+      },
+      "auditPollyRecords": {
+        "title": "Cosa mostrano i documenti di avergli pagato",
+        "description": "Poi il lato del governo: quanto i documenti federali dei contributi del cliente mostrano come impegnato per lui nell'esercizio federale 2023. Uno degli impegni riguarda un programma che il prospetto non riporta."
+      },
+      "auditPollyDiffer": {
+        "title": "Dove differiscono",
+        "description": "Polly mette il prospetto accanto ai documenti dei contributi ed elenca ogni contributo in cui i due non concordano, con la query alla base della risposta."
+      },
+      "auditPollyKinds": {
+        "title": "Temporale o mancante",
+        "description": "Una differenza temporale è un contributo impegnato in un anno precedente e speso quest'anno, che richiede solo una spiegazione. Un contributo mancante è una riga diretta senza documento federale dietro, che richiede una correzione. Polly suddivide le differenze nei due tipi."
+      },
+      "auditPollyMemo": {
+        "title": "La nota di preparazione",
+        "description": "Infine la nota: ogni punto che il cliente deve spiegare o correggere prima dell'inizio del lavoro sul campo, dalle differenze temporali al contributo che il suo prospetto omette."
+      },
+      "auditPublic": {
+        "title": "Lo schema nelle dichiarazioni pubbliche",
+        "description": "La stessa riconciliazione, eseguita sulle dichiarazioni pubbliche dei tre stati. Questi sono i programmi le cui righe di contributo diretto più spesso non hanno un impegno USAspending nell'anno revisionato. Sono mostrati così come sono, e mostrano perché una riga senza corrispondenza è una domanda per il revisore e non un errore."
+      },
+      "auditAsTeam": {
+        "title": "Come team del Maine",
+        "description": "Eseguita come team di incarico del Maine, la stessa vista restituisce solo i tre clienti di quel team. Le regole di riga su ogni tabella e sulla vista limitano ogni team ai propri incarichi. Il partner li vede tutti."
+      },
+      "auditLineage": {
+        "title": "Da dove viene ogni cifra",
+        "description": "Il lineage ripercorre ogni colonna della risposta attraverso la vista fino alle tabelle della società e ai dati pubblici, così un revisore vede da dove viene ogni cifra della nota."
+      },
+      "auditRest": {
+        "title": "La stessa risposta via REST",
+        "description": "La vista è anche un endpoint REST, raggruppata per rilievo e sommata sul server, così un foglio di calcolo delle carte di lavoro può leggerla via HTTP."
+      },
       "banksecrecyScenario": {
         "title": "Una banca legge una legge statunitense",
         "description": "Una banca locale deve segnalare il contante oltre 10.000 $ secondo il Bank Secrecy Act. Questa demo legge la norma stessa dal suo indirizzo pubblico, trova i termini che usa, li ancora ai dati della banca e poi chiede per concetto: quale contante richiede un Currency Transaction Report, e chi sta frazionando? Parte dal sistema centrale della banca, letto dal vivo dove si trova."
@@ -1964,6 +2052,10 @@
       "agentdata": {
         "title": "Dai i tuoi dati a un agente",
         "summary": "Si possono dare a un agente di IA i dati degli ordini di un rivenditore, limitandolo a ciò che il suo utente può vedere? L'esploratore MCP mostra l'agente come addetto al supporto e come analista: altre righe e colonne, email mascherate e l'SQL governato dietro ogni risposta."
+      },
+      "audit": {
+        "title": "Preparazione al Single Audit",
+        "summary": "I contributi federali registrati da un cliente senza scopo di lucro corrispondono a quanto i registri del governo indicano di avergli pagato? Rispondono i prospetti dei clienti di una società di revisione, uniti alle dichiarazioni Single Audit e agli impegni di USAspending."
       },
       "banksecrecy": {
         "title": "Segnalazioni di contante lette dal Bank Secrecy Act",

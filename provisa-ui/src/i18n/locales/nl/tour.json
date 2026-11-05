@@ -1776,6 +1776,94 @@
         "title": "Je eigen agent, dezelfde server",
         "description": "Dit is de server die de agent van de verkenner gebruikte. Plak deze configuratie in Claude Desktop, of richt een willekeurige MCP-client op de URL, en je eigen agent krijgt dezelfde beheerde tools, gebonden aan dezelfde regels."
       },
+      "auditScenario": {
+        "title": "Waar deze demo over gaat",
+        "description": "Een accountantskantoor controleert negen organisaties zonder winstoogmerk die federale subsidies besteden. Voor het veldwerk vraagt de partner of de vastgelegde federale subsidies van elke cliënt overeenkomen met wat de overheid volgens haar registers aan die cliënt betaalde. De overzichten en subsidiedossiers van de cliënten staan in de eigen database van het kantoor; de Single Audit-indieningen en federale verplichtingen zijn openbaar. De cliënten en hun cijfers zijn verzonnen; de programma's, county's en openbare gegevens zijn echt."
+      },
+      "auditAnswer": {
+        "title": "De open punten van elke cliënt",
+        "description": "De view readiness beantwoordt dezelfde vraag voor alle cliënten tegelijk en wordt opgeslagen bijgehouden. Ze zet elke regel van het overzicht naast de subsidiedossiers en de openbare gegevens van het programma, en somt de punten op die elk gereedheidsmemo nodig heeft."
+      },
+      "auditExample": {
+        "title": "Open punten in GraphQL",
+        "description": "De punten van het gereedheidsmemo als GraphQL-query, voor de eigen opdrachttools van het kantoor."
+      },
+      "auditRecap": {
+        "title": "Wat u hebt gezien",
+        "description": "De eigen cliëntdossiers van het kantoor en de openbare indieningen en verplichtingen van de overheid, gekoppeld in één beheerd model. Eén opgeslagen view beantwoordt de vraag van de partner voor elke cliënt. Elk team leest alleen zijn eigen cliënten, en elke query wordt vastgelegd."
+      },
+      "auditGovdata": {
+        "title": "De openbare gegevens",
+        "description": "De overheidsgegevens komen van AskAmerica: elke subsidieregel van de Single Audits over 2023 die bij het Federal Audit Clearinghouse zijn ingediend in Vermont, New Hampshire en Maine, elk naast wat USAspending aan dezelfde ontvanger onder hetzelfde programma verplichtte, en de verplichtingen van USAspending per county en programma."
+      },
+      "auditSchedule": {
+        "title": "Het overzicht van de cliënt",
+        "description": "Het concept van het overzicht van bestedingen van federale subsidies (Schedule of Expenditures of Federal Awards) van elke cliënt over 2023: één regel per subsidie, met het Assistance Listing, of de subsidie rechtstreeks van een federale instantie of via een staatsinstantie kwam, en wat de cliënt zegt te hebben besteed."
+      },
+      "auditNotices": {
+        "title": "De subsidiedossiers",
+        "description": "De federale subsidiedossiers die elke cliënt voor zijn directe subsidies heeft: één rij per verplichting, het federale boekjaar waarin die is aangegaan en het bedrag. Een meerjarige subsidie kan zijn verplicht vóór het jaar waarin ze werd besteed."
+      },
+      "auditFiled": {
+        "title": "Dezelfde aansluiting, op openbare indieningen",
+        "description": "Elke subsidieregel die de gecontroleerde organisaties in de drie staten over 2023 indienden, naast wat USAspending dat jaar onder hetzelfde programma aan hen als verplicht vastlegde. Een niet-aansluitende regel is op zich geen tekort. Een doorgegeven regel kwam via een staatsinstantie bij de organisatie, dus geen federale subsidie noemt haar en er wordt geen aansluiting verwacht; en een subsidie die in een eerder jaar is verplicht toont geen verplichting in het controlejaar. De niet-aansluitende regels blijven zichtbaar, niet verborgen."
+      },
+      "auditCounty": {
+        "title": "Federaal geld per county",
+        "description": "Wat USAspending in federaal boekjaar 2023 in de county van elke cliënt als verplicht vastlegde, per programma, geteld waar het werk wordt gedaan. Het laat zien of een programma dat de cliënt opvoert in zijn county überhaupt uitbetaalt."
+      },
+      "auditRecordedAs": {
+        "title": "Van overzicht naar dossiers",
+        "description": "Deze relatie koppelt elke regel van het overzicht via de subsidiereferentie van het kantoor aan de subsidiedossiers. Een regel zonder dossier erachter, en een dossier zonder regel, zijn waar de accountant naar zoekt."
+      },
+      "auditCountyJoin": {
+        "title": "Cliënten en hun county's",
+        "description": "De countycode van elke cliënt koppelt die aan de verplichtingen per county van USAspending, en de Assistance Listings koppelen het overzicht aan de openbare indieningen van hetzelfde programma in de staat."
+      },
+      "auditTerms": {
+        "title": "In de woorden van een accountant",
+        "description": "De ontologie legt de termen van een Single Audit uit: het overzicht, het Assistance Listing, de doorgevende instantie, de verplichting, een timingverschil, een ontbrekende subsidie en het gereedheidsmemo."
+      },
+      "auditRequest": {
+        "title": "Het verzoek van de partner",
+        "description": "De partner vraagt de analist om Brindlewood Community Health klaar te maken voor het veldwerk. Dit is het conceptoverzicht: vijf federale programma's, waarvan drie directe subsidies. Daarna werkt de analist het verzoek met Polly uit."
+      },
+      "auditPollySchedule": {
+        "title": "Welke subsidies het vastlegt",
+        "description": "De analist begint bij wat de cliënt vastlegt. Polly somt de subsidies op het overzicht over 2023 op en toont de SQL die ze uitvoerde. Haar antwoord is gegenereerd toen de demo werd gebouwd en is erbij opgeslagen."
+      },
+      "auditPollyRecords": {
+        "title": "Wat de dossiers als betaald tonen",
+        "description": "Daarna de kant van de overheid: wat de federale subsidiedossiers van de cliënt in federaal boekjaar 2023 als aan hem verplicht tonen. Eén van de verplichtingen hoort bij een programma dat niet op het overzicht staat."
+      },
+      "auditPollyDiffer": {
+        "title": "Waar ze verschillen",
+        "description": "Polly zet het overzicht naast de subsidiedossiers en somt elke subsidie op waarbij de twee niet overeenkomen, met de query achter haar antwoord."
+      },
+      "auditPollyKinds": {
+        "title": "Timing of ontbrekend",
+        "description": "Een timingverschil is een subsidie die in een eerder jaar is verplicht en dit jaar is besteed; die vraagt alleen een toelichting. Een ontbrekende subsidie is een directe regel zonder federaal dossier erachter; die vraagt een correctie. Polly deelt de verschillen in die twee soorten in."
+      },
+      "auditPollyMemo": {
+        "title": "Het gereedheidsmemo",
+        "description": "Tot slot het memo: elk punt dat de cliënt moet toelichten of corrigeren voordat het veldwerk begint, van de timingverschillen tot de subsidie die het overzicht weglaat."
+      },
+      "auditPublic": {
+        "title": "Het patroon in openbare indieningen",
+        "description": "Dezelfde aansluiting, uitgevoerd op de openbare indieningen van de drie staten. Dit zijn de programma's waarvan de directe subsidieregels het vaakst geen USAspending-verplichting in het controlejaar hebben. Ze worden getoond zoals ze zijn, en ze laten zien waarom een niet-aansluitende regel een vraag voor de accountant is en geen fout."
+      },
+      "auditAsTeam": {
+        "title": "Als het Maine-team",
+        "description": "Uitgevoerd als het opdrachtteam Maine geeft dezelfde view alleen de drie cliënten van dat team. Rijregels op elke tabel en op de view beperken elk team tot zijn eigen opdrachten. De partner ziet ze allemaal."
+      },
+      "auditLineage": {
+        "title": "Waar elk cijfer vandaan komt",
+        "description": "De lineage volgt elke kolom van het antwoord via de view terug naar de tabellen van het kantoor en de openbare gegevens, zodat een reviewer ziet waar elk cijfer in het memo vandaan komt."
+      },
+      "auditRest": {
+        "title": "Hetzelfde antwoord via REST",
+        "description": "De view is ook een REST-endpoint, gegroepeerd per bevinding en op de server opgeteld, zodat een werkdossier-spreadsheet hem via HTTP kan lezen."
+      },
       "banksecrecyScenario": {
         "title": "Een bank leest een Amerikaanse wet",
         "description": "Een lokale bank moet contanten boven 10.000 $ melden onder de Bank Secrecy Act. Deze demo leest de regel zelf vanaf het openbare adres, vindt de begrippen die hij gebruikt, verankert ze in de gegevens van de bank en vraagt dan per concept: welke contanten vereisen een Currency Transaction Report, en wie splitst op? Hij begint bij het kernsysteem van de bank, live gelezen waar het staat."
@@ -1964,6 +2052,10 @@
       "agentdata": {
         "title": "Geef een agent je data",
         "summary": "Kan een AI-agent de orderdata van een retailer krijgen en beperkt worden tot wat zijn gebruiker mag zien? De MCP-verkenner toont de agent als supportmedewerker en als analist: andere rijen en kolommen, gemaskeerde e-mails en de beheerde SQL achter elk antwoord."
+      },
+      "audit": {
+        "title": "Gereedheid voor de Single Audit",
+        "summary": "Komen de vastgelegde federale subsidies van een cliënt zonder winstoogmerk overeen met wat de overheid volgens haar eigen registers aan die cliënt betaalde? De overzichten van cliënten van een accountantskantoor, gekoppeld aan Single Audit-indieningen en verplichtingen uit USAspending, geven het antwoord."
       },
       "banksecrecy": {
         "title": "Contantenmeldingen gelezen uit de Bank Secrecy Act",
