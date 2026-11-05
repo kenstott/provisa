@@ -247,6 +247,75 @@ The capacity factor is the requests per second one physical core delivers, times
 
 For each engine, transport and source, side by side: the base cost of an uncached request, the cost each field, filter, row and join adds, and how well the model fits the measurements (R², 1 is a perfect fit). A cross-source join has three costs, by how its two ends are read: both live, both from replicas, or one of each. A dash means the runs did not vary that knob. Where the engine runs as a server of its own, a second table gives the engine's CPU the same way, so a request the engine serves, such as a cross-source join, shows its engine time there. Use these figures to see what a change in your requests would cost before you make it. Two more fields on every request, for example, add twice the per-field cost.
 
+### What Provisa's features add to a query
+
+The sections above measure a request as a whole. This one says what each Provisa feature puts into the query, where that part runs, when you pay for it, and whether the query can still be optimized. It states the rules; the measured costs stay in the tables.
+
+#### Paid once per query shape
+
+Provisa checks and rewrites a statement before any source sees it. It checks the tables and columns the role may read (domain reach, scope, `visible_to`), puts the role's row rules and masks into the statement, and expands views and metrics. Those results are kept. A repeat of the same shape skips the work.
+
+The shape is the statement with every literal blanked, so two statements that differ only in a value share one entry. A prepared statement keeps its `$1` placeholders and binds values later, so every execution of it reuses the entry. So does paging with a new offset value. The key also carries the role, the schema version and, for the validation result, the person. The governed plan that a repeat reuses is keyed by statement text and session variables instead, so bind values through placeholders.
+
+A change to the schema, a row rule, a mask or a role throws the entries away. Each bumps the schema version. A kept plan also lapses when any governance object it was built from is replaced, and when the default row limit or the security mode changes.
+
+The route Provisa picks (your source directly, or the federation engine) is cached too, per shape, role, schema version and replica state, for 60 seconds by default. Four cases skip that cache and decide again on every call:
+
+- the request carries a route hint;
+- the statement names an API-backed table, because that table's cache and hot-table state change between calls;
+- a materialized view answers the statement;
+- the statement reads the catalog.
+
+Materialized-view matching is not in the once-per-shape work. It runs on every call, because it depends on whether the view is fresh at that moment.
+
+#### Paid on every execution, by the database
+
+The row rules and masks Provisa put in are ordinary SQL that your source or the engine runs on every execution. Their cost depends on how the rule is written, which Provisa cannot know.
+
+#### Views
+
+A view is expanded into the one statement during the once-per-shape work. It costs about what the same SQL written by hand costs. Some databases precompute a view; in Provisa that is a materialized view, covered below. Secure views in some warehouses block optimizations on the SQL beneath them. The expanded form does not.
+
+#### Whether the query stays optimizable
+
+Provisa puts the role's row rule into the `WHERE` of each `SELECT` that reads the table, appended to the query's own conditions. Both reach the source as plain predicates, so filters are pushed down as far as their text allows. A mask is different. Provisa replaces the masked column with the mask expression wherever the statement mentions it, including `WHERE`, `JOIN ON` and `GROUP BY`. A filter or join on a masked column therefore compares the expression, and an index on the column cannot serve it.
+
+Provisa runs a statement on its source directly only when it passes every one of these checks, in order. The first failed check sends the statement to the federation engine, and the route's reason names it:
+
+| Check | Fails when |
+|-------|------------|
+| one source | the statement reads more than one source, unless they share one database and one login |
+| dialect | the source's dialect cannot write a construct in the statement, including JSON path access and a SQL-expression function it cannot write |
+| access path | the source type has no direct driver (MongoDB, Cassandra, Redis, Neo4j, SQLite, JDBC, lakehouse, Kafka and a few others) |
+| not forced | an operator floor puts a table on a replica, the statement reads faked columns, or one of the reasons below applies |
+| complete dataset | the source has a proxy and it cannot plan the read as the table's complete dataset |
+
+"Not forced" also fails when a materialized view answers the statement, when the statement reads landed rows, and when a source has no direct connection on the node serving the request. A `route=engine` hint sends it to the engine without the checks. A `route=direct` hint tries them and is ignored, with the reason, when one fails.
+
+On the engine route the engine runs the statement over rows it has landed or reads through a connector. The measured tables above price a cross-source join that way.
+
+One case refuses instead of reading a source whole. A live-only source (today, Qdrant) has no replica. When the engine answers a statement over one, it reads that table's part live and hands the rows over. The part is the table's columns, the conditions that touch that table alone (its row rules among them), and a similarity ordering with its `LIMIT` when the table is read alone in its `SELECT`. A part with no condition and no top-k would read the whole table, a replica by another name. Provisa refuses it and names the table. Add a condition on the table, or a `LIMIT` with a similarity ordering.
+
+#### Materialized views
+
+Provisa matches a view after governance, on the statement that already carries the role's row rules and masks. The view's own grants are not consulted. A view gives speed without changing what a role sees.
+
+For a join view, a row rule or mask on a column the view keeps is carried onto the view's column. One on a column the view does not keep leaves the statement on the base tables, so that role pays the full price while another role reads the view. Design a view to keep every column your row rules reference. An answer from a view also takes the engine route, because the view is stored where the engine reads it.
+
+An aggregate view answers only an exact re-aggregation. The query reads one table. It groups by a subset of the view's grouping columns, and reads outside its aggregates only those columns. It asks only for aggregates the view's stored measures re-aggregate: `SUM`, `COUNT`, `MIN`, `MAX`, and `AVG` when the view stores both the sum and the count. A query using `AVG` over a view without a stored sum and count, `COUNT(DISTINCT ...)` or an aggregate of an aggregate is answered from the base tables.
+
+#### Other features
+
+| Feature | What it adds | Where it runs | Effect on routing |
+|---------|--------------|---------------|-------------------|
+| Fakes | a computed value in place of the column | the serving engine | forces the engine route |
+| SQL-expression functions | the function's template, put into the statement before governance | wherever the statement runs, so it pushes down with it | engine route only when the source's dialect cannot write it |
+| JSON path columns | a path extraction | wherever the statement runs | engine route when the source's dialect cannot run path access |
+| Cross-source joins | a join of two sources | the engine | engine route; see the measured join tables above |
+| Similarity search on a live-only source | an ordering by `cosine_similarity` with a `LIMIT` | the source, for that statement | needed to avoid the whole-table refusal when no condition applies |
+| Response cache | an answer kept from an earlier request that opted in | Provisa | answered before any route is chosen |
+| Row limit | a `LIMIT` at the role's row limit, and a cap on each nested list | the source or engine, with the rest of the statement | none |
+
 ### The response-cache opt-in
 
 For each transport and source: the CPU of a miss, of a hit, and what a hit saves. A request is answered from the cache only when it opts in and repeats an earlier request, so the saving applies to repeated requests. Opt the repeated ones in.
