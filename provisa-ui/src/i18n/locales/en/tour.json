@@ -1787,7 +1787,7 @@
       },
       "banksecrecyLibrary": {
         "title": "Kept in the reference library",
-        "description": "Each scanned document joined the reference library as proposed. Keep it, and the regulation stays with the model as a governed reference: Polly and the org's agents cite its passages when they answer."
+        "description": "The demo's build kept each scanned document in the reference library, so the regulation stays with the model as a governed reference: Polly and the org's agents cite its passages when they answer."
       },
       "banksecrecyGrounded": {
         "title": "The law's words, grounded",

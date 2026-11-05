@@ -9470,5 +9470,8 @@
   "zh-HK/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh-HK/registerTableForm.json::registerTableForm.scopeRestricted": "restricted",
+  "zh-HK/roleRights.json::roleRights.scope_restricted": "restricted",
+  "zh-HK/tableEditForm.json::tableEditForm.scopeRestricted": "restricted"
 }

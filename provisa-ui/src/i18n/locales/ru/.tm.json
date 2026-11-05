@@ -9469,5 +9469,8 @@
   "ru/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "ru/writeGrants.json::writeGrants.source_now": "The time of the write",
   "ru/writeGrants.json::writeGrants.source_session": "A session variable",
-  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP"
+  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP",
+  "ru/registerTableForm.json::registerTableForm.scopeRestricted": "restricted",
+  "ru/roleRights.json::roleRights.scope_restricted": "restricted",
+  "ru/tableEditForm.json::tableEditForm.scopeRestricted": "restricted"
 }

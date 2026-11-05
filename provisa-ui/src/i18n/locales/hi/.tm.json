@@ -9471,5 +9471,8 @@
   "referenceLibrary.json::referenceLibrary.reembedDone": "Documents re-embedded: {{n}}",
   "referenceLibrary.json::referenceLibrary.reembedFailedHeading": "These documents could not be re-embedded and are unchanged:",
   "referenceLibrary.json::referenceLibrary.reembedFailure": "{{title}}: {{reason}}",
-  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP"
+  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP",
+  "hi/registerTableForm.json::registerTableForm.scopeRestricted": "restricted",
+  "hi/roleRights.json::roleRights.scope_restricted": "restricted",
+  "hi/tableEditForm.json::tableEditForm.scopeRestricted": "restricted"
 }

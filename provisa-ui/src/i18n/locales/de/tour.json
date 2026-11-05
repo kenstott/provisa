@@ -1787,7 +1787,7 @@
       },
       "banksecrecyLibrary": {
         "title": "In der Referenzbibliothek behalten",
-        "description": "Jedes gescannte Dokument kam als vorgeschlagen in die Referenzbibliothek. Behalten Sie es, bleibt die Vorschrift als verwaltete Referenz beim Modell: Polly und die Agenten der Organisation zitieren ihre Passagen in ihren Antworten."
+        "description": "Der Build der Demo hat jedes gescannte Dokument in der Referenzbibliothek behalten, also bleibt die Vorschrift als verwaltete Referenz beim Modell: Polly und die Agenten der Organisation zitieren ihre Passagen in ihren Antworten."
       },
       "banksecrecyGrounded": {
         "title": "Die Begriffe des Gesetzes, verankert",
