@@ -1,0 +1,21 @@
+{
+  "platformRegions": {
+    "loading": "Loading platform regions...",
+    "intro": "The regions the platform runs nodes in. Each has an address its nodes answer at, which can be a reference such as ${env:NAME}, kept exactly as entered. Each organization chooses which of these regions it uses.",
+    "restartNote": "Changes to the platform's regions take effect when the nodes restart.",
+    "restartPending": "Saved. The nodes keep running on the previous regions until they restart.",
+    "add": "Add region",
+    "editTitle": "Edit region {{id}}",
+    "detailPanel": "Platform region details",
+    "colRegion": "Region",
+    "colAddress": "Node address",
+    "none": "The platform declares no regions.",
+    "edit": "Edit",
+    "remove": "Remove",
+    "taken": "A region named {{id}} already exists.",
+    "idHelp": "A short lowercase name, such as eu or us. A node is started in one region.",
+    "addressHelp": "Where the region's nodes answer, or a reference such as ${env:NAME}. Kept exactly as entered.",
+    "deleteTitle": "Remove region {{id}}?",
+    "deleteConsequence": "Region {{id}} is removed from the platform when the nodes restart. An organization that uses it can no longer start there."
+  }
+}

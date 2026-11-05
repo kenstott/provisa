@@ -682,6 +682,8 @@ function App() {
                                               ["/admin/security", "platform_settings"],
                                               ["/admin/maintenance", "platform_settings"], // REQ-1466
                                               ["/admin/deployment-settings", "platform_settings"], // REQ-1913
+                                              ["/admin/platform", "platform_settings"], // REQ-1922: the platform's regions
+                                              ["/admin/regions", "org_settings"], // REQ-1922: the org's stores and regions
                                               ["/admin/billing", "org_settings"], // REQ-1469
                                             ] as const
                                           ).map(([path, capability]) => (
