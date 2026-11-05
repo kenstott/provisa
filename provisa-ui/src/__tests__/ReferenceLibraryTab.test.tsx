@@ -26,6 +26,8 @@ const api = vi.hoisted(() => ({
   reembedLibrary: vi.fn(),
   uploadLibraryVersion: vi.fn(),
   removeLibraryDocument: vi.fn(),
+  fetchRetrieval: vi.fn(),
+  saveRetrieval: vi.fn(),
 }));
 vi.mock("../api/referenceLibrary", () => api);
 vi.mock("../hooks/useAdminQueries", () => ({
@@ -64,6 +66,8 @@ const PROPOSED = {
 beforeEach(() => {
   Object.values(api).forEach((fn) => fn.mockReset());
   api.fetchLibrary.mockResolvedValue([URL_DOC, PROPOSED]);
+  api.fetchRetrieval.mockResolvedValue("passage");
+  api.saveRetrieval.mockImplementation(async (r: string) => r);
   api.fetchLibraryDocument.mockImplementation(async (id: number) => ({
     ...(id === 3 ? URL_DOC : PROPOSED),
     passage_list: [
@@ -81,6 +85,33 @@ describe("scopeChange", () => {
 });
 
 describe("ReferenceLibraryTab", () => {
+  it("shows the library's retrieval setting and saves a change to it", async () => {
+    render(<ReferenceLibraryTab />);
+    const setting = await screen.findByTestId("reflib-retrieval");
+    expect(setting).toHaveTextContent("Retrieval");
+    const passage = within(setting).getByLabelText("Passage") as HTMLInputElement;
+    await waitFor(() => expect(passage.checked).toBe(true));
+    fireEvent.click(within(setting).getByText("Graph"));
+    await waitFor(() => expect(api.saveRetrieval).toHaveBeenCalledWith("graph"));
+    await waitFor(() =>
+      expect((within(setting).getByLabelText("Graph") as HTMLInputElement).checked).toBe(true),
+    );
+  });
+
+  it("puts the setting back and says why when it is refused", async () => {
+    api.saveRetrieval.mockRejectedValue(new Error("the org has no vector model"));
+    render(<ReferenceLibraryTab />);
+    const setting = await screen.findByTestId("reflib-retrieval");
+    await waitFor(() =>
+      expect((within(setting).getByLabelText("Passage") as HTMLInputElement).checked).toBe(true),
+    );
+    fireEvent.click(within(setting).getByText("Graph"));
+    expect(await screen.findByTestId("reflib-error")).toHaveTextContent(
+      "the org has no vector model",
+    );
+    expect((within(setting).getByLabelText("Passage") as HTMLInputElement).checked).toBe(true);
+  });
+
   it("lists each document with its source, status and domains", async () => {
     render(<ReferenceLibraryTab />);
     const row = await screen.findByTestId("reflib-row-3");
