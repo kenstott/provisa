@@ -2486,6 +2486,26 @@ class _BuildClock:
         self._since = now
 
 
+async def _set_up_org_schema(org_id: str, env: str, *, run_script: bool) -> None:
+    """The org environment's schema as a build leaves it, in the model store bound now: its
+    ``schema.sql`` and audit schema when ``run_script``, then its tenancy role grants."""
+    from provisa.audit.query_log import init_audit_schema
+    from provisa.core.db import apply_tenancy_role_grants, init_schema
+
+    schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
+    if not schema_sql_path.exists():
+        raise RuntimeError(f"control-plane schema.sql missing from the package: {schema_sql_path}")
+    model_db = state.model_db
+    assert model_db is not None, "the org's model store is opened before its schema is set up"
+    if run_script:
+        await init_schema(model_db, schema_sql_path.read_text(), org_id=org_id, env=env)
+    # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
+    # REQ-1623: asserted in the environment being built, whose roles table is its own.
+    await apply_tenancy_role_grants(model_db, org_id, multitenancy=state.multitenancy, env=env)
+    if run_script:
+        await init_audit_schema(model_db, org_id=org_id, env=env)
+
+
 async def _build_org_runtime(
     org_id: str,
     *,
@@ -2543,8 +2563,6 @@ async def _build_org_runtime(
             set_seeded_demo(org_id, state.seed_config.sources)
         else:
             forget(org_id)
-    from provisa.core.db import apply_tenancy_role_grants, init_schema
-    from provisa.audit.query_log import init_audit_schema
 
     rt = OrgRuntime(
         org_id=org_id,
@@ -2738,20 +2756,8 @@ async def _build_org_runtime(
             org_schema(org_id, env), ModelPlane(org_id, env), model_engine=tenant_engine
         )
 
-        schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
-        if not schema_sql_path.exists():
-            raise RuntimeError(
-                f"control-plane schema.sql missing from the package: {schema_sql_path}"
-            )
-        if not model_cloned:  # provisioned a moment ago (org_provisioning.provision_org)
-            await init_schema(state.model_db, schema_sql_path.read_text(), org_id=org_id, env=env)
-        # REQ-1337: org_admin holds platform_settings only in a single-tenant deployment.
-        # REQ-1623: asserted in the environment being built, whose roles table is its own.
-        await apply_tenancy_role_grants(
-            state.model_db, org_id, multitenancy=state.multitenancy, env=env
-        )
-        if not model_cloned:
-            await init_audit_schema(state.model_db, org_id=org_id, env=env)
+        # provisioned a moment ago (org_provisioning.provision_org)
+        await _set_up_org_schema(org_id, env, run_script=not model_cloned)
         clock.mark("its schema")
 
         # REQ-1349: this org's settings rows, read once here and refreshed by the settings router
@@ -3680,82 +3686,79 @@ async def _rebuild_schemas_impl(
     # engines and scheduler jobs. Run inline on the process loop; from a connection-thread loop (an
     # org runtime built on first pgwire/Bolt/Flight access) it is started on the process loop,
     # since the connection loop stops running when its request ends.
-    async def _rewire_lifecycle() -> None:
-        # REQ-1745: re-wire push-source landing and ingest engines on EVERY rebuild, not only
-        # register_runtime's per-org build (that call site never fires for the default/single-tenant
-        # path this function is on when a mutation calls `_rebuild_schemas()` directly — e.g.
-        # schema_mutation.py's registerTable). Without this, a kafka/websocket/ingest source
-        # registered live through the Sources+Register Table forms never got its listener started or
-        # its ingest engine/DDL built at all: state.push_listener_disconnects/state.ingest_tables
-        # stayed exactly as they were at process boot, forever, on a server that never restarts. Both
-        # calls are idempotent/best-effort by design (wire_push_listeners skips nodes already running;
-        # _init_ingest_engines rebuilds its maps fresh from the DB each call), so calling them again
-        # here is never harmful, only occasionally redundant with register_runtime's own call.
-        from provisa.events.push_wiring import wire_push_listeners
-
-        try:
-            await wire_push_listeners(state=state, log=logging.getLogger(__name__))
-        except Exception:
-            logging.getLogger(__name__).exception(
-                "wire_push_listeners failed during schema rebuild"
-            )
-        try:
-            await _init_ingest_engines()
-        except Exception:
-            logging.getLogger(__name__).exception(
-                "_init_ingest_engines failed during schema rebuild"
-            )
-        # REQ-1770: a table on a poll-only adapter-fetch source (rss is the current example) only got
-        # its poll job (re)registered by wire_event_loop, which register_runtime calls but this
-        # function does not — a table registered against an already-running runtime (the common case
-        # outside a fresh per-org build) had no poll job until the next org-runtime rebuild. Calling
-        # wire_event_loop here too was tried and reverted: it re-derives adapter_loaders and re-walks
-        # every registered source's poll-job registration on EVERY schema rebuild (not just ones
-        # involving a new poll-only source), and broke an unrelated already-registered sqlite source's
-        # live queries in testing. Fixed instead with wire_new_poll_jobs (provisa/events/app_wiring.py):
-        # a per-node-scoped rewire mirroring wire_push_listeners' own state.push_listener_disconnects
-        # idempotency via state.poll_jobs_registered — it registers a poll job ONLY for a node that
-        # doesn't already have one, appending its processor into the SAME list object the running tick
-        # job's closure already holds, rather than re-deriving/re-walking every other source's spec.
-        from provisa.events.app_wiring import wire_new_poll_jobs
-
-        try:
-            await wire_new_poll_jobs(state=state, log=logging.getLogger(__name__))
-        except RuntimeNotBuilt as gone:
-            # The runtime this rebuild is for was dropped while it ran (a change of the
-            # environment's data, an engine wake): the one built in its place wires its own.
-            left_to_the_next_runtime(gone, "poll-job wiring after a schema rebuild")
-        except Exception:
-            logging.getLogger(__name__).exception("wire_new_poll_jobs failed during schema rebuild")
-
-        # REQ-1865: re-wire the row-materialize background refresh drain + reaper on EVERY rebuild,
-        # same posture as wire_push_listeners above (registered jobs are idempotent via
-        # replace_existing=True, and the row_materialize table set is derived fresh each call, not
-        # incrementally like wire_new_poll_jobs) — so a table that becomes row-level while the
-        # server runs (a config reload; no admin mutation or UI field sets the flag) gets its
-        # background jobs without requiring a restart.
-        _scheduler = getattr(state, "_scheduler", None)
-        if _scheduler is not None:
-            from provisa.events.row_materialize_lifecycle import wire_row_materialize_background
-
-            _rm_cfg = getattr(getattr(state, "config", None), "row_materialize", None)
-            if _rm_cfg is not None:
-                try:
-                    await wire_row_materialize_background(
-                        _scheduler,
-                        state=state,
-                        log=logging.getLogger(__name__),
-                        tick_seconds=_rm_cfg.refresh_tick_seconds,
-                        reap_interval_seconds=_rm_cfg.reap_interval_seconds,
-                        reap_grace_period=_rm_cfg.reap_grace_period,
-                        reap_batch_size=_rm_cfg.reap_batch_size,
-                    )
-                except Exception:
-                    logging.getLogger(__name__).exception(
-                        "wire_row_materialize_background failed during schema rebuild"
-                    )
-
     await run_lifecycle_work(_rewire_lifecycle(), name="schema-rebuild-lifecycle")
+
+
+async def _rewire_lifecycle() -> None:
+    # REQ-1745: re-wire push-source landing and ingest engines on EVERY rebuild, not only
+    # register_runtime's per-org build (that call site never fires for the default/single-tenant
+    # path this function is on when a mutation calls `_rebuild_schemas()` directly — e.g.
+    # schema_mutation.py's registerTable). Without this, a kafka/websocket/ingest source
+    # registered live through the Sources+Register Table forms never got its listener started or
+    # its ingest engine/DDL built at all: state.push_listener_disconnects/state.ingest_tables
+    # stayed exactly as they were at process boot, forever, on a server that never restarts. Both
+    # calls are idempotent/best-effort by design (wire_push_listeners skips nodes already running;
+    # _init_ingest_engines rebuilds its maps fresh from the DB each call), so calling them again
+    # here is never harmful, only occasionally redundant with register_runtime's own call.
+    from provisa.events.push_wiring import wire_push_listeners
+
+    try:
+        await wire_push_listeners(state=state, log=logging.getLogger(__name__))
+    except Exception:
+        logging.getLogger(__name__).exception("wire_push_listeners failed during schema rebuild")
+    try:
+        await _init_ingest_engines()
+    except Exception:
+        logging.getLogger(__name__).exception("_init_ingest_engines failed during schema rebuild")
+    # REQ-1770: a table on a poll-only adapter-fetch source (rss is the current example) only got
+    # its poll job (re)registered by wire_event_loop, which register_runtime calls but this
+    # function does not — a table registered against an already-running runtime (the common case
+    # outside a fresh per-org build) had no poll job until the next org-runtime rebuild. Calling
+    # wire_event_loop here too was tried and reverted: it re-derives adapter_loaders and re-walks
+    # every registered source's poll-job registration on EVERY schema rebuild (not just ones
+    # involving a new poll-only source), and broke an unrelated already-registered sqlite source's
+    # live queries in testing. Fixed instead with wire_new_poll_jobs (provisa/events/app_wiring.py):
+    # a per-node-scoped rewire mirroring wire_push_listeners' own state.push_listener_disconnects
+    # idempotency via state.poll_jobs_registered — it registers a poll job ONLY for a node that
+    # doesn't already have one, appending its processor into the SAME list object the running tick
+    # job's closure already holds, rather than re-deriving/re-walking every other source's spec.
+    from provisa.events.app_wiring import wire_new_poll_jobs
+
+    try:
+        await wire_new_poll_jobs(state=state, log=logging.getLogger(__name__))
+    except RuntimeNotBuilt as gone:
+        # The runtime this rebuild is for was dropped while it ran (a change of the
+        # environment's data, an engine wake): the one built in its place wires its own.
+        left_to_the_next_runtime(gone, "poll-job wiring after a schema rebuild")
+    except Exception:
+        logging.getLogger(__name__).exception("wire_new_poll_jobs failed during schema rebuild")
+
+    # REQ-1865: re-wire the row-materialize background refresh drain + reaper on EVERY rebuild,
+    # same posture as wire_push_listeners above (registered jobs are idempotent via
+    # replace_existing=True, and the row_materialize table set is derived fresh each call, not
+    # incrementally like wire_new_poll_jobs) — so a table that becomes row-level while the
+    # server runs (a config reload; no admin mutation or UI field sets the flag) gets its
+    # background jobs without requiring a restart.
+    _scheduler = getattr(state, "_scheduler", None)
+    if _scheduler is not None:
+        from provisa.events.row_materialize_lifecycle import wire_row_materialize_background
+
+        _rm_cfg = getattr(getattr(state, "config", None), "row_materialize", None)
+        if _rm_cfg is not None:
+            try:
+                await wire_row_materialize_background(
+                    _scheduler,
+                    state=state,
+                    log=logging.getLogger(__name__),
+                    tick_seconds=_rm_cfg.refresh_tick_seconds,
+                    reap_interval_seconds=_rm_cfg.reap_interval_seconds,
+                    reap_grace_period=_rm_cfg.reap_grace_period,
+                    reap_batch_size=_rm_cfg.reap_batch_size,
+                )
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "wire_row_materialize_background failed during schema rebuild"
+                )
 
 
 class _DebugLogBufferHandler(logging.Handler):
