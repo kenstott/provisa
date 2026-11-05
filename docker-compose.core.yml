@@ -10,7 +10,10 @@
 services:
   postgres:
     restart: unless-stopped
-    image: postgres:16
+    # REQ-2185: the control plane carries pgvector (the reference library's passages are a vector
+    # column under a vector index, and the library refuses to start without it). The same
+    # PostgreSQL 16 with the extension added; entrypoint, init scripts and data layout unchanged.
+    image: pgvector/pgvector:pg16-trixie
     command: >
       postgres
       -c wal_level=logical

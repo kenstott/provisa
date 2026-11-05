@@ -8,9 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-
-// REQ-2187: what is marked on the drawn diagram: the tables a focus names (highlighted and fitted
-// into view) and what the page's filter box matches (the rest dimmed). Both are classes on the drawn
+// REQ-2187: what is marked on the drawn diagram: the tables a focus names and the item whose
+// detail panel is open (highlighted and fitted into view) and what the page's filter box matches (the rest dimmed). Both are classes on the drawn
 // elements, applied when they change and again by every layout, which draws the elements anew --
 // so a keystroke moves and rebuilds nothing.
 
@@ -21,20 +20,26 @@ import { applyErdSearch, highlightErdTables } from "./erd-focus";
 export function useErdMarks(
   cyRef: RefObject<CyInstance | null>,
   highlightTableIds: number[],
+  highlightRelationshipIds: string[],
   search: string,
   page: "tables" | "relationships",
 ) {
-  const highlightRef = useRef(highlightTableIds);
+  const highlightRef = useRef({
+    tables: highlightTableIds,
+    relationships: highlightRelationshipIds,
+  });
   const searchRef = useRef({ search, page });
   const [highlighted, setHighlighted] = useState<number[]>([]);
   const applyHighlight = useCallback((cy: CyInstance) => {
-    setHighlighted(highlightErdTables(cy, highlightRef.current));
+    setHighlighted(
+      highlightErdTables(cy, highlightRef.current.tables, highlightRef.current.relationships),
+    );
     applyErdSearch(cy, searchRef.current.search, searchRef.current.page);
   }, []);
   useEffect(() => {
-    highlightRef.current = highlightTableIds;
+    highlightRef.current = { tables: highlightTableIds, relationships: highlightRelationshipIds };
     if (cyRef.current) applyHighlight(cyRef.current);
-  }, [highlightTableIds, applyHighlight, cyRef]);
+  }, [highlightTableIds, highlightRelationshipIds, applyHighlight, cyRef]);
   useEffect(() => {
     searchRef.current = { search, page };
     if (cyRef.current) applyErdSearch(cyRef.current, search, page);

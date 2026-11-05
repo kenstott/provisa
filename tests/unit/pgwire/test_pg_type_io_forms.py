@@ -14,6 +14,8 @@ the same statements in tests/integration/test_type_io_on_engines.py."""
 
 # Requirements: REQ-2167, REQ-2171
 
+# ruff: noqa: F811 -- the fixtures are conn and pgwire of the module they are imported from
+
 from __future__ import annotations
 
 import re
@@ -21,6 +23,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import duckdb
+import psycopg2
 import pytest
 
 from provisa.core.pg_error import PostgresError, from_engine
@@ -30,13 +33,16 @@ from provisa.pgwire.server import ProvisaSession, _sqlstate_of, startup_time_zon
 from provisa.pgwire.session_zone import UNKNOWN_ZONE, SessionZone, refuse_other_zone
 from provisa.transpiler.function_macros import MACROS, outcome
 from provisa.transpiler.pg_forms_type_io import ROWS, TRINO, ZONED, readable, zoned_call
+from provisa.transpiler.pg_type_literals import interval_fields, interval_text
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 from tests.unit.pgwire.pg17_type_io_answers import RECORDED
+from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 from tests.unit.pgwire.type_io_corpus import (
     NAME_OF_THE_REFUSAL,
     REFUSALS,
     REFUSED,
     by_function,
+    column_statements,
     statements,
     verdict,
 )
@@ -56,15 +62,28 @@ def connection() -> Any:
     return connected
 
 
-def _difference(connection: Any, sql: str) -> str | None:
+def _difference(connection: Any, sql: str, recorded: str | None = None) -> str | None:
+    """How ``sql`` differs from the answer recorded for ``recorded``, by default ``sql`` itself."""
+    recorded = recorded or sql
+    written = transpile_to_duckdb(sql)
     try:
-        got = connection.execute(transpile_to_duckdb(sql)).fetchone()[0]
+        if connection.sql(written).types == ["INTERVAL"]:
+            got = _interval_read(connection, written)
+        else:
+            got = connection.execute(written).fetchone()[0]
     except duckdb.Error as raised:
         refusal = from_engine(raised)
         if refusal is None:
             return f"not raised as PostgreSQL's: {raised}"
-        return verdict(sql, RECORDED[sql], None, f"{refusal.sqlstate}: {refusal}")
-    return verdict(sql, RECORDED[sql], got, None)
+        return verdict(recorded, RECORDED[recorded], None, f"{refusal.sqlstate}: {refusal}")
+    return verdict(recorded, RECORDED[recorded], got, None)
+
+
+def _interval_read(connection: Any, written: str) -> str | None:
+    """An interval as the wire writes it (interval_out of its fields): the driver's timedelta
+    carries its months into days."""
+    _, fields = _fields(connection, written)
+    return None if None in fields else interval_text(*(int(f) for f in fields))
 
 
 @pytest.mark.parametrize("function", sorted(_FUNCTIONS))
@@ -72,6 +91,26 @@ def test_duckdb_answers_as_postgresql_17_answered(connection: Any, function: str
     found = {sql: _difference(connection, sql) for sql in _FUNCTIONS[function]}
     assert {s: why for s, why in found.items() if why not in (None, REFUSED)} == {}
     assert sum(why == REFUSED for why in found.values()) <= REFUSALS.get(function, 0)
+
+
+_COLUMNS = column_statements(RECORDED, "duckdb")
+
+
+@pytest.mark.parametrize("sql", sorted(_COLUMNS))
+def test_a_column_is_answered_as_its_literal_was(connection: Any, sql: str):
+    """A literal's call is folded where the statement is read; a column's reaches the form."""
+    assert _difference(connection, sql, _COLUMNS[sql]) is None
+
+
+def test_a_hash_reads_a_timetz_zone_of_seconds():
+    """12:30:45-11:15:30 is 40530 seconds west: hashint8 of its time xor hash_uint32 of 40530."""
+    sql = "SELECT timetz_hash(t) AS v FROM (SELECT '12:30:45-11:15:30'::timetz AS t) AS r"
+    time = "SELECT time_hash('12:30:45'::time) # hashint4(40530)"
+    connection = duckdb.connect()
+    assert (
+        connection.execute(transpile_to_duckdb(sql)).fetchone()[0]
+        == connection.execute(transpile_to_duckdb(time)).fetchone()[0]
+    )
 
 
 @pytest.mark.parametrize("name, arity", [(row[0], len(row[1])) for row in ROWS])
@@ -103,6 +142,69 @@ def test_a_call_keeps_the_name_of_its_column():
 def test_the_wire_says_the_type_postgresql_says(sql: str):
     casts = result_casts(sql)
     assert casts is not None and casts[0] is not None and casts[0].oid == RECORDED[sql][0]
+
+
+#: interval_in of a literal the engine's interval holds: each recorded call of no typmod, and the
+#: function check's, which names its type by regtype.
+_INTERVALS = {
+    **{
+        sql: sql
+        for sql, (oid, text) in RECORDED.items()
+        if sql.startswith('SELECT pg_catalog."interval_in"(\'')
+        and "(-1)::integer" in sql
+        and oid == 1186
+        and text not in (None, "infinity", "-infinity")
+    },
+    "SELECT pg_catalog.\"interval_in\"('1 day 02:03:04'::cstring, 'interval'::regtype::oid, "
+    "(-1)::integer) AS v": "SELECT pg_catalog.\"interval_in\"('1 day 02:03:04'::cstring, 1186::oid, "
+    "(-1)::integer) AS v",
+}
+
+
+def _fields(connection: Any, written: str) -> tuple[str, tuple[int, int, int]]:
+    """The type DuckDB answers ``written`` in, and its interval's months, days and microseconds."""
+    return connection.execute(
+        "SELECT typeof(v), (date_part('year', v) * 12 + date_part('month', v), date_part('day', v), "
+        "date_part('hour', v) * 3600000000 + date_part('minute', v) * 60000000 + "
+        f"date_part('microseconds', v)) FROM ({written}) AS r"
+    ).fetchone()
+
+
+@pytest.mark.parametrize("sql", sorted(_INTERVALS))
+def test_interval_in_of_a_literal_is_an_interval_on_duckdb(connection: Any, sql: str):
+    """REQ-2167: the wire says interval only of a value the engine holds as one (_describe_casts);
+    a literal's interval_in folded to its text was sent as text."""
+    kind, fields = _fields(connection, transpile_to_duckdb(sql))
+    assert (kind, tuple(fields)) == ("INTERVAL", interval_fields(RECORDED[_INTERVALS[sql]][1]))
+
+
+@pytest.mark.parametrize("sql", sorted(_INTERVALS))
+def test_interval_in_of_a_literal_reaches_the_wire_as_an_interval(conn: Any, sql: str):
+    """The function check's finding (run 41836627668): the wire said text (25) of interval_in."""
+    res = conn.conn.pgconn.exec_params(sql.encode(), [], result_format=0)
+    assert (res.ftype(0), res.get_value(0, 0).decode()) == RECORDED[_INTERVALS[sql]]
+
+
+@pytest.fixture(scope="module")
+def postgres(embedded_postgres: Any) -> Any:
+    connected = psycopg2.connect(embedded_postgres.dsn())
+    connected.autocommit = True
+    # An interval as interval_out writes it, not the driver's timedelta.
+    as_text = psycopg2.extensions.new_type((1186,), "INTERVAL_TEXT", lambda value, _: value)
+    psycopg2.extensions.register_type(as_text, connected)
+    yield connected
+    connected.close()
+
+
+@pytest.mark.parametrize("sql", sorted(_INTERVALS))
+def test_interval_in_of_a_literal_is_an_interval_on_postgresql(postgres: Any, sql: str):
+    cursor = postgres.cursor()
+    try:
+        cursor.execute(transpile(sql, "postgres"))
+        answer = (cursor.description[0].type_code, cursor.fetchone()[0])
+    finally:
+        cursor.close()
+    assert answer == RECORDED[_INTERVALS[sql]]
 
 
 _ZONED_CALLS = {

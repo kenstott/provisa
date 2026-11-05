@@ -27,6 +27,15 @@ from provisa.federation.engine import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A deployment of one organization (REQ-2006). The API layer says it at import; these
+    tests import no API layer, so they say it themselves."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 def _src(sid: str, type_: SourceType, **kw) -> Source:
     fields = {"host": "h", "port": 5432, "database": "db", "username": "u", **kw}
     return Source(id=sid, type=type_, **fields)

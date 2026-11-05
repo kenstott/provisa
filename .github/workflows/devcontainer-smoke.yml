@@ -1,0 +1,96 @@
+# REQ-2205 (amended 2026-11-04, three steps in a Codespace): build the dev container, run
+# ./start-ui-install.sh --demo inside it, and reach the UI on port 3000 -- the page loads and an API
+# call through the UI server answers. Nothing is typed, set or installed by hand between the steps:
+# the container's environment is the one the script uses (a script that looked for
+# <checkout>/.venv in a container whose environment was elsewhere failed here), and every directory
+# the script needs is the product's to make (the embedded control plane's pgdata parent).
+#
+# It runs on every change to the container, the script or what the script starts (on main and on a
+# ci/** proving branch), and on request.
+name: devcontainer-smoke
+
+on:
+  pull_request:
+    paths:
+      - '.devcontainer/**'
+      - 'start-ui-install.sh'
+      - 'rust/build-local.sh'
+      - 'rust/ensure-local-build.sh'
+      - 'provisa/core/control_plane_pg.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/devcontainer-smoke.yml'
+  push:
+    branches: [main, 'ci/**']
+    paths:
+      - '.devcontainer/**'
+      - 'start-ui-install.sh'
+      - 'rust/build-local.sh'
+      - 'rust/ensure-local-build.sh'
+      - 'provisa/core/control_plane_pg.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/devcontainer-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: devcontainer-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  three-steps:
+    name: Dev container, start-ui-install.sh --demo, UI on 3000
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The container's toolchains, the synced environment and the encoders build need more than
+      # the hosted runner leaves free.
+      - uses: ./.github/actions/free-runner-disk
+
+      - name: Build the dev container and run the demo in it
+        uses: devcontainers/ci@v0.3.1900000450
+        with:
+          push: never
+          runCmd: |
+            set -euo pipefail
+            out=/tmp/start-ui-install.out
+            report() {
+              rc=$?
+              if [ "$rc" -ne 0 ]; then
+                echo "::group::start-ui-install.sh --demo output (tail)"
+                tail -n 200 "$out" || true
+                echo "::endgroup::"
+                for log in .logs/*.log; do
+                  [ -e "$log" ] || continue
+                  echo "::group::$log (tail)"
+                  tail -n 200 "$log"
+                  echo "::endgroup::"
+                done
+              fi
+              [ -z "${pid:-}" ] || kill "$pid" 2>/dev/null || true
+              exit "$rc"
+            }
+            trap report EXIT
+            ./start-ui-install.sh --demo </dev/null >"$out" 2>&1 &
+            pid=$!
+            ready=false
+            for _ in $(seq 1 900); do
+              if curl -s -o /dev/null http://localhost:3000; then ready=true; break; fi
+              kill -0 "$pid" 2>/dev/null || { echo "start-ui-install.sh --demo exited before port 3000 answered"; exit 1; }
+              sleep 1
+            done
+            [ "$ready" = true ] || { echo "port 3000 did not answer within 15 minutes"; exit 1; }
+            page=$(curl -s -o /tmp/index.html -w '%{http_code}' -H 'Accept: text/html' http://localhost:3000/)
+            echo "GET / (Accept: text/html) -> $page"
+            [ "$page" = 200 ]
+            grep -q '<div id="root"></div>' /tmp/index.html
+            # /health is one of the UI server's proxied API prefixes and needs no sign-in.
+            api=$(curl -s -o /tmp/health.json -w '%{http_code}' http://localhost:3000/health)
+            echo "GET /health through the UI server -> $api: $(head -c 2000 /tmp/health.json)"
+            [ "$api" = 200 ]

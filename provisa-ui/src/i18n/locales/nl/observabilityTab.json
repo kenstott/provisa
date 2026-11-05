@@ -14,9 +14,9 @@
     "otelTitle": "OpenTelemetry-tracing",
     "statusLabel": "Status:",
     "statusExporting": "Exporteren → {{endpoint}}",
-    "statusActiveNoCollector": "Actief (spans verwijderd — geen collector geconfigureerd)",
+    "statusActiveNoCollector": "Actief (traces worden bewaard voor deze pagina, niet geëxporteerd)",
     "endpointLabel": "OTLP-collector-endpoint",
-    "endpointHelp": "Laat leeg om traces te genereren zonder te exporteren. Overschrijf met de omgevingsvariabele OTEL_EXPORTER_OTLP_ENDPOINT.",
+    "endpointHelp": "Wijs naar de eigen collector van Provisa en voeg een externe aanbieder toe als exporter in de collector, zodat de tracetabellen gevuld blijven. Laat leeg om traces alleen op deze pagina te bewaren. Overschrijf met de omgevingsvariabele OTEL_EXPORTER_OTLP_ENDPOINT.",
     "serviceNameLabel": "Servicenaam",
     "serviceNameHelp": "Overschrijf met de omgevingsvariabele OTEL_SERVICE_NAME.",
     "sampleRateLabel": "Samplefrequentie",
@@ -83,6 +83,8 @@
       "document_sources": "Query's op documentopslag.",
       "search_sources": "Query's op zoekindexen.",
       "grpc_services": "Het gRPC-queryoppervlak, inkomend en uitgaand."
-    }
+    },
+    "tracesTableEmpty": "Er is een endpoint ingesteld, maar de tracetabellen van Provisa bevatten nog geen rijen. Als het endpoint een externe aanbieder is en niet de collector van Provisa, verplaats het dan naar de exporters van de collector.",
+    "tracesTableStale": "Er is een endpoint ingesteld, maar de tracetabellen van Provisa hebben de afgelopen {{minutes}} minuten geen rijen ontvangen. Als Provisa inactief is geweest, is dat normaal. Controleer anders of het endpoint de collector van Provisa is en geen externe aanbieder."
   }
 }

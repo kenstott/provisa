@@ -19,15 +19,18 @@ import functools
 import re
 
 import sqlglot
+from sqlglot.dialects.postgres import Postgres
 
-from provisa.core.pg_error import MARK
+from provisa.core.pg_error import MARK, raising
 from provisa.transpiler import (
     function_macros,
     pg_forms_enum,
+    pg_forms_geometric,
     pg_forms_type_io,
     pg_functions,
     pg_held_types,
     pg_money,
+    pg_syntax,
 )
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
@@ -55,20 +58,39 @@ SUPPORTED_DIALECTS: set[str] = {
 }
 
 
-_BIT_VARYING_SAID = re.compile(r"::\s*bit\s+varying\b", re.IGNORECASE)
-_OVERLAPS_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?overlaps"?\s*\(', re.IGNORECASE)
+_WITHIN_GROUP = re.compile(r"\bWITHIN\s+GROUP\b", re.IGNORECASE)
 
 
-def _spelled_for_sqlglot(pg_sql: str) -> str:
-    """``pg_sql`` as sqlglot can read it: it takes ``bit varying`` for a bit and an alias, and has
-    no call of a function named overlaps."""
-    return _OVERLAPS_BY_NAME.sub("overlaps_timestamp(", _BIT_VARYING_SAID.sub("::varbit", pg_sql))
+def _within_group_unqualified(pg_sql: str) -> str:
+    """``pg_sql`` with each pg_catalog.f(...) WITHIN GROUP (...) the unqualified call (REQ-2167):
+    sqlglot reads the qualified one as a column of table pg_catalog and writes its name quoted and
+    upper-cased, pg_catalog."RANK", which names no function. PostgreSQL resolves an unqualified
+    built-in in pg_catalog first, so the call is the same."""
+    if _WITHIN_GROUP.search(pg_sql) is None or "pg_catalog" not in pg_sql.lower():
+        return pg_sql
+    tree = sqlglot.parse_one(pg_sql, read="postgres")
+    misread = [
+        c
+        for c in tree.find_all(exp.Column)
+        if isinstance(c.this, exp.WithinGroup) and c.table.lower() == "pg_catalog"
+    ]
+    for column in misread:
+        call = column.this
+        if isinstance(call.this, exp.Anonymous):
+            named = call.this
+            call.set("this", exp.Anonymous(this=named.name.lower(), expressions=named.expressions))
+        column.replace(call)
+    return tree.sql(dialect="postgres") if misread else pg_sql
 
 
 def transpile_to_trino(pg_sql: str) -> str:  # REQ-066, REQ-068
     """Transpile PostgreSQL-dialect SQL to Trino SQL."""
-    pg_sql = rewrite_correlated_subqueries_for_trino(_spelled_for_sqlglot(pg_sql))
-    result = transpile(pg_sql, "trino")
+    pg_sql = rewrite_correlated_subqueries_for_trino(pg_sql)
+    # REQ-2171: the rewrites read the statement; a geometric form's routines are kept as written.
+    return pg_forms_geometric.around(transpile(pg_sql, "trino"), _trino_rewrites)
+
+
+def _trino_rewrites(result: str) -> str:
     result = _rewrite_epoch_of_timestamp_for_trino(result)
     result = _rewrite_json_build_object_for_trino(result)
     result = _rewrite_json_arrayagg_for_trino(result)
@@ -356,23 +378,49 @@ def _rewrite_regex_backreferences_for_trino(sql: str) -> str:
     return tree.sql(dialect="trino")
 
 
+def _is_json_list_literal(node: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]
+    """'[]' as json: CAST('[]' AS JSON), or JSON_PARSE('[]') as the json forms write a json cast
+    of a literal for Trino (pg_forms_json._cast)."""
+    if isinstance(node, exp.Cast):
+        literal, is_json = node.this, node.to.is_type(exp.DataType.Type.JSON)
+    elif isinstance(node, exp.ParseJSON):
+        literal, is_json = node.this, True
+    else:
+        return False
+    return is_json and isinstance(literal, exp.Literal) and literal.this == "[]"
+
+
+def _is_json_text_aggregate(node: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]
+    """A list field's aggregate as Trino holds it: json_format(...) text
+    (_rewrite_json_arrayagg_for_trino), inline as a subquery or as the value column of the joined
+    aggregate it was hoisted to (transpile_correlated: _grel_<n>._val)."""
+    value = node
+    if isinstance(node, exp.Subquery) and isinstance(node.this, exp.Select):
+        selects = node.this.selects
+        value = selects[0].unalias() if len(selects) == 1 else node
+    if isinstance(value, exp.JSONFormat):
+        return True
+    return (
+        isinstance(value, exp.Column) and value.name == "_val" and value.table.startswith("_grel_")
+    )
+
+
 def _rewrite_empty_json_list_for_trino(sql: str) -> str:
     """A list field's empty default (sql_selection.EMPTY_JSON_LIST, CAST('[]' AS JSON)) is
     '[]' for Trino: there the aggregate it defaults is json_format(...) text
     (_rewrite_json_arrayagg_for_trino), and Trino's CAST of text to JSON is a JSON string, not an
-    array (#286)."""
-    if "'[]' AS JSON" not in sql:
+    array (#286). Only that default is rewritten: a statement's own json cast of '[]' stays json.
+    The json forms have already written the cast as JSON_PARSE('[]') by the time this runs, so
+    both forms are read."""
+    if "'[]'" not in sql:
         return sql
     tree = sqlglot.parse_one(sql, read="trino")
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
-        if (
-            isinstance(node, exp.Cast)
-            and isinstance(node.this, exp.Literal)
-            and node.this.this == "[]"
-            and node.to.is_type(exp.DataType.Type.JSON)
-        ):
-            return exp.Literal.string("[]")
+        if isinstance(node, exp.Coalesce) and _is_json_text_aggregate(node.this):
+            for default in node.expressions:
+                if _is_json_list_literal(default):
+                    default.replace(exp.Literal.string("[]"))
         return node
 
     return tree.transform(_transform).sql(dialect="trino")
@@ -660,15 +708,28 @@ def _catalog_functions_unqualified(pg_sql: str) -> str:  # REQ-2167
         function = node.expression
         if not isinstance(function, exp.Anonymous):
             return function.transform(_call)
+        part = function.expressions[0] if len(function.expressions) == 2 else None
+        part = part.this if isinstance(part, exp.Cast) else part
+        if function.name.lower() == "extract" and isinstance(part, exp.Literal) and part.is_string:
+            # extract(text, value), as EXTRACT(field FROM value) reads it: its field a keyword,
+            # where date_part's is a text (a numeric's answer, not a float8's).
+            value = function.expressions[1].transform(_call)
+            return exp.Extract(this=exp.var(part.this), expression=value)
         args = ", ".join(a.transform(_call).sql(dialect="postgres") for a in function.expressions)
         return sqlglot.parse_one(f"{function.name}({args})", read="postgres")
 
     return tree.transform(_call).sql(dialect="postgres")
 
 
-#: The error a zero divisor raises on DuckDB: PostgreSQL's own message, reported with its
-#: SQLSTATE 22012 (pgwire.server._sqlstate_of).
+#: The error a zero divisor raises on DuckDB: PostgreSQL's own, its SQLSTATE 22012 and message
+#: (pg_error.raising).
 DIVISION_BY_ZERO = "division by zero"
+
+
+#: What a zero divisor answers on DuckDB: PostgreSQL's 22012, raised by the engine.
+_DIVISION_REFUSED = sqlglot.parse_one(
+    raising("22012", exp.Literal.string(DIVISION_BY_ZERO).sql(dialect="duckdb")), read="duckdb"
+)
 
 
 def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
@@ -688,9 +749,7 @@ def _postgres_semantics_for_duckdb(sql: str) -> str:  # REQ-2167
             ifs=[
                 exp.If(
                     this=exp.EQ(this=divisor.copy(), expression=exp.Literal.number(0)),
-                    true=exp.Anonymous(
-                        this="error", expressions=[exp.Literal.string(DIVISION_BY_ZERO)]
-                    ),
+                    true=_DIVISION_REFUSED.copy(),
                 )
             ],
             default=divisor,
@@ -1047,6 +1106,10 @@ def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
     """
     # Parse failure must fail loud: returning input skips the required pg_duckdb JSON rewrite.
     tree = sqlglot.parse_one(pg_sql, read="postgres")
+    if tree.find(exp.JSONObject) is None:
+        # Nothing to collapse. Written out again, the statement would lose what transpile wrote
+        # for PostgreSQL alone, such as pg_catalog."overlaps" (pg_syntax reads it as the routine).
+        return pg_sql
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         if isinstance(node, exp.JSONObject):
@@ -1063,7 +1126,7 @@ def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
     # pass rewrites only nodes visited before their parent is replaced, so iterate until none remain.
     while list(tree.find_all(exp.JSONObject)):
         tree = tree.transform(_transform)
-    return tree.sql(dialect="postgres")
+    return pg_syntax.overlaps_restored(tree).sql(dialect="postgres")
 
 
 def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
@@ -1081,7 +1144,13 @@ def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
                 exp.Literal.string(node.to.sql(dialect="postgres")),
             ],
         )
-        cast = exp.Cast(this=node.this.copy(), to=node.to.copy())
+        operand = node.this.copy()
+        if not any(operand.find_all(exp.Column, exp.Placeholder, exp.Parameter)):
+            # A constant's cast is folded when the statement is planned, whatever the CASE
+            # decides: PostgreSQL would refuse the value it was asked to test. Its scalar
+            # subquery is not folded.
+            operand = exp.Subquery(this=exp.select(operand))
+        cast = exp.Cast(this=operand, to=node.to.copy())
         return exp.Case(ifs=[exp.If(this=valid, true=cast)])
 
     return tree.transform(_lowered)
@@ -1212,10 +1281,10 @@ def transpile(
         SQL string in target dialect.
     """
     pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
+    pg_sql = _within_group_unqualified(pg_sql)
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
         pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
-        pg_sql = _spelled_for_sqlglot(pg_sql)
-        pg_sql = _REGEXP_REPLACE_BY_NAME.sub("regexp_replace(", pg_sql)  # its flag is read below
+        pg_sql = _regexp_replace_by_name(pg_sql)  # its flag is read below
     if target_dialect != "postgres":
         pg_sql = exact_inputs(pg_sql)  # REQ-2171
     pg_sql = pg_forms_enum.lowered(pg_money.lowered(pg_sql, target_dialect), target_dialect)
@@ -1336,6 +1405,12 @@ def transpile(
     # reads the governed call itself and runs the search through Qdrant's API.
     if target_dialect != "qdrant":
         result = _lower_similarity(result, target_dialect, pgvector=pgvector)
+    # REQ-2171: last, for what a later step parses has no routine definitions at its head.
+    result = pg_forms_geometric.planned(result, target_dialect)
+    if target_dialect == "postgres" and pg_syntax.OVERLAPS in result.lower():
+        result = pg_syntax.overlaps_restored(sqlglot.parse_one(result, read="postgres")).sql(
+            dialect="postgres"
+        )
     from provisa.observability.stage_trace import trace_stage
 
     trace_stage(f"transpile.{target_dialect}", result)
@@ -1343,6 +1418,29 @@ def transpile(
 
 
 _REGEXP_REPLACE_BY_NAME = re.compile(r'\bpg_catalog\s*\.\s*"?regexp_replace"?\s*\(', re.IGNORECASE)
+
+
+def _regexp_replace_by_name(pg_sql: str) -> str:
+    """``pg_sql`` with each pg_catalog.regexp_replace(...) the bare call (REQ-2167): sqlglot reads
+    the qualified one as a function it does not know, and the bare one as REGEXP_REPLACE, whose
+    flag the rewrites below read. PostgreSQL resolves the bare built-in in pg_catalog first."""
+    if _REGEXP_REPLACE_BY_NAME.search(pg_sql) is None:
+        return pg_sql
+    build = Postgres.Parser.FUNCTIONS["REGEXP_REPLACE"]
+
+    def bare(node: exp.Expr) -> exp.Expr:
+        called = node.expression if isinstance(node, exp.Dot) else None
+        if (
+            isinstance(called, exp.Anonymous)
+            and called.name.lower() == "regexp_replace"
+            and node.this.name.lower() == "pg_catalog"
+        ):
+            return build([a.copy() for a in called.expressions], dialect="postgres")
+        return node
+
+    return sqlglot.parse_one(pg_sql, read="postgres").transform(bare).sql(dialect="postgres")
+
+
 _CAST_LITERAL_NAMED = re.compile(
     r"\b(numeric|decimal|bytea|character|char|bpchar)\b", re.IGNORECASE
 )
@@ -1525,13 +1623,16 @@ def _flag_past_n(pg_sql: str) -> str:
     and N. PostgreSQL reads 'g' only where N is not given, so that call is the five-argument one;
     any other flag beside N has no form."""
     tree = sqlglot.parse_one(pg_sql, read="postgres")
+    # A flag given as text ('i'::text) is its literal: sqlglot writes DuckDB's flags only from one.
+    for node in tree.find_all(exp.RegexpReplace):
+        said = node.args.get("modifiers")
+        if isinstance(said, exp.Cast) and said.this.is_string and said.to.is_type("text"):
+            node.set("modifiers", said.this)
     both = [
         node
         for node in tree.find_all(exp.RegexpReplace)
         if node.args.get("occurrence") is not None and node.args.get("modifiers") is not None
     ]
-    if not both:
-        return pg_sql
     for node in both:
         said = node.args["modifiers"]
         if not (isinstance(said, exp.Literal) and said.this == "g"):

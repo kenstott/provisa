@@ -32,7 +32,14 @@ def grant(monkeypatch, *capabilities: str, state=None):
     monkeypatch.setattr(
         appmod.state if state is None else state,
         "roles",
-        {"test_role": {"capabilities": list(capabilities), "domain_access": ["*"]}},
+        # REQ-2153: a built role carries its own domain access beside its reach.
+        {
+            "test_role": {
+                "capabilities": list(capabilities),
+                "domain_access": ["*"],
+                "own_domain_access": ["*"],
+            }
+        },
         raising=False,
     )
     identity = types.SimpleNamespace(

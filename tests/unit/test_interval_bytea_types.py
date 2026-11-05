@@ -18,11 +18,9 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
-from types import SimpleNamespace
 
 import pytest
 from dateutil.relativedelta import relativedelta
-from google.protobuf.descriptor import FieldDescriptor
 
 from provisa.compiler.type_map import (
     FILTER_TYPE_MAP,
@@ -34,7 +32,6 @@ from provisa.compiler.type_map import (
 from provisa.core.ir_types import bytea_hex, iso8601_duration, to_ir, to_physical
 from provisa.executor.serialize import _convert_value
 from provisa.grpc.proto_gen import _physical_to_proto
-from provisa.grpc.server import _proto_value
 
 
 @pytest.mark.parametrize(
@@ -161,13 +158,15 @@ def test_a_postgres_binary_interval_is_read_with_its_months():
 def test_a_duckdb_result_reads_an_interval_with_its_months():
     import duckdb
 
-    from provisa.executor.drivers.duckdb_driver import fetch_rows
+    from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
 
-    result = duckdb.connect().execute(
+    con = duckdb.connect()
+    con.execute(LOSSLESS_ARROW)
+    result = con.execute(
         "SELECT INTERVAL '1 year 2 months' AS ym, INTERVAL '3 days 04:05:06' AS ds, 'x' AS s "
         "UNION ALL SELECT NULL, NULL, NULL"
     )
-    assert fetch_rows(result) == [
+    assert arrow_rows(result.to_arrow_table()) == [
         (relativedelta(years=1, months=2), timedelta(days=3, seconds=14706), "x"),
         (None, None, None),
     ]
@@ -202,15 +201,26 @@ def test_an_arrow_interval_column_reads_as_ir_intervals():
         (relativedelta(months=-14, days=1), "-1 years -2 mons +1 day", (0, 1, -14)),
         (timedelta(microseconds=-5), "-00:00:00.000005", (-5, 0, 0)),
         (timedelta(0), "00:00:00", (0, 0, 0)),
+        # Past ~100,000 days a float quotient rounds up across the day boundary.
+        (
+            timedelta(days=500_000, microseconds=86_399_999_999),
+            "500000 days 23:59:59.999999",
+            (86_399_999_999, 500_000, 0),
+        ),
+        (
+            -timedelta(days=500_000, microseconds=86_399_999_999),
+            "-500000 days -23:59:59.999999",
+            (-86_399_999_999, -500_000, 0),
+        ),
     ],
 )
 def test_pgwire_writes_an_interval_as_postgres_does(value, text, binary):
     import struct
 
     from buenavista.core import BVType
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
+    from tests.unit.pgwire import wire_cells as wire
 
-    _, to_text, to_binary = BVTYPE_TO_PGTYPE[BVType.INTERVAL]
+    _, to_text, to_binary = wire.entry(BVType.INTERVAL)
     assert to_text(value) == text
     assert struct.unpack("!qii", to_binary(value)) == binary
 
@@ -234,8 +244,17 @@ def test_proto_maps_every_postgres_temporal_and_binary_alias(column_type, proto)
 
 
 def test_grpc_renders_an_interval_string_field_as_iso_8601():
-    field = SimpleNamespace(type=FieldDescriptor.TYPE_STRING)
-    assert _proto_value(field, timedelta(days=3, seconds=4, microseconds=5)) == "P3DT4.000005S"
+    import pyarrow as pa
+
+    from provisa.grpc.descriptor import OrgDescriptor
+    from provisa.grpc.server import _row_encoder
+
+    service = OrgDescriptor(
+        'syntax = "proto3"; package provisa.v1; message Spans { optional string span = 1; }'
+    )
+    span = pa.array([timedelta(days=3, seconds=4, microseconds=5)], pa.duration("us"))
+    (sent,) = _row_encoder(service.Spans, ["span"]).encode(pa.record_batch({"span": span}))
+    assert service.Spans.FromString(sent).span == "P3DT4.000005S"
 
 
 @pytest.mark.parametrize("scalar_name", ["Date", "DateTime", "Interval"])

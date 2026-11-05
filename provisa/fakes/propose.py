@@ -18,10 +18,12 @@ government identifier or an account number. A pii column with no confident match
 nothing and named, for the operator to decide. Every other column may be proposed a synthetic
 rule: the profile's own distribution for a number or a time, pinned to the run; its categories
 where the profile shows real repetition; bool() for a boolean; text to the profiled lengths for
-free text. Nothing is saved: the proposals fill the editor's fields.
+free text. A column that already declares a fake or a rule is proposed nothing unless it is
+named: a named column is proposed from the profile whatever it declares. Nothing is saved: the
+proposals fill the editor's fields.
 """
 
-# Requirements: REQ-1494
+# Requirements: REQ-1494, REQ-2053
 
 from __future__ import annotations
 
@@ -111,12 +113,23 @@ def _rule(c: ProfiledColumnFacts, run_id: str) -> str | None:
 
 
 def propose(
-    run_id: str, columns: list[ProfiledColumnFacts], pii: set[str], declared: set[str]
+    run_id: str,
+    columns: list[ProfiledColumnFacts],
+    pii: set[str],
+    declared: set[str],
+    named: set[str] | None = None,
 ) -> Proposals:
-    """Proposals for each column not in ``declared`` (a column with a fake or rule already)."""
+    """Proposals for each column not in ``declared`` (a column with a fake or rule already). With
+    ``named``, proposals for those columns only, declared or not (REQ-2053); a name the run does
+    not profile is refused."""
+    profiled = {c.name for c in columns}
+    if named is not None and named - profiled:
+        missing = ", ".join(map(repr, sorted(named - profiled)))
+        raise ValueError(f"run {run_id} profiles no column {missing}")
+    skipped = declared if named is None else profiled - named
     out = Proposals(run_id)
     for c in columns:
-        if c.name in declared:
+        if c.name in skipped:
             continue
         fake = _identifying(c)
         if fake is not None:

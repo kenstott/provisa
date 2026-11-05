@@ -28,18 +28,13 @@ must be addressable: a set with no key, or whose key the role reads masked, has 
 
 from __future__ import annotations
 
-import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import dataclass, replace
-from decimal import Decimal
-from typing import Any
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 
-import orjson
 import sqlglot
 from sqlglot import exp
 
-from provisa.api.odata.edm import EdmType, edm_value
 from provisa.api.odata.errors import QueryOptionRefused
 from provisa.api.odata.filter_sql import filter_condition
 from provisa.api.odata.model import EntitySet, Navigation, entity_set
@@ -254,87 +249,6 @@ def page_link(
         query.append(("$top", str(options.top - taken)))
     query.append(("$skip", str(options.skip + taken)))
     return f"{url}?{urlencode(query, safe='$,*')}"
-
-
-def _key_literal(value: Any, edm: EdmType) -> str:  # noqa: ANN401 — a statement's value
-    """``value`` as a key predicate writes it, which ``expression.parse_key`` reads back."""
-    written = edm_value(value, edm)
-    if edm.name == "Edm.String":
-        return "'" + str(written).replace("'", "''") + "'"
-    if isinstance(written, bool):
-        return "true" if written else "false"
-    if isinstance(written, orjson.Fragment):
-        return format(Decimal(str(value)), "f")
-    return str(written)
-
-
-def _address(entity: EntitySet, key: tuple[str, ...], values: Mapping[str, Any]) -> str:
-    def literal(name: str) -> str:
-        found = entity.property(name)
-        assert found is not None
-        return _key_literal(values[name], found.type)
-
-    if len(key) == 1:
-        return f"{entity.name}({literal(key[0])})"
-    return f"{entity.name}({','.join(f'{name}={literal(name)}' for name in key)})"
-
-
-def _link(root: str, entity: EntitySet, values: Mapping[str, Any], plan: Plan) -> str:
-    name = plan.navigation.name
-    if not plan.parent_key:
-        # Never a list cut short with nothing to say so.
-        raise QueryOptionRefused(
-            501,
-            "not_implemented",
-            f"{name} of {entity.name} holds more than {plan.page} rows, and a row of "
-            f"{entity.name} has no key this role can address the rest by",
-        )
-    address = quote(_address(entity, plan.parent_key, values), safe="(),='")
-    return page_link(f"{root}/{address}/{name}", plan.raw, plan.options, plan.page)
-
-
-def _decoded(value: Any) -> Any:  # noqa: ANN401 — a relationship's JSON, or an engine's reading of it
-    """A relationship's value, which an engine may hand back as text. A number stays exact: a
-    float would round a long decimal."""
-    return json.loads(value, parse_float=Decimal) if isinstance(value, str) else value
-
-
-def _expanded(
-    written: dict,
-    values: Mapping[str, Any],
-    entity: EntitySet,
-    plan: Plan,
-    root: str,
-) -> None:
-    name = plan.navigation.name
-    if not plan.navigation.collection:
-        found = _decoded(values[name])
-        written[name] = (
-            None if found is None else write(found, plan.target, plan.fields, plan.children, root)
-        )
-        return
-    rows = _decoded(values[name]) if plan.page > 0 else []
-    written[name] = [
-        write(row, plan.target, plan.fields, plan.children, root) for row in rows[: plan.page]
-    ]
-    if len(rows) > plan.page:
-        written[f"{name}@odata.nextLink"] = _link(root, entity, values, plan)
-
-
-def write(
-    values: Mapping[str, Any],
-    entity: EntitySet,
-    fields: tuple[str, ...],
-    plans: tuple[Plan, ...],
-    root: str,
-) -> dict:
-    """One row as an entity: its ``fields`` by their Edm types, and each expansion nested under
-    its navigation property. ``root`` is the service's address, which a nextLink starts from."""
-    types = {p.name: p.type for p in entity.properties}
-    written = {name: edm_value(values[name], types[name]) for name in fields}
-    for plan in plans:
-        _expanded(written, values, entity, plan, root)
-    return written
 
 
 def context_selection(options: QueryOptions) -> str:

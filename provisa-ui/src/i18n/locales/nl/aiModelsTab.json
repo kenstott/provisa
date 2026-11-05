@@ -16,7 +16,7 @@
     "role_sql_generation": "SQL-generatie",
     "role_table_selection": "Tabelselectie",
     "role_mcp_chat": "Chatassistent",
-    "role_glossary_term_finding": "Termen in een document vinden",
+    "role_glossary_term_finding": "Termen vinden",
     "vendorLabel": "Leverancier",
     "modelLabel": "Model",
     "nlHeading": "Query in natuurlijke taal",

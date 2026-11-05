@@ -355,6 +355,7 @@ async def test_the_direct_terminal_opens_the_pool_for_a_write(monkeypatch):
             two_step=None,  # as _Plan: written whole (REQ-2001)
             staged=None,  # as _Plan: no CTE holding a column transform (REQ-2131)
             code_write=None,  # as _Plan: no code table written (REQ-2100)
+            generated_key=None,  # as _Plan: no generated value reported (REQ-2167)
             materialize=None,
             auto_deliver=None,
             engine_landing=None,

@@ -7,3 +7,19 @@
 # NOTICE: Use of this software for training artificial intelligence or
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
+
+"""Provisa. Importing the package fixes where zoneinfo finds its zones, before any module reads one.
+
+Every surface answers a named zone from one IANA release: the ``tzdata`` package pinned in
+pyproject.toml, which is also the release the Rust encoders' tables are built from
+(rust/pgwire/third_party/chrono-tz/tz) and pytz's (pyarrow's zoned timestamps). zoneinfo would
+otherwise read the host's /usr/share/zoneinfo first, whatever release the host carries. An empty
+search path sends it to the package; PYTHONTZPATH carries the same to every Python process
+Provisa starts."""
+
+import os
+import zoneinfo
+
+os.environ["PYTHONTZPATH"] = ""
+zoneinfo.reset_tzpath(to=())
+zoneinfo.ZoneInfo.clear_cache()

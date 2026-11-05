@@ -52,6 +52,8 @@
     "draftNoRightTooltip": "發佈資料表或將其退回草稿，需要在該資料表所屬網域中擁有「資料表註冊」權限。",
     "draftPreviewNote": "草稿預覽：讀者目前仍看不到此資料表。",
     "keepsHistory": "保留歷史：每個版本，包括何時發生和何時記錄。",
-    "keepsHistoryQuery": "按截至某日或按記錄時查詢"
+    "keepsHistoryQuery": "按截至某日或按記錄時查詢",
+    "deleteTitle": "刪除表 {{name}}？",
+    "deleteConsequence": "該表的註冊將被刪除。"
   }
 }

@@ -38,8 +38,12 @@ FAMILIES = Path(__file__).resolve().parent / "function_families.yaml"
 #: The enum the job seeds beside its fixture: PostgreSQL ships none, and anyenum needs one.
 PROBE_ENUM = "conformance.probe_enum"
 
-#: The sequence the job seeds for lastval.
+#: The sequence the job seeds, a real argument for the functions that read one.
 PROBE_SEQUENCE = "conformance.probe_sequence"
+
+#: The table the job seeds for lastval: an identity column, and a column an INSERT gives a value.
+PROBE_IDENTITY_SCHEMA, PROBE_IDENTITY_TABLE = "conformance", "probe_identity"
+PROBE_IDENTITY = f"{PROBE_IDENTITY_SCHEMA}.{PROBE_IDENTITY_TABLE}"
 
 #: The concrete type a call gives each pseudo-type, consistent across one call's arguments:
 #: PostgreSQL resolves anyelement with anyarray, anyrange and anymultirange to one element type.
@@ -68,7 +72,8 @@ NO_CALL = "takes an internal argument, which no SQL expression can supply"
 #: PostgreSQL's refusals that hold on every server in every state: the function runs only from the
 #: trigger manager, an event trigger, binary upgrade, a language call or initdb, or is a
 #: pseudo-type's input or output function. Each is PostgreSQL's own wording. Any other refusal is
-#: no proof: "recovery is not in progress", say, names a state another server is in.
+#: no proof: "recovery is not in progress", say, names a state another server is in. The catalog
+#: types probe reads this; function_support.py reads ``refused_for``, by SQLSTATE.
 INTERNAL_REFUSAL = re.compile(
     "|".join(
         (
@@ -84,6 +89,49 @@ INTERNAL_REFUSAL = re.compile(
         )
     )
 )
+
+#: What PostgreSQL's refusal of a call is about (REQ-2167, amended 2026-11-04, A call PostgreSQL
+#: cannot make is skipped by design): the call itself, whatever values it is given, or the values
+#: and types the check gave it, which a better sample may get past (``refused_for``).
+THE_CALL = "the call"
+ITS_ARGUMENTS = "its arguments"
+
+#: The SQLSTATEs of a refusal of the call itself: feature not supported (a type that cannot accept
+#: or display a value, a function no longer supported or not implemented), wrong object type, and
+#: a trigger or event trigger function called directly.
+CALL_REFUSALS = frozenset({"0A000", "42809", "39P01", "39P03"})
+
+#: No collation determinable: a refusal of the call when no argument is of a collatable type, as
+#: then no collation the check could give a value would reach it.
+INDETERMINATE_COLLATION = "42P22"
+COLLATABLE = frozenset({"text", "character varying", "character", "name", "citext"})
+
+#: The SQLSTATEs of a refusal of the arguments: no such function for those types, a datatype
+#: mismatch, a cast that cannot be made, and any data exception (class 22, invalid text
+#: representation among them).
+ARGUMENT_REFUSALS = frozenset({"42883", "42804", "42846"})
+DATA_EXCEPTION_CLASS = "22"
+
+#: The codes PostgreSQL gives both kinds, so that the message alone tells a refusal of the call:
+#: XX000, elog's internal error (an aggregate support function called outside an aggregate, the
+#: parser's unknown type, a trigger function not fired by the trigger manager, initdb's OID
+#: counter), and 55P02, which binary-upgrade functions share with a setting that cannot be changed
+#: now.
+SHARED_CODE_CALL_REFUSALS = {
+    "XX000": re.compile(
+        "|".join(
+            (
+                r"called in non-aggregate context",
+                # unknownin: the parser's internal type (REQ-2167, amended 2026-11-04 (2)).
+                r"failed to find conversion function from unknown to text",
+                r"not fired by trigger manager",
+                r"cannot advance OID counter anymore",
+            )
+        )
+    ),
+    "55P02": re.compile(r"can only be called when server is in binary upgrade mode"),
+}
+
 
 #: How Provisa says it refuses a call, on any engine: each is the product's own wording of a refusal
 #: that names what it refuses (FunctionRefused, MetadataFunctionRefused, XmlFunctionRefused,
@@ -102,6 +150,8 @@ REFUSAL = re.compile(
             r"\S+ is a catalog view of the meta domain",
             r"\w+: (?:a|the) [\w ']+ is not supported; ",
             r"\[V006\] Table function \S+ is not a governed relation",
+            # REQ-2167 (amended 2026-11-03): pgwire has no notification channel.
+            r"(?:LISTEN|UNLISTEN|NOTIFY) is refused by name: ",
         )
     )
     + r")"
@@ -168,16 +218,20 @@ ARGUMENTS: dict[str, tuple[str, ...]] = {
 }
 
 #: The statements that are no plain call: a set-returning function taking its row type from a
-#: column definition list, and lastval, which needs a nextval earlier in the same session.
+#: column definition list, and lastval, which answers what an INSERT before it generated
+#: (``BEFORE``).
 STATEMENTS = {
     "json_to_recordset(json)": "SELECT * FROM pg_catalog.\"json_to_recordset\"('[]') AS t(v integer)",
     "jsonb_to_recordset(jsonb)": (
         "SELECT * FROM pg_catalog.\"jsonb_to_recordset\"('[]') AS t(v integer)"
     ),
-    "lastval()": (
-        f"SELECT pg_catalog.\"lastval\"() AS v FROM (SELECT nextval('{PROBE_SEQUENCE}') OFFSET 0) s"
-    ),
+    "lastval()": 'SELECT pg_catalog."lastval"() AS v',
 }
+
+#: What a call needs its session to have done, run on the same connection just before it: lastval
+#: answers the identity value the session's own INSERT made the table generate (REQ-2167, amended
+#: 2026-11-02), not a sequence it advanced, which Provisa refuses.
+BEFORE = {"lastval()": f"INSERT INTO {PROBE_IDENTITY} (note) VALUES ('probe')"}
 
 
 @dataclass(frozen=True)
@@ -246,6 +300,23 @@ def refused_by_name(error: str) -> bool:
 def proves_internal(error: str) -> bool:
     """Whether PostgreSQL's refusal of a call proves the function internal (INTERNAL_REFUSAL)."""
     return INTERNAL_REFUSAL.search(error) is not None
+
+
+def refused_for(fn: Function, sqlstate: str, error: str) -> str | None:
+    """Whether PostgreSQL's refusal of a call of ``fn`` (its SQLSTATE and message) is of the call
+    itself (``THE_CALL``) or of the arguments the check gave it (``ITS_ARGUMENTS``); None if it is
+    neither, as a refusal for the server's state is."""
+    if sqlstate in CALL_REFUSALS:
+        return THE_CALL
+    if sqlstate == INDETERMINATE_COLLATION:
+        collatable = any(t.removesuffix("[]") in COLLATABLE for t in fn.argtypes)
+        return ITS_ARGUMENTS if collatable else THE_CALL
+    if sqlstate in ARGUMENT_REFUSALS or sqlstate.startswith(DATA_EXCEPTION_CLASS):
+        return ITS_ARGUMENTS
+    shared = SHARED_CODE_CALL_REFUSALS.get(sqlstate)
+    if shared is not None and shared.search(error) is not None:
+        return THE_CALL
+    return None
 
 
 @dataclass

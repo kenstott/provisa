@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 
@@ -34,6 +34,7 @@ import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
 from provisa.core.pg_error import END, MARK
+from provisa.transpiler import pg_forms_hash as hashing
 from provisa.transpiler import pg_type_literals as literals
 from provisa.transpiler.pg_forms_json import jsonb_text
 from provisa.transpiler.pg_forms_types import REFUSED, refused
@@ -292,6 +293,8 @@ CLICKHOUSE = Engine(
 )
 ENGINES = (DUCKDB, TRINO, CLICKHOUSE)
 Typed = Callable[[Engine], str]
+#: A hash's answer on an engine, of its seed: None for the 32-bit hash.
+Hashed = Callable[[Engine, "hashing.Engine", str | None], str]
 
 
 def _quoted(text: str) -> str:
@@ -523,9 +526,12 @@ _NO_OUTPUT = (
 )  # fmt: skip
 
 
-def _no_value(name: str, message: str, params: str = "v") -> Row:
+def _no_value(
+    name: str, message: str, params: str = "v", sql_type: Typed = _text, result: str = "text"
+) -> Row:
     return _noted(
-        _row(name, params, _text, lambda e: e.raises("0A000", _quoted(message), e.text)), "text"
+        _row(name, params, sql_type, lambda e: e.raises("0A000", _quoted(message), sql_type(e))),
+        result,
     )
 
 
@@ -536,7 +542,15 @@ def _pseudo() -> list[Row]:
         for t in _NO_INPUT_OF_THREE
     ]
     rows += [_no_value(f"{t}_out", f"cannot display a value of type {t}") for t in _NO_OUTPUT]
-    rows += [_no_value("pg_ddl_command_send", "cannot display a value of type pg_ddl_command")]
+    rows += [
+        _no_value(
+            "pg_ddl_command_send",
+            "cannot display a value of type pg_ddl_command",
+            "v",
+            _binary,
+            "bytea",
+        )
+    ]
     rows += [_no_value("shell_out", "cannot display a value of a shell type")]
     rows += [_noted(_row("void_in", "v", _text, lambda _: "''"), "text")]
     rows += [_noted(_row("void_out", "v", _text, lambda _: "''"), "text")]
@@ -623,17 +637,14 @@ _ALSO: dict[str, Callable[[Engine, str], str]] = {
 def _canonical(function: str, pattern: str, params: str = "v") -> Row:
     def read(e: Engine) -> str:
         text = e.as_text("v")
-        fits = e.full_match(text, pattern)
-        also = _ALSO.get(function)
-        answer = (
-            text
-            if also is None
-            else (f"CASE WHEN {also(e, text)} THEN {text} ELSE {_by_name(e, function, e.text)} END")
-        )
+        refused = [f"NOT ({e.full_match(text, pattern)})"]
         if "m" in params:  # a typmod that would round its fraction
-            rounds = f"m >= 0 AND m < 6 AND {e.full_match(text, '.*[.][0-9]+.*')}"
-            answer = f"CASE WHEN {rounds} THEN {_by_name(e, function, e.text)} ELSE {answer} END"
-        return f"CASE WHEN {fits} THEN {answer} ELSE {_by_name(e, function, e.text)} END"
+            refused.append(f"m >= 0 AND m < 6 AND {e.full_match(text, '.*[.][0-9]+.*')}")
+        also = _ALSO.get(function)
+        if also is not None:
+            refused.append(f"NOT ({also(e, text)})")
+        by_name = _by_name(e, function, e.text)
+        return f"CASE {' '.join(f'WHEN {c} THEN {by_name}' for c in refused)} ELSE {text} END"
 
     return _noted(_row(function, params, _text, read), "text")
 
@@ -698,7 +709,8 @@ def _spell_in(
     function: str, pattern: str, result: Typed, read: Callable[[Engine, str], str], params: str
 ) -> Callable[[Engine], str]:
     """An input of a text ``pattern`` takes. A typmod that would round its fraction is refused,
-    and a date no calendar holds is PostgreSQL's error."""
+    and a date no calendar holds is PostgreSQL's error. One CASE: ClickHouse makes one node of a
+    refusal written twice, and a node two CASEs share runs whichever branch is taken."""
 
     def form(e: Engine) -> str:
         fraction = e.full_match("v", ".*[.][0-9]+.*")
@@ -706,11 +718,10 @@ def _spell_in(
         day = e.sub("v", "^([0-9]+-[0-9]+-[0-9]+).*$", chr(92) + "1")
         wrong = "FALSE" if function == "time_in" else f"{e.valid_date(day)} IS NULL"
         said = _quoted('date/time field value out of range: "') + " || v || '\"'"
+        by_name = _by_name(e, function, result(e))
         return (
-            f"CASE WHEN {e.full_match('v', pattern)} THEN CASE WHEN {rounds} THEN "
-            f"{_by_name(e, function, result(e))} WHEN {wrong} THEN "
-            f"{e.raises('22008', said, result(e))} ELSE {read(e, 'v')} END "
-            f"ELSE {_by_name(e, function, result(e))} END"
+            f"CASE WHEN NOT ({e.full_match('v', pattern)}) THEN {by_name} WHEN {rounds} THEN {by_name} "
+            f"WHEN {wrong} THEN {e.raises('22008', said, result(e))} ELSE {read(e, 'v')} END"
         )
 
     return form
@@ -755,7 +766,7 @@ def _dates() -> list[Row]:
         _noted(
             _row(
                 "timestamp_in", "v, o, m", of_stamp,
-                _spell_in("timestamp_in", stamp_text, of_stamp, timestamp_in, "v, o, m"),
+                _spell_in("timestamp_in", f"{_DATE}( {_FULL_CLOCK})?", of_stamp, timestamp_in, "v, o, m"),
             ),
             "timestamp without time zone",
         ),
@@ -1065,6 +1076,96 @@ def _typmods_out() -> list[Row]:
     return rows
 
 
+def _hashes() -> list[Row]:
+    """The hashes of the types whose text says their value, by pg_forms_hash's lookup3: a time's,
+    a timestamp's and an LSN's are hashint8's, a uuid's is its bytes', a timetz's its time's xor its
+    zone's (src/backend/utils/adt/date.c, timestamp.c, pg_lsn.c, uuid.c)."""
+
+    def int8_word(h: hashing.Engine, value: str) -> str:
+        return hashing._word_of_int8(replace(h, value=value))
+
+    def clock(e: Engine, h: hashing.Engine, text: str) -> str:
+        return int8_word(h, _micros(e, text))
+
+    def instant(e: Engine, h: hashing.Engine, text: str) -> str:
+        return int8_word(
+            h,
+            f"CASE WHEN {text} = 'infinity' THEN {hashing._MAX_BIGINT} "
+            f"WHEN {text} = '-infinity' THEN {hashing._MIN_BIGINT} ELSE {_instant_us(e, text)} END",
+        )
+
+    def lsn(e: Engine, h: hashing.Engine, text: str) -> str:
+        """hashint8 of the LSN's 64 bits, whose high half says whether they are negative."""
+        high = h.hex_word.format(f"lpad({e.sub(text, '/.*$', '')}, 8, '0')")
+        low = h.hex_word.format(f"lpad({e.sub(text, '^.*/', '')}, 8, '0')")
+        complement = (
+            f"CASE WHEN {high} < {hashing._SIGN} THEN {high} ELSE {hashing._MASK} - {high} END"
+        )
+        return h.xor.format(low, complement)
+
+    def zone(e: Engine, text: str) -> str:
+        """A timetz's zone, as PostgreSQL holds it: its seconds west of UTC."""
+        offset = e.sub(text, "^.*([+-][0-9:]+)$", chr(92) + "1")
+        minutes = (
+            f"CASE WHEN length({offset}) >= 6 THEN CAST(substr({offset}, 5, 2) AS {e.int8}) "
+            "ELSE 0 END"
+        )
+        seconds = (
+            f"CASE WHEN length({offset}) >= 9 THEN CAST(substr({offset}, 8, 2) AS {e.int8}) "
+            "ELSE 0 END"
+        )
+        east = f"(CAST(substr({offset}, 2, 2) AS {e.int8}) * 3600 + {minutes} * 60 + {seconds})"
+        return f"CASE WHEN substr({offset}, 1, 1) = '+' THEN -{east} ELSE {east} END"
+
+    # A word of this module's integers is Nullable on ClickHouse, which lookup3's fold refuses: the
+    # form's CASE has answered a NULL, so the word is the hash engine's value of it.
+    bare = {
+        e.dialects: h.value.replace("value", "({})")
+        for e, (_, h) in zip(ENGINES, hashing.ENGINES, strict=True)
+    }
+
+    def hash_word(e: Engine, h: hashing.Engine, word: str, seed: str | None) -> str:
+        return hashing._of_word(h, bare[e.dialects].format(word), seed)
+
+    def of_word(word: Callable[[Engine, hashing.Engine, str], str]) -> Hashed:
+        def hashed(e: Engine, h: hashing.Engine, seed: str | None) -> str:
+            return hash_word(e, h, word(e, h, e.as_text(h.value)), seed)
+
+        return hashed
+
+    def uuid(e: Engine, h: hashing.Engine, seed: str | None) -> str:
+        return hashing._of_hex(h, f"replace({e.as_text(h.value)}, '-', '')", seed)
+
+    def timetz(e: Engine, h: hashing.Engine, seed: str | None) -> str:
+        text = e.as_text(h.value)
+        time = hash_word(e, h, clock(e, h, e.sub(text, "[+-][0-9:]+$", "")), seed)
+        return h.xor.format(time, hash_word(e, h, zone(e, text), seed))
+
+    rows: list[Row] = []
+    for stem, hashed in (
+        ("time", of_word(clock)),
+        ("timestamp", of_word(instant)),
+        ("pg_lsn", of_word(lsn)),
+        ("uuid", uuid),
+        ("timetz", timetz),
+    ):
+        for name, seed, result in (
+            (f"{stem}_hash", None, "integer"),
+            (f"{stem}_hash_extended", "seed", "bigint"),
+        ):
+            params = "v" if seed is None else "v, seed"
+            forms = {}
+            for e, (_, h) in zip(ENGINES, hashing.ENGINES, strict=True):
+                h = replace(h, value=h.value.replace("value", "v"))
+                answer = hashed(e, h, None if seed is None else h.seed)
+                sql_type = h.int8_type if seed else h.int4_type
+                forms[e.dialects] = _strict(
+                    params, sql_type, f"CAST({_unfolded(e, answer)} AS {sql_type})"
+                )
+            rows.append(_noted((name, tuple(params.split(", ")), forms), result))
+    return rows
+
+
 #: A row: name, parameters, each engine's form.
 ROWS: tuple[Row, ...] = (
     *_integers(),
@@ -1091,6 +1192,7 @@ ROWS: tuple[Row, ...] = (
     _text_send("enum_send"),
     *_parts_sends(),
     *_typmods_out(),
+    *_hashes(),
     *_refused(
         """aclitemin array_out anyarray_out anycompatiblearray_out anyrange_out anymultirange_out
         anycompatiblerange_out anycompatiblemultirange_out range_out multirange_out record_out
@@ -1098,11 +1200,13 @@ ROWS: tuple[Row, ...] = (
         tsqueryout tsvectorout xml_out pg_dependencies_out pg_mcv_list_out pg_ndistinct_out
         pg_node_tree_out regclassout regcollationout regconfigout regdictionaryout regnamespaceout
         regoperatorout regoperout regprocedureout regprocout regroleout regtypeout xid8out
-        numeric_out numerictypmodout intervaltypmodout jsonb_in jsonpath_in tsqueryin tsvectorin
+        numeric_out numerictypmodout intervaltypmodout jsonpath_in tsqueryin tsvectorin
         xml_in regclassin regcollationin regconfigin regdictionaryin regnamespacein regoperatorin
-        regoperin regprocedurein regprocin regrolein regtypein xid8in""",
+        regoperin regprocedurein regprocin regrolein regtypein""",
         "v", _text, "text",
     ),
+    *_refused("jsonb_in", "v", _text, "jsonb"),
+    *_refused("xid8in", "v", _text, "xid8"),
     *_refused(
         """array_send anyarray_send anycompatiblearray_send range_send multirange_send record_send
         bit_send varbit_send interval_send jsonb_send jsonpath_send tsquerysend
@@ -1110,9 +1214,10 @@ ROWS: tuple[Row, ...] = (
         "v", _binary, "bytea",
     ),
     *_refused(
-        """array_in range_in multirange_in bit_in varbit_in interval_in numeric_in""",
+        """array_in range_in multirange_in bit_in varbit_in numeric_in""",
         "v, o, m", _text, "text",
     ),
+    *_refused("interval_in", "v, o, m", _text, "interval"),
     *_refused("enum_in", "v, o", _text, "text"),
     _no_value("record_in", "input of anonymous composite types is not implemented", "v, o, m"),
     _noted(
@@ -1135,20 +1240,12 @@ ROWS: tuple[Row, ...] = (
     *_refused(
         """bittypmodin bpchartypmodin intervaltypmodin numerictypmodin timestamptypmodin
         timestamptztypmodin timetypmodin timetztypmodin varbittypmodin varchartypmodin
-        interval_hash pg_lsn_hash time_hash timestamp_hash timetz_hash uuid_hash""",
+        interval_hash""",
         "v", _int4, "integer",
     ),
     *_refused(
-        """interval_hash_extended pg_lsn_hash_extended time_hash_extended timestamp_hash_extended
-        timetz_hash_extended uuid_hash_extended""",
+        "interval_hash_extended",
         "v, s", _int8, "bigint",
-    ),
-    *_refused(
-        """float8_avg float8_corr float8_covar_pop float8_covar_samp float8_regr_avgx
-        float8_regr_avgy float8_regr_intercept float8_regr_r2 float8_regr_slope float8_regr_sxx
-        float8_regr_sxy float8_regr_syy float8_stddev_pop float8_stddev_samp float8_var_pop
-        float8_var_samp""",
-        "v", lambda e: e.double, "double precision",
     ),
     *_refused("int8_avg numeric_exp numeric_ln numeric_sqrt", "v", lambda e: e.text, "numeric"),
     *_refused("numeric_div numeric_div_trunc numeric_log numeric_power", "a, b", lambda e: e.text, "numeric"),
@@ -1199,6 +1296,9 @@ def _bare(value: exp.Expr) -> exp.Expr:
     return node
 
 
+_CHARACTER = re.compile(r"(?:char|bpchar)\((\d+)\)|char")
+
+
 def _read(value: exp.Expr) -> exp.Expr:
     """A literal of a type, as the type's input function reads it, and a text row its text."""
     node = value.unnest()
@@ -1207,11 +1307,12 @@ def _read(value: exp.Expr) -> exp.Expr:
     if not node.this.is_string:
         return value
     typed = _type_said(node)
-    if typed == "char(5)":  # character(n): the row that pads reads it
-        return exp.Anonymous(
-            this="bpcharin",
-            expressions=[node.this.copy(), exp.Literal.number(1042), exp.Literal.number(9)],
-        )
+    sized = _CHARACTER.fullmatch(typed)
+    if sized is not None:
+        # character(n), and character alone character(1): an explicit cast truncates the text to
+        # n characters and pads it with spaces (REQ-2167).
+        length = int(sized.group(1) or 1)
+        return exp.Literal.string(node.this.name[:length].ljust(length))
     reader = _INPUT_OF_TYPE.get(typed)
     if reader is None:
         return node.this.copy()  # its row reads the text
@@ -1228,12 +1329,22 @@ def _is_null(value: exp.Expr) -> bool:
     return isinstance(node.this if isinstance(node, exp.Cast) else node, exp.Null)
 
 
+#: The results a NULL is of only on DuckDB (``None``: the engine a statement with no table goes
+#: to), where pgwire describes it as that type; another engine's NULL of one is its text.
+_DUCKDB_RESULTS = frozenset({"jsonb", "interval", "xid8"})
+
+
 def _null_of(result: str, dialect: str | None = None) -> exp.Expr:
     """A NULL of ``result``. ClickHouse holds a time as its text (Engine.time): sqlglot would write
-    toTime64OrNull, which ClickHouse 24 does not have."""
+    toTime64OrNull, which ClickHouse 24 does not have. Only DuckDB and PostgreSQL hold jsonb,
+    interval and xid8."""
     if dialect == "clickhouse" and result == "time without time zone":
         result = "text"
-    return exp.Cast(this=exp.Null(), to=exp.DataType.build(result, dialect="postgres"))
+    if dialect not in (None, "duckdb", "postgres") and result in _DUCKDB_RESULTS:
+        result = "text"
+    # xid8 is no type sqlglot knows: pg_held_types holds it as the engine's.
+    to = exp.DataType.build(result, dialect="postgres", udt=True)
+    return exp.Cast(this=exp.Null(), to=to)
 
 
 def _literal_text(value: exp.Expr) -> str | None:
@@ -1430,11 +1541,11 @@ def _fold_text(name: str, text: str, arguments: list[exp.Expr]) -> exp.Expr | No
             written = jsonb_text(text)
         except ValueError:
             raise literals.Refused("22P02", "invalid input syntax for type json") from None
-        return (
-            _said_bytes(literals.jsonb_bytes(written))
-            if name == "jsonb_send"
-            else _said_text(written)
-        )
+        if name == "jsonb_send":
+            return _said_bytes(literals.jsonb_bytes(written))
+        if name == "jsonb_in":
+            return exp.cast(_said_text(written), exp.DataType.build("jsonb", dialect="postgres"))
+        return _said_text(written)
     if name in ("bit_in", "bit_out", "bit_send", "varbit_in", "varbit_out", "varbit_send"):
         fixed = name.startswith("bit")
         typmod = _literal_number(arguments[2]) if name.endswith("_in") else -1
@@ -1459,6 +1570,8 @@ _RANGE_OUT = frozenset(
 _RANGE_SEND = frozenset({"range_send", "multirange_send"})
 _ARRAY_OUT = frozenset({"array_out", "anyarray_out", "anycompatiblearray_out"})
 _ARRAY_SEND = frozenset({"array_send", "anyarray_send", "anycompatiblearray_send"})
+#: The final functions of a float8 state (pg_forms_aggregate.FINAL_FUNCTIONS): a literal state is
+#: answered here, a column's by the form.
 _FLOAT8_STATES = frozenset(
     f"float8_{n}" for n in (
         "avg", "var_pop", "var_samp", "stddev_pop", "stddev_samp", "corr", "covar_pop", "covar_samp",
@@ -1466,6 +1579,31 @@ _FLOAT8_STATES = frozenset(
         "regr_syy",
     )
 )  # fmt: skip
+RESULTS.update(dict.fromkeys(_FLOAT8_STATES, "double precision"))
+
+
+def _as_interval(said: exp.Expr, dialect: str | None) -> exp.Expr:
+    """interval_in's folded text as the interval it reads, on an engine that holds PostgreSQL's
+    interval: the wire says interval only of a value the engine holds as one (cast_types).
+    PostgreSQL reads its own text; DuckDB, which does not read all of it ("-1 years +2 days"), is
+    given the interval's fields. A refusal, an infinity DuckDB has no interval of, and another
+    engine's answer stay as they are."""
+    if not (isinstance(said, exp.Literal) and said.is_string):
+        return said
+    if dialect == "postgres":
+        return exp.Cast(this=said, to=exp.DataType.build("interval", dialect="postgres"))
+    if dialect not in (None, "duckdb") or said.this in ("infinity", "-infinity"):
+        return said
+    fields = literals.interval_fields(said.this)
+    if fields is None:
+        return said
+    months, days, us = (
+        exp.Anonymous(this=f"to_{unit}", expressions=[_said_number(number, sql_type)])
+        for unit, number, sql_type in zip(
+            ("months", "days", "microseconds"), fields, ("integer", "integer", "bigint")
+        )
+    )
+    return exp.Paren(this=exp.Add(this=exp.Add(this=months, expression=days), expression=us))
 
 
 def _folded(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
@@ -1497,6 +1635,8 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
     answers itself, whatever type no engine has it says, and a literal of a type is its input."""
 
     def rewrite(node: exp.Expr) -> exp.Expr:
+        if dialect == "clickhouse" and isinstance(node, exp.Cast) and _type_said(node) == "time":
+            return _read(node)  # ClickHouse 24 has no time: a time is its text, as time_in reads it
         target = node
         if (
             isinstance(node, exp.Dot)
@@ -1523,6 +1663,8 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
                 return node
             return exp.alias_(said, name) if in_select else said
         folded = _folded(name, arguments)
+        if folded is not None and name == "interval_in":
+            folded = _as_interval(folded, dialect)
         if folded is not None:
             return exp.alias_(folded, name) if in_select else folded
         if name.endswith("in"):
@@ -1534,18 +1676,12 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
     return tree.transform(rewrite)
 
 
-_ARRAY_OF_CSTRING = re.compile(r"::\s*cstring\s*\[\s*\]", re.IGNORECASE)
-_BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
 _CALLED = re.compile(r"\b(" + "|".join(sorted(RESULTS)) + r")\"?\s*\(", re.IGNORECASE)
 
 
 #: What these forms write in UTC, or read a session's zone into: only a session on UTC is answered.
 ZONED = frozenset({"timestamptz_in", "timestamptz_out", "timestamptz_send"})
 _ZONED_CALLED = re.compile(r"\b(" + "|".join(sorted(ZONED)) + r")\"?\s*\(", re.IGNORECASE)
-
-
-def _spelled(sql: str) -> str:
-    return _BIT_VARYING.sub("::varbit", _ARRAY_OF_CSTRING.sub("::_cstring", sql))
 
 
 def zoned_call(sql: str) -> str | None:
@@ -1555,7 +1691,7 @@ def zoned_call(sql: str) -> str | None:
     if named is None:
         return None
     try:
-        tree = sqlglot.parse_one(_spelled(sql), read="postgres")
+        tree = sqlglot.parse_one(sql, read="postgres")
     except SqlglotError:
         return named.group(1).lower()
     calls = (call.name.lower() for call in tree.find_all(exp.Anonymous))
@@ -1563,14 +1699,13 @@ def zoned_call(sql: str) -> str | None:
 
 
 def readable(sql: str, dialect: str | None = None) -> str:
-    """``sql`` with each call of these functions as its row reads it. sqlglot takes ``::cstring[]``
-    for a subscript and ``::bit varying`` for a bit and an alias, and reads PostgreSQL's other
-    spelling of each. A text it cannot parse is left, for the engine to say so. ``dialect`` is the
-    engine it is for, where that changes a NULL's type."""
+    """``sql`` with each call of these functions as its row reads it (``pg_syntax`` reads
+    ``::cstring[]`` and ``::bit varying``). A text it cannot parse is left, for the engine to say
+    so. ``dialect`` is the engine it is for, where that changes a NULL's type."""
     if _CALLED.search(sql) is None:
         return sql
     try:
-        tree = sqlglot.parse_one(_spelled(sql), read="postgres")
+        tree = sqlglot.parse_one(sql, read="postgres")
         return _lowered(tree, dialect).sql(dialect="postgres")
     except SqlglotError:
         return sql

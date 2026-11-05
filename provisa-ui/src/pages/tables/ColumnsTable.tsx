@@ -229,10 +229,11 @@ export function ColumnsTable({
                           title={t("registerTableForm.scopeHelp")}
                           data={[
                             { value: "domain", label: t("registerTableForm.scopeDomain") },
+                            { value: "listed", label: t("registerTableForm.scopeListed") },
                             { value: "public", label: t("registerTableForm.scopePublic") },
                             {
-                              value: "restricted",
-                              label: t("registerTableForm.scopeRestricted"),
+                              value: "own-domain",
+                              label: t("registerTableForm.scopeOwnDomain"),
                             },
                           ]}
                           value={col.scope}

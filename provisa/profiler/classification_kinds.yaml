@@ -15,7 +15,17 @@
 #   noun         what the suggestion says the column looks like
 #   passes       what the suggestion says the sampled values did
 #   sensitive    accepting the suggestion also marks the column pii and offers mask_preset
-#   test         a validator of classify.VALIDATORS, or reference:<list> (reference/<list>.txt.gz)
+#   pattern      a regular expression of the value's shape, written without ^ or $ (the whole-value
+#                test matches all of the value, and the pattern can also be searched for inside text)
+#   contained_pattern  optional: a stricter pattern used instead of pattern when searching inside
+#                text (classify.contains), where the plain pattern would match ordinary numbers in
+#                prose. The whole-value test never uses it; the boundary and the check still apply
+#   check        optional: a checksum or rule of classify.CHECKS the pattern cannot state
+#   ignore       optional: a regular expression of characters removed from a value before it is
+#                matched (default: only surrounding whitespace is trimmed)
+#   ignore_case  optional: the pattern matches letters of either case
+#   test         a reference kind's list: reference:<list> (reference/<list>.txt.gz). A pattern
+#                kind has no test of its own: its whole-value test is classify.VALIDATORS[id]
 #   families     the column families whose values are tested (text; numeric: whole numbers only)
 #   threshold    the share of tested values that must pass
 #   term         the glossary Property term an accepted suggestion links the column to
@@ -29,7 +39,10 @@ kinds:
     noun: a US social security number
     passes: pass the SSN rules
     sensitive: true
-    test: us_ssn
+    pattern: '(?:\d{3}-\d{2}-\d{4}|\d{7,9})'
+    # Inside text only the dashed 3-2-4 form: a plain 9-digit run is an order or reference number.
+    contained_pattern: '\d{3}-\d{2}-\d{4}'
+    check: us_ssn
     families: [text, numeric]
     threshold: 0.9
     term: us social security number
@@ -40,7 +53,11 @@ kinds:
     noun: a payment card number
     passes: pass the Luhn check
     sensitive: true
-    test: payment_card
+    pattern: '\d{13,19}'
+    # Inside text digit groups separated by single spaces or hyphens (4-4-4-1..7, or the 4-6-5 of a 15-digit card) as well as an unbroken run; the Luhn check runs on the digits with the separators removed.
+    contained_pattern: '(?:\d{4}[ -]){3}\d{1,7}|\d{4}[ -]\d{6}[ -]\d{5}|\d{13,19}'
+    ignore: '[\s\-.]'
+    check: payment_card
     families: [text, numeric]
     threshold: 0.9
     term: payment card number
@@ -51,7 +68,10 @@ kinds:
     noun: an IBAN
     passes: pass the IBAN check digits
     sensitive: true
-    test: iban
+    pattern: '[A-Z]{2}\d{2}[A-Z0-9]{11,30}'
+    ignore: ' '
+    ignore_case: true
+    check: iban
     families: [text]
     threshold: 0.9
     term: iban
@@ -62,7 +82,9 @@ kinds:
     noun: a UK National Insurance number
     passes: pass the National Insurance number rules
     sensitive: true
-    test: uk_national_insurance_number
+    pattern: '(?!BG|GB|NK|KN|TN|NT|ZZ)[A-CEGHJ-PR-TW-Z][A-CEGHJ-NPR-TW-Z]\d{6}[A-D]'
+    ignore: ' '
+    ignore_case: true
     families: [text]
     threshold: 0.9
     term: uk national insurance number
@@ -73,7 +95,11 @@ kinds:
     noun: a Canadian social insurance number
     passes: pass the SIN check digit
     sensitive: true
-    test: ca_social_insurance_number
+    pattern: '[1-79]\d{8}'
+    # Inside text only the grouped 3-3-3 form: a plain 9-digit run is an ordinary number and the Luhn check passes one in ten.
+    contained_pattern: '[1-79]\d{2}[ -]\d{3}[ -]\d{3}'
+    ignore: '[\s\-.]'
+    check: ca_social_insurance_number
     families: [text, numeric]
     threshold: 0.9
     term: canadian social insurance number
@@ -84,7 +110,10 @@ kinds:
     noun: a Spanish DNI or NIE
     passes: pass the DNI check letter
     sensitive: true
-    test: es_dni
+    pattern: '(?:[XYZ]\d{7}[A-Z]|\d{8}[A-Z])'
+    ignore: '[ \-]'
+    ignore_case: true
+    check: es_dni
     families: [text]
     threshold: 0.9
     term: spanish national identity number
@@ -95,7 +124,11 @@ kinds:
     noun: a Dutch citizen service number
     passes: pass the BSN eleven test
     sensitive: true
-    test: nl_bsn
+    pattern: '\d{8,9}'
+    # Inside text only the grouped 3-3-3 form: plain 8 or 9 digit runs are ordinary numbers and the eleven test passes one in eleven.
+    contained_pattern: '\d{3}[ .-]\d{3}[ .-]\d{3}'
+    ignore: '[\s\-.]'
+    check: nl_bsn
     families: [text, numeric]
     threshold: 0.9
     term: dutch citizen service number
@@ -106,7 +139,11 @@ kinds:
     noun: an Indian Aadhaar number
     passes: pass the Aadhaar check digit
     sensitive: true
-    test: in_aadhaar
+    pattern: '[2-9]\d{11}'
+    # Inside text only the grouped 4-4-4 form: a plain 12-digit run is an ordinary number.
+    contained_pattern: '[2-9]\d{3}[ -]\d{4}[ -]\d{4}'
+    ignore: '[\s\-.]'
+    check: in_aadhaar
     families: [text, numeric]
     threshold: 0.9
     term: aadhaar number
@@ -117,10 +154,198 @@ kinds:
     noun: a US passport number
     passes: have the US passport number format
     sensitive: true
-    test: us_passport
+    pattern: '[A-Z]\d{8}'
+    ignore_case: true
     families: [text]
     threshold: 0.9
     term: us passport number
+    mask_preset: all_but_last4
+
+  - id: us_ein
+    label: US employer identification number (EIN)
+    noun: a US employer identification number
+    passes: have the EIN format and a campus prefix
+    sensitive: true
+    pattern: '(?:0[1-6]|1[0-6]|2[0-7]|3\d|4[0-8]|5\d|6[0-8]|7[1-7]|8[0-8]|9[0-5]|9[89])-\d{7}'
+    families: [text]
+    threshold: 0.9
+    term: us employer identification number
+    mask_preset: all_but_last4
+
+  - id: us_itin
+    label: US individual taxpayer identification number (ITIN)
+    noun: a US individual taxpayer identification number
+    passes: have the ITIN format
+    sensitive: true
+    pattern: '9\d{2}-?(?:5\d|6[0-5]|7\d|8[0-8]|9[0-2]|9[4-9])-?\d{4}'
+    # Inside text only the hyphenated 3-2-4 form: a plain 9-digit run starting with 9 is an ordinary number.
+    contained_pattern: '9\d{2}-(?:5\d|6[0-5]|7\d|8[0-8]|9[0-2]|9[4-9])-\d{4}'
+    families: [text, numeric]
+    threshold: 0.9
+    term: us individual taxpayer identification number
+    mask_preset: ssn_last4
+
+  - id: us_bank_routing_number
+    label: US bank routing number
+    noun: a US bank routing number
+    passes: pass the ABA checksum
+    sensitive: true
+    pattern: '\d{9}'
+    # Inside text only a 9-digit run with a valid Federal Reserve prefix (00-12, 21-32, 61-72, 80): most 9-digit numbers in prose fail it before the checksum.
+    contained_pattern: '(?:0\d|1[0-2]|2[1-9]|3[0-2]|6[1-9]|7[0-2]|80)\d{7}'
+    check: us_bank_routing_number
+    families: [text]
+    threshold: 0.9
+    term: us bank routing number
+    mask_preset: all_but_last4
+
+  - id: de_steuer_id
+    label: German tax identification number (Steuer-ID)
+    noun: a German tax identification number
+    passes: pass the Steuer-ID check digit
+    sensitive: true
+    pattern: '[1-9]\d(?: ?\d){9}'
+    # Inside text only the grouped 2-3-3-3 form: a plain 11-digit run (phone and account numbers) is an ordinary number.
+    contained_pattern: '[1-9]\d \d{3} \d{3} \d{3}'
+    check: de_steuer_id
+    families: [text, numeric]
+    threshold: 0.9
+    term: german tax identification number
+    mask_preset: all_but_last4
+
+  - id: fr_nir
+    label: French social security number (NIR)
+    noun: a French social security number
+    passes: pass the NIR key
+    sensitive: true
+    pattern: '[12] ?\d{2} ?(?:0[1-9]|1[0-2]|[2-9]\d) ?(?:\d{2}|2[AB]) ?\d{3} ?\d{3} ?\d{2}'
+    ignore_case: true
+    check: fr_nir
+    families: [text]
+    threshold: 0.9
+    term: french social security number
+    mask_preset: all_but_last4
+
+  - id: au_tfn
+    label: Australian tax file number (TFN)
+    noun: an Australian tax file number
+    passes: pass the TFN checksum
+    sensitive: true
+    pattern: '\d{3} ?\d{3} ?\d{3}'
+    # Inside text only the spaced 3-3-3 form: a plain 9-digit run is an ordinary number.
+    contained_pattern: '\d{3} \d{3} \d{3}'
+    check: au_tfn
+    families: [text]
+    threshold: 0.9
+    term: australian tax file number
+    mask_preset: all_but_last4
+
+  - id: br_cpf
+    label: Brazilian CPF
+    noun: a Brazilian CPF number
+    passes: pass the CPF check digits
+    sensitive: true
+    pattern: '\d{3}\.?\d{3}\.?\d{3}-?\d{2}'
+    # Inside text only the punctuated 3.3.3-2 form: a plain 11-digit run is an ordinary number.
+    contained_pattern: '\d{3}\.\d{3}\.\d{3}-\d{2}'
+    check: br_cpf
+    families: [text]
+    threshold: 0.9
+    term: brazilian cpf number
+    mask_preset: all_but_last4
+
+  - id: uk_nhs_number
+    label: UK NHS number
+    noun: a UK NHS number
+    passes: pass the NHS number check digit
+    sensitive: true
+    pattern: '\d{3}[ -]?\d{3}[ -]?\d{4}'
+    # Inside text only the separated 3-3-4 form: a plain 10-digit run is an ordinary number.
+    contained_pattern: '\d{3}[ -]\d{3}[ -]\d{4}'
+    check: uk_nhs_number
+    families: [text]
+    threshold: 0.9
+    term: uk nhs number
+    mask_preset: all_but_last4
+
+  - id: aws_access_key_id
+    label: AWS access key id
+    noun: an AWS access key id
+    passes: have the AWS access key id format
+    sensitive: true
+    pattern: '(?:AKIA|ASIA)[A-Z0-9]{16}'
+    families: [text]
+    threshold: 0.9
+    term: aws access key id
+    mask_preset: all_but_last4
+
+  - id: github_token
+    label: GitHub token
+    noun: a GitHub token
+    passes: have the GitHub token format
+    sensitive: true
+    pattern: '(?:gh[pousr]_[A-Za-z0-9]{36,251}|github_pat_[A-Za-z0-9]{22}_[A-Za-z0-9]{59})'
+    families: [text]
+    threshold: 0.9
+    term: github token
+    mask_preset: all_but_last4
+
+  - id: jwt
+    label: JSON Web Token (JWT)
+    noun: a JSON Web Token
+    passes: are JSON Web Tokens with a JSON header
+    sensitive: true
+    pattern: 'eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*'
+    check: jwt
+    families: [text]
+    threshold: 0.9
+    term: json web token
+    mask_preset: all_but_last4
+
+  - id: email_address
+    label: Email address
+    noun: an email address
+    passes: have the email address format
+    sensitive: true
+    pattern: '[A-Za-z0-9.!#$%&''*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+'
+    check: email_address
+    families: [text]
+    threshold: 0.9
+    term: email address
+    mask_preset: email_initial_domain
+
+  - id: e164_phone
+    label: International phone number (E.164)
+    noun: an international phone number
+    passes: have the E.164 phone number format
+    sensitive: true
+    pattern: '\+[1-9](?:[ .\-()]{0,2}\d){6,14}'
+    families: [text]
+    threshold: 0.9
+    term: phone number
+    mask_preset: phone_last4
+
+  - id: ipv4_address
+    label: IPv4 address
+    noun: an IPv4 address
+    passes: are IPv4 addresses
+    sensitive: true
+    pattern: '(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}'
+    families: [text]
+    threshold: 0.9
+    term: ip address
+    mask_preset: digits_keep_separators
+
+  - id: ipv6_address
+    label: IPv6 address
+    noun: an IPv6 address
+    passes: are IPv6 addresses
+    sensitive: true
+    pattern: '(?:(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,7}:|(?:[0-9a-f]{1,4}:){1,6}:[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){1,5}(?::[0-9a-f]{1,4}){1,2}|(?:[0-9a-f]{1,4}:){1,4}(?::[0-9a-f]{1,4}){1,3}|(?:[0-9a-f]{1,4}:){1,3}(?::[0-9a-f]{1,4}){1,4}|(?:[0-9a-f]{1,4}:){1,2}(?::[0-9a-f]{1,4}){1,5}|[0-9a-f]{1,4}:(?::[0-9a-f]{1,4}){1,6}|:(?:(?::[0-9a-f]{1,4}){1,7}|:))'
+    ignore_case: true
+    families: [text]
+    threshold: 0.9
+    term: ip address
     mask_preset: all_but_last4
 
   - id: country

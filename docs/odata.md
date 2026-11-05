@@ -24,7 +24,7 @@
 
 ## The service
 
-The service is at `/data/odata` on the HTTP port, so it has no port of its own. It has its line in the startup log and its row on the admin System health table, as the other HTTP surfaces do, and the OData page under Explore gives its address to copy.
+The service is at `/data/odata` on the HTTP port, so it has no port of its own. It has its line in the startup log and its row on the admin System health table, as the other HTTP surfaces do, and the OData page under Explore gives its address to copy. On that page, open an entity set to see its key, properties and navigation properties, then build a query with `$filter`, `$select`, `$expand`, `$orderby` and `$count`, see the request URL, and run it. Escape doesn't close a query you have started building; use the panel's close button.
 
 Excel and Power BI send no `X-Provisa-Role`, so a read is as the role the sign-in resolves to. Under `assignments_source: claims` that is the first `role_mapping` rule it matches, else `default_role`, whether or not the sign-in holds that role. A deployment serving more than one role needs a rule for each.
 

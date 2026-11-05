@@ -1,0 +1,246 @@
+{
+  "modelingWizard": {
+    "stepOf": "第 {{index}} 步,共 {{count}} 步",
+    "next": "下一步",
+    "toReview": "审阅",
+    "back": "上一步",
+    "remove": "移除",
+    "domainHelp": "此向导创建的每张表都注册到该域:它是访问控制和查询的命名空间。",
+    "validTime": "有效时间",
+    "validTimeHelp": "表示每个版本从何时起在业务上成立的列。与记录时间一起,可以查询过去的版本。",
+    "recordedTime": "记录时间",
+    "recordedTimeHelp": "表示每个版本何时记录到源中的列。",
+    "primitive": {
+      "entity": "实体",
+      "fact": "事实",
+      "relationship": "关系"
+    },
+    "role": {
+      "dimension": "维度",
+      "fact": "事实",
+      "hub": "中心(Hub)",
+      "satellite": "卫星(Satellite)",
+      "linkSatellite": "链接卫星",
+      "effectivity": "有效性卫星",
+      "link": "链接(Link)",
+      "sameAs": "Same-As 链接"
+    },
+    "roleIn": {
+      "dimension": "星型模式的维度,构建为以其业务键为键的实体",
+      "fact": "星型模式的事实,构建为与每个维度相关联的事实",
+      "hub": "Data Vault 中心,构建为以业务键为键的实体",
+      "satellite": "Data Vault 卫星,构建为以其中心的业务键为键的实体",
+      "linkSatellite": "Data Vault 链接卫星,构建为以链接的键为键的实体",
+      "effectivity": "Data Vault 有效性卫星,构建为以链接的键为键并带有效时间的实体",
+      "link": "Data Vault 链接,构建为没有度量的事实,其粒度为参与的键",
+      "sameAs": "Data Vault Same-As 链接,构建为没有度量、将中心与自身关联的事实"
+    },
+    "star": {
+      "process": {
+        "title": "业务过程",
+        "intro": "此星型模式度量的业务过程、其事件的记录位置,以及事实的类型。"
+      },
+      "grain": {
+        "title": "粒度",
+        "intro": "事实的一行代表什么。先声明粒度,再声明维度和度量。"
+      },
+      "dimensions": {
+        "title": "维度",
+        "intro": "每个事件的谁、什么、哪里、何时:每个维度、它如何变化,以及它是否为一致性维度。"
+      },
+      "measures": {
+        "title": "度量",
+        "intro": "过程产生的数值、每个数值如何聚合,以及能否求和。"
+      },
+      "processLabel": "业务过程",
+      "processHelp": "事实所记录的业务过程,用业务自己的话说(订单履行、理赔处理)。它为事实表命名。",
+      "sourceLabel": "过程的记录位置",
+      "sourceHelp": "包含过程事件的已注册表。事实从中读取:其粒度、度量以及与维度的关联。",
+      "factTypeLabel": "事实类型",
+      "factTypeHelp": "事务:每个事件一行。周期快照:每个周期一行,为期末状态。累积快照:每个项目一行,每经过一个里程碑就更新。",
+      "factType": {
+        "transaction": "事务",
+        "periodic": "周期快照",
+        "accumulating": "累积快照"
+      },
+      "grainStatement": "粒度(文字描述)",
+      "grainStatementHelp": "用简单的话说明事实的一行。它会写入事实的描述。",
+      "grainStatementPlaceholder": "每个订单行一行",
+      "grainHelp": "过程表中标识一行事实的列。度量会聚合到此级别。",
+      "dimensionsHelp": "分析事实所依据的每个维度。新维度由其自己的表构建;一致性维度是事实与其他事实共享的现有维度。",
+      "dimName": "维度",
+      "dimNameHelp": "维度描述的对象(客户、产品、日期)。它为维度表命名。",
+      "via": "事实列",
+      "viaHelp": "过程表中指向此维度的列。",
+      "conformed": "一致性维度",
+      "conformedHelp": "选择现有维度以便与其他事实共享,从而可按它进行比较。留空则构建新维度。",
+      "conformedNew": "构建新维度",
+      "dimSource": "维度表",
+      "dimSourceHelp": "读取维度行的已注册表。",
+      "dimKeyHelp": "标识维度中一个成员的列。行按它去重,事实列指向它。",
+      "dimAttributesHelp": "分析师用于筛选和分组的描述性列。",
+      "scdLabel": "成员变化时",
+      "scdHelp": "类型 1 覆盖:只保留当前值。类型 2 保留每个版本。快照保留每次加载时的状态。类型 2 和快照需要有效时间和记录时间。",
+      "scd": {
+        "type1": "类型 1:覆盖",
+        "type2": "类型 2:保留每个版本",
+        "snapshot": "快照"
+      },
+      "measuresHelp": "过程所度量的数值列。每一列都成为事实的一个度量,聚合到粒度。",
+      "aggOf": "{{column}}:聚合",
+      "additivityLabel": "可加性",
+      "additivityHelp": "可加:可在所有维度上求和(金额)。半可加:不能跨时间求和(余额)。不可加:从不求和(比率、价格)。",
+      "additivity": {
+        "additive": "可加",
+        "semiAdditive": "半可加",
+        "nonAdditive": "不可加"
+      },
+      "missing": {
+        "process": "请填写业务过程、其所属域以及记录它的表。",
+        "grain": "请选择标识事实一行的列。",
+        "dimensions": "每个维度都需要名称和事实列,以及一个一致性维度,或者其自己的表和键(类型 2 或快照还需要有效时间和记录时间)。"
+      }
+    },
+    "vault": {
+      "hubs": {
+        "title": "中心和业务键",
+        "intro": "核心业务概念、标识每个概念的业务键,以及键所来自的记录源。"
+      },
+      "links": {
+        "title": "链接",
+        "intro": "概念之间的工作单元,以及每个关系是否会结束。"
+      },
+      "satellites": {
+        "title": "卫星",
+        "intro": "每个中心或链接的描述属性,按数据源、变化频率或敏感度分组,以及其历史追溯多远。"
+      },
+      "rules": {
+        "title": "Business Vault",
+        "intro": "从 Raw Vault 派生新值的业务规则。可选。"
+      },
+      "hubsLabel": "中心",
+      "hubsHelp": "每个核心业务概念(客户、产品、订单)一个中心,由其业务键标识:即业务本身使用的键,而不是某个系统的代理键。",
+      "addHub": "添加中心",
+      "concept": "业务概念",
+      "conceptHelp": "中心所代表的概念。它为中心命名。",
+      "recordSource": "记录源",
+      "recordSourceHelp": "加载业务键的已注册表。",
+      "businessKeyHelp": "业务用来标识该概念的列。",
+      "sameAsSource": "Same-As 链接",
+      "sameAsHelp": "当两个键指向同一实例时(一个客户在两个系统中有不同编号),将它们配对的表。没有则留空。",
+      "sameAsNone": "无",
+      "sameAsMaster": "主键",
+      "sameAsDuplicate": "重复键",
+      "linksLabel": "链接",
+      "linksHelp": "中心之间的每个工作单元一个链接(客户下订单)。链接只保存参与的键。",
+      "addLink": "添加链接",
+      "linkName": "工作单元",
+      "linkNameHelp": "链接记录的内容。它为链接命名;留空则按其中心命名。",
+      "linkSource": "链接表",
+      "linkSourceHelp": "记录工作单元的已注册表,包含每个参与中心的键。",
+      "linkHubs": "关联的中心",
+      "linkHubsHelp": "参与的中心。一个链接关联两个或更多中心。",
+      "linkVia": "{{hub}} 的键",
+      "endsLabel": "关系会结束吗?",
+      "endsHelp": "当关系可能结束时(客户更换客户经理),有效性卫星记录每个关系的开始和结束时间。",
+      "ends": {
+        "never": "不会,建立后一直存在",
+        "effectivity": "会:跟踪有效性"
+      },
+      "depthLabel": "历史深度",
+      "depthHelp": "每个版本:卫星属性的每次变化都会保留,并可按任意时间查询。仅当前值:变化会覆盖。",
+      "depth": {
+        "full": "每个版本",
+        "current": "仅当前值"
+      },
+      "satellitesLabel": "卫星",
+      "satellitesHelp": "中心或链接的描述属性。按数据源、变化频率或敏感度将其拆分到多个卫星。",
+      "addSatellite": "添加卫星",
+      "satParent": "描述对象",
+      "satParentHelp": "卫星所保存属性的中心或链接。",
+      "parentHub": "中心 {{name}}",
+      "parentLink": "链接 {{name}}",
+      "parentSatellite": "卫星 {{name}}",
+      "satName": "卫星名称",
+      "satNameHelp": "区分此卫星的内容(其数据源,如 crm;或其主题,如地址)。会追加到其名称中。",
+      "satSource": "卫星表",
+      "satSourceHelp": "读取属性的已注册表。",
+      "satParentKey": "描述对象的键",
+      "satParentKeyHelp": "卫星表中保存中心业务键或链接键的列。",
+      "satAttributesHelp": "此卫星保存的描述性列。",
+      "groupedBy": "分组依据",
+      "groupedByHelp": "这些属性放在一起的原因:来自同一数据源、变化频率相同,或敏感度相同(个人数据单独存放)。",
+      "grouping": {
+        "source": "数据源",
+        "rateOfChange": "变化频率",
+        "sensitivity": "敏感度"
+      },
+      "multiActive": "多活键",
+      "multiActiveHelp": "当一个键同时有多行处于活动状态时(客户的多个电话号码),用来区分它们的列。否则留空。",
+      "multiActiveNone": "非多活",
+      "rulesLabel": "业务规则",
+      "rulesHelp": "Business Vault 规则从 Raw Vault 派生一个值(客户生命周期价值)。它会记录在其来源表的描述中,之后构建为视图。",
+      "addRule": "添加规则",
+      "ruleTarget": "派生自",
+      "ruleText": "规则",
+      "ruleTextPlaceholder": "生命周期价值 = 订单总额之和",
+      "missing": {
+        "hubs": "请选择域,并为每个中心指定业务概念、记录源和业务键;Same-As 链接需要其表和两个键。",
+        "links": "每个链接都需要其表、至少两个中心、每个中心的键,以及在关系会结束时的有效时间和记录时间。",
+        "satellites": "每个卫星都需要描述对象、其表、该键及其属性;保留每个版本时还需要有效时间和记录时间。",
+        "rules": "请说明每条规则派生自哪张表。",
+        "satelliteKey": "卫星的键与其描述对象的键列数相同、顺序相同。"
+      }
+    },
+    "review": {
+      "title": "审阅",
+      "intro": "每个回答在 Provisa 中会成为什么:实体或事实、其键或粒度、其历史及其关系。名称遵循该方法的惯例;可在此更改任意名称。",
+      "nameOf": "{{role}}名称",
+      "nameHelp": "表的名称。这是该方法的惯用名称;如果不希望使用者看到前缀,请将其删除。",
+      "source": "读取",
+      "key": "键",
+      "attributes": "属性",
+      "history": "历史",
+      "historyNone": "仅当前值",
+      "historyKept": "每个版本,按有效时间 {{validTime}} 和记录时间 {{recordedTime}}",
+      "grain": "粒度",
+      "measures": "度量",
+      "relationships": "关系",
+      "relationship": "{{via}} → {{target}}",
+      "description": "描述草稿",
+      "notCreatedTitle": "已记录,未创建",
+      "ruleNotCreated": "Business Vault 规则“{{rule}}”:已记录在其表的描述中;请将其构建为这些表之上的视图。",
+      "draftNote": "每条描述都是初稿,供数据管家在“已注册的表”中修订。",
+      "create": "创建",
+      "nameRequired": "请为每张表命名。",
+      "nameTaken": "有两张表名称相同。请为每张表起不同的名称。"
+    },
+    "result": {
+      "created_one": "已创建 {{count}} 张表",
+      "created_other": "已创建 {{count}} 张表",
+      "stopped": "在 {{name}} 处停止",
+      "draftNote": "它们的描述是初稿:请在“已注册的表”中修订。",
+      "oneWay": "向导只负责创建。请在“已注册的表”或实体/事实表单中修改这些表;向导不会重新生成它们。",
+      "relatesTo": "关联到 {{tables}}",
+      "status": {
+        "created": "已创建",
+        "failed": "被拒绝",
+        "notReached": "未创建"
+      }
+    },
+    "desc": {
+      "none": "无",
+      "dimension": "草稿:{{process}} 过程的星型模式维度“{{name}}”,键为 {{key}},读取自 {{source}}。成员变化时:{{scd}}。",
+      "fact": "草稿:{{process}} 过程的星型模式事实({{factType}})。粒度:{{grain}}。维度:{{dimensions}}。度量:{{measures}}。",
+      "measure": "{{agg}}({{column}}),{{additivity}}",
+      "hub": "草稿:{{concept}} 概念的 Data Vault 中心,业务键为 {{key}},记录源为 {{source}}。",
+      "sameAs": "草稿:{{hub}} 的 Data Vault Same-As 链接:{{master}} 与 {{duplicate}} 指向同一个 {{concept}},来自 {{source}}。",
+      "link": "草稿:工作单元“{{name}}”的 Data Vault 链接,位于 {{hubs}} 之间,键为 {{keys}},来自 {{source}}。",
+      "linkEnds": "该关系可能结束;其有效性卫星记录结束时间。",
+      "effectivity": "草稿:{{link}} 的 Data Vault 有效性卫星:每个关系的开始和结束,按有效时间 {{validTime}} 和记录时间 {{recordedTime}}。",
+      "satellite": "草稿:{{parent}} 的 Data Vault 卫星:来自 {{source}} 的 {{attributes}},按{{grouping}}分组。历史:{{history}}。",
+      "multiActive": "按 {{columns}} 多活。",
+      "rule": "Business Vault 规则:{{rule}}。"
+    }
+  }
+}

@@ -25,9 +25,18 @@ from typing import Any
 
 # How a parameter reaches the source (core/models.py Column.native_filter_type).
 # partition_key (REQ-1982): a Cosmos DB container's partition key, which narrows a read to one
-# partition.
+# partition. column_value (REQ-2191): a real column of the table, given by equality, that narrows
+# the read to the rows having that value (a JDBC source's floor).
 PARAMETER_KINDS = frozenset(
-    {"path_param", "query_param", "graphql_arg", "grpc_input", "query_arg", "partition_key"}
+    {
+        "path_param",
+        "query_param",
+        "graphql_arg",
+        "grpc_input",
+        "query_arg",
+        "partition_key",
+        "column_value",
+    }
 )
 
 NF_PREFIX = "_nf_"
@@ -59,6 +68,12 @@ def parameter_name(column: Any) -> str:
     """The parameter as a caller names it: the column's name without its ``_nf_`` prefix."""
     name = column_name(column)
     return name[len(NF_PREFIX) :] if name.startswith(NF_PREFIX) else name
+
+
+def required_parameters(columns: Iterable[Any]) -> list[str]:
+    """The parameters of ``columns`` a read must give, by the name a caller gives each: what the
+    Register Table picker names a table by before it is registered."""
+    return [parameter_name(c) for c in columns if is_parameter(c) and is_required(c)]
 
 
 def _canonical(name: str) -> str:

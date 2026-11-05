@@ -20,13 +20,14 @@ import { RegionSelector } from "../components/RegionSelector";
 import { useState, useEffect, Fragment, useCallback, useRef, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, FileSpreadsheet, X, Layers, Table2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, FileSpreadsheet, X, Layers, Table2 } from "lucide-react";
 import {
   ActionIcon,
   Alert,
   Badge,
   Button,
   Group,
+  Menu,
   Modal,
   Stack,
   Table,
@@ -72,6 +73,8 @@ import { buildTableUpdateInput } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
 import { ModelingForm } from "./tables/ModelingForm";
+import { StarSchemaWizard } from "./tables/modeling/StarSchemaWizard";
+import { DataVaultWizard } from "./tables/modeling/DataVaultWizard";
 import { TableReadView } from "./tables/TableReadView";
 import { TABLE_SECTIONS, type TableSection } from "./tables/tableSections";
 import { COLUMN_TABS, type ColumnTab } from "./tables/columnTopics";
@@ -157,14 +160,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { suggestTableAlias } = useSuggestTableAlias();
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
-  // REQ-2115: Polly's read_screen reads the page's view from here. A table is named only once the
-  // list holds it, so a link to one that does not exist reads as none.
-  useScreenInputs(viewsOnly ? "/views" : "/tables", {
-    view: erd.on ? "erd" : "list",
-    table: tables.find((tb) => tb.id === expanded)?.id ?? null,
-    domains: erd.focus.domains,
-    objects: erd.focus.objects,
-  });
   // One request for every row; asked for often only while a build runs or a detail is open.
   const { replicaBuilds } = useReplicaBuilds({ watching: expanded !== null });
   // REQ-1386: table whose governed SELECT * preview modal is open.
@@ -172,7 +167,18 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // Table awaiting native-param entry before its profile sample can run.
   const [profileParamsTable, setProfileParamsTable] = useState<RegisteredTable | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [showModeling, setShowModeling] = useState(false); // REQ-1164: entity/fact modeling modal
+  // REQ-1164: entity/fact modeling; REQ-2199: + Model's drop down also opens a method's wizard.
+  const [showModeling, setShowModeling] = useState<false | "entityFact" | "star" | "vault">(false);
+  // REQ-2115: Polly's read_screen reads the page's view from here, and the modeling form or wizard
+  // open (a wizard's step is published by the step itself). A table is named only once the list
+  // holds it, so a link to one that does not exist reads as none.
+  useScreenInputs(viewsOnly ? "/views" : "/tables", {
+    view: erd.on ? "erd" : "list",
+    table: tables.find((tb) => tb.id === expanded)?.id ?? null,
+    domains: erd.focus.domains,
+    objects: erd.focus.objects,
+    modeling: showModeling || null,
+  });
   // REQ-1318: Views-page definition-mode flow (SQL editor vs metric/dimension picker).
   const [showViewForm, setShowViewForm] = useState(false);
   const [editingViewDef, setEditingViewDef] = useState<RegisteredTable | null>(null);
@@ -485,20 +491,14 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     }
   };
 
+  // REQ-2198: the panel's Delete (PanelDelete) shows the delete's progress and says why one
+  // failed; it resolves once the list is read again without the table.
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this table registration?")) return;
-    try {
-      const result = await deleteTable(id);
-      const name = tables.find((tbl) => tbl.id === id)?.tableName ?? String(id);
-      if (refusal.refused(result, name)) return;
-      if (!result.success) {
-        setError(serverMessage(result, result.message));
-        return;
-      }
-      reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    const result = await deleteTable(id);
+    const name = tables.find((tbl) => tbl.id === id)?.tableName ?? String(id);
+    if (refusal.refused(result, name)) return false;
+    if (!result.success) throw new Error(serverMessage(result, result.message));
+    await reload();
   };
 
   // REQ-1921: the detail's Draft box. The same mutation the edit form's draft control saves
@@ -581,9 +581,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     // eslint-disable-next-line react-hooks/exhaustive-deps -- applied once per answer
   }, [lateColumns]);
 
+  // A problem the edit met leaves with it: the next form opened is not about that table.
   const cancelEditing = () => {
     setEditingTable(null);
     setNewRegistration(null);
+    setError(null);
   };
 
   // REQ-2109 (settled): the create step chose what is registered; its settings follow in the same
@@ -923,6 +925,24 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         onSuccess={() => setShowViewForm(false)}
         onCancel={() => setShowViewForm(false)}
       />
+    ) : showModeling === "star" ? (
+      <StarSchemaWizard
+        domains={domains}
+        onSuccess={() => {
+          setShowModeling(false);
+          reload();
+        }}
+        onCancel={() => setShowModeling(false)}
+      />
+    ) : showModeling === "vault" ? (
+      <DataVaultWizard
+        domains={domains}
+        onSuccess={() => {
+          setShowModeling(false);
+          reload();
+        }}
+        onCancel={() => setShowModeling(false)}
+      />
     ) : showModeling ? (
       <ModelingForm
         domains={domains}
@@ -1024,7 +1044,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         : showViewForm && viewsOnly
           ? translate("tablesPage.panelNewView")
           : showModeling
-            ? translate("tablesPage.panelNewModel")
+            ? translate(
+                showModeling === "star"
+                  ? "tablesPage.panelStarSchema"
+                  : showModeling === "vault"
+                    ? "tablesPage.panelDataVault"
+                    : "tablesPage.panelNewModel",
+              )
             : selectedTable
               ? (selectedTable.alias ?? selectedTable.tableName)
               : "";
@@ -1060,7 +1086,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               data-tour="tables-add"
               data-testid="tables-add-toggle"
               variant={showForm ? "outline" : "filled"}
-              onClick={() => leave.guard(() => setShowForm(!showForm))}
+              onClick={() =>
+                leave.guard(() => {
+                  // The form opens with no problem of its own yet.
+                  setError(null);
+                  setShowForm(!showForm);
+                })
+              }
               aria-label={showForm ? translate("tablesPage.closeForm") : undefined}
             >
               {showForm ? <X size={14} /> : translate("tablesPage.addTable")}
@@ -1082,15 +1114,51 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             </Tip>
           )}
           {!viewsOnly && !hidingOnly && (
-            <Tip text={translate("tablesPage.modelTitle")}>
-              <Button
-                variant="default"
-                data-testid="tables-model-toggle"
-                onClick={() => leave.guard(() => setShowModeling(true))}
-              >
-                {translate("tablesPage.model")}
-              </Button>
-            </Tip>
+            // REQ-2199: a split button. + Model opens the entity/fact form; its drop down picks
+            // the method: Entity/Fact, or the Star Schema or Data Vault wizard.
+            <Button.Group>
+              <Tip text={translate("tablesPage.modelTitle")}>
+                <Button
+                  variant="default"
+                  data-testid="tables-model-toggle"
+                  onClick={() => leave.guard(() => setShowModeling("entityFact"))}
+                >
+                  {translate("tablesPage.model")}
+                </Button>
+              </Tip>
+              <Menu position="bottom-end" withinPortal transitionProps={{ duration: 0 }}>
+                <Menu.Target>
+                  <Button
+                    variant="default"
+                    px={6}
+                    aria-label={translate("tablesPage.modelMenu")}
+                    data-testid="tables-model-menu"
+                  >
+                    <ChevronDown size={14} aria-hidden />
+                  </Button>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item
+                    onClick={() => leave.guard(() => setShowModeling("entityFact"))}
+                    data-testid="tables-model-entity-fact"
+                  >
+                    {translate("tablesPage.modelEntityFact")}
+                  </Menu.Item>
+                  <Menu.Item
+                    onClick={() => leave.guard(() => setShowModeling("star"))}
+                    data-testid="tables-model-star"
+                  >
+                    {translate("tablesPage.modelStarSchema")}
+                  </Menu.Item>
+                  <Menu.Item
+                    onClick={() => leave.guard(() => setShowModeling("vault"))}
+                    data-testid="tables-model-vault"
+                  >
+                    {translate("tablesPage.modelDataVault")}
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+            </Button.Group>
           )}
           {!viewsOnly && (
             // An ancillary action, reached rarely: a borderless icon keeps it out of the
@@ -1183,7 +1251,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         }}
         list={
           erd.on ? (
-            <ErdView page="tables" search={tableSearch} onOpen={openFromErd} />
+            <ErdView
+              page="tables"
+              search={tableSearch}
+              selected={expanded === null ? null : String(expanded)}
+              onOpen={openFromErd}
+            />
           ) : (
             <>
               <ListTable testId="tables-list">
@@ -1237,6 +1310,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                       const row = (
                         <Fragment key={t.id}>
                           <ListRow
+                            itemKey={t.id}
                             // A stable per-table anchor (source.table) for tour steps that open one row.
                             data-table-row={`${t.sourceId}.${t.tableName}`}
                             // The row whose detail the right-hand panel is showing.

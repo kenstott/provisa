@@ -120,18 +120,22 @@ def meta_description(members: list[dict]) -> str:  # REQ-2080
 
 
 def _role(members: list[dict], meta_id: str) -> dict:
+    from provisa.security.inheritance import OWN_DOMAIN_ACCESS
     from provisa.security.rights import normalized_reach
 
     caps: set[str] = set()
     domains: set[str] = set()
+    own_domains: set[str] = set()
     for m in members:
         caps.update(m.get("capabilities") or [])
         domains.update(m.get("domain_access") or [])
+        own_domains.update(m[OWN_DOMAIN_ACCESS])  # REQ-2153: every built role carries it
     return {
         "id": meta_id,
         "description": meta_description(members),  # REQ-2080
         "capabilities": sorted(caps),
         "domain_access": normalized_reach(domains),
+        OWN_DOMAIN_ACCESS: normalized_reach(own_domains),
         "max_rows": _least_restrictive([m.get("max_rows") for m in members]),
         "rate_limit": _least_restrictive([m.get("rate_limit") for m in members]),
         # Each member's constants are inlined into its own filter term (_inlined), not merged here.
@@ -463,6 +467,24 @@ def _build(
     register_role_surface(state, role, rls)
     state.meta_roles[meta_id] = tuple(member_ids)
     state.meta_qualifiers[meta_id] = tuple(qualifiers)
+
+
+def fold_tables(state: Any, meta_id: str, tables: list[dict]) -> Any:  # REQ-1620, REQ-1921
+    """How the meta-role ``meta_id`` reads ``tables``, tables its build did not fold (a draft its
+    steward previews, admin/table_read.py): granted to it as :func:`_build` grants a table in
+    service -- every grant to a member reaches it, expanded on ``tables`` in place -- and its row
+    filters and member reads folded from its members' as :func:`_build` folds them. ``state`` is
+    a view whose members' surfaces read ``tables``. Returns the folded RLSContext."""
+    from provisa.security.inheritance import expand_grants
+
+    member_ids = list(state.meta_roles[meta_id])
+    qualifiers = tuple(state.meta_qualifiers.get(meta_id, ()))
+    chains = {
+        meta_id: meta_chain(meta_id, member_ids, state.role_build_inputs["role_chains"], qualifiers)
+    }
+    for t in tables:
+        expand_grants(t.get("columns") or [], chains)
+    return _rls(state, [state.roles[m] for m in member_ids], tables, qualifiers)
 
 
 def ensure_meta_role(state: Any, members: list[str], qualifiers: tuple[str, ...] = ()) -> str:

@@ -12,7 +12,7 @@
 // the real App, since what this holds is which of App's branches /demos/<name> reaches: a browser
 // holding a login must not get the shell (its tour offer, its gates) before the sandbox opens.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { I18nextProvider } from "react-i18next";
 import App from "../App";
@@ -22,6 +22,12 @@ import { fetchMe } from "../api/admin";
 import { fetchSetupStatus, type SetupStatus } from "../api/setup";
 import { openDemoSandbox } from "../api/demoSandbox";
 import { TOUR_OFFERED_KEY } from "../tour/tourKeys";
+import { installAuthFetch } from "../lib/authFetch";
+import {
+  clearOrgSelectionRequired,
+  ORG_SELECTION_REQUIRED,
+  orgSelectionRequired,
+} from "../lib/orgSelection";
 
 vi.mock("../api/setup", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/setup")>()),
@@ -55,6 +61,7 @@ function renderApp() {
 
 const assign = vi.fn();
 const realLocation = window.location;
+const nativeFetch = window.fetch;
 
 function at(pathname: string) {
   Object.defineProperty(window, "location", {
@@ -106,6 +113,8 @@ beforeEach(() => {
 
 afterEach(() => {
   Object.defineProperty(window, "location", { configurable: true, value: realLocation });
+  window.fetch = nativeFetch;
+  clearOrgSelectionRequired();
 });
 
 describe("the live demo link", () => {
@@ -134,5 +143,62 @@ describe("the live demo link", () => {
     renderApp();
     expect(await screen.findByTestId("landing-card")).toBeInTheDocument();
     expect(openDemoSandbox).not.toHaveBeenCalled();
+  });
+
+  // REQ-1935 / REQ-2006: the browser's own login is not who opens a sandbox. A login acting in no
+  // org (a platform operator, or one whose org has gone) is refused by every org-scoped request, and
+  // that refusal opens the select-an-org prompt -- which covered the page for the whole time the
+  // next demo's sandbox was being composed (cloud-dev 2026-11-05, /demos/streaming).
+  it("composes the sandbox without the login's org-scoped requests or the org prompt", async () => {
+    localStorage.setItem("provisa_token", "operator-token");
+    vi.mocked(fetchMe).mockResolvedValue({
+      user_id: "operator",
+      email: null,
+      display_name: null,
+      given_name: null,
+      family_name: null,
+      dev_mode: false,
+      billing: false,
+      active_org_id: null,
+      control_plane_id: "cp-1",
+      assignments: [],
+      org_memberships: [],
+      env_capabilities: [],
+      derived_roles: [],
+    });
+    const server = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes("/admin/graphql")) {
+        return new Response(JSON.stringify({ code: ORG_SELECTION_REQUIRED }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    window.fetch = server as typeof fetch;
+    installAuthFetch();
+    let composed: (opened: { org_id: string; demo: string; token: string }) => void = () => {};
+    vi.mocked(openDemoSandbox).mockReturnValue(
+      new Promise((resolve) => {
+        composed = resolve;
+      }),
+    );
+    at("/demos/weblogs");
+    renderApp();
+
+    // The sandbox is being composed: whatever the app does while it waits, it has done by now.
+    expect(await screen.findByTestId("demo-open-loading")).toBeInTheDocument();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 300)));
+    const asked = server.mock.calls.map(([input]) => String(input));
+    expect(asked.filter((url) => url.includes("/admin/graphql"))).toEqual([]);
+    expect(orgSelectionRequired()).toBe(false);
+    expect(screen.queryByTestId("org-selection-prompt")).not.toBeInTheDocument();
+
+    await act(async () => {
+      composed({ org_id: "sbx0123456789ab", demo: "weblogs", token: "provisa_pat_abc" });
+    });
+    await waitFor(() => expect(assign).toHaveBeenCalledWith(SANDBOX_ADDRESS));
+    expect(screen.queryByTestId("org-selection-prompt")).not.toBeInTheDocument();
   });
 });

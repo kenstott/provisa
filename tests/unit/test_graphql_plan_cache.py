@@ -30,14 +30,19 @@ from provisa.api.data.graphql_plan import GraphQLPlan, PlanRequest
 from provisa.pgwire import governed_plan
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.compiler.directives import QueryDirectives
-from provisa.compiler.sql_types import CompiledQuery
+from provisa.compiler.sql_types import ColumnRef, CompiledQuery
 from tests.role_state import RoleState
+from tests.unit.json_encoder.rows import field_answer
 
 
 def _cq(
     sql: str = 'SELECT "order_id" FROM "sales"."orders"', sources=("sales-pg",)
 ) -> CompiledQuery:
-    return CompiledQuery(sql=sql, params=[1], root_field="orders", columns=[], sources=set(sources))
+    # The one column the statement selects, as a compile declares each (orderId over order_id).
+    columns = [ColumnRef(alias=None, column="order_id", field_name="orderId", nested_in=None)]
+    return CompiledQuery(
+        sql=sql, params=[1], root_field="orders", columns=columns, sources=set(sources)
+    )
 
 
 _ROLE = {"id": "analyst"}
@@ -253,7 +258,7 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
         seen_sql.append(compiled.sql)
         seen_hints.append(kwargs.get("cache_hint"))
         compiled.sql = "MUTATED DOWNSTREAM"
-        return compiled.root_field, [{"orderId": 1}], None, None
+        return compiled.root_field, field_answer([{"orderId": 1}]), None, None
 
     async def _awake(state):
         return None
@@ -438,7 +443,7 @@ def test_a_single_aggregate_root_is_answered_in_the_data_envelope(monkeypatch):
     answer = {"aggregate": {"count": 4}, "nodes": [{"orderId": 1}]}
 
     async def _aggregate(compiled, *args, **kwargs):
-        return compiled.root_field, answer, None, None
+        return compiled.root_field, field_answer(answer), None, None
 
     monkeypatch.setattr(endpoint, "_execute_one_field", _aggregate)
     body = json.loads(bytes(h.call().body))

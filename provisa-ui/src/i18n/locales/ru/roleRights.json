@@ -31,7 +31,8 @@
     "reach_public": "публичный",
     "scope_domain": "домен",
     "scope_public": "публичный",
-    "scope_restricted": "ограниченный",
+    "scope_listed": "в списке",
+    "scope_own-domain": "собственный домен",
     "write_insert": "вставка",
     "write_update": "обновление",
     "write_delete": "удаление"

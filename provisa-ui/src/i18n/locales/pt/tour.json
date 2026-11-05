@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Registre uma fonte",
-        "description": "➕ Novas conexões começam com este botão: PostgreSQL, Snowflake, MongoDB, uma API REST, um CSV e o restante dos 73 conectores."
+        "description": "➕ Novas conexões começam com este botão: PostgreSQL, Snowflake, MongoDB, uma API REST, um CSV e o restante dos 77 conectores."
       },
       "step3": {
-        "title": "73 tipos de fonte, 14 categorias",
+        "title": "77 tipos de fonte, 14 categorias",
         "description": "Um seletor lista cada tipo, agrupado por categoria: <strong>Assinaturas, RDBMS, Data warehouse na nuvem, Análise, Data lake, NoSQL, Resolvers de código, Grafos, Arquivos, API, Streaming, Empresarial, Qualidade de dados, Outros</strong>. Pesquise por nome ou apelido, ou restrinja com os chips de categoria. Cada tipo mostra seu logotipo e um ícone de alcance: ⚡ leitura ao vivo no local, ou um ícone de cópia onde o Provisa lê uma réplica atualizada.<p>Escolha um, preencha a conexão e salve.</p>"
       },
       "stepBuildSource": {
@@ -933,16 +933,32 @@
         "description": "Você viu os dados da própria seguradora cruzados por condado e ano de safra com dados públicos de perdas, clima e produtividade, tudo em um modelo governado. Uma view responde se o clima explica as perdas, em SQL, GraphQL e REST. O notebook mede-o: o clima explica 54% da variação da sinistralidade e, na carteira atual, uma temporada como a de 2012 tem uma sinistralidade esperada de 1,75."
       },
       "retailScenario": {
-        "title": "Um grupo, duas regiões",
+        "title": "Um conto de duas regiões",
         "description": "Um grupo varejista opera uma subsidiária na EU e outra nos US como um único negócio. Ele consegue fazer isso sem violar o GDPR? Cada subsidiária mantém seu próprio banco de dados: este é o da EU, com seus clientes do programa de fidelidade, o consentimento de marketing deles, os pedidos, a equipe e o e-mail que a equipe envia para fora do grupo."
       },
+      "retailPlatformRegions": {
+        "title": "As regiões começam numa configuração",
+        "description": "A configuração da plataforma declara as regiões, aqui a EU e os US, e concede-as à organização. Cada região tem o seu próprio processamento de dados: o seu próprio motor e os seus próprios armazenamentos. O propósito da EU é a residência, para os dados de clientes que precisam ficar na União Europeia. Neste sandbox você pode ler esta página, mas não alterá-la."
+      },
+      "retailPurposes": {
+        "title": "O que um propósito diz",
+        "description": "A legenda explica cada propósito. Um propósito diz por que uma região existe. Ele não move dados nem decide quem os lê. Duas camadas fazem isso, e o tour mostra cada uma: a hospedagem, as regras do motor sobre onde os dados ficam, e a segurança, as regras do data steward sobre quem lê o quê."
+      },
+      "retailOrgRegions": {
+        "title": "As regiões e os armazenamentos da organização",
+        "description": "A organização detém as duas regiões. Cada linha nomeia os armazenamentos usados ali: o motor da região e onde ficam as suas réplicas, visões, cache, estado de construção e registro. Os dados da EU são processados com os armazenamentos da própria EU."
+      },
+      "retailEngines": {
+        "title": "Um motor por região",
+        "description": "Federação tem uma aba para cada região, e cada região executa o seu próprio motor. Assim, uma configuração dá dois ambientes de processamento de dados. Você está no nó dos US. Ele lê os dados da EU apenas pelo armazenamento da EU, nunca de uma cópia própria."
+      },
       "retailRegions": {
-        "title": "Uma única definição de cada região",
-        "description": "O banco de dados da subsidiária dos US, hospedado nos US. O modelo declara as duas regiões e diz, uma única vez, onde cada tabela fica e quais visões são construídas onde. Um segundo nó do Provisa roda na EU: ele copia as tabelas da EU para o armazenamento próprio da EU e constrói lá as visões da EU. Você está no nó dos US, que lê dados da EU apenas desse armazenamento da EU, então cada regra transfronteiriça é aplicada em um só lugar."
+        "title": "Hospedagem: cada fonte nomeia a sua região de origem",
+        "description": "O banco de dados da subsidiária dos US está hospedado nos US, e o da subsidiária da EU na EU. A hospedagem é a regra do motor sobre onde os dados ficam. As réplicas e o cache de uma tabela hospedada ficam na sua região de origem, e as outras regiões só chegam a ela através dessa região."
       },
       "retailEuCustomers": {
         "title": "Uma tabela da EU, hospedada na EU",
-        "description": "Os clientes da EU. A tabela indica a EU como sua região: suas linhas são copiadas apenas para o armazenamento da EU e calculadas apenas lá. Leitores de outros lugares as obtêm pelas visões da EU ou não as obtêm."
+        "description": "Os clientes da EU. A região da tabela é a EU, então as suas réplicas e o seu cache ficam apenas no armazenamento da EU. A hospedagem decide onde as linhas ficam. Ela não decide quem pode lê-las. Essa é a próxima camada."
       },
       "retailRequests": {
         "title": "Solicitações dos titulares",
@@ -953,12 +969,12 @@
         "description": "Uma solicitação se junta aos clientes de cada subsidiária pelo endereço de e-mail. É assim que uma solicitação encontra a mesma pessoa nas duas."
       },
       "retailAsAnalyst": {
-        "title": "Como analista do grupo",
-        "description": "Em seguida, o seletor de papéis passa para <strong>group_analyst</strong>, que trabalha nos relatórios do grupo nos US, para que o SQL e o GraphQL seguintes rodem como group_analyst."
+        "title": "As regras do data steward, como analista do grupo",
+        "description": "A segunda camada é a segurança: as regras do data steward decidem o que cada leitor recebe, pela função e pela região do leitor. Elas são aplicadas na região de origem, antes que algo saia dela. Em seguida, o seletor de funções muda para <strong>group_analyst</strong>, que trabalha nos relatórios do grupo nos US, de modo que o SQL e o GraphQL seguintes são executados como group_analyst."
       },
       "retailGroupView": {
         "title": "Relatórios do grupo, clientes da EU pseudonimizados",
-        "description": "Cada cliente do programa de fidelidade do grupo. Os clientes dos US aparecem como são; os clientes da EU aparecem por um pseudônimo que a EU calculou, sem nome nem endereço. A parte da EU foi lida do armazenamento da EU, e o registro desta consulta indica a EU como a região que respondeu."
+        "description": "Todos os clientes de fidelidade do grupo. Os clientes dos US aparecem como são. Os clientes da EU aparecem com um pseudônimo, porque a regra do steward diz que um leitor fora da EU não recebe nome nem endereço. A EU aplicou essa regra antes que as suas linhas saíssem, e o registro desta consulta nomeia a EU como a região que respondeu."
       },
       "retailGroupGraphql": {
         "title": "O mesmo, em GraphQL",
@@ -970,7 +986,7 @@
       },
       "retailAudience": {
         "title": "Apenas clientes que concordaram",
-        "description": "O explorador SQL agora roda como <strong>marketing_eu</strong>. O marketing da EU lê os clientes da EU que concordaram com o marketing, e somente eles. A visão é construída na EU a partir de linhas da EU."
+        "description": "O explorador SQL agora é executado como <strong>marketing_eu</strong>. A regra do steward permite que o marketing da EU leia os clientes da EU que concordaram com o marketing, e somente eles. A visão é construída na EU a partir de linhas da EU."
       },
       "retailAsDpo": {
         "title": "Como encarregado de proteção de dados",
@@ -998,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "O remetente, revelado na EU",
-        "description": "A mesma fila. A lista de mascaramento da coluna do remetente revela o remetente apenas a um revisor que também tem region__eu; todos os demais o leem retido. É uma única concessão, reviewer e region__eu, sem nenhuma função criada para a combinação."
+        "description": "A mesma fila. A máscara do steward na coluna do remetente revela o remetente apenas a um revisor cuja região atribuída é a EU (region__eu). Todos os outros o leem retido. O que um leitor recebe depende da sua região, além da sua função, e nenhuma função foi criada para a combinação."
       },
       "retailAsAdmin": {
         "title": "De volta a todas as funções",
@@ -1014,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "O que você viu",
-        "description": "Um modelo definiu as duas regiões: onde cada tabela fica, quais visões são construídas onde, e quem lê o quê. Os relatórios do grupo leram os clientes da EU pseudonimizados, o marketing da EU leu apenas os clientes que consentiram, e uma solicitação de acesso e uma eliminação foram cada uma uma única consulta. A revisão de informação privilegiada revelou um remetente apenas na EU, e cada leitura está em um único registro."
+        "description": "Uma configuração concedeu duas regiões, cada uma com o seu próprio motor e os seus próprios armazenamentos: dois ambientes de processamento de dados. A hospedagem manteve as tabelas da EU, as suas réplicas e o seu cache na EU. As regras do data steward decidiram o que cada leitor recebia, pela função e pela região do leitor, e a EU aplicou-as antes que algo saísse dela. Os relatórios do grupo leram os clientes da EU pseudonimizados, o marketing da EU leu apenas os clientes que consentiram, o acesso e o apagamento foram cada um uma consulta, o remetente foi revelado apenas a um revisor na EU, e cada leitura está num único registro."
       },
       "provisioningScenario": {
         "title": "O que é esta demo",
@@ -1374,7 +1390,11 @@
       },
       "testdataCoverageNow": {
         "title": "Toda coluna sensível está coberta",
-        "description": "A mesma verificação, lida agora do modelo: cada coluna sensível, suas tags e se um valor fictício a cobre. Todas estão cobertas, então a pré-produção abre e responde."
+        "description": "A cobertura sensível é um relatório padrão da página Relatórios: cada coluna sensível, suas tags e se um valor fictício a cobre, lido agora do modelo. Todas estão cobertas, então a pré-produção abre e responde."
+      },
+      "testdataPollyProposes": {
+        "title": "Um valor fictício proposto a partir do perfil",
+        "description": "Pergunta-se ao Polly que valor fictício ele proporia para customers.email. Ele lê a última execução de perfil da coluna, vê que os valores são endereços de e-mail e propõe o valor fictício de e-mail. O modelo já declara um, então a proposta confere essa escolha com os dados. Nada é salvo até que alguém escolha salvar."
       },
       "testdataProd": {
         "title": "Produção: as linhas reais",
@@ -1755,6 +1775,163 @@
       "agentdataConnect": {
         "title": "Seu próprio agente, o mesmo servidor",
         "description": "Este é o servidor que o agente do explorador usou. Cole esta configuração no Claude Desktop, ou aponte qualquer cliente MCP para a URL, e seu próprio agente recebe as mesmas ferramentas governadas, sujeitas às mesmas regras."
+      },
+      "auditScenario": {
+        "title": "Do que trata esta demo",
+        "description": "Uma firma de auditoria audita nove organizações sem fins lucrativos que gastam auxílios federais. Antes do trabalho de campo, o sócio pergunta se os auxílios federais registrados por cada cliente correspondem ao que os registros do governo mostram ter pago a ele. As relações e os registros de auxílios dos clientes estão no banco de dados da própria firma; as declarações do Single Audit e os empenhos federais são públicos. Os clientes e seus números são fictícios; os programas, os condados e os dados públicos são reais."
+      },
+      "auditAnswer": {
+        "title": "Os itens em aberto de cada cliente",
+        "description": "A view readiness responde à mesma pergunta para todos os clientes de uma vez e fica armazenada. Ela coloca cada linha da relação ao lado dos seus registros de auxílio e dos dados públicos do programa, e lista os itens de que cada memorando de preparação precisa."
+      },
+      "auditExample": {
+        "title": "Itens em aberto em GraphQL",
+        "description": "Os itens do memorando de preparação como uma consulta GraphQL, para as ferramentas de trabalho da firma."
+      },
+      "auditRecap": {
+        "title": "O que você viu",
+        "description": "Os registros de clientes da firma e as declarações e empenhos públicos do governo, unidos num único modelo governado. Uma view armazenada responde à pergunta do sócio para cada cliente. Cada equipe lê apenas seus próprios clientes, e cada consulta é registrada."
+      },
+      "auditGovdata": {
+        "title": "Os dados públicos",
+        "description": "Os dados do governo vêm da AskAmerica: cada linha de auxílio dos Single Audits de 2023 entregues ao Federal Audit Clearinghouse em Vermont, New Hampshire e Maine, cada uma ao lado do que o USAspending empenhou para o mesmo beneficiário no mesmo programa, e os empenhos do USAspending por condado e programa."
+      },
+      "auditSchedule": {
+        "title": "A relação do cliente",
+        "description": "O rascunho da relação de despesas com auxílios federais (Schedule of Expenditures of Federal Awards) de cada cliente para 2023: uma linha por auxílio, com seu Assistance Listing, se veio diretamente de uma agência federal ou por meio de uma agência estadual, e o que o cliente diz ter gasto."
+      },
+      "auditNotices": {
+        "title": "Os registros de auxílios",
+        "description": "Os registros federais de auxílios que cada cliente mantém para seus auxílios diretos: uma linha por empenho, o ano fiscal federal em que foi feito e o valor. Um auxílio plurianual pode ter sido empenhado antes do ano em que foi gasto."
+      },
+      "auditFiled": {
+        "title": "A mesma conciliação, nas declarações públicas",
+        "description": "Cada linha de auxílio que as entidades auditadas dos três estados declararam para 2023, ao lado do que o USAspending registrou como empenhado para elas no mesmo programa naquele ano. Uma linha sem correspondência não é, por si só, uma lacuna. Uma linha recebida por um intermediário passou por uma agência estadual, então nenhum auxílio federal nomeia a entidade e não se espera que corresponda; e um auxílio empenhado num ano anterior não mostra empenho no ano auditado. As linhas sem correspondência são mantidas, não ocultadas."
+      },
+      "auditCounty": {
+        "title": "Dinheiro federal por condado",
+        "description": "O que o USAspending registrou como empenhado no condado de cada cliente no ano fiscal federal de 2023, por programa, contado onde o trabalho é feito. Mostra se um programa que o cliente lista paga alguma coisa no seu condado."
+      },
+      "auditRecordedAs": {
+        "title": "Da relação aos registros",
+        "description": "Este relacionamento une cada linha da relação aos seus registros de auxílio pela referência de auxílio da firma. Uma linha sem registro por trás, e um registro sem linha, são o que o auditor procura."
+      },
+      "auditCountyJoin": {
+        "title": "Clientes e seus condados",
+        "description": "O código de condado de cada cliente o une aos empenhos por condado do USAspending, e seus Assistance Listings unem sua relação às declarações públicas do mesmo programa no seu estado."
+      },
+      "auditTerms": {
+        "title": "Nas palavras de um auditor",
+        "description": "A ontologia explica os termos de um Single Audit: a relação, o Assistance Listing, a entidade repassadora, o empenho, uma diferença temporal, um auxílio ausente e o memorando de preparação."
+      },
+      "auditRequest": {
+        "title": "O pedido do sócio",
+        "description": "O sócio pede ao analista que prepare a Brindlewood Community Health para o trabalho de campo. Este é o rascunho da sua relação: cinco programas federais, três deles auxílios diretos. Em seguida, o analista resolve o pedido com a Polly."
+      },
+      "auditPollySchedule": {
+        "title": "Quais auxílios ele registra",
+        "description": "O analista começa pelo que o cliente registra. A Polly lista os auxílios da sua relação de 2023 e mostra o SQL que executou. A resposta dela foi gerada quando a demo foi construída e está guardada com ela."
+      },
+      "auditPollyRecords": {
+        "title": "O que os registros mostram ter pago",
+        "description": "Depois, o lado do governo: o que os registros federais de auxílio do cliente mostram como empenhado para ele no ano fiscal federal de 2023. Um dos empenhos é de um programa que a relação não lista."
+      },
+      "auditPollyDiffer": {
+        "title": "Onde divergem",
+        "description": "A Polly coloca a relação ao lado dos registros de auxílio e lista cada auxílio em que os dois não concordam, com a consulta por trás da resposta."
+      },
+      "auditPollyKinds": {
+        "title": "Temporal ou ausente",
+        "description": "Uma diferença temporal é um auxílio empenhado num ano anterior e gasto neste ano, que precisa apenas de uma explicação. Um auxílio ausente é uma linha direta sem registro federal por trás, que precisa de correção. A Polly separa as diferenças nos dois tipos."
+      },
+      "auditPollyMemo": {
+        "title": "O memorando de preparação",
+        "description": "Por fim, o memorando: cada item que o cliente precisa explicar ou corrigir antes do início do trabalho de campo, das diferenças temporais ao auxílio que sua relação omite."
+      },
+      "auditPublic": {
+        "title": "O padrão nas declarações públicas",
+        "description": "A mesma conciliação, executada sobre as declarações públicas dos três estados. Estes são os programas cujas linhas de auxílio direto mais vezes não têm empenho do USAspending no ano auditado. São mostrados como são, e mostram por que uma linha sem correspondência é uma pergunta para o auditor e não um erro."
+      },
+      "auditAsTeam": {
+        "title": "Como a equipe do Maine",
+        "description": "Executada como a equipe de trabalho do Maine, a mesma view retorna apenas os três clientes dessa equipe. Regras de linha em cada tabela e na view restringem cada equipe aos seus próprios trabalhos. O sócio vê todos."
+      },
+      "auditLineage": {
+        "title": "De onde vem cada número",
+        "description": "A linhagem rastreia cada coluna da resposta pela view até as tabelas da firma e os dados públicos, para que um revisor veja de onde vem cada número do memorando."
+      },
+      "auditRest": {
+        "title": "A mesma resposta via REST",
+        "description": "A view também é um endpoint REST, agrupada por constatação e somada no servidor, para que uma planilha de papéis de trabalho a leia por HTTP."
+      },
+      "banksecrecyScenario": {
+        "title": "Um banco lê uma lei dos EUA",
+        "description": "Um banco comunitário tem de relatar dinheiro em espécie acima de 10.000 $ pela Bank Secrecy Act. Esta demo lê a própria regra a partir do seu endereço público, encontra os termos que usa, ancora-os nos dados do banco e depois pergunta por conceito: que dinheiro exige um Currency Transaction Report, e quem está a fracionar? Começa pelo sistema central do banco, lido ao vivo onde está."
+      },
+      "banksecrecyCash": {
+        "title": "Dinheiro nos balcões",
+        "description": "Cada depósito e levantamento em espécie no balcão: a conta, a agência, o caixa, a hora e o dia útil em que foi lançado. O dinheiro recebido após as 17:00 é lançado no dia útil seguinte."
+      },
+      "banksecrecyOnBehalf": {
+        "title": "Em nome de quem",
+        "description": "Cada transação indica quem estava no balcão e de quem é o dinheiro. Quando um funcionário ou familiar traz dinheiro, conta para o total do titular da conta, como a lei o conta."
+      },
+      "banksecrecyFindTerms": {
+        "title": "Ler a lei a partir do seu endereço público",
+        "description": "Encontrar termos lê um documento a partir do seu endereço, aqui 31 CFR 1010.311 na API oficial do eCFR. Uma análise consulta o modelo de IA sobre cada passagem e demora minutos, por isso a visita parou esta. A mesma análise foi feita quando a demo foi construída.",
+        "acting": "Escrevendo o endereço da regulamentação e iniciando uma análise"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "Os termos da regra",
+        "description": "A análise feita antecipadamente: cada termo candidato com a passagem de onde vem. Uma instituição financeira relata cada transação em espécie acima de 10.000 $. Os termos que o glossário já tem são oferecidos para fusão."
+      },
+      "banksecrecyAggregation": {
+        "title": "A regra de agregação",
+        "description": "De 31 CFR 1010.313 vêm transações múltiplas e em nome de: o dinheiro por ou em nome de uma pessoa, acima de 10.000 $ num dia útil, é tratado como uma única transação, e todas as agências são uma instituição. Os depósitos noturnos contam no dia útil seguinte."
+      },
+      "banksecrecyDefinitions": {
+        "title": "As definições que usa",
+        "description": "As palavras da regra estão definidas em 31 CFR 1010.100: pessoa, dia útil, instituição financeira, fracionamento. Cada definição é uma passagem própria, por isso cada termo é oferecido com o parágrafo que o define."
+      },
+      "banksecrecyLibrary": {
+        "title": "Guardado na biblioteca de referência",
+        "description": "A compilação da demo manteve cada documento analisado na biblioteca de referência, por isso a regulamentação fica com o modelo como referência governada: a Polly e os agentes da organização citam as suas passagens ao responder."
+      },
+      "banksecrecyGrounded": {
+        "title": "As palavras da lei, ancoradas",
+        "description": "Transaction in currency é o termo da regulamentação. A transação em espécie do banco é um tipo dela, por isso o termo chega à tabela cash_transactions. Pessoa chega assim aos clientes, e instituição financeira chega às agências do banco."
+      },
+      "banksecrecyBusinessDay": {
+        "title": "Dia útil, na sua coluna",
+        "description": "O dia útil da regulamentação é o dia em que um banco lança uma transação na conta do cliente. A coluna business_day do banco guarda exatamente isso, por isso o termo detém a própria coluna."
+      },
+      "banksecrecyTellerAsks": {
+        "title": "Que dinheiro exige um relatório? Como caixa",
+        "description": "Perguntado por conceito: entrada ou saída de dinheiro acima de 10.000 $ por ou em nome de uma pessoa num dia útil, as transações múltiplas contadas como uma entre contas e agências. Um caixa vê os relatórios devidos, com números de conta e identificadores fiscais mascarados."
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "A mesma pergunta, como compliance",
+        "description": "O responsável de compliance faz a mesma pergunta e vê números de conta e identificadores fiscais completos, como o relatório os exige. O total de Dana Whitmore inclui dinheiro trazido em seu nome por outra pessoa."
+      },
+      "banksecrecyStructuring": {
+        "title": "Quem está a fracionar?",
+        "description": "Depósitos logo abaixo de 10.000 $, três vezes ou mais, entre agências e dias. Nenhum exigia relatório sozinho. Victor Hale foi a três agências numa semana, e os dois depósitos de Marcus Reed num dia exigiam juntos um relatório. Só o compliance vê esta vista."
+      },
+      "banksecrecyPollyWalk": {
+        "title": "O que o banco deve fazer?",
+        "description": "Um cliente deposita repetidamente dinheiro logo abaixo de 10.000 $. O que o banco deve fazer? Procurar essas palavras nos trechos da lei não encontra a resposta. Polly percorre o glossário: depósitos abaixo do limite, até o fracionamento (structuring), até o relatório de atividade suspeita, e chega a 31 CFR 1010.314 e 31 CFR 1020.320, os trechos que o dizem."
+      },
+      "banksecrecyExample": {
+        "title": "A mesma resposta em GraphQL",
+        "description": "Os relatórios devidos, como chamada de API. Cada interface lê a mesma vista governada, com as mesmas máscaras para o mesmo papel."
+      },
+      "banksecrecyPollyAsks": {
+        "title": "Perguntado em palavras simples",
+        "description": "O compliance pergunta à Polly em palavras simples: que dinheiro exige um Currency Transaction Report? A Polly encontra a vista governada a que o conceito chega e responde a partir dela, por isso nomeia as mesmas pessoas que o SQL e o GraphQL devolveram. Ninguém precisou de saber o nome da vista."
+      },
+      "banksecrecyRecap": {
+        "title": "O que viu",
+        "description": "A lei foi lida do seu endereço público, os seus termos encontrados e ancorados nas tabelas do banco, e o banco perguntou por conceito. O Currency Transaction Report chega aos dados pelas suas transações múltiplas, e cada papel viu o que pode ver."
       }
     },
     "status": {
@@ -1825,7 +2002,7 @@
         "summary": "O clima explica as perdas da carteira de uma seguradora agrícola? As próprias fazendas, apólices e sinistros, unidos por condado e ano de safra às perdas por causa do USDA, ao clima da NOAA e à produtividade do NASS, respondem em SQL, GraphQL e REST."
       },
       "retail": {
-        "title": "Um grupo, duas regiões",
+        "title": "Um conto de duas regiões",
         "summary": "Um grupo varejista com uma subsidiária na EU e outra nos US, operado como um único negócio sob o GDPR: os dados da EU ficam na EU, os relatórios do grupo os leem pseudonimizados, e acesso, eliminação, revisão de informação privilegiada e auditoria são cada um uma única consulta."
       },
       "provisioning": {
@@ -1879,6 +2056,14 @@
       "agentdata": {
         "title": "Dê seus dados a um agente",
         "summary": "Dá para entregar a um agente de IA os dados de pedidos de um varejista e limitá-lo ao que seu usuário pode ver? O explorador MCP mostra o agente como atendente de suporte e como analista: outras linhas e colunas, e-mails mascarados e o SQL governado por trás de cada resposta."
+      },
+      "audit": {
+        "title": "Preparação para o Single Audit",
+        "summary": "Os auxílios federais registrados por um cliente sem fins lucrativos correspondem ao que os registros do governo mostram ter pago a ele? As relações de clientes de uma firma de auditoria, unidas às declarações do Single Audit e aos empenhos do USAspending, respondem."
+      },
+      "banksecrecy": {
+        "title": "Relatórios de dinheiro lidos da Bank Secrecy Act",
+        "summary": "Um banco lê a regra de relato de dinheiro em espécie da Bank Secrecy Act a partir do seu endereço público oficial, encontra os seus termos e ancora-os nas próprias tabelas. Depois pergunta por conceito que dinheiro exige um Currency Transaction Report e quem fraciona logo abaixo de 10.000 $. O banco e os clientes são fictícios; a regulamentação é real."
       }
     }
   }

@@ -9,7 +9,9 @@
     "identity": "Identité",
     "discardTitle": "Abandonner vos modifications ?",
     "discardBody": "Vos modifications de {{what}} ne sont pas enregistrées.",
-    "discard": "Abandonner"
+    "discard": "Abandonner",
+    "deleting": "Suppression…",
+    "deleteFailed": "Non supprimé : {{reason}}"
   },
   "app": {
     "apiUnreachable": "Impossible de joindre l'API Provisa.",

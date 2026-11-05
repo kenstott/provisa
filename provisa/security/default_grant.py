@@ -20,9 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 from provisa.security.meta_role import META_PREFIX
-
-#: The standard role every role builds on (provisa/core/standard_roles.yaml).
-VIEWER_ROLE = "viewer"
+from provisa.security.rights import VIEWER_ROLE
 
 
 def default_read_grant(acting_role: str) -> list[str]:

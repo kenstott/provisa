@@ -197,7 +197,11 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             # REQ-1531: a command sits in a domain, and a role is shown the commands of the
             # domains it reaches. One that names no domain — saving it is refused; a stored row
             # can still carry none — is in no domain any role reaches, so no role is shown it.
-            if not domain_id or not acts_in_domain(si.role["domain_access"], domain_id):
+            # REQ-2155: a role with no capabilities needs only the assignment above.
+            if not domain_id or not (
+                not si.role.get("capabilities")
+                or acts_in_domain(si.role["domain_access"], domain_id)
+            ):
                 continue
             # A per-domain schema offers only the commands of the domains it was asked for.
             if not offers_domain(si, domain_id):

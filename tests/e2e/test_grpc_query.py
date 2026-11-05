@@ -23,36 +23,30 @@ import grpc
 import grpc.aio
 import pytest
 
+from provisa.executor.result import QueryResult
 from provisa.grpc.server import ProvisaServicer
 from tests.role_state import RoleState
 
 pytestmark = [pytest.mark.requires_trino, pytest.mark.e2e, pytest.mark.asyncio]
 
 
+_FIELD_TYPES = {"id": "int64", "amount": "double"}
+
+
 def _make_pb2_with_descriptor(type_name: str, fields: list[str]):
-    """Build a fake pb2 module with proper DESCRIPTOR for e2e-style testing."""
-    field_descriptors = []
-    for f in fields:
-        # No known FieldDescriptor.TYPE_* matches -> _proto_value's fallthrough returns the
-        # row value unchanged, preserving the exact int/float types the tests assert on.
-        fd = SimpleNamespace(name=f, message_type=None, type=-1)
-        field_descriptors.append(fd)
+    """A compiled service, as an organisation's is: the encoder writes the result's rows into
+    its real messages (REQ-2194). ``id`` is an int64, ``amount`` a double, any other a string."""
+    from provisa.grpc.descriptor import OrgDescriptor
 
-    descriptor = SimpleNamespace(
-        fields=field_descriptors,
-        fields_by_name={fd.name: fd for fd in field_descriptors},
+    body = " ".join(
+        f"optional {_FIELD_TYPES.get(f, 'string')} {f} = {n};" for n, f in enumerate(fields, 1)
     )
-    msg_cls = MagicMock()
-    msg_cls.DESCRIPTOR = descriptor
-    # A message has a serialized size: its egress is metered to the org bound (REQ-1452).
-    msg_cls.return_value.ByteSize.return_value = 1
+    pb2 = OrgDescriptor(f'syntax = "proto3"; package provisa.v1; message {type_name} {{ {body} }}')
+    return pb2, getattr(pb2, type_name)
 
-    service_descriptor = SimpleNamespace(full_name="provisa.v1.ProvisaService")
-    pb2 = SimpleNamespace(
-        **{type_name: msg_cls},
-        DESCRIPTOR=SimpleNamespace(services_by_name={"ProvisaService": service_descriptor}),
-    )
-    return pb2, msg_cls
+
+def _sent(msg_cls, streamed: list[bytes]) -> list[dict]:
+    return [{f.name: v for f, v in msg_cls.FromString(m).ListFields()} for m in streamed]
 
 
 def _make_full_state(role_id: str, extra_roles: dict | None = None):
@@ -143,7 +137,7 @@ class TestStreamedQueries:
         servicer = ProvisaServicer(state, pb2)
 
         rows = [[i, float(i * 100)] for i in range(1, 6)]
-        fake_result = SimpleNamespace(column_names=["id", "amount"], rows=rows)
+        fake_result = QueryResult(rows=[tuple(r) for r in rows], column_names=["id", "amount"])
 
         p_lower, p_compile, p_govern, p_execute = _pipeline_patches(fake_result)
         with p_lower, p_compile, p_govern, p_execute:
@@ -155,9 +149,10 @@ class TestStreamedQueries:
             async for msg in servicer._handle_query(request, context, "Orders", "orders"):
                 streamed.append(msg)
 
-            assert len(streamed) == 5
-            msg_cls.assert_any_call(id=1, amount=100.0)
-            msg_cls.assert_any_call(id=5, amount=500.0)
+            sent = _sent(msg_cls, streamed)
+            assert len(sent) == 5
+            assert sent[0] == {"id": 1, "amount": 100.0}
+            assert sent[4] == {"id": 5, "amount": 500.0}
 
     async def test_empty_result_streams_nothing(self):
         """An empty result set yields no messages."""
@@ -165,7 +160,7 @@ class TestStreamedQueries:
         state = _make_full_state("admin")
         servicer = ProvisaServicer(state, pb2)
 
-        fake_result = SimpleNamespace(column_names=["id", "amount"], rows=[])
+        fake_result = QueryResult(rows=[], column_names=["id", "amount"])
 
         p_lower, p_compile, p_govern, p_execute = _pipeline_patches(fake_result)
         with p_lower, p_compile, p_govern, p_execute:
@@ -243,7 +238,7 @@ class TestRoleBasedFieldFiltering:
         )
         servicer = ProvisaServicer(state, pb2)
 
-        fake_result = SimpleNamespace(column_names=["id"], rows=[[42]])
+        fake_result = QueryResult(rows=[(42,)], column_names=["id"])
 
         govern = AsyncMock(return_value=_routed_plan())
         p_lower, p_compile, p_govern, p_execute = _pipeline_patches(fake_result, govern=govern)

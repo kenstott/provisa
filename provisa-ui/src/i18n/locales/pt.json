@@ -9,7 +9,9 @@
     "identity": "Identidade",
     "discardTitle": "Descartar as alterações?",
     "discardBody": "As alterações em {{what}} não foram salvas.",
-    "discard": "Descartar"
+    "discard": "Descartar",
+    "deleting": "Excluindo…",
+    "deleteFailed": "Não excluído: {{reason}}"
   },
   "app": {
     "apiUnreachable": "Não foi possível conectar à API do Provisa.",

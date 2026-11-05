@@ -37,6 +37,8 @@ export interface IssuerAnswer {
   state: string | null;
   code: string | null;
   error: string | null;
+  /** REQ-2197: the company Intuit names in its return address (`realmId`); absent elsewhere. */
+  realm_id?: string | null;
 }
 
 /**
@@ -49,7 +51,14 @@ export function takeIssuerAnswer(
 ): IssuerAnswer {
   const given = new URLSearchParams(location.search);
   history.replaceState(null, "", location.pathname);
-  return { state: given.get("state"), code: given.get("code"), error: given.get("error") };
+  const answer: IssuerAnswer = {
+    state: given.get("state"),
+    code: given.get("code"),
+    error: given.get("error"),
+  };
+  const realmId = given.get("realmId");
+  if (realmId !== null) answer.realm_id = realmId;
+  return answer;
 }
 
 /** Whether a window at `origin` may be handed the answer by a return page at `self`. */
@@ -91,6 +100,9 @@ export interface SignInRequest {
   /** REQ-1994: the source's settings as the form states them; the server asks the provider for
    * the scopes of what they read. */
   mapping: Record<string, unknown>;
+  /** REQ-2197: a source's own client (QuickBooks), as its settings hold it: each a value or a
+   * ${secret:…} reference. A mail source sends none. */
+  client?: { client_id: string; client_secret: string };
 }
 
 /** Whether the organisation has connected the platform, and whether the caller may do so. */
@@ -190,8 +202,10 @@ export function awaitIssuerAnswer(
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== signInOrigin || event.source !== popup) return;
       if (event.data?.type !== ANSWER) return;
-      const { state, code, error } = event.data as IssuerAnswer;
-      finish(() => resolve({ state, code, error }));
+      const { state, code, error, realm_id } = event.data as IssuerAnswer;
+      const answer: IssuerAnswer = { state, code, error };
+      if (realm_id !== undefined) answer.realm_id = realm_id;
+      finish(() => resolve(answer));
     };
     const hello = win.setInterval(() => {
       if (popup.closed) {

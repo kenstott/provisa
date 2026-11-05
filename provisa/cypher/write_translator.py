@@ -46,6 +46,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+import sqlglot.expressions as exp
+
 from provisa.compiler.sql_literals import sql_literal
 from provisa.compiler.sql_types import key_list
 from provisa.cypher.counters import carried_labels, set_values, unknown, written_rows
@@ -941,28 +943,30 @@ def _write_value(val: Any, col_type: str | None = None) -> str:
 
 
 def _q(name: str) -> str:
-    """Double-quote a SQL identifier."""
-    return f'"{name}"'
+    """``name`` as one double-quoted SQL identifier, a quote inside it doubled."""
+    return exp.to_identifier(name, quoted=True).sql(dialect="postgres")
 
 
 # ---------------------------------------------------------------------------
-# WHERE clause rewriting
+# WHERE clause lowering
 # ---------------------------------------------------------------------------
 
-# Rewrite ``n.prop`` → ``"col"`` using the node's property map.
-_PROP_ACCESS_RE = re.compile(r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b")
 
-
-def _read_column(mapping: NodeMapping, prop: str) -> str:
-    """``prop`` of a node a write matches, as SQL: read as a read reads it (REQ-2136) -- its
-    ``_id`` the key, a property the label has not null, never a column by a name it does not give."""
+def _read_column_expr(mapping: NodeMapping, prop: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``prop`` of a node a write matches: read as a read reads it (REQ-2136) -- its ``_id`` the
+    key, a property the label has not null, never a column by a name it does not give."""
     from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
 
     if prop == NODE_KEY_PROPERTY:
         # The statement names the table's columns bare: no alias.
-        return node_key(None, mapping).sql(dialect="postgres")
+        return node_key(None, mapping)
     col = mapping.properties.get(prop)
-    return _q(col) if col is not None else "NULL"
+    return exp.column(col, quoted=True) if col is not None else exp.Null()
+
+
+def _read_column(mapping: NodeMapping, prop: str) -> str:
+    """``prop`` of a node a write matches, as SQL (``_read_column_expr``)."""
+    return _read_column_expr(mapping, prop).sql(dialect="postgres")
 
 
 def _written_column(mapping: NodeMapping, prop: str) -> str:
@@ -974,20 +978,167 @@ def _written_column(mapping: NodeMapping, prop: str) -> str:
     return _q(col)
 
 
-def _rewrite_where(where_expr: str, variable: str, mapping: NodeMapping) -> str:
-    """Rewrite Cypher property accesses to SQL column names in a WHERE expression.
+#: The functions a write's WHERE does not take: each reads a graph or aggregates rows.
+_NOT_IN_A_WRITES_WHERE = frozenset(
+    {
+        "count",
+        "collect",
+        "sum",
+        "avg",
+        "min",
+        "max",
+        "nodes",
+        "relationships",
+        "length",
+        "labels",
+        "type",
+        "startnode",
+        "endnode",
+        "properties",
+        "keys",
+        "id",
+        "elementid",
+    }
+)
 
-    E.g. ``n.age > 21`` → ``"age" > 21``  (using mapping.properties).
-    """
 
-    def _replace(m: re.Match) -> str:
-        var = m.group(1)
-        prop = m.group(2)
-        if var is None or prop is None or var.lower() != variable.lower():
-            return m.group(0)
-        return _read_column(mapping, prop)
+class _MatchedRowWhere:
+    """The ``ExprContext`` a write's WHERE is lowered against (REQ-913): one node variable, the
+    rows of its label's table, named bare. Its properties are the table's columns, a ``$name`` a
+    parameter ``bind_write_params`` binds; anything reading a graph is refused by name."""
 
-    return _PROP_ACCESS_RE.sub(_replace, where_expr)
+    def __init__(self, variable: str, mapping: NodeMapping) -> None:
+        self._variable = variable
+        self._mapping = mapping
+
+    def _refused(self, what: str) -> CypherWriteParseError:
+        return CypherWriteParseError(
+            f"a write's WHERE reads the properties of its matched node {self._variable}; "
+            f"{what} is not supported there"
+        )
+
+    def _is_matched(self, name: str) -> bool:
+        return name.lower() == self._variable.lower()
+
+    def resolve_variable(self, name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if not self._is_matched(name):
+            raise CypherWriteParseError(
+                f"a write's WHERE reads its matched node {self._variable}; {name} is not bound"
+            )
+        return exp.var(name)
+
+    def resolve_property(self, obj: exp.Expression, name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if not (isinstance(obj, exp.Var) and self._is_matched(obj.name)):
+            raise self._refused(f"a property of {obj.sql(dialect='postgres')}")
+        return _read_column_expr(self._mapping, name)
+
+    def property_is_table_column(self, obj: exp.Expression, name: str) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return name in self._mapping.properties
+
+    def property_type(self, obj: exp.Expression, name: str) -> str | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return None
+
+    def resolve_parameter(self, name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return exp.Parameter(this=exp.var(name))
+
+    def temporal_kind(self, expr: Any) -> str | None:
+        return None
+
+    def temporal_zone(self, expr: Any) -> str | None:
+        return None
+
+    def is_text(self, expr: Any) -> bool:
+        return False
+
+    def is_list(self, expr: Any) -> bool:
+        return False
+
+    def is_json_value(self, expr: Any) -> bool:
+        return False
+
+    def is_json_property(self, expr: Any) -> bool:
+        return False
+
+    def is_null(self, expr: Any) -> bool:
+        from provisa.gql.expr_ast import Literal
+
+        return isinstance(expr, Literal) and expr.kind == "null"
+
+    def given_value(self, expr: Any) -> tuple[bool, object]:
+        return False, None
+
+    def element_list_kind(self, expr: Any) -> str | None:
+        return None
+
+    def element_property_type(self, expr: Any, name: str) -> exp.DataType | None:
+        return None
+
+    def graph_kind(self, name: str) -> str | None:
+        return None
+
+    def is_bound(self, name: str) -> bool:
+        return self._is_matched(name)
+
+    def resolve_graph_element(self, name: str) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return None
+
+    def resolve_element_value(self, name: str) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return None
+
+    def resolve_element_properties(self, name: str) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return None
+
+    def resolve_graph_identity(self, name: str) -> None:
+        return None
+
+    def resolve_node_graph_identity(self, name: str) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return None
+
+    def resolve_graph_absent(self, name: str) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return None
+
+    def resolve_function(
+        self,
+        name: str,
+        args: list[exp.Expression],
+        *,
+        distinct: bool,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if distinct or name.lower() in _NOT_IN_A_WRITES_WHERE:
+            raise self._refused(f"{name}()")
+        return exp.Anonymous(this=name, expressions=args)
+
+    def resolve_term(self, node: Any) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise self._refused("an RDF term")
+
+    def resolve_label_predicate(self, operand: exp.Expression, labels: list[str]) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise self._refused("a label test")
+
+    def resolve_map_projection(self, node: Any) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise self._refused("a map projection")
+
+    def resolve_element_rows(self, node: Any, source: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise self._refused("a list of graph elements")
+
+    def resolve_subquery(self, node: Any) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise self._refused("a subquery")
+
+    def resolve_pattern_comprehension(self, node: Any) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise self._refused("a pattern comprehension")
+
+
+def _where_condition(where_expr: str, variable: str, mapping: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A write's WHERE text as the condition it states on the matched rows: parsed as a Cypher
+    expression and lowered from its tree as a read's WHERE is (REQ-913) -- never its text in the
+    statement, so a string in it is one value and text that is no expression is refused."""
+    from provisa.cypher.expr_parser import parse_expression
+    from provisa.gql.expr_visitor import ExprLowering
+    from provisa.gql.translator import _timestamp_literal
+    from provisa.gql.translator_helpers import _rewrite_cypher_fn_node
+
+    tree = parse_expression(where_expr)
+    lowered = ExprLowering(_MatchedRowWhere(variable, mapping)).lower(tree)
+    return lowered.transform(_rewrite_cypher_fn_node).transform(_timestamp_literal)
 
 
 # ---------------------------------------------------------------------------
@@ -1438,7 +1589,7 @@ class WriteTranslator:
         ]
         if not ast.where_expr:
             return " AND ".join(conditions)
-        where_sql = _rewrite_where(ast.where_expr, ast.variable, mapping)
+        where_sql = _where_condition(ast.where_expr, ast.variable, mapping).sql(dialect="postgres")
         return " AND ".join([*conditions, f"({where_sql})"]) if conditions else where_sql
 
     def _translate_delete(self, ast: WriteAST) -> str:

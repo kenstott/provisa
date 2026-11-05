@@ -26,28 +26,28 @@
 
 ## 所有數據來源 {: #all-sources }
 
-Provisa 註冊了 **73** 種數據來源類型，即 Sources 表單所提供的類型。下方表格涵蓋全部 73 種；索引即為計數。
+Provisa 註冊了 **77** 種數據來源類型，即 Sources 表單所提供的類型。下方表格涵蓋全部 77 種；索引即為計數。
 
 | # | 群組 | 數據來源類型 |
 | --- | --- | --- |
-| 1–15 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
-| 16–24 | [雲端數據倉庫](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
-| 25–29 | [分析／OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
-| 30–33 | [數據湖／開放表格式](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
-| 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | [程式碼來源](code-sources.md) | `node`, `python` |
-| 41–43 | [串流](#streaming) | `kafka`, `websocket`, `rss` |
-| 44 | [推送接收器](#push-receiver) | `ingest` |
-| 45–46 | [圖形與語意](#graph-semantic) | `neo4j`, `sparql` |
-| 47–51 | [檔案式](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 52–53 | [可觀測性與其他](#observability-other) | `google_sheets`, `prometheus` |
-| 54–61 | [企業 SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 62–67 | [API 數據來源](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
-| 68 | [GovData](#govdata) | `govdata` |
-| 69–70 | [數據品質檢查器](#data-quality-checkers) | `soda`, `great_expectations` |
-| 71 | [數據剖析器](#data-profiler) | `data_profiler` |
-| 72 | [Kaggle 數據集](#kaggle-datasets) | Kaggle（經 Sources 表單暫存；註冊為 `files` 數據來源——見 [Kaggle 數據集](#kaggle-datasets)） |
-| 73 | [Wikipedia](#wikipedia) | Wikipedia（註冊為爬取所指定頁面的 `files` 數據來源——見 [Wikipedia](#wikipedia)） |
+| 1–16 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2`, `jdbc` |
+| 17–25 | [雲端數據倉庫](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
+| 26–30 | [分析／OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 31–34 | [數據湖／開放表格式](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
+| 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
+| 40–42 | [程式碼來源](code-sources.md) | `node`, `python`, `go` |
+| 43–45 | [串流](#streaming) | `kafka`, `websocket`, `rss` |
+| 46 | [推送接收器](#push-receiver) | `ingest` |
+| 47–48 | [圖形與語意](#graph-semantic) | `neo4j`, `sparql` |
+| 49–53 | [檔案式](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 54–55 | [可觀測性與其他](#observability-other) | `google_sheets`, `prometheus` |
+| 56–64 | [企業 SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 65–71 | [API 數據來源](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 72 | [GovData](#govdata) | `govdata` |
+| 73–74 | [數據品質檢查器](#data-quality-checkers) | `soda`, `great_expectations` |
+| 75 | [數據剖析器](#data-profiler) | `data_profiler` |
+| 76 | [Kaggle 數據集](#kaggle-datasets) | Kaggle（經 Sources 表單暫存；註冊為 `files` 數據來源——見 [Kaggle 數據集](#kaggle-datasets)） |
+| 77 | [Wikipedia](#wikipedia) | Wikipedia（註冊為爬取所指定頁面的 `files` 數據來源——見 [Wikipedia](#wikipedia)） |
 
 Provisa 支援的每一種數據來源類型的參照。「直接驅動程式」指單一來源查詢原生地針對該數據來源執行（低於 100 毫秒）。「連接器名稱」是該數據來源參與多來源 JOIN 時所用的聯邦連接器。
 

@@ -68,6 +68,7 @@ import { useSourceKind } from "../sources/sourceKind";
 import { ttlSignalMissingCacheTtl } from "../sources/loadManagement";
 import { usePanelDirty } from "../../components/list/panelLeave";
 import { ProfilerResultSelect } from "./ProfilerResultSelect";
+import { requiredParametersOf } from "./lookups";
 import { SchemaTableSelects } from "./SchemaTableSelects";
 import { DeclaredColumns } from "./DeclaredColumns";
 import { ImportSetField } from "./ImportSetField";
@@ -95,16 +96,17 @@ interface RegisterTableFormProps {
     schemaName: string,
     tableName: string,
   ) => Promise<
-    {
-      name: string;
-      dataType: string;
-      subtype?: string | null; // REQ-2171
-      comment?: string | null;
-      nativeFilterType?: string | null;
-      nativeFilterRequired?: boolean | null;
-      isPrimaryKey?: boolean | null;
-      path?: string | null;
-    }[] | null // null: the source is still starting (REQ-1824); the answer arrives as `lateColumns`
+    | {
+        name: string;
+        dataType: string;
+        subtype?: string | null; // REQ-2171
+        comment?: string | null;
+        nativeFilterType?: string | null;
+        nativeFilterRequired?: boolean | null;
+        isPrimaryKey?: boolean | null;
+        path?: string | null;
+      }[]
+    | null // null: the source is still starting (REQ-1824); the answer arrives as `lateColumns`
   >;
   /** The columns read answered after STARTING, with the table they belong to. */
   lateColumns?: LateColumns | null;
@@ -367,40 +369,41 @@ export function RegisterTableForm({
     // registrant's to state, so nothing generic is put there for them.
   }, []);
 
-  const applyColumns = (cols: NonNullable<Awaited<ReturnType<typeof getAvailableColumnsMetadata>>>) => {
-      const formed = cols.map((c) => {
-        const snake = toSnakeCase(c.name);
-        return {
-          name: c.name,
-          visibleTo: roles.map((r) => r.id),
-          masks: [],
-          alias: snake !== c.name ? snake : "",
-          description: c.comment || "",
-          // REQ-1983: a Qdrant collection's vectors are offered, left unselected.
-          selected: !offeredUnselected(sourceType, c.path),
-          nativeFilterType: c.nativeFilterType ?? null,
-          nativeFilterRequired: c.nativeFilterRequired ?? null,
-          dataType: c.dataType,
-          subtype: c.subtype ?? null, // REQ-2171
-          isPrimaryKey: c.isPrimaryKey ?? false,
-          // REQ-1959: nothing is public by default. A parameter column is an argument, not
-          // data, and its scope publishes nothing whatever it says.
-          scope: "domain",
-          // REQ-1982: a document source says where a nested field is read from; REQ-1739: an
-          // ingest source's path is set below.
-          path: c.path ?? null,
-        };
-      });
-      setColumns(formed);
-      setUntypedAtDiscovery(formed.filter((c) => !c.dataType).map((c) => c.name));
-      const pickedType = sources.find((s) => s.id === sourceId)?.type ?? "";
-      if (!CDC_TYPES.has(pickedType)) {
-        const autoWm = formed.find(
-          (c) =>
-            (c.name === "updated_at" || c.name === "updated") && isWatermarkEligible(c.dataType),
-        );
-        if (autoWm) setWatermarkColumn(autoWm.name);
-      }
+  const applyColumns = (
+    cols: NonNullable<Awaited<ReturnType<typeof getAvailableColumnsMetadata>>>,
+  ) => {
+    const formed = cols.map((c) => {
+      const snake = toSnakeCase(c.name);
+      return {
+        name: c.name,
+        visibleTo: roles.map((r) => r.id),
+        masks: [],
+        alias: snake !== c.name ? snake : "",
+        description: c.comment || "",
+        // REQ-1983: a Qdrant collection's vectors are offered, left unselected.
+        selected: !offeredUnselected(sourceType, c.path),
+        nativeFilterType: c.nativeFilterType ?? null,
+        nativeFilterRequired: c.nativeFilterRequired ?? null,
+        dataType: c.dataType,
+        subtype: c.subtype ?? null, // REQ-2171
+        isPrimaryKey: c.isPrimaryKey ?? false,
+        // REQ-1959: nothing is public by default. A parameter column is an argument, not
+        // data, and its scope publishes nothing whatever it says.
+        scope: "domain",
+        // REQ-1982: a document source says where a nested field is read from; REQ-1739: an
+        // ingest source's path is set below.
+        path: c.path ?? null,
+      };
+    });
+    setColumns(formed);
+    setUntypedAtDiscovery(formed.filter((c) => !c.dataType).map((c) => c.name));
+    const pickedType = sources.find((s) => s.id === sourceId)?.type ?? "";
+    if (!CDC_TYPES.has(pickedType)) {
+      const autoWm = formed.find(
+        (c) => (c.name === "updated_at" || c.name === "updated") && isWatermarkEligible(c.dataType),
+      );
+      if (autoWm) setWatermarkColumn(autoWm.name);
+    }
   };
 
   // The columns of a source that was still starting arrive here, once its server answers.
@@ -658,6 +661,15 @@ export function RegisterTableForm({
     tables.some(
       (rt) => rt.sourceId === sourceId && toSnakeCase(rt.tableName) === toSnakeCase(tbl.name),
     );
+  // REQ-1986: what each offered table needs to be read, a steward's requirements included once
+  // it is registered.
+  const requiredOf = (tbl: { name: string }) =>
+    requiredParametersOf(
+      availableTables.find((a) => a.name === tbl.name) ?? {},
+      tables.find(
+        (rt) => rt.sourceId === sourceId && toSnakeCase(rt.tableName) === toSnakeCase(tbl.name),
+      ),
+    );
   const allTablesRegistered =
     !loadingTables &&
     !!schemaName &&
@@ -769,6 +781,7 @@ export function RegisterTableForm({
           <>
             <SchemaTableSelects
               {...{ sourceId, schemaName, setSchemaName, tableName, setTableName, isRegistered }}
+              requiredOf={requiredOf}
               schemas={availableSchemas}
               loadingSchemas={loadingSchemas}
               fixedSchema={isFixedSchema}

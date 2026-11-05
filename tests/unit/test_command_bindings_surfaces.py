@@ -56,7 +56,7 @@ _ENRICH = {
 
 def _state() -> SimpleNamespace:
     return SimpleNamespace(
-        roles={"seller": {"id": "seller", "capabilities": [], "domain_access": ["sales"]}},
+        roles={"seller": {"id": "seller", "capabilities": ["usage"], "domain_access": ["sales"]}},
         tracked_functions={"meta_schema": _SCHEMA, "enrich": _ENRICH},
         tracked_webhooks={},
     )
@@ -103,7 +103,7 @@ def _schema_input(functions: list[dict]) -> SchemaInput:
         relationships=[],
         column_types={},
         naming_rules=[],
-        role={"id": "seller", "capabilities": [], "domain_access": ["sales"]},
+        role={"id": "seller", "capabilities": ["usage"], "domain_access": ["sales"]},
         domains=[{"id": "sales", "description": "Sales"}],
         domain_prefix=False,
         functions=functions,
@@ -136,7 +136,13 @@ def test_a_role_reaches_the_meta_commands_by_catalog_read():
     assert not reaches_command_domain(["shelter", "ontology"], "ontology")
     assert not reaches_command_domain(["shelter"], "hr")
     apoc = {"name": "apoc_meta_data", "domain_id": "meta", "visible_to": ["reader"]}
-    assert command_reachable(apoc, {"id": "reader", "domain_access": ["shelter", "meta"]})
-    assert not command_reachable(apoc, {"id": "reader", "domain_access": ["shelter"]})
+    assert command_reachable(
+        apoc, {"id": "reader", "capabilities": ["usage"], "domain_access": ["shelter", "meta"]}
+    )
+    assert not command_reachable(
+        apoc, {"id": "reader", "capabilities": ["usage"], "domain_access": ["shelter"]}
+    )
     # Grants still decide: reach alone assigns nothing.
-    assert not command_reachable(apoc, {"id": "outsider", "domain_access": ["shelter", "meta"]})
+    assert not command_reachable(
+        apoc, {"id": "outsider", "capabilities": ["usage"], "domain_access": ["shelter", "meta"]}
+    )

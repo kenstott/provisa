@@ -136,7 +136,8 @@
       "graphql_body_not_json": "El cuerpo de la solicitud no es JSON: {{error}}",
       "graphql_request_not_object": "Una solicitud GraphQL es un objeto JSON con una consulta.",
       "graphql_parameter_type": "El parámetro {{parameter}} de la solicitud GraphQL debe ser {{expected}}.",
-      "graphql_mutation_over_get": "Una mutación se envía con POST, nunca con GET."
+      "graphql_mutation_over_get": "Una mutación se envía con POST, nunca con GET.",
+      "listed_only": "El rol {{role}} solo puede listar {{table}}: se pueden leer sus metadatos, no sus datos"
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",
@@ -293,7 +294,8 @@
       "not_found": "No se encontró el rol",
       "org_selection_required": "Se requiere seleccionar una organización",
       "already_exists": "El rol '{{role}}' ya existe",
-      "description_missing": "El rol '{{role}}' necesita una descripción de para qué sirve"
+      "description_missing": "El rol '{{role}}' necesita una descripción de para qué sirve",
+      "right_not_in_parents": "El rol {{role}} no puede tener {{right}}: ningún padre lo tiene"
     },
     "schema": {
       "allowed_domains_updated": "Dominios permitidos actualizados para el origen '{{source}}'",
@@ -403,6 +405,7 @@
       "source_region_set": "Región del origen {{source}} establecida en {{region}}",
       "region_refused": "No se estableció la región: {{reason}}",
       "table_too_complex": "La tabla '{{table}}' no se registró con las columnas seleccionadas: {{reason}}. Elija menos columnas.",
+      "remote_throttled": "La tabla '{{table}}' no se registró: el límite de solicitudes del origen no permitió comprobarla ({{reason}}). Inténtelo de nuevo más tarde.",
       "table_updated": "Tabla '{{table}}' actualizada (id={{id}})",
       "task_deleted": "Tarea '{{task}}' eliminada",
       "task_disabled": "Tarea '{{task}}' deshabilitada",
@@ -475,7 +478,11 @@
       "relationship_same_entity_cardinality": "La relación '{{relationship}}' no se puede marcar como la misma entidad: es {{cardinality}}, y la misma entidad es una fila con una fila",
       "relationship_same_entity_not_grounded": "La relación '{{relationship}}' no se puede marcar como la misma entidad: {{source}} y {{target}} no están fundamentadas en el mismo término",
       "relationship_same_entity_not_keys": "La relación '{{relationship}}' no se puede marcar como la misma entidad: {{columns}} no es la clave primaria ni una clave única de {{table}}",
-      "kaggle_token_missing": "Conjunto de datos de Kaggle {{owner}}/{{ref}}: el origen de datos no tiene ningún token de API de Kaggle. Añádelo en el formulario de Orígenes de datos, donde se introduce su token."
+      "kaggle_token_missing": "Conjunto de datos de Kaggle {{owner}}/{{ref}}: el origen de datos no tiene ningún token de API de Kaggle. Añádelo en el formulario de Orígenes de datos, donde se introduce su token.",
+      "jdbc_invalid": "Fuente {{source}}: {{error}}",
+      "jdbc_file_refused": "Fuente {{source}}: la URL nombra {{path}}, que este servidor no puede abrir para la organización.",
+      "jdbc_options_refused": "Fuente {{source}}: la URL de esta organización no puede indicar la opción de controlador {{options}}.",
+      "jdbc_driver_refused": "Fuente {{source}}: un controlador JDBC del cliente se ejecuta como código en la propia JVM de Provisa, algo que solo permite una instalación autoalojada."
     },
     "secrets": {
       "name_refused": "{{name}} no es un nombre dentro de los secretos de esta organización en {{service}}: un nombre es relativo a la organización y no puede salir de ella",
@@ -623,7 +630,10 @@
       "popup_blocked": "Su navegador bloqueó la ventana de inicio de sesión. Permita las ventanas emergentes de este sitio e inténtelo de nuevo.",
       "window_closed": "La ventana de inicio de sesión se cerró antes de terminar.",
       "tenant_invalid": "La configuración de Microsoft 365 de la organización no indica un directorio (inquilino). Un administrador introduce el ID o el dominio del directorio.",
-      "microsoft_account_unread": "Se aprobó el inicio de sesión, pero Microsoft no indicó de quién es el buzón."
+      "microsoft_account_unread": "Se aprobó el inicio de sesión, pero Microsoft no indicó de quién es el buzón.",
+      "client_missing": "Introduzca el ID de cliente y el secreto de cliente de la aplicación y luego inicie sesión.",
+      "client_not_taken": "Este tipo de fuente inicia sesión con el cliente de su organización, no con uno introducido en el formulario.",
+      "no_account_returned": "Se aprobó el inicio de sesión, pero la respuesta no indicó qué cuenta ({{parameter}}). Inicie sesión de nuevo."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "Su organización no ha permitido orígenes que lean sus buzones. Un administrador lo permite en Administración › Correo.",
@@ -758,6 +768,12 @@
         "no_description": "Este producto de datos no indica ni su propósito ni su uso.",
         "successor_retired": "El producto de datos que recibió los miembros de este, '{{successor}}', también se ha retirado."
       }
+    },
+    "erd": {
+      "database_unavailable": "No se pueden leer los diseños del ERD: la base de datos no está disponible",
+      "layout_not_found": "No hay ningún diseño llamado {{name}}",
+      "layout_name_required": "Un diseño necesita un nombre",
+      "layout_place_unreadable": "El diseño coloca un(a) {{kind}} que usted no puede leer"
     }
   }
 }

@@ -76,6 +76,9 @@ class SourceType(str, Enum):
     # DuckDB engine; motherduck attaches a remote cloud database on the pg engine.
     motherduck = "motherduck"
     saphana = "saphana"  # SAP HANA — generic self-only landing engine (hana+hdbcli dialect)
+    # REQ-2191: a database with no named type, reached at its own SQLAlchemy URL and written in the
+    # SQL dialect its admin chose (provisa/jdbc_source).
+    jdbc = "jdbc"
     # Postgres-wire-compatible RDBs — reuse the postgres driver/dialect/Trino connector (REQ-950)
     cockroachdb = "cockroachdb"
     yugabytedb = "yugabytedb"
@@ -124,10 +127,11 @@ class SourceType(str, Enum):
     kafka = "kafka"
     websocket = "websocket"  # External WebSocket feed — connect, subscribe, receive events
     rss = "rss"  # RSS 2.0 / Atom feed — poll, watermark by pubDate/updated
-    # Code (REQ-1984, REQ-1993): the organisation's own functions, run in a sandboxed worker; their
-    # tables are read per argument set and landed, as a pipeline table is.
+    # Code (REQ-1984, REQ-1993, REQ-2200): the organisation's own functions, run in a sandboxed
+    # worker; their tables are read per argument set and landed, as a pipeline table is.
     node = "node"
     python = "python"
+    go = "go"
     # Graph / Semantic
     neo4j = "neo4j"
     sparql = "sparql"
@@ -161,6 +165,9 @@ class SourceType(str, Enum):
     sharepoint = "sharepoint"
     salesforce = "salesforce"
     servicenow = "servicenow"  # REQ-1954: read through the instance's Table API
+    # REQ-2197: QuickBooks Online, its Accounting API entities read through the query endpoint
+    # (simple conditions pushed into its query language) and landed.
+    quickbooks = "quickbooks"
     jira = "jira"  # REQ-2069: Jira Cloud, read through its Calcite adapter (JQL pushed down)
     cloudops = "cloudops"  # REQ-1947: Azure / AWS / GCP resource inventory, read only
     splunk = "splunk"
@@ -360,6 +367,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # vocabulary), translated to the engine session props at query time. Only that vocabulary reaches
     # the session: every other key is a setting its connector or driver reads from here.
     federation_hints: dict[str, str] = Field(default_factory=dict)
+    # REQ-1923: the values a branded source's setup was given besides its credential, by the
+    # brand's setup field names (Shopify: store, api_version; provisa.graphql_remote.brands
+    # Brand.setup). Empty for a source of no brand, or a brand whose setup asks for nothing.
+    brand_setup: dict[str, str] = Field(default_factory=dict)
     # REQ-251: type-specific mapping DSL for NoSQL/non-relational sources
     # (redis/elasticsearch/prometheus). Holds {"tables": [...]} plus connector options.
     mapping: dict = Field(default_factory=dict)
@@ -422,6 +433,17 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
             data = {**data, "change_signal": source_change_signal(stype, data.get("change_signal"))}
         return data
 
+    @classmethod
+    def settings_view(
+        cls, source_id: str, source_type: str, federation_hints: dict[str, str]
+    ) -> "Source":  # REQ-2191
+        """The source as a runtime's per-source maps hold it -- its id, type and settings -- for a
+        reader that holds only those (``FederationEngine.connector_pushdown``). Not validated
+        again: it was when the source was saved."""
+        return cls.model_construct(
+            id=source_id, type=SourceType(source_type), federation_hints=dict(federation_hints)
+        )
+
     @property
     def connector(self) -> str | None:
         """The Trino catalog ``connector.name`` (the ``USING`` label) for this source type, or None if
@@ -433,7 +455,12 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
 
     @property
     def dialect(self) -> str | None:
-        """SQLGlot dialect name, or None for NoSQL sources."""
+        """SQLGlot dialect name, or None for NoSQL sources. A JDBC source's is the one its
+        admin chose (REQ-2191)."""
+        if self.type == SourceType.jdbc:
+            from provisa.jdbc_source.settings import SQL_DIALECT
+
+            return self.federation_hints.get(SQL_DIALECT) or None
         return SOURCE_TO_DIALECT.get(self.type.value)
 
     @property
@@ -1206,7 +1233,9 @@ class Column(
     # "query_param" (an OpenAPI operation), "graphql_arg" (a remote GraphQL field's argument),
     # "grpc_input" (a gRPC request's field), "query_arg" (an argument of the table's native
     # query: a MongoDB pipeline, a Cosmos DB query), "partition_key" (a Cosmos DB container's
-    # partition key, REQ-1982).
+    # partition key, REQ-1982), "column_value" (a real column of the table, given by equality,
+    # that narrows the read to the rows having that value: a JDBC source's floor,
+    # REQ-2191).
     native_filter_type: str | None = None
     # Whether the source cannot be read without a value for this parameter, as the source's own
     # description says (an OpenAPI path parameter or one marked required, a GraphQL argument
@@ -1228,7 +1257,7 @@ class Column(
     # relationship, not data (graphql_remote/relation_columns.py).
     gql_object_type: str | None = None
     gql_is_list: bool = False
-    scope: str = "domain"  # "domain" | "listed" | "public" (core/column_scope.py, REQ-2153)
+    scope: str = "domain"  # "domain" | "listed" | "public" | "own-domain" (core/column_scope.py)
 
     @model_validator(mode="before")
     @classmethod
@@ -2205,8 +2234,8 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
     capabilities: list[str]
     domain_access: list[str]
     rate_limit: RoleRateLimit | None = None  # REQ-369
-    # REQ-2155: the roles this one inherits from, in order; its capabilities are the union of its
-    # own and every ancestor's (security.inheritance).
+    # REQ-2155: the roles this one inherits from, in order; what it holds is what it is given
+    # intersected with the union of what they hold (security.inheritance.effective_rights).
     parents: list[str] = Field(default_factory=list)
     relationship_guard: bool = (
         True  # when False (+ SQL opt-out), V002 join approval check is skipped
@@ -2245,12 +2274,10 @@ class Role(BaseModel):  # REQ-003, REQ-005, REQ-042, REQ-059, REQ-060, REQ-369
 
 
 def flatten_roles(roles: list[Role]) -> list[Role]:  # REQ-003, REQ-005, REQ-042, REQ-2155
-    """Flatten the inherited role hierarchy: each role with its ancestors' capabilities and
-    domain_access unioned in, and each property (max_rows, session values) set by the nearest
-    ancestor that declares it -- the one resolution the runtime build applies
+    """Flatten the inherited role hierarchy: each role with what it holds, its rights intersected
+    with the union of its parents', and each property (max_rows, session values) set by the
+    nearest ancestor that declares it -- the one resolution the runtime build applies
     (security.inheritance.flatten_role_dicts). Refuses an inheritance cycle by name (REQ-1677).
-
-    Returns new Role objects with inherited permissions merged in.
     """
     from provisa.security.inheritance import flatten_role_dicts
 
@@ -3536,6 +3563,15 @@ class SecurityConfig(BaseModel):  # REQ-693
         return self.mode.lower() == "high"
 
 
+class ReferenceLibraryConfig(BaseModel):  # REQ-2185
+    """The reference library's retrieval setting, as an org holds it (org setting
+    ``reference_library``): the passages nearest a question, or the glossary walk's as well."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    retrieval: Literal["passage", "graph"] = "passage"
+
+
 #: Validation-context key: the configuration parsed is the model the store holds (REQ-1919).
 STORED_MODEL = "stored_model"
 
@@ -3615,6 +3651,8 @@ class ProvisaConfig(BaseModel):
     # and a sub-role ``<attribute>__<value>`` for the value a user's attributes give it. Only these,
     # never every claim.
     derived_roles: list[DerivedRole] = Field(default_factory=list)
+    # REQ-2185: the reference library's retrieval setting, passage or graph.
+    reference_library: ReferenceLibraryConfig = Field(default_factory=ReferenceLibraryConfig)
     rls_rules: list[RLSRule] = Field(default_factory=list)
     event_triggers: list[EventTrigger] = Field(default_factory=list)
     scheduled_triggers: list[ScheduledTrigger] = Field(default_factory=list)
@@ -3737,9 +3775,10 @@ class ProvisaConfig(BaseModel):
     def _roles_list_a_domain(self, info: ValidationInfo) -> "ProvisaConfig":
         """A role is always one or more domains, or all (``rights.role_domain_problem``).
 
-        Judged on the role's effective list — its own plus what a parent IN THIS CONFIG hands
-        down. An empty list reads no data, so it fails the load naming the role rather than
-        loading a role that silently reaches nothing.
+        An empty list reads no data, so it fails the load naming the role rather than loading a
+        role that silently reaches nothing. A role with parents is held to the form's rule: a
+        right no parent holds fails the load by name (REQ-2155), judged where every parent is a
+        role of this config or a standard role.
 
         A configuration a file or an apply gives is judged here. The model the store already holds
         (``STORED_MODEL`` in the validation context, ``config_loader.parse_store_raw``) is not: the
@@ -3750,27 +3789,41 @@ class ProvisaConfig(BaseModel):
         """
         if (info.context or {}).get(STORED_MODEL):
             return self
+        from provisa.core.db import STANDARD_ROLES, standard_role_dicts
+        from provisa.security import domain_tree
+        from provisa.security.inheritance import parent_map, right_not_in_parents, role_chain
         from provisa.security.rights import role_domain_problem
 
-        by_id = {r.id: r for r in self.roles}
+        rows = {
+            **{r.id: r.model_dump() for r in self.roles},
+            **{r["id"]: r for r in standard_role_dicts()},
+        }
+        domain_parents = domain_tree.parent_map(d.model_dump() for d in self.domains)
+        parents = parent_map(rows.values())
         for role in self.roles:
-            # Walk the ancestors here rather than through flatten_roles: that refuses an
-            # inheritance cycle, which is its own rule with its own error (REQ-1677), raised
-            # where the roles are flattened. A cycle simply ends this walk.
-            # REQ-2155: capabilities are inherited, reach is the role's own.
-            capabilities: set[str] = set()
-            seen: set[str] = set()
-            pending: list[Role] = [role]
-            while pending:
-                current = pending.pop()
-                if current.id in seen:
-                    continue
-                seen.add(current.id)
-                capabilities.update(current.capabilities)
-                pending.extend(by_id[p] for p in current.parents if p in by_id)
-            problem = role_domain_problem(role.id, capabilities, set(role.domain_access))
+            problem = role_domain_problem(role.id, role.capabilities, set(role.domain_access))
             if problem is not None:
                 raise ValueError(problem)
+            if role.id in STANDARD_ROLES:
+                continue
+            try:
+                chain = role_chain(role.id, parents)
+            except ValueError:
+                continue  # a cycle has its own rule and error, where roles flatten (REQ-1677)
+            if not set(chain) <= set(rows):
+                continue
+            refused = right_not_in_parents(
+                role.id,
+                role.parents,
+                role.capabilities,
+                role.domain_access,
+                role.residency_values,
+                [rows[rid] for rid in chain],
+                domain_parents,
+            )
+            if refused is not None:
+                kind, right, why = refused
+                raise ValueError(f"Role {role.id!r} cannot hold {kind} {right!r}: {why}")
         return self
 
     @model_validator(mode="after")

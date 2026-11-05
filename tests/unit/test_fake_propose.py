@@ -13,6 +13,8 @@ nothing for a pii column with no confident match, and nothing for a column alrea
 
 from __future__ import annotations
 
+import pytest
+
 from provisa.fakes.kinds import parse
 from provisa.fakes.propose import ProfiledColumnFacts, propose
 
@@ -66,3 +68,20 @@ def test_every_proposal_is_a_declaration_the_save_reads():
             parse(proposal["fake"])
         else:
             parse(proposal["syntheticRule"], rule=True)
+
+
+def test_a_named_column_is_proposed_from_its_profile_though_it_declares_a_fake():
+    out = propose("r1", _COLUMNS, pii=set(), declared={"email", "city"}, named={"email"})
+    assert out.columns == {"email": {"fake": "email()"}}
+    assert out.unmatched_pii == []
+
+
+def test_with_no_columns_named_a_declared_column_is_still_skipped():
+    out = propose("r1", _COLUMNS, pii=set(), declared={"email", "city"})
+    assert "email" not in out.columns and "city" not in out.columns
+    assert out.columns["full_name"] == {"fake": "name()"}
+
+
+def test_a_named_column_the_profile_does_not_hold_is_refused_by_name():
+    with pytest.raises(ValueError, match="'nickname'"):
+        propose("r1", _COLUMNS, pii=set(), declared=set(), named={"email", "nickname"})

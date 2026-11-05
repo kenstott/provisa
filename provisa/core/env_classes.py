@@ -40,6 +40,10 @@ CARRIED: frozenset[str] = frozenset(
         # REQ-2147: a steward's classification decisions are about the model's columns, as the
         # constraints are, so they travel with them.
         "profiler_classifications",
+        # REQ-2189: a saved ERD layout is stored in the model and versions with the environment.
+        "erd_layouts",
+        "erd_layout_domains",
+        "erd_layout_tables",
         "metrics",
         # ``roles`` and ``user_role_assignments`` are additionally SEEDED_AT_CREATION: CARRIED,
         # but only by a creation. See that class for why no later copy touches them.
@@ -158,6 +162,9 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "reference_documents",
         "reference_document_domains",
         "reference_passages",
+        # REQ-2185 (GRAPH RETRIEVAL): its glossary terms' embeddings, by its own vector model,
+        # made again from its own terms wherever they are missing or stale.
+        "glossary_term_vectors",
         # REQ-2179: the glossary's scans of this environment's library documents and the review
         # queue of the terms they propose, drafts until a steward decides on them.
         "glossary_term_scans",
@@ -192,6 +199,9 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "checker_targets",
         # REQ-2132: its own checkers' latest scans.
         "checker_latest_runs",
+        # REQ-2147: its own scans for sensitive values inside text, and the hints they left.
+        "profiler_sensitive_scans",
+        "profiler_sensitive_hints",
     }
 )
 

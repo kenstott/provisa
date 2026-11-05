@@ -196,6 +196,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     relationships: list[dict] | None = None,
     source_types: dict[str, str] | None = None,
     engine=None,
+    source_hints: dict[str, dict[str, str]] | None = None,
 ) -> GovernanceContext:
     """Build GovernanceContext from server state for a given role.
 
@@ -219,6 +220,8 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
               (matches every connector registered today, all of which declare predicate_pushdown).
         engine: The bound FederationEngine, used to read each masked table's connector
               ``Capability`` (REQ-897) via ``connector_pushdown``.
+        source_hints: {source_id: federation_hints}: each source's settings, which
+              ``connector_pushdown`` reads with its type (REQ-2191).
     """
     if role is None:
         raise ValueError(
@@ -275,6 +278,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         has_capability,
         reaches_domain,
         served_across_domains,
+        unlisted_columns,
     )
 
     from provisa.transpiler.metadata_settings import scope_ids_sql
@@ -339,6 +343,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
                 for c in cols
                 if _has_view_gov or c["column_name"] not in GOVERNANCE_META_COLUMNS
             )
+            # REQ-1132: read with no meta grant, as a column published across domains is.
+            if not reaches_domain(role["domain_access"], META_DOMAIN_ID) and served_across_domains(
+                {"id": role_id}, tbl
+            ):
+                _public.add(table_id)
         else:
             # ONE rule with the schema build (security.rights.column_served): the column's grant
             # — empty is everyone, "*", or the role; an explicit grant only in a lockdown domain
@@ -443,24 +452,40 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     from provisa.compiler.naming import apply_sql_name as _sql_name
     from provisa.compiler.sql_literals import sql_literal
 
+    outside = set(ctx.columns_outside_relation) | unlisted_columns(role, tables)
     for view, columns in (
         ("catalog_pg_attribute", "CAST(attrelid AS BIGINT), CAST(attname AS TEXT)"),
         ("is_columns", "CAST(provisa_table_id AS BIGINT) + 16384, CAST(column_name AS TEXT)"),
     ):
-        if not ctx.columns_outside_relation:
+        if not outside:
             break
         pairs = ", ".join(
             f"({16384 + table_id}, "
             + sql_literal(ctx.physical_to_sql.get((table_id, name)) or _sql_name(name), "postgres")
             + ")"
-            for table_id, name in sorted(ctx.columns_outside_relation)
+            for table_id, name in sorted(outside)
         )
         for tm in ctx.tables.values():
             if getattr(tm, "domain_id", None) != META_DOMAIN_ID or tm.table_name != view:
                 continue
             existing = gov.rls_rules.get(tm.table_id)
-            outside = f"({columns}) NOT IN ({pairs})"
-            gov.rls_rules[tm.table_id] = f"({existing}) AND {outside}" if existing else outside
+            out = f"({columns}) NOT IN ({pairs})"
+            gov.rls_rules[tm.table_id] = f"({existing}) AND {out}" if existing else out
+    # REQ-2153: and a listed table's other columns are named to no role that only lists it.
+    unlisted = unlisted_columns(role, tables)
+    if unlisted:
+        pairs = ", ".join(
+            f"({table_id}, {sql_literal(name, 'postgres')})" for table_id, name in sorted(unlisted)
+        )
+        for tm in ctx.tables.values():
+            if getattr(tm, "domain_id", None) != META_DOMAIN_ID or tm.table_name not in (
+                "table_columns_meta",
+                "column_details",
+            ):
+                continue
+            existing = gov.rls_rules.get(tm.table_id)
+            out = f"(table_id, column_name) NOT IN ({pairs})"
+            gov.rls_rules[tm.table_id] = f"({existing}) AND {out}" if existing else out
 
     # REQ-1593, REQ-2163: the ontology schema's definition views answer what the glossary API
     # does -- a term is read where glossary.readable_term admits it -- by the same WHERE-injection.
@@ -515,7 +540,10 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             source_type = source_types.get(source_id)
             if not source_type:
                 continue
-            cap = engine.connector_pushdown(source_type)
+            from provisa.core.models import Source
+
+            hints = (source_hints or {}).get(source_id, {})
+            cap = engine.connector_pushdown(Source.settings_view(source_id, source_type, hints))
             plan_mask_evaluation(cap, can_stream=False)
 
     return gov
@@ -598,6 +626,80 @@ def _table_id_for_node(table_node: exp.Table, gov_ctx: GovernanceContext) -> int
     from provisa.compiler.naming import table_id_of
 
     return table_id_of(table_node, gov_ctx.table_map)
+
+
+def flatten_leftmost_join_groups(tree: exp.Expr) -> None:  # REQ-039
+    """Unwrap, in place, an unaliased parenthesised join group that is a SELECT's first FROM item
+    -- recursively, the group's own leftmost item -- into that SELECT's FROM and joins, in order.
+    Joins associate left to right, so ``((a JOIN b ON ..) LEFT JOIN c ON ..)`` (the form BI tools
+    write) is ``a JOIN b ON .. LEFT JOIN c ON ..``, and its relations are governed as any other.
+    A group elsewhere -- the right side of a join, or under an alias -- is left as it is
+    (:func:`parenthesised_join_tables` refuses it)."""
+    for frm in list(tree.find_all(exp.From)):
+        select = frm.parent
+        if not isinstance(select, exp.Select):
+            continue
+        while True:
+            group = frm.this
+            if (
+                not isinstance(group, exp.Subquery)
+                # a derived table's query; a nested group's parentheses are a Subquery (a Query)
+                or (isinstance(group.this, exp.Query) and not isinstance(group.this, exp.Subquery))
+                or {k for k, v in group.args.items() if v} - {"this", "joins"}
+            ):
+                break
+            inner = group.this
+            joins = [
+                *(inner.args.get("joins") or []),
+                *(group.args.get("joins") or []),
+                *(select.args.get("joins") or []),
+            ]
+            inner.set("joins", None)
+            frm.set("this", inner)
+            select.set("joins", joins)
+
+
+def parenthesised_join_tables(  # REQ-039
+    tree: exp.Expr, gov_ctx: GovernanceContext
+) -> list[exp.Table]:
+    """The first registered relation of each parenthesised FROM item that is no query and that
+    :func:`flatten_leftmost_join_groups` leaves -- a group on the right side of a join, ``a JOIN
+    (bank.customer CROSS JOIN v) ON ..``, or one under an alias, ``(bank.customer) x``. Neither the
+    column checks nor this stage see a relation inside one, so its hidden columns, masks and row
+    rules would go unapplied: it is refused until every registered-relation reference is governed
+    by construction. A table of a query nested in the group, or a CTE, is not the group's own."""
+    from provisa.compiler.cte_utils import names_a_cte_in_scope
+
+    found: list[exp.Table] = []
+    for group in tree.find_all(exp.Subquery):
+        if isinstance(group.this, exp.Query):
+            continue
+        for tbl in group.find_all(exp.Table):
+            if _within_query(tbl, group) or _table_id_for_node(tbl, gov_ctx) is None:
+                continue
+            if not tbl.db and names_a_cte_in_scope(tbl):
+                continue
+            found.append(tbl)
+            break
+    return found
+
+
+def parenthesised_join_message(tbl: exp.Table) -> str:
+    return (
+        f"Relation {tbl.sql(dialect='postgres')!r} is in a parenthesised join group, which is "
+        "not supported: write the join without the parentheses"
+    )
+
+
+def _within_query(node: exp.Expr, stop: exp.Expr) -> bool:
+    """Whether a query lies between ``node`` and its ancestor ``stop``: ``node`` is that query's
+    own, not ``stop``'s."""
+    cur = node.parent
+    while cur is not None and cur is not stop:
+        if isinstance(cur, exp.Query):
+            return True
+        cur = cur.parent
+    return False
 
 
 def _get_tables_from_select(
@@ -866,11 +968,6 @@ def _project_faked(
     projection = sqlglot.parse_one(f"SELECT * FROM {sql} AS {_quote(alias)}", read="postgres")
     subquery = projection.args["from_"].this
     subquery.meta[_GOVERNED] = True  # its own references are the projection's, already governed
-    # A reference qualified by the table's schema now names the projection by its alias alone.
-    for col in node.find_all(exp.Column):
-        if col.table == tbl.name and col.args.get("db") is not None and alias == tbl.name:
-            col.set("db", None)
-            col.set("catalog", None)
     tbl.replace(subquery)
     return subquery
 
@@ -928,10 +1025,6 @@ def _project_kept(
     projection = sqlglot.parse_one(f"SELECT * FROM ({sql}) AS {_quote(alias)}", read="postgres")
     subquery = projection.args["from_"].this
     subquery.meta[_GOVERNED] = True  # its own references are already governed
-    for col in node.find_all(exp.Column):
-        if col.table == tbl.name and col.args.get("db") is not None and alias == tbl.name:
-            col.set("db", None)
-            col.set("catalog", None)
     (faked if faked is not None else tbl).replace(subquery)
     return subquery
 
@@ -1069,10 +1162,6 @@ def _project_members(
     projection = sqlglot.parse_one(f"SELECT * FROM ({sql}) AS {_quote(alias)}", read="postgres")
     subquery = projection.args["from_"].this
     subquery.meta[_GOVERNED] = True  # its own references are already governed
-    for col in node.find_all(exp.Column):
-        if col.table == tbl.name and col.args.get("db") is not None and alias == tbl.name:
-            col.set("db", None)
-            col.set("catalog", None)
     (current if current is not None else tbl).replace(subquery)
     return real_keys
 
@@ -1101,7 +1190,7 @@ def _govern_references(
     which the projection rewrite names and drops. A column of this SELECT's tables referenced
     from a nested SELECT by its alias (a correlated subquery) is replaced too."""
     top_level = {id(e) for e in node.expressions}
-    outputs = {e.alias_or_name.lower() for e in node.expressions if e.alias_or_name}
+    outputs = output_names(node)
     for col in list(node.find_all(exp.Column)):
         parent = col.parent
         if id(col) in top_level or (
@@ -1133,6 +1222,19 @@ def _govern_references(
             continue
         replacement.meta[_GOVERNED] = True
         _replace_reference(col, replacement)
+
+
+def output_names(node: exp.Select) -> set[str]:  # REQ-039
+    """The output names of ``node`` an ORDER BY key may name, in lower case: a real alias's, and
+    a bare column's own. A string literal names no output -- PostgreSQL calls ``'ssn'`` ?column?,
+    so ``ORDER BY ssn`` beside it is the input column ``ssn``."""
+    names: set[str] = set()
+    for e in node.expressions:
+        if isinstance(e, exp.Alias) and e.alias:
+            names.add(e.alias.lower())
+        elif isinstance(e, exp.Column) and not isinstance(e.this, exp.Star):
+            names.add(e.name.lower())
+    return names
 
 
 def _names_an_output(col: exp.Column, node: exp.Select, outputs: set[str]) -> bool:
@@ -1433,6 +1535,11 @@ def _govern_selects(
 
     ``answers``: ``tree`` is a read whose rows are the answer (not a fragment of a larger
     statement, and not a write), so its own projection is read as REQ-1961 says."""
+    from provisa.compiler.sql_rewrite import bind_schema_qualified_columns
+
+    # REQ-2204: a column the statement qualifies by its table's schema is read by the table's
+    # name before any table is put behind a projection under that name.
+    bind_schema_qualified_columns(tree)
     for select in reversed(list(tree.find_all(exp.Select))):
         final = answers and isinstance(tree, exp.Query) and _is_the_answer(select, tree)
         governed_select = _govern_select(select, gov_ctx, final=final)
@@ -1509,12 +1616,17 @@ def apply_governance(
 
     Returns governed SQL string.
     """
-    from provisa.compiler.write_admission import admit_write, is_write
+    from provisa.compiler.write_admission import admit_write, is_write, refuse_nested_writes
     from provisa.core.session_terms import expand_list_settings
     from provisa.observability.stage_trace import trace_stage
 
     trace_stage("govern.in", sql)
     tree = sqlglot.parse_one(sql, read="postgres")
+    refuse_nested_writes(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
+    flatten_leftmost_join_groups(tree)
+    hidden = parenthesised_join_tables(tree, gov_ctx)
+    if hidden:
+        raise PermissionError(f"[V006] {parenthesised_join_message(hidden[0])}")
     writes = is_write(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
     if writes:
         tree = admit_write(tree, gov_ctx, session_vars, params)  # pyright: ignore[reportArgumentType]

@@ -12,7 +12,8 @@
 // source, status, domains, when each was added and last refreshed or replaced -- with the selected
 // one in the panel on the right: its facts and passages, Keep or Discard for a proposed one,
 // Refresh for a URL document, Upload new version for a file one, Remove, and its domains. Adding a
-// document opens its form in the same panel.
+// document opens its form in the same panel. Above the list, the library's retrieval setting,
+// passage or graph (GRAPH RETRIEVAL), saved as it is changed.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -32,35 +33,40 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { Check, DatabaseZap, RefreshCw, Trash2, TriangleAlert, Upload, X } from "lucide-react";
+import { Check, DatabaseZap, RefreshCw, TriangleAlert, Upload, X } from "lucide-react";
 import {
   addLibraryDocument,
   fetchLibrary,
   fetchLibraryDocument,
+  fetchRetrieval,
   keepLibraryDocument,
   reembedLibrary,
   reembedLibraryDocument,
   refreshLibraryDocument,
   removeLibraryDocument,
+  saveRetrieval,
   setLibraryDomains,
   uploadLibraryVersion,
   type LibraryDocument,
   type LibraryDocumentDetail,
   type ReembedOutcome,
+  type Retrieval,
 } from "../../api/referenceLibrary";
 import { useDomains } from "../../hooks/useAdminQueries";
-import { ConfirmDialog } from "../ConfirmDialog";
+import { PanelDelete } from "../list/PanelDelete";
 import { DetailFields } from "../detail/DetailFields";
-import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { FormField, FormFooter, FormLayout, LabelWithHelp } from "../form/FormLayout";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../list/ListTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
+import { PageHelp } from "../PageHelp";
 import { PageLoading } from "../PageLoading";
 import { Tip } from "../Tip";
 import { scopeChange, WHOLE_ORG } from "./referenceScope";
+import { documentMark } from "../../lib/documentMark";
 
 /** The files the library reads. */
-const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx";
+const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx,.xml";
 
 function when(value: string | null, language: string): string {
   return value ? new Date(value).toLocaleString(language) : "";
@@ -240,7 +246,6 @@ function DocumentDetail({
   const [domains, setDomains] = useState<string[]>(doc.domains);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [confirm, setConfirm] = useState<"remove" | "discard" | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -267,12 +272,8 @@ function DocumentDetail({
 
   const remove = async () => {
     setError("");
-    try {
-      await removeLibraryDocument(doc.id);
-      onRemoved(doc.id);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
+    await removeLibraryDocument(doc.id);
+    onRemoved(doc.id);
   };
 
   const proposed = doc.status === "proposed";
@@ -341,19 +342,24 @@ function DocumentDetail({
                 )}
               </FileButton>
             )}
-            <Tip
-              text={proposed ? t("referenceLibrary.discard") : t("referenceLibrary.remove")}
-              named
-            >
-              <ActionIcon
-                color="red"
-                aria-label={proposed ? t("referenceLibrary.discard") : t("referenceLibrary.remove")}
-                data-testid={proposed ? "reflib-discard" : "reflib-remove"}
-                onClick={() => setConfirm(proposed ? "discard" : "remove")}
-              >
-                {proposed ? <X size={14} /> : <Trash2 size={14} />}
-              </ActionIcon>
-            </Tip>
+            {/* REQ-2198: resolves once the document is out of the list. */}
+            <PanelDelete
+              itemKey={String(doc.id)}
+              title={
+                proposed ? t("referenceLibrary.discardTitle") : t("referenceLibrary.removeTitle")
+              }
+              consequence={
+                proposed
+                  ? t("referenceLibrary.discardConsequence", { title: doc.title })
+                  : t("referenceLibrary.removeConsequence", { title: doc.title })
+              }
+              confirmLabel={proposed ? t("referenceLibrary.discard") : t("referenceLibrary.remove")}
+              ariaLabel={proposed ? t("referenceLibrary.discard") : t("referenceLibrary.remove")}
+              icon={proposed ? <X size={14} /> : undefined}
+              testId={proposed ? "reflib-discard" : "reflib-remove"}
+              confirmTestId="reflib-confirm"
+              onDelete={remove}
+            />
           </Group>
         </fieldset>
       </PanelActions>
@@ -442,26 +448,58 @@ function DocumentDetail({
           ))}
         </Stack>
       )}
-      <ConfirmDialog
-        opened={confirm !== null}
-        onCancel={() => setConfirm(null)}
-        title={
-          confirm === "discard"
-            ? t("referenceLibrary.discardTitle")
-            : t("referenceLibrary.removeTitle")
-        }
-        consequence={
-          confirm === "discard"
-            ? t("referenceLibrary.discardConsequence", { title: doc.title })
-            : t("referenceLibrary.removeConsequence", { title: doc.title })
-        }
-        confirmLabel={
-          confirm === "discard" ? t("referenceLibrary.discard") : t("referenceLibrary.remove")
-        }
-        onConfirm={remove}
-        testId="reflib-confirm"
-      />
     </Stack>
+  );
+}
+
+/** The library's retrieval setting, saved as it is changed. */
+function RetrievalSetting({ onError }: { onError: (message: string) => void }) {
+  const { t } = useTranslation();
+  const [retrieval, setRetrieval] = useState<Retrieval | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchRetrieval()
+      .then(setRetrieval)
+      .catch((e) => onError(e instanceof Error ? e.message : String(e)));
+  }, [onError]);
+
+  const change = async (next: Retrieval) => {
+    const before = retrieval;
+    setRetrieval(next);
+    setSaving(true);
+    try {
+      setRetrieval(await saveRetrieval(next));
+    } catch (e) {
+      setRetrieval(before);
+      onError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Group gap="xs" wrap="nowrap" data-testid="reflib-retrieval">
+      <Text size="sm" component="div">
+        <LabelWithHelp
+          label={t("referenceLibrary.retrieval")}
+          help={t("referenceLibrary.retrievalHelp")}
+          textId="reflib-retrieval-label"
+        />
+      </Text>
+      <SegmentedControl
+        size="xs"
+        aria-labelledby="reflib-retrieval-label"
+        value={retrieval ?? ""}
+        disabled={retrieval === null || saving}
+        onChange={(v) => change(v as Retrieval)}
+        data={[
+          { value: "passage", label: t("referenceLibrary.retrievalPassage") },
+          { value: "graph", label: t("referenceLibrary.retrievalGraph") },
+        ]}
+        data-testid="reflib-retrieval-control"
+      />
+    </Group>
   );
 }
 
@@ -558,7 +596,8 @@ export function ReferenceLibraryTab() {
         <Text c="dimmed" size="sm" maw={820}>
           {t("referenceLibrary.intro")}
         </Text>
-        <Group gap="xs" wrap="nowrap">
+        <Group gap="xs" wrap="nowrap" data-toolbar>
+          <RetrievalSetting onError={setError} />
           {stale > 0 && (
             <Button
               size="xs"
@@ -583,6 +622,17 @@ export function ReferenceLibraryTab() {
               {t("referenceLibrary.add")}
             </Button>
           )}
+          <PageHelp
+            title={t("referenceLibrary.helpTitle")}
+            paragraphs={[
+              t("referenceLibrary.helpWhat"),
+              t("referenceLibrary.helpWho"),
+              t("referenceLibrary.helpSees"),
+              t("referenceLibrary.helpEmbedding"),
+            ]}
+            ariaLabel={t("referenceLibrary.helpLabel")}
+            testId="reflib-page-help"
+          />
         </Group>
       </Group>
       {outcome && (
@@ -660,6 +710,8 @@ export function ReferenceLibraryTab() {
                   <React.Fragment key={d.id}>
                     <ListRow
                       testId={`reflib-row-${d.id}`}
+                      // REQ-2201: a demo's tour points at a document by the address it was read from.
+                      data-reflib-source={documentMark(d.source)}
                       selected={selected === d.id && !adding}
                       onClick={() => {
                         setAdding(false);

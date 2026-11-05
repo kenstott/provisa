@@ -165,13 +165,26 @@ _TOOLS: list[Any] = [
             "what a term means, what a policy or contract says, or what a standard requires. "
             "Each passage carries document_title, source, section, page and quote: whenever "
             "your answer uses a passage, cite it by its document title and section or page, and "
-            "quote it. An empty result means the library holds nothing the user may read on it."
+            "quote it. Each also carries reached, how it was found: 'nearest the question', or "
+            "a neighbour of another passage ('after passage 3 in <document>', 'before ...', "
+            "'near ...'; ordinal is a passage's number), or, under graph retrieval, a passage a "
+            "glossary term cites, reached over the glossary's relationships ('via <term> -> "
+            "<term> (part of)'), with that term and its definition (term, term_definition). A "
+            "neighbour or a glossary passage is context that may or may not bear on the "
+            "question: cite only the passages your answer used. An empty result "
+            "means the library holds nothing the user may read on it."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "question": {"type": "string"},
-                "k": {"type": "integer", "description": "max passages (default 5)"},
+                "k": {
+                    "type": "integer",
+                    "description": (
+                        "passages nearest the question (default 5); up to as many again of "
+                        "their neighbours come with them"
+                    ),
+                },
             },
             "required": ["question"],
         },
@@ -953,8 +966,10 @@ _CLIENT_TOOLS: list[Any] = [
             "OpenAPI: operation, parameters, body, requestUrl; each with status and error); the "
             "visible labelled form fields with their values "
             "(a password shows as dots, as on screen); and each result grid's columns and row "
-            "count, never its rows. Call it whenever the user refers to 'this', 'the query' or "
-            "anything on the screen, before you answer or act on it."
+            "count, never its rows; and, under `dataNode`, the data node a coordinator-served UI "
+            "sends its data calls to, or null when it is not coordinator-served. Call it whenever "
+            "the user refers to 'this', 'the query' or anything on the screen, before you answer "
+            "or act on it."
         ),
         "input_schema": {"type": "object", "properties": {}},
     },
@@ -996,7 +1011,7 @@ _SYSTEM = (
     "queries. A question about what a policy, regulation, contract, specification or standard "
     "says, or what a business term means, is answered from the org's reference library: call "
     "search_reference_library, answer from the passages it returns and cite each one you use by "
-    "its document title and section or page. "
+    "its document title and section or page, and only those you use. "
     "Never invent table, column, or schema names — discover them with the tools. If a "
     "tool returns an error or empty result, say so plainly. Keep answers concise and lead with the "
     "answer. Never narrate your steps ('Let me look at...', 'I'll check...') before or between "
