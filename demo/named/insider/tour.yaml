@@ -22,13 +22,13 @@ steps:
 - key: insiderIntro
   route: /sources
   capability: source_registration
-  source: bank
+  source: mail
 - key: insiderWatchList
   route: /tables
   capability: table_registration
   table: bank.deal
 - key: insiderMail
-  table: bank.message
+  table: bank.messages
 - key: insiderMatch
   table: bank.deal_match
 - key: insiderQueue
@@ -39,9 +39,9 @@ steps:
     before_announcement, to_counterparty, score FROM "bank"."view_review_queue" ORDER BY score DESC LIMIT 10
 - key: insiderLeak
   sql: >-
-    SELECT m.message_id, e.name AS sender, m.subject, m.body FROM "bank"."message" AS m
-    JOIN "bank"."employee" AS e ON e.employee_id = m.sender_id
-    WHERE m.message_id IN ('M0111', 'M0112') ORDER BY m.message_id
+    SELECT m.id AS message_id, e.name AS sender, m.subject, m.body_text AS body
+    FROM "bank"."messages" AS m JOIN "bank"."employee" AS e ON e.email = m.from_address
+    WHERE m.id IN ('M0111', 'M0112') ORDER BY m.id
 - key: insiderCustomerData
   sql: >-
     SELECT customer_id, name, ssn, account_no FROM "bank"."customer" ORDER BY customer_id LIMIT 5

@@ -538,15 +538,15 @@
       },
       "insiderIntro": {
         "title": "Revue d'initiés dans une banque",
-        "description": "Northgate Partners, une banque inventée, tient une liste de surveillance des opérations sur lesquelles elle travaille. La question : quelqu'un envoie-t-il des données sensibles d'opérations ou de clients hors de la banque ? <strong>bank</strong> est sa base de données : la liste de surveillance, les employés et leur courrier, les clients et qui a lu leurs dossiers. Chaque nom et chaque dossier ici est généré."
+        "description": "Northgate Partners, une banque inventée, examine son courrier sortant au regard de la liste de surveillance de son control room, celle des opérations en cours. La question : quelqu'un envoie-t-il hors de la banque des données sensibles sur les opérations ou des données clients ? Trois systèmes y répondent : <strong>mail</strong> est la messagerie de la banque, Microsoft 365 ; <strong>control_room</strong> est le classeur Excel du control room lui-même, la liste de surveillance ; <strong>bank</strong> est la base de données de la banque, avec ses employés, ses clients et qui a lu leurs fiches. Tous les noms et toutes les données sont générés."
       },
       "insiderWatchList": {
         "title": "La liste de surveillance",
-        "description": "<strong>deal</strong> est la liste de surveillance du control room : pour chaque opération, la société, les noms sous lesquels elle est connue, son ticker, son nom de code de projet et si elle est déjà publique. C'est la table la plus restreinte : le control room la lit, une équipe d'opération seulement la sienne, un réviseur de premier niveau jamais."
+        "description": "<strong>deal</strong> est la liste de surveillance du control room, une feuille de son classeur Excel : pour chaque opération, la société, les noms sous lesquels elle est connue, son ticker, le nom de code du projet et si l'opération est déjà publique. C'est la table la plus restreinte ici : le control room la lit, une équipe d'opération seulement sa propre opération, un réviseur de premier niveau jamais."
       },
       "insiderMail": {
-        "title": "Le courrier",
-        "description": "<strong>message</strong> contient le courrier sortant des employés : qui l'a envoyé, quand, et combien de destinataires étaient hors de la banque ou à une adresse personnelle."
+        "title": "La messagerie",
+        "description": "<strong>messages</strong> est le courrier envoyé par les employés tel que la messagerie de la banque, Microsoft 365, le conserve : qui l'a envoyé, quand, son objet et son texte, chacun dans la boîte de son expéditeur. <strong>message_recipients</strong> indique à qui il est parti. Les destinataires extérieurs à la banque, ou à une adresse personnelle, se déduisent d'une jointure avec la base de données de la banque."
       },
       "insiderMatch": {
         "title": "Chaque message face à chaque opération",
@@ -554,7 +554,7 @@
       },
       "insiderQueue": {
         "title": "La file de revue",
-        "description": "Une vue matérialisée classe chaque cas. La correspondance est pondérée par le contexte : un expéditeur hors de l'équipe de l'opération, un destinataire hors de la banque ou à une adresse personnelle et un message envoyé avant l'annonce l'augmentent ; un membre de l'équipe qui écrit aux contreparties de l'opération elle-même la diminue."
+        "description": "Une vue matérialisée classe chaque cas en joignant les trois systèmes : le courrier, ses correspondances avec la liste de surveillance du classeur, et les employés et desks de la banque. La correspondance est pondérée par le contexte : un expéditeur hors de l'équipe de l'opération, un destinataire hors de la banque ou à une adresse personnelle, et un message envoyé avant l'annonce l'augmentent ; un membre de l'équipe écrivant aux propres contreparties de l'opération la diminue."
       },
       "insiderLeak": {
         "title": "Une paraphrase passe devant le courrier attendu",
@@ -594,7 +594,7 @@
       },
       "insiderDone": {
         "title": "Ce que c'est, et ce que ce n'est pas",
-        "description": "Les opérations de la liste de surveillance ont été confrontées au courrier sortant par nom et par sens, classées pour revue, et la liste elle-même n'a jamais été montrée au réviseur. Il s'agit d'analyse de revue a posteriori derrière des contrôles en temps réel, pas d'un remplacement de la prévention des pertes de données. Les pièces jointes, les images, le texte encodé et les canaux personnels en sont exclus. La surveillance des employés exige une information préalable et, dans certains pays, un accord avec les représentants du personnel."
+        "description": "Les opérations du classeur du control room ont été comparées au courrier de la banque par le nom et par le sens, jointes à la propre base de données de la banque et classées pour examen, et la liste n'a jamais été montrée au réviseur. C'est une analyse a posteriori derrière des contrôles en temps réel, pas un remplacement de la prévention des fuites de données. Les pièces jointes, les images, le texte encodé et les canaux personnels en sont exclus. Surveiller des employés exige de les en informer et, dans certains pays, un accord avec le comité d'entreprise."
       },
       "vulnerabilitiesScenario": {
         "title": "Ce que montre cette démo",
@@ -1350,7 +1350,7 @@
       },
       "insider": {
         "title": "Revue d'initiés",
-        "summary": "Le courrier sortant d'une banque confronté à sa liste de surveillance des opérations en cours et vérifié pour les données clients, classé dans une seule file de revue qu'un réviseur de premier niveau lit sans jamais voir la liste."
+        "summary": "Le courrier d'une banque dans Microsoft 365 comparé au classeur de la liste de surveillance de son control room et vérifié pour les données clients d'après sa propre base de données, classé dans une seule file d'examen qu'un réviseur de premier niveau lit sans jamais voir la liste."
       },
       "vulnerabilities": {
         "title": "Vulnérabilités exploitées dans notre code",

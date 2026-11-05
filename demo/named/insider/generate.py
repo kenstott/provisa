@@ -33,7 +33,14 @@ import random
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent / "db"
+# The control room's own workbook, read by the demo's files source.
+CONTROL_ROOM = Path(__file__).resolve().parent / "control_room"
+# The bank's mail, as its Microsoft 365 source's declared replica rows (REQ-2089).
+MAIL_ROWS = Path(__file__).resolve().parent / "replica_rows" / "mail"
 BANK = "northgate.com"
+# The personal mail providers the bank's compliance team lists: mail to one is to a person.
+PERSONAL_DOMAINS = ["gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com",
+                    "proton.me"]  # fmt: skip
 
 DESKS = ["M&A", "Leveraged Finance", "Equity Capital Markets", "Sales & Trading", "Research",
          "Operations"]  # fmt: skip
@@ -207,22 +214,130 @@ def main() -> None:
     counterparties = [[d[0], dom] for d in DEALS for dom in d[8].split(";")]
     deals = [[d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]] for d in DEALS]
     desk_reviewer = [[desk, reviewer] for desk, reviewer in DESK_REVIEWER.items()]
+    personal = [[domain] for domain in PERSONAL_DOMAINS]
     for name, rows in {
         "employee": employees,
         "desk_reviewer": desk_reviewer,
-        "deal": deals,
-        "deal_team": team_rows,
-        "deal_counterparty": counterparties,
         "customer": customers,
         "customer_access": access,
-        "message": messages,
-        "recipient": recipients,
+        "personal_mail_domain": personal,
     }.items():
         lines = ["\t".join(_field(v) for v in row) for row in rows]
         (HERE / f"{name}.tsv").write_text("\n".join(lines) + "\n")
+    _watch_list(deals, team_rows, counterparties)
+    _mailbox(messages, recipients, name_of, email_of)
     print(f"employees {len(employees)}, deals {len(deals)}, messages {len(messages)}, "
           f"customers {len(customers)}, accesses {len(access)}; trader {name_of[trader]}, "
           f"operations {name_of[ops]}")  # fmt: skip
+
+
+def _watch_list(deals: list[list], teams: list[list[str]], counterparties: list[list[str]]) -> None:
+    """The control room's watch list, an Excel workbook of its own: the deals, who is over the
+    wall for each, and each deal's counterparties' mail domains, a sheet each. A date or time is
+    its ISO-8601 text; the workbook's own properties are fixed, so the file is what this writes."""
+    import datetime as dt
+
+    from openpyxl import Workbook
+
+    book = Workbook()
+    sheets = {
+        "deals": (["deal_id", "code_name", "legal_name", "aliases", "ticker", "deal_type",
+                   "description", "announced_on"], deals),
+        "deal_team": (["deal_id", "employee_id", "over_wall_at"], teams),
+        "counterparties": (["deal_id", "domain"], counterparties),
+    }  # fmt: skip
+    book.remove(book.active)
+    for title, (header, rows) in sheets.items():
+        sheet = book.create_sheet(title)
+        sheet.append(header)
+        for row in rows:
+            sheet.append([v.replace(" ", "T") if title == "deal_team" and i == 2 else v
+                          for i, v in enumerate(row)])  # fmt: skip
+    fixed = dt.datetime(2026, 10, 1)
+    book.properties.creator = "Northgate Partners control room"
+    book.properties.created = fixed
+    book.properties.modified = fixed
+    (CONTROL_ROOM).mkdir(parents=True, exist_ok=True)
+    book.save(CONTROL_ROOM / "watch_list.xlsx")
+
+
+def _json(value: object) -> str:
+    import json
+
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _mailbox(
+    messages: list[list[str]],
+    recipients: list[list[str]],
+    name_of: dict[str, str],
+    email_of: dict[str, str],
+) -> None:
+    """The bank's sent mail as its Microsoft 365 source's replica rows (REQ-2089): the canonical
+    messages and message_recipients tables (provisa.core.canonical_mail), each message held in
+    its sender's mailbox's Sent Items, as Microsoft Graph gives it."""
+    import datetime as dt
+
+    from provisa.core import canonical_mail as cm
+
+    by_message: dict[str, list[str]] = {}
+    for mid, address, _domain, _kind in recipients:
+        by_message.setdefault(mid, []).append(address)
+    name_by_email = {email_of[e]: name_of[e] for e in email_of}
+    landed = "2026-10-15T06:00:00"
+    message_rows = []
+    recipient_rows = []
+    for mid, sender, sent, subject, body, _outside, _personal in messages:
+        account = email_of[sender]
+        sent_at = sent.replace(" ", "T")
+        when = dt.datetime.fromisoformat(sent).strftime("%a, %d %b %Y %H:%M:%S +0000")
+        to = by_message[mid]
+        internet_id = f"<{mid.lower()}.{sent_at.replace('-', '').replace(':', '')}@{BANK}>"
+        headers = [
+            {"name": "Message-ID", "value": internet_id},
+            {"name": "Date", "value": when},
+            {"name": "From", "value": f"{name_of[sender]} <{account}>"},
+            {"name": "To", "value": ", ".join(to)},
+            {"name": "Subject", "value": subject},
+            {"name": "MIME-Version", "value": "1.0"},
+            {"name": "Content-Type", "value": "text/plain; charset=utf-8"},
+        ]
+        values = {
+            "provider": cm.MICROSOFT, "account": account, "id": mid,
+            "thread_id": f"T{mid[1:]}", "internet_message_id": internet_id,
+            "in_reply_to": None, "reference_ids": _json([]), "subject": subject,
+            "snippet": body.replace("\n", " ")[:255], "from_address": account,
+            "from_name": name_of[sender], "sender_address": account,
+            "to_addresses": _json(to), "cc_addresses": _json([]), "bcc_addresses": _json([]),
+            "reply_to_addresses": _json([]), "sent_at": sent_at, "received_at": sent_at,
+            "created_at": sent_at, "updated_at": sent_at, "is_read": "true",
+            "is_draft": "false", "is_flagged": "false", "flag_status": "none",
+            "importance": "normal", "has_attachments": "false",
+            "size_bytes": str(len(subject) + len(body) + 900),
+            "folder_ids": _json(["sentitems"]), "categories": _json([]),
+            "inference_classification": "focused", "is_read_receipt_requested": "false",
+            "is_delivery_receipt_requested": "false", "body_text": body, "body_html": None,
+            "headers": _json(headers), "change_key": f"CQAAABYAAA{mid}",
+            "web_link": f"https://outlook.office365.com/owa/?ItemID={mid}&exvsurl=1&viewmodel=ReadMessageItem",
+            "classification_labels": None, "conversation_index": None, "flag_start_at": None,
+            "flag_due_at": None, "flag_completed_at": None, "landed_at": landed,
+        }  # fmt: skip
+        message_rows.append([values[n] for n, _ in cm.landing_columns("messages")])
+        people = [("from", account, name_of[sender])] + [
+            ("to", address, name_by_email.get(address)) for address in to
+        ]
+        positions: dict[str, int] = {}
+        for kind, address, name in people:
+            positions[kind] = positions.get(kind, 0) + 1
+            row = {"provider": cm.MICROSOFT, "account": account, "message_id": mid,
+                   "kind": kind, "position": str(positions[kind]), "address": address,
+                   "name": name, "landed_at": landed}  # fmt: skip
+            recipient_rows.append([row[n] for n, _ in cm.landing_columns("message_recipients")])
+    MAIL_ROWS.mkdir(parents=True, exist_ok=True)
+    for table, rows in (("messages", message_rows), ("message_recipients", recipient_rows)):
+        header = "\t".join(n for n, _ in cm.landing_columns(table))
+        lines = ["\t".join(_field(v) for v in row) for row in rows]
+        (MAIL_ROWS / f"default.{table}.tsv").write_text(header + "\n" + "\n".join(lines) + "\n")
 
 
 if __name__ == "__main__":

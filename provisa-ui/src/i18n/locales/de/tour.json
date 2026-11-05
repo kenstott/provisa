@@ -538,15 +538,15 @@
       },
       "insiderIntro": {
         "title": "Insider-Prüfung in einer Bank",
-        "description": "Northgate Partners, eine erfundene Bank, führt eine Beobachtungsliste der Deals, an denen sie arbeitet. Die Frage: Schickt jemand dealrelevante Daten oder Kundendaten aus der Bank hinaus? <strong>bank</strong> ist ihre Datenbank: die Beobachtungsliste, die Mitarbeitenden und ihre Post, die Kunden und wer ihre Datensätze gelesen hat. Jeder Name und jeder Datensatz hier ist generiert."
+        "description": "Northgate Partners, eine erfundene Bank, prüft ihre ausgehenden E-Mails gegen die Watchlist ihres Control Rooms mit den Deals, an denen sie arbeitet. Die Frage: Schickt jemand dealsensible Daten oder Kundendaten aus der Bank hinaus? Drei Systeme beantworten sie: <strong>mail</strong> ist das E-Mail-System der Bank, Microsoft 365; <strong>control_room</strong> ist die eigene Excel-Arbeitsmappe des Control Rooms, die Watchlist; <strong>bank</strong> ist die Datenbank der Bank mit Mitarbeitenden, Kunden und wer deren Datensätze gelesen hat. Alle Namen und Datensätze hier sind generiert."
       },
       "insiderWatchList": {
         "title": "Die Beobachtungsliste",
-        "description": "<strong>deal</strong> ist die Beobachtungsliste des Control Rooms: zu jedem Deal das Unternehmen, die Namen, unter denen es auftritt, sein Ticker, sein Projekt-Codename und ob er schon öffentlich ist. Es ist die am stärksten geschützte Tabelle: Der Control Room liest sie, ein Deal-Team nur seinen eigenen Deal, eine Erstprüferin nie."
+        "description": "<strong>deal</strong> ist die Watchlist des Control Rooms, ein Blatt seiner Excel-Arbeitsmappe: zu jedem Deal das Unternehmen, die Namen, unter denen es auftritt, sein Ticker, der Codename des Projekts und ob der Deal schon öffentlich ist. Es ist die am stärksten geschützte Tabelle hier: Der Control Room liest sie, ein Dealteam nur den eigenen Deal und ein Erstprüfer nie."
       },
       "insiderMail": {
-        "title": "Die Post",
-        "description": "<strong>message</strong> enthält die ausgehende Post der Mitarbeitenden: wer sie gesendet hat, wann und wie viele Empfänger außerhalb der Bank oder an einer privaten Adresse waren."
+        "title": "Das E-Mail-System",
+        "description": "<strong>messages</strong> sind die gesendeten E-Mails der Mitarbeitenden, wie sie das E-Mail-System der Bank, Microsoft 365, hält: wer sie gesendet hat, wann, Betreff und Text, jede im Postfach ihres Absenders. <strong>message_recipients</strong> enthält, an wen sie gingen. Welche Empfänger außerhalb der Bank oder an einer privaten Adresse sind, ergibt sich aus dem Join mit der Datenbank der Bank."
       },
       "insiderMatch": {
         "title": "Jede Nachricht gegen jeden Deal",
@@ -554,7 +554,7 @@
       },
       "insiderQueue": {
         "title": "Die Prüfwarteschlange",
-        "description": "Eine materialisierte Ansicht reiht jeden Fall. Der Treffer wird nach Kontext gewichtet: ein Absender außerhalb des Deal-Teams, ein Empfänger außerhalb der Bank oder an einer privaten Adresse und eine Nachricht vor der Bekanntgabe erhöhen ihn; ein Mitglied des Deal-Teams, das den eigenen Gegenparteien des Deals schreibt, senkt ihn."
+        "description": "Eine materialisierte View ordnet jeden Fall und verbindet dabei die drei Systeme: die E-Mails, ihre Treffer gegen die Watchlist der Arbeitsmappe und die Mitarbeitenden und Desks der Bank. Der Treffer wird nach Kontext gewichtet: Ein Absender außerhalb des Dealteams, ein Empfänger außerhalb der Bank oder an einer privaten Adresse und eine vor der Bekanntgabe gesendete Nachricht erhöhen ihn; ein Mitglied des Dealteams, das an die eigenen Gegenparteien des Deals schreibt, senkt ihn."
       },
       "insiderLeak": {
         "title": "Eine Umschreibung übertrifft die erwartete Post",
@@ -594,7 +594,7 @@
       },
       "insiderDone": {
         "title": "Was das ist und was nicht",
-        "description": "Deals der Beobachtungsliste wurden nach Namen und nach Bedeutung mit der ausgehenden Post abgeglichen und zur Prüfung gereiht, und die Liste selbst wurde dem Prüfer nie gezeigt. Das ist nachgelagerte Prüfanalyse hinter Echtzeitkontrollen, kein Ersatz für Data Loss Prevention. Anhänge, Bilder, kodierter Text und private Kanäle liegen außerhalb. Die Überwachung von Mitarbeitenden erfordert Offenlegung und mancherorts eine Vereinbarung mit dem Betriebsrat."
+        "description": "Deals aus der Arbeitsmappe des Control Rooms wurden nach Name und Bedeutung gegen die E-Mails der Bank abgeglichen, mit der eigenen Datenbank der Bank verbunden und zur Prüfung geordnet, und die Liste selbst wurde dem Prüfer nie gezeigt. Das ist nachgelagerte Analyse hinter Echtzeitkontrollen, kein Ersatz für Data Loss Prevention. Anhänge, Bilder, kodierter Text und private Kanäle liegen außerhalb. Die Überwachung von Mitarbeitenden erfordert Offenlegung und mancherorts eine Betriebsvereinbarung."
       },
       "vulnerabilitiesScenario": {
         "title": "Worum es in dieser Demo geht",
@@ -1350,7 +1350,7 @@
       },
       "insider": {
         "title": "Insider-Prüfung",
-        "summary": "Die ausgehende Post einer Bank, abgeglichen mit ihrer Beobachtungsliste laufender Deals und auf Kundendaten geprüft, in einer Prüfwarteschlange gereiht, die eine Erstprüferin liest, ohne die Liste je zu sehen."
+        "summary": "Die E-Mails einer Bank in Microsoft 365, gegen die Watchlist-Arbeitsmappe ihres Control Rooms abgeglichen und anhand ihrer eigenen Datenbank auf Kundendaten geprüft, geordnet in einer Prüfwarteschlange, die ein Erstprüfer liest, ohne die Liste je zu sehen."
       },
       "vulnerabilities": {
         "title": "Ausgenutzte Schwachstellen in unserem Code",

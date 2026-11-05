@@ -538,15 +538,15 @@
       },
       "insiderIntro": {
         "title": "Revisione insider in una banca",
-        "description": "Northgate Partners, una banca inventata, tiene una lista di sorveglianza delle operazioni su cui sta lavorando. La domanda: qualcuno sta inviando fuori dalla banca dati sensibili sulle operazioni o sui clienti? <strong>bank</strong> è il suo database: la lista di sorveglianza, i dipendenti e la loro posta, i clienti e chi ha letto i loro dati. Ogni nome e ogni record qui è generato."
+        "description": "Northgate Partners, una banca inventata, esamina la sua posta in uscita a fronte della watch list del suo control room, quella delle operazioni a cui sta lavorando. La domanda: qualcuno sta inviando fuori dalla banca dati sensibili sulle operazioni o dati dei clienti? Tre sistemi rispondono: <strong>mail</strong> è il sistema di posta della banca, Microsoft 365; <strong>control_room</strong> è la cartella di lavoro Excel del control room stesso, la watch list; <strong>bank</strong> è il database della banca con dipendenti, clienti e chi ha letto i loro dati. Tutti i nomi e i dati qui sono generati."
       },
       "insiderWatchList": {
         "title": "La lista di sorveglianza",
-        "description": "<strong>deal</strong> è la lista di sorveglianza del control room: per ogni operazione la società, i nomi con cui è nota, il suo ticker, il nome in codice del progetto e se è già pubblica. È la tabella più riservata: la legge il control room, un team di operazione solo la propria, un revisore di primo livello mai."
+        "description": "<strong>deal</strong> è la watch list del control room, un foglio della sua cartella di lavoro Excel: per ogni operazione la società, i nomi con cui è nota, il ticker, il nome in codice del progetto e se l'operazione è già pubblica. È la tabella più riservata qui: la legge il control room, un team di operazione solo la propria operazione e un revisore di primo livello mai."
       },
       "insiderMail": {
-        "title": "La posta",
-        "description": "<strong>message</strong> contiene la posta in uscita dei dipendenti: chi l'ha inviata, quando e quanti destinatari erano fuori dalla banca o a un indirizzo personale."
+        "title": "Il sistema di posta",
+        "description": "<strong>messages</strong> è la posta inviata dai dipendenti così come la conserva il sistema di posta della banca, Microsoft 365: chi l'ha inviata, quando, l'oggetto e il testo, ogni messaggio nella casella del suo mittente. <strong>message_recipients</strong> indica a chi è andata. Quali destinatari sono fuori dalla banca, o a un indirizzo personale, si ricava unendoli al database della banca."
       },
       "insiderMatch": {
         "title": "Ogni messaggio contro ogni operazione",
@@ -554,7 +554,7 @@
       },
       "insiderQueue": {
         "title": "La coda di revisione",
-        "description": "Una vista materializzata ordina ogni caso. La corrispondenza è pesata dal contesto: un mittente fuori dal team dell'operazione, un destinatario fuori dalla banca o a un indirizzo personale e un messaggio inviato prima dell'annuncio la alzano; un membro del team che scrive alle controparti dell'operazione stessa la abbassa."
+        "description": "Una vista materializzata ordina ogni caso unendo i tre sistemi: la posta, le sue corrispondenze con la watch list della cartella di lavoro, e i dipendenti e i desk della banca. La corrispondenza è pesata dal contesto: un mittente fuori dal team dell'operazione, un destinatario fuori dalla banca o a un indirizzo personale e un messaggio inviato prima dell'annuncio la alzano; un membro del team che scrive alle controparti dell'operazione stessa la abbassa."
       },
       "insiderLeak": {
         "title": "Una parafrasi supera la posta attesa",
@@ -594,7 +594,7 @@
       },
       "insiderDone": {
         "title": "Che cos'è e che cosa non è",
-        "description": "Le operazioni della lista di sorveglianza sono state confrontate con la posta in uscita per nome e per significato, ordinate per la revisione, e la lista non è mai stata mostrata al revisore. È analisi di revisione a posteriori dietro i controlli in tempo reale, non un sostituto della prevenzione della perdita di dati. Allegati, immagini, testo codificato e canali personali ne restano fuori. Il monitoraggio dei dipendenti richiede un'informativa e, in alcuni paesi, un accordo con le rappresentanze dei lavoratori."
+        "description": "Le operazioni della cartella di lavoro del control room sono state confrontate con la posta della banca per nome e per significato, unite al database della banca stessa e ordinate per la revisione, e la lista non è mai stata mostrata al revisore. È un'analisi a posteriori dietro controlli in tempo reale, non un sostituto della prevenzione della perdita di dati. Allegati, immagini, testo codificato e canali personali ne restano fuori. Monitorare i dipendenti richiede di informarli e, in alcuni paesi, un accordo con il consiglio dei lavoratori."
       },
       "vulnerabilitiesScenario": {
         "title": "Che cos'è questa demo",
@@ -1350,7 +1350,7 @@
       },
       "insider": {
         "title": "Revisione insider",
-        "summary": "La posta in uscita di una banca confrontata con la sua lista di sorveglianza delle operazioni in corso e controllata per dati dei clienti, ordinata in un'unica coda di revisione che un revisore di primo livello legge senza mai vedere la lista."
+        "summary": "La posta di una banca in Microsoft 365 confrontata con la cartella di lavoro della watch list del suo control room e controllata per i dati dei clienti con il suo stesso database, ordinata in un'unica coda di revisione che un revisore di primo livello legge senza mai vedere la lista."
       },
       "vulnerabilities": {
         "title": "Vulnerabilità sfruttate nel nostro codice",

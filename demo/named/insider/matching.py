@@ -12,7 +12,8 @@
 deal, what it says of each written to bank.deal_match.
 
 A python command (``impl_kind: python``), called as ``match_deals(payload, session)``. It reads
-the watch list and the mail through Provisa as the caller, the texts embedded there by the demo's
+the watch list (the control room's workbook) and the mail (the bank's Microsoft 365 source)
+through Provisa as the caller, the texts embedded there by the demo's
 own local model (``embed()``), and writes what it finds through Provisa as the caller:
 
 - legal_name  the company's name, fuzzily: its words read in the message, a letter or two off
@@ -35,6 +36,7 @@ from __future__ import annotations
 
 import math
 import re
+from datetime import date
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -131,11 +133,20 @@ async def match_deals(_payload: dict, session: Any) -> list[dict]:
         f'embed({model}, description) AS vector FROM "bank"."deal"',
         role_id,
     )
-    messages = await _rows(
-        "SELECT message_id, sender_id, sent_at, subject, body, "
-        f'embed({model}, CONCAT(subject, \'. \', body)) AS vector FROM "bank"."message"',
-        role_id,
-    )
+    # The bank's mail, from its Microsoft 365 source: each message's sender is the employee
+    # whose address sent it.
+    sender_of = {
+        r["email"]: r["employee_id"]
+        for r in await _rows('SELECT employee_id, email FROM "bank"."employee"', role_id)
+    }
+    messages = [
+        {**m, "sender_id": sender_of[m["from_address"]]}
+        for m in await _rows(
+            "SELECT id AS message_id, from_address, sent_at, subject, body_text AS body, "
+            f'embed({model}, CONCAT(subject, \'. \', body_text)) AS vector FROM "bank"."messages"',
+            role_id,
+        )
+    ]
     team = {
         (r["deal_id"], r["employee_id"])
         for r in await _rows('SELECT deal_id, employee_id FROM "bank"."deal_team"', role_id)
@@ -145,8 +156,12 @@ async def match_deals(_payload: dict, session: Any) -> list[dict]:
         for r in await _rows('SELECT deal_id, domain FROM "bank"."deal_counterparty"', role_id)
     }
     domains: dict[str, set[str]] = {}
-    for r in await _rows('SELECT message_id, domain FROM "bank"."recipient"', role_id):
-        domains.setdefault(r["message_id"], set()).add(r["domain"])
+    for r in await _rows(
+        'SELECT message_id, address FROM "bank"."message_recipients" '
+        "WHERE kind IN ('to', 'cc', 'bcc')",
+        role_id,
+    ):
+        domains.setdefault(r["message_id"], set()).add(r["address"].split("@", 1)[1])
     values = []
     for m in messages:
         for d in deals:
@@ -159,7 +174,8 @@ async def match_deals(_payload: dict, session: Any) -> list[dict]:
             to_counterparty = int(
                 any((d["deal_id"], dom) in counterparty for dom in domains[m["message_id"]])
             )
-            announced = d["announced_on"]
+            # The workbook holds a date as its ISO-8601 text; empty while the deal is not public.
+            announced = date.fromisoformat(d["announced_on"]) if d["announced_on"] else None
             before = int(announced is None or m["sent_at"].date() < announced)
             values.append(
                 f"({literal(m['message_id'])}, {literal(d['deal_id'])}, {literal(d['legal_name'])}, "

@@ -538,15 +538,15 @@
       },
       "insiderIntro": {
         "title": "Revisão de informação privilegiada em um banco",
-        "description": "Northgate Partners, um banco inventado, mantém uma lista de observação das operações em que está trabalhando. A pergunta: alguém está enviando dados sensíveis de operações ou de clientes para fora do banco? <strong>bank</strong> é seu banco de dados: a lista de observação, os funcionários e seus e-mails, e os clientes e quem leu seus registros. Cada nome e registro aqui é gerado."
+        "description": "Northgate Partners, um banco inventado, revisa seu e-mail de saída com base na lista de observação do seu control room, a das operações em que trabalha. A pergunta: alguém está enviando para fora do banco dados sensíveis de operações ou dados de clientes? Três sistemas respondem: <strong>mail</strong> é o sistema de e-mail do banco, o Microsoft 365; <strong>control_room</strong> é a pasta de trabalho do Excel do próprio control room, a lista de observação; <strong>bank</strong> é o banco de dados do banco, com funcionários, clientes e quem leu seus registros. Todos os nomes e registros aqui são gerados."
       },
       "insiderWatchList": {
         "title": "A lista de observação",
-        "description": "<strong>deal</strong> é a lista de observação do control room: de cada operação, a empresa, os nomes pelos quais é conhecida, seu ticker, seu codinome de projeto e se já é pública. É a tabela mais restrita: o control room a lê, uma equipe de operação só a própria, e um revisor de primeiro nível nunca."
+        "description": "<strong>deal</strong> é a lista de observação do control room, uma planilha da sua pasta de trabalho do Excel: de cada operação, a empresa, os nomes que ela usa, seu ticker, o codinome do projeto e se a operação já é pública. É a tabela mais restrita aqui: o control room a lê, uma equipe de operação só a sua própria operação e um revisor de primeiro nível nunca."
       },
       "insiderMail": {
-        "title": "Os e-mails",
-        "description": "<strong>message</strong> contém os e-mails de saída dos funcionários: quem enviou, quando e quantos destinatários estavam fora do banco ou em um endereço pessoal."
+        "title": "O sistema de e-mail",
+        "description": "<strong>messages</strong> é o e-mail enviado pelos funcionários tal como o sistema de e-mail do banco, o Microsoft 365, o guarda: quem enviou, quando, o assunto e o texto, cada mensagem na caixa de correio do remetente. <strong>message_recipients</strong> guarda para quem foi. Quais destinatários estão fora do banco, ou em um endereço pessoal, se descobre unindo-os ao banco de dados do banco."
       },
       "insiderMatch": {
         "title": "Cada mensagem contra cada operação",
@@ -554,7 +554,7 @@
       },
       "insiderQueue": {
         "title": "A fila de revisão",
-        "description": "Uma visão materializada ordena cada caso. A correspondência é ponderada pelo contexto: um remetente fora da equipe da operação, um destinatário fora do banco ou em um endereço pessoal e uma mensagem enviada antes do anúncio a elevam; um membro da equipe escrevendo às contrapartes da própria operação a reduz."
+        "description": "Uma visão materializada ordena cada caso unindo os três sistemas: o e-mail, suas correspondências com a lista de observação da pasta de trabalho, e os funcionários e mesas do banco. A correspondência é ponderada pelo contexto: um remetente fora da equipe da operação, um destinatário fora do banco ou em um endereço pessoal e uma mensagem enviada antes do anúncio a elevam; um membro da equipe que escreve às próprias contrapartes da operação a reduz."
       },
       "insiderLeak": {
         "title": "Uma paráfrase supera o e-mail esperado",
@@ -594,7 +594,7 @@
       },
       "insiderDone": {
         "title": "O que é, e o que não é",
-        "description": "As operações da lista de observação foram confrontadas com os e-mails de saída por nome e por significado, ordenadas para revisão, e a lista nunca foi mostrada ao revisor. É análise de revisão posterior por trás de controles em tempo real, não um substituto da prevenção de perda de dados. Anexos, imagens, texto codificado e canais pessoais ficam de fora. Monitorar funcionários exige transparência e, em alguns lugares, acordo com a comissão de trabalhadores."
+        "description": "As operações da pasta de trabalho do control room foram comparadas com o e-mail do banco por nome e por significado, unidas ao próprio banco de dados do banco e ordenadas para revisão, e a lista nunca foi mostrada ao revisor. É uma análise posterior por trás de controles em tempo real, não um substituto para a prevenção de perda de dados. Anexos, imagens, texto codificado e canais pessoais ficam de fora. Monitorar funcionários exige transparência e, em alguns lugares, um acordo com a comissão de trabalhadores."
       },
       "vulnerabilitiesScenario": {
         "title": "O que é esta demo",
@@ -1350,7 +1350,7 @@
       },
       "insider": {
         "title": "Revisão de informação privilegiada",
-        "summary": "O e-mail de saída de um banco confrontado com sua lista de observação de operações em andamento e verificado para dados de clientes, ordenado em uma única fila de revisão que um revisor de primeiro nível lê sem nunca ver a lista."
+        "summary": "O e-mail de um banco no Microsoft 365 comparado com a pasta de trabalho da lista de observação do seu control room e verificado quanto a dados de clientes com o seu próprio banco de dados, ordenado em uma única fila de revisão que um revisor de primeiro nível lê sem nunca ver a lista."
       },
       "vulnerabilities": {
         "title": "Vulnerabilidades exploradas no nosso código",

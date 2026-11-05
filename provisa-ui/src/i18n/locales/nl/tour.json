@@ -538,15 +538,15 @@
       },
       "insiderIntro": {
         "title": "Insidercontrole bij een bank",
-        "description": "Northgate Partners, een verzonnen bank, houdt een watchlist bij van de deals waaraan ze werkt. De vraag: stuurt iemand dealgevoelige of klantgegevens de bank uit? <strong>bank</strong> is haar database: de watchlist, de medewerkers en hun mail, en de klanten en wie hun gegevens las. Elke naam en elk record hier is gegenereerd."
+        "description": "Northgate Partners, een verzonnen bank, toetst zijn uitgaande mail aan de watchlist van zijn control room met de deals waaraan hij werkt. De vraag: stuurt iemand dealgevoelige gegevens of klantgegevens de bank uit? Drie systemen beantwoorden die: <strong>mail</strong> is het mailsysteem van de bank, Microsoft 365; <strong>control_room</strong> is het eigen Excel-werkboek van de control room, de watchlist; <strong>bank</strong> is de database van de bank met medewerkers, klanten en wie hun gegevens heeft ingezien. Alle namen en gegevens hier zijn gegenereerd."
       },
       "insiderWatchList": {
         "title": "De watchlist",
-        "description": "<strong>deal</strong> is de watchlist van de control room: per deal het bedrijf, de namen waaronder het bekend is, de ticker, de projectcodenaam en of de deal al openbaar is. Het is de strengst afgeschermde tabel: de control room leest hem, een dealteam alleen de eigen deal, een eerstelijnsbeoordelaar nooit."
+        "description": "<strong>deal</strong> is de watchlist van de control room, een blad van zijn Excel-werkboek: per deal het bedrijf, de namen waaronder het bekendstaat, de ticker, de codenaam van het project en of de deal al openbaar is. Het is hier de meest afgeschermde tabel: de control room leest hem, een dealteam alleen de eigen deal en een eerstelijnsbeoordelaar nooit."
       },
       "insiderMail": {
-        "title": "De mail",
-        "description": "<strong>message</strong> bevat de uitgaande mail van de medewerkers: wie hem stuurde, wanneer, en hoeveel ontvangers buiten de bank of op een privéadres zaten."
+        "title": "Het mailsysteem",
+        "description": "<strong>messages</strong> is de verzonden mail van de medewerkers zoals het mailsysteem van de bank, Microsoft 365, die bewaart: wie hem stuurde, wanneer, het onderwerp en de tekst, elk bericht in de mailbox van de afzender. <strong>message_recipients</strong> bevat naar wie het ging. Welke ontvangers buiten de bank zitten, of op een privéadres, blijkt uit een join met de database van de bank."
       },
       "insiderMatch": {
         "title": "Elk bericht tegen elke deal",
@@ -554,7 +554,7 @@
       },
       "insiderQueue": {
         "title": "De beoordelingswachtrij",
-        "description": "Eén gematerialiseerde view rangschikt elke zaak. De match wordt gewogen naar context: een afzender buiten het dealteam, een ontvanger buiten de bank of op een privéadres en een bericht van vóór de aankondiging verhogen hem; een lid van het dealteam dat de eigen tegenpartijen van de deal mailt, verlaagt hem."
+        "description": "Eén gematerialiseerde view rangschikt elke zaak en voegt de drie systemen samen: de mail, de treffers daarvan tegen de watchlist uit het werkboek, en de medewerkers en desks van de bank. De treffer wordt gewogen naar context: een afzender buiten het dealteam, een ontvanger buiten de bank of op een privéadres en een bericht van vóór de aankondiging verhogen hem; een lid van het dealteam dat de eigen tegenpartijen van de deal mailt, verlaagt hem."
       },
       "insiderLeak": {
         "title": "Een parafrase overtreft de verwachte mail",
@@ -594,7 +594,7 @@
       },
       "insiderDone": {
         "title": "Wat dit is, en wat niet",
-        "description": "Deals van de watchlist werden op naam en op betekenis vergeleken met uitgaande mail, gerangschikt voor beoordeling, en de lijst zelf werd nooit aan de beoordelaar getoond. Dit is analyse voor beoordeling achteraf, achter realtime controles, geen vervanging voor preventie van gegevensverlies. Bijlagen, afbeeldingen, gecodeerde tekst en privékanalen vallen erbuiten. Toezicht op medewerkers vraagt om openheid en, in sommige landen, om instemming van de ondernemingsraad."
+        "description": "Deals uit het werkboek van de control room zijn op naam en op betekenis vergeleken met de mail van de bank, samengevoegd met de eigen database van de bank en gerangschikt voor beoordeling, en de lijst zelf is nooit aan de beoordelaar getoond. Dit is analyse achteraf achter realtime controles, geen vervanging voor data-loss prevention. Bijlagen, afbeeldingen, gecodeerde tekst en privékanalen vallen erbuiten. Medewerkers monitoren vraagt openheid en, op sommige plaatsen, instemming van de ondernemingsraad."
       },
       "vulnerabilitiesScenario": {
         "title": "Wat deze demo is",
@@ -1350,7 +1350,7 @@
       },
       "insider": {
         "title": "Insidercontrole",
-        "summary": "De uitgaande mail van een bank vergeleken met haar watchlist van lopende deals en gecontroleerd op klantgegevens, gerangschikt in één beoordelingswachtrij die een eerstelijnsbeoordelaar leest zonder de lijst ooit te zien."
+        "summary": "De mail van een bank in Microsoft 365, vergeleken met het watchlist-werkboek van haar control room en op klantgegevens gecontroleerd met haar eigen database, gerangschikt in één beoordelingswachtrij die een eerstelijnsbeoordelaar leest zonder de lijst ooit te zien."
       },
       "vulnerabilities": {
         "title": "Misbruikte kwetsbaarheden in onze code",

@@ -538,15 +538,15 @@
       },
       "insiderIntro": {
         "title": "Insider review at a bank",
-        "description": "Northgate Partners, an invented bank, keeps a watch list of the deals it is working on. The question: is anyone sending deal-sensitive or customer data out of the bank? <strong>bank</strong> is its database: the watch list, the employees and their mail, and the customers and who read their records. Every name and record here is generated."
+        "description": "Northgate Partners, an invented bank, reviews its outbound mail against its control room's watch list of the deals it is working on. The question: is anyone sending deal-sensitive or customer data out of the bank? Three systems answer it: <strong>mail</strong> is the bank's mail system, Microsoft 365; <strong>control_room</strong> is the control room's own Excel workbook, the watch list; <strong>bank</strong> is the bank's database of employees, customers and who read their records. Every name and record here is generated."
       },
       "insiderWatchList": {
         "title": "The watch list",
-        "description": "<strong>deal</strong> is the control room's watch list: each deal's company, the names it goes by, its ticker, its project code name and whether it is public yet. It is the most restricted table here: the control room reads it, a deal team only its own deal, and a first-level reviewer never."
+        "description": "<strong>deal</strong> is the control room's watch list, a sheet of its Excel workbook: each deal's company, the names it goes by, its ticker, its project code name and whether it is public yet. It is the most restricted table here: the control room reads it, a deal team only its own deal, and a first-level reviewer never."
       },
       "insiderMail": {
-        "title": "The mail",
-        "description": "<strong>message</strong> holds the employees' outbound mail: who sent it, when, and how many recipients were outside the bank or at a personal address."
+        "title": "The mail system",
+        "description": "<strong>messages</strong> is the employees' sent mail as the bank's mail system, Microsoft 365, holds it: who sent it, when, its subject and its text, each in its sender's mailbox. <strong>message_recipients</strong> holds who it went to. Which recipients are outside the bank, or at a personal address, is found by joining them to the bank's database."
       },
       "insiderMatch": {
         "title": "Every message against every deal",
@@ -554,7 +554,7 @@
       },
       "insiderQueue": {
         "title": "The review queue",
-        "description": "One materialized view ranks every case. The match is weighted by context: a sender outside the deal's team, a recipient outside the bank or at a personal address, and a message sent before the announcement raise it; a deal-team member writing to the deal's own counterparties lowers it."
+        "description": "One materialized view ranks every case, joining the three systems: the mail, its matches against the workbook's watch list, and the bank's employees and desks. The match is weighted by context: a sender outside the deal's team, a recipient outside the bank or at a personal address, and a message sent before the announcement raise it; a deal-team member writing to the deal's own counterparties lowers it."
       },
       "insiderLeak": {
         "title": "A paraphrase outranks the expected mail",
@@ -594,7 +594,7 @@
       },
       "insiderDone": {
         "title": "What this is, and is not",
-        "description": "Watch-list deals were matched against outbound mail by name and by meaning, ranked for review, and the list itself was never shown to the reviewer. This is post-review analytics behind real-time controls, not a replacement for data-loss prevention. Attachments, images, encoded text and personal channels are outside it. Monitoring employees needs disclosure and, in places, a works-council agreement."
+        "description": "Deals from the control room's workbook were matched against the bank's mail by name and by meaning, joined with the bank's own database, ranked for review, and the list itself was never shown to the reviewer. This is post-review analytics behind real-time controls, not a replacement for data-loss prevention. Attachments, images, encoded text and personal channels are outside it. Monitoring employees needs disclosure and, in places, a works-council agreement."
       },
       "vulnerabilitiesScenario": {
         "title": "What this demo is",
@@ -1350,7 +1350,7 @@
       },
       "insider": {
         "title": "Insider review",
-        "summary": "A bank's outbound mail matched against its watch list of deals in discussion and checked for customer data, ranked in one review queue that a first-level reviewer reads without ever seeing the list."
+        "summary": "A bank's mail in Microsoft 365 matched against its control room's watch-list workbook and checked for customer data from its own database, ranked in one review queue that a first-level reviewer reads without ever seeing the list."
       },
       "vulnerabilities": {
         "title": "Exploited vulnerabilities in our code",
