@@ -202,7 +202,6 @@
     "scopePublic": "public",
     "scopeListed": "listed",
     "scopeOwnDomain": "own-domain",
-    "scopeRestricted": "restricted",
     "cancel": "Cancel",
     "save": "Save",
     "ttlViewRefreshes": "Refreshes every {{sec}}s (from the materialized view's Refresh Interval).",

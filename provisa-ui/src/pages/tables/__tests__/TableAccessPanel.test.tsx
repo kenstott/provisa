@@ -42,7 +42,7 @@ const ACCESS: TableAccess = {
     },
     {
       name: "diagnosis",
-      scope: "restricted",
+      scope: "listed",
       access: [
         {
           role: "clinical_reviewer",

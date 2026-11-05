@@ -45,7 +45,7 @@ const VIEW = {
       reach: "domain",
       columns: [
         column("diagnosis", {
-          scope: "restricted",
+          scope: "listed",
           granted_by: "analyst",
           via: ["dq_lead", "dq_steward", "analyst"],
         }),
@@ -69,7 +69,7 @@ describe("a role's Data access tab (REQ-2161)", () => {
   it("lists each table it reaches and each column's grant, with the path it inherits it by", async () => {
     render(<RoleDataAccess roleId="dq_lead" />);
     const diagnosis = await screen.findByTestId("role-data-column-1-diagnosis");
-    expect(diagnosis).toHaveTextContent("restricted");
+    expect(diagnosis).toHaveTextContent("listed");
     expect(diagnosis).toHaveTextContent("analyst");
     expect(diagnosis).toHaveTextContent("through dq_steward");
     expect(

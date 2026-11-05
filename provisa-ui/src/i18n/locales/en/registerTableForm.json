@@ -50,7 +50,6 @@
     "scopePublic": "public",
     "scopeListed": "listed",
     "scopeOwnDomain": "own-domain",
-    "scopeRestricted": "restricted",
     "primaryKeyTitle": "Primary Key",
     "includeColumnAriaLabel": "Include column {{name}}",
     "primaryKeyAriaLabel": "Primary key: {{name}}",
