@@ -55,9 +55,10 @@ async def _require_org_admin(
     membership row. Dev/no-auth (anonymous) is allowed, matching _require_platform_admin.
 
     REQ-1327: the platform admin keeps only an org's lifecycle (create, suspend, tier, delete) and
-    the appointment of its org admins (the audited grant_org_admin and its revocation); it never
-    edits the org's other members, invitations, join settings or branding. So the cross_org bypass is withheld unless the route is one of those
-    and passes ``allow_cross_org=True``. Reading who is in an org, its settings, its branding, or its
+    the appointment of its org admins (the audited grant_org_admin and its revocation, and an
+    invitation conferring user_management, which :func:`_require_inviter` decides); it never edits
+    the org's other members, invitations, join settings or branding. So the cross_org bypass is
+    withheld unless the route is one of those and passes ``allow_cross_org=True``. Reading who is in an org, its settings, its branding, or its
     config is that org's data at rest (REQ-1605) — platform_admin sees it only where it also holds
     an actual org_admin assignment (seeded, REQ-1599's sandbox, or a REQ-1303 grant taken for that
     org), the same gate any other caller passes below.
@@ -157,6 +158,67 @@ def _check_env_policy(body: CreateInviteBody) -> None:
         raise ApiError(400, "invites.invalid_max_uses", "max_uses must be at least 1, or null")
 
 
+async def _org_role_rows(org_id: str) -> list[dict]:
+    """The roles defined in ``org_id``'s model: ``id``, ``capabilities``, ``parents``."""
+    from provisa.api.app import ensure_org_runtime
+    from provisa.core.schema_org import roles as org_roles
+
+    rt = await ensure_org_runtime(org_id)
+    assert rt.model_db is not None
+    async with rt.model_db.acquire() as conn:
+        result = await conn.execute_core(
+            select(org_roles.c.id, org_roles.c.capabilities, org_roles.c.parents)
+        )
+        return [dict(r._mapping) for r in result.fetchall()]
+
+
+async def _invited_role_capabilities(
+    request: Request, org_id: str, role_id: str | None
+) -> frozenset[str]:  # REQ-1327
+    """What the role an invitation into ``org_id`` names holds in that org (its parent chain folded
+    in): empty for a role the org does not define. 404 for an org that does not exist."""
+    from provisa.security.inheritance import effective_capabilities
+
+    async with _pool(request).acquire() as conn:
+        result = await conn.execute_core(select(orgs.c.id).where(orgs.c.id == org_id))
+        if result.fetchone() is None:
+            raise ApiError(404, "invites.org_not_found", "Org not found")
+    resolved = role_id if role_id is not None else DEFAULT_INVITE_ROLE
+    role_rows = await _org_role_rows(org_id)
+    if resolved not in {r["id"] for r in role_rows}:
+        return frozenset()
+    return frozenset(effective_capabilities(resolved, role_rows))
+
+
+async def _require_inviter(request: Request, org_id: str, role_id: str | None) -> None:  # REQ-1327
+    """Raise 403 unless the caller may issue this invitation into ``org_id``.
+
+    The org's own administrator (:func:`_require_org_admin`) issues any invitation into its org.
+    The platform appoints an org's admins (REQ-1327), so a platform administrator — the deployment
+    check — may issue an invitation into an org only when the invited role carries
+    ``user_management`` there: read off the role's rights in that org, never its name (REQ-1337),
+    so an org that groups its admin rights under another role is appointed the same way. Any other
+    invitation from the platform is refused by name.
+    """
+    from provisa.api.admin._platform_guard import has_deployment_settings
+
+    try:
+        await _require_org_admin(request, org_id)
+        return
+    except ApiError:
+        if not has_deployment_settings(request):
+            raise
+    held = await _invited_role_capabilities(request, org_id, role_id)
+    if Capability.USER_MANAGEMENT.value not in held:
+        raise ApiError(
+            403,
+            "invites.platform_invites_org_admins_only",
+            f"the platform invites only an administrator into {org_id}: the invited role must "
+            "carry user_management there; every other invitation is the org administrator's",
+            org_id=org_id,
+        )
+
+
 async def resolve_invite_role(
     org_id: str, role_id: str | None, *, granter_capabilities: Iterable[str]
 ) -> str:
@@ -176,8 +238,7 @@ async def resolve_invite_role(
     (``rights.check_role_grant``). ``granter_capabilities`` is the inviter's at issue; a redemption
     passes ``DEPLOYMENT_GRANTER``, the issue having been the inviter's act and already checked.
     """
-    from provisa.api.app import ensure_org_runtime, state
-    from provisa.core.schema_org import roles as org_roles
+    from provisa.api.app import state
     from provisa.security.inheritance import effective_capabilities
     from provisa.security.rights import (
         PlatformRoleGrantError,
@@ -186,13 +247,7 @@ async def resolve_invite_role(
     )
 
     resolved = role_id if role_id is not None else DEFAULT_INVITE_ROLE
-    rt = await ensure_org_runtime(org_id)
-    assert rt.model_db is not None
-    async with rt.model_db.acquire() as conn:
-        result = await conn.execute_core(
-            select(org_roles.c.id, org_roles.c.capabilities, org_roles.c.parents)
-        )
-        role_rows = [dict(r._mapping) for r in result.fetchall()]
+    role_rows = await _org_role_rows(org_id)
     if resolved not in {r["id"] for r in role_rows}:
         raise ApiError(
             422,
@@ -234,9 +289,9 @@ async def create_invite(body: CreateInviteBody, request: Request):  # REQ-125
     # Audit attribution must be a real user — never fall back to "system".
     if identity is None:
         raise ApiError(401, "auth.authentication_required", "Authentication required")
-    # REQ-1327: an invitation seats a member of the org, which only that org's admin issues. The
-    # platform appoints an org's admins through grant_org_admin (orgs_router), not by invitation.
-    await _require_org_admin(request, body.org_id)
+    # REQ-1327: an invitation seats a member of the org, which that org's admin issues; the
+    # platform issues only an invitation appointing an org admin (_require_inviter).
+    await _require_inviter(request, body.org_id, body.role_id)
     _check_env_policy(body)
     created_by = identity.user_id
     # token and expiry are computed app-side (portable) rather than via

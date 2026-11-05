@@ -12,25 +12,27 @@
 
 Start a debug-trace window for an org, a role or a source for a stated number of minutes, see the
 windows that are open and how long each has left, stop one early, and permit the per-request
-debug-trace hint per role. A debug trace adds load to the deployment, so the listing and a window
-over an org as a whole are the platform's: the deployment check (REQ-1327). A window naming a role
-or source in an org is that org's administrator's: ``org_settings`` in that org (REQ-1327). Stopping
-a window and the hint permission are gated on ``platform_settings``.
+debug-trace hint per role. One scope rule covers opening, stopping and listing (REQ-1327): a window
+over an org as a whole is load on the deployment, so it is the platform's (the deployment check); a
+window naming a role or source in an org, and the per-role hint, are that org's administrator's
+(``org_settings`` in that org). The listing shows each caller the windows of its own reach: the
+platform sees the org-wide windows, an org admin sees its own org's windows and hint roles.
 """
 
 # Requirements: REQ-1910, REQ-1327
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from provisa.api.admin._platform_guard import (
+    has_deployment_settings,
     is_anonymous,
     require_deployment_settings,
-    require_platform_settings,
 )
 from provisa.api.errors import ApiError
 from provisa.core import trace_scope
@@ -74,47 +76,99 @@ def _serialize_window(window: trace_scope.DebugWindow, now: datetime) -> dict:
     }
 
 
-async def _read(db) -> dict:
+# Whether a window (or, as scope "role", a hint role) of this scope in this org is in the caller's
+# reach: (scope, org_id) -> bool.
+_Reach = Callable[[str, str], bool]
+
+
+async def _read(db, reach: _Reach) -> dict:
     now = datetime.now(timezone.utc)
     return {
-        "windows": [_serialize_window(w, now) for w in await trace_scope.list_windows(db, now)],
+        "windows": [
+            _serialize_window(w, now)
+            for w in await trace_scope.list_windows(db, now)
+            if reach(w.scope, w.org_id)
+        ],
         "hint_roles": [
             {"org_id": org_id, "role_id": role_id}
             for org_id, role_id in await trace_scope.list_hint_roles(db)
+            if reach("role", org_id)
         ],
         "max_minutes": trace_scope.MAX_WINDOW_MINUTES,
         "hint_setting": trace_scope.HINT_SETTING,
     }
 
 
-def _require_org_settings_in(request: Request, org_id: str, scope: str) -> None:  # REQ-1327
-    """Raise 403 unless the caller holds ``org_settings`` in ``org_id`` — acting in that org. A
-    window naming a role or source is the org admin's, so the platform's cross_org reaches no org
-    here, and org_settings held in the org one is acting in reaches no other."""
+def _org_settings_org(request: Request) -> str | None:  # REQ-1327
+    """The org the caller administers here: the org it is acting in, when it holds ``org_settings``
+    — org_settings held in the org one is acting in reaches no other."""
     from provisa.api.admin.capabilities import _resolved_capabilities
     from provisa.api.app import state
 
+    caps = _resolved_capabilities(request.state.identity, state)
+    if Capability.ORG_SETTINGS.value in caps:
+        return getattr(request.state, "active_org_id", None)
+    return None
+
+
+def _require_org_settings_in(request: Request, org_id: str, subject: str) -> None:  # REQ-1327
+    """Raise 403 unless the caller holds ``org_settings`` in ``org_id`` — acting in that org. A
+    window naming a role or source, and the per-role hint, are the org admin's, so the platform's
+    cross_org reaches no org here."""
     if is_anonymous(request):
         return  # dev mode — no auth configured
-    caps = _resolved_capabilities(request.state.identity, state)
-    active_org = getattr(request.state, "active_org_id", None)
-    if Capability.ORG_SETTINGS.value in caps and active_org == org_id:
+    if _org_settings_org(request) == org_id:
         return
     raise ApiError(
         403,
         "debug_trace.org_settings_in_org_required",
-        f"a debug-trace window naming a {scope} is opened by that org's administrator: "
-        f"org_settings in {org_id} required",
+        f"{subject} is that org's administrator's: org_settings in {org_id} required",
         org_id=org_id,
-        scope=scope,
+        subject=subject,
     )
+
+
+def _reach(request: Request) -> _Reach:  # REQ-1327
+    """What the caller's listing shows, by the rule that decides who opens a window: the platform
+    (the deployment check) sees the org-wide windows of every org; an org admin (``org_settings``
+    in the org it acts in) sees that org's windows and hint roles. 403 for a caller with neither."""
+    if is_anonymous(request):
+        return lambda _scope, _org_id: True  # dev mode — no auth configured
+    platform = has_deployment_settings(request)
+    own_org = _org_settings_org(request)
+    if not platform and own_org is None:
+        raise ApiError(
+            403,
+            "debug_trace.no_reach",
+            "debug-trace windows are listed to the platform administrator (org-wide windows) "
+            "and to an org's administrator (its own org's)",
+        )
+    return lambda scope, org_id: (platform and scope == "org") or org_id == own_org
+
+
+def _window_not_found(window_id: str) -> ApiError:
+    return ApiError(
+        404,
+        "debug_trace.window_not_found",
+        f"No debug-trace window {window_id!r}",
+        window_id=window_id,
+    )
+
+
+async def _open_window(window_id: str) -> trace_scope.DebugWindow | None:
+    """The open window with this id, or None."""
+    for window in await trace_scope.list_windows(_admin_pool()):
+        if window.id == window_id:
+            return window
+    return None
 
 
 @router.get("/admin/platform/debug-trace")
 async def read_debug_trace(request: Request) -> dict:  # REQ-1910
-    """The open debug-trace windows and the roles permitted the per-request hint."""
-    require_deployment_settings(request)  # REQ-1327
-    return await _read(_admin_pool())
+    """The open debug-trace windows and the roles permitted the per-request hint, as far as the
+    caller's reach goes (REQ-1327)."""
+    reach = _reach(request)
+    return await _read(_admin_pool(), reach)
 
 
 @router.post("/admin/platform/debug-trace/windows")
@@ -126,7 +180,9 @@ async def start_debug_window(request: Request, body: WindowBody) -> dict:  # REQ
     if body.scope == "org":
         require_deployment_settings(request)
     else:
-        _require_org_settings_in(request, body.org_id, body.scope)
+        _require_org_settings_in(
+            request, body.org_id, f"a debug-trace window naming a {body.scope}"
+        )
     identity = getattr(request.state, "identity", None)
     db = _admin_pool()
     try:
@@ -140,28 +196,38 @@ async def start_debug_window(request: Request, body: WindowBody) -> dict:  # REQ
         )
     except ValueError as exc:
         raise ApiError(400, "debug_trace.invalid_window", str(exc)) from exc
-    return await _read(db)
+    return await _read(db, _reach(request))
 
 
 @router.delete("/admin/platform/debug-trace/windows/{window_id}")
 async def stop_debug_window(request: Request, window_id: str) -> dict:  # REQ-1910
-    """End a debug-trace window before its time."""
-    require_platform_settings(request)  # REQ-1337
+    """End a debug-trace window before its time.
+
+    REQ-1327: stopped by whoever may open it — an org-wide window by the platform, a window naming
+    a role or source by that org's administrator. A window outside the caller's reach is reported
+    as not found, as the listing does not show it."""
+    reach = _reach(request)
+    window = await _open_window(window_id)
+    if window is None or not reach(window.scope, window.org_id):
+        raise _window_not_found(window_id)
+    if window.scope == "org":
+        require_deployment_settings(request)
+    else:
+        _require_org_settings_in(
+            request, window.org_id, f"a debug-trace window naming a {window.scope}"
+        )
     db = _admin_pool()
     if not await trace_scope.stop_window(db, window_id):
-        raise ApiError(
-            404,
-            "debug_trace.window_not_found",
-            f"No debug-trace window {window_id!r}",
-            window_id=window_id,
-        )
-    return await _read(db)
+        raise _window_not_found(window_id)
+    return await _read(db, reach)
 
 
 @router.put("/admin/platform/debug-trace/hint-roles")
 async def set_hint_role(request: Request, body: HintRoleBody) -> dict:  # REQ-1910
-    """Permit, or stop permitting, the per-request debug-trace hint for a role."""
-    require_platform_settings(request)  # REQ-1337
+    """Permit, or stop permitting, the per-request debug-trace hint for a role.
+
+    REQ-1327: a hint names a role in an org, so it is that org's administrator's."""
+    _require_org_settings_in(request, body.org_id, "the per-request debug-trace hint for a role")
     identity = getattr(request.state, "identity", None)
     db = _admin_pool()
     role_id = body.role_id.strip()
@@ -170,4 +236,4 @@ async def set_hint_role(request: Request, body: HintRoleBody) -> dict:  # REQ-19
     await trace_scope.set_hint_permission(
         db, body.org_id, role_id, body.permitted, updated_by=getattr(identity, "user_id", None)
     )
-    return await _read(db)
+    return await _read(db, _reach(request))

@@ -263,6 +263,11 @@ _ORG_LAYER = [
     "DELETE /orgs/{id}/branding/logo",
     "POST /orgs/{id}/members",
     "DELETE /orgs/{id}/members/{user}",
+]
+# REQ-1327 (amended 2026-11-05): an invitation is the org admin's unless it appoints an org admin,
+# which the platform may issue; these two confer no user_management, so the platform is refused by
+# its own name below, not the org-layer refusal.
+_INVITES = [
     "POST /invites",
     "POST /invites (analyst)",
 ]
@@ -295,7 +300,7 @@ async def test_platform_admin_keeps_lifecycle_and_recovery(platform_admin_at_the
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("route", _ORG_LAYER)
+@pytest.mark.parametrize("route", _ORG_LAYER + _INVITES)
 async def test_the_orgs_own_admin_passes_its_layer(patch, monkeypatch, route):
     patch(caps={"user_management", "org_settings"}, membership_row=("acme",))
     real_gate = inv._require_org_admin
@@ -309,3 +314,123 @@ async def test_the_orgs_own_admin_passes_its_layer(patch, monkeypatch, route):
         await _org_routes()[route](
             _request(identity=_identity("alice", ["org_admin"]), active_org="acme")
         )
+
+
+# ── REQ-1327 (amended 2026-11-05): the platform removes an org admin's role, never the member ─────
+
+
+@pytest.mark.asyncio
+async def test_the_platform_cannot_remove_a_member(platform_admin_at_the_gate):
+    # Removing an org admin is the platform's by revoking the role (DELETE /orgs/{id}/admins/{user},
+    # above); removing the person from the org stays the org's own act.
+    import provisa.api.admin.orgs_router as orgs
+
+    with pytest.raises(HTTPException) as ei:
+        await orgs.remove_member("acme", "u9", platform_admin_at_the_gate)
+    assert ei.value.status_code == 403
+    assert getattr(ei.value, "code") == "invites.user_management_in_org_required"
+
+
+# ── REQ-1327 (amended 2026-11-05): the platform invites an org admin, read off the role's rights ──
+#
+# The gate is real; the invited role's rights in the target org are stubbed at
+# _invited_role_capabilities, and an invitation that passes the gate reaches _check_env_policy,
+# which raises _Passed before anything is stored.
+
+_ORG_ADMIN_RIGHTS = frozenset({"user_management", "org_settings", "table_registration"})
+
+
+@pytest.fixture
+def invite_gate(patch, monkeypatch):
+    """Returns (apply, asked): apply(caps, role_caps) sets the caller's rights and the invited role's
+    rights in acme; asked records each (org, role) whose rights were read."""
+    asked: list[tuple[str, str | None]] = []
+
+    def _apply(*, caps, role_caps, membership_row=None):
+        patch(caps=caps, membership_row=membership_row)
+
+        async def _role_caps(_request, org_id, role_id):
+            asked.append((org_id, role_id))
+            return frozenset(role_caps)
+
+        def _past_the_gate(_body):
+            raise _Passed
+
+        monkeypatch.setattr(inv, "_invited_role_capabilities", _role_caps)
+        monkeypatch.setattr(inv, "_check_env_policy", _past_the_gate)
+
+    return _apply, asked
+
+
+def _invite(role_id):
+    return inv.CreateInviteBody.model_construct(org_id="acme", role_id=role_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role_id", ["org_admin", "acme_stewards_and_admins"])
+async def test_the_platform_invites_a_role_carrying_user_management(invite_gate, role_id):
+    # Whatever the role is called: an org may group its admin rights under any role (REQ-1337).
+    apply, asked = invite_gate
+    apply(caps={"platform_settings", "cross_org"}, role_caps=_ORG_ADMIN_RIGHTS)
+    with pytest.raises(_Passed):
+        await inv.create_invite(
+            _invite(role_id),
+            _request(identity=_identity("p", ["platform_admin"]), active_org="root"),
+        )
+    assert asked == [("acme", role_id)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role_id", [None, "analyst", "org_admin"])
+async def test_the_platform_is_refused_an_invitation_appointing_no_admin(invite_gate, role_id):
+    # The default role, an ordinary role, and a role NAMED org_admin that this org gave no
+    # user_management: the role's rights decide, not its name.
+    apply, _asked = invite_gate
+    apply(caps={"platform_settings", "cross_org"}, role_caps={"usage", "query_development"})
+    with pytest.raises(HTTPException) as ei:
+        await inv.create_invite(
+            _invite(role_id),
+            _request(identity=_identity("p", ["platform_admin"]), active_org="root"),
+        )
+    assert ei.value.status_code == 403
+    assert getattr(ei.value, "code") == "invites.platform_invites_org_admins_only"
+    assert "user_management" in str(ei.value.detail)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "caps",
+    [
+        {"cross_org"},
+        # A single-tenant org admin holds platform_settings but never cross_org: not the platform.
+        {"platform_settings", "user_management"},
+    ],
+)
+async def test_without_the_deployment_check_there_is_no_platform_invitation(invite_gate, caps):
+    apply, asked = invite_gate
+    apply(caps=caps, role_caps=_ORG_ADMIN_RIGHTS)
+    with pytest.raises(HTTPException) as ei:
+        await inv.create_invite(
+            _invite("org_admin"), _request(identity=_identity("u", ["x"]), active_org="root")
+        )
+    assert ei.value.status_code == 403
+    assert getattr(ei.value, "code") == "invites.user_management_in_org_required"
+    assert asked == []
+
+
+@pytest.mark.asyncio
+async def test_the_bootstrap_admin_invites_anyone_into_its_own_org_as_its_org_admin(invite_gate):
+    # Platform admin and org admin of root at once, acting in root: the org admin's own path, so the
+    # invited role's rights are never read.
+    apply, asked = invite_gate
+    apply(
+        caps={"platform_settings", "cross_org", "user_management"},
+        role_caps={"usage"},
+        membership_row=("root",),
+    )
+    with pytest.raises(_Passed):
+        await inv.create_invite(
+            inv.CreateInviteBody.model_construct(org_id="root", role_id="analyst"),
+            _request(identity=_identity("p", ["platform_admin", "org_admin"]), active_org="root"),
+        )
+    assert asked == []

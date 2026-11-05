@@ -13,8 +13,9 @@
 A single-tenant deployment grants platform_settings to org_admin, so a route checking that right
 alone showed the org admin a platform page it could use. REQ-1327 (amended 2026-11-05): a platform
 route requires the deployment check (platform_settings AND cross_org). The mail transport, the
-maintenance banner, the desktop shutdown switch, the debug-trace listing and the sandbox-membership
-fix are platform routes.
+maintenance banner, the desktop shutdown switch, opening or stopping an org-wide debug-trace window
+and the sandbox-membership fix are platform routes. (The debug-trace listing was one; it now shows
+each caller its own reach, test_debug_trace_router.py.)
 
 Each route is called with the real gate: the single-tenant org admin is refused by the deployment
 check's code before anything is read or written; the platform admin passes it, which the first
@@ -25,6 +26,7 @@ step after the gate reports by raising ``_Passed``.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -35,6 +37,7 @@ from provisa.api.admin import lifecycle_router as lr
 from provisa.api.admin import mail_router as mailr
 from provisa.api.admin import maintenance_router as mr
 from provisa.api.errors import ApiError
+from provisa.core import trace_scope as ts
 
 _PLATFORM_ADMIN = {"platform_settings", "cross_org"}
 _SINGLE_TENANT_ORG_ADMIN = {"platform_settings", "org_settings", "user_management"}
@@ -60,6 +63,22 @@ def after_the_gate(monkeypatch):
     monkeypatch.setattr(mr, "_admin_pool", _raise_passed)
     monkeypatch.setattr(lr, "_is_desktop_runtime", _raise_passed)
     monkeypatch.setattr(dr, "_admin_pool", _raise_passed)
+    monkeypatch.setattr(dr, "_open_window", _org_wide_window_in_root)
+
+
+async def _org_wide_window_in_root(window_id):
+    """The window a stop finds: org-wide, in root, where the single-tenant org admin acts and so
+    sees it listed — what refuses its stop is the deployment check, not its reach."""
+    now = datetime.now(timezone.utc)
+    return ts.DebugWindow(
+        id=window_id,
+        scope="org",
+        org_id="root",
+        target=None,
+        started_at=now,
+        expires_at=now + timedelta(minutes=5),
+        created_by="ops",
+    )
 
 
 def _request(monkeypatch, caps: set[str]):
@@ -81,7 +100,12 @@ _ROUTES = {
     "POST /admin/mail/test": mailr.send_test_mail,
     "PUT /admin/platform/maintenance": lambda r: mr.set_maintenance(r, mr.NoticeBody(active=True)),
     "POST /admin/lifecycle/shutdown": lr.shutdown,
-    "GET /admin/platform/debug-trace": dr.read_debug_trace,
+    "POST /admin/platform/debug-trace/windows (org-wide)": lambda r: dr.start_debug_window(
+        r, dr.WindowBody(scope="org", org_id="root", minutes=5)
+    ),
+    "DELETE /admin/platform/debug-trace/windows/{id} (org-wide)": lambda r: dr.stop_debug_window(
+        r, "w-org"
+    ),
     "POST /admin/orgs/{id}/environments/-/fix-sandbox-membership": er.fix_sandbox_membership,
 }
 
