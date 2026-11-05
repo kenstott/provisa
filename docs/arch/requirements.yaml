@@ -91874,10 +91874,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   description: 'Maintainer 2026-11-04: the repository carries a dev container definition (.devcontainer)
     that VS Code and GitHub Codespaces open as is. It provides the pinned Python with the project''s dependencies
     synced from uv.lock, the Rust toolchain with the provisa._encoders extension built for the checkout,
-    the pinned Go toolchain, Node with provisa-ui''s dependencies, and a control-plane PostgreSQL with
-    pgvector (the same image the compose stack uses), with Docker available for the tests that start their
-    own containers. Opening it ends with the unit suite runnable by one command, and the README''s contributing
-    section says so.'
+    the pinned Go toolchain, Node with provisa-ui''s dependencies, and a control-plane PostgreSQL with pgvector
+    (the same image the compose stack uses), with Docker available for the tests that start their own containers.
+    Opening it ends with the unit suite runnable by one command, and the README''s contributing section
+    says so. (Amended 2026-11-04, THREE STEPS IN A CODESPACE:) Maintainer: using the demo in a Codespace
+    is three steps: open the Codespace, run ./start-ui-install.sh --demo, click Open in Browser on the UI''s
+    port. Nothing else is typed, set or installed by hand: the container''s environment is the one the script
+    uses, every directory the script needs is made by the product, and the UI works through the Codespace''s
+    private forwarded port. A CI check builds the dev container and runs those steps inside it on every
+    change to the container, the script or what the script starts.'
   scenario: 'Given a fresh clone opened in the dev container
 
     When the container finishes building
