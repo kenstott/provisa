@@ -30,6 +30,16 @@ from provisa.core.schema_org import domains, relationships, sources
 from provisa.graphql_remote.brands import LiveSchema
 from tests.unit.test_graphql_remote_relay import _type_ref
 
+
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A deployment of one organization (REQ-2006). The API layer says it at import; these
+    tests import no API layer, so they say it themselves."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 URL = "https://shop.example/graphql"
 
 SDL = """

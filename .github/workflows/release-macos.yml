@@ -85,6 +85,11 @@ jobs:
           node-version: "20"
           install: "false"
 
+      # REQ-2194: installing provisa compiles provisa._encoders, with the toolchain every recipe names.
+      - name: Install the Rust toolchain
+        shell: bash
+        run: rustup toolchain install 1.95.0 --profile minimal
+
       - name: Build DMG
         env:
           VERSION: ${{ inputs.version }}
@@ -132,6 +137,11 @@ jobs:
         with:
           node-version: "20"
           install: "false"
+
+      # REQ-2194: installing provisa compiles provisa._encoders, with the toolchain every recipe names.
+      - name: Install the Rust toolchain
+        shell: bash
+        run: rustup toolchain install 1.95.0 --profile minimal
 
       - name: Build Container DMG
         env:

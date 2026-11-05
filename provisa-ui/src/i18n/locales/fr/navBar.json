@@ -36,6 +36,8 @@
     "itemEmail": "E-mail",
     "itemMaintenance": "Maintenance",
     "itemDeploymentSettings": "Paramètres du déploiement",
+    "itemPlatform": "Plateforme",
+    "itemRegions": "Régions",
     "itemBilling": "Facturation",
     "itemExplore": "MCP",
     "itemEncryption": "Chiffrement",

@@ -200,7 +200,8 @@
     "dimBadge": "Dimension",
     "scopeDomain": "domaine",
     "scopePublic": "public",
-    "scopeRestricted": "restreint",
+    "scopeListed": "listé",
+    "scopeOwnDomain": "domaine propre",
     "cancel": "Annuler",
     "save": "Enregistrer",
     "ttlViewRefreshes": "Rafraîchissement toutes les {{sec}} s (d'après l'intervalle de rafraîchissement de la vue matérialisée).",
@@ -264,7 +265,7 @@
     "draftHelp": "Hors service tant que la case est cochée : lue et écrite nulle part, proposée dans aucun schéma et copiée nulle part ; les copies existantes dans chaque région sont supprimées. Une table ou une vue enregistrée ici commence en brouillon ; décochez pour la publier.",
     "pagingRowsFieldHelp": "La propriété de la réponse qui contient les lignes, comme values ou data dans une enveloppe de page. Laissez vide quand la réponse est elle-même les lignes. Les colonnes de la table sont celles des objets qui s'y trouvent.",
     "pagingRowsFieldFixed": "Défini à l'enregistrement de la table. Enregistrez de nouveau la table pour lire ses lignes ailleurs.",
-    "scopeHelp": "domain : servi aux rôles qui atteignent le domaine de cette table. public : aussi aux rôles en dehors. restricted : uniquement aux rôles nommés dans Visible par.",
+    "scopeHelp": "domain : servi aux rôles qui atteignent le domaine de cette table, y compris par un domaine parent. listed : idem, et chaque rôle voit le nom de la colonne dans le catalogue. public : aussi servi aux rôles en dehors du domaine. own-domain : servi uniquement aux rôles dont l’accès de domaine propre mentionne le domaine de cette table ; un rôle qui l’atteint seulement par un domaine parent n’en est pas servi, même si Visible par le nomme.",
     "columnTabs": {
       "label": "Attributs de colonne",
       "naming": "Nommage",

@@ -478,7 +478,11 @@
       "relationship_same_entity_cardinality": "Relationship '{{relationship}}' cannot be marked same entity: it is {{cardinality}}, and the same entity is one row to one row",
       "relationship_same_entity_not_grounded": "Relationship '{{relationship}}' cannot be marked same entity: {{source}} and {{target}} are not grounded in the same term",
       "relationship_same_entity_not_keys": "Relationship '{{relationship}}' cannot be marked same entity: {{columns}} is not the primary key or a unique key of {{table}}",
-      "kaggle_token_missing": "Kaggle dataset {{owner}}/{{ref}}: the source holds no Kaggle API token. Add it on the Sources form, where its token is entered."
+      "kaggle_token_missing": "Kaggle dataset {{owner}}/{{ref}}: the source holds no Kaggle API token. Add it on the Sources form, where its token is entered.",
+      "jdbc_invalid": "Source {{source}}: {{error}}",
+      "jdbc_file_refused": "Source {{source}}: the URL names {{path}}, which this server may not open for the organization.",
+      "jdbc_options_refused": "Source {{source}}: this organization's URL may not give the driver option {{options}}.",
+      "jdbc_driver_refused": "Source {{source}}: a customer's JDBC driver runs as code in Provisa's own JVM, which only a self-hosted install allows."
     },
     "secrets": {
       "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",
@@ -626,7 +630,10 @@
       "popup_blocked": "Your browser blocked the sign-in window. Allow pop-ups for this site and try again.",
       "window_closed": "The sign-in window was closed before it finished.",
       "tenant_invalid": "The organization's Microsoft 365 setting does not name a directory (tenant). An administrator enters the directory's ID or domain.",
-      "microsoft_account_unread": "The sign-in was approved, but Microsoft did not say whose mailbox it is."
+      "microsoft_account_unread": "The sign-in was approved, but Microsoft did not say whose mailbox it is.",
+      "client_missing": "Enter the app's client ID and client secret, then sign in.",
+      "client_not_taken": "This kind of source signs in with your organization's client, not one entered on the form.",
+      "no_account_returned": "The sign-in was approved, but the answer did not say which account ({{parameter}}). Sign in again."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "Your organization has not allowed sources that read its mailboxes. An administrator allows it under Admin › Email.",
@@ -761,6 +768,12 @@
         "no_description": "This data product states neither its purpose nor its usage.",
         "successor_retired": "The data product that took this one's members, '{{successor}}', has been retired too."
       }
+    },
+    "erd": {
+      "database_unavailable": "The ERD layouts cannot be read: the database is unavailable",
+      "layout_not_found": "No layout named {{name}}",
+      "layout_name_required": "A layout needs a name",
+      "layout_place_unreadable": "The layout places a {{kind}} you cannot read"
     }
   }
 }

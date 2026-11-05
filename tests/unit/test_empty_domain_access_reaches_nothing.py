@@ -358,7 +358,12 @@ def test_role_all_is_the_union_and_an_all_empty_union_is_none(multi_domain, list
     from provisa.security import meta_role
 
     roles = {
-        f"r{i}": {"id": f"r{i}", "description": "Test role.", "domain_access": lst}
+        f"r{i}": {
+            "id": f"r{i}",
+            "description": "Test role.",
+            "domain_access": lst,
+            "own_domain_access": lst,  # REQ-2153: a built role carries it
+        }
         for i, lst in enumerate(lists)
     }
     # "Role: All" acts as the set's meta-role: its domain_access is the union.

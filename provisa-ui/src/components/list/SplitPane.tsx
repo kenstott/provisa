@@ -31,7 +31,13 @@ import { ArrowLeft, Maximize2, Minimize2, X } from "lucide-react";
 import { useResizableWidth } from "../../hooks/useResizableWidth";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { PanelActionsContext, PanelNoticeContext } from "./panelActions";
+import {
+  DeletingKeysContext,
+  PanelActionsContext,
+  PanelDeletingContext,
+  PanelNoticeContext,
+  usePanelDeleting,
+} from "./panelActions";
 import { PanelHeadStyle } from "./PanelHeadStyle";
 import { PanelLeaveContext, usePanelLeave, type PanelLeave } from "./panelLeave";
 
@@ -101,8 +107,11 @@ export function SplitPane({
   const rowRef = useRef<HTMLDivElement>(null);
   const [rowWidth, setRowWidth] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null);
+  const [actionsSlot, setActionsSlot] = useState<HTMLFieldSetElement | null>(null);
   const [noticeSlot, setNoticeSlot] = useState<HTMLDivElement | null>(null);
+  // REQ-2198: a delete in progress (PanelDelete) locks the panel -- its fields and actions are
+  // disabled until it settles -- and marks its item's row in the list as being deleted.
+  const { locked, deleting, api: deletingApi } = usePanelDeleting(open, onClose);
 
   const { ref, width, startResize, onHandleKeyDown } = useResizableWidth<HTMLElement>(storageKey, {
     // Not moved yet: the panel takes its share of the row (see `shown`).
@@ -158,7 +167,9 @@ export function SplitPane({
     onClose();
   };
   const provided = (node: ReactNode) => (
-    <PanelLeaveContext.Provider value={leaving}>{node}</PanelLeaveContext.Provider>
+    <PanelLeaveContext.Provider value={leaving}>
+      <DeletingKeysContext.Provider value={deleting}>{node}</DeletingKeysContext.Provider>
+    </PanelLeaveContext.Provider>
   );
 
   return (
@@ -225,7 +236,13 @@ export function SplitPane({
                 <Title order={4} className="split-pane__title" data-testid={`${testId}-title`}>
                   {title}
                 </Title>
-                <div className="split-pane__actions" ref={setActionsSlot} />
+                {/* A fieldset, so a delete in progress disables every action put here. */}
+                <fieldset
+                  className="split-pane__actions"
+                  ref={setActionsSlot}
+                  disabled={locked}
+                  data-testid={`${testId}-actions`}
+                />
                 {!narrow && (
                   <ActionIcon
                     aria-label={expanded ? labels.restore : labels.expand}
@@ -247,13 +264,23 @@ export function SplitPane({
             </div>
             {/* What a form in the panel has to say of itself (a refused save): pinned too. */}
             <div className="split-pane__notice" ref={setNoticeSlot} />
-            <div className="split-pane__body">
+            {/* A fieldset, so a delete in progress disables the panel's fields; inert, so it
+                disables what is clickable without being a field too. */}
+            <fieldset
+              className="split-pane__body"
+              disabled={locked}
+              inert={locked}
+              aria-busy={locked || undefined}
+              data-testid={`${testId}-body`}
+            >
               <PanelActionsContext.Provider value={actionsSlot}>
                 <PanelNoticeContext.Provider value={noticeSlot}>
-                  {provided(children)}
+                  <PanelDeletingContext.Provider value={deletingApi}>
+                    {provided(children)}
+                  </PanelDeletingContext.Provider>
                 </PanelNoticeContext.Provider>
               </PanelActionsContext.Provider>
-            </div>
+            </fieldset>
           </aside>
         </>
       )}

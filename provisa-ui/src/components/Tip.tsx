@@ -90,6 +90,7 @@ export function TipSurface({
   openDelay = TIP_OPEN_DELAY_MS,
   named = false,
   opened,
+  inPlace = false,
   testId,
   ref,
   ...handedOn
@@ -107,6 +108,11 @@ export function TipSurface({
    * target it draws where something on a canvas is being pointed at.
    */
   opened?: boolean;
+  /**
+   * Drawn beside the target in the page rather than at the end of the document: a hint on a
+   * control inside an element that can go full screen, where only that element is shown.
+   */
+  inPlace?: boolean;
   testId?: string;
   /**
    * Whatever a wrapper gives its one child -- a menu's or a popover's trigger hands its click
@@ -201,6 +207,7 @@ export function TipSurface({
           target={target}
           opened={open || opened === true}
           keepMounted
+          withinPortal={!inPlace}
           // The floating element takes an id of its own from the library, so what describes the
           // target is the text inside it, under the id this component chose.
           label={<div id={id}>{content}</div>}
@@ -226,6 +233,7 @@ export function Tip({
   position,
   openDelay,
   named,
+  inPlace,
   testId,
   ref,
   ...handedOn
@@ -237,6 +245,8 @@ export function Tip({
   /** Milliseconds of hover before it opens; 0 for a target that exists only to be asked. */
   openDelay?: number;
   named?: boolean;
+  /** Drawn in place, not in a portal (TipSurface). */
+  inPlace?: boolean;
   testId?: string;
   ref?: Ref<HTMLElement>;
 } & PassedOn) {
@@ -252,6 +262,7 @@ export function Tip({
       position={position}
       openDelay={openDelay}
       named={named}
+      inPlace={inPlace}
       testId={testId}
       ref={ref}
       {...handedOn}

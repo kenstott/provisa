@@ -754,8 +754,13 @@ def test_a_read_cut_at_the_limit_warns_the_statement():
         def column_count(self) -> int:
             return 0
 
-        def rows(self) -> list[Any]:
-            return []
+        def data(self) -> Any:
+            from buenavista.core import ResultData
+
+            return ResultData(iter(()))
+
+        def kinds(self) -> None:
+            return None
 
         def late_warnings(self) -> list[Any]:
             return ["cut"]
@@ -772,8 +777,107 @@ def test_a_read_cut_at_the_limit_warns_the_statement():
     assert reads.warnings == ["first", "cut"]
 
 
+class _OneResult:
+    """A session whose every statement answers ``result``."""
+
+    def __init__(self, result: Any) -> None:
+        self.result = result
+        self.cursors: dict[str, Any] = {}
+
+    def _execute_sql_bound(self, sql: str, params: Any, formats: Any) -> Any:
+        return self.result
+
+
+def _row_result() -> Any:
+    from provisa.executor.result import QueryResult
+    from provisa.pgwire.server import ProvisaQueryResult
+
+    stream = QueryResult(
+        rows=[(1, "a & b", Decimal("2.50")), (2, None, Decimal("-1"))],
+        column_names=["id", "name", "price"],
+        column_types=["integer", "text", "decimal(10,2)"],
+    )
+    return ProvisaQueryResult(stream, "SELECT id, name, price FROM orders")
+
+
+def test_query_to_xml_maps_a_row_results_rows():
+    # REQ-2195: a row result reaches pgwire as its rows, not as Arrow; they are the values
+    # query_to_xml maps, not a passthrough's DataRow messages.
+    from provisa.pgwire.server import _SessionReads
+
+    reads = _SessionReads(_OneResult(_row_result()))  # type: ignore[arg-type]
+    document = xml_mapping._query_to_xml(
+        reads, "SELECT id, name, price FROM orders", True, False, ""
+    )
+    assert document == (
+        '<table xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">\n\n'
+        "<row>\n  <id>1</id>\n  <name>a &amp; b</name>\n  <price>2.50</price>\n</row>\n\n"
+        '<row>\n  <id>2</id>\n  <name xsi:nil="true"/>\n  <price>-1</price>\n</row>\n\n'
+        "</table>\n"
+    )
+
+
+def test_cursor_to_xml_maps_a_row_results_rows():
+    from provisa.pgwire.server import _CursorState, _RowBuffer, _SessionReads
+
+    result = _row_result()
+    data = result.data()
+    session = _OneResult(result)
+    session.cursors["c"] = _CursorState(
+        name="c", query_result=result, source=data.take(), buffer=_RowBuffer(data.raw, data.rows)
+    )
+    reads = _SessionReads(session)  # type: ignore[arg-type]
+    columns, rows = reads.cursor_rows("c", 1)
+    assert [c.name for c in columns] == ["id", "name", "price"]
+    assert rows == [(1, "a & b", Decimal("2.50"))]
+    assert reads.cursor_rows("c", 5)[1] == [(2, None, Decimal("-1"))]
+
+
+def test_a_passthroughs_datarow_messages_are_not_mapped_as_rows():
+    from provisa.executor.result import DataRowResult
+    from provisa.pgwire.server import ProvisaQueryResult, _SessionReads
+
+    passthrough = DataRowResult(
+        rows=[b"D\x00\x00\x00\x0b\x00\x01\x00\x00\x00\x011"],
+        column_names=["id"],
+        column_types=["integer"],
+    )
+    result = ProvisaQueryResult(passthrough, "SELECT id FROM orders")
+    reads = _SessionReads(_OneResult(result))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="passthrough's DataRow messages"):
+        reads.rows("SELECT id FROM orders")
+
+
 def test_a_statement_of_xml_and_money_describes_each_column_as_its_own_type():
     sql = "SELECT xpath('/a', '<a/>'::xml), '$1'::money"
     assert [column.oid for column in result_casts(sql)] == [143, 790]
     assert [c.oid for c in result_casts("SELECT p FROM (SELECT '$1'::money AS p) s")] == [790]
     assert [c.oid for c in result_casts("SELECT p FROM (SELECT '<a/>'::xml AS p) s")] == [142]
+
+
+class _WithProvisasOwnDomains(_FixtureReads):
+    """The fixture, with the domains Provisa keeps for itself listed beside its schemas."""
+
+    _OWN = ("meta", "ontology", "ops")
+
+    def catalog(self, sql: str, parameters: list[Any]) -> list[tuple]:
+        if sql == xml_mapping._SCHEMAS:
+            return sorted([*super().catalog(sql, parameters), *((d,) for d in self._OWN)])
+        if "c.relname FROM" in sql and parameters[0] in self._OWN:
+            return [("registered_tables",)]
+        return super().catalog(sql, parameters)
+
+
+@pytest.mark.parametrize(
+    "call", ["database_to_xml", "database_to_xmlschema", "database_to_xml_and_xmlschema"]
+)
+def test_a_database_maps_no_domain_provisa_keeps_for_itself(call):
+    """REQ-2167: as PostgreSQL leaves pg_catalog and information_schema out of database_to_xml,
+    Provisa leaves out meta, ops and ontology: reading every row of each, one statement a table,
+    took the call past 30 s."""
+    reads = _WithProvisasOwnDomains()
+    xml_mapping.fold(f"SELECT {call}(true, false, '') AS v", reads, None)
+    assert reads.read
+    assert not [
+        sql for sql in reads.read if '"meta"' in sql or '"ops"' in sql or '"ontology"' in sql
+    ]

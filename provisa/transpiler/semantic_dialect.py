@@ -163,3 +163,4 @@ DuckDB.Generator.TRANSFORMS[ContainedByOrEqual] = lambda self, e: self.binary(e,
 DuckDB.Generator.TRANSFORMS[ContainsOrEqual] = lambda self, e: self.binary(e, ">>=")
 
 from provisa.transpiler import xml_syntax as _xml_syntax  # noqa: E402, F401 -- PostgreSQL's XML
+from provisa.transpiler import pg_syntax as _pg_syntax  # noqa: E402, F401 -- what sqlglot misreads

@@ -616,7 +616,7 @@ Settings are **org-scoped**: each org's choices sit on top of the deployment con
 | `sql_generation` | NL → SQL generation |
 | `table_selection` | Choosing which tables to include in the NL prompt |
 | `mcp_chat` | The chat assistant panel's tool-use loop |
-| `glossary_term_finding` | Find terms in a document. It has no default: a scan is refused until one is chosen |
+| `glossary_term_finding` | Find terms. It has no default: a scan is refused until one is chosen |
 
 The vendor field accepts any `aisuite`-compatible vendor (`anthropic`, `openai`, `groq`, `mistral`, `cohere`, and others) or a local endpoint (`ollama`, `lmstudio`). Blank model string removes the org's override and reverts to the deployment default.
 
@@ -828,7 +828,7 @@ For large analytical workloads, use either:
 | Provisa gRPC | (host process) | 50051 | Protobuf gRPC server |
 | Federation Engine | `trinodb/trino` (default) or external warehouse | 8080 / varies | Query federation engine: Trino for the embedded stack; Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB for warehouse targets |
 | Zaychik | `provisa-zaychik` (built from source) | 8480 | Arrow Flight SQL proxy for Trino; not required for warehouse engines |
-| PostgreSQL | `postgres:16` | 5432 | Config metadata + Iceberg catalog |
+| PostgreSQL | `pgvector/pgvector:pg16-trixie` | 5432 | Config metadata + Iceberg catalog |
 | MongoDB | `mongo:7` | 27017 | Demo NoSQL data source |
 | MinIO | `minio/minio` | 9000/9001 | S3-compatible object storage |
 | Redis | `redis:7-alpine` | 6379 | Query result cache |

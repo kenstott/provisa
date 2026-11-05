@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from provisa.core.models import Source
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.federation.connector_base import Capability, Connector, Mechanism
 from provisa.federation.codehost_connectors import CodeHost, trino_details
 
@@ -1247,7 +1248,7 @@ def build_trino_connectors() -> list[_TrinoConnector]:
     if TRINO_READS_PGWIRE_ADAPTER_LIVE:
         connectors.append(TrinoGovdataConnector())
     # REQ-2100: a built code host, attached as the Postgres server it speaks as.
-    connectors.extend(TrinoCodeHostConnector(t) for t in ("node", "python"))
+    connectors.extend(TrinoCodeHostConnector(t) for t in sorted(CODE_SOURCE_TYPES))
     connectors.extend(
         cls() for cls in (_jdbc_trino(st, tc) for st, tc in _TRINO_JDBC_TYPES.items())
     )

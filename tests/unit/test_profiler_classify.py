@@ -22,10 +22,19 @@ that exists for every sensitive kind, and none for any other.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from provisa.profiler import classify
 from provisa.profiler.classify import MIN_TESTED, catalogue, kind_of
+
+# header {"alg":"HS256","typ":"JWT"}, payload {"sub":"1234567890","name":"John"}
+_JWT = (
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."
+    "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4ifQ."
+    "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+)
 
 _VALID = {
     "us_ssn": ["123-45-6789", "078051120", "1234567"],
@@ -37,6 +46,33 @@ _VALID = {
     "nl_bsn": ["111222333", "123456782"],
     "in_aadhaar": ["234123412346"],
     "us_passport": ["A12345678"],
+    "us_ein": ["12-3456789", "95-0000001", "99-1234567"],
+    "us_itin": ["912-70-1234", "970881234", "950-50-1234", "999-94-0000"],
+    "us_bank_routing_number": ["021000021", "122000030", "011401533"],
+    "de_steuer_id": ["65929970489", "71234567899", "71 234 567 899", "48123456791"],
+    "fr_nir": ["184127645108946", "2 69 05 11 402 065 85", "185072A01001219"],
+    "au_tfn": ["123456782", "123 456 782", "876543210"],
+    "br_cpf": ["123.456.789-09", "11144477735", "111.444.777-35"],
+    "uk_nhs_number": ["943 476 5919", "9434765919", "401-023-2137", "9434765900"],
+    "aws_access_key_id": ["AKIAIOSFODNN7EXAMPLE", "ASIAY34FZKBOKMUTVV7A"],
+    "github_token": [
+        "ghp_" + "aB3" * 12,
+        "gho_" + "x" * 36,
+        "ghs_" + "7" * 36,
+        "github_pat_" + "A" * 22 + "_" + "b" * 59,
+    ],
+    "jwt": [_JWT, _JWT.rsplit(".", 1)[0] + "."],  # an unsecured token has an empty signature
+    "email_address": ["ada@example.com", "first.last+tag@mail.example.co.uk", "o'brien@x-y.org"],
+    "e164_phone": ["+14155552671", "+44 20 7946 0958", "+1 (415) 555-2671", "+49-30-901820"],
+    "ipv4_address": ["192.168.0.1", "0.0.0.0", "255.255.255.255", "10.0.0.254"],
+    "ipv6_address": [
+        "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+        "2001:db8::1",
+        "::1",
+        "::",
+        "fe80::1ff:fe23:4567:890a",
+        "2001:DB8::8a2e:370:7334",
+    ],
 }
 _INVALID = {
     "us_ssn": [
@@ -61,6 +97,101 @@ _INVALID = {
     "nl_bsn": ["111222334", "000000000"],
     "in_aadhaar": ["234123412345", "123412341234"],
     "us_passport": ["123456789", "AB1234567"],
+    "us_ein": [
+        "07-1234567",  # 07 is no campus prefix
+        "12-345678",  # a digit short
+        "123456789",  # no hyphen: an SSN-shaped number, not an EIN
+        "12-3456789x",
+    ],
+    "us_itin": [
+        "812-70-1234",  # an SSN-shaped number: an ITIN starts with 9
+        "912-93-1234",  # group 93 is not an ITIN group
+        "912-69-1234",  # nor is 69
+        "912-70-123",
+    ],
+    "us_bank_routing_number": [
+        "021000022",  # check digit off by one
+        "000000000",  # sums to zero
+        "12345678",  # a digit short
+        "02100002A",
+    ],
+    "de_steuer_id": [
+        "65929970488",  # check digit off by one
+        "12345678903",  # right check digit, but no repeated digit among the first ten
+        "11234566772",  # right check digit, but two digits repeat
+        "11123456786",  # right check digit, but a digit three in a row
+        "01234567890",  # starts with 0
+        "6592997048",  # a digit short
+    ],
+    "fr_nir": [
+        "184127645108947",  # key off by one
+        "384127645108946",  # sex digit 3
+        "184137645108946",  # month 13
+        "18412764510894",  # a digit short
+    ],
+    "au_tfn": ["123456783", "12345678", "000000000", "123 456 78x"],
+    "br_cpf": [
+        "12345678908",  # check digit off
+        "111.111.111-11",  # all alike passes the arithmetic and is refused
+        "123.456.789-0",  # a digit short
+        "123.456.789-09x",
+    ],
+    "uk_nhs_number": [
+        "9434765918",  # check digit off by one
+        "1234567890",  # the check works out to 10, which is never issued
+        "943476591",  # a digit short
+        "943 476 591x",
+    ],
+    "aws_access_key_id": [
+        "AKIAIOSFODNN7EXAMPL",  # a character short
+        "AKIAIOSFODNN7EXAMPLE1",  # a character over
+        "akiaiosfodnn7example",  # lower case
+        "AKIA IOSFODNN7EXAMP",
+        "AIZAIOSFODNN7EXAMPLE",  # no such prefix
+    ],
+    "github_token": [
+        "ghp_" + "a" * 35,  # a character short
+        "ghx_" + "a" * 36,  # no such kind letter
+        "ghp-" + "a" * 36,
+        "ghp_" + "a" * 35 + "!",
+        "a" * 40,  # a bare 40-character secret has no prefix
+    ],
+    "jwt": [
+        "eyJ0eXAiOiJKV1QifQ.eyJzdWIiOiIxIn0.abc",  # a header that names no alg
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0",  # two segments
+        "eyJ!bGc.eyJzdWIi.abc",  # not base64url
+        "eyJhbGciOiJIUzI1NiJ9.e30.a.b",  # four segments
+        "notajwt.eyJzdWIiOiIxIn0.abc",
+    ],
+    "email_address": [
+        "ada@example",  # no dot in the domain
+        "ada.@example.com",  # a trailing dot in the local part
+        "a..da@example.com",
+        "ada@@example.com",
+        "x" * 65 + "@example.com",  # a local part over 64
+        "ada@-example.com",
+    ],
+    "e164_phone": [
+        "14155552671",  # no plus sign
+        "+0 4155552671",  # country code cannot start with 0
+        "+123456",  # too few digits
+        "+1234567890123456",  # over 15 digits
+        "+1415555abcd",
+    ],
+    "ipv4_address": [
+        "256.1.1.1",
+        "1.2.3",
+        "1.2.3.4.5",
+        "01.02.03.04",  # leading zeros
+        "1.2.3.a",
+    ],
+    "ipv6_address": [
+        "2001:db8::1::1",  # two ::
+        "12345::1",  # a group of five
+        "2001:db8:85a3:0:0:8a2e:370",  # seven groups, no ::
+        "g001:db8::1",
+        "1:2:3:4:5:6:7:8:9",
+    ],
 }
 
 
@@ -69,6 +200,18 @@ def test_a_validator_passes_what_its_rules_admit_and_refuses_the_rest(kind_id):
     validate = classify.VALIDATORS[kind_of(kind_id).test]
     assert [v for v in _VALID[kind_id] if not validate(v)] == []
     assert [v for v in _INVALID[kind_id] if validate(v)] == []
+
+
+@pytest.mark.parametrize("kind_id", sorted(_VALID))
+def test_a_pattern_is_unanchored_and_the_whole_value_test_anchors_it(kind_id):
+    kind = kind_of(kind_id)
+    assert kind.pattern is not None
+    assert not kind.pattern.startswith("^") and not kind.pattern.endswith("$"), kind_id
+    flags = re.IGNORECASE if kind.ignore_case else 0
+    sample = _VALID[kind_id][0]
+    bare = re.sub(kind.ignore, "", sample) if kind.ignore else sample
+    assert re.search(kind.pattern, f"id: {bare}.", flags) is not None  # found inside a text
+    assert not classify.VALIDATORS[kind.test](f"id: {sample} extra")  # but not as a whole value
 
 
 def test_every_sensitive_kind_has_a_validator_case():
@@ -100,6 +243,8 @@ def test_the_catalogue_names_only_validators_lists_and_presets_that_exist():
     for kind in catalogue():
         if kind.reference is None:
             assert kind.test in classify.VALIDATORS, kind.id
+            assert kind.pattern, kind.id
+            assert kind.check is None or kind.check in classify.CHECKS, kind.id
         else:
             assert (classify.REFERENCE_DIR / f"{kind.reference}.txt.gz").is_file(), kind.id
         assert kind.sensitive == (kind.mask_preset is not None), kind.id

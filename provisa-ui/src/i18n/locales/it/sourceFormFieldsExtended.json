@@ -212,6 +212,22 @@
     "reasoner": "Reasoner",
     "reasonerNone": "Nessuno",
     "axioms": "Assiomi OWL",
-    "axiomsHint": "Sintassi Turtle, RDF/XML, funzionale o Manchester. Una tabella la cui query è un solo IRI, come <http://example.org/kyc#controls>, legge ciò che ne viene inferito."
+    "axiomsHint": "Sintassi Turtle, RDF/XML, funzionale o Manchester. Una tabella la cui query è un solo IRI, come <http://example.org/kyc#controls>, legge ciò che ne viene inferito.",
+    "qbRealmId": "ID azienda (ID realm)",
+    "qbRealmIdHint": "Il numero dell'azienda QuickBooks da leggere. Intuit lo mostra quando colleghi la tua app e nelle impostazioni dell'account dell'azienda.",
+    "qbRealmIdInvalid": "L'ID azienda è un numero, ad esempio 9341453456789012",
+    "qbEnvironment": "Sandbox o produzione",
+    "qbEnvironmentHint": "Un'azienda sandbox è un'azienda di prova del tuo account sviluppatore Intuit.",
+    "qbSandbox": "Sandbox (azienda di prova)",
+    "qbProduction": "Produzione (azienda reale)",
+    "qbClientId": "ID client",
+    "qbClientIdHint": "Dalla tua app su developer.intuit.com, in Keys and credentials.",
+    "qbClientSecret": "Segreto client",
+    "qbClientSecretHint": "Dalla stessa pagina dell'ID client. Conservato nel vault dei segreti.",
+    "qbRefreshToken": "Token di aggiornamento",
+    "qbRefreshTokenHint": "Consente a Provisa di leggere l'azienda. Accedi con QuickBooks per ottenerne uno, oppure incollane uno dall'OAuth 2.0 Playground di Intuit con l'ambito Accounting. QuickBooks lo sostituisce a ogni utilizzo e Provisa conserva il più recente. Uno nuovo inserito qui sostituisce quello conservato al salvataggio.",
+    "qbSignIn": "Accedi con QuickBooks",
+    "qbSignedIn": "Accesso eseguito all'azienda {{realm}}. Salva l'origine per conservarlo.",
+    "qbSignInFailed": "Non è stato possibile completare l’accesso."
   }
 }

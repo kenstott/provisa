@@ -20,18 +20,15 @@ from fastapi import HTTPException
 from provisa.api.data.action_exec import invoke_tracked_function
 from provisa.cypher.command_call import CommandCallRefused, parse_command_call
 from provisa.security.rights import Capability
-
-
-class _FakeResult:
-    def __init__(self, cols, rows):
-        self.column_names = cols
-        self.rows = rows
+from provisa.executor.result import QueryResult
 
 
 class _FakePools:
     def __init__(self, connected=True, result=None):
         self._connected = connected
-        self._result = result or _FakeResult(["id", "name"], [(1, "ada")])
+        self._result = result or QueryResult(
+            rows=[(1, "ada")], column_names=["id", "name"], column_types=["integer", "text"]
+        )
         self.calls: list = []
 
     def has(self, src_id):

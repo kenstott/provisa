@@ -71,6 +71,7 @@ _CRED_PREFIXES = (
     "M365_",  # the Microsoft 365 tenant, client and test mailboxes (REQ-1923)
     "GWS_",  # the Google Workspace service account key file, administrator and mailboxes
     "CLOUDOPS_",  # the cloud inventory source's clouds (REQ-1947)
+    "QUICKBOOKS_",  # the QuickBooks Online sandbox company and its Intuit app (REQ-2197)
     "SHOPIFY_",  # the Shopify dev store and its Admin API token (REQ-1923)
     "REDSHIFT_",
     # R2 object staging (Cloudflare S3-compatible). The Databricks bulk COPY-INTO, Databricks

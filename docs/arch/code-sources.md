@@ -1,4 +1,4 @@
-# Code sources: one worker protocol, Node and Python (REQ-1984, REQ-1993)
+# Code sources: one worker protocol, Node, Python and Go (REQ-1984, REQ-1993, REQ-2200)
 
 Status: design approved by the lead on 2026-10-12, decisions in section 9. Node parts 1 to 3 are built; the rest follows section 7.
 
@@ -20,9 +20,9 @@ Every statement below that goes beyond REQ-1984 or REQ-1993 is marked *(proposed
 | The worker: process, socket, frames, messages, cancel, crash, pool | `provisa/codesource/worker.py` (section 3) | the host program: `host.mjs` / `host.py` |
 | The sandbox | its rules and the OS mechanism (section 4) | Deno's own flags; everything else uses the OS sandbox |
 | Tables, commands, live tables, parameters, landing, governance | parts 5 to 7 (REQ-1986, REQ-1980), unchanged | — |
-| Source type | — | `SourceType.node`, `SourceType.python` |
+| Source type | — | `SourceType.node`, `SourceType.python`, `SourceType.go` |
 
-Nothing in the shared layer names a language. A language is a `CodeLanguage` *(proposed)*: its source type, its runtimes, its reader command, its host command, its package fetch and install, and its lockfiles.
+Nothing in the shared layer names a language. A language is a `CodeLanguage` (`provisa/codesource/languages.py`, built with REQ-2200): its source type, its runtimes, its package kind, whether a source names its entry, its `prepare` module (package reference, install, reader, host command) and its `image` module (fetch, lockfiles, image layers). Every site that asks whether a source type is code asks `CODE_SOURCE_TYPES`.
 
 ## 2. The reader's output (the manifest's input)
 
@@ -185,6 +185,16 @@ Identical to Node's parts 5 to 7:
 - landing per argument set through REQ-1980's branch and converter;
 - commands use a new `impl_kind`, `code` *(proposed: one kind for every language, the binding naming the source and the export)*;
 - each live-table subscription starts its own generator.
+
+## 6b. Go (REQ-2200)
+
+The lead's decisions (2026-11-03, J568): D1 a `@stream` returns `iter.Seq2[T, error]`, and a `@table` returns `[]T`, `([]T, error)`, `iter.Seq[T]` or `iter.Seq2[T, error]`; D2 one pinned toolchain (go 1.27.3 from go.dev/dl, its published sums), run with `GOTOOLCHAIN=local`, a `go` line newer than it refused by name; D3 columns and inputs are named as `encoding/json` names fields; D4 a pointer field is optional and nullable, any other required; D5 a function takes an optional leading `context.Context` (cancelled with the call) and one inputs struct, `ReadContext` and `@loader` being a later job; the macOS host verifies TLS with the system bundle; modules come through a `goproxy` package registry.
+
+- **Tags:** a doc-comment line that is exactly `@table`, `@command`, `@stream`, `@columns` (or `@loader N`); Go has no standard `@` tag, so any other is unknown (`GO_RULES`).
+- **Reader** (`provisa/golang/reader/`): a Go program on go/packages and go/types, compiled once per toolchain, run unsandboxed as Node's declaration reader is (reading types runs no code) with `GOPROXY=off`, `-mod=readonly`, no cgo. A trailing `error` result is how a function fails; a string type with constants of its own is an enum; `time.Time` is a timestamp.
+- **Host** (`provisa/golang/host/`): the worker protocol in Go, rows as Arrow through Apache Arrow Go, functions called by reflection. A Go program cannot import code at run time, so `provisa/golang/build.py` compiles it once per code hash with the code's package linked in: a generated `exports.go`, a build module whose go.mod requires every module the host's and the code's require (the higher version of two) with the code's module replaced by its directory, and both go.sums. One static binary (`CGO_ENABLED=0`); the sandbox gives it nothing to read but itself.
+- **Install** (`provisa/golang/install.py`): the code is a Go module at an exact version from the organisation's default Go module proxy (else proxy.golang.org), Git, an upload or a directory; code that requires modules carries its `go.sum` (or one is given beside it). `go list -deps` fetches what the package needs through the proxy into the install's own module cache, each module checked against go.sum, no checksum database, no `tidy`; the proxy's login reaches the go command in a `.netrc` in the install's temporary directory. Code, modules and host are cached by content hash.
+- **Image** (`provisa/golang/image.py`): the host compiled for `linux` and the image's architecture, on the shared distroless base, with the front end on its own Python.
 
 ## 7. Sequence
 

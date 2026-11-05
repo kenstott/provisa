@@ -164,9 +164,7 @@ async def _source(state: Any, source_id: str) -> Any:
         raise RemoteRefused("not_found", f"There is no source {source_id!r}", source=source_id)
     source = found[0]
     if source.type.value not in CODE_SOURCE_TYPES:
-        raise RemoteRefused(
-            "not_code", f"{source_id!r} is not a Node or Python source", source=source_id
-        )
+        raise RemoteRefused("not_code", f"{source_id!r} is not a code source", source=source_id)
     return source
 
 

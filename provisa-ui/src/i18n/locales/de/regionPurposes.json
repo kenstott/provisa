@@ -1,0 +1,20 @@
+{
+  "regionPurposes": {
+    "legendTitle": "Warum es eine Region gibt",
+    "explainOnly": "Zwecke erklären eine Region. Sie ändern nicht, wo Abfragen laufen, was eine Regel erlaubt oder was angenommen wird.",
+    "name": {
+      "residency": "Datenresidenz",
+      "workload": "Workload",
+      "latency": "Latenz",
+      "resilience": "Ausfallsicherheit",
+      "dedicated": "Dediziert"
+    },
+    "explain": {
+      "residency": "Daten müssen in einer Rechtsordnung bleiben.",
+      "workload": "Trennt einen Workload von den anderen.",
+      "latency": "Nahe an ihren Nutzern oder Quellen platziert.",
+      "resilience": "Ein Ort für Failover oder Wiederherstellung.",
+      "dedicated": "Infrastruktur, die einer Organisation vorbehalten ist, für ihre eigene Souveränität darüber."
+    }
+  }
+}

@@ -15,11 +15,16 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.compiler.naming import LabelClash, SqlAddressTaken, stored_convention
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
 
+from provisa.api.admin.jdbc_source_admin import (
+    JdbcSourceDetectInput,
+    JdbcSourceDetectionType,
+)
 import strawberry
 from sqlalchemy import select, update
 from strawberry.types.info import Info as StrawberryInfo
@@ -143,6 +148,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     sandbox_destination_refusal,
     download_source_file,
     file_source_path,
+    jdbc_source_refusal,
     google_workspace_organisation_refusal,
     microsoft_365_organisation_refusal,
     microsoft_365_refusal,
@@ -2094,7 +2100,7 @@ async def _delete_source_row(id: str, reader: "DependentsReader", pool) -> Mutat
             from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
 
             await reschedule_org_triggers()
-        if _existing["type"] in ("node", "python"):  # REQ-1984, REQ-1993: its workers go
+        if _existing["type"] in CODE_SOURCE_TYPES:  # REQ-1984, REQ-1993, REQ-2200: its workers go
             from provisa.codesource.source import forget
 
             forget(id)
@@ -2191,6 +2197,19 @@ async def _register_draft_table(
 
 @strawberry.type
 class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
+    @strawberry.mutation
+    async def detect_jdbc_source(
+        self, info: StrawberryInfo, input: JdbcSourceDetectInput
+    ) -> JdbcSourceDetectionType:  # REQ-2191
+        """Detect, from a JDBC source's form: read-only checks against the connection the
+        form describes, on the active engine. Nothing is saved."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.api.admin.jdbc_source_admin import detect
+        from provisa.api.app import state
+
+        require_capability(info, "source_registration")
+        return await detect(input, state.federation_engine)
+
     @strawberry.mutation
     async def set_servicenow_api(
         self, info: StrawberryInfo, source_id: str, namespace: str, name: str, added: bool
@@ -2515,6 +2534,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     await download_source_file(input)
                     or logs_refusal(input)
                     or file_source_path(input)
+                    or jdbc_source_refusal(input)  # REQ-2191
                     or excel_hints_refusal(input)
                 )  # REQ-1996/1997/2113/2096
                 if _logs_refusal is not None:
@@ -2921,6 +2941,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 (await download_source_file(input) if _fetch else None)
                 or logs_refusal(input)
                 or file_source_path(input)
+                or jdbc_source_refusal(input)  # REQ-2191
                 or excel_hints_refusal(input)
             )  # REQ-1996/1997/2113/2096
             if _logs_refusal is not None:
@@ -2989,6 +3010,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     .values(allowed_domains=input.allowed_domains)
                 )
 
+        if input.type == "quickbooks":
+            from provisa.quickbooks.token import entered_on_save
+
+            # REQ-2197: a refresh token the save changed replaces the one kept for the company.
+            await entered_on_save(
+                input.id,
+                database=input.database,
+                before_mapping=existing["mapping"],
+                mapping=_stored_mapping,
+            )
+
         await restart_source_server(model)
 
         from provisa.api.app import state
@@ -3023,9 +3055,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 )
         state.source_types[input.id] = input.type
         # REQ-1757: see create_source's identical fix above — was hardcoded "" regardless of type.
-        from provisa.core.source_registry import SOURCE_TO_DIALECT
-
-        state.source_dialects[input.id] = SOURCE_TO_DIALECT.get(input.type, "")
+        # The model's own dialect, as there: a JDBC source's is its own (REQ-2191).
+        state.source_dialects[input.id] = model.dialect or ""
+        # As create_source publishes them: the settings a reader holding only the source's id
+        # reads with its type (connector_pushdown, REQ-2191), as they now are.
+        if model.federation_hints:
+            state.source_federation_hints[input.id] = dict(model.federation_hints)
+        else:
+            state.source_federation_hints.pop(input.id, None)
         if input.allowed_domains is not None:
             state.source_allowed_domains[input.id] = list(input.allowed_domains)
 
@@ -4257,8 +4294,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         )
                     assert table_id is not None  # the upsert returns the id it wrote
                     await save_carried_after_store(_conn, input, model, table_id)  # REQ-2109
-                    if model.query_template:
-                        # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table serves from.
+                    from provisa.api.admin._query_api_registration import (
+                        is_quickbooks_source,
+                    )
+
+                    if model.query_template or await is_quickbooks_source(_conn, model.source_id):
+                        # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table
+                        # serves from; REQ-2197: so do a QuickBooks table's edited columns.
                         from provisa.api.admin._query_api_registration import (
                             persist_query_api_registration,
                         )

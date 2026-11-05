@@ -219,10 +219,14 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
     # REQ-1668: a neo4j table is a persisted query-API endpoint — same fetch chain.
     loaders["neo4j"] = make_openapi_loader(state)
     loaders["sparql"] = make_openapi_loader(state)  # REQ-1683
+    loaders["quickbooks"] = make_openapi_loader(state)  # REQ-2197
     gql_sources = getattr(state, "graphql_remote_sources", None)
     if gql_sources:
+        # A connection table lands at the page size its registration priced its query at.
         loaders["graphql_remote"] = make_graphql_remote_loader(
-            gql_sources, state.config.graphql_remote.max_rows
+            gql_sources,
+            state.config.graphql_remote.max_rows,
+            state.config.graphql_remote.max_list_items,
         )
     grpc_sources = getattr(state, "grpc_remote_sources", None)
     if grpc_sources:

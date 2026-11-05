@@ -469,10 +469,11 @@ async def ensure_resident(
         return Residency(answered_in=only_there)
     wanted = {s.id for s in sources}
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     from provisa.federation.replica_routing import owns_replica
 
-    _attached_types = {s.id: engine_attaches(engine, s.type.value) for s in sources}
+    _attached_types = {s.id: engine_attaches(engine, reach_type(s, engine)) for s in sources}
     # A type that owns no replica (ingest, a profiler's results, REQ-1771/REQ-1934) is read where
     # it is written, never landed, so no read of it is judged for a replica or a landing TTL.
     _no_replica = {s.id for s in sources if not owns_replica(s)}
@@ -794,6 +795,7 @@ async def active_row_materialize_tables(state: Any) -> list[Any]:
     from provisa.federation.registry_view import registered_sources, registered_tables
     from provisa.federation.replica_converge import builds_here, home_region
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     flagged = [
         t
@@ -807,7 +809,9 @@ async def active_row_materialize_tables(state: Any) -> list[Any]:
     # source is a KeyError, not a skip.
     sources_by_id = {s.id: s for s in await registered_sources(state)}
     return [
-        t for t in flagged if not engine_attaches(engine, sources_by_id[t.source_id].type.value)
+        t
+        for t in flagged
+        if not engine_attaches(engine, reach_type(sources_by_id[t.source_id], engine))
     ]
 
 

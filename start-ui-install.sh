@@ -2,6 +2,8 @@
 # Start Provisa using the install-time configuration (core services only, no dev extras).
 # Simulates the installed product: postgres + trino + redis, no kafka/mongo/observability.
 # Backend runs locally via uvicorn. UI runs on the host via vite.
+# Needs cargo: provisa._encoders (the Rust encoders) is built from rust/ with rust/build-local.sh
+# when provisa/_encoders.so is missing or older than its Rust sources, before the API starts.
 
 set -euo pipefail
 
@@ -244,8 +246,12 @@ is_exfat() {
 # Singleton: a second copy of this script would share ~/.provisa-server-version,
 # and each instance's version watcher cross-triggers backend restarts in the others
 # (restart storm). Kill any previous instance and the process group it owns
-# (backend + UI + watchers) before starting.
-for _other in $(pgrep -f "start-ui-install.sh" 2>/dev/null); do
+# (backend + UI + watchers) before starting. A previous instance is a shell running this script
+# ("bash ./start-ui-install.sh --demo", as the shebang starts it), not any command line that only
+# mentions it: a `bash -c` launcher that starts the script (devcontainer-smoke's runCmd) has the
+# name in its arguments, and killing it killed the launcher (exit 137) before the script printed.
+_instance_re='^[^ ]*sh( -[^ c]+)* [^ ]*start-ui-install\.sh( |$)'
+for _other in $(pgrep -f "$_instance_re" 2>/dev/null); do
   [ "$_other" = "$$" ] && continue
   echo "Stopping previous start-ui-install.sh instance (PID $_other) and its services..."
   kill -CONT "-$_other" 2>/dev/null || true   # un-stop the process group if suspended
@@ -259,6 +265,12 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
   . "$SCRIPT_DIR/.env"
   set +a
 fi
+
+# provisa._encoders (the Rust encoders pgwire, gRPC and JSON use, with no Python fallback) built for
+# this checkout before the API starts: rust/ensure-local-build.sh runs rust/build-local.sh when
+# provisa/_encoders.so is missing or older than its Rust sources. No cargo, or a failed build, stops
+# the start here.
+"$SCRIPT_DIR/rust/ensure-local-build.sh" || exit 1
 
 export PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"
 # The backend's gRPC, Arrow Flight and MCP ports (server.grpc_port / server.flight_port / mcp.port,
@@ -781,7 +793,9 @@ if [ "$DEMO" = true ] || [ "$NATIVE" = true ]; then
     CP_STORE_DESC="embedded PostgreSQL (pgserver, socket $CP_PG_HOST:$CP_PG_PORT)"
   else
     echo "FAILED — see $LOG_DIR/control-plane-pg.log"
-    echo "Embedded control plane requires pgserver (Python <=3.12). Aborting."
+    echo "Embedded control plane did not start. Last error in $LOG_DIR/control-plane-pg.log:"
+    tail -n 5 "$LOG_DIR/control-plane-pg.log"
+    echo "Aborting."
     exit 1
   fi
 else

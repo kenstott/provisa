@@ -385,10 +385,23 @@ demo_sandboxes = Table(
     CheckConstraint("kind IN ('visitor','named')", name="demo_sandboxes_kind_check"),
 )
 
+# REQ-2006: when each sandbox tier on the sandbox VM was last in use, by the region it serves (the
+# ordinary tier's is the default region). The VM is one for every tier on it and each tier stops it
+# when idle, but a tier's use is in its own process (an open under way, a template built ahead, the
+# last request to a sandbox reaped since): each records its own here every minute, and counts the
+# others' (provisa.scheduler.jobs.stop_idle_sandbox_vm).
+sandbox_tier_use = Table(
+    "sandbox_tier_use",
+    metadata,
+    Column("tier", Text, primary_key=True),
+    Column("last_used_at", DateTime(timezone=True), nullable=False),
+)
+
 # REQ-2006: a demo template that finished building, recorded so the sandbox tier's next start can
-# serve it at once: the demo version and Provisa release it was built from (``version``), and the
-# rows each of its replicas and views holds in its store. A start that finds the same version and
-# the same rows on disk trusts it; anything else rebuilds it (demo_templates.warm_ready).
+# serve it at once: the demo version, Provisa release and DDL fingerprint it was built from
+# (``version``, demo_templates.readiness_version), and the rows each of its replicas and views
+# holds in its store. A start that finds the same version and the same rows on disk trusts it;
+# anything else rebuilds it (demo_templates.warm_ready).
 demo_template_readiness = Table(
     "demo_template_readiness",
     metadata,
@@ -991,6 +1004,7 @@ REGISTRY_TABLES = [
     deployment_encryption_key,
     personal_access_tokens,
     demo_sandboxes,
+    sandbox_tier_use,
     demo_template_readiness,
     scram_credentials,
     platform_notice,

@@ -39,18 +39,8 @@ _SCHEMA_DIR = Path(__file__).parent / "_known_schemas"
 # Where a source row records its brand and namespace (``sources.federation_hints``).
 BRAND_HINT = "brand"
 NAMESPACE_HINT = "namespace"
-SETUP_HINT = "brand_setup"  # the values a brand's setup was given (Brand.setup)
-
-
-def setup_hint(setup: dict[str, str]) -> str:
-    """A brand's setup as kept in ``federation_hints``, whose values are strings (``Source``)."""
-    return json.dumps(setup, sort_keys=True)
-
-
-def setup_from_hints(hints: dict) -> dict[str, str]:
-    """The setup a source row's ``federation_hints`` keep (:func:`setup_hint`); empty for none."""
-    kept = hints.get(SETUP_HINT)
-    return dict(json.loads(kept)) if kept else {}
+# The values a brand's setup was given (Brand.setup) are the row's own ``brand_setup``
+# (Source.brand_setup), not a hint: ``federation_hints`` maps names to strings.
 
 
 @dataclass(frozen=True)
@@ -305,9 +295,21 @@ def map_table(
     offer: SchemaOffer, namespace: str, source_id: str, domain_id: str, sql_name: str
 ) -> dict:
     """One of the source's tables in full, columns included."""
-    spec = table_spec(offer, namespace, sql_name)
-    if spec is None:
-        raise KeyError(f"{offer.label} offers no table {sql_name!r}")
+    return map_tables(offer, namespace, source_id, domain_id, [sql_name])[sql_name]
+
+
+def map_tables(
+    offer: SchemaOffer, namespace: str, source_id: str, domain_id: str, sql_names
+) -> dict[str, dict]:
+    """Several of the source's tables in full, columns included, by sql name: one walk of the
+    schema for all of them, which costs what the walk for one does (REQ-464)."""
+    index = offer.table_index(namespace)
+    specs = {}
+    for sql_name in sql_names:
+        spec = index.get(sql_name)
+        if spec is None:
+            raise KeyError(f"{offer.label} offers no table {sql_name!r}")
+        specs[sql_name] = spec
     tables, _, _ = map_schema(
         offer.schema(),
         namespace,
@@ -317,9 +319,12 @@ def map_table(
         max_list_depth=offer.max_list_depth,
         max_list_items=offer.max_list_items,
         field_overrides=offer.field_overrides,
-        only={spec["name"]},
+        only={spec["name"] for spec in specs.values()},
     )
-    return next(t for t in tables if t["name"] == spec["name"])
+    by_name: dict[str, dict] = {}
+    for t in tables:
+        by_name.setdefault(t["name"], t)
+    return {sql_name: by_name[spec["name"]] for sql_name, spec in specs.items()}
 
 
 def offered_mutation_count(schema: dict) -> int:

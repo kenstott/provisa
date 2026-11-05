@@ -81,6 +81,14 @@ def test_a_route_with_an_editor_says_so():
         "layout 'auto', 'force' or 'layered'",
         "state.panel 'graph' or 'terms'",
         "product=<id>",
+        "press erd-download, then erd-export-svg",
+        "layout=<saved layout name>",
+        "erd-layout-save-as",
+        "tables-model-star",
+        "wizard-create",
+        "glossary-find-terms-btn",
+        "find-terms-start",
+        "jdbc-source-driver-select",
     ],
 )
 def test_she_is_told_how_to_set_each_page(words):
@@ -103,3 +111,43 @@ def test_the_odata_page_takes_the_payload_she_is_told_of():
     page = (ROOT / "provisa-ui/src/pages/ODataPage.tsx").read_text()
     assert "odataUrl?: string; autoRun?: boolean" in page
     assert 'useScreenInputs("/odata"' in page
+
+
+def _reads(route: str) -> set[str]:
+    """The input names a row's read_screen lists, each without what its parentheses say."""
+    listed = polly_pages.PAGES[route].reads.removeprefix("inputs: ")
+    return {re.match(r"\w+", part).group() for part in re.split(r",\s*(?![^()]*\))", listed)}
+
+
+@pytest.mark.parametrize(
+    ("route", "keys"),
+    [
+        ("/tables", {"modeling", "wizardStep", "layout", "layoutUnsaved", "collapsed"}),
+        ("/relationships", {"layout", "layoutUnsaved", "collapsed"}),
+        ("/admin/ontology", {"findTerms"}),
+    ],
+)
+def test_the_new_screens_inputs_are_named(route, keys):
+    """The saved layout (REQ-2189), the modeling wizard (REQ-2199) and Find terms (REQ-2179) are
+    published to read_screen; the table names each input so she knows to read it."""
+    assert keys <= _reads(route)
+
+
+@pytest.mark.parametrize(
+    ("source", "published"),
+    [
+        ("components/erd/ErdView.tsx", "layout, layoutUnsaved: unsaved"),
+        ("pages/TablesPage.tsx", "modeling: showModeling || null"),
+        ("pages/tables/modeling/WizardFrame.tsx", 'useScreenInputs("/tables", { wizardStep:'),
+        ("components/admin/GlossaryTab.tsx", "findTerms: findTermsOpen"),
+    ],
+)
+def test_the_page_publishes_what_the_table_names(source, published):
+    assert published in (ROOT / "provisa-ui/src" / source).read_text()
+
+
+def test_she_is_told_read_screen_reports_the_data_node():
+    assert "dataNode" in polly_pages.SYSTEM_SECTION
+    assert "dataNode" in chat._SYSTEM
+    tool = next(t for t in chat._CLIENT_TOOLS if t["name"] == "read_screen")
+    assert "dataNode" in tool["description"]

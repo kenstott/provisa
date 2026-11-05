@@ -9,11 +9,15 @@
 // permission from the copyright holder.
 
 // The register step's schema and table pickers: the source's schemas, then the tables of the
-// chosen one, each marked when it is registered already.
+// chosen one, each marked when it is registered already. A lookup picked (REQ-1986) is marked at
+// the picker's label, its hint naming the parameters it needs.
 
 import { Text } from "@mantine/core";
+import { KeyRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { FormField } from "../../components/form/FormLayout";
+import { Tip } from "../../components/Tip";
+import { lookupNeeds } from "./lookups";
 import { TableOptions } from "./TableOptions";
 
 type OfferedTables = Parameters<typeof TableOptions>[0]["tables"];
@@ -25,6 +29,7 @@ export function SchemaTableSelects({
   tableName,
   setTableName,
   isRegistered,
+  requiredOf,
   schemas,
   loadingSchemas,
   fixedSchema,
@@ -40,6 +45,7 @@ export function SchemaTableSelects({
   tableName: string;
   setTableName: (table: string) => void;
   isRegistered: (table: { name: string }) => boolean;
+  requiredOf: (table: { name: string }) => string[];
   schemas: string[];
   loadingSchemas: boolean;
   fixedSchema: boolean;
@@ -50,6 +56,8 @@ export function SchemaTableSelects({
   startingTimedOut: boolean;
 }) {
   const { t } = useTranslation();
+  const picked = tables.find((tbl) => tbl.name === tableName);
+  const needs = picked ? requiredOf(picked) : [];
   return (
     <>
       <FormField size="medium">
@@ -78,6 +86,18 @@ export function SchemaTableSelects({
       <FormField size="medium">
         <label>
           {t("registerTableForm.tableLabel")}
+          {needs.length > 0 && (
+            <Tip text={lookupNeeds(t, needs)} testId="register-table-lookup-tip">
+              <span
+                role="img"
+                aria-label={lookupNeeds(t, needs)}
+                data-testid="register-table-lookup-mark"
+                style={{ display: "inline-flex", marginInlineStart: 6, verticalAlign: "-2px" }}
+              >
+                <KeyRound size={14} />
+              </span>
+            </Tip>
+          )}
           <select
             className="form-select"
             value={tableName}
@@ -94,7 +114,7 @@ export function SchemaTableSelects({
                     ? t("registerTableForm.tableAllRegistered")
                     : t("registerTableForm.tablePlaceholder")}
             </option>
-            <TableOptions tables={tables} isRegistered={isRegistered} />
+            <TableOptions tables={tables} isRegistered={isRegistered} requiredOf={requiredOf} />
           </select>
           {startingTimedOut && (
             <Text size="xs" c="red" mt={4} data-testid="register-table-starting-timeout">

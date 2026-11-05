@@ -212,6 +212,22 @@
     "reasoner": "Raciocinador",
     "reasonerNone": "Nenhum",
     "axioms": "Axiomas OWL",
-    "axiomsHint": "Sintaxe Turtle, RDF/XML, funcional ou Manchester. Uma tabela cuja consulta é um único IRI, como <http://example.org/kyc#controls>, lê o que deles é inferido."
+    "axiomsHint": "Sintaxe Turtle, RDF/XML, funcional ou Manchester. Uma tabela cuja consulta é um único IRI, como <http://example.org/kyc#controls>, lê o que deles é inferido.",
+    "qbRealmId": "ID da empresa (ID de realm)",
+    "qbRealmIdHint": "O número da empresa do QuickBooks a ser lida. A Intuit o mostra quando você conecta seu aplicativo e nas configurações da conta da empresa.",
+    "qbRealmIdInvalid": "O ID da empresa é um número, por exemplo 9341453456789012",
+    "qbEnvironment": "Sandbox ou produção",
+    "qbEnvironmentHint": "Uma empresa sandbox é uma empresa de teste da sua conta de desenvolvedor Intuit.",
+    "qbSandbox": "Sandbox (empresa de teste)",
+    "qbProduction": "Produção (empresa real)",
+    "qbClientId": "ID do cliente",
+    "qbClientIdHint": "Do seu aplicativo em developer.intuit.com, em Keys and credentials.",
+    "qbClientSecret": "Segredo do cliente",
+    "qbClientSecretHint": "Da mesma página do ID do cliente. Guardado no cofre de segredos.",
+    "qbRefreshToken": "Token de atualização",
+    "qbRefreshTokenHint": "Permite que o Provisa leia a empresa. Entre com o QuickBooks para obter um, ou cole um do OAuth 2.0 Playground da Intuit com o escopo Accounting. O QuickBooks o substitui a cada uso, e o Provisa guarda o mais recente. Um novo inserido aqui substitui o guardado ao salvar.",
+    "qbSignIn": "Entrar com o QuickBooks",
+    "qbSignedIn": "Conectado à empresa {{realm}}. Salve a fonte para mantê-la.",
+    "qbSignInFailed": "Não foi possível concluir o login."
   }
 }

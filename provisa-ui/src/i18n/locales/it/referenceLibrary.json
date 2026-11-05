@@ -18,7 +18,7 @@
     "byFile": "File",
     "byUrl": "URL",
     "file": "File",
-    "fileHelp": "Un file PDF, Word (.docx), HTML, Markdown o di testo semplice.",
+    "fileHelp": "Un file PDF, Word (.docx), HTML, Markdown, XML eCFR (.xml) o di testo semplice.",
     "url": "URL",
     "urlHelp": "Un indirizzo http(s). Il documento viene recuperato ora e di nuovo a ogni aggiornamento.",
     "fieldTitle": "Titolo",
@@ -54,6 +54,12 @@
     "needsReembeddingHelp": "Incorporato con {{model}}, non con il modello vettoriale attuale dell'organizzazione.",
     "reembedDone": "Documenti reincorporati: {{n}}",
     "reembedFailedHeading": "Questi documenti non sono stati reincorporati e restano invariati:",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "helpLabel": "Informazioni sulla libreria di riferimento",
+    "helpTitle": "Informazioni sulla libreria di riferimento",
+    "helpWhat": "Un insieme ridotto e selezionato di documenti di riferimento (policy, normative, contratti, processi), aggiunti tramite file o URL. Non è un archivio documentale.",
+    "helpWho": "Polly risponde basandosi su di essa e ne cita i passaggi. Gli agenti IA collegati tramite il server MCP di Provisa vi effettuano ricerche (search_reference_library). «Trova termini» la legge per proporre termini e definizioni del glossario.",
+    "helpSees": "Un assistente che agisce per un ruolo usa solo i documenti mantenuti nei domini che il ruolo legge, più quelli dell'intera organizzazione.",
+    "helpEmbedding": "I passaggi di un documento vengono incorporati con il modello di embedding dell'organizzazione quando viene aggiunto; «Reincorpora» serve solo quando quel modello cambia."
   }
 }

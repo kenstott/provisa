@@ -27,6 +27,15 @@ from provisa.core.repositories import source as source_repo
 from provisa.core.schema_org import sources
 
 
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A deployment of one organization (REQ-2006). The API layer says it at import; these
+    tests import no API layer, so they say it themselves."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 def _source(source_id: str) -> Source:
     return Source(id=source_id, type=SourceType.postgresql, host="db", port=5432, database="app")
 

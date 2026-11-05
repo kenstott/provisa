@@ -342,8 +342,8 @@ def test_the_live_salesforce_test_is_in_no_lane_but_its_own():
     marker = run_lane.LANES["warehouse"].marker
     assert marker == (
         "requires_warehouse and not requires_salesforce and not requires_athena and not requires_servicenow "
-        "and not requires_microsoft_365 and not requires_google_workspace and not requires_shopify "
-        "and not requires_polly_bakeoff"
+        "and not requires_microsoft_365 and not requires_google_workspace and not requires_quickbooks "
+        "and not requires_shopify and not requires_polly_bakeoff"
     )
     assert run_lane.LANES["salesforce"].marker == "requires_salesforce"
     # Every other lane excludes the live tests through the base exclusion or its own marker.
@@ -853,6 +853,7 @@ _NO_CI_LANE = {
     "packaging",
     "requires_microsoft_365",
     "requires_google_workspace",
+    "requires_quickbooks",
     "requires_shopify",
 }
 

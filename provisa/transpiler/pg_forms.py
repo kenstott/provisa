@@ -822,6 +822,67 @@ def _interval_parts(body: str) -> str:
     )
 
 
+def interval_span(value: str) -> str:
+    """What PostgreSQL orders an interval by (interval_cmp_value): its microseconds, a month thirty
+    days. DuckDB orders its own normalization of the fields, which a mix of signs sorts otherwise."""
+    return (
+        f"(CAST({_months(value)} AS HUGEINT) * 30 * {_USECS_PER_DAY} + "
+        f"CAST({_days(value)} AS HUGEINT) * {_USECS_PER_DAY} + CAST({_micros(value)} AS HUGEINT))"
+    )
+
+
+def interval_lerp(lo: str, hi: str, fraction: str) -> str:
+    """percentile_cont's interval_lerp, as timestamp.c has it: ``hi - lo`` field by field, times
+    ``fraction`` as interval_mul cascades it -- what it leaves of a month runs on to days at thirty
+    a month, and what it leaves of a day to seconds, each rounded to six places by rint, a whole
+    day of seconds carried -- plus ``lo``. DuckDB's own interval product rounds half away from
+    zero where rint rounds half to even. Each division is of a double: the form is read back
+    through PostgreSQL's SQL, where an integer's is the integer quotient."""
+    product = bound(
+        "_a",
+        "trunc(_m * _x)",
+        bound(
+            "_r",
+            "round_even((_m * _x - _a) * 30 * 1000000, 0) / 1000000.0",
+            bound(
+                "_b",
+                "trunc(_d * _x)",
+                bound(
+                    "_s",
+                    "round_even((_d * _x - _b + _r - trunc(_r)) * 86400 * 1000000, 0) / 1000000.0",
+                    bound(
+                        "_c",
+                        "CASE WHEN abs(_s) >= 86400 THEN trunc(_s / 86400.0) ELSE 0 END",
+                        _interval(
+                            f"CAST(_a AS HUGEINT) + {_months('_lo')}",
+                            f"CAST(_b + _c + trunc(_r) AS HUGEINT) + {_days('_lo')}",
+                            "CAST(round_even(_t * _x + (_s - _c * 86400) * 1000000, 0) AS HUGEINT)"
+                            f" + {_micros('_lo')}",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+    differences = bound(
+        "_m",
+        f"CAST({_months('_hi')} AS HUGEINT) - {_months('_lo')}",
+        bound(
+            "_d",
+            f"CAST({_days('_hi')} AS HUGEINT) - {_days('_lo')}",
+            bound(
+                "_t",
+                f"CAST({_micros('_hi')} AS HUGEINT) - {_micros('_lo')}",
+                "CASE WHEN abs(_m) > 2147483647 OR abs(_d) > 2147483647 "
+                f"OR abs(_t) > 9223372036854775807 THEN {_INTERVAL_OUT_OF_RANGE} ELSE {product} END",
+            ),
+        ),
+    )
+    return bound(
+        "_lo", lo, bound("_hi", hi, bound("_x", f"CAST({fraction} AS DOUBLE)", differences))
+    )
+
+
 def _borrowed_time(days: str, micros: str, then: str) -> str:
     """justify's last step: the sign of the days carried into the time, bound as _e and _u."""
     return bound(

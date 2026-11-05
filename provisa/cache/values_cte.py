@@ -19,7 +19,7 @@ pure rewrite, and the manager module pulls the file-source and DuckDB connector 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from provisa.compiler.sql_literals import sql_literal
 
@@ -42,6 +42,16 @@ class InlineRows:
 
     rows: list[dict]
     column_names: list[str]
+
+
+def _cte_literal(value: Any) -> str:  # noqa: ANN401 — any value a hot row holds
+    """A hot row's value as a PostgreSQL literal. A float is typed DOUBLE PRECISION: a bare
+    ``2.0`` is a numeric literal, which the engine reads as a DECIMAL, and a DECIMAL is written as
+    the string of its digits (REQ-1867) -- a float column would answer as text."""
+    literal = sql_literal(value, "postgres")
+    if isinstance(value, float):
+        return f"CAST({literal} AS DOUBLE PRECISION)"
+    return literal
 
 
 def build_values_cte_sql(
@@ -102,9 +112,7 @@ def build_values_ctes_sql(
         else:
             value_rows = [
                 # The query is PostgreSQL SQL here, transpiled to the engine's dialect afterwards.
-                "("
-                + ", ".join(sql_literal(row.get(c), "postgres") for c in entry.column_names)
-                + ")"
+                "(" + ", ".join(_cte_literal(row.get(c)) for c in entry.column_names) + ")"
                 for row in entry.rows
             ]
             cte_body = f"({col_defs}) AS (VALUES {', '.join(value_rows)})"

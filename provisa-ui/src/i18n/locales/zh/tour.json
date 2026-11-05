@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "注册一个数据源",
-        "description": "➕ 新连接从这个按钮开始：PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及其余的 74 个连接器。"
+        "description": "➕ 新连接从这个按钮开始：PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及其余的 77 个连接器。"
       },
       "step3": {
-        "title": "74 种数据源类型，14 个类别",
+        "title": "77 种数据源类型，14 个类别",
         "description": "一个选择器按类别列出所有类型：<strong>订阅、RDBMS、云数据仓库、分析、数据湖、NoSQL、代码解析器、图、文件、API、流式、企业、数据质量、其他</strong>。可以按名称或别名搜索，也可以用类别标签缩小范围。每种类型都有徽标和可达性图标：⚡ 表示就地实时读取，复制图标表示 Provisa 读取已刷新的副本。<p>选一个，填写连接，保存。</p>"
       },
       "stepBuildSource": {
@@ -933,16 +933,32 @@
         "description": "您看到了保险公司自己的数据，按县和作物年份与公共损失、天气和产量数据匹配，全部位于同一个受治理的模型中。一个视图用 SQL、GraphQL 和 REST 回答天气是否能解释这些损失。 笔记本对此做了度量：天气解释了赔付率变动的 54%，而在当前业务上，类似 2012 年的一季预期赔付率为 1.75。"
       },
       "retailScenario": {
-        "title": "一个集团，两个区域",
+        "title": "两个区域的故事",
         "description": "一家零售集团把 EU 和 US 两家子公司作为一个业务来经营。它能做到这一点而不违反 GDPR 吗？每家子公司都有自己的数据库：这是 EU 的数据库，包含其会员客户、他们的营销同意、订单、员工，以及员工发往集团外部的邮件。"
       },
+      "retailPlatformRegions": {
+        "title": "区域始于一份配置",
+        "description": "平台的配置声明区域（这里是 EU 和 US），并把它们授予组织。每个区域都有自己的数据处理：自己的引擎和自己的存储。EU 的用途是数据驻留，用于必须留在欧盟境内的客户数据。在这个沙箱中，你可以阅读此页面，但不能修改。"
+      },
+      "retailPurposes": {
+        "title": "用途说明什么",
+        "description": "图例解释每种用途。用途说明一个区域为什么存在。它不移动数据，也不决定谁读取数据。这由两层来做，导览会逐一展示：归属，即引擎关于数据存放位置的规则；以及安全，即数据管家关于谁读取什么的规则。"
+      },
+      "retailOrgRegions": {
+        "title": "组织的区域和存储",
+        "description": "组织拥有这两个区域。每一行列出在那里使用的存储：区域的引擎，以及它的副本、视图、缓存、构建状态和记录存放的位置。EU 的数据用 EU 自己的存储处理。"
+      },
+      "retailEngines": {
+        "title": "每个区域一个引擎",
+        "description": "联邦页为每个区域提供一个标签页，每个区域运行自己的引擎。因此一份配置带来两个数据处理环境。你在 US 节点上。它只通过 EU 的存储读取 EU 数据，从不从自己的副本读取。"
+      },
       "retailRegions": {
-        "title": "每个区域只定义一次",
-        "description": "US 子公司的数据库，位于 US。模型声明了两个区域，并且只说一次：每张表位于哪里，哪些视图在哪里构建。第二个 Provisa 节点运行在 EU：它把 EU 的表复制到 EU 自己的存储中，并在那里构建 EU 的视图。你在 US 节点上，它只从那个 EU 存储读取 EU 数据，所以每条跨境规则都在同一个地方执行。"
+        "title": "归属：每个数据源指明其归属区域",
+        "description": "US 子公司的数据库位于 US，EU 子公司的数据库位于 EU。归属是引擎关于数据存放位置的规则。有归属的表，其副本和缓存留在其归属区域，其他区域只能通过该区域访问它。"
       },
       "retailEuCustomers": {
         "title": "一张位于 EU 的 EU 表",
-        "description": "EU 的客户。这张表把 EU 指定为它的区域：它的行只会复制到 EU 的存储中，也只在那里计算。其他地方的读者只能通过 EU 的视图获取它们，否则完全无法获取。"
+        "description": "EU 的客户。这张表的区域是 EU，所以它的副本和缓存只存放在 EU 的存储中。归属决定行存放在哪里。它不决定谁可以读取。那是下一层。"
       },
       "retailRequests": {
         "title": "数据主体请求",
@@ -953,12 +969,12 @@
         "description": "请求通过电子邮件地址与每家子公司的客户关联。一个请求就是这样在两家子公司中找到同一个人的。"
       },
       "retailAsAnalyst": {
-        "title": "以集团分析师身份",
-        "description": "接下来，角色选择器会切换到 <strong>group_analyst</strong>，他在 US 负责集团报表，让之后的 SQL 和 GraphQL 都以 group_analyst 身份运行。"
+        "title": "数据管家的规则，以集团分析师身份",
+        "description": "第二层是安全：数据管家的规则按角色和读者所在区域，决定每位读者得到什么。这些规则在归属区域中执行，在任何数据离开之前。接下来，角色选择器切换到 <strong>group_analyst</strong>，他在 US 负责集团报表，因此之后的 SQL 和 GraphQL 都以 group_analyst 身份运行。"
       },
       "retailGroupView": {
         "title": "集团报表，EU 客户已假名化",
-        "description": "集团的每一位会员客户。US 客户按原样显示；EU 客户以 EU 计算出的假名显示，没有姓名或地址。EU 部分是从 EU 的存储中读取的，这次查询的记录写明作答的区域是 EU。"
+        "description": "集团的每一位会员客户。US 客户按原样显示。EU 客户以假名显示，因为管家的规则规定 EU 以外的读者得不到姓名或地址。EU 在其行离开之前执行了这条规则，这次查询的记录将 EU 标为作答的区域。"
       },
       "retailGroupGraphql": {
         "title": "同样的内容，用 GraphQL",
@@ -970,7 +986,7 @@
       },
       "retailAudience": {
         "title": "只有同意的客户",
-        "description": "SQL 浏览器现在以 <strong>marketing_eu</strong> 的身份运行。EU 营销读取同意接收营销的 EU 客户，且仅限这些客户。该视图在 EU 中由 EU 的行构建。"
+        "description": "SQL 浏览器现在以 <strong>marketing_eu</strong> 身份运行。管家的规则让 EU 市场部只读取同意接收营销的 EU 客户。该视图在 EU 中由 EU 的行构建。"
       },
       "retailAsDpo": {
         "title": "以数据保护官身份",
@@ -998,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "发件人，在 EU 中显示",
-        "description": "同一个队列。发件人列的脱敏列表只向同时持有 region__eu 的审查员显示发件人；其他所有人读到的都是隐去的值。这只是一项授权，reviewer 加 region__eu，无需为这一组合创建角色。"
+        "description": "同一个队列。管家对发件人列设置的掩码，只向分配区域为 EU（region__eu）的审核员显示发件人。其他人读到的是隐藏的值。读者得到什么，既取决于角色，也取决于其区域，而且没有为这种组合创建任何角色。"
       },
       "retailAsAdmin": {
         "title": "回到所有角色",
@@ -1014,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "你看到了什么",
-        "description": "一个模型定义了两个区域：每张表位于哪里，哪些视图在哪里构建，以及谁读取什么。集团报表读取的是假名化的 EU 客户，EU 营销只读取同意的客户，访问请求和删除各自只是一次查询。内幕信息审查只在 EU 中显示发件人，每一次读取都在同一份记录中。"
+        "description": "一份配置授予了两个区域，每个都有自己的引擎和存储：两个数据处理环境。归属把 EU 的表、其副本和缓存留在 EU。数据管家的规则按角色和读者所在区域决定每位读者得到什么，EU 在任何数据离开之前执行了它们。集团报表以假名读取 EU 客户，EU 市场部只读取同意的客户，访问和删除各只需一次查询，发件人只向 EU 的审核员显示，每一次读取都在同一份记录中。"
       },
       "provisioningScenario": {
         "title": "这个演示是什么",
@@ -1374,7 +1390,11 @@
       },
       "testdataCoverageNow": {
         "title": "每个敏感列都已覆盖",
-        "description": "同样的检查，现在从模型读取：每个敏感列、它的标签，以及是否有虚构值覆盖它。全部已覆盖，因此预发布可以打开并作答。"
+        "description": "敏感覆盖是报表页面上的一份标准报表：每个敏感列、它的标签，以及是否有虚构值覆盖它，均从当前模型读取。全部已覆盖，因此预发布可以打开并作答。"
+      },
+      "testdataPollyProposes": {
+        "title": "从画像提出的虚构值",
+        "description": "有人问 Polly 会为 customers.email 提出哪种虚构值。它读取该列最新一次画像运行，看到这些值是电子邮件地址，于是提出电子邮件虚构值。模型已经声明了一个，所以这个提议是用数据来核对那个选择。在有人选择之前，什么都不会保存。"
       },
       "testdataProd": {
         "title": "生产：真实的行",
@@ -1755,6 +1775,71 @@
       "agentdataConnect": {
         "title": "你自己的智能体,同一台服务器",
         "description": "这就是浏览器中的智能体使用的服务器。把这段配置粘贴到 Claude Desktop,或将任意 MCP 客户端指向该 URL,你自己的智能体就能获得同样受治理的工具,遵守同样的规则。"
+      },
+      "banksecrecyScenario": {
+        "title": "一家银行阅读美国法律",
+        "description": "一家社区银行必须依据 Bank Secrecy Act 报告超过 10,000 美元的现金。本演示从公开地址读取规则本身，找出其中使用的术语，把它们落实到银行的数据上，然后按概念查询：哪些现金需要 Currency Transaction Report，谁在拆分交易？它从银行的核心系统开始，在原处实时读取。"
+      },
+      "banksecrecyCash": {
+        "title": "柜台上的现金",
+        "description": "柜台上的每一笔现金存入和取出：账户、网点、柜员、时间以及记账的营业日。17:00 之后收取的现金记入下一个营业日。"
+      },
+      "banksecrecyOnBehalf": {
+        "title": "代表谁",
+        "description": "每笔交易都记录了谁站在柜台前，以及现金属于谁。员工或亲属代为存入的现金，按法律的计算方式计入账户持有人的合计。"
+      },
+      "banksecrecyFindTerms": {
+        "title": "从公开地址读取法律",
+        "description": "查找术语从地址读取文档，这里是 eCFR 官方 API 上的 31 CFR 1010.311。一次扫描会就每个段落询问 AI 模型，需要几分钟，因此导览停止了这次扫描。同样的扫描在构建演示时已经运行过。",
+        "acting": "正在输入法规地址并开始扫描"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "规则中的术语",
+        "description": "预先完成的扫描：每个候选术语及其出处段落。金融机构须报告每笔超过 10,000 美元的现金交易。术语表中已有的术语会作为合并提出。"
+      },
+      "banksecrecyAggregation": {
+        "title": "汇总规则",
+        "description": "多笔交易和“代表”出自 31 CFR 1010.313：一个人或代表一个人在一个营业日内超过 10,000 美元的现金视为一笔交易，所有网点同属一家机构。夜间存款计入下一个营业日。"
+      },
+      "banksecrecyDefinitions": {
+        "title": "规则使用的定义",
+        "description": "规则中的词语在 31 CFR 1010.100 中定义：人、营业日、金融机构、拆分交易。每条定义都是独立的段落，因此每个术语都附有定义它的那一段。"
+      },
+      "banksecrecyLibrary": {
+        "title": "保存在参考库中",
+        "description": "演示的构建已将每份扫描过的文档保留在参考库中，因此法规作为受治理的参考文档留在模型身边：Polly 和组织的代理在回答时会引用其中的段落。"
+      },
+      "banksecrecyGrounded": {
+        "title": "法律的词语，落实到数据",
+        "description": "Transaction in currency 是法规的术语。银行的现金交易是它的一种，因此该术语可以到达 cash_transactions 表。同样，“人”到达客户，“金融机构”到达银行的网点。"
+      },
+      "banksecrecyBusinessDay": {
+        "title": "营业日，落在它的列上",
+        "description": "法规中的营业日是银行将交易记入客户账户的那一天。银行的 business_day 列正好保存这一点，因此该术语直接持有这一列。"
+      },
+      "banksecrecyTellerAsks": {
+        "title": "哪些现金需要报告？以柜员身份",
+        "description": "按概念查询：一个人或代表一个人在一个营业日内存入或取出超过 10,000 美元的现金，多笔交易跨账户和网点合计为一笔。柜员看到需要提交的报告，账号和纳税人识别号已被遮蔽。"
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "同样的问题，以合规身份",
+        "description": "合规专员提出同样的问题，按报告的需要看到完整的账号和纳税人识别号。Dana Whitmore 的合计包括他人代她存入的现金。"
+      },
+      "banksecrecyStructuring": {
+        "title": "谁在拆分交易？",
+        "description": "在不同网点和日期，三次或更多次略低于 10,000 美元的存款。其中任何一笔单独都无需报告。Victor Hale 一周内去了三个网点，而 Marcus Reed 同一天的两笔存款合起来需要报告。只有合规人员能看到这个视图。"
+      },
+      "banksecrecyExample": {
+        "title": "同样的答案，用 GraphQL",
+        "description": "需要提交的报告，以 API 调用的形式。每个接口读取同一个受治理的视图，同一角色使用相同的遮蔽。"
+      },
+      "banksecrecyPollyAsks": {
+        "title": "用平实的话提问",
+        "description": "合规用平实的话问 Polly：哪些现金需要 Currency Transaction Report？Polly 找到概念所达的受治理视图并从中作答，所以它列出的人与 SQL 和 GraphQL 返回的相同。没有人需要知道视图的名称。"
+      },
+      "banksecrecyRecap": {
+        "title": "您看到了什么",
+        "description": "法律从公开地址读取，其术语被找出并落实到银行的表上，银行按概念进行了查询。Currency Transaction Report 通过其多笔交易到达数据，每个角色都看到了它可以看到的内容。"
       }
     },
     "status": {
@@ -1825,7 +1910,7 @@
         "summary": "天气能否解释一家农作物保险公司投资组合中的损失？它自己的农场、保单和理赔，按县和作物年份与 USDA 的按原因损失、NOAA 的天气和 NASS 的产量连接，用 SQL、GraphQL 和 REST 给出答案。"
       },
       "retail": {
-        "title": "一个集团，两个区域",
+        "title": "两个区域的故事",
         "summary": "一家拥有 EU 和 US 子公司的零售集团，在 GDPR 下作为一个业务经营：EU 数据留在 EU，集团报表以假名化方式读取，访问、删除、内幕信息审查和审计各自只是一次查询。"
       },
       "provisioning": {
@@ -1879,6 +1964,10 @@
       "agentdata": {
         "title": "把数据交给智能体",
         "summary": "能否把零售商的订单数据交给 AI 智能体,并将其限制在用户有权查看的范围内?MCP 浏览器分别以客服和分析师身份展示智能体:不同的行和列、脱敏的电子邮件,以及每个答案背后受治理的 SQL。"
+      },
+      "banksecrecy": {
+        "title": "从 Bank Secrecy Act 读出的现金报告",
+        "summary": "一家银行从官方公开地址读取 Bank Secrecy Act 的现金报告规则，找出其中的术语并将其落实到自己的表上。然后按概念查询：哪些现金需要 Currency Transaction Report，谁在 10,000 美元以下拆分交易。银行和客户是虚构的，法规是真实的。"
       }
     }
   }

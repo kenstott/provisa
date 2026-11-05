@@ -38,8 +38,8 @@ naming:
   rules: []
 platform:
   regions:
-  - {id: eu, address: '${env:PROVISA_DEMO_EU_ADDRESS}'}
-  - {id: us, address: '${env:PROVISA_DEMO_US_ADDRESS}'}
+  - {id: eu, description: 'Customer data that must stay in the European Union', purposes: [residency]}
+  - {id: us, description: 'The United States, near the readers and sources there', purposes: [latency]}
 # Each region keeps its replicas, views, build state and record in its own PostgreSQL store; each
 # runs its own DuckDB engine.
 stores:

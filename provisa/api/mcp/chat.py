@@ -953,8 +953,10 @@ _CLIENT_TOOLS: list[Any] = [
             "OpenAPI: operation, parameters, body, requestUrl; each with status and error); the "
             "visible labelled form fields with their values "
             "(a password shows as dots, as on screen); and each result grid's columns and row "
-            "count, never its rows. Call it whenever the user refers to 'this', 'the query' or "
-            "anything on the screen, before you answer or act on it."
+            "count, never its rows; and, under `dataNode`, the data node a coordinator-served UI "
+            "sends its data calls to, or null when it is not coordinator-served. Call it whenever "
+            "the user refers to 'this', 'the query' or anything on the screen, before you answer "
+            "or act on it."
         ),
         "input_schema": {"type": "object", "properties": {}},
     },

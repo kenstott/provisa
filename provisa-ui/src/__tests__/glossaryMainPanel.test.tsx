@@ -16,6 +16,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { getStored, setStored } from "../lib/browserStorage";
+import { readScreen } from "../mcp/screenState";
+import { runUiActions } from "../mcp/uiActions";
 import type { GlossaryTermDetail, GlossaryTermSummary } from "../api/glossary";
 
 vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
@@ -31,6 +33,9 @@ vi.mock("../components/admin/TermEditForm", () => ({
 }));
 vi.mock("../components/admin/TermReadView", () => ({
   TermReadView: () => <div data-testid="term-read-view" />,
+}));
+vi.mock("../components/admin/FindTermsDialog", () => ({
+  FindTermsDialog: () => <div data-testid="find-terms-dialog" />,
 }));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
@@ -171,5 +176,31 @@ describe("the Glossary's main panel, after a reload", () => {
     expect(fetchGlossaryTerm).toHaveBeenLastCalledWith(1);
     expect(getStored("glossary.view")).toBe("ontology");
     expect(getStored("glossary.term")).toBe("5");
+  });
+});
+
+// REQ-2115: Polly opens Find terms from the glossary's menu, and read_screen says it is open.
+describe("Polly on the glossary", () => {
+  it("opens Find terms with her steps and reads that it is open", async () => {
+    HTMLElement.prototype.checkVisibility = () => true;
+    window.history.pushState({}, "", "/admin/ontology");
+    const inputs = async () => {
+      const read = await readScreen(500);
+      if (typeof read === "string") throw new Error(read);
+      return read.inputs;
+    };
+    open();
+    await screen.findByTestId("summary");
+    expect(await inputs()).toMatchObject({ findTerms: false });
+    const out = await runUiActions(
+      [
+        { do: "press", target: { testId: "glossary-generate-menu" } },
+        { do: "press", target: { testId: "glossary-find-terms-btn" } },
+      ],
+      { confirm: vi.fn(), paceMs: 0, waitMs: 500 },
+    );
+    expect(out.success).toBe(true);
+    expect(await screen.findByTestId("find-terms-dialog")).toBeInTheDocument();
+    expect(await inputs()).toMatchObject({ findTerms: true });
   });
 });

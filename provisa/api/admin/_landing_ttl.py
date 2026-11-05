@@ -215,6 +215,20 @@ async def row_materialize_save_refusal(
     return None if refused is None else MutationResult(success=False, message=refused)
 
 
+def _reach_type(source_id: str, source_type: str | None, hints: dict[str, str]) -> str | None:
+    """The type the bound engine's reach of the source is judged by: a JDBC source attached
+    live there is judged as the built-in type its URL names (REQ-2191)."""
+    from types import SimpleNamespace
+
+    from provisa.api.app import state
+    from provisa.jdbc_source.attach import reach_type
+
+    if source_type is None:
+        return None
+    source = SimpleNamespace(id=source_id, type=source_type, federation_hints=hints)
+    return reach_type(source, state.federation_engine)
+
+
 def _engine_reads_in_place(source_type: str | None) -> bool:
     """Whether the bound engine reads a source of ``source_type`` live in place (an attach or a
     scan) rather than serving it from a replica (federation.strategy.engine_attaches). A source not
@@ -341,7 +355,10 @@ async def landing_ttl_refusal(
     hints = (
         federation_hints if federation_hints is not None else await _stored_hints(conn, source_id)
     )
-    engine_lands = not (hints.get("reach") == "scan" or _engine_reads_in_place(source_type))
+    engine_lands = not (
+        hints.get("reach") == "scan"
+        or _engine_reads_in_place(_reach_type(source_id, source_type, hints))
+    )
     for t in tables:
         if not engine_lands and not lands_from_config(
             materialize=t.materialize,

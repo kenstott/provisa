@@ -14,9 +14,9 @@
     "otelTitle": "OpenTelemetry 追蹤",
     "statusLabel": "狀態：",
     "statusExporting": "匯出中 → {{endpoint}}",
-    "statusActiveNoCollector": "作用中（Span 已捨棄 — 未設定收集器）",
+    "statusActiveNoCollector": "作用中（追蹤僅保留於此頁面，不會匯出）",
     "endpointLabel": "OTLP 收集器端點",
-    "endpointHelp": "留空可產生追蹤但不匯出。可使用 OTEL_EXPORTER_OTLP_ENDPOINT 環境變數覆寫。",
+    "endpointHelp": "請指向 Provisa 自己的收集器，並在收集器中將外部供應商新增為匯出器，追蹤表才會持續寫入。留空則只在此頁面保留追蹤。可使用 OTEL_EXPORTER_OTLP_ENDPOINT 環境變數覆寫。",
     "serviceNameLabel": "服務名稱",
     "serviceNameHelp": "可使用 OTEL_SERVICE_NAME 環境變數覆寫。",
     "sampleRateLabel": "取樣率",
@@ -83,6 +83,8 @@
       "document_sources": "針對文件儲存區的查詢。",
       "search_sources": "針對搜尋索引的查詢。",
       "grpc_services": "gRPC 查詢介面，包括傳入與傳出。"
-    }
+    },
+    "tracesTableEmpty": "已設定端點，但 Provisa 的追蹤表尚無任何資料列。若該端點是外部供應商而非 Provisa 的收集器，請將它移至收集器的匯出器。",
+    "tracesTableStale": "已設定端點，但 Provisa 的追蹤表在過去 {{minutes}} 分鐘內沒有收到任何資料列。若 Provisa 一直閒置，這屬正常。否則請確認該端點是 Provisa 的收集器，而非外部供應商。"
   }
 }

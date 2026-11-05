@@ -43,7 +43,7 @@ from pydantic import BaseModel
 from provisa.api.role_surface import role_surface
 from provisa.core import request_deadline
 from provisa.core.read_refusal import ReadRefused
-from provisa.core.statement_warnings import collecting
+from provisa.core.statement_warnings import collecting, warn
 from provisa.api.errors import ApiError
 from provisa.cache.middleware import build_cache_headers
 from provisa.federation.replica_state import ReplicaBuilding
@@ -51,6 +51,7 @@ from provisa.compiler.hints import extract_graphql_hints
 from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
 from provisa.compiler.sql_gen import compile_query
 from provisa.executor import stats as _qs_mod
+from provisa.observability.request_facts import DocumentResponse
 from provisa.observability.request_facts import TimedJSONResponse as JSONResponse  # REQ-1910
 from provisa.audit.context import note_request_route, note_request_rows
 from provisa.security.rights import Capability
@@ -60,7 +61,7 @@ from provisa.api.data.mutations import (
     _handle_mutation,
     _split_action_fields,
 )
-from provisa.executor.serialize import serialize_aggregate
+from provisa.executor.serialize import to_one_truncated
 from graphql.language.ast import OperationDefinitionNode
 from provisa.api.data.graphql_http import (
     GraphQLDocumentError,
@@ -695,8 +696,12 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
     API-table hydration, residency and the materialize stage are the pipeline's. This only shapes
     the rows it gets back into the field's answer.
 
-    Returns (root_field, field_rows, redirect_or_None, cache_hit_record_or_None).
+    Returns (root_field, answer, redirect_or_None, cache_hit_record_or_None): the answer is the
+    Rust encoder's (a FieldAnswer, its JSON written from the result's Arrow batches, REQ-2194), or
+    a Response for a file format.
     """
+    from provisa.executor.json_encoders import FieldAnswer, graphql_aggregate, result_batches
+
     from provisa.pgwire._pipeline import _govern_and_route_compiled
 
     root_field = compiled.root_field
@@ -728,22 +733,24 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
         return root_field, None, result.redirect, hit
 
     if compiled.has_nodes and not compiled.is_group_by:
-        response = serialize_aggregate(
-            result.rows, compiled.columns, root_field, agg_alias=compiled.agg_alias
-        )
+        # An aggregate's answer is a map ({aggregate, nodes}), not rows.
+        body = graphql_aggregate(result_batches(result), compiled.columns, compiled.agg_alias)
+        answer = FieldAnswer(body, None, {}, [])
     else:
-        response = _format_response(
-            result.rows,
+        answer = _format_response(
+            result,
             compiled.columns,
             root_field,
             output_format,
             result_limit=compiled.result_limit,
         )
-    field_rows = (
-        response.get("data", {}).get(root_field, []) if isinstance(response, dict) else response
-    )
+    if isinstance(answer, FieldAnswer):
+        # What the encoder found about the answer (a to-one that matched several rows) goes to
+        # the request's warnings, which reach the client's extensions.warnings (REQ-1350).
+        for path in answer.truncated:
+            warn(to_one_truncated(path))
     _elapsed_ms = (_time.perf_counter() - _t0) * 1000
-    _n_rows = len(field_rows) if isinstance(field_rows, list) else 0
+    _n_rows = answer.rows or 0 if isinstance(answer, FieldAnswer) else 0
     _record_per_source_stats(
         root_field,
         set(plan.sources or ()),
@@ -758,20 +765,29 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
             dialect=plan.dialect,
             reason=plan.route_reason or "",
         ),
-        field_rows=field_rows if isinstance(field_rows, list) else None,
+        joined=answer.joined if isinstance(answer, FieldAnswer) else None,
         physical_sql=plan.sql,
     )
     qs = _qs_mod.current()
     if qs is not None and compiled.sources:
         _append_mermaid(qs, compiled, ctx, root_field, None, _elapsed_ms, _n_rows, None)
-    return root_field, field_rows, None, hit
+    return root_field, answer, None, hit
 
 
-def _note_field_outcome(field_rows: Any) -> None:
+def _note_field_outcome(answer: Any) -> None:  # noqa: ANN401 — a FieldAnswer, a Response or None
     """Note one executed root field's rows on the request's audit outcome (REQ-074); its route,
     the cache's included, is noted where the pipeline decides it, in ``_execute_one_field``."""
-    if isinstance(field_rows, list):
-        note_request_rows(len(field_rows))
+    from provisa.executor.json_encoders import FieldAnswer
+
+    if isinstance(answer, FieldAnswer) and answer.rows is not None:
+        note_request_rows(answer.rows)
+
+
+def _field_value(answer: Any) -> Any:  # noqa: ANN401 — a FieldAnswer, or None for a landed field
+    """A root field's value in the response document: the encoder's JSON, embedded as its bytes."""
+    import orjson
+
+    return None if answer is None else orjson.Fragment(answer.body)
 
 
 async def _handle_query(
@@ -945,22 +961,15 @@ async def _handle_query(
                 setting=_timeout_setting,
             )
         _note_field_outcome(field_rows)  # REQ-074: the request's audit row
-        if cached_entry is not None:
-            headers = build_cache_headers(cached_entry)
-            return JSONResponse(
-                content={"data": {root_field: field_rows}},
-                headers=headers,
-            )
         if redirect_info is not None:
             return JSONResponse(content={"data": {root_field: None}, "redirect": redirect_info})
         # Binary format passthrough (parquet/arrow/csv single-field). An aggregate's answer is a
         # map ({aggregate, nodes}), not rows, and is answered in the envelope as rows are.
         if isinstance(field_rows, Response):
             return field_rows
-        headers = build_cache_headers(None)
-        return JSONResponse(
-            content={"data": {root_field: field_rows}},
-            headers=headers,
+        return DocumentResponse(
+            {"data": {root_field: _field_value(field_rows)}},
+            headers=build_cache_headers(cached_entry),
         )
 
     # --- Multiple root fields: execute one after another on this request's thread, merge ---
@@ -1002,14 +1011,13 @@ async def _handle_query(
             merged_data[root_field] = None
             merged_redirects[root_field] = redirect_info
         else:
-            merged_data[root_field] = field_rows
+            merged_data[root_field] = _field_value(field_rows)
 
     response = {"data": merged_data}
     if merged_redirects:
         response["redirects"] = merged_redirects
 
-    headers = build_cache_headers(None)
-    return JSONResponse(content=response, headers=headers)
+    return DocumentResponse(response, headers=build_cache_headers(None))
 
 
 @router.post("/touch/{table}", status_code=204)

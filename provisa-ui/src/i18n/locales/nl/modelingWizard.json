@@ -1,0 +1,246 @@
+{
+  "modelingWizard": {
+    "stepOf": "Stap {{index}} van {{count}}",
+    "next": "Volgende",
+    "toReview": "Controleren",
+    "back": "Terug",
+    "remove": "Verwijderen",
+    "domainHelp": "Het domein waaronder elke tabel die deze wizard maakt wordt geregistreerd: de naamruimte voor toegangsbeheer en query's.",
+    "validTime": "Geldigheidstijd",
+    "validTimeHelp": "De kolom die zegt vanaf wanneer elke versie zakelijk gold. Samen met de registratietijd kun je eerdere versies opvragen.",
+    "recordedTime": "Registratietijd",
+    "recordedTimeHelp": "De kolom die zegt wanneer elke versie in de bron is vastgelegd.",
+    "primitive": {
+      "entity": "Entiteit",
+      "fact": "Feit",
+      "relationship": "Relatie"
+    },
+    "role": {
+      "dimension": "Dimensie",
+      "fact": "Feit",
+      "hub": "Hub",
+      "satellite": "Satelliet",
+      "linkSatellite": "Linksatelliet",
+      "effectivity": "Effectiviteitssatelliet",
+      "link": "Link",
+      "sameAs": "Same-as-link"
+    },
+    "roleIn": {
+      "dimension": "Een dimensie van het sterschema, gebouwd als entiteit met de businesssleutel als sleutel",
+      "fact": "Het feit van het sterschema, gebouwd als feit met een relatie naar elke dimensie",
+      "hub": "Een Data Vault-hub, gebouwd als entiteit met de businesssleutel als sleutel",
+      "satellite": "Een Data Vault-satelliet, gebouwd als entiteit met de businesssleutel van de hub als sleutel",
+      "linkSatellite": "Een Data Vault-linksatelliet, gebouwd als entiteit met de sleutels van de link",
+      "effectivity": "Een Data Vault-effectiviteitssatelliet, gebouwd als entiteit met de sleutels van de link en geldigheidstijd",
+      "link": "Een Data Vault-link, gebouwd als feit zonder meetwaarden met de deelnemende sleutels als granulariteit",
+      "sameAs": "Een Data Vault-same-as-link, gebouwd als feit zonder meetwaarden dat de hub met zichzelf verbindt"
+    },
+    "star": {
+      "process": {
+        "title": "Bedrijfsproces",
+        "intro": "Het bedrijfsproces dat dit sterschema meet, waar de gebeurtenissen ervan worden vastgelegd en wat voor feit het is."
+      },
+      "grain": {
+        "title": "Granulariteit",
+        "intro": "Waar één rij van het feit voor staat. Leg de granulariteit vast vóór de dimensies en meetwaarden."
+      },
+      "dimensions": {
+        "title": "Dimensies",
+        "intro": "Het wie, wat, waar en wanneer van elke gebeurtenis: elke dimensie, hoe die verandert en of die conform is."
+      },
+      "measures": {
+        "title": "Meetwaarden",
+        "intro": "De getallen die het proces oplevert, hoe elk wordt geaggregeerd en of het opgeteld kan worden."
+      },
+      "processLabel": "Bedrijfsproces",
+      "processHelp": "Het bedrijfsproces dat het feit vastlegt, in de woorden van de business (orderafhandeling, schadebehandeling). Het geeft de feitentabel haar naam.",
+      "sourceLabel": "Waar het proces wordt vastgelegd",
+      "sourceHelp": "De geregistreerde tabel met de gebeurtenissen van het proces. Het feit wordt eruit gelezen: de granulariteit, de meetwaarden en de verwijzingen naar de dimensies.",
+      "factTypeLabel": "Soort feit",
+      "factTypeHelp": "Transactie: één rij per gebeurtenis. Periodieke snapshot: één rij per periode, de stand aan het eind. Accumulerende snapshot: één rij per item, bijgewerkt bij elke mijlpaal.",
+      "factType": {
+        "transaction": "Transactie",
+        "periodic": "Periodieke snapshot",
+        "accumulating": "Accumulerende snapshot"
+      },
+      "grainStatement": "Granulariteit in woorden",
+      "grainStatementHelp": "Eén rij van het feit, eenvoudig gezegd. Komt in de beschrijving van het feit.",
+      "grainStatementPlaceholder": "één rij per orderregel",
+      "grainHelp": "De kolom(men) van de procestabel die één feitrij identificeren. Meetwaarden worden tot dit niveau geaggregeerd.",
+      "dimensionsHelp": "Elke dimensie waarop het feit wordt geanalyseerd. Een nieuwe wordt uit een eigen tabel gebouwd; een conforme is een bestaande dimensie die het feit met andere feiten deelt.",
+      "dimName": "Dimensie",
+      "dimNameHelp": "Wat de dimensie beschrijft (klant, product, datum). Het geeft de dimensietabel haar naam.",
+      "via": "Feitkolom",
+      "viaHelp": "De kolom van de procestabel die naar deze dimensie verwijst.",
+      "conformed": "Conforme dimensie",
+      "conformedHelp": "Kies een bestaande dimensie om die met andere feiten te delen, zodat ze erop vergeleken kunnen worden. Laat leeg om een nieuwe dimensie te bouwen.",
+      "conformedNew": "Nieuwe dimensie bouwen",
+      "dimSource": "Dimensietabel",
+      "dimSourceHelp": "De geregistreerde tabel waaruit de rijen van de dimensie worden gelezen.",
+      "dimKeyHelp": "De kolom(men) die één lid van de dimensie identificeren. Rijen worden erop ontdubbeld en de feitkolom verwijst ernaar.",
+      "dimAttributesHelp": "De beschrijvende kolommen waarop analisten filteren en groeperen.",
+      "scdLabel": "Als een lid verandert",
+      "scdHelp": "Type 1 overschrijft: alleen de huidige waarde blijft. Type 2 bewaart elke versie. Snapshot bewaart de stand van elke lading. Type 2 en snapshot hebben de geldigheids- en registratietijd nodig.",
+      "scd": {
+        "type1": "Type 1: overschrijven",
+        "type2": "Type 2: elke versie bewaren",
+        "snapshot": "Snapshot"
+      },
+      "measuresHelp": "De numerieke kolommen die het proces meet. Elk wordt een meetwaarde van het feit, geaggregeerd tot de granulariteit.",
+      "aggOf": "{{column}}: aggregatie",
+      "additivityLabel": "Additiviteit",
+      "additivityHelp": "Additief: over elke dimensie op te tellen (een bedrag). Semi-additief: niet over de tijd (een saldo). Niet-additief: nooit opgeteld (een ratio, een prijs).",
+      "additivity": {
+        "additive": "Additief",
+        "semiAdditive": "Semi-additief",
+        "nonAdditive": "Niet-additief"
+      },
+      "missing": {
+        "process": "Geef het bedrijfsproces, het domein en de tabel waarin het wordt vastgelegd.",
+        "grain": "Kies de kolom(men) die één rij van het feit identificeren.",
+        "dimensions": "Elke dimensie heeft een naam en een feitkolom nodig, en ofwel een conforme dimensie ofwel een eigen tabel en sleutel (met geldigheids- en registratietijd bij type 2 of snapshot)."
+      }
+    },
+    "vault": {
+      "hubs": {
+        "title": "Hubs en businesssleutels",
+        "intro": "De kernbegrippen van de business, de businesssleutel die elk identificeert en de record source waar de sleutel vandaan komt."
+      },
+      "links": {
+        "title": "Links",
+        "intro": "De werkeenheden tussen de begrippen en of elke relatie kan eindigen."
+      },
+      "satellites": {
+        "title": "Satellieten",
+        "intro": "De beschrijvende attributen van elke hub of link, gegroepeerd per bron, wijzigingsfrequentie of gevoeligheid, en hoe ver hun historie teruggaat."
+      },
+      "rules": {
+        "title": "Business vault",
+        "intro": "De bedrijfsregels die nieuwe waarden afleiden uit de raw vault. Optioneel."
+      },
+      "hubsLabel": "Hubs",
+      "hubsHelp": "Eén hub per kernbegrip (klant, product, order), geïdentificeerd door de businesssleutel: de sleutel die de business zelf gebruikt, niet de surrogaatsleutel van een systeem.",
+      "addHub": "Hub toevoegen",
+      "concept": "Businessbegrip",
+      "conceptHelp": "Het begrip waar de hub voor staat. Het geeft de hub zijn naam.",
+      "recordSource": "Record source",
+      "recordSourceHelp": "De geregistreerde tabel waaruit de businesssleutels worden geladen.",
+      "businessKeyHelp": "De kolom(men) waarmee de business het begrip identificeert.",
+      "sameAsSource": "Same-as-link",
+      "sameAsHelp": "Als twee sleutels dezelfde instantie aanduiden (een klant bekend onder de nummers van twee systemen), de tabel die ze koppelt. Laat leeg als die er niet is.",
+      "sameAsNone": "Geen",
+      "sameAsMaster": "Hoofdsleutel",
+      "sameAsDuplicate": "Dubbele sleutel",
+      "linksLabel": "Links",
+      "linksHelp": "Eén link per werkeenheid tussen hubs (een klant plaatst een order). Een link bevat alleen de deelnemende sleutels.",
+      "addLink": "Link toevoegen",
+      "linkName": "Werkeenheid",
+      "linkNameHelp": "Wat de link vastlegt. Het geeft de link zijn naam; leeg gelaten wordt de link naar zijn hubs genoemd.",
+      "linkSource": "Linktabel",
+      "linkSourceHelp": "De geregistreerde tabel die de werkeenheid vastlegt, met de sleutel van elke deelnemende hub.",
+      "linkHubs": "Verbonden hubs",
+      "linkHubsHelp": "De hubs die deelnemen. Een link verbindt twee of meer hubs.",
+      "linkVia": "Sleutel van {{hub}}",
+      "endsLabel": "Kan de relatie eindigen?",
+      "endsHelp": "Als een relatie kan eindigen (een klant krijgt een andere accountmanager), legt een effectiviteitssatelliet vast wanneer elke relatie begint en eindigt.",
+      "ends": {
+        "never": "Nee, ze blijft eenmaal gelegd",
+        "effectivity": "Ja: effectiviteit bijhouden"
+      },
+      "depthLabel": "Diepte van de historie",
+      "depthHelp": "Elke versie: elke wijziging in de attributen van een satelliet blijft bewaard en is op elk moment op te vragen. Alleen huidige waarden: een wijziging overschrijft.",
+      "depth": {
+        "full": "Elke versie",
+        "current": "Alleen huidige waarden"
+      },
+      "satellitesLabel": "Satellieten",
+      "satellitesHelp": "De beschrijvende attributen van een hub of link. Verdeel ze over meerdere satellieten per bron, wijzigingsfrequentie of gevoeligheid.",
+      "addSatellite": "Satelliet toevoegen",
+      "satParent": "Beschrijft",
+      "satParentHelp": "De hub of link waarvan de satelliet de attributen bevat.",
+      "parentHub": "Hub {{name}}",
+      "parentLink": "Link {{name}}",
+      "parentSatellite": "Satelliet {{name}}",
+      "satName": "Naam van de satelliet",
+      "satNameHelp": "Wat deze satelliet onderscheidt (de bron, crm; of het onderwerp, adres). Wordt aan de naam toegevoegd.",
+      "satSource": "Satelliettabel",
+      "satSourceHelp": "De geregistreerde tabel waaruit de attributen worden gelezen.",
+      "satParentKey": "Sleutel van wat hij beschrijft",
+      "satParentKeyHelp": "De kolom(men) van de satelliettabel met de businesssleutel van de hub of de sleutels van de link.",
+      "satAttributesHelp": "De beschrijvende kolommen die deze satelliet bevat.",
+      "groupedBy": "Gegroepeerd op",
+      "groupedByHelp": "Waarom deze attributen bij elkaar horen: ze komen uit één bron, wijzigen even vaak of delen een gevoeligheid (persoonsgegevens apart).",
+      "grouping": {
+        "source": "Bron",
+        "rateOfChange": "Wijzigingsfrequentie",
+        "sensitivity": "Gevoeligheid"
+      },
+      "multiActive": "Multi-active-sleutel",
+      "multiActiveHelp": "Als voor één sleutel meerdere rijen tegelijk actief zijn (de telefoonnummers van een klant), de kolom(men) die ze onderscheiden. Laat anders leeg.",
+      "multiActiveNone": "Niet multi-active",
+      "rulesLabel": "Bedrijfsregels",
+      "rulesHelp": "Een business-vault-regel leidt een waarde af uit de raw vault (de lifetime value van een klant). Hij wordt vastgelegd in de beschrijving van de tabel waaruit hij afleidt en daarna als view gebouwd.",
+      "addRule": "Regel toevoegen",
+      "ruleTarget": "Leidt af uit",
+      "ruleText": "Regel",
+      "ruleTextPlaceholder": "lifetime value = som van ordertotalen",
+      "missing": {
+        "hubs": "Kies het domein en geef elke hub een businessbegrip, een record source en een businesssleutel; een same-as-link heeft een tabel en beide sleutels nodig.",
+        "links": "Elke link heeft een tabel nodig, minstens twee hubs, de sleutel van elke hub en geldigheids- en registratietijd als hij kan eindigen.",
+        "satellites": "Elke satelliet heeft nodig wat hij beschrijft, een tabel, die sleutel en attributen, met geldigheids- en registratietijd als elke versie wordt bewaard.",
+        "rules": "Geef aan uit welke tabel elke regel afleidt.",
+        "satelliteKey": "De sleutel van een satelliet heeft evenveel kolommen als de sleutel van wat hij beschrijft, in dezelfde volgorde."
+      }
+    },
+    "review": {
+      "title": "Controleren",
+      "intro": "Wat elk antwoord in Provisa wordt: een entiteit of een feit, de sleutel of granulariteit, de historie en de relaties. De namen volgen de conventie van de methode; wijzig ze hier.",
+      "nameOf": "Naam ({{role}})",
+      "nameHelp": "De naam van de tabel. Het is de gebruikelijke naam van de methode; haal het voorvoegsel weg als afnemers het niet mogen zien.",
+      "source": "Leest",
+      "key": "Sleutel",
+      "attributes": "Attributen",
+      "history": "Historie",
+      "historyNone": "alleen huidige waarden",
+      "historyKept": "elke versie, op geldigheidstijd {{validTime}} en registratietijd {{recordedTime}}",
+      "grain": "Granulariteit",
+      "measures": "Meetwaarden",
+      "relationships": "Relaties",
+      "relationship": "{{via}} → {{target}}",
+      "description": "Conceptbeschrijving",
+      "notCreatedTitle": "Vastgelegd, niet gemaakt",
+      "ruleNotCreated": "Business-vault-regel \"{{rule}}\": vastgelegd in de beschrijving van de tabel; bouw hem als view over deze tabellen.",
+      "draftNote": "Elke beschrijving is een eerste concept dat een steward bijwerkt in Geregistreerde tabellen.",
+      "create": "Maken",
+      "nameRequired": "Geef elke tabel een naam.",
+      "nameTaken": "Twee tabellen hebben dezelfde naam. Geef elk een eigen naam."
+    },
+    "result": {
+      "created_one": "{{count}} tabel gemaakt",
+      "created_other": "{{count}} tabellen gemaakt",
+      "stopped": "Gestopt bij {{name}}",
+      "draftNote": "Hun beschrijvingen zijn eerste concepten: werk ze bij in Geregistreerde tabellen.",
+      "oneWay": "De wizard maakt alleen. Wijzig deze tabellen in Geregistreerde tabellen of het entiteit/feit-formulier; de wizard genereert ze niet opnieuw.",
+      "relatesTo": "verbonden met {{tables}}",
+      "status": {
+        "created": "Gemaakt",
+        "failed": "Geweigerd",
+        "notReached": "Niet gemaakt"
+      }
+    },
+    "desc": {
+      "none": "geen",
+      "dimension": "Concept: dimensie \"{{name}}\" van het sterschema voor het proces {{process}}, met sleutel {{key}}, gelezen uit {{source}}. Als een lid verandert: {{scd}}.",
+      "fact": "Concept: feit van het sterschema voor het proces {{process}} ({{factType}}). Granulariteit: {{grain}}. Dimensies: {{dimensions}}. Meetwaarden: {{measures}}.",
+      "measure": "{{agg}}({{column}}), {{additivity}}",
+      "hub": "Concept: Data Vault-hub van het begrip {{concept}}, met de businesssleutel {{key}}, uit de record source {{source}}.",
+      "sameAs": "Concept: Data Vault-same-as-link van {{hub}}: {{master}} en {{duplicate}} duiden dezelfde instantie van {{concept}} aan, uit {{source}}.",
+      "link": "Concept: Data Vault-link voor de werkeenheid \"{{name}}\" tussen {{hubs}}, op de sleutels {{keys}}, uit {{source}}.",
+      "linkEnds": "De relatie kan eindigen; de effectiviteitssatelliet legt vast wanneer.",
+      "effectivity": "Concept: Data Vault-effectiviteitssatelliet van {{link}}: wanneer elke relatie begint en eindigt, op geldigheidstijd {{validTime}} en registratietijd {{recordedTime}}.",
+      "satellite": "Concept: Data Vault-satelliet van {{parent}}: {{attributes}} uit {{source}}, gegroepeerd op {{grouping}}. Historie: {{history}}.",
+      "multiActive": "Multi-active op {{columns}}.",
+      "rule": "Business-vault-regel: {{rule}}."
+    }
+  }
+}

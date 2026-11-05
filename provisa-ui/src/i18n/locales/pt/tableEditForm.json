@@ -200,7 +200,8 @@
     "dimBadge": "Dimensão",
     "scopeDomain": "domínio",
     "scopePublic": "público",
-    "scopeRestricted": "restrito",
+    "scopeListed": "listado",
+    "scopeOwnDomain": "domínio próprio",
     "cancel": "Cancelar",
     "save": "Salvar",
     "ttlViewRefreshes": "Atualiza a cada {{sec}}s (do Intervalo de atualização da exibição materializada).",
@@ -264,7 +265,7 @@
     "draftHelp": "Fora de serviço enquanto marcado: não é lida nem escrita em lugar algum, não é oferecida em nenhum esquema e não é copiada — as cópias existentes em todas as regiões são removidas. Uma tabela ou visão registrada aqui começa como rascunho; desmarque para liberá-la.",
     "pagingRowsFieldHelp": "A propriedade da resposta que contém as linhas, como values ou data em um invólucro de página. Deixe vazio quando a própria resposta são as linhas. As colunas da tabela são as dos objetos que estão ali.",
     "pagingRowsFieldFixed": "Definido quando a tabela foi registrada. Registre a tabela novamente para ler suas linhas de outro lugar.",
-    "scopeHelp": "domain: servida às funções que alcançam o domínio desta tabela. public: também às funções fora dele. restricted: apenas às funções indicadas em Visível para.",
+    "scopeHelp": "domain: servida às funções que alcançam o domínio desta tabela, inclusive por um domínio pai. listed: o mesmo, e toda função vê o nome da coluna no catálogo. public: também servida às funções fora do domínio. own-domain: servida apenas às funções cujo acesso de domínio próprio lista o domínio desta tabela; uma função que o alcança só por um domínio pai não a recebe, mesmo que Visível para a nomeie.",
     "columnTabs": {
       "label": "Atributos da coluna",
       "naming": "Nomes",

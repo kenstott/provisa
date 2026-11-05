@@ -301,9 +301,15 @@ SPECS: list[dict] = [
             "NOTHING: show the proposals, ask the user which to save (present_choice), then save "
             "each chosen one with set_column_fake. Refused 'no succeeded profile run' when the "
             "table has not been profiled in this environment. unmatchedPii lists pii columns with "
-            "no confident proposal. " + _RIGHT_TABLE
+            "no confident proposal. columns: propose for these columns only, each from the "
+            "profile even when it already declares a fake or a rule (to ask which fake the "
+            "profile suggests for a column); left out, every column that declares neither. "
+            + _RIGHT_TABLE
         ),
-        "input_schema": _obj({"table_id": _TABLE_ID}, ["table_id"]),
+        "input_schema": _obj(
+            {"table_id": _TABLE_ID, "columns": {"type": "array", "items": {"type": "string"}}},
+            ["table_id"],
+        ),
     },
     {
         "name": "list_synthetic_datasets",

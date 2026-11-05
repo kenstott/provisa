@@ -462,6 +462,7 @@ class TestGitHubBrandedSource:
                 variables={"owner": "apache", "name": "calcite"},
                 required_args=table["required_args"],
                 rows_path=table["rows_path"],
+                limit=100,
                 error_policy=reg["error_policy"],
             )
         ).rows

@@ -38,6 +38,7 @@ from provisa.graphql_remote.brands import (
     available_tables,
     brand_schema,
     map_table,
+    table_spec,
 )
 from provisa.graphql_remote.executor import (
     Throttled,
@@ -47,6 +48,7 @@ from provisa.graphql_remote.executor import (
     table_query,
     whole_connection,
 )
+from provisa.compiler.naming import apply_sql_name
 from provisa.graphql_remote.introspect import _build_headers
 from provisa.graphql_remote.mapper import map_schema
 from provisa.graphql_remote.probe import QueryTooComplex
@@ -190,6 +192,56 @@ def test_products_are_a_relay_connection_read_by_cursor():
     assert "pageInfo { hasNextPage endCursor }" in query
 
 
+ROOT_CONNECTIONS = (
+    "shopify__companies",
+    "shopify__customers",
+    "shopify__orders",
+    "shopify__collections",
+    "shopify__products",
+    # A root connection, never the like-named connection under a single record
+    # (company(id:).locations, product(id:).variants), which needs that record's id.
+    "shopify__company_locations",
+    "shopify__product_variants",
+)
+
+
+async def test_the_picker_offers_the_root_connections_with_no_required_parameter():
+    offered = await registration.source_offer(
+        SimpleNamespace(graphql_remote_sources={"my-shop": _reg()}), "my-shop"
+    )
+    assert offered is not None
+    tables = {t["name"]: t for t in registration.offered_tables(*offered)}
+    for name in ROOT_CONNECTIONS:
+        assert tables[name]["connection"], name
+        spec = table_spec(SHOPIFY, "shopify", name)
+        assert spec is not None and spec["required_args"] == [], name
+        assert spec["rows_path"] == ["nodes"], name
+
+
+def test_a_single_record_lookup_still_needs_its_id():
+    for name in ("shopify__company", "shopify__customer", "shopify__order", "shopify__collection"):
+        table = map_table(SHOPIFY, "shopify", "my-shop", "", name)
+        assert [a["name"] for a in table["required_args"]] == ["id"], name
+        offered = registration.offered_columns(SHOPIFY, _reg(), name)
+        assert "_nf_id" in {column for column, _type, _comment in offered}, name
+
+
+async def test_the_picker_lists_a_root_connection_where_the_schema_puts_its_field():
+    # The picker lists tables in the order it is given them. A root connection listed after
+    # every plain table sits hundreds of rows below its neighbours and reads as missing.
+    offered = await registration.source_offer(
+        SimpleNamespace(graphql_remote_sources={"my-shop": _reg()}), "my-shop"
+    )
+    assert offered is not None
+    order = [t["name"] for t in registration.offered_tables(*offered)]
+    schema = brand_schema("shopify")
+    root = next(t for t in schema["types"] if t["name"] == schema["queryType"]["name"])
+    root_tables = [apply_sql_name(f"shopify__{f['name']}") for f in root["fields"]]
+    listed = [n for n in order if n in set(root_tables)]
+    assert listed == [n for n in root_tables if n in set(order)]
+    assert order.index("shopify__companies") + 1 == order.index("shopify__companies_count")
+
+
 # --- adding the source ---
 
 
@@ -266,30 +318,8 @@ async def test_adding_a_shopify_source_checks_the_token_at_the_store_and_registe
         "auth_type": "header",
         "auth_header": "X-Shopify-Access-Token",
         "brand": "shopify",
-        "brand_setup": json.dumps(
-            {"api_version": SHOPIFY_API_VERSION, "store": "acme"}, sort_keys=True
-        ),
     }
-
-
-@respx.mock
-async def test_the_sources_row_a_shopify_source_writes_is_read_back_as_a_source(plane):
-    """Every reader of the sources table -- the schema rebuild the add itself runs -- reads a row
-    as a Source, whose hints are strings: a setup kept as an object failed every rebuild."""
-    from provisa.api.admin.graphql_remote_router import _register_branded_source
-    from provisa.core.repositories.source import source_from_row
-    from provisa.graphql_remote.brands import setup_from_hints
-
-    respx.post(STORE_URL).mock(
-        return_value=httpx.Response(200, json={"data": {"shop": {"name": "Acme"}}})
-    )
-    await _register_branded_source(None, _add_request())  # type: ignore[arg-type]
-    (row,) = plane.conn.rows
-    source = source_from_row(row)
-    assert setup_from_hints(source.federation_hints) == {
-        "store": "acme",
-        "api_version": SHOPIFY_API_VERSION,
-    }
+    assert row["brand_setup"] == {"store": "acme", "api_version": SHOPIFY_API_VERSION}
 
 
 @respx.mock
@@ -478,6 +508,7 @@ async def _whole_products(url: str = STORE_URL) -> list[dict]:
         ["id", "title"],
         table["rows_path"],
         table="my-shop.shopify__products",
+        page_size=100,
         max_rows=None,
         error_policy=SHOPIFY.error_policy,
     ):
@@ -501,6 +532,48 @@ async def test_a_table_is_read_a_page_at_a_time_following_shopifys_cursor():
     cursors = [json.loads(c.request.content)["variables"]["pageCursor"] for c in route.calls]
     assert cursors == [None, "c1"]
     assert all(c.request.headers["x-shopify-access-token"] == "shpat_x" for c in route.calls)
+
+
+@respx.mock
+async def test_a_table_lands_at_the_page_size_its_registration_priced(monkeypatch):
+    """Shopify prices a page by its size: a table accepted at registration at
+    graphql_remote.max_list_items is landed at that size, never a larger one it was not priced at."""
+    import provisa.api.app as app
+    from provisa.api.admin._table_ops import _graphql_columns_for_input
+    from provisa.events.app_wiring import build_adapter_loaders
+
+    reg = _reg()
+    state = SimpleNamespace(
+        graphql_remote_sources={"my-shop": reg},
+        config=SimpleNamespace(
+            graphql_remote=SimpleNamespace(max_list_items=25, max_rows=1000), sources=[]
+        ),
+        multitenancy=False,
+    )
+    monkeypatch.setattr(app, "state", state)
+    route = respx.post(STORE_URL).mock(
+        side_effect=[
+            httpx.Response(200, json=_page([], None)),  # the registration's pricing
+            httpx.Response(200, json=_page([{"id": "1", "title": "A"}], "c1")),
+            httpx.Response(200, json=_page([{"id": "2", "title": "B"}], None)),
+        ]
+    )
+    request = SimpleNamespace(
+        source_id="my-shop", schema_name="graphql", table_name="shopify__products", domain_id="eng"
+    )
+    answered = await _graphql_columns_for_input(request, [])
+    assert answered is not None and answered[1] is None  # registered
+
+    land = build_adapter_loaders(state, SimpleNamespace(engine=SimpleNamespace(connectors={})))
+    rows = await land["graphql_remote"](
+        SimpleNamespace(id="my-shop"),
+        SimpleNamespace(table_name="shopify__products", pagination=None),
+    )
+    assert [r["title"] for r in rows] == ["A", "B"]
+    priced, *landed = [json.loads(c.request.content)["query"] for c in route.calls]
+    page = "products(first: 25, after: $pageCursor)"
+    assert page in priced
+    assert len(landed) == 2 and all(page in q for q in landed)
 
 
 @respx.mock

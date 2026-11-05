@@ -949,7 +949,7 @@ services:
       # one's bundle into demo-bundles/ and runs its stores; the tier serves the ready version
       # and, at each sandbox opened, asks for a newer published one -- no redeploy. A demo's
       # logs are read live from its bundle there.
-      PROVISA_DEMO_BUNDLES: "starthere,weblogs,files,sonnets,reviews,quality,insider,testdata,datavault,profiling,vulnerabilities,agriculture,streaming,storefront,churn,provisioning,hasuramigration,insurance,worldcup,cloudpolicy,churnprod,dataroom,reproduce,opioids,pharma,groupexposure,agentdata"
+      PROVISA_DEMO_BUNDLES: "starthere,weblogs,files,sonnets,reviews,quality,insider,testdata,datavault,profiling,vulnerabilities,agriculture,streaming,storefront,churn,provisioning,hasuramigration,insurance,worldcup,cloudpolicy,churnprod,dataroom,reproduce,opioids,pharma,groupexposure,agentdata,banksecrecy"
       PROVISA_DEMO_REGISTRY: "https://ghcr.io/kenstott"
       PROVISA_LOGS_ALLOWED_ROOTS: /var/lib/provisa/demo-bundles
       # This tier builds the deployment's org at startup too, from the control plane, and the
@@ -999,14 +999,6 @@ services:
       ORG_ID: "sbxrtier"
       PROVISA_CONFIG: "/app/config/provisa-sandbox-regions.yaml"
       PROVISA_REGION: "us"
-      # The platform names an address per region. No node of a headless region (eu, ledger) runs,
-      # and nothing asks one: a visitor region's node reads its store in place. Its address is one
-      # nothing listens at, so a call to it fails as unreachable, by name, rather than reaching
-      # another node.
-      PROVISA_DEMO_EU_ADDRESS: "https://provisa-sandbox-regions-eu.invalid:8100"
-      PROVISA_DEMO_US_ADDRESS: "https://provisa-sandbox-regions:8100"
-      PROVISA_DEMO_LEDGER_ADDRESS: "https://provisa-sandbox-regions-ledger.invalid:8100"
-      PROVISA_DEMO_WAREHOUSE_ADDRESS: "https://provisa-sandbox-regions-warehouse:8100"
       # Unpublished, on this compose network only, as minio's credentials above.
       PROVISA_DEMO_EU_PG_URL: "postgresql+psycopg://provisa:\${PROVISA_PG_PASSWORD:?the deployment database password}@region-pg-eu:5432/provisa"
       PROVISA_DEMO_US_PG_URL: "postgresql+psycopg://provisa:\${PROVISA_PG_PASSWORD:?the deployment database password}@region-pg-us:5432/provisa"
@@ -1048,7 +1040,8 @@ services:
   region-pg-eu: &region_pg
     profiles: ["sandbox"]
     restart: unless-stopped
-    image: postgres:16
+    # REQ-2185: a region's store holds org schemas, whose reference library needs pgvector.
+    image: pgvector/pgvector:pg16-trixie
     environment:
       POSTGRES_USER: provisa
       POSTGRES_PASSWORD: "\${PROVISA_PG_PASSWORD:?the deployment database password}"
@@ -1505,6 +1498,11 @@ setup_native_venv() {
     err "No network and no bundled wheels found — reinstall Provisa."
     exit 1
   fi
+  # REQ-2194: provisa's encoders are compiled into it; an install without them is a broken install.
+  "${venv}/bin/python3" -c "import provisa._encoders.pgwire" || {
+    err "Provisa's compiled encoders (provisa._encoders) did not install — reinstall Provisa."
+    exit 1
+  }
 
   # Place the built UI where ui_server resolves it (<site-packages>/static).
   local ui_src; ui_src="$(_find_payload ui-dist '' || true)"

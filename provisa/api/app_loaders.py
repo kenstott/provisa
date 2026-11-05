@@ -1126,7 +1126,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
     """Load persisted graphql_remote sources from DB into state.graphql_remote_sources."""
     from provisa.api.app import state
     from provisa.core.secrets import resolve_secrets
-    from provisa.graphql_remote.brands import NAMESPACE_HINT, brand_of, setup_from_hints
+    from provisa.graphql_remote.brands import NAMESPACE_HINT, brand_of
 
     if state.model_db is None:
         log.warning("[GQL REMOTE] model_db is None — skipping DB load")
@@ -1145,6 +1145,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                             _sources_t.c.username,
                             _sources_t.c.password_ref,
                             _sources_t.c.federation_hints,
+                            _sources_t.c.brand_setup,  # REQ-1923
                             _sources_t.c.mapping,
                         ).where(_sources_t.c.type == "graphql_remote")
                     )
@@ -1250,7 +1251,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                     **(
                         {
                             "brand": brand.id,
-                            "setup": setup_from_hints(hints),
+                            "setup": dict(src["brand_setup"]),
                             "error_policy": brand.error_policy,
                         }
                         if brand is not None
@@ -1707,6 +1708,7 @@ def schema_input_for(
     """The schema input for ``role`` from this generation's build inputs (state.role_build_inputs)."""
     from provisa.api.region_ops_views import table_catalogs as region_table_catalogs
     from provisa.federation.strategy import row_level_tables
+    from provisa.jdbc_source.attach import reach_types
     from provisa.mv.time_travel import relation_kinds
 
     inputs = state.role_build_inputs
@@ -1719,7 +1721,15 @@ def schema_input_for(
         domains=inputs["domains"],
         source_types=state.source_types,
         row_level_tables=frozenset(
-            t["id"] for t in row_level_tables(tables, state.federation_engine, state.source_types)
+            t["id"]
+            for t in row_level_tables(
+                tables,
+                state.federation_engine,
+                # REQ-2191: a JDBC source attached live is judged as the type its URL names.
+                reach_types(
+                    state.source_types, state.source_federation_hints, state.federation_engine
+                ),
+            )
         ),  # REQ-1915
         time_travel=relation_kinds(state, tables),  # REQ-1163
         source_catalogs=state.source_catalogs,

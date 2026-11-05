@@ -121,3 +121,20 @@ class TimedJSONResponse(OrjsonResponse):
     def render(self, content: Any) -> bytes:
         with stage(_tracer, "http.encode", name="encode", request_only=True):
             return super().render(content)
+
+
+class DocumentResponse(TimedJSONResponse):  # REQ-2194
+    """A JSON response whose document embeds encoded answers as their bytes (``orjson.Fragment``,
+    the Rust encoders' output, timed in the same ``encode`` stage where they are written): the
+    document is kept, so a field added to it after (a warning, the stats) is written beside the
+    answers without decoding them."""
+
+    def __init__(self, document: dict, **kwargs: Any) -> None:  # noqa: ANN401 — Response kwargs
+        self.document = document
+        super().__init__(content=document, **kwargs)
+
+    def rebuilt(self) -> DocumentResponse:
+        """This response rendered again from its document, with its headers and status."""
+        skip = {"content-length", "content-type"}
+        headers = {k: v for k, v in self.headers.items() if k.lower() not in skip}
+        return DocumentResponse(self.document, headers=headers, status_code=self.status_code)

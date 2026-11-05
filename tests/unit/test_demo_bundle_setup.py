@@ -527,6 +527,50 @@ def test_a_tour_asking_polly_needs_the_openrouter_key(tmp_path, monkeypatch):
         builder._set_up(tmp_path, _toured(tmp_path, _ASKING), None, 1, None)
 
 
+def test_the_answering_config_finds_terms_through_openrouter_on_the_sandbox_model(tmp_path):
+    """REQ-2201: a setup's scan reads its document with the model a demo sandbox's Polly runs."""
+    from provisa.core.settings_registry import setting
+
+    config = yaml.safe_load(
+        builder.answering_config(tmp_path, _toured(tmp_path, _ASKING)).read_text()
+    )
+    assert config["ai_models"]["glossary_term_finding"] == {
+        "vendor": "openrouter",
+        "model": setting("sandbox.ai_model").default,
+    }
+
+
+def test_a_setup_scanning_a_document_needs_the_openrouter_key(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    demo = _toured(tmp_path, [{"key": "bsaIntro", "route": "/sources", "source": "bank"}])
+    (demo / "setup.yaml").write_text(
+        yaml.safe_dump({"steps": [{"scan": "https://www.ecfr.gov/api/versioner/v1/x.xml"}]})
+    )
+    with pytest.raises(SystemExit, match="scans 1 document.*OPENROUTER_API_KEY is not set"):
+        builder._set_up(tmp_path, demo, None, 1, None)
+
+
+def test_the_setup_s_scans_are_carried_and_a_scan_missing_fails_the_build(tmp_path, monkeypatch):
+    from provisa.term_finding import carry
+
+    demo = _toured(tmp_path, _ASKING)
+    url = "https://www.ecfr.gov/api/versioner/v1/x.xml"
+    (demo / "setup.yaml").write_text(yaml.safe_dump({"steps": [{"scan": url}, {"scan": url}]}))
+    written: list = []
+
+    def export_scans(cp_url, schema, out):
+        written.append((cp_url, schema, out))
+        return len(written)
+
+    monkeypatch.setattr(carry, "export_scans", export_scans)
+    with pytest.raises(SystemExit, match="scanned 2 document.*holds 1 scan"):
+        builder._export_term_scans("postgresql://cp", demo)
+    builder._export_term_scans("postgresql://cp", demo)
+    assert written[-1][2] == carry.scans_path(demo)
+    builder._export_term_scans("postgresql://cp", tmp_path / "nothing")  # no setup: nothing
+    assert len(written) == 2
+
+
 def _stores_up(tmp_path: Path, services: str) -> list[tuple]:
     """What ``Stores.up`` asks docker compose, for a demo whose services are ``services``."""
     demo = tmp_path / "demo"
@@ -652,6 +696,7 @@ def _sync(
     failed_before: str | None = None,
     prune_engines: bool = False,
     up_and_another_waiting: bool = False,
+    asked_while_up: bool = False,
 ):
     """scripts/demo_stores_sync.sh for the weblogs demo, its pull and scripts/demo_stores.py fakes
     that record what they were asked."""
@@ -676,6 +721,17 @@ def _sync(
         (bundles / "later" / _VERSION).mkdir(parents=True)
         (bundles / "later" / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
         (bundles / "later" / "requested").write_text("requested\n")
+    if asked_while_up:
+        # weblogs and later up and in use; "third" not asked for, until a visitor opens it while
+        # the run pulls weblogs.
+        for up in ("weblogs", "later"):
+            (bundles / up / _VERSION).mkdir(parents=True, exist_ok=True)
+            (bundles / up / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
+            (bundles / up / "requested").write_text("requested\n")
+            (bundles / up / "ready").write_text(_VERSION + "\n")
+            (bundles / up / _VERSION / "stores.env").write_text("NS=_x\n")
+        (bundles / "third" / _VERSION).mkdir(parents=True)
+        (bundles / "third" / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
     if in_use is not None:
         (bundles / "weblogs" / "in-use").write_text(in_use + "\n")
     if wanted is not None:
@@ -689,7 +745,10 @@ def _sync(
     if ask_on_pull:
         (bundles / "later" / _VERSION).mkdir(parents=True)
     ask = (
-        f'[ "${{2%%@*}}" = later ] && [ ! -e {tmp_path}/asked ] && {{ touch {tmp_path}/asked; '
+        f'[ "${{2%%@*}}" = weblogs ] && [ ! -e {tmp_path}/asked ] && {{ touch {tmp_path}/asked; '
+        f"echo requested > {bundles}/third/requested; touch {bundles}/.wanted; }}\n"
+        if asked_while_up
+        else f'[ "${{2%%@*}}" = later ] && [ ! -e {tmp_path}/asked ] && {{ touch {tmp_path}/asked; '
         f"echo requested > {bundles}/weblogs/requested; touch {bundles}/.wanted; }}\n"
         if ask_on_pull
         else ""
@@ -715,7 +774,9 @@ def _sync(
         (bundles / "weblogs" / "failed").write_text(failed_before + "\n")
     env = {
         **os.environ,
-        "PROVISA_DEMO_BUNDLES": "weblogs,later"
+        "PROVISA_DEMO_BUNDLES": "weblogs,later,third"
+        if asked_while_up
+        else "weblogs,later"
         if ask_on_pull or up_and_another_waiting
         else "weblogs",
         "DEMO_BUNDLES_DIR": str(bundles),
@@ -826,6 +887,26 @@ def test_a_demo_a_visitor_waits_on_is_brought_up_before_the_ones_already_up(tmp_
     ]
     assert (later / "ready").read_text().strip() == _VERSION
     assert (tmp_path / "pulls").read_text().split() == ["later", "weblogs"]
+
+
+def test_a_demo_asked_for_while_the_run_goes_over_those_up_is_brought_up_next(tmp_path):
+    """A visitor's open while a run goes over the demos already up breaks that run off: the demo
+    now waited on is brought up next, and the ones up after it. Run to its end first, the open
+    waited behind every demo up, each pulled and brought up again (REQ-2049)."""
+    run, demo, asked = _sync(tmp_path, asked_while_up=True)
+    assert run.returncode == 0, run.stderr
+    third = demo.parent / "third"
+    later = demo.parent / "later"
+    assert asked[:4] == [
+        f"up weblogs {_VERSION} {demo / _VERSION}",
+        f"check weblogs {_VERSION} {demo / _VERSION}",
+        f"up third {_VERSION} {third / _VERSION}",
+        f"check third {_VERSION} {third / _VERSION}",
+    ], asked
+    assert (third / "ready").read_text().strip() == _VERSION
+    # The demos up are still gone over, after it.
+    assert f"up later {_VERSION} {later / _VERSION}" in asked[4:]
+    assert "asked for during the run" in run.stdout
 
 
 def test_each_demo_s_sync_is_timed_in_the_node_s_log(tmp_path):

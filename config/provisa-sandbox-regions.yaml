@@ -19,10 +19,10 @@ multitenancy: true
 
 platform:
   regions:
-    - { id: eu, address: "${env:PROVISA_DEMO_EU_ADDRESS}" }
-    - { id: us, address: "${env:PROVISA_DEMO_US_ADDRESS}" }
-    - { id: ledger, address: "${env:PROVISA_DEMO_LEDGER_ADDRESS}" }
-    - { id: warehouse, address: "${env:PROVISA_DEMO_WAREHOUSE_ADDRESS}" }
+    - { id: eu, description: "Customer data that must stay in the European Union", purposes: [residency] }
+    - { id: us, description: "The United States, near the readers and sources there", purposes: [latency] }
+    - { id: ledger, description: "The ledger: the bank's transaction workload", purposes: [workload] }
+    - { id: warehouse, description: "The warehouse: reporting and analytics, kept apart from the ledger", purposes: [workload] }
 
 stores:
   - { id: eu_engine, url: "duckdb:///${env:PROVISA_DATA_DIR}/regions-tier-eu-engine.duckdb", kind: duckdb }

@@ -85,6 +85,8 @@ export const SOURCE_TYPES = [
   // `hive`/`hive_s3` (Trino-scanned lake storage). Read-then-land like any other RDB-shaped
   // source; SIMPLE_RDBMS's host/port/database/username/password shape matches exactly.
   { value: "hiveserver2", label: "HiveServer2", category: "RDBMS", defaultPort: 10000 },
+  // REQ-2191: a database with no named type, at its own SQLAlchemy URL (JdbcSourceFields).
+  { value: "jdbc", label: "JDBC", category: "RDBMS", defaultPort: 0 },
   // Cloud DW
   { value: "snowflake", label: "Snowflake", category: "Cloud DW", defaultPort: 443 },
   { value: "bigquery", label: "BigQuery", category: "Cloud DW", defaultPort: 443 },
@@ -120,9 +122,11 @@ export const SOURCE_TYPES = [
   { value: "qdrant", label: "Qdrant", category: "NoSQL", defaultPort: 0 },
   { value: "cassandra", label: "Cassandra", category: "NoSQL", defaultPort: 9042 },
   { value: "redis", label: "Redis", category: "NoSQL", defaultPort: 6379 },
-  // Code (REQ-1984, REQ-1993): the organisation's own functions, run in a sandboxed worker.
+  // Code (REQ-1984, REQ-1993, REQ-2200): the organisation's own functions, run in a sandboxed
+  // worker.
   { value: "node", label: "Node.js", category: "Code", defaultPort: 0 },
   { value: "python", label: "Python", category: "Code", defaultPort: 0 },
+  { value: "go", label: "Go", category: "Code", defaultPort: 0 },
   // Graph
   { value: "neo4j", label: "Neo4j", category: "Graph", defaultPort: 7474 },
   { value: "sparql", label: "SPARQL", category: "Graph", defaultPort: 443 },
@@ -167,6 +171,7 @@ export const SOURCE_TYPES = [
   { value: "salesforce", label: "Salesforce", category: "Enterprise", defaultPort: 0 }, // REQ-1946
   { value: "servicenow", label: "ServiceNow", category: "Enterprise", defaultPort: 0 }, // REQ-1954
   { value: "jira", label: "Jira", category: "Enterprise", defaultPort: 0 }, // REQ-2069
+  { value: "quickbooks", label: "QuickBooks Online", category: "Enterprise", defaultPort: 0 }, // REQ-2197
   // REQ-1947
   {
     value: "cloudops",
@@ -305,6 +310,7 @@ export const NO_CONNECTION_TYPES = new Set([
   "data_profiler", // REQ-1934
   "node", // REQ-1984: its code, not a connection (CodeSourceFields)
   "python", // REQ-1993: the same
+  "go", // REQ-2200: the same
 ]);
 
 // REQ-1923: branded source types → the UI type that carries them. A brand is registered and

@@ -29,15 +29,9 @@ import functools
 import importlib.util
 import json
 import logging
-import math
 import re
-import struct
 import sys
-from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, cast
-
-from dateutil.relativedelta import relativedelta
 
 from provisa.federation.execution_auth import plan_authorization
 
@@ -45,12 +39,7 @@ import concurrent.futures
 
 from starlette.exceptions import HTTPException
 import grpc
-from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import DecodeError
-from google.protobuf.message_factory import GetMessageClass
-
-if TYPE_CHECKING:
-    from google.protobuf.timestamp_pb2 import Timestamp
 
 from provisa.compiler.directives import cache_hint_from_grpc_metadata
 from provisa.core import request_deadline
@@ -58,8 +47,7 @@ from provisa.core.request_context import reset_current_org
 from provisa.grpc.auth import org_bound_for_rpc
 from provisa.grpc.descriptor import SERVICE_NAME, bound_descriptor, role_descriptor
 from provisa.core.read_refusal import ReadRefused
-from provisa.core.ir_types import bytea_hex, infinity_of, iso8601_duration
-from provisa.executor.serialize import temporal_text
+from provisa.executor.result import is_arrow
 
 log = logging.getLogger(__name__)
 
@@ -101,108 +89,95 @@ def _max_concurrent_rpcs() -> int:
     return settings_registry.value("concurrency.grpc_max_concurrent_rpcs")
 
 
-def _json_value(field, value):
-    """A value inside an array, struct or map as JSON holds it (REQ-1965): a decimal as its exact
-    text, a date or time as PostgreSQL's json writes it, an infinity, an interval and bytes as
-    their text on every surface. Arrow hands a map over as its (key, value) entries."""
-    if isinstance(value, dict):
-        return {str(k): _json_value(field, v) for k, v in value.items()}
-    if (
-        isinstance(value, list)
-        and value
-        and all(isinstance(item, tuple) and len(item) == 2 for item in value)
-    ):
-        return {str(k): _json_value(field, v) for k, v in value}
-    if isinstance(value, (list, tuple)):
-        return [_json_value(field, item) for item in value]
-    if value is None or isinstance(value, (str, bool, int)):
-        return value
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            raise ValueError(f'column "{field.name}": {value} is not a number JSON can hold')
-        return value
+@functools.lru_cache(maxsize=64)
+def _encoder_service(file):
+    """The Rust encoder's reading of a compiled service (REQ-2194): ``file``, a message's
+    FileDescriptor, with every file it imports, as the FileDescriptorSet it was compiled from.
+    Read once per compiled service; a rebuilt service is a new file."""
+    from google.protobuf import descriptor_pb2
+
+    from provisa._encoders import grpc as grpc_encoder
+
+    files = descriptor_pb2.FileDescriptorSet()
+    seen: set[str] = set()
+
+    def add(f) -> None:
+        if f.name in seen:
+            return
+        seen.add(f.name)
+        for dependency in f.dependencies:
+            add(dependency)
+        f.CopyToProto(files.file.add())
+
+    add(file)
+    return grpc_encoder.Service(files.SerializeToString())
+
+
+def _proto_number(value: object) -> object:  # object-ok: an aggregate's value
+    """An aggregate's DECIMAL as the proto number its field holds: an int when it is whole and
+    written without a point, else a float. Any other value as it is."""
     if isinstance(value, Decimal):
-        return str(value)
-    if hasattr(value, "isoformat") and not infinity_of(value):
-        return temporal_text(value)
-    return _text(field, value)
-
-
-def _text(field, value) -> str:
-    """A value as the text a string field carries: an array, struct or map as JSON (REQ-1965),
-    PostgreSQL's infinities as "infinity" / "-infinity" as GraphQL and pgwire write them, an
-    interval as ISO 8601 and bytes as PostgreSQL's hex, as on every surface."""
-    if isinstance(value, str):
-        return value
-    sign = infinity_of(value)
-    if sign:
-        return "infinity" if sign > 0 else "-infinity"
-    if isinstance(value, (timedelta, relativedelta)):
-        return iso8601_duration(value)
-    if isinstance(value, (bytes, bytearray, memoryview)):
-        return bytea_hex(value)
-    if isinstance(value, (dict, list, tuple)):
-        return json.dumps(_json_value(field, value), ensure_ascii=False, separators=(",", ":"))
-    return str(value)
-
-
-def _float32(field, number: float) -> float:
-    """``number`` for a float field, refused by name when it is beyond the field's range, as
-    PostgreSQL refuses a real out of range (protobuf would send it as an infinity)."""
-    if math.isfinite(number):
-        try:
-            struct.pack("<f", number)
-        except OverflowError:
-            raise ValueError(
-                f'column "{field.name}": value {number!r} is out of range for type real'
-            ) from None
-    return number
-
-
-def _proto_value(field, value):
-    """Adapt a driver row value to the proto field's wire type.
-
-    Protobuf assignment is exact-typed: a ``datetime`` into a ``string`` field, or into a
-    ``google.protobuf.Timestamp`` field, raises ``TypeError: bad argument type for built-in
-    operation`` — the whole RPC dies with StatusCode.UNKNOWN. The driver's Python type is decided by
-    the PHYSICAL column (asyncpg hands back ``datetime`` for TIMESTAMP, ``Decimal`` for NUMERIC)
-    while the proto field type comes from the REGISTERED column type, so the two disagree by design
-    on any column whose registration widens or narrows the physical type. Every other transport
-    normalizes at its own serialization boundary (serialize_rows / Arrow / the pgwire encoders);
-    this is gRPC's.
-
-    REQ-1884: date/datetime and FieldDescriptor are module-level imports, not per-call — this
-    function runs once per (row, column) on the ENGINE-route streaming path (millions of times
-    for a large scan), and a per-call ``import`` statement still pays a sys.modules lookup +
-    attribute bind every time even when the module is already loaded.
-    """
-    if field.type == FieldDescriptor.TYPE_MESSAGE:
-        if field.message_type.full_name == "google.protobuf.Timestamp":
-            # The class of THIS field's Timestamp: an organisation's service is compiled into a
-            # pool of its own, and its descriptor's `_concrete_class` fails under upb ("error
-            # return without exception set") when that pool was built before this module loaded.
-            ts = cast("Timestamp", GetMessageClass(field.message_type)())
-            ts.FromDatetime(value if isinstance(value, datetime) else datetime.fromisoformat(value))
-            return ts
-        return value
-    if field.type == FieldDescriptor.TYPE_STRING:
-        return _text(field, value)
-    if field.type == FieldDescriptor.TYPE_FLOAT:
-        return _float32(field, float(value))
-    if field.type == FieldDescriptor.TYPE_DOUBLE:
-        return float(value)
-    if field.type in (
-        FieldDescriptor.TYPE_INT32,
-        FieldDescriptor.TYPE_INT64,
-        FieldDescriptor.TYPE_UINT32,
-        FieldDescriptor.TYPE_UINT64,
-    ):
-        return int(value.toordinal()) if isinstance(value, (date, datetime)) else int(value)
-    if field.type == FieldDescriptor.TYPE_BOOL:
-        return bool(value)
-    if field.type == FieldDescriptor.TYPE_BYTES:
-        return value if isinstance(value, bytes) else _text(field, value).encode()
+        f = float(value)
+        return int(f) if f == int(f) and "." not in str(value) else f
     return value
+
+
+def _row_encoder(msg_cls, out_cols: list[str], restrictions=None, batch_cls=None, batch_rows=0):
+    """The encoder of one RPC's result (REQ-2194, REQ-1965, REQ-2195): the result in the form it
+    has, the engine's Arrow batches or a row result's rows, in; the serialized ``msg_cls``
+    messages out (``batch_cls`` messages of ``batch_rows`` rows for Query{Type}Batch), each column
+    written to the field ``out_cols`` names and, under a read mask, restricted to its selection
+    (``restrictions``, one per column). provisa._encoders.grpc reads the batches, or each row's
+    cells as they are, and writes the wire; a row result is never built into Arrow first."""
+    from provisa._encoders import grpc as grpc_encoder
+
+    descriptor = msg_cls.DESCRIPTOR
+    return grpc_encoder.Encoder(
+        _encoder_service(descriptor.file),
+        descriptor.full_name,
+        list(out_cols),
+        restrictions,
+        None if batch_cls is None else batch_cls.DESCRIPTOR.full_name,
+        batch_rows,
+    )
+
+
+def _encoded(encoder, result):
+    """``(rows, messages)`` for each batch of ``result`` in the form it has (REQ-2195): an Arrow
+    result's record batches, any other result's row batches; its row count and the messages it
+    completes; last ``(0, ...)``, Query{Type}Batch's partly filled final message."""
+    if is_arrow(result):
+        for batch in result.arrow_batches():
+            yield batch.num_rows, encoder.encode(batch)
+    else:
+        types = _column_types(result)
+        for rows in result.batches():
+            yield len(rows), encoder.encode_rows(rows, types)
+    yield 0, encoder.finish()
+
+
+def _column_types(result) -> list[str | None] | None:
+    """The engine's type name of each of a row result's columns, as the encoder reads them."""
+    if not result.column_types:
+        return None
+    return [None if t is None else str(t) for t in result.column_types]
+
+
+def _nodes_field(row_cls, node_cls, nodes: list) -> bytes:
+    """A group's ``nodes`` (REQ-1405) as its ``{Type}GroupByRow`` message's repeated ``nodes``
+    field, each node a ``{Type}`` message the encoder writes from the node's object: its keys
+    that are fields, a relation (``_build_rel_json_expr``) a nested message from an object
+    (many-to-one) or one per object of a list (one-to-many), every other value as a column's
+    value is written. The nodes come as the JSON a group's nodes column holds."""
+    from provisa._encoders import grpc as grpc_encoder
+
+    field = row_cls.DESCRIPTOR.fields_by_name["nodes"]
+    return grpc_encoder.encode_nodes(
+        _encoder_service(node_cls.DESCRIPTOR.file),
+        node_cls.DESCRIPTOR.full_name,
+        field.number,
+        json.dumps(nodes, ensure_ascii=False, default=str),
+    )
 
 
 def _status_for_exception(exc: BaseException) -> grpc.StatusCode:
@@ -540,7 +515,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
             request, reset = await self._received(method, raw, context)
             try:
                 async for message in body(request, context):
-                    yield message.SerializeToString()
+                    # a query's rows arrive serialized by the encoder (REQ-2194)
+                    yield message if isinstance(message, bytes) else message.SerializeToString()
             finally:
                 reset()
 
@@ -675,15 +651,16 @@ class ProvisaServicer:  # REQ-045, REQ-143
     def _meter_msg(self, msg):
         """Meter one outbound proto message as egress and return it (REQ-1452).
 
-        ``ByteSize()`` is the serialized payload, not the HTTP/2 frame: an approximation missing
-        framing. Must be called inside the handler's org binding.
+        ``ByteSize()`` (a message the encoder wrote: its length) is the serialized payload, not
+        the HTTP/2 frame: an approximation missing framing. Must be called inside the handler's
+        org binding.
         """
         if msg is None:
             return msg
         from provisa.core.request_context import current_org
         from provisa.core.egress import report
 
-        report(current_org.get(), msg.ByteSize())
+        report(current_org.get(), len(msg) if isinstance(msg, bytes) else msg.ByteSize())
         return msg
 
     def _emit_trailing_metadata(
@@ -1009,30 +986,31 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 )
                 return
             batch_rows = getattr(request, "batch_rows", 0) or _GRPC_BATCH_ROWS
-            rows_buf: list = []
-            async for _m in self._handle_query_bound(request, context, type_name, role_id):
-                rows_buf.append(_m)
-                if len(rows_buf) >= batch_rows:
-                    yield self._meter_msg(batch_cls(rows=rows_buf))
-                    rows_buf = []
-            if rows_buf:
-                yield self._meter_msg(batch_cls(rows=rows_buf))
+            # The encoder writes the {Type}Batch messages itself, batch_rows rows each across
+            # the result's Arrow batches (REQ-2194).
+            async for _m in self._handle_query_bound(
+                request, context, type_name, role_id, batch=(batch_cls, batch_rows)
+            ):
+                yield self._meter_msg(_m)
         finally:
             if _org_token is not None:
                 from provisa.core.request_context import reset_current_org
 
                 reset_current_org(_org_token)
 
-    async def _handle_query_bound(self, request, context, type_name: str, role_id: str):
-        """The routing+execution body of _handle_query, run with the RPC's org already bound."""
+    async def _handle_query_bound(
+        self, request, context, type_name: str, role_id: str, batch: tuple | None = None
+    ):
+        """The routing+execution body of _handle_query, run with the RPC's org already bound:
+        the result's messages, serialized by the encoder from its Arrow batches (REQ-2194).
+        ``batch`` (``({Type}Batch class, rows per message)``) writes Query{Type}Batch's
+        messages instead of one per row."""
         from provisa.grpc.query_ir import (
             FilterError,
-            MaskTree,
             ParameterError,
             ReadMaskError,
             grpc_table_to_graphql,
             resolve_read_mask,
-            restrict_json,
         )
         from provisa.api.generated_plan import compile_generated_graphql
         from provisa.pgwire._pipeline import (
@@ -1125,30 +1103,23 @@ class ProvisaServicer:  # REQ-045, REQ-143
             self._emit_trailing_metadata(context, plan.warnings, redirect=delivered.redirect)
             return
 
-        def _col_fields_for(out_cols: list[str]) -> list[tuple[str, object, MaskTree | None]]:
-            # REQ-1884: resolved once per query, not once per (row, column) — out_cols is fixed
-            # for the life of the result set, so descriptor.fields_by_name.get(col) doesn't need
-            # re-running on every row on the ENGINE-route path (millions of rows for a large scan).
-            # REQ-803: likewise each column's read_mask JSON sub-path selection (None = whole value).
-            selections: list[MaskTree | None] = (
-                read_mask.restrictions(out_cols)
-                if read_mask is not None
-                else [None] * len(out_cols)
-            )
-            return [
-                (col, descriptor.fields_by_name.get(col), selection)
-                for col, selection in zip(out_cols, selections)
-            ]
+        restrictions = read_mask.restrictions if read_mask is not None else None
 
-        def _kwargs_for(col_fields: list[tuple[str, object, MaskTree | None]], row) -> dict:
-            kwargs = {}
-            for i, (col, field, selection) in enumerate(col_fields):
-                if i < len(row) and row[i] is not None:
-                    value = row[i] if selection is None else restrict_json(row[i], selection)
-                    # No field => let msg_cls(**kwargs) raise on the unknown name rather than
-                    # dropping the column silently.
-                    kwargs[col] = _proto_value(field, value) if field is not None else value
-            return kwargs
+        def _encoder_for(column_names):
+            # Result columns are matched to proto fields by the same key (governance may re-case
+            # or alias a column); a column with no field is refused at its first value. REQ-1884:
+            # resolved once per result set; REQ-803: each column's read_mask JSON sub-path
+            # selection (None = whole value) with it.
+            proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
+            out_cols = [proto_by_norm.get(_norm(c), c) for c in column_names]
+            batch_cls, batch_rows = batch if batch is not None else (None, 0)
+            return _row_encoder(
+                msg_cls,
+                out_cols,
+                None if restrictions is None else restrictions(out_cols),
+                batch_cls,
+                batch_rows,
+            )
 
         # REQ-1897: answered from the response cache before routing — nothing was lowered,
         # optimized, routed or prepared for residency, and no source is touched. cached_result
@@ -1158,11 +1129,14 @@ class ProvisaServicer:  # REQ-045, REQ-143
 
             hit = await cached_result(plan, state)
             self._emit_trailing_metadata(context, plan.warnings)  # REQ-1137
-            _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
-            out_cols = [_proto_by_norm.get(_norm(c), c) for c in hit.column_names]
-            col_fields = _col_fields_for(out_cols)
-            for row in hit.rows:
-                yield msg_cls(**_kwargs_for(col_fields, row))
+            try:
+                for _rows, messages in _encoded(_encoder_for(hit.column_names), hit):
+                    for m in messages:
+                        yield m
+            except Exception as exc:
+                # A value the encoder refuses (J502b) is the client's INVALID_ARGUMENT, as on
+                # every streamed route, not an opaque UNKNOWN.
+                await context.abort(_status_for_exception(exc), str(exc))
             return
 
         # ENGINE route streams lazily — the full user result set never materializes (REQ-1215).
@@ -1229,22 +1203,16 @@ class ProvisaServicer:  # REQ-045, REQ-143
             _said = self._emit_trailing_metadata(
                 context, plan.warnings
             )  # REQ-1137: trailing-metadata nag before the row stream
-            _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
-            out_cols = [_proto_by_norm.get(_norm(c), c) for c in stream.column_names]
-            col_fields = _col_fields_for(out_cols)
-            batch_iter = stream.batches()
             # REQ-074/REQ-1386: this streaming terminal never reaches _execute_plan, so the audit
             # row is written here — after the last batch, or on the way out of a failed drain.
 
             try:
                 _delivered = 0  # query_audit_log.row_count
-                while True:
-                    batch = next(batch_iter, None)
-                    if batch is None:
-                        break
-                    _delivered += len(batch)
-                    for row in batch:
-                        yield msg_cls(**_kwargs_for(col_fields, row))
+                # REQ-2194, REQ-2195: the engine's result, Arrow or rows, straight to the encoder.
+                for rows, messages in _encoded(_encoder_for(stream.column_names), stream):
+                    _delivered += rows
+                    for m in messages:
+                        yield m
             except Exception as exc:
                 # REQ-1044: a stream ended at its tier ceiling is the tier's refusal (402).
                 await finalize_audit(
@@ -1315,9 +1283,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
                         plan.source_id, plan.sql, plan.exec_params or []
                     )
                     _said = self._emit_trailing_metadata(context, plan.warnings)
-                    _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
-                    out_cols = [_proto_by_norm.get(_norm(c), c) for c in ds.column_names]
-                    col_fields = _col_fields_for(out_cols)
+                    encoder = _encoder_for(ds.column_names)
+                    types = _column_types(ds)
                     _delivered = 0  # query_audit_log.row_count
                     # The copy an opted-in MISS writes back, held only within the cache's own row
                     # bound: a result past it is still streamed, and is not cached.
@@ -1333,8 +1300,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
                                     _kept = None
                                 else:
                                     _kept.extend(batch)
-                            for row in batch:
-                                yield msg_cls(**_kwargs_for(col_fields, row))
+                            # REQ-2195: the driver's rows, encoded as they are.
+                            for m in encoder.encode_rows(batch, types):
+                                yield m
+                        for m in encoder.finish():
+                            yield m
                     except Exception as exc:
                         await finalize_audit(plan, 500, state)
                         await context.abort(_status_for_exception(exc), str(exc))
@@ -1367,13 +1337,10 @@ class ProvisaServicer:  # REQ-045, REQ-143
                 await settle_cut_at_stream_end(plan, len(result.rows), state)
                 # REQ-1137/REQ-1350: trailing metadata (notice, warnings) before the row stream.
                 self._emit_trailing_metadata(context, plan.warnings)
-                _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
-                out_cols = [_proto_by_norm.get(_norm(c), c) for c in result.column_names]
-                col_fields = _col_fields_for(out_cols)
-
                 try:
-                    for row in result.rows:
-                        yield msg_cls(**_kwargs_for(col_fields, row))
+                    for _rows, messages in _encoded(_encoder_for(result.column_names), result):
+                        for m in messages:
+                            yield m
                 except Exception as exc:
                     await finalize_audit(plan, 500, state)
                     await context.abort(_status_for_exception(exc), str(exc))
@@ -1392,13 +1359,14 @@ class ProvisaServicer:  # REQ-045, REQ-143
         self._emit_trailing_metadata(
             context, plan.warnings
         )  # REQ-1137: trailing-metadata nag before the row stream
-        # Stream rows as proto messages, mapping result column names to proto fields by the same key
-        # (governance may re-case or alias a column).
-        _proto_by_norm = {_norm(f.name): f.name for f in descriptor.fields}
-        out_cols = [_proto_by_norm.get(_norm(c), c) for c in result.column_names]
-        col_fields = _col_fields_for(out_cols)
-        for row in result.rows:
-            yield msg_cls(**_kwargs_for(col_fields, row))
+        try:
+            for _rows, messages in _encoded(_encoder_for(result.column_names), result):
+                for m in messages:
+                    yield m
+        except Exception as exc:
+            # A value the encoder refuses (J502b) is the client's INVALID_ARGUMENT, as on the
+            # streamed routes, not an opaque UNKNOWN.
+            await context.abort(_status_for_exception(exc), str(exc))
 
     # --- REQ-1359: aggregate / group-by protocol parity -----------------------------------------
     # gRPC synthesizes GraphQL query text (query_ir.grpc_table_to_aggregate_graphql_text /
@@ -1419,7 +1387,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
     def _split_agg_columns(self, columns, row) -> tuple[dict, dict]:
         from provisa.grpc.query_ir import split_agg_columns
 
-        return split_agg_columns(columns, row)
+        top, nested = split_agg_columns(columns, row)
+        return (
+            {k: _proto_number(v) for k, v in top.items()},
+            {f: {k: _proto_number(v) for k, v in vs.items()} for f, vs in nested.items()},
+        )
 
     def _build_aggregate_result_message(self, type_name: str, top: dict, nested: dict):
         """Construct a {Type}AggregateResult message from split (top, nested) aggregate values,
@@ -1635,7 +1607,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         if result.redirect is not None:
             return
 
-        from provisa.executor.serialize import _convert_value
+        from provisa.executor.serialize import json_value
         from provisa.grpc.query_ir import split_group_by_columns
 
         group_key_cols, group_key_idx, agg_cols, agg_idx = split_group_by_columns(compiled.columns)
@@ -1652,52 +1624,18 @@ class ProvisaServicer:  # REQ-045, REQ-143
             agg_row = [row[i] for i in agg_idx]
             top, nested = self._split_agg_columns(agg_cols, agg_row)
             agg_msg = self._build_aggregate_result_message(type_name, top, nested)
-            nodes = _convert_value(row[at]) if at is not None else []
-            assert isinstance(nodes, list), "a group's nodes column is a JSON list"
-            yield row_cls(
-                group_key=json.dumps(group_key, default=str),
-                aggregate=agg_msg,
-                nodes=[self._dict_row_to_message(row_msg_cls, node) for node in nodes],
+            nodes = (
+                json_value(row[at], compiled.columns[at].field_name, compiled.columns[at].json_text)
+                if at is not None
+                else []
             )
-
-    def _dict_row_to_message(self, msg_cls, d: dict):
-        """Build a ``{Type}`` proto message from a node's nested dict (REQ-1405) — the same
-        nested-dict shape a group's nodes column holds for every other transport,
-        just typed instead of left as JSON. Relation columns (``_build_rel_json_expr``) surface as
-        a dict (many-to-one) or list-of-dicts (one-to-many) value keyed by the relation field name;
-        every other value is a scalar assigned via the shared ``_proto_value`` adapter."""
-        descriptor = msg_cls.DESCRIPTOR
-        kwargs = {}
-        nested: dict = {}
-        for key, val in d.items():
-            if val is None:
-                continue
-            field = descriptor.fields_by_name.get(key)
-            if field is None:
-                continue
-            if (
-                field.message_type is not None
-                and field.message_type.full_name != "google.protobuf.Timestamp"
-            ):
-                nested[key] = val
-            else:
-                kwargs[key] = _proto_value(field, val)
-        msg = msg_cls(**kwargs)
-        for key, val in nested.items():
-            field = descriptor.fields_by_name[key]
-            sub_cls = getattr(self._pb2, field.message_type.name, None)
-            if sub_cls is None:
-                continue
-            if field.is_repeated:
-                items = val if isinstance(val, list) else [val]
-                getattr(msg, key).extend(
-                    self._dict_row_to_message(sub_cls, item)
-                    for item in items
-                    if isinstance(item, dict)
-                )
-            elif isinstance(val, dict):
-                getattr(msg, key).CopyFrom(self._dict_row_to_message(sub_cls, val))
-        return msg
+            assert isinstance(nodes, list), "a group's nodes column is a JSON list"
+            group = row_cls(
+                group_key=json.dumps(group_key, default=str), aggregate=agg_msg
+            ).SerializeToString()
+            # The nodes follow as the group's repeated `nodes` field, which the encoder writes:
+            # serialized fields laid end to end are one message (REQ-2194).
+            yield group + _nodes_field(row_cls, row_msg_cls, nodes) if nodes else group
 
 
 def start_grpc_server(

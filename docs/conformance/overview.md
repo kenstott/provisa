@@ -55,6 +55,7 @@ Each tool entry gives the tool version and the date it was verified, plus how it
 | Bolt | Neo4j driver test kit | [bolt.md](bolt.md) |
 | GraphQL | graphql-http compliance audit | [graphql.md](graphql.md) |
 | pgwire | pgspec v1.5.11 against PostgreSQL 17.11 | [pgwire.md](pgwire.md) |
+| pgwire drivers | pgjdbc and psycopg, each its own test suite | [drivers.md](drivers.md) |
 | Arrow Flight SQL | ADBC driver validation suite | [flight-sql.md](flight-sql.md) |
 | REST / OpenAPI | No public suite runs today | [rest.md](rest.md) |
 | JSON:API | No public suite runs today | [jsonapi.md](jsonapi.md) |

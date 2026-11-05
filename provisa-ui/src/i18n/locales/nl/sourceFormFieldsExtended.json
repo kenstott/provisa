@@ -212,6 +212,22 @@
     "reasoner": "Reasoner",
     "reasonerNone": "Geen",
     "axioms": "OWL-axioma's",
-    "axiomsHint": "Turtle-, RDF/XML-, functionele of Manchester-syntaxis. Een tabel waarvan de query één IRI is, zoals <http://example.org/kyc#controls>, leest wat eruit wordt afgeleid."
+    "axiomsHint": "Turtle-, RDF/XML-, functionele of Manchester-syntaxis. Een tabel waarvan de query één IRI is, zoals <http://example.org/kyc#controls>, leest wat eruit wordt afgeleid.",
+    "qbRealmId": "Bedrijfs-ID (realm-ID)",
+    "qbRealmIdHint": "Het nummer van het QuickBooks-bedrijf dat wordt gelezen. Intuit toont het wanneer u uw app koppelt, en in de accountinstellingen van het bedrijf.",
+    "qbRealmIdInvalid": "De bedrijfs-ID is een getal, bijvoorbeeld 9341453456789012",
+    "qbEnvironment": "Sandbox of productie",
+    "qbEnvironmentHint": "Een sandboxbedrijf is een testbedrijf uit uw Intuit-ontwikkelaarsaccount.",
+    "qbSandbox": "Sandbox (testbedrijf)",
+    "qbProduction": "Productie (echt bedrijf)",
+    "qbClientId": "Client-ID",
+    "qbClientIdHint": "Van uw app op developer.intuit.com, onder Keys and credentials.",
+    "qbClientSecret": "Clientgeheim",
+    "qbClientSecretHint": "Van dezelfde pagina als de client-ID. Bewaard in de geheimenkluis.",
+    "qbRefreshToken": "Vernieuwingstoken",
+    "qbRefreshTokenHint": "Geeft Provisa toegang om het bedrijf te lezen. Meld u aan met QuickBooks om er een te krijgen, of plak er een uit de OAuth 2.0 Playground van Intuit met de Accounting-scope. QuickBooks vervangt het bij elk gebruik en Provisa bewaart het nieuwste. Een nieuwe die u hier invoert, vervangt bij het opslaan de bewaarde.",
+    "qbSignIn": "Aanmelden met QuickBooks",
+    "qbSignedIn": "Aangemeld bij bedrijf {{realm}}. Sla de bron op om dit te bewaren.",
+    "qbSignInFailed": "Het inloggen kon niet worden voltooid."
   }
 }

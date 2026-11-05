@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.core.operator_floor import OperatorFloorError
 from provisa.executor.drivers.registry import has_driver
 from provisa.otel_compat import get_tracer, timed_stage
@@ -46,7 +47,7 @@ class Route(str, Enum):
 API_SOURCES: set[str] = {"openapi", "graphql_api", "grpc_api", "grpc_remote"}
 
 # REQ-2100: code sources, whose function is their access path; their rows are landed (REQ-863).
-CODE_SOURCES: frozenset[str] = frozenset({"node", "python"})
+CODE_SOURCES: frozenset[str] = CODE_SOURCE_TYPES
 
 # Virtual sources — always route through the engine (no direct SQL driver)
 VIRTUAL_SOURCES: set[str] = {
@@ -57,8 +58,12 @@ VIRTUAL_SOURCES: set[str] = {
     # NoSQL
     "mongodb",
     "cosmosdb",  # REQ-1982: read by its SDK and landed; no driver
-    "node",  # REQ-1984: read in its worker and landed; no driver
-    "python",  # REQ-1993: read in its worker and landed; no driver
+    # REQ-2191: a JDBC source has a driver, but a read of it sends only what it has been
+    # shown to do: its tables are read at their floor (or from their replica) and landed, and the
+    # engine runs the statement. Its writes still go to its driver.
+    "jdbc",
+    # REQ-1984, REQ-1993, REQ-2200: a code source is read in its worker and landed; no driver
+    *CODE_SOURCE_TYPES,
     "cassandra",
     "redis",
     # Query-API graph sources: a Neo4jDriver factory is registered (has_driver("neo4j") is True,

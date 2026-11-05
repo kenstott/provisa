@@ -22,6 +22,10 @@ from __future__ import annotations
 
 import re
 
+from provisa.pgwire.catalog_pg17_acl import NO_PUBLIC_SELECT, PG17_ROLES, REVOKED_FUNCTIONS
+from provisa.pgwire.catalog_pg17_procs import CATALOG_FOREIGN_KEYS, OPCLASSES, SETTING_FLAGS
+from provisa.transpiler.metadata_oids import SYSTEM_SCHEMA_OIDS
+
 _OLD_RELATION = re.compile(r"\b_pg_([a-z_]+)\b")
 
 
@@ -44,6 +48,122 @@ _ALWAYS_PRIVILEGED = (
     "has_tablespace_privilege",
     "has_type_privilege",
 )
+
+
+def role_name(role: str) -> str:
+    """The name of the role ``role`` (SQL) names, by its name or its oid; NULL for none."""
+    return (
+        "(SELECT CAST(_ro.rolname AS TEXT) FROM meta.catalog_pg_roles _ro "
+        f"WHERE CAST({role} AS TEXT) IN (CAST(_ro.rolname AS TEXT), CAST(_ro.oid AS TEXT)) LIMIT 1)"
+    )
+
+
+def no_such_role_name(role: str) -> str:
+    """SQL: whether ``role`` names a role by a name no role has, which PostgreSQL refuses; an oid
+    no role has is read as a role holding PUBLIC's privileges alone."""
+    return f"({role_name(role)} IS NULL AND CAST({role} AS TEXT) !~ '^[0-9]+$')"
+
+
+def refused_role(role: str, sql_type: str) -> str:
+    """PostgreSQL's refusal of a role name no role has."""
+    return _typed(
+        raising("42704", f"'role \"' || CAST({role} AS TEXT) || '\" does not exist'"), sql_type
+    )
+
+
+def holds_public_alone(role: str) -> str:
+    """SQL: whether ``role`` holds what PostgreSQL grants by default and no more: a predefined
+    role (beside its own rights), or an oid no role has."""
+    return f"({role_name(role)} IN {PREDEFINED_ROLES} OR {role_name(role)} IS NULL)"
+
+
+#: PostgreSQL's predefined roles, as SQL's list of their names.
+PREDEFINED_ROLES = "(" + ", ".join(f"'{row[1]}'" for row in PG17_ROLES) + ")"
+_NO_PRIVILEGE = "CAST(ARRAY[] AS TEXT[])"
+
+
+def any_held(priv: str, held: str) -> str:
+    """Whether any privilege the list ``priv`` names is among ``held`` (SQL, a text array), as
+    has_*_privilege reads a list: a privilege WITH GRANT OPTION is held by no predefined role."""
+    return (
+        f"EXISTS (SELECT 1 FROM UNNEST(STRING_TO_ARRAY(UPPER({priv}), ',')) _p(p) "
+        f"WHERE TRIM(_p.p) = ANY({held}))"
+    )
+
+
+def _roles_held(name: str) -> str:
+    """The role named ``name`` (SQL) and each role it is a member of."""
+    return (
+        "(SELECT CAST(_hr.rolname AS TEXT) FROM meta.catalog_pg_auth_members _hm "
+        "JOIN meta.catalog_pg_roles _hmr ON _hmr.oid = _hm.member "
+        "JOIN meta.catalog_pg_roles _hr ON _hr.oid = _hm.roleid "
+        f"WHERE CAST(_hmr.rolname AS TEXT) = {name} UNION ALL SELECT {name})"
+    )
+
+
+_NO_PUBLIC_SELECT = ", ".join(
+    f"('{schema}', '{name}')" for schema, name in sorted(NO_PUBLIC_SELECT)
+)
+
+
+def predefined_relation_privileges(who: str) -> str:
+    """The privileges (SQL, a text array) the predefined role ``who`` holds on the relation of
+    ``_c`` and ``_n``: SELECT on a system relation PUBLIC may read, SELECT on every relation for
+    pg_read_all_data, and INSERT, UPDATE and DELETE for pg_write_all_data on every relation but a
+    system catalog, which only a superuser may change."""
+    system = f"_c.relnamespace IN {SYSTEM_SCHEMA_OIDS}"
+    return (
+        f"CASE WHEN {system} "
+        f"AND (CAST(_n.nspname AS TEXT), CAST(_c.relname AS TEXT)) NOT IN ({_NO_PUBLIC_SELECT}) "
+        f"THEN ARRAY['SELECT'] ELSE {_NO_PRIVILEGE} END || CASE "
+        f"WHEN {role_name(who)} = 'pg_read_all_data' THEN ARRAY['SELECT'] "
+        f"WHEN {role_name(who)} = 'pg_write_all_data' AND NOT {system} "
+        f"THEN ARRAY['INSERT', 'UPDATE', 'DELETE'] ELSE {_NO_PRIVILEGE} END"
+    )
+
+
+_REVOKED = ", ".join(
+    f"({oid}, '{signature.replace(' ', '')}', {f"'{grantee}'" if grantee else 'NULL'})"
+    for oid, signature, grantees in REVOKED_FUNCTIONS
+    for grantee in grantees or (None,)
+)
+_REVOKED_OF = (
+    f"FROM (VALUES {_REVOKED}) _f(oid, signature, grantee) WHERE CAST(thing AS TEXT) = "
+    "CAST(_f.oid AS TEXT) OR REPLACE(LOWER(REGEXP_REPLACE(CAST(thing AS TEXT), "
+    "'^pg_catalog\\.', '')), ' ', '') = _f.signature"
+)
+
+
+def _held_by_predefined(name: str) -> str:
+    """What a predefined role ``who`` holds of what ``thing`` names, by function ``name``: what
+    PostgreSQL 17 grants PUBLIC by default, and the predefined roles' own rights."""
+    who = role_name("who")
+    if name == "has_database_privilege":
+        return "ARRAY['CONNECT', 'TEMPORARY', 'TEMP']"
+    if name == "has_schema_privilege":
+        schema = (
+            "(SELECT CAST(_n.nspname AS TEXT) FROM meta.catalog_pg_namespace _n "
+            "WHERE CAST(thing AS TEXT) IN (CAST(_n.nspname AS TEXT), CAST(_n.oid AS TEXT)) LIMIT 1)"
+        )
+        return (
+            f"CASE WHEN {who} IN ('pg_read_all_data', 'pg_write_all_data') "
+            f"OR {schema} IN ('pg_catalog', 'information_schema', 'public') "
+            f"THEN ARRAY['USAGE'] ELSE {_NO_PRIVILEGE} END"
+        )
+    if name == "has_function_privilege":
+        return (
+            f"CASE WHEN NOT EXISTS (SELECT 1 {_REVOKED_OF}) OR EXISTS (SELECT 1 {_REVOKED_OF} "
+            f"AND _f.grantee IN {_roles_held(who)}) THEN ARRAY['EXECUTE'] ELSE {_NO_PRIVILEGE} END"
+        )
+    if name in ("has_language_privilege", "has_type_privilege"):
+        return "ARRAY['USAGE']"
+    if name == "has_sequence_privilege":
+        return (
+            f"CASE {who} WHEN 'pg_read_all_data' THEN ARRAY['SELECT'] "
+            f"WHEN 'pg_write_all_data' THEN ARRAY['UPDATE'] ELSE {_NO_PRIVILEGE} END"
+        )
+    return _NO_PRIVILEGE  # a tablespace, a foreign-data wrapper, a server: its owner's alone
+
 
 #: Stands for the type a raised error's expression takes, which only the form knows: PostgreSQL
 #: types each arm of a CASE, and a call that never returns still has one.
@@ -78,6 +198,33 @@ def _name(param: str) -> str:
 
 def _typed(sql: str, sql_type: str) -> str:
     return sql.replace(_ITS_TYPE, sql_type)
+
+
+#: The types a record form's field is of whose text is the engine's cast to text.
+_TEXT_AS_CAST = frozenset({"BIGINT", "INTEGER", "OID"})
+
+
+def _field_text(value: str, sql_type: str) -> str:
+    """record_out of one field of ``sql_type``, ``value``: nothing for NULL, ``t`` or ``f`` for a
+    boolean, and a text in double quotes, quotes and backslashes doubled, where it is empty or
+    holds a quote, a backslash, a parenthesis, a comma or a space (src/backend/utils/adt/
+    rowtypes.c)."""
+    if value == "NULL":
+        return "''"
+    if sql_type == "BOOLEAN":
+        return f"COALESCE(CASE WHEN {value} THEN 't' ELSE 'f' END, '')"
+    if sql_type in _TEXT_AS_CAST:
+        return f"COALESCE(CAST({value} AS TEXT), '')"
+    if sql_type not in ("TEXT", "VARCHAR"):
+        raise ValueError(f"a record form's field of type {sql_type} has no text written")
+    text = f"CAST({value} AS TEXT)"
+    backslash = "CHR(92)"
+    quoted = (
+        f"'\"' || REPLACE(REPLACE({text}, {backslash}, {backslash} || {backslash}), "
+        "'\"', '\"\"') || '\"'"
+    )
+    special = f"{text} = '' OR {text} ~ '[(),\"[:space:]]' OR STRPOS({text}, {backslash}) > 0"
+    return f"COALESCE(CASE WHEN {special} THEN {quoted} ELSE {text} END, '')"
 
 
 _NO_FILE = "No such file or directory"
@@ -138,20 +285,6 @@ _STAT_COLUMNS = (
     ("creation", "TIMESTAMPTZ"),
     ("isdir", "BOOLEAN"),
 )
-
-
-def _setval(*params: str) -> str:
-    """setval(sequence, value [, is_called]): no relation is a sequence."""
-    nulls = " OR ".join(f"{_name(p)} IS NULL" for p in params)
-    relation = "(SELECT _sc.relname FROM meta.catalog_pg_class _sc WHERE _sc.oid = seq)"
-    return (
-        f"CASE WHEN {nulls} THEN CAST(NULL AS BIGINT) "
-        f"WHEN {relation} IS NOT NULL THEN "
-        + raising("42809", f"'cannot open relation \"' || {relation} || '\"'")
-        + " ELSE "
-        + raising("XX000", "'could not open relation with OID ' || seq")
-        + " END"
-    )
 
 
 def _not_an_index(*params: str) -> str:
@@ -234,6 +367,12 @@ class _Answers:
         row = value or "CAST(_r AS TEXT)"
         self.body(name, params, f"UNNEST(ARRAY(SELECT {row} FROM ({select}) _r))")
 
+    def one_row(self, name: str, params: str, select: str) -> None:
+        """A function returning one record, the row of ``select``: as a value, that row's record,
+        and NULL where ``select`` has none, as PostgreSQL answers of an object it does not have."""
+        self.table.setdefault(name, []).append((params, select))
+        self.body(name, params, f"(SELECT CAST(_r AS TEXT) FROM ({select}) _r LIMIT 1)")
+
     def values(self, name: str, sql_type: str) -> None:
         """A set-returning function of one column, with no rows."""
         self.body(name, "", f"UNNEST(CAST(ARRAY[] AS {sql_type}[]))", sql_type)
@@ -242,9 +381,11 @@ class _Answers:
         )
 
     def record(self, name: str, params: str, columns: tuple[tuple[str, str, str], ...]) -> None:
-        """A record-returning function: its one row, strict in ``params``."""
-        fields = ", ".join(f"CAST({_typed(v, t)} AS {t})" for _, t, v in columns)
-        self.body(name, params, strict(params, "TEXT", f"CAST(ROW({fields}) AS TEXT)"))
+        """A record-returning function: its one row, strict in ``params``. As a value, the row is
+        record_out's text, written field by field: an engine's own text of a row is not
+        PostgreSQL's (DuckDB writes a struct's fields spaced, NULL by name and true as true)."""
+        fields = " || ',' || ".join(_field_text(_typed(v, t), t) for _, t, v in columns)
+        self.body(name, params, strict(params, "TEXT", f"'(' || {fields} || ')'"))
         out = ", ".join(
             f"CAST({strict(params, t, _typed(v, t))} AS {t}) AS {c}" for c, t, v in columns
         )
@@ -259,6 +400,52 @@ class _Answers:
         out = [f"{strict(params, first[1], _typed(refusal, first[1]))} AS {first[0]}"]
         out += [f"CAST(NULL AS {t}) AS {c}" for c, t in rest]
         self.table.setdefault(name, []).append((params, f"SELECT {', '.join(out)}"))
+
+
+_PROGRESS_PARAMS = tuple((f"param{n}", "BIGINT") for n in range(1, 21))
+
+
+def _statistics(a: _Answers) -> None:
+    """The statistics functions that are no single count, as a server where nothing runs and
+    nothing has been counted answers them: no command in progress, no subscription worker, and a
+    slot's or a subscription's counts 0 with no reset time."""
+    a.rows(
+        "pg_stat_get_progress_info",
+        "cmdtype",
+        (("pid", "INTEGER"), ("datid", "OID"), ("relid", "OID"), *_PROGRESS_PARAMS),
+        "FALSE",
+    )
+    a.rows(
+        "pg_stat_get_subscription",
+        "subid",
+        (
+            ("subid", "OID"), ("relid", "OID"), ("pid", "INTEGER"), ("leader_pid", "INTEGER"),
+            ("received_lsn", "PG_LSN"), ("last_msg_send_time", "TIMESTAMPTZ"),
+            ("last_msg_receipt_time", "TIMESTAMPTZ"), ("latest_end_lsn", "PG_LSN"),
+            ("latest_end_time", "TIMESTAMPTZ"), ("worker_type", "TEXT"),
+        ),
+        "FALSE",
+    )  # fmt: skip
+    counts = ("spill_txns", "spill_count", "spill_bytes", "stream_txns", "stream_count")
+    a.record(
+        "pg_stat_get_replication_slot",
+        "slot_name",
+        (
+            ("slot_name", "TEXT", "slot_name"),
+            *((c, "BIGINT", "0") for c in (*counts, "stream_bytes", "total_txns", "total_bytes")),
+            ("stats_reset", "TIMESTAMPTZ", "NULL"),
+        ),
+    )
+    a.record(
+        "pg_stat_get_subscription_stats",
+        "subid:bigint",
+        (
+            ("subid", "OID", "subid"),
+            ("apply_error_count", "BIGINT", "0"),
+            ("sync_error_count", "BIGINT", "0"),
+            ("stats_reset", "TIMESTAMPTZ", "NULL"),
+        ),
+    )
 
 
 def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per function
@@ -314,6 +501,7 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
         + raising("22023", "'invalid statistics kind: \"' || kind || '\"'")
         + " END",
     )
+    _statistics(a)
     # Replication: a server whose max_replication_slots is 0.
     a.strict("pg_replication_origin_oid", "name", "BIGINT", "CAST(NULL AS BIGINT)")
     a.body("pg_replication_origin_session_is_setup", "", "FALSE", "BOOLEAN")
@@ -630,17 +818,6 @@ def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per funct
                 ("error", "VARCHAR"),
             ),
         ),
-        (
-            "pg_get_catalog_foreign_keys",
-            (
-                ("fktable", "BIGINT"),
-                ("fkcols", "VARCHAR[]"),
-                ("pktable", "BIGINT"),
-                ("pkcols", "VARCHAR[]"),
-                ("is_array", "BOOLEAN"),
-                ("is_opt", "BOOLEAN"),
-            ),
-        ),
         ("pg_config", (("name", "VARCHAR"), ("setting", "VARCHAR"))),
     ):
         a.rows(name, "", columns, "false")  # fmt: skip
@@ -817,19 +994,28 @@ def _to_reg(a: _Answers) -> None:
         "(SELECT CAST(_r.rolname AS TEXT) FROM meta.catalog_pg_roles _r "
         f"WHERE _r.rolname = {_last_part('name')})",
     )
+    # regproc's text of the one function of that name; NULL for none, or for more than one.
     a.strict(
         "to_regproc",
         "name",
-        "OID",
-        f"(SELECT _p.oid FROM meta.catalog_pg_proc _p WHERE _p.proname = {_last_part('name')} "
-        "LIMIT 1)",
+        "TEXT",
+        "(SELECT CASE WHEN COUNT(*) = 1 THEN QUOTE_IDENT(CAST(MIN(_p.proname) AS TEXT)) END "
+        "FROM meta.catalog_pg_proc _p JOIN meta.catalog_pg_namespace _n "
+        f"ON _n.oid = _p.pronamespace WHERE _p.proname = {_last_part('name')} "
+        f"AND ({_qualifier('name')} IS NULL OR _n.nspname = {_qualifier('name')}))",
     )
+    # regprocedure's text of the function a signature names, its argument types as written.
+    called = "SPLIT_PART(name, '(', 1)"
+    given = "LOWER(REPLACE(RTRIM(SPLIT_PART(name, '(', 2), ') '), ' ', ''))"
     a.strict(
         "to_regprocedure",
         "name",
         "TEXT",
-        "(SELECT SPLIT_PART(name, '(', 1) || '(' || SPLIT_PART(name, '(', 2) "
-        "FROM meta.catalog_pg_proc _p WHERE _p.proname = SPLIT_PART(name, '(', 1) LIMIT 1)",
+        f"(SELECT QUOTE_IDENT(CAST(_p.proname AS TEXT)) || '(' || {_proc_types('_p', ',')} || ')' "
+        "FROM meta.catalog_pg_proc _p JOIN meta.catalog_pg_namespace _n "
+        f"ON _n.oid = _p.pronamespace WHERE _p.proname = {_last_part(called)} "
+        f"AND ({_qualifier(called)} IS NULL OR _n.nspname = {_qualifier(called)}) "
+        f"AND REPLACE({_proc_types('_p', ',')}, ' ', '') = {given} LIMIT 1)",
     )
     a.strict(
         "to_regoper",
@@ -849,7 +1035,7 @@ def _to_reg(a: _Answers) -> None:
         "to_regcollation",
         "name",
         "TEXT",
-        f"(SELECT CAST(_c.collname AS TEXT) FROM meta.catalog_pg_collation _c "
+        f"(SELECT QUOTE_IDENT(CAST(_c.collname AS TEXT)) FROM meta.catalog_pg_collation _c "
         f"WHERE _c.collname = {_last_part('name')} LIMIT 1)",
     )
     a.strict("to_regtype", "name", "OID", _type_lookup("name"))
@@ -869,6 +1055,49 @@ def _to_reg(a: _Answers) -> None:
         "+ COALESCE(CAST(NULLIF(TRIM(SPLIT_PART((REGEXP_MATCH(name, '\\(([^)]*)\\)'))[1], ',', 2)), "
         "'') AS INTEGER), 0) + 4 ELSE "
         "CAST((REGEXP_MATCH(name, '\\((\\d+)\\)'))[1] AS INTEGER) + 4 END, -1) END",
+    )
+
+
+#: acldefault's items by the kind of object, ``{o}`` the owner: what PostgreSQL 17 grants an
+#: object's owner, and PUBLIC, before any GRANT.
+_DEFAULT_ACLS = (
+    ("c", ""), ("r", "{o}=arwdDxtm/{o}"), ("s", "{o}=rwU/{o}"), ("d", "=Tc/{o},{o}=CTc/{o}"),
+    ("f", "=X/{o},{o}=X/{o}"), ("l", "=U/{o},{o}=U/{o}"), ("L", "{o}=rw/{o}"), ("n", "{o}=UC/{o}"),
+    ("p", "{o}=sA/{o}"), ("t", "{o}=C/{o}"), ("F", "{o}=U/{o}"), ("S", "{o}=U/{o}"),
+    ("T", "=U/{o},{o}=U/{o}"),
+)  # fmt: skip
+
+
+def _acl_default() -> str:
+    owner = (
+        "COALESCE((SELECT CAST(_r.rolname AS TEXT) FROM meta.catalog_pg_roles _r "
+        "WHERE _r.oid = owner LIMIT 1), CAST(owner AS TEXT))"
+    )
+
+    def items(written: str) -> str:
+        parts = written.split("{o}")
+        return " || ".join(
+            p
+            for i, part in enumerate(parts)
+            for p in ([f"'{part}'"] if part else []) + ([owner] if i < len(parts) - 1 else [])
+        )
+
+    arms = " ".join(
+        f"WHEN '{kind}' THEN '{{' || {items(written)} || '}}'"
+        if written
+        else f"WHEN '{kind}' THEN '{{}}'"
+        for kind, written in _DEFAULT_ACLS
+    )
+    refused = raising("22023", "'unrecognized object type abbreviation: ' || kind")
+    return f"CAST(CASE CAST(kind AS TEXT) {arms} ELSE {_typed(refused, 'TEXT')} END AS TEXT[])"
+
+
+def _proc_types(proc: str, separator: str) -> str:
+    """The types of function ``proc``'s arguments, as format_type writes each."""
+    return (
+        f"COALESCE((SELECT STRING_AGG(format_type(_t.t, NULL), '{separator}' ORDER BY _t.i) "
+        f"FROM UNNEST(CAST(STRING_TO_ARRAY(NULLIF(CAST({proc}.proargtypes AS TEXT), ''), ' ') "
+        "AS _oid)) WITH ORDINALITY AS _t(t, i)), '')"
     )
 
 
@@ -912,17 +1141,25 @@ def _named_in_path(schema: str, name: str) -> str:
 
 
 def _type_names(vector: str, separator: str, qualified: bool) -> str:
-    """The names of a vector of type oids, in order, joined by ``separator``."""
+    """The names of a vector of type oids, in order, joined by ``separator``. Qualified as
+    format_type's FORCE_QUALIFY writes them: a type SQL spells by a name of its own (bigint,
+    timestamp with time zone) as it is, any other with its schema."""
     name = (
         "format_type(_v._k, NULL)"
         if not qualified
-        else "QUOTE_IDENT(_tn.nspname) || '.' || QUOTE_IDENT(_ty.typname)"
+        else "CASE WHEN _te.oid IS NOT NULL THEN CASE WHEN format_type(_te.oid, NULL) "
+        "<> QUOTE_IDENT(_te.typname) THEN format_type(_v._k, NULL) ELSE QUOTE_IDENT(_ten.nspname) "
+        "|| '.' || QUOTE_IDENT(_te.typname) || '[]' END "
+        "WHEN format_type(_v._k, NULL) <> QUOTE_IDENT(_ty.typname) THEN format_type(_v._k, NULL) "
+        "ELSE QUOTE_IDENT(_tn.nspname) || '.' || QUOTE_IDENT(_ty.typname) END"
     )
     joined = (
         ""
         if not qualified
         else " JOIN meta.catalog_pg_type _ty ON _ty.oid = _v._k "
-        "JOIN meta.catalog_pg_namespace _tn ON _tn.oid = _ty.typnamespace"
+        "JOIN meta.catalog_pg_namespace _tn ON _tn.oid = _ty.typnamespace "
+        "LEFT JOIN meta.catalog_pg_type _te ON _te.oid = _ty.typelem AND _ty.typcategory = 'A' "
+        "LEFT JOIN meta.catalog_pg_namespace _ten ON _ten.oid = _te.typnamespace"
     )
     return (
         f"(SELECT COALESCE(STRING_AGG({name}, '{separator}' ORDER BY _v._i), '') FROM "
@@ -981,6 +1218,20 @@ _IDENTIFIED = (
 _OBJECT_PARAMS = "classid:bigint, objid:bigint, objsubid:bigint"
 
 
+#: A routine's address (format_procedure_parts): its schema and name, unquoted, and its
+#: arguments' types, each qualified as format_type_be_qualified writes it.
+_ROUTINE_NAMES = (
+    "(SELECT ARRAY[CAST(_n.nspname AS TEXT), CAST(_p.proname AS TEXT)] "
+    "FROM meta.catalog_pg_proc _p JOIN meta.catalog_pg_namespace _n "
+    "ON _n.oid = _p.pronamespace WHERE _p.oid = objid)"
+)
+_ROUTINE_ARGS = (
+    "(SELECT COALESCE(STRING_TO_ARRAY(NULLIF("
+    f"{_type_names('_p.proargtypes', ',', True)}, ''), ','), CAST(ARRAY[] AS TEXT[])) "
+    "FROM meta.catalog_pg_proc _p WHERE _p.oid = objid)"
+)
+
+
 def _addresses(a: _Answers) -> None:
     """pg_describe_object, pg_identify_object, pg_identify_object_as_address and
     pg_get_object_address, for what a catalog holds. Any other object is none it holds, which
@@ -991,13 +1242,15 @@ def _addresses(a: _Answers) -> None:
         f"(SELECT _i.description FROM ({_IDENTIFIED}) _i)",
     )
     identified = f"SELECT _i.type, _i.schema, _i.name, _i.identity FROM ({_IDENTIFIED}) _i"
-    a.selected("pg_identify_object", _OBJECT_PARAMS, identified)
-    a.selected(
+    a.one_row("pg_identify_object", _OBJECT_PARAMS, identified)
+    a.one_row(
         "pg_identify_object_as_address",
         _OBJECT_PARAMS,
         "SELECT _i.type, CASE _i.type WHEN 'type' THEN ARRAY[SUBSTR(_i.description, 6)] "
+        f"WHEN 'function' THEN {_ROUTINE_NAMES} WHEN 'procedure' THEN {_ROUTINE_NAMES} "
         "ELSE STRING_TO_ARRAY(_i.identity, '.') END AS object_names, "
-        f"CAST(ARRAY[] AS TEXT[]) AS object_args FROM ({_IDENTIFIED}) _i",
+        f"CASE WHEN _i.type IN ('function', 'procedure') THEN {_ROUTINE_ARGS} "
+        f"ELSE CAST(ARRAY[] AS TEXT[]) END AS object_args FROM ({_IDENTIFIED}) _i",
     )
     names = "names:text[]"
     last = "names[ARRAY_LENGTH(names, 1)]"
@@ -1013,23 +1266,36 @@ def _addresses(a: _Answers) -> None:
         "schema": raising("3F000", f"'schema \"' || {named} || '\" does not exist'"),
         "type": raising("42704", f"'type \"' || {named} || '\" does not exist'"),
     }
+    listed = "LOWER(REPLACE(ARRAY_TO_STRING(args, ','), ' ', ''))"
+    function = (
+        "(SELECT _p.oid FROM meta.catalog_pg_proc _p JOIN meta.catalog_pg_namespace _n "
+        f"ON _n.oid = _p.pronamespace WHERE _p.proname = {last} "
+        f"AND (ARRAY_LENGTH(names, 1) = 1 OR _n.nspname = {before}) "
+        f"AND REPLACE({_proc_types('_p', ',')}, ' ', '') = {listed} LIMIT 1)"
+    )
+    missing["function"] = raising(
+        "42883",
+        f"'function ' || {named} || '(' || ARRAY_TO_STRING(args, ',') || ') does not exist'",
+    )
     one_name = raising("22023", "'name list length must be exactly 1'")
     found = (
         f"CASE WHEN kind IN ('schema', 'type') AND ARRAY_LENGTH(names, 1) <> 1 THEN {one_name} "
         f"ELSE CASE kind WHEN 'table' THEN COALESCE({relation}, {missing['table']}) "
         f"WHEN 'schema' THEN COALESCE({namespace}, {missing['schema']}) "
-        f"WHEN 'type' THEN COALESCE({_type_lookup(last)}, {missing['type']}) ELSE "
+        f"WHEN 'type' THEN COALESCE({_type_lookup(last)}, {missing['type']}) "
+        f"WHEN 'function' THEN COALESCE({function}, {missing['function']}) ELSE "
         + raising("22023", "'unrecognized object type \"' || kind || '\"'")
         + " END END"
     )
     a.record(
         "pg_get_object_address",
-        f"kind, {names}, args",
+        f"kind, {names}, args:text[]",
         (
             (
                 "classid",
                 "OID",
-                "CASE kind WHEN 'table' THEN 1259 WHEN 'schema' THEN 2615 WHEN 'type' THEN 1247 END",
+                "CASE kind WHEN 'table' THEN 1259 WHEN 'schema' THEN 2615 WHEN 'type' THEN 1247 "
+                "WHEN 'function' THEN 1255 END",
             ),
             ("objid", "OID", found),
             ("objsubid", "INTEGER", "0"),
@@ -1051,7 +1317,7 @@ def _walfile(a: _Answers) -> None:
     a.strict("pg_walfile_name", "lsn", "TEXT", written)
 
 
-def _literal(value: object) -> str:
+def _literal(value: str | int | float | bool | None) -> str:
     if isinstance(value, str):
         return "'" + value.replace("'", "''") + "'"
     return str(value).upper()
@@ -1085,6 +1351,14 @@ def _shipped(a: _Answers) -> None:
         PG_KEYWORDS,
         "TRUE",
     )
+    _listed(
+        a,
+        "pg_get_catalog_foreign_keys",
+        "",
+        "fktable, fkcols, pktable, pkcols, is_array, is_opt",
+        CATALOG_FOREIGN_KEYS,
+        "TRUE",
+    )
     # The default parser, the one parser PostgreSQL ships, by its oid or its name.
     _listed(
         a,
@@ -1116,20 +1390,11 @@ def _catalog_objects(a: _Answers) -> None:
         "",
         "SELECT _e.name, _e.default_version, _e.comment FROM meta.catalog_pg_available_extensions _e",
     )
-    a.rows(
-        "pg_cursor",
-        "",
-        (
-            ("name", "TEXT"), ("statement", "TEXT"), ("is_holdable", "BOOLEAN"),
-            ("is_binary", "BOOLEAN"), ("is_scrollable", "BOOLEAN"),
-            ("creation_time", "TIMESTAMPTZ"),
-        ),
-        "FALSE",
-    )  # fmt: skip
+    # The connection's cursors and its open portal (catalog._cursors_told).
+    a.selected("pg_cursor", "", "SELECT * FROM meta.catalog_pg_cursors")
     a.selected("pg_show_all_settings", "", "SELECT * FROM meta.catalog_pg_settings")
     a.body("getdatabaseencoding", "", "'UTF8'")
     a.body("pg_client_encoding", "", "'UTF8'")
-    a.body("pg_statistics_obj_is_visible", "s", "TRUE", "BOOLEAN")
     a.strict("pg_sequence_last_value", "seq", "BIGINT", "CAST(NULL AS BIGINT)")
     partitionable = f"FROM {_CLASSES} WHERE _c.oid = rel AND _c.relkind IN ('r', 'p', 'i', 'I')"
     a.selected(
@@ -1151,17 +1416,28 @@ def _catalog_objects(a: _Answers) -> None:
         f"SELECT _c.oid AS relid {partitionable}",
         _pair("_r.relid", _NAME_OF_RELID),
     )
+    # A relation in no partition tree has no root: only a partitioned one, or a partition, does.
     a.strict(
         "pg_partition_root",
         "rel:bigint",
         "OID",
-        f"(SELECT _c.oid {partitionable})",
+        f"(SELECT _c.oid FROM {_CLASSES} WHERE _c.oid = rel "
+        "AND (_c.relkind IN ('p', 'I') OR _c.relispartition))",
     )
     a.strict("pg_get_replica_identity_index", "rel", "OID", "CAST(NULL AS OID)")
     a.strict("pg_get_statisticsobjdef_expressions", "s", "TEXT[]", "CAST(NULL AS TEXT[])")
     for name in _ALWAYS_PRIVILEGED:
         a.strict(name, "thing, priv", "BOOLEAN", "TRUE")
-        a.strict(name, "who, thing, priv", "BOOLEAN", "TRUE")
+        # The session role and every model role as the session role is answered: PostgreSQL's
+        # defaults for each, which Provisa's grants do not narrow (REQ-2167, amended 2026-11-03).
+        a.strict(
+            name,
+            "who, thing, priv",
+            "BOOLEAN",
+            f"CASE WHEN {no_such_role_name('who')} THEN {refused_role('who', 'BOOLEAN')} "
+            f"WHEN {holds_public_alone('who')} "
+            f"THEN {any_held('priv', _held_by_predefined(name))} ELSE TRUE END",
+        )
     a.strict("pg_blocking_pids", "pid", "INTEGER[]", "CAST(ARRAY[] AS INTEGER[])")
     a.body("pg_current_logfile", "", "CAST(NULL AS TEXT)")
     a.body("pg_current_logfile", "format", "CAST(NULL AS TEXT)")
@@ -1189,7 +1465,7 @@ def _catalog_objects(a: _Answers) -> None:
         "|| CASE WHEN grantable THEN '*' ELSE '' END ELSE '' END"
         for letter, word in _ACL_RIGHTS
     )
-    role_name = (
+    named_role = (
         "COALESCE((SELECT CAST(_r.rolname AS TEXT) FROM meta.catalog_pg_roles _r "
         "WHERE _r.oid = {oid}), {other})"
     )
@@ -1200,12 +1476,12 @@ def _catalog_objects(a: _Answers) -> None:
         f"CASE WHEN ({rights}) = '' THEN "
         + raising("22023", "'unrecognized privilege type: \"' || priv || '\"'")
         + " ELSE "
-        + role_name.format(oid="grantee", other="''")
+        + named_role.format(oid="grantee", other="''")
         + f" || '=' || {rights} || '/' || "
-        + role_name.format(oid="grantor", other="CAST(grantor AS TEXT)")
+        + named_role.format(oid="grantor", other="CAST(grantor AS TEXT)")
         + " END",
     )
-    a.strict("acldefault", "kind, owner", "TEXT[]", "CAST(NULL AS TEXT[])")
+    a.strict("acldefault", "kind, owner:bigint", "TEXT[]", _acl_default())
     a.strict(
         "pg_collation_actual_version",
         "c:bigint",
@@ -1230,16 +1506,16 @@ def _catalog_objects(a: _Answers) -> None:
         "INTEGER",
         f"CASE WHEN coalesce({is_table}, false) THEN 28 ELSE 0 END",
     )
+    # A system column (a negative attnum) is never updatable.
     a.strict(
         "pg_column_is_updatable",
-        "rel:bigint, att, cascaded",
+        "rel:bigint, att:bigint, cascaded",
         "BOOLEAN",
-        f"coalesce({is_table}, false)",
+        f"att > 0 AND coalesce({is_table}, false)",
     )
     a.strict("pg_filenode_relation", "tablespace, filenode", "OID", "CAST(NULL AS OID)")
     a.strict("pg_relation_filenode", "rel", "BIGINT", "CAST(NULL AS BIGINT)")
     a.strict("pg_relation_filepath", "rel", "VARCHAR", "CAST(NULL AS VARCHAR)")
-    a.strict("pg_get_function_arg_default", "f, n", "VARCHAR", "CAST(NULL AS VARCHAR)")
     a.strict("pg_get_statisticsobjdef", "s", "VARCHAR", "CAST(NULL AS VARCHAR)")
     phases = " ".join(f"WHEN {n} THEN '{name}'" for n, name in _BTREE_BUILD_PHASES)
     a.strict(
@@ -1255,11 +1531,19 @@ def _catalog_objects(a: _Answers) -> None:
     a.body("pg_notification_queue_usage", "", "CAST(0 AS DOUBLE PRECISION)", "DOUBLE PRECISION")
     a.body("pg_trigger_depth", "", "0", "INTEGER")
     a.strict("row_security_active", "rel", "BOOLEAN", "false")
+    # A setting's flags as PostgreSQL 17 gives them; one Provisa lists that has none, none. A
+    # setting is named in any case, as SHOW names one (TimeZone, timezone).
+    flagged = " ".join(
+        f"WHEN '{name}' THEN CAST('{flags}' AS TEXT[])"
+        for name, flags in sorted(SETTING_FLAGS.items())
+    )
     a.strict(
         "pg_settings_get_flags",
         "name",
         "VARCHAR[]",
-        "(SELECT CAST(ARRAY[] AS TEXT[]) FROM _pg_settings _s WHERE _s.name = LOWER(name))",
+        f"CASE LOWER(name) {flagged} ELSE "
+        "(SELECT CAST(ARRAY[] AS TEXT[]) FROM _pg_settings _s "
+        "WHERE LOWER(_s.name) = LOWER(name)) END",
     )
     a.strict(
         "pg_extension_config_dump",
@@ -1320,12 +1604,23 @@ def _catalog_objects(a: _Answers) -> None:
         "fmgr_sql_validator",
         "plpgsql_validator",
     ):
-        a.strict(name, "f", "VARCHAR", raising("XX000", "'cache lookup failed for function ' || f"))
+        # A function the catalog lists validates (void); any other is no function.
+        a.strict(
+            name,
+            "f:bigint",
+            "VARCHAR",
+            "CASE WHEN EXISTS (SELECT 1 FROM meta.catalog_pg_proc _p WHERE _p.oid = f) THEN '' ELSE "
+            + raising("XX000", "'cache lookup failed for function ' || f")
+            + " END",
+        )
+    # An operator class PostgreSQL ships validates; any other is none (REQ-2167).
     a.strict(
         "amvalidate",
-        "c",
+        "c:bigint",
         "BOOLEAN",
-        raising("XX000", "'cache lookup failed for operator class ' || c"),
+        f"CASE WHEN c IN ({', '.join(str(row[0]) for row in OPCLASSES)}) THEN TRUE ELSE "
+        + raising("XX000", "'cache lookup failed for operator class ' || c")
+        + " END",
     )
     a.strict("postgresql_fdw_validator", "options, catalog", "BOOLEAN", "true")
     a.strict(
@@ -1348,7 +1643,15 @@ def _catalog_objects(a: _Answers) -> None:
         + " ELSE TRUE END"
     )
     a.strict("has_parameter_privilege", "param, priv", "BOOLEAN", privilege)
-    a.strict("has_parameter_privilege", "who, param, priv", "BOOLEAN", privilege)
+    # No predefined role is granted a parameter (pg_parameter_acl lists none).
+    a.strict(
+        "has_parameter_privilege",
+        "who, param, priv",
+        "BOOLEAN",
+        privilege.replace(
+            " ELSE TRUE END", f" ELSE {role_name('who')} NOT IN {PREDEFINED_ROLES} END"
+        ),
+    )
 
 
 def _answers() -> _Answers:
@@ -1373,8 +1676,6 @@ def _files(a: _Answers) -> None:
     )
     _read_file(a, "pg_read_file", "TEXT")
     _read_file(a, "pg_read_binary_file", "BYTEA")
-    a.body("setval", "seq:bigint, value", _setval("seq", "value"), "BIGINT")
-    a.body("setval", "seq:bigint, value, called", _setval("seq", "value", "called"), "BIGINT")
     for params, missing_ok in (("f", "FALSE"), ("f, missing_ok:boolean", "missing_ok")):
         nulls = "f IS NULL OR " + (missing_ok + " IS NULL")
         check = (

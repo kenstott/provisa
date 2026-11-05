@@ -48,7 +48,6 @@ ENGINE_DIALECTS: dict[str, str] = {
     "singlestore": "singlestore",
     "snowflake": "snowflake",
     "synapse": "tsql",
-    "teradata": "teradata",
     "tidb": "mysql",
     "trino": "trino",
     "trino-byo": "trino",

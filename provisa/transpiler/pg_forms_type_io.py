@@ -526,9 +526,12 @@ _NO_OUTPUT = (
 )  # fmt: skip
 
 
-def _no_value(name: str, message: str, params: str = "v") -> Row:
+def _no_value(
+    name: str, message: str, params: str = "v", sql_type: Typed = _text, result: str = "text"
+) -> Row:
     return _noted(
-        _row(name, params, _text, lambda e: e.raises("0A000", _quoted(message), e.text)), "text"
+        _row(name, params, sql_type, lambda e: e.raises("0A000", _quoted(message), sql_type(e))),
+        result,
     )
 
 
@@ -539,7 +542,15 @@ def _pseudo() -> list[Row]:
         for t in _NO_INPUT_OF_THREE
     ]
     rows += [_no_value(f"{t}_out", f"cannot display a value of type {t}") for t in _NO_OUTPUT]
-    rows += [_no_value("pg_ddl_command_send", "cannot display a value of type pg_ddl_command")]
+    rows += [
+        _no_value(
+            "pg_ddl_command_send",
+            "cannot display a value of type pg_ddl_command",
+            "v",
+            _binary,
+            "bytea",
+        )
+    ]
     rows += [_no_value("shell_out", "cannot display a value of a shell type")]
     rows += [_noted(_row("void_in", "v", _text, lambda _: "''"), "text")]
     rows += [_noted(_row("void_out", "v", _text, lambda _: "''"), "text")]
@@ -1189,11 +1200,13 @@ ROWS: tuple[Row, ...] = (
         tsqueryout tsvectorout xml_out pg_dependencies_out pg_mcv_list_out pg_ndistinct_out
         pg_node_tree_out regclassout regcollationout regconfigout regdictionaryout regnamespaceout
         regoperatorout regoperout regprocedureout regprocout regroleout regtypeout xid8out
-        numeric_out numerictypmodout intervaltypmodout jsonb_in jsonpath_in tsqueryin tsvectorin
+        numeric_out numerictypmodout intervaltypmodout jsonpath_in tsqueryin tsvectorin
         xml_in regclassin regcollationin regconfigin regdictionaryin regnamespacein regoperatorin
-        regoperin regprocedurein regprocin regrolein regtypein xid8in""",
+        regoperin regprocedurein regprocin regrolein regtypein""",
         "v", _text, "text",
     ),
+    *_refused("jsonb_in", "v", _text, "jsonb"),
+    *_refused("xid8in", "v", _text, "xid8"),
     *_refused(
         """array_send anyarray_send anycompatiblearray_send range_send multirange_send record_send
         bit_send varbit_send interval_send jsonb_send jsonpath_send tsquerysend
@@ -1201,9 +1214,10 @@ ROWS: tuple[Row, ...] = (
         "v", _binary, "bytea",
     ),
     *_refused(
-        """array_in range_in multirange_in bit_in varbit_in interval_in numeric_in""",
+        """array_in range_in multirange_in bit_in varbit_in numeric_in""",
         "v, o, m", _text, "text",
     ),
+    *_refused("interval_in", "v, o, m", _text, "interval"),
     *_refused("enum_in", "v, o", _text, "text"),
     _no_value("record_in", "input of anonymous composite types is not implemented", "v, o, m"),
     _noted(
@@ -1282,6 +1296,9 @@ def _bare(value: exp.Expr) -> exp.Expr:
     return node
 
 
+_CHARACTER = re.compile(r"(?:char|bpchar)\((\d+)\)|char")
+
+
 def _read(value: exp.Expr) -> exp.Expr:
     """A literal of a type, as the type's input function reads it, and a text row its text."""
     node = value.unnest()
@@ -1290,11 +1307,12 @@ def _read(value: exp.Expr) -> exp.Expr:
     if not node.this.is_string:
         return value
     typed = _type_said(node)
-    if typed == "char(5)":  # character(n): the row that pads reads it
-        return exp.Anonymous(
-            this="bpcharin",
-            expressions=[node.this.copy(), exp.Literal.number(1042), exp.Literal.number(9)],
-        )
+    sized = _CHARACTER.fullmatch(typed)
+    if sized is not None:
+        # character(n), and character alone character(1): an explicit cast truncates the text to
+        # n characters and pads it with spaces (REQ-2167).
+        length = int(sized.group(1) or 1)
+        return exp.Literal.string(node.this.name[:length].ljust(length))
     reader = _INPUT_OF_TYPE.get(typed)
     if reader is None:
         return node.this.copy()  # its row reads the text
@@ -1311,12 +1329,22 @@ def _is_null(value: exp.Expr) -> bool:
     return isinstance(node.this if isinstance(node, exp.Cast) else node, exp.Null)
 
 
+#: The results a NULL is of only on DuckDB (``None``: the engine a statement with no table goes
+#: to), where pgwire describes it as that type; another engine's NULL of one is its text.
+_DUCKDB_RESULTS = frozenset({"jsonb", "interval", "xid8"})
+
+
 def _null_of(result: str, dialect: str | None = None) -> exp.Expr:
     """A NULL of ``result``. ClickHouse holds a time as its text (Engine.time): sqlglot would write
-    toTime64OrNull, which ClickHouse 24 does not have."""
+    toTime64OrNull, which ClickHouse 24 does not have. Only DuckDB and PostgreSQL hold jsonb,
+    interval and xid8."""
     if dialect == "clickhouse" and result == "time without time zone":
         result = "text"
-    return exp.Cast(this=exp.Null(), to=exp.DataType.build(result, dialect="postgres"))
+    if dialect not in (None, "duckdb", "postgres") and result in _DUCKDB_RESULTS:
+        result = "text"
+    # xid8 is no type sqlglot knows: pg_held_types holds it as the engine's.
+    to = exp.DataType.build(result, dialect="postgres", udt=True)
+    return exp.Cast(this=exp.Null(), to=to)
 
 
 def _literal_text(value: exp.Expr) -> str | None:
@@ -1513,11 +1541,11 @@ def _fold_text(name: str, text: str, arguments: list[exp.Expr]) -> exp.Expr | No
             written = jsonb_text(text)
         except ValueError:
             raise literals.Refused("22P02", "invalid input syntax for type json") from None
-        return (
-            _said_bytes(literals.jsonb_bytes(written))
-            if name == "jsonb_send"
-            else _said_text(written)
-        )
+        if name == "jsonb_send":
+            return _said_bytes(literals.jsonb_bytes(written))
+        if name == "jsonb_in":
+            return exp.cast(_said_text(written), exp.DataType.build("jsonb", dialect="postgres"))
+        return _said_text(written)
     if name in ("bit_in", "bit_out", "bit_send", "varbit_in", "varbit_out", "varbit_send"):
         fixed = name.startswith("bit")
         typmod = _literal_number(arguments[2]) if name.endswith("_in") else -1
@@ -1552,6 +1580,30 @@ _FLOAT8_STATES = frozenset(
     )
 )  # fmt: skip
 RESULTS.update(dict.fromkeys(_FLOAT8_STATES, "double precision"))
+
+
+def _as_interval(said: exp.Expr, dialect: str | None) -> exp.Expr:
+    """interval_in's folded text as the interval it reads, on an engine that holds PostgreSQL's
+    interval: the wire says interval only of a value the engine holds as one (cast_types).
+    PostgreSQL reads its own text; DuckDB, which does not read all of it ("-1 years +2 days"), is
+    given the interval's fields. A refusal, an infinity DuckDB has no interval of, and another
+    engine's answer stay as they are."""
+    if not (isinstance(said, exp.Literal) and said.is_string):
+        return said
+    if dialect == "postgres":
+        return exp.Cast(this=said, to=exp.DataType.build("interval", dialect="postgres"))
+    if dialect not in (None, "duckdb") or said.this in ("infinity", "-infinity"):
+        return said
+    fields = literals.interval_fields(said.this)
+    if fields is None:
+        return said
+    months, days, us = (
+        exp.Anonymous(this=f"to_{unit}", expressions=[_said_number(number, sql_type)])
+        for unit, number, sql_type in zip(
+            ("months", "days", "microseconds"), fields, ("integer", "integer", "bigint")
+        )
+    )
+    return exp.Paren(this=exp.Add(this=exp.Add(this=months, expression=days), expression=us))
 
 
 def _folded(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
@@ -1611,6 +1663,8 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
                 return node
             return exp.alias_(said, name) if in_select else said
         folded = _folded(name, arguments)
+        if folded is not None and name == "interval_in":
+            folded = _as_interval(folded, dialect)
         if folded is not None:
             return exp.alias_(folded, name) if in_select else folded
         if name.endswith("in"):
@@ -1622,18 +1676,12 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
     return tree.transform(rewrite)
 
 
-_ARRAY_OF_CSTRING = re.compile(r"::\s*cstring\s*\[\s*\]", re.IGNORECASE)
-_BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
 _CALLED = re.compile(r"\b(" + "|".join(sorted(RESULTS)) + r")\"?\s*\(", re.IGNORECASE)
 
 
 #: What these forms write in UTC, or read a session's zone into: only a session on UTC is answered.
 ZONED = frozenset({"timestamptz_in", "timestamptz_out", "timestamptz_send"})
 _ZONED_CALLED = re.compile(r"\b(" + "|".join(sorted(ZONED)) + r")\"?\s*\(", re.IGNORECASE)
-
-
-def _spelled(sql: str) -> str:
-    return _BIT_VARYING.sub("::varbit", _ARRAY_OF_CSTRING.sub("::_cstring", sql))
 
 
 def zoned_call(sql: str) -> str | None:
@@ -1643,7 +1691,7 @@ def zoned_call(sql: str) -> str | None:
     if named is None:
         return None
     try:
-        tree = sqlglot.parse_one(_spelled(sql), read="postgres")
+        tree = sqlglot.parse_one(sql, read="postgres")
     except SqlglotError:
         return named.group(1).lower()
     calls = (call.name.lower() for call in tree.find_all(exp.Anonymous))
@@ -1651,14 +1699,13 @@ def zoned_call(sql: str) -> str | None:
 
 
 def readable(sql: str, dialect: str | None = None) -> str:
-    """``sql`` with each call of these functions as its row reads it. sqlglot takes ``::cstring[]``
-    for a subscript and ``::bit varying`` for a bit and an alias, and reads PostgreSQL's other
-    spelling of each. A text it cannot parse is left, for the engine to say so. ``dialect`` is the
-    engine it is for, where that changes a NULL's type."""
+    """``sql`` with each call of these functions as its row reads it (``pg_syntax`` reads
+    ``::cstring[]`` and ``::bit varying``). A text it cannot parse is left, for the engine to say
+    so. ``dialect`` is the engine it is for, where that changes a NULL's type."""
     if _CALLED.search(sql) is None:
         return sql
     try:
-        tree = sqlglot.parse_one(_spelled(sql), read="postgres")
+        tree = sqlglot.parse_one(sql, read="postgres")
         return _lowered(tree, dialect).sql(dialect="postgres")
     except SqlglotError:
         return sql

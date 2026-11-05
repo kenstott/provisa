@@ -212,6 +212,22 @@
     "reasoner": "推論器",
     "reasonerNone": "なし",
     "axioms": "OWL 公理",
-    "axiomsHint": "Turtle、RDF/XML、関数型構文または Manchester 構文。クエリが <http://example.org/kyc#controls> のような単一の IRI であるテーブルは、公理から推論された内容を読み取ります。"
+    "axiomsHint": "Turtle、RDF/XML、関数型構文または Manchester 構文。クエリが <http://example.org/kyc#controls> のような単一の IRI であるテーブルは、公理から推論された内容を読み取ります。",
+    "qbRealmId": "会社 ID（Realm ID）",
+    "qbRealmIdHint": "読み取る QuickBooks の会社の番号です。アプリを接続したとき、および会社のアカウント設定に Intuit が表示します。",
+    "qbRealmIdInvalid": "会社 ID は数字です（例: 9341453456789012）",
+    "qbEnvironment": "サンドボックスまたは本番",
+    "qbEnvironmentHint": "サンドボックスの会社は、Intuit 開発者アカウントのテスト用の会社です。",
+    "qbSandbox": "サンドボックス（テスト用の会社）",
+    "qbProduction": "本番（実際の会社）",
+    "qbClientId": "クライアント ID",
+    "qbClientIdHint": "developer.intuit.com のアプリの Keys and credentials にあります。",
+    "qbClientSecret": "クライアントシークレット",
+    "qbClientSecretHint": "クライアント ID と同じページにあります。シークレットボールトに保管されます。",
+    "qbRefreshToken": "リフレッシュトークン",
+    "qbRefreshTokenHint": "Provisa が会社を読み取れるようにします。QuickBooks でサインインして取得するか、Intuit の OAuth 2.0 Playground で Accounting スコープを指定して取得したものを貼り付けます。QuickBooks は使用のたびにトークンを置き換え、Provisa は最新のものを保持します。ここに新しく入力したものは、保存時に保持中のものを置き換えます。",
+    "qbSignIn": "QuickBooks でサインイン",
+    "qbSignedIn": "会社 {{realm}} にサインインしました。保持するにはソースを保存してください。",
+    "qbSignInFailed": "ログインを完了できませんでした。"
   }
 }

@@ -212,6 +212,22 @@
     "reasoner": "रीज़नर",
     "reasonerNone": "कोई नहीं",
     "axioms": "OWL एक्सियम",
-    "axiomsHint": "Turtle, RDF/XML, फ़ंक्शनल या Manchester सिंटैक्स। जिस तालिका की क्वेरी एक ही IRI है, जैसे <http://example.org/kyc#controls>, वह इनसे निकाले गए निष्कर्ष पढ़ती है।"
+    "axiomsHint": "Turtle, RDF/XML, फ़ंक्शनल या Manchester सिंटैक्स। जिस तालिका की क्वेरी एक ही IRI है, जैसे <http://example.org/kyc#controls>, वह इनसे निकाले गए निष्कर्ष पढ़ती है।",
+    "qbRealmId": "कंपनी ID (realm ID)",
+    "qbRealmIdHint": "पढ़ी जाने वाली QuickBooks कंपनी का नंबर। Intuit इसे आपका ऐप कनेक्ट करते समय और कंपनी की खाता सेटिंग्स में दिखाता है।",
+    "qbRealmIdInvalid": "कंपनी ID एक संख्या है, उदाहरण के लिए 9341453456789012",
+    "qbEnvironment": "Sandbox या प्रोडक्शन",
+    "qbEnvironmentHint": "Sandbox कंपनी आपके Intuit डेवलपर खाते की एक परीक्षण कंपनी है।",
+    "qbSandbox": "Sandbox (परीक्षण कंपनी)",
+    "qbProduction": "प्रोडक्शन (असली कंपनी)",
+    "qbClientId": "क्लाइंट ID",
+    "qbClientIdHint": "developer.intuit.com पर आपके ऐप से, Keys and credentials के अंतर्गत।",
+    "qbClientSecret": "क्लाइंट सीक्रेट",
+    "qbClientSecretHint": "क्लाइंट ID वाले पेज से ही। सीक्रेट वॉल्ट में रखा जाता है।",
+    "qbRefreshToken": "रीफ़्रेश टोकन",
+    "qbRefreshTokenHint": "Provisa को कंपनी पढ़ने देता है। इसे पाने के लिए QuickBooks से साइन इन करें, या Intuit के OAuth 2.0 Playground से Accounting स्कोप के साथ प्राप्त एक पेस्ट करें। QuickBooks हर उपयोग पर इसे बदल देता है, और Provisa सबसे नया रखता है। यहाँ दर्ज किया गया नया टोकन सहेजने पर रखे गए टोकन की जगह लेता है।",
+    "qbSignIn": "QuickBooks से साइन इन करें",
+    "qbSignedIn": "कंपनी {{realm}} में साइन इन किया गया। इसे रखने के लिए स्रोत सहेजें।",
+    "qbSignInFailed": "साइन इन पूरा नहीं हो सका।"
   }
 }

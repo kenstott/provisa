@@ -18,7 +18,7 @@
     "byFile": "檔案",
     "byUrl": "URL",
     "file": "檔案",
-    "fileHelp": "PDF、Word（.docx）、HTML、Markdown 或純文字檔案。",
+    "fileHelp": "PDF、Word（.docx）、HTML、Markdown、eCFR XML（.xml）或純文字檔案。",
     "url": "URL",
     "urlHelp": "一個 http(s) 位址。文件現在擷取，並於每次重新整理時再次擷取。",
     "fieldTitle": "標題",
@@ -54,6 +54,12 @@
     "needsReembeddingHelp": "使用 {{model}} 嵌入，而非機構目前的向量模型。",
     "reembedDone": "已重新嵌入的文件：{{n}}",
     "reembedFailedHeading": "以下文件無法重新嵌入，維持不變：",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "helpLabel": "關於參考資料庫",
+    "helpTitle": "關於參考資料庫",
+    "helpWhat": "一小組精選的參考文件（政策、法規、合約、流程），透過檔案或 URL 加入。它不是文件儲存庫。",
+    "helpWho": "Polly 依據它作答並引用段落。透過 Provisa 的 MCP 伺服器連接的 AI 代理會搜尋它（search_reference_library）。「尋找術語」會讀取它，以提出詞彙表的術語和定義。",
+    "helpSees": "代表某個角色工作的助理只會使用該角色可讀取的網域中已保留的文件，以及適用於整個組織的文件。",
+    "helpEmbedding": "加入文件時，其段落會以組織的嵌入模型進行嵌入；只有在該模型更換後才需要「重新嵌入」。"
   }
 }

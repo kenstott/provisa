@@ -10,7 +10,7 @@ Every query ends up running through the federation engine, which is what lets an
 | **Federation only** | No | Yes | Redshift, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (S3-backed) |
 | **Direct-read (replica)** | Yes | Yes | Snowflake, Databricks, ClickHouse. The driver reads data and lands a replica; queries run against the replica in the active engine |
 | **Direct (no cross-source connector)** | Yes | No | Athena. Single-source statements run whole in Athena; cross-source joins land a full replica |
-| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Salesforce, ServiceNow, Cloud inventory, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365 |
+| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Salesforce, ServiceNow, Cloud inventory, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365, QuickBooks Online |
 
 **Direct-capable** sources answer a query that touches only them through their own driver, in under 100 ms, without going through the federation engine. They keep their full connector, so they still join other sources through the engine.
 
@@ -26,28 +26,28 @@ Every query ends up running through the federation engine, which is what lets an
 
 ## All Sources
 
-Provisa registers **74** source types, the ones the Sources form offers. The tables below cover all 74; the index is the count.
+Provisa registers **77** source types, the ones the Sources form offers. The tables below cover all 77; the index is the count.
 
 | # | Group | Source types |
 | --- | --- | --- |
-| 1–15 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
-| 16–24 | [Cloud data warehouses](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
-| 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
-| 30–33 | [Data lake / open table formats](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
-| 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | [Code sources](code-sources.md) | `node`, `python` |
-| 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 44 | [Push receiver](#push-receiver) | `ingest` |
-| 45–46 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |
-| 47–51 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 52–53 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
-| 54–61 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 62–68 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 69 | [GovData](#govdata) | `govdata` |
-| 70–71 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
-| 72 | [Data profiler](#data-profiler) | `data_profiler` |
-| 73 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
-| 74 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
+| 1–16 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2`, `jdbc` |
+| 17–25 | [Cloud data warehouses](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
+| 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 31–34 | [Data lake / open table formats](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
+| 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
+| 40–42 | [Code sources](code-sources.md) | `node`, `python`, `go` |
+| 43–45 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 46 | [Push receiver](#push-receiver) | `ingest` |
+| 47–48 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |
+| 49–53 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 54–55 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
+| 56–64 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
+| 65–71 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 72 | [GovData](#govdata) | `govdata` |
+| 73–74 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
+| 75 | [Data profiler](#data-profiler) | `data_profiler` |
+| 76 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
+| 77 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms). "Connector Name" is the federated connector used when the source participates in multi-source JOINs.
 
@@ -70,6 +70,7 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 | `airport` | — | — (DuckDB extension) | — | No |
 | `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | No |
 | `hiveserver2` | impyla (HiveServer2 over Thrift) | — | hive | No |
+| `jdbc` | SQLAlchemy, at the source's own URL | — | chosen per source | No |
 
 Wire-compatible databases reuse a base wire's JDBC driver, native async driver and dialect. CockroachDB, YugabyteDB and Greenplum ride the PostgreSQL wire, and TiDB rides the MySQL wire. They need only registry entries and no new connector code.
 
@@ -82,6 +83,36 @@ SAP HANA is read through its own driver and replicated into the active engine's 
 #### `hiveserver2`
 
 A HiveServer2 endpoint read directly over Thrift, for a Hive deployment where the endpoint is the only thing reachable. It is distinct from `hive` and `hive_s3`, which read the warehouse's files and metastore and never go through HiveServer2. Rows are read through the endpoint and replicated into the active engine's store. The form takes host, port (default 10000), username, password and database; `federation_hints.auth_mechanism` selects the authentication (default `PLAIN`, for example `GSSAPI` for Kerberos).
+
+#### `jdbc`
+
+A database with no named source type, reached through any SQLAlchemy dialect Provisa ships. The source takes three settings, kept in `federation_hints`:
+
+- `url`: the connection URL. Its scheme names the SQLAlchemy dialect and driver, as in `postgresql+psycopg2://db.example.com:5432/sales` or `mssql+pyodbc://host:1433/db?driver=ODBC+Driver+18+for+SQL+Server`. The URL carries no password. The username and password go in the source's own fields, where a `${secret:NAME}` reference works as it does for every source. A scheme whose package is not installed fails the connection and names the missing package.
+- `sql_dialect`: the SQL flavor Provisa writes for the source. It is one of SQLGlot's dialects, or `ansi` for SQLGlot's generic SQL. It is independent of the URL, so a database closest to Postgres can be written as `postgres` behind any driver.
+- `capabilities.<engine>`: the capabilities turned on for the source on that engine, as a comma list of `attach`, `predicate`, `join`, `aggregate` and `key_range`. Each one is off until it is set, and each is held per engine. After an engine swap, nothing is on for the new engine until it is set there. Function pushdown is not offered. `attach` is for a URL whose scheme names a built-in source type (`postgresql`, `mysql`, `mariadb`, `mssql`, `oracle`, `sqlite`, `duckdb`, `clickhouse`, `snowflake` and the other built-in types with a SQLAlchemy scheme). With it on, the source attaches the way that built-in type does on the active engine, through that type's own attach, at the host, port, database and user the URL names. If the active engine has no attach for that type, the source's rows are replicated into its store instead. Detect's attach check reports which applies.
+
+A SQLite or DuckDB file is named by its path, written with the organization's tokens: `sqlite:///{files}/shop.db` or `duckdb:///{org}/shop.duckdb`. The file is opened where the token resolves, and a path that leaves the organization's folder is refused, naming the path. On a server of many organizations this is the only file URL allowed. A URL naming any other file is refused, and a DuckDB file is opened with DuckDB's external access off.
+
+Provisa never sends a statement to a JDBC source whole. Its tables are read at their floor, and the engine runs the rest of the statement. A small table can instead be replicated whole by its replicate setting, and it then joins like any other landed table. Register Table offers each column as an optional parameter of kind `column_value`, named `_nf_<column>`: a value for a real column, given by equality, that narrows the read to the rows with that value. A steward can make a parameter required. A query that leaves a required parameter out is refused, naming the table and the parameter, before anything is sent to the source. In SQL a query gives a parameter as a WHERE condition on `_nf_<column>`, and in GraphQL as an argument. The floor reads the table with one SELECT of its columns, with an equality filter for each parameter given. It is written in the source's SQL dialect, and the values are bound rather than written into the text. The rows land for that set of arguments. When the statement alone sets a row limit, the read pulls the cursor in batches and stops once it has enough rows.
+
+A JDBC source can also run a customer's own JDBC driver. Give a `jdbc:` URL plus two more settings: `jdbc_driver_jar`, the driver's jar file (a `{files}/...` path works), and `jdbc_driver_class`, the driver's class name. Provisa opens that driver directly in its own JVM through JPype, with no Calcite involved. The SQL dialect, the capability settings and Detect work as they do for a SQLAlchemy URL. A `jdbc:` URL has no engine attach, so the form doesn't offer one. A customer's jar runs as code inside Provisa's JVM, so this option is for self-hosted installs only. A server of many organizations refuses it, naming the reason, and so does a sandbox organization.
+
+**On the Sources form.** The first field of a JDBC source is **Driver**. Pick one of the standard drivers Provisa ships, each named by its database, or **Your own JDBC driver (jar)**. A standard driver asks for host, port and database, or for a database file for SQLite and DuckDB (written `{files}/…` for one in the organization's files area). The form builds the URL from them. Your own driver asks for the **JDBC URL** (with no password in it), the **Driver class**, and the **JDBC driver jar**, which you upload from your machine into the organization's files area. A server that runs no customer driver refuses the jar by name. Then pick the **SQL dialect** and press **Detect** once the driver's fields are filled. The capability checkboxes (**Live attach**, **Filter pushdown**, **Join pushdown**, **Aggregate pushdown**, **Key-range pushdown**) apply to the active engine, which the form doesn't ask you to name. **Live attach** appears only when the active engine can attach that driver's database type.
+
+For an organization whose sources are held to public addresses (a sandbox, or any organization but the deployment's own on a server of many organizations), the URL may carry only these driver options:
+
+| Dialect | Options allowed |
+| ------- | --------------- |
+| `postgresql` | `sslmode`, `connect_timeout`, `application_name`, `target_session_attrs` |
+| `mysql` | `ssl_mode`, `connect_timeout`, `charset` |
+| `mssql` | `driver`, `Encrypt`, `TrustServerCertificate` |
+
+Any other option is refused by name. That covers options that name another host, a file, a service, an init command or a local file load. A self-hosted server and the deployment's own organization can pass any option their driver accepts.
+
+Detect is a button on the form. It runs read-only checks against the connection the form describes, on the active engine, written in the source's SQL dialect over rows the statement makes itself. It ticks the capabilities that passed and shows the source's own error for those that failed. Nothing is saved until the form is. After changing the URL or the dialect, press Detect again.
+
+A network URL's host is checked like any other source's host (sandbox and multi-organization egress rules), and the connection is made at the address that was checked, a sandbox's included. Nothing is checked against the database when it connects. Register Table lists the schemas, tables and columns that the source's own SQLAlchemy dialect reports.
 
 ### Cloud Data Warehouses
 
@@ -878,6 +909,41 @@ A check that cannot be made asks for a read; it never reports "unchanged". Calen
 **Writes.** `INSERT`, `UPDATE` and `DELETE` on `events`, `event_attendees` and `tasks` go to the provider through one write path for both types. An `UPDATE` or `DELETE` names its rows by `provider`, `account` and `id`; an attendee is named by `event_id` and `address`. One occurrence of a series is named by `series_id` and `original_start_at`. A write that sets a column outside the table's writable set is refused by name. Google writes with `sendUpdates=all` when `calendar_send_updates` is on and `sendUpdates=none` when it is off. Microsoft Graph cannot make such a change silently, so a change to a meeting's attendees is refused, naming the setting.
 
 **Exclusions.** Mail is read only; no statement changes a mailbox. `calendars`, `task_lists` and every mail table take no writes. Gmail's Spam and Trash are left out unless `mail_include_spam_trash` is on. Google's Tasks API keeps only the day a task is due, and has no reminder.
+
+#### QuickBooks Online {: #quickbooks }
+
+A QuickBooks Online source reads the Accounting API of one company: its customers, vendors, invoices, bills, payments, accounts, items, employees, journal entries, estimates and the rest of the entities the API's query endpoint serves (30 in all, from `account` to `vendor_credit`). Register Table lists them, one table per entity, named in snake case (`JournalEntry` is `journal_entry`).
+
+**Setting it up.** Create an app at developer.intuit.com with the Accounting scope (`com.intuit.quickbooks.accounting`). The source's form asks for:
+
+| Form field | Source field | Notes |
+| --- | --- | --- |
+| Company ID (realm ID) | `database` | The company's number. Intuit shows it when the app is connected, and in the company's account settings. |
+| Sandbox or production | `mapping.environment` | `sandbox` (default) reads `sandbox-quickbooks.api.intuit.com`; `production` reads `quickbooks.api.intuit.com`. |
+| Client ID | `username` | From the app's Keys and credentials page. |
+| Client secret | `password` | From the same page. |
+| Refresh token | `mapping.refresh_token` | The approval that lets Provisa read the company. Get one from Intuit's OAuth 2.0 Playground with the Accounting scope. |
+
+Any of them may be a `${secret:…}` or `${env:…}` reference. The source's Cache TTL is required, as for every source whose tables are landed.
+
+**The refresh token.** Intuit answers every refresh with the refresh token to send next time, and the one it replaces stops working. The token entered on the form is used once, at the first read. From then on the newest one is kept in the organisation's state store, under the company's realm ID, where a Microsoft 365 source's approval is kept. One refresh of a source runs at a time, across every process, and the replacement is stored before the access token is used. An entered token is never read again once one is kept, so a token entered after the first read does not replace the kept one. A token Intuit refuses (`invalid_grant`) fails the read and names Intuit's reason, never the token. QuickBooks refusing an access token drops it, and the read asks once more with a new one.
+
+**Columns.** Each field of an entity is a column, named in snake case (`TotalAmt` is `total_amt`). A reference is two columns, its id and its name: `CustomerRef` is `customer_ref_value` and `customer_ref_name`. `MetaData` is `meta_create_time` and `meta_last_updated_time`. Any other object or list is one JSON column: an address (`bill_addr`), and the line items of a transaction (`line`), as the generic API source keeps a nested value. `id` is the primary key.
+
+**Reads.** A table is read through the company's query endpoint, `SELECT * FROM <Entity>`, a page at a time with `STARTPOSITION` and `MAXRESULTS`. A page holds 1,000 rows (the most QuickBooks answers), and a read takes at most 100 pages unless the table's paging says otherwise. A read stopped at its last page with more to read is cut, and the statement carries the `api.answer_cut` warning. An entity with an `Active` flag (customers, vendors, accounts, items, employees and the other lists) is read with its inactive records too, unless the statement names `active`.
+
+**What is pushed down.** The conditions of a statement that reads one QuickBooks table alone are sent in its query when QuickBooks can take them:
+
+| Field | Operators sent |
+| --- | --- |
+| A number, a date, or a time (`MetaData`) | `=`, `<`, `>`, `<=`, `>=`, `IN` |
+| Text, and a reference's id (`customer_ref_value`) | `=`, `IN` |
+| A name QuickBooks matches by pattern (`display_name`, `name`, `company_name`, …) | also `LIKE`, with `%` as its only wildcard |
+| A boolean | `=` |
+
+Only fields QuickBooks filters are sent, such as an invoice's `balance`, `total_amt`, `txn_date`, `due_date`, `doc_number` and `customer_ref_value`. QuickBooks has no `OR`, `NOT` or `!=`. A condition using one of them, or on any other field, is applied by the engine to the rows read. Every condition is also applied again to the rows, so a pushed one only narrows what is fetched. The statement's `LIMIT` is sent too when every condition was, and the statement doesn't group, aggregate, de-duplicate, order or skip rows. For example, `SELECT * FROM invoice WHERE balance > 0` reads `SELECT * FROM Invoice WHERE Balance > '0' STARTPOSITION 1 MAXRESULTS 1000` (QuickBooks takes a number quoted). The answer to a narrowed query is cached under its own name and is never held as the whole table.
+
+The source reads only; it writes nothing to QuickBooks.
 
 ### API Sources
 

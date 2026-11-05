@@ -30,8 +30,14 @@ measures re-aggregate exactly:
   ``SUM(c)`` and ``COUNT(c)``.
 
 Anything else is not rewritten: a join, ``DISTINCT``, ``HAVING``, a window, a subquery, a column
-the view does not keep as a dimension. A statement the role reads through a row filter or a mask
-on the table is never rewritten either -- the view was computed over every row.
+the view does not keep as a dimension. The statement is the role's governed one, and the view was
+computed over every row: a row filter every column of which is a dimension is carried onto the
+view, exact as each of its rows is one combination of dimension values (REQ-882, amended
+2026-11-04); a filter on any other column, or with a subquery, is a column the view does not keep
+or a second table, and is not rewritten. A mask stands in its column's place as an expression or a
+constant: a masked measure is no stored measure, and a masked dimension grouped on is no
+dimension, so neither is rewritten; a masked dimension only filtered on is evaluated over the
+view's dimension values as over the table's.
 """
 
 # Requirements: REQ-198, REQ-199, REQ-882

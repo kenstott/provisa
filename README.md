@@ -18,7 +18,7 @@ Provisa compiles each request and hands it to your engine. Results stream back. 
 
 Four things follow from the one model:
 
-- **Cross-source queries.** 73 source drivers reach more than 85 kinds of source, Salesforce, ServiceNow and Stripe among them. The SaaS systems your business runs on read as tables beside your databases, in place, without a pipeline into a warehouse first. Federation is declared in the model; the engine you choose runs it.
+- **Cross-source queries.** 76 source drivers reach more than 200 kinds of source, Salesforce, ServiceNow and Stripe among them. The SaaS systems your business runs on read as tables beside your databases, in place, without a pipeline into a warehouse first. Federation is declared in the model; the engine you choose runs it.
 - **Metrics.** A metric is a named, governed aggregate. Define it once, and every tool and language that asks for it gets the same definition.
 - **Ontology.** The business glossary is a graph of concepts, their definitions and how they relate. Provisa maps it onto the tables and columns that hold the values. A concept stays a draft until it reaches data. The glossary says what a concept is; a metric says how a number is computed.
 - **Governance.** Six layers of checks are compiled into every query plan, in every language and over every protocol. Every request is recorded the same way: who queried what, as which role, under which policy. Traces, metrics and logs are registered as queryable tables beside your business data.
@@ -39,7 +39,7 @@ From a checkout of this repository you can run any demo on your own machine:
 ./start-ui-install.sh --demo weblogs   # start one, with its tour
 ```
 
-A published demo is pulled as a ready-made bundle; the others run from `demo/named/<name>/`. See [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) for every option.
+A published demo is pulled as a ready-made bundle; the others run from `demo/named/<name>/`. Running from a checkout needs Rust (`cargo`): before the API starts, the start script builds `provisa._encoders`, the Rust encoders pgwire, gRPC and JSON use, with `rust/build-local.sh` when `provisa/_encoders.so` is missing or older than its sources under `rust/`, and stops if `cargo` is missing or the build fails. See [docs/sales-engineer-demos.md](docs/sales-engineer-demos.md) for every option.
 
 ## The model
 
@@ -124,7 +124,7 @@ These are the connection protocols. SQL, GraphQL and Cypher ride over them, and 
 
 ### Data Sources
 
-- **74 connectors, 90+ kinds of source.** The larger number counts the hosted PostgreSQL services (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) and the File Crawler's file formats one by one. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Kaggle, Salesforce, ServiceNow, Stripe and the rest sit behind a single API. Graph and RDF sources stand on equal terms with relational ones.
+- **77 connectors, over 200 data sources.** The generic connectors (code resolvers, GraphQL, OpenAPI and JDBC) reach well past the named ones, as do the hosted PostgreSQL services and the File Crawler's file formats. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Kaggle, Salesforce, ServiceNow, Stripe and the rest sit behind a single API. Graph and RDF sources stand on equal terms with relational ones.
 - **Smart routing.** A single-source query routes direct to the driver (under 100 ms). A multi-source query routes through the engine, on your own cluster or on the embedded workers.
 - **API sources.** Register REST, GraphQL, gRPC, WebSocket or RSS endpoints as queryable tables, with SPARQL helpers included. Cross-source joins between API sources and relational sources need no extra setup.
 - **Remote schema introspection.** Point at any GraphQL, OpenAPI or gRPC endpoint, and its documented operations surface as queryable tables, graph nodes and edges with full governance applied on top.
@@ -439,6 +439,20 @@ Worker count can be changed at any time by editing `~/.provisa/config.yaml` (`fe
 **Shared Redis.** Set `REDIS_URL` on each instance to point at an external Redis. Cache entries from one instance are then available to all of them, which improves hit rates across the cluster.
 
 **Bring your own engine cluster.** Point Provisa at an existing external engine cluster instead of the embedded workers. We recommend this for large-scale or cloud deployments, and [docs/deployment.md](docs/deployment.md) covers the configuration.
+
+## Contributing
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kenstott/provisa?quickstart=1)
+
+Open the repository in the dev container and you can run the tests without any other setup. In VS Code, install the Dev Containers extension and run **Dev Containers: Reopen in Container**. In GitHub, choose **Code → Codespaces → Create codespace**. The container brings the pinned Python, Rust, Go and Node toolchains and Docker for the tests that start their own containers. It is one container: the unit tests run PostgreSQL (with pgvector) embedded, from the pgserver wheel. That wheel has no Linux aarch64 build ([docs/cli.md](docs/cli.md)), so in a local container on Apple silicon the tests that need PostgreSQL cannot start it; Codespaces runs on x86_64 and has it. The first build syncs the Python dependencies, compiles the Rust encoders and installs the UI's packages.
+
+When it finishes, this command runs the unit suite:
+
+```bash
+pytest tests/unit -n auto
+```
+
+For the UI unit tests, run `npm run test:unit` in `provisa-ui`.
 
 ## License
 

@@ -147,6 +147,6 @@
     "factMembers": "Tables membres",
     "factColumns": "Colonnes",
     "grounding_grounded": "Ancré",
-    "grounding_grounded_pending": "Ancré, en attente d'approbation"
+    "grounding_grounded_pending": "Ancré, via un brouillon"
   }
 }

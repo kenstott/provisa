@@ -800,6 +800,7 @@ def report(outcomes: list[Outcome], version: str, filter: str = "") -> dict:
             if o.status in ("passed", "failed")
         ],
         declared,
+        excluded,
     )
     doc = {
         "surface": "cypher",

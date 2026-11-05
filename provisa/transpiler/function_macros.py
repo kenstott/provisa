@@ -43,6 +43,7 @@ from dataclasses import dataclass, field, replace
 
 import sqlglot
 import sqlglot.expressions as exp
+from sqlglot.dialects.dialect import Dialects
 
 from provisa.core.pg_error import END, MARK, PostgresError, raising
 from provisa.core.pg_range import (
@@ -57,6 +58,7 @@ from provisa.transpiler import (
     pg_forms,
     pg_forms_aggregate,
     pg_forms_enum,
+    pg_forms_geometric,
     pg_forms_hash,
     pg_forms_index,
     pg_forms_json,
@@ -64,6 +66,7 @@ from provisa.transpiler import (
     pg_forms_textsearch,
     pg_forms_type_io,
     pg_forms_types,
+    pg_zones,
 )
 from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
 from provisa.transpiler.pg_literals import literal_input as postgres_literal
@@ -76,6 +79,8 @@ _DUCKDB = frozenset({"duckdb"})
 _TRINO = frozenset({"trino", "presto", "athena"})
 _SPARK = frozenset({"spark", "databricks"})
 _EVERY = frozenset({"*"})
+#: Every dialect sqlglot writes but DuckDB: ``_EVERY`` in ``own`` would answer before DuckDB's form.
+_EVERY_BUT_DUCKDB = frozenset(d.value for d in Dialects if d.value) - _DUCKDB - NATIVE
 #: LIKE ignores case by the collation here, and a replay of a dialect that differs refuses the form.
 _NO_CASE_SENSITIVE_LIKE = frozenset({"mysql", "tsql", "oracle", "sqlite"})
 #: No regular expression match, or none sqlglot can write.
@@ -382,7 +387,8 @@ def _snapshot(family: str, visible: str) -> tuple[Macro, ...]:
             strict(
                 "x, s",
                 "BOOLEAN",
-                f"CASE WHEN x < {_XMIN} THEN true WHEN x >= {_XMAX} THEN false "
+                # A txid is read unsigned, so a negative one is past any snapshot's xmax.
+                f"CASE WHEN x < 0 THEN false WHEN x < {_XMIN} THEN true WHEN x >= {_XMAX} THEN false "
                 f"ELSE NOT coalesce(list_contains({_XIP}, x), false) END",
             ),
         ),
@@ -462,17 +468,9 @@ VALUE_FUNCTIONS_OF_THE_SERVER = (
             + " END",
         ),
     ),
-    _macro(
-        "pg_timezone_names",
-        "",
-        "unnest((SELECT list(_z) FROM pg_timezone_names() _z))",
-    ),
-    _macro(
-        "pg_timezone_abbrevs",
-        "",
-        "unnest((SELECT list(_z) FROM (SELECT DISTINCT COLUMNS(_c -> _c <> 'name') "
-        "FROM pg_timezone_names()) _z))",
-    ),
+    # The pinned release's zones, and PostgreSQL's Default abbreviations (pg_zones).
+    _macro("pg_timezone_names", "", f"unnest((SELECT list(_z) FROM ({pg_zones.NAMES}) _z))"),
+    _macro("pg_timezone_abbrevs", "", f"unnest((SELECT list(_z) FROM ({pg_zones.ABBREVS}) _z))"),
     _macro(
         "pg_indexam_has_property",
         "am, prop",
@@ -1240,13 +1238,6 @@ _ENUMS: tuple[Macro, ...] = (
 )
 
 #: A value of a sequence, which only its database can answer: a NULL is strict's.
-_SEQUENCE_REFUSED = raising("0A000", f"'{{}} {pg_forms_types.REFUSED}'")
-
-
-def _anything_beside_null(names: str, function: str) -> str:
-    return strict(names, "BIGINT", _SEQUENCE_REFUSED.format(function))
-
-
 _OPTION = "string_split(_o, '=')"
 _OTHERS: tuple[Macro, ...] = (
     _macro(
@@ -1259,8 +1250,6 @@ _OTHERS: tuple[Macro, ...] = (
         "a, b",
         strict("a, b", "BIGINT", pg_forms.in_range("CAST(a AS HUGEINT) - 1", "BIGINT")),
     ),
-    _macro("currval", "seq", _anything_beside_null("seq", "currval")),
-    _macro("nextval", "seq", _anything_beside_null("seq", "nextval")),
     _macro(
         "satisfies_hash_partition",
         "parent, modulus, remainder, value",
@@ -1575,7 +1564,12 @@ _ROWS: tuple[Macro, ...] = (
     Macro(
         "bit_length",
         ("value",),
-        {_EVERY: Pg("8 * OCTET_LENGTH(value)")},
+        {
+            # A bit string's length is its bits; a text's and a bytea's, their bytes times 8.
+            _DUCKDB: "CASE WHEN typeof(value) = 'BIT' THEN bit_length(TRY_CAST(value AS BIT)) "
+            "ELSE 8 * OCTET_LENGTH(value) END",
+            _EVERY: Pg("8 * OCTET_LENGTH(value)"),
+        },
         own={_TRINO: "8 * length(to_utf8(value))", _CLICKHOUSE: "8 * length(value)"},
     ),
     _pg("quote_literal", "value", _PG_QUOTED_LITERAL),
@@ -1659,6 +1653,31 @@ _ROWS: tuple[Macro, ...] = (
                 ("value", "pattern", "start", "n", "flags", "subexpr"),
                 "start, n, flags, subexpr",
                 {frozenset({"snowflake", "oracle"}): MAPPED},  # the others take no group
+            ),
+        )
+    ),
+    *(
+        # sqlglot's DuckDB regexp_instr reads no endoption, flags or subexpression. Every other
+        # dialect keeps sqlglot's own, and the federation engines their refusal (engine_refusals).
+        Macro(
+            "regexp_instr",
+            params,
+            {_DUCKDB: f"provisa_regexp_instr(value, pattern, {rest})"},
+            {_EVERY_BUT_DUCKDB: MAPPED},
+            differs_on=_TRINO | _CLICKHOUSE,
+        )
+        for params, rest in (
+            (("value", "pattern"), "1, 1, 0, '', 0"),
+            (("value", "pattern", "start"), "start, 1, 0, '', 0"),
+            (("value", "pattern", "start", "n"), "start, n, 0, '', 0"),
+            (("value", "pattern", "start", "n", "endoption"), "start, n, endoption, '', 0"),
+            (
+                ("value", "pattern", "start", "n", "endoption", "flags"),
+                "start, n, endoption, flags, 0",
+            ),
+            (
+                ("value", "pattern", "start", "n", "endoption", "flags", "subexpr"),
+                "start, n, endoption, flags, subexpr",
             ),
         )
     ),
@@ -1899,8 +1918,27 @@ REFUSED_ROWS = frozenset(
         ("exact_avg_interval", 1),
         ("current_query", 0),
         *((name, len(params.split(", "))) for name, params in pg_forms_hash.COMPOSITES),
+        # A shape's name of one argument whose type the statement does not say: no overload.
+        *((name, 1) for name, _ in pg_forms_geometric.BARE),
     }
 )
+
+
+def _geometric() -> tuple[Macro, ...]:
+    """Each geometric row, and its plain name, on each engine of pg_forms_geometric."""
+    rows: dict[tuple[str, str], dict[frozenset[str], str]] = {}
+    for engine in pg_forms_geometric.ENGINES:
+        for key, form in pg_forms_geometric.forms(engine).items():
+            rows.setdefault(key, {})[frozenset({engine.name})] = form
+    plain = {
+        alias: rows[next(key for key in rows if key[0] == row)]
+        for alias, row in pg_forms_geometric.ALIASES.items()
+    }
+    bare = (Macro(n, (p,)) for n, p in pg_forms_geometric.BARE)
+    return (
+        *bare,
+        *(Macro(n, tuple(p.split(", ")), f) for (n, p), f in {**rows, **plain}.items()),
+    )
 
 
 _ROWS += (
@@ -1915,7 +1953,7 @@ _ROWS += (
 )
 #: A call's name and argument count -> its overload: the one table.
 MACROS: dict[tuple[str, int], Macro] = {
-    (m.name, len(m.params)): _with_replay(m) for m in (*_ROWS, *_EXACT_ROWS)
+    (m.name, len(m.params)): _with_replay(m) for m in (*_ROWS, *_EXACT_ROWS, *_geometric())
 }
 #: (function, argument count, the type the statement says of its first argument) -> its row:
 #: PostgreSQL's own name for the overload. The operation is chosen by the type, not the engine's.
@@ -1952,6 +1990,7 @@ OVERLOADS: dict[tuple[str, int, str], str] = {
     ("trunc", 1, "double precision"): "dtrunc",
     **{(name, 1, "decimal"): f"numeric_{name}" for name in ("ceil", "floor", "round", "trunc")},
     ("md5", 1, "bytea"): "md5_bytea",
+    **pg_forms_geometric.OVERLOADS,
     **pg_forms_hash.OVERLOADS,
     ("int4", 1, "bit"): "bittoint4",
     ("int8", 1, "bit"): "bittoint8",
@@ -2003,10 +2042,11 @@ _CALLED = {
     "regexp_replace_at": "regexp_replace",
     "pg_to_hex": "to_hex",
 }
-#: How a statement already written through sqlglot spells a row's call.
+#: How a statement already written through sqlglot spells a row's call, and how a client's spells
+#: one pg_syntax reads by its routine's name (overlaps, overlaps_timestamp's).
 _SPELLED = {
     "encode", "substring", "regexp_replace", "array_concat", "to_number",
-    "date_trunc", "substr", "left", "right",
+    "date_trunc", "substr", "left", "right", "overlaps",
 }  # fmt: skip
 _NAMES = (
     frozenset(name for name, _ in MACROS)
@@ -2059,9 +2099,43 @@ _ANSWERED_BY_A_NULL = frozenset(m.name for m in _EXACT_ROWS)
 _COLLATED = frozenset({"max_collated", "min_collated"})
 
 
+def _bucket_said(value: exp.Expr) -> str | None:
+    """What width_bucket's resolution reads of an argument; an untyped number's literal says it."""
+    node = value.unnest()
+    node = node.this if isinstance(node, exp.Neg) else node
+    written = isinstance(node, exp.Literal) and not node.is_string and not node.is_int
+    return said_type(value) or ("decimal" if written else None)
+
+
+def _bucket_row(args: list[exp.Expr]) -> str:
+    """width_bucket's row: PostgreSQL picks numeric or float8 from all three values, and float8 of
+    integers. What no statement says of a column, the engine's type answers in the row of the name."""
+    if len(args) == 2:
+        nested = isinstance(args[1].unnest(), exp.Array) and any(
+            isinstance(item, exp.Array) for item in args[1].unnest().expressions
+        )
+        return (
+            pg_forms_geometric.OVERLOADS[("width_bucket", 2, pg_forms_geometric.NESTED)]
+            if (nested)
+            else "width_bucket"
+        )
+    said = {_bucket_said(a) for a in args[:3]}
+    if said & {"double precision", "real"}:
+        return "width_bucket_float8"
+    if any(s and s.startswith("decimal") for s in said if s):
+        told = all(a.find(exp.Column) is None for a in args[:3]) or any(
+            (said_type(a) or "").startswith("decimal") for a in args[:3]
+        )
+        if told:
+            return "width_bucket_numeric"
+    return "width_bucket" if any(a.find(exp.Column) for a in args[:3]) else "width_bucket_float8"
+
+
 def overload(name: str, args: list[exp.Expr]) -> str:
     """The row a call reads: the overload of the type its first argument is said to be, else the
     row of its own name."""
+    if name == "width_bucket" and len(args) in (2, 4):
+        return _bucket_row(args)
     said = said_type(args[0]) if args else None
     if said is None:
         return name
@@ -2278,6 +2352,9 @@ def _fractions(argument: exp.Expr) -> list[float | None]:
         node = node.this.unnest()
     if isinstance(node, exp.Array):
         return [value for item in node.expressions for value in _fractions(item)]
+    if isinstance(node, exp.Literal) and node.is_string:  # an array's text: '{0.25,0.5}'
+        items = node.this.strip().removeprefix("{").removesuffix("}").split(",")
+        return [None if i.strip().upper() == "NULL" else float(i) for i in items if i.strip()]
     if isinstance(node, exp.Null):
         return [None]
     if isinstance(node, exp.Neg):
@@ -2290,24 +2367,33 @@ def _fractions(argument: exp.Expr) -> list[float | None]:
 #: DuckDB takes a negative fraction as its sort descending, and 0 has none: a smallest positive
 #: fraction is the same row.
 _FIRST_DESCENDING = 5e-324
-_IN_TIME_ALONE = (
-    "CASE WHEN bool_or(date_part('year', {k}) <> 0 OR date_part('month', {k}) <> 0 "
-    "OR date_part('day', {k}) <> 0) THEN "
-    + raising("0A000", f"'percentile_cont {pg_forms_types.REFUSED}'")
-    + " ELSE {answer} END"
-)
 
 
-def _of_intervals(node: exp.WithinGroup, array: bool) -> exp.Expr:
-    """DuckDB's percentile_cont has no interval: it interpolates microseconds, which is PostgreSQL's
-    answer where neither end holds a field that does not carry into hours."""
+def _of_intervals(node: exp.WithinGroup, fractions: list[float], array: bool) -> exp.Expr:
+    """DuckDB's percentile_cont of intervals interpolates microseconds, carrying months and days
+    into hours: as PostgreSQL's, each fraction's two neighbours among the keys sorted as
+    PostgreSQL compares intervals, and interval_lerp between them where they differ."""
     ordered = node.expression.expressions[0]
     key = ordered.this.sql(dialect="duckdb")
-    ordered.set("this", sqlglot.parse_one(f"epoch({key}) * 1000000", read="duckdb"))
-    read = "to_microseconds(CAST(round({}) AS BIGINT))"
-    answer = f"list_transform(_q, _m -> {read.format('_m')})" if array else read.format("_q")
-    written = sqlglot.parse_one(_IN_TIME_ALONE.format(k=key, answer=answer), read="duckdb")
-    return written.transform(lambda n: node.copy() if n == exp.column("_q") else n)
+    direction = " DESC" if ordered.args.get("desc") else ""
+    place = "(_f * (_n - 1))"
+    lo = f"_k[CAST(floor({place}) AS BIGINT) + 1]"
+    hi = f"_k[CAST(ceil({place}) AS BIGINT) + 1]"
+    each = (
+        f"CASE WHEN ceil({place}) = floor({place}) THEN {lo} "
+        f"ELSE {pg_forms.interval_lerp(lo, hi, f'{place} - floor({place})')} END"
+    )
+    said = ", ".join(map(repr, fractions))
+    answer = (
+        f"list_transform([{said}], _f -> {each})" if array else pg_forms.bound("_f", said, each)
+    )
+    written = pg_forms.bound(
+        "_k",
+        f"list({key} ORDER BY {pg_forms.interval_span(key)}{direction}) "
+        f"FILTER (WHERE {key} IS NOT NULL)",
+        pg_forms.bound("_n", f"count({key})", f"CASE WHEN _n = 0 THEN NULL ELSE {answer} END"),
+    )
+    return sqlglot.parse_one(written, read="duckdb")
 
 
 #: The rows' keys, sorted, bound to ``_s``, and each fraction, bound to ``_f`` where there are
@@ -2402,20 +2488,22 @@ def _percentile(node: exp.WithinGroup, dialect: str) -> exp.Expr:
     if dialect in _TRINO or dialect == "clickhouse":
         exact = _exact(node, known, array, dialect)
         return exp.Case(ifs=[exp.If(this=exp.false(), true=exact)]) if nothing else exact
+    said = said_type(ordered.this) == "interval"
+    if said and isinstance(node.this, exp.PercentileCont) and dialect in _DUCKDB:
+        written = _of_intervals(node, known, array)
+        return exp.Case(ifs=[exp.If(this=exp.false(), true=written)]) if nothing else written
     if dialect in _DUCKDB and ordered.args.get("desc") and not nothing:
         known = [fraction or _FIRST_DESCENDING for fraction in known]
     numbers = [exp.Literal.number(repr(fraction)) for fraction in known]
     node.this.set("this", exp.Array(expressions=numbers) if array else numbers[0])
-    said = said_type(ordered.this) == "interval"
-    if said and isinstance(node.this, exp.PercentileCont) and dialect in _DUCKDB:
-        written = _of_intervals(node, array)
-    else:
-        written = node
+    written = node
     return exp.Case(ifs=[exp.If(this=exp.false(), true=written)]) if nothing else written
 
 
 #: The functions in FROM with columns of their own, which DuckDB's unnest of a struct does not make.
-_ROWS_OF_COLUMNS = frozenset({"pg_options_to_table", "aclexplode"})
+_ROWS_OF_COLUMNS = frozenset(
+    {"pg_options_to_table", "aclexplode", "pg_timezone_names", "pg_timezone_abbrevs"}
+)
 
 
 #: byteain's escapes: a doubled backslash, or a byte in three octal digits.
@@ -2474,6 +2562,9 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return "timestamp", [a for a in (node.this, node.args.get("zone")) if a is not None]
     if isinstance(node, exp.ToNumber):
         return "to_number", [node.this, node.args["format"]]
+    if isinstance(node, exp.WidthBucket):
+        at = ("this", "min_value", "max_value", "num_buckets", "threshold")
+        return "width_bucket", [node.args[k] for k in at if node.args.get(k) is not None]
     if isinstance(node, exp.Length):  # an overload of a type: length(text) has no row
         return "length", [node.this]
     if isinstance(node, exp.Cast) and isinstance(node.this, exp.IntDiv):  # sqlglot's reading of div
@@ -2512,6 +2603,9 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     if isinstance(node, exp.RegexpSubstr):
         keys = ("this", "expression", "position", "occurrence", "parameters", "group")
         return "regexp_substr", [node.args[k] for k in keys if node.args.get(k) is not None]
+    if isinstance(node, exp.RegexpInstr):
+        keys = ("this", "expression", "position", "occurrence", "option", "parameters", "group")
+        return "regexp_instr", [node.args[k] for k in keys if node.args.get(k) is not None]
     return None
 
 

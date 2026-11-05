@@ -212,6 +212,22 @@
     "reasoner": "Reasoner",
     "reasonerNone": "Keiner",
     "axioms": "OWL-Axiome",
-    "axiomsHint": "Turtle, RDF/XML, funktionale oder Manchester-Syntax. Eine Tabelle, deren Abfrage eine einzelne IRI ist, etwa <http://example.org/kyc#controls>, liest, was daraus folgt."
+    "axiomsHint": "Turtle, RDF/XML, funktionale oder Manchester-Syntax. Eine Tabelle, deren Abfrage eine einzelne IRI ist, etwa <http://example.org/kyc#controls>, liest, was daraus folgt.",
+    "qbRealmId": "Firmen-ID (Realm-ID)",
+    "qbRealmIdHint": "Die Nummer der QuickBooks-Firma, die gelesen wird. Intuit zeigt sie beim Verbinden Ihrer App und in den Kontoeinstellungen der Firma an.",
+    "qbRealmIdInvalid": "Die Firmen-ID ist eine Zahl, zum Beispiel 9341453456789012",
+    "qbEnvironment": "Sandbox oder Produktion",
+    "qbEnvironmentHint": "Eine Sandbox-Firma ist eine Testfirma aus Ihrem Intuit-Entwicklerkonto.",
+    "qbSandbox": "Sandbox (Testfirma)",
+    "qbProduction": "Produktion (echte Firma)",
+    "qbClientId": "Client-ID",
+    "qbClientIdHint": "Aus Ihrer App auf developer.intuit.com, unter Keys and credentials.",
+    "qbClientSecret": "Client-Secret",
+    "qbClientSecretHint": "Von derselben Seite wie die Client-ID. Wird im Secrets-Tresor aufbewahrt.",
+    "qbRefreshToken": "Refresh-Token",
+    "qbRefreshTokenHint": "Erlaubt Provisa, die Firma zu lesen. Melden Sie sich mit QuickBooks an, um ihn zu erhalten, oder fügen Sie einen aus dem OAuth 2.0 Playground von Intuit mit dem Accounting-Scope ein. QuickBooks ersetzt ihn bei jeder Verwendung, und Provisa behält den neuesten. Ein hier neu eingegebener ersetzt beim Speichern den behaltenen.",
+    "qbSignIn": "Mit QuickBooks anmelden",
+    "qbSignedIn": "Bei Firma {{realm}} angemeldet. Speichern Sie die Quelle, um dies zu behalten.",
+    "qbSignInFailed": "Die Anmeldung konnte nicht abgeschlossen werden."
   }
 }

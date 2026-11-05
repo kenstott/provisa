@@ -158,16 +158,15 @@ async def _persist_source(  # REQ-307, REQ-1923
     operator typed) and resolved where it is used; the namespace, the auth scheme and the brand ride in
     ``federation_hints``. ``cache_ttl`` is the source's cache TTL when the caller declared one: the
     clock its landed tables refresh on (REQ-1907); None leaves the row's as it is. ``setup``:
-    the values a brand's setup was given, kept so the source's form shows them again."""
+    the values a brand's setup was given, kept in ``brand_setup`` (Source.brand_setup) so the
+    source's form shows them again."""
     from provisa.core.repositories.source import owned_if_reconnected
-    from provisa.graphql_remote.brands import BRAND_HINT, NAMESPACE_HINT, SETUP_HINT, setup_hint
+    from provisa.graphql_remote.brands import BRAND_HINT, NAMESPACE_HINT
 
     secret = (auth or {}).get("token") or (auth or {}).get("password") or ""
     hints: dict[str, object] = {NAMESPACE_HINT: namespace, **_auth_hints(auth)}
     if brand_id:
         hints[BRAND_HINT] = brand_id
-    if setup:
-        hints[SETUP_HINT] = setup_hint(setup)
     row = {
         "id": source_id,
         "type": "graphql_remote",
@@ -179,6 +178,7 @@ async def _persist_source(  # REQ-307, REQ-1923
         "path": url,
         "description": description,
         "federation_hints": hints,
+        "brand_setup": setup or {},
         "password_ref": secret or "",  # as entered: a value, or a reference the operator typed
     }
     if cache_ttl is not None:

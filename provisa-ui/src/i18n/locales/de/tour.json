@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Eine Quelle registrieren",
-        "description": "➕ Neue Verbindungen beginnen mit dieser Schaltfläche: PostgreSQL, Snowflake, MongoDB, eine REST-API, eine CSV und die übrigen der 74 Konnektoren."
+        "description": "➕ Neue Verbindungen beginnen mit dieser Schaltfläche: PostgreSQL, Snowflake, MongoDB, eine REST-API, eine CSV und die übrigen der 77 Konnektoren."
       },
       "step3": {
-        "title": "74 Quellentypen, 14 Kategorien",
+        "title": "77 Quellentypen, 14 Kategorien",
         "description": "Eine Auswahl listet jeden Typ, nach Kategorie gruppiert: <strong>Abonnements, RDBMS, Cloud-Data-Warehouse, Analytics, Data Lake, NoSQL, Code-Resolver, Graph, Dateien, API, Streaming, Unternehmen, Datenqualität, Sonstige</strong>. Suchen Sie nach Name oder Alias oder grenzen Sie mit den Kategorie-Chips ein. Jeder Typ zeigt sein Logo und ein Reichweiten-Symbol: ⚡ direkt vor Ort gelesen, oder ein Kopie-Symbol, wo Provisa ein aktualisiertes Replikat liest.<p>Wählen Sie einen aus, tragen Sie die Verbindung ein, speichern Sie.</p>"
       },
       "stepBuildSource": {
@@ -933,16 +933,32 @@
         "description": "Sie haben die eigenen Daten des Versicherers gesehen, nach County und Erntejahr mit öffentlichen Schäden, Wetter- und Ertragsdaten abgeglichen, alles in einem regulierten Modell. Eine View beantwortet, ob das Wetter die Schäden erklärt, in SQL, GraphQL und REST. Das Notebook misst es: Das Wetter erklärt 54 % der Schwankung der Schadenquote, und über den heutigen Bestand lässt eine Saison wie 2012 eine Schadenquote von 1,75 erwarten."
       },
       "retailScenario": {
-        "title": "Ein Konzern, zwei Regionen",
+        "title": "Eine Geschichte aus zwei Regionen",
         "description": "Ein Einzelhandelskonzern führt eine EU- und eine US-Tochtergesellschaft als ein Unternehmen. Geht das, ohne gegen die GDPR zu verstoßen? Jede Tochtergesellschaft hat ihre eigene Datenbank: Dies ist die der EU, mit ihren Treuekunden, deren Marketing-Einwilligung, Bestellungen, Mitarbeitenden und der Post, die Mitarbeitende aus dem Konzern hinaus senden."
       },
+      "retailPlatformRegions": {
+        "title": "Regionen beginnen in einer Konfiguration",
+        "description": "Die Konfiguration der Plattform deklariert die Regionen, hier die EU und die US, und gewährt sie der Organisation. Jede Region hat ihre eigene Datenverarbeitung: ihre eigene Engine und ihre eigenen Speicher. Der Zweck der EU ist Datenresidenz, für Kundendaten, die in der Europäischen Union bleiben müssen. In dieser Sandbox können Sie diese Seite lesen, aber nicht ändern."
+      },
+      "retailPurposes": {
+        "title": "Was ein Zweck aussagt",
+        "description": "Die Legende erklärt jeden Zweck. Ein Zweck sagt, warum es eine Region gibt. Er verschiebt keine Daten und entscheidet nicht, wer sie liest. Das tun zwei Ebenen, und die Tour zeigt beide: Homing, die Regeln der Engine dazu, wo Daten liegen, und Sicherheit, die Regeln des Data Stewards dazu, wer was liest."
+      },
+      "retailOrgRegions": {
+        "title": "Die Regionen und Speicher der Organisation",
+        "description": "Die Organisation hält beide Regionen. Jede Zeile nennt die Speicher, die dort genutzt werden: die Engine der Region und wo ihre Replikate, Ansichten, ihr Cache, ihr Build-Zustand und ihr Protokoll liegen. EU-Daten werden mit den eigenen Speichern der EU verarbeitet."
+      },
+      "retailEngines": {
+        "title": "Eine Engine pro Region",
+        "description": "Föderation hat einen Tab für jede Region, und jede Region betreibt ihre eigene Engine. Eine Konfiguration ergibt also zwei Datenverarbeitungsumgebungen. Sie sind auf dem US-Knoten. Er liest EU-Daten nur über den Speicher der EU, nie aus einer eigenen Kopie."
+      },
       "retailRegions": {
-        "title": "Eine Definition jeder Region",
-        "description": "Die Datenbank der US-Tochtergesellschaft, beheimatet in der Region US. Das Modell deklariert beide Regionen und legt einmal fest, wo jede Tabelle liegt und welche Ansichten wo erstellt werden. Ein zweiter Provisa-Knoten läuft in der EU: Er kopiert die EU-Tabellen in den eigenen Speicher der EU und erstellt dort die EU-Ansichten. Sie sind auf dem US-Knoten, der EU-Daten nur aus diesem EU-Speicher liest, sodass jede grenzüberschreitende Regel an einer Stelle angewendet wird."
+        "title": "Homing: Jede Quelle nennt ihre Heimat",
+        "description": "Die Datenbank der US-Tochtergesellschaft ist in der Region US beheimatet, die der EU-Tochtergesellschaft in der EU. Homing ist die Regel der Engine dazu, wo Daten liegen. Die Replikate und der Cache einer beheimateten Tabelle bleiben in ihrer Heimatregion, und andere Regionen erreichen sie nur über diese Region."
       },
       "retailEuCustomers": {
         "title": "Eine EU-Tabelle, beheimatet in der EU",
-        "description": "Die EU-Kunden. Die Tabelle nennt die EU als ihre Region: Ihre Zeilen werden nur in den Speicher der EU kopiert und nur dort berechnet. Leser anderswo erhalten sie über die Ansichten der EU oder gar nicht."
+        "description": "Die EU-Kunden. Die Region der Tabelle ist die EU, daher liegen ihre Replikate und ihr Cache nur im Speicher der EU. Homing entscheidet, wo die Zeilen liegen. Es entscheidet nicht, wer sie lesen darf. Das ist die nächste Ebene."
       },
       "retailRequests": {
         "title": "Anfragen betroffener Personen",
@@ -953,12 +969,12 @@
         "description": "Eine Anfrage wird über die E-Mail-Adresse mit den Kunden jeder Tochtergesellschaft verknüpft. So findet eine Anfrage dieselbe Person in beiden."
       },
       "retailAsAnalyst": {
-        "title": "Als Konzernanalyst",
-        "description": "Als Nächstes wechselt die Rollenauswahl zu <strong>group_analyst</strong>, der in der Region US am Konzernreporting arbeitet, sodass SQL und GraphQL danach als group_analyst laufen."
+        "title": "Die Regeln des Data Stewards, als Konzernanalyst",
+        "description": "Die zweite Ebene ist Sicherheit: Die Regeln des Data Stewards entscheiden, was jeder Leser erhält, nach Rolle und nach der Region des Lesers. Sie werden in der Heimatregion angewendet, bevor etwas sie verlässt. Als Nächstes wechselt die Rollenauswahl zu <strong>group_analyst</strong>, der in den US an der Konzernberichterstattung arbeitet, sodass SQL und GraphQL danach als group_analyst laufen."
       },
       "retailGroupView": {
         "title": "Konzernreporting, EU-Kunden pseudonymisiert",
-        "description": "Jeder Treuekunde des Konzerns. US-Kunden erscheinen unverändert; EU-Kunden erscheinen unter einem Pseudonym, das die EU berechnet hat, ohne Name oder Adresse. Der EU-Teil wurde aus dem Speicher der EU gelesen, und der Eintrag zu dieser Abfrage nennt die EU als die Region, die geantwortet hat."
+        "description": "Jeder Treuekunde des Konzerns. US-Kunden erscheinen, wie sie sind. EU-Kunden erscheinen unter einem Pseudonym, weil die Regel des Stewards besagt, dass ein Leser außerhalb der EU keinen Namen und keine Adresse erhält. Die EU hat diese Regel angewendet, bevor ihre Zeilen sie verließen, und das Protokoll dieser Abfrage nennt die EU als die Region, die geantwortet hat."
       },
       "retailGroupGraphql": {
         "title": "Dasselbe in GraphQL",
@@ -970,7 +986,7 @@
       },
       "retailAudience": {
         "title": "Nur Kunden, die eingewilligt haben",
-        "description": "Der SQL-Explorer läuft jetzt als <strong>marketing_eu</strong>. Das EU-Marketing liest die EU-Kunden, die in Marketing eingewilligt haben, und nur diese. Die Ansicht wird in der EU aus EU-Zeilen erstellt."
+        "description": "Der SQL-Explorer läuft jetzt als <strong>marketing_eu</strong>. Die Regel des Stewards lässt das EU-Marketing die EU-Kunden lesen, die dem Marketing zugestimmt haben, und nur diese. Die Ansicht wird in der EU aus EU-Zeilen erstellt."
       },
       "retailAsDpo": {
         "title": "Als Datenschutzbeauftragter",
@@ -998,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "Der Absender, offengelegt in der EU",
-        "description": "Dieselbe Warteschlange. Die Maskierungsliste der Absenderspalte legt den Absender nur einem Prüfer offen, der zusätzlich region__eu hat; alle anderen lesen ihn zurückgehalten. Es ist eine einzige Berechtigung, reviewer und region__eu, ohne eine eigene Rolle für die Kombination."
+        "description": "Dieselbe Warteschlange. Die Maske des Stewards auf der Absenderspalte zeigt den Absender nur einem Prüfer, dessen zugewiesene Region die EU ist (region__eu). Alle anderen lesen ihn zurückgehalten. Was ein Leser erhält, hängt von seiner Region wie von seiner Rolle ab, und für die Kombination wurde keine Rolle angelegt."
       },
       "retailAsAdmin": {
         "title": "Zurück zu jeder Rolle",
@@ -1014,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "Was Sie gesehen haben",
-        "description": "Ein Modell hat beide Regionen definiert: wo jede Tabelle liegt, welche Ansichten wo erstellt werden und wer was liest. Das Konzernreporting las EU-Kunden pseudonymisiert, das EU-Marketing las nur einwilligende Kunden, und ein Auskunftsersuchen und eine Löschung waren jeweils eine Abfrage. Die Insider-Prüfung legte einen Absender nur in der EU offen, und jedes Lesen steht in einem Protokoll."
+        "description": "Eine Konfiguration gewährte zwei Regionen, jede mit eigener Engine und eigenen Speichern: zwei Datenverarbeitungsumgebungen. Homing hielt die EU-Tabellen, ihre Replikate und ihren Cache in der EU. Die Regeln des Data Stewards entschieden, was jeder Leser erhielt, nach Rolle und nach der Region des Lesers, und die EU wendete sie an, bevor etwas sie verließ. Die Konzernberichterstattung las EU-Kunden pseudonymisiert, das EU-Marketing las nur zustimmende Kunden, Auskunft und Löschung waren jeweils eine Abfrage, der Absender wurde nur einem Prüfer in der EU gezeigt, und jeder Lesezugriff steht in einem Protokoll."
       },
       "provisioningScenario": {
         "title": "Worum es in dieser Demo geht",
@@ -1374,7 +1390,11 @@
       },
       "testdataCoverageNow": {
         "title": "Jede sensible Spalte ist abgedeckt",
-        "description": "Dieselbe Prüfung, jetzt aus dem Modell gelesen: jede sensible Spalte, ihre Tags und ob ein Fake sie abdeckt. Alle sind abgedeckt, also öffnet sich Pre-Prod und antwortet."
+        "description": "Sensitive Abdeckung ist ein Standardbericht auf der Seite Berichte: jede sensible Spalte, ihre Tags und ob ein Fake sie abdeckt, jetzt aus dem Modell gelesen. Alle sind abgedeckt, also öffnet sich Pre-Prod und antwortet."
+      },
+      "testdataPollyProposes": {
+        "title": "Ein Fake, aus dem Profil vorgeschlagen",
+        "description": "Polly wird gefragt, welchen Fake es für customers.email vorschlagen würde. Es liest den letzten Profillauf der Spalte, sieht, dass die Werte E-Mail-Adressen sind, und schlägt den E-Mail-Fake vor. Das Modell deklariert bereits einen, also prüft der Vorschlag diese Wahl an den Daten. Gespeichert wird nichts, bis jemand es so wählt."
       },
       "testdataProd": {
         "title": "Produktion: die echten Zeilen",
@@ -1755,6 +1775,71 @@
       "agentdataConnect": {
         "title": "Ihr eigener Agent, derselbe Server",
         "description": "Dies ist der Server, den der Agent des Explorers verwendet hat. Fügen Sie diese Konfiguration in Claude Desktop ein oder richten Sie einen beliebigen MCP-Client auf die URL, und Ihr eigener Agent erhält dieselben geregelten Tools, an dieselben Regeln gebunden."
+      },
+      "banksecrecyScenario": {
+        "title": "Eine Bank liest ein US-Gesetz",
+        "description": "Eine Regionalbank muss nach dem Bank Secrecy Act Bargeld über 10.000 $ melden. Diese Demo liest die Vorschrift selbst von ihrer öffentlichen Adresse, findet ihre Begriffe, verankert sie in den Daten der Bank und fragt dann nach Konzept: Welches Bargeld braucht einen Currency Transaction Report, und wer stückelt? Sie beginnt mit dem Kernsystem der Bank, live dort gelesen, wo es liegt."
+      },
+      "banksecrecyCash": {
+        "title": "Bargeld an den Schaltern",
+        "description": "Jede Bareinzahlung und -auszahlung am Schalter: das Konto, die Filiale, der Kassierer, die Uhrzeit und der Geschäftstag, auf den sie gebucht wurde. Bargeld nach 17:00 Uhr wird auf den nächsten Geschäftstag gebucht."
+      },
+      "banksecrecyOnBehalf": {
+        "title": "In wessen Auftrag",
+        "description": "Jede Transaktion nennt, wer am Schalter stand und wessen Bargeld es ist. Bringt ein Mitarbeiter oder Angehöriger Bargeld, zählt es zur Summe des Kontoinhabers, so wie das Gesetz es zählt."
+      },
+      "banksecrecyFindTerms": {
+        "title": "Das Gesetz von seiner öffentlichen Adresse lesen",
+        "description": "Begriffe finden liest ein Dokument von seiner Adresse, hier 31 CFR 1010.311 über die offizielle API von eCFR. Ein Scan fragt das KI-Modell zu jeder Passage und dauert Minuten, daher hat die Tour diesen gestoppt. Derselbe Scan lief beim Erstellen der Demo.",
+        "acting": "Die Adresse der Vorschrift eingeben und einen Scan starten"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "Die Begriffe der Vorschrift",
+        "description": "Der vorab gelaufene Scan: jeder Kandidatenbegriff mit der Passage, aus der er stammt. Ein Finanzinstitut meldet jede Bargeldtransaktion über 10.000 $. Begriffe, die das Glossar schon hat, werden zum Zusammenführen angeboten."
+      },
+      "banksecrecyAggregation": {
+        "title": "Die Aggregationsregel",
+        "description": "Aus 31 CFR 1010.313 stammen mehrere Transaktionen und im Auftrag von: Bargeld durch oder für eine Person, über 10.000 $ an einem Geschäftstag, gilt als eine einzige Transaktion, und jede Filiale gehört zu einem Institut. Nachteinzahlungen zählen am nächsten Geschäftstag."
+      },
+      "banksecrecyDefinitions": {
+        "title": "Die verwendeten Definitionen",
+        "description": "Die Begriffe der Vorschrift sind in 31 CFR 1010.100 definiert: Person, Geschäftstag, Finanzinstitut, Structuring. Jede Definition ist eine eigene Passage, daher kommt jeder Begriff mit dem Absatz, der ihn definiert."
+      },
+      "banksecrecyLibrary": {
+        "title": "In der Referenzbibliothek behalten",
+        "description": "Der Build der Demo hat jedes gescannte Dokument in der Referenzbibliothek behalten, also bleibt die Vorschrift als verwaltete Referenz beim Modell: Polly und die Agenten der Organisation zitieren ihre Passagen in ihren Antworten."
+      },
+      "banksecrecyGrounded": {
+        "title": "Die Begriffe des Gesetzes, verankert",
+        "description": "Transaction in currency ist der Begriff der Vorschrift. Die Bargeldtransaktion der Bank ist eine Art davon, also erreicht der Begriff die Tabelle cash_transactions. Person erreicht so die Kunden, und ein Finanzinstitut erreicht die Filialen der Bank."
+      },
+      "banksecrecyBusinessDay": {
+        "title": "Geschäftstag, auf seiner Spalte",
+        "description": "Der Geschäftstag der Vorschrift ist der Tag, an dem eine Bank eine Transaktion auf das Kundenkonto bucht. Die Spalte business_day der Bank enthält genau das, also hält der Begriff die Spalte selbst."
+      },
+      "banksecrecyTellerAsks": {
+        "title": "Welches Bargeld braucht eine Meldung? Als Kassierer",
+        "description": "Gefragt nach Konzept: Bargeld ein oder aus über 10.000 $ durch oder für eine Person an einem Geschäftstag, mehrere Transaktionen als eine gezählt über Konten und Filialen. Ein Kassierer sieht die fälligen Meldungen mit maskierten Kontonummern und Steuernummern."
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "Dieselbe Frage, als Compliance",
+        "description": "Der Compliance-Beauftragte stellt dieselbe Frage und sieht Kontonummern und Steuernummern vollständig, wie die Meldung sie braucht. Dana Whitmores Summe enthält Bargeld, das jemand anderes für sie eingezahlt hat."
+      },
+      "banksecrecyStructuring": {
+        "title": "Wer stückelt?",
+        "description": "Einzahlungen knapp unter 10.000 $, dreimal oder öfter, über Filialen und Tage. Keine davon brauchte allein eine Meldung. Victor Hale ging in einer Woche zu drei Filialen, und Marcus Reeds zwei Einzahlungen an einem Tag brauchten zusammen eine Meldung. Nur Compliance sieht diese Ansicht."
+      },
+      "banksecrecyExample": {
+        "title": "Dieselbe Antwort in GraphQL",
+        "description": "Die fälligen Meldungen als API-Aufruf. Jede Schnittstelle liest dieselbe verwaltete Ansicht mit denselben Masken für dieselbe Rolle."
+      },
+      "banksecrecyPollyAsks": {
+        "title": "In einfachen Worten gefragt",
+        "description": "Compliance fragt Polly in einfachen Worten: Welches Bargeld braucht einen Currency Transaction Report? Polly findet die verwaltete Ansicht, die das Konzept erreicht, und antwortet aus ihr, und nennt so dieselben Personen, die SQL und GraphQL geliefert haben. Niemand musste den Namen der Ansicht kennen."
+      },
+      "banksecrecyRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Das Gesetz wurde von seiner öffentlichen Adresse gelesen, seine Begriffe gefunden und in den Tabellen der Bank verankert, und die Bank fragte nach Konzept. Der Currency Transaction Report erreicht die Daten über seine mehreren Transaktionen, und jede Rolle sah, was sie sehen darf."
       }
     },
     "status": {
@@ -1825,7 +1910,7 @@
         "summary": "Erklärt das Wetter die Schäden im Portfolio eines Ernteversicherers? Seine eigenen Betriebe, Policen und Schadensfälle, nach County und Erntejahr mit den Schäden des USDA nach Ursache, NOAAs Wetter und NASS' Erträgen verknüpft, beantworten es in SQL, GraphQL und REST."
       },
       "retail": {
-        "title": "Ein Konzern, zwei Regionen",
+        "title": "Eine Geschichte aus zwei Regionen",
         "summary": "Ein Einzelhandelskonzern mit einer EU- und einer US-Tochtergesellschaft, als ein Unternehmen unter der GDPR geführt: EU-Daten bleiben in der EU, das Konzernreporting liest sie pseudonymisiert, und Auskunft, Löschung, Insider-Prüfung und Audit sind jeweils eine Abfrage."
       },
       "provisioning": {
@@ -1879,6 +1964,10 @@
       "agentdata": {
         "title": "Geben Sie einem Agenten Ihre Daten",
         "summary": "Kann ein KI-Agent die Bestelldaten eines Händlers bekommen und auf das beschränkt werden, was sein Benutzer sehen darf? Der MCP-Explorer zeigt den Agenten als Support-Mitarbeiter und als Analyst: andere Zeilen und Spalten, maskierte E-Mails und das geregelte SQL hinter jeder Antwort."
+      },
+      "banksecrecy": {
+        "title": "Bargeldmeldungen aus dem Bank Secrecy Act",
+        "summary": "Eine Bank liest die Bargeld-Meldevorschrift des Bank Secrecy Act von ihrer offiziellen öffentlichen Adresse, findet ihre Begriffe und verankert sie in den eigenen Tabellen. Dann fragt sie nach Konzept, welches Bargeld einen Currency Transaction Report braucht und wer knapp unter 10.000 $ stückelt. Die Bank und ihre Kunden sind erfunden, die Vorschrift ist echt."
       }
     }
   }

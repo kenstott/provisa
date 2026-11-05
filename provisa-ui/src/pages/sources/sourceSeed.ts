@@ -20,12 +20,14 @@ import { getDefaultPort, parseFilesPath, sourceBrand, uiType } from "./sourceHel
 import { CLOUD_FILE_TYPES, objectStoreFields, objectStoreOf } from "./objectStoreHints";
 import { profilerFieldsFromMapping } from "./profilerMapping";
 import { salesforceFieldsFromMapping } from "./salesforce";
+import { quickbooksFieldsFromMapping } from "./quickbooks";
 import { cloudopsFieldsFromMapping } from "./cloudops";
 import { sparqlFieldsFromMapping } from "./sparqlReasoner";
 import { GOOGLE_WORKSPACE, gwFieldsFromMapping } from "./googleWorkspace";
 import { MICROSOFT_365, m365FieldsFromMapping } from "./microsoft365";
 import { LOGS, logsFieldsFromMapping } from "./logs";
 import { COSMOSDB, cosmosFieldsFromHints } from "./cosmosdb";
+import { JDBC_SOURCE, jdbcSourceHints } from "./jdbcSource";
 import { excelHintsFromMapping, withExcelHints } from "./excelHints";
 import { QDRANT, qdrantFieldsFromHints } from "./qdrant";
 import { CODE_SOURCE_TYPES, codeFieldsFromMapping } from "./codeSource";
@@ -196,6 +198,9 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
   if (s.type === COSMOSDB) {
     authFields = cosmosFieldsFromHints(hintsJson); // REQ-1982
   }
+  if (s.type === JDBC_SOURCE && hintsJson) {
+    authFields = jdbcSourceHints(JSON.parse(hintsJson)); // REQ-2191: its settings are its hints
+  }
   if (s.type === QDRANT) {
     authFields = qdrantFieldsFromHints(hintsJson); // REQ-1983
   }
@@ -215,6 +220,9 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
   }
   if (s.type === "salesforce" && s.mappingJson) {
     authFields = salesforceFieldsFromMapping(s.mappingJson); // REQ-1946
+  }
+  if (s.type === "quickbooks" && s.mappingJson) {
+    authFields = quickbooksFieldsFromMapping(s.mappingJson); // REQ-2197
   }
   if (s.type === "google_sheets" && s.mappingJson) {
     const m = JSON.parse(s.mappingJson) as Record<string, string>;
