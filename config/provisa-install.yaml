@@ -1645,7 +1645,8 @@ tables:
 # REQ-2074: the demo's one writable table. A role writes it only through its write grants, so the
 # org's admin can add, change and remove a prospective adopter (Cypher CREATE / SET / DELETE, SQL
 # INSERT / UPDATE / DELETE). REQ-039: a column a role sets or filters a write on is one it is served,
-# so the admin reads the id it names a row by and the name it changes.
+# and the admin is served the id it names a row by and the name it changes through data_steward,
+# which it inherits.
 - columns:
   - description: When the customer record was created
     name: created_at
@@ -1664,14 +1665,12 @@ tables:
     visible_to:
     - data_steward
     - pet_analyst
-    - org_admin
   - description: Customer's full name
     name: name
     data_type: varchar
     visible_to:
     - data_steward
     - pet_analyst
-    - org_admin
   - description: Customer's phone number
     name: phone
     data_type: varchar
