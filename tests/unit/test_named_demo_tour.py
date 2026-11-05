@@ -54,6 +54,7 @@ _TARGETS = (
     "find_terms",
     "scan",
     "library",
+    "report",
 )
 # What a step runs that a role may stand beside: the role is picked as the step opens (demoTour.ts).
 _RUN_AS_ITS_ROLE = {"example", "sql", "mcp"}
@@ -318,6 +319,14 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             assert step.get("open") == "quality", f"{step['key']}: a graph opens from quality"
             assert step["graph"] in _PROFILE_GRAPHS, f"{step['key']}: no graph {step['graph']!r}"
             assert step["table"] in profiled, f"{step['key']}: {step['table']} has no profiler"
+        if "report" in step:
+            # A seeded report, opened on the Reports page from its deep link (demoTour.ts).
+            from provisa.api._meta_views import _OPS_REPORT_VIEWS
+
+            assert page == "/admin/reports", f"{step['key']}: a report opens on the Reports page"
+            assert step["report"] in _OPS_REPORT_VIEWS, (
+                f"{step['key']}: no report {step['report']!r}"
+            )
         if "polly" in step:
             # Its answer is stored at the template build and graded by the bake-off.
             assert "route" not in step, f"{step['key']}: Polly opens over the page it is on"

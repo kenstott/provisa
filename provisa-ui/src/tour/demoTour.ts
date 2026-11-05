@@ -121,6 +121,8 @@ export interface DemoTourStepDef {
   /** REQ-2201: a reference library document, by the address it was read from: its row on the
    *  Reference library page. */
   library?: string;
+  /** A report, by its table name: opened on the Reports page, its rows shown. */
+  report?: string;
   /** A role (or "all"): shown in its picker (the SQL explorer's run-as on /sql, else the header's)
    *  and picked on Next. Beside `example`, `sql` or `mcp`, picked as the step opens, and what the
    *  step names runs as it. */
@@ -505,6 +507,14 @@ function demoTourStep(
       ...page,
       route: `${def.route ?? ""}?product=${encodeURIComponent(def.product)}`,
       element: '[data-testid="data-product-detail"]',
+    };
+  }
+  if (def.report !== undefined) {
+    // The page opens the report its deep link names (`?report=<table name>`).
+    return {
+      ...page,
+      route: `${def.route ?? ""}?report=${encodeURIComponent(def.report)}`,
+      element: `[data-testid="report-pane"][data-report="${def.report}"]`,
     };
   }
   if (def.role !== undefined && def.role.includes(",")) {

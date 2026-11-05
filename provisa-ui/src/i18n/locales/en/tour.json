@@ -1374,7 +1374,7 @@
       },
       "testdataCoverageNow": {
         "title": "Every sensitive column is covered",
-        "description": "The same check, read now from the model, lists each sensitive column, its tags, and whether a fake covers it. Every one is covered, so pre-prod opens and answers."
+        "description": "Sensitive coverage is a standard report on the Reports page: each sensitive column, its tags, and whether a fake covers it, read now from the model. Every one is covered, so pre-prod opens and answers."
       },
       "testdataProd": {
         "title": "Production: the real rows",

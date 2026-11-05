@@ -1305,4 +1305,13 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     # REQ-1386 (ONTOLOGY QUALITY IS A STANDARD REPORT): the glossary measured from the model, by
     # domain and by steward. They read the ontology schema's views, which the seed creates first.
     **ONTOLOGY_QUALITY_VIEWS,
+    # REQ-1386 (SENSITIVE COVERAGE IS A STANDARD REPORT): every sensitive column, its tags, whether
+    # a fake covers it, and why not -- read from the meta view sensitive_coverage, which the seed
+    # creates first. Named apart from it: both are relations of the one schema under provisa-admin.
+    "sensitive_column_coverage": """
+        CREATE OR REPLACE VIEW sensitive_column_coverage AS
+        SELECT sc.column_key AS id, sc.table_id, sc.table_name, sc.domain_id, sc.column_name,
+               sc.tags, sc.status, sc.reason
+        FROM sensitive_coverage sc
+    """,
 }
