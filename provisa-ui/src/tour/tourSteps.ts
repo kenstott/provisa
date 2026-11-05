@@ -949,10 +949,11 @@ export function stepsTheOrgCanShow(
  * opened, which is the same hang by a different path.
  *
  * `meets` is passed in rather than imported so this stays pure data logic; the runner supplies
- * `meetsRequirement` bound to the signed-in capabilities.
+ * `meetsRequirement` bound to the signed-in capabilities, and given each owner's route, so a page
+ * a demo sandbox's visitor may read without its capability (the Platform page) is kept for them.
  */
 export function tourItinerary(
-  meets: (capability: Capability) => boolean,
+  meets: (capability: Capability, route: string) => boolean,
   scope?: RunScope,
   steps: readonly TourStep[] = TOUR_STEPS,
 ): number[] {
@@ -971,7 +972,7 @@ export function tourItinerary(
       if (step.capability === undefined) {
         throw new Error(`Tour: step ${i} declares a route with no capability`);
       }
-      ownerAllowed = meets(step.capability);
+      ownerAllowed = meets(step.capability, step.route);
     }
     // The owner walk covers every step, so a scoped run whose first step is routeless still
     // resolves its owner's rights; the scope only filters what is kept.

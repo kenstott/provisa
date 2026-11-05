@@ -463,6 +463,7 @@ class NativeEngineBackend(EngineBackend):
         from provisa.core.operator_floor import floor_setting
         from provisa.core.request_context import current_org
         from provisa.core.secrets import resolve_secrets
+        from provisa.jdbc_source.attach import attach_type, attach_view
 
         complete = True
         # What this org's registry refused for a declared reason (_OrgWalk.refused).
@@ -503,7 +504,8 @@ class NativeEngineBackend(EngineBackend):
                     # REQ-2031: a cache_ttl that never expires keeps the source's tables on their
                     # replica (replica_routing.table_floor), as replicate does.
                     cache_ttl=_rs_dict["cache_ttl"],
-                    federation_hints={},
+                    # REQ-2191: a JDBC source's settings decide whether it attaches, and as what.
+                    federation_hints=dict(_rs_dict.get("federation_hints") or {}),
                     # REQ-1742: forwarded so _attach_tbl's merged SimpleNamespace below (which reads
                     # it via getattr(src, "mapping", {})) can actually see it — same gap base_url
                     # above (REQ-1746) already documents and fixes for a different connector
@@ -582,6 +584,11 @@ class NativeEngineBackend(EngineBackend):
             tried.add(key)
             if getattr(src, "id", None) in _NO_REMOTE_SOURCE_IDS:
                 return
+            # REQ-2191: a JDBC source attached live here is attached as the built-in type its URL
+            # names, through that type's own connector.
+            named = attach_type(src, self.engine)
+            if named is not None:
+                src = attach_view(src, named)
             # Only a source the engine reads LIVE in place (attach/scan) is attached here. A
             # FETCH/DIRECT source (API/push adapter or native driver -- openapi, graphql_remote,
             # the dq sources) is read from its replica or the API cache, never attached, so the

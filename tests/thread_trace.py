@@ -118,7 +118,7 @@ _STAGES: dict[tuple[str, str], str] = {
     ("provisa/executor/trino_flight.py", "execute_trino_flight_stream"): "execute:trino.flight",
     ("provisa/executor/trino_flight.py", "execute_trino_flight_arrow"): "execute:trino.flight",
     # encode / send
-    ("provisa/executor/serialize.py", "serialize_rows"): "encode:json.serialize_rows",
+    ("provisa/executor/json_encoders.py", "_encoded"): "encode:json.rust_encoder",
     ("provisa/pgwire/server.py", "rows"): "encode:pgwire.rows",
     ("buenavista/postgres.py", "send_row_description"): "send:pgwire.row_description",
     ("buenavista/postgres.py", "send_data_rows"): "send:pgwire.data_rows",
@@ -129,7 +129,7 @@ _STAGES: dict[tuple[str, str], str] = {
     ("provisa/core/rpc_loop.py", "__next__"): "send:flight.loop_held_batch",
     ("provisa/federation/duckdb_runtime.py", "_batches"): "send:flight.engine_batches",
     ("provisa/api/flight/server.py", "_license_stream_gen"): "send:flight.stream",
-    ("provisa/grpc/server.py", "_dict_row_to_message"): "encode:grpc.message",
+    ("provisa/grpc/server.py", "_encoded"): "encode:grpc.message",
     ("provisa/grpc/server.py", "_meter_msg"): "send:grpc.message",
     ("provisa/bolt/session.py", "send_record"): "send:bolt.record",
     ("provisa/bolt/session.py", "handle_pull"): "send:bolt.pull",

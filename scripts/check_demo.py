@@ -170,6 +170,7 @@ _FEATURES = (
     ("roles with parents, or grants naming data_steward (REQ-2155)", "0.1.0a496"),
     ("a code export taking inputs (REQ-2100)", "0.1.0a496"),
     ("roles listing what they hold of their parents' rights (REQ-2155)", "0.1.0a497"),
+    ("a setup scanning a document for terms, carried in its bundle (REQ-2201)", "0.1.0a499"),
 )
 _INPUTS = re.compile(r"\binputs\b")
 
@@ -197,9 +198,20 @@ def _uses_export_inputs(home: Path) -> bool:
     return False
 
 
-def _uses(home: Path) -> tuple[bool, bool, bool]:
+def _scans_for_terms(home: Path) -> bool:
+    from provisa.api.demo_templates import demo_scans
+
+    return bool(demo_scans(home))
+
+
+def _uses(home: Path) -> tuple[bool, bool, bool, bool]:
     """Whether this demo uses each _FEATURES entry, in its order."""
-    return _uses_role_parents(home), _uses_export_inputs(home), _narrows_parents(home)
+    return (
+        _uses_role_parents(home),
+        _uses_export_inputs(home),
+        _narrows_parents(home),
+        _scans_for_terms(home),
+    )
 
 
 def _features_used(home: Path) -> list[str]:

@@ -10,7 +10,6 @@ from graphql import parse, validate
 
 from provisa.api._query_helpers import NO_VARIABLES, build_graphql_query
 from provisa.api.jsonapi.generator import (
-    _extract_included,
     _get_relationship_fields,
     _relationship_scalars,
 )
@@ -107,87 +106,168 @@ class TestIncludeQueryValidates:
         assert not validate(schema, doc)  # the relationship sub-selection is valid
 
 
-class TestExtractIncluded:
+def _document(table, columns, *, includes, include_keys, id_columns=("id",), rels=None):
+    """The JSON:API document the Rust encoder writes for ``table`` (REQ-257, REQ-2194): the
+    included resources moved out of the rows, deduplicated by their ids, and linked."""
+    import json
+
+    import pyarrow as pa
+
+    from provisa.executor import json_encoders as je
+
+    body, _ = je.jsonapi(
+        [pa.record_batch(table)],
+        columns,
+        resource_type="orders",
+        page_size=100,
+        page_number=1,
+        probe=True,
+        total=None,
+        id_columns=list(id_columns),
+        scalar_names={},
+        rel_names=[(r, r) for r in (includes if rels is None else rels)],
+        rel_scalar_names={},
+        includes=list(includes),
+        include_keys=include_keys,
+        base_path="/data/jsonapi/sales/orders",
+        link_params=[],
+    )
+    return json.loads(body)
+
+
+def _c(field, nested_in=None, cardinality=None):
+    from provisa.compiler.sql_types import ColumnRef
+
+    return ColumnRef(
+        None, field if nested_in is None else f"{nested_in}_{field}", field, nested_in, cardinality
+    )
+
+
+_CUSTOMER = [_c("id"), _c("id", "customer", "many-to-one"), _c("name", "customer", "many-to-one")]
+
+
+class TestIncluded:
     def test_pulls_nested_object_and_dedupes(self):
-        rows = [
-            {"id": 1, "customer_id": 7, "customer": {"id": 7, "name": "Alice"}},
-            {"id": 2, "customer_id": 7, "customer": {"id": 7, "name": "Alice"}},
-            {"id": 3, "customer_id": 8, "customer": {"id": 8, "name": "Bob"}},
-        ]
-        included, _ = _extract_included(rows, ["customer"], {"customer": ["id"]})
+        doc = _document(
+            {"id": [1, 2, 3], "customer_id": [7, 7, 8], "customer_name": ["Alice", "Alice", "Bob"]},
+            _CUSTOMER,
+            includes=["customer"],
+            include_keys={"customer": ["id"]},
+        )
         # deduped by id
-        assert [c["id"] for c in included["customer"]] == [7, 8]
-        # nested object removed from the primary rows (kept only the FK)
-        assert "customer" not in rows[0]
-        assert rows[0]["customer_id"] == 7
+        assert [(r["type"], r["id"]) for r in doc["included"]] == [
+            ("customer", "7"),
+            ("customer", "8"),
+        ]
+        assert doc["included"][0]["attributes"] == {"name": "Alice"}
+        # the nested object is out of the primary resource, linked from it
+        first = doc["data"][0]
+        assert "customer" not in first["attributes"]
+        assert first["relationships"]["customer"] == {"data": {"type": "customer", "id": "7"}}
 
     def test_one_to_many_list_flattened(self):
-        rows = [{"id": 1, "items": [{"id": 10}, {"id": 11}]}]
-        included, _ = _extract_included(rows, ["items"], {"items": ["id"]})
-        assert [i["id"] for i in included["items"]] == [10, 11]
+        doc = _document(
+            {"id": [1, 1], "items_id": [10, 11]},
+            [_c("id"), _c("id", "items", "one-to-many")],
+            includes=["items"],
+            include_keys={"items": ["id"]},
+        )
+        assert [r["id"] for r in doc["included"]] == ["10", "11"]
+        assert doc["data"][0]["relationships"]["items"]["data"] == [
+            {"type": "items", "id": "10"},
+            {"type": "items", "id": "11"},
+        ]
 
-    def test_no_includes_returns_empty(self):
-        rows = [{"id": 1, "customer": {"id": 7}}]
-        assert _extract_included(rows, [], {}) == ({}, [{}])
-        assert rows[0]["customer"] == {"id": 7}  # untouched
+    def test_no_includes_leaves_the_nested_object(self):
+        doc = _document(
+            {"id": [1], "customer_id": [7], "customer_name": ["Alice"]},
+            _CUSTOMER,
+            includes=[],
+            include_keys={},
+            rels=[],
+        )
+        assert "included" not in doc
+        assert doc["data"][0]["attributes"]["customer"] == {"id": 7, "name": "Alice"}
 
     def test_a_composite_key_identifies_each_included_resource(self):
         """An order's lines are keyed by (order_id, line): no line is lost to another's empty id."""
-        rows = [
-            {"id": 1, "order_items": [{"order_id": 1, "line": 1}, {"order_id": 1, "line": 2}]},
-            {"id": 2, "order_items": [{"order_id": 2, "line": 1}]},
-        ]
-        included, links = _extract_included(
-            rows, ["order_items"], {"order_items": ["order_id", "line"]}
-        )
-        assert [(i["order_id"], i["line"]) for i in included["order_items"]] == [
-            (1, 1),
-            (1, 2),
-            (2, 1),
-        ]
-        assert links == [
+        doc = _document(
             {
-                "order_items": {
-                    "data": [
-                        {"type": "order_items", "id": "1:1"},
-                        {"type": "order_items", "id": "1:2"},
-                    ]
-                }
+                "id": [1, 1, 2],
+                "order_items_order_id": [1, 1, 2],
+                "order_items_line": [1, 2, 1],
             },
-            {"order_items": {"data": [{"type": "order_items", "id": "2:1"}]}},
+            [
+                _c("id"),
+                _c("order_id", "order_items", "one-to-many"),
+                _c("line", "order_items", "one-to-many"),
+            ],
+            includes=["order_items"],
+            include_keys={"order_items": ["order_id", "line"]},
+        )
+        assert [r["id"] for r in doc["included"]] == ["1:1", "1:2", "2:1"]
+        assert [d["relationships"]["order_items"] for d in doc["data"]] == [
+            {
+                "data": [
+                    {"type": "order_items", "id": "1:1"},
+                    {"type": "order_items", "id": "1:2"},
+                ]
+            },
+            {"data": [{"type": "order_items", "id": "2:1"}]},
         ]
 
     def test_a_to_one_include_links_one_identifier_or_none(self):
-        rows = [{"id": 1, "shipment": {"order_id": 1}}, {"id": 2, "shipment": None}]
-        _, links = _extract_included(rows, ["shipment"], {"shipment": ["order_id"]})
-        assert links == [
-            {"shipment": {"data": {"type": "shipment", "id": "1"}}},
-            {"shipment": {"data": None}},
+        doc = _document(
+            {"id": [1, 2], "shipment_order_id": [1, None]},
+            [_c("id"), _c("order_id", "shipment", "many-to-one")],
+            includes=["shipment"],
+            include_keys={"shipment": ["order_id"]},
+        )
+        assert [d["relationships"]["shipment"] for d in doc["data"]] == [
+            {"data": {"type": "shipment", "id": "1"}},
+            {"data": None},
         ]
 
 
 class TestResourceId:
     def test_a_single_key_is_its_value(self):
-        from provisa.api.jsonapi.serializer import resource_id
-
-        assert resource_id({"order_id": 7, "carrier": "x"}, ["order_id"]) == "7"
+        doc = _document(
+            {"order_id": [7], "carrier": ["x"]},
+            [_c("order_id"), _c("carrier")],
+            includes=[],
+            include_keys={},
+            id_columns=["order_id"],
+        )
+        assert doc["data"][0]["id"] == "7"
 
     def test_a_composite_key_joins_its_values_escaping_the_separator(self):
-        from provisa.api.jsonapi.serializer import resource_id
+        def rid(table, keys):
+            columns = [_c(k) for k in table]
+            return _document(table, columns, includes=[], include_keys={}, id_columns=keys)["data"][
+                0
+            ]["id"]
 
-        assert resource_id({"order_id": 7, "line": 2}, ["order_id", "line"]) == "7:2"
-        assert resource_id({"a": "x:y", "b": "z\\"}, ["a", "b"]) == "x\\:y:z\\\\"
+        assert rid({"order_id": [7], "line": [2]}, ["order_id", "line"]) == "7:2"
+        assert rid({"a": ["x:y"], "b": ["z\\"]}, ["a", "b"]) == "x\\:y:z\\\\"
 
     def test_a_document_carries_ids_and_links_what_it_includes(self):
-        from provisa.api.jsonapi.serializer import rows_to_jsonapi
-
-        doc = rows_to_jsonapi(
-            [{"id": 1, "status": "shipped"}],
-            "orders",
-            id_columns=["id"],
-            included_rows={"order_items": [{"order_id": 1, "line": 1, "quantity": 2}]},
-            included_id_columns={"order_items": ["order_id", "line"]},
-            row_links=[{"order_items": {"data": [{"type": "order_items", "id": "1:1"}]}}],
+        doc = _document(
+            {
+                "id": [1],
+                "status": ["shipped"],
+                "order_items_order_id": [1],
+                "order_items_line": [1],
+                "order_items_quantity": [2],
+            },
+            [
+                _c("id"),
+                _c("status"),
+                _c("order_id", "order_items", "one-to-many"),
+                _c("line", "order_items", "one-to-many"),
+                _c("quantity", "order_items", "one-to-many"),
+            ],
+            includes=["order_items"],
+            include_keys={"order_items": ["order_id", "line"]},
         )
         assert doc["data"][0]["id"] == "1"
         assert doc["data"][0]["relationships"]["order_items"]["data"] == [

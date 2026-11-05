@@ -70,7 +70,7 @@ sources:
   cache_ttl: -1
   replicate: 0
   description: Government data from AskAmerica -- the NVD's CVEs, MITRE's CWE catalog and CISA's
-    known exploited vulnerabilities, landed once when the demo is built
+    known exploited vulnerabilities
 tables:
 - source_id: code
   domain_id: security

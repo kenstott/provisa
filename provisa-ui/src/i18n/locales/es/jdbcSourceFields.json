@@ -1,0 +1,32 @@
+{
+  "jdbcSourceFields": {
+    "dialect": "Dialecto SQL",
+    "dialectHelp": "La variante de SQL que Provisa escribe para esta fuente. No tiene que coincidir con el controlador: elija la más cercana a la base de datos, o ANSI.",
+    "ansi": "ANSI (SQL genérico)",
+    "username": "Usuario",
+    "password": "Contraseña",
+    "capabilityName": {
+      "attach": "Conexión en vivo",
+      "predicate": "Pushdown de filtros",
+      "join": "Pushdown de joins",
+      "aggregate": "Pushdown de agregados",
+      "key_range": "Pushdown de rangos de clave"
+    },
+    "detect": "Detectar",
+    "checkPassed": "{{capability}}: superada",
+    "checkFailed": "{{capability}}: fallida ({{reason}})",
+    "jdbcDriverJar": "JAR del controlador JDBC",
+    "jdbcDriverJarHint": "El archivo JAR del controlador, subido desde su equipo. Solo instalaciones autoalojadas.",
+    "jdbcDriverClass": "Clase del controlador",
+    "driver": "Controlador",
+    "jarDriver": "Su propio controlador JDBC (JAR)",
+    "host": "Host",
+    "port": "Puerto",
+    "database": "Base de datos",
+    "file": "Archivo de base de datos",
+    "fileHint": "El archivo de base de datos, escrito {files}/… para uno del área de archivos de la organización.",
+    "jdbcUrl": "URL JDBC",
+    "jdbcUrlHint": "La URL jdbc: del controlador. No incluya ninguna contraseña.",
+    "jdbcDriverJarPlaceholder": "Suba el archivo JAR del controlador"
+  }
+}

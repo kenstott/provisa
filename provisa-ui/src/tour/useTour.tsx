@@ -54,7 +54,7 @@ import { completedTopics, markTopicCompleted } from "./tourTopics";
 import { EXPANDED_STORAGE_KEY as DATA_PRODUCTS_EXPANDED_KEY } from "../pages/DataProductsPage";
 import { useAuth } from "../context/AuthContext";
 import { usePolly } from "../context/pollyState";
-import { hasCapability } from "../lib/capabilities";
+import { viewerMeets } from "./viewerMeets";
 import { prefetchAllPageChunks } from "../pageChunks";
 import { useTourPrefetch } from "../hooks/useAdminQueries";
 import { useOrgHas } from "../hooks/useOrgHas";
@@ -477,7 +477,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const [orgHas, setOrgHas] = useState<OrgHas | null>(null);
   const prefetchTourData = useTourPrefetch();
   const whatTheOrgHas = useOrgHas();
-  const { capabilities, actingRoles } = useAuth();
+  const { capabilities, actingRoles, activeOrgId } = useAuth();
   // REQ-2083: what a step that re-runs an earlier statement runs it as, read when the step runs.
   const actingRolesRef = useRef(actingRoles);
   useEffect(() => {
@@ -534,13 +534,12 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // step is last — counts against this instead, so a tour with steps dropped is a shorter whole
   // tour rather than one that ends early or numbers past its end.
   const itineraries = useMemo(() => {
-    const meets = (capability: Parameters<typeof hasCapability>[1]) =>
-      hasCapability(capabilities, capability);
+    const meets = viewerMeets(capabilities, activeOrgId ?? null);
     const out = { core: tourItinerary(meets, "core") } as Record<RunScope, number[]>;
     for (const id of TOPIC_IDS) out[id] = tourItinerary(meets, id);
     out.demo = tourItinerary(meets, "demo", allSteps);
     return out;
-  }, [capabilities, allSteps]);
+  }, [capabilities, activeOrgId, allSteps]);
   // The active tour's steps. Everything below that walked "the tour" walks this. A tour starts only
   // once what the org has is read (startTour sets orgHas before the scope), so a running tour always
   // walks the steps its org can show; with no read yet, no tour runs and nothing walks this.

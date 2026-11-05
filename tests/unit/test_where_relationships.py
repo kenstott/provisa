@@ -186,4 +186,4 @@ def test_a_relationship_target_is_always_read_under_the_joins_alias():
     """A star under a lateral is expanded by its table's alias: with none, a table the statement
     renames expanded under a physical name the FROM no longer held (Binder Error)."""
     source = Path("provisa/compiler/sql_selection.py").read_text()
-    assert 'f"LEFT JOIN LATERAL (SELECT * FROM {target} {_q(join_alias)} "' in source
+    assert 'f"LEFT JOIN LATERAL (SELECT {distinct}* FROM {target} {_q(join_alias)} "' in source

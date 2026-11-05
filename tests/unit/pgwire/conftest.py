@@ -36,6 +36,9 @@ def _catalog_reads_the_plane(request, monkeypatch):
     from provisa.pgwire import catalog
     from tests.unit.pgwire.catalog_plane import Plane
 
-    plane = Plane(request.getfixturevalue("_catalog_engine"))
+    plane = Plane(
+        request.getfixturevalue("_catalog_engine"),
+        engine_is_postgres=request.node.get_closest_marker("postgres_engine") is not None,
+    )
     monkeypatch.setattr(catalog, "_read_meta", plane.read)
     yield

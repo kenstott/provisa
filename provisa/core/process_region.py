@@ -52,7 +52,7 @@ def bind_launch(platform: dict[str, Any] | None, *, requested: str | None) -> st
     global _region, _platform_regions
     declared = PlatformConfig.model_validate(platform or {}).regions
     _platform_regions = tuple(r.id for r in declared)
-    listed = ", ".join(f"{r.id} ({r.address})" for r in declared)
+    listed = ", ".join(r.id for r in declared)
     if not declared:
         if requested is not None:
             raise LaunchRefused(

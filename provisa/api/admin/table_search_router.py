@@ -150,10 +150,22 @@ async def search_source_tables(
     require_capability_request(request, "source_registration")
     from provisa.api.app import state
     from provisa.core.org_secrets import read_org_api_keys
-    from provisa.discovery.catalog_cache import column_names_state, request_column_fill
+    from provisa.discovery.catalog_cache import (
+        column_names_state,
+        loads_columns_lazily,
+        request_column_fill,
+    )
 
     source_type = state.source_types.get(source_id, "")
-    candidates = await _candidates_from_cache(source_id, schema_name, state)
+    # A source registered from a specification is searched over the tables its specification
+    # offers now -- the list the Register Table form offers -- read with no call to the source.
+    # Its cached catalog is only what an earlier walk listed: a walk before the specification
+    # was held, or of a source since re-added, left the search over none of them (REQ-464).
+    candidates = (
+        None
+        if not loads_columns_lazily(source_type)
+        else await _candidates_from_cache(source_id, schema_name, state)
+    )
     cache_warm = candidates is not None
     if cache_warm:
         # REQ-464: column names of a source listed through its adapter are loaded on first

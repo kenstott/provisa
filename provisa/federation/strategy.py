@@ -36,6 +36,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.federation.connector import Mechanism
 from provisa.federation.engine import UnreachableSource
 
@@ -116,8 +117,8 @@ _MATERIALIZE_ONLY = frozenset(
         "grpc_remote",
         "mongodb",
         "cosmosdb",  # REQ-1982: no engine reaches it; read by its SDK and landed
-        "node",  # REQ-1984: a function's rows, read in its worker and landed
-        "python",  # REQ-1993: the same, for a Python function
+        # REQ-1984, REQ-1993, REQ-2200: a function's rows, read in its worker and landed
+        *CODE_SOURCE_TYPES,
         "cassandra",
         "redis",
         "elasticsearch",
@@ -129,6 +130,7 @@ _MATERIALIZE_ONLY = frozenset(
         "microsoft_365",  # REQ-1923: read by its loader and landed
         "logs",  # REQ-1996: read by its loader and landed
         "sparql",
+        "quickbooks",  # REQ-2197: read through its query endpoint and landed
         "neo4j",
         "splunk",
         "sharepoint",
@@ -199,7 +201,10 @@ def federate(
     known-large, is promoted to MATERIALIZED (see promote.should_promote). Both must be
     supplied to arm promotion; absent them, resolution is capability-only as before.
     """
-    source_type = source.type.value
+    from provisa.jdbc_source.attach import reach_type
+
+    # REQ-2191: a JDBC source attached live here is reached as the built-in type its URL names.
+    source_type = reach_type(source, engine)
     # REQ-1867: a source that asks to be read in place gets the engine's opt-in reach for its type
     # (refused by name when there is none); any other source gets its type's reach.
     if engine.asks_in_place(source):

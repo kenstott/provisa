@@ -1,0 +1,32 @@
+{
+  "jdbcSourceFields": {
+    "dialect": "SQL-dialect",
+    "dialectHelp": "De SQL-variant die Provisa voor deze bron schrijft. Die hoeft niet bij het stuurprogramma te passen: kies de variant die het dichtst bij de database ligt, of ANSI.",
+    "ansi": "ANSI (generieke SQL)",
+    "username": "Gebruikersnaam",
+    "password": "Wachtwoord",
+    "capabilityName": {
+      "attach": "Live koppelen",
+      "predicate": "Filter-pushdown",
+      "join": "Join-pushdown",
+      "aggregate": "Aggregatie-pushdown",
+      "key_range": "Sleutelbereik-pushdown"
+    },
+    "detect": "Detecteren",
+    "checkPassed": "{{capability}}: geslaagd",
+    "checkFailed": "{{capability}}: mislukt ({{reason}})",
+    "jdbcDriverJar": "JDBC-stuurprogramma-JAR",
+    "jdbcDriverJarHint": "Het JAR-bestand van het stuurprogramma, geüpload vanaf uw computer. Alleen zelf-gehoste installaties.",
+    "jdbcDriverClass": "Stuurprogrammaklasse",
+    "driver": "Stuurprogramma",
+    "jarDriver": "Uw eigen JDBC-stuurprogramma (JAR)",
+    "host": "Host",
+    "port": "Poort",
+    "database": "Database",
+    "file": "Databasebestand",
+    "fileHint": "Het databasebestand, geschreven als {files}/… voor een bestand in het bestandsgebied van de organisatie.",
+    "jdbcUrl": "JDBC-URL",
+    "jdbcUrlHint": "De jdbc:-URL van het stuurprogramma. Geef er geen wachtwoord in op.",
+    "jdbcDriverJarPlaceholder": "Upload het JAR-bestand van het stuurprogramma"
+  }
+}

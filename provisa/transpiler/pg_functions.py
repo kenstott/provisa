@@ -29,9 +29,9 @@ from typing import Any
 
 import sqlglot
 import sqlglot.expressions as exp
-from sqlglot.errors import ParseError
+from sqlglot.dialects.postgres import Postgres
 
-from provisa.transpiler import function_macros, pg_xml
+from provisa.transpiler import function_macros, pg_syntax, pg_xml
 from provisa.transpiler.pg_literals import postgres_literals
 
 _REGEXP_MATCHES = "provisa_regexp_matches"
@@ -68,7 +68,7 @@ _SPELLED = {
 #: The statements ``before`` has anything to do in.
 _NAMED = re.compile(
     r"\b(random|regexp_matches|timezone|to_timestamp|[blr]?trim|setseed"
-    r"|overlay|substring|extract|decode|encode|pg_size_pretty|current_schemas)\b",
+    r"|overlay|substring|extract|date_part|decode|encode|pg_size_pretty|current_schemas)\b",
     re.IGNORECASE,
 )
 #: The statements ``typed_calls`` has anything to do in.
@@ -106,6 +106,20 @@ _MAKE_INTERVAL = ("years", "months", "weeks", "days", "hours", "mins", "secs")
 _NO_INTERVAL = ("0", "0", "0", "0", "0", "0", "0.0")
 
 _RANDOM_BOUNDS = "lower bound must be less than or equal to upper bound"
+
+
+#: The names PostgreSQL reads a part of a second as (datetktbl).
+_SECOND_PARTS = frozenset({"s", "sec", "secs", "second", "seconds"})
+
+
+def _of_a_second(node: exp.Extract) -> bool:
+    """Whether ``node`` reads a second (of a value that has one: PostgreSQL refuses a date's)."""
+    part = node.this.this if isinstance(node.this, exp.Cast) else node.this
+    named = part.name if isinstance(part, exp.Var) else part.this if part.is_string else None
+    if not isinstance(named, str) or named.strip().lower() not in _SECOND_PARTS:
+        return False
+    value = node.expression
+    return not (isinstance(value, exp.Cast) and value.to.is_type("date"))
 
 
 def _is_null(node: exp.Expr) -> bool:
@@ -241,13 +255,18 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
     written: str | None = None
     if isinstance(node, exp.CurrentSchemas):
         # The search path's schemas (pgwire's catalog: public), not DuckDB's.
-        implicit = node.this
-        if not isinstance(implicit, exp.Boolean):
+        implicit = node.this.unnest()
+        while isinstance(implicit, exp.Cast) and implicit.to.is_type(exp.DataType.Type.BOOLEAN):
+            implicit = implicit.this.unnest()  # true::boolean says what true does
+        if isinstance(implicit, exp.Boolean):
+            written = "ARRAY['pg_catalog', 'public']" if implicit.this else "ARRAY['public']"
+        elif isinstance(implicit, exp.Null):
             written = "CAST(NULL AS TEXT[])"  # strict: a NULL argument
-        elif implicit.this:
-            written = "ARRAY['pg_catalog', 'public']"
         else:
-            written = "ARRAY['public']"
+            written = (
+                f"CASE WHEN {text(node.this)} THEN ARRAY['pg_catalog', 'public'] "
+                f"WHEN NOT {text(node.this)} THEN ARRAY['public'] END"
+            )
     elif isinstance(node, exp.Rand) and node.args.get("lower") is not None:
         low, high = node.this, node.args["lower"]
         written = _random(text(low), text(high), (low, high))
@@ -278,6 +297,13 @@ def _rewrite(node: exp.Expr) -> exp.Expr:  # noqa: PLR0911, PLR0912 -- one branc
         and _is_text(node.args["start"])
     ):
         written = _regex_substring(text(node.this), node.args["start"])
+    elif isinstance(node, exp.Extract) and _of_a_second(node):
+        # DuckDB's second is a whole number: PostgreSQL's keeps its fraction, the second's
+        # microseconds over a million, a numeric of scale 6 for EXTRACT and a float8 for
+        # date_part (whose part is a text).
+        micros = f"{_DATE_PART}('microseconds', {text(node.expression)})"
+        exact = f"(CAST({micros} AS DECIMAL(20, 0)) * CAST(0.000001 AS DECIMAL(7, 6)))"
+        written = exact if isinstance(node.this, exp.Var) else f"CAST({exact} AS DOUBLE PRECISION)"
     elif isinstance(node, exp.Extract) and not isinstance(node.this, exp.Var):
         written = f"{_DATE_PART}({text(node.this)}, {text(node.expression)})"
     elif isinstance(node, exp.Encode) and node.args.get("charset") is not None:
@@ -557,7 +583,9 @@ def _time_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
 def _named(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     """The name and arguments of a call of a function a parser class stands for."""
     if isinstance(node, exp.Anonymous):
-        return node.name.lower(), list(node.expressions)
+        name = node.name.lower()
+        # pg_syntax reads a call of overlaps as its routine's; its overloads are overlaps' own.
+        return "overlaps" if name == pg_syntax.OVERLAPS else name, list(node.expressions)
     if isinstance(node, exp.Overlaps):
         periods = (node.this, node.expression)
         if not all(isinstance(p, exp.Tuple) for p in periods):
@@ -609,6 +637,20 @@ def _type_said(value: exp.Expr) -> str | None:
     return "regtype" if named is not None and named[0] == "pg_typeof" else None
 
 
+#: The collations every PostgreSQL 17 has, whatever its locales (initdb), by name.
+_BUILT_IN_COLLATIONS = frozenset({"default", "C", "POSIX", "ucs_basic", "unicode", "pg_c_utf8"})
+
+
+def _collation_named(value: exp.Collate) -> exp.Expr | None:
+    """pg_collation_for of a value a COLLATE clause gives a built-in collation: its name, as
+    quote_ident writes it ("default" is a keyword, so quoted); None for any other collation."""
+    name = value.expression.name
+    if name not in _BUILT_IN_COLLATIONS:
+        return None
+    bare = re.fullmatch(r"[a-z_][a-z0-9_$]*", name) is not None and name != "default"
+    return exp.Literal.string(name if bare else '"' + name.replace('"', '""') + '"')
+
+
 def _call(node: exp.Expr) -> exp.Expr:
     """A call of an overload DuckDB's function of the name does not take."""
     if isinstance(node, exp.Dot) and node.this.name.lower() == "pg_catalog":
@@ -627,6 +669,10 @@ def _call(node: exp.Expr) -> exp.Expr:
     if named is None:
         return node
     name, args = named
+    if name == "pg_collation_for" and len(args) == 1 and isinstance(args[0], exp.Collate):
+        collated = _collation_named(args[0])
+        if collated is not None:
+            return collated
     if name == "pg_typeof" and len(args) == 1:
         said = _type_said(args[0])
         return node if said is None else exp.Literal.string(said)
@@ -674,28 +720,55 @@ def _call(node: exp.Expr) -> exp.Expr:
     return node if written is None else sqlglot.parse_one(written, read="postgres")
 
 
-#: What sqlglot's parser cannot read as a call: CONVERT's and JSON_OBJECT's own syntax.
-_UNPARSED_CALLS = re.compile(r"\b(convert|json_object)\s*\(", re.IGNORECASE)
-_BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
-_JSON_OBJECT_OF_ARRAYS = re.compile(r"\bjson_object\s*\(\s*(?='\{|ARRAY\[)", re.IGNORECASE)
+#: What sqlglot's parser reads as syntax of its own (pg_syntax): PostgreSQL's calls of the name.
+_SYNTAX_CALLS = re.compile(r"\b(convert|json_object)\s*\(", re.IGNORECASE)
+_BIT_VARYING = re.compile(r"\bbit\s+varying\b", re.IGNORECASE)
 #: sqlglot reads to_hex as DuckDB's HEX of any value; a form's HEX of its bytes is written the same.
 _TO_HEX = re.compile(r"\"?\bto_hex\"?\s*\(", re.IGNORECASE)
 _SPECIAL_LITERAL = re.compile(r"\bB'[01]*'|\bU&'", re.IGNORECASE)
 
 
+class _HexKept(Postgres):
+    """PostgreSQL, with to_hex read as the call it is (not sqlglot's HEX of any value)."""
+
+    class Parser(Postgres.Parser):
+        FUNCTIONS = {
+            **Postgres.Parser.FUNCTIONS,
+            "TO_HEX": lambda args: exp.Anonymous(this="to_hex", expressions=args),
+        }
+
+
+#: PostgreSQL's calls sqlglot reads as syntax of its own, and the form DuckDB's engine has of each.
+_FORMS = {"convert": "pg_convert", "json_object": "pg_json_object", "to_hex": "pg_to_hex"}
+
+
 def readable(pg_sql: str) -> str:
-    """``pg_sql`` with a call of a function sqlglot reads as syntax spelled as a plain call: a
-    statement that parses is left as it is. ``bit varying``, which sqlglot reads as a bit and an
-    alias, is the bit string the engine holds it as."""
-    pg_sql = _JSON_OBJECT_OF_ARRAYS.sub("pg_json_object(", _BIT_VARYING.sub("::bit", pg_sql))
-    pg_sql = _TO_HEX.sub("pg_to_hex(", pg_sql)
-    if _UNPARSED_CALLS.search(pg_sql) is None:
+    """``pg_sql`` with a call of a function sqlglot reads as syntax its plain call of the form the
+    engine has (pg_syntax reads each as PostgreSQL's call): a statement with none is left as it
+    is. ``bit varying`` is the bit string the engine holds it as."""
+    if not any(p.search(pg_sql) for p in (_SYNTAX_CALLS, _BIT_VARYING, _TO_HEX)):
         return pg_sql
-    try:
-        sqlglot.parse_one(pg_sql, read="postgres")
-    except ParseError:
-        return postgres_literals(_UNPARSED_CALLS.sub(lambda m: f"pg_{m[1].lower()}(", pg_sql))
-    return pg_sql
+    converted = False
+
+    def held(node: exp.Expr) -> exp.Expr:
+        nonlocal converted
+        if isinstance(node, exp.DataType) and node.this == exp.DataType.Type.USERDEFINED:
+            if node.args["kind"].name.lower() == "varbit":
+                return exp.DataType(this=exp.DataType.Type.BIT, expressions=node.expressions)
+        if isinstance(node, exp.Anonymous) and node.name.lower() in _FORMS:
+            converted = converted or node.name.lower() == "convert"
+            return exp.Anonymous(this=_FORMS[node.name.lower()], expressions=node.expressions)
+        return node
+
+    tree = sqlglot.parse_one(pg_sql, read=_HexKept)
+    written = tree.transform(held)
+    if written == tree:
+        return pg_sql
+    return (
+        postgres_literals(written.sql(dialect="postgres"))
+        if converted
+        else written.sql(dialect="postgres")
+    )
 
 
 def typed_calls(pg_sql: str) -> str:

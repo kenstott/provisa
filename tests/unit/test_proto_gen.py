@@ -442,14 +442,16 @@ def test_a_not_null_column_has_presence_too():
 
 
 def test_a_row_with_a_null_is_encoded_with_that_field_unset():
-    from types import SimpleNamespace
+    import pyarrow as pa
 
-    from provisa.grpc.server import ProvisaServicer
+    from provisa.grpc.server import _row_encoder
 
     orders = _compiled(generate_proto(_make_si())).Orders
-    msg = ProvisaServicer._dict_row_to_message(
-        SimpleNamespace(_pb2=None), orders, {"id": 7, "amount": None}
+    row = pa.record_batch(
+        {"id": pa.array([7], pa.int64()), "amount": pa.array([None], pa.float64())}
     )
+    (sent,) = _row_encoder(orders, ["id", "amount"]).encode(row)
+    msg = orders.FromString(sent)
     assert msg.HasField("id") and msg.id == 7
     assert not msg.HasField("amount")
 

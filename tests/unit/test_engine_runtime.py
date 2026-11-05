@@ -94,8 +94,17 @@ def test_require_fails_closed_for_unsupported_transport():
 async def test_direct_route_uses_native_terminal(monkeypatch):
     seen = {}
 
-    async def _fake_direct(pools, source_id, sql, params, span_attrs=None):
-        seen.update(pools=pools, source_id=source_id, sql=sql, params=params, span_attrs=span_attrs)
+    async def _fake_direct(
+        pools, source_id, sql, params, span_attrs=None, *, reports_generated=False
+    ):
+        seen.update(
+            pools=pools,
+            source_id=source_id,
+            sql=sql,
+            params=params,
+            span_attrs=span_attrs,
+            reports_generated=reports_generated,
+        )
         return QueryResult(rows=[(1,)], column_names=["x"])
 
     monkeypatch.setattr("provisa.executor.direct.execute_direct", _fake_direct)

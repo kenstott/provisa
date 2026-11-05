@@ -290,6 +290,33 @@ def regexp_substr(  # noqa: PLR0913 -- PostgreSQL's six arguments
     return found.group(subexpr) if subexpr <= regex.groups else None
 
 
+def regexp_instr(  # noqa: PLR0913 -- PostgreSQL's seven arguments
+    value: str, pattern: str, start: int, n: int, endoption: int, flags: str, subexpr: int
+) -> int:
+    """The position of the nth match from ``start`` (of its ``subexpr``th group), or of the
+    character after it where ``endoption`` is 1; 0 where there is none."""
+    bounds = (
+        ("start", start, 1),
+        ("n", n, 1),
+        ("endoption", endoption, 0),
+        ("subexpr", subexpr, 0),
+    )
+    for name, bound, least in bounds:
+        if bound < least or (name == "endoption" and bound > 1):
+            raise _error("22023", f'invalid value for parameter "{name}": {bound}')
+    regex = _compiled(pattern, _flags(flags, "regexp_instr"))
+    found = None
+    matches = regex.finditer(value, start - 1)
+    for _ in range(n):
+        found = next(matches, None)
+        if found is None:
+            return 0
+    assert found is not None
+    if subexpr > regex.groups or found.start(subexpr) < 0:
+        return 0
+    return (found.end(subexpr) if endoption else found.start(subexpr)) + 1
+
+
 def json_object(keys: list[str | None], values: list[str | None] | None) -> str:
     """json_object(text[]) -- alternating keys and values -- or json_object(keys, values)."""
     if values is None:
@@ -698,6 +725,12 @@ _NULL_ANSWERING_UDFS: tuple[tuple[str, Any, list[str], str], ...] = (
         regexp_substr,
         ["VARCHAR", "VARCHAR", "BIGINT", "BIGINT", "VARCHAR", "BIGINT"],
         "VARCHAR",
+    ),
+    (
+        "provisa_regexp_instr",
+        regexp_instr,
+        ["VARCHAR", "VARCHAR", "BIGINT", "BIGINT", "BIGINT", "VARCHAR", "BIGINT"],
+        "INTEGER",
     ),
 )
 

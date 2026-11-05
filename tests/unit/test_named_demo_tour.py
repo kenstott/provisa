@@ -29,6 +29,8 @@ _TARGETS = (
     "source",
     "table",
     "relationship",
+    "region",
+    "purposes",
     "trigger",
     "example",
     "sql",
@@ -51,6 +53,10 @@ _TARGETS = (
     "mcp",
     "mcp_explain",
     "mcp_connect",
+    "find_terms",
+    "scan",
+    "library",
+    "report",
 )
 # What a step runs that a role may stand beside: the role is picked as the step opens (demoTour.ts).
 _RUN_AS_ITS_ROLE = {"example", "sql", "mcp"}
@@ -86,6 +92,19 @@ _COLUMN_TABS = set(
         ).group(1),
     )
 ) | {"testing"}
+# The fields of a table's Identity section a step may open on (the read view anchors each one).
+_IDENTITY_FIELDS = set(
+    re.findall(r'testId: "table-identity-([a-z]+)"', (_UI / "TableSectionsRead.tsx").read_text())
+)
+# REQ-1922: the pages that list a platform region (its row, or Federation's tab for it), and those
+# that show the legend of region purposes under that list (demoTour.ts).
+_REGION_PAGES = {
+    "/admin/platform",
+    "/admin/regions",
+    "/admin/federation-engine",
+    "/admin/org-engine",
+}
+_PURPOSES_PAGES = {"/admin/platform", "/admin/regions"}
 # The graphs of View Profile Runs a step may show (ProfileRunsModal's 3D views).
 _PROFILE_GRAPHS = set(
     re.findall(
@@ -95,6 +114,9 @@ _PROFILE_GRAPHS = set(
         ).group(1),
     )
 )
+# REQ-2201: the page the glossary's Find terms opens on, and the Reference library page.
+_GLOSSARY_PAGE = "/admin/ontology"
+_LIBRARY_PAGE = "/admin/reference-library"
 # The page each surface's step runs on.
 _SURFACE_PAGES = {"api": "/openapi", "jsonapi": "/jsonapi", "grpc": "/grpc", "cypher": "/graph"}
 
@@ -236,6 +258,10 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     setup = home / "setup.yaml"
     made = (yaml.safe_load(setup.read_text()) or {}).get("steps") or [] if setup.exists() else []
     envs = {"prod"} | {s["environment"]["name"] for s in made if "environment" in s}
+    # REQ-2201: the documents the demo's setup scans for terms when its bundle is built.
+    from provisa.api.demo_templates import demo_scans
+
+    scanned = set(demo_scans(home))
     terms = {t["name"] for t in config.get("glossary_terms", [])}
     products = {p["id"] for p in config.get("data_products", [])}
     tables = {f"{t['source_id']}.{config_table_name(t)}" for t in config["tables"]}
@@ -300,7 +326,18 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             assert "table" in step and page == "/tables", f"{step['key']}: open is a table's panel"
             section, _, tab = step["open"].partition(".")
             assert section in _TABLE_PANELS, f"{step['key']}: no anchored section {section!r}"
-            assert not tab or tab in _COLUMN_TABS, f"{step['key']}: no column tab {tab!r}"
+            if section == "identity":
+                assert not tab or tab in _IDENTITY_FIELDS, f"{step['key']}: no field {tab!r}"
+            else:
+                assert not tab or tab in _COLUMN_TABS, f"{step['key']}: no column tab {tab!r}"
+        if "region" in step:
+            # A region the demo's platform declares, on a page that lists regions.
+            declared = {r["id"] for r in (config.get("platform") or {}).get("regions") or []}
+            assert step["region"] in declared, f"{step['key']}: no platform region"
+            assert page in _REGION_PAGES, f"{step['key']}: a region shows on a regions page"
+        if "purposes" in step:
+            assert step["purposes"] is True, step
+            assert page in _PURPOSES_PAGES, f"{step['key']}: the legend is on a regions page"
         if "graph" in step:
             # One graph of a profiler member's latest run, in View Profile Runs, which the read
             # view offers in the table's quality section; the step's caption says what the tour
@@ -308,6 +345,14 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             assert step.get("open") == "quality", f"{step['key']}: a graph opens from quality"
             assert step["graph"] in _PROFILE_GRAPHS, f"{step['key']}: no graph {step['graph']!r}"
             assert step["table"] in profiled, f"{step['key']}: {step['table']} has no profiler"
+        if "report" in step:
+            # A seeded report, opened on the Reports page from its deep link (demoTour.ts).
+            from provisa.api._meta_views import _OPS_REPORT_VIEWS
+
+            assert page == "/admin/reports", f"{step['key']}: a report opens on the Reports page"
+            assert step["report"] in _OPS_REPORT_VIEWS, (
+                f"{step['key']}: no report {step['report']!r}"
+            )
         if "polly" in step:
             # Its answer is stored at the template build and graded by the bake-off.
             assert "route" not in step, f"{step['key']}: Polly opens over the page it is on"
@@ -425,6 +470,25 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
         if "mcp_connect" in step:
             assert step["mcp_connect"] is True, step
             assert page == "/explore", f"{step['key']}: mcp_connect is on /explore, not {page}"
+        for kind in ("find_terms", "scan"):
+            if kind in step:
+                # REQ-2201: Find terms opens from the glossary, on a document the demo's setup
+                # scanned ahead, so the scan done is there to open and a cancelled one shows it.
+                # A find_terms step may name the demo's domains its scan is curated in.
+                url = step[kind]
+                if kind == "find_terms" and isinstance(url, dict):
+                    assert set(url) == {"url", "domains"}, f"{step['key']}: {url}"
+                    domain_ids = {d["id"] for d in config["domains"]}
+                    assert url["domains"] and set(url["domains"]) <= domain_ids, step
+                    url = url["url"]
+                assert page == _GLOSSARY_PAGE, f"{step['key']}: {kind} is on {_GLOSSARY_PAGE}"
+                assert url in scanned, f"{step['key']}: setup.yaml scans no {url}"
+        if "library" in step:
+            # REQ-2201: a library document's row, the document the demo's setup scanned.
+            assert page == _LIBRARY_PAGE, f"{step['key']}: library is on {_LIBRARY_PAGE}"
+            assert step["library"] in scanned, (
+                f"{step['key']}: setup.yaml scans no {step['library']}"
+            )
         if "sql" in step:
             sql_steps[step["key"]] = step["sql"]
             # A relation read at a time is named with its arguments (REQ-1163): its name is the call's.
@@ -597,8 +661,8 @@ def test_an_agent_in_a_demo_can_search_its_catalog(home):
 def test_every_step_has_its_words_in_every_language(path):
     steps = yaml.safe_load(path.read_text())["steps"]
     keys = [s["key"] for s in steps]
-    # A step that acts first (a graph it opens) shows its caption while it does.
-    acting = {s["key"] for s in steps if "graph" in s}
+    # A step that acts first (a graph it opens, a scan it starts) shows its caption while it does.
+    acting = {s["key"] for s in steps if "graph" in s or "find_terms" in s}
     for locale in sorted(p for p in _LOCALES.iterdir() if p.is_dir()):
         words = json.loads((locale / "tour.json").read_text())["tour"]
         for key in keys:
@@ -916,3 +980,69 @@ def test_the_mcp_explorer_s_steps_are_on_the_explorer():
 def test_an_mcp_step_off_the_explorer_or_with_nothing_to_explain_is_refused(steps):
     with pytest.raises(AssertionError):
         _check_steps(_WEBLOGS, steps)
+
+
+# -- REQ-2201: Find terms and the reference library ------------------------------------------------
+
+_RULE = (
+    "https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311"
+)
+_GLOSSARY = {"route": _GLOSSARY_PAGE, "capability": "glossary_read"}
+_LIBRARY = {"route": _LIBRARY_PAGE, "capability": "org_settings"}
+
+
+@pytest.fixture
+def scanning(tmp_path):
+    """The weblogs demo, its setup scanning the rule for terms."""
+    import shutil
+
+    home = tmp_path / "weblogs"
+    shutil.copytree(_WEBLOGS, home, ignore=shutil.ignore_patterns("logs", "seeded", "dump"))
+    (home / "setup.yaml").write_text(yaml.safe_dump({"steps": [{"scan": _RULE}]}))
+    return home
+
+
+def test_a_tour_scans_on_the_glossary_and_points_at_the_library(scanning):
+    _check_steps(
+        scanning,
+        [
+            {"key": "f", **_GLOSSARY, "find_terms": _RULE},
+            {"key": "d", "find_terms": {"url": _RULE, "domains": ["shop"]}},
+            {"key": "s", "scan": _RULE},
+            {"key": "l", **_LIBRARY, "library": _RULE},
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        # Find terms is the glossary's.
+        [{"key": "f", **_LIBRARY, "find_terms": _RULE}],
+        [{"key": "s", **_LIBRARY, "scan": _RULE}],
+        # The library's row is on its own page.
+        [{"key": "l", **_GLOSSARY, "library": _RULE}],
+        # A document the demo's setup does not scan: no scan done ahead to open.
+        [{"key": "f", **_GLOSSARY, "find_terms": _RULE.replace("1010.311", "1010.100")}],
+        [{"key": "s", **_GLOSSARY, "scan": _RULE.replace("1010.311", "1010.100")}],
+        [{"key": "l", **_LIBRARY, "library": _RULE.replace("1010.311", "1010.100")}],
+        # A domain the demo does not have, or none.
+        [{"key": "f", **_GLOSSARY, "find_terms": {"url": _RULE, "domains": ["elsewhere"]}}],
+        [{"key": "f", **_GLOSSARY, "find_terms": {"url": _RULE, "domains": []}}],
+    ],
+    ids=[
+        "find-page",
+        "scan-page",
+        "library-page",
+        "find-unscanned",
+        "scan-unscanned",
+        "library-unscanned",
+        "find-other-domain",
+        "find-no-domain",
+    ],
+)
+def test_a_scan_or_library_step_off_its_page_or_on_a_document_never_scanned_is_refused(
+    scanning, steps
+):
+    with pytest.raises(AssertionError):
+        _check_steps(scanning, steps)

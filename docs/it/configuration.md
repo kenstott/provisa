@@ -1558,10 +1558,7 @@ Precedenza: variabile d'ambiente `PROVISA_ENGINE` → campo di configurazione pe
 | `singlestore` | SingleStore | Per dialetto | No | Nessuno (solo land) | Credenziali per dialetto |
 | `vertica` | Vertica | Per dialetto | No | Nessuno (solo land) | Credenziali per dialetto |
 | `exasol` | Exasol | Per dialetto | No | Nessuno (solo land) | Credenziali per dialetto |
-| `teradata` | Teradata Vantage | Per dialetto | No | Nessuno (solo land) | Credenziali per dialetto |
 | `saphana` | SAP HANA | Per dialetto | No | Nessuno (solo land) | Credenziali per dialetto |
-| `sapase` | SAP ASE (Sybase) | Per dialetto | No | Nessuno (solo land) | Credenziali per dialetto |
-| `sqlanywhere` | SAP SQL Anywhere | Per dialetto | No | Nessuno (solo land) | Credenziali per dialetto |
 | `monetdb` | MonetDB | Per dialetto | No | Nessuno (solo land) | Credenziali per dialetto |
 | `firebird` | Firebird | Per dialetto | No | Nessuno (solo land) | Credenziali per dialetto |
 | `sqlalchemy` | Altro database relazionale (tramite URL di connessione) | Per dialetto | No | Nessuno (solo land) | Credenziali per dialetto |
@@ -1662,7 +1659,7 @@ PROVISA_ENGINE=synapse
 
 Lo store di materializzazione è di default `TENANT_DATABASE_URL`.
 
-#### Motori di database relazionali (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) e `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
+#### Motori di database relazionali (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, saphana, monetdb, firebird) e `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-saphana-monetdb-firebird-and-sqlalchemy }
 
 Una chiave per ogni database relazionale raggiungibile in rete, tutte sullo stesso runtime solo-land (nessuna federazione verso origini esterne): ogni origine atterra nello store e viene interrogata lì. La chiave seleziona il database; `PROVISA_ENGINE_URL` porta il DSN richiesto dal suo dialetto. `sqlalchemy` è il jolly per un database privo di una propria chiave. Gli store file-embedded (SQLite, Access) non sono offerti, perché il server deve essere raggiungibile in rete.
 

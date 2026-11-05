@@ -13,7 +13,8 @@
       "query_param": "क्वेरी पैरामीटर",
       "graphql_arg": "GraphQL आर्ग्युमेंट",
       "grpc_input": "gRPC अनुरोध फ़ील्ड",
-      "query_arg": "नेटिव क्वेरी आर्ग्युमेंट"
+      "query_arg": "नेटिव क्वेरी आर्ग्युमेंट",
+      "column_value": "कॉलम मान"
     }
   }
 }

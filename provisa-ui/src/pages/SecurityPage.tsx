@@ -12,8 +12,7 @@ import { PageTitle } from "../components/PageTitle";
 import { Tip } from "../components/Tip";
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { ConfirmDialog } from "../components/ConfirmDialog";
-import { Trash2, Pencil, Shield } from "lucide-react";
+import { Pencil, Shield } from "lucide-react";
 import {
   Alert,
   Button,
@@ -54,6 +53,7 @@ import { useRegionChoices } from "../hooks/useRegionQueries";
 import { ListTable, ListHead, ListRow, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
+import { PanelDelete } from "../components/list/PanelDelete";
 import { serverMessage } from "../i18n/serverMessage";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
 import { DerivedRoleDetail, DerivedRoleNewForm, DerivedRoleRows } from "./security/DerivedRoles";
@@ -195,23 +195,14 @@ export function SecurityRolesPage() {
     }
   };
 
+  // REQ-2198: the panel's Delete (PanelDelete) shows the delete's progress and says why one
+  // failed; it resolves once the list is read again without the role.
   const handleDeleteRole = async (id: string) => {
-    setSaving(true);
     setError("");
-    try {
-      const result = await deleteRole(id);
-      if (refusal.refused(result, id)) return;
-      if (!result.success) {
-        setError(serverMessage(result, result.message));
-        return;
-      }
-      if (expandedRole === id) setExpandedRole(null);
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
+    const result = await deleteRole(id);
+    if (refusal.refused(result, id)) return false;
+    if (!result.success) throw new Error(serverMessage(result, result.message));
+    await reload();
   };
 
   const startEditingRole = (role: Role) => {
@@ -389,27 +380,14 @@ export function SecurityRolesPage() {
                     <Pencil size={14} />
                   </ActionIcon>
                 </Tip>
-                <ConfirmDialog
+                <PanelDelete
+                  itemKey={r.id}
                   title={t("securityPage.deleteRoleTitle", { id: r.id })}
                   consequence={t("securityPage.deleteRoleConsequence")}
-                  onConfirm={() => handleDeleteRole(r.id)}
-                >
-                  {(open) => (
-                    <Tip text={t("securityPage.delete")} named>
-                      <ActionIcon
-                        color="red"
-                        aria-label={t("securityPage.delete")}
-                        data-testid={`delete-role-${r.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          open();
-                        }}
-                      >
-                        <Trash2 size={14} />
-                      </ActionIcon>
-                    </Tip>
-                  )}
-                </ConfirmDialog>
+                  ariaLabel={t("securityPage.delete")}
+                  testId={`delete-role-${r.id}`}
+                  onDelete={() => handleDeleteRole(r.id)}
+                />
               </Group>
             </fieldset>
           </PanelActions>
@@ -763,8 +741,8 @@ export function SecurityRolesPage() {
                 value={derivedPick.value}
                 onChanged={reloadDerived}
                 onDeleted={async () => {
-                  setDerivedPick(null);
                   await reloadDerived();
+                  setDerivedPick(null);
                 }}
               />
             ) : null)(derived.roles.find((x) => x.attribute === derivedPick.attribute))

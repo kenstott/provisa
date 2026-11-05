@@ -15,7 +15,7 @@ over its tables: the weblogs demo's by tests/integration/test_polly_bakeoff_e2e.
 may ask Polly any of its own (tests/unit/test_named_demo_tour.py), and every grading query names
 its demo's tables and views as they register (tests/unit/test_polly_bakeoff_questions.py)."""
 
-# Requirements: REQ-2012, REQ-2107
+# Requirements: REQ-2012, REQ-2107, REQ-2053
 
 from __future__ import annotations
 
@@ -160,10 +160,68 @@ CLOUDPOLICY = (
     ),
 )
 
+# The audit demo's questions (REQ-2040): the analyst's series on one client's Single Audit
+# readiness, its schedule set beside its federal award records.
+_BRINDLEWOOD = "'Brindlewood Community Health'"
+_OPEN_ITEMS = "('timing', 'missing', 'unrecorded')"
+AUDIT = (
+    Question(
+        "Which federal awards does Brindlewood Community Health's 2023 schedule record?",
+        'SELECT s.aln AS a FROM "audit"."grant_schedule" AS s '
+        'JOIN "audit"."clients" AS c ON c.client_id = s.client_id '
+        f"WHERE c.client_name = {_BRINDLEWOOD}",
+    ),
+    Question(
+        "What do Brindlewood Community Health's federal award records show obligated to it in "
+        "federal fiscal 2023?",
+        'SELECT n.aln AS a FROM "audit"."award_notices" AS n '
+        'JOIN "audit"."clients" AS c ON c.client_id = n.client_id '
+        f"WHERE c.client_name = {_BRINDLEWOOD} AND n.action_fiscal_year = 2023",
+    ),
+    Question(
+        "Where do Brindlewood Community Health's schedule and its federal award records differ?",
+        'SELECT aln AS a FROM "audit"."view_readiness" '
+        f"WHERE client_name = {_BRINDLEWOOD} AND finding IN {_OPEN_ITEMS}",
+    ),
+    Question(
+        "Which of Brindlewood Community Health's differences are timing differences, and which "
+        "are missing awards?",
+        'SELECT aln AS a FROM "audit"."view_readiness" '
+        f"WHERE client_name = {_BRINDLEWOOD} AND finding IN ('timing', 'missing')",
+    ),
+    Question(
+        "What goes in Brindlewood Community Health's readiness memo?",
+        'SELECT aln AS a FROM "audit"."view_readiness" '
+        f"WHERE client_name = {_BRINDLEWOOD} AND finding IN {_OPEN_ITEMS}",
+    ),
+)
+
+# The banksecrecy demo's question (REQ-2201): the concept asked in plain words, answered from the
+# governed view the tour reads in SQL and GraphQL: each person with cash that needs a report.
+BANKSECRECY = (
+    Question(
+        "Which cash needs a currency transaction report?",
+        'SELECT person AS a FROM "banksecrecy"."view_ctr_required"',
+    ),
+)
+
+# The testdata demo's question (REQ-2053): the assistant reads customers.email's latest profile run
+# and proposes its fake (propose_fakes, the column named though it declares one already). The
+# profile shows email addresses, so the right answer is the email fake, not a value of the table.
+TESTDATA = (
+    Question(
+        "Which fake would you propose for customers.email from its latest profile?",
+        "SELECT 'email()' AS a",
+    ),
+)
+
 # Each named demo's questions, by its name (its directory under demo/named).
 QUESTIONS: dict[str, tuple[Question, ...]] = {
     "weblogs": WEBLOGS,
     "insider": INSIDER,
     "banking": BANKING,
     "cloudpolicy": CLOUDPOLICY,
+    "audit": AUDIT,
+    "banksecrecy": BANKSECRECY,
+    "testdata": TESTDATA,
 }

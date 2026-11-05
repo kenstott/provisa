@@ -1,6 +1,6 @@
 # Fetch paths: how each engine and source hands a result to the encoders
 
-Status: map and plan, 2026-11-02. The requirement (maintainer, 2026-11-02): every
+Status: map and plan, 2026-11-02; pgwire wired to the Rust encoder (section 1.1). The requirement (maintainer, 2026-11-02): every
 engine hands the encoder an Arrow buffer or a direct row cursor on its own result, never rows a
 Python client has parsed; where a columnar endpoint exists and Provisa calls a row endpoint, the
 call is redesigned; an engine or source with neither is documented here with what it costs.
@@ -31,9 +31,56 @@ Arrow results, so a terminal can carry the engine's Arrow to the consumer unchan
   (and its `repr` does not build it).
 
 Encoders that read `arrow_batches()` get no Python row at all; the row consumers in place today
-(GraphQL, JSON:API, Bolt, pgwire's DataRow loop) keep working, converting at the point they read.
-An async terminal builds the rows on its executor thread before handing the result back
-(`ArrowResult.with_rows()`): the event loop does no per-row work.
+(GraphQL, JSON:API, Bolt) keep working, converting at the point they read. An async terminal
+builds the rows on its executor thread before handing the result back (`ArrowResult.with_rows()`):
+the event loop does no per-row work.
+
+### 1.1 Every encoder takes the result in the form it has
+
+pgwire's DataRow messages are written by the Rust encoder (`provisa._encoders.pgwire`, crate
+`rust/pgwire`) and by nothing else, and so are gRPC's messages (`provisa._encoders.grpc`) and the
+JSON surfaces' documents (`provisa._encoders.json`). Each encoder takes a result in the form it
+has, and nothing converts a result into another form only to encode it:
+
+- an Arrow result (`ArrowResult`, `ArrowStreamResult`; `executor.result.is_arrow`) hands the
+  encoder the engine's record batches (`arrow_batches()`);
+- a row result (`QueryResult`, `StreamingQueryResult`: a DIRECT driver's rows, a response-cache
+  entry held as rows, an API source, an admin or catalog answer) hands the encoder its batches of
+  rows (`batches()`), and the encoder reads each cell as it is (pgwire `encode_rows_stream`,
+  gRPC `Encoder.encode_rows`, JSON `RowBatches`). A row result has no `arrow_batches()`;
+- a passthrough's result (`DataRowResult`, `DataRowStreamResult`) hands on `datarow_batches()`,
+  forwarded unchanged (`forward_raw`).
+
+Each crate reads a row result's cell into the value model its Arrow reader already produces
+(pgwire `PyVal`, gRPC `V`, JSON `P`: the value `column_values` gives of an Arrow cell), so one set
+of writers answers both forms. A value of a type no rule reads (a range, a point, an address, a
+time with a zone) is written as the text `ir_arrow.text_of` gives of it, chosen by the engine's
+type name for the column. Each encoder's differential holds the rows form to the Arrow form's
+bytes for every value both can hold (`tests/unit/*_encoder/`), and each `test_rows.py` holds a
+driver's own values (UUIDs, addresses, memoryviews, relativedeltas, PostgreSQL's infinities, pytz
+datetimes) to what the encoder answered of them when they were built into Arrow first. Where the
+Arrow form could not hold a value as it is, the rows form now writes the value itself: dicts of
+differing keys are JSON objects (Arrow held their repr's text), an int past 128 bits is a JSON
+number, and a timestamp keeps its own offset rather than an instant in UTC.
+
+What wraps a stream keeps its kind (`executor.result.rewrapped`): the live-read permit guard and
+the response-cache tee hand Arrow on as Arrow (the tee keeps an Arrow IPC entry, which a hit
+replays as an `ArrowResult`), and a passthrough's DataRow messages as DataRow messages. A SQL
+cursor buffers the batches it pulled and hands out slices of them; query_to_xml and its kin read
+Python values from the batches (they write an XML document, not DataRow messages).
+
+DuckDB's lossless export carries `HUGEINT`, `UHUGEINT`, `VARINT`, `BIT` and `TIMETZ` as its own
+bytes (Arrow opaque types); the encoder reads them from those bytes as `duckdb_arrow.arrow_rows`
+does, so a DuckDB result reaches the wire with no Python row at all.
+
+### 1.2 gRPC
+
+Each Query{Type} / Query{Type}Batch RPC hands its result (ENGINE stream, DIRECT stream or
+buffered read, response-cache hit, API route) to one `Encoder` built from the organisation's
+compiled service, in the form it has (1.1): `encode` per Arrow record batch, `encode_rows` per
+batch of rows (a DIRECT stream's fetched rows go to it as they are fetched). A group's nodes
+(Query{Type}GroupBy) are written by the encoder from the JSON its nodes column holds.
+`rust/encoders/grpc/RESULTS.md` records what each value is written as and the differential.
 
 ## 2. Map
 
@@ -61,7 +108,7 @@ the row stream into a `QueryResult` on the executor thread: the same `to_pylist`
 
 | Source | Driver | Python rows built at | Columnar alternative |
 |---|---|---|---|
-| PostgreSQL, pgwire servers | psycopg 3 pool (`drivers/postgresql.py`), server-side cursor for streams | psycopg 3 binary/text loaders | ADBC postgresql; for pgwire, the raw DataRow passthrough is the direct cursor `[code]` |
+| PostgreSQL, pgwire servers | psycopg 3 pool (`drivers/postgresql.py`), server-side cursor for streams | psycopg 3 binary/text loaders | none taken: stays a row source, its rows encoded as they are (ADBC postgresql not taken, see section 3, item 4); for pgwire, the raw DataRow passthrough is the direct cursor `[code]` |
 | DuckDB / MotherDuck | **this change:** `drivers/duckdb_driver.py` reads `to_arrow_table` (an `ArrowResult`) and streams from `to_arrow_reader`; before, `fetchall` / `fetchmany` | `duckdb_arrow.arrow_rows`, in the driver (`execute`) or per fetch (`open_stream`) | — (done) `[code]` |
 | Snowflake | `drivers/snowflake.py`: `fetchall` / `fetchmany` | the connector's row conversion | `fetch_arrow_batches` (the runtime already uses it) or ADBC snowflake (installed, 1.11.0) `[code]` |
 | Databricks | `drivers/databricks.py` via `pooled.py`: `fetchall` / `fetchmany` | the connector | `fetchmany_arrow` / `fetchall_arrow` (the runtime already uses it) `[code]` |
@@ -104,8 +151,18 @@ Ordered by what it costs today and how small the change is.
    `job.result().to_arrow_iterable(bqstorage_client=BigQueryReadClient(...))`. The Storage Read
    API is billed per byte read; a small result read through it costs more than through
    `tabledata.list`. Warehouse lane.
-4. **Postgres engine (`pg_runtime`) and the Postgres DIRECT driver** — `run_sync`/`run` and
-   `open_stream` on the ADBC postgresql connection the runtime already pools for `run_arrow*`
+4. **Postgres DIRECT driver: decided, stays psycopg rows** (maintainer, 2026-11-03). Every encoder now
+   takes a row result's rows as they are, so the Arrow build in Python that made DIRECT Postgres slow is gone; what remains is psycopg's own per-value decode. ADBC
+   postgresql (1.11.0, probed against PostgreSQL 17, J567) was not taken because it cannot give
+   the values the driver serves today: PostgreSQL's `infinity` / `-infinity` dates and timestamps
+   raise inside ADBC ("date value out of range"), so there is no value to encode; uuid, inet,
+   cidr, macaddr, timetz, point and the other geometric types, bit, tsvector, the reg* types and
+   every range arrive as PostgreSQL's binary wire bytes (`arrow.opaque` on binary storage), which
+   an encoder would write as bytes; money arrives as int64 cents; numeric arrives as text with
+   NaN lowercased to `nan`; oid arrives as int32, which overflows past 2^31. Taking ADBC would
+   need readers for those opaque types in each encoder crate and a way past the infinity failure.
+   The rest of this item (the Postgres engine) is unchanged:
+   **Postgres engine (`pg_runtime`)** — `run_sync`/`run` on the ADBC postgresql connection the runtime already pools for `run_arrow*`
    (`cursor.fetch_record_batch()`), returning `ArrowStreamResult`/`ArrowResult`. Open point: the
    rows a row consumer is given must equal psycopg's (interval, infinity, numeric, json, arrays,
    the column type oids pgwire reports) — the same parity test this change wrote for DuckDB

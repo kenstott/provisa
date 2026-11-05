@@ -26,33 +26,23 @@ import {
 } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 import { useRegisterEntity, useRegisterFact, useTables } from "../../hooks/useAdminQueries";
-import type { Domain, ListedTable, ListedColumn } from "../../types/admin";
-import { DERIVED_SOURCE_ID } from "../../types/admin";
+import type { Domain } from "../../types/admin";
 import { FieldLabel } from "./FieldLabel";
 import { TimeTravelSection } from "./TimeTravelSection";
 import { relationName } from "../../naming";
 import { serverMessage } from "../../i18n/serverMessage";
 import { FieldGroup, FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
-import { assignableDomainIds, isAssignableDomain } from "../../lib/internalDomains";
+import { assignableDomainIds } from "../../lib/internalDomains";
+import {
+  AGGS as _AGGS,
+  colLabel,
+  isKeyable as _isKeyable,
+  isNumeric as _isNumeric,
+  isUserTable as _isUserTable,
+} from "./modeling/columns";
 
 // REQ-1164: declarative entity/fact modeling. The form collects the spec and the backend lowers it
 // to the underlying MV (+ relationships) — the star dimension/fact or Data Vault hub/satellite/link.
-
-// A key must support exact equality — the delta anti-join and snapshot dedup partition on it. Approximate
-// numerics, JSON, and binary columns are excluded from the key picker (equality is unreliable/meaningless).
-const _t = (c: ListedColumn) => (c.dataType ?? "").toLowerCase();
-const _KEY_INELIGIBLE = /(float|double|real|json|jsonb|blob|bytea|array|geometry|geography)/;
-const _NUMERIC = /(int|numeric|decimal|double|real|float|number|money)/;
-const _isKeyable = (c: ListedColumn) => !_KEY_INELIGIBLE.test(_t(c));
-const _isNumeric = (c: ListedColumn) => _NUMERIC.test(_t(c));
-
-const _AGGS = ["sum", "avg", "min", "max", "count"] as const;
-
-// User-defined tables only — exclude Provisa's own system sources/domains from the source picker.
-// Mirrors provisa/core/config_loader.py::_SYSTEM_SOURCE_IDS; the domains are lib/internalDomains'.
-const _SYSTEM_SOURCE_IDS = new Set(["provisa-admin", "provisa-otel", DERIVED_SOURCE_ID]);
-const _isUserTable = (tbl: ListedTable) =>
-  !_SYSTEM_SOURCE_IDS.has(tbl.sourceId) && isAssignableDomain(tbl.domainId);
 
 interface ModelingFormProps {
   domains: Domain[];
@@ -134,8 +124,6 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
     [userTables],
   );
 
-  const colLabel = (c: ListedColumn) =>
-    c.dataType ? `${c.columnName} (${c.dataType})` : c.columnName;
   const allColumnOptions = columns.map((c) => ({ value: c.columnName, label: colLabel(c) }));
   const keyColumnOptions = columns.map((c) => ({
     value: c.columnName,

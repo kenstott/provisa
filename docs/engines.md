@@ -72,8 +72,8 @@ library.
 | `sqlalchemy` | Any SQLAlchemy URL |
 | `mysql`, `mariadb`, `tidb`, `singlestore` | MySQL and its wire-compatible relatives |
 | `greenplum`, `cockroachdb`, `yugabytedb`, `opengauss` | PostgreSQL-wire relatives |
-| `oracle`, `mssql`, `db2`, `teradata` | Enterprise RDBMS |
-| `saphana`, `sapase`, `sqlanywhere` | SAP |
+| `oracle`, `mssql`, `db2` | Enterprise RDBMS |
+| `saphana` | SAP |
 | `redshift`, `vertica`, `exasol`, `monetdb` | Analytic stores |
 | `firebird` | Firebird |
 

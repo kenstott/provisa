@@ -282,6 +282,10 @@
       "public_url": {
         "label": "Indirizzo pubblico",
         "help": "L'indirizzo con cui è nota questa installazione, ad esempio https://data.example.com. L'IRI di ogni soggetto in SPARQL e nelle esportazioni RDF inizia con esso, quindi deve restare lo stesso finché quelle IRI sono in uso. Se non è impostato, una query che restituisce l'IRI di un soggetto viene rifiutata."
+      },
+      "node_url": {
+        "label": "Indirizzo di questo nodo",
+        "help": "L'indirizzo a cui i client raggiungono questo nodo. L'interfaccia di un coordinatore lo elenca come nodo dati quando la regione non ne elenca nessuno. Il launcher lo imposta per ogni nodo; se non è impostato, il nodo non è elencato."
       }
     },
     "tls": {

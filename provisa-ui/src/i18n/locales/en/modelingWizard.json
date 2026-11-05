@@ -1,0 +1,246 @@
+{
+  "modelingWizard": {
+    "stepOf": "Step {{index}} of {{count}}",
+    "next": "Next",
+    "toReview": "Review",
+    "back": "Back",
+    "remove": "Remove",
+    "domainHelp": "The domain every table this wizard creates is registered under: its namespace for access control and querying.",
+    "validTime": "Valid time",
+    "validTimeHelp": "The column saying from when each version was true in the business. With the recorded time, it lets past versions be queried.",
+    "recordedTime": "Recorded time",
+    "recordedTimeHelp": "The column saying when each version was recorded in the source.",
+    "primitive": {
+      "entity": "Entity",
+      "fact": "Fact",
+      "relationship": "Relationship"
+    },
+    "role": {
+      "dimension": "Dimension",
+      "fact": "Fact",
+      "hub": "Hub",
+      "satellite": "Satellite",
+      "linkSatellite": "Link satellite",
+      "effectivity": "Effectivity satellite",
+      "link": "Link",
+      "sameAs": "Same-as link"
+    },
+    "roleIn": {
+      "dimension": "A star schema dimension, built as an entity keyed on its business key",
+      "fact": "The star schema's fact, built as a fact related to each dimension",
+      "hub": "A Data Vault hub, built as an entity keyed on the business key",
+      "satellite": "A Data Vault satellite, built as an entity keyed on its hub's business key",
+      "linkSatellite": "A Data Vault link satellite, built as an entity keyed on the link's keys",
+      "effectivity": "A Data Vault effectivity satellite, built as an entity keyed on the link's keys with valid time",
+      "link": "A Data Vault link, built as a fact with no measures whose grain is the participating keys",
+      "sameAs": "A Data Vault same-as link, built as a fact with no measures relating the hub to itself"
+    },
+    "star": {
+      "process": {
+        "title": "Business process",
+        "intro": "The business process this star schema measures, where its events are recorded, and what kind of fact it is."
+      },
+      "grain": {
+        "title": "Grain",
+        "intro": "What one row of the fact stands for. Declare the grain before the dimensions and measures."
+      },
+      "dimensions": {
+        "title": "Dimensions",
+        "intro": "The who, what, where and when of each event: each dimension, how it changes, and whether it is conformed."
+      },
+      "measures": {
+        "title": "Measures",
+        "intro": "The numbers the process produces, how each is aggregated, and whether it can be summed."
+      },
+      "processLabel": "Business process",
+      "processHelp": "The business process the fact records, in the business's own words (order fulfillment, claims handling). It names the fact table.",
+      "sourceLabel": "Where the process is recorded",
+      "sourceHelp": "The registered table holding the process's events. The fact is read from it: its grain, its measures and its links to the dimensions.",
+      "factTypeLabel": "Fact type",
+      "factTypeHelp": "Transaction: one row per event. Periodic snapshot: one row per period, the state at its end. Accumulating snapshot: one row per item, updated as it passes each milestone.",
+      "factType": {
+        "transaction": "Transaction",
+        "periodic": "Periodic snapshot",
+        "accumulating": "Accumulating snapshot"
+      },
+      "grainStatement": "Grain, in words",
+      "grainStatementHelp": "One row of the fact, said plainly. It goes in the fact's description.",
+      "grainStatementPlaceholder": "one row per order line",
+      "grainHelp": "The column(s) of the process's table that identify one fact row. Measures are aggregated to this level.",
+      "dimensionsHelp": "Each dimension the fact is analysed by. A new one is built from its own table; a conformed one is an existing dimension the fact shares with other facts.",
+      "dimName": "Dimension",
+      "dimNameHelp": "What the dimension describes (customer, product, date). It names the dimension table.",
+      "via": "Fact column",
+      "viaHelp": "The column of the process's table that points at this dimension.",
+      "conformed": "Conformed dimension",
+      "conformedHelp": "Pick an existing dimension to share it with other facts, so they can be compared on it. Leave it empty to build a new dimension.",
+      "conformedNew": "Build a new dimension",
+      "dimSource": "Dimension table",
+      "dimSourceHelp": "The registered table the dimension's rows are read from.",
+      "dimKeyHelp": "The column(s) identifying one member of the dimension. Rows are deduplicated on it, and the fact column points at it.",
+      "dimAttributesHelp": "The descriptive columns analysts filter and group by.",
+      "scdLabel": "When a member changes",
+      "scdHelp": "Type 1 overwrites: only the current value is kept. Type 2 keeps every version. Snapshot keeps the state as of each load. Type 2 and snapshot need the valid and recorded times.",
+      "scd": {
+        "type1": "Type 1: overwrite",
+        "type2": "Type 2: keep every version",
+        "snapshot": "Snapshot"
+      },
+      "measuresHelp": "The numeric columns the process measures. Each becomes a measure of the fact, aggregated to the grain.",
+      "aggOf": "{{column}}: aggregation",
+      "additivityLabel": "Additivity",
+      "additivityHelp": "Additive: can be summed across every dimension (an amount). Semi-additive: not across time (a balance). Non-additive: never summed (a ratio, a price).",
+      "additivity": {
+        "additive": "Additive",
+        "semiAdditive": "Semi-additive",
+        "nonAdditive": "Non-additive"
+      },
+      "missing": {
+        "process": "Name the business process, its domain and the table where it is recorded.",
+        "grain": "Pick the column(s) that identify one row of the fact.",
+        "dimensions": "Each dimension needs a name and a fact column, and either a conformed dimension or its own table and key (with valid and recorded times for type 2 or snapshot)."
+      }
+    },
+    "vault": {
+      "hubs": {
+        "title": "Hubs and business keys",
+        "intro": "The core business concepts, the business key that identifies each, and the record source the key comes from."
+      },
+      "links": {
+        "title": "Links",
+        "intro": "The units of work between the concepts, and whether each relationship can end."
+      },
+      "satellites": {
+        "title": "Satellites",
+        "intro": "The descriptive attributes of each hub or link, grouped by source, rate of change or sensitivity, and how far back their history goes."
+      },
+      "rules": {
+        "title": "Business vault",
+        "intro": "The business rules that derive new values from the raw vault. Optional."
+      },
+      "hubsLabel": "Hubs",
+      "hubsHelp": "One hub per core business concept (customer, product, order), identified by its business key: the key the business itself uses, not a system's surrogate.",
+      "addHub": "Add hub",
+      "concept": "Business concept",
+      "conceptHelp": "The concept the hub stands for. It names the hub.",
+      "recordSource": "Record source",
+      "recordSourceHelp": "The registered table the business keys are loaded from.",
+      "businessKeyHelp": "The column(s) the business identifies the concept by.",
+      "sameAsSource": "Same-as link",
+      "sameAsHelp": "When two keys name the same instance (a customer known by two systems' numbers), the table pairing them. Leave it empty when there is none.",
+      "sameAsNone": "None",
+      "sameAsMaster": "Master key",
+      "sameAsDuplicate": "Duplicate key",
+      "linksLabel": "Links",
+      "linksHelp": "One link per unit of work between hubs (a customer places an order). A link holds only the participating keys.",
+      "addLink": "Add link",
+      "linkName": "Unit of work",
+      "linkNameHelp": "What the link records. It names the link; left empty, the link is named after its hubs.",
+      "linkSource": "Link table",
+      "linkSourceHelp": "The registered table recording the unit of work, holding each participating hub's key.",
+      "linkHubs": "Hubs it relates",
+      "linkHubsHelp": "The hubs that take part. A link relates two or more hubs.",
+      "linkVia": "Key of {{hub}}",
+      "endsLabel": "Does the relationship end?",
+      "endsHelp": "When a relationship can end (a customer changes account manager), an effectivity satellite records when each one starts and ends.",
+      "ends": {
+        "never": "No, it stands once made",
+        "effectivity": "Yes: track effectivity"
+      },
+      "depthLabel": "History depth",
+      "depthHelp": "Every version: each change to a satellite's attributes is kept and can be queried as of any time. Current values only: a change overwrites.",
+      "depth": {
+        "full": "Every version",
+        "current": "Current values only"
+      },
+      "satellitesLabel": "Satellites",
+      "satellitesHelp": "The descriptive attributes of a hub or link. Split them into several satellites by source, rate of change or sensitivity.",
+      "addSatellite": "Add satellite",
+      "satParent": "Describes",
+      "satParentHelp": "The hub or link whose attributes the satellite holds.",
+      "parentHub": "Hub {{name}}",
+      "parentLink": "Link {{name}}",
+      "parentSatellite": "Satellite {{name}}",
+      "satName": "Satellite name",
+      "satNameHelp": "What sets this satellite apart (its source, crm; or its subject, address). Added to its name.",
+      "satSource": "Satellite table",
+      "satSourceHelp": "The registered table the attributes are read from.",
+      "satParentKey": "Key of what it describes",
+      "satParentKeyHelp": "The column(s) of the satellite's table holding the hub's business key or the link's keys.",
+      "satAttributesHelp": "The descriptive columns this satellite holds.",
+      "groupedBy": "Grouped by",
+      "groupedByHelp": "Why these attributes are together: they come from one source, change at one rate, or share a sensitivity (personal data kept apart).",
+      "grouping": {
+        "source": "Source",
+        "rateOfChange": "Rate of change",
+        "sensitivity": "Sensitivity"
+      },
+      "multiActive": "Multi-active key",
+      "multiActiveHelp": "When several rows are active at once for one key (a customer's phone numbers), the column(s) telling them apart. Leave empty otherwise.",
+      "multiActiveNone": "Not multi-active",
+      "rulesLabel": "Business rules",
+      "rulesHelp": "A business vault rule derives a value from the raw vault (a customer's lifetime value). It is recorded in the description of the table it derives from, and built afterwards as a view.",
+      "addRule": "Add rule",
+      "ruleTarget": "Derives from",
+      "ruleText": "Rule",
+      "ruleTextPlaceholder": "lifetime value = sum of order totals",
+      "missing": {
+        "hubs": "Pick the domain, and give each hub a business concept, a record source and a business key; a same-as link needs its table and both keys.",
+        "links": "Each link needs its table, at least two hubs, the key of each, and valid and recorded times when it ends.",
+        "satellites": "Each satellite needs what it describes, its table, that key and its attributes, with valid and recorded times when every version is kept.",
+        "rules": "Say which table each rule derives from.",
+        "satelliteKey": "A satellite's key has as many columns as the key of what it describes, in the same order."
+      }
+    },
+    "review": {
+      "title": "Review",
+      "intro": "What each answer becomes in Provisa: an entity or a fact, its key or grain, its history and its relationships. Names follow the method's convention; change any of them here.",
+      "nameOf": "{{role}} name",
+      "nameHelp": "The table's name. It is the method's conventional name; clear the prefix if consumers should not see it.",
+      "source": "Reads",
+      "key": "Key",
+      "attributes": "Attributes",
+      "history": "History",
+      "historyNone": "current values only",
+      "historyKept": "every version, by valid time {{validTime}} and recorded time {{recordedTime}}",
+      "grain": "Grain",
+      "measures": "Measures",
+      "relationships": "Relationships",
+      "relationship": "{{via}} → {{target}}",
+      "description": "Draft description",
+      "notCreatedTitle": "Recorded, not created",
+      "ruleNotCreated": "Business vault rule \"{{rule}}\": recorded in its table's description; build it as a view over these tables.",
+      "draftNote": "Each description is a first draft for a steward to revise in Registered Tables.",
+      "create": "Create",
+      "nameRequired": "Give every table a name.",
+      "nameTaken": "Two tables have the same name. Give each its own."
+    },
+    "result": {
+      "created_one": "Created {{count}} table",
+      "created_other": "Created {{count}} tables",
+      "stopped": "Stopped at {{name}}",
+      "draftNote": "Their descriptions are first drafts: revise them in Registered Tables.",
+      "oneWay": "The wizard only creates. Change these tables in Registered Tables or the entity/fact form; the wizard does not regenerate them.",
+      "relatesTo": "related to {{tables}}",
+      "status": {
+        "created": "Created",
+        "failed": "Refused",
+        "notReached": "Not created"
+      }
+    },
+    "desc": {
+      "none": "none",
+      "dimension": "Draft: star schema dimension \"{{name}}\" of the {{process}} process, keyed on {{key}}, read from {{source}}. When a member changes: {{scd}}.",
+      "fact": "Draft: star schema fact of the {{process}} process ({{factType}}). Grain: {{grain}}. Dimensions: {{dimensions}}. Measures: {{measures}}.",
+      "measure": "{{agg}}({{column}}), {{additivity}}",
+      "hub": "Draft: Data Vault hub of the {{concept}} concept, keyed on the business key {{key}}, from the record source {{source}}.",
+      "sameAs": "Draft: Data Vault same-as link of {{hub}}: {{master}} and {{duplicate}} name the same {{concept}}, from {{source}}.",
+      "link": "Draft: Data Vault link for the unit of work \"{{name}}\" between {{hubs}}, on the keys {{keys}}, from {{source}}.",
+      "linkEnds": "The relationship can end; its effectivity satellite records when.",
+      "effectivity": "Draft: Data Vault effectivity satellite of {{link}}: when each relationship starts and ends, by valid time {{validTime}} and recorded time {{recordedTime}}.",
+      "satellite": "Draft: Data Vault satellite of {{parent}}: {{attributes}} from {{source}}, grouped by {{grouping}}. History: {{history}}.",
+      "multiActive": "Multi-active on {{columns}}.",
+      "rule": "Business vault rule: {{rule}}."
+    }
+  }
+}

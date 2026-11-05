@@ -39,8 +39,11 @@ def _load(name: str, path: Path):
 
 
 fixtures = _load("bolt_fixtures", CONFORMANCE / "bolt" / "fixtures.py")
-by_design = _load("by_design", CONFORMANCE / "by_design.py")
-pgwire_catalog_types = _load("pgwire_catalog_types", CONFORMANCE / "pgwire_catalog_types.py")
+# These two have names of their own, so they are imported, not loaded again: a second copy in
+# sys.modules would leave a script already holding the first (function_support's catalog, which
+# tests/unit/pgwire imports) apart from the one a later test patches.
+import by_design  # noqa: E402
+import pgwire_catalog_types  # noqa: E402
 
 
 def test_the_examples_graph_is_writable_tables_and_junction_relationships():

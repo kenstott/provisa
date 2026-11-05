@@ -82,3 +82,9 @@ export async function fetchSandboxLimits(): Promise<SandboxLimits> {
   if (!res.ok) throw new Error(requestFailed("fetchSandboxLimits", res.status));
   return res.json();
 }
+
+/** Whether ``orgId`` is a visitor's or a named demo sandbox, not a demo's template org: the ids the
+ * server gives them (provisa/core/org_ids.py: ``sbx`` and hex, never ``sbxtpl``). */
+export function isDemoSandbox(orgId: string | null): boolean {
+  return orgId !== null && orgId.startsWith("sbx") && !orgId.startsWith("sbxtpl");
+}

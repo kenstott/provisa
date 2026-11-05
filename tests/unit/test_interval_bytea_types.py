@@ -18,11 +18,9 @@ from __future__ import annotations
 
 import json
 from datetime import timedelta
-from types import SimpleNamespace
 
 import pytest
 from dateutil.relativedelta import relativedelta
-from google.protobuf.descriptor import FieldDescriptor
 
 from provisa.compiler.type_map import (
     FILTER_TYPE_MAP,
@@ -34,7 +32,6 @@ from provisa.compiler.type_map import (
 from provisa.core.ir_types import bytea_hex, iso8601_duration, to_ir, to_physical
 from provisa.executor.serialize import _convert_value
 from provisa.grpc.proto_gen import _physical_to_proto
-from provisa.grpc.server import _proto_value
 
 
 @pytest.mark.parametrize(
@@ -221,9 +218,9 @@ def test_pgwire_writes_an_interval_as_postgres_does(value, text, binary):
     import struct
 
     from buenavista.core import BVType
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
+    from tests.unit.pgwire import wire_cells as wire
 
-    _, to_text, to_binary = BVTYPE_TO_PGTYPE[BVType.INTERVAL]
+    _, to_text, to_binary = wire.entry(BVType.INTERVAL)
     assert to_text(value) == text
     assert struct.unpack("!qii", to_binary(value)) == binary
 
@@ -247,8 +244,17 @@ def test_proto_maps_every_postgres_temporal_and_binary_alias(column_type, proto)
 
 
 def test_grpc_renders_an_interval_string_field_as_iso_8601():
-    field = SimpleNamespace(type=FieldDescriptor.TYPE_STRING)
-    assert _proto_value(field, timedelta(days=3, seconds=4, microseconds=5)) == "P3DT4.000005S"
+    import pyarrow as pa
+
+    from provisa.grpc.descriptor import OrgDescriptor
+    from provisa.grpc.server import _row_encoder
+
+    service = OrgDescriptor(
+        'syntax = "proto3"; package provisa.v1; message Spans { optional string span = 1; }'
+    )
+    span = pa.array([timedelta(days=3, seconds=4, microseconds=5)], pa.duration("us"))
+    (sent,) = _row_encoder(service.Spans, ["span"]).encode(pa.record_batch({"span": span}))
+    assert service.Spans.FromString(sent).span == "P3DT4.000005S"
 
 
 @pytest.mark.parametrize("scalar_name", ["Date", "DateTime", "Interval"])

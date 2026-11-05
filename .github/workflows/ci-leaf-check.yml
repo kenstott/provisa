@@ -195,6 +195,20 @@ jobs:
           mkdocs --version
           python -c "import material, pymdownx; print('mkdocs-material and pymdown-extensions')"
 
+  free-runner-disk:
+    name: action / free-runner-disk
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/free-runner-disk
+      - name: The unused toolchains are gone
+        run: |
+          for dir in /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL; do
+            if [ -e "$dir" ]; then echo "::error::$dir is still there"; exit 1; fi
+          done
+
   # A round trip on a key of this run's own (key-prefix): the real cache is never touched.
   # One job, one round trip through the cache service: a key nobody saved misses; the jars are
   # saved under it; the local copies are removed; the same key then hits and brings them back.
@@ -354,6 +368,7 @@ jobs:
       - setup-ui-no-install
       - mssql-odbc
       - docs-site-deps
+      - free-runner-disk
       - demo-bundle
       - trino-plugins
       - release-metadata
@@ -569,6 +584,7 @@ jobs:
       - setup-ui-no-install
       - mssql-odbc
       - docs-site-deps
+      - free-runner-disk
       - demo-bundle
       - trino-plugins
       - release-metadata

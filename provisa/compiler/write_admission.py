@@ -160,6 +160,28 @@ def is_write(tree: exp.Expression) -> bool:
     return isinstance(tree, WRITES)
 
 
+def nested_writes(tree: exp.Expression) -> list[exp.Expression]:  # REQ-039
+    """The data writes in ``tree`` other than the statement itself -- a writable CTE, a write in a
+    subquery -- less a root MERGE's own WHEN actions. A write is admitted, and its RETURNING
+    governed, only as the statement's root; one inside it is read as neither, so it is refused."""
+    return [
+        node
+        for node in tree.find_all(*WRITES)
+        if node is not tree
+        and not (isinstance(node.parent, exp.When) and node.find_ancestor(exp.Merge) is tree)
+    ]
+
+
+def refuse_nested_writes(tree: exp.Expression) -> None:
+    """Raise :class:`WriteNotAdmitted` for a data write inside the statement (:func:`nested_writes`)."""
+    nested = nested_writes(tree)
+    if nested:
+        raise WriteNotAdmitted(
+            f"{_kind(nested[0])} inside a statement is not admitted: a data write is run only as "
+            "the statement itself"
+        )
+
+
 def _kind(tree: exp.Expression) -> str:
     return type(tree).__name__.upper()
 

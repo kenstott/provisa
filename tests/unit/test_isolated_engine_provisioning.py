@@ -45,7 +45,8 @@ def backend() -> TrinoBackend:
 
 
 def _source() -> types.SimpleNamespace:
-    return types.SimpleNamespace(id="pet_store_sqlite")
+    # Every Source has a type (core.models.Source); the engine attach reads it (REQ-2191).
+    return types.SimpleNamespace(id="pet_store_sqlite", type="sqlite")
 
 
 def test_bound_but_unconnected_terminal_still_issues_catalog_ddl(backend, monkeypatch):

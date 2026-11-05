@@ -19,7 +19,10 @@ a result implementing :class:`ResultStream`. Two implementations exist:
   once. Used by the row-producing terminals so large user result sets never materialize.
 
 Both expose the same interface: ``column_names``, ``column_types``, ``iter_rows()``, ``batches()``,
-and a ``rows`` accessor. Streaming consumers (pgwire DataRow, bolt RECORD, gRPC, ndjson/csv/arrow)
+and a ``rows`` accessor. A result holding the engine's Arrow (:class:`ArrowResult`,
+:class:`ArrowStreamResult`, :func:`is_arrow`) also hands on its record batches
+(``arrow_batches()``); a row result has none, so an encoder takes it as rows and nothing builds it
+into Arrow to be encoded (REQ-2195). Streaming consumers (pgwire DataRow, bolt RECORD, gRPC, ndjson/csv/arrow)
 call ``batches()``/``iter_rows()``. Consumers that genuinely need the full set (GraphQL, JSON:API)
 call ``rows`` to buffer explicitly — the buffering is visible in the call, never silent.
 
@@ -31,7 +34,7 @@ from __future__ import annotations
 
 from collections.abc import Generator, Iterable, Iterator
 from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol, runtime_checkable
+from typing import Any, Callable, Protocol, TypeGuard, runtime_checkable
 
 from provisa.core import request_deadline
 
@@ -95,6 +98,9 @@ class QueryResult:  # REQ-028
     # where a write has no RETURNING clause and ``rows`` is therefore empty. None when the driver
     # doesn't report one or the statement wasn't a DML write.
     rowcount: int | None = field(default=None)
+    # REQ-2167: the last identity or serial value a write made its source generate, for the pgwire
+    # session's lastval(). None when it generated none, or was not asked to report one.
+    generated_key: int | None = field(default=None)
     # REQ-536: the response-cache entry this result was served from (``cache.store.CachedResult``),
     # set by the pipeline on a HIT; None for a result that was executed. A surface reports
     # HIT/MISS and the entry's age from it (``cache.middleware.build_cache_headers``).
@@ -118,6 +124,14 @@ class QueryResult:  # REQ-028
 
     def materialize(self) -> QueryResult:
         return self
+
+
+class DataRowResult(QueryResult):  # REQ-2194
+    """A materialized result whose rows are a PostgreSQL source's own DataRow messages
+    (``RawDataRowBytes``, a replayed passthrough): pgwire forwards them as they are."""
+
+    def datarow_batches(self) -> Iterator[list[Any]]:
+        return self.batches()
 
 
 class StreamingQueryResult:  # REQ-028
@@ -184,8 +198,8 @@ class StreamingQueryResult:  # REQ-028
         self.stats.row_count += len(batch)
 
     def _drain(self) -> Generator[Any, None, None]:
-        """The source's batches as it yields them, pulled once, tallied, and released at the end
-        or when the consumer stops early."""
+        """The source's batches as it yields them, pulled once, tallied, and released at the end,
+        when the consumer stops early, or when the source fails."""
         self._begin()
         source = self._batches
         self._batches = None
@@ -198,12 +212,13 @@ class StreamingQueryResult:  # REQ-028
                 request_deadline.check()
                 self._tally(batch)
                 yield batch
-        except (TimeoutError, GeneratorExit):
+        except BaseException:
             # The request timed out — noticed here between batches, or raised into the pull of
-            # one — or the consumer stopped early and closed the stream's iterator (the buffered
-            # threshold probe stops at threshold+1 rows). The source (server-side cursor, pooled
-            # connection, the engine's catalogue read) is released now: nothing will drain this
-            # stream to the end.
+            # one — the consumer stopped early and closed the stream's iterator (the buffered
+            # threshold probe stops at threshold+1 rows), or the source failed as it produced a
+            # batch (an engine error DuckDB meets past the first, duckdb_arrow.answered_batches).
+            # The source (server-side cursor, pooled connection, the engine's catalogue read) is
+            # released now, and the failure re-raised: nothing will drain this stream to the end.
             self._release_source(source)
             raise
         self._finish()
@@ -287,6 +302,16 @@ class StreamingQueryResult:  # REQ-028
             self._on_release()
         if self._on_close is not None:
             self._on_close(self.stats)
+
+
+class DataRowStreamResult(StreamingQueryResult):  # REQ-2194
+    """A streaming result whose batches are a PostgreSQL source's own DataRow messages
+    (``RawDataRowBytes``, the passthrough): pgwire forwards them as they are."""
+
+    __slots__ = ()
+
+    def datarow_batches(self) -> Generator[list[Any], None, None]:
+        return self.batches()
 
 
 class ArrowStreamResult(StreamingQueryResult):  # REQ-2194
@@ -412,3 +437,46 @@ class ArrowResult(QueryResult):  # REQ-2194
                 "ArrowResult rows were replaced; its Arrow table no longer holds them"
             )
         return iter(self.table.to_batches())
+
+
+def is_arrow(result: ResultStream) -> TypeGuard[ArrowResult | ArrowStreamResult]:  # REQ-2195
+    """Whether ``result`` holds the engine's own Arrow (``arrow_batches()`` hands it on): an
+    encoder reads it as Arrow, and any other result from its rows, never built into Arrow."""
+    return isinstance(result, ArrowStreamResult) or (
+        isinstance(result, ArrowResult) and result.table is not None
+    )
+
+
+def rewrapped(  # REQ-2194
+    stream: ResultStream,
+    transform: Callable[[Iterator[Any]], Iterator[Any]],
+    *,
+    on_release: Callable[[], None] | None = None,
+) -> StreamingQueryResult:
+    """``stream`` as a stream of the same kind with its batches passed through ``transform`` (a
+    permit guard, a response-cache tee): an Arrow result stays Arrow record batches, a
+    passthrough's DataRow messages stay DataRow messages, rows stay rows. Wrapping never turns
+    the engine's Arrow into Python rows."""
+    if isinstance(stream, ArrowStreamResult) or (
+        isinstance(stream, ArrowResult) and stream.table is not None
+    ):
+        schema = stream.schema if isinstance(stream, ArrowStreamResult) else stream.table.schema
+        return ArrowStreamResult(
+            schema,
+            transform(stream.arrow_batches()),
+            stream.column_types,
+            to_rows=stream._to_rows,
+            on_release=on_release,
+        )
+    kind = (
+        DataRowStreamResult
+        if isinstance(stream, (DataRowStreamResult, DataRowResult))
+        else StreamingQueryResult
+    )
+    return kind(
+        transform(stream.batches()),
+        column_names=list(stream.column_names),
+        column_types=stream.column_types,
+        on_release=on_release,
+        column_type_oids=stream.column_type_oids,
+    )

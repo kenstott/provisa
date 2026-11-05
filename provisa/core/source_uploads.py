@@ -2,7 +2,8 @@
 # Canary: d70abd17-25b1-4b59-85c3-3a2ad044861e
 #
 # This source code is licensed under the Business Source License 1.1
-"""The file a file-based source was given by upload (REQ-1997).
+"""The file a file-based source was given by upload (REQ-1997), and a JDBC source's driver jar
+(REQ-2191).
 
 An upload is kept in its org's folder (``provisa.core.org_files``), under
 ``files/<source id>/<file name>``, and the source's path names it there: encrypted when the org's
@@ -12,7 +13,7 @@ that then takes that place in one rename: a reader sees the old file or the new 
 of either. A file larger than the operator's limit (``sources.max_upload_bytes``) is refused,
 naming the limit, and nothing of it is kept."""
 
-# Requirements: REQ-1997
+# Requirements: REQ-1997, REQ-2191
 from __future__ import annotations
 
 import asyncio
@@ -25,8 +26,9 @@ from pathlib import Path
 
 from provisa.core import org_files, settings_registry
 
-#: The source types whose path names one file, which an upload can be.
-UPLOAD_TYPES = frozenset({"sqlite", "duckdb", "csv", "parquet"})
+#: The source types whose path names one file, which an upload can be; and JDBC, whose one file
+#: is its driver jar (REQ-2191).
+UPLOAD_TYPES = frozenset({"sqlite", "duckdb", "csv", "parquet", "jdbc"})
 
 _AREA = "files"
 _TEMP = ".upload-"

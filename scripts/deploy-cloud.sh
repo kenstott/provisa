@@ -38,9 +38,10 @@
 # a sign-in session or a hand-built org under test has to survive the deploy.
 #
 # Every arm that pushes the python package to a sandbox VM also resets the sandbox tier there
-# (reset_sandbox_state: its demo templates and sandboxes, never the coordinator's accounts or
-# orgs) -- patch included, since the tier's tables are rebuilt only from nothing -- and proves a
-# demo opens. `sandbox-reset` does that alone, with no build.
+# (reset_sandbox_state: its sandboxes and every demo template not built under the pushed code's
+# table shapes, never the coordinator's accounts or orgs) -- patch included, since the tier's
+# tables are rebuilt only from nothing -- and proves a demo opens. `sandbox-reset` does that
+# alone, with no build.
 #
 # Env overrides: NODE, ZONE, PROJECT, CONTAINERS, SITE, SQL_IMAGE.
 set -euo pipefail
@@ -209,8 +210,29 @@ build_api() {
   echo "== packaging python package"
   # provisa/_graph_render is a checkout's symlink to provisa-ui/graph-render (gitignored); the image
   # carries the built renderer there as a directory, which a pushed symlink cannot replace.
+  # REQ-2194: provisa's compiled encoders (provisa._encoders), taken from provisa's Linux wheels,
+  # which the Dockerfile's provisa-wheel stage builds from this checkout for both architectures.
+  # Each module file is given its architecture's name (_encoders.cpython-312-<arch>-linux-gnu.so),
+  # so the one pushed tree imports on an amd64 node and an arm64 one alike. A checkout's own
+  # (macOS) module stays out.
+  echo "== compiling provisa's encoders (linux/amd64, linux/arm64)"
+  rm -rf "$STAGE/encoders"
+  local platform arch wheel
+  for platform in linux/amd64 linux/arm64; do
+    arch=x86_64; [ "$platform" = linux/arm64 ] && arch=aarch64
+    docker build --quiet --platform "$platform" --target provisa-wheel \
+      --output "type=local,dest=$STAGE/encoders/$arch" "$REPO" >/dev/null
+    wheel="$(ls "$STAGE/encoders/$arch"/provisa-*-manylinux_2_28_"$arch".whl)"
+    unzip -q -o "$wheel" 'provisa/_encoders*.so' -d "$STAGE/encoders/$arch/tree"
+    mkdir -p "$STAGE/encoders/tree/provisa"
+    mv "$STAGE/encoders/$arch"/tree/provisa/_encoders*.so \
+      "$STAGE/encoders/tree/provisa/_encoders.cpython-312-$arch-linux-gnu.so"
+  done
   tar czf "$STAGE/api.tgz" -C "$REPO" --exclude='__pycache__' --exclude='*.pyc' \
-    --exclude='provisa/_graph_render' provisa -C "$REPO/vendor/buenavista" buenavista
+    --exclude='provisa/_graph_render' --exclude='provisa/_encoders*-darwin.so' provisa \
+    -C "$REPO/vendor/buenavista" buenavista \
+    -C "$STAGE/encoders/tree" provisa/_encoders.cpython-312-x86_64-linux-gnu.so \
+    provisa/_encoders.cpython-312-aarch64-linux-gnu.so
 }
 
 push_api() {
@@ -869,7 +891,9 @@ SQL
 
 verify() {
   echo "== verifying $SITE"
-  # Accept: text/html marks this a document request; ui_server proxies anything else to
+  # Accept: text/html with Sec-Fetch-Dest: document marks this a page load, which the front door and
+  # ui_server send to the UI; anything else goes to the API, where an unauthenticated GET / is a
+  # 401 and says nothing about the deploy (ui_server proxies anything else to
   # the API, where an unauthenticated GET / is a 401 and says nothing about the deploy.
   # 300s. The old 120s budget was shorter than a cold restart on this node, where the API's
   # lifespan spends ~115s in engine-wake alone, so the poll reported 503 on a deploy that then
@@ -878,7 +902,7 @@ verify() {
     # A refused connection is the expected state while the container restarts, so it is
     # recorded as a probe result instead of tripping `set -e` and aborting the poll. It is
     # never treated as success: the loop still fails loudly below if 200 never arrives.
-    code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: text/html' "$SITE/") || code="unreachable"
+    code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Accept: text/html' -H 'Sec-Fetch-Dest: document' -H 'Sec-Fetch-Mode: navigate' "$SITE/") || code="unreachable"
     [ "$code" = "200" ] && { echo "$SITE/ -> 200 after $((i * 2))s"; return 0; }
     sleep 2
   done
@@ -1005,12 +1029,16 @@ sandbox_containers() {
     | grep -xE 'compose-provisa-sandbox-1|compose-provisa-sandbox-regions(-warehouse)?-1' | tr '\n' ' '
 }
 
-# The sandbox tier back to no orgs of its own: every demo template and sandbox (ids sbx*, REQ-2006)
-# out of the control plane, their schemas out of it and out of the regions tier's two stores, and
-# their folders off the VM. There are no migrations (V1): a template built by older code keeps its
-# old tables, and a sandbox opened from it fails on a column added since (500 ProgrammingError,
-# "column calendars.day_close does not exist"). The coordinator's accounts and orgs are untouched;
-# the tier rebuilds each template from its bundle at its next start. Runs with NODE set to the
+# The sandbox tier back to no orgs of its own but its demo templates still good: every sandbox
+# (ids sbx*, REQ-2006) and every other template out of the control plane, their schemas out of it
+# and out of the regions tier's two stores, and their folders off the VM. There are no migrations
+# (V1): a template built by older code keeps its old tables, and a sandbox opened from it fails on
+# a column added since (500 ProgrammingError, "column calendars.day_close does not exist"). So a
+# template is kept only when its readiness record names the DDL fingerprint of the pushed code's
+# tables (schema_org.ddl_fingerprint, read from that code through the tier's own image and mounts):
+# the tier's start trusts it only when its demo version matches too (demo_templates.warm_ready),
+# and replaces it otherwise. The coordinator's accounts and orgs are untouched; the tier rebuilds
+# each template it does not keep from its bundle at its next start. Runs with NODE set to the
 # sandbox VM (deploy_sandbox_vm), its containers stopped so nothing writes while it runs.
 reset_sandbox_state() {
   local containers
@@ -1021,16 +1049,35 @@ reset_sandbox_state() {
   # so a failed reset never leaves it down. Replaced by the stage cleanup alone once it is done.
   trap "echo 'sandbox reset failed: starting $containers again' >&2; ssh_node 'sudo docker start $containers >/dev/null'; rm -rf \"\$STAGE\"" EXIT
   ssh_node "sudo docker stop $containers >/dev/null"
+  local tier image ddl kept keep
+  tier="${containers%% *}"
+  image="$(ssh_node "sudo docker inspect -f '{{.Config.Image}}' $tier" | tr -d '\r')"
+  ddl="$(ssh_node "sudo docker run --rm --volumes-from $tier --entrypoint python $image -c 'from provisa.core.schema_org import ddl_fingerprint; print(ddl_fingerprint())'" | tr -d '\r' | tail -1)"
+  [[ "$ddl" =~ ^[0-9a-f]{16}$ ]] || { echo "sandbox VM: no DDL fingerprint from the pushed code on $tier: $ddl" >&2; exit 1; }
+  cat > "$STAGE/kept_templates.sql" <<SQL
+\pset tuples_only on
+\pset format unaligned
+SELECT template_org FROM public.demo_template_readiness
+ WHERE template_org LIKE 'sbxtpl%' AND version LIKE '%@$ddl' ORDER BY template_org;
+SQL
+  # Only names a template id can be: each is written into the statements below.
+  kept="$(run_sql "$STAGE/kept_templates.sql" kept-templates | tr -d '\r' | grep -xE 'sbxtpl[a-z0-9]+' | tr '\n' ' ')" || kept=""
+  kept="${kept% }"
+  echo "   templates kept (DDL $ddl): ${kept:-none}"
+  keep="ARRAY[$(for k in $kept; do printf "'%s'," "$k"; done | sed 's/,$//')]::text[]"
   # One schema per statement, each its own transaction (psql autocommit + \gexec): every
   # template's schema holds hundreds of views, and dropping them all in one transaction runs
   # out of locks (max_locks_per_transaction). Schemas first, then the orgs rows, so a failure
-  # part way leaves orgs whose schemas a rerun drops.
-  cat > "$STAGE/reset_sandbox.sql" <<'SQL'
+  # part way leaves orgs whose schemas a rerun drops. A kept template's schemas are org_<id> and
+  # org_<id>_<more> (environments.org_schema); a template id has no underscore of its own.
+  cat > "$STAGE/reset_sandbox.sql" <<SQL
 \pset pager off
 SELECT format('DROP SCHEMA IF EXISTS %I CASCADE', nspname)
-  FROM pg_namespace WHERE nspname LIKE 'org\_sbx%' \gexec
+  FROM pg_namespace WHERE nspname LIKE 'org\_sbx%'
+   AND NOT EXISTS (SELECT 1 FROM unnest($keep) k
+                    WHERE nspname = 'org_' || k OR nspname LIKE 'org\_' || k || '\_%') \gexec
 -- Every admin row of an org cascades from its orgs row (provisa/core/schema_admin.py).
-DELETE FROM public.orgs WHERE id LIKE 'sbx%';
+DELETE FROM public.orgs WHERE id LIKE 'sbx%' AND id <> ALL($keep);
 SELECT count(*) AS sandbox_orgs_left FROM public.orgs WHERE id LIKE 'sbx%';
 SQL
   run_sql "$STAGE/reset_sandbox.sql" reset-sandbox
@@ -1039,9 +1086,11 @@ SQL
   # answer, not this script's: the VM's compose comes from its installed release (terraform's
   # provisa_version), which a deploy never rewrites, and a release before REQ-2107's has neither
   # ledger nor warehouse (first-launch.sh's REGION_PG_ALSO).
-  cat > "$STAGE/reset_sandbox_store.sql" <<'SQL'
+  cat > "$STAGE/reset_sandbox_store.sql" <<SQL
 SELECT format('DROP SCHEMA IF EXISTS %I CASCADE', nspname)
-  FROM pg_namespace WHERE nspname LIKE 'org\_sbx%' \gexec
+  FROM pg_namespace WHERE nspname LIKE 'org\_sbx%'
+   AND NOT EXISTS (SELECT 1 FROM unnest($keep) k
+                    WHERE nspname = 'org_' || k OR nspname LIKE 'org\_' || k || '\_%') \gexec
 SQL
   local b64 store
   b64="$(base64 < "$STAGE/reset_sandbox_store.sql" | tr -d '\n')"
@@ -1055,9 +1104,10 @@ SQL
     done
   done
   # Their folders (provisa.core.org_files: <data dir>/orgs/<org>; first-launch.sh mounts the
-  # tiers' data dirs from these). Only orgs/sbx*: demo-bundles/ beside it is the demo stores sync's.
-  # Expanded as root: the login user cannot list /root, where its own shell would expand nothing.
-  ssh_node "sudo sh -c 'rm -rf /root/.provisa/sandbox-data/orgs/sbx* /root/.provisa/sandbox-regions-data/orgs/sbx* /root/.provisa/sandbox-regions-warehouse-data/orgs/sbx*'"
+  # tiers' data dirs from these), but a kept template's. Only orgs/sbx*: demo-bundles/ beside it is
+  # the demo stores sync's. Expanded as root: the login user cannot list /root, where its own shell
+  # would expand nothing.
+  ssh_node "sudo sh -c 'for d in /root/.provisa/sandbox-data/orgs/sbx* /root/.provisa/sandbox-regions-data/orgs/sbx* /root/.provisa/sandbox-regions-warehouse-data/orgs/sbx*; do case \" $kept \" in *\" \${d##*/} \"*) ;; *) rm -rf \"\$d\" ;; esac; done'"
   trap 'rm -rf "$STAGE"' EXIT
   CONTAINERS="$containers"
 }
@@ -1162,7 +1212,8 @@ deploy_sandbox_vm() {
   [ -f "$STAGE/api.tgz" ] && { push_api; push_plugins; }
   [ -f "$STAGE/cfg.tgz" ] && push_cfg
   # New code against the tier's old tables fails (no migrations): whenever the package is pushed,
-  # or asked for alone (sandbox-reset), the tier starts from no orgs of its own.
+  # or asked for alone (sandbox-reset), the tier starts from no orgs of its own but the templates
+  # built under the pushed code's table shapes.
   if [ -f "$STAGE/api.tgz" ] || [ "$TARGET" = sandbox-reset ]; then
     reset_sandbox_state
   fi

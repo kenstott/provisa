@@ -14,9 +14,9 @@
     "otelTitle": "Traçage OpenTelemetry",
     "statusLabel": "Statut :",
     "statusExporting": "Exportation → {{endpoint}}",
-    "statusActiveNoCollector": "Actif (spans abandonnés — aucun collecteur configuré)",
+    "statusActiveNoCollector": "Actif (les traces sont conservées pour cette page, non exportées)",
     "endpointLabel": "Endpoint du collecteur OTLP",
-    "endpointHelp": "Laissez vide pour générer les traces sans les exporter. Remplaçable via la variable d'environnement OTEL_EXPORTER_OTLP_ENDPOINT.",
+    "endpointHelp": "Indiquez le collecteur propre à Provisa et ajoutez un fournisseur externe comme exportateur dans le collecteur pour que les tables de traces continuent de se remplir. Laissez vide pour ne garder les traces que sur cette page. Remplaçable via la variable d'environnement OTEL_EXPORTER_OTLP_ENDPOINT.",
     "serviceNameLabel": "Nom du service",
     "serviceNameHelp": "Remplaçable via la variable d'environnement OTEL_SERVICE_NAME.",
     "sampleRateLabel": "Taux d'échantillonnage",
@@ -83,6 +83,8 @@
       "document_sources": "Requêtes vers les magasins de documents.",
       "search_sources": "Requêtes vers les index de recherche.",
       "grpc_services": "La surface de requête gRPC, entrante et sortante."
-    }
+    },
+    "tracesTableEmpty": "Un endpoint est défini, mais les tables de traces de Provisa ne contiennent encore aucune ligne. Si l'endpoint est un fournisseur externe et non le collecteur de Provisa, déplacez-le dans les exportateurs du collecteur.",
+    "tracesTableStale": "Un endpoint est défini, mais les tables de traces de Provisa n'ont reçu aucune ligne ces {{minutes}} dernières minutes. Si Provisa est resté inactif, c'est normal. Sinon, vérifiez que l'endpoint est le collecteur de Provisa et non un fournisseur externe."
   }
 }

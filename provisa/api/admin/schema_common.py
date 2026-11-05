@@ -333,6 +333,56 @@ def google_workspace_refusal(input: SourceInput) -> Optional[MutationResult]:  #
     return None
 
 
+def jdbc_source_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-2191
+    """Why a JDBC source's settings cannot be a source, or None: for another source type,
+    and for settings that can. The settings are the source's federation hints
+    (provisa.jdbc_source.settings); its URL is checked as it will be connected to
+    (provisa.jdbc_source.url), so a file it names is held to the org's folder (REQ-1997)."""
+    import json as _json
+
+    from provisa.jdbc_source import SOURCE_TYPE
+    from provisa.jdbc_source.settings import InvalidJdbcSource, parse
+    from provisa.jdbc_source.jdbc import JdbcRefused
+    from provisa.jdbc_source.url import DriverOptionsRefused, FileUrlRefused, check
+
+    if input.type != SOURCE_TYPE:
+        return None
+    try:
+        settings = parse(_json.loads(input.federation_hints_json or "{}"))
+        check(settings.url)
+    except FileUrlRefused as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.jdbc_file_refused",
+            params={"source": input.id, "path": exc.path, "error": str(exc)},
+        )
+    except JdbcRefused as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.jdbc_driver_refused",
+            params={"source": input.id},
+        )
+    except DriverOptionsRefused as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.jdbc_options_refused",
+            params={"source": input.id, "options": ", ".join(exc.options)},
+        )
+    except InvalidJdbcSource as exc:
+        return MutationResult(
+            success=False,
+            message=f"Source {input.id!r}: {exc}",
+            code="schema.jdbc_invalid",
+            params={"source": input.id, "error": str(exc)},
+        )
+    # Attach turned on is kept: the source attaches as the built-in type its URL names where the
+    # engine has that type's attach, and lands where it has not (provisa.jdbc_source.attach).
+    return None
+
+
 def file_source_path(input: SourceInput) -> Optional[MutationResult]:  # REQ-1997
     """A file-based source's path as it is kept, or why it cannot be. The maintainer's ruling:
     "all uploaded file paths must be relative to the org path (in saas in particular we don't

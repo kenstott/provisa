@@ -82,7 +82,7 @@ sources:
   cache_ttl: -1
   replicate: 0
   description: Government data from AskAmerica -- CDC, Census Bureau and USAspending county
-    tables, landed once when the demo is built
+    tables
 tables:
 - source_id: fund
   domain_id: opioids

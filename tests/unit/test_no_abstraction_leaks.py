@@ -39,6 +39,9 @@ OWNERS: dict[str, set[str]] = {
         "provisa/federation/duckdb_runtime.py",
         "provisa/federation/backend.py",
         "provisa/executor/drivers/duckdb_driver.py",
+        # REQ-2194: the DuckDB driver's Arrow reader (duckdb_driver and duckdb_runtime import it);
+        # it raises a reader error met mid-stream as the duckdb exception the statement run raises.
+        "provisa/executor/drivers/duckdb_arrow.py",
         # REQ-1730: a scratch in-memory DuckDB connection is the only available reader for a
         # source type DuckDB reaches only by community extension (firebird/airport) and no other
         # engine reaches at all — there is no separate Python client library for either wire

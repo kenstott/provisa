@@ -23,6 +23,7 @@ import pytest
 from provisa.codesource import install
 from provisa.codesource import source as code_source
 from provisa.codesource.bundle import BundleRefused
+from provisa.python import prepare as python_prepare
 
 pytestmark = pytest.mark.unit
 
@@ -97,7 +98,7 @@ async def test_an_edit_in_the_directory_is_read_by_the_next_query(roots, monkeyp
         built.append(found)
         return SimpleNamespace(content_hash=found)
 
-    monkeypatch.setattr(code_source, "_prepare_python", _build)
+    monkeypatch.setattr(python_prepare, "prepare", _build)
     monkeypatch.setattr(code_source, "_prepared", {})
     ctx = SimpleNamespace(org_id="acme", admin_db=None)
     mapping = _mapping(roots / "rates")

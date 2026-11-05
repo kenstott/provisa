@@ -16,7 +16,7 @@
     "role_sql_generation": "Генерация SQL",
     "role_table_selection": "Выбор таблиц",
     "role_mcp_chat": "Чат-ассистент",
-    "role_glossary_term_finding": "Найти термины в документе",
+    "role_glossary_term_finding": "Найти термины",
     "vendorLabel": "Поставщик",
     "modelLabel": "Модель",
     "nlHeading": "Запрос на естественном языке",

@@ -17,7 +17,7 @@ import { requestFailed, serverMessage } from "../i18n/serverMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
-export type RegistryKind = "npm" | "pypi" | "git";
+export type RegistryKind = "npm" | "pypi" | "goproxy" | "git";
 
 export interface PackageRegistry {
   id: string;

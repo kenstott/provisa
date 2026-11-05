@@ -61,6 +61,9 @@ _ROLES = {
     },
     "platform": {"capabilities": ["cross_org"], "domain_access": ["*"]},
 }
+# REQ-2153: the build keeps each role's own domain access beside its reach; no domain tree here.
+for _definition in _ROLES.values():
+    _definition["own_domain_access"] = list(_definition["domain_access"])
 # (table id, column) → the grant of a draft table's stored column, set by the draft tests.
 _DRAFT_GRANTS: dict[tuple[int, str], list[str]] = {}
 
