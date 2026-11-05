@@ -261,3 +261,28 @@ def test_a_string_joined_with_a_property_read_by_key_takes_its_text(monkeypatch)
     rows = s.run("MATCH (n:A) RETURN [key IN keys(n) | key + '=' + n[key]] AS kv")
     assert sorted(rows[0]["kv"]) == ["name=x", "on=true"]
     assert s.run("MATCH (n:A) RETURN n['name'] AS v") == [{"v": "x"}]
+
+
+def test_a_label_in_capitals_reads_its_session_table_as_the_session_holds_it(monkeypatch):
+    # A read of a label spelled with capitals names its anchor table (cypher__anchor__Big) quoted:
+    # unquoted, PostgreSQL's folding -- which validate_sql judges the statement by too (REQ-039)
+    # -- reads cypher__anchor__big, no table the session holds, and refuses it as unregistered
+    # (V006): MATCH (b:Big), (s:Small) ... CREATE (b)-[:R]->(s) over HTTP on Trino.
+    from provisa.compiler import temp_tables
+    from provisa.compiler.sql_gen import CompilationContext
+    from provisa.compiler.sql_validator import validate_sql
+    from provisa.compiler.stage2 import GovernanceContext
+
+    s = Session(monkeypatch, {})
+    s.run("CREATE (:Big {k: 1}), (:Big {k: 2}), (:Small {k: 1})")
+    sql = s.sql("MATCH (b:Big), (s:Small) WHERE b.k = s.k RETURN b.k AS b, s.k AS s")
+    role = {"id": "r", "capabilities": [], "domain_access": ["*"]}
+    token = temp_tables.bind(s.session)
+    try:
+        violations = validate_sql(
+            sql, CompilationContext(), GovernanceContext(), role, [], bypass_relationship_guard=True
+        )
+    finally:
+        temp_tables.unbind(token)
+    assert [v.message for v in violations] == []
+    assert _values(s.run("MATCH (b:Big), (s:Small) WHERE b.k = s.k RETURN b.k, s.k")) == [(1, 1)]

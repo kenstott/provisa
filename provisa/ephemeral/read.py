@@ -227,7 +227,9 @@ def _session_table(
     (REQ-2176: tables are created as statements write): it reads as no rows of its known columns,
     ``fixed`` (name, session type), not as an engine error."""
     if name in session.tables:
-        return exp.alias_(exp.to_table(name, quoted=True), alias)
+        # Named quoted, as the session holds it: exp.to_table takes no ``quoted``, and an unquoted
+        # cypher__anchor__Big is cypher__anchor__big once folded (REQ-039).
+        return exp.alias_(exp.Table(this=exp.to_identifier(name, quoted=True)), alias)
     empty = exp.select(
         *(exp.alias_(_typed(exp.null(), kind), column, quoted=True) for column, kind in fixed)
     ).where(exp.false())
@@ -409,7 +411,7 @@ def _rel_rows(rel_type: str, session: TempSession) -> exp.Expression:
             _col("to_id", "_r"),
             *(_col(p, "_p") for p in props),
         )
-        .from_(exp.alias_(exp.to_table(store.RELS, quoted=True), "_r"))
+        .from_(exp.alias_(exp.Table(this=exp.to_identifier(store.RELS, quoted=True)), "_r"))
         .join(
             _session_table(store.rel_table(rel_type), "_p", session, [(store.REL_ID, "text")]),
             on=exp.EQ(this=_col(store.REL_ID, "_p"), expression=_col(store.REL_ID, "_r")),

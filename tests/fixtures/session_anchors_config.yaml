@@ -1,0 +1,33 @@
+# REQ-2176: a graph session's labels in capitals (Big, Small), written and read over HTTP on each
+# engine. One model table, so the role has a schema; the session's nodes are all its own.
+federation_engine: duckdb
+auth:
+  provider: none
+  assignments_source: provisa
+  default_assignments:
+    - domain_id: '*'
+      role_id: org_admin
+naming:
+  domain_prefix: false
+  rules: []
+cache:
+  enabled: false
+domains:
+  - id: anchors
+    description: Session anchors
+sources:
+  - id: anchors-pg
+    type: postgresql
+    host: ${env:PG_HOST}
+    port: ${env:PG_PORT}
+    database: ${env:PG_DATABASE}
+    username: ${env:PG_USER}
+    password: ${env:PG_PASSWORD}
+tables:
+  - source_id: anchors-pg
+    table: orders
+    schema: session_anchors_e2e
+    domain_id: anchors
+    columns:
+      - {name: id, data_type: integer, visible_to: [org_admin]}
+      - {name: region, data_type: varchar, visible_to: [org_admin]}
