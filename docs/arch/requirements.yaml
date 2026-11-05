@@ -74426,50 +74426,81 @@
     in a region the model store holds the connection to the shared model database and `tenant_db` is the
     region''s own database, and model reads that bypass the model store move into it. (Amended 2026-10-03,
     AN ORG IS A COLLECTION OF REGIONS:) The platform declares the physical regions its nodes run in (for
-    example eu and us), and a node is started with `--region` naming one of them. Each org''s model selects
-    which platform regions the org uses and declares the org''s own stores in each: engine, replica and
-    view storage, cache, state store, record and address. A node started in a region serves that region
-    of every org that uses it. An org that does not use the region is not served by that node, and a request
-    for it there is refused with an error naming the org and the region. Each org has one model store, shared
-    by all its regions; its state store and its record are per org and region. The rule that a node started
-    without `--region` refuses to start and prints the regions available applies when the platform declares
-    regions, and the regions printed are the platform''s. The region of a table or a source must be one
-    of its org''s selected regions; any other is refused when the object is saved and when a configuration
-    is loaded, with an error naming the org''s regions. (Amended 2026-10-03, WITH NO REGIONS DECLARED THERE
-    IS ONE IMPLICIT REGION, AND NO USER SEES IT:) When the platform declares no regions there is one implicit
-    region, held as an internal default value, as a single-tenant install has one implicit org. Region is
-    then not a concept anywhere a user sees: the admin UI shows no region field, column, badge or setting;
-    a node needs no `--region` flag; a source or table carries no region, and a configuration that sets
-    one is refused with an error saying the platform declares no regions; and the record''s visible columns
-    carry no region. Every per-region store is simply the org''s store. The UI shows regions only when the
-    platform declares them. This implicit region is a default this requirement mandates, not a fallback.
-    (Amended 2026-10-04, THE ADMIN LISTS ARE FILTERED BY REGION:) Every admin list of objects that can name
-    a region -- sources, tables, materialized views, replica status and hot tables -- has one region selector,
-    the same on every page. It starts at the region the operator is connected to, which shows the objects
-    homed in that region together with the objects that name no region, since both are built or served there;
-    the other choices are all regions, no region, and each other region of the org by name. The list says
-    how many objects the selection hides, so nothing appears to be missing, and a search by name finds an
-    object in any region and labels it with its region. Each row shows the object''s region. The selection
-    is remembered for the viewer. Like every region control, the selector is absent when the platform declares
-    no regions. (Amended 2026-10-04, REGIONS MAY SHARE A DATABASE INSTANCE:) Every object a region keeps
-    in a store carries the region in its name -- the schemas of its state, record, replicas and materialized
-    views, and the key prefix of its cache -- so the stores of two or more regions may be one database instance,
-    one Redis or one object-store bucket without colliding, as readily as separate ones. Which instance
-    a region''s store is remains the org''s declaration; nothing about the names depends on it. The one
-    implicit region keeps the names it has today. (Amended 2026-10-14, EVERY VIEW BUILD IS GOVERNED, REGIONS
-    OR NOT:) The build of a materialized view -- SQL-defined or a join pattern -- is governed as the organisation''s
-    administrator through the one query pipeline whether or not the platform declares regions; with none
-    declared the administrator''s region attribute is the one implicit region. The view''s definition is
-    read as a direct statement reads it, so every table it reads is read the same way -- a search table
-    under its arguments among them -- and no build runs the view''s precompiled physical SQL straight on
-    the engine. A materialized view keeps its reference through governance, its stored rows put in after,
-    only while its build is fresh and the reader sees it whole; otherwise it is expanded into the statement
-    as its own SQL and governed with it. (Amended 2026-11-05, REGIONS ARE EDITED IN THE UI:) Regions have
-    two UI surfaces. The platform''s regions (each an id and its node''s address) are edited by the platform
-    admin on a Platform page and take effect on restart, since a node reads them before it opens any store.
-    An org''s stores and regions (each region''s engine, replicas, views, cache, state and record stores)
-    are edited by the org admin on Admin > Regions, validated as the config is (validate_regions), a refusal
-    naming the field.'
+    example eu and us), and a node is started with `--region` naming one of them. [SUPERSEDED by REQ-1922,
+    2026-11-05 -- the platform admin grants regions to an org and assigns its stores; the org admin sees
+    them read-only. Kept here for history; do not implement against it.] Each org''s model selects which
+    platform regions the org uses and declares the org''s own stores in each: engine, replica and view storage,
+    cache, state store, record and address. [END SUPERSEDED BLOCK] A node started in a region serves that
+    region of every org that uses it. An org that does not use the region is not served by that node, and
+    a request for it there is refused with an error naming the org and the region. Each org has one model
+    store, shared by all its regions; its state store and its record are per org and region. The rule that
+    a node started without `--region` refuses to start and prints the regions available applies when the
+    platform declares regions, and the regions printed are the platform''s. The region of a table or a source
+    must be one of its org''s selected regions; any other is refused when the object is saved and when a
+    configuration is loaded, with an error naming the org''s regions. (Amended 2026-10-03, WITH NO REGIONS
+    DECLARED THERE IS ONE IMPLICIT REGION, AND NO USER SEES IT:) When the platform declares no regions there
+    is one implicit region, held as an internal default value, as a single-tenant install has one implicit
+    org. Region is then not a concept anywhere a user sees: the admin UI shows no region field, column,
+    badge or setting; a node needs no `--region` flag; a source or table carries no region, and a configuration
+    that sets one is refused with an error saying the platform declares no regions; and the record''s visible
+    columns carry no region. Every per-region store is simply the org''s store. The UI shows regions only
+    when the platform declares them. This implicit region is a default this requirement mandates, not a
+    fallback. (Amended 2026-10-04, THE ADMIN LISTS ARE FILTERED BY REGION:) Every admin list of objects
+    that can name a region -- sources, tables, materialized views, replica status and hot tables -- has
+    one region selector, the same on every page. It starts at the region the operator is connected to, which
+    shows the objects homed in that region together with the objects that name no region, since both are
+    built or served there; the other choices are all regions, no region, and each other region of the org
+    by name. The list says how many objects the selection hides, so nothing appears to be missing, and a
+    search by name finds an object in any region and labels it with its region. Each row shows the object''s
+    region. The selection is remembered for the viewer. Like every region control, the selector is absent
+    when the platform declares no regions. (Amended 2026-10-04, REGIONS MAY SHARE A DATABASE INSTANCE:)
+    Every object a region keeps in a store carries the region in its name -- the schemas of its state, record,
+    replicas and materialized views, and the key prefix of its cache -- so the stores of two or more regions
+    may be one database instance, one Redis or one object-store bucket without colliding, as readily as
+    separate ones. Which instance a region''s store is remains the org''s declaration; nothing about the
+    names depends on it. The one implicit region keeps the names it has today. (Amended 2026-10-14, EVERY
+    VIEW BUILD IS GOVERNED, REGIONS OR NOT:) The build of a materialized view -- SQL-defined or a join pattern
+    -- is governed as the organisation''s administrator through the one query pipeline whether or not the
+    platform declares regions; with none declared the administrator''s region attribute is the one implicit
+    region. The view''s definition is read as a direct statement reads it, so every table it reads is read
+    the same way -- a search table under its arguments among them -- and no build runs the view''s precompiled
+    physical SQL straight on the engine. A materialized view keeps its reference through governance, its
+    stored rows put in after, only while its build is fresh and the reader sees it whole; otherwise it is
+    expanded into the statement as its own SQL and governed with it. (Amended 2026-11-05, REGIONS ARE EDITED
+    IN THE UI:) Regions have two UI surfaces. The platform''s regions [SUPERSEDED by REQ-1922, 2026-11-05
+    -- a platform region no longer has an address. Kept here for history; do not implement against it.]
+    (each an id and its node''s address) [END SUPERSEDED BLOCK] are edited by the platform admin on a Platform
+    page and take effect on restart, since a node reads them before it opens any store. [SUPERSEDED by REQ-1922,
+    2026-11-05 -- the platform admin grants regions to an org and assigns its stores; the org admin sees
+    them read-only. Kept here for history; do not implement against it.] An org''s stores and regions (each
+    region''s engine, replicas, views, cache, state and record stores) are edited by the org admin on Admin
+    > Regions, validated as the config is (validate_regions), a refusal naming the field. [END SUPERSEDED
+    BLOCK] (Amended 2026-11-05, THE PLATFORM PAGE IS READ-ONLY IN A SANDBOX:) In a demo sandbox the visitor
+    can open the Platform page''s regions read-only, with a note that it is shown to explain regions and
+    cannot be changed there; nothing on it can be edited or saved from a sandbox. (Amended 2026-11-05, A
+    PLATFORM REGION IS AN ID AND ITS DATA ADDRESSES:) A platform region is declared logically by its id,
+    with the data addresses (REQ-1916) the UI sends that region''s data calls to when a load balancer, a
+    pool or a single node is in front; with none declared the UI is offered the region''s registered nodes.
+    A platform region has no other address: the address field is removed, and a refusal that lists the platform''s
+    regions lists their ids. (Amended 2026-11-05, THE FEDERATION PAGE HAS A TAB PER REGION:) When the org
+    uses regions, Admin > Federation shows one tab per region, each the same engine form editing that region''s
+    engine store (the store Admin > Regions names as the region''s engine). With no regions the page has
+    no tabs and edits the one engine as before. (Amended 2026-11-05, THE PLATFORM GRANTS REGIONS AND ASSIGNS
+    STORES:) Which regions an org uses is the platform''s decision: the platform admin grants regions to
+    an org and assigns the org''s stores in each granted region (engine, replicas, views, cache, state,
+    record), on the Platform page, validated as the config is (validate_regions), a refusal naming the field.
+    The platform declares a default grant that every new organization receives, so a self-serve org starts
+    with a working region. The org admin sees its regions and their stores read-only on Admin > Regions,
+    and within its granted regions decides where its tables and sources live, the residency grants on its
+    roles, and the default region for new objects. A platform region carries a description and one or more
+    purposes: residency (data must stay in a jurisdiction), workload (separates a workload), latency (placed
+    near users or sources), resilience (a failover or recovery location), and dedicated (infrastructure
+    reserved for one organization, for its own sovereignty over it); both are shown wherever the region
+    is listed. (Amended 2026-11-05, PURPOSES EXPLAIN, THEY DO NOT ACT:) A region''s purposes are explanatory:
+    they change no routing, policy or validation. They teach why regions exist and help an organization
+    think about how to use the regions it is granted. Each purpose shows a one-line explanation wherever
+    regions are listed (the Platform page and Admin > Regions), and the GDPR demo''s tour (REQ-2035) points
+    at its EU region''s residency purpose before the residency queries.'
   use_case: A regulated enterprise needs some data processed and kept inside a country, with the rest
     of the estate readable from anywhere, under one set of definitions. Two independent deployments would
     each need their own definitions, which could diverge. Two clusters on one shared model give each region
@@ -82877,28 +82908,48 @@
   feature: product-tour-and-demos-named-demos
   priority: SHOULD
   type: behavioral
-  description: 'A named demo, GDPR at an international retail group (one group, EU and US subsidiaries): two regions, EU and US, defined in one model so that every cross-border data movement rule is coordinated and enforced in one place; the visitor stays on one node (the US node) and the EU region''s setup is shown in tour screenshots or explained; EU-homed data is landed and EU-named views, including the in-region message scoring, are built in the EU region''s own store at bundle build, and the US node reads them in place from that store, the per-request record naming eu as the serving region, or refuses naming eu when that store is absent; each subsidiary''s own sources with their home region --
-    loyalty-programme customers with their marketing consent, orders, stores and staff -- plus shared reference data
-    (products, stores), all generated; users with a region attribute and row rules on it. It shows: residency, EU
-    customer rows stored and computed only in the EU region, and group reporting that reads EU data only as aggregates
-    or pseudonymised rows; different rules per region, EU marketing reads only customers who consented and a US analyst
-    reading group data gets EU customers pseudonymised; a data subject request, one query that finds everything held
-    about one EU customer across every subsidiary''s sources (right of access), and the view that drives its erasure;
-    an insider review in retail form, staff with access to customer data who then mail customer lists outside the
-    group, their messages scored in their own region so no message body leaves it, one group review queue carrying
-    only the score, the signals and a pseudonymised sender, and the sender revealed only to a reviewer acting with the employee''s region derived role (region__eu, REQ-2057) through the column''s ordered mask list (REQ-2059); and one audit record across both regions of who saw which customer''s data, where. The same query
-    returns different rows per reader, the per-request record shows serving region and rules, no copy of EU rows
-    exists outside the EU, and a cross-region read is served from the home region''s replica or refused naming it.
-    Its tour states that legal requirements can be met with these features, but meeting them takes active design
-    by people who understand the data protection and cross-border transfer rules that apply. The lawful basis,
-    impact assessment, retention and works-council agreement remain the group''s legal process; it never claims
-    the features make an organization compliant. Its tour follows the settled demo tour shape: the scenario and the
-    features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real
-    row; then the solution in whatever form best answers the question: predesigned queries and views run over the
-    transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow
-    Flight), with a Polly question (answered at template build and served stored, REQ-2012) only where a conversational
-    answer is the natural fit; then a recap. The demo never reaches a live external account at run time (REQ-2031).
-    Its business question: "Can we run the group as one business without breaking GDPR?"'
+  description: 'A named demo, GDPR at an international retail group (one group, EU and US subsidiaries):
+    two regions, EU and US, defined in one model so that every cross-border data movement rule is coordinated
+    and enforced in one place; the visitor stays on one node (the US node) and the EU region''s setup is
+    shown in tour screenshots or explained; EU-homed data is landed and EU-named views, including the in-region
+    message scoring, are built in the EU region''s own store at bundle build, and the US node reads them
+    in place from that store, the per-request record naming eu as the serving region, or refuses naming
+    eu when that store is absent; each subsidiary''s own sources with their home region -- loyalty-programme
+    customers with their marketing consent, orders, stores and staff -- plus shared reference data (products,
+    stores), all generated; users with a region attribute and row rules on it. It shows: residency, EU customer
+    rows stored and computed only in the EU region, and group reporting that reads EU data only as aggregates
+    or pseudonymised rows; different rules per region, EU marketing reads only customers who consented and
+    a US analyst reading group data gets EU customers pseudonymised; a data subject request, one query that
+    finds everything held about one EU customer across every subsidiary''s sources (right of access), and
+    the view that drives its erasure; an insider review in retail form, staff with access to customer data
+    who then mail customer lists outside the group, their messages scored in their own region so no message
+    body leaves it, one group review queue carrying only the score, the signals and a pseudonymised sender,
+    and the sender revealed only to a reviewer acting with the employee''s region derived role (region__eu,
+    REQ-2057) through the column''s ordered mask list (REQ-2059); and one audit record across both regions
+    of who saw which customer''s data, where. The same query returns different rows per reader, the per-request
+    record shows serving region and rules, no copy of EU rows exists outside the EU, and a cross-region
+    read is served from the home region''s replica or refused naming it. Its tour states that legal requirements
+    can be met with these features, but meeting them takes active design by people who understand the data
+    protection and cross-border transfer rules that apply. The lawful basis, impact assessment, retention
+    and works-council agreement remain the group''s legal process; it never claims the features make an
+    organization compliant. Its tour follows the settled demo tour shape: the scenario and the features
+    it exercises; how its sources, tables, commands, views and relationships fit, each step on its real
+    row; then the solution in whatever form best answers the question: predesigned queries and views run
+    over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client
+    over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, REQ-2012)
+    only where a conversational answer is the natural fit; then a recap. The demo never reaches a live external
+    account at run time (REQ-2031). Its business question: "Can we run the group as one business without
+    breaking GDPR?" (Amended 2026-11-05, THE TOUR SHOWS WHERE REGIONS ARE DEFINED:) The tour steps from
+    the platform''s regions (the Platform page, read-only in a sandbox), to the organization''s regions
+    on Admin > Regions, to a table''s region, before the residency queries. (Amended 2026-11-05, THE IDEA
+    THE TOUR TEACHES:) The tour''s one idea: one config, two data processing environments, and access to
+    data depends on the user''s assigned region as well as any other policy the organization creates. Every
+    step serves that idea. (Amended 2026-11-05, TWO LAYERS: HOMING AND SECURITY:) The tour presents two
+    separate layers. Homing is the engine''s rules: a homed table''s replicas and cache live only in its
+    home region, and other regions reach a replicated table only through it. Security is the users'' rules:
+    row and column rules, masks and residency grants on roles, including rules on the reader''s region,
+    decide what each reader gets, and they ride in every statement, so they apply in the home region before
+    anything leaves.'
   use_case: 'A visitor opens the retail GDPR demo, walks its tour, and sees the business question answered: Can we
     run the group as one business without breaking GDPR?'
   scenario: 'Given the retail GDPR demo started from its bundle
@@ -83840,7 +83891,10 @@
     the sensitive coverage report on the Admin Reports page, not a hand-written query. (Amended 2026-11-04,
     THE ASSISTANT PROPOSES THE FAKES FROM THE PROFILE:) The tour shows the assistant proposing the missing
     fake from the profile data: on customers.email, with no fake declared, it reads the latest profile run
-    and proposes the fake (propose_fakes), the answer stored with the tour.'
+    and proposes the fake (propose_fakes), the answer stored with the tour. (Amended 2026-11-05, THE ASSISTANT
+    IS ASKED ABOUT A NAMED COLUMN:) customers.email declares its fake in the demo, so the assistant is asked
+    which fake it would propose for customers.email from its latest profile, and answers through propose_fakes
+    with that column named: a named column is proposed from its profile even when it declares a fake.'
   use_case: 'A visitor opens the environments and test data demo and sees how Provisa answers: Can I test against
     realistic data without touching production?'
   scenario: 'Given the environments and test data demo started from its bundle

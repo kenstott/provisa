@@ -9538,5 +9538,7 @@
   "zh-HK/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh-HK/tour.json::tour.steps.testdataPollyProposes.title": "A fake proposed from the profile",
+  "zh-HK/tour.json::tour.steps.testdataPollyProposes.description": "Polly is asked which fake it would propose for customers.email. It reads the column's latest profile run, sees that the values are email addresses, and proposes the email fake. The model already declares one, so the proposal checks that choice against the data. Nothing is saved until someone chooses to."
 }

@@ -1374,7 +1374,11 @@
       },
       "testdataCoverageNow": {
         "title": "Elke gevoelige kolom is gedekt",
-        "description": "Dezelfde controle, nu uit het model gelezen: elke gevoelige kolom, haar tags en of een nepwaarde die dekt. Alle zijn gedekt, dus pre-productie opent en antwoordt."
+        "description": "Gevoelige dekking is een standaardrapport op de pagina Rapporten: elke gevoelige kolom, haar tags en of een nepwaarde die dekt, nu uit het model gelezen. Alle zijn gedekt, dus pre-productie opent en antwoordt."
+      },
+      "testdataPollyProposes": {
+        "title": "Een nepwaarde, voorgesteld uit het profiel",
+        "description": "Polly krijgt de vraag welke nepwaarde het zou voorstellen voor customers.email. Het leest de laatste profielrun van de kolom, ziet dat de waarden e-mailadressen zijn en stelt de e-mail-nepwaarde voor. Het model declareert er al een, dus het voorstel toetst die keuze aan de data. Er wordt niets opgeslagen tot iemand daarvoor kiest."
       },
       "testdataProd": {
         "title": "Productie: de echte rijen",

@@ -1374,7 +1374,11 @@
       },
       "testdataCoverageNow": {
         "title": "Toda columna sensible está cubierta",
-        "description": "La misma comprobación, leída ahora desde el modelo: cada columna sensible, sus etiquetas y si un valor ficticio la cubre. Todas están cubiertas, así que preproducción se abre y responde."
+        "description": "La cobertura sensible es un informe estándar de la página Informes: cada columna sensible, sus etiquetas y si un valor ficticio la cubre, leído ahora desde el modelo. Todas están cubiertas, así que preproducción se abre y responde."
+      },
+      "testdataPollyProposes": {
+        "title": "Un valor ficticio propuesto a partir del perfil",
+        "description": "Se le pregunta a Polly qué valor ficticio propondría para customers.email. Lee la última ejecución del perfil de la columna, ve que los valores son direcciones de correo y propone el valor ficticio de correo. El modelo ya declara uno, así que la propuesta contrasta esa elección con los datos. No se guarda nada hasta que alguien lo elija."
       },
       "testdataProd": {
         "title": "Producción: las filas reales",

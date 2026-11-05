@@ -9538,5 +9538,7 @@
   "referenceLibrary.json::referenceLibrary.reembedDone": "Documents re-embedded: {{n}}",
   "referenceLibrary.json::referenceLibrary.reembedFailedHeading": "These documents could not be re-embedded and are unchanged:",
   "referenceLibrary.json::referenceLibrary.reembedFailure": "{{title}}: {{reason}}",
-  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP"
+  "systemHealth.json::systemHealth.cypherOverHttp": "Cypher over HTTP",
+  "it/tour.json::tour.steps.testdataPollyProposes.title": "A fake proposed from the profile",
+  "it/tour.json::tour.steps.testdataPollyProposes.description": "Polly is asked which fake it would propose for customers.email. It reads the column's latest profile run, sees that the values are email addresses, and proposes the email fake. The model already declares one, so the proposal checks that choice against the data. Nothing is saved until someone chooses to."
 }
