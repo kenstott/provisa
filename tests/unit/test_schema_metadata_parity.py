@@ -11,7 +11,8 @@ Parses the SQL to extract table -> {columns, primary key} and compares against
 the metadata: same tables per bucket, same column names, same PK columns, and
 type *family* parity (PG-specific types map to their portable substitutes:
 JSONB/TEXT[] -> JSON, SERIAL -> int, BIGSERIAL -> bigint, TIMESTAMPTZ ->
-timestamp, BYTEA -> binary, DOUBLE PRECISION -> float).
+timestamp, BYTEA -> binary, DOUBLE PRECISION -> float). pgvector's
+public.vector has no portable substitute and is its own family (REQ-2185).
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from sqlalchemy import (
 
 from provisa.audit.query_log import AUDIT_SCHEMA_SQL
 from provisa.core import schema_admin, schema_org
+from provisa.core.pgvector import Vector
 
 SCHEMA_SQL = Path(__file__).parents[2] / "provisa" / "core" / "schema.sql"
 
@@ -200,6 +202,8 @@ def _sql_type_family(coldef: str) -> str:
             spec_u = spec_u[:idx]
     d = spec_u
     # order matters: check array and specific types first
+    if re.search(r"(?:^|\.)VECTOR\b", d.strip()):
+        return "vector"
     if "[]" in d:
         return "json"
     if "JSONB" in d or "JSON" in d:
@@ -231,6 +235,8 @@ def _sql_type_family(coldef: str) -> str:
 
 def _metadata_type_family(col) -> str:
     t = col.type
+    if isinstance(t, Vector):
+        return "vector"
     if isinstance(t, JSON):
         return "json"
     if isinstance(t, Uuid):

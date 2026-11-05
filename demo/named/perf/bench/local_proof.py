@@ -60,6 +60,8 @@ import request_render  # noqa: E402
 import setup_contract as sc  # noqa: E402
 
 PERF = HERE.parent
+# The control plane's PostgreSQL image, as docker-compose.core.yml: REQ-2185 needs pgvector in it.
+CONTROL_PLANE_PG_IMAGE = "pgvector/pgvector:pg16-trixie"
 SOURCES = ["bench-postgresql", "bench-clickhouse", "bench-mongodb", "bench-neo4j"]
 SERVICE = {
     "bench-postgresql": "postgresql",
@@ -97,13 +99,14 @@ def wait_for_load(timeout_s: float) -> None:
 
 def compose_file(ports: dict[str, int], tmp: Path) -> Path:
     """The perf demo's compose file with stock images, small settings, no bind mounts, no seeder, on
-    leased ports."""
+    leased ports. The bench PostgreSQL is also the control plane's, so it is the control plane's
+    image, pgvector included (REQ-2185)."""
     raw = yaml.safe_load((PERF / "docker-compose.yml").read_text())
     services = {k: v for k, v in raw["services"].items() if k in SERVICE.values()}
     pg = services["postgresql"]
     pg.pop("build", None)
     pg.update(
-        image="postgres:16",
+        image=CONTROL_PLANE_PG_IMAGE,
         volumes=[],
         shm_size="256m",
         command=["postgres", "-c", "max_connections=200"],

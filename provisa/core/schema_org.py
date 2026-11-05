@@ -61,6 +61,8 @@ from sqlalchemy import (
     true,
 )
 
+from provisa.core.pgvector import Vector
+
 metadata = MetaData()
 
 
@@ -1369,6 +1371,43 @@ profiler_classifications = Table(
     PrimaryKeyConstraint("table_id", "physical_column", "kind"),
 )
 
+# REQ-2147 (CONTAINED VALUES ARE HINTS): a scan of a table's text columns for sensitive kinds held
+# inside their values, asked for by a person and run in the background -- running, then succeeded
+# or failed with why.
+profiler_sensitive_scans = Table(
+    "profiler_sensitive_scans",
+    metadata,
+    Column("scan_id", Text, primary_key=True),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("status", Text, nullable=False),  # running | succeeded | failed
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("sampled_rows", Integer),  # the rows the scan read
+    Column("scanned_columns", Integer),  # the text columns it scanned
+    Column("requested_by", Text),
+    Column("error", Text),
+)
+
+# REQ-2147 (CONTAINED VALUES ARE HINTS): a column's latest hint per kind -- the share of its sampled
+# values a kind was found inside. Only the counts: the matched text is never stored.
+profiler_sensitive_hints = Table(
+    "profiler_sensitive_hints",
+    metadata,
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("physical_column", Text, nullable=False),  # the column's registered name
+    Column("kind", Text, nullable=False),  # a kind of provisa/profiler/classification_kinds.yaml
+    Column("scan_id", Text, nullable=False),
+    Column("values_tested", Integer, nullable=False),
+    Column("values_matched", Integer, nullable=False),
+    Column("share", Float, nullable=False),
+    Column("evidence", Text, nullable=False),  # the hint in words
+    PrimaryKeyConstraint("table_id", "physical_column", "kind"),
+)
+
 # REQ-2189: a saved, named arrangement of the ERD -- the bar's options, and per domain and table
 # what is selected, collapsed and where it stands. Only the arrangement: columns and relationships
 # are read from the live model, and a table or domain goes from every layout when it goes.
@@ -2036,7 +2075,8 @@ code_source_vectors = Table(
 # REQ-2185: the org's reference library -- documents its assistants draw on, each with a status
 # (proposed or kept) and domains (a list, or "*" for the whole org, as a glossary term's). A
 # document's content is held as its passages, each embedded by the org's vector model;
-# ``vector`` is the embedding as a JSON array of floats (the code_source_vectors pattern).
+# ``vector`` is the embedding, a pgvector column of any dimension (provisa.core.pgvector), under one
+# partial HNSW index per dimension in use (provisa.reference_library.store).
 reference_documents = Table(
     "reference_documents",
     metadata,
@@ -2089,7 +2129,7 @@ reference_passages = Table(
     Column("section", Text, nullable=True),
     Column("page", Integer, nullable=True),
     Column("text", Text, nullable=False),
-    Column("vector", Text, nullable=False),
+    Column("vector", Vector(), nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("document_id", "ordinal"),
 )

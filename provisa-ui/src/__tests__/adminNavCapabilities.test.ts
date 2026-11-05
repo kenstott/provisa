@@ -80,6 +80,8 @@ const ORG_SCOPED: Record<string, string> = {
   // The one deployment-wide half of it — which store the node writes to — is gated inside the page
   // on `platform_settings`, so the route itself belongs to the org.
   "/admin/cache": "org_settings",
+  // REQ-1922: the org's own stores and the platform regions it selects.
+  "/admin/regions": "org_settings",
 };
 
 // Deployment-wide surfaces. A multitenant org_admin does not hold `platform_settings`
@@ -94,6 +96,8 @@ const DEPLOYMENT_WIDE = [
   "/admin/maintenance",
   // REQ-1913: the settings catalog is the deployment's own, never an org's.
   "/admin/deployment-settings",
+  // REQ-1922: the platform's regions, read by every node before it opens any store.
+  "/admin/platform",
 ];
 
 describe("admin surface capabilities", () => {

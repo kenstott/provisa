@@ -33,7 +33,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 
 from provisa.api.admin._config_io import config_path, read_config, write_config
-from provisa.api.admin._platform_guard import require_platform_settings
+from provisa.api.admin._platform_guard import require_deployment_settings
 from provisa.api.admin.secret_redaction import redact_per_provider  # REQ-1575
 from provisa.api.errors import ApiError
 from provisa.core.database import Database
@@ -78,7 +78,7 @@ def _providers() -> list[dict]:
 @router.get("/admin/mail")
 async def get_mail(request: Request):  # REQ-1576
     """The configured transport, every transport it could be, and which credentials are on file."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1337, REQ-1327
     cfg = read_config()
     mail = cfg.get("mail", {}) or {}
     providers = _providers()
@@ -102,7 +102,7 @@ async def get_mail(request: Request):  # REQ-1576
 @router.put("/admin/mail")
 async def set_mail(request: Request):  # REQ-1576
     """Select and configure the transport. Persisted to provisa.yaml AND applied to this process."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1337, REQ-1327
     from provisa.core.mail_registry import get_mail_provider_spec
 
     body = await request.json()
@@ -166,7 +166,7 @@ def _apply(mail: dict) -> None:
 @router.get("/admin/mail/stats")
 async def get_mail_stats(request: Request):  # REQ-1576
     """What the transport has actually done: counts, the last success, the last failure."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1337, REQ-1327
     from provisa.core.mail_stats import stats
 
     return await stats(_admin_db())
@@ -182,7 +182,7 @@ async def send_test_mail(request: Request):  # REQ-1576
     transport's own words are returned verbatim: "550 sender domain not verified" is the answer,
     and a paraphrase of it is not.
     """
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1337, REQ-1327
     from provisa.api.app import state
     from provisa.core.mail import MailMessage, email_sender
     from provisa.core.mail_stats import MailAttempt, record

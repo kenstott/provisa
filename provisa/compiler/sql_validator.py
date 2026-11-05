@@ -53,8 +53,14 @@ from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.compiler import temp_tables
 from provisa.compiler.cte_utils import cte_names, names_a_cte_in_scope
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
-from provisa.compiler.stage2 import GovernanceContext, approved_join_key, registered_name
-from provisa.compiler.view_expand import marked_view
+from provisa.compiler.stage2 import (
+    GovernanceContext,
+    approved_join_key,
+    flatten_leftmost_join_groups,
+    parenthesised_join_message,
+    parenthesised_join_tables,
+    registered_name,
+)
 from provisa.security.rights import (
     TRAVERSABLE_DOMAINS,
     listed_only_message,
@@ -126,6 +132,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
         written = sqlglot.parse_one(sql, read=READ)
     except Exception as exc:
         return [ValidationViolation("V000", f"SQL parse error: {exc}")]
+    flatten_leftmost_join_groups(written)  # as stage 2 does: a leftmost group is the flat join
     folded = normalize_identifiers(written.copy(), dialect="postgres")
 
     seen: set[tuple[str, str, tuple[int, int] | None]] = set()
@@ -163,6 +170,7 @@ def _violations(
     violations: list[ValidationViolation] = []
     cte_names_set = cte_names(tree)
     violations += _check_registered_relations(tree, gov_ctx, ctx, cte_names_set, table_functions)
+    violations += _check_unreadable_shapes(tree, gov_ctx)
 
     # Build reverse maps
     table_id_to_meta: dict[int, TableMeta] = {}
@@ -289,6 +297,50 @@ def _check_registered_relations(  # REQ-001, REQ-266
                 continue
             violations.append(
                 ValidationViolation("V006", f"Relation {ref!r} is not a registered table")
+            )
+    return violations
+
+
+def _check_unreadable_shapes(  # REQ-039
+    tree: exp.Expr, gov_ctx: GovernanceContext
+) -> list[ValidationViolation]:
+    """V006 for a shape that hides a registered relation from governance, refused until every
+    reference to one is governed by construction (RV597b):
+
+    - a parenthesised FROM item that is no query -- ``(bank.customer CROSS JOIN v)``, or
+      ``(bank.customer) x`` -- holding a registered relation: neither the column checks nor stage
+      2 see the relation inside it, so its hidden columns, masks and row rules go unapplied;
+    - a data write anywhere but at the statement's root (a writable CTE): it is neither admitted
+      nor its RETURNING governed;
+    - a CTE named as a registered relation the statement reads: the column checks take the
+      relation for the CTE."""
+    from provisa.compiler.write_admission import nested_writes
+
+    violations = [
+        ValidationViolation("V006", parenthesised_join_message(tbl))
+        for tbl in parenthesised_join_tables(tree, gov_ctx)
+    ]
+    for node in nested_writes(tree):  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
+        violations.append(
+            ValidationViolation(
+                "V006",
+                f"{type(node).__name__.upper()} inside a statement is not supported: a data "
+                "write is run only as the statement itself",
+            )
+        )
+    read = {
+        tbl.name
+        for tbl in tree.find_all(exp.Table)
+        if tbl.db and _resolve_table_id(tbl, gov_ctx) is not None
+    }
+    for cte in tree.find_all(exp.CTE):
+        if cte.alias in read:
+            violations.append(
+                ValidationViolation(
+                    "V006",
+                    f"CTE {cte.alias!r} is named as a registered relation the statement reads: "
+                    "give it another name",
+                )
             )
     return violations
 
@@ -623,435 +675,146 @@ def tables_outside_relationships(  # REQ-603
 # --------------------------------------------------------------------------- #
 
 
-def _check_column_visibility(  # REQ-039, REQ-040, REQ-263, REQ-265
+def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
     cte_names_set: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
-    """V003: every column the role's SQL names, in every clause, judged where it resolves (REQ-039,
-    amended 2026-11-04: A COLUMN IS JUDGED WHERE IT RESOLVES; A HIDDEN COLUMN IS REFUSED IN EVERY
-    CLAUSE). The select list, WHERE, JOIN ON, USING and a NATURAL join's shared columns, GROUP BY,
-    HAVING, ORDER BY, windows, FROM-function arguments and LATERAL items, in any subquery, CTE or
-    set operation: no clause is an oracle on a value the role is not served. A view's SQL is its
-    administrator's, as a row rule is, but for its select lists, which the role reads."""
     violations = []
     scopes = _relation_names_by_scope(tree)
     for select in tree.find_all(exp.Select):
         am = _alias_map(select, gov_ctx, cte_names_set)
         for expr in select.expressions:
-            if not _is_star(expr):
+            if _is_star(expr):
+                if isinstance(expr, exp.Column) and _names_no_relation(expr, scopes):
+                    violations.append(_no_relation_violation(expr))
+                    continue
+                # A star's columns are the ones the role is served (stage2._expand_star); it is
+                # refused only when that is none of them.
+                star = _star_violation(expr, am, gov_ctx)
+                if star is not None:
+                    violations.append(star)
                 continue
-            if isinstance(expr, exp.Column) and _names_no_relation(expr, scopes):
-                violations.append(_no_relation_violation(expr))
-                continue
-            # A star's columns are the ones the role is served (stage2._expand_star); it is
-            # refused only when that is none of them. The columns a USING or NATURAL join merges
-            # are judged with the join (_merged_column_violations).
-            star = _star_violation(expr, am, gov_ctx)
-            if star is not None:
-                violations.append(star)
-        if _the_roles(select):
-            violations += _merged_column_violations(select, gov_ctx, cte_names_set)
-    for col in tree.find_all(exp.Column):
-        if _is_star(col) and isinstance(col.parent, exp.Select):
-            continue  # a select list's ``t.*``, judged above; a ``t.*`` in an expression is a row
-        if not _the_roles(col) or _names_an_output(col, gov_ctx, cte_names_set):
-            continue
-        if _names_no_relation(col, scopes):
-            violations.append(_no_relation_violation(col))
-            continue
-        if col.name in SERVED_WITH_EVERY_TABLE:
-            # A virtual column (a table's _domain_/_name_, registered_tables' table_query_name) is
-            # served with the table to every role that reads it, as GraphQL serves it; the
-            # lowering answers it (sql_rewrite).
-            continue
-        if approved_join_key(col, gov_ctx):
-            # A registered relationship's join key in a condition (a relationship field): read by
-            # the engine to join, never returned (REQ-603).
-            continue
-        violation = _column_violation(col, gov_ctx, cte_names_set)
-        if violation is not None:
-            violations.append(violation)
+            cols = _collect_columns(expr)
+            for col in cols:
+                tbl_ref = col.table
+                col_name = col.name
+                if _names_no_relation(col, scopes):
+                    violations.append(_no_relation_violation(col))
+                    continue
+                if col_name in SERVED_WITH_EVERY_TABLE:
+                    # A virtual column (a table's _domain_/_name_, registered_tables'
+                    # table_query_name) is served with the table to every role that reads it,
+                    # as GraphQL serves it; the lowering answers it (sql_rewrite).
+                    continue
+                if approved_join_key(col, gov_ctx):
+                    # A registered relationship's join key in a nested SELECT's condition (a
+                    # relationship field): read by the engine to join, never returned (REQ-603).
+                    continue
+                if not tbl_ref:
+                    for tid in am.values():
+                        vis = gov_ctx.visible_columns.get(tid)
+                        if vis is not None and registered_name(gov_ctx, tid, col_name) not in vis:
+                            violations.append(
+                                ValidationViolation(
+                                    "V003",
+                                    f"Column {col_name!r} is not visible to this role",
+                                )
+                            )
+                            break
+                else:
+                    tid = am.get(tbl_ref)
+                    if tid is None:
+                        continue
+                    vis = gov_ctx.visible_columns.get(tid)
+                    if vis is not None and registered_name(gov_ctx, tid, col_name) not in vis:
+                        violations.append(
+                            ValidationViolation(
+                                "V003",
+                                f"Column {tbl_ref}.{col_name} is not visible to this role",
+                            )
+                        )
+        violations += _hidden_sort_keys(select, am, gov_ctx)
+        violations += _hidden_join_keys(select, am, gov_ctx)
     return violations
 
 
-def _the_roles(node: exp.Expr) -> bool:
-    """Whether ``node`` is the role's SQL, judged in every clause. A view's SQL, expanded where
-    governance validates the statement (``view_expand.VIEW_MARK``), is its administrator's: only
-    its select lists are judged, as they always were -- what the role reads of it."""
-    in_list = False
-    cur = node
-    while cur.parent is not None:
-        parent = cur.parent
-        if isinstance(parent, exp.Select) and cur.arg_key == "expressions":
-            in_list = True
-        if isinstance(parent, exp.Subquery) and marked_view(parent.alias):
-            return in_list
-        cur = parent
-    return True
+def _hidden_columns(tid: int, gov_ctx: GovernanceContext) -> set[str]:
+    """The registered columns of table ``tid`` the role is not served."""
+    vis = gov_ctx.visible_columns.get(tid)
+    if vis is None:
+        return set()
+    return {c for c, _ in gov_ctx.all_columns.get(tid, [])} - vis
 
 
-def _names_an_output(
-    col: exp.Column, gov_ctx: GovernanceContext, cte_names_set: frozenset[str]
-) -> bool:
-    """Whether ``col`` is a bare name PostgreSQL reads as an output column of its query, not as a
-    column of a relation: an ORDER BY item of a set operation, an ORDER BY item its SELECT lists
-    an output of that name (the output wins), or a GROUP BY item its SELECT lists an output of
-    that name and no registered relation of the SELECT has (the input wins). The output's own
-    columns are judged where the list reads them."""
-    if col.table:
-        return False
-    parent = col.parent
-    if isinstance(parent, exp.Ordered) and isinstance(parent.parent, exp.Order):
-        query = parent.parent.parent
-        if isinstance(query, exp.SetOperation):
-            return True
-        return isinstance(query, exp.Select) and col.name in _output_names(query)
-    if isinstance(parent, exp.Group) and isinstance(parent.parent, exp.Select):
-        select = parent.parent
-        if col.name not in _output_names(select):
-            return False
-        am = _alias_map(select, gov_ctx, cte_names_set)
-        return not any(_registers(gov_ctx, tid, col.name) for tid in am.values())
-    return False
-
-
-def _output_names(select: exp.Select) -> set[str]:
-    return {_output_name(expr) for expr in select.expressions if not _is_star(expr)}
-
-
-def _column_violation(
-    col: exp.Column, gov_ctx: GovernanceContext, cte_names_set: frozenset[str]
-) -> ValidationViolation | None:
-    """V003 for ``col`` where it resolves: in its own SELECT, then each SELECT around it (an
-    outer reference), as PostgreSQL resolves it. Unqualified, it resolves to every registered
-    relation of the scope that has it (one whose columns are not known may), and is refused when
-    one of them does not serve it; else to a relation of the scope no registry governs (a table
-    function, VALUES, a derived table, a CTE) known to provide it. A source whose columns are not
-    known never ends the walk: the name may be an outer reference to a governed column. A name no
-    relation of any scope around it is known to have can only be a column of a registered
-    relation the model does not serve, or none: it is judged against every registered relation it
-    passed."""
-    passed: list[int] = []
-    scope = col.find_ancestor(exp.Select)
-    while scope is not None:
-        am = _alias_map(scope, gov_ctx, cte_names_set)
-        others = _unregistered_sources(scope, gov_ctx, cte_names_set)
-        if col.table:
-            if col.table in am:
-                return _hidden(col, [am[col.table]], gov_ctx)
-            if col.table in others:
-                return None  # read in its own SELECT, or not governed data (V006 says which)
-        else:
-            owners = [tid for tid in am.values() if _registers(gov_ctx, tid, col.name)]
-            if owners:
-                return _hidden(col, owners, gov_ctx)
-            if any(names is not None and col.name in names for names in others.values()):
-                return None
-            passed += am.values()
-        scope = scope.find_ancestor(exp.Select)
-    return None if col.table else _hidden(col, passed, gov_ctx)
-
-
-def _registers(gov_ctx: GovernanceContext, tid: int, name: str) -> bool:
-    """Whether registered table ``tid`` has the column a statement reads as ``name``; a table
-    whose columns are not known may have any."""
-    columns = gov_ctx.all_columns.get(tid)
-    if not columns:
-        return True
-    return registered_name(gov_ctx, tid, name) in {c for c, _ in columns}
-
-
-def _hidden(
-    col: exp.Column, tids: list[int], gov_ctx: GovernanceContext
-) -> ValidationViolation | None:
-    """V003 when one of the registered tables ``tids`` ``col`` resolves to does not serve it."""
-    said = f"{col.table}.{col.name}" if col.table else repr(col.name)
-    return _hidden_name(said, col.name, tids, gov_ctx)
-
-
-def _hidden_name(
-    said: str, name: str, tids: list[int], gov_ctx: GovernanceContext
-) -> ValidationViolation | None:
-    for tid in tids:
-        vis = gov_ctx.visible_columns.get(tid)
-        if vis is not None and registered_name(gov_ctx, tid, name) not in vis:
-            return ValidationViolation("V003", f"Column {said} is not visible to this role")
-    return None
-
-
-def _merged_column_violations(
-    select: exp.Select, gov_ctx: GovernanceContext, cte_names_set: frozenset[str]
+def _hidden_join_keys(  # REQ-039
+    select: exp.Select, am: dict[str, int], gov_ctx: GovernanceContext
 ) -> list[ValidationViolation]:
-    """V003 for the columns a USING or NATURAL join merges: the join condition reads each, and a
-    star returns it as one column of the two sides (H5), so each is judged against every
-    registered relation joined so far that has it. A NATURAL join merges the names both sides
-    have; a side whose columns are not known may have any, so every column of the other side is
-    judged."""
-    from_clause = select.args.get("from_") or select.args.get("from")
-    if from_clause is None:
-        return []
-    joined: list[exp.Expr] = [from_clause.this]
-    violations: list[ValidationViolation] = []
+    """V003 for a join of ``select`` that matches rows on a hidden column it never names in a
+    select list: ``USING (ssn)``, or a NATURAL join beside a table with a hidden column (it joins
+    on every common name, which the other side may give). Either counts rows by the hidden value."""
+    violations = []
     for join in select.args.get("joins") or []:
-        using = join.args.get("using") or []
-        if using:
-            names = {u.name for u in using}
-        elif join.method.upper() == "NATURAL":
-            names = _shared_names(joined, join.this, gov_ctx, cte_names_set)
-        else:
-            names = set()
-        joined.append(join.this)
-        tids = [tid for tid in (_registered_id(i, gov_ctx, cte_names_set) for i in joined) if tid]
-        for name in sorted(names):
-            owners = [tid for tid in tids if _registers(gov_ctx, tid, name)]
-            violation = _hidden_name(repr(name), name, owners, gov_ctx)
-            if violation is not None:
-                violations.append(violation)
+        for key in join.args.get("using") or []:
+            if any(
+                registered_name(gov_ctx, tid, key.name) in _hidden_columns(tid, gov_ctx)
+                for tid in am.values()
+            ):
+                violations.append(
+                    ValidationViolation(
+                        "V003", f"Column {key.name!r} is not visible to this role (JOIN USING)"
+                    )
+                )
+        if (join.args.get("method") or "").upper() == "NATURAL" and any(
+            _hidden_columns(tid, gov_ctx) for tid in am.values()
+        ):
+            violations.append(
+                ValidationViolation(
+                    "V003",
+                    "A NATURAL JOIN over a table with columns not visible to this role may match "
+                    "on them: name the join's columns",
+                )
+            )
     return violations
 
 
-def _registered_id(
-    item: exp.Expr, gov_ctx: GovernanceContext, cte_names_set: frozenset[str]
-) -> int | None:
-    if not isinstance(item, exp.Table) or not isinstance(item.this, exp.Identifier):
-        return None
-    if not item.db and item.name in cte_names_set:
-        return None
-    return _resolve_table_id(item, gov_ctx)
-
-
-def _shared_names(
-    left: list[exp.Expr],
-    right: exp.Expr,
-    gov_ctx: GovernanceContext,
-    cte_names_set: frozenset[str],
-) -> set[str]:
-    """The names a NATURAL join merges: those both sides have, where a side's are not known
-    every name of the other."""
-    ours = _side_columns(left, gov_ctx, cte_names_set)
-    theirs = _side_columns([right], gov_ctx, cte_names_set)
-    if ours is None:
-        return set(theirs or ())
-    if theirs is None:
-        return set(ours)
-    return set(ours & theirs)
-
-
-def _side_columns(
-    items: list[exp.Expr], gov_ctx: GovernanceContext, cte_names_set: frozenset[str]
-) -> frozenset[str] | None:
-    names: set[str] = set()
-    for item in items:
-        tid = _registered_id(item, gov_ctx, cte_names_set)
-        if tid is not None:
-            columns = gov_ctx.all_columns.get(tid)
-            if not columns:
-                return None
-            names.update(c for c, _ in columns)
-            continue
-        known = _source_columns(item, gov_ctx, cte_names_set, frozenset())
-        if known is None:
-            return None
-        names.update(known)
-    return frozenset(names)
-
-
-# Table functions of one column, which PostgreSQL names by the alias, or else by the function.
-_SCALAR_GENERATORS: dict[type, str] = {
-    exp.Explode: "unnest",
-    exp.Unnest: "unnest",
-    exp.GenerateSeries: "generate_series",
-    exp.ExplodingGenerateSeries: "generate_series",
-}
-# The client table functions (pgwire.catalog_route.CLIENT_TABLE_FUNCTIONS) that return one
-# column of a base type, named as a scalar generator's is.
-_SCALAR_FUNCTIONS = frozenset(
-    {
-        "generate_subscripts",
-        "json_object_keys",
-        "jsonb_object_keys",
-        "jsonb_path_query",
-        "jsonb_path_query_tz",
-        "regexp_matches",
-        "regexp_split_to_table",
-        "string_to_table",
-        "unnest",
+def _hidden_sort_keys(  # REQ-039
+    select: exp.Select, am: dict[str, int], gov_ctx: GovernanceContext
+) -> list[ValidationViolation]:
+    """V003 for a bare ORDER BY or GROUP BY key of ``select`` that is a hidden registered column,
+    as PostgreSQL resolves it: an ORDER BY name is an output's only where an output is named so --
+    by a real alias or as a bare column, never by a string literal's text -- and a GROUP BY name is
+    the input column first. Names compare exactly, in the reading of the statement judged."""
+    outputs = {e.alias for e in select.expressions if isinstance(e, exp.Alias)} | {
+        e.name
+        for e in select.expressions
+        if isinstance(e, exp.Column) and not isinstance(e.this, exp.Star)
     }
-)
-# The client table functions that return a row of known columns, as PostgreSQL names them. The
-# json(b)_populate_record(set) and json(b)_to_record(set) functions return a row of the caller's
-# type: their columns are the alias's, or not known.
-_RECORD_FUNCTIONS: dict[str, tuple[str, ...]] = {
-    "_pg_expandarray": ("x", "n"),
-    "aclexplode": ("grantor", "grantee", "privilege_type", "is_grantable"),
-    "json_array_elements": ("value",),
-    "json_array_elements_text": ("value",),
-    "json_each": ("key", "value"),
-    "json_each_text": ("key", "value"),
-    "jsonb_array_elements": ("value",),
-    "jsonb_array_elements_text": ("value",),
-    "jsonb_each": ("key", "value"),
-    "jsonb_each_text": ("key", "value"),
-    "pg_get_keywords": ("word", "catcode", "barelabel", "catdesc", "baredesc"),
-    "pg_options_to_table": ("option_name", "option_value"),
-    "pg_timezone_abbrevs": ("abbrev", "utc_offset", "is_dst"),
-    "pg_timezone_names": ("name", "abbrev", "utc_offset", "is_dst"),
-    "ts_token_type": ("tokid", "alias", "description"),
-}
-
-
-def _unregistered_sources(
-    select: exp.Select,
-    gov_ctx: GovernanceContext,
-    cte_names_set: frozenset[str],
-    seen: frozenset[str] = frozenset(),
-) -> dict[str, frozenset[str] | None]:
-    """The relations ``select`` reads that are no registered table, by the name the statement
-    gives each: the columns it is known to have, or None where none are known."""
-    from_clause = select.args.get("from_") or select.args.get("from")
-    items = [from_clause.this] if from_clause is not None else []
-    items += [join.this for join in select.args.get("joins") or []]
-    sources: dict[str, frozenset[str] | None] = {}
-    for item in items:
-        if (
-            isinstance(item, exp.Table)
-            and isinstance(item.this, exp.Identifier)
-            and not (not item.db and item.name in cte_names_set)
-            and _resolve_table_id(item, gov_ctx) is not None
-        ):
-            continue  # a registered table (_alias_map)
-        sources[item.alias_or_name] = _source_columns(item, gov_ctx, cte_names_set, seen)
-    return sources
-
-
-def _source_columns(
-    item: exp.Expr,
-    gov_ctx: GovernanceContext,
-    cte_names_set: frozenset[str],
-    seen: frozenset[str],
-) -> frozenset[str] | None:
-    """The columns FROM item ``item``, no registered table, is known to give; None where none
-    are known."""
-    if isinstance(item, exp.Table) and isinstance(item.this, exp.Identifier):
-        if not item.db and item.name in cte_names_set:
-            return _alias_columns(item) or _cte_columns(item, gov_ctx, cte_names_set, seen)
-        return _alias_columns(item)
-    if isinstance(item, exp.Table):
-        return _function_columns(item, item.this)
-    if isinstance(item, exp.Unnest):
-        return _function_columns(item, item)
-    if isinstance(item, exp.Values):
-        first = item.expressions[0] if item.expressions else None
-        width = len(first.expressions) if isinstance(first, exp.Tuple) else 1
-        return _renamed(item, [f"column{i}" for i in range(1, width + 1)])
-    if isinstance(item, (exp.Subquery, exp.Lateral)) and isinstance(item.this, exp.Query):
-        return _alias_columns(item) or _query_columns(item.this, gov_ctx, cte_names_set, seen)
-    if isinstance(item, exp.Lateral):
-        fn = item.this.this if isinstance(item.this, exp.Table) else item.this
-        return _function_columns(item, fn)
-    return _alias_columns(item)
-
-
-def _alias_columns(item: exp.Expr) -> frozenset[str] | None:
-    return frozenset(_alias_list(item)) or None
-
-
-def _alias_list(item: exp.Expr) -> list[str]:
-    alias = item.args.get("alias")
-    columns = alias.columns if isinstance(alias, exp.TableAlias) else []
-    return [c.name for c in columns]
-
-
-def _renamed(item: exp.Expr, defaults: list[str]) -> frozenset[str]:
-    """``defaults``, a FROM item's columns in order, as its alias's column list renames them:
-    the first by the list, the rest as they are."""
-    named = _alias_list(item)
-    return frozenset(named + defaults[len(named) :])
-
-
-def _function_columns(item: exp.Expr, fn: exp.Expr | None) -> frozenset[str] | None:
-    """The columns a table function in FROM gives, where PostgreSQL's naming of them is known:
-    a function of one column by the alias, or else by the function; a function of a known row
-    by its columns; either renamed by the alias's column list."""
-    named = fn.name.lower() if isinstance(fn, exp.Anonymous) else None
-    default = _SCALAR_GENERATORS.get(type(fn)) or (named if named in _SCALAR_FUNCTIONS else None)
-    alias = item.args.get("alias")
-    if default is not None:
-        if isinstance(alias, exp.TableAlias) and alias.name and not alias.columns:
-            default = alias.name
-        columns = [default]
-    elif named in _RECORD_FUNCTIONS:
-        columns = list(_RECORD_FUNCTIONS[named])
-    else:
-        return _alias_columns(item)  # a row of the caller's type: its columns are the alias's
-    if item.args.get("ordinality") or item.args.get("offset"):
-        columns.append("ordinality")
-    return _renamed(item, columns)
-
-
-def _cte_columns(
-    item: exp.Table,
-    gov_ctx: GovernanceContext,
-    cte_names_set: frozenset[str],
-    seen: frozenset[str],
-) -> frozenset[str] | None:
-    if item.name in seen:
-        return None  # a recursive CTE read within itself
-    for cte in item.root().find_all(exp.CTE):
-        if cte.alias == item.name and isinstance(cte.this, exp.Query):
-            return _alias_columns(cte) or _query_columns(
-                cte.this, gov_ctx, cte_names_set, seen | {item.name}
-            )
-    return None
-
-
-def _query_columns(
-    query: exp.Query,
-    gov_ctx: GovernanceContext,
-    cte_names_set: frozenset[str],
-    seen: frozenset[str],
-) -> frozenset[str] | None:
-    """The columns a derived table or a CTE gives: its (first) SELECT's output names, a star's
-    as the relations it covers have them; None where one is not known."""
-    while isinstance(query, (exp.SetOperation, exp.Subquery)):
-        query = query.this if isinstance(query, exp.Subquery) else query.left
-    if not isinstance(query, exp.Select):
-        return None
-    names: set[str] = set()
-    for expr in query.expressions:
-        if not _is_star(expr):
-            name = _output_name(expr)
-            if name:
-                names.add(name)
+    keys: list[exp.Column] = []
+    order = select.args.get("order")
+    if order is not None:
+        keys += [
+            o.this
+            for o in order.expressions
+            if isinstance(o.this, exp.Column) and o.this.name not in outputs
+        ]
+    group = select.args.get("group")
+    if group is not None:
+        keys += [g for g in group.expressions if isinstance(g, exp.Column)]
+    violations = []
+    for col in keys:
+        if col.table or isinstance(col.this, exp.Star):
             continue
-        covered = expr.table if isinstance(expr, exp.Column) else None
-        am = _alias_map(query, gov_ctx, cte_names_set)
-        for alias, tid in am.items():
-            if covered is None or alias == covered:
-                columns = gov_ctx.all_columns.get(tid)
-                if not columns:
-                    return None
-                names.update(c for c, _ in columns)
-        for alias, cols in _unregistered_sources(query, gov_ctx, cte_names_set, seen).items():
-            if covered is None or alias == covered:
-                if cols is None:
-                    return None
-                names.update(cols)
-    return frozenset(names)
-
-
-def _output_name(expr: exp.Expr) -> str:
-    """The name PostgreSQL gives a SELECT list item, where sqlglot knows it."""
-    if expr.alias_or_name:
-        return expr.alias_or_name
-    while isinstance(expr, exp.Cast):
-        expr = expr.this
-    if isinstance(expr, exp.Anonymous):
-        return expr.name.lower()
-    if isinstance(expr, exp.Func):
-        return expr.sql_name().lower()
-    return expr.alias_or_name
+        for tid in am.values():
+            name = registered_name(gov_ctx, tid, col.name)
+            vis = gov_ctx.visible_columns.get(tid)
+            registered = {c for c, _ in gov_ctx.all_columns.get(tid, [])}
+            if vis is not None and name in registered and name not in vis:
+                violations.append(
+                    ValidationViolation("V003", f"Column {col.name!r} is not visible to this role")
+                )
+                break
+    return violations
 
 
 def _is_star(expr: exp.Expr) -> bool:

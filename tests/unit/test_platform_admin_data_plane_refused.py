@@ -69,6 +69,9 @@ ROLES["settings_only"] = {
     "capabilities": ["platform_settings", "usage"],
     "domain_access": ["*"],
 }
+# REQ-2153: a built role carries its own domain access beside its reach (no domain tree here).
+for _role in ROLES.values():
+    _role["own_domain_access"] = list(_role["domain_access"])
 
 PLATFORM_ONLY = ["platform_admin"]
 BOOTSTRAP = ["platform_admin", "org_admin"]
@@ -265,6 +268,7 @@ def test_platform_admin_adds_no_domain_scope_to_a_role_held_beside_it(monkeypatc
             "description": "Test role.",
             "capabilities": ["query_development", "create_view"],
             "domain_access": ["sales"],
+            "own_domain_access": ["sales"],  # REQ-2153: a built role carries it
         },
     }
     monkeypatch.setattr(appmod.state, "roles", roles, raising=False)

@@ -200,7 +200,8 @@
     "dimBadge": "Dimensione",
     "scopeDomain": "dominio",
     "scopePublic": "pubblico",
-    "scopeRestricted": "riservato",
+    "scopeListed": "elencato",
+    "scopeOwnDomain": "dominio proprio",
     "cancel": "Annulla",
     "save": "Salva",
     "ttlViewRefreshes": "Si aggiorna ogni {{sec}} s (dall'intervallo di aggiornamento della vista materializzata).",
@@ -264,7 +265,7 @@
     "draftHelp": "Fuori servizio finché è selezionato: non viene letta né scritta da nessuna parte, non è offerta in alcuno schema e non viene copiata — le copie esistenti in ogni regione vengono rimosse. Una tabella o vista registrata qui inizia come bozza; deselezionare per rilasciarla.",
     "pagingRowsFieldHelp": "La proprietà della risposta che contiene le righe, come values o data in un involucro di pagina. Lascia vuoto quando la risposta è costituita dalle righe stesse. Le colonne della tabella sono quelle degli oggetti che si trovano lì.",
     "pagingRowsFieldFixed": "Impostato alla registrazione della tabella. Registra di nuovo la tabella per leggere le sue righe da un'altra posizione.",
-    "scopeHelp": "domain: servita ai ruoli che raggiungono il dominio di questa tabella. public: anche ai ruoli al di fuori. restricted: solo ai ruoli indicati in Visibile a.",
+    "scopeHelp": "domain: servita ai ruoli che raggiungono il dominio di questa tabella, anche tramite un dominio padre. listed: lo stesso, e ogni ruolo vede il nome della colonna nel catalogo. public: servita anche ai ruoli al di fuori del dominio. own-domain: servita solo ai ruoli il cui accesso al dominio proprio elenca il dominio di questa tabella; un ruolo che lo raggiunge solo tramite un dominio padre non la riceve, anche se Visibile a lo nomina.",
     "columnTabs": {
       "label": "Attributi della colonna",
       "naming": "Denominazione",

@@ -451,14 +451,16 @@ async def set_column_fake(
     }
 
 
-async def propose_fakes(state: Any, role: str, request: Any, table_id: int) -> dict:
-    """Fill from profile: fakes and synthetic rules proposed from the latest succeeded run. Nothing
-    is saved."""
+async def propose_fakes(
+    state: Any, role: str, request: Any, table_id: int, columns: list[str] | None = None
+) -> dict:
+    """Fill from profile: fakes and synthetic rules proposed from the latest succeeded run, for
+    ``columns`` only when named (declared or not). Nothing is saved."""
     require_role(role, state)
     from provisa.api.admin.fakes_router import ProposeIn
     from provisa.api.admin.fakes_router import propose_fakes as route
 
-    return await route(request, ProposeIn(tableId=table_id))
+    return await route(request, ProposeIn(tableId=table_id, columns=columns))
 
 
 # -- synthetic datasets ------------------------------------------------------------------------

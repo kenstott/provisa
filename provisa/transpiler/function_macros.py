@@ -2352,6 +2352,9 @@ def _fractions(argument: exp.Expr) -> list[float | None]:
         node = node.this.unnest()
     if isinstance(node, exp.Array):
         return [value for item in node.expressions for value in _fractions(item)]
+    if isinstance(node, exp.Literal) and node.is_string:  # an array's text: '{0.25,0.5}'
+        items = node.this.strip().removeprefix("{").removesuffix("}").split(",")
+        return [None if i.strip().upper() == "NULL" else float(i) for i in items if i.strip()]
     if isinstance(node, exp.Null):
         return [None]
     if isinstance(node, exp.Neg):
@@ -2364,24 +2367,33 @@ def _fractions(argument: exp.Expr) -> list[float | None]:
 #: DuckDB takes a negative fraction as its sort descending, and 0 has none: a smallest positive
 #: fraction is the same row.
 _FIRST_DESCENDING = 5e-324
-_IN_TIME_ALONE = (
-    "CASE WHEN bool_or(date_part('year', {k}) <> 0 OR date_part('month', {k}) <> 0 "
-    "OR date_part('day', {k}) <> 0) THEN "
-    + raising("0A000", f"'percentile_cont {pg_forms_types.REFUSED}'")
-    + " ELSE {answer} END"
-)
 
 
-def _of_intervals(node: exp.WithinGroup, array: bool) -> exp.Expr:
-    """DuckDB's percentile_cont has no interval: it interpolates microseconds, which is PostgreSQL's
-    answer where neither end holds a field that does not carry into hours."""
+def _of_intervals(node: exp.WithinGroup, fractions: list[float], array: bool) -> exp.Expr:
+    """DuckDB's percentile_cont of intervals interpolates microseconds, carrying months and days
+    into hours: as PostgreSQL's, each fraction's two neighbours among the keys sorted as
+    PostgreSQL compares intervals, and interval_lerp between them where they differ."""
     ordered = node.expression.expressions[0]
     key = ordered.this.sql(dialect="duckdb")
-    ordered.set("this", sqlglot.parse_one(f"epoch({key}) * 1000000", read="duckdb"))
-    read = "to_microseconds(CAST(round({}) AS BIGINT))"
-    answer = f"list_transform(_q, _m -> {read.format('_m')})" if array else read.format("_q")
-    written = sqlglot.parse_one(_IN_TIME_ALONE.format(k=key, answer=answer), read="duckdb")
-    return written.transform(lambda n: node.copy() if n == exp.column("_q") else n)
+    direction = " DESC" if ordered.args.get("desc") else ""
+    place = "(_f * (_n - 1))"
+    lo = f"_k[CAST(floor({place}) AS BIGINT) + 1]"
+    hi = f"_k[CAST(ceil({place}) AS BIGINT) + 1]"
+    each = (
+        f"CASE WHEN ceil({place}) = floor({place}) THEN {lo} "
+        f"ELSE {pg_forms.interval_lerp(lo, hi, f'{place} - floor({place})')} END"
+    )
+    said = ", ".join(map(repr, fractions))
+    answer = (
+        f"list_transform([{said}], _f -> {each})" if array else pg_forms.bound("_f", said, each)
+    )
+    written = pg_forms.bound(
+        "_k",
+        f"list({key} ORDER BY {pg_forms.interval_span(key)}{direction}) "
+        f"FILTER (WHERE {key} IS NOT NULL)",
+        pg_forms.bound("_n", f"count({key})", f"CASE WHEN _n = 0 THEN NULL ELSE {answer} END"),
+    )
+    return sqlglot.parse_one(written, read="duckdb")
 
 
 #: The rows' keys, sorted, bound to ``_s``, and each fraction, bound to ``_f`` where there are
@@ -2476,15 +2488,15 @@ def _percentile(node: exp.WithinGroup, dialect: str) -> exp.Expr:
     if dialect in _TRINO or dialect == "clickhouse":
         exact = _exact(node, known, array, dialect)
         return exp.Case(ifs=[exp.If(this=exp.false(), true=exact)]) if nothing else exact
+    said = said_type(ordered.this) == "interval"
+    if said and isinstance(node.this, exp.PercentileCont) and dialect in _DUCKDB:
+        written = _of_intervals(node, known, array)
+        return exp.Case(ifs=[exp.If(this=exp.false(), true=written)]) if nothing else written
     if dialect in _DUCKDB and ordered.args.get("desc") and not nothing:
         known = [fraction or _FIRST_DESCENDING for fraction in known]
     numbers = [exp.Literal.number(repr(fraction)) for fraction in known]
     node.this.set("this", exp.Array(expressions=numbers) if array else numbers[0])
-    said = said_type(ordered.this) == "interval"
-    if said and isinstance(node.this, exp.PercentileCont) and dialect in _DUCKDB:
-        written = _of_intervals(node, array)
-    else:
-        written = node
+    written = node
     return exp.Case(ifs=[exp.If(this=exp.false(), true=written)]) if nothing else written
 
 

@@ -1551,6 +1551,39 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. URLs starting with `http://` or `https://` use OTLP/HTTP, with `/v1/traces`, `/v1/metrics`, and `/v1/logs` appended automatically. Any other scheme uses OTLP/gRPC with `insecure=True`.
 
+### Sending Telemetry to Your Own Provider
+
+You can send Provisa's telemetry to Datadog, Honeycomb, Grafana Cloud or any other OTLP-capable provider and keep Provisa's own trace tables. Which setup works depends on how your federation engine gets its trace rows.
+
+Every span also goes to an in-process buffer that doesn't depend on any exporter. The recent-traces list on Admin > Observability reads that buffer, so it works with any `endpoint`, or none.
+
+The ops `traces` table is the record the `queries` report joins on `trace_id` for stage timings, route, engine and cache result. Two paths fill it:
+
+- **Engines with the `otel` catalog (Trino).** Rows arrive only through Provisa's OpenTelemetry collector. Its `otlphttp/parquet` exporter writes Parquet, and the compaction job loads it into Iceberg. Keep `observability.endpoint` on that collector and add your provider as another exporter in the collector's pipelines. If you point `endpoint` straight at the provider, the collector never sees the spans. The `traces` table stops filling and the `queries` report loses its trace join.
+- **Native engines (DuckDB).** Provisa writes the `traces` rows itself, whatever `endpoint` is. You can point `endpoint` at your provider. If you run the `otlp2sql` receiver instead (see [Deployment](deployment.md#telemetry-backend-otlp2sql)), `endpoint` must stay on that receiver.
+
+To add a provider to the collector, define one more exporter in `observability/otel-collector-config.yaml` and list it in the `traces` pipeline next to `otlphttp/parquet`:
+
+```yaml
+exporters:
+  otlphttp/provider:
+    endpoint: https://YOUR_PROVIDER_OTLP_ENDPOINT
+    headers:
+      # The header name and value format are your provider's.
+      Authorization: ${env:YOUR_PROVIDER_API_KEY}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/parquet_traces, batch]
+      exporters: [otlphttp/parquet, otlphttp/provider, debug]
+```
+
+Set `YOUR_PROVIDER_API_KEY` in the collector's environment and restart the collector. The `traces` pipeline runs the `filter/parquet_traces` processor, so your provider receives the same spans as the `traces` table: Provisa's own, without the control plane's database statement spans. To send everything the collector receives, add a second pipeline, for example `traces/provider`, that has the `otlp` receiver, the `batch` processor and only the provider exporter.
+
+Admin > Observability warns when an endpoint is set and the `traces` table has received no rows for ten minutes. If Provisa has been idle that is expected. Otherwise, check that the endpoint is Provisa's collector.
+
 ## Federation Engine
 
 Configuring a federation engine is optional. The default is `duckdb`, which needs no configuration and runs in process with no external service. Choose another engine when you need MPP scale or want to reuse a warehouse you already have.

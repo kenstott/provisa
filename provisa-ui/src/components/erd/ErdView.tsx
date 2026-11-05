@@ -139,9 +139,13 @@ export function ErdView({
   useEffect(() => {
     latest.current = { tables, takeFocus };
   });
+  // Only while the link names that layout: a Save as sets the saved layout before the link follows,
+  // and a write made then would carry the old name back into the link.
   useEffect(() => {
-    if (focused !== null) latest.current.takeFocus(layoutFocus(focused, latest.current.tables));
-  }, [focused]);
+    if (focused !== null && focused.name === layout) {
+      latest.current.takeFocus(layoutFocus(focused, latest.current.tables));
+    }
+  }, [focused, layout]);
   const unsaved =
     edited ||
     (shown !== null && shown === focused && !sameFocus(focus, layoutFocus(shown, tables)));

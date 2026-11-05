@@ -224,6 +224,8 @@ async def load_scans(conn: Any, path: Path) -> list[str]:
                 sa.insert(passages_t),
                 [{**p, "document_id": ids[source]} for p in document["passages"]],
             )
+    # REQ-2185: the loaded passages searchable under their dimension's vector index.
+    await store.index_vectors(conn)
     for scan in carried["scans"]:
         source = scan["document_source"]
         values = _decoded({f: scan[f] for f in _SCAN_FIELDS})

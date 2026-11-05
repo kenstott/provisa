@@ -608,7 +608,7 @@ def _compile_connection_field(  # REQ-218
     use_catalog: bool = False,
 ) -> CompiledQuery:
     """Compile a _connection root query field to SQL with cursor pagination."""
-    from provisa.compiler.cursor import apply_cursor_pagination, extract_sort_columns, reverse_order
+    from provisa.compiler.cursor import apply_cursor_pagination, extract_sort_columns
 
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
     table = ctx.tables[field_node.name.value]
@@ -686,9 +686,9 @@ def _compile_connection_field(  # REQ-218
         order_by_val = args["order_by"]
         if isinstance(order_by_val, dict):
             order_by_val = [order_by_val]
-        order_sql = _compile_order_by(order_by_val, None, table.table_id, ctx.exposed_to_physical)
-        if is_backward:
-            order_sql = reverse_order(order_sql)
+        order_sql = _compile_order_by(
+            order_by_val, None, table.table_id, ctx.exposed_to_physical, reverse=is_backward
+        )
         sql += f" ORDER BY {order_sql}"
     else:
         direction = "DESC" if is_backward else "ASC"

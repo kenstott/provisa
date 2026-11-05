@@ -33,8 +33,8 @@ def _one_organisation(monkeypatch):
 
 _PLATFORM = {
     "regions": [
-        {"id": "eu", "address": "https://eu.example.com"},
-        {"id": "us", "address": "https://us.example.com"},
+        {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+        {"id": "us", "description": "The us region", "purposes": ["residency"]},
     ]
 }
 _STORES = [
@@ -130,7 +130,7 @@ def test_an_org_selects_platform_regions_and_names_them_on_sources_and_tables():
 def test_an_org_that_selects_no_region_is_refused_naming_the_platforms():
     said = _refused(_config(platform=_PLATFORM))
     assert "selects none of the platform's regions" in said
-    assert "eu (https://eu.example.com)" in said and "us (https://us.example.com)" in said
+    assert "the platform's regions: eu, us [" in said, said
 
 
 def test_a_region_the_platform_does_not_declare_is_refused():
@@ -216,7 +216,11 @@ def test_a_region_keeps_its_replicas_and_views_in_one_store():
 
 
 def test_a_region_id_must_be_a_short_lowercase_name():
-    said = _refused(_config(platform={"regions": [{"id": "EU-west", "address": "https://x"}]}))
+    said = _refused(
+        _config(
+            platform={"regions": [{"id": "EU-west", "description": "x", "purposes": ["residency"]}]}
+        )
+    )
     assert "EU-west" in said
 
 
@@ -488,3 +492,119 @@ async def test_a_save_that_leaves_a_region_unreadable_by_the_others_is_refused(m
             await region_repo.upsert_region(conn, OrgRegion(**_region("us", engine="us-snow")))
         with pytest.raises(ValueError, match="'eu-pg' is not a PostgreSQL store"):
             await region_repo.upsert_store(conn, StoreConfig(id="eu-pg", url="mysql://eu/db"))
+
+
+# -- a platform region is an id, a description, its purposes and its data addresses ---------------
+
+
+def test_a_platform_region_has_no_address():
+    """REQ-1922 (amended 2026-11-05): the address field is removed; a config that still sets one
+    is refused rather than read."""
+    platform = {
+        "regions": [
+            {
+                "id": "eu",
+                "address": "https://eu.example.com",
+                "description": "Europe",
+                "purposes": ["residency"],
+            }
+        ]
+    }
+    said = _refused(_config(platform=platform, stores=_STORES, regions=[_region("eu")]))
+    assert "address" in said
+
+
+def test_a_platform_regions_description_and_purposes_round_trip():
+    platform = {
+        "regions": [
+            {
+                "id": "eu",
+                "description": "Data that must stay in the EU",
+                "purposes": ["residency", "latency"],
+                "data_addresses": ["https://data.eu.example.com"],
+            },
+            {"id": "us", "description": "Analytics workloads", "purposes": ["workload"]},
+        ]
+    }
+    cfg = ProvisaConfig.model_validate(
+        _config(platform=platform, stores=_STORES, regions=[_region("eu"), _region("us")])
+    )
+    assert cfg.platform.model_dump()["regions"] == [
+        {
+            "id": "eu",
+            "description": "Data that must stay in the EU",
+            "purposes": ["residency", "latency"],
+            "data_addresses": ["https://data.eu.example.com"],
+        },
+        {
+            "id": "us",
+            "description": "Analytics workloads",
+            "purposes": ["workload"],
+            "data_addresses": [],
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    ("region", "named"),
+    [
+        ({"id": "eu", "description": "Europe", "purposes": []}, "purposes"),
+        ({"id": "eu", "description": "Europe"}, "purposes"),
+        ({"id": "eu", "description": "Europe", "purposes": ["speed"]}, "speed"),
+        ({"id": "eu", "description": "Europe", "purposes": ["latency", "latency"]}, "twice"),
+        ({"id": "eu", "description": "", "purposes": ["residency"]}, "description"),
+        ({"id": "eu", "purposes": ["residency"]}, "description"),
+    ],
+)
+def test_a_platform_region_needs_a_description_and_known_purposes(region, named):
+    said = _refused(
+        _config(platform={"regions": [region]}, stores=_STORES, regions=[_region("eu")])
+    )
+    assert named in said
+
+
+def test_every_purpose_is_one_of_the_five():
+    from provisa.core.regions import PURPOSES
+
+    assert PURPOSES == ("residency", "workload", "latency", "resilience", "dedicated")
+
+
+# -- the platform's default grant -----------------------------------------------------------------
+
+
+def _default_grant(**over) -> dict:
+    return {
+        **_PLATFORM,
+        "default_grant": {
+            "stores": [s for s in _STORES if s["id"].startswith("eu-")],
+            "regions": [_region("eu")],
+            **over,
+        },
+    }
+
+
+def test_the_default_grant_round_trips():
+    from provisa.core.regions import PlatformConfig
+
+    platform = PlatformConfig.model_validate(_default_grant())
+    assert [r.id for r in platform.default_grant.regions] == ["eu"]
+    assert platform.default_grant.stores[0].url == "postgresql://eu/db"
+
+
+@pytest.mark.parametrize(
+    ("over", "named"),
+    [
+        ({"regions": [_region("ap")]}, "region 'ap' is not one of the platform's (eu, us)"),
+        ({"stores": []}, "engine store 'eu-trino' is not declared in stores"),
+        (
+            {"stores": [{"id": "eu-trino", "url": "trino://eu:8080"}, *_STORES[:2]]},
+            "names no engine kind",
+        ),
+    ],
+)
+def test_a_default_grant_that_does_not_hold_together_is_refused(over, named):
+    from provisa.core.regions import PlatformConfig
+
+    with pytest.raises(ValidationError) as refused:
+        PlatformConfig.model_validate(_default_grant(**over))
+    assert named in str(refused.value)

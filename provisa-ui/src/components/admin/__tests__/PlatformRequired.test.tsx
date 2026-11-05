@@ -27,6 +27,9 @@ vi.mock("../../../api/secrets", async (orig) => ({
   fetchSecretsService: vi.fn(),
 }));
 
+// REQ-1922: no regions, so the page is the one engine, as before.
+vi.mock("../useRegionEngines", () => ({ useRegionEngines: () => ({ status: "none" }) }));
+
 const forbidden = () => Object.assign(new Error("Settings fetch failed (403)"), { status: 403 });
 const failed = () => Object.assign(new Error("boom"), { status: 500 });
 

@@ -147,6 +147,6 @@
     "factMembers": "Member tables",
     "factColumns": "Columns",
     "grounding_grounded": "Grounded",
-    "grounding_grounded_pending": "Grounded, pending approval"
+    "grounding_grounded_pending": "Grounded, via a draft"
   }
 }

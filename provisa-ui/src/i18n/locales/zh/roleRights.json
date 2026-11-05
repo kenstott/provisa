@@ -31,7 +31,8 @@
     "reach_public": "公开",
     "scope_domain": "域",
     "scope_public": "公开",
-    "scope_restricted": "受限",
+    "scope_listed": "已列出",
+    "scope_own-domain": "本域",
     "write_insert": "插入",
     "write_update": "更新",
     "write_delete": "删除"

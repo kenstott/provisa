@@ -77,7 +77,8 @@ export interface DemoTourStepDef {
   /** A registered table, as `<source id>.<table name>`: its row on the Tables page. */
   table?: string;
   /** With `table`: its detail panel opened on a section, and in Columns on a tab, as
-   *  `<section>[.<tab>]` (`columns.testing`: each column's fake). */
+   *  `<section>[.<tab>]` (`columns.testing`: each column's fake); in Identity, on one field
+   *  (`identity.region`: the table's home region). */
   open?: string;
   /** With `table` and `open: quality`: one graph of the table's latest profile run, drawn in its
    *  View Profile Runs window (`terrain`, `relationsMap`, `jointCloud`, `driftStrata`). The tour
@@ -85,6 +86,11 @@ export interface DemoTourStepDef {
   graph?: ProfileGraph;
   /** A relationship, by alias: its row on the Relationships page. */
   relationship?: string;
+  /** REQ-1922: a region of the platform, by id: its row on the Platform page, its row (its engine
+   *  and stores) on Admin > Regions, or its tab on Admin > Federation (picked, its engine shown). */
+  region?: string;
+  /** REQ-1922: the legend of region purposes, on the Platform page or Admin > Regions. */
+  purposes?: true;
   /** A scheduled trigger, by id: its row on the Triggers page. */
   trigger?: string;
   /** An example query of the demo, by name: opened in a new GraphiQL tab and run. */
@@ -121,6 +127,8 @@ export interface DemoTourStepDef {
   /** REQ-2201: a reference library document, by the address it was read from: its row on the
    *  Reference library page. */
   library?: string;
+  /** A report, by its table name: opened on the Reports page, its rows shown. */
+  report?: string;
   /** A role (or "all"): shown in its picker (the SQL explorer's run-as on /sql, else the header's)
    *  and picked on Next. Beside `example`, `sql` or `mcp`, picked as the step opens, and what the
    *  step names runs as it. */
@@ -212,6 +220,18 @@ const SQL_RESULT_EMPTY = '[data-testid="sql-results-empty"][data-answered]';
 
 const RELATIONSHIPS_PAGE = "/relationships";
 
+/** REQ-1922: a region's anchor on each page that lists regions: the platform's, the org's (its
+ *  engine and stores) and Federation's tab per region, which the org's engine page shares. */
+const REGION_ANCHORS: Record<string, (id: string) => string> = {
+  "/admin/platform": (id) => `[data-testid="platform-region-row-${id}"]`,
+  "/admin/regions": (id) => `[data-testid="org-region-row-${id}"]`,
+  "/admin/federation-engine": (id) => `[data-testid="federation-region-tab-${id}"]`,
+  "/admin/org-engine": (id) => `[data-testid="federation-region-tab-${id}"]`,
+};
+/** The pages that show the legend of region purposes under their list of regions. */
+const PURPOSES_PAGES = ["/admin/platform", "/admin/regions"];
+const FEDERATION_PAGES = ["/admin/federation-engine", "/admin/org-engine"];
+
 export function demoTourSteps(
   defs: readonly DemoTourStepDef[],
   examples: readonly ExampleQuery[],
@@ -286,7 +306,13 @@ function demoTourStep(
     // The table's detail panel, open on the section (and Columns tab) the step is about: what it
     // describes is shown only there.
     const [section, tab] = def.open.split(".");
-    const query = new URLSearchParams({ open: def.table, section, ...(tab ? { tab } : {}) });
+    // In Identity the part after the dot is a field of the section, not a tab: the field is shown.
+    const field = section === "identity" ? tab : undefined;
+    const query = new URLSearchParams({
+      open: def.table,
+      section,
+      ...(tab && field === undefined ? { tab } : {}),
+    });
     if (def.graph !== undefined) {
       // Act, then explain (REQ-2115): the tour opens the table's View Profile Runs, which selects
       // the latest run, and picks the graph's tab; the popover then explains the graph, once its
@@ -309,7 +335,10 @@ function demoTourStep(
     return {
       ...page,
       route: `${def.route ?? "/tables"}?${query.toString()}`,
-      element: `[data-testid="table-section-${section}-panel"]`,
+      element:
+        field !== undefined
+          ? `[data-testid="table-identity-${field}"]`
+          : `[data-testid="table-section-${section}-panel"]`,
     };
   }
   if (def.table !== undefined) {
@@ -322,6 +351,24 @@ function demoTourStep(
     // whatever else the org holds: a relationship listed past the first fifty mounts no anchor.
     const query = new URLSearchParams({ search: def.relationship });
     return { ...page, route: `${def.route}?${query.toString()}`, element };
+  }
+  if (def.region !== undefined) {
+    const anchor = onPage !== undefined ? REGION_ANCHORS[onPage] : undefined;
+    // The tour test holds each region step to a page that lists regions.
+    if (anchor === undefined) {
+      throw new Error(`Tour: step ${def.key} shows region "${def.region}" off a regions page`);
+    }
+    const element = anchor(def.region);
+    // Federation's tab is picked, so its engine is what the page shows beside it.
+    return FEDERATION_PAGES.includes(onPage!)
+      ? { ...page, clickBefore: element, element }
+      : { ...page, element };
+  }
+  if (def.purposes === true) {
+    if (onPage === undefined || !PURPOSES_PAGES.includes(onPage)) {
+      throw new Error(`Tour: step ${def.key} shows the region purposes off a regions page`);
+    }
+    return { ...page, element: '[data-testid="region-purposes-legend"]' };
   }
   if (def.trigger !== undefined) {
     return { ...page, element: `[data-testid="scheduled-task-row-${def.trigger}"]` };
@@ -505,6 +552,14 @@ function demoTourStep(
       ...page,
       route: `${def.route ?? ""}?product=${encodeURIComponent(def.product)}`,
       element: '[data-testid="data-product-detail"]',
+    };
+  }
+  if (def.report !== undefined) {
+    // The page opens the report its deep link names (`?report=<table name>`).
+    return {
+      ...page,
+      route: `${def.route ?? ""}?report=${encodeURIComponent(def.report)}`,
+      element: `[data-testid="report-pane"][data-report="${def.report}"]`,
     };
   }
   if (def.role !== undefined && def.role.includes(",")) {

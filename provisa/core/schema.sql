@@ -1310,6 +1310,34 @@ CREATE TABLE IF NOT EXISTS profiler_classifications (
     PRIMARY KEY (table_id, physical_column, kind)
 );
 
+-- REQ-2147 (CONTAINED VALUES ARE HINTS): a background scan of a table's text columns for sensitive
+-- kinds held inside their values.
+CREATE TABLE IF NOT EXISTS profiler_sensitive_scans (
+    scan_id          TEXT PRIMARY KEY,
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    status           TEXT NOT NULL,
+    started_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at      TIMESTAMPTZ,
+    sampled_rows     INTEGER,
+    scanned_columns  INTEGER,
+    requested_by     TEXT,
+    error            TEXT
+);
+
+-- REQ-2147 (CONTAINED VALUES ARE HINTS): a column's latest hint per kind; counts only, never the
+-- matched text.
+CREATE TABLE IF NOT EXISTS profiler_sensitive_hints (
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    physical_column  TEXT NOT NULL,
+    kind             TEXT NOT NULL,
+    scan_id          TEXT NOT NULL,
+    values_tested    INTEGER NOT NULL,
+    values_matched   INTEGER NOT NULL,
+    share            DOUBLE PRECISION NOT NULL,
+    evidence         TEXT NOT NULL,
+    PRIMARY KEY (table_id, physical_column, kind)
+);
+
 -- REQ-2189: a saved, named arrangement of the ERD. Only the arrangement: what is drawn in it comes
 -- from the live model, and a table or domain removed from the model goes from every layout with it.
 CREATE TABLE IF NOT EXISTS erd_layouts (
@@ -1851,8 +1879,9 @@ CREATE TABLE IF NOT EXISTS code_source_vectors (
 
 -- REQ-2185: the org's reference library: documents its assistants draw on, each proposed or kept,
 -- with domains (a list, or '*' for the whole org, as a glossary term's). A document's content is
--- held as its passages, each embedded by the org's vector model; vector is the embedding as a JSON
--- array of floats (the code_source_vectors pattern). Mirrors schema_org.reference_documents,
+-- held as its passages, each embedded by the org's vector model; vector is the embedding, a pgvector
+-- column of any dimension (provisa.core.pgvector), under one partial HNSW index per dimension in use
+-- (provisa.reference_library.store). Mirrors schema_org.reference_documents,
 -- reference_document_domains and reference_passages.
 CREATE TABLE IF NOT EXISTS reference_documents (
     id              SERIAL PRIMARY KEY,
@@ -1887,7 +1916,7 @@ CREATE TABLE IF NOT EXISTS reference_passages (
     section     TEXT,
     page        INTEGER,
     text        TEXT NOT NULL,
-    vector      TEXT NOT NULL,
+    vector      public.vector NOT NULL,
     tenant_id   UUID,
     UNIQUE (document_id, ordinal)
 );

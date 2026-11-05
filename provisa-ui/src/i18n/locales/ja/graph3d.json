@@ -147,6 +147,6 @@
     "factMembers": "メンバーテーブル",
     "factColumns": "列",
     "grounding_grounded": "紐付け済み",
-    "grounding_grounded_pending": "紐付け済み、承認待ち"
+    "grounding_grounded_pending": "紐付け済み、下書き経由"
   }
 }

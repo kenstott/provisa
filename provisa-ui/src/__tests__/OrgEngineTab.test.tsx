@@ -18,6 +18,9 @@ vi.mock("../api/admin", () => ({
   setOrgEngine: vi.fn(),
 }));
 
+// REQ-1922: no regions, so the page is the one engine, as before.
+vi.mock("../components/admin/useRegionEngines", () => ({ useRegionEngines: () => ({ status: "none" }) }));
+
 import { fetchOrgEngine, setOrgEngine } from "../api/admin";
 const mockFetch = vi.mocked(fetchOrgEngine);
 const mockSet = vi.mocked(setOrgEngine);

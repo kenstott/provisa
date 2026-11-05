@@ -1,0 +1,57 @@
+{
+  "orgRegions": {
+    "loading": "Loading regions...",
+    "noPlatformRegions": "The platform declares no regions.",
+    "regionsHeading": "Regions",
+    "storesHeading": "Stores",
+    "addRegion": "Add region",
+    "addStore": "Add store",
+    "editRegion": "Edit region {{id}}",
+    "editStore": "Edit store {{id}}",
+    "detailPanel": "Region or store details",
+    "colRegion": "Region",
+    "colStore": "Store",
+    "colUrl": "URL",
+    "colKind": "Engine kind",
+    "usedBy": "Used by regions",
+    "unused": "No region uses it",
+    "noKind": "None",
+    "noRegions": "No region is granted yet.",
+    "noStores": "No stores yet.",
+    "notSaved": "Not saved",
+    "heldStores_one": "{{count}} store is not saved yet. It is saved with the first region.",
+    "heldStores_other": "{{count}} stores are not saved yet. They are saved with the first region.",
+    "edit": "Edit",
+    "remove": "Remove",
+    "storeTaken": "A store named {{id}} already exists.",
+    "regionHelp": "One of the platform's regions. The organization's data in it is kept in the stores below.",
+    "storeIdHelp": "The name regions use to refer to this store.",
+    "urlHelp": "The store's connection URL, or a reference such as ${env:NAME}. It is kept exactly as entered. A password in it is never shown again; leave the URL unchanged to keep it.",
+    "kindHelp": "The engine this store runs. Required for a store a region uses as its engine.",
+    "role": {
+      "engine": "Engine",
+      "replicas": "Replicas",
+      "views": "Materialized views",
+      "cache": "Cache",
+      "state": "State",
+      "record": "Request record"
+    },
+    "roleHelp": {
+      "engine": "The store whose engine runs this region's queries. It needs an engine kind.",
+      "replicas": "Where copies of tables are kept in this region. The same store as materialized views.",
+      "views": "Where materialized views are kept in this region. The same store as replicas.",
+      "cache": "Where query results are cached in this region.",
+      "state": "Where this region keeps its working state.",
+      "record": "Where this region keeps its record of requests."
+    },
+    "delete": {
+      "regionTitle": "Remove region {{id}}?",
+      "regionConsequence": "The organization is no longer granted region {{id}}; its nodes there stop serving it when they restart. Its stores are kept. A source or table that names the region keeps it from being removed.",
+      "storeTitle": "Remove store {{id}}?",
+      "storeConsequence": "Store {{id}} is removed. A region that uses it keeps it from being removed."
+    },
+    "grantedIntro": "The regions the platform granted this organization, and the store it keeps each kind of data in there. They are set on the Platform page. Within them, this organization decides where its tables and sources live and which regions its roles may read.",
+    "colPurposes": "Purposes",
+    "description": "Description"
+  }
+}
