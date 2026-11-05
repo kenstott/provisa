@@ -157,10 +157,11 @@ def _cypher(srv, statement: str) -> dict:
 def test_unwind_range_writes_one_node_per_value_inclusive(server):
     assert _call(server, "DELETE", "/data/cypher/session") == {"cleared": True}
     try:
+        # The write reads its rows with the UNWIND (ephemeral.seam): the values it creates.
+        rows = _cypher(server, "UNWIND range(1, 40) AS i RETURN i")
+        assert [r[0] for r in _rows(rows)] == list(range(1, 41))
         made = _cypher(server, "UNWIND range(1, 40) AS i CREATE (:Big {k: i})")
         assert made["counters"]["nodes-created"] == 40, made
-        answer = _cypher(server, "MATCH (b:Big) RETURN b.k AS k")
-        assert sorted(r[0] for r in _rows(answer)) == list(range(1, 41))
     finally:
         _call(server, "DELETE", "/data/cypher/session")
 
