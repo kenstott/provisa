@@ -9442,7 +9442,7 @@
   "zh/tour.json::tour.steps.banksecrecyDefinitions.title": "The definitions it uses",
   "zh/tour.json::tour.steps.banksecrecyDefinitions.description": "The rule's words are defined in 31 CFR 1010.100: person, business day, financial institution, structuring. Each definition is its own passage, so each term is offered with the paragraph that defines it.",
   "zh/tour.json::tour.steps.banksecrecyLibrary.title": "Kept in the reference library",
-  "zh/tour.json::tour.steps.banksecrecyLibrary.description": "Each scanned document joined the reference library as proposed. Keep it, and the regulation stays with the model as a governed reference: Polly and the org's agents cite its passages when they answer.",
+  "zh/tour.json::tour.steps.banksecrecyLibrary.description": "The demo's build kept each scanned document in the reference library, so the regulation stays with the model as a governed reference: Polly and the org's agents cite its passages when they answer.",
   "zh/tour.json::tour.steps.banksecrecyGrounded.title": "The law's words, grounded",
   "zh/tour.json::tour.steps.banksecrecyGrounded.description": "Transaction in currency is the regulation's term. The bank's cash transaction is a kind of it, so the term reaches the cash_transactions table. Person reaches customers the same way, and a financial institution reaches the bank's branches.",
   "zh/tour.json::tour.steps.banksecrecyBusinessDay.title": "Business day, on its column",

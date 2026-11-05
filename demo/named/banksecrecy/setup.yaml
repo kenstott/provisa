@@ -11,7 +11,8 @@
 # scripts/run_demo_setup.py):
 #
 #   scan  a document's public address, scanned for terms by the glossary's Find terms, the terms
-#         curated in the demo's domain
+#         curated in the demo's domain; keep: true keeps the document, as a steward keeps it
+#         (REQ-2185), so Polly in every sandbox finds its passages
 #
 # The regulation, read from eCFR's official API (the eCFR version of 2026-10-15): the filing
 # obligation for currency transaction reports, 31 CFR 1010.311; its aggregation rule, 1010.313;
@@ -19,6 +20,6 @@
 # the demo's bundle is built and ships in it (seeded/term_scans.json); the tour opens the scans
 # done.
 steps:
-- scan: {url: 'https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311', domains: [banksecrecy]}
-- scan: {url: 'https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.313', domains: [banksecrecy]}
-- scan: {url: 'https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.100', domains: [banksecrecy]}
+- scan: {url: 'https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311', domains: [banksecrecy], keep: true}
+- scan: {url: 'https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.313', domains: [banksecrecy], keep: true}
+- scan: {url: 'https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.100', domains: [banksecrecy], keep: true}

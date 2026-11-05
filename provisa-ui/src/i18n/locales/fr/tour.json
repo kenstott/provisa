@@ -1787,7 +1787,7 @@
       },
       "banksecrecyLibrary": {
         "title": "Conservé dans la bibliothèque de référence",
-        "description": "Chaque document analysé a rejoint la bibliothèque de référence comme proposé. Conservez-le, et la réglementation reste avec le modèle comme référence gouvernée : Polly et les agents de l'organisation citent ses passages dans leurs réponses."
+        "description": "La construction de la démo a conservé chaque document analysé dans la bibliothèque de référence : la réglementation reste donc avec le modèle comme référence gouvernée, et Polly et les agents de l'organisation citent ses passages dans leurs réponses."
       },
       "banksecrecyGrounded": {
         "title": "Les mots de la loi, ancrés",

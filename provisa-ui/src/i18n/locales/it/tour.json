@@ -1787,7 +1787,7 @@
       },
       "banksecrecyLibrary": {
         "title": "Conservato nella libreria di riferimento",
-        "description": "Ogni documento scansionato è entrato nella libreria di riferimento come proposto. Conservalo e la norma resta con il modello come riferimento governato: Polly e gli agenti dell'organizzazione citano i suoi passaggi nelle risposte."
+        "description": "La build della demo ha conservato ogni documento scansionato nella libreria di riferimento, quindi la norma resta con il modello come riferimento governato: Polly e gli agenti dell'organizzazione citano i suoi passaggi nelle risposte."
       },
       "banksecrecyGrounded": {
         "title": "Le parole della legge, ancorate",

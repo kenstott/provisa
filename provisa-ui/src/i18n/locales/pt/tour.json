@@ -1787,7 +1787,7 @@
       },
       "banksecrecyLibrary": {
         "title": "Guardado na biblioteca de referência",
-        "description": "Cada documento analisado entrou na biblioteca de referência como proposto. Mantenha-o e a regulamentação fica com o modelo como referência governada: a Polly e os agentes da organização citam as suas passagens ao responder."
+        "description": "A compilação da demo manteve cada documento analisado na biblioteca de referência, por isso a regulamentação fica com o modelo como referência governada: a Polly e os agentes da organização citam as suas passagens ao responder."
       },
       "banksecrecyGrounded": {
         "title": "As palavras da lei, ancoradas",

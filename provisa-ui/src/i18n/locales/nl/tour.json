@@ -1787,7 +1787,7 @@
       },
       "banksecrecyLibrary": {
         "title": "Bewaard in de referentiebibliotheek",
-        "description": "Elk gescand document kwam als voorgesteld in de referentiebibliotheek. Bewaar het, en de regelgeving blijft bij het model als beheerde referentie: Polly en de agents van de organisatie citeren de passages in hun antwoorden."
+        "description": "De build van de demo heeft elk gescand document in de referentiebibliotheek bewaard, dus de regelgeving blijft bij het model als beheerde referentie: Polly en de agents van de organisatie citeren de passages in hun antwoorden."
       },
       "banksecrecyGrounded": {
         "title": "De woorden van de wet, verankerd",

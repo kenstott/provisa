@@ -29,7 +29,7 @@ from provisa.core.schema_org import domains
 from provisa.core.schema_org import glossary_term_drafts as drafts_t
 from provisa.core.schema_org import glossary_term_scans as scans_t
 from provisa.core.schema_org import reference_documents as documents_t
-from provisa.reference_library import store
+from provisa.reference_library import library, store
 from provisa.term_finding import carry, queue, scan
 
 SCHEMA = "org_default"
@@ -131,6 +131,8 @@ async def test_the_build_s_scan_is_written_out_and_loaded_under_the_template_s_o
     assert carry.export_scans(control_plane.url, SCHEMA, out) == 1
     carried = json.loads(out.read_text())
     assert [d["source"] for d in carried["documents"]] == [RULE]
+    # a setup scan step without keep: true leaves its document proposed, and it travels so
+    assert [d["status"] for d in carried["documents"]] == [store.PROPOSED]
     # each passage's embedding travels as a list of floats
     assert [p["vector"] for p in carried["documents"][0]["passages"]] == [
         pytest.approx(list(p.vector), rel=1e-14) for p in PASSAGES
@@ -259,8 +261,13 @@ async def test_an_assistant_in_a_sandbox_finds_the_passages_of_the_regulation_it
     from provisa.reference_library.retrieve import retrieve
 
     await _scanned(db)
+    # the build's keep: setup.yaml's keep: true, through the keep a steward's PATCH runs
+    async with db.acquire() as conn, conn.transaction():
+        (scanned,) = await store.documents(conn)
+        await library.keep(conn, scanned.id)
     out = carry.scans_path(tmp_path)
     carry.export_scans(control_plane.url, SCHEMA, out)
+    assert [d["status"] for d in json.loads(out.read_text())["documents"]] == [store.KEPT]
     await _forget(db)
     async with db.acquire() as conn, conn.transaction():
         await carry.load_scans(conn, out)
