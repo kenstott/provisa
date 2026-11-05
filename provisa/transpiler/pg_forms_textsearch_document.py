@@ -26,7 +26,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from provisa.core.pg_error import END, MARK
-from provisa.core.pg_tsearch_english import STOP_WORDS
+from provisa.core.pg_tsearch_english import STOP_WORDS, UNSTEMMED_BYTES
 from provisa.transpiler.pg_forms_types import REFUSED
 
 if TYPE_CHECKING:
@@ -260,11 +260,19 @@ def _first(e: Engine, lexeme: str, read: str) -> str:
     exceptions = " ".join(
         f"WHEN {low} = {e.text(k)} THEN {e.text(v)}" for k, v in _EXCEPTIONS.items()
     )
-    told = f"_x[2] <> '1' OR {_in(e, low, STOP_WORDS)} OR {_length(e, low)} <= 2 OR {_in(e, low, tuple(_EXCEPTIONS))}"
     unquoted = e.replace_all.format(low, e.text(r"\A'"), "''")
+    # dict_snowball's own lexeme: a word of two letters at most or over UNSTEMMED_BYTES, or one
+    # whose stem is empty, which only step 0 can make it.
+    kept = (
+        f"{_length(e, low)} <= 2 OR {e.bytes.format(low)} > {UNSTEMMED_BYTES} "
+        f"OR ({_step_0(e, unquoted)}) = ''"
+    )
+    told = (
+        f"_x[2] <> '1' OR {_in(e, low, STOP_WORDS)} OR {kept} OR {_in(e, low, tuple(_EXCEPTIONS))}"
+    )
     word = (
         f"CASE WHEN _x[2] <> '1' THEN {lexeme} WHEN {_in(e, low, STOP_WORDS)} THEN '' "
-        f"WHEN {_length(e, low)} <= 2 THEN {low} {exceptions} ELSE {_marked(e, unquoted)} END"
+        f"WHEN {kept} THEN {low} {exceptions} ELSE {_marked(e, unquoted)} END"
     )
     return e.map.format(
         read, "_x", e.array.format(f"{word}, '0', '0', CASE WHEN {told} THEN '1' ELSE '0' END")

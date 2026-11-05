@@ -589,7 +589,9 @@ def _rank_and(d: str, e: Engine) -> str:
         f"CASE WHEN _s < 0 THEN {double('_x')} ELSE 1.0 - (1.0 - {double('_s')}) * (1.0 - {double('_x')}) END"
     )
     total = e.fold.format(items, "_s", "_x", step, real("-1"))
-    return e.let.format("_e", total, f"CASE WHEN _e < 0 THEN {real('1e-20')} ELSE _e END")
+    ranked = e.let.format("_e", total, f"CASE WHEN _e < 0 THEN {real('1e-20')} ELSE _e END")
+    # calc_rank's 0 for a vector of no lexemes, before calc_rank_and's floor
+    return f"CASE WHEN {e.size.format(_tokens(e))} = 0 THEN {real('0')} ELSE {ranked} END"
 
 
 def _occurrences(e: Engine) -> str:

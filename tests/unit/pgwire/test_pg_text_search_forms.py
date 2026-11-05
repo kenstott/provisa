@@ -180,3 +180,9 @@ def test_at_at_of_a_column_vector_and_a_constant_query_call():
         f"FROM (VALUES {rows}) AS t(c1)"
     )
     assert connection.execute(transpile(sql, "duckdb")).fetchall() == [(True,), (None,), (False,)]
+
+
+def test_the_stemmer_keeps_a_word_whose_stem_is_empty_or_that_is_too_long():
+    long = "x" * 995 + "running"
+    assert lexize("''s") == ["''s"]
+    assert lexize(long) == [long]
