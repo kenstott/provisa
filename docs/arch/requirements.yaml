@@ -91081,7 +91081,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     DOCUMENTS:) Maintainer approved: a demo''s setup scan step can say keep: true, and the demo''s build
     then keeps that document through the same keep a steward uses, so the published bundle carries it kept
     and an assistant in every sandbox of that demo finds its passages without a visitor keeping it. Without
-    keep: true a scanned document joins as proposed, as before.'
+    keep: true a scanned document joins as proposed, as before. (Amended 2026-11-05, THE ACCEPTANCE IS THE
+    WALK-ONLY QUESTION:) Per the maintainer''s decision of 2026-11-04 (a), graph retrieval is accepted on
+    a question passage search cannot answer: for a customer who keeps depositing cash just under $10,000,
+    graph retrieval reaches and cites 31 CFR 1010.314 (structuring) and 1020.320, while passage retrieval,
+    recorded for comparison, does not. The aggregation question (1010.313), which passage search already
+    finds, stays as a second check.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
