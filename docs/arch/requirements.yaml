@@ -74469,7 +74469,9 @@
     admin on a Platform page and take effect on restart, since a node reads them before it opens any store.
     An org''s stores and regions (each region''s engine, replicas, views, cache, state and record stores)
     are edited by the org admin on Admin > Regions, validated as the config is (validate_regions), a refusal
-    naming the field.'
+    naming the field. (Amended 2026-11-05, THE PLATFORM PAGE IS READ-ONLY IN A SANDBOX:) In a demo sandbox
+    the visitor can open the Platform page''s regions read-only, with a note that it is shown to explain
+    regions and cannot be changed there; nothing on it can be edited or saved from a sandbox.'
   use_case: A regulated enterprise needs some data processed and kept inside a country, with the rest
     of the estate readable from anywhere, under one set of definitions. Two independent deployments would
     each need their own definitions, which could diverge. Two clusters on one shared model give each region
@@ -82877,28 +82879,40 @@
   feature: product-tour-and-demos-named-demos
   priority: SHOULD
   type: behavioral
-  description: 'A named demo, GDPR at an international retail group (one group, EU and US subsidiaries): two regions, EU and US, defined in one model so that every cross-border data movement rule is coordinated and enforced in one place; the visitor stays on one node (the US node) and the EU region''s setup is shown in tour screenshots or explained; EU-homed data is landed and EU-named views, including the in-region message scoring, are built in the EU region''s own store at bundle build, and the US node reads them in place from that store, the per-request record naming eu as the serving region, or refuses naming eu when that store is absent; each subsidiary''s own sources with their home region --
-    loyalty-programme customers with their marketing consent, orders, stores and staff -- plus shared reference data
-    (products, stores), all generated; users with a region attribute and row rules on it. It shows: residency, EU
-    customer rows stored and computed only in the EU region, and group reporting that reads EU data only as aggregates
-    or pseudonymised rows; different rules per region, EU marketing reads only customers who consented and a US analyst
-    reading group data gets EU customers pseudonymised; a data subject request, one query that finds everything held
-    about one EU customer across every subsidiary''s sources (right of access), and the view that drives its erasure;
-    an insider review in retail form, staff with access to customer data who then mail customer lists outside the
-    group, their messages scored in their own region so no message body leaves it, one group review queue carrying
-    only the score, the signals and a pseudonymised sender, and the sender revealed only to a reviewer acting with the employee''s region derived role (region__eu, REQ-2057) through the column''s ordered mask list (REQ-2059); and one audit record across both regions of who saw which customer''s data, where. The same query
-    returns different rows per reader, the per-request record shows serving region and rules, no copy of EU rows
-    exists outside the EU, and a cross-region read is served from the home region''s replica or refused naming it.
-    Its tour states that legal requirements can be met with these features, but meeting them takes active design
-    by people who understand the data protection and cross-border transfer rules that apply. The lawful basis,
-    impact assessment, retention and works-council agreement remain the group''s legal process; it never claims
-    the features make an organization compliant. Its tour follows the settled demo tour shape: the scenario and the
-    features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real
-    row; then the solution in whatever form best answers the question: predesigned queries and views run over the
-    transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client over pgwire or Arrow
-    Flight), with a Polly question (answered at template build and served stored, REQ-2012) only where a conversational
-    answer is the natural fit; then a recap. The demo never reaches a live external account at run time (REQ-2031).
-    Its business question: "Can we run the group as one business without breaking GDPR?"'
+  description: 'A named demo, GDPR at an international retail group (one group, EU and US subsidiaries):
+    two regions, EU and US, defined in one model so that every cross-border data movement rule is coordinated
+    and enforced in one place; the visitor stays on one node (the US node) and the EU region''s setup is
+    shown in tour screenshots or explained; EU-homed data is landed and EU-named views, including the in-region
+    message scoring, are built in the EU region''s own store at bundle build, and the US node reads them
+    in place from that store, the per-request record naming eu as the serving region, or refuses naming
+    eu when that store is absent; each subsidiary''s own sources with their home region -- loyalty-programme
+    customers with their marketing consent, orders, stores and staff -- plus shared reference data (products,
+    stores), all generated; users with a region attribute and row rules on it. It shows: residency, EU customer
+    rows stored and computed only in the EU region, and group reporting that reads EU data only as aggregates
+    or pseudonymised rows; different rules per region, EU marketing reads only customers who consented and
+    a US analyst reading group data gets EU customers pseudonymised; a data subject request, one query that
+    finds everything held about one EU customer across every subsidiary''s sources (right of access), and
+    the view that drives its erasure; an insider review in retail form, staff with access to customer data
+    who then mail customer lists outside the group, their messages scored in their own region so no message
+    body leaves it, one group review queue carrying only the score, the signals and a pseudonymised sender,
+    and the sender revealed only to a reviewer acting with the employee''s region derived role (region__eu,
+    REQ-2057) through the column''s ordered mask list (REQ-2059); and one audit record across both regions
+    of who saw which customer''s data, where. The same query returns different rows per reader, the per-request
+    record shows serving region and rules, no copy of EU rows exists outside the EU, and a cross-region
+    read is served from the home region''s replica or refused naming it. Its tour states that legal requirements
+    can be met with these features, but meeting them takes active design by people who understand the data
+    protection and cross-border transfer rules that apply. The lawful basis, impact assessment, retention
+    and works-council agreement remain the group''s legal process; it never claims the features make an
+    organization compliant. Its tour follows the settled demo tour shape: the scenario and the features
+    it exercises; how its sources, tables, commands, views and relationships fit, each step on its real
+    row; then the solution in whatever form best answers the question: predesigned queries and views run
+    over the transports that suit it (SQL, GraphQL, REST, JSON:API, gRPC, Cypher, or an external client
+    over pgwire or Arrow Flight), with a Polly question (answered at template build and served stored, REQ-2012)
+    only where a conversational answer is the natural fit; then a recap. The demo never reaches a live external
+    account at run time (REQ-2031). Its business question: "Can we run the group as one business without
+    breaking GDPR?" (Amended 2026-11-05, THE TOUR SHOWS WHERE REGIONS ARE DEFINED:) The tour steps from
+    the platform''s regions (the Platform page, read-only in a sandbox), to the organization''s regions
+    on Admin > Regions, to a table''s region, before the residency queries.'
   use_case: 'A visitor opens the retail GDPR demo, walks its tour, and sees the business question answered: Can we
     run the group as one business without breaking GDPR?'
   scenario: 'Given the retail GDPR demo started from its bundle
