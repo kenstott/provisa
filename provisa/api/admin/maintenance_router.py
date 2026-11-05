@@ -36,7 +36,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from provisa.api.admin._platform_guard import require_platform_settings
+from provisa.api.admin._platform_guard import require_deployment_settings
 from provisa.core.schema_admin import platform_notice
 
 router = APIRouter()
@@ -103,7 +103,7 @@ async def set_maintenance(request: Request, body: NoticeBody) -> dict:  # REQ-14
     ``started_at`` is stamped by the transition into ``active`` rather than being supplied, so the
     banner can say how long the window has been open without trusting a client's clock.
     """
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1337, REQ-1327
     identity = getattr(request.state, "identity", None)
     db = _admin_pool()
     now = datetime.now(timezone.utc)

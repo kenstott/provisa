@@ -11,7 +11,8 @@
 """REQ-1266: authz truth table for issuing/managing org invites.
 
 _require_org_admin gates create/list/revoke of invites. It must let a platform admin act in
-any org, confine an org_admin to exactly the org they are currently acting in (active_org_id)
+any org only where the route asks for it (an org's lifecycle and the audited grant_org_admin
+recovery, REQ-1327), confine an org_admin to exactly the org they are currently acting in (active_org_id)
 AND backed by an admin-plane membership row, allow dev/no-auth, and reject everything else.
 A too-lax branch here lets any authenticated user mint an invite for any org (the hole this
 requirement closes)."""
@@ -106,10 +107,29 @@ async def test_a_retired_wildcard_string_reaches_no_org(patch, retired):
 
 
 @pytest.mark.asyncio
-async def test_cross_org_allowed_any_org(patch):
-    patch(caps={"cross_org"}, membership_row=None)
+async def test_cross_org_refused_by_default(patch):
+    """REQ-1327 (amended 2026-11-05): this test used to assert that cross_org passed the gate in
+    any org. The platform admin now keeps only an org's lifecycle and never edits its members,
+    join settings or branding, so the bypass is withheld unless a lifecycle route asks for it.
+    The refusal names the right the org's own administrator holds."""
+    patch(caps={"platform_settings", "cross_org"}, membership_row=None)
+    with pytest.raises(HTTPException) as ei:
+        await inv._require_org_admin(
+            _request(identity=_identity("p", ["platform_admin"]), active_org=None), "acme"
+        )
+    assert ei.value.status_code == 403
+    assert getattr(ei.value, "code") == "invites.user_management_in_org_required"
+    assert "user_management" in str(ei.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_cross_org_allowed_any_org_when_the_route_is_lifecycle(patch):
+    # Deleting an org and the audited grant_org_admin recovery stay the platform's (REQ-1327).
+    patch(caps={"platform_settings", "cross_org"}, membership_row=None)
     await inv._require_org_admin(
-        _request(identity=_identity("p", ["platform_admin"]), active_org=None), "acme"
+        _request(identity=_identity("p", ["platform_admin"]), active_org=None),
+        "acme",
+        allow_cross_org=True,
     )
 
 
@@ -159,9 +179,9 @@ async def test_plain_authenticated_user_rejected(patch):
 
 @pytest.mark.asyncio
 async def test_allow_cross_org_false_rejects_platform_admin_with_no_membership(patch):
-    # REQ-1605: platform_admin may still ACT (create invites, default allow_cross_org=True), but a
-    # caller reading an org's members/settings/branding/config is withheld the cross_org bypass —
-    # holding only the control-plane right with no admin-plane membership row in this org is a 403.
+    # REQ-1605, REQ-1327: reading an org's members/settings/branding/config, like editing them, is
+    # withheld the cross_org bypass — holding only the control-plane right with no admin-plane
+    # membership row in this org is a 403.
     patch(caps={"admin"}, membership_row=None)
     with pytest.raises(HTTPException) as ei:
         await inv._require_org_admin(
@@ -182,3 +202,107 @@ async def test_allow_cross_org_false_allows_platform_admin_with_actual_membershi
         "acme",
         allow_cross_org=False,
     )
+
+
+# ── REQ-1327 (amended 2026-11-05): which routes keep the platform's cross_org reach ──────────────
+#
+# The gate is left real and wrapped: a route that refuses the platform admin raises the gate's own
+# 403; a route that admits it reaches the wrapper's _Passed, which stops the handler before any
+# store is touched.
+
+
+class _Passed(Exception):
+    pass
+
+
+@pytest.fixture
+def platform_admin_at_the_gate(patch, monkeypatch):
+    """A platform admin acting from root (cross_org, no membership row in acme)."""
+    patch(caps={"platform_settings", "cross_org"}, membership_row=None)
+    real_gate = inv._require_org_admin
+
+    async def _gate(request, org_id, **kwargs):
+        await real_gate(request, org_id, **kwargs)
+        raise _Passed
+
+    monkeypatch.setattr(inv, "_require_org_admin", _gate)
+    return _request(identity=_identity("p", ["platform_admin"]), active_org="root")
+
+
+def _org_routes():
+    import provisa.api.admin.orgs_router as orgs
+
+    policy = orgs.OrgPolicyBody.model_construct()
+    branding = orgs.OrgBrandingBody.model_construct()
+    member = orgs.AddMemberBody.model_construct()
+    invite = inv.CreateInviteBody.model_construct(org_id="acme")
+    return {
+        "PATCH /orgs/{id}/settings": lambda r: orgs.update_org_settings("acme", policy, r),
+        "PATCH /orgs/{id}/branding": lambda r: orgs.update_org_branding("acme", branding, r),
+        "POST /orgs/{id}/branding/preview-invite": lambda r: orgs.preview_invite_message(
+            "acme", branding, r
+        ),
+        "PUT /orgs/{id}/branding/logo": lambda r: orgs.upload_org_logo("acme", r),
+        "DELETE /orgs/{id}/branding/logo": lambda r: orgs.delete_org_logo("acme", r),
+        "POST /orgs/{id}/members": lambda r: orgs.add_member("acme", member, r),
+        "DELETE /orgs/{id}/members/{user}": lambda r: orgs.remove_member("acme", "u9", r),
+        "POST /invites": lambda r: inv.create_invite(invite, r),
+        "DELETE /orgs/{id}": lambda r: orgs.delete_org("acme", r, confirm="acme"),
+        "POST /orgs/{id}/admins/{user}": lambda r: orgs.grant_org_admin_role("acme", "u9", r),
+        "DELETE /orgs/{id}/admins/{user}": lambda r: orgs.revoke_org_admin_role("acme", "u9", r),
+    }
+
+
+_ORG_LAYER = [
+    "PATCH /orgs/{id}/settings",
+    "PATCH /orgs/{id}/branding",
+    "POST /orgs/{id}/branding/preview-invite",
+    "PUT /orgs/{id}/branding/logo",
+    "DELETE /orgs/{id}/branding/logo",
+    "POST /orgs/{id}/members",
+    "DELETE /orgs/{id}/members/{user}",
+    "POST /invites",
+]
+_LIFECYCLE_AND_RECOVERY = [
+    "DELETE /orgs/{id}",
+    "POST /orgs/{id}/admins/{user}",
+    "DELETE /orgs/{id}/admins/{user}",
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", _ORG_LAYER)
+async def test_platform_admin_is_refused_the_orgs_own_layer(platform_admin_at_the_gate, route):
+    # Members, join settings / auto-join role, branding and invitations are the org admin's
+    # (REQ-1327): the platform admin is refused, and told the right the org's admin holds.
+    with pytest.raises(HTTPException) as ei:
+        await _org_routes()[route](platform_admin_at_the_gate)
+    assert ei.value.status_code == 403
+    assert getattr(ei.value, "code") == "invites.user_management_in_org_required"
+    assert "user_management in acme" in str(ei.value.detail)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", _LIFECYCLE_AND_RECOVERY)
+async def test_platform_admin_keeps_lifecycle_and_recovery(platform_admin_at_the_gate, route):
+    # Deleting an org is its lifecycle; grant_org_admin and its revocation are the named, audited
+    # recovery operation (REQ-1327). Both stay the platform admin's.
+    with pytest.raises(_Passed):
+        await _org_routes()[route](platform_admin_at_the_gate)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", _ORG_LAYER)
+async def test_the_orgs_own_admin_passes_its_layer(patch, monkeypatch, route):
+    patch(caps={"user_management", "org_settings"}, membership_row=("acme",))
+    real_gate = inv._require_org_admin
+
+    async def _gate(request, org_id, **kwargs):
+        await real_gate(request, org_id, **kwargs)
+        raise _Passed
+
+    monkeypatch.setattr(inv, "_require_org_admin", _gate)
+    with pytest.raises(_Passed):
+        await _org_routes()[route](
+            _request(identity=_identity("alice", ["org_admin"]), active_org="acme")
+        )

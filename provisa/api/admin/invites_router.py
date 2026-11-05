@@ -48,19 +48,19 @@ def _pool(_request: Request) -> Database:  # pyright: ignore[reportUnusedParamet
 
 
 async def _require_org_admin(
-    request: Request, org_id: str, *, allow_cross_org: bool = True
-) -> None:  # REQ-1266
-    """Raise 403 unless the caller may issue invites for ``org_id``: a platform_admin (any org),
-    or the org_admin of exactly this org. org_admin authority is confined to the org the caller is
-    currently acting in (active_org_id) and backed by an admin-plane membership row. Dev/no-auth
-    (anonymous) is allowed, matching _require_platform_admin.
+    request: Request, org_id: str, *, allow_cross_org: bool = False
+) -> None:  # REQ-1266, REQ-1327
+    """Raise 403 unless the caller is the org_admin of exactly ``org_id``: authority confined to
+    the org the caller is currently acting in (active_org_id) and backed by an admin-plane
+    membership row. Dev/no-auth (anonymous) is allowed, matching _require_platform_admin.
 
-    REQ-1605: ``allow_cross_org=False`` withholds the cross_org bypass. Issuing an invite or
-    changing membership is an ACTION platform_admin may still take in any org for support/recovery
-    (REQ-1266, REQ-1303's own grant path). Reading who is in an org, its settings, its branding, or
-    its config is that org's DATA AT REST — platform_admin sees it only where it also holds an
-    actual org_admin assignment (seeded, REQ-1599's sandbox, or a REQ-1303 grant taken for that
-    org), the same gate a non-cross_org caller already passes below.
+    REQ-1327: the platform admin keeps only an org's lifecycle (create, suspend, tier, delete) and
+    the named, audited grant_org_admin recovery; it never edits the org's members, invitations,
+    join settings or branding. So the cross_org bypass is withheld unless the route is one of those
+    and passes ``allow_cross_org=True``. Reading who is in an org, its settings, its branding, or its
+    config is that org's data at rest (REQ-1605) — platform_admin sees it only where it also holds
+    an actual org_admin assignment (seeded, REQ-1599's sandbox, or a REQ-1303 grant taken for that
+    org), the same gate any other caller passes below.
     """
     from provisa.api.app import state as _app_state
     from provisa.api.admin.capabilities import _resolved_capabilities

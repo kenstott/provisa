@@ -12,11 +12,13 @@
 
 Start a debug-trace window for an org, a role or a source for a stated number of minutes, see the
 windows that are open and how long each has left, stop one early, and permit the per-request
-debug-trace hint per role. Every endpoint is gated on ``platform_settings``: a debug trace adds
-load to the deployment, so the subject is the deployment rather than any one org's data plane.
+debug-trace hint per role. A debug trace adds load to the deployment, so the listing and a window
+over an org as a whole are the platform's: the deployment check (REQ-1327). A window naming a role
+or source in an org is that org's administrator's: ``org_settings`` in that org (REQ-1327). Stopping
+a window and the hint permission are gated on ``platform_settings``.
 """
 
-# Requirements: REQ-1910
+# Requirements: REQ-1910, REQ-1327
 
 from __future__ import annotations
 
@@ -25,9 +27,14 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
-from provisa.api.admin._platform_guard import require_platform_settings
+from provisa.api.admin._platform_guard import (
+    is_anonymous,
+    require_deployment_settings,
+    require_platform_settings,
+)
 from provisa.api.errors import ApiError
 from provisa.core import trace_scope
+from provisa.security.rights import Capability
 
 router = APIRouter()
 
@@ -80,17 +87,46 @@ async def _read(db) -> dict:
     }
 
 
+def _require_org_settings_in(request: Request, org_id: str, scope: str) -> None:  # REQ-1327
+    """Raise 403 unless the caller holds ``org_settings`` in ``org_id`` — acting in that org. A
+    window naming a role or source is the org admin's, so the platform's cross_org reaches no org
+    here, and org_settings held in the org one is acting in reaches no other."""
+    from provisa.api.admin.capabilities import _resolved_capabilities
+    from provisa.api.app import state
+
+    if is_anonymous(request):
+        return  # dev mode — no auth configured
+    caps = _resolved_capabilities(request.state.identity, state)
+    active_org = getattr(request.state, "active_org_id", None)
+    if Capability.ORG_SETTINGS.value in caps and active_org == org_id:
+        return
+    raise ApiError(
+        403,
+        "debug_trace.org_settings_in_org_required",
+        f"a debug-trace window naming a {scope} is opened by that org's administrator: "
+        f"org_settings in {org_id} required",
+        org_id=org_id,
+        scope=scope,
+    )
+
+
 @router.get("/admin/platform/debug-trace")
 async def read_debug_trace(request: Request) -> dict:  # REQ-1910
     """The open debug-trace windows and the roles permitted the per-request hint."""
-    require_platform_settings(request)  # REQ-1337
+    require_deployment_settings(request)  # REQ-1327
     return await _read(_admin_pool())
 
 
 @router.post("/admin/platform/debug-trace/windows")
 async def start_debug_window(request: Request, body: WindowBody) -> dict:  # REQ-1910
-    """Turn debug tracing on for an org, a role or a source for ``minutes``; it ends on its own."""
-    require_platform_settings(request)  # REQ-1337
+    """Turn debug tracing on for an org, a role or a source for ``minutes``; it ends on its own.
+
+    REQ-1327: the platform opens a window over an org as a whole, never one naming a role or source
+    in it; that is the org admin's."""
+    if body.scope == "org":
+        require_deployment_settings(request)
+    else:
+        _require_org_settings_in(request, body.org_id, body.scope)
     identity = getattr(request.state, "identity", None)
     db = _admin_pool()
     try:
