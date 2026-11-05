@@ -14,8 +14,9 @@ RED until A2 is implemented on governance-by-construction. Moved from fix/v003-s
 (tests/unit/test_v003_column_scope.py and test_v003_review_findings.py) by the maintainer's split
 of 2026-11-05: a name no registered relation in scope has -- a table function's alias or column, a
 derived table's column, VALUES' column1..N, json_each's key and value -- is passed to the engine,
-and a column a relation serves is not refused where it resolves. The statements are the ones psql
-17 and Metabase sent in the BI replay (J595 triage, causes 1 and 8).
+and a column a relation serves is not refused where it resolves. A hidden column is still refused
+in every clause. The statements are the ones psql 17 and Metabase sent in the BI replay (J595
+triage, causes 1 and 8).
 """
 
 # Requirements: REQ-039, REQ-2204
@@ -267,3 +268,40 @@ def test_a_name_no_registered_relation_has_is_passed_to_the_engine(sql):
 )
 def test_a_served_or_known_name_is_not_refused(sql):
     assert _codes(sql) == [], sql
+
+
+# -- every clause --------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # WHERE, JOIN ON, GROUP BY, HAVING, ORDER BY, windows
+        "SELECT id FROM bank.customer WHERE ssn IS NOT NULL",
+        "SELECT c.id FROM bank.customer c JOIN pg_catalog.pg_am a ON a.amname = c.ssn",
+        "SELECT name FROM bank.customer GROUP BY name, ssn",
+        "SELECT name FROM bank.customer GROUP BY name HAVING max(ssn) > '5'",
+        "SELECT id FROM bank.customer ORDER BY length(ssn)",
+        "SELECT name AS ssn FROM bank.customer GROUP BY ssn",
+        "SELECT rank() OVER w FROM bank.customer WINDOW w AS (PARTITION BY ssn)",
+        "SELECT count(*) FILTER (WHERE ssn > '5') FROM bank.customer",
+        "SELECT DISTINCT ON (ssn) id FROM bank.customer",
+        "SELECT string_agg(name, ',' ORDER BY ssn) FROM bank.customer",
+        # USING and a NATURAL join's shared column, with or without a star
+        "SELECT id FROM bank.customer JOIN (VALUES ('x')) v(ssn) USING (ssn)",
+        "SELECT id FROM bank.customer NATURAL JOIN (VALUES ('x')) v(ssn)",
+        "SELECT id FROM bank.customer NATURAL JOIN json_populate_record(NULL::bank.customer, '{}') r",
+        # FROM-function arguments and LATERAL items
+        "SELECT s FROM bank.customer c, generate_series(1, length(c.ssn)) s",
+        "SELECT z.n FROM bank.customer c, LATERAL (SELECT 1 AS n WHERE c.ssn > '5') z",
+        "SELECT k.key FROM bank.customer c, json_each(json_build_object('a', ssn)) k",
+        # inside a subquery, a CTE, a set operation
+        "SELECT id FROM bank.customer WHERE id IN (SELECT id FROM bank.customer WHERE ssn > '5')",
+        "WITH d AS (SELECT id FROM bank.customer WHERE ssn > '5') SELECT id FROM d",
+        "SELECT id FROM bank.customer UNION SELECT id FROM bank.customer ORDER BY 1 LIMIT "
+        "(SELECT count(*) FROM bank.customer WHERE ssn > '5')",
+        "SELECT id FROM bank.customer EXCEPT SELECT id FROM bank.customer WHERE ssn > '5'",
+    ],
+)
+def test_a_hidden_column_is_refused_in_every_clause(sql):
+    assert "V003" in _codes(sql), sql
