@@ -1191,6 +1191,26 @@ def postgres_array_filters(tree: exp.Expr) -> exp.Expr:  # REQ-778
     return tree.transform(_lowered)
 
 
+def postgres_list_ranges(tree: exp.Expr) -> exp.Expr:  # REQ-345
+    """``tree`` for a PostgreSQL server, which has no ``sequence``: each list a Cypher range()
+    is (gql/translator_helpers names it Trino's ``sequence(start, end[, step])``) is
+    ``ARRAY(SELECT generate_series(start, end[, step]))``, inclusive of both ends as range() is.
+    PostgreSQL's generate_series returns rows, so they are collected into the list."""
+
+    def _lowered(node: exp.Expr) -> exp.Expr:
+        if not (isinstance(node, exp.Anonymous) and node.name.upper() == "SEQUENCE"):
+            return node
+        # Recurse first: transform is pre-order and skips a replaced node's children.
+        args = [a.transform(_lowered) for a in node.expressions]
+        series = exp.Anonymous(this="generate_series", expressions=args)
+        return exp.Array(expressions=[exp.select(series)])
+
+    return tree.transform(_lowered)
+
+
+_SEQUENCE_CALLED = re.compile(r"\bsequence\s*\(", re.IGNORECASE)
+
+
 def snowflake_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
     """``tree`` for Snowflake, whose TRY_CAST takes text only (sqlglot writes a plain CAST of a
     value it cannot see is text): each null-on-failure cast reads its value as text first."""
@@ -1322,6 +1342,10 @@ def transpile(
     lowered = _lower_universal_regex(pg_sql, target_dialect)
     if target_dialect == "postgres" and "FILTER(" in pg_sql.upper():
         lowered = postgres_array_filters(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if target_dialect == "postgres" and _SEQUENCE_CALLED.search(pg_sql):
+        lowered = postgres_list_ranges(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if target_dialect == "postgres" and "ARRAY[]" in pg_sql.upper():
