@@ -91936,32 +91936,41 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   feature: observability-operational-views
   priority: SHOULD
   type: behavioral
-  description: 'Maintainer 2026-11-05: My Reports. Any user saves a query, with a name, from the SQL
-    page to My Reports (under Admin, beside Reports), and comes back to it there. A saved report belongs
-    to its owner alone; it is not a view in the model and is not in the catalog. Opening it runs it through
-    the one query pipeline as the person opening it, with their current grants. A steward can promote
-    one to a standard report (REQ-1386), which makes it a governed ops-domain view. A saved report can
-    be emailed to a list of email addresses the owner gives when setting it up. What sends it is either
-    a cadence (daily, weekly, or a cron expression) or a trigger: a change to a table the report reads,
-    detected by the existing change and subscription providers (CDC, watermark polling, a finished replica
-    build). Either can carry a condition: always (the default), only when the result has rows, or only
-    when the result differs from the last send (a hash of the last result is kept, not its rows). Sends
-    are at least a minimum interval apart, set on the schedule; changes inside it are coalesced into one
-    send. The owner chooses the attachment type: none, CSV or XLSX. With none, the email carries a link
-    to the report and its row count, any address may be on the list, and a recipient opens it with their
-    own credentials and grants. With CSV or XLSX, the report runs once as its owner when it fires and
-    the rows are attached, masks applied as for any read; the owner answers for sending what they can
-    see, and the form says so when an attachment type is chosen. Every recipient of an attachment must
-    match the organization''s allowed attachment recipients pattern, a regular expression in the org
-    config (set by an org admin, with its UI on the org settings page), matched case-insensitively against
-    the whole address; an invalid pattern is refused when saved. With no pattern set, no attachment
-    is sent: only link sends work until an admin sets one. A non-matching address is refused by name
-    when the schedule is saved, and checked again at every send; a schedule that no longer passes, or
-    whose owner has lost a grant it reads or left the organization, is paused and its owner told why.
-    An attachment holds at most a set number of rows; past that the email says it was cut and links to
-    the full result. Every email carries a one-click unsubscribe that removes that address from the schedule
+  description: 'Maintainer 2026-11-05: My Reports. Any user saves a query, with a name, from the SQL page
+    to My Reports (under Admin, beside Reports), and comes back to it there. A saved report belongs to its
+    owner alone; it is not a view in the model and is not in the catalog. Opening it runs it through the
+    one query pipeline as the person opening it, with their current grants. A steward can promote one to
+    a standard report (REQ-1386), which makes it a governed ops-domain view. A saved report can be emailed
+    to a list of email addresses the owner gives when setting it up. What sends it is either a cadence (daily,
+    weekly, or a cron expression) or a trigger: a change to a table the report reads, detected by the existing
+    change and subscription providers (CDC, watermark polling, a finished replica build). Either can carry
+    a condition: always (the default), only when the result has rows, or only when the result differs from
+    the last send (a hash of the last result is kept, not its rows). Sends are at least a minimum interval
+    apart, set on the schedule; changes inside it are coalesced into one send. The owner chooses the attachment
+    type: none, CSV or XLSX. With none, the email carries a link to the report and its row count, [SUPERSEDED
+    by REQ-2207, 2026-11-05 -- every recipient, link or attachment, must match the one pattern; unset means
+    no restriction. Kept here for history; do not implement against it.] any address may be on the list,
+    and a recipient [END SUPERSEDED BLOCK] opens it with their own credentials and grants. With CSV or XLSX,
+    the report runs once as its owner when it fires and the rows are attached, masks applied as for any
+    read; the owner answers for sending what they can see, and the form says so when an attachment type
+    is chosen. [SUPERSEDED by REQ-2207, 2026-11-05 -- every recipient, link or attachment, must match the
+    one pattern; unset means no restriction. Kept here for history; do not implement against it.] Every
+    recipient of an attachment must match the organization''s allowed attachment recipients pattern, a regular
+    expression in the org config (set by an org admin, with its UI on the org settings page), matched case-insensitively
+    against the whole address; an invalid pattern is refused when saved. With no pattern set, no attachment
+    is sent: only link sends work until an admin sets one. [END SUPERSEDED BLOCK] A non-matching address
+    is refused by name when the schedule is saved, and checked again at every send; a schedule that no longer
+    passes, or whose owner has lost a grant it reads or left the organization, is paused and its owner told
+    why. An attachment holds at most a set number of rows; past that the email says it was cut and links
+    to the full result. Every email carries a one-click unsubscribe that removes that address from the schedule
     and tells the owner. Every send is recorded in the audit log: who, which report, what fired it, the
-    recipients, the attachment type and the row count.'
+    recipients, the attachment type and the row count. (Amended 2026-11-05, ONE RECIPIENT RULE:) Every recipient
+    address of a sent report, whatever the attachment type, must match the organization''s allowed recipients
+    pattern: a regular expression in the org config, set by an org admin with its UI on the org settings
+    page, matched case-insensitively against the whole address, an invalid pattern refused when saved. With
+    no pattern set, any address may be sent to. A non-matching address is refused by name when the schedule
+    is saved and checked again at every send. Mail goes through the configured mail provider (SMTP, Resend
+    or another, REQ-1576).'
   scenario: 'Given an organization whose allowed attachment recipients pattern is .*@acme\.com
 
 
