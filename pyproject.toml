@@ -467,6 +467,7 @@ markers = [
     "requires_google_workspace: requires a live Google Workspace domain (GWS_* env); no self-provision",
     "requires_cloudops: requires live Azure, AWS or GCP credentials (CLOUDOPS_* env); no self-provision",
     "requires_quickbooks: requires a live QuickBooks Online sandbox company (QUICKBOOKS_* env); no self-provision",
+    "requires_shopify: requires a live Shopify store (SHOPIFY_* env); no self-provision",
     "requires_splunk: requires Splunk service (docker compose up splunk)",
     "requires_airport: requires the airport-go Flight shim (docker compose up airport-shim)",
     "requires_pinot: requires Pinot service (docker compose up pinot)",

@@ -105,11 +105,12 @@ LANES: dict[str, Lane] = {
     # CI lane at all: its tenant is the maintainer's own and no job declares M365 secrets.
     # Nor is the live Google Workspace test: its domain is the maintainer's own too.
     # Nor is the live QuickBooks test: its sandbox company is the maintainer's own too.
+    # Nor is the live Shopify test: its dev store is the maintainer's own too.
     "warehouse": Lane(
         ("tests/integration", "tests/steps"),
         "requires_warehouse and not requires_salesforce and not requires_athena and not requires_servicenow "
         "and not requires_microsoft_365 and not requires_google_workspace and not requires_quickbooks "
-        "and not requires_polly_bakeoff",
+        "and not requires_shopify and not requires_polly_bakeoff",
         clear_addopts=True,
     ),
     # The live Salesforce org: on demand only (workflow_dispatch, include_salesforce), its own job.
