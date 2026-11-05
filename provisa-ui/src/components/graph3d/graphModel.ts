@@ -62,7 +62,11 @@ export type LayerId =
   // REQ-2130: the glossary's own layers.
   | "domains"
   | "data"
-  | "columns";
+  | "columns"
+  // The tables of the columns drawn, with the relationships between them (with Columns).
+  | "ownerTables"
+  // REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): a product's links to other products.
+  | "productLinks";
 
 /** Force, or layers where edges have direction (REQ-2174; REQ-2130's Taxonomy). */
 export type LayoutKind = "force" | "layered";
@@ -163,32 +167,7 @@ export interface LayerDef {
   edges: EdgeKind[];
 }
 
-/** Each layer's node type and edge kinds; a node of the type is drawn whenever its layer is on. */
-export const LAYERS = {
-  products: { nodes: ["product", "domain"], edges: ["in_domain", "product_link"] },
-  tables: { nodes: ["table"], edges: ["member", "has_column"] },
-  commands: { nodes: ["command"], edges: ["command"] },
-  quality: { nodes: ["checker", "profile"], edges: ["checks", "profiled"] },
-  tags: { nodes: ["tag"], edges: ["tagged"] },
-  ontology: { nodes: ["term"], edges: ["term_edge", "term_binding"] },
-  relationships: { nodes: [], edges: ["relationship"] },
-  outside: { nodes: [], edges: ["relationship_outside"] },
-  lineage: { nodes: [], edges: ["lineage", "column_lineage"] },
-} satisfies Partial<Record<LayerId, LayerDef>>;
-
-export const LAYER_ORDER: LayerId[] = [
-  "products",
-  "tables",
-  "commands",
-  "quality",
-  "tags",
-  "ontology",
-  "relationships",
-  "outside",
-  "lineage",
-];
-
-export type PresetId = "all" | "ontology" | "products" | "taxonomy";
+export type PresetId = "ontology" | "taxonomy";
 
 export interface Preset {
   layers: LayerId[];
@@ -198,19 +177,7 @@ export interface Preset {
   layout?: LayoutKind;
 }
 
-export const PRESETS = {
-  // Every layer but relationships to tables outside the product.
-  all: { layers: LAYER_ORDER.filter((l) => l !== "outside") },
-  // Terms, their edges, the columns bound to them and the products that own those columns.
-  ontology: { layers: ["ontology", "products"] },
-  // Every product, grouped by domain, joined by data_product_edges.
-  products: { layers: ["products"] },
-} satisfies Partial<Record<PresetId, Preset>>;
-
-export const PRESET_ORDER: PresetId[] = ["all", "ontology", "products"];
-
-/** What a graph is scoped to: its layers and presets (REQ-2128's product graph, REQ-2130's
- * glossary), on the one engine. */
+/** What a graph is scoped to: its layers and presets. */
 export interface GraphScope {
   layers: Partial<Record<LayerId, LayerDef>>;
   layerOrder: LayerId[];
@@ -232,30 +199,21 @@ export interface GraphScope {
   menus: boolean;
   /** What a focus draws around each match (neighbourhood.ts). */
   neighbourhood: Neighbourhood;
+  /** Layers read only once they are on (each costs a read of its own): offered whenever a node
+   * of the given type is drawn, since the read of every layer the controls choose from leaves
+   * them out. */
+  readWhenOn: Partial<Record<LayerId, NodeType>>;
 }
 
-export const PRODUCT_SCOPE: GraphScope = {
-  layers: LAYERS,
-  layerOrder: LAYER_ORDER,
-  presets: PRESETS,
-  presetOrder: PRESET_ORDER,
-  hiddenStatuses: [],
-  orphans: false,
-  foldColumns: true,
-  typedKinds: ["term_edge"],
-  implicitLayers: [],
-  menus: true,
-  neighbourhood: NEIGHBOURHOOD,
-};
-
-/** REQ-2130: the glossary's Ontology View, an ontology with its grounding (amended 2026-10-29):
- * only what a shown term reaches is drawn. Terms and their edges, with the tables a class term
- * grounds; the domains each term is in (an enterprise-wide term in every one, so it sits at the
- * centre); the columns a concrete term IS (its physical refs, as the viewer may read them), each
- * with its table, shown by default; off by default, the data product of each table drawn (Data).
- * No relationship, join or lineage edge between tables: those are the ERD's. A column is drawn
- * as itself, never folded into its table. */
-export const GLOSSARY_SCOPE: GraphScope = {
+/** REQ-2130: the Ontology View, an ontology with its grounding (amended 2026-10-29): only what a
+ * shown term reaches is drawn. Terms and their edges, with the tables a class term grounds; the
+ * domains each term is in (an enterprise-wide term in every one, so it sits at the centre); the
+ * columns a concrete term IS (its physical refs, as the viewer may read them), each with its
+ * table, shown by default; off by default, the data product of each table drawn (Data). No
+ * relationship, join or lineage edge between tables: those are the ERD's. A column is drawn as
+ * itself, never folded into its table. REQ-2174 (ONE GRAPH, RULES PER PRESET): the Ontology
+ * page's rules, and a term's page's snippet's; it offers no owner-tables layer. */
+export const ONTOLOGY_SCOPE: GraphScope = {
   layers: {
     ontology: { nodes: ["term"], edges: ["term_edge"] },
     domains: { nodes: ["domain"], edges: ["in_domain"] },
@@ -278,6 +236,42 @@ export const GLOSSARY_SCOPE: GraphScope = {
   implicitLayers: ["ontology"],
   menus: true,
   neighbourhood: NEIGHBOURHOOD,
+  readWhenOn: {},
+};
+
+/** REQ-2174 (ONE GRAPH, RULES PER PRESET): the Product map's rules, and a product's panel's
+ * snippet's -- the ontology with what the product graph showed, so nothing it showed is lost: the
+ * products' member tables and their columns (Data), the tables of the columns drawn with the
+ * relationships declared between them (Tables, with Columns), and, off by default, a product's
+ * commands, its quality checks (its checkers and its tables' profiles), its links to other
+ * products and its lineage. */
+export const PRODUCT_MAP_SCOPE: GraphScope = {
+  ...ONTOLOGY_SCOPE,
+  layers: {
+    ontology: { nodes: ["term"], edges: ["term_edge"] },
+    domains: { nodes: ["domain"], edges: ["in_domain"] },
+    data: { nodes: ["table", "product"], edges: ["has_column", "member"] },
+    // Toggled beside the filters (Columns, and Tables with it), not in the Layers row.
+    columns: { nodes: ["column"], edges: ["term_binding"] },
+    ownerTables: { nodes: [], edges: ["relationship"] },
+    commands: { nodes: ["command"], edges: ["command"] },
+    quality: { nodes: ["checker", "profile"], edges: ["checks", "profiled"] },
+    productLinks: { nodes: [], edges: ["product_link"] },
+    lineage: { nodes: [], edges: ["lineage", "column_lineage"] },
+  },
+  layerOrder: [
+    "ontology",
+    "domains",
+    "data",
+    "columns",
+    "ownerTables",
+    "commands",
+    "quality",
+    "productLinks",
+    "lineage",
+  ],
+  // A product's lineage is the product lineage endpoint's, one read per product.
+  readWhenOn: { lineage: "product" },
 };
 
 export interface GraphFilters {
@@ -311,6 +305,16 @@ export interface QueryScope {
   /** REQ-2174: drawn as the 2D lane diagram, whose product lane names the product each table
    * drawn belongs to, whatever the layers. Absent: drawn in 3D. */
   lanes?: boolean;
+  /** REQ-2174 (ONE ONTOLOGY GRAPH): the term or product (its node id) a snippet is read around,
+   * with its neighbourhood to ``depth`` hops; null, the whole ontology. */
+  focus: string | null;
+  /** Hops from a search's matches or the focus that are read. */
+  depth: number;
+  /** REQ-2174 (ONE GRAPH, RULES PER PRESET): read by the Product map's rules -- the data products
+   * with their member tables, the relationships between the tables drawn and the product layers
+   * (PRODUCT_MAP_SCOPE). Absent: the Ontology preset's, only what a shown term reaches
+   * (ONTOLOGY_SCOPE). */
+  products?: boolean;
 }
 
 export const NO_FILTERS: GraphFilters = {
@@ -348,6 +352,8 @@ export function availableLayers(data: GraphData, scope: GraphScope): Set<LayerId
   const out = new Set<LayerId>();
   for (const e of data.edges) for (const l of edgeLayers(scope, e)) out.add(l);
   for (const n of data.nodes) for (const l of nodeLayers(scope, n)) out.add(l);
+  for (const [l, type] of Object.entries(scope.readWhenOn) as [LayerId, NodeType][])
+    if (data.nodes.some((n) => n.type === type)) out.add(l);
   return out;
 }
 
@@ -433,8 +439,9 @@ export function visibleGraph(
       if (!filters.edgeTypes.includes(e.label ?? "")) continue;
     }
     // REQ-2129: a column's upstream columns are drawn once its table is expanded to its columns;
-    // until then the product's relation-level lineage stands for them.
-    if (e.kind === "column_lineage") {
+    // until then the product's relation-level lineage stands for them. A graph drawing columns
+    // as themselves draws it whenever its layer is on.
+    if (e.kind === "column_lineage" && scope.foldColumns) {
       const parent = byId.get(e.b)?.parent;
       if (!parent || !expanded.has(parent)) continue;
     }
@@ -578,27 +585,6 @@ export function layoutGraph(
 /** A node's drawn edges. */
 export function edgesOf(g: GraphData, id: string): GraphEdge[] {
   return g.edges.filter((e) => e.a === id || e.b === id);
-}
-
-/** The detail panel's simplified graph: the product, its member tables, its commands and the
- * glossary terms bound to its columns (folded into their tables), and nothing else. */
-export function panelGraph(data: GraphData, product: string): GraphData {
-  const g = visibleGraph(
-    data,
-    new Set<LayerId>(["tables", "commands", "ontology"]),
-    { ...NO_FILTERS, focus: [product] },
-    new Set(),
-    PRODUCT_SCOPE,
-  );
-  const edges = g.edges.filter((e) => e.kind !== "term_edge");
-  const kept = new Set([product]);
-  for (const e of edges) kept.add(e.a).add(e.b);
-  // A checker is a member too, but it is quality evidence: the quality layer's, not the core's.
-  for (const n of g.nodes) if (n.type === "checker" || n.type === "relation") kept.delete(n.id);
-  return {
-    nodes: g.nodes.filter((n) => kept.has(n.id)),
-    edges: edges.filter((e) => kept.has(e.a) && kept.has(e.b)),
-  };
 }
 
 /** REQ-2174: the layout a view opens in, force whatever its edges fit, and whether the reader may

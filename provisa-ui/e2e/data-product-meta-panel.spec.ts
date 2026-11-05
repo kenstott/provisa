@@ -108,7 +108,7 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     expect(await replay.json()).toEqual(answered);
   });
 
-  test("the panel's graph loads in view, and expands to the full graph on the product", async ({
+  test("the panel's graph loads in view, and expands to the whole ontology on the product", async ({
     page,
   }) => {
     const refused = recordRefusals(page);
@@ -118,28 +118,21 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     await kg.scrollIntoViewIfNeeded();
     // data-ready: three.js has loaded and the scene is drawn.
     await shows(page.locator('[data-testid="graph-panel-stage"][data-ready]'), refused, 60_000);
-    // The card is compact: its legend names what it draws (the product, its tables, its command),
-    // and the explorer's controls are only in its expanded view.
+    // REQ-2174: the card is the ontology focused on the product: its legend names what it draws
+    // (the product and its tables), its depth is chosen in place, and the explorer's other
+    // controls are only in its expanded view.
     const legend = page.getByTestId("graph-panel-stage").locator(".p3d-legend");
     await expect(legend).toContainText("data product");
-    await expect(legend).toContainText("member table");
-    await expect(legend).toContainText("command");
-    await expect(legend).not.toContainText("data quality check");
+    await expect(legend).toContainText("table");
+    await expect(page.getByTestId("graph-panel-depth")).toBeVisible();
     await expect(page.getByTestId("graph-panel-layers-menu")).toHaveCount(0);
 
     await page.getByTestId("graph-panel-expand").click();
     await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
-    // Focused on the product, on the All preset, with the layers it has data for.
+    // The whole ontology, the product selected, on its Ontology preset.
     await expect(page.getByTestId("graph3d-detail")).toContainText("Pet Health");
     const expanded = page.getByTestId("graph3d");
-    await expect(expanded.getByRole("radio", { name: "All" })).toBeChecked();
-    // The layers it has data for are offered in its Layers menu, and on.
-    await page.getByTestId("graph3d-layers-menu").click();
-    for (const layer of ["products", "tables", "commands", "quality"]) {
-      await expect(page.getByTestId(`graph3d-layers-menu-option-${layer}`)).toHaveAttribute(
-        "data-combobox-active",
-      );
-    }
+    await expect(expanded.getByRole("radio", { name: "Ontology" })).toBeChecked();
   });
 
   test("the Product map draws every product", async ({ page }) => {
@@ -147,7 +140,8 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     await page.goto("/data-products");
     await page.getByTestId("product-map-open").click({ timeout: 90_000 });
     await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
-    await expect(page.getByRole("radio", { name: "Products" })).toBeChecked();
+    // REQ-2174: the whole ontology, its products drawn.
+    await expect(page.getByRole("radio", { name: "Ontology" })).toBeChecked();
     // Both of the config's products, and their domains, are in the map's counts.
     const shown = page.getByTestId("graph3d").locator(".p3d-detail");
     await expect(shown).toContainText("data product");

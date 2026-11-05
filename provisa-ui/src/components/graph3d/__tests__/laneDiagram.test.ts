@@ -14,20 +14,12 @@
 
 import { describe, expect, it } from "vitest";
 import mermaid from "mermaid";
-import {
-  NO_FILTERS,
-  PRESETS,
-  PRODUCT_SCOPE,
-  panelGraph,
-  visibleGraph,
-  type GraphData,
-  type LayerId,
-} from "../graphModel";
+import { NO_FILTERS, visibleGraph, type GraphData, type LayerId } from "../graphModel";
 import { laneDiagram, laneMermaid, moreId, type Lane } from "../laneDiagram";
-import { DATA } from "./fixture";
+import { DATA, ENGINE_PRESETS as PRESETS, ENGINE_SCOPE } from "./fixture";
 
 const shownBy = (data: GraphData, preset: "all" | "ontology", expanded = new Set<string>()) =>
-  visibleGraph(data, new Set<LayerId>(PRESETS[preset].layers), NO_FILTERS, expanded, PRODUCT_SCOPE);
+  visibleGraph(data, new Set<LayerId>(PRESETS[preset].layers), NO_FILTERS, expanded, ENGINE_SCOPE);
 
 const lanesOf = (d: ReturnType<typeof laneDiagram>) => {
   const out: Record<Lane, string[]> = { term: [], column: [], table: [], product: [] };
@@ -67,8 +59,14 @@ describe("the lane diagram's lanes", () => {
     expect(linked(d)).toContain("t:customers>p:c360");
   });
 
-  it("lays out the product panel's graph in the same lanes", () => {
-    const panel = panelGraph(DATA, "p:c360");
+  it("lays out a product's snippet -- the graph focused on the product -- in the same lanes", () => {
+    const panel = visibleGraph(
+      DATA,
+      new Set<LayerId>(PRESETS.all.layers),
+      { ...NO_FILTERS, focus: ["p:c360"] },
+      new Set(),
+      ENGINE_SCOPE,
+    );
     const d = laneDiagram(panel, DATA, new Set());
     expect(lanesOf(d).product).toEqual(["p:c360"]);
     expect(lanesOf(d).column).toEqual(["c:customers.email"]);
@@ -130,7 +128,9 @@ describe("the lane diagram's edges", () => {
 describe("a table's unbound columns", () => {
   it("are one +N columns node until the table is expanded", () => {
     const d = laneDiagram(shownBy(DATA, "all"), DATA, new Set());
-    expect(d.more.map(({ columns, ...m }) => ({ ...m, columns: columns.map((c) => c.id) }))).toEqual([
+    expect(
+      d.more.map(({ columns, ...m }) => ({ ...m, columns: columns.map((c) => c.id) })),
+    ).toEqual([
       { id: moreId("t:orders"), table: "t:orders", count: 1, columns: ["c:orders.total"] },
     ]);
     expect(d.graph.nodes.some((n) => n.id === "c:orders.total")).toBe(false);
@@ -156,7 +156,9 @@ describe("a table's unbound columns", () => {
       edges: DATA.edges,
     };
     const d = laneDiagram(shownBy(data, "all"), data, new Set());
-    expect(d.more.map(({ columns, ...m }) => ({ ...m, columns: columns.map((c) => c.id) }))).toEqual([
+    expect(
+      d.more.map(({ columns, ...m }) => ({ ...m, columns: columns.map((c) => c.id) })),
+    ).toEqual([
       {
         id: moreId("t:orders"),
         table: "t:orders",
@@ -197,7 +199,7 @@ describe("the optional product lane", () => {
       new Set<LayerId>(PRESETS.products.layers),
       NO_FILTERS,
       new Set(),
-      PRODUCT_SCOPE,
+      ENGINE_SCOPE,
     );
     const d = laneDiagram(shown, DATA, new Set());
     expect(lanesOf(d).product).toEqual(["p:billing", "p:c360"]);
@@ -229,7 +231,7 @@ describe("the diagram as Mermaid", () => {
       new Set<LayerId>(PRESETS.products.layers),
       NO_FILTERS,
       new Set(),
-      PRODUCT_SCOPE,
+      ENGINE_SCOPE,
     );
     const text = laneMermaid(laneDiagram(shown, DATA, new Set()), title, more);
     expect(text.match(/subgraph/g)).toHaveLength(1);
@@ -295,7 +297,7 @@ describe("the term lane's hierarchy", () => {
       new Set<LayerId>(PRESETS.all.layers),
       { ...NO_FILTERS, focus: ["p:c360"] },
       new Set(),
-      PRODUCT_SCOPE,
+      ENGINE_SCOPE,
     );
     expect(shown.nodes.some((n) => n.id === "term:agent")).toBe(false);
     const d = laneDiagram(shown, chain, new Set());
@@ -316,7 +318,7 @@ describe("the product lane, read from the graph", () => {
       new Set<LayerId>(["ontology"]),
       NO_FILTERS,
       new Set(),
-      PRODUCT_SCOPE,
+      ENGINE_SCOPE,
     );
     expect(shown.nodes.some((n) => n.type === "product")).toBe(false);
     const d = laneDiagram(shown, DATA, new Set());
