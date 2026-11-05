@@ -90192,7 +90192,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     between 9px and 10px, replacing 11.5px and 20px. (Amended 2026-10-29, A VIEW OPENS IN FORCE:) Maintainer
     2026-10-31: a view opens in force, unless its preset names its own layout or the reader has saved a
     choice. Taxonomy keeps its top-down tree (REQ-2130). Layered stays disabled where a cycle makes it impossible.
-    This replaces opening layered when the drawn edges are of one class and form no cycle.'
+    This replaces opening layered when the drawn edges are of one class and form no cycle. (Amended 2026-11-05,
+    ONE GRAPH, RULES PER PRESET:) The one ontology graph is one component whose presets carry their own
+    rules. The Ontology preset, and the Ontology page, follow REQ-2130 (amended 2026-10-29): only what a
+    shown term reaches is drawn, and no relationship, join or lineage edge between tables or columns is
+    drawn. The Product map preset and the product panels'' snippets keep the product layers (commands, quality,
+    product links, lineage) and the member tables, so nothing the product graph showed is lost. The owner-tables
+    relationship layer is not offered in the Ontology preset.'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
