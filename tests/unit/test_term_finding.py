@@ -65,45 +65,47 @@ P = [
 def test_a_mention_is_kept_only_as_a_concept_quoted_from_its_passage():
     left_out = scan.LeftOut()
     raw = json.dumps(
-        [
-            {
-                "passage": 0,
-                "name": "Customer",
-                "category": "business concept",
-                "sense": "a party with an account",
-                "quote": "“Customer”  means any party that holds an account.",
-                "explicit": True,
-                "variants": [{"text": "CUST", "kind": "abbreviation"}, {"text": "x"}],
-            },
-            {
-                "passage": 0,
-                "name": "Jane Smith",
-                "category": "individual",
-                "sense": "a customer",
-                "quote": "Customer",
-                "explicit": False,
-                "variants": [],
-            },
-            {
-                "passage": 1,
-                "name": "account",
-                "category": "business concept",
-                "sense": "s",
-                "quote": "words the passage does not hold",
-                "explicit": False,
-                "variants": [],
-            },
-            {
-                "passage": 9,
-                "name": "kyc",
-                "category": "process",
-                "sense": "s",
-                "quote": "KYC",
-                "explicit": False,
-                "variants": [],
-            },
-            {"name": "no passage"},
-        ]
+        {
+            "mentions": [
+                {
+                    "passage": 0,
+                    "name": "Customer",
+                    "category": "business concept",
+                    "sense": "a party with an account",
+                    "quote": "“Customer”  means any party that holds an account.",
+                    "explicit": True,
+                    "variants": [{"text": "CUST", "kind": "abbreviation"}, {"text": "x"}],
+                },
+                {
+                    "passage": 0,
+                    "name": "Jane Smith",
+                    "category": "individual",
+                    "sense": "a customer",
+                    "quote": "Customer",
+                    "explicit": False,
+                    "variants": [],
+                },
+                {
+                    "passage": 1,
+                    "name": "account",
+                    "category": "business concept",
+                    "sense": "s",
+                    "quote": "words the passage does not hold",
+                    "explicit": False,
+                    "variants": [],
+                },
+                {
+                    "passage": 9,
+                    "name": "kyc",
+                    "category": "process",
+                    "sense": "s",
+                    "quote": "KYC",
+                    "explicit": False,
+                    "variants": [],
+                },
+                {"name": "no passage"},
+            ]
+        }
     )
     found = scan.read_mentions(f"```json\n{raw}\n```", P, 10, left_out)
     assert [(m.id, m.name, m.explicit) for m in found] == [(10, "customer", True)]
@@ -184,7 +186,14 @@ def test_a_mention_the_resolution_leaves_out_is_counted():
     ]
     left_out = scan.LeftOut()
     groups = scan.read_groups(
-        json.dumps([{"name": "customer", "mentions": [0, 0, 7]}, {"name": "dup", "mentions": [0]}]),
+        json.dumps(
+            {
+                "groups": [
+                    {"name": "customer", "mentions": [0, 0, 7]},
+                    {"name": "dup", "mentions": [0]},
+                ]
+            }
+        ),
         mentions,
         left_out,
     )
@@ -232,12 +241,21 @@ class _Client:
         self.cut_off = cut_off
         self.asked: list[tuple[str, int]] = []
         self.reasoning_off: list[bool] = []
+        self.json: list[tuple[dict[str, Any], str]] = []
 
     async def complete_detailed(
-        self, prompt: str, system: str, max_tokens: int, *, reasoning_off: bool
+        self,
+        prompt: str,
+        system: str,
+        max_tokens: int,
+        *,
+        reasoning_off: bool,
+        json_schema: dict[str, Any],
+        json_name: str,
     ) -> Any:
         self.asked.append((prompt, max_tokens))
         self.reasoning_off.append(reasoning_off)
+        self.json.append((json_schema, json_name))
         return types.SimpleNamespace(
             text="[]",
             vendor="anthropic",
@@ -253,9 +271,10 @@ USAGE = types.SimpleNamespace(prompt_tokens=100, completion_tokens=20, prompt_to
 async def test_a_call_is_limited_to_the_roles_room_and_debited_with_what_it_used():
     guard, client = _Guard(room=500), _Client(USAGE)
     call = model.Held(client, guard, None)
-    assert await call("find terms", 4096) == "[]"
+    assert await call("find terms", 4096, scan.MENTIONS) == "[]"
     assert client.asked[0][1] == 500
     assert client.reasoning_off == [True]
+    assert client.json == [(scan.MENTIONS.schema, "mentions")]
     ((usage, model_name),) = guard.debited
     assert (usage.input_tokens, usage.output_tokens, model_name) == (100, 20, "claude-test")
 
@@ -263,19 +282,23 @@ async def test_a_call_is_limited_to_the_roles_room_and_debited_with_what_it_used
 async def test_a_refused_budget_ends_the_scan_naming_the_window():
     call = model.Held(_Client(USAGE), _Guard(refuse=True), None)
     with pytest.raises(scan.ScanFailed, match="budget for the day is spent"):
-        await call("find terms", 4096)
+        await call("find terms", 4096, scan.MENTIONS)
 
 
 async def test_a_call_with_no_reported_usage_is_refused_when_a_budget_holds_the_role():
     with pytest.raises(scan.ScanFailed, match="reported no usage"):
-        await model.Held(_Client(None), _Guard(), None)("p", 10)
-    assert await model.Held(_Client(None), _Guard(budget=False), None)("p", 10) == "[]"
+        await model.Held(_Client(None), _Guard(), None)("p", 10, scan.MENTIONS)
+    assert (
+        await model.Held(_Client(None), _Guard(budget=False), None)("p", 10, scan.MENTIONS) == "[]"
+    )
 
 
 async def test_a_cut_off_answer_is_counted_and_raised_naming_the_limit_it_stopped_at():
     guard = _Guard(room=500)
     with pytest.raises(scan.AnswerCutOff, match="anthropic:claude-test .* 500 output tokens"):
-        await model.Held(_Client(USAGE, cut_off=True), guard, None)("find terms", 4096)
+        await model.Held(_Client(USAGE, cut_off=True), guard, None)(
+            "find terms", 4096, scan.MENTIONS
+        )
     assert len(guard.debited) == 1
 
 
@@ -330,7 +353,10 @@ async def test_a_call_through_openrouter_turns_the_models_reasoning_off(monkeypa
         },
     }
     client = ProvisaLLMClient(model.OPERATION, config=config)
-    assert await model.Held(client, _Guard(budget=False), None)("find terms", 4096) == "[]"
+    assert (
+        await model.Held(client, _Guard(budget=False), None)("find terms", 4096, scan.MENTIONS)
+        == "[]"
+    )
     ((sent,),) = [wire.sent]
     assert sent["model"] == "openai:anthropic/claude-haiku-5.5"
     assert sent["max_tokens"] == 4096
@@ -343,7 +369,7 @@ async def test_a_call_to_anthropic_turns_extended_thinking_off(monkeypatch):
     monkeypatch.setattr("aisuite.Client", wire)
     config = {"ai_models": {model.OPERATION: {"vendor": "anthropic", "model": "claude-test"}}}
     client = ProvisaLLMClient(model.OPERATION, config=config, api_keys={"anthropic": "k"})
-    await model.Held(client, _Guard(budget=False), None)("find terms", 4096)
+    await model.Held(client, _Guard(budget=False), None)("find terms", 4096, scan.MENTIONS)
     ((sent,),) = [wire.sent]
     assert sent["thinking"] == {"type": "disabled"}
     assert "extra_body" not in sent
@@ -356,10 +382,59 @@ async def test_a_vendor_without_a_reasoning_switch_is_called_with_its_default(mo
     monkeypatch.setattr("aisuite.Client", wire)
     config = {"ai_models": {model.OPERATION: {"vendor": "groq", "model": "some-model"}}}
     client = ProvisaLLMClient(model.OPERATION, config=config, api_keys={"groq": "k"})
-    assert await model.Held(client, _Guard(budget=False), None)("find terms", 4096) == "[]"
+    assert (
+        await model.Held(client, _Guard(budget=False), None)("find terms", 4096, scan.MENTIONS)
+        == "[]"
+    )
     ((sent,),) = [wire.sent]
     assert sent["model"] == "groq:some-model"
     assert "extra_body" not in sent and "thinking" not in sent
+    assert "response_format" not in sent and "output_config" not in sent
+
+
+# -- the answer asked for as one JSON value -------------------------------------------------------
+
+
+async def _joining_sent(monkeypatch, config: dict, api_keys: dict | None = None) -> dict:
+    """The request a joining call through ``config``'s model sends its vendor."""
+    wire = _Wire()
+    monkeypatch.setattr("aisuite.Client", wire)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    client = ProvisaLLMClient(model.OPERATION, config=config, api_keys=api_keys)
+    await model.Held(client, _Guard(budget=False), None)("join", 8192, scan.JOINS)
+    ((sent,),) = [wire.sent]
+    return sent
+
+
+async def test_a_joining_asks_anthropic_for_its_schema_as_structured_output(monkeypatch):
+    config = {"ai_models": {model.OPERATION: {"vendor": "anthropic", "model": "claude-test"}}}
+    sent = await _joining_sent(monkeypatch, config, {"anthropic": "k"})
+    assert sent["output_config"] == {"format": {"type": "json_schema", "schema": scan.JOINS.schema}}
+    assert sent["thinking"] == {"type": "disabled"}
+    assert "response_format" not in sent
+
+
+async def test_a_joining_asks_openrouter_for_its_schema_as_the_response_format(monkeypatch):
+    config = {
+        "ai_endpoints": [OPENROUTER],
+        "ai_models": {
+            model.OPERATION: {"vendor": "openrouter", "model": "anthropic/claude-haiku-5.5"}
+        },
+    }
+    sent = await _joining_sent(monkeypatch, config)
+    assert sent["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "joins", "schema": scan.JOINS.schema, "strict": True},
+    }
+    assert sent["extra_body"] == {"reasoning": {"enabled": False}}
+    assert "output_config" not in sent
+
+
+async def test_a_joining_on_a_wire_with_no_json_setting_is_asked_in_the_prompt_alone(monkeypatch):
+    config = {"ai_models": {model.OPERATION: {"vendor": "groq", "model": "some-model"}}}
+    sent = await _joining_sent(monkeypatch, config, {"groq": "k"})
+    assert "response_format" not in sent and "output_config" not in sent
+    assert sent["model"] == "groq:some-model"
 
 
 # -- an answer cut off, an answer that is not JSON ------------------------------------------------
@@ -391,7 +466,7 @@ class _Reader:
     def batches(self) -> list[list[int]]:
         return [_read(p) for p in self.asked if "Group the mentions" not in p]
 
-    async def __call__(self, prompt: str, max_tokens: int) -> str:
+    async def __call__(self, prompt: str, max_tokens: int, answer: scan.Answer) -> str:
         self.asked.append(prompt)
         merging = "Group the mentions" in prompt
         if self.cut_merge if merging else self.cut(_read(prompt)):
@@ -402,20 +477,22 @@ class _Reader:
             return '[\n  {"passage": 0, '
         if merging:
             ids = [int(n) for n in re.findall(r"^M(\d+) ", prompt, re.MULTILINE)]
-            return json.dumps([{"name": "c", "sense": "s", "mentions": ids}])
+            return json.dumps({"groups": [{"name": "c", "sense": "s", "mentions": ids}]})
         return json.dumps(
-            [
-                {
-                    "passage": n,
-                    "name": f"concept {n}",
-                    "category": "role",
-                    "sense": "s",
-                    "quote": f"text {n}",
-                    "explicit": True,
-                    "variants": [],
-                }
-                for n in _read(prompt)
-            ]
+            {
+                "mentions": [
+                    {
+                        "passage": n,
+                        "name": f"concept {n}",
+                        "category": "role",
+                        "sense": "s",
+                        "quote": f"text {n}",
+                        "explicit": True,
+                        "variants": [],
+                    }
+                    for n in _read(prompt)
+                ]
+            }
         )
 
 
@@ -655,14 +732,16 @@ GROUPS = [
 
 def fake_answer(prompt: str) -> str:
     if "Group the mentions" in prompt:
-        return json.dumps(GROUPS)
+        return json.dumps({"groups": GROUPS})
     ordinals = dict((s, int(n)) for n, s in re.findall(r"\[P(\d+)\] \(section '([^']+)'", prompt))
     return json.dumps(
-        [
-            {k: v for k, v in m.items() if k != "section"} | {"passage": ordinals[m["section"]]}
-            for m in MENTIONS
-            if m["section"] in ordinals
-        ]
+        {
+            "mentions": [
+                {k: v for k, v in m.items() if k != "section"} | {"passage": ordinals[m["section"]]}
+                for m in MENTIONS
+                if m["section"] in ordinals
+            ]
+        }
     )
 
 
@@ -675,7 +754,7 @@ class _Model:
     def __init__(self, answer: Callable[[str], str] = fake_answer):
         self.answer = answer
 
-    async def __call__(self, prompt: str, max_tokens: int) -> str:
+    async def __call__(self, prompt: str, max_tokens: int, answer: scan.Answer) -> str:
         return self.answer(prompt)
 
 
@@ -990,6 +1069,7 @@ class _Vendor:
         finish: Callable[[str], str] = lambda prompt: "stop",
     ):
         self.asked = 0
+        self.formats: list[dict] = []
         self.answer = answer
         self.finish = finish
         self.chat = types.SimpleNamespace(
@@ -999,8 +1079,17 @@ class _Vendor:
     def __call__(self, *args: Any) -> _Vendor:
         return self
 
-    def create(self, *, model: str, messages: list[dict], max_tokens: int, thinking: dict) -> Any:
+    def create(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        max_tokens: int,
+        thinking: dict,
+        output_config: dict,
+    ) -> Any:
         self.asked += 1
+        self.formats.append(output_config["format"])
         prompt = messages[-1]["content"]
         return types.SimpleNamespace(
             choices=[
@@ -1041,34 +1130,38 @@ def _definitions_answer(prompt: str) -> str:
     """A model's answer to a reading, a resolution or a joining of :data:`DEFINED`."""
     if "Group the mentions" in prompt:
         return json.dumps(
-            [
-                {
-                    "name": name,
-                    "sense": "a regulated thing",
-                    "mentions": [int(n)],
-                    "variants": [],
-                    "conflicts": [],
-                    "definition": SYNTHESIS,
-                    "uses": [int(n)],
-                }
-                for n, name in re.findall(r"^M(\d+) \[[^]]+\] '([^']+)'", prompt, re.MULTILINE)
-            ]
+            {
+                "groups": [
+                    {
+                        "name": name,
+                        "sense": "a regulated thing",
+                        "mentions": [int(n)],
+                        "variants": [],
+                        "conflicts": [],
+                        "definition": SYNTHESIS,
+                        "uses": [int(n)],
+                    }
+                    for n, name in re.findall(r"^M(\d+) \[[^]]+\] '([^']+)'", prompt, re.MULTILINE)
+                ]
+            }
         )
     if "one concept" in prompt and "G0 " in prompt:
-        return "[]"
+        return '{"joins": []}'
     return json.dumps(
-        [
-            {
-                "passage": n,
-                "name": f"term {n}",
-                "category": "business concept",
-                "sense": "s",
-                "quote": DEFINED[n].text,
-                "explicit": False,
-                "variants": [],
-            }
-            for n in _read(prompt)
-        ]
+        {
+            "mentions": [
+                {
+                    "passage": n,
+                    "name": f"term {n}",
+                    "category": "business concept",
+                    "sense": "s",
+                    "quote": DEFINED[n].text,
+                    "explicit": False,
+                    "variants": [],
+                }
+                for n in _read(prompt)
+            ]
+        }
     )
 
 
@@ -1082,9 +1175,21 @@ class _Spending(_Vendor):
         super().__init__(_definitions_answer)
         self.cut: list[int] = []
 
-    def create(self, *, model: str, messages: list[dict], max_tokens: int, thinking: dict) -> Any:
+    def create(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        max_tokens: int,
+        thinking: dict,
+        output_config: dict,
+    ) -> Any:
         answered = super().create(
-            model=model, messages=messages, max_tokens=max_tokens, thinking=thinking
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            thinking=thinking,
+            output_config=output_config,
         )
         choice = answered.choices[0]
         held = max_tokens * self.chars_per_token
@@ -1144,15 +1249,15 @@ class _Parts(_Reader):
         self.joins = joins
         self.cut_join = cut_join
 
-    async def __call__(self, prompt: str, max_tokens: int) -> str:
+    async def __call__(self, prompt: str, max_tokens: int, answer: scan.Answer) -> str:
         if "one concept" not in prompt or not prompt.count("\nG0 "):
-            return await super().__call__(prompt, max_tokens)
+            return await super().__call__(prompt, max_tokens, answer)
         self.asked.append(prompt)
         if self.cut_join:
             raise scan.AnswerCutOff(
                 f"fake:model stopped at its limit of {max_tokens} output tokens"
             )
-        return json.dumps(self.joins)
+        return json.dumps({"joins": self.joins})
 
 
 async def test_concepts_named_differently_in_different_parts_are_joined(monkeypatch):
@@ -1162,16 +1267,18 @@ async def test_concepts_named_differently_in_different_parts_are_joined(monkeypa
     )
 
     class _Each(_Parts):
-        async def __call__(self, prompt: str, max_tokens: int) -> str:
+        async def __call__(self, prompt: str, max_tokens: int, answer: scan.Answer) -> str:
             if "Group the mentions" in prompt:
                 self.asked.append(prompt)
                 return json.dumps(
-                    [
-                        {"name": f"concept {n}", "sense": "s", "mentions": [int(n)]}
-                        for n in re.findall(r"^M(\d+) ", prompt, re.MULTILINE)
-                    ]
+                    {
+                        "groups": [
+                            {"name": f"concept {n}", "sense": "s", "mentions": [int(n)]}
+                            for n in re.findall(r"^M(\d+) ", prompt, re.MULTILINE)
+                        ]
+                    }
                 )
-            return await super().__call__(prompt, max_tokens)
+            return await super().__call__(prompt, max_tokens, answer)
 
     reader, steps = _Each([[0, 3], [1, 4, 0]]), _Steps()
     result = await scan.run("t", PARTS, reader, steps)
@@ -1211,13 +1318,83 @@ def test_a_joining_answer_keeps_each_group_in_its_first_set():
         for n in range(4)
     ]
     left_out = scan.LeftOut()
-    joined = scan.read_joins(json.dumps([[0, 2], [2, 3], "x", [9]]), groups, left_out)
+    joined = scan.read_joins(json.dumps({"joins": [[0, 2], [2, 3], "x", [9]]}), groups, left_out)
     assert [(g.name, g.mentions, g.definition, g.uses) for g in joined] == [
         ("g0", (0, 2), "made up", (2,)),
         ("g1", (1,), None, (1,)),
         ("g3", (3,), None, (3,)),
     ]
     assert left_out.malformed == 1
+
+
+# -- one JSON value per answer --------------------------------------------------------------------
+
+
+def test_a_joining_answered_with_two_values_is_not_json_at_the_second():
+    """The scan of "Tile & Paint Store Checklist" stopped with "the model's answer to the concepts'
+    joining was not JSON: Extra data: line 3 column 1 (char 54) (asked twice)": asked in prose
+    alone for "a JSON array of the sets", the model answered one array and then another value.
+    The answer is read as the one value it must be, never the first of several."""
+    groups = [scan.Group(f"g{n}", "s", (n,), (), (), None, ()) for n in range(4)]
+    two = '{"joins": [[0, 1], [2, 3]]}\n\n{"joins": []}'
+    with pytest.raises(scan.NotJSON, match=r"Extra data: line 3 column 1"):
+        scan.read_joins(two, groups, scan.LeftOut())
+
+
+@pytest.mark.parametrize(
+    ("read", "answer"),
+    [
+        (lambda raw: scan.read_mentions(raw, P, 0, scan.LeftOut()), scan.MENTIONS),
+        (lambda raw: scan.read_groups(raw, [], scan.LeftOut()), scan.GROUPS),
+        (lambda raw: scan.read_joins(raw, [], scan.LeftOut()), scan.JOINS),
+    ],
+    ids=["mentions", "groups", "joins"],
+)
+def test_an_answer_is_one_object_holding_its_list(read, answer):
+    assert read(json.dumps({answer.key: []})) == []
+    for other in ("[]", '{"other": []}', json.dumps({answer.key: {}})):
+        with pytest.raises(
+            scan.ScanFailed, match=f"was not an object holding a list of '{answer.key}'"
+        ):
+            read(other)
+
+
+def _objects(schema: Any) -> list[dict]:
+    if isinstance(schema, dict):
+        found = [schema] if schema.get("type") == "object" else []
+        return found + [o for v in schema.values() for o in _objects(v)]
+    if isinstance(schema, list):
+        return [o for v in schema for o in _objects(v)]
+    return []
+
+
+@pytest.mark.parametrize("answer", [scan.MENTIONS, scan.GROUPS, scan.JOINS], ids=lambda a: a.key)
+def test_each_answer_schema_is_one_object_every_vendor_can_hold_to(answer):
+    """OpenAI's strict json_schema and Anthropic's structured output both take an object whose
+    every property is required and that allows no other."""
+    assert answer.schema["type"] == "object"
+    assert answer.schema["required"] == [answer.key]
+    for obj in _objects(answer.schema):
+        assert obj["additionalProperties"] is False
+        assert obj["required"] == list(obj["properties"])
+
+
+async def test_every_step_asks_for_one_json_object_naming_its_shape(monkeypatch):
+    monkeypatch.setattr(
+        scan, "resolution_batches", lambda m: [list(m[i : i + 3]) for i in range(0, len(m), 3)]
+    )
+    asked: list[tuple[str, scan.Answer]] = []
+
+    class _Asked(_Parts):
+        async def __call__(self, prompt: str, max_tokens: int, answer: scan.Answer) -> str:
+            asked.append((prompt, answer))
+            return await super().__call__(prompt, max_tokens, answer)
+
+    await scan.run("t", PARTS, _Asked([]), _Steps())
+    assert [a for _, a in asked] == [scan.MENTIONS, scan.GROUPS, scan.GROUPS, scan.JOINS]
+    for prompt, answer in asked:
+        assert f'Respond with only one JSON object, {{"{answer.key}": [...]}}' in prompt
+        assert "JSON array" not in prompt
 
 
 def test_a_scan_outlives_the_request_and_ends_with_its_candidates(api, monkeypatch):
@@ -1235,6 +1412,11 @@ def test_a_scan_outlives_the_request_and_ends_with_its_candidates(api, monkeypat
     assert len(found["drafts"]) == 5
     assert vendor.asked == found["scan"]["summary"]["calls"]
     assert found["scan"]["step"] == "merging"
+    # Every call asked Anthropic for its step's one JSON object: the readings, then the merge.
+    assert vendor.formats == [
+        *[{"type": "json_schema", "schema": scan.MENTIONS.schema}] * (vendor.asked - 1),
+        {"type": "json_schema", "schema": scan.GROUPS.schema},
+    ]
 
 
 async def _running(api, *, launch: str = "this", at: datetime | None = None) -> int:
@@ -1543,7 +1725,7 @@ async def test_a_budget_that_refuses_is_shown_on_the_scan_and_no_call_is_made(ap
 
 async def test_a_budget_that_holds_a_call_short_is_shown(api, monkeypatch):
     held = model.Held(_Client(USAGE), _Guard(room=500), None)
-    assert await held("p", 4096) == "[]"
+    assert await held("p", 4096, scan.MENTIONS) == "[]"
     assert held.limited_to == 500
 
     class Limited(_Model):
@@ -1636,7 +1818,7 @@ async def test_shutting_down_fails_a_running_scan_saying_so(api):
     entered = asyncio.Event()
 
     class Stuck(_Model):
-        async def __call__(self, prompt: str, max_tokens: int) -> str:
+        async def __call__(self, prompt: str, max_tokens: int, answer: scan.Answer) -> str:
             entered.set()
             await asyncio.Event().wait()
             return ""
@@ -1723,21 +1905,23 @@ def _row_answer(prompt: str) -> str:
     """Each row read names the concept "customer", quoting the row; the mentions resolve into it."""
     if "Group the mentions" in prompt:
         ids = [int(i) for i in re.findall(r"^M(\d+) ", prompt, re.M)]
-        return json.dumps([{"name": "customer", "sense": "a party", "mentions": ids}])
+        return json.dumps({"groups": [{"name": "customer", "sense": "a party", "mentions": ids}]})
     rows = re.findall(r"\[P(\d+)\] \(row '[^']+'\)\n(.+)", prompt)
     return json.dumps(
-        [
-            {
-                "passage": int(n),
-                "name": "customer",
-                "category": "business concept",
-                "sense": "a party",
-                "quote": text,
-                "explicit": text.startswith('"Customer" means'),
-                "variants": [],
-            }
-            for n, text in rows
-        ]
+        {
+            "mentions": [
+                {
+                    "passage": int(n),
+                    "name": "customer",
+                    "category": "business concept",
+                    "sense": "a party",
+                    "quote": text,
+                    "explicit": text.startswith('"Customer" means'),
+                    "variants": [],
+                }
+                for n, text in rows
+            ]
+        }
     )
 
 

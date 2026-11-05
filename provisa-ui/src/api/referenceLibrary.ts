@@ -144,3 +144,22 @@ export async function reembedLibrary(): Promise<ReembedOutcome> {
 export async function removeLibraryDocument(id: number): Promise<void> {
   await ok(await fetch(`${BASE}/${id}`, send("DELETE")), "Remove document");
 }
+
+/** How an assistant's question is answered from the library (GRAPH RETRIEVAL): the passages
+ *  nearest it, or those and the passages the glossary terms its walk reaches cite. */
+export type Retrieval = "passage" | "graph";
+
+const SETTINGS = `${API_BASE}/admin/reference-library/settings`;
+
+export async function fetchRetrieval(): Promise<Retrieval> {
+  const body = await ok<{ retrieval: Retrieval }>(await fetch(SETTINGS), "Library retrieval");
+  return body.retrieval;
+}
+
+export async function saveRetrieval(retrieval: Retrieval): Promise<Retrieval> {
+  const body = await ok<{ retrieval: Retrieval }>(
+    await fetch(SETTINGS, send("PUT", { retrieval })),
+    "Library retrieval",
+  );
+  return body.retrieval;
+}

@@ -312,6 +312,8 @@ def test_a_stored_system_domain_is_no_access_and_the_input_is_not_changed():
 def test_the_domain_tree_and_a_meta_role_keep_the_system_domains():
     assert domain_tree.expand(["*", "meta"], {}) == ["*", "meta"]
     members = [_flat("analyst"), {**_flat("org_operator"), "domain_access": ["ops", "sales"]}]
+    # REQ-2153: a built role carries its own domain access beside its reach.
+    members = [{**m, "own_domain_access": m["domain_access"]} for m in members]
     assert meta_role_of(members, "meta:x")["domain_access"] == ["*", "ontology", "ops"]
 
 

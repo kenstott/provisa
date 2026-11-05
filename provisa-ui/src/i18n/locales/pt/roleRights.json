@@ -31,7 +31,8 @@
     "reach_public": "público",
     "scope_domain": "domínio",
     "scope_public": "público",
-    "scope_restricted": "restrito",
+    "scope_listed": "listado",
+    "scope_own-domain": "domínio próprio",
     "write_insert": "inserir",
     "write_update": "atualizar",
     "write_delete": "excluir"

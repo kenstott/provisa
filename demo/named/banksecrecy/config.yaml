@@ -62,6 +62,9 @@ vector_models:
   provider: huggingface
   dimensions: 384
   enabled: true
+# The library answers by the glossary walk as well as by nearest passage (REQ-2185, GRAPH RETRIEVAL).
+reference_library:
+  retrieval: graph
 sources:
 - id: banksecrecy-db
   type: postgresql
@@ -285,3 +288,11 @@ glossary_terms:
   definition: 'Conducting or attempting to conduct one or more transactions in currency, in any amount, at one or more financial institutions, on one or more days, in any manner, for the purpose of evading the reporting requirements -- including breaking a sum over $10,000 into sums at or below it (31 CFR 1010.100(xx)).'
   domains:
   - banksecrecy
+- name: suspicious activity report
+  approve: true
+  definition: 'The report a bank files of a transaction conducted or attempted by, at or through it, involving or aggregating at least $5,000, that it knows, suspects or has reason to suspect involves funds from illegal activity, is designed to evade the Bank Secrecy Act''s requirements, or has no business or apparent lawful purpose (31 CFR 1020.320(a)(2), (b)(1)).'
+  domains:
+  - banksecrecy
+  edges:
+  - to: structuring
+    rel_type: RELATED_TO

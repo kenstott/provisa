@@ -1310,6 +1310,34 @@ CREATE TABLE IF NOT EXISTS profiler_classifications (
     PRIMARY KEY (table_id, physical_column, kind)
 );
 
+-- REQ-2147 (CONTAINED VALUES ARE HINTS): a background scan of a table's text columns for sensitive
+-- kinds held inside their values.
+CREATE TABLE IF NOT EXISTS profiler_sensitive_scans (
+    scan_id          TEXT PRIMARY KEY,
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    status           TEXT NOT NULL,
+    started_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at      TIMESTAMPTZ,
+    sampled_rows     INTEGER,
+    scanned_columns  INTEGER,
+    requested_by     TEXT,
+    error            TEXT
+);
+
+-- REQ-2147 (CONTAINED VALUES ARE HINTS): a column's latest hint per kind; counts only, never the
+-- matched text.
+CREATE TABLE IF NOT EXISTS profiler_sensitive_hints (
+    table_id         INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    physical_column  TEXT NOT NULL,
+    kind             TEXT NOT NULL,
+    scan_id          TEXT NOT NULL,
+    values_tested    INTEGER NOT NULL,
+    values_matched   INTEGER NOT NULL,
+    share            DOUBLE PRECISION NOT NULL,
+    evidence         TEXT NOT NULL,
+    PRIMARY KEY (table_id, physical_column, kind)
+);
+
 -- REQ-2189: a saved, named arrangement of the ERD. Only the arrangement: what is drawn in it comes
 -- from the live model, and a table or domain removed from the model goes from every layout with it.
 CREATE TABLE IF NOT EXISTS erd_layouts (
@@ -1891,6 +1919,17 @@ CREATE TABLE IF NOT EXISTS reference_passages (
     vector      public.vector NOT NULL,
     tenant_id   UUID,
     UNIQUE (document_id, ordinal)
+);
+
+-- REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding (its name and definition, by
+-- the org's vector model), under one partial HNSW index per dimension in use
+-- (provisa.reference_library.terms). Mirrors schema_org.glossary_term_vectors.
+CREATE TABLE IF NOT EXISTS glossary_term_vectors (
+    term_id         INTEGER PRIMARY KEY REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    embedding_model TEXT NOT NULL,
+    digest          TEXT NOT NULL,
+    vector          public.vector NOT NULL,
+    tenant_id       UUID
 );
 
 -- REQ-2179: the glossary's scans of reference library documents for terms, and the review queue of

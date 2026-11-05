@@ -149,6 +149,14 @@ PAGES: dict[str, PollyPage] = {
     "/admin/security": PollyPage("security settings"),
     "/admin/maintenance": PollyPage("maintenance"),
     "/admin/deployment-settings": PollyPage("deployment settings"),
+    "/admin/platform": PollyPage(
+        "the platform's regions, the default region grant and each org's grant, applied on "
+        "restart; read-only in a demo sandbox"
+    ),
+    "/admin/regions": PollyPage(
+        "the regions the platform granted the org and the store it keeps each kind of data in "
+        "there, read-only"
+    ),
     "/admin/billing": PollyPage("billing"),
     "/admin/environments": PollyPage("environments"),
     "/admin/email": PollyPage("email settings"),

@@ -167,6 +167,8 @@ _OPS: dict[str, str] = {
     "the limit, and when it recovered",
     "service_level": "The service level of the org's last hour, from the audit log — how many "
     "queries, their latency percentiles and the share that succeeded",
+    "sensitive_column_coverage": "Sensitive coverage: every sensitive column, its tags, whether a "
+    "fake covers it, and the reason when none does",
 }
 
 # A model reading the catalog took ops.query_audit_log -- its route, status_code and duration_ms
@@ -992,6 +994,16 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "started_at": "When the breach opened",
         "last_seen_at": "The latest evaluation that found it still in breach",
         "resolved_at": "When the measure came back within its limit; empty: still open",
+    },
+    "sensitive_column_coverage": {
+        "id": "Synthesized column identity (table_id:column_name) of the sensitive column",
+        "table_id": "Table the column belongs to",
+        "table_name": "Name of that table",
+        "domain_id": "Domain the table is governed under",
+        "column_name": "The sensitive column",
+        "tags": "The sensitive tags the column carries, comma-separated",
+        "status": "covered, no_fake, or inadequate (a fake or rule failed an adequacy check)",
+        "reason": "Why the column is not covered: no fake, or each failed check and its finding",
     },
     "service_level": {
         "id": "last_hour",

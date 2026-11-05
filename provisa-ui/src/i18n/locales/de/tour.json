@@ -933,16 +933,32 @@
         "description": "Sie haben die eigenen Daten des Versicherers gesehen, nach County und Erntejahr mit öffentlichen Schäden, Wetter- und Ertragsdaten abgeglichen, alles in einem regulierten Modell. Eine View beantwortet, ob das Wetter die Schäden erklärt, in SQL, GraphQL und REST. Das Notebook misst es: Das Wetter erklärt 54 % der Schwankung der Schadenquote, und über den heutigen Bestand lässt eine Saison wie 2012 eine Schadenquote von 1,75 erwarten."
       },
       "retailScenario": {
-        "title": "Ein Konzern, zwei Regionen",
+        "title": "Eine Geschichte aus zwei Regionen",
         "description": "Ein Einzelhandelskonzern führt eine EU- und eine US-Tochtergesellschaft als ein Unternehmen. Geht das, ohne gegen die GDPR zu verstoßen? Jede Tochtergesellschaft hat ihre eigene Datenbank: Dies ist die der EU, mit ihren Treuekunden, deren Marketing-Einwilligung, Bestellungen, Mitarbeitenden und der Post, die Mitarbeitende aus dem Konzern hinaus senden."
       },
+      "retailPlatformRegions": {
+        "title": "Regionen beginnen in einer Konfiguration",
+        "description": "Die Konfiguration der Plattform deklariert die Regionen, hier die EU und die US, und gewährt sie der Organisation. Jede Region hat ihre eigene Datenverarbeitung: ihre eigene Engine und ihre eigenen Speicher. Der Zweck der EU ist Datenresidenz, für Kundendaten, die in der Europäischen Union bleiben müssen. In dieser Sandbox können Sie diese Seite lesen, aber nicht ändern."
+      },
+      "retailPurposes": {
+        "title": "Was ein Zweck aussagt",
+        "description": "Die Legende erklärt jeden Zweck. Ein Zweck sagt, warum es eine Region gibt. Er verschiebt keine Daten und entscheidet nicht, wer sie liest. Das tun zwei Ebenen, und die Tour zeigt beide: Homing, die Regeln der Engine dazu, wo Daten liegen, und Sicherheit, die Regeln des Data Stewards dazu, wer was liest."
+      },
+      "retailOrgRegions": {
+        "title": "Die Regionen und Speicher der Organisation",
+        "description": "Die Organisation hält beide Regionen. Jede Zeile nennt die Speicher, die dort genutzt werden: die Engine der Region und wo ihre Replikate, Ansichten, ihr Cache, ihr Build-Zustand und ihr Protokoll liegen. EU-Daten werden mit den eigenen Speichern der EU verarbeitet."
+      },
+      "retailEngines": {
+        "title": "Eine Engine pro Region",
+        "description": "Föderation hat einen Tab für jede Region, und jede Region betreibt ihre eigene Engine. Eine Konfiguration ergibt also zwei Datenverarbeitungsumgebungen. Sie sind auf dem US-Knoten. Er liest EU-Daten nur über den Speicher der EU, nie aus einer eigenen Kopie."
+      },
       "retailRegions": {
-        "title": "Eine Definition jeder Region",
-        "description": "Die Datenbank der US-Tochtergesellschaft, beheimatet in der Region US. Das Modell deklariert beide Regionen und legt einmal fest, wo jede Tabelle liegt und welche Ansichten wo erstellt werden. Ein zweiter Provisa-Knoten läuft in der EU: Er kopiert die EU-Tabellen in den eigenen Speicher der EU und erstellt dort die EU-Ansichten. Sie sind auf dem US-Knoten, der EU-Daten nur aus diesem EU-Speicher liest, sodass jede grenzüberschreitende Regel an einer Stelle angewendet wird."
+        "title": "Homing: Jede Quelle nennt ihre Heimat",
+        "description": "Die Datenbank der US-Tochtergesellschaft ist in der Region US beheimatet, die der EU-Tochtergesellschaft in der EU. Homing ist die Regel der Engine dazu, wo Daten liegen. Die Replikate und der Cache einer beheimateten Tabelle bleiben in ihrer Heimatregion, und andere Regionen erreichen sie nur über diese Region."
       },
       "retailEuCustomers": {
         "title": "Eine EU-Tabelle, beheimatet in der EU",
-        "description": "Die EU-Kunden. Die Tabelle nennt die EU als ihre Region: Ihre Zeilen werden nur in den Speicher der EU kopiert und nur dort berechnet. Leser anderswo erhalten sie über die Ansichten der EU oder gar nicht."
+        "description": "Die EU-Kunden. Die Region der Tabelle ist die EU, daher liegen ihre Replikate und ihr Cache nur im Speicher der EU. Homing entscheidet, wo die Zeilen liegen. Es entscheidet nicht, wer sie lesen darf. Das ist die nächste Ebene."
       },
       "retailRequests": {
         "title": "Anfragen betroffener Personen",
@@ -953,12 +969,12 @@
         "description": "Eine Anfrage wird über die E-Mail-Adresse mit den Kunden jeder Tochtergesellschaft verknüpft. So findet eine Anfrage dieselbe Person in beiden."
       },
       "retailAsAnalyst": {
-        "title": "Als Konzernanalyst",
-        "description": "Als Nächstes wechselt die Rollenauswahl zu <strong>group_analyst</strong>, der in der Region US am Konzernreporting arbeitet, sodass SQL und GraphQL danach als group_analyst laufen."
+        "title": "Die Regeln des Data Stewards, als Konzernanalyst",
+        "description": "Die zweite Ebene ist Sicherheit: Die Regeln des Data Stewards entscheiden, was jeder Leser erhält, nach Rolle und nach der Region des Lesers. Sie werden in der Heimatregion angewendet, bevor etwas sie verlässt. Als Nächstes wechselt die Rollenauswahl zu <strong>group_analyst</strong>, der in den US an der Konzernberichterstattung arbeitet, sodass SQL und GraphQL danach als group_analyst laufen."
       },
       "retailGroupView": {
         "title": "Konzernreporting, EU-Kunden pseudonymisiert",
-        "description": "Jeder Treuekunde des Konzerns. US-Kunden erscheinen unverändert; EU-Kunden erscheinen unter einem Pseudonym, das die EU berechnet hat, ohne Name oder Adresse. Der EU-Teil wurde aus dem Speicher der EU gelesen, und der Eintrag zu dieser Abfrage nennt die EU als die Region, die geantwortet hat."
+        "description": "Jeder Treuekunde des Konzerns. US-Kunden erscheinen, wie sie sind. EU-Kunden erscheinen unter einem Pseudonym, weil die Regel des Stewards besagt, dass ein Leser außerhalb der EU keinen Namen und keine Adresse erhält. Die EU hat diese Regel angewendet, bevor ihre Zeilen sie verließen, und das Protokoll dieser Abfrage nennt die EU als die Region, die geantwortet hat."
       },
       "retailGroupGraphql": {
         "title": "Dasselbe in GraphQL",
@@ -970,7 +986,7 @@
       },
       "retailAudience": {
         "title": "Nur Kunden, die eingewilligt haben",
-        "description": "Der SQL-Explorer läuft jetzt als <strong>marketing_eu</strong>. Das EU-Marketing liest die EU-Kunden, die in Marketing eingewilligt haben, und nur diese. Die Ansicht wird in der EU aus EU-Zeilen erstellt."
+        "description": "Der SQL-Explorer läuft jetzt als <strong>marketing_eu</strong>. Die Regel des Stewards lässt das EU-Marketing die EU-Kunden lesen, die dem Marketing zugestimmt haben, und nur diese. Die Ansicht wird in der EU aus EU-Zeilen erstellt."
       },
       "retailAsDpo": {
         "title": "Als Datenschutzbeauftragter",
@@ -998,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "Der Absender, offengelegt in der EU",
-        "description": "Dieselbe Warteschlange. Die Maskierungsliste der Absenderspalte legt den Absender nur einem Prüfer offen, der zusätzlich region__eu hat; alle anderen lesen ihn zurückgehalten. Es ist eine einzige Berechtigung, reviewer und region__eu, ohne eine eigene Rolle für die Kombination."
+        "description": "Dieselbe Warteschlange. Die Maske des Stewards auf der Absenderspalte zeigt den Absender nur einem Prüfer, dessen zugewiesene Region die EU ist (region__eu). Alle anderen lesen ihn zurückgehalten. Was ein Leser erhält, hängt von seiner Region wie von seiner Rolle ab, und für die Kombination wurde keine Rolle angelegt."
       },
       "retailAsAdmin": {
         "title": "Zurück zu jeder Rolle",
@@ -1014,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "Was Sie gesehen haben",
-        "description": "Ein Modell hat beide Regionen definiert: wo jede Tabelle liegt, welche Ansichten wo erstellt werden und wer was liest. Das Konzernreporting las EU-Kunden pseudonymisiert, das EU-Marketing las nur einwilligende Kunden, und ein Auskunftsersuchen und eine Löschung waren jeweils eine Abfrage. Die Insider-Prüfung legte einen Absender nur in der EU offen, und jedes Lesen steht in einem Protokoll."
+        "description": "Eine Konfiguration gewährte zwei Regionen, jede mit eigener Engine und eigenen Speichern: zwei Datenverarbeitungsumgebungen. Homing hielt die EU-Tabellen, ihre Replikate und ihren Cache in der EU. Die Regeln des Data Stewards entschieden, was jeder Leser erhielt, nach Rolle und nach der Region des Lesers, und die EU wendete sie an, bevor etwas sie verließ. Die Konzernberichterstattung las EU-Kunden pseudonymisiert, das EU-Marketing las nur zustimmende Kunden, Auskunft und Löschung waren jeweils eine Abfrage, der Absender wurde nur einem Prüfer in der EU gezeigt, und jeder Lesezugriff steht in einem Protokoll."
       },
       "provisioningScenario": {
         "title": "Worum es in dieser Demo geht",
@@ -1374,7 +1390,11 @@
       },
       "testdataCoverageNow": {
         "title": "Jede sensible Spalte ist abgedeckt",
-        "description": "Dieselbe Prüfung, jetzt aus dem Modell gelesen: jede sensible Spalte, ihre Tags und ob ein Fake sie abdeckt. Alle sind abgedeckt, also öffnet sich Pre-Prod und antwortet."
+        "description": "Sensitive Abdeckung ist ein Standardbericht auf der Seite Berichte: jede sensible Spalte, ihre Tags und ob ein Fake sie abdeckt, jetzt aus dem Modell gelesen. Alle sind abgedeckt, also öffnet sich Pre-Prod und antwortet."
+      },
+      "testdataPollyProposes": {
+        "title": "Ein Fake, aus dem Profil vorgeschlagen",
+        "description": "Polly wird gefragt, welchen Fake es für customers.email vorschlagen würde. Es liest den letzten Profillauf der Spalte, sieht, dass die Werte E-Mail-Adressen sind, und schlägt den E-Mail-Fake vor. Das Modell deklariert bereits einen, also prüft der Vorschlag diese Wahl an den Daten. Gespeichert wird nichts, bis jemand es so wählt."
       },
       "testdataProd": {
         "title": "Produktion: die echten Zeilen",
@@ -1756,6 +1776,94 @@
         "title": "Ihr eigener Agent, derselbe Server",
         "description": "Dies ist der Server, den der Agent des Explorers verwendet hat. Fügen Sie diese Konfiguration in Claude Desktop ein oder richten Sie einen beliebigen MCP-Client auf die URL, und Ihr eigener Agent erhält dieselben geregelten Tools, an dieselben Regeln gebunden."
       },
+      "auditScenario": {
+        "title": "Worum es in dieser Demo geht",
+        "description": "Eine Prüfungsgesellschaft prüft neun gemeinnützige Organisationen, die Bundeszuschüsse ausgeben. Vor der Prüfung vor Ort fragt der Partner, ob die erfassten Bundeszuwendungen jedes Mandanten mit dem übereinstimmen, was laut den Aufzeichnungen der Regierung an ihn gezahlt wurde. Die Aufstellungen und Zuwendungsunterlagen der Mandanten liegen in der eigenen Datenbank der Gesellschaft; die Single-Audit-Meldungen und Mittelbindungen des Bundes sind öffentlich. Die Mandanten und ihre Zahlen sind erfunden; die Programme, Countys und öffentlichen Daten sind echt."
+      },
+      "auditAnswer": {
+        "title": "Die offenen Punkte aller Mandanten",
+        "description": "Die Sicht readiness beantwortet dieselbe Frage für alle Mandanten zugleich und wird gespeichert vorgehalten. Sie stellt jede Zeile der Aufstellung neben ihre Zuwendungsunterlagen und die öffentlichen Daten des Programms und listet die Punkte auf, die jedes Bereitschaftsmemo braucht."
+      },
+      "auditExample": {
+        "title": "Offene Punkte in GraphQL",
+        "description": "Die Punkte des Bereitschaftsmemos als GraphQL-Abfrage, für die eigenen Prüfungswerkzeuge der Gesellschaft."
+      },
+      "auditRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Die eigenen Mandantenunterlagen der Gesellschaft und die öffentlichen Meldungen und Mittelbindungen der Regierung, verknüpft in einem gesteuerten Modell. Eine gespeicherte Sicht beantwortet die Frage des Partners für jeden Mandanten. Jedes Team liest nur seine eigenen Mandanten, und jede Abfrage wird protokolliert."
+      },
+      "auditGovdata": {
+        "title": "Die öffentlichen Daten",
+        "description": "Die Regierungsdaten stammen von AskAmerica: jede Zuwendungszeile der Single Audits 2023, die beim Federal Audit Clearinghouse in Vermont, New Hampshire und Maine eingereicht wurden, jeweils neben dem, was USAspending demselben Empfänger unter demselben Programm gebunden hat, sowie die Mittelbindungen von USAspending nach County und Programm."
+      },
+      "auditSchedule": {
+        "title": "Die Aufstellung des Mandanten",
+        "description": "Der Entwurf der Aufstellung der Ausgaben aus Bundeszuwendungen (Schedule of Expenditures of Federal Awards) jedes Mandanten für 2023: eine Zeile je Zuwendung, mit ihrem Assistance Listing, ob sie direkt von einer Bundesbehörde oder über eine Landesbehörde kam, und dem, was der Mandant nach eigener Angabe ausgegeben hat."
+      },
+      "auditNotices": {
+        "title": "Die Zuwendungsunterlagen",
+        "description": "Die Zuwendungsunterlagen des Bundes, die jeder Mandant für seine direkten Zuwendungen hat: eine Zeile je Mittelbindung, mit dem Bundeshaushaltsjahr, in dem sie erfolgte, und dem Betrag. Eine mehrjährige Zuwendung kann vor dem Jahr gebunden worden sein, in dem sie ausgegeben wurde."
+      },
+      "auditFiled": {
+        "title": "Derselbe Abgleich, auf öffentlichen Meldungen",
+        "description": "Jede Zuwendungszeile, die die Geprüften der drei Bundesstaaten für 2023 gemeldet haben, neben dem, was USAspending ihnen im selben Jahr unter demselben Programm als gebunden verzeichnet hat. Eine nicht abgeglichene Zeile ist für sich noch keine Lücke. Eine weitergeleitete Zeile kam über eine Landesbehörde zum Geprüften, also nennt ihn keine Bundeszuwendung, und es wird keine Übereinstimmung erwartet; und eine in einem früheren Jahr gebundene Zuwendung zeigt im Prüfungsjahr keine Mittelbindung. Die nicht abgeglichenen Zeilen bleiben sichtbar, nicht verborgen."
+      },
+      "auditCounty": {
+        "title": "Bundesmittel nach County",
+        "description": "Was USAspending im Bundeshaushaltsjahr 2023 im County jedes Mandanten nach Programm als gebunden verzeichnet hat, gezählt dort, wo die Arbeit geleistet wird. Es zeigt, ob ein Programm, das der Mandant aufführt, in seinem County überhaupt auszahlt."
+      },
+      "auditRecordedAs": {
+        "title": "Aufstellung zu Zuwendungsunterlagen",
+        "description": "Diese Beziehung verknüpft jede Zeile der Aufstellung über die Zuwendungsreferenz der Gesellschaft mit ihren Zuwendungsunterlagen. Eine Zeile ohne Unterlage dahinter und eine Unterlage ohne Zeile sind das, wonach der Prüfer sucht."
+      },
+      "auditCountyJoin": {
+        "title": "Mandanten zu ihren Countys",
+        "description": "Der County-Code jedes Mandanten verknüpft ihn mit den County-Mittelbindungen von USAspending, und seine Assistance Listings verknüpfen seine Aufstellung mit den öffentlichen Meldungen desselben Programms in seinem Bundesstaat."
+      },
+      "auditTerms": {
+        "title": "In den Worten eines Prüfers",
+        "description": "Die Ontologie erklärt die Begriffe eines Single Audit: die Aufstellung, das Assistance Listing, die weiterleitende Stelle, die Mittelbindung, eine zeitliche Differenz, eine fehlende Zuwendung und das Bereitschaftsmemo."
+      },
+      "auditRequest": {
+        "title": "Der Auftrag des Partners",
+        "description": "Der Partner bittet den Analysten, Brindlewood Community Health für die Prüfung vor Ort vorzubereiten. Dies ist der Entwurf seiner Aufstellung: fünf Bundesprogramme, drei davon direkte Zuwendungen. Als Nächstes arbeitet der Analyst den Auftrag mit Polly durch."
+      },
+      "auditPollySchedule": {
+        "title": "Welche Zuwendungen er erfasst",
+        "description": "Der Analyst beginnt mit dem, was der Mandant erfasst. Polly listet die Zuwendungen seiner Aufstellung 2023 auf und zeigt das SQL, das sie ausgeführt hat. Ihre Antwort wurde beim Erstellen der Demo erzeugt und mit ihr gespeichert."
+      },
+      "auditPollyRecords": {
+        "title": "Was die Unterlagen als gezahlt zeigen",
+        "description": "Als Nächstes die Seite der Regierung: was die Zuwendungsunterlagen des Mandanten im Bundeshaushaltsjahr 2023 als an ihn gebunden zeigen. Eine der Mittelbindungen gilt einem Programm, das die Aufstellung nicht aufführt."
+      },
+      "auditPollyDiffer": {
+        "title": "Wo sie abweichen",
+        "description": "Polly stellt die Aufstellung neben die Zuwendungsunterlagen und listet jede Zuwendung auf, bei der beide nicht übereinstimmen, mit der Abfrage hinter ihrer Antwort."
+      },
+      "auditPollyKinds": {
+        "title": "Zeitlich oder fehlend",
+        "description": "Eine zeitliche Differenz ist eine Zuwendung, die in einem früheren Jahr gebunden und in diesem Jahr ausgegeben wurde; sie braucht nur eine Erklärung. Eine fehlende Zuwendung ist eine direkte Zeile ohne Bundesunterlage dahinter; sie braucht eine Korrektur. Polly ordnet die Abweichungen den beiden Arten zu."
+      },
+      "auditPollyMemo": {
+        "title": "Das Bereitschaftsmemo",
+        "description": "Zuletzt das Memo: jeder Punkt, den der Mandant vor Beginn der Prüfung vor Ort erklären oder korrigieren muss, von den zeitlichen Differenzen bis zu der Zuwendung, die seine Aufstellung auslässt."
+      },
+      "auditPublic": {
+        "title": "Das Muster in öffentlichen Meldungen",
+        "description": "Derselbe Abgleich, ausgeführt auf den öffentlichen Meldungen der drei Bundesstaaten. Dies sind die Programme, deren direkte Zuwendungszeilen am häufigsten keine USAspending-Mittelbindung im Prüfungsjahr haben. Sie werden gezeigt, wie sie sind, und sie zeigen, warum eine nicht abgeglichene Zeile eine Frage für den Prüfer ist und kein Fehler."
+      },
+      "auditAsTeam": {
+        "title": "Als Team Maine",
+        "description": "Als Prüfungsteam Maine ausgeführt, liefert dieselbe Sicht nur die drei Mandanten des Teams Maine. Zeilenregeln auf jeder Tabelle und auf der Sicht beschränken jedes Team auf seine eigenen Mandate. Der Partner sieht alle."
+      },
+      "auditLineage": {
+        "title": "Woher jede Zahl stammt",
+        "description": "Die Lineage verfolgt jede Spalte der Antwort durch die Sicht zurück bis zu den Tabellen der Gesellschaft und den öffentlichen Daten, sodass ein Reviewer sieht, woher jede Zahl im Memo stammt."
+      },
+      "auditRest": {
+        "title": "Dieselbe Antwort über REST",
+        "description": "Die Sicht ist auch ein REST-Endpunkt, nach Befund gruppiert und auf dem Server summiert, sodass eine Arbeitspapier-Tabelle sie über HTTP lesen kann."
+      },
       "banksecrecyScenario": {
         "title": "Eine Bank liest ein US-Gesetz",
         "description": "Eine Regionalbank muss nach dem Bank Secrecy Act Bargeld über 10.000 $ melden. Diese Demo liest die Vorschrift selbst von ihrer öffentlichen Adresse, findet ihre Begriffe, verankert sie in den Daten der Bank und fragt dann nach Konzept: Welches Bargeld braucht einen Currency Transaction Report, und wer stückelt? Sie beginnt mit dem Kernsystem der Bank, live dort gelesen, wo es liegt."
@@ -1787,7 +1895,7 @@
       },
       "banksecrecyLibrary": {
         "title": "In der Referenzbibliothek behalten",
-        "description": "Jedes gescannte Dokument kam als vorgeschlagen in die Referenzbibliothek. Behalten Sie es, bleibt die Vorschrift als verwaltete Referenz beim Modell: Polly und die Agenten der Organisation zitieren ihre Passagen in ihren Antworten."
+        "description": "Der Build der Demo hat jedes gescannte Dokument in der Referenzbibliothek behalten, also bleibt die Vorschrift als verwaltete Referenz beim Modell: Polly und die Agenten der Organisation zitieren ihre Passagen in ihren Antworten."
       },
       "banksecrecyGrounded": {
         "title": "Die Begriffe des Gesetzes, verankert",
@@ -1808,6 +1916,10 @@
       "banksecrecyStructuring": {
         "title": "Wer stückelt?",
         "description": "Einzahlungen knapp unter 10.000 $, dreimal oder öfter, über Filialen und Tage. Keine davon brauchte allein eine Meldung. Victor Hale ging in einer Woche zu drei Filialen, und Marcus Reeds zwei Einzahlungen an einem Tag brauchten zusammen eine Meldung. Nur Compliance sieht diese Ansicht."
+      },
+      "banksecrecyPollyWalk": {
+        "title": "Was muss die Bank tun?",
+        "description": "Ein Kunde zahlt immer wieder Bargeld knapp unter 10.000 $ ein. Was muss die Bank tun? Eine Suche in den Passagen des Gesetzes nach diesen Worten verfehlt die Antwort. Polly geht stattdessen das Glossar entlang: Einzahlungen unter dem Schwellenwert, zu Structuring, zu Suspicious Activity Report, und erreicht 31 CFR 1010.314 und 31 CFR 1020.320, die Passagen, die es sagen."
       },
       "banksecrecyExample": {
         "title": "Dieselbe Antwort in GraphQL",
@@ -1890,7 +2002,7 @@
         "summary": "Erklärt das Wetter die Schäden im Portfolio eines Ernteversicherers? Seine eigenen Betriebe, Policen und Schadensfälle, nach County und Erntejahr mit den Schäden des USDA nach Ursache, NOAAs Wetter und NASS' Erträgen verknüpft, beantworten es in SQL, GraphQL und REST."
       },
       "retail": {
-        "title": "Ein Konzern, zwei Regionen",
+        "title": "Eine Geschichte aus zwei Regionen",
         "summary": "Ein Einzelhandelskonzern mit einer EU- und einer US-Tochtergesellschaft, als ein Unternehmen unter der GDPR geführt: EU-Daten bleiben in der EU, das Konzernreporting liest sie pseudonymisiert, und Auskunft, Löschung, Insider-Prüfung und Audit sind jeweils eine Abfrage."
       },
       "provisioning": {
@@ -1944,6 +2056,10 @@
       "agentdata": {
         "title": "Geben Sie einem Agenten Ihre Daten",
         "summary": "Kann ein KI-Agent die Bestelldaten eines Händlers bekommen und auf das beschränkt werden, was sein Benutzer sehen darf? Der MCP-Explorer zeigt den Agenten als Support-Mitarbeiter und als Analyst: andere Zeilen und Spalten, maskierte E-Mails und das geregelte SQL hinter jeder Antwort."
+      },
+      "audit": {
+        "title": "Single-Audit-Bereitschaft",
+        "summary": "Stimmen die erfassten Bundeszuwendungen eines gemeinnützigen Mandanten mit dem überein, was laut den Aufzeichnungen der Regierung an ihn gezahlt wurde? Die Mandantenaufstellungen einer Prüfungsgesellschaft, verknüpft mit Single-Audit-Meldungen und USAspending-Mittelbindungen, beantworten die Frage."
       },
       "banksecrecy": {
         "title": "Bargeldmeldungen aus dem Bank Secrecy Act",

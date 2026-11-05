@@ -1371,6 +1371,43 @@ profiler_classifications = Table(
     PrimaryKeyConstraint("table_id", "physical_column", "kind"),
 )
 
+# REQ-2147 (CONTAINED VALUES ARE HINTS): a scan of a table's text columns for sensitive kinds held
+# inside their values, asked for by a person and run in the background -- running, then succeeded
+# or failed with why.
+profiler_sensitive_scans = Table(
+    "profiler_sensitive_scans",
+    metadata,
+    Column("scan_id", Text, primary_key=True),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("status", Text, nullable=False),  # running | succeeded | failed
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("finished_at", DateTime(timezone=True)),
+    Column("sampled_rows", Integer),  # the rows the scan read
+    Column("scanned_columns", Integer),  # the text columns it scanned
+    Column("requested_by", Text),
+    Column("error", Text),
+)
+
+# REQ-2147 (CONTAINED VALUES ARE HINTS): a column's latest hint per kind -- the share of its sampled
+# values a kind was found inside. Only the counts: the matched text is never stored.
+profiler_sensitive_hints = Table(
+    "profiler_sensitive_hints",
+    metadata,
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("physical_column", Text, nullable=False),  # the column's registered name
+    Column("kind", Text, nullable=False),  # a kind of provisa/profiler/classification_kinds.yaml
+    Column("scan_id", Text, nullable=False),
+    Column("values_tested", Integer, nullable=False),
+    Column("values_matched", Integer, nullable=False),
+    Column("share", Float, nullable=False),
+    Column("evidence", Text, nullable=False),  # the hint in words
+    PrimaryKeyConstraint("table_id", "physical_column", "kind"),
+)
+
 # REQ-2189: a saved, named arrangement of the ERD -- the bar's options, and per domain and table
 # what is selected, collapsed and where it stands. Only the arrangement: columns and relationships
 # are read from the live model, and a table or domain goes from every layout when it goes.
@@ -2095,6 +2132,26 @@ reference_passages = Table(
     Column("vector", Vector(), nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("document_id", "ordinal"),
+)
+
+# REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding -- its name and definition,
+# embedded by the org's vector model -- that governed retrieval finds the terms nearest a question
+# by. ``digest`` is of the model and the text embedded, so a term whose name or definition changed,
+# or a change of model, is embedded again (provisa.reference_library.terms). ``vector`` is held as
+# a passage's is, under one partial HNSW index per dimension in use.
+glossary_term_vectors = Table(
+    "glossary_term_vectors",
+    metadata,
+    Column(
+        "term_id",
+        Integer,
+        ForeignKey("glossary_terms.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("embedding_model", Text, nullable=False),
+    Column("digest", Text, nullable=False),
+    Column("vector", Vector(), nullable=False),
+    Column("tenant_id", Uuid),
 )
 
 # REQ-2179: the glossary's scans of reference library documents for terms. A scan keeps the

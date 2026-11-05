@@ -512,22 +512,7 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
                     "opened from its demo",
                     person,
                 )
-        # REQ-2053: the template's environments (a test environment of fakes, say), each created from
-        # the sandbox's prod after its person's roles are granted, so each carries them.
-        from provisa.api.demo_templates import create_environments, template_environments
-
-        wanted = await template_environments(demo.template_org)
-        for env in wanted:
-            async with _stage(org_id, demo.name, f"its environment {env['name']}"):
-                await create_environments(org_id, [env], person)
-        # REQ-1942: a Test (synthetic) one is given the template's generated rows; nothing is generated
-        # at a visitor's request.
-        from provisa.api import demo_synthetic
-
-        async with _stage(org_id, demo.name, "its environments' rows"):
-            await demo_synthetic.copy_to_sandbox(
-                demo.template_org, org_id, demo_synthetic.synthetic_envs(wanted)
-            )
+        await _environments(demo, org_id, person)
         await _refresh_root_registry_view()
         async with _admin_pool().acquire() as conn:
             await conn.execute_core(
@@ -545,6 +530,34 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
         env_name=PROD,  # REQ-1503: a sandbox is served from its one environment
     )
     return secret
+
+
+async def _environments(demo: PublishedDemo, org_id: str, person: str) -> None:
+    """Sandbox ``org_id``'s environments: its template's, each created from its prod, given its
+    rows, and its runtime built."""
+    from provisa.api import demo_synthetic
+    from provisa.api.app import ensure_org_runtime
+    from provisa.api.demo_templates import create_environments, template_environments
+
+    # REQ-2053: the template's environments (a test environment of fakes, say), each created from
+    # the sandbox's prod after its person's roles are granted, so each carries them.
+    wanted = await template_environments(demo.template_org)
+    for env in wanted:
+        async with _stage(org_id, demo.name, f"its environment {env['name']}"):
+            await create_environments(org_id, [env], person)
+    # REQ-1942: a Test (synthetic) one is given the template's generated rows; nothing is generated
+    # at a visitor's request. REQ-2006: its rows, records and bindings are copied from the
+    # template's prepared environment, through its schema.
+    async with _stage(org_id, demo.name, "its environments' rows"):
+        await demo_synthetic.copy_to_sandbox(
+            demo.template_org, org_id, demo_synthetic.synthetic_envs(wanted)
+        )
+    # REQ-2006 (amended 2026-11-04): then each one's runtime, built once and cloned, as its prod's
+    # is: its model was copied from prod a moment ago. Left to the first request, a tour step
+    # waited 15-20 s on an ordinary build that seeded the whole model again.
+    for env in wanted:
+        async with _stage(org_id, demo.name, f"its environment {env['name']}'s runtime"):
+            await ensure_org_runtime(org_id, env["name"], model_cloned=True)
 
 
 async def carry_landed_data(template_org: str, org_id: str, seed: Any, demo: str) -> None:

@@ -19,10 +19,18 @@
 * ``GET    /admin/classification-kinds`` -- every kind, each with its test, threshold, whether it is
   sensitive and whether the org has it enabled.
 * ``PUT    /admin/classification-kinds`` -- the kinds the org has enabled.
+* ``POST   /admin/tables/{table_id}/sensitive-scans`` -- scan the table's text columns for
+  sensitive kinds held inside their values, in the background (KINDS ARE PATTERN RULES; CONTAINED
+  VALUES ARE HINTS). Answers at once with the scan, running.
+* ``GET    /admin/tables/{table_id}/sensitive-scans/latest`` -- the latest scan and the hints it
+  left: per column, the share of sampled values each kind was found inside, never the text.
 
 A decision is the steward's: it needs ``sensitive_data`` in the table's own domain (data_steward,
 in its domains; org_admin, in every one). The kinds are listed for a holder of ``sensitive_data``
-or ``org_settings``, and enabled or disabled by a holder of ``org_settings`` alone.
+or ``org_settings``, and enabled or disabled by a holder of ``org_settings`` alone. A scan is run
+and read by those who may register tables in the table's own domain -- it is asked for while
+registering a table, a draft as well as one in service -- and shows hints only on the columns the
+caller is served.
 """
 
 # Requirements: REQ-2147
@@ -40,6 +48,7 @@ from provisa.api.admin.capabilities import (
     require_capability_request,
 )
 from provisa.api.admin.profiler_router import _db, _jsonable, _member
+from provisa.api.admin.table_read import table_for_steward
 from provisa.api.errors import ApiError
 
 router = APIRouter(prefix="/admin", tags=["admin", "profiler"])
@@ -290,3 +299,66 @@ async def set_enabled_kinds(request: Request, body: EnabledKinds) -> dict:
         _db(), {classifications.SETTING_KEY: setting}, updated_by=_caller(request) or "unknown"
     )
     return await list_kinds(request)
+
+
+# -- contained values: hints -----------------------------------------------------------------------
+
+
+def _scan_doc(scan: dict) -> dict:
+    return {
+        "scanId": scan["scan_id"],
+        "status": scan["status"],
+        "startedAt": scan["started_at"].isoformat(),
+        "finishedAt": None if scan["finished_at"] is None else scan["finished_at"].isoformat(),
+        "sampledRows": scan["sampled_rows"],
+        "scannedColumns": scan["scanned_columns"],
+        "error": scan["error"],
+    }
+
+
+@router.post("/tables/{table_id}/sensitive-scans")
+async def start_sensitive_scan(request: Request, table_id: int) -> dict:
+    from provisa.api.app import state
+    from provisa.core.connection_loop import spawn_background
+    from provisa.profiler import hints
+
+    table_for_steward(request, state, table_id)
+    async with _db().acquire() as conn:
+        scan_id = await hints.start(conn, table_id, _caller(request))
+        scan = await hints.latest_scan(conn, table_id)
+    assert scan is not None and scan["scan_id"] == scan_id, "the scan was just recorded"
+    # A scan outlives its request: it runs on a background worker (provisa.core.connection_loop).
+    spawn_background(hints.run(state, table_id, scan_id), name="sensitive-value-scan")
+    return _scan_doc(scan)
+
+
+@router.get("/tables/{table_id}/sensitive-scans/latest")
+async def latest_sensitive_scan(request: Request, table_id: int) -> dict:
+    from provisa.api.admin.read_rights import served_columns_request
+    from provisa.api.app import state
+    from provisa.profiler import hints
+    from provisa.profiler.classify import kind_of
+
+    table_for_steward(request, state, table_id)
+    async with _db().acquire() as conn:
+        scan = await hints.latest_scan(conn, table_id)
+        found = await hints.hints_of(conn, table_id)
+        served = await served_columns_request(conn, request, table_id)
+    return {
+        "scan": None if scan is None else _scan_doc(scan),
+        # REQ-2152: only the hints on columns the caller is served.
+        "hints": [
+            {
+                "column": h["physical_column"],
+                "kind": h["kind"],
+                "label": kind_of(h["kind"]).label,
+                "sensitive": kind_of(h["kind"]).sensitive,
+                "valuesTested": h["values_tested"],
+                "valuesMatched": h["values_matched"],
+                "share": h["share"],
+                "evidence": h["evidence"],
+            }
+            for h in found
+            if served is None or h["physical_column"] in served
+        ],
+    }

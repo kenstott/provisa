@@ -301,8 +301,8 @@ async def test_a_row_level_table_kept_in_another_region_is_never_fetched_into_th
     process_region.bind_launch(
         {
             "regions": [
-                {"id": "eu", "address": "https://eu.example.com"},
-                {"id": "us", "address": "https://us.example.com"},
+                {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+                {"id": "us", "description": "The us region", "purposes": ["residency"]},
             ]
         },
         requested="us",
@@ -329,8 +329,8 @@ async def test_a_row_level_table_kept_in_another_region_is_never_fetched_into_th
 
 _TWO_REGIONS = {
     "regions": [
-        {"id": "eu", "address": "https://eu.example.com"},
-        {"id": "us", "address": "https://us.example.com"},
+        {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+        {"id": "us", "description": "The us region", "purposes": ["residency"]},
     ]
 }
 

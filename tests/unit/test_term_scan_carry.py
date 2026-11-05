@@ -12,7 +12,7 @@
 library documents they read, loaded into its template with each matched glossary term found by
 its name, checked held, and copied into every sandbox cloned from the template."""
 
-# Requirements: REQ-2201
+# Requirements: REQ-2201, REQ-2185
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from provisa.core.schema_org import domains
 from provisa.core.schema_org import glossary_term_drafts as drafts_t
 from provisa.core.schema_org import glossary_term_scans as scans_t
 from provisa.core.schema_org import reference_documents as documents_t
-from provisa.reference_library import store
+from provisa.reference_library import library, store
 from provisa.term_finding import carry, queue, scan
 
 SCHEMA = "org_default"
@@ -131,6 +131,8 @@ async def test_the_build_s_scan_is_written_out_and_loaded_under_the_template_s_o
     assert carry.export_scans(control_plane.url, SCHEMA, out) == 1
     carried = json.loads(out.read_text())
     assert [d["source"] for d in carried["documents"]] == [RULE]
+    # a setup scan step without keep: true leaves its document proposed, and it travels so
+    assert [d["status"] for d in carried["documents"]] == [store.PROPOSED]
     # each passage's embedding travels as a list of floats
     assert [p["vector"] for p in carried["documents"][0]["passages"]] == [
         pytest.approx(list(p.vector), rel=1e-14) for p in PASSAGES
@@ -209,21 +211,30 @@ async def test_a_template_missing_a_carried_scan_is_not_held(control_plane, db, 
         ]
 
 
-async def test_a_sandbox_is_cloned_with_its_template_s_library_and_scans(control_plane, db):
-    await _scanned(db)
+#: The sandbox's tables a copy of the template's scans reads or writes: the scan tables, and the
+#: glossary term embeddings whose vector indexes it fits to the rows held (store.index_vectors).
+_SANDBOX_TABLES = (*env_copy._SCAN_TABLES, store.TERM_VECTORS)
+
+
+def _lay_out_sandbox(control_plane) -> None:
+    """A sandbox's schema as schema.sql lays it out, for the tables the copy touches: no vector
+    index until it holds rows (LIKE copied the template's under a name of its own)."""
     with control_plane.engine().begin() as c:
         c.exec_driver_sql('CREATE SCHEMA "org_sandbox"')
-        for table in env_copy._SCAN_TABLES:
+        for table in _SANDBOX_TABLES:
             c.exec_driver_sql(
                 f'CREATE TABLE "org_sandbox"."{table}" (LIKE "{SCHEMA}"."{table}" INCLUDING ALL)'
             )
-        # as schema.sql lays a sandbox out: no vector index until it holds passages (LIKE copied
-        # the template's under a name of its own)
         for (name,) in c.exec_driver_sql(
             "SELECT indexname FROM pg_indexes WHERE schemaname = 'org_sandbox' "
-            "AND tablename = 'reference_passages' AND indexdef LIKE '%%USING hnsw%%'"
+            "AND indexdef LIKE '%%USING hnsw%%'"
         ).fetchall():
             c.exec_driver_sql(f'DROP INDEX "org_sandbox"."{name}"')
+
+
+async def test_a_sandbox_is_cloned_with_its_template_s_library_and_scans(control_plane, db):
+    await _scanned(db)
+    _lay_out_sandbox(control_plane)
     async with db.acquire() as conn:
         copied = await env_copy.copy_term_scans(conn, SCHEMA, "org_sandbox")
         assert copied == list(env_copy._SCAN_TABLES)
@@ -247,6 +258,49 @@ async def test_a_sandbox_is_cloned_with_its_template_s_library_and_scans(control
         (document,) = await store.documents(conn)
         hits = await store.nearest_passages(conn, [1.0, 0.1], [document.id], 1)
     assert [h.text for h in hits] == [PASSAGES[0].text]
+
+
+async def test_an_assistant_in_a_sandbox_finds_the_passages_of_the_regulation_its_demo_scanned(
+    control_plane, db, tmp_path
+):
+    """REQ-2185's acceptance in the bank secrecy demo: the regulation the bundle's build scanned
+    is what Polly cites in a sandbox. Through retrieve(), as search_reference_library calls it,
+    not store.nearest_passages: the library's own filter (kept documents a role reads) applies."""
+    from provisa.reference_library.library import Embedder
+    from provisa.reference_library.retrieve import retrieve
+
+    await _scanned(db)
+    # the build's keep: setup.yaml's keep: true, through the keep a steward's PATCH runs
+    async with db.acquire() as conn, conn.transaction():
+        (scanned,) = await store.documents(conn)
+        await library.keep(conn, scanned.id)
+    out = carry.scans_path(tmp_path)
+    carry.export_scans(control_plane.url, SCHEMA, out)
+    assert [d["status"] for d in json.loads(out.read_text())["documents"]] == [store.KEPT]
+    await _forget(db)
+    async with db.acquire() as conn, conn.transaction():
+        await carry.load_scans(conn, out)
+    _lay_out_sandbox(control_plane)
+    async with db.acquire() as conn:
+        await env_copy.copy_term_scans(conn, SCHEMA, "org_sandbox")
+    sandbox = Database(
+        control_plane.engine(f"{control_plane.url}?options=-csearch_path%3Dorg_sandbox"),
+        name="org-model",
+        search_path="org_sandbox",
+    )
+
+    async def embed(texts: list[str]) -> list[list[float]]:
+        return [[1.0, 0.1] for _ in texts]
+
+    embedder = Embedder(model="sentence-transformers/all-MiniLM-L6-v2", embed=embed)
+    async with sandbox.acquire() as conn:
+        found = await retrieve(
+            conn, "Which cash needs a currency transaction report?", {"bank"}, embedder, k=2
+        )
+    assert [(c.source, c.section, c.quote) for c in found] == [
+        (RULE, "1010.311", PASSAGES[0].text),
+        (RULE, "1010.311", PASSAGES[1].text),
+    ]
 
 
 async def _vector_indexes(conn, schema: str) -> set[str]:

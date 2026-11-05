@@ -60,6 +60,10 @@
     "helpWhat": "Een kleine, gekozen set referentiedocumenten (beleid, regelgeving, contracten, processen), toegevoegd via bestand of URL. Geen documentopslag.",
     "helpWho": "Polly antwoordt eruit en citeert de passages. AI-agents die via de MCP-server van Provisa zijn verbonden, doorzoeken haar (search_reference_library). 'Termen vinden' leest haar om glossariumtermen en definities voor te stellen.",
     "helpSees": "Een assistent die voor een rol handelt, gebruikt alleen behouden documenten in domeinen die de rol leest, plus documenten voor de hele organisatie.",
-    "helpEmbedding": "De passages van een document worden bij het toevoegen ingesloten met het embeddingmodel van de organisatie; 'Opnieuw insluiten' is alleen nodig als dat model verandert."
+    "helpEmbedding": "De passages van een document worden bij het toevoegen ingesloten met het embeddingmodel van de organisatie; 'Opnieuw insluiten' is alleen nodig als dat model verandert.",
+    "retrieval": "Ophalen",
+    "retrievalPassage": "Passage",
+    "retrievalGraph": "Graaf",
+    "retrievalHelp": "Hoe de vraag van een assistent uit de bibliotheek wordt beantwoord. Passage: de passages die het dichtst bij de vraag liggen, en de passages eromheen. Graaf: volgt ook de woordenlijst vanaf de termen die de vraag noemt, via hun relaties, naar de passages die de bereikte termen citeren, zodat een antwoord kan steunen op een regel waarvan de formulering niet op de vraag lijkt."
   }
 }

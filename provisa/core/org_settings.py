@@ -58,6 +58,7 @@ ORG_OVERRIDABLE_KEYS: frozenset[str] = frozenset(
         "redaction",  # REQ-2087: the org's own redaction rules
         "classification",  # REQ-2147: the profiler's classification kinds the org disabled
         "federation",  # REQ-259: the org's subgraph and the role it serves as
+        "reference_library",  # REQ-2185: the library's retrieval setting, passage or graph
     }
 )
 

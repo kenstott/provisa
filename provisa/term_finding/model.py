@@ -21,6 +21,10 @@ the rows it would send (:meth:`Held.require_room`, REQ-2202). Every other failur
 the scan naming the model. An answer cut off at its output limit is counted like any other and raised as
 :class:`~provisa.term_finding.scan.AnswerCutOff`, for the scan to decide what to do about it.
 
+Each call asks for the one JSON object its step answers with, by its schema
+(:class:`~provisa.term_finding.scan.Answer`), on every wire that can be held to one
+(provisa.llm.client).
+
 What the scan sends is redacted as everything Provisa sends out is (provisa.security.redaction).
 """
 
@@ -33,7 +37,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 from provisa.llm.client import LLMEmptyResponseError, LLMTimeoutError
-from provisa.term_finding.scan import AnswerCutOff, ScanFailed
+from provisa.term_finding.scan import Answer, AnswerCutOff, ScanFailed
 
 #: The ``ai_models`` entry that names the scan's model.
 OPERATION = "glossary_term_finding"
@@ -41,7 +45,7 @@ SYSTEM = "You are a data catalog assistant helping a data steward build a busine
 #: Where the scan's model and its vendor's key are set, as the admin navigation names it.
 WHERE_TO_SET = "Admin, AI Models"
 
-Call = Callable[[str, int], Awaitable[str]]
+Call = Callable[[str, int, Answer], Awaitable[str]]
 #: About how many characters of text one token holds: what a scan's prompts are reckoned at
 #: before it starts (:meth:`Held.require_room`), no model having counted them yet.
 CHARS_PER_TOKEN = 4
@@ -95,7 +99,7 @@ class Held:
         self.name = f"{client.vendor}:{client.model}"
         self.limited_to: int | None = None
 
-    async def __call__(self, prompt: str, max_tokens: int) -> str:
+    async def __call__(self, prompt: str, max_tokens: int, answer: Answer) -> str:
         from provisa.security.llm_budget import BudgetRefused
         from provisa.security.redaction import redact
 
@@ -121,6 +125,11 @@ class Held:
                 # 4096, then 8192, tokens and returned no text. A wire with no documented
                 # switch is sent none and keeps its vendor's default (provisa.llm.client).
                 reasoning_off=True,
+                # One JSON value, the answer's object: asked of the vendor in its own words where
+                # its wire has them (provisa.llm.client). A model asked in prose alone answered a
+                # joining with a list and then more (Extra data: line 3 column 1), twice.
+                json_schema=answer.schema,
+                json_name=answer.name,
             )
         except LLMEmptyResponseError as exc:
             if not exc.answer.cut_off:

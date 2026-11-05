@@ -36,6 +36,8 @@
     "itemEmail": "电子邮件",
     "itemMaintenance": "维护",
     "itemDeploymentSettings": "部署设置",
+    "itemPlatform": "平台",
+    "itemRegions": "区域",
     "itemBilling": "账单",
     "itemExplore": "MCP",
     "itemEncryption": "加密",

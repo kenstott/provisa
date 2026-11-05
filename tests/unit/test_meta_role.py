@@ -95,6 +95,7 @@ def _role(rid: str, *, caps=(), domains=("sales",), max_rows=None, session_vars=
         "description": f"What {rid} is for.",
         "capabilities": list(caps),
         "domain_access": list(domains),
+        "own_domain_access": list(domains),  # REQ-2153: a built role carries it
         "max_rows": max_rows,
         "rate_limit": None,
         "session_vars": session_vars or {},

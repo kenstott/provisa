@@ -999,14 +999,6 @@ services:
       ORG_ID: "sbxrtier"
       PROVISA_CONFIG: "/app/config/provisa-sandbox-regions.yaml"
       PROVISA_REGION: "us"
-      # The platform names an address per region. No node of a headless region (eu, ledger) runs,
-      # and nothing asks one: a visitor region's node reads its store in place. Its address is one
-      # nothing listens at, so a call to it fails as unreachable, by name, rather than reaching
-      # another node.
-      PROVISA_DEMO_EU_ADDRESS: "https://provisa-sandbox-regions-eu.invalid:8100"
-      PROVISA_DEMO_US_ADDRESS: "https://provisa-sandbox-regions:8100"
-      PROVISA_DEMO_LEDGER_ADDRESS: "https://provisa-sandbox-regions-ledger.invalid:8100"
-      PROVISA_DEMO_WAREHOUSE_ADDRESS: "https://provisa-sandbox-regions-warehouse:8100"
       # Unpublished, on this compose network only, as minio's credentials above.
       PROVISA_DEMO_EU_PG_URL: "postgresql+psycopg://provisa:\${PROVISA_PG_PASSWORD:?the deployment database password}@region-pg-eu:5432/provisa"
       PROVISA_DEMO_US_PG_URL: "postgresql+psycopg://provisa:\${PROVISA_PG_PASSWORD:?the deployment database password}@region-pg-us:5432/provisa"

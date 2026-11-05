@@ -52,6 +52,7 @@ def _role(rid: str) -> dict:
         "id": rid,
         "capabilities": ["write"],
         "domain_access": ["sales"],
+        "own_domain_access": ["sales"],  # REQ-2153: a built role carries it
         "max_rows": None,
         "rate_limit": None,
         "session_vars": {},
