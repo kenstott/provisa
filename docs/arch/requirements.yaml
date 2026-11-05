@@ -92370,7 +92370,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     dialect=tsql. It overrides the connection''s dialect for that statement only. This serves SQL typed
     into a BI tool''s native-query box and other hand-written SQL passed through a driver unchanged; SQL
     a BI tool generates from its own model follows the driver it uses, so it needs no hint. An unknown dialect
-    in the hint is refused, naming it.'
+    in the hint is refused, naming it. (Amended 2026-11-05, BOTH, FOR MIGRATION:) Both are kept: the connection
+    names the default dialect and the statement hint overrides it, including -- @provisa dialect=postgres
+    to mark a statement already rewritten. That is the migration path: an application connects with its
+    old dialect as the default, so every statement keeps working; each statement rewritten to PostgreSQL
+    carries the postgres hint; when none is left in the old dialect, the connection default changes to postgres
+    and the hints are dropped. Every statement runs at every step.'
   scenario: 'Given a pgwire connection that names dialect tsql
 
 
