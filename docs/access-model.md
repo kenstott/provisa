@@ -151,6 +151,44 @@ Both views are capped by your own read rights. They list only tables and columns
 
 A role can also carry limits. A rate limit caps how many requests per second the role may send. A row limit caps the rows any result returns, applied as a LIMIT on the statement. Session variables are named values that a statement reads with `current_setting('provisa.<name>')` when the request binds none of that name. Each is the role's own value, or else the first ancestor's that sets it, and each applies on every transport.
 
+
+## Three layers of administration
+
+The boundary between the platform and an organization is not a recommendation: the platform admin holds no data capability. It decides which organizations exist and who their org admins are, and otherwise never acts inside an organization's data, members, or model. Below that boundary, the layers are carried by the standard roles' default capabilities — what is enforced is capabilities themselves, not role names. An organization may group them differently. A small org's admin may hold all of them. A larger org may define a dedicated role for source and table registration, or separate out load management. The layers below describe what the standard roles do.
+
+**Platform admin** sets up the physical infrastructure. The work covers the regions the deployment runs in, the nodes in those regions, each organization's stores and engines within its granted regions, and mail providers.
+
+**Org admin** defines how the organization's data is processed on that infrastructure.
+
+*Sources and placement.* The org admin connects sources and sets each source's or table's home region.
+
+*Load management.* Every source is read either live, replicated, or load-protected, and each is a trade-off between freshness and the load placed on the source.
+
+- **Live read** — every query hits the source directly. Data is as fresh as the source; every request adds load.
+- **Replicate** — the engine keeps a copy. Queries read the copy; only refreshes hit the source. Staleness equals the refresh interval, set by `cache_ttl` or a change signal. `replicate: 0` forces a copy always; `replicate: N` above 0 promotes a table once traffic passes N governed statements per interval (Hot-N). See [The `replicate` setting](configuration.md#the-replicate-setting).
+- **Load-protected** — the source is never read live. Queries serve the last snapshot; the scheduler refreshes it only on its gates — `off_peak_window`, a `cache_ttl` cadence, or a change signal. At least one gate is required. Per-table `load_protected` overrides the source default.
+- **Response cache** — `cache_ttl` on a source or table governs the response cache: repeat queries within the TTL are answered without touching any source.
+- **Concurrency cap** — `max_live_concurrency` on a source caps live reads across all instances at once. Replica reads take no permit.
+- **Per-role caps** — `rate_limit` limits requests per second from a role. `max_rows` injects a LIMIT on every result, applied even when the query names none.
+
+See [Freshness and load: who decides](configuration.md#freshness-and-load-who-decides) for the full picture.
+
+*Roles.* The org admin defines each role — its capabilities and parents — and assigns members to roles.
+
+*Outbound syncs.* External catalog connections and metadata exports.
+
+*Registries and AI models.* Package and container registries for the org's code sources; the org's natural-language query vendor and model.
+
+**Data steward** decides how the org admin's data is used, what it means, and who may see it.
+
+- **Use.** Registering tables, naming them, defining relationships, views, and data products.
+- **Meaning.** Terms, ontology, descriptions, tags, and classification.
+- **Access.** Column grants, row rules, masks, fakes for sensitive columns, sensitivity tags, and residency grants on roles.
+
+The steward decides what a role may see. The org admin decides what roles exist and who holds them.
+
+Every admin page belongs to one layer. Its settings are writable only by that layer's capabilities.
+
 ## Comparison with other products
 
 Each entry cites that product's own documentation. An empty cell means the cited documentation does not address that question.
