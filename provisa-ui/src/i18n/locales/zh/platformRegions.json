@@ -1,0 +1,21 @@
+{
+  "platformRegions": {
+    "loading": "正在加载平台区域...",
+    "intro": "平台运行节点的区域。每个区域都有其节点响应的地址；它可以是 ${env:NAME} 这样的引用，并完全按输入保存。每个组织选择使用其中哪些区域。",
+    "restartNote": "对平台区域的更改在节点重启后生效。",
+    "restartPending": "已保存。节点在重启前继续使用之前的区域运行。",
+    "add": "添加区域",
+    "editTitle": "编辑区域 {{id}}",
+    "detailPanel": "平台区域详情",
+    "colRegion": "区域",
+    "colAddress": "节点地址",
+    "none": "平台未声明任何区域。",
+    "edit": "编辑",
+    "remove": "移除",
+    "taken": "已存在名为 {{id}} 的区域。",
+    "idHelp": "一个简短的小写名称，例如 eu 或 us。节点在一个区域中启动。",
+    "addressHelp": "区域节点响应的位置，或 ${env:NAME} 这样的引用。完全按输入保存。",
+    "deleteTitle": "移除区域 {{id}}?",
+    "deleteConsequence": "节点重启后，区域 {{id}} 将从平台移除。使用它的组织将无法再在该区域启动。"
+  }
+}

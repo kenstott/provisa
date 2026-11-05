@@ -1,0 +1,21 @@
+{
+  "platformRegions": {
+    "loading": "Caricamento delle regioni della piattaforma...",
+    "intro": "Le regioni in cui la piattaforma esegue i nodi. Ognuna ha un indirizzo a cui rispondono i suoi nodi; può essere un riferimento come ${env:NAME}, conservato esattamente come inserito. Ogni organizzazione sceglie quali di queste regioni usare.",
+    "restartNote": "Le modifiche alle regioni della piattaforma hanno effetto al riavvio dei nodi.",
+    "restartPending": "Salvato. I nodi continuano con le regioni precedenti fino al riavvio.",
+    "add": "Aggiungi regione",
+    "editTitle": "Modifica regione {{id}}",
+    "detailPanel": "Dettagli della regione della piattaforma",
+    "colRegion": "Regione",
+    "colAddress": "Indirizzo dei nodi",
+    "none": "La piattaforma non dichiara regioni.",
+    "edit": "Modifica",
+    "remove": "Rimuovi",
+    "taken": "Esiste già una regione di nome {{id}}.",
+    "idHelp": "Un nome breve in minuscolo, come eu o us. Un nodo viene avviato in una regione.",
+    "addressHelp": "Dove rispondono i nodi della regione, o un riferimento come ${env:NAME}. Conservato esattamente come inserito.",
+    "deleteTitle": "Rimuovere la regione {{id}}?",
+    "deleteConsequence": "La regione {{id}} viene rimossa dalla piattaforma al riavvio dei nodi. Un'organizzazione che la usa non può più avviarsi lì."
+  }
+}

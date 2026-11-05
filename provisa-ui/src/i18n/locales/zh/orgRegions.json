@@ -1,0 +1,56 @@
+{
+  "orgRegions": {
+    "loading": "正在加载区域...",
+    "intro": "此组织使用的平台区域，以及它在这些区域中保存各类数据的存储。存储是一个连接 URL；它可以包含 ${env:NAME} 这样的引用，并完全按输入保存。",
+    "noPlatformRegions": "平台未声明任何区域。",
+    "regionsHeading": "区域",
+    "storesHeading": "存储",
+    "addRegion": "添加区域",
+    "addStore": "添加存储",
+    "editRegion": "编辑区域 {{id}}",
+    "editStore": "编辑存储 {{id}}",
+    "detailPanel": "区域或存储详情",
+    "colRegion": "区域",
+    "colStore": "存储",
+    "colUrl": "URL",
+    "colKind": "引擎类型",
+    "address": "节点地址",
+    "usedBy": "使用它的区域",
+    "unused": "没有区域使用它",
+    "noKind": "无",
+    "noRegions": "此组织尚未选择任何区域。",
+    "noStores": "尚无存储。",
+    "notSaved": "未保存",
+    "heldStores_one": "{{count}} 个存储尚未保存。它将与组织的第一个区域一起保存。",
+    "heldStores_other": "{{count}} 个存储尚未保存。它们将与组织的第一个区域一起保存。",
+    "edit": "编辑",
+    "remove": "移除",
+    "storeTaken": "已存在名为 {{id}} 的存储。",
+    "regionHelp": "平台的区域之一。组织在其中的数据保存在下面的存储中。",
+    "storeIdHelp": "区域引用此存储时使用的名称。",
+    "urlHelp": "存储的连接 URL，或 ${env:NAME} 这样的引用。完全按输入保存。其中的密码不会再显示；保持 URL 不变即可保留密码。",
+    "kindHelp": "此存储运行的引擎。区域用作引擎的存储必须填写。",
+    "role": {
+      "engine": "引擎",
+      "replicas": "副本",
+      "views": "物化视图",
+      "cache": "缓存",
+      "state": "状态",
+      "record": "请求记录"
+    },
+    "roleHelp": {
+      "engine": "其引擎运行此区域查询的存储。它需要一个引擎类型。",
+      "replicas": "此区域中保存表副本的位置。与物化视图使用同一存储。",
+      "views": "此区域中保存物化视图的位置。与副本使用同一存储。",
+      "cache": "此区域中缓存查询结果的位置。",
+      "state": "此区域保存其工作状态的位置。",
+      "record": "此区域保存其请求记录的位置。"
+    },
+    "delete": {
+      "regionTitle": "停止使用区域 {{id}}?",
+      "regionConsequence": "组织不再使用区域 {{id}}。其存储会保留。指定该区域的数据源或表会阻止将其移除。",
+      "storeTitle": "移除存储 {{id}}?",
+      "storeConsequence": "存储 {{id}} 将被移除。使用它的区域会阻止将其移除。"
+    }
+  }
+}

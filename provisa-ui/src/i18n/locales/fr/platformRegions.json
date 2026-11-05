@@ -1,0 +1,21 @@
+{
+  "platformRegions": {
+    "loading": "Chargement des régions de la plateforme...",
+    "intro": "Les régions dans lesquelles la plateforme exécute des nœuds. Chacune a une adresse à laquelle ses nœuds répondent ; elle peut être une référence comme ${env:NAME}, conservée exactement telle que saisie. Chaque organisation choisit lesquelles de ces régions elle utilise.",
+    "restartNote": "Les modifications des régions de la plateforme prennent effet au redémarrage des nœuds.",
+    "restartPending": "Enregistré. Les nœuds continuent avec les régions précédentes jusqu'à leur redémarrage.",
+    "add": "Ajouter une région",
+    "editTitle": "Modifier la région {{id}}",
+    "detailPanel": "Détails de la région de la plateforme",
+    "colRegion": "Région",
+    "colAddress": "Adresse des nœuds",
+    "none": "La plateforme ne déclare aucune région.",
+    "edit": "Modifier",
+    "remove": "Supprimer",
+    "taken": "Une région nommée {{id}} existe déjà.",
+    "idHelp": "Un nom court en minuscules, comme eu ou us. Un nœud est démarré dans une région.",
+    "addressHelp": "Où les nœuds de la région répondent, ou une référence comme ${env:NAME}. Conservée exactement telle que saisie.",
+    "deleteTitle": "Supprimer la région {{id}} ?",
+    "deleteConsequence": "La région {{id}} est retirée de la plateforme au redémarrage des nœuds. Une organisation qui l'utilise ne peut plus y démarrer."
+  }
+}

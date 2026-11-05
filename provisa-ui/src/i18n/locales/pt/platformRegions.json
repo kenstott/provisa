@@ -1,0 +1,21 @@
+{
+  "platformRegions": {
+    "loading": "Carregando regiões da plataforma...",
+    "intro": "As regiões em que a plataforma executa nós. Cada uma tem um endereço em que seus nós respondem; pode ser uma referência como ${env:NAME}, mantida exatamente como foi digitada. Cada organização escolhe quais dessas regiões usa.",
+    "restartNote": "Alterações nas regiões da plataforma entram em vigor quando os nós reiniciam.",
+    "restartPending": "Salvo. Os nós continuam com as regiões anteriores até reiniciarem.",
+    "add": "Adicionar região",
+    "editTitle": "Editar região {{id}}",
+    "detailPanel": "Detalhes da região da plataforma",
+    "colRegion": "Região",
+    "colAddress": "Endereço dos nós",
+    "none": "A plataforma não declara regiões.",
+    "edit": "Editar",
+    "remove": "Remover",
+    "taken": "Já existe uma região chamada {{id}}.",
+    "idHelp": "Um nome curto em minúsculas, como eu ou us. Um nó é iniciado em uma região.",
+    "addressHelp": "Onde os nós da região respondem, ou uma referência como ${env:NAME}. Mantido exatamente como foi digitado.",
+    "deleteTitle": "Remover a região {{id}}?",
+    "deleteConsequence": "A região {{id}} é removida da plataforma quando os nós reiniciam. Uma organização que a usa não pode mais iniciar lá."
+  }
+}

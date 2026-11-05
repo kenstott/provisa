@@ -1,0 +1,56 @@
+{
+  "orgRegions": {
+    "loading": "Carregando regiões...",
+    "intro": "As regiões da plataforma que esta organização usa e o armazenamento em que ela mantém cada tipo de dado nelas. Um armazenamento é uma URL de conexão; pode conter uma referência como ${env:NAME}, mantida exatamente como foi digitada.",
+    "noPlatformRegions": "A plataforma não declara regiões.",
+    "regionsHeading": "Regiões",
+    "storesHeading": "Armazenamentos",
+    "addRegion": "Adicionar região",
+    "addStore": "Adicionar armazenamento",
+    "editRegion": "Editar região {{id}}",
+    "editStore": "Editar armazenamento {{id}}",
+    "detailPanel": "Detalhes da região ou do armazenamento",
+    "colRegion": "Região",
+    "colStore": "Armazenamento",
+    "colUrl": "URL",
+    "colKind": "Tipo de engine",
+    "address": "Endereço dos nós",
+    "usedBy": "Usado pelas regiões",
+    "unused": "Nenhuma região o usa",
+    "noKind": "Nenhum",
+    "noRegions": "Esta organização ainda não seleciona nenhuma região.",
+    "noStores": "Ainda não há armazenamentos.",
+    "notSaved": "Não salvo",
+    "heldStores_one": "{{count}} armazenamento ainda não foi salvo. Ele é salvo com a primeira região da organização.",
+    "heldStores_other": "{{count}} armazenamentos ainda não foram salvos. Eles são salvos com a primeira região da organização.",
+    "edit": "Editar",
+    "remove": "Remover",
+    "storeTaken": "Já existe um armazenamento chamado {{id}}.",
+    "regionHelp": "Uma das regiões da plataforma. Os dados da organização nela são mantidos nos armazenamentos abaixo.",
+    "storeIdHelp": "O nome pelo qual as regiões se referem a este armazenamento.",
+    "urlHelp": "A URL de conexão do armazenamento, ou uma referência como ${env:NAME}. É mantida exatamente como foi digitada. Uma senha nela nunca é mostrada novamente; deixe a URL inalterada para mantê-la.",
+    "kindHelp": "A engine que este armazenamento executa. Obrigatório para um armazenamento que uma região usa como engine.",
+    "role": {
+      "engine": "Engine",
+      "replicas": "Réplicas",
+      "views": "Visões materializadas",
+      "cache": "Cache",
+      "state": "Estado",
+      "record": "Registro de solicitações"
+    },
+    "roleHelp": {
+      "engine": "O armazenamento cuja engine executa as consultas desta região. Ele precisa de um tipo de engine.",
+      "replicas": "Onde as cópias das tabelas são mantidas nesta região. O mesmo armazenamento das visões materializadas.",
+      "views": "Onde as visões materializadas são mantidas nesta região. O mesmo armazenamento das réplicas.",
+      "cache": "Onde os resultados das consultas ficam em cache nesta região.",
+      "state": "Onde esta região mantém seu estado de trabalho.",
+      "record": "Onde esta região mantém seu registro de solicitações."
+    },
+    "delete": {
+      "regionTitle": "Deixar de usar a região {{id}}?",
+      "regionConsequence": "A organização deixa de usar a região {{id}}. Seus armazenamentos são mantidos. Uma fonte ou tabela que nomeia a região impede a remoção.",
+      "storeTitle": "Remover o armazenamento {{id}}?",
+      "storeConsequence": "O armazenamento {{id}} é removido. Uma região que o usa impede a remoção."
+    }
+  }
+}

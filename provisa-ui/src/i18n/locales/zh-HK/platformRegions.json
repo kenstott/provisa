@@ -1,0 +1,21 @@
+{
+  "platformRegions": {
+    "loading": "正在載入平台區域...",
+    "intro": "平台執行節點的區域。每個區域都有其節點回應的地址；它可以是 ${env:NAME} 這樣的參照，並完全按輸入保存。每個組織選擇使用其中哪些區域。",
+    "restartNote": "對平台區域的變更在節點重新啟動後生效。",
+    "restartPending": "已儲存。節點在重新啟動前繼續以之前的區域運作。",
+    "add": "新增區域",
+    "editTitle": "編輯區域 {{id}}",
+    "detailPanel": "平台區域詳情",
+    "colRegion": "區域",
+    "colAddress": "節點地址",
+    "none": "平台未宣告任何區域。",
+    "edit": "編輯",
+    "remove": "移除",
+    "taken": "已存在名為 {{id}} 的區域。",
+    "idHelp": "一個簡短的小寫名稱，例如 eu 或 us。節點在一個區域中啟動。",
+    "addressHelp": "區域節點回應的位置，或 ${env:NAME} 這樣的參照。完全按輸入保存。",
+    "deleteTitle": "移除區域 {{id}}?",
+    "deleteConsequence": "節點重新啟動後，區域 {{id}} 將從平台移除。使用它的組織將無法再在該區域啟動。"
+  }
+}

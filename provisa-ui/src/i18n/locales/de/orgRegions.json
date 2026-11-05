@@ -1,0 +1,56 @@
+{
+  "orgRegions": {
+    "loading": "Regionen werden geladen...",
+    "intro": "Die Plattformregionen, die diese Organisation nutzt, und der Speicher, in dem sie dort jede Art von Daten hält. Ein Speicher ist eine Verbindungs-URL; sie kann eine Referenz wie ${env:NAME} enthalten, die genau so gespeichert wird, wie sie eingegeben wurde.",
+    "noPlatformRegions": "Die Plattform deklariert keine Regionen.",
+    "regionsHeading": "Regionen",
+    "storesHeading": "Speicher",
+    "addRegion": "Region hinzufügen",
+    "addStore": "Speicher hinzufügen",
+    "editRegion": "Region {{id}} bearbeiten",
+    "editStore": "Speicher {{id}} bearbeiten",
+    "detailPanel": "Details zu Region oder Speicher",
+    "colRegion": "Region",
+    "colStore": "Speicher",
+    "colUrl": "URL",
+    "colKind": "Engine-Art",
+    "address": "Knotenadresse",
+    "usedBy": "Von Regionen genutzt",
+    "unused": "Keine Region nutzt ihn",
+    "noKind": "Keine",
+    "noRegions": "Diese Organisation wählt noch keine Region.",
+    "noStores": "Noch keine Speicher.",
+    "notSaved": "Nicht gespeichert",
+    "heldStores_one": "{{count}} Speicher ist noch nicht gespeichert. Er wird mit der ersten Region der Organisation gespeichert.",
+    "heldStores_other": "{{count}} Speicher sind noch nicht gespeichert. Sie werden mit der ersten Region der Organisation gespeichert.",
+    "edit": "Bearbeiten",
+    "remove": "Entfernen",
+    "storeTaken": "Ein Speicher namens {{id}} existiert bereits.",
+    "regionHelp": "Eine der Regionen der Plattform. Die Daten der Organisation darin werden in den Speichern unten gehalten.",
+    "storeIdHelp": "Der Name, mit dem Regionen auf diesen Speicher verweisen.",
+    "urlHelp": "Die Verbindungs-URL des Speichers oder eine Referenz wie ${env:NAME}. Sie wird genau so gespeichert, wie sie eingegeben wurde. Ein Passwort darin wird nie wieder angezeigt; lassen Sie die URL unverändert, um es zu behalten.",
+    "kindHelp": "Die Engine, die dieser Speicher ausführt. Erforderlich für einen Speicher, den eine Region als Engine nutzt.",
+    "role": {
+      "engine": "Engine",
+      "replicas": "Replikate",
+      "views": "Materialisierte Sichten",
+      "cache": "Cache",
+      "state": "Zustand",
+      "record": "Anfrageprotokoll"
+    },
+    "roleHelp": {
+      "engine": "Der Speicher, dessen Engine die Abfragen dieser Region ausführt. Er benötigt eine Engine-Art.",
+      "replicas": "Wo Kopien von Tabellen in dieser Region gehalten werden. Derselbe Speicher wie für materialisierte Sichten.",
+      "views": "Wo materialisierte Sichten in dieser Region gehalten werden. Derselbe Speicher wie für Replikate.",
+      "cache": "Wo Abfrageergebnisse in dieser Region zwischengespeichert werden.",
+      "state": "Wo diese Region ihren Arbeitszustand hält.",
+      "record": "Wo diese Region ihr Protokoll der Anfragen hält."
+    },
+    "delete": {
+      "regionTitle": "Region {{id}} nicht mehr nutzen?",
+      "regionConsequence": "Die Organisation nutzt die Region {{id}} nicht mehr. Ihre Speicher bleiben erhalten. Eine Quelle oder Tabelle, die die Region nennt, verhindert das Entfernen.",
+      "storeTitle": "Speicher {{id}} entfernen?",
+      "storeConsequence": "Der Speicher {{id}} wird entfernt. Eine Region, die ihn nutzt, verhindert das Entfernen."
+    }
+  }
+}

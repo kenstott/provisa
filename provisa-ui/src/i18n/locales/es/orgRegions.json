@@ -1,0 +1,56 @@
+{
+  "orgRegions": {
+    "loading": "Cargando regiones...",
+    "intro": "Las regiones de la plataforma que usa esta organización y el almacén en el que guarda allí cada tipo de datos. Un almacén es una URL de conexión; puede contener una referencia como ${env:NAME}, que se guarda exactamente como se escribió.",
+    "noPlatformRegions": "La plataforma no declara regiones.",
+    "regionsHeading": "Regiones",
+    "storesHeading": "Almacenes",
+    "addRegion": "Añadir región",
+    "addStore": "Añadir almacén",
+    "editRegion": "Editar región {{id}}",
+    "editStore": "Editar almacén {{id}}",
+    "detailPanel": "Detalles de la región o del almacén",
+    "colRegion": "Región",
+    "colStore": "Almacén",
+    "colUrl": "URL",
+    "colKind": "Tipo de motor",
+    "address": "Dirección de los nodos",
+    "usedBy": "Usado por las regiones",
+    "unused": "Ninguna región lo usa",
+    "noKind": "Ninguno",
+    "noRegions": "Esta organización aún no selecciona ninguna región.",
+    "noStores": "Aún no hay almacenes.",
+    "notSaved": "Sin guardar",
+    "heldStores_one": "{{count}} almacén aún no está guardado. Se guarda con la primera región de la organización.",
+    "heldStores_other": "{{count}} almacenes aún no están guardados. Se guardan con la primera región de la organización.",
+    "edit": "Editar",
+    "remove": "Quitar",
+    "storeTaken": "Ya existe un almacén llamado {{id}}.",
+    "regionHelp": "Una de las regiones de la plataforma. Los datos de la organización en ella se guardan en los almacenes de abajo.",
+    "storeIdHelp": "El nombre con el que las regiones se refieren a este almacén.",
+    "urlHelp": "La URL de conexión del almacén, o una referencia como ${env:NAME}. Se guarda exactamente como se escribió. Una contraseña incluida no se vuelve a mostrar; deje la URL sin cambios para conservarla.",
+    "kindHelp": "El motor que ejecuta este almacén. Obligatorio para un almacén que una región usa como motor.",
+    "role": {
+      "engine": "Motor",
+      "replicas": "Réplicas",
+      "views": "Vistas materializadas",
+      "cache": "Caché",
+      "state": "Estado",
+      "record": "Registro de solicitudes"
+    },
+    "roleHelp": {
+      "engine": "El almacén cuyo motor ejecuta las consultas de esta región. Necesita un tipo de motor.",
+      "replicas": "Dónde se guardan las copias de las tablas en esta región. El mismo almacén que las vistas materializadas.",
+      "views": "Dónde se guardan las vistas materializadas en esta región. El mismo almacén que las réplicas.",
+      "cache": "Dónde se almacenan en caché los resultados de las consultas en esta región.",
+      "state": "Dónde guarda esta región su estado de trabajo.",
+      "record": "Dónde guarda esta región su registro de solicitudes."
+    },
+    "delete": {
+      "regionTitle": "¿Dejar de usar la región {{id}}?",
+      "regionConsequence": "La organización deja de usar la región {{id}}. Sus almacenes se conservan. Una fuente o tabla que nombra la región impide quitarla.",
+      "storeTitle": "¿Quitar el almacén {{id}}?",
+      "storeConsequence": "Se quita el almacén {{id}}. Una región que lo usa impide quitarlo."
+    }
+  }
+}

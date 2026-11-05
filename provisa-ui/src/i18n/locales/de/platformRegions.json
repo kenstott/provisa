@@ -1,0 +1,21 @@
+{
+  "platformRegions": {
+    "loading": "Plattformregionen werden geladen...",
+    "intro": "Die Regionen, in denen die Plattform Knoten betreibt. Jede hat eine Adresse, unter der ihre Knoten antworten; sie kann eine Referenz wie ${env:NAME} sein und wird genau so gespeichert, wie sie eingegeben wurde. Jede Organisation wählt, welche dieser Regionen sie nutzt.",
+    "restartNote": "Änderungen an den Regionen der Plattform werden wirksam, wenn die Knoten neu starten.",
+    "restartPending": "Gespeichert. Die Knoten laufen mit den bisherigen Regionen weiter, bis sie neu starten.",
+    "add": "Region hinzufügen",
+    "editTitle": "Region {{id}} bearbeiten",
+    "detailPanel": "Details zur Plattformregion",
+    "colRegion": "Region",
+    "colAddress": "Knotenadresse",
+    "none": "Die Plattform deklariert keine Regionen.",
+    "edit": "Bearbeiten",
+    "remove": "Entfernen",
+    "taken": "Eine Region namens {{id}} existiert bereits.",
+    "idHelp": "Ein kurzer Name in Kleinbuchstaben, etwa eu oder us. Ein Knoten wird in einer Region gestartet.",
+    "addressHelp": "Wo die Knoten der Region antworten, oder eine Referenz wie ${env:NAME}. Wird genau so gespeichert, wie sie eingegeben wurde.",
+    "deleteTitle": "Region {{id}} entfernen?",
+    "deleteConsequence": "Die Region {{id}} wird aus der Plattform entfernt, wenn die Knoten neu starten. Eine Organisation, die sie nutzt, kann dort nicht mehr starten."
+  }
+}

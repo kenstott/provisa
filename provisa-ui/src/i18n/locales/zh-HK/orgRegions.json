@@ -1,0 +1,56 @@
+{
+  "orgRegions": {
+    "loading": "正在載入區域...",
+    "intro": "此組織使用的平台區域，以及它在這些區域中保存各類資料的儲存。儲存是一個連線 URL；它可以包含 ${env:NAME} 這樣的參照，並完全按輸入保存。",
+    "noPlatformRegions": "平台未宣告任何區域。",
+    "regionsHeading": "區域",
+    "storesHeading": "儲存",
+    "addRegion": "新增區域",
+    "addStore": "新增儲存",
+    "editRegion": "編輯區域 {{id}}",
+    "editStore": "編輯儲存 {{id}}",
+    "detailPanel": "區域或儲存詳情",
+    "colRegion": "區域",
+    "colStore": "儲存",
+    "colUrl": "URL",
+    "colKind": "引擎類型",
+    "address": "節點地址",
+    "usedBy": "使用它的區域",
+    "unused": "沒有區域使用它",
+    "noKind": "無",
+    "noRegions": "此組織尚未選擇任何區域。",
+    "noStores": "尚無儲存。",
+    "notSaved": "未儲存",
+    "heldStores_one": "{{count}} 個儲存尚未儲存。它會與組織的第一個區域一併儲存。",
+    "heldStores_other": "{{count}} 個儲存尚未儲存。它們會與組織的第一個區域一併儲存。",
+    "edit": "編輯",
+    "remove": "移除",
+    "storeTaken": "已存在名為 {{id}} 的儲存。",
+    "regionHelp": "平台的區域之一。組織在其中的資料保存在下面的儲存中。",
+    "storeIdHelp": "區域參照此儲存時使用的名稱。",
+    "urlHelp": "儲存的連線 URL，或 ${env:NAME} 這樣的參照。完全按輸入保存。其中的密碼不會再顯示；保持 URL 不變即可保留密碼。",
+    "kindHelp": "此儲存執行的引擎。區域用作引擎的儲存必須填寫。",
+    "role": {
+      "engine": "引擎",
+      "replicas": "副本",
+      "views": "具體化檢視",
+      "cache": "快取",
+      "state": "狀態",
+      "record": "請求記錄"
+    },
+    "roleHelp": {
+      "engine": "其引擎執行此區域查詢的儲存。它需要一個引擎類型。",
+      "replicas": "此區域中保存資料表副本的位置。與具體化檢視使用同一儲存。",
+      "views": "此區域中保存具體化檢視的位置。與副本使用同一儲存。",
+      "cache": "此區域中快取查詢結果的位置。",
+      "state": "此區域保存其工作狀態的位置。",
+      "record": "此區域保存其請求記錄的位置。"
+    },
+    "delete": {
+      "regionTitle": "停止使用區域 {{id}}?",
+      "regionConsequence": "組織不再使用區域 {{id}}。其儲存會保留。指定該區域的資料來源或資料表會阻止將其移除。",
+      "storeTitle": "移除儲存 {{id}}?",
+      "storeConsequence": "儲存 {{id}} 將被移除。使用它的區域會阻止將其移除。"
+    }
+  }
+}
