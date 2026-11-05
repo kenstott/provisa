@@ -2577,8 +2577,13 @@
   feature: semantic-model-tables-and-columns
   priority: SHOULD
   type: behavioral
-  description: Columns with `path` extract values from JSON source columns using PG `>>` syntax. SQLGlot
-    transpiles to `json_extract_scalar` for Trino.
+  description: 'Columns with `path` extract values from JSON source columns using PG `>>` syntax. SQLGlot
+    transpiles to `json_extract_scalar` for Trino. (Amended 2026-11-05, PATHS ARE SERVED BY THE GOVERNED
+    RELATION:) The governed relation serves each path column the way its source stores it: by its name where
+    the source''s connector resolves the path (MongoDB, Elasticsearch, Qdrant and the other connector sources),
+    and as the extraction from its JSON column where the source is a SQL database. Every read, GraphQL and
+    SQL alike, names a path column by its name and goes through that one relation; the GraphQL compile does
+    no extraction of its own.'
   use_case: Column path extraction from JSON columns makes nested document fields queryable as ordinary columns.
   code:
   - provisa/compiler/sql_gen.py
@@ -2614,7 +2619,12 @@
   feature: semantic-model-tables-and-columns
   priority: MUST
   type: behavioral
-  description: Path columns on PostgreSQL sources route direct. Non-PG sources force Trino routing.
+  description: 'Path columns on PostgreSQL sources route direct. Non-PG sources force Trino routing. (Amended
+    2026-11-05, PATHS ARE SERVED BY THE GOVERNED RELATION:) The governed relation serves each path column
+    the way its source stores it: by its name where the source''s connector resolves the path (MongoDB,
+    Elasticsearch, Qdrant and the other connector sources), and as the extraction from its JSON column where
+    the source is a SQL database. Every read, GraphQL and SQL alike, names a path column by its name and
+    goes through that one relation; the GraphQL compile does no extraction of its own.'
   use_case: Path column routing rules ensure JSON extraction uses the correct engine for each source type.
   code:
   - provisa/compiler/sql_gen.py
