@@ -16,6 +16,10 @@ test_engine_session_zone.py holds this whole table against postgres:17.11 itself
 
 from __future__ import annotations
 
+import datetime
+import struct
+from typing import Any
+
 #: The instants, in the order of ``i``: summer, winter, and one a zone west of UTC sees as yesterday.
 INSTANTS = ("2026-07-01 12:00:00.5+00", "2026-01-01 12:00:00+00", "2026-07-01 02:30:00+00")
 
@@ -163,3 +167,23 @@ CASES = [(zone, name, want) for zone, column in ANSWERS.items() for name, want i
 
 def statement(name: str) -> str:
     return f"SELECT {EXPRESSIONS[name]} AS v FROM t ORDER BY i"
+
+
+def sent(zone: str, value: Any) -> str:
+    """``value`` as pgwire sends it in a session whose TimeZone is ``zone`` (REQ-2194): an
+    instant's Arrow column cast to the zone (``session_zone._ZonedData``), its cell the Rust
+    encoder's timestamptz_out text."""
+    if not isinstance(value, datetime.datetime):
+        return str(value)
+    import pyarrow as pa
+    from buenavista.core import BVType, wire_type_name
+
+    from provisa._encoders import pgwire as encoder
+    from provisa.pgwire.session_zone import SessionZone, _arrow_zone, _in_zone
+
+    written_in = _arrow_zone(SessionZone(zone).written_in())
+    column = _in_zone(pa.array([value], pa.timestamp("us", tz="UTC")), written_in)
+    batch = pa.RecordBatch.from_arrays([column], names=["value"])
+    message = encoder.encode_batch(batch, [wire_type_name(BVType.TIMESTAMPTZ)], [0])
+    (size,) = struct.unpack_from("!i", message, 7)  # one DataRow: tag, length, count, size
+    return message[11 : 11 + size].decode("utf-8")

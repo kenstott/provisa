@@ -16,9 +16,7 @@ engines to it on their servers. DuckDB is told its zone and has no such forms.""
 
 from __future__ import annotations
 
-import datetime
 import re
-import struct
 from collections.abc import Iterator
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -33,7 +31,7 @@ from provisa.executor import trino as trino_exec
 from provisa.pgwire._pipeline import _kept_engine_form
 from provisa.pgwire.session_zone import SessionZone
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb, transpile_to_trino
-from tests.unit.pgwire.session_zone_answers import ANSWERS, CASES, INSTANTS, statement
+from tests.unit.pgwire.session_zone_answers import ANSWERS, CASES, INSTANTS, sent, statement
 
 _SESSIONS = {
     "SET TimeZone = 'America/New_York'": "America/New_York",
@@ -85,21 +83,7 @@ def _rows(held: Any, sql: str) -> list[Any]:
 
 
 def _sent(value: Any, set_zone: str) -> str:
-    """A ClickHouse answer as pgwire sends it in the session's zone (REQ-2194): an instant's
-    Arrow column cast to the zone (``_ZonedData``), its cell the Rust encoder's text."""
-    if not isinstance(value, datetime.datetime):
-        return str(value)
-    from buenavista.core import BVType, wire_type_name
-
-    from provisa._encoders import pgwire as encoder
-    from provisa.pgwire.session_zone import _arrow_zone, _in_zone
-
-    zone = _arrow_zone(SessionZone(_SESSIONS[set_zone]).written_in())
-    column = _in_zone(pa.array([value], pa.timestamp("us", tz="UTC")), zone)
-    batch = pa.RecordBatch.from_arrays([column], names=["value"])
-    message = encoder.encode_batch(batch, [wire_type_name(BVType.TIMESTAMPTZ)], [0])
-    (size,) = struct.unpack_from("!i", message, 7)
-    return message[11 : 11 + size].decode("utf-8")
+    return sent(_SESSIONS[set_zone], value)
 
 
 @pytest.mark.parametrize("set_zone, name, want", [case for case in CASES if case[1] != "json"])

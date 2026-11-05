@@ -19,7 +19,6 @@ instant an engine returns is held to the table as pgwire writes it."""
 
 from __future__ import annotations
 
-import datetime
 import os
 import subprocess
 import time
@@ -29,7 +28,6 @@ from typing import Any
 
 import psycopg
 import pytest
-from buenavista.postgres import _timestamp_text
 
 from provisa.core.pg_error import PostgresError
 from provisa.core.session_time_zone import bind_zone, reset_zone
@@ -37,7 +35,7 @@ from provisa.executor.trino import execute_trino
 from provisa.federation.clickhouse_runtime import _ServerBackend
 from provisa.pgwire.session_zone import SessionZone
 from provisa.transpiler.transpile import transpile, transpile_to_trino
-from tests.unit.pgwire.session_zone_answers import ANSWERS, CASES, INSTANTS, statement
+from tests.unit.pgwire.session_zone_answers import ANSWERS, CASES, INSTANTS, sent, statement
 
 pytestmark = [pytest.mark.integration]
 
@@ -120,9 +118,7 @@ def _in_zone(set_zone: str, run: Any) -> Any:
 
 def _sent(set_zone: str, value: Any) -> str:
     """``value`` as pgwire sends it: an instant as timestamptz_out writes it in the session's zone."""
-    if not isinstance(value, datetime.datetime):
-        return str(value)
-    return _timestamp_text(value.astimezone(SessionZone(_SESSIONS[set_zone]).written_in()))
+    return sent(_SESSIONS[set_zone], value)
 
 
 _TRINO_ROWS = ", ".join(
