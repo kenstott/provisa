@@ -789,7 +789,9 @@ if [ "$DEMO" = true ] || [ "$NATIVE" = true ]; then
     CP_STORE_DESC="embedded PostgreSQL (pgserver, socket $CP_PG_HOST:$CP_PG_PORT)"
   else
     echo "FAILED — see $LOG_DIR/control-plane-pg.log"
-    echo "Embedded control plane requires pgserver (Python <=3.12). Aborting."
+    echo "Embedded control plane did not start. Last error in $LOG_DIR/control-plane-pg.log:"
+    tail -n 5 "$LOG_DIR/control-plane-pg.log"
+    echo "Aborting."
     exit 1
   fi
 else
