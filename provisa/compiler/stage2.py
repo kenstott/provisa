@@ -21,7 +21,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.cte_utils import physical_tables
-from provisa.compiler.governed_relation import keep_read_outputs_all
+from provisa.compiler.governed_relation import keep_read
 from provisa.compiler.rls import Rule, all_of, every_row, qualified_filter
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
@@ -95,10 +95,6 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # model; and the registered models' dimensions, which the pipeline sets for the statement.
     embedding_columns: dict[int, dict[str, str]] = field(default_factory=dict)
     embedding_dims: dict[str, int] = field(default_factory=dict)
-    # Per table, each column read at a path inside a document column (its registered ``path``,
-    # ``source_column.key...`` or, for a single key, the key inside the column itself), by
-    # physical name: the governed relation serves it as that path's value.
-    column_paths: dict[tuple[int, str], str] = field(default_factory=dict)
     # Per table, each published column name (lowercased) that is not its physical name, to that
     # physical name (sql_rewrite.published_columns): a statement is governed before its published
     # names are lowered, and the grants and masks above are by physical name.
@@ -362,9 +358,6 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             # REQ-2190: a catalog view's scope is meta's, no column of PostgreSQL's relation.
             and c["column_name"] != SCOPE_COLUMN
         ]
-        for c in cols:
-            if c.get("path"):
-                gov.column_paths[(table_id, c["column_name"])] = c["path"]
         embeddings = {
             c["column_name"]: c["embedding_model"]
             for c in cols
@@ -877,28 +870,6 @@ def _served(gov_ctx: GovernanceContext, tid: int, physical: str) -> bool:
     return vis is None or physical in vis
 
 
-def _column_value(alias: str, physical: str, path: str | None) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
-    """The value of ``physical`` read under ``alias``: the column, or, for a column registered at
-    a ``path`` in a document column, that path's text value -- the extraction the compiled
-    GraphQL read of the column makes (``sql_gen``): ``->`` for each key but the last, ``->>``
-    for the last. A one-key path names a key inside the column itself."""
-    from provisa.compiler.naming import apply_sql_name
-
-    if not path:
-        return exp.column(apply_sql_name(physical), table=alias, quoted=True)
-    parts = path.split(".")
-    source, keys = (physical, parts) if len(parts) == 1 else (parts[0], parts[1:])
-    value: exp.Expr = exp.column(source, table=alias, quoted=True)  # pyright: ignore[reportPrivateImportUsage]
-    for i, key in enumerate(keys):
-        step = exp.JSONExtractScalar if i == len(keys) - 1 else exp.JSONExtract
-        value = step(
-            this=value,
-            expression=exp.JSONPath(expressions=[exp.JSONPathRoot(), exp.JSONPathKey(this=key)]),
-            only_json_types=True,
-        )
-    return value
-
-
 def _governed_relation(
     tbl: exp.Table,
     tid: int,
@@ -959,7 +930,11 @@ def _governed_relation(
         as_named = next(names, None)
         if as_named is not None:
             out = as_named.name if as_named.quoted else as_named.name.lower()
-        value = _column_value(alias, physical, gov_ctx.column_paths.get((tid, physical)))
+        # A column registered at a path in its document is read by its own name, as every
+        # engine's relation of the table exposes it; Trino's live MongoDB catalog holds the
+        # document instead, and the routed statement reads the path there
+        # (sql_rewrite.read_document_paths).
+        value: exp.Expr = exp.column(sql_name, table=alias, quoted=True)  # pyright: ignore[reportPrivateImportUsage]
         entry = gov_ctx.masking_rules.get((tid, physical))
         if entry is not None and not _is_fake(entry[0]):
             rule, mask_type = entry
@@ -1654,15 +1629,28 @@ def _project_faked(
     return subquery
 
 
+def _row_columns(gov_ctx: GovernanceContext, tid: int, alias: str) -> list[exp.Expr]:  # pyright: ignore[reportPrivateImportUsage]
+    """Every column of ``tid``'s row read under ``alias``, each by name: a level of the chain
+    names the columns it reads off the table, never ``*``, so the relation of the table an engine
+    reads gives each as it serves it (a path column, sql_rewrite.read_document_paths) and the
+    columns no level above reads are dropped (governed_relation.keep_read)."""
+    from provisa.compiler.naming import apply_sql_name
+
+    return [
+        exp.column(apply_sql_name(name), table=alias, quoted=True)
+        for name, _ in gov_ctx.all_columns.get(tid, [])
+    ]
+
+
 def _with_carried(
     query: exp.Select,
+    row: list[exp.Expr],  # pyright: ignore[reportPrivateImportUsage]
     carried: dict[str, tuple[exp.Expr, exp.Expr]],
-    alias: str,  # pyright: ignore[reportPrivateImportUsage]
 ) -> exp.Select:  # REQ-1620
-    """``query`` -- a read of a table's rows under ``alias`` -- with every column of the row and
-    the member flags and real values ``carried`` names, each computed on the real row."""
+    """``query`` -- a read of a table's rows -- with every column of the row (``row``) and the
+    member flags and real values ``carried`` names, each computed on the real row."""
     return query.select(
-        exp.Column(this=exp.Star(), table=exp.to_identifier(alias, quoted=True)),
+        *(c.copy() for c in row),
         *(exp.alias_(e.copy(), n, quoted=True) for n, (e, _) in carried.items()),
         append=False,
     )
@@ -1688,10 +1676,11 @@ def _project_kept(
     if faked is not None:
         base: exp.Query = faked.this  # the row filter is inside the projection
     else:
-        base = exp.select("*").from_(_plain(tbl, alias))
+        row = _row_columns(gov_ctx, tid, alias)
+        base = exp.select(*row).from_(_plain(tbl, alias))
         if members is not None:
             # REQ-1620: the member flags and real values, computed on the table's real rows.
-            base = _with_carried(base, _member_carried(tid, members, gov_ctx, alias), alias)
+            base = _with_carried(base, row, _member_carried(tid, members, gov_ctx, alias))
         row_filter = _row_filter(gov_ctx, tid, alias)
         if row_filter is not None:
             base = base.where(row_filter)
@@ -1801,9 +1790,15 @@ def _project_members(
     alias = _alias_for(tbl)
     carried = carried or _member_carried(tid, differing, gov_ctx, alias)
     if current is not None:
-        scan: exp.Select = exp.select("*").from_(_derived(current.this, alias))
+        # The level below gives every column of the row and then ``carried``, by name.
+        scan: exp.Select = exp.select(
+            *_row_columns(gov_ctx, tid, alias),
+            *(exp.column(n, table=alias, quoted=True) for n in carried),
+        ).from_(_derived(current.this, alias))
     else:
-        scan = _with_carried(exp.select("*").from_(_plain(tbl, alias)), carried, alias)
+        scan = _with_carried(
+            exp.select("*").from_(_plain(tbl, alias)), _row_columns(gov_ctx, tid, alias), carried
+        )
         row_filter = _row_filter(gov_ctx, tid, alias)
         if row_filter is not None:
             scan = scan.where(row_filter)
@@ -2603,7 +2598,8 @@ def govern(
         # Last, once every pass that reads a relation's columns has: a read's governed relations
         # serve only the outputs it reads, so an engine, and a live source asked through it,
         # reads no other column (a path column it does not read is not extracted at all).
-        keep_read_outputs_all(tree)
+        for relation in [s for s in tree.find_all(exp.Subquery) if _relation(s) is not None]:
+            keep_read(tree, relation, _relation(relation).alias)  # pyright: ignore[reportOptionalMemberAccess]
     return tree
 
 

@@ -26,6 +26,7 @@ read the same way: it is only ever read here, after stage 2 governed what is ins
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 import sqlglot.expressions as exp
@@ -226,26 +227,34 @@ def read_outputs(tree: exp.Expr, relation: ReadThrough) -> set[str] | None:
     """The outputs of ``relation`` that ``tree`` reads outside it, by the names it exposes; None
     when it reads them all -- a ``*``, the alias's ``.*``, a whole-row reference or a NATURAL
     join. A name the statement may read unqualified is counted as read."""
+    return _read_names(tree, relation.relation, relation.alias, relation.columns)
+
+
+def _read_names(
+    tree: exp.Expr, relation: exp.Subquery, alias: str, names: Iterable[str]
+) -> set[str] | None:
+    """The ``names`` of ``relation``'s outputs that ``tree`` reads outside it (see
+    :func:`read_outputs`); None when it reads them all."""
     exposed: dict[str, list[str]] = {}
-    for name in relation.columns:
+    for name in names:
         exposed.setdefault(name.lower(), []).append(name)
     if any(j.args.get("method") for j in tree.find_all(exp.Join)):
         return None
-    holder = relation.relation.parent
+    holder = relation.parent
     outer = holder.parent if isinstance(holder, (exp.From, exp.Join)) else None
     if isinstance(outer, exp.Select) and any(isinstance(p, exp.Star) for p in outer.expressions):
         return None
     read: set[str] = set()
     for column in tree.find_all(exp.Column):
-        if _inside(column, relation.relation):
+        if _inside(column, relation):
             continue
         qualifier = _folded(column.args.get("table")).lower()
-        if qualifier and qualifier != relation.alias.lower():
+        if qualifier and qualifier != alias.lower():
             continue
         if isinstance(column.this, exp.Star):
             return None
         name = column.name.lower()
-        if not qualifier and name == relation.alias.lower() and name not in exposed:
+        if not qualifier and name == alias.lower() and name not in exposed:
             return None  # a whole-row reference: SELECT t0 FROM ...
         read.update(exposed.get(name, ()))
     for join in tree.find_all(exp.Join):
@@ -255,22 +264,106 @@ def read_outputs(tree: exp.Expr, relation: ReadThrough) -> set[str] | None:
 
 
 def keep_read_outputs(tree: exp.Expr, relation: ReadThrough) -> None:
-    """Drop, IN PLACE, the outputs of ``relation`` that ``tree`` never reads: an engine reads, and
-    a live source is asked for, only the columns the statement and the relation's own rules use,
-    as for a table read as itself. Its first output stays when none is read (``count(*)``): a
-    SELECT has at least one."""
-    read = read_outputs(tree, relation)
-    if read is None:
+    """:func:`keep_read` for ``relation``."""
+    keep_read(tree, relation.relation, relation.alias)
+
+
+def keep_read(tree: exp.Expr, relation: exp.Subquery, alias: str) -> None:
+    """Drop, IN PLACE, the outputs of the governed relation ``relation`` (read under ``alias``)
+    that ``tree`` never reads, and then, level by level down its chain (the faked, kept and member
+    projections, REQ-1494/1942/1620), each output the level above no longer reads: an engine
+    reads, and a live source is asked for, only the columns the statement and the relation's own
+    rules use, as for a table read as itself. A SELECT keeps its first output when none is read
+    (``count(*)``): it has at least one."""
+    body = relation.this
+    if not isinstance(body, exp.Select):
         return
-    body = relation.relation.this
-    kept = [p for p in body.expressions if p.alias_or_name in read] or body.expressions[:1]
-    body.set("expressions", kept)
+    read = _read_names(tree, relation, alias, [p.alias_or_name for p in body.expressions])
+    _keep(body, read)
 
 
-def keep_read_outputs_all(tree: exp.Expr) -> None:
-    """:func:`keep_read_outputs` for every governed relation in ``tree``."""
-    for relation in relations(tree):
-        keep_read_outputs(tree, relation)
+#: What a SELECT whose outputs may be dropped does not carry: each reads its outputs as a whole
+#: (a DISTINCT's rows, a grouping's or an aggregate's, an output named by an ordering).
+_READS_ITS_OUTPUTS = ("distinct", "group", "having", "qualify", "order", "windows", "with_")
+
+
+def _keep(query: exp.Expr, read: set[str] | None) -> None:
+    """Keep only the outputs of ``query`` named in ``read`` (all of them when None), then prune
+    each derived table it reads to the outputs it still reads. A UNION ALL keeps the same
+    positions in every branch."""
+    wanted = None if read is None else {name.lower() for name in read}
+    if isinstance(query, exp.Union):
+        branches = _branches(query)
+        if (
+            wanted is not None
+            and query.args.get("distinct") is not True
+            and all(_droppable(b) for b in branches)
+        ):
+            first = branches[0].expressions
+            positions = [i for i, p in enumerate(first) if p.alias_or_name.lower() in wanted]
+            positions = positions or [0]
+            if all(len(b.expressions) == len(first) for b in branches):
+                for branch in branches:
+                    branch.set("expressions", [branch.expressions[i] for i in positions])
+        for branch in branches:
+            _keep_sources(branch)
+        return
+    if not isinstance(query, exp.Select):
+        return
+    if wanted is not None and _droppable(query):
+        kept = [p for p in query.expressions if p.alias_or_name.lower() in wanted]
+        query.set("expressions", kept or query.expressions[:1])
+    _keep_sources(query)
+
+
+def _branches(union: exp.Union) -> list[exp.Select]:
+    out: list[exp.Select] = []
+    for side in (union.this, union.expression):
+        if isinstance(side, exp.Union) and side.args.get("distinct") is not True:
+            out += _branches(side)
+        elif isinstance(side, exp.Select):
+            out.append(side)
+        else:
+            return []
+    return out
+
+
+def _droppable(select: exp.Select) -> bool:
+    """Whether an output of ``select`` may be dropped without changing its rows or other values."""
+    if any(select.args.get(k) for k in _READS_ITS_OUTPUTS):
+        return False
+    for projection in select.expressions:
+        if isinstance(projection, exp.Star) or (
+            isinstance(projection, exp.Column) and isinstance(projection.this, exp.Star)
+        ):
+            return False
+        for agg in projection.find_all(exp.AggFunc):
+            if agg.find_ancestor(exp.Window) is None:
+                return False
+    return True
+
+
+def _keep_sources(select: exp.Select) -> None:
+    """Prune each derived table ``select`` reads in its FROM to the outputs it reads."""
+    if select.args.get("joins"):
+        return
+    source = select.args.get("from_")
+    item = None if source is None else source.this
+    if not isinstance(item, exp.Subquery) or not isinstance(item.this, (exp.Select, exp.Union)):
+        return
+    names = _output_names(item.this)
+    read = None if names is None else _read_names(select, item, _alias(item), names)
+    _keep(item.this, read)
+
+
+def _output_names(query: exp.Expr) -> list[str] | None:
+    if isinstance(query, exp.Union):
+        select = next(iter(_branches(query)), None)
+    else:
+        select = query
+    if not isinstance(select, exp.Select):
+        return None
+    return [p.alias_or_name for p in select.expressions]
 
 
 # -- a lone governed relation, inlined ----------------------------------------------------------

@@ -8,14 +8,16 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A read's governed relations serve the outputs it reads, and a path column as its path (REQ-039).
+"""A read's governed relations serve the outputs it reads, and a path column by its name (REQ-039).
 
 Stage 2 put every served column of a table in its governed relation, read or not. The engine
 statement grew tenfold, a live source was asked for every served column, and a column registered
 at a path inside a document column (the perf bench's order_docs.customer_tier, at
-customer_profile.tier) was projected by its own name, which the source does not have: Trino failed
-federated_join with COLUMN_NOT_FOUND "Column 'd.customer_tier' cannot be resolved" though the
-statement never reads it (J670)."""
+customer_profile.tier) was projected by its own name, which Trino's MongoDB catalog does not have:
+Trino failed federated_join with COLUMN_NOT_FOUND "Column 'd.customer_tier' cannot be resolved"
+though the statement never reads it (J670). A path column the statement reads is served by its own
+name, as every other engine's relation of the table exposes it; Trino reads it at its path
+(test_governed_path_columns)."""
 
 # Requirements: REQ-039
 
@@ -44,7 +46,6 @@ def _gov(**kwargs) -> GovernanceContext:
         all_columns={3: _DOCS},
         limit_ceiling=None,
         sample_size=None,
-        column_paths={(3, "customer_tier"): "customer_profile.tier"},
     )
     defaults.update(kwargs)
     return GovernanceContext(**defaults)
@@ -67,15 +68,16 @@ def test_an_unread_path_column_is_not_in_the_relation():
     assert "customer_tier" not in governed and "customer_profile" not in governed
 
 
-def test_a_read_path_column_is_its_path_inside_the_document_column():
+def test_a_read_path_column_is_served_by_its_name():
+    # Main read it by name on every engine: DuckDB's attach names the nested field's column apart
+    # (#266) and a replica lands it by name. Only Trino's live MongoDB catalog holds the document.
     governed = apply_governance("SELECT d.customer_tier FROM order_docs d", _gov())
-    assert _outputs(governed) == {"customer_tier": '"d"."customer_profile" ->> \'tier\''}
+    assert _outputs(governed) == {"customer_tier": '"d"."customer_tier"'}
 
 
-def test_a_one_key_path_is_a_key_inside_the_column_itself():
-    gov = _gov(column_paths={(3, "customer_tier"): "tier"})
-    governed = apply_governance("SELECT d.customer_tier FROM order_docs d", gov)
-    assert _outputs(governed) == {"customer_tier": '"d"."customer_tier" ->> \'tier\''}
+def test_a_read_path_column_is_not_extracted_from_a_document_column():
+    governed = apply_governance("SELECT d.customer_tier FROM order_docs d", _gov())
+    assert "customer_profile" not in governed and "->>" not in governed
 
 
 def test_a_star_reads_every_served_output():

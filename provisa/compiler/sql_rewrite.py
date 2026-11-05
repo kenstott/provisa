@@ -1412,6 +1412,78 @@ def wrap_lowcardinality_columns(  # REQ-1881
     return tree.sql(dialect=dialect) if changed else sql
 
 
+# --- Document paths on Trino's MongoDB catalog (REQ-039) ---
+
+# (catalog, schema, table) lowercased -> {column lowercased: its registered path in the document}
+DocumentPaths = dict[tuple[str, str, str], dict[str, str]]
+
+
+def _scope_physical_tables(select: exp.Select) -> dict[str, tuple[str, str, str]]:
+    """alias (lowercased) -> (catalog, schema, table) lowercased, for this SELECT's own FROM and
+    JOIN tables only (each nested SELECT is its own scope)."""
+    from_ = select.args.get("from_")
+    items = [from_.this] if from_ is not None else []
+    items += [j.this for j in select.args.get("joins") or []]
+    return {
+        t.alias_or_name.lower(): (t.catalog.lower(), t.db.lower(), t.name.lower())
+        for t in items
+        if isinstance(t, exp.Table) and t.db
+    }
+
+
+def _document_path(qualifier: str, path: str) -> exp.Expr:
+    """The value at ``path`` (``field.key...``) of the document read under ``qualifier``: its
+    top-level field, then each key's field of the ROW it holds."""
+    first, *keys = path.split(".")
+    value: exp.Expr = exp.column(first, table=qualifier, quoted=True)
+    for key in keys:
+        value = exp.Dot(this=value, expression=exp.to_identifier(key, quoted=True))
+    return value
+
+
+def read_document_paths(sql: str, dialect: str, paths: DocumentPaths) -> str:  # REQ-039
+    """``sql`` with each read of a column registered at a path in its MongoDB document read as
+    that path, off a table Trino reads live through its MongoDB catalog.
+
+    Every other engine's relation of a MongoDB table exposes such a column under its own name
+    (DuckDB's attach names each nested field's column apart, #266; a replica lands it by name), so
+    the governed statement reads it by name (stage2). Trino's MongoDB connector reads the document
+    as it is, a nested document as a ROW column: ``customer_tier`` at ``customer_profile.tier`` is
+    ``"d"."customer_profile"."tier"`` there. ``paths`` holds, per such table, each path column;
+    the caller computes it from each referenced table's registered source (a MongoDB source read
+    live on Trino) and columns. A column read off a derived table is left as it is: only a read off
+    the table itself is the document's. In a select list the value keeps the column's name."""
+    if not paths:
+        return sql
+    tree = sqlglot.parse_one(sql, read=dialect)
+    changed = False
+    scopes: dict[int, dict[str, tuple[str, str, str]]] = {}
+    for col in list(tree.find_all(exp.Column)):
+        if isinstance(col.this, exp.Star):
+            continue
+        select = col.find_ancestor(exp.Select)
+        if select is None:
+            continue
+        tables = scopes.setdefault(id(select), _scope_physical_tables(select))
+        if col.table:
+            physical = tables.get(col.table.lower())
+            qualifier = col.table
+        elif len(tables) == 1:
+            (physical,) = tables.values()
+            qualifier = next(iter(tables))
+        else:
+            continue
+        path = (paths.get(physical) or {}).get(col.name.lower()) if physical else None
+        if path is None:
+            continue
+        value = _document_path(qualifier, path)
+        if col.parent is select and col.arg_key == "expressions":
+            value = exp.alias_(value, col.name, quoted=True)
+        col.replace(value)
+        changed = True
+    return tree.sql(dialect=dialect) if changed else sql
+
+
 # --- Epoch-stored temporal columns (REQ-1908) ---
 
 _EPOCH_SCALE = {"s": None, "ms": exp.UnixToTime.MILLIS, "us": exp.UnixToTime.MICROS}

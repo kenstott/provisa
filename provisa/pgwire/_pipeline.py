@@ -1372,6 +1372,37 @@ async def propagate_literal_predicates(sql: str, state: Any) -> str:  # REQ-1880
     )
 
 
+async def _read_document_paths(sql: str, tree: Any, state: Any) -> str:  # REQ-039
+    """``sql`` (on a Trino route) with each read of a path column of a MongoDB table Trino reads
+    live -- through the source's own catalog, not a replica -- read as its path in the document
+    (``sql_rewrite.read_document_paths``)."""
+    import sqlglot.expressions as exp
+
+    from provisa.compiler.sql_rewrite import read_document_paths
+    from provisa.federation.registry_view import registered_sources, registered_tables
+
+    referenced = {
+        (t.catalog.lower(), t.db.lower(), t.name.lower())
+        for t in tree.find_all(exp.Table)
+        if t.catalog and t.db
+    }
+    if not referenced:
+        return sql
+    catalogs = getattr(state, "source_catalogs", {})
+    mongo = {s.id for s in await registered_sources(state) if s.type.value == "mongodb"}
+    paths: dict[tuple[str, str, str], dict[str, str]] = {}
+    for t in await registered_tables(state):
+        if t.source_id not in mongo or t.source_id not in catalogs:
+            continue
+        phys = (catalogs[t.source_id].lower(), t.schema_name.lower(), t.table_name.lower())
+        if phys not in referenced:
+            continue
+        columns = {c.name.lower(): c.path for c in t.columns if c.path}
+        if columns:
+            paths[phys] = columns
+    return read_document_paths(sql, "postgres", paths)
+
+
 async def _off_loop(fn, *args, **kwargs):
     """REQ-1882: run a synchronous, CPU-bound call (sqlglot parsing, the regex-based SQL-rewrite
     passes) on the default thread pool executor instead of in-line on the caller's event loop.
@@ -2968,6 +2999,7 @@ async def route_governed(
                     _qualified = wrap_lowcardinality_columns(
                         _qualified, "postgres", _affected_lowcard_cols
                     )
+            _qualified = await _read_document_paths(_qualified, _tree, state)
         # REQ-1730: this ENGINE route's own catalog-qualification (unlike Route.DIRECT's own
         # `strip_catalog`, applied unconditionally a few lines below in the other branch) was never
         # engine-aware — every engine got a catalog.schema.table physical reference regardless of
