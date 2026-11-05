@@ -24,6 +24,7 @@ from provisa.compiler.cte_utils import physical_tables
 from provisa.compiler.governed_relation import keep_read
 from provisa.compiler.rls import Rule, all_of, every_row, qualified_filter
 from provisa.compiler.sql_gen import CompilationContext
+from provisa.compiler.sql_types import extracts_paths, stored_path
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.security.masking import mask_expression
 
@@ -111,6 +112,10 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # Per table, its registered primary key's columns (CompilationContext.pk_columns): the key a
     # write that reads beyond its target matches its rows by (REQ-039).
     pk_columns: dict[int, list[str]] = field(default_factory=dict)
+    # REQ-151, REQ-152: per table on a SQL database, each column registered at a path in a JSON
+    # column (by physical name) -> that JSON column and the keys into it (sql_types.stored_path).
+    # The governed relation reads such a table as its source stores it (_read_stored).
+    stored_paths: dict[int, dict[str, tuple[str, list[str]]]] = field(default_factory=dict)
     # REQ-039, REQ-1942: the write the statement last governed with this context, admitted (its
     # grant's rows and the role's U or D rule in its WHERE) as the role wrote it, before what it
     # reads was moved over the governed relation; None for a read. A Reversible environment keeps
@@ -340,6 +345,12 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         for tm in getattr(ctx, "tables", {}).values()
     }
 
+    # REQ-151, REQ-152: table_id → its source's type, which says how a path column is served.
+    _source_type_by_tid: dict[Any, str] = {
+        getattr(tm, "table_id", None): getattr(tm, "source_type", "")
+        for tm in getattr(ctx, "tables", {}).values()
+    }
+
     _public: set[int] = set()
     # Build table_map, visible_columns, all_columns from raw tables
     for tbl in tables:
@@ -358,6 +369,14 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             # REQ-2190: a catalog view's scope is meta's, no column of PostgreSQL's relation.
             and c["column_name"] != SCOPE_COLUMN
         ]
+        # A table the compilation does not hold is read by no statement it compiles.
+        paths = {c["column_name"]: c["path"] for c in cols if c.get("path")}
+        if (
+            paths
+            and table_id in _source_type_by_tid
+            and extracts_paths(_source_type_by_tid[table_id], tbl.get("table_name", str(table_id)))
+        ):
+            gov.stored_paths[table_id] = {n: stored_path(n, p) for n, p in paths.items()}
         embeddings = {
             c["column_name"]: c["embedding_model"]
             for c in cols
@@ -930,10 +949,11 @@ def _governed_relation(
         as_named = next(names, None)
         if as_named is not None:
             out = as_named.name if as_named.quoted else as_named.name.lower()
-        # A column registered at a path in its document is read by its own name, as every
-        # engine's relation of the table exposes it; Trino's live MongoDB catalog holds the
-        # document instead, and the routed statement reads the path there
-        # (sql_rewrite.read_document_paths).
+        # A column registered at a path in its document is read by its own name: a source whose
+        # connector resolves the path holds it so (Trino's live MongoDB catalog holds the
+        # document instead, and the routed statement reads the path there,
+        # sql_rewrite.read_document_paths); a SQL database's table is read as it stores it
+        # (_read_stored), the path extracted from its JSON column.
         value: exp.Expr = exp.column(sql_name, table=alias, quoted=True)  # pyright: ignore[reportPrivateImportUsage]
         entry = gov_ctx.masking_rules.get((tid, physical))
         if entry is not None and not _is_fake(entry[0]):
@@ -977,8 +997,52 @@ def _governed_relation(
     relation.meta[_RELATION] = _Relation(
         tid, _folded(relation.args["alias"].this), columns, frozenset(hidden), carried_keys
     )
+    if tid in gov_ctx.stored_paths:
+        _read_stored(relation.this, tbl, tid, gov_ctx)
     tbl.replace(relation)
     return relation
+
+
+def _read_stored(body: exp.Expr, tbl: exp.Table, tid: int, gov_ctx: GovernanceContext) -> None:  # pyright: ignore[reportPrivateImportUsage]  # REQ-151, REQ-152
+    """Each read of ``tbl`` inside ``body`` -- the governed relation of a table on a SQL database
+    holding a column at a path in a JSON column -- as the table its source stores, IN PLACE: a
+    derived table under the same alias exposing every column by its name, a path column as the
+    extraction from its JSON column (PostgreSQL's ``->``/``->>``; the engine's transpile writes
+    its own). Every level above reads the path column by its name, as every read names it."""
+    from provisa.compiler.naming import apply_sql_name
+
+    paths = gov_ctx.stored_paths[tid]
+    for node in [t for t in body.find_all(exp.Table) if _same_table(t, tbl)]:
+        alias = _alias_for(node)
+        stored: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]
+        for physical, _ in gov_ctx.all_columns.get(tid, []):
+            name = apply_sql_name(physical)
+            if physical in paths:
+                source, keys = paths[physical]
+                value = _extracted(
+                    exp.column(apply_sql_name(source), table=alias, quoted=True), keys
+                )
+                stored.append(exp.alias_(value, name, quoted=True))
+            else:
+                stored.append(exp.column(name, table=alias, quoted=True))
+        read = exp.select(*stored).from_(_plain(node, alias))
+        node.replace(_derived(read, alias))
+
+
+def _same_table(node: exp.Table, tbl: exp.Table) -> bool:
+    """Whether ``node`` names the relation ``tbl`` names, whatever alias either carries."""
+    return all(node.args.get(k) == tbl.args.get(k) for k in ("this", "db", "catalog"))
+
+
+def _extracted(column: exp.Column, keys: list[str]) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]  # REQ-151
+    """The value at ``keys`` in the JSON ``column``, as text: ``->`` to each inner key and ``->>``
+    at the last, as PostgreSQL reads it."""
+    value: exp.Expr = column  # pyright: ignore[reportPrivateImportUsage]
+    for i, key in enumerate(keys):
+        path = exp.JSONPath(expressions=[exp.JSONPathRoot(), exp.JSONPathKey(this=key)])
+        kind = exp.JSONExtractScalar if i == len(keys) - 1 else exp.JSONExtract
+        value = kind(this=value, expression=path, only_json_types=True)
+    return value
 
 
 def _folded(identifier: exp.Identifier | None) -> str:

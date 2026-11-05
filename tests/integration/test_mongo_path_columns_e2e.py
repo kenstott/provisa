@@ -8,8 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""E2E: a MongoDB column registered at a path in its document, read by SQL through its governed
-relation, on DuckDB and on Trino (REQ-039).
+"""E2E: a MongoDB column registered at a path in its document, read by SQL and by GraphQL through its
+governed relation, on DuckDB and on Trino (REQ-039, REQ-151/152 amended 2026-11-05: PATHS ARE SERVED
+BY THE GOVERNED RELATION).
 
 The perf bench's order_docs registers customer_tier at customer_profile.tier. Stage 2 stands every
 registered table as the role's governed relation, which reads a path column by its own name: every
@@ -17,12 +18,13 @@ engine's relation of the table but one exposes it so (DuckDB's attach names the 
 column apart, #266). Trino's MongoDB connector reads the document as it is, a nested document as a
 ROW column, so on Trino the routed statement reads the column at its path. A statement that does
 not read a path column does not read it at all (on Trino it is no column of the table: the bench's
-federated_join failed with COLUMN_NOT_FOUND, J670).
+federated_join failed with COLUMN_NOT_FOUND, J670). A GraphQL read names the path column by its
+name as a SQL read does, and goes through the same relation: the compile extracts nothing.
 
 Everything here is the ``test`` instance: a MongoDB this module starts on a leased port and
 removes, and an isolated server on each engine. Each answer is checked against the documents."""
 
-# Requirements: REQ-039
+# Requirements: REQ-039, REQ-151, REQ-152
 
 from __future__ import annotations
 
@@ -238,4 +240,54 @@ def test_a_read_of_no_path_column_answers(server):
     rows = _rows(server, "SELECT status, count(*) AS n FROM order_docs GROUP BY status ORDER BY 1")
     assert rows == [
         {"status": s, "n": sum(1 for r in _ROWS if r["status"] == s)} for s in ("closed", "open")
+    ]
+
+
+# --- GraphQL: the same relation, the path column named by its name ------------------------------
+
+
+def _graphql(server, query: str, role: str = _ROLE) -> dict:
+    resp = httpx.post(
+        f"{server.base_url}/data/graphql",
+        json={"query": query},
+        headers={"X-Provisa-Role": role},
+        timeout=server.request_timeout + 30,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "errors" not in body, body
+    return body["data"]
+
+
+def _by_order(rows: list[dict]) -> list[dict]:
+    return sorted(rows, key=lambda r: r["orderId"])
+
+
+def test_a_graphql_read_of_a_path_column_answers_its_value_in_the_document(server):
+    rows = _graphql(server, "{ orderDocs { orderId customerTier city } }")["orderDocs"]
+    assert _by_order(rows) == [
+        {"orderId": r["order_id"], "customerTier": r["customer_tier"], "city": r["city"]}
+        for r in _ROWS
+    ]
+
+
+def test_a_graphql_filter_on_a_path_column_reads_its_value_in_the_document(server):
+    query = '{ orderDocs(where: {customerTier: {eq: "gold"}}) { orderId customerTier } }'
+    rows = _graphql(server, query)["orderDocs"]
+    assert _by_order(rows) == [
+        {"orderId": r["order_id"], "customerTier": "gold"}
+        for r in _ROWS
+        if r["customer_tier"] == "gold"
+    ]
+
+
+def test_a_graphql_one_key_path_reads_a_top_level_field(server):
+    rows = _graphql(server, "{ orderDocs { orderId docKey } }")["orderDocs"]
+    assert _by_order(rows) == [{"orderId": r["order_id"], "docKey": r["doc_key"]} for r in _ROWS]
+
+
+def test_a_graphql_read_by_a_role_not_served_a_path_column_answers_the_others(server):
+    rows = _graphql(server, "{ orderDocs { orderId customerTier } }", role=_ANALYST)["orderDocs"]
+    assert _by_order(rows) == [
+        {"orderId": r["order_id"], "customerTier": r["customer_tier"]} for r in _ROWS
     ]

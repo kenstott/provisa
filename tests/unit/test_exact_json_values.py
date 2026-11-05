@@ -308,6 +308,7 @@ def _ctx(customer_columns=None):
         naming_rules=[],
         role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
         domains=[{"id": "sales", "description": "Sales"}],
+        source_types={"sales-pg": "postgresql"},
     )
     generate_schema(si)
     return build_context(si)
@@ -853,9 +854,27 @@ def test_a_json_path_leaf_is_text_even_when_its_value_is_an_array():
 
     from provisa.compiler.sql_gen import compile_query
 
-    ctx = _ctx(customer_columns=["id", {"column_name": "prefs", "alias": "tags", "path": "tags"}])
+    from provisa.compiler.rls import RLSContext
+    from provisa.compiler.stage2 import apply_governance, build_governance_context
+
+    columns = ["id", {"column_name": "prefs", "alias": "tags", "path": "tags"}]
+    ctx = _ctx(customer_columns=columns)
     (compiled,) = compile_query(parse("{ customers { id tags } }"), ctx, None)
-    assert "->>'tags'" in compiled.sql
+    # REQ-151 (amended 2026-11-05): read by its name, extracted with ->> in its governed relation
+    assert compiled.sql == 'SELECT "id", "tags" FROM "public"."customers"'
+    role = {"id": "admin", "capabilities": [], "domain_access": ["*"]}
+    table = {
+        "id": 1,
+        "source_id": "sales-pg",
+        "columns": [
+            {**c, "visible_to": ["admin"]}
+            if isinstance(c, dict)
+            else {"column_name": c, "visible_to": ["admin"]}
+            for c in columns
+        ],
+    }
+    gov = build_governance_context("admin", RLSContext(rules={}), {}, ctx, [table], role, [])
+    assert '"customers"."prefs" ->> \'tags\' AS "prefs"' in apply_governance(compiled.sql, gov)
     tags = next(c for c in compiled.columns if c.field_name == "tags")
     assert not tags.json
     # PostgreSQL's ->> of an array-valued key is the array's text

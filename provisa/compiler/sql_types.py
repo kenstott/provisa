@@ -63,6 +63,48 @@ class TableMeta:
     display_name: str = ""  # user-visible name (DB alias); empty → derived from field_name
 
 
+#: REQ-151, REQ-152 (amended 2026-11-05, PATHS ARE SERVED BY THE GOVERNED RELATION): the source
+#: types whose connector resolves a column's path itself, so the relation of the table an engine
+#: reads holds the path column under its own name (a MongoDB table on Trino's live catalog holds
+#: the document instead, sql_rewrite.read_document_paths). Every other source is a SQL database
+#: holding the document in a JSON column, and the governed relation extracts the path from it.
+PATH_RESOLVING_SOURCES: frozenset[str] = frozenset(
+    {
+        "mongodb",
+        "elasticsearch",
+        "qdrant",
+        "cosmosdb",
+        "jira",
+        "quickbooks",
+        "openapi",
+        "graphql_remote",
+        "grpc_remote",
+        "ingest",
+    }
+)
+
+
+def extracts_paths(source_type: str, table: str) -> bool:  # REQ-151, REQ-152
+    """Whether a path column of ``table``, on a source of ``source_type``, is served as the
+    extraction from its JSON column (a SQL database) rather than by its name (a source whose
+    connector resolves the path, :data:`PATH_RESOLVING_SOURCES`). A table whose source type is
+    not known cannot say which, and is refused."""
+    if not source_type:
+        raise ValueError(
+            f"table {table!r} registers a column at a path, and its source's type is not known: "
+            "a path column is served by its name or extracted from its JSON column by the type"
+        )
+    return source_type not in PATH_RESOLVING_SOURCES
+
+
+def stored_path(column: str, path: str) -> tuple[str, list[str]]:  # REQ-151, REQ-152
+    """The JSON column and the keys into it a path column registered as ``column`` at ``path``
+    reads, on a SQL database: ``source.key...`` reads ``source``; a one-key path reads that key
+    of the column itself (the column is the JSON column, exposed under its alias)."""
+    first, *keys = path.split(".")
+    return (column, [first]) if not keys else (first, keys)
+
+
 def key_list(stored: str) -> tuple[str, ...]:
     """REQ-1586: split a stored key declaration into its ordered columns.
 
@@ -155,8 +197,6 @@ class CompilationContext:
     listed_only: dict[str, str] = field(default_factory=dict)
     # (source_type_name, relationship_field_name) → JoinMeta
     joins: dict[tuple[str, str], JoinMeta] = field(default_factory=dict)
-    # (table_id, graphql_field_name) → path expression (e.g. "payload.order_id")
-    column_paths: dict[tuple[int, str], str] = field(default_factory=dict)
     # REQ-1908: (schema, physical table) lowercased → {column lowercased: (epoch unit, data_type)}
     # for every registered temporal column its source stores as an epoch number.
     epoch_columns: dict[tuple[str, str], dict[str, tuple[str, str]]] = field(default_factory=dict)

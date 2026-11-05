@@ -5940,6 +5940,12 @@ async def _route_compiled(
             raise
         # REQ-1880: same literal-predicate carry the raw-SQL path applies (one helper, both paths).
         _exec_sql = await propagate_literal_predicates(_exec_sql, state)
+        if state.federation_engine.dialect == "trino":
+            # REQ-039, REQ-151: the raw-SQL path's same read of a MongoDB path column at its path
+            # in the document Trino's live catalog holds (one helper, both paths).
+            _exec_sql = await _read_document_paths(
+                _exec_sql, _sg2.parse_one(_exec_sql, dialect="postgres"), state
+            )
         # REQ-1730: mirrors _govern_and_route_planned's identical fold — PostgreSQL cannot express
         # a catalog.schema.table reference (no cross-database queries), so an engine that declares
         # catalog_qualified=False needs the catalog folded into the schema name here too, or a
