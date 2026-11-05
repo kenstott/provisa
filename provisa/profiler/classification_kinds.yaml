@@ -283,6 +283,7 @@ kinds:
     passes: have the email address format
     sensitive: true
     pattern: '[A-Za-z0-9.!#$%&''*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+'
+    check: email_address
     families: [text]
     threshold: 0.9
     term: email address

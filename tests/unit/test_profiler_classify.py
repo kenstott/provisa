@@ -49,7 +49,7 @@ _VALID = {
     "us_ein": ["12-3456789", "95-0000001", "99-1234567"],
     "us_itin": ["912-70-1234", "970881234", "950-50-1234", "999-94-0000"],
     "us_bank_routing_number": ["021000021", "122000030", "011401533"],
-    "de_steuer_id": ["65929970489", "86123456784", "86 123 456 784", "48123456791"],
+    "de_steuer_id": ["65929970489", "71234567899", "71 234 567 899", "48123456791"],
     "fr_nir": ["184127645108946", "2 69 05 11 402 065 85", "185072A01001219"],
     "au_tfn": ["123456782", "123 456 782", "876543210"],
     "br_cpf": ["123.456.789-09", "11144477735", "111.444.777-35"],
@@ -209,7 +209,8 @@ def test_a_pattern_is_unanchored_and_the_whole_value_test_anchors_it(kind_id):
     assert not kind.pattern.startswith("^") and not kind.pattern.endswith("$"), kind_id
     flags = re.IGNORECASE if kind.ignore_case else 0
     sample = _VALID[kind_id][0]
-    assert re.search(kind.pattern, f"id: {sample}.", flags) is not None  # found inside a text
+    bare = re.sub(kind.ignore, "", sample) if kind.ignore else sample
+    assert re.search(kind.pattern, f"id: {bare}.", flags) is not None  # found inside a text
     assert not classify.VALIDATORS[kind.test](f"id: {sample} extra")  # but not as a whole value
 
 
