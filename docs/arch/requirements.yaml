@@ -83808,7 +83808,10 @@
     org creates the environments its setup.yaml declares, every sandbox cloned from the template carries
     them (same names and data modes), and the sandbox''s visitor switches between them but creates and deletes
     none. (Amended 2026-11-04, THE COVERAGE STEP OPENS THE STANDARD REPORT:) The tour''s coverage step opens
-    the sensitive coverage report on the Admin Reports page, not a hand-written query.'
+    the sensitive coverage report on the Admin Reports page, not a hand-written query. (Amended 2026-11-04,
+    THE ASSISTANT PROPOSES THE FAKES FROM THE PROFILE:) The tour shows the assistant proposing the missing
+    fake from the profile data: on customers.email, with no fake declared, it reads the latest profile run
+    and proposes the fake (propose_fakes), the answer stored with the tour.'
   use_case: 'A visitor opens the environments and test data demo and sees how Provisa answers: Can I test against
     realistic data without touching production?'
   scenario: 'Given the environments and test data demo started from its bundle
@@ -91924,3 +91927,54 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
     Then each answer shows the source''s current row, none is answered from the hot cache, the response
     cache or the view'
+- id: REQ-2207
+  value: Any user keeps their own reports and can have them emailed on a schedule or when their data changes.
+  status: proposed
+  target: 2026-Q4
+  group: 5. Query Languages, Compilation & Operations
+  category: Operational Views
+  feature: observability-operational-views
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-05: My Reports. Any user saves a query, with a name, from the SQL
+    page to My Reports (under Admin, beside Reports), and comes back to it there. A saved report belongs
+    to its owner alone; it is not a view in the model and is not in the catalog. Opening it runs it through
+    the one query pipeline as the person opening it, with their current grants. A steward can promote
+    one to a standard report (REQ-1386), which makes it a governed ops-domain view. A saved report can
+    be emailed to a list of email addresses the owner gives when setting it up. What sends it is either
+    a cadence (daily, weekly, or a cron expression) or a trigger: a change to a table the report reads,
+    detected by the existing change and subscription providers (CDC, watermark polling, a finished replica
+    build). Either can carry a condition: always (the default), only when the result has rows, or only
+    when the result differs from the last send (a hash of the last result is kept, not its rows). Sends
+    are at least a minimum interval apart, set on the schedule; changes inside it are coalesced into one
+    send. The owner chooses the attachment type: none, CSV or XLSX. With none, the email carries a link
+    to the report and its row count, any address may be on the list, and a recipient opens it with their
+    own credentials and grants. With CSV or XLSX, the report runs once as its owner when it fires and
+    the rows are attached, masks applied as for any read; the owner answers for sending what they can
+    see, and the form says so when an attachment type is chosen. Every recipient of an attachment must
+    match the organization''s allowed attachment recipients pattern, a regular expression in the org
+    config (set by an org admin, with its UI on the org settings page), matched case-insensitively against
+    the whole address; an invalid pattern is refused when saved. With no pattern set, no attachment
+    is sent: only link sends work until an admin sets one. A non-matching address is refused by name
+    when the schedule is saved, and checked again at every send; a schedule that no longer passes, or
+    whose owner has lost a grant it reads or left the organization, is paused and its owner told why.
+    An attachment holds at most a set number of rows; past that the email says it was cut and links to
+    the full result. Every email carries a one-click unsubscribe that removes that address from the schedule
+    and tells the owner. Every send is recorded in the audit log: who, which report, what fired it, the
+    recipients, the attachment type and the row count.'
+  scenario: 'Given an organization whose allowed attachment recipients pattern is .*@acme\.com
+
+
+    And a user who saves a query to My Reports and has it sent with a CSV attachment to two acme.com
+    addresses whenever its table changes and only when the result has rows
+
+
+    When a row the query returns is written to that table
+
+
+    Then each address receives one email with the rows the owner can read attached, and the send is
+    in the audit log
+
+
+    And a schedule naming an address outside acme.com with a CSV attachment is refused, naming the
+    address'
