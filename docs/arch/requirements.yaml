@@ -74465,13 +74465,20 @@
     the engine. A materialized view keeps its reference through governance, its stored rows put in after,
     only while its build is fresh and the reader sees it whole; otherwise it is expanded into the statement
     as its own SQL and governed with it. (Amended 2026-11-05, REGIONS ARE EDITED IN THE UI:) Regions have
-    two UI surfaces. The platform''s regions (each an id and its node''s address) are edited by the platform
-    admin on a Platform page and take effect on restart, since a node reads them before it opens any store.
-    An org''s stores and regions (each region''s engine, replicas, views, cache, state and record stores)
-    are edited by the org admin on Admin > Regions, validated as the config is (validate_regions), a refusal
-    naming the field. (Amended 2026-11-05, THE PLATFORM PAGE IS READ-ONLY IN A SANDBOX:) In a demo sandbox
-    the visitor can open the Platform page''s regions read-only, with a note that it is shown to explain
-    regions and cannot be changed there; nothing on it can be edited or saved from a sandbox.'
+    two UI surfaces. The platform''s regions [SUPERSEDED by REQ-1922, 2026-11-05 -- a platform region no
+    longer has an address. Kept here for history; do not implement against it.] (each an id and its node''s
+    address) [END SUPERSEDED BLOCK] are edited by the platform admin on a Platform page and take effect
+    on restart, since a node reads them before it opens any store. An org''s stores and regions (each region''s
+    engine, replicas, views, cache, state and record stores) are edited by the org admin on Admin > Regions,
+    validated as the config is (validate_regions), a refusal naming the field. (Amended 2026-11-05, THE
+    PLATFORM PAGE IS READ-ONLY IN A SANDBOX:) In a demo sandbox the visitor can open the Platform page''s
+    regions read-only, with a note that it is shown to explain regions and cannot be changed there; nothing
+    on it can be edited or saved from a sandbox. (Amended 2026-11-05, A PLATFORM REGION IS AN ID AND ITS
+    DATA ADDRESSES:) A platform region is declared logically by its id, with the data addresses (REQ-1916)
+    the UI sends that region''s data calls to when a load balancer, a pool or a single node is in front;
+    with none declared the UI is offered the region''s registered nodes. A platform region has no other
+    address: the address field is removed, and a refusal that lists the platform''s regions lists their
+    ids.'
   use_case: A regulated enterprise needs some data processed and kept inside a country, with the rest
     of the estate readable from anywhere, under one set of definitions. Two independent deployments would
     each need their own definitions, which could diverge. Two clusters on one shared model give each region
