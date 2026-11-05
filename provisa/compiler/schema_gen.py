@@ -18,6 +18,7 @@ Domain-scoped, per-role column filtering (REQ-008, REQ-021).
 
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any, cast
 
 from graphql import (
@@ -56,7 +57,9 @@ from provisa.compiler.naming import (
     to_type_name,
     unprefixed_field_name,
 )
+from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.metric_expand import metric_reference_tables
+from provisa.compiler.sql_types import extracts_paths
 from provisa.compiler.ontology_classes import served_class_columns
 from provisa.core.modeling_tags import append_modeling_tag
 from provisa.compiler.type_map import JSONScalar, registered_graphql_type, array_graphql_type
@@ -160,6 +163,7 @@ def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
             )
             continue
         col_meta = {m.column_name.lower(): m for m in si.column_types[table_id]}
+        _served_as_text(table, col_meta, si)
 
         # Filter columns by role visibility; split native filter cols from regular cols.
         # REQ-1132/REQ-1134: in the meta
@@ -277,6 +281,25 @@ def _build_visible_tables(  # REQ-008, REQ-039, REQ-363
         )
 
     return result
+
+
+def _served_as_text(
+    table: dict, col_meta: dict[str, ColumnMetadata], si: SchemaInput
+) -> None:  # REQ-151, REQ-152
+    """Type each path column of ``table`` on a SQL database as text in ``col_meta``: the governed
+    relation serves it as the text at its path (stage2._read_stored, ``->>``), whatever the type of
+    the JSON column it is read from, so its field is a String and a filter on it compares text. A
+    path column a connector resolves keeps its registered type."""
+    paths = [c["column_name"].lower() for c in table["columns"] if c.get("path")]
+    if not paths or not extracts_paths(
+        (si.source_types or {}).get(table["source_id"], ""), table["table_name"]
+    ):
+        return
+    for name in paths:
+        if name in col_meta:
+            col_meta[name] = replace(
+                col_meta[name], data_type="varchar", subtype=None, native_type=None
+            )
 
 
 def _assign_names(  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-411, REQ-412, REQ-416

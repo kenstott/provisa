@@ -322,6 +322,27 @@ def test_a_graphql_filter_on_a_sql_databases_path_column_reads_its_value():
     assert _pg_rows(governed, params) == [(2, "20")]
 
 
+# The value each form reads on row 2, which an eq filter on the path column picks out.
+_ROW_2 = {"one_key_alias": "b2", "json_column_at_path": "20", "named": "20"}
+
+
+@pytest.mark.parametrize("form", list(_PG_FORMS))
+def test_a_sql_databases_path_column_is_a_string_in_the_graphql_schema(form):
+    # Served as the text at its path (->>), whatever the type of the JSON column it is read from.
+    from graphql import GraphQLString, get_named_type
+
+    schema, _, _ = _pg_context(form)
+    events = get_named_type(schema.query_type.fields["events"].type)
+    assert get_named_type(events.fields[_PG_FORMS[form][1]].type) is GraphQLString
+
+
+@pytest.mark.parametrize("form", list(_PG_FORMS))
+def test_a_graphql_eq_filter_on_a_sql_databases_path_column_compares_its_text(form):
+    name, value = _PG_FORMS[form][1], _ROW_2[form]
+    _, governed, params, _ = _pg_graphql(form, f'(where: {{{name}: {{eq: "{value}"}}}})')
+    assert _pg_rows(governed, params) == [(2, value)]
+
+
 @pytest.mark.parametrize("form", list(_PG_FORMS))
 def test_a_sql_read_of_a_sql_databases_path_column_goes_through_the_same_relation(form):
     governed = _pg_sql(form)
@@ -337,9 +358,10 @@ def test_a_sql_filter_on_a_sql_databases_path_column_reads_its_value(form):
     assert _pg_rows(governed) == [(2, value)]
 
 
-def test_a_path_column_on_a_source_of_unknown_type_is_refused():
+def _named_path_input(source_type: str = "") -> SchemaInput:
+    """The named form's table, on ``sales-pg`` of ``source_type`` (none: a type not known)."""
     table = _pg_table(_PG_FORMS["named"][0])
-    si = SchemaInput(
+    return SchemaInput(
         tables=[table],
         relationships=[],
         column_types={
@@ -351,6 +373,62 @@ def test_a_path_column_on_a_source_of_unknown_type_is_refused():
         naming_rules=[],
         role=_ROLE,
         domains=[{"id": "pb", "description": "path columns"}],
+        source_types={"sales-pg": source_type} if source_type else {},
     )
+
+
+def test_a_path_column_on_a_source_of_unknown_type_is_refused():
     with pytest.raises(ValueError, match="source's type is not known"):
-        build_context(si)
+        build_context(_named_path_input())
+
+
+# --- each source type declares how it serves a path column (core.source_registry) -------------
+
+# The connector sources served through the pgwire bridge read a table by its registered column
+# names and are never given a column's path, so they serve no path column.
+_SERVES_NONE = ["servicenow", "salesforce", "splunk", "sharepoint", "cloudops", "files", "govdata"]
+
+
+@pytest.mark.parametrize("source_type", _SERVES_NONE)
+def test_a_path_column_on_a_source_type_that_serves_none_is_refused(source_type):
+    with pytest.raises(ValueError, match=f"{source_type!r} serves no path column"):
+        build_context(_named_path_input(source_type))
+
+
+@pytest.mark.parametrize(
+    "source_type",
+    [
+        "mongodb",
+        "elasticsearch",
+        "qdrant",
+        "cosmosdb",
+        "jira",
+        "quickbooks",
+        "openapi",
+        "graphql_remote",
+        "grpc_remote",
+        "ingest",
+        "python",
+        "node",
+        "go",
+    ],
+)
+def test_a_source_whose_connector_resolves_the_path_serves_it_by_its_name(source_type):
+    from provisa.compiler.sql_types import extracts_paths
+
+    assert extracts_paths(source_type, "t") is False
+
+
+@pytest.mark.parametrize("source_type", ["postgresql", "mysql", "snowflake", "iceberg", "duckdb"])
+def test_a_sql_database_extracts_the_path_from_its_json_column(source_type):
+    from provisa.compiler.sql_types import extracts_paths
+
+    assert extracts_paths(source_type, "t") is True
+
+
+def test_every_declaration_names_a_source_type_and_a_way_of_serving():
+    from provisa.core.models import SourceType
+    from provisa.core.source_registry import PATH_COLUMNS, PATHS_EXTRACTED, PATHS_RESOLVED
+
+    assert set(PATH_COLUMNS) <= {t.value for t in SourceType}
+    assert set(PATH_COLUMNS.values()) <= {PATHS_RESOLVED, PATHS_EXTRACTED}

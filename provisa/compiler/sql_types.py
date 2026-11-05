@@ -63,38 +63,27 @@ class TableMeta:
     display_name: str = ""  # user-visible name (DB alias); empty → derived from field_name
 
 
-#: REQ-151, REQ-152 (amended 2026-11-05, PATHS ARE SERVED BY THE GOVERNED RELATION): the source
-#: types whose connector resolves a column's path itself, so the relation of the table an engine
-#: reads holds the path column under its own name (a MongoDB table on Trino's live catalog holds
-#: the document instead, sql_rewrite.read_document_paths). Every other source is a SQL database
-#: holding the document in a JSON column, and the governed relation extracts the path from it.
-PATH_RESOLVING_SOURCES: frozenset[str] = frozenset(
-    {
-        "mongodb",
-        "elasticsearch",
-        "qdrant",
-        "cosmosdb",
-        "jira",
-        "quickbooks",
-        "openapi",
-        "graphql_remote",
-        "grpc_remote",
-        "ingest",
-    }
-)
-
-
 def extracts_paths(source_type: str, table: str) -> bool:  # REQ-151, REQ-152
     """Whether a path column of ``table``, on a source of ``source_type``, is served as the
     extraction from its JSON column (a SQL database) rather than by its name (a source whose
-    connector resolves the path, :data:`PATH_RESOLVING_SOURCES`). A table whose source type is
-    not known cannot say which, and is refused."""
+    connector resolves the path), as the type declares (``core.source_registry.PATH_COLUMNS``).
+    A table whose source type is not known, or declares neither, cannot say which, and is
+    refused."""
+    from provisa.core.source_registry import PATHS_EXTRACTED, path_columns
+
     if not source_type:
         raise ValueError(
             f"table {table!r} registers a column at a path, and its source's type is not known: "
             "a path column is served by its name or extracted from its JSON column by the type"
         )
-    return source_type not in PATH_RESOLVING_SOURCES
+    served = path_columns(source_type)
+    if served is None:
+        raise ValueError(
+            f"table {table!r} registers a column at a path, and its source's type "
+            f"{source_type!r} serves no path column: its connector neither resolves the path nor "
+            "holds the document in a JSON column it is extracted from"
+        )
+    return served == PATHS_EXTRACTED
 
 
 def stored_path(column: str, path: str) -> tuple[str, list[str]]:  # REQ-151, REQ-152

@@ -40,7 +40,6 @@ from provisa.security.rights import (
     writes_table,
 )
 from provisa.compiler.sql_types import (
-    extracts_paths,
     is_integer_type,
     is_json_type,
     CompilationContext,
@@ -146,11 +145,9 @@ def _register_table_in_ctx(
             continue
         col_meta = t.column_metadata.get(col_name.lower())
         if col_meta:
+            # REQ-151: a SQL database's path column is text here already (schema_gen.
+            # _served_as_text), neither the JSON column it is read from nor a number.
             col_info.append((col_name, col_meta.data_type))
-            if col.get("path") and extracts_paths(src_type, t.table_name):
-                # REQ-151: a SQL database's path column is served as the text at its path
-                # (stage2._read_stored), neither the JSON column it is read from nor a number.
-                continue
             if is_json_type(col_meta.data_type):
                 ctx.json_columns.add((t.table_id, col_name.lower()))
             if is_integer_type(col_meta.data_type):
