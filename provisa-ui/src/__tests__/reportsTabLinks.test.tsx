@@ -62,5 +62,8 @@ describe("ReportsTab", () => {
       "sensitive_column_coverage",
     );
     expect(screen.queryByTestId("ontology-drift")).not.toBeInTheDocument();
+    expect(screen.getByTestId("report-item-sensitive_column_coverage")).toHaveAttribute(
+      "data-active",
+    );
   });
 });

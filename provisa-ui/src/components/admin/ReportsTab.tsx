@@ -187,7 +187,7 @@ export function ReportsTab() {
               return (
                 <NavLink
                   key={report.id}
-                  active={report.id === selectedId}
+                  active={report.id === selected?.id}
                   label={report.alias || report.tableName}
                   description={report.description || undefined}
                   onClick={() => handleSelect(report)}
