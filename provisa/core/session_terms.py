@@ -59,7 +59,7 @@ def _value(term: exp.Expression, text: str) -> exp.Expression:
     )
 
 
-def expand_list_settings(tree: exp.Expression, session_vars: dict[str, str]) -> None:
+def expand_list_settings(tree: exp.Expr, session_vars: dict[str, str]) -> None:  # pyright: ignore[reportPrivateImportUsage]
     """Replace, in place, each list variable a bound IN list reads with one literal per value."""
     for node in list(tree.find_all(exp.In)):
         expanded: list[exp.Expression] = []
@@ -76,7 +76,7 @@ def expand_list_settings(tree: exp.Expression, session_vars: dict[str, str]) -> 
             node.set("expressions", expanded)
 
 
-def resolve_session_terms(tree: exp.Expression, session_vars: dict[str, str]) -> exp.Expression:
+def resolve_session_terms(tree: exp.Expr, session_vars: dict[str, str]) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """``tree`` with every ``current_setting`` term a literal, NULL when unbound: for a predicate
     run where the function does not exist (the model store, on any backend)."""
     expand_list_settings(tree, session_vars)

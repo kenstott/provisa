@@ -70,26 +70,32 @@ def _resolve_session_settings(sql: str, session_vars: dict[str, str], dialect: s
     the RLS predicate then matches no rows, a safe deny-by-default. PostgreSQL
     keeps native ``current_setting`` (fed by ``SET LOCAL``) and is untouched.
     """
-
-    if _CURRENT_SETTING_RE.search(sql) is None:
+    # REQ-913: a statement naming no current_setting has no term to resolve, and a statement can
+    # be large (a Cypher MATCH (n) is hundreds of KB): this check only spares reading it. What is
+    # resolved is decided on the tree (:func:`resolve_settings`), never on the text.
+    if "current_setting" not in sql.lower():
         return sql
-    from provisa.compiler.sql_literals import sql_literal
+    # REQ-913: the statement reaches this stage as text from the one before it (the stages
+    # exchange SQL text); it is read once here. REQ-2167: on the tree, a current_setting a string
+    # literal holds is its text.
+    tree = sqlglot.parse_one(sql, read=dialect)
+    resolved = resolve_settings(tree, session_vars)
+    return sql if resolved == tree else resolved.sql(dialect=dialect)
+
+
+def resolve_settings(tree: sqlglot.exp.Expr, session_vars: dict[str, str]) -> sqlglot.exp.Expr:
+    """``tree`` with each ``current_setting('provisa.<var>')`` the request's value as a literal,
+    NULL where it carries none (REQ-1682). The literal is a node, written in whatever dialect the
+    tree is (REQ-913)."""
+    from provisa.compiler.sql_literals import literal_expr
 
     def _resolved(node: sqlglot.exp.Expr) -> sqlglot.exp.Expr:
         named = _setting_named(node)
         if named is None:
             return node
-        # ``dialect`` is the dialect ``sql`` is written in: the engine's for transpiled SQL, where
-        # a backslash may be an escape, so each value takes that dialect's one literal rule.
-        value = session_vars.get(named)
-        return sqlglot.parse_one(
-            "NULL" if value is None else sql_literal(value, dialect), read=dialect
-        )
+        return literal_expr(session_vars.get(named))
 
-    # REQ-2167: on the tree, so a current_setting a string literal holds is its text.
-    tree = sqlglot.parse_one(sql, read=dialect)
-    resolved = tree.transform(_resolved)
-    return sql if resolved == tree else resolved.sql(dialect=dialect)
+    return tree.transform(_resolved)
 
 
 def _setting_named(node: sqlglot.exp.Expr) -> str | None:
@@ -5351,7 +5357,7 @@ async def _approval_stage(
     if not resp.approved:
         raise ApprovalDenied(str(resp.reason))
     if resp.additional_filter:
-        return _inject_where(governed_sql, f"({resp.additional_filter})")
+        return _inject_where(governed_sql, resp.additional_filter)
     return governed_sql
 
 

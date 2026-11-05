@@ -53,18 +53,22 @@ Nothing is written first and checked afterwards."""
 
 from __future__ import annotations
 
-from provisa.compiler.sql_literals import sql_literal
 
-import re
 from typing import TYPE_CHECKING
 
-import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.definitions import NotAvailableHere
 
-from provisa.compiler.rls import _qualified_predicate, cast_session_terms
-from provisa.core.session_terms import expand_list_settings
+from provisa.compiler.rls import (
+    Rule,
+    _qualified_predicate,
+    all_of,
+    any_of,
+    cast_session_terms,
+    every_row,
+)
+from provisa.core.session_terms import resolve_session_terms
 from provisa.security.mutation_authz import ColumnNotWritable
 
 if TYPE_CHECKING:
@@ -72,8 +76,6 @@ if TYPE_CHECKING:
 
 # REQ-1942: TRUNCATE is a mutation too, run as itself -- never rewritten to a DELETE.
 WRITES = (exp.Insert, exp.Update, exp.Delete, exp.Merge, exp.TruncateTable)
-
-_SESSION_TERM = re.compile(r"current_setting\(\s*'provisa\.([A-Za-z0-9_]+)'\s*\)", re.IGNORECASE)
 
 
 class WriteNotAdmitted(PermissionError):
@@ -278,13 +280,13 @@ def for_columns(grant: dict, columns: list[str]) -> dict:  # REQ-1620
     for stated in ("rows", "check"):
         if grant.get(stated) is None:
             continue
-        per_column: list[str] = []
+        per_column: list[Rule | None] = []
         for column in dict.fromkeys(columns):
             terms = [h[stated] for h in holders if column in h["columns"]]
-            if not terms or any(t == "TRUE" for t in terms):
+            if not terms or any(every_row(t) for t in terms):
                 continue  # no holder grants it (refused by name) / a holder admits every row
-            per_column.append(" OR ".join(f"({t})" for t in terms))
-        applied[stated] = " AND ".join(f"({t})" for t in dict.fromkeys(per_column)) or "TRUE"
+            per_column.append(any_of(terms))
+        applied[stated] = all_of(per_column) or exp.true()
     return applied
 
 
@@ -303,7 +305,7 @@ def _require_columns(gov: "GovernanceContext", grant: dict, name: str, columns: 
             raise ColumnNotWritable(gov.role_id, column)
 
 
-def _predicate(gov: "GovernanceContext", table_id: int, stated: str | None) -> str | None:
+def _predicate(gov: "GovernanceContext", table_id: int, stated: Rule | None) -> Rule | None:
     """The predicate a grant states for its rows or its check. REQ-2074: a grant that states none
     takes the role's read row filter on the table -- a role writes the rows it reads unless its
     grant says otherwise -- and a table the role reads unfiltered gives none (every row)."""
@@ -312,7 +314,7 @@ def _predicate(gov: "GovernanceContext", table_id: int, stated: str | None) -> s
     return gov.rls_rules.get(table_id)
 
 
-def _rule(gov: "GovernanceContext", table_id: int, operation: str) -> str | None:  # REQ-2188
+def _rule(gov: "GovernanceContext", table_id: int, operation: str) -> Rule | None:  # REQ-2188
     """The role's U rule on the table for an update, its D rule for a delete, or None."""
     return gov.write_rules.get(operation, {}).get(table_id)
 
@@ -324,12 +326,9 @@ def _label(grant: dict, stated: str) -> str:
     )
 
 
-def _every_row(predicate: str | None) -> bool:
+def _every_row(predicate: Rule | None) -> bool:
     """Whether ``predicate`` admits every row: none at all, or the literal TRUE."""
-    if predicate is None:
-        return True
-    tree = sqlglot.parse_one(predicate, read="postgres")
-    return isinstance(tree, exp.Boolean) and tree.this is True
+    return predicate is None or every_row(predicate)
 
 
 def _preset_values(
@@ -366,21 +365,20 @@ def _preset_values(
 
 
 def _filter_over(
-    predicate: str,
+    predicate: Rule,
     gov: "GovernanceContext",
     table_id: int,
     session_vars: dict[str, str],
     values: dict[str, exp.Expression],
-) -> exp.Expression:
+) -> Rule:
     """``predicate`` with every column in ``values`` replaced by the expression the statement
     supplies for it."""
     column_types = dict(gov.all_columns.get(table_id, []))
     qualified = _qualified_predicate(predicate, None)
     cast_session_terms(qualified, column_types)
-    expand_list_settings(qualified, session_vars)  # REQ-2188
-    resolved: exp.Expression = sqlglot.parse_one(  # pyright: ignore[reportAssignmentType]  # sqlglot stub types parse_one as Expr
-        _with_session_values(qualified.sql(dialect="postgres"), session_vars), read="postgres"
-    )
+    # REQ-2188, REQ-1682: list variables expanded, every other term the request's value (NULL
+    # when unbound) -- what the pipeline does to a governed read -- on the tree.
+    resolved = resolve_session_terms(qualified, session_vars)
     for column in list(resolved.find_all(exp.Column)):
         if column.name in values:
             column.replace(exp.paren(values[column.name].copy()))
@@ -391,7 +389,7 @@ def _admit_row(
     gov: "GovernanceContext",
     table_id: int,
     name: str,
-    check: str,
+    check: Rule,
     supplied: dict[str, exp.Expression],
     session_vars: dict[str, str],
     *,
@@ -410,7 +408,7 @@ def _admit_row(
     if not outcome:
         raise WriteNotAdmitted(
             f"{kind} {name!r}: the row is outside role {gov.role_id!r}'s {label} on this table "
-            f"({check}). A role may only write the rows its grant admits."
+            f"({check.sql(dialect='postgres')}). A role may only write the rows its grant admits."
         )
 
 
@@ -440,7 +438,7 @@ def _admit_inserted_rows(
     table_id: int,
     name: str,
     listed: list[str] | None,
-    check: str,
+    check: Rule,
     session_vars: dict[str, str],
     params: list | None,
     label: str,
@@ -526,7 +524,7 @@ def _admit_new_values(
     gov: "GovernanceContext",
     table_id: int,
     name: str,
-    check: str,
+    check: Rule,
     session_vars: dict[str, str],
     params: list | None,
     label: str,
@@ -561,18 +559,7 @@ def _admit_new_values(
     _admit_row(gov, table_id, name, check, assignments, session_vars, kind="UPDATE of", label=label)
 
 
-def _with_session_values(predicate: str, session_vars: dict[str, str]) -> str:
-    """``predicate`` with each session term replaced by the request's value, NULL when unbound —
-    what the pipeline does to a governed read (REQ-1682)."""
-
-    def _value(match: re.Match) -> str:
-        value = session_vars.get(match.group(1))
-        return "NULL" if value is None else sql_literal(value, "postgres")
-
-    return _SESSION_TERM.sub(_value, predicate)
-
-
-def _holds(predicate: exp.Expression) -> bool | None:
+def _holds(predicate: Rule) -> bool | None:
     """Whether a predicate that reads no column is true (False also for NULL: a filter that is
     not true does not admit a row). None when it cannot be decided here — it still reads a
     column or another table, or evaluating it failed for any reason — which every caller treats

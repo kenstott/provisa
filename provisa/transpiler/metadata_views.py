@@ -16,8 +16,10 @@ from the views themselves (provisa.api._pg_catalog_views)."""
 
 from __future__ import annotations
 
+import sqlglot.expressions as exp
+
 from provisa.pgwire.catalog_pg17 import RELATIONS
-from provisa.transpiler.metadata_oids import owner_table_sql
+from provisa.transpiler.metadata_oids import owner_table
 
 _PG = "pg_catalog"
 #: PostgreSQL's oid of pg_class, which pg_description names a relation's rows by.
@@ -70,18 +72,35 @@ READ_WHOLE: frozenset[str] = frozenset(
 #: tables a row is about, all of which a role must list to read it. An expression is NULL for a
 #: row about no registered table (a system relation, a metric), which every role reads: this is
 #: what lets a catalog list itself under a scope that knows only table ids.
-CATALOG_ROW_SCOPES: dict[str, tuple[str, ...]] = {
-    **{name: (SCOPE_COLUMN,) for name in SCOPED_BY_COLUMN},
-    "catalog_pg_class": (owner_table_sql("oid"),),
-    "catalog_pg_attribute": (owner_table_sql("attrelid"),),
-    "catalog_pg_attrdef": (owner_table_sql("adrelid"),),
-    "catalog_pg_index": (owner_table_sql("indrelid"),),
+CATALOG_ROW_SCOPES: dict[str, tuple[exp.Expression, ...]] = {
+    **{name: (exp.column(SCOPE_COLUMN),) for name in SCOPED_BY_COLUMN},
+    "catalog_pg_class": (owner_table(exp.column("oid")),),
+    "catalog_pg_attribute": (owner_table(exp.column("attrelid")),),
+    "catalog_pg_attrdef": (owner_table(exp.column("adrelid")),),
+    "catalog_pg_index": (owner_table(exp.column("indrelid")),),
     "catalog_pg_constraint": (
-        owner_table_sql("conrelid"),
-        f"CASE WHEN confrelid = 0 THEN NULL ELSE {owner_table_sql('confrelid')} END",
+        owner_table(exp.column("conrelid")),
+        exp.Case(
+            ifs=[
+                exp.If(
+                    this=exp.EQ(this=exp.column("confrelid"), expression=exp.Literal.number(0)),
+                    true=exp.Null(),
+                )
+            ],
+            default=owner_table(exp.column("confrelid")),
+        ),
     ),
     "catalog_pg_description": (
-        f"CASE WHEN classoid = {PG_CLASS_OID} THEN {owner_table_sql('objoid')} END",
+        exp.Case(
+            ifs=[
+                exp.If(
+                    this=exp.EQ(
+                        this=exp.column("classoid"), expression=exp.Literal.number(PG_CLASS_OID)
+                    ),
+                    true=owner_table(exp.column("objoid")),
+                )
+            ]
+        ),
     ),
 }
 

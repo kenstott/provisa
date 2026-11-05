@@ -13,6 +13,7 @@ using SQLGlot. Input: plain SQL string. Output: governed SQL string.
 from __future__ import annotations
 
 import secrets
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,7 +21,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.compiler.cte_utils import physical_tables
-from provisa.compiler.rls import qualified_filter
+from provisa.compiler.rls import Rule, all_of, every_row, qualified_filter
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.security.masking import mask_expression
@@ -35,8 +36,9 @@ from provisa.security.masking import mask_expression
 class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     """Governance parameters for a single request/role."""
 
-    # table_id → RLS filter expression (already role-filtered)
-    rls_rules: dict[int, str] = field(default_factory=dict)
+    # table_id → row rule (already role-filtered), an expression (REQ-913): a rule given as text
+    # is a rule entering, read once where it is stored (compiler.rls.RuleMap)
+    rls_rules: dict[int, Rule] = field(default_factory=dict)
     # (table_id, col_name) → (MaskingRule, data_type)
     masking_rules: dict[tuple[int, str], tuple] = field(default_factory=dict)
     # table_id → visible column names (None = all visible)
@@ -71,7 +73,7 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     write_grants: dict[int, dict[str, dict]] = field(default_factory=dict)
     # REQ-2188: the role's U and D rules: "update" or "delete" -> table_id -> predicate. ANDed into
     # the write beside its grant; they admit nothing the grant does not.
-    write_rules: dict[str, dict[int, str]] = field(default_factory=dict)
+    write_rules: dict[str, dict[int, Rule]] = field(default_factory=dict)
     # The data writes each table's source can take (executor/write_capability.py), from the
     # table's record. A table with no entry offers none.
     write_ops: dict[int, frozenset[str]] = field(default_factory=dict)
@@ -115,6 +117,17 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     # this form gives it.
     admitted_write: str | None = None
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        from provisa.compiler.rls import GrantMap, RuleMap, rule_maps
+
+        if name == "rls_rules":
+            value = RuleMap(value)
+        elif name == "write_rules":
+            value = rule_maps(value)
+        elif name == "write_grants":
+            value = GrantMap(value)
+        super().__setattr__(name, value)
+
 
 def registered_name(gov_ctx: GovernanceContext, table_id: int, name: str) -> str:  # REQ-040
     """The registered (physical) name of the column of ``table_id`` a statement reads as
@@ -148,17 +161,36 @@ def resolve_row_cap(
     return _get_default_row_limit()
 
 
-def _readable_term_predicate(column: str, domains: frozenset[str]) -> str:
+def _readable_term_predicate(column: str, domains: frozenset[str]) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """REQ-1593: ``column`` (a term's domains, as |a|b|) names a term the caller may read by
     glossary.readable_term: one with no domains, an enterprise ("*") one, or one in a domain of
     ``domains``."""
-    from provisa.compiler.sql_literals import sql_literal
+    test: exp.Expr = exp.Is(this=exp.column(column), expression=exp.Null())  # pyright: ignore[reportPrivateImportUsage]
+    for d in ("*", *sorted(domains)):
+        found = exp.StrPosition(this=exp.column(column), substr=exp.Literal.string(f"|{d}|"))
+        test = exp.Or(this=test, expression=exp.GT(this=found, expression=exp.Literal.number(0)))
+    return exp.paren(test)
 
-    tests = [f"{column} IS NULL"] + [
-        f"POSITION({sql_literal(f'|{d}|', 'postgres')} IN {column}) > 0"
-        for d in ("*", *sorted(domains))
-    ]
-    return "(" + " OR ".join(tests) + ")"
+
+def _in_list(column: Rule, values: Sequence[Rule]) -> exp.In:
+    return exp.In(this=column, expressions=list(values))
+
+
+def _not_in(row: Sequence[Rule], rows: Sequence[Sequence[Rule]]) -> exp.Not:
+    """``(row...) NOT IN ((value...), ...)``."""
+    return exp.Not(
+        this=exp.In(
+            this=exp.Tuple(expressions=list(row)),
+            expressions=[exp.Tuple(expressions=list(r)) for r in rows],
+        )
+    )
+
+
+def _and_rule(gov: GovernanceContext, tid: int, rule: exp.Expr) -> None:  # pyright: ignore[reportPrivateImportUsage]
+    """AND ``rule`` with any rule already on ``tid`` (a tenant rule, say): never replace a guard."""
+    held = all_of([gov.rls_rules.get(tid), rule])
+    assert held is not None  # ``rule`` is one of them
+    gov.rls_rules[tid] = held
 
 
 def context_table_map(ctx: Any) -> dict[str, int]:
@@ -212,7 +244,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
 
     Args:
         role_id: The requesting role.
-        rls_context: RLSContext with .rules: dict[int, str].
+        rls_context: RLSContext with .rules: table id -> row rule (an expression).
         masking_rules: MaskingRules = dict[(table_id, role_id), dict[col, (rule, dtype)]].
         ctx: CompilationContext with .tables: dict[str, TableMeta].
         tables: Raw table dicts from state, each with
@@ -292,7 +324,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         unlisted_columns,
     )
 
-    from provisa.transpiler.metadata_settings import scope_ids_sql
+    from provisa.transpiler.metadata_settings import scope_ids
     from provisa.transpiler.metadata_views import NEUTRAL_VIEW_NAMES, SCOPE_COLUMN
 
     _has_view_gov = has_capability(role, Capability.VIEW_GOVERNANCE)
@@ -431,9 +463,9 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     # flows through the SAME apply_governance WHERE-injection as every other RLS rule — one code path.
     meta_scope = compute_meta_row_scope(role, tables, relationships)
     if meta_scope is not None:
-        id_list = ",".join(str(i) for i in sorted(meta_scope)) or "-1"  # empty → matches no row
-        gov.meta_scope = "{" + id_list + "}"
-        scoped_ids = scope_ids_sql()
+        ids = sorted(meta_scope) or [-1]  # empty → matches no row
+        # A setting's value, told to the statement's catalog views: an array, not SQL.
+        gov.meta_scope = "{" + ",".join(str(i) for i in ids) + "}"
         # A table is in ctx.tables under each name it has; its scope is one predicate.
         by_id = {tm.table_id: tm for tm in ctx.tables.values()}
         for tm in by_id.values():
@@ -442,61 +474,76 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             scope_cols = META_ROW_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
             catalog_scope = META_CATALOG_ROW_SCOPES.get(getattr(tm, "table_name", ""))
             if scope_cols is not None:
-                ids = scoped_ids if tm.table_name in NEUTRAL_VIEW_NAMES else id_list
-                predicate = " AND ".join(f"{col} IN ({ids})" for col in scope_cols)
+                terms: list[exp.Expr] = [  # pyright: ignore[reportPrivateImportUsage]
+                    exp.In(this=exp.column(col), query=exp.Subquery(this=scope_ids()))
+                    if tm.table_name in NEUTRAL_VIEW_NAMES
+                    else _in_list(exp.column(col), [exp.Literal.number(i) for i in ids])
+                    for col in scope_cols
+                ]
             elif catalog_scope is not None:
                 # REQ-2190: a row about no registered table is every role's: its NULL stays
                 # true, and the scope is never an empty list (-1 above).
-                predicate = " AND ".join(
-                    f"COALESCE(({expr}) IN ({scoped_ids}), TRUE)" for expr in catalog_scope
-                )
+                terms = [
+                    exp.Coalesce(
+                        this=exp.In(
+                            this=exp.paren(expr.copy()), query=exp.Subquery(this=scope_ids())
+                        ),
+                        expressions=[exp.true()],
+                    )
+                    for expr in catalog_scope
+                ]
             else:
                 continue
-            existing = gov.rls_rules.get(tm.table_id)
-            # AND with any pre-existing rule (e.g. tenant RLS) — never replace another guard.
-            gov.rls_rules[tm.table_id] = (
-                f"({existing}) AND ({predicate})" if existing else predicate
-            )
+            _and_rule(gov, tm.table_id, exp.and_(*terms, copy=False))
 
     # REQ-2190: a column the relation a statement reads does not hold is no column of the catalog's
     # either; which those are is decided in code, so no view can say.
     from provisa.compiler.naming import apply_sql_name as _sql_name
-    from provisa.compiler.sql_literals import sql_literal
+
+    def _as(column: str, dtype: str) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+        return exp.cast(exp.column(column), dtype)
 
     outside = set(ctx.columns_outside_relation) | unlisted_columns(role, tables)
-    for view, columns in (
-        ("catalog_pg_attribute", "CAST(attrelid AS BIGINT), CAST(attname AS TEXT)"),
-        ("is_columns", "CAST(provisa_table_id AS BIGINT) + 16384, CAST(column_name AS TEXT)"),
+    for view, row in (
+        ("catalog_pg_attribute", [_as("attrelid", "BIGINT"), _as("attname", "TEXT")]),
+        (
+            "is_columns",
+            [
+                exp.Add(
+                    this=_as("provisa_table_id", "BIGINT"), expression=exp.Literal.number(16384)
+                ),
+                _as("column_name", "TEXT"),
+            ],
+        ),
     ):
         if not outside:
             break
-        pairs = ", ".join(
-            f"({16384 + table_id}, "
-            + sql_literal(ctx.physical_to_sql.get((table_id, name)) or _sql_name(name), "postgres")
-            + ")"
+        pairs = [
+            [
+                exp.Literal.number(16384 + table_id),
+                exp.Literal.string(ctx.physical_to_sql.get((table_id, name)) or _sql_name(name)),
+            ]
             for table_id, name in sorted(outside)
-        )
+        ]
         for tm in ctx.tables.values():
             if getattr(tm, "domain_id", None) != META_DOMAIN_ID or tm.table_name != view:
                 continue
-            existing = gov.rls_rules.get(tm.table_id)
-            out = f"({columns}) NOT IN ({pairs})"
-            gov.rls_rules[tm.table_id] = f"({existing}) AND {out}" if existing else out
+            _and_rule(gov, tm.table_id, _not_in([e.copy() for e in row], pairs))
     # REQ-2153: and a listed table's other columns are named to no role that only lists it.
     unlisted = unlisted_columns(role, tables)
     if unlisted:
-        pairs = ", ".join(
-            f"({table_id}, {sql_literal(name, 'postgres')})" for table_id, name in sorted(unlisted)
-        )
+        pairs = [
+            [exp.Literal.number(table_id), exp.Literal.string(name)]
+            for table_id, name in sorted(unlisted)
+        ]
         for tm in ctx.tables.values():
             if getattr(tm, "domain_id", None) != META_DOMAIN_ID or tm.table_name not in (
                 "table_columns_meta",
                 "column_details",
             ):
                 continue
-            existing = gov.rls_rules.get(tm.table_id)
-            out = f"(table_id, column_name) NOT IN ({pairs})"
-            gov.rls_rules[tm.table_id] = f"({existing}) AND {out}" if existing else out
+            row = [exp.column("table_id"), exp.column("column_name")]
+            _and_rule(gov, tm.table_id, _not_in(row, pairs))
 
     # REQ-1593, REQ-2163: the ontology schema's definition views answer what the glossary API
     # does -- a term is read where glossary.readable_term admits it -- by the same WHERE-injection.
@@ -511,12 +558,13 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             scope_cols = GLOSSARY_SCOPED_VIEWS.get(getattr(tm, "table_name", ""))
             if scope_cols is None:
                 continue
-            predicate = " AND ".join(
-                _readable_term_predicate(col, readable_in) for col in scope_cols
-            )
-            existing = gov.rls_rules.get(tm.table_id)
-            gov.rls_rules[tm.table_id] = (
-                f"({existing}) AND ({predicate})" if existing else predicate
+            _and_rule(
+                gov,
+                tm.table_id,
+                exp.and_(
+                    *(_readable_term_predicate(col, readable_in) for col in scope_cols),
+                    copy=False,
+                ),
             )
 
     # REQ-2153: a listed name is the reader's only for a domain it does not reach -- what it reaches
@@ -527,14 +575,16 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         if getattr(tm, "table_name", "") != LISTED_NAMES_VIEW:
             continue
         if readable_in is None:
-            predicate = "1 = 0"  # the reader reaches every domain: nothing is outside its reach
+            # the reader reaches every domain: nothing is outside its reach
+            predicate: exp.Expr = exp.EQ(  # pyright: ignore[reportPrivateImportUsage]
+                this=exp.Literal.number(1), expression=exp.Literal.number(0)
+            )
         elif readable_in:
-            reached = ", ".join(sql_literal(d, "postgres") for d in sorted(readable_in))
-            predicate = f"listed_domain NOT IN ({reached})"
+            reached = [exp.Literal.string(d) for d in sorted(readable_in)]
+            predicate = exp.Not(this=_in_list(exp.column("listed_domain"), reached))
         else:
             continue  # the reader reaches no domain: every listed name is outside its reach
-        existing = gov.rls_rules.get(tm.table_id)
-        gov.rls_rules[tm.table_id] = f"({existing}) AND ({predicate})" if existing else predicate
+        _and_rule(gov, tm.table_id, predicate)
 
     # REQ-971: mask pushdown/streaming decision. When a masked table's connector cannot push
     # the predicate down and cannot stream, fail loud here rather than silently inlining an
@@ -1651,7 +1701,7 @@ def _member_branches(reads: Any, column: str) -> tuple[list[tuple[list[int], int
     branches: list[tuple[list[int], int]] = []
     for rank in sorted({t[0] for t in treatments}):
         group = [i for i, t in enumerate(treatments) if t[0] == rank]
-        if any(reads.flags[i] == "TRUE" for i in group):
+        if any(every_row(reads.flags[i]) for i in group):
             return branches, group[0]
         branches.append((group, group[0]))
     return branches, None
@@ -2437,15 +2487,31 @@ def apply_governance(
     ``session_vars`` are the request's session variables and ``params`` its bound values; a
     write's row-filter check reads both. A read's are resolved by the pipeline after this stage.
 
-    Returns governed SQL string.
+    Returns governed SQL string: the statement read once and written once (:func:`govern`).
     """
-    from provisa.compiler.sql_rewrite import bind_schema_qualified_columns
-    from provisa.compiler.write_admission import the_write
-    from provisa.core.session_terms import expand_list_settings
     from provisa.observability.stage_trace import trace_stage
 
     trace_stage("govern.in", sql)
+    # REQ-913: the statement as the client (or a compiler stage) wrote it, read once here.
     tree = sqlglot.parse_one(sql, read="postgres")
+    governed = govern(tree, gov_ctx, session_vars, params).sql(dialect="postgres")
+    trace_stage("govern.out", governed)
+    return governed
+
+
+def govern(
+    tree: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
+    gov_ctx: GovernanceContext,
+    session_vars: dict[str, str] | None = None,
+    params: list | None = None,
+) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]  # REQ-039, REQ-913
+    """:func:`apply_governance` on a statement already a tree: the governed statement, as a tree.
+    ``tree`` is governed in place; the statement returned may be a new root (a ceiling put round
+    a LIMIT it cannot lower)."""
+    from provisa.compiler.sql_rewrite import bind_schema_qualified_columns
+    from provisa.compiler.write_admission import the_write
+    from provisa.core.session_terms import expand_list_settings
+
     flatten_leftmost_join_groups(tree)
     hidden = parenthesised_join_tables(tree, gov_ctx)
     if hidden:
@@ -2462,7 +2528,7 @@ def apply_governance(
     tree = _govern_selects(tree, gov_ctx, answers=not writes)
     # REQ-2188: a variable of several values reads as a list in an IN; the rest are resolved by the
     # pipeline after this stage.
-    expand_list_settings(tree, session_vars or {})  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
+    expand_list_settings(tree, session_vars or {})
 
     # Apply LIMIT ceiling (REQ-005): most restrictive of the role-level ceiling and
     # any per-table ceiling on a table referenced by the query.
@@ -2492,18 +2558,15 @@ def apply_governance(
         if cap_lists(tree, bound.limit, columns_of):
             gov_ctx.list_limit = bound
 
-    governed = tree.sql(dialect="postgres")
     if bound is not None:
-        from provisa.compiler.row_limit import binds
+        from provisa.compiler.row_limit import binds_tree
 
-        if binds(governed, bound.limit):
+        if binds_tree(tree, bound.limit):
             gov_ctx.row_limit = bound
-        governed = _apply_limit_ceiling(governed, bound.limit)
+        tree = _limit_ceiling(tree, bound.limit)
     elif gov_ctx.sample_size is not None and not writes:
-        governed = _apply_limit_ceiling(governed, gov_ctx.sample_size)
-
-    trace_stage("govern.out", governed)
-    return governed
+        tree = _limit_ceiling(tree, gov_ctx.sample_size)
+    return tree
 
 
 def _effective_ceiling(tree, gov_ctx: GovernanceContext):  # REQ-005, REQ-263, REQ-1949
@@ -2528,32 +2591,38 @@ def apply_row_cap(sql: str, cap: int | None) -> str:  # REQ-005
 
 
 def _apply_limit_ceiling(sql: str, ceiling: int) -> str:
-    """Bound a query's row count by ``ceiling`` (AST — inspect the LIMIT node, never regex the text).
+    """:func:`_limit_ceiling` on a statement given as text (a compiled statement); one already
+    within the ceiling is returned byte-identical."""
+    tree = sqlglot.parse_one(sql, read="postgres")
+    bounded = _limit_ceiling(tree.copy(), ceiling)
+    return sql if bounded == tree else bounded.sql(dialect="postgres")
+
+
+def _limit_ceiling(tree: exp.Expr, ceiling: int) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """Bound a query's row count by ``ceiling`` (AST — inspect the LIMIT node, never regex the
+    text), in place; the statement returned is a new root where a subquery is put round it.
 
     A literal LIMIT above the ceiling is lowered; a missing LIMIT is added. A non-literal LIMIT
     (parameter or expression, whose value is unknown at govern time) is wrapped in a subquery with a
     constant outer LIMIT, so the ceiling still bounds the result — min(inner, ceiling) — and stays
     valid on engines that reject expressions in LIMIT.
     """
-    tree = sqlglot.parse_one(sql, read="postgres")
     node = tree if isinstance(tree, (exp.Select, exp.Union)) else tree.find(exp.Select)
     if node is None:
-        raise ValueError("_apply_limit_ceiling: query has no SELECT/UNION to bound")
+        raise ValueError("_limit_ceiling: query has no SELECT/UNION to bound")
 
     limit = node.args.get("limit")
     if limit is None:
         node.limit(ceiling, copy=False)
-        return tree.sql(dialect="postgres")
-
+        return tree
     val = limit.expression
     if isinstance(val, exp.Literal) and not val.is_string:
         if int(val.name) > ceiling:
             node.limit(ceiling, copy=False)
-            return tree.sql(dialect="postgres")
-        return sql  # within the ceiling — leave the SQL byte-identical
+        return tree  # within the ceiling — left as it is
 
     sub = exp.Subquery(this=tree, alias=exp.TableAlias(this=exp.to_identifier("_govern_capped")))
-    return exp.select("*").from_(sub).limit(ceiling).sql(dialect="postgres")
+    return exp.select("*").from_(sub).limit(ceiling)
 
 
 def extract_sources(

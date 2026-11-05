@@ -18,19 +18,16 @@ and ``DROP VIEW`` takes no ``CASCADE``. Runs verbatim on PostgreSQL, SQLite, MyS
 
 from __future__ import annotations
 
-# REQ-1132/REQ-1134: meta (catalog) CORE vs GOVERNANCE column split + the meta domain id. The single
-# source of truth lives in provisa.security.rights so every query surface shares it; re-exported here
-# for callers near the view definitions.
-from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID  # noqa: E402,F401
-from provisa.core.models import DERIVED_SOURCE_ID, DERIVED_TAGS, SYSTEM_TAGS
-from provisa.dq.contract import CHECKERS
-
 # REQ-1375/REQ-1443: system and derived tags are code-defined intrinsics with no rows in the tags
 # table, so the meta view unions them in from the constants — the registry a query surface sees is
 # complete. Built at import time; never hand-edit the literals.
 import json as _json
 
-from provisa.compiler.sql_literals import sql_literal
+# REQ-1132/REQ-1134: meta (catalog) CORE vs GOVERNANCE column split + the meta domain id. The single
+# source of truth lives in provisa.security.rights so every query surface shares it; re-exported here
+# for callers near the view definitions.
+import sqlglot.expressions as exp
+
 from provisa.api._ontology_quality_views import ONTOLOGY_QUALITY_VIEWS
 from provisa.api._pg_catalog_views import (
     CATALOG_BASE_VIEWS,
@@ -41,8 +38,12 @@ from provisa.api._pg_catalog_views import (
     SERVED_COLUMN_NAMES,
     registered_column_sql_name,
 )
-from provisa.transpiler.metadata_settings import asked_sql
+from provisa.compiler.sql_literals import sql_literal
+from provisa.core.models import DERIVED_SOURCE_ID, DERIVED_TAGS, SYSTEM_TAGS
+from provisa.dq.contract import CHECKERS
+from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID  # noqa: E402,F401
 from provisa.transpiler.metadata_oids import FOREIGN_KEY_SLOT, KEY_SLOTS, UNIQUE_QUERY_NAME_SLOT
+from provisa.transpiler.metadata_settings import asked_sql
 
 
 def _system_tag_rows_sql() -> str:
@@ -510,10 +511,12 @@ def _table_keys_sql() -> str:
 
     A statement about some tables reads their keys alone, after the numbering, so a key has one
     number whatever a statement asks; each index goes by its own name as well as its table's."""
-    asked = asked_sql("t.table_name", "'pk_' || t.table_name", "k.key_name")
-    table_asked = asked_sql("t.table_name", "'pk_' || t.table_name")
-    unique_asked = asked_sql("u.key_name")
-    registration_asked = asked_sql("'uq_registered_tables_table_query_name'")
+    table_name = exp.column("table_name", table="t")
+    primary = exp.DPipe(this=exp.Literal.string("pk_"), expression=table_name, safe=True)
+    asked = asked_sql(table_name, primary, exp.column("key_name", table="k"))
+    table_asked = asked_sql(table_name, primary)
+    unique_asked = asked_sql(exp.column("key_name", table="u"))
+    registration_asked = asked_sql(exp.Literal.string("uq_registered_tables_table_query_name"))
     return f"""
         CREATE OR REPLACE VIEW table_keys AS
         WITH tables AS (

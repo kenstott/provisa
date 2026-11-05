@@ -31,6 +31,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+import sqlglot.expressions as exp
+
 from provisa.compiler.naming import SYSTEM_SCHEMA_GQL_PREFIX
 from provisa.compiler.sql_literals import sql_literal
 from provisa.pgwire.catalog_data import (
@@ -245,7 +247,7 @@ def _catalog_asked_tables() -> str:
     that table. Every table where the statement names none."""
     return f"""
         CREATE OR REPLACE VIEW catalog_asked_tables AS
-        SELECT t.* FROM catalog_tables t WHERE {asked_sql("t.table_name")}
+        SELECT t.* FROM catalog_tables t WHERE {asked_sql(exp.column("table_name", table="t"))}
     """
 
 

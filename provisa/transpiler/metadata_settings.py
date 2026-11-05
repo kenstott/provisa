@@ -64,26 +64,44 @@ def enter_client_role() -> str:
     return f"SET LOCAL ROLE {CLIENT_ROLE}"
 
 
-def setting(name: str) -> str:
-    """SQL reading setting ``name``: NULL or empty on a statement that was not given it."""
+def setting_expr(name: str) -> exp.Expression:  # REQ-913
+    """Reading setting ``name``: NULL or empty on a statement that was not given it."""
     assert name in NAMES, name
-    return f"NULLIF(CURRENT_SETTING('{_PREFIX}.{name}', TRUE), '')"
+    told = exp.Anonymous(
+        this="CURRENT_SETTING",
+        expressions=[exp.Literal.string(f"{_PREFIX}.{name}"), exp.true()],
+    )
+    return exp.Nullif(this=told, expression=exp.Literal.string(""))
 
 
-def scope_ids_sql() -> str:
+def setting(name: str) -> str:
+    """:func:`setting_expr` as SQL, for a catalog view's or function's definition."""
+    return setting_expr(name).sql(dialect="postgres")
+
+
+def scope_ids() -> exp.Select:  # REQ-913
     """The table ids a role's meta rows are scoped to, told once by the statement's settings: a
     list written into the statement would be parsed, governed and planned for each view it
     reads. A statement that was not told them reads none."""
-    return f"SELECT UNNEST(CAST({setting('scope')} AS INTEGER[]))"
+    ids = exp.cast(setting_expr("scope"), exp.DataType.build("INT[]", dialect="postgres"))
+    return exp.select(exp.Explode(this=ids))
 
 
-def asked_sql(*names: str) -> str:
-    """Whether a row with any of ``names`` (SQL) is one the statement asks about: the relation
-    names a statement's pin tells its views (provisa.pgwire.catalog_pin), all of them where none
-    was told."""
-    asked = f"CAST({setting('asked')} AS TEXT[])"
-    matches = " OR ".join(f"{name} = ANY({asked})" for name in names)
-    return f"({setting('asked')} IS NULL OR {matches})"
+def asked(*names: exp.Expression) -> exp.Expression:  # REQ-913
+    """Whether a row with any of ``names`` is one the statement asks about: the relation names a
+    statement's pin tells its views (provisa.pgwire.catalog_pin), all of them where none was
+    told."""
+    told = exp.cast(setting_expr("asked"), exp.DataType.build("TEXT[]", dialect="postgres"))
+    test: exp.Expression = exp.Is(this=setting_expr("asked"), expression=exp.Null())
+    for name in names:
+        match = exp.EQ(this=name.copy(), expression=exp.Any(this=exp.paren(told.copy())))
+        test = exp.Or(this=test, expression=match)
+    return exp.paren(test)
+
+
+def asked_sql(*names: exp.Expression) -> str:
+    """:func:`asked` as SQL, for a catalog view's definition."""
+    return asked(*names).sql(dialect="postgres")
 
 
 def relation_names_literal(names: Iterable[str]) -> str:

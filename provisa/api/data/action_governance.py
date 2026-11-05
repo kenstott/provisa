@@ -199,9 +199,10 @@ def _governance_context(
         expr = rls.action_rules.get(name)
         if expr is None and action.get("domain_id"):
             expr = rls.domain_rules.get(action["domain_id"])
-        if expr:
+        if expr is not None:
             gov.rls_rules[tid] = expr
-            enforcement.rls_filters_applied.append(expr)
+            # Rendered for the record of what was applied; nothing reads it back (REQ-913).
+            enforcement.rls_filters_applied.append(expr.sql(dialect="postgres"))
 
     gov.limit_ceiling = resolve_row_cap(role, role.get("max_rows"))
     return gov, enforcement
@@ -223,9 +224,9 @@ async def govern_action_rows(
     if problem is not None:
         raise ApiError(502, "actions.response_off_contract", problem, action=action["name"])
 
-    from provisa.cache.values_cte import build_values_cte_sql
-    from provisa.compiler.stage2 import apply_governance
-    from provisa.pgwire._pipeline import _resolve_session_settings
+    from provisa.cache.values_cte import with_values_ctes
+    from provisa.compiler.stage2 import govern
+    from provisa.pgwire._pipeline import resolve_settings
 
     import sqlglot.expressions as exp
 
@@ -238,13 +239,12 @@ async def govern_action_rows(
     read = exp.select(*(exp.column(n, quoted=True) for n in names if n in served)).from_(
         exp.table_(rel, quoted=True)
     )
-    governed = apply_governance(read.sql(dialect="postgres"), gov)
-    sql = build_values_cte_sql(governed, rel, _Rows(names, rows))
+    governed = with_values_ctes(govern(read, gov), {rel: _Rows(names, rows)})
     from provisa.core.request_context import session_vars_for
 
-    sql = _resolve_session_settings(
-        sql, session_vars_for(state.roles.get(role_id)), "postgres"
-    )  # REQ-1682
+    resolved = resolve_settings(governed, session_vars_for(state.roles.get(role_id)))  # REQ-1682
+    # REQ-913: built, governed and resolved as a tree; written once, where it goes to the engine.
+    sql = resolved.sql(dialect="postgres")
 
     engine = state.federation_engine
     started = time.monotonic()

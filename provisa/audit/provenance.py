@@ -28,15 +28,12 @@ at ``logged_at``)."""
 
 from __future__ import annotations
 
-import re
 import threading
 from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from provisa.compiler.stage2 import GovernanceContext
-
-_SESSION_TERM = re.compile(r"current_setting\(\s*'provisa\.([A-Za-z0-9_]+)'\s*\)", re.IGNORECASE)
 
 
 def _mask_kind(rule: Any) -> str:
@@ -58,12 +55,16 @@ def enforced_summary(
     def _in(tid: int) -> bool:
         return tids is None or tid in tids
 
+    from provisa.core.session_terms import setting_name
+
+    def _variables(rule: Any) -> list[str]:
+        """The session variables ``rule`` reads, off its tree."""
+        return sorted({n for node in rule.walk() if (n := setting_name(node)) is not None})
+
     row_filters = {
-        str(tid): {
-            "filter": text,
-            "session_variables": sorted({m.group(1) for m in _SESSION_TERM.finditer(text)}),
-        }
-        for tid, text in sorted(gov.rls_rules.items())
+        # The rule rendered for the record: provenance shows it, nothing reads it back (REQ-913).
+        str(tid): {"filter": rule.sql(dialect="postgres"), "session_variables": _variables(rule)}
+        for tid, rule in sorted(gov.rls_rules.items())
         if _in(tid)
     }
     masks: dict[str, dict[str, str]] = {}
