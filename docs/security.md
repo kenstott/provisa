@@ -6,6 +6,33 @@ The checks run in order. A request has to pass each one before the next is looke
 
 [Access Model](access-model.md) covers how scope, capabilities and grants combine into a role's rights.
 
+## Seven dimensions
+
+Seven dimensions govern access to data and processing features.
+
+| Dimension | Question it answers | Where it is set |
+|-----------|---------------------|-----------------|
+| Capabilities | Which features may a role use? | [Rights Model](#rights-model) |
+| Domains | Which tables and catalog entries does a role reach? | [Layer 2: Domain access](#layer-2-domain-access) |
+| Column grants | Which columns may a role read or write? | [Column Permission Model](#column-permission-model) |
+| Column scopes | How far does a column reach beyond named roles? | [Column Permission Model](#column-permission-model) |
+| Masks | What value does a granted column show to a role? | [Column-Level Masking](#column-level-masking) |
+| Row rules | Which rows of a reachable table does a role see? | [Row-Level Security (RLS)](#row-level-security-rls) |
+| Regions | Where may data be stored and processed? | [Data residency](#data-residency) |
+
+Who holds these rights is settled by how roles are held: assigned directly, derived from user attributes, or assembled at request time as a meta-role. See [Roles: granted, derived and meta](#roles-granted-derived-and-meta).
+
+Fakes are an environment's protection—a test environment serves sensitive columns faked to every role—not a dimension of access.
+
+### Hierarchies and inheritance
+
+Capabilities and domains both form hierarchies, with their own rules.
+
+A role holds the union of its own capabilities, grants and residency and every ancestor's. Row rules compound differently. A role's own rule stands, and when it has none its ancestors' rules are ORed together. Adding a parent never lifts a row rule. Rate limits and similar properties come from the role itself or the first ancestor that sets one, searched depth-first. Domain reach does not pass down roles; each role names its own reach. Nothing in the model subtracts. See [Role Inheritance](#role-inheritance).
+
+Granting a role a parent domain extends its reach to every domain under it, at any depth—including domains added later. Reach flows down and never up. A parent domain's row filter is ANDed into every child domain's tables. `own-domain` columns are an exception: only roles granted the child domain directly are served them, even when the grant list names a role that reaches that domain through a parent. See [Domain hierarchy](access-model.md#domain-hierarchy).
+
+
 ## Layered Model
 
 ### Layer 0: Introspection filtering

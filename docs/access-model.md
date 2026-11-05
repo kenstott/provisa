@@ -4,6 +4,9 @@ Your rights in Provisa are a composition. **Scope** says where a column reaches.
 
 Anyone can work out a role's rights from what is written down, whether they hold the role or audit it. Defaults and composition keep this from turning into a stream of manual grants.
 
+Scope, capabilities and grants make up three of seven dimensions in the model. [Security Model](security.md) maps all seven with the inheritance rules for roles and domains.
+
+
 ## Scope
 
 Every column has a scope. A scope answers two questions about the column: which roles read its data, and which roles see that it exists. There are four scopes.
