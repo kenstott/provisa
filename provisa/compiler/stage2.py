@@ -1112,6 +1112,109 @@ def _resolve(col: exp.Column, gov_ctx: GovernanceContext) -> tuple[_Relation, st
     return None
 
 
+def _hides(relation: _Relation, col: exp.Column, gov_ctx: GovernanceContext) -> bool:
+    """Whether ``col`` names a registered column of ``relation``'s table the reader is not served."""
+    physical = registered_name(gov_ctx, relation.tid, col.name)
+    registered = {c for c, _ in gov_ctx.all_columns.get(relation.tid, [])}
+    return physical in registered and not _served(gov_ctx, relation.tid, physical)
+
+
+def _holds_served(relation: _Relation, col: exp.Column, gov_ctx: GovernanceContext) -> bool:
+    """Whether ``col`` names a registered column of ``relation``'s table the reader is served."""
+    physical = registered_name(gov_ctx, relation.tid, col.name)
+    registered = {c for c, _ in gov_ctx.all_columns.get(relation.tid, [])}
+    return physical in registered and _served(gov_ctx, relation.tid, physical)
+
+
+def _unserved(relation: _Relation, col: exp.Column, gov_ctx: GovernanceContext) -> bool:
+    """Whether the reader is not served ``col`` of ``relation``'s table, as the column check
+    (V003) judges it: the table serves the role a subset of its columns, and not this name -- a
+    hidden column, or one the table does not have, alike."""
+    vis = gov_ctx.visible_columns.get(relation.tid)
+    return vis is not None and registered_name(gov_ctx, relation.tid, col.name) not in vis
+
+
+def _may_supply(item: exp.Expr, name: str) -> bool:  # pyright: ignore[reportPrivateImportUsage]
+    """Whether a FROM item that is no governed relation may have a column ``name``: yes unless
+    its columns are known and ``name`` is not among them."""
+    alias = item.args.get("alias")
+    columns = alias.args.get("columns") if isinstance(alias, exp.TableAlias) else None
+    if columns:
+        return any(c.name.lower() == name for c in columns)
+    query = item.this if isinstance(item, exp.Subquery) else None
+    if isinstance(query, exp.Query) and "*" not in query.named_selects:
+        return name in {n.lower() for n in query.named_selects}
+    return True
+
+
+def _names_an_output(col: exp.Column, select: exp.Select, clause: type[exp.Expr]) -> bool:  # pyright: ignore[reportPrivateImportUsage]
+    """Whether ``col`` is a key of ``select``'s ``clause`` (ORDER BY or GROUP BY) naming one of
+    its outputs: a real alias, or a bare column's own name. A string literal's ``?column?``
+    names none."""
+    found = col.find_ancestor(clause, exp.Select)
+    if not isinstance(found, clause) or found.parent is not select:
+        return False
+    name = col.name.lower()
+    for e in select.expressions:
+        if isinstance(e, exp.Alias) and e.alias.lower() == name:
+            return True
+        if (
+            isinstance(e, exp.Column)
+            and not isinstance(e.this, exp.Star)
+            and e.name.lower() == name
+        ):
+            return True
+    return False
+
+
+def _refuse_unserved(col: exp.Column, gov_ctx: GovernanceContext) -> None:  # REQ-039
+    """Refuse (V003), naming it, before anything is sent, a reference no relation in scope
+    exposes and that a governed relation in its scope does not serve the reader (as the column
+    check judges it: hidden, or a name the table does not have, alike, so the refusal tells
+    nothing of which), in every clause of the reader's own SQL. Left to the engine: a name
+    another FROM item of that scope may supply (a derived table, VALUES, a CTE, a function), a
+    column the role is served that the relation does not expose (a parameter, REQ-1986), the key
+    governance itself carries (``KEY_MARK``), an ORDER BY key naming an output -- PostgreSQL
+    reads the output first -- and a GROUP BY key naming an output that is no hidden input column
+    (it reads the input first)."""
+    if isinstance(col.this, exp.Star) or col.name in SERVED_WITH_EVERY_TABLE:
+        return
+    if col.name.startswith(KEY_MARK) or col.find_ancestor(exp.Lambda) is not None:
+        return
+    qualifier = _folded(col.args.get("table"))
+    first = col.find_ancestor(exp.Select)
+    if first is not None and not qualifier and _names_an_output(col, first, exp.Order):
+        return
+    name = col.name.lower()
+    scope = first
+    while scope is not None:
+        items = _from_items(scope)
+        if qualifier:
+            for item in items:
+                alias = item.args.get("alias")
+                if _folded(alias.this if alias else None) != qualifier:
+                    continue
+                relation = _relation(item)
+                if relation is not None and _unserved(relation, col, gov_ctx):
+                    raise PermissionError(
+                        f"[V003] Column {qualifier}.{col.name} is not visible to this role"
+                    )
+                return
+        else:
+            if any(_may_supply(i, name) for i in items if _relation(i) is None):
+                return
+            relations = [r for i in items if (r := _relation(i)) is not None]
+            if any(_hides(r, col, gov_ctx) for r in relations):
+                raise PermissionError(f"[V003] Column {col.name!r} is not visible to this role")
+            if any(_unserved(r, col, gov_ctx) for r in relations):
+                if first is not None and scope is first and _names_an_output(col, first, exp.Group):
+                    return
+                raise PermissionError(f"[V003] Column {col.name!r} is not visible to this role")
+            if any(_holds_served(r, col, gov_ctx) for r in relations):
+                return  # the role is served it; the relation leaves it out (a parameter)
+        scope = scope.parent.find_ancestor(exp.Select) if scope.parent is not None else None
+
+
 def _bind_references(tree: exp.Expr, gov_ctx: GovernanceContext) -> None:  # pyright: ignore[reportPrivateImportUsage]
     """Name, IN PLACE, each reference to a governed relation's column as the relation exposes it
     (a published name, as PostgreSQL would fold it, or the physical one). A bare select-list
@@ -1121,6 +1224,7 @@ def _bind_references(tree: exp.Expr, gov_ctx: GovernanceContext) -> None:  # pyr
             continue
         found = _resolve(col, gov_ctx)
         if found is None:
+            _refuse_unserved(col, gov_ctx)
             continue
         _relation_, out = found
         identifier = col.this

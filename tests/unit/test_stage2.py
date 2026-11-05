@@ -14,7 +14,7 @@ from provisa.compiler.stage2 import (
     build_governance_context,
 )
 from provisa.security.masking import MaskingRule, MaskType
-from tests.governed_pg import Refused, governed_database
+from tests.governed_pg import governed_database
 from tests.helpers import unscoped_role
 
 
@@ -134,10 +134,9 @@ class TestVisibilityFiltering:
             table_map={"orders": 1},
             all_columns={1: [("id", "integer"), ("secret", "varchar")]},
         )
-        result = apply_governance("SELECT id, secret FROM orders", gov)
-        # The governed relation has no secret: naming it reads nothing.
-        with pytest.raises(Refused, match="secret"):
-            pg.answer(result, {"orders": [{"id": 1, "secret": "s3"}]})
+        # The governed relation has no secret: naming it is refused before anything is sent.
+        with pytest.raises(PermissionError, match=r"\[V003\] Column 'secret' is not visible"):
+            apply_governance("SELECT id, secret FROM orders", gov)
         assert pg.answer(
             apply_governance("SELECT * FROM orders", gov), {"orders": [{"id": 1, "secret": "s3"}]}
         ) == [(1,)]

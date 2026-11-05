@@ -62,11 +62,10 @@ def test_an_ordering_by_an_output_column_is_kept(order_by):
 
 def test_an_ordering_by_a_hidden_column_is_still_refused_or_dropped():
     """A column the role does not see is no output of the statement: governed as before."""
-    governed = apply_governance(
-        'SELECT c.region FROM "store"."customers" AS c ORDER BY c.email', _gov()
-    )
-    # REQ-039: the governed relation does not hold it, so the engine refuses the ordering.
-    assert 'AS "email"' not in governed and '"c"."email"' not in governed
+    # REQ-039: the governed relation does not hold it; the ordering is refused, naming it,
+    # before anything is sent.
+    with pytest.raises(PermissionError, match=r"\[V003\] Column c\.email is not visible"):
+        apply_governance('SELECT c.region FROM "store"."customers" AS c ORDER BY c.email', _gov())
 
 
 def test_an_output_named_as_a_hidden_column_orders_by_the_output():

@@ -22,7 +22,7 @@ import pytest
 
 from provisa.compiler.stage2 import GovernanceContext, apply_governance, govern_fragment
 from provisa.security.masking import MaskingRule, MaskType
-from tests.governed_pg import Refused, governed_database
+from tests.governed_pg import governed_database
 
 _TABLES = {
     "sales.orders": [
@@ -112,9 +112,10 @@ def test_every_reference_to_a_masked_column_reads_the_mask(pg, sql, governed):
         "SELECT count(*) FROM sales.orders GROUP BY secret",
     ],
 )
-def test_a_hidden_column_is_in_no_relation_the_statement_reads(pg, sql):
-    with pytest.raises(Refused, match="secret"):
-        pg.answer(apply_governance(sql, _gov()), _TABLES)
+def test_a_hidden_column_is_in_no_relation_the_statement_reads(sql):
+    # REQ-039: refused in every clause, naming the column, before anything is sent
+    with pytest.raises(PermissionError, match=r"\[V003\] Column 'secret' is not visible"):
+        apply_governance(sql, _gov())
 
 
 def test_a_relationship_join_the_compiler_writes_on_a_masked_key_reads_the_mask(pg):

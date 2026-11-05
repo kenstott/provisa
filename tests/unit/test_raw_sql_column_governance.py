@@ -197,9 +197,9 @@ class TestColumnGovernanceWithPopulatedTables:
         gov_ctx = build_governance_context(
             "analyst", rls, {}, ctx, tables=[_ORDERS_TABLE_DICT], role=unscoped_role("analyst")
         )
-        governed = apply_governance("SELECT amount FROM orders", gov_ctx)
-        # REQ-039: the governed relation does not hold it, so the engine refuses the name.
-        assert 'AS "amount"' not in governed and '"orders"."amount"' not in governed
+        # REQ-039: the governed relation does not hold it; refused, naming it, before it is sent.
+        with pytest.raises(PermissionError, match=r"\[V003\] Column 'amount' is not visible"):
+            apply_governance("SELECT amount FROM orders", gov_ctx)
 
     def test_select_star_expanded_to_visible_columns_only(self):
         """SELECT * expands to id, region — amount (admin-only) is dropped."""

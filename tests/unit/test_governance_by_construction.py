@@ -327,14 +327,15 @@ def test_a_carried_key_is_in_no_star_whole_row_or_named_read(dsn, sql):
         assert KEY_MARK not in repr(answer)
 
 
-def test_a_key_join_the_role_writes_without_a_relationship_fails(dsn):
-    """A join on a hidden column that no relationship approves names a column that is not there."""
+def test_a_key_join_the_role_writes_without_a_relationship_fails():
+    """A join on a hidden column that no relationship approves is refused, naming the column,
+    before anything is sent (REQ-039: a hidden column is refused in every clause)."""
     gov = _gov()
     gov.join_keys = set()
-    governed = apply_governance(
-        "SELECT c.name FROM bank.customer c JOIN bank.acct a ON c.ssn = a.cust_ssn", gov
-    )
-    assert _run(dsn, governed, _SSN_A)[0] == "error"
+    with pytest.raises(PermissionError, match=r"\[V003\] Column c\.ssn is not visible"):
+        apply_governance(
+            "SELECT c.name FROM bank.customer c JOIN bank.acct a ON c.ssn = a.cust_ssn", gov
+        )
 
 
 # -- writes ----------------------------------------------------------------------------------------

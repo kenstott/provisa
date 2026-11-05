@@ -23,6 +23,7 @@ compiled join keeps its key though the role cannot select it.
 
 from __future__ import annotations
 
+import pytest
 import sqlglot
 import sqlglot.expressions as exp
 
@@ -186,7 +187,8 @@ def test_a_hidden_aliased_column_is_refused_by_either_name():
     for name in ("mail", "email"):
         sql = f'SELECT "id", "{name}" FROM "shop"."customers"'
         assert any(v.startswith("V003") for v in _violations(model, sql)), name
-        assert name not in _projection(apply_governance(sql, model[2]))
+        with pytest.raises(PermissionError, match=rf"\[V003\] Column '{name}' is not visible"):
+            apply_governance(sql, model[2])
 
 
 def test_a_masked_aliased_column_is_masked_when_every_column_is_visible():
@@ -249,9 +251,9 @@ def test_the_join_column_itself_is_still_not_selectable():
     model = _model(email_to=EVERY)
     sql = 'SELECT "o"."customer_id" FROM "shop"."orders" "o"'
     assert any(v.startswith("V003") for v in _violations(model, sql))
-    # Outside an approved join condition, a reference to it reads nothing: the relation does
-    # not expose it.
-    governed = apply_governance(
-        'SELECT "o"."id" FROM "shop"."orders" "o" WHERE "o"."customer_id" = 7', model[2]
-    )
-    assert "customer_id" not in _served(governed)
+    # Outside an approved join condition, a reference to it is refused in any clause, naming
+    # it, before anything is sent: the relation does not expose it (REQ-039).
+    with pytest.raises(PermissionError, match=r"\[V003\] Column o\.customer_id is not visible"):
+        apply_governance(
+            'SELECT "o"."id" FROM "shop"."orders" "o" WHERE "o"."customer_id" = 7', model[2]
+        )
