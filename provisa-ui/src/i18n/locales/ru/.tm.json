@@ -3959,6 +3959,7 @@
   "ru/observabilityTab.json::observabilityTab.timeLabel": "Time:",
   "ru/observabilityTab.json::observabilityTab.traceLabel": "Trace:",
   "ru/observabilityTab.json::observabilityTab.traces": "Traces",
+  "ru/observabilityTab.json::observabilityTab.tracesTableCheckFailed": "Provisa's trace tables could not be checked ({{reason}}). Whether they are receiving rows is unknown; the check repeats every 30 seconds.",
   "ru/odataPage.json::odataPage.ascending": "ascending",
   "ru/odataPage.json::odataPage.copyUrl": "Copy URL",
   "ru/odataPage.json::odataPage.countLabel": "Count the matching rows",
