@@ -123,11 +123,40 @@ async def test_preview_rejects_an_upload_it_cannot_read(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_preview_requires_org_settings(monkeypatch):
+async def test_preview_requires_an_import_right(monkeypatch):
+    """REQ-1327: the page and its preview open to a holder of any right an imported object asks;
+    a right no imported object asks is refused, naming the ones that would do."""
     _grant(monkeypatch, {"observability"})
     with pytest.raises(ApiError) as exc:
         await ir.preview_import(_preview_req(V2_DOCUMENT), _request(("observability",)))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code == 403 and exc.value.code == "import.right_required"
+    assert "table_registration" in str(exc.value.detail)
+    _grant(monkeypatch, {"table_registration"})
+    resp = await ir.preview_import(_preview_req(V2_DOCUMENT), _request(("table_registration",)))
+    assert resp.summary.source_ids == ["pg1"]
+
+
+def test_the_import_page_opens_on_the_orgs_object_rights_never_the_platforms():
+    """The platform holds no data capability, so its pair opens no import."""
+    assert set(ir.IMPORT_RIGHTS) == {
+        "source_registration",
+        "org_settings",
+        "user_management",
+        "data_product_rw",
+        "glossary_rw",
+        "table_registration",
+        "create_relationship",
+        "masking_config",
+    }
+
+
+def test_every_section_an_apply_writes_names_its_own_right():
+    """An apply writes every model section (store_config.MODEL_SECTIONS) and the naming rules;
+    each must name the right that object's own admin edit asks, or it would go unchecked."""
+    from provisa.core.store_config import MODEL_SECTIONS
+
+    assert set(ir.SECTION_RIGHTS) == {*MODEL_SECTIONS, "naming"}
+    assert ir.SECTION_RIGHTS["stores"] == ("platform_settings", "cross_org")
 
 
 @pytest.mark.asyncio
@@ -234,9 +263,13 @@ CONFIG_YAML = yaml.dump(
 )
 
 
+# What CONFIG_YAML declares asks: sources, a domain and a role (REQ-1327).
+CONFIG_RIGHTS = {"source_registration", "org_settings", "user_management"}
+
+
 @pytest.mark.asyncio
 async def test_apply_runs_the_settled_sequence(monkeypatch):
-    _grant(monkeypatch, {"org_settings"})
+    _grant(monkeypatch, CONFIG_RIGHTS)
     seen = _wire_apply(monkeypatch)
     import provisa.security.sensitive as sensitive
 
@@ -296,11 +329,37 @@ async def test_apply_refuses_a_variable_the_deployment_has_not_set_by_its_name(m
 
 
 @pytest.mark.asyncio
-async def test_apply_requires_org_settings(monkeypatch):
+async def test_apply_requires_each_declared_objects_own_right(monkeypatch):
+    """REQ-1327: org_settings covers the domain but not the sources or the role, so the apply is
+    refused naming both, and nothing is applied; holding all three admits it."""
+    seen = _wire_apply(monkeypatch)
+    _grant(monkeypatch, {"org_settings"})
+    with pytest.raises(ApiError) as exc:
+        await ir.apply_import(ir.ImportApplyRequest(config_yaml=CONFIG_YAML), _request())
+    assert exc.value.status_code == 403 and exc.value.code == "import.rights_required"
+    assert exc.value.params == {
+        "sections": "sources, roles",
+        "rights": "source_registration, user_management",
+    }
+    assert "apply_config" not in seen["order"]
+
+    import provisa.security.sensitive as sensitive
+
+    async def _no_changes(conn, config):
+        return []
+
+    monkeypatch.setattr(sensitive, "config_changes", _no_changes)
+    _grant(monkeypatch, CONFIG_RIGHTS)
+    resp = await ir.apply_import(ir.ImportApplyRequest(config_yaml=CONFIG_YAML), _request())
+    assert resp.summary.source_ids == ["pg1"] and "apply_config" in seen["order"]
+
+
+@pytest.mark.asyncio
+async def test_apply_requires_an_import_right(monkeypatch):
     _grant(monkeypatch, {"observability"})
     with pytest.raises(ApiError) as exc:
         await ir.apply_import(ir.ImportApplyRequest(config_yaml=CONFIG_YAML), _request())
-    assert exc.value.status_code == 403
+    assert exc.value.status_code == 403 and exc.value.code == "import.right_required"
 
 
 def _zip(entries: dict[str, str]) -> bytes:
@@ -382,7 +441,7 @@ async def test_preview_converts_a_ddn_project(monkeypatch):
 async def test_an_apply_changing_a_sensitive_columns_hiding_needs_the_right(monkeypatch):
     """REQ-1943: a configuration that sets a sensitive column's fake, mask or grants is applied
     only by a holder of sensitive_data."""
-    _grant(monkeypatch, {"org_settings"})
+    _grant(monkeypatch, CONFIG_RIGHTS)
     seen = _wire_apply(monkeypatch)
     import provisa.security.sensitive as sensitive
 
