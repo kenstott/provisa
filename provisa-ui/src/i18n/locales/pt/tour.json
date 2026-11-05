@@ -1376,6 +1376,10 @@
         "title": "Toda coluna sensível está coberta",
         "description": "A cobertura sensível é um relatório padrão da página Relatórios: cada coluna sensível, suas tags e se um valor fictício a cobre, lido agora do modelo. Todas estão cobertas, então a pré-produção abre e responde."
       },
+      "testdataPollyProposes": {
+        "title": "Um valor fictício proposto a partir do perfil",
+        "description": "Pergunta-se ao Polly que valor fictício ele proporia para customers.email. Ele lê a última execução de perfil da coluna, vê que os valores são endereços de e-mail e propõe o valor fictício de e-mail. O modelo já declara um, então a proposta confere essa escolha com os dados. Nada é salvo até que alguém escolha salvar."
+      },
       "testdataProd": {
         "title": "Produção: as linhas reais",
         "description": "Em prod você vê os clientes como realmente são."

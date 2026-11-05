@@ -1376,6 +1376,10 @@
         "title": "Ogni colonna sensibile è coperta",
         "description": "La copertura sensibile è un report standard della pagina Report: ogni colonna sensibile, i suoi tag e se un valore fittizio la copre, letto ora dal modello. Tutte sono coperte, quindi la pre-produzione si apre e risponde."
       },
+      "testdataPollyProposes": {
+        "title": "Un valore fittizio proposto dal profilo",
+        "description": "A Polly si chiede quale valore fittizio proporrebbe per customers.email. Legge l'ultima esecuzione del profilo della colonna, vede che i valori sono indirizzi e-mail e propone il valore fittizio e-mail. Il modello ne dichiara già uno, quindi la proposta verifica quella scelta sui dati. Nulla viene salvato finché qualcuno non lo sceglie."
+      },
       "testdataProd": {
         "title": "Produzione: le righe reali",
         "description": "In prod vedi i clienti come sono davvero."
