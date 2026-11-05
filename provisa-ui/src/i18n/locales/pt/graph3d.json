@@ -24,6 +24,7 @@
     "layer_relationships": "Relacionamentos entre membros",
     "layer_outside": "Relacionamentos com tabelas externas",
     "layer_lineage": "Linhagem",
+    "layer_productLinks": "Ligações a outros produtos",
     "filterDomain": "Domínios",
     "filterTag": "Tags",
     "filterSensitivity": "Sensibilidade",
@@ -78,6 +79,7 @@
     "ontologyView": "Visão de ontologia",
     "orphans": "Órfãos",
     "columnsToggle": "Colunas",
+    "tablesToggle": "Tabelas",
     "allEdgeTypes": "Todos os tipos de aresta",
     "someEdgeTypes": "{{count}} de {{total}} tipos de aresta",
     "allDomains": "Todos os domínios",
@@ -146,6 +148,8 @@
     "factOwner": "Proprietário",
     "factMembers": "Tabelas membro",
     "factColumns": "Colunas",
+    "depth": "Profundidade",
+    "lateral": "Arestas laterais",
     "grounding_grounded": "Ancorado",
     "grounding_grounded_pending": "Ancorado, por meio de um rascunho"
   }
