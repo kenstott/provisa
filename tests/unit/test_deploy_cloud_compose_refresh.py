@@ -94,7 +94,8 @@ class _Node:
                 "NODE=test-node",
                 f"NODE_TMP={self.node_tmp}",
                 # The node's /tmp is its own: the fake ssh and scp both address it under NODE_TMP.
-                'ssh_node() { bash -c "${1//\\/tmp\\//$NODE_TMP/}"; }',
+                # Only the staged file's path: pytest's own tmp_path is under /tmp on Linux.
+                'ssh_node() { bash -c "${1//\\/tmp\\/compose-control-plane.yml/$NODE_TMP/compose-control-plane.yml}"; }',
                 'scp_node() { cp "$1" "$NODE_TMP/${2#/tmp/}"; }',
                 f'ENV_FILE="{self.home}/provisa.env"',
                 f'CP_HOME="{self.home}"',
