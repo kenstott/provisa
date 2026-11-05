@@ -47,7 +47,7 @@ def _config() -> dict:
     )
 
 
-def _users() -> dict:
+def _users(*, folded: bool = True) -> dict:
     """The demo model's ``users`` table, as the governance stage is handed a table: its column
     grants folded over each role's ancestors, as the runtime build folds them (REQ-2155)."""
     config = _config()
@@ -74,12 +74,13 @@ def _users() -> dict:
         "write_returns_rows": True,
         "write_refused_forms": [],
     }
-    fold_config_grants([users], config.get("roles") or [])
+    if folded:
+        fold_config_grants([users], config.get("roles") or [])
     return users
 
 
-def _governance(role_id: str, capabilities: list[str]):
-    table = _users()
+def _governance(role_id: str, capabilities: list[str], *, folded: bool = True):
+    table = _users(folded=folded)
     ctx = CompilationContext()
     ctx.tables = {
         "users": TableMeta(
@@ -123,9 +124,13 @@ def test_org_admin_is_served_what_it_writes_through_data_steward(column):
     assert "data_steward" in granted
     assert "org_admin" not in granted
     gov = _governance("org_admin", ["write"])
-    assert column in gov.visible_columns[1]
+    served = gov.visible_columns[1]
+    assert served is None or column in served  # None: every column is served
     statement = f"UPDATE users SET {column} = {column} WHERE id = 99981"
     assert apply_governance(statement, gov).split()[0] == "UPDATE"
+    # Without the inheritance fold the grant names no role org_admin is: the write is refused.
+    with pytest.raises(PermissionError, match="V003"):
+        apply_governance(statement, _governance("org_admin", ["write"], folded=False))
 
 
 @pytest.mark.parametrize("statement", _WRITES)
