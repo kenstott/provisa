@@ -24,6 +24,16 @@ Who holds these rights is settled by how roles are held: assigned directly, deri
 
 Fakes are an environment's protection—a test environment serves sensitive columns faked to every role—not a dimension of access.
 
+### Identity is the boundary
+
+Provisa never authorizes a person. Your identity provider proves who someone is. After that, a request carries only its roles and attribute values, plus the region it came through. Every grant, mask, row rule and residency decision is written against those alone, so a rule keeps working when people change jobs.
+
+This is also why Provisa has no grant to an individual. A grant per person has to be revisited every time that person's job changes, and the number of grants grows with headcount instead of with the number of jobs. Rights written against roles and attributes grow with the organization's structure.
+
+Roles come from the identity provider's claims. When the provider does not carry them, they come from Provisa's own assignment store (`assignments_source`, see [Authentication](#authentication)). Attribute values come from the provider, and an organization's own record of a member can override one.
+
+For small teams and development, Provisa includes a minimal identity provider. The `basic` provider keeps local accounts, which you manage under Admin › Security › Local users. It stands in for an identity provider and changes nothing about authorization, so a team can start with local accounts and later move to its organization's provider without changing a rule.
+
 ### Hierarchies and inheritance
 
 Capabilities and domains both form hierarchies, with their own rules.
