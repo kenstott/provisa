@@ -1386,11 +1386,21 @@
   feature: sign-in-and-identity-credentials
   priority: MUST
   type: behavioral
-  description: AuthMiddleware defines a skip-path set `{/billing/signup, /billing/webhook, /health, /live,
-    /ready, /data/openapi/*, /auth/login, /auth/provider-type, /auth/bootstrap-status, /setup/status}`.
-    Requests to these paths bypass the bearer-token gate entirely and do not require a JWT. The set is exact. Every entry is an unauthenticated hole, so an addition is a deliberate edit. REQ-1355 moved
-    this set out of TenantMiddleware, which was registered behind a flag that was always False at app-factory
-    time and therefore never ran, leaving the billing webhook to 401 on the auth gate.
+  description: '[SUPERSEDED by REQ-594, 2026-11-05 -- the set grew with later requirements; the full list
+    is in the amendment below. Kept here for history; do not implement against it.] AuthMiddleware defines
+    a skip-path set `{/billing/signup, /billing/webhook, /health, /live, /ready, /data/openapi/*, /auth/login,
+    /auth/provider-type, /auth/bootstrap-status, /setup/status}`. [END SUPERSEDED BLOCK] Requests to these
+    paths bypass the bearer-token gate entirely and do not require a JWT. The set is exact. Every entry
+    is an unauthenticated hole, so an addition is a deliberate edit. REQ-1355 moved this set out of TenantMiddleware,
+    which was registered behind a flag that was always False at app-factory time and therefore never ran,
+    leaving the billing webhook to 401 on the auth gate. (Amended 2026-11-05, THE SKIP-PATH SET AS IT STANDS:)
+    The skip-path set, exact, is: /health, /live, /ready; /internal/ui-server-settings (REQ-1913, the UI
+    server''s proxy timeout); /data/openapi/docs, /data/openapi/redoc, /data/openapi/openapi.json; /auth/login;
+    /auth/superuser-login (REQ-1472); /auth/saml/login, /auth/saml/acs, /auth/saml/metadata (REQ-1265);
+    /auth/provider-type (REQ-1267); /auth/bootstrap-status (REQ-1288); /setup/status; /sandboxes/limits
+    (REQ-2006, the limits the hosted-sandbox page states); /billing/signup, /billing/webhook; /orgs/branding,
+    /orgs/branding/logo (REQ-1486). Each was added by the requirement named, which states why it carries
+    no bearer token; an addition is still a deliberate edit to this list.'
   use_case: Skip-path exemptions allow Lemon Squeezy billing webhooks (which authenticate by HMAC signature,
     not a bearer token), health/liveness probes, the pre-login provider probes, and OpenAPI docs to function
     without a JWT while all other paths enforce authentication.
