@@ -26539,3 +26539,15 @@ Maintainer 2026-11-04: the repository carries a dev container definition (.devco
 **Code:** —
 
 **Tests:** —
+
+## 6. Execution, Routing, Caching & Performance
+
+### REQ-2206 · Freshness Module {#REQ-2206}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-04: a table can be declared volatile. A volatile table is never answered from a copy: it is never a hot table, a request that reads it is never answered from the response cache (an @cached or cache hint is ignored for it), and no materialized view that reads it answers a statement in its place (the view itself is still built and read by its name, under its own grants). It is read live wherever a live path exists; where it can only be read from a replica, the replica is landed fresh before every read. Where the existing table settings already express a part (hot: false, replicate: -1, cache_ttl), volatile overrides them, and the table's form disables those settings and says why. A volatile table on a load-protected source ([REQ-1141](#REQ-1141)) is refused at registration, naming both settings, since a load-protected source is never pulled at query time.
+
+**Code:** —
+
+**Tests:** —
