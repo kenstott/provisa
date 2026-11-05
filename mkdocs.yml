@@ -245,6 +245,7 @@ exclude_docs: |
   exports/
 
 not_in_nav: |
+  compare-immuta.md
   dataset-handling-standards.md
   domain-principles.md
   arch/requirements.yaml
