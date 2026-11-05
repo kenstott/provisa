@@ -4,6 +4,7 @@
     "dockerfile": "Dockerfile"
   },
   "mounts": [
+    "source=provisa-venv-${devcontainerId},target=${containerWorkspaceFolder}/.venv,type=volume",
     "source=provisa-node-modules-${devcontainerId},target=${containerWorkspaceFolder}/provisa-ui/node_modules,type=volume",
     "source=provisa-encoders-target-${devcontainerId},target=${containerWorkspaceFolder}/rust/encoders/target,type=volume"
   ],
@@ -29,13 +30,13 @@
     }
   },
   "containerEnv": {
-    "UV_PROJECT_ENVIRONMENT": "/home/vscode/.venv",
+    "UV_PROJECT_ENVIRONMENT": "${containerWorkspaceFolder}/.venv",
     "UV_PYTHON": "/usr/local/bin/python3.12",
     "UV_PYTHON_DOWNLOADS": "never",
     "UV_LINK_MODE": "copy"
   },
   "remoteEnv": {
-    "PATH": "/home/vscode/.venv/bin:${containerEnv:PATH}"
+    "PATH": "${containerWorkspaceFolder}/.venv/bin:${containerEnv:PATH}"
   },
   "updateContentCommand": "bash .devcontainer/update-content.sh",
   "customizations": {
@@ -48,7 +49,7 @@
         "vitest.explorer"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "/home/vscode/.venv/bin/python",
+        "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
         "python.testing.pytestEnabled": true,
         "python.testing.pytestArgs": ["tests/unit"]
       }
