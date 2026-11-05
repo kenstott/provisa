@@ -169,26 +169,29 @@ def broker(tmp_path_factory) -> Iterator[_Broker]:
     )
     try:
         deadline = time.monotonic() + 120
-        while True:
-            added = _tool(
-                name,
-                "/opt/kafka/bin/kafka-configs.sh",
-                "--bootstrap-server",
-                "localhost:9092",
-                "--alter",
-                "--entity-type",
-                "users",
-                "--entity-name",
-                _USER,
-                "--add-config",
-                f"SCRAM-SHA-256=[password={_PASSWORD}],SCRAM-SHA-512=[password={_PASSWORD}]",
-            )
-            if added.returncode == 0:
-                break
-            if time.monotonic() > deadline:  # the broker is still starting until then
-                logs = subprocess.run(["docker", "logs", name], capture_output=True, text=True)
-                raise RuntimeError(f"{added.stderr}\n{logs.stdout[-2000:]}")
-            time.sleep(2)
+        # One mechanism per request: a KRaft controller refuses a request that alters one user's
+        # credentials twice (DuplicateResourceException).
+        for mechanism in ("SCRAM-SHA-256", "SCRAM-SHA-512"):
+            while True:
+                added = _tool(
+                    name,
+                    "/opt/kafka/bin/kafka-configs.sh",
+                    "--bootstrap-server",
+                    "localhost:9092",
+                    "--alter",
+                    "--entity-type",
+                    "users",
+                    "--entity-name",
+                    _USER,
+                    "--add-config",
+                    f"{mechanism}=[password={_PASSWORD}]",
+                )
+                if added.returncode == 0:
+                    break
+                if time.monotonic() > deadline:  # the broker is still starting until then
+                    logs = subprocess.run(["docker", "logs", name], capture_output=True, text=True)
+                    raise RuntimeError(f"{added.stderr}\n{logs.stdout[-2000:]}")
+                time.sleep(2)
         yield _Broker(name, port, ca, certs)
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True)
