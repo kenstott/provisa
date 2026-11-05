@@ -81473,7 +81473,11 @@
     after 30 idle minutes while an open sandbox lives for sandbox.idle_ttl): the sandbox VM stops itself
     only when no demo sandbox is open on any of its tiers and no tier on it has been used for the idle window.
     Each tier records its last use where the others can read it. The cost is a longer idle runtime: up to
-    sandbox.idle_ttl after the last request, then the idle window.'
+    sandbox.idle_ttl after the last request, then the idle window. (Amended 2026-11-04, DEMO SANDBOXES PREPARED
+    ON WAKE:) When the sandbox node starts after idling, it prepares each published demo''s template and
+    stores at once, before any visitor asks, so a visitor who arrives during or after the wake waits only
+    for their own sandbox''s copy, not for the template''s first start as well. A sandbox''s environments
+    are made from the template''s prepared environments rather than rebuilt per sandbox.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true
