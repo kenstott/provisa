@@ -105,11 +105,18 @@ def test_docker_is_available_inside():
     _feature("docker-in-docker")
 
 
-def test_the_environment_lives_outside_the_checkout():
-    # A host's own .venv in the bind-mounted checkout is never synced over.
-    # The checkout is mounted under /workspaces, the CLI's and Codespaces' default.
-    env = _devcontainer()["containerEnv"]["UV_PROJECT_ENVIRONMENT"]
-    assert not env.startswith("/workspaces/")
+def test_the_environment_is_the_checkouts_venv_on_a_volume():
+    # start-ui-install.sh and rust/build-local.sh use <checkout>/.venv; a volume keeps a host's own
+    # .venv in the bind-mounted checkout from being synced over.
+    config = _devcontainer()
+    venv = "${containerWorkspaceFolder}/.venv"
+    assert config["containerEnv"]["UV_PROJECT_ENVIRONMENT"] == venv
+    assert config["remoteEnv"]["PATH"].startswith(venv + "/bin:")
+    assert (
+        config["customizations"]["vscode"]["settings"]["python.defaultInterpreterPath"]
+        == "${workspaceFolder}/.venv/bin/python"
+    )
+    assert any(m.endswith(f"target={venv},type=volume") for m in config["mounts"])
 
 
 def test_the_slow_setup_is_one_a_codespaces_prebuild_runs():
@@ -123,3 +130,20 @@ def test_the_slow_setup_is_one_a_codespaces_prebuild_runs():
 
 def test_codespaces_picks_a_machine_that_builds_it():
     assert _devcontainer()["hostRequirements"] == {"cpus": 4, "memory": "16gb", "storage": "32gb"}
+
+
+def test_the_ui_and_api_ports_are_forwarded_with_labels():
+    config = _devcontainer()
+    assert config["forwardPorts"] == [3000, 8001]
+    ports = config["portsAttributes"]
+    assert ports["3000"] == {"label": "Provisa UI", "onAutoForward": "openBrowser"}
+    assert ports["8001"] == {"label": "Provisa API", "onAutoForward": "silent"}
+
+
+def test_the_manifest_is_fetched_with_credentials():
+    # A private Codespaces port redirects an uncredentialed manifest fetch to github.dev/pf-signin,
+    # which the browser blocks under CORS.
+    html = (REPO_ROOT / "provisa-ui" / "index.html").read_text()
+    assert re.search(
+        r'<link rel="manifest" href="/site\.webmanifest" crossorigin="use-credentials"\s*/>', html
+    )
