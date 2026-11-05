@@ -188,8 +188,9 @@ def test_a_computed_step_of_zero_on_postgres_raises_its_error():
         for c in tree.find_all(exp.Cast)
         if c.this.find(exp.Literal) and RANGE_STEP_ZERO in c.sql()
     ]
-    # The message cast to an integer, from a subquery PostgreSQL does not fold when planning.
-    assert raised and isinstance(raised[0].this, exp.Subquery), tree.sql("postgres")
+    # PostgreSQL's own error with the message (provisa_raise, volatile: never folded when the
+    # statement is planned), an integer as the step is.
+    assert raised and _calls(raised[0], "provisa_raise"), tree.sql("postgres")
     assert raised[0].to.is_type(exp.DataType.Type.INT), tree.sql("postgres")
 
 

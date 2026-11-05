@@ -33,6 +33,7 @@ from provisa.transpiler import (
     pg_money,
     pg_syntax,
 )
+from provisa.transpiler.metadata_server_forms import SERVER_FORM_RAISE
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_forms_json import json_member
@@ -1143,14 +1144,17 @@ def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
     def _lowered(node: exp.Expr) -> exp.Expr:
         if not isinstance(node, exp.TryCast):
             return node
+        # Recurse first: transform is pre-order and skips a replaced node's children (toInteger's
+        # TRY_CAST(TRUNC(TRY_CAST(v AS DECIMAL)) AS BIGINT)).
+        value = node.this.transform(_lowered)
         valid = exp.Anonymous(
             this="PG_INPUT_IS_VALID",
             expressions=[
-                exp.Cast(this=node.this.copy(), to=exp.DataType.build("TEXT")),
+                exp.Cast(this=value.copy(), to=exp.DataType.build("TEXT")),
                 exp.Literal.string(node.to.sql(dialect="postgres")),
             ],
         )
-        operand = node.this.copy()
+        operand = value.copy()
         if not any(operand.find_all(exp.Column, exp.Placeholder, exp.Parameter)):
             # A constant's cast is folded when the statement is planned, whatever the CASE
             # decides: PostgreSQL would refuse the value it was asked to test. Its scalar
@@ -1179,7 +1183,7 @@ def postgres_empty_arrays(tree: exp.Expr) -> exp.Expr:
 def postgres_array_filters(tree: exp.Expr) -> exp.Expr:  # REQ-778
     """``tree`` for a PostgreSQL server, which has no FILTER: each filtered list (the semantic SQL
     keeps ``FILTER(l, y -> p)``, ``semantic_dialect``) is ``ARRAY(SELECT y FROM UNNEST(l) AS
-    _t(y) WHERE p)``."""
+    _t(y) WHERE p)``, null for a null ``l`` (as Trino's filter), never the empty list."""
 
     def _lowered(node: exp.Expr) -> exp.Expr:
         if not isinstance(node, exp.ArrayFilter):
@@ -1188,11 +1192,12 @@ def postgres_array_filters(tree: exp.Expr) -> exp.Expr:  # REQ-778
         if not (isinstance(cond, exp.Lambda) and len(cond.expressions) == 1):
             raise ValueError(f"A filtered list takes one element variable: {node.sql()}")
         var = cond.expressions[0].name
-        unnest = exp.Unnest(expressions=[node.this.copy()])
-        table = exp.TableAlias(this=exp.to_identifier("_t"), columns=[exp.to_identifier(var)])
-        unnest.set("alias", table)
-        filtered = exp.select(var).from_(unnest).where(cond.this.copy())
-        return exp.Array(expressions=[filtered])
+        # Recurse first: transform is pre-order and skips a replaced node's children.
+        values = node.this.transform(_lowered)
+        filtered = (
+            exp.select(var).from_(_pg_unnested(values, var)).where(cond.this.transform(_lowered))
+        )
+        return _pg_null_list(values, exp.Array(expressions=[filtered]))
 
     return tree.transform(_lowered)
 
@@ -1217,13 +1222,14 @@ def postgres_list_ranges(tree: exp.Expr) -> exp.Expr:  # REQ-345
 _SEQUENCE_CALLED = re.compile(r"\bsequence\s*\(", re.IGNORECASE)
 
 
-def _pg_raised(message: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
-    """An error PostgreSQL raises with ``message`` in its text, where it is reached: PostgreSQL has
-    no function raising one, so the message is cast to an integer it is not. Its scalar subquery
-    keeps the cast from being folded, and raised, when the statement is planned."""
-    return exp.Cast(
-        this=exp.Subquery(this=exp.select(message.copy())), to=exp.DataType.build("INT")
+def _pg_raised(sqlstate: str, message: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """PostgreSQL's error ``sqlstate`` with ``message`` as its own text, where it is reached:
+    provisa_raise, which the pg engine installs (pg_runtime), as an integer. It is volatile, so
+    it is never folded, and raised, when the statement is planned."""
+    raised = exp.Anonymous(
+        this=SERVER_FORM_RAISE, expressions=[exp.Literal.string(sqlstate), message.copy()]
     )
+    return exp.Cast(this=raised, to=exp.DataType.build("INT"))
 
 
 def _pg_json_text(value: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
@@ -1297,7 +1303,7 @@ def _pg_json_list_compare(
         return exp.Cast(this=_pg_json_scalar(e), to=exp.DataType.build(to))
 
     if depth == 1:
-        nested = _pg_raised(exp.Literal.string(LIST_COMPARE_TOO_DEEP))
+        nested = _pg_raised("54001", exp.Literal.string(LIST_COMPARE_TOO_DEEP))
     else:
         nested = _pg_json_list_compare(ea.copy(), eb.copy(), depth - 1)
     pair = exp.Case(
@@ -1465,7 +1471,7 @@ def postgres_list_functions(tree: exp.Expr) -> exp.Expr:  # REQ-345
     - ``json_kind``, ``json_size``, ``json_order_key`` and ``json_list_compare`` read a JSON
       value's text, as on the other engines.
 
-    A map's key (``element_at(m, 'k')``) is not a list's index and is left as it is."""
+    A map's key (``element_at(m, 'k')``) is not a list's index: it is postgres_maps'."""
 
     def _lowered(node: exp.Expr) -> exp.Expr:
         if isinstance(node, exp.Case):
@@ -1508,7 +1514,7 @@ def postgres_list_functions(tree: exp.Expr) -> exp.Expr:  # REQ-345
             return _pg_matched(name, args[0], args[1] if len(args) > 1 else None)
         if name == "RANGE_STEP":
             (step,) = args
-            failed = _pg_raised(exp.Literal.string(RANGE_STEP_ZERO))
+            failed = _pg_raised("22023", exp.Literal.string(RANGE_STEP_ZERO))
             return exp.Case(
                 ifs=[
                     exp.If(
@@ -1519,7 +1525,7 @@ def postgres_list_functions(tree: exp.Expr) -> exp.Expr:  # REQ-345
             )
         if name == "TYPE_REFUSED":
             (message,) = args
-            return _pg_raised(message)
+            return _pg_raised("42804", message)
         if name == "JSON_KIND":
             (value,) = args
             return _json_kind(_pg_json_text(value))
@@ -1564,7 +1570,7 @@ def postgres_list_functions(tree: exp.Expr) -> exp.Expr:  # REQ-345
             refused = branch.args.get("true")
             if isinstance(refused, exp.Anonymous) and refused.name.upper() == "TYPE_REFUSED":
                 (message,) = refused.expressions
-                raised = exp.EQ(this=_pg_raised(message), expression=exp.Literal.number(0))
+                raised = exp.EQ(this=_pg_raised("42804", message), expression=exp.Literal.number(0))
                 branch.set("this", exp.Case(ifs=[exp.If(this=branch.this, true=raised)]))
                 branch.set("true", exp.Null())
         return case
@@ -1594,6 +1600,58 @@ def _pg_element_at(values: exp.Expression, at: exp.Expression) -> exp.Expression
         ],
         default=read(at.copy()),
     )
+
+
+def postgres_maps(tree: exp.Expr) -> exp.Expr:  # REQ-345
+    """``tree`` for a PostgreSQL server, which has no MAP type: a Cypher map is jsonb.
+
+    - ``MAP(ARRAY[k, ...], ARRAY[v, ...])`` (gql/expr_visitor, each value its JSON) is
+      ``JSONB_BUILD_OBJECT(k, v, ...)``;
+    - a key's value, ``element_at(m, 'k')``, is ``m -> 'k'``, null where the map has no such key;
+      read as JSON (``CAST(element_at(m, 'k') AS JSON)``) it is that jsonb, which PostgreSQL casts
+      to a number or a boolean as it casts no json;
+    - ``map_keys(m)`` is ``ARRAY(SELECT jsonb_object_keys(m))``, null for a null map."""
+
+    def _key_read(node: exp.Expr) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]
+        if not (isinstance(node, exp.Anonymous) and node.name.upper() == "ELEMENT_AT"):
+            return None
+        held, key = node.expressions
+        if not (isinstance(key, exp.Literal) and key.is_string):
+            return None
+        as_jsonb = exp.Cast(this=held.transform(_lowered), to=exp.DataType.build("JSONB"))
+        return exp.JSONExtract(this=as_jsonb, expression=key.copy(), only_json_types=True)
+
+    def _lowered(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Cast) and node.to.is_type(exp.DataType.Type.JSON):
+            read = _key_read(node.this)
+            if read is not None:
+                return read
+        read = _key_read(node)
+        if read is not None:
+            return read
+        if isinstance(node, exp.Map):
+            keys, values = node.args.get("keys"), node.args.get("values")
+            if not (isinstance(keys, exp.Array) and isinstance(values, exp.Array)):
+                raise ValueError(f"A map is built from its keys and values listed: {node.sql()}")
+            pairs = [
+                part.transform(_lowered)
+                for pair in zip(keys.expressions, values.expressions, strict=True)
+                for part in pair
+            ]
+            return exp.Anonymous(this="JSONB_BUILD_OBJECT", expressions=pairs)
+        if isinstance(node, exp.MapKeys):
+            held = node.this.transform(_lowered)
+            named = exp.Anonymous(
+                this="JSONB_OBJECT_KEYS",
+                expressions=[exp.Cast(this=held.copy(), to=exp.DataType.build("JSONB"))],
+            )
+            return _pg_null_list(held, exp.Array(expressions=[exp.select(named)]))
+        return node
+
+    return tree.transform(_lowered)
+
+
+_MAP_CALLED = re.compile(r"\b(?:map|map_keys|element_at)\s*\(", re.IGNORECASE)
 
 
 def postgres_json_of_text(tree: exp.Expr) -> exp.Expr:  # REQ-345
@@ -1779,6 +1837,10 @@ def transpile(
         )
     if target_dialect == "postgres" and _TO_JSON_CALLED.search(pg_sql):
         lowered = postgres_json_of_text(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if target_dialect == "postgres" and _MAP_CALLED.search(pg_sql):
+        lowered = postgres_maps(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if target_dialect == "postgres" and _PG_LIST_CALLED.search(pg_sql):
