@@ -496,12 +496,14 @@ tables:
     visible_to:
     - data_steward
     - pet_analyst
+    - org_admin
   - description: Customer's full name
     name: name
     data_type: varchar
     visible_to:
     - data_steward
     - pet_analyst
+    - org_admin
   - description: Customer's phone number
     name: phone
     data_type: varchar

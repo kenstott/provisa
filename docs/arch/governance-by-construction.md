@@ -1,6 +1,6 @@
 # Hidden columns kept out by construction
 
-Design note for REQ-039, amendment of 2026-11-04 ("HIDDEN COLUMNS ARE KEPT OUT BY CONSTRUCTION").
+Design note for the rule, adopted 2026-11-04, that hidden columns are kept out by construction.
 Job J615. No code has changed yet; the open product questions are at the end.
 
 ## The change in one paragraph
@@ -35,12 +35,12 @@ For a registered table `t` read by a role under alias `a`, the governed relation
   `apply_sql_name` of the physical one), so `_read_projected_names` stops being needed: the
   relation exposes the names the role already writes.
 - The row rule is evaluated inside, on the real values, before any mask. Row rules and masks are
-  the administrator's and may read any column (REQ-039); inside the derived table they can.
+  the administrator's and may read any column; inside the derived table they can.
 - Masks are applied once, at the relation. Every clause outside (WHERE, JOIN ON, GROUP BY,
   ORDER BY, windows, aggregates) then reads the masked value without stage 2 finding the
   reference. That is what `_govern_references` does today reference by reference; the result is
   the same, without the search.
-- The answer's double-precision read of an undeclared numeric (`_as_read`, REQ-1961) stays where
+- The answer's double-precision read of an undeclared numeric (`_as_read`) stays where
   it is, on the outermost projection only: inside the relation the column keeps its exact type
   so filters and joins compute on the exact value.
 - Anything attached to the table node itself (TABLESAMPLE, a time-travel argument lifted by
@@ -55,9 +55,9 @@ place, under the same alias, marked `_GOVERNED`. The governed relation is the la
 same chain, and it becomes unconditional:
 
 1. base table, with the row rule (on real values)
-2. faked projection, when the table has faked columns (REQ-1494)
-3. kept-mutation overlay, in a Reversible environment (REQ-1942)
-4. member projection, for a meta-role whose members read differently (REQ-1620)
+2. faked projection, when the table has faked columns
+3. kept-mutation overlay, in a Reversible environment
+4. member projection, for a meta-role whose members read differently
 5. served-column projection with masks: drops every hidden column
 
 Today steps 2 to 4 each keep every column and the per-reference pass hides the rest afterwards.
@@ -65,7 +65,7 @@ With step 5 always present, the per-reference pass for visibility and masking go
 (`_govern_references`, most of `_is_column_visible` / `_maybe_mask_column` as applied to outer
 references, `_read_projected_names`). Step 5 is the only place a column is dropped.
 
-The three existing builders compose SQL text with f-strings and re-parse it. REQ-913 says SQL
+The three existing builders compose SQL text with f-strings and re-parse it. The rule is that SQL
 rewrites are SQLGlot AST only, so the chain is rebuilt with `exp.select(...)` builders as part
 of this job; the rendered SQL stays as it is now apart from step 5.
 
@@ -106,11 +106,11 @@ Inside `apply_governance`, which is where stage 2 already runs. For the raw-SQL 
 So the wrapping is after views expand and before the optimize stage and MV reinject. It has to
 be after view expansion, because a view body names registered tables that must be governed too,
 and before anything that reads predicates for performance, because those must see the governed
-statement (REQ-863: governance, then optimization, then routing).
+statement (the order is governance, then optimization, then routing).
 
 ### View bodies
 
-REQ-039 says an administrator's view body is the administrator's: only its select list is judged
+The rule is that an administrator's view body is the administrator's: only its select list is judged
 against the reader, and its other clauses may use columns hidden from the reader. If view bodies
 were wrapped like the reader's own SQL, a view that joins or filters on a hidden column would
 fail for that reader. So inside an expanded view body a registered table is replaced by a
@@ -127,7 +127,7 @@ A role cannot join on a column it cannot see: after the change, `ON a.k = b.k` w
 from the role fails as an unknown column (V003 refuses it first). That is the intent for a join
 the role writes itself.
 
-Registered relationships are different. REQ-603 lets a role reach related rows through an
+Registered relationships are different. A role may reach related rows through an
 approved relationship even when its key is hidden or masked: today `approved_join_key` leaves
 such a reference untouched and the engine joins on the real value, which is not returned.
 Under construction there is no real value left to join on unless the relation carries it. This
@@ -149,8 +149,7 @@ the masked one, as today.
 A derived table cannot be the target of an UPDATE or DELETE in PostgreSQL (or in most of the
 sources Provisa writes to), so the governed relation does not stay the target. The write is
 rewritten to the base table, and the row rule stays in the base WHERE exactly where
-`admit_write` puts it today (the grant's rows predicate and the role's U or D rule, REQ-2074 and
-REQ-2188).
+`admit_write` puts it today (the grant's rows predicate and the role's U or D rule).
 
 Keeping the base table as the target brings back the scoping problem for whatever the role wrote
 inside the write: any unqualified name in its WHERE, SET or RETURNING, including inside a nested
@@ -194,7 +193,7 @@ SELECT <r> FROM __w AS customer
 Sources whose dialect cannot run a leading WITH on a write, or a writable CTE, run the same
 thing in two steps through the existing key-read path (`_code_write_plan` reads "the governed
 write's own FROM and WHERE, read as any read is" and then writes by key). Q2 asks whether that
-is acceptable. In a Reversible environment the kept-mutation path (REQ-1942) receives the
+is acceptable. In a Reversible environment the kept-mutation path receives the
 rewritten statement; implementation checks that it applies the key-set form unchanged, and
 otherwise hands it the two-step form.
 
@@ -236,7 +235,7 @@ FROM", which is now the governed relation's own SELECT holding only the row rule
 read through a governed relation to the outer predicates, mapping an outer `a.col` to the inner
 column when the relation serves it unmasked:
 
-- row-level PK bounds (`pk_bounds.scope_predicates`, REQ-1865), or a row-level table read loses
+- row-level PK bounds (`pk_bounds.scope_predicates`), or a row-level table read loses
   its cache bound and a federated read of it is refused;
 - `_nf_` native-parameter extraction (`extract_nf_args`, `separate_parameter_reads`): the
   relation exposes the table's `_nf_` parameter columns, which are virtual and served with every
@@ -264,10 +263,10 @@ it does with it.
 
 Caching:
 
-- **Response cache (REQ-544, REQ-1897):** keyed on the governed statement, so every key changes
+- **Response cache:** keyed on the governed statement, so every key changes
   once; entries written before the change are not hit after it. Two roles with different
   visibility still get different keys.
-- **Kept plans (`PlanSlot`) and the compiled-query cache (REQ-1877):** keyed on the statement as
+- **Kept plans (`PlanSlot`) and the compiled-query cache:** keyed on the statement as
   written plus role and schema generation, both in process memory; a deploy starts them empty.
 - **Prepared statements:** governed once, executed many times; unchanged.
 
@@ -300,7 +299,7 @@ Caching:
   and a row rule: none returns `ssn`, none changes its answer with the value of `ssn`, and each
   row rule holds. Statements that V003 refuses are also run with V003 bypassed, so the
   construction is tested on its own.
-- **Integration and e2e:** the REQ-039/REQ-040 suites run unchanged and must pass; the EXPLAIN
+- **Integration and e2e:** the existing hidden-column and masking suites run unchanged and must pass; the EXPLAIN
   checks per engine above; one MV-answered read per kind (join-pattern full, partial, aggregate)
   still answered from its view.
 
@@ -309,7 +308,7 @@ Caching:
 **Q1. Relationships whose join key is hidden from the role.**
 
 - (A, recommended) The governed relation carries the real key under an internal name only when
-  the statement makes an approved join on it (REQ-603); the join reads the real value, which is
+  the statement makes an approved join on it; the join reads the real value, which is
   never returned. Every relationship and every GraphQL nesting works as today.
 - (B) A relationship whose key is hidden from a role is not offered to that role: dropped from
   its SDL, and a SQL join on it fails. Strictest and simplest; models that hide foreign keys lose
