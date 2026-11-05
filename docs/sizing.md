@@ -249,17 +249,15 @@ For each engine, transport and source, side by side: the base cost of an uncache
 
 ### What Provisa's features add to a query
 
-The sections above measure a request as a whole. This one says what each Provisa feature puts into the query, where that part runs, when you pay for it, and whether the query can still be optimized. It states the rules; the measured costs stay in the tables.
-
 #### Paid once per query shape
 
 Provisa checks and rewrites a statement before any source sees it. It checks the tables and columns the role may read (domain reach, scope, `visible_to`), puts the role's row rules and masks into the statement, and expands views and metrics. Those results are kept. A repeat of the same shape skips the work.
 
-The shape is the statement with every literal blanked, so two statements that differ only in a value share one entry. A prepared statement keeps its `$1` placeholders and binds values later, so every execution of it reuses the entry. So does paging with a new offset value. The key also carries the role, the schema version and, for the validation result, the person. The governed plan that a repeat reuses is keyed by statement text and session variables instead, so bind values through placeholders.
+The shape is the statement with every literal blanked, so two statements that differ only in a value share one entry. A prepared statement keeps its `$1` placeholders and binds values later, so every execution of it reuses the entry. So does paging with a new offset value. The key also carries the role, the schema version and the server's boot generation and, for the validation result, the person. The governed plan that a repeat reuses is keyed by statement text and session variables instead, so bind values through placeholders.
 
 A change to the schema, a row rule, a mask or a role throws the entries away. Each bumps the schema version. A kept plan also lapses when any governance object it was built from is replaced, and when the default row limit or the security mode changes.
 
-The route Provisa picks (your source directly, or the federation engine) is cached too, per shape, role, schema version and replica state, for 60 seconds by default. Four cases skip that cache and decide again on every call:
+The route Provisa picks (your source directly, or the federation engine) is cached too, per shape, role, schema version, boot generation and replica state, for 60 seconds by default. Four cases skip that cache and decide again on every call:
 
 - the request carries a route hint;
 - the statement names an API-backed table, because that table's cache and hot-table state change between calls;
@@ -274,7 +272,7 @@ The row rules and masks Provisa put in are ordinary SQL that your source or the 
 
 #### Views
 
-A view is expanded into the one statement during the once-per-shape work. It costs about what the same SQL written by hand costs. Some databases precompute a view; in Provisa that is a materialized view, covered below. Secure views in some warehouses block optimizations on the SQL beneath them. The expanded form does not.
+A view is expanded inline during the once-per-shape work. It costs about what the same SQL written by hand costs. Some databases precompute a view; in Provisa that is a materialized view, covered below. Secure views in some warehouses block optimizations on the SQL beneath them. The expanded form does not.
 
 #### Whether the query stays optimizable
 
