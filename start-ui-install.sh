@@ -246,8 +246,12 @@ is_exfat() {
 # Singleton: a second copy of this script would share ~/.provisa-server-version,
 # and each instance's version watcher cross-triggers backend restarts in the others
 # (restart storm). Kill any previous instance and the process group it owns
-# (backend + UI + watchers) before starting.
-for _other in $(pgrep -f "start-ui-install.sh" 2>/dev/null); do
+# (backend + UI + watchers) before starting. A previous instance is a shell running this script
+# ("bash ./start-ui-install.sh --demo", as the shebang starts it), not any command line that only
+# mentions it: a `bash -c` launcher that starts the script (devcontainer-smoke's runCmd) has the
+# name in its arguments, and killing it killed the launcher (exit 137) before the script printed.
+_instance_re='^[^ ]*sh( -[^ c]+)* [^ ]*start-ui-install\.sh( |$)'
+for _other in $(pgrep -f "$_instance_re" 2>/dev/null); do
   [ "$_other" = "$$" ] && continue
   echo "Stopping previous start-ui-install.sh instance (PID $_other) and its services..."
   kill -CONT "-$_other" 2>/dev/null || true   # un-stop the process group if suspended

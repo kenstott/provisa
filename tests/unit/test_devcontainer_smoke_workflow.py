@@ -15,7 +15,11 @@ inside it on every change to the container, the script or what the script starts
 
 from __future__ import annotations
 
+import os
 import re
+import signal
+import subprocess
+import time
 from pathlib import Path
 
 import yaml
@@ -48,7 +52,7 @@ def _smoke_step() -> dict:
 def test_it_runs_on_every_change_to_the_container_the_script_or_what_it_starts():
     triggers = _workflow()[True]  # PyYAML reads the key `on` as True
     assert triggers["pull_request"]["paths"] == PATHS
-    assert triggers["push"] == {"branches": ["main"], "paths": PATHS}
+    assert triggers["push"] == {"branches": ["main", "ci/**"], "paths": PATHS}
     assert "workflow_dispatch" in triggers
     for pattern in PATHS:
         assert list(REPO.glob(pattern)), f"{pattern} names nothing in the repository"
@@ -86,3 +90,45 @@ def test_the_api_call_is_one_the_ui_server_forwards_and_that_needs_no_sign_in():
     assert re.search(r'^\s+"/health": BACKEND_TARGET,$', vite, re.M)
     middleware = (REPO / "provisa" / "auth" / "middleware.py").read_text()
     assert '"/health",' in middleware
+
+
+def _instance_re() -> str:
+    script = (REPO / "start-ui-install.sh").read_text()
+    found = re.findall(r"^_instance_re='([^']+)'$", script, re.M)
+    assert len(found) == 1, found
+    assert 'for _other in $(pgrep -f "$_instance_re" 2>/dev/null); do' in script
+    return found[0]
+
+
+def test_the_scripts_singleton_stops_a_previous_copy_but_not_the_shell_that_launched_it(tmp_path):
+    # The runCmd is a `bash -c` whose text names ./start-ui-install.sh. The script's singleton
+    # killer matched it and SIGKILLed the launcher (exit 137) before the script printed a line.
+    copy = tmp_path / "start-ui-install.sh"
+    copy.write_text("#!/usr/bin/env bash\nsleep 60\n")
+    copy.chmod(0o755)
+    # Its EXIT trap keeps the shell alive as itself: without one, bash execs the last command.
+    launcher = (
+        "set -euo pipefail\ntrap 'true' EXIT\n"
+        "./start-ui-install.sh --demo </dev/null >/dev/null 2>&1 &\nsleep 60\n"
+    )
+    procs = {
+        "launcher": subprocess.Popen(
+            ["bash", "-c", launcher], cwd=tmp_path, start_new_session=True
+        ),
+        "by_shebang": subprocess.Popen([str(copy), "--demo"], cwd=tmp_path, start_new_session=True),
+        "by_bash": subprocess.Popen(
+            ["bash", str(copy), "--demo"], cwd=tmp_path, start_new_session=True
+        ),
+    }
+    try:
+        time.sleep(1)
+        listed = subprocess.run(
+            ["pgrep", "-f", _instance_re()], capture_output=True, text=True, check=False
+        ).stdout.split()
+        matched = {name for name, proc in procs.items() if str(proc.pid) in listed}
+        # The launcher's own background copy is a copy too; the launcher is not.
+        assert matched == {"by_shebang", "by_bash"}, (matched, listed)
+    finally:
+        for proc in procs.values():
+            os.killpg(proc.pid, signal.SIGKILL)  # the launcher's group holds its background copy
+            proc.wait()
