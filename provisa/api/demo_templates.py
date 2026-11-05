@@ -688,7 +688,8 @@ async def ensure_demo_templates(pool) -> dict[str, str]:
 
     A bundled demo whose stores the node has not brought up is not built here: the node starts
     no demo's stores at boot, and a template is built from its stores. One served as built is
-    served so; any other is built ahead (:func:`build_ahead`), its stores asked of the node."""
+    served so; any other is built ahead (:func:`build_ahead`). Every demo's stores are asked of
+    the node there, at once, served as built or not."""
     outcome = {}
     for demo in published_demos().values():
         if demo.stores_ready:
@@ -737,21 +738,24 @@ def building_ahead() -> bool:
 
 
 async def build_ahead(pool) -> None:
-    """REQ-2006: build the template of every published demo that has none for the version served,
-    so no visitor waits on it: the node starts a demo's stores only when asked, and a template is
-    built from its stores, so left to a visitor's open each first open took a build. Its stores
-    are asked of the node one demo at a time and let go when its template is built: the node
-    cannot hold every demo's up at once (sandbox.demo_stores_linger). What it finds is the log's:
-    a demo that cannot be built is said by name, and does not keep the others."""
+    """REQ-2006: prepare every published demo at the tier's start, all at once, so no visitor waits
+    on it: the node starts a demo's stores only when asked, and a template is built from its
+    stores, so left to a visitor's open each first open after a wake waited for its demo's stores,
+    and took a build. Every demo's stores are asked of the node together -- a template served as
+    built included, whose stores are down after a wake as any other's -- and each template not
+    built for the version served is queued once its stores are up, the queue building
+    sandbox.template_builds_at_once at a time. A visitor's open during it waits on that same
+    preparation (follow_latest). Each demo's stores are let go when it is prepared, to linger
+    (sandbox.demo_stores_linger). What it finds is the log's: a demo that cannot be prepared is
+    said by name, and does not keep the others."""
+    ahead = []
     for demo in published_demos().values():
         if (demo.name, demo.directory.name) in _tried_ahead:
             continue
-        state = template_builds.state_of(demo.name)
-        if state == "ready" and await _templated(pool, demo.name) == demo.directory.name:
-            continue
-        if state in ("unknown", "ready"):
+        if template_builds.state_of(demo.name) in ("unknown", "ready"):
             _tried_ahead.add((demo.name, demo.directory.name))
-            await _build_one_ahead(pool, demo.name)
+            ahead.append(demo.name)
+    await asyncio.gather(*(_build_one_ahead(pool, name) for name in ahead))
 
 
 async def _build_one_ahead(pool, name: str) -> None:
