@@ -44584,7 +44584,11 @@
     replicate and cache settings, residency grants), and who holds which role. Specialized roles build on
     top: views, terms and relationships, triggers, fakes and synthetic data, reports and quality checks,
     each holding only its own capabilities. Every admin page belongs to one layer, and its settings are
-    editable only by that layer''s role.'
+    editable only by that layer''s role. (Amended 2026-11-05, THE ORG ADMIN MANAGES LOAD:) Part of the org
+    admin''s layer is managing load: understanding how freshness and the other processing settings (live
+    read, replicate, cache ttl, hot tables, load protection, live concurrency caps, per-role rate limits
+    and row caps) trade freshness against the load on sources and the speed of answers, and setting them
+    accordingly.'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
