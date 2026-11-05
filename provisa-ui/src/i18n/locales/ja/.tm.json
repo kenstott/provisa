@@ -9572,5 +9572,20 @@
   "ja/regionPurposes.json::regionPurposes.explain.workload": "Keeps one workload apart from the others.",
   "ja/regionPurposes.json::regionPurposes.explain.latency": "Placed near its users or its sources.",
   "ja/regionPurposes.json::regionPurposes.explain.resilience": "A place to fail over to or recover in.",
-  "ja/regionPurposes.json::regionPurposes.explain.dedicated": "Infrastructure reserved for one organization, for its own sovereignty over it."
+  "ja/regionPurposes.json::regionPurposes.explain.dedicated": "Infrastructure reserved for one organization, for its own sovereignty over it.",
+  "ja/federationRegions.json::federationRegions.intro": "Each region runs its queries on its own engine: the store the platform assigned this organization as the region's engine, with its engine kind and connection URL.",
+  "ja/federationRegions.json::federationRegions.readOnlyNote": "The platform administrator assigns each region's engine. It is shown here read-only.",
+  "ja/federationRegions.json::federationRegions.sandboxNote": "This is shown to explain regions. It cannot be changed in a demo.",
+  "ja/federationRegions.json::federationRegions.restartNote": "A change applies when the region's nodes restart.",
+  "ja/federationRegions.json::federationRegions.restartPending": "Saved. The change applies when the region's nodes restart.",
+  "ja/federationRegions.json::federationRegions.edit": "Edit",
+  "ja/federationRegions.json::federationRegions.store": "Engine store",
+  "ja/federationRegions.json::federationRegions.kind": "Engine kind",
+  "ja/federationRegions.json::federationRegions.url": "URL",
+  "ja/federationRegions.json::federationRegions.sharedWith": "Also the engine of",
+  "ja/federationRegions.json::federationRegions.storeHelp": "The store this region names as its engine. Which store it is is set on the Platform page.",
+  "ja/federationRegions.json::federationRegions.sharedHint": "Also the engine of {{regions}}. A change here applies there too.",
+  "ja/federationRegions.json::federationRegions.kindHelp": "The engine this store runs.",
+  "ja/federationRegions.json::federationRegions.urlHelp": "The engine's connection URL, or a reference such as ${env:NAME}. It is kept exactly as entered. A password in it is never shown again; leave the URL unchanged to keep it.",
+  "ja/federationRegions.json::federationRegions.storeMissing": "Region {{region}} names {{store}} as its engine, and the organization has no store {{store}}."
 }
