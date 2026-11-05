@@ -17,6 +17,7 @@ Supports PG SQL → Trino, and PG SQL → any target dialect for direct executio
 
 import functools
 import re
+from collections.abc import Callable
 
 import sqlglot
 from sqlglot.dialects.postgres import Postgres
@@ -121,23 +122,30 @@ def _type_refused(message: exp.Expression, raise_with: str) -> exp.Expression:  
     return exp.Anonymous(this=raise_with, expressions=[message.copy()])
 
 
-def _json_has_keys(value: exp.Expression, *keys: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
-    """True where the JSON object ``value`` holds every one of ``keys``."""
-    held = [
-        exp.Not(
-            this=exp.Is(
-                this=exp.Anonymous(
-                    this="json_extract", expressions=[value.copy(), exp.Literal.string(f"$.{k}")]
-                ),
-                expression=exp.Null(),
-            )
-        )
-        for k in keys
-    ]
+def _json_field(value: exp.Expression, key: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """The JSON object ``value``'s field ``key``, null where it has none (Trino, DuckDB)."""
+    return exp.Anonymous(
+        this="json_extract", expressions=[value.copy(), exp.Literal.string(f"$.{key}")]
+    )
+
+
+def _json_has_keys(
+    value: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    *keys: str,
+    field: Callable[[exp.Expression, str], exp.Expression] = _json_field,  # pyright: ignore[reportPrivateImportUsage]
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """True where the JSON object ``value`` holds every one of ``keys`` (read by ``field``)."""
+    held = [exp.Not(this=exp.Is(this=field(value, k), expression=exp.Null())) for k in keys]
     return exp.and_(*held)  # pyright: ignore[reportReturnType]
 
 
-def _json_order_key(value: exp.Expression, text: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+def _json_order_key(
+    value: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    text: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    *,
+    field: Callable[[exp.Expression, str], exp.Expression] = _json_field,  # pyright: ignore[reportPrivateImportUsage]
+    number: exp.Expression | None = None,  # pyright: ignore[reportPrivateImportUsage]
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
     """json_order_key(x), a JSON value's place in openCypher's order (expr_visitor): its kind --
     read from the first character of ``text``, its JSON text, and for an object from its keys --
     then its number, then its text.
@@ -146,20 +154,17 @@ def _json_order_key(value: exp.Expression, text: exp.Expression) -> exp.Expressi
     spec, "Orderability"), ascending: MAP, NODE, RELATIONSHIP, LIST, PATH, STRING, BOOLEAN,
     NUMBER, then null last. A node, a relationship and a path are each a JSON object, told from a
     map by the keys the result assembler (gql/assembler.py) and Bolt packstream
-    (bolt/packstream.py: _is_node_dict, _is_rel_dict, _is_path_dict) recognise them by."""
+    (bolt/packstream.py: _is_node_dict, _is_rel_dict, _is_path_dict) recognise them by. An
+    object's field is read by ``field``; ``number`` is the value as a number, null for any other
+    kind (by default its TRY_CAST to a double)."""
     first = exp.Anonymous(
         this="substr", expressions=[text, exp.Literal.number(1), exp.Literal.number(1)]
     )
-    is_path = _json_has_keys(value, "nodes", "edges")
-    is_rel = _json_has_keys(value, "type", "startNode", "endNode")
+    is_path = _json_has_keys(value, "nodes", "edges", field=field)
+    is_rel = _json_has_keys(value, "type", "startNode", "endNode", field=field)
     is_node = exp.and_(
-        _json_has_keys(value, "id", "label", "properties"),
-        exp.Is(
-            this=exp.Anonymous(
-                this="json_extract", expressions=[value.copy(), exp.Literal.string("$.startNode")]
-            ),
-            expression=exp.Null(),
-        ),
+        _json_has_keys(value, "id", "label", "properties", field=field),
+        exp.Is(this=field(value, "startNode"), expression=exp.Null()),
     )
     # Packstream tests a node, then a relationship, then a path; a path holds no node's keys.
     as_object = exp.Case(
@@ -179,7 +184,8 @@ def _json_order_key(value: exp.Expression, text: exp.Expression) -> exp.Expressi
         ],
         default=exp.Literal.number(7),
     )
-    number = exp.TryCast(this=value.copy(), to=exp.DataType.build("DOUBLE"))
+    if number is None:
+        number = exp.TryCast(this=value.copy(), to=exp.DataType.build("DOUBLE"))
     # A list's end before anything after it ([] before ['a'], ['a'] before ['a', 1]).
     ended = exp.Anonymous(
         this="replace",
@@ -1211,6 +1217,429 @@ def postgres_list_ranges(tree: exp.Expr) -> exp.Expr:  # REQ-345
 _SEQUENCE_CALLED = re.compile(r"\bsequence\s*\(", re.IGNORECASE)
 
 
+def _pg_raised(message: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """An error PostgreSQL raises with ``message`` in its text, where it is reached: PostgreSQL has
+    no function raising one, so the message is cast to an integer it is not. Its scalar subquery
+    keeps the cast from being folded, and raised, when the statement is planned."""
+    return exp.Cast(
+        this=exp.Subquery(this=exp.select(message.copy())), to=exp.DataType.build("INT")
+    )
+
+
+def _pg_json_text(value: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """A JSON value's JSON text on PostgreSQL, from a json or a jsonb."""
+    return exp.Cast(this=value.copy(), to=exp.DataType.build("TEXT"))
+
+
+def _pg_json(value: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """A JSON value as PostgreSQL's json, from a json or a jsonb."""
+    return exp.Cast(this=_pg_json_text(value), to=exp.DataType.build("JSON"))
+
+
+def _pg_json_scalar(value: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """A JSON scalar's text on PostgreSQL: a string unquoted, a number or boolean as written."""
+    return exp.JSONBExtractScalar(
+        this=exp.Cast(this=_pg_json_text(value), to=exp.DataType.build("JSONB")),
+        expression=exp.Literal.string("{}"),
+    )
+
+
+def _pg_binary(text: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """``text`` compared by its characters' codes, as Trino and DuckDB compare text (and
+    openCypher orders strings), never by the database's collation."""
+    return exp.Collate(this=text, expression=exp.to_identifier("C", quoted=True))
+
+
+def _pg_sign(a: exp.Expression, b: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """-1, 0 or 1 as ``a`` is below, equal to or above ``b``."""
+    return exp.Case(
+        ifs=[
+            exp.If(this=exp.LT(this=a, expression=b), true=exp.Literal.number(-1)),
+            exp.If(this=exp.GT(this=a.copy(), expression=b.copy()), true=exp.Literal.number(1)),
+        ],
+        default=exp.Literal.number(0),
+    )
+
+
+def _pg_json_list_compare(
+    left: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    right: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    depth: int = _LIST_COMPARE_DEPTH,
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """json_list_compare(a, b) on PostgreSQL, as _json_list_compare answers it on Trino and
+    DuckDB: the first element pair (by position) that is not equal decides, else the shorter list
+    is smaller; 2 for a pair that cannot be compared, which the caller reads as null."""
+    a, b, z = f"_a{depth}", f"_b{depth}", f"_z{depth}"
+
+    def items(of: str, value: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        listed = exp.Table(
+            this=exp.Anonymous(this="json_array_elements", expressions=[_pg_json(value)]),
+            ordinality=True,
+            alias=exp.TableAlias(
+                this=exp.to_identifier(of), columns=[exp.to_identifier("e"), exp.to_identifier("n")]
+            ),
+        )
+        return listed
+
+    def item(of: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        return exp.column("e", table=of)
+
+    ea, eb = item(a), item(b)
+    kind_a, kind_b = (_json_kind(_pg_json_text(e)) for e in (ea, eb))
+
+    def both(kind: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        return exp.and_(  # pyright: ignore[reportReturnType]
+            exp.EQ(this=kind_a.copy(), expression=exp.Literal.string(kind)),
+            exp.EQ(this=kind_b.copy(), expression=exp.Literal.string(kind)),
+        )
+
+    def as_(e: exp.Expression, to: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        return exp.Cast(this=_pg_json_scalar(e), to=exp.DataType.build(to))
+
+    if depth == 1:
+        nested = _pg_raised(exp.Literal.string(LIST_COMPARE_TOO_DEEP))
+    else:
+        nested = _pg_json_list_compare(ea.copy(), eb.copy(), depth - 1)
+    pair = exp.Case(
+        ifs=[
+            exp.If(
+                this=both("number"),
+                true=_pg_sign(as_(ea, "DOUBLE PRECISION"), as_(eb, "DOUBLE PRECISION")),
+            ),
+            exp.If(
+                this=both("string"),
+                true=_pg_sign(_pg_binary(_pg_json_scalar(ea)), _pg_binary(_pg_json_scalar(eb))),
+            ),
+            exp.If(this=both("boolean"), true=_pg_sign(as_(ea, "BOOLEAN"), as_(eb, "BOOLEAN"))),
+            exp.If(this=both("list"), true=nested),
+        ],
+        default=exp.Literal.number(2),
+    )
+    decided = (
+        exp.select(exp.column("c", table=z))
+        .from_(
+            exp.select(exp.column("n", table=a), exp.alias_(pair, "c"))
+            .from_(items(a, left))
+            .join(
+                items(b, right),
+                on=exp.EQ(this=exp.column("n", table=a), expression=exp.column("n", table=b)),
+            )
+            .subquery(z)
+        )
+        .where(exp.NEQ(this=exp.column("c", table=z), expression=exp.Literal.number(0)))
+        .order_by(exp.column("n", table=z))
+        .limit(1)
+    )
+    sizes = [
+        exp.Anonymous(this="json_array_length", expressions=[_pg_json(v)]) for v in (left, right)
+    ]
+    return exp.Coalesce(this=exp.Subquery(this=decided), expressions=[_pg_sign(*sizes)])
+
+
+def _pg_matched(
+    name: str,
+    values: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]
+    test: exp.Expression | None,  # pyright: ignore[reportPrivateImportUsage]
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """any_match / all_match / none_match(l[, x -> p]) on PostgreSQL, three-valued as Trino's: on
+    an empty list any is false, all and none true; a value that decides answers (a true any, a
+    false all); else a null predicate value answers null. A null list is null."""
+    if test is None:
+        var, predicate = "_x", exp.column("_x")
+    else:
+        if not (isinstance(test, exp.Lambda) and len(test.expressions) == 1):
+            raise ValueError(f"A quantifier takes one element variable: {name}")
+        var, predicate = test.expressions[0].name, test.this
+    unknown = exp.GT(this=exp.Count(this=exp.Star()), expression=exp.Count(this=predicate.copy()))
+    if name == "ALL_MATCH":
+        decided = exp.Not(
+            this=exp.Coalesce(
+                this=exp.Anonymous(this="bool_and", expressions=[predicate.copy()]),
+                expressions=[exp.true()],
+            )
+        )
+        then, otherwise = exp.false(), exp.true()
+    else:
+        decided = exp.Coalesce(
+            this=exp.Anonymous(this="bool_or", expressions=[predicate.copy()]),
+            expressions=[exp.false()],
+        )
+        then, otherwise = exp.true(), exp.false()
+        if name == "NONE_MATCH":
+            then, otherwise = otherwise, then
+    answer = exp.Case(
+        ifs=[exp.If(this=decided, true=then), exp.If(this=unknown, true=exp.Null())],
+        default=otherwise,
+    )
+    over = exp.select(answer).from_(_pg_unnested(values, var))
+    return _pg_null_list(values, exp.Subquery(this=over))
+
+
+def _pg_unnested(values: exp.Expression, var: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """The list ``values`` as rows of ``var``: UNNEST(l) AS _t(var)."""
+    unnest = exp.Unnest(expressions=[values.copy()])
+    unnest.set(
+        "alias", exp.TableAlias(this=exp.to_identifier("_t"), columns=[exp.to_identifier(var)])
+    )
+    return unnest
+
+
+def _pg_null_list(values: exp.Expression, listed: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """``listed``, read from the rows of ``values``, or null for a null list (whose rows are none)."""
+    return exp.Case(
+        ifs=[exp.If(this=exp.Is(this=values.copy(), expression=exp.Null()), true=exp.Null())],
+        default=listed,
+    )
+
+
+def _pg_reduced(node: exp.Reduce) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """reduce(l, init, (acc, x) -> step, acc -> acc), a fold over a list, on PostgreSQL: a
+    recursive scalar subquery from ``init``, each row the next item folded in, the last row's
+    accumulator the answer. A null list is null."""
+    values, merge, finish = node.this, node.args["merge"], node.args.get("finish")
+    if not (isinstance(merge, exp.Lambda) and len(merge.expressions) == 2):
+        raise ValueError(f"A fold takes an accumulator and an element variable: {node.sql()}")
+    acc, var = (e.name for e in merge.expressions)
+    if finish is not None and not (
+        isinstance(finish, exp.Lambda)
+        and [e.name for e in finish.expressions] == [acc]
+        and isinstance(finish.this, (exp.Column, exp.Identifier))
+        and finish.this.name == acc
+    ):
+        raise ValueError(f"A fold's finish is its accumulator: {node.sql()}")
+    done = exp.column("_n", table="_r")
+    at = exp.Add(this=done, expression=exp.Literal.number(1))
+    item = exp.Bracket(this=exp.Paren(this=values.copy()), expressions=[at], offset=1)
+
+    def _read(n: exp.Expr) -> exp.Expr:
+        # A lambda's variable is a bare identifier (or an unqualified column) in its body.
+        bare = (isinstance(n, exp.Column) and not n.table) or (
+            isinstance(n, exp.Identifier)
+            and not isinstance(n.parent, (exp.Column, exp.Table, exp.TableAlias, exp.Alias))
+            and not (isinstance(n.parent, exp.Dot) and n.arg_key == "expression")
+        )
+        if bare and n.name == var:
+            return item.copy()
+        if bare and n.name == acc:
+            return exp.column(acc, table="_r")
+        return n
+
+    folded = (
+        exp.select(at.copy(), merge.this.transform(_read))
+        .from_("_r")
+        .where(
+            exp.LT(
+                this=done.copy(),
+                expression=exp.Anonymous(this="cardinality", expressions=[values.copy()]),
+            )
+        )
+    )
+    rows = exp.union(
+        exp.select(exp.Literal.number(0), node.args["initial"].copy()), folded, distinct=False
+    )
+    named = exp.TableAlias(
+        this=exp.to_identifier("_r"), columns=[exp.to_identifier("_n"), exp.to_identifier(acc)]
+    )
+    last = (
+        exp.select(exp.column(acc))
+        .from_("_r")
+        .order_by(exp.Ordered(this=exp.column("_n"), desc=True))
+        .limit(1)
+    )
+    last.set("with_", exp.With(expressions=[exp.CTE(this=rows, alias=named)], recursive=True))
+    return _pg_null_list(values, exp.Subquery(this=last))
+
+
+def postgres_list_functions(tree: exp.Expr) -> exp.Expr:  # REQ-345
+    """``tree`` for a PostgreSQL server, which has none of the list functions a Cypher read names
+    (gql/expr_visitor writes Trino's, _rewrite_list_functions_for_duckdb DuckDB's) nor lambdas:
+
+    - ``element_at(l, i)``, 1-based with a negative ``i`` from the end, is ``(l)[i]``, from the
+      end ``(l)[cardinality(l) + 1 + i]``; null past either end, as Trino's;
+    - ``slice(l, start, length)`` is ``(l)[start:start + length - 1]``;
+    - ``transform(l, x -> e)`` is ``ARRAY(SELECT e FROM UNNEST(l) AS _t(x))``, null for a null l;
+    - ``any_match`` / ``all_match`` / ``none_match`` aggregate the predicate over the list's
+      rows (_pg_matched); ``reduce`` is a recursive fold (_pg_reduced);
+    - ``range_step(s)`` is ``s``, raising where it is 0; ``type_refused('m')`` raises ``m`` where
+      its branch is reached;
+    - ``json_kind``, ``json_size``, ``json_order_key`` and ``json_list_compare`` read a JSON
+      value's text, as on the other engines.
+
+    A map's key (``element_at(m, 'k')``) is not a list's index and is left as it is."""
+
+    def _lowered(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Case):
+            return _refused_branches(node)
+        if isinstance(node, exp.Transform):
+            values = node.this.transform(_lowered)
+            fn = node.expression
+            if not (isinstance(fn, exp.Lambda) and len(fn.expressions) == 1):
+                raise ValueError(f"A projected list takes one element variable: {node.sql()}")
+            var = fn.expressions[0].name
+            listed = exp.select(fn.this.transform(_lowered)).from_(_pg_unnested(values, var))
+            return _pg_null_list(values, exp.Array(expressions=[listed]))
+        if isinstance(node, exp.Reduce):
+            return _pg_reduced(
+                exp.Reduce(
+                    **{k: v.transform(_lowered) for k, v in node.args.items() if v is not None}
+                )
+            )
+        if not isinstance(node, exp.Anonymous) or node.name.upper() not in _PG_LIST_FUNCTIONS:
+            return node
+        # Recurse first: transform is pre-order and skips a replaced node's children.
+        args = [a.transform(_lowered) for a in node.expressions]
+        name = node.name.upper()
+        if name == "ELEMENT_AT":
+            values, at = args
+            if isinstance(at, exp.Literal) and at.is_string:
+                return exp.Anonymous(this=node.name, expressions=args)
+            return _pg_element_at(values, at)
+        if name == "SLICE":
+            values, start, length = args
+            end = exp.Sub(
+                this=exp.Add(this=start.copy(), expression=length), expression=exp.Literal.number(1)
+            )
+            return exp.Bracket(
+                this=exp.Paren(this=values),
+                expressions=[exp.Slice(this=start, expression=end)],
+                offset=1,
+            )
+        if name in ("ANY_MATCH", "ALL_MATCH", "NONE_MATCH"):
+            return _pg_matched(name, args[0], args[1] if len(args) > 1 else None)
+        if name == "RANGE_STEP":
+            (step,) = args
+            failed = _pg_raised(exp.Literal.string(RANGE_STEP_ZERO))
+            return exp.Case(
+                ifs=[
+                    exp.If(
+                        this=exp.EQ(this=step.copy(), expression=exp.Literal.number(0)), true=failed
+                    )
+                ],
+                default=step,
+            )
+        if name == "TYPE_REFUSED":
+            (message,) = args
+            return _pg_raised(message)
+        if name == "JSON_KIND":
+            (value,) = args
+            return _json_kind(_pg_json_text(value))
+        if name == "JSON_SIZE":
+            # A JSON value's size: a list's items, a string's characters (expr_visitor).
+            (value,) = args
+            kind = _json_kind(_pg_json_text(value))
+            return exp.Case(
+                ifs=[
+                    exp.If(
+                        this=exp.EQ(this=kind, expression=exp.Literal.string("list")),
+                        true=exp.Anonymous(this="json_array_length", expressions=[_pg_json(value)]),
+                    ),
+                    exp.If(
+                        this=exp.EQ(this=kind.copy(), expression=exp.Literal.string("string")),
+                        true=exp.Length(this=_pg_json_scalar(value)),
+                    ),
+                ]
+            )
+        if name == "JSON_ORDER_KEY":
+            (value,) = args
+            text = _pg_json_text(value)
+            number = exp.TryCast(this=text.copy(), to=exp.DataType.build("DOUBLE"))
+            key = _json_order_key(
+                _pg_json(value),
+                text,
+                field=lambda v, k: exp.Anonymous(
+                    this="json_extract_path", expressions=[v.copy(), exp.Literal.string(k)]
+                ),
+                number=postgres_try_casts(number),  # pyright: ignore[reportArgumentType]
+            )
+            *ranks, ended = key.expressions
+            return exp.Anonymous(this=key.name, expressions=[*ranks, _pg_binary(ended)])
+        left, right = args  # JSON_LIST_COMPARE
+        return exp.Nullif(this=_pg_json_list_compare(left, right), expression=exp.Literal.number(2))
+
+    def _refused_branches(case: exp.Case) -> exp.Expr:
+        """A CASE whose branch is type_refused('m'): PostgreSQL's raise is an integer, which the
+        CASE's other branches need not be, so the raise is the branch's test, reached where the
+        test holds (CASE WHEN (CASE WHEN test THEN raise = 0 END) THEN NULL ...)."""
+        for branch in case.args.get("ifs") or []:
+            refused = branch.args.get("true")
+            if isinstance(refused, exp.Anonymous) and refused.name.upper() == "TYPE_REFUSED":
+                (message,) = refused.expressions
+                raised = exp.EQ(this=_pg_raised(message), expression=exp.Literal.number(0))
+                branch.set("this", exp.Case(ifs=[exp.If(this=branch.this, true=raised)]))
+                branch.set("true", exp.Null())
+        return case
+
+    return tree.transform(_lowered)
+
+
+def _pg_element_at(values: exp.Expression, at: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """element_at(l, i) on PostgreSQL: ``(l)[i]``, a negative ``i`` counted from the end."""
+
+    def read(index: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        return exp.Bracket(this=exp.Paren(this=values.copy()), expressions=[index], offset=1)
+
+    size = exp.Anonymous(this="cardinality", expressions=[values.copy()])
+    from_end = exp.Add(
+        this=exp.Add(this=size, expression=exp.Literal.number(1)), expression=at.copy()
+    )
+    if isinstance(at, exp.Literal) or (
+        isinstance(at, exp.Neg) and isinstance(at.this, exp.Literal)
+    ):
+        return read(from_end if int(at.to_py()) < 0 else at.copy())
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.LT(this=at.copy(), expression=exp.Literal.number(0)), true=read(from_end)
+            )
+        ],
+        default=read(at.copy()),
+    )
+
+
+def postgres_json_of_text(tree: exp.Expr) -> exp.Expr:  # REQ-345
+    """``tree`` for a PostgreSQL server, which cannot tell the type of a quoted literal TO_JSON
+    is given (to_json is polymorphic): each such literal (an item of a Cypher list of several
+    types, gql/expr_visitor) is the text it is."""
+
+    def _typed(node: exp.Expr) -> exp.Expr:
+        if (
+            isinstance(node, exp.Anonymous)
+            and node.name.upper() == "TO_JSON"
+            and len(node.expressions) == 1
+            and isinstance(node.expressions[0], exp.Literal)
+            and node.expressions[0].is_string
+        ):
+            text = exp.Cast(this=node.expressions[0].copy(), to=exp.DataType.build("TEXT"))
+            return exp.Anonymous(this=node.name, expressions=[text])
+        return node
+
+    return tree.transform(_typed)
+
+
+_TO_JSON_CALLED = re.compile(r"\bto_json\s*\(\s*'", re.IGNORECASE)
+
+#: The list functions postgres_list_functions renders, as the IR names them.
+_PG_LIST_FUNCTIONS = frozenset(
+    {
+        "ELEMENT_AT",
+        "SLICE",
+        "ANY_MATCH",
+        "ALL_MATCH",
+        "NONE_MATCH",
+        "RANGE_STEP",
+        "TYPE_REFUSED",
+        "JSON_KIND",
+        "JSON_SIZE",
+        "JSON_ORDER_KEY",
+        "JSON_LIST_COMPARE",
+    }
+)
+_PG_LIST_CALLED = re.compile(
+    r"\b(?:%s|transform|reduce)\s*\(" % "|".join(n.lower() for n in _PG_LIST_FUNCTIONS),
+    re.IGNORECASE,
+)
+
+
 def snowflake_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
     """``tree`` for Snowflake, whose TRY_CAST takes text only (sqlglot writes a plain CAST of a
     value it cannot see is text): each null-on-failure cast reads its value as text first."""
@@ -1346,6 +1775,14 @@ def transpile(
         )
     if target_dialect == "postgres" and _SEQUENCE_CALLED.search(pg_sql):
         lowered = postgres_list_ranges(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if target_dialect == "postgres" and _TO_JSON_CALLED.search(pg_sql):
+        lowered = postgres_json_of_text(
+            lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
+        )
+    if target_dialect == "postgres" and _PG_LIST_CALLED.search(pg_sql):
+        lowered = postgres_list_functions(
             lowered if lowered is not None else sqlglot.parse_one(pg_sql, read="postgres")
         )
     if target_dialect == "postgres" and "ARRAY[]" in pg_sql.upper():
