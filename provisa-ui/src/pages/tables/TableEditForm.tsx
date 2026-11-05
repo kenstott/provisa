@@ -252,6 +252,7 @@ export function TableEditForm({
           editSource={editSource}
           roles={roles}
           hidingOnly={hidingOnly}
+          scanTableId={creating ? undefined : editingTable.id}
           describeColumn={
             creating ? undefined : (column) => generateColumnDescription(editingTable.id, column)
           }

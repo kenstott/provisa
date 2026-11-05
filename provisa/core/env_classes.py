@@ -196,6 +196,9 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "checker_targets",
         # REQ-2132: its own checkers' latest scans.
         "checker_latest_runs",
+        # REQ-2147: its own scans for sensitive values inside text, and the hints they left.
+        "profiler_sensitive_scans",
+        "profiler_sensitive_hints",
     }
 )
 

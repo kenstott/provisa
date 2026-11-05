@@ -34,7 +34,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence
 
 import yaml
 
@@ -386,6 +386,61 @@ def matches_whole_value(kind: Kind, value: str) -> bool:
     if _whole_pattern(kind.pattern, kind.ignore_case).fullmatch(text) is None:
         return False
     return kind.check is None or CHECKS[kind.check](text)
+
+
+@functools.cache
+def _contained_pattern(pattern: str, ignore_case: bool) -> re.Pattern[str]:
+    # Unanchored, bounded by anything that is not a letter, digit or underscore: a kind inside a
+    # longer run of characters (a digit string inside a longer one) is not the kind.
+    return re.compile(rf"(?<!\w)(?:{pattern})(?!\w)", re.IGNORECASE if ignore_case else 0)
+
+
+def contains(kind: Kind, value: str) -> bool:
+    """Whether ``value`` holds a ``kind`` (not a reference kind) inside it (REQ-2147 KINDS ARE
+    PATTERN RULES; CONTAINED VALUES ARE HINTS): the kind's pattern found anywhere in the text with
+    nothing word-like either side, and the check, where the kind has one, passing the matched text
+    with the kind's ignored characters removed. Only whether: the matched text is never returned."""
+    assert kind.pattern is not None, kind.id
+    for found in _contained_pattern(kind.pattern, kind.ignore_case).finditer(value):
+        text = re.sub(kind.ignore, "", found.group()) if kind.ignore else found.group()
+        if kind.check is None or CHECKS[kind.check](text):
+            return True
+    return False
+
+
+@dataclass(frozen=True)
+class Hint:
+    """A kind found inside a column's sampled values: never a classification, never applied."""
+
+    kind: Kind
+    tested: int
+    matched: int
+
+    @property
+    def share(self) -> float:
+        return self.matched / self.tested
+
+    def evidence(self) -> str:
+        return f"matches {self.kind.noun} in {self.share:.0%} of sampled values"
+
+
+def contained_hints(values: Sequence[str | None], kinds: tuple[Kind, ...]) -> list[Hint]:
+    """The kinds found inside a text column's sampled ``values``, each with the share of values
+    holding one. A kind the column classifies as by whole value (:func:`classify`) is that
+    classification's and no hint; a reference kind is a whole value or nothing."""
+    usable = tuple(k for k in kinds if "text" in k.families and k.reference is None)
+    tested = [v for v in values if v is not None]
+    if not usable or len(tested) < MIN_TESTED:
+        return []
+    classified = {m.kind.id for m in classify("text", list(values), usable)}
+    out = []
+    for kind in usable:
+        if kind.id in classified:
+            continue
+        matched = sum(1 for v in tested if contains(kind, v))
+        if matched:
+            out.append(Hint(kind, len(tested), matched))
+    return out
 
 
 def _passes(kind: Kind, value: str) -> bool:

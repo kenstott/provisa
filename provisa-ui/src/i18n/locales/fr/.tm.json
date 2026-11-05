@@ -9632,5 +9632,13 @@
   "fr/classificationKinds.json::classificationKinds.test.uk_nhs_number": "Ten digits passing the NHS mod 11 check.",
   "fr/classificationKinds.json::classificationKinds.test.us_bank_routing_number": "Nine digits passing the ABA checksum.",
   "fr/classificationKinds.json::classificationKinds.test.us_ein": "Two digits of an IRS campus prefix, a hyphen and seven digits, written 12-3456789.",
-  "fr/classificationKinds.json::classificationKinds.test.us_itin": "Nine digits starting with 9, the middle two in an ITIN group (50 to 65, 70 to 88, 90 to 92, 94 to 99), written 912-70-1234 or plain."
+  "fr/classificationKinds.json::classificationKinds.test.us_itin": "Nine digits starting with 9, the middle two in an ITIN group (50 to 65, 70 to 88, 90 to 92, 94 to 99), written 912-70-1234 or plain.",
+  "fr/sensitiveScan.json::sensitiveScan.scan": "Scan for sensitive values",
+  "fr/sensitiveScan.json::sensitiveScan.help": "Reads a sample of the table's text columns in the background and looks for sensitive values inside the text, such as a social security number in a note. Only the share of values is kept, never the values. A hint changes nothing by itself: choose a grant, mask or fake for the column.",
+  "fr/sensitiveScan.json::sensitiveScan.saveFirst": "Save the table to scan its values.",
+  "fr/sensitiveScan.json::sensitiveScan.running": "Scanning a sample of the text columns…",
+  "fr/sensitiveScan.json::sensitiveScan.succeeded": "Last scan: {{rows}} sampled rows, {{columns}} text columns.",
+  "fr/sensitiveScan.json::sensitiveScan.failed": "The scan failed: {{error}}",
+  "fr/sensitiveScan.json::sensitiveScan.header": "Found inside values",
+  "fr/sensitiveScan.json::sensitiveScan.hint": "Matches {{kind}} in {{percent}}% of sampled values"
 }
