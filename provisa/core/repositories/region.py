@@ -29,6 +29,7 @@ from provisa.core.schema_org import org_regions, stores
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
+    from provisa.core.repositories.integrity import Dependent
 
 
 class RegionNotSelected(ValueError):
@@ -217,3 +218,43 @@ async def set_source_region(conn: "Connection", source_id: str, region: str | No
     )
     if done.rowcount == 0:
         raise LookupError(f"source {source_id!r} is not registered")
+
+
+class RegionDeleteRefused(ValueError):
+    """A store or a region is still named by something that would be left pointing at nothing
+    (REQ-1918): a store by a region, a region by a source or table."""
+
+    def __init__(self, kind: str, key: str, blocking: "list[Dependent]") -> None:
+        self.kind, self.key, self.blocking = kind, key, blocking
+        named = ", ".join(f"{d.ref.kind} {d.name or d.ref.id}" for d in blocking)
+        super().__init__(f"{kind} {key!r} is still named by: {named}")
+
+
+async def delete_store(conn: "Connection", store_id: str) -> bool:
+    """Remove one of the org's stores. False when there is no such store; refused
+    (:class:`RegionDeleteRefused`) while a region names it."""
+    return await _delete(conn, "store", stores, store_id)
+
+
+async def delete_region(conn: "Connection", region_id: str) -> bool:
+    """Stop selecting one platform region for the org. False when it is not selected; refused
+    (:class:`RegionDeleteRefused`) while a source or table names it."""
+    return await _delete(conn, "region", org_regions, region_id)
+
+
+async def _delete(conn: "Connection", kind: str, table, key: str) -> bool:
+    from sqlalchemy import delete
+
+    from provisa.core.repositories.integrity import ObjectRef, guard, remove_parts
+
+    model_change.name("delete", kind, key)  # REQ-1524
+    exists = await conn.execute_core(select(table.c.id).where(table.c.id == key))
+    if exists.fetchone() is None:
+        return False
+    ref = ObjectRef(kind, key)
+    blocking = await guard(conn, ref)
+    if blocking:
+        raise RegionDeleteRefused(kind, key, blocking)
+    await remove_parts(conn, ref)
+    await conn.execute_core(delete(table).where(table.c.id == key))
+    return True

@@ -5120,6 +5120,9 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(container_registries_router)  # REQ-2098
+    from provisa.api.admin.regions_router import router as regions_router
+
+    app.include_router(regions_router)  # REQ-1922
     from provisa.api.admin.code_hosts_router import router as code_hosts_router
 
     app.include_router(code_hosts_router)  # REQ-2098
