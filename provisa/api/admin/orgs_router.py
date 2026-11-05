@@ -781,7 +781,7 @@ async def read_org_settings(org_id: str, request: Request):  # REQ-1268, REQ-126
 
 @router.patch("/{org_id}/settings")
 async def update_org_settings(org_id: str, body: OrgPolicyBody, request: Request):  # REQ-1268/1269
-    """Edit an org's join policy (email rule + auto-join). Org admin of this org, or platform admin."""
+    """Edit an org's join policy (email rule + auto-join). Org admin of this org only (REQ-1327)."""
     from provisa.api.admin.invites_router import _require_org_admin
 
     await _require_org_admin(request, org_id)
@@ -844,7 +844,7 @@ async def read_org_branding(org_id: str, request: Request):  # REQ-1486
 
 @router.patch("/{org_id}/branding")
 async def update_org_branding(org_id: str, body: OrgBrandingBody, request: Request):  # REQ-1486
-    """Set the org's branding document. Org admin of this org, or platform admin."""
+    """Set the org's branding document. Org admin of this org only (REQ-1327)."""
     from provisa.api.admin.invites_router import _require_org_admin
     from provisa.core.org_branding import BrandingError, serialize_branding, validate_branding
 
@@ -1004,7 +1004,7 @@ async def delete_org(org_id: str, request: Request, confirm: str | None = None):
 
     from provisa.api.admin.invites_router import _require_org_admin
 
-    await _require_org_admin(request, org_id)
+    await _require_org_admin(request, org_id, allow_cross_org=True)  # REQ-1327
     if org_id == "root":
         # REQ-1300/REQ-1296: root carries the deployment's own admin surface and demo assets.
         raise ApiError(400, "orgs.cannot_delete_root", "Cannot delete the root org")
@@ -1189,8 +1189,7 @@ async def add_member(org_id: str, body: AddMemberBody, request: Request):  # REQ
     from provisa.core.org_membership import clear_auto_join_suppression
 
     # Onboarding a member is the same authority as offboarding one (remove_member): the org's own
-    # org_admin, or a platform_admin for any org. Requiring platform_admin here would leave an
-    # org_admin able to remove people from their org but not add them (REQ-1305).
+    # org_admin (REQ-1305). The platform admin never edits an org's members (REQ-1327).
     await _require_org_admin(request, org_id)
     pool = _admin_pool()
     async with pool.acquire() as conn:
@@ -1212,7 +1211,7 @@ async def add_member(org_id: str, body: AddMemberBody, request: Request):  # REQ
 async def remove_member(org_id: str, user_id: str, request: Request):  # REQ-1302, REQ-1305
     """Offboard a person from an org across BOTH planes.
 
-    Available to the org's own org_admin and to a platform_admin for any org. Deleting only the
+    Available to the org's own org_admin only (REQ-1327). Deleting only the
     control-plane membership would leave the tenant-plane role assignments in ``org_<id>`` behind,
     so re-adding the person silently restores every privilege they held before.
 
@@ -1368,7 +1367,7 @@ async def grant_org_admin_role(org_id: str, user_id: str, request: Request):  # 
     from provisa.api.admin.invites_router import _require_org_admin
     from provisa.core.org_membership import grant_org_admin, record_admin_action
 
-    await _require_org_admin(request, org_id)
+    await _require_org_admin(request, org_id, allow_cross_org=True)  # REQ-1327
     actor = _caller_user_id(request)
     if actor is not None and actor == user_id:
         raise ApiError(
@@ -1410,7 +1409,7 @@ async def revoke_org_admin_role(org_id: str, user_id: str, request: Request):  #
     from provisa.core.schema_org import user_role_assignments
     from provisa.security.rights import ORG_ADMIN_ROLE
 
-    await _require_org_admin(request, org_id)
+    await _require_org_admin(request, org_id, allow_cross_org=True)  # REQ-1327
     actor = _caller_user_id(request)
     if actor is not None and actor == user_id:
         raise ApiError(
