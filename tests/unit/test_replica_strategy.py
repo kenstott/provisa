@@ -356,7 +356,7 @@ def test_a_test_instance_never_gives_a_server_a_port_local_dev_uses():
 def test_every_connector_is_fetched_from_the_pin():
     # engine-v0.117.0 is the first release whose catalog counts no rows; every bundle is at the pin.
     assert rd.CONNECTOR_RELEASE == {}
-    assert rd.RELEASE_TAG == "engine-v0.123.1"
+    assert rd.RELEASE_TAG == "engine-v0.123.2"
     pinned = rd.RELEASE_TAG.removeprefix("engine-v")
     for source_type, connector in rd.BUNDLE_CONNECTOR.items():
         spec = rd.bundle_spec_for(source_type)
@@ -1094,7 +1094,7 @@ def test_stop_all_servers_closes_every_endpoint(monkeypatch):
         def __init__(self, sid):
             self.sid = sid
 
-        def close(self):
+        def retire(self):  # the registry's stop (REQ-1824)
             closed.append(self.sid)
 
     monkeypatch.setattr(pr, "_ENDPOINTS", {"a": _Replica("a"), "b": _Replica("b")})
@@ -1110,7 +1110,7 @@ def test_stop_endpoint_closes_and_forgets_only_that_source(monkeypatch):  # REQ-
         def __init__(self, sid):
             self.sid = sid
 
-        def close(self):
+        def retire(self):  # the registry's stop (REQ-1824)
             closed.append(self.sid)
 
     from provisa.core.org_scope import source_key

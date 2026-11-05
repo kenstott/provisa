@@ -1,0 +1,32 @@
+{
+  "jdbcSourceFields": {
+    "dialect": "Dialeto SQL",
+    "dialectHelp": "A variante de SQL que o Provisa escreve para esta fonte. Não precisa corresponder ao driver: escolha a mais próxima do banco de dados, ou ANSI.",
+    "ansi": "ANSI (SQL genérico)",
+    "username": "Usuário",
+    "password": "Senha",
+    "capabilityName": {
+      "attach": "Conexão ao vivo",
+      "predicate": "Pushdown de filtros",
+      "join": "Pushdown de joins",
+      "aggregate": "Pushdown de agregações",
+      "key_range": "Pushdown de intervalos de chave"
+    },
+    "detect": "Detectar",
+    "checkPassed": "{{capability}}: aprovado",
+    "checkFailed": "{{capability}}: reprovado ({{reason}})",
+    "jdbcDriverJar": "JAR do driver JDBC",
+    "jdbcDriverJarHint": "O arquivo JAR do driver, enviado do seu computador. Somente instalações auto-hospedadas.",
+    "jdbcDriverClass": "Classe do driver",
+    "driver": "Driver",
+    "jarDriver": "Seu próprio driver JDBC (JAR)",
+    "host": "Host",
+    "port": "Porta",
+    "database": "Banco de dados",
+    "file": "Arquivo do banco de dados",
+    "fileHint": "O arquivo do banco de dados, escrito {files}/… para um na área de arquivos da organização.",
+    "jdbcUrl": "URL JDBC",
+    "jdbcUrlHint": "A URL jdbc: do driver. Não inclua senha nela.",
+    "jdbcDriverJarPlaceholder": "Envie o arquivo JAR do driver"
+  }
+}

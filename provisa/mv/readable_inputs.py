@@ -302,6 +302,7 @@ async def require_row_level_switch_allowed(conn: Any, table: Any) -> None:
     from provisa.core.schema_org import registered_tables  # noqa: PLC0415
     from provisa.federation.registry_view import registered_sources  # noqa: PLC0415
     from provisa.federation.strategy import engine_attaches  # noqa: PLC0415
+    from provisa.jdbc_source.attach import reach_type
 
     stored = await conn.execute_core(
         select(registered_tables.c.row_materialize).where(
@@ -318,7 +319,8 @@ async def require_row_level_switch_allowed(conn: Any, table: Any) -> None:
     if not views:
         return
     sources = {s.id: s for s in await registered_sources(state, conn)}
-    if engine_attaches(state.federation_engine, sources[table.source_id].type.value):
+    engine = state.federation_engine
+    if engine_attaches(engine, reach_type(sources[table.source_id], engine)):
         return
     raise ViewsReadTable(
         table.table_name, _ROW_LEVEL, "it would hold only the rows requests have fetched", views

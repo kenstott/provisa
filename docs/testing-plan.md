@@ -2,7 +2,7 @@
 
 ## Overview
 
-Requirements live in a single YAML file (`docs/arch/requirements.yaml`). All other artifacts — markdown documentation, Gherkin feature files, feature matrices, traceability matrices, roadmap — are generated from it. No artifact is hand-edited after generation.
+Requirements live in a single YAML file (`docs/arch/requirements.yaml`). All other artifacts (markdown documentation, Gherkin feature files, feature matrices, traceability matrices, roadmap) are generated from it. No artifact is hand-edited after generation.
 
 This gives three things simultaneously:
 
@@ -149,11 +149,11 @@ Scans new file for `# REQ-NNN` comments. Back-fills `tests:` list in YAML for th
 
 Added to every PR and merge to `main`:
 
-1. `validate_requirements.py` — fails on schema violations
-2. `gen_requirements_md.py --check` — fails if committed markdown differs from generated
-3. `gen_features.py --check` — fails if committed `.feature` files differ from generated
-4. `pytest tests/features/` — fails on unmatched scenarios (step functions missing and not stubbed)
-5. `validate_requirements.py --coverage-check` — fails if any `MUST complete behavioral` REQ has empty `tests:`
+1. `validate_requirements.py`: fails on schema violations
+2. `gen_requirements_md.py --check`: fails if committed markdown differs from generated
+3. `gen_features.py --check`: fails if committed `.feature` files differ from generated
+4. `pytest tests/features/`: fails on unmatched scenarios (step functions missing and not stubbed)
+5. `validate_requirements.py --coverage-check`: fails if any `MUST complete behavioral` REQ has empty `tests:`
 
 On release tag (additional):
 

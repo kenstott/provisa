@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { PageTitle } from "../components/PageTitle";
 import { FunctionRead, WebhookRead } from "./commands/CommandRead";
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
@@ -29,7 +30,7 @@ import {
 } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { useDomainFilter } from "../context/DomainFilterContext";
-import { Trash2, Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Terminal } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import {
   fetchActions,
@@ -50,7 +51,7 @@ import {
 import type { TableMetadata } from "../api/admin";
 import { fetchOrgRoles } from "../api/admin";
 import type { Role } from "../types/auth";
-import { ConfirmDialog } from "../components/ConfirmDialog";
+import { PanelDelete } from "../components/list/PanelDelete";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
 import { PanelWorking } from "./sources/PanelWorking";
 import { TagControl } from "../components/TagControl";
@@ -594,30 +595,19 @@ export function CommandsPage() {
                     ? t("commandsPage.testingButton")
                     : t("commandsPage.testButton")}
                 </Button>
-                <ConfirmDialog
+                {/* REQ-2198: resolves once the list is read again without it. */}
+                <PanelDelete
+                  itemKey={`fn:${fn.name}`}
                   title={t("commandsPage.deleteFunctionTitle", { name: fn.name })}
                   consequence={t("commandsPage.deleteFunctionConsequence")}
-                  onConfirm={async () => {
+                  ariaLabel={t("commandsPage.deleteFunctionAria", { name: fn.name })}
+                  testId={`command-delete-fn-${fn.name}`}
+                  onDelete={async () => {
                     await deleteFunction(fn.name);
+                    await load();
                     setExpandedFn(null);
-                    load();
                   }}
-                >
-                  {(open) => (
-                    <ActionIcon
-                      color="red"
-                      aria-label={t("commandsPage.deleteFunctionAria", {
-                        name: fn.name,
-                      })}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        open();
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </ActionIcon>
-                  )}
-                </ConfirmDialog>
+                />
               </Group>
             </PanelActions>
           </Stack>
@@ -663,30 +653,19 @@ export function CommandsPage() {
                     ? t("commandsPage.testingButton")
                     : t("commandsPage.testButton")}
                 </Button>
-                <ConfirmDialog
+                {/* REQ-2198: resolves once the list is read again without it. */}
+                <PanelDelete
+                  itemKey={`wh:${wh.name}`}
                   title={t("commandsPage.deleteWebhookTitle", { name: wh.name })}
                   consequence={t("commandsPage.deleteWebhookConsequence")}
-                  onConfirm={async () => {
+                  ariaLabel={t("commandsPage.deleteWebhookAria", { name: wh.name })}
+                  testId={`command-delete-wh-${wh.name}`}
+                  onDelete={async () => {
                     await deleteWebhook(wh.name);
+                    await load();
                     setExpandedWh(null);
-                    load();
                   }}
-                >
-                  {(open) => (
-                    <ActionIcon
-                      color="red"
-                      aria-label={t("commandsPage.deleteWebhookAria", {
-                        name: wh.name,
-                      })}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        open();
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </ActionIcon>
-                  )}
-                </ConfirmDialog>
+                />
               </Group>
             </PanelActions>
           </Stack>
@@ -711,7 +690,7 @@ export function CommandsPage() {
   return (
     <div className="page page-sticky-head">
       <div className="page-header">
-        <Title order={2}>{t("commandsPage.title")}</Title>
+        <PageTitle icon={Terminal}>{t("commandsPage.title")}</PageTitle>
         <FilterInput
           value={cmdSearch}
           onChange={(v) => {
@@ -788,7 +767,7 @@ export function CommandsPage() {
                   state={fnSortGroup}
                   items={pageItems(fnSortGroup, fnPage - 1, PAGE_SIZE)}
                   colSpan={7}
-                  rowKey={(fn) => fn.name}
+                  rowKey={(fn) => `fn:${fn.name}`}
                   render={(fn) => {
                     const isExpanded = expandedFn === fn.name;
                     const isEditing = editingName === fn.name;
@@ -862,7 +841,7 @@ export function CommandsPage() {
                   state={whSortGroup}
                   items={pageItems(whSortGroup, whPage - 1, PAGE_SIZE)}
                   colSpan={9}
-                  rowKey={(wh) => wh.name}
+                  rowKey={(wh) => `wh:${wh.name}`}
                   render={(wh) => {
                     const isExpanded = expandedWh === wh.name;
                     const isEditing = editingName === wh.name;

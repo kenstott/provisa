@@ -48,10 +48,17 @@ vi.mock("../../components/admin/FilterInput", async (importOriginal) => ({
 }));
 
 const profileTable = vi.fn().mockResolvedValue({ columns: [], rows: [], rowCount: 0 });
+const previewTable = vi.fn().mockResolvedValue({
+  columns: ["id"],
+  rows: [{ id: 41 }],
+  rowCount: 1,
+  draft: true,
+});
 
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
   profileTable: (...args: unknown[]) => profileTable(...args),
+  previewTable: (...args: unknown[]) => previewTable(...args),
   fetchSettings: vi.fn().mockResolvedValue({
     redirect: { enabled: false, threshold: 10000, default_format: "json", ttl: 3600 },
     sampling: { default_sample_size: 1000 },
@@ -196,12 +203,18 @@ vi.mock("../../hooks/useAdminOpsQueries", async (importOriginal) => ({
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useTables: () => ({ tables: TABLES, loading: false, refetch: vi.fn() }),
+  useTableDetails: () => ({ tables: TABLES, loading: false, refetch: vi.fn() }),
   useSources: () => ({ sources: SOURCES, loading: false, refetch: vi.fn() }),
   useDomains: () => ({ domains: DOMAINS, loading: false, refetch: vi.fn() }),
   useRoles: () => ({ roles: ROLES, loading: false, refetch: vi.fn() }),
   useDataProducts: () => ({ dataProducts: [], loading: false, refetch: vi.fn() }),
   useAllRelationships: () => ({ relationships: [], loading: false, refetch: vi.fn() }),
-  useAvailableColumnsMetadataLazy: () => async () => [],
+  useAvailableColumnsMetadataLazy: () => ({
+    fetchColumns: async () => [],
+    late: null,
+    starting: false,
+    startingTimedOut: false,
+  }),
   useRefreshPolicyPreview: () => async () => null,
   useUpdateTable: () => ({ updateTable, loading: false }),
   useUpdateTableNaming: () => ({ updateTableNaming, loading: false }),
@@ -222,5 +235,23 @@ describe("TablesPage — profiling acts as the roles the user acts as (REQ-1620)
     await userEvent.click(row.querySelector("td") as HTMLElement);
     await userEvent.click(await screen.findByTestId("table-read-view-profile"));
     await waitFor(() => expect(profileTable).toHaveBeenCalledWith(7, "analyst,trader"));
+  });
+});
+
+describe("TablesPage — a draft's preview acts as the roles the user acts as (REQ-1620, REQ-1921)", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("previews a draft under Role: All as the set, asking for no single role", async () => {
+    render(<TablesPage />);
+    const list = await screen.findByTestId("tables-list");
+    const row = (await within(list).findByText("staging")).closest("tr") as HTMLElement;
+    await userEvent.click(row.querySelector("td") as HTMLElement);
+    await userEvent.click(await screen.findByTestId("table-read-view-preview"));
+    await waitFor(() =>
+      expect(previewTable).toHaveBeenCalledWith(8, "analyst,trader", expect.anything()),
+    );
+    const pane = await screen.findByTestId("table-preview-modal");
+    expect(await within(pane).findByText("41")).toBeInTheDocument();
+    expect(within(pane).queryByText("No active role")).toBeNull();
   });
 });

@@ -24,6 +24,7 @@
     "itemSql": "SQL",
     "itemGrpc": "gRPC",
     "itemJsonApi": "JSON:API",
+    "itemOData": "OData",
     "itemOpenApi": "OpenAPI",
     "itemOrgs": "Organisationen",
     "itemDashboard": "Dashboard",
@@ -35,6 +36,8 @@
     "itemEmail": "E-Mail",
     "itemMaintenance": "Wartung",
     "itemDeploymentSettings": "Deployment-Einstellungen",
+    "itemPlatform": "Plattform",
+    "itemRegions": "Regionen",
     "itemBilling": "Abrechnung",
     "itemExplore": "MCP",
     "itemEncryption": "Verschlüsselung",
@@ -77,6 +80,7 @@
     "itemNotebook": "Notebook",
     "itemContainerRegistries": "Container-Registries",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "Kataloge"
+    "itemCatalogs": "Kataloge",
+    "itemReferenceLibrary": "Referenzbibliothek"
   }
 }

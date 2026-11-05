@@ -64,6 +64,7 @@
     "edge_owns": "का मालिक",
     "loadError": "ग्राफ़ पढ़ा नहीं जा सका: {{error}}",
     "zoomTo": "उस पर ज़ूम करें",
+    "openInErd": "ERD में खोलें",
     "edge_column_lineage": "कॉलम को डेटा देता है",
     "preset_taxonomy": "टैक्सोनॉमी",
     "layer_domains": "डोमेन",
@@ -77,7 +78,6 @@
     "ontologyView": "ऑन्टोलॉजी दृश्य",
     "orphans": "अनाथ",
     "columnsToggle": "कॉलम",
-    "tablesToggle": "टेबल",
     "allEdgeTypes": "सभी एज प्रकार",
     "someEdgeTypes": "{{total}} में से {{count}} एज प्रकार",
     "allDomains": "सभी डोमेन",
@@ -92,7 +92,6 @@
     "look_in_product": "डेटा उत्पाद में कॉलम",
     "look_out_of_product": "डेटा उत्पादों से बाहर कॉलम",
     "look_stored": "टेबल",
-    "status_live": "सक्रिय",
     "openAsQuery": "क्वेरी के रूप में खोलें",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",
@@ -116,6 +115,7 @@
     "status_draft": "ड्राफ़्ट",
     "openAsQueryNoSparql": "इस क्वेरी का कोई SPARQL रूप नहीं है।",
     "openAsQuerySparqlRoots": "इस क्वेरी का हर रूट अपनी अलग SPARQL क्वेरी है: उन्हें एक-एक करके पढ़ने के लिए GraphQL खोलें।",
+    "status_approved": "स्वीकृत",
     "lane_term": "शब्द",
     "lane_column": "कॉलम",
     "lane_table": "टेबल",
@@ -145,6 +145,8 @@
     "quality_none": "अभी तक नहीं चला",
     "factOwner": "स्वामी",
     "factMembers": "सदस्य टेबल",
-    "factColumns": "कॉलम"
+    "factColumns": "कॉलम",
+    "grounding_grounded": "आधारित",
+    "grounding_grounded_pending": "आधारित, ड्राफ़्ट के माध्यम से"
   }
 }

@@ -258,8 +258,7 @@ Refused by name (`query.json_operation_unsupported`, parameters operation, backe
 at compile. Each of these is something the backend cannot do, not something it does slowly:
 
 - any operation on a backend with no verified JSON functions and no native form: SAP HANA,
-  Fabric Warehouse, SingleStore, Db2, Teradata, Vertica, Firebird, MonetDB, SAP ASE, SQL
-  Anywhere, the generic `sqlalchemy` kind, until each is verified. A whole-value read of a JSON
+  Fabric Warehouse, SingleStore, Db2, Vertica, Firebird, MonetDB, the generic `sqlalchemy` kind, until each is verified. A whole-value read of a JSON
   or text column still works there.
 - the cells marked refused above.
 - comparing or ordering whole JSON values where the backend has no JSON comparison (text
@@ -285,7 +284,7 @@ of section 10 and the documentation are generated from these cells.
 | | Oracle | `JSON_EXISTS` | multivalue function-based index `[doc]` |
 | | SQL Server 2025, Azure SQL | `JSON_CONTAINS` | JSON index with `OPTIMIZE_FOR_ARRAY_SEARCH` `[doc]` |
 | JSON, no index | MariaDB, SQL Server 2016–2022, Synapse, SQLite, Exasol, DuckDB JSON, Trino JSON, ClickHouse String, Databricks STRING | JSON functions, scan | none |
-| Not verified | SAP HANA, Fabric Warehouse, SingleStore, Db2, Teradata, Vertica, Firebird, MonetDB, SAP ASE, SQL Anywhere, generic `sqlalchemy` | operations refused by name | |
+| Not verified | SAP HANA, Fabric Warehouse, SingleStore, Db2, Vertica, Firebird, MonetDB, generic `sqlalchemy` | operations refused by name | |
 
 Pushdown through a federating engine over an attached source is recorded per (engine kind,
 source kind, operation). Every cell starts as "not pushed down" and is changed only by a test

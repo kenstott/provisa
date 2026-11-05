@@ -14,6 +14,7 @@
 
 import { columnLabel } from "../../lib/columnKeys";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Anchor, Badge, Button, Select, Text, TextInput } from "@mantine/core";
 import { ColumnFilterMenu } from "./ColumnFilterMenu";
@@ -66,6 +67,8 @@ interface ResultsGridProps {
   onRowClick?: (row: Record<string, unknown>) => void;
   /** REQ-2123: the row drawn as selected. */
   selectedRow?: (row: Record<string, unknown>) => boolean;
+  /** REQ-1386: the page a cell opens, by its column and value; null leaves the cell as text. */
+  cellHref?: (column: string, value: unknown) => string | null;
 }
 
 export function ResultsGrid({
@@ -78,6 +81,7 @@ export function ResultsGrid({
   rowsPartial = false,
   onRowClick,
   selectedRow,
+  cellHref,
 }: ResultsGridProps) {
   const { t } = useTranslation();
   // REQ-2115: Polly's read_screen reports the grid's columns and row count, never its rows.
@@ -607,6 +611,7 @@ export function ResultsGrid({
                     // leaves every other value exactly as it arrived.
                     const text = formatCell(v);
                     const kind = telemetryIdKind(c);
+                    const href = text === null ? null : (cellHref?.(columnLabel(c), v) ?? null);
                     return (
                       <td
                         key={c}
@@ -619,6 +624,10 @@ export function ResultsGrid({
                       >
                         {text === null ? (
                           <span className="null-val">{t("sqlResultsPanel.nullValue")}</span>
+                        ) : href !== null ? (
+                          <Anchor component={Link} to={href} inherit>
+                            {text}
+                          </Anchor>
                         ) : kind !== null && TELEMETRY_ID_RE.test(text) ? (
                           <Tip text={t("traceDetails.openDetails")}>
                             <Anchor

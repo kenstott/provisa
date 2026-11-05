@@ -12,6 +12,9 @@
     "classTerm": "类术语 {{term}}",
     "tableClass": "表自身的类",
     "propertyTerm": "属性术语 {{term}}",
-    "columnPredicate": "列 {{column}}"
+    "columnPredicate": "列 {{column}}",
+    "propertySearch": "搜索属性",
+    "propertyTerms": "属性术语",
+    "termClasses": "类：{{classes}}"
   }
 }

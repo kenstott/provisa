@@ -60,7 +60,7 @@ def test_a_new_member_is_given_a_draft_promising_its_columns():
 
 def test_a_contract_that_stops_promising_a_column_is_a_new_version():
     old = _contract("1.0.0", id="INTEGER", amount="INTEGER")
-    with pytest.raises(ContractRefused, match=r"p/s\.t version 1\.0\.0 stops promising amount"):
+    with pytest.raises(ContractRefused, match=r"p/s\.t version 1\.0\.0 removes or retypes amount"):
         data_contracts.require_new_version("p/s.t", old, _contract("1.0.0", id="INTEGER"))
     with pytest.raises(ContractRefused, match=r"amount \(INTEGER -> TEXT\)"):
         data_contracts.require_new_version(
@@ -75,7 +75,7 @@ def test_a_contract_that_stops_promising_a_column_is_a_new_version():
 
 def test_a_member_provides_what_its_contract_promises():
     promised = _contract("1.0.0", id="INTEGER", amount="INTEGER")
-    with pytest.raises(ContractRefused, match=r"promises amount \(INTEGER\)"):
+    with pytest.raises(ContractRefused, match=r"declares amount \(INTEGER\)"):
         data_contracts.require_provided("p/s.t", promised, {"id": "INTEGER"})
     with pytest.raises(ContractRefused, match=r"amount \(INTEGER, now TEXT\)"):
         data_contracts.require_provided("p/s.t", promised, {"id": "INTEGER", "amount": "TEXT"})
@@ -173,7 +173,7 @@ async def test_joining_a_product_gives_the_member_a_draft_of_its_columns(plane):
 
 
 async def test_a_save_that_drops_a_promised_column_is_refused_and_changes_nothing(plane):
-    with pytest.raises(ContractRefused, match=r"p/public\.orders version 0\.1\.0 promises amount"):
+    with pytest.raises(ContractRefused, match=r"p/public\.orders version 0\.1\.0 declares amount"):
         async with plane.acquire() as conn:
             await table_repo.upsert(conn, _table("id"))
     _, contract = await _stored(plane)
@@ -218,9 +218,9 @@ async def test_a_contract_saved_at_a_new_version_may_stop_promising_a_column(pla
 async def test_a_contract_breaking_its_version_or_promising_what_is_not_there_is_refused(plane):
     table_id, _ = await _stored(plane)
     async with plane.acquire() as conn:
-        with pytest.raises(ContractRefused, match="stops promising amount"):
+        with pytest.raises(ContractRefused, match="removes or retypes amount"):
             await data_product_repo.save_contract(conn, table_id, _contract("0.1.0", id="integer"))
-        with pytest.raises(ContractRefused, match=r"promises note \(text\)"):
+        with pytest.raises(ContractRefused, match=r"declares note \(text\)"):
             await data_product_repo.save_contract(
                 conn, table_id, _contract("0.2.0", id="integer", amount="integer", note="text")
             )

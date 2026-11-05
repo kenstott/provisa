@@ -155,18 +155,21 @@ async def test_an_approval_denial_keeps_its_code_and_reason():
     }
 
 
-async def test_a_role_served_no_table_is_answered_403_naming_it():
-    # REQ-2154: a role no column is granted to is refused naming it, never a 500.
+async def test_a_refusal_carrying_its_own_params_is_answered_403_with_them():
+    # REQ-2154 (amended): a role served no table is no longer refused as such (its surface is
+    # empty; tests/unit/test_role_served_no_tables.py). A refusal with params of its own keeps
+    # them, as that one did.
     import json
 
     from provisa.api.app import create_app
-    from provisa.api.role_surface import RoleServedNothing
+    from provisa.security.sandbox_egress import PrivateDestinationRefused
 
     handler = create_app().exception_handlers[PermissionError]
-    resp = await handler(types.SimpleNamespace(), RoleServedNothing("loose"))
+    resp = await handler(types.SimpleNamespace(), PrivateDestinationRefused("db", "10.0.0.5"))
     assert resp.status_code == 403
     assert json.loads(resp.body) == {
-        "detail": "Role 'loose' is served no tables: no column of any table is granted to it",
-        "code": "data.role_served_nothing",
-        "params": {"role_id": "loose"},
+        "detail": "This org's sources may reach only public addresses; 'db' is 10.0.0.5, "
+        "which is not one",
+        "code": "sources.private_destination",
+        "params": {"host": "db", "address": "10.0.0.5"},
     }

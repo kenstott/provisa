@@ -26,6 +26,7 @@ import pytest
 
 from provisa.api.errors import ApiError
 from provisa.pgwire._pipeline import _Plan, _run_plan_terminal
+from provisa.transpiler.metadata_settings import enter_client_role
 from provisa.transpiler.router import Route
 
 
@@ -35,13 +36,22 @@ class _ModelStore:
     def __init__(self) -> None:
         self.ran: list[str] = []
         self.bound: list[tuple[tuple, bool]] = []
+        self.entered: list[str] = []
 
     @asynccontextmanager
     async def acquire(self):
         store = self
 
         class _Conn:
+            @asynccontextmanager
+            async def transaction(self):
+                yield
+
+            async def execute(self, sql):
+                store.entered.append(sql)
+
             async def fetch_with_columns(self, sql, *args, bind_as_given=False):
+                assert store.entered, "a client statement reached the store as the pool role"
                 store.ran.append(sql)
                 store.bound.append((args, bind_as_given))
                 return ["n"], [(1,)]
@@ -78,6 +88,14 @@ async def test_the_admin_source_is_served_by_the_model_store():
     result = await _run_plan_terminal(_plan("provisa-admin", "SELECT 1 AS n"), _state(store))
     assert result.rows == [(1,)]
     assert store.ran == ["SELECT 1 AS n"]
+
+
+async def test_a_statement_that_is_told_nothing_still_runs_as_the_client_role():
+    """REQ-2190: the role is the terminal's, not the catalog settings': a read of a table of meta
+    that is no catalog view has no settings and runs as the client role all the same."""
+    store = _ModelStore()
+    await _run_plan_terminal(_plan("provisa-admin", "SELECT 1 AS n"), _state(store))
+    assert store.entered == [enter_client_role()]
 
 
 async def test_the_admin_source_receives_the_statements_bound_values():

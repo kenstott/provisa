@@ -23,17 +23,17 @@ import asyncio
 import logging
 import threading
 import time
-from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
+from provisa.core.request_thread import WARMING
+
 log = logging.getLogger(__name__)
 
-#: REQ-2065: set on the warm-up's own requests. They are the tier's, not the visitor's: they neither
-#: restart the sandbox's idle expiry nor revive one whose tab said it was closing (demo_sandbox.touch).
-#: A request thread runs in the context it was handed (core/request_thread.py), so the middleware
-#: reads it.
-WARMING: ContextVar[bool] = ContextVar("provisa_tour_warmup", default=False)
+#: REQ-2006: tours are warmed one at a time, each on the warm-up thread of the request pools
+#: (core/request_thread.py), so no warm-up ever queues for it. Several at once answered one
+#: another's requests 503 and took what the visitors opening demos needed.
+_ONE_AT_A_TIME = threading.Lock()
 
 #: The specs and the schema every sandbox's explorers read on opening.
 _EXPLORERS: tuple[tuple[str, str, dict | None], ...] = (
@@ -112,9 +112,9 @@ def bound_params(travel: dict[str, Any], answers: dict[str, list[dict]]) -> list
 
 
 def _is_subscription(query: str) -> bool:
-    """A subscription's answer is a stream that runs until the request timeout ends it: there is
-    nothing for a warm-up to wait for, and it held the requests after it back for that long. Its
-    first answer is the query the tour's other steps have already warmed."""
+    """A subscription's answer is a stream that runs until its subscriber leaves: there is nothing
+    for a warm-up to wait for, and it would hold the requests after it back. Its first answer is the
+    query the tour's other steps have already warmed."""
     from graphql import OperationDefinitionNode, OperationType, parse
 
     return any(
@@ -176,8 +176,13 @@ def warm_tour(app: Any, org_id: str, demo: str, headers: dict[str, str]) -> None
     published = published_demo(demo)
     # The roles the sandbox's person holds (demo_sandbox.open_sandbox): the page's "Role: All".
     all_roles = ",".join([SANDBOX_ROLE, *demo_roles(published.template_org)])
+
+    def _in_turn() -> None:
+        with _ONE_AT_A_TIME:
+            asyncio.run(_warm(app, org_id, headers, published.directory, all_roles))
+
     threading.Thread(
-        target=lambda: asyncio.run(_warm(app, org_id, headers, published.directory, all_roles)),
+        target=_in_turn,
         daemon=True,
         name=f"tour-warmup:{org_id}",
     ).start()

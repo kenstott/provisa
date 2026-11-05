@@ -70,3 +70,20 @@ describe("the inspector's link", () => {
     expect(screen.queryByTestId("inspector-open")).toBeNull();
   });
 });
+
+describe("a SPARQL node in the inspector", () => {
+  it("names a property compactly, with its whole IRI on hover", () => {
+    show({
+      kind: "node",
+      data: {
+        ...to,
+        properties: { "sales:customers#name": "Ann" },
+        propertyIris: { "sales:customers#name": "https://x/vocab/sales/customers#name" },
+      },
+    });
+    expect(screen.getByText("sales:customers#name")).toHaveAttribute(
+      "title",
+      "https://x/vocab/sales/customers#name",
+    );
+  });
+});

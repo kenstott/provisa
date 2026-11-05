@@ -55,7 +55,7 @@ _SOURCES = {
 
 
 def _col(name: str, data_type: str) -> SimpleNamespace:
-    return SimpleNamespace(column_name=name, data_type=data_type, subtype=None)
+    return SimpleNamespace(column_name=name, data_type=data_type, subtype=None, native_type=None)
 
 
 def _state() -> SimpleNamespace:

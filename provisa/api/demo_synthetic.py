@@ -102,10 +102,12 @@ def _bound(org_id: str, env: str) -> Iterator[None]:
         reset_current_org(org_token)
 
 
-async def _model_db(org_id: str, env: str) -> Any:
+async def _model_db(org_id: str, env: str, *, cloned: bool = False) -> Any:
+    """``org_id``'s environment ``env``'s model store, its runtime built on a miss: a cloned build
+    (app.ensure_org_runtime's ``model_cloned``) when ``cloned``."""
     from provisa.api.app import ensure_org_runtime
 
-    rt = await ensure_org_runtime(org_id, env)
+    rt = await ensure_org_runtime(org_id, env, model_cloned=cloned)
     assert rt.model_db is not None, "an environment's runtime holds its model store"
     return rt.model_db
 
@@ -127,21 +129,30 @@ async def _env_row(org_id: str, env: str) -> dict[str, Any]:
     return row
 
 
-async def prepare(org_id: str, demo_directory: Path, envs: list[str], *, exporting: bool) -> None:
+async def prepare(
+    org_id: str,
+    demo_directory: Path,
+    envs: list[str],
+    *,
+    exporting: bool,
+    created: list[str],
+) -> None:
     """Give the template ``org_id`` each of its Test (synthetic) environments ``envs`` generated:
     adopted from the demo's seed when its bundle carries one, else generated here -- and, in the
-    bundle build's seeding run, written out as the seed. The template org is bound."""
+    bundle build's seeding run, written out as the seed. The template org is bound. ``created``:
+    the environments created from its prod a moment ago, in this process, after that prod's
+    runtime was built (demo_templates._prepare); each one's runtime is built cloned (REQ-2006)."""
     if not envs:
         return
     store, record = seed_paths(demo_directory)
     if record.exists() and not exporting:
         held = json.loads(record.read_text())
         for env in envs:
-            await _adopt(org_id, env, str(store), held["environments"][env])
+            await _adopt(org_id, env, str(store), held["environments"][env], cloned=env in created)
         return
     await _profile_prod()
     for env in envs:
-        await _generate(org_id, env)
+        await _generate(org_id, env, cloned=env in created)
     if exporting:
         await _export(org_id, envs, store, record)
 
@@ -170,16 +181,17 @@ async def _profile_prod() -> None:
             raise RuntimeError(f"profiler {source_id!r} failed on {failed}")
 
 
-async def _generate(org_id: str, env: str) -> None:
+async def _generate(org_id: str, env: str, *, cloned: bool) -> None:
     """Generate ``env`` from prod's latest successful profile runs, as confirming its warning does
-    (environment_data_router.confirm_generation); refused by name when it does not end generated."""
+    (environment_data_router.confirm_generation); refused by name when it does not end generated.
+    ``cloned``: ``env`` was created from prod a moment ago (:func:`prepare`)."""
     from provisa.api.app import state
     from provisa.api.admin.environment_data_router import kept_counts
     from provisa.core.env_store import set_data
     from provisa.core.environments import PROD, org_schema
     from provisa.synthetic import env_model
 
-    db = await _model_db(org_id, env)
+    db = await _model_db(org_id, env, cloned=cloned)
     with _bound(org_id, env):
         async with db.acquire() as conn:
             plan = await env_model.model_plan(state, conn, PROD, env)
@@ -221,20 +233,33 @@ def _plain(value: Any) -> Any:
     return value.isoformat() if isinstance(value, datetime) else value
 
 
+def _tenant() -> Any:
+    """The tenant control plane, whose schemas hold every org's environments (REQ-1488)."""
+    from provisa.api.admin.orgs_router import _pool
+
+    return _pool()
+
+
 async def _records(org_id: str, env: str) -> dict[str, list[dict[str, Any]]]:
+    """``org_id``'s environment ``env``'s generation records, read from its schema. Not through
+    its runtime: a sandbox's open reads its template's, and building the template's runtimes there
+    (none is built at a start that serves it as built) held the open past the upstream limit."""
+    from provisa.core.env_project import _table_in
+    from provisa.core.environments import org_schema
     from provisa.core.schema_org import registered_tables
 
-    db = await _model_db(org_id, env)
+    schema = org_schema(org_id, env)
     out: dict[str, list[dict[str, Any]]] = {}
-    with _bound(org_id, env):
-        async with db.acquire() as conn:
-            keys = {
-                r.id: [r.source_id, r.schema_name, r.table_name]
-                for r in (await conn.execute_core(select(registered_tables))).fetchall()
-            }
-            for table in _record_tables():
-                rows = (await conn.execute_core(select(table))).fetchall()
-                out[table.name] = [{k: _plain(v) for k, v in r._mapping.items()} for r in rows]
+    async with _tenant().acquire() as conn:
+        keys = {
+            r.id: [r.source_id, r.schema_name, r.table_name]
+            for r in (
+                await conn.execute_core(select(_table_in(conn, registered_tables, schema)))
+            ).fetchall()
+        }
+        for table in _record_tables():
+            rows = (await conn.execute_core(select(_table_in(conn, table, schema)))).fetchall()
+            out[table.name] = [{str(k): _plain(v) for k, v in r._mapping.items()} for r in rows]
     # A table is carried by its source, schema and name: another deployment numbers it apart.
     for row in out["synthetic_dataset_tables"]:
         row[_TABLE_KEY] = keys[row.pop("table_id")]
@@ -267,10 +292,22 @@ def _restored(table: Any, row: dict[str, Any], schema: str) -> dict[str, Any]:
 
 
 async def _land(
-    org_id: str, env: str, store: str, from_schema: str, records: dict[str, list[dict[str, Any]]]
+    org_id: str,
+    env: str,
+    store: str,
+    from_schema: str,
+    records: dict[str, list[dict[str, Any]]],
+    *,
+    cloned: bool = False,
 ) -> None:
     """Land generated rows (``from_schema`` of ``store``) and their records as ``org_id``'s
-    ``env``, bind its sources to them, and mark it generated."""
+    ``env``, bind its sources to them, and mark it generated. ``cloned``: ``env`` was created from
+    its org's prod a moment ago, every built-in row carried with that copy, and its runtime's
+    build seeds none of them again (REQ-2006).
+
+    Its runtime is built again once its sources are bound, here, and cloned: the build before
+    seeded its model (or found it cloned) a moment ago. Left to whatever asked for it next, that
+    build seeded the whole model again."""
     from provisa.api.app import state
     from provisa.api.demo_replicas import _store_path
     from provisa.api.org_runtime import runtime_key
@@ -282,7 +319,7 @@ async def _land(
     await asyncio.to_thread(copy_schema, store, from_schema, _store_path(org_id), schema)
     from provisa.core.schema_org import registered_tables
 
-    db = await _model_db(org_id, env)
+    db = await _model_db(org_id, env, cloned=cloned)
     with _bound(org_id, env):
         async with db.acquire() as conn, conn.transaction():
             ids = {
@@ -307,6 +344,7 @@ async def _land(
                     await conn.execute_core(insert(table).values(rows))
         await env_model.bind_generated(state, org_id, env)
     state.org_registry.invalidate(runtime_key(org_id, env))
+    await _model_db(org_id, env, cloned=True)
     await set_data(
         _admin(),
         org_id,
@@ -317,15 +355,21 @@ async def _land(
     )
 
 
-async def _adopt(org_id: str, env: str, store: str, held: dict[str, Any]) -> None:
-    await _land(org_id, env, store, held["schema"], held["records"])
+async def _adopt(org_id: str, env: str, store: str, held: dict[str, Any], *, cloned: bool) -> None:
+    await _land(org_id, env, store, held["schema"], held["records"], cloned=cloned)
     log.info("demo template %s: %s adopted from the seed", org_id, env)
 
 
 async def copy_to_sandbox(template_org: str, org_id: str, envs: list[str]) -> None:
-    """The template's generated environments ``envs``, into the sandbox ``org_id``'s environments
-    of the same names; one the template has not generated is refused by name."""
+    """The template's prepared environments ``envs``, into the sandbox ``org_id``'s environments
+    of the same names; one the template has not generated is refused by name. Each was created
+    from the sandbox's prod in this open (demo_sandbox._environments). Its rows, its records and
+    its sources' bindings are copied from the template's as the rest of the template is
+    (REQ-2006): no runtime of the environment is built here, but once after, by the open, cloned
+    and with its sources already bound. On cloud the profiling open spent 32.6 s giving
+    its environment its rows, two builds of that environment's runtime among them."""
     from provisa.api.demo_replicas import _store_path
+    from provisa.federation.materialize_broker import copy_schema
 
     for env in envs:
         row = await _env_row(template_org, env)
@@ -334,10 +378,102 @@ async def copy_to_sandbox(template_org: str, org_id: str, envs: list[str]) -> No
                 f"the {template_org} environment {env!r} is not generated ({row['data_status']}: "
                 f"{row['data_error']}); its sandbox cannot be given its rows"
             )
-        await _land(
-            org_id,
-            env,
+        schema = _schema(org_id, env)
+        await asyncio.to_thread(
+            copy_schema,
             _store_path(template_org),
             _schema(template_org, env),
-            await _records(template_org, env),
+            _store_path(org_id),
+            schema,
         )
+        await _give(
+            org_id,
+            env,
+            schema,
+            await _records(template_org, env),
+            await _bindings(template_org, env),
+        )
+
+
+async def _bindings(org_id: str, env: str) -> dict[str, tuple[str, dict[str, Any]]]:
+    """``org_id``'s environment ``env``'s sources bound to its synthetic store: source id ->
+    (the store's type, the ``synthetic`` binding), read from its schema."""
+    from provisa.core.env_classes import BINDING_COLUMN, SYNTHETIC
+    from provisa.core.env_project import _table_in
+    from provisa.core.environments import org_schema
+    from provisa.core.schema_org import sources
+
+    async with _tenant().acquire() as conn:
+        table = _table_in(conn, sources, org_schema(org_id, env))
+        return {
+            r.id: (r.type, r.synthetic)
+            for r in (
+                await conn.execute_core(
+                    select(table.c.id, table.c.type, table.c.synthetic).where(
+                        table.c[BINDING_COLUMN] == SYNTHETIC
+                    )
+                )
+            ).fetchall()
+        }
+
+
+async def _give(
+    org_id: str,
+    env: str,
+    schema: str,
+    records: dict[str, list[dict[str, Any]]],
+    bindings: dict[str, tuple[str, dict[str, Any]]],
+) -> None:
+    """Write a template's generation ``records`` into the sandbox ``org_id``'s environment
+    ``env``, bind its sources as the template's ``bindings`` are, to its own store schema
+    ``schema``, and mark it generated. Through its schema, not its runtime: none is built."""
+    from provisa.core import env_data, model_change
+    from provisa.core.env_project import _table_in
+    from provisa.core.env_store import set_data
+    from provisa.core.environments import org_schema
+    from provisa.core.schema_org import registered_tables
+    from provisa.synthetic import env_model
+
+    (store_type,) = {kind for kind, _binding in bindings.values()}
+    env_schema = org_schema(org_id, env)
+    # A binding is the environment's own and no part of the model a change commits (REQ-1524).
+    async with model_change.committed_by_caller(), _tenant().acquire() as conn:
+        async with conn.transaction():
+            ids = {
+                (r.source_id, r.schema_name, r.table_name): r.id
+                for r in (
+                    await conn.execute_core(select(_table_in(conn, registered_tables, env_schema)))
+                ).fetchall()
+            }
+            records = {
+                **records,
+                "synthetic_dataset_tables": [
+                    {
+                        **{k: v for k, v in r.items() if k != _TABLE_KEY},
+                        "table_id": ids[tuple(r[_TABLE_KEY])],
+                    }
+                    for r in records["synthetic_dataset_tables"]
+                ],
+            }
+            for table in reversed(_record_tables()):
+                await conn.execute_core(delete(_table_in(conn, table, env_schema)))
+            for table in _record_tables():
+                rows = [_restored(table, r, schema) for r in records[table.name]]
+                if rows:
+                    await conn.execute_core(insert(_table_in(conn, table, env_schema)).values(rows))
+            await env_data.bind_synthetic(
+                conn,
+                env_schema,
+                store_type=store_type,
+                store_schema=schema,
+                generated={sid: b["tables"] for sid, (_kind, b) in bindings.items()},
+                parameters={sid: b["parameters"] for sid, (_kind, b) in bindings.items()},
+            )
+    await set_data(
+        _admin(),
+        org_id,
+        env,
+        data_status="ready",
+        data_error=None,
+        synthetic_dataset=env_model.DATASET_ID,
+    )

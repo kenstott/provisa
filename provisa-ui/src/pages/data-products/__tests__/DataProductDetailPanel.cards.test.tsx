@@ -65,8 +65,7 @@ function panel() {
       canDelete={false}
       owner
       lineageLoading={false}
-      odcs={null}
-      odcsError=""
+      contractsVersion={0}
       lineageError=""
       lineageGraph={LINEAGE}
       onEdit={vi.fn()}

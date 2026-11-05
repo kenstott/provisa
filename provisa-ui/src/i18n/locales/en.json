@@ -9,7 +9,9 @@
     "identity": "Identity",
     "discardTitle": "Discard your changes?",
     "discardBody": "Your changes to {{what}} are not saved.",
-    "discard": "Discard"
+    "discard": "Discard",
+    "deleting": "Deleting…",
+    "deleteFailed": "Not deleted: {{reason}}"
   },
   "app": {
     "apiUnreachable": "Could not reach the Provisa API.",
@@ -96,6 +98,6 @@
   },
   "pageError": {
     "title": "This page could not be shown",
-    "body": "It failed while rendering. The rest of the app still works: go to another page, or reload this one."
+    "body": "It failed while rendering. The rest of the app still works, so go to another page or reload this one."
   }
 }

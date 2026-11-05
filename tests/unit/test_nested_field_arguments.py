@@ -27,7 +27,7 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.sql_rewrite import make_semantic_sql
-from provisa.executor.serialize import serialize_rows
+from tests.unit.json_encoder.rows import serialize_rows
 
 _COLUMNS = {
     "_terms": [("id", "integer"), ("name", "varchar")],
@@ -91,7 +91,11 @@ def meta():
             for name, cols in _COLUMNS.items()
         },
         naming_rules=[],
-        role={"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]},
+        role={
+            "id": "admin",
+            "capabilities": ["query_development"],
+            "domain_access": ["*", "meta", "ontology", "ops"],
+        },
         domains=[{"id": "ontology", "description": "Ontology"}],
     )
     con = duckdb.connect()

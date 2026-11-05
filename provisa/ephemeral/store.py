@@ -32,9 +32,10 @@ table again whole, its columns grown and widened (:mod:`.types`).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field, fields, is_dataclass
-from typing import Any, get_args, get_origin, get_type_hints
+from typing import Any, TypeGuard, get_args, get_origin, get_type_hints
 
 from provisa.compiler.temp_tables import TempSession
 from provisa.ephemeral import types
@@ -61,14 +62,49 @@ _FIXED: dict[str, list[tuple[str, str]]] = {
 DEFAULT_ANCHOR = "cypher__anchor"
 
 
+def fixed_columns(table: str) -> list[tuple[str, str]]:
+    """The (name, session type) columns of a fixed table: nodes, node_labels or rels."""
+    return list(_FIXED[table])
+
+
+_CASE_MASK = re.compile(r"__[0-9a-f]+$")
+
+
+def _caseless(name: str) -> str:
+    """``name`` as a table name an engine that folds case (DuckDB) tells from every other: a name
+    in lower case alone (that does not end like a mask) as it is; any other lowered, with the
+    hex mask of its upper-case letters' places -- T2 ``t2__1``, t2 ``t2``."""
+    if name == name.lower() and not _CASE_MASK.search(name):
+        return name
+    mask = sum(1 << i for i, c in enumerate(name) if c != c.lower())
+    return f"{name.lower()}__{mask:x}"
+
+
 def anchor_table(label: str) -> str:
     """The anchor table a free label creates for the nodes it anchors."""
     return f"cypher__anchor__{label}"
 
 
+def anchor_of(g: "Graph", label: str) -> str:
+    """The anchor table of ``label`` in the session's graph ``g``: the one it holds, else the one
+    it would make -- :func:`anchor_table`, numbered when an engine that folds case (DuckDB) would
+    read it as one held for a label differing only in case (A and a are two labels)."""
+    held = g.anchors.get(label)
+    if held is not None:
+        return held
+    name = anchor_table(label)
+    taken = {t.lower() for t in g.anchors.values()}
+    n = 1
+    while name.lower() in taken:
+        name = f"{anchor_table(label)}__{n}"
+        n += 1
+    return name
+
+
 def rel_table(rel_type: str) -> str:
-    """The table a relationship type's properties are held in."""
-    return f"cypher__rel__{rel_type}"
+    """The table a relationship type's properties are held in: one per type, types told apart
+    by case (T2 and t2)."""
+    return f"cypher__rel__{_caseless(rel_type)}"
 
 
 @dataclass(frozen=True)
@@ -91,6 +127,59 @@ def widened_kind(a: str, b: str) -> str:
     if {a, b} <= {"bigint", "integer", "smallint", "double"}:
         return "double" if "double" in {a, b} else "bigint"
     return types.widened(a, b) or a
+
+
+#: A column's zone when its date times were written in more than one: read as instants.
+MIXED_ZONES = "\0mixed"
+
+
+def _zone_name(value: Any) -> str | None:
+    """The zone a date time was written in: its region (Europe/Stockholm) or its offset (+01:00);
+    None for UTC or none."""
+    import datetime as _dt
+
+    if not isinstance(value, _dt.datetime) or value.tzinfo is None:
+        return None
+    key = getattr(value.tzinfo, "key", None)
+    if key:
+        return str(key)
+    offset = value.utcoffset()
+    if not offset:
+        return None
+    seconds = int(offset.total_seconds())
+    sign = "-" if seconds < 0 else "+"
+    hours, rest = divmod(abs(seconds), 3600)
+    minutes, secs = divmod(rest, 60)
+    return f"{sign}{hours:02d}:{minutes:02d}" + (f":{secs:02d}" if secs else "")
+
+
+def note_zones(g: "Graph", table: str, rows: list[dict[str, Any]]) -> None:
+    """Record the zone of each date time with a zone ``rows`` write to ``table``: one per column,
+    MIXED_ZONES once two differ (a UTC one among them)."""
+    import datetime as _dt
+
+    for row in rows:
+        for name, value in row.items():
+            if not isinstance(value, _dt.datetime) or value.tzinfo is None:
+                continue
+            zone = _zone_name(value) or ""
+            held = g.zones.setdefault((table, name), zone)
+            if held != zone:
+                g.zones[(table, name)] = MIXED_ZONES
+
+
+def column_zones(g: "Graph", tables: Sequence[str]) -> tuple[tuple[str, str], ...]:
+    """Each column of ``tables`` whose date times were all written in one zone, with that zone:
+    what a read gives them back in. A column of several zones (or of UTC) is read as instants."""
+    found: dict[str, set[str]] = {}
+    for (table, name), zone in g.zones.items():
+        if table in tables:
+            found.setdefault(name, set()).add(zone)
+    return tuple(
+        (name, next(iter(zones)))
+        for name, zones in sorted(found.items())
+        if len(zones) == 1 and next(iter(zones)) not in ("", MIXED_ZONES)
+    )
 
 
 def view_keys(g: "Graph") -> set[str]:
@@ -117,12 +206,20 @@ def _count(counts: dict, key: Any, by: int) -> None:
 def resolve(session: TempSession) -> None:
     """Each label's Resolved, as the session's graph and tables now hold it."""
     g = graph(session)
+    # A pair no relationship holds any more, between unlabeled nodes the session no longer has,
+    # is no pair to read (its end would be no label the overlay maps).
+    g.rel_pairs = {
+        pair
+        for pair in g.rel_pairs
+        if pair in g.pair_counts or "" in g.label_anchors or "" not in pair[1:]
+    }
     resolved: dict[str, Resolved] = {}
     for key in view_keys(g):
         anchors = g.label_anchors.get(key, set())
         held: dict[str, str] = {}
         for anchor in sorted(anchors):
-            for name, kind in session.tables[anchor].columns:
+            # An anchor not landed yet holds no column (and no node).
+            for name, kind in session.tables[anchor].columns if anchor in session.tables else ():
                 if name == NODE_ID:
                     continue
                 held[name] = widened_kind(held[name], kind) if name in held else kind
@@ -130,6 +227,16 @@ def resolve(session: TempSession) -> None:
             tuple(sorted(anchors)), tuple(held.items()), tuple(sorted(g.tag_types.get(key, set())))
         )
     g.resolved = resolved
+
+
+#: The prefix of an ephemeral node's id (Graph.new_id): ``e:1``, ``e:2``, ...
+NODE_ID_PREFIX = "e"
+
+
+def is_session_node_key(value: object) -> TypeGuard[str]:
+    """Whether ``value`` is an ephemeral node's id (Graph.new_id), as a session node's ``_id``
+    is: the session's own handle on it, which no statement wrote."""
+    return isinstance(value, str) and value.startswith(f"{NODE_ID_PREFIX}:")
 
 
 @dataclass
@@ -152,6 +259,10 @@ class Graph:
     node_keys: dict[str, tuple[str, ...]] = field(default_factory=dict)
     # An ephemeral node's id -> its anchor table.
     node_anchors: dict[str, str] = field(default_factory=dict)
+    # Each (table, column) of date times with a zone -> the zone every one of them was written
+    # in (MIXED_ZONES when they differ): a timestamptz column holds the instant alone, and a read
+    # gives it back in this zone (REQ-2176, J243).
+    zones: dict[tuple[str, str], str] = field(default_factory=dict)
     # Each label with session matches -> its session side, resolved at write time (Resolved): what
     # the read overlay reads, computing nothing per statement.
     resolved: dict[str, "Resolved"] = field(default_factory=dict)
@@ -165,8 +276,14 @@ class Graph:
     # takes off the counts.
     rel_ends: dict[str, tuple[str, tuple[str, ...], tuple[str, ...]]] = field(default_factory=dict)
     last_id: int = 0
+    # Each session index (CREATE INDEX, REQ-2176) by its name -> ("node", label, properties) on
+    # the label's anchor table, or ("rel", type, properties) on the type's property table.
+    indexes: dict[str, tuple[str, str, tuple[str, ...]]] = field(default_factory=dict)
+    # Each database a client created (CREATE DATABASE over Bolt, provisa.bolt.databases): a name
+    # for the home database, kept with the session and ended with it.
+    databases: set[str] = field(default_factory=set)
 
-    def new_id(self, prefix: str = "e") -> str:
+    def new_id(self, prefix: str = NODE_ID_PREFIX) -> str:
         """A new node's or relationship's id, unique in the session."""
         self.last_id += 1
         return f"{prefix}:{self.last_id}"
@@ -220,7 +337,10 @@ def graph_to_json(g: Graph) -> dict[str, Any]:
 def graph_from_json(held: dict[str, Any]) -> Graph:
     """The Graph :func:`graph_to_json` gave ``held`` for."""
     hints = get_type_hints(Graph)
-    return Graph(**{f.name: _from_json(held[f.name], hints[f.name]) for f in fields(Graph)})
+    # A field the graph was kept without (one added since) takes its default.
+    return Graph(
+        **{f.name: _from_json(held[f.name], hints[f.name]) for f in fields(Graph) if f.name in held}
+    )
 
 
 _KEY = "cypher"
@@ -309,6 +429,26 @@ def key_of(table: str, columns: Sequence[tuple[str, str]]) -> tuple[str, ...]:
     return _KEYS.get(table, (columns[0][0],))
 
 
+def index_table(g: "Graph", kind: str, of: str) -> str:
+    """The session table a session index of ``kind`` ("node" or "rel") on ``of`` (a label or a
+    relationship type) is made on, in the session's graph ``g``."""
+    return anchor_of(g, of) if kind == "node" else rel_table(of)
+
+
+async def build_indexes(session: TempSession, table: str, writer: Any) -> None:
+    """Make each session index on ``table`` whose columns it holds (a property no node has yet
+    is no column, and its index is made once one has it)."""
+    from provisa.pgwire import temp_exec
+
+    if writer is None or table not in session.tables:
+        return
+    held = {name for name, _ in session.tables[table].columns}
+    g = graph(session)
+    for kind, of, props in g.indexes.values():
+        if index_table(g, kind, of) == table and set(props) <= held:
+            await temp_exec.lookup_index(session, table, props, writer)
+
+
 async def _reland(
     state: Any,
     session: TempSession,
@@ -329,6 +469,7 @@ async def _reland(
         await temp_exec.index(session, table, key_of(table, keys), writer)
         for looked_up in _LOOKUPS.get(table, ()):
             await temp_exec.lookup_index(session, table, looked_up, writer)
+        await build_indexes(session, table, writer)
 
 
 async def _add(
@@ -362,6 +503,8 @@ async def _add(
     await temp_exec.alter(session, table, changes, wanted, writer)
     converted = [tuple(types.as_type(r.get(k), kind, None) for k, kind in wanted) for r in rows]
     await temp_exec.append(state, session, table, converted, writer)
+    if changes:
+        await build_indexes(session, table, writer)
 
 
 async def _remove(
@@ -401,6 +544,7 @@ async def write(state: Any, session: TempSession, writes: Writes) -> None:
     for node in writes.nodes:
         by_anchor.setdefault(node.anchor, []).append({NODE_ID: node.node_id, **node.properties})
     for table, rows in by_anchor.items():
+        note_zones(g, table, rows)
         await _add(state, session, table, ((NODE_ID, _TEXT),), rows)
     if writes.nodes:
         await _add(
@@ -456,6 +600,7 @@ async def write(state: Any, session: TempSession, writes: Writes) -> None:
     for rel in writes.rels:
         by_type.setdefault(rel.rel_type, []).append({REL_ID: rel.rel_id, **rel.properties})
     for rel_type, rows in by_type.items():
+        note_zones(g, rel_table(rel_type), rows)
         await _add(state, session, rel_table(rel_type), ((REL_ID, _TEXT),), rows)
     if writes.rels:
         await _add(
@@ -484,6 +629,47 @@ async def write(state: Any, session: TempSession, writes: Writes) -> None:
                 for t in r.to_labels:
                     _count(g.pair_counts, (r.rel_type, s, t), 1)
             g.rel_ends[r.rel_id] = (r.rel_type, r.from_labels, r.to_labels)
+    resolve(session)
+
+
+async def set_properties(
+    state: Any,
+    session: TempSession,
+    nodes: dict[str, dict[str, Any]],
+    rels: dict[str, dict[str, Any]],
+) -> None:
+    """Write each ephemeral node's (``nodes``: id -> property -> value) and session
+    relationship's (``rels``) property values into its row of its anchor or its type's property
+    table; a value None clears the property (SET n.p = null, REMOVE n.p). A row is taken out and
+    written again whole, its table's columns grown and widened as any write grows them."""
+    from provisa.pgwire import temp_exec
+
+    g = graph(session)
+    by_table: dict[str, dict[str, dict[str, Any]]] = {}
+    for node_id, values in nodes.items():
+        by_table.setdefault(g.node_anchors[node_id], {})[node_id] = values
+    for rel_id, values in rels.items():
+        by_table.setdefault(rel_table(g.rel_ends[rel_id][0]), {})[rel_id] = values
+    for table, updates in by_table.items():
+        if table not in session.tables:
+            # A table no property was ever written to stands only once one is.
+            held: list[dict[str, Any]] = []
+            key = NODE_ID if table.startswith("cypher__anchor") else REL_ID
+        else:
+            columns = tuple(name for name, _ in session.tables[table].columns)
+            key = columns[0]
+            held = [
+                dict(zip(columns, r, strict=True))
+                for r in await temp_exec.keyed_rows(
+                    state, session, table, key, list(updates), columns
+                )
+            ]
+        found = {row[key] for row in held}
+        rows = [{**row, **updates[row[key]]} for row in held]
+        rows += [{key: k, **values} for k, values in updates.items() if k not in found]
+        note_zones(g, table, list(updates.values()))
+        await _remove(state, session, table, (key,), [(row[key],) for row in held])
+        await _add(state, session, table, ((key, _TEXT),), rows)
     resolve(session)
 
 

@@ -469,10 +469,11 @@ async def ensure_resident(
         return Residency(answered_in=only_there)
     wanted = {s.id for s in sources}
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     from provisa.federation.replica_routing import owns_replica
 
-    _attached_types = {s.id: engine_attaches(engine, s.type.value) for s in sources}
+    _attached_types = {s.id: engine_attaches(engine, reach_type(s, engine)) for s in sources}
     # A type that owns no replica (ingest, a profiler's results, REQ-1771/REQ-1934) is read where
     # it is written, never landed, so no read of it is judged for a replica or a landing TTL.
     _no_replica = {s.id for s in sources if not owns_replica(s)}
@@ -794,6 +795,7 @@ async def active_row_materialize_tables(state: Any) -> list[Any]:
     from provisa.federation.registry_view import registered_sources, registered_tables
     from provisa.federation.replica_converge import builds_here, home_region
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     flagged = [
         t
@@ -807,7 +809,9 @@ async def active_row_materialize_tables(state: Any) -> list[Any]:
     # source is a KeyError, not a skip.
     sources_by_id = {s.id: s for s in await registered_sources(state)}
     return [
-        t for t in flagged if not engine_attaches(engine, sources_by_id[t.source_id].type.value)
+        t
+        for t in flagged
+        if not engine_attaches(engine, reach_type(sources_by_id[t.source_id], engine))
     ]
 
 
@@ -1019,6 +1023,30 @@ async def pushdown_row_materialize(
     if not all_joins:
         return set()
 
+    # The probe reads every row-level replica the statement names, the pending ones LEFT-joined:
+    # each must exist before it is read, empty when nothing has landed it yet. On a cold store a
+    # replica reached only through a join had no table at all (ensure_rows_resident creates only
+    # the ones a key predicate binds), and the probe failed with "Table ... does not exist" --
+    # live on the bench, cypher_cross_engine on DuckDB (bench_placed_edge).
+    for name in sorted({t.name for t in tree.find_all(exp.Table)} & set(tables_by_name)):
+        table = tables_by_name[name]
+        source = sources_by_id.get(table.source_id)
+        if source is None:
+            raise LookupError(
+                f"{table.table_name}: row-level replica's source {table.source_id!r} is not registered"
+            )
+        address = backend.replica_address(
+            state, source_id=source.id, schema_name=table.schema_name, table_name=table.table_name
+        )
+        await _ensure_row_cache_table(
+            engine,
+            backend,
+            state,
+            address.schema,
+            address.table,
+            resolve_landing_args_for(source, table, backend.dialect).columns,
+        )
+
     landed_this_call: set[str] = set()
     remaining = set(all_joins)
     loader = SourceRowLoader(
@@ -1046,7 +1074,9 @@ async def pushdown_row_materialize(
                 skip.add(name)  # never guessed -- bound by a key predicate (REQ-1915)
                 continue
             key_cols[name] = kc
-            joins_by_name[name].set("kind", "LEFT")
+            # A join's side says LEFT; a statement's own LEFT JOIN already carries it.
+            joins_by_name[name].set("side", "LEFT")
+            joins_by_name[name].set("kind", None)
         for name in skip:
             still_pending.discard(name)
         if not still_pending:

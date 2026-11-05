@@ -521,9 +521,8 @@ async def list_glossary_terms(
     state: Any, role: str, request: Any, q: str | None = None, include_deprecated: bool = True
 ) -> list[dict]:  # REQ-1835
     """The org's ontology terms, optionally filtered by a search string. Each result carries
-    `status` -- draft (not admitted), live (admitted: defined and grounded to a real column, or
-    edge-connected to one), deprecated or retired -- so you can tell them apart without a second
-    call; see create/update below for what 'finalizing' a term means."""
+    `status`, set by people (draft, approved, deprecated or retired), and `grounding`, computed
+    (grounded, grounded_pending or not_grounded)."""
     require_role(role, state)
     from provisa.api.admin.glossary_router import (
         _require_glossary_read,
@@ -550,11 +549,10 @@ async def create_glossary_term(
     definition: str | None = None,
     domains: list[str] | None = None,
 ) -> dict:  # REQ-1835
-    """Create a new concept: an ontology term naming no column or table yet. It starts
-    a draft — there is no separate live/finalized flag to flip: a term is 'live' automatically
-    once it is grounded, either by a real registered column landing on it (sync happens on table
-    registration, outside your control) or by connecting it via add_glossary_term_edge to a term
-    that is already live. If the deployment is multi-domain, at least one domain is required."""
+    """Create a new concept: an ontology term naming no column or table yet. It starts a draft,
+    which a steward approves once it has a definition; its grounding follows from its edges
+    (add_glossary_term_edge) and bindings. If the deployment is multi-domain, at least one domain
+    is required."""
     require_role(role, state)
     from provisa.api.admin.glossary_router import _declared_domains, _notify, _require_glossary_rw
     from provisa.core.repositories import glossary as glossary_repo
@@ -621,7 +619,8 @@ async def update_glossary_term(
 async def change_glossary_term_status(
     state: Any, role: str, request: Any, term_id: int, action: str, body: dict
 ) -> dict:  # REQ-2144
-    """Deprecate, retire or restore an ontology term -- the one status path the API has too."""
+    """Approve, deprecate, retire or restore an ontology term -- the one status path the API has
+    too."""
     require_role(role, state)
     from provisa.api.admin._guards import require_active_org_id
     from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, change_status
@@ -649,7 +648,8 @@ async def change_glossary_term_status(
 async def list_glossary_findings(state: Any, role: str, request: Any) -> list[dict]:  # REQ-2146
     """What a curator should look at in the ontology: each term with its findings, each
     {kind, message, params} -- unlinked_tables, class_and_attribute, tag_wrong_kind,
-    retirement_blocked, no_data. A plain draft term is not a finding."""
+    retirement_blocked, no_data, approved_not_grounded, path_pending. A plain draft term is not a
+    finding."""
     require_role(role, state)
     from provisa.api.admin.glossary_router import _authority, _require_glossary_read, term_findings
     from provisa.core.glossary import readable_term
@@ -888,23 +888,20 @@ async def create_data_product(  # REQ-1855
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import domain as domain_repo
 
-    from provisa.api.admin.capabilities import data_product_edit_refusal
-    from provisa.api.errors import ApiError
+    from provisa.api.admin.capabilities import require_right_in_domains_request
+    from provisa.api.admin.schema_helpers import _rebuild_schemas
 
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
-        # REQ-1944: the product's domain, and the one it is moved out of when it exists. REQ-2155:
-        # a product's owner (data_product_owned_rw) edits the one it owns.
+        # REQ-1944: the product's domain, and the one it is moved out of when it exists. REQ-2188:
+        # the role's U rule, not this gate, says which products it edits (core.model_row_rules).
         stored = await data_product_repo.get(conn, id)
-        refusal = data_product_edit_refusal(
-            getattr(request.state, "identity", None),
-            state,
-            stored,
+        require_right_in_domains_request(
+            request,
+            "data_product_rw",
             {domain_id} | ({stored["domain_id"]} if stored is not None else set()),
         )
-        if refusal is not None:
-            raise ApiError(403, "auth.missing_capability", refusal)
         if await domain_repo.get(conn, domain_id) is None:
             raise ValueError(f"Domain not found: {domain_id}")
         model = DataProductModel(
@@ -931,6 +928,8 @@ async def create_data_product(  # REQ-1855
             support=support,
         )
         await data_product_repo.upsert(conn, model)
+    if (None if stored is None else stored["owner_role"]) != owner_role:
+        await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
     return {"id": id}
 
 
@@ -1031,6 +1030,10 @@ async def delete_data_product(state: Any, role: str, request: Any, id: str) -> d
         deleted = await data_product_repo.delete(conn, id)
     if not deleted:
         raise ValueError(f"Data product not found: {id}")
+    if stored is not None and stored["owner_role"]:
+        from provisa.api.admin.schema_helpers import _rebuild_schemas
+
+        await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
     return {"ok": True}
 
 
@@ -1171,12 +1174,18 @@ async def run_sql(
             "redirect": result.redirect,
         }
 
+    from provisa.executor.result import QueryResult
+    from provisa.executor.serialize import result_records
+
     total = len(result.rows)
     window = result.rows[offset : offset + page]
     cols = list(result.column_names)
     return {
         "columns": cols,
-        "rows": [_row_to_json(cols, r) for r in window],
+        # Each value as every JSON surface writes it (REQ-1867).
+        "rows": result_records(
+            QueryResult(rows=window, column_names=cols, column_types=result.column_types)
+        ),
         "row_count": len(window),
         "offset": offset,
         "total_rows": total,
@@ -1438,26 +1447,27 @@ async def query_metric(
     require_role(role, state)
     if metric not in {m.name for m in _visible_metrics(state, role)}:
         raise ValueError(f"Unknown metric {metric!r}")
+    from provisa.executor.serialize import result_records
+
     result = await execute_sql_batch(_metric_sql(metric, dimensions, filters), role, state)
-    cols = list(result.column_names)
-    return [_row_to_json(cols, r) for r in result.rows]
+    return result_records(result)
 
 
 def _role_domains(state: Any, role: str) -> set[str]:
     """The schema ids ``role`` may access, or ``{"*"}`` for full access.
 
-    Sourced from the loaded config roles' ``domain_access`` — the same list the SQL
-    pipeline enforces. A search hit outside these domains is dropped, so the agent
-    never sees an entity it could not query.
+    Sourced from the bound org's roles' ``domain_access`` — the same list the SQL pipeline
+    enforces — and not ``state.config``, which holds the deployment org's: another org's role
+    of that name is a different role, and one of no such name would reach nothing. A search
+    hit outside these domains is dropped, so the agent never sees an entity it could not query.
     """
-    config = getattr(state, "config", None)
-    for r in getattr(config, "roles", None) or []:
-        if getattr(r, "id", None) == role:
-            from provisa.security.rights import reaches_all_domains
+    stored = state.roles.get(role)
+    if stored is None:
+        return set()  # an unknown role reaches no domains (domain_access_for_claims)
+    from provisa.security.rights import reaches_all_domains
 
-            access = list(r.domain_access)
-            return {"*"} if reaches_all_domains(access) else set(access)
-    return set()
+    access = stored.get("domain_access")
+    return {"*"} if reaches_all_domains(access) else set(access)
 
 
 async def effective_config(state: Any) -> dict:
@@ -1489,11 +1499,12 @@ def _cfg_get(entry: Any, key: str, default: Any = None) -> Any:
     return entry.get(key, default) if isinstance(entry, dict) else getattr(entry, key, default)
 
 
-async def _resolve_embedding_model(state: Any) -> Any:
-    """The embedding model for catalog search — the first enabled ``vector_models`` entry.
+async def resolve_embedding_model(state: Any, *, purpose: str = "catalog search") -> Any:
+    """The org's embedding model — the first enabled ``vector_models`` entry — for catalog
+    search and the reference library (REQ-2185).
 
-    No silent fallback (CLAUDE.md): with no enabled embedding model registered, catalog
-    search is unavailable and says so, rather than inventing a model.
+    No silent fallback (CLAUDE.md): with no enabled embedding model registered, ``purpose`` is
+    unavailable and says so, rather than inventing a model.
     """
     from provisa.vector.registry import VectorModel
 
@@ -1507,20 +1518,21 @@ async def _resolve_embedding_model(state: Any) -> Any:
                 base_url=_cfg_get(vm, "base_url"),
             )
     raise ValueError(
-        "catalog search requires an enabled embedding model — register one in "
+        f"{purpose} requires an enabled embedding model — register one in "
         "vector_models (admin → AI Models)"
     )
 
 
 async def build_catalog_index(state: Any, provider: Any = None) -> int:
-    """(Re)build the server-lifetime catalog search index over the full catalog.
+    """(Re)build the bound org's catalog search index over its full catalog.
 
-    Cached on ``state.mcp_catalog_index``. Called at startup / on catalog refresh; a
-    cold build is just the full case. ``provider`` is injectable for tests.
+    Cached on ``state.mcp_catalog_index``, which resolves to the org's runtime: orgs share a
+    process, never an index. Built on the org's first search after a reload; a cold build is
+    just the full case. ``provider`` is injectable for tests.
     """
     from provisa.api.mcp.search import CatalogSearchIndex
 
-    model = await _resolve_embedding_model(state)
+    model = await resolve_embedding_model(state)
     catalog = await _catalog(state, None)
     index = CatalogSearchIndex(model, provider)
     await index.build(catalog, _domain_descriptions(state))
@@ -1529,7 +1541,7 @@ async def build_catalog_index(state: Any, provider: Any = None) -> int:
 
 
 async def _get_index(state: Any) -> Any:
-    """The catalog index, built lazily on first use if startup did not build it."""
+    """The bound org's catalog index, built lazily on first use."""
     index = getattr(state, "mcp_catalog_index", None)
     if index is None or not getattr(index, "built", False):
         await build_catalog_index(state)
@@ -1595,12 +1607,11 @@ async def search_catalog(state: Any, role: str, nl_text: str, k: int = 5) -> lis
 
 
 async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) -> list[dict]:
-    """Business-ontology term lookup (REQ-1387): grounded vocabulary for agent surfaces.
+    """Business-ontology term lookup (REQ-1387): the vocabulary an agent may see.
 
-    Matches term names and definitions; each hit carries its physical refs (which
-    tables/columns mean this concept), typed relationships to other terms, and the
-    experts who can answer questions about it. v1 scope is documentation and
-    discovery — term membership does not drive policy.
+    Matches term names and definitions among approved terms on a path to data and defined drafts
+    on a path holding an approved term; each hit carries its status, grounding, physical refs,
+    experts and its paths down to data, an undefined term on them an anonymous hop.
     """
     role = require_role(role, state)
     if not query or not query.strip():
@@ -1623,6 +1634,17 @@ async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) ->
             limit=limit,
             domains=None if allowed is None else frozenset(allowed),
         )
+
+
+async def search_reference_library(state: Any, role: str, question: str, k: int = 5) -> list[dict]:
+    """The reference library's passages that best answer ``question`` (REQ-2185), from the kept
+    documents ``role`` may read: those whose domains it reads, and every ``*`` document, with
+    their neighbours (retrieve.retrieve_with_neighbours). Each carries what citing it takes -- the
+    document, its section or page, the quoted text -- and how it was reached."""
+    role = require_role(role, state)
+    from provisa.reference_library.retrieve import search_for_role
+
+    return await search_for_role(state, role, question, k=k)
 
 
 async def _jev_api_key(state: Any) -> str:
@@ -1961,29 +1983,6 @@ async def search_kaggle_datasets(state: Any, role: str, query: str) -> list[dict
         }
         for d in results[:10]
     ]
-
-
-def _row_to_json(cols: list[str], row: Any) -> dict:
-    """Map a result tuple to a JSON-safe {column: value} dict."""
-    out: dict[str, Any] = {}
-    for name, val in zip(cols, row, strict=False):
-        out[name] = _json_safe(val)
-    return out
-
-
-def _json_safe(val: Any) -> Any:
-    import datetime as _dt
-    from decimal import Decimal
-
-    if val is None or isinstance(val, (bool, int, float, str)):
-        return val
-    if isinstance(val, Decimal):
-        return float(val)
-    if isinstance(val, (bytes, bytearray)):
-        return val.hex()
-    if isinstance(val, (_dt.date, _dt.datetime, _dt.time)):
-        return val.isoformat()
-    return str(val)
 
 
 def _described_role(state: Any, role_id: str) -> dict:  # REQ-2082

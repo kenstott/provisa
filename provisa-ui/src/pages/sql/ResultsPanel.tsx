@@ -22,6 +22,8 @@ import type { ExplainNodeDto, ExplainResponse } from "../../api/admin";
 import { MermaidDiagram } from "../../components/MermaidDiagram";
 import "./ResultsPanel.css";
 import { Tip } from "../../components/Tip";
+import { ListCell } from "../../components/list/ListCell";
+import { ListTable } from "../../components/list/ListTable";
 import { StatementTabs } from "../../components/StatementTabs";
 import { statementLabel } from "./statementResults";
 import type { StatementResult } from "./statementResults";
@@ -37,6 +39,8 @@ interface ResultsPanelProps {
   resultColumns: string[];
   /** REQ-1937: the rows held are only part of the result, so a filter applies to those loaded. */
   rowsPartial?: boolean;
+  /** The tab's statement has been run: no rows held is then its answer, not a tab yet to run. */
+  answered?: boolean;
   /** A batch's results, one per statement; the result* props are the one shown. */
   statements: StatementResult[];
   statementIndex: number;
@@ -60,6 +64,7 @@ export function ResultsPanel({
   resultRedirect = null,
   resultRows,
   rowsPartial = false,
+  answered = false,
   statements,
   statementIndex,
   onStatement,
@@ -191,6 +196,7 @@ export function ResultsPanel({
           ) : resultRows.length === 0 ? (
             <div
               data-testid="sql-results-empty"
+              data-answered={answered ? "" : undefined}
               style={{
                 padding: "1.5rem",
                 textAlign: "center",
@@ -901,7 +907,7 @@ function AnalyzePanes({ plan: analyzePlan }: { plan: ExplainResponse }) {
     >
       {analyzePlan.plan.length > 0 && (
         <div style={{ flex: `0 0 ${listPct}%`, minWidth: 0, overflow: "auto" }}>
-          <Table className="data-table" style={{ fontSize: "0.68rem" }}>
+          <ListTable style={{ fontSize: "0.68rem" }}>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>{t("sqlResultsPanel.analyzeColOperator")}</Table.Th>
@@ -920,9 +926,17 @@ function AnalyzePanes({ plan: analyzePlan }: { plan: ExplainResponse }) {
                   <Table.Td
                     style={{
                       fontFamily: "monospace",
-                      paddingInlineStart: `${0.4 + row.depth * 0.9}rem`,
+                      paddingInlineStart: `${0.4 + Math.min(row.depth, MAX_INDENT_DEPTH) * 0.9}rem`,
                     }}
                   >
+                    {row.depth > MAX_INDENT_DEPTH && (
+                      <span
+                        data-testid="analyze-depth"
+                        style={{ color: "var(--text-muted)", marginInlineEnd: "0.3rem" }}
+                      >
+                        ↳{row.depth}
+                      </span>
+                    )}
                     {row.node.op}
                   </Table.Td>
                   <Table.Td>{row.node.rows ?? t("sqlResultsPanel.dash")}</Table.Td>
@@ -931,14 +945,16 @@ function AnalyzePanes({ plan: analyzePlan }: { plan: ExplainResponse }) {
                       t("sqlResultsPanel.dash")}
                   </Table.Td>
                   <Table.Td style={{ color: "var(--text-muted)" }}>
-                    {Object.entries(row.node.detail)
-                      .map(([k, v]) => `${k}=${v}`)
-                      .join("  ")}
+                    <ListCell
+                      text={Object.entries(row.node.detail)
+                        .map(([k, v]) => `${k}=${v}`)
+                        .join("  ")}
+                    />
                   </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
-          </Table>
+          </ListTable>
         </div>
       )}
       {analyzePlan.plan.length > 0 && analyzePlan.mermaid && (
@@ -961,6 +977,10 @@ function AnalyzePanes({ plan: analyzePlan }: { plan: ExplainResponse }) {
     </div>
   );
 }
+
+// A deep plan (hundreds of nested operators) would indent its rows off the pane: past this depth
+// the indent stops growing and the row names its depth instead.
+const MAX_INDENT_DEPTH = 8;
 
 // REQ-1519: the operator tree read top-down, each row carrying its depth so the list reads like
 // the diagram.

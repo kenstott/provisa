@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "Abrir {{successor}}",
     "contract": {
       "label": "Contratos de dados",
-      "hint": "O contrato de cada porta de saída: o que promete, com versão própria",
+      "hint": "O contrato de cada porta de saída: o que declara, com versão própria",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "Proposto",
@@ -177,8 +177,8 @@
       "versionLabel": "Versão do contrato",
       "statusLabel": "Status do contrato",
       "descriptionLabel": "Para que serve",
-      "columnsLabel": "Colunas prometidas",
-      "columnsHelp": "Deixar de prometer uma coluna, ou mudar seu tipo, exige uma nova versão.",
+      "columnsLabel": "Colunas",
+      "columnsHelp": "Remover uma coluna, ou mudar seu tipo, exige uma nova versão.",
       "requiredLabel": "Nunca nulo",
       "slaLabel": "Níveis de serviço",
       "slaProperty": "Propriedade",
@@ -187,6 +187,32 @@
       "slaRemove": "Remover nível de serviço",
       "slaAdd": "Adicionar nível de serviço",
       "notDeclared": "Não declarado",
+      "notDeclaredList": "Não declarado: {{names}}",
+      "versionSaved": "Guardado",
+      "versionChanges": "Alterações",
+      "constraints": "Restrições",
+      "breakingWarning": "Alteração incompatível em v{{version}}, ainda não vigente",
+      "breaking": "Incompatível",
+      "savedBy": "Guardado {{when}} por {{who}}",
+      "savedBySystem": "o sistema",
+      "noChanges": "Primeira versão: nada com que comparar",
+      "change": {
+        "field_added": "Campo {{subject}} adicionado, {{after}}",
+        "field_removed": "Campo {{subject}} removido, era {{before}}",
+        "field_renamed": "Campo {{subject}} renomeado para {{after}}",
+        "field_type_changed": "Campo {{subject}} alterado de {{before}} para {{after}}",
+        "field_required": "Campo {{subject}} tornado obrigatório",
+        "field_optional": "Campo {{subject}} deixou de ser obrigatório",
+        "field_described": "Campo {{subject}} descrito de outra forma",
+        "sla_added": "Nível de serviço {{subject}} adicionado, {{after}}",
+        "sla_removed": "Nível de serviço {{subject}} removido, era {{before}}",
+        "sla_changed": "Nível de serviço {{subject}} alterado de {{before}} para {{after}}",
+        "check_added": "Verificação de qualidade {{subject}} adicionada",
+        "check_removed": "Verificação de qualidade {{subject}} removida",
+        "check_changed": "Verificação de qualidade {{subject}} alterada",
+        "description_changed": "Descrição alterada",
+        "terms_changed": "Termos alterados: {{subject}}"
+      },
       "loadError": "Não foi possível ler os contratos: {{error}}",
       "notExported": "{{member}} não tem contrato exportado",
       "section": {
@@ -195,7 +221,7 @@
         "quality": "Qualidade",
         "sla": "SLA",
         "support": "Suporte e equipe",
-        "servers": "Servidores",
+        "howToUse": "Como usar",
         "pricing": "Preços",
         "custom": "Propriedades personalizadas e tags"
       },
@@ -214,6 +240,65 @@
         "customProperties_other": "{{count}} propriedades personalizadas",
         "tags_one": "{{count}} tag",
         "tags_other": "{{count}} tags"
+      },
+      "empty": "Este produto não tem nenhuma porta de saída com contrato de dados.",
+      "consumers_one": "{{count}} consumidor",
+      "consumers_other": "{{count}} consumidores",
+      "freshness": "Atualizado em até {{seconds}} s",
+      "loadedOnce": "Carregado uma vez, nunca atualizado",
+      "noSla": "Nenhum nível de serviço declarado",
+      "checkedAt": "Verificado {{when}}",
+      "neverChecked": "Nunca verificado",
+      "draftWarning": "Rascunho: ainda não vigente",
+      "card": {
+        "details": "Detalhes",
+        "fields": "Colunas",
+        "sla": "SLAs e atualidade",
+        "quality": "Promessas",
+        "consumers": "Consumidores",
+        "versions": "Versões e alterações",
+        "roles": "Funções",
+        "history": "Histórico de versões"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "Interface",
+          "address": "Endereço",
+          "how": "Como é usado",
+          "link": "Exemplo"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "Qualquer cliente PostgreSQL, como psql ou DBeaver. Banco de dados {{database}}, esquema {{schema}}.",
+          "flight-sql": "Qualquer cliente Arrow Flight SQL, como o driver ADBC. Banco de dados {{database}}, esquema {{schema}}.",
+          "grpc": "Qualquer cliente gRPC, no serviço {{service}}, com os metadados authorization: Bearer <token>.",
+          "graphql": "Qualquer cliente GraphQL: envie por POST uma consulta sobre esta tabela, com o cabeçalho Authorization: Bearer <token>.",
+          "rest": "Qualquer cliente HTTP: GET neste endereço, com o cabeçalho Authorization: Bearer <token>.",
+          "openapi": "Apenas a descrição desta tabela: carregue-a no Swagger UI, no Postman ou em um gerador de clientes.",
+          "jsonapi": "Qualquer cliente JSON:API: GET neste endereço, com o cabeçalho Authorization: Bearer <token>.",
+          "sparql": "Qualquer cliente SPARQL 1.1: envie por POST uma consulta sobre a classe desta tabela, com o cabeçalho Authorization: Bearer <token>."
+        },
+        "access": {
+          "granted": "Só funciona depois que o acesso é concedido, por {{approvers}}.",
+          "noApprover": "Só funciona depois que o acesso é concedido, por um titular de {{roles}}. Este contrato não indica nenhum aprovador.",
+          "undeclared": "Só funciona depois que o acesso é concedido. Este contrato não indica nenhum papel nem aprovador."
+        },
+        "ask": {
+          "approvers": "Pedir acesso a {{approvers}}",
+          "roles": "Pedir acesso a um titular de {{roles}}",
+          "nobody": "Este contrato não indica a quem pedir"
+        },
+        "open": "Abrir exemplo",
+        "openAria": "Abrir o exemplo de {{surface}} para {{table}}"
       }
     }
   }

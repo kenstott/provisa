@@ -245,9 +245,9 @@ async def _execute_multi_call(
     combined: list[dict] = [{}]
     for rs in all_rows:
         combined = [{**a, **b} for a in combined for b in (rs or [{}])]
-    from provisa.gql.assembler import take_cut
+    from provisa.gql.assembler import take_overrun
 
-    combined = take_cut(combined, None)  # rows of several plans: the request's collector
+    combined = take_overrun(combined)
 
     try:
         assembled = assemble_rows(combined, merged_graph_vars)
@@ -434,21 +434,13 @@ def access_violations(
     """The 403 naming each access violation of a graph statement the role sent, or None: the
     validation every graph surface over HTTP runs before the pipeline (Cypher's, SPARQL's)."""
     from provisa.compiler.sql_validator import validate_sql
-    from provisa.compiler.stage2 import build_governance_context
     from provisa.pgwire._pipeline import relationship_guard_bypassed
+    from provisa.pgwire.governed_plan import role_governance
     from provisa.security.rights import effective_domain_access_role
 
     role = effective_domain_access_role(role_id, state.roles)
     ctx = surface.context
-    governance = build_governance_context(
-        role_id,
-        surface.rls,
-        state.masking_rules,
-        ctx,
-        getattr(state, "tables", []),
-        role=role,
-        relationships=getattr(state, "relationships", None),
-    )
+    governance = role_governance(state, surface, role_id)
     violations = validate_sql(
         semantic_sql,
         ctx,
@@ -469,7 +461,8 @@ def access_violations(
     return cypher_error(
         403,
         "cypher.access_violations",
-        "; ".join(v["message"] for v in listed),
+        # A statement of many parts repeats one violation in each: said once, and listed for each.
+        "; ".join(dict.fromkeys(v["message"] for v in listed)),
         violations=listed,
         count=len(listed),
     )
@@ -480,11 +473,10 @@ def _dict_rows(result: QueryResult) -> list[dict]:
 
 
 def _answered_columns(result: QueryResult) -> list[str]:
-    """The columns a read answers, as the statement names them, rows or none (UNWIND [] AS x
-    RETURN x answers the column x): the engine's, less the depth-limit column (REQ-2135)."""
-    from provisa.gql.translator_types import CUT_COLUMN
+    """The columns a read answers, rows or none (gql/assembler.answered_columns)."""
+    from provisa.gql.assembler import answered_columns
 
-    return [c for c in result.column_names if c != CUT_COLUMN]
+    return answered_columns(list(result.column_names))
 
 
 def _serialize_rows(
@@ -595,11 +587,14 @@ async def _each_statement(
     from provisa.api.error_answer import error_answer
     from provisa.cypher.parser import split_cypher_statements
 
+    from provisa.cypher.counters import counting_apart
+
     results: list[dict[str, Any]] = []
     for statement in split_cypher_statements(body.query):
         one = CypherRequest(query=statement, params=body.params)
         try:
-            answered = await _answer(one, request, x_provisa_stats)
+            with counting_apart():
+                answered = await _answer(one, request, x_provisa_stats)
         except (
             Exception
         ) as exc:  # allow-ble: answered as this statement's error, by the app's own handler for it
@@ -688,31 +683,54 @@ async def _session_write(
     async def run_write(statement: str, values: dict) -> None:
         await run(statement, values)
 
+    from provisa.cypher.counters import counting
+
     try:
-        made = await seam.write(
-            body.query,
-            body.params,
-            _build_label_map(surface.context, role_id, state),
-            temp,
-            state,
-            run_read,
-            run_write,
-        )
+        with counting() as counted:
+            made = await seam.write(
+                body.query,
+                body.params,
+                _build_label_map(surface.context, role_id, state),
+                temp,
+                state,
+                run_read,
+                run_write,
+            )
     except _SessionReadRefused as refused:
         return refused.response
     except CypherParseError as exc:
         return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
     if made is None:
         return None
-    if any(vars(made).values()):
+    if any(seam.counters(made).values()):
         from provisa.api import graph_session
 
         held = graph_session.bound()
         assert held is not None, "an ephemeral write is made in the principal's graph session"
         held.wrote = True
+    # A write followed by reads answers with the rest's rows (REQ-2176).
+    columns, rows = seam.rows_of(made, temp)
     return JSONResponse(
-        content={"type": "cypher", "columns": [], "rows": [], "counters": vars(made)}
+        content={
+            "type": "cypher",
+            "columns": columns,
+            "rows": rows,
+            **_counters(counted, body.query),
+        }
     )
+
+
+def _counters(counted: Any, statement: str) -> dict[str, Any]:
+    """A write's answer's ``counters``: the Bolt summary's ``stats`` (provisa.cypher.counters),
+    so both surfaces agree. A count that could not be made is no counters, and a warning."""
+    from provisa.core.statement_warnings import warn
+    from provisa.cypher.counters import count_unknown_warning
+
+    if counted.unknown:
+        for reason in counted.unknown:
+            warn(count_unknown_warning(statement, reason))
+        return {}
+    return {"counters": counted.stats()}
 
 
 async def _answer(
@@ -784,7 +802,7 @@ async def _answer(
 
         _wrote: list[QueryResult] = []
 
-        async def _write(sql: str, bound: list) -> tuple[list[str], list[list[Any]]]:
+        async def _write(sql: str, bound: list) -> tuple[list[str], list[list[Any]], int | None]:
             # ONE write path: the translated statement goes through the pipeline every other
             # surface's write goes through (Bolt's Cypher writes included) — its admission (the
             # write right and the role's write grant, REQ-2074), its lowering to the source's own
@@ -798,12 +816,16 @@ async def _answer(
                 sdl_joins=False,
             )
             _wrote.append(await _execute_write_plan(plan, state))
-            return _wrote[-1].column_names, [list(row) for row in _wrote[-1].rows]
+            done = _wrote[-1]
+            return done.column_names, [list(row) for row in done.rows], done.rowcount
+
+        from provisa.cypher.counters import counting
 
         try:
             # The request's parameters are bound into the statement (``$name`` → ``$k``), so the
             # admission's new-row check and the source see the values, never their names.
-            await written(_write_ast, _WT(_label_map), body.params, _read, _write)
+            with counting() as counted:
+                await written(_write_ast, _WT(_label_map), body.params, _read, _write)
         except (_CWPE, CypherParamError) as exc:
             return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
         except _ReadRefused:
@@ -815,12 +837,19 @@ async def _answer(
         except Exception as exc:  # allow-ble: request boundary — a source or driver error of any type is this write's outcome, answered as an error response
             return cypher_error(500, "cypher.write_failed", f"Write failed: {exc}", error=str(exc))
         if _write_ast.returns:
-            return _answered[-1]  # the RETURN, read of the node the write created
+            # The RETURN, read of the node the write created, with what the write did.
+            returned = _answered[-1]
+            content = json.loads(bytes(returned.body))
+            content.update(_counters(counted, body.query))
+            headers = {k: v for k, v in returned.headers.items() if k.lower() != "content-length"}
+            return JSONResponse(content=content, status_code=returned.status_code, headers=headers)
         affected = sum(r.rowcount if r.rowcount is not None else len(r.rows) for r in _wrote)
 
         # The steps after a write (cache, views, change events, sinks, hot copy) ran at the
         # pipeline's terminal (pgwire._pipeline._after_write), as on every surface.
-        return JSONResponse(content={"affected_rows": affected, "type": "cypher"})
+        return JSONResponse(
+            content={"affected_rows": affected, "type": "cypher", **_counters(counted, body.query)}
+        )
 
     try:
         from provisa.cypher.parser import parse_cypher, CypherParseError
@@ -1007,9 +1036,9 @@ async def _answer(
         return JSONResponse(
             content={"type": "cypher", "columns": [], "rows": [], "redirect": _executed.redirect}
         )
-    from provisa.gql.assembler import take_cut
+    from provisa.gql.assembler import take_overrun
 
-    rows = take_cut(_dict_rows(_executed), plan.warnings)
+    rows = take_overrun(_dict_rows(_executed))
     physical_sql = plan.physical_sql or plan.exec_sql or ""
 
     # Assemble & serialize
@@ -1028,6 +1057,9 @@ async def _answer(
         # node ids; a read of the session keeps every node's graph identity.
         await register_node_ids(serializable_rows, state.model_db)
         await register_rel_ids(serializable_rows, state.model_db)
+    elif involved and not internal and temp is not None:
+        # The session's own nodes as the session holds them: every label, no built-in _id.
+        serializable_rows = seam.answered(serializable_rows, temp)
 
     content = _build_stats_content(columns, serializable_rows, physical_sql, stats_enabled, _t0)
     content["type"] = "cypher"
@@ -1130,6 +1162,8 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     # FK/PK-backed edge, which is how a client tells the two apart.
                     "junction_table_name": r.via.table_name if r.via else None,
                     "properties": sorted(r.properties.keys()),
+                    # REQ-2135: what it joins, the same for a join declared from both ends.
+                    "join": r.join,
                 }
                 for r in label_map.relationships.values()
             ],
@@ -1231,12 +1265,12 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
         rows = _dict_rows(executed)
         return {"count": int(rows[0]["cnt"]) if rows else 0}
 
-    from provisa.security.rights import reaches_all_domains
+    from provisa.security.rights import reaches_domain
 
     _domain_access = state.roles[role_id]["domain_access"]
 
     def _reads_domain(domain_id: str | None) -> bool:
-        return not domain_id or reaches_all_domains(_domain_access) or domain_id in _domain_access
+        return not domain_id or reaches_domain(_domain_access, domain_id)
 
     node_labels, rel_types = _countable_labels(label_map, filtered_domains, _reads_domain)
 

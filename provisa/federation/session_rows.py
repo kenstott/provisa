@@ -56,6 +56,10 @@ class SessionRows(Protocol):
         relationship by either end or its type, a node by its label); rows may share them."""
         ...
 
+    async def drop_lookup_index(self, schema: str, table: str, columns: tuple[str, ...]) -> None:
+        """Drop the index :meth:`lookup_index` made on ``columns`` (REQ-2176: DROP INDEX)."""
+        ...
+
 
 def _ident(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
@@ -203,6 +207,14 @@ class DuckDBSessionRows:
         )
         await self._run(lambda con: con.execute(sql), unseen=True)
 
+    async def drop_lookup_index(self, schema: str, table: str, columns: tuple[str, ...]) -> None:
+        from provisa.federation.materialize_broker import _MAT_STORE_ALIAS
+        from provisa.federation.store_connection import _qualified
+
+        name = _qualified(_MAT_STORE_ALIAS, schema, _lookup_index_name(table, columns))
+        sql = f"DROP INDEX IF EXISTS {name}"
+        await self._run(lambda con: con.execute(sql), unseen=True)
+
 
 class SqlAlchemySessionRows:
     """A session's tables in a PostgreSQL or other SQLAlchemy store, written on the store's own
@@ -284,3 +296,9 @@ class SqlAlchemySessionRows:
                 f"ON {_ident(schema)}.{_ident(table)} ({cols})"
             )
         )
+
+    async def drop_lookup_index(self, schema: str, table: str, columns: tuple[str, ...]) -> None:
+        from sqlalchemy import text
+
+        name = _ident(_lookup_index_name(table, columns))
+        await self._execute(text(f"DROP INDEX IF EXISTS {_ident(schema)}.{name}"))

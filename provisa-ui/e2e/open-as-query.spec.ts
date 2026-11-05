@@ -147,7 +147,7 @@ test.describe("Open as query", () => {
     const viewed = await filteredView(page);
     const terms = (
       viewed.data as {
-        _terms: { name: string; edges_out?: { rel_type: string }[] | null }[];
+        _terms: { name: string; edgesOut?: { relType: string }[] | null }[];
       }
     )._terms;
 
@@ -177,7 +177,7 @@ test.describe("Open as query", () => {
     // The same graph: every term the view read, and every edge type it drew between them.
     const said = strings(body.rows);
     for (const t of terms) expect(said, `term ${t.name}`).toContain(t.name);
-    for (const e of terms.flatMap((t) => t.edges_out ?? []))
-      expect(said, `edge ${e.rel_type}`).toContain(e.rel_type);
+    for (const e of terms.flatMap((t) => t.edgesOut ?? []))
+      expect(said, `edge ${e.relType}`).toContain(e.relType);
   });
 });

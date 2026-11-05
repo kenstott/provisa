@@ -2,7 +2,7 @@
   "cacheTtl": {
     "neverExpires": "never expires",
     "inputHint": "-1: never expires",
-    "neverExpiresHint": "Never expires: lands once.",
+    "neverExpiresHint": "Never expires and lands once.",
     "asOf": "{{ttl}}, as of {{when}}",
     "roleTtlUnlisted": "The Cache TTL never expires, for every role.",
     "roleTtlNoEffect": "The Cache TTL never expires, so this entry has no effect."

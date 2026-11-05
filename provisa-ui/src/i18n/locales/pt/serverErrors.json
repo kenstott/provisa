@@ -10,6 +10,7 @@
       "test_endpoint_disabled": "O endpoint de teste está desabilitado (defina PROVISA_ENABLE_TEST_ENDPOINTS para habilitar em ambiente não produtivo).",
       "unknown_action_type": "actionType desconhecido '{{action_type}}'",
       "unknown_role": "Função desconhecida '{{role}}'",
+      "mask_unreachable": "Você definiu uma máscara que não é alcançável: {{entries}}",
       "webhook_not_found": "Webhook '{{name}}' não encontrado",
       "written_table_not_registered": "'{{table}}' não é uma tabela registrada da fonte '{{source_id}}'",
       "function_exists": "A função '{{name}}' já existe",
@@ -93,7 +94,6 @@
       "no_grpc_query_for_table": "Nenhuma consulta gRPC registrada para a tabela '{{table}}'",
       "no_mutation_fields": "Nenhum campo de mutação encontrado",
       "no_proto_for_role": "A função '{{role_id}}' não tem proto: nenhuma superfície de dados lhe é fornecida, porque não alcança nenhum domínio ou possui apenas direitos do plano de controle",
-      "role_served_nothing": "A função '{{role_id}}' não recebe nenhuma tabela: nenhuma coluna de nenhuma tabela lhe foi concedida",
       "no_query_field_for_proto_type": "Nenhum campo de consulta para o tipo proto '{{type_name}}' na função '{{role_id}}'",
       "no_query_fields": "Nenhum campo de consulta encontrado",
       "no_role": "Função '{{role_id}}' inexistente",
@@ -130,12 +130,14 @@
       "address_not_found": "Nada a resolver: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve não pode ser combinado com outros campos raiz na mesma operação",
       "source_starting": "A origem {{source}} ainda está sendo iniciada. Tente novamente em instantes.",
+      "source_unavailable": "A origem {{source}} não pôde responder. Tente novamente em breve.",
       "view_outside_load_window": "A view {{view}} só pode ser lida dentro da sua janela de leitura. Ela abre novamente às {{opens_at}}.",
       "graphql_body_missing": "A requisição não tem corpo: uma requisição GraphQL é um objeto JSON com uma consulta.",
       "graphql_body_not_json": "O corpo da requisição não é JSON: {{error}}",
       "graphql_request_not_object": "Uma requisição GraphQL é um objeto JSON com uma consulta.",
       "graphql_parameter_type": "O parâmetro {{parameter}} da requisição GraphQL deve ser {{expected}}.",
-      "graphql_mutation_over_get": "Uma mutação é enviada com POST, nunca com GET."
+      "graphql_mutation_over_get": "Uma mutação é enviada com POST, nunca com GET.",
+      "listed_only": "A função {{role}} só pode listar {{table}}: os metadados podem ser lidos, os dados não"
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
@@ -156,7 +158,7 @@
       "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente."
     },
     "front_door": {
-      "coordinator_waking": "O ambiente está a iniciar. Estará pronto dentro de cerca de dois minutos.",
+      "coordinator_waking": "O ambiente está a iniciar. Estará pronto dentro de cerca de cinco minutos.",
       "coordinator_updating": "O ambiente está a ser atualizado. Estará disponível novamente em breve."
     },
     "functions": {
@@ -269,6 +271,10 @@
       "classification_decision_not_found": "Nenhuma decisão sobre {{column}} como {{kind}}",
       "classification_pii_refused": "Não foi possível marcar a coluna como PII"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} é uma exibição de catálogo do domínio meta e não pode ser lida em uma instrução junto com uma tabela de uma fonte de dados: leia-as em duas instruções.",
+      "function_unsupported": "{{function}}() não tem equivalente em {{dialect}}."
+    },
     "replication": {
       "answer_not_json": "A resposta lida para a réplica de {{table}} não é JSON válido: [{{content_type}}] {{cause}} (nos {{kib}} KiB anteriores ao byte {{before_byte}} da resposta).",
       "no_whole_copy": "A tabela {{schema}}.{{table}} da origem {{source}} não tem uma cópia completa para compilar: ela é replicada linha a linha ou tem uma coluna de parâmetro.",
@@ -288,7 +294,8 @@
       "not_found": "Função não encontrada",
       "org_selection_required": "Seleção de organização necessária",
       "already_exists": "A função '{{role}}' já existe",
-      "description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade"
+      "description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade",
+      "right_not_in_parents": "A função {{role}} não pode deter {{right}}: nenhum pai o detém"
     },
     "schema": {
       "allowed_domains_updated": "Domínios permitidos atualizados para a fonte '{{source}}'",
@@ -358,6 +365,7 @@
       "request_rejected": "Solicitação de criação nº {{id}} rejeitada",
       "rls_rule_deleted": "Regra de RLS excluída",
       "rls_rule_not_found": "Regra de RLS não encontrada",
+      "rls_rule_right_taken": "A permissão {{right}} da função '{{role}}' já está na regra {{rule}}. Uma permissão fica em no máximo uma regra: remova-a dessa regra ou edite essa regra.",
       "rls_rule_saved_domain": "Regra de RLS para o domínio '{{domain}}' / função '{{role}}' salva",
       "rls_rule_saved_table": "Regra de RLS para a tabela {{table}} / função '{{role}}' salva",
       "rls_rule_saved_tag": "Regra de RLS para a tag '{{tag}}' / função '{{role}}' salva",
@@ -397,6 +405,7 @@
       "source_region_set": "Região da origem {{source}} definida como {{region}}",
       "region_refused": "A região não foi definida: {{reason}}",
       "table_too_complex": "A tabela '{{table}}' não foi registrada com as colunas selecionadas: {{reason}}. Escolha menos colunas.",
+      "remote_throttled": "A tabela '{{table}}' não foi registrada: o limite de taxa da fonte não permitiu verificá-la ({{reason}}). Tente novamente mais tarde.",
       "table_updated": "Tabela '{{table}}' atualizada (id={{id}})",
       "task_deleted": "Tarefa '{{task}}' excluída",
       "task_disabled": "Tarefa '{{task}}' desabilitada",
@@ -409,10 +418,12 @@
       "unknown_request_type": "Tipo de solicitação desconhecido '{{type}}'",
       "unknown_trigger_kind": "Tipo de gatilho desconhecido '{{kind}}'",
       "url_sql_exclusive": "url e sql são mutuamente exclusivos",
+      "view_deploy_unsupported_type": "A origem '{{source}}' é do tipo '{{type}}', que não pode hospedar uma view implantada; tipos compatíveis: {{supported}}",
       "view_deployed": "Exibição '{{view}}' implantada em '{{source}}' esquema '{{schema}}'",
       "view_spans_sources": "a exibição abrange várias fontes: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' aprovado",
       "webhook_name_required": "webhook_name é obrigatório para um gatilho de webhook",
+      "mask_unreachable": "Você definiu uma máscara que não é alcançável: {{entries}}",
       "webhook_not_found": "Webhook '{{webhook}}' não encontrado",
       "change_streams_unavailable": "A origem '{{source}}' é um servidor MongoDB autônomo, que não oferece change streams: o sinal de alteração native exige um replica set ou um cluster fragmentado. Execute-o como replica set ou use o sinal de alteração poll.",
       "table_draft_set": "Tabela {{table}} definida como rascunho",
@@ -467,7 +478,11 @@
       "relationship_same_entity_cardinality": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: ela é {{cardinality}}, e a mesma entidade é uma linha para uma linha",
       "relationship_same_entity_not_grounded": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: {{source}} e {{target}} não estão fundamentadas no mesmo termo",
       "relationship_same_entity_not_keys": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: {{columns}} não é a chave primária nem uma chave única de {{table}}",
-      "kaggle_token_missing": "Conjunto de dados do Kaggle {{owner}}/{{ref}}: a fonte de dados não tem nenhum token de API do Kaggle. Adicione-o no formulário de Fontes de dados, onde o token é informado."
+      "kaggle_token_missing": "Conjunto de dados do Kaggle {{owner}}/{{ref}}: a fonte de dados não tem nenhum token de API do Kaggle. Adicione-o no formulário de Fontes de dados, onde o token é informado.",
+      "jdbc_invalid": "Fonte {{source}}: {{error}}",
+      "jdbc_file_refused": "Fonte {{source}}: a URL indica {{path}}, que este servidor não pode abrir para a organização.",
+      "jdbc_options_refused": "Fonte {{source}}: a URL desta organização não pode informar a opção de driver {{options}}.",
+      "jdbc_driver_refused": "Fonte {{source}}: um driver JDBC do cliente é executado como código na própria JVM do Provisa, o que só uma instalação auto-hospedada permite."
     },
     "secrets": {
       "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",
@@ -615,7 +630,10 @@
       "popup_blocked": "O navegador bloqueou a janela de login. Permita pop-ups para este site e tente novamente.",
       "window_closed": "A janela de login foi fechada antes de terminar.",
       "tenant_invalid": "A configuração do Microsoft 365 da organização não indica um diretório (locatário). Um administrador insere o ID ou o domínio do diretório.",
-      "microsoft_account_unread": "O início de sessão foi aprovado, mas a Microsoft não indicou de quem é a caixa de correio."
+      "microsoft_account_unread": "O início de sessão foi aprovado, mas a Microsoft não indicou de quem é a caixa de correio.",
+      "client_missing": "Insira o ID do cliente e o segredo do cliente do aplicativo e depois entre.",
+      "client_not_taken": "Este tipo de fonte entra com o cliente da sua organização, não com um inserido no formulário.",
+      "no_account_returned": "O login foi aprovado, mas a resposta não informou qual conta ({{parameter}}). Entre novamente."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "A sua organização não permitiu fontes que leiam as suas caixas de correio. Um administrador permite-o em Administração › E-mail.",
@@ -661,6 +679,8 @@
       "unknown_demo": "Não há nenhuma demonstração publicada chamada {{demo}}.",
       "demo_not_ready": "Esta demonstração ainda está sendo preparada. Tente novamente em instantes.",
       "demo_stores_failed": "Não foi possível iniciar esta demonstração. Tente novamente em alguns minutos.",
+      "demo_failed": "Não foi possível preparar esta demonstração. Tente novamente em alguns minutos.",
+      "failed_to_start": "Não foi possível iniciar o servidor de demonstração. Tente novamente mais tarde.",
       "at_capacity": "Todos os sandboxes de demonstração estão em uso. Tente novamente em instantes.",
       "starting": "O servidor de demonstração está iniciando. Tente novamente em um ou dois minutos.",
       "disk_full": "Este sandbox atingiu seu limite de disco de {{limit}} bytes; nada mais pode ser gravado nele.",
@@ -687,8 +707,7 @@
       "retire_on_invalid": "A data de retirada planejada {{retire_on}} não é uma data (use AAAA-MM-DD).",
       "successor_is_self": "Um termo não pode ser seu próprio sucessor.",
       "successor_retired": "O sucessor '{{successor}}' está retirado. Escolha um termo em serviço.",
-      "term_not_live": "Apenas um termo ativo pode ser descontinuado; este está {{status}}.",
-      "status_by_action": "O status de um termo muda com Descontinuar, Retirar ou Restaurar, cada um com um motivo.",
+      "status_by_action": "O estado de um termo muda através de Aprovar, Descontinuar, Retirar ou Restaurar.",
       "successor_required": "Este termo ainda tem colunas ou tabelas; retirá-lo as move para um sucessor. Escolha um.",
       "successor_role": "O sucessor de um {{role}} deve ser um {{role}} ou um conceito; '{{successor}}' é um {{successor_role}}.",
       "no_retirement_history": "O histórico do modelo não tem nenhuma retirada deste termo.",
@@ -698,8 +717,18 @@
         "class_and_attribute_table": "A tabela {{table}} não tem classe: seu conceito é este termo, que tem colunas que não são chaves ({{columns}}).",
         "tag_wrong_kind": "Este termo tem etiquetas ({{tags}}) que só uma propriedade passa às suas colunas; ele é um {{role}}.",
         "retirement_blocked": "Este termo deveria ser retirado em {{retire_on}}, mas ainda tem dados. Retire-o com um sucessor que os receba.",
-        "no_data": "Este conceito não está ligado a nenhum termo que tenha dados."
-      }
+        "no_data": "Este conceito em rascunho não está ligado a nenhum termo que contenha dados.",
+        "approved_not_grounded": "Este termo está aprovado mas não alcança dados, por isso nenhum agente o vê.",
+        "path_pending": "Ancorado · caminho pendente de aprovação: só alcança dados através de termos ainda não aprovados.",
+        "path_pending_approve": "Ancorado · caminho pendente de aprovação: aprovar {{approve}} ancora-o."
+      },
+      "term_not_approved": "Só um termo aprovado pode ser descontinuado; este está {{status}}.",
+      "term_not_draft": "Só um termo em rascunho pode ser aprovado; este está {{status}}.",
+      "definition_required": "Dê uma definição ao termo antes de o aprovar.",
+      "not_bulk_approvable": "Só rascunhos definidos e ancorados são aprovados em conjunto; não: {{terms}}.",
+      "term_ids_required": "Indique os termos a aprovar.",
+      "impact_action": "Não há pré-visualização para essa ação.",
+      "impact_table_required": "Uma vinculação nomeia uma tabela ou uma das suas colunas."
     },
     "tag": {
       "not_on_terms": "A tag '{{tag}}' não vai num termo; só pii vai.",
@@ -739,6 +768,12 @@
         "no_description": "Este produto de dados não informa nem seu propósito nem seu uso.",
         "successor_retired": "O produto de dados que recebeu os membros deste, '{{successor}}', também foi retirado."
       }
+    },
+    "erd": {
+      "database_unavailable": "Não é possível ler os layouts do ERD: o banco de dados está indisponível",
+      "layout_not_found": "Nenhum layout chamado {{name}}",
+      "layout_name_required": "Um layout precisa de um nome",
+      "layout_place_unreadable": "O layout posiciona um(a) {{kind}} que você não pode ler"
     }
   }
 }

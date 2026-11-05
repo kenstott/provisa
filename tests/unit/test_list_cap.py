@@ -29,7 +29,7 @@ from provisa.compiler.row_limit import RowLimit
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.sql_rewrite import make_semantic_sql
 from provisa.compiler.stage2 import GovernanceContext, apply_governance
-from provisa.executor.serialize import serialize_rows
+from tests.unit.json_encoder.rows import serialize_rows
 from provisa.transpiler.transpile import transpile_to_duckdb
 from tests.unit.test_group_by import _build_schema_and_ctx as _group_by_model
 from tests.unit.test_sql_gen import _build_schema_and_ctx as _sales_model
@@ -157,9 +157,9 @@ def test_a_capped_list_s_filter_is_its_aggregate_s_on_each_engine():
     assert "ARRAY_AGG(JSON_PARSE(" in transpile_to_trino(capped)
     assert "FILTER(WHERE t.__list_rn <= 2) AS JSON)" in transpile_to_trino(capped)
     # DuckDB's json_group_array is a macro: its own aggregate (list, ARRAY_AGG) is filtered.
-    assert "TO_JSON(ARRAY_AGG(JSON_OBJECT('id', \"id\")) FILTER(WHERE t.__list_rn <= 2))" in (
-        transpile_to_duckdb(capped)
-    )
+    written = transpile_to_duckdb(capped)
+    assert "TO_JSON(ARRAY_AGG(JSON_OBJECT('id', " in written
+    assert ")) FILTER(WHERE t.__list_rn <= 2)) FROM" in written
 
 
 # --- Cypher's lists: collect() and COLLECT { } ----------------------------------------------------

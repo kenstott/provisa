@@ -385,6 +385,86 @@ class TestDomainFilter:
         assert "/catalog/products" not in spec["paths"]
 
 
+def _two_table_state() -> RoleState:
+    """``analyst`` is served orders without its amount, and no customers; ``admin`` is served both."""
+
+    def meta(table: str) -> dict:
+        return {
+            "schema_name": "public",
+            "table_name": table,
+            "domain_id": "sales",
+            "table_description": None,
+            "domain_description": None,
+            "write_ops": [],
+            "write_returns_rows": False,
+            "write_refused_forms": [],
+        }
+
+    def schema(order_fields: dict, *customers: str) -> GraphQLSchema:
+        fields = {
+            "orders": GraphQLField(GraphQLList(GraphQLObjectType("Order", order_fields))),  # type: ignore[arg-type]
+        }
+        if customers:
+            customer = GraphQLObjectType("Customer", {"id": GraphQLField(GraphQLInt)})  # type: ignore[arg-type]
+            fields["customers"] = GraphQLField(GraphQLList(customer))  # type: ignore[arg-type]
+        return GraphQLSchema(query=GraphQLObjectType("Query", fields))  # type: ignore[arg-type]
+
+    return RoleState(
+        schemas={
+            "admin": schema(
+                {"id": GraphQLField(GraphQLInt), "amount": GraphQLField(GraphQLFloat)},  # type: ignore[arg-type]
+                "customers",
+            ),
+            "analyst": schema({"id": GraphQLField(GraphQLInt)}),  # type: ignore[arg-type]
+        },
+        table_path_maps={
+            "admin": {"orders": meta("orders"), "customers": meta("customers")},
+            "analyst": {"orders": meta("orders")},
+        },
+    )
+
+
+class TestTableFilter:
+    """REQ-2158: a contract's address is the description narrowed to its one table."""
+
+    def test_the_description_holds_only_the_named_table(self):
+        spec = generate_rest_openapi_spec(_two_table_state(), "admin", tables=["orders"])
+        assert list(spec["paths"]) == ["/sales/orders"]
+        assert "Customer" not in spec["components"]["schemas"]
+        assert "Order" in spec["components"]["schemas"]
+
+    def test_it_narrows_within_the_named_domain(self):
+        state = _two_table_state()
+        narrowed = generate_rest_openapi_spec(state, "admin", domains=["sales"], tables=["orders"])
+        assert list(narrowed["paths"]) == ["/sales/orders"]
+        assert (
+            generate_rest_openapi_spec(state, "admin", domains=["hr"], tables=["orders"])["paths"]
+            == {}
+        )
+
+    def test_a_table_the_role_is_not_served_is_not_described(self):
+        spec = generate_rest_openapi_spec(_two_table_state(), "analyst", tables=["customers"])
+        assert spec["paths"] == {}
+        assert "Customer" not in spec["components"]["schemas"]
+
+    def test_the_named_table_keeps_the_rights_of_the_whole_description(self):
+        state = _two_table_state()
+        whole = generate_rest_openapi_spec(state, "analyst")
+        narrowed = generate_rest_openapi_spec(state, "analyst", tables=["orders"])
+        assert narrowed["paths"] == whole["paths"]
+        assert narrowed["components"]["schemas"]["Order"] == whole["components"]["schemas"]["Order"]
+        assert "amount" not in narrowed["components"]["schemas"]["Order"]["properties"]
+
+    def test_a_named_table_leaves_the_commands_out(self):
+        state = _two_table_state()
+        state.tracked_functions = {
+            "add": {"name": "add", "domain_id": "sales", "visible_to": ["admin"], "arguments": []}
+        }
+        assert "/sales/commands/add" in generate_rest_openapi_spec(state, "admin")["paths"]
+        narrowed = generate_rest_openapi_spec(state, "admin", tables=["orders"])
+        assert list(narrowed["paths"]) == ["/sales/orders"]
+
+
 class TestSwaggerUiTheme:
     """REQ-1434: the docs page carries the app's colour scheme in its markup.
 
@@ -452,3 +532,50 @@ class TestSwaggerSpecDownload:
         assert 'localStorage.getItem("provisa_' not in identity
         for key in ("provisa_role", "provisa_su_token", "provisa_token", "provisa_org"):
             assert f'identity("{key}")' in identity
+
+
+class TestSwaggerUiScope:
+    """The docs page describes the role and domains the app selected.
+
+    Read from ``location.search``, they were empty in the app's ``srcDoc`` frame, so the spec
+    request named no domains and Swagger listed every domain's endpoints (meta among them) with
+    only "ontology" selected in the navbar.
+    """
+
+    def _scope(self, html: str) -> dict:
+        import json
+
+        start = html.index("const scope = ") + len("const scope = ")
+        return json.loads(html[start : html.index(";\n", start)])
+
+    def test_the_selected_domains_are_stamped_into_the_page(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        html = swagger_ui_html("light", "analyst", "ontology")
+        assert self._scope(html) == {"role": "analyst", "domains": "ontology"}
+
+    def test_the_spec_request_carries_the_stamped_domains(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        html = swagger_ui_html("light", "analyst", "ontology,sales")
+        assert 'const urlDomains = scope.domains || "";' in html
+        assert 'specParams.set("domains", urlDomains)' in html
+
+    def test_the_page_never_reads_its_scope_from_the_url(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        html = swagger_ui_html("light", "analyst", "ontology")
+        assert "__PROVISA_DOC_SCOPE__" not in html
+        assert "window.location.search" not in html
+
+    def test_no_selection_is_an_empty_scope(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        assert self._scope(swagger_ui_html(None)) == {"role": "", "domains": ""}
+
+    def test_a_value_cannot_close_the_script(self):
+        from provisa.api.rest.openapi_spec import swagger_ui_html
+
+        html = swagger_ui_html("light", "</script><b>", None)
+        assert "</script><b>" not in html
+        assert self._scope(html)["role"] == "</script><b>"

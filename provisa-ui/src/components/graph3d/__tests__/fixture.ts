@@ -85,7 +85,7 @@ export const DATA: GraphData = {
 const INFO: Record<string, Partial<GraphData["nodes"][number]>> = {
   "term:customer": {
     definition: "A person or company that has bought from us.",
-    info: { status: "live", stewards: ["ada"] },
+    info: { status: "approved", stewards: ["ada"] },
   },
   "c:customers.email": { info: { dataType: "varchar", masked: true } },
   "t:customers": {

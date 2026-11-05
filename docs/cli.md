@@ -54,7 +54,7 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 
 | Flag | Default | Notes |
 | --- | --- | --- |
-| `--demo` | off | Load the bundled demo — pet-store and shelter sample domains over embedded SQLite |
+| `--demo` | off | Load the bundled demo, with pet-store and shelter sample domains over embedded SQLite |
 | `--host` | `127.0.0.1` | Bind address for both servers |
 | `--api-port` | `8000` | API server port |
 | `--ui-port` | `3000` | UI static/proxy server port |
@@ -78,12 +78,12 @@ Set them to override the defaults that `load_profile("native", ...)` would other
 
 ### Startup sequence
 
-1. Platform check — aborts with a clear message on unsupported Python or missing pgserver.
-2. `--reset` (if requested) — drops the embedded PostgreSQL cluster; it rebuilds on the next step.
-3. Demo config (if `--demo`) — sets `PROVISA_CONFIG` and `PROVISA_DEMO_DIR`.
-4. Embedded environment — starts the PostgreSQL model store, resolves its socket URL, and
+1. Platform check: aborts with a clear message on unsupported Python or missing pgserver.
+2. `--reset` (if requested): drops the embedded PostgreSQL cluster; it rebuilds on the next step.
+3. Demo config (if `--demo`): sets `PROVISA_CONFIG` and `PROVISA_DEMO_DIR`.
+4. Embedded environment: starts the PostgreSQL model store, resolves its socket URL, and
    stages offline DuckDB extensions if `provisa-duckdb-ext` is installed.
-5. Schema drift check — scans the live model store for missing columns. If any are found,
+5. Schema drift check: scans the live model store for missing columns. If any are found,
    prints a `--reset` hint and exits with code 1. V1 has no migrations; a column added in a
    newer release requires a reset.
 6. Both servers start concurrently. The ready announcer polls `GET /ready` (not `/health`, because the `/ready` endpoint confirms the store is attached and the engine is warm) and opens the browser when it returns 200.
@@ -328,7 +328,7 @@ provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 | `--dry-run` | no | Report what the deploy would do; apply nothing |
 | `--message` | no | Note carried onto an approval request when the target is protected |
 
-A load into an existing environment never applies roles. There is no `--seed`: the API refuses a seed
+A load into an existing environment never applies roles. There is no `--seed`; the API refuses a seed
 with `environments.seed_only_at_creation`.
 
 ```bash
@@ -497,6 +497,6 @@ Maintenance notice: ON
 
 ## See also
 
-- [Environments](environments.md) — environment model, protected environments, deploy approval lifecycle
-- [Metadata Export](metadata-export.md) — catalog providers, configuration, and what the snapshot contains
-- [Deployment](deployment.md) — container tier and cloud deployment
+- [Environments](environments.md): environment model, protected environments, deploy approval lifecycle
+- [Metadata Export](metadata-export.md): catalog providers, configuration, and what the snapshot contains
+- [Deployment](deployment.md): container tier and cloud deployment

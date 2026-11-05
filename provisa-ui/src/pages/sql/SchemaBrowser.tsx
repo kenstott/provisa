@@ -17,13 +17,13 @@ import { columnSqlRef, tableSqlRef } from "../../naming";
 import { DOMAIN_PAGE_SIZE } from "./types";
 import type { TopTab } from "./types";
 import type { Domain, Metric } from "../../types/admin";
-import type { RegisteredTable } from "../../types/admin";
+import type { ListedTable } from "../../types/admin";
 import { Tip } from "../../components/Tip";
 
 interface SchemaBrowserProps {
   sidebarOpen: boolean;
   setSidebarOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  domainGroups: Record<string, RegisteredTable[]>;
+  domainGroups: Record<string, ListedTable[]>;
   domainMap: Record<string, Domain>;
   expandedDomains: Set<string>;
   expandedTables: Set<string>;
@@ -36,7 +36,7 @@ interface SchemaBrowserProps {
   metrics: Metric[]; // REQ-1322
   // REQ-1322: source for the Facts/Dimensions groups. REQ-1723: the caller pre-filters this (and
   // `metrics` below) to the checked domains — the same set the SCHEMA tree below is built from.
-  tables: RegisteredTable[];
+  tables: ListedTable[];
 }
 
 // REQ-1322: a compact table row inside the Facts/Dimensions modeling groups.
@@ -47,7 +47,7 @@ function ModelingTableRow({
   insertAtCursor,
   group,
 }: {
-  tbl: RegisteredTable;
+  tbl: ListedTable;
   topTab: TopTab;
   insertAtCursor: (text: string) => void;
   group: string;

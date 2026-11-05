@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { RegisteredTable, Relationship, Domain, TableColumn } from "../../types/admin";
+import type { ListedTable, Relationship, Domain, ListedColumn } from "../../types/admin";
 
 export type ColumnDetail = "all" | "key" | "none";
 
@@ -30,7 +30,7 @@ export interface ErdNodeTable {
   tableId: number;
   tableName: string;
   description: string;
-  columns: TableColumn[];
+  columns: ListedColumn[];
   // REQ-1588: this table is declared as the junction of at least one relationship, so it is drawn
   // as an edge waypoint (diamond) rather than an entity.
   junction: boolean;
@@ -39,6 +39,8 @@ export interface ErdNodeTable {
 export interface ErdEdge {
   type: "rel";
   id: string;
+  // The relationship the line draws: what a click on it opens (REQ-2187).
+  relationshipId: string;
   source: string;
   target: string;
   cardinality: string;
@@ -69,7 +71,7 @@ export interface ErdElements {
 
 const SEPARATOR = "─".repeat(18);
 
-function colPrefix(col: TableColumn): string {
+function colPrefix(col: ListedColumn): string {
   if (col.isPrimaryKey) return "🔑 ";
   if (col.isForeignKey) return "⇝ ";
   return "  ";
@@ -77,7 +79,7 @@ function colPrefix(col: TableColumn): string {
 
 export function buildTableLabel(
   name: string,
-  columns: TableColumn[],
+  columns: ListedColumn[],
   columnDetail: ColumnDetail,
 ): { label: string; lineCount: number } {
   if (columnDetail === "none") return { label: name, lineCount: 1 };
@@ -113,7 +115,7 @@ function cardinalityLabel(cardinality: string): string {
 // Returns null if the table's domain is hidden (not rendered at all).
 function resolveEndpoint(
   tableId: number,
-  tableMap: Map<number, RegisteredTable>,
+  tableMap: Map<number, ListedTable>,
   visibleTableIds: Set<number>,
   collapsedDomains: Set<string>,
   hiddenDomains: Set<string>,
@@ -127,7 +129,7 @@ function resolveEndpoint(
 }
 
 export function buildErdElements(
-  tables: RegisteredTable[],
+  tables: ListedTable[],
   relationships: Relationship[],
   domains: Domain[],
   collapsedDomains: Set<string>,
@@ -235,6 +237,7 @@ export function buildErdElements(
     const data = {
       type: "rel",
       id: isProxy ? `rp:${key}` : `r:${r.id}${opts.leg ? `:${opts.leg}` : ""}`,
+      relationshipId: String(r.id),
       source: src,
       target: tgt,
       cardinality: r.cardinality,

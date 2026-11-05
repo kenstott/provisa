@@ -81,7 +81,13 @@ class _Postgres:
         subprocess.run(
             ["docker", "run", "-d", "--rm", "--memory", "512m", "--name", self._name]
             + ["-e", "POSTGRES_USER=provisa", "-e", "POSTGRES_PASSWORD=provisa"]
-            + ["-e", "POSTGRES_DB=provisa", "-p", f"127.0.0.1:{self.port}:5432", "postgres:16"],
+            + [
+                "-e",
+                "POSTGRES_DB=provisa",
+                "-p",
+                f"127.0.0.1:{self.port}:5432",
+                "pgvector/pgvector:pg16-trixie",
+            ],
             check=True,
             capture_output=True,
         )
@@ -174,7 +180,7 @@ def provisa(postgres, tmp_path_factory):
                         "visible_to": both,
                         "masks": [
                             {"to": ["org_admin"], "mask": None},
-                            {"to": ["*"], "mask": {"type": "constant", "value": "***"}},
+                            {"mask": {"type": "constant", "value": "***"}},  # every other reader
                         ],
                     },
                     {"name": "internal_note", "data_type": "varchar", "visible_to": ["org_admin"]},
@@ -453,7 +459,12 @@ def test_sdl_is_the_declared_roles_visibility(provisa_sdl):
 
 def test_only_the_declared_role_is_served_as_the_subgraph(provisa):
     resp = _graphql(provisa, "org_admin", "query { _service { sdl } }")
-    assert resp.status_code == 400, resp.text
+    # Another role's schema has no _service: the document does not validate, answered with its
+    # errors and no data -- 200 under application/json (REQ-2167).
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "data" not in body, body
+    assert any("'_service'" in e["message"] for e in body["errors"]), body
 
 
 def test_entities_hold_the_declared_roles_row_rule_and_mask(provisa, order_type):

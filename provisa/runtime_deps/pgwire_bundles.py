@@ -36,7 +36,7 @@ from typing import IO, Callable, cast
 
 # The pinned upstream release the whole bundle set is fetched from (REQ-956). One version knob — a
 # bundle path is always namespaced by this tag, so a version bump caches side by side, never in place.
-RELEASE_TAG = "engine-v0.123.1"
+RELEASE_TAG = "engine-v0.123.2"
 # Connectors whose bundle comes from a release other than RELEASE_TAG. The one table of such
 # overrides; a connector absent here is at RELEASE_TAG. Each entry is removed when RELEASE_TAG
 # moves to (or past) its release. Empty: from engine-v0.117.0 no connector's catalog counts the
@@ -182,6 +182,21 @@ def default_cache_root() -> Path:
     if env:
         return Path(env)
     return Path.home() / ".cache" / "provisa" / "runtime_deps"
+
+
+def prune_releases(cache_root: Path | None = None) -> list[str]:
+    """Delete from the cache each engine release no connector here is pinned to, and return their
+    names. Each RELEASE_TAG bump caches beside the last: six releases held 13 GB of the sandbox
+    VM's 49 GB disk (2026-10-31). Only a deployment with one Provisa on its cache runs this: a
+    developer's is shared by worktrees at other releases."""
+    root = cache_root if cache_root is not None else default_cache_root()
+    if not root.is_dir():
+        return []
+    kept = {RELEASE_TAG, *CONNECTOR_RELEASE.values()}
+    gone = sorted(p for p in root.glob("engine-v*") if p.is_dir() and p.name not in kept)
+    for release in gone:
+        shutil.rmtree(release)
+    return [release.name for release in gone]
 
 
 # Fetch a bundle's release asset and lay it out under ``dest``. Injected at the resolver so tests

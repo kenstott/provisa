@@ -61,6 +61,11 @@ def _model_holds_the_joined_tables(monkeypatch):
     views join, registered on source ``src``."""
     from provisa.api.app import state
 
+    # The model is read whole -- registered tables, the model-wide context, source catalogs and
+    # the view registry -- so each is this test's own, never what an earlier test left.
+    monkeypatch.setattr(state, "view_context", None)
+    monkeypatch.setattr(state, "source_catalogs", {})
+    monkeypatch.setattr(state, "mv_registry", MVRegistry())
     monkeypatch.setattr(
         state,
         "tables",
@@ -156,7 +161,7 @@ def _register_the_joined_tables(monkeypatch, *, customers: list[str] | None) -> 
         raising=False,
     )
 
-    async def _tables(_state):
+    async def _tables(_state, *, catalog=False):
         if customers is None:
             return []
         return [
@@ -200,8 +205,8 @@ class TestBuildRefreshSQL:
 
         platform = {
             "regions": [
-                {"id": "eu", "address": "https://eu.example.com"},
-                {"id": "us", "address": "https://us.example.com"},
+                {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+                {"id": "us", "description": "The us region", "purposes": ["residency"]},
             ]
         }
         mv = _sql_mv()

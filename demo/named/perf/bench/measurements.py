@@ -19,6 +19,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from server_answer import checked
+
 _DOCKER_STATS = ["docker", "stats", "--no-stream", "--format", "{{.Name}} {{.CPUPerc}}"]
 _DOCKER_TIMEOUT_S = 30
 
@@ -211,7 +213,7 @@ def _send(transport: str, client: Any, query: Any, role: str) -> Mapping[str, An
         resp = client.post(
             "/data/cypher", json={"query": query.cypher, "params": {}}, headers=headers
         )
-    resp.raise_for_status()
+    checked(resp)
     return resp.json()
 
 

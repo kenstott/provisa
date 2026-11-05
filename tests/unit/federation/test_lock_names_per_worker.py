@@ -36,6 +36,7 @@ _MODULES = (
     "tests.unit.federation.test_replica_retry_backoff",
     "tests.unit.federation.test_replica_runner",
     "tests.unit.federation.test_replica_write_lock",
+    "tests.unit.test_mv_view_indexes",
 )
 
 

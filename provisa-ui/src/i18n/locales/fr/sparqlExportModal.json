@@ -13,6 +13,7 @@
     },
     "download": "Télécharger",
     "close": "Fermer",
-    "empty": "Exécutez une requête pour exporter son résultat."
+    "empty": "Exécutez une requête pour exporter son résultat.",
+    "unnamedEdges": "Les arêtes de ce graphe ne nomment aucun prédicat : il ne contient donc aucun triplet à écrire en RDF."
   }
 }

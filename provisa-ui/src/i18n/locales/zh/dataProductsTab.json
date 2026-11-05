@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "打开 {{successor}}",
     "contract": {
       "label": "数据契约",
-      "hint": "每个输出端口的契约：以其自身版本承诺的内容",
+      "hint": "每个输出端口的契约：以其自身版本声明的内容",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "已提议",
@@ -177,8 +177,8 @@
       "versionLabel": "契约版本",
       "statusLabel": "契约状态",
       "descriptionLabel": "用途说明",
-      "columnsLabel": "承诺的列",
-      "columnsHelp": "不再承诺某列或更改其类型，需要新版本。",
+      "columnsLabel": "列",
+      "columnsHelp": "删除某列或更改其类型，需要新版本。",
       "requiredLabel": "从不为空",
       "slaLabel": "服务级别",
       "slaProperty": "属性",
@@ -187,6 +187,32 @@
       "slaRemove": "移除服务级别",
       "slaAdd": "添加服务级别",
       "notDeclared": "未声明",
+      "notDeclaredList": "未声明：{{names}}",
+      "versionSaved": "保存",
+      "versionChanges": "变更",
+      "constraints": "约束",
+      "breakingWarning": "v{{version}} 中有破坏性变更，尚未生效",
+      "breaking": "破坏性",
+      "savedBy": "由 {{who}} 于 {{when}} 保存",
+      "savedBySystem": "系统",
+      "noChanges": "第一个版本：没有可比较的内容",
+      "change": {
+        "field_added": "已添加字段 {{subject}}，{{after}}",
+        "field_removed": "已移除字段 {{subject}}，原为 {{before}}",
+        "field_renamed": "字段 {{subject}} 已重命名为 {{after}}",
+        "field_type_changed": "字段 {{subject}} 已从 {{before}} 改为 {{after}}",
+        "field_required": "字段 {{subject}} 已设为必填",
+        "field_optional": "字段 {{subject}} 不再必填",
+        "field_described": "字段 {{subject}} 的描述已更改",
+        "sla_added": "已添加服务级别 {{subject}}，{{after}}",
+        "sla_removed": "已移除服务级别 {{subject}}，原为 {{before}}",
+        "sla_changed": "服务级别 {{subject}} 已从 {{before}} 改为 {{after}}",
+        "check_added": "已添加质量检查 {{subject}}",
+        "check_removed": "已移除质量检查 {{subject}}",
+        "check_changed": "质量检查 {{subject}} 已更改",
+        "description_changed": "描述已更改",
+        "terms_changed": "条款已更改：{{subject}}"
+      },
       "loadError": "无法读取契约：{{error}}",
       "notExported": "{{member}} 没有已导出的契约",
       "section": {
@@ -195,7 +221,7 @@
         "quality": "质量",
         "sla": "SLA",
         "support": "支持与团队",
-        "servers": "服务器",
+        "howToUse": "使用方式",
         "pricing": "定价",
         "custom": "自定义属性和标签"
       },
@@ -214,6 +240,65 @@
         "customProperties_other": "{{count}} 个自定义属性",
         "tags_one": "{{count}} 个标签",
         "tags_other": "{{count}} 个标签"
+      },
+      "empty": "此产品没有带数据契约的输出端口。",
+      "consumers_one": "{{count}} 个消费方",
+      "consumers_other": "{{count}} 个消费方",
+      "freshness": "{{seconds}} 秒内保持新鲜",
+      "loadedOnce": "仅加载一次，从不刷新",
+      "noSla": "未声明服务级别",
+      "checkedAt": "检查于 {{when}}",
+      "neverChecked": "从未检查",
+      "draftWarning": "草稿：尚未生效",
+      "card": {
+        "details": "详情",
+        "fields": "列",
+        "sla": "SLA 与新鲜度",
+        "quality": "承诺",
+        "consumers": "消费方",
+        "versions": "版本与变更",
+        "roles": "角色",
+        "history": "版本历史"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "接口",
+          "address": "地址",
+          "how": "使用方式",
+          "link": "示例"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "任意 PostgreSQL 客户端，例如 psql 或 DBeaver。数据库 {{database}}，模式 {{schema}}。",
+          "flight-sql": "任意 Arrow Flight SQL 客户端，例如 ADBC 驱动。数据库 {{database}}，模式 {{schema}}。",
+          "grpc": "任意 gRPC 客户端，调用服务 {{service}}，并带上元数据 authorization: Bearer <token>。",
+          "graphql": "任意 GraphQL 客户端：对此表 POST 一个查询，并带上请求头 Authorization: Bearer <token>。",
+          "rest": "任意 HTTP 客户端：GET 此地址，并带上请求头 Authorization: Bearer <token>。",
+          "openapi": "仅包含此表的描述：可加载到 Swagger UI、Postman 或客户端生成器中。",
+          "jsonapi": "任意 JSON:API 客户端：GET 此地址，并带上请求头 Authorization: Bearer <token>。",
+          "sparql": "任意 SPARQL 1.1 客户端：对此表的类 POST 一个查询，并带上请求头 Authorization: Bearer <token>。"
+        },
+        "access": {
+          "granted": "须由 {{approvers}} 授予访问权限后才能使用。",
+          "noApprover": "须由 {{roles}} 的持有者授予访问权限后才能使用。此合约未指定审批人。",
+          "undeclared": "须授予访问权限后才能使用。此合约未指定角色或审批人。"
+        },
+        "ask": {
+          "approvers": "向 {{approvers}} 申请访问权限",
+          "roles": "向 {{roles}} 的持有者申请访问权限",
+          "nobody": "此合约未指定可联系的人"
+        },
+        "open": "打开示例",
+        "openAria": "打开 {{table}} 的 {{surface}} 示例"
       }
     }
   }

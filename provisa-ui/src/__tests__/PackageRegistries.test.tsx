@@ -12,6 +12,7 @@
 // hosts every Node and Python install of the organisation goes through. Each field is shown again as it was entered, a new entry is
 // added with nothing in it, and an entry is not saved until it has its address and credential.
 // REQ-2088: each entry may carry the PEM certificate authority its server's TLS chains to.
+// REQ-2200: Go module proxies are a fourth list, beside npm, PyPI and Git.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../test-utils/render";
@@ -144,6 +145,38 @@ describe("Admin › Package registries", () => {
         address: "https://pypi.acme.test/simple/",
         scope: null,
         credential: "tok",
+        mirror: true,
+        ca_bundle: null,
+      }),
+    );
+  });
+
+  it("adds a Go module proxy with no scope, which may be the default proxy", async () => {
+    // REQ-2200: Go modules have no scope; the credential is the go command's user:password.
+    list.mockResolvedValue([]);
+    render(<PackageRegistriesTab />);
+    expect(await screen.findByTestId("package-registries-goproxy-none")).toHaveTextContent(
+      en.packageRegistries.goproxyNone,
+    );
+    fireEvent.click(screen.getByTestId("package-registries-add-goproxy"));
+    const card = await screen.findByTestId(/^package-registry-new-goproxy-\d+$/);
+    const id = card.getAttribute("data-testid") as string;
+    expect(screen.queryByTestId(`${id}-scope`)).toBeNull();
+    expect(card).toHaveTextContent(en.packageRegistries.goproxyCredential);
+    fireEvent.change(screen.getByTestId(`${id}-address`), {
+      target: { value: "https://goproxy.acme.test" },
+    });
+    fireEvent.change(screen.getByTestId(`${id}-credential`), {
+      target: { value: "ada:made-up-proxy-token" },
+    });
+    fireEvent.click(screen.getByTestId(`${id}-mirror`));
+    fireEvent.click(screen.getByTestId(`${id}-save`));
+    await waitFor(() =>
+      expect(add).toHaveBeenCalledWith("acme", {
+        kind: "goproxy",
+        address: "https://goproxy.acme.test",
+        scope: null,
+        credential: "ada:made-up-proxy-token",
         mirror: true,
         ca_bundle: null,
       }),

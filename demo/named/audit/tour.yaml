@@ -1,0 +1,111 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The audit demo's own tour (REQ-2010): the story of the demo, told with its own data. The step
+# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
+# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
+# tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the scenario (the firm's question, and its two kinds of data); how the pieces fit
+# (the client's schedule and award records, the public filings and county obligations, the joins,
+# the words of a Single Audit); the solution, told as an analyst resolving the partner's request
+# with Polly -- which awards the client records, what its award records show, where they differ,
+# which differences are timing and which are missing awards, what goes in the readiness memo --
+# each answer stored at the bundle build with the SQL behind it; then the same answer as
+# predesigned queries: every client's open items in SQL, the same match on the public filings,
+# one engagement team's view of it, its lineage, in GraphQL and over REST; a recap.
+# Where the tour's "Look around on my own" leaves the visitor: the SQL page, with its example queries.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+- key: auditScenario
+  route: /sources
+  capability: source_registration
+  source: firm
+- key: auditGovdata
+  source: govdata
+- key: auditSchedule
+  route: /tables
+  capability: table_registration
+  table: firm.grant_schedule
+- key: auditNotices
+  table: firm.award_notices
+- key: auditFiled
+  table: govdata.fac_awards_vs_usaspending
+- key: auditCounty
+  table: govdata.usaspending_assistance_by_county
+- key: auditRecordedAs
+  route: /relationships
+  capability: create_relationship
+  relationship: RECORDED_AS
+- key: auditCountyJoin
+  relationship: OBLIGATED_IN
+- key: auditTerms
+  route: /admin/ontology
+  capability: glossary_read
+  term: Schedule of Expenditures of Federal Awards
+- key: auditRequest
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT c.client_name, s.aln, s.program_name, s.is_direct, s.amount_expended
+    FROM "audit"."grant_schedule" AS s
+    JOIN "audit"."clients" AS c ON c.client_id = s.client_id
+    WHERE c.client_name = 'Brindlewood Community Health'
+    ORDER BY s.amount_expended DESC
+- key: auditPollySchedule
+  polly: Which federal awards does Brindlewood Community Health's 2023 schedule record?
+- key: auditPollyRecords
+  polly: What do Brindlewood Community Health's federal award records show obligated to it in federal fiscal 2023?
+- key: auditPollyDiffer
+  polly: Where do Brindlewood Community Health's schedule and its federal award records differ?
+- key: auditPollyKinds
+  polly: Which of Brindlewood Community Health's differences are timing differences, and which are missing awards?
+- key: auditPollyMemo
+  polly: What goes in Brindlewood Community Health's readiness memo?
+- key: auditAnswer
+  sql: >-
+    SELECT r.client_name, r.aln, r.program_name, r.amount_expended, r.obligated_fy2023,
+           r.obligated_earlier, r.finding, r.county_obligated
+    FROM "audit"."view_readiness" AS r
+    WHERE r.finding IN ('timing', 'missing', 'unrecorded')
+    ORDER BY r.client_name, r.aln
+- key: auditPublic
+  sql: >-
+    SELECT p.state, p.aln, p.program_name, p.lines, p.matched_lines, p.unmatched_lines
+    FROM "audit"."view_public_match" AS p
+    WHERE p.is_direct = 'Y'
+    ORDER BY p.unmatched_lines DESC
+    LIMIT 15
+- key: auditAsTeam
+  role: maine_team
+  sql: >-
+    SELECT r.client_name, r.state, r.aln, r.program_name, r.finding
+    FROM "audit"."view_readiness" AS r
+    ORDER BY r.client_name, r.aln
+- key: auditLineage
+  route: /lineage
+  capability: view_governance
+  lineage: >-
+    SELECT r.client_name, r.aln, r.amount_expended, r.obligated_fy2023, r.finding,
+           r.county_obligated
+    FROM "audit"."view_readiness" AS r
+- key: auditExample
+  route: /query
+  capability: query_development
+  example: 1-open-items
+- key: auditRest
+  route: /openapi
+  capability: query_development
+  api: GET /data/rest/audit/view_readiness?groupBy=finding&aggregate=count,sum
+- key: auditRecap
+  route: /sources
+  capability: source_registration
+  source: govdata

@@ -139,7 +139,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
 
   // Group tables by normalized domain
   const domainGroups = useMemo(() => {
-    const groups: Record<string, import("../types/admin").RegisteredTable[]> = {};
+    const groups: Record<string, import("../types/admin").ListedTable[]> = {};
     for (const t of tables) {
       const d = t.domainId ? domainToSqlName(t.domainId) : "(no domain)";
       (groups[d] = groups[d] || []).push(t);

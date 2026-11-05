@@ -14,7 +14,7 @@ The admin web app uses Apollo Client, pointed at `${API_BASE}/admin/graphql`.
 
 Every request carries a bearer token (fetched fresh from the auth provider on each call), an `X-Org-Id` header when multi-tenant, and an `X-Env` header when serving a branch environment.
 
-The schema is assembled from two `@strawberry.type` classes — `Query` from `schema_query.py` and `Mutation` from `schema_mutation.py` — and wrapped in a `ModelCommitExtension` that records every mutation against the current environment branch.
+The schema is assembled from two `@strawberry.type` classes, `Query` from `schema_query.py` and `Mutation` from `schema_mutation.py`, and wrapped in a `ModelCommitExtension` that records every mutation against the current environment branch.
 
 ---
 
@@ -101,7 +101,7 @@ Non-GET operations for an OpenAPI source (POST, PUT, PATCH, DELETE). Returns an 
 
 #### `crawlSource(path, depth, pattern, recursive, simpleLinks, sameDomain, excludePattern) → CrawlResultType`
 
-Preview what a file-connector crawl would discover — files, tables, and columns — before a source is created. The HTTP-only settings (`simpleLinks`, `sameDomain`, `excludePattern`) are ignored for local, S3, FTP, and SFTP roots.
+Preview the files, tables and columns a file-connector crawl would discover before a source is created. The HTTP-only settings (`simpleLinks`, `sameDomain`, `excludePattern`) are ignored for local, S3, FTP, and SFTP roots.
 
 #### `suggestTableAlias(tableName: String!, domainId: String!, sourceId: String!) → String!`
 
@@ -113,14 +113,14 @@ Returns the alias to use when registering `tableName` in `domainId` from `source
 
 #### `tables → [RegisteredTableType!]!`
 
-All registered tables, each with their full column list. Column visibility in the response respects the caller's `table_registration` capability: `canDeployToDb` is gated on whether the caller holds that right.
+All registered tables, each with their full column list. Column visibility in the response respects the caller's `table_registration` capability. `canDeployToDb` is gated on whether the caller holds that right.
 
 Each `RegisteredTableType` exposes computed sub-fields:
 
-- **`refreshPolicySummary → RefreshPolicySummaryType`** — the effective refresh/serving policy as plain text, derived server-side from the same planner resolution the engine uses. Returns `null` during startup.
-- **`graphqlFieldName → String`** — the field name this table has in the compiled data-plane schema, so the Data Product panel can build a runnable example without replicating the naming algorithm.
-- **`dqDataset → String`** — this table as a data-quality contract dataset, in the form the checker scans.
-- **`productId → String`** — the data product this table belongs to. A DQ-checker table inherits the product of the table its contract scans.
+- **`refreshPolicySummary → RefreshPolicySummaryType`.** The effective refresh/serving policy as plain text, derived server-side from the same planner resolution the engine uses. Returns `null` during startup.
+- **`graphqlFieldName → String`.** The field name this table has in the compiled data-plane schema, so the Data Product panel can build a runnable example without replicating the naming algorithm.
+- **`dqDataset → String`.** This table as a data-quality contract dataset, in the form the checker scans.
+- **`productId → String`.** The data product this table belongs to. A DQ-checker table inherits the product of the table its contract scans.
 
 #### `refreshPolicyPreview(...) → RefreshPolicySummaryType`
 
@@ -130,7 +130,7 @@ Arguments: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `repli
 
 #### `columnDependents(tableId: String!, renamed: [String!], removed: [String!]) → [ColumnDependentsType!]!`
 
-Artifacts that a pending alias rename or column drop would break. It is advisory: the admin UI shows this before saving and the administrator decides. Must be called *before* saving, because the dependents were authored against the exposed name the column currently carries.
+Artifacts that a pending alias rename or column drop would break. It is advisory. The admin UI shows this before saving and the administrator decides. Must be called *before* saving, because the dependents were authored against the exposed name the column currently carries.
 
 ---
 
@@ -146,8 +146,8 @@ Same as `relationships`, but includes `meta:%` synthetic entries. Used by the gr
 
 Each `RelationshipType` exposes:
 
-- **`autoSuggested → Boolean`** — whether the relationship was suggested by FK analysis (`id` starts with `fk__`).
-- **`physicalName → String`** — the relationship's name on the SQL and gRPC planes (the `?include=` parameter). Derived server-side; clients must not transliterate the GraphQL alias.
+- **`autoSuggested → Boolean`.** Whether the relationship was suggested by FK analysis (`id` starts with `fk__`).
+- **`physicalName → String`.** The relationship's name on the SQL and gRPC planes (the `?include=` parameter). Derived server-side; clients must not transliterate the GraphQL alias.
 
 ---
 
@@ -266,7 +266,7 @@ One check's text from the panel's editors. Server-side because the dialect has o
 
 #### `dqContractBuild(checker: String!, dataset: String!, checks: [DqCheckInput!]!) → DqContractTextType`
 
-Serialize edited check rows back into contract text. The inverse of `dqContractParse`. Server-side for the same reason: the panel cannot emit text the checker would refuse.
+Serialize edited check rows back into contract text. The inverse of `dqContractParse`. Server-side for the same reason, so the panel cannot emit text the checker would refuse.
 
 ---
 
@@ -368,7 +368,7 @@ Set when a source's tables are served from their replicas: `null` Default, `-1` 
 
 #### `updateSourceLoadProtection(sourceId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 
-Mark a source load-protected (scheduled-refresh-only). Requires at least one gate — off-peak window, cache TTL cadence, or a probing change signal — or the call fails.
+Mark a source load-protected (scheduled-refresh-only). Requires at least one gate (off-peak window, cache TTL cadence, or a probing change signal), or the call fails.
 
 #### `updateSourceNaming(sourceId: String!, gqlNamingConvention: String) → MutationResult`
 
@@ -396,11 +396,11 @@ Run `ANALYZE` on all registered tables for a source. Improves join-order and bro
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-Register a new table (or view) into a domain, with every setting the input carries, among them `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` and `draft`, in one transaction: a refusal of any one registers nothing. Requires `table_registration` capability and membership in the target domain; carrying `writeGrants` also requires `masking_config` there. A caller lacking `create_relationship` who submits a view is queued as a creation request for a rights-holder to approve.
+Register a new table (or view) into a domain, with every setting the input carries, among them `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` and `draft`, in one transaction, so a refusal of any one registers nothing. Requires `table_registration` capability and membership in the target domain; carrying `writeGrants` also requires `masking_config` there. A caller lacking `create_relationship` who submits a view is queued as a creation request for a rights-holder to approve.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-Update an existing table's alias, description, column metadata, MV settings, live-delivery config and the settings the input carries (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), in one transaction: a refusal of any one saves nothing. A setting left out keeps its stored value. Requires `table_registration`.
+Update an existing table's alias, description, column metadata, MV settings, live-delivery config and the settings the input carries (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), in one transaction, so a refusal of any one saves nothing. A setting left out keeps its stored value. Requires `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -552,7 +552,7 @@ On a column, `alsoTerm: true` puts the tag on the column's term instead. The res
 
 #### `unassignTag(input: TagAssignmentInput!) → MutationResult`
 
-Remove a tag assignment, from a term too (`objectType: "term"`, `termId`). Removing `pii` from a column that carries it through its term is refused (`tag.inherited_from_term`): unmark the term, or move the column to a term that matches what it holds.
+Remove a tag assignment, from a term too (`objectType: "term"`, `termId`). Removing `pii` from a column that carries it through its term is refused (`tag.inherited_from_term`). Unmark the term, or move the column to a term that matches what it holds.
 
 #### `upsertTagParamValue(input: TagParamValueInput!) → MutationResult`
 
@@ -620,7 +620,7 @@ Purge cached results for one table.
 
 #### `createScheduledTask(id, name, cron, kind, webhookName, argsJson, sql) → MutationResult`
 
-Create a scheduled trigger — either a webhook call or a SQL statement — and register it live in APScheduler. `kind` is `"webhook"` or `"sql"`.
+Create a scheduled trigger, either a webhook call or a SQL statement, and register it live in APScheduler. `kind` is `"webhook"` or `"sql"`.
 
 #### `deleteScheduledTask(taskId: String!) → MutationResult`
 
@@ -660,7 +660,7 @@ Approve a creation request: the same rule, refusals and admin-trail entries as `
 
 #### `executeCreationRequest(requestId: Int!) → MutationResult`
 
-Carries out a creation request that has had its approvals — relationship, view, table, source or webhook — through the code the direct mutation uses. Refused with `requests.approvals_incomplete` until the request's required approvals are met (one, or two for a relationship) by users other than the requester; a relationship request is also refused with `requests.waiting_on_domains` while a domain it touches has no approver. Approvals are given through `POST /admin/creation-requests/{id}/approve`, and the approval that completes the count performs the creation, so this mutation serves to retry a creation that failed. A failed creation leaves the request pending and answers with the failure's own code.
+Carries out a creation request that has had its approvals (relationship, view, table, source or webhook) through the code the direct mutation uses. Refused with `requests.approvals_incomplete` until the request's required approvals are met (one, or two for a relationship) by users other than the requester; a relationship request is also refused with `requests.waiting_on_domains` while a domain it touches has no approver. Approvals are given through `POST /admin/creation-requests/{id}/approve`, and the approval that completes the count performs the creation, so this mutation serves to retry a creation that failed. A failed creation leaves the request pending and answers with the failure's own code.
 
 #### `rejectCreationRequest(requestId: Int!, reason: String!) → MutationResult`
 
@@ -745,7 +745,7 @@ The core table registration input. Key fields beyond the basics:
 | `mvCalendar` | Snapshot calendar name |
 | `mvGrain` | Snapshot grain: `daily`, `weekly`, `monthly`, `annual`, or custom `3WE` / `LFR` |
 | `viewSql` | SQL for a derived view |
-| `viewMetrics` | Declarative metric-composed view spec — mutually exclusive with `viewSql` |
+| `viewMetrics` | Declarative metric-composed view spec; mutually exclusive with `viewSql` |
 | `dqContract` | YAML/JSON data quality contract text |
 | `queryTemplate` | Cypher for a Neo4j table |
 | `live` | Live delivery config for SSE/Kafka push |

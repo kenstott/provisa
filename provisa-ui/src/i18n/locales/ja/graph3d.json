@@ -64,6 +64,7 @@
     "edge_owns": "所有",
     "loadError": "グラフを読み込めませんでした: {{error}}",
     "zoomTo": "ズーム",
+    "openInErd": "ERDで開く",
     "edge_column_lineage": "列に供給",
     "preset_taxonomy": "タクソノミー",
     "layer_domains": "ドメイン",
@@ -77,7 +78,6 @@
     "ontologyView": "オントロジービュー",
     "orphans": "孤立",
     "columnsToggle": "列",
-    "tablesToggle": "テーブル",
     "allEdgeTypes": "すべてのエッジ種別",
     "someEdgeTypes": "{{total}} 件中 {{count}} 件のエッジ種別",
     "allDomains": "すべてのドメイン",
@@ -92,7 +92,6 @@
     "look_in_product": "データプロダクト内の列",
     "look_out_of_product": "データプロダクト外の列",
     "look_stored": "テーブル",
-    "status_live": "有効",
     "openAsQuery": "クエリとして開く",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",
@@ -116,6 +115,7 @@
     "status_draft": "下書き",
     "openAsQueryNoSparql": "このクエリには SPARQL 形式がありません。",
     "openAsQuerySparqlRoots": "このクエリの各ルートはそれぞれ別の SPARQL クエリです。1 つずつ読むには GraphQL を開いてください。",
+    "status_approved": "承認済み",
     "lane_term": "用語",
     "lane_column": "列",
     "lane_table": "テーブル",
@@ -145,6 +145,8 @@
     "quality_none": "未実行",
     "factOwner": "オーナー",
     "factMembers": "メンバーテーブル",
-    "factColumns": "列"
+    "factColumns": "列",
+    "grounding_grounded": "紐付け済み",
+    "grounding_grounded_pending": "紐付け済み、下書き経由"
   }
 }

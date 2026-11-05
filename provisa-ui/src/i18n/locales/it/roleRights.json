@@ -31,7 +31,8 @@
     "reach_public": "pubblico",
     "scope_domain": "dominio",
     "scope_public": "pubblico",
-    "scope_restricted": "riservato",
+    "scope_listed": "elencato",
+    "scope_own-domain": "dominio proprio",
     "write_insert": "inserimento",
     "write_update": "aggiornamento",
     "write_delete": "eliminazione"

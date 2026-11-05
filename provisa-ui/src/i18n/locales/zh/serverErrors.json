@@ -10,6 +10,7 @@
       "test_endpoint_disabled": "测试终结点已禁用（在非生产环境中设置 PROVISA_ENABLE_TEST_ENDPOINTS 以启用）。",
       "unknown_action_type": "未知的 actionType '{{action_type}}'",
       "unknown_role": "未知角色 '{{role}}'",
+      "mask_unreachable": "您定义了不可到达的脱敏规则：{{entries}}",
       "webhook_not_found": "未找到 Webhook '{{name}}'",
       "written_table_not_registered": "'{{table}}' 不是数据源 '{{source_id}}' 的已注册表",
       "function_exists": "函数 '{{name}}' 已存在",
@@ -93,7 +94,6 @@
       "no_grpc_query_for_table": "表 '{{table}}' 没有已注册的 gRPC 查询",
       "no_mutation_fields": "未找到变更字段",
       "no_proto_for_role": "角色 '{{role_id}}' 没有 proto：它没有数据面，因为它未覆盖任何域，或仅拥有控制平面权限",
-      "role_served_nothing": "角色 '{{role_id}}' 未获提供任何表：未授予其任何表的任何列",
       "no_query_field_for_proto_type": "角色 '{{role_id}}' 下没有 proto 类型 '{{type_name}}' 的查询字段",
       "no_query_fields": "未找到查询字段",
       "no_role": "没有角色 '{{role_id}}'",
@@ -130,12 +130,14 @@
       "address_not_found": "没有可解析的内容：{{reason}}",
       "mixed_resolve_and_other_fields": "resolve 不能在同一操作中与其他根字段组合使用",
       "source_starting": "源 {{source}} 仍在启动。请稍后重试。",
+      "source_unavailable": "源 {{source}} 无法响应。请稍后重试。",
       "view_outside_load_window": "视图 {{view}} 只能在其读取时段内读取。下次开放时间为 {{opens_at}}。",
       "graphql_body_missing": "请求没有正文:GraphQL 请求是包含查询的 JSON 对象。",
       "graphql_body_not_json": "请求正文不是 JSON:{{error}}",
       "graphql_request_not_object": "GraphQL 请求是包含查询的 JSON 对象。",
       "graphql_parameter_type": "GraphQL 请求的 {{parameter}} 必须是 {{expected}}。",
-      "graphql_mutation_over_get": "变更操作用 POST 发送,绝不用 GET。"
+      "graphql_mutation_over_get": "变更操作用 POST 发送,绝不用 GET。",
+      "listed_only": "角色 {{role}} 只能列出 {{table}}：可以读取其元数据，不能读取其数据"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",
@@ -156,7 +158,7 @@
       "in_use": "仍有 {{count}} 项引用 {{env}}。请移除或更改每一项，然后再次删除。"
     },
     "front_door": {
-      "coordinator_waking": "环境正在启动，大约两分钟后就绪。",
+      "coordinator_waking": "环境正在启动，大约五分钟后就绪。",
       "coordinator_updating": "环境正在更新，很快就会恢复。"
     },
     "functions": {
@@ -269,6 +271,10 @@
       "classification_decision_not_found": "没有关于 {{column}} 作为 {{kind}} 的决定",
       "classification_pii_refused": "无法将该列标记为 PII"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} 是 meta 域的目录视图,不能与数据源的表在同一条语句中读取:请用两条语句分别读取。",
+      "function_unsupported": "{{function}}() 在 {{dialect}} 上没有对应形式。"
+    },
     "replication": {
       "answer_not_json": "为 {{table}} 的副本读取的响应不是有效的 JSON：[{{content_type}}] {{cause}}（位于响应第 {{before_byte}} 字节之前的 {{kib}} KiB 内）。",
       "no_whole_copy": "源 {{source}} 的表 {{schema}}.{{table}} 没有可构建的完整副本：它按行复制，或者带有参数列。",
@@ -288,7 +294,8 @@
       "not_found": "未找到角色",
       "org_selection_required": "需要先选择组织",
       "already_exists": "角色 '{{role}}' 已存在",
-      "description_missing": "角色 '{{role}}' 需要说明其用途"
+      "description_missing": "角色 '{{role}}' 需要说明其用途",
+      "right_not_in_parents": "角色 {{role}} 不能持有 {{right}}：没有父角色持有它"
     },
     "schema": {
       "allowed_domains_updated": "已更新数据源 '{{source}}' 的允许域",
@@ -358,6 +365,7 @@
       "request_rejected": "已拒绝创建请求 #{{id}}",
       "rls_rule_deleted": "行级安全规则已删除",
       "rls_rule_not_found": "未找到行级安全规则",
+      "rls_rule_right_taken": "角色“{{role}}”的权限 {{right}} 已在规则 {{rule}} 中。一项权限最多属于一条规则：请将其从该规则中移除，或编辑该规则。",
       "rls_rule_saved_domain": "域 '{{domain}}' / 角色 '{{role}}' 的行级安全规则已保存",
       "rls_rule_saved_table": "表 {{table}} / 角色 '{{role}}' 的行级安全规则已保存",
       "rls_rule_saved_tag": "标签 '{{tag}}' / 角色 '{{role}}' 的行级安全规则已保存",
@@ -397,6 +405,7 @@
       "source_region_set": "数据源 {{source}} 的区域已设为 {{region}}",
       "region_refused": "未设置区域：{{reason}}",
       "table_too_complex": "表 '{{table}}' 未能以所选列注册：{{reason}}。请选择更少的列。",
+      "remote_throttled": "表 '{{table}}' 未注册：源的速率限制使其无法被检查（{{reason}}）。请稍后重试。",
       "table_updated": "表 '{{table}}' 已更新（id={{id}}）",
       "task_deleted": "任务 '{{task}}' 已删除",
       "task_disabled": "任务 '{{task}}' 已禁用",
@@ -409,10 +418,12 @@
       "unknown_request_type": "未知的请求类型 '{{type}}'",
       "unknown_trigger_kind": "未知的触发器类型 '{{kind}}'",
       "url_sql_exclusive": "url 和 sql 互斥",
+      "view_deploy_unsupported_type": "数据源 '{{source}}' 的类型为 '{{type}}',无法托管已部署的视图;支持的类型:{{supported}}",
       "view_deployed": "视图 '{{view}}' 已部署到 '{{source}}' 的架构 '{{schema}}'",
       "view_spans_sources": "视图跨越多个数据源：{{sources}}",
       "webhook_approved": "已批准 Webhook '{{webhook}}'",
       "webhook_name_required": "Webhook 触发器需要 webhook_name",
+      "mask_unreachable": "您定义了不可到达的脱敏规则：{{entries}}",
       "webhook_not_found": "未找到 Webhook '{{webhook}}'",
       "change_streams_unavailable": "源 '{{source}}' 是独立的 MongoDB 服务器，不提供 change streams：native 变更信号需要副本集或分片集群。请将其作为副本集运行，或使用 poll 变更信号。",
       "table_draft_set": "表 {{table}} 已设为草稿",
@@ -467,7 +478,11 @@
       "relationship_same_entity_cardinality": "关系 '{{relationship}}' 不能标记为同一实体：它是 {{cardinality}}，而同一实体是一行对一行",
       "relationship_same_entity_not_grounded": "关系 '{{relationship}}' 不能标记为同一实体：{{source}} 和 {{target}} 未关联到同一术语",
       "relationship_same_entity_not_keys": "关系 '{{relationship}}' 不能标记为同一实体：{{columns}} 不是 {{table}} 的主键或唯一键",
-      "kaggle_token_missing": "Kaggle 数据集 {{owner}}/{{ref}}：数据源中没有 Kaggle API 令牌。请在数据源表单中添加，令牌在那里输入。"
+      "kaggle_token_missing": "Kaggle 数据集 {{owner}}/{{ref}}：数据源中没有 Kaggle API 令牌。请在数据源表单中添加，令牌在那里输入。",
+      "jdbc_invalid": "数据源 {{source}}：{{error}}",
+      "jdbc_file_refused": "数据源 {{source}}：URL 指向 {{path}}，此服务器不能为该组织打开它。",
+      "jdbc_options_refused": "数据源 {{source}}：此组织的 URL 不能指定驱动程序选项 {{options}}。",
+      "jdbc_driver_refused": "数据源 {{source}}：客户自带的 JDBC 驱动程序会作为代码在 Provisa 自身的 JVM 中运行，只有自托管安装才允许这样做。"
     },
     "secrets": {
       "name_refused": "{{name}} 不是 {{service}} 中本组织密钥范围内的名称：名称相对于组织，不能超出组织范围",
@@ -615,7 +630,10 @@
       "popup_blocked": "浏览器拦截了登录窗口。请允许此网站弹出窗口,然后重试。",
       "window_closed": "登录窗口在完成前已被关闭。",
       "tenant_invalid": "组织的 Microsoft 365 设置未指定目录（租户）。由管理员输入目录的 ID 或域名。",
-      "microsoft_account_unread": "登录已获批准，但 Microsoft 未说明这是谁的邮箱。"
+      "microsoft_account_unread": "登录已获批准，但 Microsoft 未说明这是谁的邮箱。",
+      "client_missing": "请输入应用的客户端 ID 和客户端密钥，然后登录。",
+      "client_not_taken": "此类数据源使用您组织的客户端登录，而不是表单中输入的客户端。",
+      "no_account_returned": "登录已获批准，但响应未说明是哪个账户（{{parameter}}）。请重新登录。"
     },
     "mail_platform": {
       "organisation_mailboxes_off": "您的组织尚未允许读取其邮箱的数据源。管理员可在“管理 › 邮件”中允许。",
@@ -661,6 +679,8 @@
       "unknown_demo": "没有名为 {{demo}} 的已发布演示。",
       "demo_not_ready": "此演示仍在准备中。请稍后再试。",
       "demo_stores_failed": "无法启动此演示。请过几分钟再试。",
+      "demo_failed": "无法准备此演示。请过几分钟再试。",
+      "failed_to_start": "无法启动演示服务器。请稍后再试。",
       "at_capacity": "所有演示沙盒都在使用中。请稍后再试。",
       "starting": "演示服务器正在启动。请一两分钟后重试。",
       "disk_full": "此沙盒已用完 {{limit}} 字节的磁盘上限；无法再写入任何内容。",
@@ -687,8 +707,7 @@
       "retire_on_invalid": "计划的停用日期 {{retire_on}} 不是日期（请使用 YYYY-MM-DD）。",
       "successor_is_self": "术语不能成为自己的继任者。",
       "successor_retired": "继任者“{{successor}}”已停用。请选择一个仍在使用的术语。",
-      "term_not_live": "只有已发布的术语才能弃用；该术语为 {{status}}。",
-      "status_by_action": "术语的状态通过“弃用”“停用”或“恢复”更改，每项都需要原因。",
+      "status_by_action": "术语的状态通过“批准”“弃用”“停用”或“恢复”来改变。",
       "successor_required": "该术语仍有列或表；停用它会将其移到继任者。请选择一个。",
       "successor_role": "{{role}} 的继任者必须是 {{role}} 或概念；“{{successor}}”是 {{successor_role}}。",
       "no_retirement_history": "模型的历史中没有该术语的停用记录。",
@@ -698,8 +717,18 @@
         "class_and_attribute_table": "表 {{table}} 没有类：它的概念是该术语，而该术语拥有不是键的列（{{columns}}）。",
         "tag_wrong_kind": "该术语带有只有属性才会传给其列的标签（{{tags}}）；它是 {{role}}。",
         "retirement_blocked": "该术语原定于 {{retire_on}} 停用，但仍有数据。请指定接收数据的继任者后再停用。",
-        "no_data": "该概念未连接到任何拥有数据的术语。"
-      }
+        "no_data": "此草稿概念未连接到任何持有数据的术语。",
+        "approved_not_grounded": "此术语已批准，但未到达任何数据，因此没有智能体能看到它。",
+        "path_pending": "已锚定 · 路径待批准：它只经过尚未批准的术语到达数据。",
+        "path_pending_approve": "已锚定 · 路径待批准：批准 {{approve}} 后它即锚定。"
+      },
+      "term_not_approved": "只有已批准的术语才能弃用；此术语为 {{status}}。",
+      "term_not_draft": "只有草稿术语才能批准；此术语为 {{status}}。",
+      "definition_required": "批准前请先为术语添加定义。",
+      "not_bulk_approvable": "只有已定义且已锚定的草稿术语才能一起批准；以下不符合：{{terms}}。",
+      "term_ids_required": "请指定要批准的术语。",
+      "impact_action": "该操作没有预览。",
+      "impact_table_required": "绑定指定一张表或其中的一列。"
     },
     "tag": {
       "not_on_terms": "标签“{{tag}}”不能加在术语上；只有 pii 可以。",
@@ -739,6 +768,12 @@
         "no_description": "此数据产品既未说明用途，也未说明使用方式。",
         "successor_retired": "接收此产品成员的数据产品“{{successor}}”也已停用。"
       }
+    },
+    "erd": {
+      "database_unavailable": "无法读取 ERD 布局:数据库不可用",
+      "layout_not_found": "没有名为 {{name}} 的布局",
+      "layout_name_required": "布局需要名称",
+      "layout_place_unreadable": "该布局放置了您无权读取的 {{kind}}"
     }
   }
 }

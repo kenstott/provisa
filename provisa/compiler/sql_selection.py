@@ -47,6 +47,7 @@ from provisa.compiler.sql_where import (
     _field_args,
     _below_takes_lateral_args,
     _has_lateral_force_args,
+    _joins_row_level_to_one,
     RelationshipConditions,
     where_names_relationship,
 )
@@ -79,17 +80,27 @@ def _lateral_join(
             join_meta.target_column_type,
             join_meta.source_column_type,
         )
-    # A where naming a relationship correlates with the target's rows, so they are aliased.
+    # A where naming a relationship correlates with the target's rows.
     related = (
         relationships is not None
         and "where" in args
         and where_names_relationship(args["where"], relationships.ctx, relationships.type_name)
     )
-    # REQ-1163: a target read at its own time is read under the join's alias, which its time is
-    # kept by (provisa.mv.time_travel).
+    # REQ-1163: a target read at its own time keeps it under the join's alias. The rows are always
+    # read under it: the star is expanded by its table's alias, and a table with no alias of its
+    # own expands under a physical name the statement's FROM no longer holds once it is renamed.
     target = travel_ref(_table_ref(join_meta.target, use_catalog), field_node, variables)
-    rows = f" {_q(join_alias)}" if related or target.endswith(")") else ""
-    sql = f"LEFT JOIN LATERAL (SELECT * FROM {target}{rows} WHERE {_lat_tgt_expr} = {src_expr}"
+    distinct = ""
+    if "distinct_on" in args:
+        distinct_cols = args["distinct_on"]
+        if isinstance(distinct_cols, str):
+            distinct_cols = [distinct_cols]
+        distinct_prefix = ", ".join(_q(_e2p.get((_tid, c), c)) for c in distinct_cols)
+        distinct = f"DISTINCT ON ({distinct_prefix}) "
+    sql = (
+        f"LEFT JOIN LATERAL (SELECT {distinct}* FROM {target} {_q(join_alias)} "
+        f"WHERE {_lat_tgt_expr} = {src_expr}"
+    )
     if "where" in args:
         where_sql = _compile_where(
             args["where"],
@@ -102,12 +113,6 @@ def _lateral_join(
             column_types,
         )
         sql += f" AND ({where_sql})"
-    if "distinct_on" in args:
-        distinct_cols = args["distinct_on"]
-        if isinstance(distinct_cols, str):
-            distinct_cols = [distinct_cols]
-        distinct_prefix = ", ".join(_q(_e2p.get((_tid, c), c)) for c in distinct_cols)
-        sql = sql.replace("SELECT *", f"SELECT DISTINCT ON ({distinct_prefix}) *", 1)
     if "order_by" in args:
         order_by_val = args["order_by"]
         if isinstance(order_by_val, dict):
@@ -151,6 +156,8 @@ def _build_rel_json_kv(
     sources: StatementSources,
     variables: dict | None,
     parent_src_val: str | None = None,
+    json_text: set[str] | None = None,
+    key_prefix: str = "",
 ) -> tuple[list[str], int]:
     """Build KEY/VALUE pairs for json_object(KEY k VALUE v, ...) for a relationship.
 
@@ -158,6 +165,11 @@ def _build_rel_json_kv(
     "KEY 'key' VALUE expr" — suitable for joining with commas inside json_object.
     Nested relationships produce correlated subqueries at value positions.
     Uses SQL-standard json_object syntax so sqlglot transpiles correctly to the engine.
+    ``json_text`` collects the key paths (under ``key_prefix``) whose value is JSON an engine
+    may embed as text: a nested relationship, a declared object -- each always an object, an
+    array or null, so a string there is the engine's text of one (REQ-1867, ColumnRef.json_text).
+    A json or jsonb column is not among them: the engine embeds it as the JSON it is, a JSON
+    string included.
     """
     kv_pairs: list[str] = []
     for sel in selections:
@@ -244,7 +256,11 @@ def _build_rel_json_kv(
                 sources,
                 variables,
                 parent_src_val=_next_parent_src,
+                json_text=json_text,
+                key_prefix=f"{key_prefix}{key}.",
             )
+            if json_text is not None:
+                json_text.add(f"{key_prefix}{key}")
             kv_pairs.append(f"KEY '{key}' VALUE {sub_expr}")
         else:
             if sel.selection_set and (table_meta.table_id, name) in ctx.gql_json_columns:
@@ -252,6 +268,8 @@ def _build_rel_json_kv(
                 sub_kv = _extract_json_blob_kv(sel.selection_set.selections, blob_base)
                 if sub_kv:
                     kv_pairs.append(f"KEY '{key}' VALUE json_object({', '.join(sub_kv)})")
+                    if json_text is not None:
+                        json_text.add(f"{key_prefix}{key}")
             elif name == "__typename":  # the object's GraphQL type, not a column
                 kv_pairs.append(f"KEY '{key}' VALUE {_sql_str_literal(type_name)}")
             else:
@@ -286,6 +304,8 @@ def _build_rel_json_expr(
     sources: StatementSources,
     variables: dict | None = None,
     parent_src_val: str | None = None,
+    json_text: set[str] | None = None,
+    key_prefix: str = "",
 ) -> tuple[str, int]:
     """Build one correlated JSON subquery for a relationship.
 
@@ -310,6 +330,8 @@ def _build_rel_json_expr(
         sources,
         variables,
         parent_src_val=parent_src_val,
+        json_text=json_text,
+        key_prefix=key_prefix,
     )
     jbo = f"json_object({', '.join(kv_pairs)})"
 
@@ -421,7 +443,12 @@ def _collect_nested_columns(
                 )
             nested_key = nested_sel.alias.value if nested_sel.alias else nested_name
             _below = _below_takes_lateral_args(nested_sel, ctx, nested_join_meta.target.type_name)
-            _use_agg = not flat and not _has_lateral_force_args(nested_sel) and not _below
+            _use_agg = (
+                not flat
+                and not _has_lateral_force_args(nested_sel)
+                and not _below
+                and not _joins_row_level_to_one(nested_sel, nested_join_meta, ctx)
+            )
             if (
                 nested_join_meta.default_limit is not None
                 or _has_lateral_force_args(nested_sel)
@@ -454,6 +481,7 @@ def _collect_nested_columns(
                     if nested_join_meta.child_src_val is not None
                     else (src_expr if nested_join_meta.source_column_type != "integer" else None)
                 )
+                _json_text: set[str] = set()
                 json_expr, alias_counter = _build_rel_json_expr(
                     nested_sel.selection_set.selections,
                     ctx,
@@ -470,6 +498,7 @@ def _collect_nested_columns(
                     sources,
                     variables,
                     parent_src_val=_pv,
+                    json_text=_json_text,
                 )
                 json_alias = f"{nesting_path}.{nested_key}".replace(".", "__")
                 select_parts.append(f"{json_expr} AS {_q(json_alias)}")
@@ -480,6 +509,8 @@ def _collect_nested_columns(
                         field_name=nested_key,
                         nested_in=nesting_path,
                         cardinality=cardinality,
+                        json=True,
+                        json_text=frozenset(_json_text),
                     )
                 )
             else:
@@ -593,6 +624,8 @@ def _collect_nested_columns(
                     field_name=nested_response_key,
                     nested_in=nesting_path,
                     cardinality=cardinality,
+                    json=(parent_table.table_id, nested_phys.lower()) in ctx.json_columns,
+                    integer=(parent_table.table_id, nested_phys.lower()) in ctx.integer_columns,
                 )
             )
     return alias_counter, has_lateral

@@ -52,6 +52,8 @@
     "draftNoRightTooltip": "Eine Tabelle freizugeben oder wieder zum Entwurf zu machen erfordert das Recht „Tabellenregistrierung“ in der Domäne der Tabelle.",
     "draftPreviewNote": "Entwurfsvorschau: Leser können diese Tabelle noch nicht sehen.",
     "keepsHistory": "Führt Historie: jede Version, mit dem Zeitpunkt des Geschehens und dem Zeitpunkt der Erfassung.",
-    "keepsHistoryQuery": "Zum Stand eines Datums oder wie erfasst abfragen"
+    "keepsHistoryQuery": "Zum Stand eines Datums oder wie erfasst abfragen",
+    "deleteTitle": "Tabelle {{name}} löschen?",
+    "deleteConsequence": "Die Registrierung der Tabelle wird gelöscht."
   }
 }

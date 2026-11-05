@@ -1,0 +1,278 @@
+/* Cardboard box and gift box loaders. --k is the fold of a flap: 1 closed, -0.9 folded open. */
+@property --k {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
+}
+
+.unboxing {
+  display: inline-flex;
+}
+.ub {
+  overflow: visible;
+}
+.ub-shadow {
+  fill: rgb(0 0 0 / 0.1);
+}
+
+/* ---- cardboard ---- */
+.ub-box {
+  --kraft-top: #dcb882;
+  --kraft-l: #c99a5f;
+  --kraft-r: #b3844b;
+  --kraft-in: #7d5a33;
+}
+.ub-inside {
+  fill: var(--kraft-in);
+}
+.ub-side-l {
+  fill: var(--kraft-l);
+}
+.ub-side-r {
+  fill: var(--kraft-r);
+}
+.ub-flap {
+  fill: var(--kraft-top);
+  stroke: #b58d55;
+  stroke-width: 0.8;
+  stroke-linejoin: round;
+  transform: matrix(
+    calc(1 + (var(--k) - 1) * var(--nx2)),
+    calc((var(--k) - 1) * var(--nxy)),
+    calc((var(--k) - 1) * var(--nxy)),
+    calc(1 + (var(--k) - 1) * var(--ny2)),
+    calc(-1 * (var(--k) - 1) * (var(--nx2) * var(--mx) + var(--nxy) * var(--my))),
+    calc(-1 * (var(--k) - 1) * (var(--nxy) * var(--mx) + var(--ny2) * var(--my)))
+  );
+}
+.ub-tape {
+  fill: #efe3c4;
+  fill-opacity: 0.92;
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+.ub-tape-down {
+  transform-origin: 50% 0;
+}
+.ub-arrows path {
+  fill: #7d5a33;
+  opacity: 0.55;
+}
+.ub-cube-top {
+  fill: var(--mantine-color-brand-3);
+}
+.ub-cube-left {
+  fill: var(--mantine-color-brand-6);
+}
+.ub-cube-right {
+  fill: var(--mantine-color-brand-8);
+}
+.ub-eyes circle {
+  fill: #fff;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* ---- gift ---- */
+.ub-gift {
+  --gift-l: #7c5cf0;
+  --gift-r: #5b3fd0;
+  --gift-top: #a48cf7;
+  --gift-in: #2b2160;
+  --ribbon: #f3b73c;
+  --ribbon-dark: #d99a1c;
+}
+.ub-gift-left {
+  fill: var(--gift-l);
+}
+.ub-gift-right {
+  fill: var(--gift-r);
+}
+.ub-gift .ub-inside {
+  fill: var(--gift-in);
+}
+.ub-lid-left {
+  fill: #6a49e0;
+}
+.ub-lid-right {
+  fill: #4d33b8;
+}
+.ub-lid-top {
+  fill: var(--gift-top);
+}
+.ub-rib {
+  fill: none;
+  stroke: var(--ribbon);
+  stroke-width: 6;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+.ub-rib--3,
+.ub-rib--4 {
+  stroke: var(--ribbon-dark);
+}
+.ub-bow-loop {
+  fill: var(--ribbon);
+  stroke: var(--ribbon-dark);
+  stroke-width: 1;
+}
+.ub-bow-knot {
+  fill: var(--ribbon-dark);
+}
+.ub-bow-spin,
+.ub-lid,
+.ub-gift-mark {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* ---- motion: cardboard, a 5.4s loop ---- */
+.ub-box.ub--moving .ub-flap {
+  animation-duration: 5.4s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+.ub-box.ub--moving .ub-flap--1 { animation-name: ub-f1; }
+.ub-box.ub--moving .ub-flap--2 { animation-name: ub-f2; }
+.ub-box.ub--moving .ub-flap--3 { animation-name: ub-f3; }
+.ub-box.ub--moving .ub-flap--4 { animation-name: ub-f4; }
+@keyframes ub-f1 { 0%,15% { --k: 1; } 25%,88% { --k: -0.9; } 96%,100% { --k: 1; } }
+@keyframes ub-f2 { 0%,21% { --k: 1; } 31%,90% { --k: -0.9; } 98%,100% { --k: 1; } }
+@keyframes ub-f3 { 0%,27% { --k: 1; } 37%,92% { --k: -0.9; } 99%,100% { --k: 1; } }
+@keyframes ub-f4 { 0%,33% { --k: 1; } 43%,94% { --k: -0.9; } 100% { --k: 1; } }
+
+.ub-box.ub--moving .ub-tape {
+  animation: ub-peel 5.4s ease-in infinite;
+}
+@keyframes ub-peel {
+  0%,6% { transform: scaleY(1); opacity: 1; }
+  15% { transform: scaleY(0.05); opacity: 1; }
+  16%,96% { transform: scaleY(0.05); opacity: 0; }
+  100% { transform: scaleY(1); opacity: 1; }
+}
+
+.ub-box.ub--moving .ub-lift {
+  animation: ub-rise 5.4s ease-in-out infinite;
+}
+@keyframes ub-rise {
+  0%,34% { transform: translateY(8px); opacity: 0; }
+  38% { opacity: 1; }
+  56%,76% { transform: translateY(-34px); opacity: 1; }
+  88% { transform: translateY(8px); opacity: 1; }
+  89%,100% { transform: translateY(8px); opacity: 0; }
+}
+.ub-bob {
+  animation: ub-bob 1.4s ease-in-out infinite;
+}
+@keyframes ub-bob {
+  0%,100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+.ub-box.ub--moving .ub-eyes circle {
+  animation: ub-blink 2.7s infinite;
+}
+@keyframes ub-blink {
+  0%,92%,100% { transform: scaleY(1); }
+  96% { transform: scaleY(0.1); }
+}
+
+/* ---- motion: gift, a 5.6s loop ---- */
+.ub-gift.ub--moving .ub-rib {
+  animation: ub-unravel 5.6s ease-in-out infinite;
+}
+.ub-gift.ub--moving .ub-rib--2 { animation-delay: 0.12s; }
+.ub-gift.ub--moving .ub-rib--3 { animation-delay: 0.24s; }
+.ub-gift.ub--moving .ub-rib--4 { animation-delay: 0.36s; }
+@keyframes ub-unravel {
+  0%,12% { stroke-dashoffset: 0; }
+  30%,90% { stroke-dashoffset: 1; }
+  98%,100% { stroke-dashoffset: 0; }
+}
+.ub-gift.ub--moving .ub-bow {
+  animation: ub-bow-fade 5.6s linear infinite;
+}
+@keyframes ub-bow-fade {
+  0%,8% { opacity: 1; }
+  24%,92% { opacity: 0; }
+  100% { opacity: 1; }
+}
+.ub-gift.ub--moving .ub-bow-spin {
+  animation: ub-bow-spin 5.6s ease-in infinite;
+}
+/* it wiggles as if impatient, then spins itself away */
+@keyframes ub-bow-spin {
+  0% { transform: rotate(0) scale(1); }
+  2%,6% { transform: rotate(-9deg) scale(1.06); }
+  4%,8% { transform: rotate(9deg) scale(1.06); }
+  10% { transform: rotate(0) scale(1); }
+  24% { transform: rotate(540deg) scale(0); }
+  25%,96% { transform: rotate(540deg) scale(0); }
+  100% { transform: rotate(0) scale(1); }
+}
+.ub-gift.ub--moving .ub-lid {
+  animation: ub-lid 5.6s cubic-bezier(0.3, 0.1, 0.3, 1) infinite;
+}
+@keyframes ub-lid {
+  0%,32% { transform: translate(0, 0) rotate(0); }
+  44%,76% { transform: translate(6px, -34px) rotate(8deg); }
+  90%,100% { transform: translate(0, 0) rotate(0); }
+}
+.ub-gift.ub--moving .ub-gift-mark {
+  animation: ub-mark 5.6s ease-in-out infinite;
+}
+@keyframes ub-mark {
+  0%,36% { transform: translateY(30px); opacity: 0; }
+  42% { opacity: 1; }
+  60%,78% { transform: translateY(-6px); opacity: 1; }
+  88% { transform: translateY(30px); opacity: 1; }
+  89%,100% { transform: translateY(30px); opacity: 0; }
+}
+.ub-gift .ub-bob {
+  animation-duration: 1.6s;
+}
+
+/* ---- reduced motion: a still open box, contents showing ---- */
+.ub--still .ub-bob,
+.ub--still .ub-eyes circle {
+  animation: none;
+}
+.ub-box.ub--still .ub-flap {
+  --k: -0.9;
+}
+.ub-box.ub--still .ub-tape {
+  display: none;
+}
+.ub-box.ub--still .ub-lift {
+  transform: translateY(-34px);
+}
+.ub-gift.ub--still .ub-rib,
+.ub-gift.ub--still .ub-bow {
+  display: none;
+}
+.ub-gift.ub--still .ub-lid {
+  transform: translate(6px, -34px) rotate(8deg);
+}
+.ub-gift.ub--still .ub-gift-mark {
+  transform: translateY(-6px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ub--moving .ub-bob,
+  .ub--moving .ub-eyes circle,
+  .ub--moving .ub-tape,
+  .ub--moving .ub-lift,
+  .ub--moving .ub-flap,
+  .ub--moving .ub-rib,
+  .ub--moving .ub-bow,
+  .ub--moving .ub-bow-spin,
+  .ub--moving .ub-lid,
+  .ub--moving .ub-gift-mark {
+    animation: none !important;
+  }
+  .ub-box.ub--moving .ub-flap { --k: -0.9; }
+  .ub-box.ub--moving .ub-tape,
+  .ub-gift.ub--moving .ub-rib,
+  .ub-gift.ub--moving .ub-bow { display: none; }
+  .ub-box.ub--moving .ub-lift { transform: translateY(-34px); }
+  .ub-gift.ub--moving .ub-lid { transform: translate(6px, -34px) rotate(8deg); }
+  .ub-gift.ub--moving .ub-gift-mark { transform: translateY(-6px); }
+}

@@ -31,7 +31,7 @@ The launcher reads `.env` in the repository root if one exists, and `.env` is no
 
 | Command | What starts |
 | --- | --- |
-| `./start-ui-install.sh --list-demos` | Nothing: it lists the named demos this checkout can run, each with its title and whether it is published |
+| `./start-ui-install.sh --list-demos` | Nothing. It lists the named demos this checkout can run, each with its title and whether it is published |
 | `./start-ui-install.sh --demo` | The standard demo: a pet store with four sources |
 | `./start-ui-install.sh --demo <name>` | A named demo. A published one (`weblogs`) is pulled as a bundle; any other runs from `demo/named/<name>/` |
 | `./start-ui-install.sh --demo <name>@<version>` | A published demo, pinned to one version |
@@ -65,7 +65,7 @@ It also lists the demo sources:
 | `inquiries-sqlite` | SQLite, `demo/files/inquiries.sqlite` |
 | `graphql-demo` | GraphQL remote, `http://localhost:4000/graphql` |
 
-Open **http://localhost:3000**. There is no login: the demo's auth provider is `none`, and every request acts as the `org_admin` role. To connect a SQL client over pgwire, use the user name that matches the role you want, for example `admin`; the password is ignored.
+Open **http://localhost:3000**. There is no login, because the demo's auth provider is `none` and every request acts as the `org_admin` role. To connect a SQL client over pgwire, use the user name that matches the role you want, for example `admin`; the password is ignored.
 
 Settings you change in the admin do not survive the next start, except organization settings such as the metadata export target and AI keys. The launcher saves those before the reset and restores them after.
 
@@ -126,7 +126,7 @@ See [Add one toy source](#add-one-toy-source-with-source).
 ### Stop and reset
 
 - **Stop Provisa:** press `Ctrl+C` in the terminal that runs the launcher. It stops the backend, the UI and the demo servers. The embedded PostgreSQL stays up for the next start.
-- **Other keys:** `Ctrl+R` restarts the backend, `Ctrl+U` clears the UI cache and restarts the UI, and `Ctrl+E` stops the servers and leaves Docker running.
+- **Other keys.** `Ctrl+R` restarts the backend, `Ctrl+U` clears the UI cache and restarts the UI, and `Ctrl+E` stops the servers and leaves Docker running.
 - **Reset the Provisa side:** just start again. Every `--demo` start drops and rebuilds the demo model store.
 - **Reset a named demo's data:** just start again. A named demo reseeds from empty by default. Pass `--keep-data` to reuse the data from the last seeding instead.
 - **Stop a named demo's data stack.** `Ctrl+C` does not stop it. Run:
@@ -143,7 +143,7 @@ See [Add one toy source](#add-one-toy-source-with-source).
   ./start-ui-install.sh --demo perf --keep-data
   ```
 
-  Deleting `data/` alone is not enough for `perf`: MongoDB keeps its data in a named Docker volume, and `down -v` removes it. A start without `--keep-data` does both.
+  Deleting `data/` alone is not enough for `perf`, because MongoDB keeps its data in a named Docker volume, and `down -v` removes it. A start without `--keep-data` does both.
 
 ### Troubleshooting
 
@@ -171,7 +171,7 @@ These are the messages the scripts print, and what to do.
 
 A named demo is a directory, `demo/named/<name>/`. Create the directory and `./start-ui-install.sh --demo <name>` finds it. (A demo marked `published: true` in its `demo.yaml` is pulled as a bundle instead; see [Publishing a demo](named-demos.md#publishing-a-demo). To run your own copy of it, pass `--from-source`.) You do not edit the launcher, and no name is registered anywhere. The launcher refuses a missing directory, and a demo with neither `config.yaml` nor `fragment.yaml`, or with both.
 
-The worked example is `retail`: a PostgreSQL database with customers and orders, plus a stores list loaded from a CSV file.
+The worked example is `retail`, a PostgreSQL database with customers and orders, plus a stores list loaded from a CSV file.
 
 ### The files
 
@@ -186,7 +186,7 @@ demo/named/retail/
   .gitignore             one line: data/
 ```
 
-`perf` has the same shape with four databases instead of one. A demo with no data stores of its own needs only `config.yaml`: no compose file, no seeder.
+`perf` has the same shape with four databases instead of one. A demo with no data stores of its own needs only `config.yaml`, with no compose file and no seeder.
 
 ### 1. Create the directory
 
@@ -245,7 +245,7 @@ Four things matter here:
 
 - **The service must be named `seeder`.** The launcher checks for that exact name, and runs `docker compose up seeder` to wait for it.
 - **Every database service needs a healthcheck.** The seeder waits for `service_healthy`, so a database that is up but not ready never gets loaded halfway.
-- **Use bind mounts under `./data/`** for database files. Docker Desktop keeps named volumes inside its own disk image, which fills the system disk. MongoDB is the exception: in `perf` it uses a named volume, because its storage engine needs file locking that bind mounts on Docker Desktop for Mac do not provide.
+- **Use bind mounts under `./data/`** for database files. Docker Desktop keeps named volumes inside its own disk image, which fills the system disk. MongoDB is the exception. In `perf` it uses a named volume, because its storage engine needs file locking that bind mounts on Docker Desktop for Mac do not provide.
 - **Labels.** `com.provisa.demo` groups every container of the demo, so `docker ps --filter label=com.provisa.demo=retail` lists exactly them.
 
 Pick host ports no other demo uses. `perf` uses 25632, 27317, 28623, 27974, 27987 and 26379. Most toy sources use ports from 21000 to 39999, and Splunk uses 8088 and 8089.
@@ -408,7 +408,7 @@ You do not write it by hand. Build the demo in the running UI and export it.
 2. In the UI, add the database as a source (PostgreSQL, host `localhost`, port `25800`, database `retail`, user `provisa`), register its tables, and add the relationships between them. Add roles or row rules if the story needs them.
 3. Export the model. Open **Admin**, then **Maintenance**, then **Configuration File**, and choose **View / Diff**. The right pane, **Current**, is the whole live config. Copy all of it. The same text comes from `curl -s http://localhost:8001/admin/config/live` while the demo runs. In the demo this export is always on.
 4. Save it as `demo/named/retail/config.yaml`.
-5. Add what the export leaves out. It carries your tables, relationships, roles and domains, but **not the sources you added in the UI**: sources come from the startup file, not from live state. Add each one to the `sources:` list by hand, with its connection values as `${env:...}` references:
+5. Add what the export leaves out. It carries your tables, relationships, roles and domains, but **not the sources you added in the UI**, because sources come from the startup file, not from live state. Add each one to the `sources:` list by hand, with its connection values as `${env:...}` references:
 
    ```yaml
    sources:
@@ -428,7 +428,7 @@ Rules that bite:
 
 - **Declare `tables:` for every source.** A bare `sources:` entry never produces tables in the SQL catalog. The export already names each table, its schema, and each column with its type and who may see it.
 - **`visible_to` names roles.** The standard config's `analyst` role may only open the pet-store domains. A new domain is visible to `org_admin`, which the demo's requests act as. Add another role under `roles:` with its own `domain_access`, as `perf` does for `org_admin_unguarded`.
-- **Connection values are environment variables with defaults:** `${env:NAME:-default}`. The compose file and the generator read the same names.
+- **Connection values are environment variables with defaults.** `${env:NAME:-default}`. The compose file and the generator read the same names.
 - **Everything is synthetic.** Describe it that way in the descriptions.
 
 #### Pro tip: a fragment instead of a whole config
@@ -590,7 +590,7 @@ The two combine: `./start-ui-install.sh --demo retail --source=redis`.
 1. **Open on the Sources page.** Show the registered sources and their types. Then show **Tables**: every source becomes the same kind of table.
 2. **Take the product tour.** The first time the UI opens, it offers a guided tour. The compass icon in the toolbar starts it again at any time. It registers a source, exposes tables and then queries them in several languages, in about five minutes. Press `Esc` or click outside to leave.
 3. **Run one query that crosses tables.** Use the SQL page. The retail query above joins orders to stores and totals revenue by region. To show a join across sources, join a retail table to a pet-store table, or add a toy source with `--source`.
-4. **Show the same query in GraphQL.** One model, many query languages.
+4. **Show the same query in GraphQL.** The one model answers in many query languages.
 5. **Show governance.** Open **Security** and show roles and row rules. Connect a SQL client to pgwire (`postgresql://admin:ignored@localhost:5439/provisa`) and show the same data there.
 6. **Ask Polly.** Polly is the data assistant, in a panel at the side of the UI. It needs an LLM key first. Put `ANTHROPIC_API_KEY=...` (or `OPENAI_API_KEY=...`) in your own `.env` at the repository root before the session. The launcher loads it. Without a key, Polly shows "Polly isn't set up yet" and a button to the AI Models page (`/admin/ai-models`). For a vendor other than Anthropic, set a model there too. The natural-language page in the tour uses seeded answers and works without one.
 7. **End on your customer's question.** Name the question first, then show it answered over their sources, in their domain's words.

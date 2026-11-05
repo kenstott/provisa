@@ -63,11 +63,11 @@ const term = (id: number, name: string, domain: string) => ({
   id,
   name,
   definition: `${name}.`,
-  ref_count: 0,
+  refCount: 0,
   deprecated: false,
   retired: false,
   live: true,
-  domains: [{ domain_id: domain }],
+  domains: [{ domainId: domain }],
 });
 // Five in sales (past a budget of 3), two in finance (within it).
 const TERMS = [
@@ -86,7 +86,7 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
     if (!s.count) asked.scopes.push(s);
     const terms = TERMS.filter(
       (t) =>
-        (s.domains.length === 0 || s.domains.includes(t.domains[0].domain_id)) &&
+        (s.domains.length === 0 || s.domains.includes(t.domains[0].domainId)) &&
         (s.search.length === 0 || s.search.some((i) => t.name.includes(i))),
     );
     return {

@@ -41,7 +41,7 @@
     "nextPage": "Next page",
     "lastPage": "Last page",
     "purposeTitle": "What data sources are for",
-    "purposeBody": "A source is one registered connection to a system that holds data — a database, a warehouse, a file store, an API. Registering it lets Provisa read that system's schemas and query it in the same language as every other source, without copying the data anywhere.",
+    "purposeBody": "A source is one registered connection to a system that holds data, such as a database, a warehouse, a file store or an API. Provisa can then read that system's schemas and query it in the same language as every other source, with no copy of the data.",
     "purposeAdd": "Adding a source registers no tables on its own. Use Discover on the row to browse its schemas and register the tables you want governed.",
     "purposeAria": "About data sources",
     "registrationMissing": "{{list}} holds no registration for source {{source}}."

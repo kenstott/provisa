@@ -13,7 +13,8 @@
       "query_param": "查詢參數",
       "graphql_arg": "GraphQL 參數",
       "grpc_input": "gRPC 請求欄位",
-      "query_arg": "原生查詢參數"
+      "query_arg": "原生查詢參數",
+      "column_value": "欄位值"
     }
   }
 }

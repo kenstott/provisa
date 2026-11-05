@@ -25,7 +25,7 @@ from typing import cast
 import sqlglot.expressions as exp
 
 from provisa.gql.translator_types import NODE_COLUMN, GraphVarKind
-from provisa.gql.label_map import CypherLabelMap, NodeMapping
+from provisa.gql.label_map import GRAPH_ID, CypherLabelMap, NodeMapping
 
 
 def apply_graph_rewrites(  # REQ-349, REQ-350
@@ -101,7 +101,9 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
                 GraphVarKind.JSON_MAP,
                 GraphVarKind.JSON_LIST,
                 GraphVarKind.JSON_VALUE,
+                GraphVarKind.PROPERTIES,  # properties(): its JSON object
                 GraphVarKind.DURATION,  # REQ-2173: a duration's parts
+                GraphVarKind.DURATION_LIST,  # REQ-2173: each duration's parts
                 GraphVarKind.ZONED,  # REQ-2173: a date time's instant and zone
                 GraphVarKind.POINT,  # a point's srid and coordinates
                 GraphVarKind.TERM,
@@ -112,6 +114,9 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
             # NODE expressions already containing pre-built JSON (from _rewrite_graph_fns for
             # startNode/endNode/nodes) pass through — they must not be rebuilt from raw columns.
             # JSON_OBJECT parses to exp.JSONObject; JSON_ARRAY parses to exp.Anonymous("JSON_ARRAY").
+            if inner.meta.get("provisa_elements_built"):  # select_builder.ELEMENTS_BUILT
+                new_expressions.append(sel_expr)
+                continue
             if kind == GraphVarKind.NODE and isinstance(inner, (exp.JSONObject, exp.JSONArray)):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 new_expressions.append(sel_expr)
                 continue
@@ -136,7 +141,13 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
                     else _find_node_meta(graph_var, table_ref, label_map)
                 )
             )
-            if node_meta is not None:
+            if inner.meta.get("provisa_union_node"):  # select_builder.UNION_NODE_OF_STAR
+                # A union node a WITH carries: its value is the union's own, carried with it.
+                rewritten = exp.Column(
+                    this=exp.Identifier(this=NODE_COLUMN, quoted=True),
+                    table=exp.Identifier(this=tbl),
+                )
+            elif node_meta is not None:
                 rewritten = _build_row_cast(tbl, node_meta)
             else:
                 domain_props = _extract_domain_props_from_union(sql_ast, tbl)
@@ -146,7 +157,7 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
                         this=exp.Identifier(this=NODE_COLUMN, quoted=True),
                         table=exp.Identifier(this=tbl),
                     )
-                    if domain_props == [NODE_COLUMN]
+                    if NODE_COLUMN in domain_props
                     else _build_domain_json(tbl, domain_props)
                 )
             new_expressions.append(cast(exp.Expression, exp.alias_(rewritten, out_alias)))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -267,7 +278,8 @@ def _extract_domain_props_from_union(sql_ast: exp.Select, var_alias: str) -> lis
                 props: list[str] = []
                 for expr in first_select.expressions:
                     alias = expr.alias if hasattr(expr, "alias") else None
-                    if alias and alias not in ("__id", "__label"):
+                    # A graph session's union names each node's graph identity too (REQ-348).
+                    if alias and alias not in ("__id", "__label", GRAPH_ID):
                         props.append(alias)
                 return props
     return []

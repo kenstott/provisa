@@ -173,28 +173,31 @@ def test_a_build_cut_short_by_the_readers_deadline_is_not_held(monkeypatch) -> N
     assert lazy.resolve() == "surface" and len(attempts) == 2
 
 
-def test_a_role_served_no_table_is_refused_naming_it_not_failed(caplog) -> None:
-    # A role no column of any table is granted to (REQ-2154) has nothing to serve: its reads are
-    # refused naming the role, as the caller's 403, not a build failure answered as a 500.
-    from provisa.api.role_surface import RoleServedNothing
-    from provisa.compiler.schema_gen import NoTablesServed
+def test_a_role_served_no_table_is_built_neither_refused_nor_failed(caplog) -> None:
+    # REQ-2154 (amended): a role no column of any table is granted to is not refused as such: its
+    # surface is built, empty, once and held -- not a refusal, not a build failure.
+    from provisa.api.role_surface import RoleSurface
+    from provisa.compiler.schema_gen import generate_schema
+    from provisa.compiler.schema_types import SchemaInput
+
+    attempts: list[int] = []
 
     def _build():
-        raise NoTablesServed("loose")
+        attempts.append(1)
+        role = {"id": "loose", "capabilities": [], "domain_access": ["sales"]}
+        si = SchemaInput([], [], {}, [], role, [{"id": "sales"}])
+        return RoleSurface(schema=generate_schema(si))
 
     lazy = LazySurface("loose", _build)
     with caplog.at_level("ERROR", logger="provisa.api.role_surface"):
-        for _ in range(2):
-            with pytest.raises(RoleServedNothing) as refused:
-                lazy.resolve()
-    assert isinstance(refused.value, PermissionError)
-    assert refused.value.code == "data.role_served_nothing"
-    assert refused.value.params == {"role_id": "loose"}
-    assert "'loose'" in str(refused.value) and "no tables" in str(refused.value)
+        surfaces = [lazy.resolve() for _ in range(2)]
+    assert surfaces[0] is surfaces[1] and len(attempts) == 1
+    assert set(surfaces[0].schema.query_type.fields) == {"resolve"}
     assert not [r for r in caplog.records if r.levelname == "ERROR"]
 
 
-def test_the_ui_has_the_served_nothing_message_in_every_locale() -> None:
+def test_no_locale_keeps_the_retired_served_nothing_message() -> None:
+    # REQ-2154 (amended): no surface answers data.role_served_nothing, so no locale carries it.
     import json
     from pathlib import Path
 
@@ -203,7 +206,7 @@ def test_the_ui_has_the_served_nothing_message_in_every_locale() -> None:
     assert len(locales) == 13
     for path in locales:
         data = json.loads(path.read_text(encoding="utf-8"))["serverErrors"]["data"]
-        assert "{{role_id}}" in data["role_served_nothing"], path
+        assert "role_served_nothing" not in data, path
 
 
 def test_a_build_whose_runtime_is_gone_is_not_held_or_logged_as_a_failure(caplog) -> None:

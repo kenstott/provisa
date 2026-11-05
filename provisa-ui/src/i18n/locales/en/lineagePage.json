@@ -1,9 +1,9 @@
 {
   "lineagePage": {
     "title": "Data Lineage",
-    "intro": "Trace where data comes from. Paste a query below and Provisa maps each result column back through its transforms and command calls to the original source columns — so you can answer \"what feeds this column?\" before you publish a view or command. Or choose <b>Complete Lineage</b> to see provenance across every registered view and dataset at once.",
+    "intro": "Paste a query below and Provisa maps each result column back through its transforms and command calls to the original source columns, so you can see what feeds a column before you publish a view or command. Or choose <b>Complete Lineage</b> to see provenance across every registered view and dataset.",
     "queryLabel": "Query to analyze",
-    "queryHelp": "Any SELECT that reads your registered tables, views, or commands. This query is only analyzed, never run — nothing is executed and no data is read.",
+    "queryHelp": "Any SELECT that reads your registered tables, views, or commands. It is analyzed and never run, so no data is read.",
     "copy": "Copy query",
     "copied": "Copied",
     "roleLabel": "Lineage for role",
@@ -12,9 +12,9 @@
     "complete": "Complete Lineage",
     "error": "Lineage error",
     "cyclesTitle": "Cycles detected",
-    "cycleFeedback": "(legal — crosses a materialized boundary)",
-    "cycleError": "(no materialization boundary — likely a design error)",
+    "cycleFeedback": "(legal: crosses a materialized boundary)",
+    "cycleError": "(no materialization boundary: likely a design error)",
     "emptyTitle": "Nothing to show",
-    "emptyBody": "No lineage was found. Complete Lineage spans your registered views — none are defined yet, so there is nothing to trace. Register a view (Model → Views), or analyze a query above to see its lineage directly."
+    "emptyBody": "No lineage was found. Complete Lineage spans your registered views, and none are defined yet. Register a view (Model → Views), or analyze a query above to see its lineage."
   }
 }

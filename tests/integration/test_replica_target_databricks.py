@@ -19,13 +19,14 @@ import pytest
 
 pytest.importorskip("databricks.sql", reason="databricks-sql-connector required")
 
+from tests.integration.live_teardown import run_every, run_name  # noqa: E402
 from provisa.federation.replica_address import replica_schema  # noqa: E402
 from provisa.federation.replica_target import build_table_name  # noqa: E402
 from provisa.federation.replica_target_warehouse import (  # noqa: E402
     DATABRICKS_BUILD_VOLUME,
     DatabricksStoreTarget,
 )
-from tests.integration.databricks_warehouse import ensure_warehouse_running  # noqa: E402
+from tests.integration.databricks_warehouse import warehouse_running  # noqa: E402
 
 _ENV = ("DATABRICKS_SERVER_HOSTNAME", "DATABRICKS_HTTP_PATH", "DATABRICKS_TOKEN")
 pytestmark = [
@@ -37,7 +38,7 @@ pytestmark = [
 ]
 
 _CATALOG = "workspace"
-_SCHEMA = replica_schema(f"swaptest{os.getpid()}")
+_SCHEMA = replica_schema(run_name("swaptest"))  # the run's own (REQ-254)
 _TABLE = "src__public__orders"
 _REPLICA = f"`{_CATALOG}`.`{_SCHEMA}`.`{_TABLE}`"
 _COLUMNS = [
@@ -79,17 +80,30 @@ def _rows(n: int, tag: str) -> list[dict]:
     ]
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _warehouse_awake():
+    """A suspended serverless warehouse rejects OpenSession outright -- wake it before anything in
+    this module connects, and stop it again after the module however it ends, if this module
+    started it (REQ-254). Module-scoped autouse: set up before, and torn down after, every other
+    fixture of the module, so the stop never cuts a connection still in use."""
+    with warehouse_running():
+        yield
+
+
 @pytest.fixture
 def warehouse():
-    ensure_warehouse_running()
     conn = _connect()
     try:
         yield conn
     finally:
-        cur = conn.cursor()
-        cur.execute(f"DROP SCHEMA IF EXISTS `{_CATALOG}`.`{_SCHEMA}` CASCADE")
-        cur.close()
-        conn.close()
+        from tests.integration.databricks_uc import drop_schema
+
+        run_every(
+            [
+                (f"drop schema {_CATALOG}.{_SCHEMA}", lambda: drop_schema(conn, _CATALOG, _SCHEMA)),
+                ("close the connection", conn.close),
+            ]
+        )
 
 
 def _query(conn, sql: str) -> list:

@@ -12,16 +12,13 @@
 # Provisa, is beside it.
 title: Moving a Hasura app
 description: >-
-  An outfitter's storefront app, served by Hasura v2 from PostgreSQL, imported into Provisa in one
-  step: its tables, names, relationships, roles, row rules and write permissions working at once,
-  its queries reshaped once. Then what Hasura could not do: the sales team's Salesforce accounts
-  joined to the orders, under the same rules.
+  An outfitter's storefront app, served by Hasura v2 from PostgreSQL, imported into Provisa in one step. Its tables, names, relationships, roles, row rules and write permissions work at once, and its queries are reshaped once. Then it does what Hasura could not, joining the sales team's Salesforce accounts to the orders under the same rules.
 screenshot: card.png
 published: true
 group: backend
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.
-requires_provisa: 0.1.0a496
+requires_provisa: 0.1.0a497
 # The demo's video: its tagline names what the demo shows Provisa being.
 video:
   tagline: "Don't Sweat the Conversion"

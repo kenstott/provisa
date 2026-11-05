@@ -12,6 +12,9 @@
     "classTerm": "Klassenbegriff {{term}}",
     "tableClass": "Die eigene Klasse einer Tabelle",
     "propertyTerm": "Eigenschaftsbegriff {{term}}",
-    "columnPredicate": "Spalte {{column}}"
+    "columnPredicate": "Spalte {{column}}",
+    "propertySearch": "Eigenschaften suchen",
+    "propertyTerms": "Eigenschaftsbegriffe",
+    "termClasses": "Klassen: {{classes}}"
   }
 }

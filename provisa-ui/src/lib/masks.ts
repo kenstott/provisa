@@ -10,8 +10,8 @@
 
 // A column's ordered mask list: each entry names the readers it is for (grant entries, composites
 // included) and the mask they read the column through, or none. A reader reads the column through
-// the first entry it holds; a reader holding none reads it unmasked. The list's last entry may name
-// no readers (``to`` null): it is for every other reader, and a list holds at most one.
+// the first entry it holds; a reader holding none reads it completely masked. The list's last entry
+// may name no readers (``to`` null): it is for every other reader, and a list holds at most one.
 
 import type { TFunction } from "i18next";
 import { grantLabel } from "./grants";
@@ -45,8 +45,7 @@ export function readersOf(picked: string[]): string[] | null {
   return picked.includes(EVERYONE) ? null : picked;
 }
 
-/** A new list: one entry, for everyone, masking to NULL -- so a reader the list does not name is
- *  masked, not left unmasked. */
+/** A new list: one entry, for everyone, masking to NULL. */
 export function newMaskList(): MaskEntry[] {
   return [{ to: null, mask: { type: "constant", value: null } }];
 }

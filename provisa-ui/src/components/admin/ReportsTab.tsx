@@ -16,6 +16,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import {
   ActionIcon,
   Alert,
@@ -32,17 +33,22 @@ import { notifications } from "@mantine/notifications";
 import { Plus, Trash2 } from "lucide-react";
 import { useDeleteTable, useRegisterTable, useTables } from "../../hooks/useAdminQueries";
 import { DERIVED_SOURCE_ID } from "../../types/admin";
-import type { RegisteredTable } from "../../types/admin";
+import type { ListedTable } from "../../types/admin";
 import { GovernedTableViewer } from "../GovernedTableViewer";
+import { reportCellHref } from "../../lib/reportCellHref";
 import { useAuth } from "../../context/AuthContext";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
+import { OntologyDriftPanel } from "./OntologyDriftPanel";
+
+/** REQ-1386: drift is computed from the model's history and shown with this report. */
+const ONTOLOGY_QUALITY_REPORT = "ontology_quality";
 
 export function ReportsTab() {
   const { t } = useTranslation();
   // REQ-1620: a report is read as the selected roles, the "Role: All" set included.
   const { actingRoles } = useAuth();
-  const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
+  const { tables, loading: tablesLoading, refetch: refetchTables } = useTables({ inPage: true });
   const { registerTable } = useRegisterTable();
   const { deleteTable } = useDeleteTable();
 
@@ -54,10 +60,16 @@ export function ReportsTab() {
     [tables],
   );
 
-  // First report auto-selects via the derived fallback; the viewer remounts per
-  // report (key) and owns fetching + grid state.
+  // First report auto-selects via the derived fallback, unless the deep link names one
+  // (`?report=<table name>`); the viewer remounts per report (key) and owns fetching + grid state.
+  const [searchParams] = useSearchParams();
+  const linkedReport = searchParams.get("report");
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const selected = reports.find((r) => r.id === selectedId) ?? reports[0] ?? null;
+  const selected =
+    reports.find((r) => r.id === selectedId) ??
+    reports.find((r) => r.tableName === linkedReport) ??
+    reports[0] ??
+    null;
 
   const [listWidth, setListWidth] = useState(240);
   const startDrag = useCallback(
@@ -84,7 +96,7 @@ export function ReportsTab() {
   const [addSaving, setAddSaving] = useState(false);
   const [addError, setAddError] = useState("");
 
-  const handleSelect = (report: RegisteredTable) => {
+  const handleSelect = (report: ListedTable) => {
     setSelectedId(report.id);
   };
 
@@ -119,7 +131,7 @@ export function ReportsTab() {
     }
   };
 
-  const handleDelete = async (report: RegisteredTable) => {
+  const handleDelete = async (report: ListedTable) => {
     if (!window.confirm(t("reportsTab.deleteConfirm", { name: report.alias || report.tableName })))
       return;
     const result = await deleteTable(report.id);
@@ -175,7 +187,7 @@ export function ReportsTab() {
               return (
                 <NavLink
                   key={report.id}
-                  active={report.id === selectedId}
+                  active={report.id === selected?.id}
                   label={report.alias || report.tableName}
                   description={report.description || undefined}
                   onClick={() => handleSelect(report)}
@@ -226,7 +238,20 @@ export function ReportsTab() {
       </div>
 
       {selected ? (
-        <GovernedTableViewer key={selected.id} table={selected} role={actingRoles} showTitle />
+        <div
+          style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}
+          data-testid="report-pane"
+          data-report={selected.tableName}
+        >
+          <GovernedTableViewer
+            key={selected.id}
+            table={selected}
+            role={actingRoles}
+            showTitle
+            cellHref={reportCellHref}
+          />
+          {selected.tableName === ONTOLOGY_QUALITY_REPORT && <OntologyDriftPanel />}
+        </div>
       ) : (
         <div style={{ flex: 1 }} />
       )}

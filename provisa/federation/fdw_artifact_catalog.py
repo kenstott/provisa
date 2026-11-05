@@ -61,7 +61,7 @@ class ArtifactUnavailable(Exception):  # REQ-900
 class ArtifactKey:  # REQ-900 — the pin triple plus the extension it builds
     extension: str
     pg_major: int
-    platform: str  # e.g. "linux-x86_64" | "linux-arm64" | "macos-arm64" | "macos-x86_64"
+    platform: str  # e.g. "linux-x86_64" | "linux-arm64" | "macos-arm64"
     libc: str  # "glibc" | "musl" on Linux; "" on macOS (no libc axis)
 
 

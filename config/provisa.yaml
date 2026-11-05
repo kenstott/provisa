@@ -30,29 +30,35 @@ data_products:
   support_contact: kennethstott@gmail.com
 glossary_terms:
 - name: referral
+  approve: true
   definition: "The act of sending a pet to an outside veterinary practice for care\
     \ beyond in-house capability."
   domains:
   - pet-store
-  edges:
-  - to: clinic
-    rel_type: RELATED_TO
-  - to: specialty
-    rel_type: RELATED_TO
 - name: clinic
+  approve: true
   definition: "The outside veterinary practice a pet is referred to."
   domains:
   - pet-store
+  edges:
+  - to: referral
+    rel_type: PART_OF
 - name: specialty
+  approve: true
   definition: "The area of veterinary care a referral clinic focuses on."
   domains:
   - pet-store
+  edges:
+  - to: referral
+    rel_type: PART_OF
 - name: personnel record
+  approve: true
   definition: "An employee's role and tenure at the shelter, held for staffing and\
     \ HR reporting."
   domains:
   - shelter
 - name: department
+  approve: true
   definition: "The organizational unit an employee is assigned to."
   domains:
   - shelter
@@ -60,6 +66,7 @@ glossary_terms:
   - to: personnel record
     rel_type: PART_OF
 - name: hire date
+  approve: true
   definition: "The date an employee started working at the shelter."
   domains:
   - shelter
@@ -67,29 +74,35 @@ glossary_terms:
   - to: personnel record
     rel_type: PART_OF
 - name: shift coverage
+  approve: true
   definition: "The window and place a shelter staff member is scheduled to work,\
     \ used for weekly coverage and handoff planning."
   domains:
   - shelter
-  edges:
-  - to: shift start
-    rel_type: RELATED_TO
-  - to: shift end
-    rel_type: RELATED_TO
-  - to: schedule location
-    rel_type: RELATED_TO
 - name: shift start
+  approve: true
   definition: "The time a scheduled shift begins."
   domains:
   - shelter
+  edges:
+  - to: shift coverage
+    rel_type: PART_OF
 - name: shift end
+  approve: true
   definition: "The time a scheduled shift ends."
   domains:
   - shelter
+  edges:
+  - to: shift coverage
+    rel_type: PART_OF
 - name: schedule location
+  approve: true
   definition: "The place a scheduled shift takes place."
   domains:
   - shelter
+  edges:
+  - to: shift coverage
+    rel_type: PART_OF
 domains:
 - description: "Pet store \u2014 Petstore public API (OpenAPI), internal inventory\
     \ (PG), and customer inquiries (SQLite) federated into one virtual database"
@@ -276,8 +289,7 @@ roles:
 # and observability — and role_repo.upsert refuses to overwrite either row. A block here loads AFTER
 # apply_tenancy_role_grants and overwrites capabilities wholesale, which is how org_admin lost both
 # org-scoped rights and its Admin tab.
-- capabilities:
-  - query_development
+- capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - pet-store
   - shelter

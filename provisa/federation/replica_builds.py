@@ -1015,10 +1015,13 @@ async def plan_indexes(state: Any, key: ReplicaKey, landed_at: datetime) -> None
 
 
 async def build_indexes(state: Any, item: Any) -> None:
-    """REQ-2015: build the indexes ``item`` names on the standing replica."""
+    """REQ-2015: build the indexes ``item`` names on the standing replica or materialized view."""
     from provisa.federation import replica_indexes
 
-    _source, _table, _address, indexer = await _indexed_replica(state, item.key)
+    if item.address is not None:
+        indexer = state.federation_engine.view_indexer(*item.address)
+    else:
+        _source, _table, _address, indexer = await _indexed_replica(state, item.key)
     if indexer is None:
         return
     await replica_indexes.build_due(state.tenant_db, item, indexer)
@@ -1138,6 +1141,7 @@ async def request_if_replicated(state: Any, table_id: int, source_id: str, reaso
     from provisa.federation.replica_converge import whole_copy
     from provisa.federation.replica_routing import owns_replica
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     engine = state.federation_engine
     source = {s.id: s for s in await registered_sources(state)}.get(source_id)
@@ -1151,7 +1155,7 @@ async def request_if_replicated(state: Any, table_id: int, source_id: str, reaso
     if never_expires(table, source):
         return False  # REQ-2031: landed once; a change at its source is never read again
     served_from_replica = table.id in state.replica_routes.floored or not engine_attaches(
-        engine, source.type.value
+        engine, reach_type(source, engine)
     )
     if not (served_from_replica and whole_copy(source, table, engine)):
         return False

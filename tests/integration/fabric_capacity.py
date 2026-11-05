@@ -56,7 +56,52 @@ before connecting.
 
 from __future__ import annotations
 
+from collections.abc import Generator
+from contextlib import contextmanager
+
 from provisa.federation import fabric_capacity as _product
+
+# States in which the capacity was brought up by someone other than the test about to use it.
+_ALREADY_RUNNING = ("Active", "Resuming")
+
+
+def _require_configured() -> None:
+    if not _product.capacity_configured():
+        raise RuntimeError(
+            "FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME are not set — the fabric lane resumes "
+            "its capacity before connecting (see this module's docstring)"
+        )
+
+
+def capacity_state() -> str:
+    """The lane's capacity state as ARM reports it (Active, Paused, Resuming, ...)."""
+    _require_configured()
+    with _product._client() as client:
+        return _product._locate(client)[1]
+
+
+@contextmanager
+def capacity_resumed() -> Generator[None, None, None]:
+    """The lane's capacity Active for the block, and paused again after it however the block ends
+    (REQ-254: a test pauses the compute it resumes) -- if the block resumed it.
+
+    Wrap everything that can resume the capacity: the Fabric engine resumes it itself on connect
+    (REQ-1775), so constructing an ``MssqlWarehouseRuntime`` belongs inside the block too.
+
+    The state is read before anything else: a capacity already Active or Resuming was brought up
+    by someone else (another lane, an operator), and pausing it would take it from under them, so
+    it is left as it was found (REQ-254 covers only what the test resumed). The lane's own
+    always-run step (integration-suite-lanes.yml, warehouse job) pauses it whatever happened."""
+    found = capacity_state()
+    try:
+        ensure_capacity_resumed()
+        yield
+    finally:
+        if found in _ALREADY_RUNNING:
+            # REQ-254: the test did not resume it; leave it running as it was found.
+            print(f"Fabric capacity was {found} before the test: left running", flush=True)
+        else:
+            ensure_capacity_paused()
 
 
 def ensure_capacity_resumed() -> None:

@@ -1,8 +1,19 @@
 {
   "demoOpenPage": {
     "title": "正在打开您的演示沙盒",
+    "titleMaking": "正在制作您的演示沙盒",
+    "titleCooking": "正在烹制您的演示沙盒",
+    "titleGrowing": "正在培育您的演示沙盒",
+    "titleComposing": "正在谱写您的演示沙盒",
     "opening": "正在为您准备演示的副本，需要几秒钟。",
     "starting": "正在启动此演示…",
-    "retry": "重试"
+    "retry": "重试",
+    "coordinatorWaking": "服务器正在唤醒…",
+    "coordinatorUpdating": "服务器正在更新，很快就会恢复…",
+    "serverStarting": "演示服务器正在启动…",
+    "connecting": "正在连接服务器…",
+    "elapsed": "已用时 {{time}}",
+    "coldStart": "闲置的演示大约需要五分钟才能启动。",
+    "gaveUp": "演示未能在 {{minutes}} 分钟内打开。请稍后再试。"
   }
 }

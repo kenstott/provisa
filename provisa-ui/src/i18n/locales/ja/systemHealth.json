@@ -26,7 +26,9 @@
     "running": "稼働中",
     "unreachable": "到達不能",
     "port": "ポート {{port}}",
+    "cypherOverHttp": "HTTP 経由の Cypher",
     "mvRefreshLoop": "MVリフレッシュループ",
-    "stopped": "停止"
+    "stopped": "停止",
+    "copyUrl": "URL をコピー"
   }
 }

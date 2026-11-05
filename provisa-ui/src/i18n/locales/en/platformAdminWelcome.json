@@ -1,12 +1,12 @@
 {
   "platformAdminWelcome": {
     "title": "You are the platform administrator",
-    "body": "Signing in made you this deployment's platform_admin — you hold every capability here, and nobody else can claim the role now. You are also the administrator of the root organization, which already carries the demo sources, tables, and domains.",
+    "body": "Signing in made you this deployment's platform_admin. You hold every capability here, and nobody else can claim the role now. You are also the administrator of the root organization, which already carries the demo sources, tables, and domains.",
     "backupHeading": "Add a backup administrator",
-    "backupBody": "A deployment with one platform_admin is a deployment with one account standing between it and nobody being able to administer it. Adding a backup starts with an invitation to join root:",
+    "backupBody": "If this deployment's only platform_admin account is lost, nobody can administer it. Adding a backup starts with an invitation to join root:",
     "backupStep1": "Invite the person into the root organization from its Team page.",
     "backupStep2": "They sign in and redeem the invitation, which makes them a member of root.",
-    "backupStep3": "Assign them the platform_admin role in root — that is what confers deployment-wide administration.",
+    "backupStep3": "Assign them the platform_admin role in root, which confers deployment-wide administration.",
     "openHeading": "The site is now open for organizations",
     "openBody": "From the next sign-in onward, anyone who authenticates creates their own organization. They are never made a platform administrator by signing in, and inviting people into their org is their own work as its org_admin.",
     "goToTeam": "Invite someone to root",

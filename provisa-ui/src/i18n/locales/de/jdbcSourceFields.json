@@ -1,0 +1,32 @@
+{
+  "jdbcSourceFields": {
+    "dialect": "SQL-Dialekt",
+    "dialectHelp": "Die SQL-Variante, die Provisa für diese Quelle schreibt. Sie muss nicht zum Treiber passen: Wählen Sie die, die der Datenbank am nächsten kommt, oder ANSI.",
+    "ansi": "ANSI (generisches SQL)",
+    "username": "Benutzername",
+    "password": "Passwort",
+    "capabilityName": {
+      "attach": "Live-Anbindung",
+      "predicate": "Filter-Pushdown",
+      "join": "Join-Pushdown",
+      "aggregate": "Aggregat-Pushdown",
+      "key_range": "Schlüsselbereich-Pushdown"
+    },
+    "detect": "Erkennen",
+    "checkPassed": "{{capability}}: bestanden",
+    "checkFailed": "{{capability}}: fehlgeschlagen ({{reason}})",
+    "jdbcDriverJar": "JDBC-Treiber-JAR",
+    "jdbcDriverJarHint": "Die JAR-Datei des Treibers, von Ihrem Rechner hochgeladen. Nur selbst gehostete Installationen.",
+    "jdbcDriverClass": "Treiberklasse",
+    "driver": "Treiber",
+    "jarDriver": "Eigener JDBC-Treiber (JAR)",
+    "host": "Host",
+    "port": "Port",
+    "database": "Datenbank",
+    "file": "Datenbankdatei",
+    "fileHint": "Die Datenbankdatei, als {files}/… geschrieben für eine im Dateibereich der Organisation.",
+    "jdbcUrl": "JDBC-URL",
+    "jdbcUrlHint": "Die jdbc:-URL des Treibers. Geben Sie darin kein Passwort an.",
+    "jdbcDriverJarPlaceholder": "JAR-Datei des Treibers hochladen"
+  }
+}

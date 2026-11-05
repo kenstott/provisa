@@ -1558,10 +1558,7 @@ Provisa בוחרת OTLP/HTTP או OTLP/gRPC לפי סכימת ה-URL של נקו
 | `singlestore` | SingleStore | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
 | `vertica` | Vertica | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
 | `exasol` | Exasol | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
-| `teradata` | Teradata Vantage | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
 | `saphana` | SAP HANA | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
-| `sapase` | SAP ASE (Sybase) | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
-| `sqlanywhere` | SAP SQL Anywhere | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
 | `monetdb` | MonetDB | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
 | `firebird` | Firebird | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
 | `sqlalchemy` | מסד נתונים רלציוני אחר (לפי כתובת חיבור) | לפי-דיאלקט | לא | ללא (land-only) | אישורים לפי-דיאלקט |
@@ -1662,7 +1659,7 @@ PROVISA_ENGINE=synapse
 
 מאגר המימוש ברירת מחדל `TENANT_DATABASE_URL`.
 
-#### מנועי מסדי נתונים יחסיים (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) ו-`sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
+#### מנועי מסדי נתונים יחסיים (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, saphana, monetdb, firebird) ו-`sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-saphana-monetdb-firebird-and-sqlalchemy }
 
 מפתח אחד לכל מסד נתונים יחסי הניתן לכתובת ברשת, כולם על אותו runtime land-only (ללא פדרציה למקורות חיצוניים): כל מקור נוחת (lands) לתוך המאגר ונשאל שם. המפתח בוחר את מסד הנתונים; `PROVISA_ENGINE_URL` נושא את ה-DSN שהדיאלקט שלו מצפה לו. `sqlalchemy` הוא הכל-כולל למסד נתונים ללא מפתח משלו. מאגרים מוטמעי-קובץ (SQLite, Access) אינם מוצעים, כי השרת חייב להיות ניתן להשגה ברשת.
 

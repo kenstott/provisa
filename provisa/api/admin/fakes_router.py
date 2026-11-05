@@ -109,6 +109,9 @@ async def check_column_fake(request: Request, body: ColumnFakeIn) -> dict[str, A
 
 class ProposeIn(BaseModel):
     tableId: int
+    # REQ-2053: propose for these columns only, each from the profile even when it declares a
+    # fake or a rule already. None: every column that declares neither.
+    columns: list[str] | None = None
 
 
 @router.post("/propose")
@@ -147,13 +150,21 @@ async def propose_fakes(request: Request, body: ProposeIn) -> dict[str, Any]:
         c["column_name"] for c in reg["columns"] if c.get("fake") or c.get("synthetic_rule")
     }
     pii = {c for c, tagged in tags.items() if "pii" in tagged}
-    out = propose(run_id, facts, pii, declared)
     # REQ-2152: only the columns the caller is served (the profile names them as published).
     physical = {} if served is None else _physical_names(body.tableId)
 
     def _reads(name: str) -> bool:
         return served is None or physical.get(name) in served
 
+    named = None if body.columns is None else set(body.columns)
+    # A named column the caller is not served is refused as one the run does not profile.
+    unread = sorted(n for n in named or () if not _reads(n))
+    try:
+        if unread:
+            raise ValueError(f"run {run_id} profiles no column {', '.join(map(repr, unread))}")
+        out = propose(run_id, facts, pii, declared, named)
+    except ValueError as exc:
+        raise ApiError(422, "fakes.column_not_profiled", str(exc), table=reg["table_name"]) from exc
     return {
         "runId": out.run_id,
         "columns": {name: fake for name, fake in out.columns.items() if _reads(name)},

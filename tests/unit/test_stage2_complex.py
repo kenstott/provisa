@@ -351,6 +351,7 @@ class _FakeRLSContext:
 
     def __init__(self, rules: dict[int, str]) -> None:
         self.rules = rules
+        self.write_rules: dict[str, dict[int, str]] = {}
 
 
 class TestBuildGovernanceContext:

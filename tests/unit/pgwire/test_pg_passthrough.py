@@ -33,6 +33,7 @@ from provisa.pgwire.pg_passthrough import (
     PassthroughFailure,
     open_passthrough,
 )
+from provisa.pgwire.server import _sqlstate_of
 
 _INT32 = struct.Struct("!i")
 _INT16 = struct.Struct("!h")
@@ -300,6 +301,45 @@ def test_a_source_error_at_prepare_fails_the_request():
         pg.finish()
     assert pg.released == [False]
     assert pg.statements == {}
+
+
+_DOMAIN_CHECK = (
+    b"SERROR\x00VERROR\x00C23514\x00Mvalue for domain conformance.fixture_domain violates check "
+    b'constraint "fixture_domain_check"\x00sconformance\x00dfixture_domain\x00'
+    b"nfixture_domain_check\x00Fdomains.c\x00L194\x00Rdomain_check_input\x00\x00"
+)
+_DOMAIN_MESSAGE = (
+    'value for domain conformance.fixture_domain violates check constraint "fixture_domain_check"'
+)
+
+
+def test_a_source_error_at_prepare_is_postgresql_s_sqlstate_and_message():
+    """REQ-2167: the source's error reaches the client as PostgreSQL sent it -- its SQLSTATE and its
+    message -- not as XX000 over the ErrorResponse's fields run together."""
+    pg = _FakePostgres([("PDH", _msg(b"E", _DOMAIN_CHECK)), ("S", _READY)])
+    try:
+        with pytest.raises(PassthroughFailure) as raised:
+            open_passthrough(pg.borrow, "SELECT 1", [], [0], [23])
+    finally:
+        pg.finish()
+    assert (raised.value.sqlstate, str(raised.value)) == ("23514", _DOMAIN_MESSAGE)
+    assert _sqlstate_of(raised.value) == "23514"
+
+
+def test_a_source_error_while_fetching_is_postgresql_s_sqlstate_and_message():
+    pg = _FakePostgres(
+        [
+            ("PDH", _PARSE_OK + _PARAMS_NONE + _row_description([("x", 23)])),
+            ("BES", _BIND_OK + _msg(b"E", _DOMAIN_CHECK) + _READY),
+        ]
+    )
+    try:
+        cursor = open_passthrough(pg.borrow, "SELECT 1", [], [0], [23]).cursor
+        with pytest.raises(PassthroughFailure) as raised:
+            cursor.fetch(10_000)
+    finally:
+        pg.finish()
+    assert (raised.value.sqlstate, str(raised.value)) == ("23514", _DOMAIN_MESSAGE)
 
 
 def test_a_row_contradicting_the_described_column_count_fails_the_request():

@@ -37,16 +37,19 @@ _HINT = [("x-provisa-role", "analyst"), ("x-provisa-cache", "true")]
 _NO_HINT = [("x-provisa-role", "analyst")]
 
 
-class _Order:
-    """Stands in for the generated ``Orders`` message class."""
+_SERVICE = None
 
-    DESCRIPTOR = SimpleNamespace(
-        fields=[SimpleNamespace(name="id")],
-        fields_by_name={"id": None},  # no field descriptor: the row value is passed through
-    )
 
-    def __init__(self, **fields) -> None:
-        self.fields = fields
+def _orders_service():
+    """A compiled service whose Orders message the encoder writes each row into (REQ-2194)."""
+    global _SERVICE
+    if _SERVICE is None:
+        from provisa.grpc.descriptor import OrgDescriptor
+
+        _SERVICE = OrgDescriptor(
+            'syntax = "proto3"; package provisa.v1; message Orders { optional int64 id = 1; }'
+        )
+    return _SERVICE
 
 
 def _serve_orders(p) -> None:
@@ -67,7 +70,7 @@ def _servicer(p) -> ProvisaServicer:
     _serve_orders(p)
     p.state.source_pools.supports_stream = lambda _source_id: False  # the buffered DIRECT read
     p.state.multitenancy = False
-    servicer = ProvisaServicer(p.state, SimpleNamespace(Orders=_Order))
+    servicer = ProvisaServicer(p.state, _orders_service())
     servicer._emit_trailing_metadata = MagicMock()
     servicer._meter_msg = lambda msg: msg
     return servicer
@@ -82,6 +85,7 @@ def _request(limit: int, order_id: int | None = None):
     )
     return SimpleNamespace(
         limit=limit,
+        offset=0,
         read_mask=SimpleNamespace(paths=[]),
         filter=filter_msg,
         HasField=lambda name: name == "filter" and bool(set_fields),
@@ -93,7 +97,9 @@ def _request(limit: int, order_id: int | None = None):
 async def _query(servicer, request, metadata) -> list[dict]:
     context = AsyncMock(spec=grpc.aio.ServicerContext)
     context.invocation_metadata = MagicMock(return_value=metadata)
-    rows = [m.fields async for m in servicer._handle_query(request, context, "Orders", "orders")]
+    orders = _orders_service().Orders
+    sent = [m async for m in servicer._handle_query(request, context, "Orders", "orders")]
+    rows = [{f.name: v for f, v in orders.FromString(m).ListFields()} for m in sent]
     context.abort.assert_not_awaited()
     return rows
 

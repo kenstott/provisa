@@ -194,3 +194,54 @@ async def test_the_mutation_deletes_drops_the_catalog_and_rebuilds(plane, served
 async def test_the_mutation_answers_not_found(plane, served):
     result = await _delete_source("nowhere")
     assert (result.success, result.code) == (False, "schema.source_not_found")
+
+
+async def test_no_server_is_started_for_the_source_while_it_is_deleted(plane, served, monkeypatch):
+    """REQ-1824: from before its row goes until its server is stopped, the source is marked as
+    being deleted, so nothing starts it a server the deletion would never stop; afterwards the
+    mark is gone -- a refused deletion included."""
+    from provisa.federation import pgwire_replica as pr
+
+    monkeypatch.setattr(pr, "_DELETING", set())
+    marked: list[bool] = []
+
+    def _drop(_state, sid: str) -> None:
+        from provisa.core.org_scope import source_key
+
+        marked.append(source_key(sid) in pr._DELETING)
+
+    monkeypatch.setattr(schema_mutation, "_drop_source_on_engine", _drop)
+    assert (await _delete_source("api")).success
+    assert marked == [True]
+    assert pr._DELETING == set()
+    assert not (await _delete_source("crm")).success
+    assert pr._DELETING == set()
+
+
+async def test_the_deletion_does_not_wait_for_a_catalog_walk_inside_an_adapter_read(plane, served):
+    """REQ-1824: deleteSource took 88 s and 125 s in CI, waiting for the source's catalog walk to
+    end while the walk sat in an adapter read. The walk is cancelled, not waited for."""
+    import asyncio
+    import threading
+    import time
+
+    from provisa.core.connection_loop import spawn_background
+    from provisa.discovery.catalog_cache import index_task_name
+
+    reading, answer = threading.Event(), threading.Event()
+
+    async def _walk() -> None:
+        await asyncio.to_thread(reading.set)
+        await asyncio.to_thread(answer.wait, 10)  # inline on its background loop
+
+    walk = spawn_background(_walk(), name=index_task_name("index", "api"))
+    try:
+        assert await asyncio.to_thread(reading.wait, 5)
+        began = time.monotonic()
+        result = await _delete_source("api")
+        assert time.monotonic() - began < 2
+        assert (result.success, served["dropped"]) == (True, ["api"])
+        assert not walk.done()
+    finally:
+        answer.set()
+    await asyncio.wait_for(asyncio.wrap_future(walk), 5)

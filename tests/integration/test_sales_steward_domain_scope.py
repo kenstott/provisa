@@ -27,6 +27,8 @@ import types
 from typing import Any
 
 import pytest
+
+from provisa.core.db import STANDARD_ROLE_RIGHTS
 from sqlalchemy import insert, select
 
 import provisa.api.app as appmod
@@ -99,7 +101,7 @@ async def plane(monkeypatch):
         await conn.execute_core(
             insert(roles).values(
                 id="sales_steward",
-                capabilities=[],
+                capabilities=sorted(STANDARD_ROLE_RIGHTS["data_steward"]),
                 parents=["data_steward"],
                 domain_access=["sales"],
             )
@@ -111,6 +113,10 @@ async def plane(monkeypatch):
     monkeypatch.setattr(appmod.state, "roles", loaded, raising=False)
     # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
     monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": []}, raising=False)
+    # Nor is any table compiled: every table is judged by its stored grants, whatever an earlier
+    # test in this process left in the runtime (catalog_scope reads tables and contexts).
+    monkeypatch.setattr(appmod.state, "tables", [], raising=False)
+    monkeypatch.setattr(appmod.state, "contexts", {}, raising=False)
     monkeypatch.setattr(
         appmod.state,
         "config",
@@ -206,8 +212,10 @@ async def test_a_sales_steward_governs_sales_and_is_refused_finance(plane):
         )
 
     product = DataProductInput(id="sales_kpis", domain_id="sales", name="Sales KPIs")
-    assert (await m.create_data_product(steward, product)).success
-    with pytest.raises(PermissionError, match="'finance'"):
+    # REQ-2188: a steward holds no RW on data products, in any domain: that is a role's of its own.
+    with pytest.raises(PermissionError, match="data_product_rw"):
+        await m.create_data_product(steward, product)
+    with pytest.raises(PermissionError, match="data_product_rw"):
         await m.create_data_product(
             steward, DataProductInput(id="ledger", domain_id="finance", name="Ledger")
         )

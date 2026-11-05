@@ -277,9 +277,11 @@ def test_every_arm_that_pushes_refreshes_the_compose_before_the_pushes(arm):
     assert body.index("push_cp_compose") < body.index("restart; verify")
 
 
-def test_the_sandbox_vm_refreshes_its_compose_too():
+def test_the_sandbox_vm_refreshes_its_compose_with_its_own_function():
+    # The VM's compose is push_compose's (test_deploy_cloud_compose.py); the coordinator's is this one.
     body = _function("deploy_sandbox_vm")
-    assert body.index("push_cp_compose") < body.index("push_overlay")
+    assert "push_cp_compose" not in body
+    assert body.index("push_compose") < body.index("push_overlay")
 
 
 # --- the verify polls name what is down ----------------------------------------------------

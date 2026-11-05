@@ -50,3 +50,32 @@ def test_no_glossary_term_relates_to_itself(path):
         if _name(edge["to"]) == _name(term["name"])
     ]
     assert selves == [], f"{path.name}: terms with an edge to themselves: {selves}"
+
+
+# REQ-1387 (A CONCEPT'S PROPERTIES ARE ITS PARTS): the shipped seed links a concept to the property
+# terms that describe it with PART_OF, property to concept, so the concept is grounded through the
+# columns they hold. RELATED_TO conducts no grounding and would leave the concept naming no data.
+_SEEDS = [_REPO / "config" / "provisa.yaml", _REPO / "config" / "provisa-install.yaml"]
+_CONCEPT_PARTS = {
+    "shift coverage": {"shift start", "shift end", "schedule location"},
+    "referral": {"clinic", "specialty"},
+}
+
+
+def _edges(path: Path) -> set[tuple[str, str, str]]:
+    config = yaml.safe_load(path.read_text()) or {}
+    return {
+        (_name(term["name"]), edge["rel_type"], _name(edge["to"]))
+        for term in config.get("glossary_terms") or []
+        for edge in term.get("edges") or []
+    }
+
+
+@pytest.mark.parametrize("path", _SEEDS, ids=lambda p: str(p.relative_to(_REPO)))
+def test_a_concepts_properties_are_part_of_it(path):
+    edges = _edges(path)
+    for concept, parts in _CONCEPT_PARTS.items():
+        for part in parts:
+            assert (part, "PART_OF", concept) in edges, f"{path.name}: {part} PART_OF {concept}"
+        loose = {e for e in edges if e[1] == "RELATED_TO" and concept in (e[0], e[2])}
+        assert loose == set(), f"{path.name}: {concept} still RELATED_TO its parts: {loose}"

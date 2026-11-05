@@ -80,6 +80,8 @@ describe("REQ-1362 tour data preload", () => {
         "SourcesQuery",
         "DomainsQuery",
         "TablesQuery",
+        "TableListQuery",
+        "TableRowsQuery",
         "RelationshipsQuery",
         "AllRelationshipsQuery",
         "RLSRulesQuery",
@@ -93,7 +95,7 @@ describe("REQ-1362 tour data preload", () => {
     failing = "RolesQuery";
     const { result } = renderHook(() => useTourPrefetch());
     await expect(act(() => result.current())).resolves.toBeUndefined();
-    expect(executed).toHaveLength(7);
+    expect(executed).toHaveLength(9);
   });
 });
 

@@ -15,42 +15,50 @@
 // checker's or profile run's results, read in their own domains as the same user.
 
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
-import React, { useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { ActionIcon, Alert, Badge, Group, List, Loader, Modal, Stack, Text } from "@mantine/core";
 import {
   Braces,
   Cable,
-  CircleHelp,
   FileJson,
   Globe,
   ListChecks,
   Pencil,
   Share2,
   Table as TableIcon,
-  Trash2,
 } from "lucide-react";
 import type { DataProduct } from "../../types/admin";
 import { DqRulesModal } from "./DqRulesModal";
 import { OwnerResolutionInline } from "../../components/OwnerResolution";
-import { tableSqlRef } from "../../naming";
 import { Tip } from "../../components/Tip";
+import { PanelDelete } from "../../components/list/PanelDelete";
 import { LineageDag } from "../../components/lineage/LineageDag";
 import type { DescribeColumn } from "../../components/lineage/column-descriptions";
 import type { ProductDq, ProductDqEntry, ProductLineage } from "../../api/lineage";
-import { rootKey, type MetaReader } from "../../api/metaGraph";
+import type { MetaReader } from "../../api/metaGraph";
 import { GraphPanel } from "../../components/graph3d/GraphPanel";
-import { ContractView } from "./ContractView";
-import type { OdcsContract } from "../../api/dataProductContracts";
+import type { ContractViewer } from "./ContractView";
+import { ProductContracts } from "./ProductContracts";
+import {
+  graphqlExample,
+  grpcExample,
+  jsonApiExample,
+  restExample,
+  sqlExample,
+  type ExampleLink,
+  type TableRef,
+} from "./tableExamples";
+import { DetailCard, Empty, Muted } from "./DetailCard";
 import { ClampedDetail } from "./ClampedDetail";
 import { useProductLifecycle } from "./ProductLifecycle";
 import type { DataProductStatus, ProductFinding } from "../../hooks/useDataProductMutations";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
 import {
-  coreContracts,
   coreGraph,
   modelName,
+  restModelName,
   type CoreEdge,
   type CoreTable,
   type ProductCore,
@@ -60,44 +68,6 @@ import { COLOR, dqStatus } from "./dataProductClaims";
 
 /** REQ-2157: the data quality section's rows, in order. */
 const DQ_ROWS = ["expectations", "promises", "related"] as const;
-
-interface TableRef {
-  domain_id: string;
-  table_name: string;
-  alias: string | null;
-}
-
-const sqlRefOf = (tb: TableRef) =>
-  tableSqlRef({ domainId: tb.domain_id, tableName: tb.table_name, alias: tb.alias });
-const selectAll = (tb: TableRef) => `select * from ${sqlRefOf(tb)}`;
-
-/** A table's root query field in the acting role's schema (from /data/graph-schema). */
-function rootOf(reader: MetaReader | null, tb: TableRef): string | null {
-  return reader?.roots.get(rootKey(tb.domain_id, tb.table_name)) ?? null;
-}
-
-// REQ-1634: one example query per member table, by the root field and the columns the role's own
-// schema gives it -- the compiler's names, never re-derived here.
-function graphqlExample(reader: MetaReader, field: string): string | null {
-  const type = reader.schema.rootType(field);
-  const columns = type ? reader.schema.scalars(type) : [];
-  return columns.length > 0 ? `{ ${field} { ${columns.join(" ")} } }` : null;
-}
-
-// Mirrors provisa.compiler.naming.to_type_name + provisa.grpc.proto_gen._to_proto_type_name — both
-// pure functions of the field name alone. sa__userByName -> Sa__UserByName -> SaUserByName.
-function grpcMethod(fieldName: string): string {
-  let typeName: string;
-  if (fieldName.includes("__")) {
-    const [prefix, rest] = fieldName.split("__", 2);
-    const prefixPascal = prefix ? prefix[0].toUpperCase() + prefix.slice(1).toLowerCase() : "";
-    const restPascal = rest ? rest[0].toUpperCase() + rest.slice(1) : "";
-    typeName = prefixPascal + restPascal;
-  } else {
-    typeName = fieldName[0].toUpperCase() + fieldName.slice(1);
-  }
-  return `Query${typeName}()`;
-}
 
 // A zero-width space after "/" gives the browser a break opportunity there — plain "/" doesn't
 // wrap on its own, so a long gqlName/cqlName pair would otherwise overflow its monospace panel.
@@ -112,8 +82,9 @@ interface DataProductDetailPanelProps {
   coreError: string | null;
   /** The acting role's schema and root fields, for the member tables' drill-down queries. */
   reader: MetaReader | null;
-  // REQ-1634, REQ-2155: gates Edit (data_product_rw, or data_product_owned_rw on a product whose
-  // owner role the caller holds) and Delete (data_product_rw alone).
+  /** Who reads the panel: what a contract's How to use offers them (REQ-2158). */
+  viewer: ContractViewer;
+  // REQ-1634, REQ-2188: gates Edit and Delete: data_product_rw, on the products its rules leave it.
   canEdit: boolean;
   canDelete: boolean;
   /** REQ-2160: the reader holds the product's owner or team role. The owner also sees its
@@ -128,10 +99,9 @@ interface DataProductDetailPanelProps {
   // lineage endpoint) -- rendered with the same LineageDag component the Lineage page uses
   // (REQ-1161/1627). Any reader of the product sees it.
   lineageGraph: ProductLineage | null;
-  // REQ-2158, REQ-2118: each output port's ODCS contract, declared and derived, by its member's
-  // address (source.schema.table); null while it is read. odcsError: why it could not be read.
-  odcs: Record<string, OdcsContract> | null;
-  odcsError: string;
+  // REQ-2158: bumped when the product's members can have changed (a save, a retirement): each open
+  // contract row reads its contract again.
+  contractsVersion: number;
   // REQ-1667: the member relations the DAG's swimlanes are built around (lane 0).
   lineageMembers?: ReadonlySet<string>;
   // A field's registered description for the lineage hover, over every table (not just members).
@@ -140,7 +110,8 @@ interface DataProductDetailPanelProps {
   relationLabel?: (relation: string) => string;
   /** Opens the edit form, on ``focus`` where given. */
   onEdit: (focus?: "supportContact") => void;
-  onDelete: () => void;
+  /** REQ-2198: resolves once the product is deleted and the list read again (PanelDelete). */
+  onDelete: () => Promise<boolean | void>;
   // REQ-1634 STATUS, REQ-2146: its lifecycle -- the products a successor is chosen from, the
   // members a retirement moves, its findings, and what follows a status change.
   products: DataProduct[];
@@ -153,90 +124,26 @@ interface DataProductDetailPanelProps {
   statusActions: DataProductStatus;
 }
 
-// A card in the masonry: kept whole within its column.
-const CARD_IN_COLUMN: React.CSSProperties = {
-  breakInside: "avoid",
-  minWidth: 0,
-  marginBottom: "var(--mantine-spacing-sm)",
-};
-// A card's content stays inside the card: long words wrap, and what cannot wrap (a table's
-// columns) scrolls within it.
-const CARD_BODY: React.CSSProperties = { minWidth: 0, overflowX: "auto", overflowWrap: "anywhere" };
-
-/** One card of the panel: the application's collapsible (one look, its open or closed state
- * remembered per section), headed by its label and, behind (?), what it holds. ``wide`` spans the
- * panel's width, outside the columns. */
-function DetailCard({
-  section,
-  label,
-  hint,
-  testId,
-  tourId,
-  wide = false,
-  children,
-}: {
-  section: string;
-  label: string;
-  hint?: string;
-  testId: string;
-  tourId?: string;
-  wide?: boolean;
-  children: React.ReactNode;
-}) {
-  const heading = (
-    <Group gap="xs" wrap="nowrap" component="span">
-      <span>{label}</span>
-      {hint && (
-        <Tip text={hint}>
-          <ActionIcon
-            component="span"
-            variant="subtle"
-            color="gray"
-            size="xs"
-            role="button"
-            tabIndex={0}
-            aria-label={hint}
-            data-testid={`${testId}-hint`}
-            // The icon sits in the heading; using it must not also open or close the card.
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
-            <CircleHelp size={14} aria-hidden />
-          </ActionIcon>
-        </Tip>
-      )}
-    </Group>
-  );
-  return (
-    <div style={wide ? undefined : CARD_IN_COLUMN} data-tour={tourId} data-testid={testId}>
-      <Collapsibles id={`data-product.${section}`}>
-        <CollapsibleItem value={section} title={heading} controlTestId={`${testId}-toggle`}>
-          <div style={CARD_BODY}>{children}</div>
-        </CollapsibleItem>
-      </Collapsibles>
-    </div>
-  );
-}
-
-function Empty({ text }: { text: string }) {
-  return (
-    <Text size="sm" c="var(--text-muted)">
-      {text}
-    </Text>
-  );
-}
-
-function Muted({ children }: { children: React.ReactNode }) {
-  return (
-    <Text component="span" c="var(--text-muted)" ff="text" size="xs">
-      {" "}
-      {children}
-    </Text>
-  );
-}
-
 function relatedLabel(e: CoreEdge): string {
-  return e.target_table ? modelName(e.target_table) : String(e.target_table_id);
+  return e.targetTable ? modelName(e.targetTable) : String(e.targetTableId);
+}
+
+/** REQ-2160: any reader but the owner or team sees that the list exists and whose it is, never a
+ *  list and never "None" (an empty list is the owner's to read). */
+function OwnerOnlyList() {
+  const { t } = useTranslation();
+  return <Empty text={t("dataProductCore.ownerOnlyList")} />;
+}
+
+/** The owner's card while lineage is unread: loading, or the read's error; never a false "None". */
+function LineagePending({ loading, error }: { loading: boolean; error: string }) {
+  const { t } = useTranslation();
+  if (loading) return <Empty text={t("dataProductsTab.detail.lineageLoading")} />;
+  return error ? (
+    <Text size="sm" c="red">
+      {error}
+    </Text>
+  ) : null;
 }
 
 // Row-click detail view for a data product — same detail-then-edit pattern as
@@ -246,14 +153,14 @@ export function DataProductDetailPanel({
   core,
   coreError,
   reader,
+  viewer,
   canEdit,
   canDelete,
   owner,
   lineageLoading,
   lineageError,
   lineageGraph,
-  odcs,
-  odcsError,
+  contractsVersion,
   lineageMembers,
   describeColumn,
   relationLabel,
@@ -269,6 +176,7 @@ export function DataProductDetailPanel({
 }: DataProductDetailPanelProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const openExample = (example: ExampleLink) => navigate(example.to, { state: example.state });
   // REQ-1640/REQ-1627: expanded by default, same as statement lineage's initial view — this
   // subgraph (member tables + one relation-hop) is small like a single query's lineage, not
   // federation-scale, so it reads better column-by-column with the real role colours than
@@ -315,13 +223,13 @@ export function DataProductDetailPanel({
   // The relationships between the product's member tables, under the names meta stores on each.
   const memberIds = new Set((core?.tables ?? []).map((tb) => tb.id));
   const internalRelationships = (core?.tables ?? []).flatMap((tb) =>
-    (tb.source_relationships ?? [])
-      .filter((r) => r.target_table != null && memberIds.has(r.target_table.id))
+    (tb.sourceRelationships ?? [])
+      .filter((r) => r.targetTable != null && memberIds.has(r.targetTable.id))
       .map((r) => ({ ...r, source: tb })),
   );
   const cypherRows = internalRelationships
-    .filter((r) => !r.disable_cypher)
-    .map((r) => ({ r, type: r.cypher_type }));
+    .filter((r) => !r.disableCypher)
+    .map((r) => ({ r, type: r.cypherType }));
 
   // Masonry panel grid: a CSS multi-column layout packs each card into whichever column has room
   // next, instead of flex-wrap's row-by-row layout (which pads every card in a row up to the row's
@@ -341,9 +249,9 @@ export function DataProductDetailPanel({
   // REQ-1443 clause 10: a checker table (one carrying a contract) is a member only because the
   // table it scans is — its rows are the product's quality evidence, not part of its published
   // surface, so it is listed under Data Quality rather than among the output ports.
-  const outputTables = core.tables?.filter((tb) => tb.dq_contract == null);
-  const dqTables = core.tables?.filter((tb) => tb.dq_contract != null);
-  const profiled = outputTables?.filter((tb) => (tb.profile_results ?? []).length > 0);
+  const outputTables = core.tables?.filter((tb) => tb.dqContract == null);
+  const dqTables = core.tables?.filter((tb) => tb.dqContract != null);
+  const profiled = outputTables?.filter((tb) => (tb.profileResults ?? []).length > 0);
   // The graph card is drawn from this read, as every other card is.
   const graph = coreGraph(core);
   // REQ-2126: the tables with a direct declared relationship to a member, not themselves members;
@@ -354,7 +262,6 @@ export function DataProductDetailPanel({
   // REQ-2160: the owner sees every row; any other reader the product's promises.
   const shownDqRows: readonly (typeof DQ_ROWS)[number][] = owner ? DQ_ROWS : ["promises"];
   const customPropertyEntries = Object.entries(product.customProperties ?? {});
-  const contracts = coreContracts(core); // REQ-2158
 
   // Every value of the product, under the labels its form gives them.
   const fields: DetailField[] = [
@@ -394,13 +301,13 @@ export function DataProductDetailPanel({
   ];
 
   const sqlDrill = (tb: TableRef & { id: number }, testId: string) => (
-    <Tip text={t("dataProductsTab.sqlQueryAria", { table: tb.table_name })} named>
+    <Tip text={t("dataProductsTab.sqlQueryAria", { table: tb.tableName })} named>
       <ActionIcon
         variant="subtle"
         size="sm"
-        aria-label={t("dataProductsTab.sqlQueryAria", { table: tb.table_name })}
+        aria-label={t("dataProductsTab.sqlQueryAria", { table: tb.tableName })}
         data-testid={testId}
-        onClick={() => navigate("/sql", { state: { sql: selectAll(tb), autoRun: true } })}
+        onClick={() => openExample(sqlExample(tb))}
       >
         <TableIcon size={14} />
       </ActionIcon>
@@ -413,8 +320,8 @@ export function DataProductDetailPanel({
   const dqItem = (c: ProductDqEntry, related: boolean) => {
     const checker = {
       id: c.checker_table_id,
-      domain_id: c.domain_id,
-      table_name: c.table_name,
+      domainId: c.domain_id,
+      tableName: c.table_name,
       alias: c.alias,
     };
     const held = dqTables?.find((tb) => tb.id === c.checker_table_id);
@@ -453,7 +360,7 @@ export function DataProductDetailPanel({
               <DqRulesModal
                 opened={rulesFor === c.checker_table_id}
                 onClose={() => setRulesFor(null)}
-                rules={held.dq_rules ?? []}
+                rules={held.dqRules ?? []}
                 scans={c.checked_table}
                 tableName={c.table_name}
               />
@@ -469,7 +376,7 @@ export function DataProductDetailPanel({
             size="xs"
             data-testid={`data-product-detail-dq-checks-${c.checker_table_id}`}
           >
-            {t("dataProductCore.scans", { table: modelName(c.checked_table) })}
+            {t("dataProductCore.scans", { table: restModelName(c.checked_table) })}
             {related &&
               ` · ${
                 c.owner_product_id
@@ -483,8 +390,9 @@ export function DataProductDetailPanel({
   };
 
   const consumerRow = (tb: CoreTable) => {
-    const field = rootOf(reader, tb);
-    const graphql = field && reader ? graphqlExample(reader, field) : null;
+    const graphql = graphqlExample(reader, tb);
+    const rest = restExample(reader, tb);
+    const grpc = grpcExample(reader, tb);
     return (
       <List.Item key={`gql-${tb.id}`} ff="monospace">
         <Group gap={4} wrap="nowrap">
@@ -492,64 +400,51 @@ export function DataProductDetailPanel({
             {modelName(tb)}
           </Text>
           {graphql && (
-            <Tip text={t("dataProductsTab.graphqlQueryAria", { table: tb.table_name })}>
+            <Tip text={t("dataProductsTab.graphqlQueryAria", { table: tb.tableName })}>
               <ActionIcon
                 variant="subtle"
                 size="sm"
-                aria-label={t("dataProductsTab.graphqlQueryAria", { table: tb.table_name })}
+                aria-label={t("dataProductsTab.graphqlQueryAria", { table: tb.tableName })}
                 data-testid={`data-product-detail-graphql-query-${tb.id}`}
-                onClick={() => navigate("/query", { state: { query: graphql, autoRun: true } })}
+                onClick={() => openExample(graphql)}
               >
                 <Braces size={14} />
               </ActionIcon>
             </Tip>
           )}
           {sqlDrill(tb, `data-product-detail-sql-query-${tb.id}`)}
-          <Tip text={t("dataProductsTab.jsonapiQueryAria", { table: tb.table_name })} named>
+          <Tip text={t("dataProductsTab.jsonapiQueryAria", { table: tb.tableName })} named>
             <ActionIcon
               variant="subtle"
               size="sm"
-              aria-label={t("dataProductsTab.jsonapiQueryAria", { table: tb.table_name })}
+              aria-label={t("dataProductsTab.jsonapiQueryAria", { table: tb.tableName })}
               data-testid={`data-product-detail-jsonapi-query-${tb.id}`}
-              onClick={() =>
-                navigate("/jsonapi", {
-                  state: {
-                    jsonapiUrl: `/data/jsonapi/${tb.domain_id}/${tb.table_name}`,
-                    autoRun: true,
-                  },
-                })
-              }
+              onClick={() => openExample(jsonApiExample(tb))}
             >
               <FileJson size={14} />
             </ActionIcon>
           </Tip>
-          {field && (
-            <Tip text={t("dataProductsTab.openApiQueryAria", { table: tb.table_name })} named>
+          {rest && (
+            <Tip text={t("dataProductsTab.openApiQueryAria", { table: tb.tableName })} named>
               <ActionIcon
                 variant="subtle"
                 size="sm"
-                aria-label={t("dataProductsTab.openApiQueryAria", { table: tb.table_name })}
+                aria-label={t("dataProductsTab.openApiQueryAria", { table: tb.tableName })}
                 data-testid={`data-product-detail-openapi-query-${tb.id}`}
-                onClick={() =>
-                  navigate("/openapi", {
-                    state: { openApiUrl: `GET /data/rest/${field}`, autoRun: true },
-                  })
-                }
+                onClick={() => openExample(rest)}
               >
                 <Globe size={14} />
               </ActionIcon>
             </Tip>
           )}
-          {field && (
-            <Tip text={t("dataProductsTab.grpcQueryAria", { table: tb.table_name })} named>
+          {grpc && (
+            <Tip text={t("dataProductsTab.grpcQueryAria", { table: tb.tableName })} named>
               <ActionIcon
                 variant="subtle"
                 size="sm"
-                aria-label={t("dataProductsTab.grpcQueryAria", { table: tb.table_name })}
+                aria-label={t("dataProductsTab.grpcQueryAria", { table: tb.tableName })}
                 data-testid={`data-product-detail-grpc-query-${tb.id}`}
-                onClick={() =>
-                  navigate("/grpc", { state: { grpcMethod: grpcMethod(field), autoRun: true } })
-                }
+                onClick={() => openExample(grpc)}
               >
                 <Cable size={14} />
               </ActionIcon>
@@ -605,36 +500,6 @@ export function DataProductDetailPanel({
                   </List.Item>
                 ))}
               </List>
-            )}
-          </DetailCard>
-        )}
-        {contracts.length > 0 && (
-          <DetailCard
-            section="contracts"
-            testId={`data-product-card-contracts-${p.id}`}
-            label={t("dataProductsTab.contract.label")}
-            hint={t("dataProductsTab.contract.hint")}
-          >
-            {odcsError ? (
-              <Alert color="red" data-testid={`data-product-contracts-error-${p.id}`}>
-                {t("dataProductsTab.contract.loadError", { error: odcsError })}
-              </Alert>
-            ) : odcs === null ? (
-              <Loader size="sm" data-testid={`data-product-contracts-loading-${p.id}`} />
-            ) : (
-              <Stack gap="md">
-                {contracts.map((c) => {
-                  const member = `${c.sourceId}.${c.schemaName}.${c.tableName}`;
-                  const document = odcs[member];
-                  return document ? (
-                    <ContractView key={c.tableId} contract={document} tableId={c.tableId} />
-                  ) : (
-                    <Alert key={c.tableId} color="red" data-testid={`data-contract-${c.tableId}`}>
-                      {t("dataProductsTab.contract.notExported", { member })}
-                    </Alert>
-                  );
-                })}
-              </Stack>
             )}
           </DetailCard>
         )}
@@ -763,14 +628,14 @@ export function DataProductDetailPanel({
                 data-testid={`data-product-detail-dq-${p.id}-orphan-${c.checker_table_id}`}
               >
                 {t("dataProductCore.orphanWarning", {
-                  checker: modelName(c),
-                  table: modelName(c.checked_table),
+                  checker: restModelName(c),
+                  table: restModelName(c.checked_table),
                 })}
               </Alert>
             ))}
           </DetailCard>
         )}
-        {profiled !== undefined && outputTables?.some((tb) => tb.profile_results !== undefined) && (
+        {profiled !== undefined && outputTables?.some((tb) => tb.profileResults !== undefined) && (
           <DetailCard
             section="profiles"
             testId={`data-product-card-profiles-${p.id}`}
@@ -785,11 +650,11 @@ export function DataProductDetailPanel({
                   <List.Item key={tb.id} ff="monospace">
                     {modelName(tb)}
                     <List size="xs" withPadding>
-                      {(tb.profile_results ?? []).map((r) => (
+                      {(tb.profileResults ?? []).map((r) => (
                         <List.Item key={r.id} ff="monospace">
                           <Group gap={4} wrap="nowrap">
                             <Text component="span" size="xs" ff="monospace">
-                              {r.table_name}
+                              {r.tableName}
                             </Text>
                             {sqlDrill(r, `data-product-detail-profile-sql-query-${r.id}`)}
                           </Group>
@@ -815,7 +680,7 @@ export function DataProductDetailPanel({
                 {core.terms.map((term) => (
                   <List.Item key={term.id} ff="monospace">
                     {term.name}
-                    {term.is_abstract && (
+                    {term.isAbstract && (
                       <Muted>({t("dataProductsTab.relatedTermsConcept")})</Muted>
                     )}
                     {term.definition && <Muted>— {term.definition}</Muted>}
@@ -882,27 +747,27 @@ export function DataProductDetailPanel({
                   <List.Item key={e.id} ff="monospace">
                     {/* The whole entry at most three lines; its ellipsis opens it in place. */}
                     <ClampedDetail
-                      testId={`data-product-related-${p.id}-${e.target_product_id ?? e.target_table_id}`}
+                      testId={`data-product-related-${p.id}-${e.targetProductId ?? e.targetTableId}`}
                     >
                       {relatedLabel(e)}
-                      {e.target_product && (
+                      {e.targetProduct && (
                         <Muted>
-                          ({t("dataProductCore.inProduct", { product: e.target_product.name })})
+                          ({t("dataProductCore.inProduct", { product: e.targetProduct.name })})
                         </Muted>
                       )}
                       <Text size="xs" c="var(--text-muted)">
                         {[
                           e.aliases,
-                          e.path_count > 1
-                            ? t("dataProductCore.paths", { count: e.path_count })
+                          e.pathCount > 1
+                            ? t("dataProductCore.paths", { count: e.pathCount })
                             : null,
                         ]
                           .filter(Boolean)
                           .join(" · ")}
                       </Text>
-                      {e.target_table?.description && (
+                      {e.targetTable?.description && (
                         <Text size="xs" c="var(--text-muted)">
-                          {e.target_table.description}
+                          {e.targetTable.description}
                         </Text>
                       )}
                     </ClampedDetail>
@@ -925,12 +790,12 @@ export function DataProductDetailPanel({
                 <List.Item key={r.id} ff="monospace">
                   {/* GQL field name and Cypher relationship type are independent names for the
                       same edge — show both when set. */}
-                  {joinAliasPair([r.graphql_field, r.cypher_type])}
+                  {joinAliasPair([r.graphqlField, r.cypherType])}
                   <Muted>
-                    {r.source.table_name}.{r.source_column}
+                    {r.source.tableName}.{r.sourceColumn}
                     {" → "}
-                    {r.target_table?.table_name}
-                    {r.target_column ? `.${r.target_column}` : ""} ({r.cardinality})
+                    {r.targetTable?.tableName}
+                    {r.targetColumn ? `.${r.targetColumn}` : ""} ({r.cardinality})
                   </Muted>
                 </List.Item>
               ))}
@@ -939,40 +804,51 @@ export function DataProductDetailPanel({
         </DetailCard>
         {/* REQ-2126, REQ-2132: the nearest physical inputs and the product's expectations of them,
             found on the product's lineage as its reader may read it (REQ-2156). */}
-        {lineageGraph && owner && (
-          <DetailCard
-            section="inputPorts"
-            testId={`data-product-card-inputPorts-${p.id}`}
-            label={t("dataProductsTab.detail.field.inputPorts")}
-            hint={t("dataProductCore.inputsHint")}
-          >
-            <ClaimsCallout
-              kind="expectations"
-              checks={lineageGraph.dq.expectations}
-              testId={`data-product-detail-expectations-${p.id}`}
-            />
-            <InputsList
-              inputs={lineageGraph.inputs}
-              expectations={lineageGraph.dq.expectations}
-              testId={`data-product-detail-inputs-${p.id}`}
-            />
-          </DetailCard>
-        )}
+        <DetailCard
+          section="inputPorts"
+          testId={`data-product-card-inputPorts-${p.id}`}
+          label={t("dataProductsTab.detail.field.inputPorts")}
+          hint={t("dataProductCore.inputsHint")}
+        >
+          {!owner ? (
+            <OwnerOnlyList />
+          ) : lineageGraph ? (
+            <>
+              <ClaimsCallout
+                kind="expectations"
+                checks={lineageGraph.dq.expectations}
+                testId={`data-product-detail-expectations-${p.id}`}
+              />
+              <InputsList
+                inputs={lineageGraph.inputs}
+                expectations={lineageGraph.dq.expectations}
+                testId={`data-product-detail-inputs-${p.id}`}
+              />
+            </>
+          ) : (
+            <LineagePending loading={lineageLoading} error={lineageError} />
+          )}
+        </DetailCard>
         {/* REQ-2160: the owner's view of who reads the product, one hop downstream (the product
             lineage endpoint, cut to the reader). */}
-        {lineageGraph && owner && (
-          <DetailCard
-            section="consumers"
-            testId={`data-product-card-consumers-${p.id}`}
-            label={t("dataProductCore.consumers")}
-            hint={t("dataProductCore.consumersHint")}
-          >
+        <DetailCard
+          section="consumers"
+          testId={`data-product-card-consumers-${p.id}`}
+          label={t("dataProductCore.consumers")}
+          hint={t("dataProductCore.consumersHint")}
+        >
+          {!owner ? (
+            <OwnerOnlyList />
+          ) : lineageGraph ? (
             <ConsumersList
               consumers={lineageGraph.consumers}
+              ports={core.tables}
               testId={`data-product-detail-consumers-${p.id}`}
             />
-          </DetailCard>
-        )}
+          ) : (
+            <LineagePending loading={lineageLoading} error={lineageError} />
+          )}
+        </DetailCard>
         {/* Compact: the product, its members, commands and bound terms; the full graph opens
             from its expand button. */}
         <DetailCard
@@ -1056,6 +932,16 @@ export function DataProductDetailPanel({
           </CollapsibleItem>
         </Collapsibles>
       </div>
+      {/* REQ-2158: the product's contracts, one row per output port's contract, beneath its
+          lineage; a row opens to that contract's cards and reads it then. */}
+      <ProductContracts
+        productId={p.id}
+        core={core}
+        lineage={lineageGraph}
+        version={contractsVersion}
+        reader={reader}
+        viewer={viewer}
+      />
       {lifecycle.dialogs}
       {(canEdit || canDelete) && (
         <Group gap="xs" mt={4}>
@@ -1076,20 +962,15 @@ export function DataProductDetailPanel({
             </Tip>
           )}
           {canDelete && (
-            <Tip text={t("dataProductsTab.deleteDataProduct", { id: p.id })} named>
-              <ActionIcon
-                variant="subtle"
-                color="red"
-                aria-label={t("dataProductsTab.deleteDataProduct", { id: p.id })}
-                data-testid={`data-product-detail-delete-${p.id}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-              >
-                <Trash2 size={14} />
-              </ActionIcon>
-            </Tip>
+            <PanelDelete
+              itemKey={p.id}
+              title={t("dataProductsTab.deleteTitle")}
+              consequence={t("dataProductsTab.deleteConfirm", { id: p.id })}
+              ariaLabel={t("dataProductsTab.deleteDataProduct", { id: p.id })}
+              testId={`data-product-detail-delete-${p.id}`}
+              confirmTestId="data-product-delete-modal"
+              onDelete={onDelete}
+            />
           )}
         </Group>
       )}

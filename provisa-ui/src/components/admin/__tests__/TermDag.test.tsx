@@ -52,13 +52,14 @@ const term: GlossaryTermDetail = {
   ref_count: 1,
   table_count: 1,
   identity_gap: false,
+  related_to: 0,
   export_excluded: false,
   retired: false,
-  live: true,
-  grounded: true,
+  grounding: "grounded",
+  agent_visible: true,
   domains: ["sales"],
   findings: 0,
-  status: "live",
+  status: "approved",
   status_reason: null,
   status_by: null,
   retire_on: null,
@@ -77,6 +78,7 @@ const term: GlossaryTermDetail = {
   edges_out: [{ term_id: 3, rel_type: "PART_OF", name: "Party" }],
   experts: [],
   tags: [],
+  pending_on: [],
 };
 const tables = [
   {

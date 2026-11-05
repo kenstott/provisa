@@ -46,8 +46,11 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+import sqlglot.expressions as exp
+
 from provisa.compiler.sql_literals import sql_literal
 from provisa.compiler.sql_types import key_list
+from provisa.cypher.counters import carried_labels, set_values, unknown, written_rows
 from provisa.gql.label_map import (
     CypherLabelMap,
     JunctionMapping,
@@ -111,6 +114,9 @@ class WriteAST:
     # the label of each variable the leading MATCHes bind that a MERGE reaches back to.
     merges: list["MergePart"] = field(default_factory=list)
     matched_labels: dict[str, str] = field(default_factory=dict)
+    # "merge": the leading MATCHes as reads of their own, one per set of patterns related to one
+    # another, each with the variables it binds (:func:`_reads_apart`).
+    apart: list[tuple[str, frozenset[str]]] = field(default_factory=list)
 
 
 @dataclass
@@ -628,13 +634,154 @@ def _parse_merge(query: str) -> WriteAST:
     head = parts[0].nodes[0]
     opening = merges[0]
     assert isinstance(opening, MergeClause)
+    reads = query[: opening.start].strip()
     return WriteAST(
         kind="merge",
         label=head.label,
         variable=head.variable,
-        reads=query[: opening.start].strip(),
+        reads=reads,
         merges=parts,
         matched_labels=matched_labels,
+        apart=_reads_apart(lead, reads) if lead else [],
+    )
+
+
+def _clause_variables(clause: Any) -> set[str]:
+    """The variables a MATCH clause binds: its path's, each node's and each relationship's."""
+    pattern = getattr(clause.pattern, "pattern", clause.pattern)
+    named = [clause.variable, *(n.variable for n in pattern.nodes)]
+    named += [r.variable for r in pattern.rels]
+    return {v for v in named if v}
+
+
+def _conjuncts(expression: Any) -> list[Any]:
+    """``expression``'s top-level AND operands, parentheses around an AND opened."""
+    from provisa.gql.expr_ast import Binary, Paren
+
+    if isinstance(expression, Paren) and isinstance(expression.inner, Binary):
+        return _conjuncts(expression.inner)
+    if isinstance(expression, Binary) and expression.op.upper() == "AND":
+        return _conjuncts(expression.left) + _conjuncts(expression.right)
+    return [expression]
+
+
+def _reads_apart(lead: list[Any], written: str) -> list[tuple[str, frozenset[str]]]:
+    """The leading MATCHes of a MERGE as reads of their own (REQ-2176, as REQ-665's relationship
+    CREATE reads its ends, :meth:`WriteTranslator.matched_reads`): the patterns no shared variable
+    or WHERE condition relates are every combination of their rows, which the writer takes from
+    each one's own read, so no read combines unrelated tables (REQ-603). Each read is given with
+    the variables it binds; one read of them all is the MATCHes as written.
+
+    A condition is read with the patterns of its variables; one naming no variable, one with a
+    subquery, one naming a variable its own clause's patterns do not reach, keeps that clause's
+    patterns in one read, as written."""
+    from dataclasses import replace
+
+    from provisa.cypher.printer import CypherPrintRefused, _pattern, expression
+    from provisa.gql.expr_ast import SubqueryExpr, Variable, walk
+    from provisa.gql.ir import PathPattern
+
+    clauses = [(s, m) for s, step in enumerate(lead) for m in step.matches]
+    parent = list(range(len(clauses)))
+
+    def top(i: int) -> int:
+        while parent[i] != i:
+            i = parent[i]
+        return i
+
+    def join(members: set[int]) -> None:
+        roots = sorted({top(i) for i in members})
+        for r in roots[1:]:
+            parent[r] = roots[0]
+
+    owner: dict[str, int] = {}
+    for i, (_, clause) in enumerate(clauses):
+        for var in _clause_variables(clause):
+            join({i, owner.setdefault(var, i)})
+    conditions: list[tuple[int, int, Any]] = []  # (step, clause it reads with, condition)
+    for s, step in enumerate(lead):
+        if step.where is None:
+            continue
+        here = {i for i, (t, _) in enumerate(clauses) if t == s}
+        for condition in _conjuncts(step.where.expression):
+            nodes = list(walk(condition))
+            names = {e.name for e in nodes if isinstance(e, Variable)}
+            members = {owner[n] for n in names if n in owner}
+            if (
+                not names
+                or names - owner.keys()
+                or any(isinstance(e, SubqueryExpr) for e in nodes)
+                or not {top(m) for m in members} <= {top(i) for i in here}
+            ):
+                members |= here
+            join(members)
+            conditions.append((s, next(iter(members)), condition))
+    roots = list(dict.fromkeys(top(i) for i in range(len(clauses))))
+    if len(roots) == 1:
+        return [(written, frozenset(owner))]
+    reads = []
+    for root in roots:
+        lines: list[str] = []
+        for s in range(len(lead)):
+            for i, (t, clause) in enumerate(clauses):
+                if t != s or top(i) != root:
+                    continue
+                pattern = getattr(clause.pattern, "pattern", clause.pattern)
+                if (
+                    clause.variable
+                    or pattern is not clause.pattern
+                    or any(n.label_alternation for n in pattern.nodes)
+                ):
+                    raise CypherWriteParseError(
+                        "a MERGE's MATCH of patterns unrelated to one another reads each apart: "
+                        "a path variable, a path function or a label alternation among them has "
+                        "no read of its own"
+                    )
+                bare = PathPattern(
+                    nodes=[replace(n, properties={}, property_text={}) for n in pattern.nodes],
+                    rels=[replace(r, properties={}, property_text={}) for r in pattern.rels],
+                )
+                try:
+                    text = _pattern(bare)
+                except CypherPrintRefused as exc:
+                    raise CypherWriteParseError(
+                        "a MERGE's MATCH of patterns unrelated to one another reads each apart, "
+                        f"and this one has no read of its own: {exc}"
+                    ) from exc
+                lines.append(f"{'OPTIONAL MATCH' if clause.optional else 'MATCH'} {text}")
+            held = [c for t, i, c in conditions if t == s and top(i) == root]
+            if held:
+                lines.append("WHERE " + " AND ".join(f"({expression(c)})" for c in held))
+        variables = frozenset(v for v, i in owner.items() if top(i) == root)
+        reads.append((" ".join(lines), variables))
+    return reads
+
+
+def _remove_refusal(query: str) -> str:
+    """Why a REMOVE is not a governed write: a property's REMOVE has no write form; a label's
+    is the graph session's, in a statement of its own."""
+    from provisa.cypher.parser import CypherParseError, parse_cypher_statement
+    from provisa.gql.ir import RemoveClause
+
+    try:
+        ast = parse_cypher_statement(query)
+    except CypherParseError as exc:
+        raise CypherWriteParseError(str(exc)) from exc
+    removes = [w for w in ast.writes if isinstance(w, RemoveClause)]
+    lead = (
+        "Cypher write pattern 'REMOVE' is not a governed write: a governed write has one exact "
+        "target, one model table or one registered junction."
+    )
+    if any(item.property is not None for w in removes for item in w.items):
+        return (
+            f"{lead} A REMOVE of a property is not written: a model node's property is written "
+            f"by SET, of a column its table declares. A Cypher write takes one of these forms: "
+            f"{WRITE_FORMS}"
+        )
+    return (
+        f"{lead} REMOVE n:L takes a label off a node in the graph session, in a statement of "
+        f"its own: [MATCH ...] REMOVE n:L, with nothing after it. A Cypher write takes one of "
+        f"these forms: {WRITE_FORMS}"
     )
 
 
@@ -659,16 +806,13 @@ def parse_cypher_write(query: str) -> WriteAST:
     # pipeline's own words, before any write pattern is tried.
     refuse_cypher_definition(query)
 
-    # REQ-2176: a governed write has one exact target, one model table or one registered
-    # junction. REMOVE takes a session label off a node; the governed writer does not take it,
-    # so it is refused here by name.
+    # REQ-2176: "SET n:L and REMOVE n:L write node_labels rows on ephemeral or model nodes; a
+    # node never moves table." A label REMOVE is the graph session's (provisa.ephemeral.labels),
+    # never the governed writer's; the requirement gives a REMOVE of a property no meaning
+    # ("SET of a property is a governed write on a model node (declared columns only)"), so it is
+    # refused here by name.
     if re.search(r"\bREMOVE\b", query, re.IGNORECASE):
-        raise CypherWriteParseError(
-            "Cypher write pattern 'REMOVE' is not a governed write: a governed write has one "
-            "exact target, one model table or one registered junction. REMOVE takes a label off "
-            "a node in the graph session; a REMOVE of a model row's property is not written. A "
-            f"Cypher write takes one of these forms: {WRITE_FORMS}"
-        )
+        raise CypherWriteParseError(_remove_refusal(query))
 
     # REQ-2176 (amended 2026-10-28): a MERGE of model nodes and registered junction
     # relationships is a governed write, read through the graph IR.
@@ -799,28 +943,30 @@ def _write_value(val: Any, col_type: str | None = None) -> str:
 
 
 def _q(name: str) -> str:
-    """Double-quote a SQL identifier."""
-    return f'"{name}"'
+    """``name`` as one double-quoted SQL identifier, a quote inside it doubled."""
+    return exp.to_identifier(name, quoted=True).sql(dialect="postgres")
 
 
 # ---------------------------------------------------------------------------
-# WHERE clause rewriting
+# WHERE clause lowering
 # ---------------------------------------------------------------------------
 
-# Rewrite ``n.prop`` → ``"col"`` using the node's property map.
-_PROP_ACCESS_RE = re.compile(r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b")
 
-
-def _read_column(mapping: NodeMapping, prop: str) -> str:
-    """``prop`` of a node a write matches, as SQL: read as a read reads it (REQ-2136) -- its
-    ``_id`` the key, a property the label has not null, never a column by a name it does not give."""
+def _read_column_expr(mapping: NodeMapping, prop: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """``prop`` of a node a write matches: read as a read reads it (REQ-2136) -- its ``_id`` the
+    key, a property the label has not null, never a column by a name it does not give."""
     from provisa.gql.select_builder import NODE_KEY_PROPERTY, node_key
 
     if prop == NODE_KEY_PROPERTY:
         # The statement names the table's columns bare: no alias.
-        return node_key(None, mapping).sql(dialect="postgres")
+        return node_key(None, mapping)
     col = mapping.properties.get(prop)
-    return _q(col) if col is not None else "NULL"
+    return exp.column(col, quoted=True) if col is not None else exp.Null()
+
+
+def _read_column(mapping: NodeMapping, prop: str) -> str:
+    """``prop`` of a node a write matches, as SQL (``_read_column_expr``)."""
+    return _read_column_expr(mapping, prop).sql(dialect="postgres")
 
 
 def _written_column(mapping: NodeMapping, prop: str) -> str:
@@ -832,20 +978,167 @@ def _written_column(mapping: NodeMapping, prop: str) -> str:
     return _q(col)
 
 
-def _rewrite_where(where_expr: str, variable: str, mapping: NodeMapping) -> str:
-    """Rewrite Cypher property accesses to SQL column names in a WHERE expression.
+#: The functions a write's WHERE does not take: each reads a graph or aggregates rows.
+_NOT_IN_A_WRITES_WHERE = frozenset(
+    {
+        "count",
+        "collect",
+        "sum",
+        "avg",
+        "min",
+        "max",
+        "nodes",
+        "relationships",
+        "length",
+        "labels",
+        "type",
+        "startnode",
+        "endnode",
+        "properties",
+        "keys",
+        "id",
+        "elementid",
+    }
+)
 
-    E.g. ``n.age > 21`` → ``"age" > 21``  (using mapping.properties).
-    """
 
-    def _replace(m: re.Match) -> str:
-        var = m.group(1)
-        prop = m.group(2)
-        if var is None or prop is None or var.lower() != variable.lower():
-            return m.group(0)
-        return _read_column(mapping, prop)
+class _MatchedRowWhere:
+    """The ``ExprContext`` a write's WHERE is lowered against (REQ-913): one node variable, the
+    rows of its label's table, named bare. Its properties are the table's columns, a ``$name`` a
+    parameter ``bind_write_params`` binds; anything reading a graph is refused by name."""
 
-    return _PROP_ACCESS_RE.sub(_replace, where_expr)
+    def __init__(self, variable: str, mapping: NodeMapping) -> None:
+        self._variable = variable
+        self._mapping = mapping
+
+    def _refused(self, what: str) -> CypherWriteParseError:
+        return CypherWriteParseError(
+            f"a write's WHERE reads the properties of its matched node {self._variable}; "
+            f"{what} is not supported there"
+        )
+
+    def _is_matched(self, name: str) -> bool:
+        return name.lower() == self._variable.lower()
+
+    def resolve_variable(self, name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if not self._is_matched(name):
+            raise CypherWriteParseError(
+                f"a write's WHERE reads its matched node {self._variable}; {name} is not bound"
+            )
+        return exp.var(name)
+
+    def resolve_property(self, obj: exp.Expression, name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if not (isinstance(obj, exp.Var) and self._is_matched(obj.name)):
+            raise self._refused(f"a property of {obj.sql(dialect='postgres')}")
+        return _read_column_expr(self._mapping, name)
+
+    def property_is_table_column(self, obj: exp.Expression, name: str) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return name in self._mapping.properties
+
+    def property_type(self, obj: exp.Expression, name: str) -> str | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return None
+
+    def resolve_parameter(self, name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return exp.Parameter(this=exp.var(name))
+
+    def temporal_kind(self, expr: Any) -> str | None:
+        return None
+
+    def temporal_zone(self, expr: Any) -> str | None:
+        return None
+
+    def is_text(self, expr: Any) -> bool:
+        return False
+
+    def is_list(self, expr: Any) -> bool:
+        return False
+
+    def is_json_value(self, expr: Any) -> bool:
+        return False
+
+    def is_json_property(self, expr: Any) -> bool:
+        return False
+
+    def is_null(self, expr: Any) -> bool:
+        from provisa.gql.expr_ast import Literal
+
+        return isinstance(expr, Literal) and expr.kind == "null"
+
+    def given_value(self, expr: Any) -> tuple[bool, object]:
+        return False, None
+
+    def element_list_kind(self, expr: Any) -> str | None:
+        return None
+
+    def element_property_type(self, expr: Any, name: str) -> exp.DataType | None:
+        return None
+
+    def graph_kind(self, name: str) -> str | None:
+        return None
+
+    def is_bound(self, name: str) -> bool:
+        return self._is_matched(name)
+
+    def resolve_graph_element(self, name: str) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return None
+
+    def resolve_element_value(self, name: str) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return None
+
+    def resolve_element_properties(self, name: str) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return None
+
+    def resolve_graph_identity(self, name: str) -> None:
+        return None
+
+    def resolve_node_graph_identity(self, name: str) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return None
+
+    def resolve_graph_absent(self, name: str) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        return None
+
+    def resolve_function(
+        self,
+        name: str,
+        args: list[exp.Expression],
+        *,
+        distinct: bool,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        if distinct or name.lower() in _NOT_IN_A_WRITES_WHERE:
+            raise self._refused(f"{name}()")
+        return exp.Anonymous(this=name, expressions=args)
+
+    def resolve_term(self, node: Any) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise self._refused("an RDF term")
+
+    def resolve_label_predicate(self, operand: exp.Expression, labels: list[str]) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise self._refused("a label test")
+
+    def resolve_map_projection(self, node: Any) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise self._refused("a map projection")
+
+    def resolve_element_rows(self, node: Any, source: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise self._refused("a list of graph elements")
+
+    def resolve_subquery(self, node: Any) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise self._refused("a subquery")
+
+    def resolve_pattern_comprehension(self, node: Any) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        raise self._refused("a pattern comprehension")
+
+
+def _where_condition(where_expr: str, variable: str, mapping: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A write's WHERE text as the condition it states on the matched rows: parsed as a Cypher
+    expression and lowered from its tree as a read's WHERE is (REQ-913) -- never its text in the
+    statement, so a string in it is one value and text that is no expression is refused."""
+    from provisa.cypher.expr_parser import parse_expression
+    from provisa.gql.expr_visitor import ExprLowering
+    from provisa.gql.translator import _timestamp_literal
+    from provisa.gql.translator_helpers import _rewrite_cypher_fn_node
+
+    tree = parse_expression(where_expr)
+    lowered = ExprLowering(_MatchedRowWhere(variable, mapping)).lower(tree)
+    return lowered.transform(_rewrite_cypher_fn_node).transform(_timestamp_literal)
 
 
 # ---------------------------------------------------------------------------
@@ -1034,10 +1327,9 @@ class WriteTranslator:
             )
             keys = self._end_keys(ast, n.variable) or [NODE_KEY_PROPERTY]
             items = ", ".join(f"{n.variable}.{k}" for k in keys)
-            params = {
-                p: (provided[v.name] if isinstance(v, CypherParam) else v)
-                for p, v in zip(names.values(), n.props.values(), strict=True)
-            }
+            params = dict(
+                zip(names.values(), set_values(list(n.props.values()), provided), strict=True)
+            )
             reads.append((f"MATCH {pattern} RETURN {items}", {**provided, **params}))
         return reads
 
@@ -1175,10 +1467,13 @@ class WriteTranslator:
             held[id(rel)] = rel
         return list(held.values())
 
-    def erase(self, ast: WriteAST, columns: list[str], rows: list[list[Any]]) -> list[str]:
+    def erase(
+        self, ast: WriteAST, columns: list[str], rows: list[list[Any]]
+    ) -> list[tuple[str, str]]:
         """The DELETEs an ``erase`` makes of what its read returned (``columns``/``rows``, as
-        :meth:`erase_read` asks): each deleted relationship's junction row, each junction row a
-        detached node is an end of, then each node's row. Every part has an exact target
+        :meth:`erase_read` asks), each with the counter a row it deletes is: each deleted
+        relationship's junction row, each junction row a detached node is an end of, then each
+        node's row. Every part has an exact target
         (REQ-2176): a relationship a foreign key derives is refused by name, deleted or detached,
         before any statement is made."""
         from provisa.gql.assembler import to_serializable
@@ -1256,7 +1551,7 @@ class WriteTranslator:
                         junction_row(
                             rel, [(via.target_columns, keys(nm, props, rel.join_target_column))]
                         )
-        out = []
+        out: list[tuple[str, str]] = []
         for rel, conditions in junction_rows.values():
             via = rel.via
             assert via is not None  # only a junction relationship holds rows here
@@ -1264,7 +1559,9 @@ class WriteTranslator:
             if via.type_column:
                 typed = via.type_value if via.type_value is not None else rel.rel_type
                 where = f"({where}) AND {_q(via.type_column)} = {_write_value(typed)}"
-            out.append(f"DELETE FROM {_junction_table(via)} WHERE {where}")
+            out.append(
+                ("relationships_deleted", f"DELETE FROM {_junction_table(via)} WHERE {where}")
+            )
         tables: dict[str, tuple[NodeMapping, set[str]]] = {}
         for nm, props in nodes.values():
             conditions = [
@@ -1276,7 +1573,10 @@ class WriteTranslator:
             )
         for nm, conditions in tables.values():
             out.append(
-                f"DELETE FROM {self._qualified_table(nm)} WHERE {' OR '.join(sorted(conditions))}"
+                (
+                    "nodes_deleted",
+                    f"DELETE FROM {self._qualified_table(nm)} WHERE {' OR '.join(sorted(conditions))}",
+                )
             )
         return out
 
@@ -1289,7 +1589,7 @@ class WriteTranslator:
         ]
         if not ast.where_expr:
             return " AND ".join(conditions)
-        where_sql = _rewrite_where(ast.where_expr, ast.variable, mapping)
+        where_sql = _where_condition(ast.where_expr, ast.variable, mapping).sql(dialect="postgres")
         return " AND ".join([*conditions, f"({where_sql})"]) if conditions else where_sql
 
     def _translate_delete(self, ast: WriteAST) -> str:
@@ -1369,13 +1669,17 @@ async def _written_graph(
     between them, then the read answering the RETURN."""
     links = translator.graph_links(ast)
     rows: list[dict[str, Any]] = []
-    for sql in translator.graph_rows(ast, links):
-        columns, answer = await write(*bind_write_params(sql, provided))
+    for node, sql in zip(ast.created, translator.graph_rows(ast, links), strict=True):
+        columns, answer = await written_rows(
+            write, *bind_write_params(sql, provided), **created_node(translator, node, provided)
+        )
         if len(answer) != 1:
             raise CypherWriteParseError(f"a CREATE wrote {len(answer)} rows, where it writes one")
         rows.append(dict(zip(columns, answer[0], strict=True)))
-    for sql in translator.relate_rows(ast, links, rows):
-        await write(*bind_write_params(sql, provided))
+    for link, sql in zip(ast.links, translator.relate_rows(ast, links, rows), strict=True):
+        await written_rows(
+            write, *bind_write_params(sql, provided), **created_link(link.props, provided)
+        )
     if not ast.returns:
         return [], []
     cypher, params = graph_returned(ast, rows)
@@ -1391,7 +1695,9 @@ async def written(
 ) -> tuple[list[str], list[list[Any]]]:
     """Run the write ``ast``: its read of the nodes a relationship joins, its write, and the read
     answering its RETURN. ``read(cypher, params)`` and ``write(sql, bound)`` are the surface's
-    own, each answering (columns, rows) through the one pipeline."""
+    own, answering through the one pipeline: a read its (columns, rows), a write its (columns,
+    rows, the source's row count). Each row written is counted on the statement's counters
+    (:mod:`provisa.cypher.counters`)."""
     if ast.kind == "graph":
         return await _written_graph(ast, translator, provided, read, write)
     if ast.kind == "merge":
@@ -1403,21 +1709,60 @@ async def written(
         # REQ-2176: what the DELETE names is read as every read is, under the role's governance;
         # each DELETE is then admitted as any write (write grant, row rules).
         columns, rows = await read(translator.erase_read(ast), provided)
-        for sql in translator.erase(ast, columns, rows):
-            await write(*bind_write_params(sql, provided))
+        for counter, sql in translator.erase(ast, columns, rows):
+            await written_rows(write, *bind_write_params(sql, provided), **{counter: 1})
         return [], []
     if ast.kind == "relate":
         answers = [(await read(q, p))[1] for q, p in translator.matched_reads(ast, provided)]
         sql = translator.relate(ast, translator.pairs(ast, answers))
         if sql is None:
             return [], []
+        per_row = created_link(ast.props, provided)
+    elif ast.kind == "create":
+        sql = translator.translate(ast)
+        per_row = created_node(translator, ast, provided)
+    elif ast.kind == "update":
+        sql = translator.translate(ast)
+        per_row = properties_set([v for _, v in ast.set_assignments], provided)
     else:
         sql = translator.translate(ast)
-    columns, rows = await write(*bind_write_params(sql, provided))
+        per_row = {"nodes_deleted": 1}
+    columns, rows = await written_rows(write, *bind_write_params(sql, provided), **per_row)
     if ast.returns:
         cypher, params = returned(ast, columns, rows)
         return await read(cypher, {**provided, **params})
     return columns, rows
+
+
+def created_node(
+    translator: "WriteTranslator", node: WriteAST | CreatedNode, provided: dict[str, Any]
+) -> dict[str, int]:
+    """What each model row a CREATE writes counts: a node, the labels it is read with, and each
+    property it is given a value (a null is no property, as Neo4j sets none)."""
+    nm = translator._resolve_mapping(node.label)
+    values = set_values(list(node.props.values()), provided)
+    return {
+        "nodes_created": 1,
+        "labels_added": carried_labels(nm.label),
+        "properties_set": sum(v is not None for v in values),
+    }
+
+
+def created_link(props: dict[str, Any], provided: dict[str, Any]) -> dict[str, int]:
+    """What each junction row a relationship CREATE writes counts: a relationship, and each
+    property it is given a value."""
+    values = set_values(list(props.values()), provided)
+    return {"relationships_created": 1, "properties_set": sum(v is not None for v in values)}
+
+
+def properties_set(values: list[Any], provided: dict[str, Any]) -> dict[str, int]:
+    """What each row a SET writes counts: each property it sets, an unchanged value included, as
+    Neo4j counts it. A SET to null counts only where the row held a value, which the UPDATE
+    does not read: the statement's counters are then unknown."""
+    if any(v is None for v in set_values(values, provided)):
+        unknown("a SET to null counts a property only where the row held one, which is not read")
+        return {}
+    return {"properties_set": len(values)}
 
 
 def bind_write_params(sql: str, provided: dict[str, Any]) -> tuple[str, list[Any]]:

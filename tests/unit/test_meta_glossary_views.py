@@ -28,6 +28,7 @@ _BASE_DDL = """
 CREATE TABLE glossary_terms (
     id TEXT PRIMARY KEY, name TEXT, definition TEXT, is_abstract BOOLEAN,
     deprecated BOOLEAN, retired BOOLEAN, export_excluded BOOLEAN,
+    approved BOOLEAN NOT NULL DEFAULT 0,
     deprecation_asserted BOOLEAN NOT NULL DEFAULT 0, status_reason TEXT, retire_on TEXT,
     tenant_id TEXT);
 CREATE TABLE glossary_term_refs (
@@ -123,9 +124,9 @@ def db() -> sqlite3.Connection:
         "INSERT INTO glossary_terms (id, name, definition, is_abstract, deprecated, retired,"
         " export_excluded, tenant_id) VALUES (?, ?, ?, 0, ?, ?, ?, 'org1')",
         [
-            # bound to a column and defined -> live
+            # bound to a column -> grounded
             ("t-user", "user name", "The name a person signs in with.", 0, 0, 0),
-            # defined and reachable only over an edge from a bound term -> live, not rooted
+            # reachable only over an edge from a bound term -> grounded, not rooted
             ("t-party", "party", "A person or organisation.", 0, 0, 0),
             # retired, and export-excluded: both are flags, never predicates
             ("t-old", "legacy name", "Superseded.", 0, 1, 1),
@@ -152,18 +153,41 @@ def db() -> sqlite3.Connection:
 class TestGlossaryMetaViews:
     """REQ-1584: the glossary is SQL, and its refs resolve to the column they bind."""
 
-    def test_live_and_rooted_are_computed_by_the_export_admission_rule(
+    def test_grounding_and_rooted_are_computed_by_the_grounding_rule(
         self, db: sqlite3.Connection
     ) -> None:
         rows = {
             r["id"]: r
-            for r in db.execute("SELECT id, ref_count, is_rooted, live FROM _terms_ontology")
+            for r in db.execute(
+                "SELECT id, ref_count, is_rooted, grounding, status FROM _terms_ontology"
+            )
         }
         assert (rows["t-user"]["ref_count"], rows["t-user"]["is_rooted"]) == (1, 1)
-        assert rows["t-user"]["live"] == 1
-        # Grounding is transitive over in-service edges: t-party publishes without a ref.
+        assert (rows["t-user"]["grounding"], rows["t-user"]["status"]) == ("grounded", "draft")
+        # Grounding is transitive over in-service edges: t-party reaches data without a ref.
         assert (rows["t-party"]["ref_count"], rows["t-party"]["is_rooted"]) == (0, 0)
-        assert rows["t-party"]["live"] == 1
+        assert rows["t-party"]["grounding"] == "grounded"
+
+    def test_a_draft_strictly_between_makes_a_term_pending(self, db: sqlite3.Connection) -> None:
+        """REQ-1387 (GROUNDING LOOKS DOWN, STRICTLY BETWEEN), the SQL restatement of
+        core.glossary.term_grounding: counterparty reaches data only through draft party, a kind
+        of counterparty."""
+        db.execute(
+            "INSERT INTO glossary_terms (id, name, definition, is_abstract, deprecated, retired,"
+            " export_excluded, approved, tenant_id)"
+            " VALUES ('t-cp', 'counterparty', 'The other side.', 1, 0, 0, 0, 1, 'org1')"
+        )
+        db.execute(
+            "INSERT INTO glossary_term_edges VALUES ('e2', 't-party', 't-cp', 'KIND_OF', 'org1')"
+        )
+        grounding = lambda: {  # noqa: E731
+            r["id"]: r["grounding"] for r in db.execute("SELECT id, grounding FROM _terms_ontology")
+        }
+        assert grounding()["t-cp"] == "grounded_pending"
+        db.execute("UPDATE glossary_terms SET approved = 1 WHERE id = 't-party'")
+        assert grounding()["t-cp"] == "grounded"
+        db.execute("UPDATE glossary_terms SET deprecation_asserted = 1 WHERE id = 't-party'")
+        assert grounding()["t-cp"] == "not_grounded"  # a deprecated term breaks the chain
 
     def test_a_class_grounded_in_tables_not_all_joined_as_one_entity_is_a_gap(
         self, db: sqlite3.Connection
@@ -190,11 +214,12 @@ class TestGlossaryMetaViews:
         self, db: sqlite3.Connection
     ) -> None:
         row = db.execute(
-            "SELECT retired, export_excluded, live FROM _terms_ontology WHERE id = 't-old'"
+            "SELECT retired, export_excluded, grounding, status FROM _terms_ontology"
+            " WHERE id = 't-old'"
         ).fetchone()
         assert (row["retired"], row["export_excluded"]) == (1, 1)
         # Retired means out of service, so it grounds nothing — but it is still returned.
-        assert row["live"] == 0
+        assert (row["grounding"], row["status"]) == ("not_grounded", "retired")
 
     def test_a_ref_resolves_to_its_column_over_the_synthesized_key(
         self, db: sqlite3.Connection

@@ -34,21 +34,13 @@ export function LayersMenu({
 }) {
   const { t } = useTranslation();
   const label = (l: LayerId) =>
-    l === "columns"
-      ? t("graph3d.columnsToggle")
-      : l === "ownerTables"
-        ? t("graph3d.tablesToggle")
-        : t(`graph3d.layer_${l}`);
+    l === "columns" ? t("graph3d.columnsToggle") : t(`graph3d.layer_${l}`);
   return (
     <SummaryMultiSelect
       label={t("graph3d.layersMenu")}
       prefix={t("graph3d.layersMenu")}
       names={2}
-      data={offered.map((l) => ({
-        value: l,
-        label: label(l),
-        disabled: l === "ownerTables" && !layers.has("columns"),
-      }))}
+      data={offered.map((l) => ({ value: l, label: label(l) }))}
       value={offered.filter((l) => layers.has(l))}
       onChange={(chosen) => onChange(chosen as LayerId[])}
       allText={t("graph3d.menuAll")}

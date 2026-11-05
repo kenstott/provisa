@@ -32,7 +32,7 @@ from graphql import (
 from provisa.compiler.naming import apply_gql_name, domain_to_sql_name, mutation_style
 from provisa.compiler.type_map import JSONScalar
 from provisa.security.mutation_authz import command_assigned
-from provisa.compiler.schema_types import SchemaInput, _TableInfo  # noqa: F401  (annotations)
+from provisa.compiler.schema_types import SchemaInput, _TableInfo, offers_domain  # noqa: F401  (annotations)
 
 GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
 GraphQLInt: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLInt)
@@ -73,6 +73,12 @@ def _mutation_name(op: str, field_name: str, convention: str = "apollo_graphql")
     if style == "snake":
         return f"{op}_{field_name}"
     return f"{op}{field_name[0].upper()}{field_name[1:]}"
+
+
+def void_return_type() -> GraphQLNonNull:
+    """A VOID command's field (REQ-2001): it answers an empty result, a list that is always
+    empty -- GraphQL has no type of no fields."""
+    return GraphQLNonNull(GraphQLList(GraphQLNonNull(cast(GraphQLScalarType, JSONScalar))))
 
 
 def _json_schema_to_gql_type(schema: dict, type_name: str):
@@ -143,10 +149,7 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
     held_by: dict[tuple[str, str], str] = {}
 
     role_id = si.role["id"]
-    from provisa.security.rights import reaches_all_domains
-
-    accessible = set(si.role["domain_access"])
-    all_access = reaches_all_domains(si.role["domain_access"])
+    from provisa.security.rights import acts_in_domain
 
     def _gql_scalar(type_str: str):
         if type_str == _IR_JSON:
@@ -194,7 +197,14 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
             # REQ-1531: a command sits in a domain, and a role is shown the commands of the
             # domains it reaches. One that names no domain — saving it is refused; a stored row
             # can still carry none — is in no domain any role reaches, so no role is shown it.
-            if not domain_id or (not all_access and domain_id not in accessible):
+            # REQ-2155: a role with no capabilities needs only the assignment above.
+            if not domain_id or not (
+                not si.role.get("capabilities")
+                or acts_in_domain(si.role["domain_access"], domain_id)
+            ):
+                continue
+            # A per-domain schema offers only the commands of the domains it was asked for.
+            if not offers_domain(si, domain_id):
                 continue
 
             gql_return, args = resolve_return_and_args(item)
@@ -232,6 +242,11 @@ def _build_action_fields(  # REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-21
                 extra_mutation[field_key] = gql_field
 
     def _resolve_function(func: dict):
+        from provisa.core.void_command import is_void
+
+        if is_void(func):
+            args = _build_args(func["arguments"] if isinstance(func["arguments"], list) else [])
+            return void_return_type(), args
         returns_str = func.get("returns", "")
         # returns_str is "schema.table" — look up the GraphQL object type
         parts = returns_str.split(".", 1) if returns_str else []

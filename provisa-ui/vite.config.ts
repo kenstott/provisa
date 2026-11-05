@@ -14,6 +14,7 @@ import { Agent as HttpAgent, request as httpRequest } from "http";
 import react from "@vitejs/plugin-react";
 import istanbul from "vite-plugin-istanbul";
 import fs from "fs";
+import { createHash } from "crypto";
 import path from "path";
 import { binaryStreams } from "./src/plugins/binaryStreams";
 import { graphqlLoader } from "./src/plugins/graphql-loader";
@@ -212,6 +213,20 @@ function e2eWorkerBackendRouter(): Plugin {
 // outright on any monaco-editor but the 0.52.2 @graphiql/react pins (src/plugins/monacoCancelBackport.ts).
 assertPatchedMonaco(__dirname);
 
+/** The explorer fork Vite pre-bundles under the `graphiql-explorer` alias (REQ-2163). Vite's optimizer
+ * hash covers the lockfile and the config, never the content of an aliased local file, so an edit to
+ * the fork alone left the old pre-bundle (and the browser's immutable copy of it) in service: the
+ * explorer kept rendering ontology and ops root fields loose after the grouping landed. Folding the
+ * fork's content into the config below makes that hash, and so the pre-bundle, follow the file. */
+export const GRAPHIQL_EXPLORER_FORK = path.resolve(
+  __dirname,
+  "src/plugins/graphiql-explorer-fork.cjs",
+);
+export const GRAPHIQL_EXPLORER_FORK_HASH = createHash("sha256")
+  .update(fs.readFileSync(GRAPHIQL_EXPLORER_FORK))
+  .digest("hex")
+  .slice(0, 16);
+
 export default defineConfig((config) => ({
   plugins: [
     binaryStreams(),
@@ -242,7 +257,7 @@ export default defineConfig((config) => ({
   ],
   resolve: {
     alias: {
-      "graphiql-explorer": path.resolve(__dirname, "src/plugins/graphiql-explorer-fork.cjs"),
+      "graphiql-explorer": GRAPHIQL_EXPLORER_FORK,
       "@neo4j-cypher/codemirror/lib/cypher-state-definitions": path.resolve(
         __dirname,
         "node_modules/@neo4j-cypher/codemirror/lib/cypher-state-definitions.js",
@@ -257,6 +272,10 @@ export default defineConfig((config) => ({
     exclude: ["@neo4j-cypher/codemirror", "@apollo/client"],
     // Dev serves monaco pre-bundled, where the plugin list above does not reach: the same backport.
     rolldownOptions: {
+      // Read by nothing: it exists to put the fork's content in Vite's optimizer hash (above).
+      transform: {
+        define: { __GRAPHIQL_EXPLORER_FORK_HASH__: JSON.stringify(GRAPHIQL_EXPLORER_FORK_HASH) },
+      },
       plugins: [
         {
           name: "monaco-cancel-backport-prebundle",

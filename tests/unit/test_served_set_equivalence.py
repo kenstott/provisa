@@ -46,7 +46,7 @@ from provisa.compiler.schema_gen import _build_visible_tables
 from provisa.compiler.schema_types import SchemaInput
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import build_governance_context
-from provisa.security.rights import compute_meta_row_scope
+from provisa.security.rights import SYSTEM_DOMAINS, compute_meta_row_scope, lists_table
 from provisa.security.visibility import visible_tables
 
 
@@ -309,10 +309,15 @@ def test_sql_governance_serves_what_it_served_within_reach(tables, role):
 def _narrowed_meta_scope(role: dict, tables: list[dict]) -> set[int] | None:
     """The catalog row scope as intended: of the tables in a domain the role reaches, those it is
     served at least one column of — the schema build's answer, not domain reach alone."""
-    old = _old_meta_scope(role, tables)
-    if old is None:
-        return None
-    return old & set(_old_schema_served(role, tables))
+    reach = role["domain_access"]
+    listed = {t["id"] for t in tables if lists_table(t)}
+    if "*" in reach:
+        unheld = {t["id"] for t in tables if t["domain_id"] in SYSTEM_DOMAINS - set(reach)}
+        unheld -= set(_old_schema_served(role, tables))
+        return ({t["id"] for t in tables} - unheld) if unheld else None
+    return listed | {t["id"] for t in tables if t["domain_id"] in reach} & set(
+        _old_schema_served(role, tables)
+    )
 
 
 @pytest.mark.parametrize("tables, role", _CASES)
@@ -323,7 +328,10 @@ def test_the_catalog_row_scope_is_the_tables_the_role_is_served(tables, role):
     scope = compute_meta_row_scope(role, tables, [])
     assert scope == _narrowed_meta_scope(role, tables)
     old = _old_meta_scope(role, tables)
-    assert scope is None if old is None else scope <= old, "never wider than it was"
+    # REQ-1132: catalog_read opens meta and not its rows, so a role listing meta narrows too.
+    # REQ-1132: and every role lists what is listed, within reach or not.
+    wider = (scope or set()) - (old or set())
+    assert old is None or all(lists_table(t) for t in tables if t["id"] in wider)
 
 
 def test_how_many_role_table_pairs_the_narrowing_removes():

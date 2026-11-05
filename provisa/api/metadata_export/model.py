@@ -19,6 +19,7 @@ share one definition of what Provisa knows (REQ-1069).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -442,10 +443,13 @@ class GlossaryTermAsset:  # REQ-1387
     definition: str | None
     is_abstract: bool
     deprecated: bool
-    # REQ-2144: the term's status -- an exported term is admitted, so live, or deprecated when a
-    # curator deprecated it (in service until retire_on) -- for each catalog to map to its own
-    # (OpenMetadata Approved/Deprecated, Collibra Accepted/Deprecated, DataHub's deprecation).
+    # REQ-1387, REQ-2144: the term's status -- an exported term was approved by a steward, so
+    # approved, or deprecated when a curator deprecated it since -- for each catalog to map to its
+    # own (OpenMetadata Approved/Deprecated, Collibra Accepted/Deprecated, DataHub's deprecation).
     status: str
+    # REQ-1387: its grounding, computed over what this export publishes: grounded,
+    # grounded_pending or not_grounded.
+    grounding: str
     status_reason: str | None = None
     retire_on: str | None = None  # ISO date
     refs: tuple[AssetRef, ...] = ()
@@ -457,9 +461,9 @@ class GlossaryTermAsset:  # REQ-1387
 
     @property
     def in_deprecation(self) -> bool:
-        """REQ-2144: deprecated in the catalogs -- a curator deprecated it (in service until
-        ``retire_on``). A term whose derivation lost its last column (``deprecated``) is out of
-        service and never exported, so the status is what each catalog's deprecation reflects."""
+        """REQ-2144: deprecated in the catalogs -- a curator deprecated it (retired on
+        ``retire_on``). A term whose derivation lost its last column (``deprecated``) is never
+        exported, so the status is what each catalog's deprecation reflects."""
         return self.status == "deprecated"
 
     def assigned_to(self) -> tuple[AssetRef, ...]:
@@ -496,15 +500,18 @@ class GlossaryAxiom:  # REQ-2163
 
 @dataclass(frozen=True)
 class ServingEndpoints:  # REQ-2118
-    """Where a consumer reads the org's data products: the host its pgwire and Flight SQL
-    listeners are reached at (each port None when that listener is off), and the HTTP origin
-    its GraphQL and REST endpoints are under. A contract names them as its servers."""
+    """Where a consumer reads the org's data products: the host its pgwire, Flight SQL and gRPC
+    listeners are reached at (each port None when that listener is off), the HTTP origin, and
+    the path of each query surface mounted under it (system_health.HTTP_SURFACES). A contract
+    names them as its servers."""
 
     hostname: str
     database: str
     http_origin: str
     pgwire_port: int | None = None
     flight_port: int | None = None
+    grpc_port: int | None = None
+    http_paths: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass

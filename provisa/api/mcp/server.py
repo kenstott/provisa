@@ -268,13 +268,15 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
         )
         raise refused
     from provisa.auth.derived_roles import unsecured_principal
-    from provisa.core.request_context import set_session_vars
+    from provisa.core.request_context import current_acting_role, set_session_vars
 
     # REQ-1952: unsecured, a declared derived role named beside a data role is that set's
     # qualifier and binds its attribute, as the HTTP middleware, Flight and gRPC resolve it.
     # Bound in this tool call's own context (its request thread, a copy of the call's).
     role, session_vars = unsecured_principal(state, named)
     set_session_vars(session_vars)
+    # REQ-2188: who a write of the model is held to, on the one transport no middleware binds it.
+    current_acting_role.set(role)
     return role
 
 
@@ -660,12 +662,36 @@ def build_mcp_server(state: Any):
     async def search_terms(query: str, role: str | None = None, limit: int = 25) -> list[dict]:
         """Look up business-glossary terms by name or definition (REQ-1387).
 
-        Each hit carries the term's definition, its physical refs (every table/column
-        that means this concept), typed relationships to other terms, and the experts
-        who can answer questions about it. Use it to ground vocabulary before
-        composing SQL — e.g. find every physical field that means "order date".
+        Only terms a person approved, and defined drafts on a path to data through an
+        approved term (status "draft"), are returned. Each hit carries its status, its
+        grounding (grounded, or grounded_pending when its path to data runs through terms
+        not yet approved), its definition, its physical refs and bindings, its experts, and
+        its paths down to data, where an undefined term appears only as an anonymous hop.
+        Use it to find data and cite where it came from before composing SQL — e.g. find
+        every physical field that means "order date".
         """
         return await tools.search_terms(state, _role(role), query, limit=limit)
+
+    @_tool
+    async def search_reference_library(
+        question: str, role: str | None = None, k: int = 5
+    ) -> list[dict]:
+        """Search the org's reference library -- its policies, regulations, contracts,
+        specifications and standards -- for the passages that answer a question (REQ-2185).
+
+        Only documents the caller's role may read are searched. Each passage carries its
+        document's title and source, its section or page, and the quoted text: cite them
+        whenever an answer uses a passage. ``k`` passages nearest the question come first, then
+        up to as many again of their neighbours (the passages just after and before each in its
+        document, and those nearest it); each passage's ``reached`` says how it was found
+        ("nearest the question", "after passage 3 in 'Client policy'", "near ..."), its
+        ``ordinal`` its number in its document. Under the org's graph retrieval, passages the
+        glossary terms reached from the question cite come between, labelled with the path
+        ("via currency transaction report -> multiple transactions (part of)") and carrying the
+        term and its definition (``term``, ``term_definition``). Cite only the passages an
+        answer used.
+        """
+        return await tools.search_reference_library(state, _role(role), question, k=k)
 
     @_tool
     async def list_metrics(role: str | None = None) -> list[dict]:
@@ -841,11 +867,19 @@ def build_mcp_server(state: Any):
         )
 
     @_tool
+    async def approve_glossary_term(term_id: int, role: str | None = None) -> dict:
+        """Approve a draft ontology term; it needs a definition. Approval is a person's choice."""
+        resolved = _role(role)
+        return await tools.change_glossary_term_status(
+            state, resolved, _capability_request(resolved), term_id, "approve", {}
+        )
+
+    @_tool
     async def deprecate_glossary_term(
         term_id: int, reason: str, retire_on: str | None = None, role: str | None = None
     ) -> dict:
-        """Deprecate a live ontology term, with a reason and an optional planned retirement date
-        (ISO). It stays in service until then, and is retired on that date."""
+        """Deprecate an approved ontology term, with a reason and an optional planned retirement
+        date (ISO), on which it is retired."""
         resolved = _role(role)
         return await tools.change_glossary_term_status(
             state,
@@ -886,7 +920,8 @@ def build_mcp_server(state: Any):
 
     @_tool
     async def restore_glossary_term(term_id: int, role: str | None = None) -> dict:
-        """Restore a retired or deprecated ontology term: its status is computed again."""
+        """Restore a retired or deprecated ontology term: a deprecated one is approved again, a
+        retired one a draft."""
         resolved = _role(role)
         return await tools.change_glossary_term_status(
             state, resolved, _capability_request(resolved), term_id, "restore", {}

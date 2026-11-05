@@ -37,7 +37,7 @@ def _state(engine_name: str):
     return SimpleNamespace(
         federation_engine=SimpleNamespace(
             engine=SimpleNamespace(name=engine_name),
-            connector_pushdown=lambda source_type: caps[source_type],
+            connector_pushdown=lambda source: caps[source.type.value],
         )
     )
 
@@ -94,3 +94,18 @@ def test_a_param_bound_is_never_copied_on_a_positional_binder(engine_name):
 def test_a_query_with_no_join_or_subquery_is_returned_untouched():
     sql = 'SELECT "t0"."order_id" FROM "perf_bench"."orders" AS "t0" WHERE "t0"."order_id" = 1'
     assert asyncio.run(propagate_literal_predicates(sql, _state("duckdb"))) == sql
+
+
+_LIST_SQL = (
+    'SELECT "t0"."order_id", (SELECT json_agg(json_object(KEY \'s\' VALUE "t2"."status")) '
+    'FROM "perf_bench"."order_docs" AS "t2" WHERE "t2"."order_id" = "t0"."order_id") AS "d" '
+    'FROM "perf_bench"."orders" AS "t0" WHERE "t0"."order_id" >= $1 AND "t0"."order_id" <= $2'
+)
+
+
+@pytest.mark.parametrize(
+    ("engine_name", "joined"), [("postgres", True), ("duckdb", False), ("trino", False)]
+)
+def test_only_the_postgres_engine_reads_a_nested_field_once(engine_name, joined):
+    out = asyncio.run(propagate_literal_predicates(_LIST_SQL, _state(engine_name)))
+    assert ("LEFT JOIN (" in out) is joined

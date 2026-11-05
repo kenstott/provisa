@@ -15,7 +15,7 @@
 import { meetsRequirement } from "../lib/capabilities";
 import { LAST_SUBNAV_KEY } from "../lib/session";
 import type { Capability } from "../types/auth";
-import { getStored, setStored } from "../lib/browserStorage";
+import { getStoredJson, setStored } from "../lib/browserStorage";
 
 export interface DropdownItem {
   to: string;
@@ -40,6 +40,10 @@ export interface DropdownItem {
   // /admin/secrets gets the DEPLOYMENT's secrets service and no org vault at all, so naming it
   // "Org Secrets" to them advertises something the page does not contain.
   orLabelKey?: string;
+  // REQ-1922: the surface exists only where the platform declares regions (useRegionChoices).
+  regionsOnly?: boolean;
+  // REQ-1922: a demo sandbox's visitor may open it to read, though its capability is not theirs.
+  sandboxReadable?: boolean;
 }
 
 /** The label an entry wears for this caller (REQ-1361) -- see `orLabelKey`. */
@@ -110,6 +114,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/sql", labelKey: "navBar.itemSql", capability: "query_development" },
       { to: "/grpc", labelKey: "navBar.itemGrpc", capability: "query_development" },
       { to: "/jsonapi", labelKey: "navBar.itemJsonApi", capability: "query_development" },
+      { to: "/odata", labelKey: "navBar.itemOData", capability: "query_development" }, // REQ-2193
       { to: "/openapi", labelKey: "navBar.itemOpenApi", capability: "query_development" },
       { to: "/explore", labelKey: "navBar.itemExplore", capability: "query_development" },
       // REQ-2071: Python over the role's governed data, as a script and as a Jupyter notebook.
@@ -214,6 +219,23 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemDeploymentSettings",
         capability: "platform_settings",
       },
+      // REQ-1922: the platform's regions, the default grant and each org's grant. A node reads them
+      // before it opens any store, so they are the platform administrator's, applied on restart. A
+      // demo sandbox shows the regions read-only, to explain them.
+      {
+        to: "/admin/platform",
+        labelKey: "navBar.itemPlatform",
+        capability: "platform_settings",
+        sandboxReadable: true,
+      },
+      // REQ-1922: the regions the platform granted the org and their stores, read-only. Shown only
+      // where the platform declares regions: with none, region is not a concept anywhere a user sees.
+      {
+        to: "/admin/regions",
+        labelKey: "navBar.itemRegions",
+        capability: "org_settings",
+        regionsOnly: true,
+      },
       { to: "/admin/ai-models", labelKey: "navBar.itemAiModels", capability: "org_settings" },
       // REQ-1984: the registries every Node install of the organisation goes through.
       {
@@ -229,6 +251,12 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       // REQ-2122: the catalogs this org connects to once, for export and import.
       { to: "/admin/catalogs", labelKey: "navBar.itemCatalogs", capability: "org_settings" },
+      // REQ-2185: the documents the org's assistants draw on and cite.
+      {
+        to: "/admin/reference-library",
+        labelKey: "navBar.itemReferenceLibrary",
+        capability: "org_settings",
+      },
       // REQ-1074: the catalog this org publishes to is the org's setting, not the deployment's.
       {
         to: "/admin/metadata-export",
@@ -262,14 +290,19 @@ export const NAV_GROUPS: NavGroup[] = [
 // group restores that item instead of always landing on the first one.
 // The key itself lives in lib/session so clearSessionState drops it at sign-in.
 function readLastSubnav(): Record<string, string> {
-  const raw = getStored(LAST_SUBNAV_KEY);
-  if (!raw) return {};
-  const parsed: unknown = JSON.parse(raw);
+  const parsed = getStoredJson<unknown>(LAST_SUBNAV_KEY);
   return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
 }
 
 export function writeLastSubnav(groupId: string, to: string) {
   setStored(LAST_SUBNAV_KEY, JSON.stringify({ ...readLastSubnav(), [groupId]: to }));
+}
+
+/** REQ-1922: whether a demo sandbox's visitor may open the page at ``path`` (its query string
+ * aside) to read, though its capability is not theirs: an entry marked `sandboxReadable`. */
+export function sandboxReadable(path: string): boolean {
+  const page = path.split("?")[0];
+  return NAV_GROUPS.some((g) => g.items.some((i) => i.to === page && i.sandboxReadable === true));
 }
 
 // The submenu item within a group to navigate to on entry: the remembered one (if still valid,

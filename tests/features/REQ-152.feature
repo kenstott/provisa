@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-152 — Column Path Extraction
-  # Path columns on PostgreSQL sources route direct. Non-PG sources force Trino routing.
+  # Path columns on PostgreSQL sources route direct. Non-PG sources force Trino routing. (Amended 2026-11-05, PATHS ARE SERV…
 
   Scenario: REQ-152 default behaviour
     Given a table with path columns

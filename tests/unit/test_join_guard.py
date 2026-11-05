@@ -156,6 +156,18 @@ def test_two_tables_combined_outside_a_relationship_are_refused(shape):
     assert said, shape
 
 
+def test_a_trail_check_a_client_writes_is_held_to_the_rule():
+    """Only a walk's trail check the graph compiler wrote is exempt (provisa.compiler.walk_checks):
+    the same shape written by a client relates its rows by a non-equality and is refused."""
+    said = _v002(
+        "WITH RECURSIVE w AS (SELECT c.id, '|' || CAST(c.id AS TEXT) || '|' AS trail "
+        "FROM customers c UNION ALL SELECT v.id, w.trail || CAST(v.id AS TEXT) || '|' "
+        "FROM w JOIN visits v ON v.customer_id = w.id "
+        "WHERE POSITION('|' || CAST(v.id AS TEXT) || '|' IN w.trail) = 0) SELECT * FROM w"
+    )
+    assert said
+
+
 @pytest.mark.parametrize("shape", list(_OUTSIDE))
 def test_a_role_that_may_ignore_relationships_is_not_held_to_them(shape):
     assert _v002(_OUTSIDE[shape], bypass_relationship_guard=True) == []
@@ -945,3 +957,54 @@ def test_a_relationship_s_join_is_accepted_whichever_way_round_it_is_written(con
         f"SELECT c.name FROM customers c JOIN visits v ON {condition}",
     ):
         assert _v002(sql) == [], sql
+
+
+# --- a pattern of unions over tables no registered table is ---------------------------------------
+
+
+def _hops(arms: int, hops: int, table: str) -> str:
+    """``hops`` derived tables joined, each a UNION of ``arms`` reads of ``table``: the shape of a
+    graph session's pattern of unlabelled hops."""
+    union = " UNION ALL ".join(f"SELECT {i} AS k, x.id AS id FROM {table} x" for i in range(arms))
+    joined = f"SELECT h0.id FROM ({union}) h0"
+    for n in range(1, hops):
+        joined += f" JOIN ({union}) h{n} ON h{n}.id = h{n - 1}.id"
+    return joined
+
+
+def test_branches_reading_no_registered_table_are_one_alternative():
+    # TCK WithWhere2 [1], MatchWhere2 [1]: a session's tables are no registered table, so each
+    # union arm is the same empty alternative, and the guard enumerated arms ** hops of them in
+    # Python, past the request's 60 s, while the SQL itself takes milliseconds.
+    import sqlglot
+    from sqlglot.optimizer.scope import build_scope
+
+    from provisa.compiler.join_guard import _Resolver
+
+    tree = sqlglot.parse_one(_hops(3, 4, "session_table"), read="postgres")
+    resolver = _Resolver(lambda _table: None, lambda _table_id: set())
+    assert len(resolver.alternatives(build_scope(tree))) == 1
+
+
+def test_a_pattern_of_many_unions_is_judged_at_once():
+    # 6 ** 7 alternatives (279936) before they were one.
+    assert _v002(_hops(6, 7, "session_table")) == []
+
+
+def test_branches_of_registered_tables_stay_alternatives():
+    # Different instances are different choices: each is still judged, and combining orders with
+    # customers on no relationship is still refused through a union.
+    import sqlglot
+    from sqlglot.optimizer.scope import build_scope
+
+    from provisa.compiler.join_guard import _Resolver
+
+    tree = sqlglot.parse_one(
+        "SELECT * FROM (SELECT id FROM orders UNION ALL SELECT id FROM visits) u", read="postgres"
+    )
+    resolver = _Resolver(lambda table: {"orders": 1, "visits": 3}[table.name], lambda _i: set())
+    assert len(resolver.alternatives(build_scope(tree))) == 2
+    assert _v002(
+        "SELECT u.id FROM (SELECT id FROM orders UNION ALL SELECT id FROM visits) u "
+        "JOIN customers c ON TRUE"
+    )

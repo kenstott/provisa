@@ -64,6 +64,7 @@
     "edge_owns": "擁有",
     "loadError": "無法讀取圖：{{error}}",
     "zoomTo": "縮放到此",
+    "openInErd": "在 ERD 中開啟",
     "edge_column_lineage": "供數給欄位",
     "preset_taxonomy": "分類體系",
     "layer_domains": "網域",
@@ -77,7 +78,6 @@
     "ontologyView": "本體檢視",
     "orphans": "孤立項",
     "columnsToggle": "欄",
-    "tablesToggle": "資料表",
     "allEdgeTypes": "所有邊類型",
     "someEdgeTypes": "{{total}} 種邊類型中的 {{count}} 種",
     "allDomains": "所有域",
@@ -92,7 +92,6 @@
     "look_in_product": "數據產品中的欄",
     "look_out_of_product": "數據產品之外的欄",
     "look_stored": "資料表",
-    "status_live": "有效",
     "openAsQuery": "以查詢開啟",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",
@@ -116,6 +115,7 @@
     "status_draft": "草稿",
     "openAsQueryNoSparql": "此查詢沒有 SPARQL 形式。",
     "openAsQuerySparqlRoots": "此查詢的每個根都是一個獨立的 SPARQL 查詢：請開啟 GraphQL 逐個讀取。",
+    "status_approved": "已批准",
     "lane_term": "術語",
     "lane_column": "欄位",
     "lane_table": "表",
@@ -145,6 +145,8 @@
     "quality_none": "尚未執行",
     "factOwner": "擁有者",
     "factMembers": "成員表",
-    "factColumns": "欄位"
+    "factColumns": "欄位",
+    "grounding_grounded": "已錨定",
+    "grounding_grounded_pending": "已錨定，經由草稿"
   }
 }

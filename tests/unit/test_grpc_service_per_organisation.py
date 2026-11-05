@@ -258,11 +258,15 @@ message Orders { int32 id = 1; google.protobuf.Timestamp created_at = 2; }
 message OrdersRequest { int32 limit = 1; }
 service ProvisaService { rpc QueryOrders (OrdersRequest) returns (stream Orders); }
 """).Orders
-from provisa.grpc.server import _proto_value  # after the organisation's service is compiled
+import pyarrow as pa
+
+from provisa.grpc.server import _row_encoder  # after the organisation's service is compiled
 
 when = datetime(2026, 10, 12, 3, 4, 5, tzinfo=timezone.utc)
-field = orders.DESCRIPTOR.fields_by_name["created_at"]
-row = orders(id=1, created_at=_proto_value(field, when)).SerializeToString()
+batch = pa.record_batch(
+    {"id": pa.array([1], pa.int32()), "created_at": pa.array([when], pa.timestamp("us", "UTC"))}
+)
+(row,) = _row_encoder(orders, ["id", "created_at"]).encode(batch)
 assert orders.FromString(row).created_at.ToDatetime(tzinfo=timezone.utc) == when
 '''
 
@@ -359,12 +363,14 @@ def built(monkeypatch):
                 "description": "Test role.",
                 "capabilities": ["usage"],
                 "domain_access": ["sales"],
+                "own_domain_access": ["sales"],  # REQ-2153: a built role carries it
             },
             {
                 "id": "finance_reader",
                 "description": "Test role.",
                 "capabilities": ["usage"],
                 "domain_access": ["finance"],
+                "own_domain_access": ["finance"],
             },
         ],
     )
@@ -561,8 +567,15 @@ def meta_reach(monkeypatch):
                 "description": "Test role.",
                 "capabilities": ["usage"],
                 "domain_access": ["sales"],
+                "own_domain_access": ["sales"],  # REQ-2153: a built role carries it
             },
-            {"id": "cataloguer", "capabilities": ["usage"], "domain_access": ["sales", "meta"]},
+            # REQ-1132: as flattening writes a role holding catalog_read.
+            {
+                "id": "cataloguer",
+                "capabilities": ["usage", "catalog_read"],
+                "domain_access": ["sales", "meta"],
+                "own_domain_access": ["sales", "meta"],
+            },
         ],
     )
 
@@ -574,15 +587,14 @@ def _rpcs(proto: str) -> set[str]:
 
 
 def test_a_table_only_traversed_to_has_no_rpc_as_it_has_no_root_field(meta_reach):
-    """Every role's surface holds the catalog tables, to be read through each type's ``_meta``.
-    A role that does not reach the catalog domain has no root field for them in its GraphQL
+    """A role holding no catalog_read has no root field for the catalog tables in its GraphQL
     Query type -- and no RPC for them in its service, whose Query message already says so."""
     state = meta_reach
     without, with_reach = state.proto_files["sales_reader"], state.proto_files["cataloguer"]
     assert _table_fields(state.schemas["sales_reader"]) == ["orders"]
     assert {r for r in _rpcs(without) if "Meta" in r} == set()
     assert {"QueryOrders", "QueryOrdersBatch"} <= _rpcs(without)
-    assert "message RegisteredTablesMeta {" in without, "its message stays: it is traversed to"
+    assert "message RegisteredTablesMeta {" not in without, "the capability opens the domain"
 
     roots = sorted(state.schemas["cataloguer"].query_type.fields)
     assert "registeredTablesMeta" in roots and "orders" in roots

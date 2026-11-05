@@ -14,6 +14,24 @@
     "deleteConfirm": "Supprimer le rapport {{name}} ?",
     "deleted": "Rapport {{name}} supprimé.",
     "empty": "Aucun rapport enregistré dans le domaine ops.",
-    "resize": "Redimensionner la liste des rapports"
+    "resize": "Redimensionner la liste des rapports",
+    "drift": {
+      "title": "Dérive depuis la période précédente",
+      "baseline": "Comparé au modèle du {{date}}, dernière version au {{cutoff}}.",
+      "noHistory": "Aucun historique : le modèle n'a aucune version du {{cutoff}} ou antérieure à comparer.",
+      "none": "Aucun terme n'a perdu ni gagné d'ancrage.",
+      "counts": "Perdus : {{lost}} · Gagnés : {{gained}} · Nouveaux : {{new}}",
+      "renameRule": "Les termes sont rapprochés par nom : un renommage apparaît donc comme un terme perdu et un terme nouveau.",
+      "term": "Terme",
+      "before": "Avant",
+      "after": "Maintenant",
+      "change": "Changement",
+      "absent": "Absent du modèle",
+      "changeKind": {
+        "lost": "Perdu",
+        "gained": "Gagné",
+        "new": "Nouveau"
+      }
+    }
   }
 }

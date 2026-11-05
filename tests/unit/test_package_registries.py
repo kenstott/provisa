@@ -13,7 +13,7 @@ and Git hosts, entered once by the organisation's administrator, each field kept
 resolved at use in that organisation's vault, and opened by ``org_settings`` in that
 organisation alone. The control plane is a real PostgreSQL database; every credential is made up."""
 
-# Requirements: REQ-1984
+# Requirements: REQ-1984, REQ-2200
 from __future__ import annotations
 
 import pytest
@@ -87,6 +87,20 @@ async def _pypi(plane, org="acme", **changed):
         "address": "https://pypi.acme.test/simple/",
         "scope": None,
         "credential": "made-up-index-token",
+        "mirror": False,
+        "actor": "uid-ada",
+    }
+    given.update(changed)
+    return await registries.put(plane, org, **given)
+
+
+async def _goproxy(plane, org="acme", **changed):
+    given = {
+        "registry_id": None,
+        "kind": "goproxy",
+        "address": "https://goproxy.acme.test",
+        "scope": None,
+        "credential": "ada:made-up-proxy-token",
         "mirror": False,
         "actor": "uid-ada",
     }
@@ -190,6 +204,31 @@ class TestTheStore:
             await _pypi(plane, mirror=True, address="https://other.acme.test/simple/")
         assert refused.value.code == "package_registry.second_mirror"
         assert refused.value.params == {"mirror": "https://pypi.acme.test/simple/"}
+
+    async def test_a_go_module_proxy_has_no_scope_and_one_is_the_default(self, plane):
+        """REQ-2200: Go modules have no scope; one proxy may be the default every Go install
+        goes through, beside the npm mirror and the default PyPI index."""
+        with pytest.raises(PackageRegistryRefused) as scoped:
+            await _goproxy(plane, scope="@acme")
+        assert scoped.value.code == "package_registry.goproxy_scope"
+        await _pypi(plane, mirror=True)
+        proxy = await _goproxy(plane, mirror=True)
+        assert (proxy.kind, proxy.mirror) == ("goproxy", True)
+        with pytest.raises(PackageRegistryRefused) as refused:
+            await _goproxy(plane, mirror=True, address="https://other.acme.test")
+        assert refused.value.code == "package_registry.second_mirror"
+
+    @pytest.mark.parametrize("credential", ["made-up-bare-token", ":made-up-password"])
+    async def test_a_go_module_proxys_credential_is_the_login_the_go_command_sends(
+        self, plane, credential
+    ):
+        """REQ-2200: the go command logs in to a proxy with a user and a password (.netrc), so a
+        credential entered as a value is user:password; a reference is resolved at use."""
+        with pytest.raises(PackageRegistryRefused) as refused:
+            await _goproxy(plane, credential=credential)
+        assert refused.value.code == "package_registry.goproxy_credential"
+        kept = await _goproxy(plane, credential="${secret:GOPROXY_LOGIN}")
+        assert kept.credential == "${secret:GOPROXY_LOGIN}"
 
     async def test_the_mirror_itself_is_replaced_in_place(self, plane):
         kept = await _npm(plane, scope=None, mirror=True)

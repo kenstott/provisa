@@ -352,11 +352,57 @@ def drop_joined_table(sql: str, table_name: str) -> str:  # REQ-264
 drop_left_join_table = drop_joined_table
 
 
-def drop_union_branches_for_table(sql: str, table_name: str) -> str:  # REQ-599
+def _union_arms(union: exp.Union) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """The arms of a chain of unions of one kind (``a UNION ALL b UNION ALL c``), left to right.
+    A nested union with its own ORDER BY or LIMIT is one arm."""
+    left = union.this
+    if (
+        isinstance(left, exp.Union)
+        and type(left) is type(union)
+        and left.args.get("distinct") == union.args.get("distinct")
+        and not any(left.args.get(k) for k in ("order", "limit", "offset", "with_"))
+    ):
+        return [*_union_arms(left), union.expression]
+    return [left, union.expression]
+
+
+def _reads(node: exp.Expression, cte_name: str) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Whether *node* reads the CTE named *cte_name* (an unqualified table of that name)."""
+    return any(not t.db and t.name == cte_name for t in node.find_all(exp.Table))
+
+
+def _self_referencing(cte: exp.CTE) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """Whether *cte* is recursive: its body reads itself."""
+    return _reads(cte.this, cte.alias)
+
+
+def _keep_column_names(arm: exp.Expression, names_from: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """*arm*, now a union's first arm, naming its columns as the dropped first arm did: the
+    union's columns (and a CTE's, which the recursive term reads by name) take their names from
+    its first arm."""
+    if not isinstance(arm, exp.Select) or not isinstance(names_from, exp.Select):
+        return arm
+    named, exprs = names_from.expressions, arm.expressions
+    if len(named) != len(exprs) or any(isinstance(e, exp.Star) for e in [*named, *exprs]):
+        return arm
+    renamed = []
+    for name_expr, expr in zip(named, exprs):
+        name = name_expr.alias_or_name if isinstance(name_expr, (exp.Alias, exp.Column)) else ""
+        if name and expr.alias_or_name != name:
+            expr = exp.alias_(expr.this if isinstance(expr, exp.Alias) else expr, name)
+        renamed.append(expr)
+    return arm.select(*renamed, append=False)
+
+
+def drop_union_branches_for_table(sql: str, table_name: str) -> str:  # REQ-599, REQ-1661
     """Remove every UNION branch whose FROM clause references *table_name*.
 
     Works at any nesting depth (including inside CTEs).  Used when a GQL-remote
-    table with unsatisfied required_args cannot be dropped as a JOIN.
+    table with unsatisfied required_args cannot be dropped as a JOIN. A union whose every arm
+    references the table is left as it is, and so is a recursive CTE whose every anchor (an arm
+    that does not read the CTE itself) does: every row of it comes through the table, so the
+    table stays in the statement and ``apply_dropped_tables`` refuses the read naming it (#312).
+    A recursive arm is dropped like any branch; the walk keeps the rows that never read the table.
     """
     # Parse failure must fail loud: returning input skips the union-branch governance transform.
     tree = sqlglot.parse_one(sql, dialect="postgres")
@@ -383,17 +429,49 @@ def drop_union_branches_for_table(sql: str, table_name: str) -> str:  # REQ-599
             parent = parent.parent
         return depth
 
-    unions_deepest_first = sorted(tree.find_all(exp.Union), key=_depth, reverse=True)
-    for union in unions_deepest_first:
-        left, right = union.this, union.expression
-        left_match = isinstance(left, exp.Select) and _has_from_table(left)
-        right_match = isinstance(right, exp.Select) and _has_from_table(right)
-        if left_match and not right_match:
-            replacement = right
-        elif right_match and not left_match:
-            replacement = left
-        else:
+    # One chain (a UNION ALL b UNION ALL c) at a time, from its outermost union, so every arm of
+    # it is weighed together: a recursive CTE's anchors are only known across the whole chain.
+    chains = [
+        u
+        for u in tree.find_all(exp.Union)
+        if not (
+            isinstance(u.parent, exp.Union)
+            and u.parent.this is u
+            and all(arm is not u for arm in _union_arms(u.parent))
+        )
+    ]
+    for union in sorted(chains, key=_depth, reverse=True):
+        arms = _union_arms(union)
+        matched = [isinstance(arm, exp.Select) and _has_from_table(arm) for arm in arms]
+        if not any(matched) or all(matched):
             continue
+        cte = union.parent
+        if isinstance(cte, exp.CTE) and _self_referencing(cte):
+            anchors = [m for arm, m in zip(arms, matched) if not _reads(arm, cte.alias)]
+            if all(anchors):
+                continue
+        kept = [arm for arm, m in zip(arms, matched) if not m]
+        if matched[0]:
+            kept[0] = _keep_column_names(kept[0], arms[0])
+        replacement: exp.Expression = kept[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        for arm in kept[1:]:
+            replacement = type(union)(
+                this=replacement, expression=arm, distinct=union.args.get("distinct")
+            )
+        # The chain's own WITH, ORDER BY and LIMIT belong to the statement, not to an arm: an arm
+        # that is parenthesized or has its own is read as a subquery to carry them.
+        carried = {
+            key: union.args[key]
+            for key in ("with_", "order", "limit", "offset")
+            if union.args.get(key) is not None
+        }
+        if carried and (
+            not isinstance(replacement, (exp.Select, exp.Union))
+            or any(replacement.args.get(key) is not None for key in carried)
+        ):
+            replacement = exp.subquery(replacement, "_u").select("*")
+        for key, value in carried.items():
+            replacement.set(key, value)
         modified = True
         if union.parent is None:
             root = replacement
@@ -402,6 +480,9 @@ def drop_union_branches_for_table(sql: str, table_name: str) -> str:  # REQ-599
 
     if not modified:
         return sql
+    for with_ in root.find_all(exp.With):
+        if with_.args.get("recursive") and not any(_self_referencing(c) for c in with_.expressions):
+            with_.set("recursive", False)
     return root.sql(dialect="postgres")
 
 

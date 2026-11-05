@@ -24,7 +24,9 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+import sqlglot
 
+from provisa.compiler.sql_validator import tables_outside_relationships
 from provisa.compiler.stage2 import GovernanceContext, apply_governance
 from provisa.compiler.write_admission import WriteNotAdmitted
 from provisa.cypher.write_translator import CypherWriteParseError, parse_cypher_write
@@ -46,6 +48,10 @@ _MODEL = {
 ADD_FRIEND = (
     "MERGE (a:Person {name: $name}) MERGE (friend:Person {name: $friend}) "
     "MERGE (a)-[:KNOWS]->(friend)"
+)
+#: The Neo4j Python driver's bookmarks example (tests/integration/examples, 6.2.0).
+CREATE_FRIENDSHIP = (
+    "MATCH (a:Person {name: $name_a}) MATCH (b:Person {name: $name_b}) MERGE (a)-[:KNOWS]->(b)"
 )
 #: The README's read-back of it.
 PRINT_FRIENDS = (
@@ -142,6 +148,68 @@ def test_a_relationship_merge_it_matches_writes_nothing(monkeypatch):
     _run(s, "MATCH (a:Person {name: 'Ann'}), (b:Person {name: 'Bo'}) MERGE (a)-[:KNOWS]->(b)")
     assert s.sent == []
     assert _rows(s, "knows") == [(1, 2, 2020)]
+
+
+def test_a_merge_between_unrelated_matches_reads_each_apart(monkeypatch):
+    s = _session(monkeypatch)
+    reads: list[tuple[str, dict]] = []
+    real = s.read
+
+    async def read(query, params):
+        reads.append((query, params))
+        return await real(query, params)
+
+    monkeypatch.setattr(s, "read", read)
+    _run(s, CREATE_FRIENDSHIP, name_a="Ann", name_b="Cy")
+    _run(s, CREATE_FRIENDSHIP, name_a="Ann", name_b="Cy")  # matched: nothing more
+    assert _rows(s, "knows") == [(1, 2, 2020), (1, 3, None)]
+    assert s.sent == ['INSERT INTO "memory"."s"."knows" ("from_id", "to_id") VALUES (1, 3)']
+    leading = [q for q, _ in reads if q.startswith(("MATCH (a:Person)", "MATCH (b:Person)"))]
+    assert [q.split(" RETURN ")[0] for q in leading[:2]] == [
+        "MATCH (a:Person) WHERE (a.name = $name_a)",
+        "MATCH (b:Person) WHERE (b.name = $name_b)",
+    ]
+    # Every read the MERGE makes passes the join guard (REQ-603); the two MATCHes read as one
+    # are a product of person with person, which it refuses.
+    gov = _gov()
+    # KNOWS: person.id to knows.from_id and to knows.to_id, in both directions.
+    joins = {
+        pair
+        for column in ("from_id", "to_id")
+        for pair in ((1, 2, "id", column), (2, 1, column, "id"))
+    }
+
+    def violations(query: str, params: dict) -> list[str]:
+        tree = sqlglot.parse_one(s.sql(query, params), read="postgres")
+        return [v.message for v in tables_outside_relationships(tree, gov, joins, {})]
+
+    for query, params in reads:
+        assert violations(query, params) == []
+    together = CREATE_FRIENDSHIP.split(" MERGE ")[0] + " RETURN a._id, b._id"
+    # (The tables are named by their ids: this context registers no table metadata.)
+    assert violations(together, {"name_a": "Ann", "name_b": "Cy"}) == [
+        "Invalid JOIN: 1 and 1 are combined with no condition relating them "
+        "— cross joins are not permitted"
+    ]
+
+
+def test_matches_a_condition_or_a_variable_relates_are_read_together():
+    apart = parse_cypher_write(
+        "MATCH (a:Person) MATCH (b:Person) WHERE a.name = $x AND b.name = 'Bo' "
+        "MERGE (a)-[:KNOWS]->(b)"
+    ).apart
+    assert apart == [
+        ("MATCH (a:Person) WHERE (a.name = $x)", frozenset({"a"})),
+        ("MATCH (b:Person) WHERE (b.name = 'Bo')", frozenset({"b"})),
+    ]
+    for statement in (
+        "MATCH (a:Person)-[:KNOWS]->(c:Person) MATCH (c)<-[:KNOWS]-(b:Person) "
+        "MERGE (a)-[:KNOWS]->(b)",
+        "MATCH (a:Person), (b:Person) WHERE a.age = b.age MERGE (a)-[:KNOWS]->(b)",
+    ):
+        [(text, variables)] = parse_cypher_write(statement).apart
+        assert text == statement.split(" MERGE ")[0]
+        assert variables >= {"a", "b"}
 
 
 def test_the_readme_add_friend_creates_the_ends_and_the_relationship_and_reads_back(monkeypatch):

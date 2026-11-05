@@ -1,0 +1,12 @@
+{
+  "sensitiveScan": {
+    "scan": "Scan for sensitive values",
+    "help": "Reads a sample of the table's text columns in the background and looks for sensitive values inside the text, such as a social security number in a note. Only the share of values is kept, never the values. A hint changes nothing by itself: choose a grant, mask or fake for the column.",
+    "saveFirst": "Save the table to scan its values.",
+    "running": "Scanning a sample of the text columns…",
+    "succeeded": "Last scan: {{rows}} sampled rows, {{columns}} text columns.",
+    "failed": "The scan failed: {{error}}",
+    "header": "Found inside values",
+    "hint": "Matches {{kind}} in {{percent}}% of sampled values"
+  }
+}
