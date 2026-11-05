@@ -255,7 +255,14 @@ def executor_processes_query(shared_data: dict) -> None:
     gov = build_governance_context(
         role_id, rls, {}, ctx, [shared_data["table"]], unscoped_role(role_id, "full_results")
     )
-    shared_data["enforced_sql"] = apply_governance(compiled.sql, gov)
+    # A statement naming the column the role is not served is refused before anything is sent:
+    # the column is in no relation the role reads (REQ-039).
+    with pytest.raises(PermissionError) as refused:
+        apply_governance(compiled.sql, gov)
+    shared_data["refusal"] = str(refused.value)
+    # A statement reading every column of the table (a star) reads the role's governed relation:
+    # the served columns only, the row filter applied.
+    shared_data["enforced_sql"] = apply_governance('SELECT * FROM "public"."orders"', gov)
 
     # 2. Strip unauthorized columns: only visible columns survive enforcement.
     allowed = visible_column_names(shared_data["table"], role_id)
@@ -265,14 +272,30 @@ def executor_processes_query(shared_data: dict) -> None:
 
 @then("RLS WHERE clauses are injected and unauthorized columns are stripped before execution")
 def rls_injected_columns_stripped(shared_data: dict) -> None:
+    """The unauthorized column is stripped by construction: governance replaces the table with
+    the role's governed relation, which holds only the served columns and the row filter, so the
+    column is in no statement the engine runs. Naming it is refused (V003), as REQ-039 (amended
+    2026-11-04, a hidden column is refused in every clause) says, rather than dropped from the
+    projection; the statement text is asserted on its tree, not as a fixed SQL string, since
+    REQ-040 says what is executed, not how the statement is spelled."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from tests.rules import holds
+
     enforced_sql = shared_data["enforced_sql"]
     allowed = shared_data["allowed_columns"]
     surviving = shared_data["surviving_columns"]
 
+    assert shared_data["refusal"] == "[V003] Column 'amount' is not visible to this role"
+
     # RLS predicate is present in the executable SQL; the unauthorized column is stripped.
-    assert enforced_sql == (
-        'SELECT "id", "region" FROM "public"."orders" WHERE ("orders"."region" = \'us\')'
-    )
+    tree = sqlglot.parse_one(enforced_sql, read="postgres")
+    (relation,) = [s for s in tree.find_all(exp.Subquery) if s.alias == "orders"]
+    assert relation.this.named_selects == ["id", "region"], enforced_sql
+    where = relation.this.args.get("where")
+    assert where is not None and holds(where.this, '"orders"."region" = \'us\''), enforced_sql
+    assert all(t.find_ancestor(exp.Subquery) is relation for t in tree.find_all(exp.Table))
 
     # Unauthorized column is never exposed to the restricted role.
     assert "amount" not in allowed
@@ -680,10 +703,28 @@ def role_runs_masked_statement(shared_data: dict) -> None:
 
 @then("both references read the masked expression, so the join does not match on the real value")
 def select_and_join_read_mask(shared_data: dict) -> None:
-    assert shared_data["governed_740"] == (
-        f'SELECT "orders"."id", {_MASK_740} AS "email" FROM "public"."orders" '
-        f'JOIN "public"."customers" ON "orders"."customer_email" = {_MASK_740}'
-    )
+    """``customers`` is read through the role's governed relation, whose ``email`` is the mask
+    of the real column and which exposes no other reading of it, so the select list and the JOIN
+    ON both read the mask. Asserted on the tree: REQ-740 says what each reference reads, not
+    where the mask is written, and governance by construction (REQ-039) writes it once, in the
+    relation that replaces the table reference, rather than at each reference."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    governed = shared_data["governed_740"]
+    tree = sqlglot.parse_one(governed, read="postgres")
+    (customers,) = [s for s in tree.find_all(exp.Subquery) if s.alias == "customers"]
+    mask = sqlglot.parse_one(_MASK_740, read="postgres")
+    # The relation's only output is email, and it is the mask of the real column.
+    (projection,) = customers.this.expressions
+    assert projection.alias == "email" and projection.this == mask, governed
+    # The real column is read nowhere but inside the mask.
+    for col in customers.this.find_all(exp.Column):
+        assert col.find_ancestor(exp.Anonymous) is not None, governed
+    # The select list and the JOIN ON read the relation's email (the mask).
+    outer = tree.args["joins"][0]
+    assert outer.args["on"].expression == exp.column("email", table="customers", quoted=True)
+    assert tree.expressions[1] == exp.column("email", table="customers", quoted=True), governed
 
 
 @then("a WHERE or HAVING reference to the masked column is refused with V005")
@@ -730,28 +771,31 @@ def build_mask_expression_across_sources(shared_data: dict) -> None:
     "output is the universal provisa_regex_replace and ANSI DATE_TRUNC regardless of source dialect"
 )
 def output_is_ansi_regardless_of_dialect(shared_data: dict) -> None:
+    """Function names and the truncation unit are compared folded: SQL reads both case-insensitively,
+    the transpiler matches the universal call by its folded name and lowers DATE_TRUNC per engine,
+    and the mask is now built on the AST (REQ-913), which writes the function name and the unit
+    upper-case. REQ-741 asks for one universal call and ANSI DATE_TRUNC, not a spelling of them.
+    The pattern and replacement are compared as written."""
     regex_outputs = shared_data["regex_outputs"]
     truncate_outputs = shared_data["truncate_outputs"]
+    call = f"{UNIVERSAL_REGEX_REPLACE}("
 
     for src, out in regex_outputs.items():
-        assert out.startswith(f"{UNIVERSAL_REGEX_REPLACE}("), f"{src}: {out!r}"
+        assert out.lower().startswith(call), f"{src}: {out!r}"
     for src, out in truncate_outputs.items():
-        assert out.startswith("DATE_TRUNC("), f"{src}: {out!r}"
-        assert "DATE_TRUNC('month'" in out
+        assert out.lower().startswith("date_trunc('month'"), f"{src}: {out!r}"
 
     normalized_regex = {
-        out.replace(shared_data["source_column_refs"][src], "<col>")
+        call + out[len(call) :].replace(shared_data["source_column_refs"][src], "<col>")
         for src, out in regex_outputs.items()
     }
     normalized_truncate = {
-        out.replace(shared_data["source_column_refs"][src], "<col>")
+        out.replace(shared_data["source_column_refs"][src], "<col>").lower()
         for src, out in truncate_outputs.items()
     }
     # REQ-2142: the transpiler lowers the call per engine, every match replaced (REQ-263).
-    assert normalized_regex == {
-        f"{UNIVERSAL_REGEX_REPLACE}(<col>, '^(.).*(@.*)$', '$1***$2', '****')"
-    }
-    assert normalized_truncate == {"DATE_TRUNC('month', <col>)"}
+    assert normalized_regex == {f"{call}<col>, '^(.).*(@.*)$', '$1***$2', '****')"}
+    assert normalized_truncate == {"date_trunc('month', <col>)"}
 
 
 # ---------------------------------------------------------------------------
@@ -899,11 +943,26 @@ def each_role_runs_query(shared_data: dict) -> None:
 
 @then("admin sees raw values; analyst sees regex mask; masked_viewer sees constant mask")
 def role_specific_masks_applied(shared_data: dict) -> None:
+    """Each role reads ``users`` through its own governed relation (REQ-039); admin's projects
+    the raw column. Asserted on that relation, not as the submitted text: REQ-745 says what each
+    role sees, and governance by construction reads every registered table through a governed
+    relation, a role with no mask included."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
     sql_admin = shared_data["sql_admin"]
     sql_analyst = shared_data["sql_analyst"]
     sql_viewer = shared_data["sql_masked_viewer"]
 
-    assert sql_admin == shared_data["compiled_745"].sql
+    (admin_users,) = [
+        s
+        for s in sqlglot.parse_one(sql_admin, read="postgres").find_all(exp.Subquery)
+        if s.alias == "users"
+    ]
+    (salary,) = admin_users.this.expressions
+    assert salary.alias == "salary" and salary.this == exp.column(
+        "salary", table="users", quoted=True
+    )
     assert "PROVISA_REGEX_REPLACE" not in sql_admin
     assert '"salary"' in sql_admin
 
