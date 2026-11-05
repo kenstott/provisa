@@ -157,7 +157,9 @@ TRINO = Engine(
     concat="concat({}, {})",
     fold="reduce({0}, {4}, ({1}, {2}) -> {3}, _f -> _f)",
     let="transform(ARRAY[{1}], {0} -> {2})[1]",
-    upto="sequence(1, {})",
+    # in blocks: Trino's sequence makes no more than 10000 entries
+    upto="transform(ARRAY[{}], _un -> flatten(transform(sequence(0, (_un - 1) / 10000), "
+    "_ub -> sequence(_ub * 10000 + 1, least(_un, _ub * 10000 + 10000)))))[1]",
     first="element_at({}, 1)",
     largest="array_max({})",
     bytes="length(to_utf8({}))",
@@ -193,7 +195,8 @@ CLICKHOUSE = Engine(
     within="position({1}, {0}) > 0",
     sort="arraySort({})",
     distinct="arrayDistinct({})",
-    flatten="arrayFlatten({})",
+    # one level, as DuckDB's and Trino's flatten: arrayFlatten flattens every level
+    flatten="arrayMap(_fl -> arrayFold((_fa, _fe) -> arrayConcat(_fa, _fe), _fl, arrayResize(_fl[1], 0)), [{}])[1]",
     concat="arrayConcat({}, {})",
     fold="arrayFold(({1}, {2}) -> {3}, {0}, {4})",
     let="arrayMap({0} -> {2}, [{1}])[1]",
