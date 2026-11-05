@@ -45,7 +45,7 @@ from tests.integration import demo_capture
 from tests.integration.polly_bakeoff_questions import QUESTIONS
 from tests.integration.serving_wait import await_tables_serving
 
-pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse, pytest.mark.requires_vector]
 
 _REPO = Path(__file__).resolve().parents[2]
 _DEMO = _REPO / "demo" / "named" / "audit"

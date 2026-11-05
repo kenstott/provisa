@@ -24,6 +24,7 @@
     "layer_relationships": "メンバー間のリレーションシップ",
     "layer_outside": "外部テーブルへのリレーションシップ",
     "layer_lineage": "リネージ",
+    "layer_productLinks": "他のプロダクトへのリンク",
     "filterDomain": "ドメイン",
     "filterTag": "タグ",
     "filterSensitivity": "機密度",
@@ -78,6 +79,7 @@
     "ontologyView": "オントロジービュー",
     "orphans": "孤立",
     "columnsToggle": "列",
+    "tablesToggle": "テーブル",
     "allEdgeTypes": "すべてのエッジ種別",
     "someEdgeTypes": "{{total}} 件中 {{count}} 件のエッジ種別",
     "allDomains": "すべてのドメイン",
@@ -146,6 +148,8 @@
     "factOwner": "オーナー",
     "factMembers": "メンバーテーブル",
     "factColumns": "列",
+    "depth": "深さ",
+    "lateral": "横方向のエッジ",
     "grounding_grounded": "紐付け済み",
     "grounding_grounded_pending": "紐付け済み、下書き経由"
   }

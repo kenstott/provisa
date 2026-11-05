@@ -311,7 +311,8 @@ tests = ["tests/integration/test_exasol_*.py"]
 
 [sources.fakes]
 paths = ["provisa/fakes/*"]
-tests = ["tests/integration/test_fake_*.py"]
+# The testdata demo: prod profiled, preprod faked and dev generated from prod's profile.
+tests = ["tests/integration/test_fake_*.py", "tests/integration/test_testdata_demo.py"]
 
 [sources.files]
 paths = ["provisa/file_source/*"]

@@ -40,8 +40,8 @@ vi.mock("../../api/actions", () => ({
   fetchActions: () => Promise.resolve({ functions: [] }),
   saveFunction: vi.fn(),
 }));
-vi.mock("../../components/graph3d/GraphPanel", () => ({
-  GraphPanel: () => null,
+vi.mock("../../components/graph3d/OntologyGraph", () => ({
+  OntologySnippet: () => null,
   ProductMapButton: () => null,
 }));
 

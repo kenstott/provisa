@@ -1917,6 +1917,10 @@
         "title": "Chi sta frazionando?",
         "description": "Versamenti appena sotto i 10.000 $, tre volte o più, tra filiali e giorni. Nessuno richiedeva una segnalazione da solo. Victor Hale è andato in tre filiali in una settimana, e i due versamenti di Marcus Reed nello stesso giorno richiedevano insieme una segnalazione. Solo la compliance vede questa vista."
       },
+      "banksecrecyPollyWalk": {
+        "title": "Che cosa deve fare la banca?",
+        "description": "Un cliente versa ripetutamente contanti appena sotto i 10.000 $. Che cosa deve fare la banca? Cercare queste parole nei passaggi della legge non trova la risposta. Polly percorre invece il glossario: versamenti sotto soglia, verso il frazionamento (structuring), verso la segnalazione di attività sospetta, e arriva a 31 CFR 1010.314 e 31 CFR 1020.320, i passaggi che lo dicono."
+      },
       "banksecrecyExample": {
         "title": "La stessa risposta in GraphQL",
         "description": "Le segnalazioni dovute, come chiamata API. Ogni interfaccia legge la stessa vista governata, con le stesse maschere per lo stesso ruolo."

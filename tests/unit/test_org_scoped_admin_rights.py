@@ -152,6 +152,8 @@ def test_overridable_keys_exclude_every_deployment_wide_concern():
         "classification",
         # REQ-259: the org's Apollo subgraph and the role it serves as (not the federation engine).
         "federation",
+        # REQ-2185: the reference library's retrieval setting, passage or graph.
+        "reference_library",
     }
     for deployment_wide in (
         "federation_engine",

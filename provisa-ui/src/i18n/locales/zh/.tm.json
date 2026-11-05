@@ -3960,6 +3960,7 @@
   "zh/observabilityTab.json::observabilityTab.timeLabel": "Time:",
   "zh/observabilityTab.json::observabilityTab.traceLabel": "Trace:",
   "zh/observabilityTab.json::observabilityTab.traces": "Traces",
+  "zh/observabilityTab.json::observabilityTab.tracesTableCheckFailed": "Provisa's trace tables could not be checked ({{reason}}). Whether they are receiving rows is unknown; the check repeats every 30 seconds.",
   "zh/odataPage.json::odataPage.ascending": "ascending",
   "zh/odataPage.json::odataPage.copyUrl": "Copy URL",
   "zh/odataPage.json::odataPage.countLabel": "Count the matching rows",
@@ -9534,6 +9535,9 @@
   "zh/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh/writeGrants.json::writeGrants.source_now": "The time of the write",
   "zh/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh/graph3d.json::graph3d.depth": "Depth",
+  "zh/graph3d.json::graph3d.lateral": "Lateral edges",
+  "zh/graph3d.json::graph3d.layer_productLinks": "Links to other products",
   "zh/tour.json::tour.steps.testdataPollyProposes.title": "A fake proposed from the profile",
   "zh/tour.json::tour.steps.testdataPollyProposes.description": "Polly is asked which fake it would propose for customers.email. It reads the column's latest profile run, sees that the values are email addresses, and proposes the email fake. The model already declares one, so the proposal checks that choice against the data. Nothing is saved until someone chooses to.",
   "zh/orgRegions.json::orgRegions.grantedIntro": "The regions the platform granted this organization, and the store it keeps each kind of data in there. They are set on the Platform page. Within them, this organization decides where its tables and sources live and which regions its roles may read.",
@@ -9705,5 +9709,11 @@
   "zh/kafkaFields.json::kafkaFields.password": "Password",
   "zh/kafkaFields.json::kafkaFields.passwordHint": "The API secret on Confluent Cloud. A secret reference, such as ${secret:NAME}, is resolved when the cluster is opened.",
   "zh/kafkaFields.json::kafkaFields.caCertificate": "CA certificate (PEM)",
-  "zh/kafkaFields.json::kafkaFields.caCertificateHint": "Leave empty for a broker whose certificate comes from a public CA, as on Confluent Cloud and MSK. Paste a private CA's certificate to trust that CA alone."
+  "zh/kafkaFields.json::kafkaFields.caCertificateHint": "Leave empty for a broker whose certificate comes from a public CA, as on Confluent Cloud and MSK. Paste a private CA's certificate to trust that CA alone.",
+  "zh/tour.json::tour.steps.banksecrecyPollyWalk.title": "What must the bank do?",
+  "zh/tour.json::tour.steps.banksecrecyPollyWalk.description": "A customer keeps depositing cash just under $10,000. What must the bank do? Searching the law's passages for those words misses the answer. Polly walks the glossary instead: deposits under threshold, to structuring, to suspicious activity report, and reaches 31 CFR 1010.314 and 31 CFR 1020.320, the passages that say.",
+  "zh/referenceLibrary.json::referenceLibrary.retrieval": "Retrieval",
+  "zh/referenceLibrary.json::referenceLibrary.retrievalPassage": "Passage",
+  "zh/referenceLibrary.json::referenceLibrary.retrievalGraph": "Graph",
+  "zh/referenceLibrary.json::referenceLibrary.retrievalHelp": "How an assistant's question is answered from the library. Passage: the passages nearest the question, and the passages around them. Graph: also follows the glossary from the terms the question names, over their relationships, to the passages the terms reached cite, so an answer can draw on a rule whose wording does not resemble the question."
 }

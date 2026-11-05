@@ -554,16 +554,11 @@ def make_openapi_loader(state: Any) -> AdapterLoader:
         return endpoint, api_source
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        from provisa.api_source.caller import answer_rows, call_api
+        from provisa.api_source.caller import answer_rows
+        from provisa.api_source.contract import call_endpoint
 
         endpoint, api_source = _registered(source, table)
-        answer = await call_api(
-            endpoint,
-            dict(endpoint.default_params),
-            base_url=api_source.base_url,
-            auth=api_source.auth,
-            source_headers=api_source.headers,
-        )
+        answer = await call_endpoint(endpoint, api_source, dict(endpoint.default_params))
         return _whole(source, table, *answer_rows(endpoint, answer))
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
@@ -595,7 +590,8 @@ def make_neo4j_keyed_loader(state: Any) -> AdapterKeyedLoader:
     async def _load(
         source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
     ) -> list[dict]:
-        from provisa.api_source.caller import answer_rows, call_api
+        from provisa.api_source.caller import answer_rows
+        from provisa.api_source.contract import call_endpoint
         from provisa.cypher.query_template_filter import inject_keys_filter
 
         endpoint = state.api_endpoints.get((source.id, table.table_name))
@@ -612,12 +608,8 @@ def make_neo4j_keyed_loader(state: Any) -> AdapterKeyedLoader:
             )
         wrapped_template = inject_keys_filter(endpoint.query_template, pk_columns[0])
         wrapped_endpoint = endpoint.model_copy(update={"query_template": wrapped_template})
-        answer = await call_api(
-            wrapped_endpoint,
-            {**endpoint.default_params, "keys": [k[0] for k in keys]},
-            base_url=api_source.base_url,
-            auth=api_source.auth,
-            source_headers=api_source.headers,
+        answer = await call_endpoint(
+            wrapped_endpoint, api_source, {**endpoint.default_params, "keys": [k[0] for k in keys]}
         )
         return _whole(source, table, *answer_rows(wrapped_endpoint, answer))
 
@@ -1925,7 +1917,7 @@ def make_graphql_remote_keyed_loader(state: Any) -> AdapterKeyedLoader:  # REQ-1
     async def _load(
         source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
     ) -> list[dict]:
-        from provisa.graphql_remote.executor import execute_remote
+        from provisa.graphql_remote.contract import call_field
 
         if not keys:
             return []
@@ -1956,20 +1948,24 @@ def make_graphql_remote_keyed_loader(state: Any) -> AdapterKeyedLoader:  # REQ-1
             if fetch["on"] is not None:
                 # The field returns an interface or union: the table's fields are its type's.
                 columns = [f"... on {fetch['on']} {{ {' '.join(columns)} }}"]
-        answer = await execute_remote(
-            request["url"],
-            request["auth"],
-            fetch["field"],
-            columns,
-            variables=variables,
-            required_args=[
-                *(a for a in fixed if a["name"] != fetch["arg"]),
-                {"name": fetch["arg"], "gql_type": fetch["arg_type"]},
-            ],
-            rows_path=rows_path,
-            # A connection is read at the page size its registration priced.
-            limit=state.config.graphql_remote.max_list_items if rows_path else None,
-            error_policy=request["error_policy"],
+        answer = await call_field(
+            source.id,
+            table.table_name,
+            {
+                "url": request["url"],
+                "auth": request["auth"],
+                "field_name": fetch["field"],
+                "columns": columns,
+                "required_args": [
+                    *(a for a in fixed if a["name"] != fetch["arg"]),
+                    {"name": fetch["arg"], "gql_type": fetch["arg_type"]},
+                ],
+                "rows_path": rows_path,
+                # A connection is read at the page size its registration priced.
+                "limit": state.config.graphql_remote.max_list_items if rows_path else None,
+                "error_policy": request["error_policy"],
+            },
+            variables,
         )
         # A list of IDs answers null for an ID it does not know.
         return [row for row in answer.rows if row is not None]
@@ -2018,14 +2014,18 @@ def make_graphql_remote_loader(
         )
 
     async def _load(source: Any, table: Any) -> list[dict]:
-        from provisa.graphql_remote.executor import execute_remote
+        from provisa.graphql_remote.contract import call_field
 
         request = _request(source, table)
         if request["rows_path"]:
             # A land is the whole table: never one cut at max_rows (REQ-1915).
             async with aclosing(_pages(source, table)) as pages:
                 return [row async for page in pages for row in page]
-        return (await execute_remote(**request, max_rows=max_rows)).rows
+        variables = request.pop("variables")
+        answer = await call_field(
+            source.id, table.table_name, {**request, "max_rows": max_rows}, variables
+        )
+        return answer.rows
 
     def _replica_source(source: Any, table: Any, columns: list[tuple[str, str]]) -> Any:
         from provisa.federation.replica_source import CursorSource

@@ -1917,6 +1917,10 @@
         "title": "Qui fractionne ?",
         "description": "Des dépôts juste sous 10 000 $, trois fois ou plus, sur plusieurs agences et jours. Aucun n'exigeait de déclaration à lui seul. Victor Hale est allé dans trois agences en une semaine, et les deux dépôts de Marcus Reed le même jour exigeaient ensemble une déclaration. Seule la conformité voit cette vue."
       },
+      "banksecrecyPollyWalk": {
+        "title": "Que doit faire la banque ?",
+        "description": "Un client dépose sans cesse des espèces juste sous 10 000 $. Que doit faire la banque ? Chercher ces mots dans les passages de la loi manque la réponse. Polly parcourt plutôt le glossaire : dépôts sous le seuil, vers le fractionnement (structuring), vers la déclaration d'activité suspecte, et atteint 31 CFR 1010.314 et 31 CFR 1020.320, les passages qui le disent."
+      },
       "banksecrecyExample": {
         "title": "La même réponse en GraphQL",
         "description": "Les déclarations dues, en appel d'API. Chaque interface lit la même vue gouvernée, avec les mêmes masques pour le même rôle."

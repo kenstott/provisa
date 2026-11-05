@@ -60,6 +60,10 @@
     "helpWhat": "Um conjunto pequeno e escolhido de documentos de referência (políticas, regulamentos, contratos, processos), adicionados por arquivo ou URL. Não é um repositório de documentos.",
     "helpWho": "Polly responde com base nela e cita os trechos. Agentes de IA conectados pelo servidor MCP do Provisa pesquisam nela (search_reference_library). \"Encontrar termos\" a lê para propor termos e definições do glossário.",
     "helpSees": "Um assistente agindo por uma função usa apenas documentos mantidos em domínios que a função lê, além dos da organização inteira.",
-    "helpEmbedding": "Os trechos de um documento são incorporados com o modelo de embedding da organização quando ele é adicionado; \"Reincorporar\" só é necessário quando esse modelo muda."
+    "helpEmbedding": "Os trechos de um documento são incorporados com o modelo de embedding da organização quando ele é adicionado; \"Reincorporar\" só é necessário quando esse modelo muda.",
+    "retrieval": "Recuperação",
+    "retrievalPassage": "Trecho",
+    "retrievalGraph": "Grafo",
+    "retrievalHelp": "Como a pergunta de um assistente é respondida a partir da biblioteca. Trecho: os trechos mais próximos da pergunta e os trechos ao redor deles. Grafo: também segue o glossário a partir dos termos que a pergunta nomeia, por meio de seus relacionamentos, até os trechos que os termos alcançados citam, para que uma resposta possa se apoiar em uma regra cuja redação não se parece com a pergunta."
   }
 }
