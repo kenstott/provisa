@@ -43,8 +43,8 @@ vi.mock("../graphScene", () => ({
 }));
 
 import { GraphExplorer } from "../GraphExplorer";
-import { GLOSSARY_SCOPE } from "../graphModel";
-import { glossaryGraph, type TermRow } from "../glossaryGraphData";
+import { ONTOLOGY_SCOPE } from "../graphModel";
+import { glossaryGraph, type TermRow } from "../ontologyData";
 import { setStored } from "../../../lib/browserStorage";
 
 const ref = (table: number, column: string) => ({
@@ -95,8 +95,9 @@ describe("the Ontology View's tables", () => {
     render(
       <GraphExplorer
         data={data}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "ontology", subject: null }}
         exportName="ontology"
         testId="x"
@@ -117,8 +118,9 @@ describe("the Ontology View's tables", () => {
     render(
       <GraphExplorer
         data={data}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "ontology", subject: null }}
         exportName="ontology"
         testId="x"
@@ -141,8 +143,9 @@ describe("the Ontology View's tables", () => {
     render(
       <GraphExplorer
         data={data}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "ontology", subject: null }}
         exportName="ontology"
         testId="x"
@@ -159,8 +162,9 @@ describe("the Ontology View's tables", () => {
     render(
       <GraphExplorer
         data={data}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "ontology", subject: null }}
         exportName="ontology"
         testId="x"

@@ -67,10 +67,15 @@ interface TracesTableLatest {
 const TABLE_CHECK_MS = 30_000;
 
 // What the ops traces table says about itself while an endpoint is set. The read is the server's;
-// nothing is inferred from the endpoint's URL. Null until the first answer, and when the table
-// is not read by this engine.
-function useTracesTableLatest(endpointSet: boolean): TracesTableLatest | null {
+// nothing is inferred from the endpoint's URL. `latest` is null until the first answer, and when
+// the table is not read by this engine. `failure` holds why the last check could not be made (the
+// status code or the error message); a later successful check clears it.
+function useTracesTableLatest(endpointSet: boolean): {
+  latest: TracesTableLatest | null;
+  failure: string | null;
+} {
   const [latest, setLatest] = useState<TracesTableLatest | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
 
   useEffect(() => {
     if (!endpointSet) return;
@@ -78,11 +83,17 @@ function useTracesTableLatest(endpointSet: boolean): TracesTableLatest | null {
     const check = async () => {
       try {
         const resp = await fetch(`${API_BASE}/admin/traces/latest`);
-        if (!resp.ok) return;
+        if (!resp.ok) {
+          if (alive) setFailure(`HTTP ${resp.status}`);
+          return;
+        }
         const json: TracesTableLatest = await resp.json();
-        if (alive) setLatest(json);
-      } catch {
-        /* the next check retries */
+        if (alive) {
+          setLatest(json);
+          setFailure(null);
+        }
+      } catch (err) {
+        if (alive) setFailure(err instanceof Error ? err.message : String(err));
       }
     };
     check();
@@ -93,7 +104,7 @@ function useTracesTableLatest(endpointSet: boolean): TracesTableLatest | null {
     };
   }, [endpointSet]);
 
-  return endpointSet ? latest : null;
+  return endpointSet ? { latest, failure } : { latest: null, failure: null };
 }
 
 function TraceList({
@@ -312,8 +323,10 @@ function OtelSettingsSection({
 
   const active = Boolean(otel.endpoint);
   // The endpoint the process is exporting to is the saved one, not what is being typed.
-  const tableLatest = useTracesTableLatest(Boolean(saved.endpoint));
+  const { latest: tableLatest, failure: tableFailure } = useTracesTableLatest(Boolean(saved.endpoint));
+  // A failed check leaves the last answer stale, so the failure is shown instead of it.
   const tableStale =
+    tableFailure === null &&
     tableLatest !== null &&
     tableLatest.tracked &&
     (tableLatest.latest == null ||
@@ -329,6 +342,11 @@ function OtelSettingsSection({
             : t("observabilityTab.statusActiveNoCollector")}
         </Text>
       </Text>
+      {tableFailure !== null && (
+        <Alert color="red" variant="light" mb="md" data-testid="traces-table-unchecked">
+          {t("observabilityTab.tracesTableCheckFailed", { reason: tableFailure })}
+        </Alert>
+      )}
       {tableStale && tableLatest && (
         <Alert color="yellow" variant="light" mb="md" data-testid="traces-table-stale">
           {tableLatest.latest == null

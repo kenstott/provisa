@@ -20,8 +20,8 @@ import { lifecycleProps } from "./lifecycleProps";
 // Who an owner role resolves to is its own fetch, held by its own tests.
 vi.mock("../../../components/OwnerResolution", () => ({ OwnerResolutionInline: () => null }));
 // The panel's 3D graph is its own component, held by its own tests.
-vi.mock("../../../components/graph3d/GraphPanel", () => ({
-  GraphPanel: () => null,
+vi.mock("../../../components/graph3d/OntologyGraph", () => ({
+  OntologySnippet: () => null,
 }));
 
 const PRODUCT = {
