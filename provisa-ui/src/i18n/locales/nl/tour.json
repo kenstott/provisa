@@ -933,7 +933,7 @@
         "description": "U zag de eigen data van de verzekeraar, per county en oogstjaar afgestemd op openbare schade-, weer- en opbrengstdata, allemaal in één beheerd model. Eén view beantwoordt of het weer de schade verklaart, in SQL, GraphQL en REST. Het notebook meet het: het weer verklaart 54% van de variatie in de schadequote, en over de huidige portefeuille heeft een seizoen als 2012 een verwachte schadequote van 1,75."
       },
       "retailScenario": {
-        "title": "Eén concern, twee regio's",
+        "title": "Een verhaal van twee regio's",
         "description": "Een retailconcern runt een EU- en een US-dochteronderneming als één bedrijf. Kan dat zonder de GDPR te schenden? Elke dochteronderneming houdt een eigen database: dit is die van de EU, met haar klanten van het loyaliteitsprogramma, hun toestemming voor marketing, bestellingen, personeel en de mail die het personeel buiten het concern stuurt."
       },
       "retailPlatformRegions": {
@@ -1910,7 +1910,7 @@
         "summary": "Verklaart het weer de schade in de portefeuille van een gewasverzekeraar? Zijn eigen boerderijen, polissen en claims, per county en oogstjaar gekoppeld aan de schade per oorzaak van de USDA, het weer van NOAA en de opbrengsten van NASS, geven het antwoord in SQL, GraphQL en REST."
       },
       "retail": {
-        "title": "Eén concern, twee regio's",
+        "title": "Een verhaal van twee regio's",
         "summary": "Een retailconcern met een EU- en een US-dochteronderneming, gerund als één bedrijf onder de GDPR: EU-gegevens blijven in de EU, de concernrapportage leest ze gepseudonimiseerd, en inzage, wissing, insidercontrole en audit zijn elk één query."
       },
       "provisioning": {

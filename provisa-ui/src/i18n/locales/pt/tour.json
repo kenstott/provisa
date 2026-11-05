@@ -933,7 +933,7 @@
         "description": "Você viu os dados da própria seguradora cruzados por condado e ano de safra com dados públicos de perdas, clima e produtividade, tudo em um modelo governado. Uma view responde se o clima explica as perdas, em SQL, GraphQL e REST. O notebook mede-o: o clima explica 54% da variação da sinistralidade e, na carteira atual, uma temporada como a de 2012 tem uma sinistralidade esperada de 1,75."
       },
       "retailScenario": {
-        "title": "Um grupo, duas regiões",
+        "title": "Um conto de duas regiões",
         "description": "Um grupo varejista opera uma subsidiária na EU e outra nos US como um único negócio. Ele consegue fazer isso sem violar o GDPR? Cada subsidiária mantém seu próprio banco de dados: este é o da EU, com seus clientes do programa de fidelidade, o consentimento de marketing deles, os pedidos, a equipe e o e-mail que a equipe envia para fora do grupo."
       },
       "retailPlatformRegions": {
@@ -1910,7 +1910,7 @@
         "summary": "O clima explica as perdas da carteira de uma seguradora agrícola? As próprias fazendas, apólices e sinistros, unidos por condado e ano de safra às perdas por causa do USDA, ao clima da NOAA e à produtividade do NASS, respondem em SQL, GraphQL e REST."
       },
       "retail": {
-        "title": "Um grupo, duas regiões",
+        "title": "Um conto de duas regiões",
         "summary": "Um grupo varejista com uma subsidiária na EU e outra nos US, operado como um único negócio sob o GDPR: os dados da EU ficam na EU, os relatórios do grupo os leem pseudonimizados, e acesso, eliminação, revisão de informação privilegiada e auditoria são cada um uma única consulta."
       },
       "provisioning": {

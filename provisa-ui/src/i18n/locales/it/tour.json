@@ -933,7 +933,7 @@
         "description": "Avete visto i dati propri dell'assicuratore abbinati per contea e anno di raccolto a dati pubblici su danni, meteo e rese, tutto in un unico modello governato. Una vista risponde se il meteo spiega i danni, in SQL, GraphQL e REST. Il notebook lo misura: il meteo spiega il 54% della variazione del loss ratio e, sul portafoglio di oggi, una stagione come il 2012 ha un loss ratio atteso di 1,75."
       },
       "retailScenario": {
-        "title": "Un gruppo, due regioni",
+        "title": "Racconto di due regioni",
         "description": "Un gruppo della distribuzione gestisce una controllata EU e una US come un'unica azienda. Può farlo senza violare il GDPR? Ogni controllata ha il proprio database: questo è quello dell'EU, con i clienti del programma fedeltà, il loro consenso al marketing, gli ordini, il personale e la posta che il personale invia fuori dal gruppo."
       },
       "retailPlatformRegions": {
@@ -1910,7 +1910,7 @@
         "summary": "Il meteo spiega i danni nel portafoglio di un assicuratore agricolo? Le sue aziende, polizze e sinistri, uniti per contea e anno di raccolto ai danni per causa dell'USDA, al meteo della NOAA e alle rese della NASS, rispondono in SQL, GraphQL e REST."
       },
       "retail": {
-        "title": "Un gruppo, due regioni",
+        "title": "Racconto di due regioni",
         "summary": "Un gruppo della distribuzione con una controllata EU e una US, gestito come un'unica azienda nel rispetto del GDPR: i dati EU restano nell'EU, il reporting di gruppo li legge pseudonimizzati, e accesso, cancellazione, revisione insider e audit sono ciascuno una sola query."
       },
       "provisioning": {

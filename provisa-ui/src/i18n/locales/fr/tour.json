@@ -933,7 +933,7 @@
         "description": "Vous avez vu les données propres de l'assureur rapprochées par comté et année de récolte de données publiques sur les sinistres, la météo et les rendements, le tout dans un modèle gouverné. Une vue indique si la météo explique les sinistres, en SQL, GraphQL et REST. Le notebook le mesure : la météo explique 54 % de la variation du ratio sinistres/primes, et sur le portefeuille actuel une saison comme 2012 a un ratio attendu de 1,75."
       },
       "retailScenario": {
-        "title": "Un groupe, deux régions",
+        "title": "Le Conte de deux régions",
         "description": "Un groupe de distribution exploite une filiale EU et une filiale US comme une seule entreprise. Peut-il le faire sans enfreindre le GDPR ? Chaque filiale garde sa propre base de données : voici celle de l'EU, avec ses clients fidélité, leur consentement marketing, les commandes, le personnel et le courrier que le personnel envoie hors du groupe."
       },
       "retailPlatformRegions": {
@@ -1910,7 +1910,7 @@
         "summary": "La météo explique-t-elle les sinistres du portefeuille d'un assureur récolte ? Ses propres exploitations, polices et sinistres, joints par comté et année de récolte aux sinistres par cause de l'USDA, à la météo de la NOAA et aux rendements de la NASS, répondent en SQL, GraphQL et REST."
       },
       "retail": {
-        "title": "Un groupe, deux régions",
+        "title": "Le Conte de deux régions",
         "summary": "Un groupe de distribution avec une filiale EU et une filiale US, exploité comme une seule entreprise sous le GDPR : les données EU restent dans l'EU, le reporting du groupe les lit pseudonymisées, et l'accès, l'effacement, la revue d'initiés et l'audit tiennent chacun en une requête."
       },
       "provisioning": {

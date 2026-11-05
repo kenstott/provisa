@@ -933,7 +933,7 @@
         "description": "You saw the insurer's own data matched by county and crop year to public losses, weather and yields, all in one governed model. One view answers whether the weather explains the losses, in SQL, GraphQL and REST. The notebook measures it. The weather explains 54% of the variation in loss ratio, and across today's book a 2012-like season has an expected loss ratio of 1.75."
       },
       "retailScenario": {
-        "title": "One group, two regions",
+        "title": "A Tale of Two Regions",
         "description": "A retail group runs an EU and a US subsidiary as one business. The tour asks whether it can do that without breaking GDPR. Each subsidiary keeps its own database. This is the EU one, with its loyalty customers, their marketing consent, orders, staff and the mail staff send outside the group."
       },
       "retailPlatformRegions": {
@@ -1910,7 +1910,7 @@
         "summary": "Does weather explain the losses in a crop insurer's portfolio? Its own farms, policies and claims, joined by county and crop year to the USDA's losses by cause, NOAA's weather and NASS's yields, answer it in SQL, GraphQL and REST."
       },
       "retail": {
-        "title": "One group, two regions",
+        "title": "A Tale of Two Regions",
         "summary": "A retail group with an EU and a US subsidiary run as one business under GDPR: EU data stays in the EU, group reporting reads it pseudonymised, and access, erasure, insider review and audit are each one query."
       },
       "provisioning": {

@@ -933,7 +933,7 @@
         "description": "Sie haben die eigenen Daten des Versicherers gesehen, nach County und Erntejahr mit öffentlichen Schäden, Wetter- und Ertragsdaten abgeglichen, alles in einem regulierten Modell. Eine View beantwortet, ob das Wetter die Schäden erklärt, in SQL, GraphQL und REST. Das Notebook misst es: Das Wetter erklärt 54 % der Schwankung der Schadenquote, und über den heutigen Bestand lässt eine Saison wie 2012 eine Schadenquote von 1,75 erwarten."
       },
       "retailScenario": {
-        "title": "Ein Konzern, zwei Regionen",
+        "title": "Eine Geschichte aus zwei Regionen",
         "description": "Ein Einzelhandelskonzern führt eine EU- und eine US-Tochtergesellschaft als ein Unternehmen. Geht das, ohne gegen die GDPR zu verstoßen? Jede Tochtergesellschaft hat ihre eigene Datenbank: Dies ist die der EU, mit ihren Treuekunden, deren Marketing-Einwilligung, Bestellungen, Mitarbeitenden und der Post, die Mitarbeitende aus dem Konzern hinaus senden."
       },
       "retailPlatformRegions": {
@@ -1910,7 +1910,7 @@
         "summary": "Erklärt das Wetter die Schäden im Portfolio eines Ernteversicherers? Seine eigenen Betriebe, Policen und Schadensfälle, nach County und Erntejahr mit den Schäden des USDA nach Ursache, NOAAs Wetter und NASS' Erträgen verknüpft, beantworten es in SQL, GraphQL und REST."
       },
       "retail": {
-        "title": "Ein Konzern, zwei Regionen",
+        "title": "Eine Geschichte aus zwei Regionen",
         "summary": "Ein Einzelhandelskonzern mit einer EU- und einer US-Tochtergesellschaft, als ein Unternehmen unter der GDPR geführt: EU-Daten bleiben in der EU, das Konzernreporting liest sie pseudonymisiert, und Auskunft, Löschung, Insider-Prüfung und Audit sind jeweils eine Abfrage."
       },
       "provisioning": {
