@@ -26605,3 +26605,15 @@ Maintainer 2026-11-05: an effective-access explainer. Provisa has no person: the
 **Code:** —
 
 **Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-2212 · SQL & Multi-Protocol Client Access {#REQ-2212}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-05: a dialect parameter on SQL connections, so a client written for another database (for example SQL Server T-SQL) can move to Provisa without rewriting its SQL. A connection to a SQL front end (pgwire, Arrow Flight SQL, HTTP /data/sql) may name a SQL dialect that SQLGlot knows (tsql, mysql, snowflake, bigquery and so on); with none it is postgres, as today. Every statement the client sends is parsed with that dialect's reader, and every SQL text Provisa returns to that client (a view's definition, an EXPLAIN, the definition text in catalog answers) is written with that dialect's writer. Between the two, nothing changes: the same semantic SQL, governance, routing and engine transpile apply, so a statement means the same whichever dialect it arrived in. An unknown dialect is refused at connect, naming it; a statement the reader cannot parse is refused with the reader's error. The wire protocol is unchanged: a SQL Server client still needs a pgwire-capable driver; a native TDS endpoint is out of scope here. (Amended 2026-11-05, A STATEMENT CAN NAME ITS OWN DIALECT:) A statement may name its dialect itself with the SQL comment hint used for other per-statement choices ([REQ-544](#REQ-544)): -- @provisa dialect=tsql. It overrides the connection's dialect for that statement only. This serves SQL typed into a BI tool's native-query box and other hand-written SQL passed through a driver unchanged; SQL a BI tool generates from its own model follows the driver it uses, so it needs no hint. An unknown dialect in the hint is refused, naming it. (Amended 2026-11-05, BOTH, FOR MIGRATION:) Both are kept: the connection names the default dialect and the statement hint overrides it, including -- @provisa dialect=postgres to mark a statement already rewritten. That is the migration path: an application connects with its old dialect as the default, so every statement keeps working; each statement rewritten to PostgreSQL carries the postgres hint; when none is left in the old dialect, the connection default changes to postgres and the hints are dropped. Every statement runs at every step. (Amended 2026-11-05, case of names under a dialect:) Under a dialect named by the connection or by a statement hint, an unquoted name matches the catalog ignoring case; when two catalog names differ only by case the statement is refused with an error naming both. A quoted name matches exactly. Result column labels follow the named dialect's rule: an unquoted alias or column comes back as written for T-SQL and MySQL, in upper case for Snowflake, Oracle and DB2, and in lower case for PostgreSQL, Trino and DuckDB; a quoted name comes back exactly as written. Name matching is part of governance's input and label case is presentation applied to the answer, so both live in the one query pipeline.
+
+**Code:** —
+
+**Tests:** —
