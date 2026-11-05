@@ -56,6 +56,7 @@ class Kind:
     sensitive: bool
     test: str
     pattern: str | None
+    contained_pattern: str | None
     check: str | None
     ignore: str | None
     ignore_case: bool
@@ -321,6 +322,7 @@ def reference_list(name: str) -> frozenset[str]:
 def _kind(entry: dict) -> Kind:
     sensitive = entry["sensitive"]
     pattern = entry.get("pattern")
+    contained = entry.get("contained_pattern")
     check = entry.get("check")
     ignore = entry.get("ignore")
     test = entry.get("test", entry["id"])
@@ -332,6 +334,7 @@ def _kind(entry: dict) -> Kind:
         sensitive=sensitive,
         test=test,
         pattern=pattern,
+        contained_pattern=contained,
         check=check,
         ignore=ignore,
         ignore_case=bool(entry.get("ignore_case", False)),
@@ -341,12 +344,14 @@ def _kind(entry: dict) -> Kind:
         mask_preset=entry.get("mask_preset"),
     )
     if kind.reference is not None:
-        if pattern or check or ignore:
+        if pattern or contained or check or ignore:
             raise ValueError(f"classification kind {kind.id!r}: a reference kind has no pattern")
     else:
         if not pattern:
             raise ValueError(f"classification kind {kind.id!r}: no pattern")
         re.compile(pattern)  # a pattern that does not compile raises here, at load
+        if contained:
+            re.compile(contained)
         if ignore:
             re.compile(ignore)
         if check is not None and check not in CHECKS:
@@ -397,11 +402,12 @@ def _contained_pattern(pattern: str, ignore_case: bool) -> re.Pattern[str]:
 
 def contains(kind: Kind, value: str) -> bool:
     """Whether ``value`` holds a ``kind`` (not a reference kind) inside it (REQ-2147 KINDS ARE
-    PATTERN RULES; CONTAINED VALUES ARE HINTS): the kind's pattern found anywhere in the text with
-    nothing word-like either side, and the check, where the kind has one, passing the matched text
+    PATTERN RULES; CONTAINED VALUES ARE HINTS): the kind's contained_pattern, else its pattern,
+    found anywhere in the text with nothing word-like either side, and the check, where the kind has one, passing the matched text
     with the kind's ignored characters removed. Only whether: the matched text is never returned."""
-    assert kind.pattern is not None, kind.id
-    for found in _contained_pattern(kind.pattern, kind.ignore_case).finditer(value):
+    pattern = kind.contained_pattern or kind.pattern
+    assert pattern is not None, kind.id
+    for found in _contained_pattern(pattern, kind.ignore_case).finditer(value):
         text = re.sub(kind.ignore, "", found.group()) if kind.ignore else found.group()
         if kind.check is None or CHECKS[kind.check](text):
             return True

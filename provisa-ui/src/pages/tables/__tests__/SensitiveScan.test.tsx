@@ -10,7 +10,7 @@
 
 // REQ-2147 (CONTAINED VALUES ARE HINTS): the column access settings ask for a scan for sensitive
 // values; the scan runs in the background, its status is shown and followed to its end, and each
-// column's hints read "Matches <kind> in N% of sampled values" beside its grant and masks. A table
+// column's hints read "Matches <noun> in N% of sampled values" beside its grant and masks. A table
 // not saved yet cannot be scanned and says why.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -99,7 +99,7 @@ describe("SensitiveScan", () => {
     await waitFor(
       () =>
         expect(screen.getByTestId("sensitive-hint-notes")).toHaveTextContent(
-          "Matches US social security number in 30% of sampled values",
+          "Matches a US social security number in 30% of sampled values",
         ),
       { timeout: 4000 },
     );

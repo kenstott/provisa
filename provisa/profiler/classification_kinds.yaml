@@ -17,6 +17,9 @@
 #   sensitive    accepting the suggestion also marks the column pii and offers mask_preset
 #   pattern      a regular expression of the value's shape, written without ^ or $ (the whole-value
 #                test matches all of the value, and the pattern can also be searched for inside text)
+#   contained_pattern  optional: a stricter pattern used instead of pattern when searching inside
+#                text (classify.contains), where the plain pattern would match ordinary numbers in
+#                prose. The whole-value test never uses it; the boundary and the check still apply
 #   check        optional: a checksum or rule of classify.CHECKS the pattern cannot state
 #   ignore       optional: a regular expression of characters removed from a value before it is
 #                matched (default: only surrounding whitespace is trimmed)
@@ -37,6 +40,8 @@ kinds:
     passes: pass the SSN rules
     sensitive: true
     pattern: '(?:\d{3}-\d{2}-\d{4}|\d{7,9})'
+    # Inside text only the dashed 3-2-4 form: a plain 9-digit run is an order or reference number.
+    contained_pattern: '\d{3}-\d{2}-\d{4}'
     check: us_ssn
     families: [text, numeric]
     threshold: 0.9
@@ -49,6 +54,8 @@ kinds:
     passes: pass the Luhn check
     sensitive: true
     pattern: '\d{13,19}'
+    # Inside text digit groups separated by single spaces or hyphens (4-4-4-1..7, or the 4-6-5 of a 15-digit card) as well as an unbroken run; the Luhn check runs on the digits with the separators removed.
+    contained_pattern: '(?:\d{4}[ -]){3}\d{1,7}|\d{4}[ -]\d{6}[ -]\d{5}|\d{13,19}'
     ignore: '[\s\-.]'
     check: payment_card
     families: [text, numeric]
@@ -89,6 +96,8 @@ kinds:
     passes: pass the SIN check digit
     sensitive: true
     pattern: '[1-79]\d{8}'
+    # Inside text only the grouped 3-3-3 form: a plain 9-digit run is an ordinary number and the Luhn check passes one in ten.
+    contained_pattern: '[1-79]\d{2}[ -]\d{3}[ -]\d{3}'
     ignore: '[\s\-.]'
     check: ca_social_insurance_number
     families: [text, numeric]
@@ -116,6 +125,8 @@ kinds:
     passes: pass the BSN eleven test
     sensitive: true
     pattern: '\d{8,9}'
+    # Inside text only the grouped 3-3-3 form: plain 8 or 9 digit runs are ordinary numbers and the eleven test passes one in eleven.
+    contained_pattern: '\d{3}[ .-]\d{3}[ .-]\d{3}'
     ignore: '[\s\-.]'
     check: nl_bsn
     families: [text, numeric]
@@ -129,6 +140,8 @@ kinds:
     passes: pass the Aadhaar check digit
     sensitive: true
     pattern: '[2-9]\d{11}'
+    # Inside text only the grouped 4-4-4 form: a plain 12-digit run is an ordinary number.
+    contained_pattern: '[2-9]\d{3}[ -]\d{4}[ -]\d{4}'
     ignore: '[\s\-.]'
     check: in_aadhaar
     families: [text, numeric]
@@ -165,6 +178,8 @@ kinds:
     passes: have the ITIN format
     sensitive: true
     pattern: '9\d{2}-?(?:5\d|6[0-5]|7\d|8[0-8]|9[0-2]|9[4-9])-?\d{4}'
+    # Inside text only the hyphenated 3-2-4 form: a plain 9-digit run starting with 9 is an ordinary number.
+    contained_pattern: '9\d{2}-(?:5\d|6[0-5]|7\d|8[0-8]|9[0-2]|9[4-9])-\d{4}'
     families: [text, numeric]
     threshold: 0.9
     term: us individual taxpayer identification number
@@ -176,6 +191,8 @@ kinds:
     passes: pass the ABA checksum
     sensitive: true
     pattern: '\d{9}'
+    # Inside text only a 9-digit run with a valid Federal Reserve prefix (00-12, 21-32, 61-72, 80): most 9-digit numbers in prose fail it before the checksum.
+    contained_pattern: '(?:0\d|1[0-2]|2[1-9]|3[0-2]|6[1-9]|7[0-2]|80)\d{7}'
     check: us_bank_routing_number
     families: [text]
     threshold: 0.9
@@ -188,6 +205,8 @@ kinds:
     passes: pass the Steuer-ID check digit
     sensitive: true
     pattern: '[1-9]\d(?: ?\d){9}'
+    # Inside text only the grouped 2-3-3-3 form: a plain 11-digit run (phone and account numbers) is an ordinary number.
+    contained_pattern: '[1-9]\d \d{3} \d{3} \d{3}'
     check: de_steuer_id
     families: [text, numeric]
     threshold: 0.9
@@ -213,6 +232,8 @@ kinds:
     passes: pass the TFN checksum
     sensitive: true
     pattern: '\d{3} ?\d{3} ?\d{3}'
+    # Inside text only the spaced 3-3-3 form: a plain 9-digit run is an ordinary number.
+    contained_pattern: '\d{3} \d{3} \d{3}'
     check: au_tfn
     families: [text]
     threshold: 0.9
@@ -225,6 +246,8 @@ kinds:
     passes: pass the CPF check digits
     sensitive: true
     pattern: '\d{3}\.?\d{3}\.?\d{3}-?\d{2}'
+    # Inside text only the punctuated 3.3.3-2 form: a plain 11-digit run is an ordinary number.
+    contained_pattern: '\d{3}\.\d{3}\.\d{3}-\d{2}'
     check: br_cpf
     families: [text]
     threshold: 0.9
@@ -237,6 +260,8 @@ kinds:
     passes: pass the NHS number check digit
     sensitive: true
     pattern: '\d{3}[ -]?\d{3}[ -]?\d{4}'
+    # Inside text only the separated 3-3-4 form: a plain 10-digit run is an ordinary number.
+    contained_pattern: '\d{3}[ -]\d{3}[ -]\d{4}'
     check: uk_nhs_number
     families: [text]
     threshold: 0.9
