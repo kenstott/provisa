@@ -8,15 +8,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A hidden column is refused in every clause; a source of unknown columns never ends the check
-(REQ-039, amended 2026-11-04: A COLUMN IS JUDGED WHERE IT RESOLVES; A HIDDEN COLUMN IS REFUSED IN
-EVERY CLAUSE; REQ-2204).
+"""The RV597 review's table-function finding, and the shapes it found refused (REQ-039, amended
+2026-11-04; REQ-2204).
 
-Every statement of the RV597 review (C1, C2, H1-H5, M1) is refused, through validate_sql as the
-pgwire pipeline calls it, and so is every shape that review found refused correctly. A name is
-passed to the engine only where a source no registry governs is known to provide it: VALUES its
-column1..N, json_each its key and value, unnest the alias. A row rule governance adds may read a
-column the role is not served: it is not the role's SQL.
+Through validate_sql as the pgwire pipeline calls it: only PostgreSQL's own unnest (and the other
+client table functions) is admitted, never another schema's function of that name or another
+Explode (H3); every shape the review found refused correctly is still refused. A row rule
+governance adds may read a column the role is not served: it is not the role's SQL.
+
+The review's hidden-column findings (C1, C2, H1, H2, H4, H5, M1) are retired here; they run in
+tests/unit/test_governance_by_construction.py _RV597 on feat/governance-by-construction. The
+served-or-known names (A2) and the every-clause refusal moved to fix/v003-a2 in the 2026-11-05
+split.
 """
 
 # Requirements: REQ-039, REQ-2204
@@ -60,41 +63,8 @@ def _codes(sql: str, gov=None) -> list[str]:
     )
 
 
-# -- the review's findings: each refused ----------------------------------------------------------
+# -- the review's table-function finding (H3): refused as a relation ---------------------------
 
-_C1 = [
-    "SELECT id, (SELECT ssn FROM (VALUES (1)) v) AS leak FROM bank.customer c",
-    "SELECT id, ARRAY(SELECT ssn FROM (VALUES (1)) v) AS leak FROM bank.customer c",
-    "SELECT id, (SELECT ssn FROM json_each('{}') j) AS leak FROM bank.customer c",
-    "SELECT id, (SELECT ssn FROM jsonb_each('{}') j) FROM bank.customer c",
-    "SELECT id, (SELECT ssn FROM (VALUES (1)) v UNION SELECT 'a') AS leak FROM bank.customer c",
-    "SELECT (SELECT ssn FROM (SELECT * FROM (VALUES (1)) v) d) FROM bank.customer c",
-]
-_C2 = [
-    "SELECT x FROM bank.customer c, LATERAL (SELECT ssn AS x FROM (VALUES (1)) v) l",
-    "SELECT l.x FROM bank.customer c CROSS JOIN LATERAL (SELECT ssn AS x FROM (VALUES (1)) v) l",
-]
-_H1 = [
-    "SELECT id, unregistered FROM bank.customer c, (VALUES (1)) v",
-    "SELECT unregistered FROM bank.customer c, json_each('{}') j",
-]
-_H2 = [
-    "SELECT x FROM bank.customer c, unnest(ARRAY[c.ssn]) x",
-    "SELECT x FROM bank.customer c, unnest(ARRAY[ssn]) x",
-    "SELECT x FROM bank.customer c, LATERAL unnest(ARRAY[c.ssn]) x",
-]
-_H4 = [
-    "SELECT C.ssn FROM bank.customer c",
-    "SELECT CUSTOMER.ssn FROM bank.customer",
-]
-_H5 = ["SELECT * FROM bank.customer NATURAL JOIN (VALUES ('x')) v(ssn)"]
-_M1 = [
-    "SELECT id FROM bank.customer WHERE ssn LIKE '1%'",
-    "SELECT id FROM bank.customer ORDER BY ssn",
-    "SELECT count(*) FROM bank.customer GROUP BY ssn",
-    "SELECT id FROM bank.customer c WHERE EXISTS "
-    "(SELECT 1 FROM (VALUES (1)) v WHERE c.ssn LIKE '1%')",
-]
 _H3 = [
     "SELECT 1 FROM evil.unnest(ARRAY[1]) x",
     "SELECT 1 FROM public.unnest(ARRAY[1]) x",
@@ -103,11 +73,6 @@ _H3 = [
     "SELECT 1 FROM pg_catalog.explode(ARRAY[1]) x",
     "SELECT 1 FROM pg_catalog.posexplode(ARRAY[1]) x",
 ]
-
-
-@pytest.mark.parametrize("sql", _C1 + _C2 + _H1 + _H2 + _H4 + _H5 + _M1)
-def test_a_review_finding_is_refused_as_a_hidden_column(sql):
-    assert _codes(sql) == ["V003"], sql
 
 
 @pytest.mark.parametrize("sql", _H3)
@@ -182,71 +147,6 @@ def test_client_table_function_reads_the_schema_and_the_function():
 )
 def test_a_shape_refused_before_is_still_refused(sql):
     assert "V003" in _codes(sql), sql
-
-
-# -- every clause --------------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "sql",
-    [
-        # WHERE, JOIN ON, GROUP BY, HAVING, ORDER BY, windows
-        "SELECT id FROM bank.customer WHERE ssn IS NOT NULL",
-        "SELECT c.id FROM bank.customer c JOIN pg_catalog.pg_am a ON a.amname = c.ssn",
-        "SELECT name FROM bank.customer GROUP BY name, ssn",
-        "SELECT name FROM bank.customer GROUP BY name HAVING max(ssn) > '5'",
-        "SELECT id FROM bank.customer ORDER BY length(ssn)",
-        "SELECT name AS ssn FROM bank.customer GROUP BY ssn",
-        "SELECT rank() OVER w FROM bank.customer WINDOW w AS (PARTITION BY ssn)",
-        "SELECT count(*) FILTER (WHERE ssn > '5') FROM bank.customer",
-        "SELECT DISTINCT ON (ssn) id FROM bank.customer",
-        "SELECT string_agg(name, ',' ORDER BY ssn) FROM bank.customer",
-        # USING and a NATURAL join's shared column, with or without a star
-        "SELECT id FROM bank.customer JOIN (VALUES ('x')) v(ssn) USING (ssn)",
-        "SELECT id FROM bank.customer NATURAL JOIN (VALUES ('x')) v(ssn)",
-        "SELECT id FROM bank.customer NATURAL JOIN json_populate_record(NULL::bank.customer, '{}') r",
-        # FROM-function arguments and LATERAL items
-        "SELECT s FROM bank.customer c, generate_series(1, length(c.ssn)) s",
-        "SELECT z.n FROM bank.customer c, LATERAL (SELECT 1 AS n WHERE c.ssn > '5') z",
-        "SELECT k.key FROM bank.customer c, json_each(json_build_object('a', ssn)) k",
-        # inside a subquery, a CTE, a set operation
-        "SELECT id FROM bank.customer WHERE id IN (SELECT id FROM bank.customer WHERE ssn > '5')",
-        "WITH d AS (SELECT id FROM bank.customer WHERE ssn > '5') SELECT id FROM d",
-        "SELECT id FROM bank.customer UNION SELECT id FROM bank.customer ORDER BY 1 LIMIT "
-        "(SELECT count(*) FROM bank.customer WHERE ssn > '5')",
-        "SELECT id FROM bank.customer EXCEPT SELECT id FROM bank.customer WHERE ssn > '5'",
-    ],
-)
-def test_a_hidden_column_is_refused_in_every_clause(sql):
-    assert "V003" in _codes(sql), sql
-
-
-@pytest.mark.parametrize(
-    "sql",
-    [
-        # the served columns, in every clause
-        "SELECT id FROM bank.customer WHERE name LIKE 'a%' ORDER BY name",
-        "SELECT name, count(*) FROM bank.customer GROUP BY name HAVING max(id) > 1",
-        "SELECT rank() OVER (PARTITION BY name ORDER BY id) FROM bank.customer",
-        "SELECT c.id FROM bank.customer c JOIN pg_catalog.pg_am a ON a.amname = c.name",
-        "SELECT * FROM bank.customer JOIN (VALUES (1)) v(id) USING (id)",
-        # an output column named in ORDER BY or GROUP BY: the output, which the list judged
-        "SELECT name AS n FROM bank.customer ORDER BY n",
-        "SELECT name AS ssn FROM bank.customer ORDER BY ssn",
-        "SELECT name AS n, count(*) FROM bank.customer GROUP BY n",
-        "SELECT id FROM bank.customer UNION SELECT id FROM bank.customer ORDER BY id",
-        # a name a source no registry governs is known to provide
-        "SELECT column1 FROM bank.customer c, (VALUES (1)) v",
-        "SELECT a, column2 FROM bank.customer c, (VALUES (1, 2)) v(a)",
-        "SELECT key, value FROM bank.customer c, json_each('{}') j",
-        "SELECT k, value FROM bank.customer c, jsonb_each('{}') AS j(k)",
-        "SELECT x, ordinality FROM bank.customer c, unnest(ARRAY[c.id]) WITH ORDINALITY x",
-        "SELECT a FROM bank.customer c, json_to_record('{}') AS r(a int)",
-        "SELECT (SELECT column1 FROM (VALUES (c.id)) v) FROM bank.customer c",
-    ],
-)
-def test_a_served_or_known_name_is_not_refused(sql):
-    assert _codes(sql) == [], sql
 
 
 # -- what governance adds is not the role's SQL --------------------------------------------------

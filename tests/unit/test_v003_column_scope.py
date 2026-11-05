@@ -8,17 +8,15 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A column is judged where it resolves (REQ-039, amended 2026-11-04; REQ-2204).
+"""The client table function a catalog statement reads; a hidden column refused wherever it
+resolves (REQ-039, amended 2026-11-04; REQ-2204).
 
-The column check (V003) resolves each unqualified column within its own SELECT scope to the
-in-scope registered relation that has it, and refuses it only when that relation does not serve
-the column to the role. A nested subquery's columns are judged in its own scope; an outer
-reference where it resolves. A name no registered relation in scope has -- a table function's
-alias or column, a derived table's column -- is passed to the engine. A governed column hidden
-from the role is still refused wherever it resolves: through a subquery, a join, an alias.
+pg_catalog.unnest is the client table function it is where the client table functions are
+admitted (V006), and refused where none is. A governed column hidden from the role is refused
+wherever it resolves: through a subquery, a join, an alias.
 
-The statements are the ones psql 17 and Metabase sent in the BI replay (J595 triage, causes 1
-and 8), each answered by the catalog's registered relations.
+The psql 17 statement is the one sent in the BI replay (J595 triage, cause 8). The statements of
+"a column is judged where it resolves" (A2) moved to fix/v003-a2 in the 2026-11-05 split.
 """
 
 # Requirements: REQ-039, REQ-2204
@@ -137,78 +135,8 @@ PSQL_TABLE = (
     "(c.reltoastrelid = tc.oid)\nLEFT JOIN pg_catalog.pg_am am ON (c.relam = am.oid)\n"
     f"WHERE c.oid = {_OID};"
 )
-# psql 17 \d+ (statements 12/23/35): policies, the role names in a nested ARRAY(SELECT ...).
-PSQL_POLICIES = (
-    "SELECT pol.polname, pol.polpermissive,\n  CASE WHEN pol.polroles = '{0}' THEN NULL ELSE "
-    "pg_catalog.array_to_string(array(select rolname from pg_catalog.pg_roles where oid = any "
-    "(pol.polroles) order by 1),',') END,\n  pg_catalog.pg_get_expr(pol.polqual, pol.polrelid),\n"
-    "  pg_catalog.pg_get_expr(pol.polwithcheck, pol.polrelid),\n  CASE pol.polcmd\n"
-    "    WHEN 'r' THEN 'SELECT'\n    WHEN 'a' THEN 'INSERT'\n    WHEN 'w' THEN 'UPDATE'\n"
-    "    WHEN 'd' THEN 'DELETE'\n    END AS cmd\nFROM pg_catalog.pg_policy pol\n"
-    f"WHERE pol.polrelid = {_OID} ORDER BY 1;"
-)
-# psql 17 \d+ (statements 14/25/37): publications, unqualified pubname over joins, generate_series.
-PSQL_PUBLICATIONS = (
-    "SELECT pubname\n     , NULL\n     , NULL\nFROM pg_catalog.pg_publication p\n"
-    "     JOIN pg_catalog.pg_publication_namespace pn ON p.oid = pn.pnpubid\n"
-    "     JOIN pg_catalog.pg_class pc ON pc.relnamespace = pn.pnnspid\n"
-    f"WHERE pc.oid ={_OID} and pg_catalog.pg_relation_is_publishable({_OID})\nUNION\n"
-    "SELECT pubname\n     , pg_get_expr(pr.prqual, c.oid)\n"
-    "     , (CASE WHEN pr.prattrs IS NOT NULL THEN\n         (SELECT string_agg(attname, ', ')\n"
-    "           FROM pg_catalog.generate_series(0, "
-    "pg_catalog.array_upper(pr.prattrs::pg_catalog.int2[], 1)) s,\n"
-    "                pg_catalog.pg_attribute\n"
-    "          WHERE attrelid = pr.prrelid AND attnum = prattrs[s])\n"
-    "        ELSE NULL END) FROM pg_catalog.pg_publication p\n"
-    "     JOIN pg_catalog.pg_publication_rel pr ON p.oid = pr.prpubid\n"
-    "     JOIN pg_catalog.pg_class c ON c.oid = pr.prrelid\n"
-    f"WHERE pr.prrelid = {_OID}\nUNION\nSELECT pubname\n     , NULL\n     , NULL\n"
-    "FROM pg_catalog.pg_publication p\n"
-    f"WHERE p.puballtables AND pg_catalog.pg_relation_is_publishable({_OID})\nORDER BY 1;"
-)
-# psql 17 \d+ (statements 16/28/40): partitions, unqualified inhdetachpending over two tables.
-PSQL_PARTITIONS = (
-    "SELECT c.oid::pg_catalog.regclass, c.relkind, inhdetachpending, "
-    "pg_catalog.pg_get_expr(c.relpartbound, c.oid)\n"
-    "FROM pg_catalog.pg_class c, pg_catalog.pg_inherits i\n"
-    f"WHERE c.oid = i.inhrelid AND i.inhparent = {_OID}\n"
-    "ORDER BY pg_catalog.pg_get_expr(c.relpartbound, c.oid) = 'DEFAULT', "
-    "c.oid::pg_catalog.regclass::pg_catalog.text;"
-)
-# psql 17 \d+ (statements 20/32): indexes, unqualified contype etc. from the LEFT JOINed constraint.
-PSQL_INDEXES = (
-    "SELECT c2.relname, i.indisprimary, i.indisunique, i.indisclustered, i.indisvalid, "
-    "pg_catalog.pg_get_indexdef(i.indexrelid, 0, true),\n"
-    "  pg_catalog.pg_get_constraintdef(con.oid, true), contype, condeferrable, condeferred, "
-    "i.indisreplident, c2.reltablespace\n"
-    "FROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i\n"
-    "  LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid AND conindid = "
-    "i.indexrelid AND contype IN ('p','u','x'))\n"
-    f"WHERE c.oid = {_OID} AND c.oid = i.indrelid AND i.indexrelid = c2.oid\n"
-    "ORDER BY i.indisprimary DESC, c2.relname;"
-)
-# Metabase (statement 12): enum types, unqualified columns over a join and in a subquery.
-METABASE_ENUMS = (
-    "SELECT nspname, typname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace "
-    "WHERE t.oid IN (SELECT DISTINCT enumtypid FROM pg_enum e)"
-)
 
-_TOOL_STATEMENTS = {
-    "psql table (10/18/30)": PSQL_TABLE,
-    "psql policies (12/23/35)": PSQL_POLICIES,
-    "psql publications (14/25/37)": PSQL_PUBLICATIONS,
-    "psql partitions (16/28/40)": PSQL_PARTITIONS,
-    "psql indexes (20/32)": PSQL_INDEXES,
-    "metabase enums (12)": METABASE_ENUMS,
-}
-
-
-# -- the tools' statements: each column judged where it resolves ---------------------------------
-
-
-@pytest.mark.parametrize("sql", list(_TOOL_STATEMENTS.values()), ids=list(_TOOL_STATEMENTS))
-def test_a_tool_statement_is_not_refused_a_column_its_relation_serves(sql):
-    assert _v003(sql) == []
+# -- the tools' statements: the client table function they read --------------------------------
 
 
 @pytest.mark.parametrize("sql", [PSQL_TABLE], ids=["psql table (10/18/30)"])
@@ -247,28 +175,6 @@ def test_client_table_function_names_the_function_a_table_reads():
     assert not client_table_function(target("SELECT 1 FROM pg_catalog.unnest(a) x"), set())
     assert not client_table_function(target("SELECT 1 FROM read_csv('/etc/passwd') x"), {"unnest"})
     assert not client_table_function(target("SELECT 1 FROM pg_catalog.pg_class"), {"pg_class"})
-
-
-# -- names no registered relation has are the engine's -------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "sql",
-    [
-        "SELECT x FROM bank.customer c, unnest(ARRAY[1]) x",
-        "SELECT x FROM bank.customer c, pg_catalog.unnest(ARRAY[1]) x",
-        "SELECT s FROM bank.customer c, generate_series(1, 3) s",
-        "SELECT relid, depth FROM bank.customer c, "
-        "pg_catalog.pg_partition_tree('a') WITH ORDINALITY AS a(relid, depth)",
-        "SELECT d.total FROM bank.customer c JOIN (SELECT id, 1 AS total FROM bank.customer) d "
-        "ON d.id = c.id",
-        "SELECT total FROM bank.customer c JOIN (SELECT id AS cid, 1 AS total FROM bank.customer) d "
-        "ON d.cid = c.id",
-        "SELECT (SELECT y FROM unnest(ARRAY[c.id]) y) FROM bank.customer c",
-    ],
-)
-def test_a_name_no_registered_relation_has_is_passed_to_the_engine(sql):
-    assert _v003(sql) == []
 
 
 # -- a governed column hidden from the role is refused wherever it resolves ------------------------
