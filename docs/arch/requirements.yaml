@@ -92178,7 +92178,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and terms (its applies_to lists them): pii applies to columns, terms, documents and sections, so a steward
     tags the policy sections about personal data with the same tag as the columns. Coverage reads both:
     a pii column whose security items cite no pii section is a gap, and so is a pii section that no security
-    item on a pii column cites. Any other registry tag may name documents and sections the same way.'
+    item on a pii column cites. Any other registry tag may name documents and sections the same way. (Amended
+    2026-11-05, A TAG''S DEFINITION CITES THE SECTION THAT DEFINES IT:) A tag''s definition, not each assignment,
+    may cite the reference library section that defines it (pii cites the privacy policy''s definition of
+    personal data), with the same document-and-section reference, text hash and drift handling as a security
+    item''s reference: a revised defining section flags the tag''s definition for review. Every item carrying
+    the tag shows the link, so an auditor follows any tagged column, rule or mask to the clause that defines
+    the term. This is distinct from tagging a section, which says the section governs data with that tag.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
