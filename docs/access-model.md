@@ -15,11 +15,13 @@ Every column has a scope. A scope answers two questions about the column: which 
 | `listed` | As for `domain`. | Every role in the organisation sees the table's name and the column's name. Nothing else is shown: no description, type, sample, value or count. |
 | `public` | Any role the column's grant list names, in any domain. Masks, row rules and limits apply as they do inside the domain. | Every role in the organisation sees the names and descriptions. |
 
+A column whose grant list (`visible_to`) is empty is read by no role, in any scope.
+
 Read `listed` as `domain` plus public metadata. Read `public` as `listed` with the data opened to every domain.
 
-Scope is decided first. The column's grant list (`visible_to`) then picks readers among the roles the scope allows. A role must pass both. Granting a column to a role that its scope excludes changes nothing, and a scope never serves a role the grant list leaves out.
+Scope is decided first. The column's grant list (`visible_to`) then picks readers among the roles the scope allows. A role must pass both. A role reads a column only if it passes both the scope and the grant list; each is checked on its own.
 
-The difference between `own-domain` and `domain` shows up only in a domain hierarchy. A role granted `legal` reaches every domain under `legal`, so a `domain` column in a child domain is open to it. An `own-domain` column is not. Reach inherited from a parent domain does not count, even when the grant list names the role. Only a role granted the child domain itself, or `"*"`, is served the column.
+The difference between `own-domain` and `domain` shows up only in a domain hierarchy. A role granted `legal` reaches every domain under `legal`, so a `domain` column in a child domain is open to it. An `own-domain` column is not. Reach inherited from a parent domain does not count, even when the grant list names the role. Only a role granted the child domain itself, or `"*"`, is served the column. The check runs when roles load, at each schema rebuild, so a change to a role's domain access takes effect at the next rebuild.
 
 Viewer holds no meta grant: `catalog_read` is held by a role that names it. On SQL, a role with no meta grant still sees core metadata for the tables of non-system domains it can read, write or list, on the pgwire catalog and in meta. List means metadata only, and querying a table a role only lists is refused by name. The gRPC proto, JSON:API, GraphQL, Cypher, SPARQL and OpenAPI show what a role can read or write. Every catalog is scoped to a role's data domains, and shows a system domain only to a role holding it.
 
