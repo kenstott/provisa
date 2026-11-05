@@ -152,6 +152,8 @@ Point the app and Trino OTLP exporters (`OTEL_EXPORTER_OTLP_ENDPOINT`) at the
 `otlp2sql` endpoint, and register the ops domain against the same
 `PROVISA_OPS_DB_URL` so it reads what the receiver wrote.
 
+To also send telemetry to Datadog, Honeycomb, Grafana Cloud or another provider without losing the trace tables, see [Sending Telemetry to Your Own Provider](configuration.md#sending-telemetry-to-your-own-provider).
+
 ---
 
 ## macOS Installer

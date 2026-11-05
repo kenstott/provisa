@@ -9642,5 +9642,7 @@
   "hi/sensitiveScan.json::sensitiveScan.succeeded": "Last scan: {{rows}} sampled rows, {{columns}} text columns.",
   "hi/sensitiveScan.json::sensitiveScan.failed": "The scan failed: {{error}}",
   "hi/sensitiveScan.json::sensitiveScan.header": "Found inside values",
-  "hi/sensitiveScan.json::sensitiveScan.hint": "Matches {{kind}} in {{percent}}% of sampled values"
+  "hi/sensitiveScan.json::sensitiveScan.hint": "Matches {{kind}} in {{percent}}% of sampled values",
+  "hi/observabilityTab.json::observabilityTab.tracesTableEmpty": "An endpoint is set, but Provisa's trace tables have no rows yet. If the endpoint is an external provider rather than Provisa's collector, move it into the collector's exporters.",
+  "hi/observabilityTab.json::observabilityTab.tracesTableStale": "An endpoint is set, but Provisa's trace tables have received no rows in the last {{minutes}} minutes. If Provisa has been idle that is expected. If not, check that the endpoint is Provisa's collector and not an external provider."
 }
