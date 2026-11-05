@@ -46,7 +46,7 @@ def _call(monkeypatch, engine, *, gate=lambda request: None):
         types.SimpleNamespace(shared_federation_engine=engine),
         raising=False,
     )
-    monkeypatch.setattr("provisa.api.admin._platform_guard.require_platform_settings", gate)
+    monkeypatch.setattr("provisa.api.admin._platform_guard.require_deployment_settings", gate)
     return asyncio.run(settings_router.get_traces_table_latest(types.SimpleNamespace()))
 
 
@@ -82,9 +82,9 @@ def test_an_engine_reading_no_traces_table_is_not_tracked(monkeypatch):
     assert engine.sql == []
 
 
-def test_the_read_is_gated_on_platform_settings(monkeypatch):
+def test_the_read_is_gated_on_deployment_settings(monkeypatch):
     def deny(request):
-        raise ApiError(403, "platform.settings_capability_required", "denied")
+        raise ApiError(403, "platform.control_plane_role_required", "denied")
 
     engine = _Engine({"traces"}, [(None,)])
     with pytest.raises(ApiError):
