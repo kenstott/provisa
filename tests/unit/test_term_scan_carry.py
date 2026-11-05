@@ -270,6 +270,11 @@ async def test_an_assistant_in_a_sandbox_finds_the_passages_of_the_regulation_it
             c.exec_driver_sql(
                 f'CREATE TABLE "org_sandbox"."{table}" (LIKE "{SCHEMA}"."{table}" INCLUDING ALL)'
             )
+        for (name,) in c.exec_driver_sql(
+            "SELECT indexname FROM pg_indexes WHERE schemaname = 'org_sandbox' "
+            "AND tablename = 'reference_passages' AND indexdef LIKE '%%USING hnsw%%'"
+        ).fetchall():
+            c.exec_driver_sql(f'DROP INDEX "org_sandbox"."{name}"')
     async with db.acquire() as conn:
         await env_copy.copy_term_scans(conn, SCHEMA, "org_sandbox")
     sandbox = Database(
