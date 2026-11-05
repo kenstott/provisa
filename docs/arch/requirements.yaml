@@ -74496,7 +74496,11 @@
     purposes: residency (data must stay in a jurisdiction), workload (separates a workload), latency (placed
     near users or sources), resilience (a failover or recovery location), and dedicated (infrastructure
     reserved for one organization, for its own sovereignty over it); both are shown wherever the region
-    is listed.'
+    is listed. (Amended 2026-11-05, PURPOSES EXPLAIN, THEY DO NOT ACT:) A region''s purposes are explanatory:
+    they change no routing, policy or validation. They teach why regions exist and help an organization
+    think about how to use the regions it is granted. Each purpose shows a one-line explanation wherever
+    regions are listed (the Platform page and Admin > Regions), and the GDPR demo''s tour (REQ-2035) points
+    at its EU region''s residency purpose before the residency queries.'
   use_case: A regulated enterprise needs some data processed and kept inside a country, with the rest
     of the estate readable from anywhere, under one set of definitions. Two independent deployments would
     each need their own definitions, which could diverge. Two clusters on one shared model give each region
