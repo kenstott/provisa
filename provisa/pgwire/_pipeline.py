@@ -56,11 +56,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
 
-# RLS session-variable predicate: current_setting('provisa.<var>' [, true]).
-_CURRENT_SETTING_RE = re.compile(
-    r"current_setting\(\s*'provisa\.([A-Za-z0-9_]+)'\s*(?:,\s*true\s*)?\)",
-    re.IGNORECASE,
-)
 _SETTING_NAME_RE = re.compile(r"provisa\.([A-Za-z0-9_]+)", re.IGNORECASE)
 
 

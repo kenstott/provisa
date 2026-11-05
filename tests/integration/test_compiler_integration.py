@@ -39,6 +39,7 @@ from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.context import build_context
 from provisa.transpiler.transpile import transpile, SUPPORTED_DIALECTS
 from tests.helpers import ALL_DATA_CAPABILITIES
+from tests.rules import rule_of
 
 pytestmark = [pytest.mark.integration]
 
@@ -1147,7 +1148,7 @@ class TestRLSCompilerFallback:
         ctx = build_rls_context(rls_rules, "admin")
         # Table-level rule for table_id=1 must be present
         assert 1 in ctx.rules
-        assert ctx.rules[1] == "region = 'us-east'"
+        assert ctx.rules[1] == rule_of("region = 'us-east'")
         # Domain-level rule is also present as fallback
         assert "sales" in ctx.domain_rules
 
@@ -1169,7 +1170,7 @@ class TestRLSCompilerFallback:
         assert not ctx.rules
         # Domain rule is the fallback
         assert "sales" in ctx.domain_rules
-        assert ctx.domain_rules["sales"] == "region = 'global'"
+        assert ctx.domain_rules["sales"] == rule_of("region = 'global'")
 
     def test_rls_inject_applies_table_rule_to_compiled_query(self):
         # REQ-403: the governed pipeline adds the table-level WHERE predicate to compiled SQL

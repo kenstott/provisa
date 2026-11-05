@@ -72,6 +72,7 @@ from provisa.security.visibility import visible_tables
 from tests.served_columns import is_column_visible, visible_column_names
 from provisa.security.row_filters import resolve_table_rules
 from tests.helpers import ALL_DATA_CAPABILITIES, governed_for_role
+from tests.rules import rule_of
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
@@ -516,7 +517,7 @@ class TestTwoStageCompiler:
         assert ORDERS_TABLE_ID in gov.rls_rules, (
             "REQ-263: GovernanceContext must carry RLS rules for the table"
         )
-        assert gov.rls_rules[ORDERS_TABLE_ID] == "region = 'us-east'"
+        assert gov.rls_rules[ORDERS_TABLE_ID] == rule_of("region = 'us-east'")
 
     async def test_stage2_governance_context_includes_masking_rules(self):
         # REQ-263: GovernanceContext must include masking rules for the requesting role.
