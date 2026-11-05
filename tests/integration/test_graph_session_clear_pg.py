@@ -107,11 +107,11 @@ async def _idle_in_transaction_on_the_session() -> list[tuple]:
 
 
 async def test_a_session_written_and_read_on_the_pg_engine_is_cleared_at_once(server):
-    await _cypher(server, "CREATE (:Scratch {n: 1}), (:Scratch {n: 2})")
-    answer = await _cypher(server, "MATCH (s:Scratch) RETURN s.n AS n")
+    await _cypher(server, "CREATE (:scratch {n: 1}), (:scratch {n: 2})")
+    answer = await _cypher(server, "MATCH (s:scratch) RETURN s.n AS n")
     assert sorted(r["n"] if isinstance(r, dict) else r[0] for r in answer["rows"]) == [1, 2]
     held = await _call(server, "GET", "/data/cypher/session")
-    assert held["labels"] == [{"label": "Scratch", "nodes": 2, "tagged_model_nodes": 0}]
+    assert held["labels"] == [{"label": "scratch", "nodes": 2, "tagged_model_nodes": 0}]
     assert await _idle_in_transaction_on_the_session() == []
     started = time.monotonic()
     assert await _call(server, "DELETE", "/data/cypher/session") == {"cleared": True}
