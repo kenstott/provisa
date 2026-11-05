@@ -18,11 +18,11 @@ every server, each in its own group citing its requirement and the driver's or s
 Every other case that did not pass is failed. Each case skipped by design keeps its recorded
 reason. The groups are declared per surface in ``by_design/<surface>.yaml``:
 
-    - group: Unbounded variable-length patterns
-      requirement: REQ-348
-      decision: Maximum hop depth is enforced at compile time; unbounded `[*]` is rejected.
-      reason: "Unbounded variable-length pattern"  # a regex the failure's reason matches, and/or
-      case: "VarLengthAcceptance"                  # a regex its feature::scenario matches
+    - group: Dates beyond the years Provisa holds
+      requirement: REQ-2173
+      decision: A date beyond years 0001 to 9999 is refused by name.
+      reason: "is beyond the dates Provisa holds"  # a regex the failure's reason matches, and/or
+      case: "^Temporal10 - "                       # a regex its feature::scenario matches
 
 A group with no requirement is refused: a case with no design decision behind it stays failed.
 
@@ -112,13 +112,23 @@ BY_DESIGN = ("design", "client", "suite")
 #: What a group naming catalog functions says of its cases.
 FUNCTION_CASE = "^catalog function::"
 
-#: REQ-2167 (amended 2026-10-29, INTERNAL FUNCTIONS): the only group that may name catalog
-#: functions, exactly as here. PostgreSQL's own refusal or an internal argument puts a function in
+#: REQ-2167 (amended 2026-10-29, INTERNAL FUNCTIONS; 2026-11-02): the only groups that may name
+#: catalog functions, exactly as here. PostgreSQL's own refusal or an internal argument puts a function in
 #: it (pgwire_catalog_types.py words its reason). Any other function not served is failed
 #: (PG_CATALOG FUNCTIONS ARE GAPS): the index support functions are served or refused by name
 #: (REQ-2171), so they have no group.
 FUNCTION_GROUPS = {
     "Internal functions": {"case": FUNCTION_CASE, "reason": "^no call reaches it: "},
+    # REQ-2167 (amended 2026-11-02, Sequence functions are not supported; Six-argument
+    # regexp_replace is not supported): these overloads, and only as refused by name.
+    "Not supported": {
+        "case": (
+            r"^catalog function::(?:(?:nextval|currval|setval)\("
+            r"|regexp_replace\(text, text, text, integer, integer, text\)$)"
+        ),
+        "reason": r"^not served: (?:ERROR:\s+)?(?:nextval|currval|setval|regexp_replace)\(\) "
+        r"has no form ",
+    },
 }
 
 
@@ -315,15 +325,24 @@ def classify(failures: list[dict], declared: list[Group]) -> tuple[list[dict], l
     return left, excluded
 
 
-def adapted(ran: list[dict], declared: list[Group]) -> list[dict]:
+def adapted(ran: list[dict], declared: list[Group], excluded: list[dict]) -> list[dict]:
     """Each adapted group that names any case run (``ran``: feature, scenario, reason and
-    outcome, "passed" or "failed"): what the cases' setup became and each case's outcome."""
+    outcome, "passed" or "failed"): what the cases' setup became and each case's outcome, the one
+    it counts as (OUTCOMES): a failed case one of ``excluded`` (classify's groups) names is
+    "by_design"."""
+    skipped = {c["case"] for g in excluded for c in g["cases"]}
     marks = []
     for group in (g for g in declared if g.kind == "adapted"):
         cases = [
-            {"case": f"{o['feature']}::{o['scenario']}", "outcome": o["outcome"]}
+            {
+                "case": named,
+                "outcome": "by_design"
+                if o["outcome"] == "failed" and named in skipped
+                else o["outcome"],
+            }
             for o in ran
             if group.matches(o)
+            for named in [f"{o['feature']}::{o['scenario']}"]
         ]
         if cases:
             marks.append({"group": group.group, **group.details, "cases": cases})
@@ -381,14 +400,16 @@ def adapted_lines(marks: list[dict]) -> list[str]:
         return ["None."]
     out = []
     for mark in marks:
-        passed = sum(c["outcome"] == "passed" for c in mark["cases"])
+        counted = ", ".join(
+            f"{sum(c['outcome'] == key for c in mark['cases'])} {label}"
+            for key, label in OUTCOMES.items()
+        )
         out.append(
-            f"<details><summary>{mark['group']} ({passed} of {len(mark['cases'])} passed)"
-            "</summary>\n"
+            f"<details><summary>{mark['group']} ({len(mark['cases'])}: {counted})</summary>\n"
         )
         out.append(f"Setup became: {mark['became']}\n")
         out.append("| Case | Outcome |")
         out.append("| --- | --- |")
-        out.extend(f"| {c['case']} | {c['outcome']} |" for c in mark["cases"])
+        out.extend(f"| {c['case']} | {OUTCOMES[c['outcome']]} |" for c in mark["cases"])
         out.append("\n</details>\n")
     return out

@@ -224,7 +224,7 @@ def test_the_flight_sql_page_marks_adapted_cases_and_skips_unsent_ones_by_design
         "Type cases' tables": [{"case": f"{query}int32]", "outcome": "passed"}],
         "Timestamp cases' tables": [
             {"case": f"{query}timestamp3tz]", "outcome": "failed"},
-            {"case": f"{query}timestamp9tz]", "outcome": "failed"},
+            {"case": f"{query}timestamp9tz]", "outcome": "by_design"},
         ],
         "get_objects table": [
             {
@@ -251,7 +251,11 @@ def test_the_flight_sql_page_marks_adapted_cases_and_skips_unsent_ones_by_design
     assert "<summary>Bind with no Prepare (1)</summary>" in md
     assert "| Times and timestamps beyond microseconds | 1 |" in cases
     assert "## Adapted cases" in cases
-    assert "<summary>Timestamp cases' tables (0 of 2 passed)</summary>" in cases
+    # Each adapted case is marked with the outcome it counts as (REQ-2167, amended 2026-10-28).
+    assert (
+        "<summary>Timestamp cases' tables (2: 0 passed, 1 skipped by design, 1 failed)</summary>"
+    ) in cases
+    assert f"| {query}timestamp9tz] | skipped by design |" in cases
     assert "Setup became: The ten precisions" in cases
     assert f"| {query}int32] | passed |" in cases
 

@@ -69,6 +69,8 @@ import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
 import { SecretsTab, MySecretsTab } from "../components/admin/SecretsTab";
 import { EmailTab } from "../components/admin/EmailTab";
+import { OrgRegionsTab } from "../components/admin/OrgRegionsTab"; // REQ-1922
+import { PlatformRegionsTab } from "../components/admin/PlatformRegionsTab"; // REQ-1922
 import { SettingsCatalogPanel } from "../components/admin/SettingField";
 import {
   ApolloSubgraphCard,
@@ -95,6 +97,8 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/email": "Email", // REQ-1576: the mail transport platform messages go out through
   "/admin/maintenance": "Maintenance", // REQ-1466: the scheduled-downtime banner
   "/admin/deployment-settings": "Deployment settings", // REQ-1913: every operator setting
+  "/admin/platform": "Platform", // REQ-1922: the platform's regions
+  "/admin/regions": "Regions", // REQ-1922: the org's stores and regions
   "/admin/billing": "Billing", // REQ-1469: plan, current bill, next charge
   "/admin/system-health": "Dashboard",
   // REQ-1008: MCP status is read-only deployment health, so it sits on the dashboard rather than
@@ -370,6 +374,10 @@ export function AdminPage() {
         )}
 
         {activeTab === "Environments" && <EnvironmentsTab />}
+
+        {activeTab === "Platform" && <PlatformRegionsTab />}
+
+        {activeTab === "Regions" && <OrgRegionsTab />}
 
         {activeTab === "Domains" && (
           <>

@@ -138,20 +138,22 @@ def test_a_character_value_is_cut_and_padded_to_its_length():
     ],
 )
 def test_a_timestamp_is_written_in_the_iso_date_style(value, text):
-    from buenavista.postgres import _timestamp_text
+    from buenavista.core import BVType
 
-    assert _timestamp_text(value) == text
+    from tests.unit.pgwire import wire_cells as wire
+
+    kind = BVType.TIMESTAMP if value.tzinfo is None else BVType.TIMESTAMPTZ
+    assert wire.text(kind, value) == text
 
 
 def test_a_time_drops_trailing_zeros_of_its_fraction():
     from buenavista.core import BVType
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
 
-    assert BVTYPE_TO_PGTYPE[BVType.TIME][1](datetime.time(12, 30, 45, 500000)) == "12:30:45.5"
+    from tests.unit.pgwire import wire_cells as wire
+
+    assert wire.text(BVType.TIME, datetime.time(12, 30, 45, 500000)) == "12:30:45.5"
     tz = datetime.timezone(datetime.timedelta(hours=2))
-    assert BVTYPE_TO_PGTYPE[BVType.TIMETZ][1](datetime.time(12, 30, 45, tzinfo=tz)) == (
-        "12:30:45+02"
-    )
+    assert wire.text(BVType.TIMETZ, datetime.time(12, 30, 45, tzinfo=tz)) == "12:30:45+02"
 
 
 def test_duckdb_inet_values_are_their_addresses():

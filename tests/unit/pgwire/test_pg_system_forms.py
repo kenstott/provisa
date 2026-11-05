@@ -31,7 +31,7 @@ from provisa.transpiler.function_macros import MACROS, FunctionRefused, outcome
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import expand
 from provisa.transpiler.pg_forms_system import ROWS
-from provisa.transpiler.transpile import transpile, transpile_to_duckdb
+from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.pg17_system_answers import RECORDED
 from tests.unit.pgwire.system_corpus import statements
 
@@ -52,9 +52,19 @@ def _on_the_engine(sql: str) -> str:
     return expand(sqlglot.parse_one(sql, read="postgres"), CatalogFacts("analyst")).sql("postgres")
 
 
+#: What a decision refuses by name, recorded as PostgreSQL 17 answered it (REQ-2167, amended
+#: 2026-11-03, Privileges, visibility and notifications: pgwire has no notification channel).
+_REFUSED_BY_DECISION = ("pg_notify",)
+
+
 @pytest.mark.parametrize("sql", list(RECORDED))
 def test_duckdb_answers_as_postgresql_17_answered(connection: Any, sql: str):
     want = RECORDED[sql]
+    refused = [name for name in _REFUSED_BY_DECISION if f'"{name}"(' in sql]
+    if refused:
+        with pytest.raises(FunctionRefused, match=rf"{refused[0]}\(\) has no form on duckdb"):
+            transpile(_on_the_engine(sql), "duckdb")
+        return
     try:
         rows = connection.execute(transpile(_on_the_engine(sql), "duckdb")).fetchall()
     except PostgresError as raised:  # settled by the statement's shape, before any engine
@@ -67,6 +77,12 @@ def test_duckdb_answers_as_postgresql_17_answered(connection: Any, sql: str):
         return
     assert want[0] == "ok", rows
     assert [row[0] for row in rows] == want[2]
+
+
+@pytest.mark.parametrize("dialect", (*_ENGINES, "postgres"))
+def test_pg_notify_is_refused_by_name_on_every_engine(dialect: str):
+    with pytest.raises(FunctionRefused, match=f"pg_notify\\(\\) has no form on {dialect}"):
+        transpile("SELECT pg_catalog.pg_notify('conformance_probe', 'payload') AS v", dialect)
 
 
 @pytest.mark.parametrize("sql", [s for s, want in RECORDED.items() if want[0] == "ok"])
@@ -185,20 +201,13 @@ def test_repeat_of_nothing_is_null_for_any_count_elsewhere(dialect: str):
     assert re.search(r"\ba\W* IS NOT NULL", written), written
 
 
-@pytest.mark.parametrize(
-    ("n", "want"),
-    [
-        (2, "aXb-c"),  # postgres:16.11 answered each; regexp.c deduces N only when not given
-        (1, "a-bXc"),
-        (0, "a-b-c"),
-        (3, "aXbXc"),
-    ],
-)
-def test_the_g_flag_is_ignored_where_n_is_given(n: int, want: str):
+@pytest.mark.parametrize("n", [2, 1, 0, 3])
+def test_the_six_argument_form_is_refused_whatever_its_flag(n: int):
+    # REQ-2167 (amended 2026-11-02, Six-argument regexp_replace is not supported).
     sql = f"SELECT regexp_replace('aXbXc', 'X', '-', 1, {n}, 'g') AS v"
-    assert duckdb.connect().execute(transpile_to_duckdb(sql)).fetchall() == [(want,)]
-    assert chdb.query(transpile(sql, "clickhouse"), "CSV").bytes().decode().strip() == f'"{want}"'
-    assert "'g'" not in transpile(sql, "trino")
+    for dialect in _ENGINES:
+        with pytest.raises(FunctionRefused, match=f"regexp_replace.*has no form on {dialect}"):
+            transpile(sql, dialect)
 
 
 @pytest.mark.parametrize("flags", ["'gi'", "'i'", "f"])

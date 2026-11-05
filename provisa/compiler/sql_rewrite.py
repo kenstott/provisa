@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from provisa.compiler.sql_literals import sql_literal
 
+import functools
 import re as _re
 from datetime import datetime, timezone
 from typing import Any, cast
@@ -42,20 +43,28 @@ def split_sql_statements(sql: str) -> list[str]:
     malformed fragments). Original statement text is preserved (sliced between top-level semicolon
     tokens, not re-rendered), so COPY/CTAS regex matching and governance see EXACTLY what executes —
     closing the parser-differential where the batch was tokenized one way for governance and another
-    at execution. Blank fragments (a trailing ``;``) are dropped."""
+    at execution. A segment holding no token but comments (a trailing ``;``, ``-- ping``) is dropped."""
     tokens = sqlglot.tokenize(sql, read="postgres")
     stmts: list[str] = []
     start = 0
+    held = False  # the segment since the last ';' holds a token: comments are not tokens
     for tok in tokens:
         if tok.token_type == sqlglot.TokenType.SEMICOLON:
-            seg = sql[start : tok.start].strip()
-            if seg:
-                stmts.append(seg)
+            if held:
+                stmts.append(sql[start : tok.start].strip())
+            held = False
             start = tok.end + 1
-    tail = sql[start:].strip()
-    if tail:
-        stmts.append(tail)
+        else:
+            held = True
+    if held:
+        stmts.append(sql[start:].strip())
     return stmts
+
+
+def holds_no_statement(sql: str) -> bool:
+    """True when ``sql`` holds nothing but whitespace, comments and ``;``: PostgreSQL answers it
+    with EmptyQueryResponse on both protocols (REQ-2167)."""
+    return not split_sql_statements(sql)
 
 
 # --- Type coercion for cross-source JOINs ---
@@ -82,9 +91,12 @@ _TEMPORAL_TYPES = {
 }
 
 
+@functools.lru_cache(maxsize=4096)
 def _q(name: str) -> str:
-    """Double-quote a SQL identifier."""
-    return f'"{name}"'
+    """``name`` as one double-quoted SQL identifier: a quote inside it is doubled, so a name a
+    request gives (a where or order_by key, a distinct_on column) never ends the identifier.
+    Memoized: a statement quotes the same few names many times."""
+    return exp.to_identifier(name, quoted=True).sql(dialect="postgres")
 
 
 def _base_type(column_type: str) -> str:
@@ -208,6 +220,51 @@ def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     return _apply_replacements(sql, replacements)
 
 
+def _from_entries(node: exp.Expr) -> list[exp.Expr]:  # pyright: ignore[reportPrivateImportUsage]
+    """The relations ``node`` (a SELECT, UPDATE or DELETE) names in its own FROM, JOINs, target
+    and USING -- never a nested query's."""
+    entries = [node.this] if isinstance(node, (exp.Update, exp.Delete)) else []
+    from_ = node.args.get("from_")
+    if from_ is not None:
+        entries.append(from_.this)
+    entries.extend(j.this for j in node.args.get("joins") or [])
+    entries.extend(node.args.get("using") or [])
+    return [e for e in entries if isinstance(e, (exp.Table, exp.Subquery))]
+
+
+def bind_schema_qualified_columns(tree: exp.Expr) -> None:  # REQ-2204
+    """Each column reference qualified by its table's schema -- ``"s"."t"."c"``, as Metabase
+    writes every data query -- rebound to the name the table has in FROM: ``"t"."c"``. While the
+    table is unaliased the two are one reference to PostgreSQL; once a later step aliases it
+    (normalize_table_refs pins its own name) or puts a governed projection in its place (stage2),
+    the schema-qualified form names nothing and PostgreSQL refuses it (42P01 "invalid reference
+    to FROM-clause entry"). Bound before those steps, the reference reads the name they keep.
+
+    The nearest scope with a relation of the reference's table name decides: an unaliased table
+    of that schema (and catalog, when the reference names one) binds it; anything else -- an
+    alias, another schema's table, a derived relation -- leaves it as written."""
+    for col in list(tree.find_all(exp.Column)):
+        db = col.args.get("db")
+        if db is None:
+            continue
+        scope = col.find_ancestor(exp.Select, exp.Update, exp.Delete)
+        while scope is not None:
+            named = [e for e in _from_entries(scope) if e.alias_or_name == col.table]
+            if named:
+                entry = named[0]
+                catalog = col.args.get("catalog")
+                if (
+                    isinstance(entry, exp.Table)
+                    and not entry.alias
+                    and entry.db == db.name
+                    and (catalog is None or entry.catalog == catalog.name)
+                ):
+                    col.set("db", None)
+                    col.set("catalog", None)
+                break
+            scope = scope.find_ancestor(exp.Select, exp.Update, exp.Delete)
+
+
 def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     """Qualify and quote all table references using CompilationContext.
 
@@ -271,10 +328,14 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
 
     # Parse failure must fail loud: returning un-rewritten SQL skips physical/catalog qualification.
     tree = sqlglot.parse_one(sql, read="postgres")
+    # The alias pinned below hides the table's schema-qualified name from its column references.
+    bind_schema_qualified_columns(tree)
     quoted_aliases: set[str] = set()
 
     def _rewrite(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
-        if not isinstance(node, exp.Table):
+        if not isinstance(node, exp.Table) or not isinstance(node.this, exp.Identifier):
+            # REQ-2167: a function in FROM (pg_catalog.json_to_recordset(...) AS t(v int)) is
+            # no table reference: it has no name to qualify, and its definition list is its own.
             return node
         name = node.name
         db = node.db  # schema

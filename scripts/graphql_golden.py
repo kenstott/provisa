@@ -761,7 +761,8 @@ def front_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
     from provisa.compiler.view_expand import expand_view_refs
     from provisa.cypher.parser import parse_cypher
     from provisa.cypher.printer import print_cypher
-    from provisa.executor.serialize import serialize_aggregate, serialize_rows
+    from provisa.core.ir_arrow import row_batch
+    from provisa.executor import json_encoders as je
     from provisa.gql.assembler import assemble_rows
     from provisa.gql.graph_rewriter import apply_graph_rewrites
     from provisa.gql.translator import cypher_to_sql
@@ -829,18 +830,21 @@ def front_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
             own = answer_on_duckdb(pg, catalogs, statements[root_field], plain=False)
             own_rows = [tuple(_compared(v) for v in r) for r in own["rows"]]
             c = compiled[root_field]
+            # The field's answer to its own statement's rows, as the endpoint gives it: the rows
+            # as Arrow at the fetch boundary, the answer the Rust encoder's (REQ-2194).
+            own_batches = (
+                [row_batch(own_rows, [f"c{i}" for i in range(len(c.columns))])] if own_rows else []
+            )
             if c.canonical_field.endswith(("Aggregate", "_aggregate")):
                 # One object, the aggregate's (its statement's one row, its nodes a column of
                 # it), its nodes in no order: compared as a multiset.
-                one = serialize_aggregate(own_rows, c.columns, root_field, c.agg_alias)["data"][
-                    root_field
-                ]
+                one = json.loads(je.graphql_aggregate(own_batches, c.columns, c.agg_alias))
                 expected = [one]
                 for row in (*expected, *rows):
                     if "nodes" in row:
                         row["nodes"] = sorted(row["nodes"], key=_canonical)
             else:
-                expected = serialize_rows(own_rows, c.columns, root_field)["data"][root_field]
+                expected = json.loads(je.graphql_field(own_batches, c.columns).body)
             out.append(
                 {
                     "origin": read.origin,

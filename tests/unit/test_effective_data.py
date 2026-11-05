@@ -196,9 +196,20 @@ def _two_role_state():
             "id": "clinical_reviewer",
             "capabilities": ["usage"],
             "domain_access": ["claims"],
+            "own_domain_access": ["claims"],  # REQ-2153: a built role carries it
         },
-        "steward": {"id": "steward", "capabilities": ["usage"], "domain_access": ["claims"]},
-        "viewer": {"id": "viewer", "capabilities": ["usage"], "domain_access": []},
+        "steward": {
+            "id": "steward",
+            "capabilities": ["usage"],
+            "domain_access": ["claims"],
+            "own_domain_access": ["claims"],
+        },
+        "viewer": {
+            "id": "viewer",
+            "capabilities": ["usage"],
+            "domain_access": [],
+            "own_domain_access": [],
+        },
     }
     state.role_chains = {"clinical_reviewer": CHAIN, "steward": ["steward"], "viewer": ["viewer"]}
     state.rls_contexts = {}
@@ -394,6 +405,7 @@ def test_a_meta_role_reads_the_union_with_each_member_s_mask_and_the_or_of_their
         "description": rid,
         "capabilities": ["usage"],
         "domain_access": ["sales"],
+        "own_domain_access": ["sales"],  # REQ-2153: a built role carries it
         "max_rows": None,
         "rate_limit": None,
         "session_vars": {},

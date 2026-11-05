@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "登記數據來源",
-        "description": "➕ 新連接由這個按鈕開始：PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及其餘的 73 個連接器。"
+        "description": "➕ 新連接由這個按鈕開始：PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及其餘的 77 個連接器。"
       },
       "step3": {
-        "title": "73 種數據來源類型，14 個類別",
+        "title": "77 種數據來源類型，14 個類別",
         "description": "一個選擇器按類別列出所有類型：<strong>訂閱、RDBMS、雲端數據倉庫、分析、數據湖、NoSQL、代碼解析器、圖、檔案、API、串流、企業、數據質素、其他</strong>。可以按名稱或別名搜尋，也可以用類別標籤收窄範圍。每種類型都有標誌和可達性圖示：⚡ 表示就地即時讀取，複製圖示表示 Provisa 讀取已更新的副本。<p>揀選一個，填寫連線，儲存。</p>"
       },
       "stepBuildSource": {
@@ -933,16 +933,32 @@
         "description": "您看到了保險公司自己的數據，按縣及作物年份與公共損失、天氣及產量數據配對，全部位於同一個受治理的模型中。一個檢視以 SQL、GraphQL 及 REST 回答天氣能否解釋這些損失。 筆記簿對此作出量度：天氣解釋了賠付率變動的 54%，而在現時業務上，類似 2012 年的一季預期賠付率為 1.75。"
       },
       "retailScenario": {
-        "title": "一個集團，兩個區域",
+        "title": "兩個區域的故事",
         "description": "一間零售集團把 EU 和 US 兩間附屬公司作為一盤生意經營。它能否做到而不違反 GDPR？每間附屬公司都有自己的數據庫：這是 EU 的數據庫，包含其會員客戶、他們的推廣同意、訂單、員工，以及員工發往集團以外的電郵。"
       },
+      "retailPlatformRegions": {
+        "title": "區域始於一份設定",
+        "description": "平台的設定宣告區域（這裏是 EU 和 US），並把它們授予機構。每個區域都有自己的數據處理：自己的引擎和自己的儲存。EU 的用途是資料駐留，用於必須留在歐盟境內的客戶數據。在這個沙盒中，你可以閱讀此頁面，但不能修改。"
+      },
+      "retailPurposes": {
+        "title": "用途說明甚麼",
+        "description": "圖例解釋每種用途。用途說明一個區域為甚麼存在。它不移動數據，也不決定誰讀取數據。這由兩層負責，導覽會逐一展示：歸屬，即引擎關於數據存放位置的規則；以及安全，即數據管家關於誰讀取甚麼的規則。"
+      },
+      "retailOrgRegions": {
+        "title": "機構的區域和儲存",
+        "description": "機構擁有這兩個區域。每一行列出在那裏使用的儲存：區域的引擎，以及它的複本、視圖、快取、建立狀態和記錄存放的位置。EU 的數據用 EU 自己的儲存處理。"
+      },
+      "retailEngines": {
+        "title": "每個區域一個引擎",
+        "description": "聯邦頁為每個區域提供一個分頁，每個區域運行自己的引擎。因此一份設定帶來兩個數據處理環境。你在 US 節點上。它只透過 EU 的儲存讀取 EU 數據，從不從自己的複本讀取。"
+      },
       "retailRegions": {
-        "title": "每個區域只定義一次",
-        "description": "US 附屬公司的數據庫，位於 US。模型宣告兩個區域，並只說一次：每張表位於哪裏，哪些視圖在哪裏建立。第二個 Provisa 節點在 EU 運行：它把 EU 的表複製到 EU 自己的儲存，並在那裏建立 EU 的視圖。你在 US 節點上，它只從那個 EU 儲存讀取 EU 數據，所以每條跨境規則都在同一處執行。"
+        "title": "歸屬：每個數據源指明其歸屬區域",
+        "description": "US 附屬公司的數據庫位於 US，EU 附屬公司的數據庫位於 EU。歸屬是引擎關於數據存放位置的規則。有歸屬的表，其複本和快取留在其歸屬區域，其他區域只能透過該區域存取它。"
       },
       "retailEuCustomers": {
         "title": "一張位於 EU 的 EU 表",
-        "description": "EU 的客戶。這張表把 EU 指定為它的區域：它的行只會複製到 EU 的儲存，也只在那裏計算。其他地方的讀者只能透過 EU 的視圖取得，否則完全無法取得。"
+        "description": "EU 的客戶。這張表的區域是 EU，所以它的複本和快取只存放在 EU 的儲存中。歸屬決定行存放在哪裏。它不決定誰可以讀取。那是下一層。"
       },
       "retailRequests": {
         "title": "資料當事人請求",
@@ -953,12 +969,12 @@
         "description": "請求透過電郵地址與每間附屬公司的客戶關聯。一個請求就是這樣在兩間附屬公司中找到同一個人。"
       },
       "retailAsAnalyst": {
-        "title": "以集團分析員身份",
-        "description": "接下來，角色選擇器會切換到 <strong>group_analyst</strong>，他在 US 負責集團報告，讓之後的 SQL 和 GraphQL 都以 group_analyst 身份執行。"
+        "title": "數據管家的規則，以集團分析師身份",
+        "description": "第二層是安全：數據管家的規則按角色和讀者所在區域，決定每位讀者得到甚麼。這些規則在歸屬區域中執行，在任何數據離開之前。接下來，角色選擇器切換到 <strong>group_analyst</strong>，他在 US 負責集團報表，因此之後的 SQL 和 GraphQL 都以 group_analyst 身份運行。"
       },
       "retailGroupView": {
         "title": "集團報告，EU 客戶已假名化",
-        "description": "集團的每一位會員客戶。US 客戶按原樣顯示；EU 客戶以 EU 計算出的假名顯示，沒有姓名或地址。EU 部分是從 EU 的儲存讀取的，這次查詢的紀錄寫明作答的區域是 EU。"
+        "description": "集團的每一位會員客戶。US 客戶按原樣顯示。EU 客戶以假名顯示，因為管家的規則規定 EU 以外的讀者得不到姓名或地址。EU 在其行離開之前執行了這條規則，這次查詢的記錄將 EU 標為作答的區域。"
       },
       "retailGroupGraphql": {
         "title": "同樣的內容，用 GraphQL",
@@ -970,7 +986,7 @@
       },
       "retailAudience": {
         "title": "只有同意的客戶",
-        "description": "SQL 瀏覽器現在以 <strong>marketing_eu</strong> 的身分執行。EU 市場推廣讀取同意接收推廣的 EU 客戶，而且只限這些客戶。該視圖在 EU 以 EU 的行建立。"
+        "description": "SQL 瀏覽器現在以 <strong>marketing_eu</strong> 身份運行。管家的規則讓 EU 市場部只讀取同意接收推廣的 EU 客戶。該視圖在 EU 中由 EU 的行建立。"
       },
       "retailAsDpo": {
         "title": "以保障資料主任身份",
@@ -998,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "發件人，在 EU 顯示",
-        "description": "同一個隊列。發件人欄的遮罩清單只向同時持有 region__eu 的審查員顯示發件人；其他所有人讀到的都是隱去的值。這只是一項授權，reviewer 加 region__eu，無需為這個組合建立角色。"
+        "description": "同一個佇列。管家對寄件人欄設定的遮罩，只向分配區域為 EU（region__eu）的審核員顯示寄件人。其他人讀到的是隱藏的值。讀者得到甚麼，既取決於角色，也取決於其區域，而且沒有為這種組合建立任何角色。"
       },
       "retailAsAdmin": {
         "title": "回到所有角色",
@@ -1014,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "你看到了甚麼",
-        "description": "一個模型定義了兩個區域：每張表位於哪裏，哪些視圖在哪裏建立，以及誰讀取甚麼。集團報告讀取的是假名化的 EU 客戶，EU 市場推廣只讀取同意的客戶，查閱請求和刪除各自只是一次查詢。內幕資料審查只在 EU 顯示發件人，每一次讀取都在同一份紀錄中。"
+        "description": "一份設定授予了兩個區域，每個都有自己的引擎和儲存：兩個數據處理環境。歸屬把 EU 的表、其複本和快取留在 EU。數據管家的規則按角色和讀者所在區域決定每位讀者得到甚麼，EU 在任何數據離開之前執行了它們。集團報表以假名讀取 EU 客戶，EU 市場部只讀取同意的客戶，存取和刪除各只需一次查詢，寄件人只向 EU 的審核員顯示，每一次讀取都在同一份記錄中。"
       },
       "provisioningScenario": {
         "title": "這個示範是甚麼",
@@ -1374,7 +1390,11 @@
       },
       "testdataCoverageNow": {
         "title": "每個敏感欄都已覆蓋",
-        "description": "同樣的檢查，現在從模型讀取：每個敏感欄、它的標籤，以及是否有虛構值覆蓋它。全部已覆蓋，因此預發佈可以開啟並作答。"
+        "description": "敏感覆蓋是報表頁面上的一份標準報表：每個敏感欄、它的標籤，以及是否有虛構值覆蓋它，均從當前模型讀取。全部已覆蓋，因此預發佈可以開啟並作答。"
+      },
+      "testdataPollyProposes": {
+        "title": "從概況提出的虛構值",
+        "description": "有人問 Polly 會為 customers.email 提出哪種虛構值。它讀取該欄最新一次概況執行，看到這些值是電郵地址，於是提出電郵虛構值。模型已經聲明了一個，所以這個提議是用數據來核對那個選擇。在有人選擇之前，甚麼都不會儲存。"
       },
       "testdataProd": {
         "title": "生產：真實的行",
@@ -1755,6 +1775,163 @@
       "agentdataConnect": {
         "title": "你自己的智能體,同一部伺服器",
         "description": "這就是瀏覽器中的智能體使用的伺服器。把這段設定貼到 Claude Desktop,或將任何 MCP 客戶端指向該 URL,你自己的智能體就能獲得同樣受管治的工具,遵守同樣的規則。"
+      },
+      "auditScenario": {
+        "title": "這個示範講甚麼",
+        "description": "一家審計事務所審計九間使用聯邦資助的非牟利機構。在實地工作之前，合夥人想知道每個客戶記錄的聯邦資助，是否與政府記錄顯示向其支付的金額一致。客戶的明細表和資助記錄存放在事務所自己的數據庫中；Single Audit 申報和聯邦承付款是公開的。客戶及其數字是虛構的；項目、縣和公開數據是真實的。"
+      },
+      "auditAnswer": {
+        "title": "每個客戶的未結事項",
+        "description": "視圖 readiness 一次為所有客戶回答同一個問題，並以儲存方式保留。它把明細表的每一行與其資助記錄和該項目的公開數據並列，並列出每份準備情況備忘錄所需的事項。"
+      },
+      "auditExample": {
+        "title": "用 GraphQL 查看未結事項",
+        "description": "準備情況備忘錄中的事項，以 GraphQL 查詢的形式提供給事務所自己的項目工具。"
+      },
+      "auditRecap": {
+        "title": "您看到了甚麼",
+        "description": "事務所自己的客戶記錄與政府的公開申報和承付款，在一個受管治的模型中相連接。一個儲存的視圖為每個客戶回答合夥人的問題。每個團隊只讀取自己的客戶，每次查詢都有記錄。"
+      },
+      "auditGovdata": {
+        "title": "公開數據",
+        "description": "政府數據來自 AskAmerica：佛蒙特州、新罕布什爾州和緬因州向 Federal Audit Clearinghouse 提交的 2023 年 Single Audit 中的每一行資助，每行旁邊是 USAspending 在同一項目下向同一接受方承付的金額，以及 USAspending 按縣和項目統計的承付款。"
+      },
+      "auditSchedule": {
+        "title": "客戶的明細表",
+        "description": "每個客戶 2023 年聯邦資助支出明細表 (Schedule of Expenditures of Federal Awards) 的草稿：每項資助一行，包括其 Assistance Listing、是直接來自聯邦機構還是經州機構轉撥，以及客戶自述的支出金額。"
+      },
+      "auditNotices": {
+        "title": "資助記錄",
+        "description": "每個客戶為其直接資助持有的聯邦資助記錄：每筆承付一行，包括承付所在的聯邦財政年度和金額。多年期資助可能在支出年份之前已經承付。"
+      },
+      "auditFiled": {
+        "title": "在公開申報上做同樣的核對",
+        "description": "三個州的受審計單位為 2023 年申報的每一行資助，旁邊是 USAspending 當年在同一項目下記錄的對其承付金額。未對上的行本身並不代表缺漏。經轉撥取得的資助行是經州機構轉來的，聯邦資助上不會寫明受審計單位，所以本來就不應對上；而在以前年度承付的資助在審計年度不會顯示承付。未對上的行照常顯示，不會隱藏。"
+      },
+      "auditCounty": {
+        "title": "按縣統計的聯邦資金",
+        "description": "USAspending 記錄的 2023 聯邦財政年度在每個客戶所在縣按項目承付的金額，按工作進行的地點統計。它顯示客戶明細表中的某個項目是否真的在其所在縣有支付。"
+      },
+      "auditRecordedAs": {
+        "title": "由明細表到資助記錄",
+        "description": "這個關係透過事務所的資助編號，把明細表的每一行連接到其資助記錄。沒有記錄支持的行，以及沒有對應行的記錄，正是審計師要找的。"
+      },
+      "auditCountyJoin": {
+        "title": "客戶與所在縣",
+        "description": "每個客戶的縣代碼把它連接到 USAspending 的縣級承付款，其 Assistance Listing 則把明細表連接到本州同一項目的公開申報。"
+      },
+      "auditTerms": {
+        "title": "用審計師的話說",
+        "description": "本體解釋 Single Audit 的術語：明細表、Assistance Listing、轉撥單位、承付、時間性差異、缺失資助和準備情況備忘錄。"
+      },
+      "auditRequest": {
+        "title": "合夥人的要求",
+        "description": "合夥人請分析師為 Brindlewood Community Health 做好實地工作的準備。這是它的明細表草稿：五個聯邦項目，其中三個是直接資助。接下來，分析師與 Polly 一起處理這項要求。"
+      },
+      "auditPollySchedule": {
+        "title": "它記錄了哪些資助",
+        "description": "分析師由客戶的記錄入手。Polly 列出其 2023 年明細表中的資助，並展示她執行的 SQL。她的回答在建立示範時產生，並隨示範一起儲存。"
+      },
+      "auditPollyRecords": {
+        "title": "記錄顯示支付了甚麼",
+        "description": "接着是政府一方：客戶的聯邦資助記錄顯示 2023 聯邦財政年度向其承付了甚麼。其中一筆承付屬於明細表沒有列出的項目。"
+      },
+      "auditPollyDiffer": {
+        "title": "哪裏不一致",
+        "description": "Polly 把明細表與資助記錄並排對照，列出兩者不一致的每一項資助，並附上回答背後的查詢。"
+      },
+      "auditPollyKinds": {
+        "title": "時間性差異還是缺失",
+        "description": "時間性差異是在以前年度承付、本年度支出的資助，只需說明。缺失資助是沒有聯邦記錄支持的直接資助行，需要更正。Polly 將差異分為這兩類。"
+      },
+      "auditPollyMemo": {
+        "title": "準備情況備忘錄",
+        "description": "最後是備忘錄：客戶在實地工作開始前必須說明或更正的每一項，由時間性差異到明細表遺漏的資助。"
+      },
+      "auditPublic": {
+        "title": "公開申報中的規律",
+        "description": "在三個州的公開申報上執行同樣的核對。這些項目的直接資助行在審計年度最常沒有 USAspending 承付。它們按原樣顯示，說明了為甚麼未對上的行是審計師要追問的問題，而不是錯誤。"
+      },
+      "auditAsTeam": {
+        "title": "以緬因州團隊身份",
+        "description": "以緬因州審計項目團隊的身份執行時，同一個視圖只傳回該團隊的三個客戶。每張表和視圖上的行規則把每個團隊限制在自己的項目內。合夥人可以看到全部。"
+      },
+      "auditLineage": {
+        "title": "每個數字的來源",
+        "description": "血緣把回答的每一欄經由視圖追溯到事務所的表和公開數據，讓覆核人看到備忘錄中每個數字的來源。"
+      },
+      "auditRest": {
+        "title": "透過 REST 得到同樣的回答",
+        "description": "該視圖也是一個 REST 端點，按發現分組並在伺服器上匯總，工作底稿試算表可以透過 HTTP 讀取它。"
+      },
+      "banksecrecyScenario": {
+        "title": "一家銀行閱讀美國法律",
+        "description": "一家社區銀行必須依據 Bank Secrecy Act 報告超過 10,000 美元的現金。本示範從公開地址讀取規則本身，找出其中使用的術語，把它們落實到銀行的數據上，然後按概念查詢：哪些現金需要 Currency Transaction Report，誰在拆分交易？它從銀行的核心系統開始，在原處即時讀取。"
+      },
+      "banksecrecyCash": {
+        "title": "櫃檯上的現金",
+        "description": "櫃檯上的每一筆現金存入和提取：帳戶、分行、櫃員、時間以及入帳的營業日。17:00 之後收取的現金記入下一個營業日。"
+      },
+      "banksecrecyOnBehalf": {
+        "title": "代表誰",
+        "description": "每筆交易都記錄了誰站在櫃檯前，以及現金屬於誰。僱員或親屬代為存入的現金，按法律的計算方式計入帳戶持有人的合計。"
+      },
+      "banksecrecyFindTerms": {
+        "title": "從公開地址讀取法律",
+        "description": "尋找術語從地址讀取文件，這裏是 eCFR 官方 API 上的 31 CFR 1010.311。一次掃描會就每個段落詢問 AI 模型，需要幾分鐘，因此導覽停止了這次掃描。同樣的掃描在建立示範時已經執行過。",
+        "acting": "正在輸入法規地址並開始掃描"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "規則中的術語",
+        "description": "預先完成的掃描：每個候選術語及其出處段落。金融機構須報告每筆超過 10,000 美元的現金交易。術語表中已有的術語會作為合併提出。"
+      },
+      "banksecrecyAggregation": {
+        "title": "匯總規則",
+        "description": "多筆交易和「代表」出自 31 CFR 1010.313：一個人或代表一個人在一個營業日內超過 10,000 美元的現金視為一筆交易，所有分行同屬一家機構。夜間存款計入下一個營業日。"
+      },
+      "banksecrecyDefinitions": {
+        "title": "規則使用的定義",
+        "description": "規則中的詞語在 31 CFR 1010.100 中定義：人、營業日、金融機構、拆分交易。每條定義都是獨立的段落，因此每個術語都附有定義它的那一段。"
+      },
+      "banksecrecyLibrary": {
+        "title": "保存在參考庫中",
+        "description": "示範的建置已將每份掃描過的文件保留在參考庫中，因此法規作為受管治的參考文件留在模型身邊：Polly 和組織的代理在回答時會引用其中的段落。"
+      },
+      "banksecrecyGrounded": {
+        "title": "法律的詞語，落實到數據",
+        "description": "Transaction in currency 是法規的術語。銀行的現金交易是它的一種，因此該術語可以到達 cash_transactions 表。同樣，「人」到達客戶，「金融機構」到達銀行的分行。"
+      },
+      "banksecrecyBusinessDay": {
+        "title": "營業日，落在它的欄上",
+        "description": "法規中的營業日是銀行將交易記入客戶帳戶的那一天。銀行的 business_day 欄正好保存這一點，因此該術語直接持有這一欄。"
+      },
+      "banksecrecyTellerAsks": {
+        "title": "哪些現金需要報告？以櫃員身分",
+        "description": "按概念查詢：一個人或代表一個人在一個營業日內存入或提取超過 10,000 美元的現金，多筆交易跨帳戶和分行合計為一筆。櫃員看到需要提交的報告，帳號和納稅人識別號已被遮蔽。"
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "同樣的問題，以合規身分",
+        "description": "合規主任提出同樣的問題，按報告的需要看到完整的帳號和納稅人識別號。Dana Whitmore 的合計包括他人代她存入的現金。"
+      },
+      "banksecrecyStructuring": {
+        "title": "誰在拆分交易？",
+        "description": "在不同分行和日期，三次或更多次略低於 10,000 美元的存款。其中任何一筆單獨都無需報告。Victor Hale 一週內去了三間分行，而 Marcus Reed 同一天的兩筆存款合起來需要報告。只有合規人員能看到這個視圖。"
+      },
+      "banksecrecyPollyWalk": {
+        "title": "銀行必須怎樣做？",
+        "description": "一位客戶不斷存入略低於 10,000 美元的現金。銀行必須怎樣做？在法律條文中搜尋這些詞找不到答案。Polly 改為沿詞彙表走：低於門檻的存款，到拆分交易 (structuring)，再到可疑活動報告，最終找到 31 CFR 1010.314 和 31 CFR 1020.320，也就是寫明答案的條文。"
+      },
+      "banksecrecyExample": {
+        "title": "同樣的答案，用 GraphQL",
+        "description": "需要提交的報告，以 API 呼叫的形式。每個介面讀取同一個受管治的視圖，同一角色使用相同的遮蔽。"
+      },
+      "banksecrecyPollyAsks": {
+        "title": "用淺白的話提問",
+        "description": "合規用淺白的話問 Polly：哪些現金需要 Currency Transaction Report？Polly 找到概念所達的受管治視圖並從中作答，所以它列出的人與 SQL 和 GraphQL 回傳的相同。沒有人需要知道視圖的名稱。"
+      },
+      "banksecrecyRecap": {
+        "title": "您看到了甚麼",
+        "description": "法律從公開地址讀取，其術語被找出並落實到銀行的表上，銀行按概念進行了查詢。Currency Transaction Report 通過其多筆交易到達數據，每個角色都看到了它可以看到的內容。"
       }
     },
     "status": {
@@ -1825,7 +2002,7 @@
         "summary": "天氣能否解釋一間農作物保險公司投資組合中的損失？它自己的農場、保單及索償，按縣及作物年份與 USDA 的按原因損失、NOAA 的天氣及 NASS 的產量連接，以 SQL、GraphQL 及 REST 給出答案。"
       },
       "retail": {
-        "title": "一個集團，兩個區域",
+        "title": "兩個區域的故事",
         "summary": "一間擁有 EU 和 US 附屬公司的零售集團，在 GDPR 下作為一盤生意經營：EU 數據留在 EU，集團報告以假名化方式讀取，查閱、刪除、內幕資料審查和審計各自只是一次查詢。"
       },
       "provisioning": {
@@ -1879,6 +2056,14 @@
       "agentdata": {
         "title": "把數據交給智能體",
         "summary": "能否把零售商的訂單數據交給 AI 智能體,並將其限制在用戶有權查看的範圍內?MCP 瀏覽器分別以客服和分析師身份展示智能體:不同的行和欄、遮罩的電郵,以及每個答案背後受管治的 SQL。"
+      },
+      "audit": {
+        "title": "Single Audit 準備情況",
+        "summary": "非牟利客戶記錄的聯邦資助，是否與政府記錄顯示向其支付的金額一致？一家審計事務所的客戶明細表，與 Single Audit 申報及 USAspending 的承付款相連接，給出答案。"
+      },
+      "banksecrecy": {
+        "title": "從 Bank Secrecy Act 讀出的現金報告",
+        "summary": "一家銀行從官方公開地址讀取 Bank Secrecy Act 的現金報告規則，找出其中的術語並將其落實到自己的表上。然後按概念查詢：哪些現金需要 Currency Transaction Report，誰在 10,000 美元以下拆分交易。銀行和客戶是虛構的，法規是真實的。"
       }
     }
   }

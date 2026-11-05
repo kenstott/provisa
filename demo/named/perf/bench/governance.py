@@ -227,8 +227,9 @@ def table_input(
 
 def masked_columns(setup: cm.Setup, table: cm.Table, nullable: Mapping[str, bool], share: float):
     """The columns of ``table`` ``share`` of its columns masks, in the contract's order: nullable,
-    and not read by a filter, a join or the base request."""
-    wanted = round(share * len(nullable))
+    and not read by a filter, a join or the base request. The share is of the contract's columns:
+    the deployment's table has columns no request reads (``nullable`` names them all)."""
+    wanted = round(share * len(table.columns))
     if wanted == 0:
         return []
     joined = {
@@ -248,7 +249,7 @@ def masked_columns(setup: cm.Setup, table: cm.Table, nullable: Mapping[str, bool
     if len(eligible) < wanted:
         raise GovernanceError(
             f"table {table.name}: masked_column_share {share} masks {wanted} of its "
-            f"{len(nullable)} columns, but only {len(eligible)} are nullable and read by no "
+            f"{len(table.columns)} columns, but only {len(eligible)} are nullable and read by no "
             f"filter, join or base request ({', '.join(eligible) or 'none'})"
         )
     return eligible[:wanted]

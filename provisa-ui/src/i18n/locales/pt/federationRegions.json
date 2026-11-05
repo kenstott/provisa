@@ -1,0 +1,19 @@
+{
+  "federationRegions": {
+    "intro": "Cada região executa suas consultas em sua própria engine: o armazenamento que a plataforma atribuiu a esta organização como engine da região, com seu tipo de engine e URL de conexão.",
+    "readOnlyNote": "O administrador da plataforma atribui a engine de cada região. Ela é mostrada aqui somente para leitura.",
+    "sandboxNote": "Isto é mostrado para explicar as regiões. Não pode ser alterado em uma demonstração.",
+    "restartNote": "Uma alteração entra em vigor quando os nós da região reiniciam.",
+    "restartPending": "Salvo. A alteração entra em vigor quando os nós da região reiniciam.",
+    "edit": "Editar",
+    "store": "Armazenamento da engine",
+    "kind": "Tipo de engine",
+    "url": "URL",
+    "sharedWith": "Também a engine de",
+    "storeHelp": "O armazenamento que esta região indica como sua engine. Qual armazenamento é definido na página Plataforma.",
+    "sharedHint": "Também a engine de {{regions}}. Uma alteração aqui vale também lá.",
+    "kindHelp": "A engine que este armazenamento executa.",
+    "urlHelp": "A URL de conexão da engine, ou uma referência como ${env:NAME}. É mantida exatamente como foi digitada. Uma senha nela nunca é mostrada novamente; deixe a URL inalterada para mantê-la.",
+    "storeMissing": "A região {{region}} indica {{store}} como sua engine, e a organização não tem nenhum armazenamento {{store}}."
+  }
+}

@@ -36,6 +36,7 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 | `(a)-[]->(b)` | ✓ | Any directed relationship a→b; UNION ALL if multiple types match |
 | `(a)-[]-(b)` | ✓ | Bidirectional; expands to UNION ALL of all forward and backward relationships |
 | `(a)-[:TYPE*..N]->(b)` | ✓ | Variable-length with upper bound; recursive CTE for self-referential, flat JOIN otherwise |
+| `(a)-[:TYPE*]->(b)`, `[*n..]` | ✓ | Variable-length with no upper bound; walks up to the maximum depth (see below) |
 | `(a)-[]->(b)-[]->(c)` | ✓ | Multi-hop chained JOINs |
 | `(n:DomainLabel)` | ✓ | Domain label → UNION ALL subquery over all types in the domain |
 | `(n:A\|B)` | ✓ | Label alternation → ad-hoc domain injected into label map; UNION ALL over matching types |
@@ -287,7 +288,15 @@ Clear the session from the Cypher page (`DELETE /data/cypher/session`) or throug
 
 3. **Bidirectional traversal** `(a)-[]-(b)` rewrites to the forward and backward UNION ALL of every matching directed relationship in the model. Every relationship in the model has a direction, and the bidirectional syntax is sugar that expands to both. The extra branches are emitted at the outermost query level. A later MATCH pattern in the same query isn't duplicated across the branches, which limits bidirectional patterns in a query with several MATCH clauses.
 
-4. **Recursive paths require a bound.** Variable-length patterns (`[*]`) must include an upper bound (e.g. `[*..10]`). Unbounded traversal is rejected at parse time to prevent runaway recursive CTEs.
+4. **An unbounded path stops at the maximum depth.** A variable-length pattern with no upper bound (`[*]`, `[*2..]`, or an unbounded `shortestPath`) walks up to the maximum depth, 1000 hops by default. A walk never takes the same relationship twice in one path, so on a finite graph it ends on its own. The limit is a safety net. A walk that reaches it and could still go on fails with `variable-length path exceeded the maximum depth 1000`; you never get a silently cut answer. Write an upper bound (`[*..10]`) when you know how deep the data goes.
+
+   The maximum is the operator setting `server.limits.graph_depth_limit` (environment variable `PROVISA_GRAPH_DEPTH_LIMIT`). It takes effect for the next query, and SPARQL property paths share it.
+
+   ```yaml
+   server:
+     limits:
+       graph_depth_limit: 200
+   ```
 
 ### Behaviour notes
 

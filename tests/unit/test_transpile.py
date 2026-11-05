@@ -207,6 +207,24 @@ class TestPgDuckdbJsonEmission:
         pg = transpile('SELECT "id", "name" FROM "public"."orders"', "postgres")
         assert rewrite_json_object_to_build_object(pg) == pg
 
+    def test_overlaps_reaches_postgresql_as_its_own_call(self):
+        """REQ-2167: the pg engine sends pg_catalog."overlaps", never the routine's name, which
+        PostgreSQL has no function of."""
+        pg = (
+            'SELECT pg_catalog."overlaps"(NULL::time, NULL::interval, NULL::time, NULL::interval)'
+            " AS v"
+        )
+        for wrapped in (pg, f"SELECT json_object(KEY 'v' VALUE ({pg}))"):
+            out = rewrite_json_object_to_build_object(transpile(wrapped, "postgres"))
+            assert 'pg_catalog."overlaps"(' in out
+            assert "overlaps_timestamp" not in out.lower()
+
+    def test_a_quoted_table_function_keeps_its_name(self):
+        """REQ-2167: PostgreSQL resolves a quoted name as written; "JSON_TO_RECORD" is no
+        function there."""
+        pg = 'SELECT t.a FROM pg_catalog."json_to_record"(\'{"a": 1}\'::json) AS t(a integer)'
+        assert 'pg_catalog."json_to_record"(' in transpile(pg, "postgres")
+
     def test_pg_backend_transpile_physical_emits_build_object(self):
         from provisa.federation.engine import build_pg_engine
 

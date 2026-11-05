@@ -147,6 +147,6 @@
     "factMembers": "Tablas miembro",
     "factColumns": "Columnas",
     "grounding_grounded": "Anclado",
-    "grounding_grounded_pending": "Anclado, pendiente de aprobación"
+    "grounding_grounded_pending": "Anclado, a través de un borrador"
   }
 }

@@ -42,7 +42,8 @@ def _launch():
 async def test_a_running_node_is_listed_with_its_mode_and_region(platform):
     process_mode.set_mode(process_mode.QUERY)
     process_region.bind_launch(
-        {"regions": [{"id": "eu", "address": "https://eu.example.com"}]}, requested="eu"
+        {"regions": [{"id": "eu", "description": "The eu region", "purposes": ["residency"]}]},
+        requested="eu",
     )
     await nodes.register(platform)
     (node,) = await nodes.live(platform)

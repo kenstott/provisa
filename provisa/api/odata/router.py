@@ -44,7 +44,6 @@ from provisa.api.json_response import OrjsonResponse
 from provisa.api.odata.csdl import NAMESPACE, metadata_document, service_document
 from provisa.api.odata.expand import (
     Addressing,
-    Plan,
     context_selection,
     ordered_by,
     page_link,
@@ -53,7 +52,6 @@ from provisa.api.odata.expand import (
     read_fields,
     selected,
     with_expansions,
-    write,
 )
 from provisa.api.odata.expression import Comparison, Logical, Name, Node, parse_key
 from provisa.api.odata.filter_sql import with_filter
@@ -74,6 +72,14 @@ from provisa.compiler.parser import GraphQLValidationError
 from provisa.compiler.sql_types import CompiledQuery
 from provisa.core.read_refusal import ReadRefused
 from provisa.core.statement_warnings import as_entries
+from provisa.executor.json_encoders import (
+    any_rows,
+    odata,
+    odata_entity,
+    odata_navigation,
+    result_batches,
+    warnings_json,
+)
 from provisa.federation.pgwire_replica import SourceStillStartingError
 from provisa.security.masking import MaskType
 
@@ -222,23 +228,10 @@ def _column_names(compiled: CompiledQuery) -> list[str]:
     return [c.field_name for c in compiled.columns]
 
 
-def _entities(
-    rows: list[tuple],
-    compiled: CompiledQuery,
-    entity: EntitySet,
-    fields: tuple[str, ...],
-    plans: tuple[Plan, ...],
-    root: str,
-) -> list[dict]:
-    names = _column_names(compiled)
-    return [write(dict(zip(names, row)), entity, fields, plans, root) for row in rows]
-
-
-def _annotate_warnings(document: dict[str, Any]) -> None:
+def _warnings() -> bytes | None:
     """The request's statement warnings as the document's instance annotation (REQ-1350), set
     once its reads have run and before ``value``; none when nothing was raised."""
-    if warnings := as_entries():
-        document[_WARNINGS] = warnings
+    return warnings_json(as_entries())
 
 
 def _context(request: Request, name: str, options: QueryOptions) -> str:
@@ -281,17 +274,23 @@ async def _read(
     result = await _run(state, role_id, compiled.sql, compiled.params, request)
     _landed(result)
 
-    rows = list(result.rows)
+    # REQ-2194: the Rust encoder writes the document from the result's Arrow batches: each row an
+    # entity (each expansion's JSON parsed, its own page and nextLink), the page's nextLink.
     root = _service_root(request)
-    _annotate_warnings(document)
-    document["value"] = _entities(rows[:page], compiled, entity, fields, plans, root)
-    if len(rows) > page:
-        document["@odata.nextLink"] = page_link(
+    body = odata(
+        result_batches(result),
+        _column_names(compiled),
+        odata_entity(entity, fields, plans),
+        context=document["@odata.context"],
+        count=document.get("@odata.count"),
+        page=page,
+        next_link=page_link(
             f"{root}/{entity.name}", tuple(request.query_params.multi_items()), options, page
-        )
-    return OrjsonResponse(
-        content=document, media_type=_JSON, headers=build_cache_headers(result.cache_entry)
+        ),
+        root=root,
+        warnings=_warnings(),
     )
+    return Response(content=body, media_type=_JSON, headers=build_cache_headers(result.cache_entry))
 
 
 def _key_condition(entity: EntitySet, predicate: str) -> Node:
@@ -353,21 +352,21 @@ async def _navigate(
     compiled = with_expansions(compiled, plans)
     result = await _run(state, role_id, compiled.sql, compiled.params, request)
     _landed(result)
-    rows = list(result.rows)
-    if not rows:
+    batches = result_batches(result)
+    if not any_rows(batches):
         raise _Refused(404, "not_found", f"no row {address!r}")
 
-    root = _service_root(request)
-    (parent,) = _entities(rows[:1], compiled, entity, entity.key, plans, root)
-    document: dict[str, Any] = {"@odata.context": _context(request, navigation.target_set, options)}
-    _annotate_warnings(document)
-    document["value"] = parent[name]
-    link = parent.get(f"{name}@odata.nextLink")
-    if link is not None:
-        document["@odata.nextLink"] = link
-    return OrjsonResponse(
-        content=document, media_type=_JSON, headers=build_cache_headers(result.cache_entry)
+    # REQ-2194: the Rust encoder writes the parent row's list (the page) and its nextLink.
+    body = odata_navigation(
+        batches,
+        _column_names(compiled),
+        odata_entity(entity, entity.key, plans),
+        context=_context(request, navigation.target_set, options),
+        name=name,
+        root=_service_root(request),
+        warnings=_warnings(),
     )
+    return Response(content=body, media_type=_JSON, headers=build_cache_headers(result.cache_entry))
 
 
 def create_odata_router(state: Any) -> APIRouter:  # noqa: ANN401 — AppState  # REQ-2193

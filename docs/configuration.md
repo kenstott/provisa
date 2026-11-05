@@ -1551,6 +1551,39 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. URLs starting with `http://` or `https://` use OTLP/HTTP, with `/v1/traces`, `/v1/metrics`, and `/v1/logs` appended automatically. Any other scheme uses OTLP/gRPC with `insecure=True`.
 
+### Sending Telemetry to Your Own Provider
+
+You can send Provisa's telemetry to Datadog, Honeycomb, Grafana Cloud or any other OTLP-capable provider and keep Provisa's own trace tables. Which setup works depends on how your federation engine gets its trace rows.
+
+Every span also goes to an in-process buffer that doesn't depend on any exporter. The recent-traces list on Admin > Observability reads that buffer, so it works with any `endpoint`, or none.
+
+The ops `traces` table is the record the `queries` report joins on `trace_id` for stage timings, route, engine and cache result. Two paths fill it:
+
+- **Engines with the `otel` catalog (Trino).** Rows arrive only through Provisa's OpenTelemetry collector. Its `otlphttp/parquet` exporter writes Parquet, and the compaction job loads it into Iceberg. Keep `observability.endpoint` on that collector and add your provider as another exporter in the collector's pipelines. If you point `endpoint` straight at the provider, the collector never sees the spans. The `traces` table stops filling and the `queries` report loses its trace join.
+- **Native engines (DuckDB).** Provisa writes the `traces` rows itself, whatever `endpoint` is. You can point `endpoint` at your provider. If you run the `otlp2sql` receiver instead (see [Deployment](deployment.md#telemetry-backend-otlp2sql)), `endpoint` must stay on that receiver.
+
+To add a provider to the collector, define one more exporter in `observability/otel-collector-config.yaml` and list it in the `traces` pipeline next to `otlphttp/parquet`:
+
+```yaml
+exporters:
+  otlphttp/provider:
+    endpoint: https://YOUR_PROVIDER_OTLP_ENDPOINT
+    headers:
+      # The header name and value format are your provider's.
+      Authorization: ${env:YOUR_PROVIDER_API_KEY}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/parquet_traces, batch]
+      exporters: [otlphttp/parquet, otlphttp/provider, debug]
+```
+
+Set `YOUR_PROVIDER_API_KEY` in the collector's environment and restart the collector. The `traces` pipeline runs the `filter/parquet_traces` processor, so your provider receives the same spans as the `traces` table: Provisa's own, without the control plane's database statement spans. To send everything the collector receives, add a second pipeline, for example `traces/provider`, that has the `otlp` receiver, the `batch` processor and only the provider exporter.
+
+Admin > Observability warns when an endpoint is set and the `traces` table has received no rows for ten minutes. If Provisa has been idle that is expected. Otherwise, check that the endpoint is Provisa's collector.
+
 ## Federation Engine
 
 Configuring a federation engine is optional. The default is `duckdb`, which needs no configuration and runs in process with no external service. Choose another engine when you need MPP scale or want to reuse a warehouse you already have.
@@ -1586,10 +1619,7 @@ Precedence: `PROVISA_ENGINE` env var → persisted admin-UI `federation_engine` 
 | `singlestore` | SingleStore | Per-dialect | No | None (land-only) | Per-dialect credentials |
 | `vertica` | Vertica | Per-dialect | No | None (land-only) | Per-dialect credentials |
 | `exasol` | Exasol | Per-dialect | No | None (land-only) | Per-dialect credentials |
-| `teradata` | Teradata Vantage | Per-dialect | No | None (land-only) | Per-dialect credentials |
 | `saphana` | SAP HANA | Per-dialect | No | None (land-only) | Per-dialect credentials |
-| `sapase` | SAP ASE (Sybase) | Per-dialect | No | None (land-only) | Per-dialect credentials |
-| `sqlanywhere` | SAP SQL Anywhere | Per-dialect | No | None (land-only) | Per-dialect credentials |
 | `monetdb` | MonetDB | Per-dialect | No | None (land-only) | Per-dialect credentials |
 | `firebird` | Firebird | Per-dialect | No | None (land-only) | Per-dialect credentials |
 | `sqlalchemy` | Other relational database (by connection URL) | Per-dialect | No | None (land-only) | Per-dialect credentials |
@@ -1690,7 +1720,7 @@ PROVISA_ENGINE=synapse
 
 Materialization store defaults to `TENANT_DATABASE_URL`.
 
-#### Relational-database engines (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) and `sqlalchemy`
+#### Relational-database engines (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, saphana, monetdb, firebird) and `sqlalchemy`
 
 One key per network-addressable relational database, all on the same land-only runtime (no federation to external sources): every source lands into the store and is queried there. The key selects the database; `PROVISA_ENGINE_URL` carries the DSN its dialect takes. `sqlalchemy` is the catch-all for a database with no key of its own. File-embedded stores (SQLite, Access) are not offered, because the server has to be reachable over the network.
 
@@ -1698,6 +1728,21 @@ One key per network-addressable relational database, all on the same land-only r
 PROVISA_ENGINE=mysql
 PROVISA_ENGINE_URL="mysql+pymysql://user:pass@host:3306/db"
 ```
+
+Some of these databases need a SQLAlchemy dialect and a driver that the base install leaves out. Each ships as a pip extra named after its engine key, and `all-drivers` installs every one:
+
+| Engine key | Install | Example `PROVISA_ENGINE_URL` |
+| --- | --- | --- |
+| `cockroachdb` | `pip install 'provisa[cockroachdb]'` | `cockroachdb://user:pass@host:26257/db` |
+| `db2` | `pip install 'provisa[db2]'` | `db2+ibm_db://user:pass@host:50000/db` |
+| `exasol` | `pip install 'provisa[exasol]'` | `exa+websocket://user:pass@host:8563/schema` |
+| `firebird` | `pip install 'provisa[firebird]'` | `firebird+firebird://user:pass@host:3050/path/to/db.fdb` |
+| `monetdb` | `pip install 'provisa[monetdb]'` | `monetdb://user:pass@host:50000/db` |
+| `opengauss` | `pip install 'provisa[opengauss]'` | `opengauss://user:pass@host:5432/db` |
+| `saphana` | `pip install 'provisa[saphana]'` | `hana+hdbcli://user:pass@host:39015/db` |
+| `vertica` | `pip install 'provisa[vertica]'` | `vertica+vertica_python://user:pass@host:5433/db` |
+
+Firebird also needs the Firebird client library on the host. If the extra for the selected key is missing, building the engine fails with an error that names the command to run, for example `the 'vertica' federation engine needs the 'vertica' extra (module 'sqla_vertica_python' is not installed): pip install 'provisa[vertica]'`. The federation engine list in the admin UI shows that key as unavailable, with the same hint.
 
 Materialization store defaults to `TENANT_DATABASE_URL`.
 

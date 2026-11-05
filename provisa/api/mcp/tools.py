@@ -1174,12 +1174,18 @@ async def run_sql(
             "redirect": result.redirect,
         }
 
+    from provisa.executor.result import QueryResult
+    from provisa.executor.serialize import result_records
+
     total = len(result.rows)
     window = result.rows[offset : offset + page]
     cols = list(result.column_names)
     return {
         "columns": cols,
-        "rows": [_row_to_json(cols, r) for r in window],
+        # Each value as every JSON surface writes it (REQ-1867).
+        "rows": result_records(
+            QueryResult(rows=window, column_names=cols, column_types=result.column_types)
+        ),
         "row_count": len(window),
         "offset": offset,
         "total_rows": total,
@@ -1441,9 +1447,10 @@ async def query_metric(
     require_role(role, state)
     if metric not in {m.name for m in _visible_metrics(state, role)}:
         raise ValueError(f"Unknown metric {metric!r}")
+    from provisa.executor.serialize import result_records
+
     result = await execute_sql_batch(_metric_sql(metric, dimensions, filters), role, state)
-    cols = list(result.column_names)
-    return [_row_to_json(cols, r) for r in result.rows]
+    return result_records(result)
 
 
 def _role_domains(state: Any, role: str) -> set[str]:
@@ -1631,8 +1638,9 @@ async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) ->
 
 async def search_reference_library(state: Any, role: str, question: str, k: int = 5) -> list[dict]:
     """The reference library's passages that best answer ``question`` (REQ-2185), from the kept
-    documents ``role`` may read: those whose domains it reads, and every ``*`` document. Each
-    carries what citing it takes -- the document, its section or page, the quoted text."""
+    documents ``role`` may read: those whose domains it reads, and every ``*`` document, with
+    their neighbours (retrieve.retrieve_with_neighbours). Each carries what citing it takes -- the
+    document, its section or page, the quoted text -- and how it was reached."""
     role = require_role(role, state)
     from provisa.reference_library.retrieve import search_for_role
 
@@ -1975,29 +1983,6 @@ async def search_kaggle_datasets(state: Any, role: str, query: str) -> list[dict
         }
         for d in results[:10]
     ]
-
-
-def _row_to_json(cols: list[str], row: Any) -> dict:
-    """Map a result tuple to a JSON-safe {column: value} dict."""
-    out: dict[str, Any] = {}
-    for name, val in zip(cols, row, strict=False):
-        out[name] = _json_safe(val)
-    return out
-
-
-def _json_safe(val: Any) -> Any:
-    import datetime as _dt
-    from decimal import Decimal
-
-    if val is None or isinstance(val, (bool, int, float, str)):
-        return val
-    if isinstance(val, Decimal):
-        return float(val)
-    if isinstance(val, (bytes, bytearray)):
-        return val.hex()
-    if isinstance(val, (_dt.date, _dt.datetime, _dt.time)):
-        return val.isoformat()
-    return str(val)
 
 
 def _described_role(state: Any, role_id: str) -> dict:  # REQ-2082

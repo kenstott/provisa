@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import datetime
 import re
+import struct
 from collections.abc import Iterator
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -84,11 +85,21 @@ def _rows(held: Any, sql: str) -> list[Any]:
 
 
 def _sent(value: Any, set_zone: str) -> str:
+    """A ClickHouse answer as pgwire sends it in the session's zone (REQ-2194): an instant's
+    Arrow column cast to the zone (``_ZonedData``), its cell the Rust encoder's text."""
     if not isinstance(value, datetime.datetime):
         return str(value)
-    from buenavista.postgres import _timestamp_text
+    from buenavista.core import BVType, wire_type_name
 
-    return _timestamp_text(value.astimezone(SessionZone(_SESSIONS[set_zone]).written_in()))
+    from provisa._encoders import pgwire as encoder
+    from provisa.pgwire.session_zone import _arrow_zone, _in_zone
+
+    zone = _arrow_zone(SessionZone(_SESSIONS[set_zone]).written_in())
+    column = _in_zone(pa.array([value], pa.timestamp("us", tz="UTC")), zone)
+    batch = pa.RecordBatch.from_arrays([column], names=["value"])
+    message = encoder.encode_batch(batch, [wire_type_name(BVType.TIMESTAMPTZ)], [0])
+    (size,) = struct.unpack_from("!i", message, 7)
+    return message[11 : 11 + size].decode("utf-8")
 
 
 @pytest.mark.parametrize("set_zone, name, want", [case for case in CASES if case[1] != "json"])

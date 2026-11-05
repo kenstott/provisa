@@ -18,7 +18,7 @@
     "byFile": "File",
     "byUrl": "URL",
     "file": "File",
-    "fileHelp": "A PDF, Word (.docx), HTML, Markdown or plain-text file.",
+    "fileHelp": "A PDF, Word (.docx), HTML, Markdown, eCFR XML (.xml) or plain-text file.",
     "url": "URL",
     "urlHelp": "An http(s) address. The document is fetched now and again whenever it is refreshed.",
     "fieldTitle": "Title",
@@ -54,6 +54,16 @@
     "needsReembeddingHelp": "Embedded with {{model}}, not the organization's current vector model.",
     "reembedDone": "Documents re-embedded: {{n}}",
     "reembedFailedHeading": "These documents could not be re-embedded and are unchanged:",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "helpLabel": "About the reference library",
+    "helpTitle": "About the reference library",
+    "helpWhat": "A short, chosen set of reference documents (policies, regulations, contracts, processes), added by file or URL. Not a document store.",
+    "helpWho": "Polly answers from it, citing passages. AI agents connected through Provisa's MCP server search it (search_reference_library). Find terms reads it to propose glossary terms and definitions.",
+    "helpSees": "An assistant acting for a role draws only on kept documents in domains the role reads, plus whole-organization ones.",
+    "helpEmbedding": "Passages are embedded with the organization's embedding model when a document is added; Re-embed is needed only when that model changes.",
+    "retrieval": "Retrieval",
+    "retrievalPassage": "Passage",
+    "retrievalGraph": "Graph",
+    "retrievalHelp": "How an assistant's question is answered from the library. Passage: the passages nearest the question, and the passages around them. Graph: also follows the glossary from the terms the question names, over their relationships, to the passages the terms reached cite, so an answer can draw on a rule whose wording does not resemble the question."
   }
 }

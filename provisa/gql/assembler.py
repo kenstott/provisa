@@ -25,7 +25,7 @@ from typing import Any, TypeVar
 from sqlalchemy import select
 
 from provisa.core.schema_org import node_ids, rel_ids
-from provisa.gql.translator_types import CUT_COLUMN, GraphVarKind
+from provisa.gql.translator_types import CUT_COLUMN, GraphVarKind, PathDepthExceeded
 
 
 class CypherAssemblyError(Exception):
@@ -58,8 +58,8 @@ class Path:  # REQ-350
 
 
 def take_cut(rows: list[dict], of_plan: list | None) -> list[dict]:  # REQ-2135
-    """The rows without the cut column. When a path bounded by the depth limit was cut there, the
-    statement says so through its warnings (REQ-1350), on whichever surface answers it: onto the
+    """The rows of a SPARQL statement without the cut column. When a property path bounded by the
+    depth limit was cut there, the statement says so through its warnings (REQ-1350), on whichever surface answers it: onto the
     plan's own list (``of_plan``) and the request's collector, or the collector alone where the
     rows came from no one plan. A statement with no such path carries no cut column."""
     cut = False
@@ -88,6 +88,24 @@ def take_cut(rows: list[dict], of_plan: list | None) -> list[dict]:  # REQ-2135
             warn(warning)
         else:
             tell(warning, of_plan)
+    return out
+
+
+def take_overrun(rows: list[dict]) -> list[dict]:  # REQ-348
+    """The rows of a Cypher statement without the cut column. A Cypher walk with no upper bound
+    takes the maximum depth (graph.depth_limit); one that reached it and could still go on fails
+    by name (:class:`PathDepthExceeded`), never answered cut short."""
+    out: list[dict] = []
+    for row in rows:
+        key = next((k for k in row if k.lower() == CUT_COLUMN), None)
+        if key is None:
+            out.append(row)
+            continue
+        if row[key]:
+            from provisa.core import settings_registry
+
+            raise PathDepthExceeded(settings_registry.value("graph.depth_limit"))
+        out.append({k: v for k, v in row.items() if k != key})
     return out
 
 

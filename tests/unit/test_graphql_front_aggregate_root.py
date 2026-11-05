@@ -55,7 +55,7 @@ def test_a_lowered_aggregate_root_answers_as_its_sql_does(model, selection, wher
 
     from provisa.compiler.sql_gen import compile_query
     from provisa.cypher.printer import print_cypher
-    from provisa.executor.serialize import serialize_aggregate
+    from tests.unit.json_encoder.rows import serialize_aggregate
     from provisa.graphql_front.lower import lower_read
 
     ctx, lm, _view_sql = model

@@ -200,7 +200,8 @@
     "dimBadge": "维度",
     "scopeDomain": "域",
     "scopePublic": "公开",
-    "scopeRestricted": "受限",
+    "scopeListed": "已列出",
+    "scopeOwnDomain": "本域",
     "cancel": "取消",
     "save": "保存",
     "ttlViewRefreshes": "每 {{sec}} 秒刷新一次（来自物化视图的刷新间隔）。",
@@ -264,7 +265,7 @@
     "draftHelp": "勾选期间停止服务：任何地方都不读写、任何模式中都不提供、也不复制——所有区域中已有的副本都会被删除。在此注册的表或视图以草稿开始；取消勾选即可发布。",
     "pagingRowsFieldHelp": "响应中包含行的属性，例如分页包装中的 values 或 data。当响应本身就是行时请留空。表的列即该处对象的列。",
     "pagingRowsFieldFixed": "在注册表时设置。要从其他位置读取行，请重新注册该表。",
-    "scopeHelp": "domain：提供给可访问此表所在域的角色。public：也提供给该域之外的角色。restricted：仅提供给“可见对象”中指定的角色。",
+    "scopeHelp": "domain：提供给可访问此表所在域的角色，包括通过父域访问的角色。listed：同上，并且每个角色都能在目录中看到该列的名称。public：也提供给该域之外的角色。own-domain：仅提供给自身域访问权限包含此表所在域的角色；仅通过父域访问的角色不会获得该列，即使“可见对象”中指定了它。",
     "columnTabs": {
       "label": "列属性",
       "naming": "命名",

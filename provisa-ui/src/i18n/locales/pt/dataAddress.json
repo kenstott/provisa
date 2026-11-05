@@ -1,0 +1,13 @@
+{
+  "dataAddress": {
+    "label": "Nó de dados",
+    "heading": "Enviar as solicitações de dados para",
+    "none": "Nenhum nó de dados",
+    "noneOffered": "Nenhum nó de dados está listado para esta região. Digite um endereço abaixo.",
+    "typedLabel": "Endereço do nó de dados",
+    "typedPlaceholder": "https://data.example.com",
+    "typedInvalid": "Insira um endereço http ou https",
+    "use": "Usar",
+    "loadError": "Não foi possível carregar os nós de dados"
+  }
+}

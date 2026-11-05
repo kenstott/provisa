@@ -36,6 +36,8 @@ from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
+import sqlglot
+
 from provisa.federation.execution_auth import plan_authorization
 
 from provisa.audit.pipeline import PendingAudit
@@ -60,6 +62,7 @@ _CURRENT_SETTING_RE = re.compile(
     r"current_setting\(\s*'provisa\.([A-Za-z0-9_]+)'\s*(?:,\s*true\s*)?\)",
     re.IGNORECASE,
 )
+_SETTING_NAME_RE = re.compile(r"provisa\.([A-Za-z0-9_]+)", re.IGNORECASE)
 
 
 def _resolve_session_settings(sql: str, session_vars: dict[str, str], dialect: str) -> str:
@@ -69,15 +72,38 @@ def _resolve_session_settings(sql: str, session_vars: dict[str, str], dialect: s
     keeps native ``current_setting`` (fed by ``SET LOCAL``) and is untouched.
     """
 
+    if _CURRENT_SETTING_RE.search(sql) is None:
+        return sql
     from provisa.compiler.sql_literals import sql_literal
 
-    def _sub(m: re.Match) -> str:
+    def _resolved(node: sqlglot.exp.Expr) -> sqlglot.exp.Expr:
+        named = _setting_named(node)
+        if named is None:
+            return node
         # ``dialect`` is the dialect ``sql`` is written in: the engine's for transpiled SQL, where
         # a backslash may be an escape, so each value takes that dialect's one literal rule.
-        value = session_vars.get(m.group(1))
-        return "NULL" if value is None else sql_literal(value, dialect)
+        value = session_vars.get(named)
+        return sqlglot.parse_one(
+            "NULL" if value is None else sql_literal(value, dialect), read=dialect
+        )
 
-    return _CURRENT_SETTING_RE.sub(_sub, sql)
+    # REQ-2167: on the tree, so a current_setting a string literal holds is its text.
+    tree = sqlglot.parse_one(sql, read=dialect)
+    resolved = tree.transform(_resolved)
+    return sql if resolved == tree else resolved.sql(dialect=dialect)
+
+
+def _setting_named(node: sqlglot.exp.Expr) -> str | None:
+    """The provisa.<var> ``node`` reads, where it is current_setting('provisa.<var>' [, true])."""
+    exp = sqlglot.exp
+    if not isinstance(node, exp.Anonymous) or node.name.lower() != "current_setting":
+        return None
+    args = node.expressions
+    missing_ok = len(args) == 2 and isinstance(args[1], exp.Boolean) and args[1].this is True
+    if not (len(args) == 1 or missing_ok) or not isinstance(args[0], exp.Literal):
+        return None
+    found = _SETTING_NAME_RE.fullmatch(args[0].this) if args[0].is_string else None
+    return found.group(1) if found else None
 
 
 @dataclass
@@ -249,6 +275,9 @@ class _Plan:
     writes_tables: bool = field(default=False)
     # The registered table a write targets (None for a read): what :func:`_after_write` acts on.
     written_table_id: int | None = field(default=None)
+    # REQ-2167: how a pgwire INSERT reports the identity or serial value it makes its source
+    # generate (pgwire.generated_keys.GeneratedKey), for the session's lastval(). None otherwise.
+    generated_key: Any = field(default=None)
     # REQ-1897: the governed role and the registered tables the statement reads/writes — the
     # response-cache key and policy inputs. Carried on the plan itself, not read off ``audit``: a
     # statement with no acting principal (an unsecured Flight ticket) has no audit record.
@@ -532,6 +561,12 @@ async def _optimize_and_route(
         if _live or _live_inline:
             optimized = True
             opt_labels.extend(f"read live: {_tn}" for _tn in sorted({*_live, *_live_inline}))
+    if not sources and not is_mutation:
+        from provisa.compiler.result_shape import pg_named
+
+        # REQ-2167: a statement reading no table is the engine's, which names SELECT 1 "1";
+        # PostgreSQL names it ?column?.
+        exec_sql = pg_named(exec_sql)
     return exec_sql, decision, optimized, sources, tuple(opt_labels)
 
 
@@ -1311,7 +1346,7 @@ async def propagate_literal_predicates(sql: str, state: Any) -> str:  # REQ-1880
         src = sources_by_id.get(t.source_id)
         if src is None:
             continue
-        cap = state.federation_engine.connector_pushdown(src.type.value)
+        cap = state.federation_engine.connector_pushdown(src)
         if cap.predicate_pushdown and not cap.join_pushdown:
             eligible.add(phys)
     if not eligible:
@@ -4588,13 +4623,23 @@ async def _run_plan_terminal(plan: _Plan, state: Any) -> QueryResult:  # REQ-027
         )
     else:
         # DIRECT terminal (REQ-825): single reachable source on its native driver.
+        from provisa.pgwire.generated_keys import LAST_INSERT_ID
+
+        key = plan.generated_key
+        # REQ-2167: a write whose connection reports what it generated is run to report it.
+        reported = (
+            {"reports_generated": True} if key is not None and key.by == LAST_INSERT_ID else {}
+        )
         result = await engine.execute_native(
             state.source_pools,
             plan.source_id,
             plan.sql,
             plan.exec_params,
             plan.span_attrs,
+            **reported,
         )
+        if key is not None:
+            result = key.taken(result)  # REQ-2167: the client's rows, the generated value kept
     return result
 
 
@@ -5395,16 +5440,18 @@ def _engine_session_hints(
     exec_sql: str,
     *,
     writes: bool,
-) -> dict[str, str] | None:  # REQ-281, REQ-910
+    tree: Any = None,
+) -> dict[str, str] | None:  # REQ-281, REQ-910, REQ-348
     """The engine session properties one compiled statement runs with: each source's federation
     hints (translated from the ``@provisa`` vocabulary), then the request's own properties and the
     statement's comment hints filling only what the operator left open — and no fault-tolerant
-    retry for a write or a read of a non-replayable connector (:func:`_no_retry`)."""
+    retry for a write or a read of a non-replayable connector (:func:`_no_retry`). A recursive
+    statement (``tree``, its compiled AST) runs with the maximum recursion depth (REQ-348)."""
     from provisa.compiler.directives import merge_session_props, translate_federation_hints
-    from provisa.compiler.hints import extract_hints
+    from provisa.compiler.hints import extract_hints, recursion_session_props
 
     _, comment_hints = extract_hints(exec_sql)
-    operator_hints: dict[str, str] = {}
+    operator_hints: dict[str, str] = recursion_session_props(tree) if tree is not None else {}
     for sid in sources or ():
         operator_hints.update(
             translate_federation_hints(getattr(state, "source_federation_hints", {}).get(sid, {}))
@@ -5718,7 +5765,9 @@ async def _route_compiled(
         # REQ-2100: a code source's own statement the engine runs after all is landed for it.
         _exec_sql, exec_params = await land_direct_reads(_exec_sql, exec_params, state, _table_ids)
         _exec_sql, physical_sql = await _engine_forms(_exec_sql)
-        _hints = _engine_session_hints(state, sources, session_props, _exec_sql, writes=_is_write)
+        _hints = _engine_session_hints(
+            state, sources, session_props, _exec_sql, writes=_is_write, tree=_compiled_tree
+        )
         return _Plan(
             route=Route.ENGINE,
             sql=governed_sql,
@@ -5856,6 +5905,39 @@ async def plan_pgwire_sql(  # REQ-267
     return await _govern_and_route(sql, role_id, as_of=as_of)
 
 
+async def reporting_generated(plan: _Plan, state: Any) -> _Plan:  # REQ-2167
+    """A pgwire INSERT written to report the identity or serial value it makes its source
+    generate (pgwire.generated_keys), the columns that would be read from the source's own
+    catalog. Any other plan, and one for a source with no way to report one, is unchanged."""
+    from provisa.pgwire.generated_keys import LAST_INSERT_ID, GeneratedKey
+    from provisa.pgwire.generated_keys import inserted_table, returning_rewrite
+    from provisa.transpiler.router import Route
+
+    if not (
+        plan.writes_tables
+        and plan.route == Route.DIRECT
+        and plan.source_id
+        and state.source_pools.has(plan.source_id)
+    ):
+        return plan
+    driver = state.source_pools.get(plan.source_id)
+    if driver.generated_keys is None:
+        return plan
+    target = inserted_table(plan.sql, plan.dialect or "postgres")
+    if target is None:
+        return plan
+    columns = await driver.generated_columns(*target)
+    if not columns:
+        return plan
+    if driver.generated_keys == LAST_INSERT_ID:
+        plan.generated_key = GeneratedKey(LAST_INSERT_ID)
+        return plan
+    rewritten = returning_rewrite(plan.sql, columns)
+    if rewritten is not None:
+        plan.sql, plan.generated_key = rewritten
+    return plan
+
+
 async def govern_pgwire_plan(  # REQ-028, REQ-266
     sql: str,
     role_id: str,
@@ -5925,7 +6007,7 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
         deliver=deliver,
         as_of=as_of,
     )
-    return plan
+    return await reporting_generated(plan, _state)  # REQ-2167
 
 
 async def govern_catalog_plan(sql: str, role_id: str, request: Any) -> _Plan:  # REQ-2190
@@ -6055,7 +6137,8 @@ async def plan_pgwire_statement(  # REQ-589
         deliver=deliver,
         as_of=governed.as_of,
     )
-    return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
+    plan = await _attach_live_caps(await _attach_tier_caps(plan, state), state)
+    return await reporting_generated(plan, state)  # REQ-2167
 
 
 async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:  # REQ-266, REQ-267, REQ-272

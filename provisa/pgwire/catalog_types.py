@@ -19,7 +19,6 @@ expression gives."""
 from __future__ import annotations
 
 import functools
-import re
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -90,14 +89,6 @@ _FUNCTION_TYPES = {
 }
 
 
-_BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
-
-
-def _bit_varying_read(sql: str) -> str:
-    """``sql`` as sqlglot reads it: ``::bit varying`` it takes for a bit and an alias."""
-    return _BIT_VARYING.sub("::varbit", sql)
-
-
 def _column_type(pg_type: str) -> str | exp.DataType:
     """A column's type for the annotation. sqlglot reads ``oid[]`` (and ``regtype[]``) as the
     element type, so an array of a type it knows is built as an array explicitly."""
@@ -128,7 +119,7 @@ def result_types(sql: str) -> tuple[tuple[str, str], ...]:
     unknown type is the empty string). An unqualified relation is pg_catalog's, first on PostgreSQL's
     search path."""
     try:
-        tree = sqlglot.parse_one(_bit_varying_read(sql), read="postgres")
+        tree = sqlglot.parse_one(sql, read="postgres")
     except ParseError:
         return ()  # a call sqlglot reads as syntax (convert): the engine's types describe it
     qualified = qualify(
@@ -168,4 +159,5 @@ def _function_type(expression: exp.Expr) -> str:
 def _format_type(data_type) -> str:
     if data_type is None or data_type.is_type("unknown"):
         return ""
-    return data_type.sql("postgres").lower()
+    # A type named in pg_catalog is the type of its bare name (pg_catalog.regclass is regclass).
+    return data_type.sql("postgres").lower().removeprefix("pg_catalog.")

@@ -17,9 +17,11 @@ interface Props {
   type: string;
   uploaded: boolean;
   onUploaded: (path: string) => void;
+  /** The file types the picker offers (a file input's `accept`). */
+  accept?: string;
 }
 
-export function SourceFileUpload({ sourceId, type, uploaded, onUploaded }: Props) {
+export function SourceFileUpload({ sourceId, type, uploaded, onUploaded, accept }: Props) {
   const { t } = useTranslation();
   const [share, setShare] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +43,7 @@ export function SourceFileUpload({ sourceId, type, uploaded, onUploaded }: Props
   const noId = !sourceId.trim();
   return (
     <div className="source-file-upload">
-      <FileButton onChange={send} disabled={noId || share !== null}>
+      <FileButton onChange={send} accept={accept} disabled={noId || share !== null}>
         {(props) => (
           <Button
             {...props}

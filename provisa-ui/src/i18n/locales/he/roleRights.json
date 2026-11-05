@@ -31,7 +31,8 @@
     "reach_public": "ציבורי",
     "scope_domain": "תחום",
     "scope_public": "ציבורי",
-    "scope_restricted": "מוגבל",
+    "scope_listed": "רשום",
+    "scope_own-domain": "דומיין עצמי",
     "write_insert": "הוספה",
     "write_update": "עדכון",
     "write_delete": "מחיקה"

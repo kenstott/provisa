@@ -613,6 +613,9 @@ export interface TableMetadata {
   pagingKind?: PagingKind | null;
   pagination?: Paging | null;
   pagingCeilingRows?: number | null;
+  // REQ-1986: the parameters a read of it must give, by the name a caller gives each; a table
+  // with any is a lookup, listed apart in the picker.
+  requiredParameters?: string[];
 }
 
 export interface ColumnMetadata {

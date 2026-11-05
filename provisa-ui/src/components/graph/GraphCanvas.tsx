@@ -114,6 +114,8 @@ export function GraphCanvas({
   keepPositionsRef.current = keepPositions;
   // Where the last drawing's nodes stood, for a drawing that keeps them (keepPositions).
   const heldDrawingRef = useRef<HeldDrawing | null>(null);
+  // Whether this drawing's nodes stand where a layout (or a held drawing) put them.
+  const laidOutRef = useRef(false);
   // Track nodes that the user has manually dragged; these stay anchored during re-layout
   const anchoredRef = useRef<Set<string>>(new Set());
   // Prevents concurrent layout runs from clobbering each other's unlock step
@@ -570,6 +572,7 @@ export function GraphCanvas({
       if (el) el.title = "";
     });
     cy.on("layoutstop", () => {
+      laidOutRef.current = true;
       if (pendingNudgesRef.current === 0) computeHulls();
     });
     cy.on("viewport", computeHulls);
@@ -591,9 +594,12 @@ export function GraphCanvas({
       const under = nodeUnder(cy, evt.target);
       anchoredRef.current.add(id);
       evt.target.addClass("pinned");
-      pendingNudgesRef.current = 2;
-      pendingNudgeFreeNodesRef.current = undefined;
-      nudgeLayoutRef.current();
+      // A drawing that keeps its nodes leaves the rest where they stand.
+      if (!keepPositionsRef.current) {
+        pendingNudgesRef.current = 2;
+        pendingNudgeFreeNodesRef.current = undefined;
+        nudgeLayoutRef.current();
+      }
       nodeDraggedRef.current?.(id);
       if (dragged && under) nodeDroppedRef.current?.(dragged, under);
     });
@@ -608,15 +614,17 @@ export function GraphCanvas({
     );
     activeLayoutRef.current = null;
     layoutRunningRef.current = false;
+    laidOutRef.current = false;
     if (held && clusterLevel === "none") {
       // The nudge places what is new, and styles the rest as a layout does.
       const fresh = restoreDrawing(cy, held, edgeDistanceRef.current);
+      laidOutRef.current = true;
       nudgeLayout(fresh, fresh.size > 0);
     } else if (els.length > 0) runLayout();
     return () => {
-      // A drawing whose layout never finished has nowhere to keep.
+      // A drawing whose first layout never finished has nowhere to keep; one nudged since has.
       heldDrawingRef.current =
-        keepPositionsRef.current && !layoutRunningRef.current ? holdDrawing(cy) : null;
+        keepPositionsRef.current && laidOutRef.current ? holdDrawing(cy) : null;
       cyRef.current = null;
       activeLayoutRef.current = null;
       onCyReady?.(null);

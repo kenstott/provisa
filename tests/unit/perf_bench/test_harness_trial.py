@@ -229,3 +229,18 @@ def test_a_container_engine_is_refused_off_linux(
     with pytest.raises(SystemExit):
         ht.main()
     assert "Linux" in capsys.readouterr().err
+
+
+# REQ-2185: the bench PostgreSQL is the control plane's, and the library refuses to start without
+# pgvector in it.
+def test_the_duckdb_bench_control_plane_carries_pgvector(tmp_path: Path) -> None:
+    pg = _stack(tmp_path, "duckdb")["postgresql"]
+    assert pg["image"] == "pgvector/pgvector:pg16-trixie"
+    core = yaml.safe_load((ht.lp.REPO / "docker-compose.core.yml").read_text())
+    assert pg["image"] == core["services"]["postgres"]["image"]
+
+
+def test_the_perf_postgres_dockerfile_installs_pgvector() -> None:
+    dockerfile = (ht.lp.PERF / "Dockerfile.postgres").read_text()
+    final_stage = dockerfile.rsplit("FROM ${PG_IMAGE}", 1)[1]
+    assert "postgresql-16-pgvector" in final_stage

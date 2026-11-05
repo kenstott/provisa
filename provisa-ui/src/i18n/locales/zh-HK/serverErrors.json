@@ -405,6 +405,7 @@
       "source_region_set": "資料來源 {{source}} 的區域已設為 {{region}}",
       "region_refused": "未設定區域：{{reason}}",
       "table_too_complex": "資料表「{{table}}」未能以所選欄位註冊：{{reason}}。請選擇較少欄位。",
+      "remote_throttled": "資料表「{{table}}」未有註冊：來源的速率限制令它無法被檢查（{{reason}}）。請稍後再試。",
       "table_updated": "資料表「{{table}}」已更新（id={{id}}）",
       "task_deleted": "任務「{{task}}」已刪除",
       "task_disabled": "任務「{{task}}」已停用",
@@ -477,7 +478,11 @@
       "relationship_same_entity_cardinality": "關係 '{{relationship}}' 不能標記為同一實體：它是 {{cardinality}}，而同一實體是一行對一行",
       "relationship_same_entity_not_grounded": "關係 '{{relationship}}' 不能標記為同一實體：{{source}} 和 {{target}} 未關聯到同一術語",
       "relationship_same_entity_not_keys": "關係 '{{relationship}}' 不能標記為同一實體：{{columns}} 不是 {{table}} 的主鍵或唯一鍵",
-      "kaggle_token_missing": "Kaggle 數據集 {{owner}}/{{ref}}：數據來源沒有 Kaggle API 權杖。請在數據來源表單中加入，權杖在那裡輸入。"
+      "kaggle_token_missing": "Kaggle 數據集 {{owner}}/{{ref}}：數據來源沒有 Kaggle API 權杖。請在數據來源表單中加入，權杖在那裡輸入。",
+      "jdbc_invalid": "資料來源 {{source}}：{{error}}",
+      "jdbc_file_refused": "資料來源 {{source}}：URL 指向 {{path}}，此伺服器不能為該組織開啟它。",
+      "jdbc_options_refused": "資料來源 {{source}}：此組織的 URL 不能指定驅動程式選項 {{options}}。",
+      "jdbc_driver_refused": "資料來源 {{source}}：客戶自備的 JDBC 驅動程式會作為程式碼在 Provisa 本身的 JVM 中執行，只有自行託管的安裝才允許這樣做。"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",
@@ -625,7 +630,10 @@
       "popup_blocked": "瀏覽器封鎖了登入視窗。請允許此網站顯示彈出式視窗,然後再試一次。",
       "window_closed": "登入視窗在完成前已被關閉。",
       "tenant_invalid": "組織的 Microsoft 365 設定未指定目錄（租用戶）。由管理員輸入目錄的 ID 或網域。",
-      "microsoft_account_unread": "登入已獲批准，但 Microsoft 未說明這是誰的信箱。"
+      "microsoft_account_unread": "登入已獲批准，但 Microsoft 未說明這是誰的信箱。",
+      "client_missing": "請輸入應用程式的用戶端 ID 和用戶端密鑰，然後登入。",
+      "client_not_taken": "此類資料來源使用您機構的用戶端登入，而非表單中輸入的用戶端。",
+      "no_account_returned": "登入已獲批准，但回應未說明是哪個帳戶（{{parameter}}）。請重新登入。"
     },
     "mail_platform": {
       "organisation_mailboxes_off": "您的組織尚未允許讀取其信箱的數據來源。管理員可在「管理 › 郵件」中允許。",
@@ -760,6 +768,12 @@
         "no_description": "此數據產品既未說明用途，也未說明使用方式。",
         "successor_retired": "接收此產品成員的數據產品「{{successor}}」亦已停用。"
       }
+    },
+    "erd": {
+      "database_unavailable": "無法讀取 ERD 版面:資料庫無法使用",
+      "layout_not_found": "沒有名為 {{name}} 的版面",
+      "layout_name_required": "版面需要名稱",
+      "layout_place_unreadable": "此版面放置了您無權讀取的 {{kind}}"
     }
   }
 }

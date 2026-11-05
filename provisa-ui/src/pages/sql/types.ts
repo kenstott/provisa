@@ -100,7 +100,7 @@ export interface ViewColumnConfig {
   name: string;
   alias: string;
   description: string;
-  scope: "domain" | "public" | "restricted";
+  scope: "own-domain" | "domain" | "listed" | "public";
   visibleTo: string[];
   masks: MaskEntry[];
 }

@@ -1,0 +1,391 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "audit" (start-ui-install.sh --demo audit; REQ-2040): Single
+# Audit readiness -- do a nonprofit client's recorded federal awards match what the government's
+# records show paying it? An audit firm -- fictional, its clients and their records generated --
+# audits nine nonprofits in Vermont, New Hampshire and Maine; its own database is read live. Public
+# data on the same programs comes from govdata.
+#
+#   firm     the firm's Postgres (db/init.sql): its clients, each one's draft schedule of federal
+#            awards for 2023 and the federal award records it holds. docker-compose.yml brings it
+#            up.
+#   govdata  AskAmerica's government data: the Federal Audit Clearinghouse's 2023 award lines for
+#            the three states, each beside what USAspending obligated to the same recipient under
+#            the same Assistance Listing that year, and USAspending's 2023 obligations by county
+#            and Assistance Listing for the clients' counties. A real account, so each table is
+#            landed once, when the demo's bundle is built (each table's landing filter), and read
+#            from that replica for good (cache_ttl -1, replicate 0).
+#
+# readiness, materialized, sets each client's schedule beside its award records and the public
+# record of the same program: the answer. Each engagement team reads only its own clients (row
+# rules); the partner reads every one.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: audit
+  description: An audit firm's Single Audit clients and their federal awards, beside the Federal
+    Audit Clearinghouse's filings and USAspending's obligations
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+# The engagement partner: every client of the firm.
+- id: partner
+  parents: [analyst]
+  description: "The engagement partner: every client of the firm."
+  capabilities:
+  - query_development
+  domain_access:
+  - audit
+# Each engagement team: its own state's clients, never another team's.
+- id: vermont_team
+  parents: [analyst]
+  description: "The Vermont engagement team: its own clients only."
+  capabilities:
+  - query_development
+  domain_access:
+  - audit
+- id: new_hampshire_team
+  parents: [analyst]
+  description: "The New Hampshire engagement team: its own clients only."
+  capabilities:
+  - query_development
+  domain_access:
+  - audit
+- id: maine_team
+  parents: [analyst]
+  description: "The Maine engagement team: its own clients only."
+  capabilities:
+  - query_development
+  domain_access:
+  - audit
+vector_models:
+# A local sentence-transformers model: no key, no network once it is cached (provisa[vector],
+# which demo.yaml declares), so Polly can search the demo's catalog.
+- id: sentence-transformers/all-MiniLM-L6-v2
+  provider: huggingface
+  dimensions: 384
+  enabled: true
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- id: firm
+  type: postgresql
+  host: ${env:AUDIT_PG_HOST:-localhost}
+  port: ${env:AUDIT_PG_PORT:-28952}
+  database: audit${env:AUDIT_PG_NS}
+  username: provisa_reader
+  password: provisa_reader
+  description: The audit firm's own database -- its clients, their schedules of federal awards and
+    their award records
+- id: govdata
+  type: govdata
+  # The AskAmerica key, needed only to land the tables: the bundle build has it. A sandbox reads
+  # the landed replicas and never this source, so it runs with none (REQ-2031).
+  username: ${env:ASKAMERICA_API_KEY:-}
+  database: fiscal
+  cache_ttl: -1
+  replicate: 0
+  description: Government data from AskAmerica -- Federal Audit Clearinghouse filings and
+    USAspending obligations, landed once when the demo is built
+tables:
+- source_id: firm
+  domain_id: audit
+  schema: public
+  table: clients
+  description: The firm's Single Audit clients -- nine nonprofits, the county each is in and the
+    engagement team auditing it
+  columns:
+  - {name: client_id, data_type: integer, is_primary_key: true, description: The client's number, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: client_name, data_type: varchar, description: The client's name, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: ein, data_type: varchar, description: The client's employer identification number, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: city, data_type: varchar, description: The city the client is in, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: state, data_type: varchar, description: "The client's state's postal abbreviation", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: county_fips, data_type: varchar, description: "The 5-digit FIPS code of the client's county", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: engagement_team, data_type: varchar, description: 'The engagement team auditing it: vermont, new_hampshire or maine', visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: fiscal_year_end, data_type: date, description: "The last day of the client's fiscal year under audit", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+- source_id: firm
+  domain_id: audit
+  schema: public
+  table: grant_schedule
+  description: "Each client's draft Schedule of Expenditures of Federal Awards for its 2023 audit --
+    one line an award: its Assistance Listing, direct or passed through, and what was spent"
+  enable_aggregates: true
+  enable_group_by: true
+  columns:
+  - {name: line_id, data_type: integer, is_primary_key: true, description: The schedule line's number, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: client_id, data_type: integer, description: The client whose schedule it is, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: audit_year, data_type: integer, description: The year of the audit it is for, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: aln, data_type: varchar, description: 'The Assistance Listing number of the federal program (formerly CFDA)', visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: program_name, data_type: varchar, description: The federal program's name, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: award_number, data_type: varchar, description: "The firm's reference for the award", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: is_direct, data_type: varchar, description: 'Y for an award straight from a federal agency, N for one passed through a state agency', visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: passthrough_entity, data_type: varchar, description: The agency that passed the money through; empty for a direct award, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: amount_expended, data_type: decimal, description: What the client says it spent of the award in the year in USD, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+- source_id: firm
+  domain_id: audit
+  schema: public
+  table: award_notices
+  description: The federal award records each client holds for its direct awards -- one row an
+    obligation, the federal fiscal year it was made in and how much
+  enable_aggregates: true
+  enable_group_by: true
+  columns:
+  - {name: notice_id, data_type: integer, is_primary_key: true, description: The record's number, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: client_id, data_type: integer, description: The client the award was made to, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: aln, data_type: varchar, description: The Assistance Listing number of the federal program, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: award_number, data_type: varchar, description: "The firm's reference for the award", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: action_fiscal_year, data_type: integer, description: 'The federal fiscal year the money was obligated in (October to September, named for its September)', visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: obligated_amount, data_type: decimal, description: What was obligated in USD, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: period_start, data_type: date, description: "The first day of the award's period of performance", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: period_end, data_type: date, description: "The last day of the award's period of performance", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+- source_id: govdata
+  domain_id: audit
+  schema: fiscal
+  table: fac_awards_vs_usaspending
+  alias: filed_awards
+  # The 2023 Single Audits of the three states the firm's clients are in.
+  landing_filter: audit_year = 2023 AND auditee_state IN ('VT', 'NH', 'ME')
+  description: "Every award line of the 2023 Single Audits filed with the Federal Audit
+    Clearinghouse in Vermont, New Hampshire and Maine, beside what USAspending obligated to the
+    same recipient under the same Assistance Listing that year -- matched or not"
+  enable_aggregates: true
+  enable_group_by: true
+  columns:
+  - {name: report_id, data_type: varchar, description: "The Clearinghouse's identifier of the filing", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: award_reference, data_type: varchar, description: The award line within the filing, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: audit_year, data_type: integer, description: The year of the audit, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: auditee_name, data_type: varchar, description: The organisation audited, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: auditee_state, data_type: varchar, description: "The auditee's state's postal abbreviation", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: aln, data_type: varchar, description: The Assistance Listing number of the federal program, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: federal_program_name, data_type: varchar, description: "The program's name as the filing gives it", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: is_direct, data_type: varchar, description: 'Y for a direct award, N for one passed through: a passed-through line is not expected to match a federal award to the auditee', visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: amount_expended, data_type: double, description: What the auditee spent of the award in the audit year in USD, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: usaspending_obligated, data_type: double, description: 'What USAspending recorded obligating to the auditee under the listing that fiscal year in USD; empty where nothing matched', visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: matched_usaspending, data_type: boolean, description: 'Whether USAspending has an obligation to the auditee under the listing that fiscal year', visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+- source_id: govdata
+  domain_id: audit
+  schema: fiscal
+  table: usaspending_assistance_by_county
+  alias: county_obligations
+  # Federal fiscal 2023 in the nine counties the firm's clients are in.
+  landing_filter: year = 2023 AND county_fips IN ('50007', '50023', '50025', '33011', '33013', '33007', '23005', '23019', '23003')
+  description: "Federal assistance USAspending recorded obligating in each of the clients' counties
+    in federal fiscal 2023, by Assistance Listing, where the work is done"
+  columns:
+  - {name: year, data_type: integer, description: The federal fiscal year, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: county_fips, data_type: varchar, description: "The county's 5-digit FIPS code", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: assistance_listing, data_type: varchar, description: The Assistance Listing number of the federal program, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: assistance_listing_title, data_type: varchar, description: "The program's name", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: obligated_amount, data_type: double, description: What was obligated there under the listing in USD, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: transactions, data_type: bigint, description: The award actions behind it, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+rls_rules:
+# Each engagement team reads only the clients it audits, their records and their readiness rows.
+- {description: "The Vermont team reads only its own clients.", table_id: clients, role_id: vermont_team, filter: "engagement_team = 'vermont'"}
+- {description: "The Vermont team reads only its own clients' schedules.", table_id: grant_schedule, role_id: vermont_team, filter: "client_id IN (SELECT own_c.client_id FROM \"audit\".\"clients\" AS own_c WHERE own_c.engagement_team = 'vermont')"}
+- {description: "The Vermont team reads only its own clients' award records.", table_id: award_notices, role_id: vermont_team, filter: "client_id IN (SELECT own_c.client_id FROM \"audit\".\"clients\" AS own_c WHERE own_c.engagement_team = 'vermont')"}
+- {description: "The Vermont team reads only its own clients' readiness.", table_id: view_readiness, role_id: vermont_team, filter: "engagement_team = 'vermont'"}
+- {description: "The New Hampshire team reads only its own clients.", table_id: clients, role_id: new_hampshire_team, filter: "engagement_team = 'new_hampshire'"}
+- {description: "The New Hampshire team reads only its own clients' schedules.", table_id: grant_schedule, role_id: new_hampshire_team, filter: "client_id IN (SELECT own_c.client_id FROM \"audit\".\"clients\" AS own_c WHERE own_c.engagement_team = 'new_hampshire')"}
+- {description: "The New Hampshire team reads only its own clients' award records.", table_id: award_notices, role_id: new_hampshire_team, filter: "client_id IN (SELECT own_c.client_id FROM \"audit\".\"clients\" AS own_c WHERE own_c.engagement_team = 'new_hampshire')"}
+- {description: "The New Hampshire team reads only its own clients' readiness.", table_id: view_readiness, role_id: new_hampshire_team, filter: "engagement_team = 'new_hampshire'"}
+- {description: "The Maine team reads only its own clients.", table_id: clients, role_id: maine_team, filter: "engagement_team = 'maine'"}
+- {description: "The Maine team reads only its own clients' schedules.", table_id: grant_schedule, role_id: maine_team, filter: "client_id IN (SELECT own_c.client_id FROM \"audit\".\"clients\" AS own_c WHERE own_c.engagement_team = 'maine')"}
+- {description: "The Maine team reads only its own clients' award records.", table_id: award_notices, role_id: maine_team, filter: "client_id IN (SELECT own_c.client_id FROM \"audit\".\"clients\" AS own_c WHERE own_c.engagement_team = 'maine')"}
+- {description: "The Maine team reads only its own clients' readiness.", table_id: view_readiness, role_id: maine_team, filter: "engagement_team = 'maine'"}
+views:
+# The answer: each award on a client's schedule beside the federal award records it holds for it
+# and the public record of the same program -- what USAspending obligated under the listing in the
+# client's county, and how the state's other filings of it matched USAspending -- with the
+# finding: matched, timing (obligated in an earlier fiscal year only), missing (no federal award
+# record), passed through (none expected), and, from the records' side, unrecorded (a federal
+# award the schedule leaves out). Stored, and built again when its inputs change.
+- id: readiness
+  domain_id: audit
+  materialize: true
+  enable_aggregates: true
+  enable_group_by: true
+  description: "Each award on a client's 2023 schedule beside its federal award records and the
+    public record of the same program, with what the auditor finds"
+  sql: >-
+    SELECT c.client_name, c.state, c.engagement_team,
+           s.aln, s.program_name, s.award_number, s.is_direct, s.amount_expended,
+           n.obligated_fy2023, n.obligated_earlier,
+           CASE WHEN s.is_direct = 'N' THEN 'passed through'
+                WHEN n.obligated_fy2023 IS NOT NULL THEN 'matched'
+                WHEN n.obligated_earlier IS NOT NULL THEN 'timing'
+                ELSE 'missing' END AS finding,
+           k.obligated_amount AS county_obligated,
+           p.direct_lines AS state_direct_lines,
+           p.matched_lines AS state_matched_lines
+    FROM "audit"."grant_schedule" AS s
+    JOIN "audit"."clients" AS c ON c.client_id = s.client_id
+    LEFT JOIN (
+      SELECT a.award_number,
+             SUM(CASE WHEN a.action_fiscal_year = 2023 THEN a.obligated_amount END) AS obligated_fy2023,
+             SUM(CASE WHEN a.action_fiscal_year < 2023 THEN a.obligated_amount END) AS obligated_earlier
+      FROM "audit"."award_notices" AS a
+      GROUP BY a.award_number
+    ) AS n ON n.award_number = s.award_number
+    LEFT JOIN "audit"."county_obligations" AS k
+      ON k.county_fips = c.county_fips AND k.assistance_listing = s.aln
+    LEFT JOIN (
+      SELECT f.auditee_state, f.aln, COUNT(*) AS direct_lines,
+             SUM(CASE WHEN f.matched_usaspending THEN 1 ELSE 0 END) AS matched_lines
+      FROM "audit"."filed_awards" AS f
+      WHERE f.is_direct = 'Y'
+      GROUP BY f.auditee_state, f.aln
+    ) AS p ON p.auditee_state = c.state AND p.aln = s.aln
+    UNION ALL
+    SELECT c.client_name, c.state, c.engagement_team,
+           a.aln, k.assistance_listing_title, a.award_number, 'Y', NULL,
+           a.obligated_amount, NULL,
+           'unrecorded',
+           k.obligated_amount, NULL, NULL
+    FROM "audit"."award_notices" AS a
+    JOIN "audit"."clients" AS c ON c.client_id = a.client_id
+    LEFT JOIN "audit"."county_obligations" AS k
+      ON k.county_fips = c.county_fips AND k.assistance_listing = a.aln
+    WHERE a.action_fiscal_year = 2023
+      AND a.award_number NOT IN (SELECT g.award_number FROM "audit"."grant_schedule" AS g)
+  columns:
+  - {name: client_name, data_type: varchar, description: The client, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: state, data_type: varchar, description: "The client's state", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: engagement_team, data_type: varchar, description: The engagement team auditing it, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: aln, data_type: varchar, description: The Assistance Listing number of the federal program, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: program_name, data_type: varchar, description: The federal program's name, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: award_number, data_type: varchar, description: "The firm's reference for the award", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: is_direct, data_type: varchar, description: 'Y for a direct award, N for one passed through', visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: amount_expended, data_type: decimal, description: 'What the schedule says was spent in USD; empty for an award the schedule leaves out', visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: obligated_fy2023, data_type: decimal, description: What the federal award records show obligated in federal fiscal 2023 in USD, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: obligated_earlier, data_type: decimal, description: What they show obligated in earlier federal fiscal years in USD, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: finding, data_type: varchar, description: 'What the auditor finds: matched, timing, missing, passed through or unrecorded', visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: county_obligated, data_type: double, description: "What USAspending recorded obligating under the listing in the client's county in federal fiscal 2023 in USD", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: state_direct_lines, data_type: bigint, description: "The direct award lines of the listing in the state's 2023 Single Audits", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: state_matched_lines, data_type: bigint, description: Those USAspending has a matching obligation for, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+# The same match run on the public record: each state's 2023 Single Audit award lines by
+# Assistance Listing and direct or passed through, how many USAspending matched and how many it
+# did not. An unmatched line is not by itself a gap: a passed-through line (is_direct N) reached
+# the auditee through a state agency, so no federal award names it and none is expected to match,
+# and a multi-year award obligated in an earlier year does not show in the audit year.
+- id: public_match
+  domain_id: audit
+  enable_aggregates: true
+  enable_group_by: true
+  description: "The 2023 Single Audit award lines of Vermont, New Hampshire and Maine by Assistance
+    Listing, and how many USAspending matched"
+  sql: >-
+    SELECT f.auditee_state AS state, f.aln, MAX(f.federal_program_name) AS program_name,
+           f.is_direct, COUNT(*) AS lines,
+           SUM(CASE WHEN f.matched_usaspending THEN 1 ELSE 0 END) AS matched_lines,
+           SUM(CASE WHEN f.matched_usaspending THEN 0 ELSE 1 END) AS unmatched_lines,
+           SUM(f.amount_expended) AS expended,
+           SUM(f.usaspending_obligated) AS obligated
+    FROM "audit"."filed_awards" AS f
+    GROUP BY f.auditee_state, f.aln, f.is_direct
+  columns:
+  - {name: state, data_type: varchar, description: "The auditees' state", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: aln, data_type: varchar, description: The Assistance Listing number of the federal program, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: program_name, data_type: varchar, description: "The program's name as a filing gives it", visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: is_direct, data_type: varchar, description: 'Y for direct awards, N for passed-through ones', visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: lines, data_type: bigint, description: The award lines filed, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: matched_lines, data_type: bigint, description: Those USAspending has a matching obligation for that year, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: unmatched_lines, data_type: bigint, description: Those it has none for, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: expended, data_type: double, description: What the auditees spent in USD, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+  - {name: obligated, data_type: double, description: What USAspending recorded obligating to them in USD, visible_to: [data_steward, partner, vermont_team, new_hampshire_team, maine_team]}
+relationships:
+- {id: schedule-line-to-client, alias: SCHEDULED_BY, cardinality: many-to-one, source_table_id: grant_schedule, source_column: client_id, target_table_id: clients, target_column: client_id}
+- {id: award-notice-to-client, alias: AWARDED_TO, cardinality: many-to-one, source_table_id: award_notices, source_column: client_id, target_table_id: clients, target_column: client_id}
+- {id: schedule-line-to-award-notices, alias: RECORDED_AS, cardinality: one-to-many, source_table_id: grant_schedule, source_column: award_number, target_table_id: award_notices, target_column: award_number}
+- {id: client-to-county-obligations, alias: OBLIGATED_IN, cardinality: one-to-many, source_table_id: clients, source_column: county_fips, target_table_id: county_obligations, target_column: county_fips}
+# The public record of the same program: an award's Assistance Listing to what USAspending
+# obligated under it in each county, and to the state's filed award lines of it; a client's state
+# to that state's filings. readiness joins on each.
+- {id: schedule-line-to-county-obligations, alias: LISTING_OBLIGATED_IN, cardinality: one-to-many, source_table_id: grant_schedule, source_column: aln, target_table_id: county_obligations, target_column: assistance_listing}
+- {id: award-notice-to-county-obligations, alias: LISTING_OBLIGATED_IN, cardinality: one-to-many, source_table_id: award_notices, source_column: aln, target_table_id: county_obligations, target_column: assistance_listing}
+- {id: schedule-line-to-filed-awards, alias: LISTING_FILED_AS, cardinality: one-to-many, source_table_id: grant_schedule, source_column: aln, target_table_id: filed_awards, target_column: aln}
+- {id: client-to-state-filings, alias: STATE_FILINGS, cardinality: one-to-many, source_table_id: clients, source_column: state, target_table_id: filed_awards, target_column: auditee_state}
+# The words of a Single Audit, grounded through their edges in the terms the firm's and the public
+# tables' columns derive (expended, obligated, Assistance Listing).
+glossary_terms:
+- name: Single Audit
+  approve: true
+  definition: 'The audit the Uniform Guidance requires of an organisation that spends $750,000 or more of federal awards in a year ($1,000,000 from fiscal 2025): its financial statements and its compliance with each major program, filed with the Federal Audit Clearinghouse.'
+  domains:
+  - audit
+- name: Schedule of Expenditures of Federal Awards
+  approve: true
+  definition: 'The schedule an auditee prepares of every federal award it spent in the year, by Assistance Listing, direct or passed through, with the amount expended; the auditor tests it against the award records.'
+  domains:
+  - audit
+  edges:
+  - to: amount expended
+    rel_type: RELATED_TO
+  - to: Single Audit
+    rel_type: PART_OF
+- name: Assistance Listing
+  approve: true
+  definition: 'The number a federal assistance program is listed under (formerly the CFDA number), agency prefix and program, such as 93.224 for the Health Center Program.'
+  domains:
+  - audit
+  edges:
+  - to: aln
+    rel_type: RELATED_TO
+- name: pass-through entity
+  approve: true
+  definition: 'A state or local agency that receives a federal award and passes it on to a subrecipient. The money reaches the subrecipient as a subaward, so no federal award record names the subrecipient.'
+  domains:
+  - audit
+  edges:
+  - to: passthrough entity
+    rel_type: RELATED_TO
+- name: obligation
+  approve: true
+  definition: 'The federal government binding itself to pay an award, recorded in the federal fiscal year (October to September) it is made in; a multi-year award may be obligated years before it is spent.'
+  domains:
+  - audit
+  edges:
+  - to: obligated amount
+    rel_type: RELATED_TO
+- name: timing difference
+  approve: true
+  definition: 'An award spent in the audit year whose money was obligated in an earlier federal fiscal year: it is on the schedule and on the award records, in different years.'
+  domains:
+  - audit
+  edges:
+  - to: obligation
+    rel_type: RELATED_TO
+- name: missing award
+  approve: true
+  definition: 'An award on the schedule as direct with no federal award record behind it: a wrong Assistance Listing, an award passed through and scheduled as direct, or an award record the client does not hold.'
+  domains:
+  - audit
+  edges:
+  - to: Schedule of Expenditures of Federal Awards
+    rel_type: RELATED_TO
+- name: readiness memo
+  approve: true
+  definition: "The engagement team's memo before fieldwork: each difference between the client's schedule and its award records the client must explain or correct before the audit starts."
+  domains:
+  - audit
+  edges:
+  - to: Single Audit
+    rel_type: RELATED_TO

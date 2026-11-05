@@ -12,6 +12,7 @@ import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "../context/AuthContext";
 import { adoptCacheScope } from "../apolloClient";
 import { bindStorageScope, storageKey, type StorageScope } from "../lib/browserStorage";
+import { requestDataAddresses } from "../lib/dataAddress";
 import { PageLoading } from "./PageLoading";
 
 function same(a: StorageScope | null, b: StorageScope | null): boolean {
@@ -41,6 +42,8 @@ export function StorageScopeGate({ children }: { children: ReactNode }) {
     }
     bindStorageScope(wanted);
     void adoptCacheScope(storageKey(""));
+    // REQ-1916: where this scope's data calls go is asked before its pages mount and make any.
+    requestDataAddresses();
     setShown(wanted);
     /* eslint-enable react-hooks/set-state-in-effect */
     // eslint-disable-next-line react-hooks/exhaustive-deps -- wantedKey is `wanted` by value

@@ -16,14 +16,13 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Badge, Group, Table, Text, TextInput, Textarea } from "@mantine/core";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil } from "lucide-react";
 import {
   deleteDerivedRole,
   saveDerivedRole,
   type DeclaredDerivedRole as DerivedRole,
 } from "../../api/admin";
 import { useAuth } from "../../context/AuthContext";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { DetailFields } from "../../components/detail/DetailFields";
 import {
   FormField,
@@ -33,9 +32,13 @@ import {
 } from "../../components/form/FormLayout";
 import { ListRow } from "../../components/list/ListTable";
 import { PanelActions } from "../../components/list/SplitPane";
+import { PanelDelete } from "../../components/list/PanelDelete";
 import { Tip } from "../../components/Tip";
 import { SEPARATOR, type DerivedPick } from "../../hooks/useDerivedRoles";
 import { matchesQuery } from "../../lib/searchItems";
+
+/** A derived role's key in the roles list, apart from the plain roles' ids (REQ-2198). */
+const derivedRowKey = (attribute: string) => `derived:${attribute}`;
 
 /** The list rows of the derived roles that match ``search``: each parent, then its value roles. */
 export function DerivedRoleRows({
@@ -80,6 +83,7 @@ function DerivedRowGroup({
   return (
     <>
       <ListRow
+        itemKey={derivedRowKey(d.attribute)}
         testId={`derived-role-row-${d.attribute}`}
         selected={isPicked(null)}
         onClick={() => onPick({ attribute: d.attribute, value: null })}
@@ -225,15 +229,13 @@ export function DerivedRoleDetail({
       setProblem(e instanceof Error ? e.message : String(e));
     }
   };
+  // REQ-2198: the panel's Delete (PanelDelete) shows the delete's progress and says why one
+  // failed; it resolves once the list is read again without the role.
   const remove = async () => {
     setProblem(null);
-    try {
-      await deleteDerivedRole(role.attribute);
-      await rebind();
-      await onDeleted();
-    } catch (e) {
-      setProblem(e instanceof Error ? e.message : String(e));
-    }
+    await deleteDerivedRole(role.attribute);
+    await rebind();
+    await onDeleted();
   };
 
   if (editing) {
@@ -278,24 +280,14 @@ export function DerivedRoleDetail({
                 <Pencil size={14} />
               </ActionIcon>
             </Tip>
-            <ConfirmDialog
+            <PanelDelete
+              itemKey={derivedRowKey(role.attribute)}
               title={t("securityPage.deleteDerivedTitle", { id: role.attribute })}
               consequence={t("securityPage.deleteDerivedConsequence")}
-              onConfirm={remove}
-            >
-              {(open) => (
-                <Tip text={t("securityPage.delete")} named>
-                  <ActionIcon
-                    color="red"
-                    aria-label={t("securityPage.delete")}
-                    data-testid={`delete-derived-role-${role.attribute}`}
-                    onClick={open}
-                  >
-                    <Trash2 size={14} />
-                  </ActionIcon>
-                </Tip>
-              )}
-            </ConfirmDialog>
+              ariaLabel={t("securityPage.delete")}
+              testId={`delete-derived-role-${role.attribute}`}
+              onDelete={remove}
+            />
           </Group>
         </fieldset>
       </PanelActions>

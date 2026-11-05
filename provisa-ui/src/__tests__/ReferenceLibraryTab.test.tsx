@@ -26,6 +26,8 @@ const api = vi.hoisted(() => ({
   reembedLibrary: vi.fn(),
   uploadLibraryVersion: vi.fn(),
   removeLibraryDocument: vi.fn(),
+  fetchRetrieval: vi.fn(),
+  saveRetrieval: vi.fn(),
 }));
 vi.mock("../api/referenceLibrary", () => api);
 vi.mock("../hooks/useAdminQueries", () => ({
@@ -64,6 +66,8 @@ const PROPOSED = {
 beforeEach(() => {
   Object.values(api).forEach((fn) => fn.mockReset());
   api.fetchLibrary.mockResolvedValue([URL_DOC, PROPOSED]);
+  api.fetchRetrieval.mockResolvedValue("passage");
+  api.saveRetrieval.mockImplementation(async (r: string) => r);
   api.fetchLibraryDocument.mockImplementation(async (id: number) => ({
     ...(id === 3 ? URL_DOC : PROPOSED),
     passage_list: [
@@ -81,6 +85,33 @@ describe("scopeChange", () => {
 });
 
 describe("ReferenceLibraryTab", () => {
+  it("shows the library's retrieval setting and saves a change to it", async () => {
+    render(<ReferenceLibraryTab />);
+    const setting = await screen.findByTestId("reflib-retrieval");
+    expect(setting).toHaveTextContent("Retrieval");
+    const passage = within(setting).getByLabelText("Passage") as HTMLInputElement;
+    await waitFor(() => expect(passage.checked).toBe(true));
+    fireEvent.click(within(setting).getByText("Graph"));
+    await waitFor(() => expect(api.saveRetrieval).toHaveBeenCalledWith("graph"));
+    await waitFor(() =>
+      expect((within(setting).getByLabelText("Graph") as HTMLInputElement).checked).toBe(true),
+    );
+  });
+
+  it("puts the setting back and says why when it is refused", async () => {
+    api.saveRetrieval.mockRejectedValue(new Error("the org has no vector model"));
+    render(<ReferenceLibraryTab />);
+    const setting = await screen.findByTestId("reflib-retrieval");
+    await waitFor(() =>
+      expect((within(setting).getByLabelText("Passage") as HTMLInputElement).checked).toBe(true),
+    );
+    fireEvent.click(within(setting).getByText("Graph"));
+    expect(await screen.findByTestId("reflib-error")).toHaveTextContent(
+      "the org has no vector model",
+    );
+    expect((within(setting).getByLabelText("Passage") as HTMLInputElement).checked).toBe(true);
+  });
+
   it("lists each document with its source, status and domains", async () => {
     render(<ReferenceLibraryTab />);
     const row = await screen.findByTestId("reflib-row-3");
@@ -121,6 +152,15 @@ describe("ReferenceLibraryTab", () => {
     fireEvent.click(await screen.findByTestId("reflib-confirm-confirm"));
     await waitFor(() => expect(api.removeLibraryDocument).toHaveBeenCalledWith(2));
     await waitFor(() => expect(screen.queryByTestId("reflib-row-2")).toBeNull());
+  });
+
+  it("offers eCFR's XML as a file it reads, as it reads an eCFR URL", async () => {
+    render(<ReferenceLibraryTab />);
+    fireEvent.click(await screen.findByTestId("reflib-add"));
+    const pickers = document.querySelectorAll<HTMLInputElement>('input[type="file"]');
+    expect(pickers.length).toBeGreaterThan(0);
+    pickers.forEach((picker) => expect(picker.accept.split(",")).toContain(".xml"));
+    expect(screen.getByRole("img", { name: /eCFR XML/ })).toBeInTheDocument();
   });
 
   it("adds a document by its URL with its domains", async () => {
@@ -184,5 +224,19 @@ describe("ReferenceLibraryTab", () => {
     render(<ReferenceLibraryTab />);
     await screen.findByTestId("reflib-row-3");
     expect(screen.queryByTestId("reflib-reembed-all")).toBeNull();
+  });
+
+  it("carries the page's (?) help, last among its actions", async () => {
+    render(<ReferenceLibraryTab />);
+    await screen.findByTestId("reflib-row-3");
+    const help = screen.getByRole("button", { name: "About the reference library" });
+    expect(help).toBe(screen.getByTestId("reflib-page-help"));
+    expect(help.parentElement?.lastElementChild).toBe(help);
+    fireEvent.click(help);
+    const card = await screen.findByTestId("reflib-page-help-card");
+    expect(card).toHaveTextContent("Not a document store.");
+    expect(card).toHaveTextContent("search_reference_library");
+    expect(card).toHaveTextContent("Re-embed is needed only when that model changes.");
+    expect(card).not.toHaveTextContent(/\bRAG\b/);
   });
 });

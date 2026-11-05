@@ -1305,4 +1305,31 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     # REQ-1386 (ONTOLOGY QUALITY IS A STANDARD REPORT): the glossary measured from the model, by
     # domain and by steward. They read the ontology schema's views, which the seed creates first.
     **ONTOLOGY_QUALITY_VIEWS,
+    # REQ-1386 (SENSITIVE COVERAGE IS A STANDARD REPORT): every sensitive column, its tags, whether
+    # a fake covers it, and why not -- read from the meta view sensitive_coverage, which the seed
+    # creates first. Named apart from it: both are relations of the one schema under provisa-admin.
+    # REQ-2147 (CONTAINED VALUES ARE HINTS): with them, every column a scan found a sensitive kind
+    # inside and that nothing restricts -- no sensitive tag and no mask (what a profile treats as
+    # restricted) -- status hinted, its hints the reason. A hint is never a classification: the
+    # column is listed for a person to decide on, and nothing is applied to it.
+    "sensitive_column_coverage": """
+        CREATE OR REPLACE VIEW sensitive_column_coverage AS
+        SELECT sc.column_key AS id, sc.table_id, sc.table_name, sc.domain_id, sc.column_name,
+               sc.tags, sc.status, sc.reason
+        FROM sensitive_coverage sc
+        UNION ALL
+        SELECT CAST(h.table_id AS TEXT) || ':' || h.physical_column AS id, h.table_id,
+               rt.table_name, rt.domain_id, h.physical_column AS column_name,
+               CAST(NULL AS TEXT) AS tags, 'hinted' AS status,
+               STRING_AGG(h.evidence, '; ' ORDER BY h.kind) AS reason
+        FROM profiler_sensitive_hints h
+        JOIN registered_tables rt ON rt.id = h.table_id
+        JOIN table_columns tc ON tc.table_id = h.table_id AND tc.column_name = h.physical_column
+        WHERE jsonb_array_length(tc.masks) = 0
+          AND NOT EXISTS (
+              SELECT 1 FROM sensitive_coverage s
+              WHERE s.table_id = h.table_id AND s.column_name = h.physical_column
+          )
+        GROUP BY h.table_id, rt.table_name, rt.domain_id, h.physical_column
+    """,
 }

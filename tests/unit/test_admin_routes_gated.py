@@ -110,6 +110,11 @@ EXEMPT: dict[tuple[str, str], str] = {
         "/admin/creation-requests/rejection-reasons",
     ): "static vocabulary for the request form",
     ("GET", "/admin/platform/maintenance"): "REQ-1466: the notice banner every client renders",
+    (
+        "GET",
+        "/admin/data-addresses",
+    ): "REQ-1916: every signed-in UI user picks a data address from it, whatever their role; "
+    "the bearer gate refuses a caller with no sign-in (test_ui_data_addresses)",
     # --- the GraphQL endpoint itself; its resolvers are checked individually below --------------
     ("GET", "/admin/graphql"): "transport; per-resolver gates are checked in the GraphQL pass",
     ("POST", "/admin/graphql"): "transport; per-resolver gates are checked in the GraphQL pass",
@@ -148,6 +153,14 @@ EXEMPT[("graphql:query", "namingConventions")] = (
 EXEMPT[("graphql:query", "dqContractParse")] = (
     "parses the contract text it is given; touches no source, credential or model row"
 )
+# The saved ERD arrangement (REQ-2189): positions only, no model content; the ERD is shown to every
+# role in Schema Explorer, and a layout's places are trimmed to what the caller reads.
+_ERD_LAYOUT_READ = (
+    "saved ERD arrangement (positions only, no model content); the ERD is shown to every role in "
+    "Schema Explorer"
+)
+EXEMPT[("GET", "/admin/erd-layouts")] = _ERD_LAYOUT_READ
+EXEMPT[("GET", "/admin/erd-layouts/{name}")] = _ERD_LAYOUT_READ
 
 
 def _callees(fn) -> set[str]:

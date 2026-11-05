@@ -39,7 +39,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Iterable, Mapping
 
-from provisa.core.column_scope import SCOPE_PUBLIC
+from provisa.core.column_scope import SCOPE_OWN_DOMAIN, SCOPE_PUBLIC
 from provisa.security.rights import (
     ALL_DOMAINS,
     DEFAULT_TIER_META_TABLES,
@@ -50,6 +50,7 @@ from provisa.security.rights import (
     VIEWER_ROLE,
     Capability,
     normalized_reach,
+    reaches_domain,
 )
 
 GRANT_LISTS = ("visible_to",)
@@ -357,6 +358,43 @@ def expand_grants(items: Iterable[dict], chains: dict[str, list[str]]) -> None:
 def expand_column_grants(tables: Iterable[dict], chains: dict[str, list[str]]) -> None:
     for t in tables:
         expand_grants(t.get("columns") or [], chains)
+
+
+#: A role's own ``domain_access``, as stored: before the domain tree folds the domains under each
+#: listed one into it (REQ-1363). What an own-domain column is served by (REQ-2153).
+OWN_DOMAIN_ACCESS = "own_domain_access"
+
+
+def with_own_domains(roles: Iterable[dict]) -> list[dict]:
+    """Each role with its stored ``domain_access`` kept as :data:`OWN_DOMAIN_ACCESS`, which the
+    domain tree's flattening and inheritance carry through untouched. Applied to the stored rows,
+    before the tree. Input dicts are not modified."""
+    return [{**r, OWN_DOMAIN_ACCESS: list(r["domain_access"])} for r in roles]
+
+
+def narrow_own_domain_grants(tables: Iterable[dict], roles: Iterable[dict]) -> None:
+    """Take out of each own-domain column's grant every entry naming a role whose own domain access
+    (:func:`with_own_domains`) does not name the table's domain, ``*`` naming every domain
+    (REQ-2153). A role reaching the domain only through an ancestor is served the column no
+    longer, though its grant names it. Run after the grants are folded down the role chains
+    (:func:`expand_column_grants`), so a descendant granted through an ancestor is narrowed by its
+    own list. An entry naming a role ``roles`` does not hold reaches no reader and goes too. On the
+    build's own copies."""
+    own: dict[str, list[str]] | None = None
+    for t in tables:
+        domain_id = t["domain_id"]
+        for column in t.get("columns") or []:
+            if column.get("scope") != SCOPE_OWN_DOMAIN:
+                continue
+            if own is None:  # read only when an own-domain column is met
+                own = {r["id"]: r[OWN_DOMAIN_ACCESS] for r in roles}
+            column["visible_to"] = [
+                e
+                for e in column.get("visible_to") or []
+                if all(
+                    role in own and reaches_domain(own[role], domain_id) for role in grant_parts(e)
+                )
+            ]
 
 
 def expand_meta_grants(tables: Iterable[dict], roles: Iterable[dict]) -> None:

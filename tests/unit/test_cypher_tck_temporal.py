@@ -193,3 +193,33 @@ def test_a_session_time_with_its_offset_has_its_accessors(monkeypatch):
         }
     ]
     assert s.run("MATCH (v:Val) RETURN v.date.hour AS h") == [{"h": 12}]
+
+
+@pytest.mark.parametrize(
+    ("query", "text"),
+    [
+        # Temporal1 [8] #8: a date time with the default time zone
+        ("RETURN datetime({year: 1984, month: 10, day: 11}) AS d", "1984-10-11T00:00Z"),
+        # Temporal9 [2] #66: truncated to the week, in the default time zone
+        (
+            "RETURN datetime.truncate('week', localdatetime({year: 1984, month: 10, day: 11,"
+            " hour: 12, minute: 31, second: 14})) AS d",
+            "1984-10-08T00:00Z",
+        ),
+        # Temporal2 [5] #2: parsed with an offset of zero
+        ("RETURN datetime('2015-07-21T21:40:32.142Z') AS d", "2015-07-21T21:40:32.142Z"),
+    ],
+)
+def test_a_date_time_read_in_utc_is_written_without_a_region(query, text):
+    """The engine reads a timestamptz through Arrow in its session zone, UTC (arrow_rows), and
+    openCypher writes a date time in UTC as ``Z``, naming no region, as it does a fixed offset."""
+    from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
+    from provisa.gql.temporal import cypher_text
+
+    sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
+    con = duckdb.connect()
+    con.execute("SET TimeZone = 'UTC'")  # as the engine runs (federation/duckdb_runtime.py)
+    con.execute(LOSSLESS_ARROW)
+    con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres")))
+    ((value,),) = arrow_rows(con.to_arrow_table())
+    assert cypher_text(value) == text

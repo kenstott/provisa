@@ -36,6 +36,8 @@
     "itemEmail": "メール",
     "itemMaintenance": "メンテナンス",
     "itemDeploymentSettings": "デプロイ設定",
+    "itemPlatform": "プラットフォーム",
+    "itemRegions": "リージョン",
     "itemBilling": "請求",
     "itemExplore": "MCP",
     "itemEncryption": "暗号化",

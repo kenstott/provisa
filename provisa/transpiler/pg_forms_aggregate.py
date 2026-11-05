@@ -10,9 +10,9 @@
 
 """PostgreSQL's aggregate state functions a client can call (REQ-2171): each a step of an aggregate
 over an array, so a form of array and arithmetic operators in PostgreSQL's syntax, which sqlglot
-renders for every dialect. Each follows src/backend/utils/adt/float.c or numeric.c line by line,
-with its checks: a state of the wrong size, and a float's overflow. The state functions of type
-internal have no call from SQL at all."""
+renders for every dialect, and the final functions that read such a state. Each follows
+src/backend/utils/adt/float.c or numeric.c line by line, with its checks: a state of the wrong
+size, and a float's overflow. The state functions of type internal have no call from SQL at all."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -204,10 +204,14 @@ def _regression_combine() -> Form:
     )
 
 
-def _no_aggregate(name: str, message: str) -> Form:
-    """A step PostgreSQL runs only inside an aggregate, and refuses by that name outside one."""
-    raised = refused(_INTERNAL_ERROR, f"'{message}'", "BIGINT")
-    return Form(name, "a, b", _strict("a, b", "BIGINT", f"ELSE {raised}"))
+def _no_aggregate(name: str, message: str, result: str) -> Form:
+    """A step PostgreSQL runs only inside an aggregate, and refuses by that name outside one: its
+    NULL of what the step returns (a range is held as its text), an array's refusal its element."""
+    element = result.removesuffix("[]")
+    raised = refused(_INTERNAL_ERROR, f"'{message}'", element)
+    if element != result:
+        raised = f"CAST(ARRAY[{raised}] AS {result})"
+    return Form(name, "a, b", _strict("a, b", result, f"ELSE {raised}"))
 
 
 STATE_FUNCTIONS: tuple[Form, ...] = (
@@ -218,14 +222,18 @@ STATE_FUNCTIONS: tuple[Form, ...] = (
     _average_step("int4_avg_accum", "+"),
     _average_step("int2_avg_accum_inv", "-"),
     _average_step("int4_avg_accum_inv", "-"),
-    _no_aggregate("int4_avg_combine", "aggregate function called in non-aggregate context"),
+    _no_aggregate(
+        "int4_avg_combine", "aggregate function called in non-aggregate context", "BIGINT[]"
+    ),
     _no_aggregate(
         "range_intersect_agg_transfn",
         "range_intersect_agg_transfn called in non-aggregate context",
+        "VARCHAR",
     ),
     _no_aggregate(
         "multirange_intersect_agg_transfn",
         "multirange_intersect_agg_transfn called in non-aggregate context",
+        "VARCHAR",
     ),
     _accum("float8_accum"),
     _accum("float4_accum"),
@@ -233,5 +241,73 @@ STATE_FUNCTIONS: tuple[Form, ...] = (
     _regression_accum(),
     _regression_combine(),
 )
-#: The state functions whose arguments may be an array's text form, which no engine's cast reads.
-ARRAY_INPUT = frozenset(form.name for form in STATE_FUNCTIONS)
+
+
+def _root(value: str) -> str:
+    """C's sqrt, which is NaN below zero where an engine's may raise."""
+    return f"CASE WHEN {value} < 0 THEN {_NAN} ELSE sqrt({value}) END"
+
+
+def _final(name: str, size: int, answer: str, *nulls: str) -> Form:
+    """A final function of a float8 state: check_float8_array, then NULL where the state holds
+    too few rows, ``nulls`` in order, else ``answer``."""
+    message = refused(
+        _INTERNAL_ERROR, f"'{name}: expected {size}-element float8 array'", "DOUBLE PRECISION"
+    )
+    whens = (
+        f"WHEN {_wrong_size('a', size)} THEN {message}",
+        *(f"WHEN {null}" for null in nulls),
+        f"ELSE CAST({answer} AS DOUBLE PRECISION)",
+    )
+    return Form(name, "a", _strict("a", "DOUBLE PRECISION", *whens))
+
+
+_NONE = "THEN CAST(NULL AS DOUBLE PRECISION)"
+# N, Sx, Sxx of float8_accum; N, Sx, Sxx, Sy, Syy, Sxy of float8_regr_accum.
+_N, _SX, _SXX, _SY, _SYY, _SXY = (f"a[{at}]" for at in range(1, 7))
+_NO_ROWS = f"{_N} < 1 {_NONE}"
+_VERTICAL = f"{_SXX} = 0 {_NONE}"
+
+#: float8_avg and its kin (float.c): the final functions of avg, var, stddev, covar, corr, regr_*.
+FINAL_FUNCTIONS: tuple[Form, ...] = (
+    _final("float8_avg", 3, f"{_SX} / {_N}", f"{_N} = 0 {_NONE}"),
+    _final("float8_var_pop", 3, f"{_SXX} / {_N}", f"{_N} = 0 {_NONE}"),
+    _final("float8_var_samp", 3, f"{_SXX} / ({_N} - 1)", f"{_N} <= 1 {_NONE}"),
+    _final("float8_stddev_pop", 3, _root(f"{_SXX} / {_N}"), f"{_N} = 0 {_NONE}"),
+    _final("float8_stddev_samp", 3, _root(f"{_SXX} / ({_N} - 1)"), f"{_N} <= 1 {_NONE}"),
+    _final("float8_covar_pop", 6, f"{_SXY} / {_N}", _NO_ROWS),
+    _final("float8_covar_samp", 6, f"{_SXY} / ({_N} - 1)", f"{_N} < 2 {_NONE}"),
+    _final("float8_regr_avgx", 6, f"{_SX} / {_N}", _NO_ROWS),
+    _final("float8_regr_avgy", 6, f"{_SY} / {_N}", _NO_ROWS),
+    _final("float8_regr_sxx", 6, _SXX, _NO_ROWS),
+    _final("float8_regr_syy", 6, _SYY, _NO_ROWS),
+    _final("float8_regr_sxy", 6, _SXY, _NO_ROWS),
+    _final("float8_regr_slope", 6, f"{_SXY} / {_SXX}", _NO_ROWS, _VERTICAL),
+    _final(
+        "float8_regr_intercept",
+        6,
+        f"({_SY} - {_SX} * {_SXY} / {_SXX}) / {_N}",
+        _NO_ROWS,
+        _VERTICAL,
+    ),
+    # Per the standard, a horizontal line's r2 is 1.
+    _final(
+        "float8_regr_r2",
+        6,
+        f"({_SXY} * {_SXY}) / ({_SXX} * {_SYY})",
+        _NO_ROWS,
+        _VERTICAL,
+        f"{_SYY} = 0 THEN CAST(1.0 AS DOUBLE PRECISION)",
+    ),
+    # PostgreSQL 17 does not clamp a roundoff past 1.
+    _final(
+        "float8_corr",
+        6,
+        f"{_SXY} / {_root(f'{_SXX} * {_SYY}')}",
+        _NO_ROWS,
+        f"{_SXX} = 0 OR {_SYY} = 0 {_NONE}",
+    ),
+)
+#: The state and final functions whose arguments may be an array's text form, which no engine's
+#: cast reads.
+ARRAY_INPUT = frozenset(form.name for form in (*STATE_FUNCTIONS, *FINAL_FUNCTIONS))

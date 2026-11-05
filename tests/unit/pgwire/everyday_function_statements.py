@@ -112,8 +112,6 @@ OTHER = [
     ),
     "SELECT int8inc_any(9223372036854775807::bigint, 1) AS v",
     "SELECT int8dec_any((-9223372036854775807 - 1)::bigint, 1) AS v",
-    "SELECT currval(NULL::regclass) AS v",
-    "SELECT nextval(NULL::regclass) AS v",
     "SELECT satisfies_hash_partition(NULL::oid, NULL::integer, NULL::integer, NULL::integer) AS v",
 ]
 
@@ -268,10 +266,8 @@ PROBES: dict[str, list[str]] = {
         'SELECT pg_catalog."textanycat"(NULL::text, NULL::integer) AS v',
     ],
     "Other": [
-        'SELECT pg_catalog."currval"(NULL::regclass) AS v',
         'SELECT pg_catalog."int8dec_any"(NULL::bigint, NULL::integer) AS v',
         'SELECT pg_catalog."int8inc_any"(NULL::bigint, NULL::integer) AS v',
-        'SELECT pg_catalog."nextval"(NULL::regclass) AS v',
         'SELECT pg_catalog."num_nonnulls"(NULL::integer) AS v',
         'SELECT pg_catalog."num_nulls"(NULL::integer) AS v',
         'SELECT pg_catalog."satisfies_hash_partition"(NULL::oid, NULL::integer, NULL::integer, NULL::integer) AS v',

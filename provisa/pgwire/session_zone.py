@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from typing import Any
 from zoneinfo import ZoneInfo, available_timezones
 
-from buenavista.core import BVType, RawDataRowBytes
+from buenavista.core import BVType
 
 from provisa.core.pg_error import PostgresError
 from provisa.core.session_time_zone import StatementZone
@@ -298,18 +298,89 @@ def raw_row_formats(formats: list[int] | None, zone: str | None) -> list[int] | 
     return None
 
 
-def _in_zone(value: Any, tz: datetime.tzinfo) -> Any:
-    if getattr(value, "pg_infinity", 0):
+def _arrow_zone(tz: datetime.tzinfo) -> str:
+    """The zone an Arrow timestamp column is written in: a zone's name, or a fixed offset."""
+    key = getattr(tz, "key", None)
+    if key is not None:
+        return key
+    offset = tz.utcoffset(None)
+    if offset is None or offset.seconds % 60:
+        raise ValueError(f"no Arrow time zone for {tz!r}")
+    minutes = offset // datetime.timedelta(minutes=1)
+    sign = "-" if minutes < 0 else "+"
+    hours, minutes = divmod(abs(minutes), 60)
+    return f"{sign}{hours:02d}:{minutes:02d}"
+
+
+def _in_zone(column: Any, zone: str) -> Any:
+    import pyarrow as pa
+
+    kind = column.type
+    if not pa.types.is_timestamp(kind):
+        return column
+    if kind.tz is None:  # as the binary encoder refuses it, never taken for UTC
+        raise ValueError("timestamptz value without a time zone")
+    return column.cast(pa.timestamp(kind.unit, tz=zone))
+
+
+class _ZonedData:
+    """A result's batches with its ``columns`` written in ``zone``: an Arrow timestamp's zone is
+    what timestamptz_out writes its local time and offset in, so nothing else of the encoder
+    changes. The zone is the one in force when the batches are sent."""
+
+    def __init__(self, data: Any, columns: list[int], zone: SessionZone) -> None:
+        self._data = data
+        self._columns = columns
+        self._zone = zone
+        self.raw = data.raw
+        self.rows = data.rows
+
+    def take(self, limit: int = 0) -> Iterator[Any]:
+        import pyarrow as pa
+
+        if self.raw:
+            raise _unwritable(self._zone.current)  # a portal opened on UTC, read after a SET
+        if self.rows:
+            yield from self._rows_in_zone(limit)
+            return
+        try:
+            zone = _arrow_zone(self._zone.written_in())
+        except ValueError:
+            raise _unwritable(self._zone.current) from None
+        for batch in self._data.take(limit):
+            arrays = list(batch.columns)
+            for i in self._columns:
+                arrays[i] = _in_zone(arrays[i], zone)
+            yield pa.RecordBatch.from_arrays(arrays, names=batch.schema.names)
+
+    def _rows_in_zone(self, limit: int) -> Iterator[list[Any]]:
+        """A row result's batches (REQ-2195), each timestamptz value of ``columns`` the same
+        instant in the zone; an infinity is itself."""
+        zone = self._zone.written_in()
+        for batch in self._data.take(limit):
+            out = []
+            for row in batch:
+                cells = list(row)
+                for i in self._columns:
+                    cells[i] = _value_in_zone(cells[i], zone)
+                out.append(cells)
+            yield out
+
+
+def _value_in_zone(value: Any, zone: datetime.tzinfo) -> Any:
+    if (
+        value is None
+        or getattr(value, "pg_infinity", 0)
+        or not isinstance(value, datetime.datetime)
+    ):
         return value
     if value.tzinfo is None:  # as the binary encoder refuses it, never taken for UTC
-        raise ValueError(f"timestamptz value without a time zone: {value!r}")
-    return value.astimezone(tz)
+        raise ValueError("timestamptz value without a time zone")
+    return value.astimezone(zone)
 
 
 class _WrittenInZone:
-    """A result whose ``columns`` are held in ``zone``'s offset: timestamptz_out writes the offset
-    its value carries, so nothing else of the encoder changes. Rows are read one at a time, as the
-    result they come from is, and the zone is the one in force when they are sent."""
+    """A result whose ``columns`` are sent as text written in ``zone`` (see ``_ZonedData``)."""
 
     def __init__(self, result: Any, columns: list[int], zone: SessionZone) -> None:
         self._result = result
@@ -319,16 +390,8 @@ class _WrittenInZone:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._result, name)
 
-    def rows(self) -> Iterator[Any]:
-        tz = self._zone.written_in()
-        for row in self._result.rows():
-            if isinstance(row, RawDataRowBytes):
-                raise _unwritable(self._zone.current)  # a portal opened on UTC, read after a SET
-            written = list(row)
-            for i in self._columns:
-                if written[i] is not None:
-                    written[i] = _in_zone(written[i], tz)
-            yield written
+    def data(self) -> _ZonedData:
+        return _ZonedData(self._result.data(), self._columns, self._zone)
 
 
 def in_session_zone(result: Any, zone: SessionZone) -> Any:

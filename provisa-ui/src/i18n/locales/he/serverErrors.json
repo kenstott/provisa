@@ -405,6 +405,7 @@
       "source_region_set": "האזור של המקור {{source}} הוגדר ל-{{region}}",
       "region_refused": "האזור לא הוגדר: {{reason}}",
       "table_too_complex": "הטבלה '{{table}}' לא נרשמה עם העמודות שנבחרו: {{reason}}. בחרו פחות עמודות.",
+      "remote_throttled": "הטבלה '{{table}}' לא נרשמה: מגבלת הקצב של המקור לא אפשרה לבדוק אותה ({{reason}}). נסו שוב מאוחר יותר.",
       "table_updated": "הטבלה '{{table}}' עודכנה (id={{id}})",
       "task_deleted": "המשימה '{{task}}' נמחקה",
       "task_disabled": "המשימה '{{task}}' הושבתה",
@@ -477,7 +478,11 @@
       "relationship_same_entity_cardinality": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: הוא {{cardinality}}, ואותה ישות היא שורה לשורה",
       "relationship_same_entity_not_grounded": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: {{source}} ו-{{target}} אינן מעוגנות באותו מונח",
       "relationship_same_entity_not_keys": "לא ניתן לסמן את הקשר '{{relationship}}' כאותה ישות: {{columns}} אינו המפתח הראשי או מפתח ייחודי של {{table}}",
-      "kaggle_token_missing": "מערך הנתונים {{owner}}/{{ref}} של Kaggle: למקור הנתונים אין אסימון API של Kaggle. הוסיפו אותו בטופס מקורות נתונים, שבו מוזן האסימון שלו."
+      "kaggle_token_missing": "מערך הנתונים {{owner}}/{{ref}} של Kaggle: למקור הנתונים אין אסימון API של Kaggle. הוסיפו אותו בטופס מקורות נתונים, שבו מוזן האסימון שלו.",
+      "jdbc_invalid": "מקור {{source}}: {{error}}",
+      "jdbc_file_refused": "מקור {{source}}: כתובת ה-URL מציינת את {{path}}, ששרת זה אינו רשאי לפתוח עבור הארגון.",
+      "jdbc_options_refused": "מקור {{source}}: כתובת ה-URL של ארגון זה אינה רשאית לציין את אפשרות מנהל ההתקן {{options}}.",
+      "jdbc_driver_refused": "מקור {{source}}: מנהל התקן JDBC של לקוח רץ כקוד בתוך ה-JVM של Provisa, ורק התקנה באירוח עצמי מתירה זאת."
     },
     "secrets": {
       "name_refused": "{{name}} אינו שם בתוך הסודות של הארגון הזה ב-{{service}}: שם הוא יחסי לארגון ואינו יכול לצאת ממנו",
@@ -625,7 +630,10 @@
       "popup_blocked": "הדפדפן חסם את חלון הכניסה. יש לאפשר חלונות קופצים לאתר הזה ולנסות שוב.",
       "window_closed": "חלון הכניסה נסגר לפני שהסתיים.",
       "tenant_invalid": "הגדרת Microsoft 365 של הארגון אינה מציינת ספרייה (דייר). מנהל מזין את מזהה הספרייה או את הדומיין שלה.",
-      "microsoft_account_unread": "הכניסה אושרה, אך Microsoft לא ציינה של מי תיבת הדואר."
+      "microsoft_account_unread": "הכניסה אושרה, אך Microsoft לא ציינה של מי תיבת הדואר.",
+      "client_missing": "הזינו את מזהה הלקוח ואת סוד הלקוח של האפליקציה, ואז היכנסו.",
+      "client_not_taken": "סוג מקור זה נכנס עם הלקוח של הארגון שלכם, לא עם לקוח שהוזן בטופס.",
+      "no_account_returned": "הכניסה אושרה, אך התשובה לא ציינה איזה חשבון ({{parameter}}). היכנסו שוב."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "הארגון שלך לא התיר מקורות שקוראים את תיבות הדואר שלו. מנהל מתיר זאת תחת ניהול › דוא\"ל.",
@@ -760,6 +768,12 @@
         "no_description": "מוצר נתונים זה אינו מציין את מטרתו או את אופן השימוש בו.",
         "successor_retired": "מוצר הנתונים שקיבל את החברים של מוצר זה, '{{successor}}', הוצא גם הוא משימוש."
       }
+    },
+    "erd": {
+      "database_unavailable": "לא ניתן לקרוא את פריסות ה-ERD: מסד הנתונים אינו זמין",
+      "layout_not_found": "אין פריסה בשם {{name}}",
+      "layout_name_required": "לפריסה נדרש שם",
+      "layout_place_unreadable": "הפריסה ממקמת {{kind}} שאין לך הרשאה לקרוא"
     }
   }
 }

@@ -555,10 +555,20 @@ def _expected_oid(name: str, args: tuple[str, ...]) -> int | None:
     return next((oid for oid, entry in TYPES.items() if entry[-1] == next(iter(returns))), None)
 
 
+#: The functions a decision refuses by name (REQ-2167, "Sequence functions are not supported":
+#: Provisa does not model a source's sequences), with the refusal each must give.
+_REFUSED_BY_DECISION = {"setval": "setval() has no form"}
+
+
 def _signature_problem(conn: Any, name: str, args: tuple[str, ...], strict: bool) -> str | None:
     # As the conformance probe calls it: every argument a NULL of its type.
     listed = ", ".join(f"NULL::{t}" for t in args)
     res = _run(conn, f'SELECT pg_catalog."{name}"({listed}) AS v')
+    if name in _REFUSED_BY_DECISION:
+        said = (res.error_message or b"").decode()
+        if res.status == pq.ExecStatus.FATAL_ERROR and _REFUSED_BY_DECISION[name] in said:
+            return None
+        return f"not refused by name: {said or _rows(res)}"
     if res.status != pq.ExecStatus.TUPLES_OK:
         return (res.error_message or b"").decode()
     expected = _expected_oid(name, args)
