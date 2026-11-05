@@ -26595,3 +26595,13 @@ Maintainer 2026-11-05: access requests, mostly workflow, because the primitives 
 **Code:** —
 
 **Tests:** —
+
+### REQ-2211 · Authorization {#REQ-2211}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-05: an effective-access explainer. Provisa has no person: the explainer takes what a request carries, a set of roles (one role, or a meta-role set), the session values its row rules read (the attribute values a derived role or a rule uses), and the reader's region, and for one or more tables answers what that request would read and write and why, across all seven primitives: the capabilities held and the parent each came from; domain reach, including reach through a parent domain; each column's read and write grants and scope; the mask on each masked column, with its expression; the row rule as resolved through inheritance and parent-domain filters, shown both as written and bound to the given session values; and whether residency lets that region read the table, with the residency grant that decides it. It extends the existing role and table explainers (the role's effective access and the table's access) and is computed by the same functions that govern a query, never a parallel copy of the logic. A test asserts, for the same roles, session values, region and table, that the explainer's columns, masks and row predicate are the ones the governed statement applies. It is available in the Security page and the table's Access section, through the admin API and to the assistant, and what it shows is limited by the viewer's own governance right as the existing explainers are.
+
+**Code:** —
+
+**Tests:** —

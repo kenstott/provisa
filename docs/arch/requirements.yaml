@@ -92289,3 +92289,38 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     approval for at most 30 days When the user requests access, accepts the data product's data use agreement, and
     the steward approves Then the user holds the role until 30 days from approval, reads the data product, and the
     request, the accepted agreement and the approval are in the administrative trail
+- id: REQ-2211
+  value: For a given set of roles, session values and reader region, the effective access to a table is explained
+    by the same code that governs a query, so the explanation and the enforcement cannot disagree.
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Authorization
+  feature: roles-and-capabilities-platform-admins
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-05: an effective-access explainer. Provisa has no person: the explainer takes
+    what a request carries, a set of roles (one role, or a meta-role set), the session values its row rules read
+    (the attribute values a derived role or a rule uses), and the reader''s region, and for one or more tables answers
+    what that request would read and write and why, across all seven primitives: the capabilities held and the parent
+    each came from; domain reach, including reach through a parent domain; each column''s read and write grants
+    and scope; the mask on each masked column, with its expression; the row rule as resolved through inheritance
+    and parent-domain filters, shown both as written and bound to the given session values; and whether residency
+    lets that region read the table, with the residency grant that decides it. It extends the existing role and
+    table explainers (the role''s effective access and the table''s access) and is computed by the same functions
+    that govern a query, never a parallel copy of the logic. A test asserts, for the same roles, session values,
+    region and table, that the explainer''s columns, masks and row predicate are the ones the governed statement
+    applies. It is available in the Security page and the table''s Access section, through the admin API and to
+    the assistant, and what it shows is limited by the viewer''s own governance right as the existing explainers
+    are.'
+  scenario: 'Given a role set whose row rule on orders reads the session value region, a parent-domain filter on
+    the finance domain, a masked card column, and a residency grant for eu
+
+
+
+    When the explainer is asked about orders for that role set, region = eu and reader region us
+
+
+
+    Then it shows the row predicate bound to eu ANDed with the parent-domain filter, the card column''s mask expression,
+    and the residency decision, and they equal what the governed statement for the same inputs applies'
