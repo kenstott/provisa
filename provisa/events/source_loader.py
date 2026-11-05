@@ -1911,7 +1911,7 @@ def make_graphql_remote_keyed_loader(state: Any) -> AdapterKeyedLoader:  # REQ-1
     async def _load(
         source: Any, table: Any, pk_columns: list[str], keys: list[tuple[Any, ...]]
     ) -> list[dict]:
-        from provisa.graphql_remote.executor import execute_remote
+        from provisa.graphql_remote.contract import call_field
 
         if not keys:
             return []
@@ -1942,20 +1942,24 @@ def make_graphql_remote_keyed_loader(state: Any) -> AdapterKeyedLoader:  # REQ-1
             if fetch["on"] is not None:
                 # The field returns an interface or union: the table's fields are its type's.
                 columns = [f"... on {fetch['on']} {{ {' '.join(columns)} }}"]
-        answer = await execute_remote(
-            request["url"],
-            request["auth"],
-            fetch["field"],
-            columns,
-            variables=variables,
-            required_args=[
-                *(a for a in fixed if a["name"] != fetch["arg"]),
-                {"name": fetch["arg"], "gql_type": fetch["arg_type"]},
-            ],
-            rows_path=rows_path,
-            # A connection is read at the page size its registration priced.
-            limit=state.config.graphql_remote.max_list_items if rows_path else None,
-            error_policy=request["error_policy"],
+        answer = await call_field(
+            source.id,
+            table.table_name,
+            {
+                "url": request["url"],
+                "auth": request["auth"],
+                "field_name": fetch["field"],
+                "columns": columns,
+                "required_args": [
+                    *(a for a in fixed if a["name"] != fetch["arg"]),
+                    {"name": fetch["arg"], "gql_type": fetch["arg_type"]},
+                ],
+                "rows_path": rows_path,
+                # A connection is read at the page size its registration priced.
+                "limit": state.config.graphql_remote.max_list_items if rows_path else None,
+                "error_policy": request["error_policy"],
+            },
+            variables,
         )
         # A list of IDs answers null for an ID it does not know.
         return [row for row in answer.rows if row is not None]
