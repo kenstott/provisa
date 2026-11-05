@@ -1575,18 +1575,19 @@ async def get_traces_table_latest(request: Request):  # REQ-302, REQ-303, REQ-13
     """When the ops ``traces`` table last received a row.
 
     The table is deployment-wide (every org's rows land in it), so the read is gated like the
-    ``otel`` settings block the answer is shown beside: ``platform_settings``. ``tracked`` is false
+    ``otel`` settings block the answer is shown beside: a deployment setting, the platform
+    administrator's in every deployment (REQ-1913). ``tracked`` is false
     for an engine that reads no traces table. ``latest`` is the newest row's UTC timestamp, null
     for an empty table; ``age_seconds`` is measured on the server's clock.
     """
     import asyncio
     from datetime import datetime, timezone
 
-    from provisa.api.admin._platform_guard import require_platform_settings
+    from provisa.api.admin._platform_guard import require_deployment_settings
     from provisa.api.app import state
     from provisa.federation.execution_auth import system_auth
 
-    require_platform_settings(request)
+    require_deployment_settings(request)
     engine = state.shared_federation_engine
     if "traces" not in engine.landed_signals:
         return {"tracked": False, "stale_after_seconds": TRACES_STALE_AFTER_SECONDS}
