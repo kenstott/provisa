@@ -81477,7 +81477,10 @@
     ON WAKE:) When the sandbox node starts after idling, it prepares each published demo''s template and
     stores at once, before any visitor asks, so a visitor who arrives during or after the wake waits only
     for their own sandbox''s copy, not for the template''s first start as well. A sandbox''s environments
-    are made from the template''s prepared environments rather than rebuilt per sandbox.'
+    are made from the template''s prepared environments rather than rebuilt per sandbox. (Amended 2026-11-04,
+    SANDBOX ENVIRONMENT BUILT AT OPEN:) Opening a sandbox copies its environments'' rows, generation records
+    and synthetic bindings from the template''s prepared environment, and builds each environment''s runtime
+    once during the open, cloned from the template''s, so that no tour step waits on an environment build.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true
