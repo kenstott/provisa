@@ -21,6 +21,7 @@ from provisa.compiler.rls import (
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.security.row_filters import resolve_table_rules
 from tests.helpers import governed_for_role
+from tests.rules import rules_of
 from tests.governed_pg import assert_same_answer, governed_database
 
 
@@ -73,7 +74,7 @@ class TestBuildRLSContext:
             },
         ]
         rls = build_rls_context(rules, "analyst")
-        assert rls.rules == {1: "\"region\" = 'us'", 2: "active = true"}
+        assert rls.rules == rules_of({1: "\"region\" = 'us'", 2: "active = true"})
 
     def test_empty_for_no_rules(self):
         rls = build_rls_context([], "admin")
@@ -101,7 +102,7 @@ class TestDomainRLS:
             },
         ]
         rls = build_rls_context(rules, "analyst")
-        assert rls.domain_rules == {"sales": "\"region\" = 'us'"}
+        assert rls.domain_rules == rules_of({"sales": "\"region\" = 'us'"})
         assert rls.rules == {}
 
     def test_table_and_domain_rules_coexist(self):
@@ -122,8 +123,8 @@ class TestDomainRLS:
             },
         ]
         rls = build_rls_context(rules, "analyst")
-        assert rls.rules == {5: "active"}
-        assert rls.domain_rules == {"sales": "\"region\" = 'us'"}
+        assert rls.rules == rules_of({5: "active"})
+        assert rls.domain_rules == rules_of({"sales": "\"region\" = 'us'"})
 
     def test_domain_rule_injected_for_table_in_domain(self, pg):
         meta = TableMeta(

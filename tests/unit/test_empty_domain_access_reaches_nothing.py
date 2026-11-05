@@ -47,6 +47,7 @@ from provisa.security.rights import (
     require_role,
 )
 from provisa.security.visibility import visible_tables
+from tests.rules import rule_of
 
 SALES, FINANCE, META, OPS = 1, 2, 3, 4
 DOMAIN_OF = {SALES: "sales", FINANCE: "finance", META: META_DOMAIN_ID, OPS: "ops"}
@@ -263,7 +264,7 @@ def test_an_empty_list_gets_a_match_nothing_row_filter(multi_domain):
         domain_id=META_DOMAIN_ID,
     )
     gov = build_governance_context("r", RLSContext.empty(), {}, ctx, _tables(), _role([]))
-    assert gov.rls_rules[100] == "id IN (-1)"
+    assert gov.rls_rules[100] == rule_of("id IN (-1)")
 
 
 def test_single_domain_mode_sees_every_data_table(single_domain):

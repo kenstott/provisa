@@ -52,6 +52,7 @@ from provisa.core.schema_org import (
 )
 from provisa.security.inheritance import materialize_rls
 from tests.governed_pg import governed_database
+from tests.rules import holds, rule_of, rules_of
 from provisa.security.row_filters import (
     acting_model_rule,
     model_write_rules,
@@ -102,12 +103,15 @@ def test_read_compilation_reads_only_r_rules():
         _rule(filter_expr="region = 'd'", right="D"),
     ]
     ctx = build_rls_context(rules, "sales")
-    assert ctx.rules == {1: "region = 'eu'"}
-    assert ctx.write_rules == {"update": {1: "region = 'u'"}, "delete": {1: "region = 'd'"}}
+    assert ctx.rules == rules_of({1: "region = 'eu'"})
+    assert ctx.write_rules == {
+        "update": rules_of({1: "region = 'u'"}),
+        "delete": rules_of({1: "region = 'd'"}),
+    }
 
 
 def test_a_rule_row_with_no_right_stays_a_read_rule():
-    assert build_rls_context([_rule()], "sales").rules == {1: "region = 'eu'"}
+    assert build_rls_context([_rule()], "sales").rules == rules_of({1: "region = 'eu'"})
 
 
 def test_a_u_rule_alone_narrows_no_read():
@@ -128,22 +132,22 @@ def test_each_right_resolves_on_its_own():
     ]
     out = resolve_rules_by_right(rules, _TABLES, {"a": []}, [], {"a": ["a"]}, [], {})
     by_right = {r["right"]: r["filter_expr"] for r in out if r.get("table_id") == 1}
-    assert by_right == {"R": "x = 1", "U": "x = 2", "D": "x = 3"}
+    assert by_right == rules_of({"R": "x = 1", "U": "x = 2", "D": "x = 3"})
 
 
 def test_one_rule_of_several_rights_is_one_plain_predicate_for_each():
     rules = [{"role_id": "a", "table_id": 1, "filter_expr": "x = 1", "rights": "RUD"}]
     out = resolve_rules_by_right(rules, _TABLES, {"a": []}, [], {"a": ["a"]}, [], {})
     ctx = build_rls_context(out, "a")
-    assert ctx.rules == {1: "x = 1"}  # a plain filter, never a CASE
-    assert ctx.write_rules == {"update": {1: "x = 1"}, "delete": {1: "x = 1"}}
+    assert ctx.rules == rules_of({1: "x = 1"})  # a plain filter, never a CASE
+    assert ctx.write_rules == {"update": rules_of({1: "x = 1"}), "delete": rules_of({1: "x = 1"})}
 
 
 def test_a_domain_u_rule_reaches_the_tables_of_the_domain_as_an_r_rule_does():
     rules = [{"role_id": "a", "domain_id": "sales", "filter_expr": "x = 3", "rights": "U"}]
     out = resolve_rules_by_right(rules, _TABLES, {"a": []}, [], {"a": ["a"]}, [], {})
     ctx = build_rls_context(out, "a")
-    assert ctx.write_rules["update"] == {1: "x = 3"}
+    assert ctx.write_rules["update"] == rules_of({1: "x = 3"})
     assert ctx.rules == {}
 
 
@@ -151,7 +155,7 @@ def test_a_tag_d_rule_reaches_the_tables_carrying_the_tag():
     rules = [{"role_id": "a", "tag_id": "regional", "filter_expr": "x = 4", "rights": "D"}]
     tagged = [{"object_type": "table", "table_id": 1, "base_tag_id": "regional"}]
     out = resolve_rules_by_right(rules, _TABLES, {"a": []}, [], {"a": ["a"]}, tagged, {})
-    assert build_rls_context(out, "a").write_rules["delete"] == {1: "x = 4"}
+    assert build_rls_context(out, "a").write_rules["delete"] == rules_of({1: "x = 4"})
 
 
 def test_a_child_inherits_its_parents_u_rule_and_not_as_a_read_rule():
@@ -159,7 +163,7 @@ def test_a_child_inherits_its_parents_u_rule_and_not_as_a_read_rule():
     chains = {"p": ["p"], "c": ["c", "p"]}
     out = resolve_rules_by_right(rules, _TABLES, {"p": [], "c": ["p"]}, [], chains, [], {})
     ctx = build_rls_context(out, "c")
-    assert ctx.write_rules["update"] == {1: "x = 5"}
+    assert ctx.write_rules["update"] == rules_of({1: "x = 5"})
     assert ctx.rules == {}
 
 
@@ -405,7 +409,7 @@ def test_only_u_and_d_rules_on_model_tables_reach_the_store():
         {"role_id": "a", "table_id": 9, "filter_expr": "u", "right": "U"},
         {"role_id": "a", "table_id": 2, "filter_expr": "d", "right": "D"},
     ]
-    assert model_write_rules(resolved, _META_TABLES) == {("a", "data_products", "U"): "u"}
+    assert model_write_rules(resolved, _META_TABLES) == rules_of({("a", "data_products", "U"): "u"})
 
 
 def _model_state(rules, role_capabilities):
@@ -425,7 +429,8 @@ def _model_state(rules, role_capabilities):
 def test_a_role_with_a_rule_gets_it_with_the_view_its_columns_are_read_through():
     state = _model_state({("a", "data_products", "U"): OWNS}, {"a": ["data_product_rw"]})
     rule = acting_model_rule(state, "a", "data_products", "U")
-    assert rule is not None and rule.predicate == OWNS and rule.view == "data_products_meta"
+    assert rule is not None and rule.predicate == rule_of(OWNS)
+    assert rule.view == "data_products_meta"
 
 
 def test_a_role_with_no_rule_is_not_narrowed():
@@ -439,7 +444,7 @@ def test_a_set_of_roles_ors_its_members_rules():
         {"a": ["data_product_rw"], "b": ["data_product_rw"]},
     )
     rule = acting_model_rule(state, "meta:a+b", "data_products", "U")
-    assert rule is not None and "x = 1" in rule.predicate and "y = 2" in rule.predicate
+    assert rule is not None and holds(rule.predicate, "x = 1") and holds(rule.predicate, "y = 2")
 
 
 def test_a_member_holding_rw_with_no_rule_lifts_the_set():
@@ -456,7 +461,7 @@ def test_a_member_with_only_r_lifts_nothing():
         {"a": ["data_product_rw"], "b": ["data_product_read"]},
     )
     rule = acting_model_rule(state, "meta:a+b", "data_products", "U")
-    assert rule is not None and rule.predicate == "(x = 1)"
+    assert rule is not None and rule.predicate == rule_of("x = 1")
 
 
 # --- the model store -----------------------------------------------------------------------------

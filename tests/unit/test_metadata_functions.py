@@ -64,7 +64,7 @@ from provisa.transpiler.metadata_functions import (
     refuse_server_reads,
 )
 from provisa.transpiler.metadata_oids import KEY_OID_BASE, metric_oid, table_oid
-from provisa.transpiler.metadata_settings import scope_ids_sql, statement_settings
+from provisa.transpiler.metadata_settings import scope_ids, statement_settings
 from provisa.transpiler.metadata_views import (
     CATALOG_VIEW_NAMES,
     LISTS_EVERY_SCHEMA,
@@ -73,6 +73,7 @@ from provisa.transpiler.metadata_views import (
     catalog_view_name,
 )
 from provisa.transpiler.transpile import transpile
+from tests.rules import holds, mentions, rule_of
 
 _VIEWS = ("table_details", "column_details", "table_keys")
 _FACTS = CatalogFacts("analyst", privileges=((16385, "SELECT"),))
@@ -403,11 +404,11 @@ def test_a_default_tier_role_reads_a_catalog_view_scoped_to_its_neighbourhood():
     gov = build_governance_context(
         "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, tables, role, []
     )
-    ids = scope_ids_sql()
+    ids = scope_ids().sql(dialect="postgres")
     assert gov.meta_scope == "{1}"
-    assert gov.rls_rules[10] == f"table_id IN ({ids}) AND referenced_table_id IN ({ids})"
-    assert gov.rls_rules[11] == f"table_id IN ({ids})"
-    assert gov.rls_rules[12] == f"id IN ({ids})"
+    assert gov.rls_rules[10] == rule_of(f"table_id IN ({ids}) AND referenced_table_id IN ({ids})")
+    assert gov.rls_rules[11] == rule_of(f"table_id IN ({ids})")
+    assert gov.rls_rules[12] == rule_of(f"id IN ({ids})")
 
 
 def test_a_catalog_view_names_no_governance_column():
@@ -528,11 +529,12 @@ def test_a_default_role_scope_lets_system_rows_through_and_no_other_table():
     gov = build_governance_context(
         "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
     )
-    ids = scope_ids_sql()
+    ids = scope_ids().sql(dialect="postgres")
     assert gov.meta_scope == "{1}"
-    assert f"IN ({ids}), TRUE)" in gov.rls_rules[10]
-    assert gov.rls_rules[11] == f"COALESCE((provisa_table_id) IN ({ids}), TRUE)"
-    assert gov.rls_rules[12].count(ids) == 2  # both ends of a foreign key
+    assert isinstance(gov.rls_rules[10], exp.Coalesce) and holds(gov.rls_rules[10], ids)
+    assert gov.rls_rules[11] == rule_of(f"COALESCE((provisa_table_id) IN ({ids}), TRUE)")
+    # both ends of a foreign key
+    assert sum(node == rule_of(ids) for node in gov.rls_rules[12].walk()) == 2
 
 
 def test_a_table_under_two_names_is_scoped_once():
@@ -544,14 +546,15 @@ def test_a_table_under_two_names_is_scoped_once():
     gov = build_governance_context(
         "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
     )
-    assert gov.rls_rules[10].count("COALESCE") == 1
+    assert sum(isinstance(node, exp.Coalesce) for node in gov.rls_rules[10].walk()) == 1
 
 
 def test_the_scope_is_told_once_and_a_statement_not_told_it_reads_nothing_of_the_model():
     settings = statement_settings("analyst", False, "provisa", False, scope="{1,2}")
     assert settings["scope"] == "{1,2}"
     assert "scope" not in statement_settings("analyst", False, "provisa", False)
-    assert "UNNEST" in scope_ids_sql() and "provisa.catalog.scope" in scope_ids_sql()
+    assert isinstance(scope_ids().expressions[0], exp.Explode)
+    assert mentions(scope_ids(), "provisa.catalog.scope")
 
 
 def test_a_column_outside_its_relation_is_no_column_of_the_catalog():
@@ -562,8 +565,15 @@ def test_a_column_outside_its_relation_is_no_column_of_the_catalog():
     gov = build_governance_context(
         "analyst", SimpleNamespace(rules={}, write_rules={}), {}, ctx, _TABLES, _ROLE, []
     )
-    assert "NOT IN ((16385, 'pets'))" in gov.rls_rules[10]
-    assert "NOT IN ((16385, 'pets'))" in gov.rls_rules[11]
+    assert holds(
+        gov.rls_rules[10],
+        "(CAST(attrelid AS BIGINT), CAST(attname AS TEXT)) NOT IN ((16385, 'pets'))",
+    )
+    assert holds(
+        gov.rls_rules[11],
+        "(CAST(provisa_table_id AS BIGINT) + 16384, CAST(column_name AS TEXT)) "
+        "NOT IN ((16385, 'pets'))",
+    )
 
 
 def test_a_whole_catalog_role_is_not_scoped():

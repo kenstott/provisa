@@ -31,6 +31,7 @@ from provisa.core.request_context import (
 )
 from provisa.pgwire._pipeline import _resolve_session_settings
 from provisa.security.inheritance import flatten_role_dicts
+from tests.rules import rule_of
 
 
 def _role(**kw: Any) -> Role:
@@ -208,7 +209,7 @@ def test_a_meta_role_inlines_each_members_inherited_constants(monkeypatch):
         },
     )
     meta = ensure_meta_role(state, ["east", "west"])
-    assert state.rls_contexts[meta].rules[1] == (
+    assert state.rls_contexts[meta].rules[1] == rule_of(
         "(tier = 'gold') OR (tier = current_setting('provisa.tier'))"
     )
 

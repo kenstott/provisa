@@ -27,6 +27,7 @@ from provisa.compiler.stage2 import (
 from provisa.security.masking import MaskType, MaskingRule
 from tests.governed_pg import governed_database
 from tests.helpers import unscoped_role
+from tests.rules import rules_of
 
 
 @pytest.fixture(scope="module")
@@ -410,7 +411,7 @@ class TestBuildGovernanceContext:
         tables = [{"id": 1, "columns": [{"column_name": "id"}]}]
         rls = _FakeRLSContext({1: "tenant_id = 7"})
         gov = build_governance_context("role-a", rls, {}, ctx, tables, role=unscoped_role("role-a"))
-        assert gov.rls_rules == {1: "tenant_id = 7"}
+        assert gov.rls_rules == rules_of({1: "tenant_id = 7"})
 
     def test_masking_rules_for_matching_role_populated(self):
         ctx = _ctx(_meta("users", "users", table_id=2))

@@ -47,6 +47,12 @@ def read_rule_row(row: dict) -> dict:
     return {**row, "filter_expr": as_rule(row["filter_expr"])}
 
 
+def rule_text(rule: Rule) -> str:
+    """``rule`` written out for a person to read (provenance, an enforcement summary, the rights
+    view): PostgreSQL, its function names as written. Display only; nothing reads it back."""
+    return rule.sql(dialect="postgres", normalize_functions=False)
+
+
 def every_row(rule: Rule | None) -> bool:
     """Whether ``rule`` is ``TRUE``: it admits every row."""
     return isinstance(rule, exp.Boolean) and rule.this is True
@@ -99,20 +105,32 @@ class RuleMap(dict):
         return RuleMap(self)
 
 
-def read_grant(grant: dict) -> dict:  # REQ-913
-    """A copy of a write grant with its rows and check -- and each holder's, a meta-role's --
-    as expressions (None stays None: every row)."""
+class Grant(dict):
+    """A write grant whose rows and check -- and each holder's, a meta-role's -- are
+    expressions (None stays None: every row). A predicate stored into it as text is read there
+    once (:func:`as_rule`)."""
 
-    def predicates(g: dict) -> dict:
-        return {
-            **g,
-            **{k: as_rule(g[k]) for k in ("rows", "check") if g.get(k) is not None},
-        }
+    _PREDICATES = ("rows", "check")
 
-    read = predicates(grant)
-    if grant.get("holders"):
-        read["holders"] = [predicates(h) for h in grant["holders"]]
-    return read
+    def __init__(self, grant: Any = (), /) -> None:
+        super().__init__()
+        for key, value in dict(grant).items():
+            self[key] = value
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        if key in self._PREDICATES and value is not None:
+            value = as_rule(value)
+        elif key == "holders" and value:
+            value = [Grant(h) for h in value]
+        super().__setitem__(key, value)
+
+    def copy(self) -> Grant:
+        return Grant(self)
+
+
+def read_grant(grant: dict) -> Grant:  # REQ-913
+    """A copy of a write grant with its predicates expressions (:class:`Grant`)."""
+    return Grant(grant)
 
 
 class GrantMap(dict):
@@ -189,10 +207,12 @@ class RLSContext:
     write_rules: dict[str, dict[int, Rule]] = field(default_factory=dict)
 
     def __setattr__(self, name: str, value: Any) -> None:
-        if name in ("rules", "domain_rules", "action_rules"):
-            value = RuleMap(value)
-        elif name == "write_rules":
-            value = rule_maps(value)
+        # A rule entering as a plain dict is read (REQ-913); a read-only view is kept as it is.
+        if isinstance(value, dict):
+            if name in ("rules", "domain_rules", "action_rules") and not isinstance(value, RuleMap):
+                value = RuleMap(value)
+            elif name == "write_rules":
+                value = rule_maps(value)
         super().__setattr__(name, value)
 
     @staticmethod
@@ -358,5 +378,6 @@ def _inject_where(sql: str, rls_clause: str | Rule) -> str:
     select = tree if isinstance(tree, exp.Select) else tree.find(exp.Select)
     if select is None:
         raise ValueError("_inject_where: query has no SELECT to attach the predicate to")
-    select.where(exp.paren(as_rule(rls_clause)), copy=False)
+    # where() ANDs the clause in, parenthesising an OR (sqlglot wraps a connective it combines).
+    select.where(as_rule(rls_clause), copy=False)
     return tree.sql(dialect="postgres")

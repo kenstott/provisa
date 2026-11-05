@@ -120,12 +120,15 @@ class GovernanceContext:  # REQ-263, REQ-264, REQ-265
     def __setattr__(self, name: str, value: Any) -> None:
         from provisa.compiler.rls import GrantMap, RuleMap, rule_maps
 
-        if name == "rls_rules":
-            value = RuleMap(value)
-        elif name == "write_rules":
-            value = rule_maps(value)
-        elif name == "write_grants":
-            value = GrantMap(value)
+        # A rule or grant entering as a plain dict is read (REQ-913); a read-only view of one
+        # already read (pgwire.governed_plan's shared context) is kept as it is.
+        if isinstance(value, dict):
+            if name == "rls_rules" and not isinstance(value, RuleMap):
+                value = RuleMap(value)
+            elif name == "write_rules":
+                value = rule_maps(value)
+            elif name == "write_grants" and not isinstance(value, GrantMap):
+                value = GrantMap(value)
         super().__setattr__(name, value)
 
 

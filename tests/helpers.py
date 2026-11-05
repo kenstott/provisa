@@ -324,7 +324,7 @@ def _columns_read(sql: str, ctx, rls, masking_rules) -> dict[int, list[tuple[str
     import sqlglot
     import sqlglot.expressions as exp
 
-    from provisa.compiler.rls import RLSContext
+    from provisa.compiler.rls import RLSContext, as_rule
 
     metas = {m.table_id: m for m in ctx.tables.values()}
     for join in ctx.joins.values():
@@ -344,9 +344,7 @@ def _columns_read(sql: str, ctx, rls, masking_rules) -> dict[int, list[tuple[str
     rules = rls.rules if isinstance(rls, RLSContext) else dict(rls or {})
     for tid, predicate in rules.items():
         if tid in names:
-            names[tid] |= {
-                c.name for c in sqlglot.parse_one(predicate, read="postgres").find_all(exp.Column)
-            }
+            names[tid] |= {c.name for c in as_rule(predicate).find_all(exp.Column)}
     for (tid, _role), columns in (masking_rules or {}).items():
         if tid in names:
             names[tid] |= set(columns)

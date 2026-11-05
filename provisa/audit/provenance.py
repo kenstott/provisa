@@ -55,6 +55,7 @@ def enforced_summary(
     def _in(tid: int) -> bool:
         return tids is None or tid in tids
 
+    from provisa.compiler.rls import rule_text
     from provisa.core.session_terms import setting_name
 
     def _variables(rule: Any) -> list[str]:
@@ -63,7 +64,7 @@ def enforced_summary(
 
     row_filters = {
         # The rule rendered for the record: provenance shows it, nothing reads it back (REQ-913).
-        str(tid): {"filter": rule.sql(dialect="postgres"), "session_variables": _variables(rule)}
+        str(tid): {"filter": rule_text(rule), "session_variables": _variables(rule)}
         for tid, rule in sorted(gov.rls_rules.items())
         if _in(tid)
     }

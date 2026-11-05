@@ -39,6 +39,7 @@ from provisa.security.masking import MaskType, MaskingRule
 from provisa.security.row_filters import resolve_table_rules
 from tests.governed_pg import assert_same_rows, governed_database
 from tests.helpers import governed_for_role
+from tests.rules import rule_of
 
 # ---------------------------------------------------------------------------
 # Shared table IDs
@@ -263,9 +264,9 @@ class TestRLSAccumulationThroughInheritance:
         ]
         rls = build_rls_context(raw_rules, "analyst")
 
-        assert rls.rules[ORDERS_TABLE_ID] == "\"region\" = 'us'"
-        assert rls.rules[CUSTOMERS_TABLE_ID] == "active = true"
-        assert rls.rules[PRODUCTS_TABLE_ID] == "visible = true"
+        assert rls.rules[ORDERS_TABLE_ID] == rule_of("\"region\" = 'us'")
+        assert rls.rules[CUSTOMERS_TABLE_ID] == rule_of("active = true")
+        assert rls.rules[PRODUCTS_TABLE_ID] == rule_of("visible = true")
         assert ORDERS_TABLE_ID in rls.rules
         # Admin rule must not appear in analyst context
         assert len(rls.rules) == 3

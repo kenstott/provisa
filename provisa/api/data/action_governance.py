@@ -35,6 +35,8 @@ import zlib
 from dataclasses import dataclass, field
 from typing import Any
 
+from provisa.compiler.rls import rule_text
+
 from provisa.api.errors import ApiError
 
 _JSON_TO_IR = {
@@ -202,7 +204,7 @@ def _governance_context(
         if expr is not None:
             gov.rls_rules[tid] = expr
             # Rendered for the record of what was applied; nothing reads it back (REQ-913).
-            enforcement.rls_filters_applied.append(expr.sql(dialect="postgres"))
+            enforcement.rls_filters_applied.append(rule_text(expr))
 
     gov.limit_ceiling = resolve_row_cap(role, role.get("max_rows"))
     return gov, enforcement

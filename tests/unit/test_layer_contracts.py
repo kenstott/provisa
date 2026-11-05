@@ -22,6 +22,7 @@ from provisa.compiler.context import build_context
 from provisa.executor.result import QueryResult
 from tests.governed_pg import assert_same_rows, governed_database
 from tests.helpers import governed_for_role
+from tests.rules import rule_of
 
 
 # --- TableMeta field contract ---
@@ -86,11 +87,12 @@ class TestRLSContextContract:
         rls = RLSContext(rules={3: "tenant_id = 42"})
         assert isinstance(rls.rules, dict)
 
-    def test_rules_maps_int_to_str(self):
+    def test_rules_maps_int_to_the_rule_its_text_states(self):
+        # REQ-913: a rule given as text is read where it enters; the context holds the expression.
         rules = {1: "user_id = 1", 2: "region = 'eu'"}
         rls = RLSContext(rules=rules)
-        assert rls.rules[1] == "user_id = 1"
-        assert rls.rules[2] == "region = 'eu'"
+        assert rls.rules[1] == rule_of("user_id = 1")
+        assert rls.rules[2] == rule_of("region = 'eu'")
 
     def test_empty_factory(self):
         rls = RLSContext.empty()
