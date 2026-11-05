@@ -42,11 +42,13 @@ _NAME = """replace(k, '"', '\\"')"""
 _KEY = {_D: f"""('$."' || {_NAME} || '"')""", _T: f"""('$["' || {_NAME} || '"]')""", _C: "k"}
 _AT = {
     _D: "{i}",
-    _T: "('$[' || CAST({i} AS VARCHAR) || ']')",
+    # an array's alone, as $[n] reads an object's key "n" there; a negative counts from the end
+    _T: "('$[' || CAST(CASE WHEN json_array_length(v) IS NULL THEN NULL WHEN {i} >= 0 THEN {i} "
+    "WHEN json_array_length(v) + {i} >= 0 THEN json_array_length(v) + {i} END AS VARCHAR) || ']')",
     _C: "if(startsWith(trimLeft(v), '['), if({i} < 0, {i}, {i} + 1), 0)",  # a key's place otherwise
 }
 _INDEX = {_D: "CAST(i AS BIGINT)", _T: "i", _C: "i"}
-_KEY_INDEX = {_D: "TRY_CAST(k AS BIGINT)", _T: "k", _C: "toInt64OrNull(k)"}
+_KEY_INDEX = {_D: "TRY_CAST(k AS BIGINT)", _T: "TRY_CAST(k AS BIGINT)", _C: "toInt64OrNull(k)"}
 _READ = {_D: "json_extract(v, @)", _T: "json_extract(v, @)", _C: "nullif(JSONExtractRaw(v, @), '')"}
 _READ_TEXT = {
     _D: "json_extract_string(v, @)",
@@ -264,7 +266,8 @@ def _stepped(
     an integer column as an index; None there, refused by name elsewhere."""
     scalar = isinstance(node, exp.JSONExtractScalar)
     step = node.expression.unnest()
-    if isinstance(step, exp.Cast) and step.to.this in _INDEX_TYPES:
+    negative = isinstance(step, exp.Neg) and step.this.is_int  # -1: the last element
+    if negative or (isinstance(step, exp.Cast) and step.to.this in _INDEX_TYPES):
         row = "json_array_element"
     elif isinstance(step, exp.Cast) and step.to.this in _KEY_TYPES:
         row = "json_object_field"
