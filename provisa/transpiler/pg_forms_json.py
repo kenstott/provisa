@@ -218,9 +218,9 @@ class NoForm(ValueError):
         super().__init__(called)
 
 
-#: What may be json in a statement, for function_macros.mentioned. ``->`` is not: a statement that
-#: holds only it costs nothing here.
-OPERATORS = r"#>|#-|@>|<@|@\?|\?\||\?&|\s\?\s|\bjsonb?\b|\bjsonb?_|\bto_json"
+#: What may be json in a statement, for function_macros.mentioned. ``->`` of a literal key or index
+#: is not: a statement that holds only it costs nothing here. ``->`` of a step the rows hold is.
+OPERATORS = r"#>|#-|@>|<@|@\?|\?\||\?&|\s\?\s|\bjsonb?\b|\bjsonb?_|\bto_json|->>?\s*[^\s'\d>-]"
 
 
 def _said_jsonb(node: exp.Expr) -> bool:
@@ -247,6 +247,35 @@ def _path(value: exp.Expr, steps: list[str], scalar: bool) -> exp.Expr:
         row += "_text" if scalar and position == len(steps) - 1 else ""
         value = exp.Anonymous(this=row, expressions=[value, exp.Literal.string(step)])
     return value
+
+
+_INDEX_TYPES = (exp.DataType.Type.SMALLINT, exp.DataType.Type.INT, exp.DataType.Type.BIGINT)
+_KEY_TYPES = (exp.DataType.Type.TEXT, exp.DataType.Type.VARCHAR)
+
+
+def _stepped(
+    node: exp.JSONExtract | exp.JSONExtractScalar,
+    dialect: str,
+    inner: Callable[[exp.Expr], exp.Expr],
+) -> exp.Expr | None:
+    """``->`` and ``->>`` of a step the rows hold, as the row of the type the statement states
+    for it: an integer an array's index, a text an object's key whatever it spells. The engine's
+    own operator reads a text as a path. A step of no stated type stays DuckDB's own, which takes
+    an integer column as an index; None there, refused by name elsewhere."""
+    scalar = isinstance(node, exp.JSONExtractScalar)
+    step = node.expression.unnest()
+    if isinstance(step, exp.Cast) and step.to.this in _INDEX_TYPES:
+        row = "json_array_element"
+    elif isinstance(step, exp.Cast) and step.to.this in _KEY_TYPES:
+        row = "json_object_field"
+    elif dialect in _OF[_D]:
+        return None
+    else:
+        raise NoForm("->>" if scalar else "->")
+    called = row + ("_text" if scalar else "")
+    return exp.Anonymous(
+        this=called, expressions=[node.this.transform(inner), node.expression.transform(inner)]
+    )
 
 
 def _steps(called: str, path: exp.Expr) -> list[str]:
@@ -909,6 +938,12 @@ def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
                 return _extracted(node, rewrite)
             steps = _steps("#>>" if scalar else "#>", path)
             return _path(node.this.transform(rewrite), steps, scalar)
+        if isinstance(node, exp.JSONExtract | exp.JSONExtractScalar) and not isinstance(
+            node.expression, exp.JSONPath
+        ):
+            stepped = _stepped(node, dialect, rewrite)
+            if stepped is not None:
+                return stepped
         if kind in _ON_KEYS:
             return operated(_ON_KEYS[kind], node, kind)
         if kind in _ON_JSONB and (_said_jsonb(node.this) or _said_jsonb(node.expression)):
