@@ -217,3 +217,117 @@ def relations(tree: exp.Expr) -> list[ReadThrough]:
         if rt is not None:
             out.append(rt)
     return out
+
+
+# -- a lone governed relation, inlined ----------------------------------------------------------
+
+
+def _served(relation: ReadThrough, column: exp.Column) -> exp.Expr | None:
+    """The value ``relation`` exposes under ``column``'s name, read as PostgreSQL resolves the
+    name (an unquoted name folds to lower case). None when it exposes no such column."""
+    value = relation.columns.get(column.name)
+    if value is None and not column.this.quoted:
+        value = relation.columns.get(column.name.lower())
+    return value
+
+
+def _inside(node: exp.Expr, ancestor: exp.Expr) -> bool:
+    parent = node.parent
+    while parent is not None:
+        if parent is ancestor:
+            return True
+        parent = parent.parent
+    return False
+
+
+def _positional(column: exp.Column) -> bool:
+    """Whether ``column`` stands as a GROUP BY, ORDER BY or DISTINCT ON item itself, where
+    PostgreSQL reads a constant as an output column's position."""
+    parent = column.parent
+    if isinstance(parent, exp.Tuple) and isinstance(parent.parent, exp.Distinct):
+        return True
+    return isinstance(parent, (exp.Group, exp.Ordered))
+
+
+def _inlined(select: exp.Select) -> bool:
+    """``select`` reading its lone governed relation's table in its place; False, ``select``
+    untouched, when it reads anything else or names what the relation does not expose."""
+    source = select.args.get("from_")
+    relation = read_through(source.this if source is not None else None)
+    if relation is None or select.args.get("joins") or select.args.get("laterals"):
+        return False
+    # A nested statement resolves names in a scope of its own: the step stays out of it.
+    if any(
+        s is not select and not _inside(s, relation.relation)
+        for s in select.find_all(exp.Select, exp.SetOperation)
+    ):
+        return False
+    outputs = {p.alias_or_name for p in select.expressions}
+    stars: list[exp.Expr] = []
+    swaps: list[tuple[exp.Column, exp.Expr]] = []
+    for column in select.find_all(exp.Column):
+        if _inside(column, relation.relation):
+            continue
+        if column.args.get("db") or column.args.get("catalog"):
+            return False
+        if column.table and _folded(column.args.get("table")) != relation.alias:
+            continue  # a column of an enclosing statement's relation
+        if isinstance(column.this, exp.Star):
+            if column.parent is not select:
+                return False
+            stars.append(column)
+            continue
+        ordered = column.parent
+        if (
+            not column.table
+            and isinstance(ordered, exp.Ordered)
+            and isinstance(ordered.parent, exp.Order)
+            and column.name in outputs
+        ):
+            continue  # an ORDER BY name is the output column it names first
+        value = _served(relation, column)
+        if value is None:
+            return False
+        if _positional(column) and value.find(exp.Column) is None:
+            return False  # a constant there names an output column by number, or none
+        swaps.append((column, value))
+    stars += [p for p in select.expressions if isinstance(p, exp.Star)]
+
+    for column, value in swaps:
+        if column.parent is select:
+            same = isinstance(value, exp.Column) and value.name == column.name
+            column.replace(
+                value.copy() if same else exp.Alias(this=value.copy(), alias=column.this.copy())
+            )
+        else:
+            column.replace(value.copy())
+    for star in stars:
+        index = select.expressions.index(star)
+        served = [
+            exp.Alias(this=v.copy(), alias=exp.to_identifier(n, quoted=True))
+            for n, v in relation.columns.items()
+        ]
+        select.set(
+            "expressions", select.expressions[:index] + served + select.expressions[index + 1 :]
+        )
+    where = select.args.get("where")
+    held = [p.copy() for p in relation.predicates] + ([where.this] if where is not None else [])
+    if held:
+        select.set("where", exp.Where(this=exp.and_(*held)))
+    relation.relation.replace(relation.table.copy())
+    return True
+
+
+def inline(tree: exp.Expr) -> exp.Expr:
+    """``tree`` with each SELECT whose one relation is a governed relation reading the relation's
+    table in its place: each exposed column as the value it is served as (a masked or computed
+    one stays its expression), ``*`` as the served columns, the relation's row rules ANDed into the
+    SELECT's WHERE. It answers what ``tree`` answers -- the same rows, columns and masks -- for a
+    translator into a query language with no derived table (REQ-039, REQ-2000). A SELECT that
+    also reads another relation, holds a nested statement, or names a column its relation does
+    not expose is left as it stands. ``tree`` itself is not changed."""
+    out = tree.copy()
+    for select in list(out.find_all(exp.Select)):
+        if select.root() is out:
+            _inlined(select)
+    return out

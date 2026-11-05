@@ -560,3 +560,55 @@ async def test_a_search_table_is_the_engines_without_asking_qdrant(qdrant):
     said = await driver.reason('SELECT "id" FROM "default"."docs_search"', search)
     assert said == "a search table is read under its arguments"
     assert asked == []
+
+
+# --- a governed read alone on the collection is still Qdrant's (REQ-039, REQ-2000) ---
+
+
+def test_a_governed_read_of_the_collection_is_one_qdrant_scroll_its_row_rule_the_filter():
+    plan = _plan(f'SELECT d."id", d."title" FROM {_governed(rule=_ENGLISH)} WHERE d."pages" >= 2')
+    assert plan.kind == "scroll"
+    assert [o.name for o in plan.outputs] == ["id", "title"]
+    assert plan.filter == {
+        "must": [
+            {"key": "lang", "match": {"value": "en"}},
+            {"key": "meta.pages", "range": {"gte": 2}},
+        ]
+    }
+
+
+def test_a_governed_similarity_search_is_one_qdrant_query_its_row_rule_the_filter():
+    plan = _plan(
+        f'SELECT "id", {_SIM} AS s FROM {_governed(rule=_ENGLISH)} ORDER BY {_SIM} DESC LIMIT 3'
+    )
+    assert plan.kind == "query"
+    assert plan.limit == 3
+    assert plan.filter == {"key": "lang", "match": {"value": "en"}}
+
+
+def test_a_governed_read_of_every_served_column_reads_them_in_qdrant():
+    plan = _plan(f"SELECT * FROM {_governed(rule=_ENGLISH)}")
+    assert plan.kind == "scroll"
+    assert [o.name for o in plan.outputs] == list(_SERVED)
+
+
+_MASK = "'***'"
+
+
+def test_a_governed_read_of_a_masked_column_is_still_the_engines():
+    with pytest.raises(NotExpressible, match="computed"):
+        _plan(f'SELECT d."title" FROM {_governed(rule=_ENGLISH, title=_MASK)}')
+
+
+def test_a_governed_read_naming_a_hidden_column_is_still_the_engines():
+    with pytest.raises(NotExpressible, match="subquery"):
+        _plan(f'SELECT d."score" FROM {_governed(score="")}')
+
+
+async def test_a_governed_read_runs_in_qdrant_and_returns_the_rows_its_row_rule_admits(qdrant):
+    driver, _ = qdrant
+    sql = f'SELECT d."id", d."title" FROM {_governed(rule=_ENGLISH)} WHERE d."pages" >= 1'
+    assert await driver.reason(sql, _TABLE) is None
+    result = await driver.execute(sql, None)
+    assert result.column_names == ["id", "title"]
+    assert result.rows == [(1, "a")]

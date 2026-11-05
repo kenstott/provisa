@@ -123,3 +123,32 @@ def test_the_argument_reads_columns_by_their_sql_names():
 def test_only_a_sparql_table_is_narrowed():
     assert pushed_arguments(_endpoint(None), "SELECT legal_name FROM co LIMIT 1", "co") == {}
     assert pushed_arguments(_endpoint("sparql_bindings"), "SELECT legal_name FROM co", "co") == {}
+
+
+# --- a governed read: the table stands in its governed relation (REQ-039) ---
+
+_RELATION = (
+    '(SELECT "c"."name" AS "name", \'***\' AS "employees", "c"."listed" AS "listed", '
+    '"c"."founded" AS "founded" FROM "s"."co" AS "c" WHERE "c"."listed" = TRUE) AS "c"'
+)
+
+
+def test_a_governed_read_pushes_the_row_rule_the_statements_conditions_and_its_limit():
+    narrowed = _narrowed(f"SELECT c.name FROM {_RELATION} WHERE c.name = 'Acme' LIMIT 5")
+    assert narrowed == (
+        "PREFIX wdt: <http://www.wikidata.org/prop/direct/>\n"
+        f"SELECT * WHERE {{\n  {INNER}\n"
+        "  FILTER(?listed = true)\n"
+        '  FILTER(STR(?name) = "Acme")\n'
+        "}\nLIMIT 5"
+    )
+
+
+def test_a_governed_condition_on_a_masked_column_is_not_pushed_nor_the_limit():
+    narrowed = _narrowed(f"SELECT c.name FROM {_RELATION} WHERE c.employees >= 10 LIMIT 5")
+    assert narrowed == (
+        "PREFIX wdt: <http://www.wikidata.org/prop/direct/>\n"
+        f"SELECT * WHERE {{\n  {INNER}\n"
+        "  FILTER(?listed = true)\n"
+        "}"
+    )
