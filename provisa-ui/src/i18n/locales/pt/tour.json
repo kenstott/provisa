@@ -1917,6 +1917,10 @@
         "title": "Quem está a fracionar?",
         "description": "Depósitos logo abaixo de 10.000 $, três vezes ou mais, entre agências e dias. Nenhum exigia relatório sozinho. Victor Hale foi a três agências numa semana, e os dois depósitos de Marcus Reed num dia exigiam juntos um relatório. Só o compliance vê esta vista."
       },
+      "banksecrecyPollyWalk": {
+        "title": "O que o banco deve fazer?",
+        "description": "Um cliente deposita repetidamente dinheiro logo abaixo de 10.000 $. O que o banco deve fazer? Procurar essas palavras nos trechos da lei não encontra a resposta. Polly percorre o glossário: depósitos abaixo do limite, até o fracionamento (structuring), até o relatório de atividade suspeita, e chega a 31 CFR 1010.314 e 31 CFR 1020.320, os trechos que o dizem."
+      },
       "banksecrecyExample": {
         "title": "A mesma resposta em GraphQL",
         "description": "Os relatórios devidos, como chamada de API. Cada interface lê a mesma vista governada, com as mesmas máscaras para o mesmo papel."

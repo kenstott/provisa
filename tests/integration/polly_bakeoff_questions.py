@@ -203,6 +203,13 @@ BANKSECRECY = (
         "Which cash needs a currency transaction report?",
         'SELECT person AS a FROM "banksecrecy"."view_ctr_required"',
     ),
+    # Answered from the reference library by graph retrieval (REQ-2185): the passages of 31 CFR
+    # 1010.314 and 1020.320 name the suspicious activity report. The right answer is that report,
+    # asked of a bank that has someone structuring (the view has rows).
+    Question(
+        "A customer keeps depositing cash just under $10,000; what must the bank do?",
+        'SELECT DISTINCT \'suspicious activity report\' AS a FROM "banksecrecy"."view_structuring"',
+    ),
 )
 
 # The testdata demo's question (REQ-2053): the assistant reads customers.email's latest profile run

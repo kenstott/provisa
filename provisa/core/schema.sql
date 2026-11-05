@@ -1921,6 +1921,17 @@ CREATE TABLE IF NOT EXISTS reference_passages (
     UNIQUE (document_id, ordinal)
 );
 
+-- REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding (its name and definition, by
+-- the org's vector model), under one partial HNSW index per dimension in use
+-- (provisa.reference_library.terms). Mirrors schema_org.glossary_term_vectors.
+CREATE TABLE IF NOT EXISTS glossary_term_vectors (
+    term_id         INTEGER PRIMARY KEY REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    embedding_model TEXT NOT NULL,
+    digest          TEXT NOT NULL,
+    vector          public.vector NOT NULL,
+    tenant_id       UUID
+);
+
 -- REQ-2179: the glossary's scans of reference library documents for terms, and the review queue of
 -- the candidate terms each proposes, drafts until a steward accepts, merges or rejects them. A scan
 -- keeps the document's title and source, so its citations outlive the document. Mirrors

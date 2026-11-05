@@ -3563,6 +3563,15 @@ class SecurityConfig(BaseModel):  # REQ-693
         return self.mode.lower() == "high"
 
 
+class ReferenceLibraryConfig(BaseModel):  # REQ-2185
+    """The reference library's retrieval setting, as an org holds it (org setting
+    ``reference_library``): the passages nearest a question, or the glossary walk's as well."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    retrieval: Literal["passage", "graph"] = "passage"
+
+
 #: Validation-context key: the configuration parsed is the model the store holds (REQ-1919).
 STORED_MODEL = "stored_model"
 
@@ -3642,6 +3651,8 @@ class ProvisaConfig(BaseModel):
     # and a sub-role ``<attribute>__<value>`` for the value a user's attributes give it. Only these,
     # never every claim.
     derived_roles: list[DerivedRole] = Field(default_factory=list)
+    # REQ-2185: the reference library's retrieval setting, passage or graph.
+    reference_library: ReferenceLibraryConfig = Field(default_factory=ReferenceLibraryConfig)
     rls_rules: list[RLSRule] = Field(default_factory=list)
     event_triggers: list[EventTrigger] = Field(default_factory=list)
     scheduled_triggers: list[ScheduledTrigger] = Field(default_factory=list)
