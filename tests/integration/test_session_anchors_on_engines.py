@@ -12,7 +12,8 @@
 that matches two of them, MATCH (b:Big), (s:Small) WHERE b.k = s.k CREATE (b)-[:R]->(s), reads
 their anchor tables (cypher__anchor__Big, cypher__anchor__Small) as the session holds them, and
 governance takes them for the session's own -- not for relations that are not registered (V006),
-as Trino's run of it once was refused -- and the relationships it made are read back."""
+as Trino's run of it once was refused -- and, named in lower case as Trino's PostgreSQL catalog
+finds them, the relationships it made are read back."""
 
 # Requirements: REQ-2176
 
@@ -104,13 +105,11 @@ def _values(answer: dict) -> list[tuple]:
 
 async def test_a_write_matching_two_session_labels_in_capitals_is_governed_and_read(server):
     assert await _call(server, "DELETE", "/data/cypher/session") == {"cleared": True}
-    try:
-        await _cypher(
-            server,
-            "CREATE (:Big {k: 1}), (:Big {k: 2}), (:Big {k: 3}), (:Small {k: 1}), (:Small {k: 2})",
-        )
-        await _cypher(server, "MATCH (b:Big), (s:Small) WHERE b.k = s.k CREATE (b)-[:R]->(s)")
-        answer = await _cypher(server, "MATCH (a:Big)-[:R]->(b:Small) RETURN a.k AS a, b.k AS b")
-        assert _values(answer) == [(1, 1), (2, 2)]
-    finally:
-        await _call(server, "DELETE", "/data/cypher/session")
+    await _cypher(
+        server,
+        "CREATE (:Big {k: 1}), (:Big {k: 2}), (:Big {k: 3}), (:Small {k: 1}), (:Small {k: 2})",
+    )
+    await _cypher(server, "MATCH (b:Big), (s:Small) WHERE b.k = s.k CREATE (b)-[:R]->(s)")
+    answer = await _cypher(server, "MATCH (a:Big)-[:R]->(b:Small) RETURN a.k AS a, b.k AS b")
+    assert _values(answer) == [(1, 1), (2, 2)]
+    assert await _call(server, "DELETE", "/data/cypher/session") == {"cleared": True}

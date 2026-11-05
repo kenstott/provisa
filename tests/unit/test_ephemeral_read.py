@@ -264,10 +264,10 @@ def test_a_string_joined_with_a_property_read_by_key_takes_its_text(monkeypatch)
 
 
 def test_a_label_in_capitals_reads_its_session_table_as_the_session_holds_it(monkeypatch):
-    # A read of a label spelled with capitals names its anchor table (cypher__anchor__Big) quoted:
-    # unquoted, PostgreSQL's folding -- which validate_sql judges the statement by too (REQ-039)
-    # -- reads cypher__anchor__big, no table the session holds, and refuses it as unregistered
-    # (V006): MATCH (b:Big), (s:Small) ... CREATE (b)-[:R]->(s) over HTTP on Trino.
+    # A read of labels spelled with capitals names their anchor tables as the session holds them,
+    # read as written and folded as PostgreSQL folds it (REQ-039): each is the session's own, no
+    # relation that is not registered (V006). MATCH (b:Big), (s:Small) ... CREATE (b)-[:R]->(s)
+    # over HTTP on Trino was refused naming cypher__anchor__big and cypher__anchor__small.
     from provisa.compiler import temp_tables
     from provisa.compiler.sql_gen import CompilationContext
     from provisa.compiler.sql_validator import validate_sql

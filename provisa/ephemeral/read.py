@@ -228,7 +228,7 @@ def _session_table(
     ``fixed`` (name, session type), not as an engine error."""
     if name in session.tables:
         # Named quoted, as the session holds it: exp.to_table takes no ``quoted``, and an unquoted
-        # cypher__anchor__Big is cypher__anchor__big once folded (REQ-039).
+        # name is read folded to lower case (REQ-039).
         return exp.alias_(exp.Table(this=exp.to_identifier(name, quoted=True)), alias)
     empty = exp.select(
         *(exp.alias_(_typed(exp.null(), kind), column, quoted=True) for column, kind in fixed)
