@@ -17,9 +17,10 @@ demo's template: its prod is profiled, dev is generated from those runs, and the
 their records -- the dataset, the generation and its report -- are written beside the replicas'
 seed. The demo's source is then deleted. A sandbox tier started afterwards adopts the template's
 dev from the seed, and a visitor's sandbox is given it: its dev reads generated rows, none of them
-a real name, and carries the report comparing them with the profile they were drawn from."""
+a real name, and carries the report comparing them with the profile they were drawn from. Its
+dev's runtime is built in the open, cloned from the template's (REQ-2006)."""
 
-# Requirements: REQ-1942, REQ-2053
+# Requirements: REQ-1942, REQ-2053, REQ-2006
 
 from __future__ import annotations
 
@@ -211,6 +212,11 @@ def test_a_synthetic_environment_is_generated_once_and_given_to_each_sandbox(tmp
     deployed.start(timeout=240)
     try:
         sandbox = _open(deployed)
+        # REQ-2006 (amended 2026-11-04): dev's runtime was built in the open, cloned, so the query
+        # below is served one already built and waits on no build of it.
+        opened = deployed.dump_stderr_debug()
+        built = f"demo sandbox {sandbox['org_id']} of gamma: its environment dev's runtime took "
+        assert built in opened, opened[-8000:]
         rows = httpx.post(
             f"{deployed.base_url}/data/sql",
             json={"sql": "SELECT name, species, age FROM animals"},

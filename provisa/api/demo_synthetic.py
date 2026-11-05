@@ -363,9 +363,10 @@ async def _adopt(org_id: str, env: str, store: str, held: dict[str, Any], *, clo
 async def copy_to_sandbox(template_org: str, org_id: str, envs: list[str]) -> None:
     """The template's prepared environments ``envs``, into the sandbox ``org_id``'s environments
     of the same names; one the template has not generated is refused by name. Each was created
-    from the sandbox's prod in this open (demo_sandbox._build). Its rows, its records and its
-    sources' bindings are copied from the template's as the rest of the template is (REQ-2006):
-    no runtime of the environment is built here. On cloud the profiling open spent 32.6 s giving
+    from the sandbox's prod in this open (demo_sandbox._environments). Its rows, its records and
+    its sources' bindings are copied from the template's as the rest of the template is
+    (REQ-2006): no runtime of the environment is built here, but once after, by the open, cloned
+    and with its sources already bound. On cloud the profiling open spent 32.6 s giving
     its environment its rows, two builds of that environment's runtime among them."""
     from provisa.api.demo_replicas import _store_path
     from provisa.federation.materialize_broker import copy_schema

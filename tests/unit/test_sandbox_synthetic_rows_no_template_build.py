@@ -18,7 +18,8 @@ demo's open spent 412 s there and was answered 504 by the 480 s upstream limit. 
 through the sandbox environment's runtime built that runtime twice (amended 2026-11-04): on cloud
 "its environments' rows" took 32.6 s, its built-in sources, sources and schemas rebuilt. The
 sandbox's environment is given the template's rows, records and bindings as the rest of the
-template is copied: through its schema, its runtime built by whatever asks for it first."""
+template is copied: through its schema. Its runtime is built once after, by the open, cloned
+(test_sandbox_env_runtime_built_at_open); the template's never is."""
 
 # Requirements: REQ-1942, REQ-2053, REQ-2006
 
