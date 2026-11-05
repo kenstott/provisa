@@ -15,7 +15,7 @@
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, renderHook, screen, waitFor } from "../../../../test-utils/render";
-import { getStored, setStored } from "../../../../lib/browserStorage";
+import { bindStorageScope, getStored, setStored, storageScope } from "../../../../lib/browserStorage";
 import {
   chosenNow,
   restoreSettings,
@@ -91,6 +91,27 @@ describe("a graph's remembered settings", () => {
     expect(chosenNow(null, ["sales", "finance", "new"])).toEqual(["sales", "finance", "new"]);
     expect(selectionToSave(["finance", "sales"], ["sales", "finance"])).toBeNull();
     expect(selectionToSave(["sales"], ["sales", "finance"])).toEqual(["sales"]);
+  });
+
+  // lib/browserStorage logs a refused write and raises its notice: the setting holds while the
+  // graph is open, and a reload finds it unsaved. Nothing here may stand between that and the page.
+  it("say so when the browser refuses to save one, and hold it while the graph is open", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("full", "QuotaExceededError");
+    });
+    const view = renderHook(() => useGraphSettings(TERRAIN, DEFAULTS));
+    act(() => view.result.current[1]("log", true));
+    expect(view.result.current[0].log).toBe(true);
+    expect(logged.mock.calls.flat().join(" ")).toContain("could not save");
+  });
+
+  it("refuse a reset with no scope bound: that is a defect, not nothing to clear", () => {
+    const view = renderHook(() => useGraphSettings(TERRAIN, DEFAULTS));
+    const scope = storageScope();
+    bindStorageScope(null);
+    expect(() => view.result.current[2]()).toThrow(/neither is known yet/);
+    bindStorageScope(scope);
   });
 
   it("clear on reset, back to the defaults", () => {

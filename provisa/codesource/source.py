@@ -10,18 +10,19 @@
 
 """A code source as it is registered and run (REQ-1984, REQ-1993).
 
-A ``node`` or ``python`` source keeps its configuration in its ``mapping`` (the source model's
-type-specific slot):
+A code source (a source type of :data:`provisa.codesource.languages.LANGUAGES`) keeps its
+configuration in its ``mapping`` (the source model's type-specific slot):
 
-    runtime       node | bun | deno for a node source; python for a python source
-    code          {"kind": "npm" | "pypi", "package", "version"}
+    runtime       one of its language's runtimes (node | bun | deno; python; go)
+    code          {"kind": <its language's package kind: npm | pypi | gomod>, "package", "version"}
                   {"kind": "git", "repository", "commit", "subdirectory"}
                   {"kind": "upload", "upload": <content hash of the uploaded archive>,
                    "filename": <the name of the file it was uploaded from, when known>}
                   {"kind": "directory", "path": <a directory on this server>} (REQ-2121): read
                    where it is, under the operator's allowed directories, single-tenant only
     lockfile      {"filename", "upload": <SHA-256 of its bytes>}, given beside code that carries none
-    entry         a python source's entry module, when its code has more than one
+    entry         where the code is entered, for a language whose source names it: a python
+                  source's entry module, a go source's package directory
     content_hash  the code's content hash, recorded when the source was saved
 
 :func:`prepare` makes a source ready to run: its code installed (cached by content hash), its
@@ -29,7 +30,7 @@ manifest read, and how its worker starts. It is done once per source and content
 process, at its first use; the worker itself is the shared pool's.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-2104
+# Requirements: REQ-1984, REQ-1993, REQ-2104, REQ-2200
 from __future__ import annotations
 
 import asyncio
@@ -42,6 +43,7 @@ from provisa.codesource import remote_sources, services
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.bundle import content_hash as hash_of
 from provisa.codesource.install import DIRECTORY_SKIPPED, DirectoryCode, GitCode, Lockfile
+from provisa.codesource.languages import CODE_SOURCE_TYPES, LANGUAGES
 from provisa.codesource.manifest import Manifest
 from provisa.codesource.worker import HostCommand, Worker, pool
 
@@ -49,20 +51,16 @@ if TYPE_CHECKING:
     from provisa.core.database import Database
     from provisa.core.package_registries import Resolved
 
-CODE_SOURCE_TYPES = frozenset({"node", "python"})
-NODE_RUNTIMES = ("node", "bun", "deno")
+__all__ = ["CODE_SOURCE_TYPES", "CodeConfig", "Context", "Prepared", "prepare"]
 
-_CODE_KINDS = {
-    "node": ("npm", "git", "upload", "directory"),
-    "python": ("pypi", "git", "upload", "directory"),
-}
+#: The references every language's code may be, beside its own package kind, and their fields.
+_SHARED_KINDS = ("git", "upload", "directory")
 _CODE_FIELDS = {
-    "npm": ("package", "version"),
-    "pypi": ("package", "version"),
     "git": ("repository", "commit"),
     "upload": ("upload",),
     "directory": ("path",),
 }
+_PACKAGE_FIELDS = ("package", "version")
 #: REQ-2121: a code directory is read where it is, never pinned to a content hash.
 DIRECTORY = "directory"
 
@@ -71,7 +69,7 @@ DIRECTORY = "directory"
 class CodeConfig:
     """A code source's ``mapping``, read and checked."""
 
-    language: str  # node | python
+    language: str  # a source type of LANGUAGES
     runtime: str
     code: dict[str, str]
     lockfile: dict[str, str] | None
@@ -104,10 +102,11 @@ def _workers(mapping: dict) -> int:
 
 def config_of(source_type: str, mapping: dict) -> CodeConfig:
     """The source's configuration, refused by name when it cannot be used."""
-    if source_type not in CODE_SOURCE_TYPES:
+    language = LANGUAGES.get(source_type)
+    if language is None:
         raise BundleRefused("not_code", f"{source_type!r} is not a code source type")
-    runtime = mapping.get("runtime") or ("python" if source_type == "python" else "")
-    allowed = NODE_RUNTIMES if source_type == "node" else ("python",)
+    allowed = language.runtimes
+    runtime = mapping.get("runtime") or (allowed[0] if len(allowed) == 1 else "")
     if runtime not in allowed:
         raise BundleRefused(
             "unknown_runtime",
@@ -115,13 +114,16 @@ def config_of(source_type: str, mapping: dict) -> CodeConfig:
             runtime=str(runtime),
         )
     code = dict(mapping.get("code") or {})
-    kinds = _CODE_KINDS[source_type]
+    kinds = (language.package_kind, *_SHARED_KINDS)
     if code.get("kind") not in kinds:
         raise BundleRefused(
             "code_kind",
             f"a {source_type} source's code is {', '.join(kinds)}, not {code.get('kind')!r}",
         )
-    missing = [k for k in _CODE_FIELDS[code["kind"]] if not code.get(k)]
+    fields = (
+        _PACKAGE_FIELDS if code["kind"] == language.package_kind else _CODE_FIELDS[code["kind"]]
+    )
+    missing = [k for k in fields if not code.get(k)]
     if missing:
         raise BundleRefused(
             "code_incomplete",
@@ -244,14 +246,11 @@ _lock = threading.Lock()
 
 async def _code_reference(config: CodeConfig, ctx: Context) -> Any:  # the language's Code union
     from provisa.codesource import uploads
-    from provisa.node.install import NpmCode
-    from provisa.python.install import PypiCode
 
     code = config.code
-    if code["kind"] == "npm":
-        return NpmCode(code["package"], code["version"])
-    if code["kind"] == "pypi":
-        return PypiCode(code["package"], code["version"])
+    language = LANGUAGES[config.language]
+    if code["kind"] == language.package_kind:
+        return language.package_code(code["package"], code["version"])
     if code["kind"] == "git":
         return GitCode(code["repository"], code["commit"], code.get("subdirectory", ""))
     if code["kind"] == DIRECTORY:
@@ -268,52 +267,7 @@ async def _lockfile(config: CodeConfig, ctx: Context) -> Lockfile | None:
     return Lockfile(config.lockfile["filename"], kept)
 
 
-def _prepare_node(
-    source_id: str, config: CodeConfig, code: Any, lock: Lockfile | None, ctx: Context
-) -> Prepared:
-    from provisa.node.install import ensure_installed
-    from provisa.node.reader import ensure_typescript, read_bundle
-    from provisa.node.worker import host_command
-    from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
-
-    resolver = CodeRuntimeResolver(cache_root=ctx.cache_root)
-    executable = resolver.resolve(config.runtime)
-    installed = ensure_installed(
-        source_id=source_id,
-        runtime=config.runtime,
-        code=code,
-        expected_hash=config.content_hash,
-        registries=ctx.registries,
-        runtime_executable=executable,
-        cache_root=ctx.cache_root,
-        lockfile=lock,
-    )
-    manifest = read_bundle(
-        runtime=config.runtime,
-        executable=executable,
-        compiler=ensure_typescript(ctx.cache_root, ctx.registries),
-        bundle=installed.path,
-    )
-    # The host's Arrow library, pinned and fetched as the runtime is (REQ-2098): <home>/package/.
-    host_lib = resolver.resolve("apache-arrow").parent.parent
-    command = host_command(
-        runtime=config.runtime,
-        executable=executable,
-        bundle=installed.path,
-        egress=ctx.egress,
-        host_lib=host_lib,
-    )
-    return Prepared(
-        source_id,
-        installed.content_hash,
-        manifest,
-        _granted(command, source_id, config, ctx),
-        ctx.org_id,
-        workers=config.workers,
-    )
-
-
-def _granted(command: HostCommand, source_id: str, config: CodeConfig, ctx: Context) -> HostCommand:
+def granted(command: HostCommand, source_id: str, config: CodeConfig, ctx: Context) -> HostCommand:
     """``command`` with the source's services grant: its org and declared secrets (REQ-2104)."""
     grant = services.ServiceGrant(
         org_id=ctx.org_id,
@@ -325,52 +279,6 @@ def _granted(command: HostCommand, source_id: str, config: CodeConfig, ctx: Cont
         egress=tuple(ctx.egress),
     )
     return replace(command, services=grant)
-
-
-def _prepare_python(
-    source_id: str, config: CodeConfig, code: Any, lock: Lockfile | None, ctx: Context
-) -> Prepared:
-    from provisa.python.install import ensure_installed, environment_python
-    from provisa.python.source import code_path, entry_module, host_command, read_code
-    from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
-
-    resolver = CodeRuntimeResolver(cache_root=ctx.cache_root)
-    python, uv = resolver.resolve("python"), resolver.resolve("uv")
-    installed = ensure_installed(
-        source_id=source_id,
-        code=code,
-        expected_hash=config.content_hash,
-        registries=ctx.registries,
-        python=python,
-        uv=uv,
-        cache_root=ctx.cache_root,
-        lockfile=lock,
-    )
-    root = code_path(installed.path)
-    entry = entry_module(root, config.entry)
-    interpreter = environment_python(installed.path, python)
-    home = python.parent.parent
-    manifest = read_code(
-        python=interpreter, python_home=home, code=root, entry=entry, egress=ctx.egress
-    )
-    # The host's pyarrow, pinned and fetched as the runtime is (REQ-2098): <home>/pyarrow/.
-    host_lib = resolver.resolve("pyarrow").parent.parent
-    command = host_command(
-        python=interpreter,
-        python_home=home,
-        code=root,
-        entry=entry,
-        egress=ctx.egress,
-        host_lib=host_lib,
-    )
-    return Prepared(
-        source_id,
-        installed.content_hash,
-        manifest,
-        _granted(command, source_id, config, ctx),
-        ctx.org_id,
-        workers=config.workers,
-    )
 
 
 async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context) -> Prepared:
@@ -412,7 +320,7 @@ async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context)
         return ready
     code = await _code_reference(config, ctx)
     lock = await _lockfile(config, ctx)
-    build = _prepare_node if config.language == "node" else _prepare_python
+    build = LANGUAGES[config.language].prepare()
     # Fetching, installing and reading block: off the event loop.
     ready = await asyncio.to_thread(build, source_id, config, code, lock, ctx)
     with _lock:

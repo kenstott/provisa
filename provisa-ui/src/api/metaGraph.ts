@@ -11,8 +11,10 @@
 // REQ-2125, REQ-2127, REQ-2128: meta-domain queries run through the governed pipeline as the
 // signed-in user. The role's GraphQL schema holds only what the role may read, so each query is
 // built from it: a view, column or relationship the role cannot read is not selected, and what it
-// would have filled is absent. Each field is found in that schema by its snake_case name and
-// aliased to it, so the answer's keys are the view's own column names whatever the schema spells.
+// would have filled is absent. A column is found in that schema by its view's column name and a
+// relationship by its key, each as the schema spells it. A row's keys are camelCase under every
+// naming convention (REQ-416): a field the convention spells otherwise is aliased to its key. A
+// root field alone is answered under its view: its own name carries its domain's GraphQL alias.
 
 export interface GraphqlType {
   kind: string;
@@ -64,6 +66,14 @@ export async function dataGraphql<T>(
 
 const norm = (name: string) => name.replace(/_/g, "").toLowerCase();
 
+/** The key a row carries a column under: its name in camelCase, as naming.py's ``_to_camel_case``
+ * has it (an underscore before a digit stays). */
+const rowKey = (column: string) =>
+  column.replace(/(?<=[a-z0-9])_([a-z])/g, (_, c: string) => c.toUpperCase());
+
+/** ``name`` selected to answer under ``key``: no alias when the schema's spelling is the key. */
+const answeredAs = (key: string, name: string) => (key === name ? name : `${key}: ${name}`);
+
 function named(t: GraphqlType): string | null {
   let cur: GraphqlType | null | undefined = t;
   while (cur && cur.name === null) cur = cur.ofType;
@@ -93,16 +103,17 @@ export class RoleSchema {
     return this.types.get(type)?.find((f) => norm(f.name) === want)?.name ?? null;
   }
 
-  /** A relationship of ``type`` by its snake_case name (``edges_out``), as the schema spells it,
-   * and the type it reaches; null when ``type`` has no such relationship the role can read. */
+  /** A relationship of ``type`` by its name in any case (``edges_out``, ``edgesOut``), as the
+   * schema spells it, and the type it reaches; null when ``type`` has no such relationship the
+   * role can read. */
   relationship(type: string, name: string): { name: string; type: string } | null {
     const want = norm(name);
     const f = this.types.get(type)?.find((x) => norm(x.name) === want);
     return f?.type && this.types.has(f.type) ? { name: f.name, type: f.type } : null;
   }
 
-  /** The field ``name`` of ``type`` exactly (a root field, or a relationship's declared alias),
-   * and the type it reaches; null when the role's schema has no such field. */
+  /** The field ``name`` of ``type`` exactly (a root field), and the type it reaches; null when
+   * the role's schema has no such field. */
   exact(type: string, name: string): { name: string; type: string | null } | null {
     return this.types.get(type)?.find((f) => f.name === name) ?? null;
   }
@@ -151,10 +162,6 @@ export async function rootFields(role: string): Promise<RootFields> {
   );
 }
 
-/** A relationship to follow: by its declared GraphQL alias, or (declared without one) by the
- * meta view it reaches. */
-export type Hop = { alias: string } | { to: string };
-
 /** One column's condition, as the where input spells it (provisa/compiler/type_map.py). */
 export type Cond =
   | { eq: unknown }
@@ -170,11 +177,12 @@ export type Where = { _and?: Where[]; _or?: Where[] } & {
   [columnOrRelationship: string]: Cond | Where | Where[];
 };
 
-/** What to read of a type: its columns, and the relationships to follow, each answered under
- * ``key``; a one-to-many relationship can be narrowed by its own ``where``. */
+/** What to read of a type: its view's columns, and the relationships to follow, each by the
+ * camelCase key its rows are read under, found by that key or (declared without a GraphQL alias)
+ * ``to`` the meta view it reaches. A one-to-many relationship can be narrowed by its own ``where``. */
 export interface Selection {
   fields: string[];
-  rels?: Record<string, Hop & { sel: Selection; where?: Where }>;
+  rels?: Record<string, { to?: string; sel: Selection; where?: Where }>;
 }
 
 /** The meta domain as one role reads it: its schema and where each view is queried from. */
@@ -189,30 +197,30 @@ function viewType(m: MetaReader, view: string): string | null {
   return m.schema.exact(m.schema.query, field)?.type ?? null;
 }
 
-/** The selection set of ``sel`` on ``type``, with only what the role can read: one selection a
- * line, nested ``depth`` deep, so the query reads as it is shown. */
+/** The selection set of ``sel`` on ``type``, with only what the role can read, each answering
+ * under its camelCase key: one selection a line, nested ``depth`` deep, so the query reads as it
+ * is shown. */
 export function selectionSet(m: MetaReader, type: string, sel: Selection, depth = 1): string {
   const pad = "  ".repeat(depth);
   const parts: string[] = [];
   for (const f of sel.fields) {
     const name = m.schema.column(type, f);
-    if (name) parts.push(`${f}: ${name}`);
+    if (name) parts.push(answeredAs(rowKey(f), name));
   }
-  for (const [key, hop] of Object.entries(sel.rels ?? {})) {
-    const target = "to" in hop ? viewType(m, hop.to) : null;
-    const found =
-      "alias" in hop
-        ? m.schema.exact(type, hop.alias)
-        : target
-          ? m.schema.reaching(type, target)
-          : null;
+  for (const [field, hop] of Object.entries(sel.rels ?? {})) {
+    const target = hop.to ? viewType(m, hop.to) : null;
+    const found = hop.to
+      ? target
+        ? m.schema.reaching(type, target)
+        : null
+      : m.schema.relationship(type, field);
     if (!found?.type) continue;
     // A narrowing the role cannot state (a column it cannot read) leaves the relationship out
     // rather than read wider than asked.
     const args = hop.where ? whereArg(m, found.type, hop.where) : "";
     if (args === null) continue;
     const body = selectionSet(m, found.type, hop.sel, depth + 1);
-    if (body) parts.push(`${key}: ${found.name}${args} ${body}`);
+    if (body) parts.push(`${answeredAs(field, found.name)}${args} ${body}`);
   }
   if (parts.length === 0) return "";
   return `{\n${parts.map((p) => pad + p).join("\n")}\n${"  ".repeat(depth - 1)}}`;

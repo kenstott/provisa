@@ -10,6 +10,7 @@
       "test_endpoint_disabled": "Test-endpoint is uitgeschakeld (stel PROVISA_ENABLE_TEST_ENDPOINTS in om dit buiten productie in te schakelen).",
       "unknown_action_type": "Onbekend actionType '{{action_type}}'",
       "unknown_role": "Onbekende rol '{{role}}'",
+      "mask_unreachable": "U hebt een masker gedefinieerd dat niet bereikbaar is: {{entries}}",
       "webhook_not_found": "Webhook '{{name}}' niet gevonden",
       "written_table_not_registered": "'{{table}}' is geen geregistreerde tabel van bron '{{source_id}}'",
       "function_exists": "Functie '{{name}}' bestaat al",
@@ -93,7 +94,6 @@
       "no_grpc_query_for_table": "Geen gRPC-query geregistreerd voor tabel '{{table}}'",
       "no_mutation_fields": "Geen mutatievelden gevonden",
       "no_proto_for_role": "Rol '{{role_id}}' heeft geen proto: de rol krijgt geen gegevensoppervlak, omdat deze geen domein bereikt of alleen rechten op het besturingsvlak heeft",
-      "role_served_nothing": "Aan rol '{{role_id}}' wordt geen tabel geleverd: er is geen kolom van welke tabel dan ook aan toegekend",
       "no_query_field_for_proto_type": "Geen queryveld voor proto-type '{{type_name}}' onder rol '{{role_id}}'",
       "no_query_fields": "Geen queryvelden gevonden",
       "no_role": "Geen rol '{{role_id}}'",
@@ -130,12 +130,14 @@
       "address_not_found": "Niets op te lossen: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve kan in één bewerking niet met andere rootvelden worden gecombineerd",
       "source_starting": "De bron {{source}} wordt nog gestart. Probeer het zo opnieuw.",
+      "source_unavailable": "De bron {{source}} kon niet antwoorden. Probeer het straks opnieuw.",
       "view_outside_load_window": "De view {{view}} kan alleen binnen het leesvenster worden gelezen. Het opent weer om {{opens_at}}.",
       "graphql_body_missing": "Het verzoek heeft geen body: een GraphQL-verzoek is een JSON-object met een query.",
       "graphql_body_not_json": "De body van het verzoek is geen JSON: {{error}}",
       "graphql_request_not_object": "Een GraphQL-verzoek is een JSON-object met een query.",
       "graphql_parameter_type": "De parameter {{parameter}} van het GraphQL-verzoek moet {{expected}} zijn.",
-      "graphql_mutation_over_get": "Een mutatie wordt met POST verstuurd, nooit met GET."
+      "graphql_mutation_over_get": "Een mutatie wordt met POST verstuurd, nooit met GET.",
+      "listed_only": "Rol {{role}} kan {{table}} alleen weergeven: de metadata is leesbaar, de gegevens niet"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -156,7 +158,7 @@
       "in_use": "Naar {{env}} wordt nog verwezen door {{count}} item(s). Verwijder of wijzig elk daarvan en verwijder daarna opnieuw."
     },
     "front_door": {
-      "coordinator_waking": "De omgeving wordt gestart. Deze is over ongeveer twee minuten gereed.",
+      "coordinator_waking": "De omgeving wordt gestart. Deze is over ongeveer vijf minuten gereed.",
       "coordinator_updating": "De omgeving wordt bijgewerkt. Deze is binnenkort weer beschikbaar."
     },
     "functions": {
@@ -269,6 +271,10 @@
       "classification_decision_not_found": "Geen beslissing over {{column}} als {{kind}}",
       "classification_pii_refused": "De kolom kon niet als PII worden gemarkeerd"
     },
+    "query": {
+      "catalog_view_refused": "{{view}} is een catalogusview van het meta-domein en kan niet in één instructie samen met een tabel van een databron worden gelezen: lees ze in twee instructies.",
+      "function_unsupported": "{{function}}() heeft geen equivalent op {{dialect}}."
+    },
     "replication": {
       "answer_not_json": "Het antwoord dat voor de replica van {{table}} is gelezen, is geen geldige JSON: [{{content_type}}] {{cause}} (in de {{kib}} KiB vóór byte {{before_byte}} van het antwoord).",
       "no_whole_copy": "Tabel {{schema}}.{{table}} van bron {{source}} heeft geen volledige kopie om te bouwen: ze wordt rij voor rij gerepliceerd of heeft een parameterkolom.",
@@ -288,7 +294,8 @@
       "not_found": "Rol niet gevonden",
       "org_selection_required": "Organisatieselectie vereist",
       "already_exists": "Rol '{{role}}' bestaat al",
-      "description_missing": "De rol '{{role}}' heeft een beschrijving nodig van waar hij voor is"
+      "description_missing": "De rol '{{role}}' heeft een beschrijving nodig van waar hij voor is",
+      "right_not_in_parents": "Rol {{role}} kan {{right}} niet hebben: geen enkele ouder heeft het"
     },
     "schema": {
       "allowed_domains_updated": "Toegestane domeinen bijgewerkt voor bron '{{source}}'",
@@ -358,6 +365,7 @@
       "request_rejected": "Aanmaakverzoek #{{id}} afgewezen",
       "rls_rule_deleted": "RLS-regel verwijderd",
       "rls_rule_not_found": "RLS-regel niet gevonden",
+      "rls_rule_right_taken": "Recht {{right}} van rol '{{role}}' staat al in regel {{rule}}. Een recht staat in hoogstens één regel: haal het uit die regel of bewerk die regel.",
       "rls_rule_saved_domain": "RLS-regel voor domein '{{domain}}' / rol '{{role}}' opgeslagen",
       "rls_rule_saved_table": "RLS-regel voor tabel {{table}} / rol '{{role}}' opgeslagen",
       "rls_rule_saved_tag": "RLS-regel voor tag '{{tag}}' / rol '{{role}}' opgeslagen",
@@ -397,6 +405,7 @@
       "source_region_set": "Regio van bron {{source}} ingesteld op {{region}}",
       "region_refused": "De regio is niet ingesteld: {{reason}}",
       "table_too_complex": "Tabel '{{table}}' is niet geregistreerd met de geselecteerde kolommen: {{reason}}. Kies minder kolommen.",
+      "remote_throttled": "Tabel '{{table}}' is niet geregistreerd: de snelheidslimiet van de bron liet geen controle toe ({{reason}}). Probeer het later opnieuw.",
       "table_updated": "Tabel '{{table}}' bijgewerkt (id={{id}})",
       "task_deleted": "Taak '{{task}}' verwijderd",
       "task_disabled": "Taak '{{task}}' uitgeschakeld",
@@ -409,10 +418,12 @@
       "unknown_request_type": "Onbekend verzoektype '{{type}}'",
       "unknown_trigger_kind": "Onbekend triggertype '{{kind}}'",
       "url_sql_exclusive": "url en sql sluiten elkaar uit",
+      "view_deploy_unsupported_type": "Bron '{{source}}' is van type '{{type}}' en kan geen geïmplementeerde view hosten; ondersteunde typen: {{supported}}",
       "view_deployed": "View '{{view}}' geïmplementeerd naar '{{source}}' schema '{{schema}}'",
       "view_spans_sources": "view omvat meerdere bronnen: {{sources}}",
       "webhook_approved": "Webhook '{{webhook}}' goedgekeurd",
       "webhook_name_required": "webhook_name is vereist voor een webhooktrigger",
+      "mask_unreachable": "U hebt een masker gedefinieerd dat niet bereikbaar is: {{entries}}",
       "webhook_not_found": "Webhook '{{webhook}}' niet gevonden",
       "change_streams_unavailable": "Bron '{{source}}' is een zelfstandige MongoDB-server, die geen change streams levert: het native wijzigingssignaal vereist een replica set of een sharded cluster. Draai hem als replica set, of gebruik het wijzigingssignaal poll.",
       "table_draft_set": "Tabel {{table}} als concept ingesteld",
@@ -467,7 +478,11 @@
       "relationship_same_entity_cardinality": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: ze is {{cardinality}}, en dezelfde entiteit is één rij op één rij",
       "relationship_same_entity_not_grounded": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: {{source}} en {{target}} zijn niet in dezelfde term verankerd",
       "relationship_same_entity_not_keys": "Relatie '{{relationship}}' kan niet als dezelfde entiteit worden gemarkeerd: {{columns}} is niet de primaire sleutel of een unieke sleutel van {{table}}",
-      "kaggle_token_missing": "Kaggle-dataset {{owner}}/{{ref}}: de databron bevat geen Kaggle API-token. Voeg het toe in het formulier Databronnen, waar het token wordt ingevoerd."
+      "kaggle_token_missing": "Kaggle-dataset {{owner}}/{{ref}}: de databron bevat geen Kaggle API-token. Voeg het toe in het formulier Databronnen, waar het token wordt ingevoerd.",
+      "jdbc_invalid": "Bron {{source}}: {{error}}",
+      "jdbc_file_refused": "Bron {{source}}: de URL noemt {{path}}, dat deze server niet voor de organisatie mag openen.",
+      "jdbc_options_refused": "Bron {{source}}: de URL van deze organisatie mag de stuurprogramma-optie {{options}} niet geven.",
+      "jdbc_driver_refused": "Bron {{source}}: een eigen JDBC-stuurprogramma van de klant draait als code in de JVM van Provisa, wat alleen een zelfgehoste installatie toestaat."
     },
     "secrets": {
       "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",
@@ -615,7 +630,10 @@
       "popup_blocked": "Uw browser heeft het inlogvenster geblokkeerd. Sta pop-ups toe voor deze site en probeer het opnieuw.",
       "window_closed": "Het inlogvenster is gesloten voordat het klaar was.",
       "tenant_invalid": "De Microsoft 365-instelling van de organisatie noemt geen directory (tenant). Een beheerder voert de ID of het domein van de directory in.",
-      "microsoft_account_unread": "De aanmelding is goedgekeurd, maar Microsoft heeft niet aangegeven van wie het postvak is."
+      "microsoft_account_unread": "De aanmelding is goedgekeurd, maar Microsoft heeft niet aangegeven van wie het postvak is.",
+      "client_missing": "Voer de client-ID en het clientgeheim van de app in en meld u daarna aan.",
+      "client_not_taken": "Dit soort bron meldt zich aan met de client van uw organisatie, niet met een die in het formulier is ingevoerd.",
+      "no_account_returned": "De aanmelding is goedgekeurd, maar het antwoord noemde geen account ({{parameter}}). Meld u opnieuw aan."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "Uw organisatie heeft geen bronnen toegestaan die haar postvakken lezen. Een beheerder staat dit toe onder Beheer › E-mail.",
@@ -661,6 +679,8 @@
       "unknown_demo": "Er is geen gepubliceerde demo met de naam {{demo}}.",
       "demo_not_ready": "Deze demo wordt nog voorbereid. Probeer het zo meteen opnieuw.",
       "demo_stores_failed": "Deze demo kon niet worden gestart. Probeer het over een paar minuten opnieuw.",
+      "demo_failed": "Deze demo kon niet worden voorbereid. Probeer het over een paar minuten opnieuw.",
+      "failed_to_start": "De demoserver kon niet worden gestart. Probeer het later opnieuw.",
       "at_capacity": "Alle demo-sandboxes zijn in gebruik. Probeer het zo meteen opnieuw.",
       "starting": "De demoserver wordt gestart. Probeer het over een minuut of twee opnieuw.",
       "disk_full": "Deze sandbox heeft zijn schijflimiet van {{limit}} bytes bereikt; er kan niets meer in worden geschreven.",
@@ -687,8 +707,7 @@
       "retire_on_invalid": "De geplande buitengebruikstelling {{retire_on}} is geen datum (gebruik JJJJ-MM-DD).",
       "successor_is_self": "Een term kan niet zijn eigen opvolger zijn.",
       "successor_retired": "De opvolger '{{successor}}' is buiten gebruik. Kies een term die in gebruik is.",
-      "term_not_live": "Alleen een actieve term kan worden afgeschreven; deze is {{status}}.",
-      "status_by_action": "De status van een term verandert via Afschrijven, Buiten gebruik stellen of Herstellen, elk met een reden.",
+      "status_by_action": "De status van een term verandert via Goedkeuren, Afschaffen, Buiten gebruik stellen of Herstellen.",
       "successor_required": "Deze term heeft nog kolommen of tabellen; buiten gebruik stellen verplaatst ze naar een opvolger. Kies er een.",
       "successor_role": "De opvolger van een {{role}} moet een {{role}} of een concept zijn; '{{successor}}' is een {{successor_role}}.",
       "no_retirement_history": "De geschiedenis van het model bevat geen buitengebruikstelling van deze term.",
@@ -698,8 +717,18 @@
         "class_and_attribute_table": "Tabel {{table}} heeft geen klasse: haar concept is deze term, die kolommen heeft die geen sleutels zijn ({{columns}}).",
         "tag_wrong_kind": "Deze term draagt tags ({{tags}}) die alleen een eigenschap aan haar kolommen doorgeeft; het is een {{role}}.",
         "retirement_blocked": "Deze term zou op {{retire_on}} buiten gebruik gaan, maar heeft nog gegevens. Stel hem buiten gebruik met een opvolger die ze overneemt.",
-        "no_data": "Dit concept is met geen enkele term verbonden die gegevens heeft."
-      }
+        "no_data": "Dit ontwerpconcept is met geen enkele term verbonden die data bevat.",
+        "approved_not_grounded": "Deze term is goedgekeurd maar bereikt geen data, dus geen agent ziet hem.",
+        "path_pending": "Verankerd · pad wacht op goedkeuring: hij bereikt data alleen via termen die nog niet zijn goedgekeurd.",
+        "path_pending_approve": "Verankerd · pad wacht op goedkeuring: goedkeuring van {{approve}} verankert hem."
+      },
+      "term_not_approved": "Alleen een goedgekeurde term kan worden afgeschaft; deze is {{status}}.",
+      "term_not_draft": "Alleen een ontwerpterm kan worden goedgekeurd; deze is {{status}}.",
+      "definition_required": "Geef de term een definitie voordat u hem goedkeurt.",
+      "not_bulk_approvable": "Alleen gedefinieerde, verankerde ontwerpen worden samen goedgekeurd; niet: {{terms}}.",
+      "term_ids_required": "Noem de goed te keuren termen.",
+      "impact_action": "Voor die actie bestaat geen voorbeeld.",
+      "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen."
     },
     "tag": {
       "not_on_terms": "De tag '{{tag}}' gaat niet op een term; alleen pii.",
@@ -739,6 +768,12 @@
         "no_description": "Dit dataproduct vermeldt doel noch gebruik.",
         "successor_retired": "Het dataproduct dat de leden van dit product overnam, '{{successor}}', is ook buiten gebruik gesteld."
       }
+    },
+    "erd": {
+      "database_unavailable": "De ERD-indelingen kunnen niet worden gelezen: de database is niet beschikbaar",
+      "layout_not_found": "Geen indeling met de naam {{name}}",
+      "layout_name_required": "Een indeling heeft een naam nodig",
+      "layout_place_unreadable": "De indeling plaatst een {{kind}} die u niet mag lezen"
     }
   }
 }

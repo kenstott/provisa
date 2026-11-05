@@ -113,7 +113,7 @@ def test_no_role_is_refused():
 
 def test_a_mutation_needs_the_write_capability():
     with pytest.raises(MutationNotPermitted, match="WRITE") as excinfo:
-        admit_command(_command(visible_to=["analyst"]), _role("analyst"), "editThing")
+        admit_command(_command(visible_to=["analyst"]), _role("analyst", "usage"), "editThing")
     assert excinfo.value.field_name == "editThing"
 
 

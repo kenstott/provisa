@@ -1,0 +1,96 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+# A targeted run of named tests on a branch: on request only, each run on its own runner, so a
+# change's own tests need no local machine. Nothing here is a landing gate. Tests that need the
+# compose stack (tests/integration, steps, features, e2e) are refused by name: they run in the Integration suite
+# workflow's targeted run (its `tests` input).
+
+name: Focused Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      python:
+        description: "Space-separated pytest files or node ids (empty: none)"
+        required: false
+        default: ""
+      ui:
+        description: "Space-separated vitest files under provisa-ui (empty: none)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: pytest
+    if: inputs.python != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # A file under tests/integration, steps, features or e2e needs the compose stack: collecting it starts the stack
+      # and builds the Trino function plugin in Docker, and a failure there kills every xdist
+      # worker (run 41107416131: INTERNALERROR, no tests ran). This job has neither the images
+      # nor the lanes' setup, so it names the file and stops before any setup.
+      - name: Refuse integration files
+        env:
+          TESTS: ${{ inputs.python }}
+        run: |
+          read -r -a tests <<< "$TESTS"
+          refused=0
+          for t in "${tests[@]}"; do
+            if [[ "$t" =~ (^|/)tests/(integration|steps|features|e2e)(/|$) ]]; then
+              echo "::error::$t is an integration, steps, features or e2e test: it needs the compose stack, which Focused Tests does not start. Run it with the Integration suite workflow, input tests=\"$t\"."
+              refused=1
+            fi
+          done
+          exit "$refused"
+
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          client: "true"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Run the named tests
+        env:
+          TESTS: ${{ inputs.python }}
+        run: |
+          read -r -a tests <<< "$TESTS"
+          uv run pytest "${tests[@]}" --no-cov -q -n auto -o faulthandler_timeout=300
+
+  ui:
+    name: vitest
+    if: inputs.ui != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: provisa-ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up the UI toolchain
+        uses: ./.github/actions/setup-ui
+        with:
+          graph-render: "true"
+
+      - name: Run the named tests
+        env:
+          TESTS: ${{ inputs.ui }}
+        run: |
+          read -r -a tests <<< "$TESTS"
+          npx vitest run "${tests[@]}"

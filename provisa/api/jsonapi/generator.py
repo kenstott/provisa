@@ -40,7 +40,6 @@ from provisa.api.json_response import OrjsonResponse
 from provisa.api.jsonapi.errors import error_response, jsonapi_error
 from provisa.api.jsonapi.pagination import (
     PAGE_TOTAL_PARAM,
-    build_pagination_links,
     page_to_limit_offset,
     parse_page_params,
     parse_page_total,
@@ -49,10 +48,8 @@ from provisa.api.jsonapi.naming import (
     physical_rel_name,
     relationship_name_maps,
     relationship_scalar_maps,
-    rename_row_keys,
     scalar_name_maps,
 )
-from provisa.api.jsonapi.serializer import rows_to_jsonapi
 from provisa.api._query_helpers import (
     RequestRefused,
     RequestVariables,
@@ -205,45 +202,6 @@ def _get_relationship_fields(
             # FK column in serialized rows uses camelCase (e.g. petId), not snake_case (pet_id)
             rels[f"{name}Id"] = name
     return rels
-
-
-def _extract_included(
-    rows: list[dict[str, Any]], include_names: list[str], id_columns: dict[str, list[str]]
-) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
-    """REQ-257: move nested included entities out of the primary rows into a deduplicated set.
-
-    The nested object/array under each included relationship is popped from the primary
-    resource and collected, keyed by relationship name (the JSON:API included type) and
-    deduplicated by its id -- made of its table's key columns (``id_columns``, by included type;
-    serializer.resource_id), so a composite-keyed resource is one of its own. Returns them with,
-    per primary row, the identifiers of what it includes, by relationship: a list for a to-many
-    relationship, one identifier (or None) for a to-one.
-    """
-    from provisa.api.jsonapi.serializer import resource_id
-
-    included_rows: dict[str, list[dict[str, Any]]] = {}
-    seen: dict[str, set[str]] = {}
-    links: list[dict[str, Any]] = []
-    for row in rows:
-        row_links: dict[str, Any] = {}
-        for inc in include_names:
-            nested = row.pop(inc, None)
-            items = nested if isinstance(nested, list) else [nested] if nested else []
-            bucket = included_rows.setdefault(inc, [])
-            ids = seen.setdefault(inc, set())
-            identifiers = []
-            for item in items:
-                rid = resource_id(item, id_columns[inc])
-                identifiers.append({"type": inc, "id": rid})
-                if rid not in ids:
-                    bucket.append(item)
-                    ids.add(rid)
-            if isinstance(nested, list):
-                row_links[inc] = {"data": identifiers}
-            else:
-                row_links[inc] = {"data": identifiers[0] if identifiers else None}
-        links.append(row_links)
-    return {k: v for k, v in included_rows.items() if v}, links
 
 
 def _key_columns(
@@ -933,56 +891,34 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 log.exception("JSON:API aggregate query execution failed for %s", gql_table)
                 return _jsonapi_error_response(500, "Internal Server Error", str(e))
 
-            from provisa.executor.serialize import serialize_aggregate, serialize_rows
+            from fastapi.responses import Response
 
+            from provisa.executor.json_encoders import (
+                jsonapi_aggregate,
+                jsonapi_group_by,
+                result_batches,
+            )
+
+            # REQ-2194: the Rust encoder writes the document from the result's Arrow batches.
+            agg_batches = result_batches(agg_result)
             if is_group_by:
                 # A group's nodes, when ?include= selected them, are a column of its own row.
-                shaped = serialize_rows(
-                    agg_result.rows, agg_compiled.columns, agg_compiled.root_field
-                )
-                group_rows = shaped.get("data", {}).get(agg_compiled.root_field, [])
                 # REQ-1417: both groupKey and nodes are keyed by the GraphQL text this handler
                 # synthesized — groupKey's field names are the `by:` argument's, which
                 # _build_group_by_graphql_query put through apply_gql_name — so both are renamed
                 # back to the physical spelling the caller's ?groupBy= and ?include= used.
-                for row in group_rows:
-                    if "groupKey" in row:
-                        row["groupKey"] = {
-                            gql_to_physical.get(k, k): v for k, v in row["groupKey"].items()
-                        }
-                    if "nodes" in row:
-                        row["nodes"] = [
-                            rename_row_keys(
-                                node,
-                                gql_to_physical,
-                                rel_gql_to_physical,
-                                rel_scalar_gql_to_physical,
-                            )
-                            for node in row["nodes"]
-                        ]
-                data = [
-                    {"type": f"{table_name}GroupBy", "id": str(idx), "attributes": row}
-                    for idx, row in enumerate(group_rows)
-                ]
-                return OrjsonResponse(
-                    content={"data": data},
-                    media_type=JSONAPI_CONTENT_TYPE,
-                    headers=build_cache_headers(agg_result.cache_entry),  # REQ-536
+                body = jsonapi_group_by(
+                    agg_batches,
+                    agg_compiled.columns,
+                    resource_type=table_name,
+                    scalar_names=gql_to_physical,
+                    rel_names=list(rel_gql_to_physical.items()),
+                    rel_scalar_names=rel_scalar_gql_to_physical,
                 )
-
-            shaped = serialize_aggregate(
-                agg_result.rows,
-                agg_compiled.columns,
-                agg_compiled.root_field,
-                agg_alias=agg_compiled.agg_alias,
-            )
-            agg_payload = (
-                shaped.get("data", {})
-                .get(agg_compiled.root_field, {})
-                .get(agg_compiled.agg_alias, {})
-            )
-            return OrjsonResponse(
-                content={"data": None, "meta": {"aggregate": agg_payload}},
+            else:
+                body = jsonapi_aggregate(agg_batches, agg_compiled.columns, agg_compiled.agg_alias)
+            return Response(
+                content=body,
                 media_type=JSONAPI_CONTENT_TYPE,
                 headers=build_cache_headers(agg_result.cache_entry),  # REQ-536
             )
@@ -1155,53 +1091,6 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             # COUNT(*) yields exactly one scalar row by SQL semantics — no empty-result fallback.
             total_count = int(next(iter(count_result.rows))[0])
 
-        # Serialize to flat rows first
-        from provisa.executor.serialize import serialize_rows
-
-        response_data = serialize_rows(result.rows, compiled.columns, gql_table)
-        rows = response_data.get("data", {}).get(gql_table, [])
-        # With no total, a full page is followed by another when the probe row came back; where no
-        # probe row could be asked for, a full page is all that is known.
-        has_next = len(rows) > page_size if probe_rows else len(rows) == page_size
-        rows = rows[:page_size]
-
-        # REQ-1417: back to physical names before anything downstream keys off them, so the
-        # relationship map, the included buckets, and the emitted attributes all speak one
-        # convention.
-        rows = [
-            rename_row_keys(row, gql_to_physical, rel_gql_to_physical, rel_scalar_gql_to_physical)
-            for row in rows
-        ]
-        physical_rel_fields = {f"{p}_id": p for p in rel_physical_to_gql}
-
-        # REQ-257: pull nested included entities out of the rows into a deduplicated set.
-        included_rows, row_links = _extract_included(rows, physical_include_names, include_keys)
-
-        # Build JSON:API document (compound when includes were requested)
-        doc = rows_to_jsonapi(
-            rows,
-            table_name,
-            id_field="id",
-            relationship_fields=physical_rel_fields,
-            included_rows=included_rows or None,
-            id_columns=base_keys,
-            included_id_columns=include_keys,
-            row_links=row_links if physical_include_names else None,
-        )
-        # The serializer's own ``meta.total`` is the length of the rows it was handed — a page, here.
-        # It is replaced by the counted total or removed: a page length is never reported as one.
-        if total_count is not None:
-            doc["meta"]["total"] = total_count
-        else:
-            del doc["meta"]["total"]
-        # REQ-1350: what the request's answer says about itself (an API answer cut short).
-        from provisa.core.statement_warnings import as_entries
-
-        if warnings := as_entries():
-            doc["meta"]["warnings"] = warnings
-        if not doc["meta"]:
-            del doc["meta"]
-
         # Pagination links — preserve role, sort, sparse fieldset, filters, include and parameters
         base_path = f"/data/jsonapi/{domain_id}/{table_name}"
         extra = {}
@@ -1216,18 +1105,43 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
         if want_total:
             extra[PAGE_TOTAL_PARAM] = "true"  # following a link counts again, as the request did
 
-        doc["links"] = build_pagination_links(
-            base_url=base_path,
-            page_number=page_number,
+        from fastapi.responses import Response
+
+        from provisa.core.statement_warnings import as_entries, warn
+        from provisa.executor.json_encoders import jsonapi, result_batches, warnings_json
+        from provisa.executor.serialize import to_one_truncated
+
+        # REQ-2194: the Rust encoder writes the compound document from the result's Arrow
+        # batches: the page (with no total, a full page is followed by another when the probe
+        # row came back; where no probe row could be asked for, a full page is all that is
+        # known), REQ-1417's physical names, REQ-257's included resources and linkage, the
+        # counted total (never a page's length), REQ-1350's warnings and the pagination links.
+        body, truncated = jsonapi(
+            result_batches(result),
+            compiled.columns,
+            resource_type=table_name,
             page_size=page_size,
+            page_number=page_number,
+            probe=bool(probe_rows),
             total=total_count,
-            query_params=extra or None,
-            has_next=has_next,
+            id_columns=list(base_keys),
+            scalar_names=gql_to_physical,
+            rel_names=list(rel_gql_to_physical.items()),
+            rel_scalar_names=rel_scalar_gql_to_physical,
+            includes=physical_include_names,
+            include_keys=include_keys,
+            base_path=base_path,
+            link_params=list(extra.items()),
+            warnings=warnings_json(as_entries()),
         )
+        # A to-one that matched several rows for one resource: in meta.warnings (the encoder's)
+        # and the response's X-Provisa-Warnings header.
+        for path in truncated:
+            warn(to_one_truncated(path))
 
         # REQ-536: HIT (with the entry's age) when the resource rows came from the response cache.
-        return OrjsonResponse(
-            content=doc,
+        return Response(
+            content=body,
             media_type=JSONAPI_CONTENT_TYPE,
             headers=build_cache_headers(result.cache_entry),
         )

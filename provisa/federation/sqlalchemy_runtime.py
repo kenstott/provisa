@@ -79,7 +79,7 @@ def _dbapi_cancel(
 
     psycopg2/psycopg/oracledb cancel the running statement from another thread via the
     connection (psycopg2 also serves redshift, greenplum, yugabytedb, cockroachdb, openGauss);
-    pyodbc (mssql, SAP ASE) via the cursor, created before execute; sqlite3 via ``interrupt()``;
+    pyodbc (mssql) via the cursor, created before execute; sqlite3 via ``interrupt()``;
     PyMySQL/mysqlclient (mysql, mariadb, tidb) via ``KILL QUERY`` on a second connection; the
     Exasol websocket DBAPI via its pyexasol connection's ``abort_query()`` (thread-safe by design,
     pyexasol/connection.py)."""
@@ -103,7 +103,7 @@ def _dbapi_cancel(
 def _deadline_bounded(cancel: Callable[[], None] | None) -> Iterator[None]:
     if cancel is None:
         # Drivers not wired above are not installed here, so their cancel API is unconfirmed:
-        # ibm_db (db2), vertica_python, teradatasql, hdbcli (SAP HANA), sqlanydb, pymonetdb, fdb /
+        # ibm_db (db2), vertica_python, hdbcli (SAP HANA), pymonetdb, fdb /
         # firebird-driver, singlestoredb. Their statement ends at the driver's own timeout.
         yield
         return

@@ -1,0 +1,7 @@
+/* BreakableName: a name wraps at its <wbr> break points (after "_", "|" and ".") and its spaces,
+   never mid-part, and is never cut with an ellipsis. */
+.name-breakable {
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+}

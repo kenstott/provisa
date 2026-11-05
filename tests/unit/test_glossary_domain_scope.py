@@ -124,6 +124,7 @@ async def test_search_narrows_by_the_same_rule(control_plane):
         await table_repo.upsert(conn, _tbl("sales", "orders", ["customer_id"]))
         customer = await _id(conn, "customer")
         await glossary_repo.set_definition(conn, customer, "The buyer.")
+        await glossary_repo.approve_term(conn, customer, by=None)
         assert await glossary_repo.search_terms(conn, "customer", domains=frozenset({"hr"})) == []
         hits = await glossary_repo.search_terms(conn, "customer", domains=frozenset({"sales"}))
         assert [h["name"] for h in hits] == ["customer"]

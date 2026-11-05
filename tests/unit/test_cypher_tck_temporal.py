@@ -142,3 +142,84 @@ def test_a_date_time_from_the_epoch_is_that_instant():
     assert d1.isoformat() == "1970-01-05T19:46:19.999999+00:00"
     assert d2.isoformat() == "1977-07-15T13:34:33.987000+00:00"
     assert _value("RETURN datetime.fromepochmillis(237821673987).year AS y") == 1977
+
+
+@pytest.mark.parametrize(
+    ("duration", "plus", "minus"),
+    [
+        # Temporal8 [1] #3: a fractional duration's time is 1.4 days; it moves a date one day.
+        (
+            "duration({years: 12.5, months: 5.5, days: 14.5, hours: 16.5, minutes: 12.5,"
+            " seconds: 70.5, nanoseconds: 3})",
+            "1997-10-11",
+            "1971-10-12",
+        ),
+        # Under a day of time moves a date not at all; whole days of it, toward zero either way.
+        ("duration({hours: 23})", "1984-10-11", "1984-10-11"),
+        ("duration({hours: 47})", "1984-10-12", "1984-10-10"),
+        ("duration({hours: -47})", "1984-10-10", "1984-10-12"),
+    ],
+)
+def test_a_date_moves_by_the_whole_days_of_a_durations_time(duration, plus, minus):
+    x = "date({year: 1984, month: 10, day: 11})"
+    assert _value(f"RETURN {x} + {duration} AS d").isoformat() == plus
+    assert _value(f"RETURN {x} - {duration} AS d").isoformat() == minus
+
+
+def test_a_session_time_with_its_offset_has_its_accessors(monkeypatch):
+    # Temporal5 [4]: a time with its offset stored in the session (a zoned_time property) is a
+    # time to its accessors, after a WITH as on the node (REQ-2176, REQ-2173).
+    from tests.unit.ephemeral_harness import Session
+
+    s = Session(monkeypatch, {})
+    s.run(
+        "CREATE (:Val {date: time({hour: 12, minute: 31, second: 14, nanosecond: 645876123,"
+        " timezone: '+01:00'})})"
+    )
+    rows = s.run(
+        "MATCH (v:Val) WITH v.date AS d RETURN d.hour, d.minute, d.second, d.microsecond,"
+        " d.timezone, d.offset, d.offsetMinutes, d.offsetSeconds"
+    )
+    assert rows == [
+        {
+            "d.hour": 12,
+            "d.minute": 31,
+            "d.second": 14,
+            "d.microsecond": 645876,
+            "d.timezone": "+01:00",
+            "d.offset": "+01:00",
+            "d.offsetMinutes": 60,
+            "d.offsetSeconds": 3600,
+        }
+    ]
+    assert s.run("MATCH (v:Val) RETURN v.date.hour AS h") == [{"h": 12}]
+
+
+@pytest.mark.parametrize(
+    ("query", "text"),
+    [
+        # Temporal1 [8] #8: a date time with the default time zone
+        ("RETURN datetime({year: 1984, month: 10, day: 11}) AS d", "1984-10-11T00:00Z"),
+        # Temporal9 [2] #66: truncated to the week, in the default time zone
+        (
+            "RETURN datetime.truncate('week', localdatetime({year: 1984, month: 10, day: 11,"
+            " hour: 12, minute: 31, second: 14})) AS d",
+            "1984-10-08T00:00Z",
+        ),
+        # Temporal2 [5] #2: parsed with an offset of zero
+        ("RETURN datetime('2015-07-21T21:40:32.142Z') AS d", "2015-07-21T21:40:32.142Z"),
+    ],
+)
+def test_a_date_time_read_in_utc_is_written_without_a_region(query, text):
+    """The engine reads a timestamptz through Arrow in its session zone, UTC (arrow_rows), and
+    openCypher writes a date time in UTC as ``Z``, naming no region, as it does a fixed offset."""
+    from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
+    from provisa.gql.temporal import cypher_text
+
+    sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
+    con = duckdb.connect()
+    con.execute("SET TimeZone = 'UTC'")  # as the engine runs (federation/duckdb_runtime.py)
+    con.execute(LOSSLESS_ARROW)
+    con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres")))
+    ((value,),) = arrow_rows(con.to_arrow_table())
+    assert cypher_text(value) == text

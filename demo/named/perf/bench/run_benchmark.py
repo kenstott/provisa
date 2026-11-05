@@ -55,6 +55,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import os
 import random
 import re
@@ -70,7 +71,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import host_agent
 from queries import QUERIES, Query
+from server_answer import checked
 
 # demo/named/perf/config.yaml, one level up from this script's own directory
 # (demo/named/perf/bench/) — whose bench-* sources are federated into whichever engine
@@ -187,12 +190,15 @@ class QueryResult:
     # "nocache": no request opts into the response cache (it is opt-in, REQ-544 amended
     # 2026-09-30) — no hit is possible, so ALL iterations are real, independent executions and the
     # full percentile set over them is a statistically valid "cold" measurement (not one sample).
-    # "cache": the request opts in (GraphQL @cached; SQL `-- @provisa cache=true`; gRPC and
-    # Cypher have no opt-in and never cache) — iteration 1 is dropped before computing
+    # "cache": the request opts in (GraphQL @cached; SQL `-- @provisa cache=true`; Cypher
+    # `// @provisa cache=true`; gRPC sends none here and never caches) — iteration 1 is dropped before computing
     # percentiles (per-maintainer instruction) because it is not guaranteed cache-cold (a prior
     # pass, or another query sharing the same governed shape/role, may have already warmed this
     # exact cache key), so it is neither a reliable cold sample nor a reliable warm one.
     cache_pass: str = "cache"
+    # The query language the request was written in (sql/cypher/graphql/grpc), beside the
+    # transport that carried it: flight carries SQL here, never Cypher, and the report says so.
+    dialect: str = ""
 
     @property
     def ok_samples(self) -> list[Sample]:
@@ -201,14 +207,18 @@ class QueryResult:
     def summary(self) -> dict:
         ok = self.ok_samples
         errors = len(self.samples) - len(ok)
+        # The first failure's text, so a failed cell says why in the report, not only on stderr.
+        first_error = next((s.error for s in self.samples if s.error is not None), None)
         if not ok:
             return {
                 "query_id": self.query_id,
                 "category": self.category,
                 "transport": self.transport,
+                "dialect": self.dialect,
                 "concurrency": self.concurrency,
                 "cache_pass": self.cache_pass,
                 "errors": errors,
+                "first_error": first_error,
                 "status": "all_failed",
             }
         # REQ-1894: the "nocache" pass measures every iteration; the "cache" pass drops iteration
@@ -231,24 +241,28 @@ class QueryResult:
             "query_id": self.query_id,
             "category": self.category,
             "transport": self.transport,
+            "dialect": self.dialect,
             "concurrency": self.concurrency,
             "cache_pass": self.cache_pass,
             "n": len(measured),
             "errors": errors,
+            "first_error": first_error,
             "total_rows": total_rows,
             "total_bytes": total_bytes,
             "bytes_per_sec": total_bytes / wall_s if wall_s > 0 else None,
             "qps": qps,
             "ops_per_hour": qps * 3600 if qps is not None else None,
             "latency_ms_p50": statistics.median(latencies_ms),
-            "latency_ms_p95": latencies_ms[int(len(latencies_ms) * 0.95) - 1]
-            if len(latencies_ms) > 1
-            else latencies_ms[0],
-            "latency_ms_p99": latencies_ms[int(len(latencies_ms) * 0.99) - 1]
-            if len(latencies_ms) > 1
-            else latencies_ms[0],
+            "latency_ms_p95": _percentile(latencies_ms, 0.95),
+            "latency_ms_p99": _percentile(latencies_ms, 0.99),
             "latency_ms_max": latencies_ms[-1],
         }
+
+
+def _percentile(sorted_values: list[float], p: float) -> float:
+    """Nearest-rank percentile of an ascending list: the smallest value with at least ``p`` of the
+    values at or below it. Never below the median, however few the samples."""
+    return sorted_values[max(0, math.ceil(p * len(sorted_values)) - 1)]
 
 
 class Transport:
@@ -283,6 +297,13 @@ class Transport:
 
     def close(self) -> None:
         pass
+
+
+async def _no_reset(_conn: Any) -> None:
+    """The pool's ``reset``: nothing. asyncpg's default sends one more statement (``SELECT
+    pg_advisory_unlock_all(); CLOSE ALL; UNLISTEN *; RESET ALL``) as each connection is released,
+    inside the timed region, which measured 1.3 to 1.45 ms on a point lookup. The harness leaves
+    no session state to clear: it never sets one."""
 
 
 PGWIRE_POOL_SIZE = 50  # real concurrent connections, independent of saturation's 4000 workers —
@@ -348,6 +369,7 @@ class PgwireTransport(Transport):
                     # PgBouncer-transaction-mode guidance (asyncpg's usual advice for poolers).
                     statement_cache_size=0,
                     timeout=10,
+                    reset=_no_reset,
                 )
 
             self._pool = asyncio.run_coroutine_threadsafe(_connect(), self._loop).result(timeout=30)
@@ -446,7 +468,9 @@ class BoltTransport(Transport):
 
     def __init__(self, host: str, port: int, role: str = "org_admin"):
         self._driver = None
-        self._session = None
+        self._thread = threading.local()
+        self._sessions: list = []
+        self._sessions_lock = threading.Lock()
         try:
             # provisa/bolt/session.py's no-auth branch (_resolve_user) offers EVERY compiled
             # role as selectable and takes role_id = roles[0] — with auth=None (no principal at
@@ -476,30 +500,40 @@ class BoltTransport(Transport):
 
             self._driver = GraphDatabase.driver(f"bolt://{host}:{port}", auth=basic_auth(role, ""))
             self._driver.verify_connectivity()
-            # One session for the transport's whole lifetime, matching FlightTransport's single
-            # persistent FlightClient (and every other transport's own connection reuse): a
-            # session opened/closed per call pays a real network RESET round trip on close
+            # One session per thread for the transport's whole lifetime, matching
+            # FlightTransport's single persistent FlightClient (and every other transport's own
+            # connection reuse). Per thread because a neo4j Session is not thread-safe: the
+            # saturation ramp's threads sharing one failed `Expected structure, found marker`,
+            # where the driver itself is safe to share. A session opened/closed per call pays a real network RESET round trip on close
             # (confirmed live: neo4j's driver, _sync/io/_pool.py's release(), calls
             # connection.reset() -- an actual RESET-message send+consume over the wire -- for
             # any connection not already in the reset state, which a just-run auto-commit query
             # never is). That per-call RESET is real Bolt-wire-protocol traffic a steady-state
             # client never pays (it keeps its session open across queries), so measuring it on
             # every iteration overstated Bolt's true per-query overhead.
-            self._session = self._driver.session()
+            self._thread_session()
         except Exception as exc:  # noqa: BLE001 - availability probe
             self._error = str(exc)
+
+    def _thread_session(self):
+        session = getattr(self._thread, "session", None)
+        if session is None:
+            assert self._driver is not None
+            session = self._thread.session = self._driver.session()
+            with self._sessions_lock:
+                self._sessions.append(session)
+        return session
 
     def available(self) -> bool:
         return self._driver is not None
 
     def run_cypher(self, cypher: str, params: dict) -> tuple[int, int, float]:
         assert self._driver is not None
-        assert self._session is not None
         # Raw neo4j Records, not dicts — same reasoning as PgwireTransport: dict() conversion
         # exists only to feed _payload_bytes; _ByteEstimator only pays it for sampled batches.
         batch: list = []
         estimator = _ByteEstimator()
-        result = self._session.run(cypher, params)  # type: ignore[arg-type]
+        result = self._thread_session().run(cypher, params)  # type: ignore[arg-type]
         for r in result:
             batch.append(r)
             if len(batch) >= _FETCH_BATCH_SIZE:
@@ -510,8 +544,8 @@ class BoltTransport(Transport):
         return estimator.row_count, estimator.byte_count, estimator.overhead_s
 
     def close(self) -> None:
-        if self._session:
-            self._session.close()
+        for session in self._sessions:
+            session.close()
         if self._driver:
             self._driver.close()
 
@@ -566,7 +600,7 @@ class HttpTransport(Transport):
         # once-materialized `dict_rows` list is bounded and this is not the same risk.
         assert self._client is not None
         resp = self._client.post("/data/cypher", json={"query": cypher, "params": params})
-        resp.raise_for_status()
+        checked(resp)
         body = resp.json()
         columns, rows = body["columns"], body["rows"]
         # The array-of-arrays -> array-of-dicts conversion exists only so _payload_bytes has a
@@ -582,6 +616,19 @@ class HttpTransport(Transport):
     def close(self) -> None:
         if self._client:
             self._client.close()
+
+
+def joined_rows(row: dict) -> int:
+    """The rows a nested GraphQL object stands for as SQL's JOIN would return them, so the two can
+    be compared: each relationship multiplies, and a row with no child is dropped as an inner join
+    drops it. A list of scalars is one column's value, not a relationship (``groupKey``)."""
+    count = 1
+    for value in row.values():
+        if isinstance(value, dict):
+            count *= joined_rows(value)
+        elif isinstance(value, list) and all(isinstance(v, dict) for v in value):
+            count *= sum(joined_rows(v) for v in value)
+    return count
 
 
 class GraphqlTransport(Transport):
@@ -665,7 +712,7 @@ class GraphqlTransport(Transport):
             # queries.py uses that exact shape.
             query = re.sub(r"(query(?:\([^)]*\))?)\s*\{", r"\1 @cached {", query, count=1)
         resp = self._client.post("/data/graphql", json={"query": query, "variables": params})
-        resp.raise_for_status()
+        checked(resp)
         body = resp.json()
         if body.get("errors"):
             raise RuntimeError(f"GraphQL errors: {body['errors']}")
@@ -678,8 +725,9 @@ class GraphqlTransport(Transport):
         for value in data.values():
             rows.extend(value if isinstance(value, list) else [value])
         byte_count = _payload_bytes(rows)
+        row_count = sum(joined_rows(row) for row in rows)
         overhead_s = time.perf_counter() - t0
-        return len(rows), byte_count, overhead_s
+        return row_count, byte_count, overhead_s
 
     def close(self) -> None:
         if self._client:
@@ -848,7 +896,7 @@ class GrpcTransport(Transport):
             headers={"X-Provisa-Role": role, **auth_headers},
             timeout=30,
         )
-        resp.raise_for_status()
+        checked(resp)
         well_known = str(resources.files("grpc_tools") / "_proto")
         with tempfile.TemporaryDirectory() as d:
             src = Path(d) / "provisa.proto"
@@ -883,10 +931,15 @@ class GrpcTransport(Transport):
         self._message_class_cache[full_name] = cls
         return cls
 
-    def run_grpc(self, spec: dict, params: dict, category: str = "") -> tuple[int, int, float]:
+    def run_grpc(
+        self, spec: dict, params: dict, category: str = "", no_cache: bool = True
+    ) -> tuple[int, int, float]:
         assert self._channel is not None
         type_name = spec["type_name"]
         metadata = [("x-provisa-role", self._role)]  # matches every other transport's role
+        if not no_cache:
+            # REQ-544: gRPC opts into the response cache per call, in metadata.
+            metadata.append(("x-provisa-cache", "true"))
         batch: list = []
         estimator = _ByteEstimator()
         # REQ-1899: a large scan-mode query uses the batched-rows RPC (Query{Type}Batch,
@@ -994,6 +1047,8 @@ _CALL_METHOD: dict[str, str] = {
     "grpc": "run_grpc",
 }
 
+_CACHE_HINT = {"sql": "-- @provisa cache=true", "cypher": "// @provisa cache=true"}
+
 
 def _run_sequential(
     transport: Transport, q: Query, method: str, text: str | dict, no_cache: bool = False
@@ -1003,13 +1058,17 @@ def _run_sequential(
     # ("nocache") or drop iteration 1 ("cache"). See QueryResult.cache_pass's own docstring.
     cache_pass = "nocache" if no_cache else "cache"
     result = QueryResult(
-        query_id=q.id, category=q.category, transport=transport.name, cache_pass=cache_pass
+        query_id=q.id,
+        category=q.category,
+        transport=transport.name,
+        cache_pass=cache_pass,
+        dialect=method,
     )
     call = getattr(transport, _CALL_METHOD[method])
-    if method == "sql" and not no_cache and isinstance(text, str):
-        # REQ-544 (amended 2026-09-30): pgwire and Flight SQL opt into the response cache per
-        # statement with a `-- @provisa cache=true` comment; the "nocache" pass sends none.
-        text = "-- @provisa cache=true\n" + text
+    if method in _CACHE_HINT and not no_cache and isinstance(text, str):
+        # REQ-544 (amended 2026-09-30): pgwire, Flight SQL, Bolt and /data/cypher opt into the
+        # response cache per statement with a comment; the "nocache" pass sends none.
+        text = f"{_CACHE_HINT[method]}\n{text}"
     for i in range(q.iterations):
         t0 = time.perf_counter()
         try:
@@ -1018,7 +1077,7 @@ def _run_sequential(
             elif method == "graphql":
                 n, byte_count, overhead_s = call(text, q.params, no_cache=no_cache)
             elif method == "grpc":
-                n, byte_count, overhead_s = call(text, q.params, q.category)
+                n, byte_count, overhead_s = call(text, q.params, q.category, no_cache=no_cache)
             else:
                 n, byte_count, overhead_s = call(text, q.params)
             # overhead_s (time spent computing _payload_bytes, and for Flight, Arrow->Python
@@ -1193,7 +1252,7 @@ def run_saturation(transport: Transport, method: str) -> list[SaturationPoint]:
                         timeouts,
                         achieved,
                         statistics.median(lat),
-                        lat[int(len(lat) * 0.99) - 1] if len(lat) > 1 else lat[0],
+                        _percentile(lat, 0.99),
                         total_bytes / wall_s if wall_s > 0 else 0.0,
                     )
                 )
@@ -1392,11 +1451,13 @@ def main() -> int:
     _prior_pass_results: list[QueryResult] = []
     sources = _describe_sources()
     transports_tested = sorted(name for name, t in transports.items() if t.available())
+    host = host_agent.host_facts({})
 
     def _checkpoint(results_so_far: list[QueryResult]) -> list[dict]:
         summaries = [r.summary() for r in _prior_pass_results + results_so_far]
         report = {
             "engine": args.engine,
+            "host": host,
             "sources": sources,
             "transports_tested": transports_tested,
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -1465,22 +1526,37 @@ def main() -> int:
     return 0
 
 
-def _print_table(summaries: list[dict]) -> None:
-    header = f"{'query_id':<24} {'cat':<26} {'transport':<8} {'conc':>5} {'n':>5} {'QPS':>10} {'bytes/s':>14} {'p50ms':>8} {'p99ms':>8}"
-    print("\n" + header)
-    print("-" * len(header))
+def cell_label(summary: dict) -> str:
+    """A cell's transport with the dialect it carried, e.g. ``flight(sql)`` or ``http(cypher)``."""
+    return f"{summary['transport']}({summary['dialect']})"
+
+
+def format_table(summaries: list[dict]) -> str:
+    header = (
+        f"{'query_id':<26} {'pass':<7} {'transport(dialect)':<18} {'conc':>5} {'n':>5} "
+        f"{'errors':>6} {'rows/iter':>10} {'QPS':>10} {'bytes/s':>14} {'p50ms':>8} {'p95ms':>8} "
+        f"{'p99ms':>8}"
+    )
+    lines = ["", header, "-" * len(header)]
     for s in summaries:
+        prefix = f"{s['query_id']:<26} {s['cache_pass']:<7} {cell_label(s):<18} "
         if s.get("status") == "all_failed":
-            print(
-                f"{s['query_id']:<24} {s['category']:<26} {s['transport']:<8} {'':>5} {'ALL FAILED':>10}"
+            lines.append(
+                f"{prefix}{'':>5} {'':>5} {s['errors']:>6} ALL FAILED: {s['first_error'] or ''}"[
+                    :240
+                ]
             )
             continue
-        print(
-            f"{s['query_id']:<24} {s['category']:<26} {s['transport']:<8} "
-            f"{str(s['concurrency'] or ''):>5} {s['n']:>5} "
-            f"{s['qps']:>10.1f} {s['bytes_per_sec']:>14,.0f} "
-            f"{s['latency_ms_p50']:>8.1f} {s['latency_ms_p99']:>8.1f}"
+        lines.append(
+            f"{prefix}{str(s['concurrency'] or ''):>5} {s['n']:>5} {s['errors']:>6} "
+            f"{s['total_rows'] / s['n']:>10.0f} {s['qps']:>10.1f} {s['bytes_per_sec']:>14,.0f} "
+            f"{s['latency_ms_p50']:>8.1f} {s['latency_ms_p95']:>8.1f} {s['latency_ms_p99']:>8.1f}"
         )
+    return "\n".join(lines)
+
+
+def _print_table(summaries: list[dict]) -> None:
+    print(format_table(summaries))
 
 
 if __name__ == "__main__":

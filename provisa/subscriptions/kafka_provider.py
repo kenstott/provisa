@@ -216,4 +216,16 @@ async def commit_landed(consumer: Any, events: list[ChangeEvent]) -> None:  # RE
         TopicPartition(topic, partition): OffsetAndMetadata(offset + 1, "")
         for (topic, partition), offset in highest.items()
     }
-    await consumer.commit(offsets=offsets)
+    from aiokafka.errors import CommitFailedError  # type: ignore[import-untyped]
+
+    try:
+        await consumer.commit(offsets=offsets)
+    except CommitFailedError as refused:
+        # The broker dropped this consumer from its group, or the group rebalanced: the consumer
+        # rejoins by itself. The batch is landed and applied by key, so reading it again from the
+        # last committed offset changes nothing; ending the listener would land nothing more.
+        log.warning(
+            "KafkaProvider: offsets %s not committed, read again after the consumer rejoins: %s",
+            {f"{t}[{p}]": o for (t, p), o in highest.items()},
+            refused,
+        )

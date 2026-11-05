@@ -71,6 +71,7 @@ const TRANSPORTS = [
   "graphql",
   "rest",
   "jsonapi",
+  "odata", // REQ-2193
   "sql_http",
   "cypher_http",
   "pgwire",

@@ -27,6 +27,7 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.compiler.naming import apply_sql_name
 from provisa.lineage.graph import Edge, LineageGraph, Node, TransformOp
 
@@ -39,7 +40,7 @@ RENAME = "rename"
 #: Kaggle dataset a files source was staged from. No other hint is copied.
 _BRAND_HINTS = ("brand", "kaggle_owner", "kaggle_ref")
 _FILE_TYPES = frozenset({"csv", "parquet", "files", "logs"})
-_CODE_TYPES = frozenset({"node", "python"})
+_CODE_TYPES = CODE_SOURCE_TYPES
 #: A document or search store: what its schema and table are called natively.
 _DOCUMENT_NAMES = {
     "mongodb": ("database", "collection"),

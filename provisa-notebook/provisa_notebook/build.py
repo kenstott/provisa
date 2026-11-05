@@ -149,7 +149,7 @@ def build(out: Path = ASSETS) -> dict:
         "depends": ["pandas", "pyarrow"],
         "unvendored_tests": False,
     }
-    (target / "pyodide-lock.json").write_text(json.dumps(lock))
+    (target / "pyodide-lock.json").write_text(json.dumps(lock), encoding="utf-8")
     build_lite(out / "lite")
     manifest = {
         "build": fingerprint(),
@@ -157,7 +157,7 @@ def build(out: Path = ASSETS) -> dict:
         "packages": shipped,
         "client_wheel": f"wheels/{client.name}",
     }
-    (target / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    (target / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest
 
 
@@ -196,7 +196,9 @@ def _patch_splash(target: Path) -> None:
     if len(bundles) != 1:
         raise RuntimeError(f"expected one jlab_core bundle in {target / 'build'}, found {bundles}")
     bundle = bundles[0]
-    bundle.write_text(detach_splash_safely(bundle.read_text(), bundle.name))
+    bundle.write_text(
+        detach_splash_safely(bundle.read_text(encoding="utf-8"), bundle.name), encoding="utf-8"
+    )
 
 
 def build_lite(target: Path) -> None:
@@ -231,7 +233,7 @@ def build_lite(target: Path) -> None:
         )
         src = Path(tmp) / "src"
         shutil.copytree(NOTEBOOKS, src / "files")
-        (src / "jupyter-lite.json").write_text(json.dumps(LITE_CONFIG, indent=2))
+        (src / "jupyter-lite.json").write_text(json.dumps(LITE_CONFIG, indent=2), encoding="utf-8")
         built = subprocess.run(
             [
                 str(python),
@@ -282,7 +284,7 @@ def is_current(out: Path = ASSETS) -> bool:
     manifest = out / "pyodide" / "manifest.json"
     if not manifest.is_file() or not (out / "lite" / "jupyter-lite.json").is_file():
         return False
-    return json.loads(manifest.read_text()).get("build") == fingerprint()
+    return json.loads(manifest.read_text(encoding="utf-8")).get("build") == fingerprint()
 
 
 if __name__ == "__main__":

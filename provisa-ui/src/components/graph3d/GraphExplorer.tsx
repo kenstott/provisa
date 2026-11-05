@@ -64,18 +64,18 @@ import { DimensionToggle } from "./DimensionToggle";
 import { LayoutToggle } from "./LayoutToggle";
 import { kindKey } from "./nodeLook";
 import { OpenAsQuery } from "./OpenAsQuery";
-import { nodeHref } from "./nodeHref";
+import { erdHref, nodeHref } from "./nodeHref";
 import { LayersMenu, TermsMenu } from "./OntologyMenus";
 import { NodeFacts } from "./nodeFacts";
+import { BreakableName } from "../list/BreakableName";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
 /** The statuses a term can be filtered by (REQ-2130); a live term is always drawn. */
 const STATUSES: TermStatus[] = ["draft", "deprecated", "retired"];
 
-/** Layers toggled beside the filters rather than in the Layers row: the Ontology View's Columns,
- * and its Tables, which draws the tables of the columns drawn and so goes with Columns. */
-const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns", "ownerTables"]);
+/** Layers toggled beside the filters rather than in the Layers row: the Ontology View's Columns. */
+const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns"]);
 
 /** The depths a focus can be read to, in hops. */
 const DEPTHS = [1, 2, 3, 4];
@@ -94,6 +94,7 @@ export function GraphExplorer({
   settingsKey,
   exportName,
   query,
+  within = null,
   testId = "graph3d",
 }: {
   data: GraphData;
@@ -136,6 +137,10 @@ export function GraphExplorer({
      * narrows the graph to it. */
     overview?: boolean;
   };
+  /** REQ-1723: the navbar's checked domains (useViewDomains), null for no narrowing. The graph
+   * holds only what is in them; its own domain filter chooses among them, narrowing further and
+   * never past them. */
+  within?: ReadonlySet<string> | null;
   testId?: string;
 }) {
   const { t } = useTranslation();
@@ -146,7 +151,11 @@ export function GraphExplorer({
   };
   const every = query?.all ?? data;
   const offered = useMemo(() => availableLayers(every, scope), [every, scope]);
-  const choices = useMemo(() => filterChoices(every), [every]);
+  // The domain filter offers the navbar's domains alone (REQ-1723).
+  const choices = useMemo(() => {
+    const c = filterChoices(every);
+    return within ? { ...c, domains: c.domains.filter((d) => within.has(d)) } : c;
+  }, [every, within]);
   const edgeTypes = useMemo(
     () =>
       [
@@ -173,7 +182,7 @@ export function GraphExplorer({
     grid: true as boolean,
     // REQ-2174: drawn in 2D, laid out flat through a face-on camera.
     flat: false as boolean,
-    // REQ-2174: auto opens in the layout the drawn edges call for; else the reader's Force or Layered.
+    // REQ-2174: auto opens in the preset's own layout, else Force; else the reader's Force or Layered.
     layout: "auto" as string,
     // REQ-2174 (ONE ONTOLOGY GRAPH): whether lateral term edges (related to, synonym of...) are drawn.
     lateral: true as boolean,
@@ -284,7 +293,8 @@ export function GraphExplorer({
   const move = (kind: CameraCommand["kind"], target: string | null) =>
     setCommand((c) => ({ kind, target, seq: c == null ? 1 : c.seq + 1 }));
 
-  // Tables are the tables of the columns drawn: without Columns, there are none to draw.
+  // The Product map's Tables are the tables of the columns drawn: without Columns, there are none
+  // to draw.
   const on = useMemo(
     () =>
       new Set(
@@ -297,13 +307,15 @@ export function GraphExplorer({
   const narrowed = useMemo(() => {
     const all = (chosen: string[], among: string[]) =>
       among.length > 0 && among.every((v) => chosen.includes(v)) ? [] : chosen;
+    // Inside the navbar's domains: the filter's choice among them, or all of them.
+    const chosen = all(filters.domains, choices.domains);
     return {
-      domains: all(filters.domains, choices.domains),
+      domains: within && chosen.length === 0 ? [...within].sort() : chosen,
       edgeTypes: all(filters.edgeTypes, edgeTypes),
       tags: all(filters.tags, choices.tags),
       sensitivities: all(filters.sensitivities, choices.sensitivities),
     };
-  }, [filters, choices, edgeTypes]);
+  }, [filters, choices, edgeTypes, within]);
   // The scope the query reads, reported whenever it changes (a key, so an equal one is not news).
   const onScope = query?.onScope;
   const own = query?.own ?? null;
@@ -397,7 +409,10 @@ export function GraphExplorer({
     // With an orphan go the edges that only placed it (its domain).
     return { nodes, edges: g.edges.filter((e) => kept.has(e.a) && kept.has(e.b)) };
   }, [data, on, filters, narrowed, query, expanded, reachScope, orphans, search, lateral]);
-  const layout = chosenLayout(shown, savedLayout(saved.layout as string));
+  const layout = chosenLayout(
+    shown,
+    savedLayout(saved.layout as string) ?? presetOf(preset).layout ?? null,
+  );
   const layeredPossible = useMemo(() => openingLayout(shown).layeredPossible, [shown]);
   // REQ-2174: in 2D the graph is a lane diagram (laneDiagram.ts), laid out by ELK as it is drawn.
   const lanes = useMemo(
@@ -671,17 +686,6 @@ export function GraphExplorer({
             {t("graph3d.columnsToggle")}
           </Chip>
         )}
-        {!scope.menus && !flat && offered.has("ownerTables") && (
-          <Chip
-            size="xs"
-            checked={layers.has("ownerTables")}
-            disabled={!layers.has("columns")}
-            onChange={(on) => toggleLayer("ownerTables", on)}
-            data-testid={`${testId}-tables`}
-          >
-            {t("graph3d.tablesToggle")}
-          </Chip>
-        )}
         {!scope.menus && scope.orphans && hasTerms && (
           <Chip size="xs" checked={orphans} onChange={setOrphans} data-testid={`${testId}-orphans`}>
             {t("graph3d.orphans")}
@@ -823,13 +827,14 @@ function GraphDetail({
                 <Link
                   key={e.id}
                   to={nodeHref(otherNode)}
-                  className="p3d-row p3d-row-link"
+                  className="p3d-row p3d-row-compact"
                   onMouseEnter={() => setHover({ kind: "edge", id: e.id })}
                   onMouseLeave={() => setHover(null)}
                   data-testid={`${testId}-link-${e.id}`}
                 >
-                  <span className="p3d-row-name">
-                    {e.a === node.id ? "→" : "←"} {name(other)}
+                  <span className="p3d-row-name is-wrap">
+                    {e.a === node.id ? "→" : "←"}{"\u00a0"}
+                    <BreakableName name={name(other)} />
                     <small>{e.label ?? t(`graph3d.edge_${e.kind}`)}</small>
                   </span>
                   {(e.paths ?? 1) > 1 && (
@@ -848,6 +853,17 @@ function GraphDetail({
             >
               {t("graph3d.zoomTo")}
             </Button>
+            {node.type === "table" && (
+              <Button
+                size="xs"
+                variant="default"
+                component={Link}
+                to={erdHref(node)}
+                data-testid={`${testId}-open-in-erd`}
+              >
+                {t("graph3d.openInErd")}
+              </Button>
+            )}
             {hasColumns && (
               <Button
                 size="xs"
@@ -866,9 +882,9 @@ function GraphDetail({
         <div className="p3d-list">
           {counts.map(({ key, type, count }) => (
             <div key={key} className="p3d-row p3d-row-compact">
-              <span className="p3d-row-name">
+              <span className="p3d-row-name is-wrap">
                 <i className={`p3d-dot g3d-sw-${type}`} />
-                {t(key)}
+                <BreakableName name={t(key)} />
               </span>
               <span className="p3d-num">{count}</span>
             </div>

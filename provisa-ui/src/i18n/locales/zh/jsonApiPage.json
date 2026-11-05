@@ -18,6 +18,7 @@
     "optionalHint": "可选",
     "fieldPlaceholder": "— 字段 —",
     "filterValuePlaceholder": "值",
+    "removeHandedParam": "移除 {{param}}",
     "sortAsc": "升序",
     "sortDesc": "降序",
     "paginationSectionTitle": "分页",

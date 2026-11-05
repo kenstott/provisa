@@ -8,9 +8,9 @@ Every query ends up running through the federation engine, which is what lets an
 | --- | --- | --- | --- |
 | **Direct-capable** | Yes | Yes | PostgreSQL, MySQL, MariaDB, SingleStore, SQL Server, Oracle, DuckDB |
 | **Federation only** | No | Yes | Redshift, Druid, Exasol, Hive, Iceberg, Delta Lake, Hive (S3-backed) |
-| **Direct-read (replica)** | Yes | Yes | Snowflake, Databricks, ClickHouse — driver reads data and lands a replica; queries run against the replica in the active engine |
-| **Direct (no cross-source connector)** | Yes | No | Athena — single-source statements run whole in Athena; cross-source joins land a full replica |
-| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Salesforce, ServiceNow, Cloud inventory, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365 |
+| **Direct-read (replica)** | Yes | Yes | Snowflake, Databricks, ClickHouse. The driver reads data and lands a replica; queries run against the replica in the active engine |
+| **Direct (no cross-source connector)** | Yes | No | Athena. Single-source statements run whole in Athena; cross-source joins land a full replica |
+| **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Salesforce, ServiceNow, Cloud inventory, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365, QuickBooks Online |
 
 **Direct-capable** sources answer a query that touches only them through their own driver, in under 100 ms, without going through the federation engine. They keep their full connector, so they still join other sources through the engine.
 
@@ -26,28 +26,28 @@ Every query ends up running through the federation engine, which is what lets an
 
 ## All Sources
 
-Provisa registers **73** source types, the ones the Sources form offers. The tables below cover all 73; the index is the count.
+Provisa registers **77** source types, the ones the Sources form offers. The tables below cover all 77; the index is the count.
 
 | # | Group | Source types |
 | --- | --- | --- |
-| 1–15 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2` |
-| 16–24 | [Cloud data warehouses](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
-| 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
-| 30–33 | [Data lake / open table formats](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
-| 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | [Code sources](code-sources.md) | `node`, `python` |
-| 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 44 | [Push receiver](#push-receiver) | `ingest` |
-| 45–46 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |
-| 47–51 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 52–53 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
-| 54–61 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
-| 62–67 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
-| 68 | [GovData](#govdata) | `govdata` |
-| 69–70 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
-| 71 | [Data profiler](#data-profiler) | `data_profiler` |
-| 72 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source — see [Kaggle datasets](#kaggle-datasets)) |
-| 73 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages — see [Wikipedia](#wikipedia)) |
+| 1–16 | [RDBMS](#rdbms) | `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `cockroachdb`, `yugabytedb`, `greenplum`, `tidb`, `firebird`, `airport`, `saphana`, `hiveserver2`, `jdbc` |
+| 17–25 | [Cloud data warehouses](#cloud-data-warehouses) | `snowflake`, `bigquery`, `databricks`, `redshift`, `athena`, `fabric`, `synapse`, `trino`, [`motherduck`](#motherduck) |
+| 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
+| 31–34 | [Data lake / open table formats](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
+| 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
+| 40–42 | [Code sources](code-sources.md) | `node`, `python`, `go` |
+| 43–45 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 46 | [Push receiver](#push-receiver) | `ingest` |
+| 47–48 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |
+| 49–53 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 54–55 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
+| 56–64 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
+| 65–71 | [API sources](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 72 | [GovData](#govdata) | `govdata` |
+| 73–74 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
+| 75 | [Data profiler](#data-profiler) | `data_profiler` |
+| 76 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
+| 77 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms). "Connector Name" is the federated connector used when the source participates in multi-source JOINs.
 
@@ -70,6 +70,7 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 | `airport` | — | — (DuckDB extension) | — | No |
 | `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | No |
 | `hiveserver2` | impyla (HiveServer2 over Thrift) | — | hive | No |
+| `jdbc` | SQLAlchemy, at the source's own URL | — | chosen per source | No |
 
 Wire-compatible databases reuse a base wire's JDBC driver, native async driver and dialect. CockroachDB, YugabyteDB and Greenplum ride the PostgreSQL wire, and TiDB rides the MySQL wire. They need only registry entries and no new connector code.
 
@@ -82,6 +83,36 @@ SAP HANA is read through its own driver and replicated into the active engine's 
 #### `hiveserver2`
 
 A HiveServer2 endpoint read directly over Thrift, for a Hive deployment where the endpoint is the only thing reachable. It is distinct from `hive` and `hive_s3`, which read the warehouse's files and metastore and never go through HiveServer2. Rows are read through the endpoint and replicated into the active engine's store. The form takes host, port (default 10000), username, password and database; `federation_hints.auth_mechanism` selects the authentication (default `PLAIN`, for example `GSSAPI` for Kerberos).
+
+#### `jdbc`
+
+A database with no named source type, reached through any SQLAlchemy dialect Provisa ships. The source takes three settings, kept in `federation_hints`:
+
+- `url`: the connection URL. Its scheme names the SQLAlchemy dialect and driver, as in `postgresql+psycopg2://db.example.com:5432/sales` or `mssql+pyodbc://host:1433/db?driver=ODBC+Driver+18+for+SQL+Server`. The URL carries no password. The username and password go in the source's own fields, where a `${secret:NAME}` reference works as it does for every source. A scheme whose package is not installed fails the connection and names the missing package.
+- `sql_dialect`: the SQL flavor Provisa writes for the source. It is one of SQLGlot's dialects, or `ansi` for SQLGlot's generic SQL. It is independent of the URL, so a database closest to Postgres can be written as `postgres` behind any driver.
+- `capabilities.<engine>`: the capabilities turned on for the source on that engine, as a comma list of `attach`, `predicate`, `join`, `aggregate` and `key_range`. Each one is off until it is set, and each is held per engine. After an engine swap, nothing is on for the new engine until it is set there. Function pushdown is not offered. `attach` is for a URL whose scheme names a built-in source type (`postgresql`, `mysql`, `mariadb`, `mssql`, `oracle`, `sqlite`, `duckdb`, `clickhouse`, `snowflake` and the other built-in types with a SQLAlchemy scheme). With it on, the source attaches the way that built-in type does on the active engine, through that type's own attach, at the host, port, database and user the URL names. If the active engine has no attach for that type, the source's rows are replicated into its store instead. Detect's attach check reports which applies.
+
+A SQLite or DuckDB file is named by its path, written with the organization's tokens: `sqlite:///{files}/shop.db` or `duckdb:///{org}/shop.duckdb`. The file is opened where the token resolves, and a path that leaves the organization's folder is refused, naming the path. On a server of many organizations this is the only file URL allowed. A URL naming any other file is refused, and a DuckDB file is opened with DuckDB's external access off.
+
+Provisa never sends a statement to a JDBC source whole. Its tables are read at their floor, and the engine runs the rest of the statement. A small table can instead be replicated whole by its replicate setting, and it then joins like any other landed table. Register Table offers each column as an optional parameter of kind `column_value`, named `_nf_<column>`: a value for a real column, given by equality, that narrows the read to the rows with that value. A steward can make a parameter required. A query that leaves a required parameter out is refused, naming the table and the parameter, before anything is sent to the source. In SQL a query gives a parameter as a WHERE condition on `_nf_<column>`, and in GraphQL as an argument. The floor reads the table with one SELECT of its columns, with an equality filter for each parameter given. It is written in the source's SQL dialect, and the values are bound rather than written into the text. The rows land for that set of arguments. When the statement alone sets a row limit, the read pulls the cursor in batches and stops once it has enough rows.
+
+A JDBC source can also run a customer's own JDBC driver. Give a `jdbc:` URL plus two more settings: `jdbc_driver_jar`, the driver's jar file (a `{files}/...` path works), and `jdbc_driver_class`, the driver's class name. Provisa opens that driver directly in its own JVM through JPype, with no Calcite involved. The SQL dialect, the capability settings and Detect work as they do for a SQLAlchemy URL. A `jdbc:` URL has no engine attach, so the form doesn't offer one. A customer's jar runs as code inside Provisa's JVM, so this option is for self-hosted installs only. A server of many organizations refuses it, naming the reason, and so does a sandbox organization.
+
+**On the Sources form.** The first field of a JDBC source is **Driver**. Pick one of the standard drivers Provisa ships, each named by its database, or **Your own JDBC driver (jar)**. A standard driver asks for host, port and database, or for a database file for SQLite and DuckDB (written `{files}/…` for one in the organization's files area). The form builds the URL from them. Your own driver asks for the **JDBC URL** (with no password in it), the **Driver class**, and the **JDBC driver jar**, which you upload from your machine into the organization's files area. A server that runs no customer driver refuses the jar by name. Then pick the **SQL dialect** and press **Detect** once the driver's fields are filled. The capability checkboxes (**Live attach**, **Filter pushdown**, **Join pushdown**, **Aggregate pushdown**, **Key-range pushdown**) apply to the active engine, which the form doesn't ask you to name. **Live attach** appears only when the active engine can attach that driver's database type.
+
+For an organization whose sources are held to public addresses (a sandbox, or any organization but the deployment's own on a server of many organizations), the URL may carry only these driver options:
+
+| Dialect | Options allowed |
+| ------- | --------------- |
+| `postgresql` | `sslmode`, `connect_timeout`, `application_name`, `target_session_attrs` |
+| `mysql` | `ssl_mode`, `connect_timeout`, `charset` |
+| `mssql` | `driver`, `Encrypt`, `TrustServerCertificate` |
+
+Any other option is refused by name. That covers options that name another host, a file, a service, an init command or a local file load. A self-hosted server and the deployment's own organization can pass any option their driver accepts.
+
+Detect is a button on the form. It runs read-only checks against the connection the form describes, on the active engine, written in the source's SQL dialect over rows the statement makes itself. It ticks the capabilities that passed and shows the source's own error for those that failed. Nothing is saved until the form is. After changing the URL or the dialect, press Detect again.
+
+A network URL's host is checked like any other source's host (sandbox and multi-organization egress rules), and the connection is made at the address that was checked, a sandbox's included. Nothing is checked against the database when it connects. Register Table lists the schemas, tables and columns that the source's own SQLAlchemy dialect reports.
 
 ### Cloud Data Warehouses
 
@@ -204,7 +235,7 @@ These source types are federation-only. They have no direct driver and no dialec
 
 ### Qdrant
 
-`qdrant` is read and written by Qdrant's own client, `qdrant-client`. Qdrant is **live-only**: a property of the source type, not a setting. Its vector index and Query API are what it answers with, and no replica can answer the same, so its tables are never replicated. There is no Replicate choice for a Qdrant source or its tables; a `replicate` value or `row_materialize` on one is refused.
+`qdrant` is read and written by Qdrant's own client, `qdrant-client`. Qdrant is **live-only**. That is a property of the source type, so no setting changes it. Its vector index and Query API are what it answers with, and no replica can answer the same, so its tables are never replicated. There is no Replicate choice for a Qdrant source or its tables; a `replicate` value or `row_materialize` on one is refused.
 
 **Connection.** `host` is the instance's URL with its port (`https://<cluster>.cloud.qdrant.io:6333`, or a self-hosted `http://qdrant:6333`); `password` is its API key, a secret reference resolved when the source is read, empty for an instance without one. `federation_hints.prefer_grpc: true` reads over Qdrant's gRPC port instead of REST. The source has one schema, `default`.
 
@@ -267,8 +298,8 @@ Each line's words are searched for, with its own sonnet's points left out throug
 | Source Type | Mechanism | Mutations |
 | ------------ | ----------- | ----------- |
 | `kafka` | Federated Kafka connector; schema via Confluent Schema Registry (Avro, Protobuf, JSON Schema), manual definition, or sample inference | No; a table's live output publishes to Kafka |
-| `websocket` | External WebSocket feed — connect, subscribe, receive events; results materialized | No |
-| `rss` | RSS 2.0 / Atom feed — poll, watermark by pubDate/updated; results materialized | No |
+| `websocket` | External WebSocket feed: connect, subscribe, receive events; results materialized | No |
+| `rss` | RSS 2.0 / Atom feed: poll, watermark by pubDate/updated; results materialized | No |
 
 **Kafka on the hosted engines.** On the hosted platform's provisioned engines a Kafka source must name a schema registry (`schema_registry_url`). One whose topics' columns only the model declares is refused by name when saved or applied (HTTP 422, `sources.kafka_needs_schema_registry`), since its table descriptions would need a directory the running engine cannot be given. SASL credentials reach those engines in memory (see [Security](security.md#the-federation-engine-trino)).
 
@@ -326,7 +357,7 @@ A path with any other scheme (`ftp://`, say) is refused: "DuckDB reads no file a
 - **Paths on the server.** A server path must be a file under a directory listed in the setting `sources.download_roots` (environment `PROVISA_SOURCES_DOWNLOAD_ROOTS`), once its symlinks are followed. None is listed by default. A path outside them is refused by name and nothing is copied.
 - **Many organizations.** On a server of many organizations (`multitenancy: true`) a server path is refused by name whatever the setting holds, and only `https://` and `s3://` are offered. An address whose host resolves inside the server's own network (private, loopback or link-local) is refused by name too, at every redirect.
 - **Its table, as a draft.** When the source is created, the form offers to set up its table at once, as a draft, in the domain you pick. The table is named after the source and typed from the file as Register Table would propose it, and it stays out of service until a steward takes it out of draft. The choice is on by default.
-- **Through Polly.** Give Polly one fully resolved path to a single CSV or Parquet file and she proposes the source with its download and draft table, and creates it once you confirm. A directory, a glob or several files becomes a files source instead.
+- **Through Polly.** Give Polly one fully resolved path to a single CSV or Parquet file and it proposes the source with its download and draft table, and creates it once you confirm. A directory, a glob or several files becomes a files source instead.
 
 **Writes to a local SQLite or DuckDB file, and locks.** A write takes the file's lock and never waits for it. When another process or node holds the file, the write is refused, naming the source and that its file is locked.
 
@@ -341,7 +372,7 @@ A folder shared without encryption must be mounted with locks that reach every n
 
 | Formats | Transports |
 | --- | --- |
-| CSV, TSV, JSON, YAML, Excel (XLS/XLSX), Parquet, Arrow, and documents converted to tables — HTML, Markdown, DOCX, PPTX | Local filesystem, HTTP(S), `s3://`, `hdfs://`, `ftp://`/`ftps://`, `sftp://`, `iceberg://`, SharePoint (REST and Microsoft Graph) |
+| CSV, TSV, JSON, YAML, Excel (XLS/XLSX), Parquet, Arrow, and documents converted to tables (HTML, Markdown, DOCX, PPTX) | Local filesystem, HTTP(S), `s3://`, `hdfs://`, `ftp://`/`ftps://`, `sftp://`, `iceberg://`, SharePoint (REST and Microsoft Graph) |
 
 ```yaml
 - id: sales_files
@@ -349,7 +380,7 @@ A folder shared without encryption must be mounted with locks that reach every n
   path: s3://bucket/sales/**/*.csv   # glob; local and http(s):// also supported
 ```
 
-Any `files` source can also declare a `crawl` in its mapping, with the same settings listed under [Wikipedia](#wikipedia): the source then reads web pages first and lands each HTML data table and each linked data file in its directory as a table.
+Any `files` source can also declare a `crawl` in its mapping, with the same settings listed under [Wikipedia](#wikipedia). The source then reads web pages first and lands each HTML data table and each linked data file in its directory as a table.
 
 #### Excel workbooks
 
@@ -506,7 +537,7 @@ Then register the tables you want on the normal Register Table screen. Each file
 
 #### Wikipedia {: #wikipedia }
 
-Wikipedia crawls the pages you name. Each data table on a page, and each linked CSV, TSV, Excel, JSON or Parquet file, becomes a table of the source. Like Kaggle, it registers as a `files` source with a `crawl` in its mapping. Adding it registers nothing: a steward registers the tables wanted through the normal Register Table screen.
+Wikipedia crawls the pages you name. Each data table on a page, and each linked CSV, TSV, Excel, JSON or Parquet file, becomes a table of the source. Like Kaggle, it registers as a `files` source with a `crawl` in its mapping. Adding it registers nothing. A steward registers the tables wanted through the normal Register Table screen.
 
 **Setup fields.**
 
@@ -523,7 +554,7 @@ Wikipedia crawls the pages you name. Each data table on a page, and each linked 
 
 Provisa knows the "See also" heading of these editions: `en`, `de`, `es`, `it`, `pt`, `nl`, `pl`, `sv`, `ja`, `zh`, `ru`. For any other edition with "See also" off, the form asks what the edition calls that section; type its title as a page shows it (for example `Voir aussi`). A source saved without it is refused (`wikipedia.see_also_heading_needed`).
 
-**Which links are followed.** A link is chosen by what the page's own markup says it is, never by a name in its address: such names differ in every language edition and also occur in ordinary titles.
+**Which links are followed.** A link is chosen by what the page's own markup says it is, never by a name in its address, because such names differ in every language edition and also occur in ordinary titles.
 
 - Followed: links to other articles that sit in the article's own text, lists and data tables. The markup mark is `a[rel='mw:WikiLink']`.
 - Not followed: pages not yet written, the page itself, book-source lookups, file pages, other wikis and external sites.
@@ -567,7 +598,7 @@ Only tables that editors mark as data tables (`table.wikitable`) become tables, 
 | Source Type | Connector Name | Mutations |
 | ------------ | ----------------- | ----------- |
 | `google_sheets` | — (materialized) | No |
-| `prometheus` | prometheus | No | A metric is a table and a sample is a row (`timestamp`, `value`, one column per label); on every engine without a live connector Provisa reads the HTTP API — metric names and labels for Register Table, `query_range` over the table's range for landing
+| `prometheus` | prometheus | No | A metric is a table and a sample is a row (`timestamp`, `value`, one column per label); on every engine without a live connector Provisa reads the HTTP API: metric names and labels for Register Table, `query_range` over the table's range for landing
 
 ### Enterprise SaaS Connectors
 
@@ -584,10 +615,10 @@ SharePoint lists are enumerated as schemas and exposed as queryable tables. Two 
 | `password` | `client-secret` | Azure app client secret |
 | `database` | `tenant-id` | Azure tenant UUID |
 | `mapping.auth_type` | `auth-type` | `CLIENT_CREDENTIALS` (default) or `CERTIFICATE` |
-| `mapping.certificate_path` | `certificate-path` | PFX path when `auth_type: CERTIFICATE` — must be ABSOLUTE |
-| `mapping.certificate_password` | `certificate-password` | PFX password — the key must be present, empty string for a password-less PFX |
+| `mapping.certificate_path` | `certificate-path` | PFX path when `auth_type: CERTIFICATE`; must be ABSOLUTE |
+| `mapping.certificate_password` | `certificate-password` | PFX password; the key must be present, empty string for a password-less PFX |
 
-Certificate auth on the non-Trino engines carries two extra rules, both enforced when the Calcite pgwire server's `model.json` operand is built. `certificate_path` must be absolute: the server runs with its bundle directory as the working directory, so a relative path resolves inside the runtime-deps cache and the PFX is not found. `certificate_password` must be present in `mapping` even when the PFX has no password, in which case it is the empty string. The Calcite adapter rejects a null password outright, and an absent key is treated as a config error rather than silently read as an empty password. A missing or relative value raises `MissingConnectorConfig` naming the field.
+Certificate auth on the non-Trino engines carries two extra rules, both enforced when the Calcite pgwire server's `model.json` operand is built. `certificate_path` must be absolute, because the server runs with its bundle directory as the working directory, so a relative path resolves inside the runtime-deps cache and the PFX is not found. `certificate_password` must be present in `mapping` even when the PFX has no password, in which case it is the empty string. The Calcite adapter rejects a null password outright, and an absent key is treated as a config error rather than silently read as an empty password. A missing or relative value raises `MissingConnectorConfig` naming the field.
 
 When the connector does not expose `information_schema.columns`, register the table with explicit column definitions (obtained from the Microsoft Graph API) via the `registerTable` mutation.
 
@@ -637,7 +668,7 @@ For `CLIENT_CREDENTIALS` the connected app needs *Enable Client Credentials Flow
 
 **Reads.** On Trino the source is read through the `salesforce` catalog, which reads only. On every other engine the engine attaches the source's pgwire server and reads it in place.
 
-**Writes.** `INSERT`, `UPDATE` and `DELETE` on a registered sObject are mutations: governed, audited and handled per environment as any other mutation is. On every engine, Trino included, a write runs on the source's pgwire server; on Trino that server runs for writes alone. Each statement is sent to Salesforce and committed when it runs, so it cannot be rolled back. The server does not return the rows it writes: a statement with a `RETURNING` clause is refused, and GraphQL offers no mutation fields for these tables; SQL `INSERT`, `UPDATE`, `DELETE` and `COPY` are the write paths. A write is one plain statement on one table: `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING`, `MERGE` and `TRUNCATE` are refused, naming the form. A SharePoint source is written the same way.
+**Writes.** `INSERT`, `UPDATE` and `DELETE` on a registered sObject are mutations: governed, audited and handled per environment as any other mutation is. On every engine, Trino included, a write runs on the source's pgwire server; on Trino that server runs for writes alone. Each statement is sent to Salesforce and committed when it runs, so it cannot be rolled back. The server does not return the rows it writes, so a statement with a `RETURNING` clause is refused, and GraphQL offers no mutation fields for these tables; SQL `INSERT`, `UPDATE`, `DELETE` and `COPY` are the write paths. A write is one plain statement on one table: `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING`, `MERGE` and `TRUNCATE` are refused, naming the form. A SharePoint source is written the same way.
 
 **Startup.** Before it listens, the source's server reads the columns of every sObject, about four minutes for an org with 1,200 of them. That is paid once: the describe results are kept in the source's own state directory under the instance's data directory. The server is started when the source is registered or loaded. On Trino the `salesforce` catalog keeps its own describe results, one directory per source under `/data/trino/cache/salesforce-describe` in the coordinator, so the cost is paid once there too when that path is a volume that outlives the container: the compose stack's `trino_cache` volume, or the Helm chart's coordinator cache volume (`trino.coordinator.cache.persistence`). Until it listens, Register Table shows the connector as starting and a write is answered with the same message instead of waiting.
 
@@ -712,7 +743,7 @@ A form's table names its project and issue type in its `arguments` (`project`, `
 
 **Links.** The source's `issue_links` table holds the links between the issues of its forms: `link_id`, `link_type`, `outward_key` and `inward_key`, each link once. A relationship between two forms is declared through it as a junction, its `link_type` the discriminator, so GraphQL and Cypher walk issue to linked issue by link type.
 
-**Reads.** A lookup by key (`key =`, `key IN`) is fetched by key, so a key that names no issue is no row. A date or number comparison is sent to Jira as JQL. Every other filter, and every sort, is applied to the rows read: an equality on text, an option, a status or a user is not sent, since JQL refuses a value that names nothing where SQL returns no rows. A multi-value field (labels, a multi-select, components, versions) is text holding a JSON array, and is written the same way.
+**Reads.** A lookup by key (`key =`, `key IN`) is fetched by key, so a key that names no issue is no row. A date or number comparison is sent to Jira as JQL. Every other filter, and every sort, is applied to the rows read. An equality on text, an option, a status or a user is not sent, since JQL refuses a value that names nothing where SQL returns no rows. A multi-value field (labels, a multi-select, components, versions) is text holding a JSON array, and is written the same way.
 
 On DuckDB, PostgreSQL and ClickHouse the engine attaches the source's pgwire server and reads it in place. On Trino the source has no catalog of its own and is landed through its server.
 
@@ -742,7 +773,7 @@ tables:
 
 Cloud inventory lays out the resources of Azure, AWS and GCP as one set of tables: `compute_resources`, `storage_resources`, `kubernetes_clusters`, `database_resources`, `network_resources`, `iam_resources`, `container_registries`, and `compute_security_groups`, which ties a compute resource to its security groups. Each table has one set of columns across the three clouds, and its `cloud_provider` column names the cloud a row came from. The source reads only, and its tables are registered by a steward like any other.
 
-A source names one or more clouds. Each cloud is all or nothing: a cloud with some of its required values and not the rest is refused, naming what is missing, and so is a source naming no cloud. The source reads exactly the clouds it names. Every value lives in `mapping`, and each secret may be a `${secret:…}` or `${env:…}` reference. A secret typed as a literal is stored in the org vault and the source keeps its reference.
+A source names one or more clouds. Each cloud is all or nothing. A cloud with some of its required values and not the rest is refused, naming what is missing, and so is a source naming no cloud. The source reads exactly the clouds it names. Every value lives in `mapping`, and each secret may be a `${secret:…}` or `${env:…}` reference. A secret typed as a literal is stored in the org vault and the source keeps its reference.
 
 | Cloud | `mapping` key | Connector property | Notes |
 | --- | --- | --- | --- |
@@ -879,6 +910,41 @@ A check that cannot be made asks for a read; it never reports "unchanged". Calen
 
 **Exclusions.** Mail is read only; no statement changes a mailbox. `calendars`, `task_lists` and every mail table take no writes. Gmail's Spam and Trash are left out unless `mail_include_spam_trash` is on. Google's Tasks API keeps only the day a task is due, and has no reminder.
 
+#### QuickBooks Online {: #quickbooks }
+
+A QuickBooks Online source reads the Accounting API of one company: its customers, vendors, invoices, bills, payments, accounts, items, employees, journal entries, estimates and the rest of the entities the API's query endpoint serves (30 in all, from `account` to `vendor_credit`). Register Table lists them, one table per entity, named in snake case (`JournalEntry` is `journal_entry`).
+
+**Setting it up.** Create an app at developer.intuit.com with the Accounting scope (`com.intuit.quickbooks.accounting`). The source's form asks for:
+
+| Form field | Source field | Notes |
+| --- | --- | --- |
+| Company ID (realm ID) | `database` | The company's number. Intuit shows it when the app is connected, and in the company's account settings. |
+| Sandbox or production | `mapping.environment` | `sandbox` (default) reads `sandbox-quickbooks.api.intuit.com`; `production` reads `quickbooks.api.intuit.com`. |
+| Client ID | `username` | From the app's Keys and credentials page. |
+| Client secret | `password` | From the same page. |
+| Refresh token | `mapping.refresh_token` | The approval that lets Provisa read the company. Get one from Intuit's OAuth 2.0 Playground with the Accounting scope. |
+
+Any of them may be a `${secret:…}` or `${env:…}` reference. The source's Cache TTL is required, as for every source whose tables are landed.
+
+**The refresh token.** Intuit answers every refresh with the refresh token to send next time, and the one it replaces stops working. The token entered on the form is used once, at the first read. From then on the newest one is kept in the organisation's state store, under the company's realm ID, where a Microsoft 365 source's approval is kept. One refresh of a source runs at a time, across every process, and the replacement is stored before the access token is used. An entered token is never read again once one is kept, so a token entered after the first read does not replace the kept one. A token Intuit refuses (`invalid_grant`) fails the read and names Intuit's reason, never the token. QuickBooks refusing an access token drops it, and the read asks once more with a new one.
+
+**Columns.** Each field of an entity is a column, named in snake case (`TotalAmt` is `total_amt`). A reference is two columns, its id and its name: `CustomerRef` is `customer_ref_value` and `customer_ref_name`. `MetaData` is `meta_create_time` and `meta_last_updated_time`. Any other object or list is one JSON column: an address (`bill_addr`), and the line items of a transaction (`line`), as the generic API source keeps a nested value. `id` is the primary key.
+
+**Reads.** A table is read through the company's query endpoint, `SELECT * FROM <Entity>`, a page at a time with `STARTPOSITION` and `MAXRESULTS`. A page holds 1,000 rows (the most QuickBooks answers), and a read takes at most 100 pages unless the table's paging says otherwise. A read stopped at its last page with more to read is cut, and the statement carries the `api.answer_cut` warning. An entity with an `Active` flag (customers, vendors, accounts, items, employees and the other lists) is read with its inactive records too, unless the statement names `active`.
+
+**What is pushed down.** The conditions of a statement that reads one QuickBooks table alone are sent in its query when QuickBooks can take them:
+
+| Field | Operators sent |
+| --- | --- |
+| A number, a date, or a time (`MetaData`) | `=`, `<`, `>`, `<=`, `>=`, `IN` |
+| Text, and a reference's id (`customer_ref_value`) | `=`, `IN` |
+| A name QuickBooks matches by pattern (`display_name`, `name`, `company_name`, …) | also `LIKE`, with `%` as its only wildcard |
+| A boolean | `=` |
+
+Only fields QuickBooks filters are sent, such as an invoice's `balance`, `total_amt`, `txn_date`, `due_date`, `doc_number` and `customer_ref_value`. QuickBooks has no `OR`, `NOT` or `!=`. A condition using one of them, or on any other field, is applied by the engine to the rows read. Every condition is also applied again to the rows, so a pushed one only narrows what is fetched. The statement's `LIMIT` is sent too when every condition was, and the statement doesn't group, aggregate, de-duplicate, order or skip rows. For example, `SELECT * FROM invoice WHERE balance > 0` reads `SELECT * FROM Invoice WHERE Balance > '0' STARTPOSITION 1 MAXRESULTS 1000` (QuickBooks takes a number quoted). The answer to a narrowed query is cached under its own name and is never held as the whole table.
+
+The source reads only; it writes nothing to QuickBooks.
+
 ### API Sources
 
 Register any HTTP endpoint as a queryable table.
@@ -891,11 +957,15 @@ Register any HTTP endpoint as a queryable table.
 
 API responses are fetched, cached in PostgreSQL (configurable TTL), and exposed as GraphQL types. Cached tables participate in federated queries like any other source.
 
-**JSONB rules**: Complex columns (objects, arrays) stored as JSONB are not filterable. Sub-field access uses `->>` extraction in SQL. Relationships are declared between tables using scalar FK columns. JSONB blob columns are not join targets. Use JSONB promotion to convert nested fields into native scalar columns when filtering or joining on them is needed.
+**JSONB rules.** Complex columns (objects, arrays) stored as JSONB are not filterable. Sub-field access uses `->>` extraction in SQL. Relationships are declared between tables using scalar FK columns. JSONB blob columns are not join targets. Use JSONB promotion to convert nested fields into native scalar columns when filtering or joining on them is needed.
 
 #### GitHub and GitLab
 
 GitHub and GitLab are branded sources carried by `graphql_remote`: each appears in the Sources form under its own name and registers as a remote GraphQL source that records its brand. The form takes a personal access token and nothing else. The endpoint (`https://api.github.com/graphql`, `https://gitlab.com/api/graphql`) and the schema ship with Provisa, so the schema is not introspected at registration. The token is checked when the source is added. Adding the source registers no tables: every table the schema offers is available under the source's namespace (`gh`, `gl`), and the steward registers the ones wanted. A field the token may not read is left out of a table when it is registered.
+
+#### Shopify {: #shopify }
+
+Shopify is a branded source carried by `graphql_remote`, over a store's Admin GraphQL API. The form asks for the store name (the part of its admin address before `.myshopify.com`), the API version (filled in with `2026-10`, the newest stable version when the shipped schema was taken) and an Admin API access token, sent in the `X-Shopify-Access-Token` header. The endpoint is `https://<store>.myshopify.com/admin/api/<version>/graphql.json`. Adding the source checks the token and registers no tables; its tables are offered under the namespace `shopify`. Shopify prices each query and refuses one over 1,000 points, so a table is priced with the columns chosen when it is registered and refused with Shopify's numbers when it is over; a throttled read waits as long as Shopify says its bucket needs. See [Remote schemas: Shopify](remote-schemas.md#shopify). Not yet read against a live store.
 
 #### Stripe {: #stripe }
 
@@ -946,7 +1016,7 @@ A branded source ships its own exclusions as part of its curation, and an operat
 
 ### GovData
 
-U.S. government open data. Access is partitioned by subject grouping.
+GovData serves U.S. government open data, with access partitioned by subject grouping.
 
 A source is given one or more subjects, and each subject brings the adapter schemas listed below. A schema may belong to more than one subject (`census`). The `ref` and `geo` schemas are linker schemas: reference data and geography that every subject's tables join through, so every source serves them whatever subjects it is given. The list is stated once on the server and is held, by a test, to the schemas the pinned adapter bundle serves.
 
@@ -1013,7 +1083,7 @@ organization the request is running as.
 
 A value with no `${…}` in it is used as it is. `${env:VAR}` reads the deployment's process
 environment and needs nothing bound. `${secret:NAME}` names a secret an organization owns, so it
-resolves only inside that organization's own operations: the admin introspection seams and the
+resolves only inside that organization's own operations. The admin introspection seams and the
 query terminal every surface reaches establish that binding.
 
 The field holds what you put in it, however the source was registered:
@@ -1026,7 +1096,7 @@ The field holds what you put in it, however the source was registered:
   (see [Secrets](secrets.md)) and type `${secret:NAME}` into the field.
 
 A value typed as a value is stored in the control-plane database as typed. Retyping the password
-replaces the field's text. Deleting the source removes its row and nothing from the vault: a
+replaces the field's text. Deleting the source removes its row and nothing from the vault, because a
 secret you created is yours.
 
 `password_ref` does not travel between environments. A branch or a copied environment
@@ -1039,20 +1109,20 @@ A data profiler is a source that holds a name, a schedule and run defaults, and 
 
 ### Data Quality Checkers
 
-A data-quality checker is just another source type. Its scan output is data: each check result is an observation, so it lands through the ordinary source path and gets what every other source gets, from cadence, freshness, events and lineage to governance, RLS, the grid and export.
+A data-quality checker is another source type. Its scan output is data. Each check result is an observation, so it lands through the ordinary source path and gets what every other source gets, from cadence, freshness, events and lineage to governance, RLS, the grid and export.
 
 Two checkers are supported, and choosing between them is as much about the licence as about features.
 
 | Source Type | Contract Dialect | Extra | Licence | Hosted cloud plane |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
-| `soda` | Soda contract YAML | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Refused — see below |
+| `soda` | Soda contract YAML | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Refused; see below |
 | `great_expectations` | Expectation suite JSON | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Allowed |
 
 Elastic License 2.0 forbids providing the software to third parties as a hosted or managed service, and running Soda inside the SaaS plane on a tenant's behalf would be exactly that. `config/capabilities.yaml` records this as `cloud_eligible: false` on the `soda` option, and the hosted plane reads that flag. A hosted deployment that wants Soda points at a Soda endpoint the operator runs themselves.
 
 Provisa vendors and links nothing. The scan runs in a child interpreter (`python -m provisa.dq.worker`), the only place `soda_core` or `great_expectations` is imported. A source-available checker therefore never reaches the server process, and if a checker crashes, it takes down a subprocess and leaves the event loop alone.
 
-**The source points at Provisa's own pgwire endpoint.** That's how one postgres driver can check a table backed by Snowflake or Iceberg: the checker scans the federated view, never the system underneath. Policy applies to that connection, so you declare the scan identity explicitly. If it were inherited, a filtered set of rows could make a check pass without anyone noticing.
+**The source points at Provisa's own pgwire endpoint.** That's how one postgres driver can check a table backed by Snowflake or Iceberg, since the checker scans the federated view and never the system underneath. Policy applies to that connection, so you declare the scan identity explicitly. If it were inherited, a filtered set of rows could make a check pass without anyone noticing.
 
 ```yaml
 sources:
@@ -1145,11 +1215,11 @@ An unknown `kind` value fails loudly at startup, so a typo in a descriptor never
 
 Availability is verified at attach time against each engine's standard discovery catalog:
 
-- **Postgres** — checks `pg_extension`, then `pg_available_extensions`.
-- **DuckDB** — runs `INSTALL`/`LOAD` and checks `duckdb_functions()` for the declared `probe_symbol`.
-- **ClickHouse** — checks `system.table_engines` for the declared `ch_engine`; absent from the build fails loud.
+- **Postgres.** Checks `pg_extension`, then `pg_available_extensions`.
+- **DuckDB.** Runs `INSTALL`/`LOAD` and checks `duckdb_functions()` for the declared `probe_symbol`.
+- **ClickHouse.** Checks `system.table_engines` for the declared `ch_engine`; absent from the build fails loud.
 
-A declared extension that is not installable fails loud. No silent skip, no fallback. A connector whose probe fails is simply not active for that deployment.
+A declared extension that is not installable fails loud, with no silent skip or fallback. A connector whose probe fails is not active for that deployment.
 
 ### Template variables
 
@@ -1161,7 +1231,7 @@ A template referencing an unknown field fails loud at attach time, surfacing a d
 
 ### Examples
 
-**Postgres — MongoDB via `mongo_fdw` (no schema import; columns supplied per table)**
+**Postgres: MongoDB via `mongo_fdw` (no schema import; columns supplied per table)**
 
 ```yaml
 # config/custom_connectors.yaml
@@ -1183,7 +1253,7 @@ connectors:
       collection: "{table_name}"
 ```
 
-**DuckDB — Excel files via `read_xlsx` (scan table-function)**
+**DuckDB: Excel files via `read_xlsx` (scan table-function)**
 
 ```yaml
   - engine: duckdb
@@ -1343,7 +1413,17 @@ Registration records the subtype whenever the source's native type maps to one. 
 | `oid` | `bigint` | Postgres object identifier; integer arithmetic and ordering |
 | `money` | `numeric` | Fixed-decimal currency; numeric arithmetic and ordering |
 
-Source drivers map their native types to subtypes on registration. Where the native type is equivalent to a subtype, it maps there: Postgres `inet` and `cidr`, Trino `ipaddress`, ClickHouse `IPv4`/`IPv6`, Cassandra `inet`, and DuckDB `inet` all register as `inet`. SQL Server and Oracle `money` types register as `money`. SQL Server and Oracle XML types register as `xml`.
+Source drivers map their native types to subtypes on registration. Where the native type is equivalent to a subtype, it maps there:
+
+| Subtype | Native types that register as it |
+|---|---|
+| `inet` | Postgres, CockroachDB and YugabyteDB `inet`; Trino `ipaddress`; ClickHouse `IPv4` and `IPv6` (also inside `Nullable` or `LowCardinality`); Elasticsearch `ip`; Cassandra `inet`; DuckDB `INET` |
+| `cidr` | Postgres, CockroachDB and YugabyteDB `cidr` (its own subtype, since Postgres has a distinct `cidr` type) |
+| `money` | Postgres `money`; SQL Server `money` and `smallmoney` |
+| `xml` | Postgres and SQL Server `xml`; Oracle `XMLTYPE` |
+| `geometry` | MySQL, MariaDB, TiDB and SingleStore `point`, `linestring`, `polygon` and the other spatial types; SQL Server `geometry`; Elasticsearch `point` and `shape` |
+| `geography` | SQL Server `geography`; Elasticsearch `geo_point` and `geo_shape` |
+| `point` | Postgres `point` |
 
 A type not in this table registers as its nearest base type. Model tables never change after registration; re-registering a source does not change a column's recorded subtype.
 

@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavPayload } from "../hooks/useNavPayload";
+import { useScreenInputs } from "../mcp/screenState";
 import { useTranslation } from "react-i18next";
 import { GrpcCodeView } from "./grpc/GrpcCodeView";
 import { Badge, Button, Checkbox, Group, MultiSelect, Select, Tabs, Text } from "@mantine/core";
@@ -173,6 +174,8 @@ interface GrpcHandoff {
   byColumns: string[] | null;
   funcs: string[] | null;
   projection: NodeProjection | null;
+  // The request body handed with the method, whole: filter, limit, offset, read_mask.
+  body: Record<string, unknown> | null;
   autoRun: boolean;
   seq: number;
 }
@@ -190,18 +193,52 @@ function listArg(signature: string, pattern: RegExp): string[] | null {
 /** The call syntax a hand-off carries, read once: by-columns, funcs and the nodes projection.
  *  REQ-1401/REQ-1408: the NL page hands over the whole call syntax, so the projection it chose is
  *  read out of it too, or the page runs a narrower query than the one the visitor opened. */
-function parseGrpcHandoff(signature: string, autoRun: boolean, seq: number): GrpcHandoff {
-  const projection: NodeProjection | null = /include_nodes\s*=\s*true/.test(signature)
-    ? { includeNodes: true, include: listArg(signature, /include=\[([^\]]*)\]/) ?? [] }
-    : null;
+function parseGrpcHandoff(
+  signature: string,
+  body: Record<string, unknown> | null,
+  autoRun: boolean,
+  seq: number,
+): GrpcHandoff {
+  const includeNodes = body?.include_nodes === true;
+  const projection: NodeProjection | null =
+    /include_nodes\s*=\s*true/.test(signature) || includeNodes
+      ? {
+          includeNodes: true,
+          include: (body?.include as string[]) ?? listArg(signature, /include=\[([^\]]*)\]/) ?? [],
+        }
+      : null;
   return {
     method: signature,
-    byColumns: listArg(signature, /\(by=\[([^\]]*)\]/),
-    funcs: listArg(signature, /funcs=\[([^\]]*)\]/),
+    byColumns: (body?.by as string[]) ?? listArg(signature, /\(by=\[([^\]]*)\]/),
+    funcs: (body?.funcs as string[]) ?? listArg(signature, /funcs=\[([^\]]*)\]/),
     projection,
+    body,
     autoRun,
     seq,
   };
+}
+
+/** Whether a method's request body is written by the aggregate pickers. */
+function hasAggPicker(method: ProtoMethod): boolean {
+  return (
+    method.operation === "query" &&
+    (method.typeName.endsWith("Aggregate") || method.typeName.endsWith("GroupBy"))
+  );
+}
+
+const PICKER_FIELDS = ["by", "funcs", "columns", "include_nodes", "include"];
+
+/** The body as text once the pickers have had their say. What they do not write stays: a GroupBy
+ * body carries filter, order_by, limit and offset too. */
+function withPickerFields(text: string, fields: Record<string, unknown>): string {
+  let body: Record<string, unknown> = {};
+  try {
+    body = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    // Mid-edit text: the pickers' fields are what is known.
+  }
+  for (const key of PICKER_FIELDS) delete body[key];
+  return JSON.stringify({ ...fields, ...body }, null, 2);
 }
 
 /** The server's own refusal of a request: its catalog message, else "<op> failed (<status>)". */
@@ -232,17 +269,21 @@ export function GrpcPage() {
   // whether the page was just opened or already open (useNavPayload below). Each hand-off has its
   // own sequence number: the proto fetch selects it, and the auto-run effect runs it once.
   const [handoff, setHandoff] = useState<GrpcHandoff | null>(null);
-  useNavPayload<{ grpcMethod?: string; autoRun?: boolean }>((payload) => {
+  useNavPayload<{
+    grpcMethod?: string;
+    grpcBody?: Record<string, unknown>;
+    autoRun?: boolean;
+  }>((payload) => {
     if (!payload.grpcMethod) return;
     const signature = payload.grpcMethod;
+    const body = payload.grpcBody ?? null;
     setHandoff((prev) =>
-      parseGrpcHandoff(signature, payload.autoRun === true, (prev?.seq ?? 0) + 1),
+      parseGrpcHandoff(signature, body, payload.autoRun === true, (prev?.seq ?? 0) + 1),
     );
   });
-  const navMethod = handoff?.method ?? "";
-  const navByColumns = handoff?.byColumns ?? null;
-  const navFuncs = handoff?.funcs ?? null;
-  const navProjection = handoff?.projection ?? null;
+  // The hand-off the page has selected, which is when it may run: a hand-off of the method already
+  // selected must not run the body already on screen.
+  const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
 
   const [protoText, setProtoText] = useState("");
   const [protoError, setProtoError] = useState("");
@@ -280,17 +321,21 @@ export function GrpcPage() {
       byColumns?: string[] | null,
       funcs?: string[] | null,
       projection?: NodeProjection | null,
+      body?: Record<string, unknown> | null,
     ) => {
       setSelectedMethod(method);
       setGroupByCols(byColumns ?? []);
       setSelectedFuncs(funcs ?? []);
-      setSelectedAggColumns([]); // REQ-1882: not carried over nav call syntax, same as before this field existed
+      // REQ-1882: not carried over nav call syntax, same as before this field existed.
+      setSelectedAggColumns((body?.columns as string[]) ?? []);
       setIncludeNodes(projection?.includeNodes ?? false);
       setIncludeFields(projection?.include ?? []);
       setMessageText(
-        method.operation === "command"
-          ? buildCommandTemplate(commandsMapRef.current[method.name])
-          : buildMessageTemplate(method, proto.messages, byColumns, funcs, projection, null),
+        body
+          ? JSON.stringify(body, null, 2)
+          : method.operation === "command"
+            ? buildCommandTemplate(commandsMapRef.current[method.name])
+            : buildMessageTemplate(method, proto.messages, byColumns, funcs, projection, null),
       );
       setResponse("");
       setError("");
@@ -320,10 +365,8 @@ export function GrpcPage() {
   // REQ-1361: keep the group-by/agg-funcs picker in sync with messageText for Aggregate/GroupBy
   // query methods — picker selections are the source of truth for those two fields.
   useEffect(() => {
-    if (!selectedMethod || selectedMethod.operation !== "query") return;
-    const isAggregate = selectedMethod.typeName.endsWith("Aggregate");
+    if (!selectedMethod || !hasAggPicker(selectedMethod)) return;
     const isGroupBy = selectedMethod.typeName.endsWith("GroupBy");
-    if (!isAggregate && !isGroupBy) return;
     const body: Record<string, unknown> = isGroupBy ? { by: groupByCols } : {};
     if (selectedFuncs.length > 0) body.funcs = selectedFuncs;
     if (selectedAggColumns.length > 0) body.columns = selectedAggColumns; // REQ-1882
@@ -332,12 +375,15 @@ export function GrpcPage() {
       if (includeFields.length > 0) body.include = includeFields;
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- syncs picker state (source of truth) into the JSON editor; selectedMethod change is the trigger, not something read back
-    setMessageText(JSON.stringify(body, null, 2));
+    setMessageText((text) => withPickerFields(text, body));
   }, [groupByCols, selectedFuncs, selectedAggColumns, includeNodes, includeFields, selectedMethod]);
 
+  const protoFetchRef = useRef(0);
   const fetchProto = useCallback(
     async (rid: string, domains: string) => {
       setProtoError("");
+      // Only the latest fetch selects: an earlier one answering late must not undo a hand-off.
+      const fetchId = ++protoFetchRef.current;
       try {
         const url = domains
           ? `/data/proto/${encodeURIComponent(rid)}?domains=${encodeURIComponent(domains)}`
@@ -348,11 +394,14 @@ export function GrpcPage() {
           return;
         }
         const text = await res.text();
+        if (fetchId !== protoFetchRef.current) return;
         setProtoText(text);
         const p = parseProto(text);
         // Strip the "(by=[...])" call-syntax suffix the NL page's query text carries (REQ-1359)
         // before matching against the bare typeName the proto actually exposes.
-        const preferred = navMethod ? navMethod.replace(/^Query/, "").replace(/\(.*$/, "") : "";
+        const preferred = handoff
+          ? handoff.method.replace(/^Query/, "").replace(/\(.*$/, "")
+          : "";
         const navM = preferred
           ? p.methods.find((m) => m.typeName === preferred && m.operation === "query")
           : null;
@@ -363,19 +412,21 @@ export function GrpcPage() {
           selectMethod(
             initial,
             p,
-            navM ? navByColumns : null,
-            navM ? navFuncs : null,
-            navM ? navProjection : null,
+            navM ? handoff?.byColumns : null,
+            navM ? handoff?.funcs : null,
+            navM ? handoff?.projection : null,
+            navM ? handoff?.body : null,
           );
           // eslint-disable-next-line react-hooks/immutability -- one-shot guard written after async fetch resolves; read occurs in a separate effect that guards against re-auto-selection
           if (navM) navSelectDoneRef.current = true;
+          if (navM && handoff) setSelectedSeq(handoff.seq);
         }
         setParsed(p);
       } catch (e) {
         setProtoError(String(e));
       }
     },
-    [navMethod, navByColumns, navFuncs, navProjection, selectMethod],
+    [handoff, selectMethod],
   );
 
   useEffect(() => {
@@ -546,23 +597,28 @@ export function GrpcPage() {
   const navAutoRunSeqRef = useRef<number | null>(null);
   useEffect(() => {
     if (!handoff?.autoRun || navAutoRunSeqRef.current === handoff.seq || !selectedMethod) return;
-    // Wait until the handed method is the selected one (the proto fetch selects it).
-    if (handoff.method.replace(/^Query/, "").replace(/\(.*$/, "") !== selectedMethod.typeName) {
-      return;
-    }
+    // Wait until the proto fetch has selected the handed method and its body.
+    if (selectedSeq !== handoff.seq) return;
     navAutoRunSeqRef.current = handoff.seq;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- runs a handed-over call once per hand-off, guarded by navAutoRunSeqRef; the run's setState calls happen in its async body
     void handleRun();
-  }, [selectedMethod, handoff, handleRun]);
+  }, [selectedMethod, handoff, selectedSeq, handleRun]);
 
   const visibleMethods = allMethods.filter((m) => m.operation === opType);
 
   // REQ-1361: an Aggregate/GroupBy request with zero funcs selected would silently compute
   // every function in AGG_FUNCS — require an explicit choice instead.
-  const isAggOrGroupBy =
-    selectedMethod?.operation === "query" &&
-    (selectedMethod.typeName.endsWith("Aggregate") || selectedMethod.typeName.endsWith("GroupBy"));
+  const isAggOrGroupBy = !!selectedMethod && hasAggPicker(selectedMethod);
   const funcsRequired = isAggOrGroupBy && selectedFuncs.length === 0;
+
+  // REQ-2115: Polly's read_screen reads the call on screen from here, never the response's rows.
+  useScreenInputs("/grpc", {
+    operation: opType,
+    method: selectedMethod?.name ?? null,
+    body: messageText,
+    status: error ? "failed" : running ? "running" : response ? "answered" : "idle",
+    error: error || protoError || null,
+  });
 
   const handleMethodChange = (name: string) => {
     const m = allMethods.find((x) => x.name === name);
@@ -662,10 +718,7 @@ export function GrpcPage() {
               </Tabs.Tab>
             </Tabs.List>
           </Tabs>
-          {leftTab === "body" &&
-            selectedMethod?.operation === "query" &&
-            (selectedMethod.typeName.endsWith("Aggregate") ||
-              selectedMethod.typeName.endsWith("GroupBy")) && (
+          {leftTab === "body" && isAggOrGroupBy && selectedMethod && (
               <div className="grpc-agg-picker" data-testid="grpc-agg-picker">
                 {selectedMethod.typeName.endsWith("GroupBy") && (
                   <MultiSelect

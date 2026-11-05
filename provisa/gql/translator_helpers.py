@@ -42,6 +42,53 @@ def _properties_of(var: str, exprs: "list[CypherExpr]") -> list[str]:
     return list(seen)
 
 
+#: The comparisons that are null, and so filter the row out, when an operand is null.
+_NULL_REJECTING = {
+    "=",
+    "<>",
+    "<",
+    "<=",
+    ">",
+    ">=",
+    "IN",
+    "STARTS WITH",
+    "ENDS WITH",
+    "CONTAINS",
+    "=~",
+}
+
+
+def _required_properties(var: str, wheres: "list[CypherExpr]") -> list[str]:
+    """The properties of ``var`` without which a row fails one of ``wheres`` (REQ-347): each is
+    an operand of a comparison, or of an IS NOT NULL, that is one of the WHERE's top-level AND
+    conjuncts. A node lacking one of them is filtered out; any other property it lacks it reads
+    as null, and is still matched."""
+    from provisa.gql.expr_ast import Binary, IsNull, Paren, Property, Variable
+
+    def of_var(e: "CypherExpr") -> "str | None":
+        while isinstance(e, Paren):
+            e = e.inner
+        if isinstance(e, Property) and isinstance(e.obj, Variable) and e.obj.name == var:
+            return e.name
+        return None
+
+    seen: dict[str, None] = {}
+    pending = list(wheres)
+    while pending:
+        e = pending.pop(0)
+        if isinstance(e, Paren):
+            pending.insert(0, e.inner)
+        elif isinstance(e, Binary) and e.op == "AND":
+            pending[:0] = [e.left, e.right]
+        elif isinstance(e, Binary) and e.op in _NULL_REJECTING:
+            for p in (of_var(e.left), of_var(e.right)):
+                if p is not None:
+                    seen.setdefault(p, None)
+        elif isinstance(e, IsNull) and e.negated and (p := of_var(e.operand)) is not None:
+            seen.setdefault(p, None)
+    return list(seen)
+
+
 def _collects_maps(expr: "CypherExpr") -> bool:
     """Whether ``expr`` collects map literals (``collect({...})``): its value is a list of maps."""
     from provisa.gql.expr_ast import FunctionCall, MapLiteral, walk
@@ -446,6 +493,17 @@ def _fold_where_into_optional_joins(
         if join["join_type"] == "LEFT" and (alias := _join_alias(join["table"])) in step_vars
     }
     if not order:
+        # A hop between two nodes bound before it introduces only its relationship, joined by
+        # its junction (via_alias_for): that join is the match's, which its WHERE conditions.
+        order = {
+            alias: i
+            for i, join in enumerate(joins)
+            if join["join_type"] == "LEFT"
+            and (alias := _join_alias(join["table"])) is not None
+            and alias.endswith("__via")
+            and alias[: -len("__via")] in step_vars
+        }
+    if not order:
         # The OPTIONAL MATCH is the statement's FROM, not a join: there is no join to condition,
         # so its WHERE filters its own rows, as it always has here.
         return joins, where_expr
@@ -555,8 +613,15 @@ _CYPHER_FN_RENAMES: dict[str, str] = {
     "COLLECT": "array_agg",
     "STDEV": "stddev_samp",
     "STDEVP": "stddev_pop",
-    "PERCENTILECONT": "approx_percentile",
-    "PERCENTILEDISC": "approx_percentile",
+}
+
+#: Cypher's exact percentiles, percentileCont(x, p) and percentileDisc(x, p): the SQL ordered-set
+#: aggregate of each, PERCENTILE_CONT(p) WITHIN GROUP (ORDER BY x), which each engine writes as its
+#: own (DuckDB's quantile_cont and quantile_disc, which refuse a percentile outside [0, 1] as
+#: openCypher's NumberOutOfRange does).
+_CYPHER_PERCENTILES: dict[str, type[exp.Expression]] = {
+    "PERCENTILECONT": exp.PercentileCont,
+    "PERCENTILEDISC": exp.PercentileDisc,
 }
 
 # Cast functions: Cypher fn (uppercase) → (sql_type, use_try_cast)
@@ -718,6 +783,13 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
             return exp.Anonymous(this="char_length", expressions=args)
         return exp.Anonymous(this="cardinality", expressions=args)
 
+    if name in _CYPHER_PERCENTILES and len(args) == 2:
+        value, percentile = (a.transform(_rewrite_cypher_fn_node) for a in args)
+        return exp.WithinGroup(
+            this=_CYPHER_PERCENTILES[name](this=percentile),
+            expression=exp.Order(expressions=[exp.Ordered(this=value, nulls_first=False)]),
+        )
+
     if name in _CYPHER_FN_RENAMES:
         # Its arguments first, as the transform does not descend into the node it is handed back
         # (collect(size(list)) counts the list).
@@ -785,6 +857,16 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright:
     return node
 
 
+def refused_when_read(message: str, to: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    """A value of type ``to`` that is a type error when the engine reads it (openCypher's
+    TypeError at runtime): ``message`` cast to a number, which every engine refuses naming it.
+    Placed in a CASE branch, it is an error only for the rows that reach it."""
+    return exp.Cast(
+        this=exp.Cast(this=exp.Literal.string(message), to=exp.DataType.build("INT")),
+        to=exp.DataType.build(to),
+    )
+
+
 def _json_valued(
     e: exp.Expression, json_columns: frozenset[str] | set[str] = frozenset()
 ) -> str | None:
@@ -814,11 +896,17 @@ def _json_valued(
             "list"
             if e.expressions
             and all(
-                isinstance(x, exp.Anonymous) and str(x.this).upper() == "TO_JSON"
+                isinstance(x, exp.Anonymous) and str(x.this).upper() in ("TO_JSON", "JSON_OBJECT")
                 for x in e.expressions
             )
             else None
         )
+    if called == "ARRAY" and len(e.expressions) == 1 and isinstance(e.expressions[0], exp.Select):
+        # A pattern comprehension's rows, each its JSON (expr_context.resolve_pattern_comprehension).
+        (row,) = e.expressions[0].expressions or [None]
+        held = row.this if isinstance(row, exp.Alias) else row
+        is_json = isinstance(held, exp.Anonymous) and str(held.this).upper() == "TO_JSON"
+        return "list" if is_json else None
     if called in ("ARRAY_APPEND", "SLICE") and e.expressions:
         return "list" if _json_valued(e.expressions[0]) == "list" else None
     if called == "ARRAY_PREPEND" and len(e.expressions) == 2:
@@ -834,6 +922,8 @@ def _json_valued(
     if isinstance(e, exp.Case):
         results = [i.args["true"] for i in e.args.get("ifs") or []] + [e.args.get("default")]
         found = {_json_valued(r) for r in results if r is not None}
+        if found == {"value"}:
+            return "value"  # one JSON value by a condition (expr_visitor._element_or_map_key)
         return "list" if found == {"list"} or ("list" in found and None not in found) else None
     return None
 

@@ -24,6 +24,8 @@ from typing import Any
 
 import pytest
 
+from provisa.core.request_context import current_acting_role
+
 from tests.role_state import RoleState
 
 import provisa.api.app as appmod
@@ -33,6 +35,14 @@ from provisa.api.errors import ApiError
 from provisa.auth.models import RoleAssignment
 
 A, B = "role_a", "role_b"
+
+
+@pytest.fixture(autouse=True)
+def _acting_role_ends_with_the_test():
+    """``named_role`` binds the acting role for its tool call, which a test outlives."""
+    token = current_acting_role.set(None)
+    yield
+    current_acting_role.reset(token)
 
 
 def _request(*held: str, user_id: str | None = "u1", body: dict | None = None) -> Any:

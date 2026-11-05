@@ -1,6 +1,6 @@
 # Python Client (`provisa-client`)
 
-Python client for Provisa. Provides four interfaces:
+The Python client for Provisa provides four interfaces:
 
 | Interface | Use case |
 | ----------- | ---------- |
@@ -34,7 +34,7 @@ client = ProvisaClient(
 )
 ```
 
-`ProvisaClient` takes a credential. It has no login step of its own, so it never asks for a username and password. When a script needs to run unattended, use a personal access token: you issue it from your own profile, it carries an expiry, and you can revoke it without touching the account. A provider bearer token works the same way. Either one goes in `token`, and the client presents it on both the HTTP and the Arrow Flight path.
+`ProvisaClient` takes a credential. It has no login step of its own, so it never asks for a username and password. When a script needs to run unattended, use a personal access token. You issue it from your own profile, it carries an expiry, and you can revoke it without touching the account. A provider bearer token works the same way. Either one goes in `token`, and the client presents it on both the HTTP and the Arrow Flight path.
 
 To exchange a password for a token, POST to `/auth/login` and read `access_token`:
 
@@ -100,7 +100,7 @@ tables_df = client.list_tables()
 | Parameter | Default | Description |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | Provisa server base URL |
-| `token` | `None` | Bearer credential — a provider token or a personal access token; omit for password auth |
+| `token` | `None` | Bearer credential, either a provider token or a personal access token; omit for password auth |
 | `role` | `None` | Role to act as, sent as `X-Provisa-Role` and honored only when assigned to the user; omit to run as the identity's own role |
 | `flight_port` | `8815` | Arrow Flight gRPC port |
 
@@ -123,7 +123,7 @@ Install into the running kernel before importing. The `pandas` extra covers Data
 
 Notebooks persist cell output to the `.ipynb` file. Type a token into a cell and it will be saved to disk alongside your code. Don't do that.
 
-`ProvisaClient` reads no environment: pass its credentials in explicitly, from environment variables. (`provisa_client.query()`, below, reads them for you.)
+`ProvisaClient` reads no environment, so pass its credentials in explicitly, from environment variables. (`provisa_client.query()`, below, reads them for you.)
 
 ```python
 import os
@@ -141,7 +141,7 @@ Set those variables in your shell before starting Jupyter, or load a `.env` file
 
 ### One call: `query()`
 
-`provisa_client.query()` takes a SQL, GraphQL or Cypher statement and returns a pandas DataFrame. The server works out which language it is. Nothing is constructed first: the connection comes from the environment or a profile file.
+`provisa_client.query()` takes a SQL, GraphQL or Cypher statement and returns a pandas DataFrame. The server works out which language it is. Nothing is constructed first, because the connection comes from the environment or a profile file.
 
 ```python
 import provisa_client
@@ -256,7 +256,7 @@ The dialect posts the username and password to `/auth/login` once and holds the 
 
 ## DB-API 2.0
 
-Standard [PEP 249](https://peps.python.org/pep-0249/) interface. Works with any tool that accepts a DB-API connection.
+This is a standard [PEP 249](https://peps.python.org/pep-0249/) interface, so it works with any tool that accepts a DB-API connection.
 
 ```python
 from provisa_client import connect
@@ -359,7 +359,7 @@ engine = create_engine(
 
 ### Schema introspection
 
-The dialect reflects the catalog your role is served, read from `GET /data/catalog` as the connection's user, role and org. Each domain is a schema, and every table lives in one: `get_schema_names()` lists the domains, `get_table_names(schema="shop")` lists that domain's tables by their SQL names, and `get_columns("orders", schema="shop")` gives each column's type, nullability and description. With no schema named, `get_table_names()` lists none. An unknown table raises `NoSuchTableError`; a catalog the server refuses raises.
+The dialect reflects the catalog your role is served, read from `GET /data/catalog` as the connection's user, role and org. Each domain is a schema, and every table lives in one. `get_schema_names()` lists the domains, `get_table_names(schema="shop")` lists that domain's tables by their SQL names, and `get_columns("orders", schema="shop")` gives each column's type, nullability and description. With no schema named, `get_table_names()` lists none. An unknown table raises `NoSuchTableError`; a catalog the server refuses raises.
 
 ---
 

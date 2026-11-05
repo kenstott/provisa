@@ -65,6 +65,7 @@
     "edge_owns": "posee",
     "loadError": "No se pudo leer el grafo: {{error}}",
     "zoomTo": "Acercar",
+    "openInErd": "Abrir en el ERD",
     "edge_column_lineage": "alimenta la columna",
     "preset_taxonomy": "Taxonomía",
     "layer_domains": "Dominios",
@@ -93,7 +94,6 @@
     "look_in_product": "columna en un producto de datos",
     "look_out_of_product": "columna fuera de los productos de datos",
     "look_stored": "tabla",
-    "status_live": "Vigente",
     "openAsQuery": "Abrir como consulta",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",
@@ -117,6 +117,7 @@
     "status_draft": "Borrador",
     "openAsQueryNoSparql": "Esta consulta no tiene forma SPARQL.",
     "openAsQuerySparqlRoots": "Cada raíz de esta consulta es su propia consulta SPARQL: abra el GraphQL para leerlas una por una.",
+    "status_approved": "Aprobado",
     "lane_term": "Términos",
     "lane_column": "Columnas",
     "lane_table": "Tablas",
@@ -148,6 +149,8 @@
     "factMembers": "Tablas miembro",
     "factColumns": "Columnas",
     "depth": "Profundidad",
-    "lateral": "Aristas laterales"
+    "lateral": "Aristas laterales",
+    "grounding_grounded": "Anclado",
+    "grounding_grounded_pending": "Anclado, a través de un borrador"
   }
 }

@@ -65,6 +65,7 @@
     "edge_owns": "bezit",
     "loadError": "De graaf kon niet worden gelezen: {{error}}",
     "zoomTo": "Inzoomen",
+    "openInErd": "Openen in ERD",
     "edge_column_lineage": "voedt kolom",
     "preset_taxonomy": "Taxonomie",
     "layer_domains": "Domeinen",
@@ -93,7 +94,6 @@
     "look_in_product": "kolom in een dataproduct",
     "look_out_of_product": "kolom buiten dataproducten",
     "look_stored": "tabel",
-    "status_live": "Actief",
     "openAsQuery": "Openen als query",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",
@@ -117,6 +117,7 @@
     "status_draft": "Ontwerp",
     "openAsQueryNoSparql": "Deze query heeft geen SPARQL-vorm.",
     "openAsQuerySparqlRoots": "Elke root van deze query is een eigen SPARQL-query: open de GraphQL om ze een voor een te lezen.",
+    "status_approved": "Goedgekeurd",
     "lane_term": "Termen",
     "lane_column": "Kolommen",
     "lane_table": "Tabellen",
@@ -148,6 +149,8 @@
     "factMembers": "Lidtabellen",
     "factColumns": "Kolommen",
     "depth": "Diepte",
-    "lateral": "Laterale randen"
+    "lateral": "Laterale randen",
+    "grounding_grounded": "Verankerd",
+    "grounding_grounded_pending": "Verankerd, via een concept"
   }
 }

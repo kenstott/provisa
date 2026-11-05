@@ -60,3 +60,25 @@ export function entityHref(kind: EntityKind, id: string | number, table?: number
       return `/lineage?focus=${q(id)}`;
   }
 }
+
+/** A link to the ERD view of a page (REQ-2187): the focus, and the panel to open. */
+export function erdViewHref(
+  page: "tables" | "relationships",
+  link: {
+    domains?: string[];
+    objects?: string[];
+    table?: string | number;
+    relationship?: string | number;
+    /** REQ-2189: the saved layout shown; none for Automatic. */
+    layout?: string | null;
+  },
+): string {
+  const list = (names: string[]) => names.map(q).join(",");
+  const query = ["view=erd"];
+  if (link.domains?.length) query.push(`domains=${list(link.domains)}`);
+  if (link.objects?.length) query.push(`objects=${list(link.objects)}`);
+  if (link.table !== undefined) query.push(`table=${q(link.table)}`);
+  if (link.relationship !== undefined) query.push(`relationship=${q(link.relationship)}`);
+  if (link.layout) query.push(`layout=${q(link.layout)}`);
+  return `/${page}?${query.join("&")}`;
+}

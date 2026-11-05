@@ -19,10 +19,10 @@ A personal access token is accepted anywhere a bearer token is, this endpoint in
 | Route | Effect |
 | ------- | -------- |
 | `POST /auth/tokens` | Mint a token for the caller. Body: `name`, optional `role_id`, `scopes`, `expires_in_days` (1–366). The response is the only place the secret ever appears |
-| `GET /auth/tokens` | The caller's active tokens in this org — display prefix, name, lifecycle timestamps, and the hash that identifies a token for revocation. Never a working credential |
+| `GET /auth/tokens` | The caller's active tokens in this org: display prefix, name, lifecycle timestamps, and the hash that identifies a token for revocation. Never a working credential |
 | `DELETE /auth/tokens/{token_hash}` | Revoke one of the caller's tokens. 404 when it is not theirs or already revoked |
 
-Omitting `role_id` leaves the token resolving to whatever role its owner holds; naming one narrows the token below its owner. Revocation also happens implicitly: removing a user's org membership revokes their tokens for that org. See [Security Model](security.md#personal-access-tokens) for the credential itself.
+Omitting `role_id` leaves the token resolving to whatever role its owner holds; naming one narrows the token below its owner. Revocation also happens implicitly. Removing a user's org membership revokes their tokens for that org. See [Security Model](security.md#personal-access-tokens) for the credential itself.
 
 ## Capabilities
 
@@ -345,13 +345,13 @@ Every install seeds eight SQL views into the built-in `ops` domain. They expose 
 | View | What it answers |
 | --- | --- |
 | `usage_ranking` | Query count and distinct users per registered table; zero-hit tables surface as deprecation candidates |
-| `deprecated_usage` | Every access to a table or column carrying the `deprecated` tag — the active consumers blocking safe removal |
+| `deprecated_usage` | Every access to a table or column carrying the `deprecated` tag, which shows the active consumers blocking safe removal |
 | `pii_access` | Every access to a table or column carrying the `pii` tag: who queried it, under which role, over which surface |
 | `policy_denials` | All access attempts that governance rejected (HTTP 401/403) |
 | `surface_mix` | Daily query count and distinct users per protocol surface (SQL, GraphQL, Cypher, gRPC, etc.) |
 | `query_health` | Daily error count and average/max latency per surface |
 | `stale_metadata` | Tables and columns missing descriptions; domains missing a steward |
-| `join_hotspots` | Table pairs co-queried most often — candidates for materialization or caching |
+| `join_hotspots` | Table pairs co-queried most often, as candidates for materialization or caching |
 
 Granularity stops at the table. The audit log records `table_ids`, and the individual columns a query read aren't recorded. Query text is encrypted and left out of every view here; only the authorised admin decrypt path can read it.
 

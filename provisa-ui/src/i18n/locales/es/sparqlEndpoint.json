@@ -1,0 +1,14 @@
+{
+  "sparqlEndpoint": {
+    "endpoint": "Punto de conexión",
+    "copyEndpoint": "Copiar la URL del punto de conexión",
+    "prefixes_one": "{{count}} prefijo",
+    "prefixes_other": "{{count}} prefijos",
+    "prefixName": "Prefijo",
+    "namespace": "Espacio de nombres",
+    "removePrefix": "Quitar prefijo",
+    "invalidPrefix": "Solo letras, dígitos, - y _",
+    "addHint": "Rellene la última fila para añadir un prefijo. Los prefijos nombran términos en los resultados y en las consultas de las píldoras; una consulta se ejecuta tal como está escrita.",
+    "restore": "Restaurar prefijos"
+  }
+}

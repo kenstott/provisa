@@ -20,18 +20,15 @@ from fastapi import HTTPException
 from provisa.api.data.action_exec import invoke_tracked_function
 from provisa.cypher.command_call import CommandCallRefused, parse_command_call
 from provisa.security.rights import Capability
-
-
-class _FakeResult:
-    def __init__(self, cols, rows):
-        self.column_names = cols
-        self.rows = rows
+from provisa.executor.result import QueryResult
 
 
 class _FakePools:
     def __init__(self, connected=True, result=None):
         self._connected = connected
-        self._result = result or _FakeResult(["id", "name"], [(1, "ada")])
+        self._result = result or QueryResult(
+            rows=[(1, "ada")], column_names=["id", "name"], column_types=["integer", "text"]
+        )
         self.calls: list = []
 
     def has(self, src_id):
@@ -88,7 +85,8 @@ async def test_an_assigned_role_with_write_calls_and_builds_sql():
 
 @pytest.mark.asyncio
 async def test_unauthorized_write_is_403():
-    st = _state(role_caps=[], visible_to=["ops"])  # no WRITE cap
+    # A role holding capabilities but not WRITE; one holding none runs what names it (REQ-2155).
+    st = _state(role_caps=[Capability.USAGE.value], visible_to=["ops"])
     with pytest.raises(HTTPException) as ei:
         await invoke_tracked_function("createOrder", {}, st, "ops")
     assert ei.value.status_code == 403

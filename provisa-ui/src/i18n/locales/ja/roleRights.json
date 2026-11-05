@@ -31,7 +31,8 @@
     "reach_public": "公開",
     "scope_domain": "ドメイン",
     "scope_public": "公開",
-    "scope_restricted": "制限",
+    "scope_listed": "一覧表示",
+    "scope_own-domain": "自ドメイン",
     "write_insert": "挿入",
     "write_update": "更新",
     "write_delete": "削除"

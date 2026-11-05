@@ -127,6 +127,11 @@ class _Rows:
         name = f"on_{table}_{'_'.join(columns)}"
         self.duck.execute(f'CREATE INDEX IF NOT EXISTS "{name}" ON "{table}" ({cols})')
 
+    async def drop_lookup_index(self, schema, table, columns):
+        self.calls.append(f"drop {table} {','.join(columns)}")
+        name = f"on_{table}_{'_'.join(columns)}"
+        self.duck.execute(f'DROP INDEX IF EXISTS "{name}"')
+
 
 class Session:
     """One session: its DuckDB, its model and its temporary tables. ``in_place``: the store
@@ -222,11 +227,15 @@ class Session:
             columns = list(rows[0]) if rows else []
             return columns, [[r[c] for c in columns] for r in rows]
 
-        async def send(sql: str, bound: list[Any]) -> tuple[list[str], list[list[Any]]]:
+        async def send(sql: str, bound: list[Any]) -> tuple[list[str], list[list[Any]], int | None]:
             self.sent.append(sql)
             result = self.duck.execute(sql.replace('"memory".', ""), bound)
             columns = [d[0] for d in result.description or []]
-            return columns, [list(r) for r in result.fetchall()] if columns else []
+            rows = [list(r) for r in result.fetchall()] if columns else []
+            if columns == ["Count"] and " RETURNING " not in sql:
+                # DuckDB answers a write with no RETURNING by its row count, as one row.
+                return [], [], int(rows[0][0])
+            return columns, rows, None
 
         await written(
             parse_cypher_write(statement), WriteTranslator(self.model), params, read, send
@@ -241,3 +250,9 @@ class Session:
         if made is not None:
             return made
         return asyncio.run(self.read(statement, params))
+
+    def answer(self, statement: str, **params: Any) -> Any:
+        """A read's rows as a surface answers the client (Bolt, HTTP): the session's own nodes
+        as the session holds them, without their _id (ephemeral.seam.answered). The reads of a
+        statement's own RUN keep it (run): a write finds the node again by it."""
+        return seam.answered(self.run(statement, **params), self.session)

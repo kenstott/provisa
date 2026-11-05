@@ -306,9 +306,10 @@ def test_the_workflow_runs_the_one_downloaded_file_on_stock_nixos_and_after_the_
     assert "appimage-installs.sh" in runs["matrix.guest == 'prepared'"]
 
 
-def test_a_change_to_the_linux_download_starts_the_nixos_workflow():
-    paths = _workflow()[True]["push"]["paths"]  # YAML reads the key `on` as a boolean
-    assert {"packaging/linux/**", "packaging/nixos/**", "install.sh"} <= set(paths)
+def test_the_nixos_workflow_runs_only_on_request():
+    # e2e and integration runs start only on request (maintainer 2026-10-29).
+    triggers = _workflow()[True]  # YAML reads the key `on` as a boolean
+    assert set(triggers) == {"workflow_dispatch"}
 
 
 def test_the_prepared_guest_is_stock_nixos_plus_the_settings_and_nothing_more():

@@ -99,27 +99,25 @@ def _orders_ctx() -> CompilationContext:
 
 class TestFlattenRoles:
     def test_flatten_roles_produces_merged_context(self):
-        """flatten_roles() merges the parent's capabilities; reach is the role's own (REQ-2155)."""
-        parent = _role("parent", caps=["read"], domains=["sales"])
-        child = _role("child", caps=["export"], domains=["ops"], parent="parent")
+        """flatten_roles() narrows a role to what its parents hold (REQ-2155)."""
+        parent = _role("parent", caps=["read", "export"], domains=["sales", "support"])
+        child = _role("child", caps=["export", "other"], domains=["support", "hr"], parent="parent")
 
         result = flatten_roles([parent, child])
         by_id = {r.id: r for r in result}
 
-        assert "read" in by_id["child"].capabilities
-        assert "export" in by_id["child"].capabilities
-        assert by_id["child"].domain_access == ["ops"]
+        assert by_id["child"].capabilities == ["export"]
+        assert by_id["child"].domain_access == ["support"]
 
     def test_child_retains_own_capabilities(self):
-        """Child-only capabilities are preserved after flattening."""
-        parent = _role("base", caps=["read"], domains=["*"])
-        child = _role("analyst", caps=["aggregate"], domains=["finance"], parent="base")
+        """A capability its parent holds and it was given is held after flattening."""
+        parent = _role("base", caps=["read", "aggregate"], domains=["*"])
+        child = _role("reporter", caps=["aggregate"], domains=["finance"], parent="base")
 
         result = flatten_roles([parent, child])
         by_id = {r.id: r for r in result}
 
-        assert "aggregate" in by_id["analyst"].capabilities
-        assert "read" in by_id["analyst"].capabilities
+        assert by_id["reporter"].capabilities == ["aggregate"]
 
     def test_parent_unchanged_after_flatten(self):
         """Parent role must not gain child's capabilities after flatten."""
@@ -132,8 +130,8 @@ class TestFlattenRoles:
         assert "aggregate" not in by_id["base"].capabilities
 
     def test_wildcard_domain_does_not_propagate(self):
-        """REQ-2155: a parent reaching every domain gives its child no reach; the child's own list
-        stands."""
+        """REQ-2155: a parent reaching every domain holds whatever its child is given; the child
+        holds its own list."""
         parent = _role("super", caps=["read"], domains=["*"])
         child = _role("sub", caps=["read"], domains=["finance"], parent="super")
 
@@ -172,9 +170,8 @@ class TestInheritedRolesRLS:
         result = governed_for_role(_ORDERS_SQL, _orders_ctx(), "child", rls=rls)
         assert result == f'{_ORDERS_SQL} WHERE ("orders"."region" = \'us-east\')'
 
-    def test_child_s_own_rule_replaces_its_parent_s(self):
-        """Child-first (REQ-1677): a child's own rule for a table replaces its parent's; the two
-        are never ANDed."""
+    def test_child_s_own_rule_is_anded_with_its_parent_s(self):
+        """REQ-1677: a role reads no row its parent could not."""
         rules = [
             {
                 "description": "Test rule.",
@@ -193,24 +190,23 @@ class TestInheritedRolesRLS:
         ]
         rls = _inherited_rls(rules, {"parent": ["parent"], "child": ["child", "parent"]}, "child")
         result = governed_for_role(_ORDERS_SQL, _orders_ctx(), "child", rls=rls)
-        assert result == f'{_ORDERS_SQL} WHERE ("orders"."amount" > 100)'
+        assert result == (
+            f'{_ORDERS_SQL} WHERE (("orders"."amount" > 100) AND ("orders"."region" = \'us-east\'))'
+        )
 
     def test_grandchild_inherits_two_levels(self):
-        """Three-level chain: grandchild receives grandparent + parent + own rules."""
-        grandparent = _role("gp", caps=["read"], domains=["sales"])
-        parent = _role("parent", caps=["aggregate"], domains=["ops"], parent="gp")
-        child = _role("child", caps=["export"], domains=["finance"], parent="parent")
+        """Three-level chain: a role narrowing its parent narrows every role below it."""
+        grandparent = _role("gp", caps=["read", "aggregate"], domains=["sales", "support"])
+        parent = _role("parent", caps=["aggregate"], domains=["support"], parent="gp")
+        child = _role(
+            "child", caps=["read", "aggregate"], domains=["sales", "support"], parent="parent"
+        )
 
         result = flatten_roles([grandparent, parent, child])
         by_id = {r.id: r for r in result}
 
-        # Child should have all three capability sets
-        assert "read" in by_id["child"].capabilities
-        assert "aggregate" in by_id["child"].capabilities
-        assert "export" in by_id["child"].capabilities
-
-        # REQ-2155: reach is the child's own
-        assert by_id["child"].domain_access == ["finance"]
+        assert by_id["child"].capabilities == ["aggregate"]
+        assert by_id["child"].domain_access == ["support"]
 
     def test_child_rls_sql_where_injected_correctly(self):
         """The row filter is placed before ORDER BY, on the table's alias."""

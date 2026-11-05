@@ -226,7 +226,7 @@ describe("SourceLoadManagementPanel", () => {
     expect(select).toHaveValue("Live if possible");
     expect(
       screen.queryByText(
-        "Live if possible cannot be combined with load protection: a load-protected table is never read live.",
+        "Live if possible cannot be combined with load protection, because a load-protected table is never read live.",
       ),
     ).toBeNull();
   });
@@ -378,7 +378,7 @@ describe("the source's Cache TTL editor (REQ-2031)", () => {
     expect(screen.getByText("-1: never expires")).toBeTruthy();
     fireEvent.change(input, { target: { value: "-1" } });
     expect(seen.at(-1)?.cacheTtl).toBe("-1");
-    expect(screen.getByText("Never expires: lands once.")).toBeTruthy();
+    expect(screen.getByText("Never expires and lands once.")).toBeTruthy();
   });
 
   it("goes no lower than -1", () => {

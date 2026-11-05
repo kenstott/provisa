@@ -1275,7 +1275,7 @@ class ProvisaFlightServer(
         """A session's options until it sets them: as pgwire answers current_database() and
         current_schema()."""
         from provisa.pgwire.catalog import CURRENT_SCHEMA
-        from provisa.pgwire.catalog_populate import served_database_name
+        from provisa.pgwire.catalog_data import served_database_name
 
         return {"catalog": served_database_name(self._state), "schema": CURRENT_SCHEMA}
 
@@ -1967,10 +1967,10 @@ class ProvisaFlightServer(
         raw_rows: list[dict[str, object]], graph_vars: dict[str, Any], warnings: list
     ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Assemble a Cypher result's rows into graph values and return them as an Arrow stream."""
-        from provisa.gql.assembler import assemble_rows, take_cut, to_serializable
+        from provisa.gql.assembler import assemble_rows, take_overrun, to_serializable
         from provisa.gql.translator_types import GraphVarKind
 
-        assembled = assemble_rows(take_cut(raw_rows, warnings), graph_vars)
+        assembled = assemble_rows(take_overrun(raw_rows), graph_vars)
         serialized = [to_serializable(r) for r in assembled]
 
         if not serialized:

@@ -24,7 +24,7 @@ describe("a Cache TTL", () => {
 
   it("says what -1 means once it is chosen, and that it may be chosen before", () => {
     expect(cacheTtlHint("-1", t)).toBe(
-      "Never expires: lands once.",
+      "Never expires and lands once.",
     );
     expect(cacheTtlHint(-1, t)).toContain("Never expires");
     for (const v of ["", null, 60, "0"]) expect(cacheTtlHint(v, t)).toBe("-1: never expires");

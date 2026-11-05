@@ -19,7 +19,9 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional, cast
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.api.admin.catalog_scope import CatalogScope, catalog_scope
+from provisa.api.admin.jdbc_source_admin import JdbcSourceSetupType
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
 
 import strawberry
@@ -43,8 +45,12 @@ from provisa.core.schema_org import (
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
+from provisa.core.repositories import domain as domain_repo
 from provisa.core.repositories import rls as rls_repo
-from provisa.security.inheritance import effective_capabilities
+from provisa.security import domain_tree
+from provisa.security.inheritance import held_by_role
+from provisa.security.rights import SQL_CATALOG_TABLES
+from provisa.security.row_filters import with_owner_grant
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.api.admin.capabilities import (
@@ -1013,7 +1019,10 @@ class Query:  # REQ-021, REQ-042
                 # schema build did not compile (saved since) is judged by its stored columns.
                 scope = catalog_scope(info)
                 listed = [
-                    r for r in rows if scope.lists_table(r["id"]) or r["id"] not in scope.compiled
+                    r
+                    for r in rows
+                    if (scope.lists_table(r["id"]) or r["id"] not in scope.compiled)
+                    and (r["domain_id"], r["table_name"]) not in SQL_CATALOG_TABLES  # REQ-2190
                 ]
                 # What every listed table reads beside its row, read once for all of them.
                 listing = await table_listing(conn, listed)
@@ -1096,6 +1105,8 @@ class Query:  # REQ-021, REQ-042
     async def roles(
         self, info: StrawberryInfo
     ) -> list[RoleType]:  # REQ-042, REQ-059, REQ-060, REQ-215
+        from provisa.core.repositories import data_product as data_product_repo
+
         active_org_id = _resolve_admin_context(info)
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -1110,12 +1121,12 @@ class Query:  # REQ-021, REQ-042
             identity = getattr(request.state, "identity", None)
             full = role_definitions_visible(request, getattr(identity, "roles", []))
             rows = [dict(r._mapping) for r in _res.fetchall()]
-            return [
-                _role_from_row(
-                    r, detail=full(r["id"]), effective=effective_capabilities(r["id"], rows)
-                )
-                for r in rows
-            ]
+            # REQ-2188: what it holds includes what an Owner field gives it, which it does not store.
+            owned = with_owner_grant(rows, await data_product_repo.owner_roles(conn))
+            held = held_by_role(
+                owned, domain_tree.parent_map(await domain_repo.list_all(cast("Connection", conn)))
+            )
+            return [_role_from_row(r, detail=full(r["id"]), effective=held[r["id"]]) for r in rows]
 
     @strawberry.field
     async def rls_rules(
@@ -2071,6 +2082,17 @@ class Query:  # REQ-021, REQ-042
         )
 
     @strawberry.field
+    async def jdbc_source_setup(self, info: StrawberryInfo) -> JdbcSourceSetupType:  # REQ-2191
+        """What a JDBC source's form offers: the engine its capabilities are set for, the
+        standard drivers (with whether that engine attaches each), the SQL dialects it may be
+        written in, and the capabilities."""
+        require_capability(info, "source_registration")
+        from provisa.api.admin.jdbc_source_admin import setup
+        from provisa.api.app import state
+
+        return setup(state.federation_engine)
+
+    @strawberry.field
     async def materialize_store_info(self, info: StrawberryInfo) -> MaterializeStoreInfoType:
         """Identity of the durable materialization store (landed sources + MV cache)."""
         require_capability(info, "observability")
@@ -2093,7 +2115,7 @@ class Query:  # REQ-021, REQ-042
         require_capability(info, "observability")
         from provisa.api.admin.system_health import collect_system_health
 
-        return await collect_system_health()
+        return await collect_system_health(info.context["request"].app)
 
     # ── Admin: Scheduled Tasks ──
 
@@ -2791,7 +2813,7 @@ async def _introspect_available_columns(
             return await _cosmosdb_columns(source_id, table_name)
         if source_type == "qdrant":
             return await _qdrant_columns(source_id, table_name)
-        if source_type in ("node", "python"):
+        if source_type in CODE_SOURCE_TYPES:
             return await _code_columns(source_id, table_name)
         if source_type == "redis":
             return await _redis_columns(source_id, table_name)
@@ -2840,6 +2862,20 @@ async def _introspect_available_columns(
         ]
     if source_type == "logs":
         return await _logs_columns(source_id)
+    if source_type == "quickbooks":
+        # REQ-2197: an entity's columns are the catalog's, typed as QuickBooks' schema types them.
+        from provisa.api_source.persist import data_type_for_api_column
+        from provisa.quickbooks.entities import columns_of, entity
+
+        return [
+            AvailableColumnType(
+                name=c.name,
+                data_type=data_type_for_api_column(c.type),
+                comment=None,
+                is_primary_key=c.name == "id",
+            )
+            for c in columns_of(entity(table_name))
+        ]
     if source_type == "rss":
         # REQ-1745: an rss/Atom feed has no catalog to introspect at all (native_schemas/
         # native_tables give it a synthetic single "default"/<source_id> pick so the picker isn't
@@ -2897,7 +2933,8 @@ async def _introspect_available_columns(
     # use correctly, instead of maintaining a second, divergent construction of the same call.
     if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
         from provisa.openapi.mapper import parse_spec
-        from provisa.openapi.register import _openapi_to_provisa_type, _schema_to_columns
+        from provisa.api.admin.introspect import openapi_parameter_columns
+        from provisa.openapi.register import _schema_to_columns
 
         spec = state.openapi_specs[source_id]["spec"]
         queries, _ = parse_spec(spec)
@@ -2908,30 +2945,7 @@ async def _introspect_available_columns(
         if not cols and not q.path_params and (q.response_schema or {}).get("additionalProperties"):
             cols = await _dynamic_openapi_columns(state.openapi_specs[source_id]["base_url"], q)
         existing = {c["name"] for c in cols}
-        for p in q.path_params:
-            nf_name = f"_nf_{p['name']}"
-            if nf_name not in existing:
-                cols.append(
-                    {
-                        "name": nf_name,
-                        "type": _openapi_to_provisa_type(p.get("type")),
-                        "native_filter_type": "path_param",
-                        "native_filter_required": True,
-                    }
-                )
-        for p in q.query_params:
-            nf_name = f"_nf_{p['name']}"
-            if nf_name not in existing:
-                cols.append(
-                    {
-                        "name": nf_name,
-                        # A parameter's type is the spec's (array, object); a column's is one
-                        # the engine has, as the response's columns are typed.
-                        "type": _openapi_to_provisa_type(p.get("type")),
-                        "native_filter_type": "query_param",
-                        "native_filter_required": p["required"],
-                    }
-                )
+        cols += [c for c in openapi_parameter_columns(q) if c["name"] not in existing]
         return [
             AvailableColumnType(
                 name=c["name"],
@@ -2967,7 +2981,7 @@ async def _introspect_available_columns(
                 source_id, source_type, schema_name, table_name, state.source_pools
             )
         pk_names = set(native_pks or [])
-        return [
+        listed = [
             AvailableColumnType(
                 name=name,
                 data_type=typing.data_type,
@@ -2980,6 +2994,23 @@ async def _introspect_available_columns(
             )
             for name, typing in native
         ]
+        if source_type == "jdbc":
+            # REQ-2191: each column offered as an optional column_value parameter, the floor's
+            # equality filter; a steward marks which are required.
+            from provisa.jdbc_source.table import parameters_of
+
+            listed += [
+                AvailableColumnType(
+                    name=p["name"],
+                    data_type=p["data_type"],
+                    comment=None,
+                    path=p["path"],
+                    native_filter_type=p["native_filter_type"],
+                    native_filter_required=p["native_filter_required"],
+                )
+                for p in parameters_of([{"name": c.name, "data_type": c.data_type} for c in listed])
+            ]
+        return listed
     # REQ-1912: the engine lists only a source it holds a live attach of. With none, a table the
     # driver listed and found no columns for has none to report; a source the driver cannot list
     # at all is refused, naming it.

@@ -14,6 +14,8 @@ supplies only the DuckDB runtime and the DuckDB driver error type."""
 
 from __future__ import annotations
 
+import asyncio
+
 from typing import Any
 
 import threading
@@ -80,6 +82,16 @@ class DuckDBBackend(NativeEngineBackend):
         return DuckDBStoreTarget(
             runtime._store_broker, schema=address.schema, table=address.table, columns=args.columns
         )
+
+    async def after_replica_swap(self, state: Any) -> None:
+        """A table landed in a server store came over that store's own connection, and is read
+        through this runtime's ATTACH, whose cached catalog may not hold its schema yet: a
+        session's schema, dropped and made again, is the one every statement then reads
+        (REQ-2176)."""
+        del state
+        runtime = self._store_runtime()
+        runtime.ensure_materialize_attached()
+        await asyncio.to_thread(runtime._see_store_writes)
 
     def session_rows(self, state: Any) -> Any:
         """REQ-2176: a session's tables in the embedded DuckDB store are written in place through

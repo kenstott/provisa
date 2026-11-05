@@ -38,6 +38,11 @@ _ROLES = {
         "description": "Test role.",
         "capabilities": ["usage", "query_development"],
     },
+    "user_admin": {
+        "id": "user_admin",
+        "description": "Test role.",
+        "capabilities": ["user_management", "org_settings"],
+    },
     "platform_admin": {
         "id": "platform_admin",
         "description": "Test role.",
@@ -79,11 +84,11 @@ def wired(monkeypatch):
     return asked
 
 
-def _request(roles: list[str] | None, user_id: str = "u1"):
+def _request(roles: list[str] | None, user_id: str = "u1", active_org: str | None = None):
     identity = (
         None if roles is None else SimpleNamespace(user_id=user_id, roles=roles, acting_roles=roles)
     )
-    return SimpleNamespace(state=SimpleNamespace(identity=identity))
+    return SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=active_org))
 
 
 class TestMemberRights:
@@ -115,12 +120,76 @@ class TestMemberRights:
         with pytest.raises(ApiError):
             await er._member_rights(_request(["analyst"]), "acme", MANAGE, SWITCH)
 
-    async def test_platform_authority_bypasses_the_right(self, wired):
-        # cross_org is authority over any org's lifecycle (REQ-1337); it has never needed the
-        # org's own membership row either.
-        assert await er._member_rights(_request(["platform_admin"]), "acme", MANAGE) == "u1"
+    async def test_platform_authority_does_not_reach_an_orgs_branches(self, wired):
+        """REQ-1327 (amended 2026-11-05): this test used to assert that cross_org bypassed the
+        right and the membership row. cross_org is authority over an org's lifecycle only; a
+        platform admin never reads or acts on an org's model branches, so it is refused, by the
+        name of the right it lacks, before the membership lookup."""
+        with pytest.raises(ApiError) as exc:
+            await er._member_rights(_request(["platform_admin"]), "acme", MANAGE)
+        assert exc.value.status_code == 403
+        assert exc.value.code == "environments.capability_required"
+        assert repr(MANAGE) in exc.value.detail
         assert wired == []
 
     async def test_dev_no_auth_is_exempt(self, wired):
         assert await er._member_rights(_request(None), "acme", MANAGE) is None
         assert wired == []
+
+
+class TestReadsParent:
+    """REQ-1942: showing a parent's real rows needs the right to read them there."""
+
+    async def test_platform_authority_does_not_read_a_parent(self, wired):
+        # REQ-1327 (amended 2026-11-05): this used to return early for cross_org. A platform admin
+        # never reads an org's model branches, so it needs the usage right like anyone else.
+        with pytest.raises(ApiError) as exc:
+            await er._reads_parent(_request(["platform_admin"]), "acme", er.PROD)
+        assert exc.value.status_code == 403
+        assert exc.value.code == "environments.parent_unreadable"
+        assert "'usage'" in exc.value.detail
+
+    async def test_a_holder_of_usage_reads_prod(self, wired):
+        await er._reads_parent(_request(["analyst"]), "acme", er.PROD)
+
+
+class TestGuard:
+    """REQ-1327 (amended 2026-11-05): protecting, deleting, deciding merges and the repo
+    integration are environment management — environment_management in the org being acted in,
+    never user_management and never cross_org."""
+
+    @pytest.fixture(autouse=True)
+    def _ready(self, monkeypatch):
+        async def _noop(_org_id):
+            return None
+
+        monkeypatch.setattr(er, "_org_ready_on_this_node", _noop)
+
+    async def test_a_holder_of_environment_management_in_the_org_passes(self, wired):
+        assert await er._guard(_request(["developer"], active_org="acme"), "acme") == "u1"
+        assert wired == [True]  # membership still checked, on top of the right
+
+    async def test_a_platform_admin_is_refused_by_the_rights_name(self, wired):
+        with pytest.raises(ApiError) as exc:
+            await er._guard(_request(["platform_admin"], active_org="root"), "acme")
+        assert exc.value.status_code == 403
+        assert exc.value.code == "environments.capability_required"
+        assert repr(MANAGE) in exc.value.detail
+        assert wired == []
+
+    async def test_user_management_does_not_stand_in_for_it(self, wired):
+        with pytest.raises(ApiError) as exc:
+            await er._guard(_request(["user_admin"], active_org="acme"), "acme")
+        assert exc.value.status_code == 403
+        assert exc.value.code == "environments.capability_required"
+        assert repr(MANAGE) in exc.value.detail
+
+    async def test_the_right_is_confined_to_the_org_being_acted_in(self, wired):
+        with pytest.raises(ApiError) as exc:
+            await er._guard(_request(["developer"], active_org="beta"), "acme")
+        assert exc.value.status_code == 403
+        assert exc.value.code == "environments.capability_required_in_org"
+        assert MANAGE in exc.value.detail
+
+    async def test_dev_no_auth_is_exempt(self, wired):
+        assert await er._guard(_request(None), "acme") is None

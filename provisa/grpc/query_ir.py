@@ -342,6 +342,7 @@ def grpc_table_to_graphql(
     filter_msg: Any | None = None,
     read_mask: ReadMask | None = None,
     params_msg: Any | None = None,
+    offset: int | None = None,
 ) -> tuple[str, dict[str, Any]] | None:
     """GraphQL query text for ``Query{Type}`` and its variables — ``(text, variables)`` — or None
     if no table matches ``type_name``. A gRPC row read lowers to GraphQL, as its aggregate and
@@ -357,9 +358,9 @@ def grpc_table_to_graphql(
     ``{Type}Params`` (or the proxy's ``body["params"]``): the table's parameters
     (``_checked_params``; raises :class:`ParameterError`) fill the root field's parameter
     arguments (REQ-1986). The filter and the parameters travel as variables, and a positive
-    ``limit`` as a literal the compiler binds, so requests that differ only in their values share
-    one kept plan (REQ-1877, ``api.generated_plan``). A value the field's types refuse raises the
-    error of the filter field or parameter that carries it."""
+    ``limit`` and a set ``offset`` as literals the compiler binds, so requests that differ only in
+    their values share one kept plan (REQ-1877, ``api.generated_plan``). A value the field's types
+    refuse raises the error of the filter field or parameter that carries it."""
     from provisa.api._query_helpers import RequestRefused, request_variables
 
     meta = _find_table_meta(ctx, type_name)
@@ -396,6 +397,8 @@ def grpc_table_to_graphql(
                 raise ParameterError(name, type_name, str(exc)) from exc
         raise refused
     arguments = [f"limit: {int(limit)}"] if limit and limit > 0 else []
+    if offset:
+        arguments.append(f"offset: {int(offset)}")
     arguments += variables.arguments
     args = f"({', '.join(arguments)})" if arguments else ""
     fields = " ".join(c if _gql(c) == c else f"{c}: {_gql(c)}" for c in selected)
@@ -481,7 +484,10 @@ def split_agg_columns(columns: list[Any], row: tuple) -> tuple[dict, dict]:
     _aggregate) or "aggregate.{func}" (_group_by's nested aggregate block). Either way the last
     dot-segment is the function name, so one split rule covers both compiled shapes. Shared by
     the gRPC servicer (proto message construction) and the NL executor's gRPC result preview
-    (REQ-1359) so both shape aggregate rows identically."""
+    (REQ-1359) so both shape aggregate rows identically. A DECIMAL is left as it is: the gRPC
+    servicer types it for its proto field, and a JSON body writes its exact digits (REQ-1867)."""
+    from decimal import Decimal
+
     from provisa.executor.serialize import _convert_value
 
     top: dict[str, Any] = {}
@@ -489,7 +495,8 @@ def split_agg_columns(columns: list[Any], row: tuple) -> tuple[dict, dict]:
     for col_ref, val in zip(columns, row):
         if val is None:
             continue
-        val = _convert_value(val)
+        if not isinstance(val, Decimal):
+            val = _convert_value(val)
         parts = col_ref.nested_in.split(".")
         if len(parts) == 1:
             top[col_ref.column] = val

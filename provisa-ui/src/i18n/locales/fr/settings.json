@@ -24,6 +24,7 @@
           "graphql": "GraphQL",
           "rest": "REST",
           "jsonapi": "JSON:API",
+          "odata": "OData",
           "sql_http": "SQL sur HTTP",
           "cypher_http": "Cypher sur HTTP",
           "pgwire": "PostgreSQL wire",
@@ -281,6 +282,10 @@
       "public_url": {
         "label": "Adresse publique",
         "help": "L'adresse sous laquelle ce déploiement est connu, par exemple https://data.example.com. L'IRI de chaque sujet en SPARQL et dans les exports RDF commence par elle ; elle doit donc rester la même tant que ces IRI sont utilisées. Si elle n'est pas définie, une requête qui renvoie l'IRI d'un sujet est refusée."
+      },
+      "node_url": {
+        "label": "Adresse de ce nœud",
+        "help": "L'adresse à laquelle les clients joignent ce nœud. L'interface d'un coordinateur le liste comme nœud de données quand la région n'en liste aucun. Le lanceur la définit pour chaque nœud ; si elle n'est pas définie, le nœud n'est pas listé."
       }
     },
     "tls": {

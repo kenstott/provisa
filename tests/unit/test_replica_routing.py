@@ -365,7 +365,7 @@ async def test_a_deployment_with_no_store_and_nothing_replicated_reads_its_route
         "columns": [{"column_name": "id", "native_filter_type": None}],
     }
 
-    async def _tables(_conn):
+    async def _tables(_conn, **_kw):
         return [reg]
 
     async def _sources(_state, _conn=None):

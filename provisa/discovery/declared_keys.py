@@ -9,7 +9,8 @@
 # permission from the copyright holder.
 
 """The keys a source declares for a table (REQ-2170): its primary key, its unique (alternate)
-keys and its foreign keys, read from the source's own catalog over its pooled driver.
+keys and its foreign keys, read from the source's own catalog over its pooled driver, with the
+columns it declares NOT NULL (REQ-2190).
 
 Registration records them into the model (``table_columns.is_primary_key`` and
 ``is_alternate_key``) and discovery offers the foreign keys as relationship candidates, so every
@@ -51,6 +52,8 @@ class DeclaredKeys:
     primary_key: tuple[str, ...] = ()
     unique: tuple[UniqueKey, ...] = ()
     foreign: tuple[ForeignKey, ...] = ()
+    # REQ-2190: the columns it declares NOT NULL.
+    not_null: frozenset[str] = frozenset()
 
     @property
     def alternate_columns(self) -> frozenset[str]:
@@ -59,6 +62,17 @@ class DeclaredKeys:
 
 
 Reader = Callable[[Any, str, str, str], Awaitable[DeclaredKeys]]
+
+#: The columns a source declares NOT NULL, from the standard information_schema.
+_INFO_SCHEMA_NOT_NULL = """
+SELECT column_name FROM information_schema.columns
+WHERE table_schema = {schema} AND table_name = {table} AND is_nullable = 'NO'
+"""
+
+
+async def _info_schema_not_null(pool: Any, source_id: str, args: dict[str, str]) -> frozenset[str]:
+    rows = (await pool.execute(source_id, _INFO_SCHEMA_NOT_NULL.format(**args), [])).rows
+    return frozenset(row[0] for row in rows)
 
 
 def _grouped(rows: list) -> tuple[UniqueKey, ...]:
@@ -102,7 +116,7 @@ ORDER BY kcu.constraint_name, kcu.ordinal_position
 
 
 def _info_schema_reader(dialect: str, paired: str) -> Reader:
-    """The keys from the standard ``information_schema`` (PostgreSQL, SQL Server)."""
+    """The keys from the standard ``information_schema`` (CockroachDB, SQL Server)."""
 
     async def read(pool: Any, source_id: str, schema: str, table: str) -> DeclaredKeys:
         args = {"schema": sql_literal(schema, dialect), "table": sql_literal(table, dialect)}
@@ -116,9 +130,67 @@ def _info_schema_reader(dialect: str, paired: str) -> Reader:
             primary_key=tuple(col for _name, col in primary),
             unique=_grouped(unique),
             foreign=tuple(ForeignKey(*row) for row in foreign.rows),
+            not_null=await _info_schema_not_null(pool, source_id, args),
         )
 
     return read
+
+
+# PostgreSQL's own catalog, found by the schema's and table's names. Its information_schema views
+# compute every constraint in the database before the table's name narrows them: on a database
+# holding tens of thousands of tables (a control plane with an org schema per organization, which
+# a PostgreSQL source may be) one foreign-key read took seconds, and a boot that read the keys of
+# each registered table never answered (REQ-2170). The catalog also names the keys of a table its
+# reader may only SELECT, which information_schema hides from it.
+_PG_CATALOG_KEYS = """
+SELECT CASE c.contype WHEN 'p' THEN 'PRIMARY KEY' ELSE 'UNIQUE' END, c.conname, a.attname
+FROM pg_catalog.pg_constraint AS c
+JOIN pg_catalog.pg_class AS t ON t.oid = c.conrelid
+JOIN pg_catalog.pg_namespace AS n ON n.oid = t.relnamespace
+CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, pos)
+JOIN pg_catalog.pg_attribute AS a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+WHERE n.nspname = {schema} AND t.relname = {table} AND c.contype IN ('p', 'u')
+ORDER BY c.conname, k.pos
+"""
+
+# conkey and confkey list a foreign key's columns and the columns they reference pair by pair.
+_PG_CATALOG_FOREIGN = """
+SELECT a.attname, rt.relname, ra.attname
+FROM pg_catalog.pg_constraint AS c
+JOIN pg_catalog.pg_class AS t ON t.oid = c.conrelid
+JOIN pg_catalog.pg_namespace AS n ON n.oid = t.relnamespace
+JOIN pg_catalog.pg_class AS rt ON rt.oid = c.confrelid
+CROSS JOIN LATERAL unnest(c.conkey, c.confkey) WITH ORDINALITY AS k(attnum, refnum, pos)
+JOIN pg_catalog.pg_attribute AS a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+JOIN pg_catalog.pg_attribute AS ra ON ra.attrelid = c.confrelid AND ra.attnum = k.refnum
+WHERE n.nspname = {schema} AND t.relname = {table} AND c.contype = 'f'
+ORDER BY c.conname, k.pos
+"""
+
+
+_PG_CATALOG_NOT_NULL = """
+SELECT a.attname
+FROM pg_catalog.pg_attribute AS a
+JOIN pg_catalog.pg_class AS t ON t.oid = a.attrelid
+JOIN pg_catalog.pg_namespace AS n ON n.oid = t.relnamespace
+WHERE n.nspname = {schema} AND t.relname = {table}
+  AND a.attnum > 0 AND a.attnotnull AND NOT a.attisdropped
+"""
+
+
+async def _pg_catalog(pool: Any, source_id: str, schema: str, table: str) -> DeclaredKeys:
+    args = {"schema": sql_literal(schema, "postgres"), "table": sql_literal(table, "postgres")}
+    keys = await pool.execute(source_id, _PG_CATALOG_KEYS.format(**args), [])
+    primary = [(name, col) for kind, name, col in keys.rows if kind == "PRIMARY KEY"]
+    unique = [(name, col) for kind, name, col in keys.rows if kind == "UNIQUE"]
+    foreign = await pool.execute(source_id, _PG_CATALOG_FOREIGN.format(**args), [])
+    required = await pool.execute(source_id, _PG_CATALOG_NOT_NULL.format(**args), [])
+    return DeclaredKeys(
+        primary_key=tuple(col for _name, col in primary),
+        unique=_grouped(unique),
+        foreign=tuple(ForeignKey(*row) for row in foreign.rows),
+        not_null=frozenset(row[0] for row in required.rows),
+    )
 
 
 # --- MySQL and the systems that speak its catalog ------------------------------------------------
@@ -155,6 +227,7 @@ async def _mysql(pool: Any, source_id: str, schema: str, table: str) -> Declared
         primary_key=tuple(col for _name, col in primary),
         unique=_grouped(unique),
         foreign=tuple(ForeignKey(*row) for row in foreign.rows),
+        not_null=await _info_schema_not_null(pool, source_id, args),
     )
 
 
@@ -186,7 +259,12 @@ async def _sqlite(pool: Any, source_id: str, _schema: str, table: str) -> Declar
             keyed = sorted((r[5], r[1]) for r in target_info.rows if r[5])
             target = keyed[row[1]][1]
         foreign.append(ForeignKey(row[3], row[2], target))
-    return DeclaredKeys(primary_key=tuple(primary), unique=tuple(unique), foreign=tuple(foreign))
+    return DeclaredKeys(
+        primary_key=tuple(primary),
+        unique=tuple(unique),
+        foreign=tuple(foreign),
+        not_null=frozenset(row[1] for row in info.rows if row[3]),
+    )
 
 
 # --- DuckDB: its constraints table function -------------------------------------------------------
@@ -202,13 +280,8 @@ ORDER BY constraint_index
 
 
 async def _duckdb(pool: Any, source_id: str, schema: str, table: str) -> DeclaredKeys:
-    rows = await pool.execute(
-        source_id,
-        _DUCKDB_CONSTRAINTS.format(
-            schema=sql_literal(schema, "duckdb"), table=sql_literal(table, "duckdb")
-        ),
-        [],
-    )
+    args = {"schema": sql_literal(schema, "duckdb"), "table": sql_literal(table, "duckdb")}
+    rows = await pool.execute(source_id, _DUCKDB_CONSTRAINTS.format(**args), [])
     primary: tuple[str, ...] = ()
     unique: list[UniqueKey] = []
     foreign: list[ForeignKey] = []
@@ -222,17 +295,19 @@ async def _duckdb(pool: Any, source_id: str, schema: str, table: str) -> Declare
                 ForeignKey(column, referenced_table, target)
                 for column, target in zip(columns, referenced_columns, strict=True)
             )
-    return DeclaredKeys(primary_key=primary, unique=tuple(unique), foreign=tuple(foreign))
+    return DeclaredKeys(
+        primary_key=primary,
+        unique=tuple(unique),
+        foreign=tuple(foreign),
+        not_null=await _info_schema_not_null(pool, source_id, args),
+    )
 
-
-_POSTGRES = _info_schema_reader("postgres", "position_in_unique_constraint")
 
 #: The source kinds whose catalog is read here, by the reader that reads it.
 READERS: dict[str, Reader] = {
-    **{
-        kind: _POSTGRES
-        for kind in ("postgresql", "postgres", "cockroachdb", "yugabytedb", "greenplum")
-    },
+    **{kind: _pg_catalog for kind in ("postgresql", "postgres", "yugabytedb", "greenplum")},
+    # CockroachDB's information_schema is its own virtual table, not PostgreSQL's view.
+    "cockroachdb": _info_schema_reader("postgres", "position_in_unique_constraint"),
     "sqlserver": _info_schema_reader("tsql", "ordinal_position"),
     **{kind: _mysql for kind in ("mysql", "mariadb", "singlestore", "tidb")},
     "sqlite": _sqlite,

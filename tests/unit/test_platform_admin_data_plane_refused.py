@@ -69,6 +69,9 @@ ROLES["settings_only"] = {
     "capabilities": ["platform_settings", "usage"],
     "domain_access": ["*"],
 }
+# REQ-2153: a built role carries its own domain access beside its reach (no domain tree here).
+for _role in ROLES.values():
+    _role["own_domain_access"] = list(_role["domain_access"])
 
 PLATFORM_ONLY = ["platform_admin"]
 BOOTSTRAP = ["platform_admin", "org_admin"]
@@ -265,6 +268,7 @@ def test_platform_admin_adds_no_domain_scope_to_a_role_held_beside_it(monkeypatc
             "description": "Test role.",
             "capabilities": ["query_development", "create_view"],
             "domain_access": ["sales"],
+            "own_domain_access": ["sales"],  # REQ-2153: a built role carries it
         },
     }
     monkeypatch.setattr(appmod.state, "roles", roles, raising=False)
@@ -401,6 +405,16 @@ class _Conn:
 
     async def upsert(self, _table, values, **_kw):
         self.writes.append(values)
+
+    def transaction(self):
+        class _Tx:
+            async def __aenter__(self):
+                return None
+
+            async def __aexit__(self, *_exc):
+                return False
+
+        return _Tx()
 
 
 class _Db:
@@ -611,7 +625,7 @@ def test_the_rule_is_one_or_more_domains_or_all():
     assert role_domain_problem("r", ["usage"], ["*"]) is None
     problem = role_domain_problem("r", ["usage"], [])
     assert problem == f"Role 'r' {_DOMAIN_MESSAGE}"
-    assert role_domain_problem("r", [], []) is not None  # no capabilities is still a data role
+    assert role_domain_problem("r", [], []) is None  # REQ-2155: nothing to apply in a domain
     assert role_domain_problem("r", ["usage"], None) is not None
 
     # The exception is by RIGHT: platform rights and nothing else. Any role with that shape
@@ -866,7 +880,7 @@ def org_runtime(monkeypatch):
 async def test_an_invitation_into_a_tenant_org_cannot_confer_a_platform_right(org_runtime, role_id):
     from provisa.api.admin.invites_router import resolve_invite_role
 
-    org_runtime(_role_rows(heir={"capabilities": ["usage"], "parents": ["platform_admin"]}))
+    org_runtime(_role_rows(heir={"capabilities": ["cross_org"], "parents": ["platform_admin"]}))
     # Refused for EVERY inviter, a platform administrator included: platform rights are conferred
     # in the root org only.
     for granter in (set(ROLES["org_admin"]["capabilities"]), DEPLOYMENT_GRANTER):
@@ -911,7 +925,7 @@ async def test_the_grant_itself_refuses_a_platform_right_nobody_holds(role_id):
     redemption, the bootstrap claim, seating an org's creator."""
     from provisa.core.org_membership import grant_org_role
 
-    db = _Db(_role_rows(heir={"capabilities": ["usage"], "parents": ["platform_admin"]}))
+    db = _Db(_role_rows(heir={"capabilities": ["cross_org"], "parents": ["platform_admin"]}))
     for granter in ((), {"user_management"}, set(ROLES["org_admin"]["capabilities"])):
         with pytest.raises(PlatformRoleGrantError):
             await grant_org_role(db, "u2", role_id, granter_capabilities=granter)

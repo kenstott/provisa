@@ -24,6 +24,7 @@
     "itemSql": "SQL",
     "itemGrpc": "gRPC",
     "itemJsonApi": "JSON:API",
+    "itemOData": "OData",
     "itemOpenApi": "OpenAPI",
     "itemOrgs": "ארגונים",
     "itemDashboard": "לוח מחוונים",
@@ -35,6 +36,8 @@
     "itemEmail": "דוא\"ל",
     "itemMaintenance": "תחזוקה",
     "itemDeploymentSettings": "הגדרות פריסה",
+    "itemPlatform": "פלטפורמה",
+    "itemRegions": "אזורים",
     "itemBilling": "חיוב",
     "itemExplore": "MCP",
     "itemEncryption": "הצפנה",
@@ -77,6 +80,7 @@
     "itemNotebook": "מחברת",
     "itemContainerRegistries": "מאגרי קונטיינרים",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "קטלוגים"
+    "itemCatalogs": "קטלוגים",
+    "itemReferenceLibrary": "ספריית עיון"
   }
 }

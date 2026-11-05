@@ -239,22 +239,25 @@ class TestTheTermFollowsTheColumnsBusinessName:
 
 
 class TestAConfigDeclaredTermGroundsThroughAnEdge:
-    """A config-declared abstract term is inert on its own -- ``live_term_ids()`` requires it be
-    grounded, reached by an edge from a term that holds a real column ref. ``glossary_terms:``
+    """A config-declared abstract term is inert on its own -- it reaches data only through an edge
+    to a term that holds a real column ref (REQ-1387, ``term_grounding``). ``glossary_terms:``
     entries declare that edge by target-term name (REQ-1641); the loader resolves it after every
     term this config declares or derives exists, so the edge can target a term this same config
-    load derives from a column.
+    load derives from a column. The edge must conduct from the abstract term down to the derived
+    one: a synonym conducts both ways, while ``buyer KIND_OF customer`` would make buyer the
+    narrower term, which customer's data never grounds (REQ-1387, DOWN IS FROM BROADER TO
+    NARROWER).
     """
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_an_edge_to_a_derived_term_makes_the_abstract_term_live(self, tenant_db):
+    async def test_an_edge_to_a_derived_term_grounds_the_abstract_term(self, tenant_db):
         config = _config({"orders": ["cust_id"]})
         config["glossary_terms"] = [
             {
                 "name": "buyer",
                 "definition": "The party responsible for an order, regardless of channel.",
                 "domains": ["sales"],
-                "edges": [{"to": "customer", "rel_type": "KIND_OF"}],
+                "edges": [{"to": "customer", "rel_type": "SYNONYM_OF"}],
             }
         ]
         async with tenant_db.acquire() as conn:
@@ -267,9 +270,9 @@ class TestAConfigDeclaredTermGroundsThroughAnEdge:
         assert buyer["ref_count"] == 0  # holds no column refs of its own
         assert customer["is_abstract"] is False  # the target is untouched by the edge
         assert {(e["rel_type"], e["name"]) for e in detail["edges_out"]} == {
-            ("KIND_OF", "customer")
+            ("SYNONYM_OF", "customer")
         }
-        assert buyer["live"] is True  # in-service, defined, and reachable to a rooted term
+        assert buyer["grounding"] == "grounded"  # reaches a rooted term, nothing between
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_declaring_a_definition_for_a_not_yet_synced_column_still_ends_concrete(

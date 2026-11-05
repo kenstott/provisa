@@ -12,6 +12,9 @@
     "classTerm": "क्लास शब्द {{term}}",
     "tableClass": "किसी टेबल की अपनी क्लास",
     "propertyTerm": "प्रॉपर्टी शब्द {{term}}",
-    "columnPredicate": "कॉलम {{column}}"
+    "columnPredicate": "कॉलम {{column}}",
+    "propertySearch": "प्रॉपर्टी खोजें",
+    "propertyTerms": "प्रॉपर्टी टर्म",
+    "termClasses": "क्लास: {{classes}}"
   }
 }

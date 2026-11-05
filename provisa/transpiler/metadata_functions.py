@@ -1,0 +1,1399 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: c5d81e27-6f40-4a19-9b3e-27a4f06c8d15
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""PostgreSQL's metadata functions, in the compiler (REQ-2190, with REQ-2167's rule): a function on
+a dialect is its native name, else existing functions, else inline operators, else refused by name.
+
+``VALUE_FORMS`` are functions of their arguments alone: rows of the macro table
+(provisa.transpiler.function_macros), native on PostgreSQL, a form everywhere else.
+
+``FORMS`` are functions on what a catalog holds. None of them is native anywhere: a statement about
+the model runs on the control plane, whose own pg_get_indexdef reads the control plane's catalog, a
+different one with oids of its own. A form is SQL in PostgreSQL's dialect over the meta domain's
+views, and :func:`expand` writes it into a statement BEFORE governance, so the views it reads are
+governed as any other read: a role gets what it may list, and a key's definition is NULL for one it
+may not. The privilege functions also read the statement's facts
+(provisa.transpiler.metadata_facts). What the dialect then runs is the ordinary transpile of the
+statement.
+
+:data:`READS_THE_SERVER` are the functions on a server's catalog with no form yet: refused by name,
+never sent to the control plane to answer about itself."""
+
+# Requirements: REQ-2190, REQ-2167
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from typing import cast
+
+import sqlglot
+import sqlglot.expressions as exp
+
+from provisa.core.ir_types import SUBTYPES
+from provisa.pgwire.catalog_pg17 import FUNCTION_RETURNS, RELATION_CLASS, TYPES
+from provisa.pgwire.catalog_pg17_procs import (
+    ORDERED_SET_ARGUMENTS,
+    SYSTEM_CONSTRAINTS,
+    SYSTEM_INDEXES,
+    VIEW_DEFINITIONS,
+)
+from provisa.pgwire.catalog_pg17_viewdefs import VIEW_WRAPS
+from provisa.transpiler.metadata_facts import (
+    PRIVILEGES,
+    ROLE_PRIVILEGES,
+    ROLE_UNSERVED,
+    UNSERVED,
+    CatalogFacts,
+    relation,
+)
+from provisa.transpiler.metadata_oids import (
+    FIRST_METRIC_OID,
+    KEY_OID_BASE,
+    PG_CATALOG_OID,
+    SYSTEM_SCHEMA_OIDS,
+    key_id_sql,
+)
+from provisa.transpiler.metadata_server_forms import (
+    SCALAR_FORMS,
+    TABLE_FORMS,
+    any_held,
+    holds_public_alone,
+    no_such_role_name,
+    predefined_relation_privileges,
+    raising,
+    refused_role,
+    role_name,
+)
+from provisa.transpiler.metadata_settings import setting
+from provisa.transpiler.pg_forms_system import SERVER_STATE
+
+#: The search path a definition names a table against (catalog_data's search_path).
+_ON_THE_PATH = "('public', 'pg_catalog')"
+
+# --- format_type --------------------------------------------------------------------------------
+
+_ARRAY_OF = {entry[10]: oid for oid, entry in TYPES.items() if entry[4] == "A" and entry[3] == "b"}
+
+#: The header a varlena type's typmod counts (VARHDRSZ).
+_HEADER = 4
+#: A numeric typmod's scale: eleven bits, signed since PostgreSQL 15.
+_NUMERIC_SCALE_MASK = 2047
+_NUMERIC_SCALE_SIGN = 1024
+_INTERVAL_FULL_PRECISION = 65535
+#: INTERVAL_RANGE_MASK's bits of an interval typmod, as PostgreSQL's interval_typmodout writes them.
+_INTERVAL_RANGES = (
+    (4, "year"),
+    (2, "month"),
+    (8, "day"),
+    (1024, "hour"),
+    (2048, "minute"),
+    (4096, "second"),
+    (6, "year to month"),
+    (1032, "day to hour"),
+    (3080, "day to minute"),
+    (7176, "day to second"),
+    (3072, "hour to minute"),
+    (7168, "hour to second"),
+    (6144, "minute to second"),
+)
+
+
+def _number(sql: str) -> str:
+    return f"CAST({sql} AS TEXT)"
+
+
+def _sized(name: str) -> str:
+    return f"'{name}' || CASE WHEN typmod > {_HEADER} THEN '(' || {_number(f'typmod - {_HEADER}')} || ')' ELSE '' END"
+
+
+def _numeric() -> str:
+    packed = f"(typmod - {_HEADER})"
+    low = f"({packed} & {_NUMERIC_SCALE_MASK})"
+    scale = (
+        f"CASE WHEN {low} >= {_NUMERIC_SCALE_SIGN} THEN {low} - {_NUMERIC_SCALE_MASK + 1} "
+        f"ELSE {low} END"
+    )
+    return (
+        f"'numeric' || CASE WHEN typmod >= {_HEADER} THEN '(' "
+        f"|| {_number(f'(({packed} >> 16) & 65535)')} || ',' || {_number(scale)} || ')' "
+        "ELSE '' END"
+    )
+
+
+def _bits(name: str) -> str:
+    return f"'{name}(' || {_number('typmod')} || ')'"
+
+
+def _timed(name: str, zone: str) -> str:
+    return f"'{name}(' || {_number('typmod')} || ') {zone}'"
+
+
+def _interval() -> str:
+    ranges = " ".join(f"WHEN {bit} THEN ' {text}'" for bit, text in _INTERVAL_RANGES)
+    precision = "(typmod & 65535)"
+    return (
+        f"'interval' || COALESCE(CASE ((typmod >> 16) & 32767) {ranges} END, '') || "
+        f"CASE WHEN {precision} = {_INTERVAL_FULL_PRECISION} THEN '' "
+        f"ELSE '(' || {_number(precision)} || ')' END"
+    )
+
+
+#: Each type a typmod names more of: the oid of its base type, and its name with the typmod.
+_MODIFIED: dict[int, str] = {
+    1042: _sized("character"),
+    1043: _sized("character varying"),
+    1700: _numeric(),
+    1560: _bits("bit"),
+    1562: _bits("bit varying"),
+    1083: _timed("time", "without time zone"),
+    1266: _timed("time", "with time zone"),
+    1114: _timed("timestamp", "without time zone"),
+    1184: _timed("timestamp", "with time zone"),
+    1186: _interval(),
+}
+#: Named otherwise with a typmod given and negative, as format_type names one (bit is quoted: bare,
+#: it would mean bit(1)).
+_NEGATIVE_TYPMOD = {1042: "bpchar", 1560: '"bit"'}
+
+
+def _format_type() -> str:
+    names = " ".join(
+        f"WHEN {oid} THEN '{entry[-1].replace(chr(39), chr(39) * 2)}'"
+        for oid, entry in sorted(TYPES.items())
+    )
+    modified = " ".join(
+        f"WHEN {oid} THEN {form}{suffix}"
+        for base, form in _MODIFIED.items()
+        for oid, suffix in ((base, ""), (_ARRAY_OF[base], " || '[]'"))
+    )
+    negative = " ".join(
+        f"WHEN {oid} THEN '{name}{suffix}'"
+        for base, name in _NEGATIVE_TYPMOD.items()
+        for oid, suffix in ((base, ""), (_ARRAY_OF[base], "[]"))
+    )
+    return (
+        "CASE WHEN type_oid IS NULL THEN CAST(NULL AS TEXT) "
+        f"WHEN typmod >= 0 THEN COALESCE(CASE type_oid {modified} END, "
+        f"CASE type_oid {names} ELSE '???' END) "
+        f"WHEN typmod < 0 THEN COALESCE(CASE type_oid {negative} END, "
+        f"CASE type_oid {names} ELSE '???' END) "
+        f"ELSE CASE type_oid {names} ELSE '???' END END"
+    )
+
+
+#: pg_encoding_to_char's names, by encoding number (common/encnames.c's pg_enc2name_tbl).
+ENCODINGS = (
+    "SQL_ASCII", "EUC_JP", "EUC_CN", "EUC_KR", "EUC_TW", "EUC_JIS_2004", "UTF8", "MULE_INTERNAL",
+    "LATIN1", "LATIN2", "LATIN3", "LATIN4", "LATIN5", "LATIN6", "LATIN7", "LATIN8", "LATIN9",
+    "LATIN10", "WIN1256", "WIN1258", "WIN866", "WIN874", "KOI8R", "WIN1251", "WIN1252",
+    "ISO_8859_5", "ISO_8859_6", "ISO_8859_7", "ISO_8859_8", "WIN1250", "WIN1253", "WIN1254",
+    "WIN1255", "WIN1257", "KOI8U", "SJIS", "BIG5", "GBK", "UHC", "GB18030", "JOHAB",
+    "SHIFT_JIS_2004",
+)  # fmt: skip
+
+
+def _encoding_to_char() -> str:
+    names = " ".join(f"WHEN {n} THEN '{name}'" for n, name in enumerate(ENCODINGS))
+    return f"CASE WHEN encoding IS NULL THEN CAST(NULL AS TEXT) ELSE CASE encoding {names} ELSE '' END END"
+
+
+#: (name, parameters, the form in PostgreSQL's dialect): rows of function_macros' table.
+VALUE_FORMS: tuple[tuple[str, tuple[str, ...], str], ...] = (
+    ("format_type", ("type_oid", "typmod"), _format_type()),
+    ("pg_encoding_to_char", ("encoding",), _encoding_to_char()),
+)
+
+# --- the type a column is listed as -------------------------------------------------------------
+
+#: A registered type's PostgreSQL name and oid (the catalog lists every other as text).
+_LISTED_TYPES: dict[str, tuple[str, int]] = {
+    "varchar": ("character varying", 1043),
+    "char": ("character", 18),
+    "character varying": ("character varying", 1043),  # REQ-1961
+    "character": ("character", 1042),
+    "bpchar": ("character", 1042),
+    "numeric": ("numeric", 1700),
+    "integer": ("integer", 23),
+    "int": ("integer", 23),
+    "bigint": ("bigint", 20),
+    "smallint": ("smallint", 21),
+    "boolean": ("boolean", 16),
+    "double": ("double precision", 701),
+    "real": ("real", 700),
+    "date": ("date", 1082),
+    "time": ("time without time zone", 1083),
+    "timestamp": ("timestamp without time zone", 1114),
+    "timestamp with time zone": ("timestamp with time zone", 1184),
+    "timestamptz": ("timestamp with time zone", 1184),  # REQ-2050
+    "decimal": ("numeric", 1700),
+    "json": ("json", 114),
+    "row": ("jsonb", 3802),
+    "array": ("ARRAY", 2277),
+    "varbinary": ("bytea", 17),
+    "uuid": ("uuid", 2950),
+    **{name: (name, subtype.pg_oid) for name, subtype in SUBTYPES.items()},  # REQ-2171
+}
+#: Oids the name above does not decide: jsonb's name for a jsonb spelling.
+_LISTED_OID_ONLY = {"jsonb": 3802}
+_TEXT_TYPE = ("text", 25)
+#: The character spellings a text column's native type is listed as (cast_types' character kinds).
+_CHARACTER_TYPES = ("varchar", "char", "character", "character varying", "bpchar")
+
+
+def _bare_type(spelling: str) -> str:
+    """A spelling without its modifiers, in lower case."""
+    return f"TRIM(LOWER(SPLIT_PART({spelling}, '(', 1)))"
+
+
+def listed_type_sql(data_type: str, native_type: str, subtype: str) -> str:
+    """The spelling a column is listed by, of its columns in meta (REQ-1961, REQ-2171): its
+    subtype; a text column's native type, where that is a character type; its registered type."""
+    characters = ", ".join(f"'{name}'" for name in _CHARACTER_TYPES)
+    return (
+        f"COALESCE({subtype}, CASE WHEN LOWER({data_type}) = 'text' "
+        f"AND {_bare_type(native_type)} IN ({characters}) THEN {native_type} ELSE {data_type} END)"
+    )
+
+
+def pg_type_name_sql(spelling: str) -> str:
+    """The PostgreSQL type name a listed ``spelling`` (SQL) has, as information_schema writes it."""
+    cases = " ".join(f"WHEN '{key}' THEN '{name}'" for key, (name, _) in _LISTED_TYPES.items())
+    return f"CASE {_bare_type(spelling)} {cases} ELSE '{_TEXT_TYPE[0]}' END"
+
+
+def pg_type_oid_sql(spelling: str) -> str:
+    """The oid of the PostgreSQL type a listed ``spelling`` (SQL) has, as pg_attribute holds it."""
+    oids = {**{key: oid for key, (_, oid) in _LISTED_TYPES.items()}, **_LISTED_OID_ONLY}
+    cases = " ".join(f"WHEN '{key}' THEN {oid}" for key, oid in oids.items())
+    return f"CASE {_bare_type(spelling)} {cases} ELSE {_TEXT_TYPE[1]} END"
+
+
+def pg_typmod_sql(spelling: str) -> str:
+    """The typmod of a listed ``spelling`` (SQL): a sized numeric's, a character type's length; -1
+    for any other, as pgwire describes it (cast_types.described_type)."""
+    inside = f"SPLIT_PART(SPLIT_PART({spelling}, '(', 2), ')', 1)"
+    first = f"CAST(TRIM(SPLIT_PART({inside}, ',', 1)) AS INTEGER)"
+    scale = f"COALESCE(CAST(NULLIF(TRIM(SPLIT_PART({inside}, ',', 2)), '') AS INTEGER), 0)"
+    characters = ", ".join(f"'{name}'" for name in _CHARACTER_TYPES)
+    return (
+        f"CASE WHEN {inside} = '' THEN -1 "
+        f"WHEN {_bare_type(spelling)} IN ('numeric', 'decimal') "
+        f"THEN {first} * 65536 + {scale} + {_HEADER} "
+        f"WHEN {_bare_type(spelling)} IN ({characters}) THEN {first} + {_HEADER} ELSE -1 END"
+    )
+
+
+# --- what a catalog holds -----------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Form:
+    """One overload of a function on a catalog: its parameters, its form, the facts it reads, and
+    the type each argument is read as where it is not written in as it is."""
+
+    name: str
+    params: tuple[str, ...]
+    sql: str
+    facts: frozenset[str] = frozenset()
+    reads_as: tuple[str, ...] = ()
+
+
+def _named(schema: str, table: str) -> str:
+    """A table's name as a definition names it: with its schema unless that is on the path."""
+    bare = f"QUOTE_IDENT({table})"
+    return f"CASE WHEN {schema} IN {_ON_THE_PATH} THEN {bare} ELSE QUOTE_IDENT({schema}) || '.' || {bare} END"
+
+
+_KEY_COLUMNS = "STRING_AGG(QUOTE_IDENT(k.column_sql_name), ', ' ORDER BY k.position)"
+_REFERENCED_COLUMNS = (
+    "STRING_AGG(QUOTE_IDENT(k.referenced_column_sql_name), ', ' ORDER BY k.position)"
+)
+_REFERENCED_TABLE = _named("MIN(k.referenced_schema_name)", "MIN(k.referenced_table_name)")
+
+
+def _entries(entry: str, value: str, source: str) -> str:
+    """The one row a statement reads a form's answers from, the answers by their key in a jsonb
+    object: a client asks of a catalog once for each row, and a lookup there costs no view."""
+    return (
+        "SELECT JSONB_OBJECT_AGG(_e.entry, _e.answer) AS entries "
+        f"FROM (SELECT CAST({entry} AS TEXT) AS entry, {value} AS answer {source}) _e"
+    )
+
+
+def _answer(relation: str, entry: str) -> str:
+    return f"(SELECT _m.entries ->> CAST({entry} AS TEXT) FROM {relation} _m)"
+
+
+#: A key's definition, as pg_get_constraintdef writes it.
+KEY_DEFINITIONS = "_provisa_key_definitions"
+#: A unique key's index, as pg_get_indexdef writes it: PostgreSQL always names the table's schema.
+INDEX_DEFINITIONS = "_provisa_index_definitions"
+#: The columns of a unique key's index, by the key and the column's place.
+INDEX_COLUMNS = "_provisa_index_columns"
+#: A relation's comment, and a comment by what it is on.
+OBJECT_COMMENTS = "_provisa_object_comments"
+COMMENTS = "_provisa_comments"
+#: The relations a role lists, read once by a statement however many rows ask: a client calls
+#: pg_table_is_visible for each row of pg_class. Its indexes apart: only a call about one reads
+#: them, which is the keys.
+LISTED_RELATIONS = "_provisa_listed_relations"
+LISTED_INDEXES = "_provisa_listed_indexes"
+
+
+def visible_on_the_path(catalog: str, alias: str, name: str, namespace: str) -> str:
+    """Whether the object of ``alias`` (a row of meta's ``catalog``, its name column ``name`` and
+    its schema column ``namespace``) is visible as PostgreSQL's *_is_visible answers on the
+    search path ('public, "$user"', catalog_data): pg_catalog first, as PostgreSQL puts it where
+    the path does not name it, then public, an object there visible unless pg_catalog has one of
+    its name."""
+    earlier = (
+        f"(SELECT CAST(_e.{name} AS TEXT) FROM meta.{catalog} _e "
+        f"WHERE _e.{namespace} = {PG_CATALOG_OID})"
+    )
+    return (
+        f"COALESCE((SELECT _vn.nspname FROM meta.catalog_pg_namespace _vn "
+        f"WHERE _vn.oid = {alias}.{namespace}) = 'pg_catalog' "
+        f"OR ((SELECT _vn.nspname FROM meta.catalog_pg_namespace _vn "
+        f"WHERE _vn.oid = {alias}.{namespace}) = 'public' "
+        f"AND CAST({alias}.{name} AS TEXT) NOT IN {earlier}), FALSE)"
+    )
+
+
+_RELATION_VISIBLE = visible_on_the_path("catalog_pg_class", "_l", "relname", "relnamespace")
+
+#: What a form reads once, by the relation a statement holds it in. A statement reads only those
+#: its forms name, each as a role reads the view: what it does not list has no answer here.
+_READ_ONCE: dict[str, str] = {
+    KEY_DEFINITIONS: _entries(
+        "k.key_id",
+        f"CASE MIN(k.kind) WHEN 'p' THEN 'PRIMARY KEY (' || {_KEY_COLUMNS} || ')' "
+        f"WHEN 'u' THEN 'UNIQUE (' || {_KEY_COLUMNS} || ')' "
+        f"ELSE 'FOREIGN KEY (' || {_KEY_COLUMNS} || ') REFERENCES ' || {_REFERENCED_TABLE} "
+        f"|| '(' || {_REFERENCED_COLUMNS} || ')' END",
+        "FROM meta.table_keys k GROUP BY k.key_id",
+    ),
+    INDEX_DEFINITIONS: _entries(
+        "k.key_id",
+        "'CREATE UNIQUE INDEX ' || QUOTE_IDENT(COALESCE(MIN(k.key_name), 'pk_' || "
+        "MIN(k.table_name))) || ' ON ' || QUOTE_IDENT(MIN(k.schema_name)) || '.' || "
+        f"QUOTE_IDENT(MIN(k.table_name)) || ' USING btree (' || {_KEY_COLUMNS} || ')'",
+        "FROM meta.table_keys k WHERE k.kind IN ('p', 'u') GROUP BY k.key_id",
+    ),
+    INDEX_COLUMNS: _entries(
+        "CAST(k.key_id AS TEXT) || ':' || CAST(k.position AS TEXT)",
+        "QUOTE_IDENT(k.column_sql_name)",
+        "FROM meta.table_keys k WHERE k.kind IN ('p', 'u')",
+    ),
+    OBJECT_COMMENTS: _entries(
+        "_d.objoid",
+        "MIN(_d.description)",
+        "FROM meta.catalog_pg_description _d WHERE _d.objsubid = 0 GROUP BY _d.objoid",
+    ),
+    COMMENTS: _entries(
+        "CAST(_d.objoid AS TEXT) || ':' || CAST(_d.classoid AS TEXT) || ':' "
+        "|| CAST(_d.objsubid AS TEXT)",
+        "_d.description",
+        "FROM meta.catalog_pg_description _d",
+    ),
+    # Each listed relation and whether the search path sees it; a catalog's own indexes beside
+    # the relations, the model's keys' indexes apart.
+    LISTED_RELATIONS: (
+        f"SELECT _l.oid, {_RELATION_VISIBLE} AS visible FROM meta.catalog_pg_class _l "
+        f"WHERE _l.relkind <> 'i' OR _l.relnamespace = {PG_CATALOG_OID}"
+    ),
+    LISTED_INDEXES: (
+        f"SELECT _l.oid, {_RELATION_VISIBLE} AS visible FROM meta.catalog_pg_class _l "
+        "WHERE _l.relkind = 'i'"
+    ),
+}
+
+
+def _index_column(key: str, position: str) -> str:
+    """pg_get_indexdef(index, column, pretty) of a key column: that column's name."""
+    entry = f"CAST({key_id_sql(key)} AS TEXT) || ':' || CAST({position} AS TEXT)"
+    return _answer(INDEX_COLUMNS, entry)
+
+
+_OBJECT_COMMENT = _answer(OBJECT_COMMENTS, "object_oid")
+#: PostgreSQL's oid of the catalog obj_description is asked about, by the name it is asked with.
+_CATALOG_OIDS = " ".join(
+    f"WHEN '{name}' THEN {oid}"
+    for (schema, name), (oid, kind) in sorted(RELATION_CLASS.items())
+    if schema == "pg_catalog" and kind == "r"
+)
+_COMMENT_IN_CATALOG = _answer(
+    COMMENTS,
+    f"CAST(object_oid AS TEXT) || ':' || CAST(CASE CAST(catalog AS TEXT) {_CATALOG_OIDS} END "
+    "AS TEXT) || ':0'",
+)
+_COLUMN_COMMENT = _answer(
+    COMMENTS, "CAST(relation_oid AS TEXT) || ':1259:' || CAST(attnum AS TEXT)"
+)
+
+
+def _of_system(oid: str, answers: dict[int, str]) -> str:
+    """What ``answers`` holds of the object PostgreSQL ships whose oid is ``oid``; NULL for any
+    other."""
+    arms = " ".join(
+        "WHEN {} THEN '{}'".format(k, v.replace("'", "''")) for k, v in sorted(answers.items())
+    )
+    return f"CASE CAST({oid} AS BIGINT) {arms} END"
+
+
+#: A key's definition, and its index's, of the model's keys or of PostgreSQL's own catalogs.
+_KEY_DEFINITION = (
+    f"COALESCE({_answer(KEY_DEFINITIONS, key_id_sql('conoid'))}, "
+    f"{_of_system('conoid', {row[0]: row[6] for row in SYSTEM_CONSTRAINTS})})"
+)
+_INDEX_DEFINITION = (
+    f"COALESCE({_answer(INDEX_DEFINITIONS, key_id_sql('indexoid'))}, "
+    f"{_of_system('indexoid', {row[0]: row[11] for row in SYSTEM_INDEXES})})"
+)
+_CATALOG_NAMES = {
+    oid: name for (schema, name), (oid, _) in RELATION_CLASS.items() if schema == "pg_catalog"
+}
+
+
+def system_index_definition(row: tuple, pretty: bool) -> str:
+    """pg_get_indexdef of an index on a system catalog, from its SYSTEM_INDEXES row: plain names
+    the catalog with its schema, pretty as the search path sees it, where pg_catalog is always
+    first (generate_relation_name under PRETTYFLAG_SCHEMA)."""
+    schema = "" if pretty else "pg_catalog."
+    unique = "UNIQUE " if row[5] else ""
+    return (
+        f"CREATE {unique}INDEX {row[1]} ON {schema}{_CATALOG_NAMES[row[2]]} "
+        f"USING btree ({', '.join(row[12])})"
+    )
+
+
+#: pg_get_indexdef(index, 0, pretty): of an index on a system catalog, its pretty definition
+#: where told so; of a key's index, the definition the plain form gives.
+_PRETTY_INDEX_DEFINITION = (
+    f"CASE WHEN pretty THEN COALESCE({_answer(INDEX_DEFINITIONS, key_id_sql('indexoid'))}, "
+    f"{_of_system('indexoid', {r[0]: system_index_definition(r, True) for r in SYSTEM_INDEXES})}) "
+    f"ELSE {_INDEX_DEFINITION} END"
+)
+_SYSTEM_INDEX_COLUMN = " ".join(
+    "WHEN '{}:{}' THEN '{}'".format(row[0], n, column.replace("'", "''"))
+    for row in SYSTEM_INDEXES
+    for n, column in enumerate(row[12], 1)
+)
+_SYSTEM_INDEX_OIDS = ", ".join(str(row[0]) for row in SYSTEM_INDEXES)
+_SYSTEM_INDEX_WIDTHS = " ".join(f"WHEN {row[0]} THEN {row[3]}" for row in SYSTEM_INDEXES)
+
+#: pg_index_has_property of an index on a catalog: each is a btree, which has all four.
+_INDEX_PROPERTY = (
+    f"CASE WHEN CAST(idx AS BIGINT) IN ({_SYSTEM_INDEX_OIDS}) THEN CASE LOWER(CAST(prop AS TEXT)) "
+    "WHEN 'clusterable' THEN TRUE WHEN 'index_scan' THEN TRUE WHEN 'bitmap_scan' THEN TRUE "
+    "WHEN 'backward_scan' THEN TRUE END END"
+)
+#: pg_index_column_has_property of a column of an index on a catalog: a btree's ascending key,
+#: nulls last.
+_INDEX_COLUMN_PROPERTY = (
+    f"CASE WHEN CAST(col AS BIGINT) BETWEEN 1 AND CASE CAST(idx AS BIGINT) {_SYSTEM_INDEX_WIDTHS} "
+    "ELSE 0 END THEN CASE LOWER(CAST(prop AS TEXT)) WHEN 'asc' THEN TRUE WHEN 'desc' THEN FALSE "
+    "WHEN 'nulls_first' THEN FALSE WHEN 'nulls_last' THEN TRUE WHEN 'orderable' THEN TRUE "
+    "WHEN 'distance_orderable' THEN FALSE WHEN 'returnable' THEN TRUE "
+    "WHEN 'search_array' THEN TRUE WHEN 'search_nulls' THEN TRUE END END"
+)
+#: pg_table_is_visible: of a relation a role lists, whether search_path sees it; NULL for another.
+_LISTED = (
+    f"CASE WHEN CAST(relation_oid AS BIGINT) >= {KEY_OID_BASE} "
+    f"AND CAST(relation_oid AS BIGINT) < {FIRST_METRIC_OID} "
+    f"THEN (SELECT _c.visible FROM {LISTED_INDEXES} _c WHERE _c.oid = relation_oid) "
+    f"ELSE (SELECT _c.visible FROM {LISTED_RELATIONS} _c WHERE _c.oid = relation_oid) END"
+)
+
+#: A relation's name as written: a quoted one as it is, an unquoted one folded to lower case.
+_WRITTEN_NAME = (
+    "CASE WHEN POSITION('\"' IN CAST(tbl AS TEXT)) > 0 "
+    "THEN REPLACE(CAST(tbl AS TEXT), '\"', '') ELSE LOWER(CAST(tbl AS TEXT)) END"
+)
+#: The relation ``tbl`` names, an oid or a name as regclass reads one, on the search path or by
+#: its schema; the path's first where both hold the name.
+_NAMED_RELATION = (
+    "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n ON _n.oid = _c.relnamespace "
+    f"WHERE {_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
+    "_n.nspname || '.' || _c.relname, "
+    f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END)"
+)
+_PATH_FIRST = " ORDER BY _n.nspname = 'pg_catalog' DESC LIMIT 1"
+
+
+def _held(privileges: str, of_role: str = "") -> str:
+    """Whether the role holds any privilege of the list ``privileges`` on the relation of
+    ``_c``: on a system relation, SELECT, which PostgreSQL grants every role, and no write
+    (REQ-2167, amended 2026-11-03: nobody writes a system catalog through Provisa). The session
+    role's, or the model role named ``of_role`` (SQL)."""
+    listed = f"',' || REPLACE(UPPER({privileges}), ' ', '') || ','"
+    granted = (
+        f"{ROLE_PRIVILEGES} _p WHERE _p.role_name = {of_role} AND"
+        if of_role
+        else f"{PRIVILEGES} _p WHERE"
+    )
+    return (
+        f"CASE WHEN _c.relnamespace IN {SYSTEM_SCHEMA_OIDS} THEN POSITION(',SELECT,' IN {listed}) > 0 "
+        f"ELSE EXISTS (SELECT 1 FROM {granted} _p.relation_oid = _c.oid "
+        f"AND POSITION(',' || _p.privilege || ',' IN {listed}) > 0) END"
+    )
+
+
+_TABLE_PRIVILEGE = f"(SELECT {_held('priv')} {_NAMED_RELATION}{_PATH_FIRST})"
+
+
+def _column_privilege(of_role: str = "") -> str:
+    """A listed column the role is not served is false: its table is read, and it is not. The
+    session role's, or the model role named ``of_role`` (SQL)."""
+    unserved = (
+        f"{ROLE_UNSERVED} _u WHERE _u.role_name = {of_role} AND"
+        if of_role
+        else f"{UNSERVED} _u WHERE"
+    )
+    return (
+        f"(SELECT NOT EXISTS (SELECT 1 FROM {unserved} _u.relation_oid = _c.oid "
+        f"AND _u.column_name = _a.attname) AND {_held('priv', of_role)} "
+        "FROM meta.catalog_pg_class _c JOIN meta.catalog_pg_namespace _n "
+        "ON _n.oid = _c.relnamespace JOIN meta.catalog_pg_attribute _a ON _a.attrelid = _c.oid "
+        "AND CAST(col AS TEXT) IN (_a.attname, CAST(_a.attnum AS TEXT)) "
+        f"WHERE {_WRITTEN_NAME} IN (CAST(_c.oid AS TEXT), "
+        "_n.nspname || '.' || _c.relname, "
+        f"CASE WHEN _n.nspname IN {_ON_THE_PATH} THEN _c.relname END){_PATH_FIRST})"
+    )
+
+
+_COLUMN_PRIVILEGE = _column_privilege()
+_OWN_TYPE_NAMES = " ".join(
+    f"WHEN {subtype.pg_oid} THEN '{name}'"
+    for name, subtype in sorted(SUBTYPES.items())
+    if subtype.pg_oid not in TYPES
+)
+
+
+def _form(name: str, params: str, sql: str, *facts: str) -> Form:
+    return Form(name, tuple(p for p in params.split(", ") if p), sql, frozenset(facts))
+
+
+#: Functions on an object kind Provisa keeps nothing of, or does not list: NULL of the type
+#: PostgreSQL gives, each with the argument counts PostgreSQL 17 has.
+_NOTHING_KEPT: tuple[tuple[str, tuple[int, ...], str], ...] = (
+    ("pg_get_partition_constraintdef", (1,), "TEXT"),
+    ("pg_get_partkeydef", (1,), "TEXT"),
+    ("pg_get_ruledef", (1, 2), "TEXT"),
+    ("pg_get_serial_sequence", (2,), "TEXT"),
+    ("pg_get_statisticsobjdef", (1,), "TEXT"),
+    ("pg_get_statisticsobjdef_columns", (1,), "TEXT"),
+    ("pg_get_triggerdef", (1, 2), "TEXT"),
+    ("shobj_description", (2,), "TEXT"),
+    # Provisa reports no storage: a size is unknown, never a made-up 0.
+    ("pg_relation_size", (1, 2), "BIGINT"),
+    ("pg_total_relation_size", (1,), "BIGINT"),
+    ("pg_indexes_size", (1,), "BIGINT"),
+    ("pg_table_size", (1,), "BIGINT"),
+    ("pg_database_size", (1,), "BIGINT"),
+    ("pg_tablespace_size", (1,), "BIGINT"),
+)
+
+
+#: A function's arguments in pg_proc, one row each of ``_w``: its place (i), its type (t), its mode
+#: (m), its name (nm), as print_function_arguments writes it (written), and, of an input that takes
+#: one, its default (deflt): the inputs' last pronargdefaults have one each.
+def _arguments(proc: str) -> str:
+    mode = f"COALESCE(CAST({proc}.proargmodes[_u.i] AS TEXT), 'i')"
+    name = f"COALESCE({proc}.proargnames[_u.i], '')"
+    inputs_so_far = (
+        f"(SELECT COUNT(*) FROM GENERATE_SERIES(1, _u.i) _j(j) "
+        f"WHERE COALESCE(CAST({proc}.proargmodes[_j.j] AS TEXT), 'i') IN ('i', 'b', 'v'))"
+    )
+    without_default = f"{proc}.pronargs - {proc}.pronargdefaults"
+    return (
+        f"(SELECT _u.i, _u.t, {mode} AS m, {name} AS nm, "
+        f"CASE {mode} WHEN 'o' THEN 'OUT ' WHEN 'b' THEN 'INOUT ' WHEN 'v' THEN 'VARIADIC ' "
+        f"ELSE '' END || CASE WHEN {name} <> '' THEN QUOTE_IDENT({name}) || ' ' ELSE '' END "
+        "|| format_type(_u.t, NULL) AS written, "
+        f"CASE WHEN {mode} IN ('i', 'b', 'v') AND {inputs_so_far} > {without_default} "
+        f"THEN (STRING_TO_ARRAY(CAST({proc}.proargdefaults AS TEXT), ', '))"
+        f"[{inputs_so_far} - ({without_default})] END AS deflt "
+        f"FROM UNNEST(COALESCE({proc}.proallargtypes, CAST(STRING_TO_ARRAY(NULLIF(CAST("
+        f"{proc}.proargtypes AS TEXT), ''), ' ') AS _oid))) WITH ORDINALITY AS _u(t, i))"
+    )
+
+
+_ORDERED_SET = " ".join(
+    "WHEN {} THEN '{}'".format(oid, args.replace("'", "''"))
+    for oid, args in sorted(ORDERED_SET_ARGUMENTS.items())
+)
+
+
+def _of_function(f: str, answer: str) -> str:
+    """``answer`` of the function whose oid is ``f``, as ``_p`` its pg_proc row; NULL for none."""
+    return f"(SELECT {answer} FROM meta.catalog_pg_proc _p WHERE _p.oid = {f} LIMIT 1)"
+
+
+def _listed_arguments(with_defaults: bool) -> str:
+    written = (
+        "_w.written || COALESCE(' DEFAULT ' || _w.deflt, '')" if with_defaults else "_w.written"
+    )
+    return (
+        f"CASE CAST(_p.oid AS BIGINT) {_ORDERED_SET} ELSE COALESCE((SELECT STRING_AGG({written}, "
+        f"', ' ORDER BY _w.i) FROM {_arguments('_p')} _w WHERE _w.m <> 't'), '') END"
+    )
+
+
+#: pg_get_function_result: a TABLE function's columns, a set's SETOF, else the type.
+_RESULT = (
+    "CASE WHEN EXISTS (SELECT 1 FROM {args} _w WHERE _w.m = 't') THEN 'TABLE(' || "
+    "(SELECT STRING_AGG(CASE WHEN _w.nm <> '' THEN QUOTE_IDENT(_w.nm) || ' ' ELSE '' END "
+    "|| format_type(_w.t, NULL), ', ' ORDER BY _w.i) FROM {args} _w WHERE _w.m = 't') || ')' "
+    "ELSE CASE WHEN _p.proretset THEN 'SETOF ' ELSE '' END || format_type(_p.prorettype, NULL) END"
+).format(args=_arguments("_p"))
+
+#: pg_get_functiondef: as ruleutils writes CREATE OR REPLACE of a function PostgreSQL ships.
+_FUNCTIONDEF = (
+    "CASE WHEN _p.prokind = 'a' THEN "
+    + raising("42809", "'\"' || _p.proname || '\" is an aggregate function'").replace(
+        "@TYPE@", "TEXT"
+    )
+    + " ELSE 'CREATE OR REPLACE ' || CASE _p.prokind WHEN 'p' THEN 'PROCEDURE ' ELSE 'FUNCTION ' "
+    "END || QUOTE_IDENT(_n.nspname) || '.' || QUOTE_IDENT(_p.proname) || '(' || "
+    f"{_listed_arguments(True)} || ')' || CHR(10) || CASE WHEN _p.prokind <> 'p' THEN "
+    f"' RETURNS ' || {_RESULT} || CHR(10) ELSE '' END "
+    "|| ' LANGUAGE ' || QUOTE_IDENT(_l.lanname) || CHR(10) || COALESCE(NULLIF("
+    "CASE WHEN _p.prokind = 'w' THEN ' WINDOW' ELSE '' END "
+    "|| CASE _p.provolatile WHEN 'i' THEN ' IMMUTABLE' WHEN 's' THEN ' STABLE' ELSE '' END "
+    "|| CASE _p.proparallel WHEN 's' THEN ' PARALLEL SAFE' WHEN 'r' THEN ' PARALLEL RESTRICTED' "
+    "ELSE '' END || CASE WHEN _p.proisstrict THEN ' STRICT' ELSE '' END "
+    "|| CASE WHEN _p.prosecdef THEN ' SECURITY DEFINER' ELSE '' END "
+    "|| CASE WHEN _p.proleakproof THEN ' LEAKPROOF' ELSE '' END "
+    "|| CASE WHEN _p.procost <> CASE WHEN _l.lanname IN ('internal', 'c') THEN 1 ELSE 100 END "
+    "THEN ' COST ' || CAST(_p.procost AS TEXT) ELSE '' END "
+    "|| CASE WHEN _p.proretset AND _p.prorows > 0 AND _p.prorows <> 1000 "
+    "THEN ' ROWS ' || CAST(_p.prorows AS TEXT) ELSE '' END "
+    "|| CASE WHEN CAST(_p.prosupport AS OID) <> 0 THEN ' SUPPORT ' || (SELECT "
+    "QUOTE_IDENT(CAST(_s.proname AS TEXT)) FROM meta.catalog_pg_proc _s "
+    "WHERE _s.oid = CAST(_p.prosupport AS OID)) ELSE '' END, '') || CHR(10), '') "
+    "|| CASE WHEN _p.prosqlbody IS NOT NULL THEN CAST(_p.prosqlbody AS TEXT) || CHR(10) "
+    "ELSE 'AS ' || CASE WHEN _l.lanname = 'c' THEN QUOTE_LITERAL(_p.probin) || ', ' ELSE '' END "
+    "|| '$function$' || _p.prosrc || '$function$' || CHR(10) END END"
+)
+
+
+def _functiondef(f: str) -> str:
+    return (
+        f"(SELECT {_FUNCTIONDEF} FROM meta.catalog_pg_proc _p JOIN meta.catalog_pg_namespace _n "
+        "ON _n.oid = _p.pronamespace JOIN meta.catalog_pg_language _l ON _l.oid = _p.prolang "
+        f"WHERE _p.oid = {f} LIMIT 1)"
+    )
+
+
+#: pg_get_function_arg_default(f, n): the default of the nth argument, where it is an input
+#: that takes one.
+_ARG_DEFAULT = _of_function("f", f"(SELECT _w.deflt FROM {_arguments('_p')} _w WHERE _w.i = n)")
+
+#: The oid of the view ``tbl`` names, by its oid or by its name as regclass reads one.
+_VIEW_OID = (
+    "CASE WHEN CAST(tbl AS TEXT) ~ '^[0-9]+$' THEN CAST(CAST(tbl AS TEXT) AS BIGINT) "
+    f"ELSE (SELECT CAST(_c.oid AS BIGINT) {_NAMED_RELATION}{_PATH_FIRST}) END"
+)
+
+
+def _view_definitions(which: int) -> str:
+    """A system view's definition as pg_get_viewdef writes it, plain (0) or pretty (1); NULL for a
+    relation that is no view PostgreSQL ships."""
+    arms = " ".join(
+        "WHEN {} THEN '{}'".format(oid, written[which].replace("'", "''"))
+        for oid, written in sorted(VIEW_DEFINITIONS.items())
+    )
+    return f"CASE {_VIEW_OID} {arms} END"
+
+
+#: The wrap column pg_get_viewdef's second argument says; NULL where it is a boolean.
+_WRAP = (
+    "(CASE WHEN CAST(pretty AS TEXT) ~ '^-?[0-9]+$' THEN CAST(CAST(pretty AS TEXT) AS BIGINT) END)"
+)
+
+
+def _quoted(text: str) -> str:
+    return "'" + text.replace("'", "''") + "'"
+
+
+#: What separates a wrapped definition's lists, and the items of each, in its one literal.
+_LISTS, _ITEMS = "\x1e", "\x1f"
+
+
+def _wrap_literal(texts: tuple[str, ...], separators: tuple) -> str:
+    """A view's definition at a wrap column as one literal: its texts, and before each but the
+    first its separator's form, its one-line form and the wrap columns (``low:high``, ``low:``
+    unbounded) at which the form is written (catalog_pg17_viewdefs.VIEW_WRAPS)."""
+    forms, lines, spans = [""], [""], [""]
+    for form, one_line, at in separators:
+        forms.append(form)
+        lines.append(one_line)
+        spans.append(",".join(f"{low}:{'' if high is None else high}" for low, high in at))
+    lists = (texts, forms, lines, spans)
+    return _quoted(_LISTS.join(_ITEMS.join(items) for items in lists))
+
+
+def _view_definitions_wrapped() -> str:
+    """pg_get_viewdef(view, wrap column): each target list's separators as PostgreSQL 17 writes
+    them at that column; NULL for a relation that is no view PostgreSQL ships. One literal for a
+    view, unnested into its parts: a form spelled out separator by separator is too large a
+    statement to govern."""
+    arms = " ".join(
+        f"WHEN {oid} THEN {_wrap_literal(*written)}" for oid, written in sorted(VIEW_WRAPS.items())
+    )
+    view = f"CASE {_VIEW_OID} {arms} END"
+    lists = ", ".join(
+        f"STRING_TO_ARRAY(SPLIT_PART({view}, CHR(30), {n}), CHR(31))" for n in range(1, 5)
+    )
+    at = (
+        "EXISTS (SELECT 1 FROM UNNEST(STRING_TO_ARRAY(_u.s, ',')) AS _r(r) "
+        f"WHERE {_WRAP} >= CAST(SPLIT_PART(_r.r, ':', 1) AS BIGINT) "
+        f"AND (SPLIT_PART(_r.r, ':', 2) = '' OR {_WRAP} <= CAST(SPLIT_PART(_r.r, ':', 2) AS BIGINT)))"
+    )
+    return (
+        f"(SELECT STRING_AGG(CASE WHEN _u.i = 1 THEN '' WHEN {at} THEN _u.f ELSE _u.l END || _u.t, "
+        f"'' ORDER BY _u.i) FROM UNNEST({lists}) WITH ORDINALITY AS _u(t, f, l, s, i))"
+    )
+
+
+#: pg_get_viewdef(view, pretty) or pg_get_viewdef(view, wrap column): plain where told false,
+#: pretty where told true, and wrapped at a column where given one.
+_PRETTY_VIEWDEF = (
+    "CASE WHEN pretty IS NULL THEN NULL WHEN LOWER(CAST(pretty AS TEXT)) IN ('false', 'f') "
+    f"THEN {_view_definitions(0)} WHEN LOWER(CAST(pretty AS TEXT)) IN ('true', 't') "
+    f"THEN {_view_definitions(1)} ELSE {_view_definitions_wrapped()} END"
+)
+
+#: Every object a catalog holds is on the search path, and the session role holds every role.
+#: Each is strict, as PostgreSQL's is: a NULL argument is NULL.
+_ALWAYS = (("pg_has_role", 2),)
+
+#: Each *_is_visible but pg_table_is_visible: the catalog of its objects, their name and schema
+#: columns. Visible as search_path sees the object; NULL for an object no catalog holds.
+_VISIBLE_IN = {
+    "pg_collation_is_visible": ("catalog_pg_collation", "collname", "collnamespace"),
+    "pg_conversion_is_visible": ("catalog_pg_conversion", "conname", "connamespace"),
+    "pg_function_is_visible": ("catalog_pg_proc", "proname", "pronamespace"),
+    "pg_opclass_is_visible": ("catalog_pg_opclass", "opcname", "opcnamespace"),
+    "pg_operator_is_visible": ("catalog_pg_operator", "oprname", "oprnamespace"),
+    "pg_opfamily_is_visible": ("catalog_pg_opfamily", "opfname", "opfnamespace"),
+    "pg_statistics_obj_is_visible": ("catalog_pg_statistic_ext", "stxname", "stxnamespace"),
+    "pg_ts_config_is_visible": ("catalog_pg_ts_config", "cfgname", "cfgnamespace"),
+    "pg_ts_dict_is_visible": ("catalog_pg_ts_dict", "dictname", "dictnamespace"),
+    "pg_ts_parser_is_visible": ("catalog_pg_ts_parser", "prsname", "prsnamespace"),
+    "pg_ts_template_is_visible": ("catalog_pg_ts_template", "tmplname", "tmplnamespace"),
+    "pg_type_is_visible": ("catalog_pg_type", "typname", "typnamespace"),
+}
+
+
+def _visible(catalog: str, name: str, namespace: str) -> str:
+    return (
+        f"(SELECT {visible_on_the_path(catalog, '_o', name, namespace)} FROM meta.{catalog} _o "
+        "WHERE _o.oid = object_oid LIMIT 1)"
+    )
+
+
+def _strictly(arity: int, answer: str) -> str:
+    """``answer`` where no argument is NULL, as a strict function answers."""
+    nulls = " OR ".join(f"arg_{n} IS NULL" for n in range(arity))
+    return f"CASE WHEN {nulls} THEN NULL ELSE {answer} END"
+
+
+_role_name = role_name
+
+
+def _no_such_role(role: str) -> str:
+    """PostgreSQL's refusal of a role named by a name no role has; an oid no role has is none."""
+    return (
+        f"WHEN {_role_name(role)} IS NULL AND CAST({role} AS TEXT) !~ '^[0-9]+$' THEN "
+        + raising("42704", f"'role \"' || CAST({role} AS TEXT) || '\" does not exist'").replace(
+            "@TYPE@", "BOOLEAN"
+        )
+        + " "
+    )
+
+
+#: pg_has_role(user, role, privilege): the session role holds every role; another holds itself and
+#: each role it is a member of, as pg_auth_members lists them.
+_HAS_ROLE = _strictly(
+    3,
+    f"CASE {_no_such_role('arg_0')}{_no_such_role('arg_1')}"
+    f"WHEN {_role_name('arg_0')} = {setting('role')} THEN TRUE "
+    f"WHEN {_role_name('arg_0')} = {_role_name('arg_1')} THEN TRUE "
+    "ELSE EXISTS (SELECT 1 FROM meta.catalog_pg_auth_members _m "
+    "JOIN meta.catalog_pg_roles _mr ON _mr.oid = _m.member "
+    "JOIN meta.catalog_pg_roles _rr ON _rr.oid = _m.roleid "
+    f"WHERE CAST(_mr.rolname AS TEXT) = {_role_name('arg_0')} "
+    f"AND CAST(_rr.rolname AS TEXT) = {_role_name('arg_1')}) END",
+)
+
+
+def _unused_params(arity: int) -> str:
+    return ", ".join(f"arg_{n}" for n in range(arity))
+
+
+_FORMS: tuple[Form, ...] = (
+    _form(
+        "format_type",
+        "type_oid, typmod",
+        f"CASE type_oid {_OWN_TYPE_NAMES} ELSE format_type(type_oid, typmod) END",
+    ),
+    # A catalog keeps a default's expression as its text.
+    _form("pg_get_expr", "expression, relation", "CAST(expression AS TEXT)"),
+    _form("pg_get_expr", "expression, relation, pretty", "CAST(expression AS TEXT)"),
+    _form("pg_get_constraintdef", "conoid", _KEY_DEFINITION, KEY_DEFINITIONS),
+    _form("pg_get_constraintdef", "conoid, pretty", _KEY_DEFINITION, KEY_DEFINITIONS),
+    _form("pg_get_indexdef", "indexoid", _INDEX_DEFINITION, INDEX_DEFINITIONS),
+    _form(
+        "pg_get_indexdef",
+        "indexoid, position, pretty",
+        f"CASE WHEN position = 0 THEN {_PRETTY_INDEX_DEFINITION} "
+        f"ELSE COALESCE({_index_column('indexoid', 'position')}, CASE CAST(indexoid AS TEXT) "
+        f"|| ':' || CAST(position AS TEXT) {_SYSTEM_INDEX_COLUMN} END) END",
+        INDEX_DEFINITIONS,
+        INDEX_COLUMNS,
+    ),
+    _form("obj_description", "object_oid", _OBJECT_COMMENT, OBJECT_COMMENTS),
+    _form("obj_description", "object_oid, catalog", _COMMENT_IN_CATALOG, COMMENTS),
+    _form("col_description", "relation_oid, attnum", _COLUMN_COMMENT, COMMENTS),
+    # A role's name; the bootstrap role's, oid 10, is provisa, which owns every table (THE
+    # CATALOG'S BOOTSTRAP OWNER IS PROVISA). An oid no role has is written as PostgreSQL writes it.
+    _form(
+        "pg_get_userbyid",
+        "role_oid",
+        "CAST(CASE WHEN role_oid IS NOT NULL THEN COALESCE((SELECT _ro.rolname "
+        "FROM meta.catalog_pg_roles _ro WHERE _ro.oid = role_oid LIMIT 1), "
+        "'unknown (OID=' || CAST(role_oid AS TEXT) || ')') END AS NAME)",
+    ),
+    _form("pg_table_is_visible", "relation_oid", _LISTED, LISTED_RELATIONS, LISTED_INDEXES),
+    # REQ-2167 (amended 2026-11-04): Provisa publishes no relation for logical replication.
+    _form(
+        "pg_relation_is_publishable",
+        "relation_oid",
+        "CASE WHEN relation_oid IS NOT NULL THEN FALSE END",
+    ),
+    _form(
+        "pg_is_other_temp_schema", "schema_oid", "CASE WHEN schema_oid IS NOT NULL THEN FALSE END"
+    ),
+    _form("pg_has_role", _unused_params(3), _HAS_ROLE),
+    _form("pg_get_function_arguments", "f", _of_function("f", _listed_arguments(True))),
+    _form("pg_get_function_identity_arguments", "f", _of_function("f", _listed_arguments(False))),
+    _form("pg_get_function_result", "f", _of_function("f", _RESULT)),
+    _form("pg_get_function_arg_default", "f, n", _ARG_DEFAULT),
+    _form("pg_get_function_sqlbody", "f", _of_function("f", "CAST(_p.prosqlbody AS TEXT)")),
+    _form("pg_get_functiondef", "f", _functiondef("f")),
+    _form("pg_index_has_property", "idx, prop", _INDEX_PROPERTY),
+    _form("pg_index_column_has_property", "idx, col, prop", _INDEX_COLUMN_PROPERTY),
+    _form("pg_get_viewdef", "tbl", _view_definitions(0)),
+    _form("pg_get_viewdef", "tbl, pretty", _PRETTY_VIEWDEF),
+    # Every tablespace a catalog lists, and 0 (the database's), is in the data directory: ''.
+    _form(
+        "pg_tablespace_location",
+        "tablespace_oid",
+        "CASE WHEN tablespace_oid IS NULL THEN NULL "
+        "WHEN CAST(tablespace_oid AS BIGINT) IN (0, 1663, 1664) THEN '' ELSE "
+        + raising(
+            "58P01",
+            "'could not stat file \"pg_tblspc/' || CAST(tablespace_oid AS TEXT) "
+            "|| '\": No such file or directory'",
+        ).replace("@TYPE@", "TEXT")
+        + " END",
+    ),
+    _form("has_table_privilege", "tbl, priv", _TABLE_PRIVILEGE, PRIVILEGES),
+    _form("has_any_column_privilege", "tbl, priv", _TABLE_PRIVILEGE, PRIVILEGES),
+    _form("has_column_privilege", "tbl, col, priv", _COLUMN_PRIVILEGE, PRIVILEGES, UNSERVED),
+    *(
+        _form(name, _unused_params(arity), f"CAST(NULL AS {sql_type})")
+        for name, arities, sql_type in _NOTHING_KEPT
+        for arity in arities
+    ),
+    *(_form(name, _unused_params(arity), _strictly(arity, "TRUE")) for name, arity in _ALWAYS),
+    *(_form(name, "object_oid", _visible(*where)) for name, where in sorted(_VISIBLE_IN.items())),
+)
+
+FORMS: dict[tuple[str, int], Form] = {
+    **{
+        (name, arity): Form(
+            name, tuple(p for p, _ in params), sql, reads_as=tuple(t for _, t in params)
+        )
+        for (name, arity), (params, sql) in SCALAR_FORMS.items()
+    },
+    **{(f.name, len(f.params)): f for f in _FORMS},
+}
+#: The forms of a function called in FROM, where it has columns of its own.
+RELATION_FORMS: dict[tuple[str, int], Form] = {
+    (name, arity): Form(
+        name, tuple(p for p, _ in params), sql, reads_as=tuple(t for _, t in params)
+    )
+    for (name, arity), (params, sql) in TABLE_FORMS.items()
+}
+
+#: A function that would read the server, with no form: refused by name, never run on the control
+#: plane. These run SQL they are given, or read what a server keeps, on the connection that calls
+#: them: the role a client's SQL runs as (metadata_settings.CLIENT_ROLE) would otherwise take a
+#: statement past governance. Beside a view of meta they would answer about the control plane
+#: (REQ-2190, ONLY NAMED METADATA READS THE CONTROL PLANE): the list is PostgreSQL's non-immutable
+#: functions that read or change a server's own state and have no form here.
+READS_THE_SERVER = frozenset(
+    {
+        "binary_upgrade_create_empty_extension",
+        "currval",
+        "current_query",
+        "cursor_to_xml",
+        "cursor_to_xmlschema",
+        "database_to_xml",
+        "database_to_xml_and_xmlschema",
+        "database_to_xmlschema",
+        "dblink",
+        "inet_client_addr",
+        "inet_client_port",
+        "inet_server_addr",
+        "inet_server_port",
+        "lastval",
+        "nextval",
+        "pg_advisory_lock",
+        "pg_advisory_lock_shared",
+        "pg_advisory_unlock",
+        "pg_advisory_unlock_all",
+        "pg_advisory_unlock_shared",
+        "pg_advisory_xact_lock",
+        "pg_advisory_xact_lock_shared",
+        "pg_cancel_backend",
+        "pg_column_compression",
+        "pg_event_trigger_ddl_commands",
+        "pg_event_trigger_dropped_objects",
+        "pg_event_trigger_table_rewrite_oid",
+        "pg_event_trigger_table_rewrite_reason",
+        "pg_get_publication_tables",
+        "pg_get_wal_replay_pause_state",
+        "pg_is_wal_replay_paused",
+        "pg_last_committed_xact",
+        "pg_logical_slot_get_binary_changes",
+        "pg_logical_slot_get_changes",
+        "pg_logical_slot_peek_binary_changes",
+        "pg_logical_slot_peek_changes",
+        "pg_ls_logdir",
+        "pg_my_temp_schema",
+        "pg_notify",
+        "pg_read_file_old",
+        "pg_replication_origin_session_reset",
+        "pg_rotate_logfile_old",
+        "pg_sleep",
+        "pg_sleep_for",
+        "pg_sleep_until",
+        "pg_stop_making_pinned_objects",
+        "pg_terminate_backend",
+        "pg_try_advisory_lock",
+        "pg_try_advisory_lock_shared",
+        "pg_try_advisory_xact_lock",
+        "pg_try_advisory_xact_lock_shared",
+        "pg_wal_replay_pause",
+        "pg_wal_replay_resume",
+        "query_to_xml",
+        "query_to_xml_and_xmlschema",
+        "query_to_xmlschema",
+        "schema_to_xml",
+        "schema_to_xml_and_xmlschema",
+        "schema_to_xmlschema",
+        "setval",
+        "table_to_xml",
+        "table_to_xml_and_xmlschema",
+        "table_to_xmlschema",
+        "ts_rewrite",
+        "ts_stat",
+    }
+)
+#: The statistics of a server: a count is 0 and anything else NULL, as where nothing has happened.
+#: Answered by prefix, which covers each function PostgreSQL adds under it.
+STATISTICS_PREFIXES = ("pg_stat_get_", "pg_statio_")
+
+
+#: The overloads naming a user first, each answered for the session role alone.
+_OF_A_USER = frozenset(
+    {
+        ("has_table_privilege", 3),
+        ("has_any_column_privilege", 3),
+        ("has_column_privilege", 4),
+    }
+)
+
+
+#: A form only PostgreSQL can run, of a function of its argument: a statement with no table is the
+#: engine's, which reads the function's row of function_macros' table instead.
+_IN_THE_MACRO_TABLE = frozenset({"pg_walfile_name"}) | SERVER_STATE
+
+
+class MetadataFunctionRefused(ValueError):
+    """A function on a catalog that has no form: refused by name (query.function_unsupported)."""
+
+    code = "query.function_unsupported"
+
+    def __init__(self, function: str) -> None:
+        self.params = {"function": function, "dialect": "meta"}
+        super().__init__(f"{function}() has no form over the meta domain")
+
+
+#: What the admin terminal refuses, once forms are written: a form calls none of these, so a statement
+#: still naming one came from a surface that writes no forms (HTTP SQL over meta) and would run it.
+_REFUSED_ON_THE_PLANE = frozenset(
+    {*READS_THE_SERVER, *(name for name, _ in (*SCALAR_FORMS, *TABLE_FORMS))}
+)
+_NAMES_A_SERVER_READ = re.compile(
+    r"\b(" + "|".join(sorted(_REFUSED_ON_THE_PLANE)) + r")\b", re.IGNORECASE
+)
+
+
+def refuse_server_reads(sql: str) -> None:
+    """Raise :class:`MetadataFunctionRefused` for a statement on the control plane calling a
+    function that would read the server: the admin terminal's own check, whichever surface the
+    statement came from. A statement that merely holds the word, in a string, is not refused."""
+    if _NAMES_A_SERVER_READ.search(sql) is None:
+        return
+    tree = sqlglot.parse_one(sql, read="postgres")
+    for call in tree.find_all(exp.Anonymous):
+        if call.name.lower() in _REFUSED_ON_THE_PLANE:
+            raise MetadataFunctionRefused(call.name.lower())
+
+
+#: An argument that needs no parentheses wherever a form writes it.
+_ATOMIC = (exp.Column, exp.Literal, exp.Func, exp.Cast, exp.Paren, exp.Null, exp.Boolean)
+
+
+def _argument(value: exp.Expr, reads_as: str = "") -> exp.Expr:
+    if reads_as == "bigint" and (isinstance(value, exp.Column) or _object_identifier(value)):
+        # An oid a column or an object identifier value holds (regproc's text is a name): the
+        # statement runs on PostgreSQL, which has oid.
+        oid = exp.DataType.build("oid", dialect="postgres", udt=True)
+        return exp.Paren(this=exp.cast(exp.Cast(this=value.copy(), to=oid), "BIGINT"))
+    if reads_as == "text":
+        return exp.cast(value, "TEXT")
+    if reads_as == "bytea":  # no engine reads a bytes' text back, and a form reads only its NULL
+        return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
+    if reads_as:
+        # An argument of any type, as the form reads it: a value of a type no form operates on
+        # (xid8, pg_lsn) still has its text.
+        return exp.Paren(
+            this=exp.Cast(
+                this=exp.cast(value, "TEXT"),
+                to=exp.DataType.build(reads_as, dialect="postgres", udt=True),
+            )
+        )
+    if isinstance(value, exp.Cast) and value.to.sql(dialect="postgres").lower() == "pg_node_tree":
+        value = value.this  # the cast names pg_get_expr's argument type; a catalog keeps text
+    return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
+
+
+def _object_identifier(value: exp.Expr) -> bool:
+    """Whether ``value`` is cast to an object identifier type (regproc, regprocedure, ...)."""
+    return isinstance(value, exp.Cast) and value.to.sql(dialect="postgres").lower().startswith(
+        "reg"
+    )
+
+
+def _written(form: Form, args: list[exp.Expr]) -> exp.Expr:
+    """The form with each parameter its argument, which is evaluated wherever the form names it."""
+    values = dict(zip(form.params, args))
+    reads_as = dict(zip(form.params, form.reads_as))
+
+    def bound(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Column) and not node.table and node.name in values:
+            return _argument(values[node.name], reads_as.get(node.name, "")).copy()
+        return node
+
+    return sqlglot.parse_one(form.sql, read="postgres").transform(bound)
+
+
+def _call(node: exp.Expr) -> exp.Anonymous | None:
+    """The call ``node`` is, its ``pg_catalog.`` qualifier aside."""
+    if (
+        isinstance(node, exp.Dot)
+        and isinstance(node.this, exp.Identifier)
+        and node.this.name.lower() == "pg_catalog"
+    ):
+        node = node.expression
+    return node if isinstance(node, exp.Anonymous) else None
+
+
+def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
+    """``tree`` (a statement in PostgreSQL's dialect, before governance) with each call of a
+    function on a catalog written in its form, and the facts its forms read as CTEs. Raises
+    :class:`MetadataFunctionRefused` for one that has no form. ``has_table_privilege`` with a user
+    is the session role's where the user is, and NULL for any other: a catalog holds one role's
+    grants."""
+    needed: set[str] = set()
+    on_the_engine = tree.find(exp.Table) is None
+
+    def rewrite(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Table) and isinstance(node.this, exp.Anonymous):
+            return _relation_form(node, rewrite)
+        field_of = _field_of_call(node, rewrite)
+        if field_of is not None:
+            return field_of
+        call = _call(node)
+        if call is None:
+            return node
+        name, args = call.name.lower(), list(call.expressions)
+        if on_the_engine and name in _IN_THE_MACRO_TABLE:
+            return node
+        if name == "pg_column_size" and len(args) == 1:
+            sized = _column_size(args[0].transform(rewrite))
+            return exp.alias_(sized, name) if _is_column(node) else sized
+        if (name, len(args)) in _OF_A_USER:
+            user, *args = args
+            written = _of_session_role(
+                user, _expanded_form(name, args, rewrite, needed), facts, rewrite, args, needed
+            )
+        else:
+            if (name, len(args)) not in FORMS:
+                if name in READS_THE_SERVER:
+                    raise MetadataFunctionRefused(name)
+                if name.startswith(STATISTICS_PREFIXES):
+                    counted = _statistic(name, [a.transform(rewrite) for a in args])
+                    return exp.alias_(counted, name) if _is_column(node) else counted
+                return node
+            written = _expanded_form(name, args, rewrite, needed)
+        if _is_column(node):
+            return exp.alias_(written, name)  # the column is named for the function
+        return written
+
+    out = tree.transform(rewrite)
+    if not isinstance(out, exp.Query):
+        return out
+    for name in sorted(needed):
+        if name in _READ_ONCE:
+            out = out.with_(name, as_=_READ_ONCE[name], append=True, copy=False, materialized=True)
+        else:
+            out = out.with_(name, as_=relation(name, facts.rows(name)), append=True, copy=False)
+    if needed:
+        # Before a client's own: a form in one of those reads these.
+        written = out.args["with_"]
+        written.set("expressions", sorted(written.expressions, key=lambda c: c.alias not in needed))
+    return out
+
+
+#: The bytes a value of a fixed-width type takes, by the type's name as a cast writes it.
+_FIXED_WIDTHS = {
+    "smallint": 2, "int2": 2, "integer": 4, "int": 4, "int4": 4, "bigint": 8, "int8": 8,
+    "real": 4, "float4": 4, "double precision": 8, "float8": 8, "boolean": 1, "bool": 1,
+    "date": 4, "time": 8, "time without time zone": 8, "timetz": 12, "time with time zone": 12,
+    "timestamp": 8, "timestamp without time zone": 8, "timestamptz": 8,
+    "timestamp with time zone": 8, "interval": 16, "uuid": 16, "oid": 4, '"char"': 1,
+    "money": 8,
+}  # fmt: skip
+#: The types whose value is its bytes behind a 4-byte header, where it is computed, not stored.
+_VARLENA = frozenset({"text", "varchar", "character varying", "bytea"})
+_INT4_MAX = 2**31 - 1
+
+
+def _column_size(value: exp.Expr) -> exp.Expr:
+    """pg_column_size of a value the statement computes: a fixed-width type's width, a text's
+    bytes and its 4-byte header, an untyped literal's bytes as a C string. A stored value's size
+    is its source's, which Provisa does not report: NULL (no storage, never a made-up size)."""
+    unknown = exp.cast(exp.null(), "INT")
+    if any(value.find_all(exp.Column)):
+        return unknown
+    if isinstance(value, exp.Null):
+        return unknown
+    if isinstance(value, exp.Boolean):
+        return exp.Literal.number(1)
+    if isinstance(value, exp.Literal):
+        if value.is_string:
+            return exp.Literal.number(len(value.this.encode()) + 1)
+        if value.this.lstrip("-").isdigit():
+            return exp.Literal.number(4 if abs(int(value.this)) <= _INT4_MAX else 8)
+        return unknown
+    if isinstance(value, exp.Cast):
+        said = value.to.sql(dialect="postgres").lower()
+        width = _FIXED_WIDTHS.get(said)
+        if width is not None:
+            return exp.Case(
+                ifs=[exp.If(this=exp.Is(this=value.copy(), expression=exp.null()), true=unknown)],
+                default=exp.Literal.number(width),
+            )
+        if said.split("(")[0] in _VARLENA:
+            return exp.Add(
+                this=exp.Anonymous(this="OCTET_LENGTH", expressions=[value.copy()]),
+                expression=exp.Literal.number(4),
+            )
+    return unknown
+
+
+def _is_column(node: exp.Expr) -> bool:
+    return isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
+
+
+#: The types a statistic is 0 of; of any other it is NULL.
+_COUNTS = frozenset({"bigint", "integer", "smallint", "oid", "double precision", "real"})
+#: The counts PostgreSQL 17 answers NULL of where it has none: a function's, which track_functions
+#: (none) never counts, and a database's checksum failures, with data checksums off
+#: (src/backend/utils/adt/pgstatfuncs.c).
+_NOT_COUNTED = frozenset(
+    {
+        f"pg_stat_get_{prefix}function_{count}"
+        for prefix in ("", "xact_")
+        for count in ("calls", "self_time", "total_time")
+    }
+    | {"pg_stat_get_db_checksum_failures"}
+)
+
+
+def _statistic(name: str, args: list[exp.Expr]) -> exp.Expr:
+    """A statistic of ``args``: strict, as each of PostgreSQL's is, so a NULL argument is NULL."""
+    returns = FUNCTION_RETURNS.get(name, "text")
+    if returns == "record":
+        return exp.cast(exp.null(), "TEXT")
+    to = exp.DataType.build(returns, dialect="postgres", udt=True)
+    counts = returns in _COUNTS and name not in _NOT_COUNTED
+    counted = exp.Cast(this=exp.Literal.number(0) if counts else exp.null(), to=to)
+    if not args:
+        return counted
+    nulls = [exp.Is(this=_argument(a), expression=exp.null()) for a in args if not _constant(a)]
+    if not nulls:
+        return counted
+    return exp.Case(
+        ifs=[exp.If(this=exp.or_(*nulls), true=exp.Cast(this=exp.null(), to=to.copy()))],
+        default=counted,
+    )
+
+
+def _constant(value: exp.Expr) -> bool:
+    """A literal that is not NULL, cast or not: a strict function's argument that is never NULL."""
+    while isinstance(value, (exp.Cast, exp.Paren)):
+        value = value.this
+    return isinstance(value, exp.Literal)
+
+
+def _field_of_call(node: exp.Expr, rewrite) -> exp.Expr | None:
+    """``(f(...)).field``: a field of a function a form answers as a text record is read from its
+    form in FROM, which has columns."""
+    if not (isinstance(node, exp.Dot) and isinstance(node.this, exp.Paren)):
+        return None
+    call = _call(node.this.this)
+    if call is None:
+        return None
+    form = RELATION_FORMS.get((call.name.lower(), len(call.expressions)))
+    if form is None:
+        return None
+    select = _written(form, [a.transform(rewrite) for a in call.expressions])
+    return exp.Subquery(
+        this=exp.select(exp.column(node.expression.name, table="_f")).from_(
+            exp.Subquery(this=select, alias=exp.TableAlias(this=exp.to_identifier("_f")))
+        )
+    )
+
+
+def _relation_form(table: exp.Table, rewrite) -> exp.Expr:
+    """A function in FROM: its rows, under the name the statement gives them, a form of one column
+    taking that name for its column as PostgreSQL's does."""
+    call = table.this
+    name, args = call.name.lower(), list(call.expressions)
+    form = RELATION_FORMS.get((name, len(args)))
+    alias = table.args.get("alias") or exp.TableAlias(this=exp.to_identifier(name))
+    if form is None:
+        if name in READS_THE_SERVER:
+            raise MetadataFunctionRefused(name)
+        value = FORMS.get((name, len(args)))
+        if value is None:
+            return table
+        # A function of a value, as FROM reads one: a row of it.
+        select = exp.select(exp.alias_(_written(value, [a.transform(rewrite) for a in args]), name))
+    else:
+        select = cast(exp.Select, _written(form, [a.transform(rewrite) for a in args]))
+    if table.args.get("ordinality"):
+        select = _with_ordinality(select)
+    elif not alias.columns and len(select.selects) == 1 and not select.is_star:
+        alias = exp.TableAlias(this=alias.this.copy(), columns=[exp.to_identifier(alias.name)])
+    return exp.Subquery(this=select, alias=alias)
+
+
+def _with_ordinality(select: exp.Select) -> exp.Select:
+    """WITH ORDINALITY: the form's rows and a last column numbering them from 1 in the order the
+    form yields them. The alias list names it; with none it is ``ordinality``, as in PostgreSQL."""
+    return exp.select(
+        exp.Star(),
+        exp.alias_(exp.Window(this=exp.RowNumber(), partition_by=[], order=None), "ordinality"),
+    ).from_(exp.Subquery(this=select, alias=exp.TableAlias(this=exp.to_identifier("_o"))))
+
+
+def _expanded_form(name, args, rewrite, needed: set[str]) -> exp.Expr:
+    form = FORMS[(name, len(args))]
+    needed.update(form.facts)
+    # transform does not revisit what a replaced node holds: a call in an argument.
+    return _written(form, [a.transform(rewrite) for a in args])
+
+
+#: A predefined role's privilege on a relation: PostgreSQL's defaults and the role's own rights.
+_PREDEFINED_RELATION = Form(
+    "_predefined_relation_privilege",
+    ("who", "tbl", "priv"),
+    f"(SELECT {any_held('priv', predefined_relation_privileges('who'))} "
+    f"{_NAMED_RELATION}{_PATH_FIRST})",
+)
+
+
+#: Another model role's privilege on a relation, and on a column: from its grants in the model.
+_OTHER_RELATION = Form(
+    "_other_relation_privilege",
+    ("who", "tbl", "priv"),
+    f"(SELECT {_held('priv', role_name('who'))} {_NAMED_RELATION}{_PATH_FIRST})",
+    frozenset({ROLE_PRIVILEGES}),
+)
+_OTHER_COLUMN = Form(
+    "_other_column_privilege",
+    ("who", "tbl", "col", "priv"),
+    _column_privilege(role_name("who")),
+    frozenset({ROLE_PRIVILEGES, ROLE_UNSERVED}),
+)
+
+
+def _of_session_role(
+    user: exp.Expr,
+    answer: exp.Expr,
+    facts: CatalogFacts,
+    rewrite,
+    args: list[exp.Expr],
+    needed: set[str],
+) -> exp.Expr:
+    """``answer`` where ``user`` is the session role; for one of PostgreSQL's predefined roles,
+    or an oid no role has, what PostgreSQL grants it; for another model role, what its grants in
+    the model give it (REQ-2167, amended 2026-11-03); a name no role has is PostgreSQL's
+    refusal."""
+    user = user.transform(rewrite)
+    named = exp.cast(_argument(user), "TEXT")
+    given = [a.transform(rewrite) for a in args]
+    tbl, priv = given[0], given[-1]
+    predefined = _written(_PREDEFINED_RELATION, [user.copy(), tbl.copy(), priv.copy()])
+    other = _OTHER_COLUMN if len(given) == 3 else _OTHER_RELATION
+    needed.update(other.facts)
+    return exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.EQ(this=named, expression=exp.Literal.string(facts.role_id)), true=answer
+            ),
+            exp.If(
+                this=_parsed_condition(no_such_role_name("_who"), user),
+                true=_parsed_condition(refused_role("_who", "BOOLEAN"), user),
+            ),
+            exp.If(this=_parsed_condition(holds_public_alone("_who"), user), true=predefined),
+        ],
+        default=_written(other, [user.copy(), *(a.copy() for a in given)]),
+    )
+
+
+def _parsed_condition(sql: str, who: exp.Expr) -> exp.Expr:
+    """``sql`` with ``_who`` the expression ``who``."""
+
+    def bound(node: exp.Expr) -> exp.Expr:
+        if isinstance(node, exp.Column) and not node.table and node.name == "_who":
+            return _argument(who).copy()
+        return node
+
+    return sqlglot.parse_one(sql, read="postgres").transform(bound)

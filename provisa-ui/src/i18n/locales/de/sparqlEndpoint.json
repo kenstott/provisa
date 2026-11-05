@@ -1,0 +1,14 @@
+{
+  "sparqlEndpoint": {
+    "endpoint": "Endpunkt",
+    "copyEndpoint": "Endpunkt-URL kopieren",
+    "prefixes_one": "{{count}} Präfix",
+    "prefixes_other": "{{count}} Präfixe",
+    "prefixName": "Präfix",
+    "namespace": "Namensraum",
+    "removePrefix": "Präfix entfernen",
+    "invalidPrefix": "Nur Buchstaben, Ziffern, - und _",
+    "addHint": "Füllen Sie die letzte Zeile aus, um ein Präfix hinzuzufügen. Präfixe benennen Terme in Ergebnissen und Pill-Abfragen; eine Abfrage wird wie geschrieben ausgeführt.",
+    "restore": "Präfixe wiederherstellen"
+  }
+}

@@ -201,8 +201,8 @@ Ogni colonna ha un modello di permessi che controlla l'accesso in lettura, scrit
 | Livello | Condizione | Risultato |
 | ------ | ----------- | -------- |
 | **Nascosta** | Ruolo non in `visible_to` | Colonna assente da schema e catalogo |
-| **Mascherata** | Ruolo in `visible_to`; la prima voce di maschera che detiene ha una `mask` | Colonna visibile, valore sostituito nell'output |
-| **Non mascherata** | Ruolo in `visible_to`; la prima voce di maschera che detiene non ha `mask`, o non ne detiene nessuna | Accesso completo in lettura |
+| **Mascherata** | Ruolo in `visible_to`; la prima voce di maschera che detiene ha una `mask`, o la colonna ha maschere e non ne detiene nessuna | Colonna visibile, valore sostituito nell'output |
+| **Non mascherata** | Ruolo in `visible_to`; la prima voce di maschera che detiene non ha `mask`, o la colonna non ha maschere | Accesso completo in lettura |
 
 ### Colonne pubbliche {: #public-columns }
 
@@ -340,7 +340,9 @@ L'espressione di maschera viene spinta nella proiezione SQL SELECT. Il database 
 
 **Una maschera copre ogni nome della colonna, non una colonna correlata.** Una colonna letta con il suo alias o con il suo nome fisico è mascherata allo stesso modo. Una maschera non nasconde una chiave che una relazione approvata unisce a una colonna che il ruolo può vedere: il join confronta i valori reali, quindi la colonna correlata mostra ciò che contiene la chiave mascherata. Mascherate anche la colonna correlata, oppure non approvate la relazione per quel ruolo.
 
-**Nessuna voce detenuta significa non mascherato.** Un lettore che non detiene alcuna voce legge la colonna non mascherata. Terminate una lista con una voce `*` quando a ogni lettore deve essere applicata una maschera. L'editor di colonne avvisa quando a una lista manca una voce `*` (`unlisted_unmasked`).
+**Nessuna voce detenuta significa completamente mascherato.** Quando una colonna ha una maschera, un lettore che non detiene alcuna voce la legge completamente mascherata: `****` per una colonna di testo, `NULL` per ogni altro tipo. Solo una voce dà accesso non mascherato. Perché i lettori che la lista non nomina leggano senza maschera, terminatela con una voce esplicita senza `to` né `mask`. Una colonna senza maschere non cambia.
+
+**Una voce che nessun lettore raggiunge viene rifiutata.** Il salvataggio di una lista di maschere che la contiene viene rifiutato con `You have defined a mask that is not reachable: ` seguito dalle voci irraggiungibili, ciascuna nominata dai suoi ruoli. Vale per l'interfaccia di amministrazione, l'API di amministrazione e il caricamento di una configurazione.
 
 **Negare con l'ordine.** Una voce precedente vince anche quando il lettore ne detiene anche una successiva più permissiva. Perché i collaboratori esterni vedano sempre uno stipendio mascherato, qualunque altro ruolo abbiano, mettete la voce dei collaboratori prima della voce non mascherata. Un ruolo concesso non perde mai ciò che il padre concede per ereditarietà, ma una voce di maschera posta prima nella lista si applica per prima. Così funziona qui la restrizione.
 

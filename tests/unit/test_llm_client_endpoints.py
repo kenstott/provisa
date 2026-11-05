@@ -11,7 +11,9 @@ Source: provisa/llm/client.py — ProvisaLLMClient._complete_sync
 
 from __future__ import annotations
 
+import asyncio
 import os
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -136,3 +138,247 @@ class TestEmptyContent:
         with patch.dict("sys.modules", {"aisuite": stub}):
             with pytest.raises(LLMEmptyResponseError, match="finish_reason='length'"):
                 client.complete_sync("hello", max_tokens=16)
+
+
+def _detailed(*, content, finish_reason, completion_tokens, max_tokens=16):
+    """``complete_detailed`` of a real client over a vendor that answers as told."""
+
+    class _Answering:
+        def __init__(self, config=None):
+            self.chat = SimpleNamespace(
+                completions=SimpleNamespace(
+                    create=lambda **kwargs: SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                message=SimpleNamespace(content=content),
+                                finish_reason=finish_reason,
+                            )
+                        ],
+                        usage=SimpleNamespace(completion_tokens=completion_tokens),
+                    )
+                )
+            )
+
+    client = ProvisaLLMClient(
+        "x", config={"ai_models": {"x": {"vendor": "anthropic", "model": "m"}}}
+    )
+    stub = MagicMock()
+    stub.Client = _Answering
+    with patch.dict("sys.modules", {"aisuite": stub}):
+        return asyncio.run(client.complete_detailed("p", max_tokens=max_tokens))
+
+
+class TestCutOff:
+    @pytest.mark.parametrize(
+        ("finish_reason", "completion_tokens", "cut_off"),
+        [
+            ("stop", 5, False),
+            (None, 5, False),
+            ("length", 5, True),
+            ("max_tokens", 5, True),
+            # aisuite drops finish_reason for the OpenAI-shaped vendors it converts: usage shows it.
+            (None, 16, True),
+        ],
+    )
+    def test_the_answer_says_whether_it_stopped_at_the_limit(
+        self, finish_reason, completion_tokens, cut_off
+    ):
+        answered = _detailed(
+            content="[", finish_reason=finish_reason, completion_tokens=completion_tokens
+        )
+        assert answered.cut_off is cut_off
+
+    def test_no_text_at_the_limit_carries_the_cut_off_answer(self):
+        with pytest.raises(LLMEmptyResponseError) as empty:
+            _detailed(content=None, finish_reason="length", completion_tokens=16)
+        assert empty.value.answer.cut_off is True
+        assert empty.value.answer.usage.completion_tokens == 16
+        assert empty.value.answer.text == ""
+
+    def test_no_text_short_of_the_limit_is_not_cut_off(self):
+        with pytest.raises(LLMEmptyResponseError) as empty:
+            _detailed(content=None, finish_reason="stop", completion_tokens=0)
+        assert empty.value.answer.cut_off is False
+
+
+class TestReasoningOff:
+    """``reasoning_off`` is stated on each wire in that wire's own words, or the call fails."""
+
+    @staticmethod
+    def _sent(cfg: dict, env: dict[str, str] | None = None) -> tuple[list[dict], list[dict]]:
+        sent: list[dict] = []
+        created: list[dict] = []
+
+        class _Recording:
+            def __init__(self, config=None):
+                created.append(config or {})
+                self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+
+            def create(self, **request):
+                sent.append(request)
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(message=SimpleNamespace(content="ok"), finish_reason="stop")
+                    ],
+                    usage=SimpleNamespace(completion_tokens=1),
+                )
+
+        client = ProvisaLLMClient("x", config=cfg, api_keys={"anthropic": "k"})
+        stub = MagicMock()
+        stub.Client = _Recording
+        with patch.dict(os.environ, env or {}), patch.dict("sys.modules", {"aisuite": stub}):
+            asyncio.run(client.complete_detailed("p", max_tokens=16, reasoning_off=True))
+        return sent, created
+
+    @staticmethod
+    def _endpoint(style: str, base_url: str) -> dict:
+        return {
+            "ai_models": {"x": {"vendor": "gw", "model": "m"}},
+            "ai_endpoints": [{"id": "gw", "style": style, "base_url": base_url}],
+        }
+
+    def test_openrouter_is_sent_its_reasoning_object_disabled(self):
+        sent, _ = self._sent(self._endpoint("openai", "https://openrouter.ai/api/v1"))
+        assert sent == [
+            {
+                "model": "openai:m",
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": "p"},
+                ],
+                "max_tokens": 16,
+                "extra_body": {"reasoning": {"enabled": False}},
+            }
+        ]
+
+    def test_anthropic_is_sent_thinking_disabled(self):
+        sent, _ = self._sent({"ai_models": {"x": {"vendor": "anthropic", "model": "m"}}})
+        assert sent[0]["thinking"] == {"type": "disabled"}
+
+    def test_an_anthropic_style_endpoint_is_sent_thinking_disabled(self):
+        sent, _ = self._sent(self._endpoint("anthropic", "https://gw/anthropic"))
+        assert sent[0]["thinking"] == {"type": "disabled"}
+
+    def test_an_openai_wire_that_is_not_openrouter_is_sent_no_reasoning_setting(self):
+        # Maintainer decision 2026-11-04: only wires with a documented switch get one.
+        sent, _ = self._sent(self._endpoint("openai", "https://gw/v1"))
+        assert len(sent) == 1
+        assert "extra_body" not in sent[0] and "thinking" not in sent[0]
+
+    def test_a_vendor_without_a_reasoning_switch_is_sent_no_reasoning_setting(self):
+        sent, _ = self._sent({"ai_models": {"x": {"vendor": "groq", "model": "m"}}})
+        assert len(sent) == 1
+        assert "extra_body" not in sent[0] and "thinking" not in sent[0]
+
+    def test_a_call_not_asking_for_reasoning_off_is_sent_as_before(self):
+        cfg = self._endpoint("openai", "https://openrouter.ai/api/v1")
+        client = ProvisaLLMClient("x", config=cfg)
+        sent: list[dict] = []
+        stub = MagicMock()
+        stub.Client.return_value.chat.completions.create.side_effect = lambda **r: (
+            sent.append(r)
+            or SimpleNamespace(
+                choices=[
+                    SimpleNamespace(message=SimpleNamespace(content="ok"), finish_reason="stop")
+                ],
+                usage=None,
+            )
+        )
+        with patch.dict("sys.modules", {"aisuite": stub}):
+            asyncio.run(client.complete_detailed("p", max_tokens=16))
+        assert "extra_body" not in sent[0] and "thinking" not in sent[0]
+
+
+class TestJsonAnswer:
+    """``json_schema`` asks for one JSON value following it, in each wire's own words where the
+    wire has them; every other wire is sent no setting and keeps its default."""
+
+    SCHEMA = {
+        "type": "object",
+        "properties": {"joins": {"type": "array", "items": {"type": "integer"}}},
+        "required": ["joins"],
+        "additionalProperties": False,
+    }
+
+    @classmethod
+    def _sent(cls, cfg: dict, **asked) -> list[dict]:
+        sent: list[dict] = []
+
+        class _Recording:
+            def __init__(self, config=None):
+                self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+
+            def create(self, **request):
+                sent.append(request)
+                if request["model"].endswith(":broken"):
+                    raise RuntimeError("primary down")
+                return SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(message=SimpleNamespace(content="{}"), finish_reason="stop")
+                    ],
+                    usage=SimpleNamespace(completion_tokens=1),
+                )
+
+        client = ProvisaLLMClient("x", config=cfg, api_keys={"anthropic": "k", "openai": "k"})
+        stub = MagicMock()
+        stub.Client = _Recording
+        with patch.dict("sys.modules", {"aisuite": stub}):
+            asyncio.run(client.complete_detailed("p", max_tokens=16, **asked))
+        return sent
+
+    @classmethod
+    def _asked(cls, cfg: dict) -> list[dict]:
+        return cls._sent(cfg, json_schema=cls.SCHEMA, json_name="joins")
+
+    ANTHROPIC = {"output_config": {"format": {"type": "json_schema", "schema": SCHEMA}}}
+    OPENAI = {
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "joins", "schema": SCHEMA, "strict": True},
+        }
+    }
+
+    @staticmethod
+    def _json_args(request: dict) -> dict:
+        return {k: v for k, v in request.items() if k in ("output_config", "response_format")}
+
+    def test_anthropic_is_sent_the_schema_as_structured_output(self):
+        sent = self._asked({"ai_models": {"x": {"vendor": "anthropic", "model": "m"}}})
+        assert [self._json_args(s) for s in sent] == [self.ANTHROPIC]
+
+    def test_an_anthropic_style_endpoint_is_sent_the_schema_as_structured_output(self):
+        sent = self._asked(TestReasoningOff._endpoint("anthropic", "https://gw/anthropic"))
+        assert [self._json_args(s) for s in sent] == [self.ANTHROPIC]
+
+    def test_openai_is_sent_the_schema_as_a_strict_response_format(self):
+        sent = self._asked({"ai_models": {"x": {"vendor": "openai", "model": "m"}}})
+        assert [self._json_args(s) for s in sent] == [self.OPENAI]
+
+    def test_openrouter_is_sent_the_schema_as_a_strict_response_format(self):
+        sent = self._asked(TestReasoningOff._endpoint("openai", "https://openrouter.ai/api/v1"))
+        assert [self._json_args(s) for s in sent] == [self.OPENAI]
+
+    def test_an_openai_wire_that_is_not_openrouter_is_sent_no_json_setting(self):
+        sent = self._asked(TestReasoningOff._endpoint("openai", "https://gw/v1"))
+        assert [self._json_args(s) for s in sent] == [{}]
+
+    def test_a_vendor_without_a_json_setting_is_sent_none(self):
+        sent = self._asked({"ai_models": {"x": {"vendor": "groq", "model": "m"}}})
+        assert [self._json_args(s) for s in sent] == [{}]
+
+    def test_the_fallback_is_asked_on_its_own_wire(self):
+        cfg = {
+            "ai_models": {
+                "x": {
+                    "vendor": "openai",
+                    "model": "broken",
+                    "fallback": {"vendor": "anthropic", "model": "m"},
+                }
+            }
+        }
+        sent = self._asked(cfg)
+        assert [self._json_args(s) for s in sent] == [self.OPENAI, self.ANTHROPIC]
+
+    def test_a_call_not_asking_for_json_is_sent_as_before(self):
+        sent = self._sent({"ai_models": {"x": {"vendor": "anthropic", "model": "m"}}})
+        assert [self._json_args(s) for s in sent] == [{}]

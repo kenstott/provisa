@@ -65,7 +65,7 @@ from provisa.api.metadata_export.refs import (
     term_uri,
 )
 from provisa.core.derived_tags import derived_tags_for_table
-from provisa.core.glossary import live_term_ids
+from provisa.core.glossary import term_grounding
 from provisa.core.models import SYSTEM_TAG_IDS, SYSTEM_TAGS, ProvisaConfig, Table, TagAssignment
 from provisa.dq.contract import (
     CHECKERS,
@@ -629,10 +629,12 @@ def _glossary_assets(
     rootedness this rule is judged on is narrower than the repository's: a term whose refs
     are all withheld is not rooted here even though it holds refs in the control plane.
 
-    On top of that, only live terms publish — ``live_term_ids``: in service, defined, and
-    connected to a rooted term. A downstream catalog binds assets to whatever it receives, so
-    an undefined proposal or an abstract term wired to nothing physical must never leave here.
-    ``export_excluded`` withholds a term on top of that. Edges publish when both endpoints do.
+    On top of that, only approved terms publish (REQ-1387), each with its grounding, computed
+    over that narrower rootedness: a person approved the vocabulary a downstream catalog binds
+    assets to, so a draft never leaves here. A term an approval was followed by a curator's
+    deprecation of still publishes, as deprecated, for each catalog to mark; a retired one, or one
+    whose derivation lost its last column, does not. ``export_excluded`` withholds a term on top
+    of that. Edges publish when both endpoints do.
     """
     by_identity = {(t.source_id, t.schema_name, t.table_name): t for t in exported}
     refs_by_term: dict[int, list] = {}
@@ -662,14 +664,20 @@ def _glossary_assets(
     experts_by_term: dict[int, list[str]] = {}
     for expert in glossary.get("experts", []):
         experts_by_term.setdefault(expert["term_id"], []).append(expert["user_id"])
-    live = live_term_ids(
+    grounding = term_grounding(
         glossary.get("terms", []),
-        [(e["from_term_id"], e["to_term_id"]) for e in glossary.get("edges", [])],
+        [(e["from_term_id"], e["to_term_id"], e["rel_type"]) for e in glossary.get("edges", [])],
         set(refs_by_term) | classes,
     )
+    published_roots = set(refs_by_term) | classes
     terms = []
     for term in glossary.get("terms", []):
-        if term["id"] not in live or term.get("export_excluded"):
+        approved = term["approved"] and not term["retired"] and not term["deprecated"]
+        if not approved or term["export_excluded"]:
+            continue
+        # The data_product filter: a term bound to data, none of which publishes, goes with it.
+        held = term["id"] in owns_columns or term["id"] in grounds_tables
+        if held and term["id"] not in published_roots:
             continue
         refs = refs_by_term.get(term["id"], [])
         terms.append(
@@ -679,7 +687,8 @@ def _glossary_assets(
                 definition=term.get("definition"),
                 is_abstract=bool(term["is_abstract"]),
                 deprecated=bool(term["deprecated"]),
-                status="deprecated" if term["deprecation_asserted"] else "live",  # REQ-2144
+                status="deprecated" if term["deprecation_asserted"] else "approved",  # REQ-2144
+                grounding=grounding[term["id"]],  # REQ-1387
                 status_reason=term["status_reason"],
                 retire_on=term["retire_on"].isoformat() if term["retire_on"] else None,
                 refs=tuple(refs),

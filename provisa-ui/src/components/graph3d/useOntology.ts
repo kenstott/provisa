@@ -15,22 +15,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../context/AuthContext";
-import { ONTOLOGY_SCOPE, type GraphData, type LayerId, type QueryScope } from "./graphModel";
+import type { GraphData, LayerId, QueryScope } from "./graphModel";
 import { dataGraphql, metaReader } from "../../api/metaGraph";
 import { fetchProductLineage } from "../../api/lineage";
 import {
-  flatTerms,
   ontologyCountQuery,
   ontologyGraph,
   ontologyQuery,
   overviewGraph,
-  termEdges,
   withProductLineage,
   type CountRow,
   type OntologyRows,
 } from "./ontologyData";
 import { NODE_BUDGET } from "./neighbourhood";
-import type { OntologyPreset } from "./ontologyPresets";
+import { scopeOf, type OntologyPreset } from "./ontologyPresets";
 
 /** What a read of the ontology came to: the graph and the query that read it, or -- past the
  * budget -- how many terms it would have read, with each term's domains. */
@@ -38,8 +36,9 @@ export type Loaded =
   | { data: GraphData; query: string; over?: undefined }
   | { over: number; rows: CountRow[]; query: string };
 
-/** The ontology as ``scope`` reads it, in one query (REQ-2136): its terms counted first, and read
- * only within the budget (REQ-2143); null when the role cannot read the glossary. */
+/** The ontology as ``scope`` reads it, in one query (REQ-2136), by the rules it reads by
+ * (QueryScope.products): its terms counted first, and read only within the budget (REQ-2143);
+ * null when the role cannot read the glossary. */
 export async function loadOntology(role: string, scope: QueryScope): Promise<Loaded | null> {
   const m = await metaReader(role);
   const query = ontologyQuery(m, scope);
@@ -53,16 +52,16 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
   const rows: OntologyRows =
     read === null ? { _terms: [] } : await dataGraphql<OntologyRows>(read, {}, role);
   // A search's or a focus's neighbourhood is read nested, a level to each hop: each term once.
-  const terms = flatTerms(rows._terms ?? []);
+  const data = ontologyGraph(rows, scope);
+  // Only the Product map reads products apart, and draws their lineage.
   const products = rows.data_products ?? [];
-  const data = ontologyGraph(terms, termEdges(terms), products);
-  if (!scope.layers.has("lineage")) return { data, query };
+  if (!scope.products || !scope.layers.has("lineage")) return { data, query };
   // REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): under Lineage each product read has its
   // lineage, from the product lineage endpoint (REQ-2156).
   const lineages = await Promise.all(products.map((p) => fetchProductLineage(p.id)));
   return {
     data: products.reduce(
-      (g, p, i) => withProductLineage(g, p.id, lineages[i], p.member_tables ?? []),
+      (g, p, i) => withProductLineage(g, p.id, lineages[i], p.memberTables ?? []),
       data,
     ),
     query,
@@ -72,17 +71,13 @@ export async function loadOntology(role: string, scope: QueryScope): Promise<Loa
 // Before the first scoped read: nothing drawn yet.
 const EMPTY: GraphData = { nodes: [], edges: [] };
 
-/** A snippet's layers: the terms, the columns they bind, those columns' tables and the products
- * holding them. */
-export const SNIPPET_LAYERS: LayerId[] = ["ontology", "columns", "ownerTables", "data"];
-
-/** Every layer, no filter: what the view's controls choose from. A layer read only once it is on
- * is offered by the node it hangs off (ONTOLOGY_SCOPE.readWhenOn), so it is not read here. */
+/** Every layer of the preset's rules, no filter: what the view's controls choose from. A layer
+ * read only once it is on is offered by the node it hangs off (GraphScope.readWhenOn), so it is
+ * not read here. */
 function everything(preset: OntologyPreset): QueryScope {
+  const scope = scopeOf(preset);
   return {
-    layers: new Set<LayerId>(
-      ONTOLOGY_SCOPE.layerOrder.filter((l) => !(l in ONTOLOGY_SCOPE.readWhenOn)),
-    ),
+    layers: new Set<LayerId>(scope.layerOrder.filter((l) => !(l in scope.readWhenOn))),
     domains: [],
     edgeTypes: [],
     hiddenStatuses: [],
@@ -92,6 +87,7 @@ function everything(preset: OntologyPreset): QueryScope {
     search: [],
     focus: preset.focus,
     depth: preset.depth,
+    products: preset.products,
   };
 }
 
@@ -124,7 +120,7 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
   const [scope, setScope] = useState<QueryScope | null>(null);
   const [scoped, setScoped] = useState<Loaded | null>(null);
   const [changes, setChanges] = useState(0);
-  const { focus, depth } = preset;
+  const { focus, depth, products } = preset;
   useEffect(() => {
     const changed = () => setChanges((n) => n + 1);
     window.addEventListener("provisa:glossary-changed", changed);
@@ -133,7 +129,7 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
   useEffect(() => {
     if (!enabled || actingRoles === null) return;
     let cancelled = false;
-    loadOntology(actingRoles, everything({ focus, depth })).then(
+    loadOntology(actingRoles, everything({ focus, depth, products })).then(
       (all) =>
         !cancelled &&
         setRead({
@@ -150,7 +146,7 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
     return () => {
       cancelled = true;
     };
-  }, [enabled, actingRoles, said, changes, focus, depth]);
+  }, [enabled, actingRoles, said, changes, focus, depth, products]);
   useEffect(() => {
     if (!enabled || actingRoles === null || scope === null) return;
     let cancelled = false;
@@ -163,7 +159,8 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
       cancelled = true;
     };
   }, [enabled, actingRoles, scope, changes]);
-  const onScope = useCallback((s: QueryScope) => setScope(s), []);
+  // The view's controls say what to read; the preset says by which rules.
+  const onScope = useCallback((s: QueryScope) => setScope({ ...s, products }), [products]);
   // REQ-2143: past the budget, the whole ontology unsearched is its overview -- each domain with
   // its count, picked to narrow to it -- and a search, a focus or a domain still past it is said.
   const overview =

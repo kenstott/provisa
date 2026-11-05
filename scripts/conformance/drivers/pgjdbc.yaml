@@ -1,0 +1,8 @@
+# pgjdbc's expected-failure list (REQ-2203): every test of pgjdbc's own suite that fails against
+# Provisa's pgwire, with its reason, seeded from a CI run of conformance-drivers.yml at the
+# pinned version. A reason is a skipped-by-design decision (requirement and decision) or an open
+# defect (defect). scripts/conformance/driver_suite.py reads it.
+driver: pgjdbc
+version: "REL42.7.14"
+reasons: {}
+expected: {}

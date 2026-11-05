@@ -44,7 +44,7 @@ vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
     selectedRoles: [{ id: "admin" }],
-    availableRoles: [],
+    availableRoles: [{ id: "admin", capabilities: ["data_product_rw"] }],
   }),
 }));
 vi.mock("../hooks/useCapability", () => ({ useCapability: () => true }));
@@ -54,7 +54,8 @@ vi.mock("../api/actions", () => ({
 }));
 // REQ-2158: the open product's ODCS contracts; none here.
 vi.mock("../api/dataProductContracts", () => ({
-  fetchProductContracts: () => Promise.resolve({}),
+  fetchProductContract: () => Promise.resolve({}),
+  fetchContractVersions: () => Promise.resolve([]),
 }));
 vi.mock("../api/lineage", () => ({
   fetchProductLineage: () =>
@@ -64,6 +65,7 @@ vi.mock("../api/lineage", () => ({
       outputs: [],
       members: [],
       inputs: [],
+      consumers: [],
       dq: { expectations: [], promises: [], related: [], unattached: [] },
     }),
 }));

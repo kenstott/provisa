@@ -8,332 +8,497 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2158: a product member's contract, its output port, as the product's panel shows it: every
-// ODCS 3.1 element, declared or derived (REQ-2118), in the standard's sections as expanding rows,
-// each collapsed to a one-line summary until opened. An element nothing provides is shown as not
-// declared. Elements are named by their ODCS names, the standard's own vocabulary.
+// REQ-2158: a product member's contract, its output port, as its open row in the product's contracts
+// list shows it: every ODCS 3.1 element, declared or derived (REQ-2118), in the shared contract
+// layout (ContractLayout) -- details, versions and changes, pricing, custom properties and tags;
+// roles, SLAs and freshness, support and team, version history; how to use, columns, quality promises.
+// A contract is what a product's user reads, so it never says who consumes the port: that is the
+// owner's, on the product (REQ-2160). Elements are named by their ODCS names, the standard's own
+// vocabulary, and what nothing provides is named as not declared.
 
-import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Badge, Group, Stack, Text } from "@mantine/core";
-import type { OdcsContract, OdcsProperty, OdcsRecord } from "../../api/dataProductContracts";
-import { Collapsibles, CollapsibleItem } from "../../components/collapsible/Collapsible";
+import { Anchor, Badge, Group, Stack, Text } from "@mantine/core";
+import { Link } from "react-router-dom";
+import type { OdcsContract, OdcsRecord } from "../../api/dataProductContracts";
+import type { ContractVersion } from "../../types/admin";
+import type { ProductDqEntry } from "../../api/lineage";
+import {
+  ContractLayout,
+  ContractPanel,
+  NotDeclared,
+  type PanelColumn,
+  type PanelTable,
+} from "./ContractLayout";
+import { canRead, contractGrant, surfaceAddress, type Grant } from "./howToUse";
+import { PromisesTable } from "./PromisesTable";
+import {
+  graphqlExample,
+  grpcExample,
+  jsonApiExample,
+  restExample,
+  sqlExample,
+  type ExampleLink,
+  type TableRef,
+} from "./tableExamples";
+import { useSparqlExample } from "./useSparqlExample";
+import type { MetaReader } from "../../api/metaGraph";
 
-const CONTRACT_SECTIONS = [
-  "fundamentals",
-  "schema",
-  "quality",
-  "sla",
-  "support",
-  "servers",
-  "pricing",
-  "custom",
-] as const;
-type Section = (typeof CONTRACT_SECTIONS)[number];
+const columns = (...names: string[]): PanelColumn[] => names.map((name) => ({ name }));
 
-/** A value as one line of text: a list joined, a record as its fields. */
-function shown(value: unknown): string {
-  if (Array.isArray(value)) return value.map(shown).join(", ");
-  if (value !== null && typeof value === "object") return record(value as OdcsRecord);
-  return String(value);
+/** What a property promises of its values, in one column so a wide schema fits its panel. */
+function propertyConstraints(p: OdcsRecord): string[] {
+  const position = p.primaryKeyPosition;
+  return [
+    ...(p.required === true ? ["required"] : []),
+    ...(p.unique === true ? ["unique"] : []),
+    ...(p.primaryKey === true ? [position ? `primaryKey ${String(position)}` : "primaryKey"] : []),
+  ];
 }
 
-/** A record (a rule, a server, a service level) as its set fields, in the order ODCS gives them. */
-function record(r: OdcsRecord): string {
-  return Object.entries(r)
-    .filter(([, v]) => v !== null && v !== undefined)
-    .map(([k, v]) => `${k}: ${shown(v)}`)
-    .join(" · ");
+/** A property's elements as ODCS 3.1 names them; any further element it carries follows them. */
+function propertyColumns(constraints: string): PanelColumn[] {
+  return [
+    { name: "name", whole: true },
+    ...columns("logicalType", "physicalType", "logicalTypeOptions"),
+    {
+      name: "constraints",
+      label: constraints,
+      reads: ["required", "unique", "primaryKey", "primaryKeyPosition"],
+      value: propertyConstraints,
+    },
+    ...columns("classification", "description", "examples", "quality"),
+  ];
 }
 
-function present(value: unknown): boolean {
-  return !(value === null || value === undefined || (Array.isArray(value) && value.length === 0));
+/** The saved versions, newest first: when and by whom each was saved, whether it breaks a consumer
+ * and its differences from the one before it. */
+function useVersionsTable(versions: ContractVersion[], tableId: number): PanelTable {
+  const { t, i18n } = useTranslation();
+  const rowId = (version: unknown) => `data-contract-version-row-${tableId}-${String(version)}`;
+  return {
+    name: "versions",
+    testId: `data-contract-history-${tableId}`,
+    rowTestId: (row) => rowId(row.version),
+    rows: [...versions].reverse().map((v) => ({
+      version: v.contract.version,
+      status: v.contract.status,
+      saved_at: v.saved_at,
+      saved_by: v.saved_by,
+      changes: v.changes,
+    })),
+    columns: [
+      {
+        name: "version",
+        reads: ["version"],
+        cell: (row) => (
+          <Stack gap={2} align="flex-start">
+            <Text size="sm" style={{ whiteSpace: "nowrap" }}>
+              {t("dataProductsTab.contract.versionBadge", { version: row.version })}
+            </Text>
+            {(row.changes as ContractVersion["changes"]).some((c) => c.breaking) && (
+              <Badge
+                size="xs"
+                variant="light"
+                color="red"
+                data-testid={`${rowId(row.version)}-breaking`}
+              >
+                {t("dataProductsTab.contract.breaking")}
+              </Badge>
+            )}
+          </Stack>
+        ),
+      },
+      {
+        name: "status",
+        cell: (row) => (
+          <span data-testid={`${rowId(row.version)}-status`}>
+            {t(`dataProductsTab.contract.status.${String(row.status)}`)}
+          </span>
+        ),
+      },
+      {
+        name: "saved",
+        label: t("dataProductsTab.contract.versionSaved"),
+        reads: ["saved_at", "saved_by"],
+        value: (row) => row.saved_at,
+        cell: (row) => (
+          <span data-testid={`${rowId(row.version)}-saved`}>
+            {t("dataProductsTab.contract.savedBy", {
+              when: new Date(String(row.saved_at)).toLocaleString(i18n.language),
+              who: row.saved_by ?? t("dataProductsTab.contract.savedBySystem"),
+            })}
+          </span>
+        ),
+      },
+      {
+        name: "changes",
+        label: t("dataProductsTab.contract.versionChanges"),
+        // A version with nothing to compare still says so, so the column is always drawn.
+        value: () => true,
+        cell: (row) => <VersionChanges id={rowId(row.version)} row={row} />,
+      },
+    ],
+  };
 }
 
-function NotDeclared() {
+/** Who reads a contract: the roles it holds, and its acting roles as a request names them. */
+export interface ContractViewer {
+  held: ReadonlySet<string>;
+  acting: string | null;
+}
+
+/** Each surface's example of a table; a surface with none has no link. Flight SQL has no page of
+ * its own and opens SQL, the language it speaks. */
+function useExamples(
+  tableId: number,
+  table: TableRef,
+  reader: MetaReader | null,
+  acting: string | null,
+  sparql: boolean,
+): Record<string, ExampleLink | null> {
+  const sparqlLink = useSparqlExample(tableId, acting, sparql);
+  const sql = sqlExample(table);
+  const rest = restExample(reader, table);
+  return {
+    pgwire: sql,
+    "flight-sql": sql,
+    grpc: grpcExample(reader, table),
+    graphql: graphqlExample(reader, table),
+    rest,
+    openapi: rest,
+    jsonapi: jsonApiExample(table),
+    sparql: sparqlLink,
+  };
+}
+
+/** The sentence every surface carries: it works once access is granted, and who grants it. */
+function useAccessSentence({ roles, approvers }: Grant): string {
   const { t } = useTranslation();
+  const key = "dataProductsTab.contract.howToUse.access";
+  const named = { roles: roles.join(", "), approvers: approvers.join(", ") };
+  if (roles.length === 0) return t(`${key}.undeclared`);
+  return t(`${key}.${approvers.length > 0 ? "granted" : "noApprover"}`, named);
+}
+
+/** Who a viewer who cannot read the table asks, in place of the link. */
+function AskForAccess({ grant, testId }: { grant: Grant; testId: string }) {
+  const { t } = useTranslation();
+  const key = "dataProductsTab.contract.howToUse.ask";
+  const { roles, approvers } = grant;
   return (
-    <Text component="span" size="sm" c="dimmed" fs="italic">
-      {t("dataProductsTab.contract.notDeclared")}
+    <Text size="sm" data-testid={testId}>
+      {approvers.length > 0
+        ? t(`${key}.approvers`, { approvers: approvers.join(", ") })
+        : roles.length > 0
+          ? t(`${key}.roles`, { roles: roles.join(", ") })
+          : t(`${key}.nobody`)}
     </Text>
   );
 }
 
-/** One element: its ODCS name and its value, or that it is not declared. */
-function Element({ name, value }: { name: string; value: unknown }) {
-  return (
-    <Group gap={6} wrap="nowrap" align="baseline">
-      <Text size="xs" ff="monospace" c="var(--text-muted)" style={{ flexShrink: 0 }}>
-        {name}
-      </Text>
-      {present(value) ? (
-        <Text size="sm" style={{ minWidth: 0, overflowWrap: "anywhere" }}>
-          {shown(value)}
-        </Text>
-      ) : (
-        <NotDeclared />
-      )}
-    </Group>
+/** How to use: each surface's address for this table, how it is used, and its example. */
+function useHowToUseTable(
+  contract: OdcsContract,
+  tableId: number,
+  table: TableRef,
+  reader: MetaReader | null,
+  viewer: ContractViewer,
+): PanelTable {
+  const { t } = useTranslation();
+  const key = "dataProductsTab.contract.howToUse";
+  const servers = contract.servers ?? [];
+  const grant = contractGrant(contract);
+  const readable = canRead(grant, viewer.held);
+  const access = useAccessSentence(grant);
+  const examples = useExamples(
+    tableId,
+    table,
+    reader,
+    viewer.acting,
+    readable && servers.some((s) => s.server === "sparql"),
   );
+  const rowId = (row: OdcsRecord) => `data-contract-how-to-use-${tableId}-${String(row.server)}`;
+  const surface = (row: OdcsRecord) => t(`${key}.surface.${String(row.server)}`);
+  return {
+    name: "servers",
+    testId: `data-contract-how-to-use-${tableId}`,
+    rowTestId: rowId,
+    rows: servers,
+    columns: [
+      {
+        name: "surface",
+        label: t(`${key}.column.surface`),
+        // The server's own fields are what this table is drawn from, never further columns.
+        reads: [...new Set(servers.flatMap((server) => Object.keys(server)))],
+        value: surface,
+        whole: true,
+      },
+      {
+        name: "address",
+        label: t(`${key}.column.address`),
+        reads: [],
+        value: surfaceAddress,
+        whole: true,
+      },
+      {
+        name: "how",
+        label: t(`${key}.column.how`),
+        reads: [],
+        value: () => true,
+        cell: (row) => (
+          <Stack gap={2}>
+            <Text size="sm">
+              {t(`${key}.how.${String(row.server)}`, {
+                database: row.database,
+                schema: row.schema,
+                service: row.serviceName,
+              })}
+            </Text>
+            <Text size="xs" c="dimmed" data-testid={`${rowId(row)}-access`}>
+              {access}
+            </Text>
+          </Stack>
+        ),
+      },
+      {
+        name: "link",
+        label: t(`${key}.column.link`),
+        reads: [],
+        value: () => true,
+        cell: (row) => {
+          if (!readable) return <AskForAccess grant={grant} testId={`${rowId(row)}-ask`} />;
+          const example = examples[String(row.server)];
+          if (!example) return t("detailFields.empty");
+          return (
+            <Anchor
+              component={Link}
+              size="sm"
+              to={example.to}
+              state={example.state}
+              aria-label={t(`${key}.openAria`, { surface: surface(row), table: table.tableName })}
+              data-testid={`${rowId(row)}-link`}
+              style={{ whiteSpace: "nowrap" }}
+            >
+              {t(`${key}.open`)}
+            </Anchor>
+          );
+        },
+      },
+    ],
+  };
 }
 
-/** A list element: each item on its line, or that it is not declared. */
-function Records({ name, items, testId }: { name: string; items?: unknown[]; testId?: string }) {
-  if (!items || items.length === 0) return <Element name={name} value={undefined} />;
-  return (
-    <Stack gap={0} data-testid={testId}>
-      <Text size="xs" ff="monospace" c="var(--text-muted)">
-        {name}
+function VersionChanges({ id, row }: { id: string; row: OdcsRecord }) {
+  const { t } = useTranslation();
+  const changes = row.changes as ContractVersion["changes"];
+  if (changes.length === 0) {
+    return (
+      <Text
+        size="sm"
+        c="dimmed"
+        className="contract-version-changes"
+        data-testid={`${id}-no-changes`}
+      >
+        {t("dataProductsTab.contract.noChanges")}
       </Text>
-      {items.map((item, i) => (
-        <Text key={i} size="sm" pl="sm" style={{ overflowWrap: "anywhere" }}>
-          {shown(item)}
-        </Text>
+    );
+  }
+  return (
+    <Stack gap={2} className="contract-version-changes" data-testid={`${id}-changes`}>
+      {changes.map((c, n) => (
+        <Group key={n} gap={6} wrap="nowrap" align="baseline" justify="space-between">
+          <Text size="sm" style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+            {t(`dataProductsTab.contract.change.${c.kind}`, {
+              subject: c.subject,
+              before: c.before,
+              after: c.after,
+            })}
+          </Text>
+          {c.breaking && (
+            <Badge size="xs" variant="light" color="red" style={{ flexShrink: 0 }}>
+              {t("dataProductsTab.contract.breaking")}
+            </Badge>
+          )}
+        </Group>
       ))}
     </Stack>
   );
 }
 
-/** A property's elements as ODCS 3.1 names them, each shown declared or not; any further element
- * the property carries follows them. */
-const PROPERTY_ELEMENTS = [
-  "name",
-  "logicalType",
-  "physicalType",
-  "logicalTypeOptions",
-  "required",
-  "unique",
-  "primaryKey",
-  "primaryKeyPosition",
-  "classification",
-  "description",
-  "examples",
-] as const;
-
-/** The schema's properties: a row each, its name and a one-line summary; a row opens to every
- * element of the property, each on its own wrapping line, so a property is read whole in a card of
- * any width. */
-function Properties({
-  properties,
+export function ContractView({
+  contract,
+  versions,
   tableId,
-  testId,
+  promises,
+  table,
+  reader,
+  viewer,
 }: {
-  properties: OdcsProperty[];
+  contract: OdcsContract;
+  /** Its saved versions, oldest first (REQ-2158). */
+  versions: ContractVersion[];
   tableId: number;
-  testId: string;
+  /** The product's promises on this port (REQ-2132); null while the product's lineage is read. */
+  promises: ProductDqEntry[] | null;
+  /** The port's table, which its examples name. */
+  table: TableRef;
+  /** The acting role's schema and root fields; null while they are read. */
+  reader: MetaReader | null;
+  viewer: ContractViewer;
 }) {
-  const flags = (p: OdcsProperty) =>
-    (["required", "unique", "primaryKey"] as const).filter((k) => p[k] === true);
-  return (
-    <Stack gap={2} data-testid={testId}>
-      <Text size="xs" ff="monospace" c="var(--text-muted)">
-        properties
-      </Text>
-      <Collapsibles id={`data-product.contract.${tableId}.properties`}>
-        {properties.map((p) => {
-          const extra = Object.keys(p).filter(
-            (k) => !(PROPERTY_ELEMENTS as readonly string[]).includes(k) && k !== "quality",
-          );
-          return (
-            <CollapsibleItem
-              key={p.name}
-              value={p.name}
-              defaultOpen={false}
-              mountWhenOpen
-              testId={`${testId}-${p.name}`}
-              controlTestId={`${testId}-${p.name}-toggle`}
-              title={
-                <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-                  <Text size="sm" ff="monospace" style={{ flexShrink: 0 }}>
-                    {p.name}
-                  </Text>
-                  <Text
-                    size="sm"
-                    c="dimmed"
-                    truncate="end"
-                    style={{ minWidth: 0 }}
-                    data-testid={`${testId}-${p.name}-summary`}
-                  >
-                    {[p.logicalType, p.physicalType, ...flags(p), p.classification]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </Text>
-                </Group>
-              }
-            >
-              <Stack gap={2}>
-                {PROPERTY_ELEMENTS.map((k) => (
-                  <Element key={k} name={k} value={p[k]} />
-                ))}
-                <Records name="quality" items={p.quality} />
-                {extra.map((k) => (
-                  <Element key={k} name={k} value={p[k]} />
-                ))}
-              </Stack>
-            </CollapsibleItem>
-          );
-        })}
-      </Collapsibles>
-    </Stack>
-  );
-}
-
-/** Each quality rule, with the property it is on where it is on one. */
-function qualityRules(contract: OdcsContract): OdcsRecord[] {
-  return (contract.schema ?? []).flatMap((object) => [
-    ...(object.quality ?? []),
-    ...(object.properties ?? []).flatMap((p) =>
-      (p.quality ?? []).map((rule) => ({ property: p.name, ...rule })),
-    ),
-  ]);
-}
-
-export function ContractView({ contract, tableId }: { contract: OdcsContract; tableId: number }) {
   const { t } = useTranslation();
+  const history = useVersionsTable(versions, tableId);
+  const howToUse = useHowToUseTable(contract, tableId, table, reader, viewer);
   const status = t(`dataProductsTab.contract.status.${contract.status}`);
-  const notDeclared = t("dataProductsTab.contract.notDeclared");
   const object = contract.schema?.[0];
-  const properties = object?.properties ?? [];
-  const rules = qualityRules(contract);
-  const sla = contract.slaProperties ?? [];
   const price = contract.price;
   const custom = contract.customProperties ?? [];
-  const tags = contract.tags ?? [];
-  const count = (key: string, n: number) =>
-    t(`dataProductsTab.contract.summary.${key}`, { count: n });
-  const summaries: Record<Section, string> = {
-    fundamentals: [`v${contract.version}`, status, contract.domain].filter(Boolean).join(" · "),
-    schema: [
-      object?.physicalName ?? object?.name ?? notDeclared,
-      count("properties", properties.length),
-    ].join(" · "),
-    quality: count("rules", rules.length),
-    sla: count("serviceLevels", sla.length),
-    support: [
-      count("supportChannels", contract.support?.length ?? 0),
-      count("roles", contract.roles?.length ?? 0),
-    ].join(" · "),
-    servers: contract.servers?.length
-      ? contract.servers.map((s) => String(s.server ?? s.type)).join(", ")
-      : notDeclared,
-    pricing: price ? record(price) : notDeclared,
-    custom: [count("customProperties", custom.length), count("tags", tags.length)].join(" · "),
-  };
-  const bodies: Record<Section, ReactNode> = {
-    fundamentals: (
-      <>
-        <Element name="id" value={contract.id} />
-        <Element name="name" value={contract.name} />
-        <Element name="version" value={contract.version} />
-        <Element name="status" value={status} />
-        <Element name="domain" value={contract.domain} />
-        <Element name="dataProduct" value={contract.dataProduct} />
-        <Element name="tenant" value={contract.tenant} />
-        <Element name="description.purpose" value={contract.description?.purpose} />
-        <Element name="description.limitations" value={contract.description?.limitations} />
-        <Element name="description.usage" value={contract.description?.usage} />
-        <Element name="contractCreatedTs" value={contract.contractCreatedTs} />
-      </>
-    ),
-    schema: (
-      <>
-        <Element name="name" value={object?.name} />
-        <Element name="physicalName" value={object?.physicalName} />
-        <Element name="physicalType" value={object?.physicalType} />
-        <Element name="description" value={object?.description} />
-        <Element name="businessName" value={object?.businessName} />
-        <Element name="dataGranularityDescription" value={object?.dataGranularityDescription} />
-        <Records name="relationships" items={object?.relationships} />
-        <Element name="tags" value={object?.tags} />
-        <Properties
-          properties={properties}
-          tableId={tableId}
-          testId={`data-contract-columns-${tableId}`}
-        />
-      </>
-    ),
-    quality: <Records name="quality" items={rules} />,
-    sla: (
-      <>
-        <Element name="slaDefaultElement" value={contract.slaDefaultElement} />
-        <Records name="slaProperties" items={sla} testId={`data-contract-sla-${tableId}`} />
-      </>
-    ),
-    support: (
-      <>
-        <Records name="support" items={contract.support} />
-        <Element name="team.name" value={contract.team?.name} />
-        <Element name="team.description" value={contract.team?.description} />
-        <Records name="team.members" items={contract.team?.members} />
-        <Records name="roles" items={contract.roles} />
-      </>
-    ),
-    servers: <Records name="servers" items={contract.servers} />,
-    pricing: (
-      <>
-        <Element name="priceAmount" value={price?.priceAmount} />
-        <Element name="priceCurrency" value={price?.priceCurrency} />
-        <Element name="priceUnit" value={price?.priceUnit} />
-      </>
-    ),
-    custom: (
-      <>
-        <Records
-          name="customProperties"
-          items={custom.map((c) => `${c.property}: ${shown(c.value)}`)}
-        />
-        <Element name="tags" value={tags} />
-      </>
-    ),
-  };
+  const panel = (key: string, label = `card.${key}`) => ({
+    section: `contract.${key}`,
+    testId: `data-contract-${tableId}-${key}`,
+    label: t(`dataProductsTab.contract.${label}`),
+  });
   return (
-    <Stack gap={4} data-testid={`data-contract-${tableId}`}>
-      <Group gap="xs" wrap="wrap">
-        <Text size="sm" ff="monospace" fw={500}>
-          {object?.physicalName ?? contract.name}
-        </Text>
-        <Badge size="sm" variant="light" data-testid={`data-contract-version-${tableId}`}>
-          {t("dataProductsTab.contract.versionBadge", { version: contract.version })}
-        </Badge>
-        <Badge
-          size="sm"
-          variant="outline"
-          color={contract.status === "active" ? "green" : "gray"}
-          data-testid={`data-contract-status-${tableId}`}
-        >
-          {status}
-        </Badge>
-      </Group>
-      <Collapsibles id={`data-product.contract.${tableId}`}>
-        {CONTRACT_SECTIONS.map((section) => (
-          <CollapsibleItem
-            key={section}
-            value={section}
-            defaultOpen={false}
-            mountWhenOpen
-            testId={`data-contract-${tableId}-${section}`}
-            controlTestId={`data-contract-${tableId}-${section}-toggle`}
-            title={
-              <Group gap={8} wrap="nowrap" style={{ minWidth: 0 }}>
-                <Text size="sm" fw={500} style={{ flexShrink: 0 }}>
-                  {t(`dataProductsTab.contract.section.${section}`)}
-                </Text>
-                <Text
-                  size="sm"
-                  c="dimmed"
-                  truncate="end"
-                  style={{ minWidth: 0 }}
-                  data-testid={`data-contract-${tableId}-${section}-summary`}
-                >
-                  {summaries[section]}
-                </Text>
-              </Group>
-            }
-          >
-            <Stack gap={2}>{bodies[section]}</Stack>
-          </CollapsibleItem>
-        ))}
-      </Collapsibles>
-    </Stack>
+    <ContractLayout
+      testId={`data-contract-${tableId}`}
+      small={
+        <>
+          <ContractPanel
+            {...panel("details")}
+            fields={[
+              { name: "id", value: contract.id },
+              { name: "name", value: contract.name },
+              { name: "status", value: status },
+              { name: "domain", value: contract.domain },
+              { name: "dataProduct", value: contract.dataProduct },
+              { name: "tenant", value: contract.tenant },
+              { name: "purpose", value: contract.description?.purpose },
+              { name: "limitations", value: contract.description?.limitations },
+              { name: "usage", value: contract.description?.usage },
+            ]}
+          />
+          <ContractPanel
+            {...panel("versions")}
+            fields={[
+              { name: "version", value: contract.version },
+              { name: "status", value: status },
+              { name: "contractCreatedTs", value: contract.contractCreatedTs },
+            ]}
+          />
+          <ContractPanel
+            {...panel("pricing", "section.pricing")}
+            fields={[
+              { name: "priceAmount", value: price?.priceAmount },
+              { name: "priceCurrency", value: price?.priceCurrency },
+              { name: "priceUnit", value: price?.priceUnit },
+            ]}
+          />
+          <ContractPanel
+            {...panel("custom", "section.custom")}
+            fields={[
+              ...(custom.length > 0
+                ? custom.map((c) => ({ name: c.property, value: c.value }))
+                : [{ name: "customProperties", value: undefined }]),
+              { name: "tags", value: contract.tags },
+            ]}
+          />
+        </>
+      }
+      medium={
+        <>
+          <ContractPanel
+            {...panel("roles")}
+            tables={[
+              {
+                name: "roles",
+                rows: contract.roles ?? [],
+                columns: columns("role", "access"),
+                testId: `data-contract-roles-${tableId}`,
+              },
+            ]}
+          />
+          <ContractPanel
+            {...panel("sla")}
+            fields={[{ name: "slaDefaultElement", value: contract.slaDefaultElement }]}
+            tables={[
+              {
+                name: "slaProperties",
+                rows: contract.slaProperties ?? [],
+                columns: columns("property", "value", "unit", "description"),
+                testId: `data-contract-sla-${tableId}`,
+              },
+            ]}
+          />
+          <ContractPanel
+            {...panel("support", "section.support")}
+            fields={[
+              { name: "team.name", value: contract.team?.name },
+              { name: "team.description", value: contract.team?.description },
+            ]}
+            tables={[
+              {
+                name: "support",
+                rows: contract.support ?? [],
+                columns: columns("channel", "url", "tool", "description"),
+                testId: `data-contract-support-${tableId}`,
+              },
+              {
+                name: "team.members",
+                rows: contract.team?.members ?? [],
+                columns: columns("username", "role"),
+                testId: `data-contract-team-${tableId}`,
+              },
+            ]}
+          />
+          <ContractPanel {...panel("history")} tables={[history]} />
+        </>
+      }
+      large={
+        <>
+          <ContractPanel {...panel("howToUse", "section.howToUse")} wide tables={[howToUse]} />
+          <ContractPanel
+            {...panel("fields")}
+            wide
+            fields={[
+              { name: "name", value: object?.name },
+              { name: "physicalName", value: object?.physicalName },
+              { name: "physicalType", value: object?.physicalType },
+              { name: "description", value: object?.description },
+              { name: "businessName", value: object?.businessName },
+              { name: "dataGranularityDescription", value: object?.dataGranularityDescription },
+              { name: "tags", value: object?.tags },
+            ]}
+            tables={[
+              {
+                name: "properties",
+                rows: object?.properties ?? [],
+                columns: propertyColumns(t("dataProductsTab.contract.constraints")),
+                testId: `data-contract-columns-${tableId}`,
+                rowTestId: (row) => `data-contract-columns-${tableId}-${String(row.name)}`,
+              },
+              {
+                name: "relationships",
+                rows: (object?.relationships ?? []) as OdcsRecord[],
+                columns: columns("type", "from", "to"),
+                testId: `data-contract-relationships-${tableId}`,
+              },
+            ]}
+          />
+          <ContractPanel {...panel("quality")} wide>
+            {/* REQ-2132: the product's promises on this port, as its Output Ports card shows them. */}
+            {promises && promises.length > 0 ? (
+              <div data-testid={`data-contract-promises-${tableId}`}>
+                <PromisesTable
+                  promises={promises}
+                  testId={`data-contract-promises-table-${tableId}`}
+                />
+              </div>
+            ) : (
+              <NotDeclared names={["quality"]} />
+            )}
+          </ContractPanel>
+        </>
+      }
+    />
   );
 }

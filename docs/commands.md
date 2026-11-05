@@ -19,7 +19,7 @@ Six `impl_kind` values are supported:
 | `grpc` | gRPC unary; proto-less JSON bridge |
 | `python` | In-process Python callable (`module:attr`) |
 
-`script` and `python` are host code: they run on the server's own host, and a deployment allows
+`script` and `python` are host code. They run on the server's own host, and a deployment allows
 them only when its operator turns host code on (see [Host code](#host-code)).
 
 Addressing (the catalog `name` and `function_name`) is decoupled from `binding` (transport and
@@ -175,7 +175,7 @@ cross-source queries go to the federation engine.
 
 ## A remote source's write operation
 
-An OpenAPI, remote GraphQL or gRPC source offers write operations. Registering one as a command makes it callable, governed, and audited from every surface. Adding the source registers none of them; you register the ones you want, one at a time, the way you register tables. The registration is the curation.
+An OpenAPI, remote GraphQL or gRPC source offers write operations. Registering one as a command makes it callable, governed, and audited from every surface. Adding the source registers none of them; you register the ones you want, one at a time, the way you register tables.
 
 What a source offers:
 
@@ -288,9 +288,9 @@ Because every command declares its input and output columns, column-level lineag
 the opaque command boundary**. The lineage engine applies a taint closure: each declared output
 column derives from every declared input column.
 
-**The actionable consequence:** the width of your input contract sets the precision of that closure. A narrow input, holding only the columns the command needs, produces a tight, readable lineage cone. Declaring every column of the source relation fans in widely across every output. That's still sound, since no lineage is lost, but it blurs traceability.
+The width of your input contract sets the precision of that closure. A narrow input, holding only the columns the command needs, produces a tight, readable lineage cone. Declaring every column of the source relation fans in widely across every output. That's still sound, since no lineage is lost, but it blurs traceability.
 
-**Rule of thumb:** pass the minimum projection the command needs, and return only derived columns. Inputs echoed through unchanged widen the taint cone, so leave them out.
+As a rule of thumb, pass the minimum projection the command needs, and return only derived columns. Inputs echoed through unchanged widen the taint cone, so leave them out.
 
 See [Lineage](lineage.md) for how command nodes appear in the DAG and how to read them.
 
@@ -349,7 +349,7 @@ provisa metadata export --api https://acme.provisa.org --token "$PROVISA_API_TOK
 Exit 0 = full publish. Exit 1 = partial publish or connection failure.
 
 For the full flag reference, auth options, multitenancy host naming, and a cron example, see
-[Metadata Export — From the command line](metadata-export.md#from-the-command-line).
+[Metadata Export: From the command line](metadata-export.md#from-the-command-line).
 
 Commands appear in each environment's git projection. See [Environments](environments.md) for how a command and its tag assignments survive merge and pull.
 
@@ -376,7 +376,7 @@ That depends on where the library runs.
 | A pure SQL scalar expression | SQL expression template | Minutes |
 | A Python library | `python` command | Small |
 | Anything callable from the command line | `script` command | Small |
-| An existing service in another language | `http` or `grpc` command | Moderate — you run the service |
+| An existing service in another language | `http` or `grpc` command | Moderate; you run the service |
 | A plugin tied to another runtime (e.g., a Neo4j extension in Java) | Register that system as a Provisa source and query it in place | Depends |
 
 One worked example per row.
@@ -463,7 +463,7 @@ functions:
       - {name: score, type: double}
 ```
 
-**Another runtime.** When a procedure is embedded in another system — for example, a graph traversal written as a Neo4j extension in Java — the straightforward path is to register that system as a Provisa source and query it in place. Provisa federates the results with the rest of your model without copying data.
+**Another runtime.** When a procedure is embedded in another system, such as a graph traversal written as a Neo4j extension in Java, the straightforward path is to register that system as a Provisa source and query it in place. Provisa federates the results with the rest of your model without copying data.
 
 ### Governance
 
@@ -517,7 +517,7 @@ WITH label AS nodeLabel, collect({property: property, type: type}) AS properties
 RETURN {label: nodeLabel, properties: properties} AS output
 ```
 
-The governance model does the filtering. A role that can read `Employees` but not `Payroll` sees `Employees` and its relationships in the result. `Payroll` is absent, and any Cypher LangChain generates next cannot reference it. Counts in the answer are null: a schema read never scans the data.
+The governance model does the filtering. A role that can read `Employees` but not `Payroll` sees `Employees` and its relationships in the result. `Payroll` is absent, and any Cypher LangChain generates next cannot reference it. Counts in the answer are null, because a schema read never scans the data.
 
 The path procedures take a start node the statement has matched with a label, a label the walk ends at and a bounded depth. A relationship type is walked out (`TYPE>`), in (`<TYPE`), or either way when the walk ends at the start's own label:
 

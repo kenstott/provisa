@@ -53,14 +53,12 @@
           Each language-transport stack needs its own governance integration and its own
           programmers. Data leaks and exfiltration paths appear at every new surface; the
           attack surface grows with each protocol you add. A change to the access model now
-          touches every interface point — which becomes its own lock-in. Business logic
+          touches every interface point, which becomes its own lock-in. Business logic
           fragments across stacks, and every system is trusted less because nobody can prove
           what goes in and out where.
         </p>
         <p class="lead">
-          Every language and wire protocol here compiles to one IR. Governance is applied
-          once at that IR and pushed down to the engine. A change happens once. No path in
-          skips it. One model does not mean one namespace: you divide sources into
+          Every language and wire protocol here compiles to one IR. Governance is applied once at that IR and pushed down to the engine, so you make a change once and no path in skips it. One model does not mean one namespace. You divide sources into
           <strong>domains</strong>, so <code>sales.orders</code> and
           <code>finance.orders</code> stay distinct while resolving through the same
           governed model.
@@ -70,16 +68,13 @@
       <div class="doc-body">
         <h2>Query languages</h2>
         <p>
-          Your analyst opens psql. Your app sends GraphQL. Your data scientist runs
-          Arrow Flight. None of these should mean a separate governance integration.
-          All of them compile to the same governed plan.
+          Your analyst opens psql, your app sends GraphQL and your data scientist runs Arrow Flight. All of them compile to the same governed plan, so none of them needs a separate governance integration.
         </p>
 
         <h3>GraphQL</h3>
         <p>
           Per-role schemas with field-level visibility, cursor pagination, and aggregates.
-          The schema is constrained to registered relationships, so a query that traverses an unapproved path cannot be expressed at all; it is
-          never written to be rejected. Apollo Automatic Persisted Queries are included.
+          The schema is constrained to registered relationships, so a query that traverses an unapproved path cannot be expressed at all, so it never gets as far as being rejected. Apollo Automatic Persisted Queries are included.
         </p>
 
         <h3>SQL</h3>
@@ -98,11 +93,10 @@
         <h2>Wire protocols</h2>
         <p>
           Adding a wire protocol normally means adding a new access path to govern.
-          Here each protocol is another surface for the same compiled plan, not a new
-          integration to secure.
+          Here each protocol is another surface for the same compiled plan, so there is no new integration to secure.
         </p>
 
-        <h3>pgwire — port 5439</h3>
+        <h3>pgwire on port 5439</h3>
         <p>
           Any Postgres client connects: psql, DBeaver, DataGrip, pandas
           <code>read_sql</code>, or anything else speaking the frontend/backend protocol.
@@ -128,8 +122,7 @@
         <h3>gRPC model API</h3>
         <p>
           A <code>.proto</code> is generated from the registered schema: typed query and
-          insert RPCs per table, with streamed responses. Regenerating is a consequence of
-          changing the model, not a separate build step.
+          insert RPCs per table, with streamed responses. It regenerates when the model changes, with no separate build step.
         </p>
 
         <h3>JDBC, REST, and JSON:API</h3>
@@ -145,10 +138,7 @@
 
         <h3>Airport (DuckDB)</h3>
         <p>
-          Any DuckDB client attaches Provisa as a database —
-          <code>ATTACH 'grpc://host' AS p (TYPE AIRPORT)</code>, and queries the
-          governed
-          registered model from local DuckDB. Filters and projections push down; writes
+          Any DuckDB client attaches Provisa as a database with <code>ATTACH 'grpc://host' AS p (TYPE AIRPORT)</code> and queries the governed registered model from local DuckDB. Filters and projections push down; writes
           update by primary key.
         </p>
 
@@ -198,7 +188,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for your data control plane. Sources, metrics, ontology and governance from one model. Nothing to keep in sync. Business Source License 1.1 — non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
@@ -210,6 +200,7 @@
         <a href="/why/data-mesh">Data mesh</a>
         <a href="/why/ai">Data for AI</a>
         <a href="/why/ontology">Ontology</a>
+        <a href="/why/glossary-that-grounds">Glossary that grounds</a>
         <a href="/vs/starburst">vs Starburst</a>
         <a href="/vs/denodo">vs Denodo</a>
         <a href="/vs/hasura">Coming from Hasura</a>

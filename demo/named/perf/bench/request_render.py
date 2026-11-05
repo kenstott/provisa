@@ -15,7 +15,9 @@ cache opt-in text per transport is the one the optimistic test has always sent.
 
 from __future__ import annotations
 
+import itertools
 import json
+import uuid
 
 import contract_model
 import setup_contract as sc
@@ -46,19 +48,30 @@ def _quoted_literal(value: str | int | float) -> str:
 class Renderer:
     """Renders specs against one contract; each distinct spec is rendered once. A language the
     table has no spelling for renders as None (no transport that needs it is ever sent the
-    table: the contract refuses that)."""
+    table: the contract refuses that).
+
+    With ``knobs.plan_cache`` at "miss", every render is a statement the server has not seen: the
+    SQL names its table and the GraphQL its root field by a name of their own (``plan_name``), so
+    the plan key, a digest of the text, is new while the answer is the same. gRPC, REST and
+    JSON:API carry no name of their own, so their requests repeat the plan as before."""
 
     def __init__(self, setup: contract_model.Setup) -> None:
         self._tables = {(sid, t.name): t for sid, s in setup.sources.items() for t in s.tables}
         self._memo: dict[RequestSpec, Query] = {}
+        self._plan_miss = setup.knobs.plan_cache == "miss"
+        # unique across the run's client processes; next() on a count is atomic under the GIL
+        self._token = uuid.uuid4().hex[:12]
+        self._serial = itertools.count()
 
     def render(self, spec: RequestSpec) -> Query:
+        if self._plan_miss:
+            return self._render(spec, plan_name=f"m{self._token}_{next(self._serial)}")
         query = self._memo.get(spec)
         if query is None:
             query = self._memo[spec] = self._render(spec)
         return query
 
-    def _render(self, spec: RequestSpec) -> Query:
+    def _render(self, spec: RequestSpec, plan_name: str | None = None) -> Query:
         table = self._tables[(spec.source, spec.table)]
         cols = [table.column(c) for c in spec.columns]
         filters = [(table.column(name), value) for name, value in spec.filters]
@@ -73,7 +86,7 @@ class Renderer:
             id="optimistic",
             category="optimistic",
             description=_BASE_DESCRIPTION,
-            sql=self._sql(spec, table, cols, filters),
+            sql=self._sql(spec, table, cols, filters, plan_name),
             cypher=(
                 self._cypher(spec, table, cols, filters)
                 if table.has("cypher") and cypher_ok
@@ -86,7 +99,7 @@ class Renderer:
                 else None
             ),
             graphql=(
-                self._graphql(spec, table, cols, filters)
+                self._graphql(spec, table, cols, filters, plan_name)
                 if table.has("graphql") and graphql_ok
                 else None
             ),
@@ -118,10 +131,18 @@ class Renderer:
         return "".join(f"{line}\n" for line in lines)
 
     def _sql(
-        self, spec: RequestSpec, table: contract_model.Table, cols: list, filters: list
+        self,
+        spec: RequestSpec,
+        table: contract_model.Table,
+        cols: list,
+        filters: list,
+        plan_name: str | None = None,
     ) -> str:
         hint = self._comment_hints(spec, _SQL_HINT, "-- @provisa")
+        if plan_name is not None and spec.joins:
+            raise ValueError("plan_cache miss names a request's one table: a join has several")
         if not spec.joins:
+            alias = f" {plan_name}" if plan_name else ""
             where = (
                 " WHERE "
                 + " AND ".join(f"{c.names['sql']} = {_sql_literal(v)}" for c, v in filters)
@@ -130,7 +151,7 @@ class Renderer:
             )
             return (
                 f"{hint}SELECT {', '.join(c.names['sql'] for c in cols)} FROM {table.sql}"
-                f"{where} LIMIT {spec.rows}"
+                f"{alias}{where} LIMIT {spec.rows}"
             )
         members = self._members(spec, table)
         select = [f"t0.{c.names['sql']}" for c in cols] + [
@@ -210,7 +231,12 @@ class Renderer:
         return f"{hint}SELECT {' '.join(selected)} WHERE {{ {body} }} LIMIT {spec.rows}"
 
     def _graphql(
-        self, spec: RequestSpec, table: contract_model.Table, cols: list, filters: list
+        self,
+        spec: RequestSpec,
+        table: contract_model.Table,
+        cols: list,
+        filters: list,
+        plan_name: str | None = None,
     ) -> str:
         hint = (f" {_GRAPHQL_HINT}" if spec.cached else "") + (
             f" @route(engine: {spec.route.upper()})" if spec.route else ""
@@ -236,7 +262,8 @@ class Renderer:
             ]
             return " ".join(own + nested)
 
-        return f"query{hint} {{ {table.graphql_field}({args}) {{ {selection(0)} }} }}"
+        field = f"{plan_name}: {table.graphql_field}" if plan_name else table.graphql_field
+        return f"query{hint} {{ {field}({args}) {{ {selection(0)} }} }}"
 
     @staticmethod
     def _grpc(spec: RequestSpec, table: contract_model.Table, cols: list, filters: list) -> dict:

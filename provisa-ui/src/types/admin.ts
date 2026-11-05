@@ -145,6 +145,24 @@ export interface ContractTerms {
 }
 
 // REQ-2158: a product member's contract, its output port, versioned on its own.
+/** One difference of a contract version from the one before it (REQ-2158). */
+export interface ContractChange {
+  kind: string;
+  subject: string;
+  before: string | null;
+  after: string | null;
+  breaking: boolean;
+}
+
+/** A saved version of a contract, as the store keeps it (REQ-2158). */
+export interface ContractVersion {
+  contract: { version: string; status: string };
+  changes: ContractChange[];
+  saved_at: string;
+  /** Who saved it; null when the system did (a configuration load). */
+  saved_by: string | null;
+}
+
 export interface DataContract {
   tableId: number;
   sourceId: string;
@@ -157,6 +175,8 @@ export interface DataContract {
   terms: ContractTerms;
   sla: ContractSlaProperty[];
   columns: ContractColumn[];
+  // Its saved versions, oldest first; the contract as a mutation or an export reads it has none.
+  versions?: ContractVersion[];
 }
 
 // REQ-609/REQ-1634: an owner_role/steward/visible_to ref resolved to one individual.
@@ -248,19 +268,28 @@ export function domainGqlAlias(domain: Pick<Domain, "id" | "graphqlAlias">): str
   return acronym || domain.id[0]?.toLowerCase() || "";
 }
 
+/** Mirror of provisa.compiler.naming.SYSTEM_SCHEMA_GQL_PREFIX (REQ-2163): the SDL prefix of each
+ * system schema's root fields (`on_terms`, `op_queries`), keyed by domain id. */
+export const SYSTEM_SCHEMA_GQL_PREFIX: Record<string, string> = { ontology: "on", ops: "op" };
+
 /** Mirror of provisa.compiler.naming.domain_alias_map (REQ-471): each domain's alias, every one its
- * own. A computed alias another domain's alias also is (ontology's and ops's are both "o") is the
- * domain's own name instead, so no domain's root fields are grouped as another's. */
+ * own. A computed alias another domain's alias also is is the domain's own name instead, so no
+ * domain's root fields are grouped as another's. A system schema (ontology, ops) is named by its
+ * own SDL prefix (REQ-2163), never by an alias: its computed alias is its own name and takes no
+ * model domain's (opioids keeps "o" beside ops). */
 export function domainAliasMap(
   domains: Pick<Domain, "id" | "graphqlAlias">[],
 ): Record<string, string> {
+  const isSystem = (d: Pick<Domain, "id" | "graphqlAlias">) =>
+    d.id in SYSTEM_SCHEMA_GQL_PREFIX && !d.graphqlAlias;
   const aliases = domains.map((d) => [d, domainGqlAlias(d)] as const);
-  const taken = aliases.map(([, a]) => a).filter(Boolean);
+  const taken = aliases.filter(([d, a]) => a && !isSystem(d)).map(([, a]) => a);
   const out: Record<string, string> = {};
   for (const [d, alias] of aliases) {
     // The no-domain row's alias is "": its tables take no prefix.
     const shared = taken.filter((a) => a === alias).length > 1;
-    out[d.id] = alias && !d.graphqlAlias && shared ? domainToSqlName(d.id) : alias;
+    out[d.id] =
+      alias && (isSystem(d) || (!d.graphqlAlias && shared)) ? domainToSqlName(d.id) : alias;
   }
   return out;
 }
@@ -506,6 +535,53 @@ export interface RegisteredTable {
   implicitDimensions: string[]; // REQ-1360: metadata-only, populated only when enableGroupBy
 }
 
+/** The fields of a table every table list reads (fragment ListedTableFields, hooks/admin.graphql). */
+export const LISTED_TABLE_FIELDS = [
+  "id",
+  "sourceId",
+  "domainId",
+  "schemaName",
+  "tableName",
+  "alias",
+  "description",
+  "draft",
+  "viewSql",
+  "materialize",
+  "productId",
+  "dqContract",
+  "dqDataset",
+  "timeTravel",
+  "apiEndpoint",
+  "modelingRole",
+  "viewMetrics",
+] as const;
+
+/** The fields of a column TableListQuery reads. */
+export const LISTED_COLUMN_FIELDS = [
+  "id",
+  "columnName",
+  "alias",
+  "computedSqlAlias",
+  "description",
+  "dataType",
+  "nativeFilterType",
+  "nativeFilterRequired",
+  "requiredBySteward",
+  "isPrimaryKey",
+  "isForeignKey",
+] as const;
+
+/** A table as TableRowsQuery reads it: without its columns. */
+export type TableRow = Pick<RegisteredTable, (typeof LISTED_TABLE_FIELDS)[number]>;
+
+/** A column as TableListQuery reads it. */
+export type ListedColumn = Pick<TableColumn, (typeof LISTED_COLUMN_FIELDS)[number]>;
+
+/** A table as TableListQuery reads it: what the pages that pick, name or count tables use. */
+export interface ListedTable extends TableRow {
+  columns: ListedColumn[];
+}
+
 // REQ-1318: declarative metric-composed view definition. Mutually exclusive with
 // viewSql — the server generates (and regenerates on metric change) the view SQL.
 export interface ViewMetricsSpec {
@@ -717,6 +793,9 @@ export interface RelationshipParameter {
   sourceColumn: string;
 }
 
+// REQ-2188: what a row rule narrows: reading a row, updating it or deleting it.
+export type RuleRight = "R" | "U" | "D";
+
 export interface RLSRule {
   id: number;
   tableId: number | null;
@@ -726,6 +805,7 @@ export interface RLSRule {
   roleId: string;
   filterExpr: string;
   description: string; // REQ-2081: what the rule is for
+  rights: RuleRight[]; // REQ-2188: what the rule narrows; each in at most one rule
 }
 
 // REQ-1484: an artifact that references a column the administrator is about to rename or drop.

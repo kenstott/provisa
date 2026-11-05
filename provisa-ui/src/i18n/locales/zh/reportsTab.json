@@ -14,6 +14,24 @@
     "deleteConfirm": "确定删除报表 {{name}} 吗？",
     "deleted": "已删除报表 {{name}}。",
     "empty": "ops 域中未注册任何报表。",
-    "resize": "调整报表列表大小"
+    "resize": "调整报表列表大小",
+    "drift": {
+      "title": "自上一周期以来的漂移",
+      "baseline": "与 {{date}} 的模型比较，这是截至 {{cutoff}} 的最新版本。",
+      "noHistory": "无历史记录：模型没有 {{cutoff}} 或更早的版本可供比较。",
+      "none": "没有术语失去或获得锚定。",
+      "counts": "失去：{{lost}} · 获得：{{gained}} · 新增：{{new}}",
+      "renameRule": "术语按名称匹配，因此重命名会显示为一个失去的术语和一个新增的术语。",
+      "term": "术语",
+      "before": "之前",
+      "after": "现在",
+      "change": "变化",
+      "absent": "不在模型中",
+      "changeKind": {
+        "lost": "失去",
+        "gained": "获得",
+        "new": "新增"
+      }
+    }
   }
 }

@@ -83,7 +83,7 @@ export function DataQualityPanel({
   const { t } = useTranslation();
   const { parseContract, buildContract, checkCatalog, buildCheck, dryRunContract, runCheckNow } =
     useDqContract();
-  const { tables: governedTables } = useTables();
+  const { tables: governedTables } = useTables({ inPage: true });
 
   const [dataset, setDataset] = useState<string | null>(null);
   const [checks, setChecks] = useState<DqCheck[]>([]);

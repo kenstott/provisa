@@ -37,6 +37,7 @@ export function RetireDialog<R = undefined>({
   successorOptions,
   successorRequired,
   moves,
+  impact,
   retire,
   refusal,
   onClose,
@@ -49,6 +50,8 @@ export function RetireDialog<R = undefined>({
   successorRequired: boolean;
   /** What moves to the successor, said under the picker. */
   moves?: ReactNode;
+  /** What retiring to the chosen successor changes (a term's impact, REQ-2144), said under it. */
+  impact?: (successor: string | null) => ReactNode;
   /** Retires the object, with ``resolve`` when a refusal was resolved; a refusal throws. */
   retire: (reason: string, successor: string | null, resolve?: R) => Promise<unknown>;
   /** A refusal the page resolves: what to show for it, given how to try again and how to go back;
@@ -139,6 +142,7 @@ export function RetireDialog<R = undefined>({
               <div data-testid={`${testId}-retire-moves`}>{moves}</div>
             </FormField>
           )}
+          {impact && <FormField size="full">{impact(successor)}</FormField>}
           {problem && (
             <FormField size="full">
               <Alert color="red" data-testid={`${testId}-retire-error`}>

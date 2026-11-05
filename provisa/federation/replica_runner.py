@@ -308,9 +308,9 @@ class ReplicaRunner:
             self._running -= 1
 
     async def _start_index_builds(self) -> None:
-        """REQ-2015: start building the indexes each standing replica's landing asked for and
-        has not had, one job per replica, under the replica's index lock (a replica whose
-        indexes another process is building is left to it)."""
+        """REQ-2015: start building the indexes each standing replica's or view's landing asked
+        for and has not had, one job per object, under its index lock (one whose indexes another
+        process is building is left to it, and taken up by the first pass after it is done)."""
         from provisa.federation import replica_indexes
 
         if self._build_indexes is None:

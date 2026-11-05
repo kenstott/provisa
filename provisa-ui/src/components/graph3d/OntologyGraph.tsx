@@ -21,18 +21,27 @@ import { useTranslation } from "react-i18next";
 import { ActionIcon, Alert, Button, Loader } from "@mantine/core";
 import { Network } from "lucide-react";
 import { FitModal } from "../../pages/tables/profile3d/Expandable3D";
-import type { GraphKey } from "../../pages/tables/profile3d/graphSettings";
+import { ONTOLOGY_SETTINGS, type GraphKey } from "../../pages/tables/profile3d/graphSettings";
+import { useViewDomains } from "../../lib/viewDomains";
 import { GraphExplorer } from "./GraphExplorer";
-import { ONTOLOGY_SCOPE, type LayerId } from "./graphModel";
-import { WHOLE, type SnippetPreset } from "./ontologyPresets";
-import { SNIPPET_LAYERS, useOntology, type Read } from "./useOntology";
+import type { LayerId } from "./graphModel";
+import {
+  PRODUCT_MAP,
+  WHOLE,
+  scopeOf,
+  snippetLayers,
+  type OntologyPreset,
+  type SnippetPreset,
+} from "./ontologyPresets";
+import { useOntology, type Read } from "./useOntology";
 import { useInView } from "./useInView";
 import { Tip } from "../Tip";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
-/** The org's one ontology graph, in place and expanded: one set of remembered settings. */
-const ONTOLOGY_SETTINGS: GraphKey = { kind: "ontology", subject: null };
+/** The Product map's layers: the ontology's, with every product (the Data layer). */
+const PRODUCT_MAP_LAYERS: LayerId[] = ["ontology", "domains", "columns", "data"];
+const PRODUCT_MAP_SETTINGS: GraphKey = { kind: "product-map", subject: null };
 
 /** A read not yet answered, failed, or the role's to make: said in place of the graph. */
 function ReadState({ read, testId }: { read: Read; testId: string }) {
@@ -52,14 +61,17 @@ function ReadState({ read, testId }: { read: Read; testId: string }) {
 }
 
 /** The whole ontology at 95% of the viewport, read when it opens, with ``selected`` -- the
- * snippet's focus it was expanded from -- selected. ``search`` is the page's, as GraphExplorer
- * takes it. */
+ * snippet's focus it was expanded from -- selected. ``search`` and ``within`` are the page's, as
+ * GraphExplorer takes them. ``preset`` is the whole graph whose rules it draws by: the Ontology
+ * page's, or the Product map's. */
 export function OntologyModal({
   opened,
   onClose,
   title,
   selected,
   search,
+  within,
+  preset = WHOLE,
   layers,
   settingsKey = ONTOLOGY_SETTINGS,
 }: {
@@ -68,6 +80,8 @@ export function OntologyModal({
   title: string;
   selected: string | null;
   search?: string;
+  within?: ReadonlySet<string> | null;
+  preset?: OntologyPreset;
   /** The layers it opens with, where they are not its preset's (the Product map's products). */
   layers?: LayerId[];
   /** Its remembered settings: the whole ontology's, unless it is a view of its own. */
@@ -77,8 +91,10 @@ export function OntologyModal({
     <FitModal opened={opened} onClose={onClose} title={title} testId="graph3d-modal">
       {opened && (
         <WholeOntology
+          preset={preset}
           selected={selected}
           search={search}
+          within={within}
           layers={layers}
           settingsKey={settingsKey}
         />
@@ -88,30 +104,35 @@ export function OntologyModal({
 }
 
 function WholeOntology({
+  preset,
   selected,
   search,
+  within,
   layers,
   settingsKey,
 }: {
+  preset: OntologyPreset;
   selected: string | null;
   search?: string;
+  within?: ReadonlySet<string> | null;
   layers?: LayerId[];
   settingsKey: GraphKey;
 }) {
-  const { read, drawn, query } = useOntology(WHOLE, true);
+  const { read, drawn, query } = useOntology(preset, true);
   if (read.error || read.all === null) return <ReadState read={read} testId="graph3d" />;
   return (
     <GraphExplorer
       data={drawn}
       query={query(read.all)}
-      scope={ONTOLOGY_SCOPE}
+      scope={scopeOf(preset)}
       preset="ontology"
       selected={selected}
-      depth={WHOLE.depth}
+      depth={preset.depth}
       layers={layers}
       search={search}
       settingsKey={settingsKey}
       exportName="ontology"
+      within={within}
       testId="graph3d"
     />
   );
@@ -147,6 +168,8 @@ export function OntologyToggle({
  * ``search`` (searchItems' rule), expanding to 95% of the viewport. */
 export function OntologyView({ search }: { search: string }) {
   const { t } = useTranslation();
+  // REQ-1723: the navbar's checked domains bound the graph, as they do the term list.
+  const within = useViewDomains();
   const { read, drawn, query } = useOntology(WHOLE, true);
   const [open, setOpen] = useState(false);
   if (read.error || read.all === null) return <ReadState read={read} testId="ontology-view" />;
@@ -159,13 +182,14 @@ export function OntologyView({ search }: { search: string }) {
       <GraphExplorer
         data={drawn}
         query={query(read.all)}
-        scope={ONTOLOGY_SCOPE}
+        scope={scopeOf(WHOLE)}
         preset="ontology"
         depth={WHOLE.depth}
         search={search}
         onExpand={() => setOpen(true)}
         settingsKey={ONTOLOGY_SETTINGS}
         exportName="ontology"
+        within={within}
         testId="ontology"
       />
       <OntologyModal
@@ -174,6 +198,7 @@ export function OntologyView({ search }: { search: string }) {
         title={t("graph3d.ontologyTitle")}
         selected={null}
         search={search}
+        within={within}
       />
     </div>
   );
@@ -206,9 +231,9 @@ export function OntologySnippet({
         <GraphExplorer
           data={drawn}
           query={query(read.all)}
-          scope={ONTOLOGY_SCOPE}
+          scope={scopeOf(preset)}
           preset="ontology"
-          layers={SNIPPET_LAYERS}
+          layers={snippetLayers(preset)}
           focus={preset.focus}
           depth={preset.depth}
           snippet
@@ -228,19 +253,23 @@ export function OntologySnippet({
           </div>
         </div>
       )}
+      {/* Expanded, the whole graph its rules are a snippet of: a product's, the Product map. */}
       <OntologyModal
         opened={open}
         onClose={() => setOpen(false)}
         title={t("graph3d.expandTitle", { product: name })}
         selected={preset.focus}
+        {...(preset.products
+          ? {
+              preset: PRODUCT_MAP,
+              layers: PRODUCT_MAP_LAYERS,
+              settingsKey: PRODUCT_MAP_SETTINGS,
+            }
+          : {})}
       />
     </div>
   );
 }
-
-/** The Product map's layers: the ontology's, with every product (the Data layer). */
-const PRODUCT_MAP_LAYERS: LayerId[] = ["ontology", "domains", "columns", "data"];
-const PRODUCT_MAP_SETTINGS: GraphKey = { kind: "product-map", subject: null };
 
 /** The Data Products page's entry point: the whole ontology, every product among it. */
 export function ProductMapButton() {
@@ -262,6 +291,7 @@ export function ProductMapButton() {
         onClose={() => setOpen(false)}
         title={t("graph3d.productMap")}
         selected={null}
+        preset={PRODUCT_MAP}
         layers={PRODUCT_MAP_LAYERS}
         settingsKey={PRODUCT_MAP_SETTINGS}
       />

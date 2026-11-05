@@ -9,7 +9,7 @@ import { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
 import { fetchSettings } from "../api/admin";
 import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "../lib/domainFilterKeys";
-import { getStored, setStored } from "../lib/browserStorage";
+import { getStoredJson, setStored } from "../lib/browserStorage";
 
 interface DomainFilterContextValue {
   domains: string[];
@@ -46,12 +46,10 @@ export function mergeCheckedDomains(
 // next load, so it read as unchecked by the user and its tables vanished from every list.
 export function restoreCheckedDomains(available: string[]): Set<string> {
   try {
-    const savedChecked = getStored(CHECKED_DOMAINS_KEY);
-    const savedKnown = getStored(KNOWN_DOMAINS_KEY);
     const merged = mergeCheckedDomains(
       available,
-      savedChecked ? JSON.parse(savedChecked) : null,
-      savedKnown ? JSON.parse(savedKnown) : null,
+      getStoredJson(CHECKED_DOMAINS_KEY),
+      getStoredJson(KNOWN_DOMAINS_KEY),
     );
     if (merged) {
       setStored(KNOWN_DOMAINS_KEY, JSON.stringify(available));
@@ -94,37 +92,37 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
   // but this effect read one arbitrary role, so a user holding analyst (pet-store, shelter) plus
   // org_admin (*) got analyst's two domains and lost meta and ops entirely. Which role won was an
   // accident of list order, so the same account showed different domains as its role set changed.
-  // Any active role with `*` means the whole catalog; otherwise the union of the named domains.
-  // That one wildcard role is asked deliberately: it answers every domain, the most any set of
-  // roles holding it can reach, so the set adds nothing to the answer.
+  // The union of what each active role reaches, which the server answers from its flattened
+  // domain_access: its data domains and the system domains its capabilities hold (REQ-1132). Every
+  // role is asked, a wildcard one too: `*` is every data domain, so it answers no system domain
+  // another role in the set may hold.
   const roleIds = selectedRoles.map((r) => r.id).join(",");
-  const wildcardRoleId = selectedRoles.find((r) => r.domain_access.includes("*"))?.id ?? null;
   const namedDomains = [
     ...new Set(selectedRoles.flatMap((r) => r.domain_access).filter((d) => d !== "*")),
   ].join(",");
   useEffect(() => {
     if (selectedRoles.length === 0) return;
-    if (wildcardRoleId !== null) {
-      fetch("/data/domains", { headers: { "X-Provisa-Role": wildcardRoleId } })
-        .then((r) => r.json())
-        .then((ids: string[]) => {
-          if (ids.length > 0) {
-            setDomains(ids);
-            setCheckedDomains(restoreCheckedDomains(ids));
-          }
-        })
-        .catch(() => {});
-    } else {
-      const ds = namedDomains ? namedDomains.split(",") : [];
-      if (ds.length > 0) {
-        /* eslint-disable-next-line react-hooks/set-state-in-effect --
-           reset domain filter state in sync with an external input (the active role set) */
-        setDomains(ds);
-        setCheckedDomains(restoreCheckedDomains(ds));
-      }
-    }
+    let stale = false;
+    Promise.all(
+      selectedRoles.map(({ id }) =>
+        fetch("/data/domains", { headers: { "X-Provisa-Role": id } }).then(
+          (r) => r.json() as Promise<string[]>,
+        ),
+      ),
+    )
+      .then((answers) => {
+        const ids = [...new Set(answers.flat())];
+        if (!stale && ids.length > 0) {
+          setDomains(ids);
+          setCheckedDomains(restoreCheckedDomains(ids));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the role SET (the joined ids), not the array identity, so the fetch does not re-run on every render
-  }, [roleIds, wildcardRoleId, namedDomains]);
+  }, [roleIds, namedDomains]);
 
   function toggleDomain(id: string) {
     setCheckedDomains((prev) => {
@@ -147,12 +145,8 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
       setStored(CHECKED_DOMAINS_KEY, JSON.stringify([...next]));
       return next;
     });
-    try {
-      const known: string[] = JSON.parse(getStored(KNOWN_DOMAINS_KEY) || "[]");
-      if (!known.includes(id)) setStored(KNOWN_DOMAINS_KEY, JSON.stringify([...known, id]));
-    } catch {
-      // ignore
-    }
+    const known = getStoredJson<string[]>(KNOWN_DOMAINS_KEY) ?? [];
+    if (!known.includes(id)) setStored(KNOWN_DOMAINS_KEY, JSON.stringify([...known, id]));
   }
 
   return (

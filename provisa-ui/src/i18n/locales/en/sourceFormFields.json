@@ -94,7 +94,7 @@
     "authMechanismGssapi": "GSSAPI (Kerberos)",
     "upload": "Upload file",
     "uploadReplace": "Upload a new file",
-    "uploadNeedsId": "Enter the source's ID first: the file is kept under it.",
+    "uploadNeedsId": "Enter the source's ID first, because the file is kept under it.",
     "uploadedFileHint": "This source's uploaded file, kept in your organization's folder. Upload a new one to replace it.",
     "fileLocationsHint": "{files}/… in the organization's files, a path on the server, an https:// address, or s3://, gs:// or az:// with the store's credentials; or upload the file.",
     "fileDatabaseLocationsHint": "{files}/… in the organization's files, a path on the server, an https:// address, or s3://, gs:// or az:// with the store's credentials (read-only there); or upload the file.",

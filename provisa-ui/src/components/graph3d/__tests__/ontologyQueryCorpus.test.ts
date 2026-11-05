@@ -46,7 +46,7 @@ function subsets<T>(items: T[]): T[][] {
   return items.reduce<T[][]>((all, x) => [...all, ...all.map((s) => [...s, x])], [[]]);
 }
 
-const LAYERS: LayerId[] = ["domains", "data", "columns", "ownerTables"];
+const LAYERS: LayerId[] = ["domains", "data", "columns"];
 const SEARCHES = [[], ["party"]];
 const STATUSES: QueryScope["hiddenStatuses"][] = [
   [],
@@ -93,7 +93,9 @@ function ontologyScopes(): [string, QueryScope][] {
 }
 
 /** REQ-2174 (ONE ONTOLOGY GRAPH): the snippets' -- a term's page and a product's panel, in 3D
- * and in lanes, to each depth a reader can pick -- and the whole ontology in lanes. */
+ * and in lanes, to each depth a reader can pick -- and the whole ontology in lanes. A product's
+ * panel reads by the Product map's rules (ONE GRAPH, RULES PER PRESET), a term's page by the
+ * Ontology preset's. */
 function snippetScopes(): [string, QueryScope][] {
   const out: [string, QueryScope][] = [];
   for (const focus of [null, "term:7", "p:1"])
@@ -114,19 +116,22 @@ function snippetScopes(): [string, QueryScope][] {
             lanes,
             focus,
             depth,
+            ...(focus?.startsWith("p:") ? { products: true } : {}),
           },
         ]);
       }
   return out;
 }
 
-/** REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): the full view with each layer of a product's
- * own parts on, alone and with Data, and all of them at once. */
+/** REQ-2174 (THE ONE GRAPH'S PRESETS AND LAYERS): the Product map with each layer of a product's
+ * own parts on, alone and with Data, and all of them at once; and its Tables, with Columns. */
 function productLayerScopes(): [string, QueryScope][] {
   const parts: LayerId[] = ["commands", "quality", "productLinks", "lineage"];
   const sets: LayerId[][] = [
     ...parts.flatMap((l): LayerId[][] => [[l], ["data", l]]),
     ["data", ...parts],
+    ["ownerTables"],
+    ["data", "ownerTables"],
   ];
   return sets.map((layers) => [
     `layers=${layers.join("+")}`,
@@ -141,6 +146,7 @@ function productLayerScopes(): [string, QueryScope][] {
       sensitivities: [],
       focus: null,
       depth: 2,
+      products: true,
     },
   ]);
 }
@@ -176,10 +182,10 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
     expect(JSON.parse(readFileSync(path, "utf8"))).toEqual(produced);
   });
 
-  it("read a column's table, with the relationships declared from it, under the owner tables", () => {
-    // REQ-2135: the owner-tables layer draws the relationships between the tables it draws. A
-    // term ref reaches its table through registeredTable; the _meta system field reaches the same
-    // type and is no relationship to follow.
+  it("read a column's table with its product, and no relationship declared from it", () => {
+    // REQ-2130 (amended 2026-10-29): Data draws the product of each table a term reaches; no
+    // relationship between tables is drawn. A term ref reaches its table through registeredTable;
+    // the _meta system field reaches the same type and is no relationship to follow.
     const m = reader();
     const scope = (layers: LayerId[]): QueryScope => ({
       layers: new Set<LayerId>(["ontology", ...layers]),
@@ -193,15 +199,14 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
       focus: null,
       depth: 2,
     });
-    const owner = ontologyQuery(m, scope(["columns", "ownerTables"]));
+    const data = ontologyQuery(m, scope(["columns", "data"]));
     const columns = ontologyQuery(m, scope(["columns"]));
-    expect(owner).not.toEqual(columns);
-    const refs = owner!.slice(
-      owner!.indexOf("refs: refs"),
-      owner!.indexOf("data_products") >= 0 ? owner!.indexOf("data_products") : undefined,
-    );
-    expect(refs).toContain("table: registeredTable");
-    expect(refs).toContain("source_relationships: sourceRelationships");
+    expect(data).not.toEqual(columns);
+    expect(data).not.toContain("data_products");
+    const refs = data!.slice(data!.indexOf("refs {"));
+    expect(refs).toContain("registeredTable {");
+    expect(refs).toContain("product {");
+    expect(refs).not.toContain("source_relationships");
     expect(refs).not.toContain("_meta");
   });
 
@@ -212,13 +217,36 @@ describe("the ontology's queries, whole and as snippets, as the GraphQL corpus h
     const term = ontologyQuery(m, { ...base, focus: "term:7", depth: 2 }) as string;
     expect(term).toMatch(/on_terms\(where: \{[^\n]*id: \{ eq: 7 \}/);
     expect(term).toContain("edgesIn");
-    const product = ontologyQuery(m, { ...base, focus: "p:1", depth: 2 }) as string;
+    const product = ontologyQuery(m, {
+      ...base,
+      focus: "p:1",
+      depth: 2,
+      products: true,
+    }) as string;
     expect(product).toContain('productId: { eq: "1" }');
     // The product itself is read, that product alone.
     expect(product).toMatch(/m__dataProducts\(where: \{ id: \{ eq: "1" \} \}\)/);
     // A deeper read nests one more level of term edges.
     const deeper = ontologyQuery(m, { ...base, focus: "term:7", depth: 3 }) as string;
     expect(deeper.split("edgesOut").length).toBeGreaterThan(term.split("edgesOut").length);
+  });
+
+  it("read no product apart and no relationship between tables by the Ontology preset's rules", () => {
+    // REQ-2174 (ONE GRAPH, RULES PER PRESET): the Ontology page and a term's page draw only what a
+    // shown term reaches (REQ-2130); the Product map and a product's panel keep its products.
+    const m = reader();
+    const ontology = [...ontologyScopes(), ...snippetScopes()].filter(([, s]) => !s.products);
+    expect(ontology.length).toBeGreaterThan(10);
+    for (const [, s] of ontology) {
+      const q = ontologyQuery(m, { ...s, layers: new Set([...s.layers, "ownerTables"]) }) as string;
+      expect(q).not.toContain("m__dataProducts");
+      expect(q).not.toContain("sourceRelationships");
+    }
+    const [, map] = productLayerScopes().find(([k]) => k === "layers=data+ownerTables")!;
+    const mapped = ontologyQuery(m, map) as string;
+    expect(mapped).toContain("m__dataProducts");
+    expect(mapped).toContain("memberTables");
+    expect(mapped).toContain("sourceRelationships");
   });
 
   it("each read the system catalog's real root fields", () => {

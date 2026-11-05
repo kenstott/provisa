@@ -134,6 +134,7 @@ def _state():
     return RoleState(
         config=config,
         contexts={"analyst": ctx, "hr_only": ctx, "admin": ctx},
+        roles={r.id: {"id": r.id, "domain_access": r.domain_access} for r in roles},
         mcp_catalog_index=None,
     )
 

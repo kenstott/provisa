@@ -10,7 +10,7 @@
 
 import React, { useState, useCallback, useMemo, useRef } from "react";
 import { Network } from "lucide-react";
-import type { RegisteredTable } from "../../types/admin";
+import type { ListedTable } from "../../types/admin";
 import type { CanvasTable, CanvasJoin, JoinCanvasProps } from "./types";
 import { useTranslation } from "react-i18next";
 import { CanvasTableCard } from "../canvas/CanvasTableCard";
@@ -32,7 +32,7 @@ export function JoinCanvas({ tables, onGenerateSql }: JoinCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const tableMap = useMemo(() => {
-    const m: Record<string, RegisteredTable> = {};
+    const m: Record<string, ListedTable> = {};
     for (const t of tables) m[t.tableName] = t;
     return m;
   }, [tables]);

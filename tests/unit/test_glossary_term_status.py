@@ -7,9 +7,9 @@
 # NOTICE: Use of this software for training artificial intelligence or
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
-"""REQ-2144: a term's status is one of draft, live, deprecated and retired -- draft and live
-computed, deprecated and retired asserted by a curator with a reason -- and retiring a term moves
-what it holds to a successor."""
+"""REQ-1387, REQ-2144: a term's status is one of draft, approved, deprecated and retired, each set
+by people -- approval needs a definition, deprecation and retirement a reason -- and retiring a
+term moves what it holds to a successor."""
 
 from __future__ import annotations
 
@@ -66,34 +66,61 @@ async def _define(db, term_id: int, text: str = "Defined.") -> None:
         await glossary_repo.set_definition(conn, term_id, text)
 
 
-# --- draft and live are computed ---------------------------------------------------------------
+async def _approve(db, term_id: int) -> None:
+    async with db.acquire() as conn:
+        await glossary_repo.approve_term(conn, term_id, by=None)
+
+
+# --- approve ----------------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_a_derived_term_is_a_draft_until_defined_then_live(control_plane, monkeypatch):
-    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+async def test_a_derived_term_is_a_draft_until_a_steward_approves_it(control_plane, monkeypatch):
+    async with _surface(control_plane, monkeypatch) as (db, ids, notified):
         note = await _note(db, ids)
         assert await _status(db, note) == "draft"
         await _define(db, note, "A remark.")
-        assert await _status(db, note) == "live"
+        assert await _status(db, note) == "draft"  # a definition alone approves nothing
+        done = await _act("approve", note, {})
+        assert done["status"] == "approved" and notified[-1] == "ontology term approved"
         listed = {
-            t["name"]: t["status"]
+            t["name"]: (t["status"], t["grounding"])
             for t in await glossary_router.list_terms(_request(), domains=None)
         }
-        assert listed["note"] == "live" and listed["ledger"] == "draft"  # ledger grounds nothing
-        assert (await glossary_router.get_term(_request(), note))["status"] == "live"
+        assert listed["note"] == ("approved", "grounded")
+        assert listed["ledger"] == ("draft", "not_grounded")  # ledger grounds nothing
+        detail = await glossary_router.get_term(_request(), note)
+        assert (detail["status"], detail["grounding"]) == ("approved", "grounded")
+
+
+@pytest.mark.asyncio
+async def test_approval_refusals_are_named(control_plane, monkeypatch):
+    async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
+        note = await _note(db, ids)
+        with pytest.raises(ApiError) as err:
+            await _act("approve", note, {})
+        assert err.value.code == "glossary.definition_required"
+        await _define(db, note)
+        await _act("approve", note, {})
+        with pytest.raises(ApiError) as err:
+            await _act("approve", note, {})
+        assert (err.value.code, err.value.params) == (
+            "glossary.term_not_draft",
+            {"status": "approved"},
+        )
 
 
 # --- deprecate --------------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_a_deprecated_term_stays_in_service_until_its_planned_retirement(
+async def test_a_deprecated_term_breaks_the_chain_until_its_planned_retirement(
     control_plane, monkeypatch
 ):
     async with _surface(control_plane, monkeypatch) as (db, ids, notified):
         note = await _note(db, ids)
         await _define(db, note)
+        await _approve(db, note)
         on = (TODAY + datetime.timedelta(days=30)).isoformat()
         done = await _act("deprecate", note, {"reason": "Merging into remark.", "retire_on": on})
         assert done["status"] == "deprecated" and notified[-1] == "ontology term deprecated"
@@ -104,7 +131,7 @@ async def test_a_deprecated_term_stays_in_service_until_its_planned_retirement(
             "alice",
         )
         async with db.acquire() as conn:
-            assert note in await glossary_repo.live_ids(conn)  # still conducts, still admitted
+            assert (await glossary_repo.grounding(conn))[note] == "not_grounded"
 
 
 @pytest.mark.asyncio
@@ -113,8 +140,12 @@ async def test_deprecation_refusals_are_named(control_plane, monkeypatch):
         note = await _note(db, ids)
         with pytest.raises(ApiError) as err:
             await _act("deprecate", note, {"reason": "Old."})
-        assert (err.value.code, err.value.params) == ("glossary.term_not_live", {"status": "draft"})
+        assert (err.value.code, err.value.params) == (
+            "glossary.term_not_approved",
+            {"status": "draft"},
+        )
         await _define(db, note)
+        await _approve(db, note)
         for body, code in (
             ({}, "glossary.reason_required"),
             ({"reason": "  "}, "glossary.reason_required"),
@@ -124,7 +155,7 @@ async def test_deprecation_refusals_are_named(control_plane, monkeypatch):
             with pytest.raises(ApiError) as err:
                 await _act("deprecate", note, body)
             assert err.value.code == code, body
-        assert await _status(db, note) == "live"
+        assert await _status(db, note) == "approved"
 
 
 @pytest.mark.asyncio
@@ -163,7 +194,9 @@ async def test_retiring_a_property_moves_its_columns_to_the_successor(control_pl
         assert sorted(r["column_name"] for r in moved["refs"]) == ["id", "note", "note", "note"]
         assert kept["refs"] == [] and kept["definition"] == "A remark."  # an inert record
         assert [(e.from_term_id, e.rel_type) for e in edges] == [(remark, "REPLACES")]
-        assert await _status(db, remark) == "live"
+        assert await _status(db, remark) == "draft"  # status is a person's, never moved
+        async with db.acquire() as conn:
+            assert (await glossary_repo.grounding(conn))[remark] == "grounded"
 
 
 @pytest.mark.asyncio
@@ -254,10 +287,10 @@ async def test_restore_brings_back_an_empty_draft_and_clears_a_deprecation(
         assert detail["refs"] == [] and detail["definition"] == "A remark."
         assert detail["status_reason"] is None
         await _define(db, ids["ledger"])
-        async with db.acquire() as conn:
-            await glossary_repo.add_edge(conn, ids["ledger"], remark, "RELATED_TO")
+        await _approve(db, ids["ledger"])
         await _act("deprecate", ids["ledger"], {"reason": "Old."})
-        assert (await _act("restore", ids["ledger"], {}))["status"] == "live"
+        # a deprecation undone leaves the approval standing
+        assert (await _act("restore", ids["ledger"], {}))["status"] == "approved"
 
 
 # --- scheduled retirement ---------------------------------------------------------------------
@@ -279,6 +312,7 @@ async def test_the_scheduler_retires_a_deprecated_term_on_its_date(control_plane
             await glossary_repo.add_edge(conn, remark, note, "RELATED_TO")
             on = TODAY + datetime.timedelta(days=2)
             for term in (ids["ledger"], note):
+                await glossary_repo.approve_term(conn, term, by=None)
                 await glossary_repo.deprecate_term(
                     conn, term, reason="Old.", retire_on=on, by=None, today=TODAY
                 )
@@ -327,6 +361,8 @@ def test_the_export_carries_the_status():
         "status_reason": "Use sale.",
         "retire_on": datetime.date(2027, 1, 1),
         "retired": False,
+        "approved": True,
+        "export_excluded": False,
     }
     glossary = {
         "terms": [term],
@@ -352,6 +388,7 @@ async def test_the_meta_view_states_the_status(control_plane, monkeypatch):
     async with _surface(control_plane, monkeypatch) as (db, ids, _notified):
         note = await _note(db, ids)
         await _define(db, note)
+        await _approve(db, note)
         async with db.acquire() as conn:
             await glossary_repo.deprecate_term(
                 conn, note, reason="Old.", retire_on=None, by=None, today=TODAY
@@ -378,17 +415,27 @@ async def test_a_config_states_a_terms_status_and_the_store_exports_it(cfg_db): 
         return parse_config_dict(base)
 
     async with cfg_db.acquire() as conn:
-        await apply_config(config(deprecate={"reason": "Use sale."}), conn)
+        with pytest.raises(ValueError, match="only an approved term is deprecated"):
+            await apply_config(config(deprecate={"reason": "Use sale."}), conn)
+        await apply_config(config(approve=True), conn)
+        [booking] = [t for t in await glossary_repo.list_terms(conn) if t["name"] == "booking"]
+        assert booking["status"] == "approved"
+        [stated] = [
+            t for t in (await store_model(conn))["glossary_terms"] if t["name"] == "booking"
+        ]
+        assert stated["approve"] is True
+        await apply_config(config(approve=True, deprecate={"reason": "Use sale."}), conn)
         [booking] = [t for t in await glossary_repo.list_terms(conn) if t["name"] == "booking"]
         assert booking["status"] == "deprecated"
         [stated] = [
             t for t in (await store_model(conn))["glossary_terms"] if t["name"] == "booking"
         ]
-        assert stated["deprecate"] == {"reason": "Use sale."}
-        await apply_config(config(deprecate={"reason": "Use sale."}), conn)  # changes nothing
+        assert stated["deprecate"] == {"reason": "Use sale."} and stated["approve"] is True
+        # loading it again changes nothing
+        await apply_config(config(approve=True, deprecate={"reason": "Use sale."}), conn)
         await apply_config(config(restore=True), conn)
         [booking] = [t for t in await glossary_repo.list_terms(conn) if t["name"] == "booking"]
-        assert booking["status"] == "live"
+        assert booking["status"] == "approved"
         await apply_config(config(retire={"reason": "Gone.", "successor": "sale"}), conn)
         [booking] = [t for t in await glossary_repo.list_terms(conn) if t["name"] == "booking"]
         assert booking["status"] == "retired"
@@ -402,6 +449,7 @@ async def test_a_config_deprecation_dated_in_the_past_is_refused(cfg_db):  # noq
     base["glossary_terms"][0] = {
         **base["glossary_terms"][0],
         "edges": [{"to": "order", "rel_type": "RELATED_TO"}],
+        "approve": True,
         "deprecate": {"reason": "Use sale.", "retire_on": "2001-01-01"},
     }
     async with cfg_db.acquire() as conn:
@@ -418,6 +466,12 @@ def test_a_config_states_one_status_action_at_most():
         )
     with pytest.raises(ValueError):
         GlossaryTermConfig.model_validate({"name": "x", "domains": ["d"], "retire": {"reason": ""}})
+    with pytest.raises(ValueError, match="approve with retire or restore"):
+        GlossaryTermConfig.model_validate(
+            {"name": "x", "definition": "X.", "domains": ["d"], "approve": True, "restore": True}
+        )
+    with pytest.raises(ValueError, match="needs a definition"):
+        GlossaryTermConfig.model_validate({"name": "x", "domains": ["d"], "approve": True})
 
 
 # --- applied history --------------------------------------------------------------------------

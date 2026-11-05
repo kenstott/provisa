@@ -1,0 +1,14 @@
+{
+  "sparqlEndpoint": {
+    "endpoint": "Endpoint",
+    "copyEndpoint": "Copy the endpoint URL",
+    "prefixes_one": "{{count}} prefix",
+    "prefixes_other": "{{count}} prefixes",
+    "prefixName": "Prefix",
+    "namespace": "Namespace",
+    "removePrefix": "Remove prefix",
+    "invalidPrefix": "Letters, digits, - and _ only",
+    "addHint": "Fill in the last row to add a prefix. Prefixes name terms in results and in pill queries; a query runs as written.",
+    "restore": "Restore prefixes"
+  }
+}

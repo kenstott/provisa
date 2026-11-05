@@ -70,7 +70,7 @@ def test_aliases_computed_alike_are_each_the_domains_own_name():
     ) == {"ontology": "ontology", "ops": "ops", "sales_analytics": "sa", "hr": "hr"}
 
 
-@pytest.mark.parametrize("access", [["*"], ["ontology", "ops"]])
+@pytest.mark.parametrize("access", [["*", "ontology", "ops"], ["ontology", "ops"]])
 def test_a_role_holding_ontology_and_ops_is_served_both_apart(access):
     from provisa.compiler.schema_gen import generate_schema
 
@@ -84,7 +84,7 @@ def test_grpc_and_the_compilation_context_name_them_apart():
     from provisa.compiler.context import build_context
     from provisa.grpc.proto_gen import generate_proto
 
-    si = _schema_input(["*"])
+    si = _schema_input(["*", "ontology", "ops"])
     names = {m.field_name for m in build_context(si).tables.values()}
     assert {"on_terms", "op_queries"} <= names
     from provisa.grpc.proto_gen import _to_proto_field_name
@@ -92,3 +92,21 @@ def test_grpc_and_the_compilation_context_name_them_apart():
     proto = generate_proto(si)
     for field in ("on_terms", "op_queries"):
         assert f" {_to_proto_field_name(field)} = " in proto
+
+
+def test_a_system_schema_takes_no_alias_from_a_model_domain():
+    """The ontology and ops schemas are named by their own SDL prefixes (on_, op_; REQ-2163), never
+    by an alias: a model domain whose initials are theirs ("o") keeps them."""
+    assert domain_alias_map([{"id": "ontology"}, {"id": "ops"}, {"id": "opioids"}]) == {
+        "ontology": "ontology",
+        "ops": "ops",
+        "opioids": "o",
+    }
+
+
+def test_model_domains_computed_alike_are_still_named_apart():
+    assert domain_alias_map([{"id": "ops"}, {"id": "opioids"}, {"id": "orders"}]) == {
+        "ops": "ops",
+        "opioids": "opioids",
+        "orders": "orders",
+    }

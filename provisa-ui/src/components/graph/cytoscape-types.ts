@@ -39,7 +39,7 @@ export interface CyElement {
   position(pos: { x: number; y: number }): CyElement;
   source(): CyElement;
   target(): CyElement;
-  neighborhood(): CyCollection;
+  neighborhood(selector?: string): CyCollection;
   children(): CyNodeCollection;
   renderedPosition(): { x: number; y: number };
   renderedWidth(): number;
@@ -134,6 +134,7 @@ export interface CyInstance {
     one(evt: string, fn: () => void): void;
   };
   fit(eles?: CyCollection, padding?: number): void;
+  center(eles?: CyCollection): void;
   zoom(): number;
   zoom(level: number): void;
   pan(): { x: number; y: number };
@@ -145,6 +146,7 @@ export interface CyInstance {
   jpg(options?: Record<string, unknown>): string;
   svg(options?: Record<string, unknown>): string;
   destroy(): void;
+  unmount(): void;
   style(sheet?: unknown): void;
   container(): HTMLElement;
   getElementById(id: string): CyCollection;

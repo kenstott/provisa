@@ -24,6 +24,7 @@
     "itemSql": "SQL",
     "itemGrpc": "gRPC",
     "itemJsonApi": "JSON:API",
+    "itemOData": "OData",
     "itemOpenApi": "OpenAPI",
     "itemOrgs": "संगठन",
     "itemDashboard": "डैशबोर्ड",
@@ -35,6 +36,8 @@
     "itemEmail": "ईमेल",
     "itemMaintenance": "रखरखाव",
     "itemDeploymentSettings": "डिप्लॉयमेंट सेटिंग",
+    "itemPlatform": "प्लेटफ़ॉर्म",
+    "itemRegions": "क्षेत्र",
     "itemBilling": "बिलिंग",
     "itemExplore": "MCP",
     "itemEncryption": "एन्क्रिप्शन",
@@ -77,6 +80,7 @@
     "itemNotebook": "नोटबुक",
     "itemContainerRegistries": "कंटेनर रजिस्ट्री",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "कैटलॉग"
+    "itemCatalogs": "कैटलॉग",
+    "itemReferenceLibrary": "संदर्भ लाइब्रेरी"
   }
 }

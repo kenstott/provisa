@@ -1,0 +1,14 @@
+{
+  "sparqlEndpoint": {
+    "endpoint": "エンドポイント",
+    "copyEndpoint": "エンドポイント URL をコピー",
+    "prefixes_one": "{{count}} 個のプレフィックス",
+    "prefixes_other": "{{count}} 個のプレフィックス",
+    "prefixName": "プレフィックス",
+    "namespace": "名前空間",
+    "removePrefix": "プレフィックスを削除",
+    "invalidPrefix": "英字、数字、- と _ のみ",
+    "addHint": "最後の行に入力するとプレフィックスを追加できます。プレフィックスは結果とピルのクエリで用語に名前を付けます。クエリは書かれたとおりに実行されます。",
+    "restore": "プレフィックスを復元"
+  }
+}

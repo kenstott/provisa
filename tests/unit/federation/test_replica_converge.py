@@ -487,8 +487,8 @@ async def test_a_table_naming_a_region_is_built_only_there(model):
 
     platform = {
         "regions": [
-            {"id": "eu", "address": "https://eu.example.com"},
-            {"id": "us", "address": "https://us.example.com"},
+            {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+            {"id": "us", "description": "The us region", "purposes": ["residency"]},
         ]
     }
     was = process_region._region
@@ -507,8 +507,8 @@ async def test_a_table_naming_a_region_is_built_only_there(model):
 
 _PLATFORM = {
     "regions": [
-        {"id": "eu", "address": "https://eu.example.com"},
-        {"id": "us", "address": "https://us.example.com"},
+        {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+        {"id": "us", "description": "The us region", "purposes": ["residency"]},
     ]
 }
 

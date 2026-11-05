@@ -1,0 +1,66 @@
+{
+  "contractPromises": {
+    "col": {
+      "appliesTo": "Se aplica a",
+      "check": "Comprobación",
+      "details": "Detalles",
+      "result": "Último resultado"
+    },
+    "level": {
+      "table": "Tabla",
+      "row": "Fila"
+    },
+    "check": {
+      "notNull": "No nulo",
+      "unique": "Único",
+      "allowedValues": "Valores permitidos",
+      "pattern": "Coincidencia de patrón",
+      "valueRange": "Rango de valores",
+      "textLength": "Longitud del texto",
+      "average": "Rango del promedio",
+      "distinctCount": "Valores distintos",
+      "rowCount": "Recuento de filas",
+      "columnOrder": "Orden de columnas",
+      "unexpectedRows": "Sin filas inesperadas",
+      "missing": "Sin valores faltantes",
+      "valid": "Valores válidos",
+      "duplicate": "Sin duplicados",
+      "aggregate": "Agregado",
+      "freshness": "Actualidad",
+      "failedRows": "Sin filas con error"
+    },
+    "threshold": {
+      "eq": "Debe ser {{value}}",
+      "ne": "No debe ser {{value}}",
+      "gt": "Mayor que {{value}}",
+      "gte": "Al menos {{value}}",
+      "lt": "Menor que {{value}}",
+      "lte": "Como máximo {{value}}"
+    },
+    "detail": {
+      "percent": "{{value}} %",
+      "between": "De {{min}} a {{max}}",
+      "atLeast": "Al menos {{value}}",
+      "atMost": "Como máximo {{value}}",
+      "oneOf": "Uno de {{values}}",
+      "matches": "Coincide con {{pattern}}",
+      "greater": "{{a}} mayor que {{b}}",
+      "orEqual": "{{a}} al menos {{b}}",
+      "query": "Filas inesperadas: {{query}}",
+      "expression": "Filas con error: {{expression}}",
+      "mostly": "Al menos el {{percent}} % de las filas",
+      "alsoMissing": "También faltante: {{values}}",
+      "minLength": "Al menos {{value}} caracteres",
+      "maxLength": "Como máximo {{value}} caracteres"
+    },
+    "aggregate": {
+      "avg": "Promedio",
+      "sum": "Suma",
+      "min": "Mínimo",
+      "max": "Máximo",
+      "minLength": "Longitud más corta",
+      "maxLength": "Longitud más larga",
+      "avgLength": "Longitud promedio"
+    }
+  }
+}

@@ -65,6 +65,7 @@
     "edge_owns": "owns",
     "loadError": "The graph could not be read: {{error}}",
     "zoomTo": "Zoom to it",
+    "openInErd": "Open in ERD",
     "edge_column_lineage": "feeds column",
     "preset_taxonomy": "Taxonomy",
     "layer_domains": "Domains",
@@ -93,7 +94,6 @@
     "look_in_product": "column in a data product",
     "look_out_of_product": "column outside data products",
     "look_stored": "table",
-    "status_live": "Live",
     "openAsQuery": "Open as query",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",
@@ -117,6 +117,7 @@
     "status_draft": "Draft",
     "openAsQueryNoSparql": "This query has no SPARQL form.",
     "openAsQuerySparqlRoots": "Each root of this query is its own SPARQL query: open the GraphQL to read them one by one.",
+    "status_approved": "Approved",
     "lane_term": "Terms",
     "lane_column": "Columns",
     "lane_table": "Tables",
@@ -148,6 +149,8 @@
     "factMembers": "Member tables",
     "factColumns": "Columns",
     "depth": "Depth",
-    "lateral": "Lateral edges"
+    "lateral": "Lateral edges",
+    "grounding_grounded": "Grounded",
+    "grounding_grounded_pending": "Grounded, via a draft"
   }
 }

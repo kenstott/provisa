@@ -17,7 +17,7 @@ import { useTranslation } from "react-i18next";
 import { Ban, Copy, Zap } from "lucide-react";
 import { SourceLogo } from "./SourceLogo";
 import { Tip } from "./Tip";
-import { getStored, setStored } from "../lib/browserStorage";
+import { getStoredJson, setStored } from "../lib/browserStorage";
 
 export interface PickerItem {
   value: string;
@@ -68,14 +68,8 @@ const ALIASES: Record<string, string> = {
 };
 
 function readRecent(): string[] {
-  try {
-    const raw = getStored(RECENT_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
-  } catch {
-    // A per-viewer convenience only: blocked or cleared storage just means no recent row.
-    return [];
-  }
+  const parsed = getStoredJson<unknown>(RECENT_KEY);
+  return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
 }
 
 function writeRecent(value: string): void {

@@ -31,7 +31,7 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -69,8 +69,20 @@ def _close_open(at: datetime) -> bool:
 
 
 def _notices_due(at: datetime) -> bool:
-    """The triggers run 01:00-23:59 UTC (``*/5 1-23``)."""
-    return at.hour >= 1
+    """Whether each team's trigger fires within one cron period (five minutes) of ``at``: they
+    run 01:00-23:59 UTC (``*/5 1-23`` and ``2-59/5 1-23``), so one wait begun after 23:55 for
+    finance, or 23:57 for data science, sees no notice before 01:00 -- read off the demo's own
+    crons by the scheduler's own parser."""
+    from apscheduler.triggers.cron import CronTrigger
+
+    config = yaml.safe_load((_DEMO / "config.yaml").read_text())
+    crons = [t["cron"] for t in config["scheduled_triggers"]]
+    assert len(crons) == 2, crons  # one a team
+    period = at + timedelta(minutes=5)
+    return all(
+        CronTrigger.from_crontab(cron, timezone=timezone.utc).get_next_fire_time(None, at) <= period
+        for cron in crons
+    )
 
 
 class ProvisioningStack:
@@ -238,7 +250,8 @@ def consumer(stack, landed):
 
 @pytest.fixture(scope="module")
 def pulled(landed, consumer):
-    """A recorded pull for each team, once their notices have come (01:00-23:59 UTC)."""
+    """A recorded pull for each team, once their notices have come (01:00-23:59 UTC); None when a
+    team's trigger does not fire within one cron period of the wait's start."""
     if not _notices_due(_utc()):
         return None
     deadline = time.monotonic() + _NOTICE_S
@@ -265,8 +278,7 @@ def test_the_feeds_land_into_the_warehouse(landed):
 
 
 def test_each_notice_is_published_and_each_team_pulls_as_of_it(landed, pulled):
-    if pulled is None:  # 00:00-00:59 UTC: no trigger runs, so no notice is due
-        assert not _notices_due(_utc())
+    if pulled is None:  # no team's notice was due within the wait (_notices_due)
         return
     by_team = {}
     for row in pulled:
@@ -284,8 +296,7 @@ def test_each_notice_is_published_and_each_team_pulls_as_of_it(landed, pulled):
 def test_a_pull_as_of_a_notice_reads_that_version(landed, pulled):
     """Pulling again as recorded at an earlier notice reads the rows that had landed by then,
     though the feed has landed more since -- orders placed before the notice among them."""
-    if pulled is None:
-        assert not _notices_due(_utc())
+    if pulled is None:  # no team's notice was due within the wait (_notices_due)
         return
     import json
 

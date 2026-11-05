@@ -1,0 +1,19 @@
+# The readiness memo's items: every award on a client's schedule that its federal award records do
+# not bear out in 2023 -- a timing difference, a missing award, or an award the schedule leaves out.
+query OpenItems {
+  a__viewReadiness(
+    where: { finding: { in: ["timing", "missing", "unrecorded"] } }
+    order_by: [{ clientName: asc }, { aln: asc }]
+    limit: 50
+  ) {
+    clientName
+    state
+    aln
+    programName
+    awardNumber
+    amountExpended
+    obligatedFy2023
+    obligatedEarlier
+    finding
+  }
+}

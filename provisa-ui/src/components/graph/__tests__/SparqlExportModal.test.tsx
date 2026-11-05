@@ -25,6 +25,7 @@ vi.mock("../graph-export", async (importOriginal) => ({
 }));
 
 import { SparqlExportModal } from "../SparqlExportModal";
+import { parseNTriples } from "../sparql";
 import type { SparqlExportable } from "../sparqlExport";
 
 const CONSTRUCT = "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }";
@@ -139,6 +140,44 @@ describe("the SPARQL export", () => {
     fireEvent.click(screen.getByTestId("sparql-export-download"));
     await waitFor(() => expect(downloads).toHaveLength(1));
     expect(sent[0].init?.headers).not.toHaveProperty("X-Provisa-Role");
+  });
+
+  const TRIPLES = parseNTriples('<http://x/a> <http://x/name> "Ann" .', { ex: "http://x/" });
+
+  it("writes a graph drawn from a SELECT's rows as Turtle, asking nothing of the endpoint", async () => {
+    modal([
+      { id: "b", query: SELECT, form: "rows", triples: TRIPLES, prefixes: { ex: "http://x/" } },
+    ]);
+    const formats = screen.getByTestId("sparql-export-format");
+    expect(formats).toHaveTextContent("CSV");
+    expect(formats).toHaveTextContent("N-Triples");
+    fireEvent.click(screen.getByLabelText("Turtle"));
+    fireEvent.click(screen.getByTestId("sparql-export-download"));
+    await waitFor(() => expect(downloads).toHaveLength(1));
+    expect(sent).toHaveLength(0);
+    expect(downloads[0].name).toBe("sparql-result.ttl");
+    expect(await downloads[0].blob.text()).toBe(
+      '@prefix ex: <http://x/> .\n\nex:a\n  ex:name "Ann" .\n',
+    );
+  });
+
+  it("writes a graph with what was merged into it as N-Triples", async () => {
+    modal([{ id: "a", query: CONSTRUCT, form: "graph", triples: TRIPLES, prefixes: {} }]);
+    const formats = screen.getByTestId("sparql-export-format");
+    // One query answers no merged graph, so the endpoint's JSON-LD cannot write it.
+    expect(formats).not.toHaveTextContent("JSON-LD");
+    fireEvent.click(screen.getByLabelText("N-Triples"));
+    fireEvent.click(screen.getByTestId("sparql-export-download"));
+    await waitFor(() => expect(downloads).toHaveLength(1));
+    expect(sent).toHaveLength(0);
+    expect(downloads[0].name).toBe("sparql-result.nt");
+    expect(await downloads[0].blob.text()).toBe('<http://x/a> <http://x/name> "Ann" .\n');
+  });
+
+  it("says why a graph no predicate names is not offered as RDF", () => {
+    modal([{ id: "b", query: SELECT, form: "rows", unnamedEdges: true }]);
+    expect(screen.getByTestId("sparql-export-unnamed")).toBeInTheDocument();
+    expect(screen.getByTestId("sparql-export-format")).not.toHaveTextContent("Turtle");
   });
 
   it("says there is nothing to export before a query is answered", () => {

@@ -195,6 +195,37 @@ class TestTranslation:
                 resp = await c.post("/data/grpc/Pet", json={"role_id": "analyst"})
         assert isinstance(resp.json(), list)
 
+    async def test_the_bodys_offset_reaches_the_lowering(self, state, monkeypatch):
+        app = _make_app(state, monkeypatch)
+        import httpx
+
+        transport = httpx.ASGITransport(app=app)
+        c = httpx.AsyncClient(transport=transport, base_url="http://test")
+
+        result = MagicMock()
+        result.column_names = ["id", "name"]
+        result.rows = []
+
+        _semantic, govern, execute = self._patches(result=result)
+        with (
+            patch(
+                "provisa.api.data.endpoint_grpc_proxy.grpc_table_to_graphql",
+                return_value=("{ pets(limit: 10, offset: 30) { id name } }", {}),
+            ) as lowering,
+            patch(
+                "provisa.api.generated_plan.compile_generated_graphql",
+                return_value=[SimpleNamespace(sql="SELECT id, name FROM pets", params=[])],
+            ),
+            govern,
+            execute,
+        ):
+            r = await c.post(
+                "/data/grpc/Pets",
+                json={"role_id": "analyst", "limit": 10, "offset": 30},
+            )
+        assert r.status_code == 200
+        assert lowering.call_args.kwargs["offset"] == 30
+
     async def test_governance_denial_returns_403(self, state, monkeypatch):
         app = _make_app(state, monkeypatch)
         import httpx

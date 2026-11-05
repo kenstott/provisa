@@ -22,6 +22,10 @@ const STANDARD_REPORTS = [
   "query_health",
   "stale_metadata",
   "join_hotspots",
+  // REQ-1386 (ONTOLOGY QUALITY IS A STANDARD REPORT)
+  "ontology_quality",
+  "ontology_term_quality",
+  "ontology_placeholders",
 ];
 
 test.beforeEach(async ({ page }) => {

@@ -206,6 +206,7 @@ Felder von `EntityInput`:
 | `validTime` | String | `null` | Spalte der Gültigkeitszeit; erforderlich, wenn `history` nicht `"none"` ist |
 | `recordedTime` | String | `null` | Spalte der Aufzeichnungszeit; erforderlich, wenn `history` nicht `"none"` ist |
 | `visibleTo` | [String] | `["public"]` | Liste der Rollen-Sichtbarkeit |
+| `description` | String | `null` | Beschreibung der registrierten Tabelle |
 
 ### `registerFact`
 
@@ -229,6 +230,7 @@ Felder von `FactInput`:
 | `measures` | [MeasureInput] | `[]` | `{ column, agg }`-Paare |
 | `dimensions` | [DimRefInput] | `[]` | `{ entity, via }`-Paare |
 | `visibleTo` | [String] | `["public"]` | Liste der Rollen-Sichtbarkeit |
+| `description` | String | `null` | Beschreibung der registrierten Tabelle |
 
 `MeasureInput`: `{ column: String, agg: String }`; agg ist standardmäßig `"sum"`.
 

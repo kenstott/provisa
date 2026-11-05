@@ -82,27 +82,30 @@ def test_oid_array_cast_executes(con):
     ],
 )
 def test_reg_casts_stripped_to_operand(con, regtype):
-    # reg* casts drop to the bare operand (the numeric oid / identifier value).
-    assert _scalar(con, f"SELECT n.oid::{regtype} AS rc FROM (SELECT 5 AS oid) n") == 5
+    # In a predicate a reg* cast is its bare operand (the numeric oid / identifier value).
+    assert _scalar(con, f"SELECT n.oid FROM (SELECT 5 AS oid) n WHERE n.oid::{regtype} = 5") == 5
+    if regtype not in ("regclass", "regnamespace"):
+        # A result column of one is its oid too; a regclass or regnamespace result column is its
+        # oid and its name together (REQ-2167, tests/unit/pgwire/test_type_conversions.py).
+        assert _scalar(con, f"SELECT n.oid::{regtype} AS rc FROM (SELECT 5 AS oid) n") == 5
 
 
 def test_name_cast_becomes_varchar(con):
     assert _scalar(con, "SELECT 'public'::name AS n") == "public"
 
 
-def test_qualified_regclass_literal_shortened():
-    # pg_description.classoid stores the short relation name ('pg_class'), so
-    # DataGrip's `classoid = 'pg_catalog.pg_class'::regclass` filter must map the
-    # schema-qualified literal to its last component or every comment drops.
+def test_qualified_regclass_literal_is_the_relations_oid():
+    # pg_description.classoid is an oid, as in PostgreSQL, so DataGrip's
+    # `classoid = 'pg_catalog.pg_class'::regclass` filter compares it with pg_class's oid.
     out = _rewrite_for_duckdb(
         "SELECT description FROM pg_description WHERE classoid = 'pg_catalog.pg_class'::regclass"
     )
-    assert "'pg_class'" in out
+    assert "1259" in out
     assert "pg_catalog.pg_class" not in out
 
 
-def test_unqualified_regclass_literal_unchanged(con):
-    assert _scalar(con, "SELECT 'pg_class'::regclass AS c") == "pg_class"
+def test_unqualified_regclass_literal_is_the_relations_oid(con):
+    assert _scalar(con, "SELECT 'pg_class'::regclass = 1259 AS c") is True
 
 
 def test_regclass_oid_chain_maps_to_class_oid(con):

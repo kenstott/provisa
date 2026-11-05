@@ -36,7 +36,7 @@ from provisa.compiler.temp_tables import TempSession
 from provisa.cypher.parser import CypherParseError
 from provisa.ephemeral import pattern, store
 from provisa.ephemeral.classify import classify_create, resolve
-from provisa.ephemeral.labels import add_labels
+from provisa.ephemeral.labels import add_labels, refuse_classes
 from provisa.ephemeral.pattern import CreatePattern
 from provisa.ephemeral.write import Created, Read, RowIds, Write, write_rows
 
@@ -63,21 +63,81 @@ class MergeOf:
     on_create: tuple[tuple[str, tuple[str, ...]], ...] = field(default=())
     on_match: tuple[tuple[str, tuple[str, ...]], ...] = field(default=())
     trailing: str | None = None
+    #: The ON CREATE and ON MATCH items that write a property (props.PropItem).
+    on_create_props: tuple[Any, ...] = field(default=())
+    on_match_props: tuple[Any, ...] = field(default=())
 
 
-def _labels_only(items: list[Any], when: str) -> tuple[tuple[str, tuple[str, ...]], ...]:
+def _label_items(items: list[Any]) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """An ON CREATE or ON MATCH SET's label items, each (variable, labels)."""
+    return tuple((item.variable, tuple(item.labels)) for item in items if item.labels)
+
+
+def _free_variables(expr: Any) -> set[str]:
+    """The variables an expression reads; a simple one (no comprehension, reduce, quantifier or
+    subquery, whose own variables it binds) only, else none."""
+    import dataclasses
+
+    from provisa.gql.expr_ast import (
+        ListComprehension,
+        PatternComprehension,
+        Quantifier,
+        Reduce,
+        SubqueryExpr,
+        Variable,
+    )
+
+    if isinstance(
+        expr, (ListComprehension, PatternComprehension, Quantifier, Reduce, SubqueryExpr)
+    ):
+        return set()
+    if isinstance(expr, Variable):
+        return {expr.name}
+    if isinstance(expr, (list, tuple)):
+        return set().union(*(_free_variables(e) for e in expr)) if expr else set()
+    if not dataclasses.is_dataclass(expr) or isinstance(expr, type):
+        return set()
+    return set().union(*(_free_variables(getattr(expr, f.name)) for f in dataclasses.fields(expr)))
+
+
+def _refuse_undefined(items: list[Any], scope: set[str], when: str) -> None:
+    """Refuse an ON CREATE or ON MATCH SET naming a variable the statement does not define, as
+    Cypher does when it compiles, whether or not a row takes it."""
     for item in items:
-        if not item.labels:
+        named = {item.variable} | (_free_variables(item.value) if item.value is not None else set())
+        missing = sorted(named - scope)
+        if missing:
             raise CypherParseError(
-                f"ON {when} SET of a property in a MERGE is not written yet: set labels only"
+                f"Variable `{missing[0]}` not defined: ON {when} SET names it, and the statement "
+                f"does not define it"
             )
-    return tuple((item.variable, tuple(item.labels)) for item in items)
 
 
-def merge_of(statement: str) -> MergeOf | None:
-    """The statement's MERGE, or None when it merges nothing."""
+def _prop_items(items: list[Any]) -> tuple[Any, ...]:
+    """An ON CREATE or ON MATCH SET's property items (props.PropItem)."""
+    from provisa.ephemeral.props import prop_items
+
+    held = prop_items([item for item in items if not item.labels])
+    assert held is not None
+    return held
+
+
+def set_text(items: tuple[Any, ...]) -> str:
+    """Property items (props.PropItem) written as one SET clause."""
+    parts = []
+    for item in items:
+        if item.property is not None:
+            parts.append(f"{item.variable}.{_name(item.property)} = {item.value}")
+        else:
+            parts.append(f"{item.variable} {'+=' if item.merge else '='} {item.value}")
+    return "SET " + ", ".join(parts)
+
+
+def merge_of(statement: str, keep: tuple[str, ...] = ()) -> MergeOf | None:
+    """The statement's MERGE, or None when it merges nothing. ``keep``: the variables of its
+    leading clauses its reads also return (a read after it names them)."""
     from provisa.cypher.parser import parse_cypher_statement, writes_in
-    from provisa.gql.ir import MergeClause
+    from provisa.gql.ir import MergeClause, UnwindClause
 
     if not writes_in(statement):
         return None
@@ -98,8 +158,16 @@ def merge_of(statement: str) -> MergeOf | None:
         if ast.return_clause is not None
         else None
     )
-    p = pattern.paths_pattern([merge.pattern])
+    p = pattern.paths_pattern([merge.pattern], undirected=True)
     bound = pattern.bound_by(ast.pipeline[:at])
+    from provisa.ephemeral.then import scope_of
+
+    if not p.rels and p.nodes[0].variable in scope_of(ast.pipeline[:at]):
+        # openCypher's VariableAlreadyBound: a MERGE of a node alone makes or matches that node,
+        # which a variable in scope is already. A name an earlier WITH dropped is free again.
+        raise CypherParseError(
+            f"Variable `{p.nodes[0].variable}` already declared: a MERGE of one node binds it"
+        )
     for i, node in enumerate(p.nodes):
         if node.variable is None:
             node.variable = f"_m{i}"
@@ -112,15 +180,26 @@ def merge_of(statement: str) -> MergeOf | None:
         )
     )
     prefix = statement[: merge.start].strip()
+    if at and isinstance(ast.pipeline[at - 1], UnwindClause):
+        # The pattern is matched against each row the UNWIND gives: carried by a WITH, so the
+        # OPTIONAL MATCH goes on from those rows (an UNWIND's rows are joined after a stage's
+        # patterns, not before them).
+        prefix += " WITH " + ", ".join(_name(v) for v in sorted(bound))
+    extra = tuple(v for v in keep if v in bound)
+    defined = set(bound) | {v for v in own if v is not None}
+    _refuse_undefined(merge.on_create, defined, "CREATE")
+    _refuse_undefined(merge.on_match, defined, "MATCH")
     return MergeOf(
         p,
         bound,
-        _read(prefix, p, bound, own),
-        _read(prefix, p, bound, own, unmatched=True),
+        _read(prefix, p, bound, own, extra),
+        _read(prefix, p, bound, own, extra, unmatched=True),
         tuple(v for v in own if v is not None),
-        _labels_only(merge.on_create, "CREATE"),
-        _labels_only(merge.on_match, "MATCH"),
+        _label_items(merge.on_create),
+        _label_items(merge.on_match),
         trailing,
+        _prop_items(merge.on_create),
+        _prop_items(merge.on_match),
     )
 
 
@@ -129,6 +208,7 @@ def _read(
     p: CreatePattern,
     bound: set[str],
     own: tuple[str | None, ...],
+    extra: tuple[str, ...] = (),
     *,
     unmatched: bool = False,
 ) -> str:
@@ -147,7 +227,8 @@ def _read(
         assert rel.variable is not None
         left = rel.target == j  # its target is the node before it: written right to left
         body = f"[{rel.variable}:{_name(rel.rel_type)}]"
-        text += (f"<-{body}-" if left else f"-{body}->") + node(j + 1)
+        arrow = f"-{body}-" if rel.undirected else f"<-{body}-" if left else f"-{body}->"
+        text += arrow + node(j + 1)
     conditions = [
         f"{n.variable}.{_name(k)} = {v}"
         for i, n in enumerate(p.nodes)
@@ -163,6 +244,7 @@ def _read(
     ]
     items = [f"{'NULL' if unmatched else v} AS _v_{v}" for v in own]
     items += [f"{v} AS _v_{v}" for v in reached]
+    items += [f"{v} AS _v_{v}" for v in extra if v not in reached]
     items += [f"{v} AS _n{i}_{k}" for i in created_nodes for k, v in p.nodes[i].properties]
     items += [f"{v} AS _r{j}_{k}" for j, r in enumerate(p.rels) for k, v in r.properties]
     if unmatched:
@@ -181,14 +263,39 @@ async def merge(
 ) -> Created | None:
     """Run ``statement`` when it is a MERGE the ephemeral layer takes; None when it merges
     nothing or merges a model relationship (the governed path's)."""
+    done = await merge_bound(statement, params, label_map, session, state, read, governed_write)
+    return None if done is None else done[0]
+
+
+async def merge_bound(
+    statement: str,
+    params: dict[str, Any],
+    label_map: Any,
+    session: TempSession,
+    state: Any,
+    read: Read,
+    governed_write: Write,
+    keep: tuple[str, ...] | None = None,
+) -> tuple[Created, list[dict[str, Any]]] | None:
+    """:func:`merge`, and with ``keep`` (the variables a read after it names) each row's
+    bindings of them (then.Bound): what the pattern matched, or what it made."""
+    from provisa.ephemeral.then import bound_value
     from provisa.ephemeral.write import _identity
 
     graph = store.graph(session)
     if _governed(statement, label_map, graph):
         return None
-    m = merge_of(statement)
+    keep = keep or ()
+    m = merge_of(statement, keep)
     if m is None:
         return None
+    # The variables an ON CREATE or ON MATCH property item names, bound as a read after the
+    # MERGE binds them (then.py), so its SET finds them again.
+    named_by_sets = _named_by_sets(m)
+    scope = tuple(dict.fromkeys([*keep, *named_by_sets]))
+    if any(v in m.bound and v not in keep for v in named_by_sets):
+        m = merge_of(statement, scope)
+        assert m is not None
     kind = classify_create(m.pattern, m.bound, label_map, graph)
     if m.trailing is not None:
         raise CypherParseError(
@@ -196,27 +303,41 @@ async def merge(
         )
     rows = await read(m.read if _matchable(m, kind, label_map, graph) else m.read_unmatched, params)
     index = {n.variable: i for i, n in reversed(list(enumerate(m.pattern.nodes)))}
+    reached = {n.variable for n in m.pattern.nodes if n.variable in m.bound}
     matched: list[tuple[str, str, str | None]] = []  # (node id, label, model type) to give
     to_make: list[dict[str, Any]] = []
     made_for: dict[tuple, int] = {}  # a row's values -> the row of to_make making them
     again: list[int] = []  # rows matching what an earlier row of the statement makes
+    # Each row read: None when it matched, else the row of to_make making what it binds.
+    making: list[int | None] = []
+    # Each row read: whether it made what it binds (ON CREATE), not matched it (ON MATCH).
+    fresh: list[bool] = []
     for row in rows:
         if all(row[f"_v_{v}"] is not None for v in m.own):
+            making.append(None)
+            fresh.append(False)
             for var, labels in m.on_match:
                 node_id, read_by = _identity(row[f"_v_{var}"], label_map, graph)
                 model = None if node_id in graph.node_keys else read_by[0]
                 matched.extend((node_id, k, model) for k in resolve(list(labels), label_map).keys)
             continue
+        # What the pattern makes is its values and the bound nodes it reaches: a variable the
+        # read carries for anything else (a SET's, a later read's) makes no other node.
         key = tuple(
-            repr(v) for k, v in sorted(row.items()) if not k.startswith("_v_") or k[3:] in m.bound
+            repr(v) for k, v in sorted(row.items()) if not k.startswith("_v_") or k[3:] in reached
         )
+        _refuse_null(m, row)
         if key in made_for:
             again.append(made_for[key])
+            making.append(made_for[key])
+            fresh.append(False)
             continue
         made_for[key] = len(to_make)
+        making.append(len(to_make))
+        fresh.append(True)
         to_make.append(row)
-    named = {var for var, _ in m.on_create + m.on_match}
-    created, ids = await write_rows(
+    named = {var for var, _ in m.on_create + m.on_match} | set(scope)
+    created, ids, rel_ids = await write_rows(
         m.pattern,
         kind,
         to_make,
@@ -231,8 +352,98 @@ async def merge(
     given = list(matched)
     given += _give(ids, on_create, index, graph)
     given += _give([ids[i] for i in again], on_match, index, graph)
+    refuse_classes(label_map, given, "SET")
     await add_labels(state, session, given)
-    return created
+    rel_at = {r.variable: j for j, r in enumerate(m.pattern.rels)}
+    bound_rows: list[dict[str, Any]] = []
+    for row, at in zip(rows, making, strict=True):
+        out: dict[str, Any] = {}
+        for var in scope:
+            if at is None or var in m.bound or var not in m.own:
+                out[var] = bound_value(row.get(f"_v_{var}"), label_map, graph)
+            elif var in rel_at:
+                j = rel_at[var]
+                rel_type = m.pattern.rels[j].rel_type
+                held = rel_ids[at]
+                out[var] = ("r", held[j], rel_type) if j in held else ("m", None, rel_type)
+            else:
+                node_id, labels = ids[at][index[var]]
+                out[var] = ("n", node_id, labels)
+        bound_rows.append(out)
+    for items, when, made_them in (
+        (m.on_create_props, "CREATE", True),
+        (m.on_match_props, "MATCH", False),
+    ):
+        chosen = [row for row, f in zip(bound_rows, fresh, strict=True) if f == made_them]
+        if items and chosen:
+            await _set_properties(
+                items, when, chosen, scope, params, label_map, session, state, read
+            )
+    return created, [{var: row[var] for var in keep} for row in bound_rows]
+
+
+def _named_by_sets(m: MergeOf) -> tuple[str, ...]:
+    """The variables of the MERGE's scope its ON CREATE and ON MATCH property items name: each
+    item's object and every variable its value reads."""
+    from provisa.ephemeral.then import names_in
+
+    in_scope = set(m.own) | m.bound
+    named: list[str] = []
+    for item in (*m.on_create_props, *m.on_match_props):
+        named.append(item.variable)
+        named.extend(sorted(names_in(item.value or "") & in_scope))
+    return tuple(dict.fromkeys(v for v in named if v in in_scope))
+
+
+def _refuse_null(m: MergeOf, row: dict[str, Any]) -> None:
+    """Refuse a MERGE whose pattern names a property null, as Cypher does: a null never matches,
+    and no node or relationship is made with it."""
+    for i, node in enumerate(m.pattern.nodes):
+        for k, _ in node.properties:
+            if f"_n{i}_{k}" in row and row[f"_n{i}_{k}"] is None:
+                raise CypherParseError(
+                    f"Cannot merge the node {node.variable} using a null value of its {k}"
+                )
+    for j, rel in enumerate(m.pattern.rels):
+        for k, _ in rel.properties:
+            if f"_r{j}_{k}" in row and row[f"_r{j}_{k}"] is None:
+                raise CypherParseError(
+                    f"Cannot merge the relationship {rel.variable} using a null value of its {k}"
+                )
+
+
+async def _set_properties(
+    items: tuple[Any, ...],
+    when: str,
+    rows: list[dict[str, Any]],
+    scope: tuple[str, ...],
+    params: dict[str, Any],
+    label_map: Any,
+    session: TempSession,
+    state: Any,
+    read: Read,
+) -> None:
+    """The MERGE's ON ``when`` SET of ``items``, for each of ``rows`` (each one's bindings of
+    ``scope``): a SET of the session's objects (props), its objects found again as a read after a
+    write finds them (then.rest_read)."""
+    from provisa.ephemeral import props, then
+
+    split = then.Split(head="", rest=set_text(items), kind="props", scope=scope)
+    tail, bound = then.rest_read(split, rows, store.graph(session))
+    held = session.extensions.get(then._FLAG)
+    session.extensions[then._FLAG] = True
+    try:
+        done = await props.write_props(
+            tail, {**params, then.PARAM: bound}, label_map, session, state, read
+        )
+    finally:
+        if held is None:
+            session.extensions.pop(then._FLAG, None)
+    if done is None:
+        raise CypherParseError(
+            f"ON {when} SET writes a model node's property in a MERGE of the session's objects: "
+            f"a model node's property is a governed column; write it in a statement of its own"
+        )
 
 
 def _governed(statement: str, label_map: Any, graph: store.Graph) -> bool:
@@ -249,7 +460,7 @@ def _governed(statement: str, label_map: Any, graph: store.Graph) -> bool:
     if not merges:
         return False
     at = ast.pipeline.index(merges[0])
-    p = pattern.paths_pattern([m.pattern for m in merges])
+    p = pattern.paths_pattern([m.pattern for m in merges], undirected=True)
     kind = classify_create(p, pattern.bound_by(ast.pipeline[:at]), label_map, graph)
     if any(kind.rels_governed):
         return True

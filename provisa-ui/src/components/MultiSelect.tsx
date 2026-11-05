@@ -11,6 +11,7 @@
 import { MultiSelect as MantineMultiSelect } from "@mantine/core";
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Tip } from "./Tip";
 
 /** Multi-value picker backed by Mantine MultiSelect — provides the ARIA
  *  combobox pattern, keyboard navigation, and searchable options that the
@@ -18,6 +19,7 @@ import { useTranslation } from "react-i18next";
  *  Public API is unchanged so existing call sites need no edits. */
 export function MultiSelect({
   options,
+  disabledHint,
   value,
   onChange,
   className,
@@ -32,7 +34,9 @@ export function MultiSelect({
   "aria-labelledby": labelledBy,
   "aria-description": ariaDescription,
 }: {
-  options: { id: string; label: string }[];
+  /** An option `disabled` is shown and cannot be picked; `disabledHint` says why. */
+  options: { id: string; label: string; disabled?: boolean }[];
+  disabledHint?: string;
   value: string[];
   onChange: (selected: string[]) => void;
   className?: string;
@@ -53,7 +57,19 @@ export function MultiSelect({
     <MantineMultiSelect
       className={className}
       style={style}
-      data={options.map((o) => ({ value: o.id, label: o.label }))}
+      data={options.map((o) => ({ value: o.id, label: o.label, disabled: o.disabled }))}
+      renderOption={
+        disabledHint
+          ? ({ option }) =>
+              option.disabled ? (
+                <Tip text={disabledHint}>
+                  <span data-testid={`option-not-held-${option.value}`}>{option.label}</span>
+                </Tip>
+              ) : (
+                option.label
+              )
+          : undefined
+      }
       value={value}
       onChange={onChange}
       label={label}

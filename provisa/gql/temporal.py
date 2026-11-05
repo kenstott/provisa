@@ -352,6 +352,16 @@ def returned(value: exp.Expression) -> exp.Expression:
     return _let(value, [], exp.Array(expressions=list(parts(_c("_dv")))))
 
 
+def returned_list(value: exp.Expression) -> exp.Expression:
+    """A list of durations as it leaves the engine: each item's three parts (:func:`returned`)."""
+    if isinstance(value, exp.Null):
+        return value
+    each = exp.Array(expressions=list(parts(_c("_de"))))
+    return exp.Transform(
+        this=value, expression=exp.Lambda(this=each, expressions=[exp.to_identifier("_de")])
+    )
+
+
 def _trunc_div(a: int, b: int) -> int:
     q = abs(a) // abs(b)
     return q if (a >= 0) == (b >= 0) else -q
@@ -386,12 +396,52 @@ def iso_duration(months: int, days: int, micros: int) -> str:
 
 
 def _months_and_days(duration: exp.Expression) -> exp.Expression:
-    months, days = parts(duration)[:2]
+    """What a duration moves a date by: its months, its days and the whole days of its time (a
+    time of 1.4 days moves a date one day, toward zero either way); the rest of its time is no
+    part of a date."""
+    months, days, micros = parts(duration)
+    days = exp.Add(this=days, expression=_int_div(micros, _SECONDS_PER_DAY * _MICROS))
     return exp.Paren(this=exp.Add(this=_times(months, "month"), expression=_times(days, "day")))
 
 
 def _seconds_part(duration: exp.Expression) -> exp.Expression:
     return _times(parts(duration)[2], "microsecond")
+
+
+def _scaled(duration: exp.Expression, factor: exp.Expression, *, divide: bool) -> exp.Expression:
+    """A duration multiplied (or divided) by a number, as openCypher scales one: each part by
+    the number, a fraction of a month carried into days (the average month), a fraction of a day
+    into its time, to the microsecond. An engine's own interval arithmetic carries no fraction
+    of a month, nor of a day."""
+    months, days, micros = parts(_c("_dv"))
+
+    def by(e: exp.Expression) -> exp.Expression:
+        held = exp.Cast(this=e, to=exp.DataType.build("DOUBLE"))
+        return (exp.Div if divide else exp.Mul)(this=held, expression=_c("_f"))
+
+    def whole(e: exp.Expression) -> exp.Expression:
+        return exp.Anonymous(this="TRUNC", expressions=[e])
+
+    def carried(e: exp.Expression, per: object) -> exp.Expression:
+        rest = exp.Paren(this=exp.Sub(this=e, expression=whole(e.copy())))
+        return exp.Mul(this=rest, expression=exp.Literal.number(str(per)))
+
+    steps = [
+        {"_f": exp.Cast(this=exp.Paren(this=factor), to=exp.DataType.build("DOUBLE"))},
+        {"_m": by(months)},
+        {"_d": exp.Add(this=by(days), expression=carried(_c("_m"), float(_DAYS_PER_MONTH)))},
+        {"_us": exp.Add(this=by(micros), expression=carried(_c("_d"), _SECONDS_PER_DAY * _MICROS))},
+    ]
+    scaled = exp.Add(
+        this=exp.Add(
+            this=_times(exp.Cast(this=whole(_c("_m")), to=exp.DataType.build("BIGINT")), "month"),
+            expression=_times(
+                exp.Cast(this=whole(_c("_d")), to=exp.DataType.build("BIGINT")), "day"
+            ),
+        ),
+        expression=_times(exp.Anonymous(this="ROUND", expressions=[_c("_us")]), "microsecond"),
+    )
+    return _let(duration, steps, scaled)
 
 
 def arithmetic(
@@ -407,8 +457,11 @@ def arithmetic(
     if DURATION not in (left_kind, right_kind):
         return None
     if op in ("*", "/"):
-        cls = exp.Mul if op == "*" else exp.Div
-        return cls(this=exp.Paren(this=left), expression=exp.Paren(this=right))
+        if left_kind == DURATION:
+            return _scaled(left, right, divide=op == "/")
+        if op == "/":
+            raise CypherTranslateError("a number cannot be divided by a duration")
+        return _scaled(right, left, divide=False)
     left, right = exp.Paren(this=left), exp.Paren(this=right)
     if left_kind == DURATION and right_kind == DURATION:
         return (exp.Add if op == "+" else exp.Sub)(this=left, expression=right)
@@ -725,6 +778,8 @@ _TYPE_KINDS = {
     "time without time zone": LOCALTIME,
     "timetz": TIME,
     "time with time zone": TIME,
+    # A session property's kind for a time with its offset (provisa.ephemeral.types).
+    "zoned_time": TIME,
     "timestamp": LOCALDATETIME,
     "timestamp without time zone": LOCALDATETIME,
     "datetime": LOCALDATETIME,

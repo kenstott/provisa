@@ -613,6 +613,9 @@ export interface TableMetadata {
   pagingKind?: PagingKind | null;
   pagination?: Paging | null;
   pagingCeilingRows?: number | null;
+  // REQ-1986: the parameters a read of it must give, by the name a caller gives each; a table
+  // with any is a lookup, listed apart in the picker.
+  requiredParameters?: string[];
 }
 
 export interface ColumnMetadata {
@@ -2027,6 +2030,8 @@ export interface ProtocolHealth {
   name: string;
   status: "running" | "down" | "disabled";
   port: number | null;
+  /** Where an HTTP surface is served; a socket listener has a `port` instead. */
+  path: string | null;
 }
 
 export interface SystemHealth {
@@ -2841,7 +2846,8 @@ export interface MaskPatternVerdict {
 
 export interface MasksReport {
   unreachable: { entry: number; covered_by: number | null }[];
-  unlisted_unmasked: boolean;
+  /** What a save of this list is refused with; null when every entry is reached. */
+  refusal: { code: string; message: string; params: { entries: string } } | null;
   applies: number | null;
   /** Each construct of a regex entry outside the universal dialect; empty when all pass. */
   patterns: MaskPatternVerdict[];

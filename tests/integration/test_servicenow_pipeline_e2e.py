@@ -19,15 +19,15 @@ GraphQL mutations on both write routes:
 The DuckDB engine reads the source by attaching its own server; see ``test_servicenow_source_e2e``
 for the server alone. It reads SERVICENOW_INSTANCE_URL, SERVICENOW_USERNAME and
 SERVICENOW_PASSWORD. Every record it writes is named ``provisa-itest-`` plus a random suffix and is
-deleted by that name whether the test passes or fails; it touches no record it did not create. The
-staging rows the import set keeps are the instance's own record of the insert.
+deleted by that name whether the test passes or fails, and read back gone; it touches no record it
+did not create. The staging rows an import-set insert leaves are the run's too and are deleted by
+the same name (REQ-254).
 """
 
 from __future__ import annotations
 
 import json
 import os
-import uuid
 from typing import Any
 
 import pytest
@@ -42,6 +42,7 @@ from tests.integration.connector_source_harness import (
 )
 from tests.conftest import as_deployment_org
 from tests.helpers import registered_id, release_mutation, write_grants_mutation
+from tests.integration.live_teardown import none_remain, run_every_async, run_name
 
 pytestmark = [
     pytest.mark.integration,
@@ -171,7 +172,7 @@ async def registered(client):
 
 
 def _own_name() -> str:
-    return f"provisa-itest-{uuid.uuid4().hex[:12]}"
+    return run_name("provisa-itest", "-")
 
 
 def _email(name: str) -> str:
@@ -224,14 +225,13 @@ async def test_an_unbound_tables_insert_update_and_delete_are_written_to_it(clie
             f'mutation {{ {delete}(where: {{shortDescription: {{like: "{name}%"}}}}) '
             "{ affected_rows } }",
         )
-    assert await _incidents_named(client, name) == []
+        none_remain(f"incident {name}", await _incidents_named(client, name))
 
 
-async def test_a_bound_tables_insert_goes_through_its_import_set(client, registered):
+async def test_a_bound_tables_insert_goes_through_its_import_set(client, registered, staging):
     del registered
     name = _own_name()
     insert = await _mutation(client, "insert", "sys_user")
-    delete = await _mutation(client, "delete", "sys_user")
     try:
         written = await _data(
             client,
@@ -243,16 +243,72 @@ async def test_a_bound_tables_insert_goes_through_its_import_set(client, registe
         (row,) = await _users_named(client, name)
         assert row["sys_id"]
     finally:
-        await _data(
-            client,
-            f'mutation {{ {delete}(where: {{userName: {{eq: "{name}"}}}}) {{ affected_rows }} }}',
-        )
-    assert await _users_named(client, name) == []
+        await _remove_user_and_staging(client, staging, name)
 
 
 async def _users_named(client: AsyncClient, name: str) -> list[dict[str, Any]]:
     return await query_semantic(
         client, f'SELECT "sys_id" FROM "{_DOMAIN}"."sys_user" WHERE "user_name" = \'{name}\''
+    )
+
+
+@pytest_asyncio.fixture(loop_scope="session", scope="module")
+async def staging(client, registered) -> dict[str, str]:
+    """sys_user's import-set staging table, registered so a test deletes the staging rows its
+    insert left (REQ-254): its name, and its columns that carry the user name and the email."""
+    import_set = registered
+    columns = [
+        c["name"]
+        for c in (
+            await _admin(
+                client,
+                f'{{ availableColumnsMetadata(sourceId: "{_SOURCE_ID}", schemaName: "{_SCHEMA}", '
+                f'tableName: "{import_set}") {{ name }} }}',
+            )
+        )["availableColumnsMetadata"]
+        if not c["name"].startswith("sys_")
+    ]
+    user_field = next(c for c in columns if "user_name" in c or "user_id" in c)
+    email_field = next(c for c in columns if "email" in c)
+    await _register(client, import_set, ["sys_id", user_field, email_field])
+    await rebuild_schemas(client)
+    return {"table": import_set, "user": user_field, "email": email_field}
+
+
+async def _staged_rows(client: AsyncClient, staging: dict[str, str], name: str) -> list[str]:
+    rows = await query_semantic(
+        client,
+        f'SELECT "sys_id" FROM "{_DOMAIN}"."{staging["table"]}" '
+        f"WHERE \"{staging['user']}\" = '{name}' OR \"{staging['email']}\" = '{_email(name)}'",
+    )
+    return [r["sys_id"] for r in rows]
+
+
+async def _delete_by_sys_id(client: AsyncClient, table: str, sys_ids: list[str]) -> None:
+    delete = await _mutation(client, "delete", table)
+    for sys_id in sys_ids:
+        await _data(
+            client,
+            f'mutation {{ {delete}(where: {{sysId: {{eq: "{sys_id}"}}}}) {{ affected_rows }} }}',
+        )
+
+
+async def _remove_user_and_staging(client: AsyncClient, staging: dict[str, str], name: str) -> None:
+    """Delete the run's sys_user record and the staging rows its import-set insert left, each by
+    the run's name; every delete attempted, then each read back empty (REQ-254)."""
+
+    async def users() -> None:
+        await _delete_by_sys_id(
+            client, "sys_user", [r["sys_id"] for r in await _users_named(client, name)]
+        )
+        none_remain(f"sys_user {name}", await _users_named(client, name))
+
+    async def staged() -> None:
+        await _delete_by_sys_id(client, staging["table"], await _staged_rows(client, staging, name))
+        none_remain(f"{staging['table']} rows of {name}", await _staged_rows(client, staging, name))
+
+    await run_every_async(
+        [(f"delete sys_user {name}", users), (f"delete staging rows of {name}", staged)]
     )
 
 
@@ -335,44 +391,28 @@ async def _register_command(client: AsyncClient, name: str, operation: str) -> s
     return field
 
 
-async def test_an_import_set_row_goes_through_its_transform_map(client, registered, offered):
+async def test_an_import_set_row_goes_through_its_transform_map(
+    client, registered, offered, staging
+):
     """The typed insert's fields are the staging table's columns; the answer is each row's
-    transform result, and the record the transform wrote is deleted by its sys_id."""
+    transform result. The record the transform wrote and the staging row are deleted by the
+    run's name after, however the test ends."""
     import_set = registered
-    staging_columns = [
-        c["name"]
-        for c in (
-            await _admin(
-                client,
-                f'{{ availableColumnsMetadata(sourceId: "{_SOURCE_ID}", schemaName: "{_SCHEMA}", '
-                f'tableName: "{import_set}") {{ name }} }}',
-            )
-        )["availableColumnsMetadata"]
-        if not c["name"].startswith("sys_")
-    ]
-    user_field = next(c for c in staging_columns if "user_name" in c or "user_id" in c)
-    email_field = next(c for c in staging_columns if "email" in c)
     field = await _register_command(
         client, "snowImportUser", _operation(offered, "POST", f"/api/now/import/{import_set}")
     )
     name = _own_name()
-    delete = await _mutation(client, "delete", "sys_user")
-    answer = await _data(
-        client,
-        f'mutation {{ {field}(body: {{ {user_field}: "{name}", {email_field}: "{_email(name)}" }}) }}',
-    )
-    rows = _result(answer[field])
     try:
+        answer = await _data(
+            client,
+            f'mutation {{ {field}(body: {{ {staging["user"]}: "{name}", '
+            f'{staging["email"]}: "{_email(name)}" }}) }}',
+        )
+        rows = _result(answer[field])
         assert rows and rows[0]["status"] in ("inserted", "updated"), rows
         assert rows[0]["table"] == "sys_user"
     finally:
-        for row in rows:
-            if row.get("sys_id"):
-                await _data(
-                    client,
-                    f'mutation {{ {delete}(where: {{sysId: {{eq: "{row["sys_id"]}"}}}}) '
-                    "{ affected_rows } }",
-                )
+        await _remove_user_and_staging(client, staging, name)
 
 
 async def _orderable_without_variables(
@@ -391,12 +431,56 @@ async def _orderable_without_variables(
     raise AssertionError("the instance's catalog has no item that orders without its variables")
 
 
+async def _remove_order(client: AsyncClient, marker: str, ordered_sys_id: list[str]) -> None:
+    """Delete what the run's order created -- its catalog tasks, requested items and the request
+    -- found by the request's sys_id and by the run's marker on it; every delete attempted, then
+    each read back empty (REQ-254)."""
+    requests = list(ordered_sys_id)
+    marked = await query_semantic(
+        client,
+        f'SELECT "sys_id" FROM "{_DOMAIN}"."sc_request" '
+        f"WHERE \"special_instructions\" = '{marker}'",
+    )
+    requests += [r["sys_id"] for r in marked if r["sys_id"] not in requests]
+
+    async def children(table: str) -> list[str]:
+        if not requests:
+            return []
+        listed = ", ".join(f"'{r}'" for r in requests)
+        rows = await query_semantic(
+            client, f'SELECT "sys_id" FROM "{_DOMAIN}"."{table}" WHERE "request" IN ({listed})'
+        )
+        return [r["sys_id"] for r in rows]
+
+    async def remove(table: str) -> None:
+        await _delete_by_sys_id(client, table, await children(table))
+        none_remain(f"{table} rows of the run's order", await children(table))
+
+    async def remove_requests() -> None:
+        await _delete_by_sys_id(client, "sc_request", requests)
+        if requests:
+            listed = ", ".join(f"'{r}'" for r in requests)
+            left = await query_semantic(
+                client,
+                f'SELECT "sys_id" FROM "{_DOMAIN}"."sc_request" WHERE "sys_id" IN ({listed})',
+            )
+            none_remain("the run's sc_request", left)
+
+    await run_every_async(
+        [
+            ("delete the order's sc_task rows", lambda: remove("sc_task")),
+            ("delete the order's sc_req_item rows", lambda: remove("sc_req_item")),
+            ("delete the order's sc_request", remove_requests),
+        ]
+    )
+
+
 async def test_a_service_catalog_item_is_ordered_and_its_request_removed(
     client, registered, offered
 ):
     """A Service Catalog order through the instance's own API: the first item that orders with
-    no variables, once; the request it creates is removed through the Table API as a registered
-    table."""
+    no variables, once. The request carries the run's marker; it, its requested items and their
+    tasks are removed through the Table API as registered tables, however the test ends."""
     del registered
     items = await _register_command(
         client, "snowCatalogItems", _operation(offered, "GET", "/api/sn_sc/servicecatalog/items")
@@ -411,21 +495,28 @@ async def test_a_service_catalog_item_is_ordered_and_its_request_removed(
         "snowOrderNow",
         _operation(offered, "POST", "/api/sn_sc/servicecatalog/items/{sys_id}/order_now"),
     )
+    # Everything the teardown needs is registered before anything is ordered.
+    await _register(client, "sc_request", ["sys_id", "number", "special_instructions"])
+    await _register(client, "sc_req_item", ["sys_id", "request"])
+    await _register(client, "sc_task", ["sys_id", "request"])
+    await rebuild_schemas(client)
+    update = await _mutation(client, "update", "sc_request")
     listed = await _data(client, f"query {{ {items} }}")
     item = await _orderable_without_variables(client, detail, _result(listed[items]))
-    ordered = await _data(
-        client,
-        f'mutation {{ {order}(sys_id: "{item["sys_id"]}", body: {{ sysparm_quantity: 1 }}) }}',
-    )
-    request = _result(ordered[order])
-    await _register(client, "sc_request", ["sys_id", "number"])
-    await rebuild_schemas(client)
-    delete = await _mutation(client, "delete", "sc_request")
+    marker = _own_name()
+    ordered_sys_id: list[str] = []
     try:
-        assert request["number"].startswith("REQ")
-    finally:
+        ordered = await _data(
+            client,
+            f'mutation {{ {order}(sys_id: "{item["sys_id"]}", body: {{ sysparm_quantity: 1 }}) }}',
+        )
+        request = _result(ordered[order])
+        ordered_sys_id.append(request["sys_id"])
         await _data(
             client,
-            f'mutation {{ {delete}(where: {{sysId: {{eq: "{request["sys_id"]}"}}}}) '
-            "{ affected_rows } }",
+            f'mutation {{ {update}(where: {{sysId: {{eq: "{request["sys_id"]}"}}}}, '
+            f'set: {{specialInstructions: "{marker}"}}) {{ affected_rows }} }}',
         )
+        assert request["number"].startswith("REQ")
+    finally:
+        await _remove_order(client, marker, ordered_sys_id)

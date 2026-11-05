@@ -32,7 +32,7 @@ from provisa.compiler.sql_rewrite import lower_to_catalog_physical, make_semanti
 from provisa.compiler.view_expand import expand_view_refs
 from provisa.cypher.parser import parse_cypher
 from provisa.cypher.printer import print_cypher
-from provisa.executor.serialize import serialize_rows
+from tests.unit.json_encoder.rows import serialize_rows
 from provisa.gql.assembler import assemble_rows
 from provisa.gql.graph_rewriter import apply_graph_rewrites
 from provisa.gql.translator import cypher_to_sql
@@ -96,11 +96,12 @@ def glossary():
         con.execute(f'CREATE TABLE {_T}"{t["table_name"]}" ({cols})')
     con.execute(
         f"INSERT INTO {_T}_terms (id, name, definition, ref_count, deprecated, retired, "
-        "live, identity_gap, term_domains) VALUES "
-        "(1, 'party', 'a party', 2, false, false, true, false, '|sales|'), "
-        "(2, 'customer', 'who buys', 1, false, false, true, false, '|sales|'), "
-        "(3, 'ledger', 'books', 0, false, false, true, false, '|finance|'), "
-        "(4, 'old party', 'was a party', 0, true, true, false, false, '|sales|')"
+        "status, grounding, identity_gap, term_domains) VALUES "
+        "(1, 'party', 'a party', 2, false, false, 'approved', 'grounded', false, '|sales|'), "
+        "(2, 'customer', 'who buys', 1, false, false, 'approved', 'grounded', false, '|sales|'), "
+        "(3, 'ledger', 'books', 0, false, false, 'approved', 'grounded', false, '|finance|'), "
+        "(4, 'old party', 'was a party', 0, true, true, 'retired', 'not_grounded', false, "
+        "'|sales|')"
     )
     con.execute(
         f"INSERT INTO {_T}_term_edges (id, from_term_id, to_term_id, rel_type) VALUES "
@@ -210,7 +211,7 @@ def _graphql_terms_and_edges(rows: list[dict]) -> tuple[set, set]:
 
     def visit(row: dict) -> None:
         terms.add(row["id"])
-        for side, end in (("edges_out", "target_term"), ("edges_in", "source_term")):
+        for side, end in (("edgesOut", "targetTerm"), ("edgesIn", "sourceTerm")):
             for e in row.get(side) or []:
                 edges.add(e["id"])
                 if len(e[end]) > 1:
@@ -252,7 +253,7 @@ def test_as_nodes_it_answers_the_same_terms_and_term_edges(glossary, key):
 def test_an_unfiltered_junction_field_is_an_untyped_relationship_and_a_filtered_one_its_types():
     unfiltered = _cypher(_READS[_ONTOLOGY[0]], GRAPHQL)
     assert "MATCH (n0)-[r0]->(n1:Terms)" in unfiltered
-    assert "rel_type: r0.relType" in unfiltered
+    assert "relType: r0.relType" in unfiltered
     filtered = _cypher(_READS[_ONTOLOGY[2]], GRAPHQL)
     assert "-[r0:KIND_OF|PART_OF]->" in filtered
 

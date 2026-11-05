@@ -28,7 +28,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from provisa.api.admin._platform_guard import require_platform_settings
+from provisa.api.admin._platform_guard import require_deployment_settings
 from provisa.api.errors import ApiError
 
 log = logging.getLogger(__name__)
@@ -49,7 +49,7 @@ def _is_desktop_runtime() -> bool:
 @router.post("/shutdown")
 async def shutdown(request: Request) -> JSONResponse:
     """Kill every Provisa process on this host: uvicorn backend + Vite UI dev server."""
-    require_platform_settings(request)
+    require_deployment_settings(request)  # REQ-1327
 
     if not _is_desktop_runtime():
         raise ApiError(

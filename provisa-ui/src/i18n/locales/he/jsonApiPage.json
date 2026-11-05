@@ -18,6 +18,7 @@
     "optionalHint": "אופציונלי",
     "fieldPlaceholder": "— שדה —",
     "filterValuePlaceholder": "ערך",
+    "removeHandedParam": "הסרת {{param}}",
     "sortAsc": "עולה",
     "sortDesc": "יורד",
     "paginationSectionTitle": "עימוד",

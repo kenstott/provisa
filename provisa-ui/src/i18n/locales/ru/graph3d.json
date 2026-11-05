@@ -65,6 +65,7 @@
     "edge_owns": "владеет",
     "loadError": "Не удалось прочитать граф: {{error}}",
     "zoomTo": "Приблизить",
+    "openInErd": "Открыть в ERD",
     "edge_column_lineage": "питает столбец",
     "preset_taxonomy": "Таксономия",
     "layer_domains": "Домены",
@@ -93,7 +94,6 @@
     "look_in_product": "столбец в продукте данных",
     "look_out_of_product": "столбец вне продуктов данных",
     "look_stored": "таблица",
-    "status_live": "Действующий",
     "openAsQuery": "Открыть как запрос",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",
@@ -117,6 +117,7 @@
     "status_draft": "Черновик",
     "openAsQueryNoSparql": "У этого запроса нет формы SPARQL.",
     "openAsQuerySparqlRoots": "Каждый корень этого запроса — отдельный запрос SPARQL: откройте GraphQL, чтобы прочитать их по одному.",
+    "status_approved": "Утверждён",
     "lane_term": "Термины",
     "lane_column": "Столбцы",
     "lane_table": "Таблицы",
@@ -148,6 +149,8 @@
     "factMembers": "Таблицы-участники",
     "factColumns": "Столбцы",
     "depth": "Глубина",
-    "lateral": "Боковые рёбра"
+    "lateral": "Боковые рёбра",
+    "grounding_grounded": "Привязан",
+    "grounding_grounded_pending": "Привязан, через черновик"
   }
 }

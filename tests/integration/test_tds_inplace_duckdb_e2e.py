@@ -39,41 +39,53 @@ _SCH = "provisa_tds_inplace_it"
 @pytest.fixture(scope="module")
 def warehouse():
     """The lane's warehouse, its capacity up, with one small table to read; dropped and the
-    capacity paused after."""
-    from tests.integration.fabric_capacity import ensure_capacity_resumed, suspend_capacity
-    from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime
+    capacity paused after (REQ-254), however setup or the tests end.
 
-    ensure_capacity_resumed()
-    rt = MssqlWarehouseRuntime(
-        server=os.environ["FABRIC_SQL_SERVER"],
-        database=os.environ["FABRIC_DATABASE"],
-        engine_name="fabric",
-    )
-    cur = rt.connection.cursor()
-    try:
-        cur.execute(f"IF SCHEMA_ID('{_SCH}') IS NULL EXEC('CREATE SCHEMA [{_SCH}]')")
-        cur.execute(f"DROP TABLE IF EXISTS [{_SCH}].[orders]")
-        cur.execute(
-            f"CREATE TABLE [{_SCH}].[orders] (id INT, region VARCHAR(16), total DECIMAL(10,2))"
+    Everything that can resume the capacity -- the explicit resume, and the runtime, which
+    resumes it on connect (REQ-1775) -- and everything that can fail after it runs inside
+    ``capacity_resumed()``, so the pause is never skipped."""
+    from provisa.federation.mssql_warehouse_runtime import MssqlWarehouseRuntime
+    from tests.integration.fabric_capacity import capacity_resumed
+    from tests.integration.live_teardown import run_every
+
+    with capacity_resumed():
+        rt = MssqlWarehouseRuntime(
+            server=os.environ["FABRIC_SQL_SERVER"],
+            database=os.environ["FABRIC_DATABASE"],
+            engine_name="fabric",
         )
-        cur.execute(f"INSERT INTO [{_SCH}].[orders] VALUES (1,'east',10.50),(2,'west',20.00)")
-        rt.connection.commit()
-    finally:
-        cur.close()
-    try:
-        yield rt
-    finally:
         try:
             cur = rt.connection.cursor()
             try:
+                cur.execute(f"IF SCHEMA_ID('{_SCH}') IS NULL EXEC('CREATE SCHEMA [{_SCH}]')")
                 cur.execute(f"DROP TABLE IF EXISTS [{_SCH}].[orders]")
-                cur.execute(f"DROP SCHEMA IF EXISTS [{_SCH}]")
+                cur.execute(
+                    f"CREATE TABLE [{_SCH}].[orders] (id INT, region VARCHAR(16), total DECIMAL(10,2))"
+                )
+                cur.execute(
+                    f"INSERT INTO [{_SCH}].[orders] VALUES (1,'east',10.50),(2,'west',20.00)"
+                )
                 rt.connection.commit()
             finally:
                 cur.close()
-            rt.close()
+            yield rt
         finally:
-            suspend_capacity()
+            run_every(
+                [
+                    (f"drop schema {_SCH}", lambda: _drop_schema(rt)),
+                    ("close the runtime", rt.close),
+                ]
+            )
+
+
+def _drop_schema(rt) -> None:
+    cur = rt.connection.cursor()
+    try:
+        cur.execute(f"DROP TABLE IF EXISTS [{_SCH}].[orders]")
+        cur.execute(f"DROP SCHEMA IF EXISTS [{_SCH}]")
+        rt.connection.commit()
+    finally:
+        cur.close()
 
 
 def _attached(alias: str = "fab"):

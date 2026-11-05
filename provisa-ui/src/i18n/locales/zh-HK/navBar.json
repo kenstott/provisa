@@ -24,6 +24,7 @@
     "itemSql": "SQL",
     "itemGrpc": "gRPC",
     "itemJsonApi": "JSON:API",
+    "itemOData": "OData",
     "itemOpenApi": "OpenAPI",
     "itemOrgs": "組織",
     "itemDashboard": "儀表板",
@@ -35,6 +36,8 @@
     "itemEmail": "電郵",
     "itemMaintenance": "維護",
     "itemDeploymentSettings": "部署設定",
+    "itemPlatform": "平台",
+    "itemRegions": "區域",
     "itemBilling": "帳單",
     "itemExplore": "MCP",
     "itemEncryption": "加密",
@@ -77,6 +80,7 @@
     "itemNotebook": "筆記本",
     "itemContainerRegistries": "容器登錄庫",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "目錄"
+    "itemCatalogs": "目錄",
+    "itemReferenceLibrary": "參考資料庫"
   }
 }

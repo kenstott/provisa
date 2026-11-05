@@ -13,7 +13,7 @@
 // governed SELECT * cannot run without a WHERE predicate on it, so Preview
 // and Profile must collect these values first.
 
-import type { RegisteredTable, TableColumn } from "../types/admin";
+import type { ListedTable, ListedColumn } from "../types/admin";
 import { quoteIdent, tableSqlRef } from "../naming";
 import type { ActiveFilter } from "../pages/sql/columnFilter";
 import {
@@ -29,7 +29,7 @@ export const PREVIEW_ROW_LIMIT = 1000;
 
 /** Governed row-limited SELECT * for the Profile sample, params as WHERE predicates. */
 export function previewSql(
-  table: RegisteredTable,
+  table: ListedTable,
   params: Record<string, string>,
   limit: number = PREVIEW_ROW_LIMIT,
 ): BoundStatement {
@@ -55,7 +55,7 @@ export function previewSql(
 
     Fetch pageSize+1 rows: the extra row only signals that a next page exists. */
 export function pagedViewerSql(
-  table: RegisteredTable,
+  table: ListedTable,
   params: Record<string, string>,
   filters: ActiveFilter[],
   sorts: { col: string; dir: "asc" | "desc" }[],
@@ -127,7 +127,7 @@ export interface ViewerRequest {
 }
 
 export function viewerRequest(
-  table: RegisteredTable,
+  table: ListedTable,
   params: Record<string, string>,
   filters: ActiveFilter[],
   sorts: { col: string; dir: "asc" | "desc" }[],
@@ -186,12 +186,12 @@ export function isRequiredParam(c: {
   return c.nativeFilterType === "path_param";
 }
 
-export function requiredParamColumns(table: RegisteredTable): TableColumn[] {
+export function requiredParamColumns(table: ListedTable): ListedColumn[] {
   return table.columns.filter((c) => isRequiredParam(c));
 }
 
 /** The parameters a read may be given and does not need. */
-export function optionalParamColumns(table: RegisteredTable): TableColumn[] {
+export function optionalParamColumns(table: ListedTable): ListedColumn[] {
   return table.columns.filter((c) => !!c.nativeFilterType && !isRequiredParam(c));
 }
 
@@ -206,7 +206,7 @@ function paramValue(value: string, dataType: string | null): string | number {
 
 /** WHERE clause for the provided param values, each bound; empty string when none set. */
 export function buildParamWhere(
-  table: RegisteredTable,
+  table: ListedTable,
   values: Record<string, string>,
   bind: Bind,
 ): string {
@@ -226,14 +226,14 @@ export function parameterName(c: { columnName: string }): string {
 }
 
 /** The table's parameter columns: required ones first. */
-export function paramColumns(table: RegisteredTable): TableColumn[] {
+export function paramColumns(table: ListedTable): ListedColumn[] {
   return [...requiredParamColumns(table), ...optionalParamColumns(table)];
 }
 
 /** The `params` object a REST or JSON:API read sends: each non-blank value by parameter name,
  * a number for a numeric parameter. */
 export function requestParams(
-  table: RegisteredTable,
+  table: ListedTable,
   values: Record<string, string>,
 ): Record<string, string | number> {
   const out: Record<string, string | number> = {};
@@ -246,7 +246,7 @@ export function requestParams(
 
 /** True once every required param has a non-blank value. */
 export function requiredParamsSatisfied(
-  table: RegisteredTable,
+  table: ListedTable,
   values: Record<string, string>,
 ): boolean {
   return requiredParamColumns(table).every((c) => (values[c.columnName] ?? "").trim() !== "");

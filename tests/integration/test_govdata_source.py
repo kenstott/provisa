@@ -56,7 +56,13 @@ _COLD_START_SECONDS = 600
 def _cold_start(source, pr) -> None:
     """Start the source's server and wait for its first catalog query, failing with the end of
     the server's own log when the wait runs out: the report otherwise says only "STARTING" (warehouse
-    run 38886673581: the catalog was not answered in 600 s)."""
+    run 38886673581: the catalog was not answered in 600 s).
+
+    The adapter's catalog is prepared from its first use by the engine on (REQ-540, amended
+    2026-10-28): a registered table is that use, so the source is marked in use as a registration
+    marks it before the wait -- otherwise no preparation is sent and the wait answers STARTING
+    at once."""
+    pr.use_catalog_of(source)
     try:
         pr.ensure_endpoint(source, timeout=_COLD_START_SECONDS)
     except pr.SourceStillStartingError as exc:

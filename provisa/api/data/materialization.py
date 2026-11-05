@@ -30,8 +30,11 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
+
 from provisa.cache.values_cte import InlineRows
 from provisa.core.connection_loop import spawn_background
+from provisa.core.read_refusal import SourceUnavailable
 
 
 log = logging.getLogger(__name__)
@@ -130,6 +133,10 @@ def is_native_read(table: dict, types: dict[str, str], state: Any) -> bool:
     from provisa.mongodb.pipeline_table import is_pipeline_table
     from provisa.qdrant.table import is_search
 
+    from provisa.jdbc_source.table import is_floor_table
+
+    if is_floor_table(table, types, state):
+        return True  # REQ-2191: a JDBC table its replica does not serve, read at its floor
     if is_code_table(table, types):
         from provisa.codesource.attach import attached
 
@@ -362,6 +369,21 @@ async def _mat_pipeline_table(
             lambda: QdrantContract().call(state, search),
         )
         return
+    if source_type == "jdbc":
+        # REQ-2191: the floor -- one SELECT in the source's dialect, its parameters' equalities.
+        from provisa.jdbc_source.table import cache_arguments as floor_arguments
+        from provisa.jdbc_source.table import read as floor_read
+
+        await _land_per_statement(
+            tn,
+            table,
+            state,
+            cache_rewrites,
+            values_cte_entries,
+            floor_arguments(table, nf_args),
+            lambda: floor_read(state, table, nf_args, statement),
+        )
+        return
     if source_type == "cosmosdb":
         from provisa.cosmosdb.table import cache_arguments, read
     elif source_type == "elasticsearch":
@@ -437,6 +459,20 @@ async def mat_live_part(
     )
 
 
+def _naming_the_source(source_id: str, answer):
+    """``answer``, whose failure over HTTP is refused naming the source and logged: httpx's text
+    is the source's internal URL."""
+
+    async def reading():
+        try:
+            return await answer()
+        except httpx.HTTPError as failed:
+            log.warning("source %s failed a read: %s", source_id, failed)
+            raise SourceUnavailable(source_id) from failed
+
+    return reading
+
+
 async def _land_per_statement(
     tn: str,
     table: dict,
@@ -469,6 +505,7 @@ async def _land_per_statement(
     source_id = table["source_id"]
     engine = state.federation_engine
     ttl = landing_ttl(table, state)
+    answer = _naming_the_source(source_id, answer)
     cache_loc = cache_location(source_id, resolved_cache_catalog(engine), org_cache_schema(state))
     if ttl == 0:
         await _answer_live(tn, state, cache_loc, cache_rewrites, values_cte_entries, answer)
@@ -950,6 +987,9 @@ async def _mat_gql_remote_table(
             return await _fetch_gql_remote_rows(
                 gql_reg, gql_tbl, col_selections, variables, _gql_to_sql, _max_items, _max_rows
             )
+        except httpx.HTTPError as failed:
+            log.warning("source %s failed a read: %s", gql_reg["source_id"], failed)
+            raise SourceUnavailable(gql_reg["source_id"]) from failed
         except Exception as fetch_exc:
             raise RuntimeError(f"GQL remote fetch failed for {tn!r}: {fetch_exc}") from fetch_exc
 
@@ -1629,6 +1669,7 @@ async def _materialize_api_to_engine_cache(
     from provisa.codesource.table import is_code_table
     from provisa.compiler.nf_extractor import find_api_table_names
     from provisa.qdrant.table import is_search
+    from provisa.quickbooks import pushdown as quickbooks_pushdown
     from provisa.sparql import pushdown as sparql_pushdown
 
     cache_rewrites: dict = {}
@@ -1799,7 +1840,10 @@ async def _materialize_api_to_engine_cache(
             values_cte_entries,
             nf_args=nf_args,
             ctx=ctx,
-            pushed=sparql_pushdown.pushed_arguments(ep, exec_sql, tn),
+            pushed=(
+                sparql_pushdown.pushed_arguments(ep, exec_sql, tn)
+                or quickbooks_pushdown.pushed_arguments(ep, exec_sql, tn)  # REQ-2197
+            ),
             registration=registrations[_sql_name(table)],
         )
         if tn not in cache_rewrites and tn not in values_cte_entries:

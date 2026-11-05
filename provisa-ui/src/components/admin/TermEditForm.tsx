@@ -49,6 +49,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { useRelationships, useTables } from "../../hooks/useAdminQueries";
 import { DescriptionField } from "../../pages/tables/DescriptionField";
+import { TermImpactPreview } from "./TermImpactPreview";
 import { relationName } from "../../naming";
 import { DetailFields } from "../detail/DetailFields";
 import { FieldGroup, FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
@@ -75,6 +76,7 @@ export function TermEditForm({
   navigateToTerm,
   onSaved,
   onCancel,
+  onTermCreated,
 }: {
   term: GlossaryTermDetail;
   otherTermOptions: Option[];
@@ -90,10 +92,12 @@ export function TermEditForm({
    * left it with nothing and the server removed it. */
   onSaved: (done: boolean, removed: boolean) => Promise<void>;
   onCancel: () => void;
+  /** A resolving shape created a term (REQ-1387): the list is read again. */
+  onTermCreated: () => void;
 }) {
   const { t } = useTranslation();
   const { actingRoles } = useAuth();
-  const { tables } = useTables();
+  const { tables } = useTables({ inPage: true });
   const { relationships } = useRelationships();
   // The term's tables as read, and the draft made from the term and them.
   const [read, setRead] = useState<{ termId: number; tables: number[] } | null>(null);
@@ -271,13 +275,20 @@ export function TermEditForm({
 
   // The relationships editor changes the draft, not the server.
   const shown: GlossaryTermDetail = { ...term, edges_out: draft.edgesOut, edges_in: draft.edgesIn };
-  const addEdge = async (from: number, to: number, rel: GlossaryRelType) =>
+  // ``name``: a term the options do not hold yet, one a resolving shape just created (REQ-1387).
+  const addEdge = async (from: number, to: number, rel: GlossaryRelType, name?: string) =>
     setDraft((d) =>
       d === null
         ? d
         : from === term.id
-          ? { ...d, edgesOut: [...d.edgesOut, { term_id: to, rel_type: rel, name: nameOf(to) }] }
-          : { ...d, edgesIn: [...d.edgesIn, { term_id: from, rel_type: rel, name: nameOf(from) }] },
+          ? {
+              ...d,
+              edgesOut: [...d.edgesOut, { term_id: to, rel_type: rel, name: name ?? nameOf(to) }],
+            }
+          : {
+              ...d,
+              edgesIn: [...d.edgesIn, { term_id: from, rel_type: rel, name: name ?? nameOf(from) }],
+            },
     );
   const removeEdge = async (from: number, to: number, rel: GlossaryRelType) =>
     setDraft((d) =>
@@ -527,6 +538,21 @@ export function TermEditForm({
           />
         </FormField>
       </FormLayout>
+      {/* REQ-2144: what binding each table chosen here changes, seen before Save. */}
+      {read !== null &&
+        read.termId === term.id &&
+        draft.tables
+          .filter((id) => !read.tables.includes(id))
+          .map((id) => (
+            <Stack key={id} gap={2} data-testid={`glossary-bind-impact-${id}`}>
+              <Text size="xs" fw={500}>
+                {t("glossaryTab.impactTitle_bind", {
+                  term: `${term.name} → ${tableOptions.find((o) => o.value === String(id))?.label ?? id}`,
+                })}
+              </Text>
+              <TermImpactPreview termId={term.id} action="bind" extra={{ table_id: id }} />
+            </Stack>
+          ))}
       {said("tables")}
 
       <Title order={5}>{t("glossaryTab.relationshipsTitle")}</Title>
@@ -553,6 +579,7 @@ export function TermEditForm({
         retypeGlossaryEdge={retypeEdge}
         removeGlossaryEdge={removeEdge}
         addGlossaryEdge={addEdge}
+        newTerm={{ domainOptions, domainsEnabled, onCreated: onTermCreated }}
       />
       {said("relationships")}
 

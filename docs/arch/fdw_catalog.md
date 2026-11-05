@@ -37,17 +37,17 @@ Derive everything else from `pg_config`, never a hardcoded path:
 | --- | --- |
 | `pg_config --pkglibdir` | where the compiled `.so`/`.dylib` module lands (`$libdir`) |
 | `pg_config --sharedir` | `.control` + `--version.sql` go under `sharedir/extension/` |
-| `pg_config --includedir-server` | server headers for PGXS (shipped in the wheel — confirmed) |
+| `pg_config --includedir-server` | server headers for PGXS (shipped in the wheel; confirmed) |
 | `pg_config --pgxs` | the PGXS makefile |
 
-## The pin is a triple, not a version
+## The three axes of a pin
 
 An externally compiled `.so` must match three axes, or the server refuses to load it:
 
-1. **PG major ABI** — the module magic block. Cross-major never loads; same-major
+1. **PG major ABI.** The module magic block. Cross-major never loads; same-major
    cross-minor generally does.
-2. **Platform / arch** — `.so` vs `.dylib` vs `.dll`; x86_64 vs arm64.
-3. **libc + C++ ABI (Linux)** — the wheel's glibc floor, and for C++ extensions
+2. **Platform / arch.** `.so` vs `.dylib` vs `.dll`; x86_64 vs arm64.
+3. **libc + C++ ABI (Linux).** The wheel's glibc floor, and for C++ extensions
    (Arrow / DuckDB) the libstdc++ / GCC ABI and `_GLIBCXX_USE_CXX11_ABI` setting.
 
 The safe build is inside the same manylinux image the wheel was built with, using the
@@ -86,19 +86,19 @@ wheel to the base's PG major. Bundled native deps (libsqlite3, Arrow, DuckDB) mu
 
 ## Catalog: file and embedded sources
 
-### file_fdw — CSV (`csv` source type)
+### file_fdw for CSV (`csv` source type)
 
 - Repo: in-tree `contrib/file_fdw` (PostgreSQL License). In core contrib.
-- **No compile needed** — ships with any PG built with contrib; activate with
+- **No compile needed.** Ships with any PG built with contrib; activate with
   `CREATE EXTENSION file_fdw;`. If absent:
   `cd contrib/file_fdw && make PG_CONFIG=<bundled> && make install PG_CONFIG=<bundled>`.
-- Read-only, no pushdown, **no IMPORT FOREIGN SCHEMA**: every column must be declared
+- Read-only, no pushdown, **no IMPORT FOREIGN SCHEMA**, so every column must be declared
   (flat files carry no schema). This is why `FileFdwConnector.details()` completes the
   `CREATE FOREIGN TABLE` column list from registry metadata.
 - `filename`/`program` are superuser-restricted; paths are server-side, relative to the data
   dir. The embedded server can only read files its own process can see.
 
-### sqlite_fdw — SQLite (`sqlite` source type)
+### sqlite_fdw for SQLite (`sqlite` source type)
 
 - Repo: **pgspider/sqlite_fdw** (canonical, active). `gleu/sqlite_fdw` is deprecated and its
   README redirects to pgspider. BSD/PostgreSQL license.
@@ -109,13 +109,13 @@ wheel to the base's PG major. Bundled native deps (libsqlite3, Arrow, DuckDB) mu
   `SQLITE_INCLUDE=/prefix/include SQLITE_LIB=/prefix/lib`.
 - Read/write (INSERT/UPDATE/DELETE, TRUNCATE→DELETE); pushdown of WHERE, ORDER BY, aggregates,
   GROUP BY/HAVING, JOIN, LIMIT/OFFSET; IMPORT FOREIGN SCHEMA supported; `force_readonly` (v2.5.0).
-- **Gotcha:** SQLite type affinity. Mismatched column types silently return wrong results.
+- **Gotcha.** SQLite type affinity. Mismatched column types silently return wrong results.
   Use the `column_type` option (e.g. epoch timestamps as `INT`, UUID as TEXT/BLOB). Numeric
   limited to SQLite ~15-digit float precision; NaN read as NULL.
 
 ## Catalog: Parquet sources (`parquet` source type)
 
-### parquet_fdw — local Parquet
+### parquet_fdw for local Parquet
 
 - Repo: adjust/parquet_fdw (PostgreSQL License). **Effectively stale**: v0.2.1 (2021),
   **does not compile on PG16+** without the community `parquet_fdw_16.diff`. Given pgserver
@@ -126,7 +126,7 @@ wheel to the base's PG major. Bundled native deps (libsqlite3, Arrow, DuckDB) mu
   (min/max) predicate pushdown + projection pushdown; parallel scan; four reader strategies
   including multifile-merge for presorted files. **Local filesystem only.**
 
-### parquet_s3_fdw — local + S3 Parquet
+### parquet_s3_fdw for local and S3 Parquet
 
 - Repo: **pgspider/parquet_s3_fdw** (BSD-3, derived from adjust/parquet_fdw, actively
   maintained). v1.1.1 (2024-10-10), PG **13–17**. Prefer this over parquet_fdw for the
@@ -170,17 +170,17 @@ Notes:
 
 ## Catalog: Iceberg / lakehouse (`iceberg`, `delta_lake` source types)
 
-None of these is a classic single-`.so` FDW. Two architectures: embedded DuckDB in-process, or
-a DuckDB sidecar speaking the PG wire protocol. All require a heavy C++/DuckDB (and sometimes
+None of these is a classic single-`.so` FDW. They follow two architectures, embedded DuckDB
+in-process or a DuckDB sidecar speaking the PG wire protocol. All require a heavy C++/DuckDB (and sometimes
 Rust) build.
 
 | Extension | Repo | License | Arch | Iceberg | Feasible on embedded pgserver? |
 | --- | --- | --- | --- | --- | --- |
-| **pg_duckdb** | duckdb/pg_duckdb | MIT | Embedded DuckDB in-process | read + time travel | **Best drop-in** — single `.so`, no sidecar; still a large C++/DuckDB build |
+| **pg_duckdb** | duckdb/pg_duckdb | MIT | Embedded DuckDB in-process | read + time travel | **Best drop-in.** A single `.so` with no sidecar, though still a large C++/DuckDB build |
 | pg_lake | Snowflake-Labs/pg_lake | Apache-2.0 | `pgduck_server` sidecar (PG wire) | read + write + ACID | Needs a running sidecar daemon + very heavy vcpkg/DuckDB/Avro/GDAL build; Docker-only in practice |
 | pg_mooncake | Mooncake-Labs/pg_mooncake | MIT | pg_duckdb read + Rust bgworker write | read + write | Needs a background worker; heavier than pg_duckdb; early (0.1.x) |
-| pg_analytics | paradedb/pg_analytics | PostgreSQL | pgrx + embedded DuckDB | read | **Archived Mar 2025 — avoid** |
-| DuckLake | duckdb/ducklake | MIT | Not a PG extension — PG is catalog only | via DuckDB | N/A: PG is a passive metadata store; the engine is DuckDB |
+| pg_analytics | paradedb/pg_analytics | PostgreSQL | pgrx + embedded DuckDB | read | **Archived Mar 2025; avoid** |
+| DuckLake | duckdb/ducklake | MIT | Not a PG extension; PG is catalog only | via DuckDB | N/A: PG is a passive metadata store; the engine is DuckDB |
 
 - **pg_duckdb** v1.1.1 (2025-12), PG 14–18. Embedded DuckDB, no sidecar. Iceberg/Delta read,
   Parquet/CSV/JSON read+write, S3/GCS/Azure/R2 via `duckdb.create_simple_secret(...)`. Build:
@@ -190,7 +190,7 @@ Rust) build.
   running process, which breaks the single-process embedded model. Treat as out of scope for
   the v1 catalog.
 
-## Alternative: multicorn2 — pure-Python FDWs
+## Alternative: multicorn2 for pure-Python FDWs
 
 - Repo: **pgsql-io/multicorn2** (maintained fork; original Multicorn is dead). PostgreSQL
   License. v3.2, PG 14–18, Python 3.9–3.13.
@@ -198,12 +198,12 @@ Rust) build.
   headers); wrappers are then pure Python subclasses, with **no per-source C build**.
 - Lets you write **sqlite / parquet / iceberg wrappers in pure Python** (`sqlite3`, `pyarrow`,
   `pyiceberg`) with no Arrow/DuckDB C compilation.
-- **Tradeoff:** data crosses the C↔Python boundary row by row: no columnar transfer, only basic
-  OFFSET/LIMIT pushdown (v3.2), no join/aggregate pushdown. Fine for low-volume/ad-hoc
+- **Tradeoff:** data crosses the C↔Python boundary row by row, with no columnar transfer, only
+  basic OFFSET/LIMIT pushdown (v3.2) and no join/aggregate pushdown. Fine for low-volume/ad-hoc
   federation; poor for large scans. Also incompatible with PL/Python under Python 3.12+.
 
-This is the escape hatch when a native FDW is too painful to build for a triple: one compiled
-shim, then Python wrappers, at the cost of scan performance.
+This is the escape hatch when a native FDW is too painful to build for a triple. You compile
+one shim and write Python wrappers, at the cost of scan performance.
 
 ---
 
@@ -228,14 +228,14 @@ pinned base:
 
 | Source | Extension | Build cost | Bundleable? |
 | --- | --- | --- | --- |
-| csv | file_fdw (core) | none — ships with PG | n/a (already present) |
+| csv | file_fdw (core) | none; ships with PG | n/a (already present) |
 | sqlite | pgspider/sqlite_fdw | libsqlite3 | yes |
 | parquet / iceberg / delta | duckdb/pg_duckdb | vendored DuckDB (C++) | yes (heavy) |
 | sqlserver | tds-fdw | freetds | yes |
-| oracle | laurenz/oracle_fdw | Oracle Instant Client | **no — deployment supplies it** (not redistributable) |
+| oracle | laurenz/oracle_fdw | Oracle Instant Client | **no; deployment supplies it** (not redistributable) |
 
 **Parquet routes through pg_duckdb**, not a dedicated Parquet FDW. `parquet_s3_fdw` is dropped
-from v1: pg_duckdb already reads Parquet (plus iceberg and delta) in one extension with S3/GCS/
+from v1 because pg_duckdb already reads Parquet (plus iceberg and delta) in one extension with S3/GCS/
 Azure support, avoiding a second heavy Arrow+AWS-SDK build and its exact-pin ABI fragility. The
 tradeoff is losing parquet_s3_fdw's write path and its `endpoint`/`use_minio` server options. If a deployment needs Parquet *write* or fine MinIO endpoint control, revisit parquet_s3_fdw then.
 
@@ -245,10 +245,10 @@ Not in v1: `parquet_s3_fdw` (pg_duckdb covers parquet read), `mysql_fdw` (deferr
 
 Build-order notes for this set:
 
-- **file_fdw** — no artifact; the wheel just documents `CREATE EXTENSION file_fdw`.
-- **sqlite_fdw, tds_fdw** — lightest builds; a single system dev lib each. Start here to validate
+- **file_fdw.** No artifact; the wheel just documents `CREATE EXTENSION file_fdw`.
+- **sqlite_fdw, tds_fdw.** Lightest builds; a single system dev lib each. Start here to validate
   the CI triple harness.
-- **pg_duckdb** — vendored DuckDB is a long compile; one `.so`, no sidecar. Covers parquet,
-  iceberg, and delta read in a single extension: the one heavy C++ build in v1.
-- **oracle_fdw** — build only; Instant Client + `ORACLE_HOME`/`LD_LIBRARY_PATH` are supplied at
+- **pg_duckdb.** Vendored DuckDB is a long compile; one `.so`, no sidecar. Covers parquet,
+  iceberg, and delta read in a single extension, and is the one heavy C++ build in v1.
+- **oracle_fdw.** Build only; Instant Client + `ORACLE_HOME`/`LD_LIBRARY_PATH` are supplied at
   the deployment, never shipped in the wheel.

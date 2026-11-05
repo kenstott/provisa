@@ -63,10 +63,12 @@ def _message(**set_fields):
     )
 
 
-def _lower(filter_arg, limit: int = 0, paths: list[str] | None = None) -> tuple[str, list]:
+def _lower(
+    filter_arg, limit: int = 0, paths: list[str] | None = None, offset: int | None = None
+) -> tuple[str, list]:
     model = _model()
     mask = resolve_read_mask(model[1], "Orders", paths or [])
-    lowered = compiled_read(model, "Orders", limit, filter_arg, mask)
+    lowered = compiled_read(model, "Orders", limit, filter_arg, mask, offset=offset)
     assert lowered is not None
     return lowered
 
@@ -227,6 +229,32 @@ class TestLimitIsBound:
         sql, params = _lower(None, limit=0)
         assert "LIMIT" not in sql
         assert params == []
+
+
+class TestOffsetIsBound:
+    """The row offset is a bound value like the limit, so requests that differ only in their
+    offset share one statement."""
+
+    def test_offset_is_a_placeholder_after_the_limit(self):
+        sql, params = _lower({"region": "east"}, limit=25, offset=50)
+        assert sql.endswith(" LIMIT $2 OFFSET $3")
+        assert params == ["east", 25, 50]
+
+    def test_offset_alone(self):
+        sql, params = _lower(None, offset=50)
+        assert sql.endswith(" OFFSET $1")
+        assert params == [50]
+
+    def test_two_offsets_share_a_statement(self):
+        first, _ = _lower(None, limit=25, offset=25)
+        second, _ = _lower(None, limit=25, offset=50)
+        assert first == second
+
+    @pytest.mark.parametrize("offset", [None, 0])
+    def test_no_offset_is_no_clause(self, offset):
+        sql, params = _lower(None, limit=25, offset=offset)
+        assert "OFFSET" not in sql
+        assert params == [25]
 
 
 class TestBodyFilterValueMatchesTheColumnType:

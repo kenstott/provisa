@@ -13,14 +13,13 @@
 title: Drug shortage and recall risk
 description: >-
   A hospital pharmacy's formulary and stock, in its own database, joined by NDC and manufacturer to
-  FDA's drug shortages and recalls and to Medicaid's prescriptions from government data: which of
-  our products face shortage or recall risk?
+  FDA's drug shortages and recalls and to Medicaid's prescriptions from government data. Which of our products face shortage or recall risk?
 screenshot: card.png
 published: true
 group: public-data
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.
-requires_provisa: 0.1.0a496
+requires_provisa: 0.1.0a497
 # The demo's video: its tagline names what the demo shows Provisa being.
 video:
   tagline: "Supply Risk Radar"

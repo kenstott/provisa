@@ -65,6 +65,7 @@
     "edge_owns": "拥有",
     "loadError": "无法读取图：{{error}}",
     "zoomTo": "缩放到此",
+    "openInErd": "在 ERD 中打开",
     "edge_column_lineage": "供数给列",
     "preset_taxonomy": "分类体系",
     "layer_domains": "域",
@@ -93,7 +94,6 @@
     "look_in_product": "数据产品中的列",
     "look_out_of_product": "数据产品之外的列",
     "look_stored": "表",
-    "status_live": "有效",
     "openAsQuery": "作为查询打开",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",
@@ -117,6 +117,7 @@
     "status_draft": "草稿",
     "openAsQueryNoSparql": "此查询没有 SPARQL 形式。",
     "openAsQuerySparqlRoots": "此查询的每个根都是一个单独的 SPARQL 查询：请打开 GraphQL 逐个读取。",
+    "status_approved": "已批准",
     "lane_term": "术语",
     "lane_column": "列",
     "lane_table": "表",
@@ -148,6 +149,8 @@
     "factMembers": "成员表",
     "factColumns": "列",
     "depth": "深度",
-    "lateral": "横向边"
+    "lateral": "横向边",
+    "grounding_grounded": "已锚定",
+    "grounding_grounded_pending": "已锚定，经由草稿"
   }
 }

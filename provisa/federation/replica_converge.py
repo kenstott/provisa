@@ -145,9 +145,10 @@ def row_level(source: Any, table: Any, engine: Any) -> bool:
     ``engine`` cannot attach its source. Its rows are fetched by key into a row cache at its
     replica address, under bookkeeping columns of its own; it has no whole-table replica."""
     from provisa.federation.strategy import engine_attaches
+    from provisa.jdbc_source.attach import reach_type
 
     return bool(_field(table, "row_materialize")) and not engine_attaches(
-        engine, _plain(source.type)
+        engine, reach_type(source, engine)
     )
 
 

@@ -65,6 +65,7 @@
     "edge_owns": "besitzt",
     "loadError": "Der Graph konnte nicht gelesen werden: {{error}}",
     "zoomTo": "Hineinzoomen",
+    "openInErd": "Im ERD öffnen",
     "edge_column_lineage": "speist Spalte",
     "preset_taxonomy": "Taxonomie",
     "layer_domains": "Domänen",
@@ -93,7 +94,6 @@
     "look_in_product": "Spalte in einem Datenprodukt",
     "look_out_of_product": "Spalte außerhalb von Datenprodukten",
     "look_stored": "Tabelle",
-    "status_live": "Aktiv",
     "openAsQuery": "Als Abfrage öffnen",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",
@@ -117,6 +117,7 @@
     "status_draft": "Entwurf",
     "openAsQueryNoSparql": "Diese Abfrage hat keine SPARQL-Form.",
     "openAsQuerySparqlRoots": "Jede Wurzel dieser Abfrage ist eine eigene SPARQL-Abfrage: Öffnen Sie das GraphQL, um sie einzeln zu lesen.",
+    "status_approved": "Freigegeben",
     "lane_term": "Begriffe",
     "lane_column": "Spalten",
     "lane_table": "Tabellen",
@@ -148,6 +149,8 @@
     "factMembers": "Mitgliedstabellen",
     "factColumns": "Spalten",
     "depth": "Tiefe",
-    "lateral": "Laterale Kanten"
+    "lateral": "Laterale Kanten",
+    "grounding_grounded": "Verankert",
+    "grounding_grounded_pending": "Verankert, über einen Entwurf"
   }
 }

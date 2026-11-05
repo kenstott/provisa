@@ -158,7 +158,7 @@
     "findingFix_successor_retired": "{{successor}} openen",
     "contract": {
       "label": "Datacontracten",
-      "hint": "Het contract van elke outputpoort: wat het belooft, in een eigen versie",
+      "hint": "Het contract van elke outputpoort: wat het declareert, in een eigen versie",
       "versionBadge": "v{{version}}",
       "status": {
         "proposed": "Voorgesteld",
@@ -177,8 +177,8 @@
       "versionLabel": "Contractversie",
       "statusLabel": "Contractstatus",
       "descriptionLabel": "Waarvoor het dient",
-      "columnsLabel": "Beloofde kolommen",
-      "columnsHelp": "Een kolom niet meer beloven, of het type ervan wijzigen, vraagt een nieuwe versie.",
+      "columnsLabel": "Kolommen",
+      "columnsHelp": "Een kolom verwijderen, of het type ervan wijzigen, vraagt een nieuwe versie.",
       "requiredLabel": "Nooit null",
       "slaLabel": "Serviceniveaus",
       "slaProperty": "Eigenschap",
@@ -187,6 +187,32 @@
       "slaRemove": "Serviceniveau verwijderen",
       "slaAdd": "Serviceniveau toevoegen",
       "notDeclared": "Niet gedeclareerd",
+      "notDeclaredList": "Niet gedeclareerd: {{names}}",
+      "versionSaved": "Opgeslagen",
+      "versionChanges": "Wijzigingen",
+      "constraints": "Beperkingen",
+      "breakingWarning": "Incompatibele wijziging in v{{version}}, nog niet van kracht",
+      "breaking": "Incompatibel",
+      "savedBy": "Opgeslagen {{when}} door {{who}}",
+      "savedBySystem": "het systeem",
+      "noChanges": "Eerste versie: niets om mee te vergelijken",
+      "change": {
+        "field_added": "Veld {{subject}} toegevoegd, {{after}}",
+        "field_removed": "Veld {{subject}} verwijderd, was {{before}}",
+        "field_renamed": "Veld {{subject}} hernoemd naar {{after}}",
+        "field_type_changed": "Veld {{subject}} gewijzigd van {{before}} naar {{after}}",
+        "field_required": "Veld {{subject}} verplicht gemaakt",
+        "field_optional": "Veld {{subject}} niet meer verplicht",
+        "field_described": "Veld {{subject}} anders beschreven",
+        "sla_added": "Serviceniveau {{subject}} toegevoegd, {{after}}",
+        "sla_removed": "Serviceniveau {{subject}} verwijderd, was {{before}}",
+        "sla_changed": "Serviceniveau {{subject}} gewijzigd van {{before}} naar {{after}}",
+        "check_added": "Kwaliteitscontrole {{subject}} toegevoegd",
+        "check_removed": "Kwaliteitscontrole {{subject}} verwijderd",
+        "check_changed": "Kwaliteitscontrole {{subject}} gewijzigd",
+        "description_changed": "Beschrijving gewijzigd",
+        "terms_changed": "Voorwaarden gewijzigd: {{subject}}"
+      },
       "loadError": "De contracten konden niet worden gelezen: {{error}}",
       "notExported": "{{member}} heeft geen geëxporteerd contract",
       "section": {
@@ -195,7 +221,7 @@
         "quality": "Kwaliteit",
         "sla": "SLA",
         "support": "Support en team",
-        "servers": "Servers",
+        "howToUse": "Gebruik",
         "pricing": "Prijzen",
         "custom": "Aangepaste eigenschappen en tags"
       },
@@ -214,6 +240,65 @@
         "customProperties_other": "{{count}} aangepaste eigenschappen",
         "tags_one": "{{count}} tag",
         "tags_other": "{{count}} tags"
+      },
+      "empty": "Dit product heeft geen uitvoerpoort met een datacontract.",
+      "consumers_one": "{{count}} afnemer",
+      "consumers_other": "{{count}} afnemers",
+      "freshness": "Actueel binnen {{seconds}} s",
+      "loadedOnce": "Eenmaal geladen, nooit vernieuwd",
+      "noSla": "Geen serviceniveau gedeclareerd",
+      "checkedAt": "Gecontroleerd {{when}}",
+      "neverChecked": "Nooit gecontroleerd",
+      "draftWarning": "Concept: nog niet van kracht",
+      "card": {
+        "details": "Details",
+        "fields": "Kolommen",
+        "sla": "SLA's & actualiteit",
+        "quality": "Beloften",
+        "consumers": "Afnemers",
+        "versions": "Versies & wijzigingen",
+        "roles": "Rollen",
+        "history": "Versiegeschiedenis"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "Interface",
+          "address": "Adres",
+          "how": "Hoe het wordt gebruikt",
+          "link": "Voorbeeld"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "Elke PostgreSQL-client, zoals psql of DBeaver. Database {{database}}, schema {{schema}}.",
+          "flight-sql": "Elke Arrow Flight SQL-client, zoals het ADBC-stuurprogramma. Database {{database}}, schema {{schema}}.",
+          "grpc": "Elke gRPC-client, op de service {{service}}, met de metadata authorization: Bearer <token>.",
+          "graphql": "Elke GraphQL-client: POST een query op deze tabel, met de header Authorization: Bearer <token>.",
+          "rest": "Elke HTTP-client: GET dit adres, met de header Authorization: Bearer <token>.",
+          "openapi": "Alleen de beschrijving van deze tabel: laad die in Swagger UI, Postman of een clientgenerator.",
+          "jsonapi": "Elke JSON:API-client: GET dit adres, met de header Authorization: Bearer <token>.",
+          "sparql": "Elke SPARQL 1.1-client: POST een query op de klasse van deze tabel, met de header Authorization: Bearer <token>."
+        },
+        "access": {
+          "granted": "Werkt pas nadat toegang is verleend, door {{approvers}}.",
+          "noApprover": "Werkt pas nadat toegang is verleend, door een houder van {{roles}}. Dit contract noemt geen goedkeurder.",
+          "undeclared": "Werkt pas nadat toegang is verleend. Dit contract noemt geen rol of goedkeurder."
+        },
+        "ask": {
+          "approvers": "Vraag {{approvers}} om toegang",
+          "roles": "Vraag een houder van {{roles}} om toegang",
+          "nobody": "Dit contract noemt niemand die u kunt vragen"
+        },
+        "open": "Voorbeeld openen",
+        "openAria": "Het voorbeeld {{surface}} voor {{table}} openen"
       }
     }
   }

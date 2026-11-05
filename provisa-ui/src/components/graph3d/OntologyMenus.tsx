@@ -47,6 +47,7 @@ export function LayersMenu({
       data={offered.map((l) => ({
         value: l,
         label: label(l),
+        // The Product map's Tables are the tables of the columns drawn: they go with Columns.
         disabled: l === "ownerTables" && !layers.has("columns"),
       }))}
       value={offered.filter((l) => layers.has(l))}

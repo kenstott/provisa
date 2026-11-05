@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { useMemo, useState } from "react";
+import { useRememberedChoice } from "../../hooks/useRememberedChoice";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -70,7 +71,14 @@ export function TagsTab() {
   const { upsertTagParamValue } = useUpsertTagParamValue();
   const { deleteTagParamValue } = useDeleteTagParamValue();
 
-  const [scope, setScope] = useState<TagObjectType>("source");
+  const [rememberedScope, setRememberedScope] = useRememberedChoice<TagObjectType>(
+    "filter.tags.scope",
+    SCOPES,
+    "source",
+  );
+  // A tag link's scope is that visit's, not the reader's choice: it is not saved over theirs.
+  const [linkedScope, setLinkedScope] = useState<TagObjectType | null>(null);
+  const scope = linkedScope ?? rememberedScope;
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
@@ -83,7 +91,7 @@ export function TagsTab() {
   const linked = tags.find((g) => g.id === linkedTag);
   if (linked && linkedTag !== seededTag) {
     setSeededTag(linkedTag);
-    if (linked.appliesTo.length > 0) setScope(linked.appliesTo[0]);
+    if (linked.appliesTo.length > 0) setLinkedScope(linked.appliesTo[0]);
     setSearch(linked.id);
   }
   const [formId, setFormId] = useState("");
@@ -251,7 +259,8 @@ export function TagsTab() {
         size="xs"
         value={scope}
         onChange={(v) => {
-          setScope(v as TagObjectType);
+          setLinkedScope(null);
+          setRememberedScope(v as TagObjectType);
           setPage(1);
         }}
         data={SCOPES.map((s) => ({ label: scopeLabel(s), value: s }))}

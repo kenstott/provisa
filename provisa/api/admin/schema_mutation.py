@@ -15,11 +15,16 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.compiler.naming import LabelClash, SqlAddressTaken, stored_convention
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
 
+from provisa.api.admin.jdbc_source_admin import (
+    JdbcSourceDetectInput,
+    JdbcSourceDetectionType,
+)
 import strawberry
 from sqlalchemy import select, update
 from strawberry.types.info import Info as StrawberryInfo
@@ -91,6 +96,7 @@ from provisa.api.admin._table_settings import (
     invalid_replicate as _invalid_replicate,
     naming_refusal,
     role_ttl_refusal,
+    right_taken,
     row_rule_refusal,
     save_carried_after_store,
     save_naming,
@@ -108,6 +114,7 @@ from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
     row_materialize_save_refusal,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
+from provisa.security.masking import MaskUnreachable
 from provisa.api.admin._fake_guard import FakeRefusedSave as _FakeRefusedSave
 from provisa.api.admin import schema_mutation_ops as _ops
 
@@ -141,6 +148,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     sandbox_destination_refusal,
     download_source_file,
     file_source_path,
+    jdbc_source_refusal,
     google_workspace_organisation_refusal,
     microsoft_365_organisation_refusal,
     microsoft_365_refusal,
@@ -512,10 +520,9 @@ async def _save_data_product(
     """A data product saved: a create makes a new one, refusing an id that exists; an update
     changes one, refusing an id that does not. Either refusal names the id and writes nothing."""
     # REQ-1634: creating/deleting a data product is catalog curation, gated on its own
-    # write right rather than ORG_SETTINGS — see Capability.DATA_PRODUCT_RW. REQ-2155: a product's
-    # owner (data_product_owned_rw) edits the one it owns.
-    from provisa.api.admin.capabilities import _identity_from_info, data_product_edit_refusal
-    from provisa.api.app import state as app_state
+    # write right rather than ORG_SETTINGS — see Capability.DATA_PRODUCT_RW. REQ-2188: the role's
+    # U rule, not this gate, says which products it edits (core.model_row_rules).
+    from provisa.api.admin.capabilities import require_right_in_domains
     from provisa.core.models import DataProduct as DataProductModel
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import domain as domain_repo
@@ -525,14 +532,11 @@ async def _save_data_product(
         conn = cast("Connection", conn)
         # REQ-1944: the product's domain, and the one it is moved out of when it exists.
         stored = await data_product_repo.get(conn, input.id)
-        refusal = data_product_edit_refusal(
-            _identity_from_info(info),
-            app_state,
-            stored,
+        require_right_in_domains(
+            info,
+            "data_product_rw",
             {input.domain_id} | ({stored["domain_id"]} if stored is not None else set()),
         )
-        if refusal is not None:
-            raise PermissionError(refusal)
         if creating and stored is not None:
             return MutationResult(
                 success=False,
@@ -581,6 +585,8 @@ async def _save_data_product(
             custom_properties=({} if input.custom_properties is None else input.custom_properties),
         )
         await data_product_repo.upsert(conn, model)
+    if (None if stored is None else stored["owner_role"]) != model.owner_role:
+        await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
     if creating:
         return MutationResult(
             success=True,
@@ -738,7 +744,9 @@ async def _save_role(
     # REQ-042/REQ-1337: the same two refusals the REST surface makes — an unknown capability,
     # and a platform right (the role's own or an ancestor's) defined by a caller who is not a
     # platform administrator.
-    from provisa.api.admin._platform_guard import role_definition_problem
+    from provisa.api.admin._platform_guard import role_definition_problem, role_narrowing_problem
+    from provisa.core.repositories import domain as domain_repo
+    from provisa.security import domain_tree
     from provisa.security.inheritance import effective_capabilities
 
     inherited = sorted({c for p in parents for c in effective_capabilities(p, existing)})
@@ -749,6 +757,18 @@ async def _save_role(
         role_id=input.id,
         domain_access=input.domain_access,
     )
+    if definition_problem is None:  # REQ-2155: a right no parent holds, refused by name
+        async with pool.acquire() as conn:
+            domains = await domain_repo.list_all(cast("Connection", conn))
+        definition_problem = role_narrowing_problem(
+            input.id,
+            parents,
+            input.capabilities,
+            input.domain_access,
+            input.residency_values,
+            existing,
+            domain_tree.parent_map(domains),
+        )
     if definition_problem is not None:
         return MutationResult(
             success=False,
@@ -2004,7 +2024,6 @@ async def _delete_source(id: str, reader: "DependentsReader") -> MutationResult:
     """Delete source ``id`` (the deleteSource mutation, its capability already checked); a
     refusal names only what ``reader`` may read (REQ-2152)."""
     from provisa.core.repositories import source as source_repo
-    from provisa.api.app import state
 
     pool = await _get_pool()
     async with pool.acquire() as conn:
@@ -2017,6 +2036,20 @@ async def _delete_source(id: str, reader: "DependentsReader") -> MutationResult:
         _companion = await _delete_source(companion_id(id), reader)
         if not _companion.success and _companion.code != "schema.source_not_found":
             return _companion
+    from provisa.federation.pgwire_replica import deleting
+
+    # REQ-1824: from here until the source is gone, no server is started for it -- an index
+    # walk, an attach pass or a discovery call asking mid-delete would start one after its
+    # server was stopped, and nothing would ever stop that one.
+    with deleting(id):
+        return await _delete_source_row(id, reader, pool)
+
+
+async def _delete_source_row(id: str, reader: "DependentsReader", pool) -> MutationResult:
+    """The deletion of source ``id`` once its companion is gone (``_delete_source``)."""
+    from provisa.core.repositories import source as source_repo
+    from provisa.api.app import state
+
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
         # REQ-1695: read the reference before the row goes, so the vault entry it names can be
@@ -2047,12 +2080,15 @@ async def _delete_source(id: str, reader: "DependentsReader") -> MutationResult:
         assert _existing is not None  # delete reported a row, so get found one
         # A catalog walk still reading the source ends before its catalog goes: left running,
         # it failed on the source the org no longer has.
+        # REQ-1824: cancelled, not waited for -- a walk inside an adapter read ends only once
+        # the read answers, minutes on a server still starting.
         from provisa.discovery.catalog_cache import stop_indexing
 
-        await stop_indexing(id)
+        stop_indexing(id)
         state.graphql_remote_sources.pop(id, None)
         # REQ-1730: was never called here at all — see _drop_source_on_engine's own comment for
-        # the exact orphaned-catalog accumulation this closes.
+        # the exact orphaned-catalog accumulation this closes. It blocks this request's own
+        # thread (REQ-1882) while a server stops; no other request waits on it.
         _drop_source_on_engine(state, id)
         state.source_catalogs.pop(id, None)
         from provisa.core import source_uploads
@@ -2064,7 +2100,7 @@ async def _delete_source(id: str, reader: "DependentsReader") -> MutationResult:
             from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
 
             await reschedule_org_triggers()
-        if _existing["type"] in ("node", "python"):  # REQ-1984, REQ-1993: its workers go
+        if _existing["type"] in CODE_SOURCE_TYPES:  # REQ-1984, REQ-1993, REQ-2200: its workers go
             from provisa.codesource.source import forget
 
             forget(id)
@@ -2080,6 +2116,27 @@ async def _delete_source(id: str, reader: "DependentsReader") -> MutationResult:
         code="schema.source_not_found",
         params={"source": id},
     )
+
+
+async def _publish_new_source(
+    info: StrawberryInfo, input: SourceInput
+) -> MutationResult | None:  # REQ-2113, REQ-2006
+    """Rebuild the schemas once for a source just created, with its draft table when one was asked
+    for. Registering that table ends in a rebuild of its own, and typing it from the file needs
+    none first: a Save paid for both, the longest steps it has. What keeps the source from being
+    answered as saved is returned, as :func:`_register_draft_table` says it."""
+    if not input.register_table_draft:
+        await _rebuild_schemas()
+        return None
+    try:
+        said = await _register_draft_table(info, input)
+    except BaseException:
+        # The source stands, whatever became of its table.
+        await _rebuild_schemas()
+        raise
+    if said is not None:
+        await _rebuild_schemas()
+    return said
 
 
 async def _register_draft_table(
@@ -2140,6 +2197,19 @@ async def _register_draft_table(
 
 @strawberry.type
 class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
+    @strawberry.mutation
+    async def detect_jdbc_source(
+        self, info: StrawberryInfo, input: JdbcSourceDetectInput
+    ) -> JdbcSourceDetectionType:  # REQ-2191
+        """Detect, from a JDBC source's form: read-only checks against the connection the
+        form describes, on the active engine. Nothing is saved."""
+        from provisa.api.admin.capabilities import require_capability
+        from provisa.api.admin.jdbc_source_admin import detect
+        from provisa.api.app import state
+
+        require_capability(info, "source_registration")
+        return await detect(input, state.federation_engine)
+
     @strawberry.mutation
     async def set_servicenow_api(
         self, info: StrawberryInfo, source_id: str, namespace: str, name: str, added: bool
@@ -2464,6 +2534,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     await download_source_file(input)
                     or logs_refusal(input)
                     or file_source_path(input)
+                    or jdbc_source_refusal(input)  # REQ-2191
                     or excel_hints_refusal(input)
                 )  # REQ-1996/1997/2113/2096
                 if _logs_refusal is not None:
@@ -2621,16 +2692,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
             async with pool.acquire() as _companion_conn:
                 await sync_companion(cast("Connection", _companion_conn), input.id)
-        await _rebuild_schemas()
+        said = await _publish_new_source(info, input)
 
         if input.type == "data_profiler":  # REQ-1934: its schedule fires on the org's scheduler
             from provisa.api.admin.schema_mutation_ops import reschedule_org_triggers
 
             await reschedule_org_triggers()
-        if input.register_table_draft:  # REQ-2113
-            refused = await _register_draft_table(info, input)
-            if refused is not None:
-                return refused
+        if said is not None:
+            return said
         return MutationResult(
             success=True,
             message=f"Source {input.id!r} created",
@@ -2872,6 +2941,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 (await download_source_file(input) if _fetch else None)
                 or logs_refusal(input)
                 or file_source_path(input)
+                or jdbc_source_refusal(input)  # REQ-2191
                 or excel_hints_refusal(input)
             )  # REQ-1996/1997/2113/2096
             if _logs_refusal is not None:
@@ -2940,6 +3010,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     .values(allowed_domains=input.allowed_domains)
                 )
 
+        if input.type == "quickbooks":
+            from provisa.quickbooks.token import entered_on_save
+
+            # REQ-2197: a refresh token the save changed replaces the one kept for the company.
+            await entered_on_save(
+                input.id,
+                database=input.database,
+                before_mapping=existing["mapping"],
+                mapping=_stored_mapping,
+            )
+
         await restart_source_server(model)
 
         from provisa.api.app import state
@@ -2974,9 +3055,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 )
         state.source_types[input.id] = input.type
         # REQ-1757: see create_source's identical fix above — was hardcoded "" regardless of type.
-        from provisa.core.source_registry import SOURCE_TO_DIALECT
-
-        state.source_dialects[input.id] = SOURCE_TO_DIALECT.get(input.type, "")
+        # The model's own dialect, as there: a JDBC source's is its own (REQ-2191).
+        state.source_dialects[input.id] = model.dialect or ""
+        # As create_source publishes them: the settings a reader holding only the source's id
+        # reads with its type (connector_pushdown, REQ-2191), as they now are.
+        if model.federation_hints:
+            state.source_federation_hints[input.id] = dict(model.federation_hints)
+        else:
+            state.source_federation_hints.pop(input.id, None)
         if input.allowed_domains is not None:
             state.source_allowed_domains[input.id] = list(input.allowed_domains)
 
@@ -3274,6 +3360,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     },
                 )
         if deleted:
+            if stored is not None and stored["owner_role"]:
+                await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
             return MutationResult(
                 success=True,
                 message=f"Data product {id!r} deleted",
@@ -4038,13 +4126,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         raise TableSaveRefused(_glob_refusal)
                     from provisa.api.app import state as _app_state
 
-                    if _app_state.source_types.get(model.source_id) == "athena":
-                        # REQ-1981: its format, from the source, decides the writes it takes.
-                        from provisa.api.admin.introspect import athena_table_format
+                    # REQ-1981: its format, from the source, decides the writes it takes.
+                    from provisa.api.admin.introspect import record_table_format
 
-                        model.table_format = await athena_table_format(
-                            model.source_id, model.schema_name, model.table_name
-                        )
+                    await record_table_format(model, _app_state.source_types.get(model.source_id))
                     if _app_state.source_types.get(model.source_id) == "jira":
                         # REQ-2069: a form's project and issue type, and each column's field, from the
                         # account's form and field lists -- the steward picks a form and its columns.
@@ -4127,6 +4212,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                                 params={"view": _loop.loop[0], "loop": _loop.loop},
                             )
                         )
+                    except MaskUnreachable as _mask:
+                        # REQ-2059: a mask list holding an entry no reader can reach is not saved.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_mask),
+                                code="schema.mask_unreachable",
+                                params={
+                                    "table": model.table_name,
+                                    "column": _mask.column,
+                                    "entries": _mask.entries,
+                                },
+                            )
+                        )
                     except table_repo.SubtypeRefused as _sub:
                         # REQ-2171: a subtype is saved only with the base it is a subtype of.
                         raise TableSaveRefused(
@@ -4195,8 +4294,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         )
                     assert table_id is not None  # the upsert returns the id it wrote
                     await save_carried_after_store(_conn, input, model, table_id)  # REQ-2109
-                    if model.query_template:
-                        # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table serves from.
+                    from provisa.api.admin._query_api_registration import (
+                        is_quickbooks_source,
+                    )
+
+                    if model.query_template or await is_quickbooks_source(_conn, model.source_id):
+                        # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table
+                        # serves from; REQ-2197: so do a QuickBooks table's edited columns.
                         from provisa.api.admin._query_api_registration import (
                             persist_query_api_registration,
                         )
@@ -4646,7 +4750,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         # is refused with the reason here rather than by the role_id foreign key at insert.
         async with pool.acquire() as _rconn:
             _rule_refusal = await row_rule_refusal(
-                cast("Connection", _rconn), input.role_id, input.description
+                cast("Connection", _rconn), input.role_id, input.description, input.rights
             )
         if _rule_refusal is not None:
             return _rule_refusal
@@ -4700,10 +4804,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             filter=input.filter_expr,
             description=input.description,
             why=input.why,  # REQ-2094
+            rights=input.rights,  # REQ-2188
+            id=input.id,
         )
         try:
             async with pool.acquire() as conn:
-                await rls_repo.upsert(cast("Connection", conn), model)
+                await rls_repo.upsert(cast("Connection", conn), model, creating=input.creating)
+        except rls_repo.RuleRightTaken as refused:
+            return right_taken(refused)
         except ValueError as e:
             return MutationResult(success=False, message=str(e))
         # state.rls_contexts[role_id] is only ever populated by _rebuild_schemas's own
@@ -4733,6 +4841,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         domain_id: Optional[str] = None,
         action_name: Optional[str] = None,
         tag_id: Optional[str] = None,
+        id: Optional[int] = None,  # REQ-2188: this rule; none, every rule of the role here
     ) -> MutationResult:  # REQ-1531, REQ-1679, REQ-1384
         from provisa.api.admin.capabilities import require_capability
         from provisa.api.admin.domain_guard import table_domain
@@ -4776,6 +4885,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 domain_id=domain_id,
                 action_name=action_name,
                 tag_id=tag_id,
+                rule_id=id,
             )
         if deleted:
             # See upsert_rls_rule's matching rebuild — a deleted rule must stop being enforced
@@ -6489,16 +6599,22 @@ async def _upsert_tag_rls_rule(
                 code="schema.rls_rule_invalid",
                 params={"reason": problem},
             )
-        await rls_repo.upsert(
-            cast("Connection", conn),
-            RLSRuleModel(
-                tag_id=tag_id,
-                role_id=input.role_id,
-                filter=input.filter_expr,
-                description=input.description,
-                why=input.why,  # REQ-2094
-            ),
-        )
+        try:
+            await rls_repo.upsert(
+                cast("Connection", conn),
+                RLSRuleModel(
+                    tag_id=tag_id,
+                    role_id=input.role_id,
+                    filter=input.filter_expr,
+                    description=input.description,
+                    why=input.why,  # REQ-2094
+                    rights=input.rights,  # REQ-2188
+                    id=input.id,
+                ),
+                creating=input.creating,
+            )
+        except rls_repo.RuleRightTaken as refused:
+            return right_taken(refused)
     await _rebuild_schemas()
     return MutationResult(
         success=True,
@@ -6531,6 +6647,13 @@ async def _upsert_action_rls_rule(
     from provisa.core.models import RLSRule as RLSRuleModel
 
     name = input.action_name or ""
+    if input.rights != ["R"]:  # REQ-2188
+        return MutationResult(
+            success=False,
+            message=f"Action {name!r} takes only an R row rule: its rows are read",
+            code="schema.rls_rule_invalid",
+            params={"reason": "an action's rows are only read"},
+        )
     action = state.tracked_functions.get(name) or (
         getattr(state, "tracked_webhooks", None) or {}
     ).get(name)
@@ -6578,6 +6701,7 @@ async def _upsert_action_rls_rule(
                 description=input.description,
                 why=input.why,  # REQ-2094
             ),
+            creating=input.creating,
         )
     # See upsert_rls_rule's own matching rebuild — this action-RLS path bypasses that function
     # entirely (early-returns before it), so it needs the identical rebuild call itself.

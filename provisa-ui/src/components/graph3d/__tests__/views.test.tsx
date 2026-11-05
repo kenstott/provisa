@@ -246,6 +246,30 @@ describe("the Ontology page", () => {
   });
 });
 
+describe("Open in ERD", () => {
+  const open = async () => {
+    panel();
+    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
+    await waitFor(() => expect(made.scenes).toHaveLength(2));
+  };
+
+  it("is offered on a table node, as a link focusing the table with its panel open", async () => {
+    await open();
+    act(() => made.callbacks.at(-1)?.onSelect({ kind: "node", id: "t:customers" }));
+    const href = screen.getByTestId("graph3d-open-in-erd").getAttribute("href") as string;
+    expect(href.startsWith("/tables?view=erd&objects=")).toBe(true);
+    expect(href.endsWith("&table=customers")).toBe(true);
+  });
+
+  it("is not offered on a node that is not a table", async () => {
+    await open();
+    // The product the graph opened on.
+    expect(screen.queryByTestId("graph3d-open-in-erd")).toBeNull();
+    act(() => made.callbacks.at(-1)?.onSelect({ kind: "node", id: "g:gold" }));
+    expect(screen.queryByTestId("graph3d-open-in-erd")).toBeNull();
+  });
+});
+
 describe("the Product map entry point", () => {
   it("opens the whole ontology, every product among it", async () => {
     render(<ProductMapButton />);

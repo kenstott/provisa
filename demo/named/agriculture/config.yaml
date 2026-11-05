@@ -38,8 +38,7 @@ roles:
 - id: agriculture_analyst
   parents: [analyst]
   description: "Queries the agriculture domain's data."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - agriculture
 server:
@@ -63,7 +62,7 @@ sources:
   cache_ttl: -1
   replicate: 0
   description: Government data from AskAmerica -- the USDA's crop insurance losses by cause and county
-    yields, and NOAA's daily weather by county, landed once when the demo is built
+    yields, and NOAA's daily weather by county
 tables:
 - source_id: portfolio
   domain_id: agriculture
@@ -269,6 +268,7 @@ relationships:
 # portfolio's and the public tables' columns derive (loss ratio, indemnity, premium, liability).
 glossary_terms:
 - name: loss ratio
+  approve: true
   definition: 'Indemnities paid over premium earned. Above 1, the year lost money on the business.'
   domains:
   - agriculture
@@ -278,6 +278,7 @@ glossary_terms:
   - to: premium
     rel_type: RELATED_TO
 - name: cause of loss
+  approve: true
   definition: 'The peril an indemnity is paid for -- drought, heat, excess moisture, hail, freeze. The USDA publishes the whole market''s indemnities by cause for every county.'
   domains:
   - agriculture
@@ -285,6 +286,7 @@ glossary_terms:
   - to: cause of loss description
     rel_type: RELATED_TO
 - name: actual production history
+  approve: true
   definition: 'APH: a farm''s average yield over its recent years, the yield its policy guarantees a share of.'
   domains:
   - agriculture
@@ -292,6 +294,7 @@ glossary_terms:
   - to: aph yield
     rel_type: RELATED_TO
 - name: coverage level
+  approve: true
   definition: 'The share of the APH yield a policy insures, from 50 to 85 percent; the farmer bears the rest.'
   domains:
   - agriculture
@@ -299,6 +302,7 @@ glossary_terms:
   - to: actual production history
     rel_type: RELATED_TO
 - name: liability
+  approve: true
   definition: 'The most a policy can pay: insured acres times the guaranteed yield times the projected price.'
   domains:
   - agriculture
@@ -306,6 +310,7 @@ glossary_terms:
   - to: coverage level
     rel_type: RELATED_TO
 - name: growing season
+  approve: true
   definition: 'May to August in the Corn Belt: planting, pollination and grain fill, when rain and heat decide the yield.'
   domains:
   - agriculture
@@ -315,6 +320,7 @@ glossary_terms:
   - to: hot days
     rel_type: RELATED_TO
 - name: crop year
+  approve: true
   definition: 'The year a crop is planted and insured; a policy, its premium and its claims all belong to one.'
   domains:
   - agriculture

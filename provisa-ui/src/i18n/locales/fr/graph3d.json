@@ -65,6 +65,7 @@
     "edge_owns": "possède",
     "loadError": "Impossible de lire le graphe : {{error}}",
     "zoomTo": "Zoomer dessus",
+    "openInErd": "Ouvrir dans l'ERD",
     "edge_column_lineage": "alimente la colonne",
     "preset_taxonomy": "Taxonomie",
     "layer_domains": "Domaines",
@@ -93,7 +94,6 @@
     "look_in_product": "colonne d’un produit de données",
     "look_out_of_product": "colonne hors des produits de données",
     "look_stored": "table",
-    "status_live": "Actif",
     "openAsQuery": "Ouvrir comme requête",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",
@@ -117,6 +117,7 @@
     "status_draft": "Brouillon",
     "openAsQueryNoSparql": "Cette requête n'a pas de forme SPARQL.",
     "openAsQuerySparqlRoots": "Chaque racine de cette requête est sa propre requête SPARQL : ouvrez le GraphQL pour les lire une à une.",
+    "status_approved": "Approuvé",
     "lane_term": "Termes",
     "lane_column": "Colonnes",
     "lane_table": "Tables",
@@ -148,6 +149,8 @@
     "factMembers": "Tables membres",
     "factColumns": "Colonnes",
     "depth": "Profondeur",
-    "lateral": "Arêtes latérales"
+    "lateral": "Arêtes latérales",
+    "grounding_grounded": "Ancré",
+    "grounding_grounded_pending": "Ancré, via un brouillon"
   }
 }

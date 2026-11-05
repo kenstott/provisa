@@ -65,6 +65,7 @@
     "edge_owns": "בבעלות",
     "loadError": "לא ניתן היה לקרוא את הגרף: {{error}}",
     "zoomTo": "התקרבות",
+    "openInErd": "פתיחה ב-ERD",
     "edge_column_lineage": "מזין עמודה",
     "preset_taxonomy": "טקסונומיה",
     "layer_domains": "תחומים",
@@ -93,7 +94,6 @@
     "look_in_product": "עמודה במוצר נתונים",
     "look_out_of_product": "עמודה מחוץ למוצרי נתונים",
     "look_stored": "טבלה",
-    "status_live": "פעיל",
     "openAsQuery": "פתח כשאילתה",
     "openAs_graphql": "GraphQL",
     "openAs_sql": "SQL",
@@ -117,6 +117,7 @@
     "status_draft": "טיוטה",
     "openAsQueryNoSparql": "לשאילתה הזו אין צורת SPARQL.",
     "openAsQuerySparqlRoots": "כל שורש של השאילתה הזו הוא שאילתת SPARQL משלו: פתחו את ה-GraphQL כדי לקרוא אותן אחת אחת.",
+    "status_approved": "מאושר",
     "lane_term": "מונחים",
     "lane_column": "עמודות",
     "lane_table": "טבלאות",
@@ -148,6 +149,8 @@
     "factMembers": "טבלאות חברות",
     "factColumns": "עמודות",
     "depth": "עומק",
-    "lateral": "קשתות רוחביות"
+    "lateral": "קשתות רוחביות",
+    "grounding_grounded": "מעוגן",
+    "grounding_grounded_pending": "מעוגן, דרך טיוטה"
   }
 }

@@ -143,8 +143,9 @@ def enforced_for_request(state: Any, role_id: str, ctx: Any) -> Callable[[tuple[
     whose fields were governed one by one): the role's governance as it stands NOW — every input
     captured here, on the request thread — built when the row is written, over the tables the
     request read."""
-    from provisa.compiler.rls import RLSContext
-    from provisa.compiler.stage2 import build_governance_context
+    from types import SimpleNamespace
+
+    from provisa.pgwire.governed_plan import governance_reader
     from provisa.security.rights import require_role
 
     rls = state.rls_contexts.get(role_id)
@@ -152,22 +153,14 @@ def enforced_for_request(state: Any, role_id: str, ctx: Any) -> Callable[[tuple[
     tables = getattr(state, "tables", [])
     relationships = getattr(state, "relationships", None)
     role = require_role(state.roles, role_id)
+    governance = governance_reader(state, SimpleNamespace(context=ctx, rls=rls), role_id)
 
     def _summary(table_ids: tuple[int, ...]) -> dict:
         kept = _kept_summaries(role_id, (masking_rules, tables, relationships), (rls, ctx, role))
         summary = kept.get(table_ids)
         if summary is not None:
             return summary
-        gov = build_governance_context(
-            role_id,
-            rls if rls is not None else RLSContext.empty(),
-            masking_rules,
-            ctx,
-            tables,
-            role=role,
-            relationships=relationships,
-        )
-        summary = enforced_summary(gov, table_ids)
+        summary = enforced_summary(governance(), table_ids)
         with _kept_lock:
             if len(kept) >= _KEPT_PER_ROLE:
                 kept.clear()

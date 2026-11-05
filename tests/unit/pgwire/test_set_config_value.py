@@ -28,6 +28,10 @@ from .test_catalog import _make_state
         ),
         ("SELECT set_config('search_path', 'a, b', true)", "a, b"),
         ("SELECT set_config('x.y', 'it''s', false)", "it's"),
+        (
+            """SELECT pg_catalog."set_config"('application_name'::text, 'c'::text, false) AS v""",
+            "c",
+        ),
     ],
 )
 def test_set_config_answers_the_value_it_set(sql, value):

@@ -14,6 +14,24 @@
     "deleteConfirm": "Excluir o relatório {{name}}?",
     "deleted": "Relatório {{name}} excluído.",
     "empty": "Nenhum relatório registrado no domínio ops.",
-    "resize": "Redimensionar a lista de relatórios"
+    "resize": "Redimensionar a lista de relatórios",
+    "drift": {
+      "title": "Desvio desde o período anterior",
+      "baseline": "Comparado com o modelo de {{date}}, a versão mais recente até {{cutoff}}.",
+      "noHistory": "Sem histórico: o modelo não tem nenhuma versão de {{cutoff}} ou anterior para comparar.",
+      "none": "Nenhum termo perdeu ou ganhou ancoragem.",
+      "counts": "Perdidos: {{lost}} · Ganhos: {{gained}} · Novos: {{new}}",
+      "renameRule": "Os termos são associados pelo nome, portanto uma renomeação aparece como um termo perdido e um novo.",
+      "term": "Termo",
+      "before": "Antes",
+      "after": "Agora",
+      "change": "Alteração",
+      "absent": "Fora do modelo",
+      "changeKind": {
+        "lost": "Perdido",
+        "gained": "Ganho",
+        "new": "Novo"
+      }
+    }
   }
 }

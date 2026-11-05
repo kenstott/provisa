@@ -825,7 +825,7 @@ Provisa является тонким слоем компиляции и мар�
 | Provisa gRPC | (процесс хоста) | 50051 | Сервер Protobuf gRPC |
 | Federation Engine | `trinodb/trino` (по умолчанию) или внешнее хранилище данных | 8080 / варьируется | Движок федерации запросов — Trino для встроенного стека; Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB для целей хранилищ данных |
 | Zaychik | `provisa-zaychik` (собирается из исходников) | 8480 | Прокси Arrow Flight SQL для Trino; не требуется для движков хранилищ данных |
-| PostgreSQL | `postgres:16` | 5432 | Метаданные конфигурации + каталог Iceberg |
+| PostgreSQL | `pgvector/pgvector:pg16-trixie` | 5432 | Метаданные конфигурации + каталог Iceberg |
 | MongoDB | `mongo:7` | 27017 | Демонстрационный источник данных NoSQL |
 | MinIO | `minio/minio` | 9000/9001 | S3-совместимое объектное хранилище |
 | Redis | `redis:7-alpine` | 6379 | Кеш результатов запросов |

@@ -60,7 +60,7 @@ def _model(monkeypatch):
         appmod.state, "model_db", types.SimpleNamespace(acquire=lambda: _Conn()), raising=False
     )
 
-    async def _tables(conn):
+    async def _tables(conn, **_kw):
         return [dict(_TABLE, columns=list(_TABLE["columns"]))]
 
     async def _relationships(conn):
@@ -123,6 +123,30 @@ async def test_a_proposal_names_only_the_columns_the_caller_is_served(monkeypatc
     out = await fakes_router.propose_fakes(_REQUEST, fakes_router.ProposeIn(tableId=7))
     # ssn is tagged pii and matched by no fake: unfiltered it would be named as unmatched.
     assert "ssn" not in out["columns"] and out["unmatchedPii"] == []
+
+
+async def test_a_named_column_the_caller_is_not_served_is_refused_as_unprofiled(monkeypatch):
+    facts = [ProfiledColumnFacts("ssn", "text", 11, "varchar", 1.0, ())]
+
+    async def _latest(conn, *, org_id, env, reg):
+        return "run-1", facts
+
+    async def _tags(conn, table_id):
+        return {}
+
+    monkeypatch.setattr("provisa.fakes.propose.latest_facts", _latest)
+    monkeypatch.setattr("provisa.profiler.run.column_tags", _tags)
+    monkeypatch.setattr("provisa.core.request_context.require_current_org", lambda: "acme")
+    monkeypatch.setattr(
+        "provisa.api.admin.profiler_checks_router._physical_names",
+        lambda table_id: {"email": "email", "ssn": "ssn"},
+    )
+    with pytest.raises(ApiError) as refused:
+        await fakes_router.propose_fakes(
+            _REQUEST, fakes_router.ProposeIn(tableId=7, columns=["ssn"])
+        )
+    # Answered as a column the run does not profile: the refusal tells no more than that.
+    assert refused.value.code == "fakes.column_not_profiled"
 
 
 async def test_an_adequacy_run_counts_only_the_checks_on_columns_the_caller_is_served(

@@ -14,6 +14,24 @@
     "deleteConfirm": "Delete report {{name}}?",
     "deleted": "Report {{name}} deleted.",
     "empty": "No reports registered in the ops domain.",
-    "resize": "Resize the report list"
+    "resize": "Resize the report list",
+    "drift": {
+      "title": "Drift since the previous period",
+      "baseline": "Compared with the model as of {{date}}, the latest version by {{cutoff}}.",
+      "noHistory": "No history: the model has no version from {{cutoff}} or earlier to compare with.",
+      "none": "No term lost or gained grounding.",
+      "counts": "Lost: {{lost}} · Gained: {{gained}} · New: {{new}}",
+      "renameRule": "Terms are matched by name, so a rename shows as one lost and one new.",
+      "term": "Term",
+      "before": "Before",
+      "after": "Now",
+      "change": "Change",
+      "absent": "Not in the model",
+      "changeKind": {
+        "lost": "Lost",
+        "gained": "Gained",
+        "new": "New"
+      }
+    }
   }
 }

@@ -25,7 +25,7 @@ import { ActionIcon, Alert, Button, Group, Loader, Text, TextInput } from "@mant
 import { RefreshCw } from "lucide-react";
 import { PreviewRefused, previewTable, runSql } from "../api/admin";
 import type { ResultRedirect } from "../types/resultRedirect";
-import type { RegisteredTable } from "../types/admin";
+import type { ListedTable } from "../types/admin";
 import { ResultsGrid } from "../pages/sql/ResultsGrid";
 import type { ProvenanceEntry } from "../pages/sql/exportXlsx";
 import { useResultsGrid } from "../pages/sql/useResultsGrid";
@@ -56,15 +56,22 @@ interface PageResult {
 }
 
 interface GovernedTableViewerProps {
-  table: RegisteredTable;
+  table: ListedTable;
   /** Title + refresh row (the Reports viewer shows it; the modal has its own title). */
   showTitle?: boolean;
   /** The role the rows are read as -- one role, or the "Role: All" set (REQ-1620): a DRAFT's
    * pages from the admin preview (REQ-1921), a table in service's by its statement. */
   role: string | null;
+  /** REQ-1386: the page a cell opens (a report's term links); without it every cell is text. */
+  cellHref?: (column: string, value: unknown) => string | null;
 }
 
-export function GovernedTableViewer({ table, showTitle = false, role }: GovernedTableViewerProps) {
+export function GovernedTableViewer({
+  table,
+  showTitle = false,
+  role,
+  cellHref,
+}: GovernedTableViewerProps) {
   const { t, i18n } = useTranslation();
   const requiredCols = requiredParamColumns(table);
   const optionalCols = optionalParamColumns(table);
@@ -318,6 +325,7 @@ export function GovernedTableViewer({ table, showTitle = false, role }: Governed
             provenance={provenanceFor(activeParams)}
             fetchAllRows={fetchAllRows}
             exportName={table.alias || table.tableName}
+            cellHref={cellHref}
           />
         </div>
       ) : null}

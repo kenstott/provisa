@@ -7,20 +7,20 @@
     "ack": "Got it",
     "leave": "This isn't my organization",
     "leaveError": "Could not leave the organization.",
-    "sandboxIntro": "You are on our shared starter instance, in an isolated environment of your own. The sample data is a private copy — nothing you do here is visible to another visitor, and nothing here touches anyone else's data.",
+    "sandboxIntro": "You are on our shared starter instance, in an isolated environment of your own. The sample data is a private copy. Other visitors cannot see what you do here, and nothing here touches anyone else's data.",
     "sandboxOpen": "Almost every operation is open to you: register your own sources, model them, write policies and masking rules, and query the result in SQL, GraphQL, or Cypher.",
-    "sandboxHeldBack": "Held back are the org-wide controls — switching or managing environments, inviting people and conferring roles, org settings, and org-wide observability. Those pages stay visible, marked as part of the production system.",
-    "sandboxTemporary": "Your environment is temporary. Signing out wipes it, and it is also reclaimed after a day of inactivity. Nothing you build here is meant to be kept.",
+    "sandboxHeldBack": "Org-wide controls are held back: switching or managing environments, inviting people and conferring roles, org settings, and org-wide observability. Those pages stay visible, marked as part of the production system.",
+    "sandboxTemporary": "Your environment is temporary. Signing out wipes it, and it is also reclaimed after a day of inactivity.",
     "sandboxUpgrade": "When you are ready for an organization that persists, upgrade to a Starter plan.",
     "sandboxAck": "Start exploring",
     "demoSandboxTitle": "Welcome to your demo sandbox",
     "demoSandboxIntro": "This sandbox is your own copy of the demo, and a lightweight version of Provisa. These are its limits:",
-    "demoSandboxEngine": "It runs on a single-process DuckDB engine, not the engine production organizations use.",
+    "demoSandboxEngine": "It runs on a single-process DuckDB engine. Production organizations use a different engine.",
     "demoSandboxMemory": "Its engine may use at most {{memory}} of memory; a query that needs more is refused.",
     "demoSandboxDisk": "It may hold at most {{disk}} on disk, its data and your uploaded files together; a write past that is refused.",
     "demoSandboxConflicts": "Changes made at the same moment from several devices can be refused as a conflict. Try again.",
     "demoSandboxExpires": "It is deleted, with everything in it, after {{idle}} without use.",
     "demoSandboxHeldBack": "You can't invite people, or switch or manage environments.",
-    "demoSandboxSources": "The sample sources are read-only: what you write stays inside the sandbox."
+    "demoSandboxSources": "The sample sources are read-only, so what you write stays inside the sandbox."
   }
 }

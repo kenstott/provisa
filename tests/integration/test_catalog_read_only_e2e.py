@@ -48,9 +48,15 @@ def server():
             "roles": [
                 {
                     "id": "itest_analyst",
-                    "parents": ["analyst"],
+                    "parents": ["developer"],
                     "description": "Test role.",
-                    "capabilities": ["query_development"],
+                    "capabilities": [
+                        "catalog_read",
+                        "data_product_read",
+                        "glossary_read",
+                        "query_development",
+                        "usage",
+                    ],
                     "domain_access": ["*"],
                 },
             ],

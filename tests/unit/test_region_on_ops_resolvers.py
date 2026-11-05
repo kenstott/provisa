@@ -48,7 +48,7 @@ class _TenantDb:
 async def test_table_region_maps_builds_id_and_key_maps(monkeypatch):
     from provisa.api.admin import schema_query as sq
 
-    async def _fetch(_conn):
+    async def _fetch(_conn, **_kw):
         return [
             {
                 "id": 1,
