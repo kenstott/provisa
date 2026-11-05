@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
+import logging
 import os
 import subprocess
 import time
@@ -251,10 +252,21 @@ async def test_a_landing_records_its_offsets_and_the_listener_starts_there(broke
     assert first.row == {"id": 3}, "the listener starts where the landing stopped"
 
 
-async def test_the_wrong_password_is_refused(broker):
+async def test_the_wrong_password_is_refused(broker, caplog):
+    """The broker refuses the credentials, not the connection. aiokafka raises an unchained
+    KafkaConnectionError from its bootstrap and logs the broker's reason, so the reason is read
+    from that log."""
+    from aiokafka.errors import KafkaConnectionError  # type: ignore[import-untyped]
+
     wrong = broker.security("SCRAM-SHA-256", password="not-the-password")
-    with pytest.raises(Exception, match="(?i)auth"):
-        await fetch_rows(broker.connection(wrong), _topic(), ["id"])
+    with caplog.at_level(logging.ERROR, logger="aiokafka"):
+        with pytest.raises(KafkaConnectionError):
+            await fetch_rows(broker.connection(wrong), _topic(), ["id"])
+    assert any(
+        "SaslAuthenticationFailed" in record.getMessage()
+        and "invalid credentials" in record.getMessage()
+        for record in caplog.records
+    ), [record.getMessage() for record in caplog.records]
 
 
 async def test_a_broker_the_named_ca_did_not_sign_is_refused(broker):
