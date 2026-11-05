@@ -3,6 +3,114 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.502
+
+Released 2026-11-05.
+
+### Changes
+
+#### admin
+
+- admin-layer API gates match
+- The invite gate names no role id
+
+#### control-plane
+
+- Create the embedded data directory parent; report the real start failure
+
+#### demo
+
+- Declare the audit demo's Assistance Listing and state joins
+- Banking config region description quote breaks YAML
+- The audit demo requires Provisa 0.1.0a497
+
+#### demos
+
+- Banksecrecy shows the glossary walk -- structuring and SAR passages scanned, a Polly step asks for them
+
+#### devcontainer
+
+- One container, no compose stack, so Codespaces creates it
+- The environment is the checkout.venv, on a volume
+- Forward the UI and API ports; fetch the manifest with credentials
+- Singleton killer no longer kills the shell that launched the script
+
+#### erd
+
+- Save as keeps the new layout current in the link
+
+#### fakes
+
+- propose_fakes for named columns; testdata tour asks Polly for a fake
+
+#### federation-ui
+
+- A tab per region on Admin > Federation, each its engine store
+
+#### llm
+
+- Term scans turn reasoning off where the wire has a switch; other vendors keep their default
+
+#### main
+
+- The full unit suite green after today's focused-only landings
+
+#### mv
+
+- A join view never answers a subquery that shadows a covered table
+
+#### profiler
+
+- regex-declared classification kinds, 15 new sensitive kinds
+- Scan text columns for sensitive values held inside them; hints on the column access settings and in the coverage report
+- contained_pattern for kinds searched inside text; in-sentence hint noun
+
+#### reference-library
+
+- Neighbours in governed retrieval
+- Graph retrieval over the glossary
+
+#### regions
+
+- Admin routes for platform regions and an org's stores and regions
+- The platform grants regions and assigns stores; a region is an id, description, purposes and data addresses
+
+#### regions-ui
+
+- Platform page grants and regions, read-only Admin > Regions, sandbox note, purposes legend
+
+#### reports
+
+- Sensitive coverage is a seeded ops report
+- The list highlights the report shown, a linked or default one included
+
+#### retail-demo
+
+- Title the GDPR demo "A Tale of Two Regions"
+
+#### retail-tour
+
+- Show where regions are defined before the residency queries
+
+#### sandbox
+
+- Prepare every published demo at once when the sandbox tier starts
+
+#### term_finding
+
+- Ask the vendor for one JSON object on every scan call
+
+#### tour
+
+- Testdata coverage step opens the sensitive coverage report
+
+#### ui
+
+- Page help opens on hover and stays open once clicked
+- own-domain in the column scope selects
+- Open a live demo outside the login's identity bootstrap
+- Replace ~grounded with plain words in glossary strings
+
 ## v0.1.0-alpha.501
 
 Released 2026-11-04.

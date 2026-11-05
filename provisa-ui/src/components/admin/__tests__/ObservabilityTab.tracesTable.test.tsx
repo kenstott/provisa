@@ -11,7 +11,7 @@
 // REQ-302, REQ-303, REQ-1349: the tab says when an endpoint is set but the ops traces table is
 // not filling, from what the server reports of the table, and says what the status means.
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, waitFor } from "../../../test-utils/render";
 
 vi.mock("../../../api/admin", async (importOriginal) => {
@@ -160,5 +160,73 @@ describe("ObservabilityTab traces table notice", () => {
 
     await waitFor(() => expect(asked(fetchMock)).toBe(true));
     expect(screen.queryByTestId("traces-table-stale")).toBeNull();
+  });
+});
+
+describe("ObservabilityTab traces table check failure", () => {
+  const endpoint = "https://otlp.example:4318";
+  const goodLatest = {
+    tracked: true,
+    latest: "2026-11-05T09:00:00",
+    age_seconds: 30,
+    stale_after_seconds: 600,
+  };
+
+  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+  afterEach(() => vi.useRealTimers());
+
+  const other = () => new Response(JSON.stringify({ traces: [] }));
+
+  it("says the table could not be checked, with the status, when the server answers 500", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        String(url).includes("/admin/traces/latest")
+          ? new Response("boom", { status: 500 })
+          : other(),
+      ),
+    );
+    render(<ObservabilityTab settings={makeSettings(endpoint)} setSettings={vi.fn()} />);
+
+    const notice = await screen.findByTestId("traces-table-unchecked");
+    expect(notice).toHaveTextContent("could not be checked");
+    expect(notice).toHaveTextContent("500");
+  });
+
+  it("says the table could not be checked, with the message, on a network error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (String(url).includes("/admin/traces/latest")) throw new TypeError("Failed to fetch");
+        return other();
+      }),
+    );
+    render(<ObservabilityTab settings={makeSettings(endpoint)} setSettings={vi.fn()} />);
+
+    const notice = await screen.findByTestId("traces-table-unchecked");
+    expect(notice).toHaveTextContent("could not be checked");
+    expect(notice).toHaveTextContent("Failed to fetch");
+  });
+
+  it("clears the notice when the next check succeeds, and keeps checking", async () => {
+    let failing = true;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (!String(url).includes("/admin/traces/latest")) return other();
+      return failing
+        ? new Response("boom", { status: 503 })
+        : new Response(JSON.stringify(goodLatest));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ObservabilityTab settings={makeSettings(endpoint)} setSettings={vi.fn()} />);
+
+    await screen.findByTestId("traces-table-unchecked");
+    failing = false;
+    const checks = () =>
+      fetchMock.mock.calls.filter(([u]) => String(u).includes("/admin/traces/latest")).length;
+    const before = checks();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    await waitFor(() => expect(screen.queryByTestId("traces-table-unchecked")).toBeNull());
+    expect(checks()).toBeGreaterThan(before);
   });
 });
