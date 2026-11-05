@@ -131,6 +131,15 @@ def _trino_trunc(v: str, local: str, unit: str, _zone: str) -> str:
     )
 
 
+#: The units Trino's date_trunc has none of: a value held to the microsecond is its own start of a
+#: microsecond, in any zone, as PostgreSQL answers.
+_TRINO_OWN_START = frozenset({"MICROSECOND", "MICROSECONDS"})
+
+
+def _trino_plain_trunc(v: str, unit: str) -> str | None:
+    return v if unit in _TRINO_OWN_START else None
+
+
 @dataclass(frozen=True)
 class _Engine:
     """An engine's reading of a value ``v``: whether it is an instant; the instant in a zone; and
@@ -198,7 +207,7 @@ _ENGINES = {
         text=_trino_text,
         day=lambda local: f"CAST({local} AS DATE)",
         trunc=_trino_trunc,
-        plain_trunc=lambda _v, _unit: None,
+        plain_trunc=_trino_plain_trunc,
         own_day_differs=False,
     ),
     "clickhouse": _Engine(

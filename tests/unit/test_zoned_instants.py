@@ -100,6 +100,14 @@ def test_a_column_that_declares_no_zone_is_a_plain_timestamp_on_clickhouse(chdb_
 
 
 @pytest.mark.parametrize("set_zone", [_NEW_YORK, "SET TimeZone = 'UTC'"])
+def test_trino_start_of_a_microsecond_is_the_value_itself(set_zone):
+    """Trino's date_trunc has no microsecond; PostgreSQL's start of a microsecond of a value held
+    to the microsecond is that value, in every zone (REQ-2171)."""
+    sql = _in_session(set_zone, lambda: transpile_to_trino(statement("microsecond")))
+    assert "MICROSECOND" not in sql.upper()
+
+
+@pytest.mark.parametrize("set_zone", [_NEW_YORK, "SET TimeZone = 'UTC'"])
 @pytest.mark.parametrize("unit", ["second", "millisecond", "microsecond"])
 @pytest.mark.parametrize("column", ["c", "plain", "plain::timestamp"])
 def test_clickhouse_start_of_a_sub_minute_unit_writes_no_datetrunc(set_zone, unit, column):
@@ -354,3 +362,15 @@ def test_trino_refuses_json_of_a_stated_instant_by_name(sql, name):
 )
 def test_trino_leaves_json_of_a_value_not_said_to_be_an_instant(sql):
     assert _in_session(_NEW_YORK, lambda: transpile_to_trino(sql))
+
+
+@pytest.mark.parametrize("dialect", ["trino", "presto", "athena"])
+def test_a_range_function_reads_an_instant_that_names_utc(dialect):
+    """REQ-2050, REQ-2171: a timestamptz literal names UTC on Trino, Presto and Athena; the range
+    functions read it as PostgreSQL's timestamptz_in does, the instant in that zone."""
+    sql = transpile(
+        "SELECT pg_catalog.\"tstzrange_subdiff\"('2000-02-29 00:00:00-05'::timestamp with time zone,"
+        " '2000-02-29 00:00:00-04'::timestamp with time zone) AS v",
+        dialect,
+    )
+    assert "2000-02-29 05:00:00" in sql and "2000-02-29 04:00:00" in sql
