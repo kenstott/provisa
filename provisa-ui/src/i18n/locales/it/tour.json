@@ -933,16 +933,32 @@
         "description": "Avete visto i dati propri dell'assicuratore abbinati per contea e anno di raccolto a dati pubblici su danni, meteo e rese, tutto in un unico modello governato. Una vista risponde se il meteo spiega i danni, in SQL, GraphQL e REST. Il notebook lo misura: il meteo spiega il 54% della variazione del loss ratio e, sul portafoglio di oggi, una stagione come il 2012 ha un loss ratio atteso di 1,75."
       },
       "retailScenario": {
-        "title": "Un gruppo, due regioni",
+        "title": "Racconto di due regioni",
         "description": "Un gruppo della distribuzione gestisce una controllata EU e una US come un'unica azienda. Può farlo senza violare il GDPR? Ogni controllata ha il proprio database: questo è quello dell'EU, con i clienti del programma fedeltà, il loro consenso al marketing, gli ordini, il personale e la posta che il personale invia fuori dal gruppo."
       },
+      "retailPlatformRegions": {
+        "title": "Le regioni nascono in una configurazione",
+        "description": "La configurazione della piattaforma dichiara le regioni, qui l'EU e gli US, e le concede all'organizzazione. Ogni regione ha la propria elaborazione dei dati: il proprio motore e i propri archivi. Lo scopo dell'EU è la residenza, per i dati dei clienti che devono restare nell'Unione europea. In questo sandbox puoi leggere questa pagina, ma non modificarla."
+      },
+      "retailPurposes": {
+        "title": "Che cosa dice uno scopo",
+        "description": "La legenda spiega ogni scopo. Uno scopo dice perché esiste una regione. Non sposta dati e non decide chi li legge. Lo fanno due livelli, e il tour li mostra entrambi: la collocazione, le regole del motore su dove vivono i dati, e la sicurezza, le regole del data steward su chi legge cosa."
+      },
+      "retailOrgRegions": {
+        "title": "Le regioni e gli archivi dell'organizzazione",
+        "description": "L'organizzazione detiene entrambe le regioni. Ogni riga indica gli archivi usati lì: il motore della regione e dove sono conservati le sue repliche, viste, cache, stato di build e registro. I dati dell'EU sono elaborati con gli archivi propri dell'EU."
+      },
+      "retailEngines": {
+        "title": "Un motore per regione",
+        "description": "Federazione ha una scheda per ogni regione, e ogni regione esegue il proprio motore. Quindi una configurazione dà due ambienti di elaborazione dei dati. Sei sul nodo US. Legge i dati dell'EU solo attraverso l'archivio dell'EU, mai da una copia propria."
+      },
       "retailRegions": {
-        "title": "Un'unica definizione di ogni regione",
-        "description": "Il database della controllata US, ospitato negli US. Il modello dichiara entrambe le regioni e indica, una sola volta, dove risiede ogni tabella e quali viste vengono costruite dove. Un secondo nodo Provisa gira nell'EU: copia le tabelle EU nell'archivio proprio dell'EU e lì costruisce le viste EU. Sei sul nodo US, che legge i dati EU solo da quell'archivio EU, quindi ogni regola transfrontaliera è applicata in un solo punto."
+        "title": "Collocazione: ogni sorgente indica la sua regione di origine",
+        "description": "Il database della controllata US è ospitato negli US, quello della controllata EU nell'EU. La collocazione è la regola del motore su dove vivono i dati. Le repliche e la cache di una tabella ospitata restano nella sua regione di origine, e le altre regioni la raggiungono solo attraverso quella regione."
       },
       "retailEuCustomers": {
         "title": "Una tabella EU, ospitata nell'EU",
-        "description": "I clienti EU. La tabella indica l'EU come sua regione: le sue righe vengono copiate solo nell'archivio dell'EU e calcolate solo lì. Chi legge altrove le ottiene tramite le viste dell'EU, oppure non le ottiene affatto."
+        "description": "I clienti dell'EU. La regione della tabella è l'EU, quindi le sue repliche e la sua cache vivono solo nell'archivio dell'EU. La collocazione decide dove vivono le righe. Non decide chi può leggerle. Quello è il livello successivo."
       },
       "retailRequests": {
         "title": "Richieste degli interessati",
@@ -953,12 +969,12 @@
         "description": "Una richiesta si collega ai clienti di ciascuna controllata tramite l'indirizzo email. Così una richiesta trova la stessa persona in entrambe."
       },
       "retailAsAnalyst": {
-        "title": "Come analista di gruppo",
-        "description": "Ora il selettore dei ruoli passa a <strong>group_analyst</strong>, che lavora sul reporting di gruppo negli US, così l'SQL e il GraphQL che seguono girano come group_analyst."
+        "title": "Le regole del data steward, come analista del gruppo",
+        "description": "Il secondo livello è la sicurezza: le regole del data steward decidono cosa riceve ogni lettore, in base al ruolo e alla regione del lettore. Sono applicate nella regione di origine, prima che qualcosa ne esca. Poi il selettore dei ruoli passa a <strong>group_analyst</strong>, che lavora al reporting di gruppo negli US, così l'SQL e il GraphQL successivi vengono eseguiti come group_analyst."
       },
       "retailGroupView": {
         "title": "Reporting di gruppo, clienti EU pseudonimizzati",
-        "description": "Ogni cliente fedeltà del gruppo. I clienti US compaiono così come sono; i clienti EU compaiono con uno pseudonimo calcolato dall'EU, senza nome né indirizzo. La parte EU è stata letta dall'archivio dell'EU, e il record di questa query indica l'EU come la regione che ha risposto."
+        "description": "Ogni cliente fedeltà del gruppo. I clienti US appaiono così come sono. I clienti dell'EU appaiono con uno pseudonimo, perché la regola dello steward dice che un lettore fuori dall'EU non riceve né nome né indirizzo. L'EU ha applicato quella regola prima che le sue righe uscissero, e il registro di questa query indica l'EU come la regione che ha risposto."
       },
       "retailGroupGraphql": {
         "title": "Lo stesso, in GraphQL",
@@ -970,7 +986,7 @@
       },
       "retailAudience": {
         "title": "Solo i clienti che hanno acconsentito",
-        "description": "L'esploratore SQL ora gira come <strong>marketing_eu</strong>. Il marketing EU legge i clienti EU che hanno acconsentito al marketing, e solo loro. La vista è costruita nell'EU a partire da righe EU."
+        "description": "L'esploratore SQL ora viene eseguito come <strong>marketing_eu</strong>. La regola dello steward consente al marketing dell'EU di leggere i clienti dell'EU che hanno acconsentito al marketing, e solo loro. La vista è costruita nell'EU a partire da righe dell'EU."
       },
       "retailAsDpo": {
         "title": "Come responsabile della protezione dei dati",
@@ -998,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "Il mittente, rivelato nell'EU",
-        "description": "La stessa coda. La lista di mascheramento della colonna del mittente rivela il mittente solo a un revisore che ha anche region__eu; tutti gli altri lo leggono nascosto. È un'unica concessione, reviewer e region__eu, senza alcun ruolo creato per la combinazione."
+        "description": "La stessa coda. La maschera dello steward sulla colonna del mittente rivela il mittente solo a un revisore la cui regione assegnata è l'EU (region__eu). Tutti gli altri lo leggono oscurato. Ciò che riceve un lettore dipende dalla sua regione oltre che dal suo ruolo, e non è stato creato alcun ruolo per la combinazione."
       },
       "retailAsAdmin": {
         "title": "Di nuovo tutti i ruoli",
@@ -1014,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "Cosa hai visto",
-        "description": "Un solo modello ha definito entrambe le regioni: dove risiede ogni tabella, quali viste vengono costruite dove, e chi legge cosa. Il reporting di gruppo ha letto i clienti EU pseudonimizzati, il marketing EU ha letto solo i clienti che hanno acconsentito, e una richiesta di accesso e una cancellazione sono state ciascuna una sola query. La revisione insider ha rivelato un mittente solo nell'EU, e ogni lettura è in un unico registro."
+        "description": "Una configurazione ha concesso due regioni, ciascuna con il proprio motore e i propri archivi: due ambienti di elaborazione dei dati. La collocazione ha mantenuto le tabelle dell'EU, le loro repliche e la loro cache nell'EU. Le regole del data steward hanno deciso cosa riceveva ogni lettore, in base al ruolo e alla regione del lettore, e l'EU le ha applicate prima che qualcosa ne uscisse. Il reporting di gruppo ha letto i clienti dell'EU pseudonimizzati, il marketing dell'EU ha letto solo i clienti consenzienti, accesso e cancellazione sono stati ciascuno una query, il mittente è stato rivelato solo a un revisore nell'EU, e ogni lettura è in un unico registro."
       },
       "provisioningScenario": {
         "title": "Che cos'è questa demo",
@@ -1894,7 +1910,7 @@
         "summary": "Il meteo spiega i danni nel portafoglio di un assicuratore agricolo? Le sue aziende, polizze e sinistri, uniti per contea e anno di raccolto ai danni per causa dell'USDA, al meteo della NOAA e alle rese della NASS, rispondono in SQL, GraphQL e REST."
       },
       "retail": {
-        "title": "Un gruppo, due regioni",
+        "title": "Racconto di due regioni",
         "summary": "Un gruppo della distribuzione con una controllata EU e una US, gestito come un'unica azienda nel rispetto del GDPR: i dati EU restano nell'EU, il reporting di gruppo li legge pseudonimizzati, e accesso, cancellazione, revisione insider e audit sono ciascuno una sola query."
       },
       "provisioning": {

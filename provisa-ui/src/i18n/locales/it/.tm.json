@@ -9643,5 +9643,13 @@
   "it/sensitiveScan.json::sensitiveScan.header": "Found inside values",
   "it/sensitiveScan.json::sensitiveScan.hint": "Matches {{kind}} in {{percent}}% of sampled values",
   "it/observabilityTab.json::observabilityTab.tracesTableEmpty": "An endpoint is set, but Provisa's trace tables have no rows yet. If the endpoint is an external provider rather than Provisa's collector, move it into the collector's exporters.",
-  "it/observabilityTab.json::observabilityTab.tracesTableStale": "An endpoint is set, but Provisa's trace tables have received no rows in the last {{minutes}} minutes. If Provisa has been idle that is expected. If not, check that the endpoint is Provisa's collector and not an external provider."
+  "it/observabilityTab.json::observabilityTab.tracesTableStale": "An endpoint is set, but Provisa's trace tables have received no rows in the last {{minutes}} minutes. If Provisa has been idle that is expected. If not, check that the endpoint is Provisa's collector and not an external provider.",
+  "it/tour.json::tour.steps.retailPlatformRegions.title": "Regions start in one config",
+  "it/tour.json::tour.steps.retailPlatformRegions.description": "The platform's config declares the regions, here the EU and the US, and grants them to the organization. Each region has its own data processing: its own engine and its own stores. The EU's purpose is residency, for customer data that must stay in the European Union. In this sandbox you can read this page but not change it.",
+  "it/tour.json::tour.steps.retailPurposes.title": "What a purpose says",
+  "it/tour.json::tour.steps.retailPurposes.description": "The legend explains each purpose. A purpose says why a region exists. It does not move data or decide who reads it. Two layers do that, and the tour shows each: homing, the engine's rules about where data lives, and security, the data steward's rules about who reads what.",
+  "it/tour.json::tour.steps.retailOrgRegions.title": "The organization's regions and stores",
+  "it/tour.json::tour.steps.retailOrgRegions.description": "The organization holds both regions. Each row names the stores used there: the region's engine, and where its replicas, views, cache, build state and record are kept. EU data is processed with the EU's own stores.",
+  "it/tour.json::tour.steps.retailEngines.title": "One engine per region",
+  "it/tour.json::tour.steps.retailEngines.description": "Federation has a tab for each region, and each region runs its own engine. So one config gives two data processing environments. You are on the US node. It reads EU data only through the EU's store, never from a copy of its own."
 }

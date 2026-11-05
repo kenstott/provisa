@@ -25,7 +25,7 @@ import {
 import { SubnavExtraProvider } from "./context/SubnavExtraContext";
 import { NavBar } from "./components/NavBar";
 import { AdminRail } from "./components/AdminRail";
-import { NAV_GROUPS, entryItem } from "./components/navGroups";
+import { NAV_GROUPS, entryItem, sandboxReadable } from "./components/navGroups";
 import { CapabilityGate } from "./components/CapabilityGate";
 import { SandboxReadableGate } from "./components/admin/SandboxReadableGate";
 import { HIDING_RIGHTS } from "./lib/capabilities";
@@ -692,7 +692,7 @@ function App() {
                                               key={path}
                                               path={path}
                                               element={
-                                                path === "/admin/platform" ? (
+                                                sandboxReadable(path) ? (
                                                   // REQ-1922: a demo sandbox reads it.
                                                   <SandboxReadableGate
                                                     capability={capability}

@@ -933,16 +933,32 @@
         "description": "Sie haben die eigenen Daten des Versicherers gesehen, nach County und Erntejahr mit öffentlichen Schäden, Wetter- und Ertragsdaten abgeglichen, alles in einem regulierten Modell. Eine View beantwortet, ob das Wetter die Schäden erklärt, in SQL, GraphQL und REST. Das Notebook misst es: Das Wetter erklärt 54 % der Schwankung der Schadenquote, und über den heutigen Bestand lässt eine Saison wie 2012 eine Schadenquote von 1,75 erwarten."
       },
       "retailScenario": {
-        "title": "Ein Konzern, zwei Regionen",
+        "title": "Eine Geschichte aus zwei Regionen",
         "description": "Ein Einzelhandelskonzern führt eine EU- und eine US-Tochtergesellschaft als ein Unternehmen. Geht das, ohne gegen die GDPR zu verstoßen? Jede Tochtergesellschaft hat ihre eigene Datenbank: Dies ist die der EU, mit ihren Treuekunden, deren Marketing-Einwilligung, Bestellungen, Mitarbeitenden und der Post, die Mitarbeitende aus dem Konzern hinaus senden."
       },
+      "retailPlatformRegions": {
+        "title": "Regionen beginnen in einer Konfiguration",
+        "description": "Die Konfiguration der Plattform deklariert die Regionen, hier die EU und die US, und gewährt sie der Organisation. Jede Region hat ihre eigene Datenverarbeitung: ihre eigene Engine und ihre eigenen Speicher. Der Zweck der EU ist Datenresidenz, für Kundendaten, die in der Europäischen Union bleiben müssen. In dieser Sandbox können Sie diese Seite lesen, aber nicht ändern."
+      },
+      "retailPurposes": {
+        "title": "Was ein Zweck aussagt",
+        "description": "Die Legende erklärt jeden Zweck. Ein Zweck sagt, warum es eine Region gibt. Er verschiebt keine Daten und entscheidet nicht, wer sie liest. Das tun zwei Ebenen, und die Tour zeigt beide: Homing, die Regeln der Engine dazu, wo Daten liegen, und Sicherheit, die Regeln des Data Stewards dazu, wer was liest."
+      },
+      "retailOrgRegions": {
+        "title": "Die Regionen und Speicher der Organisation",
+        "description": "Die Organisation hält beide Regionen. Jede Zeile nennt die Speicher, die dort genutzt werden: die Engine der Region und wo ihre Replikate, Ansichten, ihr Cache, ihr Build-Zustand und ihr Protokoll liegen. EU-Daten werden mit den eigenen Speichern der EU verarbeitet."
+      },
+      "retailEngines": {
+        "title": "Eine Engine pro Region",
+        "description": "Föderation hat einen Tab für jede Region, und jede Region betreibt ihre eigene Engine. Eine Konfiguration ergibt also zwei Datenverarbeitungsumgebungen. Sie sind auf dem US-Knoten. Er liest EU-Daten nur über den Speicher der EU, nie aus einer eigenen Kopie."
+      },
       "retailRegions": {
-        "title": "Eine Definition jeder Region",
-        "description": "Die Datenbank der US-Tochtergesellschaft, beheimatet in der Region US. Das Modell deklariert beide Regionen und legt einmal fest, wo jede Tabelle liegt und welche Ansichten wo erstellt werden. Ein zweiter Provisa-Knoten läuft in der EU: Er kopiert die EU-Tabellen in den eigenen Speicher der EU und erstellt dort die EU-Ansichten. Sie sind auf dem US-Knoten, der EU-Daten nur aus diesem EU-Speicher liest, sodass jede grenzüberschreitende Regel an einer Stelle angewendet wird."
+        "title": "Homing: Jede Quelle nennt ihre Heimat",
+        "description": "Die Datenbank der US-Tochtergesellschaft ist in der Region US beheimatet, die der EU-Tochtergesellschaft in der EU. Homing ist die Regel der Engine dazu, wo Daten liegen. Die Replikate und der Cache einer beheimateten Tabelle bleiben in ihrer Heimatregion, und andere Regionen erreichen sie nur über diese Region."
       },
       "retailEuCustomers": {
         "title": "Eine EU-Tabelle, beheimatet in der EU",
-        "description": "Die EU-Kunden. Die Tabelle nennt die EU als ihre Region: Ihre Zeilen werden nur in den Speicher der EU kopiert und nur dort berechnet. Leser anderswo erhalten sie über die Ansichten der EU oder gar nicht."
+        "description": "Die EU-Kunden. Die Region der Tabelle ist die EU, daher liegen ihre Replikate und ihr Cache nur im Speicher der EU. Homing entscheidet, wo die Zeilen liegen. Es entscheidet nicht, wer sie lesen darf. Das ist die nächste Ebene."
       },
       "retailRequests": {
         "title": "Anfragen betroffener Personen",
@@ -953,12 +969,12 @@
         "description": "Eine Anfrage wird über die E-Mail-Adresse mit den Kunden jeder Tochtergesellschaft verknüpft. So findet eine Anfrage dieselbe Person in beiden."
       },
       "retailAsAnalyst": {
-        "title": "Als Konzernanalyst",
-        "description": "Als Nächstes wechselt die Rollenauswahl zu <strong>group_analyst</strong>, der in der Region US am Konzernreporting arbeitet, sodass SQL und GraphQL danach als group_analyst laufen."
+        "title": "Die Regeln des Data Stewards, als Konzernanalyst",
+        "description": "Die zweite Ebene ist Sicherheit: Die Regeln des Data Stewards entscheiden, was jeder Leser erhält, nach Rolle und nach der Region des Lesers. Sie werden in der Heimatregion angewendet, bevor etwas sie verlässt. Als Nächstes wechselt die Rollenauswahl zu <strong>group_analyst</strong>, der in den US an der Konzernberichterstattung arbeitet, sodass SQL und GraphQL danach als group_analyst laufen."
       },
       "retailGroupView": {
         "title": "Konzernreporting, EU-Kunden pseudonymisiert",
-        "description": "Jeder Treuekunde des Konzerns. US-Kunden erscheinen unverändert; EU-Kunden erscheinen unter einem Pseudonym, das die EU berechnet hat, ohne Name oder Adresse. Der EU-Teil wurde aus dem Speicher der EU gelesen, und der Eintrag zu dieser Abfrage nennt die EU als die Region, die geantwortet hat."
+        "description": "Jeder Treuekunde des Konzerns. US-Kunden erscheinen, wie sie sind. EU-Kunden erscheinen unter einem Pseudonym, weil die Regel des Stewards besagt, dass ein Leser außerhalb der EU keinen Namen und keine Adresse erhält. Die EU hat diese Regel angewendet, bevor ihre Zeilen sie verließen, und das Protokoll dieser Abfrage nennt die EU als die Region, die geantwortet hat."
       },
       "retailGroupGraphql": {
         "title": "Dasselbe in GraphQL",
@@ -970,7 +986,7 @@
       },
       "retailAudience": {
         "title": "Nur Kunden, die eingewilligt haben",
-        "description": "Der SQL-Explorer läuft jetzt als <strong>marketing_eu</strong>. Das EU-Marketing liest die EU-Kunden, die in Marketing eingewilligt haben, und nur diese. Die Ansicht wird in der EU aus EU-Zeilen erstellt."
+        "description": "Der SQL-Explorer läuft jetzt als <strong>marketing_eu</strong>. Die Regel des Stewards lässt das EU-Marketing die EU-Kunden lesen, die dem Marketing zugestimmt haben, und nur diese. Die Ansicht wird in der EU aus EU-Zeilen erstellt."
       },
       "retailAsDpo": {
         "title": "Als Datenschutzbeauftragter",
@@ -998,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "Der Absender, offengelegt in der EU",
-        "description": "Dieselbe Warteschlange. Die Maskierungsliste der Absenderspalte legt den Absender nur einem Prüfer offen, der zusätzlich region__eu hat; alle anderen lesen ihn zurückgehalten. Es ist eine einzige Berechtigung, reviewer und region__eu, ohne eine eigene Rolle für die Kombination."
+        "description": "Dieselbe Warteschlange. Die Maske des Stewards auf der Absenderspalte zeigt den Absender nur einem Prüfer, dessen zugewiesene Region die EU ist (region__eu). Alle anderen lesen ihn zurückgehalten. Was ein Leser erhält, hängt von seiner Region wie von seiner Rolle ab, und für die Kombination wurde keine Rolle angelegt."
       },
       "retailAsAdmin": {
         "title": "Zurück zu jeder Rolle",
@@ -1014,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "Was Sie gesehen haben",
-        "description": "Ein Modell hat beide Regionen definiert: wo jede Tabelle liegt, welche Ansichten wo erstellt werden und wer was liest. Das Konzernreporting las EU-Kunden pseudonymisiert, das EU-Marketing las nur einwilligende Kunden, und ein Auskunftsersuchen und eine Löschung waren jeweils eine Abfrage. Die Insider-Prüfung legte einen Absender nur in der EU offen, und jedes Lesen steht in einem Protokoll."
+        "description": "Eine Konfiguration gewährte zwei Regionen, jede mit eigener Engine und eigenen Speichern: zwei Datenverarbeitungsumgebungen. Homing hielt die EU-Tabellen, ihre Replikate und ihren Cache in der EU. Die Regeln des Data Stewards entschieden, was jeder Leser erhielt, nach Rolle und nach der Region des Lesers, und die EU wendete sie an, bevor etwas sie verließ. Die Konzernberichterstattung las EU-Kunden pseudonymisiert, das EU-Marketing las nur zustimmende Kunden, Auskunft und Löschung waren jeweils eine Abfrage, der Absender wurde nur einem Prüfer in der EU gezeigt, und jeder Lesezugriff steht in einem Protokoll."
       },
       "provisioningScenario": {
         "title": "Worum es in dieser Demo geht",
@@ -1894,7 +1910,7 @@
         "summary": "Erklärt das Wetter die Schäden im Portfolio eines Ernteversicherers? Seine eigenen Betriebe, Policen und Schadensfälle, nach County und Erntejahr mit den Schäden des USDA nach Ursache, NOAAs Wetter und NASS' Erträgen verknüpft, beantworten es in SQL, GraphQL und REST."
       },
       "retail": {
-        "title": "Ein Konzern, zwei Regionen",
+        "title": "Eine Geschichte aus zwei Regionen",
         "summary": "Ein Einzelhandelskonzern mit einer EU- und einer US-Tochtergesellschaft, als ein Unternehmen unter der GDPR geführt: EU-Daten bleiben in der EU, das Konzernreporting liest sie pseudonymisiert, und Auskunft, Löschung, Insider-Prüfung und Audit sind jeweils eine Abfrage."
       },
       "provisioning": {

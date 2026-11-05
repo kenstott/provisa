@@ -298,6 +298,13 @@ export function writeLastSubnav(groupId: string, to: string) {
   setStored(LAST_SUBNAV_KEY, JSON.stringify({ ...readLastSubnav(), [groupId]: to }));
 }
 
+/** REQ-1922: whether a demo sandbox's visitor may open the page at ``path`` (its query string
+ * aside) to read, though its capability is not theirs: an entry marked `sandboxReadable`. */
+export function sandboxReadable(path: string): boolean {
+  const page = path.split("?")[0];
+  return NAV_GROUPS.some((g) => g.items.some((i) => i.to === page && i.sandboxReadable === true));
+}
+
 // The submenu item within a group to navigate to on entry: the remembered one (if still valid,
 // available AND permitted) or the first non-comingSoon item the caller's rights admit.
 //
