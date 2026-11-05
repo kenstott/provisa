@@ -209,3 +209,25 @@ async def test_a_table_without_a_fetch_for_its_key_is_refused_by_name():
     load, source, table = _loaded(_HASURA, "tracks")
     with pytest.raises(UnsupportedSourceFetch, match="tracks.*no field returning its rows"):
         await load(source, table, ["id"], [(1,)])
+
+
+@pytest.mark.asyncio
+async def test_the_keyed_fetch_is_the_contracts_call(monkeypatch):
+    """REQ-1756: replication's keyed fetch calls the remote through the source contract."""
+    from provisa.graphql_remote import executor
+    from provisa.graphql_remote.contract import GraphqlRemoteContract
+
+    calls: list = []
+
+    async def _call(self, state, plan):
+        calls.append(plan)
+        return executor.RemoteAnswer([{"id": 1, "title": "Let It Be"}])
+
+    monkeypatch.setattr(GraphqlRemoteContract, "call", _call)
+    load, source, table = _loaded(_HASURA, "albums")
+    rows = await load(source, table, ["id"], [(1,)])
+    assert rows == [{"id": 1, "title": "Let It Be"}]
+    (plan,) = calls
+    assert (plan.read.source_id, plan.read.name) == ("remote", table.table_name)
+    assert plan.arguments == {"where": {"id": {"_in": [1]}}}
+    assert plan.read.registration["field_name"] == "albums"
