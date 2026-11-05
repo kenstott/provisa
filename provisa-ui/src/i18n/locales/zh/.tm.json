@@ -3893,7 +3893,7 @@
   "zh/observabilityTab.json::observabilityTab.compactCronLabel": "Compaction Cron",
   "zh/observabilityTab.json::observabilityTab.compactFileChunkHelp": "Parquet files processed per compaction chunk.",
   "zh/observabilityTab.json::observabilityTab.compactFileChunkLabel": "Compaction File Chunk",
-  "zh/observabilityTab.json::observabilityTab.endpointHelp": "Leave empty to generate traces without exporting. Override with OTEL_EXPORTER_OTLP_ENDPOINT env var.",
+  "zh/observabilityTab.json::observabilityTab.endpointHelp": "Point this at Provisa's own collector, and add an external provider as an exporter in the collector so the trace tables keep filling. Leave empty to keep traces on this page only. Override with OTEL_EXPORTER_OTLP_ENDPOINT.",
   "zh/observabilityTab.json::observabilityTab.endpointLabel": "OTLP Collector Endpoint",
   "zh/observabilityTab.json::observabilityTab.errorsPrefix": "Errors: {{errors}}",
   "zh/observabilityTab.json::observabilityTab.expand": "Expand",
@@ -3934,7 +3934,7 @@
   "zh/observabilityTab.json::observabilityTab.spanExportDelayHelp": "BatchSpanProcessor flush interval. Lower reduces trace latency.",
   "zh/observabilityTab.json::observabilityTab.spanExportDelayLabel": "Span Export Delay (ms)",
   "zh/observabilityTab.json::observabilityTab.spanLabel": "Span:",
-  "zh/observabilityTab.json::observabilityTab.statusActiveNoCollector": "Active (spans dropped — no collector configured)",
+  "zh/observabilityTab.json::observabilityTab.statusActiveNoCollector": "Active (traces are kept for this page, not exported)",
   "zh/observabilityTab.json::observabilityTab.statusExporting": "Exporting → {{endpoint}}",
   "zh/observabilityTab.json::observabilityTab.statusLabel": "Status:",
   "zh/observabilityTab.json::observabilityTab.subsystem.catalog_database": "Catalog database",
@@ -9632,5 +9632,7 @@
   "zh/classificationKinds.json::classificationKinds.test.uk_nhs_number": "Ten digits passing the NHS mod 11 check.",
   "zh/classificationKinds.json::classificationKinds.test.us_bank_routing_number": "Nine digits passing the ABA checksum.",
   "zh/classificationKinds.json::classificationKinds.test.us_ein": "Two digits of an IRS campus prefix, a hyphen and seven digits, written 12-3456789.",
-  "zh/classificationKinds.json::classificationKinds.test.us_itin": "Nine digits starting with 9, the middle two in an ITIN group (50 to 65, 70 to 88, 90 to 92, 94 to 99), written 912-70-1234 or plain."
+  "zh/classificationKinds.json::classificationKinds.test.us_itin": "Nine digits starting with 9, the middle two in an ITIN group (50 to 65, 70 to 88, 90 to 92, 94 to 99), written 912-70-1234 or plain.",
+  "zh/observabilityTab.json::observabilityTab.tracesTableEmpty": "An endpoint is set, but Provisa's trace tables have no rows yet. If the endpoint is an external provider rather than Provisa's collector, move it into the collector's exporters.",
+  "zh/observabilityTab.json::observabilityTab.tracesTableStale": "An endpoint is set, but Provisa's trace tables have received no rows in the last {{minutes}} minutes. If Provisa has been idle that is expected. If not, check that the endpoint is Provisa's collector and not an external provider."
 }
