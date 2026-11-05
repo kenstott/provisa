@@ -26605,3 +26605,15 @@ Maintainer 2026-11-05: an effective-access explainer. Provisa has no person: the
 **Code:** —
 
 **Tests:** —
+
+## 8. Client Access & Protocols
+
+### REQ-2212 · SQL & Multi-Protocol Client Access {#REQ-2212}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-05: a dialect parameter on SQL connections, so a client written for another database (for example SQL Server T-SQL) can move to Provisa without rewriting its SQL. A connection to a SQL front end (pgwire, Arrow Flight SQL, HTTP /data/sql) may name a SQL dialect that SQLGlot knows (tsql, mysql, snowflake, bigquery and so on); with none it is postgres, as today. Every statement the client sends is parsed with that dialect's reader, and every SQL text Provisa returns to that client (a view's definition, an EXPLAIN, the definition text in catalog answers) is written with that dialect's writer. Between the two, nothing changes: the same semantic SQL, governance, routing and engine transpile apply, so a statement means the same whichever dialect it arrived in. An unknown dialect is refused at connect, naming it; a statement the reader cannot parse is refused with the reader's error. The wire protocol is unchanged: a SQL Server client still needs a pgwire-capable driver; a native TDS endpoint is out of scope here.
+
+**Code:** —
+
+**Tests:** —

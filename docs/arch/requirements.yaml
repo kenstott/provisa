@@ -92345,3 +92345,33 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
     Then it shows the row predicate bound to eu ANDed with the parent-domain filter, the card column''s mask expression,
     and the residency decision, and they equal what the governed statement for the same inputs applies'
+- id: REQ-2212
+  value: 'A SQL client can speak its own SQL dialect to Provisa: a connection names its dialect, and SQL goes in
+    and comes out through the same SQLGlot translation.'
+  status: proposed
+  target: 2026-Q4
+  group: 8. Client Access & Protocols
+  category: SQL & Multi-Protocol Client Access
+  feature: postgres-wire-protocol-client-drivers
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-05: a dialect parameter on SQL connections, so a client written for another database
+    (for example SQL Server T-SQL) can move to Provisa without rewriting its SQL. A connection to a SQL front end
+    (pgwire, Arrow Flight SQL, HTTP /data/sql) may name a SQL dialect that SQLGlot knows (tsql, mysql, snowflake,
+    bigquery and so on); with none it is postgres, as today. Every statement the client sends is parsed with that
+    dialect''s reader, and every SQL text Provisa returns to that client (a view''s definition, an EXPLAIN, the
+    definition text in catalog answers) is written with that dialect''s writer. Between the two, nothing changes:
+    the same semantic SQL, governance, routing and engine transpile apply, so a statement means the same whichever
+    dialect it arrived in. An unknown dialect is refused at connect, naming it; a statement the reader cannot parse
+    is refused with the reader''s error. The wire protocol is unchanged: a SQL Server client still needs a pgwire-capable
+    driver; a native TDS endpoint is out of scope here.'
+  scenario: 'Given a pgwire connection that names dialect tsql
+
+
+
+    When it sends SELECT TOP 5 [name], ISNULL([region], ''none'') FROM [shop].[customers]
+
+
+
+    Then it receives the same rows and governance as the PostgreSQL statement SELECT name, COALESCE(region, ''none'')
+    FROM shop.customers LIMIT 5, and a view definition it asks for comes back written in T-SQL'
