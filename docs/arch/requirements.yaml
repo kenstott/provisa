@@ -46729,44 +46729,46 @@
     request''s remaining deadline and then raise; a failed batch insert is logged at error and retried until
     it lands; shutdown writes what is queued before the control-plane pools close and reports at error any
     record it could not write. Durability: a hard crash loses the records enqueued within the last batch
-    window (at most the queue''s capacity). The active-hour meter (a private commercial requirement) rides the same record. Cache
-    invalidation after a write stays synchronous in finalize_audit. /data/graphql — query, plan- or response-cache
-    hit, mutation, normalized read, subscription open — hands one record per request to the same seam; its
-    table ids are resolved on the writer thread from the document and the role''s compilation context.]
-    [AMENDED 2026-10-01 (2): query_audit_log carries `route` (cache | direct | engine; api for an API-source
-    GraphQL field; comma-joined when a GraphQL request''s fields took different routes) and `row_count`
-    (rows the terminal delivered), both NULL for a refused statement, filled on every transport through
-    finalize_audit. A terminal that hands back a stream it has not drained (pgwire, Flight SQL/GraphQL streams,
-    the airport scan) defers the row to the end of the drain (audit_on_drain), where the row count and a
-    mid-stream failure (500) are known; a result released early is recorded with the rows delivered. Every
-    transport is audited with or without authentication: on a deployment with no auth provider HTTP, Flight
-    and gRPC attribute requests to the `anonymous` principal, pgwire to the startup user name, Bolt to the
-    principal the client named or `anonymous`. A GraphQL subscription is audited when it is opened, not
-    per poll. A GraphQL action field is ONE row — its governed statement''s — and the request writes no
-    second row. The audit writer is started by the application lifespan and stopped by it; an enqueue with
-    no running writer raises, and a writer whose thread has ended refuses records and is replaced at the
-    next start.] [NOT RECORDED as of 2026-10-01: `route`/`row_count` are left NULL for a CTAS (the terminal
-    does not know the row count) and for a GraphQL mutation request (its route and affected rows are not
-    noted on the request''s audit outcome).] (Amended 2026-10-28, ONTOLOGY QUALITY IS A STANDARD REPORT:)
-    A seeded standard report, Ontology quality, measures the glossary objectively from the model (REQ-1387
-    grounding), by domain and by steward: grounded share of in-service terms (draft and final apart); approved-and-grounded
-    share (the terms an agent may use); unresolved placeholders (RELATED_TO edges, and terms whose only
-    links are RELATED_TO); grounding precision (hops from a term to data, and how many paths pass through
-    a broad hub term); terms grounded only through drafts, with the term whose approval makes them final;
-    undefined terms on paths to data; and drift, the terms that lost or gained grounding since the previous
-    period, read from the glossary''s retained history. Each row links to the term, and a placeholder row
-    to its RELATED_TO review. Like every report it is an ops-domain view read through the governed pipeline
-    as the selected roles, exportable and access-controlled. (Amended 2026-10-28, DRIFT FROM THE MODEL''S
-    HISTORY; A HUB IS FIVE:) The Ontology quality report''s drift is computed from the model''s retained
-    version history: the glossary as it stood at the start of the previous period is graded with the same
-    grounding computation as today''s and the two are compared; it is computed by Provisa rather than read
-    from a view, and shown with the report. A broad hub term is one with at least five terms directly beneath
-    it on grounding edges; the report states the rule. (Amended 2026-10-29, WHAT THE PREVIOUS PERIOD IS:)
-    Maintainer 2026-10-30: drift''s previous period is the last full calendar month, so it compares the
-    model now with the model at the first of last month, UTC: the latest commit on the environment''s branch
-    at or before that time. A term is matched by name, so a renamed term shows as one lost and one gained,
-    and the report says so. A branch with no commit at or before that time shows no history, not zero, and
-    a term absent then counts as new.'
+    window (at most the queue''s capacity). The active-hour meter (a private commercial requirement) rides
+    the same record. Cache invalidation after a write stays synchronous in finalize_audit. /data/graphql
+    — query, plan- or response-cache hit, mutation, normalized read, subscription open — hands one record
+    per request to the same seam; its table ids are resolved on the writer thread from the document and
+    the role''s compilation context.] [AMENDED 2026-10-01 (2): query_audit_log carries `route` (cache |
+    direct | engine; api for an API-source GraphQL field; comma-joined when a GraphQL request''s fields
+    took different routes) and `row_count` (rows the terminal delivered), both NULL for a refused statement,
+    filled on every transport through finalize_audit. A terminal that hands back a stream it has not drained
+    (pgwire, Flight SQL/GraphQL streams, the airport scan) defers the row to the end of the drain (audit_on_drain),
+    where the row count and a mid-stream failure (500) are known; a result released early is recorded with
+    the rows delivered. Every transport is audited with or without authentication: on a deployment with
+    no auth provider HTTP, Flight and gRPC attribute requests to the `anonymous` principal, pgwire to the
+    startup user name, Bolt to the principal the client named or `anonymous`. A GraphQL subscription is
+    audited when it is opened, not per poll. A GraphQL action field is ONE row — its governed statement''s
+    — and the request writes no second row. The audit writer is started by the application lifespan and
+    stopped by it; an enqueue with no running writer raises, and a writer whose thread has ended refuses
+    records and is replaced at the next start.] [NOT RECORDED as of 2026-10-01: `route`/`row_count` are
+    left NULL for a CTAS (the terminal does not know the row count) and for a GraphQL mutation request (its
+    route and affected rows are not noted on the request''s audit outcome).] (Amended 2026-10-28, ONTOLOGY
+    QUALITY IS A STANDARD REPORT:) A seeded standard report, Ontology quality, measures the glossary objectively
+    from the model (REQ-1387 grounding), by domain and by steward: grounded share of in-service terms (draft
+    and final apart); approved-and-grounded share (the terms an agent may use); unresolved placeholders
+    (RELATED_TO edges, and terms whose only links are RELATED_TO); grounding precision (hops from a term
+    to data, and how many paths pass through a broad hub term); terms grounded only through drafts, with
+    the term whose approval makes them final; undefined terms on paths to data; and drift, the terms that
+    lost or gained grounding since the previous period, read from the glossary''s retained history. Each
+    row links to the term, and a placeholder row to its RELATED_TO review. Like every report it is an ops-domain
+    view read through the governed pipeline as the selected roles, exportable and access-controlled. (Amended
+    2026-10-28, DRIFT FROM THE MODEL''S HISTORY; A HUB IS FIVE:) The Ontology quality report''s drift is
+    computed from the model''s retained version history: the glossary as it stood at the start of the previous
+    period is graded with the same grounding computation as today''s and the two are compared; it is computed
+    by Provisa rather than read from a view, and shown with the report. A broad hub term is one with at
+    least five terms directly beneath it on grounding edges; the report states the rule. (Amended 2026-10-29,
+    WHAT THE PREVIOUS PERIOD IS:) Maintainer 2026-10-30: drift''s previous period is the last full calendar
+    month, so it compares the model now with the model at the first of last month, UTC: the latest commit
+    on the environment''s branch at or before that time. A term is matched by name, so a renamed term shows
+    as one lost and one gained, and the report says so. A branch with no commit at or before that time shows
+    no history, not zero, and a term absent then counts as new. (Amended 2026-11-04, SENSITIVE COVERAGE
+    IS A STANDARD REPORT:) Sensitive coverage is one of the seeded ops-domain reports: every sensitive column,
+    its tags, whether a fake covers it, and the reason when none does, read from meta.sensitive_coverage.'
   use_case: 'Provides self-service management/operations reporting through the governed pipeline without
     custom code: usage-driven deprecation decisions, PII-access oversight, governance-effectiveness inspection,
     and capacity/caching signals, all consumable from any BI tool over pgwire.'
@@ -83796,15 +83798,17 @@
   feature: product-tour-and-demos-named-demos
   priority: SHOULD
   type: behavioral
-  description: 'A feature demo, environments and test data: The model''s git-branch environments (dev, test, prod)
-    with fake data generated per environment (REQ-1494, computed by the serving engine) and masking, over a demo''s
-    schema (weblogs''): the same queries return production-shaped but generated rows in dev and test, and real rows
-    only in prod. Its tour follows the settled demo tour shape (scenario and features; how the pieces fit, each
-    step on its real row; the solution as predesigned queries and views over fitting transports; recap; then "Where
-    next?" with its landing page). Its business question: "Can I test against realistic data without touching production?"
-    Hosted, it runs as it does locally: a demo''s template org creates the environments its setup.yaml declares,
-    every sandbox cloned from the template carries them (same names and data modes), and the sandbox''s visitor
-    switches between them but creates and deletes none.'
+  description: 'A feature demo, environments and test data: The model''s git-branch environments (dev, test,
+    prod) with fake data generated per environment (REQ-1494, computed by the serving engine) and masking,
+    over a demo''s schema (weblogs''): the same queries return production-shaped but generated rows in dev
+    and test, and real rows only in prod. Its tour follows the settled demo tour shape (scenario and features;
+    how the pieces fit, each step on its real row; the solution as predesigned queries and views over fitting
+    transports; recap; then "Where next?" with its landing page). Its business question: "Can I test against
+    realistic data without touching production?" Hosted, it runs as it does locally: a demo''s template
+    org creates the environments its setup.yaml declares, every sandbox cloned from the template carries
+    them (same names and data modes), and the sandbox''s visitor switches between them but creates and deletes
+    none. (Amended 2026-11-04, THE COVERAGE STEP OPENS THE STANDARD REPORT:) The tour''s coverage step opens
+    the sensitive coverage report on the Admin Reports page, not a hand-written query.'
   use_case: 'A visitor opens the environments and test data demo and sees how Provisa answers: Can I test against
     realistic data without touching production?'
   scenario: 'Given the environments and test data demo started from its bundle
