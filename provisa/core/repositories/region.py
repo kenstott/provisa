@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 
 from provisa.core import model_change
-from provisa.core.regions import OrgRegion, StoreConfig
+from provisa.core.regions import OrgRegion, RegionGrant, StoreConfig
 from provisa.core.schema_org import org_regions, stores
 
 if TYPE_CHECKING:
@@ -104,6 +104,19 @@ async def upsert_region(conn: "Connection", region: OrgRegion) -> None:
         index_elements=["id"],
         update_columns=[k for k in values if k != "id"],
     )
+
+
+async def apply_default_grant(conn: "Connection", grant: "RegionGrant") -> bool:
+    """Give a new org the platform's default grant (REQ-1922: "every new organization receives
+    it"): its stores, then its regions. An org whose model already names regions -- a demo's
+    configuration declares its own -- keeps them. Returns whether the grant was written."""
+    if not grant.regions or await list_regions(conn):
+        return False
+    for store in grant.stores:
+        await upsert_store(conn, store)
+    for region in grant.regions:
+        await upsert_region(conn, region)
+    return True
 
 
 async def list_regions(conn: "Connection") -> list[OrgRegion]:

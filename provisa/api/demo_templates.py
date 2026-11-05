@@ -1442,6 +1442,7 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         reset_current_org(token)
     from provisa.api.demo_region_seed import (
         regional,
+        seeding_node_addresses,
         unanswered_regions,
         views_built_here,
         views_kept_here,
@@ -1464,12 +1465,14 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
             kept := views_kept_here(template_seed(org_id))
         ):
             waiting = await views_waiting_here(org_id, landed_at)
-            # A view may read a table another region keeps in place: that region's node answers
-            # at the address the deployment config declares for it, or the view never builds.
+            # A view may read a table another region keeps in place: that region's seeding node
+            # answers where the build says it listens, or the view never builds.
             from provisa.api.app import state
 
             down = dict(
-                await unanswered_regions({r.id: r.address for r in state.config.platform.regions})
+                await unanswered_regions(
+                    seeding_node_addresses([r.id for r in state.config.platform.regions])
+                )
             )
             dead, unanswered_since = silent_regions(down, unanswered_since, time.monotonic())
             if dead:
