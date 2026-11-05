@@ -44630,7 +44630,13 @@
     AND THEIR ADMINS:) Beyond the infrastructure, the platform admin decides the organizations and their
     org admins: it creates, suspends, tiers and deletes an organization, and appoints, replaces or removes
     its org admins (inviting the first, or reassigning when one leaves). Every other member, role and setting
-    inside the organization is the organization''s.'
+    inside the organization is the organization''s. (Amended 2026-11-05, HOW THE PLATFORM APPOINTS ORG ADMINS:)
+    The platform admin invites an organization''s admin with an invitation whose role carries user_management
+    in that organization, checked by capability, never by role name; it may send no other invitation into
+    an organization. It replaces or removes an org admin by granting or revoking the role; removing the
+    person from the organization stays the organization''s decision. A debug-trace window over a whole organization
+    is the platform''s; listing, stopping and hinting a role or source window are the org admin''s in that
+    organization, and an org admin lists only its organization''s windows.'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
@@ -92125,3 +92131,87 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
     And a schedule naming an address outside acme.com with a CSV attachment is refused, naming the
     address'
+- id: REQ-2208
+  value: Every security choice can cite the policy clause it implements, and a changed clause becomes a review item.
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Authorization
+  feature: roles-and-capabilities-platform-admins
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-05: security choices link to the organization''s policy. A role, a row
+    rule, a mask, a column grant or scope, and a residency grant can each cite one or more policy references
+    beside its required description. A reference names a document in the reference library (REQ-2185) and
+    a section of it: the heading, or the page for a PDF, that the library''s extraction already reads. A
+    document is not marked as a security policy: it is a policy because security items cite it, and it may
+    be any document (a company policy, a regulation). The UI shows the cited section''s text beside the
+    item, and lists every item that cites a section. Each reference keeps the section''s heading and a hash
+    of its text when it was made. A new version of a document comes in as a new document through the library''s
+    review; on it, a reference whose heading is there with unchanged text moves to the new version, one
+    whose text changed is flagged for review, and one whose heading is gone is shown as broken; the flagged
+    and broken references form a review queue for the steward. Two reports: policy sections no security
+    item cites, and security items that cite no policy. The library keeps each document version''s sections
+    as addressable rows (heading, position and text hash) so a reference can name one. (Amended 2026-11-05,
+    REGISTRY TAGS APPLY TO POLICY SECTIONS:) A tag in the registry may apply to reference library documents
+    and their sections as well as columns and terms (its applies_to lists them): pii applies to columns,
+    terms, documents and sections, so a steward tags the policy sections about personal data with the same
+    tag as the columns. Coverage reads both: a pii column whose security items cite no pii section is a
+    gap, and so is a pii section that no security item on a pii column cites. Any other registry tag may
+    name documents and sections the same way. (Amended 2026-11-05, REGISTRY TAGS APPLY TO POLICY SECTIONS:)
+    A tag in the registry may apply to reference library documents and their sections as well as columns
+    and terms (its applies_to lists them): pii applies to columns, terms, documents and sections, so a steward
+    tags the policy sections about personal data with the same tag as the columns. Coverage reads both:
+    a pii column whose security items cite no pii section is a gap, and so is a pii section that no security
+    item on a pii column cites. Any other registry tag may name documents and sections the same way.'
+  scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
+
+
+    When a new version of the policy is added with section 4.2''s text changed
+
+
+    Then the rule''s reference is flagged for review, showing both texts, and the rule is listed in the
+    steward''s review queue'
+- id: REQ-2209
+  value: Security items and policy documents can be reviewed on a schedule, and each review is recorded as an attestation
+    in the words the reviewer agreed to.
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Authorization
+  feature: roles-and-capabilities-platform-admins
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-05: periodic review with recorded attestation. A role, a row rule, a mask, a
+    residency grant, and a reference library document or section can each carry an optional review schedule (an
+    interval such as 90 days). Two kinds of review exist: a definition review (is this item still right) and a membership
+    review of a role (should each holder still hold it, attested holder by holder). Each schedule carries its attestation
+    statement, the words the reviewer confirms; each kind of item has a default statement the organization can edit,
+    and a schedule may state its own. Attesting is a capability (review_attestation), carried by default by the
+    roles that own each kind of item (the data steward for row rules, masks, residency grants and policy sections;
+    the org admin for role definitions); each schedule names the role whose holders review it, and a reviewer must
+    hold that role and the capability, so an organization can make a reviewer role that attests without being able
+    to change what it reviews. A membership review names who reviews whom, chosen per schedule: the role''s owner
+    reviews all its holders (the default); a reviewer role reviews the holders who also hold a population role,
+    often a derived role such as team__sales; or a governed SQL statement returns reviewer and holder pairs (for
+    example from an HR source of managers and their staff), run when the review falls due. Provisa keeps no reporting
+    structure of its own: a manager attests their staff through one of these, and still needs the attestation capability.
+    No one attests their own membership, and the last person to change an item cannot be its only attester. When
+    a review falls due, the reviewers are reminded by email through the configured mail provider and by an item
+    in the review queue, the same queue REQ-2208''s flagged policy references join. The reviewer sees the exact
+    statement, the item, and the policy sections it cites, and records an outcome (still valid, changed, retire)
+    with an optional comment. Each attestation records the statement text as shown (not a reference to the current
+    wording), who attested and when, a hash of the item''s definition at that moment, the outcome and the comment,
+    in the administrative trail, exportable. Whether an overdue review lapses is set per schedule: unset, an overdue
+    item is flagged and escalated by email; set, it lapses, and a lapse never widens access: a lapsed membership
+    removes that holder''s grant, a lapsed role is no longer held, a lapsed residency grant is withdrawn, and a
+    lapsed row rule or mask leaves the roles it governs reading none of the rows or none of the column it governs
+    until it is attested. A report lists items overdue and each item''s attestation history.'
+  scenario: 'Given a role with a 90-day membership review whose overdue reviews lapse, and a holder no one attests
+
+
+    When the review is 1 day overdue
+
+
+    Then that holder no longer holds the role, the removal is in the administrative trail, and the role''s attestation
+    history shows the review with that holder unattested'

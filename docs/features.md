@@ -132,10 +132,10 @@ Authority is scoped to an environment, and the usual way to get it is to create 
 
 ### Regions and data residency
 
-A deployment can run clusters in several regions off one shared model. The model is declared once; each cluster has its own nodes, engine, replica storage, cache and record, and serves clients that connect to its data nodes. What a reader sees follows the model's rules, wherever they connect, and each audit record names the region whose data answered.
+A deployment can run clusters in several regions off one shared model. The model is declared once; each cluster has its own nodes, engine, replica storage, cache and record, and serves clients that connect to its address. What a reader sees follows the model's rules, wherever they connect, and each audit record names the region whose data answered.
 { #regions-and-residency-clusters }
 
-Residency is a short list of rules. Row and column rules written on user attributes and on the region of the node answering decide what each reader gets and what crosses between regions. A table can name a home region, and only that region builds and refreshes its replica. Readers elsewhere read that replica in place, with their own rules applied in the home region, so only what they may see leaves it. When the home region cannot serve, the read is refused. The source is never read live from elsewhere. Setting or moving a table's home region needs the data-residency right for the regions involved.
+Residency is a short list of rules. Row and column rules written on user attributes and on the region of the node answering decide what each reader gets and what crosses between regions. A table can name a home region, and only that region builds and refreshes its replica. Readers elsewhere read that replica in place, with their own rules applied in the home region, so only what they may see leaves it. When the home region cannot serve, the read is refused rather than answered from the source live somewhere else. Setting or moving a table's home region needs the data-residency right for the regions involved.
 { #regions-and-residency-residency-rules }
 
 ### Commands and functions
