@@ -82912,7 +82912,10 @@
     account at run time (REQ-2031). Its business question: "Can we run the group as one business without
     breaking GDPR?" (Amended 2026-11-05, THE TOUR SHOWS WHERE REGIONS ARE DEFINED:) The tour steps from
     the platform''s regions (the Platform page, read-only in a sandbox), to the organization''s regions
-    on Admin > Regions, to a table''s region, before the residency queries.'
+    on Admin > Regions, to a table''s region, before the residency queries. (Amended 2026-11-05, THE IDEA
+    THE TOUR TEACHES:) The tour''s one idea: one config, two data processing environments, and access to
+    data depends on the user''s assigned region as well as any other policy the organization creates. Every
+    step serves that idea.'
   use_case: 'A visitor opens the retail GDPR demo, walks its tour, and sees the business question answered: Can we
     run the group as one business without breaking GDPR?'
   scenario: 'Given the retail GDPR demo started from its bundle
