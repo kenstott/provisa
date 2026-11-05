@@ -288,10 +288,11 @@ def test_the_plan_types_a_money_expression_as_money_not_its_base(sql: str, expec
 def test_a_described_money_expression_is_sent_as_it_was_described():
     # Describe(Statement) answers from the shape, and each Execute encodes rows to it, whatever
     # decimal the engine computed the expression in.
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
+    from buenavista.postgres import BVTYPE_TO_OID
 
     from provisa.executor.result import QueryResult
     from provisa.pgwire.server import ProvisaQueryResult, _StatementDescription
+    from tests.unit.pgwire import wire_cells as wire
 
     sql = "SELECT price + price AS v, price / price AS r FROM conformance.m"
     ctx = _context()
@@ -306,13 +307,12 @@ def test_a_described_money_expression_is_sent_as_it_was_described():
     result = ProvisaQueryResult(engine, sql, shape)
     for described in (description, result):
         oids = [
-            described.column_type_oid(i) or BVTYPE_TO_PGTYPE[described.column(i)[1]][0]
-            for i in range(2)
+            described.column_type_oid(i) or BVTYPE_TO_OID[described.column(i)[1]] for i in range(2)
         ]
         assert oids == [790, 701]
-    encoder = BVTYPE_TO_PGTYPE[result.column(0)[1]]
-    assert encoder[1](Decimal("2469.1200")) == "$2,469.12"
-    assert encoder[2](Decimal("2469.1200")).hex() == "000000000003c480"
+    money = result.column(0)[1]
+    assert wire.text(money, Decimal("2469.1200")) == "$2,469.12"
+    assert wire.binary(money, Decimal("2469.1200")).hex() == "000000000003c480"
 
 
 def test_a_dollar_amount_in_a_literal_is_no_placeholder():
@@ -335,9 +335,10 @@ def test_a_dollar_amount_in_a_literal_is_no_placeholder():
 )
 def test_a_double_is_sent_in_postgresqls_text(value: float, text: str):
     from buenavista.core import BVType
-    from buenavista.postgres import BVTYPE_TO_PGTYPE
 
-    assert BVTYPE_TO_PGTYPE[BVType.FLOAT][1](value) == text
+    from tests.unit.pgwire import wire_cells as wire
+
+    assert wire.text(BVType.FLOAT, value) == text
 
 
 def test_a_bound_parameter_is_read_as_moneys_input():

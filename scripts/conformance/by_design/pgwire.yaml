@@ -2,7 +2,7 @@
 #
 # Two groups here name pg_catalog functions, and by_design.groups refuses any other: a function not
 # served is otherwise failed, whatever its family (REQ-2167, amended 2026-10-29, PG_CATALOG FUNCTIONS
-# ARE GAPS, INTERNAL FUNCTIONS and INDEXES BELONG TO THE DATABASE).
+# ARE GAPS, INTERNAL FUNCTIONS).
 
 # Catalog functions (pgwire_catalog_types.py, part 1). Each case keeps PostgreSQL's proof as its
 # reason: an internal argument, or the refusal function_probe.INTERNAL_REFUSAL recognizes. A refusal
@@ -17,17 +17,14 @@
   case: "^catalog function::"
   reason: "^no call reaches it: "
 
-# Family "Index support" of function_families.yaml and not served. Index metadata (pg_index,
-# pg_get_indexdef and the like) is in no such family, and stays served (REQ-2190); nor are the hash
-# functions, which a client can call directly.
-- group: Index functions
+- group: Not supported
   requirement: REQ-2167
   decision: >-
-    Indexes belong to the source database, and Provisa does not handle them: these are the support
-    and maintenance functions of index access methods. Index metadata stays served.
-  case: "^catalog function::"
-  reason: "^not served: "
-  family: Index support
+    Provisa does not model a source's sequences, so nextval, currval and setval are refused by name;
+    lastval is answered from the session's own inserts. regexp_replace with a start position, an
+    occurrence number and flags is refused by name; its other forms are served.
+  case: "^catalog function::(?:(?:nextval|currval|setval)\\(|regexp_replace\\(text, text, text, integer, integer, text\\)$)"
+  reason: "^not served: (?:ERROR:\\s+)?(?:nextval|currval|setval|regexp_replace)\\(\\) has no form "
 
 # Type conversions (pgwire_catalog_types.py, part 3): a statement whose every difference from
 # PostgreSQL is one a design decision makes. Each group names the statements (case) and the only

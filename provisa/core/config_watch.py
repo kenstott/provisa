@@ -17,7 +17,7 @@ statement per control plane it holds something from — and reloads each copy wh
 A request reads nothing from the control plane for this; it runs on what its process has loaded.
 
 A :class:`Target` is one such copy: where its stamp is stored, the stamp the copy was loaded at,
-and how to reload it. The reload records the stamp it loaded at, having read the stamp BEFORE the
+whether this process still watches it, and how to reload it. The reload records the stamp it loaded at, having read the stamp BEFORE the
 rows, so a change that lands during a reload is picked up by the next check and never missed.
 
 The interval is the operator setting ``config.reload_interval``.
@@ -59,17 +59,24 @@ class Target:
     # Load again, recording the stamp read before the rows. Answers NOT_RELOADED when there was
     # no copy left to load (the runtime it was listed for is gone).
     reload: Callable[[], Awaitable[object]]
+    # Whether this process still holds the copy. An org's copies stop being watched at its reap
+    # (``destroy_org`` evicts its runtime before dropping its schemas), and a check that listed
+    # them before the reap reads none of their planes after it (REQ-2006).
+    watched: Callable[[], bool] = lambda: True
 
 
 async def check(targets: list[Target]) -> list[str]:
     """Reload every target whose stored stamp differs from the one it was loaded at; the names of
-    those reloaded. One read per distinct control plane.
+    those reloaded. One read per distinct control plane. A target no longer watched when its turn
+    comes is passed over: its plane is not read.
 
     A target whose plane cannot be read, or whose reload fails, is logged and left as it was: its
     loaded stamp still differs, so the next check tries it again."""
     stored: dict[int, dict[str, int]] = {}
     reloaded: list[str] = []
     for target in targets:
+        if not target.watched():
+            continue
         try:
             if id(target.db) not in stored:
                 stored[id(target.db)] = await config_stamp.read(target.db)

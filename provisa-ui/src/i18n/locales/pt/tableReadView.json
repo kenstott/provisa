@@ -52,6 +52,8 @@
     "draftNoRightTooltip": "Publicar uma tabela, ou devolvê-la a rascunho, requer o direito de Registo de tabelas no domínio da tabela.",
     "draftPreviewNote": "Pré-visualização do rascunho: os leitores ainda não conseguem ver esta tabela.",
     "keepsHistory": "Guarda histórico: cada versão, com quando aconteceu e quando foi registrada.",
-    "keepsHistoryQuery": "Consultar em uma data ou como registrado"
+    "keepsHistoryQuery": "Consultar em uma data ou como registrado",
+    "deleteTitle": "Excluir a tabela {{name}}?",
+    "deleteConsequence": "O registro da tabela é excluído."
   }
 }

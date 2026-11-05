@@ -29,6 +29,7 @@ from provisa.compiler.naming import source_to_catalog
 from provisa.federation.colocation import colocation_key
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.security.meta_role import is_meta_role_id, rebuild_meta_roles, with_meta_masks
+from provisa.security.mutation_authz import command_assigned
 from provisa.security.rights import (
     SYSTEM_DOMAINS,
     Capability,
@@ -486,6 +487,7 @@ async def _build_source_pools_and_enums(
     from provisa.compiler.enum_detect import build_enum_types
 
     _enum_registry: dict[str, list[str]] = {}
+    _source_enums: dict = {}
     for _src in (*config.sources, *(extra_sources or ())):
         if _src.type.value == "postgresql" and state.source_pools.has(_src.id):
             _driver = state.source_pools.get(_src.id)
@@ -493,7 +495,9 @@ async def _build_source_pools_and_enums(
                 # Swallowing here silently mistypes enum columns — propagate.
                 _reg = await cast(Any, _driver).fetch_enums()
                 _enum_registry.update(_reg)
+                _source_enums.update(await cast(Any, _driver).fetch_source_enums())
     state.pg_enum_types = build_enum_types(_enum_registry)
+    state.pg_source_enums = _source_enums
 
 
 async def apply_configuration(config: ProvisaConfig) -> None:  # REQ-1919, REQ-164
@@ -1084,6 +1088,13 @@ async def _graphql_remote_auth(state, src: dict) -> dict | None:
         return {"type": "bearer", "token": secret}
     if auth_type == "basic":
         return {"type": "basic", "username": src["username"], "password": secret}
+    if auth_type == "header":
+        header = (src["federation_hints"] or {}).get("auth_header")
+        if not header:
+            raise ValueError(
+                f"graphql_remote source {src['id']!r}: auth_type 'header' names no auth_header"
+            )
+        return {"type": "header", "header": header, "token": secret}
     raise ValueError(f"graphql_remote source {src['id']!r}: unknown auth_type {auth_type!r}")
 
 
@@ -1134,6 +1145,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                             _sources_t.c.username,
                             _sources_t.c.password_ref,
                             _sources_t.c.federation_hints,
+                            _sources_t.c.brand_setup,  # REQ-1923
                             _sources_t.c.mapping,
                         ).where(_sources_t.c.type == "graphql_remote")
                     )
@@ -1239,6 +1251,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                     **(
                         {
                             "brand": brand.id,
+                            "setup": dict(src["brand_setup"]),
                             "error_policy": brand.error_policy,
                         }
                         if brand is not None
@@ -1695,6 +1708,7 @@ def schema_input_for(
     """The schema input for ``role`` from this generation's build inputs (state.role_build_inputs)."""
     from provisa.api.region_ops_views import table_catalogs as region_table_catalogs
     from provisa.federation.strategy import row_level_tables
+    from provisa.jdbc_source.attach import reach_types
     from provisa.mv.time_travel import relation_kinds
 
     inputs = state.role_build_inputs
@@ -1707,7 +1721,15 @@ def schema_input_for(
         domains=inputs["domains"],
         source_types=state.source_types,
         row_level_tables=frozenset(
-            t["id"] for t in row_level_tables(tables, state.federation_engine, state.source_types)
+            t["id"]
+            for t in row_level_tables(
+                tables,
+                state.federation_engine,
+                # REQ-2191: a JDBC source attached live is judged as the type its URL names.
+                reach_types(
+                    state.source_types, state.source_federation_hints, state.federation_engine
+                ),
+            )
         ),  # REQ-1915
         time_travel=relation_kinds(state, tables),  # REQ-1163
         source_catalogs=state.source_catalogs,
@@ -1753,7 +1775,11 @@ def _build_role_surface(state: Any, runtime: Any, inputs: dict, role: dict, rls:
     from provisa.api.org_runtime import serving
 
     with serving(runtime):
-        si = schema_input_for(state, role, inputs["tables"], inputs["metrics"])
+        # REQ-2155: a role with no capabilities reads nothing: its schema is its commands.
+        reads = bool(role.get("capabilities"))
+        si = schema_input_for(
+            state, role, inputs["tables"] if reads else [], inputs["metrics"] if reads else []
+        )
         # No swallow: a role whose schema or proto cannot be built raises here, and the lazy
         # surface holds that failure -- logged as an ERROR naming the role, and raised to every
         # read of it -- rather than serving a permanently cached "no schema available". An
@@ -1915,6 +1941,17 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         # that mints another control-plane role is kept off the data plane on the same terms.
         if Capability.CROSS_ORG.value in (role.get("capabilities") or []):
             _drop_data_surface(state, role["id"])
+            continue
+        # REQ-2155: a role with no capabilities can do nothing. A command naming it is its one act,
+        # and its surface holds that and no table (_build_role_surface).
+        if not role.get("capabilities"):
+            inputs = state.role_build_inputs
+            if any(
+                command_assigned(c, role["id"]) for c in [*inputs["functions"], *inputs["webhooks"]]
+            ):
+                register_role_surface(state, role, build_rls_context(rls_rules, role["id"]))
+            else:
+                _drop_data_surface(state, role["id"])
             continue
         # A role reaches the domains it lists, and one that lists NONE reaches no data: it gets no
         # data surface, on the same terms as the control-plane role above — every surface answers

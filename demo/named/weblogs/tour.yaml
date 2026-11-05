@@ -47,6 +47,12 @@
 #   mcp_explain   true: the explain of the last run_sql call the explorer's agent made -- the
 #                 statement it sent and the one that ran, governed for the role -- after an mcp step
 #   mcp_connect   true: the explorer's Connect Claude Desktop panel, opened
+#   find_terms    a document's address the demo's setup.yaml scans (REQ-2201), or {url, domains}, on
+#                 /admin/ontology: the tour opens the glossary's Find terms, types it, chooses the
+#                 domains, starts a scan and cancels it
+#   scan          the same: the scan of it done when the bundle was built, opened from Find terms
+#   library       the same: its row on the Reference library page (/admin/reference-library)
+#   report        a seeded report, by its table name, on /admin/reports: opened, its rows shown
 #   polly         a question for Polly (REQ-2012): answered once when the demo's bundle is
 #                 built, and shown with that stored answer in the Polly panel; nothing is asked
 #                 live. A demo with no stored answer leaves the step out. The question is one of

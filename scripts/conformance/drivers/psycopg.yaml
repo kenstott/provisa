@@ -1,0 +1,8 @@
+# psycopg's expected-failure list (REQ-2203): every test of psycopg's own suite that fails against
+# Provisa's pgwire, with its reason, seeded from a CI run of conformance-drivers.yml at the
+# pinned version. A reason is a skipped-by-design decision (requirement and decision) or an open
+# defect (defect). scripts/conformance/driver_suite.py reads it.
+driver: psycopg
+version: "3.3.8"
+reasons: {}
+expected: {}

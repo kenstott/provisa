@@ -25,17 +25,18 @@ from __future__ import annotations
 import datetime
 import decimal
 import functools
-import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
 from buenavista.core import BVType
 
+from provisa.core.ir_types import interval_parts
 from provisa.core.pg_range import RANGE_TYPES
 from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.pgwire.catalog_pg17 import TYPES
 from provisa.transpiler.pg_forms_json import jsonb_out
 from provisa.transpiler.pg_held_types import HELD_AS
+from provisa.transpiler.pg_type_literals import interval_text
 from provisa.transpiler.xml_syntax import XmlSerialize
 
 #: The header PostgreSQL adds to a typmod that carries a length or a precision (VARHDRSZ).
@@ -45,8 +46,8 @@ _TEXT_FORMS = frozenset({BVType.TEXT})
 
 _XML_FORMS = frozenset({BVType.TEXT, BVType.XML})
 
-#: xml[]'s wire type. Sending only looks a wire type up (BVTYPE_TO_PGTYPE, provisa.pgwire.server),
-#: so one the vendored BVType does not list needs only its entry there.
+#: xml[]'s wire type, one the vendored BVType does not list: its OID is in BVTYPE_TO_OID
+#: (provisa.pgwire.server), and the Rust encoder knows it by this name.
 XML_ARRAY: Any = "xml[]"
 
 
@@ -183,6 +184,8 @@ def _record_field(value: Any) -> str:
         text = "{" + ",".join("NULL" if v is None else str(v) for v in value) + "}"
     elif isinstance(value, bool):
         text = "t" if value else "f"
+    elif isinstance(value, datetime.timedelta):
+        text = interval_text(*interval_parts(value))  # interval_out, not Python's text
     else:
         text = str(value)
     if text == "" or any(c in text for c in '",\\() \t\n'):
@@ -266,12 +269,24 @@ _RETURNED: dict[str, CastType] = {
 }
 
 
-_BIT_VARYING = re.compile(r"::\s*bit varying\b", re.IGNORECASE)
-
-
-def bit_varying_read(sql: str) -> str:
-    """``sql`` as sqlglot reads it: ``::bit varying`` it takes for a bit and an alias."""
-    return _BIT_VARYING.sub("::varbit", sql)
+#: The types a form holds as its text, or as what the engine has of it, by format_type's name.
+_NAMED_BY_THE_CALL = {
+    '"any"': 2276, "anyarray": 2277, "anycompatible": 5077, "anycompatiblearray": 5078,
+    "anycompatiblemultirange": 4538, "anycompatiblenonarray": 5079, "anycompatiblerange": 5080,
+    "anyelement": 2283, "anyenum": 3500, "anymultirange": 4537, "anynonarray": 2776,
+    "anyrange": 3831, "cid": 29, "gtsvector": 3642, "int2vector": 22, "json": 114, "jsonpath": 4072,
+    "oidvector": 30, "pg_brin_bloom_summary": 4600, "pg_brin_minmax_multi_summary": 4601,
+    "pg_ddl_command": 32, "regclass": 2205, "regcollation": 4191, "regconfig": 3734,
+    "regdictionary": 3769, "regnamespace": 4089, "regoper": 2203, "regoperator": 2204,
+    "regproc": 24, "regprocedure": 2202, "regrole": 4096, "text": 25,
+    "time with time zone": 1266, "tsquery": 3615,
+}  # fmt: skip
+_ANY_FORM = _TEXT_FORMS | _INTEGERS | {BVType.JSON}
+_RETURNED.update(
+    {name: CastType(oid, -1, BVType.TEXT, _ANY_FORM) for name, oid in _NAMED_BY_THE_CALL.items()}
+)
+_RETURNED["date"] = CastType(1082, -1, BVType.DATE, frozenset({BVType.DATE}))
+_RETURNED["uuid"] = CastType(2950, -1, BVType.UUID, frozenset({BVType.UUID, BVType.TEXT}))
 
 
 def _predicate_nodes() -> tuple[type, ...]:
@@ -428,9 +443,28 @@ def _jsonb_columns(tree: Any) -> dict[str, CastType | None]:
     return found
 
 
+def _typed_call(expression: Any) -> CastType | None:
+    """The type a form's marker says of a value only its source has a type for (pg_forms_enum)."""
+    import sqlglot.expressions as exp
+
+    from provisa.core.pg_enum import array_text
+    from provisa.transpiler.pg_forms_enum import TYPED_ARRAY, TYPED_VALUE
+
+    called = expression.name.lower() if isinstance(expression, exp.Anonymous) else ""
+    if called not in (TYPED_VALUE, TYPED_ARRAY):
+        return None
+    oid = int(expression.expressions[0].this)
+    if called == TYPED_VALUE:
+        return CastType(oid, -1, BVType.TEXT, _TEXT_FORMS)
+    return CastType(oid, -1, BVType.TEXT, _TEXT_FORMS | {BVType.STRINGARRAY}, array_text)
+
+
 def _column_type(tree: Any, expression: Any, columns: Any) -> CastType | None:
     import sqlglot.expressions as exp
 
+    typed = _typed_call(expression)
+    if typed is not None:
+        return typed
     reads_jsonb = isinstance(expression, (exp.JSONExtract, exp.JSONBExtract))
     if reads_jsonb and isinstance(expression.this, exp.Column):
         jsonb = _jsonb_columns(tree).get(expression.this.name)
@@ -478,7 +512,7 @@ def result_casts(sql: str) -> tuple[CastType | None, ...] | None:
     from provisa.transpiler.pg_money import names_money, statement_columns
 
     try:
-        tree = sqlglot.parse_one(bit_varying_read(sql), read="postgres")
+        tree = sqlglot.parse_one(sql, read="postgres")
     except ParseError:
         return None  # not PostgreSQL's grammar: the engine's own types describe it
     if not isinstance(tree, exp.Select):

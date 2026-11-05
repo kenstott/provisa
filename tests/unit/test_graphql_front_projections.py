@@ -32,7 +32,7 @@ from provisa.compiler.sql_rewrite import lower_to_catalog_physical, make_semanti
 from provisa.compiler.view_expand import expand_view_refs
 from provisa.cypher.parser import parse_cypher
 from provisa.cypher.printer import print_cypher
-from provisa.executor.serialize import serialize_rows
+from tests.unit.json_encoder.rows import serialize_rows
 from provisa.gql.assembler import assemble_rows
 from provisa.gql.graph_rewriter import apply_graph_rewrites
 from provisa.gql.translator import cypher_to_sql

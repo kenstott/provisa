@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Generic SQLAlchemy fallback driver (REQ-229, REQ-550).
+"""JDBCAlchemy fallback driver (REQ-229, REQ-550).
 
 The native drivers (asyncpg/aiomysql/oracledb/pyodbc) cover a fixed set of source types. This
 driver is the FALLBACK for any type that has a SQLAlchemy dialect but no bespoke async driver —
@@ -169,7 +169,7 @@ class SQLAlchemyDriver(DirectDriver):  # REQ-229, REQ-550
     def supports_streaming(self) -> bool:  # REQ-1190
         return True
 
-    async def open_stream(self, sql: str, params: list | None = None) -> "SqlAlchemyResultStream":
+    async def open_stream(self, sql: str, params: list | None = None) -> DirectResultStream:
         """The result a batch at a time on a ``stream_results`` connection: the dialect reads
         from the server as ``fetchmany`` asks (a server-side cursor where the DBAPI has one),
         so one batch is held, never the result."""

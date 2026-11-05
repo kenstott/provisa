@@ -1,5 +1,5 @@
 site_name: Provisa
-site_description: Federation, metrics, ontology and governance from a single model. 73 connectors reaching 85+ kinds of source; query with GraphQL, Cypher, or SQL.
+site_description: Federation, metrics, ontology and governance from a single model. 77 connectors reaching over 200 data sources; query with GraphQL, Cypher, or SQL.
 site_url: https://provisa.dev/docs/
 site_dir: docs_site
 repo_url: https://github.com/kenstott/provisa
@@ -116,6 +116,7 @@ nav:
   - Home: index.md
   - Getting Started:
       - Quick Start: quickstart.md
+      - Coming from a data warehouse: from-a-warehouse.md
       - Configuration: configuration.md
       - Deployment: deployment.md
       - Architecture Review: architecture-review.md
@@ -160,6 +161,7 @@ nav:
       - Bolt: conformance/bolt.md
       - GraphQL: conformance/graphql.md
       - pgwire: conformance/pgwire.md
+      - pgwire Drivers: conformance/drivers.md
       - Arrow Flight SQL: conformance/flight-sql.md
       - REST / OpenAPI: conformance/rest.md
       - JSON:API: conformance/jsonapi.md
@@ -182,6 +184,10 @@ nav:
       - Features: features.md
       - Requirements: arch/requirements.md
   - Release Notes:
+      - v0.1.0-alpha.501: releases/v0.1.0-alpha.501.md
+      - v0.1.0-alpha.500: releases/v0.1.0-alpha.500.md
+      - v0.1.0-alpha.499: releases/v0.1.0-alpha.499.md
+      - v0.1.0-alpha.498: releases/v0.1.0-alpha.498.md
       - v0.1.0-alpha.497: releases/v0.1.0-alpha.497.md
       - v0.1.0-alpha.495: releases/v0.1.0-alpha.495.md
       - v0.1.0-alpha.494: releases/v0.1.0-alpha.494.md
@@ -232,11 +238,7 @@ exclude_docs: |
   arch/spikes/0001-time-travel-as-connector-capability.md
   arch/spikes/0002-deep-linking-convention.md
   arch/streaming-uniformity-gap.md
-  arch/work-in-progress-2026-10.md
-  competitive_analysis.md
-  marketing.md
   testing-plan.md
-  pricing/
   arch/requirements.yaml
   arch/features.yaml
   arch/groups.yaml

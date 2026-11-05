@@ -710,11 +710,12 @@ class TestSerializeGroupBy:
                 nested_in=None,
                 cardinality="one-to-many",
                 is_agg=True,
+                json=True,
             ),
         ]
 
     def test_nodes_attached_per_group(self):
-        from provisa.executor.serialize import serialize_rows
+        from tests.unit.json_encoder.rows import serialize_rows
 
         rows = [("US", 2, '[{"id": 1}, {"id": 2}]'), ("EU", 1, '[{"id": 3}]')]
         data = serialize_rows(rows, self._columns(), "orders_group_by")["data"]["orders_group_by"]
@@ -728,7 +729,7 @@ class TestSerializeGroupBy:
         ]
 
     def test_a_relationship_s_value_is_parsed_into_a_node(self):
-        from provisa.executor.serialize import serialize_rows
+        from tests.unit.json_encoder.rows import serialize_rows
 
         rows = [("US", 1, '[{"id": 1, "customer": {"name": "Acme"}}]')]
         data = serialize_rows(rows, self._columns(), "orders_group_by")["data"]["orders_group_by"]

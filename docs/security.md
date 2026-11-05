@@ -6,6 +6,43 @@ The checks run in order. A request has to pass each one before the next is looke
 
 [Access Model](access-model.md) covers how scope, capabilities and grants combine into a role's rights.
 
+## Seven dimensions
+
+Seven dimensions govern access to data and processing features.
+
+| Dimension | Question it answers | Where it is set |
+|-----------|---------------------|-----------------|
+| Capabilities | Which features may a role use? | [Rights Model](#rights-model) |
+| Domains | Which tables and catalog entries does a role reach? | [Layer 2: Domain access](#layer-2-domain-access) |
+| Column grants | Which columns may a role read or write? | [Column Permission Model](#column-permission-model) |
+| Column scopes | How far does a column reach beyond named roles? | [Column Permission Model](#column-permission-model) |
+| Masks | What value does a granted column show to a role? | [Column-Level Masking](#column-level-masking) |
+| Row rules | Which rows of a reachable table does a role see? | [Row-Level Security (RLS)](#row-level-security-rls) |
+| Regions | Where may data be stored and processed? | [Data residency](#data-residency) |
+
+Who holds these rights is settled by how roles are held: assigned directly, derived from user attributes, or assembled at request time as a meta-role. See [Roles: granted, derived and meta](#roles-granted-derived-and-meta).
+
+Fakes are an environment's protection—a test environment serves sensitive columns faked to every role—not a dimension of access.
+
+### Identity is the boundary
+
+Provisa never authorizes a person. Your identity provider proves who someone is. After that, a request carries only its roles and attribute values, plus the region it came through. Every grant, mask, row rule and residency decision is written against those alone, so a rule keeps working when people change jobs.
+
+This is also why Provisa has no grant to an individual. A grant per person has to be revisited every time that person's job changes, and the number of grants grows with headcount instead of with the number of jobs. Rights written against roles and attributes grow with the organization's structure.
+
+Roles come from the identity provider's claims. When the provider does not carry them, they come from Provisa's own assignment store (`assignments_source`, see [Authentication](#authentication)). Attribute values come from the provider, and an organization's own record of a member can override one.
+
+For small teams and development, Provisa includes a minimal identity provider. The `basic` provider keeps local accounts, which you manage under Admin › Security › Local users. It stands in for an identity provider and changes nothing about authorization, so a team can start with local accounts and later move to its organization's provider without changing a rule.
+
+### Hierarchies and inheritance
+
+Capabilities and domains both form hierarchies, with their own rules.
+
+A role holds the union of its own capabilities, grants and residency and every ancestor's. Row rules compound differently. A role's own rule stands, and when it has none its ancestors' rules are ORed together. Adding a parent never lifts a row rule. Rate limits and similar properties come from the role itself or the first ancestor that sets one, searched depth-first. Domain reach does not pass down roles; each role names its own reach. Nothing in the model subtracts. See [Role Inheritance](#role-inheritance).
+
+Granting a role a parent domain extends its reach to every domain under it, at any depth—including domains added later. Reach flows down and never up. A parent domain's row filter is ANDed into every child domain's tables. `own-domain` columns are an exception: only roles granted the child domain directly are served them, even when the grant list names a role that reaches that domain through a parent. See [Domain hierarchy](access-model.md#domain-hierarchy).
+
+
 ## Layered Model
 
 ### Layer 0: Introspection filtering
@@ -91,7 +128,7 @@ Three kinds of role work together in Provisa's access model. The Roles page list
 
 ### Granted roles
 
-A granted role is assigned directly to a user. It holds rights: capabilities, domain access, masking entries, row filters. Inheritance gives the child every ancestor's capabilities and grants. Rights only add; there is no subtraction. To restrict a reader, grant to a composite that names both the role and a condition, or place a mask entry before the permissive one.
+A granted role is assigned directly to a user. It holds rights: capabilities, domain access, masking entries, row filters. A role with parents holds what it is given of what they hold, so a child narrows its parents: a right they hold that it is not given is not its own. Grants are not narrowed: the child reads every ancestor's column grants, and mask entries are read against the role and its ancestors, the first entry it holds deciding. To restrict one reader on a column, grant to a composite that names both the role and a condition, or place a mask entry before the permissive one. A role with no capabilities can do nothing. It may carry a name or session values, run a command that names it, or be a parent holding only grants.
 
 ### Expiring and unused grants
 

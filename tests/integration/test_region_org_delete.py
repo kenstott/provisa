@@ -38,8 +38,8 @@ pytestmark = [pytest.mark.requires_trino, pytest.mark.integration]
 
 _PLATFORM = {
     "regions": [
-        {"id": "eu", "address": "https://eu.example.com"},
-        {"id": "us", "address": "https://us.example.com"},
+        {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+        {"id": "us", "description": "The us region", "purposes": ["residency"]},
     ]
 }
 _ENVS = ["prod", "dev"]

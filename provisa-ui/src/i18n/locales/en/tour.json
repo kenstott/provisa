@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Register a source",
-        "description": "➕ New connections start with this button: PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and the rest of the 73 connectors."
+        "description": "➕ New connections start with this button: PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and the rest of the 77 connectors."
       },
       "step3": {
-        "title": "73 source types, 14 categories",
+        "title": "77 source types, 14 categories",
         "description": "One picker lists every type, grouped by category: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code Resolvers, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Search by name or alias, or narrow with the category chips. Each type shows its logo and a reach icon: ⚡ read live in place, or a copy icon where Provisa reads a refreshed replica.<p>Pick one, fill the connection, Save.</p>"
       },
       "stepBuildSource": {
@@ -933,16 +933,32 @@
         "description": "You saw the insurer's own data matched by county and crop year to public losses, weather and yields, all in one governed model. One view answers whether the weather explains the losses, in SQL, GraphQL and REST. The notebook measures it. The weather explains 54% of the variation in loss ratio, and across today's book a 2012-like season has an expected loss ratio of 1.75."
       },
       "retailScenario": {
-        "title": "One group, two regions",
+        "title": "A Tale of Two Regions",
         "description": "A retail group runs an EU and a US subsidiary as one business. The tour asks whether it can do that without breaking GDPR. Each subsidiary keeps its own database. This is the EU one, with its loyalty customers, their marketing consent, orders, staff and the mail staff send outside the group."
       },
+      "retailPlatformRegions": {
+        "title": "Regions start in one config",
+        "description": "The platform's config declares the regions, here the EU and the US, and grants them to the organization. Each region has its own data processing: its own engine and its own stores. The EU's purpose is residency, for customer data that must stay in the European Union. In this sandbox you can read this page but not change it."
+      },
+      "retailPurposes": {
+        "title": "What a purpose says",
+        "description": "The legend explains each purpose. A purpose says why a region exists. It does not move data or decide who reads it. Two layers do that, and the tour shows each: homing, the engine's rules about where data lives, and security, the data steward's rules about who reads what."
+      },
+      "retailOrgRegions": {
+        "title": "The organization's regions and stores",
+        "description": "The organization holds both regions. Each row names the stores used there: the region's engine, and where its replicas, views, cache, build state and record are kept. EU data is processed with the EU's own stores."
+      },
+      "retailEngines": {
+        "title": "One engine per region",
+        "description": "Federation has a tab for each region, and each region runs its own engine. So one config gives two data processing environments. You are on the US node. It reads EU data only through the EU's store, never from a copy of its own."
+      },
       "retailRegions": {
-        "title": "One definition of every region",
-        "description": "The US subsidiary's database, homed in the US. The model declares both regions and says, once, where every table lives and which views are built where. A second Provisa node runs in the EU: it copies the EU tables into the EU's own store and builds the EU views there. You are on the US node, which reads EU data only from that EU store, so every cross-border rule is applied in one place."
+        "title": "Homing: each source names its home",
+        "description": "The US subsidiary's database is homed in the US, and the EU subsidiary's in the EU. Homing is the engine's rule about where data lives. A homed table's replicas and cache stay in its home region, and other regions reach it only through that region."
       },
       "retailEuCustomers": {
         "title": "An EU table, homed in the EU",
-        "description": "The EU customers. The table names the EU as its region, so its rows are copied only into the EU's store and computed only there. Readers elsewhere get them through the EU's views or not at all."
+        "description": "The EU customers. The table's region is the EU, so its replicas and cache live only in the EU's store. Homing decides where the rows live. It does not decide who may read them. That is the next layer."
       },
       "retailRequests": {
         "title": "Data subject requests",
@@ -953,12 +969,12 @@
         "description": "A request joins to each subsidiary's customers by email address. That is how one request finds the same person in both."
       },
       "retailAsAnalyst": {
-        "title": "As a group analyst",
-        "description": "Next, the role picker switches to <strong>group_analyst</strong>, who works on group reporting in the US, so the SQL and GraphQL after this run as group_analyst."
+        "title": "The data steward's rules, as a group analyst",
+        "description": "The second layer is security: the data steward's rules decide what each reader gets, by role and by the reader's region. They are applied in the home region, before anything leaves it. Next, the role picker switches to <strong>group_analyst</strong>, who works on group reporting in the US, so the SQL and GraphQL after this run as group_analyst."
       },
       "retailGroupView": {
         "title": "Group reporting, EU customers pseudonymised",
-        "description": "Every loyalty customer of the group. US customers appear as they are; EU customers appear by a pseudonym the EU computed, with no name or address. The EU part was read from the EU's store, and the record of this query names the EU as the region that answered."
+        "description": "Every loyalty customer of the group. US customers appear as they are. EU customers appear by a pseudonym, because the steward's rule says a reader outside the EU gets no name or address. The EU applied that rule before its rows left, and the record of this query names the EU as the region that answered."
       },
       "retailGroupGraphql": {
         "title": "The same, in GraphQL",
@@ -970,7 +986,7 @@
       },
       "retailAudience": {
         "title": "Only customers who agreed",
-        "description": "The SQL explorer now runs as <strong>marketing_eu</strong>. EU marketing reads the EU customers who agreed to marketing, and only them. The view is built in the EU from EU rows."
+        "description": "The SQL explorer now runs as <strong>marketing_eu</strong>. The steward's rule lets EU marketing read the EU customers who agreed to marketing, and only them. The view is built in the EU from EU rows."
       },
       "retailAsDpo": {
         "title": "As the data protection officer",
@@ -998,7 +1014,7 @@
       },
       "retailReveal": {
         "title": "The sender, revealed in the EU",
-        "description": "The same queue. The sender column's mask list reveals the sender only to a reviewer who also holds region__eu; everyone else reads it withheld. It is one grant, reviewer and region__eu, with no role made for the combination."
+        "description": "The same queue. The steward's mask on the sender column reveals the sender only to a reviewer whose assigned region is the EU (region__eu). Everyone else reads it withheld. What a reader gets depends on their region as well as their role, and no role was made for the combination."
       },
       "retailAsAdmin": {
         "title": "Back to every role",
@@ -1014,7 +1030,7 @@
       },
       "retailRecap": {
         "title": "What you saw",
-        "description": "One model defined both regions: where each table lives, which views are built where, and who reads what. Group reporting read EU customers pseudonymised, EU marketing read only consenting customers, and a request for access and an erasure were each one query. The insider review revealed a sender only in the EU, and every read is in one record."
+        "description": "One config granted two regions, each with its own engine and stores: two data processing environments. Homing kept the EU tables, their replicas and their cache in the EU. The data steward's rules decided what each reader got, by role and by the reader's region, and the EU applied them before anything left it. Group reporting read EU customers pseudonymised, EU marketing read only consenting customers, access and erasure were each one query, the sender was revealed only to a reviewer in the EU, and every read is in one record."
       },
       "provisioningScenario": {
         "title": "What this demo is",
@@ -1374,7 +1390,11 @@
       },
       "testdataCoverageNow": {
         "title": "Every sensitive column is covered",
-        "description": "The same check, read now from the model, lists each sensitive column, its tags, and whether a fake covers it. Every one is covered, so pre-prod opens and answers."
+        "description": "Sensitive coverage is a standard report on the Reports page: each sensitive column, its tags, and whether a fake covers it, read now from the model. Every one is covered, so pre-prod opens and answers."
+      },
+      "testdataPollyProposes": {
+        "title": "A fake proposed from the profile",
+        "description": "Polly is asked which fake it would propose for customers.email. It reads the column's latest profile run, sees that the values are email addresses, and proposes the email fake. The model already declares one, so the proposal checks that choice against the data. Nothing is saved until someone chooses to."
       },
       "testdataProd": {
         "title": "Production: the real rows",
@@ -1843,6 +1863,71 @@
       "auditRest": {
         "title": "The same answer over REST",
         "description": "The view is also a REST endpoint, grouped by finding and summed on the server, so a workpaper spreadsheet can read it over HTTP."
+      },
+      "banksecrecyScenario": {
+        "title": "A bank reads a US law",
+        "description": "A community bank must report cash over $10,000 under the Bank Secrecy Act. This demo reads the rule itself from its public address, finds the terms it uses, grounds them on the bank's data, and then asks by concept: which cash needs a currency transaction report, and who is structuring? It starts with the bank's core system, read live where it is."
+      },
+      "banksecrecyCash": {
+        "title": "Cash at the windows",
+        "description": "Every cash deposit and withdrawal at a teller's window: the account, the branch, the teller, the time, and the business day it posted to. Cash taken after the 17:00 cutoff posts to the next business day."
+      },
+      "banksecrecyOnBehalf": {
+        "title": "On whose behalf",
+        "description": "Each transaction names who stood at the window and whose cash it is. When an employee or a relative brings cash in, it counts toward the account holder's total, which is how the law counts it."
+      },
+      "banksecrecyFindTerms": {
+        "title": "Read the law from its public address",
+        "description": "Find terms reads a document from its address. Here it is 31 CFR 1010.311 on eCFR's official API. A scan asks the AI model about every passage and takes minutes, so the tour stopped this one. The same scan ran when the demo was built.",
+        "acting": "Typing the regulation's address and starting a scan"
+      },
+      "banksecrecyRuleTerms": {
+        "title": "The terms in the rule",
+        "description": "The scan done ahead: each candidate term with the passage it comes from. A financial institution reports each transaction in currency of more than $10,000. Terms the glossary already holds are offered as merges."
+      },
+      "banksecrecyAggregation": {
+        "title": "The aggregation rule",
+        "description": "31 CFR 1010.313 is where multiple transactions and on behalf of come from: cash by or on behalf of one person, over $10,000 in one business day, is treated as a single transaction, and every branch is one institution. Night deposits count on the next business day."
+      },
+      "banksecrecyDefinitions": {
+        "title": "The definitions it uses",
+        "description": "The rule's words are defined in 31 CFR 1010.100: person, business day, financial institution, structuring. Each definition is its own passage, so each term is offered with the paragraph that defines it."
+      },
+      "banksecrecyLibrary": {
+        "title": "Kept in the reference library",
+        "description": "The demo's build kept each scanned document in the reference library, so the regulation stays with the model as a governed reference: Polly and the org's agents cite its passages when they answer."
+      },
+      "banksecrecyGrounded": {
+        "title": "The law's words, grounded",
+        "description": "Transaction in currency is the regulation's term. The bank's cash transaction is a kind of it, so the term reaches the cash_transactions table. Person reaches customers the same way, and a financial institution reaches the bank's branches."
+      },
+      "banksecrecyBusinessDay": {
+        "title": "Business day, on its column",
+        "description": "The regulation's business day is the day a bank posts a transaction to the customer's account. The bank's business_day column holds exactly that, so the term holds the column itself."
+      },
+      "banksecrecyTellerAsks": {
+        "title": "Which cash needs a report? As a teller",
+        "description": "Asked by concept: cash in, or cash out, of more than $10,000 by or on behalf of one person on one business day, the multiple transactions counted as one across accounts and branches. A teller sees the reports due, with account numbers and tax ids masked."
+      },
+      "banksecrecyComplianceAsks": {
+        "title": "The same question, as compliance",
+        "description": "The compliance officer runs the same question and sees account numbers and tax ids in full, as the report needs them. Dana Whitmore's total includes cash brought in on her behalf by someone else."
+      },
+      "banksecrecyStructuring": {
+        "title": "Who is structuring?",
+        "description": "Deposits just under $10,000, three or more times, across branches and days. None of them needed a report on its own. Victor Hale went to three branches in a week, and Marcus Reed's two deposits on one day needed a report together. Only compliance sees this view."
+      },
+      "banksecrecyExample": {
+        "title": "The same answer in GraphQL",
+        "description": "The reports due, as an API call. Each surface reads the same governed view, with the same masks for the same role."
+      },
+      "banksecrecyPollyAsks": {
+        "title": "Asked in plain words",
+        "description": "Compliance asks Polly in plain words: which cash needs a currency transaction report? Polly finds the governed view the concept reaches and answers from it, so it names the same people the SQL and the GraphQL returned. Nobody had to know the view's name."
+      },
+      "banksecrecyRecap": {
+        "title": "What you saw",
+        "description": "The law was read from its public address, its terms were found and grounded on the bank's tables, and the bank asked by concept. The currency transaction report reaches the data through its multiple transactions, and each role saw what it may see."
       }
     },
     "status": {
@@ -1913,7 +1998,7 @@
         "summary": "Does weather explain the losses in a crop insurer's portfolio? Its own farms, policies and claims, joined by county and crop year to the USDA's losses by cause, NOAA's weather and NASS's yields, answer it in SQL, GraphQL and REST."
       },
       "retail": {
-        "title": "One group, two regions",
+        "title": "A Tale of Two Regions",
         "summary": "A retail group with an EU and a US subsidiary run as one business under GDPR: EU data stays in the EU, group reporting reads it pseudonymised, and access, erasure, insider review and audit are each one query."
       },
       "provisioning": {
@@ -1971,6 +2056,10 @@
       "audit": {
         "title": "Single Audit readiness",
         "summary": "Do a nonprofit client's recorded federal awards match what the government's records show paying it? An audit firm's client schedules, joined to Single Audit filings and USAspending obligations, answer it."
+      },
+      "banksecrecy": {
+        "title": "Cash reports read from the Bank Secrecy Act",
+        "summary": "A bank reads the Bank Secrecy Act's cash reporting rule from its official public address, finds its terms and grounds them on its own tables, then asks by concept which cash needs a currency transaction report and who is structuring just under $10,000. The bank and its customers are made up; the regulation is real."
       }
     }
   }

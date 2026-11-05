@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { Text } from "@mantine/core";
 import type { Role } from "../../types/auth";
 import { DetailFields } from "../../components/detail/DetailFields";
+import { CapabilityNames } from "./CapabilityNames";
 import { LlmBudgetRead } from "./LlmBudget";
 
 /**
@@ -33,9 +34,13 @@ export function RoleRead({ role: r }: { role: Role }) {
           { label: t("securityPage.roleId"), value: r.id },
           // REQ-2080: what the role is for.
           { label: t("securityPage.roleDescription"), value: r.description },
-          { label: t("securityPage.capabilities"), value: list(r.capabilities) },
-          { label: t("securityPage.demonstrated"), value: list(r.demonstrated) },
-          { label: t("residencyGrant.values"), value: list(r.residencyValues) },
+          {
+            label: t("securityPage.capabilities"),
+            value:
+              r.capabilities.length > 0 ? (
+                <CapabilityNames capabilities={r.capabilities} regions={r.residencyValues} />
+              ) : null,
+          },
           {
             label: t("securityPage.domainAccess"),
             value:

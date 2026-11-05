@@ -20,6 +20,8 @@ pipeline's two entry points are replaced by a recorder of the statements they ar
 
 from __future__ import annotations
 
+from provisa.executor.result import QueryResult
+
 import json
 from types import SimpleNamespace
 
@@ -136,8 +138,8 @@ class _Pipeline:
 
     async def execute(self, plan, state):
         if "COUNT(*)" in plan.sql and "GROUP BY" not in plan.sql:
-            return SimpleNamespace(rows=[(0,)], redirect=None, cache_entry=None)
-        return SimpleNamespace(rows=[], redirect=None, cache_entry=None)
+            return QueryResult(rows=[(0,)], column_names=["total"])
+        return QueryResult(rows=[], column_names=[])
 
 
 @pytest.fixture

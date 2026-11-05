@@ -18,7 +18,7 @@
     "byFile": "Fichier",
     "byUrl": "URL",
     "file": "Fichier",
-    "fileHelp": "Un fichier PDF, Word (.docx), HTML, Markdown ou texte brut.",
+    "fileHelp": "Un fichier PDF, Word (.docx), HTML, Markdown, XML eCFR (.xml) ou texte brut.",
     "url": "URL",
     "urlHelp": "Une adresse http(s). Le document est récupéré maintenant, puis à chaque actualisation.",
     "fieldTitle": "Titre",
@@ -54,6 +54,12 @@
     "needsReembeddingHelp": "Intégré avec {{model}}, et non avec le modèle vectoriel actuel de l'organisation.",
     "reembedDone": "Documents réintégrés : {{n}}",
     "reembedFailedHeading": "Ces documents n'ont pas pu être réintégrés et sont inchangés :",
-    "reembedFailure": "{{title}}: {{reason}}"
+    "reembedFailure": "{{title}}: {{reason}}",
+    "helpLabel": "À propos de la bibliothèque de référence",
+    "helpTitle": "À propos de la bibliothèque de référence",
+    "helpWhat": "Un ensemble restreint et choisi de documents de référence (politiques, réglementations, contrats, processus), ajoutés par fichier ou URL. Ce n'est pas un entrepôt de documents.",
+    "helpWho": "Polly y puise ses réponses et en cite les passages. Les agents IA connectés via le serveur MCP de Provisa y effectuent des recherches (search_reference_library). « Trouver des termes » la lit pour proposer des termes et des définitions de glossaire.",
+    "helpSees": "Un assistant agissant pour un rôle ne s'appuie que sur les documents conservés dont le rôle lit les domaines, ainsi que sur ceux de l'organisation entière.",
+    "helpEmbedding": "Les passages d'un document sont intégrés avec le modèle d'embedding de l'organisation lors de son ajout ; « Réintégrer » n'est nécessaire que si ce modèle change."
   }
 }

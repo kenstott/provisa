@@ -52,6 +52,8 @@
     "draftNoRightTooltip": "テーブルの公開やドラフトへの差し戻しには、そのテーブルのドメインでのテーブル登録権限が必要です。",
     "draftPreviewNote": "ドラフトのプレビュー: 閲覧者にはまだこのテーブルは見えません。",
     "keepsHistory": "履歴を保持: すべてのバージョンを、いつ起きたかといつ記録されたかとともに保持します。",
-    "keepsHistoryQuery": "時点指定または記録時点指定でクエリ"
+    "keepsHistoryQuery": "時点指定または記録時点指定でクエリ",
+    "deleteTitle": "テーブル {{name}} を削除しますか?",
+    "deleteConsequence": "テーブルの登録が削除されます。"
   }
 }

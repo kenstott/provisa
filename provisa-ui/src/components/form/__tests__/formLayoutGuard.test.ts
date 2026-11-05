@@ -35,6 +35,8 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "components/admin/RepoBrowser.tsx": "the pickers of what the repository browser shows",
   "components/admin/ReplicateSelect.tsx": "one reusable control, placed by the form that uses it",
   "components/RegionSelector.tsx": "the region switch in the page header",
+  "components/DataAddressSwitcher.tsx":
+    "the data address switch in the page header, with a typed address in its menu",
   "components/GrantPicker.tsx":
     "one reusable control (a grant list and its combine popover), placed by the form that uses it",
   "components/MaskListEditor.tsx":

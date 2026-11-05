@@ -28,7 +28,8 @@ from urllib.parse import parse_qs, urlsplit
 
 import duckdb
 import httpx
-import orjson
+import json
+
 import pytest
 import sqlglot
 from fastapi import FastAPI, Request
@@ -36,7 +37,7 @@ from starlette.responses import JSONResponse
 
 from provisa.api.odata import expand as odata_expand
 from provisa.api.odata.csdl import metadata_document
-from provisa.api.odata.edm import EdmType, edm_type, edm_value
+from provisa.api.odata.edm import EdmType, edm_type
 from provisa.api.odata.expression import (
     Call,
     Comparison,
@@ -298,8 +299,12 @@ class _Pipeline:
         return SimpleNamespace(sql=native, params=list(exec_params or []))
 
     async def execute(self, plan, state):
-        rows = self.con.execute(plan.sql, plan.params).fetchall()
-        return SimpleNamespace(rows=rows, redirect=None, cache_entry=None)
+        # DuckDB's own Arrow, as its engine terminal hands the encoders (REQ-2194).
+        from provisa.executor.drivers.duckdb_arrow import arrow_rows
+        from provisa.executor.result import ArrowResult
+
+        table = self.con.execute(plan.sql, plan.params).to_arrow_table()
+        return ArrowResult(table, to_rows=arrow_rows)
 
 
 @pytest.fixture
@@ -440,6 +445,27 @@ def entity_sets_without_key_check(surface: RoleSurface):
         c for c in surface.context.aggregate_columns[1] if c[0] != "customer_id"
     ]
     return entity_sets(surface)
+
+
+async def test_each_entity_set_names_its_tables_domain(service):
+    """The UI narrows the entity sets to the navbar's domain selection by this annotation; without
+    it every set was listed whatever the selection."""
+    root = await _metadata(service, "clerk")
+    domains = {
+        s.get("Name"): [
+            a.get("String")
+            for a in s.iter(f"{_EDM}Annotation")
+            if a.get("Term") == "Provisa.Domain"
+        ]
+        for s in root.iter(f"{_EDM}EntitySet")
+    }
+    assert domains == {"customers": ["sales"], "events": ["sales"], "orders": ["sales"]}
+
+
+async def test_the_domain_term_is_declared(service):
+    root = await _metadata(service, "clerk")
+    (term,) = [t for t in root.iter(f"{_EDM}Term") if t.get("Name") == "Domain"]
+    assert (term.get("Type"), term.get("AppliesTo")) == ("Edm.String", "EntitySet")
 
 
 def test_the_document_is_escaped_and_well_formed():
@@ -775,12 +801,31 @@ def test_a_decimal_keeps_its_precision_and_scale():
     ],
 )
 def test_a_value_is_written_as_its_edm_type(value, type_name, expected):
-    assert edm_value(value, EdmType(type_name)) == expected
+    assert json.loads(_written(value, type_name), parse_float=Decimal)["value"][0]["v"] == expected
+
+
+def _written(value, type_name) -> bytes:
+    """A one-row read of ``value`` (as a row engine's fetch boundary holds it) written by the
+    OData encoder as a property of ``type_name`` (REQ-2194)."""
+    from provisa.core.ir_arrow import row_batch
+    from provisa.executor import json_encoders as je
+
+    entity = ("T", {"v": type_name}, ["v"], [])
+    return je.odata(
+        [row_batch([(value,)], ["v"])],
+        ["v"],
+        entity,
+        context="c",
+        count=None,
+        page=1,
+        next_link="",
+        root="r",
+    )
 
 
 def test_a_decimal_is_written_exactly():
     exact = Decimal("12345678901234567890.123456789")
-    assert orjson.dumps(edm_value(exact, EdmType("Edm.Decimal"))) == str(exact).encode()
+    assert b'"v":' + str(exact).encode() + b"}" in _written(exact, "Edm.Decimal")
 
 
 # -- registration ----------------------------------------------------------------------------------
@@ -1468,10 +1513,41 @@ async def test_expanded_values_are_written_as_their_types(expanding):
     assert order["margin"] == 0.5
 
 
+def _expansion_read(key, key_type: str, orders: str, order_types: dict[str, str]) -> bytes:
+    """A one-row read of ``T`` keyed by ``key`` expanding its ``orders`` (the subquery's JSON
+    text) a page of one, written by the OData encoder (REQ-2194)."""
+    from provisa.core.ir_arrow import row_batch
+    from provisa.executor import json_encoders as je
+
+    target = ("O", order_types, list(order_types), [])
+    entity = ("T", {"k": key_type}, ["k"], [("orders", True, 1, ["k"], "?$skip=1", target)])
+    return je.odata(
+        [row_batch([(key, orders)], ["k", "orders"])],
+        ["k", "orders"],
+        entity,
+        context="c",
+        count=None,
+        page=1,
+        next_link="",
+        root="r",
+    )
+
+
+def _key_in_next_link(value, type_name: str) -> str:
+    """The key literal the encoder addresses a parent by in its expansion's nextLink."""
+    from urllib.parse import unquote
+
+    body = json.loads(
+        _expansion_read(value, type_name, '[{"id": 1}, {"id": 2}]', {"id": "Edm.Int32"})
+    )
+    link = body["value"][0]["orders@odata.nextLink"]
+    assert link.startswith("r/T(") and link.endswith(")/orders?$skip=1"), link
+    return unquote(link[len("r/T(") : -len(")/orders?$skip=1")])
+
+
 def test_a_decimal_in_an_expansion_stays_exact():
-    assert odata_expand._decoded('{"a": 12345678901234567.25}') == {
-        "a": Decimal("12345678901234567.25")
-    }
+    body = _expansion_read(1, "Edm.Int32", '[{"a": 12345678901234567.25}]', {"a": "Edm.Decimal"})
+    assert b'"orders":[{"a":12345678901234567.25}]' in body
 
 
 async def test_a_nested_select_writes_only_what_it_names(expanding):
@@ -1918,7 +1994,7 @@ async def test_a_navigation_by_a_masked_key_is_refused(expanding):
     ],
 )
 def test_a_key_is_written_as_the_parser_reads_it(value, edm, literal):
-    written = odata_expand._key_literal(value, edm)
+    written = _key_in_next_link(value, edm.name)
     assert written == literal
     ((name, read),) = parse_key(written)
     assert name is None and read.value is not None

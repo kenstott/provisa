@@ -17,6 +17,7 @@ from typing import Any
 
 from contract_model import (
     GOVERNANCE_KNOBS,
+    PLAN_CACHE_MODES,
     Governance,
     CREDENTIAL_KINDS,
     DISTRIBUTION_KNOBS,
@@ -535,8 +536,13 @@ def _knobs(raw: Any, path: str, sources: Collection[str]) -> Knobs:
         "join_replication",
         "governance",
     )
-    _mapping(raw, path, required=keys)
+    _mapping(raw, path, required=keys, optional=("plan_cache",))
     route_raw = _per_source(raw["route"], f"{path}.route", sources)
+    plan_cache = raw.get("plan_cache", "hit")
+    if plan_cache not in PLAN_CACHE_MODES:
+        raise SetupError(
+            f"{path}.plan_cache: must be one of {', '.join(PLAN_CACHE_MODES)}, got {plan_cache!r}"
+        )
     return Knobs(
         distributions={n: _knob(raw[n], f"{path}.{n}") for n in DISTRIBUTION_KNOBS},
         source_weights=_source_weights(raw["source_weights"], f"{path}.source_weights", sources),
@@ -544,6 +550,7 @@ def _knobs(raw: Any, path: str, sources: Collection[str]) -> Knobs:
         cache_probability=_cache_probability(raw["cache"], f"{path}.cache"),
         join_replication=_join_replication(raw["join_replication"], f"{path}.join_replication"),
         governance=_governance(raw["governance"], f"{path}.governance"),
+        plan_cache=plan_cache,
     )
 
 

@@ -136,7 +136,8 @@
       "graphql_body_not_json": "O corpo da requisição não é JSON: {{error}}",
       "graphql_request_not_object": "Uma requisição GraphQL é um objeto JSON com uma consulta.",
       "graphql_parameter_type": "O parâmetro {{parameter}} da requisição GraphQL deve ser {{expected}}.",
-      "graphql_mutation_over_get": "Uma mutação é enviada com POST, nunca com GET."
+      "graphql_mutation_over_get": "Uma mutação é enviada com POST, nunca com GET.",
+      "listed_only": "A função {{role}} só pode listar {{table}}: os metadados podem ser lidos, os dados não"
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
@@ -293,7 +294,8 @@
       "not_found": "Função não encontrada",
       "org_selection_required": "Seleção de organização necessária",
       "already_exists": "A função '{{role}}' já existe",
-      "description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade"
+      "description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade",
+      "right_not_in_parents": "A função {{role}} não pode deter {{right}}: nenhum pai o detém"
     },
     "schema": {
       "allowed_domains_updated": "Domínios permitidos atualizados para a fonte '{{source}}'",
@@ -403,6 +405,7 @@
       "source_region_set": "Região da origem {{source}} definida como {{region}}",
       "region_refused": "A região não foi definida: {{reason}}",
       "table_too_complex": "A tabela '{{table}}' não foi registrada com as colunas selecionadas: {{reason}}. Escolha menos colunas.",
+      "remote_throttled": "A tabela '{{table}}' não foi registrada: o limite de taxa da fonte não permitiu verificá-la ({{reason}}). Tente novamente mais tarde.",
       "table_updated": "Tabela '{{table}}' atualizada (id={{id}})",
       "task_deleted": "Tarefa '{{task}}' excluída",
       "task_disabled": "Tarefa '{{task}}' desabilitada",
@@ -475,7 +478,11 @@
       "relationship_same_entity_cardinality": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: ela é {{cardinality}}, e a mesma entidade é uma linha para uma linha",
       "relationship_same_entity_not_grounded": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: {{source}} e {{target}} não estão fundamentadas no mesmo termo",
       "relationship_same_entity_not_keys": "A relação '{{relationship}}' não pode ser marcada como a mesma entidade: {{columns}} não é a chave primária nem uma chave única de {{table}}",
-      "kaggle_token_missing": "Conjunto de dados do Kaggle {{owner}}/{{ref}}: a fonte de dados não tem nenhum token de API do Kaggle. Adicione-o no formulário de Fontes de dados, onde o token é informado."
+      "kaggle_token_missing": "Conjunto de dados do Kaggle {{owner}}/{{ref}}: a fonte de dados não tem nenhum token de API do Kaggle. Adicione-o no formulário de Fontes de dados, onde o token é informado.",
+      "jdbc_invalid": "Fonte {{source}}: {{error}}",
+      "jdbc_file_refused": "Fonte {{source}}: a URL indica {{path}}, que este servidor não pode abrir para a organização.",
+      "jdbc_options_refused": "Fonte {{source}}: a URL desta organização não pode informar a opção de driver {{options}}.",
+      "jdbc_driver_refused": "Fonte {{source}}: um driver JDBC do cliente é executado como código na própria JVM do Provisa, o que só uma instalação auto-hospedada permite."
     },
     "secrets": {
       "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",
@@ -623,7 +630,10 @@
       "popup_blocked": "O navegador bloqueou a janela de login. Permita pop-ups para este site e tente novamente.",
       "window_closed": "A janela de login foi fechada antes de terminar.",
       "tenant_invalid": "A configuração do Microsoft 365 da organização não indica um diretório (locatário). Um administrador insere o ID ou o domínio do diretório.",
-      "microsoft_account_unread": "O início de sessão foi aprovado, mas a Microsoft não indicou de quem é a caixa de correio."
+      "microsoft_account_unread": "O início de sessão foi aprovado, mas a Microsoft não indicou de quem é a caixa de correio.",
+      "client_missing": "Insira o ID do cliente e o segredo do cliente do aplicativo e depois entre.",
+      "client_not_taken": "Este tipo de fonte entra com o cliente da sua organização, não com um inserido no formulário.",
+      "no_account_returned": "O login foi aprovado, mas a resposta não informou qual conta ({{parameter}}). Entre novamente."
     },
     "mail_platform": {
       "organisation_mailboxes_off": "A sua organização não permitiu fontes que leiam as suas caixas de correio. Um administrador permite-o em Administração › E-mail.",
@@ -758,6 +768,12 @@
         "no_description": "Este produto de dados não informa nem seu propósito nem seu uso.",
         "successor_retired": "O produto de dados que recebeu os membros deste, '{{successor}}', também foi retirado."
       }
+    },
+    "erd": {
+      "database_unavailable": "Não é possível ler os layouts do ERD: o banco de dados está indisponível",
+      "layout_not_found": "Nenhum layout chamado {{name}}",
+      "layout_name_required": "Um layout precisa de um nome",
+      "layout_place_unreadable": "O layout posiciona um(a) {{kind}} que você não pode ler"
     }
   }
 }

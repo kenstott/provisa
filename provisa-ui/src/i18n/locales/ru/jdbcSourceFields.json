@@ -1,0 +1,32 @@
+{
+  "jdbcSourceFields": {
+    "dialect": "Диалект SQL",
+    "dialectHelp": "Вариант SQL, который Provisa пишет для этого источника. Он не обязан совпадать с драйвером: выберите ближайший к базе данных или ANSI.",
+    "ansi": "ANSI (общий SQL)",
+    "username": "Имя пользователя",
+    "password": "Пароль",
+    "capabilityName": {
+      "attach": "Живое подключение",
+      "predicate": "Pushdown фильтров",
+      "join": "Pushdown соединений",
+      "aggregate": "Pushdown агрегатов",
+      "key_range": "Pushdown диапазонов ключа"
+    },
+    "detect": "Определить",
+    "checkPassed": "{{capability}}: пройдено",
+    "checkFailed": "{{capability}}: не пройдено ({{reason}})",
+    "jdbcDriverJar": "JAR JDBC-драйвера",
+    "jdbcDriverJarHint": "JAR-файл драйвера, загруженный с вашего компьютера. Только для самостоятельно размещённых установок.",
+    "jdbcDriverClass": "Класс драйвера",
+    "driver": "Драйвер",
+    "jarDriver": "Собственный JDBC-драйвер (JAR)",
+    "host": "Хост",
+    "port": "Порт",
+    "database": "База данных",
+    "file": "Файл базы данных",
+    "fileHint": "Файл базы данных; файл из файловой области организации записывается как {files}/….",
+    "jdbcUrl": "JDBC URL",
+    "jdbcUrlHint": "jdbc: URL драйвера. Не указывайте в нём пароль.",
+    "jdbcDriverJarPlaceholder": "Загрузите JAR-файл драйвера"
+  }
+}

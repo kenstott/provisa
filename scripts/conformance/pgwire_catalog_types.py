@@ -193,7 +193,13 @@ class Server:
             return {"ok": False, "error": f"connection: {exc}".strip()}
         if res.status not in (pq.ExecStatus.TUPLES_OK, pq.ExecStatus.COMMAND_OK):
             msg = (res.error_message or b"").decode(errors="replace").strip()
-            return {"ok": False, "error": msg[:400]}
+            state = res.error_field(pq.DiagnosticField.SQLSTATE)
+            return {
+                "ok": False,
+                "error": msg[:400],
+                "sqlstate": state.decode() if state else "",
+                "primary": msg.split("\n", 1)[0],
+            }
         fields = [
             {
                 "name": (res.fname(i) or b"").decode(),
@@ -238,6 +244,11 @@ def seed(pg_dsn: str) -> None:
         conn.execute(f"CREATE TYPE {function_probe.PROBE_ENUM} AS ENUM ('a', 'b')")
         conn.execute(f"DROP SEQUENCE IF EXISTS {function_probe.PROBE_SEQUENCE}")
         conn.execute(f"CREATE SEQUENCE {function_probe.PROBE_SEQUENCE}")
+        conn.execute(f"DROP TABLE IF EXISTS {function_probe.PROBE_IDENTITY}")
+        conn.execute(
+            f"CREATE TABLE {function_probe.PROBE_IDENTITY} "
+            "(id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, note text)"
+        )
     print(f"seeded {FIXTURE_SCHEMA}.{FIXTURE_TABLE}: {len(FIXTURE)} columns, one row")
 
 
@@ -416,7 +427,26 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
                     }
                     for name, _typ, typing in registered
                 ],
-            }
+            },
+            {
+                # The table lastval's probe inserts into (function_probe.BEFORE): its id is
+                # generated, its note org_admin writes.
+                "source_id": "conformance-pg",
+                "schema": function_probe.PROBE_IDENTITY_SCHEMA,
+                "table": function_probe.PROBE_IDENTITY_TABLE,
+                "alias": function_probe.PROBE_IDENTITY_TABLE,
+                "domain_id": FIXTURE_SCHEMA,
+                "columns": [
+                    {
+                        "name": "id",
+                        "data_type": "integer",
+                        "is_primary_key": True,
+                        "visible_to": ["org_admin"],
+                    },
+                    {"name": "note", "data_type": "varchar", "visible_to": ["org_admin"]},
+                ],
+                "write_grants": [{"role": "org_admin", "operation": "insert", "columns": ["note"]}],
+            },
         ],
     }
 
@@ -583,6 +613,11 @@ def pg_functions(pg: Server) -> list[function_probe.Function]:
     ]
 
 
+def same_refusal(want: dict[str, Any], got: dict[str, Any]) -> bool:
+    """Whether Provisa refused a call with the error PostgreSQL refused it with."""
+    return not got["ok"] and all(want.get(k) == got.get(k) for k in ("sqlstate", "primary"))
+
+
 def _engine_counts(
     failures: list[dict[str, Any]],
     matching: int,
@@ -610,16 +645,27 @@ def _engine_counts(
     }
 
 
+def called(server: Server, fn: function_probe.Function, sql: str) -> dict[str, Any]:
+    """``sql``, the call of ``fn``, run after what it needs its session to have done
+    (function_probe.BEFORE); that statement's error is the call's answer when it fails."""
+    before = function_probe.BEFORE.get(fn.signature)
+    if before is not None:
+        done = server.run(before)
+        if not done["ok"]:
+            return {**done, "error": f"{before}: {done['error']}"}
+    return server.run(sql)
+
+
 def catalog_functions(
     pg: Server, provisa: Server, names: dict[int, str], engine: str = "duckdb"
 ) -> dict[str, Any]:
     """Each overload is a case: passed when it is served with PostgreSQL's result type; skipped by
-    design in Internal functions when PostgreSQL itself proves it cannot call it, or in Index
-    functions when it is of that family and not served (REQ-2167, amended 2026-10-29, INTERNAL
-    FUNCTIONS and INDEXES BELONG TO THE DATABASE, by_design.FUNCTION_GROUPS); failed otherwise,
-    which is a result type that differs, a function not served, or a refusal of this server's
-    state (``refused_here``, no proof PostgreSQL cannot call it). What stays failed is taken by
-    family."""
+    design in Internal functions when PostgreSQL itself proves it cannot call it (REQ-2167, amended
+    2026-10-29, INTERNAL FUNCTIONS, by_design.FUNCTION_GROUPS); failed otherwise, which is a result
+    type that differs, a function not served, or a refusal of this server's state (``refused_here``,
+    no proof PostgreSQL cannot call it) that Provisa does not answer with the same error. A Provisa
+    server is in that state, so that error is its answer (REQ-2171): it passes on its SQLSTATE and
+    message. What stays failed is taken by family."""
     declared = function_probe.families()
     fns = pg_functions(pg)
     matching: list[str] = []
@@ -632,13 +678,17 @@ def catalog_functions(
         if sql is None:
             not_callable[fn.signature] = function_probe.NO_CALL
             continue
-        want = pg.run(sql)
+        want = called(pg, fn, sql)
         if not want["ok"] or not want["fields"]:
             why = f"PostgreSQL refuses the call: {want.get('error') or 'no result column'}"
-            proven = function_probe.proves_internal(why)
-            (not_callable if proven else refused_here)[fn.signature] = why
+            if function_probe.proves_internal(why):
+                not_callable[fn.signature] = why
+            elif want["ok"] or not same_refusal(want, called(provisa, fn, sql)):
+                refused_here[fn.signature] = why
+            else:
+                matching.append(fn.signature)
             continue
-        got = provisa.run(sql)
+        got = called(provisa, fn, sql)
         if not got["ok"]:
             not_served[fn.signature] = got["error"]
             continue

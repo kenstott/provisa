@@ -19,6 +19,8 @@ import {
   type OrgEngineState,
 } from "../../api/admin";
 import { FieldGroup, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { RegionEngineTabs } from "./RegionEngineTabs";
+import { useRegionEngines } from "./useRegionEngines";
 
 /**
  * REQ-1512: on a hosted deployment the engine is REPORTED, not chosen.
@@ -88,10 +90,21 @@ function HostedEngineReport({ state }: { state: OrgEngineState }) {
   );
 }
 
+// REQ-1922: when the org uses regions, its engine in each is the store the platform assigned it
+// there, so this page is a tab per region, as Admin > Federation is; with none, the lane as before.
+export function OrgEngineTab() {
+  const { t } = useTranslation();
+  const regions = useRegionEngines();
+  if (regions.status === "error") return <Alert color="red">{regions.text}</Alert>;
+  if (regions.status === "loading") return <Text>{t("orgEngineTab.loading")}</Text>;
+  if (regions.status === "none") return <OrgEngineLane />;
+  return <RegionEngineTabs grant={regions.grant} save={regions.save} sandbox={regions.sandbox} />;
+}
+
 // REQ-1412: the org administrator's engine lane — shared, isolated (Provisa-operated), or external
 // (org-operated). Distinct from FederationEngineTab, which picks the engine KIND for the whole
 // deployment and is gated on platform_settings.
-export function OrgEngineTab() {
+function OrgEngineLane() {
   const { t } = useTranslation();
   const [state, setState] = useState<OrgEngineState | null>(null);
   const [mode, setMode] = useState<OrgEngineMode>("shared");

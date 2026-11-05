@@ -282,6 +282,10 @@
       "public_url": {
         "label": "Openbaar adres",
         "help": "Het adres waaronder deze installatie bekend is, zoals https://data.example.com. Elke IRI van een subject in SPARQL en RDF-exports begint ermee, dus het moet gelijk blijven zolang die IRI's worden gebruikt. Zonder waarde wordt een query die de IRI van een subject teruggeeft geweigerd."
+      },
+      "node_url": {
+        "label": "Adres van dit knooppunt",
+        "help": "Het adres waarop clients dit knooppunt bereiken. De UI van een coördinator vermeldt het als dataknooppunt wanneer de regio er geen vermeldt. De launcher stelt het per knooppunt in; zonder adres wordt het knooppunt niet vermeld."
       }
     },
     "tls": {

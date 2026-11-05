@@ -31,7 +31,8 @@
     "reach_public": "öffentlich",
     "scope_domain": "Domäne",
     "scope_public": "öffentlich",
-    "scope_restricted": "eingeschränkt",
+    "scope_listed": "aufgelistet",
+    "scope_own-domain": "eigene Domäne",
     "write_insert": "einfügen",
     "write_update": "aktualisieren",
     "write_delete": "löschen"

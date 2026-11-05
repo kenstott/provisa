@@ -484,7 +484,10 @@ def split_agg_columns(columns: list[Any], row: tuple) -> tuple[dict, dict]:
     _aggregate) or "aggregate.{func}" (_group_by's nested aggregate block). Either way the last
     dot-segment is the function name, so one split rule covers both compiled shapes. Shared by
     the gRPC servicer (proto message construction) and the NL executor's gRPC result preview
-    (REQ-1359) so both shape aggregate rows identically."""
+    (REQ-1359) so both shape aggregate rows identically. A DECIMAL is left as it is: the gRPC
+    servicer types it for its proto field, and a JSON body writes its exact digits (REQ-1867)."""
+    from decimal import Decimal
+
     from provisa.executor.serialize import _convert_value
 
     top: dict[str, Any] = {}
@@ -492,7 +495,8 @@ def split_agg_columns(columns: list[Any], row: tuple) -> tuple[dict, dict]:
     for col_ref, val in zip(columns, row):
         if val is None:
             continue
-        val = _convert_value(val)
+        if not isinstance(val, Decimal):
+            val = _convert_value(val)
         parts = col_ref.nested_in.split(".")
         if len(parts) == 1:
             top[col_ref.column] = val

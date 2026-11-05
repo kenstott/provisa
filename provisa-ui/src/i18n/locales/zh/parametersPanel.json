@@ -13,7 +13,8 @@
       "query_param": "查询参数",
       "graphql_arg": "GraphQL 参数",
       "grpc_input": "gRPC 请求字段",
-      "query_arg": "原生查询参数"
+      "query_arg": "原生查询参数",
+      "column_value": "列值"
     }
   }
 }

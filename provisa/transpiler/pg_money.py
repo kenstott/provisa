@@ -389,8 +389,8 @@ def _integer_quotient(cents: exp.Expr, divisor: exp.Expr, dialect: str) -> exp.E
     if dialect == "duckdb":
         return exp.Anonymous(this="divide", expressions=[cents, divisor])
     if dialect == "clickhouse":
-        return exp.IntDiv(this=cents, expression=divisor)  # its ``/`` of two integers is a double
-    return exp.Div(this=cents, expression=divisor, typed=True)
+        return exp.Anonymous(this="intDiv", expressions=[cents, divisor])
+    return exp.Div(this=cents, expression=divisor, typed=True)  # sqlglot's own is a double's
 
 
 def _multiply(value: exp.Expr, number: exp.Expr, dialect: str) -> exp.Expr:

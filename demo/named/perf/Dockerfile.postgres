@@ -22,6 +22,10 @@
 #                          scripts/ci/build_pg_extensions.sh, REQ-1870).
 #   mongo_fdw (ext 1.1)  — EnterpriseDB source tag, json-c staged in-tree as its autogen.sh does,
 #                          against the distro mongo-c-driver.
+#   pgvector             — PGDG's postgresql-16-pgvector (the base image already carries the PGDG apt
+#                          repo). The control plane runs on this PostgreSQL and refuses to start
+#                          without it (REQ-2185); docker-compose.core.yml's control plane is
+#                          pgvector/pgvector:pg16-trixie.
 #   wrappers 0.6.3       — Supabase's prebuilt PG16 amd64 .deb (same pin as
 #                          scripts/ci/build_pg_extensions.sh, REQ-1871).
 
@@ -60,7 +64,7 @@ FROM ${PG_IMAGE}
 ARG WRAPPERS_TAG=v0.6.3
 # Runtime libraries the built extensions link against (no -dev packages in the final image).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl liblz4-1 libzstd1 libcurl4t64 libuuid1 libmongoc-1.0-0t64 libbson-1.0-0t64 \
+        ca-certificates curl liblz4-1 libzstd1 libcurl4t64 libuuid1 libmongoc-1.0-0t64 libbson-1.0-0t64 postgresql-16-pgvector \
     && curl -fsSL -o /tmp/wrappers.deb \
         "https://github.com/supabase/wrappers/releases/download/${WRAPPERS_TAG}/wrappers-${WRAPPERS_TAG}-pg16-amd64-linux-gnu.deb" \
     && dpkg-deb -x /tmp/wrappers.deb /tmp/wrappers \

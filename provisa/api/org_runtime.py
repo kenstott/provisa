@@ -207,6 +207,7 @@ class OrgRuntime:
     table_approval_hooks: dict[int, bool] = field(default_factory=dict)
     source_approval_hooks: dict[str, bool] = field(default_factory=dict)
     pg_enum_types: dict = field(default_factory=dict)
+    pg_source_enums: dict = field(default_factory=dict)
     graphql_remote_sources: dict[str, dict] = field(default_factory=dict)
     openapi_specs: dict[str, dict] = field(default_factory=dict)
     grpc_remote_sources: dict[str, dict] = field(default_factory=dict)

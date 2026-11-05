@@ -202,6 +202,7 @@ mutation RegisterEntity($input: EntityInput!) {
 | `validTime` | String | `null` | 有效時間欄；`history` 唔係 `"none"` 時必填 |
 | `recordedTime` | String | `null` | 記錄時間欄；`history` 唔係 `"none"` 時必填 |
 | `visibleTo` | [String] | `["public"]` | 角色可見性列表 |
+| `description` | String | `null` | 已登記資料表的描述 |
 
 ### `registerFact`
 
@@ -225,6 +226,7 @@ mutation RegisterFact($input: FactInput!) {
 | `measures` | [MeasureInput] | `[]` | `{ column, agg }` 對 |
 | `dimensions` | [DimRefInput] | `[]` | `{ entity, via }` 對 |
 | `visibleTo` | [String] | `["public"]` | 角色可見性列表 |
+| `description` | String | `null` | 已登記資料表的描述 |
 
 `MeasureInput`：`{ column: String, agg: String }`；agg 預設為 `"sum"`。
 

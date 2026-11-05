@@ -38,8 +38,7 @@ roles:
 - id: agriculture_analyst
   parents: [analyst]
   description: "Queries the agriculture domain's data."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - agriculture
 server:
@@ -63,7 +62,7 @@ sources:
   cache_ttl: -1
   replicate: 0
   description: Government data from AskAmerica -- the USDA's crop insurance losses by cause and county
-    yields, and NOAA's daily weather by county, landed once when the demo is built
+    yields, and NOAA's daily weather by county
 tables:
 - source_id: portfolio
   domain_id: agriculture

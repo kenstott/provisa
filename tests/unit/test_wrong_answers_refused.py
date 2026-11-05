@@ -25,6 +25,7 @@ from provisa.federation.duckdb_pg_scalars import register
 from provisa.pgwire.cast_types import result_casts
 from provisa.pgwire.function_types import call_result_type
 from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.pg_forms_geometric import routines_apart
 from provisa.transpiler.pg_literals import exact_inputs, values_cast
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 
@@ -189,8 +190,9 @@ def test_money_divided_by_an_integer_truncates():
 
 
 def test_a_null_shape_is_a_null_on_trino():
-    written = transpile("SELECT center(NULL::box) AS v", "trino")
-    assert written.startswith("SELECT CASE WHEN")
+    # The statement after its routine definitions (REQ-2171: Trino defines a shape's helpers).
+    _, written = routines_apart(transpile("SELECT center(NULL::box) AS v", "trino"))
+    assert written.startswith("SELECT CASE WHEN NULL IS NULL")
 
 
 def test_a_column_of_a_values_list_is_the_type_its_first_row_says():
@@ -251,3 +253,29 @@ def test_a_clickhouse_time_is_a_time_on_the_wire():
     casts = result_casts("SELECT time_larger('12:30:45'::time, '12:30:45'::time) AS v")
     assert casts is not None and casts[0] is not None and casts[0].coerce is not None
     assert str(casts[0].coerce((45045500000).to_bytes(8, "little"))) == "12:30:45.500000"
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT hashoid(12345::oid) AS v",
+        "SELECT btoidcmp(1::oid, 7::oid) AS v",
+        "SELECT lo_get(1::oid) AS v",
+    ],
+)
+def test_an_oid_is_held_as_a_bigint_and_reaches_a_call(sql, dialect):
+    assert " oid" not in transpile(sql, dialect).lower()
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'SELECT pg_catalog."int8"(12345::oid) AS v',
+        "SELECT pg_catalog.\"nameconcatoid\"('abc'::name, 12345::oid) AS v",
+    ],
+)
+def test_the_calls_of_an_oid_a_replay_refused_stay_refused(sql, dialect):
+    with pytest.raises(FunctionRefused):
+        transpile(sql, dialect)

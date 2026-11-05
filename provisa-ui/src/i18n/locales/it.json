@@ -9,7 +9,9 @@
     "identity": "Identità",
     "discardTitle": "Annullare le modifiche?",
     "discardBody": "Le modifiche a {{what}} non sono salvate.",
-    "discard": "Annulla modifiche"
+    "discard": "Annulla modifiche",
+    "deleting": "Eliminazione…",
+    "deleteFailed": "Non eliminato: {{reason}}"
   },
   "app": {
     "apiUnreachable": "Impossibile raggiungere l'API Provisa.",

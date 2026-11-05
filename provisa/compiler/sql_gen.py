@@ -226,6 +226,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     if join_meta.child_src_val is not None
                     else (src_expr if join_meta.source_column_type != "integer" else None)
                 )
+                _json_text: set[str] = set()
                 json_expr, alias_counter = _build_rel_json_expr(
                     sel.selection_set.selections,
                     ctx,
@@ -241,6 +242,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     sources,
                     variables,
                     parent_src_val=_pv,
+                    json_text=_json_text,
                 )
                 select_parts.append(f"{json_expr} AS {_q(_rel_key)}")
                 columns.append(
@@ -251,6 +253,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         nested_in=None,
                         cardinality=join_meta.cardinality,
                         is_agg=True,
+                        json=True,
+                        json_text=frozenset(_json_text),
                     )
                 )
             else:
@@ -387,6 +391,10 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     column=sql_name,
                     field_name=gql_field_name,
                     nested_in=None,
+                    # a path into a JSON column (col_path) is read as text (->>)
+                    json=not col_path and (table.table_id, phys_name.lower()) in ctx.json_columns,
+                    integer=not col_path
+                    and (table.table_id, phys_name.lower()) in ctx.integer_columns,
                 )
             )
 
@@ -600,7 +608,7 @@ def _compile_connection_field(  # REQ-218
     use_catalog: bool = False,
 ) -> CompiledQuery:
     """Compile a _connection root query field to SQL with cursor pagination."""
-    from provisa.compiler.cursor import apply_cursor_pagination, extract_sort_columns, reverse_order
+    from provisa.compiler.cursor import apply_cursor_pagination, extract_sort_columns
 
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
     table = ctx.tables[field_node.name.value]
@@ -620,7 +628,16 @@ def _compile_connection_field(  # REQ-218
             continue
         phys_name = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
         select_parts.append(_q(phys_name))
-        columns.append(ColumnRef(None, phys_name, sel_name, None))
+        columns.append(
+            ColumnRef(
+                None,
+                phys_name,
+                sel_name,
+                None,
+                json=(table.table_id, phys_name.lower()) in ctx.json_columns,
+                integer=(table.table_id, phys_name.lower()) in ctx.integer_columns,
+            )
+        )
 
     if not select_parts:
         select_parts.append("1")
@@ -669,9 +686,9 @@ def _compile_connection_field(  # REQ-218
         order_by_val = args["order_by"]
         if isinstance(order_by_val, dict):
             order_by_val = [order_by_val]
-        order_sql = _compile_order_by(order_by_val, None, table.table_id, ctx.exposed_to_physical)
-        if is_backward:
-            order_sql = reverse_order(order_sql)
+        order_sql = _compile_order_by(
+            order_by_val, None, table.table_id, ctx.exposed_to_physical, reverse=is_backward
+        )
         sql += f" ORDER BY {order_sql}"
     else:
         direction = "DESC" if is_backward else "ASC"

@@ -115,7 +115,7 @@ _ON_JSON = frozenset(row[0] for row in ROWS) - {"to_jsonb", "array_to_json", "ro
 #: What no engine has a form of.
 REFUSED = frozenset(
     """
-    jsonb_pretty jsonb_hash jsonb_hash_extended json_send jsonb_send jsonpath_send jsonb_cmp
+    jsonb_pretty jsonb_hash jsonb_hash_extended jsonb_cmp
     jsonb_eq jsonb_ne jsonb_lt jsonb_le jsonb_gt jsonb_ge jsonb_concat json_strip_nulls
     jsonb_strip_nulls jsonb_set jsonb_set_lax jsonb_insert jsonb_delete jsonb_delete_path
     jsonb_object json_to_record jsonb_to_record json_to_recordset jsonb_to_recordset
@@ -667,7 +667,7 @@ def _populated(name: str, args: list[exp.Expr]) -> exp.Expr:
     if len(args) < 2 or not (_is_null(args[0]) and _is_null(args[1])):
         raise NoForm(name)
     if name.endswith("_valid"):
-        return exp.Boolean(this=True)
+        return exp.cast(exp.Null(), "BOOLEAN")  # PostgreSQL's answer of a NULL value
     return _duckdb(
         "unnest(CAST([] AS VARCHAR[]))" if name.endswith("set") else "CAST(NULL AS VARCHAR)"
     )
@@ -683,8 +683,31 @@ def _not_a_row_type(name: str, value: exp.Expr, inner: Callable) -> exp.Expr:
     )
 
 
+def _named_fields(value: exp.Expr) -> None:
+    """An anonymous row (``ROW(...)``, or one cast to record) with its fields named as PostgreSQL
+    names them, f1, f2, ..., and so each row within it: DuckDB's row has no names, and its JSON
+    keys are empty."""
+    node = value.unnest()
+    cast = isinstance(node, exp.Cast) and node.to.sql(dialect="postgres").lower() == "record"
+    row = node.this if cast else node
+    if not (isinstance(row, exp.Anonymous) and row.name.lower() == "row" and row.expressions):
+        return
+    for field in row.expressions:
+        _named_fields(field)  # a row within names its fields too
+    named = exp.Anonymous(
+        this="struct_pack",
+        expressions=[
+            exp.PropertyEQ(this=exp.to_identifier(f"f{i}"), expression=field.copy())
+            for i, field in enumerate(row.expressions, 1)
+        ],
+    )
+    node.replace(named)
+
+
 def _on_duckdb(node: exp.Func, name: str, inner: Callable) -> exp.Expr | None:
     """``node`` as DuckDB's SQL over its UDFs; None for a call of what the rows answer."""
+    if name in ("row_to_json", "to_json", "to_jsonb") and node.expressions:
+        _named_fields(node.expressions[0])
     args, of_null = _spread([_key_of(a) for a in _arguments(node)])
     if isinstance(node, exp.JSONExtract):
         name = "json_extract_path"

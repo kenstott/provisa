@@ -21,6 +21,7 @@ const toggleSpy = vi.fn(async () => ({ success: true, message: "ok" }));
 const updateSpy = vi.fn(async () => ({ success: true, message: "ok" }));
 
 let mockTasks: unknown[] = [];
+const refetchSpy = vi.fn(async () => ({}));
 
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
 // replace-everything factory here leaks into other files. In particular a stubbed
@@ -28,7 +29,7 @@ let mockTasks: unknown[] = [];
 // TableEditForm.consistency drives through MockedProvider.
 vi.mock("../hooks/useAdminOpsQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminOpsQueries")>()),
-  useScheduledTasks: () => ({ scheduledTasks: mockTasks, loading: false }),
+  useScheduledTasks: () => ({ scheduledTasks: mockTasks, loading: false, refetch: refetchSpy }),
   useToggleScheduledTask: () => ({ toggleScheduledTask: toggleSpy }),
   useCreateScheduledTask: () => ({ createScheduledTask: createSpy }),
   useUpdateScheduledTask: () => ({ updateScheduledTask: updateSpy }),
@@ -165,6 +166,9 @@ describe("ScheduledTasks — SQL trigger", () => {
     expect(deleteSpy).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: t("common.confirm") }));
     await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith("nightly"));
+    // REQ-2198: the list is read again, and the panel closes on it.
+    await waitFor(() => expect(screen.queryByTestId("scheduled-task-read")).toBeNull());
+    expect(refetchSpy).toHaveBeenCalled();
   });
 });
 
@@ -182,25 +186,28 @@ describe("ScheduledTasks — a failed action", () => {
     fireEvent.click(screen.getByRole("button", { name: t("common.confirm") }));
   };
 
+  // REQ-2198: a failed delete is said in the panel it was pressed in, which it unlocks.
   it("says why a delete raised, and frees its button", async () => {
     deleteSpy.mockImplementationOnce(async () => {
       throw new Error("scheduled task nightly is in use");
     });
     render(<ScheduledTasks />);
     await confirmDelete();
-    expect((await screen.findByTestId("scheduled-tasks-action-error")).textContent).toBe(
-      "scheduled task nightly is in use",
+    expect((await screen.findByTestId("scheduled-task-delete-problem")).textContent).toBe(
+      t("common.deleteFailed", { reason: "scheduled task nightly is in use" }),
     );
     expect(screen.getByTestId("scheduled-task-delete")).not.toBeDisabled();
+    expect(screen.getByTestId("scheduled-task-read")).toBeTruthy();
   });
 
   it("says a refused delete, rather than taking it for done", async () => {
     deleteSpy.mockImplementationOnce(async () => ({ success: false, message: "refused: in use" }));
     render(<ScheduledTasks />);
     await confirmDelete();
-    expect((await screen.findByTestId("scheduled-tasks-action-error")).textContent).toBe(
-      "refused: in use",
+    expect((await screen.findByTestId("scheduled-task-delete-problem")).textContent).toBe(
+      t("common.deleteFailed", { reason: "refused: in use" }),
     );
+    expect(screen.getByTestId("scheduled-task-read")).toBeTruthy();
   });
 
   it("says why a create raised, and frees the form's save", async () => {
