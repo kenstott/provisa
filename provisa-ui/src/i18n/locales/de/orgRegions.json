@@ -1,7 +1,6 @@
 {
   "orgRegions": {
     "loading": "Regionen werden geladen...",
-    "intro": "Die Plattformregionen, die diese Organisation nutzt, und der Speicher, in dem sie dort jede Art von Daten hält. Ein Speicher ist eine Verbindungs-URL; sie kann eine Referenz wie ${env:NAME} enthalten, die genau so gespeichert wird, wie sie eingegeben wurde.",
     "noPlatformRegions": "Die Plattform deklariert keine Regionen.",
     "regionsHeading": "Regionen",
     "storesHeading": "Speicher",
@@ -14,15 +13,14 @@
     "colStore": "Speicher",
     "colUrl": "URL",
     "colKind": "Engine-Art",
-    "address": "Knotenadresse",
     "usedBy": "Von Regionen genutzt",
     "unused": "Keine Region nutzt ihn",
     "noKind": "Keine",
-    "noRegions": "Diese Organisation wählt noch keine Region.",
+    "noRegions": "Noch keine Region gewährt.",
     "noStores": "Noch keine Speicher.",
     "notSaved": "Nicht gespeichert",
-    "heldStores_one": "{{count}} Speicher ist noch nicht gespeichert. Er wird mit der ersten Region der Organisation gespeichert.",
-    "heldStores_other": "{{count}} Speicher sind noch nicht gespeichert. Sie werden mit der ersten Region der Organisation gespeichert.",
+    "heldStores_one": "{{count}} Speicher ist noch nicht gespeichert. Er wird mit der ersten Region gespeichert.",
+    "heldStores_other": "{{count}} Speicher sind noch nicht gespeichert. Sie werden mit der ersten Region gespeichert.",
     "edit": "Bearbeiten",
     "remove": "Entfernen",
     "storeTaken": "Ein Speicher namens {{id}} existiert bereits.",
@@ -47,10 +45,13 @@
       "record": "Wo diese Region ihr Protokoll der Anfragen hält."
     },
     "delete": {
-      "regionTitle": "Region {{id}} nicht mehr nutzen?",
-      "regionConsequence": "Die Organisation nutzt die Region {{id}} nicht mehr. Ihre Speicher bleiben erhalten. Eine Quelle oder Tabelle, die die Region nennt, verhindert das Entfernen.",
+      "regionTitle": "Region {{id}} entfernen?",
+      "regionConsequence": "Der Organisation ist Region {{id}} nicht mehr gewährt; ihre Knoten dort bedienen sie nach dem Neustart nicht mehr. Ihre Speicher bleiben erhalten. Eine Quelle oder Tabelle, die die Region nennt, verhindert das Entfernen.",
       "storeTitle": "Speicher {{id}} entfernen?",
       "storeConsequence": "Der Speicher {{id}} wird entfernt. Eine Region, die ihn nutzt, verhindert das Entfernen."
-    }
+    },
+    "grantedIntro": "Die Regionen, die die Plattform dieser Organisation gewährt hat, und der Speicher, in dem sie dort jede Art von Daten hält. Sie werden auf der Seite Plattform festgelegt. Innerhalb dieser Regionen entscheidet die Organisation, wo ihre Tabellen und Quellen liegen und welche Regionen ihre Rollen lesen dürfen.",
+    "colPurposes": "Zwecke",
+    "description": "Beschreibung"
   }
 }

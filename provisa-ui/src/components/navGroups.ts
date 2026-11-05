@@ -42,6 +42,8 @@ export interface DropdownItem {
   orLabelKey?: string;
   // REQ-1922: the surface exists only where the platform declares regions (useRegionChoices).
   regionsOnly?: boolean;
+  // REQ-1922: a demo sandbox's visitor may open it to read, though its capability is not theirs.
+  sandboxReadable?: boolean;
 }
 
 /** The label an entry wears for this caller (REQ-1361) -- see `orLabelKey`. */
@@ -217,11 +219,17 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemDeploymentSettings",
         capability: "platform_settings",
       },
-      // REQ-1922: the platform's regions -- an id and the address its nodes answer at. A node reads
-      // them before it opens any store, so they are the platform administrator's, applied on restart.
-      { to: "/admin/platform", labelKey: "navBar.itemPlatform", capability: "platform_settings" },
-      // REQ-1922: the org's stores and the platform regions it selects. Shown only where the
-      // platform declares regions: with none, region is not a concept anywhere a user sees.
+      // REQ-1922: the platform's regions, the default grant and each org's grant. A node reads them
+      // before it opens any store, so they are the platform administrator's, applied on restart. A
+      // demo sandbox shows the regions read-only, to explain them.
+      {
+        to: "/admin/platform",
+        labelKey: "navBar.itemPlatform",
+        capability: "platform_settings",
+        sandboxReadable: true,
+      },
+      // REQ-1922: the regions the platform granted the org and their stores, read-only. Shown only
+      // where the platform declares regions: with none, region is not a concept anywhere a user sees.
       {
         to: "/admin/regions",
         labelKey: "navBar.itemRegions",

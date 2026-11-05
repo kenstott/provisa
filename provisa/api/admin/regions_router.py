@@ -397,7 +397,11 @@ async def _require_org(org_id: str) -> None:
 async def get_org_regions(request: Request) -> dict:
     """The platform's regions, and the regions and stores the platform granted the acting org."""
     require_org_settings(request)
-    return {"platform_regions": _platform_region_views(), **await _grant_view(_acting_model_db())}
+    return {
+        "platform_regions": _platform_region_views(),
+        **await _grant_view(_acting_model_db()),
+        **_choices(),
+    }
 
 
 def _grant(raw: dict[str, list[dict[str, Any]]], held: list[dict], prefix: str) -> RegionGrant:

@@ -1,7 +1,6 @@
 {
   "orgRegions": {
     "loading": "正在載入區域...",
-    "intro": "此組織使用的平台區域，以及它在這些區域中保存各類資料的儲存。儲存是一個連線 URL；它可以包含 ${env:NAME} 這樣的參照，並完全按輸入保存。",
     "noPlatformRegions": "平台未宣告任何區域。",
     "regionsHeading": "區域",
     "storesHeading": "儲存",
@@ -14,15 +13,14 @@
     "colStore": "儲存",
     "colUrl": "URL",
     "colKind": "引擎類型",
-    "address": "節點地址",
     "usedBy": "使用它的區域",
     "unused": "沒有區域使用它",
     "noKind": "無",
-    "noRegions": "此組織尚未選擇任何區域。",
+    "noRegions": "尚未授予任何區域。",
     "noStores": "尚無儲存。",
     "notSaved": "未儲存",
-    "heldStores_one": "{{count}} 個儲存尚未儲存。它會與組織的第一個區域一併儲存。",
-    "heldStores_other": "{{count}} 個儲存尚未儲存。它們會與組織的第一個區域一併儲存。",
+    "heldStores_one": "{{count}} 個儲存尚未儲存。它會與第一個區域一併儲存。",
+    "heldStores_other": "{{count}} 個儲存尚未儲存。它們會與第一個區域一併儲存。",
     "edit": "編輯",
     "remove": "移除",
     "storeTaken": "已存在名為 {{id}} 的儲存。",
@@ -47,10 +45,13 @@
       "record": "此區域保存其請求記錄的位置。"
     },
     "delete": {
-      "regionTitle": "停止使用區域 {{id}}?",
-      "regionConsequence": "組織不再使用區域 {{id}}。其儲存會保留。指定該區域的資料來源或資料表會阻止將其移除。",
+      "regionTitle": "移除區域 {{id}}?",
+      "regionConsequence": "該組織不再獲授予區域 {{id}};其在該區域的節點重新啟動後會停止為其服務。其儲存會保留。命名該區域的資料來源或表格會阻止移除。",
       "storeTitle": "移除儲存 {{id}}?",
       "storeConsequence": "儲存 {{id}} 將被移除。使用它的區域會阻止將其移除。"
-    }
+    },
+    "grantedIntro": "平台授予此組織的區域,以及此組織在其中保存各類資料的儲存。它們在平台頁面上設定。在這些區域內,此組織決定其表格和資料來源的位置,以及其角色可讀取哪些區域。",
+    "colPurposes": "用途",
+    "description": "描述"
   }
 }

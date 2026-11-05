@@ -1,7 +1,6 @@
 {
   "orgRegions": {
     "loading": "Chargement des régions...",
-    "intro": "Les régions de la plateforme que cette organisation utilise, et le stockage où elle y conserve chaque type de données. Un stockage est une URL de connexion ; elle peut contenir une référence comme ${env:NAME}, conservée exactement telle que saisie.",
     "noPlatformRegions": "La plateforme ne déclare aucune région.",
     "regionsHeading": "Régions",
     "storesHeading": "Stockages",
@@ -14,15 +13,14 @@
     "colStore": "Stockage",
     "colUrl": "URL",
     "colKind": "Type de moteur",
-    "address": "Adresse des nœuds",
     "usedBy": "Utilisé par les régions",
     "unused": "Aucune région ne l'utilise",
     "noKind": "Aucun",
-    "noRegions": "Cette organisation ne sélectionne encore aucune région.",
+    "noRegions": "Aucune région n'est encore accordée.",
     "noStores": "Aucun stockage pour l'instant.",
     "notSaved": "Non enregistré",
-    "heldStores_one": "{{count}} stockage n'est pas encore enregistré. Il sera enregistré avec la première région de l'organisation.",
-    "heldStores_other": "{{count}} stockages ne sont pas encore enregistrés. Ils seront enregistrés avec la première région de l'organisation.",
+    "heldStores_one": "{{count}} stockage n'est pas encore enregistré. Il est enregistré avec la première région.",
+    "heldStores_other": "{{count}} stockages ne sont pas encore enregistrés. Ils sont enregistrés avec la première région.",
     "edit": "Modifier",
     "remove": "Supprimer",
     "storeTaken": "Un stockage nommé {{id}} existe déjà.",
@@ -47,10 +45,13 @@
       "record": "Où cette région conserve son journal des requêtes."
     },
     "delete": {
-      "regionTitle": "Ne plus utiliser la région {{id}} ?",
-      "regionConsequence": "L'organisation n'utilise plus la région {{id}}. Ses stockages sont conservés. Une source ou une table qui nomme la région empêche sa suppression.",
+      "regionTitle": "Supprimer la région {{id}} ?",
+      "regionConsequence": "La région {{id}} n'est plus accordée à l'organisation ; ses nœuds là-bas cessent de la servir à leur redémarrage. Ses stockages sont conservés. Une source ou une table qui nomme la région empêche sa suppression.",
       "storeTitle": "Supprimer le stockage {{id}} ?",
       "storeConsequence": "Le stockage {{id}} est supprimé. Une région qui l'utilise empêche sa suppression."
-    }
+    },
+    "grantedIntro": "Les régions que la plateforme a accordées à cette organisation, et le stockage où elle conserve chaque type de données dans chacune. Elles sont définies sur la page Plateforme. Dans ces régions, l'organisation décide où résident ses tables et ses sources et quelles régions ses rôles peuvent lire.",
+    "colPurposes": "Finalités",
+    "description": "Description"
   }
 }

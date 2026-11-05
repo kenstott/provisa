@@ -1,7 +1,6 @@
 {
   "orgRegions": {
     "loading": "Loading regions...",
-    "intro": "The platform regions this organization uses, and the store it keeps each kind of data in there. A store is a connection URL; it can hold a reference such as ${env:NAME}, which is kept exactly as entered.",
     "noPlatformRegions": "The platform declares no regions.",
     "regionsHeading": "Regions",
     "storesHeading": "Stores",
@@ -14,15 +13,14 @@
     "colStore": "Store",
     "colUrl": "URL",
     "colKind": "Engine kind",
-    "address": "Node address",
     "usedBy": "Used by regions",
     "unused": "No region uses it",
     "noKind": "None",
-    "noRegions": "This organization selects no region yet.",
+    "noRegions": "No region is granted yet.",
     "noStores": "No stores yet.",
     "notSaved": "Not saved",
-    "heldStores_one": "{{count}} store is not saved yet. It is saved with the organization's first region.",
-    "heldStores_other": "{{count}} stores are not saved yet. They are saved with the organization's first region.",
+    "heldStores_one": "{{count}} store is not saved yet. It is saved with the first region.",
+    "heldStores_other": "{{count}} stores are not saved yet. They are saved with the first region.",
     "edit": "Edit",
     "remove": "Remove",
     "storeTaken": "A store named {{id}} already exists.",
@@ -47,10 +45,13 @@
       "record": "Where this region keeps its record of requests."
     },
     "delete": {
-      "regionTitle": "Stop using region {{id}}?",
-      "regionConsequence": "The organization no longer uses region {{id}}. Its stores are kept. A source or table that names the region keeps it from being removed.",
+      "regionTitle": "Remove region {{id}}?",
+      "regionConsequence": "The organization is no longer granted region {{id}}; its nodes there stop serving it when they restart. Its stores are kept. A source or table that names the region keeps it from being removed.",
       "storeTitle": "Remove store {{id}}?",
       "storeConsequence": "Store {{id}} is removed. A region that uses it keeps it from being removed."
-    }
+    },
+    "grantedIntro": "The regions the platform granted this organization, and the store it keeps each kind of data in there. They are set on the Platform page. Within them, this organization decides where its tables and sources live and which regions its roles may read.",
+    "colPurposes": "Purposes",
+    "description": "Description"
   }
 }

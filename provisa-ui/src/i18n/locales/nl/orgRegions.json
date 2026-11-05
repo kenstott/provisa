@@ -1,7 +1,6 @@
 {
   "orgRegions": {
     "loading": "Regio's laden...",
-    "intro": "De platformregio's die deze organisatie gebruikt, en de opslag waarin zij daar elk soort gegevens bewaart. Een opslag is een verbindings-URL; die kan een verwijzing bevatten zoals ${env:NAME}, die precies zo wordt bewaard als ingevoerd.",
     "noPlatformRegions": "Het platform declareert geen regio's.",
     "regionsHeading": "Regio's",
     "storesHeading": "Opslagen",
@@ -14,15 +13,14 @@
     "colStore": "Opslag",
     "colUrl": "URL",
     "colKind": "Enginetype",
-    "address": "Knooppuntadres",
     "usedBy": "Gebruikt door regio's",
     "unused": "Geen regio gebruikt deze",
     "noKind": "Geen",
-    "noRegions": "Deze organisatie selecteert nog geen regio.",
+    "noRegions": "Er is nog geen regio toegekend.",
     "noStores": "Nog geen opslagen.",
     "notSaved": "Niet opgeslagen",
-    "heldStores_one": "{{count}} opslag is nog niet opgeslagen. Deze wordt opgeslagen met de eerste regio van de organisatie.",
-    "heldStores_other": "{{count}} opslagen zijn nog niet opgeslagen. Ze worden opgeslagen met de eerste regio van de organisatie.",
+    "heldStores_one": "{{count}} opslag is nog niet opgeslagen. Die wordt met de eerste regio opgeslagen.",
+    "heldStores_other": "{{count}} opslagen zijn nog niet opgeslagen. Ze worden met de eerste regio opgeslagen.",
     "edit": "Bewerken",
     "remove": "Verwijderen",
     "storeTaken": "Er bestaat al een opslag met de naam {{id}}.",
@@ -47,10 +45,13 @@
       "record": "Waar deze regio haar logboek van verzoeken bewaart."
     },
     "delete": {
-      "regionTitle": "Regio {{id}} niet meer gebruiken?",
-      "regionConsequence": "De organisatie gebruikt regio {{id}} niet meer. Haar opslagen blijven behouden. Een bron of tabel die de regio noemt, voorkomt het verwijderen.",
+      "regionTitle": "Regio {{id}} verwijderen?",
+      "regionConsequence": "Regio {{id}} is niet langer aan de organisatie toegekend; haar nodes daar bedienen haar na een herstart niet meer. Haar opslagen blijven behouden. Een bron of tabel die de regio noemt, voorkomt verwijderen.",
       "storeTitle": "Opslag {{id}} verwijderen?",
       "storeConsequence": "Opslag {{id}} wordt verwijderd. Een regio die deze gebruikt, voorkomt het verwijderen."
-    }
+    },
+    "grantedIntro": "De regio's die het platform aan deze organisatie heeft toegekend, en de opslag waarin ze daar elk soort gegevens bewaart. Ze worden ingesteld op de pagina Platform. Binnen die regio's bepaalt de organisatie waar haar tabellen en bronnen staan en welke regio's haar rollen mogen lezen.",
+    "colPurposes": "Doelen",
+    "description": "Beschrijving"
   }
 }

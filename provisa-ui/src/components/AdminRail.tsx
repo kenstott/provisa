@@ -17,6 +17,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { CapabilityGate } from "./CapabilityGate";
 import { useAuth } from "../context/AuthContext";
+import { SandboxReadableGate } from "./admin/SandboxReadableGate";
 import { useRegionChoices } from "../hooks/useRegionQueries";
 import { NAV_GROUPS, activeGroupId, labelKeyFor, type NavGroup } from "./navGroups";
 
@@ -57,6 +58,10 @@ export function AdminRail() {
             <span key={item.to} className="admin-rail-coming-soon">
               {t("navBar.comingSoon", { label: t(item.labelKey) })}
             </span>
+          ) : item.sandboxReadable ? (
+            <SandboxReadableGate key={item.to} capability={item.capability} navigable>
+              <NavLink to={item.to}>{t(labelKeyFor(item, capabilities))}</NavLink>
+            </SandboxReadableGate>
           ) : (
             <CapabilityGate
               key={item.to}

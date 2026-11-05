@@ -1,7 +1,6 @@
 {
   "orgRegions": {
     "loading": "Carregando regiões...",
-    "intro": "As regiões da plataforma que esta organização usa e o armazenamento em que ela mantém cada tipo de dado nelas. Um armazenamento é uma URL de conexão; pode conter uma referência como ${env:NAME}, mantida exatamente como foi digitada.",
     "noPlatformRegions": "A plataforma não declara regiões.",
     "regionsHeading": "Regiões",
     "storesHeading": "Armazenamentos",
@@ -14,15 +13,14 @@
     "colStore": "Armazenamento",
     "colUrl": "URL",
     "colKind": "Tipo de engine",
-    "address": "Endereço dos nós",
     "usedBy": "Usado pelas regiões",
     "unused": "Nenhuma região o usa",
     "noKind": "Nenhum",
-    "noRegions": "Esta organização ainda não seleciona nenhuma região.",
+    "noRegions": "Nenhuma região concedida ainda.",
     "noStores": "Ainda não há armazenamentos.",
     "notSaved": "Não salvo",
-    "heldStores_one": "{{count}} armazenamento ainda não foi salvo. Ele é salvo com a primeira região da organização.",
-    "heldStores_other": "{{count}} armazenamentos ainda não foram salvos. Eles são salvos com a primeira região da organização.",
+    "heldStores_one": "{{count}} armazenamento ainda não foi salvo. Ele é salvo com a primeira região.",
+    "heldStores_other": "{{count}} armazenamentos ainda não foram salvos. Eles são salvos com a primeira região.",
     "edit": "Editar",
     "remove": "Remover",
     "storeTaken": "Já existe um armazenamento chamado {{id}}.",
@@ -47,10 +45,13 @@
       "record": "Onde esta região mantém seu registro de solicitações."
     },
     "delete": {
-      "regionTitle": "Deixar de usar a região {{id}}?",
-      "regionConsequence": "A organização deixa de usar a região {{id}}. Seus armazenamentos são mantidos. Uma fonte ou tabela que nomeia a região impede a remoção.",
+      "regionTitle": "Remover a região {{id}}?",
+      "regionConsequence": "A região {{id}} deixa de ser concedida à organização; seus nós lá deixam de atendê-la quando reiniciam. Seus armazenamentos são mantidos. Uma origem ou tabela que nomeia a região impede sua remoção.",
       "storeTitle": "Remover o armazenamento {{id}}?",
       "storeConsequence": "O armazenamento {{id}} é removido. Uma região que o usa impede a remoção."
-    }
+    },
+    "grantedIntro": "As regiões que a plataforma concedeu a esta organização e o armazenamento onde ela guarda cada tipo de dado em cada uma. Elas são definidas na página Plataforma. Dentro delas, a organização decide onde ficam suas tabelas e origens e quais regiões seus papéis podem ler.",
+    "colPurposes": "Finalidades",
+    "description": "Descrição"
   }
 }

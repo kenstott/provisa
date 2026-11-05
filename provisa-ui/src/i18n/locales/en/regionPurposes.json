@@ -1,0 +1,20 @@
+{
+  "regionPurposes": {
+    "legendTitle": "Why a region exists",
+    "explainOnly": "Purposes explain a region. They do not change where queries run, what a rule allows or what is accepted.",
+    "name": {
+      "residency": "Residency",
+      "workload": "Workload",
+      "latency": "Latency",
+      "resilience": "Resilience",
+      "dedicated": "Dedicated"
+    },
+    "explain": {
+      "residency": "Data must stay in a jurisdiction.",
+      "workload": "Keeps one workload apart from the others.",
+      "latency": "Placed near its users or its sources.",
+      "resilience": "A place to fail over to or recover in.",
+      "dedicated": "Infrastructure reserved for one organization, for its own sovereignty over it."
+    }
+  }
+}
