@@ -521,7 +521,8 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
             async with _stage(org_id, demo.name, f"its environment {env['name']}"):
                 await create_environments(org_id, [env], person)
         # REQ-1942: a Test (synthetic) one is given the template's generated rows; nothing is generated
-        # at a visitor's request.
+        # at a visitor's request. REQ-2006: its rows, records and bindings are copied from the
+        # template's prepared environment, and no runtime of it is built here.
         from provisa.api import demo_synthetic
 
         async with _stage(org_id, demo.name, "its environments' rows"):

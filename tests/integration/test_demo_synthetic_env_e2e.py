@@ -157,6 +157,25 @@ def _open(tier) -> dict:
         time.sleep(2)
 
 
+def _prepared_rows(store: Path, schema: str) -> list[tuple]:
+    """The animals the template's dev was generated with, read from the seed's store."""
+    import duckdb
+
+    db = duckdb.connect(str(store), read_only=True)
+    try:
+        (table,) = [
+            r[0]
+            for r in db.execute(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_schema = ? AND table_name LIKE '%animals%'",
+                [schema],
+            ).fetchall()
+        ]
+        return sorted(db.execute(f'SELECT name, species, age FROM "{schema}"."{table}"').fetchall())
+    finally:
+        db.close()
+
+
 def _headers(sandbox: dict, env: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {sandbox['token']}",
@@ -204,6 +223,11 @@ def test_a_synthetic_environment_is_generated_once_and_given_to_each_sandbox(tmp
         assert not {r["name"] for r in generated} & set(_NAMES), "no real name is in dev"
         assert len(generated) == len(_NAMES), "as many rows as production's profile counted"
         assert not {r["species"] for r in generated} & set(_SPECIES), "no real value is in dev"
+        # REQ-2006 (amended 2026-11-04): the sandbox's dev is the template's prepared dev, copied
+        # with no rebuild of it: it answers exactly the rows the template generated.
+        assert sorted((r["name"], r["species"], r["age"]) for r in generated) == _prepared_rows(
+            folder / "seeded" / "synthetic.duckdb", held["schema"]
+        )
         report = httpx.get(
             f"{deployed.base_url}/admin/synthetic-datasets/model/report",
             headers=_headers(sandbox, "dev"),
