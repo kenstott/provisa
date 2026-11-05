@@ -125,7 +125,7 @@ export function PlatformRegionsTab() {
                 consequence={t("platformRegions.deleteConsequence", { id: region.id })}
                 ariaLabel={t("platformRegions.remove")}
                 testId="platform-region-delete"
-                confirmTestId="platform-region-delete-confirm"
+                confirmTestId="platform-region-delete-dialog"
                 onDelete={() => remove(region.id)}
               />
             </Group>
@@ -277,7 +277,7 @@ function PlatformRegionForm({
           />
         </FormField>
       </FormIdentifiers>
-      <FormField size="full" help={t("platformRegions.addressHelp")}>
+      <FormField size="long" help={t("platformRegions.addressHelp")}>
         <TextInput
           label={t("platformRegions.colAddress")}
           required

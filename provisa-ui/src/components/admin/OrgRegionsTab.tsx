@@ -439,7 +439,7 @@ function ItemRead({
               consequence={t(`orgRegions.delete.${kind}Consequence`, { id })}
               ariaLabel={t("orgRegions.remove")}
               testId={`org-${kind}-delete`}
-              confirmTestId={`org-${kind}-delete-confirm`}
+              confirmTestId={`org-${kind}-delete-dialog`}
               onDelete={onDelete}
             />
           </Group>
@@ -588,7 +588,7 @@ function StoreForm({
           />
         </FormField>
       </FormIdentifiers>
-      <FormField size="full" help={t("orgRegions.urlHelp")}>
+      <FormField size="long" help={t("orgRegions.urlHelp")}>
         <TextInput
           label={t("orgRegions.colUrl")}
           required
