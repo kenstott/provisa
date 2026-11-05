@@ -90562,6 +90562,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   tests:
   - tests/unit/test_cypher_page_session.py
   - tests/integration/test_graph_session_shared.py
+  - tests/integration/test_graph_session_clear_pg.py
   - provisa-ui/src/components/graph/__tests__/SessionPills.test.tsx
   - provisa-ui/src/__tests__/GraphPageSession.test.tsx
   scenario: 'Given a Bolt session as a role
