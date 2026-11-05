@@ -12,7 +12,7 @@
 library documents they read, loaded into its template with each matched glossary term found by
 its name, checked held, and copied into every sandbox cloned from the template."""
 
-# Requirements: REQ-2201
+# Requirements: REQ-2201, REQ-2185
 
 from __future__ import annotations
 
@@ -247,6 +247,49 @@ async def test_a_sandbox_is_cloned_with_its_template_s_library_and_scans(control
         (document,) = await store.documents(conn)
         hits = await store.nearest_passages(conn, [1.0, 0.1], [document.id], 1)
     assert [h.text for h in hits] == [PASSAGES[0].text]
+
+
+async def test_an_assistant_in_a_sandbox_finds_the_passages_of_the_regulation_its_demo_scanned(
+    control_plane, db, tmp_path
+):
+    """REQ-2185's acceptance in the bank secrecy demo: the regulation the bundle's build scanned
+    is what Polly cites in a sandbox. Through retrieve(), as search_reference_library calls it,
+    not store.nearest_passages: the library's own filter (kept documents a role reads) applies."""
+    from provisa.reference_library.library import Embedder
+    from provisa.reference_library.retrieve import retrieve
+
+    await _scanned(db)
+    out = carry.scans_path(tmp_path)
+    carry.export_scans(control_plane.url, SCHEMA, out)
+    await _forget(db)
+    async with db.acquire() as conn, conn.transaction():
+        await carry.load_scans(conn, out)
+    with control_plane.engine().begin() as c:
+        c.exec_driver_sql('CREATE SCHEMA "org_sandbox"')
+        for table in env_copy._SCAN_TABLES:
+            c.exec_driver_sql(
+                f'CREATE TABLE "org_sandbox"."{table}" (LIKE "{SCHEMA}"."{table}" INCLUDING ALL)'
+            )
+    async with db.acquire() as conn:
+        await env_copy.copy_term_scans(conn, SCHEMA, "org_sandbox")
+    sandbox = Database(
+        control_plane.engine(f"{control_plane.url}?options=-csearch_path%3Dorg_sandbox"),
+        name="org-model",
+        search_path="org_sandbox",
+    )
+
+    async def embed(texts: list[str]) -> list[list[float]]:
+        return [[1.0, 0.1] for _ in texts]
+
+    embedder = Embedder(model="sentence-transformers/all-MiniLM-L6-v2", embed=embed)
+    async with sandbox.acquire() as conn:
+        found = await retrieve(
+            conn, "Which cash needs a currency transaction report?", {"bank"}, embedder, k=2
+        )
+    assert [(c.source, c.section, c.quote) for c in found] == [
+        (RULE, "1010.311", PASSAGES[0].text),
+        (RULE, "1010.311", PASSAGES[1].text),
+    ]
 
 
 async def _vector_indexes(conn, schema: str) -> set[str]:
