@@ -130,3 +130,20 @@ def test_the_slow_setup_is_one_a_codespaces_prebuild_runs():
 
 def test_codespaces_picks_a_machine_that_builds_it():
     assert _devcontainer()["hostRequirements"] == {"cpus": 4, "memory": "16gb", "storage": "32gb"}
+
+
+def test_the_ui_and_api_ports_are_forwarded_with_labels():
+    config = _devcontainer()
+    assert config["forwardPorts"] == [3000, 8001]
+    ports = config["portsAttributes"]
+    assert ports["3000"] == {"label": "Provisa UI", "onAutoForward": "openBrowser"}
+    assert ports["8001"] == {"label": "Provisa API", "onAutoForward": "silent"}
+
+
+def test_the_manifest_is_fetched_with_credentials():
+    # A private Codespaces port redirects an uncredentialed manifest fetch to github.dev/pf-signin,
+    # which the browser blocks under CORS.
+    html = (REPO_ROOT / "provisa-ui" / "index.html").read_text()
+    assert re.search(
+        r'<link rel="manifest" href="/site\.webmanifest" crossorigin="use-credentials"\s*/>', html
+    )

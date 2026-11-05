@@ -8,6 +8,17 @@
     "source=provisa-node-modules-${devcontainerId},target=${containerWorkspaceFolder}/provisa-ui/node_modules,type=volume",
     "source=provisa-encoders-target-${devcontainerId},target=${containerWorkspaceFolder}/rust/encoders/target,type=volume"
   ],
+  "forwardPorts": [3000, 8001],
+  "portsAttributes": {
+    "3000": {
+      "label": "Provisa UI",
+      "onAutoForward": "openBrowser"
+    },
+    "8001": {
+      "label": "Provisa API",
+      "onAutoForward": "silent"
+    }
+  },
   "remoteUser": "vscode",
   "hostRequirements": {
     "cpus": 4,
