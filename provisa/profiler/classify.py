@@ -10,10 +10,11 @@
 
 """Classification kinds: what a column holds, recognised from its sampled values (REQ-2147).
 
-A kind is recognised by a test applied to each of a column's sampled non-null values: a validator
-for a sensitive kind (the SSN rules, the Luhn check of a card number, an IBAN's check digits, the
-check digit or letter of a national identifier), membership in a shipped reference list for the
-others (``reference/``, built by scripts/build_classification_reference.py). Where the share of
+A kind is recognised by a test applied to each of a column's sampled non-null values: for a
+sensitive kind a regular expression the whole value must match, with a check where the value has a
+checksum or a rule a pattern cannot state (the SSN rules, the Luhn check of a card number, an IBAN's
+check digits, the check digit or letter of a national identifier), membership in a shipped
+reference list for the others (``reference/``, built by scripts/build_classification_reference.py). Where the share of
 values passing reaches the kind's threshold the column gets a suggestion, which a steward accepts
 or rejects (``provisa.profiler.classifications``).
 
@@ -25,8 +26,11 @@ The kinds are ``classification_kinds.yaml``. The sampled values are read by the 
 
 from __future__ import annotations
 
+import base64
+import collections
 import functools
 import gzip
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,6 +55,10 @@ class Kind:
     passes: str
     sensitive: bool
     test: str
+    pattern: str | None
+    check: str | None
+    ignore: str | None
+    ignore_case: bool
     families: tuple[str, ...]
     threshold: float
     term: str
@@ -64,6 +72,11 @@ class Kind:
             if self.test.startswith(REFERENCE_PREFIX)
             else None
         )
+
+
+@functools.cache
+def _whole_pattern(pattern: str, ignore_case: bool) -> re.Pattern[str]:
+    return re.compile(pattern, re.IGNORECASE if ignore_case else 0)
 
 
 @dataclass(frozen=True)
@@ -88,13 +101,18 @@ def normalise(value: str) -> str:
     return " ".join(value.split()).casefold()
 
 
-# -- validators ------------------------------------------------------------------------------------
+# -- checks ----------------------------------------------------------------------------------------
+#
+# A kind is a pattern (a regular expression of the value's shape, written without ^ or $ so that it
+# can also be searched for inside a longer text; the whole-value test anchors it) and, where the
+# value carries a checksum or a rule a pattern cannot state, a check of the same name in CHECKS. A
+# check is given the value as the pattern matched it, with the kind's ignored characters removed.
 
-_SEPARATORS = re.compile(r"[\s\-.]")
+_NON_DIGITS = re.compile(r"\D")
 
 
 def _digits(value: str) -> str:
-    return _SEPARATORS.sub("", value)
+    return _NON_DIGITS.sub("", value)
 
 
 def _luhn(digits: str) -> bool:
@@ -108,68 +126,44 @@ def _luhn(digits: str) -> bool:
 
 
 def us_ssn(value: str) -> bool:
-    """Nine digits, written ddd-dd-dddd or plain (a number column drops leading zeros): the area
-    is never 000, 666 or 900-999, the group never 00, the serial never 0000."""
-    raw = value.strip()
-    if re.fullmatch(r"\d{3}-\d{2}-\d{4}", raw):
-        digits = raw.replace("-", "")
-    elif re.fullmatch(r"\d{7,9}", raw):
-        digits = raw.zfill(9)
-    else:
-        return False
+    """Ddd-dd-dddd or 7 to 9 plain digits (a number column drops leading zeros): the area is never
+    000, 666 or 900-999, the group never 00, the serial never 0000."""
+    digits = value.replace("-", "").zfill(9)
     area, group, serial = digits[:3], digits[3:5], digits[5:]
     return area not in ("000", "666") and area < "900" and group != "00" and serial != "0000"
 
 
 def payment_card(value: str) -> bool:
-    """13 to 19 digits, spaces or dashes between groups, passing the Luhn check."""
-    digits = _digits(value)
-    return digits.isdigit() and 13 <= len(digits) <= 19 and _luhn(digits)
+    """The Luhn check."""
+    return _luhn(value)
 
 
 def iban(value: str) -> bool:
-    """A country code, two check digits and up to 30 letters and digits, the whole number of which
-    leaves 1 divided by 97 (ISO 13616)."""
-    raw = value.replace(" ", "").upper()
-    if not re.fullmatch(r"[A-Z]{2}\d{2}[A-Z0-9]{11,30}", raw):
-        return False
-    moved = raw[4:] + raw[:4]
+    """The whole number, its first four characters moved to the end, leaves 1 divided by 97
+    (ISO 13616)."""
+    moved = value[4:].upper() + value[:4].upper()
     return int("".join(str(int(ch, 36)) for ch in moved)) % 97 == 1
 
 
-_NINO = re.compile(r"(?!BG|GB|NK|KN|TN|NT|ZZ)[A-CEGHJ-PR-TW-Z][A-CEGHJ-NPR-TW-Z]\d{6}[A-D]")
-
-
-def uk_national_insurance_number(value: str) -> bool:
-    """Two prefix letters of the allowed set and not a reserved pair, six digits, a suffix A-D."""
-    return bool(_NINO.fullmatch(value.replace(" ", "").upper()))
-
-
 def ca_social_insurance_number(value: str) -> bool:
-    """Nine digits, the first not 0 or 8, passing the Luhn check."""
-    digits = _digits(value)
-    return digits.isdigit() and len(digits) == 9 and digits[0] not in "08" and _luhn(digits)
+    """The Luhn check."""
+    return _luhn(value)
 
 
 _DNI_LETTERS = "TRWAGMYFPDXBNJZSQVHLCKE"
 
 
 def es_dni(value: str) -> bool:
-    """Eight digits and their check letter (the number mod 23); an NIE's X, Y or Z counts 0-2."""
-    raw = value.replace(" ", "").replace("-", "").upper()
-    if re.fullmatch(r"[XYZ]\d{7}[A-Z]", raw):
+    """The number mod 23 names the check letter; an NIE's X, Y or Z counts 0-2."""
+    raw = value.upper()
+    if raw[0] in "XYZ":
         raw = str("XYZ".index(raw[0])) + raw[1:]
-    if not re.fullmatch(r"\d{8}[A-Z]", raw):
-        return False
     return _DNI_LETTERS[int(raw[:8]) % 23] == raw[8]
 
 
 def nl_bsn(value: str) -> bool:
-    """Nine digits (a number column may drop a leading zero) passing the eleven test."""
-    digits = _digits(value)
-    if not digits.isdigit() or len(digits) not in (8, 9):
-        return False
-    digits = digits.zfill(9)
+    """Eight or nine digits (a number column may drop a leading zero) passing the eleven test."""
+    digits = value.zfill(9)
     if digits == "000000000":
         return False
     total = sum(int(d) * w for d, w in zip(digits[:8], range(9, 1, -1))) - int(digits[8])
@@ -201,33 +195,115 @@ _VERHOEFF_P = (
 
 
 def in_aadhaar(value: str) -> bool:
-    """Twelve digits, the first 2-9, passing the Verhoeff check."""
-    digits = _digits(value)
-    if not digits.isdigit() or len(digits) != 12 or digits[0] in "01":
-        return False
+    """The Verhoeff check."""
     check = 0
-    for i, ch in enumerate(reversed(digits)):
+    for i, ch in enumerate(reversed(value)):
         check = _VERHOEFF_D[check][_VERHOEFF_P[i % 8][int(ch)]]
     return check == 0
 
 
-def us_passport(value: str) -> bool:
-    """A letter and eight digits, the format of US passport books issued since 2021."""
-    return bool(re.fullmatch(r"[A-Z]\d{8}", value.strip().upper()))
+def us_bank_routing_number(value: str) -> bool:
+    """The ABA checksum: 3(d1+d4+d7) + 7(d2+d5+d8) + (d3+d6+d9) is a multiple of 10, not zero."""
+    d = [int(c) for c in value]
+    total = 3 * (d[0] + d[3] + d[6]) + 7 * (d[1] + d[4] + d[7]) + (d[2] + d[5] + d[8])
+    return total > 0 and total % 10 == 0
 
 
-VALIDATORS: dict[str, Callable[[str], bool]] = {
+def email_address(value: str) -> bool:
+    """A local part of at most 64 characters with no leading, trailing or doubled dot, in an
+    address of at most 254 (RFC 5321)."""
+    local = value.rpartition("@")[0]
+    return (
+        len(local) <= 64
+        and len(value) <= 254
+        and not local.startswith(".")
+        and not local.endswith(".")
+        and ".." not in local
+    )
+
+
+def de_steuer_id(value: str) -> bool:
+    """Eleven digits: of the first ten exactly one digit occurs two or three times (never three in
+    a row) and the rest at most once; the eleventh is the ISO 7064 MOD 11,10 check digit."""
+    digits = _digits(value)
+    first = digits[:10]
+    counts = collections.Counter(first)
+    repeated = [d for d, n in counts.items() if n > 1]
+    if len(repeated) != 1 or counts[repeated[0]] > 3:
+        return False
+    if counts[repeated[0]] == 3 and repeated[0] * 3 in first:
+        return False
+    product = 10
+    for ch in first:
+        total = (int(ch) + product) % 10 or 10
+        product = (2 * total) % 11
+    return (11 - product) % 10 == int(digits[10])
+
+
+def fr_nir(value: str) -> bool:
+    """Thirteen characters (Corsica's department 2A or 2B counting as 19 or 18) and their key:
+    97 minus the number mod 97."""
+    raw = value.upper().replace(" ", "")
+    number = int(raw[:13].replace("2A", "19").replace("2B", "18"))
+    return 97 - number % 97 == int(raw[13:])
+
+
+def au_tfn(value: str) -> bool:
+    """Nine digits, not all zero, whose weighted sum (1, 4, 3, 7, 5, 8, 6, 9, 10) is a multiple of
+    11."""
+    weights = (1, 4, 3, 7, 5, 8, 6, 9, 10)
+    digits = _digits(value)
+    return int(digits) > 0 and sum(int(d) * w for d, w in zip(digits, weights)) % 11 == 0
+
+
+def br_cpf(value: str) -> bool:
+    """Eleven digits, not all alike, whose last two are the mod 11 check digits of the rest."""
+    digits = [int(c) for c in _digits(value)]
+    if len(set(digits)) == 1:
+        return False
+    for n in (9, 10):
+        total = sum(d * w for d, w in zip(digits[:n], range(n + 1, 1, -1)))
+        if digits[n] != (total * 10 % 11) % 10:
+            return False
+    return True
+
+
+def uk_nhs_number(value: str) -> bool:
+    """Ten digits whose first nine, weighted 10 down to 2, give the check digit by mod 11 (a
+    remainder that would make 10 is never issued)."""
+    digits = [int(c) for c in _digits(value)]
+    check = 11 - sum(d * w for d, w in zip(digits[:9], range(10, 1, -1))) % 11
+    return check != 10 and check % 11 == digits[9]
+
+
+def jwt(value: str) -> bool:
+    """The header segment decodes, as base64url, to a JSON object that names an ``alg``."""
+    header = value.split(".", 1)[0]
+    try:
+        decoded = json.loads(base64.urlsafe_b64decode(header + "=" * (-len(header) % 4)))
+    except ValueError:
+        return False
+    return isinstance(decoded, dict) and "alg" in decoded
+
+
+CHECKS: dict[str, Callable[[str], bool]] = {
     f.__name__: f
     for f in (
         us_ssn,
         payment_card,
         iban,
-        uk_national_insurance_number,
         ca_social_insurance_number,
         es_dni,
         nl_bsn,
         in_aadhaar,
-        us_passport,
+        us_bank_routing_number,
+        email_address,
+        de_steuer_id,
+        fr_nir,
+        au_tfn,
+        br_cpf,
+        uk_nhs_number,
+        jwt,
     )
 }
 
@@ -244,20 +320,37 @@ def reference_list(name: str) -> frozenset[str]:
 
 def _kind(entry: dict) -> Kind:
     sensitive = entry["sensitive"]
+    pattern = entry.get("pattern")
+    check = entry.get("check")
+    ignore = entry.get("ignore")
+    test = entry.get("test", entry["id"])
     kind = Kind(
         id=entry["id"],
         label=entry["label"],
         noun=entry["noun"],
         passes=entry["passes"],
         sensitive=sensitive,
-        test=entry["test"],
+        test=test,
+        pattern=pattern,
+        check=check,
+        ignore=ignore,
+        ignore_case=bool(entry.get("ignore_case", False)),
         families=tuple(entry["families"]),
         threshold=float(entry["threshold"]),
         term=entry["term"],
         mask_preset=entry.get("mask_preset"),
     )
-    if kind.reference is None and kind.test not in VALIDATORS:
-        raise ValueError(f"classification kind {kind.id!r}: no validator {kind.test!r}")
+    if kind.reference is not None:
+        if pattern or check or ignore:
+            raise ValueError(f"classification kind {kind.id!r}: a reference kind has no pattern")
+    else:
+        if not pattern:
+            raise ValueError(f"classification kind {kind.id!r}: no pattern")
+        re.compile(pattern)  # a pattern that does not compile raises here, at load
+        if ignore:
+            re.compile(ignore)
+        if check is not None and check not in CHECKS:
+            raise ValueError(f"classification kind {kind.id!r}: no check {check!r}")
     if not set(kind.families) <= set(FAMILIES):
         raise ValueError(f"classification kind {kind.id!r}: families must be among {FAMILIES}")
     if sensitive != (kind.mask_preset is not None):
@@ -284,10 +377,21 @@ def kind_of(kind_id: str) -> Kind:
     raise KeyError(f"unknown classification kind {kind_id!r}")
 
 
+def matches_whole_value(kind: Kind, value: str) -> bool:
+    """Whether ``value`` as a whole is a ``kind`` (not a reference kind): the kind's ignored
+    characters removed (surrounding whitespace where it names none), the pattern matching all of
+    what is left, and the check, where the kind has one, passing it."""
+    assert kind.pattern is not None, kind.id
+    text = re.sub(kind.ignore, "", value) if kind.ignore else value.strip()
+    if _whole_pattern(kind.pattern, kind.ignore_case).fullmatch(text) is None:
+        return False
+    return kind.check is None or CHECKS[kind.check](text)
+
+
 def _passes(kind: Kind, value: str) -> bool:
     if kind.reference is not None:
         return normalise(value) in reference_list(kind.reference)
-    return VALIDATORS[kind.test](value)
+    return matches_whole_value(kind, value)
 
 
 def _tested_value(family: str, value: str) -> str | None:
@@ -322,3 +426,10 @@ def classify(family: str, values: list[str | None], kinds: tuple[Kind, ...]) -> 
 
 def classified_families() -> frozenset[str]:
     return frozenset(f for k in catalogue() for f in k.families)
+
+
+# A kind's whole-value test by its ``test`` name: what the catalogue's pattern and check say of a
+# value, for every kind that is not a reference list.
+VALIDATORS: dict[str, Callable[[str], bool]] = {
+    k.test: functools.partial(matches_whole_value, k) for k in catalogue() if k.reference is None
+}
