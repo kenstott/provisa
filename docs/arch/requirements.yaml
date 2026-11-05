@@ -74478,7 +74478,10 @@
     the UI sends that region''s data calls to when a load balancer, a pool or a single node is in front;
     with none declared the UI is offered the region''s registered nodes. A platform region has no other
     address: the address field is removed, and a refusal that lists the platform''s regions lists their
-    ids.'
+    ids. (Amended 2026-11-05, THE FEDERATION PAGE HAS A TAB PER REGION:) When the org uses regions, Admin
+    > Federation shows one tab per region, each the same engine form editing that region''s engine store
+    (the store Admin > Regions names as the region''s engine). With no regions the page has no tabs and
+    edits the one engine as before.'
   use_case: A regulated enterprise needs some data processed and kept inside a country, with the rest
     of the estate readable from anywhere, under one set of definitions. Two independent deployments would
     each need their own definitions, which could diverge. Two clusters on one shared model give each region
