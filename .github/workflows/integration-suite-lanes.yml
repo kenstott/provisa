@@ -581,7 +581,7 @@ jobs:
         run: az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
 
       - name: Stack slots on this runner
-        run: bash scripts/ci/lanes/suite-prepare.sh
+        run: bash scripts/ci/lanes/suite-prepare.sh warehouse
 
       - name: Run lane
         run: uv run python scripts/ci/run_lane.py warehouse --junitxml results/warehouse/junit.xml
