@@ -152,7 +152,9 @@ _CORPUS = [
 
 @pytest.mark.parametrize("expr", _CORPUS)
 def test_each_type_answers_as_the_trino_client(trino_conn, flight_conn, expr):
-    sql = f"SELECT v FROM (VALUES ({expr}), (NULL)) AS t(v)"
+    # A VALUES row that is one ROW-typed expression is expanded into the ROW's fields; keyed
+    # two-column rows keep each value one column, and the key fixes the row order.
+    sql = f"SELECT v FROM (VALUES (1, {expr}), (2, NULL)) AS t(k, v) ORDER BY k"
     theirs, their_types = _via_trino_client(trino_conn, sql)
     ours = execute_trino_flight(flight_conn, sql, context=_CONTEXT)
     assert ours.column_types == their_types
@@ -163,7 +165,9 @@ def test_a_multi_batch_result_answers_as_the_trino_client(trino_conn, flight_con
     sql = (
         "SELECT n, n * 0.5e0 AS half, CAST(n AS varchar) AS s, "
         "from_unixtime_nanos(n * 1000001001) AS ts, DECIMAL '0.01' * n AS d "
-        "FROM UNNEST(sequence(1, 25000)) AS t(n) ORDER BY n"
+        # sequence() holds at most 10000 entries: 25 x 1000 gives n = 1..25000.
+        "FROM (SELECT a.x * 1000 + b.y AS n FROM UNNEST(sequence(0, 24)) AS a(x) "
+        "CROSS JOIN UNNEST(sequence(1, 1000)) AS b(y)) ORDER BY n"
     )
     theirs, their_types = _via_trino_client(trino_conn, sql)
     ours = execute_trino_flight_sync(flight_conn, sql, context=_CONTEXT)
@@ -211,8 +215,10 @@ def test_the_query_timeout_is_enforced(flight_conn):
     with pytest.raises(FederationError) as raised:
         execute_trino_flight(
             flight_conn,
-            "SELECT count(*) FROM UNNEST(sequence(1, 1000000)) a(x) "
-            "CROSS JOIN UNNEST(sequence(1, 1000000)) b(y)",
+            # sequence() holds at most 10000 entries; three of them cross joined are 10^12 rows.
+            "SELECT count(*) FROM UNNEST(sequence(1, 10000)) a(x) "
+            "CROSS JOIN UNNEST(sequence(1, 10000)) b(y) "
+            "CROSS JOIN UNNEST(sequence(1, 10000)) c(z)",
             context=context,
         )
     assert raised.value.error_name == "EXCEEDED_TIME_LIMIT"
