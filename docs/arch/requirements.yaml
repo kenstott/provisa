@@ -87279,7 +87279,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     VIEW:) Maintainer 2026-10-29: the Ontology view shows an ontology with the elements that ground it,
     not data flow. Its edges are the terms'' relationships and the grounding chain only (term to the column
     or table it grounds, column to its table, table to its data product); no relationship, join or lineage
-    edge between tables or columns is drawn in it.'
+    edge between tables or columns is drawn in it. (Amended 2026-11-05, set from the glossary:) A table''s
+    Rows are instances of is shown read-only in its Associations, like its terms, with a link to the term.
+    Which tables a term''s rows describe is set on the term in the glossary, where its column refs are also
+    managed, so a term is made a Class or a Property in one place.'
   use_case: >-
     A curator sees the shape of the vocabulary: which terms are still proposals and why, where
     abstract concepts are left without concrete terms under them, which domains share terms, and
