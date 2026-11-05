@@ -7,11 +7,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# The named volumes compose mounts over these directories start out owned by root.
-sudo chown vscode:vscode provisa-ui/node_modules rust/encoders/target
+# The named volumes devcontainer.json mounts over these directories (so a macOS or Windows host's
+# own node_modules, .venv and cargo output in the same checkout are neither used nor overwritten)
+# start out owned by root.
+sudo chown vscode:vscode .venv provisa-ui/node_modules rust/encoders/target
 
-# The environment lives at $UV_PROJECT_ENVIRONMENT, outside the checkout, so a host's own .venv in
-# the same checkout is left alone. The editable build of provisa compiles provisa._encoders
+# The environment is the checkout's .venv (what start-ui-install.sh and rust/build-local.sh use),
+# on a named volume, so a host's own .venv in the same checkout is left alone. The editable build of provisa compiles provisa._encoders
 # (setuptools-rust) to provisa/_encoders.cpython-312-<arch>-linux-gnu.so. Python on Linux loads
 # that name first, and a host's own build of the module keeps its name and is not overwritten.
 uv sync --frozen --extra dev

@@ -1,0 +1,12 @@
+{
+  "sensitiveScan": {
+    "scan": "Nach sensiblen Werten durchsuchen",
+    "help": "Liest im Hintergrund eine Stichprobe der Textspalten der Tabelle und sucht nach sensiblen Werten im Text, etwa einer Sozialversicherungsnummer in einer Notiz. Gespeichert wird nur der Anteil der Werte, nie die Werte selbst. Ein Hinweis ändert für sich nichts: Wählen Sie für die Spalte eine Freigabe, eine Maskierung oder einen Fake-Wert.",
+    "saveFirst": "Speichern Sie die Tabelle, um ihre Werte zu durchsuchen.",
+    "running": "Eine Stichprobe der Textspalten wird durchsucht…",
+    "succeeded": "Letzte Suche: {{rows}} Zeilen der Stichprobe, {{columns}} Textspalten.",
+    "failed": "Die Suche ist fehlgeschlagen: {{error}}",
+    "header": "In Werten gefunden",
+    "hint": "Enthält {{kind}} in {{percent}} % der Stichprobenwerte"
+  }
+}

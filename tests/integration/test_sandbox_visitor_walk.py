@@ -343,6 +343,16 @@ class Walk:
                 # The explorer's Connect panel reads the MCP server's status; the agent's own
                 # questions (mcp) are answered live by a model, so the walk sends none.
                 self.send(f"{key} (mcp-connect)", "GET", "/admin/mcp-server", None)
+            if "region" in step or step.get("purposes"):
+                # The regions the page lists, as the visitor reads them: the Platform page's, read-only
+                # in a sandbox (REQ-1922), or the org's, which Admin > Regions and Federation's tab
+                # per region both read.
+                path = (
+                    "/admin/platform/regions"
+                    if self.page == "/admin/platform"
+                    else "/admin/regions"
+                )
+                self.send(f"{key} (regions)", "GET", path, None)
             if "cypher" in step:
                 self.send(f"{key} (cypher)", "POST", "/data/cypher", {"query": step["cypher"]})
             if "example" in step and not _is_subscription(examples[step["example"]]):

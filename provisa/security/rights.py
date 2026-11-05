@@ -443,7 +443,9 @@ def column_served(role: dict, domain_id: str | None, column: dict, *, reaches: b
     that is all. Outside reach a column is served only when it is ``public``: publishing removes
     the domain condition for that column and nothing else -- its grant, masks, row rules and
     limits apply as they do within the domain. A ``listed`` column is served as a ``domain`` one:
-    its names in the catalog are not data. A parameter column of an API table
+    its names in the catalog are not data. An ``own-domain`` column is served as a ``domain`` one
+    to the roles its grant names once the build has narrowed that grant to the roles whose own
+    domain access names the table's domain (``inheritance.narrow_own_domain_grants``, REQ-2153). A parameter column of an API table
     (``native_filter_type``) is an argument, not data, and publishes nothing.
     """
     if role["id"] not in (column.get("visible_to") or ()):
@@ -458,11 +460,14 @@ def served_roles(  # REQ-2152
 ) -> frozenset[str]:
     """The roles of ``roles`` (id → definition) a column of a table in ``domain_id`` is served to,
     by :func:`column_served`: its stored grant expanded down ``chains`` as the schema build
-    expands it (``inheritance.expand_grants``), each role's reach its own ``domain_access``."""
-    from provisa.security.inheritance import expand_grants
+    expands it (``inheritance.expand_grants``) and narrows an own-domain one
+    (``inheritance.narrow_own_domain_grants``, each definition carrying its own domain access),
+    each role's reach its own ``domain_access``."""
+    from provisa.security.inheritance import expand_grants, narrow_own_domain_grants
 
     granted = {**column, "visible_to": list(column.get("visible_to") or [])}
     expand_grants([granted], chains)
+    narrow_own_domain_grants([{"domain_id": domain_id, "columns": [granted]}], roles.values())
     return frozenset(
         role_id
         for role_id, definition in roles.items()

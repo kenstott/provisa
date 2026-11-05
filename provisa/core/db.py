@@ -143,18 +143,28 @@ def fold_config_grants(tables: list[dict], config_roles: list[dict]) -> None:
     """Fold the column grants of ``tables`` over each role's ancestors -- the standard roles and
     ``config_roles``, a configuration's own -- as the runtime build does
     (security.inheritance.expand_column_grants): a column granted to data_steward is org_admin's.
-    For a schema built from a configuration file, outside a model store (REQ-2155)."""
-    from provisa.security.inheritance import expand_column_grants, role_chains
+    For a schema built from a configuration file, outside a model store (REQ-2155). An own-domain
+    column's grant is then narrowed to the roles whose own domain access names its table's domain
+    (REQ-2153)."""
+    from provisa.security.inheritance import (
+        expand_column_grants,
+        narrow_own_domain_grants,
+        role_chains,
+        with_own_domains,
+    )
 
     own = [
         {
             "id": r["id"],
             "capabilities": r.get("capabilities") or [],
             "parents": r.get("parents") or [],
+            "domain_access": r["domain_access"],
         }
         for r in config_roles
     ]
-    expand_column_grants(tables, role_chains([*standard_role_dicts(), *own]))
+    every = [*standard_role_dicts(), *own]
+    expand_column_grants(tables, role_chains(every))
+    narrow_own_domain_grants(tables, with_own_domains(every))
 
 
 # REQ-1919: what the deployment seeds into every model store. A seeded role is a standard role and

@@ -20,7 +20,10 @@ vi.mock("../context/AuthContext", async (importOriginal) => ({
 }));
 vi.mock("../hooks/useAdminQueries", () => ({
   useTables: () => ({
-    tables: [{ id: 1, domainId: "ops", tableName: "ontology_quality", alias: null, sourceId: "x" }],
+    tables: [
+      { id: 1, domainId: "ops", tableName: "ontology_quality", alias: null, sourceId: "x" },
+      { id: 2, domainId: "ops", tableName: "sensitive_column_coverage", alias: null, sourceId: "x" },
+    ],
     loading: false,
     refetch: vi.fn(),
   }),
@@ -50,5 +53,17 @@ describe("ReportsTab", () => {
   it("shows drift with the Ontology quality report", () => {
     render(<ReportsTab />);
     expect(screen.getByTestId("ontology-drift")).toBeInTheDocument();
+  });
+
+  it("opens the report its deep link names", () => {
+    render(<ReportsTab />, { initialEntries: ["/admin/reports?report=sensitive_column_coverage"] });
+    expect(screen.getByTestId("report-pane")).toHaveAttribute(
+      "data-report",
+      "sensitive_column_coverage",
+    );
+    expect(screen.queryByTestId("ontology-drift")).not.toBeInTheDocument();
+    expect(screen.getByTestId("report-item-sensitive_column_coverage")).toHaveAttribute(
+      "data-active",
+    );
   });
 });

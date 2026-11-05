@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-594 — Security
-  # AuthMiddleware defines a skip-path set `{/billing/signup, /billing/webhook, /health, /live, /ready, /data/openapi/*, /au…
+  # [SUPERSEDED by REQ-594, 2026-11-05 -- the set grew with later requirements; the full list is in the amendment below. Kep…
 
   Scenario: REQ-594 default behaviour
     Given a request to /billing/signup, /billing/webhook, /health, /docs, or /openapi.json

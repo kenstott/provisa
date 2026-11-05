@@ -15,7 +15,7 @@ over its tables: the weblogs demo's by tests/integration/test_polly_bakeoff_e2e.
 may ask Polly any of its own (tests/unit/test_named_demo_tour.py), and every grading query names
 its demo's tables and views as they register (tests/unit/test_polly_bakeoff_questions.py)."""
 
-# Requirements: REQ-2012, REQ-2107
+# Requirements: REQ-2012, REQ-2107, REQ-2053
 
 from __future__ import annotations
 
@@ -176,6 +176,16 @@ BANKSECRECY = (
     ),
 )
 
+# The testdata demo's question (REQ-2053): the assistant reads customers.email's latest profile run
+# and proposes its fake (propose_fakes, the column named though it declares one already). The
+# profile shows email addresses, so the right answer is the email fake, not a value of the table.
+TESTDATA = (
+    Question(
+        "Which fake would you propose for customers.email from its latest profile?",
+        "SELECT 'email()' AS a",
+    ),
+)
+
 # Each named demo's questions, by its name (its directory under demo/named).
 QUESTIONS: dict[str, tuple[Question, ...]] = {
     "weblogs": WEBLOGS,
@@ -183,4 +193,5 @@ QUESTIONS: dict[str, tuple[Question, ...]] = {
     "banking": BANKING,
     "cloudpolicy": CLOUDPOLICY,
     "banksecrecy": BANKSECRECY,
+    "testdata": TESTDATA,
 }

@@ -200,7 +200,8 @@
     "dimBadge": "Dimension",
     "scopeDomain": "Domäne",
     "scopePublic": "öffentlich",
-    "scopeRestricted": "eingeschränkt",
+    "scopeListed": "aufgelistet",
+    "scopeOwnDomain": "eigene Domäne",
     "cancel": "Abbrechen",
     "save": "Speichern",
     "ttlViewRefreshes": "Aktualisiert alle {{sec}} s (aus dem Aktualisierungsintervall der materialisierten Sicht).",
@@ -264,7 +265,7 @@
     "draftHelp": "Außer Betrieb, solange aktiviert: nirgends gelesen oder geschrieben, in keinem Schema angeboten und nirgends kopiert – vorhandene Kopien in allen Regionen werden entfernt. Eine hier registrierte Tabelle oder Ansicht beginnt als Entwurf; zum Freigeben deaktivieren.",
     "pagingRowsFieldHelp": "Die Eigenschaft der Antwort, die die Zeilen enthält, etwa values oder data eines Seiten-Wrappers. Leer lassen, wenn die Antwort selbst die Zeilen ist. Die Spalten der Tabelle sind die der Objekte dort.",
     "pagingRowsFieldFixed": "Bei der Registrierung der Tabelle festgelegt. Registrieren Sie die Tabelle erneut, um ihre Zeilen von anderer Stelle zu lesen.",
-    "scopeHelp": "domain: für Rollen, die die Domäne dieser Tabelle erreichen. public: auch für Rollen außerhalb davon. restricted: nur für die unter „Sichtbar für“ genannten Rollen.",
+    "scopeHelp": "domain: für Rollen, die die Domäne dieser Tabelle erreichen, auch über eine übergeordnete Domäne. listed: dasselbe, und jede Rolle sieht den Namen der Spalte im Katalog. public: auch für Rollen außerhalb der Domäne. own-domain: nur für Rollen, deren eigener Domänenzugriff die Domäne dieser Tabelle nennt; eine Rolle, die sie nur über eine übergeordnete Domäne erreicht, erhält sie nicht, auch wenn „Sichtbar für“ sie nennt.",
     "columnTabs": {
       "label": "Spaltenattribute",
       "naming": "Benennung",

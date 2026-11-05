@@ -32,11 +32,30 @@ from tests.unit.test_table_read_as_caller import (
     routing,  # noqa: F401  # pyright: ignore[reportUnusedImport]
 )
 
+# REQ-2153: each role carries its own domain access, as a built role does.
 # "r" may see the draft's columns; "s" and "t" read the same domain and see none of them.
 _ROLES = [
-    {"id": "r", "description": "Test role.", "capabilities": ["usage"], "domain_access": ["sales"]},
-    {"id": "s", "description": "Test role.", "capabilities": ["usage"], "domain_access": ["sales"]},
-    {"id": "t", "description": "Test role.", "capabilities": ["usage"], "domain_access": ["sales"]},
+    {
+        "id": "r",
+        "description": "Test role.",
+        "capabilities": ["usage"],
+        "domain_access": ["sales"],
+        "own_domain_access": ["sales"],
+    },
+    {
+        "id": "s",
+        "description": "Test role.",
+        "capabilities": ["usage"],
+        "domain_access": ["sales"],
+        "own_domain_access": ["sales"],
+    },
+    {
+        "id": "t",
+        "description": "Test role.",
+        "capabilities": ["usage"],
+        "domain_access": ["sales"],
+        "own_domain_access": ["sales"],
+    },
 ]
 
 

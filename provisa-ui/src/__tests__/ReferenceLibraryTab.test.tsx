@@ -225,4 +225,18 @@ describe("ReferenceLibraryTab", () => {
     await screen.findByTestId("reflib-row-3");
     expect(screen.queryByTestId("reflib-reembed-all")).toBeNull();
   });
+
+  it("carries the page's (?) help, last among its actions", async () => {
+    render(<ReferenceLibraryTab />);
+    await screen.findByTestId("reflib-row-3");
+    const help = screen.getByRole("button", { name: "About the reference library" });
+    expect(help).toBe(screen.getByTestId("reflib-page-help"));
+    expect(help.parentElement?.lastElementChild).toBe(help);
+    fireEvent.click(help);
+    const card = await screen.findByTestId("reflib-page-help-card");
+    expect(card).toHaveTextContent("Not a document store.");
+    expect(card).toHaveTextContent("search_reference_library");
+    expect(card).toHaveTextContent("Re-embed is needed only when that model changes.");
+    expect(card).not.toHaveTextContent(/\bRAG\b/);
+  });
 });

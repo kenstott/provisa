@@ -146,7 +146,7 @@ views:
   sql: >-
     SELECT c.id AS person_id, c.name AS person, c.tax_id, t.business_day, t.direction,
       COUNT(*) AS multiple_transactions, COUNT(DISTINCT t.branch_id) AS branches,
-      STRING_AGG(DISTINCT a.account_number, ', ') AS account_numbers,
+      STRING_AGG(DISTINCT a.account_number, ', ' ORDER BY a.account_number) AS account_numbers,
       SUM(CASE WHEN t.conducted_by <> t.on_behalf_of THEN 1 ELSE 0 END) AS conducted_by_another,
       SUM(t.amount) AS cash_total
     FROM "banksecrecy"."cash_transactions" AS t
@@ -179,7 +179,7 @@ views:
     SELECT c.id AS person_id, c.name AS person, COUNT(*) AS deposits_under_threshold,
       COUNT(DISTINCT t.branch_id) AS branches, COUNT(DISTINCT t.business_day) AS business_days,
       MIN(t.business_day) AS first_day, MAX(t.business_day) AS last_day,
-      STRING_AGG(DISTINCT a.account_number, ', ') AS account_numbers, SUM(t.amount) AS cash_total
+      STRING_AGG(DISTINCT a.account_number, ', ' ORDER BY a.account_number) AS account_numbers, SUM(t.amount) AS cash_total
     FROM "banksecrecy"."cash_transactions" AS t
     JOIN "banksecrecy"."accounts" AS a ON a.id = t.account_id
     JOIN "banksecrecy"."customers" AS c ON c.id = t.on_behalf_of

@@ -36,6 +36,8 @@
     "itemEmail": "Эл. почта",
     "itemMaintenance": "Обслуживание",
     "itemDeploymentSettings": "Настройки развёртывания",
+    "itemPlatform": "Платформа",
+    "itemRegions": "Регионы",
     "itemBilling": "Оплата",
     "itemExplore": "MCP",
     "itemEncryption": "Шифрование",

@@ -31,8 +31,8 @@ ORG = f"org1{uuid.uuid4().hex[:8]}"
 KEY = ("src", "public", "orders")
 _PLATFORM = {
     "regions": [
-        {"id": "eu", "address": "https://eu.example.com"},
-        {"id": "us", "address": "https://us.example.com"},
+        {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+        {"id": "us", "description": "The us region", "purposes": ["residency"]},
     ]
 }
 

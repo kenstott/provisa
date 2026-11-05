@@ -90,8 +90,15 @@ def _lateral_join(
     # read under it: the star is expanded by its table's alias, and a table with no alias of its
     # own expands under a physical name the statement's FROM no longer holds once it is renamed.
     target = travel_ref(_table_ref(join_meta.target, use_catalog), field_node, variables)
+    distinct = ""
+    if "distinct_on" in args:
+        distinct_cols = args["distinct_on"]
+        if isinstance(distinct_cols, str):
+            distinct_cols = [distinct_cols]
+        distinct_prefix = ", ".join(_q(_e2p.get((_tid, c), c)) for c in distinct_cols)
+        distinct = f"DISTINCT ON ({distinct_prefix}) "
     sql = (
-        f"LEFT JOIN LATERAL (SELECT * FROM {target} {_q(join_alias)} "
+        f"LEFT JOIN LATERAL (SELECT {distinct}* FROM {target} {_q(join_alias)} "
         f"WHERE {_lat_tgt_expr} = {src_expr}"
     )
     if "where" in args:
@@ -106,12 +113,6 @@ def _lateral_join(
             column_types,
         )
         sql += f" AND ({where_sql})"
-    if "distinct_on" in args:
-        distinct_cols = args["distinct_on"]
-        if isinstance(distinct_cols, str):
-            distinct_cols = [distinct_cols]
-        distinct_prefix = ", ".join(_q(_e2p.get((_tid, c), c)) for c in distinct_cols)
-        sql = sql.replace("SELECT *", f"SELECT DISTINCT ON ({distinct_prefix}) *", 1)
     if "order_by" in args:
         order_by_val = args["order_by"]
         if isinstance(order_by_val, dict):

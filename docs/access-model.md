@@ -4,19 +4,75 @@ Your rights in Provisa are a composition. **Scope** says where a column reaches.
 
 Anyone can work out a role's rights from what is written down, whether they hold the role or audit it. Defaults and composition keep this from turning into a stream of manual grants.
 
+Scope, capabilities and grants make up three of seven dimensions in the model. [Security Model](security.md) maps all seven with the inheritance rules for roles and domains.
+
+
 ## Scope
 
-Every column has a scope, which says how far beyond its table's domain it reaches. There are three.
+Every column has a scope. A scope answers two questions about the column: which roles read its data, and which roles see that it exists. There are four scopes.
 
-| Scope | Outside the domain | Inside the domain |
+| Scope | Data: who reads it | Metadata: who sees the column exists |
 | --- | --- | --- |
-| `domain` (the default) | The column does not exist. | Roles that reach the domain read and write it as their grants allow. |
-| `listed` | Every role in the organisation sees the table's name and the column's name in the catalog. Nothing else is shown: no description, type, sample, value or count. | As for `domain`. |
-| `public` | Every role in the organisation sees the names and descriptions, and roles of every domain are served the column as their grants allow. Masks, row rules and limits apply as they do inside the domain. | As for `domain`. |
+| `own-domain` | Roles granted the table's own domain directly. A role granted `"*"` counts. | The same roles. Everyone else sees no column. |
+| `domain` (the default) | Roles that reach the table's domain, through a parent domain if need be. | The same roles. Everyone else sees no column. |
+| `listed` | As for `domain`. | Every role in the organisation sees the table's name and the column's name. Nothing else is shown: no description, type, sample, value or count. |
+| `public` | Any role the column's grant list names, in any domain. Masks, row rules and limits apply as they do inside the domain. | Every role in the organisation sees the names and descriptions. |
+
+A column whose grant list (`visible_to`) is empty is read by no role, in any scope.
+
+Read `listed` as `domain` plus public metadata. Read `public` as `listed` with the data opened to every domain.
+
+Scope is decided first. The column's grant list (`visible_to`) then picks readers among the roles the scope allows. A role must pass both. A role reads a column only if it passes both the scope and the grant list; each is checked on its own.
+
+The difference between `own-domain` and `domain` shows up only in a domain hierarchy. A role granted `legal` reaches every domain under `legal`, so a `domain` column in a child domain is open to it. An `own-domain` column is not. Reach inherited from a parent domain does not count, even when the grant list names the role. Only a role granted the child domain itself, or `"*"`, is served the column. The check runs when roles load, at each schema rebuild, so a change to a role's domain access takes effect at the next rebuild.
 
 Viewer holds no meta grant: `catalog_read` is held by a role that names it. On SQL, a role with no meta grant still sees core metadata for the tables of non-system domains it can read, write or list, on the pgwire catalog and in meta. List means metadata only, and querying a table a role only lists is refused by name. The gRPC proto, JSON:API, GraphQL, Cypher, SPARQL and OpenAPI show what a role can read or write. Every catalog is scoped to a role's data domains, and shows a system domain only to a role holding it.
 
 Use `listed` to make a table discoverable. Someone in another domain can find its keys and ask its owners for a grant, and still reads nothing until a grant is given. A table appears outside its domain only through its listed or public columns.
+
+### Scope is a property of the column
+
+Scope belongs to the resource. It sits on the column and says how far the data reaches, whoever asks. It is separate from roles, which carry capabilities and grants.
+
+That separation keeps security rules short. One scope on a column covers every role, those that exist now and those created later. One rule on a domain does the same. You do not revisit the rule when a role is added.
+
+### Not an OAuth scope
+
+The word "scope" here does not mean an OAuth scope. An OAuth scope is attached to a token. It limits what a client may do on a user's behalf, so it sits on the grant side. A Provisa column scope is attached to the column and limits how far the data reaches, so it sits on the resource side.
+
+The two do not interact. Provisa does not read OAuth scopes to decide what a role may read. A personal access token is narrowed by the role you issue it for. When you sign in to a source such as Microsoft 365, Provisa asks that provider for OAuth scopes. Those belong to the provider and are not touched by a column's scope.
+
+## Domain hierarchy
+
+A domain may sit under one parent domain, such as a business unit with the organizations inside it. Reach flows down and never up.
+
+- **Roles.** A role granted a parent domain reaches every domain under it, at any depth. That includes domains added later, and the role is not edited. Granting a child domain gives nothing upward.
+- **Sources.** A source allowed to the parent is allowed to its children.
+- **Row filters.** A row filter on a parent domain applies to the tables of every domain under it. It is ANDed with the child's own filter and with every other ancestor's. A child only narrows.
+- **Stewards.** A domain with no steward uses its nearest ancestor's.
+- **Tables.** A table sits in exactly one domain, whether or not that domain has children, and you address it as `domain.table`. Nothing is namespaced per domain.
+
+### Example: legal and executive_litigation
+
+`executive_litigation` sits under `legal`. Two roles matter here. `legal_viewer` is granted `legal`. `exec_litigation_counsel` is granted `executive_litigation`.
+
+You declare a new table, `executive_settlements`, in `executive_litigation`. Its sensitive columns, such as the settlement amount and the counterparty, get the `own-domain` scope.
+
+- `exec_litigation_counsel` reads them, as its grants allow.
+- `legal_viewer` is never served them. It reaches `executive_litigation` only through `legal`, and that does not count.
+- A legal role created next year is never served them either. Nobody edits anything for that to hold.
+
+Without `own-domain` you would build the same wall by hand. Every column is granted to Viewer at registration, and `legal_viewer` is built on Viewer, so it is named by default. You would clone the roles that need the data and rewrite each column's grant list to name only the clones. Then you would add a row filter on `executive_litigation` for every legal role, so that those roles read no rows of the tables it holds. The filter fails open. A legal role created later has no filter and reads every row. Each new role is a chance to forget one.
+
+With `own-domain`, one setting on the column replaces all of that.
+
+The domain row filter still has its job. Put a filter on `legal` and it narrows the rows of `executive_litigation` tables that legal roles already read. A column's scope decides whether a role is served the column at all. A row filter decides which rows of the columns it is served.
+
+#### When a sibling fits better
+
+A child domain suits a team whose data legal should mostly reach, with a few exceptions. Reach flows down and row filters carry down, and `own-domain` marks the exceptions.
+
+If the exceptions would be most of the child's columns, make `executive_litigation` a sibling of `legal` instead. Legal roles then reach nothing in it unless you grant them the domain. You grant `public` or `listed` on the few columns you want to share. A sibling costs you the inherited reach and filters. If you find yourself marking nearly every column `own-domain`, that is the sign.
 
 ## Capabilities
 
@@ -97,6 +153,44 @@ Both views are capped by your own read rights. They list only tables and columns
 ## Limits
 
 A role can also carry limits. A rate limit caps how many requests per second the role may send. A row limit caps the rows any result returns, applied as a LIMIT on the statement. Session variables are named values that a statement reads with `current_setting('provisa.<name>')` when the request binds none of that name. Each is the role's own value, or else the first ancestor's that sets it, and each applies on every transport.
+
+
+## Three layers of administration
+
+The boundary between the platform and an organization is not a recommendation: the platform admin holds no data capability. It decides which organizations exist and who their org admins are, and otherwise never acts inside an organization's data, members, or model. Below that boundary, the layers are carried by the standard roles' default capabilities — what is enforced is capabilities themselves, not role names. An organization may group them differently. A small org's admin may hold all of them. A larger org may define a dedicated role for source and table registration, or separate out load management. The layers below describe what the standard roles do.
+
+**Platform admin** sets up the physical infrastructure. The work covers the regions the deployment runs in, the nodes in those regions, each organization's stores and engines within its granted regions, and mail providers.
+
+**Org admin** defines how the organization's data is processed on that infrastructure.
+
+*Sources and placement.* The org admin connects sources and sets each source's or table's home region.
+
+*Load management.* Every source is read either live, replicated, or load-protected, and each is a trade-off between freshness and the load placed on the source.
+
+- **Live read** — every query hits the source directly. Data is as fresh as the source; every request adds load.
+- **Replicate** — the engine keeps a copy. Queries read the copy; only refreshes hit the source. Staleness equals the refresh interval, set by `cache_ttl` or a change signal. `replicate: 0` forces a copy always; `replicate: N` above 0 promotes a table once traffic passes N governed statements per interval (Hot-N). See [The `replicate` setting](configuration.md#the-replicate-setting).
+- **Load-protected** — the source is never read live. Queries serve the last snapshot; the scheduler refreshes it only on its gates — `off_peak_window`, a `cache_ttl` cadence, or a change signal. At least one gate is required. Per-table `load_protected` overrides the source default.
+- **Response cache** — `cache_ttl` on a source or table governs the response cache: repeat queries within the TTL are answered without touching any source.
+- **Concurrency cap** — `max_live_concurrency` on a source caps live reads across all instances at once. Replica reads take no permit.
+- **Per-role caps** — `rate_limit` limits requests per second from a role. `max_rows` injects a LIMIT on every result, applied even when the query names none.
+
+See [Freshness and load: who decides](configuration.md#freshness-and-load-who-decides) for the full picture.
+
+*Roles.* The org admin defines each role — its capabilities and parents — and assigns members to roles.
+
+*Outbound syncs.* External catalog connections and metadata exports.
+
+*Registries and AI models.* Package and container registries for the org's code sources; the org's natural-language query vendor and model.
+
+**Data steward** decides how the org admin's data is used, what it means, and who may see it.
+
+- **Use.** Registering tables, naming them, defining relationships, views, and data products.
+- **Meaning.** Terms, ontology, descriptions, tags, and classification.
+- **Access.** Column grants, row rules, masks, fakes for sensitive columns, sensitivity tags, and residency grants on roles.
+
+The steward decides what a role may see. The org admin decides what roles exist and who holds them.
+
+Every admin page belongs to one layer. Its settings are writable only by that layer's capabilities.
 
 ## Comparison with other products
 

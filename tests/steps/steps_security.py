@@ -511,6 +511,9 @@ def request_to_skip_path(shared_data: dict) -> None:
         "/auth/saml/acs",
         "/auth/saml/metadata",
         "/setup/status",
+        # REQ-2006: the limits every demo sandbox runs under, the same on every node of the tier.
+        # It reveals only what the hosted-sandbox page states, so no credential gates it.
+        "/sandboxes/limits",
         # REQ-1486: an org's branding dresses its sign-in page, which renders before a token
         # exists. Both answer only what the org chose to show every visitor at its address.
         "/orgs/branding",

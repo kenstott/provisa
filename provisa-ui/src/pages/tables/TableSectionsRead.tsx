@@ -96,7 +96,13 @@ export function IdentityRead({ table, source }: { table: RegisteredTable; source
     },
     { label: t("tableEditForm.draftLabel"), value: yesNo(t, table.draft) },
     ...(regions.length > 0
-      ? [{ label: t("regionSelect.label"), value: table.region ?? unset(t("regionSelect.none")) }]
+      ? [
+          {
+            label: t("regionSelect.label"),
+            value: table.region ?? unset(t("regionSelect.none")),
+            testId: "table-identity-region",
+          },
+        ]
       : []),
     ...(table.apiEndpoint
       ? [{ label: t("tableEditForm.apiEndpointLabel"), value: <code>{table.apiEndpoint}</code> }]
