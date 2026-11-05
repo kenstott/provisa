@@ -82944,7 +82944,12 @@
     on Admin > Regions, to a table''s region, before the residency queries. (Amended 2026-11-05, THE IDEA
     THE TOUR TEACHES:) The tour''s one idea: one config, two data processing environments, and access to
     data depends on the user''s assigned region as well as any other policy the organization creates. Every
-    step serves that idea.'
+    step serves that idea. (Amended 2026-11-05, TWO LAYERS: HOMING AND SECURITY:) The tour presents two
+    separate layers. Homing is the engine''s rules: a homed table''s replicas and cache live only in its
+    home region, and other regions reach a replicated table only through it. Security is the users'' rules:
+    row and column rules, masks and residency grants on roles, including rules on the reader''s region,
+    decide what each reader gets, and they ride in every statement, so they apply in the home region before
+    anything leaves.'
   use_case: 'A visitor opens the retail GDPR demo, walks its tour, and sees the business question answered: Can we
     run the group as one business without breaking GDPR?'
   scenario: 'Given the retail GDPR demo started from its bundle
@@ -83886,7 +83891,10 @@
     the sensitive coverage report on the Admin Reports page, not a hand-written query. (Amended 2026-11-04,
     THE ASSISTANT PROPOSES THE FAKES FROM THE PROFILE:) The tour shows the assistant proposing the missing
     fake from the profile data: on customers.email, with no fake declared, it reads the latest profile run
-    and proposes the fake (propose_fakes), the answer stored with the tour.'
+    and proposes the fake (propose_fakes), the answer stored with the tour. (Amended 2026-11-05, THE ASSISTANT
+    IS ASKED ABOUT A NAMED COLUMN:) customers.email declares its fake in the demo, so the assistant is asked
+    which fake it would propose for customers.email from its latest profile, and answers through propose_fakes
+    with that column named: a named column is proposed from its profile even when it declares a fake.'
   use_case: 'A visitor opens the environments and test data demo and sees how Provisa answers: Can I test against
     realistic data without touching production?'
   scenario: 'Given the environments and test data demo started from its bundle
