@@ -75,7 +75,7 @@ export function SensitiveHintText({ column, hints }: { column: string; hints: Se
       {hints.map((h) => (
         <Text key={h.kind} size="xs" c="orange.8">
           {t("sensitiveScan.hint", {
-            kind: t(`classificationKinds.kind.${h.kind}`),
+            kind: t(`classificationKinds.noun.${h.kind}`),
             percent: Math.round(h.share * 100),
           })}
         </Text>

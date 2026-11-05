@@ -345,3 +345,77 @@ async def test_a_scan_left_running_past_its_time_reads_as_failed(control_plane):
         await db.close()
     assert (scan["status"], scan["error"]) == ("failed", hints.TIMED_OUT)
     assert again["status"] == "failed" and again["finished_at"] is not None
+
+
+# -- a kind's own pattern for searching inside text (contained_pattern) ----------------------------
+
+# Per kind that declares a contained_pattern: a positive (a real number as it is written in text)
+# and a lookalike negative (a number that passes the kind's check but is written as the plain
+# digit run an order or reference number is, or breaks the kind's stricter shape).
+CONTAINED_CASES = {
+    "us_ssn": ("SSN 123-45-6789 on file", "Order 123456789 shipped"),
+    "payment_card": ("card 4111 1111 1111 1111", "ref 4111 1111 1111 1112"),
+    "us_itin": ("ITIN 912-70-1234 filed", "Order 912701234 shipped"),
+    "us_bank_routing_number": ("routing 021000021 for wires", "Order 400000008 shipped"),
+    "de_steuer_id": ("Steuer-ID 65 929 970 413", "Order 65929970413 shipped"),
+    "au_tfn": ("TFN 123 456 009 lodged", "Order 123456009 shipped"),
+    "uk_nhs_number": ("NHS 943 476 5005 recorded", "Order 9434765005 shipped"),
+    "in_aadhaar": ("Aadhaar 2341 2341 2305 linked", "Order 234123412305 shipped"),
+    "nl_bsn": ("BSN 111 222 308 recorded", "Order 111222308 shipped"),
+    "ca_social_insurance_number": ("SIN 123 456 709 on file", "Order 123456709 shipped"),
+    "br_cpf": ("CPF 529.982.247-25 on file", "Order 52998224725 shipped"),
+}
+
+
+def test_every_kind_with_a_contained_pattern_has_a_case_and_no_case_lacks_one():
+    declared = {k.id for k in catalogue() if k.contained_pattern is not None}
+    assert declared == set(CONTAINED_CASES)
+
+
+@pytest.mark.parametrize("kind_id", sorted(CONTAINED_CASES))
+def test_a_contained_pattern_finds_the_written_form_and_refuses_the_lookalike(kind_id):
+    kind = kind_of(kind_id)
+    positive, negative = CONTAINED_CASES[kind_id]
+    assert classify.contains(kind, positive) is True
+    assert classify.contains(kind, negative) is False
+
+
+# The plain digit run a contained_pattern no longer finds inside text is still the kind as a whole
+# value: the whole-value test uses the kind's pattern, not its contained_pattern.
+WHOLE_VALUES = {
+    "us_ssn": "123456789",
+    "us_itin": "912701234",
+    "us_bank_routing_number": "400000008",
+    "de_steuer_id": "65929970413",
+    "au_tfn": "123456009",
+    "uk_nhs_number": "9434765005",
+    "in_aadhaar": "234123412305",
+    "nl_bsn": "111222308",
+    "ca_social_insurance_number": "123456709",
+    "br_cpf": "52998224725",
+}
+
+
+@pytest.mark.parametrize("kind_id", sorted(WHOLE_VALUES))
+def test_a_contained_pattern_leaves_the_whole_value_test_alone(kind_id):
+    assert classify.matches_whole_value(kind_of(kind_id), WHOLE_VALUES[kind_id]) is True
+
+
+def test_an_order_number_is_no_ssn_hint_and_a_dashed_ssn_is():
+    values = ["Order 123456789 shipped", *NOTES, *NOTES]
+    assert "us_ssn" not in _hints(values)
+    values = ["SSN 123-45-6789 on file", *NOTES, *NOTES]
+    assert _hints(values)["us_ssn"].matched == 1
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["card 4111 1111 1111 1111", "card 4111-1111-1111-1111", "card 4111111111111111"],
+)
+def test_a_card_written_with_spaces_hyphens_or_none_is_a_payment_card_hint(text):
+    assert classify.contains(kind_of("payment_card"), text) is True
+    assert "payment_card" in _hints([text, *NOTES, *NOTES])
+
+
+def test_a_grouped_card_still_needs_the_luhn_check():
+    assert classify.contains(kind_of("payment_card"), "card 4111-1111-1111-1112") is False
