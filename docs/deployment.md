@@ -563,9 +563,10 @@ Note: the Provisa AppImage can't run inside a Kubernetes pod. It needs FUSE and 
    in `values.yaml`.
 
    The Trino coordinator runs each org's statements in that org's own resource group,
-   `global.tenant-<org>`, from the resource-group file the chart ships. Statements through the
-   Arrow Flight proxy share one group, `global.flight`, because the proxy opens its own Trino connection
-   and cannot carry the org.
+   `global.tenant-<org>`, from the resource-group file the chart ships. Provisa's statements reach
+   Trino through the Arrow Flight proxy carrying their org, so they run in that group too. A
+   statement sent to the proxy without that context (a client other than Provisa) runs in
+   `global.flight`.
 
    If using an internal registry, add image overrides:
 

@@ -189,11 +189,20 @@ Ordered by what it costs today and how small the change is.
 | Neo4j | Bolt records | yes | per-record Python objects; graph results are rarely wide or long |
 | Qdrant | its Python client | yes | points arrive as Python objects |
 | Code sources | Python functions | yes | the function produces Python values by definition |
+| Trino (engine) | Zaychik Flight SQL proxy over Trino's client protocol (§4) | no | Trino delivers JSON only; the proxy decodes it to Arrow once, in Java |
 
 ## 4. Trino: the engine read through Flight (option A)
 
 `execute`/`execute_sync` read through the Zaychik Flight SQL proxy only, as `execute_arrow`/
-`execute_stream` already did. The proxy at the commit the image builds
+`execute_stream` already did.
+
+Trino itself cannot hand over an Arrow buffer: its client protocol delivers results as JSON,
+paged or spooled, whatever the client. Provisa converts that JSON to Arrow once, in the proxy
+(Java), and the encoders read the Arrow; no Python touches the rows on the way. That one JSON
+decode in the proxy is the remaining cost of a Trino read, and the reason Trino is a documented
+exception to an engine's own Arrow buffer.
+
+The proxy at the commit the image builds
 (`Raiffeisen-DGTL/zaychik-trino-proxy@17fce97`) answered differently from the trino client in six
 ways; `zaychik/trino-statement-protocol.patch` and `executor/trino_flight.py` close each `[code]`:
 
