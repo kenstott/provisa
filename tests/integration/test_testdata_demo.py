@@ -35,7 +35,7 @@ import pytest
 from provisa.core.demo_bundles import store_namespaces
 import yaml
 
-pytestmark = [pytest.mark.integration]
+pytestmark = [pytest.mark.integration, pytest.mark.requires_vector]
 
 _REPO = Path(__file__).resolve().parents[2]
 _DEMO = _REPO / "demo" / "named" / "testdata"
