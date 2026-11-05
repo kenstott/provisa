@@ -1376,6 +1376,10 @@
         "title": "Chaque colonne sensible est couverte",
         "description": "La couverture sensible est un rapport standard de la page Rapports : chaque colonne sensible, ses étiquettes et si une valeur fictive la couvre, lu maintenant depuis le modèle. Toutes sont couvertes, donc la préproduction s'ouvre et répond."
       },
+      "testdataPollyProposes": {
+        "title": "Une valeur fictive proposée à partir du profil",
+        "description": "On demande à Polly quelle valeur fictive il proposerait pour customers.email. Il lit la dernière exécution de profil de la colonne, voit que les valeurs sont des adresses e-mail et propose la valeur fictive e-mail. Le modèle en déclare déjà une, donc la proposition vérifie ce choix au regard des données. Rien n'est enregistré tant que personne ne le choisit."
+      },
       "testdataProd": {
         "title": "Production : les lignes réelles",
         "description": "Dans prod, vous voyez les clients tels qu'ils sont réellement."

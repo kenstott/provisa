@@ -1376,6 +1376,10 @@
         "title": "Jede sensible Spalte ist abgedeckt",
         "description": "Sensitive Abdeckung ist ein Standardbericht auf der Seite Berichte: jede sensible Spalte, ihre Tags und ob ein Fake sie abdeckt, jetzt aus dem Modell gelesen. Alle sind abgedeckt, also öffnet sich Pre-Prod und antwortet."
       },
+      "testdataPollyProposes": {
+        "title": "Ein Fake, aus dem Profil vorgeschlagen",
+        "description": "Polly wird gefragt, welchen Fake es für customers.email vorschlagen würde. Es liest den letzten Profillauf der Spalte, sieht, dass die Werte E-Mail-Adressen sind, und schlägt den E-Mail-Fake vor. Das Modell deklariert bereits einen, also prüft der Vorschlag diese Wahl an den Daten. Gespeichert wird nichts, bis jemand es so wählt."
+      },
       "testdataProd": {
         "title": "Produktion: die echten Zeilen",
         "description": "In prod sehen Sie die Kunden, wie sie wirklich sind."
