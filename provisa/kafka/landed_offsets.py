@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from provisa.kafka.security import PLAINTEXT, KafkaSecurity
+from provisa.kafka.security import KafkaSecurity
 
 #: The prefix of the consumer group a landing's offsets are committed under.
 LANDED_GROUP_PREFIX = "provisa-landed"
@@ -87,9 +87,7 @@ async def drained_to(consumer: Any) -> dict[Any, int]:
     return {tp: await consumer.position(tp) for tp in consumer.assignment()}
 
 
-async def end_offsets(
-    bootstrap: str, topic: str, *, security: KafkaSecurity = PLAINTEXT
-) -> dict[Any, int]:
+async def end_offsets(bootstrap: str, topic: str, *, security: KafkaSecurity) -> dict[Any, int]:
     """The offset each of ``topic``'s partitions publishes its next message at."""
     consumer = _consumer(bootstrap, None, security)
     await consumer.start()
@@ -105,7 +103,7 @@ async def record(
     landed: str,
     offsets: dict[Any, int],
     *,
-    security: KafkaSecurity = PLAINTEXT,
+    security: KafkaSecurity,
 ) -> None:
     """Record, under the landing group ``landed`` (:func:`landed_group`), that a landing stopped
     at ``offsets``."""
@@ -121,7 +119,7 @@ async def record(
 
 
 async def recorded(
-    bootstrap: str, landed: str, topic: str, *, security: KafkaSecurity = PLAINTEXT
+    bootstrap: str, landed: str, topic: str, *, security: KafkaSecurity
 ) -> dict[int, int]:
     """Where the last landing recorded under ``landed`` stopped on ``topic``, by partition;
     empty when none recorded any."""
@@ -136,7 +134,7 @@ async def recorded(
 
 
 async def carry(
-    bootstrap: str, read_by: str, landed: str, topic: str, *, security: KafkaSecurity = PLAINTEXT
+    bootstrap: str, read_by: str, landed: str, topic: str, *, security: KafkaSecurity
 ) -> None:
     """Record, under the landing group ``landed``, that a landing stopped on ``topic`` where the
     group ``read_by`` has read to: a copy of the table ``read_by``'s reader keeps, made after this,
@@ -153,7 +151,7 @@ async def carry(
 
 
 async def start_where_landed(
-    bootstrap: str, group: str, topic: str, landed: str, *, security: KafkaSecurity = PLAINTEXT
+    bootstrap: str, group: str, topic: str, landed: str, *, security: KafkaSecurity
 ) -> None:
     """Commit for ``group``, on each partition of ``topic`` it has committed nothing on, where the
     landing stopped: its first start reads from there, neither missing what was published since
