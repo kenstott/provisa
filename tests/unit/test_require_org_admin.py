@@ -235,7 +235,9 @@ def _org_routes():
     policy = orgs.OrgPolicyBody.model_construct()
     branding = orgs.OrgBrandingBody.model_construct()
     member = orgs.AddMemberBody.model_construct()
-    invite = inv.CreateInviteBody.model_construct(org_id="acme")
+    invite = inv.CreateInviteBody.model_construct(org_id="acme", role_id=None)
+    analyst_invite = inv.CreateInviteBody.model_construct(org_id="acme", role_id="analyst")
+    admin_invite = inv.CreateInviteBody.model_construct(org_id="acme", role_id="org_admin")
     return {
         "PATCH /orgs/{id}/settings": lambda r: orgs.update_org_settings("acme", policy, r),
         "PATCH /orgs/{id}/branding": lambda r: orgs.update_org_branding("acme", branding, r),
@@ -247,6 +249,8 @@ def _org_routes():
         "POST /orgs/{id}/members": lambda r: orgs.add_member("acme", member, r),
         "DELETE /orgs/{id}/members/{user}": lambda r: orgs.remove_member("acme", "u9", r),
         "POST /invites": lambda r: inv.create_invite(invite, r),
+        "POST /invites (analyst)": lambda r: inv.create_invite(analyst_invite, r),
+        "POST /invites (org_admin)": lambda r: inv.create_invite(admin_invite, r),
         "DELETE /orgs/{id}": lambda r: orgs.delete_org("acme", r, confirm="acme"),
         "POST /orgs/{id}/admins/{user}": lambda r: orgs.grant_org_admin_role("acme", "u9", r),
         "DELETE /orgs/{id}/admins/{user}": lambda r: orgs.revoke_org_admin_role("acme", "u9", r),
@@ -262,9 +266,11 @@ _ORG_LAYER = [
     "POST /orgs/{id}/members",
     "DELETE /orgs/{id}/members/{user}",
     "POST /invites",
+    "POST /invites (analyst)",
 ]
 _LIFECYCLE_AND_RECOVERY = [
     "DELETE /orgs/{id}",
+    "POST /invites (org_admin)",
     "POST /orgs/{id}/admins/{user}",
     "DELETE /orgs/{id}/admins/{user}",
 ]
@@ -285,8 +291,9 @@ async def test_platform_admin_is_refused_the_orgs_own_layer(platform_admin_at_th
 @pytest.mark.asyncio
 @pytest.mark.parametrize("route", _LIFECYCLE_AND_RECOVERY)
 async def test_platform_admin_keeps_lifecycle_and_recovery(platform_admin_at_the_gate, route):
-    # Deleting an org is its lifecycle; grant_org_admin and its revocation are the named, audited
-    # recovery operation (REQ-1327). Both stay the platform admin's.
+    # Deleting an org is its lifecycle; the platform appoints, replaces and removes an org's admins
+    # — inviting the first, grant_org_admin and its revocation (REQ-1327). These stay the
+    # platform admin's.
     with pytest.raises(_Passed):
         await _org_routes()[route](platform_admin_at_the_gate)
 
