@@ -158,9 +158,10 @@ describe("a product's panel", () => {
       "snip-lateral",
     ])
       expect(screen.queryByTestId(id)).not.toBeInTheDocument();
-    // It turns and draws no grid, whatever the whole ontology's settings say.
-    expect(last().setRotate).toHaveBeenLastCalledWith(true);
-    expect(last().setGrid).toHaveBeenLastCalledWith(false);
+    // It turns and draws no grid, whatever the whole ontology's settings say: set on the scene by
+    // the stage's effects once the scene is made, so waited for.
+    await waitFor(() => expect(last().setRotate).toHaveBeenLastCalledWith(true));
+    await waitFor(() => expect(last().setGrid).toHaveBeenLastCalledWith(false));
   });
 
   it("reads the depth the reader picks", async () => {
