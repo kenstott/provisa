@@ -141,6 +141,10 @@ function kindsIn(nodes: readonly ts.Node[], sf: ts.SourceFile): [ToolbarKind, nu
       out.push([attr(open, "target") ? "icon" : "help", line(n)]);
       return;
     }
+    if (tag === "PageHelp") {
+      out.push(["help", line(n)]);
+      return;
+    }
     out.push([ICON_COMPONENTS.has(tag) ? "icon" : "named", line(n)]);
   };
   nodes.forEach(take);

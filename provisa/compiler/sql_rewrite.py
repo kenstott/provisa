@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from provisa.compiler.sql_literals import sql_literal
 
+import functools
 import re as _re
 from datetime import datetime, timezone
 from typing import Any, cast
@@ -89,9 +90,12 @@ _TEMPORAL_TYPES = {
 }
 
 
+@functools.lru_cache(maxsize=4096)
 def _q(name: str) -> str:
-    """Double-quote a SQL identifier."""
-    return f'"{name}"'
+    """``name`` as one double-quoted SQL identifier: a quote inside it is doubled, so a name a
+    request gives (a where or order_by key, a distinct_on column) never ends the identifier.
+    Memoized: a statement quotes the same few names many times."""
+    return exp.to_identifier(name, quoted=True).sql(dialect="postgres")
 
 
 def _base_type(column_type: str) -> str:

@@ -51,7 +51,14 @@ from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.compiler import temp_tables
 from provisa.compiler.cte_utils import cte_names, names_a_cte_in_scope
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
-from provisa.compiler.stage2 import GovernanceContext, approved_join_key, registered_name
+from provisa.compiler.stage2 import (
+    GovernanceContext,
+    approved_join_key,
+    flatten_leftmost_join_groups,
+    parenthesised_join_message,
+    parenthesised_join_tables,
+    registered_name,
+)
 from provisa.security.rights import (
     TRAVERSABLE_DOMAINS,
     listed_only_message,
@@ -101,6 +108,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
         written = sqlglot.parse_one(sql, read="postgres")
     except Exception as exc:
         return [ValidationViolation("V000", f"SQL parse error: {exc}")]
+    flatten_leftmost_join_groups(written)  # as stage 2 does: a leftmost group is the flat join
     folded = normalize_identifiers(written.copy(), dialect="postgres")
 
     seen: set[tuple[str, str, tuple[int, int] | None]] = set()
@@ -138,6 +146,7 @@ def _violations(
     violations: list[ValidationViolation] = []
     cte_names_set = cte_names(tree)
     violations += _check_registered_relations(tree, gov_ctx, ctx, cte_names_set, table_functions)
+    violations += _check_unreadable_shapes(tree, gov_ctx)
 
     # Build reverse maps
     table_id_to_meta: dict[int, TableMeta] = {}
@@ -249,6 +258,47 @@ def _check_registered_relations(  # REQ-001, REQ-266
                 continue
             violations.append(
                 ValidationViolation("V006", f"Relation {ref!r} is not a registered table")
+            )
+    return violations
+
+
+def _check_unreadable_shapes(  # REQ-039
+    tree: exp.Expr, gov_ctx: GovernanceContext
+) -> list[ValidationViolation]:
+    """V006 for a shape that hides a registered relation from governance, refused until every
+    reference to one is governed by construction (RV597b):
+
+    - a parenthesised FROM item that is no query -- ``(bank.customer CROSS JOIN v)``, or
+      ``(bank.customer) x`` -- holding a registered relation: neither the column checks nor stage
+      2 see the relation inside it, so its hidden columns, masks and row rules go unapplied;
+    - a data write placed anywhere but where REQ-039 admits one -- the statement's root, or
+      ``WITH w AS (<write> RETURNING ...) SELECT ... FROM w`` -- or a second write
+      (:func:`~provisa.compiler.write_admission.the_write`);
+    - a CTE named as a registered relation the statement reads: the column checks take the
+      relation for the CTE."""
+    from provisa.compiler.write_admission import WriteNotAdmitted, the_write
+
+    violations = [
+        ValidationViolation("V006", parenthesised_join_message(tbl))
+        for tbl in parenthesised_join_tables(tree, gov_ctx)
+    ]
+    try:
+        the_write(tree)  # pyright: ignore[reportArgumentType]  # sqlglot stub types parse_one as Expr
+    except WriteNotAdmitted as refused:
+        violations.append(ValidationViolation("V006", str(refused).removeprefix("[V006] ")))
+    read = {
+        tbl.name
+        for tbl in tree.find_all(exp.Table)
+        if tbl.db and _resolve_table_id(tbl, gov_ctx) is not None
+    }
+    for cte in tree.find_all(exp.CTE):
+        if cte.alias in read:
+            violations.append(
+                ValidationViolation(
+                    "V006",
+                    f"CTE {cte.alias!r} is named as a registered relation the statement reads: "
+                    "give it another name",
+                )
             )
     return violations
 
@@ -642,6 +692,86 @@ def _check_column_visibility(  # REQ-040, REQ-263, REQ-265
                                 f"Column {tbl_ref}.{col_name} is not visible to this role",
                             )
                         )
+        violations += _hidden_sort_keys(select, am, gov_ctx)
+        violations += _hidden_join_keys(select, am, gov_ctx)
+    return violations
+
+
+def _hidden_columns(tid: int, gov_ctx: GovernanceContext) -> set[str]:
+    """The registered columns of table ``tid`` the role is not served."""
+    vis = gov_ctx.visible_columns.get(tid)
+    if vis is None:
+        return set()
+    return {c for c, _ in gov_ctx.all_columns.get(tid, [])} - vis
+
+
+def _hidden_join_keys(  # REQ-039
+    select: exp.Select, am: dict[str, int], gov_ctx: GovernanceContext
+) -> list[ValidationViolation]:
+    """V003 for a join of ``select`` that matches rows on a hidden column it never names in a
+    select list: ``USING (ssn)``, or a NATURAL join beside a table with a hidden column (it joins
+    on every common name, which the other side may give). Either counts rows by the hidden value."""
+    violations = []
+    for join in select.args.get("joins") or []:
+        for key in join.args.get("using") or []:
+            if any(
+                registered_name(gov_ctx, tid, key.name) in _hidden_columns(tid, gov_ctx)
+                for tid in am.values()
+            ):
+                violations.append(
+                    ValidationViolation(
+                        "V003", f"Column {key.name!r} is not visible to this role (JOIN USING)"
+                    )
+                )
+        if (join.args.get("method") or "").upper() == "NATURAL" and any(
+            _hidden_columns(tid, gov_ctx) for tid in am.values()
+        ):
+            violations.append(
+                ValidationViolation(
+                    "V003",
+                    "A NATURAL JOIN over a table with columns not visible to this role may match "
+                    "on them: name the join's columns",
+                )
+            )
+    return violations
+
+
+def _hidden_sort_keys(  # REQ-039
+    select: exp.Select, am: dict[str, int], gov_ctx: GovernanceContext
+) -> list[ValidationViolation]:
+    """V003 for a bare ORDER BY or GROUP BY key of ``select`` that is a hidden registered column,
+    as PostgreSQL resolves it: an ORDER BY name is an output's only where an output is named so --
+    by a real alias or as a bare column, never by a string literal's text -- and a GROUP BY name is
+    the input column first. Names compare exactly, in the reading of the statement judged."""
+    outputs = {e.alias for e in select.expressions if isinstance(e, exp.Alias)} | {
+        e.name
+        for e in select.expressions
+        if isinstance(e, exp.Column) and not isinstance(e.this, exp.Star)
+    }
+    keys: list[exp.Column] = []
+    order = select.args.get("order")
+    if order is not None:
+        keys += [
+            o.this
+            for o in order.expressions
+            if isinstance(o.this, exp.Column) and o.this.name not in outputs
+        ]
+    group = select.args.get("group")
+    if group is not None:
+        keys += [g for g in group.expressions if isinstance(g, exp.Column)]
+    violations = []
+    for col in keys:
+        if col.table or isinstance(col.this, exp.Star):
+            continue
+        for tid in am.values():
+            name = registered_name(gov_ctx, tid, col.name)
+            vis = gov_ctx.visible_columns.get(tid)
+            registered = {c for c, _ in gov_ctx.all_columns.get(tid, [])}
+            if vis is not None and name in registered and name not in vis:
+                violations.append(
+                    ValidationViolation("V003", f"Column {col.name!r} is not visible to this role")
+                )
+                break
     return violations
 
 

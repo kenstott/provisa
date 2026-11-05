@@ -55,6 +55,7 @@ import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../list/ListTable";
 import { PanelActions, SplitPane } from "../list/SplitPane";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
+import { PageHelp } from "../PageHelp";
 import { PageLoading } from "../PageLoading";
 import { Tip } from "../Tip";
 import { scopeChange, WHOLE_ORG } from "./referenceScope";
@@ -540,7 +541,7 @@ export function ReferenceLibraryTab() {
         <Text c="dimmed" size="sm" maw={820}>
           {t("referenceLibrary.intro")}
         </Text>
-        <Group gap="xs" wrap="nowrap">
+        <Group gap="xs" wrap="nowrap" data-toolbar>
           {stale > 0 && (
             <Button
               size="xs"
@@ -565,6 +566,17 @@ export function ReferenceLibraryTab() {
               {t("referenceLibrary.add")}
             </Button>
           )}
+          <PageHelp
+            title={t("referenceLibrary.helpTitle")}
+            paragraphs={[
+              t("referenceLibrary.helpWhat"),
+              t("referenceLibrary.helpWho"),
+              t("referenceLibrary.helpSees"),
+              t("referenceLibrary.helpEmbedding"),
+            ]}
+            ariaLabel={t("referenceLibrary.helpLabel")}
+            testId="reflib-page-help"
+          />
         </Group>
       </Group>
       {outcome && (

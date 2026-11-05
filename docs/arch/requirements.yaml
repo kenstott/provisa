@@ -338,7 +338,11 @@
     RETURNING ...) SELECT ... FROM w; any other placement is refused. The change to governance by construction
     lands whole: the passes that read the governed statement (materialized-view rewrite, primary-key bounds,
     parameter extraction and result typing) read through governed relations in the same change, so no read
-    loses its materialized view or its row cache.'
+    loses its materialized view or its row cache. (Amended 2026-11-04, A WRITE REACHES ONLY READABLE ROWS:)
+    Maintainer 2026-11-04: a write reaches only rows the role may both read and write: an UPDATE or DELETE
+    carries the role''s read row rule as well as its write grant and U/D rule, whatever form the compiler
+    gives it, so nothing is changed blind and an affected-row count cannot reveal a row outside the read
+    rule.'
   use_case: Schema visibility enforcement ensures unauthorized tables and columns are invisible to clients
     at design time.
   code:
@@ -3912,9 +3916,13 @@
   feature: semantic-model-domains
   priority: MUST
   type: constraint
-  description: Every domain must have a designated steward before it can serve governed data. A domain
-    may exist in a pending state until a steward is assigned; a domain without a steward cannot expose
-    tables, views, or relationships to consumers.
+  description: 'Every domain must have a designated steward before it can serve governed data. A domain
+    may exist in a pending state until a steward is assigned; a domain without a steward cannot expose tables,
+    views, or relationships to consumers. (Amended 2026-11-04, A DOMAIN IS EDITED FROM ITS LIST:) The Domains
+    page follows every other list page: clicking a domain opens its detail panel, where its description,
+    GraphQL alias, parent domain and steward are edited and saved. Its id is its identity and is shown,
+    not edited. A change that renames what clients see (the alias, or a parent that changes the domain''s
+    place in the tree) says so before it is saved, and the schema is rebuilt when it is.'
   use_case: Steward requirement ensures accountability is always assigned before governed data is exposed.
   code:
   - provisa/core/domain_policy.py
@@ -22369,10 +22377,16 @@
   feature: semantic-model-domains
   priority: MUST
   type: behavioral
-  description: Domain policy tri-state mode (legacy/single-domain/namespaced). Legacy mode (use_domains
-    absent) stores declared domain_id verbatim; single-domain mode (use_domains=False) coerces all tables
-    to default_domain; namespaced mode (use_domains=True) stores domain_id as declared. Reload validation
-    sweep rejects pre-existing foreign domains when switching to single-domain mode.
+  description: '[SUPERSEDED by REQ-749, 2026-11-04 -- there are two modes, not three; see the TWO MODES
+    amendment. Kept here for history; do not implement against it.] Domain policy tri-state mode (legacy/single-domain/namespaced).
+    Legacy mode (use_domains absent) stores declared domain_id verbatim; [END SUPERSEDED BLOCK] single-domain
+    mode (use_domains=False) coerces all tables to default_domain; namespaced mode (use_domains=True) stores
+    domain_id as declared. Reload validation sweep rejects pre-existing foreign domains when switching to
+    single-domain mode. (Amended 2026-11-04, TWO MODES:) Maintainer chose "Two states only": the domain
+    mode has exactly two states, single domain and namespaced, in the backend as in the UI. There is no
+    unset or legacy state: a configuration or organization that declares no mode is in single-domain mode,
+    and every shipped configuration that declares domains (the demo among them) declares namespaced. The
+    Domains page shows the mode the organization is actually in.'
   use_case: Domain policy modes enable multi-tenancy architectures without breaking legacy single-domain
     deployments.
   code:
@@ -27979,21 +27993,35 @@
   priority: SHOULD
   type: behavioral
   target: 2026-Q4
-  description: 'An aggregate query is answered from a fresh materialized view that pre-aggregates its
-    table, with nothing declared (Amended 2026-10-14, maintainer ruling: the earlier catalog rewrote the
-    SELECT list to the bare columns its aggregates used and re-applied filters to pre-aggregated rows, which
-    gave wrong answers, and nothing set serves_aggregates, so it never fired). What a view keeps is derived
-    from its SQL: a single-table GROUP BY whose select list is its grouping columns (its dimensions) and
-    named SUM(c), COUNT(*), COUNT(c), MIN(c), MAX(c) (its measures). A view with a WHERE, a join, AVG,
-    COUNT(DISTINCT) or any other expression keeps nothing a query can use. A single-table aggregate from
-    any surface, SQL or compiled (amended 2026-10-14), over the same table is read from the view only when it groups by a subset of the view''s dimensions,
-    filters and orders only on them, and asks only for aggregates that re-aggregate exactly: SUM over the
-    stored sum, COUNT as the sum of the stored count (a bigint, 0 over no rows), MIN and MAX over the stored
-    MIN and MAX, AVG as the stored sum over the stored count of the same column. Anything else -- a join,
-    DISTINCT, HAVING, a window, a column the view does not keep -- is not rewritten. The rewrite runs after governance:
-    a row filter on one of the view''s dimensions is carried onto the view; a row filter on any other
-    column, or a mask over a measured column, leaves the statement to its table, as the view was computed
-    over every row. On a hit the statement''s sources become the view''s catalog.'
+  description: 'An aggregate query is answered from a fresh materialized view that pre-aggregates its table,
+    with nothing declared (Amended 2026-10-14, maintainer ruling: the earlier catalog rewrote the SELECT
+    list to the bare columns its aggregates used and re-applied filters to pre-aggregated rows, which gave
+    wrong answers, and nothing set serves_aggregates, so it never fired). What a view keeps is derived from
+    its SQL: a single-table GROUP BY whose select list is its grouping columns (its dimensions) and named
+    SUM(c), COUNT(*), COUNT(c), MIN(c), MAX(c) (its measures). A view with a WHERE, a join, AVG, COUNT(DISTINCT)
+    or any other expression keeps nothing a query can use. A single-table aggregate from any surface, SQL
+    or compiled (amended 2026-10-14), over the same table is read from the view only when it groups by a
+    subset of the view''s dimensions, filters and orders only on them, and asks only for aggregates that
+    re-aggregate exactly: SUM over the stored sum, COUNT as the sum of the stored count (a bigint, 0 over
+    no rows), MIN and MAX over the stored MIN and MAX, AVG as the stored sum over the stored count of the
+    same column. Anything else -- a join, DISTINCT, HAVING, a window, a column the view does not keep --
+    is not rewritten. The rewrite runs after governance: a row filter on one of the view''s dimensions is
+    carried onto the view; a row filter on any other column, or a mask over a measured column, leaves the
+    statement to its table, as the view was computed over every row. On a hit the statement''s sources become
+    the view''s catalog. (Amended 2026-11-04, A ROW FILTER ON THE VIEW''S DIMENSIONS:) Maintainer approved:
+    a statement the role reads through a row filter on the table is answered from an aggregate view when
+    every column the filter references is one of the view''s dimensions; the filter is applied to the view''s
+    rows, which is exact because each row is one combination of dimension values. A filter that references
+    any other column, or that contains a subquery, and any mask on a column the statement reads, leaves
+    the statement to its table as before. Governance is decided on the base table before the rewrite; the
+    view''s own grants are not consulted, since the rewrite only replaces how the already-governed statement
+    is computed. (Amended 2026-11-04, A REQUEST CAN DECLINE THE VIEWS:) Maintainer approved: a request can
+    ask not to be answered from any materialized view, with the existing request-hint form: -- @provisa
+    mv=off in SQL, # @provisa mv=off in GraphQL, and the same key wherever a transport carries request hints.
+    Such a request is governed exactly as any other and read from its tables. It needs no right, since it
+    can only make the read slower, never widen what the role sees. Uses: a read that must be live rather
+    than as of the view''s last refresh, checking a view''s answer against its tables, and measuring what
+    a view saves.'
   use_case: Enables query acceleration via pre-computed aggregates stored in materialized views, allowing
     queries requesting SUM/AVG/etc over MV-backed tables to read pre-aggregated results instead of materializing
     raw rows and computing aggregates at query time.
@@ -29530,16 +29558,23 @@
   feature: engineering-standards-principles
   priority: MUST
   type: structural
-  description: Every query transform — governance (RLS, masking, visibility, row-cap), correlated- subquery
+  description: 'Every query transform — governance (RLS, masking, visibility, row-cap), correlated- subquery
     rewriting, and dialect lowering — MUST operate on a parsed SQL/relational AST, never on SQL text via
     regex or string substitution. Each surface language (GraphQL, Cypher, SQL) parses to an AST that is
-    carried through governance and planning and serialized to a dialect string only at final emission;
-    no stage may re-derive query structure (SELECT scope, WHERE injection point, alias binding, LIMIT)
-    from text. (Amended 2026-10-01, parsed fragments are reused:) `parse_expression` keeps a bounded cache
-    of parsed fragments keyed by their text and hands each caller its own copy of the tree (the nodes
-    are mutable). The grammar costs about a millisecond per fragment and every request of one statement
-    shape re-parses the same property references, measured at 7 ms per Cypher request, more than the
-    rest of its compilation; a failed parse is not cached.
+    carried through governance and planning and serialized to a dialect string only at final emission; no
+    stage may re-derive query structure (SELECT scope, WHERE injection point, alias binding, LIMIT) from
+    text. (Amended 2026-10-01, parsed fragments are reused:) `parse_expression` keeps a bounded cache of
+    parsed fragments keyed by their text and hands each caller its own copy of the tree (the nodes are mutable).
+    The grammar costs about a millisecond per fragment and every request of one statement shape re-parses
+    the same property references, measured at 7 ms per Cypher request, more than the rest of its compilation;
+    a failed parse is not cached. (Amended 2026-11-04, NO SQL TEXT IN THE QUERY PIPELINE:) Maintainer 2026-11-04:
+    within the query pipeline (a request''s statement through compiling, view and metric expansion, governance
+    including the assembly of row rules and masks, optimizing, lowering, routing and execution), any text
+    manipulation of SQL is a red flag: SQL is built and changed as SQLGlot expressions, never by formatting,
+    concatenating, replacing or pattern-matching SQL text, and never by parsing text the pipeline itself
+    generated. A text step is allowed only where nothing else can do it (reading an administrator''s rule
+    or a client''s statement once, a dialect form SQLGlot cannot express), and each such step carries an
+    inline comment saying why.'
   use_case: 'String/regex transforms silently mis-apply governance: a scalar subquery in the projection
     moves the masking boundary (PII leak), a non-t0 alias convention skips RLS qualification (scope-ambiguous
     predicate), and a parameterized LIMIT bypasses the row-cap ceiling. AST transforms make "governance
@@ -88334,7 +88369,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     a role''s grants. It is resolved before the product is declared green. (Amended 2026-10-28, LISTED IS
     NOT A PRODUCT''S CONTRACT:) listed stays a column scope of its own, for discovery by analysts outside
     any product. A data product''s contract (REQ-2158) advertises the product''s members independently of
-    their columns'' scope, and changes no column''s scope.'
+    their columns'' scope, and changes no column''s scope. (Amended 2026-11-04, OWN-DOMAIN SCOPE:) A column''s
+    scope gains a value, own-domain: the column is served only to a role whose own domain access names the
+    table''s domain (a role listing every domain names it). A role that reaches the table''s domain only
+    through an ancestor domain (REQ-1363) is not served the column, even when visible_to names it. domain
+    keeps its meaning: served to every role that reaches the table''s domain, through an ancestor included.
+    Example: an executive_settlements table in executive_litigation, a child of legal, whose columns are
+    own-domain, is read by exec_litigation_counsel (granted executive_litigation) and never by legal_viewer
+    (granted legal).'
   scenario: 'Given finance.invoice_ledger with customer_id listed, amount domain and currency public
 
     When a sales role with no reach into finance opens the catalog
@@ -91833,3 +91875,32 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     When the container finishes building
 
     Then pytest tests/unit and the UI unit tests run with no further setup'
+- id: REQ-2206
+  value: A table whose data changes often is never answered from any copy, by declaring it once.
+  status: proposed
+  target: 2026-Q4
+  group: 6. Execution, Routing, Caching & Performance
+  category: Freshness Module
+  feature: replicas-and-freshness-freshness-gate
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-04: a table can be declared volatile. A volatile table is never answered
+    from a copy: it is never a hot table, a request that reads it is never answered from the response
+    cache (an @cached or cache hint is ignored for it), and no materialized view that reads it answers
+    a statement in its place (the view itself is still built and read by its name, under its own grants).
+    It is read live wherever a live path exists; where it can only be read from a replica, the replica
+    is landed fresh before every read. Where the existing table settings already express a part (hot:
+    false, replicate: -1, cache_ttl), volatile overrides them, and the table''s form disables those settings
+    and says why. A volatile table on a load-protected source (REQ-1141) is refused at registration, naming
+    both settings, since a load-protected source is never pulled at query time.'
+  scenario: 'Given a table declared volatile that would otherwise qualify as a hot table
+
+
+    And a fresh materialized view that reads it
+
+
+    When a request with @cached reads it twice after its source row changes outside Provisa
+
+
+    Then each answer shows the source''s current row, none is answered from the hot cache, the response
+    cache or the view'

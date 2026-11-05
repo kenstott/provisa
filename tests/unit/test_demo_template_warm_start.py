@@ -219,6 +219,7 @@ _NOT_ORG_SCHEMA_DDL = {
     "federation/sqlalchemy_runtime.py": "an engine's own schemas",
     "federation/store_connection.py": "the materialization store",
     "federation/store_writer.py": "the materialization store",
+    "reference_library/store.py": "a held passage dimension's vector index (data)",
 }
 
 

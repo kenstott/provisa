@@ -19,8 +19,6 @@ import json
 import re
 from pathlib import Path
 
-import yaml
-
 from provisa.runtime_deps.code_runtimes import RUNTIMES
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -58,10 +56,6 @@ def _uv_version(dockerfile: Path) -> str:
     return match.group(1)
 
 
-def _postgres_image(compose: Path) -> str:
-    return yaml.safe_load(compose.read_text())["services"]["postgres"]["image"]
-
-
 def test_python_is_the_requires_python_minor():
     requires = re.search(
         r'^requires-python\s*=\s*">=(\d+\.\d+),<', (REPO_ROOT / "pyproject.toml").read_text(), re.M
@@ -93,10 +87,13 @@ def test_node_is_provisa_uis_pin():
     assert _feature("node")[1]["version"] == nvmrc
 
 
-def test_control_plane_is_the_compose_stacks_image():
-    assert _postgres_image(DEVCONTAINER / "compose.yml") == _postgres_image(
-        REPO_ROOT / "docker-compose.core.yml"
-    )
+def test_it_is_one_container_built_from_the_dockerfile():
+    # J628: Codespaces created no container for the compose definition (error 1302). The unit
+    # tests run PostgreSQL embedded (pgserver), so the dev container needs no sidecar.
+    config = _devcontainer()
+    assert config["build"] == {"dockerfile": "Dockerfile"}
+    assert not {"dockerComposeFile", "service", "runServices"} & config.keys()
+    assert not (DEVCONTAINER / "compose.yml").exists()
 
 
 def test_every_feature_is_pinned_to_a_release():
@@ -110,8 +107,9 @@ def test_docker_is_available_inside():
 
 def test_the_environment_lives_outside_the_checkout():
     # A host's own .venv in the bind-mounted checkout is never synced over.
+    # The checkout is mounted under /workspaces, the CLI's and Codespaces' default.
     env = _devcontainer()["containerEnv"]["UV_PROJECT_ENVIRONMENT"]
-    assert not env.startswith(_devcontainer()["workspaceFolder"])
+    assert not env.startswith("/workspaces/")
 
 
 def test_the_slow_setup_is_one_a_codespaces_prebuild_runs():

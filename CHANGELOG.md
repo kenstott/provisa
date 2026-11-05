@@ -3,6 +3,112 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.501
+
+Released 2026-11-04.
+
+### Changes
+
+#### compiler
+
+- Refuse shapes that hide a registered relation from governance
+- Stage 2 refuses a parenthesised join group with a registered relation
+- Govern a leftmost parenthesised join group as the flat join
+- Quote a request-given name as one identifier
+
+#### cypher,compiler
+
+- Lower a write's WHERE from its tree; no SQL text rewrites
+
+#### meta
+
+- The meta seed retires the tables it no longer declares
+
+#### ui
+
+- page-level (?) help, first on the Reference library page
+
+## v0.1.0-alpha.500
+
+Released 2026-11-04.
+
+### Changes
+
+#### catalog
+
+- A set-returning catalog form in FROM keeps WITH ORDINALITY
+
+#### compiler
+
+- Bind schema-qualified column refs before FROM rewrites
+
+#### conformance
+
+- apply's 2026-11-03/04 pgcatalog decisions to the function check
+- A call PostgreSQL cannot make is skipped by design
+
+#### demo
+
+- Banksecrecy registered, captured and answering one way
+
+#### demos
+
+- The banksecrecy named demo -- the Bank Secrecy Act read, its terms grounded, asked by concept
+- Banksecrecy aliases its two customer edges and asks Polly in plain words
+
+#### devcontainer
+
+- Dev container with pinned toolchains and control-plane PostgreSQL
+- Codespaces-ready setup and feature lock
+
+#### glossary
+
+- The menu item is named Find terms
+
+#### go
+
+- A Go source's remote image; each language's image parts its own
+- Each language's image fetch looks its install up when called; the Go tests pass export names
+- A Go source names its Module and its Package; the proxies help fits one line
+
+#### installers
+
+- Check the bundled runtime, not the checkout, for provisa._encoders
+
+#### library
+
+- half-precision HNSW index for 2001-4000 dimension embeddings
+
+#### pgwire
+
+- query_to_xml and its kin map a row result's rows
+- Answer the server state client tools read as Provisa's own
+- current_setting shortcut only for a bare SELECT current_setting(...)
+- comment-only query is empty; keyword after AS is a quoted label
+- pg's last four function-check failures (J603,)
+
+#### polly
+
+- read_screen reports the data node
+- read_screen's tool description names dataNode
+
+#### reference-library
+
+- Passages in pgvector under per-dimension HNSW indexes
+
+#### sql-validator
+
+- Fold identifiers as PostgreSQL does and refuse unknown qualifiers (J609)
+
+#### ui
+
+- Find terms wording for table scans;.xml in reference library pickers
+- Find terms lists no scans only once it has read them
+
+#### views
+
+- A view the reader is served no column of is refused; banksecrecy masks once
+
 ## v0.1.0-alpha.499
 
 Released 2026-11-04.
