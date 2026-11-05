@@ -3892,7 +3892,7 @@
   "fr/observabilityTab.json::observabilityTab.logLevelHelp": "Python log level forwarded to the OTLP log exporter. Override with OTEL_LOG_LEVEL.",
   "fr/observabilityTab.json::observabilityTab.logLevelLabel": "Log Level",
   "fr/observabilityTab.json::observabilityTab.noSpansMatch": "No spans match filter.",
-  "fr/observabilityTab.json::observabilityTab.noSpansYet": "No spans yet — make a request to see traces.",
+  "fr/observabilityTab.json::observabilityTab.noSpansYet": "No spans yet. Make a request to see traces.",
   "fr/observabilityTab.json::observabilityTab.opsSnapshotRetentionHelp": "Expire Iceberg snapshots + orphan files older than this on startup. Empty = never expire.",
   "fr/observabilityTab.json::observabilityTab.opsSnapshotRetentionLabel": "Ops Snapshot Retention (hours)",
   "fr/observabilityTab.json::observabilityTab.otelTitle": "OpenTelemetry Tracing",
