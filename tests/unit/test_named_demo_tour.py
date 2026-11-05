@@ -29,6 +29,8 @@ _TARGETS = (
     "source",
     "table",
     "relationship",
+    "region",
+    "purposes",
     "trigger",
     "example",
     "sql",
@@ -90,6 +92,19 @@ _COLUMN_TABS = set(
         ).group(1),
     )
 ) | {"testing"}
+# The fields of a table's Identity section a step may open on (the read view anchors each one).
+_IDENTITY_FIELDS = set(
+    re.findall(r'testId: "table-identity-([a-z]+)"', (_UI / "TableSectionsRead.tsx").read_text())
+)
+# REQ-1922: the pages that list a platform region (its row, or Federation's tab for it), and those
+# that show the legend of region purposes under that list (demoTour.ts).
+_REGION_PAGES = {
+    "/admin/platform",
+    "/admin/regions",
+    "/admin/federation-engine",
+    "/admin/org-engine",
+}
+_PURPOSES_PAGES = {"/admin/platform", "/admin/regions"}
 # The graphs of View Profile Runs a step may show (ProfileRunsModal's 3D views).
 _PROFILE_GRAPHS = set(
     re.findall(
@@ -311,7 +326,18 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             assert "table" in step and page == "/tables", f"{step['key']}: open is a table's panel"
             section, _, tab = step["open"].partition(".")
             assert section in _TABLE_PANELS, f"{step['key']}: no anchored section {section!r}"
-            assert not tab or tab in _COLUMN_TABS, f"{step['key']}: no column tab {tab!r}"
+            if section == "identity":
+                assert not tab or tab in _IDENTITY_FIELDS, f"{step['key']}: no field {tab!r}"
+            else:
+                assert not tab or tab in _COLUMN_TABS, f"{step['key']}: no column tab {tab!r}"
+        if "region" in step:
+            # A region the demo's platform declares, on a page that lists regions.
+            declared = {r["id"] for r in (config.get("platform") or {}).get("regions") or []}
+            assert step["region"] in declared, f"{step['key']}: no platform region"
+            assert page in _REGION_PAGES, f"{step['key']}: a region shows on a regions page"
+        if "purposes" in step:
+            assert step["purposes"] is True, step
+            assert page in _PURPOSES_PAGES, f"{step['key']}: the legend is on a regions page"
         if "graph" in step:
             # One graph of a profiler member's latest run, in View Profile Runs, which the read
             # view offers in the table's quality section; the step's caption says what the tour
